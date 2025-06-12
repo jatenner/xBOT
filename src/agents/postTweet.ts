@@ -285,7 +285,7 @@ export class PostTweetAgent {
 
     // Get image for the content if enabled
     let imageResult = null;
-    if (includeImage && this.shouldIncludeImage(selectedContent)) {
+    if (includeImage && await this.shouldIncludeImage(selectedContent)) {
       console.log('🖼️ Getting image for content...');
       imageResult = await this.getImageForContent(selectedContent);
     }
@@ -659,25 +659,240 @@ Generate ONE brief analysis:`;
       .trim();
   }
 
-  private shouldIncludeImage(content: ContentItem): boolean {
-    // Always include images for high-priority content
-    const alwaysImageTypes = ['breaking_news', 'research_update'];
-    if (alwaysImageTypes.includes(content.type)) {
-      return true;
+  private async shouldIncludeImage(content: ContentItem, timeOfDay?: number): Promise<boolean> {
+    console.log('🤖 AI Visual Decision Engine: Analyzing whether image will enhance engagement...');
+    
+    try {
+      // Get historical engagement data for image vs text-only posts
+      const recentTweets = await supabaseClient.getTweets({ limit: 50 });
+      const imagePerformanceData = this.analyzeImagePerformance(recentTweets);
+      
+      // Calculate multiple decision factors
+      const factors = await this.calculateVisualDecisionFactors(content, timeOfDay, imagePerformanceData);
+      
+      // AI-powered decision using weighted scoring
+      const decision = this.makeIntelligentVisualDecision(factors);
+      
+      console.log(`🧠 Visual Decision: ${decision.shouldUse ? 'INCLUDE' : 'SKIP'} image`);
+      console.log(`📊 Confidence: ${(decision.confidence * 100).toFixed(1)}%`);
+      console.log(`🎯 Primary reason: ${decision.reason}`);
+      
+      return decision.shouldUse;
+      
+    } catch (error) {
+      console.error('Error in visual decision engine:', error);
+      // Fallback to simple heuristic
+      return this.fallbackImageDecision(content);
+    }
+  }
+
+  private analyzeImagePerformance(recentTweets: any[]): any {
+    if (!recentTweets || recentTweets.length === 0) {
+      return { noData: true };
     }
 
-    // Include images for high-urgency content
-    if (content.urgency > 0.7) {
-      return true;
+    // Separate tweets with and without images (approximate based on content analysis)
+    const withImages = recentTweets.filter(tweet => 
+      tweet.content.includes('🖼️') || tweet.content.includes('Image:') || 
+      tweet.engagement_score > 5 // High engagement often correlates with images
+    );
+    
+    const withoutImages = recentTweets.filter(tweet => !withImages.includes(tweet));
+
+    const imageAvgEngagement = withImages.length > 0 ? 
+      withImages.reduce((sum, tweet) => sum + tweet.engagement_score, 0) / withImages.length : 0;
+    
+    const textAvgEngagement = withoutImages.length > 0 ? 
+      withoutImages.reduce((sum, tweet) => sum + tweet.engagement_score, 0) / withoutImages.length : 0;
+
+    return {
+      imageAvgEngagement,
+      textAvgEngagement,
+      imageAdvantage: imageAvgEngagement > 0 ? (imageAvgEngagement / Math.max(textAvgEngagement, 1)) : 1,
+      sampleSize: { withImages: withImages.length, withoutImages: withoutImages.length }
+    };
+  }
+
+  private async calculateVisualDecisionFactors(content: ContentItem, timeOfDay?: number, performanceData?: any): Promise<any> {
+    const factors = {
+      // Content-based factors
+      contentType: this.getContentTypeVisualScore(content.type),
+      contentComplexity: this.analyzeContentComplexity(content.content),
+      technicalDensity: this.analyzeTechnicalDensity(content.content),
+      
+      // Engagement factors
+      urgencyScore: content.urgency,
+      relevanceScore: content.relevance_score,
+      
+      // Timing factors
+      timeEngagementMultiplier: this.getTimeEngagementMultiplier(timeOfDay || new Date().getHours()),
+      
+      // Historical performance
+      historicalImageAdvantage: performanceData?.imageAdvantage || 1.2,
+      
+      // Content length and readability
+      lengthFactor: this.calculateLengthFactor(content.content),
+      
+      // Topic visual appeal
+      visualAppealScore: await this.assessTopicVisualAppeal(content.content),
+      
+      // Recent image usage (for variety)
+      recentImageCount: await this.getRecentImageUsage()
+    };
+
+    return factors;
+  }
+
+  private getContentTypeVisualScore(type: string): number {
+    const visualScores = {
+      'breaking_news': 0.9,        // Breaking news benefits from visuals
+      'research_update': 0.7,      // Research can be enhanced with visuals
+      'tech_development': 0.8,     // Tech news often visual
+      'industry_insight': 0.4,     // Insights are often text-focused
+      'fact_spotlight': 0.6        // Facts sometimes need visuals
+    };
+    return visualScores[type] || 0.5;
+  }
+
+  private analyzeContentComplexity(content: string): number {
+    // Simple complexity analysis
+    const technicalTerms = ['algorithm', 'AI', 'machine learning', 'neural network', 'deep learning', 'accuracy', 'sensitivity', 'specificity'];
+    const technicalCount = technicalTerms.filter(term => 
+      content.toLowerCase().includes(term.toLowerCase())
+    ).length;
+    
+    // More complex content benefits from visuals for explanation
+    return Math.min(technicalCount / 3, 1.0);
+  }
+
+  private analyzeTechnicalDensity(content: string): number {
+    const words = content.split(' ').length;
+    const numbers = (content.match(/\d+/g) || []).length;
+    const percentages = (content.match(/\d+%/g) || []).length;
+    
+    // High density of numbers/percentages suggests data that could be visualized
+    return Math.min((numbers + percentages * 2) / words, 1.0);
+  }
+
+  private getTimeEngagementMultiplier(hour: number): number {
+    // Times when visuals tend to perform better
+    const visualPeakHours = [7, 8, 9, 12, 13, 17, 18, 19, 20]; // Morning, lunch, evening
+    return visualPeakHours.includes(hour) ? 1.3 : 0.8;
+  }
+
+  private calculateLengthFactor(content: string): number {
+    const length = content.length;
+    // Very short content (under 100 chars) benefits from images
+    // Medium content (100-200 chars) is flexible
+    // Long content (200+ chars) may not need images
+    if (length < 100) return 0.8;
+    if (length < 200) return 0.6;
+    return 0.3;
+  }
+
+  private async assessTopicVisualAppeal(content: string): Promise<number> {
+    try {
+      // AI assessment of whether topic benefits from visualization
+      const prompt = `Analyze this health tech content for visual appeal potential (0.0-1.0):
+
+Content: "${content}"
+
+Consider:
+- Does this topic benefit from visual explanation?
+- Would an image make this more engaging?
+- Is this inherently visual content?
+- Would professionals want to see supporting imagery?
+
+Respond with only a number between 0.0 and 1.0:`;
+
+      const response = await openaiClient.generateResponse(prompt);
+      const score = parseFloat(response || '0.5');
+      return isNaN(score) ? 0.5 : Math.max(0, Math.min(1, score));
+      
+    } catch (error) {
+      return 0.5; // Default neutral score
+    }
+  }
+
+  private async getRecentImageUsage(): Promise<number> {
+    try {
+      // Check recent tweets to avoid image fatigue
+      const recentTweets = await supabaseClient.getTweets({ limit: 10 });
+      const recentImageCount = recentTweets.filter(tweet => 
+        tweet.content.includes('🖼️') || tweet.engagement_score > 3
+      ).length;
+      
+      // Return saturation factor (more recent images = lower score)
+      return Math.max(0, (10 - recentImageCount) / 10);
+      
+    } catch (error) {
+      return 0.7; // Default moderate usage
+    }
+  }
+
+  private makeIntelligentVisualDecision(factors: any): { shouldUse: boolean; confidence: number; reason: string } {
+    console.log('🧮 Decision factors:', JSON.stringify(factors, null, 2));
+    
+    // Weighted scoring algorithm
+    const weights = {
+      contentType: 0.25,
+      contentComplexity: 0.15,
+      technicalDensity: 0.15,
+      urgencyScore: 0.1,
+      relevanceScore: 0.1,
+      timeEngagementMultiplier: 0.05,
+      historicalImageAdvantage: 0.1,
+      lengthFactor: 0.05,
+      visualAppealScore: 0.25,
+      recentImageCount: 0.1
+    };
+
+    let totalScore = 0;
+    let primaryFactor = '';
+    let maxFactorValue = 0;
+
+    for (const [factor, value] of Object.entries(factors)) {
+      const weight = weights[factor] || 0;
+      const numericValue = typeof value === 'number' ? value : 0;
+      const contribution = numericValue * weight;
+      totalScore += contribution;
+      
+      if (contribution > maxFactorValue) {
+        maxFactorValue = contribution;
+        primaryFactor = factor;
+      }
     }
 
-    // Include images for highly relevant content
-    if (content.relevance_score > 0.8) {
-      return true;
-    }
+    const confidence = Math.min(Math.abs(totalScore - 0.5) * 2, 1); // Distance from neutral
+    const shouldUse = totalScore > 0.5;
 
-    // Include images 70% of the time for other content
-    return Math.random() < 0.7;
+    // Generate human-readable reason
+    const reasons = {
+      contentType: shouldUse ? 'Content type benefits from visuals' : 'Content type works better text-only',
+      visualAppealScore: shouldUse ? 'Topic has high visual appeal' : 'Topic is better conveyed through text',
+      contentComplexity: shouldUse ? 'Complex topic needs visual explanation' : 'Simple topic doesn\'t need visuals',
+      technicalDensity: shouldUse ? 'Data-heavy content benefits from charts' : 'Low data density, text sufficient',
+      historicalImageAdvantage: shouldUse ? 'Images historically perform better' : 'Text-only posts have been effective',
+      recentImageCount: shouldUse ? 'Good variety, time for visual content' : 'Avoiding image fatigue',
+      urgencyScore: shouldUse ? 'High urgency warrants visual emphasis' : 'Low urgency, casual text approach',
+      lengthFactor: shouldUse ? 'Short content enhanced by images' : 'Long content self-sufficient'
+    };
+
+    return {
+      shouldUse,
+      confidence,
+      reason: reasons[primaryFactor] || 'Balanced decision based on multiple factors'
+    };
+  }
+
+  private fallbackImageDecision(content: ContentItem): boolean {
+    // Simple fallback when AI analysis fails
+    const alwaysImageTypes = ['breaking_news'];
+    if (alwaysImageTypes.includes(content.type)) return true;
+    
+    if (content.urgency > 0.8 || content.relevance_score > 0.85) return true;
+    
+    return Math.random() < 0.4; // Conservative default
   }
 
   private async getImageForContent(content: ContentItem): Promise<any> {
