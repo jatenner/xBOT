@@ -10,6 +10,7 @@ import { CrossIndustryLearningAgent } from './crossIndustryLearningAgent';
 import dotenv from 'dotenv';
 import { RealTimeEngagementTracker } from './realTimeEngagementTracker';
 import { AutonomousTweetAuditor } from './autonomousTweetAuditor';
+import { AutonomousContentOrchestrator } from './autonomousContentOrchestrator';
 
 dotenv.config();
 
@@ -28,6 +29,7 @@ export class Scheduler {
   private isRunning = false;
 
   private autonomousTweetAuditor: AutonomousTweetAuditor;
+  private contentOrchestrator: AutonomousContentOrchestrator;
   
   private strategistJob: cron.ScheduledTask | null = null;
   private learningJob: cron.ScheduledTask | null = null;
@@ -35,6 +37,7 @@ export class Scheduler {
   private engagementJob: cron.ScheduledTask | null = null;
   private weeklyReportJob: cron.ScheduledTask | null = null;
   private tweetAuditorJob: cron.ScheduledTask | null = null;
+  private orchestratorJob: cron.ScheduledTask | null = null;
 
   constructor() {
     this.strategistAgent = new StrategistAgent();
@@ -46,6 +49,7 @@ export class Scheduler {
 
     this.engagementTracker = new RealTimeEngagementTracker();
     this.autonomousTweetAuditor = new AutonomousTweetAuditor();
+    this.contentOrchestrator = new AutonomousContentOrchestrator();
   }
 
   async start(): Promise<void> {
@@ -144,6 +148,16 @@ export class Scheduler {
       }
     }, { scheduled: true });
 
+    // 👑 SUPREME CONTENT ORCHESTRATOR - The GOD-like AI that controls ALL content strategy
+    this.orchestratorJob = cron.schedule('0 */4 * * *', async () => {
+      try {
+        console.log('👑 Starting supreme content orchestration...');
+        await this.contentOrchestrator.runOrchestrationCycle();
+      } catch (error) {
+        console.error('❌ Supreme orchestration failed:', error);
+      }
+    }, { scheduled: true });
+
     // Store job references for cleanup
     this.jobs.set('strategist', this.strategistJob);
     this.jobs.set('learning', this.learningJob);
@@ -151,6 +165,7 @@ export class Scheduler {
     this.jobs.set('engagementAnalysis', this.engagementJob);
     this.jobs.set('weeklyReport', this.weeklyReportJob);
     this.jobs.set('tweetAuditor', this.tweetAuditorJob);
+    this.jobs.set('orchestrator', this.orchestratorJob);
 
     // Start all jobs
     this.strategistJob.start();
@@ -159,6 +174,7 @@ export class Scheduler {
     this.engagementJob.start();
     this.weeklyReportJob.start();
     this.tweetAuditorJob.start();
+    this.orchestratorJob.start();
 
     // Start engagement tracker
     try {
@@ -175,6 +191,7 @@ export class Scheduler {
     console.log('   - Engagement Analysis: Every 30 minutes during peak hours');
     console.log('   - Weekly Report: Sundays at 9:00 AM UTC');
     console.log('   - 🤖 Autonomous Tweet Auditor: Every 2 hours');
+    console.log('   - 👑 Supreme Content Orchestrator: Every 4 hours');
     console.log('   - Real-time Engagement Tracking: Continuous');
     
     console.log('🧠 AUTONOMOUS INTELLIGENCE ACTIVATED:');
