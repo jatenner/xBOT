@@ -9,6 +9,7 @@ import { CrossIndustryLearningAgent } from './crossIndustryLearningAgent';
 
 import dotenv from 'dotenv';
 import { RealTimeEngagementTracker } from './realTimeEngagementTracker';
+import { AutonomousTweetAuditor } from './autonomousTweetAuditor';
 
 dotenv.config();
 
@@ -26,6 +27,15 @@ export class Scheduler {
   private jobs: Map<string, any> = new Map();
   private isRunning = false;
 
+  private autonomousTweetAuditor: AutonomousTweetAuditor;
+  
+  private strategistJob: cron.ScheduledTask | null = null;
+  private learningJob: cron.ScheduledTask | null = null;
+  private autonomousLearningJob: cron.ScheduledTask | null = null;
+  private engagementJob: cron.ScheduledTask | null = null;
+  private weeklyReportJob: cron.ScheduledTask | null = null;
+  private tweetAuditorJob: cron.ScheduledTask | null = null;
+
   constructor() {
     this.strategistAgent = new StrategistAgent();
     this.postTweetAgent = new PostTweetAgent();
@@ -35,6 +45,7 @@ export class Scheduler {
     this.autonomousLearner = new AutonomousLearningAgent();
 
     this.engagementTracker = new RealTimeEngagementTracker();
+    this.autonomousTweetAuditor = new AutonomousTweetAuditor();
   }
 
   async start(): Promise<void> {
@@ -50,7 +61,7 @@ export class Scheduler {
     // await this.engagementTracker.startTracking();
 
     // Schedule strategist to run every 15 minutes
-    const strategistJob = cron.schedule('*/15 * * * *', async () => {
+    this.strategistJob = cron.schedule('*/15 * * * *', async () => {
       try {
         await this.runStrategistCycle();
       } catch (error) {
@@ -62,7 +73,7 @@ export class Scheduler {
     });
 
     // Schedule learning agent to run daily at 2 AM UTC
-    const learningJob = cron.schedule('0 2 * * *', async () => {
+    this.learningJob = cron.schedule('0 2 * * *', async () => {
       console.log('🧠 === Daily Learning Cycle Started ===');
       try {
         await this.learnAgent.run();
@@ -76,7 +87,7 @@ export class Scheduler {
     });
 
     // Schedule autonomous learning every 6 hours for continuous improvement
-    const autonomousLearningJob = cron.schedule('0 */6 * * *', async () => {
+    this.autonomousLearningJob = cron.schedule('0 */6 * * *', async () => {
       console.log('🚀 === Autonomous Learning Cycle Started ===');
       try {
         await this.autonomousLearner.run();
@@ -90,7 +101,7 @@ export class Scheduler {
     });
 
     // Schedule engagement analysis every 30 minutes during peak hours
-    const engagementAnalysisJob = cron.schedule('*/30 * * * *', async () => {
+    this.engagementJob = cron.schedule('*/30 * * * *', async () => {
       const currentHour = new Date().getUTCHours();
       const isPeakHour = (currentHour >= 13 && currentHour <= 15) || // 9-11 AM EST
                         (currentHour >= 19 && currentHour <= 21) || // 3-5 PM EST  
@@ -111,7 +122,7 @@ export class Scheduler {
     });
 
     // Schedule weekly performance report on Sundays at 9 AM UTC
-    const weeklyReportJob = cron.schedule('0 9 * * 0', async () => {
+    this.weeklyReportJob = cron.schedule('0 9 * * 0', async () => {
       console.log('📊 === Weekly Performance Report ===');
       try {
         await this.generateWeeklyReport();
@@ -123,19 +134,39 @@ export class Scheduler {
       timezone: "UTC"
     });
 
+    // 🤖 AUTONOMOUS TWEET AUDITOR - runs every 2 hours to check and fix tweet quality
+    this.tweetAuditorJob = cron.schedule('0 */2 * * *', async () => {
+      try {
+        console.log('🔍 Starting autonomous tweet quality audit...');
+        await this.autonomousTweetAuditor.runAutonomousAudit();
+      } catch (error) {
+        console.error('❌ Tweet auditor job failed:', error);
+      }
+    }, { scheduled: true });
+
     // Store job references for cleanup
-    this.jobs.set('strategist', strategistJob);
-    this.jobs.set('learning', learningJob);
-    this.jobs.set('autonomousLearning', autonomousLearningJob);
-    this.jobs.set('engagementAnalysis', engagementAnalysisJob);
-    this.jobs.set('weeklyReport', weeklyReportJob);
+    this.jobs.set('strategist', this.strategistJob);
+    this.jobs.set('learning', this.learningJob);
+    this.jobs.set('autonomousLearning', this.autonomousLearningJob);
+    this.jobs.set('engagementAnalysis', this.engagementJob);
+    this.jobs.set('weeklyReport', this.weeklyReportJob);
+    this.jobs.set('tweetAuditor', this.tweetAuditorJob);
 
     // Start all jobs
-    strategistJob.start();
-    learningJob.start();
-    autonomousLearningJob.start();
-    engagementAnalysisJob.start();
-    weeklyReportJob.start();
+    this.strategistJob.start();
+    this.learningJob.start();
+    this.autonomousLearningJob.start();
+    this.engagementJob.start();
+    this.weeklyReportJob.start();
+    this.tweetAuditorJob.start();
+
+    // Start engagement tracker
+    try {
+      await this.engagementTracker.startTracking();
+      console.log('🎯 Real-time engagement tracking started');
+    } catch (error) {
+      console.warn('⚠️ Failed to start engagement tracking:', error);
+    }
 
     console.log('⏰ Scheduler started with the following jobs:');
     console.log('   - Strategist: Every 15 minutes');
@@ -143,6 +174,7 @@ export class Scheduler {
     console.log('   - Autonomous Learning: Every 6 hours');
     console.log('   - Engagement Analysis: Every 30 minutes during peak hours');
     console.log('   - Weekly Report: Sundays at 9:00 AM UTC');
+    console.log('   - 🤖 Autonomous Tweet Auditor: Every 2 hours');
     console.log('   - Real-time Engagement Tracking: Continuous');
     
     console.log('🧠 AUTONOMOUS INTELLIGENCE ACTIVATED:');
@@ -151,6 +183,7 @@ export class Scheduler {
     console.log('   - Competitive intelligence gathering');
     console.log('   - Predictive trend analysis');
     console.log('   - Creative capability enhancement');
+    console.log('   - 🔧 AUTONOMOUS QUALITY CONTROL: Tweet auditing and fixing');
 
     // Run initial cycles
     try {
