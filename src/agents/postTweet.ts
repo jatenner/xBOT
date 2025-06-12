@@ -1,7 +1,7 @@
 import { openaiClient } from '../utils/openaiClient';
 import { xClient } from '../utils/xClient';
 import { supabaseClient } from '../utils/supabaseClient';
-import { formatTweet } from '../utils/formatTweet';
+import { formatTweet, truncateTweet, addSnap2HealthCTA } from '../utils/formatTweet';
 import { ImageAgent, ImageRequest } from './imageAgent';
 import { EngagementMaximizerAgent } from './engagementMaximizerAgent';
 import { ComprehensiveContentAgent } from './comprehensiveContentAgent';
@@ -312,30 +312,26 @@ export class PostTweetAgent {
         console.log('🧠 AI decided text-only for maximum viral impact...');
       }
 
-      // Format and validate
-      const formattedTweet = formatTweet(tweetContent);
-      if (!formattedTweet.isValid) {
-        console.warn('Viral tweet too long, using fallback');
-        return await this.generateFallbackTweet(includeSnap2HealthCTA, false);
-      }
+      // 🔧 ENFORCE CHARACTER LIMIT BEFORE POSTING
+      const validatedContent = this.enforceCharacterLimit(tweetContent, includeSnap2HealthCTA);
 
       // Post the viral tweet
       let result;
       if (imageResult?.success && imageResult.localPath) {
         result = await xClient.postTweetWithMedia({
-          text: formattedTweet.content,
+          text: validatedContent,
           mediaUrls: [imageResult.imageUrl!],
           altText: [imageResult.altText!]
         });
       } else {
-        result = await xClient.postTweet(formattedTweet.content);
+        result = await xClient.postTweet(validatedContent);
       }
 
       if (result.success) {
         // Store viral tweet with engagement prediction
         await supabaseClient.insertTweet({
           tweet_id: result.tweetId!,
-          content: formattedTweet.content,
+          content: validatedContent,
           tweet_type: 'original',
           content_type: 'viral_engagement',
           source_attribution: 'EngagementMaximizer',
@@ -354,7 +350,7 @@ export class PostTweetAgent {
         return {
           success: true,
           tweetId: result.tweetId,
-          content: formattedTweet.content,
+          content: validatedContent,
           hasImage: !!imageResult?.success
         };
       } else {
@@ -396,33 +392,28 @@ export class PostTweetAgent {
       imageResult = await this.getImageForContent(selectedContent);
     }
 
-    // Format and validate the tweet
-    const formattedTweet = formatTweet(tweetContent);
-
-    if (!formattedTweet.isValid) {
-      console.warn('Generated tweet is invalid:', formattedTweet.warnings);
-      return await this.generateFallbackTweet(includeSnap2HealthCTA, false);
-    }
+    // 🔧 ENFORCE CHARACTER LIMIT BEFORE POSTING
+    const validatedContent = this.enforceCharacterLimit(tweetContent, includeSnap2HealthCTA);
 
     // Post the tweet (with or without image)
     let result;
     if (imageResult?.success && imageResult.localPath) {
       console.log('📸 Posting tweet with image...');
       result = await xClient.postTweetWithMedia({
-        text: formattedTweet.content,
+        text: validatedContent,
         mediaUrls: [imageResult.imageUrl!],
         altText: [imageResult.altText!]
       });
     } else {
       console.log('📝 Posting tweet without image...');
-      result = await xClient.postTweet(formattedTweet.content);
+      result = await xClient.postTweet(validatedContent);
     }
 
     if (result.success) {
       // Store the tweet for learning
       await supabaseClient.insertTweet({
         tweet_id: result.tweetId!,
-        content: formattedTweet.content,
+        content: validatedContent,
         tweet_type: 'original',
         content_type: selectedContent.type,
         source_attribution: selectedContent.source,
@@ -443,7 +434,7 @@ export class PostTweetAgent {
       return {
         success: true,
         tweetId: result.tweetId,
-        content: formattedTweet.content,
+        content: validatedContent,
         hasImage: !!imageResult?.success
       };
     } else {
@@ -1543,6 +1534,49 @@ Example: "BREAKING: ${event.title.substring(0, 60)}... This signals a major shif
 
   private getEventFallback(event: any): string {
     return `Breaking: ${event.title.substring(0, 100)}... This development could significantly impact the health tech landscape. Source: ${event.source} #HealthTech #Breaking`;
+  }
+
+  /**
+   * 🔧 UNIVERSAL CHARACTER LIMIT ENFORCEMENT
+   * Ensures ALL tweets respect Twitter's 280-character limit
+   */
+  private enforceCharacterLimit(content: string, includeSnap2HealthCTA: boolean = false): string {
+    let finalContent = content;
+    
+    // Add CTA if requested (it has its own length checking)
+    if (includeSnap2HealthCTA) {
+      finalContent = addSnap2HealthCTA(finalContent);
+    }
+    
+    // Validate and format the tweet
+    const formatted = formatTweet(finalContent);
+    
+    if (!formatted.isValid) {
+      console.log(`⚠️ Tweet exceeds character limit (${formatted.characterCount}/280)`);
+      console.log(`🔧 Truncating content to fit...`);
+      
+      if (includeSnap2HealthCTA) {
+        // If CTA was added and caused overflow, remove it and truncate base content
+        const baseContent = truncateTweet(content, 280);
+        const withCTA = addSnap2HealthCTA(baseContent);
+        const revalidated = formatTweet(withCTA);
+        
+        if (revalidated.isValid) {
+          finalContent = withCTA;
+          console.log(`✅ Truncated and added CTA (${revalidated.characterCount}/280)`);
+        } else {
+          finalContent = truncateTweet(content, 280);
+          console.log(`✅ Truncated without CTA (${formatTweet(finalContent).characterCount}/280)`);
+        }
+      } else {
+        finalContent = truncateTweet(content, 280);
+        console.log(`✅ Truncated content (${formatTweet(finalContent).characterCount}/280)`);
+      }
+    } else {
+      console.log(`✅ Tweet length valid (${formatted.characterCount}/280 characters)`);
+    }
+    
+    return finalContent;
   }
 }
 
