@@ -2,12 +2,12 @@
   "name": "snap2health-xbot",
   "version": "1.0.0",
   "description": "Autonomous X-Bot for Snap2Health with AI-driven content generation",
-  "main": "src/index.ts",
+  "main": "dist/index.js",
   "scripts": {
     "dev": "tsx src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "test": "tsx src/index.ts --test"
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
     "twitter",
@@ -22,7 +22,6 @@
     "@types/node": "^20.10.0",
     "@types/node-cron": "^3.0.11",
     "@types/xml2js": "^0.4.14",
-    "@types/natural": "^5.1.5",
     "typescript": "^5.3.0",
     "tsx": "^4.6.0"
   },
@@ -34,10 +33,7 @@
     "dotenv": "^16.3.1",
     "axios": "^1.6.0",
     "cheerio": "^1.0.0-rc.12",
-    "xml2js": "^0.6.2",
-    "puppeteer": "^21.0.0",
-    "natural": "^6.10.0",
-    "sentiment": "^5.0.2"
+    "xml2js": "^0.6.2"
   },
   "engines": {
     "node": ">=20.0.0"

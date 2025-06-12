@@ -1,0 +1,12 @@
+services:
+  - type: worker
+    name: xbot
+    env: node
+    plan: starter
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NPM_CONFIG_PRODUCTION
+        value: false 
