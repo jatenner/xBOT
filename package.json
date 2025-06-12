@@ -4,9 +4,10 @@
   "description": "Autonomous X-Bot for Snap2Health with 7-agent intelligence system",
   "main": "dist/index.js",
   "scripts": {
-    "start": "node dist/index.ts",
+    "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "build": "tsc --build --verbose",
+    "postbuild": "echo 'Build completed successfully'",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [

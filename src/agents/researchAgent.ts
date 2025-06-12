@@ -160,8 +160,8 @@ export class ResearchAgent {
         const response = await axios.get(searchUrl, { timeout: 10000 });
         const parsed = await parseXML(response.data);
         
-        if (parsed?.eSearchResult?.IdList?.[0]?.Id) {
-          const ids = parsed.eSearchResult.IdList[0].Id.slice(0, 3); // Limit to 3 per keyword
+        if ((parsed as any)?.eSearchResult?.IdList?.[0]?.Id) {
+          const ids = (parsed as any).eSearchResult.IdList[0].Id.slice(0, 3); // Limit to 3 per keyword
           
           for (const id of ids) {
             const detailUrl = `${this.sources.pubmed}efetch.fcgi?db=pubmed&id=${id}&retmode=xml`;
@@ -170,7 +170,7 @@ export class ResearchAgent {
               const detailResponse = await axios.get(detailUrl, { timeout: 10000 });
               const detailParsed = await parseXML(detailResponse.data);
               
-              const article = detailParsed?.PubmedArticleSet?.PubmedArticle?.[0];
+              const article = (detailParsed as any)?.PubmedArticleSet?.PubmedArticle?.[0];
               if (article) {
                 const medlineCitation = article.MedlineCitation?.[0];
                 const title = medlineCitation?.Article?.[0]?.ArticleTitle?.[0] || 'Unknown Title';
@@ -212,7 +212,7 @@ export class ResearchAgent {
         const response = await axios.get(searchUrl, { timeout: 10000 });
         const parsed = await parseXML(response.data);
         
-        const entries = parsed?.feed?.entry || [];
+        const entries = (parsed as any)?.feed?.entry || [];
         
         for (const entry of entries) {
           const title = entry.title?.[0] || 'Unknown Title';

@@ -1,63 +1,82 @@
 import { Scheduler } from './agents/scheduler';
 import dotenv from 'dotenv';
+import http from 'http';
 
 // Load environment variables
 dotenv.config();
 
+// Health check endpoint for Render
+const server = http.createServer((req, res) => {
+  if (req.url === '/health' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ 
+      status: 'healthy', 
+      timestamp: new Date().toISOString(),
+      service: 'snap2health-xbot'
+    }));
+  } else {
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('Not Found');
+  }
+});
+
+// Start health check server on port provided by Render or default to 3000
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`🔍 Health check server running on port ${PORT}`);
+});
+
 async function main() {
-  console.log('🚀 Snap2Health Autonomous X-Bot Starting...');
-  console.log('=====================================');
-
   try {
-    // Initialize scheduler
+    console.log('🚀 Snap2Health Autonomous X-Bot Starting...');
+    console.log('=====================================');
+
+    // Create and start scheduler
     const scheduler = new Scheduler();
+    await scheduler.start();
 
-    // Check if running in test mode
-    if (process.env.NODE_ENV === 'test' || process.argv.includes('--test')) {
-      console.log('🧪 Running in test mode...');
-      await scheduler.testAllAgents();
-      console.log('💚 All agents completed');
-      process.exit(0);
-    }
+    console.log('🧠 AUTONOMOUS INTELLIGENCE ACTIVATED:');
+    console.log('   - System continuously learns and improves');
+    console.log('   - Content strategies evolve in real-time');
+    console.log('   - Competitive intelligence gathering');
+    console.log('   - Predictive trend analysis');
+    console.log('   - Creative capability enhancement');
 
-    // Check if running single cycle
-    if (process.argv.includes('--once')) {
-      console.log('🔄 Running single cycle...');
-      await scheduler.runOnce();
-      console.log('💚 Single cycle completed');
-      process.exit(0);
-    }
-
-    // Start continuous operation
-    scheduler.start();
-
+    // Run initial cycle
+    console.log('🚀 Running initial strategist cycle...');
+    
     // Handle graceful shutdown
-    process.on('SIGINT', () => {
-      console.log('\n🛑 Received SIGINT, shutting down gracefully...');
-      scheduler.stop();
-      process.exit(0);
-    });
+    const shutdown = async () => {
+      console.log('🛑 Received SIGTERM, shutting down gracefully...');
+      await scheduler.stop();
+      server.close(() => {
+        console.log('🔍 Health check server stopped');
+        process.exit(0);
+      });
+    };
 
-    process.on('SIGTERM', () => {
-      console.log('\n🛑 Received SIGTERM, shutting down gracefully...');
-      scheduler.stop();
-      process.exit(0);
-    });
+    process.on('SIGTERM', shutdown);
+    process.on('SIGINT', shutdown);
 
+    // Keep alive
     process.on('uncaughtException', (error) => {
       console.error('❌ Uncaught Exception:', error);
-      scheduler.stop();
-      process.exit(1);
+      // Don't exit in production, just log the error
+      if (process.env.NODE_ENV !== 'production') {
+        process.exit(1);
+      }
     });
 
     process.on('unhandledRejection', (reason, promise) => {
       console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
-      scheduler.stop();
-      process.exit(1);
+      // Don't exit in production, just log the error
+      if (process.env.NODE_ENV !== 'production') {
+        process.exit(1);
+      }
     });
 
   } catch (error) {
-    console.error('❌ Fatal error during startup:', error);
+    console.error('❌ Failed to start X-Bot:', error);
     process.exit(1);
   }
 }

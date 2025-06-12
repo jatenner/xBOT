@@ -316,7 +316,8 @@ export class Scheduler {
 
       // Test post tweet agent
       console.log('\n2. Testing PostTweetAgent...');
-      await this.postTweetAgent.testGeneration();
+      const testResult = await this.postTweetAgent.run(false);
+      console.log('PostTweetAgent test result:', testResult.success ? 'Success' : 'Failed');
 
       // Test reply agent
       console.log('\n3. Testing ReplyAgent...');
@@ -332,7 +333,8 @@ export class Scheduler {
 
       // Test research agent
       console.log('\n5. Testing ResearchAgent...');
-      await this.researchAgent.testResearch();
+      const researchResults = await this.researchAgent.run();
+      console.log('Research test result:', researchResults ? 'Success' : 'Failed');
 
       console.log('\n✅ All agent tests completed');
 
@@ -359,6 +361,9 @@ export class Scheduler {
         if (job && typeof job.stop === 'function') {
           job.stop();
           console.log(`✅ Stopped ${name} job`);
+        } else if (job && typeof job.destroy === 'function') {
+          job.destroy();
+          console.log(`✅ Stopped ${name} job`);
         }
       } catch (error) {
         console.error(`❌ Error stopping ${name} job:`, error);
@@ -368,6 +373,7 @@ export class Scheduler {
     // Stop engagement tracker
     try {
       this.engagementTracker.stopTracking();
+      console.log('🛑 Engagement tracking stopped');
       console.log('✅ Stopped engagement tracker');
     } catch (error) {
       console.error('❌ Error stopping engagement tracker:', error);
@@ -386,7 +392,7 @@ export class Scheduler {
   async getSystemStatus(): Promise<any> {
     return {
       scheduler_running: this.isRunning,
-      active_jobs: this.jobs.length,
+      active_jobs: this.jobs.size,
       engagement_tracking: this.isRunning, // Tracking runs with scheduler
       last_check: new Date().toISOString()
     };

@@ -76,7 +76,7 @@ export class ReplyAgent {
       }
 
       // Step 4: Post the reply
-      const postResult = await xClient.replyToTweet(bestConversation.originalTweet.id, replyContent);
+      const postResult = await xClient.postReply(replyContent, bestConversation.originalTweet.id);
       
       if (!postResult.success) {
         return {
@@ -115,14 +115,10 @@ export class ReplyAgent {
       // Search for recent tweets about health tech topics
       for (const topic of this.healthTopics.slice(0, 5)) { // Limit searches
         try {
-          const searchResults = await xClient.searchTweets({
-            query: `${topic} -is:retweet lang:en`,
-            max_results: 10,
-            tweet_fields: ['public_metrics', 'created_at', 'author_id', 'context_annotations']
-          });
+          const searchResults = await xClient.searchTweets(`${topic} -is:retweet lang:en`, 20);
 
-          if (searchResults.success && searchResults.tweets) {
-            for (const tweet of searchResults.tweets) {
+          if (searchResults && searchResults.length > 0) {
+            for (const tweet of searchResults) {
               // Filter for tweets with decent engagement but not too overwhelming
               const metrics = tweet.public_metrics;
               if (metrics.like_count >= 5 && metrics.like_count <= 500 && 

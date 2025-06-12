@@ -1,33 +1,73 @@
 services:
-  - type: web
+  # Background Worker Service (Recommended for Twitter Bot)
+  - type: worker
     name: snap2health-xbot
-    env: node
-    buildCommand: npm install
-    startCommand: npx tsx src/index.ts
+    runtime: node
+    plan: starter
+    region: oregon
+    branch: main
+    buildCommand: npm ci && npm run build
+    startCommand: node dist/index.js
     envVars:
       - key: NODE_ENV
         value: production
+      - key: TZ
+        value: UTC
       - key: OPENAI_API_KEY
-        fromService: snap2health-xbot
-        envVarKey: OPENAI_API_KEY
-      - key: X_API_KEY
-        fromService: snap2health-xbot
-        envVarKey: X_API_KEY
-      - key: X_API_SECRET
-        fromService: snap2health-xbot
-        envVarKey: X_API_SECRET
-      - key: X_ACCESS_TOKEN
-        fromService: snap2health-xbot
-        envVarKey: X_ACCESS_TOKEN
-      - key: X_ACCESS_TOKEN_SECRET
-        fromService: snap2health-xbot
-        envVarKey: X_ACCESS_TOKEN_SECRET
+        sync: false
+      - key: TWITTER_BEARER_TOKEN
+        sync: false
+      - key: TWITTER_API_KEY
+        sync: false
+      - key: TWITTER_API_SECRET
+        sync: false
+      - key: TWITTER_ACCESS_TOKEN
+        sync: false
+      - key: TWITTER_ACCESS_SECRET
+        sync: false
       - key: SUPABASE_URL
-        fromService: snap2health-xbot
-        envVarKey: SUPABASE_URL
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        fromService: snap2health-xbot
-        envVarKey: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
       - key: NEWS_API_KEY
-        fromService: snap2health-xbot
-        envVarKey: NEWS_API_KEY 
+        sync: false
+    scaling:
+      minInstances: 1
+      maxInstances: 1
+
+  # Alternative: Web Service with Health Check
+  - type: web
+    name: snap2health-xbot-web
+    runtime: node
+    plan: starter
+    region: oregon
+    branch: main
+    buildCommand: npm ci && npm run build
+    startCommand: node dist/index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TZ
+        value: UTC
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: TWITTER_BEARER_TOKEN
+        sync: false
+      - key: TWITTER_API_KEY
+        sync: false
+      - key: TWITTER_API_SECRET
+        sync: false
+      - key: TWITTER_ACCESS_TOKEN
+        sync: false
+      - key: TWITTER_ACCESS_SECRET
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: NEWS_API_KEY
+        sync: false
+    scaling:
+      minInstances: 1
+      maxInstances: 1
+    healthCheckPath: /health 

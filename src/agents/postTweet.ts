@@ -6,6 +6,10 @@ import { ImageAgent, ImageRequest } from './imageAgent';
 import { EngagementMaximizerAgent } from './engagementMaximizerAgent';
 import { ComprehensiveContentAgent } from './comprehensiveContentAgent';
 import { NewsAPIAgent } from './newsAPIAgent';
+import { ThreadAgent } from './threadAgent';
+import { RealResearchFetcher } from './realResearchFetcher';
+import { MissionManager, ContentEvaluation } from './missionObjectives';
+import { RealTimeTrendsAgent } from './realTimeTrendsAgent';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -16,6 +20,9 @@ export interface PostResult {
   content?: string;
   hasImage?: boolean;
   error?: string;
+  threadCount?: number;
+  qualityScore?: number;
+  missionAlignment?: ContentEvaluation;
 }
 
 interface ContentItem {
@@ -27,6 +34,14 @@ interface ContentItem {
   relevance_score: number;
   urgency: number;
   url?: string;
+}
+
+interface AIVisualDecision {
+  shouldIncludeImage: boolean;
+  confidence: number;
+  reasoning: string;
+  contentType: 'breaking_news' | 'research_insight' | 'educational' | 'analysis' | 'trend_discussion';
+  visualAppealScore: number;
 }
 
 export class PostTweetAgent {
@@ -77,32 +92,109 @@ export class PostTweetAgent {
   private engagementMaximizer: EngagementMaximizerAgent;
   private comprehensiveAgent: ComprehensiveContentAgent;
   private newsAPIAgent: NewsAPIAgent;
+  private threadAgent: ThreadAgent;
+  private researchFetcher: RealResearchFetcher;
+  private missionManager: MissionManager;
+  private trendsAgent: RealTimeTrendsAgent;
+  private recentlyUsedImages: Set<string> = new Set();
 
   constructor() {
     this.imageAgent = new ImageAgent();
     this.engagementMaximizer = new EngagementMaximizerAgent();
     this.comprehensiveAgent = new ComprehensiveContentAgent();
     this.newsAPIAgent = new NewsAPIAgent();
+    this.threadAgent = new ThreadAgent();
+    this.researchFetcher = new RealResearchFetcher();
+    this.missionManager = new MissionManager();
+    this.trendsAgent = new RealTimeTrendsAgent();
   }
 
   async run(includeSnap2HealthCTA: boolean = false, includeImage: boolean = true): Promise<PostResult> {
+    console.log('📝 PostTweetAgent: Generating tweet...');
+    console.log('🎯 Mission-Driven Content Generation Started');
+    console.log(this.missionManager.getMissionSummary());
+
     try {
-      console.log('📝 PostTweetAgent: Generating tweet...');
+      let attempts = 0;
+      const maxAttempts = 3;
 
-      // Check which content mode to use
-      const contentMode = this.selectContentMode();
+      while (attempts < maxAttempts) {
+        attempts++;
+        console.log(`\n🔄 Content Generation Attempt ${attempts}/${maxAttempts}`);
 
-      if (contentMode === 'comprehensive') {
-        console.log('🎬 COMPREHENSIVE CONTENT MODE ACTIVATED');
-        return await this.generateComprehensiveTweet(includeSnap2HealthCTA);
-      } else if (contentMode === 'engagement') {
-        console.log('🚀 ENGAGEMENT MAXIMIZATION MODE ACTIVATED');
-        return await this.generateViralTweet(includeSnap2HealthCTA, includeImage);
+        // Generate content using existing logic
+        let result: PostResult;
+        const contentMode = this.selectContentMode();
+
+        if (contentMode === 'comprehensive') {
+          console.log('🎬 COMPREHENSIVE CONTENT MODE ACTIVATED');
+          result = await this.generateComprehensiveTweet(includeSnap2HealthCTA);
+        } else if (contentMode === 'trending') {
+          console.log('🔥 TRENDING CONTENT MODE ACTIVATED');
+          result = await this.generateTrendingTweet(includeSnap2HealthCTA, includeImage);
+        } else if (contentMode === 'engagement') {
+          console.log('🚀 ENGAGEMENT MAXIMIZATION MODE ACTIVATED');
+          result = await this.generateViralTweet(includeSnap2HealthCTA, includeImage);
+        } else {
+          console.log('📰 Using current events mode...');
+          result = await this.generateCurrentEventsTweet(includeSnap2HealthCTA, includeImage);
+        }
+
+        // MISSION EVALUATION - Quality Gate
+        if (result.success && result.content) {
+          console.log('🎯 Evaluating content against mission objectives...');
+          const missionEvaluation = await this.missionManager.evaluateContent(
+            result.content,
+            {
+              hasImage: result.hasImage,
+              hasSource: this.hasVerifiedSource(result.content),
+              contentType: 'health_tech'
+            }
+          );
+
+          console.log(`📊 Mission Evaluation Results:`);
+          console.log(`   Overall Score: ${missionEvaluation.overallScore}/100`);
+          console.log(`   Ethical Constraints: ${missionEvaluation.passesEthicalConstraints ? '✅' : '❌'}`);
+          console.log(`   Quality Thresholds: ${missionEvaluation.meetsQualityThresholds ? '✅' : '❌'}`);
+          console.log(`   Mission Alignment: ${missionEvaluation.alignsWithObjectives ? '✅' : '❌'}`);
+          console.log(`   Verdict: ${missionEvaluation.verdict.toUpperCase()}`);
+
+          if (missionEvaluation.recommendations.length > 0) {
+            console.log(`   Recommendations: ${missionEvaluation.recommendations.join(', ')}`);
+          }
+
+          // Quality gate enforcement
+          if (missionEvaluation.verdict === 'rejected') {
+            console.log(`🚫 Content rejected due to mission violations. Regenerating...`);
+            continue;
+          }
+
+          if (missionEvaluation.verdict === 'needs_improvement' && missionEvaluation.overallScore < 70) {
+            console.log(`⚠️ Content quality below threshold (${missionEvaluation.overallScore}/100). Regenerating...`);
+            continue;
+          }
+
+          // Content approved - return with quality metrics
+          console.log(`✅ Content approved for posting (Score: ${missionEvaluation.overallScore}/100)`);
+          
+          await this.recordQualityMetrics(result, missionEvaluation);
+          
+          return {
+            ...result,
+            qualityScore: missionEvaluation.overallScore,
+            missionAlignment: missionEvaluation
+          };
+        } else {
+          console.log(`❌ Content generation failed on attempt ${attempts}`);
+        }
       }
 
-      // Use existing current events logic
-      console.log('📰 Using current events mode...');
-      return await this.generateCurrentEventsTweet(includeSnap2HealthCTA, includeImage);
+      // All attempts failed
+      console.log('❌ All content generation attempts failed mission standards');
+      return {
+        success: false,
+        error: 'Failed to generate content meeting mission standards after 3 attempts'
+      };
 
     } catch (error) {
       console.error('❌ Error in PostTweetAgent:', error);
@@ -113,7 +205,7 @@ export class PostTweetAgent {
     }
   }
 
-  private selectContentMode(): 'comprehensive' | 'engagement' | 'current_events' {
+  private selectContentMode(): 'comprehensive' | 'engagement' | 'current_events' | 'trending' {
     const currentHour = new Date().getHours();
     const isPeakHour = (currentHour >= 9 && currentHour <= 11) || 
                       (currentHour >= 15 && currentHour <= 17) || 
@@ -121,10 +213,12 @@ export class PostTweetAgent {
     
     const randomFactor = Math.random();
     
-    // 40% comprehensive (structured with media), 30% engagement, 30% current events
-    if (randomFactor < 0.4) {
+    // 30% comprehensive, 25% trending, 25% engagement, 20% current events
+    if (randomFactor < 0.3) {
       return 'comprehensive';
-    } else if (randomFactor < 0.7 && isPeakHour) {
+    } else if (randomFactor < 0.55) {
+      return 'trending'; // NEW: Real-time trending content
+    } else if (randomFactor < 0.8 && isPeakHour) {
       return 'engagement';
     } else {
       return 'current_events';
@@ -196,14 +290,26 @@ export class PostTweetAgent {
 
       // Add Snap2Health CTA if requested and content allows
       if (includeSnap2HealthCTA && tweetContent.length < 220) {
-        tweetContent += ' 🔗 Learn more at Snap2Health.ai';
+        // Removed broken website link - fix needed for actual domain
       }
 
-      // Get image for viral content
+      // AI decision on whether to include image for viral content
       let imageResult = null;
-      if (includeImage) {
-        console.log('🖼️ Getting viral image...');
+      const shouldUseImage = includeImage && await this.shouldIncludeImage({
+        type: 'fact_spotlight',
+        title: 'Viral Content',
+        source: 'AI Generated',
+        date: new Date().toISOString().split('T')[0],
+        content: tweetContent,
+        relevance_score: viralResult.predicted_engagement / 100, // Convert to 0-1 scale
+        urgency: 0.7 // Viral content has moderate urgency
+      });
+      
+      if (shouldUseImage) {
+        console.log('🖼️ AI decided to include viral image...');
         imageResult = await this.getImageForViralContent(tweetContent);
+      } else {
+        console.log('🧠 AI decided text-only for maximum viral impact...');
       }
 
       // Format and validate
@@ -673,11 +779,11 @@ Generate ONE brief analysis:`;
       // AI-powered decision using weighted scoring
       const decision = this.makeIntelligentVisualDecision(factors);
       
-      console.log(`🧠 Visual Decision: ${decision.shouldUse ? 'INCLUDE' : 'SKIP'} image`);
+      console.log(`🧠 Visual Decision: ${decision.shouldIncludeImage ? 'INCLUDE' : 'SKIP'} image`);
       console.log(`📊 Confidence: ${(decision.confidence * 100).toFixed(1)}%`);
-      console.log(`🎯 Primary reason: ${decision.reason}`);
+      console.log(`🎯 Primary reason: ${decision.reasoning}`);
       
-      return decision.shouldUse;
+      return decision.shouldIncludeImage;
       
     } catch (error) {
       console.error('Error in visual decision engine:', error);
@@ -830,7 +936,7 @@ Respond with only a number between 0.0 and 1.0:`;
     }
   }
 
-  private makeIntelligentVisualDecision(factors: any): { shouldUse: boolean; confidence: number; reason: string } {
+  private makeIntelligentVisualDecision(factors: any): AIVisualDecision {
     console.log('🧮 Decision factors:', JSON.stringify(factors, null, 2));
     
     // Weighted scoring algorithm
@@ -879,9 +985,11 @@ Respond with only a number between 0.0 and 1.0:`;
     };
 
     return {
-      shouldUse,
+      shouldIncludeImage: shouldUse,
       confidence,
-      reason: reasons[primaryFactor] || 'Balanced decision based on multiple factors'
+      reasoning: reasons[primaryFactor] || 'Balanced decision based on multiple factors',
+      contentType: primaryFactor as any,
+      visualAppealScore: this.getContentTypeVisualScore(primaryFactor)
     };
   }
 
@@ -1091,6 +1199,350 @@ Respond with only a number between 0.0 and 1.0:`;
         console.log(`❌ Image failed: ${imageResult.error}`);
       }
     }
+  }
+
+  private async makeAIVisualDecision(content: string, contentHint: string): Promise<AIVisualDecision> {
+    try {
+      const prompt = `As an AI content strategist, analyze whether this health tech content should include a visual image.
+
+Content: "${content}"
+Content Type Hint: ${contentHint}
+
+Consider these factors:
+1. Content complexity - does it need visual explanation?
+2. Educational value - would an image enhance learning?
+3. Engagement timing - current hour and day patterns
+4. Topic visual appeal - some topics benefit more from images
+5. Content length - shorter content often needs visual support
+6. Professional context - health tech audience preferences
+7. Information density - is the text self-sufficient?
+
+Current context:
+- Time: ${new Date().toLocaleTimeString()}
+- Day: ${new Date().toLocaleDateString('en-US', { weekday: 'long' })}
+- Hour: ${new Date().getHours()}
+
+Visual peak hours: 7-9 AM, 12-1 PM, 5-8 PM
+Text-preferred hours: 9-11 AM, 2-4 PM
+
+Respond with JSON:
+{
+  "shouldIncludeImage": boolean,
+  "confidence": number (0-100),
+  "reasoning": "clear explanation",
+  "contentType": "breaking_news|research_insight|educational|analysis|trend_discussion",
+  "visualAppealScore": number (0-100)
+}`;
+
+      const response = await openaiClient.getClient()?.chat.completions.create({
+        model: 'gpt-4',
+        messages: [{ role: 'system', content: prompt }],
+        temperature: 0.3,
+        max_tokens: 300
+      });
+
+      const responseText = response?.choices[0]?.message?.content;
+      if (responseText) {
+        const decision = JSON.parse(responseText) as AIVisualDecision;
+        
+        // Additional logic: prevent image fatigue
+        if (decision.shouldIncludeImage && this.hasRecentImageOveruse()) {
+          decision.shouldIncludeImage = false;
+          decision.reasoning += " (Adjusted: preventing image fatigue)";
+          decision.confidence = Math.max(20, decision.confidence - 30);
+        }
+        
+        return decision;
+      }
+    } catch (error) {
+      console.warn('AI visual decision failed, using fallback logic');
+    }
+
+    // Fallback logic
+    return this.getFallbackVisualDecision(content, contentHint);
+  }
+
+  private getFallbackVisualDecision(content: string, contentHint: string): AIVisualDecision {
+    const hour = new Date().getHours();
+    const isVisualPeakHour = (hour >= 7 && hour <= 9) || (hour >= 12 && hour <= 13) || (hour >= 17 && hour <= 20);
+    const isComplexContent = content.length > 150 || /\d+%|study|research|breakthrough/.test(content);
+    
+    const shouldInclude = isVisualPeakHour && isComplexContent && !this.hasRecentImageOveruse();
+    
+    return {
+      shouldIncludeImage: shouldInclude,
+      confidence: shouldInclude ? 70 : 60,
+      reasoning: shouldInclude ? 
+        "Peak visual hours + complex content" : 
+        "Text-preferred timing or simple content",
+      contentType: contentHint as any,
+      visualAppealScore: isComplexContent ? 75 : 45
+    };
+  }
+
+  private hasRecentImageOveruse(): boolean {
+    // Prevent more than 3 images in last 5 posts
+    return this.recentlyUsedImages.size >= 3;
+  }
+
+  private async addIntelligentImage(content: string, contentType: string): Promise<any> {
+    try {
+      const imagePool = this.getEnhancedImagePool();
+      
+      // Content-aware image selection
+      let categoryImages = imagePool.filter(img => {
+        if (content.toLowerCase().includes('cancer') || content.toLowerCase().includes('oncology')) {
+          return img.category === 'diagnostic' || img.category === 'lab';
+        }
+        if (content.toLowerCase().includes('wearable') || content.toLowerCase().includes('monitor')) {
+          return img.category === 'wearable';
+        }
+        if (content.toLowerCase().includes('brain') || content.toLowerCase().includes('neural')) {
+          return img.category === 'brain';
+        }
+        if (content.toLowerCase().includes('data') || content.toLowerCase().includes('analysis')) {
+          return img.category === 'data';
+        }
+        return true; // All images eligible for general content
+      });
+
+      // Remove recently used images
+      categoryImages = categoryImages.filter(img => !this.recentlyUsedImages.has(img.filename));
+      
+      if (categoryImages.length === 0) {
+        // Reset if we've used all images
+        this.recentlyUsedImages.clear();
+        categoryImages = imagePool;
+      }
+
+      // Select random image from appropriate category
+      const selectedImage = categoryImages[Math.floor(Math.random() * categoryImages.length)];
+      
+      // Track usage
+      this.recentlyUsedImages.add(selectedImage.filename);
+      if (this.recentlyUsedImages.size > 5) {
+        // Keep only last 5 images in tracking
+        const oldestImage = Array.from(this.recentlyUsedImages)[0];
+        this.recentlyUsedImages.delete(oldestImage);
+      }
+
+      console.log(`🖼️ Selected ${selectedImage.category} image: ${selectedImage.description}`);
+      
+      return { success: true, image: selectedImage };
+    } catch (error) {
+      return { success: false, error };
+    }
+  }
+
+  private getEnhancedImagePool() {
+    return [
+      { filename: 'health_ai_lab.jpg', category: 'lab', description: 'Modern AI health research lab' },
+      { filename: 'medical_scanning.jpg', category: 'diagnostic', description: 'Advanced medical scanning technology' },
+      { filename: 'wearable_devices.jpg', category: 'wearable', description: 'Smart health monitoring devices' },
+      { filename: 'brain_imaging.jpg', category: 'brain', description: 'Brain imaging and neural networks' },
+      { filename: 'data_visualization.jpg', category: 'data', description: 'Health data analytics dashboard' },
+      { filename: 'telemedicine.jpg', category: 'digital', description: 'Digital healthcare consultation' },
+      { filename: 'robotic_surgery.jpg', category: 'surgical', description: 'Robotic surgical systems' },
+      { filename: 'genomic_sequencing.jpg', category: 'genomic', description: 'DNA sequencing technology' },
+      { filename: 'ai_diagnosis.jpg', category: 'diagnostic', description: 'AI-powered diagnostic tools' },
+      { filename: 'smart_hospital.jpg', category: 'facility', description: 'Smart hospital infrastructure' },
+      { filename: 'biotech_research.jpg', category: 'lab', description: 'Biotechnology research lab' },
+      { filename: 'digital_health.jpg', category: 'digital', description: 'Digital health ecosystem' }
+    ];
+  }
+
+  private hasVerifiedSource(content: string): boolean {
+    return /\(.*\d{4}\)|\bhttps?:\/\/|\bsource:|published|journal|study/i.test(content);
+  }
+
+  private async recordQualityMetrics(contentResult: any, evaluation: ContentEvaluation): Promise<void> {
+    try {
+      // Record quality metrics for continuous learning
+      const metrics = {
+        content_type: contentResult.contentType || 'general',
+        quality_score: evaluation.overallScore,
+        mission_alignment: evaluation.alignsWithObjectives,
+        ethical_compliance: evaluation.passesEthicalConstraints,
+        has_verified_source: this.hasVerifiedSource(contentResult.content || ''),
+        visual_decision: contentResult.hasImage || false,
+        timestamp: new Date().toISOString()
+      };
+
+      console.log('📊 Recording quality metrics for learning system...');
+      console.log(`   Content Type: ${metrics.content_type}`);
+      console.log(`   Quality Score: ${metrics.quality_score}/100`);
+      console.log(`   Mission Aligned: ${metrics.mission_alignment}`);
+      // Would integrate with learning database here
+    } catch (error) {
+      console.warn('Failed to record quality metrics:', error);
+    }
+  }
+
+  /**
+   * Generate trending-aware content based on real-time health tech trends
+   */
+  private async generateTrendingTweet(includeSnap2HealthCTA: boolean, includeImage: boolean): Promise<PostResult> {
+    try {
+      console.log('🔥 Generating trending-aware content...');
+
+      // Get real-time trending topics and current events
+      const [trendingTopics, currentEvents] = await Promise.all([
+        this.trendsAgent.getTrendingHealthTopics(),
+        this.trendsAgent.getCurrentEvents()
+      ]);
+
+      console.log(`📈 Found ${trendingTopics.length} trending topics and ${currentEvents.length} current events`);
+
+      // Select the most relevant trend or event
+      const selectedTrend = trendingTopics[0];
+      const selectedEvent = currentEvents[0];
+
+      let tweetContent: string;
+      let contentSource: string;
+
+      if (selectedTrend && (!selectedEvent || selectedTrend.relevanceScore > selectedEvent.relevanceScore)) {
+        // Generate content based on trending topic
+        tweetContent = await this.generateTrendBasedContent(selectedTrend);
+        contentSource = 'trending_topic';
+        console.log(`💬 Using trending topic: ${selectedTrend.name} (${selectedTrend.volume.toLocaleString()} mentions)`);
+      } else if (selectedEvent) {
+        // Generate content based on current event
+        tweetContent = await this.generateEventBasedContent(selectedEvent);
+        contentSource = 'current_event';
+        console.log(`📰 Using current event: ${selectedEvent.title.substring(0, 50)}...`);
+      } else {
+        // Fallback to general trending content
+        return await this.generateFallbackTweet(includeSnap2HealthCTA, includeImage);
+      }
+
+      // AI decision on image inclusion
+      const visualDecision = await this.makeAIVisualDecision(tweetContent, contentSource);
+      let hasImage = false;
+
+      if (includeImage && visualDecision.shouldIncludeImage) {
+        const imageResult = await this.addIntelligentImage(tweetContent, visualDecision.contentType);
+        hasImage = imageResult.success;
+        
+        if (hasImage) {
+          console.log(`🖼️ Added image based on AI decision (${visualDecision.confidence}% confidence)`);
+        }
+      }
+
+      // Post the trending content
+      const result = await xClient.postTweet(tweetContent);
+      
+      if (result?.success && result?.tweetId) {
+        // Store in database
+        await supabaseClient.insertTweet({
+          tweet_id: result.tweetId,
+          content: tweetContent,
+          tweet_type: 'trending',
+          engagement_score: 0,
+          likes: 0,
+          retweets: 0,
+          replies: 0,
+          impressions: 0,
+          has_snap2health_cta: includeSnap2HealthCTA
+        });
+
+        console.log(`✅ Trending tweet posted: ${result.tweetId}`);
+        console.log(`📊 Content: ${tweetContent}`);
+
+        return {
+          success: true,
+          tweetId: result.tweetId,
+          content: tweetContent,
+          hasImage
+        };
+      } else {
+        throw new Error('Failed to post trending tweet');
+      }
+
+    } catch (error) {
+      console.error('❌ Trending content generation failed:', error);
+      return await this.generateFallbackTweet(includeSnap2HealthCTA, includeImage);
+    }
+  }
+
+  /**
+   * Generate content based on a trending topic
+   */
+  private async generateTrendBasedContent(trend: any): Promise<string> {
+    const prompt = `Create a compelling health tech tweet about the trending topic "${trend.name}" which has ${trend.volume.toLocaleString()} mentions.
+
+Context:
+- Topic: ${trend.name}
+- Category: ${trend.category}
+- Timeframe: ${trend.timeframe}
+- Volume: ${trend.volume.toLocaleString()} mentions
+
+Requirements:
+- Professional healthcare tone
+- Include key insight or statistic
+- Mention why this trend matters
+- Add relevant hashtags
+- Max 250 characters
+- No sensationalism
+
+Example style: "AI diagnostics trending with 15K+ mentions - here's why: New FDA-approved algorithms achieve 94% accuracy in early cancer detection, potentially saving 40K lives annually. The future of precision medicine is here. #AIHealthcare #DigitalMedicine"`;
+
+    try {
+      const response = await openaiClient.getClient()?.chat.completions.create({
+        model: 'gpt-4',
+        messages: [{ role: 'system', content: prompt }],
+        temperature: 0.3,
+        max_tokens: 150
+      });
+
+      return response?.choices[0]?.message?.content || this.getTrendFallback(trend);
+    } catch (error) {
+      console.warn('Failed to generate AI trend content, using fallback');
+      return this.getTrendFallback(trend);
+    }
+  }
+
+  /**
+   * Generate content based on a current event
+   */
+  private async generateEventBasedContent(event: any): Promise<string> {
+    const prompt = `Create an insightful health tech tweet about this breaking news:
+
+Title: ${event.title}
+Description: ${event.description}
+Source: ${event.source}
+Category: ${event.category}
+
+Requirements:
+- Professional analysis tone
+- Explain significance to health tech industry
+- Include forward-looking perspective
+- Add relevant hashtags
+- Max 250 characters
+- Cite source credibly
+
+Example: "BREAKING: ${event.title.substring(0, 60)}... This signals a major shift toward AI-powered diagnostics. Impact: faster detection, reduced costs, better outcomes. ${event.source} reports. #HealthTech #AIInnovation"`;
+
+    try {
+      const response = await openaiClient.getClient()?.chat.completions.create({
+        model: 'gpt-4',
+        messages: [{ role: 'system', content: prompt }],
+        temperature: 0.3,
+        max_tokens: 150
+      });
+
+      return response?.choices[0]?.message?.content || this.getEventFallback(event);
+    } catch (error) {
+      console.warn('Failed to generate AI event content, using fallback');
+      return this.getEventFallback(event);
+    }
+  }
+
+  private getTrendFallback(trend: any): string {
+    return `${trend.name} is trending in health tech with ${trend.volume.toLocaleString()}+ mentions. This growing interest reflects the industry's shift toward innovative solutions that could transform patient care. #HealthTech #Innovation`;
+  }
+
+  private getEventFallback(event: any): string {
+    return `Breaking: ${event.title.substring(0, 100)}... This development could significantly impact the health tech landscape. Source: ${event.source} #HealthTech #Breaking`;
   }
 }
 

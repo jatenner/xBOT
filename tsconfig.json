@@ -1,8 +1,8 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "commonjs",
-    "lib": ["ES2022"],
+    "module": "CommonJS",
+    "moduleResolution": "node",
     "outDir": "./dist",
     "rootDir": "./src",
     "strict": false,
@@ -10,29 +10,24 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "declaration": false,
-    "declarationMap": false,
     "sourceMap": false,
     "removeComments": true,
+    "noEmitOnError": false,
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
     "noImplicitAny": false,
     "strictNullChecks": false,
-    "strictFunctionTypes": false,
-    "noImplicitThis": false,
-    "noImplicitReturns": false,
-    "noFallthroughCasesInSwitch": false,
-    "moduleResolution": "node",
-    "baseUrl": "./",
-    "paths": {
-      "@/*": ["src/*"]
-    },
-    "allowSyntheticDefaultImports": true,
-    "experimentalDecorators": true,
-    "emitDecoratorMetadata": true
+    "strictPropertyInitialization": false
   },
   "include": [
     "src/**/*"
   ],
   "exclude": [
     "node_modules",
-    "dist"
+    "dist",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "test_*.ts",
+    "demo_*.js"
   ]
 } 
