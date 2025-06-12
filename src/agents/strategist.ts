@@ -76,7 +76,7 @@ Respond with a JSON object containing:
   "reasoning": "Brief explanation of decision"
 }`;
 
-      const response = await openaiClient.client.chat.completions.create({
+      const response = await openaiClient.getClient()?.chat.completions.create({
         model: 'gpt-4',
         messages: [{ role: 'system', content: systemPrompt }],
         temperature: 0.3,
@@ -173,7 +173,7 @@ Respond with a JSON object containing:
           console.log('💬 Executing reply action...');
           const replyResult = await new ReplyAgent().run();
           if (replyResult.success) {
-            console.log(`✅ Reply posted: ${replyResult.tweetId}`);
+            console.log(`✅ Reply posted: ${replyResult.replyId}`);
           } else {
             console.error(`❌ Failed to post reply: ${replyResult.error}`);
           }
@@ -182,7 +182,7 @@ Respond with a JSON object containing:
         case 'trend_research':
           console.log('🔍 Executing trend research...');
           const researchResult = await new ResearchAgent().run();
-          if (researchResult.success) {
+          if (researchResult.research.length > 0) {
             console.log('✅ Research data updated');
           } else {
             console.error('❌ Research failed');

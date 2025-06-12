@@ -9,6 +9,9 @@ export interface Tweet {
   tweet_id: string;
   content: string;
   tweet_type: string;
+  content_type?: string;
+  content_category?: string;
+  source_attribution?: string;
   engagement_score: number;
   likes: number;
   retweets: number;
@@ -322,19 +325,24 @@ class SupabaseService {
     }
   }
 
-  async getLearningInsights(type?: string, limit: number = 50): Promise<LearningInsight[]> {
-    if (!this.checkClient()) return [];
+  async getLearningInsights(type?: string | number, limit: number = 50): Promise<LearningInsight[]> {
+    if (!this.checkClient()) {
+      return [];
+    }
     
     try {
       let query = this.client!
         .from('learning_insights')
         .select('*')
-        .gt('expires_at', new Date().toISOString())
-        .order('created_at', { ascending: false })
-        .limit(limit);
+        .order('created_at', { ascending: false });
 
-      if (type) {
-        query = query.eq('insight_type', type);
+      // If type is a number, treat it as limit, if string treat as type filter
+      if (typeof type === 'number') {
+        query = query.limit(type);
+      } else if (typeof type === 'string') {
+        query = query.eq('insight_type', type).limit(limit);
+      } else {
+        query = query.limit(limit);
       }
 
       const { data, error } = await query;
@@ -605,22 +613,53 @@ class SupabaseService {
   }
 
   async getResearchInsights(limit: number = 5): Promise<any[]> {
+    if (!this.checkClient()) {
+      return [];
+    }
+
     try {
       const { data, error } = await this.client
         .from('learning_insights')
         .select('*')
-        .eq('insight_type', 'research_finding')
+        .eq('insight_type', 'research')
         .order('created_at', { ascending: false })
         .limit(limit);
 
-      if (error) {
-        console.error('Error fetching research insights:', error);
-        return [];
-      }
-
+      if (error) throw error;
       return data || [];
     } catch (error) {
-      console.error('Error in getResearchInsights:', error);
+      console.error('Error fetching research insights:', error);
+      return [];
+    }
+  }
+
+  async getTweets(options: { limit?: number; days?: number } = {}): Promise<Tweet[]> {
+    if (!this.checkClient()) {
+      return [];
+    }
+
+    try {
+      let query = this.client!
+        .from('tweets')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (options.limit) {
+        query = query.limit(options.limit);
+      }
+
+      if (options.days) {
+        const daysAgo = new Date();
+        daysAgo.setDate(daysAgo.getDate() - options.days);
+        query = query.gte('created_at', daysAgo.toISOString());
+      }
+
+      const { data, error } = await query;
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching tweets:', error);
       return [];
     }
   }

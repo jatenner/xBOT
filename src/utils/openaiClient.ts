@@ -307,13 +307,7 @@ Generate a thoughtful reply that adds value to this conversation. Be helpful, in
 
   async generateInsights(prompt: string): Promise<string[]> {
     if (!this.checkClient()) {
-      return [
-        'AI diagnostic accuracy continues to exceed human specialists in specific domains',
-        'Wearable technology adoption accelerating in elderly populations',
-        'Digital therapeutics showing measurable outcomes in clinical trials',
-        'Privacy concerns growing around health data collection',
-        'Telemedicine permanently changing healthcare delivery models'
-      ];
+      return ['Fallback insight: Focus on engagement trends', 'Consider posting during peak hours'];
     }
 
     try {
@@ -322,42 +316,64 @@ Generate a thoughtful reply that adds value to this conversation. Be helpful, in
         messages: [
           {
             role: 'system',
-            content: 'You are a health technology research analyst. Generate specific, actionable insights based on research data. Return exactly 5 insights as bullet points.'
+            content: 'You are a health technology analyst. Generate actionable insights based on the provided data.'
           },
           {
             role: 'user',
             content: prompt
           }
         ],
-        max_tokens: 300,
+        max_tokens: 200,
         temperature: 0.7,
       });
 
       const response = completion.choices[0]?.message?.content?.trim();
-      if (response) {
-        // Parse bullet points into array
-        const insights = response
-          .split('\n')
-          .filter(line => line.trim().length > 0)
-          .map(line => line.replace(/^[-•*]\s*/, '').trim())
-          .filter(insight => insight.length > 20) // Filter out very short items
-          .slice(0, 5); // Ensure max 5 insights
-
-        return insights.length > 0 ? insights : ['Generated insights from latest research data'];
+      if (!response) {
+        return ['No insights generated'];
       }
+
+      // Split response into individual insights
+      return response.split('\n').filter(insight => insight.trim().length > 0);
 
     } catch (error) {
       console.error('Error generating insights:', error);
+      return ['Error generating insights - using fallback'];
+    }
+  }
+
+  async generateResponse(prompt: string): Promise<string> {
+    if (!this.checkClient()) {
+      return 'Test response for prompt analysis';
     }
 
-    // Fallback insights
-    return [
-      'AI diagnostic accuracy continues to exceed human specialists in specific domains',
-      'Wearable technology adoption accelerating in elderly populations',
-      'Digital therapeutics showing measurable outcomes in clinical trials',
-      'Privacy concerns growing around health data collection',
-      'Telemedicine permanently changing healthcare delivery models'
-    ];
+    try {
+      const completion = await this.client!.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an intelligent AI assistant analyzing health technology trends and data.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        max_tokens: 500,
+        temperature: 0.7,
+      });
+
+      return completion.choices[0]?.message?.content?.trim() || 'No response generated';
+
+    } catch (error) {
+      console.error('Error generating response:', error);
+      return 'Error generating response';
+    }
+  }
+
+  // Make client accessible for direct API calls when needed
+  getClient(): OpenAI | null {
+    return this.client;
   }
 }
 

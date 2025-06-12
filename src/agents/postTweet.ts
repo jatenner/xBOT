@@ -146,12 +146,12 @@ export class PostTweetAgent {
           tweet_id: result.tweetId!,
           content: result.content,
           tweet_type: 'comprehensive',
-          has_snap2health_cta: includeSnap2HealthCTA,
           engagement_score: result.engagementScore || 0,
           likes: 0,
           retweets: 0,
           replies: 0,
-          impressions: 0
+          impressions: 0,
+          has_snap2health_cta: includeSnap2HealthCTA
         });
 
         return {
@@ -230,6 +230,7 @@ export class PostTweetAgent {
         await supabaseClient.insertTweet({
           tweet_id: result.tweetId!,
           content: formattedTweet.content,
+          tweet_type: 'original',
           content_type: 'viral_engagement',
           source_attribution: 'EngagementMaximizer',
           content_category: viralResult.strategy,
@@ -237,7 +238,8 @@ export class PostTweetAgent {
           likes: 0,
           retweets: 0,
           replies: 0,
-          impressions: 0
+          impressions: 0,
+          has_snap2health_cta: includeSnap2HealthCTA
         });
 
         console.log(`🚀 VIRAL TWEET POSTED: ${result.tweetId}`);
@@ -315,6 +317,7 @@ export class PostTweetAgent {
       await supabaseClient.insertTweet({
         tweet_id: result.tweetId!,
         content: formattedTweet.content,
+        tweet_type: 'original',
         content_type: selectedContent.type,
         source_attribution: selectedContent.source,
         content_category: selectedContent.type,
@@ -322,7 +325,8 @@ export class PostTweetAgent {
         likes: 0,
         retweets: 0,
         replies: 0,
-        impressions: 0
+        impressions: 0,
+        has_snap2health_cta: includeSnap2HealthCTA
       });
 
       console.log(`✅ Current events tweet posted: ${result.tweetId}`);
@@ -497,7 +501,7 @@ Examples:
 
 Generate ONE brief analysis:`;
 
-      const completion = await openaiClient.client?.chat.completions.create({
+      const completion = await openaiClient.getClient()?.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
           {
@@ -758,11 +762,13 @@ Generate ONE brief analysis:`;
         await supabaseClient.insertTweet({
           tweet_id: result.tweetId!,
           content: formattedTweet.content,
+          tweet_type: 'original',
           engagement_score: 0,
           likes: 0,
           retweets: 0,
           replies: 0,
-          impressions: 0
+          impressions: 0,
+          has_snap2health_cta: includeSnap2HealthCTA
         });
       }
 
@@ -788,13 +794,13 @@ Generate ONE brief analysis:`;
       const viralKeywords = this.extractViralKeywords(content);
       
       const imageRequest: ImageRequest = {
-        keywords: viralKeywords,
-        mood: 'engaging',
-        style: 'viral',
-        orientation: 'landscape'
+        contentType: 'fact_spotlight',
+        content: content,
+        source: 'AI Generated',
+        keywords: viralKeywords
       };
 
-      return await this.imageAgent.getHealthTechImage(imageRequest);
+      return await this.imageAgent.getImageForContent(imageRequest);
     } catch (error) {
       console.warn('Failed to get viral image:', error);
       return null;

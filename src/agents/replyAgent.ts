@@ -232,7 +232,7 @@ Generate a single, engaging reply that contributes meaningfully to this conversa
       });
 
       // Use OpenAI for more nuanced reply generation
-      const completion = await openaiClient.client?.chat.completions.create({
+      const completion = await openaiClient.getClient()?.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
           {
@@ -244,10 +244,8 @@ Generate a single, engaging reply that contributes meaningfully to this conversa
             content: prompt
           }
         ],
-        max_tokens: 100,
-        temperature: 0.8,
-        presence_penalty: 0.1,
-        frequency_penalty: 0.1,
+        max_tokens: 120,
+        temperature: 0.7,
       });
 
       let generatedReply = completion?.choices[0]?.message?.content?.trim();
