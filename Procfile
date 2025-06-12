@@ -1,1 +1,1 @@
-worker: node dist/index.js 
+worker: npx tsx src/index.ts 

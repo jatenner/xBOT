@@ -3,10 +3,8 @@ services:
     name: xbot
     env: node
     plan: starter
-    buildCommand: npm install && npm run build
-    startCommand: node dist/index.js
+    buildCommand: npm install
+    startCommand: npx tsx src/index.ts
     envVars:
       - key: NODE_ENV
-        value: production
-      - key: NPM_CONFIG_PRODUCTION
-        value: false 
+        value: production 
