@@ -23,6 +23,9 @@ export interface ImageRequest {
 
 export class ImageAgent {
   private readonly imageDirectory = './assets/images';
+  private recentlyUsedImages: Set<string> = new Set();
+  private maxRecentImages = 5; // Track last 5 images used
+  
   private readonly stockImageSources = [
     'https://images.unsplash.com/photo-1559757148-5c350d0d3c56?ixlib=rb-4.0.3&w=800', // Medical technology
     'https://images.unsplash.com/photo-1576671081837-49000212a370?ixlib=rb-4.0.3&w=800', // AI/Brain
@@ -31,29 +34,39 @@ export class ImageAgent {
     'https://images.unsplash.com/photo-1530026405186-ed1f139313f8?ixlib=rb-4.0.3&w=800', // Healthcare tech
     'https://images.unsplash.com/photo-1582719471384-894fbb16e074?ixlib=rb-4.0.3&w=800', // Wearable tech
     'https://images.unsplash.com/photo-1576091160399-112ba8d25d1f?ixlib=rb-4.0.3&w=800', // Medical AI
-    'https://images.unsplash.com/photo-1559757141-c15d5ac13c77?ixlib=rb-4.0.3&w=800'  // Digital medicine
+    'https://images.unsplash.com/photo-1559757141-c15d5ac13c77?ixlib=rb-4.0.3&w=800', // Digital medicine
+    'https://images.unsplash.com/photo-1559757175-0eb30cd8c063?ixlib=rb-4.0.3&w=800', // Health analytics
+    'https://images.unsplash.com/photo-1584820927498-cfe5211fd8bf?ixlib=rb-4.0.3&w=800', // Stethoscope tech
+    'https://images.unsplash.com/photo-1559757175-0eb30cd8c063?ixlib=rb-4.0.3&w=800', // Medical data
+    'https://images.unsplash.com/photo-1504813184591-01572f98c85f?ixlib=rb-4.0.3&w=800'  // Doctor with tablet
   ];
 
   private readonly categoryImageMap = {
     breaking_news: [
       'https://images.unsplash.com/photo-1559757148-5c350d0d3c56?ixlib=rb-4.0.3&w=800', // Medical breaking news
-      'https://images.unsplash.com/photo-1576671081837-49000212a370?ixlib=rb-4.0.3&w=800'  // AI news
+      'https://images.unsplash.com/photo-1576671081837-49000212a370?ixlib=rb-4.0.3&w=800', // AI news
+      'https://images.unsplash.com/photo-1584820927498-cfe5211fd8bf?ixlib=rb-4.0.3&w=800'  // Medical tech news
     ],
     research_update: [
       'https://images.unsplash.com/photo-1551601651-2a8555f1a136?ixlib=rb-4.0.3&w=800', // Lab research
-      'https://images.unsplash.com/photo-1582719471384-894fbb16e074?ixlib=rb-4.0.3&w=800'  // Medical research
+      'https://images.unsplash.com/photo-1582719471384-894fbb16e074?ixlib=rb-4.0.3&w=800', // Medical research
+      'https://images.unsplash.com/photo-1504813184591-01572f98c85f?ixlib=rb-4.0.3&w=800'  // Research team
     ],
     tech_development: [
       'https://images.unsplash.com/photo-1530026405186-ed1f139313f8?ixlib=rb-4.0.3&w=800', // Healthcare tech
-      'https://images.unsplash.com/photo-1576091160399-112ba8d25d1f?ixlib=rb-4.0.3&w=800'  // Medical AI
+      'https://images.unsplash.com/photo-1576091160399-112ba8d25d1f?ixlib=rb-4.0.3&w=800', // Medical AI
+      'https://images.unsplash.com/photo-1559757141-c15d5ac13c77?ixlib=rb-4.0.3&w=800'  // Digital innovation
     ],
     industry_insight: [
       'https://images.unsplash.com/photo-1559757175-0eb30cd8c063?ixlib=rb-4.0.3&w=800', // Digital health analytics
-      'https://images.unsplash.com/photo-1559757141-c15d5ac13c77?ixlib=rb-4.0.3&w=800'  // Industry insights
+      'https://images.unsplash.com/photo-1559757141-c15d5ac13c77?ixlib=rb-4.0.3&w=800', // Industry insights
+      'https://images.unsplash.com/photo-1584820927498-cfe5211fd8bf?ixlib=rb-4.0.3&w=800'  // Professional medical
     ],
     fact_spotlight: [
-      'https://images.unsplash.com/photo-1582719471384-894fbb16e074?ixlib=rb-4.0.3&w=800', // Wearable facts
-      'https://images.unsplash.com/photo-1559757148-5c350d0d3c56?ixlib=rb-4.0.3&w=800'  // Health facts
+      'https://images.unsplash.com/photo-1559757148-5c350d0d3c56?ixlib=rb-4.0.3&w=800', // Health facts
+      'https://images.unsplash.com/photo-1576671081837-49000212a370?ixlib=rb-4.0.3&w=800', // AI facts
+      'https://images.unsplash.com/photo-1530026405186-ed1f139313f8?ixlib=rb-4.0.3&w=800', // Tech facts
+      'https://images.unsplash.com/photo-1504813184591-01572f98c85f?ixlib=rb-4.0.3&w=800'  // Medical professional
     ]
   };
 
@@ -241,24 +254,84 @@ export class ImageAgent {
   }
 
   private selectBestImage(images: string[], request: ImageRequest): string {
-    // Simple selection - could be enhanced with ML-based selection
-    const content = request.content.toLowerCase();
+    console.log(`🎯 Selecting from ${images.length} available images, avoiding recently used ones...`);
     
-    // Basic keyword matching for image selection
-    if (content.includes('ai') || content.includes('artificial intelligence')) {
-      return images.find(img => img.includes('49000212a370')) || images[0]; // AI brain image
-    }
+    // Filter out recently used images to ensure variety
+    const availableImages = images.filter(img => !this.recentlyUsedImages.has(img));
     
-    if (content.includes('research') || content.includes('study')) {
-      return images.find(img => img.includes('551601651')) || images[0]; // Lab research image
-    }
-    
-    if (content.includes('wearable') || content.includes('watch')) {
-      return images.find(img => img.includes('582719471384')) || images[0]; // Wearable tech image
+    // If all images were recently used, reset the tracking (rare edge case)
+    if (availableImages.length === 0) {
+      console.log('⚠️ All images recently used, resetting variety tracker');
+      this.recentlyUsedImages.clear();
+      return this.selectImageByContent(images, request);
     }
 
-    // Default to first image
-    return images[0];
+    // Select best available image based on content
+    const selectedImage = this.selectImageByContent(availableImages, request);
+    
+    // Track this image as recently used
+    this.recentlyUsedImages.add(selectedImage);
+    
+    // Maintain only the most recent images in tracking
+    if (this.recentlyUsedImages.size > this.maxRecentImages) {
+      const oldest = Array.from(this.recentlyUsedImages)[0];
+      this.recentlyUsedImages.delete(oldest);
+    }
+    
+    console.log(`✅ Selected image (${this.getImageName(selectedImage)}), tracking ${this.recentlyUsedImages.size} recent images`);
+    return selectedImage;
+  }
+
+  private selectImageByContent(images: string[], request: ImageRequest): string {
+    const content = request.content.toLowerCase();
+    
+    // Enhanced keyword matching with variety
+    if (content.includes('ai') || content.includes('artificial intelligence')) {
+      const aiImages = images.filter(img => 
+        img.includes('49000212a370') || // AI brain
+        img.includes('576091160399') || // Medical AI
+        img.includes('559757141')       // Digital innovation
+      );
+      if (aiImages.length > 0) return this.selectRandomFromArray(aiImages);
+    }
+    
+    if (content.includes('research') || content.includes('study') || content.includes('clinical')) {
+      const researchImages = images.filter(img => 
+        img.includes('551601651') ||   // Lab research
+        img.includes('504813184') ||   // Research team
+        img.includes('582719471384')   // Medical research
+      );
+      if (researchImages.length > 0) return this.selectRandomFromArray(researchImages);
+    }
+    
+    if (content.includes('wearable') || content.includes('watch') || content.includes('device')) {
+      const wearableImages = images.filter(img => 
+        img.includes('582719471384') || // Wearable tech
+        img.includes('584820927498')    // Stethoscope tech
+      );
+      if (wearableImages.length > 0) return this.selectRandomFromArray(wearableImages);
+    }
+
+    if (content.includes('diagnosis') || content.includes('detect') || content.includes('predict')) {
+      const diagnosticImages = images.filter(img => 
+        img.includes('559757148') ||   // Medical technology
+        img.includes('530026405186') || // Healthcare tech
+        img.includes('504813184')      // Medical professional
+      );
+      if (diagnosticImages.length > 0) return this.selectRandomFromArray(diagnosticImages);
+    }
+
+    // For variety, select randomly from available images
+    return this.selectRandomFromArray(images);
+  }
+
+  private selectRandomFromArray(array: string[]): string {
+    return array[Math.floor(Math.random() * array.length)];
+  }
+
+  private getImageName(url: string): string {
+    const match = url.match(/photo-([^?]+)/);
+    return match ? match[1].substring(0, 12) + '...' : 'unknown';
   }
 
   private async downloadImage(url: string, fileName: string): Promise<string | null> {

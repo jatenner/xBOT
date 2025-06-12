@@ -1,41 +1,43 @@
 {
   "name": "snap2health-xbot",
   "version": "1.0.0",
-  "description": "Autonomous X-Bot for Snap2Health with AI-driven content generation",
-  "main": "src/index.ts",
+  "description": "Autonomous X-Bot for Snap2Health with 7-agent intelligence system",
+  "main": "dist/index.js",
   "scripts": {
+    "start": "node dist/index.ts",
     "dev": "tsx src/index.ts",
-    "build": "tsc",
-    "start": "tsx src/index.ts",
+    "build": "tsc --build --verbose",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
-    "twitter",
-    "bot",
     "ai",
     "health",
-    "automation"
+    "twitter",
+    "bot",
+    "autonomous"
   ],
   "author": "Snap2Health",
   "license": "MIT",
   "devDependencies": {
-    "@types/node": "^20.10.0",
-    "@types/node-cron": "^3.0.11",
+    "@types/node": "^20.8.0",
+    "@types/node-cron": "^3.0.8",
     "@types/xml2js": "^0.4.14",
-    "typescript": "^5.3.0",
-    "tsx": "^4.6.0"
+    "typescript": "^5.2.2",
+    "tsx": "^4.1.0"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
-    "twitter-api-v2": "^1.15.0",
-    "openai": "^4.20.0",
-    "node-cron": "^3.0.3",
-    "dotenv": "^16.3.1",
     "axios": "^1.6.0",
+    "dotenv": "^16.3.1",
+    "node-cron": "^3.0.3",
+    "openai": "^4.20.1",
+    "rss-parser": "^3.13.0",
+    "twitter-api-v2": "^1.15.1",
     "cheerio": "^1.0.0-rc.12",
     "xml2js": "^0.6.2"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
   }
 } 
