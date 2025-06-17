@@ -1,6 +1,7 @@
 import { xClient } from '../utils/xClient';
 import { supabaseClient } from '../utils/supabaseClient';
 import { openaiClient } from '../utils/openaiClient';
+import { OpenAIService } from '../utils/openaiClient';
 
 export interface LearningInsights {
   topPerformingTweets: any[];
@@ -9,313 +10,185 @@ export interface LearningInsights {
   timingInsights: any[];
 }
 
-export class LearnAgent {
-  async run(): Promise<LearningInsights | null> {
-    try {
-      console.log('📊 LearnAgent: Analyzing engagement data and learning...');
+interface VariantPerformance {
+  variant: string;
+  tweetCount: number;
+  avgQualityScore: number;
+  avgEngagement: number;
+  successRate: number;
+}
 
-      // Fetch recent tweets and their current engagement
-      const recentTweets = await this.fetchRecentTweetsWithEngagement();
+export class LearnAgent {
+  private openaiService: OpenAIService;
+
+  constructor() {
+    this.openaiService = new OpenAIService();
+  }
+
+  async run(): Promise<{ success: boolean; insights?: any; topVariant?: string }> {
+    try {
+      console.log('🧠 LearnAgent: Analyzing performance patterns...');
+
+      // Analyze variant performance
+      const variantAnalysis = await this.analyzeVariantPerformance();
       
-      if (recentTweets.length === 0) {
-        console.log('No recent tweets to analyze');
-        return null;
+      // Update variant of the day
+      const topVariant = await this.updateVariantOfTheDay(variantAnalysis);
+
+      // Generate learning insights
+      const insights = await this.generateLearningInsights(variantAnalysis);
+
+      console.log(`✅ Learning analysis complete. Top variant: ${topVariant}`);
+      return { success: true, insights, topVariant };
+
+    } catch (error) {
+      console.error('❌ LearnAgent error:', error);
+      return { success: false };
+    }
+  }
+
+  private async analyzeVariantPerformance(): Promise<VariantPerformance[]> {
+    try {
+      // Get tweets from the last 7 days with variant data
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+      const { data: tweets, error } = await supabaseClient.supabase
+        ?.from('tweets')
+        .select('variant, quality_score, engagement_score, posted_at')
+        .gte('posted_at', sevenDaysAgo.toISOString())
+        .not('variant', 'is', null);
+
+      if (error || !tweets) {
+        console.log('No variant data available for analysis');
+        return [];
       }
 
-      // Update engagement metrics in database
-      await this.updateEngagementMetrics(recentTweets);
+      // Group by variant and calculate performance metrics
+      const variantGroups = tweets.reduce((groups: any, tweet) => {
+        const variant = tweet.variant || 'default';
+        if (!groups[variant]) {
+          groups[variant] = [];
+        }
+        groups[variant].push(tweet);
+        return groups;
+      }, {});
 
-      // Analyze patterns and generate insights
-      const insights = await this.analyzeEngagementPatterns(recentTweets);
+      const variantPerformance: VariantPerformance[] = Object.entries(variantGroups).map(([variant, tweets]: [string, any[]]) => {
+        const qualityScores = tweets.map(t => t.quality_score || 0).filter(s => s > 0);
+        const engagementScores = tweets.map(t => t.engagement_score || 0).filter(s => s > 0);
+        
+        return {
+          variant,
+          tweetCount: tweets.length,
+          avgQualityScore: qualityScores.length > 0 ? qualityScores.reduce((a, b) => a + b, 0) / qualityScores.length : 0,
+          avgEngagement: engagementScores.length > 0 ? engagementScores.reduce((a, b) => a + b, 0) / engagementScores.length : 0,
+          successRate: qualityScores.filter(s => s >= 70).length / Math.max(tweets.length, 1)
+        };
+      });
 
-      // Store learning insights for future use
-      await this.storeLearningInsights(insights);
+      // Sort by composite performance score
+      variantPerformance.sort((a, b) => {
+        const scoreA = (a.avgQualityScore * 0.4) + (a.avgEngagement * 0.4) + (a.successRate * 100 * 0.2);
+        const scoreB = (b.avgQualityScore * 0.4) + (b.avgEngagement * 0.4) + (b.successRate * 100 * 0.2);
+        return scoreB - scoreA;
+      });
 
-      console.log('✅ Learning analysis completed');
+      console.log(`📊 Analyzed ${variantPerformance.length} variants from ${tweets.length} tweets`);
+      return variantPerformance;
+
+    } catch (error) {
+      console.error('Error analyzing variant performance:', error);
+      return [];
+    }
+  }
+
+  private async updateVariantOfTheDay(variantAnalysis: VariantPerformance[]): Promise<string> {
+    try {
+      // Choose top performing variant, or default if no data
+      const topVariant = variantAnalysis.length > 0 ? variantAnalysis[0].variant : 'default';
+
+      // Update or insert the variant of the day
+      const { error } = await supabaseClient.supabase
+        ?.from('prompt_features')
+        .upsert({
+          id: 1,
+          variant_of_the_day: topVariant,
+          updated_at: new Date().toISOString()
+        });
+
+      if (error) {
+        console.error('Error updating variant of the day:', error);
+        return 'default';
+      }
+
+      console.log(`🎯 Updated variant of the day: ${topVariant}`);
+      return topVariant;
+
+    } catch (error) {
+      console.error('Error updating variant of the day:', error);
+      return 'default';
+    }
+  }
+
+  private async generateLearningInsights(variantAnalysis: VariantPerformance[]): Promise<any> {
+    try {
+      if (variantAnalysis.length === 0) {
+        return { message: 'Insufficient data for learning insights' };
+      }
+
+      const insights = {
+        topPerformingVariant: variantAnalysis[0],
+        totalVariantsTested: variantAnalysis.length,
+        performanceGap: variantAnalysis.length > 1 ? 
+          variantAnalysis[0].avgQualityScore - variantAnalysis[variantAnalysis.length - 1].avgQualityScore : 0,
+        recommendations: this.generateRecommendations(variantAnalysis),
+        timestamp: new Date().toISOString()
+      };
+
+      // Store insights for dashboard
+      await supabaseClient.supabase
+        ?.from('learning_insights')
+        .insert({
+          insights: JSON.stringify(insights),
+          created_at: new Date().toISOString()
+        });
+
       return insights;
 
     } catch (error) {
-      console.error('Error in LearnAgent:', error);
-      return null;
+      console.error('Error generating learning insights:', error);
+      return { error: 'Failed to generate insights' };
     }
   }
 
-  private async fetchRecentTweetsWithEngagement(): Promise<any[]> {
-    try {
-      // Get our recent tweets from X/Twitter with current engagement
-      const myTweets = await xClient.getMyTweets(20);
-      
-      const tweetsWithEngagement = [];
+  private generateRecommendations(variantAnalysis: VariantPerformance[]): string[] {
+    const recommendations: string[] = [];
 
-      for (const tweet of myTweets) {
-        // Get updated engagement data
-        const currentData = await xClient.getTweetById(tweet.id);
-        
-        if (currentData) {
-          tweetsWithEngagement.push({
-            ...tweet,
-            current_engagement: currentData.public_metrics,
-            engagement_score: this.calculateEngagementScore(currentData.public_metrics),
-          });
-        }
-      }
-
-      return tweetsWithEngagement;
-
-    } catch (error) {
-      console.error('Error fetching recent tweets:', error);
-      return [];
-    }
-  }
-
-  private async updateEngagementMetrics(tweets: any[]): Promise<void> {
-    try {
-      for (const tweet of tweets) {
-        // Update tweet engagement in database
-        const engagementData = {
-          likes: tweet.current_engagement.like_count,
-          retweets: tweet.current_engagement.retweet_count,
-          replies: tweet.current_engagement.reply_count,
-          impressions: tweet.current_engagement.impression_count,
-          engagement_score: tweet.engagement_score,
-        };
-
-        await supabaseClient.updateTweetEngagement(tweet.id, engagementData);
-
-        // Record engagement analytics for trend analysis
-        await supabaseClient.recordEngagement({
-          content_type: 'tweet',
-          content_id: tweet.id,
-          metric_type: 'daily',
-          engagement_score: tweet.engagement_score,
-          reach_score: tweet.current_engagement.impression_count,
-        });
-      }
-    } catch (error) {
-      console.error('Error updating engagement metrics:', error);
-    }
-  }
-
-  private async analyzeEngagementPatterns(tweets: any[]): Promise<LearningInsights> {
-    try {
-      // TODO: Implement sophisticated pattern analysis
-      // 1. Identify high-performing content themes
-      // 2. Analyze optimal posting times
-      // 3. Determine best content formats (threads vs single tweets)
-      // 4. Evaluate CTA effectiveness
-      // 5. Assess emoji and hashtag performance
-
-      // Sort tweets by engagement score
-      const sortedTweets = tweets.sort((a, b) => b.engagement_score - a.engagement_score);
-      const topPerformingTweets = sortedTweets.slice(0, 5);
-
-      // Analyze timing patterns
-      const timingInsights = await this.analyzeTimingPatterns(tweets);
-
-      // Generate content recommendations using AI
-      const contentRecommendations = await this.generateContentRecommendations(topPerformingTweets);
-
-      return {
-        topPerformingTweets,
-        engagementTrends: [], // TODO: Implement trend analysis
-        contentRecommendations,
-        timingInsights,
-      };
-
-    } catch (error) {
-      console.error('Error analyzing engagement patterns:', error);
-      return {
-        topPerformingTweets: [],
-        engagementTrends: [],
-        contentRecommendations: [],
-        timingInsights: [],
-      };
-    }
-  }
-
-  private async analyzeTimingPatterns(tweets: any[]): Promise<any[]> {
-    // TODO: Implement timing analysis
-    // 1. Group tweets by hour of day
-    // 2. Calculate average engagement by time slot
-    // 3. Identify peak engagement windows
-    // 4. Consider day of week patterns
-    // 5. Account for audience timezone distribution
-
-    const hourlyEngagement: { [hour: number]: { total: number; count: number } } = {};
-
-    for (const tweet of tweets) {
-      const hour = new Date(tweet.created_at).getHours();
-      
-      if (!hourlyEngagement[hour]) {
-        hourlyEngagement[hour] = { total: 0, count: 0 };
-      }
-      
-      hourlyEngagement[hour].total += tweet.engagement_score;
-      hourlyEngagement[hour].count += 1;
+    if (variantAnalysis.length === 0) {
+      recommendations.push('Start A/B testing different content variants');
+      return recommendations;
     }
 
-    const insights = Object.entries(hourlyEngagement).map(([hour, data]) => ({
-      hour: parseInt(hour),
-      averageEngagement: data.total / data.count,
-      tweetCount: data.count,
-    }));
-
-    return insights.sort((a, b) => b.averageEngagement - a.averageEngagement);
-  }
-
-  private async generateContentRecommendations(topTweets: any[]): Promise<string[]> {
-    try {
-      // Use AI to analyze what made top tweets successful
-      const recommendations = [];
-
-      for (const tweet of topTweets) {
-        const analysis = await openaiClient.analyzeEngagement(
-          tweet.text,
-          tweet.current_engagement
-        );
-
-        if (analysis.suggestions.length > 0) {
-          recommendations.push(...analysis.suggestions);
-        }
-      }
-
-      // Remove duplicates and return unique recommendations
-      return [...new Set(recommendations)];
-
-    } catch (error) {
-      console.error('Error generating content recommendations:', error);
-      return [];
-    }
-  }
-
-  private async storeLearningInsights(insights: LearningInsights): Promise<void> {
-    try {
-      console.log('💾 Storing learning insights in database...');
-
-      // Store content recommendations
-      if (insights.contentRecommendations.length > 0) {
-        await supabaseClient.storeLearningInsight({
-          insight_type: 'content_recommendations',
-          insight_data: { recommendations: insights.contentRecommendations },
-          confidence_score: 0.8,
-          performance_impact: 0.15,
-          sample_size: insights.topPerformingTweets.length
-        });
-      }
-
-      // Store timing insights
-      if (insights.timingInsights.length > 0) {
-        await supabaseClient.storeLearningInsight({
-          insight_type: 'optimal_timing',
-          insight_data: { timing_patterns: insights.timingInsights },
-          confidence_score: 0.7,
-          performance_impact: 0.25,
-          sample_size: insights.timingInsights.reduce((sum, t) => sum + t.tweetCount, 0)
-        });
-
-        // Update bot config with best posting hours
-        const bestHours = insights.timingInsights
-          .slice(0, 3)
-          .map(t => t.hour)
-          .join(',');
-        
-        await supabaseClient.setBotConfig('preferred_posting_hours', bestHours);
-      }
-
-      // Update content themes and style performance
-      for (const tweet of insights.topPerformingTweets) {
-        // Extract themes from successful tweets
-        const themes = this.extractContentThemes(tweet.text);
-        for (const theme of themes) {
-          await supabaseClient.updateContentTheme(theme, tweet.engagement_score, tweet.id);
-        }
-
-        // Update timing insights
-        const tweetDate = new Date(tweet.created_at);
-        await supabaseClient.updateTimingInsight(
-          tweetDate.getHours(),
-          tweetDate.getDay(),
-          tweet.engagement_score
-        );
-
-        // Update style performance (analyze tweet style)
-        const style = this.analyzeContentStyle(tweet.text);
-        const threshold = parseInt(await supabaseClient.getBotConfig('min_engagement_threshold') || '5');
-        await supabaseClient.updateStylePerformance(style, tweet.engagement_score, threshold);
-      }
-
-      // Update preferred content style based on best performance
-      const styles = await supabaseClient.getBestPerformingStyles();
-      if (styles.length > 0) {
-        await supabaseClient.setBotConfig('preferred_content_style', styles[0].style_type);
-      }
-
-      console.log('✅ Learning insights stored successfully');
-
-    } catch (error) {
-      console.error('Error storing learning insights:', error);
-    }
-  }
-
-  private extractContentThemes(text: string): string[] {
-    const themes: string[] = [];
+    const topVariant = variantAnalysis[0];
     
-    // Define theme keywords
-    const themeKeywords = {
-      'AI_diagnosis': ['ai', 'artificial intelligence', 'machine learning', 'diagnosis', 'diagnostic'],
-      'wearable_tech': ['wearable', 'smartwatch', 'fitness tracker', 'monitoring', 'sensor'],
-      'research_studies': ['study', 'research', 'university', 'findings', 'data', 'evidence'],
-      'preventive_care': ['prevention', 'preventive', 'early detection', 'screening', 'wellness'],
-      'biomarkers': ['biomarker', 'blood', 'genetic', 'molecular', 'testing'],
-      'longevity': ['longevity', 'aging', 'lifespan', 'healthspan', 'mortality'],
-      'mental_health': ['mental health', 'stress', 'anxiety', 'depression', 'mindfulness'],
-      'nutrition': ['nutrition', 'diet', 'food', 'supplement', 'micronutrient']
-    };
-
-    const lowerText = text.toLowerCase();
-    
-    for (const [theme, keywords] of Object.entries(themeKeywords)) {
-      if (keywords.some(keyword => lowerText.includes(keyword))) {
-        themes.push(theme);
-      }
+    if (topVariant.avgQualityScore > 80) {
+      recommendations.push(`Continue using ${topVariant.variant} variant - high quality performance`);
+    } else if (topVariant.avgQualityScore < 60) {
+      recommendations.push('All variants underperforming - review content strategy');
     }
 
-    return themes;
-  }
+    if (topVariant.successRate > 0.8) {
+      recommendations.push(`${topVariant.variant} variant shows consistent success - scale up`);
+    } else if (topVariant.successRate < 0.5) {
+      recommendations.push('Low success rates across variants - review quality thresholds');
+    }
 
-  private analyzeContentStyle(text: string): 'educational' | 'humorous' | 'thought-provoking' | 'technical' {
-    const lowerText = text.toLowerCase();
-    
-    // Educational indicators
-    if (lowerText.includes('study') || lowerText.includes('research') || lowerText.includes('according to') || 
-        lowerText.includes('evidence') || lowerText.includes('data shows')) {
-      return 'educational';
+    if (variantAnalysis.length < 3) {
+      recommendations.push('Increase variant diversity for better A/B testing');
     }
-    
-    // Technical indicators
-    if (lowerText.includes('algorithm') || lowerText.includes('ml') || lowerText.includes('ai') ||
-        lowerText.includes('biomarker') || lowerText.includes('molecular')) {
-      return 'technical';
-    }
-    
-    // Humorous indicators
-    if (lowerText.includes('😂') || lowerText.includes('lol') || lowerText.includes('funny') ||
-        lowerText.includes('joke') || lowerText.includes('humor')) {
-      return 'humorous';
-    }
-    
-    // Thought-provoking indicators (questions, future predictions)
-    if (text.includes('?') || lowerText.includes('imagine') || lowerText.includes('what if') ||
-        lowerText.includes('future') || lowerText.includes('think about')) {
-      return 'thought-provoking';
-    }
-    
-    return 'educational'; // Default
-  }
 
-  private calculateEngagementScore(metrics: any): number {
-    if (!metrics) return 0;
-    return metrics.like_count + (metrics.retweet_count * 2) + (metrics.reply_count * 3);
+    return recommendations;
   }
 
   async generateWeeklyReport(): Promise<void> {

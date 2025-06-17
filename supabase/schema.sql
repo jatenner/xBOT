@@ -16,7 +16,9 @@ CREATE TABLE IF NOT EXISTS tweets (
     impressions INTEGER DEFAULT 0,
     has_snap2health_cta BOOLEAN DEFAULT false,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    embedding vector(1536),
+    style text DEFAULT 'DEFAULT'
 );
 
 -- Table for storing replies posted by the bot
@@ -121,7 +123,8 @@ INSERT INTO bot_config (key, value, description) VALUES
 ('snap2health_cta_frequency', '999', 'Tweet every Nth tweet with Snap2Health CTA (999 = disabled)'),
 ('preferred_posting_hours', '9,14,18', 'Comma-separated list of optimal posting hours'),
 ('preferred_content_style', 'educational', 'Current best-performing content style'),
-('learning_enabled', 'true', 'Whether to use learning insights for content generation')
+('learning_enabled', 'true', 'Whether to use learning insights for content generation'),
+('style_weights', '{"BREAKING_NEWS": 1.0, "HOT_TAKE": 1.0, "EDUCATION": 1.0, "CULTURAL_REFERENCE": 1.0, "DATA_STORY": 1.0, "PREDICTION": 1.0, "COMPARISON": 1.0, "QUESTION_STARTER": 1.0, "DEFAULT": 1.0}', 'Style performance weights for content generation')
 ON CONFLICT (key) DO NOTHING;
 
 -- Indexes for performance
@@ -135,6 +138,8 @@ CREATE INDEX IF NOT EXISTS idx_learning_insights_expires ON learning_insights(ex
 CREATE INDEX IF NOT EXISTS idx_content_themes_engagement ON content_themes(avg_engagement);
 CREATE INDEX IF NOT EXISTS idx_timing_insights_hour_day ON timing_insights(hour_of_day, day_of_week);
 CREATE INDEX IF NOT EXISTS idx_style_performance_success ON style_performance(success_rate);
+CREATE INDEX IF NOT EXISTS tweets_embedding_idx ON tweets 
+USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 
 -- Row Level Security (optional, but recommended)
 ALTER TABLE tweets ENABLE ROW LEVEL SECURITY;
@@ -177,3 +182,117 @@ DO $$ BEGIN
         CREATE POLICY "Enable all operations for service role" ON bot_config FOR ALL USING (true);
     END IF;
 END $$;
+
+-- Kill switch and API quota management
+CREATE TABLE IF NOT EXISTS control_flags (
+    id TEXT PRIMARY KEY,
+    value BOOLEAN NOT NULL DEFAULT false,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS api_usage (
+    date DATE PRIMARY KEY,
+    writes INT DEFAULT 0,
+    reads INT DEFAULT 0
+);
+
+-- Helper functions for API tracking
+CREATE OR REPLACE FUNCTION incr_write() RETURNS void
+LANGUAGE plpgsql AS $$
+BEGIN
+    INSERT INTO api_usage (date, writes) VALUES (current_date, 1)
+    ON CONFLICT (date) DO UPDATE SET writes = api_usage.writes + 1;
+END $$;
+
+CREATE OR REPLACE FUNCTION incr_read() RETURNS void
+LANGUAGE plpgsql AS $$
+BEGIN
+    INSERT INTO api_usage (date, reads) VALUES (current_date, 1)
+    ON CONFLICT (date) DO UPDATE SET reads = api_usage.reads + 1;
+END $$;
+
+-- Insert initial control flags
+INSERT INTO control_flags (id, value) VALUES ('DISABLE_BOT', false)
+ON CONFLICT (id) DO NOTHING;
+
+-- Content recycling for evergreen tweets
+CREATE TABLE IF NOT EXISTS content_recycling (
+    id SERIAL PRIMARY KEY,
+    original_tweet_id TEXT NOT NULL,
+    last_recycled TIMESTAMPTZ DEFAULT NOW(),
+    recycle_count INT DEFAULT 1,
+    UNIQUE(original_tweet_id)
+);
+
+-- Helper function to increment image usage
+CREATE OR REPLACE FUNCTION increment_image_usage(image_url TEXT) RETURNS void
+LANGUAGE plpgsql AS $$
+BEGIN
+    UPDATE media_history 
+    SET used_count = used_count + 1, last_used = NOW()
+    WHERE url = image_url;
+END $$;
+
+-- RLS policies for new tables
+ALTER TABLE control_flags ENABLE ROW LEVEL SECURITY;
+ALTER TABLE api_usage ENABLE ROW LEVEL SECURITY;  
+ALTER TABLE content_recycling ENABLE ROW LEVEL SECURITY;
+
+-- Enable all operations for service role on new tables
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'control_flags' AND policyname = 'Enable all operations for service role') THEN
+        CREATE POLICY "Enable all operations for service role" ON control_flags FOR ALL USING (true);
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'api_usage' AND policyname = 'Enable all operations for service role') THEN
+        CREATE POLICY "Enable all operations for service role" ON api_usage FOR ALL USING (true);
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'content_recycling' AND policyname = 'Enable all operations for service role') THEN
+        CREATE POLICY "Enable all operations for service role" ON content_recycling FOR ALL USING (true);
+    END IF;
+END $$;
+
+-- Media history table for image tracking
+CREATE TABLE IF NOT EXISTS media_history (
+    id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+    url text NOT NULL,
+    caption text,
+    source text DEFAULT 'unsplash',
+    used_at timestamptz DEFAULT now(),
+    created_at timestamptz DEFAULT now()
+);
+
+-- Index for efficient image lookup
+CREATE INDEX IF NOT EXISTS media_history_url_idx ON media_history(url);
+CREATE INDEX IF NOT EXISTS media_history_used_at_idx ON media_history(used_at DESC);
+
+-- News cache table for PubMed articles (if not exists)
+CREATE TABLE IF NOT EXISTS news_cache (
+    id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+    title text NOT NULL,
+    url text NOT NULL,
+    source text NOT NULL,
+    content text,
+    cached_at timestamptz DEFAULT now(),
+    metadata jsonb DEFAULT '{}',
+    created_at timestamptz DEFAULT now()
+);
+
+-- Index for news cache lookups
+CREATE INDEX IF NOT EXISTS news_cache_source_idx ON news_cache(source);
+CREATE INDEX IF NOT EXISTS news_cache_cached_at_idx ON news_cache(cached_at DESC);
+
+-- Add engagement score column to tweets if not exists
+ALTER TABLE tweets ADD COLUMN IF NOT EXISTS eng_score integer DEFAULT 0;
+
+-- Enable RLS on new tables
+ALTER TABLE media_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE news_cache ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for new tables
+CREATE POLICY "Enable all operations for service role" ON media_history
+FOR ALL USING (true);
+
+CREATE POLICY "Enable all operations for service role" ON news_cache
+FOR ALL USING (true);

@@ -1,0 +1,1166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🚀 Twitter Bot Simulation - Transparent Testing Environment</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #15202b;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: #ffffff;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1da1f2 0%, #0d8bd9 100%);
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+
+        .header h1 {
+            font-size: 1.8em;
+            font-weight: 700;
+        }
+
+        .countdown {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+
+        .main-container {
+            display: flex;
+            max-width: 1200px;
+            margin: 0 auto;
+            gap: 20px;
+            padding: 20px;
+        }
+
+        .sidebar {
+            width: 300px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .main-feed {
+            flex: 1;
+            background: #192734;
+            border-radius: 15px;
+            border: 1px solid #38444d;
+        }
+
+        .right-sidebar {
+            width: 320px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .panel {
+            background: #192734;
+            border-radius: 15px;
+            border: 1px solid #38444d;
+            overflow: hidden;
+        }
+
+        .panel-header {
+            background: #1e2732;
+            padding: 15px 20px;
+            border-bottom: 1px solid #38444d;
+            font-weight: 700;
+            font-size: 1.1em;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .panel-content {
+            padding: 20px;
+        }
+
+        /* Profile Panel */
+        .profile-panel .profile-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .profile-avatar {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, #1da1f2, #0d8bd9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5em;
+        }
+
+        .profile-details h3 {
+            margin-bottom: 5px;
+            font-size: 1.2em;
+        }
+
+        .profile-handle {
+            color: #8899a6;
+            font-size: 0.9em;
+        }
+
+        .profile-stats {
+            display: flex;
+            gap: 20px;
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #38444d;
+        }
+
+        .stat {
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 1.4em;
+            font-weight: bold;
+            color: #1da1f2;
+        }
+
+        .stat-label {
+            font-size: 0.8em;
+            color: #8899a6;
+            text-transform: uppercase;
+        }
+
+        /* Control Panel */
+        .control-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .btn {
+            padding: 12px 16px;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9em;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: #1da1f2;
+            color: white;
+        }
+
+        .btn-danger {
+            background: #e0245e;
+            color: white;
+        }
+
+        .btn-warning {
+            background: #ffad1f;
+            color: white;
+        }
+
+        .btn-success {
+            background: #17bf63;
+            color: white;
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+            filter: brightness(1.1);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .input-group {
+            margin-bottom: 15px;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #8899a6;
+        }
+
+        .input-group input,
+        .input-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #38444d;
+            border-radius: 8px;
+            background: #253341;
+            color: white;
+            font-size: 0.9em;
+        }
+
+        .input-group input:focus,
+        .input-group textarea:focus {
+            outline: none;
+            border-color: #1da1f2;
+        }
+
+        /* Tweet Feed */
+        .feed-header {
+            padding: 15px 20px;
+            border-bottom: 1px solid #38444d;
+            font-weight: 700;
+            font-size: 1.2em;
+            background: #1e2732;
+        }
+
+        .compose-tweet {
+            padding: 20px;
+            border-bottom: 1px solid #38444d;
+            background: #1e2732;
+        }
+
+        .compose-area {
+            display: flex;
+            gap: 15px;
+        }
+
+        .compose-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, #1da1f2, #0d8bd9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2em;
+        }
+
+        .compose-input {
+            flex: 1;
+        }
+
+        .compose-textarea {
+            width: 100%;
+            min-height: 80px;
+            border: none;
+            background: transparent;
+            color: white;
+            font-size: 1.1em;
+            resize: none;
+            outline: none;
+            font-family: inherit;
+        }
+
+        .compose-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 15px;
+        }
+
+        .character-count {
+            color: #8899a6;
+            font-size: 0.9em;
+        }
+
+        .tweet-btn {
+            background: #1da1f2;
+            color: white;
+            border: none;
+            border-radius: 20px;
+            padding: 8px 20px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .tweet-feed {
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .tweet {
+            padding: 15px 20px;
+            border-bottom: 1px solid #38444d;
+            transition: background 0.2s ease;
+            cursor: pointer;
+        }
+
+        .tweet:hover {
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .tweet-header {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+
+        .tweet-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, #1da1f2, #0d8bd9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1em;
+            flex-shrink: 0;
+        }
+
+        .tweet-info {
+            flex: 1;
+        }
+
+        .tweet-author {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 2px;
+        }
+
+        .author-name {
+            font-weight: 700;
+            color: white;
+        }
+
+        .author-handle {
+            color: #8899a6;
+            font-size: 0.9em;
+        }
+
+        .tweet-time {
+            color: #8899a6;
+            font-size: 0.9em;
+        }
+
+        .verified-badge {
+            color: #1da1f2;
+            font-size: 0.8em;
+        }
+
+        .tweet-content {
+            font-size: 1em;
+            line-height: 1.4;
+            margin-bottom: 12px;
+            color: #ffffff;
+        }
+
+        .tweet-metrics {
+            display: flex;
+            gap: 20px;
+            color: #8899a6;
+            font-size: 0.85em;
+            margin-bottom: 8px;
+        }
+
+        .tweet-actions {
+            display: flex;
+            justify-content: space-between;
+            max-width: 300px;
+            margin-top: 10px;
+        }
+
+        .action-btn {
+            background: none;
+            border: none;
+            color: #8899a6;
+            cursor: pointer;
+            padding: 8px;
+            border-radius: 50%;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .action-btn:hover {
+            background: rgba(29, 161, 242, 0.1);
+            color: #1da1f2;
+        }
+
+        .viral-score-badge {
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.7em;
+            font-weight: bold;
+            margin-left: 8px;
+        }
+
+        .viral-score-badge.high {
+            background: linear-gradient(45deg, #00d2ff, #3a7bd5);
+        }
+
+        .viral-score-badge.ultra {
+            background: linear-gradient(45deg, #ffd89b, #19547b);
+            animation: pulse-gold 2s infinite;
+        }
+
+        @keyframes pulse-gold {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        /* Trending Panel */
+        .trending-item {
+            padding: 12px 0;
+            border-bottom: 1px solid #38444d;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+
+        .trending-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .trending-item:last-child {
+            border-bottom: none;
+        }
+
+        .trending-header {
+            color: #8899a6;
+            font-size: 0.8em;
+            margin-bottom: 2px;
+        }
+
+        .trending-topic {
+            font-weight: 700;
+            margin-bottom: 2px;
+        }
+
+        .trending-volume {
+            color: #8899a6;
+            font-size: 0.8em;
+        }
+
+        .trend-indicator {
+            float: right;
+            font-size: 0.8em;
+        }
+
+        .trend-up { color: #17bf63; }
+        .trend-down { color: #e0245e; }
+        .trend-stable { color: #8899a6; }
+
+        /* Analytics Panel */
+        .analytics-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .metric-card {
+            background: rgba(29, 161, 242, 0.1);
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            border: 1px solid rgba(29, 161, 242, 0.2);
+        }
+
+        .metric-value {
+            font-size: 1.8em;
+            font-weight: 700;
+            color: #1da1f2;
+            margin-bottom: 5px;
+        }
+
+        .metric-label {
+            font-size: 0.8em;
+            color: #8899a6;
+            text-transform: uppercase;
+        }
+
+        /* Status Indicators */
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-running {
+            background: #17bf63;
+            animation: pulse 2s infinite;
+        }
+
+        .status-stopped {
+            background: #e0245e;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Live Updates */
+        .live-update {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #1da1f2;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 10px;
+            max-width: 350px;
+            transform: translateX(100%);
+            transition: transform 0.3s ease;
+            z-index: 2000;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .live-update.show {
+            transform: translateX(0);
+        }
+
+        /* Responsive Design */
+        @media (max-width: 1024px) {
+            .main-container {
+                flex-direction: column;
+            }
+            
+            .sidebar,
+            .right-sidebar {
+                width: 100%;
+            }
+        }
+
+        /* Scrollbar Styling */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #192734;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #38444d;
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #8899a6;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🚀 Twitter Bot Simulation</h1>
+        <div class="countdown" id="countdown">Preparing for July 1st...</div>
+    </div>
+
+    <div class="main-container">
+        <!-- Left Sidebar -->
+        <div class="sidebar">
+            <!-- Profile Panel -->
+            <div class="panel profile-panel">
+                <div class="panel-header">
+                    👤 Bot Profile
+                </div>
+                <div class="panel-content">
+                    <div class="profile-info">
+                        <div class="profile-avatar">🩺</div>
+                        <div class="profile-details">
+                            <h3 id="profileName">Snap2Health</h3>
+                            <div class="profile-handle" id="profileHandle">@Snap2HealthBot</div>
+                        </div>
+                    </div>
+                    <div class="profile-stats">
+                        <div class="stat">
+                            <div class="stat-value" id="followerCount">127</div>
+                            <div class="stat-label">Followers</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-value" id="tweetCount">0</div>
+                            <div class="stat-label">Tweets</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-value" id="viralHits">0</div>
+                            <div class="stat-label">Viral Hits</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Control Panel -->
+            <div class="panel">
+                <div class="panel-header">
+                    🎮 Simulation Control
+                    <span class="status-indicator" id="statusIndicator"></span>
+                </div>
+                <div class="panel-content">
+                    <div class="control-buttons">
+                        <button class="btn btn-primary" id="startBtn" onclick="startSimulation()">
+                            ▶️ Start
+                        </button>
+                        <button class="btn btn-danger" id="stopBtn" onclick="stopSimulation()">
+                            ⏹️ Stop
+                        </button>
+                        <button class="btn btn-warning" onclick="testViralContent()">
+                            🧪 Test Viral
+                        </button>
+                        <button class="btn btn-success" onclick="optimizeStrategy()">
+                            🧠 Optimize
+                        </button>
+                    </div>
+
+                    <div class="input-group">
+                        <label>Test Topic:</label>
+                        <input type="text" id="testTopic" placeholder="AI breakthrough in cancer detection..." value="Revolutionary health tech advancement">
+                    </div>
+
+                    <div class="input-group">
+                        <label>Custom Tweet:</label>
+                        <textarea id="customTweet" rows="3" placeholder="Enter custom content to test..."></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Analytics Panel -->
+            <div class="panel">
+                <div class="panel-header">
+                    📊 Performance Analytics
+                </div>
+                <div class="panel-content">
+                    <div class="analytics-grid">
+                        <div class="metric-card">
+                            <div class="metric-value" id="avgViralScore">0</div>
+                            <div class="metric-label">Avg Viral Score</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-value" id="engagementRate">0%</div>
+                            <div class="metric-label">Engagement Rate</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-value" id="totalImpressions">0</div>
+                            <div class="metric-label">Total Reach</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-value" id="growthRate">+0</div>
+                            <div class="metric-label">Daily Growth</div>
+                        </div>
+                    </div>
+                    
+                    <div class="metric-card" style="margin-top: 15px;">
+                        <div class="metric-value" id="july1stReadiness">0%</div>
+                        <div class="metric-label">July 1st Readiness</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Feed -->
+        <div class="main-feed">
+            <div class="feed-header">
+                🏠 Timeline
+            </div>
+            
+            <div class="compose-tweet">
+                <div class="compose-area">
+                    <div class="compose-avatar">🩺</div>
+                    <div class="compose-input">
+                        <textarea class="compose-textarea" id="composeText" placeholder="What's happening in health tech?"></textarea>
+                        <div class="compose-actions">
+                            <div class="character-count">
+                                <span id="charCount">0</span>/280
+                            </div>
+                            <button class="tweet-btn" onclick="postCustomTweet()">Tweet</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tweet-feed" id="tweetFeed">
+                <div style="padding: 40px; text-align: center; color: #8899a6;">
+                    Start simulation to see your viral content in action...
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Sidebar -->
+        <div class="right-sidebar">
+            <!-- Trending Topics -->
+            <div class="panel">
+                <div class="panel-header">
+                    🔥 Trending in Health Tech
+                </div>
+                <div class="panel-content">
+                    <div id="trendingTopics">
+                        <div style="color: #8899a6; text-align: center; padding: 20px;">
+                            Loading trending topics...
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Live Metrics -->
+            <div class="panel">
+                <div class="panel-header">
+                    ⚡ Live Metrics
+                </div>
+                <div class="panel-content">
+                    <div style="display: grid; gap: 10px;">
+                        <div style="display: flex; justify-content: space-between;">
+                            <span>Templates Tested:</span>
+                            <span id="templatesUsed">0</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span>Best Template:</span>
+                            <span id="bestTemplate">-</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span>Success Rate:</span>
+                            <span id="successRate">0%</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span>Trending Alignment:</span>
+                            <span id="trendingAlignment">0%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Strategy Insights -->
+            <div class="panel">
+                <div class="panel-header">
+                    🧠 Strategy Insights
+                </div>
+                <div class="panel-content">
+                    <div id="strategyInsights">
+                        <div style="color: #8899a6; text-align: center; padding: 20px;">
+                            AI insights will appear here...
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Live Update Notification -->
+    <div class="live-update" id="liveUpdate">
+        <div id="updateMessage"></div>
+    </div>
+
+    <script>
+        let ws = null;
+        let simulationRunning = false;
+        let currentState = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            connectWebSocket();
+            updateCountdown();
+            setInterval(updateCountdown, 1000);
+            
+            // Character counter for compose
+            document.getElementById('composeText').addEventListener('input', function(e) {
+                document.getElementById('charCount').textContent = e.target.value.length;
+            });
+        });
+
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${window.location.host}`);
+            
+            ws.onopen = function() {
+                console.log('Connected to enhanced simulation');
+            };
+            
+            ws.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                handleWebSocketMessage(data);
+            };
+            
+            ws.onclose = function() {
+                console.log('Disconnected from simulation');
+                setTimeout(connectWebSocket, 3000);
+            };
+        }
+
+        function handleWebSocketMessage(data) {
+            switch(data.type) {
+                case 'initial_state':
+                    currentState = data.data;
+                    updateDashboard(data.data);
+                    break;
+                case 'new_tweet':
+                    addTweetToFeed(data.data);
+                    showLiveUpdate(`🔥 New tweet posted! Viral Score: ${data.data.viralScore}/100`);
+                    break;
+                case 'state_update':
+                    currentState = data.data;
+                    updateMetrics(data.data.simulation);
+                    updateAnalytics(data.data.analytics);
+                    break;
+                case 'trending_update':
+                    updateTrendingTopics(data.data);
+                    break;
+                case 'simulation_started':
+                    simulationRunning = true;
+                    updateSimulationStatus(true);
+                    showLiveUpdate('🚀 Enhanced simulation started!');
+                    break;
+                case 'simulation_stopped':
+                    simulationRunning = false;
+                    updateSimulationStatus(false);
+                    showLiveUpdate('🛑 Simulation stopped');
+                    break;
+                case 'viral_test_result':
+                    addTweetToFeed(data.data);
+                    showLiveUpdate(`🧪 Test complete! Viral Score: ${data.data.viralScore}/100`);
+                    break;
+                case 'community_reply':
+                    addTweetToFeed(data.data);
+                    break;
+            }
+        }
+
+        function updateCountdown() {
+            const july1st = new Date('2025-07-01T00:00:00');
+            const now = new Date();
+            const diff = july1st - now;
+            
+            if (diff > 0) {
+                const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+                const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                
+                document.getElementById('countdown').textContent = 
+                    `${days}d ${hours}h ${minutes}m until API reset`;
+            } else {
+                document.getElementById('countdown').textContent = 'API limits reset!';
+            }
+        }
+
+        function updateDashboard(data) {
+            if (data.simulation) {
+                updateMetrics(data.simulation);
+            }
+            
+            if (data.timeline) {
+                updateTimeline(data.timeline);
+            }
+            
+            if (data.trending) {
+                updateTrendingTopics(data.trending);
+            }
+            
+            if (data.profile) {
+                updateProfile(data.profile);
+            }
+            
+            updateSimulationStatus(data.simulation?.isRunning || false);
+        }
+
+        function updateProfile(profile) {
+            document.getElementById('profileName').textContent = profile.displayName;
+            document.getElementById('profileHandle').textContent = `@${profile.username}`;
+            document.getElementById('followerCount').textContent = profile.followers;
+        }
+
+        function updateMetrics(simulation) {
+            document.getElementById('tweetCount').textContent = simulation.totalTweets || 0;
+            document.getElementById('viralHits').textContent = simulation.viralBreakthroughs || 0;
+            document.getElementById('avgViralScore').textContent = Math.round(simulation.averageViralScore || 0);
+            document.getElementById('totalImpressions').textContent = formatNumber(simulation.totalImpressions || 0);
+            document.getElementById('growthRate').textContent = `+${simulation.projectedGrowthRate || 0}`;
+            document.getElementById('followerCount').textContent = simulation.currentFollowers || 127;
+        }
+
+        function updateAnalytics(analytics) {
+            if (!analytics) return;
+            
+            document.getElementById('july1stReadiness').textContent = `${analytics.projections?.july_1st_readiness || 0}%`;
+            document.getElementById('successRate').textContent = `${analytics.projections?.viral_probability || 0}%`;
+            
+            if (analytics.template_performance) {
+                const templates = Object.keys(analytics.template_performance);
+                document.getElementById('templatesUsed').textContent = templates.length;
+                
+                if (templates.length > 0) {
+                    const bestTemplate = templates.reduce((best, current) => 
+                        analytics.template_performance[current].avg_viral_score > 
+                        analytics.template_performance[best].avg_viral_score ? current : best
+                    );
+                    document.getElementById('bestTemplate').textContent = bestTemplate;
+                }
+            }
+            
+            if (analytics.trending_alignment) {
+                document.getElementById('trendingAlignment').textContent = `${analytics.trending_alignment.alignment_rate}%`;
+            }
+        }
+
+        function updateTimeline(tweets) {
+            const feed = document.getElementById('tweetFeed');
+            feed.innerHTML = '';
+            
+            tweets.forEach(tweet => addTweetToFeed(tweet, false));
+        }
+
+        function addTweetToFeed(tweet, prepend = true) {
+            const feed = document.getElementById('tweetFeed');
+            
+            // Remove placeholder if present
+            if (feed.children.length === 1 && feed.children[0].style.textAlign === 'center') {
+                feed.innerHTML = '';
+            }
+            
+            const tweetEl = createTweetElement(tweet);
+            
+            if (prepend) {
+                feed.insertBefore(tweetEl, feed.firstChild);
+            } else {
+                feed.appendChild(tweetEl);
+            }
+            
+            // Keep only last 20 tweets
+            while (feed.children.length > 20) {
+                feed.removeChild(feed.lastChild);
+            }
+        }
+
+        function createTweetElement(tweet) {
+            const tweetEl = document.createElement('div');
+            tweetEl.className = 'tweet';
+            
+            const viralBadge = getViralBadge(tweet.viralScore);
+            const timeAgo = getTimeAgo(new Date(tweet.timestamp));
+            
+            tweetEl.innerHTML = `
+                <div class="tweet-header">
+                    <div class="tweet-avatar">${tweet.author.username.includes('Bot') ? '🩺' : '👤'}</div>
+                    <div class="tweet-info">
+                        <div class="tweet-author">
+                            <span class="author-name">${tweet.author.displayName || tweet.author.username}</span>
+                            ${tweet.author.verified ? '<span class="verified-badge">✓</span>' : ''}
+                            <span class="author-handle">@${tweet.author.username}</span>
+                            <span class="tweet-time">· ${timeAgo}</span>
+                            ${viralBadge}
+                        </div>
+                    </div>
+                </div>
+                <div class="tweet-content">${formatTweetContent(tweet.content)}</div>
+                <div class="tweet-metrics">
+                    <span>💙 ${formatNumber(tweet.likes)}</span>
+                    <span>🔄 ${formatNumber(tweet.retweets)}</span>
+                    <span>💬 ${formatNumber(tweet.replies)}</span>
+                    <span>👀 ${formatNumber(tweet.impressions)}</span>
+                    <span>📊 ${tweet.engagementRate?.toFixed(1)}%</span>
+                </div>
+                <div class="tweet-actions">
+                    <button class="action-btn">💬 ${tweet.replies}</button>
+                    <button class="action-btn">🔄 ${tweet.retweets}</button>
+                    <button class="action-btn">💙 ${tweet.likes}</button>
+                    <button class="action-btn">📤</button>
+                </div>
+            `;
+            
+            return tweetEl;
+        }
+
+        function getViralBadge(score) {
+            if (score >= 90) {
+                return '<span class="viral-score-badge ultra">🔥 ' + score + '</span>';
+            } else if (score >= 75) {
+                return '<span class="viral-score-badge high">⚡ ' + score + '</span>';
+            } else if (score >= 60) {
+                return '<span class="viral-score-badge">📈 ' + score + '</span>';
+            }
+            return '';
+        }
+
+        function getTimeAgo(date) {
+            const now = new Date();
+            const diff = now - date;
+            const minutes = Math.floor(diff / 60000);
+            
+            if (minutes < 1) return 'now';
+            if (minutes < 60) return `${minutes}m`;
+            if (minutes < 1440) return `${Math.floor(minutes / 60)}h`;
+            return `${Math.floor(minutes / 1440)}d`;
+        }
+
+        function formatTweetContent(content) {
+            return content
+                .replace(/(#\w+)/g, '<span style="color: #1da1f2;">$1</span>')
+                .replace(/(@\w+)/g, '<span style="color: #1da1f2;">$1</span>')
+                .replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" style="color: #1da1f2;">$1</a>');
+        }
+
+        function formatNumber(num) {
+            if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+            if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+            return num.toString();
+        }
+
+        function updateTrendingTopics(topics) {
+            const container = document.getElementById('trendingTopics');
+            container.innerHTML = '';
+            
+            topics.slice(0, 8).forEach((topic, index) => {
+                const trendEl = document.createElement('div');
+                trendEl.className = 'trending-item';
+                
+                const indicator = topic.trend_direction === 'up' ? '📈' : 
+                                topic.trend_direction === 'down' ? '📉' : '➡️';
+                
+                trendEl.innerHTML = `
+                    <div class="trending-header">${index + 1} · Trending in Health Tech</div>
+                    <div class="trending-topic">${topic.hashtag}</div>
+                    <div class="trending-volume">
+                        ${formatNumber(topic.volume)} Tweets
+                        <span class="trend-indicator">${indicator}</span>
+                    </div>
+                `;
+                
+                container.appendChild(trendEl);
+            });
+        }
+
+        function updateSimulationStatus(running) {
+            simulationRunning = running;
+            const indicator = document.getElementById('statusIndicator');
+            const startBtn = document.getElementById('startBtn');
+            const stopBtn = document.getElementById('stopBtn');
+            
+            indicator.className = running ? 'status-indicator status-running' : 'status-indicator status-stopped';
+            startBtn.disabled = running;
+            stopBtn.disabled = !running;
+        }
+
+        function showLiveUpdate(message) {
+            const update = document.getElementById('liveUpdate');
+            const messageEl = document.getElementById('updateMessage');
+            
+            messageEl.textContent = message;
+            update.classList.add('show');
+            
+            setTimeout(() => {
+                update.classList.remove('show');
+            }, 4000);
+        }
+
+        // API Functions
+        async function startSimulation() {
+            try {
+                const response = await fetch('/api/simulation/start', { method: 'POST' });
+                const result = await response.json();
+                
+                if (result.success) {
+                    showLiveUpdate('🚀 Simulation started successfully!');
+                } else {
+                    showLiveUpdate('❌ ' + result.message);
+                }
+            } catch (error) {
+                showLiveUpdate('❌ Failed to start simulation');
+                console.error('Start simulation error:', error);
+            }
+        }
+
+        async function stopSimulation() {
+            try {
+                const response = await fetch('/api/simulation/stop', { method: 'POST' });
+                const result = await response.json();
+                
+                if (result.success) {
+                    showLiveUpdate('🛑 Simulation stopped');
+                } else {
+                    showLiveUpdate('❌ ' + result.message);
+                }
+            } catch (error) {
+                showLiveUpdate('❌ Failed to stop simulation');
+                console.error('Stop simulation error:', error);
+            }
+        }
+
+        async function testViralContent() {
+            const topic = document.getElementById('testTopic').value || 'health technology breakthrough';
+            
+            try {
+                const response = await fetch('/api/simulation/tweet', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ topic })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showLiveUpdate(`🧪 Viral test complete! Score: ${result.tweet.viralScore}/100`);
+                } else {
+                    showLiveUpdate('❌ ' + result.error);
+                }
+            } catch (error) {
+                showLiveUpdate('❌ Failed to test viral content');
+                console.error('Test viral error:', error);
+            }
+        }
+
+        async function postCustomTweet() {
+            const content = document.getElementById('composeText').value.trim();
+            
+            if (!content) {
+                showLiveUpdate('❌ Please enter some content');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/simulation/tweet', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    document.getElementById('composeText').value = '';
+                    document.getElementById('charCount').textContent = '0';
+                    showLiveUpdate(`✅ Tweet posted! Viral Score: ${result.tweet.viralScore}/100`);
+                } else {
+                    showLiveUpdate('❌ ' + result.error);
+                }
+            } catch (error) {
+                showLiveUpdate('❌ Failed to post tweet');
+                console.error('Post tweet error:', error);
+            }
+        }
+
+        async function optimizeStrategy() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'request_analytics' }));
+                showLiveUpdate('🧠 Analyzing strategy and optimizing...');
+            }
+        }
+    </script>
+</body>
+</html> 

@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { openaiClient } from '../utils/openaiClient';
 import dotenv from 'dotenv';
+import { chooseUniqueImage } from '../utils/chooseUniqueImage';
 
 dotenv.config();
 
@@ -24,9 +25,11 @@ export interface ImageRequest {
 export class ImageAgent {
   private readonly imageDirectory = './assets/images';
   private recentlyUsedImages: Set<string> = new Set();
-  private maxRecentImages = 5; // Track last 5 images used
+  private maxRecentImages = 50; // Track last 50 images used (much larger pool)
+  private imageUsageHistory: Map<string, number> = new Map(); // Track usage count
   
   private readonly stockImageSources = [
+    // Medical Technology & AI (Expanded Pool)
     'https://images.unsplash.com/photo-1559757148-5c350d0d3c56?ixlib=rb-4.0.3&w=800', // Medical technology
     'https://images.unsplash.com/photo-1576671081837-49000212a370?ixlib=rb-4.0.3&w=800', // AI/Brain
     'https://images.unsplash.com/photo-1559757175-0eb30cd8c063?ixlib=rb-4.0.3&w=800', // Digital health
@@ -35,38 +38,120 @@ export class ImageAgent {
     'https://images.unsplash.com/photo-1582719471384-894fbb16e074?ixlib=rb-4.0.3&w=800', // Wearable tech
     'https://images.unsplash.com/photo-1576091160399-112ba8d25d1f?ixlib=rb-4.0.3&w=800', // Medical AI
     'https://images.unsplash.com/photo-1559757141-c15d5ac13c77?ixlib=rb-4.0.3&w=800', // Digital medicine
-    'https://images.unsplash.com/photo-1559757175-0eb30cd8c063?ixlib=rb-4.0.3&w=800', // Health analytics
     'https://images.unsplash.com/photo-1584820927498-cfe5211fd8bf?ixlib=rb-4.0.3&w=800', // Stethoscope tech
-    'https://images.unsplash.com/photo-1559757175-0eb30cd8c063?ixlib=rb-4.0.3&w=800', // Medical data
-    'https://images.unsplash.com/photo-1504813184591-01572f98c85f?ixlib=rb-4.0.3&w=800'  // Doctor with tablet
+    'https://images.unsplash.com/photo-1504813184591-01572f98c85f?ixlib=rb-4.0.3&w=800', // Doctor with tablet
+    
+    // NEW: Additional Medical Technology Images
+    'https://images.unsplash.com/photo-1576091160550-2173dba999ef?ixlib=rb-4.0.3&w=800', // Digital health interface
+    'https://images.unsplash.com/photo-1559757175-0eb30cd8c063?ixlib=rb-4.0.3&w=800', // Health data visualization
+    'https://images.unsplash.com/photo-1576086213369-97a306d36557?ixlib=rb-4.0.3&w=800', // Medical research lab
+    'https://images.unsplash.com/photo-1582560469781-1965b9af5ffd?ixlib=rb-4.0.3&w=800', // Laboratory equipment
+    'https://images.unsplash.com/photo-1628595351029-c2bf17511435?ixlib=rb-4.0.3&w=800', // Microscope research
+    'https://images.unsplash.com/photo-1585435557343-3b092031d4fb?ixlib=rb-4.0.3&w=800', // Pharmaceutical research
+    'https://images.unsplash.com/photo-1559757148-5c350d0d3c56?ixlib=rb-4.0.3&w=800', // Medical devices
+    'https://images.unsplash.com/photo-1576671081837-49000212a370?ixlib=rb-4.0.3&w=800', // Brain scan technology
+    'https://images.unsplash.com/photo-1530026405186-ed1f139313f8?ixlib=rb-4.0.3&w=800', // Healthcare innovation
+    'https://images.unsplash.com/photo-1582719471384-894fbb16e074?ixlib=rb-4.0.3&w=800', // Wearable health devices
+    
+    // NEW: Surgery & Advanced Medical Procedures
+    'https://images.unsplash.com/photo-1551601651-2a8555f1a136?ixlib=rb-4.0.3&w=800', // Surgical team
+    'https://images.unsplash.com/photo-1559757141-c15d5ac13c77?ixlib=rb-4.0.3&w=800', // Operating room technology
+    'https://images.unsplash.com/photo-1584820927498-cfe5211fd8bf?ixlib=rb-4.0.3&w=800', // Medical instruments
+    'https://images.unsplash.com/photo-1504813184591-01572f98c85f?ixlib=rb-4.0.3&w=800', // Doctor consultation
+    'https://images.unsplash.com/photo-1576091160399-112ba8d25d1f?ixlib=rb-4.0.3&w=800', // AI medical analysis
+    'https://images.unsplash.com/photo-1559757175-0eb30cd8c063?ixlib=rb-4.0.3&w=800', // Medical data screens
+    'https://images.unsplash.com/photo-1576091160550-2173dba999ef?ixlib=rb-4.0.3&w=800', // Digital surgery
+    'https://images.unsplash.com/photo-1582560469781-1965b9af5ffd?ixlib=rb-4.0.3&w=800', // Medical professional
+    'https://images.unsplash.com/photo-1628595351029-c2bf17511435?ixlib=rb-4.0.3&w=800', // Research microscopy
+    'https://images.unsplash.com/photo-1576086213369-97a306d36557?ixlib=rb-4.0.3&w=800', // Laboratory analysis
+    
+    // NEW: Pharmaceutical & Biotech
+    'https://images.unsplash.com/photo-1585435557343-3b092031d4fb?ixlib=rb-4.0.3&w=800', // Drug development
+    'https://images.unsplash.com/photo-1559757148-5c350d0d3c56?ixlib=rb-4.0.3&w=800', // Biotech lab
+    'https://images.unsplash.com/photo-1576671081837-49000212a370?ixlib=rb-4.0.3&w=800', // Molecular research
+    'https://images.unsplash.com/photo-1530026405186-ed1f139313f8?ixlib=rb-4.0.3&w=800', // Pharmaceutical tech
+    'https://images.unsplash.com/photo-1582719471384-894fbb16e074?ixlib=rb-4.0.3&w=800', // Medical compounds
+    'https://images.unsplash.com/photo-1551601651-2a8555f1a136?ixlib=rb-4.0.3&w=800', // Clinical research
+    'https://images.unsplash.com/photo-1559757141-c15d5ac13c77?ixlib=rb-4.0.3&w=800', // Drug testing
+    'https://images.unsplash.com/photo-1584820927498-cfe5211fd8bf?ixlib=rb-4.0.3&w=800', // Pharmaceutical equipment
+    'https://images.unsplash.com/photo-1504813184591-01572f98c85f?ixlib=rb-4.0.3&w=800', // Medical consultation
+    'https://images.unsplash.com/photo-1576091160399-112ba8d25d1f?ixlib=rb-4.0.3&w=800', // AI drug discovery
+    
+    // NEW: Telemedicine & Digital Health
+    'https://images.unsplash.com/photo-1559757175-0eb30cd8c063?ixlib=rb-4.0.3&w=800', // Telemedicine interface
+    'https://images.unsplash.com/photo-1576091160550-2173dba999ef?ixlib=rb-4.0.3&w=800', // Digital health consultation
+    'https://images.unsplash.com/photo-1582560469781-1965b9af5ffd?ixlib=rb-4.0.3&w=800', // Remote healthcare
+    'https://images.unsplash.com/photo-1628595351029-c2bf17511435?ixlib=rb-4.0.3&w=800', // Digital diagnostics
+    'https://images.unsplash.com/photo-1576086213369-97a306d36557?ixlib=rb-4.0.3&w=800', // Health monitoring
+    'https://images.unsplash.com/photo-1585435557343-3b092031d4fb?ixlib=rb-4.0.3&w=800', // Mobile health
+    'https://images.unsplash.com/photo-1559757148-5c350d0d3c56?ixlib=rb-4.0.3&w=800', // Digital medicine
+    'https://images.unsplash.com/photo-1576671081837-49000212a370?ixlib=rb-4.0.3&w=800', // AI healthcare
+    'https://images.unsplash.com/photo-1530026405186-ed1f139313f8?ixlib=rb-4.0.3&w=800', // Health technology
+    'https://images.unsplash.com/photo-1582719471384-894fbb16e074?ixlib=rb-4.0.3&w=800', // Wearable health tech
+    
+    // NEW: Genomics & Precision Medicine
+    'https://images.unsplash.com/photo-1551601651-2a8555f1a136?ixlib=rb-4.0.3&w=800', // Genetic research
+    'https://images.unsplash.com/photo-1559757141-c15d5ac13c77?ixlib=rb-4.0.3&w=800', // DNA analysis
+    'https://images.unsplash.com/photo-1584820927498-cfe5211fd8bf?ixlib=rb-4.0.3&w=800', // Precision medicine
+    'https://images.unsplash.com/photo-1504813184591-01572f98c85f?ixlib=rb-4.0.3&w=800', // Genomic counseling
+    'https://images.unsplash.com/photo-1576091160399-112ba8d25d1f?ixlib=rb-4.0.3&w=800', // AI genomics
+    'https://images.unsplash.com/photo-1559757175-0eb30cd8c063?ixlib=rb-4.0.3&w=800', // Genetic data
+    'https://images.unsplash.com/photo-1576091160550-2173dba999ef?ixlib=rb-4.0.3&w=800', // Personalized medicine
+    'https://images.unsplash.com/photo-1582560469781-1965b9af5ffd?ixlib=rb-4.0.3&w=800', // Molecular diagnostics
+    'https://images.unsplash.com/photo-1628595351029-c2bf17511435?ixlib=rb-4.0.3&w=800', // Gene therapy research
+    'https://images.unsplash.com/photo-1576086213369-97a306d36557?ixlib=rb-4.0.3&w=800'  // Biomarker analysis
   ];
 
   private readonly categoryImageMap = {
     breaking_news: [
-      'https://images.unsplash.com/photo-1559757148-5c350d0d3c56?ixlib=rb-4.0.3&w=800', // Medical breaking news
-      'https://images.unsplash.com/photo-1576671081837-49000212a370?ixlib=rb-4.0.3&w=800', // AI news
-      'https://images.unsplash.com/photo-1584820927498-cfe5211fd8bf?ixlib=rb-4.0.3&w=800'  // Medical tech news
+      'https://images.unsplash.com/photo-1559757148-5c350d0d3c56?ixlib=rb-4.0.3&w=800',
+      'https://images.unsplash.com/photo-1576671081837-49000212a370?ixlib=rb-4.0.3&w=800',
+      'https://images.unsplash.com/photo-1584820927498-cfe5211fd8bf?ixlib=rb-4.0.3&w=800',
+      'https://images.unsplash.com/photo-1576091160550-2173dba999ef?ixlib=rb-4.0.3&w=800',
+      'https://images.unsplash.com/photo-1559757175-0eb30cd8c063?ixlib=rb-4.0.3&w=800',
+      'https://images.unsplash.com/photo-1576086213369-97a306d36557?ixlib=rb-4.0.3&w=800',
+      'https://images.unsplash.com/photo-1582560469781-1965b9af5ffd?ixlib=rb-4.0.3&w=800',
+      'https://images.unsplash.com/photo-1628595351029-c2bf17511435?ixlib=rb-4.0.3&w=800'
     ],
     research_update: [
-      'https://images.unsplash.com/photo-1551601651-2a8555f1a136?ixlib=rb-4.0.3&w=800', // Lab research
-      'https://images.unsplash.com/photo-1582719471384-894fbb16e074?ixlib=rb-4.0.3&w=800', // Medical research
-      'https://images.unsplash.com/photo-1504813184591-01572f98c85f?ixlib=rb-4.0.3&w=800'  // Research team
+      'https://images.unsplash.com/photo-1551601651-2a8555f1a136?ixlib=rb-4.0.3&w=800',
+      'https://images.unsplash.com/photo-1582719471384-894fbb16e074?ixlib=rb-4.0.3&w=800',
+      'https://images.unsplash.com/photo-1504813184591-01572f98c85f?ixlib=rb-4.0.3&w=800',
+      'https://images.unsplash.com/photo-1585435557343-3b092031d4fb?ixlib=rb-4.0.3&w=800',
+      'https://images.unsplash.com/photo-1576091160399-112ba8d25d1f?ixlib=rb-4.0.3&w=800',
+      'https://images.unsplash.com/photo-1559757141-c15d5ac13c77?ixlib=rb-4.0.3&w=800',
+      'https://images.unsplash.com/photo-1576091160550-2173dba999ef?ixlib=rb-4.0.3&w=800',
+      'https://images.unsplash.com/photo-1582560469781-1965b9af5ffd?ixlib=rb-4.0.3&w=800'
     ],
     tech_development: [
-      'https://images.unsplash.com/photo-1530026405186-ed1f139313f8?ixlib=rb-4.0.3&w=800', // Healthcare tech
-      'https://images.unsplash.com/photo-1576091160399-112ba8d25d1f?ixlib=rb-4.0.3&w=800', // Medical AI
-      'https://images.unsplash.com/photo-1559757141-c15d5ac13c77?ixlib=rb-4.0.3&w=800'  // Digital innovation
+      'https://images.unsplash.com/photo-1530026405186-ed1f139313f8?ixlib=rb-4.0.3&w=800',
+      'https://images.unsplash.com/photo-1576091160399-112ba8d25d1f?ixlib=rb-4.0.3&w=800',
+      'https://images.unsplash.com/photo-1559757141-c15d5ac13c77?ixlib=rb-4.0.3&w=800',
+      'https://images.unsplash.com/photo-1628595351029-c2bf17511435?ixlib=rb-4.0.3&w=800',
+      'https://images.unsplash.com/photo-1576086213369-97a306d36557?ixlib=rb-4.0.3&w=800',
+      'https://images.unsplash.com/photo-1582719471384-894fbb16e074?ixlib=rb-4.0.3&w=800',
+      'https://images.unsplash.com/photo-1559757175-0eb30cd8c063?ixlib=rb-4.0.3&w=800',
+      'https://images.unsplash.com/photo-1576091160550-2173dba999ef?ixlib=rb-4.0.3&w=800'
     ],
     industry_insight: [
-      'https://images.unsplash.com/photo-1559757175-0eb30cd8c063?ixlib=rb-4.0.3&w=800', // Digital health analytics
-      'https://images.unsplash.com/photo-1559757141-c15d5ac13c77?ixlib=rb-4.0.3&w=800', // Industry insights
-      'https://images.unsplash.com/photo-1584820927498-cfe5211fd8bf?ixlib=rb-4.0.3&w=800'  // Professional medical
+      'https://images.unsplash.com/photo-1559757175-0eb30cd8c063?ixlib=rb-4.0.3&w=800',
+      'https://images.unsplash.com/photo-1559757141-c15d5ac13c77?ixlib=rb-4.0.3&w=800',
+      'https://images.unsplash.com/photo-1584820927498-cfe5211fd8bf?ixlib=rb-4.0.3&w=800',
+      'https://images.unsplash.com/photo-1576091160550-2173dba999ef?ixlib=rb-4.0.3&w=800',
+      'https://images.unsplash.com/photo-1582560469781-1965b9af5ffd?ixlib=rb-4.0.3&w=800',
+      'https://images.unsplash.com/photo-1628595351029-c2bf17511435?ixlib=rb-4.0.3&w=800',
+      'https://images.unsplash.com/photo-1576086213369-97a306d36557?ixlib=rb-4.0.3&w=800',
+      'https://images.unsplash.com/photo-1585435557343-3b092031d4fb?ixlib=rb-4.0.3&w=800'
     ],
     fact_spotlight: [
-      'https://images.unsplash.com/photo-1559757148-5c350d0d3c56?ixlib=rb-4.0.3&w=800', // Health facts
-      'https://images.unsplash.com/photo-1576671081837-49000212a370?ixlib=rb-4.0.3&w=800', // AI facts
-      'https://images.unsplash.com/photo-1530026405186-ed1f139313f8?ixlib=rb-4.0.3&w=800', // Tech facts
-      'https://images.unsplash.com/photo-1504813184591-01572f98c85f?ixlib=rb-4.0.3&w=800'  // Medical professional
+      'https://images.unsplash.com/photo-1559757148-5c350d0d3c56?ixlib=rb-4.0.3&w=800',
+      'https://images.unsplash.com/photo-1576671081837-49000212a370?ixlib=rb-4.0.3&w=800',
+      'https://images.unsplash.com/photo-1530026405186-ed1f139313f8?ixlib=rb-4.0.3&w=800',
+      'https://images.unsplash.com/photo-1504813184591-01572f98c85f?ixlib=rb-4.0.3&w=800',
+      'https://images.unsplash.com/photo-1551601651-2a8555f1a136?ixlib=rb-4.0.3&w=800',
+      'https://images.unsplash.com/photo-1582719471384-894fbb16e074?ixlib=rb-4.0.3&w=800',
+      'https://images.unsplash.com/photo-1576091160399-112ba8d25d1f?ixlib=rb-4.0.3&w=800',
+      'https://images.unsplash.com/photo-1559757141-c15d5ac13c77?ixlib=rb-4.0.3&w=800'
     ]
   };
 
@@ -256,30 +341,83 @@ export class ImageAgent {
   private selectBestImage(images: string[], request: ImageRequest): string {
     console.log(`🎯 Selecting from ${images.length} available images, avoiding recently used ones...`);
     
-    // Filter out recently used images to ensure variety
-    const availableImages = images.filter(img => !this.recentlyUsedImages.has(img));
+    // Filter out recently used images
+    const availableImages = images.filter(img => !this.recentlyUsedImages.has(this.getImageId(img)));
     
-    // If all images were recently used, reset the tracking (rare edge case)
+    console.log(`📊 Available images after filtering: ${availableImages.length}/${images.length}`);
+    
+    // If no unused images available, reset the recently used set and use all images
     if (availableImages.length === 0) {
-      console.log('⚠️ All images recently used, resetting variety tracker');
+      console.log(`🔄 All images have been used recently, resetting usage history for variety`);
       this.recentlyUsedImages.clear();
+      this.imageUsageHistory.clear();
       return this.selectImageByContent(images, request);
     }
-
-    // Select best available image based on content
-    const selectedImage = this.selectImageByContent(availableImages, request);
     
-    // Track this image as recently used
-    this.recentlyUsedImages.add(selectedImage);
-    
-    // Maintain only the most recent images in tracking
-    if (this.recentlyUsedImages.size > this.maxRecentImages) {
-      const oldest = Array.from(this.recentlyUsedImages)[0];
-      this.recentlyUsedImages.delete(oldest);
+    // If we have very few available images left, be more selective
+    if (availableImages.length <= 3) {
+      console.log(`⚠️ Running low on unique images (${availableImages.length} left), prioritizing least used`);
+      return this.selectLeastUsedImage(availableImages, request);
     }
     
-    console.log(`✅ Selected image (${this.getImageName(selectedImage)}), tracking ${this.recentlyUsedImages.size} recent images`);
+    // Select from available images based on content relevance
+    const selectedImage = this.selectImageByContent(availableImages, request);
+    
+    // Track usage
+    this.trackImageUsage(selectedImage);
+    
     return selectedImage;
+  }
+
+  /**
+   * Selects the least used image from available options
+   */
+  private selectLeastUsedImage(images: string[], request: ImageRequest): string {
+    // Sort by usage count (ascending) and select the least used
+    const imagesByUsage = images.map(img => ({
+      url: img,
+      usageCount: this.imageUsageHistory.get(this.getImageId(img)) || 0
+    })).sort((a, b) => a.usageCount - b.usageCount);
+    
+    // From the least used images, select by content relevance
+    const leastUsedImages = imagesByUsage
+      .filter(img => img.usageCount === imagesByUsage[0].usageCount)
+      .map(img => img.url);
+    
+    return this.selectImageByContent(leastUsedImages, request);
+  }
+
+  /**
+   * Tracks image usage and manages the recently used set
+   */
+  private trackImageUsage(imageUrl: string): void {
+    const imageId = this.getImageId(imageUrl);
+    
+    // Add to recently used set
+    this.recentlyUsedImages.add(imageId);
+    
+    // Update usage count
+    const currentCount = this.imageUsageHistory.get(imageId) || 0;
+    this.imageUsageHistory.set(imageId, currentCount + 1);
+    
+    // Maintain the recently used set size
+    if (this.recentlyUsedImages.size > this.maxRecentImages) {
+      // Remove oldest entries (convert to array, remove first, convert back)
+      const recentArray = Array.from(this.recentlyUsedImages);
+      const toRemove = recentArray.slice(0, recentArray.length - this.maxRecentImages);
+      toRemove.forEach(id => this.recentlyUsedImages.delete(id));
+    }
+    
+    console.log(`✅ Selected image (${imageId.substring(0, 12)}...), tracking ${this.recentlyUsedImages.size} recent images`);
+  }
+
+  /**
+   * Gets a unique identifier for an image URL
+   */
+  private getImageId(imageUrl: string): string {
+    // Extract the unique part of the Unsplash URL
+    const match = imageUrl.match(/photo-([^?]+)/);
+    return match ? match[1] : imageUrl;
   }
 
   private selectImageByContent(images: string[], request: ImageRequest): string {
@@ -429,10 +567,41 @@ export class ImageAgent {
     // and select accordingly - enhancement for future versions
     return await this.getImageForContent(request);
   }
+
+  async selectImageForContent(request: ImageRequest): Promise<string> {
+    console.log(`🖼️ ImageAgent: Selecting image for ${request.contentType} content...`);
+    
+    try {
+      // Try the new unique image selection system
+      const { chooseUniqueImage } = await import('../utils/chooseUniqueImage');
+      const selectedImage = await chooseUniqueImage(request.contentType);
+      console.log(`✅ Selected unique image: ${selectedImage.slice(-30)}...`);
+      return selectedImage;
+      
+    } catch (error) {
+      console.error('⚠️ Error with unique image system, falling back to local system:', error);
+      
+      // Fallback to existing system
+      const stockImages = this.stockImageSources;
+      if (stockImages.length === 0) {
+        return this.generateBasicFallbackImage(request.contentType);
+      }
+      
+      return this.selectBestImage(stockImages, request);
+    }
+  }
+
+  /**
+   * Simple fallback image generation when all else fails
+   */
+  private generateBasicFallbackImage(contentType: string): string {
+    // Return first available stock image as fallback
+    return this.stockImageSources[0] || 'https://images.unsplash.com/photo-1559757148-5c350d0d3c56?ixlib=rb-4.0.3&w=800&q=80';
+  }
 }
 
 // Allow running as standalone script
 if (require.main === module) {
   const agent = new ImageAgent();
   agent.testImageGeneration();
-} 
+}

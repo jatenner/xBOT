@@ -46,4 +46,8 @@ Thumbs.db
 *.temp
 
 # Test files
-test_*.js 
+test_*.js
+debug_*.js
+demo_*.js
+check_*.js
+*.test.js 

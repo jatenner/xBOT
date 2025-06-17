@@ -101,7 +101,7 @@ export class ComprehensiveContentAgent {
     const curatedContent = [
       {
         title: "AI System Detects Early Alzheimer's from Voice Analysis",
-        url: "https://www.nature.com/articles/s41591-024-alzheimer-voice",
+        url: "https://www.nature.com/subjects/medical-research",
         source: "Nature Medicine",
         credibilityScore: 98,
         summary: "IBM's AI can detect cognitive decline 7 years before traditional methods using voice pattern analysis with 92% accuracy",

@@ -77,6 +77,9 @@ export class NewsAPIAgent {
     'Modern Healthcare': 87
   };
 
+  private recentlyUsedArticles: Set<string> = new Set();
+  private maxRecentArticles = 50; // Track last 50 articles to prevent repetition
+
   constructor() {
     this.apiKey = process.env.NEWS_API_KEY || '';
     if (!this.apiKey) {

@@ -126,6 +126,11 @@ class SupabaseService {
     this.client = createClient(supabaseUrl, supabaseKey);
   }
 
+  // Public getter for direct client access when needed
+  get supabase(): SupabaseClient | null {
+    return this.client;
+  }
+
   private checkClient() {
     if (!this.client) {
       console.warn('Supabase client not initialized (test mode)');
@@ -665,4 +670,8 @@ class SupabaseService {
   }
 }
 
-export const supabaseClient = new SupabaseService(); 
+export const supabaseClient = new SupabaseService();
+
+// Export direct client access for new utilities that need raw supabase access
+const serviceInstance = new SupabaseService();
+export const supabase = serviceInstance['client']; 

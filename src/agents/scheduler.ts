@@ -6,11 +6,14 @@ import { LearnAgent } from './learnAgent';
 import { ResearchAgent } from './researchAgent';
 import { AutonomousLearningAgent } from './autonomousLearningAgent';
 import { CrossIndustryLearningAgent } from './crossIndustryLearningAgent';
+import { NightlyOptimizerAgent } from './nightlyOptimizer';
 
 import dotenv from 'dotenv';
 import { RealTimeEngagementTracker } from './realTimeEngagementTracker';
 import { AutonomousTweetAuditor } from './autonomousTweetAuditor';
 import { AutonomousContentOrchestrator } from './autonomousContentOrchestrator';
+import { pubmedFetcher } from './pubmedFetcher.js';
+import { supabase } from '../utils/supabaseClient.js';
 
 dotenv.config();
 
@@ -22,6 +25,7 @@ export class Scheduler {
   private researchAgent: ResearchAgent;
   private autonomousLearner: AutonomousLearningAgent;
   private crossIndustryLearner: CrossIndustryLearningAgent;
+  private nightlyOptimizer: NightlyOptimizerAgent;
 
   private engagementTracker: RealTimeEngagementTracker;
   private tasks: any[] = [];
@@ -38,6 +42,7 @@ export class Scheduler {
   private weeklyReportJob: cron.ScheduledTask | null = null;
   private tweetAuditorJob: cron.ScheduledTask | null = null;
   private orchestratorJob: cron.ScheduledTask | null = null;
+  private nightlyOptimizerJob: cron.ScheduledTask | null = null;
 
   constructor() {
     this.strategistAgent = new StrategistAgent();
@@ -46,6 +51,8 @@ export class Scheduler {
     this.learnAgent = new LearnAgent();
     this.researchAgent = new ResearchAgent();
     this.autonomousLearner = new AutonomousLearningAgent();
+    this.crossIndustryLearner = new CrossIndustryLearningAgent();
+    this.nightlyOptimizer = new NightlyOptimizerAgent();
 
     this.engagementTracker = new RealTimeEngagementTracker();
     this.autonomousTweetAuditor = new AutonomousTweetAuditor();
@@ -158,6 +165,36 @@ export class Scheduler {
       }
     }, { scheduled: true });
 
+    // Add nightly optimization job
+    this.nightlyOptimizerJob = cron.schedule('0 3 * * *', async () => {
+      console.log('🌙 === NIGHTLY OPTIMIZATION TRIGGERED ===');
+      try {
+        await this.nightlyOptimizer.runNightlyOptimization();
+      } catch (error) {
+        console.error('❌ Nightly optimization failed:', error);
+      }
+    });
+
+    // PubMed research fetcher - every 6 hours
+    cron.schedule('0 */6 * * *', async () => {
+      try {
+        console.log('🔬 Running scheduled PubMed research fetch...');
+        await pubmedFetcher.fetchLatestResearch();
+      } catch (error) {
+        console.error('🔬 Scheduled PubMed fetch failed:', error);
+      }
+    });
+
+    // Style performance analyzer - nightly at 2 AM
+    cron.schedule('0 2 * * *', async () => {
+      try {
+        console.log('📊 Running nightly style performance analysis...');
+        await this.analyzeStylePerformance();
+      } catch (error) {
+        console.error('📊 Style analysis failed:', error);
+      }
+    });
+
     // Store job references for cleanup
     this.jobs.set('strategist', this.strategistJob);
     this.jobs.set('learning', this.learningJob);
@@ -166,6 +203,7 @@ export class Scheduler {
     this.jobs.set('weeklyReport', this.weeklyReportJob);
     this.jobs.set('tweetAuditor', this.tweetAuditorJob);
     this.jobs.set('orchestrator', this.orchestratorJob);
+    this.jobs.set('nightlyOptimizer', this.nightlyOptimizerJob);
 
     // Start all jobs
     this.strategistJob.start();
@@ -175,6 +213,7 @@ export class Scheduler {
     this.weeklyReportJob.start();
     this.tweetAuditorJob.start();
     this.orchestratorJob.start();
+    this.nightlyOptimizerJob.start();
 
     // Start engagement tracker
     try {
@@ -193,6 +232,7 @@ export class Scheduler {
     console.log('   - 🤖 Autonomous Tweet Auditor: Every 2 hours');
     console.log('   - 👑 Supreme Content Orchestrator: Every 4 hours');
     console.log('   - Real-time Engagement Tracking: Continuous');
+    console.log('   - Nightly Optimizer: Daily at 3:00 AM UTC');
     
     console.log('🧠 AUTONOMOUS INTELLIGENCE ACTIVATED:');
     console.log('   - System continuously learns and improves');
@@ -304,12 +344,20 @@ export class Scheduler {
     try {
       console.log('\n📊 === Learning Cycle Started ===');
       
-      const insights = await this.learnAgent.run();
+      const result = await this.learnAgent.run();
 
-      if (insights) {
+      if (result.success && result.insights) {
         console.log('✅ Learning completed successfully');
-        console.log(`Analyzed ${insights.topPerformingTweets.length} top tweets`);
-        console.log(`Generated ${insights.contentRecommendations.length} recommendations`);
+        console.log(`Top variant: ${result.topVariant || 'default'}`);
+        console.log(`Insights generated: ${JSON.stringify(result.insights).length} characters`);
+        
+        // Log specific insights if available
+        if (result.insights.topPerformingVariant) {
+          console.log(`Best performing variant: ${result.insights.topPerformingVariant.variant}`);
+        }
+        if (result.insights.recommendations) {
+          console.log(`Generated ${result.insights.recommendations.length} recommendations`);
+        }
       } else {
         console.log('❌ Learning failed or no data available');
       }
@@ -341,6 +389,73 @@ export class Scheduler {
       
     } catch (error) {
       console.error('Failed to generate weekly report:', error);
+    }
+  }
+
+  private async analyzeStylePerformance(): Promise<void> {
+    try {
+      // Get 7-day tweet performance by style
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+      const { data: tweets, error } = await supabase
+        .from('tweets')
+        .select('style, eng_score')
+        .gte('created_at', sevenDaysAgo.toISOString())
+        .not('style', 'is', null)
+        .not('eng_score', 'is', null);
+
+      if (error || !tweets || tweets.length === 0) {
+        console.log('📊 No recent tweets with style/engagement data');
+        return;
+      }
+
+      // Calculate average engagement by style
+      const styleStats = new Map<string, { total: number; count: number }>();
+      
+      tweets.forEach(tweet => {
+        if (!styleStats.has(tweet.style)) {
+          styleStats.set(tweet.style, { total: 0, count: 0 });
+        }
+        const stats = styleStats.get(tweet.style)!;
+        stats.total += tweet.eng_score;
+        stats.count += 1;
+      });
+
+      // Calculate weights (higher for better performing styles)
+      const styleWeights: Record<string, number> = {};
+      let totalAvgScore = 0;
+      let styleCount = 0;
+
+      styleStats.forEach((stats, style) => {
+        const avgScore = stats.total / stats.count;
+        styleWeights[style] = avgScore;
+        totalAvgScore += avgScore;
+        styleCount++;
+      });
+
+      if (styleCount === 0) return;
+
+      const overallAvg = totalAvgScore / styleCount;
+      
+      // Normalize weights (1.0 = average, higher = better)
+      Object.keys(styleWeights).forEach(style => {
+        styleWeights[style] = Math.max(0.1, styleWeights[style] / overallAvg);
+      });
+
+      // Update bot config
+      await supabase
+        .from('bot_config')
+        .upsert({
+          key: 'style_weights',
+          value: JSON.stringify(styleWeights),
+          updated_at: new Date().toISOString()
+        });
+
+      console.log('📊 Style weights updated:', styleWeights);
+
+    } catch (error) {
+      console.error('📊 Style analysis error:', error);
     }
   }
 

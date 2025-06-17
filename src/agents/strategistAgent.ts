@@ -3,7 +3,14 @@ import dotenv from 'dotenv';
 import { PostTweetAgent } from './postTweet';
 import { ReplyAgent } from './replyAgent';
 import { ThreadAgent } from './threadAgent';
+import { PollAgent } from './pollAgent';
+import { QuoteAgent } from './quoteAgent';
 import { RateLimitedEngagementAgent } from './rateLimitedEngagementAgent';
+import { isBotDisabled } from '../utils/flagCheck';
+import { canMakeWrite, safeWrite, getQuotaStatus, shouldBackOff } from '../utils/quotaGuard';
+import { chooseUniqueImage } from '../utils/chooseUniqueImage';
+import { APIOptimizer } from '../utils/apiOptimizer';
+import { UltraViralGenerator } from './ultraViralGenerator';
 
 dotenv.config();
 
@@ -15,7 +22,7 @@ interface EngagementWindow {
 }
 
 interface StrategistDecision {
-  action: 'post' | 'reply' | 'thread' | 'sleep';
+  action: 'post' | 'reply' | 'thread' | 'poll' | 'quote' | 'sleep';
   priority: number;
   reasoning: string;
   expectedEngagement: number;
@@ -26,9 +33,12 @@ export class StrategistAgent {
   private lastPostTime: number = 0;
   private postCount24h: number = 0;
   private lastResetTime: number = Date.now();
+  private lastAltFormatTime: number = 0; // Track alternative format timing
   private postTweetAgent: PostTweetAgent;
   private replyAgent: ReplyAgent;
   private threadAgent: ThreadAgent;
+  private pollAgent: PollAgent;
+  private quoteAgent: QuoteAgent;
   private rateLimitedAgent: RateLimitedEngagementAgent;
 
   // Enhanced engagement windows for 10X results
@@ -90,6 +100,8 @@ export class StrategistAgent {
     this.postTweetAgent = new PostTweetAgent();
     this.replyAgent = new ReplyAgent();
     this.threadAgent = new ThreadAgent();
+    this.pollAgent = new PollAgent();
+    this.quoteAgent = new QuoteAgent();
     this.rateLimitedAgent = new RateLimitedEngagementAgent();
   }
 
@@ -114,10 +126,10 @@ export class StrategistAgent {
 
     // Calculate daily budget status
     const hoursIntoDay = currentHour + (now.getMinutes() / 60);
-    const expectedPostsByNow = Math.floor((hoursIntoDay / 24) * 15);
+    const expectedPostsByNow = Math.floor((hoursIntoDay / 24) * 25);
     const budgetStatus = this.postCount24h <= expectedPostsByNow ? 'ON TRACK' : 'AHEAD';
     
-    console.log(`💰 Daily Budget: ${this.postCount24h}/15 used (${budgetStatus}) | Expected by now: ${expectedPostsByNow}`);
+    console.log(`💰 Daily Budget: ${this.postCount24h}/25 used (${budgetStatus}) | Expected by now: ${expectedPostsByNow}`);
 
     // Get current engagement context
     const engagementContext = this.getCurrentEngagementContext(currentHour, currentDay);
@@ -133,18 +145,57 @@ export class StrategistAgent {
   }
 
   private async makeStrategicDecision(engagementContext: EngagementWindow, now: Date): Promise<StrategistDecision> {
+    // Check kill switch first
+    if (await isBotDisabled()) {
+      return {
+        action: 'sleep',
+        priority: 0,
+        reasoning: 'Bot disabled via kill switch',
+        expectedEngagement: 0
+      };
+    }
+
     const timeSinceLastPost = now.getTime() - this.lastPostTime;
     const minutesSinceLastPost = timeSinceLastPost / (1000 * 60);
+    const timeSinceLastAltFormat = now.getTime() - this.lastAltFormatTime;
+    const hoursSinceLastAltFormat = timeSinceLastAltFormat / (1000 * 60 * 60);
     
     // Calculate optimal spacing for Free tier (17 tweets per day)
     const hoursIntoDay = now.getHours() + (now.getMinutes() / 60);
-    const expectedPostsByNow = Math.floor((hoursIntoDay / 24) * 15); // Conservative 15 instead of 17
+    const expectedPostsByNow = Math.floor((hoursIntoDay / 24) * 25);
     const isAheadOfSchedule = this.postCount24h > expectedPostsByNow;
     
+    // Check quota status
+    const quotaStatus = await getQuotaStatus();
+    if (quotaStatus.writes >= 400) { // Conservative limit
+      return {
+        action: 'sleep',
+        priority: 0,
+        reasoning: `API quota nearly exhausted (${quotaStatus.writes}/450)`,
+        expectedEngagement: 0
+      };
+    }
+
+    // ALTERNATIVE FORMAT SCHEDULING: Every 3 hours
+    if (hoursSinceLastAltFormat >= 3 && this.postCount24h < 12) {
+      const altFormats = ['poll', 'quote'] as const;
+      const chosenFormat = altFormats[Math.floor(Math.random() * altFormats.length)];
+      
+      this.lastAltFormatTime = now.getTime();
+      
+      return {
+        action: chosenFormat,
+        priority: 8,
+        reasoning: `Alternative format scheduled (${hoursSinceLastAltFormat.toFixed(1)}h since last) - ${chosenFormat} for variety`,
+        expectedEngagement: engagementContext.multiplier * 1.2,
+        contentType: `alt_${chosenFormat}`
+      };
+    }
+
     // 10X ENGAGEMENT STRATEGY: THREAD WINDOWS
     if (engagementContext.multiplier >= 2.4) {
       // Only post threads if we haven't exceeded our daily budget
-      if (this.postCount24h < 15) {
+      if (this.postCount24h < 12) {
         return {
           action: 'thread',
           priority: 10,
@@ -156,7 +207,7 @@ export class StrategistAgent {
         return {
           action: 'reply',
           priority: 8,
-          reasoning: `Thread window but daily limit reached (${this.postCount24h}/15) - high-value replies instead`,
+          reasoning: `Thread window but daily limit reached (${this.postCount24h}/12) - high-value replies instead`,
           expectedEngagement: engagementContext.multiplier * 0.8,
           contentType: 'expert_reply'
         };
@@ -168,7 +219,7 @@ export class StrategistAgent {
       // Smart spacing: Don't spam even in peak windows
       const minimumSpacing = isAheadOfSchedule ? 90 : 60; // More conservative if ahead of schedule
       
-      if (minutesSinceLastPost >= minimumSpacing && this.postCount24h < 15) {
+      if (minutesSinceLastPost >= minimumSpacing && this.postCount24h < 12) {
         return {
           action: 'post',
           priority: 9,
@@ -176,11 +227,11 @@ export class StrategistAgent {
           expectedEngagement: engagementContext.multiplier,
           contentType: 'original_research'
         };
-      } else if (this.postCount24h >= 15) {
+      } else if (this.postCount24h >= 12) {
         return {
           action: 'reply',
           priority: 7,
-          reasoning: `Peak window but daily limit reached (${this.postCount24h}/15) - focusing on high-value engagement`,
+          reasoning: `Peak window but daily limit reached (${this.postCount24h}/12) - focusing on high-value engagement`,
           expectedEngagement: engagementContext.multiplier * 0.6,
           contentType: 'expert_reply'
         };
@@ -199,77 +250,31 @@ export class StrategistAgent {
     if (engagementContext.multiplier >= 1.1) {
       const requiredSpacing = isAheadOfSchedule ? 120 : 90; // More spacing if ahead of schedule
       
-      if (minutesSinceLastPost >= requiredSpacing && this.postCount24h < 15) {
+      if (minutesSinceLastPost >= requiredSpacing && this.postCount24h < 12) {
         return {
           action: 'post',
           priority: 6,
-          reasoning: `Good engagement window with sufficient cooldown - posting quality content`,
+          reasoning: `Good engagement window - posting quality content (first post of day)`,
           expectedEngagement: engagementContext.multiplier,
           contentType: 'current_events'
         };
       } else {
         return {
-          action: 'reply',
-          priority: 5,
-          reasoning: `Good engagement, building community through replies`,
-          expectedEngagement: engagementContext.multiplier * 0.7,
-          contentType: 'value_add_reply'
+          action: 'sleep',
+          priority: 1,
+          reasoning: `Enforcing post spacing - need ${(requiredSpacing - minutesSinceLastPost).toFixed(1)}m more before next post`,
+          expectedEngagement: 0,
+          contentType: 'spacing_control'
         };
       }
-    }
-
-    // DECENT ENGAGEMENT (0.7x+): Very careful strategy
-    if (engagementContext.multiplier >= 0.7) {
-      // Check daily limits - Free tier allows 17 tweets per day, use 15 conservatively
-      if (this.postCount24h >= 15) {
-        return {
-          action: 'reply',
-          priority: 4,
-          reasoning: `Daily post limit reached (${this.postCount24h}/15) - focusing on replies`,
-          expectedEngagement: engagementContext.multiplier * 0.5,
-          contentType: 'community_engagement'
-        };
-      }
-
-      // Only post if we're behind schedule and have good spacing
-      const isWellBehindSchedule = this.postCount24h < (expectedPostsByNow - 2);
-      if (minutesSinceLastPost >= 180 && isWellBehindSchedule) { // 3 hours minimum
-        return {
-          action: 'post',
-          priority: 4,
-          reasoning: `Behind schedule (${this.postCount24h}/${expectedPostsByNow}) - strategic catch-up post`,
-          expectedEngagement: engagementContext.multiplier,
-          contentType: 'informational'
-        };
-      } else {
-        return {
-          action: 'reply',
-          priority: 3,
-          reasoning: `Decent engagement - maintaining presence through replies`,
-          expectedEngagement: engagementContext.multiplier * 0.6,
-          contentType: 'discussion_participant'
-        };
-      }
-    }
-
-    // MEDIUM ENGAGEMENT (0.5x+): Reply focus during business hours
-    if (engagementContext.multiplier >= 0.5 && this.isBusinessHours(now)) {
-      return {
-        action: 'reply',
-        priority: 3,
-        reasoning: `Medium engagement but business hours - community building through replies`,
-        expectedEngagement: engagementContext.multiplier * 0.4,
-        contentType: 'professional_reply'
-      };
     }
 
     // LOW ENGAGEMENT: Sleep until better timing
     return {
       action: 'sleep',
       priority: 1,
-      reasoning: `Low engagement window (${engagementContext.multiplier}x) - conserving daily tweet budget (${this.postCount24h}/15)`,
-      expectedEngagement: 0,
-      contentType: 'none'
+      reasoning: `Low engagement window (${engagementContext.multiplier}x) - conserving daily tweet budget (${this.postCount24h}/12)`,
+      expectedEngagement: 0
     };
   }
 
@@ -317,6 +322,27 @@ export class StrategistAgent {
 
   // Public method for scheduler to execute decisions
   async executeDecision(decision: StrategistDecision): Promise<any> {
+    // 🛑 KILL SWITCH CHECK - First priority
+    if (await isBotDisabled()) {
+      console.log('🛑 BOT DISABLED BY KILL SWITCH - All operations stopped');
+      return;
+    }
+
+    // 📊 QUOTA GUARD CHECK - Prevent 429 errors  
+    if (!(await canMakeWrite())) {
+      console.log('⚠️ Daily write quota exceeded - skipping operations');
+      return;
+    }
+
+    if (shouldBackOff()) {
+      console.log('⚠️ In backoff period - reducing activity');
+      return;
+    }
+
+    // Display quota status
+    const quotaStatus = await getQuotaStatus();
+    console.log(`📊 API Quota: ${quotaStatus.writes}/450 writes, ${quotaStatus.reads}/90 reads`);
+
     try {
       console.log(`📝 Executing ${decision.action} action...`);
 
@@ -338,6 +364,20 @@ export class StrategistAgent {
           console.log('🧵 PRIMARY: Creating viral thread...');
           simultaneousActions.push(
             this.executeThread().then(result => ({ type: 'thread', ...result }))
+          );
+          break;
+
+        case 'poll':
+          console.log('📊 PRIMARY: Creating engaging poll...');
+          simultaneousActions.push(
+            this.executePoll().then(result => ({ type: 'poll', ...result }))
+          );
+          break;
+
+        case 'quote':
+          console.log('💬 PRIMARY: Quote tweeting with commentary...');
+          simultaneousActions.push(
+            this.executeQuote().then(result => ({ type: 'quote', ...result }))
           );
           break;
 
@@ -405,6 +445,12 @@ export class StrategistAgent {
         action.type === decision.action || action.type === 'post' || action.type === 'thread'
       );
 
+      // Execute the decision
+      const allResults = await Promise.allSettled([
+        primaryAction,
+        ...successfulActions.filter(action => action.type !== decision.action)
+      ]);
+
       return {
         success: successfulActions.length > 0, // Success if ANY action succeeded
         primaryAction: primaryAction || { success: false, error: 'Primary action failed' },
@@ -456,31 +502,17 @@ export class StrategistAgent {
   }
 
   private async executeThread(): Promise<any> {
-    console.log('🧵 Generating viral thread...');
-    const threadContent = await this.threadAgent.generateViralThread();
+    const threadResult = await this.threadAgent.run();
     
-    console.log(`🎯 Thread Quality: ${threadContent.qualityScore}/100`);
-    console.log(`📈 Predicted Engagement: ${threadContent.predictedEngagement}% (10X TARGET)`);
-    
-    const threadIds = await this.threadAgent.postThread(threadContent);
-    
-    if (threadIds.length > 0) {
+    if (threadResult.success) {
       this.lastPostTime = Date.now();
       this.postCount24h++;
-      console.log(`✅ Thread posted: ${threadIds[0]} (${threadIds.length} tweets)`);
-      console.log(`🎯 Hook: ${threadContent.hookTweet}`);
+      console.log(`✅ Thread posted: ${threadResult.threadId} (${threadResult.tweetCount} tweets)`);
     } else {
       console.log(`⚠️ Thread posting failed`);
     }
     
-    return {
-      success: threadIds.length > 0,
-      threadId: threadIds[0],
-      tweetIds: threadIds,
-      content: threadContent.hookTweet,
-      qualityScore: threadContent.qualityScore,
-      predictedEngagement: threadContent.predictedEngagement
-    };
+    return threadResult;
   }
 
   private async executeReply(): Promise<any> {
@@ -581,5 +613,34 @@ export class StrategistAgent {
     } catch (error) {
       return { success: false, error: 'Background intelligence failed' };
     }
+  }
+
+  private async executePoll(): Promise<any> {
+    const pollResult = await this.pollAgent.run();
+    
+    if (pollResult.success) {
+      this.lastPostTime = Date.now();
+      this.postCount24h++;
+      console.log(`✅ Poll posted: ${pollResult.pollId} on topic: ${pollResult.topic}`);
+    } else {
+      console.log(`⚠️ Poll posting failed`);
+    }
+    
+    return pollResult;
+  }
+
+  private async executeQuote(): Promise<any> {
+    const quoteResult = await this.quoteAgent.run();
+    
+    if (quoteResult.success) {
+      this.lastPostTime = Date.now();
+      this.postCount24h++;
+      console.log(`✅ Quote tweet posted: ${quoteResult.quoteId}`);
+      console.log(`📝 Original: ${quoteResult.originalTweet?.substring(0, 100)}...`);
+    } else {
+      console.log(`⚠️ Quote tweet posting failed`);
+    }
+    
+    return quoteResult;
   }
 } 
