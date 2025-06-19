@@ -3,7 +3,7 @@ services:
     name: autonomous-health-bot
     runtime: node
     buildCommand: npm install && npm run build
-    startCommand: npm start
+    startCommand: node src/index.js
     plan: starter
     envVars:
       - key: NODE_ENV
