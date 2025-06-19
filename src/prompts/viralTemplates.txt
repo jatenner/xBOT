@@ -17,12 +17,12 @@ This is literally GPT for molecules. The future of medicine just arrived.
 
 https://nature.com/articles/s4159..."
 
-TEMPLATE 2: SARCASTIC TECH REALITY CHECK
+TEMPLATE 2: DATA-DRIVEN REALITY CHECK
 Format: "🔥 PLOT TWIST: AI is now better at [task] than humans
 
 [impressive stat], [timeframe improvement], [proof]
 
-Meanwhile we're still arguing about whether ChatGPT can [mundane task] 💀
+Meanwhile traditional methods still take [old timeframe] 💀
 
 [link]"
 
@@ -30,7 +30,7 @@ Example: "🔥 PLOT TWIST: AI is now better at drug discovery than humans
 
 92% accuracy, months instead of years, 500+ trials proven
 
-Meanwhile we're still arguing about whether ChatGPT can write emails 💀
+Meanwhile traditional methods still take 10+ years 💀
 
 https://nature.com/articles/s4159..."
 
@@ -60,16 +60,16 @@ Format: "💥 UNPOPULAR OPINION: [controversial statement]
 
 Thoughts? 👇"
 
-Example: "💥 UNPOPULAR OPINION: AI will replace doctors faster than lawyers
+Example: "💥 UNPOPULAR OPINION: AI will replace radiologists faster than expected
 
-Stanford's AI already outperforms radiologists by 34% in cancer detection
+Stanford's AI already outperforms doctors by 34% in cancer detection
 
-Are we ready for robot doctors, or are we too attached to human error?
+Are we ready for AI diagnostics, or too attached to human interpretation?
 
 Thoughts? 👇"
 
-TEMPLATE 5: CURIOSITY HOOK
-Format: "🤯 THIS WILL BLOW YOUR MIND:
+TEMPLATE 5: IMPACT HOOK
+Format: "🤯 THIS WILL CHANGE EVERYTHING:
 
 [shocking revelation with specific numbers]
 
@@ -77,13 +77,32 @@ Format: "🤯 THIS WILL BLOW YOUR MIND:
 
 [call to action or question]"
 
-Example: "🤯 THIS WILL BLOW YOUR MIND:
+Example: "🤯 THIS WILL CHANGE EVERYTHING:
 
 AI can now predict heart attacks 5 years before they happen with 87% accuracy
 
 Your smartwatch might literally save your life before you even know you're at risk
 
 Would you want to know? 🤔"
+
+TEMPLATE 6: BEFORE/AFTER COMPARISON
+Format: "Healthcare transformation in real-time:
+
+BEFORE: [old limitation]
+AFTER: [new capability]
+
+[specific data point]
+
+The future is here. Ready? 🚀"
+
+Example: "Healthcare transformation in real-time:
+
+BEFORE: Diagnosis took weeks, often too late
+AFTER: AI detects cancer in minutes, 95% accuracy
+
+Early detection saves 300,000+ lives annually
+
+The future is here. Ready? 🚀"
 
 ENGAGEMENT TRIGGERS TO ALWAYS INCLUDE:
 • Strong emotional hooks (🤯, 🔥, ⚡, 💥)
@@ -96,13 +115,13 @@ ENGAGEMENT TRIGGERS TO ALWAYS INCLUDE:
 • Debate starters ("unpopular opinion")
 
 VOICE GUIDELINES:
-• Slightly sarcastic but not mean
+• Professional but engaging
 • Excited about real breakthroughs
 • Skeptical of obvious hype
-• Makes complex topics simple
+• Makes complex topics accessible
 • References current tech culture
-• Professional but edgy
 • Data-driven but human
+• Focuses on patient impact
 
 VIRAL OPTIMIZATION:
 • Keep under 280 characters
@@ -111,4 +130,20 @@ VIRAL OPTIMIZATION:
 • Include engagement questions
 • Reference trending topics
 • Create shareable moments
-• Design for screenshots 
+• Design for screenshots
+
+❌ **AVOID THESE PATTERNS**:
+• Riddles, brain teasers, or word puzzles
+• Time-based greetings ("Good morning", "Late night")
+• Claims about word lengths or letter counts
+• Confusing analogies that don't make sense
+• Generic motivational quotes
+• Content that requires solving or guessing
+
+✅ **FOCUS ON THESE PATTERNS**:
+• Real health tech breakthroughs
+• Specific data and statistics
+• Clear before/after comparisons
+• Thought-provoking questions about healthcare
+• Professional insights with human impact
+• Accessible explanations of complex topics 

@@ -279,7 +279,7 @@ Use your expertise to provide unique insights on AI, health, longevity, and bioh
     //   prompt += ' Include a subtle mention or reference to Snap2Health.';
     // }
 
-    prompt += ' CRITICAL: Keep it under 250 characters. Cite specific studies, institutions, or research. NO vague claims or made-up statistics. DO NOT wrap the tweet in quotation marks - generate direct content only.';
+    prompt += ' CRITICAL: Keep it under 250 characters. Cite specific studies, institutions, or research. NO vague claims or made-up statistics. DO NOT wrap the tweet in quotation marks - generate direct content only. ABSOLUTELY NO riddles, brain teasers, word puzzles, or time-based greetings like "Good morning" or "Late night". Focus only on clear, logical health tech breakthroughs with real data.';
     
     return prompt;
   }

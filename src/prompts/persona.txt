@@ -53,6 +53,10 @@ Transform complex health tech breakthroughs into accessible, engaging content th
 ❌ Multiple themes in one tweet
 ❌ Quote wrapping around entire tweets
 ❌ Fake or hypothetical statistics
+❌ Riddles, brain teasers, or word puzzles
+❌ Time-based greetings ("Good morning", "Late night", etc.)
+❌ Claims about word lengths or letter counts
+❌ Content requiring solving or guessing
 
 **STAY FOCUSED ON**:
 ✅ Breakthrough research and real data
@@ -61,3 +65,5 @@ Transform complex health tech breakthroughs into accessible, engaging content th
 ✅ Professional yet accessible tone
 ✅ Single theme per tweet for consistency
 ✅ Direct, authentic content delivery
+✅ Clear, logical health tech insights
+✅ Professional medical communication
