@@ -2,7 +2,7 @@ services:
   - type: background_worker
     name: autonomous-health-bot
     runtime: node
-    buildCommand: npm install && npm run build
+    buildCommand: npm install --include=dev && npm run build
     startCommand: node src/index.js
     plan: starter
     envVars:
