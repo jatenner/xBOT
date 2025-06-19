@@ -152,7 +152,7 @@ export class NewsAPIAgent {
       };
 
       const response = await axios.get(`${this.baseUrl}/everything`, { params });
-      const newsData: NewsAPIResponse = response.data;
+      const newsData: NewsAPIResponse = response.data as NewsAPIResponse;
 
       if (newsData.status !== 'ok') {
         throw new Error(`NewsAPI error: ${newsData.status}`);
@@ -216,7 +216,7 @@ export class NewsAPIAgent {
     };
 
     const response = await axios.get(`${this.baseUrl}/everything`, { params });
-    const newsData: NewsAPIResponse = response.data;
+    const newsData: NewsAPIResponse = response.data as NewsAPIResponse;
 
     if (newsData.status !== 'ok') {
       throw new Error(`NewsAPI error: ${newsData.status}`);

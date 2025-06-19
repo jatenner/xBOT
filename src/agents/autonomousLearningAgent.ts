@@ -147,7 +147,7 @@ Respond with specific, actionable insights in JSON format:
         sources.map(async (source) => {
           try {
             const response = await axios.get(source, { timeout: 10000 });
-            return this.parseIndustryNews(response.data, source);
+            return this.parseIndustryNews(response.data as string, source);
           } catch (error) {
             console.warn(`Failed to fetch from ${source}`);
             return [];

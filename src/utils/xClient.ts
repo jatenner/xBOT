@@ -131,7 +131,7 @@ class XService {
             'User-Agent': 'Snap2Health-Bot/1.0'
           }
         });
-        mediaBuffer = Buffer.from(response.data);
+        mediaBuffer = Buffer.from(response.data as ArrayBuffer);
       } else {
         // Read local file
         mediaBuffer = fs.readFileSync(mediaUrl);

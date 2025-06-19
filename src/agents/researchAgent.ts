@@ -260,7 +260,7 @@ export class ResearchAgent {
             }
           });
           
-          const $ = cheerio.load(response.data);
+          const $ = cheerio.load(response.data as string);
           
           // Extract recent article headlines and links
           const articles = $('article, .post, .entry').slice(0, 3);

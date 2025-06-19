@@ -485,7 +485,7 @@ export class ImageAgent {
       const localPath = path.join(this.imageDirectory, fileName);
       const writer = fs.createWriteStream(localPath);
 
-      response.data.pipe(writer);
+      (response.data as any).pipe(writer);
 
       return new Promise((resolve, reject) => {
         writer.on('finish', () => resolve(localPath));
