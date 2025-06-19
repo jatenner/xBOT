@@ -7,7 +7,7 @@ import { PollAgent } from './pollAgent';
 import { QuoteAgent } from './quoteAgent';
 import { RateLimitedEngagementAgent } from './rateLimitedEngagementAgent';
 import { isBotDisabled } from '../utils/flagCheck';
-import { canMakeWrite, safeWrite, getQuotaStatus, shouldBackOff } from '../utils/quotaGuard';
+import { canMakeWrite, safeWrite, getQuotaStatus, shouldBackOff, getEngagementStrategy } from '../utils/quotaGuard';
 import { chooseUniqueImage } from '../utils/chooseUniqueImage';
 import { APIOptimizer } from '../utils/apiOptimizer';
 import { UltraViralGenerator } from './ultraViralGenerator';
@@ -328,14 +328,33 @@ export class StrategistAgent {
       return;
     }
 
-    // 📊 QUOTA GUARD CHECK - Prevent 429 errors  
-    if (!(await canMakeWrite())) {
-      console.log('⚠️ Daily write quota exceeded - skipping operations');
+    // 🎯 SMART ENGAGEMENT STRATEGY - Adapt to API limits
+    const engagementStrategy = await getEngagementStrategy();
+    console.log(`📊 Engagement Strategy: ${engagementStrategy.strategy}`);
+    console.log(`📈 ${engagementStrategy.monthlyStatus}`);
+    console.log(`🎯 Next Action: ${engagementStrategy.nextAction}`);
+
+    // Handle different strategy modes
+    if (engagementStrategy.strategy === 'MONTHLY_CAP_REACHED') {
+      console.log('🚨 === MONTHLY API LIMIT REACHED ===');
+      console.log('💡 Switching to ENGAGEMENT-ONLY mode until next month');
+      if (engagementStrategy.canEngage) {
+        // Execute only engagement activities (likes, follows, reads)
+        await this.executeEngagementOnlyMode();
+      }
       return;
     }
 
-    if (shouldBackOff()) {
-      console.log('⚠️ In backoff period - reducing activity');
+    if (engagementStrategy.strategy === 'RATE_LIMIT_BACKOFF') {
+      console.log('⏳ In rate limit backoff - using time for strategic intelligence');
+      return;
+    }
+
+    if (!engagementStrategy.canPost) {
+      console.log('⚠️ Posting disabled - executing engagement activities only');
+      if (engagementStrategy.canEngage) {
+        await this.executeEngagementOnlyMode();
+      }
       return;
     }
 
@@ -642,5 +661,37 @@ export class StrategistAgent {
     }
     
     return quoteResult;
+  }
+
+  // Engagement-only mode for when posting is limited but engagement is allowed
+  private async executeEngagementOnlyMode(): Promise<void> {
+    console.log('💫 === ENGAGEMENT-ONLY MODE ACTIVATED ===');
+    console.log('🎯 Maximum non-posting engagement for algorithmic visibility');
+    
+    try {
+      // Execute parallel engagement activities that don't require posting
+      const engagementPromises = [
+        this.executeParallelLikes(),
+        this.executeParallelFollows(), 
+        this.executeBackgroundIntelligence()
+      ];
+
+      const results = await Promise.allSettled(engagementPromises);
+      
+      let successCount = 0;
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+          successCount++;
+        } else {
+          console.log(`⚠️ Engagement activity ${index + 1} failed:`, result.reason);
+        }
+      });
+
+      console.log(`✅ ENGAGEMENT-ONLY COMPLETE: ${successCount}/3 activities successful`);
+      console.log('💡 Maintaining algorithmic presence without posting');
+      
+    } catch (error) {
+      console.error('❌ Error in engagement-only mode:', error);
+    }
   }
 } 

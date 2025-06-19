@@ -19,6 +19,9 @@ let backoffState: BackoffState = {
 
 const WRITE_LIMIT = 450;
 const READ_LIMIT = 90;
+// Monthly limits for X API Free Tier
+const MONTHLY_TWEET_LIMIT = 1500;
+const MONTHLY_READ_LIMIT = 10000;
 const BACKOFF_DURATIONS = [0, 15 * 60 * 1000, 30 * 60 * 1000, 60 * 60 * 1000]; // ms
 
 export async function getQuotaStatus(): Promise<QuotaStatus> {
@@ -45,6 +48,30 @@ export async function getQuotaStatus(): Promise<QuotaStatus> {
   }
 }
 
+export async function getMonthlyQuotaStatus(): Promise<{ tweets: number; reads: number; month: string }> {
+  try {
+    const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
+    const { data, error } = await supabaseClient.supabase
+      ?.from('monthly_api_usage')
+      .select('*')
+      .eq('month', currentMonth)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      throw error;
+    }
+
+    return {
+      tweets: data?.tweets || 0,
+      reads: data?.reads || 0,
+      month: currentMonth
+    };
+  } catch (error) {
+    console.error('Error getting monthly quota status:', error);
+    return { tweets: 0, reads: 0, month: new Date().toISOString().slice(0, 7) };
+  }
+}
+
 export async function canMakeWrite(): Promise<boolean> {
   // Check backoff first
   if (isInBackoff()) {
@@ -53,7 +80,10 @@ export async function canMakeWrite(): Promise<boolean> {
   }
 
   const status = await getQuotaStatus();
-  return status.writes < WRITE_LIMIT;
+  const monthlyStatus = await getMonthlyQuotaStatus();
+  
+  // Check both daily and monthly limits
+  return status.writes < WRITE_LIMIT && monthlyStatus.tweets < MONTHLY_TWEET_LIMIT;
 }
 
 export async function canMakeRead(): Promise<boolean> {
@@ -63,7 +93,10 @@ export async function canMakeRead(): Promise<boolean> {
   }
 
   const status = await getQuotaStatus();
-  return status.reads < READ_LIMIT;
+  const monthlyStatus = await getMonthlyQuotaStatus();
+  
+  // Check both daily and monthly limits
+  return status.reads < READ_LIMIT && monthlyStatus.reads < MONTHLY_READ_LIMIT;
 }
 
 export async function safeWrite<T>(operation: () => Promise<T>): Promise<T | null> {
@@ -139,6 +172,7 @@ function handleRateLimit(): void {
   
   const duration = BACKOFF_DURATIONS[backoffState.backoffLevel] / (60 * 1000); // minutes
   console.log(`🚨 Rate limited! Entering backoff level ${backoffState.backoffLevel} for ${duration} minutes`);
+  console.log(`💡 Ghost Killer Mode: Using this time for strategic intelligence gathering...`);
 }
 
 function resetBackoff(): void {
@@ -210,4 +244,58 @@ export async function checkWriteQuotaWithPacing(): Promise<{ canWrite: boolean; 
     console.error('Error checking write quota with pacing:', error);
     return { canWrite: true }; // Default to allowing on error
   }
+}
+
+// Smart engagement strategy during rate limits
+export async function getEngagementStrategy(): Promise<{ 
+  canPost: boolean; 
+  canEngage: boolean; 
+  strategy: string; 
+  nextAction: string;
+  monthlyStatus: string;
+}> {
+  const dailyStatus = await getQuotaStatus();
+  const monthlyStatus = await getMonthlyQuotaStatus();
+  const isInBackoffMode = isInBackoff();
+  
+  const monthlyTweetProgress = (monthlyStatus.tweets / MONTHLY_TWEET_LIMIT) * 100;
+  const monthlyReadProgress = (monthlyStatus.reads / MONTHLY_READ_LIMIT) * 100;
+  
+  if (monthlyStatus.tweets >= MONTHLY_TWEET_LIMIT) {
+    return {
+      canPost: false,
+      canEngage: monthlyStatus.reads < MONTHLY_READ_LIMIT,
+      strategy: 'MONTHLY_CAP_REACHED',
+      nextAction: 'Focus on engagement activities (likes, follows) until next month',
+      monthlyStatus: `Monthly limit reached: ${monthlyStatus.tweets}/${MONTHLY_TWEET_LIMIT} tweets`
+    };
+  }
+  
+  if (isInBackoffMode) {
+    return {
+      canPost: false,
+      canEngage: false,
+      strategy: 'RATE_LIMIT_BACKOFF',
+      nextAction: `Wait ${Math.ceil(BACKOFF_DURATIONS[backoffState.backoffLevel] / (60 * 1000))} minutes then resume`,
+      monthlyStatus: `Monthly usage: ${monthlyTweetProgress.toFixed(1)}% tweets, ${monthlyReadProgress.toFixed(1)}% reads`
+    };
+  }
+  
+  if (monthlyTweetProgress > 80) {
+    return {
+      canPost: true,
+      canEngage: true,
+      strategy: 'CONSERVATIVE_MODE',
+      nextAction: 'Reduce posting frequency, focus on high-impact content only',
+      monthlyStatus: `Monthly usage: ${monthlyTweetProgress.toFixed(1)}% tweets (entering conservation mode)`
+    };
+  }
+  
+  return {
+    canPost: true,
+    canEngage: true,
+    strategy: 'AGGRESSIVE_MODE',
+    nextAction: 'Full Ghost Killer engagement active',
+    monthlyStatus: `Monthly usage: ${monthlyTweetProgress.toFixed(1)}% tweets, ${monthlyReadProgress.toFixed(1)}% reads`
+  };
 } 

@@ -150,6 +150,98 @@ CREATE TABLE IF NOT EXISTS performance_dashboard (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Table for monthly API usage tracking (X API monthly limits)
+CREATE TABLE IF NOT EXISTS monthly_api_usage (
+  id SERIAL PRIMARY KEY,
+  month VARCHAR(7) NOT NULL UNIQUE, -- YYYY-MM format
+  tweets INTEGER DEFAULT 0,
+  reads INTEGER DEFAULT 0,
+  last_updated TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Index for fast monthly lookups
+CREATE INDEX IF NOT EXISTS idx_monthly_api_usage_month ON monthly_api_usage(month);
+
+-- Function to increment monthly tweet count
+CREATE OR REPLACE FUNCTION incr_monthly_tweet()
+RETURNS void
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  current_month TEXT;
+BEGIN
+  current_month := to_char(CURRENT_DATE, 'YYYY-MM');
+  
+  INSERT INTO monthly_api_usage (month, tweets, reads)
+  VALUES (current_month, 1, 0)
+  ON CONFLICT (month)
+  DO UPDATE SET 
+    tweets = monthly_api_usage.tweets + 1,
+    last_updated = CURRENT_TIMESTAMP;
+END;
+$$;
+
+-- Function to increment monthly read count
+CREATE OR REPLACE FUNCTION incr_monthly_read()
+RETURNS void
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  current_month TEXT;
+BEGIN
+  current_month := to_char(CURRENT_DATE, 'YYYY-MM');
+  
+  INSERT INTO monthly_api_usage (month, tweets, reads)
+  VALUES (current_month, 0, 1)
+  ON CONFLICT (month)
+  DO UPDATE SET 
+    reads = monthly_api_usage.reads + 1,
+    last_updated = CURRENT_TIMESTAMP;
+END;
+$$;
+
+-- Update existing functions to also track monthly usage
+CREATE OR REPLACE FUNCTION incr_write()
+RETURNS void
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  today_date TEXT;
+BEGIN
+  today_date := CURRENT_DATE::text;
+  
+  -- Daily tracking
+  INSERT INTO api_usage (date, writes, reads)
+  VALUES (today_date, 1, 0)
+  ON CONFLICT (date)
+  DO UPDATE SET writes = api_usage.writes + 1;
+  
+  -- Monthly tracking
+  PERFORM incr_monthly_tweet();
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION incr_read()
+RETURNS void
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  today_date TEXT;
+BEGIN
+  today_date := CURRENT_DATE::text;
+  
+  -- Daily tracking
+  INSERT INTO api_usage (date, writes, reads)
+  VALUES (today_date, 0, 1)
+  ON CONFLICT (date)
+  DO UPDATE SET reads = api_usage.reads + 1;
+  
+  -- Monthly tracking
+  PERFORM incr_monthly_read();
+END;
+$$;
+
 -- Add indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_tweets_quality_score ON tweets(quality_score);
 CREATE INDEX IF NOT EXISTS idx_tweets_content_type ON tweets(content_type);
