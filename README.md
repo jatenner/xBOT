@@ -108,4 +108,4 @@ Rate-limit guard, OpenAI moderation, Supabase kill-switch, full audit trail.
 5. Populate prompts with persona + 3 example tweets, 2 example replies.  
 6. Ensure `pnpm run dev` prints "💚 All agents completed".
 
-© 2025 Snap2Health 
+© 2025 Snap2Health # Force Render redeploy with correct TypeScript build
