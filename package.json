@@ -7,6 +7,8 @@
     "build": "tsc",
     "postbuild": "mkdir -p dist/dashboard && cp src/dashboard/*.html dist/dashboard/ 2>/dev/null || true && mkdir -p dist/prompts && cp -r src/prompts/* dist/prompts/ && echo 'Build completed successfully'",
     "start": "node dist/index.js",
+    "render-build": "npm install && npm run build",
+    "render-start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
     "dashboard": "npm run build && node dist/dashboard/dashboardLauncher.js",
     "simulation": "npm run build && node dist/dashboard/simulationLauncher.js",
