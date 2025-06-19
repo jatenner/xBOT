@@ -21,6 +21,7 @@ import { isBotDisabled } from '../utils/flagCheck.js';
 import { canMakeWrite } from '../utils/quotaGuard.js';
 import { supabase } from '../utils/supabaseClient.js';
 import type { TweetResult } from '../utils/xClient.js';
+import { runSanityChecks } from '../utils/contentSanity';
 
 dotenv.config();
 
@@ -300,6 +301,28 @@ export class PostTweetAgent {
 
       // Format tweet with proper spacing and cleanup
       tweetContent = this.formatTweetContent(tweetContent);
+
+      // Run sanity checks before posting
+      const qc = await runSanityChecks(tweetContent);
+      if (!qc.ok) {
+        // Store rejected content in database
+        try {
+          await supabase.from('rejected_drafts').insert({
+            content: tweetContent,
+            reason: qc.reason
+          });
+        } catch (dbError) {
+          console.error('Failed to store rejected draft:', dbError);
+        }
+        console.log('🛑 QC reject:', qc.reason);
+        return { success: false, reason: `Quality check failed: ${qc.reason}` };
+      }
+      
+      // Apply any content fixes
+      if (qc.fixes.length > 0) {
+        tweetContent = qc.fixes[0] || tweetContent; // Use fixed content
+        console.log('🔧 Applied content fixes:', qc.fixes.slice(1)); // Log the fix descriptions
+      }
 
       // Select appropriate image
       const imageUrl = await smartImageSelector.chooseImage(tweetContent);

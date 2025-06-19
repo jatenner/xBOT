@@ -97,10 +97,17 @@ MAX_DAILY_TWEETS=280
 ## 8. Deployment
 Vercel Cron (*/10 *) → `pnpm cron` **or** Railway always-on worker → `pnpm dev`.
 
-## 9. Safety Nets
+## 9. Quality Control Pipeline
+Pre-posting sanity checks ensure content quality:
+- **Time Intro Validation**: Auto-fixes "Late Night" at 16:00 → "Afternoon"
+- **Riddle Validation**: Rejects "five-letter word" with wrong answer length
+- **URL Validation**: Verifies all links are reachable (6s timeout)
+- **Rejected Content Tracking**: Failed checks stored in `rejected_drafts` table
+
+## 10. Safety Nets
 Rate-limit guard, OpenAI moderation, Supabase kill-switch, full audit trail.
 
-## 10. Implementation Tasks
+## 11. Implementation Tasks
 1. Scaffold file tree & TS config.  
 2. Implement wrappers (`xClient`, `openaiClient`, `supabaseClient`).  
 3. Stub agents with `run()` methods & TODOs.  
