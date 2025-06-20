@@ -7,10 +7,11 @@ import { PollAgent } from './pollAgent';
 import { QuoteAgent } from './quoteAgent';
 import { RateLimitedEngagementAgent } from './rateLimitedEngagementAgent';
 import { isBotDisabled } from '../utils/flagCheck';
-import { canMakeWrite, safeWrite, getQuotaStatus, shouldBackOff, getEngagementStrategy } from '../utils/quotaGuard';
+import { canMakeWrite, safeWrite, getQuotaStatus, getEngagementStrategy } from '../utils/quotaGuard';
 import { chooseUniqueImage } from '../utils/chooseUniqueImage';
 import { APIOptimizer } from '../utils/apiOptimizer';
 import { UltraViralGenerator } from './ultraViralGenerator';
+import { getCurrentMonthlyPlan, getOptimizedSchedule } from '../utils/monthlyPlanner';
 
 dotenv.config();
 
@@ -155,136 +156,125 @@ export class StrategistAgent {
       };
     }
 
+    // Get monthly plan and optimization strategy
+    const monthlyPlan = await getCurrentMonthlyPlan();
+    const optimizedSchedule = await getOptimizedSchedule();
+    
+    console.log(`📊 MONTHLY BUDGET STATUS:`);
+    console.log(`   Strategy: ${monthlyPlan.strategy} ${monthlyPlan.conservationMode ? '(CONSERVATION)' : ''}`);
+    console.log(`   Daily budget: ${monthlyPlan.dailyTweetBudget} tweets`);
+    console.log(`   Tweets remaining: ${monthlyPlan.tweetsRemaining}/${1500}`);
+    console.log(`   Days left: ${monthlyPlan.daysRemaining}`);
+    console.log(`   Engagement ratio: ${(optimizedSchedule.engagementRatio * 100).toFixed(0)}% engagement`);
+
     const timeSinceLastPost = now.getTime() - this.lastPostTime;
     const minutesSinceLastPost = timeSinceLastPost / (1000 * 60);
     const timeSinceLastAltFormat = now.getTime() - this.lastAltFormatTime;
     const hoursSinceLastAltFormat = timeSinceLastAltFormat / (1000 * 60 * 60);
     
-    // ANTI-GHOST MODE: Aggressive engagement strategy to increase visibility
+    // MONTHLY PLAN ADAPTIVE STRATEGY
     const currentHour = now.getHours();
-    const isOptimalViralWindow = this.isOptimalViralWindow(currentHour, now.getDay());
+    const isOptimalViralWindow = this.isOptimalViralWindow(currentHour);
+    const isDuringBusinessHours = currentHour >= 9 && currentHour <= 17;
     
-    // Calculate optimal spacing for Free tier with VISIBILITY FOCUS
-    const hoursIntoDay = now.getHours() + (now.getMinutes() / 60);
-    const expectedPostsByNow = Math.floor((hoursIntoDay / 24) * 25);
-    const isAheadOfSchedule = this.postCount24h > expectedPostsByNow;
+    // Adjust minimum posting interval based on monthly strategy
+    let minPostInterval = optimizedSchedule.minutesBetweenPosts;
     
-    // Check quota status
-    const quotaStatus = await getQuotaStatus();
-    if (quotaStatus.writes >= 400) { // Conservative limit
-      return {
-        action: 'sleep',
-        priority: 0,
-        reasoning: `API quota nearly exhausted (${quotaStatus.writes}/450)`,
-        expectedEngagement: 0
-      };
+    // Apply conservation mode if needed
+    if (monthlyPlan.conservationMode) {
+      minPostInterval = Math.max(minPostInterval, 60); // At least 1 hour between posts
+      console.log(`🚨 CONSERVATION MODE: Extended interval to ${minPostInterval} minutes`);
     }
-
-    // 🎯 REPLY PRIORITIZATION: Force replies every 3rd decision to ensure commenting
-    const decisionCount = (this.postCount24h * 3) + Math.floor(minutesSinceLastPost / 20);
-    if (decisionCount % 3 === 1 && minutesSinceLastPost >= 20) {
-      return {
-        action: 'reply',
-        priority: 9,
-        reasoning: `🎯 REPLY PRIORITY: Commenting on health tech posts for visibility (${minutesSinceLastPost.toFixed(0)}min since last post)`,
-        expectedEngagement: engagementContext.multiplier * 2.0,
-        contentType: 'strategic_reply'
-      };
-    }
-
-    // 🔥 VIRAL ENGAGEMENT STRATEGY: Post breakthrough insights during peak windows
-    if (isOptimalViralWindow && minutesSinceLastPost >= 45) {
-      return {
-        action: 'post',
-        priority: 10,
-        reasoning: `🔥 VIRAL WINDOW: Peak engagement time (${engagementContext.description}) - posting breakthrough insight`,
-        expectedEngagement: engagementContext.multiplier * 2.5,
-        contentType: 'viral_insight'
-      };
-    }
-
-    // ⚡ ENGAGEMENT BOOST: More frequent posting during business hours to increase visibility
-    if (this.isBusinessHours(now) && minutesSinceLastPost >= 35 && this.postCount24h < 15) {
-      return {
-        action: 'post',
-        priority: 8,
-        reasoning: `⚡ VISIBILITY BOOST: Business hours engagement (${minutesSinceLastPost.toFixed(0)}min since last) - fighting algorithm suppression`,
-        expectedEngagement: engagementContext.multiplier * 1.8,
-        contentType: 'high_engagement'
-      };
-    }
-
-    // 🤝 COMMUNITY REPLIES: Engage with trending health tech conversations
-    if (minutesSinceLastPost >= 25 && this.postCount24h < 18) {
-      const shouldReply = Math.random() < 0.4; // 40% chance to prioritize replies
-      if (shouldReply) {
+    
+    // STRATEGIC DECISION LOGIC with Monthly Planning
+    
+    // Priority 1: EMERGENCY CONSERVATION (when almost out of budget)
+    if (monthlyPlan.strategy === 'EMERGENCY') {
+      const shouldReply = Math.random() > 0.1; // 90% chance to reply instead of post
+      
+      if (shouldReply || minutesSinceLastPost < (minPostInterval * 2)) {
         return {
           action: 'reply',
-          priority: 7,
-          reasoning: `🤝 COMMUNITY ENGAGEMENT: Replying to trending health tech conversations - building network visibility`,
-          expectedEngagement: engagementContext.multiplier * 1.6,
-          contentType: 'community_reply'
+          priority: 95,
+          reasoning: `EMERGENCY mode: ${monthlyPlan.tweetsRemaining} tweets left, prioritizing engagement`,
+          expectedEngagement: 150
         };
       }
     }
-
-    // 🎯 ALTERNATIVE FORMAT SCHEDULING: Every 2.5 hours for variety
-    if (hoursSinceLastAltFormat >= 2.5 && this.postCount24h < 12) {
-      const altFormats = ['poll', 'quote'] as const;
-      const chosenFormat = altFormats[Math.floor(Math.random() * altFormats.length)];
-      
-      this.lastAltFormatTime = now.getTime();
-      
+    
+    // Priority 2: FORCED REPLY MODE (ensure comments on other posts)
+    const shouldForceReply = (this.postCount24h % 3 === 0) || 
+                           (Math.random() < optimizedSchedule.engagementRatio) ||
+                           (minutesSinceLastPost < minPostInterval && minutesSinceLastPost > 15);
+    
+    if (shouldForceReply) {
       return {
-        action: chosenFormat,
-        priority: 7,
-        reasoning: `🎯 FORMAT VARIETY: ${chosenFormat} for algorithm diversity (${hoursSinceLastAltFormat.toFixed(1)}h since last alt format)`,
-        expectedEngagement: engagementContext.multiplier * 1.5,
-        contentType: `viral_${chosenFormat}`
+        action: 'reply',
+        priority: 85,
+        reasoning: `Monthly plan (${monthlyPlan.strategy}): ${(optimizedSchedule.engagementRatio*100).toFixed(0)}% engagement focus`,
+        expectedEngagement: 120
       };
     }
 
-    // 💪 THREAD STRATEGY: High-engagement windows for maximum reach
-    if (engagementContext.multiplier >= 2.0 && this.postCount24h < 8) {
-      return {
-        action: 'thread',
-        priority: 9,
-        reasoning: `💪 THREAD OPPORTUNITY: High engagement window (${engagementContext.multiplier}x) - multi-tweet viral potential`,
-        expectedEngagement: engagementContext.multiplier * 3.0,
-        contentType: 'viral_thread'
-      };
-    }
-
-    // 🚀 REGULAR INSIGHT POSTING: Maintain momentum with specific content
-    if (minutesSinceLastPost >= 25 && this.postCount24h < 20) {
+    // Priority 3: AGGRESSIVE POSTING (when budget allows)
+    if (monthlyPlan.strategy === 'AGGRESSIVE' && minutesSinceLastPost >= (minPostInterval * 0.8)) {
       return {
         action: 'post',
-        priority: 6,
-        reasoning: `🚀 MOMENTUM MAINTENANCE: Regular insight posting (${minutesSinceLastPost.toFixed(0)}min spacing) - consistent visibility`,
-        expectedEngagement: engagementContext.multiplier * 1.2,
-        contentType: 'insight_driven'
+        priority: 90,
+        reasoning: `AGGRESSIVE mode: ${monthlyPlan.tweetsRemaining} tweets available, capitalizing on budget`,
+        expectedEngagement: 300
       };
     }
 
-    // 🤝 ENGAGEMENT ACTIONS: Like, reply, retweet during low posting windows
-    if (minutesSinceLastPost >= 15) {
-      const engagementActions = ['reply', 'like', 'retweet', 'follow'];
-      const action = engagementActions[Math.floor(Math.random() * engagementActions.length)];
+    // Priority 4: OPTIMAL VIRAL WINDOW EXPLOITATION
+    if (isOptimalViralWindow && minutesSinceLastPost >= minPostInterval) {
+      const action = engagementContext.multiplier >= 2.0 && hoursSinceLastAltFormat >= 2.5 ? 'thread' : 'post';
+      return {
+        action,
+        priority: 95,
+        reasoning: `Viral window detected + ${action} strategy (${monthlyPlan.tweetsRemaining} tweets left)`,
+        expectedEngagement: action === 'thread' ? 450 : 320
+      };
+    }
+
+    // Priority 5: BUSINESS HOURS STANDARD POSTING
+    if (isDuringBusinessHours && minutesSinceLastPost >= minPostInterval) {
+      return {
+        action: 'post',
+        priority: 75,
+        reasoning: `Business hours posting (conserving budget: ${monthlyPlan.tweetsRemaining} left)`,
+        expectedEngagement: 200
+      };
+    }
+    
+    // Priority 6: ALT FORMAT VARIETY (polls, quotes) - Budget permitting
+    if (hoursSinceLastAltFormat >= 2.5 && minutesSinceLastPost >= (minPostInterval + 10)) {
+      const formats = monthlyPlan.conservationMode ? ['quote'] : ['poll', 'quote', 'thread'];
+      const format = formats[Math.floor(Math.random() * formats.length)] as 'poll' | 'quote' | 'thread';
       
       return {
-        action: 'sleep', // Use rateLimitedAgent for engagement
-        priority: 4,
-        reasoning: `🤝 COMMUNITY ENGAGEMENT: ${action} actions to boost visibility - algorithm favors active accounts`,
-        expectedEngagement: 0.5
+        action: format,
+        priority: 70,
+        reasoning: `Format variety: ${format} (${monthlyPlan.tweetsRemaining} tweets budgeted)`,
+        expectedEngagement: format === 'poll' ? 280 : format === 'thread' ? 400 : 180
       };
     }
 
-    // 😴 STRATEGIC SLEEP: Wait for better engagement window
-    const nextOptimalTime = this.getNextOptimalEngagementWindow(now);
+    // Priority 7: ENGAGEMENT FOCUS (when posting budget is tight)
+    if (monthlyPlan.tweetsRemaining < (monthlyPlan.daysRemaining * 5)) {
+      return {
+        action: 'reply',
+        priority: 80,
+        reasoning: `Low tweet budget (${monthlyPlan.tweetsRemaining} left), focusing on engagement`,
+        expectedEngagement: 100
+      };
+    }
+
+    // Priority 8: INTELLIGENT SLEEP with preparation
     return {
       action: 'sleep',
-      priority: 2,
-      reasoning: `😴 STRATEGIC WAIT: Next optimal window in ${this.getMinutesUntil(now, nextOptimalTime)} minutes - maximizing impact`,
+      priority: 30,
+      reasoning: `Strategic wait - Next optimal post in ${minPostInterval} min (${monthlyPlan.strategy} mode)`,
       expectedEngagement: 0
     };
   }
@@ -651,6 +641,7 @@ export class StrategistAgent {
     if (pollResult.success) {
       this.lastPostTime = Date.now();
       this.postCount24h++;
+      this.lastAltFormatTime = Date.now();
       console.log(`✅ Poll posted: ${pollResult.pollId} on topic: ${pollResult.topic}`);
     } else {
       console.log(`⚠️ Poll posting failed`);
@@ -665,6 +656,7 @@ export class StrategistAgent {
     if (quoteResult.success) {
       this.lastPostTime = Date.now();
       this.postCount24h++;
+      this.lastAltFormatTime = Date.now();
       console.log(`✅ Quote tweet posted: ${quoteResult.quoteId}`);
       console.log(`📝 Original: ${quoteResult.originalTweet?.substring(0, 100)}...`);
     } else {
@@ -706,22 +698,17 @@ export class StrategistAgent {
     }
   }
 
-  private isOptimalViralWindow(hour: number, dayOfWeek: number): boolean {
+  private isOptimalViralWindow(hour: number): boolean {
     // Peak viral windows based on health tech audience behavior
     const viralWindows = [
-      { hour: 8, day: 1, description: 'Monday morning motivation' },   // Monday 8am
-      { hour: 9, day: 1, description: 'Monday peak business' },        // Monday 9am  
-      { hour: 13, day: 2, description: 'Tuesday lunch break' },        // Tuesday 1pm
-      { hour: 9, day: 3, description: 'Wednesday peak engagement' },   // Wednesday 9am
-      { hour: 19, day: 3, description: 'Wednesday evening peak' },     // Wednesday 7pm
-      { hour: 9, day: 4, description: 'Thursday morning rush' },       // Thursday 9am
-      { hour: 18, day: 4, description: 'Thursday after-work' },        // Thursday 6pm
-      { hour: 10, day: 0, description: 'Sunday morning leisure' }      // Sunday 10am
+      { hour: 8, description: 'Monday morning motivation' },   // Monday 8am
+      { hour: 9, description: 'Morning peak business' },      // 9am  
+      { hour: 13, description: 'Lunch break engagement' },    // 1pm
+      { hour: 19, description: 'Evening peak' },              // 7pm
+      { hour: 10, description: 'Late morning focus' }         // 10am
     ];
 
-    return viralWindows.some(window => 
-      window.hour === hour && window.day === dayOfWeek
-    );
+    return viralWindows.some(window => window.hour === hour);
   }
 
   private getNextOptimalEngagementWindow(now: Date): Date {
@@ -747,4 +734,4 @@ export class StrategistAgent {
   private getMinutesUntil(now: Date, target: Date): number {
     return Math.ceil((target.getTime() - now.getTime()) / (1000 * 60));
   }
-} 
+}
