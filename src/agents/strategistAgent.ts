@@ -160,7 +160,11 @@ export class StrategistAgent {
     const timeSinceLastAltFormat = now.getTime() - this.lastAltFormatTime;
     const hoursSinceLastAltFormat = timeSinceLastAltFormat / (1000 * 60 * 60);
     
-    // Calculate optimal spacing for Free tier (17 tweets per day)
+    // ANTI-GHOST MODE: Aggressive engagement strategy to increase visibility
+    const currentHour = now.getHours();
+    const isOptimalViralWindow = this.isOptimalViralWindow(currentHour, now.getDay());
+    
+    // Calculate optimal spacing for Free tier with VISIBILITY FOCUS
     const hoursIntoDay = now.getHours() + (now.getMinutes() / 60);
     const expectedPostsByNow = Math.floor((hoursIntoDay / 24) * 25);
     const isAheadOfSchedule = this.postCount24h > expectedPostsByNow;
@@ -176,8 +180,30 @@ export class StrategistAgent {
       };
     }
 
-    // ALTERNATIVE FORMAT SCHEDULING: Every 3 hours
-    if (hoursSinceLastAltFormat >= 3 && this.postCount24h < 12) {
+    // 🔥 VIRAL ENGAGEMENT STRATEGY: Post breakthrough insights during peak windows
+    if (isOptimalViralWindow && minutesSinceLastPost >= 45) {
+      return {
+        action: 'post',
+        priority: 10,
+        reasoning: `🔥 VIRAL WINDOW: Peak engagement time (${engagementContext.description}) - posting breakthrough insight`,
+        expectedEngagement: engagementContext.multiplier * 2.5,
+        contentType: 'viral_insight'
+      };
+    }
+
+    // ⚡ ENGAGEMENT BOOST: More frequent posting during business hours to increase visibility
+    if (this.isBusinessHours(now) && minutesSinceLastPost >= 35 && this.postCount24h < 15) {
+      return {
+        action: 'post',
+        priority: 8,
+        reasoning: `⚡ VISIBILITY BOOST: Business hours engagement (${minutesSinceLastPost.toFixed(0)}min since last) - fighting algorithm suppression`,
+        expectedEngagement: engagementContext.multiplier * 1.8,
+        contentType: 'high_engagement'
+      };
+    }
+
+    // 🎯 ALTERNATIVE FORMAT SCHEDULING: Every 2.5 hours for variety
+    if (hoursSinceLastAltFormat >= 2.5 && this.postCount24h < 12) {
       const altFormats = ['poll', 'quote'] as const;
       const chosenFormat = altFormats[Math.floor(Math.random() * altFormats.length)];
       
@@ -185,95 +211,54 @@ export class StrategistAgent {
       
       return {
         action: chosenFormat,
-        priority: 8,
-        reasoning: `Alternative format scheduled (${hoursSinceLastAltFormat.toFixed(1)}h since last) - ${chosenFormat} for variety`,
-        expectedEngagement: engagementContext.multiplier * 1.2,
-        contentType: `alt_${chosenFormat}`
+        priority: 7,
+        reasoning: `🎯 FORMAT VARIETY: ${chosenFormat} for algorithm diversity (${hoursSinceLastAltFormat.toFixed(1)}h since last alt format)`,
+        expectedEngagement: engagementContext.multiplier * 1.5,
+        contentType: `viral_${chosenFormat}`
       };
     }
 
-    // 10X ENGAGEMENT STRATEGY: THREAD WINDOWS
-    if (engagementContext.multiplier >= 2.4) {
-      // Only post threads if we haven't exceeded our daily budget
-      if (this.postCount24h < 12) {
-        return {
-          action: 'thread',
-          priority: 10,
-          reasoning: `THREAD OPPORTUNITY - ${engagementContext.description} - 10X viral potential`,
-          expectedEngagement: engagementContext.multiplier * 4, // Threads get 4x base engagement
-          contentType: 'viral_thread'
-        };
-      } else {
-        return {
-          action: 'reply',
-          priority: 8,
-          reasoning: `Thread window but daily limit reached (${this.postCount24h}/12) - high-value replies instead`,
-          expectedEngagement: engagementContext.multiplier * 0.8,
-          contentType: 'expert_reply'
-        };
-      }
+    // 💪 THREAD STRATEGY: High-engagement windows for maximum reach
+    if (engagementContext.multiplier >= 2.0 && this.postCount24h < 8) {
+      return {
+        action: 'thread',
+        priority: 9,
+        reasoning: `💪 THREAD OPPORTUNITY: High engagement window (${engagementContext.multiplier}x) - multi-tweet viral potential`,
+        expectedEngagement: engagementContext.multiplier * 3.0,
+        contentType: 'viral_thread'
+      };
     }
 
-    // HIGH ENGAGEMENT WINDOWS (1.3x+): POST original content for maximum viral potential
-    if (engagementContext.multiplier >= 1.3) {
-      // Smart spacing: Don't spam even in peak windows
-      const minimumSpacing = isAheadOfSchedule ? 90 : 60; // More conservative if ahead of schedule
+    // 🚀 REGULAR INSIGHT POSTING: Maintain momentum with specific content
+    if (minutesSinceLastPost >= 25 && this.postCount24h < 20) {
+      return {
+        action: 'post',
+        priority: 6,
+        reasoning: `🚀 MOMENTUM MAINTENANCE: Regular insight posting (${minutesSinceLastPost.toFixed(0)}min spacing) - consistent visibility`,
+        expectedEngagement: engagementContext.multiplier * 1.2,
+        contentType: 'insight_driven'
+      };
+    }
+
+    // 🤝 ENGAGEMENT ACTIONS: Like, reply, retweet during low posting windows
+    if (minutesSinceLastPost >= 15) {
+      const engagementActions = ['reply', 'like', 'retweet', 'follow'];
+      const action = engagementActions[Math.floor(Math.random() * engagementActions.length)];
       
-      if (minutesSinceLastPost >= minimumSpacing && this.postCount24h < 12) {
-        return {
-          action: 'post',
-          priority: 9,
-          reasoning: `PEAK ENGAGEMENT WINDOW - ${engagementContext.description} - maximum viral potential`,
-          expectedEngagement: engagementContext.multiplier,
-          contentType: 'original_research'
-        };
-      } else if (this.postCount24h >= 12) {
-        return {
-          action: 'reply',
-          priority: 7,
-          reasoning: `Peak window but daily limit reached (${this.postCount24h}/12) - focusing on high-value engagement`,
-          expectedEngagement: engagementContext.multiplier * 0.6,
-          contentType: 'expert_reply'
-        };
-      } else {
-        return {
-          action: 'reply',
-          priority: 7,
-          reasoning: `High engagement window but posted recently (${minutesSinceLastPost.toFixed(0)}m ago) - engaging in conversations`,
-          expectedEngagement: engagementContext.multiplier * 0.6,
-          contentType: 'expert_reply'
-        };
-      }
+      return {
+        action: 'sleep', // Use rateLimitedAgent for engagement
+        priority: 4,
+        reasoning: `🤝 COMMUNITY ENGAGEMENT: ${action} actions to boost visibility - algorithm favors active accounts`,
+        expectedEngagement: 0.5
+      };
     }
 
-    // GOOD ENGAGEMENT (1.1x+): Strategic choice with spacing
-    if (engagementContext.multiplier >= 1.1) {
-      const requiredSpacing = isAheadOfSchedule ? 120 : 90; // More spacing if ahead of schedule
-      
-      if (minutesSinceLastPost >= requiredSpacing && this.postCount24h < 12) {
-        return {
-          action: 'post',
-          priority: 6,
-          reasoning: `Good engagement window - posting quality content (first post of day)`,
-          expectedEngagement: engagementContext.multiplier,
-          contentType: 'current_events'
-        };
-      } else {
-        return {
-          action: 'sleep',
-          priority: 1,
-          reasoning: `Enforcing post spacing - need ${(requiredSpacing - minutesSinceLastPost).toFixed(1)}m more before next post`,
-          expectedEngagement: 0,
-          contentType: 'spacing_control'
-        };
-      }
-    }
-
-    // LOW ENGAGEMENT: Sleep until better timing
+    // 😴 STRATEGIC SLEEP: Wait for better engagement window
+    const nextOptimalTime = this.getNextOptimalEngagementWindow(now);
     return {
       action: 'sleep',
-      priority: 1,
-      reasoning: `Low engagement window (${engagementContext.multiplier}x) - conserving daily tweet budget (${this.postCount24h}/12)`,
+      priority: 2,
+      reasoning: `😴 STRATEGIC WAIT: Next optimal window in ${this.getMinutesUntil(now, nextOptimalTime)} minutes - maximizing impact`,
       expectedEngagement: 0
     };
   }
@@ -693,5 +678,47 @@ export class StrategistAgent {
     } catch (error) {
       console.error('❌ Error in engagement-only mode:', error);
     }
+  }
+
+  private isOptimalViralWindow(hour: number, dayOfWeek: number): boolean {
+    // Peak viral windows based on health tech audience behavior
+    const viralWindows = [
+      { hour: 8, day: 1, description: 'Monday morning motivation' },   // Monday 8am
+      { hour: 9, day: 1, description: 'Monday peak business' },        // Monday 9am  
+      { hour: 13, day: 2, description: 'Tuesday lunch break' },        // Tuesday 1pm
+      { hour: 9, day: 3, description: 'Wednesday peak engagement' },   // Wednesday 9am
+      { hour: 19, day: 3, description: 'Wednesday evening peak' },     // Wednesday 7pm
+      { hour: 9, day: 4, description: 'Thursday morning rush' },       // Thursday 9am
+      { hour: 18, day: 4, description: 'Thursday after-work' },        // Thursday 6pm
+      { hour: 10, day: 0, description: 'Sunday morning leisure' }      // Sunday 10am
+    ];
+
+    return viralWindows.some(window => 
+      window.hour === hour && window.day === dayOfWeek
+    );
+  }
+
+  private getNextOptimalEngagementWindow(now: Date): Date {
+    const optimalHours = [8, 9, 12, 13, 18, 19]; // Peak engagement hours
+    const currentHour = now.getHours();
+    
+    // Find next optimal hour today
+    const nextHourToday = optimalHours.find(hour => hour > currentHour);
+    
+    if (nextHourToday) {
+      const nextTime = new Date(now);
+      nextTime.setHours(nextHourToday, 0, 0, 0);
+      return nextTime;
+    }
+    
+    // If no more optimal hours today, return 8am tomorrow
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(8, 0, 0, 0);
+    return tomorrow;
+  }
+
+  private getMinutesUntil(now: Date, target: Date): number {
+    return Math.ceil((target.getTime() - now.getTime()) / (1000 * 60));
   }
 } 
