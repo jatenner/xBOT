@@ -41,6 +41,11 @@ export class RemoteBotMonitor {
     this.app.get('/', (req, res) => {
       res.sendFile(path.join(__dirname, 'remoteBotMonitor.html'));
     });
+    
+    // Serve test monitor for debugging
+    this.app.get('/test', (req, res) => {
+      res.sendFile(path.join(__dirname, 'test-monitor.html'));
+    });
   }
 
   private setupRoutes() {

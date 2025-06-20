@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🤖 Bot Monitor Test</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f0f0f0; }
+        .card { background: white; padding: 20px; margin: 10px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .status { padding: 10px; border-radius: 4px; margin: 10px 0; }
+        .connected { background: #d4edda; color: #155724; }
+        .loading { background: #fff3cd; color: #856404; }
+        .error { background: #f8d7da; color: #721c24; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 4px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>🤖 Bot Monitor Test</h1>
+    
+    <div class="card">
+        <h3>Connection Status</h3>
+        <div id="status" class="status loading">Connecting...</div>
+    </div>
+    
+    <div class="card">
+        <h3>Bot Status</h3>
+        <div id="botStatus">Loading...</div>
+    </div>
+    
+    <div class="card">
+        <h3>Recent Activity</h3>
+        <div id="activity">Loading...</div>
+    </div>
+    
+    <div class="card">
+        <h3>Raw Data</h3>
+        <pre id="rawData">Loading...</pre>
+    </div>
+
+    <script>
+        console.log('🚀 Starting bot monitor test...');
+        
+        const statusEl = document.getElementById('status');
+        const botStatusEl = document.getElementById('botStatus');
+        const activityEl = document.getElementById('activity');
+        const rawDataEl = document.getElementById('rawData');
+        
+        async function loadData() {
+            try {
+                statusEl.textContent = 'Loading data...';
+                statusEl.className = 'status loading';
+                
+                // Test API endpoints
+                console.log('Testing API endpoints...');
+                
+                const statusResponse = await fetch('/api/remote-status');
+                const statusData = await statusResponse.json();
+                console.log('Status data:', statusData);
+                
+                const activityResponse = await fetch('/api/activity-feed');
+                const activityData = await activityResponse.json();
+                console.log('Activity data:', activityData);
+                
+                // Update UI
+                statusEl.textContent = 'Connected and receiving data!';
+                statusEl.className = 'status connected';
+                
+                botStatusEl.innerHTML = `
+                    <p><strong>Online:</strong> ${statusData.isOnline ? 'Yes' : 'No'}</p>
+                    <p><strong>Mode:</strong> ${statusData.currentMode}</p>
+                    <p><strong>Last Activity:</strong> ${statusData.lastActivity}</p>
+                    <p><strong>API Writes:</strong> ${statusData.quotaStatus.writes}</p>
+                `;
+                
+                activityEl.innerHTML = activityData.slice(0, 3).map(activity => `
+                    <div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 4px;">
+                        <strong>${activity.type}</strong><br>
+                        ${activity.content.substring(0, 100)}...<br>
+                        <small>${new Date(activity.timestamp).toLocaleString()}</small>
+                    </div>
+                `).join('');
+                
+                rawDataEl.textContent = JSON.stringify({
+                    status: statusData,
+                    activityCount: activityData.length
+                }, null, 2);
+                
+            } catch (error) {
+                console.error('Error loading data:', error);
+                statusEl.textContent = `Error: ${error.message}`;
+                statusEl.className = 'status error';
+                botStatusEl.textContent = `Failed to load: ${error.message}`;
+                rawDataEl.textContent = `Error: ${error.message}`;
+            }
+        }
+        
+        // Load data immediately
+        loadData();
+        
+        // Refresh every 10 seconds
+        setInterval(loadData, 10000);
+        
+        console.log('✅ Bot monitor test initialized');
+    </script>
+</body>
+</html> 
