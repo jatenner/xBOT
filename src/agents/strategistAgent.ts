@@ -180,6 +180,18 @@ export class StrategistAgent {
       };
     }
 
+    // 🎯 REPLY PRIORITIZATION: Force replies every 3rd decision to ensure commenting
+    const decisionCount = (this.postCount24h * 3) + Math.floor(minutesSinceLastPost / 20);
+    if (decisionCount % 3 === 1 && minutesSinceLastPost >= 20) {
+      return {
+        action: 'reply',
+        priority: 9,
+        reasoning: `🎯 REPLY PRIORITY: Commenting on health tech posts for visibility (${minutesSinceLastPost.toFixed(0)}min since last post)`,
+        expectedEngagement: engagementContext.multiplier * 2.0,
+        contentType: 'strategic_reply'
+      };
+    }
+
     // 🔥 VIRAL ENGAGEMENT STRATEGY: Post breakthrough insights during peak windows
     if (isOptimalViralWindow && minutesSinceLastPost >= 45) {
       return {
@@ -200,6 +212,20 @@ export class StrategistAgent {
         expectedEngagement: engagementContext.multiplier * 1.8,
         contentType: 'high_engagement'
       };
+    }
+
+    // 🤝 COMMUNITY REPLIES: Engage with trending health tech conversations
+    if (minutesSinceLastPost >= 25 && this.postCount24h < 18) {
+      const shouldReply = Math.random() < 0.4; // 40% chance to prioritize replies
+      if (shouldReply) {
+        return {
+          action: 'reply',
+          priority: 7,
+          reasoning: `🤝 COMMUNITY ENGAGEMENT: Replying to trending health tech conversations - building network visibility`,
+          expectedEngagement: engagementContext.multiplier * 1.6,
+          contentType: 'community_reply'
+        };
+      }
     }
 
     // 🎯 ALTERNATIVE FORMAT SCHEDULING: Every 2.5 hours for variety
