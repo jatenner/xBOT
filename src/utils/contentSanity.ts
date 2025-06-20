@@ -94,6 +94,60 @@ export function validateRiddle(text: string): ValidationResult {
 }
 
 /**
+ * Checks for scrambled or reversed text that looks unnatural
+ */
+export function validateTextReadability(text: string): ValidationResult {
+  // Check for common signs of scrambled text
+  const scrambledPatterns = [
+    /\b[a-z]{3,}\s+[a-z]{3,}\s+[a-z]{3,}\b/g, // Multiple consecutive lowercase words (unusual for tweets)
+    /\b[bcdfghjklmnpqrstvwxyz]{4,}\b/gi, // Words with too many consonants in a row
+    /\b[a-z]+eb\b/gi, // Words ending in "eb" (often reversed)
+    /\b[a-z]*ht[a-z]*\b/gi, // Words with "ht" (often reversed "th")
+  ];
+
+  // Check for excessive lowercase words (sign of scrambling)
+  const words = text.split(/\s+/);
+  const lowercaseWords = words.filter(word => 
+    word.length > 3 && 
+    word === word.toLowerCase() && 
+    /^[a-z]+$/.test(word)
+  );
+
+  if (lowercaseWords.length > 5) {
+    return {
+      ok: false,
+      reason: `Text appears scrambled - too many lowercase words: ${lowercaseWords.slice(0, 3).join(', ')}...`
+    };
+  }
+
+  // Check for specific scrambled patterns
+  for (const pattern of scrambledPatterns) {
+    const matches = text.match(pattern);
+    if (matches && matches.length > 2) {
+      return {
+        ok: false,
+        reason: `Text appears scrambled or reversed - unusual patterns detected: ${matches.slice(0, 2).join(', ')}`
+      };
+    }
+  }
+
+  // Check for words that are clearly reversed
+  const reversedWords = ['eht', 'dna', 'rof', 'htiw', 'morf', 'ot', 'fo', 'ni'];
+  const foundReversed = reversedWords.filter(word => 
+    text.toLowerCase().includes(word)
+  );
+
+  if (foundReversed.length > 0) {
+    return {
+      ok: false,
+      reason: `Text contains reversed words: ${foundReversed.join(', ')}`
+    };
+  }
+
+  return { ok: true };
+}
+
+/**
  * Validates URLs by making HEAD requests
  */
 export async function validateUrls(text: string): Promise<ValidationResult> {
@@ -155,7 +209,17 @@ export async function runSanityChecks(text: string): Promise<SanityResult> {
     fixes.push('Fixed time-based intro to match current hour');
   }
 
-  // 2. Validate riddle
+  // 2. Check text readability (no scrambled/reversed text)
+  const readabilityCheck = validateTextReadability(currentText);
+  if (!readabilityCheck.ok) {
+    return {
+      ok: false,
+      fixes,
+      reason: readabilityCheck.reason
+    };
+  }
+
+  // 3. Validate riddle
   const riddleCheck = validateRiddle(currentText);
   if (!riddleCheck.ok) {
     return {
@@ -165,7 +229,7 @@ export async function runSanityChecks(text: string): Promise<SanityResult> {
     };
   }
 
-  // 3. Validate URLs
+  // 4. Validate URLs
   const urlCheck = await validateUrls(currentText);
   if (!urlCheck.ok) {
     return {

@@ -102,7 +102,7 @@ Consider:
 - Completely new formats (ASCII art, code snippets, visual poems)
 - Emotional triggers (fear, curiosity, controversy, humor)
 - Timing disruption (posting when others don't)
-- Format breaking (no hashtags, all caps, backwards text)
+- Format breaking (no hashtags, all caps, unique formatting)
 - Psychology hacks (cliffhangers, incomplete thoughts)
 - Trend hijacking (current events, memes)
 - Interactive experiments (polls in text, choose-your-adventure)
@@ -337,6 +337,30 @@ Respond with JSON:
    * 🛠️ HELPER METHODS
    */
   private processContent(content: string): string {
+    // Safety check: prevent scrambled or reversed text
+    const reversedWords = ['eht', 'dna', 'rof', 'htiw', 'morf', 'ot', 'fo', 'ni'];
+    const hasReversedText = reversedWords.some(word => 
+      content.toLowerCase().includes(word)
+    );
+    
+    if (hasReversedText) {
+      console.log('🚨 BLOCKED: Content contains reversed text, using safe fallback');
+      return "🔮 Healthcare innovation is accelerating faster than ever. What breakthrough will change everything? #HealthTech";
+    }
+    
+    // Check for excessive lowercase words (sign of scrambling)
+    const words = content.split(/\s+/);
+    const lowercaseWords = words.filter(word => 
+      word.length > 3 && 
+      word === word.toLowerCase() && 
+      /^[a-z]+$/.test(word)
+    );
+    
+    if (lowercaseWords.length > 5) {
+      console.log('🚨 BLOCKED: Content appears scrambled, using safe fallback');
+      return "💡 The future of healthcare is being written today. What role will you play? #Innovation #HealthTech";
+    }
+    
     const formatted = formatTweet(content);
     return formatted.isValid ? content : truncateTweet(content);
   }
