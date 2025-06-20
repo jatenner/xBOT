@@ -4,7 +4,7 @@ interface QuotaStatus {
   writes: number;
   reads: number;
   date: string;
-  canWrite?: boolean;
+  canWrite: boolean;
 }
 
 interface BackoffState {
@@ -34,17 +34,38 @@ export async function getQuotaStatus(): Promise<QuotaStatus> {
       .single();
 
     if (error && error.code !== 'PGRST116') {
-      throw error;
+      // If table doesn't exist or other error, initialize it
+      console.log('📊 Initializing daily API usage tracking...');
+      await initializeDailyUsage(today);
     }
 
+    const writes = data?.writes || 0;
+    const reads = data?.reads || 0;
+    
     return {
-      writes: data?.writes || 0,
-      reads: data?.reads || 0,
-      date: today
+      writes,
+      reads,
+      date: today,
+      canWrite: writes < WRITE_LIMIT
     };
   } catch (error) {
     console.error('Error getting quota status:', error);
-    return { writes: 0, reads: 0, date: new Date().toISOString().split('T')[0] };
+    return { 
+      writes: 0, 
+      reads: 0, 
+      date: new Date().toISOString().split('T')[0],
+      canWrite: true
+    };
+  }
+}
+
+async function initializeDailyUsage(date: string): Promise<void> {
+  try {
+    await supabaseClient.supabase
+      ?.from('api_usage')
+      .insert({ date, writes: 0, reads: 0 });
+  } catch (error) {
+    console.log('Note: Could not initialize daily usage tracking');
   }
 }
 
@@ -58,7 +79,9 @@ export async function getMonthlyQuotaStatus(): Promise<{ tweets: number; reads: 
       .single();
 
     if (error && error.code !== 'PGRST116') {
-      throw error;
+      // Initialize monthly tracking if it doesn't exist
+      console.log('📊 Initializing monthly API usage tracking...');
+      await initializeMonthlyUsage(currentMonth);
     }
 
     return {
@@ -69,6 +92,16 @@ export async function getMonthlyQuotaStatus(): Promise<{ tweets: number; reads: 
   } catch (error) {
     console.error('Error getting monthly quota status:', error);
     return { tweets: 0, reads: 0, month: new Date().toISOString().slice(0, 7) };
+  }
+}
+
+async function initializeMonthlyUsage(month: string): Promise<void> {
+  try {
+    await supabaseClient.supabase
+      ?.from('monthly_api_usage')
+      .insert({ month, tweets: 0, reads: 0 });
+  } catch (error) {
+    console.log('Note: Could not initialize monthly usage tracking');
   }
 }
 
@@ -173,6 +206,8 @@ function handleRateLimit(): void {
   const duration = BACKOFF_DURATIONS[backoffState.backoffLevel] / (60 * 1000); // minutes
   console.log(`🚨 Rate limited! Entering backoff level ${backoffState.backoffLevel} for ${duration} minutes`);
   console.log(`💡 Ghost Killer Mode: Using this time for strategic intelligence gathering...`);
+  console.log(`🧠 Autonomous Intelligence: Content research and strategy optimization active`);
+  console.log(`⏰ Next engagement window: ${new Date(Date.now() + BACKOFF_DURATIONS[backoffState.backoffLevel]).toLocaleTimeString()}`);
 }
 
 function resetBackoff(): void {
