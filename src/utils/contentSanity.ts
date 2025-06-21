@@ -196,6 +196,49 @@ export async function validateUrls(text: string): Promise<ValidationResult> {
 }
 
 /**
+ * Checks for corrupted Unicode characters that display as squares or question marks
+ */
+export function validateUnicodeCharacters(text: string): ValidationResult {
+  // Check for common corrupted Unicode patterns
+  const corruptedPatterns = [
+    /��/g, // Common replacement character
+    /\uFFFD/g, // Unicode replacement character
+    /[\u0000-\u001F]/g, // Control characters (except newlines)
+    /[\uFFF0-\uFFFF]/g, // Other problematic Unicode ranges
+  ];
+
+  for (const pattern of corruptedPatterns) {
+    const matches = text.match(pattern);
+    if (matches && matches.length > 0) {
+      return {
+        ok: false,
+        reason: `Text contains corrupted Unicode characters that display as squares or question marks`
+      };
+    }
+  }
+
+  // Check for sequences that look like encoding errors
+  const encodingErrorPatterns = [
+    /â€™/g, // Common UTF-8 encoding error for apostrophe
+    /â€œ/g, // Common UTF-8 encoding error for left quote
+    /â€\x9D/g, // Common UTF-8 encoding error for right quote
+    /Ã¡/g, // Common encoding error
+  ];
+
+  for (const pattern of encodingErrorPatterns) {
+    const matches = text.match(pattern);
+    if (matches && matches.length > 0) {
+      return {
+        ok: false,
+        reason: `Text contains encoding errors that may display incorrectly`
+      };
+    }
+  }
+
+  return { ok: true };
+}
+
+/**
  * Runs all sanity checks and returns consolidated result
  */
 export async function runSanityChecks(text: string): Promise<SanityResult> {
@@ -229,7 +272,17 @@ export async function runSanityChecks(text: string): Promise<SanityResult> {
     };
   }
 
-  // 4. Validate URLs
+  // 4. Check for corrupted Unicode characters
+  const unicodeCheck = validateUnicodeCharacters(currentText);
+  if (!unicodeCheck.ok) {
+    return {
+      ok: false,
+      fixes,
+      reason: unicodeCheck.reason
+    };
+  }
+
+  // 5. Validate URLs
   const urlCheck = await validateUrls(currentText);
   if (!urlCheck.ok) {
     return {
