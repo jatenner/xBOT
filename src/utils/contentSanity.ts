@@ -239,6 +239,72 @@ export function validateUnicodeCharacters(text: string): ValidationResult {
 }
 
 /**
+ * Validates content uniqueness against recent tweets
+ */
+export async function validateContentUniqueness(text: string, supabase: any): Promise<ValidationResult> {
+  try {
+    // Get recent tweets from last 7 days
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    
+    const { data: recentTweets, error } = await supabase
+      .from('tweets')
+      .select('content')
+      .gte('created_at', sevenDaysAgo.toISOString())
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    if (error) {
+      console.warn('Could not check for duplicates:', error.message);
+      return { ok: true }; // Don't block on database errors
+    }
+
+    if (recentTweets && recentTweets.length > 0) {
+      const normalizedText = text.toLowerCase().replace(/[^a-z0-9\s]/g, '');
+      
+      for (const tweet of recentTweets) {
+        const normalizedTweet = tweet.content.toLowerCase().replace(/[^a-z0-9\s]/g, '');
+        
+        // Check for exact matches
+        if (normalizedText === normalizedTweet) {
+          return {
+            ok: false,
+            reason: 'Content is identical to a recent tweet'
+          };
+        }
+        
+        // Check for high similarity (80%+ match)
+        const similarity = calculateSimilarity(normalizedText, normalizedTweet);
+        if (similarity > 0.8) {
+          return {
+            ok: false,
+            reason: `Content is too similar to a recent tweet (${Math.round(similarity * 100)}% match)`
+          };
+        }
+      }
+    }
+
+    return { ok: true };
+  } catch (error) {
+    console.warn('Duplicate check failed:', error.message);
+    return { ok: true }; // Don't block on errors
+  }
+}
+
+/**
+ * Calculate similarity between two strings using simple word overlap
+ */
+function calculateSimilarity(str1: string, str2: string): number {
+  const words1 = str1.split(/\s+/).filter(w => w.length > 2);
+  const words2 = str2.split(/\s+/).filter(w => w.length > 2);
+  
+  if (words1.length === 0 || words2.length === 0) return 0;
+  
+  const commonWords = words1.filter(word => words2.includes(word));
+  return commonWords.length / Math.max(words1.length, words2.length);
+}
+
+/**
  * Runs all sanity checks and returns consolidated result
  */
 export async function runSanityChecks(text: string): Promise<SanityResult> {
