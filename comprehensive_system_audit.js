@@ -12,8 +12,7 @@ class SystemAuditor {
     this.unicodePatterns = [
       /��/g, // Common replacement character
       /\uFFFD/g, // Unicode replacement character
-      /[\u0000-\u001F]/g, // Control characters (except newlines \n)
-      /[\uFFF0-\uFFFF]/g, // Other problematic Unicode ranges
+      /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, // Control characters (excluding \n and \r)
       /â€™/g, // UTF-8 encoding error for apostrophe
       /â€œ/g, // UTF-8 encoding error for left quote
       /â€\x9D/g, // UTF-8 encoding error for right quote
