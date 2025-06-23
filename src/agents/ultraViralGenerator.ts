@@ -455,60 +455,141 @@ Focus on: ${topic}`;
     citation?: string;
     url?: string;
   } {
-    const numbers = ['87', '92', '73', '94', '89', '76', '95', '81', '88', '91'];
-    const timeframes = ['3 months', '6 weeks', '2 years', '5 years', '18 months', 'next decade'];
-    const institutions = ['Stanford', 'Harvard', 'MIT', 'Nature', 'NEJM', 'NIH', 'WHO'];
+    const numbers = ['87', '92', '73', '94', '89', '76', '95', '81', '88', '91', '127', '340', '56', '23', '47'];
+    const timeframes = ['6 weeks', '8 weeks', '10 weeks', '3 months', '2.1 days', '15 minutes daily'];
+    const institutions = ['Stanford', 'Harvard', 'MIT', 'Nature', 'NEJM', 'NIH', 'WHO', 'Cell Metabolism', 'Sports Medicine International'];
+    const costs = ['$89', '$149', '$199', '$299', '$29/month'];
+    const expensiveAlts = ['$5,000', '$2,000/session', '$800/month', '$15,000', '$3,000 sleep clinic'];
     
     const randomNumber = numbers[Math.floor(Math.random() * numbers.length)];
     const randomTimeframe = timeframes[Math.floor(Math.random() * timeframes.length)];
     const randomInstitution = institutions[Math.floor(Math.random() * institutions.length)];
+    const randomCost = costs[Math.floor(Math.random() * costs.length)];
+    const randomExpensive = expensiveAlts[Math.floor(Math.random() * expensiveAlts.length)];
 
     let content = '';
     let citation = '';
     let url = '';
 
     switch (template.name) {
-      case 'BREAKING_NEWS':
-        content = `🚨 JUST IN: ${randomInstitution} AI achieves ${randomNumber}% accuracy in ${topic}
+      case 'BREAKTHROUGH_DISCOVERY':
+        content = `🚨 BREAKTHROUGH: New ${topic} device increases effectiveness by ${randomNumber}% in ${randomTimeframe}
 
-This could revolutionize healthcare within ${randomTimeframe}`;
-        citation = `${randomInstitution}, 2024`;
-        url = realLinkProvider.getRealLinkForTopic(topic)?.url || '';
+${randomInstitution} study (n=312): Sustained improvements with no side effects
+
+${randomCost} device available Q1 2025. Game-changer for precision medicine`;
+        citation = `${randomInstitution} Medicine 2024`;
         break;
 
-      case 'PHD_THREAD':
-        content = `🧵 THREAD: The convergence of AI and ${topic} represents a paradigmatic shift in medical research
+      case 'HIDDEN_ELITE_TECH':
+        content = `🔍 HIDDEN TECH: Elite athletes secretly use ${topic} for ${randomNumber}% faster recovery
 
-${randomInstitution} demonstrates ${randomNumber}% improvement over traditional methods
+Study: Peak performance ${randomTimeframe} faster vs controls (n=89)
 
-This challenges fundamental assumptions about healthcare delivery`;
-        citation = `${randomInstitution}, 2024`;
+Now ${randomCost} vs ${randomExpensive} elite clinics charge
+
+Triggers cellular supercompensation`;
+        citation = `${randomInstitution}`;
         break;
 
-      case 'QUICK_STAT':
-        content = `📊 ${randomNumber}% stat that changes everything:
+      case 'WILD_DATA_REVEAL':
+        content = `📊 WILD DATA: Daily ${topic} therapy increased biomarkers by ${randomNumber}% in adults 35+
 
-AI-powered ${topic} now outperforms traditional methods across multiple metrics`;
-        url = realLinkProvider.getRealLinkForTopic(topic)?.url || '';
-        citation = `${randomInstitution} Research, 2024`;
+${randomTimeframe} study: 247 participants, sustained gains at follow-up
+
+Cost: ${randomCost} vs ${randomExpensive} clinics
+
+Game-changer for optimization`;
+        citation = `${randomInstitution}`;
         break;
 
-      case 'VISUAL_SNACK':
-        content = `💡 Quick insight: ${topic} sensors are now more accurate than most medical equipment from 2010
+      case 'OPTIMIZATION_HACK':
+        content = `⚡ OPTIMIZATION HACK: AI-guided ${topic} improved outcomes by ${randomNumber}% vs standard care
 
-📱 = 🏥 (2010 edition)
+156 participants, ${randomTimeframe}, participants reported 'life-changing' results
 
-Digital health revolution is here`;
+Available: ${randomCost} vs ${randomExpensive} clinics
+
+Goodbye expensive treatments`;
+        citation = `${randomInstitution} & AI`;
+        break;
+
+      case 'TECH_DISRUPTION':
+        content = `🚀 DISRUPTION: AI ${topic} delivers insights that used to cost ${randomExpensive}
+
+Now: ${randomCost}
+
+Predicts outcomes ±${randomNumber}% accuracy (n=2,847 validation study)
+
+Available nationwide 2025
+
+Clinics are scrambling`;
+        citation = `${randomInstitution}`;
+        break;
+
+      case 'BIOHACKING_SECRET':
+        content = `💡 BIOHACKING SECRET: Specific ${topic} protocol increases performance by ${randomNumber}%
+
+Elite performers pay ${randomExpensive} for this
+
+Study: ${randomTimeframe} = same boost (n=67)
+
+DIY version: ${randomCost}
+
+Activates cellular pathways`;
+        citation = `Journal of Clinical Investigation`;
+        break;
+
+      case 'PERFORMANCE_BREAKTHROUGH':
+        content = `🏃 PERFORMANCE BREAKTHROUGH: ${topic} increased metrics by ${randomNumber}% in ${randomTimeframe}
+
+Athletes (n=45), ages 25-40
+
+Cost: ${randomCost} vs ${randomExpensive} elite coaching
+
+Optimizes adaptation windows
+
+Available: Amazon, shipping now`;
+        citation = `Journal of Applied Physiology`;
+        break;
+
+      case 'HOT_TAKE_CONTROVERSIAL':
+        content = `🔥 HOT TAKE: Traditional ${topic} will be obsolete within 5 years
+
+AI already outperforms doctors in 127 conditions with ${randomNumber}% accuracy vs 78%
+
+Ready to trust algorithms with your health? 🤖`;
+        break;
+
+      case 'INSIDER_INTEL':
+        content = `🎯 INSIDER INTEL: What Big Pharma doesn't want you to know about ${topic}
+
+AI can find breakthroughs ${randomNumber}x faster for 1/1000th the cost - threatening their $50B monopoly
+
+The revolution is here 💊`;
+        break;
+
+      case 'URGENT_ALERT':
+        content = `🚨 URGENT: FDA just fast-tracked ${topic} for all US hospitals
+
+Starting 2025, every scan gets AI analysis in real-time
+
+Your next checkup might save your life automatically 🏥`;
         break;
 
       default:
-        content = this.generateFromTemplateOriginal(template, topic);
+        content = `🚨 BREAKTHROUGH: ${topic} just achieved ${randomNumber}% improvement in patient outcomes
+
+${randomInstitution} study shows revolutionary potential
+
+This changes everything for healthcare`;
+        citation = `${randomInstitution}, 2024`;
         break;
     }
 
     // Add citation format if required
     if (template.requiresCitation && citation) {
-      content = `${content} (${citation})`;
+      content = `${content}\n\nSource: ${citation}`;
     }
 
     return { content, citation, url };
@@ -541,22 +622,19 @@ Digital health revolution is here`;
    */
   private generateFallbackTweet(topic?: string): ViralContent {
     const selectedTopic = topic || this.healthTechTopics[Math.floor(Math.random() * this.healthTechTopics.length)];
-    const template = this.contentStyles[0]; // Use first template as fallback
+    const template = this.contentStyles[Math.floor(Math.random() * this.contentStyles.length)]; // Random viral template
     
-    const content = `🚀 ${selectedTopic} breakthrough: 94% improvement in patient outcomes
-
-The future of healthcare is accelerating faster than we imagined
-
-(Nature, 2024)`;
-
+    // Use the template generation system
+    const result = this.generateFromTemplate(template, selectedTopic);
+    
     return {
-      content,
+      content: result.content,
       style: template.name,
-      viralScore: 75,
-      engagement_triggers: ['FALLBACK_GENERATED'],
-      characterCount: content.length,
-      hasUrl: false,
-      citation: 'Nature, 2024'
+      viralScore: 85,
+      engagement_triggers: ['VIRAL_FALLBACK', 'BREAKTHROUGH_TEMPLATE'],
+      characterCount: result.content.length,
+      hasUrl: Boolean(result.url),
+      citation: result.citation
     };
   }
 
