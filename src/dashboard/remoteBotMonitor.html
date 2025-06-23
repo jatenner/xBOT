@@ -937,153 +937,130 @@
         }
 
         function updateApiLimits(apiLimits) {
-            if (!apiLimits || !apiLimitsGrid) return;
+            if (!apiLimits) return;
 
-            console.log('🔄 Updating API limits display:', apiLimits);
+            const container = apiLimitsGrid;
+            container.innerHTML = '';
 
-            // Clear existing content
-            apiLimitsGrid.innerHTML = '';
-
-            // Define API services with icons and details
-            const apiServices = [
-                {
-                    name: 'Twitter API',
-                    icon: '🐦',
-                    data: apiLimits.twitter || {},
-                    limits: {
-                        tweets: { monthly: 1500, daily: 50 },
-                        likes: { daily: 1000 },
-                        follows: { daily: 400 },
-                        retweets: { daily: 300 }
-                    }
+            // Twitter API - USING REAL LIMITS FROM YOUR TWITTER API PLAN
+            const twitterCard = createApiCard('🐦 Twitter API', [
+                { 
+                    label: 'Daily Tweets', 
+                    used: apiLimits.twitter.tweets_daily, 
+                    limit: 20,  // YOUR ACTUAL TWITTER API FREE TIER LIMIT
+                    resetTime: formatResetTime(apiLimits.twitter.tweets_daily_reset)
                 },
-                {
-                    name: 'NewsAPI',
-                    icon: '📰',
-                    data: apiLimits.newsapi || {},
-                    limits: {
-                        requests: { monthly: 500, daily: 20 }
-                    }
+                { 
+                    label: 'Monthly Tweets', 
+                    used: apiLimits.twitter.tweets_monthly, 
+                    limit: 500,  // YOUR ACTUAL TWITTER API FREE TIER LIMIT
+                    resetTime: formatResetTime(apiLimits.twitter.tweets_monthly_reset)
                 },
-                {
-                    name: 'OpenAI GPT',
-                    icon: '🤖',
-                    data: apiLimits.openai || {},
-                    limits: {
-                        tokens: { daily: 40000, hourly: 3000 },
-                        requests: { daily: 200, hourly: 15 }
-                    }
+                { 
+                    label: 'Daily Likes', 
+                    used: apiLimits.twitter.likes_daily, 
+                    limit: 1000,  // Standard engagement limit
+                    resetTime: formatResetTime(apiLimits.twitter.likes_daily_reset)
                 },
-                {
-                    name: 'Supabase DB',
-                    icon: '🗄️',
-                    data: apiLimits.supabase || {},
-                    limits: {
-                        queries: { daily: 10000, hourly: 500 },
-                        storage: { total: 500 }
-                    }
+                { 
+                    label: 'Daily Follows', 
+                    used: apiLimits.twitter.follows_daily, 
+                    limit: 400,  // Standard follow limit
+                    resetTime: formatResetTime(apiLimits.twitter.follows_daily_reset)
+                },
+                { 
+                    label: 'Daily Retweets', 
+                    used: apiLimits.twitter.retweets_daily, 
+                    limit: 300,  // Standard retweet limit
+                    resetTime: formatResetTime(apiLimits.twitter.retweets_daily_reset)
                 }
-            ];
+            ]);
 
-            // Create cards for each API service
-            apiServices.forEach(service => {
-                const card = document.createElement('div');
-                card.className = 'api-limit-card';
+            // NewsAPI - REAL USAGE STATUS
+            const newsCard = createApiCard('📰 NewsAPI', [
+                { 
+                    label: 'Daily Requests', 
+                    used: apiLimits.newsapi.requests_daily, 
+                    limit: 20,  // NewsAPI free tier daily limit
+                    resetTime: formatResetTime(apiLimits.newsapi.requests_daily_reset)
+                },
+                { 
+                    label: 'Monthly Requests', 
+                    used: apiLimits.newsapi.requests_monthly, 
+                    limit: 500,  // NewsAPI free tier monthly limit
+                    resetTime: formatResetTime(apiLimits.newsapi.requests_monthly_reset)
+                }
+            ]);
 
-                let cardContent = `
-                    <div class="api-service-name">
-                        <span style="font-size: 1.2em;">${service.icon}</span>
-                        ${service.name}
-                    </div>
-                `;
+            // OpenAI GPT - ESTIMATED USAGE
+            const openaiCard = createApiCard('🤖 OpenAI GPT', [
+                { 
+                    label: 'Daily Tokens', 
+                    used: apiLimits.openai.tokens_daily, 
+                    limit: 40000,  // Conservative estimate for GPT usage
+                    resetTime: formatResetTime(apiLimits.openai.tokens_daily_reset)
+                },
+                { 
+                    label: 'Hourly Tokens', 
+                    used: apiLimits.openai.tokens_hourly, 
+                    limit: 3000,  // Hourly rate limit
+                    resetTime: formatResetTime(apiLimits.openai.tokens_hourly_reset)
+                },
+                { 
+                    label: 'Daily Requests', 
+                    used: apiLimits.openai.requests_daily, 
+                    limit: 200,  // Conservative daily request limit
+                    resetTime: formatResetTime(apiLimits.openai.requests_daily_reset)
+                },
+                { 
+                    label: 'Hourly Requests', 
+                    used: apiLimits.openai.requests_hourly, 
+                    limit: 15,  // Hourly request limit
+                    resetTime: formatResetTime(apiLimits.openai.requests_hourly_reset)
+                }
+            ]);
 
-                // Add usage bars for each limit type
-                Object.entries(service.limits).forEach(([limitType, limits]) => {
-                    Object.entries(limits).forEach(([period, limit]) => {
-                        const usageKey = `${limitType}_${period}`;
-                        const usage = service.data[usageKey] || 0;
-                        const percentage = Math.min((usage / limit) * 100, 100);
-                        
-                        let statusClass = 'normal';
-                        let statusIcon = '✅';
-                        if (percentage > 90) {
-                            statusClass = 'critical';
-                            statusIcon = '🚨';
-                            card.classList.add('critical');
-                        } else if (percentage > 70) {
-                            statusClass = 'warning';
-                            statusIcon = '⚠️';
-                            card.classList.add('warning');
-                        }
+            // Supabase Database - REAL USAGE
+            const supabaseCard = createApiCard('🗄️ Supabase DB', [
+                { 
+                    label: 'Daily Queries', 
+                    used: apiLimits.supabase.queries_daily, 
+                    limit: 10000,  // Supabase free tier daily queries
+                    resetTime: formatResetTime(apiLimits.supabase.queries_daily_reset)
+                },
+                { 
+                    label: 'Hourly Queries', 
+                    used: apiLimits.supabase.queries_hourly, 
+                    limit: 500,  // Hourly query rate limit
+                    resetTime: formatResetTime(apiLimits.supabase.queries_hourly_reset)
+                },
+                { 
+                    label: 'Storage (MB)', 
+                    used: apiLimits.supabase.storage_total, 
+                    limit: 500,  // Supabase free tier storage limit
+                    resetTime: 'Monthly reset'
+                }
+            ]);
 
-                        const resetTime = service.data[`${usageKey}_reset`];
-                        const resetDisplay = resetTime ? new Date(resetTime).toLocaleString() : 'Unknown';
+            container.appendChild(twitterCard);
+            container.appendChild(newsCard);
+            container.appendChild(openaiCard);
+            container.appendChild(supabaseCard);
 
-                        cardContent += `
-                            <div style="margin-bottom: 12px;">
-                                <div class="api-usage-text">
-                                    <span>${statusIcon} ${limitType.charAt(0).toUpperCase() + limitType.slice(1)} (${period})</span>
-                                    <span><strong>${usage.toLocaleString()}</strong> / ${limit.toLocaleString()}</span>
-                                </div>
-                                <div class="api-usage-bar">
-                                    <div class="api-usage-fill ${statusClass}" style="width: ${percentage}%"></div>
-                                </div>
-                                <div class="api-reset-time">Resets: ${resetDisplay}</div>
-                            </div>
-                        `;
-                    });
-                });
-
-                // Add overall status
-                const overallUsage = Object.values(service.data).filter(v => typeof v === 'number').reduce((a, b) => a + b, 0);
-                const isHealthy = !card.classList.contains('critical') && !card.classList.contains('warning');
-                
-                cardContent += `
-                    <div style="margin-top: 15px; padding-top: 12px; border-top: 1px solid #e2e8f0; font-size: 0.85rem; color: #64748b;">
-                        <strong>Status:</strong> ${isHealthy ? '🟢 Healthy' : card.classList.contains('critical') ? '🔴 Critical' : '🟡 Warning'}
-                        ${service.data.last_error ? `<br><span style="color: #ef4444;">Last Error: ${service.data.last_error}</span>` : ''}
-                    </div>
-                `;
-
-                card.innerHTML = cardContent;
-                apiLimitsGrid.appendChild(card);
-            });
-
-            // Add summary card
-            const summaryCard = document.createElement('div');
-            summaryCard.className = 'api-limit-card';
-            summaryCard.style.borderLeftColor = '#8b5cf6';
-            
-            const totalServices = apiServices.length;
-            const healthyServices = document.querySelectorAll('.api-limit-card:not(.warning):not(.critical)').length;
-            const warningServices = document.querySelectorAll('.api-limit-card.warning').length;
-            const criticalServices = document.querySelectorAll('.api-limit-card.critical').length;
-
-            summaryCard.innerHTML = `
-                <div class="api-service-name">
-                    <span style="font-size: 1.2em;">📊</span>
-                    API Health Summary
+            // Overall health summary
+            const healthSummary = document.createElement('div');
+            healthSummary.className = 'api-health-summary';
+            healthSummary.innerHTML = `
+                <h4>📊 API Health Summary</h4>
+                <div class="health-status ${apiLimits.overall_status}">
+                    Status: ${apiLimits.overall_status.toUpperCase()}
                 </div>
-                <div style="margin-top: 15px;">
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                        <span>🟢 Healthy Services:</span>
-                        <strong>${healthyServices}</strong>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                        <span>🟡 Warning Services:</span>
-                        <strong>${warningServices}</strong>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                        <span>🔴 Critical Services:</span>
-                        <strong>${criticalServices}</strong>
-                    </div>
-                    <div style="margin-top: 12px; padding-top: 8px; border-top: 1px solid #e2e8f0; font-size: 0.85rem; color: #64748b;">
-                        Last Updated: ${new Date().toLocaleTimeString()}
-                    </div>
+                <div class="health-details">
+                    <p><strong>Critical Issues:</strong> ${getCriticalIssues(apiLimits)}</p>
+                    <p><strong>Last Updated:</strong> ${new Date(apiLimits.timestamp).toLocaleString()}</p>
                 </div>
             `;
-
-            apiLimitsGrid.appendChild(summaryCard);
+            container.appendChild(healthSummary);
         }
 
         function showUpdateIndicator() {
@@ -1098,65 +1075,106 @@
             // Could show error notification here
         }
 
-        // HTTP Polling Fallback
-        function startHttpPollingFallback() {
-            if (fallbackActive) return;
+        function createApiCard(title, metrics) {
+            const card = document.createElement('div');
+            card.className = 'api-limit-card';
             
-            console.log('📡 Starting HTTP polling fallback...');
-            fallbackActive = true;
-            
-            // Update connection status
-            connectionStatus.className = 'connection-status';
-            connectionStatus.innerHTML = `
-                <div class="status-indicator"></div>
-                <span>🔄 Connected via HTTP polling (WebSocket unavailable)</span>
+            let maxPercentage = 0;
+            let cardContent = `
+                <div class="api-service-name">
+                    ${title}
+                </div>
             `;
-
-            // Initial load
-            loadAllDataHTTP();
             
-            // Set up polling interval
-            const pollInterval = setInterval(async () => {
-                if (isConnected) {
-                    // WebSocket reconnected, stop polling
-                    clearInterval(pollInterval);
-                    fallbackActive = false;
-                    return;
+            metrics.forEach(metric => {
+                const percentage = Math.min((metric.used / metric.limit) * 100, 100);
+                maxPercentage = Math.max(maxPercentage, percentage);
+                
+                let statusClass = 'normal';
+                let statusIcon = '✅';
+                if (percentage > 90) {
+                    statusClass = 'critical';
+                    statusIcon = '🚨';
+                } else if (percentage > 70) {
+                    statusClass = 'warning';
+                    statusIcon = '⚠️';
                 }
                 
-                await loadAllDataHTTP();
-            }, 10000); // Poll every 10 seconds
+                cardContent += `
+                    <div style="margin-bottom: 12px;">
+                        <div class="api-usage-text">
+                            <span>${statusIcon} ${metric.label}</span>
+                            <span><strong>${metric.used.toLocaleString()}</strong> / ${metric.limit.toLocaleString()}</span>
+                        </div>
+                        <div class="api-usage-bar">
+                            <div class="api-usage-fill ${statusClass}" style="width: ${percentage}%"></div>
+                        </div>
+                        <div class="api-reset-time">Resets: ${metric.resetTime}</div>
+                    </div>
+                `;
+            });
+            
+            // Add overall status
+            const isHealthy = maxPercentage < 70;
+            const isCritical = maxPercentage > 90;
+            
+            cardContent += `
+                <div style="margin-top: 15px; padding-top: 12px; border-top: 1px solid #e2e8f0; font-size: 0.85rem; color: #64748b;">
+                    <strong>Status:</strong> ${isHealthy ? '🟢 Healthy' : isCritical ? '🔴 Critical' : '🟡 Warning'}
+                </div>
+            `;
+            
+            if (isCritical) card.classList.add('critical');
+            else if (!isHealthy) card.classList.add('warning');
+            
+            card.innerHTML = cardContent;
+            return card;
         }
 
-        async function loadAllDataHTTP() {
-            try {
-                // Load all data via HTTP endpoints
-                const [status, thinking, activities, metrics, apiLimits] = await Promise.all([
-                    fetch('/api/remote-status').then(r => r.json()).catch(e => null),
-                    fetch('/api/bot-thinking').then(r => r.json()).catch(e => null),
-                    fetch('/api/activity-feed').then(r => r.json()).catch(e => null),
-                    fetch('/api/live-metrics').then(r => r.json()).catch(e => null),
-                    fetch('/api/api-limits').then(r => r.json()).catch(e => null)
-                ]);
-
-                if (status) {
-                    updateBotState({
-                        currentAction: status.currentMode === 'autonomous' ? 'Autonomous posting mode' : 'Manual mode',
-                        isActive: status.isOnline
-                    });
-                }
-
-                if (thinking) updateThinkingStream(thinking);
-                if (activities) updateActivityFeed(activities);
-                if (metrics) updateMetrics(metrics);
-                if (apiLimits) updateApiLimits(apiLimits);
-                if (thinking && thinking.decisionFactors) updateDecisionFactors(thinking.decisionFactors);
-
-                showUpdateIndicator();
-                
-            } catch (error) {
-                console.error('HTTP polling error:', error);
+        function formatResetTime(resetTimeString) {
+            if (!resetTimeString) return 'Unknown';
+            
+            const resetTime = new Date(resetTimeString);
+            const now = new Date();
+            const diffMs = resetTime - now;
+            
+            if (diffMs <= 0) return 'Now';
+            
+            const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+            const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+            
+            if (diffHours > 24) {
+                const diffDays = Math.floor(diffHours / 24);
+                return `${diffDays}d ${diffHours % 24}h`;
+            } else if (diffHours > 0) {
+                return `${diffHours}h ${diffMinutes}m`;
+            } else {
+                return `${diffMinutes}m`;
             }
+        }
+
+        function getCriticalIssues(apiLimits) {
+            const issues = [];
+            
+            // Check Twitter API
+            if ((apiLimits.twitter.tweets_daily / 20) > 0.9) {
+                issues.push('Twitter daily tweets limit');
+            }
+            if ((apiLimits.twitter.tweets_monthly / 500) > 0.9) {
+                issues.push('Twitter monthly tweets limit');
+            }
+            
+            // Check NewsAPI
+            if ((apiLimits.newsapi.requests_daily / 20) > 0.9) {
+                issues.push('NewsAPI daily limit');
+            }
+            
+            // Check OpenAI
+            if ((apiLimits.openai.tokens_daily / 40000) > 0.9) {
+                issues.push('OpenAI token limit');
+            }
+            
+            return issues.length > 0 ? issues.join(', ') : 'None';
         }
 
         // Auto-refresh data every 30 seconds as backup
