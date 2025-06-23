@@ -374,10 +374,46 @@ export class PostTweetAgent {
   }
 
   private async generateUniqueContent(): Promise<string> {
+    const contentMode = this.selectContentMode();
+    
     const regenerateCallback = async () => {
-      // Use the viral generator for content creation
-      const viralContent = await this.viralGenerator.generateViralTweet();
-      return viralContent.content;
+      switch (contentMode) {
+        case 'viral':
+          // Use new viral content agent for maximum engagement
+          console.log('🔥 Generating viral content with new agent...');
+          try {
+            // First try to import the viral agent dynamically
+            const { viralContentAgent } = await import('./viralContentAgent');
+            const viralResult = await viralContentAgent.generateViralTweet();
+            if (viralResult.success && viralResult.content) {
+              console.log(`🎯 Viral content generated: ${viralResult.type}, engagement potential: ${viralResult.engagement_potential}%`);
+              return viralResult.content;
+            }
+          } catch (error) {
+            console.log('⚠️ Viral agent failed, using ultra viral generator...');
+          }
+          // Fallback to existing viral generator
+          const viralContent = await this.viralGenerator.generateViralTweet();
+          return viralContent.content;
+          
+        case 'current_events':
+          console.log('📰 Generating current events content...');
+          const result = await this.generateCurrentEventsTweet(false, true);
+          return result.content || await this.generateFallbackContent();
+          
+        case 'comprehensive':
+          console.log('📚 Generating comprehensive content...');
+          const compResult = await this.generateComprehensiveTweet(false);
+          return compResult.content || await this.generateFallbackContent();
+          
+        case 'trending':
+          console.log('📈 Generating trending content...');
+          const trendResult = await this.generateTrendingTweet(false, true);
+          return trendResult.content || await this.generateFallbackContent();
+          
+        default:
+          return await this.generateFallbackContent();
+      }
     };
 
     // Generate initial content
@@ -389,6 +425,11 @@ export class PostTweetAgent {
       regenerateCallback,
       3 // max attempts
     );
+  }
+  
+  private async generateFallbackContent(): Promise<string> {
+    const fallbackResult = await this.generateFallbackTweet(false, false);
+    return fallbackResult.content || 'AI is transforming healthcare. The future is here.';
   }
 
   private determineTweetStyle(content: string): string {
@@ -434,7 +475,7 @@ export class PostTweetAgent {
     }
   }
 
-  private selectContentMode(): 'comprehensive' | 'engagement' | 'current_events' | 'trending' {
+  private selectContentMode(): 'viral' | 'comprehensive' | 'engagement' | 'current_events' | 'trending' {
     const currentHour = new Date().getHours();
     const isPeakHour = (currentHour >= 9 && currentHour <= 11) || 
                       (currentHour >= 15 && currentHour <= 17) || 
@@ -442,21 +483,20 @@ export class PostTweetAgent {
     
     const randomFactor = Math.random();
     
-    // NEW STRATEGY: 40% current events (real news), 30% comprehensive, 20% trending, 10% engagement
-    // Focus more on real content and less on generic engagement questions
-    if (randomFactor < 0.4) {
+    // 🔥 VIRAL-FIRST STRATEGY: 50% viral, 25% current events, 15% comprehensive, 10% trending
+    // REMOVES boring engagement mode that was causing repetitive questions
+    if (randomFactor < 0.5) {
+      console.log('🔥 Selected mode: VIRAL (maximum engagement)');
+      return 'viral';
+    } else if (randomFactor < 0.75) {
       console.log('🎯 Selected mode: CURRENT EVENTS (real news)');
       return 'current_events';
-    } else if (randomFactor < 0.7) {
+    } else if (randomFactor < 0.9) {
       console.log('🎯 Selected mode: COMPREHENSIVE (structured research)');
       return 'comprehensive';
-    } else if (randomFactor < 0.9) {
+    } else {
       console.log('🎯 Selected mode: TRENDING (real-time topics)');
       return 'trending';
-    } else {
-      console.log('🎯 Selected mode: ENGAGEMENT (only during peak hours)');
-      // Only use engagement mode during peak hours to minimize generic questions
-      return isPeakHour ? 'engagement' : 'current_events';
     }
   }
 
@@ -1356,72 +1396,37 @@ export class PostTweetAgent {
 
   private async generateFallbackTweet(includeSnap2HealthCTA: boolean, includeImage: boolean = false): Promise<PostResult> {
     try {
-      const fallbackContent = await openaiClient.generateTweet({
-        includeSnap2HealthCTA,
-        style: 'informative'
-      });
+      // 🚀 ENHANCED OPENAI-ONLY GENERATION
+      console.log('🧠 Generating OpenAI-only content with enhanced creativity...');
+      
+      const creativeModes = [
+        () => this.generateOpenAIBreakthrough(),
+        () => this.generateOpenAIInsight(), 
+        () => this.generateOpenAIAnalysis(),
+        () => openaiClient.generateTweet({ includeSnap2HealthCTA, style: 'informative' })
+      ];
 
-      if (!fallbackContent) {
-        return {
-          success: false,
-          error: 'Failed to generate fallback content'
-        };
+      // Try multiple creative approaches
+      for (const mode of creativeModes) {
+        try {
+          const content = await mode();
+          if (content && content.length > 50) {
+            const formattedTweet = formatTweet(content);
+            if (formattedTweet.isValid) {
+              console.log('✅ OpenAI creative generation successful');
+              return await this.postContentWithOptionalImage(formattedTweet.content, includeImage, includeSnap2HealthCTA);
+            }
+          }
+        } catch (error) {
+          console.warn('OpenAI creative mode failed, trying next:', error);
+          continue;
+        }
       }
 
-      const formattedTweet = formatTweet(fallbackContent);
-
-      if (!formattedTweet.isValid) {
-        return {
-          success: false,
-          error: 'Fallback tweet validation failed'
-        };
-      }
-
-      // Get image for fallback tweet if requested
-      let imageResult = null;
-      if (includeImage) {
-        const fallbackImageRequest: ImageRequest = {
-          contentType: 'fact_spotlight',
-          content: fallbackContent,
-          source: 'AI Generated',
-          keywords: ['health', 'technology']
-        };
-        imageResult = await this.imageAgent.getImageForContent(fallbackImageRequest);
-      }
-
-      // Post tweet with or without image
-      let result;
-      if (imageResult?.success && imageResult.localPath) {
-        result = await xClient.postTweetWithMedia({
-          text: formattedTweet.content,
-          mediaUrls: [imageResult.imageUrl!],
-          altText: [imageResult.altText!]
-        });
-      } else {
-        result = await xClient.postTweet(formattedTweet.content);
-      }
-
-      if (result.success) {
-        await supabaseClient.insertTweet({
-          tweet_id: result.tweetId!,
-          content: formattedTweet.content,
-          tweet_type: 'original',
-          engagement_score: 0,
-          likes: 0,
-          retweets: 0,
-          replies: 0,
-          impressions: 0,
-          has_snap2health_cta: includeSnap2HealthCTA
-        });
-      }
-
-      return {
-        success: result.success,
-        tweetId: result.tweetId,
-        content: formattedTweet.content,
-        hasImage: !!imageResult?.success,
-        error: result.error
-      };
+      // Final fallback to curated content
+      const curatedContent = this.getCuratedContent();
+      const formattedTweet = formatTweet(curatedContent);
+      return await this.postContentWithOptionalImage(formattedTweet.content, includeImage, includeSnap2HealthCTA);
 
     } catch (error) {
       return {
@@ -1429,6 +1434,161 @@ export class PostTweetAgent {
         error: error instanceof Error ? error.message : 'Fallback generation failed'
       };
     }
+  }
+
+  /**
+   * 🔬 Generate breakthrough-style content using OpenAI creativity
+   */
+  private async generateOpenAIBreakthrough(): Promise<string> {
+    const prompts = [
+      `Write a sophisticated tweet about a breakthrough in AI diagnostics. Include specific accuracy percentages (realistic), mention the medical condition, and explain clinical impact. PhD-level vocabulary but engaging. Under 240 characters.`,
+      
+      `Create a tweet about advances in digital therapeutics. Include FDA approval context, patient outcome data, and therapeutic area. Professional tone, specific metrics, under 240 characters.`,
+      
+      `Generate a tweet about precision medicine breakthroughs. Focus on genomic analysis, personalized treatments, and outcome improvements. Include specific data. Academic tone, under 240 characters.`
+    ];
+
+    const selectedPrompt = prompts[Math.floor(Math.random() * prompts.length)];
+    return await openaiClient.generateCompletion(selectedPrompt, {
+      maxTokens: 80,
+      temperature: 0.8
+    }) || '';
+  }
+
+  /**
+   * 💡 Generate analytical insights using OpenAI knowledge
+   */
+  private async generateOpenAIInsight(): Promise<string> {
+    const insightPrompts = [
+      `Analyze the paradigm shift in healthcare AI. Write a sophisticated tweet about how machine learning changes clinical decisions. Include statistics and implications. PhD-level insight, under 240 chars.`,
+      
+      `Examine quantum computing's impact on drug discovery. Write about computational breakthroughs in pharmaceutical research. Technical depth, specific applications, under 240 chars.`,
+      
+      `Analyze blockchain's role in health data interoperability. Write about security, patient control, and systemic changes. Professional analysis, specific benefits, under 240 chars.`
+    ];
+
+    const selectedPrompt = insightPrompts[Math.floor(Math.random() * insightPrompts.length)];
+    return await openaiClient.generateCompletion(selectedPrompt, {
+      maxTokens: 85,
+      temperature: 0.7
+    }) || '';
+  }
+
+  /**
+   * 📈 Generate future analysis using OpenAI predictions
+   */
+  private async generateOpenAIAnalysis(): Promise<string> {
+    const analysisPrompts = [
+      `Predict AI healthcare adoption by 2027. Write a sophisticated tweet with specific percentages, clinical applications, and patient impact. Authoritative tone, compelling data, under 240 chars.`,
+      
+      `Forecast digital biomarkers evolution. Write about continuous monitoring, early detection, and preventive care. Include timeline and impact metrics. Professional foresight, under 240 chars.`,
+      
+      `Predict synthetic biology's transformation of therapeutics. Write about speed, customization, and accessibility improvements. Specific timelines and metrics, under 240 chars.`
+    ];
+
+    const selectedPrompt = analysisPrompts[Math.floor(Math.random() * analysisPrompts.length)];
+    return await openaiClient.generateCompletion(selectedPrompt, {
+      maxTokens: 80,
+      temperature: 0.8
+    }) || '';
+  }
+
+  /**
+   * 🎯 Get curated high-quality content as ultimate fallback
+   */
+  private getCuratedContent(): string {
+    const curatedHealthTech = [
+      "🔬 AI pathology systems achieve 97.8% cancer detection accuracy, surpassing human specialists in speed and consistency. This paradigmatic shift democratizes expert diagnostics globally, potentially saving millions through early detection.",
+
+      "📈 Digital therapeutics demonstrate 73% better patient adherence than traditional treatments. FDA-regulated apps deliver measurable clinical outcomes, transforming chronic disease management from reactive to predictive care.",
+
+      "🧬 CRISPR-Cas13 enables real-time viral detection with 95% accuracy in 15 minutes. This breakthrough transforms point-of-care diagnostics, enabling immediate clinical decisions without laboratory infrastructure.",
+
+      "💻 Edge AI medical devices process patient data locally, eliminating cloud latency while ensuring privacy. This architectural evolution enables real-time clinical decisions with microsecond response times.",
+
+      "🎯 Precision oncology platforms analyze 500+ biomarkers simultaneously, achieving 89% treatment response prediction. Personalized therapy selection revolutionizes cancer care outcomes through genomic intelligence.",
+
+      "📊 Wearable sensors detect atrial fibrillation 48 hours before clinical symptoms appear. Continuous monitoring transforms cardiac care from reactive treatment to preventive intervention through predictive algorithms.",
+
+      "🚀 Quantum computing accelerates drug discovery by 1000x, reducing pharmaceutical development from 15 years to 18 months. Computational breakthroughs democratize therapeutic innovation globally.",
+
+      "🔍 AI retinal screening identifies diabetic complications with 96% accuracy using smartphone cameras. This technology brings specialist-level diagnosis to underserved populations worldwide.",
+
+      "💡 Digital biomarkers from speech patterns detect Alzheimer's progression 6 years before clinical diagnosis. Early intervention windows expand dramatically through passive monitoring technologies.",
+
+      "⚡ Robotic surgery with haptic feedback achieves 40% reduction in operative complications. Precision automation enhances human surgical capabilities while maintaining essential tactile sensitivity."
+    ];
+
+    return curatedHealthTech[Math.floor(Math.random() * curatedHealthTech.length)];
+  }
+
+  /**
+   * 🖼️ Helper method to post content with optional image
+   */
+  private async postContentWithOptionalImage(content: string, includeImage: boolean, includeSnap2HealthCTA: boolean): Promise<PostResult> {
+    let imageResult = null;
+    if (includeImage) {
+      const imageRequest: ImageRequest = {
+        contentType: 'fact_spotlight',
+        content: content,
+        source: 'AI Generated',
+        keywords: this.extractKeywordsFromContent(content)
+      };
+      imageResult = await this.imageAgent.getImageForContent(imageRequest);
+    }
+
+    let result;
+    if (imageResult?.success && imageResult.localPath) {
+      result = await xClient.postTweetWithMedia({
+        text: content,
+        mediaUrls: [imageResult.imageUrl!],
+        altText: [imageResult.altText!]
+      });
+    } else {
+      result = await xClient.postTweet(content);
+    }
+
+    if (result.success) {
+      await supabaseClient.insertTweet({
+        tweet_id: result.tweetId!,
+        content: content,
+        tweet_type: 'original',
+        content_type: 'openai_enhanced',
+        source_attribution: 'OpenAI Creative',
+        engagement_score: 0,
+        likes: 0,
+        retweets: 0,
+        replies: 0,
+        impressions: 0,
+        has_snap2health_cta: includeSnap2HealthCTA
+      });
+    }
+
+    return {
+      success: result.success,
+      tweetId: result.tweetId,
+      content: content,
+      hasImage: !!imageResult?.success,
+      error: result.error
+    };
+  }
+
+  /**
+   * 🔍 Extract keywords from content for image selection
+   */
+  private extractKeywordsFromContent(content: string): string[] {
+    const healthTechTerms = [
+      'AI', 'artificial intelligence', 'machine learning', 'diagnosis', 'treatment',
+      'healthcare', 'medical', 'digital', 'technology', 'innovation', 'precision',
+      'genomic', 'biomarker', 'therapeutic', 'clinical', 'patient', 'care'
+    ];
+    
+    const contentLower = content.toLowerCase();
+    const foundKeywords = healthTechTerms.filter(term => 
+      contentLower.includes(term.toLowerCase())
+    );
+    
+    return foundKeywords.length > 0 ? foundKeywords.slice(0, 5) : ['health technology', 'medical innovation'];
   }
 
   private async getImageForViralContent(content: string): Promise<any> {
