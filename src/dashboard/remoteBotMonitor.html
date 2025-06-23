@@ -947,13 +947,13 @@
                 { 
                     label: 'Daily Tweets', 
                     used: apiLimits.twitter.tweets_daily, 
-                    limit: 20,  // YOUR ACTUAL TWITTER API FREE TIER LIMIT
+                    limit: 17,  // ACTUAL TWITTER API V2 FREE TIER LIMIT
                     resetTime: formatResetTime(apiLimits.twitter.tweets_daily_reset)
                 },
                 { 
-                    label: 'Monthly Tweets', 
+                    label: 'Monthly Post Cap', 
                     used: apiLimits.twitter.tweets_monthly, 
-                    limit: 500,  // YOUR ACTUAL TWITTER API FREE TIER LIMIT
+                    limit: 1500,  // ACTUAL TWITTER API V2 FREE TIER POST CAP
                     resetTime: formatResetTime(apiLimits.twitter.tweets_monthly_reset)
                 },
                 { 
@@ -981,13 +981,13 @@
                 { 
                     label: 'Daily Requests', 
                     used: apiLimits.newsapi.requests_daily, 
-                    limit: 20,  // NewsAPI free tier daily limit
+                    limit: 100,  // ACTUAL NewsAPI free tier daily limit
                     resetTime: formatResetTime(apiLimits.newsapi.requests_daily_reset)
                 },
                 { 
                     label: 'Monthly Requests', 
                     used: apiLimits.newsapi.requests_monthly, 
-                    limit: 500,  // NewsAPI free tier monthly limit
+                    limit: 3000,  // ACTUAL NewsAPI free tier monthly limit
                     resetTime: formatResetTime(apiLimits.newsapi.requests_monthly_reset)
                 }
             ]);
@@ -1156,16 +1156,16 @@
         function getCriticalIssues(apiLimits) {
             const issues = [];
             
-            // Check Twitter API
-            if ((apiLimits.twitter.tweets_daily / 20) > 0.9) {
+            // Check Twitter API - REAL LIMITS
+            if ((apiLimits.twitter.tweets_daily / 17) > 0.9) {
                 issues.push('Twitter daily tweets limit');
             }
-            if ((apiLimits.twitter.tweets_monthly / 500) > 0.9) {
-                issues.push('Twitter monthly tweets limit');
+            if ((apiLimits.twitter.tweets_monthly / 1500) > 0.9) {
+                issues.push('Twitter monthly post cap');
             }
             
-            // Check NewsAPI
-            if ((apiLimits.newsapi.requests_daily / 20) > 0.9) {
+            // Check NewsAPI - REAL LIMITS
+            if ((apiLimits.newsapi.requests_daily / 100) > 0.9) {
                 issues.push('NewsAPI daily limit');
             }
             

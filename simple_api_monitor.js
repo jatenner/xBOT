@@ -112,19 +112,19 @@ app.get('/', (req, res) => {
             
             let html = '<div class="service-grid">';
             
-            // Twitter API
+            // Twitter API - REAL API V2 FREE TIER LIMITS
             html += createServiceCard('🐦', 'Twitter API', data.twitter, {
-                tweets_daily: { limit: 20, label: 'Daily Tweets' },
-                tweets_monthly: { limit: 500, label: 'Monthly Tweets' },
+                tweets_daily: { limit: 17, label: 'Daily Tweets' },
+                tweets_monthly: { limit: 1500, label: 'Monthly Post Cap' },
                 likes_daily: { limit: 1000, label: 'Daily Likes' },
                 follows_daily: { limit: 400, label: 'Daily Follows' },
                 retweets_daily: { limit: 300, label: 'Daily Retweets' }
             });
             
-            // NewsAPI
+            // NewsAPI - REAL FREE TIER LIMITS
             html += createServiceCard('📰', 'NewsAPI', data.newsapi, {
-                requests_daily: { limit: 20, label: 'Daily Requests' },
-                requests_monthly: { limit: 500, label: 'Monthly Requests' }
+                requests_daily: { limit: 100, label: 'Daily Requests' },
+                requests_monthly: { limit: 3000, label: 'Monthly Requests' }
             });
             
             // OpenAI
