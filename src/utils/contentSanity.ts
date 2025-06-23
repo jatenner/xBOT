@@ -99,24 +99,27 @@ export function validateRiddle(text: string): ValidationResult {
 export function validateTextReadability(text: string): ValidationResult {
   // Check for common signs of scrambled text
   const scrambledPatterns = [
-    /\b[a-z]{3,}\s+[a-z]{3,}\s+[a-z]{3,}\b/g, // Multiple consecutive lowercase words (unusual for tweets)
-    /\b[bcdfghjklmnpqrstvwxyz]{4,}\b/gi, // Words with too many consonants in a row
+    /\b[bcdfghjklmnpqrstvwxyz]{5,}\b/gi, // Words with too many consonants in a row
     /\b[a-z]+eb\b/gi, // Words ending in "eb" (often reversed)
     /\b[a-z]*ht[a-z]*\b/gi, // Words with "ht" (often reversed "th")
   ];
 
-  // Check for excessive lowercase words (sign of scrambling)
+  // SIMPLIFIED: Only check for truly scrambled patterns, not normal health/tech words
   const words = text.split(/\s+/);
-  const lowercaseWords = words.filter(word => 
-    word.length > 3 && 
+  const healthTechWords = ['fitness', 'tracking', 'will', 'health', 'study', 'data', 'research', 'tech', 'app', 'device', 'therapy', 'treatment', 'analysis', 'optimization', 'monitoring', 'biohacking', 'breakthrough'];
+  
+  const suspiciousWords = words.filter(word => 
+    word.length > 5 && 
     word === word.toLowerCase() && 
-    /^[a-z]+$/.test(word)
+    /^[a-z]+$/.test(word) &&
+    !healthTechWords.includes(word.toLowerCase()) &&
+    (word.includes('ght') || word.includes('ckn') || word.includes('xz'))
   );
 
-  if (lowercaseWords.length > 5) {
+  if (suspiciousWords.length > 3) {
     return {
       ok: false,
-      reason: `Text appears scrambled - too many lowercase words: ${lowercaseWords.slice(0, 3).join(', ')}...`
+      reason: `Text appears scrambled - unusual letter patterns: ${suspiciousWords.slice(0, 2).join(', ')}...`
     };
   }
 
