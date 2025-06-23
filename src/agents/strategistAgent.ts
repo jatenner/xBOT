@@ -216,13 +216,13 @@ export class StrategistAgent {
       };
     }
 
-    // Priority 3: AGGRESSIVE POSTING (when budget allows)
-    if (monthlyPlan.strategy === 'AGGRESSIVE' && minutesSinceLastPost >= (minPostInterval * 0.8)) {
+    // Priority 3: AGGRESSIVE POSTING (when budget allows) - OPTIMIZED FOR FREQUENCY
+    if (monthlyPlan.strategy === 'AGGRESSIVE' && minutesSinceLastPost >= (minPostInterval * 0.5)) {
       return {
         action: 'post',
-        priority: 90,
-        reasoning: `AGGRESSIVE mode: ${monthlyPlan.tweetsRemaining} tweets available, capitalizing on budget`,
-        expectedEngagement: 300
+        priority: 95,
+        reasoning: `AGGRESSIVE mode: ${monthlyPlan.tweetsRemaining} tweets available, high-frequency posting`,
+        expectedEngagement: 400
       };
     }
 
@@ -237,13 +237,13 @@ export class StrategistAgent {
       };
     }
 
-    // Priority 5: BUSINESS HOURS STANDARD POSTING
-    if (isDuringBusinessHours && minutesSinceLastPost >= minPostInterval) {
+    // Priority 5: BUSINESS HOURS ACCELERATED POSTING
+    if (isDuringBusinessHours && minutesSinceLastPost >= (minPostInterval * 0.6)) {
       return {
         action: 'post',
-        priority: 75,
-        reasoning: `Business hours posting (conserving budget: ${monthlyPlan.tweetsRemaining} left)`,
-        expectedEngagement: 200
+        priority: 85,
+        reasoning: `Business hours accelerated posting (${monthlyPlan.tweetsRemaining} tweets available)`,
+        expectedEngagement: 350
       };
     }
     
@@ -270,11 +270,21 @@ export class StrategistAgent {
       };
     }
 
-    // Priority 8: INTELLIGENT SLEEP with preparation
+    // Priority 8: FALLBACK POSTING (ensure minimum frequency)
+    if (minutesSinceLastPost >= (minPostInterval * 2)) {
+      return {
+        action: 'post',
+        priority: 60,
+        reasoning: `Fallback posting - ensuring minimum frequency (${Math.floor(minutesSinceLastPost)} min since last)`,
+        expectedEngagement: 250
+      };
+    }
+
+    // Priority 9: INTELLIGENT SLEEP with preparation
     return {
       action: 'sleep',
       priority: 30,
-      reasoning: `Strategic wait - Next optimal post in ${minPostInterval} min (${monthlyPlan.strategy} mode)`,
+      reasoning: `Strategic wait - Next post in ${Math.max(30, minPostInterval - minutesSinceLastPost)} min`,
       expectedEngagement: 0
     };
   }
