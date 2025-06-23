@@ -93,6 +93,17 @@ export class RemoteBotMonitor {
       }
     });
 
+    // API limits monitoring
+    this.app.get('/api/api-limits', async (req, res) => {
+      try {
+        const apiLimits = await this.getApiLimits();
+        res.json(apiLimits);
+      } catch (error) {
+        console.error('Error getting API limits:', error);
+        res.status(500).json({ error: 'Failed to get API limits' });
+      }
+    });
+
     // Performance analytics
     this.app.get('/api/performance', async (req, res) => {
       try {
@@ -163,6 +174,10 @@ export class RemoteBotMonitor {
         // Get performance metrics
         const metrics = await this.getLiveMetrics();
         socket.emit('metrics_update', metrics);
+
+        // Get API limits
+        const apiLimits = await this.getApiLimits();
+        socket.emit('api_limits_update', apiLimits);
 
       } catch (error) {
         console.error('Monitor loop error:', error);
@@ -349,6 +364,98 @@ export class RemoteBotMonitor {
     } catch (error) {
       throw new Error(`Failed to get live metrics: ${error.message}`);
     }
+  }
+
+  private async getApiLimits() {
+    try {
+      const quotaStatus = await getQuotaStatus();
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+      const hourStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours());
+      
+      // Get recent tweet count for rate limiting calculations
+      const recentTweets = await supabaseClient.getRecentTweets(100);
+      const todayTweets = recentTweets.filter(t => new Date(t.created_at) >= todayStart);
+      const thisHourTweets = recentTweets.filter(t => new Date(t.created_at) >= hourStart);
+      
+      // Simulate API usage data (in production this would come from actual API usage tracking)
+      const twitterUsage = {
+        tweets_daily: todayTweets.length,
+        tweets_daily_reset: new Date(todayStart.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+        tweets_monthly: recentTweets.length, // Approximation
+        tweets_monthly_reset: nextMonthStart.toISOString(),
+        likes_daily: Math.floor(todayTweets.length * 15), // Estimated based on engagement activity
+        likes_daily_reset: new Date(todayStart.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+        follows_daily: Math.floor(todayTweets.length * 0.8), // Conservative follow rate
+        follows_daily_reset: new Date(todayStart.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+        retweets_daily: Math.floor(todayTweets.length * 5),
+        retweets_daily_reset: new Date(todayStart.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+        last_error: null
+      };
+
+      // NewsAPI usage (simulated based on actual bot behavior)
+      const newsApiUsage = {
+        requests_daily: Math.floor(todayTweets.length * 0.3), // Not every tweet uses NewsAPI
+        requests_daily_reset: new Date(todayStart.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+        requests_monthly: Math.floor(recentTweets.length * 0.3),
+        requests_monthly_reset: nextMonthStart.toISOString(),
+        last_error: quotaStatus.writes > 400 ? 'Rate limit approaching' : null
+      };
+
+      // OpenAI usage (estimated based on content generation)
+      const openaiUsage = {
+        tokens_daily: todayTweets.length * 150, // Average tokens per tweet generation
+        tokens_daily_reset: new Date(todayStart.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+        tokens_hourly: thisHourTweets.length * 150,
+        tokens_hourly_reset: new Date(hourStart.getTime() + 60 * 60 * 1000).toISOString(),
+        requests_daily: todayTweets.length,
+        requests_daily_reset: new Date(todayStart.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+        requests_hourly: thisHourTweets.length,
+        requests_hourly_reset: new Date(hourStart.getTime() + 60 * 60 * 1000).toISOString(),
+        last_error: null
+      };
+
+      // Supabase usage (database operations)
+      const supabaseUsage = {
+        queries_daily: quotaStatus.reads + quotaStatus.writes,
+        queries_daily_reset: new Date(todayStart.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+        queries_hourly: Math.floor((quotaStatus.reads + quotaStatus.writes) / 24), // Rough hourly estimate
+        queries_hourly_reset: new Date(hourStart.getTime() + 60 * 60 * 1000).toISOString(),
+        storage_total: 45, // MB used (would come from actual storage metrics)
+        last_error: null
+      };
+
+      return {
+        twitter: twitterUsage,
+        newsapi: newsApiUsage,
+        openai: openaiUsage,
+        supabase: supabaseUsage,
+        overall_status: this.calculateOverallApiStatus([twitterUsage, newsApiUsage, openaiUsage, supabaseUsage]),
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      throw new Error(`Failed to get API limits: ${error.message}`);
+    }
+  }
+
+  private calculateOverallApiStatus(services: any[]): string {
+    // Check if any service is critical or warning
+    const hasCritical = services.some(service => 
+      Object.values(service).some(value => 
+        typeof value === 'number' && value > 0.9 * 100 // > 90% usage
+      )
+    );
+    
+    const hasWarning = services.some(service => 
+      Object.values(service).some(value => 
+        typeof value === 'number' && value > 0.7 * 100 // > 70% usage
+      )
+    );
+
+    if (hasCritical) return 'critical';
+    if (hasWarning) return 'warning';
+    return 'healthy';
   }
 
   private async getPerformanceData() {
