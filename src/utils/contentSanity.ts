@@ -134,16 +134,17 @@ export function validateTextReadability(text: string): ValidationResult {
     }
   }
 
-  // Check for words that are clearly reversed
-  const reversedWords = ['eht', 'dna', 'rof', 'htiw', 'morf', 'ot', 'fo', 'ni'];
-  const foundReversed = reversedWords.filter(word => 
-    text.toLowerCase().includes(word)
+  // Check for words that are clearly reversed (as standalone words only)
+  const reversedWords = ['eht', 'dna', 'rof', 'htiw', 'morf'];
+  const textWords = text.toLowerCase().split(/\s+/);
+  const foundReversed = reversedWords.filter(reversed => 
+    textWords.includes(reversed)
   );
 
-  if (foundReversed.length > 0) {
+  if (foundReversed.length > 1) { // Only flag if multiple reversed words found
     return {
       ok: false,
-      reason: `Text contains reversed words: ${foundReversed.join(', ')}`
+      reason: `Text contains multiple reversed words: ${foundReversed.join(', ')}`
     };
   }
 
