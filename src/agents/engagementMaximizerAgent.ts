@@ -202,37 +202,36 @@ export class EngagementMaximizerAgent {
       // Select high-engagement content focus
       const contentFocus = this.selectHighEngagementFocus();
       
-      // Generate specific, actionable insights with real data
-      const prompt = `Generate a SPECIFIC health tech insight tweet using this format:
+      // Generate sophisticated PhD-level analysis with intellectual depth  
+      const prompt = `Generate a sophisticated health technology analysis tweet for an intellectual audience:
 
-[ATTENTION HOOK] + [SPECIFIC DATA] + [ACTIONABLE INFO] + [CREDIBLE SOURCE]
+[PARADIGM INSIGHT] + [SYSTEMIC IMPLICATIONS] + [INTELLECTUAL DEPTH] + [ACADEMIC SOURCE]
 
 Focus: ${contentFocus.topic}
-Style: Share breakthrough insights with real data, NEVER generic questions
+Audience: PhD-level academics, medical professionals, health policy experts, intellectual leaders
 
-CRITICAL RULES:
-- 95% INSIGHTS/FACTS, 5% maximum questions (only AFTER sharing insights)
-- Lead with concrete discoveries, not hypotheticals
-- Use real-world data and accessible solutions
+SOPHISTICATION MANDATE:
+- Address systemic transformation, not just individual benefits
+- Use epistemological/ontological/philosophical language naturally
+- Focus on what this means for society, healthcare systems, human potential
+- Examine power dynamics, equity considerations, institutional implications
+- Create deep "I never considered that perspective" moments
 
-Requirements:
-- Lead with "🚨 BREAKTHROUGH:" or "🔍 HIDDEN TECH:" or "📊 DATA:" or "🔥 DISCOVERY:"
-- Include exact percentages and numbers (23%, 8.4 lbs, 127% increase, 94% accuracy)
-- Mention specific costs/availability ($99 vs $5,000 elite version)
-- Name specific devices, protocols, methods, or studies
-- Focus on measurable outcomes: fat loss, energy levels, performance metrics, longevity markers
-- Use credible sources: Stanford, Harvard, Nature, Cell Metabolism, Mayo Clinic
-- Make it immediately actionable - something people can research, buy, or try
-- Create "I need to try this now" moment, not "what do you think?"
+Sophisticated Requirements:
+- Lead with paradigmatic insights: "The epistemological implications...", "This represents a fundamental ontological shift...", "We're witnessing the emergence of..."
+- Discuss systemic disruption: governance challenges, institutional restructuring, power redistribution
+- Address ethical complexity: human agency, dignity, technological mediation, justice frameworks
+- Examine civilizational impact: bifurcation points, trajectory alteration, intergenerational effects
+- Use academic vocabulary: paradigmatic, systematicity, emergence, heterogeneity, legitimacy, coordination
 
 Template examples:
-"🚨 BREAKTHROUGH: [device/method] achieved [X% improvement] in [specific outcome] during [timeframe study]. [Study details: participants, methodology]. [Cost/availability]. Source: [credible journal]"
+"The convergence of [technology] and [domain] represents a fundamental epistemological shift in how we conceptualize [healthcare area]. This challenges core assumptions about [medical practice/autonomy]. We're approaching a bifurcation point in [system]. Study: [academic source]"
 
-"🔍 HIDDEN TECH: Elite [athletes/biohackers] use [specific protocol] for [exact benefit]. Study shows [precise data]. Now available for [price vs elite cost]. [Why it works]. Source: [research]"
+"[Innovation] illuminates deeper structural tensions between technological capability and institutional readiness. The real transformation isn't technical—it's the restructuring of [power/governance]. This exposes [systemic challenges]. Research: [publication]"
 
-"📊 DATA: [Protocol] increased [metric] by [%] in [timeframe]. [Demographics], [sample size]. [Mechanism]. [Availability]. Game-changer for [goal]. Source: [publication]"
+"[Development] forces us to confront uncomfortable questions about [philosophical dimension]. Beyond [metrics], we must grapple with [ethical implications]. The technology reveals our evolving relationship with [human concept]. Source: [academic journal]"
 
-Generate content that shares valuable insights people can act on immediately, not discussion starters.`;
+Generate intellectually rigorous content that makes academics think "This person understands the deeper implications" rather than "Here's another health statistic."`;
 
       // Use OpenAI to generate the insight-driven content
       const content = await openaiClient.generateTweet(prompt, 'insight_driven');
