@@ -202,16 +202,25 @@ export class StrategistAgent {
       }
     }
     
-    // Priority 2: FORCED REPLY MODE (ensure comments on other posts)
-    const shouldForceReply = (this.postCount24h % 3 === 0) || 
-                           (Math.random() < optimizedSchedule.engagementRatio) ||
-                           (minutesSinceLastPost < minPostInterval && minutesSinceLastPost > 15);
+    // Priority 2: ORIGINAL CONTENT FIRST (prioritize posts over replies for frequency)
+    if (monthlyPlan.tweetsRemaining > 1000 && minutesSinceLastPost >= (minPostInterval * 0.4)) {
+      return {
+        action: 'post',
+        priority: 92,
+        reasoning: `High tweet budget available (${monthlyPlan.tweetsRemaining}), prioritizing original content`,
+        expectedEngagement: 350
+      };
+    }
+
+    // Priority 3: SELECTIVE REPLY MODE (only when needed)
+    const shouldReply = (this.postCount24h % 4 === 0) || 
+                       (Math.random() < (optimizedSchedule.engagementRatio * 0.5));
     
-    if (shouldForceReply) {
+    if (shouldReply && minutesSinceLastPost >= (minPostInterval * 1.5)) {
       return {
         action: 'reply',
-        priority: 85,
-        reasoning: `Monthly plan (${monthlyPlan.strategy}): ${(optimizedSchedule.engagementRatio*100).toFixed(0)}% engagement focus`,
+        priority: 70,
+        reasoning: `Strategic engagement: ${(optimizedSchedule.engagementRatio*100).toFixed(0)}% focus`,
         expectedEngagement: 120
       };
     }
