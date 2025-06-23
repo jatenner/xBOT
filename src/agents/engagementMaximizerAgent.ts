@@ -202,31 +202,37 @@ export class EngagementMaximizerAgent {
       // Select high-engagement content focus
       const contentFocus = this.selectHighEngagementFocus();
       
-      // Generate specific, actionable content instead of questions
+      // Generate specific, actionable insights with real data
       const prompt = `Generate a SPECIFIC health tech insight tweet using this format:
 
 [ATTENTION HOOK] + [SPECIFIC DATA] + [ACTIONABLE INFO] + [CREDIBLE SOURCE]
 
 Focus: ${contentFocus.topic}
-Style: Share breakthrough insights, NOT questions
+Style: Share breakthrough insights with real data, NEVER generic questions
+
+CRITICAL RULES:
+- 95% INSIGHTS/FACTS, 5% maximum questions (only AFTER sharing insights)
+- Lead with concrete discoveries, not hypotheticals
+- Use real-world data and accessible solutions
 
 Requirements:
-- Lead with "🚨 BREAKTHROUGH:" or "🔍 HIDDEN TECH:" or "📊 WILD DATA:"
-- Include exact percentages and numbers (23%, 8.4 lbs, 127% increase)
+- Lead with "🚨 BREAKTHROUGH:" or "🔍 HIDDEN TECH:" or "📊 DATA:" or "🔥 DISCOVERY:"
+- Include exact percentages and numbers (23%, 8.4 lbs, 127% increase, 94% accuracy)
 - Mention specific costs/availability ($99 vs $5,000 elite version)
-- Name specific devices, protocols, or methods
-- Focus on outcomes people want: fat loss, energy, performance, longevity
-- Use credible sources: Stanford, Harvard, Nature, Cell Metabolism
-- Make it actionable - something people can use or buy
-- Create "holy shit, I need this" moment, not "here's a question"
+- Name specific devices, protocols, methods, or studies
+- Focus on measurable outcomes: fat loss, energy levels, performance metrics, longevity markers
+- Use credible sources: Stanford, Harvard, Nature, Cell Metabolism, Mayo Clinic
+- Make it immediately actionable - something people can research, buy, or try
+- Create "I need to try this now" moment, not "what do you think?"
 
-Example approach:
-"🚨 BREAKTHROUGH: [specific device/method] [exact result] in [timeframe]
-[precise study data]
-[cost/availability comparison]
-Source: [credible journal]"
+Template examples:
+"🚨 BREAKTHROUGH: [device/method] achieved [X% improvement] in [specific outcome] during [timeframe study]. [Study details: participants, methodology]. [Cost/availability]. Source: [credible journal]"
 
-Generate content that makes people stop scrolling and take action, not ask generic health questions.`;
+"🔍 HIDDEN TECH: Elite [athletes/biohackers] use [specific protocol] for [exact benefit]. Study shows [precise data]. Now available for [price vs elite cost]. [Why it works]. Source: [research]"
+
+"📊 DATA: [Protocol] increased [metric] by [%] in [timeframe]. [Demographics], [sample size]. [Mechanism]. [Availability]. Game-changer for [goal]. Source: [publication]"
+
+Generate content that shares valuable insights people can act on immediately, not discussion starters.`;
 
       // Use OpenAI to generate the insight-driven content
       const content = await openaiClient.generateTweet(prompt, 'insight_driven');
