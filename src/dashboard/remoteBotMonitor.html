@@ -619,6 +619,7 @@
         // Initialize Socket.IO connection
         const socket = io();
         let isConnected = false;
+        let fallbackActive = false;
 
         // DOM elements
         const connectionStatus = document.getElementById('connectionStatus');
@@ -640,10 +641,19 @@
         const systemHealth = document.getElementById('systemHealth');
         const apiLimitsGrid = document.getElementById('apiLimitsGrid');
 
+        // WebSocket connection timeout
+        setTimeout(() => {
+            if (!isConnected && !fallbackActive) {
+                console.log('🔄 WebSocket connection timeout, switching to HTTP polling fallback');
+                startHttpPollingFallback();
+            }
+        }, 5000);
+
         // Socket event handlers
         socket.on('connect', () => {
-            console.log('🔗 Connected to bot monitor');
+            console.log('🔗 Connected to bot monitor via WebSocket');
             isConnected = true;
+            fallbackActive = false;
             updateConnectionStatus(true);
             socket.emit('start_monitoring');
         });
@@ -652,6 +662,20 @@
             console.log('📡 Disconnected from bot monitor');
             isConnected = false;
             updateConnectionStatus(false);
+            if (!fallbackActive) {
+                setTimeout(() => {
+                    if (!isConnected) {
+                        startHttpPollingFallback();
+                    }
+                }, 3000);
+            }
+        });
+
+        socket.on('connect_error', (error) => {
+            console.log('❌ WebSocket connection error:', error);
+            if (!fallbackActive) {
+                startHttpPollingFallback();
+            }
         });
 
         socket.on('bot_state_update', (state) => {
@@ -689,6 +713,67 @@
             console.error('❌ Monitor error:', error);
             showError(error.error);
         });
+
+        // HTTP Polling Fallback
+        function startHttpPollingFallback() {
+            if (fallbackActive) return;
+            
+            console.log('📡 Starting HTTP polling fallback...');
+            fallbackActive = true;
+            
+            // Update connection status
+            connectionStatus.className = 'connection-status';
+            connectionStatus.innerHTML = `
+                <div class="status-indicator"></div>
+                <span>🔄 Connected via HTTP polling (WebSocket unavailable)</span>
+            `;
+
+            // Initial load
+            loadAllDataHTTP();
+            
+            // Set up polling interval
+            const pollInterval = setInterval(async () => {
+                if (isConnected) {
+                    // WebSocket reconnected, stop polling
+                    clearInterval(pollInterval);
+                    fallbackActive = false;
+                    return;
+                }
+                
+                await loadAllDataHTTP();
+            }, 10000); // Poll every 10 seconds
+        }
+
+        async function loadAllDataHTTP() {
+            try {
+                // Load all data via HTTP endpoints
+                const [status, thinking, activities, metrics, apiLimits] = await Promise.all([
+                    fetch('/api/remote-status').then(r => r.json()).catch(e => null),
+                    fetch('/api/bot-thinking').then(r => r.json()).catch(e => null),
+                    fetch('/api/activity-feed').then(r => r.json()).catch(e => null),
+                    fetch('/api/live-metrics').then(r => r.json()).catch(e => null),
+                    fetch('/api/api-limits').then(r => r.json()).catch(e => null)
+                ]);
+
+                if (status) {
+                    updateBotState({
+                        currentAction: status.currentMode === 'autonomous' ? 'Autonomous posting mode' : 'Manual mode',
+                        isActive: status.isOnline
+                    });
+                }
+
+                if (thinking) updateThinkingStream(thinking);
+                if (activities) updateActivityFeed(activities);
+                if (metrics) updateMetrics(metrics);
+                if (apiLimits) updateApiLimits(apiLimits);
+                if (thinking && thinking.decisionFactors) updateDecisionFactors(thinking.decisionFactors);
+
+                showUpdateIndicator();
+                
+            } catch (error) {
+                console.error('HTTP polling error:', error);
+            }
+        }
 
         // Update functions
         function updateConnectionStatus(connected) {
@@ -1011,6 +1096,67 @@
         function showError(message) {
             console.error('Monitor Error:', message);
             // Could show error notification here
+        }
+
+        // HTTP Polling Fallback
+        function startHttpPollingFallback() {
+            if (fallbackActive) return;
+            
+            console.log('📡 Starting HTTP polling fallback...');
+            fallbackActive = true;
+            
+            // Update connection status
+            connectionStatus.className = 'connection-status';
+            connectionStatus.innerHTML = `
+                <div class="status-indicator"></div>
+                <span>🔄 Connected via HTTP polling (WebSocket unavailable)</span>
+            `;
+
+            // Initial load
+            loadAllDataHTTP();
+            
+            // Set up polling interval
+            const pollInterval = setInterval(async () => {
+                if (isConnected) {
+                    // WebSocket reconnected, stop polling
+                    clearInterval(pollInterval);
+                    fallbackActive = false;
+                    return;
+                }
+                
+                await loadAllDataHTTP();
+            }, 10000); // Poll every 10 seconds
+        }
+
+        async function loadAllDataHTTP() {
+            try {
+                // Load all data via HTTP endpoints
+                const [status, thinking, activities, metrics, apiLimits] = await Promise.all([
+                    fetch('/api/remote-status').then(r => r.json()).catch(e => null),
+                    fetch('/api/bot-thinking').then(r => r.json()).catch(e => null),
+                    fetch('/api/activity-feed').then(r => r.json()).catch(e => null),
+                    fetch('/api/live-metrics').then(r => r.json()).catch(e => null),
+                    fetch('/api/api-limits').then(r => r.json()).catch(e => null)
+                ]);
+
+                if (status) {
+                    updateBotState({
+                        currentAction: status.currentMode === 'autonomous' ? 'Autonomous posting mode' : 'Manual mode',
+                        isActive: status.isOnline
+                    });
+                }
+
+                if (thinking) updateThinkingStream(thinking);
+                if (activities) updateActivityFeed(activities);
+                if (metrics) updateMetrics(metrics);
+                if (apiLimits) updateApiLimits(apiLimits);
+                if (thinking && thinking.decisionFactors) updateDecisionFactors(thinking.decisionFactors);
+
+                showUpdateIndicator();
+                
+            } catch (error) {
+                console.error('HTTP polling error:', error);
+            }
         }
 
         // Auto-refresh data every 30 seconds as backup
