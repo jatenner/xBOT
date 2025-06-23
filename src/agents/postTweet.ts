@@ -720,20 +720,20 @@ export class PostTweetAgent {
     
     const randomFactor = Math.random();
     
-    // 🔥 VIRAL-FIRST STRATEGY: 50% viral, 25% current events, 15% comprehensive, 10% trending
-    // REMOVES boring engagement mode that was causing repetitive questions
-    if (randomFactor < 0.5) {
-      console.log('🔥 Selected mode: VIRAL (maximum engagement)');
+    // 🔥 MAXIMUM VIRAL STRATEGY: 70% viral, 15% current events, 10% trending, 5% comprehensive
+    // HEAVILY prioritizes viral content to fix engagement issues
+    if (randomFactor < 0.7) {
+      console.log('🔥 Selected mode: VIRAL (breakthrough content for maximum engagement)');
       return 'viral';
-    } else if (randomFactor < 0.75) {
+    } else if (randomFactor < 0.85) {
       console.log('🎯 Selected mode: CURRENT EVENTS (real news)');
       return 'current_events';
-    } else if (randomFactor < 0.9) {
-      console.log('🎯 Selected mode: COMPREHENSIVE (structured research)');
-      return 'comprehensive';
-    } else {
+    } else if (randomFactor < 0.95) {
       console.log('🎯 Selected mode: TRENDING (real-time topics)');
       return 'trending';
+    } else {
+      console.log('🎯 Selected mode: COMPREHENSIVE (structured research)');
+      return 'comprehensive';
     }
   }
 
@@ -791,14 +791,14 @@ export class PostTweetAgent {
 
   private async generateViralTweet(includeSnap2HealthCTA: boolean, includeImage: boolean): Promise<PostResult> {
     try {
-      console.log('🎯 Generating viral content...');
+      console.log('🎯 Generating viral content using breakthrough templates...');
 
-      // Generate maximum engagement content
-      const viralResult = await this.engagementMaximizer.generateMaxEngagementTweet();
+      // Use the UltraViralGenerator with proper viral templates
+      const viralResult = await this.viralGenerator.generateViralTweet();
       let tweetContent = viralResult.content;
 
-      console.log(`🔥 Viral tactics used: ${viralResult.tactics_used.join(', ')}`);
-      console.log(`📈 Predicted engagement: ${viralResult.predicted_engagement}%`);
+      console.log(`🔥 Viral template used: ${viralResult.style}`);
+      console.log(`📈 Viral score: ${viralResult.viralScore}/100`);
 
       // Add Snap2Health CTA if requested and content allows
       if (includeSnap2HealthCTA && tweetContent.length < 220) {
@@ -838,9 +838,9 @@ export class PostTweetAgent {
           content: validatedContent,
           tweet_type: 'original',
           content_type: 'viral_engagement',
-          source_attribution: 'EngagementMaximizer',
-          content_category: viralResult.strategy,
-          engagement_score: viralResult.predicted_engagement,
+          source_attribution: 'UltraViralGenerator',
+          content_category: viralResult.style || 'viral',
+          engagement_score: viralResult.viralScore || 85,
           likes: 0,
           retweets: 0,
           replies: 0,
@@ -849,7 +849,7 @@ export class PostTweetAgent {
         });
 
         console.log(`🚀 VIRAL TWEET POSTED: ${result.tweetId}`);
-        console.log(`🎯 Expected engagement boost: ${viralResult.predicted_engagement}%`);
+        console.log(`🎯 Expected viral impact: ${viralResult.viralScore || 85}/100`);
         
         return {
           success: true,

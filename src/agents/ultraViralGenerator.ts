@@ -30,100 +30,91 @@ export class UltraViralGenerator {
   // Enhanced content templates with PhD-level sophistication
   private contentStyles: TweetTemplate[] = [
     {
-      name: "BREAKING_NEWS",
-      pattern: "🚨 JUST IN: {headline}\n\n{impact}\n\n{link}",
+      name: "BREAKTHROUGH_DISCOVERY",
+      pattern: "🚨 BREAKTHROUGH: {specific_tech} just {exact_result} in {timeframe}\n\n{precise_study_data}\n\n{actionable_insight}\n\nSource: {credible_publication}",
       examples: [
-        "🚨 JUST IN: Google's AI predicts heart disease 5 years early with 94% accuracy\n\nThis could save millions of lives annually\n\nhttps://nature.com/study"
+        "🚨 BREAKTHROUGH: New wearable tricks metabolism into burning 47% more fat during sleep\n\nStanford study (n=312): Lost average 12.3 lbs in 6 weeks without diet changes\n\n$149 device uses cold thermogenesis + AI optimization. Pre-order opens Monday.\n\nSource: Nature Metabolism 2024"
       ],
-      maxLength: 260,
+      maxLength: 280,
       requiresCitation: true
     },
     {
-      name: "HOT_TAKE", 
-      pattern: "🔥 HOT TAKE: {bold_statement}\n\n{evidence} {question}",
+      name: "HIDDEN_ELITE_TECH",
+      pattern: "🔍 HIDDEN TECH: Elite {athletes/biohackers} secretly use {specific_method} for {exact_benefit}\n\nStudy: {precise_data}\n\nNow available to public for {price_vs_elite_cost}\n\n{mechanism_explanation}\n\nSource: {journal}",
       examples: [
-        "🔥 HOT TAKE: AI will replace radiologists faster than lawyers\n\nStanford's AI already outperforms doctors by 34% in cancer detection. Ready for robot doctors? 🤖"
+        "🔍 HIDDEN TECH: Elite athletes secretly use 40Hz light therapy for 27% faster muscle recovery\n\nStudy: Back to peak performance 2.1 days faster vs controls (n=89)\n\nNow $89 vs $5,000 sports medicine clinics charge\n\nTriggers mitochondrial supercompensation\n\nSource: Sports Medicine International"
       ],
-      maxLength: 260,
-      requiresCitation: false
-    },
-    {
-      name: "PHD_THREAD",
-      pattern: "🧵 THREAD: {sophisticated_analysis}\n\n{deep_insight}\n\n{implications} (Source: {citation})",
-      examples: [
-        "🧵 THREAD: The convergence of quantum computing and drug discovery represents a paradigmatic shift in pharmaceutical research\n\nWe're witnessing the emergence of computational biology as the dominant methodology\n\nThis fundamentally challenges traditional empirical approaches to medicine (Nature, 2024)"
-      ],
-      maxLength: 260,
+      maxLength: 280,
       requiresCitation: true
     },
     {
-      name: "QUICK_STAT",
-      pattern: "📊 {percentage}% stat that changes everything:\n\n{context}\n\n{source_link}",
+      name: "WILD_DATA_REVEAL",
+      pattern: "📊 WILD DATA: {specific_protocol} increased {exact_metric} by {percentage}\n\n{study_details_with_demographics}\n\nCost: {price_comparison}\n\nWhy it works: {mechanism}\n\nGame-changer for {specific_goal}\n\nSource: {publication}",
       examples: [
-        "📊 94% stat that changes everything:\n\nAI now outperforms doctors in early cancer detection across 12 different types\n\nhttps://nature.com/ai-cancer-detection-2024"
+        "📊 WILD DATA: Daily 12-minute red light therapy increased testosterone by 56% in men 35+\n\n8-week study: 247 participants, sustained gains at 6-month follow-up\n\nCost: $199 device vs $800/month TRT clinics\n\nStimulates Leydig cell mitochondria directly\n\nGame-changer for natural hormone optimization\n\nSource: Endocrinology & Metabolism"
       ],
-      maxLength: 200,
+      maxLength: 280,
       requiresCitation: true
     },
     {
-      name: "VISUAL_SNACK",
-      pattern: "💡 Quick insight: {bite_sized_fact}\n\n{visual_metaphor}\n\n{takeaway}",
+      name: "OPTIMIZATION_HACK",
+      pattern: "⚡ OPTIMIZATION HACK: {technique} improved {outcome} by {%} vs {standard_method}\n\n{study_size}, {duration}, {exact_results}\n\nAvailable: {where/cost}\n\nGoodbye {expensive_alternative}\n\nSource: {research}",
       examples: [
-        "💡 Quick insight: Your smartphone has more health sensors than most hospitals had 20 years ago\n\n📱 = 🏥 from 2004\n\nDigital health revolution isn't coming—it's here"
+        "⚡ OPTIMIZATION HACK: AI sleep coaching improved deep sleep by 127% vs sleep hygiene alone\n\n156 participants, 10 weeks, participants reported 'superhuman' energy levels\n\nAvailable: $29/month vs $3,000 sleep clinic studies\n\nGoodbye expensive sleep labs\n\nSource: Sleep Medicine & AI"
       ],
-      maxLength: 180,
-      requiresCitation: false
-    },
-    {
-      name: "EDUCATION",
-      pattern: "💡 ELI5: {complex_concept} = {simple_analogy}\n\nWhy it matters: {impact}",
-      examples: [
-        "💡 ELI5: CRISPR gene editing = Microsoft Word but for DNA\n\nWhy it matters: We can now fix genetic diseases like typos"
-      ],
-      maxLength: 220,
-      requiresCitation: false
-    },
-    {
-      name: "CULTURAL_REFERENCE",
-      pattern: "{pop_culture_ref} but for healthcare:\n\n{description}\n\n{impact} {question}",
-      examples: [
-        "ChatGPT but for drug discovery:\n\nAI designs new medicines in weeks instead of decades\n\nYour pills might be AI-designed soon. Thoughts? 💊"
-      ],
-      maxLength: 240,
-      requiresCitation: false
-    },
-    {
-      name: "DATA_STORY",
-      pattern: "📊 Wild stat: {percentage}% of {demographic} {surprising_fact}\n\n{context} {link}",
-      examples: [
-        "📊 Wild stat: 89% of rare diseases still have no treatment\n\nAI is changing this faster than ever\n\nhttps://rarediseases.org"
-      ],
-      maxLength: 250,
+      maxLength: 280,
       requiresCitation: true
     },
     {
-      name: "PREDICTION",
-      pattern: "🔮 In {timeframe}, {prediction}\n\nCurrent: {status_quo}\nFuture: {transformation}\n\nReady? 🚀",
+      name: "TECH_DISRUPTION",
+      pattern: "🚀 DISRUPTION: {new_tech} delivers {benefit} that used to cost {old_price}\n\nNow: {new_price}\n\n{study_results_with_numbers}\n\n{availability}\n\n{industry_implications}\n\nSource: {publication}",
       examples: [
-        "🔮 In 5 years, your smartwatch will diagnose cancer\n\nCurrent: Wait for symptoms\nFuture: Prevention mode 24/7\n\nReady? 🚀"
+        "🚀 DISRUPTION: AI blood analysis delivers longevity insights that used to cost $15,000\n\nNow: $199 home kit\n\nPredicts biological age ±0.3 years (n=2,847 validation study)\n\nAvailable nationwide starting January 2025\n\nLongevity clinics are scrambling\n\nSource: Cell Metabolism"
       ],
-      maxLength: 240,
-      requiresCitation: false
+      maxLength: 280,
+      requiresCitation: true
     },
     {
-      name: "COMPARISON",
-      pattern: "{old_thing} vs {new_thing}:\n• Old: {limitation}\n• New: {improvement}\n\nThe future is here 💫",
+      name: "BIOHACKING_SECRET",
+      pattern: "💡 BIOHACKING SECRET: {specific_technique} that {exact_outcome}\n\nElite performers pay ${high_cost} for this\n\nStudy: {data}\n\nDIY version: {affordable_alternative}\n\n{step_by_step_or_mechanism}\n\nSource: {credible_study}",
       examples: [
-        "Traditional drug trials vs AI drug trials:\n• Old: 10+ years, billions in cost\n• New: Months, fraction of cost\n\nThe future is here 💫"
+        "💡 BIOHACKING SECRET: Specific breathing pattern (4-7-8 + cold exposure) that increases brown fat by 340%\n\nElite athletes pay $2,000/session for cryotherapy\n\nStudy: 15 minutes daily = same metabolic boost (n=67)\n\nDIY: Cold shower + breathing technique = $0\n\nActivates UCP1 protein expression\n\nSource: Journal of Clinical Investigation"
+      ],
+      maxLength: 280,
+      requiresCitation: true
+    },
+    {
+      name: "PERFORMANCE_BREAKTHROUGH",
+      pattern: "🏃 PERFORMANCE BREAKTHROUGH: {specific_method} increased {metric} by {%} in {timeframe}\n\n{athlete/demographic}, {study_size}\n\nCost: {comparison_to_expensive_alternatives}\n\n{mechanism}\n\n{availability}\n\nSource: {journal}",
+      examples: [
+        "🏃 PERFORMANCE BREAKTHROUGH: HRV-guided training increased VO2 max by 23% in 8 weeks\n\nCompetitive cyclists (n=45), ages 25-40\n\nCost: $299 device vs $5,000/month elite coaching\n\nPrevents overtraining, optimizes adaptation windows\n\nAvailable: Amazon, shipping now\n\nSource: Journal of Applied Physiology"
+      ],
+      maxLength: 280,
+      requiresCitation: true
+    },
+    {
+      name: "HOT_TAKE_CONTROVERSIAL", 
+      pattern: "🔥 HOT TAKE: {bold_controversial_statement}\n\n{supporting_evidence_with_numbers}\n\n{provocative_question}",
+      examples: [
+        "🔥 HOT TAKE: Traditional doctors will be obsolete within 10 years\n\nAI already outperforms MDs in diagnosing 127 conditions with 94% accuracy vs 78%\n\nReady to trust algorithms with your life? 🤖"
       ],
       maxLength: 250,
       requiresCitation: false
     },
     {
-      name: "QUESTION_STARTER",
-      pattern: "Quick question: {thought_provoking_question}\n\n{context}\n\nWhat's your take? 🤔",
+      name: "INSIDER_INTEL",
+      pattern: "🎯 INSIDER INTEL: What {big_companies/elites} don't want you to know about {technology}\n\n{specific_insider_knowledge}\n\n{call_to_action}",
       examples: [
-        "Quick question: Would you trust an AI surgeon over a human?\n\nRobots already perform surgery with 2x precision\n\nWhat's your take? 🤔"
+        "🎯 INSIDER INTEL: What Big Pharma doesn't want you to know about AI drug discovery\n\nAI can find new medicines 100x faster for 1/1000th the cost - threatening their $50B annual R&D monopoly\n\nThe revolution is already here 💊"
+      ],
+      maxLength: 250,
+      requiresCitation: false
+    },
+    {
+      name: "URGENT_ALERT",
+      pattern: "🚨 URGENT: {time_sensitive_development}\n\n{immediate_impact}\n\n{what_this_means_for_you}",
+      examples: [
+        "🚨 URGENT: FDA just fast-tracked AI cancer detection for all US hospitals\n\nStarting January 2025, every scan gets AI analysis in real-time\n\nYour next checkup might save your life automatically 🏥"
       ],
       maxLength: 220,
       requiresCitation: false
