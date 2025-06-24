@@ -1,6 +1,7 @@
 import { supabaseClient } from './supabaseClient';
 import { PostTweetAgent } from '../agents/postTweet';
 import { contentCache } from './contentCache';
+import { IntelligentSchedulingAgent } from '../agents/intelligentSchedulingAgent';
 import * as cron from 'node-cron';
 
 interface DailyPostingState {
@@ -22,10 +23,12 @@ interface PostingWindow {
 
 export class DailyPostingManager {
   private postTweetAgent: PostTweetAgent;
+  private intelligentScheduler: IntelligentSchedulingAgent;
   private currentState: DailyPostingState;
   private readonly DAILY_TARGET = 17;
   private isRunning = false;
   private scheduledJobs: cron.ScheduledTask[] = [];
+  private useIntelligentScheduling = true;
 
   // Optimized posting windows for CONTINUOUS distribution
   private readonly POSTING_WINDOWS: PostingWindow[] = [
@@ -52,6 +55,7 @@ export class DailyPostingManager {
 
   constructor() {
     this.postTweetAgent = new PostTweetAgent();
+    this.intelligentScheduler = new IntelligentSchedulingAgent();
     this.currentState = this.getDefaultState();
   }
 
@@ -163,6 +167,49 @@ export class DailyPostingManager {
 
     console.log(`📈 Setting up schedule for ${remaining} remaining posts`);
 
+    if (this.useIntelligentScheduling) {
+      // 🧠 Use AI-driven intelligent scheduling
+      await this.setupIntelligentSchedule(remaining);
+    } else {
+      // 📅 Use traditional fixed schedule
+      await this.setupTraditionalSchedule(remaining);
+    }
+  }
+
+  private async setupIntelligentSchedule(remaining: number): Promise<void> {
+    console.log('🧠 Activating intelligent scheduling...');
+    
+    try {
+      const intelligentSchedule = await this.intelligentScheduler.generateIntelligentSchedule();
+      
+      console.log('🎯 INTELLIGENT SCHEDULE ANALYSIS:');
+      console.log(`   📊 Recommended posts: ${intelligentSchedule.totalDailyPosts}`);
+      console.log(`   🔥 Confidence: ${intelligentSchedule.confidenceScore}%`);
+      console.log(`   🧠 Adaptive reasons: ${intelligentSchedule.adaptiveReasons.join(', ')}`);
+      
+      // Schedule posts based on intelligent analysis
+      const upcomingPosts = intelligentSchedule.scheduledPosts.filter(post => 
+        post.scheduledTime > new Date()
+      ).slice(0, remaining);
+      
+      for (const post of upcomingPosts) {
+        this.scheduleIntelligentPost(post);
+      }
+      
+      // Set up dynamic monitoring
+      this.setupDynamicMonitoring();
+      
+    } catch (error) {
+      console.warn('🔄 Intelligent scheduling failed, falling back to traditional:', error);
+      await this.setupTraditionalSchedule(remaining);
+    }
+  }
+
+  private async setupTraditionalSchedule(remaining: number): Promise<void> {
+    console.log('📅 Using traditional fixed schedule...');
+    
+    const now = new Date();
+    
     // Schedule remaining posts optimally
     const upcomingSlots = this.currentState.posting_schedule.filter(timeStr => {
       const postTime = new Date(timeStr);
@@ -179,6 +226,40 @@ export class DailyPostingManager {
     for (const timeSlot of upcomingSlots) {
       this.schedulePost(new Date(timeSlot));
     }
+  }
+
+  private scheduleIntelligentPost(post: any): void {
+    const cronExpression = `${post.scheduledTime.getMinutes()} ${post.scheduledTime.getHours()} ${post.scheduledTime.getDate()} ${post.scheduledTime.getMonth() + 1} *`;
+    
+    const job = cron.schedule(cronExpression, async () => {
+      console.log(`🧠 Executing intelligent post: ${post.triggerReason}`);
+      await this.executePost('scheduled');
+    }, {
+      scheduled: true,
+      timezone: "UTC"
+    });
+
+    this.scheduledJobs.push(job);
+    console.log(`🎯 Intelligent post scheduled for ${post.scheduledTime.toLocaleTimeString()}: ${post.triggerReason}`);
+  }
+
+  private setupDynamicMonitoring(): void {
+    // Monitor for breaking news and trends every 30 minutes
+    const monitoringJob = cron.schedule('*/30 * * * *', async () => {
+      console.log('🔍 Checking for urgent posting opportunities...');
+      
+      const shouldPost = await this.intelligentScheduler.shouldPostNow();
+      
+      if (shouldPost.shouldPost && shouldPost.urgency > 0.8) {
+        console.log(`🚨 URGENT POST TRIGGER: ${shouldPost.reason}`);
+        await this.executePost('emergency');
+      }
+    }, {
+      scheduled: true,
+      timezone: "UTC"
+    });
+
+    this.scheduledJobs.push(monitoringJob);
   }
 
   private schedulePost(postTime: Date): void {
