@@ -33,11 +33,62 @@ interface ProcessedNewsArticle {
   credibilityScore: number;
   healthTechRelevance: number;
   category: 'breakthrough' | 'funding' | 'regulatory' | 'research' | 'product' | 'industry';
+  apiSource: 'newsapi' | 'guardian' | 'mediastack' | 'newsdata' | 'fallback';
+}
+
+interface GuardianResponse {
+  response: {
+    status: string;
+    results: GuardianArticle[];
+  };
+}
+
+interface GuardianArticle {
+  id: string;
+  webTitle: string;
+  webUrl: string;
+  webPublicationDate: string;
+  fields?: {
+    bodyText?: string;
+    thumbnail?: string;
+  };
+}
+
+interface MediastackResponse {
+  data: MediastackArticle[];
+}
+
+interface MediastackArticle {
+  title: string;
+  description: string;
+  url: string;
+  image: string | null;
+  source: string;
+  author: string | null;
+  published_at: string;
+}
+
+interface NewsdataResponse {
+  status: string;
+  results: NewsdataArticle[];
+}
+
+interface NewsdataArticle {
+  title: string;
+  description: string;
+  link: string;
+  image_url: string | null;
+  source_id: string;
+  pubDate: string;
+  content: string;
 }
 
 export class NewsAPIAgent {
-  private readonly apiKey: string;
-  private readonly baseUrl = 'https://newsapi.org/v2';
+  private readonly newsApiKey: string;
+  private readonly guardianApiKey: string;
+  private readonly mediastackApiKey: string;
+  private readonly newsdataApiKey: string;
+  
   private readonly healthTechKeywords = [
     'AI healthcare',
     'digital health',
@@ -74,204 +125,290 @@ export class NewsAPIAgent {
     'MobiHealthNews': 87,
     'VentureBeat': 82,
     'Fierce Healthcare': 86,
-    'Modern Healthcare': 87
+    'Modern Healthcare': 87,
+    'The Guardian': 90,
+    'Financial Times': 89
   };
 
   private recentlyUsedArticles: Set<string> = new Set();
-  private maxRecentArticles = 50; // Track last 50 articles to prevent repetition
+  private maxRecentArticles = 100;
+  
+  // Rate limiting trackers
+  private apiCallCounts = {
+    newsapi: 0,
+    guardian: 0,
+    mediastack: 0,
+    newsdata: 0
+  };
+  
+  private lastResetTime = Date.now();
+  private readonly dailyLimits = {
+    newsapi: 90, // Keep below 100/day limit
+    guardian: 1000, // Very generous limit
+    mediastack: 900, // Keep below 1000/month
+    newsdata: 180 // Keep below 200/day
+  };
 
   constructor() {
-    this.apiKey = process.env.NEWS_API_KEY || '';
-    if (!this.apiKey) {
-      console.warn('⚠️ NEWS_API_KEY not found in environment variables');
-    }
+    this.newsApiKey = process.env.NEWS_API_KEY || '';
+    this.guardianApiKey = process.env.GUARDIAN_API_KEY || '';
+    this.mediastackApiKey = process.env.MEDIASTACK_API_KEY || '';
+    this.newsdataApiKey = process.env.NEWSDATA_API_KEY || '';
+    
+    console.log('🔌 News APIs configured:', {
+      newsapi: !!this.newsApiKey,
+      guardian: !!this.guardianApiKey,
+      mediastack: !!this.mediastackApiKey,
+      newsdata: !!this.newsdataApiKey
+    });
   }
 
   /**
-   * Fetch current health tech news from NewsAPI
+   * Smart multi-source news fetching with automatic failover
    */
   async fetchHealthTechNews(maxArticles: number = 20): Promise<ProcessedNewsArticle[]> {
-    // Check if API key is available
-    if (!this.apiKey) {
-      console.log('⚠️ NewsAPI key not available, using fallback content');
-      return this.getFallbackNews();
-    }
+    console.log('📰 Starting multi-source news aggregation...');
+    
+    this.resetDailyCountsIfNeeded();
+    const allArticles: ProcessedNewsArticle[] = [];
+    const articlesPerSource = Math.ceil(maxArticles / 4);
 
-    try {
-      console.log('📰 Fetching latest health tech news...');
-      
-      const allArticles: ProcessedNewsArticle[] = [];
-      const articlesPerKeyword = Math.ceil(maxArticles / this.healthTechKeywords.length);
+    // Try each API in order of preference and rate limits
+    const sources = [
+      { name: 'guardian', fetch: () => this.fetchFromGuardian(articlesPerSource) },
+      { name: 'newsdata', fetch: () => this.fetchFromNewsdata(articlesPerSource) },
+      { name: 'mediastack', fetch: () => this.fetchFromMediastack(articlesPerSource) },
+      { name: 'newsapi', fetch: () => this.fetchFromNewsAPI(articlesPerSource) }
+    ];
 
-      // Fetch articles for each keyword
-      for (const keyword of this.healthTechKeywords) {
-        try {
-          await this.delay(200); // Rate limiting protection
-          const articles = await this.fetchByKeyword(keyword, articlesPerKeyword);
-          allArticles.push(...articles);
-        } catch (error: any) {
-          // Don't let one keyword failure stop the entire process
-          console.log(`⚠️ Keyword "${keyword}" failed, continuing with others...`);
-          continue;
-        }
-      }
-
-      // If we got very few articles due to rate limiting, use fallbacks
-      if (allArticles.length < 3) {
-        console.log('📰 Limited API responses, supplementing with fallback content');
-        const fallbackArticles = this.getFallbackNews();
-        allArticles.push(...fallbackArticles);
-      }
-
-      // Process and return unique articles
-      const uniqueArticles = this.removeDuplicates(allArticles);
-      const rankedArticles = this.rankByRelevance(uniqueArticles);
-      const finalArticles = rankedArticles.slice(0, maxArticles);
-
-      console.log(`✅ Fetched ${finalArticles.length} unique health tech articles`);
-      
-      // Store in database (optional, with error handling)
+    for (const source of sources) {
       try {
-        await this.storeArticlesInDatabase(finalArticles);
+        if (this.canMakeRequest(source.name as keyof typeof this.apiCallCounts)) {
+          console.log(`📡 Trying ${source.name}...`);
+          const articles = await source.fetch();
+          allArticles.push(...articles);
+          
+          if (allArticles.length >= maxArticles) {
+            console.log(`✅ Got enough articles (${allArticles.length}), stopping fetch`);
+            break;
+          }
+        } else {
+          console.log(`⏰ ${source.name} rate limit reached, skipping`);
+        }
       } catch (error) {
-        console.log('⚠️ Database storage skipped due to error');
+        console.log(`⚠️ ${source.name} failed:`, error instanceof Error ? error.message : 'Unknown error');
+        continue;
       }
-
-      return finalArticles;
-
-    } catch (error) {
-      console.log('❌ News fetching failed, using fallback content');
-      return this.getFallbackNews();
     }
+
+    // If still not enough articles, use fallback content
+    if (allArticles.length < 5) {
+      console.log('📰 Adding fallback content to ensure minimum articles');
+      const fallbackArticles = this.getFallbackNews();
+      allArticles.push(...fallbackArticles.slice(0, maxArticles - allArticles.length));
+    }
+
+    // Process and return unique articles
+    const uniqueArticles = this.removeDuplicates(allArticles);
+    const rankedArticles = this.rankByRelevance(uniqueArticles);
+    const finalArticles = rankedArticles.slice(0, maxArticles);
+
+    console.log(`✅ Final result: ${finalArticles.length} articles from ${new Set(finalArticles.map(a => a.apiSource)).size} sources`);
+    
+    // Store in database (optional, with error handling)
+    try {
+      await this.storeArticlesInDatabase(finalArticles);
+    } catch (error) {
+      console.log('⚠️ Database storage skipped due to error');
+    }
+
+    return finalArticles;
   }
 
   /**
-   * Fetch breaking health tech news (last 6 hours)
+   * Fetch from Guardian API (completely free)
    */
-  async fetchBreakingNews(): Promise<ProcessedNewsArticle[]> {
-    if (!this.apiKey) return this.getFallbackNews();
-
+  private async fetchFromGuardian(limit: number): Promise<ProcessedNewsArticle[]> {
+    if (!this.guardianApiKey) return [];
+    
+    this.incrementApiCall('guardian');
+    
     try {
-      console.log('🚨 Fetching breaking health tech news...');
-      
-      const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
-      
-      const params = {
-        apiKey: this.apiKey,
-        q: 'AI healthcare OR digital health OR medical AI',
-        from: sixHoursAgo,
-        sortBy: 'publishedAt',
-        language: 'en',
-        pageSize: 20
-      };
+      const query = 'healthcare AI OR digital health OR medical technology';
+      const response = await axios.get('https://content.guardianapis.com/search', {
+        params: {
+          'api-key': this.guardianApiKey,
+          q: query,
+          'page-size': limit,
+          'show-fields': 'bodyText,thumbnail',
+          'order-by': 'newest'
+        },
+        timeout: 10000
+      });
 
-      const response = await axios.get(`${this.baseUrl}/everything`, { params });
-      const newsData: NewsAPIResponse = response.data as NewsAPIResponse;
-
-      if (newsData.status !== 'ok') {
-        throw new Error(`NewsAPI error: ${newsData.status}`);
+      const guardianData: GuardianResponse = response.data;
+      
+      if (guardianData.response.status !== 'ok') {
+        throw new Error(`Guardian API error: ${guardianData.response.status}`);
       }
 
-      const processedArticles = newsData.articles
-        .map(article => this.processArticle(article))
-        .filter(article => article.healthTechRelevance > 0.6)
-        .sort((a, b) => b.healthTechRelevance - a.healthTechRelevance);
-
-      console.log(`🔥 Found ${processedArticles.length} breaking health tech stories`);
-      return processedArticles;
-
+      return guardianData.response.results.map(article => ({
+        title: article.webTitle,
+        description: article.fields?.bodyText?.substring(0, 200) + '...' || article.webTitle,
+        url: article.webUrl,
+        imageUrl: article.fields?.thumbnail || null,
+        source: 'The Guardian',
+        author: null,
+        publishedAt: article.webPublicationDate,
+        content: article.fields?.bodyText || article.webTitle,
+        credibilityScore: this.credibleSources['The Guardian'] || 80,
+        healthTechRelevance: this.calculateHealthTechRelevance(article.webTitle, article.fields?.bodyText || ''),
+        category: this.categorizeArticle(article.webTitle, article.fields?.bodyText || ''),
+        apiSource: 'guardian' as const
+      }));
     } catch (error) {
-      console.error('❌ Error fetching breaking news:', error);
+      console.error('Guardian API error:', error);
       return [];
     }
   }
 
   /**
-   * Get trending health tech topics
+   * Fetch from NewsData.io (200 requests/day free)
    */
-  async getTrendingTopics(): Promise<string[]> {
+  private async fetchFromNewsdata(limit: number): Promise<ProcessedNewsArticle[]> {
+    if (!this.newsdataApiKey) return [];
+    
+    this.incrementApiCall('newsdata');
+    
     try {
-      const articles = await this.fetchHealthTechNews(50);
-      const titleWords = articles
-        .map(article => article.title.toLowerCase())
-        .join(' ')
-        .split(' ')
-        .filter(word => word.length > 4);
-
-      // Count word frequency
-      const wordCount: Record<string, number> = {};
-      titleWords.forEach(word => {
-        wordCount[word] = (wordCount[word] || 0) + 1;
+      const response = await axios.get('https://newsdata.io/api/1/news', {
+        params: {
+          apikey: this.newsdataApiKey,
+          q: 'healthcare technology OR digital health OR medical AI',
+          language: 'en',
+          category: 'health,technology',
+          size: limit
+        },
+        timeout: 10000
       });
 
-      // Get top trending words
-      const trending = Object.entries(wordCount)
-        .sort(([, a], [, b]) => b - a)
-        .slice(0, 10)
-        .map(([word]) => word);
+      const newsdataData: NewsdataResponse = response.data;
+      
+      if (newsdataData.status !== 'success') {
+        throw new Error(`NewsData API error: ${newsdataData.status}`);
+      }
 
-      console.log('📈 Trending health tech topics:', trending);
-      return trending;
-
+      return newsdataData.results.map(article => ({
+        title: article.title,
+        description: article.description || article.title,
+        url: article.link,
+        imageUrl: article.image_url,
+        source: article.source_id,
+        author: null,
+        publishedAt: article.pubDate,
+        content: article.content || article.description || article.title,
+        credibilityScore: 75,
+        healthTechRelevance: this.calculateHealthTechRelevance(article.title, article.description || ''),
+        category: this.categorizeArticle(article.title, article.description || ''),
+        apiSource: 'newsdata' as const
+      }));
     } catch (error) {
-      console.error('Error analyzing trending topics:', error);
-      return ['artificial intelligence', 'digital health', 'telemedicine'];
+      console.error('NewsData API error:', error);
+      return [];
     }
   }
 
-  private async fetchByKeyword(keyword: string, limit: number): Promise<ProcessedNewsArticle[]> {
+  /**
+   * Fetch from MediaStack (1000 requests/month free)
+   */
+  private async fetchFromMediastack(limit: number): Promise<ProcessedNewsArticle[]> {
+    if (!this.mediastackApiKey) return [];
+    
+    this.incrementApiCall('mediastack');
+    
     try {
-      console.log(`🔍 Fetching news for keyword "${keyword}"...`);
+      const response = await axios.get('http://api.mediastack.com/v1/news', {
+        params: {
+          access_key: this.mediastackApiKey,
+          keywords: 'healthcare technology,digital health,medical AI',
+          languages: 'en',
+          categories: 'health,technology',
+          limit: limit
+        },
+        timeout: 10000
+      });
+
+      const mediastackData: MediastackResponse = response.data;
       
-      const params = {
-        apiKey: this.apiKey,
-        q: keyword,
-        sortBy: 'publishedAt',
-        language: 'en',
-        pageSize: limit,
-        from: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString() // Last 7 days
-      };
+      return mediastackData.data.map(article => ({
+        title: article.title,
+        description: article.description || article.title,
+        url: article.url,
+        imageUrl: article.image,
+        source: article.source,
+        author: article.author,
+        publishedAt: article.published_at,
+        content: article.description || article.title,
+        credibilityScore: 75,
+        healthTechRelevance: this.calculateHealthTechRelevance(article.title, article.description || ''),
+        category: this.categorizeArticle(article.title, article.description || ''),
+        apiSource: 'mediastack' as const
+      }));
+    } catch (error) {
+      console.error('MediaStack API error:', error);
+      return [];
+    }
+  }
 
-      const response = await axios.get(`${this.baseUrl}/everything`, { params });
-      const newsData: NewsAPIResponse = response.data as NewsAPIResponse;
+  /**
+   * Fetch from NewsAPI (100 requests/day - use sparingly)
+   */
+  private async fetchFromNewsAPI(limit: number): Promise<ProcessedNewsArticle[]> {
+    if (!this.newsApiKey) return [];
+    
+    this.incrementApiCall('newsapi');
+    
+    try {
+      // Use only one keyword to minimize API calls
+      const keyword = 'digital health';
+      const response = await axios.get('https://newsapi.org/v2/everything', {
+        params: {
+          apiKey: this.newsApiKey,
+          q: keyword,
+          language: 'en',
+          sortBy: 'publishedAt',
+          pageSize: limit
+        },
+        timeout: 10000
+      });
 
+      const newsData: NewsAPIResponse = response.data;
+      
       if (newsData.status !== 'ok') {
         throw new Error(`NewsAPI error: ${newsData.status}`);
       }
 
-      return newsData.articles
-        .map(article => this.processArticle(article))
-        .filter(article => article.healthTechRelevance > 0.5);
-        
-    } catch (error: any) {
-      // Handle rate limiting gracefully
-      if (error.response?.status === 429) {
-        console.log(`⏰ NewsAPI rate limit reached for "${keyword}" - using cached content`);
-        return this.getFallbackNewsForKeyword(keyword);
-      }
-      
-      console.log(`Failed to fetch news for keyword "${keyword}":`, error.message);
-      return this.getFallbackNewsForKeyword(keyword);
+      return newsData.articles.map(article => this.processNewsAPIArticle(article));
+    } catch (error) {
+      console.error('NewsAPI error:', error);
+      return [];
     }
   }
 
-  private processArticle(article: NewsAPIArticle): ProcessedNewsArticle {
-    const credibilityScore = this.credibleSources[article.source.name as keyof typeof this.credibleSources] || 70;
-    const healthTechRelevance = this.calculateHealthTechRelevance(article.title, article.description);
-    const category = this.categorizeArticle(article.title, article.description);
-
+  private processNewsAPIArticle(article: NewsAPIArticle): ProcessedNewsArticle {
     return {
       title: article.title,
-      description: article.description || '',
+      description: article.description || article.title,
       url: article.url,
       imageUrl: article.urlToImage,
       source: article.source.name,
       author: article.author,
       publishedAt: article.publishedAt,
-      content: article.content || '',
-      credibilityScore,
-      healthTechRelevance,
-      category
+      content: article.content || article.description || article.title,
+      credibilityScore: this.credibleSources[article.source.name as keyof typeof this.credibleSources] || 70,
+      healthTechRelevance: this.calculateHealthTechRelevance(article.title, article.description || ''),
+      category: this.categorizeArticle(article.title, article.description || ''),
+      apiSource: 'newsapi' as const
     };
   }
 
@@ -358,7 +495,8 @@ export class NewsAPIAgent {
         content: "Full article content would be here...",
         credibilityScore: 94,
         healthTechRelevance: 0.95,
-        category: 'breakthrough'
+        category: 'breakthrough',
+        apiSource: 'fallback'
       },
       {
         title: "FDA Grants Fast Track Designation to AI-Powered Drug Discovery Platform",
@@ -371,7 +509,8 @@ export class NewsAPIAgent {
         content: "Full article content would be here...",
         credibilityScore: 98,
         healthTechRelevance: 0.92,
-        category: 'regulatory'
+        category: 'regulatory',
+        apiSource: 'fallback'
       },
       {
         title: "Digital Health Startup Raises $150M for AI Mental Health Platform",
@@ -384,27 +523,29 @@ export class NewsAPIAgent {
         content: "Full article content would be here...",
         credibilityScore: 85,
         healthTechRelevance: 0.88,
-        category: 'funding'
+        category: 'funding',
+        apiSource: 'fallback'
       }
     ];
   }
 
-  private getFallbackNewsForKeyword(keyword: string): ProcessedNewsArticle[] {
-    // Return relevant fallback content based on keyword
-    const keywordLower = keyword.toLowerCase();
-    const allFallbacks = this.getFallbackNews();
-    
-    // Filter fallbacks by keyword relevance
-    const relevantFallbacks = allFallbacks.filter(article => {
-      const content = (article.title + ' ' + article.description).toLowerCase();
-      return content.includes(keywordLower) || 
-             keywordLower.split(' ').some(word => content.includes(word));
-    });
-    
-    return relevantFallbacks.length > 0 ? relevantFallbacks.slice(0, 3) : allFallbacks.slice(0, 2);
+  private canMakeRequest(apiName: keyof typeof this.apiCallCounts): boolean {
+    return this.apiCallCounts[apiName] < this.dailyLimits[apiName];
   }
 
-  private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+  private incrementApiCall(apiName: keyof typeof this.apiCallCounts): void {
+    this.apiCallCounts[apiName]++;
+    console.log(`📊 API usage: ${apiName} = ${this.apiCallCounts[apiName]}/${this.dailyLimits[apiName]}`);
+  }
+
+  private resetDailyCountsIfNeeded(): void {
+    const now = Date.now();
+    const twentyFourHours = 24 * 60 * 60 * 1000;
+    
+    if (now - this.lastResetTime > twentyFourHours) {
+      this.apiCallCounts = { newsapi: 0, guardian: 0, mediastack: 0, newsdata: 0 };
+      this.lastResetTime = now;
+      console.log('🔄 API rate limits reset for new day');
+    }
   }
 } 

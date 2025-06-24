@@ -81,6 +81,181 @@ CREATE TABLE IF NOT EXISTS cost_optimization_daily (
   emergency_fallback_usage INTEGER DEFAULT 0
 );
 
+-- Image usage tracking table
+CREATE TABLE IF NOT EXISTS image_usage_history (
+    id SERIAL PRIMARY KEY,
+    image_id VARCHAR(255) NOT NULL,
+    image_url TEXT NOT NULL,
+    source VARCHAR(50) NOT NULL, -- 'pexels', 'unsplash', 'fallback'
+    usage_count INTEGER DEFAULT 1,
+    last_used_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    first_used_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    search_terms TEXT[], -- Keywords used to find this image
+    tweet_id VARCHAR(255), -- Associated tweet ID if available
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create indexes for performance
+CREATE INDEX IF NOT EXISTS idx_image_usage_image_id ON image_usage_history(image_id);
+CREATE INDEX IF NOT EXISTS idx_image_usage_last_used ON image_usage_history(last_used_at);
+CREATE INDEX IF NOT EXISTS idx_image_usage_source ON image_usage_history(source);
+CREATE INDEX IF NOT EXISTS idx_image_usage_count ON image_usage_history(usage_count);
+
+-- News sources tracking table for multi-API redundancy
+CREATE TABLE IF NOT EXISTS news_source_health (
+    id SERIAL PRIMARY KEY,
+    api_name VARCHAR(50) NOT NULL, -- 'newsapi', 'guardian', 'mediastack', 'newsdata'
+    daily_usage_count INTEGER DEFAULT 0,
+    daily_limit INTEGER NOT NULL,
+    last_reset_date DATE DEFAULT CURRENT_DATE,
+    last_successful_call TIMESTAMP WITH TIME ZONE,
+    last_error_message TEXT,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Insert initial API configurations
+INSERT INTO news_source_health (api_name, daily_limit) VALUES 
+    ('newsapi', 90),
+    ('guardian', 1000),
+    ('mediastack', 900),
+    ('newsdata', 180)
+ON CONFLICT (api_name) DO UPDATE SET
+    daily_limit = EXCLUDED.daily_limit,
+    updated_at = NOW();
+
+-- Create unique constraint for API names
+CREATE UNIQUE INDEX IF NOT EXISTS idx_news_source_api_name ON news_source_health(api_name);
+
+-- Function to update image usage
+CREATE OR REPLACE FUNCTION update_image_usage(
+    p_image_id VARCHAR(255),
+    p_image_url TEXT,
+    p_source VARCHAR(50),
+    p_search_terms TEXT[] DEFAULT NULL,
+    p_tweet_id VARCHAR(255) DEFAULT NULL
+) RETURNS VOID AS $$
+BEGIN
+    INSERT INTO image_usage_history (
+        image_id, image_url, source, usage_count, search_terms, tweet_id, last_used_at, first_used_at
+    ) VALUES (
+        p_image_id, p_image_url, p_source, 1, p_search_terms, p_tweet_id, NOW(), NOW()
+    )
+    ON CONFLICT (image_id) DO UPDATE SET
+        usage_count = image_usage_history.usage_count + 1,
+        last_used_at = NOW(),
+        search_terms = COALESCE(p_search_terms, image_usage_history.search_terms),
+        tweet_id = COALESCE(p_tweet_id, image_usage_history.tweet_id),
+        updated_at = NOW();
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function to get least used images
+CREATE OR REPLACE FUNCTION get_least_used_images(
+    p_source VARCHAR(50) DEFAULT NULL,
+    p_limit INTEGER DEFAULT 10
+) RETURNS TABLE (
+    image_id VARCHAR(255),
+    image_url TEXT,
+    source VARCHAR(50),
+    usage_count INTEGER,
+    last_used_at TIMESTAMP WITH TIME ZONE
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        h.image_id,
+        h.image_url,
+        h.source,
+        h.usage_count,
+        h.last_used_at
+    FROM image_usage_history h
+    WHERE (p_source IS NULL OR h.source = p_source)
+    ORDER BY h.usage_count ASC, h.last_used_at ASC
+    LIMIT p_limit;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function to reset daily API usage counts
+CREATE OR REPLACE FUNCTION reset_daily_api_usage() RETURNS VOID AS $$
+BEGIN
+    UPDATE news_source_health 
+    SET 
+        daily_usage_count = 0,
+        last_reset_date = CURRENT_DATE,
+        updated_at = NOW()
+    WHERE last_reset_date < CURRENT_DATE;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function to increment API usage
+CREATE OR REPLACE FUNCTION increment_api_usage(
+    p_api_name VARCHAR(50),
+    p_success BOOLEAN DEFAULT true,
+    p_error_message TEXT DEFAULT NULL
+) RETURNS BOOLEAN AS $$
+DECLARE
+    current_usage INTEGER;
+    usage_limit INTEGER;
+BEGIN
+    -- Reset daily counts if needed
+    PERFORM reset_daily_api_usage();
+    
+    -- Get current usage and limit
+    SELECT daily_usage_count, daily_limit 
+    INTO current_usage, usage_limit
+    FROM news_source_health 
+    WHERE api_name = p_api_name;
+    
+    -- Check if we can make the request
+    IF current_usage >= usage_limit THEN
+        RETURN FALSE;
+    END IF;
+    
+    -- Increment usage count
+    UPDATE news_source_health 
+    SET 
+        daily_usage_count = daily_usage_count + 1,
+        last_successful_call = CASE WHEN p_success THEN NOW() ELSE last_successful_call END,
+        last_error_message = CASE WHEN NOT p_success THEN p_error_message ELSE NULL END,
+        updated_at = NOW()
+    WHERE api_name = p_api_name;
+    
+    RETURN TRUE;
+END;
+$$ LANGUAGE plpgsql;
+
+-- View for API usage monitoring
+CREATE OR REPLACE VIEW api_usage_status AS
+SELECT 
+    api_name,
+    daily_usage_count,
+    daily_limit,
+    ROUND((daily_usage_count::DECIMAL / daily_limit * 100), 2) as usage_percentage,
+    (daily_limit - daily_usage_count) as remaining_calls,
+    last_successful_call,
+    last_error_message,
+    is_active,
+    last_reset_date
+FROM news_source_health
+ORDER BY usage_percentage DESC;
+
+-- View for image usage analytics
+CREATE OR REPLACE VIEW image_usage_analytics AS
+SELECT 
+    source,
+    COUNT(*) as total_images,
+    AVG(usage_count) as avg_usage_count,
+    MAX(usage_count) as max_usage_count,
+    MIN(usage_count) as min_usage_count,
+    COUNT(*) FILTER (WHERE last_used_at > NOW() - INTERVAL '7 days') as used_last_week,
+    COUNT(*) FILTER (WHERE last_used_at > NOW() - INTERVAL '1 day') as used_today
+FROM image_usage_history
+GROUP BY source
+ORDER BY total_images DESC;
+
 -- Cleanup Functions
 CREATE OR REPLACE FUNCTION cleanup_old_cache() RETURNS void AS $$
 BEGIN
