@@ -4,6 +4,7 @@ import { RealTimeTrendsAgent } from './realTimeTrendsAgent';
 import { NewsAPIAgent } from './newsAPIAgent';
 import { openaiClient } from '../utils/openaiClient';
 import { supabaseClient } from '../utils/supabaseClient';
+import { intelligenceCache } from '../utils/intelligenceCache';
 
 interface IntelligentSchedule {
   scheduledPosts: ScheduledPost[];
@@ -98,21 +99,42 @@ export class IntelligentSchedulingAgent {
    * 📊 Gather comprehensive scheduling context
    */
   private async gatherSchedulingContext(): Promise<SchedulingContext> {
-    console.log('📊 Gathering scheduling intelligence...');
+    console.log('📊 Gathering scheduling intelligence (API-conscious)...');
     
+    const now = new Date();
+    const today = now.toISOString().split('T')[0];
+    
+    // 💰 Use intelligent caching to minimize API calls
     const [
       engagementPatterns,
       breakingNews,
       trendingTopics,
       historicalPerformance
     ] = await Promise.all([
-      this.engagementTracker.generateEngagementReport(),
-      this.newsAgent.fetchBreakingNews(),
-      this.trendsAgent.getTrendingHealthTopics(),
-      this.timingAgent.run()
+      intelligenceCache.getOrFetch(
+        `engagement-${today}`,
+        'engagement',
+        () => this.engagementTracker.generateEngagementReport()
+      ),
+      intelligenceCache.getOrFetch(
+        `news-${today}-${now.getHours()}`,
+        'news',
+        () => this.newsAgent.fetchBreakingNews()
+      ),
+      intelligenceCache.getOrFetch(
+        `trends-${today}`,
+        'trends',
+        () => this.trendsAgent.getTrendingHealthTopics()
+      ),
+      intelligenceCache.getOrFetch(
+        `timing-${today}`,
+        'schedule',
+        () => this.timingAgent.run()
+      )
     ]);
 
-    const now = new Date();
+    // Log cache efficiency
+    intelligenceCache.logStatus();
     
     return {
       currentEngagementPatterns: engagementPatterns?.topPerformers || [],

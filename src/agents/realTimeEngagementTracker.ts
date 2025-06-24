@@ -38,10 +38,10 @@ export class RealTimeEngagementTracker {
     console.log('🚀 Starting real-time engagement tracking...');
     this.isTracking = true;
 
-    // Track engagement every 4 hours to avoid rate limits
+    // 💰 API-CONSCIOUS: Track engagement twice daily to conserve API limits
     this.trackingInterval = setInterval(async () => {
       await this.trackRecentTweets();
-    }, 4 * 60 * 60 * 1000);
+    }, 12 * 60 * 60 * 1000); // Every 12 hours instead of 4
 
     // Initial tracking run
     await this.trackRecentTweets();

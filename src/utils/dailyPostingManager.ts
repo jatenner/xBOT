@@ -244,15 +244,36 @@ export class DailyPostingManager {
   }
 
   private setupDynamicMonitoring(): void {
-    // Monitor for breaking news and trends every 30 minutes
-    const monitoringJob = cron.schedule('*/30 * * * *', async () => {
-      console.log('🔍 Checking for urgent posting opportunities...');
+    // 💰 API-CONSCIOUS MONITORING - Reduced frequency to conserve API limits
+    
+    // Check for urgent opportunities every 4 hours instead of 30 minutes
+    const monitoringJob = cron.schedule('0 */4 * * *', async () => {
+      console.log('🔍 API-conscious check for urgent posting opportunities...');
       
-      const shouldPost = await this.intelligentScheduler.shouldPostNow();
+      try {
+        const shouldPost = await this.intelligentScheduler.shouldPostNow();
+        
+        if (shouldPost.shouldPost && shouldPost.urgency > 0.8) {
+          console.log(`🚨 URGENT POST TRIGGER: ${shouldPost.reason}`);
+          await this.executePost('emergency');
+        }
+      } catch (error) {
+        console.warn('⚠️ Monitoring check failed (API limits?), continuing with schedule:', error);
+      }
+    }, {
+      scheduled: true,
+      timezone: "UTC"
+    });
+
+    // 📊 Daily intelligence review (once per day to conserve APIs)
+    const dailyReviewJob = cron.schedule('0 6 * * *', async () => {
+      console.log('📊 Daily intelligence review (API-conscious)...');
       
-      if (shouldPost.shouldPost && shouldPost.urgency > 0.8) {
-        console.log(`🚨 URGENT POST TRIGGER: ${shouldPost.reason}`);
-        await this.executePost('emergency');
+      try {
+        // Only run intelligence gathering once per day
+        await this.intelligentScheduler.generateIntelligentSchedule();
+      } catch (error) {
+        console.warn('⚠️ Daily review failed (API limits?), using cached intelligence:', error);
       }
     }, {
       scheduled: true,
@@ -260,6 +281,12 @@ export class DailyPostingManager {
     });
 
     this.scheduledJobs.push(monitoringJob);
+    this.scheduledJobs.push(dailyReviewJob);
+    
+    console.log('💰 API-conscious monitoring activated:');
+    console.log('   🔍 Urgent checks: Every 4 hours (6 calls/day)');
+    console.log('   📊 Intelligence review: Once daily (1 call/day)');
+    console.log('   💡 Total API usage: ~7-10 calls/day vs previous 60+');
   }
 
   private schedulePost(postTime: Date): void {
