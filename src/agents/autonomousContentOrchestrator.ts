@@ -135,7 +135,7 @@ Respond with JSON:
 }`;
 
       const response = await openaiClient.getClient()?.chat.completions.create({
-        model: 'gpt-4',
+        model: 'gpt-4o-mini',
         messages: [{ role: 'system', content: prompt }],
         temperature: 0.4, // Balanced creativity and analysis
         max_tokens: 800
@@ -214,7 +214,7 @@ Respond with JSON:
 }`;
 
       const response = await openaiClient.getClient()?.chat.completions.create({
-        model: 'gpt-4',
+        model: 'gpt-4o-mini',
         messages: [{ role: 'system', content: prompt }],
         temperature: 0.7, // High strategic creativity
         max_tokens: 1000

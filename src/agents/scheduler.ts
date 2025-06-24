@@ -15,6 +15,7 @@ import { AutonomousTweetAuditor } from './autonomousTweetAuditor';
 import { AutonomousContentOrchestrator } from './autonomousContentOrchestrator';
 import { pubmedFetcher } from './pubmedFetcher.js';
 import { supabase } from '../utils/supabaseClient.js';
+import { dailyPostingManager } from '../utils/dailyPostingManager';
 
 dotenv.config();
 
@@ -72,6 +73,10 @@ export class Scheduler {
     console.log('🚀 Starting Snap2Health X-Bot Scheduler...');
     this.isRunning = true;
 
+    // 🎯 START DAILY POSTING MANAGER - Ensures 17 tweets/day
+    console.log('🎯 Activating Daily Posting Manager - Target: 17 tweets/day');
+    await dailyPostingManager.start();
+
     // 🚨 EMERGENCY COST MODE CHECK
     const emergencyMode = process.env.EMERGENCY_COST_MODE === 'true';
     const disableLearningAgents = process.env.DISABLE_LEARNING_AGENTS === 'true';
@@ -82,22 +87,13 @@ export class Scheduler {
       console.log('💰 All expensive background analysis DISABLED');
       console.log(`💵 Daily budget limit: $${dailyBudgetLimit}`);
       console.log('📝 Basic posting mode only - optimized for 0-follower growth');
+      console.log('🎯 Daily Posting Manager will handle all 17 tweets');
       
-      // In emergency mode, ONLY run basic strategist for posting
-      this.strategistJob = cron.schedule('0 */12 * * *', async () => {
-        try {
-          console.log('📝 Emergency mode: Basic strategist cycle');
-          await this.runStrategistCycle();
-        } catch (error) {
-          console.error('❌ Emergency strategist cycle failed:', error);
-        }
-      }, {
-        scheduled: true,
-        timezone: "UTC"
-      });
-
-      console.log('⚠️ EMERGENCY MODE: Only basic posting enabled');
-      console.log('   - Strategist: Every 12 hours (basic posting only)');
+      // In emergency mode, let daily posting manager handle all posts
+      // No additional strategist scheduling needed
+      
+      console.log('⚠️ EMERGENCY MODE: Daily Posting Manager controls all posting');
+      console.log('   - 17 tweets/day spread across optimal times');
       console.log('   - ALL learning agents: DISABLED');
       console.log('   - ALL competitive intelligence: DISABLED');
       console.log('   - ALL background analysis: DISABLED');

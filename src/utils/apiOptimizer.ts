@@ -16,7 +16,7 @@ export class APIOptimizer {
   // FREE TIER LIMITS (Conservative estimates)
   private readonly LIMITS = {
     DAILY_READS: 1500,    // Conservative limit for reads
-    DAILY_WRITES: 20,     // Conservative limit for tweets/actions
+    DAILY_WRITES: 17,     // EXACT daily target for optimal growth
     MONTHLY_READS: 40000, // Conservative monthly limit
     MONTHLY_WRITES: 500   // Conservative monthly limit
   };

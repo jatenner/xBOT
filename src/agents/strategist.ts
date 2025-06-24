@@ -77,7 +77,7 @@ Respond with a JSON object containing:
 }`;
 
       const response = await openaiClient.getClient()?.chat.completions.create({
-        model: 'gpt-4',
+        model: 'gpt-4o-mini',
         messages: [{ role: 'system', content: systemPrompt }],
         temperature: 0.3,
         max_tokens: 200

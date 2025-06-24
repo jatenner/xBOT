@@ -57,7 +57,7 @@ export class DevelopmentFramework {
 
   private async designExperiments(): Promise<any> {
     const experimentDesign = await this.openai.chat.completions.create({
-      model: "gpt-4",
+      model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
@@ -132,7 +132,7 @@ export class DevelopmentFramework {
   private async simulateExperiment(experiment: any): Promise<SimulationResult> {
     // Use AI to simulate realistic outcomes
     const simulation = await this.openai.chat.completions.create({
-      model: "gpt-4",
+      model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
@@ -172,7 +172,7 @@ export class DevelopmentFramework {
     console.log('🔬 === EXTRACTING META-LEARNINGS ===');
     
     const metaAnalysis = await this.openai.chat.completions.create({
-      model: "gpt-4",
+      model: "gpt-4o-mini",
       messages: [
         {
           role: "system",

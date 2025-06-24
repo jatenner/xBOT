@@ -113,7 +113,7 @@ Return JSON array of bold opportunities:
 ["experiment 1", "experiment 2", ...]`;
 
       const response = await openaiClient.getClient()?.chat.completions.create({
-        model: 'gpt-4',
+        model: 'gpt-4o-mini',
         messages: [{ role: 'system', content: prompt }],
         temperature: 0.9, // Maximum creativity
         max_tokens: 500
@@ -177,7 +177,7 @@ Respond with JSON:
 }`;
 
         const response = await openaiClient.getClient()?.chat.completions.create({
-          model: 'gpt-4',
+          model: 'gpt-4o-mini',
           messages: [{ role: 'system', content: prompt }],
           temperature: 0.8,
           max_tokens: 400
@@ -307,7 +307,7 @@ Respond with JSON:
 }]`;
 
       const response = await openaiClient.getClient()?.chat.completions.create({
-        model: 'gpt-4',
+        model: 'gpt-4o-mini',
         messages: [{ role: 'system', content: prompt }],
         temperature: 0.6,
         max_tokens: 600
