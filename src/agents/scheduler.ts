@@ -7,6 +7,7 @@ import { ResearchAgent } from './researchAgent';
 import { AutonomousLearningAgent } from './autonomousLearningAgent';
 import { CrossIndustryLearningAgent } from './crossIndustryLearningAgent';
 import { NightlyOptimizerAgent } from './nightlyOptimizer';
+import { RateLimitedEngagementAgent } from './rateLimitedEngagementAgent';
 
 import dotenv from 'dotenv';
 import { RealTimeEngagementTracker } from './realTimeEngagementTracker';
@@ -26,6 +27,7 @@ export class Scheduler {
   private autonomousLearner: AutonomousLearningAgent;
   private crossIndustryLearner: CrossIndustryLearningAgent;
   private nightlyOptimizer: NightlyOptimizerAgent;
+  private rateLimitedEngagementAgent: RateLimitedEngagementAgent;
 
   private engagementTracker: RealTimeEngagementTracker;
   private tasks: any[] = [];
@@ -39,6 +41,7 @@ export class Scheduler {
   private learningJob: cron.ScheduledTask | null = null;
   private autonomousLearningJob: cron.ScheduledTask | null = null;
   private engagementJob: cron.ScheduledTask | null = null;
+  private rateLimitedEngagementJob: cron.ScheduledTask | null = null;
   private weeklyReportJob: cron.ScheduledTask | null = null;
   private tweetAuditorJob: cron.ScheduledTask | null = null;
   private orchestratorJob: cron.ScheduledTask | null = null;
@@ -53,6 +56,7 @@ export class Scheduler {
     this.autonomousLearner = new AutonomousLearningAgent();
     this.crossIndustryLearner = new CrossIndustryLearningAgent();
     this.nightlyOptimizer = new NightlyOptimizerAgent();
+    this.rateLimitedEngagementAgent = new RateLimitedEngagementAgent();
 
     this.engagementTracker = new RealTimeEngagementTracker();
     this.autonomousTweetAuditor = new AutonomousTweetAuditor();
@@ -175,6 +179,22 @@ export class Scheduler {
       }
     });
 
+    // 🔥 RATE LIMITED ENGAGEMENT AGENT - runs every 30 minutes to break ghost syndrome
+    this.rateLimitedEngagementJob = cron.schedule('*/30 * * * *', async () => {
+      console.log('🔥 === RATE LIMITED ENGAGEMENT AGENT TRIGGERED ===');
+      try {
+        const result = await this.rateLimitedEngagementAgent.run();
+        if (result.success) {
+          console.log(`✅ Engagement cycle completed: ${result.message}`);
+          console.log(`🎯 Actions performed: ${result.actions.length}`);
+        } else {
+          console.log(`⚠️ Engagement cycle failed: ${result.message}`);
+        }
+      } catch (error) {
+        console.error('❌ Rate limited engagement failed:', error);
+      }
+    }, { scheduled: true });
+
     // PubMed research fetcher - every 6 hours
     cron.schedule('0 */6 * * *', async () => {
       try {
@@ -200,6 +220,7 @@ export class Scheduler {
     this.jobs.set('learning', this.learningJob);
     this.jobs.set('autonomousLearning', this.autonomousLearningJob);
     this.jobs.set('engagementAnalysis', this.engagementJob);
+    this.jobs.set('rateLimitedEngagement', this.rateLimitedEngagementJob);
     this.jobs.set('weeklyReport', this.weeklyReportJob);
     this.jobs.set('tweetAuditor', this.tweetAuditorJob);
     this.jobs.set('orchestrator', this.orchestratorJob);
@@ -210,6 +231,7 @@ export class Scheduler {
     this.learningJob.start();
     this.autonomousLearningJob.start();
     this.engagementJob.start();
+    this.rateLimitedEngagementJob.start();
     this.weeklyReportJob.start();
     this.tweetAuditorJob.start();
     this.orchestratorJob.start();
@@ -228,6 +250,7 @@ export class Scheduler {
     console.log('   - Learning: Daily at 2:00 AM UTC');
     console.log('   - Autonomous Learning: Every 6 hours');
     console.log('   - Engagement Analysis: Every 30 minutes during peak hours');
+    console.log('   - 🔥 Rate Limited Engagement: Every 30 minutes (GHOST KILLER)');
     console.log('   - Weekly Report: Sundays at 9:00 AM UTC');
     console.log('   - 🤖 Autonomous Tweet Auditor: Every 2 hours');
     console.log('   - 👑 Supreme Content Orchestrator: Every 4 hours');
