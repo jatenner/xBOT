@@ -7,7 +7,7 @@ import { ResearchAgent } from './researchAgent';
 import { AutonomousLearningAgent } from './autonomousLearningAgent';
 import { CrossIndustryLearningAgent } from './crossIndustryLearningAgent';
 import { NightlyOptimizerAgent } from './nightlyOptimizer';
-import { RateLimitedEngagementAgent } from './rateLimitedEngagementAgent';
+import { RealEngagementAgent } from './realEngagementAgent';
 
 import dotenv from 'dotenv';
 import { RealTimeEngagementTracker } from './realTimeEngagementTracker';
@@ -27,7 +27,7 @@ export class Scheduler {
   private autonomousLearner: AutonomousLearningAgent;
   private crossIndustryLearner: CrossIndustryLearningAgent;
   private nightlyOptimizer: NightlyOptimizerAgent;
-  private rateLimitedEngagementAgent: RateLimitedEngagementAgent;
+  private rateLimitedEngagementAgent: RealEngagementAgent;
 
   private engagementTracker: RealTimeEngagementTracker;
   private tasks: any[] = [];
@@ -56,7 +56,7 @@ export class Scheduler {
     this.autonomousLearner = new AutonomousLearningAgent();
     this.crossIndustryLearner = new CrossIndustryLearningAgent();
     this.nightlyOptimizer = new NightlyOptimizerAgent();
-    this.rateLimitedEngagementAgent = new RateLimitedEngagementAgent();
+    this.rateLimitedEngagementAgent = new RealEngagementAgent();
 
     this.engagementTracker = new RealTimeEngagementTracker();
     this.autonomousTweetAuditor = new AutonomousTweetAuditor();
@@ -179,19 +179,26 @@ export class Scheduler {
       }
     });
 
-    // 🔥 RATE LIMITED ENGAGEMENT AGENT - runs every 30 minutes to break ghost syndrome
+    // 🔥 REAL ENGAGEMENT AGENT - runs every 30 minutes to perform ACTUAL Twitter actions
     this.rateLimitedEngagementJob = cron.schedule('*/30 * * * *', async () => {
-      console.log('🔥 === RATE LIMITED ENGAGEMENT AGENT TRIGGERED ===');
+      console.log('🔥 === REAL ENGAGEMENT AGENT TRIGGERED ===');
+      console.log('🎯 Performing ACTUAL Twitter likes, follows, and replies');
       try {
         const result = await this.rateLimitedEngagementAgent.run();
         if (result.success) {
-          console.log(`✅ Engagement cycle completed: ${result.message}`);
-          console.log(`🎯 Actions performed: ${result.actions.length}`);
+          console.log(`✅ Real engagement completed: ${result.message}`);
+          console.log(`🎯 ACTUAL actions performed: ${result.actions.length}`);
+          
+          // Count successful real actions
+          const successful = result.actions.filter(a => a.success);
+          if (successful.length > 0) {
+            console.log(`💖 Real Twitter engagement achieved: ${successful.length} successful actions`);
+          }
         } else {
-          console.log(`⚠️ Engagement cycle failed: ${result.message}`);
+          console.log(`⚠️ Real engagement failed: ${result.message}`);
         }
       } catch (error) {
-        console.error('❌ Rate limited engagement failed:', error);
+        console.error('❌ Real engagement agent failed:', error);
       }
     }, { scheduled: true });
 
@@ -250,7 +257,7 @@ export class Scheduler {
     console.log('   - Learning: Daily at 2:00 AM UTC');
     console.log('   - Autonomous Learning: Every 6 hours');
     console.log('   - Engagement Analysis: Every 30 minutes during peak hours');
-    console.log('   - 🔥 Rate Limited Engagement: Every 30 minutes (GHOST KILLER)');
+    console.log('   - 🔥 REAL Engagement: Every 30 minutes (ACTUAL Twitter actions)');
     console.log('   - Weekly Report: Sundays at 9:00 AM UTC');
     console.log('   - 🤖 Autonomous Tweet Auditor: Every 2 hours');
     console.log('   - 👑 Supreme Content Orchestrator: Every 4 hours');

@@ -160,16 +160,22 @@ export class RateLimitedEngagementAgent {
               .single();
 
             if (!existingLike) {
-              // Use xClient to like the tweet (we'll need to add this method)
-              console.log(`💖 Would like tweet: ${tweet.text?.substring(0, 50)}...`);
+              // Actually like the tweet using xClient
+              const likeResult = await xClient.likeTweet(tweet.id);
               
-              // Log the engagement
-              await this.logEngagement('like', tweet.id, tweet.author_id);
-              
-              actions.push({
-                type: 'like',
-                tweetId: tweet.id
-              });
+              if (likeResult.success) {
+                console.log(`💖 Successfully liked tweet: ${tweet.text?.substring(0, 50)}...`);
+                
+                // Log the engagement
+                await this.logEngagement('like', tweet.id, tweet.author_id);
+                
+                actions.push({
+                  type: 'like',
+                  tweetId: tweet.id
+                });
+              } else {
+                console.error(`❌ Failed to like tweet: ${likeResult.error}`);
+              }
               
               // Rate limiting delay
               await this.delay(2000);
@@ -260,20 +266,64 @@ export class RateLimitedEngagementAgent {
     try {
       console.log(`👥 Performing strategic follows (max: ${maxFollows})`);
 
-      // For now, simulate follows since we need to implement follow functionality
-      for (let i = 0; i < maxFollows; i++) {
-        console.log(`👥 Would follow health tech influencer ${i + 1}`);
+      // Search for health tech influencers to follow
+      const followQueries = [
+        'health tech CEO',
+        'digital health founder', 
+        'medical AI researcher'
+      ];
+
+      for (let i = 0; i < maxFollows && i < followQueries.length; i++) {
+        const query = followQueries[i];
         
-        // Simulate logging the follow
-        await this.logEngagement('follow', null, `simulated_user_${i}`);
-        
-        actions.push({
-          type: 'follow',
-          userId: `simulated_user_${i}`
-        });
-        
-        // Rate limiting delay
-        await this.delay(3000);
+        try {
+          const usersToFollow = await xClient.getUsersToFollow(query, 5);
+
+          if (usersToFollow && usersToFollow.length > 0) {
+            // Find users with good follower metrics but not too massive
+            const targetUsers = usersToFollow.filter(user => 
+              user.public_metrics && 
+              user.public_metrics.followers_count > 1000 &&
+              user.public_metrics.followers_count < 100000 // Sweet spot for engagement
+            );
+
+            if (targetUsers.length > 0) {
+              const user = targetUsers[0];
+              
+              // Check if we haven't already followed this user
+              const { data: existingFollow } = await supabase
+                .from('engagement_history')
+                .select('id')
+                .eq('user_id', user.id)
+                .eq('action_type', 'follow')
+                .single();
+
+              if (!existingFollow) {
+                // Actually follow the user
+                const followResult = await xClient.followUser(user.id);
+                
+                if (followResult.success) {
+                  console.log(`👥 Successfully followed @${user.username} (${user.name})`);
+                  
+                  // Log the engagement
+                  await this.logEngagement('follow', null, user.id);
+                  
+                  actions.push({
+                    type: 'follow',
+                    userId: user.id
+                  });
+                } else {
+                  console.error(`❌ Failed to follow @${user.username}: ${followResult.error}`);
+                }
+                
+                // Rate limiting delay
+                await this.delay(3000);
+              }
+            }
+          }
+        } catch (error) {
+          console.error(`❌ Failed to follow for query "${query}":`, error);
+        }
       }
     } catch (error) {
       console.error('❌ Strategic follows failed:', error);
