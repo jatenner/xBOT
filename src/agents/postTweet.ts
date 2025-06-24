@@ -2010,10 +2010,10 @@ Respond with JSON:
 }`;
 
       const response = await openaiClient.getClient()?.chat.completions.create({
-        model: 'gpt-4',
+        model: 'gpt-4o-mini', // Use cheaper model for visual decisions (90% cost savings)
         messages: [{ role: 'system', content: prompt }],
         temperature: 0.3,
-        max_tokens: 300
+        max_tokens: 200 // Reduced tokens for cost savings
       });
 
       const responseText = response?.choices[0]?.message?.content;
@@ -2199,10 +2199,10 @@ Example style: "⚡ ${trend.name} breakthrough: FDA-approved algorithms achieve 
 
     try {
       const response = await openaiClient.getClient()?.chat.completions.create({
-        model: 'gpt-4',
+        model: 'gpt-4o-mini', // Use cheaper model for trend content (90% cost savings)
         messages: [{ role: 'system', content: prompt }],
         temperature: 0.3,
-        max_tokens: 150
+        max_tokens: 120 // Reduced tokens for cost savings
       });
 
       return response?.choices[0]?.message?.content || this.getTrendFallback(trend);
@@ -2235,10 +2235,10 @@ Example: "BREAKING: ${event.title.substring(0, 60)}... This signals a major shif
 
     try {
       const response = await openaiClient.getClient()?.chat.completions.create({
-        model: 'gpt-4',
+        model: 'gpt-4o-mini', // Use cheaper model for event content (90% cost savings)
         messages: [{ role: 'system', content: prompt }],
         temperature: 0.3,
-        max_tokens: 150
+        max_tokens: 120 // Reduced tokens for cost savings
       });
 
       return response?.choices[0]?.message?.content || this.getEventFallback(event);

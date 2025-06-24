@@ -99,23 +99,23 @@ export class AdaptiveContentLearner {
   private startRealTimeMonitoring(): void {
     console.log('📡 Starting real-time autonomous learning monitoring...');
     
-    // Monitor tweet performance every 15 minutes for immediate learning
+    // Monitor tweet performance every 2 hours instead of 15 minutes (reduced from 96x to 12x daily)
     setInterval(async () => {
       await this.monitorRecentTweetPerformance();
-    }, 15 * 60 * 1000); // 15 minutes
+    }, 2 * 60 * 60 * 1000); // 2 hours
 
-    // Run competitive analysis every hour for rapid adaptation
+    // Run competitive analysis every 6 hours instead of 1 hour (reduced from 24x to 4x daily)
     setInterval(async () => {
       await this.competitiveIntelligence.run();
       await this.adaptBasedOnCompetitorInsights();
-    }, 60 * 60 * 1000); // 1 hour
+    }, 6 * 60 * 60 * 1000); // 6 hours
 
-    // Deep learning analysis every 3 hours for strategy optimization
+    // Deep learning analysis every 12 hours instead of 3 hours (reduced from 8x to 2x daily)
     setInterval(async () => {
       await this.performDeepLearningAnalysis();
-    }, 3 * 60 * 60 * 1000); // 3 hours
+    }, 12 * 60 * 60 * 1000); // 12 hours
 
-    console.log('⚡ Autonomous learning monitoring active - system will improve itself automatically');
+    console.log('⚡ Autonomous learning monitoring active - system will improve itself automatically (cost-optimized frequency)');
   }
 
   async monitorRecentTweetPerformance(): Promise<void> {

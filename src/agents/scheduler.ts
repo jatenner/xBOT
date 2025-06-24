@@ -75,8 +75,8 @@ export class Scheduler {
     // Temporarily disable engagement tracking to avoid rate limits
     // await this.engagementTracker.startTracking();
 
-    // Schedule strategist to run every 15 minutes
-    this.strategistJob = cron.schedule('*/15 * * * *', async () => {
+    // Schedule strategist to run every 45 minutes instead of 15 (reduced from 96x to 32x daily)
+    this.strategistJob = cron.schedule('*/45 * * * *', async () => {
       try {
         await this.runStrategistCycle();
       } catch (error) {
@@ -87,7 +87,7 @@ export class Scheduler {
       timezone: "UTC"
     });
 
-    // Schedule learning agent to run daily at 2 AM UTC
+    // Schedule learning agent to run daily at 2 AM UTC (unchanged - already reasonable)
     this.learningJob = cron.schedule('0 2 * * *', async () => {
       console.log('🧠 === Daily Learning Cycle Started ===');
       try {
@@ -101,8 +101,8 @@ export class Scheduler {
       timezone: "UTC"
     });
 
-    // Schedule autonomous learning every 6 hours for continuous improvement
-    this.autonomousLearningJob = cron.schedule('0 */6 * * *', async () => {
+    // Schedule autonomous learning every 12 hours instead of 6 (reduced from 4x to 2x daily)
+    this.autonomousLearningJob = cron.schedule('0 */12 * * *', async () => {
       console.log('🚀 === Autonomous Learning Cycle Started ===');
       try {
         await this.autonomousLearner.run();
@@ -115,8 +115,8 @@ export class Scheduler {
       timezone: "UTC"
     });
 
-    // Schedule engagement analysis every 30 minutes during peak hours
-    this.engagementJob = cron.schedule('*/30 * * * *', async () => {
+    // Schedule engagement analysis every 2 hours during peak hours only (reduced from every 30 min)
+    this.engagementJob = cron.schedule('0 */2 * * *', async () => {
       const currentHour = new Date().getUTCHours();
       const isPeakHour = (currentHour >= 13 && currentHour <= 15) || // 9-11 AM EST
                         (currentHour >= 19 && currentHour <= 21) || // 3-5 PM EST  
@@ -149,8 +149,8 @@ export class Scheduler {
       timezone: "UTC"
     });
 
-    // 🤖 AUTONOMOUS TWEET AUDITOR - runs every 2 hours to check and fix tweet quality
-    this.tweetAuditorJob = cron.schedule('0 */2 * * *', async () => {
+    // 🤖 AUTONOMOUS TWEET AUDITOR - runs every 4 hours instead of 2 to reduce API costs
+    this.tweetAuditorJob = cron.schedule('0 */4 * * *', async () => {
       try {
         console.log('🔍 Starting autonomous tweet quality audit...');
         await this.autonomousTweetAuditor.runAutonomousAudit();
@@ -159,8 +159,8 @@ export class Scheduler {
       }
     }, { scheduled: true });
 
-    // 👑 SUPREME CONTENT ORCHESTRATOR - The GOD-like AI that controls ALL content strategy
-    this.orchestratorJob = cron.schedule('0 */4 * * *', async () => {
+    // 👑 SUPREME CONTENT ORCHESTRATOR - runs every 8 hours instead of 4 to reduce costs
+    this.orchestratorJob = cron.schedule('0 */8 * * *', async () => {
       try {
         console.log('👑 Starting supreme content orchestration...');
         await this.contentOrchestrator.runOrchestrationCycle();
@@ -179,8 +179,8 @@ export class Scheduler {
       }
     });
 
-    // 🔥 REAL ENGAGEMENT AGENT - runs every 30 minutes to perform ACTUAL Twitter actions
-    this.rateLimitedEngagementJob = cron.schedule('*/30 * * * *', async () => {
+    // 🔥 REAL ENGAGEMENT AGENT - reduce to every 60 minutes instead of 30 (still frequent but reasonable)
+    this.rateLimitedEngagementJob = cron.schedule('0 * * * *', async () => {
       console.log('🔥 === REAL ENGAGEMENT AGENT TRIGGERED ===');
       console.log('🎯 Performing ACTUAL Twitter likes, follows, and replies');
       try {
@@ -253,14 +253,14 @@ export class Scheduler {
     }
 
     console.log('⏰ Scheduler started with the following jobs:');
-    console.log('   - Strategist: Every 15 minutes');
+    console.log('   - Strategist: Every 45 minutes');
     console.log('   - Learning: Daily at 2:00 AM UTC');
-    console.log('   - Autonomous Learning: Every 6 hours');
-    console.log('   - Engagement Analysis: Every 30 minutes during peak hours');
-    console.log('   - 🔥 REAL Engagement: Every 30 minutes (ACTUAL Twitter actions)');
+    console.log('   - Autonomous Learning: Every 12 hours');
+    console.log('   - Engagement Analysis: Every 2 hours during peak hours');
+    console.log('   - 🔥 REAL Engagement: Every 60 minutes (ACTUAL Twitter actions)');
     console.log('   - Weekly Report: Sundays at 9:00 AM UTC');
-    console.log('   - 🤖 Autonomous Tweet Auditor: Every 2 hours');
-    console.log('   - 👑 Supreme Content Orchestrator: Every 4 hours');
+    console.log('   - 🤖 Autonomous Tweet Auditor: Every 4 hours');
+    console.log('   - 👑 Supreme Content Orchestrator: Every 8 hours');
     console.log('   - Real-time Engagement Tracking: Continuous');
     console.log('   - Nightly Optimizer: Daily at 3:00 AM UTC');
     

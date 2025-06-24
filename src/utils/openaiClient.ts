@@ -22,6 +22,15 @@ export interface GeneratedContent {
   confidence: number;
 }
 
+export interface CostOptimizationConfig {
+  dailyBudgetLimit: number; // USD
+  enableCostTracking: boolean;
+  preferredModel: string;
+  fallbackModel: string;
+  maxTokensPerCall: number;
+  maxCallsPerHour: number;
+}
+
 export class OpenAIService {
   private client: OpenAI;
 
@@ -71,13 +80,13 @@ ${options.includeSnap2HealthCTA ? 'Include a subtle Snap2Health CTA.' : ''}
 Generate a single, engaging health tech tweet that follows the viral guidelines above. Make it shareable, provocative, and designed for maximum engagement.`;
 
       const completion = await this.client.chat.completions.create({
-        model: 'gpt-4',
+        model: 'gpt-4o-mini', // Use cheaper model for tweet generation (save ~90% cost)
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: 'Generate a viral health tech tweet that gets 10K+ engagements.' }
         ],
-        max_tokens: 300,
-        temperature: 0.8,
+        max_tokens: 200, // Reduced from 300 to save costs
+        temperature: 0.7, // Reduced from 0.8 for cost efficiency
       });
 
       let generatedTweet = completion.choices[0]?.message?.content || '';
@@ -100,12 +109,12 @@ Generate a single, engaging health tech tweet that follows the viral guidelines 
   } = {}): Promise<string> {
     try {
       const completion = await this.client.chat.completions.create({
-        model: options.model || 'gpt-4',
+        model: options.model || 'gpt-4o-mini', // Default to cheaper model instead of GPT-4
         messages: [
           { role: 'user', content: prompt }
         ],
-        max_tokens: options.maxTokens || 500,
-        temperature: options.temperature || 0.7,
+        max_tokens: options.maxTokens || 300, // Reduced from 500
+        temperature: options.temperature || 0.6, // Reduced from 0.7
       });
 
       return completion.choices[0]?.message?.content || '';
@@ -477,4 +486,110 @@ Generate a thoughtful reply that adds value to this conversation. Be helpful, in
   }
 }
 
-export const openaiClient = new OpenAIService(); 
+export const openaiClient = new OpenAIService();
+
+export class CostOptimizer {
+  private config: CostOptimizationConfig;
+  private dailyUsage: number = 0;
+  private hourlyCallCount: number = 0;
+  private lastHourReset: Date = new Date();
+  
+  constructor(config: Partial<CostOptimizationConfig> = {}) {
+    this.config = {
+      dailyBudgetLimit: 10.00, // $10 daily limit (down from $50)
+      enableCostTracking: true,
+      preferredModel: 'gpt-4o-mini', // Much cheaper than GPT-4
+      fallbackModel: 'gpt-3.5-turbo',
+      maxTokensPerCall: 200, // Reduced token usage
+      maxCallsPerHour: 20, // Rate limiting
+      ...config
+    };
+  }
+
+  async canMakeCall(): Promise<{ allowed: boolean; reason?: string }> {
+    if (!this.config.enableCostTracking) {
+      return { allowed: true };
+    }
+
+    // Reset hourly counter if needed
+    const now = new Date();
+    if (now.getTime() - this.lastHourReset.getTime() >= 60 * 60 * 1000) {
+      this.hourlyCallCount = 0;
+      this.lastHourReset = now;
+    }
+
+    // Check daily budget
+    if (this.dailyUsage >= this.config.dailyBudgetLimit) {
+      return { 
+        allowed: false, 
+        reason: `Daily budget limit reached ($${this.config.dailyBudgetLimit})` 
+      };
+    }
+
+    // Check hourly rate limit
+    if (this.hourlyCallCount >= this.config.maxCallsPerHour) {
+      return { 
+        allowed: false, 
+        reason: `Hourly rate limit reached (${this.config.maxCallsPerHour} calls/hour)` 
+      };
+    }
+
+    return { allowed: true };
+  }
+
+  recordCall(model: string, tokens: number): void {
+    if (!this.config.enableCostTracking) return;
+
+    this.hourlyCallCount++;
+    
+    // Estimate cost based on model
+    let costPerToken = 0.000001; // Default fallback
+    switch (model) {
+      case 'gpt-4':
+        costPerToken = 0.00003; // $30/1M tokens
+        break;
+      case 'gpt-4o-mini':
+        costPerToken = 0.00000015; // $0.15/1M tokens
+        break;
+      case 'gpt-3.5-turbo':
+        costPerToken = 0.000001; // $1/1M tokens
+        break;
+    }
+    
+    const callCost = tokens * costPerToken;
+    this.dailyUsage += callCost;
+
+    console.log(`💰 API Call Cost: $${callCost.toFixed(6)} | Daily Total: $${this.dailyUsage.toFixed(4)}`);
+  }
+
+  getOptimalModel(requestedModel?: string): string {
+    // If we're near budget limit, use cheapest model
+    if (this.dailyUsage > this.config.dailyBudgetLimit * 0.8) {
+      return this.config.fallbackModel;
+    }
+    
+    // Otherwise use preferred model (which is already cost-optimized)
+    return requestedModel || this.config.preferredModel;
+  }
+
+  getOptimalTokenLimit(requestedTokens?: number): number {
+    return Math.min(
+      requestedTokens || this.config.maxTokensPerCall,
+      this.config.maxTokensPerCall
+    );
+  }
+
+  getDailyUsageStats(): { used: number; limit: number; remaining: number; percentage: number } {
+    return {
+      used: this.dailyUsage,
+      limit: this.config.dailyBudgetLimit,
+      remaining: this.config.dailyBudgetLimit - this.dailyUsage,
+      percentage: (this.dailyUsage / this.config.dailyBudgetLimit) * 100
+    };
+  }
+}
+
+// Global cost optimizer instance
+const costOptimizer = new CostOptimizer();
+
+export { costOptimizer }; 
