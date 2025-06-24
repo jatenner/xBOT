@@ -72,6 +72,43 @@ export class Scheduler {
     console.log('🚀 Starting Snap2Health X-Bot Scheduler...');
     this.isRunning = true;
 
+    // 🚨 EMERGENCY COST MODE CHECK
+    const emergencyMode = process.env.EMERGENCY_COST_MODE === 'true';
+    const disableLearningAgents = process.env.DISABLE_LEARNING_AGENTS === 'true';
+    const dailyBudgetLimit = parseFloat(process.env.DAILY_BUDGET_LIMIT || '10');
+
+    if (emergencyMode) {
+      console.log('🚨 === EMERGENCY COST MODE ACTIVE ===');
+      console.log('💰 All expensive background analysis DISABLED');
+      console.log(`💵 Daily budget limit: $${dailyBudgetLimit}`);
+      console.log('📝 Basic posting mode only - optimized for 0-follower growth');
+      
+      // In emergency mode, ONLY run basic strategist for posting
+      this.strategistJob = cron.schedule('0 */12 * * *', async () => {
+        try {
+          console.log('📝 Emergency mode: Basic strategist cycle');
+          await this.runStrategistCycle();
+        } catch (error) {
+          console.error('❌ Emergency strategist cycle failed:', error);
+        }
+      }, {
+        scheduled: true,
+        timezone: "UTC"
+      });
+
+      console.log('⚠️ EMERGENCY MODE: Only basic posting enabled');
+      console.log('   - Strategist: Every 12 hours (basic posting only)');
+      console.log('   - ALL learning agents: DISABLED');
+      console.log('   - ALL competitive intelligence: DISABLED');
+      console.log('   - ALL background analysis: DISABLED');
+      console.log('   - Expected daily cost: $0.50-2.00 instead of $40-50');
+      return;
+    }
+
+    if (disableLearningAgents) {
+      console.log('⚠️ Learning agents disabled for cost savings');
+    }
+
     // Temporarily disable engagement tracking to avoid rate limits
     // await this.engagementTracker.startTracking();
 
@@ -88,32 +125,36 @@ export class Scheduler {
     });
 
     // Schedule learning agent to run daily at 2 AM UTC (unchanged - already reasonable)
-    this.learningJob = cron.schedule('0 2 * * *', async () => {
-      console.log('🧠 === Daily Learning Cycle Started ===');
-      try {
-        await this.learnAgent.run();
-        console.log('🧠 === Daily Learning Cycle Completed ===');
-      } catch (error) {
-        console.error('❌ Daily learning cycle failed:', error);
-      }
-    }, {
-      scheduled: true,
-      timezone: "UTC"
-    });
+    if (!disableLearningAgents) {
+      this.learningJob = cron.schedule('0 2 * * *', async () => {
+        console.log('🧠 === Daily Learning Cycle Started ===');
+        try {
+          await this.learnAgent.run();
+          console.log('🧠 === Daily Learning Cycle Completed ===');
+        } catch (error) {
+          console.error('❌ Daily learning cycle failed:', error);
+        }
+      }, {
+        scheduled: true,
+        timezone: "UTC"
+      });
+    }
 
     // Schedule autonomous learning every 12 hours instead of 6 (reduced from 4x to 2x daily)
-    this.autonomousLearningJob = cron.schedule('0 */12 * * *', async () => {
-      console.log('🚀 === Autonomous Learning Cycle Started ===');
-      try {
-        await this.autonomousLearner.run();
-        console.log('🚀 === Autonomous Learning Cycle Completed ===');
-      } catch (error) {
-        console.error('❌ Autonomous learning cycle failed:', error);
-      }
-    }, {
-      scheduled: true,
-      timezone: "UTC"
-    });
+    if (!disableLearningAgents) {
+      this.autonomousLearningJob = cron.schedule('0 */12 * * *', async () => {
+        console.log('🚀 === Autonomous Learning Cycle Started ===');
+        try {
+          await this.autonomousLearner.run();
+          console.log('🚀 === Autonomous Learning Cycle Completed ===');
+        } catch (error) {
+          console.error('❌ Autonomous learning cycle failed:', error);
+        }
+      }, {
+        scheduled: true,
+        timezone: "UTC"
+      });
+    }
 
     // Schedule engagement analysis every 2 hours during peak hours only (reduced from every 30 min)
     this.engagementJob = cron.schedule('0 */2 * * *', async () => {
@@ -235,8 +276,10 @@ export class Scheduler {
 
     // Start all jobs
     this.strategistJob.start();
-    this.learningJob.start();
-    this.autonomousLearningJob.start();
+    if (!disableLearningAgents) {
+      this.learningJob.start();
+      this.autonomousLearningJob.start();
+    }
     this.engagementJob.start();
     this.rateLimitedEngagementJob.start();
     this.weeklyReportJob.start();
@@ -254,8 +297,12 @@ export class Scheduler {
 
     console.log('⏰ Scheduler started with the following jobs:');
     console.log('   - Strategist: Every 45 minutes');
-    console.log('   - Learning: Daily at 2:00 AM UTC');
-    console.log('   - Autonomous Learning: Every 12 hours');
+    if (!disableLearningAgents) {
+      console.log('   - Learning: Daily at 2:00 AM UTC');
+    }
+    if (!disableLearningAgents) {
+      console.log('   - Autonomous Learning: Every 12 hours');
+    }
     console.log('   - Engagement Analysis: Every 2 hours during peak hours');
     console.log('   - 🔥 REAL Engagement: Every 60 minutes (ACTUAL Twitter actions)');
     console.log('   - Weekly Report: Sundays at 9:00 AM UTC');

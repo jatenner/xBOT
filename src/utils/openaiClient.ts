@@ -29,6 +29,7 @@ export interface CostOptimizationConfig {
   fallbackModel: string;
   maxTokensPerCall: number;
   maxCallsPerHour: number;
+  emergencyMode: boolean; // New emergency mode flag
 }
 
 export class OpenAIService {
@@ -495,15 +496,25 @@ export class CostOptimizer {
   private lastHourReset: Date = new Date();
   
   constructor(config: Partial<CostOptimizationConfig> = {}) {
+    const emergencyMode = process.env.EMERGENCY_COST_MODE === 'true';
+    
     this.config = {
-      dailyBudgetLimit: 10.00, // $10 daily limit (down from $50)
+      dailyBudgetLimit: emergencyMode ? 1.00 : 10.00, // $1/day in emergency mode
       enableCostTracking: true,
       preferredModel: 'gpt-4o-mini', // Much cheaper than GPT-4
       fallbackModel: 'gpt-3.5-turbo',
-      maxTokensPerCall: 200, // Reduced token usage
-      maxCallsPerHour: 20, // Rate limiting
+      maxTokensPerCall: emergencyMode ? 100 : 200, // Even shorter in emergency mode
+      maxCallsPerHour: emergencyMode ? 5 : 20, // Strict rate limiting in emergency
+      emergencyMode,
       ...config
     };
+
+    if (emergencyMode) {
+      console.log('🚨 OpenAI Cost Optimizer: EMERGENCY MODE ACTIVE');
+      console.log(`💰 Ultra-strict budget: $${this.config.dailyBudgetLimit}/day`);
+      console.log(`📊 Max tokens: ${this.config.maxTokensPerCall} per call`);
+      console.log(`⏱️ Max calls: ${this.config.maxCallsPerHour} per hour`);
+    }
   }
 
   async canMakeCall(): Promise<{ allowed: boolean; reason?: string }> {
