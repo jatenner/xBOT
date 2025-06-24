@@ -62,3 +62,5 @@ services:
         value: true
       - key: REAL_TIME_OPTIMIZATION
         value: true
+      - key: PORT
+        value: 3000
