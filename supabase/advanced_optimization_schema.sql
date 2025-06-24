@@ -84,7 +84,7 @@ CREATE TABLE IF NOT EXISTS cost_optimization_daily (
 -- Image usage tracking table
 CREATE TABLE IF NOT EXISTS image_usage_history (
     id SERIAL PRIMARY KEY,
-    image_id VARCHAR(255) NOT NULL,
+    image_id VARCHAR(255) NOT NULL UNIQUE,
     image_url TEXT NOT NULL,
     source VARCHAR(50) NOT NULL, -- 'pexels', 'unsplash', 'fallback'
     usage_count INTEGER DEFAULT 1,

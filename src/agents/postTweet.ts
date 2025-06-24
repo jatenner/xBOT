@@ -24,6 +24,12 @@ import type { TweetResult } from '../utils/xClient.js';
 import { runSanityChecks } from '../utils/contentSanity';
 import { AdaptiveContentLearner } from './adaptiveContentLearner';
 import { CompetitiveIntelligenceLearner } from './competitiveIntelligenceLearner';
+import { QuoteAgent } from './quoteAgent.js';
+import { QualityGate } from '../utils/qualityGate.js';
+import { PollAgent } from './pollAgent.js';
+import { tweetFormatter } from '../utils/tweetFormatter.js';
+import { ContentCache } from '../utils/contentCache.js';
+import { EmbeddingFilter } from '../utils/embeddingFilter.js';
 
 dotenv.config();
 
@@ -36,6 +42,8 @@ export interface PostResult {
   threadCount?: number;
   qualityScore?: number;
   missionAlignment?: ContentEvaluation;
+  readabilityScore?: number;
+  formattingImprovements?: string[];
 }
 
 interface ContentItem {
@@ -346,8 +354,26 @@ export class PostTweetAgent {
         console.log('🔧 Applied content fixes:', qc.fixes.slice(1)); // Log the fix descriptions
       }
 
-      // Select appropriate image
+      // Format content for better readability
+      const formattedResult = tweetFormatter.formatForReadability(tweetContent);
+      tweetContent = formattedResult.content;
+      
+      console.log(`📝 Content readability score: ${formattedResult.readabilityScore}/100`);
+      if (formattedResult.improvements.length > 0) {
+        console.log('✨ Formatting improvements:', formattedResult.improvements);
+      }
+
+      // Select appropriate image with enhanced debugging
+      console.log('🖼️ Starting image selection process...');
       const imageUrl = await smartImageSelector.chooseImage(tweetContent);
+      
+      if (imageUrl) {
+        const imageSource = imageUrl.includes('pexels') ? 'Pexels' : 
+                          imageUrl.includes('unsplash') ? 'Unsplash' : 'Fallback';
+        console.log(`✅ Image selected from: ${imageSource}`);
+      } else {
+        console.log('⚠️ No image selected - posting text-only');
+      }
       
       if (dryRun) {
         console.log('🧪 DRY RUN - Tweet preview:');
@@ -357,7 +383,9 @@ export class PostTweetAgent {
           success: true, 
           preview: tweetContent, 
           imageUrl,
-          dryRun: true 
+          dryRun: true,
+          readabilityScore: formattedResult.readabilityScore,
+          formattingImprovements: formattedResult.improvements
         };
       }
 
@@ -382,7 +410,9 @@ export class PostTweetAgent {
           tweetId: result.tweetId,
           content: tweetContent,
           imageUrl,
-          style: tweetStyle
+          style: tweetStyle,
+          readabilityScore: formattedResult.readabilityScore,
+          formattingImprovements: formattedResult.improvements
         };
       } else {
         console.log('❌ Tweet posting failed');
