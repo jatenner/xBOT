@@ -548,4 +548,91 @@ export class NewsAPIAgent {
       console.log('🔄 API rate limits reset for new day');
     }
   }
+
+  /**
+   * Backward compatibility methods for existing codebase
+   */
+  async fetchBreakingNews(): Promise<ProcessedNewsArticle[]> {
+    console.log('🚨 Fetching breaking health tech news...');
+    
+    // Fetch recent news with high priority keywords
+    const breakingKeywords = [
+      'breakthrough medical AI',
+      'FDA approves',
+      'clinical trial results',
+      'healthcare funding',
+      'medical device approval',
+      'digital health funding'
+    ];
+    
+    const articles = await this.fetchHealthTechNews(10);
+    
+    // Filter for recent articles (last 24 hours) with high relevance
+    const recentArticles = articles.filter(article => {
+      const publishedTime = new Date(article.publishedAt).getTime();
+      const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
+      return publishedTime > oneDayAgo && article.healthTechRelevance > 80;
+    });
+    
+    return recentArticles.slice(0, 5);
+  }
+
+  async getTrendingTopics(): Promise<string[]> {
+    console.log('📈 Getting trending health tech topics...');
+    
+    try {
+      const articles = await this.fetchHealthTechNews(20);
+      
+      // Extract trending keywords from titles and descriptions
+      const keywords = new Map<string, number>();
+      
+      articles.forEach(article => {
+        const text = `${article.title} ${article.description}`.toLowerCase();
+        
+        // Extract important health tech terms
+        const healthTerms = [
+          'artificial intelligence', 'ai', 'machine learning', 'ml',
+          'telemedicine', 'digital health', 'telehealth',
+          'wearable', 'iot', 'sensors',
+          'fda approval', 'clinical trial', 'regulatory',
+          'startup', 'funding', 'investment',
+          'breakthrough', 'innovation', 'technology'
+        ];
+        
+        healthTerms.forEach(term => {
+          if (text.includes(term)) {
+            keywords.set(term, (keywords.get(term) || 0) + 1);
+          }
+        });
+      });
+      
+      // Return top trending terms
+      return Array.from(keywords.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10)
+        .map(([term]) => term);
+        
+    } catch (error) {
+      console.log('⚠️ Error getting trending topics:', error);
+      
+      // Return fallback trending topics
+      return [
+        'artificial intelligence',
+        'digital health',
+        'fda approval',
+        'clinical trials',
+        'health tech funding',
+        'telemedicine',
+        'wearable devices',
+        'medical breakthrough'
+      ];
+    }
+  }
+
+  /**
+   * Get latest health tech news (alias for fetchHealthTechNews)
+   */
+  async getLatestNews(limit: number = 10): Promise<ProcessedNewsArticle[]> {
+    return this.fetchHealthTechNews(limit);
+  }
 } 
