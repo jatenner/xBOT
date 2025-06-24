@@ -10,11 +10,17 @@ CREATE TABLE IF NOT EXISTS engagement_history (
   error_message TEXT
 );
 
+-- Drop existing indexes if they exist to avoid conflicts
+DROP INDEX IF EXISTS idx_engagement_action_type;
+DROP INDEX IF EXISTS idx_engagement_created_at;
+DROP INDEX IF EXISTS idx_engagement_tweet_id;
+DROP INDEX IF EXISTS idx_engagement_user_id;
+
 -- Create indexes for performance
-CREATE INDEX IF NOT EXISTS idx_engagement_action_type ON engagement_history(action_type);
-CREATE INDEX IF NOT EXISTS idx_engagement_created_at ON engagement_history(created_at);
-CREATE INDEX IF NOT EXISTS idx_engagement_tweet_id ON engagement_history(tweet_id);
-CREATE INDEX IF NOT EXISTS idx_engagement_user_id ON engagement_history(user_id);
+CREATE INDEX idx_engagement_action_type ON engagement_history(action_type);
+CREATE INDEX idx_engagement_created_at ON engagement_history(created_at);
+CREATE INDEX idx_engagement_tweet_id ON engagement_history(tweet_id);
+CREATE INDEX idx_engagement_user_id ON engagement_history(user_id);
 
 -- Add comments for documentation
 COMMENT ON TABLE engagement_history IS 'Tracks all bot engagement actions (likes, replies, follows, retweets)';
