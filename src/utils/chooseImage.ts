@@ -10,7 +10,7 @@ interface ImageCandidate {
   url: string;
   description: string;
   relevanceScore: number;
-  source: 'unsplash' | 'pexels';
+  source: 'pexels';
   id: string;
 }
 
@@ -21,18 +21,15 @@ interface MediaHistoryEntry {
 }
 
 export class SmartImageSelector {
-  private unsplashAccessKey: string;
   private pexelsApiKey: string;
   private recentlyUsedImages: Set<string> = new Set();
   private imageUsageHistory: Map<string, number> = new Map();
   private maxRecentImages = 100;
 
   constructor() {
-    this.unsplashAccessKey = process.env.UNSPLASH_ACCESS_KEY || '';
     this.pexelsApiKey = process.env.PEXELS_API_KEY || '';
     
     console.log('🖼️ Image APIs configured:', {
-      unsplash: !!this.unsplashAccessKey,
       pexels: !!this.pexelsApiKey
     });
   }
@@ -47,28 +44,18 @@ export class SmartImageSelector {
       
       const candidates: ImageCandidate[] = [];
 
-      // Try Pexels first (if available)
+      // Try Pexels (primary source)
       if (this.pexelsApiKey) {
         try {
           console.log('📸 Searching Pexels...');
-          const pexelsResults = await this.searchPexels(searchTerm, 8);
+          const pexelsResults = await this.searchPexels(searchTerm, 15);
           candidates.push(...pexelsResults);
           console.log(`✅ Pexels: ${pexelsResults.length} candidates`);
         } catch (error) {
           console.log('⚠️ Pexels search failed:', error instanceof Error ? error.message : 'Unknown error');
         }
-      }
-
-      // Try Unsplash (if available)
-      if (this.unsplashAccessKey) {
-        try {
-          console.log('📸 Searching Unsplash...');
-          const unsplashResults = await this.searchUnsplash(searchTerm, 8);
-          candidates.push(...unsplashResults);
-          console.log(`✅ Unsplash: ${unsplashResults.length} candidates`);
-        } catch (error) {
-          console.log('⚠️ Unsplash search failed:', error instanceof Error ? error.message : 'Unknown error');
-        }
+      } else {
+        console.log('❌ Pexels API key not configured');
       }
 
       if (candidates.length === 0) {
@@ -182,40 +169,7 @@ export class SmartImageSelector {
     }
   }
 
-  private async searchUnsplash(query: string, count: number): Promise<ImageCandidate[]> {
-    if (!this.unsplashAccessKey) return [];
-    
-    try {
-      const response = await fetch(
-        `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&per_page=${count}&orientation=landscape`,
-        {
-          headers: {
-            'Authorization': `Client-ID ${this.unsplashAccessKey}`
-          }
-        }
-      );
 
-      if (!response.ok) {
-        throw new Error(`Unsplash API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      
-      return (data.results || []).map((photo: any) => ({
-        url: photo.urls.regular,
-        description: photo.alt_description || photo.description || query,
-        id: `unsplash_${photo.id}`,
-        relevanceScore: this.calculateRelevanceScore(
-          (photo.alt_description || photo.description || '') + ' ' + (photo.tags?.map((t: any) => t.title).join(' ') || ''),
-          query
-        ),
-        source: 'unsplash' as const
-      }));
-    } catch (error) {
-      console.log(`📷 Unsplash search failed for "${query}":`, error);
-      return [];
-    }
-  }
 
   private calculateRelevanceScore(description: string, query: string): number {
     if (!description) return 0.1;
