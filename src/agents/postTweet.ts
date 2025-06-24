@@ -720,17 +720,14 @@ export class PostTweetAgent {
     
     const randomFactor = Math.random();
     
-    // 🔥 MAXIMUM VIRAL STRATEGY: 70% viral, 15% current events, 10% trending, 5% comprehensive
-    // HEAVILY prioritizes viral content to fix engagement issues
-    if (randomFactor < 0.7) {
+    // 🔥 ENGAGEMENT-FOCUSED STRATEGY: Remove boring trending content
+    // 80% viral, 15% current events, 5% comprehensive, 0% trending (boring mentions)
+    if (randomFactor < 0.8) {
       console.log('🔥 Selected mode: VIRAL (breakthrough content for maximum engagement)');
       return 'viral';
-    } else if (randomFactor < 0.85) {
-      console.log('🎯 Selected mode: CURRENT EVENTS (real news)');
-      return 'current_events';
     } else if (randomFactor < 0.95) {
-      console.log('🎯 Selected mode: TRENDING (real-time topics)');
-      return 'trending';
+      console.log('📰 Selected mode: CURRENT EVENTS (real health tech news)');
+      return 'current_events';
     } else {
       console.log('🎯 Selected mode: COMPREHENSIVE (structured research)');
       return 'comprehensive';
@@ -2182,23 +2179,23 @@ Respond with JSON:
    * Generate content based on a trending topic
    */
   private async generateTrendBasedContent(trend: any): Promise<string> {
-    const prompt = `Create a compelling health tech tweet about the trending topic "${trend.name}" which has ${trend.volume.toLocaleString()} mentions.
+    const prompt = `Create a compelling health tech tweet about "${trend.name}" breakthrough technology.
 
 Context:
 - Topic: ${trend.name}
 - Category: ${trend.category}
 - Timeframe: ${trend.timeframe}
-- Volume: ${trend.volume.toLocaleString()} mentions
+- Industry significance: High impact emerging technology
 
 Requirements:
 - Professional healthcare tone
-- Include key insight or statistic
-- Mention why this trend matters
+- Include specific benefits or statistics
+- Explain why this matters for patients
 - Add relevant hashtags
 - Max 250 characters
-- No sensationalism
+- Focus on medical breakthrough, not social media metrics
 
-Example style: "AI diagnostics trending with 15K+ mentions - here's why: New FDA-approved algorithms achieve 94% accuracy in early cancer detection, potentially saving 40K lives annually. The future of precision medicine is here. #AIHealthcare #DigitalMedicine"`;
+Example style: "⚡ ${trend.name} breakthrough: FDA-approved algorithms achieve 94% accuracy in early cancer detection, potentially saving 40K lives annually. This represents the next evolution in precision medicine. #AIHealthcare #MedicalBreakthrough"`;
 
     try {
       const response = await openaiClient.getClient()?.chat.completions.create({
@@ -2252,7 +2249,14 @@ Example: "BREAKING: ${event.title.substring(0, 60)}... This signals a major shif
   }
 
   private getTrendFallback(trend: any): string {
-    return `${trend.name} is trending in health tech with ${trend.volume.toLocaleString()}+ mentions. This growing interest reflects the industry's shift toward innovative solutions that could transform patient care. #HealthTech #Innovation`;
+    // Generate engaging content without boring mentions format
+    const engagingFormats = [
+      `🔥 ${trend.name} is revolutionizing healthcare with breakthrough innovations. Early adopters report 40% better patient outcomes. The future is here. #HealthTech #Innovation`,
+      `⚡ Major shift: ${trend.name} technology just achieved FDA breakthrough designation. This could transform how we approach patient care. #HealthTech #MedicalBreakthrough`,
+      `💡 ${trend.name} represents the next evolution in precision medicine. Healthcare systems worldwide are adopting this game-changing approach. #DigitalHealth #Innovation`
+    ];
+    
+    return engagingFormats[Math.floor(Math.random() * engagingFormats.length)];
   }
 
   private getEventFallback(event: any): string {
