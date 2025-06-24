@@ -110,7 +110,7 @@ export class AutonomousIntelligenceCore {
 
   private async analyzeSituation(context: any): Promise<any> {
     const analysis = await this.openai.chat.completions.create({
-      model: "gpt-4",
+      model: "gpt-4o-mini", // 🔥 COST OPTIMIZATION: GPT-4 → GPT-4o-mini (99.5% cost reduction)
       messages: [
         {
           role: "system",
@@ -176,7 +176,7 @@ export class AutonomousIntelligenceCore {
     }
 
     const memoryAnalysis = await this.openai.chat.completions.create({
-      model: "gpt-4",
+      model: "gpt-4o-mini", // 🔥 COST OPTIMIZATION: GPT-4 → GPT-4o-mini (99.5% cost reduction)
       messages: [
         {
           role: "system",
@@ -199,7 +199,7 @@ export class AutonomousIntelligenceCore {
     console.log('⚡ Synthesizing autonomous decision...');
     
     const decision = await this.openai.chat.completions.create({
-      model: "gpt-4",
+      model: "gpt-4o-mini", // 🔥 COST OPTIMIZATION: GPT-4 → GPT-4o-mini (99.5% cost reduction)
       messages: [
         {
           role: "system",
@@ -272,7 +272,7 @@ export class AutonomousIntelligenceCore {
   private async evolvePersonality(experience: any): Promise<void> {
     // AI analyzes how this experience should change personality
     const evolution = await this.openai.chat.completions.create({
-      model: "gpt-4",
+      model: "gpt-4o-mini", // 🔥 COST OPTIMIZATION: GPT-4 → GPT-4o-mini (99.5% cost reduction)
       messages: [
         {
           role: "system",
@@ -307,7 +307,7 @@ export class AutonomousIntelligenceCore {
 
   private async extractInsights(experience: any): Promise<LearningInsight[]> {
     const insightExtraction = await this.openai.chat.completions.create({
-      model: "gpt-4",
+      model: "gpt-4o-mini", // 🔥 COST OPTIMIZATION: GPT-4 → GPT-4o-mini (99.5% cost reduction)
       messages: [
         {
           role: "system",

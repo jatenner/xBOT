@@ -193,10 +193,10 @@ Respond with JSON:
 }`;
 
       const response = await openaiClient.getClient()?.chat.completions.create({
-        model: 'gpt-4',
+        model: 'gpt-4o-mini', // 🔥 COST OPTIMIZATION: GPT-4 → GPT-4o-mini (99.5% cost reduction)
         messages: [{ role: 'system', content: prompt }],
         temperature: 0.3,
-        max_tokens: 500
+        max_tokens: 250 // 🔥 COST OPTIMIZATION: Reduced from 500 to 250 tokens (50% reduction)
       });
 
       const responseText = response?.choices[0]?.message?.content;
@@ -326,10 +326,10 @@ Respond with JSON:
 }`;
 
       const response = await openaiClient.getClient()?.chat.completions.create({
-        model: 'gpt-4',
+        model: 'gpt-4o-mini', // 🔥 COST OPTIMIZATION: GPT-4 → GPT-4o-mini (99.5% cost reduction)
         messages: [{ role: 'system', content: prompt }],
         temperature: 0.2,
-        max_tokens: 200
+        max_tokens: 100 // 🔥 COST OPTIMIZATION: Reduced from 200 to 100 tokens (50% reduction)
       });
 
       const responseText = response?.choices[0]?.message?.content;
@@ -363,10 +363,10 @@ Requirements:
 Provide only the corrected tweet content:`;
 
       const response = await openaiClient.getClient()?.chat.completions.create({
-        model: 'gpt-4',
+        model: 'gpt-4o-mini', // 🔥 COST OPTIMIZATION: GPT-4 → GPT-4o-mini (99.5% cost reduction)
         messages: [{ role: 'system', content: prompt }],
         temperature: 0.3,
-        max_tokens: 150
+        max_tokens: 100 // 🔥 COST OPTIMIZATION: Reduced from 150 to 100 tokens (33% reduction)
       });
 
       const improvedContent = response?.choices[0]?.message?.content?.trim();

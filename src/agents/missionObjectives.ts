@@ -436,10 +436,10 @@ Respond with only a number 0-100:`;
     try {
       const { openaiClient } = await import('../utils/openaiClient');
       const response = await openaiClient.getClient()?.chat.completions.create({
-        model: 'gpt-4',
+        model: 'gpt-4o-mini', // 🔥 COST OPTIMIZATION: GPT-4 → GPT-4o-mini (99.5% cost reduction)
         messages: [{ role: 'system', content: prompt }],
         temperature: 0.2,
-        max_tokens: 100
+        max_tokens: 50 // 🔥 COST OPTIMIZATION: Reduced from 100 to 50 tokens (50% reduction)
       });
       
       return response?.choices[0]?.message?.content || "75";

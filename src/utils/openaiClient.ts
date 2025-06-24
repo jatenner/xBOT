@@ -164,13 +164,13 @@ Generate a single, engaging health tech tweet that follows the viral guidelines 
       const userPrompt = this.buildReplyPrompt(originalTweet);
 
       const completion = await this.client.chat.completions.create({
-        model: 'gpt-4-turbo-preview',
+        model: 'gpt-4o-mini', // 🔥 COST OPTIMIZATION: Changed from gpt-4-turbo-preview to gpt-4o-mini (99.5% cost reduction)
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
-        max_tokens: 120,
-        temperature: 0.7,
+        max_tokens: 100, // 🔥 COST OPTIMIZATION: Reduced from 120 to 100 tokens
+        temperature: 0.6, // 🔥 COST OPTIMIZATION: Reduced from 0.7 for efficiency
       });
 
       const content = completion.choices[0]?.message?.content?.trim();
@@ -445,12 +445,12 @@ Generate a thoughtful reply that adds value to this conversation. Be helpful, in
     
     try {
       const completion = await this.client.chat.completions.create({
-        model: 'gpt-4',
+        model: 'gpt-4o-mini', // 🔥 COST OPTIMIZATION: Changed from gpt-4 to gpt-4o-mini (99.5% cost reduction)
         messages: [
           { role: 'user', content: prompt }
         ],
-        max_tokens: 500,
-        temperature: 0.7,
+        max_tokens: 200, // 🔥 COST OPTIMIZATION: Reduced from 500 to 200 tokens (60% reduction)
+        temperature: 0.6, // 🔥 COST OPTIMIZATION: Reduced from 0.7 for better token efficiency
       });
 
       return completion.choices[0]?.message?.content || 'No response generated';
@@ -494,26 +494,29 @@ export class CostOptimizer {
   private dailyUsage: number = 0;
   private hourlyCallCount: number = 0;
   private lastHourReset: Date = new Date();
+  private callHistory: Array<{timestamp: number, cost: number, model: string, tokens: number}> = [];
   
   constructor(config: Partial<CostOptimizationConfig> = {}) {
     const emergencyMode = process.env.EMERGENCY_COST_MODE === 'true';
+    const ultraLowCost = true; // 🔥 ULTRA-AGGRESSIVE COST MODE ENABLED
     
     this.config = {
-      dailyBudgetLimit: emergencyMode ? 1.00 : 10.00, // $1/day in emergency mode
+      dailyBudgetLimit: emergencyMode ? 0.50 : (ultraLowCost ? 1.00 : 10.00), // 🔥 $0.50-1.00/day maximum
       enableCostTracking: true,
-      preferredModel: 'gpt-4o-mini', // Much cheaper than GPT-4
+      preferredModel: 'gpt-4o-mini', // 🔥 200x cheaper than GPT-4
       fallbackModel: 'gpt-3.5-turbo',
-      maxTokensPerCall: emergencyMode ? 100 : 200, // Even shorter in emergency mode
-      maxCallsPerHour: emergencyMode ? 5 : 20, // Strict rate limiting in emergency
+      maxTokensPerCall: emergencyMode ? 50 : (ultraLowCost ? 100 : 200), // 🔥 Ultra-short responses
+      maxCallsPerHour: emergencyMode ? 3 : (ultraLowCost ? 8 : 20), // 🔥 Strict rate limiting
       emergencyMode,
       ...config
     };
 
-    if (emergencyMode) {
-      console.log('🚨 OpenAI Cost Optimizer: EMERGENCY MODE ACTIVE');
-      console.log(`💰 Ultra-strict budget: $${this.config.dailyBudgetLimit}/day`);
-      console.log(`📊 Max tokens: ${this.config.maxTokensPerCall} per call`);
-      console.log(`⏱️ Max calls: ${this.config.maxCallsPerHour} per hour`);
+    if (emergencyMode || ultraLowCost) {
+      console.log('🔥 OpenAI Cost Optimizer: ULTRA-AGGRESSIVE MODE ACTIVE');
+      console.log(`💰 Maximum daily budget: $${this.config.dailyBudgetLimit}/day`);
+      console.log(`📊 Max tokens per call: ${this.config.maxTokensPerCall}`);
+      console.log(`⏱️ Max calls per hour: ${this.config.maxCallsPerHour}`);
+      console.log(`🎯 Target monthly cost: $${(this.config.dailyBudgetLimit * 30).toFixed(2)}`);
     }
   }
 
@@ -529,19 +532,29 @@ export class CostOptimizer {
       this.lastHourReset = now;
     }
 
-    // Check daily budget
-    if (this.dailyUsage >= this.config.dailyBudgetLimit) {
+    // 🔥 ULTRA-STRICT: Check if we're near daily budget (90% threshold)
+    if (this.dailyUsage >= this.config.dailyBudgetLimit * 0.9) {
       return { 
         allowed: false, 
-        reason: `Daily budget limit reached ($${this.config.dailyBudgetLimit})` 
+        reason: `Near daily budget limit (${((this.dailyUsage/this.config.dailyBudgetLimit)*100).toFixed(1)}% used)` 
       };
     }
 
-    // Check hourly rate limit
+    // 🔥 ULTRA-STRICT: Check hourly rate limit
     if (this.hourlyCallCount >= this.config.maxCallsPerHour) {
       return { 
         allowed: false, 
         reason: `Hourly rate limit reached (${this.config.maxCallsPerHour} calls/hour)` 
+      };
+    }
+
+    // 🔥 ULTRA-STRICT: Check if too many recent calls (burst protection)
+    const last10Minutes = Date.now() - (10 * 60 * 1000);
+    const recentCalls = this.callHistory.filter(call => call.timestamp > last10Minutes);
+    if (recentCalls.length >= 3) {
+      return {
+        allowed: false,
+        reason: 'Burst protection: Too many calls in last 10 minutes'
       };
     }
 
@@ -553,27 +566,60 @@ export class CostOptimizer {
 
     this.hourlyCallCount++;
     
-    // Estimate cost based on model
+    // 🔥 ACCURATE PRICING: Updated exact pricing for all models
     let costPerToken = 0.000001; // Default fallback
     switch (model) {
       case 'gpt-4':
-        costPerToken = 0.00003; // $30/1M tokens
+        costPerToken = 0.00003; // $30/1M tokens (input)
+        break;
+      case 'gpt-4-turbo':
+      case 'gpt-4-turbo-preview':
+        costPerToken = 0.00001; // $10/1M tokens (input)
+        break;
+      case 'gpt-4o':
+        costPerToken = 0.0000025; // $2.50/1M tokens (input)
         break;
       case 'gpt-4o-mini':
-        costPerToken = 0.00000015; // $0.15/1M tokens
+        costPerToken = 0.00000015; // $0.15/1M tokens (input) - 🔥 CHEAPEST!
         break;
       case 'gpt-3.5-turbo':
-        costPerToken = 0.000001; // $1/1M tokens
+        costPerToken = 0.0000005; // $0.50/1M tokens (input)
         break;
     }
     
     const callCost = tokens * costPerToken;
     this.dailyUsage += callCost;
 
-    console.log(`💰 API Call Cost: $${callCost.toFixed(6)} | Daily Total: $${this.dailyUsage.toFixed(4)}`);
+    // 🔥 Record call history for analysis
+    this.callHistory.push({
+      timestamp: Date.now(),
+      cost: callCost,
+      model,
+      tokens
+    });
+
+    // Keep only last 100 calls in memory
+    if (this.callHistory.length > 100) {
+      this.callHistory = this.callHistory.slice(-100);
+    }
+
+    console.log(`💰 API Call: $${callCost.toFixed(6)} | Model: ${model} | Tokens: ${tokens} | Daily: $${this.dailyUsage.toFixed(4)}`);
+    
+    // 🔥 WARNING when approaching limits
+    const usagePercent = (this.dailyUsage / this.config.dailyBudgetLimit) * 100;
+    if (usagePercent > 80) {
+      console.warn(`🚨 WARNING: ${usagePercent.toFixed(1)}% of daily budget used!`);
+    }
   }
 
   getOptimalModel(requestedModel?: string): string {
+    // 🔥 ALWAYS use cheapest model in ultra-cost mode
+    const ultraLowCost = true;
+    
+    if (ultraLowCost) {
+      return 'gpt-4o-mini'; // Always use cheapest model
+    }
+    
     // If we're near budget limit, use cheapest model
     if (this.dailyUsage > this.config.dailyBudgetLimit * 0.8) {
       return this.config.fallbackModel;
@@ -584,19 +630,61 @@ export class CostOptimizer {
   }
 
   getOptimalTokenLimit(requestedTokens?: number): number {
+    // 🔥 ULTRA-AGGRESSIVE: Even smaller token limits
+    const ultraLowCost = true;
+    const maxTokens = ultraLowCost ? 
+      Math.min(this.config.maxTokensPerCall, 100) : // Never more than 100 tokens
+      this.config.maxTokensPerCall;
+      
     return Math.min(
-      requestedTokens || this.config.maxTokensPerCall,
-      this.config.maxTokensPerCall
+      requestedTokens || maxTokens,
+      maxTokens
     );
   }
 
-  getDailyUsageStats(): { used: number; limit: number; remaining: number; percentage: number } {
+  getDailyUsageStats(): { used: number; limit: number; remaining: number; percentage: number; projectedMonthly: number; callsToday: number } {
+    const callsToday = this.callHistory.filter(call => 
+      call.timestamp > Date.now() - (24 * 60 * 60 * 1000)
+    ).length;
+    
     return {
       used: this.dailyUsage,
       limit: this.config.dailyBudgetLimit,
       remaining: this.config.dailyBudgetLimit - this.dailyUsage,
-      percentage: (this.dailyUsage / this.config.dailyBudgetLimit) * 100
+      percentage: (this.dailyUsage / this.config.dailyBudgetLimit) * 100,
+      projectedMonthly: this.dailyUsage * 30,
+      callsToday
     };
+  }
+
+  // 🔥 NEW: Get cost breakdown by model
+  getCostBreakdown(): Array<{model: string; calls: number; totalCost: number; percentage: number}> {
+    const breakdown = new Map<string, {calls: number; totalCost: number}>();
+    
+    this.callHistory.forEach(call => {
+      const existing = breakdown.get(call.model) || {calls: 0, totalCost: 0};
+      existing.calls++;
+      existing.totalCost += call.cost;
+      breakdown.set(call.model, existing);
+    });
+    
+    const total = Array.from(breakdown.values()).reduce((sum, item) => sum + item.totalCost, 0);
+    
+    return Array.from(breakdown.entries()).map(([model, data]) => ({
+      model,
+      calls: data.calls,
+      totalCost: data.totalCost,
+      percentage: total > 0 ? (data.totalCost / total) * 100 : 0
+    }));
+  }
+
+  // 🔥 NEW: Reset daily usage (for new day)
+  resetDailyUsage(): void {
+    this.dailyUsage = 0;
+    this.callHistory = this.callHistory.filter(call => 
+      call.timestamp > Date.now() - (24 * 60 * 60 * 1000)
+    );
+    console.log('🔄 Daily usage reset - new day started');
   }
 }
 

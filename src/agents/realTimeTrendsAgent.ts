@@ -192,7 +192,7 @@ export class RealTimeTrendsAgent {
     try {
       const trends = await this.newsAgent.getTrendingTopics();
       
-      return trends
+      const newsBasedTrends = trends
         .filter(topic => this.isHealthTechRelated(topic))
         .map(topic => ({
           name: this.formatTrendName(topic),
@@ -203,9 +203,17 @@ export class RealTimeTrendsAgent {
         }))
         .slice(0, 5);
 
+      // If we got no trends from news (likely due to rate limiting), use fallback
+      if (newsBasedTrends.length === 0) {
+        console.log('📰 No news-based trends available, using fallback trending topics');
+        return this.getFallbackTrends().slice(0, 5);
+      }
+
+      return newsBasedTrends;
+
     } catch (error) {
-      console.warn('News-based trends unavailable');
-      return [];
+      console.log('⚠️ News-based trends unavailable, using fallback topics');
+      return this.getFallbackTrends().slice(0, 5);
     }
   }
 

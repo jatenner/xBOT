@@ -549,7 +549,7 @@ You are the AI assistant for the Snap2Health X-Bot master control system. You ha
 `;
 
       const completion = await this.openai.chat.completions.create({
-        model: 'gpt-4',
+        model: 'gpt-4o-mini', // 🔥 COST OPTIMIZATION: GPT-4 → GPT-4o-mini (99.5% cost reduction)
         messages: [
           {
             role: 'system',
@@ -560,8 +560,8 @@ You are the AI assistant for the Snap2Health X-Bot master control system. You ha
             content: message
           }
         ],
-        max_tokens: 300,
-        temperature: 0.7
+        max_tokens: 150, // 🔥 COST OPTIMIZATION: Reduced from 300 to 150 tokens (50% reduction)
+        temperature: 0.6 // 🔥 COST OPTIMIZATION: Reduced temperature for efficiency
       });
 
       return completion.choices[0]?.message?.content || 'I apologize, but I couldn\'t process that request.';
@@ -879,7 +879,7 @@ You are the AI assistant for the Snap2Health X-Bot master control system. You ha
     try {
       // Use OpenAI to analyze content quality
       const analysis = await this.openai.chat.completions.create({
-        model: 'gpt-4',
+        model: 'gpt-4o-mini', // 🔥 COST OPTIMIZATION: GPT-4 → GPT-4o-mini (99.5% cost reduction)
         messages: [
           {
             role: 'system',
@@ -890,7 +890,7 @@ You are the AI assistant for the Snap2Health X-Bot master control system. You ha
             content: `Analyze this content: "${content}"`
           }
         ],
-        max_tokens: 200,
+        max_tokens: 100, // 🔥 COST OPTIMIZATION: Reduced from 200 to 100 tokens (50% reduction)
         temperature: 0.3
       });
 

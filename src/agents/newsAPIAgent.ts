@@ -91,42 +91,56 @@ export class NewsAPIAgent {
    * Fetch current health tech news from NewsAPI
    */
   async fetchHealthTechNews(maxArticles: number = 20): Promise<ProcessedNewsArticle[]> {
+    // Check if API key is available
     if (!this.apiKey) {
-      console.warn('⚠️ NewsAPI key not available, using fallback method');
+      console.log('⚠️ NewsAPI key not available, using fallback content');
       return this.getFallbackNews();
     }
 
     try {
-      console.log('📰 Fetching real health tech news from NewsAPI...');
+      console.log('📰 Fetching latest health tech news...');
       
       const allArticles: ProcessedNewsArticle[] = [];
+      const articlesPerKeyword = Math.ceil(maxArticles / this.healthTechKeywords.length);
 
-      // Fetch articles for each keyword to get comprehensive coverage
-      for (const keyword of this.healthTechKeywords.slice(0, 5)) { // Top 5 keywords
+      // Fetch articles for each keyword
+      for (const keyword of this.healthTechKeywords) {
         try {
-          const articles = await this.fetchByKeyword(keyword, 10);
+          await this.delay(200); // Rate limiting protection
+          const articles = await this.fetchByKeyword(keyword, articlesPerKeyword);
           allArticles.push(...articles);
-          
-          // Rate limiting - News API allows 1000 requests/day
-          await this.delay(100);
-        } catch (error) {
-          console.warn(`Failed to fetch news for keyword "${keyword}":`, error);
+        } catch (error: any) {
+          // Don't let one keyword failure stop the entire process
+          console.log(`⚠️ Keyword "${keyword}" failed, continuing with others...`);
+          continue;
         }
       }
 
-      // Remove duplicates and rank by relevance
+      // If we got very few articles due to rate limiting, use fallbacks
+      if (allArticles.length < 3) {
+        console.log('📰 Limited API responses, supplementing with fallback content');
+        const fallbackArticles = this.getFallbackNews();
+        allArticles.push(...fallbackArticles);
+      }
+
+      // Process and return unique articles
       const uniqueArticles = this.removeDuplicates(allArticles);
       const rankedArticles = this.rankByRelevance(uniqueArticles);
+      const finalArticles = rankedArticles.slice(0, maxArticles);
 
-      console.log(`✅ Fetched ${rankedArticles.length} unique health tech articles`);
+      console.log(`✅ Fetched ${finalArticles.length} unique health tech articles`);
       
-      // Store in database for learning
-      await this.storeArticlesInDatabase(rankedArticles);
+      // Store in database (optional, with error handling)
+      try {
+        await this.storeArticlesInDatabase(finalArticles);
+      } catch (error) {
+        console.log('⚠️ Database storage skipped due to error');
+      }
 
-      return rankedArticles.slice(0, maxArticles);
+      return finalArticles;
 
     } catch (error) {
-      console.error('❌ Error fetching from NewsAPI:', error);
+      console.log('❌ News fetching failed, using fallback content');
       return this.getFallbackNews();
     }
   }
@@ -206,25 +220,39 @@ export class NewsAPIAgent {
   }
 
   private async fetchByKeyword(keyword: string, limit: number): Promise<ProcessedNewsArticle[]> {
-    const params = {
-      apiKey: this.apiKey,
-      q: keyword,
-      sortBy: 'publishedAt',
-      language: 'en',
-      pageSize: limit,
-      from: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString() // Last 7 days
-    };
+    try {
+      console.log(`🔍 Fetching news for keyword "${keyword}"...`);
+      
+      const params = {
+        apiKey: this.apiKey,
+        q: keyword,
+        sortBy: 'publishedAt',
+        language: 'en',
+        pageSize: limit,
+        from: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString() // Last 7 days
+      };
 
-    const response = await axios.get(`${this.baseUrl}/everything`, { params });
-    const newsData: NewsAPIResponse = response.data as NewsAPIResponse;
+      const response = await axios.get(`${this.baseUrl}/everything`, { params });
+      const newsData: NewsAPIResponse = response.data as NewsAPIResponse;
 
-    if (newsData.status !== 'ok') {
-      throw new Error(`NewsAPI error: ${newsData.status}`);
+      if (newsData.status !== 'ok') {
+        throw new Error(`NewsAPI error: ${newsData.status}`);
+      }
+
+      return newsData.articles
+        .map(article => this.processArticle(article))
+        .filter(article => article.healthTechRelevance > 0.5);
+        
+    } catch (error: any) {
+      // Handle rate limiting gracefully
+      if (error.response?.status === 429) {
+        console.log(`⏰ NewsAPI rate limit reached for "${keyword}" - using cached content`);
+        return this.getFallbackNewsForKeyword(keyword);
+      }
+      
+      console.log(`Failed to fetch news for keyword "${keyword}":`, error.message);
+      return this.getFallbackNewsForKeyword(keyword);
     }
-
-    return newsData.articles
-      .map(article => this.processArticle(article))
-      .filter(article => article.healthTechRelevance > 0.5);
   }
 
   private processArticle(article: NewsAPIArticle): ProcessedNewsArticle {
@@ -359,6 +387,21 @@ export class NewsAPIAgent {
         category: 'funding'
       }
     ];
+  }
+
+  private getFallbackNewsForKeyword(keyword: string): ProcessedNewsArticle[] {
+    // Return relevant fallback content based on keyword
+    const keywordLower = keyword.toLowerCase();
+    const allFallbacks = this.getFallbackNews();
+    
+    // Filter fallbacks by keyword relevance
+    const relevantFallbacks = allFallbacks.filter(article => {
+      const content = (article.title + ' ' + article.description).toLowerCase();
+      return content.includes(keywordLower) || 
+             keywordLower.split(' ').some(word => content.includes(word));
+    });
+    
+    return relevantFallbacks.length > 0 ? relevantFallbacks.slice(0, 3) : allFallbacks.slice(0, 2);
   }
 
   private delay(ms: number): Promise<void> {

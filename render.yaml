@@ -39,7 +39,7 @@ services:
       - key: DISABLE_BOT
         value: false
       - key: MAX_DAILY_TWEETS
-        value: 280
+        value: 17
       - key: AGGRESSIVE_ENGAGEMENT_MODE
         value: true
       - key: GHOST_ACCOUNT_SYNDROME_FIX
@@ -62,5 +62,7 @@ services:
         value: true
       - key: REAL_TIME_OPTIMIZATION
         value: true
+      - key: DAILY_BUDGET_LIMIT
+        value: 2.00
       - key: PORT
         value: 3000
