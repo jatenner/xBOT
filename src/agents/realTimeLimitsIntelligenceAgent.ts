@@ -274,6 +274,62 @@ export class RealTimeLimitsIntelligenceAgent {
       const dailyStats = await this.getDailyTwitterStats();
       const monthlyStats = await this.getMonthlyTwitterStats();
 
+      // 🚨 EMERGENCY: Database mismatch detection for API rate limiting issues
+      const apiUsageToday = dailyStats.tweets; // API calls made today
+      let dbTweetCount = 0;
+      
+      try {
+        // Check actual tweets saved to database
+        const today = new Date().toISOString().split('T')[0];
+        const { data: dbTweets } = await supabaseClient.supabase
+          .from('tweets')
+          .select('id')
+          .gte('created_at', today);
+        
+        dbTweetCount = dbTweets?.length || 0;
+        
+        console.log(`📊 DATABASE MISMATCH CHECK: API usage = ${apiUsageToday}, Database tweets = ${dbTweetCount}`);
+        
+        if (dbTweetCount === 0 && apiUsageToday > 0) {
+          console.log('🚨 CRITICAL: Database missing tweets - using API usage as source of truth');
+          // Use API usage count instead of broken database count
+          const conservativeUsage = Math.min(apiUsageToday + 2, 17); // Add buffer for safety
+          
+          return {
+            dailyTweets: {
+              used: conservativeUsage,
+              limit: 17,
+              remaining: Math.max(0, 17 - conservativeUsage),
+              resetTime: realDailyResetTime || new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
+            },
+            monthlyTweets: {
+              used: monthlyStats.tweets,
+              limit: 1500,
+              remaining: Math.max(0, 1500 - monthlyStats.tweets),
+              resetTime: new Date(now.getFullYear(), now.getMonth() + 1, 1)
+            },
+            readRequests: {
+              used: dailyStats.reads,
+              limit: 10000,
+              remaining: Math.max(0, 10000 - dailyStats.reads),
+              resetTime: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
+            },
+            shortTermLimits: {
+              tweets15min: { used: conservativeUsage, limit: 17, remaining: Math.max(0, 17 - conservativeUsage), resetTime },
+              reads15min: { used: 0, limit: 180, remaining: 180, resetTime }
+            },
+            accountStatus: 'active',
+            isLocked: conservativeUsage >= 17,
+            canPost: conservativeUsage < 17,
+            canRead: true,
+            nextSafePostTime: conservativeUsage >= 17 ? resetTime : now,
+            recommendedWaitTime: conservativeUsage >= 17 ? Math.ceil((resetTime.getTime() - now.getTime()) / 60000) : 0
+          };
+        }
+      } catch (error) {
+        console.error('❌ Database mismatch check failed:', error);
+      }
+
       // EMERGENCY: Force fresh limits when no headers AND no database usage today
       let actualDailyUsed, actualDailyRemaining;
       
