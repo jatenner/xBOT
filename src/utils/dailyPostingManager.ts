@@ -28,32 +28,21 @@ export class DailyPostingManager {
   private postTweetAgent: PostTweetAgent;
   private intelligentScheduler: IntelligentSchedulingAgent;
   private currentState: DailyPostingState;
-  private readonly DAILY_TARGET = 17;
+  private readonly DAILY_TARGET = parseInt(process.env.MAX_DAILY_TWEETS || '8');
   private isRunning = false;
   private scheduledJobs: cron.ScheduledTask[] = [];
   private useIntelligentScheduling = true;
 
-  // Optimized posting windows for CONTINUOUS distribution
+  // SAFE HUMAN-LIKE posting windows (8 posts max)
   private readonly POSTING_WINDOWS: PostingWindow[] = [
-    { start_hour: 7, end_hour: 8, posts_count: 1, priority: 2 },   // Early Morning
-    { start_hour: 9, end_hour: 10, posts_count: 1, priority: 3 },  // Mid Morning
+    { start_hour: 9, end_hour: 10, posts_count: 1, priority: 3 },  // Morning
     { start_hour: 11, end_hour: 12, posts_count: 1, priority: 3 }, // Late Morning  
     { start_hour: 13, end_hour: 14, posts_count: 1, priority: 4 }, // Early Afternoon - PEAK
     { start_hour: 15, end_hour: 16, posts_count: 1, priority: 4 }, // Mid Afternoon - PEAK
     { start_hour: 17, end_hour: 18, posts_count: 1, priority: 3 }, // Late Afternoon
     { start_hour: 19, end_hour: 20, posts_count: 1, priority: 4 }, // Evening - PEAK
-    { start_hour: 21, end_hour: 22, posts_count: 1, priority: 2 }, // Night
-    
-    // Additional optimal spread times
-    { start_hour: 8, end_hour: 9, posts_count: 1, priority: 2 },   // Morning transition
-    { start_hour: 10, end_hour: 11, posts_count: 1, priority: 3 }, // Late morning
-    { start_hour: 12, end_hour: 13, posts_count: 1, priority: 3 }, // Lunch time
     { start_hour: 14, end_hour: 15, posts_count: 1, priority: 4 }, // Peak afternoon
-    { start_hour: 16, end_hour: 17, posts_count: 1, priority: 3 }, // Transition
-    { start_hour: 18, end_hour: 19, posts_count: 1, priority: 4 }, // Peak evening
     { start_hour: 20, end_hour: 21, posts_count: 1, priority: 3 }, // Evening
-    { start_hour: 22, end_hour: 23, posts_count: 1, priority: 1 }, // Late night
-    { start_hour: 6, end_hour: 7, posts_count: 1, priority: 1 }    // Very early (17th post)
   ];
 
   constructor() {
@@ -80,7 +69,7 @@ export class DailyPostingManager {
       return;
     }
 
-    console.log('🎯 Starting Daily Posting Manager - Target: 17 tweets/day');
+    console.log(`🎯 Starting Daily Posting Manager - Target: ${this.DAILY_TARGET} tweets/day`);
     this.isRunning = true;
 
     // Load or initialize today's state
