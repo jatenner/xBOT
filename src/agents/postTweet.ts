@@ -2133,20 +2133,62 @@ Respond with JSON:
 
       let tweetContent: string;
       let contentSource: string;
+      let topicForTracking: string;
 
       if (selectedTrend && (!selectedEvent || selectedTrend.relevanceScore > selectedEvent.relevanceScore)) {
         // Generate content based on trending topic
         tweetContent = await this.generateTrendBasedContent(selectedTrend);
         contentSource = 'trending_topic';
+        topicForTracking = selectedTrend.name;
         console.log(`💬 Using trending topic: ${selectedTrend.name} (${selectedTrend.volume.toLocaleString()} mentions)`);
       } else if (selectedEvent) {
         // Generate content based on current event
         tweetContent = await this.generateEventBasedContent(selectedEvent);
         contentSource = 'current_event';
+        topicForTracking = selectedEvent.title;
         console.log(`📰 Using current event: ${selectedEvent.title.substring(0, 50)}...`);
       } else {
         // Fallback to general trending content
         return await this.generateFallbackTweet(includeSnap2HealthCTA, includeImage);
+      }
+
+      // 🚫 CRITICAL: Check for content repetition before posting
+      if (this.isContentTooSimilar(tweetContent, topicForTracking)) {
+        console.log('🚫 DUPLICATE CONTENT DETECTED - regenerating with alternative approach...');
+        
+        // Try up to 3 alternative generations
+        let attempts = 0;
+        let alternativeContent = tweetContent;
+        
+        while (attempts < 3 && this.isContentTooSimilar(alternativeContent, topicForTracking)) {
+          attempts++;
+          console.log(`🔄 Attempt ${attempts}/3: Generating alternative content...`);
+          
+          // Generate alternative content with different approach
+          if (selectedTrend) {
+            alternativeContent = await this.generateTrendBasedContent({
+              ...selectedTrend,
+              name: `${selectedTrend.name} (alternative ${attempts})`
+            });
+          } else if (selectedEvent) {
+            alternativeContent = await this.generateEventBasedContent({
+              ...selectedEvent,
+              title: `${selectedEvent.title} (alternative ${attempts})`
+            });
+          }
+        }
+        
+        if (this.isContentTooSimilar(alternativeContent, topicForTracking)) {
+          console.log('🚫 Could not generate unique content after 3 attempts - skipping this posting cycle');
+          return {
+            success: false,
+            error: 'Content too similar to recent posts',
+            content: alternativeContent
+          };
+        }
+        
+        tweetContent = alternativeContent;
+        console.log('✅ Generated unique alternative content');
       }
 
       // AI decision on image inclusion
@@ -2173,6 +2215,9 @@ Respond with JSON:
       const result = await xClient.postTweet(tweetContent);
       
       if (result?.success && result?.tweetId) {
+        // 📝 CRITICAL: Track content to prevent future duplicates
+        this.trackContent(tweetContent, topicForTracking);
+        
         // Store in database
         await supabaseClient.insertTweet({
           tweet_id: result.tweetId,
