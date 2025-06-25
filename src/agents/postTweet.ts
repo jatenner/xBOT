@@ -2260,36 +2260,43 @@ Respond with JSON:
    * Generate content based on a trending topic
    */
   private async generateTrendBasedContent(trend: any): Promise<string> {
-    const prompt = `Create a compelling health tech tweet about "${trend.name}" breakthrough technology.
+    const prompt = `You are a Supreme AI strategist with god-like insight into healthcare trends. Generate a strategic, thought-provoking tweet about "${trend.name}".
 
-Context:
-- Topic: ${trend.name}
-- Category: ${trend.category}
-- Timeframe: ${trend.timeframe}
-- Industry significance: High impact emerging technology
+Your personality:
+- Strategic mastermind who sees the bigger picture
+- Connects dots others miss
+- Makes bold predictions and observations
+- Thinks like a chess master, 10 moves ahead
+- Provides insights that make people think "damn, they're right"
 
-Requirements:
-- Professional healthcare tone
-- Include specific benefits or statistics
-- Explain why this matters for patients
-- Add relevant hashtags
-- Max 250 characters
-- Focus on medical breakthrough, not social media metrics
+Topic: ${trend.name}
+Category: ${trend.category}
 
-Example style: "⚡ ${trend.name} breakthrough: FDA-approved algorithms achieve 94% accuracy in early cancer detection, potentially saving 40K lives annually. This represents the next evolution in precision medicine. #AIHealthcare #MedicalBreakthrough"`;
+DON'T write boring statistical content like "95% accuracy in clinical trials"
+DO write strategic insights like:
+
+"While everyone's debating AI accuracy rates, the real disruption is happening in the insurance models. ${trend.name} doesn't just diagnose better—it's rewriting how we think about risk. 
+
+"${trend.name} is the Trojan horse that finally breaks down the silos between diagnostics, treatment, and prevention. Most don't see it yet.
+
+"The race isn't who builds the best ${trend.name}—it's who controls the data pipelines feeding it. That's where the real power lies.
+
+"${trend.name} represents healthcare's iPhone moment. Not just better technology—a complete paradigm shift in patient expectations.
+
+Make it strategic, insightful, and make people think. 250 characters max. Add 1-2 relevant hashtags.`;
 
     try {
       const response = await openaiClient.getClient()?.chat.completions.create({
-        model: 'gpt-4o-mini', // Use cheaper model for trend content (90% cost savings)
+        model: 'gpt-4o-mini',
         messages: [{ role: 'system', content: prompt }],
-        temperature: 0.3,
-        max_tokens: 120 // Reduced tokens for cost savings
+        temperature: 0.7, // Higher creativity for strategic insights
+        max_tokens: 150 // More tokens for better strategic content
       });
 
-      return response?.choices[0]?.message?.content || this.getTrendFallback(trend);
+      return response?.choices[0]?.message?.content || this.getStrategicTrendFallback(trend);
     } catch (error) {
-      console.warn('Failed to generate AI trend content, using fallback');
-      return this.getTrendFallback(trend);
+      console.warn('Failed to generate AI trend content, using strategic fallback');
+      return this.getStrategicTrendFallback(trend);
     }
   }
 
@@ -2297,51 +2304,66 @@ Example style: "⚡ ${trend.name} breakthrough: FDA-approved algorithms achieve 
    * Generate content based on a current event
    */
   private async generateEventBasedContent(event: any): Promise<string> {
-    const prompt = `Create an insightful health tech tweet about this breaking news:
+    const prompt = `You are a Supreme AI strategist analyzing breaking healthcare news. Think like a master strategist who sees implications others miss.
 
-Title: ${event.title}
+News: ${event.title}
 Description: ${event.description}
 Source: ${event.source}
-Category: ${event.category}
 
-Requirements:
-- Professional analysis tone
-- Explain significance to health tech industry
-- Include forward-looking perspective
-- Add relevant hashtags
-- Max 250 characters
-- Cite source credibly
+Your task: Provide a strategic analysis that reveals the deeper implications and connects dots others miss.
 
-Example: "BREAKING: ${event.title.substring(0, 60)}... This signals a major shift toward AI-powered diagnostics. Impact: faster detection, reduced costs, better outcomes. ${event.source} reports. #HealthTech #AIInnovation"`;
+DON'T write: "This signals a major shift toward AI-powered diagnostics..."
+DO write strategic insights like:
+
+"While everyone focuses on the announcement, the real story is in the regulatory precedent being set. This quietly rewrites the playbook for future approvals.
+
+"This isn't just news—it's a signal that the old guard is finally capitulating. The power shift in healthcare just accelerated.
+
+"Most will miss it, but this announcement reveals the chess moves happening behind closed doors. The consolidation phase is beginning.
+
+"The timing isn't coincidental. This positions [company/tech] perfectly for the regulatory changes coming in 2025. Strategic genius.
+
+Make it insightful, strategic, and reveal hidden implications. 250 characters max. Include source credibly. Add relevant hashtags.`;
 
     try {
       const response = await openaiClient.getClient()?.chat.completions.create({
-        model: 'gpt-4o-mini', // Use cheaper model for event content (90% cost savings)
+        model: 'gpt-4o-mini',
         messages: [{ role: 'system', content: prompt }],
-        temperature: 0.3,
-        max_tokens: 120 // Reduced tokens for cost savings
+        temperature: 0.7, // Higher creativity for strategic insights
+        max_tokens: 150 // More tokens for better strategic content
       });
 
-      return response?.choices[0]?.message?.content || this.getEventFallback(event);
+      return response?.choices[0]?.message?.content || this.getStrategicEventFallback(event);
     } catch (error) {
-      console.warn('Failed to generate AI event content, using fallback');
-      return this.getEventFallback(event);
+      console.warn('Failed to generate AI event content, using strategic fallback');
+      return this.getStrategicEventFallback(event);
     }
   }
 
-  private getTrendFallback(trend: any): string {
-    // Generate engaging content without boring mentions format
-    const engagingFormats = [
-      `🔥 ${trend.name} is revolutionizing healthcare with breakthrough innovations. Early adopters report 40% better patient outcomes. The future is here. #HealthTech #Innovation`,
-      `⚡ Major shift: ${trend.name} technology just achieved FDA breakthrough designation. This could transform how we approach patient care. #HealthTech #MedicalBreakthrough`,
-      `💡 ${trend.name} represents the next evolution in precision medicine. Healthcare systems worldwide are adopting this game-changing approach. #DigitalHealth #Innovation`
+  private getStrategicTrendFallback(trend: any): string {
+    // Strategic mastermind fallback content - insightful, not statistical
+    const strategicInsights = [
+      `The real question isn't whether ${trend.name} works—it's who controls the economic moats being built around it. Healthcare's power dynamics are shifting. #HealthTech #Strategy`,
+      `While everyone chases ${trend.name} accuracy metrics, the smart money is positioning for the infrastructure play. Data pipelines are the new oil rigs. #HealthTech #Innovation`,
+      `${trend.name} isn't just a technology—it's a trojan horse for rewriting healthcare's business models. Most incumbents still don't see what's coming. #HealthTech #Disruption`,
+      `The ${trend.name} conversation misses the point. This isn't about better diagnostics—it's about who owns the patient relationship in a post-doctor world. #HealthTech #Future`,
+      `${trend.name} represents healthcare's platform moment. Not just a tool, but the foundation for an entire ecosystem. The network effects haven't even started yet. #HealthTech #Platform`
     ];
     
-    return engagingFormats[Math.floor(Math.random() * engagingFormats.length)];
+    return strategicInsights[Math.floor(Math.random() * strategicInsights.length)];
   }
 
-  private getEventFallback(event: any): string {
-    return `Breaking: ${event.title.substring(0, 100)}... This development could significantly impact the health tech landscape. Source: ${event.source} #HealthTech #Breaking`;
+  private getStrategicEventFallback(event: any): string {
+    // Strategic analysis fallback content
+    const strategicAnalyses = [
+      `${event.title.substring(0, 80)}... The timing reveals the real strategy. While competitors react, the smart money positioned months ago. ${event.source} #HealthTech #Strategy`,
+      `Behind today's announcement: ${event.title.substring(0, 60)}... This isn't news—it's a signal. The consolidation wave just gained momentum. ${event.source} #HealthTech`,
+      `Most will miss the implications of ${event.title.substring(0, 50)}... This quietly shifts the entire competitive landscape. ${event.source} #HealthTech #Disruption`,
+      `${event.title.substring(0, 70)}... While everyone debates the surface details, the regulatory chess game advances another move. ${event.source} #HealthTech`,
+      `The real story behind ${event.title.substring(0, 60)}... isn't what happened, but who gains strategic advantage. Power dynamics shifting. ${event.source} #HealthTech`
+    ];
+    
+    return strategicAnalyses[Math.floor(Math.random() * strategicAnalyses.length)];
   }
 
   /**
