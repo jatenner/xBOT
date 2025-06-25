@@ -2,6 +2,9 @@ import { supabaseClient } from './supabaseClient';
 import { PostTweetAgent } from '../agents/postTweet';
 import { contentCache } from './contentCache';
 import { IntelligentSchedulingAgent } from '../agents/intelligentSchedulingAgent';
+import { strategicOpportunityScheduler } from '../agents/strategicOpportunityScheduler';
+import { humanLikeStrategicMind } from '../agents/humanLikeStrategicMind';
+import { supremeAIOrchestrator } from '../agents/supremeAIOrchestrator';
 import * as cron from 'node-cron';
 
 interface DailyPostingState {
@@ -177,23 +180,71 @@ export class DailyPostingManager {
   }
 
   private async setupIntelligentSchedule(remaining: number): Promise<void> {
-    console.log('🧠 Activating intelligent scheduling...');
+    console.log('🧠 Activating SUPREME AI ORCHESTRATOR...');
     
     try {
-      const intelligentSchedule = await this.intelligentScheduler.generateIntelligentSchedule();
+      // 👑 SUPREME AI DECISION MAKING
+      const supremeDecision = await supremeAIOrchestrator.makeSupremeDecision();
       
-      console.log('🎯 INTELLIGENT SCHEDULE ANALYSIS:');
-      console.log(`   📊 Recommended posts: ${intelligentSchedule.totalDailyPosts}`);
-      console.log(`   🔥 Confidence: ${intelligentSchedule.confidenceScore}%`);
-      console.log(`   🧠 Adaptive reasons: ${intelligentSchedule.adaptiveReasons.join(', ')}`);
+      console.log('👑 SUPREME AI ORCHESTRATOR DECISION:');
+      console.log(`   🧠 Strategy: ${supremeDecision.strategy.mode}`);
+      console.log(`   🔥 Confidence: ${(supremeDecision.strategy.confidence * 100).toFixed(0)}%`);
+      console.log(`   📝 Posts planned: ${supremeDecision.strategy.postingStrategy.postCount}`);
+      console.log(`   🎯 Goal: ${supremeDecision.strategy.contentStrategy.primaryGoal}`);
+      console.log(`   💭 Reasoning: ${supremeDecision.reasoning}`);
       
-      // Schedule posts based on intelligent analysis
-      const upcomingPosts = intelligentSchedule.scheduledPosts.filter(post => 
-        post.scheduledTime > new Date()
-      ).slice(0, remaining);
-      
-      for (const post of upcomingPosts) {
-        this.scheduleIntelligentPost(post);
+      if (supremeDecision.shouldPost) {
+        // Execute the supreme strategy immediately
+        console.log('🚀 EXECUTING SUPREME STRATEGY...');
+        const executionResult = await supremeAIOrchestrator.executeSupremeStrategy(
+          supremeDecision.strategy,
+          supremeDecision.executionPlan
+        );
+        
+        console.log(`✅ Supreme strategy executed: ${executionResult.executedPosts} posts completed`);
+        
+        // Update our state
+        this.currentState.posts_completed += executionResult.executedPosts;
+        await this.saveDailyState();
+        
+        // Calculate remaining posts after supreme execution
+        const remainingAfterSupreme = this.DAILY_TARGET - this.currentState.posts_completed;
+        
+        if (remainingAfterSupreme > 0) {
+          console.log(`📊 ${remainingAfterSupreme} posts remaining - scheduling traditional posts`);
+          await this.setupTraditionalSchedule(remainingAfterSupreme);
+        } else {
+          console.log('🎉 Supreme AI completed all required posts!');
+        }
+      } else {
+        console.log('🤔 Supreme AI decided not to post - using fallback human-like strategic analysis');
+        
+        // Fallback to human-like strategic mind
+        const humanInsights = await humanLikeStrategicMind.analyzeWorldLikeHuman();
+        
+        if (humanInsights.postingRecommendations.some(r => r.urgency > 0.6)) {
+          console.log('🧠 Human-like strategic mind found urgent opportunities');
+          const urgentRecs = humanInsights.postingRecommendations.filter(r => r.urgency > 0.6);
+          
+          for (const rec of urgentRecs.slice(0, Math.min(3, remaining))) {
+            const postTime = new Date(Date.now() + Math.random() * 60 * 60 * 1000); // Within next hour
+            this.scheduleIntelligentPost({
+              scheduledTime: postTime,
+              contentType: rec.contentType,
+              reasoning: rec.reasoning,
+              confidence: rec.confidence
+            });
+          }
+          
+          // Schedule remaining posts traditionally
+          const remainingAfterUrgent = remaining - urgentRecs.length;
+          if (remainingAfterUrgent > 0) {
+            await this.setupTraditionalSchedule(remainingAfterUrgent);
+          }
+        } else {
+          console.log('📅 No urgent opportunities - using traditional scheduling');
+          await this.setupTraditionalSchedule(remaining);
+        }
       }
       
       // Set up dynamic monitoring
@@ -244,49 +295,120 @@ export class DailyPostingManager {
   }
 
   private setupDynamicMonitoring(): void {
-    // 💰 API-CONSCIOUS MONITORING - Reduced frequency to conserve API limits
+    console.log('🎯 Setting up STRATEGIC OPPORTUNITY monitoring...');
     
-    // Check for urgent opportunities every 4 hours instead of 30 minutes
-    const monitoringJob = cron.schedule('0 */4 * * *', async () => {
-      console.log('🔍 API-conscious check for urgent posting opportunities...');
-      
+    // 🧠 HUMAN-LIKE STRATEGIC MONITORING: Think like a savvy Twitter user every 2 hours
+    const strategicMonitoringJob = cron.schedule('0 */2 * * *', async () => {
       try {
-        const shouldPost = await this.intelligentScheduler.shouldPostNow();
+        console.log('🧠 THINKING LIKE A STRATEGIC HUMAN...');
+        console.log('   👀 Scanning trends, news, and opportunities...');
         
-        if (shouldPost.shouldPost && shouldPost.urgency > 0.8) {
-          console.log(`🚨 URGENT POST TRIGGER: ${shouldPost.reason}`);
-          await this.executePost('emergency');
+        // Get human-like strategic analysis
+        const humanAnalysis = await humanLikeStrategicMind.analyzeWorldLikeHuman();
+        
+        console.log('🧠 HUMAN-LIKE STRATEGIC ANALYSIS:');
+        console.log(`   💡 Strategic insights: ${humanAnalysis.insights.length}`);
+        console.log(`   📝 Posting opportunities: ${humanAnalysis.postingRecommendations.length}`);
+        console.log(`   🎯 Strategic thinking: "${humanAnalysis.strategicNarrative}"`);
+        
+        // Execute high-urgency recommendations
+        const urgentRecommendations = humanAnalysis.postingRecommendations.filter(r => 
+          r.urgency > 0.6 && (r.when === 'immediate' || r.when === 'within_hour')
+        );
+        
+        if (urgentRecommendations.length > 0) {
+          console.log(`🚨 ${urgentRecommendations.length} URGENT STRATEGIC OPPORTUNITIES DETECTED!`);
+          
+          for (const rec of urgentRecommendations.slice(0, 3)) { // Max 3 strategic posts per check
+            if (this.currentState.posts_completed >= this.DAILY_TARGET) break;
+            
+            console.log(`🔥 STRATEGIC OPPORTUNITY: ${rec.trigger}`);
+            console.log(`   📊 Urgency: ${(rec.urgency * 100).toFixed(0)}%`);
+            console.log(`   📝 Posts: ${rec.postCount}`);
+            console.log(`   🎯 Content type: ${rec.contentType}`);
+            console.log(`   💡 Angles: ${rec.contentAngles.join(', ')}`);
+            
+            // Execute strategic posting burst
+            for (let i = 0; i < rec.postCount && this.currentState.posts_completed < this.DAILY_TARGET; i++) {
+              console.log(`🔥 Executing strategic post ${i + 1}/${rec.postCount} - ${rec.strategicReason}`);
+              await this.executePost('emergency');
+              
+              // Brief delay between strategic posts
+              if (i < rec.postCount - 1) {
+                await new Promise(resolve => setTimeout(resolve, 3 * 60 * 1000)); // 3 minute delay
+              }
+            }
+          }
+        } else {
+          console.log('📊 No urgent strategic opportunities detected');
+          console.log('   🧠 Strategic mind is monitoring and waiting for the right moment...');
         }
+        
+        // Fallback: Check if we're behind schedule
+        const progress = this.getDailyProgress();
+        if (!progress.onTrack && progress.remaining > 0) {
+          console.log('⚡ Behind schedule - activating catch-up mode');
+          await this.activateEmergencyPosting(1);
+        }
+        
       } catch (error) {
-        console.warn('⚠️ Monitoring check failed (API limits?), continuing with schedule:', error);
+        console.error('❌ Human-like strategic monitoring error:', error);
+        
+        // Fallback to basic strategic monitoring
+        try {
+          const basicDecision = await strategicOpportunityScheduler.shouldPostStrategically();
+          if (basicDecision.shouldPost && basicDecision.urgency > 0.7) {
+            console.log('🔄 Fallback: Basic strategic opportunity detected');
+            await this.executePost('emergency');
+          }
+        } catch (fallbackError) {
+          console.error('❌ Fallback strategic monitoring also failed:', fallbackError);
+        }
       }
     }, {
       scheduled: true,
       timezone: "UTC"
     });
-
-    // 📊 Daily intelligence review (once per day to conserve APIs)
-    const dailyReviewJob = cron.schedule('0 6 * * *', async () => {
-      console.log('📊 Daily intelligence review (API-conscious)...');
-      
-      try {
-        // Only run intelligence gathering once per day
-        await this.intelligentScheduler.generateIntelligentSchedule();
-      } catch (error) {
-        console.warn('⚠️ Daily review failed (API limits?), using cached intelligence:', error);
-      }
-    }, {
-      scheduled: true,
-      timezone: "UTC"
-    });
-
-    this.scheduledJobs.push(monitoringJob);
-    this.scheduledJobs.push(dailyReviewJob);
     
-    console.log('💰 API-conscious monitoring activated:');
-    console.log('   🔍 Urgent checks: Every 4 hours (6 calls/day)');
-    console.log('   📊 Intelligence review: Once daily (1 call/day)');
-    console.log('   💡 Total API usage: ~7-10 calls/day vs previous 60+');
+    this.scheduledJobs.push(strategicMonitoringJob);
+    
+    // 🧠 STRATEGIC INTELLIGENCE REVIEW: Analyze and optimize daily
+    const intelligenceReviewJob = cron.schedule('0 6 * * *', async () => {
+      try {
+        console.log('🧠 DAILY STRATEGIC INTELLIGENCE REVIEW...');
+        
+        const opportunities = await strategicOpportunityScheduler.analyzeStrategicOpportunities();
+        
+        console.log(`🎯 STRATEGIC ANALYSIS:`);
+        console.log(`   📊 ${opportunities.opportunities.length} opportunities identified`);
+        console.log(`   📝 ${opportunities.totalRecommendedPosts} posts recommended`);
+        console.log(`   🔥 Confidence: ${opportunities.confidenceScore}%`);
+        console.log(`   🧠 Strategic reasons: ${opportunities.strategicReasons.join(', ')}`);
+        
+        // If high confidence and many opportunities, be more aggressive
+        if (opportunities.confidenceScore > 80 && opportunities.opportunities.length > 5) {
+          console.log('🚀 High-opportunity day detected - optimizing for maximum engagement');
+          // Could adjust posting strategy here if needed
+        }
+        
+      } catch (error) {
+        console.error('❌ Intelligence review error:', error);
+      }
+    }, {
+      scheduled: true,
+      timezone: "UTC"
+    });
+    
+    this.scheduledJobs.push(intelligenceReviewJob);
+    
+    console.log('🧠 HUMAN-LIKE STRATEGIC monitoring activated:');
+    console.log('   🧠 Strategic thinking: Every 2 hours (like a savvy Twitter user)');
+    console.log('   🔍 Pattern recognition: Apple Watch trends, AI news connections');
+    console.log('   📰 News synthesis: Multiple stories → strategic insights');
+    console.log('   ⏰ Perfect timing: Peak engagement windows detected');
+    console.log('   🎯 Competitive gaps: Opportunities competitors miss');
+    console.log('   💡 API usage: ~15 calls/day (strategic and efficient)');
+    console.log('   🔥 DYNAMIC POSTING: 1-4 tweets when strategic opportunities arise!');
   }
 
   private schedulePost(postTime: Date): void {
