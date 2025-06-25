@@ -1,4 +1,7 @@
+import { DailyPostingManager } from './utils/dailyPostingManager';
 import { Scheduler } from './agents/scheduler';
+import { DynamicPostingController } from './utils/dynamicPostingController';
+import * as cron from 'node-cron';
 import dotenv from 'dotenv';
 import http from 'http';
 
@@ -49,116 +52,98 @@ function startServer(port: number, retries = 3): Promise<void> {
   });
 }
 
+console.log('🤖 Starting Supreme AI Bot with Dynamic Posting Control...');
+console.log('👑 All posting decisions made by AI - no hardcoded limits!');
+
 async function main() {
   try {
-    console.log('🚀 Snap2Health Autonomous X-Bot Starting...');
-    console.log('=====================================');
-
-    // Check for Ghost Killer mode
-    if (process.env.GHOST_ACCOUNT_SYNDROME_FIX === 'true') {
-      console.log('👻 === GHOST ACCOUNT SYNDROME KILLER ACTIVATED ===');
-      console.log('🔥 Mission: Maximum algorithmic domination mode');
-      console.log('⚡ Strategy: Aggressive engagement to destroy ghost syndrome');
-      console.log(`🔄 Engagement Frequency: ${process.env.COMMUNITY_ENGAGEMENT_FREQUENCY || 'every_30_minutes'}`);
-      console.log(`📝 Post Frequency: Every ${process.env.POST_FREQUENCY_MINUTES || 25} minutes`);
-      console.log(`🎯 Daily Target: ${process.env.ENGAGEMENT_TARGET_DAILY || 200} interactions`);
-      const boostLevel = process.env.ALGORITHMIC_BOOST_LEVEL || 'subtle';
-      console.log(`💥 Boost Level: ${boostLevel.toUpperCase()}\n`);
-    }
-
-    // Start server with retry logic
-    await startServer(PORT);
-
-    // Create and start scheduler with error handling
-    const scheduler = new Scheduler();
+    // Initialize the Supreme AI Dynamic Controller
+    const dynamicController = new DynamicPostingController();
     
-    // Add global error handlers before starting scheduler
-    process.on('uncaughtException', (error) => {
-      console.error('❌ Uncaught Exception:', error);
-      // Log but don't crash in production
-      if (process.env.NODE_ENV === 'production') {
-        console.log('🔄 Continuing operation in production mode...');
-      } else {
-        setTimeout(() => process.exit(1), 5000);
-      }
-    });
-
-    process.on('unhandledRejection', (reason, promise) => {
-      console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
-      // Check if it's an API limit error
-      if (reason && typeof reason === 'object' && 'code' in reason) {
-        if (reason.code === 429) {
-          console.log('⏰ API rate limit hit - continuing in graceful mode...');
-          return;
+    console.log('🧠 === SUPREME AI DYNAMIC POSTING SYSTEM ===');
+    console.log('👑 AI has full authority over posting decisions');
+    console.log('📊 Dynamic response to breaking news and opportunities');
+    console.log('🚀 Starting intelligent posting cycle...');
+    
+    // Set up the Supreme AI decision cycle - every 30 minutes
+    cron.schedule('*/30 * * * *', async () => {
+      console.log('\n🧠 === SUPREME AI DECISION CYCLE ===');
+      console.log('👑 AI analyzing world state and making posting decisions...');
+      
+      try {
+        // Let AI make the decision
+        const decision = await dynamicController.makePostingDecision();
+        
+        console.log('🎯 SUPREME AI DECISION MADE:');
+        console.log(`   📝 Should post: ${decision.shouldPost}`);
+        console.log(`   🔢 Post count: ${decision.postCount}`);
+        console.log(`   ⚡ Urgency: ${(decision.urgency * 100).toFixed(0)}%`);
+        console.log(`   🧠 Strategy: ${decision.strategy}`);
+        console.log(`   💭 Reasoning: ${decision.reasoning}`);
+        
+        if (decision.shouldPost && decision.postCount > 0) {
+          console.log('🚀 EXECUTING SUPREME AI DECISION...');
+          
+          const result = await dynamicController.executeSupremeDecision(decision);
+          
+          if (result.success && result.executedPosts > 0) {
+            console.log(`✅ Supreme AI executed ${result.executedPosts} posts successfully!`);
+          } else if (result.success && result.executedPosts === 0) {
+            console.log('🤔 Supreme AI decided to wait for better opportunity');
+          } else {
+            console.log('❌ Supreme AI execution encountered issues');
+          }
+        } else {
+          console.log('🤔 Supreme AI decided not to post right now');
+          console.log(`   ⏰ Will check again in ${decision.timeSpacing} minutes`);
         }
-        if (reason.code === 'UsageCapExceeded') {
-          console.log('💰 Monthly API cap exceeded - switching to simulation mode...');
-          return;
-        }
+        
+      } catch (error) {
+        console.error('❌ Supreme AI decision cycle failed:', error);
       }
       
-      // Log but don't crash in production
-      if (process.env.NODE_ENV === 'production') {
-        console.log('🔄 Continuing operation in production mode...');
-      } else {
-        setTimeout(() => process.exit(1), 5000);
-      }
+    }, { scheduled: true });
+
+    // Also start the traditional scheduler for engagement activities
+    console.log('🔄 Starting traditional scheduler for engagement activities...');
+    const scheduler = new Scheduler();
+    await scheduler.start();
+    
+    // Keep the process alive
+    console.log('✅ Supreme AI Bot is now running!');
+    console.log('👑 AI has full control over posting frequency and timing');
+    console.log('📡 Monitoring world events for dynamic response...');
+    console.log('🚀 Ready to post 1-15 times per day based on AI decisions!');
+    
+    // Graceful shutdown
+    process.on('SIGINT', () => {
+      console.log('\n🛑 Shutting down Supreme AI Bot gracefully...');
+      process.exit(0);
     });
 
-    await scheduler.start();
-
-    console.log('🧠 AUTONOMOUS INTELLIGENCE ACTIVATED:');
-    console.log('   - System continuously learns and improves');
-    console.log('   - Content strategies evolve in real-time');
-    console.log('   - Competitive intelligence gathering');
-    console.log('   - Predictive trend analysis');
-    console.log('   - Creative capability enhancement');
-    
-    if (process.env.GHOST_ACCOUNT_SYNDROME_FIX === 'true') {
-      console.log('   - 🔧 AUTONOMOUS QUALITY CONTROL: Tweet auditing and fixing');
-    }
-
-    // Run initial cycle with error protection
-    console.log('🚀 Running initial strategist cycle...');
-    
-    // Handle graceful shutdown
-    const shutdown = async () => {
-      console.log('🛑 Received SIGTERM, shutting down gracefully...');
-      try {
-        await scheduler.stop();
-        server.close(() => {
-          console.log('🔍 Health check server stopped');
-          process.exit(0);
-        });
-      } catch (error) {
-        console.error('❌ Error during shutdown:', error);
-        process.exit(1);
-      }
-    };
-
-    process.on('SIGTERM', shutdown);
-    process.on('SIGINT', shutdown);
-
-    // Keep alive with periodic health checks
-    setInterval(() => {
-      const status = scheduler.isSchedulerRunning() ? 'running' : 'stopped';
-      console.log(`💓 Health check: Scheduler ${status} at ${new Date().toISOString()}`);
-    }, 300000); // Every 5 minutes
+    process.on('SIGTERM', () => {
+      console.log('\n🛑 Shutting down Supreme AI Bot gracefully...');
+      process.exit(0);
+    });
 
   } catch (error) {
-    console.error('❌ Failed to start X-Bot:', error);
-    
-    // Don't crash immediately in production, give it a chance to recover
-    if (process.env.NODE_ENV === 'production') {
-      console.log('🔄 Attempting to restart in 30 seconds...');
-      setTimeout(() => {
-        main().catch(() => process.exit(1));
-      }, 30000);
-    } else {
-      process.exit(1);
-    }
+    console.error('❌ Failed to start Supreme AI Bot:', error);
+    process.exit(1);
   }
 }
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('💥 Uncaught exception:', error);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('💥 Unhandled rejection at:', promise, 'reason:', reason);
+  process.exit(1);
+});
+
+main().catch(console.error);
 
 // Run the application
 if (require.main === module) {
