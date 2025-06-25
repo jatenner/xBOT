@@ -462,7 +462,7 @@ export class DailyPostingManager {
 
         // Check if we've hit the target
         if (this.currentState.posts_completed >= this.DAILY_TARGET) {
-          console.log('🎉 DAILY TARGET REACHED! 17/17 tweets completed');
+          console.log(`🎉 DAILY TARGET REACHED! ${this.DAILY_TARGET}/${this.DAILY_TARGET} tweets completed`);
           await this.onDailyTargetReached();
         }
       } else {

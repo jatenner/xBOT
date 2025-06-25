@@ -62,7 +62,8 @@ async function main() {
       console.log(`🔄 Engagement Frequency: ${process.env.COMMUNITY_ENGAGEMENT_FREQUENCY || 'every_30_minutes'}`);
       console.log(`📝 Post Frequency: Every ${process.env.POST_FREQUENCY_MINUTES || 25} minutes`);
       console.log(`🎯 Daily Target: ${process.env.ENGAGEMENT_TARGET_DAILY || 200} interactions`);
-      console.log('💥 Boost Level: EXTREME\n');
+      const boostLevel = process.env.ALGORITHMIC_BOOST_LEVEL || 'subtle';
+      console.log(`💥 Boost Level: ${boostLevel.toUpperCase()}\n`);
     }
 
     // Start server with retry logic

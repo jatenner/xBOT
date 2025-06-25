@@ -73,8 +73,9 @@ export class Scheduler {
     console.log('🚀 Starting Snap2Health X-Bot Scheduler...');
     this.isRunning = true;
 
-    // 🎯 START DAILY POSTING MANAGER - Ensures 17 tweets/day
-    console.log('🎯 Activating Daily Posting Manager - Target: 17 tweets/day');
+    // 🎯 START DAILY POSTING MANAGER - Safe human-like posting
+    const dailyTarget = parseInt(process.env.MAX_DAILY_TWEETS || '8');
+    console.log(`🎯 Activating Daily Posting Manager - Target: ${dailyTarget} tweets/day`);
     await dailyPostingManager.start();
 
     // 🚨 EMERGENCY COST MODE CHECK
@@ -87,13 +88,14 @@ export class Scheduler {
       console.log('💰 All expensive background analysis DISABLED');
       console.log(`💵 Daily budget limit: $${dailyBudgetLimit}`);
       console.log('📝 Basic posting mode only - optimized for 0-follower growth');
-      console.log('🎯 Daily Posting Manager will handle all 17 tweets');
+      const dailyTarget = parseInt(process.env.MAX_DAILY_TWEETS || '8');
+      console.log(`🎯 Daily Posting Manager will handle all ${dailyTarget} tweets`);
       
       // In emergency mode, let daily posting manager handle all posts
       // No additional strategist scheduling needed
       
       console.log('⚠️ EMERGENCY MODE: Daily Posting Manager controls all posting');
-      console.log('   - 17 tweets/day spread across optimal times');
+      console.log(`   - ${dailyTarget} tweets/day spread across optimal times`);
       console.log('   - ALL learning agents: DISABLED');
       console.log('   - ALL competitive intelligence: DISABLED');
       console.log('   - ALL background analysis: DISABLED');
