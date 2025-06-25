@@ -19,7 +19,12 @@ import { dailyPostingManager } from '../utils/dailyPostingManager';
 
 dotenv.config();
 
-export class Scheduler {
+export 
+    // 🚨 EMERGENCY: Prevent API spam from database issues
+    const EMERGENCY_MIN_INTERVAL = 30 * 60 * 1000; // 30 minutes minimum
+    const EMERGENCY_MAX_DAILY = 5; // Conservative daily limit
+  
+class Scheduler {
   private strategistAgent: StrategistAgent;
   private postTweetAgent: PostTweetAgent;
   private replyAgent: ReplyAgent;
