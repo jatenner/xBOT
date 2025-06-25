@@ -202,7 +202,7 @@ export class RealTimeLimitsIntelligenceAgent {
       let isLocked = false;
       
       try {
-        await client.getUserByUsername('signalAndSynapse'); // Test call
+        await client.getUserByUsername('SignalAndSynapse'); // Test call
         accountStatus = 'active';
       } catch (error: any) {
         console.log('⚠️ Account access test failed:', error.code);
@@ -225,7 +225,7 @@ export class RealTimeLimitsIntelligenceAgent {
       return {
         dailyTweets: {
           used: dailyStats.tweets,
-          limit: 20, // Basic plan limit
+          limit: 100, // Actual Twitter API v2 limit
           remaining: Math.max(0, 20 - dailyStats.tweets),
           resetTime: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
         },
