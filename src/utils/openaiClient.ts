@@ -41,6 +41,25 @@ export class OpenAIService {
     });
   }
 
+  // ✅ NEW: Add the generateContent method that the audit expects
+  async generateContent(options: {
+    prompt: string;
+    maxTokens?: number;
+    temperature?: number;
+    model?: string;
+  }): Promise<string> {
+    try {
+      return await this.generateCompletion(options.prompt, {
+        maxTokens: options.maxTokens,
+        temperature: options.temperature,
+        model: options.model
+      });
+    } catch (error) {
+      console.error('Error in generateContent:', error);
+      throw error;
+    }
+  }
+
   async generateTweet(contextOrOptions?: string | TweetGenerationOptions, contentType?: string): Promise<string> {
     try {
       // Handle both old string parameter and new options object
