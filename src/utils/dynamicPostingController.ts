@@ -2,10 +2,16 @@ import { SupremeAIOrchestrator } from '../agents/supremeAIOrchestrator';
 import { supabaseClient } from './supabaseClient';
 import { NewsAPIAgent } from '../agents/newsAPIAgent';
 import { RealTimeTrendsAgent } from '../agents/realTimeTrendsAgent';
+import { realTimeLimitsAgent } from '../agents/realTimeLimitsIntelligenceAgent';
 
 /**
  * 🧠 DYNAMIC POSTING CONTROLLER
  * Supreme AI makes ALL posting decisions - no hardcoded limits!
+ * 
+ * NOW WITH REAL-TIME LIMITS INTELLIGENCE:
+ * - Knows EXACTLY what we can and cannot do RIGHT NOW
+ * - No more guessing about API limits
+ * - Makes decisions based on REAL current status
  */
 
 export class DynamicPostingController {
@@ -19,6 +25,7 @@ export class DynamicPostingController {
     this.supremeOrchestrator = new SupremeAIOrchestrator();
     this.newsAgent = new NewsAPIAgent();
     this.trendsAgent = new RealTimeTrendsAgent();
+    console.log('🚨 Dynamic Posting Controller now using Real-Time Limits Intelligence');
   }
 
   /**
@@ -61,22 +68,32 @@ export class DynamicPostingController {
         console.log(`🚨 EMERGENCY MODE: Boosting posts to ${decision.strategy.postingStrategy.postCount}`);
       }
 
-      // 5. Validate against ONLY technical limits (not artificial ones)
+      // 5. Validate against ONLY technical limits using Real-Time Intelligence
       const technicallyValid = await this.validateTechnicalLimits(decision.strategy);
       
       if (!technicallyValid.canPost) {
-        console.log(`⚠️ Technical limit reached: ${technicallyValid.reason}`);
-        // AI can still decide to wait and try later
+        console.log(`🚨 Real-Time Limits blocked posting: ${technicallyValid.reason}`);
+        console.log(`💡 Recommended action: ${technicallyValid.recommendedAction}`);
+        
+        // Calculate intelligent wait time
+        const waitTime = technicallyValid.nextAvailableTime 
+          ? Math.ceil((technicallyValid.nextAvailableTime.getTime() - Date.now()) / 60000)
+          : 60;
+        
         return {
           shouldPost: false,
           postCount: 0,
           urgency: decision.strategy.postingStrategy.urgency,
-          reasoning: `Technical constraint: ${technicallyValid.reason}. AI will retry when limits reset.`,
+          reasoning: `Real-Time Intelligence: ${technicallyValid.reason}. ${technicallyValid.recommendedAction}`,
           strategy: decision.strategy.mode,
-          timeSpacing: 60, // Try again in 1 hour
+          timeSpacing: Math.max(30, waitTime), // At least 30 minutes
           executionPlan: []
         };
       }
+      
+      console.log(`✅ Real-Time Intelligence approved posting: ${technicallyValid.reason}`);
+      console.log(`📊 Remaining capacity: ${technicallyValid.remainingCapacity} posts`);
+      console.log(`💡 ${technicallyValid.recommendedAction}`);
 
       console.log('👑 SUPREME AI DECISION:');
       console.log(`   🧠 Strategy: ${decision.strategy.mode}`);
@@ -209,52 +226,97 @@ export class DynamicPostingController {
   }
 
   /**
-   * ⚡ VALIDATE TECHNICAL LIMITS
-   * Only check actual Twitter API limits, not artificial constraints
+   * 🚨 VALIDATE TECHNICAL LIMITS
+   * Check ONLY real technical constraints using Real-Time Intelligence
    */
   private async validateTechnicalLimits(strategy: any): Promise<{
     canPost: boolean;
     reason: string;
     remainingCapacity: number;
+    nextAvailableTime?: Date;
+    recommendedAction: string;
   }> {
+    console.log('🚨 Consulting Real-Time Limits Intelligence Agent...');
+
     try {
-      // Check Twitter API rate limits (the ONLY real constraint)
-      const apiLimits = await this.checkTwitterAPILimits();
+      // Get REAL current limits from intelligence agent
+      const limits = await realTimeLimitsAgent.getCurrentLimits();
       
-      if (!apiLimits.canPost) {
+      console.log('📊 Current Real Limits:');
+      console.log(`   🐦 Twitter: ${limits.twitter.canPost ? '✅' : '❌'} (${limits.twitter.dailyTweets.remaining}/${limits.twitter.dailyTweets.limit})`);
+      console.log(`   🤖 OpenAI: ${limits.openai.canMakeRequest ? '✅' : '❌'} (${limits.openai.dailyRequests.remaining}/${limits.openai.dailyRequests.limit})`);
+      console.log(`   📰 NewsAPI: ${limits.newsApi.canFetchNews ? '✅' : '❌'}`);
+      console.log(`   🎯 System: ${limits.systemStatus.canPost ? 'CAN POST' : 'CANNOT POST'}`);
+
+      // Check if we can post based on REAL data
+      if (!limits.systemStatus.canPost) {
+        const blockedReasons = limits.systemStatus.blockedActions.join(', ');
+        const waitMinutes = Math.ceil((limits.systemStatus.nextAvailableAction.getTime() - Date.now()) / 60000);
+        
         return {
           canPost: false,
-          reason: `Twitter API limit: ${apiLimits.reason}`,
-          remainingCapacity: 0
+          reason: `System blocked: ${blockedReasons}`,
+          remainingCapacity: 0,
+          nextAvailableTime: limits.systemStatus.nextAvailableAction,
+          recommendedAction: `Wait ${waitMinutes} minutes until ${limits.systemStatus.nextAvailableAction.toLocaleTimeString()}`
         };
       }
 
-      // Check if we're within reasonable bounds (prevent spam detection)
-      const dailyPosts = await this.getDailyPostCount();
-      const proposedTotal = dailyPosts + strategy.postingStrategy.postCount;
-      
-      // Only hard limit: Twitter's actual limits (17 tweets/day for basic accounts)
-      if (proposedTotal > 17) {
+      // Check Twitter specifically
+      if (!limits.twitter.canPost) {
         return {
           canPost: false,
-          reason: `Would exceed Twitter's 17 tweet daily limit (current: ${dailyPosts}, proposed: +${strategy.postingStrategy.postCount})`,
-          remainingCapacity: Math.max(0, 17 - dailyPosts)
+          reason: `Twitter API limit: ${limits.twitter.isLocked ? 'Account locked' : 'Rate limited'}`,
+          remainingCapacity: limits.twitter.dailyTweets.remaining,
+          nextAvailableTime: limits.twitter.nextSafePostTime,
+          recommendedAction: `Wait ${limits.twitter.recommendedWaitTime} minutes for Twitter limits to reset`
         };
       }
 
-      // All clear - AI can post as much as it wants within technical limits
+      // Check OpenAI (needed for content generation)
+      if (!limits.openai.canMakeRequest) {
+        return {
+          canPost: false,
+          reason: `OpenAI limit reached: ${limits.openai.dailyRequests.used}/${limits.openai.dailyRequests.limit} requests`,
+          remainingCapacity: limits.openai.dailyRequests.remaining,
+          recommendedAction: 'Wait for OpenAI daily limits to reset or use cached content'
+        };
+      }
+
+      // Check if proposed posting would exceed safe limits
+      const proposedTotal = limits.twitter.dailyTweets.used + strategy.postingStrategy.postCount;
+      if (proposedTotal > limits.twitter.dailyTweets.limit) {
+        return {
+          canPost: false,
+          reason: `Would exceed daily Twitter limit: ${proposedTotal} > ${limits.twitter.dailyTweets.limit}`,
+          remainingCapacity: limits.twitter.dailyTweets.remaining,
+          recommendedAction: `Reduce to ${limits.twitter.dailyTweets.remaining} posts or wait until tomorrow`
+        };
+      }
+
+      // All good - we can post!
+      const capacity = Math.min(
+        limits.twitter.dailyTweets.remaining,
+        limits.twitter.shortTermLimits.tweets15min.remaining,
+        limits.openai.dailyRequests.remaining
+      );
+
       return {
         canPost: true,
-        reason: 'All systems go - AI has full posting authority',
-        remainingCapacity: 17 - dailyPosts
+        reason: `All systems operational (confidence: ${(limits.systemStatus.confidence * 100).toFixed(0)}%)`,
+        remainingCapacity: capacity,
+        recommendedAction: `Can safely post ${capacity} more times today`
       };
 
     } catch (error) {
-      console.error('❌ Technical validation failed:', error);
+      console.error('❌ Real-Time Limits check failed:', error);
+      
+      // Emergency fallback to conservative approach
       return {
         canPost: false,
-        reason: 'Technical validation error',
-        remainingCapacity: 0
+        reason: 'Unable to verify current limits - being conservative',
+        remainingCapacity: 0,
+        recommendedAction: 'Wait 30 minutes and try again'
       };
     }
   }
