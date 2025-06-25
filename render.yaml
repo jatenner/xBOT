@@ -35,29 +35,29 @@ services:
       - key: NEWS_API_KEY
         sync: false
       
-      # GHOST ACCOUNT SYNDROME KILLER SETTINGS
+      # HUMAN-LIKE BEHAVIOR SETTINGS (Prevent Account Locks)
       - key: DISABLE_BOT
         value: false
       - key: MAX_DAILY_TWEETS
-        value: 17
+        value: 8
       - key: AGGRESSIVE_ENGAGEMENT_MODE
-        value: true
+        value: false
       - key: GHOST_ACCOUNT_SYNDROME_FIX
-        value: true
+        value: false
       - key: COMMUNITY_ENGAGEMENT_FREQUENCY
-        value: every_30_minutes
+        value: every_4_hours
       - key: VIRAL_OPTIMIZATION_MODE
-        value: maximum
+        value: moderate
       - key: ALGORITHMIC_BOOST_LEVEL
-        value: extreme
+        value: subtle
       - key: POST_FREQUENCY_MINUTES
-        value: 25
+        value: 180
       - key: ENGAGEMENT_TARGET_DAILY
-        value: 200
+        value: 20
       - key: AUTO_REPLY_ENABLED
-        value: true
+        value: false
       - key: AUTO_FOLLOW_ENABLED
-        value: true
+        value: false
       - key: TRENDING_HASHTAG_TRACKING
         value: true
       - key: REAL_TIME_OPTIMIZATION
