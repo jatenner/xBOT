@@ -13,9 +13,32 @@ interface EngagementAction {
 
 export class RealEngagementAgent {
   async run(): Promise<{ success: boolean; message: string; actions: EngagementAction[] }> {
-    console.log('🔥 === REAL ENGAGEMENT AGENT STARTED ===');
-    console.log('🎯 This agent performs ACTUAL Twitter actions, not simulations');
-    console.log('✅ No more phantom engagement - only REAL results!');
+    console.log('🤝 === REAL ENGAGEMENT AGENT ACTIVATED ===');
+    
+    // 🚨 GHOST SYNDROME BREAKER MODE
+    const isGhostSyndromeBreaker = process.env.GHOST_SYNDROME_BREAKER === 'true';
+    const isEmergencyMode = process.env.EMERGENCY_ENGAGEMENT_MODE === 'true';
+    const engagementFreq = process.env.ENGAGEMENT_FREQUENCY || 'normal';
+    const dailyTarget = parseInt(process.env.DAILY_ENGAGEMENT_TARGET || '50');
+    
+    if (isGhostSyndromeBreaker) {
+      console.log('🚨 GHOST SYNDROME BREAKER ACTIVATED');
+      console.log('🎯 Mission: Break algorithm suppression through aggressive engagement');
+      console.log(`📊 Target: ${dailyTarget} engagements today`);
+      console.log('⚡ Strategy: High-frequency community interaction');
+    }
+
+    const engagementMultiplier = engagementFreq === 'aggressive' ? 2.5 : 
+                                isEmergencyMode ? 3.0 : 1.0;
+    
+    const targetLikes = Math.floor((dailyTarget * 0.6) * engagementMultiplier); // 60% likes
+    const targetReplies = Math.floor((dailyTarget * 0.25) * engagementMultiplier); // 25% replies  
+    const targetFollows = Math.floor((dailyTarget * 0.15) * engagementMultiplier); // 15% follows
+
+    console.log(`🎯 Today's Engagement Targets:`);
+    console.log(`   ❤️  Likes: ${targetLikes}`);
+    console.log(`   💬 Replies: ${targetReplies}`);
+    console.log(`   👥 Follows: ${targetFollows}`);
     
     const allActions: EngagementAction[] = [];
     
