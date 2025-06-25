@@ -418,11 +418,12 @@ export class DynamicPostingController {
   private calculateOpportunityScore(state: any): number {
     let score = 0.3; // Base score
     
-    // Breaking news boosts opportunity
-    score += state.breakingNews.length * 0.15;
+    // Breaking news boosts opportunity (with null safety)
+    score += (state.breakingNews?.length || 0) * 0.15;
     
-    // Trending topics boost
-    score += state.trendingTopics.filter((t: any) => t.score > 0.7).length * 0.1;
+    // Trending topics boost (with null safety)
+    const trendingTopics = state.trendingTopics || [];
+    score += trendingTopics.filter((t: any) => t?.score > 0.7).length * 0.1;
     
     // Market sentiment factor
     if (state.marketSentiment === 'positive') score += 0.2;

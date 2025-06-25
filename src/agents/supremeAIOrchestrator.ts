@@ -456,15 +456,18 @@ export class SupremeAIOrchestrator {
   }> {
     console.log('🎯 EXECUTING SUPREME STRATEGY...');
     console.log(`   👑 Mode: ${strategy.mode}`);
-    console.log(`   📝 Posts: ${executionPlan.length}`);
-    console.log(`   🤖 Agents: ${strategy.agentOrchestration.length}`);
+    console.log(`   📝 Posts: ${executionPlan?.length || 0}`);
+    console.log(`   🤖 Agents: ${strategy.agentOrchestration?.length || 0}`);
 
     const results = [];
     let executedPosts = 0;
 
-    for (const plan of executionPlan) {
+    // Handle case where executionPlan is null/undefined
+    const safePlan = executionPlan || [];
+    
+    for (const plan of safePlan) {
       try {
-        console.log(`🤖 Executing post ${plan.sequence}/${executionPlan.length}`);
+        console.log(`🤖 Executing post ${plan.sequence}/${safePlan.length}`);
         console.log(`   🎯 Type: ${plan.contentType}`);
         console.log(`   🤖 Agent: ${plan.agent}`);
         console.log(`   💡 Purpose: ${plan.strategicPurpose}`);
@@ -483,7 +486,7 @@ export class SupremeAIOrchestrator {
           });
 
           // Wait between posts if not the last one
-          if (plan.sequence < executionPlan.length) {
+          if (plan.sequence < safePlan.length) {
             const delay = strategy.postingStrategy.timeSpacing * 60 * 1000;
             console.log(`⏰ Waiting ${strategy.postingStrategy.timeSpacing} minutes before next post...`);
             await new Promise(resolve => setTimeout(resolve, delay));
@@ -509,8 +512,8 @@ export class SupremeAIOrchestrator {
     }
 
     console.log(`🎯 SUPREME STRATEGY EXECUTION COMPLETE:`);
-    console.log(`   ✅ Successful posts: ${executedPosts}/${executionPlan.length}`);
-    console.log(`   📊 Success rate: ${(executedPosts/executionPlan.length*100).toFixed(0)}%`);
+    console.log(`   ✅ Successful posts: ${executedPosts}/${safePlan.length}`);
+    console.log(`   📊 Success rate: ${safePlan.length > 0 ? (executedPosts/safePlan.length*100).toFixed(0) : 0}%`);
 
     return {
       success: executedPosts > 0,
