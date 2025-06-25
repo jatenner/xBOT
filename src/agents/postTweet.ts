@@ -2196,7 +2196,13 @@ Respond with JSON:
           hasImage
         };
       } else {
-        throw new Error('Failed to post trending tweet');
+        console.warn('❌ Failed to post trending tweet:', result?.error || 'Unknown error');
+        return {
+          success: false,
+          error: result?.error || 'Failed to post trending tweet',
+          content: tweetContent,
+          hasImage
+        };
       }
 
     } catch (error) {

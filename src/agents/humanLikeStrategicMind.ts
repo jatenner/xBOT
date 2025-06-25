@@ -215,7 +215,7 @@ export class HumanLikeStrategicMind {
         temperature: 0.7
       });
       
-      const connections = JSON.parse(response);
+      const connections = this.extractJsonFromResponse(response);
       
       connections.connections?.forEach((conn: any) => {
         insights.push({
@@ -268,7 +268,7 @@ export class HumanLikeStrategicMind {
           temperature: 0.6
         });
         
-        const synthesis = JSON.parse(response);
+        const synthesis = this.extractJsonFromResponse(response);
         
         insights.push({
           type: 'news_synthesis',
@@ -470,6 +470,38 @@ export class HumanLikeStrategicMind {
   private async analyzeMarketSentiment(): Promise<string> {
     // Placeholder for market sentiment
     return ['bullish', 'bearish', 'neutral'][Math.floor(Math.random() * 3)];
+  }
+
+  /**
+   * 🛠️ HELPER: Extract JSON from OpenAI response that may include markdown
+   */
+  private extractJsonFromResponse(response: string): any {
+    try {
+      // First try direct parsing
+      return JSON.parse(response);
+    } catch (error) {
+      // Try to extract JSON from markdown code blocks
+      const jsonMatch = response.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+      if (jsonMatch) {
+        try {
+          return JSON.parse(jsonMatch[1]);
+        } catch (innerError) {
+          console.warn('Failed to parse extracted JSON:', innerError);
+        }
+      }
+      
+      // Try to find JSON object in the response
+      const jsonObjectMatch = response.match(/\{[\s\S]*\}/);
+      if (jsonObjectMatch) {
+        try {
+          return JSON.parse(jsonObjectMatch[0]);
+        } catch (innerError) {
+          console.warn('Failed to parse found JSON object:', innerError);
+        }
+      }
+      
+      throw error;
+    }
   }
 }
 

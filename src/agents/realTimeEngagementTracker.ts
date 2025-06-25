@@ -87,8 +87,14 @@ export class RealTimeEngagementTracker {
       }
 
       return userTweets;
-    } catch (error) {
-      console.warn('Failed to get recent tweets for tracking:', error);
+    } catch (error: any) {
+      // Handle rate limiting gracefully
+      if (error.code === 429 || (error.data && error.data.status === 429)) {
+        console.warn('📊 Twitter API rate limited - skipping engagement tracking this cycle');
+        return [];
+      }
+      
+      console.warn('Failed to get recent tweets for tracking:', error.message || error);
       return [];
     }
   }

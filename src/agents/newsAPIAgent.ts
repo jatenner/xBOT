@@ -265,8 +265,18 @@ export class NewsAPIAgent {
       }
       
       return [];
-    } catch (error) {
-      console.log('❌ NewsAPI error:', error instanceof Error ? error.message : 'Unknown error');
+    } catch (error: any) {
+      // Handle specific error types
+      if (error.response?.status === 429) {
+        // Rate limited - don't count this as a successful call
+        this.apiCallCounts.newsapi = Math.max(0, this.apiCallCounts.newsapi - 1);
+        console.log('❌ NewsAPI error: Request failed with status code 429');
+        return [];
+      }
+      
+      console.log('❌ NewsAPI error:', error.response?.status 
+        ? `Request failed with status code ${error.response.status}`
+        : error.message || 'Unknown error');
       return [];
     }
   }
