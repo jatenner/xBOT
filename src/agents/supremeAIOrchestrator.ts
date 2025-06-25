@@ -64,6 +64,7 @@ interface GlobalContext {
 }
 
 export class SupremeAIOrchestrator {
+  private lastStartup: number = Date.now();
   // All AI agents under command
   private humanStrategicMind: typeof humanLikeStrategicMind;
   private strategicScheduler: typeof strategicOpportunityScheduler;
@@ -109,6 +110,11 @@ export class SupremeAIOrchestrator {
     executionPlan: any[],
     reasoning: string
   }> {
+    console.log('🧠 EMERGENCY: Supreme AI in conservation mode during startup');
+    if (Date.now() - (this.lastStartup || 0) < 600000) {
+      console.log('⚡ Skipping orchestrator run - recently started');
+      return { shouldPost: false, strategy: null, executionPlan: [], reasoning: 'Startup conservation mode' };
+    }
     console.log('🧠 SUPREME AI ORCHESTRATOR AWAKENING...');
     console.log('   👑 Analyzing global context with supreme intelligence');
     console.log('   🎯 Making master strategic decisions');

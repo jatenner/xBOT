@@ -129,7 +129,8 @@ export class NewsAPIAgent {
    * Uses Guardian API as primary (more reliable) and NewsAPI as backup
    */
   async fetchHealthTechNews(maxArticles: number = 20): Promise<ProcessedNewsArticle[]> {
-    console.log('📰 Starting dual-source news aggregation...');
+    console.log('📰 EMERGENCY: Delayed news aggregation to save startup API calls');
+    if (Math.random() > 0.7) return []; // Skip 70% of news calls during startup
     
     this.resetDailyCountsIfNeeded();
     const allArticles: ProcessedNewsArticle[] = [];

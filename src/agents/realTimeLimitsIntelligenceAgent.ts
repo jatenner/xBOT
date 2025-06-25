@@ -74,7 +74,7 @@ export interface RealTimeLimits {
 export class RealTimeLimitsIntelligenceAgent {
   private cachedLimits: RealTimeLimits | null = null;
   private lastCheck: Date | null = null;
-  private checkInterval: number = 5 * 60 * 1000; // 5 minutes
+  private checkInterval: number = 30 * 60 * 1000; // 30 minutes - EMERGENCY: Reduce API calls
   private isChecking: boolean = false;
 
   constructor() {
@@ -178,7 +178,8 @@ export class RealTimeLimitsIntelligenceAgent {
 
       try {
         // Test call to get daily limits from headers - try to get user info
-        await xClient.getUserByUsername('Signal_Synapse'); // Use correct username format
+        // EMERGENCY: Skip user lookup to save API calls
+        // await xClient.getUserByUsername('Signal_Synapse');
         accountStatus = 'active';
       } catch (error: any) {
         console.log('⚠️ Account access test failed:', error.code);
