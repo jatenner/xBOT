@@ -160,6 +160,151 @@ class SupabaseService {
     }
   }
 
+  // Enhanced database save with verification and retry logic
+  async saveTweetToDatabase(tweetData: any, xResponse: any = null): Promise<Tweet | null> {
+    const maxRetries = 3;
+    let attempt = 0;
+    let lastError = null;
+    
+    // Add X response data if available
+    if (xResponse) {
+      tweetData.tweet_id = xResponse.data.id;
+      tweetData.external_url = `https://twitter.com/${process.env.TWITTER_USERNAME}/status/${xResponse.data.id}`;
+    }
+    
+    // Ensure required fields have defaults
+    const safeTweetData = {
+      ...tweetData,
+      content_type: tweetData.content_type || 'general',
+      content_category: tweetData.content_category || 'health_tech',
+      source_attribution: tweetData.source_attribution || 'AI Generated',
+      engagement_score: tweetData.engagement_score || 0,
+      likes: tweetData.likes || 0,
+      retweets: tweetData.retweets || 0,
+      replies: tweetData.replies || 0,
+      impressions: tweetData.impressions || 0,
+      has_snap2health_cta: tweetData.has_snap2health_cta || false
+    };
+    
+    while (attempt < maxRetries) {
+      try {
+        attempt++;
+        console.log(`💾 Database save attempt ${attempt}/${maxRetries} for tweet: ${safeTweetData.tweet_id}`);
+        
+        // Save to database
+        const result = await this.insertTweet(safeTweetData);
+        
+        if (!result) {
+          throw new Error('insertTweet returned null/undefined');
+        }
+        
+        // Verify the save worked
+        const verification = await this.client!
+          .from('tweets')
+          .select('*')
+          .eq('tweet_id', safeTweetData.tweet_id)
+          .single();
+        
+        if (verification.error) {
+          throw new Error(`Verification failed: ${verification.error.message}`);
+        }
+        
+        if (!verification.data) {
+          throw new Error('Tweet not found in database after save');
+        }
+        
+        console.log(`✅ Tweet successfully saved and verified: ${safeTweetData.tweet_id}`);
+        await this.logDatabaseAction('tweet_saved', { tweet_id: safeTweetData.tweet_id, attempt });
+        
+        return verification.data;
+        
+      } catch (error: any) {
+        lastError = error;
+        console.error(`❌ Database save attempt ${attempt} failed:`, error.message);
+        await this.logDatabaseAction('save_failed', { 
+          tweet_id: safeTweetData.tweet_id, 
+          attempt, 
+          error: error.message 
+        });
+        
+        if (attempt < maxRetries) {
+          const delay = attempt * 1000; // Progressive delay
+          console.log(`⏳ Retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+    
+    // All retries failed
+    console.error(`🚨 CRITICAL: Failed to save tweet after ${maxRetries} attempts`);
+    console.error(`🚨 Last error:`, lastError?.message);
+    await this.logDatabaseAction('save_critical_failure', { 
+      tweet_id: safeTweetData.tweet_id, 
+      error: lastError?.message 
+    });
+    
+    // Don't throw - let the tweet post to Twitter even if database fails
+    // But log it for manual intervention
+    return null;
+  }
+
+  // Enhanced logging for database actions
+  async logDatabaseAction(action: string, data: any): Promise<void> {
+    try {
+      // Try to insert system log - fail silently if table doesn't exist
+      await this.client!
+        .from('system_logs')
+        .insert({
+          action,
+          data,
+          timestamp: new Date().toISOString(),
+          source: 'posting_flow'
+        });
+    } catch (error: any) {
+      console.error('Failed to log database action:', error.message);
+    }
+  }
+
+  // Daily reconciliation to fix missing tweets
+  async reconcileMissingTweets(): Promise<{ api_writes: number; db_tweets: number; missing: number } | null> {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      
+      // Get API usage
+      const { data: apiUsage } = await this.client!
+        .from('api_usage')
+        .select('*')
+        .eq('date', today)
+        .single();
+      
+      // Get database tweets
+      const { data: dbTweets } = await this.client!
+        .from('tweets')
+        .select('*')
+        .gte('created_at', today + 'T00:00:00')
+        .lte('created_at', today + 'T23:59:59');
+      
+      const apiWrites = apiUsage?.writes || 0;
+      const dbCount = dbTweets?.length || 0;
+      const missing = apiWrites - dbCount;
+      
+      if (missing > 0) {
+        console.log(`🚨 RECONCILIATION: ${missing} tweets missing from database`);
+        await this.logDatabaseAction('reconciliation_needed', { 
+          api_writes: apiWrites, 
+          db_tweets: dbCount, 
+          missing 
+        });
+      }
+      
+      return { api_writes: apiWrites, db_tweets: dbCount, missing };
+      
+    } catch (error: any) {
+      console.error('Reconciliation failed:', error.message);
+      return null;
+    }
+  }
+
   async updateTweetEngagement(tweetId: string, engagementData: Partial<Pick<Tweet, 'likes' | 'retweets' | 'replies' | 'impressions' | 'engagement_score'>>): Promise<boolean> {
     try {
       const { error } = await this.client

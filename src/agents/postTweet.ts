@@ -775,7 +775,7 @@ export class PostTweetAgent {
         console.log(`📊 Quality scores: Credibility ${result.credibilityScore}/100, Engagement ${result.engagementScore}%`);
         
         // Store comprehensive tweet
-        await supabaseClient.insertTweet({
+        await supabaseClient.saveTweetToDatabase({
           tweet_id: result.tweetId!,
           content: result.content,
           tweet_type: 'comprehensive',
@@ -860,7 +860,7 @@ export class PostTweetAgent {
 
       if (result.success) {
         // Store viral tweet with engagement prediction
-        await supabaseClient.insertTweet({
+        await supabaseClient.saveTweetToDatabase({
           tweet_id: result.tweetId!,
           content: validatedContent,
           tweet_type: 'original',
@@ -942,7 +942,7 @@ export class PostTweetAgent {
 
     if (result.success) {
       // Store the tweet for learning
-      await supabaseClient.insertTweet({
+      await supabaseClient.saveTweetToDatabase({
         tweet_id: result.tweetId!,
         content: validatedContent,
         tweet_type: 'original',
@@ -1813,7 +1813,7 @@ export class PostTweetAgent {
     }
 
     if (result.success) {
-      await supabaseClient.insertTweet({
+      await supabaseClient.saveTweetToDatabase({
         tweet_id: result.tweetId!,
         content: content,
         tweet_type: 'original',
@@ -2219,7 +2219,8 @@ Respond with JSON:
         this.trackContent(tweetContent, topicForTracking);
         
         // Store in database
-        await supabaseClient.insertTweet({
+        await supabaseClient.saveTweetToDatabase({
+
           tweet_id: result.tweetId,
           content: tweetContent,
           tweet_type: 'trending',
@@ -2229,7 +2230,7 @@ Respond with JSON:
           replies: 0,
           impressions: 0,
           has_snap2health_cta: includeSnap2HealthCTA
-        });
+        }, result);
 
         console.log(`✅ Trending tweet posted: ${result.tweetId}`);
         console.log(`📊 Content: ${tweetContent}`);
