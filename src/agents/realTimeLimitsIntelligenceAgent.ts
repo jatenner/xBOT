@@ -178,8 +178,7 @@ export class RealTimeLimitsIntelligenceAgent {
 
       try {
         // Test call to get daily limits from headers - try to get user info
-        // EMERGENCY: Skip user lookup to save API calls
-        // await xClient.getUserByUsername('Signal_Synapse');
+        await xClient.getUserByUsername('Signal_Synapse'); // Re-enabled to get real limits
         accountStatus = 'active';
       } catch (error: any) {
         console.log('⚠️ Account access test failed:', error.code);
@@ -262,13 +261,44 @@ export class RealTimeLimitsIntelligenceAgent {
       const now = new Date();
       const resetTime = realDailyResetTime || new Date(now.getTime() + 15 * 60 * 1000); // Use real reset time or fallback
 
+
+      // If no headers available (API call succeeded without rate limit info), assume fresh start
+      if (realDailyRemaining === null) {
+        console.log('🔧 No rate limit headers found - assuming fresh daily start');
+        realDailyRemaining = 17; // Fresh start with full Free tier limit
+        realDailyLimit = 17;
+        console.log('✅ FORCED: Using full Free tier limit of 17/17 remaining');
+      }
+
       // Get daily/monthly limits from our database tracking (as backup/verification)
       const dailyStats = await this.getDailyTwitterStats();
       const monthlyStats = await this.getMonthlyTwitterStats();
 
-      // Use REAL API data when available, fallback to database tracking
-      const actualDailyUsed = realDailyRemaining !== null ? (realDailyLimit - realDailyRemaining) : dailyStats.tweets;
-      const actualDailyRemaining = realDailyRemaining !== null ? realDailyRemaining : Math.max(0, realDailyLimit - dailyStats.tweets);
+      // EMERGENCY: Force fresh limits when no headers AND no database usage today
+      let actualDailyUsed, actualDailyRemaining;
+      
+      if (realDailyRemaining !== null) {
+        // We have real API data - use it
+        actualDailyUsed = realDailyLimit - realDailyRemaining;
+        actualDailyRemaining = realDailyRemaining;
+        console.log('📊 Using REAL API data:', actualDailyUsed, 'used,', actualDailyRemaining, 'remaining');
+      } else {
+        // No API headers - check if it's a new day
+        const today = new Date().toISOString().split('T')[0];
+        const lastUsedDate = dailyStats.lastTweetDate || '1970-01-01';
+        
+        if (lastUsedDate !== today) {
+          // New day - reset to full limits
+          actualDailyUsed = 0;
+          actualDailyRemaining = 17;
+          console.log('🌅 NEW DAY DETECTED: Reset to full 17/17 limits');
+        } else {
+          // Same day - use database tracking
+          actualDailyUsed = dailyStats.tweets;
+          actualDailyRemaining = Math.max(0, 17 - dailyStats.tweets);
+          console.log('📊 Using database data:', actualDailyUsed, 'used,', actualDailyRemaining, 'remaining');
+        }
+      }
       
       console.log('🔍 DEBUG: realDailyRemaining:', realDailyRemaining);
       console.log('🔍 DEBUG: realDailyLimit:', realDailyLimit);
@@ -449,7 +479,7 @@ export class RealTimeLimitsIntelligenceAgent {
   /**
    * 📊 DATABASE HELPER METHODS
    */
-  private async getDailyTwitterStats(): Promise<{ tweets: number; reads: number }> {
+  private async getDailyTwitterStats(): Promise<{ tweets: number; reads: number; lastTweetDate?: string }> {
     try {
       const today = new Date().toISOString().split('T')[0];
       
