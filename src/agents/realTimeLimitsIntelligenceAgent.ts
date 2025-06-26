@@ -552,9 +552,13 @@ export class RealTimeLimitsIntelligenceAgent {
       
       if (!data?.length) return { tweets: 0, reads: 0 };
       
+      // Use the 'count' column which tracks tweets posted
+      const tweets = data[0]?.count || 0;
+      
       return {
-        tweets: data.reduce((sum, row) => sum + (row.tweets_posted || 0), 0),
-        reads: data.reduce((sum, row) => sum + (row.reads_made || 0), 0)
+        tweets,
+        reads: 0, // We don't track reads separately in the clean schema
+        lastTweetDate: tweets > 0 ? today : undefined
       };
     } catch (error) {
       console.warn('Could not get daily Twitter stats:', error);
@@ -581,9 +585,12 @@ export class RealTimeLimitsIntelligenceAgent {
       
       if (!data?.length) return { tweets: 0, reads: 0 };
       
+      // Sum up all the count values for the month
+      const tweets = data.reduce((sum, row) => sum + (row.count || 0), 0);
+      
       return {
-        tweets: data.reduce((sum, row) => sum + (row.tweets_posted || 0), 0),
-        reads: data.reduce((sum, row) => sum + (row.reads_made || 0), 0)
+        tweets,
+        reads: 0 // We don't track reads separately in the clean schema
       };
     } catch (error) {
       console.warn('Could not get monthly Twitter stats:', error);
@@ -608,10 +615,14 @@ export class RealTimeLimitsIntelligenceAgent {
       
       if (!data?.length) return { requests: 0, tokens: 0, cost: 0 };
       
+      // Use the available columns: count and cost
+      const requests = data[0]?.count || 0;
+      const cost = data[0]?.cost || 0;
+      
       return {
-        requests: data.reduce((sum, row) => sum + (row.requests_made || 0), 0),
-        tokens: data.reduce((sum, row) => sum + (row.tokens_used || 0), 0),
-        cost: data.reduce((sum, row) => sum + (row.cost_incurred || 0), 0)
+        requests,
+        tokens: 0, // We don't track tokens separately in the clean schema
+        cost
       };
     } catch (error) {
       console.warn('Could not get daily OpenAI stats:', error);
@@ -638,9 +649,10 @@ export class RealTimeLimitsIntelligenceAgent {
       
       if (!data?.length) return { cost: 0 };
       
-      return {
-        cost: data.reduce((sum, row) => sum + (row.cost_incurred || 0), 0)
-      };
+      // Sum up all costs for the month
+      const cost = data.reduce((sum, row) => sum + (row.cost || 0), 0);
+      
+      return { cost };
     } catch (error) {
       console.warn('Could not get monthly OpenAI stats:', error);
       return { cost: 0 };
