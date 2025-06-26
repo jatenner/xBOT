@@ -69,6 +69,11 @@ export class Scheduler {
   }
 
   async start(): Promise<void> {
+    // 🚨 EMERGENCY: Add startup delay to prevent API spam
+    console.log('⏳ EMERGENCY: Delaying scheduler startup by 3 minutes');
+    await new Promise(resolve => setTimeout(resolve, 3 * 60 * 1000));
+    console.log('✅ Scheduler startup delay complete');
+    
     if (this.isRunning) {
       console.log('⚠️ Scheduler is already running');
       return;

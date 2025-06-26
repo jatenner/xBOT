@@ -144,10 +144,32 @@ export class NewsAPIAgent {
   /**
    * Singleton getInstance method
    */
-  public static getInstance(): NewsAPIAgent {
-    if (NewsAPIAgent.instance) {
-      return NewsAPIAgent.instance;
+  public 
+  // 🚨 EMERGENCY: Enforce strict singleton pattern
+  static getInstance(): NewsAPIAgent {
+    if (NewsAPIAgent.isInitializing) {
+      console.log('⏳ NewsAPIAgent already initializing, waiting...');
+      return new Promise(resolve => {
+        const checkInterval = setInterval(() => {
+          if (NewsAPIAgent.instance && !NewsAPIAgent.isInitializing) {
+            clearInterval(checkInterval);
+            resolve(NewsAPIAgent.instance);
+          }
+        }, 100);
+      }) as any;
     }
+    
+    if (!NewsAPIAgent.instance) {
+      console.log('🔧 Creating NEW NewsAPIAgent singleton instance');
+      NewsAPIAgent.isInitializing = true;
+      NewsAPIAgent.instance = new NewsAPIAgent();
+      NewsAPIAgent.isInitializing = false;
+    } else {
+      console.log('✅ Using EXISTING NewsAPIAgent singleton instance');
+    }
+    
+    return NewsAPIAgent.instance;
+  }
     
     if (NewsAPIAgent.isInitializing) {
       // Wait for initialization to complete

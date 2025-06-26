@@ -33,6 +33,46 @@ global.throttleStartupAPI = function(apiName) {
   return true;
 };
 
+// 🚨 CRITICAL EMERGENCY STARTUP THROTTLING
+console.log('🚨 CRITICAL: Maximum startup throttling activated');
+console.log('⏱️ Delaying all operations for 2 minutes to prevent rate limits');
+
+// More aggressive global flags
+global.EMERGENCY_STARTUP_MODE = true;
+global.STARTUP_API_CALLS = 0;
+global.MAX_STARTUP_API_CALLS = 3; // Reduced from 5 to 3
+global.STARTUP_DELAY_MINUTES = 2;
+
+// Disable startup mode after 15 minutes (increased from 10)
+setTimeout(() => {
+  global.EMERGENCY_STARTUP_MODE = false;
+  global.STARTUP_MODE = false;
+  console.log('⚡ Emergency startup throttling disabled - full functionality restored');
+}, 15 * 60 * 1000);
+
+// More aggressive API call throttler
+global.throttleStartupAPI = function(apiName: string) {
+  if (!global.EMERGENCY_STARTUP_MODE && !global.STARTUP_MODE) return true;
+  
+  global.STARTUP_API_CALLS++;
+  if (global.STARTUP_API_CALLS > global.MAX_STARTUP_API_CALLS) {
+    console.log(`🚨 EMERGENCY THROTTLE: Blocking ${apiName} call (${global.STARTUP_API_CALLS}/${global.MAX_STARTUP_API_CALLS})`);
+    return false;
+  }
+  
+  console.log(`⚡ EMERGENCY ALLOW: ${apiName} call (${global.STARTUP_API_CALLS}/${global.MAX_STARTUP_API_CALLS})`);
+  return true;
+};
+
+// Add startup delay for non-critical operations
+global.startupDelay = function(operation: string, delay: number = 2000) {
+  return new Promise(resolve => {
+    console.log(`⏳ STARTUP DELAY: ${operation} delayed by ${delay/1000}s`);
+    setTimeout(resolve, delay);
+  });
+};
+
+
 
 // Load environment variables
 dotenv.config();
