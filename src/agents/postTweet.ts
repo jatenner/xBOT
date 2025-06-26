@@ -1408,14 +1408,10 @@ export class PostTweetAgent {
     
     const selectedFormat = professionalFormats[Math.floor(Math.random() * professionalFormats.length)];
     
-    // Add relevant hashtags based on content
-    let hashtags = '#HealthTech #MedicalBreakthrough';
-    if (randomTopic.content.includes('AI')) hashtags += ' #AI';
-    if (randomTopic.content.includes('gene') || randomTopic.content.includes('CRISPR')) hashtags += ' #GeneTherapy';
-    if (randomTopic.content.includes('cancer')) hashtags += ' #CancerResearch';
-    if (randomTopic.content.includes('heart') || randomTopic.content.includes('cardiac')) hashtags += ' #Cardiology';
+    // HUMAN VOICE: No hashtags - transform to conversational ending
+    const conversationalEnding = 'What this means for you: healthcare just got more personal.';
     
-    return `${selectedFormat} ${hashtags}`;
+    return `${selectedFormat} ${conversationalEnding}`;
   }
 
   // Generate truly unique analysis with personality
@@ -2284,7 +2280,7 @@ DO write strategic insights like:
 
 "${trend.name} represents healthcare's iPhone moment. Not just better technology—a complete paradigm shift in patient expectations.
 
-Make it strategic, insightful, and make people think. 250 characters max. Add 1-2 relevant hashtags.`;
+Make it strategic, insightful, and make people think. 250 characters max. Use conversational "you/we" language - no hashtags.`;
 
     try {
       const response = await openaiClient.getClient()?.chat.completions.create({
@@ -2566,6 +2562,56 @@ Make it insightful, strategic, and reveal hidden implications. 250 characters ma
     }
     
     return { isValid: true };
+  }
+
+  // Generate conversational enhancements instead of hashtags (HUMAN VOICE)
+  private generateHumanVoiceEnhancement(content: ContentItem): string {
+    const topic = this.extractKeyTopic(content.content);
+    const type = content.type;
+    
+    const conversationalEndings = {
+      'breaking_news': [
+        'This changes everything for patients.',
+        'Healthcare just got more personal.',
+        'The future of medicine is happening now.'
+      ],
+      'research_update': [
+        'What this means for you: better outcomes ahead.',
+        'Science is making the impossible possible.',
+        'This is why we invest in research.'
+      ],
+      'tech_development': [
+        'Technology meeting human need.',
+        'Innovation with real impact.',
+        'The next chapter in healthcare.'
+      ],
+      'industry_insight': [
+        'Here\'s what the industry won\'t tell you.',
+        'The shift everyone\'s talking about.',
+        'Where healthcare is heading next.'
+      ],
+      'fact_spotlight': [
+        'Knowledge that could save lives.',
+        'Facts that change perspective.',
+        'The science behind the breakthrough.'
+      ]
+    };
+    
+    const endings = conversationalEndings[type] || ['Healthcare innovation continues.'];
+    
+    // Add topic-specific conversational touches
+    if (topic.toLowerCase().includes('ai')) {
+      endings.push('Artificial intelligence, real human benefit.');
+    }
+    if (topic.toLowerCase().includes('cancer')) {
+      endings.push('Hope through innovation.');
+    }
+    if (topic.toLowerCase().includes('heart')) {
+      endings.push('Saving hearts, changing lives.');
+    }
+    
+    // Return a random conversational enhancement
+    return endings[Math.floor(Math.random() * endings.length)];
   }
 }
 

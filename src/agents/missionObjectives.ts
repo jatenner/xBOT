@@ -305,7 +305,7 @@ Respond with only a number 0-100:`;
     if (/unpopular opinion|hot take|controversial|nobody talks about/i.test(content)) score += 20; // Controversial
     if (/this will blow your mind|shocking|surprising|unbelievable/i.test(content)) score += 15; // Curiosity
     if (/agree\?|thoughts\?|what do you think/i.test(content)) score += 10; // Direct engagement
-    if (/#\w+/.test(content)) score += 10; // Hashtags
+    if (/#\w+/.test(content)) score -= 20; // PENALTY: Hashtags prohibited for human voice
     if (/\d+%|\d+x|\d+ times/.test(content)) score += 10; // Stats
     
     return Math.min(100, score);

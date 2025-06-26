@@ -1,5 +1,5 @@
 /**
- * Tweet Formatter - Makes complex health tech content more readable
+ * Tweet Formatter - Makes complex health tech content more readable and human-like
  */
 
 interface FormattedTweet {
@@ -9,7 +9,7 @@ interface FormattedTweet {
 }
 
 interface TweetSection {
-  type: 'headline' | 'fact' | 'insight' | 'statistic' | 'source' | 'hashtag';
+  type: 'headline' | 'fact' | 'insight' | 'statistic' | 'source';
   content: string;
   priority: number;
 }
@@ -17,25 +17,82 @@ interface TweetSection {
 export class TweetFormatter {
   
   /**
-   * Makes tweets more readable and digestible
+   * Makes tweets more readable and digestible with human voice
    */
   formatForReadability(rawContent: string): FormattedTweet {
-    console.log('📝 Formatting tweet for readability...');
+    console.log('📝 Formatting tweet for human-voice readability...');
     
-    const sections = this.parseContentSections(rawContent);
+    // STEP 1: Remove ALL hashtags first
+    let content = this.removeAllHashtags(rawContent);
+    
+    // STEP 2: Apply human voice transformation
+    content = this.applyHumanVoice(content);
+    
+    const sections = this.parseContentSections(content);
     const formatted = this.restructureContent(sections);
     const polished = this.applyReadabilityRules(formatted);
     
     const improvements = this.getImprovements(rawContent, polished);
     const readabilityScore = this.calculateReadabilityScore(polished);
     
-    console.log(`✨ Readability improved: ${readabilityScore}/100`);
+    console.log(`✨ Human voice readability: ${readabilityScore}/100`);
     
     return {
       content: polished,
       readabilityScore,
       improvements
     };
+  }
+
+  /**
+   * CRITICAL: Remove ALL hashtags from content
+   */
+  private removeAllHashtags(content: string): string {
+    // Remove hashtags completely - no exceptions
+    let cleaned = content.replace(/#\w+\b/g, '');
+    
+    // Clean up extra spaces left by hashtag removal
+    cleaned = cleaned.replace(/\s+/g, ' ').trim();
+    
+    // Remove any remaining hashtag-like patterns
+    cleaned = cleaned.replace(/#[^\s]*/g, '');
+    
+    console.log('🚫 Removed all hashtags from content');
+    return cleaned;
+  }
+
+  /**
+   * Transform content to human conversational voice
+   */
+  private applyHumanVoice(content: string): string {
+    let humanized = content;
+
+    // Convert to conversational tone
+    humanized = humanized.replace(/\bThis study shows\b/gi, 'We just learned');
+    humanized = humanized.replace(/\bResearch demonstrates\b/gi, 'Researchers found');
+    humanized = humanized.replace(/\bData indicates\b/gi, 'The data shows');
+    humanized = humanized.replace(/\bResults suggest\b/gi, 'Turns out');
+    humanized = humanized.replace(/\bStudies reveal\b/gi, 'Studies are showing');
+    
+    // Add conversational connectors
+    humanized = humanized.replace(/\. ([A-Z])/g, '. Here\'s the thing: $1');
+    humanized = humanized.replace(/\. The implications/gi, '. What this means');
+    humanized = humanized.replace(/\. However,/gi, '. But here\'s where it gets interesting:');
+    
+    // Use "you/we" language
+    humanized = humanized.replace(/\bpatients\b/gi, 'you');
+    humanized = humanized.replace(/\bOne can\b/gi, 'You can');
+    humanized = humanized.replace(/\bIndividuals may\b/gi, 'You might');
+    
+    // Simplify academic language
+    humanized = humanized.replace(/\butilize\b/gi, 'use');
+    humanized = humanized.replace(/\bdemonstrate\b/gi, 'show');
+    humanized = humanized.replace(/\bfacilitate\b/gi, 'help');
+    humanized = humanized.replace(/\bsignificantly\b/gi, 'dramatically');
+    humanized = humanized.replace(/\bsubstantially\b/gi, 'massively');
+    
+    console.log('🗣️ Applied human conversational voice');
+    return humanized;
   }
   
   private parseContentSections(content: string): TweetSection[] {
@@ -87,16 +144,6 @@ export class TweetFormatter {
       });
     }
     
-    // Extract hashtags
-    const hashtags = content.match(/#\w+/g);
-    if (hashtags) {
-      sections.push({
-        type: 'hashtag',
-        content: hashtags.join(' '),
-        priority: 2
-      });
-    }
-    
     return sections;
   }
   
@@ -127,9 +174,6 @@ export class TweetFormatter {
         case 'source':
           formatted += this.formatSource(section.content) + '\n\n';
           break;
-        case 'hashtag':
-          formatted += section.content;
-          break;
       }
       
       usedTypes.add(section.type);
@@ -139,31 +183,33 @@ export class TweetFormatter {
   }
   
   private formatHeadline(content: string): string {
-    // Make headlines punchy and clear
+    // Make headlines punchy but human - limit emoji use
     let formatted = content;
     
-    // Add emoji if missing
-    if (!formatted.match(/^[🚨🔥⚡️💡🎯]/)) {
-      if (formatted.toLowerCase().includes('breakthrough')) {
-        formatted = '🔥 ' + formatted;
-      } else if (formatted.toLowerCase().includes('breaking')) {
-        formatted = '🚨 ' + formatted;
-      } else {
-        formatted = '💡 ' + formatted;
+    // Remove excessive emojis, keep max 1
+    const emojiCount = (formatted.match(/[\u{1F300}-\u{1F9FF}]/gu) || []).length;
+    if (emojiCount > 1) {
+      // Keep only first emoji
+      const firstEmoji = formatted.match(/[\u{1F300}-\u{1F9FF}]/u);
+      formatted = formatted.replace(/[\u{1F300}-\u{1F9FF}]/gu, '');
+      if (firstEmoji) {
+        formatted = firstEmoji[0] + ' ' + formatted.trim();
       }
     }
     
-    // Ensure proper punctuation
-    if (!formatted.match(/[.!:]$/)) {
-      formatted += ':';
+    // Human conversational starters
+    if (formatted.toLowerCase().includes('breakthrough')) {
+      formatted = 'Ever wonder why ' + formatted.toLowerCase().replace('breakthrough:', '').trim() + '?';
+    } else if (formatted.toLowerCase().includes('breaking')) {
+      formatted = 'We just crossed a line. ' + formatted.replace(/breaking:?\s*/gi, '').trim();
     }
     
     return formatted;
   }
   
   private formatStatistic(content: string): string {
-    // Make statistics stand out
-    return `📊 Key finding: ${content}`;
+    // Make statistics conversational
+    return `Here's what caught my attention: ${content}`;
   }
   
   private formatFact(content: string): string {
@@ -173,16 +219,16 @@ export class TweetFormatter {
     // Remove redundant words
     formatted = formatted.replace(/^(The study |Research |This |The research )/i, '');
     
-    // Add bullet if it's a key point
-    if (!formatted.startsWith('•') && !formatted.startsWith('→')) {
-      formatted = '→ ' + formatted;
+    // Make it conversational
+    if (!formatted.startsWith('The part no one mentions')) {
+      formatted = 'The part no one mentions: ' + formatted.toLowerCase();
     }
     
     return formatted;
   }
   
   private formatInsight(content: string): string {
-    return `🧠 ${content}`;
+    return `Here's what this really means: ${content}`;
   }
   
   private formatSource(content: string): string {
@@ -193,7 +239,7 @@ export class TweetFormatter {
     formatted = formatted.replace(/^Source:\s*/i, '');
     formatted = formatted.replace(/\s*$/, '');
     
-    return `📚 ${formatted}`;
+    return `Source: ${formatted}`;
   }
   
   private applyReadabilityRules(content: string): string {
@@ -214,6 +260,9 @@ export class TweetFormatter {
     // Rule 5: Character limit compliance
     improved = this.ensureCharacterLimit(improved);
     
+    // Rule 6: FINAL hashtag removal check
+    improved = this.removeAllHashtags(improved);
+    
     return improved;
   }
   
@@ -232,8 +281,8 @@ export class TweetFormatter {
       'methodology': 'method',
       'optimization': 'improvement',
       'enhancement': 'improvement',
-      'significantly': 'greatly',
-      'substantially': 'greatly',
+      'significantly': 'dramatically',
+      'substantially': 'massively',
       'approximately': 'about',
       'individuals': 'people',
       'participants': 'people',
@@ -252,19 +301,18 @@ export class TweetFormatter {
   }
   
   private addBreathingSpace(content: string): string {
-    // Ensure proper spacing between sections
-    return content
-      .replace(/([.!:])\s*([🚨🔥⚡️💡🎯📊🧠📚→])/g, '$1\n\n$2')
-      .replace(/\n{3,}/g, '\n\n');
+    // Add line breaks for readability
+    return content.replace(/([.!?])\s+([A-Z])/g, '$1\n\n$2');
   }
   
   private improveFlow(content: string): string {
-    // Add transitions where needed
+    // Add conversational connectors
     let improved = content;
     
-    // Add connectors for better flow
-    improved = improved.replace(/\n\n(📊|→)/g, '\n\n$1');
-    improved = improved.replace(/:\n\n→/g, ':\n→');
+    // Add thread indicators for complex topics
+    if (improved.length > 200 && !improved.includes('(1/')) {
+      improved = improved + ' (1/🧵)';
+    }
     
     return improved;
   }
@@ -276,22 +324,15 @@ export class TweetFormatter {
       return content;
     }
     
-    // Progressive trimming strategy
+    // Progressive trimming strategy - NO HASHTAGS TO PRESERVE
     let trimmed = content;
     
-    // 1. Remove extra hashtags
-    const hashtags = trimmed.match(/#\w+/g) || [];
-    if (hashtags.length > 3) {
-      const keepHashtags = hashtags.slice(0, 3).join(' ');
-      trimmed = trimmed.replace(/#\w+(\s+#\w+)*/g, keepHashtags);
-    }
-    
-    // 2. Shorten source if still too long
+    // 1. Shorten source if still too long
     if (trimmed.length > maxLength) {
-      trimmed = trimmed.replace(/📚.*$/m, '📚 Source: Research study');
+      trimmed = trimmed.replace(/Source:.*$/m, 'Source: Research study');
     }
     
-    // 3. Trim content if still too long
+    // 2. Trim content if still too long
     if (trimmed.length > maxLength) {
       const lines = trimmed.split('\n\n');
       while (lines.length > 1 && trimmed.length > maxLength) {
@@ -300,7 +341,7 @@ export class TweetFormatter {
       }
     }
     
-    // 4. Hard truncate if necessary (preserve emojis)
+    // 3. Hard truncate if necessary (preserve emojis)
     if (trimmed.length > maxLength) {
       trimmed = trimmed.substring(0, maxLength - 3) + '...';
     }
@@ -312,16 +353,18 @@ export class TweetFormatter {
     let score = 50; // Base score
     
     // Positive factors
-    if (content.includes('📊') || content.includes('→')) score += 10; // Clear structure
+    if (content.includes('you') || content.includes('we')) score += 15; // Conversational
     if (content.match(/\d+%/)) score += 10; // Concrete data
     if (content.split('\n\n').length >= 2) score += 10; // Good spacing
     if (content.length < 250) score += 10; // Appropriate length
     if (content.match(/^[🚨🔥⚡️💡🎯]/)) score += 5; // Good opening
+    if (!content.includes('#')) score += 20; // No hashtags (HUMAN VOICE)
     
     // Negative factors
     if (content.length > 270) score -= 15; // Too long
     if (content.split(' ').some(word => word.length > 15)) score -= 10; // Complex words
     if (!content.match(/[.!]/)) score -= 10; // No clear ending
+    if (content.includes('#')) score -= 30; // PENALTY for hashtags
     
     return Math.max(0, Math.min(100, score));
   }
@@ -333,12 +376,16 @@ export class TweetFormatter {
       improvements.push('Reduced length for better readability');
     }
     
-    if (formatted.includes('📊') && !original.includes('📊')) {
-      improvements.push('Added clear data presentation');
+    if (!formatted.includes('#') && original.includes('#')) {
+      improvements.push('Removed hashtags for human voice');
     }
     
-    if (formatted.includes('→') && !original.includes('→')) {
-      improvements.push('Improved information flow');
+    if ((formatted.match(/\byou\b/gi) || []).length > (original.match(/\byou\b/gi) || []).length) {
+      improvements.push('Added conversational "you" language');
+    }
+    
+    if (formatted.includes('Here\'s') && !original.includes('Here\'s')) {
+      improvements.push('Added conversational transitions');
     }
     
     if (formatted.split('\n\n').length > original.split('\n\n').length) {

@@ -10,12 +10,16 @@ export interface FormattedTweet {
 export interface TweetValidationOptions {
   maxLength?: number;
   allowEmojis?: boolean;
-  allowHashtags?: boolean;
+  allowHashtags?: boolean; // DEPRECATED - hashtags always removed for human voice
   allowMentions?: boolean;
 }
 
 /**
- * Formats and validates tweet content according to Twitter's requirements
+ * Advanced tweet formatting with improved truncation, emoji handling, and hashtag removal
+ */
+
+/**
+ * Formats tweet content with human voice transformation
  */
 export function formatTweet(
   content: string,
@@ -24,130 +28,212 @@ export function formatTweet(
   const {
     maxLength = 280,
     allowEmojis = true,
-    allowHashtags = true,
-    allowMentions = true,
+    allowMentions = true
   } = options;
 
-  let formattedContent = content.trim();
+  console.log(`📝 Formatting tweet with human voice (${content.length} chars)`);
+
+  // STEP 1: Remove ALL hashtags (critical for human voice)
+  content = removeAllHashtags(content);
+  console.log('🚫 Removed all hashtags for human voice');
+
+  // STEP 2: Apply human voice transformation
+  content = applyHumanVoiceTransformation(content);
+  console.log('🗣️ Applied human voice transformation');
+
+  // STEP 3: Clean and format content
+  content = cleanTweetContent(content);
+
+  // STEP 4: Truncate if necessary
+  if (getTwitterCharacterCount(content) > maxLength) {
+    content = truncateTweet(content, maxLength);
+  }
+
+  // STEP 5: Final validation
+  const characterCount = getTwitterCharacterCount(content);
   const warnings: string[] = [];
-
-  // Remove extra whitespace
-  formattedContent = formattedContent.replace(/\s+/g, ' ');
-
-  // Character count (accounting for Twitter's character counting rules)
-  const characterCount = getTwitterCharacterCount(formattedContent);
-
-  // Validation checks
-  const isValid = characterCount <= maxLength && characterCount > 0;
+  let isValid = true;
 
   if (characterCount > maxLength) {
-    warnings.push(`Tweet exceeds ${maxLength} characters (${characterCount})`);
+    warnings.push(`Tweet too long: ${characterCount}/${maxLength} characters`);
+    isValid = false;
   }
 
-  if (characterCount === 0) {
-    warnings.push('Tweet is empty');
+  if (!allowEmojis && containsEmojis(content)) {
+    warnings.push('Emojis detected but not allowed');
+    isValid = false;
   }
 
-  if (!allowEmojis && containsEmojis(formattedContent)) {
-    warnings.push('Emojis not allowed');
+  if (!allowMentions && containsMentions(content)) {
+    warnings.push('Mentions detected but not allowed');
+    isValid = false;
   }
 
-  if (!allowHashtags && containsHashtags(formattedContent)) {
-    warnings.push('Hashtags not allowed');
+  // Check for any remaining hashtags (should be none)
+  if (containsHashtags(content)) {
+    warnings.push('CRITICAL: Hashtags still present after removal - human voice violation');
+    isValid = false;
   }
 
-  if (!allowMentions && containsMentions(formattedContent)) {
-    warnings.push('Mentions not allowed');
-  }
-
-  return {
-    content: formattedContent,
+  const result: FormattedTweet = {
+    content: content.trim(),
     isValid,
     characterCount,
-    warnings,
+    warnings
   };
+
+  console.log(`✅ Tweet formatted: ${characterCount}/${maxLength} chars, valid: ${isValid}`);
+  if (warnings.length > 0) {
+    console.log(`⚠️ Warnings: ${warnings.join(', ')}`);
+  }
+
+  return result;
 }
 
 /**
- * Adds Snap2Health CTA to tweet content
+ * CRITICAL: Remove ALL hashtags from content
+ */
+function removeAllHashtags(content: string): string {
+  // Remove hashtags completely - no exceptions for human voice
+  let cleaned = content.replace(/#\w+\b/g, '');
+  
+  // Clean up extra spaces left by hashtag removal
+  cleaned = cleaned.replace(/\s+/g, ' ').trim();
+  
+  // Remove any remaining hashtag-like patterns
+  cleaned = cleaned.replace(/#[^\s]*/g, '');
+  
+  return cleaned;
+}
+
+/**
+ * Transform content to human conversational voice
+ */
+function applyHumanVoiceTransformation(content: string): string {
+  let humanized = content;
+
+  // Convert academic language to conversational
+  humanized = humanized.replace(/\bThis study shows\b/gi, 'We just learned');
+  humanized = humanized.replace(/\bResearch demonstrates\b/gi, 'Researchers found');
+  humanized = humanized.replace(/\bData indicates\b/gi, 'The data shows');
+  humanized = humanized.replace(/\bResults suggest\b/gi, 'Turns out');
+  humanized = humanized.replace(/\bStudies reveal\b/gi, 'Studies are showing');
+  humanized = humanized.replace(/\bFindings show\b/gi, 'Here\'s what we discovered');
+
+  // Add conversational starters for intrigue
+  if (humanized.startsWith('Stanford') || humanized.startsWith('Harvard') || humanized.startsWith('MIT')) {
+    humanized = 'Ever wonder why ' + humanized.toLowerCase() + '?';
+  }
+  
+  if (humanized.toLowerCase().includes('breakthrough')) {
+    humanized = humanized.replace(/breakthrough/gi, 'game-changing discovery');
+  }
+
+  // Use inclusive language
+  humanized = humanized.replace(/\bpatients\b/gi, 'people');
+  humanized = humanized.replace(/\bsubjects\b/gi, 'participants');
+  humanized = humanized.replace(/\bOne can\b/gi, 'You can');
+  humanized = humanized.replace(/\bIndividuals may\b/gi, 'You might');
+
+  // Simplify academic terms
+  humanized = humanized.replace(/\butilize\b/gi, 'use');
+  humanized = humanized.replace(/\bdemonstrate\b/gi, 'show');
+  humanized = humanized.replace(/\bfacilitate\b/gi, 'help');
+  humanized = humanized.replace(/\bsignificantly\b/gi, 'dramatically');
+  humanized = humanized.replace(/\bsubstantially\b/gi, 'massively');
+
+  return humanized;
+}
+
+/**
+ * Add SNAP2HEALTH CTA without hashtags
  */
 export function addSnap2HealthCTA(content: string): string {
   const ctas = [
-    '\n\nMore AI health insights → snap2health.com 🧠',
-    '\n\nDive deeper → snap2health.com 💡',
-    '\n\nPersonalized health AI → snap2health.com 🩺',
-    '\n\nYour health journey → snap2health.com ⏳',
+    '🏥 Follow for more health tech insights',
+    '🔬 More breakthroughs coming daily',
+    '🚀 Follow for cutting-edge health tech',
+    '💡 Health tech insights you need',
+    '🧬 Stay ahead of health innovation'
   ];
-
-  const randomCTA = ctas[Math.floor(Math.random() * ctas.length)];
   
-  // Check if adding CTA would exceed character limit
-  const totalLength = getTwitterCharacterCount(content + randomCTA);
+  const selectedCTA = ctas[Math.floor(Math.random() * ctas.length)];
+  
+  // Check if we have room for CTA
+  const totalLength = getTwitterCharacterCount(content + '\n\n' + selectedCTA);
   
   if (totalLength <= 280) {
-    return content + randomCTA;
+    return content + '\n\n' + selectedCTA;
   }
   
-  // Try shorter CTA
-  const shortCTA = '\n\nsnap2health.com 🧠';
-  const shortTotalLength = getTwitterCharacterCount(content + shortCTA);
-  
-  if (shortTotalLength <= 280) {
-    return content + shortCTA;
-  }
-  
-  // Return original if no CTA fits
   return content;
 }
 
 /**
- * Truncates tweet content to fit within character limit
- * ENHANCED: Never cuts off mid-sentence, always ends at natural completion points
- * CRITICAL: URLs are ALWAYS preserved and never truncated
+ * Intelligent tweet truncation that preserves meaning
  */
 export function truncateTweet(content: string, maxLength: number = 280): string {
-  // USE THE PROPER URL PRESERVATION SYSTEM - NO MORE TRUNCATED URLS!
-  return preserveUrlsInTweet(content, maxLength);
+  if (getTwitterCharacterCount(content) <= maxLength) {
+    return content;
+  }
+
+  console.log(`📏 Truncating tweet from ${getTwitterCharacterCount(content)} to ${maxLength} chars`);
+
+  // Try smart truncation first
+  let truncated = findBestTruncationPoint(content, maxLength);
+  
+  // If smart truncation didn't work, use emergency truncation
+  if (getTwitterCharacterCount(truncated) > maxLength) {
+    truncated = emergencyTruncation(truncated, maxLength);
+  }
+
+  return cleanupTruncatedEnding(truncated);
 }
 
-/**
- * Finds the best natural truncation point in content
- */
 function findBestTruncationPoint(content: string, maxLength: number): string {
-  // Priority 1: End at sentence boundary (. ! ?)
-  const sentenceEnders = ['. ', '! ', '? '];
-  for (const ender of sentenceEnders) {
-    const lastSentence = content.lastIndexOf(ender);
-    if (lastSentence > maxLength * 0.6) { // Must be at least 60% of desired length
-      const truncated = content.substring(0, lastSentence + 1);
-      console.log(`📝 Truncated at sentence boundary: "${truncated.slice(-20)}"`);
-      return truncated;
-    }
-  }
+  // Remove URLs for length calculation, but preserve them
+  const urlRegex = /https?:\/\/[^\s]+/g;
+  const urls = content.match(urlRegex) || [];
+  let contentWithoutUrls = content.replace(urlRegex, 'URL_PLACEHOLDER');
   
-  // Priority 2: End at clause boundary (, ; :)
-  const clauseEnders = [', ', '; ', ': '];
-  for (const ender of clauseEnders) {
-    const lastClause = content.lastIndexOf(ender);
-    if (lastClause > maxLength * 0.7) { // Must be at least 70% of desired length
-      const truncated = content.substring(0, lastClause);
-      console.log(`📝 Truncated at clause boundary: "${truncated.slice(-20)}"`);
-      return truncated;
-    }
-  }
+  // Calculate available space (URLs count as 23 chars each)
+  const urlCharCount = urls.length * 23;
+  const availableSpace = maxLength - urlCharCount;
   
-  // Priority 3: End at word boundary
-  const words = content.split(' ');
+  if (contentWithoutUrls.length <= availableSpace) {
+    return content; // No truncation needed
+  }
+
+  // Try to truncate at sentence boundaries
+  const sentences = content.split(/[.!?]+/);
   let truncated = '';
-  for (const word of words) {
-    if ((truncated + ' ' + word).length > maxLength) {
+  
+  for (const sentence of sentences) {
+    const testContent = truncated + sentence + '.';
+    if (getTwitterCharacterCount(testContent) <= maxLength) {
+      truncated = testContent;
+    } else {
       break;
     }
-    truncated += (truncated ? ' ' : '') + word;
   }
   
-  // Ensure we don't end with incomplete phrases
-  truncated = cleanupTruncatedEnding(truncated);
+  if (truncated.length > 0) {
+    console.log(`📝 Truncated at sentence boundary: "${truncated.slice(-30)}"`);
+    return truncated;
+  }
+
+  // Fall back to word boundaries
+  const words = content.split(' ');
+  truncated = '';
+  
+  for (const word of words) {
+    const testContent = truncated + (truncated ? ' ' : '') + word;
+    if (getTwitterCharacterCount(testContent) <= maxLength - 3) { // Leave space for "..."
+      truncated = testContent;
+    } else {
+      break;
+    }
+  }
   
   console.log(`📝 Truncated at word boundary: "${truncated.slice(-20)}"`);
   return truncated;
@@ -179,51 +265,6 @@ function cleanupTruncatedEnding(text: string): string {
   }
   
   return text.trim();
-}
-
-/**
- * Selects the most important hashtags to keep
- */
-function selectImportantHashtags(hashtags: string[], content: string): string[] {
-  // Prioritize hashtags that appear in the content or are health-tech related
-  const healthTechTags = hashtags.filter(tag => 
-    tag.toLowerCase().includes('health') || 
-    tag.toLowerCase().includes('ai') || 
-    tag.toLowerCase().includes('tech') ||
-    tag.toLowerCase().includes('medical')
-  );
-  
-  if (healthTechTags.length > 0) {
-    return healthTechTags.slice(0, 2);
-  }
-  
-  return hashtags.slice(0, 2);
-}
-
-/**
- * Emergency truncation when smart truncation isn't possible
- */
-function emergencyTruncation(content: string, maxLength: number): string {
-  console.log(`⚠️ Using emergency truncation for: "${content.substring(0, 50)}..."`);
-  
-  let truncated = content;
-  while (getTwitterCharacterCount(truncated) > maxLength && truncated.length > 0) {
-    // Remove from the end, but try to preserve URLs
-    const urlMatch = truncated.match(/https?:\/\/[^\s]+$/);
-    if (urlMatch) {
-      // Remove content before URL instead
-      const urlStart = truncated.lastIndexOf(urlMatch[0]);
-      if (urlStart > 50) { // Keep some content
-        truncated = truncated.substring(0, urlStart - 1) + ' ' + urlMatch[0];
-      } else {
-        truncated = truncated.slice(0, -1);
-      }
-    } else {
-      truncated = truncated.slice(0, -1);
-    }
-  }
-  
-  return truncated.trim();
 }
 
 /**
@@ -347,4 +388,30 @@ export function formatQuotes(content: string): string {
   });
   
   return content.trim();
+}
+
+/**
+ * Emergency truncation when smart truncation isn't possible
+ */
+function emergencyTruncation(content: string, maxLength: number): string {
+  console.log(`⚠️ Using emergency truncation for: "${content.substring(0, 50)}..."`);
+  
+  let truncated = content;
+  while (getTwitterCharacterCount(truncated) > maxLength && truncated.length > 0) {
+    // Remove from the end, but try to preserve URLs
+    const urlMatch = truncated.match(/https?:\/\/[^\s]+$/);
+    if (urlMatch) {
+      // Remove content before URL instead
+      const urlStart = truncated.lastIndexOf(urlMatch[0]);
+      if (urlStart > 50) { // Keep some content
+        truncated = truncated.substring(0, urlStart - 1) + ' ' + urlMatch[0];
+      } else {
+        truncated = truncated.slice(0, -1);
+      }
+    } else {
+      truncated = truncated.slice(0, -1);
+    }
+  }
+  
+  return truncated.trim();
 } 

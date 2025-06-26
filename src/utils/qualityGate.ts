@@ -7,6 +7,7 @@ export interface QualityMetrics {
   hasUrl: boolean;
   hasCitation: boolean;
   characterCount: number;
+  hasHashtags: boolean;
   passesGate: boolean;
   failureReasons: string[];
 }
@@ -18,6 +19,7 @@ export interface QualityGateRules {
   requireUrl: boolean;
   requireCitation: boolean;
   maxCharacterCount: number;
+  prohibitHashtags: boolean;
 }
 
 export class QualityGate {
@@ -27,7 +29,8 @@ export class QualityGate {
     minSourceCredibility: 0.8,
     requireUrl: true,
     requireCitation: true,
-    maxCharacterCount: 280
+    maxCharacterCount: 280,
+    prohibitHashtags: true // CRITICAL: No hashtags allowed for human voice
   };
 
   /**
@@ -42,6 +45,7 @@ export class QualityGate {
       hasUrl: this.hasValidUrl(content, url),
       hasCitation: this.hasCitation(content, source),
       characterCount: content.length,
+      hasHashtags: this.containsHashtags(content),
       passesGate: false,
       failureReasons: []
     };
@@ -71,6 +75,10 @@ export class QualityGate {
       {
         condition: metrics.characterCount <= rules.maxCharacterCount,
         reason: `Character count ${metrics.characterCount} exceeds maximum ${rules.maxCharacterCount}`
+      },
+      {
+        condition: !rules.prohibitHashtags || !metrics.hasHashtags,
+        reason: 'Hashtags prohibited for human voice - content must be hashtag-free'
       }
     ];
 
@@ -88,8 +96,25 @@ export class QualityGate {
       console.log(`   Failures: ${metrics.failureReasons.join(', ')}`);
     }
     console.log(`   📊 Readability: ${metrics.readabilityScore}, Facts: ${metrics.factCount}, Credibility: ${metrics.sourceCredibility.toFixed(2)}`);
+    if (metrics.hasHashtags) {
+      console.log(`   🚫 HASHTAGS DETECTED - Human voice requires hashtag-free content`);
+    }
 
     return metrics;
+  }
+
+  /**
+   * Check if content contains hashtags (PROHIBITED for human voice)
+   */
+  private containsHashtags(content: string): boolean {
+    const hashtagPattern = /#\w+/;
+    const hasHashtags = hashtagPattern.test(content);
+    
+    if (hasHashtags) {
+      console.log('🚫 Hashtags detected in content - violates human voice requirement');
+    }
+    
+    return hasHashtags;
   }
 
   /**
@@ -106,7 +131,18 @@ export class QualityGate {
     const avgSentenceLength = words / sentences;
     const avgSyllablesPerWord = syllables / words;
     
-    const score = 206.835 - (1.015 * avgSentenceLength) - (84.6 * avgSyllablesPerWord);
+    let score = 206.835 - (1.015 * avgSentenceLength) - (84.6 * avgSyllablesPerWord);
+    
+    // Boost score for conversational language
+    const conversationalWords = (text.match(/\b(you|we|your|our|let's|here's|what|why|how)\b/gi) || []).length;
+    if (conversationalWords > 0) {
+      score += (conversationalWords * 2); // Reward conversational tone
+    }
+    
+    // Penalty for hashtags
+    if (this.containsHashtags(text)) {
+      score -= 25; // Heavy penalty for hashtags
+    }
     
     return Math.max(0, Math.min(100, score));
   }
