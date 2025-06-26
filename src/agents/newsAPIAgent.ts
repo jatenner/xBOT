@@ -144,9 +144,7 @@ export class NewsAPIAgent {
   /**
    * Singleton getInstance method
    */
-  public 
-  // 🚨 EMERGENCY: Enforce strict singleton pattern
-  static getInstance(): NewsAPIAgent {
+  public static getInstance(): NewsAPIAgent {
     if (NewsAPIAgent.isInitializing) {
       console.log('⏳ NewsAPIAgent already initializing, waiting...');
       return new Promise(resolve => {
@@ -167,25 +165,6 @@ export class NewsAPIAgent {
     } else {
       console.log('✅ Using EXISTING NewsAPIAgent singleton instance');
     }
-    
-    return NewsAPIAgent.instance;
-  }
-    
-    if (NewsAPIAgent.isInitializing) {
-      // Wait for initialization to complete
-      return new Promise((resolve) => {
-        const checkInterval = setInterval(() => {
-          if (NewsAPIAgent.instance) {
-            clearInterval(checkInterval);
-            resolve(NewsAPIAgent.instance);
-          }
-        }, 100);
-      }) as any;
-    }
-    
-    NewsAPIAgent.isInitializing = true;
-    NewsAPIAgent.instance = new NewsAPIAgent();
-    NewsAPIAgent.isInitializing = false;
     
     return NewsAPIAgent.instance;
   }
