@@ -24,7 +24,7 @@ interface PostingWindow {
   priority: number;
 }
 
-export class DailyPostingManager {
+class DailyPostingManager {
   private postTweetAgent: PostTweetAgent;
   private intelligentScheduler: IntelligentSchedulingAgent;
   private humanStrategicMind: HumanLikeStrategicMind;
