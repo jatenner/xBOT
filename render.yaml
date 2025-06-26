@@ -8,7 +8,7 @@ services:
     scaling:
       minInstances: 1
       maxInstances: 3
-    buildCommand: npm ci && npm run build
+    buildCommand: npm ci && npm run build-minimal-safe
     startCommand: node dist/index.js
     healthCheckPath: /health
     envVars:
@@ -74,7 +74,7 @@ services:
     runtime: node
     runtimeVersion: 22.14.0
     plan: starter
-    buildCommand: npm ci && npm run build
+    buildCommand: npm ci && npm run build-minimal-safe
     startCommand: node dist/index.js
     envVars:
       - key: NODE_ENV

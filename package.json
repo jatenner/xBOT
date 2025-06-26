@@ -8,9 +8,10 @@
     "dev": "npm run setup-check && nodemon src/index.js",
     "test": "jest",
     "lint": "eslint .",
-    "build": "tsc",
+    "build": "node --max-old-space-size=4096 ./node_modules/.bin/tsc",
+    "build-safe": "node --max-old-space-size=2048 ./node_modules/.bin/tsc --incremental",
     "postbuild": "mkdir -p dist/dashboard && cp src/dashboard/*.html dist/dashboard/ 2>/dev/null || true && mkdir -p dist/prompts && cp -r src/prompts/* dist/prompts/ && echo 'Build completed successfully'",
-    "render-build": "npm install && npm run build",
+    "render-build": "npm install && npm run build-minimal",
     "render-start": "node dist/main.js",
     "dashboard": "node src/dashboard/dashboardLauncher.js",
     "simulation": "npm run build && node dist/dashboard/simulationLauncher.js",
@@ -21,7 +22,8 @@
     "setup-apis": "node setup_free_apis.js",
     "test-apis": "node test_apis.js",
     "setup-db": "node init_database.js && node -e \"require('./supabase/advanced_optimization_schema.sql')\"",
-    "setup-check": "node -e \"console.log('🔍 Checking setup...'); if (!require('fs').existsSync('.env')) { console.log('⚠️ No .env file found. Run: npm run setup-apis'); process.exit(1); }\""
+    "setup-check": "node -e \"console.log('🔍 Checking setup...'); if (!require('fs').existsSync('.env')) { console.log('⚠️ No .env file found. Run: npm run setup-apis'); process.exit(1); }\"",
+    "build-minimal": "node --max-old-space-size=1024 ./node_modules/.bin/tsc --incremental --skipLibCheck"
   },
   "keywords": [
     "twitter",
