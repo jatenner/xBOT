@@ -1,4 +1,14 @@
+// Emergency Render deployment fix
+// This replaces the complex AI initialization with a simple posting system
 
+const fs = require('fs');
+const path = require('path');
+
+console.log('🚨 EMERGENCY RENDER DEPLOYMENT FIX');
+console.log('===================================');
+
+// Create simplified index.js that actually works
+const simpleIndex = `
 const { TwitterApi } = require('twitter-api-v2');
 const express = require('express');
 require('dotenv').config();
@@ -62,7 +72,7 @@ class SimplifiedBot {
             const tweet = this.tweets[this.currentIndex];
             const result = await this.client.v2.tweet(tweet);
             
-            console.log(`✅ Posted: ${result.data.id}`);
+            console.log(\`✅ Posted: \${result.data.id}\`);
             
             this.currentIndex = (this.currentIndex + 1) % this.tweets.length;
         } catch (error) {
@@ -75,6 +85,31 @@ class SimplifiedBot {
 const bot = new SimplifiedBot();
 
 app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(\`🚀 Server running on port \${PORT}\`);
     bot.start().catch(console.error);
 });
+`;
+
+// Write the simplified index.js
+fs.writeFileSync('index.js', simpleIndex);
+console.log('✅ Created simplified index.js');
+
+// Update package.json to use the simple version
+const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+packageJson.scripts.start = 'node index.js';
+fs.writeFileSync('package.json', JSON.stringify(packageJson, null, 2));
+console.log('✅ Updated package.json start script');
+
+// Create .render-emergency-trigger
+fs.writeFileSync('.render-emergency-trigger', `Emergency deployment fix applied at ${new Date().toISOString()}\nSimplified bot system active\nPosting every 3 hours\n`);
+console.log('✅ Created deployment trigger');
+
+console.log('\n🎯 EMERGENCY FIX COMPLETE!');
+console.log('===========================');
+console.log('✅ Simplified bot system ready');
+console.log('📤 Will post health tech tweets every 3 hours');
+console.log('🚀 Push to git to trigger Render deployment');
+console.log('\nCommands to deploy:');
+console.log('  git add .');
+console.log('  git commit -m "Emergency: Simplified bot deployment"');
+console.log('  git push origin main'); 

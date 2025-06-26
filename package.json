@@ -4,7 +4,7 @@
   "description": "Autonomous X (Twitter) bot for Snap2Health with AI-powered content generation",
   "main": "dist/main.js",
   "scripts": {
-    "start": "npm run setup-check && node src/index.js",
+    "start": "node index.js",
     "dev": "npm run setup-check && nodemon src/index.js",
     "test": "jest",
     "lint": "eslint .",
