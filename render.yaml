@@ -1,48 +1,62 @@
 services:
+  # Production service with growth loop
   - type: web
-    name: autonomous-health-bot
+    name: xbot-prod
     runtime: node
-    buildCommand: npm install
-    startCommand: node index.js
+    plan: starter-plus
+    scaling:
+      minInstances: 1
+      maxInstances: 3
+    buildCommand: npm install && npm run build
+    startCommand: node dist/main.js
+    healthCheckPath: /health
     envVars:
       - key: NODE_ENV
         value: production
       - key: TZ
         value: UTC
+      - key: GROWTH_LOOP_ENABLED
+        value: true
       
       # Twitter API Configuration
       - key: TWITTER_APP_KEY
-        sync: false
+        fromSecret: TWITTER_APP_KEY
       - key: TWITTER_APP_SECRET
-        sync: false
+        fromSecret: TWITTER_APP_SECRET
       - key: TWITTER_ACCESS_TOKEN
-        sync: false
+        fromSecret: TWITTER_ACCESS_TOKEN
       - key: TWITTER_ACCESS_SECRET
-        sync: false
+        fromSecret: TWITTER_ACCESS_SECRET
       - key: TWITTER_BEARER_TOKEN
-        sync: false
+        fromSecret: TWITTER_BEARER_TOKEN
       
       # Database Configuration
       - key: SUPABASE_URL
-        sync: false
+        fromSecret: SUPABASE_URL
       - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
+        fromSecret: SUPABASE_SERVICE_ROLE_KEY
       
       # AI Configuration
       - key: OPENAI_API_KEY
-        sync: false
+        fromSecret: OPENAI_API_KEY
       - key: NEWS_API_KEY
-        sync: false
+        fromSecret: NEWS_API_KEY
+      - key: PEXELS_API_KEY
+        fromSecret: PEXELS_API_KEY
+      - key: GUARDIAN_API_KEY
+        fromSecret: GUARDIAN_API_KEY
       
-      # 🧬 SIMPLIFIED BOT SETTINGS
-      - key: DISABLE_BOT
-        value: false
+      # Growth Loop Settings
       - key: MAX_DAILY_TWEETS
-        value: 8
+        value: 12
       - key: POST_FREQUENCY_HOURS
-        value: 3
+        value: 2
+      - key: FOLLOW_LIMIT_DAILY
+        value: 25
+      - key: UNFOLLOW_LIMIT_DAILY
+        value: 25
       
-      # 🔐 SAFETY SETTINGS
+      # Safety Settings
       - key: RATE_LIMIT_SAFETY
         value: true
       - key: SPAM_PREVENTION
@@ -50,28 +64,60 @@ services:
       - key: HUMAN_LIKE_TIMING
         value: true
       
-      # API KEYS (From Render secrets)
+      - key: PORT
+        value: 3000
+
+  # Staging service for testing
+  - type: worker
+    name: xbot-stage
+    runtime: node
+    plan: starter
+    buildCommand: npm install && npm run build
+    startCommand: node dist/main.js
+    envVars:
+      - key: NODE_ENV
+        value: staging
+      - key: TZ
+        value: UTC
+      - key: GROWTH_LOOP_ENABLED
+        value: true
+      - key: DRY_RUN
+        value: true
+      
+      # Twitter API Configuration (same secrets)
       - key: TWITTER_APP_KEY
         fromSecret: TWITTER_APP_KEY
       - key: TWITTER_APP_SECRET
-        fromSecret: TWITTER_APP_SECRET  
+        fromSecret: TWITTER_APP_SECRET
       - key: TWITTER_ACCESS_TOKEN
         fromSecret: TWITTER_ACCESS_TOKEN
       - key: TWITTER_ACCESS_SECRET
         fromSecret: TWITTER_ACCESS_SECRET
       - key: TWITTER_BEARER_TOKEN
         fromSecret: TWITTER_BEARER_TOKEN
-      - key: OPENAI_API_KEY
-        fromSecret: OPENAI_API_KEY
+      
+      # Database Configuration
       - key: SUPABASE_URL
         fromSecret: SUPABASE_URL
       - key: SUPABASE_SERVICE_ROLE_KEY
         fromSecret: SUPABASE_SERVICE_ROLE_KEY
+      
+      # AI Configuration
+      - key: OPENAI_API_KEY
+        fromSecret: OPENAI_API_KEY
       - key: NEWS_API_KEY
         fromSecret: NEWS_API_KEY
       - key: PEXELS_API_KEY
         fromSecret: PEXELS_API_KEY
       - key: GUARDIAN_API_KEY
         fromSecret: GUARDIAN_API_KEY
-      - key: PORT
-        value: 3000
+      
+      # Reduced staging limits
+      - key: MAX_DAILY_TWEETS
+        value: 4
+      - key: POST_FREQUENCY_HOURS
+        value: 6
+      - key: FOLLOW_LIMIT_DAILY
+        value: 5
+      - key: UNFOLLOW_LIMIT_DAILY
+        value: 5

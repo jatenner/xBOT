@@ -1,0 +1,191 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "Snap2Health X-Bot Autonomous Growth Loop",
+    "tags": ["xbot", "growth", "twitter", "autonomous"],
+    "style": "dark",
+    "timezone": "browser",
+    "refresh": "30s",
+    "time": {
+      "from": "now-24h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "F/1K Optimization Metric",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "followers_per_1k_impressions",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": null},
+                {"color": "yellow", "value": 0.1},
+                {"color": "green", "value": 0.5}
+              ]
+            },
+            "unit": "short",
+            "decimals": 3
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "System Health Score",
+        "type": "gauge",
+        "targets": [
+          {
+            "expr": "system_health_score",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "min": 0,
+            "max": 1,
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": 0},
+                {"color": "yellow", "value": 0.6},
+                {"color": "green", "value": 0.8}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+      },
+      {
+        "id": 3,
+        "title": "Daily Growth Metrics",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "daily_follower_count",
+            "refId": "A",
+            "legendFormat": "New Followers"
+          },
+          {
+            "expr": "daily_impression_count / 1000",
+            "refId": "B",
+            "legendFormat": "Impressions (K)"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "unit": "short"
+          }
+        },
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8}
+      },
+      {
+        "id": 4,
+        "title": "Follow/Unfollow Actions",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "follow_actions_daily",
+            "refId": "A",
+            "legendFormat": "Follows Today"
+          },
+          {
+            "expr": "unfollow_actions_daily",
+            "refId": "B",
+            "legendFormat": "Unfollows Today"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "unit": "short"
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+      },
+      {
+        "id": 5,
+        "title": "Strategy Learning",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "strategy_epsilon",
+            "refId": "A",
+            "legendFormat": "Epsilon (Exploration)"
+          },
+          {
+            "expr": "content_style_rewards",
+            "refId": "B",
+            "legendFormat": "Avg Style Reward"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "unit": "short",
+            "decimals": 3
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+      },
+      {
+        "id": 6,
+        "title": "Engagement Metrics",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "engagement_rate * 100",
+            "refId": "A",
+            "legendFormat": "Engagement Rate (%)"
+          },
+          {
+            "expr": "tweet_post_rate",
+            "refId": "B",
+            "legendFormat": "Tweets (24h)"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "unit": "short"
+          }
+        },
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24}
+      }
+    ],
+    "templating": {
+      "list": []
+    },
+    "annotations": {
+      "list": [
+        {
+          "name": "Growth Events",
+          "datasource": "-- Grafana --",
+          "enable": true,
+          "hide": false,
+          "iconColor": "rgba(0, 211, 255, 1)",
+          "query": "ALERTS",
+          "type": "dashboard"
+        }
+      ]
+    }
+  },
+  "overwrite": false
+} 

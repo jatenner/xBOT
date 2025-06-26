@@ -1,7 +1,7 @@
-import { openaiClient } from '../utils/openaiClient.js';
-import { realLinkProvider } from '../utils/realLinkProvider.js';
-import { TrendResearchFusion } from './trendResearchFusion.js';
-import { QualityGate, QualityMetrics } from '../utils/qualityGate.js';
+import { openaiClient } from '../utils/openaiClient';
+import { realLinkProvider } from '../utils/realLinkProvider';
+import { TrendResearchFusion } from './trendResearchFusion';
+import { QualityGate, QualityMetrics } from '../utils/qualityGate';
 
 interface ViralContent {
   content: string;

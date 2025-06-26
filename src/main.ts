@@ -1,5 +1,6 @@
 import { Scheduler } from './agents/scheduler';
 import { DynamicPostingController } from './utils/dynamicPostingController';
+import { metricsExporter } from './metrics/exporter';
 import * as cron from 'node-cron';
 import dotenv from 'dotenv';
 import http from 'http';
@@ -78,7 +79,18 @@ global.startupDelay = function(operation: string, delay: number = 2000) {
 dotenv.config();
 
 // Health check endpoint for Render
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
+  // Add CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(200);
+    res.end();
+    return;
+  }
+
   if (req.url === '/health' && req.method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ 
@@ -86,8 +98,53 @@ const server = http.createServer((req, res) => {
       timestamp: new Date().toISOString(),
       service: 'snap2health-xbot',
       ghost_killer_active: process.env.GHOST_ACCOUNT_SYNDROME_FIX === 'true',
-      aggressive_mode: process.env.AGGRESSIVE_ENGAGEMENT_MODE === 'true'
+      aggressive_mode: process.env.AGGRESSIVE_ENGAGEMENT_MODE === 'true',
+      growth_loop_enabled: process.env.GROWTH_LOOP_ENABLED === 'true',
+      node_env: process.env.NODE_ENV || 'development'
     }));
+  } else if (req.url === '/metrics' && req.method === 'GET') {
+    // Prometheus metrics endpoint
+    await metricsExporter.handleMetricsRequest(req as any, res as any);
+  } else if (req.url === '/dashboard' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(`
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Snap2Health X-Bot Growth Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background: #1a1a1a; color: #fff; }
+        .metric { background: #2d2d2d; padding: 20px; margin: 10px 0; border-radius: 8px; }
+        .header { color: #4CAF50; font-size: 24px; margin-bottom: 20px; }
+        .value { font-size: 32px; font-weight: bold; color: #2196F3; }
+        .label { font-size: 14px; color: #aaa; }
+    </style>
+</head>
+<body>
+    <div class="header">🚀 Autonomous Growth Loop Dashboard</div>
+    <div class="metric">
+        <div class="label">System Status</div>
+        <div class="value">🟢 ACTIVE</div>
+    </div>
+    <div class="metric">
+        <div class="label">Growth Loop</div>
+        <div class="value">${process.env.GROWTH_LOOP_ENABLED === 'true' ? '✅ ENABLED' : '❌ DISABLED'}</div>
+    </div>
+    <div class="metric">
+        <div class="label">Environment</div>
+        <div class="value">${process.env.NODE_ENV || 'development'}</div>
+    </div>
+    <div class="metric">
+        <div class="label">Metrics Endpoint</div>
+        <div class="value"><a href="/metrics" style="color: #2196F3;">/metrics</a></div>
+    </div>
+    <div class="metric">
+        <div class="label">Last Updated</div>
+        <div class="value">${new Date().toISOString()}</div>
+    </div>
+</body>
+</html>
+    `);
   } else {
     res.writeHead(404, { 'Content-Type': 'text/plain' });
     res.end('Not Found');

@@ -128,10 +128,127 @@ Multi-factor validation before posting:
 - PhD-level persona integration from `persona_phd.txt`
 - 80/20 insights-to-questions ratio
 
-## 10. Safety Nets
+## 10. Autonomous Growth Loop
+
+### 📈 F/1K Optimization System
+The bot optimizes for **Followers-per-1000-Impressions (F/1K)** using machine learning:
+
+#### 🧠 Strategy Learner (ε-greedy Algorithm)
+- **Exploration**: 10% random content style selection
+- **Exploitation**: 90% best-performing style based on 7-day F/1K average
+- **Adaptive ε**: Increases exploration when performance drops, decreases when thriving
+- **Content Styles**: educational, breaking_news, viral_take, data_story, thought_leadership, community_building, trending_analysis, research_insight
+
+#### 📊 Engagement Feedback Agent
+- **Hourly Data Collection**: Fetches tweet metrics via Twitter API v2
+- **Follower Attribution**: Estimates new followers per tweet using engagement scoring
+- **Nightly Aggregation**: Computes daily F/1K metrics and stores in `growth_metrics` table
+- **Performance Tracking**: Updates `style_rewards` for continuous learning
+
+#### 👥 Follow Growth Agent
+- **Strategic Following**: 25 follows/day from competitor follower lists
+- **Smart Unfollowing**: 25 unfollows/day after 4-day delay for non-reciprocals
+- **Quality Filtering**: Bot detection, ratio analysis, engagement level validation
+- **Ratio Guard**: Pauses following when followers/following < 1.1
+
+#### 🕘 Scheduling
+- **Engagement Feedback**: Every hour (`0 * * * *`)
+- **Strategy Learning**: Daily at 2:30 AM UTC (`30 2 * * *`)
+- **Follow Growth**: Every 4 hours (`15 */4 * * *`)
+
+#### 🗃️ Database Schema
+```sql
+-- F/1K tracking with auto-calculated metric
+CREATE TABLE growth_metrics (
+    day DATE PRIMARY KEY,
+    impressions BIGINT DEFAULT 0,
+    new_followers INT DEFAULT 0,
+    f_per_1k NUMERIC GENERATED ALWAYS AS 
+        (CASE WHEN impressions = 0 THEN 0 ELSE new_followers * 1000.0 / impressions END) STORED
+);
+
+-- ε-greedy learning rewards
+CREATE TABLE style_rewards (
+    style_name VARCHAR(100) UNIQUE,
+    f_per_1k_reward NUMERIC DEFAULT 0,
+    sample_count INT DEFAULT 0
+);
+
+-- Rate-limited follow/unfollow tracking
+CREATE TABLE follow_actions (
+    target_username VARCHAR(255),
+    action_type VARCHAR(20) CHECK (action_type IN ('follow', 'unfollow')),
+    action_date DATE DEFAULT CURRENT_DATE,
+    success BOOLEAN DEFAULT FALSE
+);
+```
+
+#### 🎯 Growth Metrics
+- **Target F/1K**: 3-5 new followers per 1000 impressions
+- **Daily Limits**: 25 follows, 25 unfollows (Twitter API compliance)
+- **Learning Rate**: Style performance updates every 24 hours
+- **Safety Guards**: Ratio monitoring, quota limits, bot detection
+
+## 🚀 Deploy Flow
+
+### Prerequisites
+```bash
+# Apply growth metrics schema
+export SUPABASE_URL='https://your-project.supabase.co'
+export SUPABASE_SERVICE_ROLE_KEY='your-service-role-key'
+chmod +x scripts/db_push.sh
+./scripts/db_push.sh
+```
+
+### Local Testing
+```bash
+# Install dependencies
+npm install
+
+# Build TypeScript
+npm run build
+
+# Run unit tests
+npm test
+
+# Run load testing
+npm install -g k6
+k6 run scripts/soak_test.js
+```
+
+### Production Deployment
+```bash
+# Push to main branch (triggers CI/CD)
+git add .
+git commit -m "Deploy autonomous growth loop"
+git push origin main
+```
+
+#### Deployment Pipeline
+1. **Lint** → ESLint code quality check
+2. **Build** → TypeScript compilation
+3. **Jest** → Unit tests (strategyLearner, followGrowthAgent)
+4. **k6 Load Test** → 200 RPS for 1 minute with <1% failure rate
+5. **Deploy Gate** → Automatic deployment if all tests pass
+
+#### Render Configuration
+- **Production**: `xbot-prod` (starter-plus, 1-3 instances, auto-scale)
+- **Staging**: `xbot-stage` (starter, 1 instance, DRY_RUN=true)
+- **Health Check**: `/health` endpoint
+- **Metrics**: `/metrics` (Prometheus format)
+- **Dashboard**: `/dashboard` (basic UI)
+
+#### Monitoring Stack
+- **k6 Soak Testing**: `scripts/soak_test.js` (200 RPS load validation)
+- **Prometheus Metrics**: `src/metrics/exporter.ts` (/metrics endpoint)
+- **Grafana Dashboard**: `grafana_dashboard_growth.json` (F/1K visualization)
+
+All deployments include autonomous growth loop with F/1K optimization
+
+## 11. Safety Nets
 Rate-limit guard, OpenAI moderation, Supabase kill-switch, full audit trail.
 
-## 11. Implementation Tasks
+## 12. Implementation Tasks
 1. Scaffold file tree & TS config.  
 2. Implement wrappers (`xClient`, `openaiClient`, `supabaseClient`).  
 3. Stub agents with `run()` methods & TODOs.  
