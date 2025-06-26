@@ -3,6 +3,8 @@ services:
     name: xbot-prod
     env: node
     runtime: node 22
+    branch: main
+    plan: starter-plus
     buildCommand: npm ci && npm run build
     startCommand: npm start
     healthCheckPath: /health
