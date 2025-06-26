@@ -61,6 +61,9 @@ interface AdaptationStrategy {
 }
 
 export class AdaptiveContentLearner {
+  private static instance: AdaptiveContentLearner | null = null;
+  private static isInitialized: boolean = false;
+  
   private competitiveIntelligence: CompetitiveIntelligenceLearner;
   private tweetPerformanceData: Map<string, TweetPerformanceData> = new Map();
   private contentPatterns: Map<string, ContentPattern> = new Map();
@@ -70,9 +73,20 @@ export class AdaptiveContentLearner {
   private lastAnalysisTime: Date = new Date();
 
   constructor() {
-    this.competitiveIntelligence = new CompetitiveIntelligenceLearner();
-    console.log('🧠 Adaptive Content Learner initialized');
-    console.log('📊 Real-time performance monitoring and autonomous learning enabled');
+    this.competitiveIntelligence = CompetitiveIntelligenceLearner.getInstance();
+    
+    if (!AdaptiveContentLearner.isInitialized) {
+      console.log('🧠 Adaptive Content Learner initialized');
+      console.log('📊 Real-time performance monitoring and autonomous learning enabled');
+      AdaptiveContentLearner.isInitialized = true;
+    }
+  }
+
+  public static getInstance(): AdaptiveContentLearner {
+    if (!AdaptiveContentLearner.instance) {
+      AdaptiveContentLearner.instance = new AdaptiveContentLearner();
+    }
+    return AdaptiveContentLearner.instance;
   }
 
   async initialize(): Promise<void> {

@@ -53,6 +53,11 @@ interface LearningInsight {
 }
 
 export class CompetitiveIntelligenceLearner {
+  private static instance: CompetitiveIntelligenceLearner | null = null;
+  private static isRunning: boolean = false;
+  private static lastRunTime: number = 0;
+  private static initialized: boolean = false;
+
   private competitors: string[] = [
     // Top Health Tech Thought Leaders & Companies
     'VinodKhosla',        // Khosla Ventures - AI health investor
@@ -76,11 +81,35 @@ export class CompetitiveIntelligenceLearner {
   private adaptedStrategies: Map<string, any> = new Map();
 
   constructor() {
-    console.log('🕵️ Competitive Intelligence Learner initialized');
-    console.log(`📊 Monitoring ${this.competitors.length} competitor accounts`);
+    if (!CompetitiveIntelligenceLearner.initialized) {
+      console.log('🕵️ Competitive Intelligence Learner initialized');
+      console.log(`📊 Monitoring ${this.competitors.length} competitor accounts`);
+      CompetitiveIntelligenceLearner.initialized = true;
+    }
+  }
+
+  public static getInstance(): CompetitiveIntelligenceLearner {
+    if (!CompetitiveIntelligenceLearner.instance) {
+      CompetitiveIntelligenceLearner.instance = new CompetitiveIntelligenceLearner();
+    }
+    return CompetitiveIntelligenceLearner.instance;
   }
 
   async run(): Promise<void> {
+    // Prevent multiple simultaneous runs
+    if (CompetitiveIntelligenceLearner.isRunning) {
+      return;
+    }
+
+    // Rate limit: only run once every 30 minutes
+    const now = Date.now();
+    if (now - CompetitiveIntelligenceLearner.lastRunTime < 30 * 60 * 1000) {
+      return;
+    }
+
+    CompetitiveIntelligenceLearner.isRunning = true;
+    CompetitiveIntelligenceLearner.lastRunTime = now;
+
     try {
       console.log('🔍 === COMPETITIVE INTELLIGENCE ANALYSIS ===');
       
@@ -98,6 +127,8 @@ export class CompetitiveIntelligenceLearner {
       
     } catch (error) {
       console.error('❌ Error in competitive intelligence:', error);
+    } finally {
+      CompetitiveIntelligenceLearner.isRunning = false;
     }
   }
 

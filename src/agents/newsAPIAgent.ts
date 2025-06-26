@@ -57,6 +57,7 @@ interface GuardianArticle {
 export class NewsAPIAgent {
   private static instance: NewsAPIAgent | null = null;
   private static isInitializing: boolean = false;
+  private static initializationPromise: Promise<NewsAPIAgent> | null = null;
   
   private readonly newsApiKey: string;
   private readonly guardianApiKey: string;
@@ -136,37 +137,35 @@ export class NewsAPIAgent {
     
     // Disable startup mode after 5 minutes
     setTimeout(() => {
-      NewsAPIAgent.startupMode = false;
-      console.log('⚡ NewsAPI startup throttling disabled');
+      if (NewsAPIAgent.startupMode) {
+        NewsAPIAgent.startupMode = false;
+        console.log('⚡ NewsAPI startup throttling disabled');
+      }
     }, 300000);
   }
 
   /**
-   * Singleton getInstance method
+   * Singleton getInstance method - FIXED
    */
   public static getInstance(): NewsAPIAgent {
-    if (NewsAPIAgent.isInitializing) {
-      console.log('⏳ NewsAPIAgent already initializing, waiting...');
-      return new Promise(resolve => {
-        const checkInterval = setInterval(() => {
-          if (NewsAPIAgent.instance && !NewsAPIAgent.isInitializing) {
-            clearInterval(checkInterval);
-            resolve(NewsAPIAgent.instance);
-          }
-        }, 100);
-      }) as any;
+    if (NewsAPIAgent.instance) {
+      return NewsAPIAgent.instance;
     }
     
-    if (!NewsAPIAgent.instance) {
+    if (NewsAPIAgent.initializationPromise) {
+      return NewsAPIAgent.initializationPromise as any;
+    }
+    
+    NewsAPIAgent.initializationPromise = new Promise<NewsAPIAgent>((resolve) => {
       console.log('🔧 Creating NEW NewsAPIAgent singleton instance');
       NewsAPIAgent.isInitializing = true;
       NewsAPIAgent.instance = new NewsAPIAgent();
       NewsAPIAgent.isInitializing = false;
-    } else {
-      console.log('✅ Using EXISTING NewsAPIAgent singleton instance');
-    }
+      NewsAPIAgent.initializationPromise = null;
+      resolve(NewsAPIAgent.instance);
+    });
     
-    return NewsAPIAgent.instance;
+    return NewsAPIAgent.initializationPromise as any;
   }
 
   /**

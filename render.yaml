@@ -3,12 +3,13 @@ services:
   - type: web
     name: xbot-prod
     runtime: node
+    runtimeVersion: 22.14.0
     plan: starter-plus
     scaling:
       minInstances: 1
       maxInstances: 3
-    buildCommand: npm install && npm run build
-    startCommand: node dist/main.js
+    buildCommand: npm ci && npm run build
+    startCommand: node dist/index.js
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV
@@ -71,9 +72,10 @@ services:
   - type: worker
     name: xbot-stage
     runtime: node
+    runtimeVersion: 22.14.0
     plan: starter
-    buildCommand: npm install && npm run build
-    startCommand: node dist/main.js
+    buildCommand: npm ci && npm run build
+    startCommand: node dist/index.js
     envVars:
       - key: NODE_ENV
         value: staging
