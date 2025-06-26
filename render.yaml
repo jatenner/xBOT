@@ -1,67 +1,8 @@
 services:
-  # Production service with growth loop
   - type: web
     name: xbot-prod
     env: node
     runtime: node 22
-    branch: main
-    plan: starter-plus
     buildCommand: npm ci && npm run build
     startCommand: npm start
     healthCheckPath: /health
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: TZ
-        value: UTC
-      - key: GROWTH_LOOP_ENABLED
-        value: true
-      
-      # Twitter API Configuration
-      - key: TWITTER_APP_KEY
-        fromSecret: TWITTER_APP_KEY
-      - key: TWITTER_APP_SECRET
-        fromSecret: TWITTER_APP_SECRET
-      - key: TWITTER_ACCESS_TOKEN
-        fromSecret: TWITTER_ACCESS_TOKEN
-      - key: TWITTER_ACCESS_SECRET
-        fromSecret: TWITTER_ACCESS_SECRET
-      - key: TWITTER_BEARER_TOKEN
-        fromSecret: TWITTER_BEARER_TOKEN
-      
-      # Database Configuration
-      - key: SUPABASE_URL
-        fromSecret: SUPABASE_URL
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        fromSecret: SUPABASE_SERVICE_ROLE_KEY
-      
-      # AI Configuration
-      - key: OPENAI_API_KEY
-        fromSecret: OPENAI_API_KEY
-      - key: NEWS_API_KEY
-        fromSecret: NEWS_API_KEY
-      - key: PEXELS_API_KEY
-        fromSecret: PEXELS_API_KEY
-      - key: GUARDIAN_API_KEY
-        fromSecret: GUARDIAN_API_KEY
-      
-      # Growth Loop Settings
-      - key: MAX_DAILY_TWEETS
-        value: 12
-      - key: POST_FREQUENCY_HOURS
-        value: 2
-      - key: FOLLOW_LIMIT_DAILY
-        value: 25
-      - key: UNFOLLOW_LIMIT_DAILY
-        value: 25
-      
-      # Safety Settings
-      - key: RATE_LIMIT_SAFETY
-        value: true
-      - key: SPAM_PREVENTION
-        value: true
-      - key: HUMAN_LIKE_TIMING
-        value: true
-      
-      - key: PORT
-        value: 3000
