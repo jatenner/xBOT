@@ -6,7 +6,7 @@ import { openaiClient } from '../utils/openaiClient';
 import { supabaseClient } from '../utils/supabaseClient';
 import { intelligenceCache } from '../utils/intelligenceCache';
 import { RealTimeLimitsIntelligenceAgent } from './realTimeLimitsIntelligenceAgent';
-import { DailyPostingManager } from '../utils/dailyPostingManager';
+import { dailyPostingManager } from '../utils/dailyPostingManager';
 
 interface StrategicOpportunity {
   type: 'breaking_news' | 'viral_trend' | 'peak_engagement' | 'competitor_gap' | 'audience_surge';
@@ -29,7 +29,7 @@ interface StrategicSchedule {
 export class StrategicOpportunityScheduler {
   private realTimeLimitsAgent: RealTimeLimitsIntelligenceAgent;
   private timingAgent: TimingOptimizationAgent;
-  private dailyManager: DailyPostingManager;
+  private dailyManager = dailyPostingManager;
   private engagementTracker: RealTimeEngagementTracker;
   private trendsAgent: RealTimeTrendsAgent;
   private newsAgent: NewsAPIAgent;
@@ -40,7 +40,6 @@ export class StrategicOpportunityScheduler {
   constructor() {
     this.realTimeLimitsAgent = new RealTimeLimitsIntelligenceAgent();
     this.timingAgent = new TimingOptimizationAgent();
-    this.dailyManager = new DailyPostingManager();
     this.engagementTracker = new RealTimeEngagementTracker();
     this.trendsAgent = new RealTimeTrendsAgent();
     this.newsAgent = NewsAPIAgent.getInstance();

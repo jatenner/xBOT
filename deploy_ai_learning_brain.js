@@ -29,9 +29,9 @@ async function deployAILearningBrain() {
   console.log('📚 Your agents will be able to learn from every post and decision');
   
   try {
-    // Read the AI Learning Brain SQL
+    // Read the AI Learning Brain SQL (using the fixed version)
     console.log('\n📖 Reading AI Learning Brain schema...');
-    const sqlContent = fs.readFileSync('supabase/ai_learning_brain_database.sql', 'utf8');
+    const sqlContent = fs.readFileSync('supabase/ai_learning_brain_database_fixed.sql', 'utf8');
     
     // Execute the SQL using Supabase RPC
     console.log('\n🚀 Deploying AI Learning Brain to Supabase...');

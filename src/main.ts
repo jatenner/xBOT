@@ -1,4 +1,3 @@
-import { DailyPostingManager } from './utils/dailyPostingManager';
 import { Scheduler } from './agents/scheduler';
 import { DynamicPostingController } from './utils/dynamicPostingController';
 import * as cron from 'node-cron';

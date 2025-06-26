@@ -600,4 +600,6 @@ export class DailyPostingManager {
   }
 }
 
+// Export both the class and the singleton instance
+export { DailyPostingManager };
 export const dailyPostingManager = new DailyPostingManager(); 
