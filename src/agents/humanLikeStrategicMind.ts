@@ -40,7 +40,7 @@ export class HumanLikeStrategicMind {
   private lastAnalysisTime: Date | null = null;
 
   constructor() {
-    this.newsAgent = new NewsAPIAgent();
+    this.newsAgent = NewsAPIAgent.getInstance();
     this.trendsAgent = new RealTimeTrendsAgent();
     this.engagementTracker = new RealTimeEngagementTracker();
   }
@@ -354,13 +354,13 @@ export class HumanLikeStrategicMind {
     competitorGaps.forEach(gap => {
       insights.push({
         type: 'competitive_advantage',
-        insight: `Competitor gap identified: ${gap} - opportunity for thought leadership`,
+        insight: `Competitive gap: Most accounts aren't discussing ${gap}`,
         confidence: 0.7,
         actionable: true,
         urgency: 0.6,
-        contentAngles: [`expert take on ${gap}`, `contrarian view on ${gap}`],
+        contentAngles: [`expert take on ${gap}`, `controversial opinion on ${gap}`],
         postingStrategy: {
-          when: 'within_day',
+          when: 'within_hour',
           postCount: 1,
           contentType: 'thought_leadership'
         }
@@ -371,73 +371,57 @@ export class HumanLikeStrategicMind {
   }
 
   /**
-   * 📝 CREATE POSTING RECOMMENDATIONS: Turn insights into actionable posts
+   * Generate content angles for a given theme
    */
-  private async createPostingRecommendations(insights: StrategicInsight[], context: StrategicContext): Promise<any[]> {
-    const recommendations = [];
+  private generateContentAngles(theme: string): string[] {
+    const angleMap: { [key: string]: string[] } = {
+      'ai_healthcare': ['AI bias in medical decisions', 'Doctor-AI collaboration future', 'Patient privacy concerns'],
+      'digital_therapeutics': ['FDA approval challenges', 'Effectiveness vs traditional therapy', 'Accessibility barriers'],
+      'telemedicine': ['Rural healthcare transformation', 'Quality of care debate', 'Technology adoption barriers'],
+      'mental_health_tech': ['App effectiveness studies', 'Professional oversight needs', 'Privacy and data security']
+    };
     
-    // Convert high-confidence, urgent insights into posting recommendations
-    const actionableInsights = insights.filter(i => i.actionable && i.urgency > 0.5);
-    
-    for (const insight of actionableInsights.slice(0, 5)) {
-      recommendations.push({
-        trigger: insight.insight,
-        urgency: insight.urgency,
-        when: insight.postingStrategy.when,
-        postCount: insight.postingStrategy.postCount,
-        contentType: insight.postingStrategy.contentType,
-        contentAngles: insight.contentAngles,
-        estimatedEngagement: this.estimateEngagement(insight),
-        strategicReason: `Human-like insight: ${insight.type}`
-      });
-    }
-    
-    return recommendations;
+    return angleMap[theme] || [`trending perspective on ${theme}`, `expert analysis of ${theme}`];
   }
 
   /**
-   * 📖 GENERATE STRATEGIC NARRATIVE: Your internal monologue
+   * Extract JSON from AI response
    */
-  private async generateStrategicNarrative(insights: StrategicInsight[], context: StrategicContext): Promise<string> {
-    const narrativePrompt = `
-    Write a strategic narrative like an expert Twitter user's internal monologue:
-    
-    INSIGHTS: ${insights.slice(0, 3).map(i => i.insight).join('; ')}
-    CONTEXT: ${context.timeOfDay}, ${context.dayOfWeek}
-    TRENDS: ${context.currentTrends.slice(0, 3).map(t => t.name).join(', ')}
-    
-    Write 2-3 sentences like: "I'm noticing Apple Watch keeps trending, and with that new FDA story, there's a perfect opportunity to post about wearable regulation. The timing is perfect since it's peak engagement hours..."
-    `;
-    
+  private extractJsonFromResponse(response: string): any {
     try {
-      const response = await openaiClient.generateCompletion(narrativePrompt, {
-        maxTokens: 150,
-        temperature: 0.7
-      });
-      
-      return response;
+      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      return jsonMatch ? JSON.parse(jsonMatch[0]) : {};
     } catch (error) {
-      return `Strategic analysis complete: ${insights.length} opportunities identified during ${context.timeOfDay} on ${context.dayOfWeek}.`;
+      console.warn('Failed to parse JSON from response:', error);
+      return {};
     }
   }
 
-  // Helper methods
-  private generateContentAngles(theme: string): string[] {
-    const angles = {
-      'wearables': ['privacy implications', 'health data accuracy', 'FDA oversight'],
-      'ai_health': ['diagnostic accuracy', 'doctor replacement fears', 'data bias'],
-      'mental_health': ['app effectiveness', 'therapy accessibility', 'stigma reduction'],
-      'regulation': ['innovation vs safety', 'global standards', 'startup impact'],
-      'telehealth': ['rural access', 'insurance coverage', 'quality of care']
-    };
-    
-    return angles[theme] || ['expert perspective', 'contrarian view', 'future implications'];
+  /**
+   * Create posting recommendations based on insights
+   */
+  private async createPostingRecommendations(insights: StrategicInsight[], context: StrategicContext): Promise<any[]> {
+    return insights.map(insight => ({
+      content: insight.insight,
+      timing: insight.postingStrategy.when,
+      postCount: insight.postingStrategy.postCount,
+      contentType: insight.postingStrategy.contentType,
+      urgency: insight.urgency,
+      angles: insight.contentAngles
+    }));
   }
 
-  private estimateEngagement(insight: StrategicInsight): number {
-    return Math.round(insight.confidence * insight.urgency * 30);
+  /**
+   * Generate strategic narrative from insights
+   */
+  private async generateStrategicNarrative(insights: StrategicInsight[], context: StrategicContext): Promise<string> {
+    const highPriorityInsights = insights.filter(i => i.urgency > 0.7);
+    return `Strategic analysis reveals ${highPriorityInsights.length} high-priority opportunities in health tech.`;
   }
 
+  /**
+   * Get time of day description
+   */
   private getTimeOfDay(hour: number): string {
     if (hour < 6) return 'early_morning';
     if (hour < 12) return 'morning';
@@ -446,63 +430,44 @@ export class HumanLikeStrategicMind {
     return 'night';
   }
 
+  /**
+   * Get day of week description
+   */
   private getDayOfWeek(day: number): string {
-    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     return days[day];
   }
 
-  private isRecent(publishedAt: string, hours: number): boolean {
-    const publishTime = new Date(publishedAt);
-    const hoursAgo = (Date.now() - publishTime.getTime()) / (1000 * 60 * 60);
+  /**
+   * Check if a timestamp is recent
+   */
+  private isRecent(timestamp: string, hours: number): boolean {
+    const publishedTime = new Date(timestamp).getTime();
+    const hoursAgo = (Date.now() - publishedTime) / (1000 * 60 * 60);
     return hoursAgo <= hours;
   }
 
+  /**
+   * Analyze competitor activity
+   */
   private async analyzeCompetitorActivity(): Promise<any> {
-    // Placeholder for competitor analysis
-    return { quietPeriod: Math.random() > 0.5 };
-  }
-
-  private async getWorldEvents(): Promise<any[]> {
-    // Placeholder for world events
-    return [];
-  }
-
-  private async analyzeMarketSentiment(): Promise<string> {
-    // Placeholder for market sentiment
-    return ['bullish', 'bearish', 'neutral'][Math.floor(Math.random() * 3)];
+    // Simplified competitor analysis
+    return { activity: 'moderate', gaps: ['AI regulation', 'privacy concerns'] };
   }
 
   /**
-   * 🛠️ HELPER: Extract JSON from OpenAI response that may include markdown
+   * Get world events
    */
-  private extractJsonFromResponse(response: string): any {
-    try {
-      // First try direct parsing
-      return JSON.parse(response);
-    } catch (error) {
-      // Try to extract JSON from markdown code blocks
-      const jsonMatch = response.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
-      if (jsonMatch) {
-        try {
-          return JSON.parse(jsonMatch[1]);
-        } catch (innerError) {
-          console.warn('Failed to parse extracted JSON:', innerError);
-        }
-      }
-      
-      // Try to find JSON object in the response
-      const jsonObjectMatch = response.match(/\{[\s\S]*\}/);
-      if (jsonObjectMatch) {
-        try {
-          return JSON.parse(jsonObjectMatch[0]);
-        } catch (innerError) {
-          console.warn('Failed to parse found JSON object:', innerError);
-        }
-      }
-      
-      throw error;
-    }
+  private async getWorldEvents(): Promise<any[]> {
+    // Simplified world events
+    return [{ title: 'Health tech funding surge', impact: 'high' }];
+  }
+
+  /**
+   * Analyze market sentiment
+   */
+  private async analyzeMarketSentiment(): Promise<string> {
+    // Simplified sentiment analysis
+    return 'optimistic';
   }
 }
-
-export const humanLikeStrategicMind = new HumanLikeStrategicMind(); 

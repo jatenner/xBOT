@@ -53,7 +53,7 @@ export class IntelligentSchedulingAgent {
     this.timingAgent = new TimingOptimizationAgent();
     this.engagementTracker = new RealTimeEngagementTracker();
     this.trendsAgent = new RealTimeTrendsAgent();
-    this.newsAgent = new NewsAPIAgent();
+    this.newsAgent = NewsAPIAgent.getInstance();
   }
 
   /**

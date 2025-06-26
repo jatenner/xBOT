@@ -5,6 +5,36 @@ import * as cron from 'node-cron';
 import dotenv from 'dotenv';
 import http from 'http';
 
+// 🚨 EMERGENCY STARTUP CONSERVATION MODE
+console.log('🚨 EMERGENCY: Activating startup conservation mode');
+console.log('⏱️  Startup throttling active for first 10 minutes');
+
+// Global startup throttling flags
+global.STARTUP_MODE = true;
+global.STARTUP_API_CALLS = 0;
+global.MAX_STARTUP_API_CALLS = 5;
+
+// Disable startup mode after 10 minutes
+setTimeout(() => {
+  global.STARTUP_MODE = false;
+  console.log('⚡ Startup conservation mode disabled - full functionality restored');
+}, 600000);
+
+// Emergency API call throttler
+global.throttleStartupAPI = function(apiName) {
+  if (!global.STARTUP_MODE) return true;
+  
+  global.STARTUP_API_CALLS++;
+  if (global.STARTUP_API_CALLS > global.MAX_STARTUP_API_CALLS) {
+    console.log(`🚨 STARTUP THROTTLE: Blocking ${apiName} call (${global.STARTUP_API_CALLS}/${global.MAX_STARTUP_API_CALLS})`);
+    return false;
+  }
+  
+  console.log(`⚡ STARTUP ALLOW: ${apiName} call (${global.STARTUP_API_CALLS}/${global.MAX_STARTUP_API_CALLS})`);
+  return true;
+};
+
+
 // Load environment variables
 dotenv.config();
 

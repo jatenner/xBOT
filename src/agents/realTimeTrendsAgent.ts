@@ -49,7 +49,7 @@ export class RealTimeTrendsAgent {
       this.startupMode = false;
       console.log('⚡ Startup mode disabled - full API access restored');
     }, 600000);
-    this.newsAgent = new NewsAPIAgent();
+    this.newsAgent = NewsAPIAgent.getInstance();
   }
 
   /**

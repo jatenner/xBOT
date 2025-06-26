@@ -44,7 +44,7 @@ export class RealResearchFetcher {
   };
 
   constructor() {
-    this.newsAPIAgent = new NewsAPIAgent();
+    this.newsAPIAgent = NewsAPIAgent.getInstance();
   }
 
   async fetchCurrentHealthTechNews(): Promise<RealArticle[]> {

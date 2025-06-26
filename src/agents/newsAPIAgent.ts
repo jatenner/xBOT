@@ -55,8 +55,16 @@ interface GuardianArticle {
 }
 
 export class NewsAPIAgent {
+  private static instance: NewsAPIAgent | null = null;
+  private static isInitializing: boolean = false;
+  
   private readonly newsApiKey: string;
   private readonly guardianApiKey: string;
+  
+  // Add startup throttling
+  private static startupMode: boolean = true;
+  private static startupCallCount: number = 0;
+  private static lastStartupCall: number = 0;
   
   private readonly healthTechKeywords = [
     'AI healthcare',
@@ -114,14 +122,50 @@ export class NewsAPIAgent {
     guardian: 450 // Keep safely below 500/day limit
   };
 
-  constructor() {
+  private constructor() {
     this.newsApiKey = process.env.NEWS_API_KEY || '';
     this.guardianApiKey = process.env.GUARDIAN_API_KEY || '';
     
-    console.log('🔌 News APIs configured:', {
-      newsapi: !!this.newsApiKey,
-      guardian: !!this.guardianApiKey
-    });
+    // Only log once during singleton creation
+    if (!NewsAPIAgent.instance) {
+      console.log('🔌 News APIs configured:', {
+        newsapi: !!this.newsApiKey,
+        guardian: !!this.guardianApiKey
+      });
+    }
+    
+    // Disable startup mode after 5 minutes
+    setTimeout(() => {
+      NewsAPIAgent.startupMode = false;
+      console.log('⚡ NewsAPI startup throttling disabled');
+    }, 300000);
+  }
+
+  /**
+   * Singleton getInstance method
+   */
+  public static getInstance(): NewsAPIAgent {
+    if (NewsAPIAgent.instance) {
+      return NewsAPIAgent.instance;
+    }
+    
+    if (NewsAPIAgent.isInitializing) {
+      // Wait for initialization to complete
+      return new Promise((resolve) => {
+        const checkInterval = setInterval(() => {
+          if (NewsAPIAgent.instance) {
+            clearInterval(checkInterval);
+            resolve(NewsAPIAgent.instance);
+          }
+        }, 100);
+      }) as any;
+    }
+    
+    NewsAPIAgent.isInitializing = true;
+    NewsAPIAgent.instance = new NewsAPIAgent();
+    NewsAPIAgent.isInitializing = false;
+    
+    return NewsAPIAgent.instance;
   }
 
   /**
@@ -129,6 +173,26 @@ export class NewsAPIAgent {
    * Uses Guardian API as primary (more reliable) and NewsAPI as backup
    */
   async fetchHealthTechNews(maxArticles: number = 20): Promise<ProcessedNewsArticle[]> {
+    // Aggressive startup throttling
+    if (NewsAPIAgent.startupMode) {
+      NewsAPIAgent.startupCallCount++;
+      const now = Date.now();
+      
+      // Only allow 1 call per 10 seconds during startup
+      if (now - NewsAPIAgent.lastStartupCall < 10000) {
+        console.log('📰 STARTUP THROTTLE: Skipping news fetch to prevent rate limits');
+        return this.getFallbackNews().slice(0, Math.min(maxArticles, 2));
+      }
+      
+      // Skip 90% of calls during first 5 minutes
+      if (NewsAPIAgent.startupCallCount > 3 || Math.random() > 0.1) {
+        console.log('📰 STARTUP CONSERVATION: Using cached fallback content');
+        return this.getFallbackNews().slice(0, Math.min(maxArticles, 2));
+      }
+      
+      NewsAPIAgent.lastStartupCall = now;
+    }
+    
     console.log('📰 EMERGENCY: Delayed news aggregation to save startup API calls');
     if (Math.random() > 0.7) return []; // Skip 70% of news calls during startup
     

@@ -1,4 +1,4 @@
-import { humanLikeStrategicMind } from './humanLikeStrategicMind';
+import { HumanLikeStrategicMind } from './humanLikeStrategicMind';
 import { strategicOpportunityScheduler } from './strategicOpportunityScheduler';
 import { PostTweetAgent } from './postTweet';
 import { NewsAPIAgent } from './newsAPIAgent';
@@ -66,7 +66,7 @@ interface GlobalContext {
 export class SupremeAIOrchestrator {
   private lastStartup: number = Date.now();
   // All AI agents under command
-  private humanStrategicMind: typeof humanLikeStrategicMind;
+  private humanStrategicMind: HumanLikeStrategicMind;
   private strategicScheduler: typeof strategicOpportunityScheduler;
   private postTweetAgent: PostTweetAgent;
   private newsAgent: NewsAPIAgent;
@@ -87,10 +87,10 @@ export class SupremeAIOrchestrator {
   private performanceMetrics: Map<string, number> = new Map();
 
   constructor() {
-    this.humanStrategicMind = humanLikeStrategicMind;
+    this.humanStrategicMind = new HumanLikeStrategicMind();
     this.strategicScheduler = strategicOpportunityScheduler;
     this.postTweetAgent = new PostTweetAgent();
-    this.newsAgent = new NewsAPIAgent();
+    this.newsAgent = NewsAPIAgent.getInstance();
     this.trendsAgent = new RealTimeTrendsAgent();
     this.engagementTracker = new RealTimeEngagementTracker();
     this.timingAgent = new TimingOptimizationAgent();

@@ -23,7 +23,7 @@ export class DynamicPostingController {
   
   constructor() {
     this.supremeOrchestrator = new SupremeAIOrchestrator();
-    this.newsAgent = new NewsAPIAgent();
+    this.newsAgent = NewsAPIAgent.getInstance();
     this.trendsAgent = new RealTimeTrendsAgent();
     console.log('🚨 Dynamic Posting Controller now using Real-Time Limits Intelligence');
   }

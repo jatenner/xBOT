@@ -59,7 +59,7 @@ export class TrendResearchFusion {
   constructor() {
     this.trendsAgent = new RealTimeTrendsAgent();
     this.researchFetcher = new RealResearchFetcher();
-    this.newsAgent = new NewsAPIAgent();
+    this.newsAgent = NewsAPIAgent.getInstance();
     this.embeddingFilter = new EmbeddingFilter();
   }
 

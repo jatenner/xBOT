@@ -3,7 +3,7 @@ import { PostTweetAgent } from '../agents/postTweet';
 import { contentCache } from './contentCache';
 import { IntelligentSchedulingAgent } from '../agents/intelligentSchedulingAgent';
 import { strategicOpportunityScheduler } from '../agents/strategicOpportunityScheduler';
-import { humanLikeStrategicMind } from '../agents/humanLikeStrategicMind';
+import { HumanLikeStrategicMind } from '../agents/humanLikeStrategicMind';
 import { supremeAIOrchestrator } from '../agents/supremeAIOrchestrator';
 import * as cron from 'node-cron';
 
@@ -27,6 +27,7 @@ interface PostingWindow {
 export class DailyPostingManager {
   private postTweetAgent: PostTweetAgent;
   private intelligentScheduler: IntelligentSchedulingAgent;
+  private humanStrategicMind: HumanLikeStrategicMind;
   private currentState: DailyPostingState;
   private readonly DAILY_TARGET = parseInt(process.env.MAX_DAILY_TWEETS || '8');
   private isRunning = false;
@@ -48,6 +49,7 @@ export class DailyPostingManager {
   constructor() {
     this.postTweetAgent = new PostTweetAgent();
     this.intelligentScheduler = new IntelligentSchedulingAgent();
+    this.humanStrategicMind = new HumanLikeStrategicMind();
     this.currentState = this.getDefaultState();
   }
 
@@ -209,7 +211,7 @@ export class DailyPostingManager {
         console.log('🤔 Supreme AI decided not to post - using fallback human-like strategic analysis');
         
         // Fallback to human-like strategic mind
-        const humanInsights = await humanLikeStrategicMind.analyzeWorldLikeHuman();
+        const humanInsights = await this.humanStrategicMind.analyzeWorldLikeHuman();
         
         if (humanInsights.postingRecommendations.some(r => r.urgency > 0.6)) {
           console.log('🧠 Human-like strategic mind found urgent opportunities');
@@ -293,7 +295,7 @@ export class DailyPostingManager {
         console.log('   👀 Scanning trends, news, and opportunities...');
         
         // Get human-like strategic analysis
-        const humanAnalysis = await humanLikeStrategicMind.analyzeWorldLikeHuman();
+        const humanAnalysis = await this.humanStrategicMind.analyzeWorldLikeHuman();
         
         console.log('🧠 HUMAN-LIKE STRATEGIC ANALYSIS:');
         console.log(`   💡 Strategic insights: ${humanAnalysis.insights.length}`);

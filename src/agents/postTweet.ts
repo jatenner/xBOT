@@ -133,7 +133,7 @@ export class PostTweetAgent {
     this.imageAgent = new ImageAgent();
     this.engagementMaximizer = new EngagementMaximizerAgent();
     this.comprehensiveAgent = new ComprehensiveContentAgent();
-    this.newsAPIAgent = new NewsAPIAgent();
+    this.newsAPIAgent = NewsAPIAgent.getInstance();
     this.threadAgent = new ThreadAgent();
     this.researchFetcher = new RealResearchFetcher();
     this.missionManager = new MissionManager();
