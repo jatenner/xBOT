@@ -1,9 +1,9 @@
 services:
-  - type: background_worker
+  - type: web
     name: autonomous-health-bot
     runtime: node
     buildCommand: npm install
-    startCommand: node src/index.ts
+    startCommand: node index.js
     envVars:
       - key: NODE_ENV
         value: production
@@ -34,90 +34,44 @@ services:
       - key: NEWS_API_KEY
         sync: false
       
-      # 🧠 SUPREME AI CONTROL - DYNAMIC POSTING DECISIONS
-      - key: AI_SUPREME_MODE
-        value: true
-      - key: DYNAMIC_POSTING_ENABLED
-        value: true
-      - key: AI_OVERRIDE_LIMITS
-        value: true
-      - key: SUPREME_AI_DECISION_FREQUENCY
-        value: 30
-      - key: EMERGENCY_OVERRIDE_ENABLED
-        value: true
-      - key: BREAKING_NEWS_RESPONSE
-        value: true
-      - key: COMPETITIVE_INTELLIGENCE
-        value: true
-      
-      # 📊 AI-DETERMINED SETTINGS (No More Hardcoded Limits!)
+      # 🧬 SIMPLIFIED BOT SETTINGS
       - key: DISABLE_BOT
         value: false
       - key: MAX_DAILY_TWEETS
-        value: 17
-      - key: DAILY_TARGET
-        value: AI_DETERMINED
-      - key: POST_FREQUENCY_MINUTES
-        value: AI_DETERMINED
-      - key: ENGAGEMENT_TARGET_DAILY
-        value: AI_DETERMINED
-      - key: ALGORITHMIC_BOOST_LEVEL
-        value: AI_DETERMINED
+        value: 8
+      - key: POST_FREQUENCY_HOURS
+        value: 3
       
-      # 🔐 SAFETY SETTINGS (Prevent Twitter Detection)
-      - key: GHOST_ACCOUNT_SYNDROME_FIX
-        value: false
-      - key: AGGRESSIVE_ENGAGEMENT_MODE
-        value: false
-      - key: AUTO_REPLY_ENABLED
-        value: false
-      - key: AUTO_FOLLOW_ENABLED
-        value: false
+      # 🔐 SAFETY SETTINGS
       - key: RATE_LIMIT_SAFETY
         value: true
       - key: SPAM_PREVENTION
         value: true
       - key: HUMAN_LIKE_TIMING
         value: true
-      - key: TRENDING_HASHTAG_TRACKING
-        value: true
-      - key: REAL_TIME_OPTIMIZATION
-        value: true
-      
-      # COST OPTIMIZATION SETTINGS
-      - key: EMERGENCY_COST_MODE
-        value: false
-      - key: DISABLE_LEARNING_AGENTS
-        value: false
-      - key: DAILY_BUDGET_LIMIT
-        value: 2.00
-      - key: OPENAI_PREFERRED_MODEL
-        value: gpt-4o-mini
-      - key: OPENAI_MAX_TOKENS
-        value: 200
-      - key: OPENAI_MAX_CALLS_PER_HOUR
-        value: 20
       
       # API KEYS (From Render secrets)
-      - key: X_API_KEY
-        fromSecret: X_API_KEY
-      - key: X_API_SECRET
-        fromSecret: X_API_SECRET  
-      - key: X_ACCESS_TOKEN
-        fromSecret: X_ACCESS_TOKEN
-      - key: X_ACCESS_TOKEN_SECRET
-        fromSecret: X_ACCESS_TOKEN_SECRET
-      - key: X_BEARER_TOKEN
-        fromSecret: X_BEARER_TOKEN
+      - key: TWITTER_APP_KEY
+        fromSecret: TWITTER_APP_KEY
+      - key: TWITTER_APP_SECRET
+        fromSecret: TWITTER_APP_SECRET  
+      - key: TWITTER_ACCESS_TOKEN
+        fromSecret: TWITTER_ACCESS_TOKEN
+      - key: TWITTER_ACCESS_SECRET
+        fromSecret: TWITTER_ACCESS_SECRET
+      - key: TWITTER_BEARER_TOKEN
+        fromSecret: TWITTER_BEARER_TOKEN
       - key: OPENAI_API_KEY
         fromSecret: OPENAI_API_KEY
       - key: SUPABASE_URL
         fromSecret: SUPABASE_URL
-      - key: SUPABASE_ANON_KEY
-        fromSecret: SUPABASE_ANON_KEY
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        fromSecret: SUPABASE_SERVICE_ROLE_KEY
       - key: NEWS_API_KEY
         fromSecret: NEWS_API_KEY
       - key: PEXELS_API_KEY
         fromSecret: PEXELS_API_KEY
+      - key: GUARDIAN_API_KEY
+        fromSecret: GUARDIAN_API_KEY
       - key: PORT
         value: 3000
