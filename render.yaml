@@ -2,13 +2,11 @@ services:
   # Production service with growth loop
   - type: web
     name: xbot-prod
-    runtime: node
-    runtimeVersion: 22.14.0
+    env: node
+    runtime: node 22
     plan: starter-plus
-    scaling:
-      minInstances: 1
-      maxInstances: 3
-    buildCommand: npm ci && npm run build-minimal-safe
+    branch: main
+    buildCommand: npm ci && npm run build
     startCommand: node dist/index.js
     healthCheckPath: /health
     envVars:
