@@ -101,8 +101,7 @@ Dry-run executes every pipeline stage (idea generation → image fetch → logs)
 ## 8. Deployment
 Vercel Cron (*/10 *) → `pnpm cron` **or** Railway always-on worker → `pnpm dev`.
 
-Render automatically runs all new migrations on every deploy via scripts/db_push.sh.
-Remember to keep SUPABASE_ACCESS_TOKEN in Render Secrets so the CLI can authenticate.
+Render automatically runs all new migrations on every deploy via `npm run migrate`. The migration script uses `npx supabase db push` which works in production since Render provides `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` environment variables.
 
 ## 9. Advanced Content Pipeline
 

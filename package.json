@@ -5,7 +5,8 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "NODE_OPTIONS=--max_old_space_size=1024 tsc",
-    "start": "bash scripts/db_push.sh",
+    "migrate": "node scripts/db_push.js",
+    "start": "npm run migrate && node dist/index.js",
     "dev": "npm run setup-check && nodemon src/index.js",
     "test": "jest",
     "lint": "eslint .",
@@ -48,6 +49,7 @@
     "node-cron": "^3.0.3",
     "openai": "^4.56.0",
     "socket.io": "^4.7.4",
+    "supabase": "^1.220.5",
     "twitter-api-v2": "^1.17.2",
     "winston": "^3.14.2",
     "ws": "^8.18.0",
