@@ -19,6 +19,8 @@ import { AutonomousContentOrchestrator } from './autonomousContentOrchestrator';
 import { pubmedFetcher } from './pubmedFetcher.js';
 import { supabase } from '../utils/supabaseClient.js';
 import { dailyPostingManager } from '../utils/dailyPostingManager';
+import { tweetAnalyticsCollector } from './tweetAnalyticsCollector';
+import { dashboardWriter } from '../dashboard/dashboardWriter';
 
 dotenv.config();
 
@@ -355,6 +357,28 @@ export class Scheduler {
       }
     });
 
+    // Tweet Analytics Collector - nightly at 1:00 AM UTC
+    cron.schedule('0 1 * * *', async () => {
+      try {
+        console.log('📊 Running nightly tweet analytics collection...');
+        const { tweetAnalyticsCollector } = await import('./tweetAnalyticsCollector');
+        await tweetAnalyticsCollector.run();
+      } catch (error) {
+        console.error('📊 Tweet analytics collection failed:', error);
+      }
+    });
+
+    // Dashboard Writer - nightly at 1:15 AM UTC
+    cron.schedule('15 1 * * *', async () => {
+      try {
+        console.log('📝 Running nightly dashboard update...');
+        const { dashboardWriter } = await import('../dashboard/dashboardWriter');
+        await dashboardWriter.publish();
+      } catch (error) {
+        console.error('📝 Dashboard writer failed:', error);
+      }
+    });
+
     // Store job references for cleanup
     this.jobs.set('strategist', this.strategistJob);
     this.jobs.set('learning', this.learningJob);
@@ -402,6 +426,8 @@ export class Scheduler {
     console.log('   - 🎭 Supreme Content Orchestrator: Every 8 hours');
     console.log('   - Real-time Engagement Tracking: Continuous');
     console.log('   - Nightly Optimizer: Daily at 3:00 AM UTC');
+    console.log('   - 📊 Tweet Analytics Collector: Daily at 1:00 AM UTC');
+    console.log('   - 📝 Dashboard Writer: Daily at 1:15 AM UTC');
     
     console.log('🧠 AUTONOMOUS INTELLIGENCE ACTIVATED:');
     console.log('   - System continuously learns and improves');
