@@ -30,6 +30,7 @@ import { PollAgent } from './pollAgent.js';
 import { tweetFormatter } from '../utils/tweetFormatter.js';
 import { ContentCache } from '../utils/contentCache.js';
 import { EmbeddingFilter } from '../utils/embeddingFilter.js';
+import { LIVE_MODE } from '../config/liveMode';
 
 dotenv.config();
 
@@ -305,8 +306,7 @@ export class PostTweetAgent {
       console.log('🐦 === POST TWEET AGENT ACTIVATED ===');
       
       // Check live posting mode
-      const livePostingEnabled = process.env.LIVE_POSTING_ENABLED === 'true';
-      if (!livePostingEnabled) {
+      if (!LIVE_MODE) {
         console.log('[DRY RUN] No tweets will be published');
       } else {
         console.log('[LIVE] Posting ENABLED');
@@ -383,7 +383,7 @@ export class PostTweetAgent {
         console.log('⚠️ No image selected - posting text-only');
       }
       
-      if (!livePostingEnabled) {
+      if (!LIVE_MODE) {
         console.log('🧪 DRY RUN – Tweet preview:');
         console.log(`📝 Content: ${tweetContent}`);
         console.log(`🖼️ Image: ${imageUrl || 'None'}`);
