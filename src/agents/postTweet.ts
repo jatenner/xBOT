@@ -302,6 +302,12 @@ export class PostTweetAgent {
   }
 
   async run(force: boolean = false, testMode: boolean = false): Promise<any> {
+    // 🚨 EMERGENCY RATE LIMITING
+    const rateLimitCheck = await this.checkRateLimit();
+    if (!rateLimitCheck.canPost) {
+      console.log('🚨 RATE LIMIT BLOCK: Cannot post -', rateLimitCheck.reason);
+      return { success: false, reason: rateLimitCheck.reason };
+    }
     try {
       console.log('🐦 === POST TWEET AGENT ACTIVATED ===');
       
@@ -2596,6 +2602,54 @@ Make it insightful, strategic, and reveal hidden implications. 250 characters ma
     
     // Return a random conversational enhancement
     return endings[Math.floor(Math.random() * endings.length)];
+  }
+
+  /**
+   * 🚨 EMERGENCY RATE LIMITING
+   * Prevents API exhaustion by enforcing strict limits
+   */
+  private async checkRateLimit(): Promise<{ canPost: boolean; reason: string }> {
+    try {
+      // Check database for recent posts
+      const today = new Date().toISOString().split('T')[0];
+      const { data: todaysPosts } = await supabaseClient.supabase
+        ?.from('tweets')
+        .select('created_at')
+        .gte('created_at', today + 'T00:00:00')
+        .order('created_at', { ascending: false }) || { data: [] };
+      
+      const postsToday = todaysPosts?.length || 0;
+      
+      // Conservative daily limit
+      if (postsToday >= 8) {
+        return { 
+          canPost: false, 
+          reason: `Daily limit reached: ${postsToday}/8 posts today`
+        };
+      }
+      
+      // Check time since last post
+      if (todaysPosts && todaysPosts.length > 0) {
+        const lastPostTime = new Date(todaysPosts[0].created_at);
+        const timeSinceLastPost = Date.now() - lastPostTime.getTime();
+        const MIN_INTERVAL = 20 * 60 * 1000; // 20 minutes minimum
+        
+        if (timeSinceLastPost < MIN_INTERVAL) {
+          const waitMinutes = Math.ceil((MIN_INTERVAL - timeSinceLastPost) / 60000);
+          return { 
+            canPost: false, 
+            reason: `Must wait ${waitMinutes} more minutes since last post`
+          };
+        }
+      }
+      
+      return { canPost: true, reason: 'Rate limit check passed' };
+      
+    } catch (error) {
+      console.log('⚠️ Rate limit check failed:', error.message);
+      // Be conservative on error
+      return { canPost: false, reason: 'Rate limit check failed - being conservative' };
+    }
   }
 }
 

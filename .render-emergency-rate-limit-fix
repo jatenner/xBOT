@@ -1,0 +1,4 @@
+# 🚨 EMERGENCY RATE LIMIT FIX DEPLOYMENT
+# Timestamp: 2025-06-27T15:14:32.462Z
+# Issue: Bot posted 17 times in 30 minutes, exhausted Twitter API
+# Fix: Conservative rate limiting + emergency posting disabled

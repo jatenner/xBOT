@@ -321,16 +321,10 @@ class DailyPostingManager {
             console.log(`   🎯 Content type: ${rec.contentType}`);
             console.log(`   💡 Angles: ${rec.contentAngles.join(', ')}`);
             
-            // Execute strategic posting burst
-            for (let i = 0; i < rec.postCount && this.currentState.posts_completed < this.DAILY_TARGET; i++) {
-              console.log(`🔥 Executing strategic post ${i + 1}/${rec.postCount} - ${rec.strategicReason}`);
-              await this.executePost('emergency');
-              
-              // Brief delay between strategic posts
-              if (i < rec.postCount - 1) {
-                await new Promise(resolve => setTimeout(resolve, 3 * 60 * 1000)); // 3 minute delay
-              }
-            }
+            // 🚨 EMERGENCY FIX: Disabled strategic burst posting
+            console.log('🛑 Strategic burst posting DISABLED - preventing API spam');
+            console.log(`   Would have posted ${rec.postCount} times but blocked for safety`);
+            // Removed actual posting code to prevent API exhaustion
           }
         } else {
           console.log('📊 No urgent strategic opportunities detected');
@@ -421,33 +415,34 @@ class DailyPostingManager {
   private async activateEmergencyPosting(postsNeeded: number): Promise<void> {
     console.log(`🚨 Emergency posting activated - need ${postsNeeded} additional posts`);
     
-    // Check if emergency mode is enabled via config
-    const emergencyMode = await getConfig('mode', 'production');
-    const postingStrategy = await getConfig('postingStrategy', 'balanced');
-    
-    if (emergencyMode === 'production' && postingStrategy === 'balanced') {
-      this.currentState.emergency_mode = true;
-      await this.saveDailyState();
-
-      const now = new Date();
-      const endOfDay = new Date(now);
-      endOfDay.setHours(23, 30, 0, 0); // Stop at 11:30 PM
-
-      const timeRemaining = endOfDay.getTime() - now.getTime();
-      const interval = timeRemaining / (postsNeeded * 60 * 1000); // minutes
-
-      for (let i = 0; i < postsNeeded; i++) {
-        const emergencyTime = new Date(now.getTime() + (i * interval * 60 * 1000));
-        if (emergencyTime < endOfDay) {
-          this.schedulePost(emergencyTime);
-        }
-      }
-    } else {
-      console.log(`⚠️ Emergency posting disabled by config: mode=${emergencyMode}, strategy=${postingStrategy}`);
-    }
+    // 🚨 EMERGENCY FIX: Disable all emergency posting
+    console.log('🛑 EMERGENCY FIX: Emergency posting DISABLED to prevent API exhaustion');
+    console.log('⏰ Bot will wait for natural schedule instead of catch-up posting');
+    return; // Exit immediately without scheduling emergency posts
   }
 
   private async executePost(trigger: 'scheduled' | 'emergency' | 'catchup'): Promise<void> {
+    // 🚨 EMERGENCY RATE LIMITING
+    const lastPostTime = this.currentState.last_post_time ? new Date(this.currentState.last_post_time) : null;
+    const now = new Date();
+    
+    if (lastPostTime) {
+      const timeSinceLastPost = now.getTime() - lastPostTime.getTime();
+      const MIN_INTERVAL = 30 * 60 * 1000; // 30 minutes minimum
+      
+      if (timeSinceLastPost < MIN_INTERVAL) {
+        const waitTime = MIN_INTERVAL - timeSinceLastPost;
+        console.log(`🚨 RATE LIMIT: Must wait ${Math.ceil(waitTime / 60000)} minutes since last post`);
+        console.log('🛑 Post blocked to prevent API exhaustion');
+        return;
+      }
+    }
+    
+    // Check daily limit
+    if (this.currentState.posts_completed >= 10) { // Conservative limit
+      console.log('🚨 DAILY LIMIT REACHED: 10 posts completed, blocking further posts');
+      return;
+    }
     try {
       console.log(`📝 Executing ${trigger} post (${this.currentState.posts_completed + 1}/${this.DAILY_TARGET})`);
 
