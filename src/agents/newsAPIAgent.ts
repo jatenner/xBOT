@@ -125,13 +125,14 @@ export class NewsAPIAgent {
 
   private constructor() {
     this.newsApiKey = process.env.NEWS_API_KEY || '';
-    this.guardianApiKey = process.env.GUARDIAN_API_KEY || '';
+    // Check GUARDIAN_API_KEY first (Render format), fallback to Guardian_API_KEY (legacy local dev)
+    this.guardianApiKey = process.env.GUARDIAN_API_KEY || process.env.Guardian_API_KEY || '';
     
     // Only log once during singleton creation
     if (!NewsAPIAgent.instance) {
       // Log Guardian key detection with masking
       if (this.guardianApiKey) {
-        const maskedKey = this.guardianApiKey.substring(0, 8) + '...' + this.guardianApiKey.slice(-4);
+        const maskedKey = this.guardianApiKey.substring(0, 5) + '…' + this.guardianApiKey.slice(-4);
         console.log(`[Guardian] key detected ✔ (${maskedKey})`);
       } else {
         console.log('[Guardian] key missing ❌');
