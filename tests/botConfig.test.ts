@@ -1,17 +1,24 @@
-import { getConfig } from '../src/utils/botConfig';
-
 // Mock Supabase client
 const mockSupabase = {
   from: jest.fn(),
 };
 
+const mockSupabaseClient = {
+  supabase: mockSupabase
+};
+
 jest.mock('../src/utils/supabaseClient', () => ({
-  supabase: mockSupabase,
+  supabaseClient: mockSupabaseClient,
 }));
+
+import { getConfig } from '../src/utils/botConfig';
 
 describe('botConfig', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // Clear cache by accessing the internal cache (for testing only)
+    const configModule = require('../src/utils/botConfig');
+    if (configModule.clearCache) configModule.clearCache();
   });
 
   describe('getConfig', () => {
@@ -76,7 +83,7 @@ describe('botConfig', () => {
     });
 
     it('should cache results for subsequent calls', async () => {
-      // First call
+      // Mock a successful query
       const mockSelect = jest.fn().mockReturnValue({
         eq: jest.fn().mockReturnValue({
           single: jest.fn().mockResolvedValue({
@@ -90,8 +97,9 @@ describe('botConfig', () => {
         select: mockSelect
       });
 
-      const result1 = await getConfig('postingStrategy', 'production');
-      const result2 = await getConfig('postingStrategy', 'production');
+      // Make two calls to the same key
+      const result1 = await getConfig('testKey', 'default');
+      const result2 = await getConfig('testKey', 'default');
       
       expect(result1).toBe('balanced');
       expect(result2).toBe('balanced');

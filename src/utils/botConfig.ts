@@ -1,4 +1,4 @@
-import { supabase } from './supabaseClient.js';
+import { supabaseClient } from './supabaseClient';
 
 interface ConfigCache {
   [key: string]: {
@@ -18,8 +18,8 @@ export async function getConfig(key: string, defaultVal: any): Promise<any> {
   }
 
   try {
-    const { data, error } = await supabase
-      .from('bot_config')
+    const { data, error } = await supabaseClient.supabase
+      ?.from('bot_config')
       .select('value')
       .eq('key', key)
       .single();
