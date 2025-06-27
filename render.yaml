@@ -2,9 +2,26 @@ services:
   - type: web
     name: xbot-prod
     env: node
-    runtime: node 22
-    branch: main
+    runtime: node
+    region: oregon
     plan: starter-plus
-    buildCommand: npm ci && npm run build
-    startCommand: npm start
+    branch: main
+    buildCommand: |
+      echo "🔧 Using Node.js $(node --version)"
+      echo "📦 Installing dependencies..."
+      npm ci
+      echo "🏗️ Building TypeScript..."
+      npm run build
+      echo "✅ Build complete - checking dist folder..."
+      ls -la dist/ || echo "❌ dist folder missing!"
+    startCommand: |
+      echo "🚀 Starting application..."
+      echo "📂 Checking dist folder..."
+      ls -la dist/ || echo "❌ dist folder missing!"
+      npm start
     healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: RUNTIME
+        value: node
