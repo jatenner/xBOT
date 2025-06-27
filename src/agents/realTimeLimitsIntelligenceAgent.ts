@@ -1,5 +1,6 @@
 import { xClient } from '../utils/xClient';
 import { supabaseClient } from '../utils/supabaseClient';
+import { setConfigValue } from '../utils/config';
 
 /**
  * 🚨 REAL-TIME API LIMITS INTELLIGENCE AGENT
@@ -720,6 +721,42 @@ export class RealTimeLimitsIntelligenceAgent {
 
 Last Updated: ${limits.lastUpdated.toLocaleTimeString()}
     `.trim();
+  }
+
+  /**
+   * 🎯 UPDATE DAILY TWEET CAP
+   * Saves the optimal daily tweet target to bot_config
+   */
+  async updateDailyTweetCap(newCap: number): Promise<void> {
+    await setConfigValue('target_tweets_per_day', newCap);
+    console.log(`🎯 Updated daily tweet cap to ${newCap}`);
+  }
+
+  /**
+   * 📊 CALCULATE OPTIMAL TWEET CAP
+   * Based on current API limits and time remaining
+   */
+  private calculateOptimalTweetCap(): number {
+    if (!this.cachedLimits) return 8; // Default fallback
+    
+    const { twitter } = this.cachedLimits;
+    const remainingTweets = twitter.dailyTweets.remaining;
+    const hoursLeft = Math.max(1, (twitter.dailyTweets.resetTime.getTime() - Date.now()) / (1000 * 60 * 60));
+    
+    // Conservative approach: use 80% of remaining tweets over remaining hours
+    const optimizedCap = Math.floor((remainingTweets * 0.8) / Math.max(1, hoursLeft / 24));
+    
+    // Clamp between 1-12 tweets per day
+    return Math.max(1, Math.min(12, optimizedCap));
+  }
+
+  /**
+   * 💾 SAVE TWEET CAP TO CONFIG
+   * Automatically called during limits check to update config
+   */
+  private async saveTweetCapToConfig(): Promise<void> {
+    const calculatedCap = this.calculateOptimalTweetCap();
+    await this.updateDailyTweetCap(calculatedCap);
   }
 }
 

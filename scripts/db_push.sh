@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -e
 echo "📦 Applying pending Supabase migrations…"
-supabase db push
+npx supabase db push --no-interactive
 echo "✅ Migrations applied"
-exec npm start 
+exec node dist/index.js 

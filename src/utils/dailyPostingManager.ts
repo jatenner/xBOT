@@ -6,6 +6,7 @@ import { strategicOpportunityScheduler } from '../agents/strategicOpportunitySch
 import { HumanLikeStrategicMind } from '../agents/humanLikeStrategicMind';
 import { supremeAIOrchestrator } from '../agents/supremeAIOrchestrator';
 import { getConfig } from './botConfig.js';
+import { getConfigValue } from './config';
 import * as cron from 'node-cron';
 
 interface DailyPostingState {
@@ -606,6 +607,61 @@ class DailyPostingManager {
     this.scheduledJobs = [];
     this.isRunning = false;
     console.log('🛑 Daily Posting Manager stopped');
+  }
+
+  /**
+   * 📊 GET DAILY TWEET CAP FROM CONFIG
+   * Dynamic configuration-driven tweet limit
+   */
+  async getDailyTweetCap(): Promise<number> {
+    return await getConfigValue('target_tweets_per_day', 8);
+  }
+
+  /**
+   * ✅ CHECK IF SHOULD POST NOW
+   * Based on dynamic daily cap and current progress
+   */
+  async shouldPostNow(): Promise<boolean> {
+    const dailyCap = await this.getDailyTweetCap();
+    const todaysPosts = await this.getTodaysPostCount();
+    
+    if (todaysPosts >= dailyCap) {
+      console.log(`📊 Daily cap reached: ${todaysPosts}/${dailyCap}`);
+      return false;
+    }
+    
+    return this.checkTimingConstraints();
+  }
+
+  /**
+   * 📈 GET TODAY'S POST COUNT
+   */
+  private async getTodaysPostCount(): Promise<number> {
+    const today = new Date().toISOString().split('T')[0];
+    
+    try {
+      const { count, error } = await supabaseClient.supabase
+        ?.from('tweets')
+        .select('*', { count: 'exact', head: true })
+        .gte('created_at', `${today}T00:00:00Z`)
+        .lt('created_at', `${today}T23:59:59Z`);
+
+      return count || 0;
+    } catch (error) {
+      console.error('❌ Failed to get today\'s post count:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * ⏰ CHECK TIMING CONSTRAINTS
+   */
+  private checkTimingConstraints(): boolean {
+    const now = new Date();
+    const hour = now.getHours();
+    
+    // Only post during active hours (9 AM - 9 PM)
+    return hour >= 9 && hour <= 21;
   }
 }
 

@@ -1,4 +1,5 @@
 import { supabaseClient } from './supabaseClient';
+import { getConfigValue, setConfigValue } from './config';
 
 export interface QualityMetrics {
   readabilityScore: number;
@@ -23,6 +24,9 @@ export interface QualityGateRules {
 }
 
 export class QualityGate {
+  private consecutiveFailures = 0;
+  private consecutiveSuccesses = 0;
+
   private readonly defaultRules: QualityGateRules = {
     minReadabilityScore: 45,
     minFactCount: 2,
@@ -34,10 +38,63 @@ export class QualityGate {
   };
 
   /**
-   * Main quality gate check
+   * 📊 GET DYNAMIC READABILITY THRESHOLD
+   * Reads current threshold from bot_config
+   */
+  async getReadabilityThreshold(): Promise<number> {
+    return await getConfigValue('min_readability', 45);
+  }
+
+  /**
+   * 🎛️ ADJUST READABILITY THRESHOLD
+   * Auto-adjusts based on consecutive successes/failures
+   */
+  async adjustReadabilityThreshold(passed: boolean): Promise<void> {
+    const isEnabled = await getConfigValue('auto_adjust_enabled', true);
+    if (!isEnabled) return;
+
+    const threshold = await getConfigValue('quality_gate_consecutive_threshold', 3);
+    
+    if (passed) {
+      this.consecutiveSuccesses++;
+      this.consecutiveFailures = 0;
+      
+      if (this.consecutiveSuccesses >= threshold) {
+        const current = await this.getReadabilityThreshold();
+        const maxThreshold = await getConfigValue('max_readability', 60);
+        const newThreshold = Math.min(maxThreshold, current + 5);
+        
+        await setConfigValue('min_readability', newThreshold);
+        console.log(`📈 Raised readability threshold to ${newThreshold} (${this.consecutiveSuccesses} consecutive passes)`);
+        this.consecutiveSuccesses = 0;
+      }
+    } else {
+      this.consecutiveFailures++;
+      this.consecutiveSuccesses = 0;
+      
+      if (this.consecutiveFailures >= threshold) {
+        const current = await this.getReadabilityThreshold();
+        const newThreshold = Math.max(25, current - 5);
+        
+        await setConfigValue('min_readability', newThreshold);
+        console.log(`📉 Lowered readability threshold to ${newThreshold} (${this.consecutiveFailures} consecutive failures)`);
+        this.consecutiveFailures = 0;
+      }
+    }
+  }
+
+  /**
+   * Main quality gate check with autonomous adjustment
    */
   async checkQuality(content: string, url?: string, source?: string, customRules?: Partial<QualityGateRules>): Promise<QualityMetrics> {
-    const rules = { ...this.defaultRules, ...customRules };
+    // Get dynamic readability threshold
+    const dynamicReadability = await this.getReadabilityThreshold();
+    const rules = { 
+      ...this.defaultRules, 
+      minReadabilityScore: dynamicReadability,
+      ...customRules 
+    };
+
     const metrics: QualityMetrics = {
       readabilityScore: this.calculateReadabilityScore(content),
       factCount: this.countFacts(content),
@@ -90,6 +147,9 @@ export class QualityGate {
     });
 
     metrics.passesGate = metrics.failureReasons.length === 0;
+
+    // Auto-adjust threshold based on result
+    await this.adjustReadabilityThreshold(metrics.passesGate);
 
     console.log(`🚪 Quality Gate: ${metrics.passesGate ? '✅ PASSED' : '❌ FAILED'}`);
     if (!metrics.passesGate) {
