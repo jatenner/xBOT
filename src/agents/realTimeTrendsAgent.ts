@@ -354,12 +354,8 @@ export class RealTimeTrendsAgent {
   }
 
   private extractHashtagsFromContent(content: string): string[] {
-    const keywords = content.toLowerCase().match(/\b\w+\b/g) || [];
-    const healthTechTerms = keywords.filter(word => 
-      ['ai', 'digital', 'health', 'medical', 'tech', 'healthcare', 'innovation', 'breakthrough'].includes(word)
-    );
-    
-    return [...new Set(healthTechTerms)].slice(0, 3).map(term => `#${term.charAt(0).toUpperCase() + term.slice(1)}`);
+    // HUMAN VOICE: No hashtags - return empty array
+    return [];
   }
 
   private getFallbackTrends(): TrendingTopic[] {
@@ -398,7 +394,7 @@ export class RealTimeTrendsAgent {
         timestamp: new Date().toISOString(),
         relevanceScore: 0.92,
         category: 'regulatory',
-        hashtags: ['#AI', '#FDA', '#Healthcare']
+        hashtags: []
       }
     ];
   }

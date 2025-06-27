@@ -345,7 +345,7 @@ Respond with JSON:
     
     if (hasReversedText) {
       console.log('🚨 BLOCKED: Content contains reversed text, using safe fallback');
-      return "🔮 Healthcare innovation is accelerating faster than ever. What breakthrough will change everything? #HealthTech";
+      return "🔮 Healthcare innovation is accelerating faster than ever. What breakthrough will change everything?";
     }
     
     // Check for excessive lowercase words (sign of scrambling)
@@ -358,7 +358,7 @@ Respond with JSON:
     
     if (lowercaseWords.length > 5) {
       console.log('🚨 BLOCKED: Content appears scrambled, using safe fallback');
-      return "💡 The future of healthcare is being written today. What role will you play? #Innovation #HealthTech";
+      return "💡 The future of healthcare is being written today. What role will you play?";
     }
     
     const formatted = formatTweet(content);

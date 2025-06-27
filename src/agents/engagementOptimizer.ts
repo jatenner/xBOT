@@ -29,7 +29,7 @@ export class EngagementOptimizer {
         improvements: [],
         expectedEngagementIncrease: 0,
         hooks: [],
-        hashtags: this.extractHashtags(content)
+        hashtags: [] // HUMAN VOICE: No hashtags
       };
     }
   }
@@ -70,8 +70,7 @@ export class EngagementOptimizer {
       improvements.push('Added urgency elements');
     }
     
-    // Optimize hashtags for discovery
-    const optimizedHashtags = this.optimizeHashtags(optimizedContent);
+    // HUMAN VOICE: No hashtag optimization - focus on conversational engagement
     
     // Calculate expected engagement increase
     const expectedIncrease = this.calculateExpectedIncrease(improvements.length, analysis.currentScore);
@@ -81,7 +80,7 @@ export class EngagementOptimizer {
       improvements,
       expectedEngagementIncrease: expectedIncrease,
       hooks,
-      hashtags: optimizedHashtags
+      hashtags: [] // HUMAN VOICE: No hashtags
     };
   }
   
@@ -120,27 +119,6 @@ export class EngagementOptimizer {
     return content;
   }
   
-  private optimizeHashtags(content: string): string[] {
-    const healthTechHashtags = [
-      '#HealthTech', '#AIinMedicine', '#MedicalAI', '#DigitalHealth',
-      '#HealthcareAI', '#MedicalBreakthrough', '#HealthInnovation',
-      '#MedicalTech', '#FutureOfMedicine', '#HealthcareInnovation'
-    ];
-    
-    // Extract content keywords to match with hashtags
-    const contentLower = content.toLowerCase();
-    const relevantHashtags = healthTechHashtags.filter(tag => {
-      const tagWords = tag.toLowerCase().replace('#', '').split(/(?=[A-Z])/);
-      return tagWords.some(word => contentLower.includes(word.toLowerCase()));
-    });
-    
-    // Always include core health tech hashtags
-    const coreHashtags = ['#HealthTech', '#MedicalAI'];
-    const finalHashtags = [...new Set([...coreHashtags, ...relevantHashtags])];
-    
-    return finalHashtags.slice(0, 3); // Limit to 3 hashtags for best engagement
-  }
-  
   private calculateEngagementScore(content: string): number {
     let score = 50; // Base score
     
@@ -159,6 +137,9 @@ export class EngagementOptimizer {
     // Professional formatting (+5)
     if (content.includes(':')) score += 5;
     
+    // HUMAN VOICE: Bonus for no hashtags (+20)
+    if (!content.includes('#')) score += 20;
+    
     return Math.min(score, 100);
   }
   
@@ -170,10 +151,5 @@ export class EngagementOptimizer {
     const diminishingReturns = currentScore > 80 ? 0.7 : 1.0;
     
     return Math.round(baseIncrease * diminishingReturns);
-  }
-  
-  private extractHashtags(content: string): string[] {
-    const matches = content.match(/#\w+/g);
-    return matches || [];
   }
 } 

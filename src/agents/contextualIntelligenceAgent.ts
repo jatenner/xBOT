@@ -236,21 +236,8 @@ export class ContextualIntelligenceAgent {
   }
 
   private getTimeSpecificHashtags(timeContext: TimeContext, strategy: any): string[] {
-    const baseHashtags = {
-      peak_professional: ['#HealthTech', '#AIinMedicine', '#MedicalInnovation', '#DigitalHealth'],
-      peak_engaging: ['#HealthTech', '#AIinMedicine', '#FutureOfHealth', '#MedTech', '#HealthInnovation'],
-      moderate: ['#HealthTech', '#AIinMedicine', '#DigitalHealth'],
-      low: ['#Health', '#Wellness', '#Technology']
-    };
-
-    if (timeContext.isPeakHour && !timeContext.isWeekend) {
-      return strategy.focus === 'engaging_discussions' ? 
-        baseHashtags.peak_engaging : baseHashtags.peak_professional;
-    } else if (timeContext.isPeakHour) {
-      return baseHashtags.moderate;
-    } else {
-      return baseHashtags.low;
-    }
+    // HUMAN VOICE: No hashtags - return empty array
+    return [];
   }
 
   private selectContentType(timeContext: TimeContext, strategy: any): string {
@@ -302,7 +289,7 @@ export class ContextualIntelligenceAgent {
       contentType: 'general_health_tech',
       tone: 'professional',
       topics: ['AI healthcare', 'digital medicine', 'health innovation'],
-      hashtags: ['#HealthTech', '#AIinMedicine'],
+      hashtags: [], // HUMAN VOICE: No hashtags
       urgency: 'medium',
       imageRecommendation: 'professional healthcare technology imagery',
       reasoningContext: 'Default guidance due to analysis failure'

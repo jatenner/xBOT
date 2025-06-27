@@ -650,7 +650,7 @@ export class PostTweetAgent {
     ];
     
     const topic = breakingTopics[Math.floor(Math.random() * breakingTopics.length)];
-    return `🚨 BREAKING: ${topic}\n\nThis could revolutionize healthcare within the next 5 years. The implications for patient outcomes are staggering.`;
+    return `🚨 BREAKING: ${topic}\n\nThis could revolutionize healthcare within the next 5 years. The implications for patient outcomes are staggering.\n\n#HealthTech #MedicalAI`;
   }
 
   private async generateDataDrivenFallback(): Promise<string> {
@@ -663,7 +663,7 @@ export class PostTweetAgent {
     ];
     
     const topic = dataDrivenTopics[Math.floor(Math.random() * dataDrivenTopics.length)];
-    return `${topic}\n\nThe data doesn't lie - we're witnessing the transformation of healthcare in real-time.`;
+    return `${topic}\n\nThe data doesn't lie - we're witnessing the transformation of healthcare in real-time.\n\n#HealthData #MedicalResearch`;
   }
 
   private async generateControversialFallback(): Promise<string> {
@@ -676,7 +676,7 @@ export class PostTweetAgent {
     ];
     
     const take = controversialTakes[Math.floor(Math.random() * controversialTakes.length)];
-    return `${take}\n\nChange my mind in the comments 👇`;
+    return `${take}\n\nChange my mind in the comments 👇\n\n#HealthTech #DigitalHealth`;
   }
 
   private async generateCompetitorInspiredFallback(competitorPattern: string): Promise<string> {
@@ -684,14 +684,14 @@ export class PostTweetAgent {
     
     // Extract key elements from competitor pattern and adapt
     if (competitorPattern.includes('Thread')) {
-      return '🧵 Thread: 5 healthcare technologies that will dominate 2024 (and why most people are sleeping on #3)\n\n1/ AI-powered drug discovery is accelerating from years to months...';
+      return '🧵 Thread: 5 healthcare technologies that will dominate 2024 (and why most people are sleeping on #3)\n\n1/ AI-powered drug discovery is accelerating from years to months...\n\n#HealthTech #Innovation';
     }
     
     if (competitorPattern.includes('BREAKING')) {
-      return '🚨 BREAKING: Major healthcare AI breakthrough just announced\n\nThis changes everything we know about early disease detection. The accuracy rates are unprecedented.';
+      return '🚨 BREAKING: Major healthcare AI breakthrough just announced\n\nThis changes everything we know about early disease detection. The accuracy rates are unprecedented.\n\n#MedicalAI #HealthTech';
     }
     
-    return 'Healthcare innovation moves fast. Here\'s what you missed this week in health tech that could change everything.\n\n🧵 Thread below 👇';
+    return 'Healthcare innovation moves fast. Here\'s what you missed this week in health tech that could change everything.\n\n🧵 Thread below 👇\n\n#HealthTech #Innovation';
   }
 
   private async generateFallbackContent(): Promise<string> {
@@ -2280,7 +2280,7 @@ DO write strategic insights like:
 
 "${trend.name} represents healthcare's iPhone moment. Not just better technology—a complete paradigm shift in patient expectations.
 
-Make it strategic, insightful, and make people think. 250 characters max. Use conversational "you/we" language - no hashtags.`;
+Make it strategic, insightful, and make people think. 250 characters max. Add 1-2 relevant hashtags.`;
 
     try {
       const response = await openaiClient.getClient()?.chat.completions.create({
@@ -2340,11 +2340,11 @@ Make it insightful, strategic, and reveal hidden implications. 250 characters ma
   private getStrategicTrendFallback(trend: any): string {
     // Strategic mastermind fallback content - insightful, not statistical
     const strategicInsights = [
-      `The real question isn't whether ${trend.name} works—it's who controls the economic moats being built around it. Healthcare's power dynamics are shifting.`,
-      `While everyone chases ${trend.name} accuracy metrics, the smart money is positioning for the infrastructure play. Data pipelines are the new oil rigs.`,
-      `${trend.name} isn't just a technology—it's a trojan horse for rewriting healthcare's business models. Most incumbents still don't see what's coming.`,
-      `The ${trend.name} conversation misses the point. This isn't about better diagnostics—it's about who owns the patient relationship in a post-doctor world.`,
-      `${trend.name} represents healthcare's platform moment. Not just a tool, but the foundation for an entire ecosystem. The network effects haven't even started yet.`
+      `The real question isn't whether ${trend.name} works—it's who controls the economic moats being built around it. Healthcare's power dynamics are shifting. #HealthTech #Strategy`,
+      `While everyone chases ${trend.name} accuracy metrics, the smart money is positioning for the infrastructure play. Data pipelines are the new oil rigs. #HealthTech #Innovation`,
+      `${trend.name} isn't just a technology—it's a trojan horse for rewriting healthcare's business models. Most incumbents still don't see what's coming. #HealthTech #Disruption`,
+      `The ${trend.name} conversation misses the point. This isn't about better diagnostics—it's about who owns the patient relationship in a post-doctor world. #HealthTech #Future`,
+      `${trend.name} represents healthcare's platform moment. Not just a tool, but the foundation for an entire ecosystem. The network effects haven't even started yet. #HealthTech #Platform`
     ];
     
     return strategicInsights[Math.floor(Math.random() * strategicInsights.length)];
@@ -2353,11 +2353,11 @@ Make it insightful, strategic, and reveal hidden implications. 250 characters ma
   private getStrategicEventFallback(event: any): string {
     // Strategic analysis fallback content
     const strategicAnalyses = [
-      `${event.title.substring(0, 80)}... The timing reveals the real strategy. While competitors react, the smart money positioned months ago. ${event.source}`,
-      `Behind today's announcement: ${event.title.substring(0, 60)}... This isn't news—it's a signal. The consolidation wave just gained momentum. ${event.source}`,
-      `Most will miss the implications of ${event.title.substring(0, 50)}... This quietly shifts the entire competitive landscape. ${event.source}`,
-      `${event.title.substring(0, 70)}... While everyone debates the surface details, the regulatory chess game advances another move. ${event.source}`,
-      `The real story behind ${event.title.substring(0, 60)}... isn't what happened, but who gains strategic advantage. Power dynamics shifting. ${event.source}`
+      `${event.title.substring(0, 80)}... The timing reveals the real strategy. While competitors react, the smart money positioned months ago. ${event.source} #HealthTech #Strategy`,
+      `Behind today's announcement: ${event.title.substring(0, 60)}... This isn't news—it's a signal. The consolidation wave just gained momentum. ${event.source} #HealthTech`,
+      `Most will miss the implications of ${event.title.substring(0, 50)}... This quietly shifts the entire competitive landscape. ${event.source} #HealthTech #Disruption`,
+      `${event.title.substring(0, 70)}... While everyone debates the surface details, the regulatory chess game advances another move. ${event.source} #HealthTech`,
+      `The real story behind ${event.title.substring(0, 60)}... isn't what happened, but who gains strategic advantage. Power dynamics shifting. ${event.source} #HealthTech`
     ];
     
     return strategicAnalyses[Math.floor(Math.random() * strategicAnalyses.length)];
@@ -2432,8 +2432,32 @@ Make it insightful, strategic, and reveal hidden implications. 250 characters ma
 
   // Generate smart, relevant hashtags
   private generateSmartHashtags(content: ContentItem): string {
-    // HUMAN VOICE: No hashtags - return empty string
-    return '';
+    const topic = this.extractKeyTopic(content.content);
+    const type = content.type;
+    
+    const hashtagMap = {
+      'breaking_news': ['#HealthTech', '#MedicalBreakthrough', '#Innovation'],
+      'research_update': ['#HealthResearch', '#MedicalStudy', '#HealthTech'],
+      'tech_development': ['#HealthTech', '#MedicalDevice', '#Innovation'],
+      'industry_insight': ['#HealthTech', '#DigitalHealth', '#Healthcare'],
+      'fact_spotlight': ['#HealthFacts', '#MedicalKnowledge', '#HealthTech']
+    };
+    
+    const baseHashtags = hashtagMap[type] || ['#HealthTech'];
+    
+    // Add topic-specific hashtags
+    const topicHashtags = [];
+    if (topic.toLowerCase().includes('ai')) topicHashtags.push('#AI');
+    if (topic.toLowerCase().includes('cancer')) topicHashtags.push('#CancerResearch');
+    if (topic.toLowerCase().includes('heart')) topicHashtags.push('#Cardiology');
+    if (topic.toLowerCase().includes('diabetes')) topicHashtags.push('#Diabetes');
+    if (topic.toLowerCase().includes('mental')) topicHashtags.push('#MentalHealth');
+    
+    // Combine and limit to 2-3 hashtags
+    const allHashtags = [...baseHashtags, ...topicHashtags];
+    const selectedHashtags = allHashtags.slice(0, 3);
+    
+    return selectedHashtags.join(' ');
   }
 
   // Calculate content urgency
@@ -2538,56 +2562,6 @@ Make it insightful, strategic, and reveal hidden implications. 250 characters ma
     }
     
     return { isValid: true };
-  }
-
-  // Generate conversational enhancements instead of hashtags (HUMAN VOICE)
-  private generateHumanVoiceEnhancement(content: ContentItem): string {
-    const topic = this.extractKeyTopic(content.content);
-    const type = content.type;
-    
-    const conversationalEndings = {
-      'breaking_news': [
-        'This changes everything for patients.',
-        'Healthcare just got more personal.',
-        'The future of medicine is happening now.'
-      ],
-      'research_update': [
-        'What this means for you: better outcomes ahead.',
-        'Science is making the impossible possible.',
-        'This is why we invest in research.'
-      ],
-      'tech_development': [
-        'Technology meeting human need.',
-        'Innovation with real impact.',
-        'The next chapter in healthcare.'
-      ],
-      'industry_insight': [
-        'Here\'s what the industry won\'t tell you.',
-        'The shift everyone\'s talking about.',
-        'Where healthcare is heading next.'
-      ],
-      'fact_spotlight': [
-        'Knowledge that could save lives.',
-        'Facts that change perspective.',
-        'The science behind the breakthrough.'
-      ]
-    };
-    
-    const endings = conversationalEndings[type] || ['Healthcare innovation continues.'];
-    
-    // Add topic-specific conversational touches
-    if (topic.toLowerCase().includes('ai')) {
-      endings.push('Artificial intelligence, real human benefit.');
-    }
-    if (topic.toLowerCase().includes('cancer')) {
-      endings.push('Hope through innovation.');
-    }
-    if (topic.toLowerCase().includes('heart')) {
-      endings.push('Saving hearts, changing lives.');
-    }
-    
-    // Return a random conversational enhancement
-    return endings[Math.floor(Math.random() * endings.length)];
   }
 }
 

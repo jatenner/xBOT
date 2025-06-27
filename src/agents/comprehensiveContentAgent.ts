@@ -137,22 +137,22 @@ export class ComprehensiveContentAgent {
     const contentStructures = {
       research_insight: {
         template: "BREAKTHROUGH: {finding} {statistics} ({source}, {year}). {implication} {link}",
-        hashtags: ["#MedicalBreakthrough", "#HealthTech"],
+        hashtags: [],
         engagementMultiplier: 1.8
       },
       breakthrough_news: {
         template: "🚨 BREAKING: {finding} {details} Source: {source} ({year}) {link}",
-        hashtags: ["#HealthNews", "#AIinMedicine"],
+        hashtags: [],
         engagementMultiplier: 2.1
       },
       data_visualization: {
         template: "📊 DATA: {statistics} from {source} study. {finding} {implication} {link}",
-        hashtags: ["#HealthData", "#MedicalResearch"],
+        hashtags: [],
         engagementMultiplier: 1.6
       },
       expert_analysis: {
         template: "EXPERT INSIGHT: {finding} {analysis} Research from {source}, {year}. {link}",
-        hashtags: ["#HealthExperts", "#MedicalResearch"],
+        hashtags: [],
         engagementMultiplier: 1.4
       }
     };
@@ -274,24 +274,18 @@ export class ComprehensiveContentAgent {
     if (media.length > 0) engagementScore += 15;
     if (content.content.includes('http')) engagementScore += 10;
 
-    // Ensure proper structure: Content + Hashtags + Link
+    // Ensure proper structure: Content + Link (no hashtags)
     let finalContent = content.content;
     
-    // Add hashtags
-    const hashtags = content.hashtags.join(' ');
-    if (!finalContent.includes('#')) {
-      finalContent += ` ${hashtags}`;
-    }
-
     // Ensure link is included and accessible
     if (!finalContent.includes('http') && research.url) {
       if (finalContent.length + research.url.length + 1 <= 280) {
         finalContent += ` ${research.url}`;
       } else {
         // Shorten content to fit link
-        const maxLength = 280 - research.url.length - hashtags.length - 2;
+        const maxLength = 280 - research.url.length - 2;
         finalContent = content.content.substring(0, maxLength).trim();
-        finalContent += ` ${hashtags} ${research.url}`;
+        finalContent += ` ${research.url}`;
       }
     }
 
@@ -299,7 +293,7 @@ export class ComprehensiveContentAgent {
       content: finalContent,
       media,
       researchLinks: [research.url],
-      hashtags: content.hashtags,
+      hashtags: [],
       engagementScore: Math.min(engagementScore, 95),
       credibilityScore: Math.min(credibilityScore, 100),
       structure: content.structure
@@ -323,10 +317,10 @@ export class ComprehensiveContentAgent {
 
   private async generateFallbackContent(): Promise<StructuredTweet> {
     return {
-      content: "AI-powered health monitoring reaches new milestone: 94% accuracy in early disease detection across multiple conditions. The future of preventive medicine is here. #HealthTech #AIinMedicine https://www.nature.com/collections/artificial-intelligence-in-healthcare",
+      content: "AI-powered health monitoring reaches new milestone: 94% accuracy in early disease detection across multiple conditions. The future of preventive medicine is here.",
       media: [],
       researchLinks: ["https://www.nature.com/collections/artificial-intelligence-in-healthcare"],
-      hashtags: ["#HealthTech", "#AIinMedicine"],
+      hashtags: [],
       engagementScore: 80,
       credibilityScore: 90,
       structure: 'research_insight'

@@ -498,33 +498,18 @@ Generate intellectually rigorous content that makes academics think "This person
       const url = urlMatch[1];
       finalContent = finalContent.replace(url, '').trim();
       
-      // Add professional hashtags before URL
-      const professionalHashtags = ['#HealthTech', '#AIinMedicine', '#DigitalHealth', '#MedicalBreakthrough', '#HealthInnovation'];
-      const selectedHashtags = professionalHashtags.slice(0, 2).join(' ');
-      
-      if (!finalContent.includes('#')) {
-        finalContent += ` ${selectedHashtags}`;
-      }
-      
-      // Add URL at the very end if it fits
+      // HUMAN VOICE: No hashtags - just add URL at the end if it fits
       const testContent = `${finalContent} ${url}`;
       if (testContent.length <= 280) {
         finalContent += ` ${url}`;
       } else {
         // If too long, shorten content to fit
-        const maxContentLength = 280 - url.length - selectedHashtags.length - 2; // -2 for spaces
+        const maxContentLength = 280 - url.length - 2; // -2 for spaces
         finalContent = finalContent.substring(0, maxContentLength).trim();
-        finalContent += ` ${selectedHashtags} ${url}`;
-      }
-    } else {
-      // Add hashtags if no URL found
-      const professionalHashtags = ['#HealthTech', '#AIinMedicine', '#DigitalHealth', '#MedicalBreakthrough', '#HealthInnovation'];
-      const selectedHashtags = professionalHashtags.slice(0, 2).join(' ');
-      
-      if (!finalContent.includes('#')) {
-        finalContent += ` ${selectedHashtags}`;
+        finalContent += ` ${url}`;
       }
     }
+    // HUMAN VOICE: No hashtags added for content without URLs
 
     return {
       content: finalContent,
@@ -543,7 +528,7 @@ Generate intellectually rigorous content that makes academics think "This person
   }
 
   private async generateHighQualityFallback(): Promise<any> {
-    const fallbackContent = 'Revolutionary AI system can now detect multiple diseases from a single blood test with unprecedented accuracy. Early detection capabilities are transforming preventive medicine. https://example.com/research #HealthTech #AIinMedicine';
+    const fallbackContent = 'Revolutionary AI system can now detect multiple diseases from a single blood test with unprecedented accuracy. Early detection capabilities are transforming preventive medicine.';
     
     return {
       content: fallbackContent,

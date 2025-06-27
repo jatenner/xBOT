@@ -241,7 +241,7 @@ Format the response as tweet-ready content (under 280 characters) with high crea
     const selectedAnalogy = analogies[Math.floor(Math.random() * analogies.length)];
     
     return {
-      content: `💡 ${selectedAnalogy} - the transformation is happening faster than most realize. What's your take on this AI health revolution? 🤖🩺 #HealthTech #AIInnovation`,
+      content: `💡 ${selectedAnalogy} - the transformation is happening faster than most realize. What's your take on this AI health revolution? 🤖🩺`,
       creativity_score: 7,
       innovation_elements: ['analogy-based explanation', 'relatable comparison', 'engagement question']
     };
@@ -258,7 +258,7 @@ Format the response as tweet-ready content (under 280 characters) with high crea
     const selectedVision = visions[Math.floor(Math.random() * visions.length)];
     
     return {
-      content: `🔮 FUTURE VISION: ${selectedVision} The boundary between science fiction and medical reality is dissolving. 🚀 #FutureOfHealth #MedicalAI`,
+      content: `🔮 FUTURE VISION: ${selectedVision} The boundary between science fiction and medical reality is dissolving. 🚀`,
       creativity_score: 8,
       innovation_elements: ['future scenario', 'specific timeline', 'science fiction bridge']
     };
@@ -275,7 +275,7 @@ Format the response as tweet-ready content (under 280 characters) with high crea
     const selectedTake = contrarian_takes[Math.floor(Math.random() * contrarian_takes.length)];
     
     return {
-      content: `🤔 ${selectedTake} Change my mind. 🧠 #HealthTech #AIDebate`,
+      content: `🤔 ${selectedTake} Change my mind. 🧠`,
       creativity_score: 9,
       innovation_elements: ['contrarian perspective', 'thought provocation', 'debate invitation']
     };
@@ -292,7 +292,7 @@ Format the response as tweet-ready content (under 280 characters) with high crea
     const selectedStory = stories[Math.floor(Math.random() * stories.length)];
     
     return {
-      content: `📖 ${selectedStory} 🌍 #HealthEquity #AIImpact`,
+      content: `📖 ${selectedStory} 🌍`,
       creativity_score: 8,
       innovation_elements: ['narrative approach', 'human impact focus', 'emotional connection']
     };
@@ -310,7 +310,7 @@ Format the response as tweet-ready content (under 280 characters) with high crea
   }
 
   private async generateFallbackCreativeContent(request: CreativeContentRequest): Promise<any> {
-    const fallbackContent = `🤖 AI in healthcare continues to evolve rapidly. From diagnostic accuracy to personalized treatment, the possibilities are expanding daily. What excites you most about the future of AI-powered medicine? 🩺✨ #HealthTech #AIInnovation`;
+    const fallbackContent = `🤖 AI in healthcare continues to evolve rapidly. From diagnostic accuracy to personalized treatment, the possibilities are expanding daily. What excites you most about the future of AI-powered medicine? 🩺✨`;
     
     return {
       content: fallbackContent,

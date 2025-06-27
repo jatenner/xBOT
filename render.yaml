@@ -3,5 +3,5 @@ services:
     name: xbot-prod
     env: node
     plan: starter
-    buildCommand: npm ci && npm run build
+    buildCommand: ./build.sh
     startCommand: npm start
