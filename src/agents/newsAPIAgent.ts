@@ -1,4 +1,5 @@
 import axios from 'axios';
+import crypto from 'node:crypto';
 import { supabaseClient } from '../utils/supabaseClient';
 
 interface NewsAPIResponse {
@@ -66,6 +67,9 @@ export class NewsAPIAgent {
   private static startupMode: boolean = true;
   private static startupCallCount: number = 0;
   private static lastStartupCall: number = 0;
+  
+  // Track database issues to prevent spam
+  private static databaseIssueLogged: boolean = false;
   
   private readonly healthTechKeywords = [
     'AI healthcare',
@@ -433,34 +437,67 @@ export class NewsAPIAgent {
   }
 
   private async storeArticlesInDatabase(articles: ProcessedNewsArticle[]): Promise<void> {
+    // Skip if no articles to process
+    if (!articles.length) return;
+    
+    // Check if Supabase is available
+    if (!supabaseClient.supabase) {
+      if (!NewsAPIAgent.databaseIssueLogged) {
+        console.warn('[news] Supabase client not available - skipping article storage');
+        NewsAPIAgent.databaseIssueLogged = true;
+      }
+      return;
+    }
+    
     for (const article of articles) {
       try {
-        if (supabaseClient.supabase) {
-          // Ensure the article has a safe ID
-          const articleData = {
-            id: crypto.randomUUID(), // Generate safe ID
-            title: article.title,
-            url: article.url,
-            source: article.source,
-            api_source: article.apiSource,
-            credibility_score: article.credibilityScore,
-            health_tech_relevance: article.healthTechRelevance,
-            category: article.category,
-            created_at: new Date().toISOString()
-          };
-          
-          const { error } = await supabaseClient.supabase
-            .from('news_articles')
-            .upsert(articleData);
-          
-          if (error) {
-            console.warn('[articles] insert failed', error.message);
+        // Ensure the article has a safe ID and all required fields
+        const articleData = {
+          id: crypto.randomUUID(), // Generate safe ID
+          title: article.title || 'Untitled Article',
+          url: article.url || '',
+          source: article.source || 'Unknown',
+          api_source: article.apiSource || 'unknown',
+          credibility_score: article.credibilityScore || 0,
+          health_tech_relevance: article.healthTechRelevance || 0,
+          category: article.category || 'industry',
+          published_at: article.publishedAt || new Date().toISOString(),
+          created_at: new Date().toISOString()
+        };
+        
+        const { error } = await supabaseClient.supabase
+          .from('news_articles')
+          .insert(articleData);
+        
+        if (error) {
+          // Check for common database issues and log appropriately
+          if (error.message.includes('relation "news_articles" does not exist')) {
+            if (!NewsAPIAgent.databaseIssueLogged) {
+              console.warn('[news] news_articles table does not exist - article storage disabled');
+              NewsAPIAgent.databaseIssueLogged = true;
+            }
+            return; // Stop trying if table doesn't exist
+          } else if (error.message.includes('duplicate key')) {
+            // Silently skip duplicates - this is expected
+            continue;
+          } else {
+            console.warn('[news] insert failed', error.message);
           }
         }
       } catch (error) {
         // Continue on individual failures without throwing
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        console.warn('[articles] insert failed', errorMessage);
+        
+        // Log database connection issues only once per session
+        if (errorMessage.includes('connection') || errorMessage.includes('network')) {
+          if (!NewsAPIAgent.databaseIssueLogged) {
+            console.warn('[news] database connection issue - article storage temporarily disabled');
+            NewsAPIAgent.databaseIssueLogged = true;
+          }
+          return; // Stop trying if connection is broken
+        } else {
+          console.warn('[news] insert failed', errorMessage);
+        }
       }
     }
   }
