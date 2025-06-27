@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "NODE_OPTIONS=--max_old_space_size=1024 tsc",
-    "start": "node dist/index.js",
+    "start": "bash scripts/db_push.sh",
     "dev": "npm run setup-check && nodemon src/index.js",
     "test": "jest",
     "lint": "eslint .",
