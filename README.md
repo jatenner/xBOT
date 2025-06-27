@@ -267,32 +267,54 @@ Rate-limit guard, OpenAI moderation, Supabase kill-switch, full audit trail.
 
 ## Environment Configuration
 
-### Required Environment Variables
+### Required Environment Variables (Secrets Only)
+
+Only these environment variables are required for deployment on Render. All other settings (tweet limits, quality gates, posting strategy) are stored in the `bot_config` table in Supabase and can be changed without redeployment.
 
 ```bash
-# Twitter API Credentials
-TWITTER_ACCESS_TOKEN=your_access_token
-TWITTER_ACCESS_SECRET=your_access_secret
+# OpenAI API
+OPENAI_API_KEY=your_openai_api_key
+
+# Twitter API Credentials  
 TWITTER_BEARER_TOKEN=your_bearer_token
-TWITTER_API_KEY=your_api_key
-TWITTER_API_SECRET=your_api_secret
 
-# Database Configuration
-SUPABASE_URL=your_supabase_url
+# Supabase Database
+SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
-
-# API Keys
-OPENAI_API_KEY=your_openai_key
-NEWS_API_KEY=your_news_api_key
-GUARDIAN_API_KEY=your_guardian_api_key
-PEXELS_API_KEY=your_pexels_key
-
-# Bot Configuration
-LIVE_POSTING_ENABLED=true
-MAX_DAILY_TWEETS=17
 ```
 
-**What is dry-run?**  
-Dry-run executes every pipeline stage (idea generation → image fetch → logs) except the final `POST /2/tweets`. It's controlled by `LIVE_POSTING_ENABLED`. When false you'll see `🧪 DRY RUN – Tweet preview:` log lines; when true the bot actually tweets.
+### Optional Environment Variables
+
+```bash
+# Development/Testing
+LIVE_POSTING_ENABLED=true     # false for dry-run mode
+DISABLE_BOT=false             # emergency stop switch
+NODE_ENV=production           # development/production
+```
+
+### Configuration Table
+
+All non-secret settings are stored in the `bot_config` table and can be updated via SQL:
+
+```sql
+-- Example: Change daily tweet limit
+UPDATE bot_config SET max_daily_tweets = 8 WHERE id = 1;
+
+-- Example: Adjust quality requirements
+UPDATE bot_config SET 
+  quality_readability_min = 60,
+  quality_credibility_min = 0.9
+WHERE id = 1;
+
+-- Example: Change posting strategy
+UPDATE bot_config SET posting_strategy = 'aggressive' WHERE id = 1;
+```
+
+Default configuration values:
+- **max_daily_tweets**: 6 (conservative API limit)
+- **quality_readability_min**: 55 (Flesch Reading Ease)
+- **quality_credibility_min**: 0.85 (source credibility)
+- **fallback_stagger_minutes**: 90 (post spacing fallback)
+- **posting_strategy**: "balanced" (posting behavior mode)
 
 ## Installation

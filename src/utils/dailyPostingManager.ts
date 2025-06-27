@@ -8,6 +8,7 @@ import { supremeAIOrchestrator } from '../agents/supremeAIOrchestrator';
 import { getConfig } from './botConfig.js';
 import { getConfigValue } from './config';
 import * as cron from 'node-cron';
+import { runtimeConfig } from './supabaseConfig.js';
 
 interface DailyPostingState {
   date: string;
@@ -31,7 +32,7 @@ class DailyPostingManager {
   private intelligentScheduler: IntelligentSchedulingAgent;
   private humanStrategicMind: HumanLikeStrategicMind;
   private currentState: DailyPostingState;
-  private readonly DAILY_TARGET = parseInt(process.env.MAX_DAILY_TWEETS || '6');
+  private readonly DAILY_TARGET = runtimeConfig.maxDailyTweets;
   private isRunning = false;
   private scheduledJobs: cron.ScheduledTask[] = [];
   private useIntelligentScheduling = true;

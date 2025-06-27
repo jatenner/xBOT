@@ -6,6 +6,7 @@ dotenv.config({ path: path.resolve(__dirname, '../.env') });
 import { Scheduler } from './agents/scheduler';
 import { DynamicPostingController } from './utils/dynamicPostingController';
 import { metricsExporter } from './metrics/exporter';
+import { initializeRuntimeConfig } from './utils/supabaseConfig.js';
 import * as cron from 'node-cron';
 import http from 'http';
 
@@ -184,6 +185,10 @@ console.log('👑 All posting decisions made by AI - no hardcoded limits!');
 
 async function main() {
   try {
+    // Initialize runtime configuration from Supabase first
+    console.log('⚙️ Initializing runtime configuration...');
+    await initializeRuntimeConfig();
+    
     // Initialize the Supreme AI Dynamic Controller
     const dynamicController = new DynamicPostingController();
     

@@ -1,5 +1,6 @@
 import { supabaseClient } from './supabaseClient';
 import { getConfigValue, setConfigValue } from './config';
+import { runtimeConfig } from './supabaseConfig.js';
 
 export interface QualityMetrics {
   readabilityScore: number;
@@ -27,15 +28,17 @@ export class QualityGate {
   private consecutiveFailures = 0;
   private consecutiveSuccesses = 0;
 
-  private readonly defaultRules: QualityGateRules = {
-    minReadabilityScore: 45,
-    minFactCount: 2,
-    minSourceCredibility: 0.8,
-    requireUrl: true,
-    requireCitation: true,
-    maxCharacterCount: 280,
-    prohibitHashtags: true // CRITICAL: No hashtags allowed for human voice
-  };
+  private get defaultRules(): QualityGateRules {
+    return {
+      minReadabilityScore: runtimeConfig.quality.readabilityMin,
+      minFactCount: 2,
+      minSourceCredibility: runtimeConfig.quality.credibilityMin,
+      requireUrl: true,
+      requireCitation: true,
+      maxCharacterCount: 280,
+      prohibitHashtags: true // CRITICAL: No hashtags allowed for human voice
+    };
+  }
 
   /**
    * 📊 GET DYNAMIC READABILITY THRESHOLD

@@ -81,4 +81,25 @@ export async function getAllConfig(): Promise<Record<string, any>> {
     console.error('❌ Failed to get all config:', error);
     return {};
   }
+}
+
+/**
+ * Core configuration defaults and environment utilities
+ */
+
+export const defaults = {
+  maxDailyTweets: 6,
+  quality: { 
+    readabilityMin: 55, 
+    credibilityMin: 0.85 
+  },
+  fallbackStaggerMinutes: 90,
+  postingStrategy: "balanced"
+};
+
+/**
+ * Safe environment variable getter with fallback
+ */
+export function getEnv(name: string, fallback: string): string {
+  return process.env[name] || fallback;
 } 

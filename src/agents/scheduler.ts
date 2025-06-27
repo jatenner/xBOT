@@ -21,6 +21,7 @@ import { supabase } from '../utils/supabaseClient.js';
 import { dailyPostingManager } from '../utils/dailyPostingManager';
 import { tweetAnalyticsCollector } from './tweetAnalyticsCollector';
 import { dashboardWriter } from '../dashboard/dashboardWriter';
+import { runtimeConfig } from '../utils/supabaseConfig.js';
 
 dotenv.config();
 
@@ -103,7 +104,7 @@ export class Scheduler {
     this.isRunning = true;
 
     // 🎯 START DAILY POSTING MANAGER - Safe human-like posting
-    const dailyTarget = parseInt(process.env.MAX_DAILY_TWEETS || '8');
+    const dailyTarget = runtimeConfig.maxDailyTweets;
     console.log(`🎯 Activating Daily Posting Manager - Target: ${dailyTarget} tweets/day`);
     await dailyPostingManager.start();
 
@@ -117,7 +118,7 @@ export class Scheduler {
       console.log('💰 All expensive background analysis DISABLED');
       console.log(`💵 Daily budget limit: $${dailyBudgetLimit}`);
       console.log('📝 Basic posting mode only - optimized for 0-follower growth');
-      const dailyTarget = parseInt(process.env.MAX_DAILY_TWEETS || '8');
+      const dailyTarget = runtimeConfig.maxDailyTweets;
       console.log(`🎯 Daily Posting Manager will handle all ${dailyTarget} tweets`);
       
       // In emergency mode, let daily posting manager handle all posts

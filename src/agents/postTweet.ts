@@ -31,6 +31,8 @@ import { tweetFormatter } from '../utils/tweetFormatter.js';
 import { ContentCache } from '../utils/contentCache.js';
 import { EmbeddingFilter } from '../utils/embeddingFilter.js';
 import { LIVE_MODE } from '../config/liveMode';
+import { runtimeConfig } from '../utils/supabaseConfig.js';
+import { runtimeConfig } from '../utils/supabaseConfig.js';
 
 dotenv.config();
 
@@ -2621,10 +2623,10 @@ Make it insightful, strategic, and reveal hidden implications. 250 characters ma
       const postsToday = todaysPosts?.length || 0;
       
       // Conservative daily limit
-      if (postsToday >= 6) {
+      if (postsToday >= runtimeConfig.maxDailyTweets) {
         return { 
           canPost: false, 
-          reason: `Daily limit reached: ${postsToday}/6 posts today`
+          reason: `Daily limit reached: ${postsToday}/${runtimeConfig.maxDailyTweets} posts today`
         };
       }
       
