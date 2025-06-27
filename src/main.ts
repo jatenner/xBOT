@@ -1,8 +1,12 @@
+// Force early .env loading before any other imports
+import dotenv from 'dotenv';
+import path from 'path';
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+
 import { Scheduler } from './agents/scheduler';
 import { DynamicPostingController } from './utils/dynamicPostingController';
 import { metricsExporter } from './metrics/exporter';
 import * as cron from 'node-cron';
-import dotenv from 'dotenv';
 import http from 'http';
 
 // 🚨 EMERGENCY STARTUP CONSERVATION MODE
@@ -73,10 +77,7 @@ global.startupDelay = function(operation: string, delay: number = 2000) {
   });
 };
 
-
-
-// Load environment variables
-dotenv.config();
+// Environment variables already loaded at top of file
 
 // Health check endpoint for Render
 const server = http.createServer(async (req, res) => {
