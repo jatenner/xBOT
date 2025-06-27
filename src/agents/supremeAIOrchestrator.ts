@@ -745,6 +745,105 @@ export class SupremeAIOrchestrator {
     const hoursAgo = (Date.now() - publishTime.getTime()) / (1000 * 60 * 60);
     return hoursAgo <= hours;
   }
+
+  /**
+   * 🧠 OPTIMIZE STRATEGY: Continuous learning and optimization
+   */
+  async optimizeStrategy(performanceData: any): Promise<any> {
+    console.log('🧠 Supreme AI optimizing strategy based on performance data...');
+    
+    try {
+      // Analyze recent performance
+      const insights = this.analyzePerformanceInsights(performanceData);
+      
+      // Update strategic memory
+      this.updateStrategicMemory(insights);
+      
+      // Generate optimization recommendations
+      const optimizations = this.generateOptimizations(insights);
+      
+      console.log(`✅ Strategy optimized with ${optimizations.length} improvements`);
+      
+      return {
+        success: true,
+        optimizations,
+        insights,
+        confidence: 0.85
+      };
+    } catch (error) {
+      console.warn('⚠️ Strategy optimization failed:', error);
+      return {
+        success: false,
+        error: error.message,
+        fallback: 'Using default strategy'
+      };
+    }
+  }
+
+  private analyzePerformanceInsights(performanceData: any): any[] {
+    const insights = [];
+    
+    if (performanceData?.engagement_rate > 5) {
+      insights.push({
+        type: 'high_engagement',
+        description: 'Content achieving above-average engagement',
+        recommendation: 'Continue current content style'
+      });
+    }
+    
+    if (performanceData?.viral_tweets > 0) {
+      insights.push({
+        type: 'viral_success',
+        description: 'Viral content patterns detected',
+        recommendation: 'Amplify successful viral elements'
+      });
+    }
+    
+    return insights;
+  }
+
+  private updateStrategicMemory(insights: any[]): void {
+    const timestamp = Date.now();
+    this.strategicMemory.set(`insights_${timestamp}`, insights);
+    
+    // Keep only last 10 insight sets
+    const keys = Array.from(this.strategicMemory.keys())
+      .filter(k => k.startsWith('insights_'))
+      .sort()
+      .slice(-10);
+    
+    // Clean old insights
+    for (const [key] of this.strategicMemory) {
+      if (key.startsWith('insights_') && !keys.includes(key)) {
+        this.strategicMemory.delete(key);
+      }
+    }
+  }
+
+  private generateOptimizations(insights: any[]): any[] {
+    const optimizations = [];
+    
+    for (const insight of insights) {
+      switch (insight.type) {
+        case 'high_engagement':
+          optimizations.push({
+            action: 'increase_frequency',
+            reason: 'High engagement detected',
+            impact: 'medium'
+          });
+          break;
+        case 'viral_success':
+          optimizations.push({
+            action: 'replicate_viral_patterns',
+            reason: 'Viral content patterns identified',
+            impact: 'high'
+          });
+          break;
+      }
+    }
+    
+    return optimizations;
+  }
 }
 
 export const supremeAIOrchestrator = new SupremeAIOrchestrator(); 
