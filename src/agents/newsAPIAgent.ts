@@ -129,6 +129,14 @@ export class NewsAPIAgent {
     
     // Only log once during singleton creation
     if (!NewsAPIAgent.instance) {
+      // Log Guardian key detection with masking
+      if (this.guardianApiKey) {
+        const maskedKey = this.guardianApiKey.substring(0, 8) + '...' + this.guardianApiKey.slice(-4);
+        console.log(`[Guardian] key detected ✔ (${maskedKey})`);
+      } else {
+        console.log('[Guardian] key missing ❌');
+      }
+      
       console.log('🔌 News APIs configured:', {
         newsapi: !!this.newsApiKey,
         guardian: !!this.guardianApiKey

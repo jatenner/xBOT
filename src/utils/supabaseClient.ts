@@ -146,9 +146,15 @@ class SupabaseService {
       return null;
     }
     try {
+      // Generate safe ID for records that might have undefined id
+      const safeData = {
+        ...tweetData,
+        id: tweetData.id ?? crypto.randomUUID()
+      };
+      
       const { data, error } = await this.client
         .from('tweets')
-        .insert(tweetData)
+        .insert(safeData)
         .select()
         .single();
 
@@ -166,15 +172,17 @@ class SupabaseService {
     let attempt = 0;
     let lastError = null;
     
-    // Add X response data if available
-    if (xResponse) {
-      tweetData.tweet_id = xResponse.data.id;
-      tweetData.external_url = `https://twitter.com/${process.env.TWITTER_USERNAME}/status/${xResponse.data.id}`;
+    // Add X response data if available with safe ID handling
+    if (xResponse && xResponse.data) {
+      const tweetId = xResponse.data.id ?? crypto.randomUUID();
+      tweetData.tweet_id = tweetId;
+      tweetData.external_url = `https://twitter.com/${process.env.TWITTER_USERNAME}/status/${tweetId}`;
     }
     
     // Ensure required fields have defaults
     const safeTweetData = {
       ...tweetData,
+      tweet_id: tweetData.tweet_id || crypto.randomUUID(),
       content_type: tweetData.content_type || 'general',
       content_category: tweetData.content_category || 'health_tech',
       source_attribution: tweetData.source_attribution || 'AI Generated',

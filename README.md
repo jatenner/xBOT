@@ -89,7 +89,11 @@ SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
 DISABLE_BOT=false
 MAX_DAILY_TWEETS=280
+LIVE_POSTING_ENABLED=true
 ```
+
+**What is dry-run?**  
+Dry-run executes every pipeline stage (idea generation → image fetch → logs) except the final `POST /2/tweets`. It's controlled by `LIVE_POSTING_ENABLED`. When false you'll see `🧪 DRY RUN – Tweet preview:` log lines; when true the bot actually tweets.
 
 ## 7. NPM Scripts
 `dev` • `cron` • `tweet` • `reply` • `learn` • `lint`
@@ -258,3 +262,35 @@ Rate-limit guard, OpenAI moderation, Supabase kill-switch, full audit trail.
 
 © 2025 Snap2Health # Force Render redeploy with correct TypeScript build
 # Force redeploy Thu Jun 19 13:26:05 EDT 2025
+
+## Environment Configuration
+
+### Required Environment Variables
+
+```bash
+# Twitter API Credentials
+TWITTER_ACCESS_TOKEN=your_access_token
+TWITTER_ACCESS_SECRET=your_access_secret
+TWITTER_BEARER_TOKEN=your_bearer_token
+TWITTER_API_KEY=your_api_key
+TWITTER_API_SECRET=your_api_secret
+
+# Database Configuration
+SUPABASE_URL=your_supabase_url
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+
+# API Keys
+OPENAI_API_KEY=your_openai_key
+NEWS_API_KEY=your_news_api_key
+GUARDIAN_API_KEY=your_guardian_api_key
+PEXELS_API_KEY=your_pexels_key
+
+# Bot Configuration
+LIVE_POSTING_ENABLED=true
+MAX_DAILY_TWEETS=17
+```
+
+**What is dry-run?**  
+Dry-run executes every pipeline stage (idea generation → image fetch → logs) except the final `POST /2/tweets`. It's controlled by `LIVE_POSTING_ENABLED`. When false you'll see `🧪 DRY RUN – Tweet preview:` log lines; when true the bot actually tweets.
+
+## Installation

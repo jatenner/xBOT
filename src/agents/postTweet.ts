@@ -300,9 +300,17 @@ export class PostTweetAgent {
     }
   }
 
-  async run(force: boolean = false, dryRun: boolean = false, testMode: boolean = false): Promise<any> {
+  async run(force: boolean = false, testMode: boolean = false): Promise<any> {
     try {
       console.log('🐦 === POST TWEET AGENT ACTIVATED ===');
+      
+      // Check live posting mode
+      const livePostingEnabled = process.env.LIVE_POSTING_ENABLED === 'true';
+      if (!livePostingEnabled) {
+        console.log('[DRY RUN] No tweets will be published');
+      } else {
+        console.log('[LIVE] Posting ENABLED');
+      }
       
       // Check bot kill switch
       if (!testMode && await isBotDisabled()) {
@@ -375,8 +383,8 @@ export class PostTweetAgent {
         console.log('⚠️ No image selected - posting text-only');
       }
       
-      if (dryRun) {
-        console.log('🧪 DRY RUN - Tweet preview:');
+      if (!livePostingEnabled) {
+        console.log('🧪 DRY RUN – Tweet preview:');
         console.log(`📝 Content: ${tweetContent}`);
         console.log(`🖼️ Image: ${imageUrl || 'None'}`);
         return { 
