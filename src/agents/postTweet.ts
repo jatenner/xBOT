@@ -32,7 +32,6 @@ import { ContentCache } from '../utils/contentCache.js';
 import { EmbeddingFilter } from '../utils/embeddingFilter.js';
 import { LIVE_MODE } from '../config/liveMode';
 import { runtimeConfig } from '../utils/supabaseConfig.js';
-import { runtimeConfig } from '../utils/supabaseConfig.js';
 
 dotenv.config();
 
