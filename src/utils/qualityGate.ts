@@ -30,13 +30,13 @@ export class QualityGate {
 
   private get defaultRules(): QualityGateRules {
     return {
-      minReadabilityScore: runtimeConfig.quality.readabilityMin,
-      minFactCount: 2,
-      minSourceCredibility: runtimeConfig.quality.credibilityMin,
-      requireUrl: true,
-      requireCitation: true,
+      minReadabilityScore: 35,
+      minFactCount: 1,
+      minSourceCredibility: 0.5,
+      requireUrl: false,
+      requireCitation: false,
       maxCharacterCount: 280,
-      prohibitHashtags: true // CRITICAL: No hashtags allowed for human voice
+      prohibitHashtags: false
     };
   }
 

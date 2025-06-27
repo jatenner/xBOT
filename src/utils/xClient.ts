@@ -74,6 +74,10 @@ export interface TweetWithMediaOptions {
 
 class XService {
   private client: TwitterApi | null = null;
+  private lastPostTime = 0;
+  private minPostInterval = 90000; // 1.5 minutes minimum between posts
+  private consecutiveErrors = 0;
+  private maxConsecutiveErrors = 3;
 
   constructor() {
     this.initializeClient();
@@ -604,6 +608,53 @@ class XService {
       console.error('Error searching users to follow:', error);
       // Return empty array if search fails
       return [];
+    }
+  }
+
+  /**
+   * Enhanced tweet posting with rate limit protection
+   */
+  async postTweetWithRateLimit(content: string): Promise<any> {
+    // Check if we need to wait
+    const now = Date.now();
+    const timeSinceLastPost = now - this.lastPostTime;
+    
+    if (timeSinceLastPost < this.minPostInterval) {
+      const waitTime = this.minPostInterval - timeSinceLastPost;
+      console.log(`⏳ Rate limit protection: waiting ${Math.round(waitTime/1000)}s before posting`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+
+    // Exponential backoff for consecutive errors
+    if (this.consecutiveErrors > 0) {
+      const backoffTime = Math.min(300000, 30000 * Math.pow(2, this.consecutiveErrors - 1)); // Max 5 min
+      console.log(`⏸️  Backoff delay: ${Math.round(backoffTime/1000)}s (${this.consecutiveErrors} consecutive errors)`);
+      await new Promise(resolve => setTimeout(resolve, backoffTime));
+    }
+
+    try {
+      const result = await this.client.v2.tweet(content);
+      this.lastPostTime = Date.now();
+      this.consecutiveErrors = 0; // Reset on success
+      return result;
+    } catch (error: any) {
+      this.consecutiveErrors++;
+      
+      if (error.code === 429) {
+        console.log('⚠️ Rate limit hit, increasing interval');
+        this.minPostInterval = Math.min(600000, this.minPostInterval * 1.5); // Max 10 min
+      } else if (error.code === 403) {
+        console.log('⚠️ Tweet forbidden, may be duplicate or violate policies');
+      }
+      
+      // Circuit breaker
+      if (this.consecutiveErrors >= this.maxConsecutiveErrors) {
+        console.log('🛑 Circuit breaker: too many consecutive errors, pausing for 10 minutes');
+        await new Promise(resolve => setTimeout(resolve, 600000));
+        this.consecutiveErrors = 0;
+      }
+      
+      throw error;
     }
   }
 }
