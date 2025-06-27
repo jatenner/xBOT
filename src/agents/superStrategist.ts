@@ -259,7 +259,7 @@ export class SuperStrategist {
       console.log(`🎯 Triggers: ${viralContent.engagement_triggers.join(', ')}`);
       
       // Execute the post
-      const result = await this.postAgent.run(false, false, true);
+      const result = await this.postAgent.run(false, false);
       
       // Update timing
       this.lastPostTime = Date.now();

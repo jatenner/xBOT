@@ -452,7 +452,7 @@ class DailyPostingManager {
         await contentCache.markContentUsed(cachedContent.id);
       } else {
         // Generate fresh content
-        result = await this.postTweetAgent.run(false, false, false);
+        result = await this.postTweetAgent.run(false, false);
       }
 
       if (result.success) {

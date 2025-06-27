@@ -550,11 +550,11 @@ export class SupremeAIOrchestrator {
         case 'strategistAgent':
           // Strategist agent doesn't have a direct content generation method
           // Use the main posting agent for strategic content
-          const strategicResult = await this.postTweetAgent.run(false, false, false);
+          const strategicResult = await this.postTweetAgent.run(false, false);
           return strategicResult;
         default:
           // Fallback to main posting agent
-          return await this.postTweetAgent.run(false, false, false);
+          return await this.postTweetAgent.run(false, false);
       }
     } catch (error) {
       return { success: false, error: error.message };

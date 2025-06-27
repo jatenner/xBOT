@@ -111,7 +111,7 @@ export class MasterControlDashboard {
         // Import and run PostTweetAgent
         const { PostTweetAgent } = await import('../agents/postTweet');
         const agent = new PostTweetAgent();
-        const result = await agent.run(false, false, false);
+        const result = await agent.run(false, false);
         
         this.broadcastSystemUpdate('force_post', {
           message: '📝 Force post executed',

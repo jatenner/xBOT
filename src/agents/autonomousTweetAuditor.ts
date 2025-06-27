@@ -280,7 +280,7 @@ Respond with JSON:
 
   private hasBrokenUrls(text: string): boolean {
     const urls = text.match(/https?:\/\/[^\s]+/g) || [];
-    return urls.some(url => 
+    return urls.some((url: string) => 
       (url.length > 30 && !url.includes('.')) || // Too long without domain
       url.endsWith('...') || // Truncated
       /\s/.test(url) // Contains spaces (broken)
@@ -289,7 +289,7 @@ Respond with JSON:
 
   private hasIncompleteHashtags(text: string): boolean {
     const hashtags = text.match(/#[^\s]*/g) || [];
-    return hashtags.some(tag => 
+    return hashtags.some((tag: string) => 
       tag.length < 3 || // Too short
       tag.endsWith('...') || // Truncated
       /[^a-zA-Z0-9_]$/.test(tag) // Ends with invalid character

@@ -146,10 +146,10 @@ class SupabaseService {
       return null;
     }
     try {
-      // Generate safe ID for records that might have undefined id
+      // Generate safe ID for the tweet record
       const safeData = {
         ...tweetData,
-        id: tweetData.id ?? crypto.randomUUID()
+        id: crypto.randomUUID()
       };
       
       const { data, error } = await this.client
