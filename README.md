@@ -298,16 +298,22 @@ All non-secret settings are stored in the `bot_config` table and can be updated 
 
 ```sql
 -- Example: Change daily tweet limit
-UPDATE bot_config SET max_daily_tweets = 8 WHERE id = 1;
+UPDATE bot_config 
+SET value = jsonb_set(value, '{max_daily_tweets}', '8') 
+WHERE key = 'runtime_config';
 
 -- Example: Adjust quality requirements
-UPDATE bot_config SET 
-  quality_readability_min = 60,
-  quality_credibility_min = 0.9
-WHERE id = 1;
+UPDATE bot_config 
+SET value = jsonb_set(
+  jsonb_set(value, '{quality_readability_min}', '60'),
+  '{quality_credibility_min}', '0.9'
+)
+WHERE key = 'runtime_config';
 
 -- Example: Change posting strategy
-UPDATE bot_config SET posting_strategy = 'aggressive' WHERE id = 1;
+UPDATE bot_config 
+SET value = jsonb_set(value, '{posting_strategy}', '"aggressive"') 
+WHERE key = 'runtime_config';
 ```
 
 Default configuration values:

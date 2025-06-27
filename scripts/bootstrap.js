@@ -16,18 +16,20 @@ async function bootstrap() {
   );
 
   try {
-    // Ensure bot_config table has a default row
+    // Ensure bot_config table has a default runtime_config row
     const { data, error } = await supabase
       .from('bot_config')
       .upsert({ 
-        id: 1,
-        max_daily_tweets: 6,
-        quality_readability_min: 55,
-        quality_credibility_min: 0.85,
-        fallback_stagger_minutes: 90,
-        posting_strategy: 'balanced'
+        key: 'runtime_config',
+        value: {
+          max_daily_tweets: 6,
+          quality_readability_min: 55,
+          quality_credibility_min: 0.85,
+          fallback_stagger_minutes: 90,
+          posting_strategy: 'balanced'
+        }
       }, { 
-        onConflict: 'id' 
+        onConflict: 'key' 
       });
 
     if (error) {

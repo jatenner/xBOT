@@ -22,16 +22,25 @@ let _runtimeConfig: RuntimeConfig | null = null;
  */
 export async function initializeRuntimeConfig(): Promise<RuntimeConfig> {
   try {
-    // Ensure bot_config table has a row
+    // Ensure bot_config table has a runtime_config row
     await supabaseClient.supabase
       ?.from('bot_config')
-      .upsert({ id: 1 }, { onConflict: 'id' });
+      .upsert({ 
+        key: 'runtime_config',
+        value: {
+          max_daily_tweets: defaults.maxDailyTweets,
+          quality_readability_min: defaults.quality.readabilityMin,
+          quality_credibility_min: defaults.quality.credibilityMin,
+          fallback_stagger_minutes: defaults.fallbackStaggerMinutes,
+          posting_strategy: defaults.postingStrategy
+        }
+      }, { onConflict: 'key' });
 
     // Fetch configuration
     const { data, error } = await supabaseClient.supabase
       ?.from('bot_config')
       .select('*')
-      .eq('id', 1)
+      .eq('key', 'runtime_config')
       .single();
 
     if (error) {
@@ -41,14 +50,15 @@ export async function initializeRuntimeConfig(): Promise<RuntimeConfig> {
     }
 
     // Merge database config over defaults
+    const configValue = data?.value || {};
     _runtimeConfig = {
-      maxDailyTweets: data?.max_daily_tweets ?? defaults.maxDailyTweets,
+      maxDailyTweets: configValue?.max_daily_tweets ?? defaults.maxDailyTweets,
       quality: {
-        readabilityMin: data?.quality_readability_min ?? defaults.quality.readabilityMin,
-        credibilityMin: data?.quality_credibility_min ?? defaults.quality.credibilityMin,
+        readabilityMin: configValue?.quality_readability_min ?? defaults.quality.readabilityMin,
+        credibilityMin: configValue?.quality_credibility_min ?? defaults.quality.credibilityMin,
       },
-      fallbackStaggerMinutes: data?.fallback_stagger_minutes ?? defaults.fallbackStaggerMinutes,
-      postingStrategy: data?.posting_strategy ?? defaults.postingStrategy,
+      fallbackStaggerMinutes: configValue?.fallback_stagger_minutes ?? defaults.fallbackStaggerMinutes,
+      postingStrategy: configValue?.posting_strategy ?? defaults.postingStrategy,
     };
 
     console.log('✅ Runtime config loaded from Supabase:', _runtimeConfig);
