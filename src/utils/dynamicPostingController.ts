@@ -3,6 +3,7 @@ import { supabaseClient } from './supabaseClient';
 import { NewsAPIAgent } from '../agents/newsAPIAgent';
 import { RealTimeTrendsAgent } from '../agents/realTimeTrendsAgent';
 import { realTimeLimitsAgent } from '../agents/realTimeLimitsIntelligenceAgent';
+import { getConfig } from './botConfig.js';
 
 /**
  * 🧠 DYNAMIC POSTING CONTROLLER
@@ -115,13 +116,16 @@ export class DynamicPostingController {
     } catch (error) {
       console.error('❌ Supreme AI decision failed:', error);
       
-      // Fallback: Conservative AI decision
+      // Get fallback strategy from config
+      const fallbackStrategy = await getConfig('postingStrategy', 'balanced');
+      const fallbackMode = await getConfig('mode', 'production');
+      
       return {
         shouldPost: true,
         postCount: 1,
         urgency: 0.5,
         reasoning: 'Fallback decision: Single quality post to maintain presence',
-        strategy: 'conservative_fallback',
+        strategy: fallbackStrategy === 'balanced' ? 'conservative_fallback' : fallbackStrategy,
         timeSpacing: 180,
         executionPlan: []
       };

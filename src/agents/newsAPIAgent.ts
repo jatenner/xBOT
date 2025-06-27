@@ -433,31 +433,36 @@ export class NewsAPIAgent {
   }
 
   private async storeArticlesInDatabase(articles: ProcessedNewsArticle[]): Promise<void> {
-         for (const article of articles) {
-       try {
-         if (supabaseClient.supabase) {
-           const { error } = await supabaseClient.supabase
-             .from('news_articles')
-             .upsert({
-               title: article.title,
-               url: article.url,
-               source: article.source,
-               api_source: article.apiSource,
-               credibility_score: article.credibilityScore,
-               health_tech_relevance: article.healthTechRelevance,
-               category: article.category,
-               created_at: new Date().toISOString()
-             });
-           
-           if (error) {
-             console.log('⚠️ Database error for article:', article.title, error.message);
-           }
-         }
-       } catch (error) {
-         // Continue on individual failures
-         console.log('⚠️ Failed to store article:', article.title);
-       }
-     }
+    for (const article of articles) {
+      try {
+        if (supabaseClient.supabase) {
+          // Ensure the article has a safe ID
+          const articleData = {
+            id: crypto.randomUUID(), // Generate safe ID
+            title: article.title,
+            url: article.url,
+            source: article.source,
+            api_source: article.apiSource,
+            credibility_score: article.credibilityScore,
+            health_tech_relevance: article.healthTechRelevance,
+            category: article.category,
+            created_at: new Date().toISOString()
+          };
+          
+          const { error } = await supabaseClient.supabase
+            .from('news_articles')
+            .upsert(articleData);
+          
+          if (error) {
+            console.warn('[articles] insert failed', error.message);
+          }
+        }
+      } catch (error) {
+        // Continue on individual failures without throwing
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        console.warn('[articles] insert failed', errorMessage);
+      }
+    }
   }
 
   private getFallbackNews(): ProcessedNewsArticle[] {

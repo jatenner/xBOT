@@ -5,6 +5,7 @@ import { IntelligentSchedulingAgent } from '../agents/intelligentSchedulingAgent
 import { strategicOpportunityScheduler } from '../agents/strategicOpportunityScheduler';
 import { HumanLikeStrategicMind } from '../agents/humanLikeStrategicMind';
 import { supremeAIOrchestrator } from '../agents/supremeAIOrchestrator';
+import { getConfig } from './botConfig.js';
 import * as cron from 'node-cron';
 
 interface DailyPostingState {
@@ -419,21 +420,29 @@ class DailyPostingManager {
   private async activateEmergencyPosting(postsNeeded: number): Promise<void> {
     console.log(`🚨 Emergency posting activated - need ${postsNeeded} additional posts`);
     
-    this.currentState.emergency_mode = true;
-    await this.saveDailyState();
+    // Check if emergency mode is enabled via config
+    const emergencyMode = await getConfig('mode', 'production');
+    const postingStrategy = await getConfig('postingStrategy', 'balanced');
+    
+    if (emergencyMode === 'production' && postingStrategy === 'balanced') {
+      this.currentState.emergency_mode = true;
+      await this.saveDailyState();
 
-    const now = new Date();
-    const endOfDay = new Date(now);
-    endOfDay.setHours(23, 30, 0, 0); // Stop at 11:30 PM
+      const now = new Date();
+      const endOfDay = new Date(now);
+      endOfDay.setHours(23, 30, 0, 0); // Stop at 11:30 PM
 
-    const timeRemaining = endOfDay.getTime() - now.getTime();
-    const interval = timeRemaining / (postsNeeded * 60 * 1000); // minutes
+      const timeRemaining = endOfDay.getTime() - now.getTime();
+      const interval = timeRemaining / (postsNeeded * 60 * 1000); // minutes
 
-    for (let i = 0; i < postsNeeded; i++) {
-      const emergencyTime = new Date(now.getTime() + (i * interval * 60 * 1000));
-      if (emergencyTime < endOfDay) {
-        this.schedulePost(emergencyTime);
+      for (let i = 0; i < postsNeeded; i++) {
+        const emergencyTime = new Date(now.getTime() + (i * interval * 60 * 1000));
+        if (emergencyTime < endOfDay) {
+          this.schedulePost(emergencyTime);
+        }
       }
+    } else {
+      console.log(`⚠️ Emergency posting disabled by config: mode=${emergencyMode}, strategy=${postingStrategy}`);
     }
   }
 
