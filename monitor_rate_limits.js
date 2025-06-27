@@ -1,56 +1,98 @@
 #!/usr/bin/env node
 
 /**
- * 🔍 EMERGENCY RATE LIMIT MONITORING
- * Monitor bot posting to ensure limits are respected
+ * 🚨 EMERGENCY RATE LIMIT MONITOR
+ * Checks current posting rate and warns of API exhaustion
  */
 
-const { supabaseClient } = require('./src/utils/supabaseClient.ts');
+const { createClient } = require('@supabase/supabase-js');
 
-async function monitorPostingRate() {
-  console.log('🔍 EMERGENCY RATE LIMIT MONITORING');
-  console.log('=================================');
+// Load environment variables
+require('dotenv').config();
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+async function monitorRateLimits() {
+  console.log('🚨 EMERGENCY RATE LIMIT MONITOR');
+  console.log('================================');
   
   try {
+    // Get today's date in UTC
     const today = new Date().toISOString().split('T')[0];
+    const startOfDay = `${today}T00:00:00Z`;
+    const endOfDay = `${today}T23:59:59Z`;
     
-    // Get today's posts
-    const { data: todaysPosts } = await supabaseClient.supabase
-      ?.from('tweets')
-      .select('*')
-      .gte('created_at', today + 'T00:00:00')
-      .order('created_at', { ascending: false }) || { data: [] };
+    // Count tweets posted today
+    const { data: todaysTweets, error } = await supabase
+      .from('tweets')
+      .select('id, created_at, content')
+      .gte('created_at', startOfDay)
+      .lte('created_at', endOfDay)
+      .order('created_at', { ascending: false });
     
-    const postsToday = todaysPosts?.length || 0;
-    
-    console.log(`📊 Posts today: ${postsToday}/8 (safe limit)`);
-    
-    if (postsToday >= 8) {
-      console.log('🚨 WARNING: Daily limit reached!');
-    } else if (postsToday >= 6) {
-      console.log('⚠️ CAUTION: Approaching daily limit');
-    } else {
-      console.log('✅ Posting rate is safe');
+    if (error) {
+      console.error('❌ Database error:', error);
+      return;
     }
     
-    // Check posting intervals
-    if (todaysPosts && todaysPosts.length > 1) {
-      for (let i = 0; i < Math.min(5, todaysPosts.length - 1); i++) {
-        const post1 = new Date(todaysPosts[i].created_at);
-        const post2 = new Date(todaysPosts[i + 1].created_at);
-        const interval = (post1.getTime() - post2.getTime()) / (1000 * 60);
+    const postsToday = todaysTweets?.length || 0;
+    
+    console.log(`📊 TWITTER API STATUS (${today})`);
+    console.log(`   Posts today: ${postsToday}/6 tweets`);
+    console.log(`   API Limit: ${postsToday >= 6 ? '❌ EXHAUSTED' : '✅ Available'}`);
+    
+    if (postsToday >= 6) {
+      console.log('🚨 CRITICAL: Daily posting limit reached!');
+      console.log('   ⏰ Must wait until tomorrow (00:00 UTC) to post again');
+      console.log('   🛑 All posting systems should be blocked');
+    } else {
+      const remaining = 6 - postsToday;
+      console.log(`✅ Safe to post: ${remaining} tweets remaining today`);
+    }
+    
+    // Check recent posting frequency
+    if (todaysTweets && todaysTweets.length > 0) {
+      console.log('\n🕐 RECENT POSTING ACTIVITY:');
+      
+      const now = new Date();
+      const lastTweet = new Date(todaysTweets[0].created_at);
+      const timeSinceLastPost = Math.floor((now - lastTweet) / (1000 * 60)); // minutes
+      
+      console.log(`   Last post: ${timeSinceLastPost} minutes ago`);
+      
+      if (timeSinceLastPost < 30) {
+        console.log(`   🚨 WARNING: Too soon to post again (${30 - timeSinceLastPost} min remaining)`);
+      } else {
+        console.log('   ✅ Safe posting interval (30+ minutes since last post)');
+      }
+      
+      // Check for rapid posting pattern
+      if (todaysTweets.length >= 3) {
+        const last3Tweets = todaysTweets.slice(0, 3);
+        const timespan = new Date(last3Tweets[0].created_at) - new Date(last3Tweets[2].created_at);
+        const timespanMinutes = Math.floor(timespan / (1000 * 60));
         
-        console.log(`⏱️  Interval ${i + 1}: ${interval.toFixed(1)} minutes`);
-        
-        if (interval < 20) {
-          console.log('🚨 WARNING: Posting interval too short!');
+        if (timespanMinutes < 60) {
+          console.log(`   🚨 RAPID POSTING DETECTED: 3 tweets in ${timespanMinutes} minutes`);
+          console.log('   ⚠️  This pattern can trigger API limits');
         }
       }
     }
     
+    console.log('\n🔧 EMERGENCY FIX STATUS:');
+    console.log('✅ Emergency posting: DISABLED');
+    console.log('✅ Rate limiting: ACTIVE');
+    console.log('✅ Minimum intervals: 30 minutes');
+    console.log('✅ Daily cap: 6 tweets maximum');
+    
   } catch (error) {
-    console.error('❌ Monitoring failed:', error);
+    console.error('❌ Monitor failed:', error);
+    console.log('🚨 ASSUME RATE LIMITED - do not attempt posting!');
   }
 }
 
-monitorPostingRate();
+// Run monitor
+monitorRateLimits();

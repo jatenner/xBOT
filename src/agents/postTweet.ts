@@ -2621,10 +2621,10 @@ Make it insightful, strategic, and reveal hidden implications. 250 characters ma
       const postsToday = todaysPosts?.length || 0;
       
       // Conservative daily limit
-      if (postsToday >= 8) {
+      if (postsToday >= 6) {
         return { 
           canPost: false, 
-          reason: `Daily limit reached: ${postsToday}/8 posts today`
+          reason: `Daily limit reached: ${postsToday}/6 posts today`
         };
       }
       
