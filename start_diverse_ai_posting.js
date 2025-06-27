@@ -248,7 +248,7 @@ class DiverseAIPostingSystem {
             .replace('{controversial_statement}', 'Traditional healthcare will be obsolete within 5 years')
             .replace('{company}', ['Stanford', 'MIT', 'Google Health', 'Apple'][Math.floor(Math.random() * 4)])
             .replace('{demographic}', ['adults 35+', 'patients with diabetes', 'athletes', 'seniors'][Math.floor(Math.random() * 4)])
-            .replace('{condition}', ['rare diseases', 'cancer', 'Alzheimers', 'heart disease'][Math.floor(Math.random() * 4)])
+            .replace('{condition}', ['rare diseases', 'cancer', 'Alzheimer\'s', 'heart disease'][Math.floor(Math.random() * 4)])
             .replace('{accuracy}', Math.floor(Math.random() * 15) + 85)
             .replace('{industry}', ['Big Pharma', 'healthcare systems', 'medical device companies'][Math.floor(Math.random() * 3)])
             .replace('{technology}', topicData.topic || 'health technology')
