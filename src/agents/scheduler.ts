@@ -67,6 +67,7 @@ export class Scheduler {
   private engagementFeedbackJob: cron.ScheduledTask | null = null;
   private strategyLearnerJob: cron.ScheduledTask | null = null;
   private followGrowthJob: cron.ScheduledTask | null = null;
+  private draftDrainJob: cron.ScheduledTask | null = null;
 
   constructor() {
     this.strategistAgent = new StrategistAgent();
@@ -313,7 +314,7 @@ export class Scheduler {
     console.log('✅ Snap2Health X-Bot Scheduler started successfully');
     console.log(`📅 Emergency mode: ${emergencyMode ? 'ON' : 'OFF'}`);
     console.log(`🧠 Learning agents: ${disableLearningAgents ? 'DISABLED' : 'ENABLED'}`);
-    console.log(`💵 Daily budget limit: $${dailyBudgetLimit}`);
+    console.log(`💵 Daily budget limit: ${dailyBudgetLimit}`);
 
     // 🔥 REAL ENGAGEMENT AGENT - reduce to every 60 minutes instead of 30 (still frequent but reasonable)
     this.rateLimitedEngagementJob = cron.schedule('0 * * * *', async () => {
@@ -337,6 +338,19 @@ export class Scheduler {
         console.error('❌ Real engagement agent failed:', error);
       }
     }, { scheduled: true });
+
+      // Draft Drain Job - runs hourly to process queued tweets
+      this.draftDrainJob = cron.schedule('5 * * * *', async () => {
+        try {
+          console.log('📤 Running draft drain job...');
+          await draftDrainJob.processDraftQueue();
+        } catch (error) {
+          console.error('📤 Draft drain job failed:', error);
+        }
+      }, {
+        scheduled: true,
+        timezone: 'UTC'
+      });
 
     // PubMed research fetcher - every 6 hours
     cron.schedule('0 */6 * * *', async () => {
@@ -719,7 +733,7 @@ export class Scheduler {
     
     // Stop all cron jobs
     const cronJobs = [
-      { name: 'strategist', job: this.strategistJob },
+{ name: 'strategist', job: this.strategistJob },
       { name: 'learning', job: this.learningJob },
       { name: 'autonomous-learning', job: this.autonomousLearningJob },
       { name: 'engagement', job: this.engagementJob },
@@ -730,7 +744,8 @@ export class Scheduler {
       { name: 'nightly-optimizer', job: this.nightlyOptimizerJob },
       { name: 'engagement-feedback', job: this.engagementFeedbackJob },
       { name: 'strategy-learner', job: this.strategyLearnerJob },
-      { name: 'follow-growth', job: this.followGrowthJob }
+      { name: 'follow-growth', job: this.followGrowthJob },
+      { name: 'draftDrainJob', job: this.draftDrainJob },
     ];
 
     cronJobs.forEach(({ name, job }) => {

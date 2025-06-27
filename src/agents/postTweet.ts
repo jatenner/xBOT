@@ -157,7 +157,7 @@ export class PostTweetAgent {
     try {
       await this.adaptiveLearner.initialize();
       console.log('✅ Autonomous learning fully activated');
-    } catch (error) {
+    } catch (error: any) {
       console.warn('⚠️ Learning system initialization error:', error);
     }
   }
@@ -293,8 +293,31 @@ export class PostTweetAgent {
           error: result.error
         };
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Twitter posting error:', error);
+      
+      // If rate limited (429), queue the draft instead of failing
+      if (error.code === 429 || error.status === 429 || (error.message && error.message.includes('429'))) {
+        console.log('📤 Rate limit hit, queuing draft for later posting...');
+        try {
+          const { queueDraft } = await import('../utils/drafts.js');
+          const tweetStyle = this.determineTweetStyle(content);
+          await queueDraft({
+            content,
+            source: `AI-${tweetStyle}`,
+            priority: 'medium',
+            image_url: imageUrl
+          });
+          console.log('✅ Draft queued successfully for later posting');
+          return { 
+            success: false, 
+            error: 'Rate limited - tweet queued for later posting'
+          };
+        } catch (queueError) {
+          console.error('❌ Failed to queue draft:', queueError);
+        }
+      }
+      
       return { 
         success: false, 
         error: error instanceof Error ? error.message : 'Unknown error' 
@@ -434,7 +457,7 @@ export class PostTweetAgent {
         return { success: false, reason: result.error };
       }
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('💥 PostTweetAgent error:', error);
       return { success: false, error: error.message };
     }
@@ -448,7 +471,7 @@ export class PostTweetAgent {
     try {
       optimizedStrategy = this.adaptiveLearner.getOptimizedContentStrategy();
       console.log('🧠 Applied learning insights:', optimizedStrategy.latest_insights?.slice(0, 3));
-    } catch (error) {
+    } catch (error: any) {
       console.warn('⚠️ Learning system not ready, using default strategy');
     }
     
@@ -518,7 +541,7 @@ export class PostTweetAgent {
               }
             }
           }
-        } catch (error) {
+        } catch (error: any) {
           console.warn(`⚠️ Content generation error on attempt ${i + 1}:`, error);
         }
       }
@@ -613,7 +636,7 @@ export class PostTweetAgent {
         }
       }
       
-    } catch (error) {
+    } catch (error: any) {
       console.warn('⚠️ Error applying learning optimizations:', error);
     }
     
@@ -647,7 +670,7 @@ export class PostTweetAgent {
         return await this.generateCompetitorInspiredFallback(competitorPatterns[0]);
       }
       
-    } catch (error) {
+    } catch (error: any) {
       console.warn('⚠️ Learning-enhanced fallback error:', error);
     }
     
@@ -751,7 +774,7 @@ export class PostTweetAgent {
       }
 
       return data?.id || null;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error storing tweet:', error);
       return null;
     }
@@ -813,7 +836,7 @@ export class PostTweetAgent {
         return await this.generateFallbackTweet(includeSnap2HealthCTA, true);
       }
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Comprehensive content generation failed:', error);
       return await this.generateFallbackTweet(includeSnap2HealthCTA, true);
     }
@@ -903,7 +926,7 @@ export class PostTweetAgent {
         return { success: false, error: result.error };
       }
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Viral tweet generation failed:', error);
       return await this.generateFallbackTweet(includeSnap2HealthCTA, includeImage);
     }
@@ -1015,7 +1038,7 @@ export class PostTweetAgent {
         }
         
         console.log(`✅ Added ${breakingNews.length} BREAKING news articles`);
-      } catch (error) {
+      } catch (error: any) {
         console.warn('Failed to fetch breaking news:', error);
       }
 
@@ -1049,7 +1072,7 @@ export class PostTweetAgent {
         }
         
         console.log(`✅ Added ${realNews.length} comprehensive news articles from NewsAPI`);
-      } catch (error) {
+      } catch (error: any) {
         console.warn('Failed to fetch NewsAPI content, using fallback facts:', error);
         // Generate some current health tech facts as fallback
         const currentFacts = await this.generateCurrentHealthFacts();
@@ -1082,7 +1105,7 @@ export class PostTweetAgent {
         }
         
         console.log(`✅ Added ${researchArticles.length} research articles`);
-      } catch (error) {
+      } catch (error: any) {
         console.warn('Failed to fetch research articles:', error);
       }
 
@@ -1102,7 +1125,7 @@ export class PostTweetAgent {
 
       return sortedContent;
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error gathering current content:', error);
       return [];
     }
@@ -1626,7 +1649,7 @@ export class PostTweetAgent {
       console.log('❌ Failed to get unique image');
       return null;
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error getting image for content:', error);
       return null;
     }
@@ -1692,7 +1715,7 @@ export class PostTweetAgent {
               return await this.postContentWithOptionalImage(formattedTweet.content, includeImage, includeSnap2HealthCTA);
             }
           }
-        } catch (error) {
+        } catch (error: any) {
           console.warn('OpenAI creative mode failed, trying next:', error);
           continue;
         }
@@ -1703,7 +1726,7 @@ export class PostTweetAgent {
       const formattedTweet = formatTweet(curatedContent);
       return await this.postContentWithOptionalImage(formattedTweet.content, includeImage, includeSnap2HealthCTA);
 
-    } catch (error) {
+    } catch (error: any) {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Fallback generation failed'
@@ -1879,7 +1902,7 @@ export class PostTweetAgent {
       };
 
       return await this.imageAgent.getImageForContent(imageRequest);
-    } catch (error) {
+    } catch (error: any) {
       console.warn('Failed to get viral image:', error);
       return null;
     }
@@ -1940,7 +1963,7 @@ export class PostTweetAgent {
           missionAlignment: result.missionAlignment
         });
         
-      } catch (error) {
+      } catch (error: any) {
         console.log(`❌ ${mode} failed:`, error.message);
       }
       
@@ -1998,7 +2021,7 @@ export class PostTweetAgent {
         timestamp: new Date().toISOString(),
         preview_mode: true
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error in testContentGeneration:', error);
       return {
         success: false,
@@ -2070,7 +2093,7 @@ Respond with JSON:
         
         return decision;
       }
-    } catch (error) {
+    } catch (error: any) {
       console.warn('AI visual decision failed, using fallback logic');
     }
 
@@ -2118,7 +2141,7 @@ Respond with JSON:
       console.log(`   Quality Score: ${metrics.quality_score}/100`);
       console.log(`   Mission Aligned: ${metrics.mission_alignment}`);
       // Would integrate with learning database here
-    } catch (error) {
+    } catch (error: any) {
       console.warn('Failed to record quality metrics:', error);
     }
   }
@@ -2262,7 +2285,7 @@ Respond with JSON:
         };
       }
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Trending content generation failed:', error);
       return await this.generateFallbackTweet(includeSnap2HealthCTA, includeImage);
     }
@@ -2306,7 +2329,7 @@ Make it strategic, insightful, and make people think. 250 characters max. Use co
       });
 
       return response?.choices[0]?.message?.content || this.getStrategicTrendFallback(trend);
-    } catch (error) {
+    } catch (error: any) {
       console.warn('Failed to generate AI trend content, using strategic fallback');
       return this.getStrategicTrendFallback(trend);
     }
@@ -2346,7 +2369,7 @@ Make it insightful, strategic, and reveal hidden implications. 250 characters ma
       });
 
       return response?.choices[0]?.message?.content || this.getStrategicEventFallback(event);
-    } catch (error) {
+    } catch (error: any) {
       console.warn('Failed to generate AI event content, using strategic fallback');
       return this.getStrategicEventFallback(event);
     }
@@ -2646,7 +2669,7 @@ Make it insightful, strategic, and reveal hidden implications. 250 characters ma
       
       return { canPost: true, reason: 'Rate limit check passed' };
       
-    } catch (error) {
+    } catch (error: any) {
       console.log('⚠️ Rate limit check failed:', error.message);
       // Be conservative on error
       return { canPost: false, reason: 'Rate limit check failed - being conservative' };
