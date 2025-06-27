@@ -14,11 +14,11 @@ CREATE TABLE IF NOT EXISTS bot_config (
 
 -- Insert default configuration values
 INSERT INTO bot_config (key, value) VALUES 
-    ('target_tweets_per_day', '8'),
-    ('min_readability', '45'),
-    ('enable_auto_adjustment', 'true'),
-    ('consecutive_failures', '0'),
-    ('consecutive_successes', '0')
+    ('target_tweets_per_day', '"8"'::jsonb),
+    ('min_readability', '"45"'::jsonb),
+    ('enable_auto_adjustment', '"true"'::jsonb),
+    ('consecutive_failures', '"0"'::jsonb),
+    ('consecutive_successes', '"0"'::jsonb)
 ON CONFLICT (key) DO NOTHING;
 
 -- 2. Create tweet_topics table for content categorization
@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS tweet_topics (
     category TEXT NOT NULL,
     description TEXT,
     keywords TEXT[],
-    priority_score DECIMAL(3,2) DEFAULT 0.5,
+    priority_score NUMERIC(3,2) DEFAULT 0.5,
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -66,67 +66,28 @@ CREATE TABLE IF NOT EXISTS tweet_images (
 -- Create unique constraint to prevent duplicate image URLs
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tweet_images_url ON tweet_images(image_url);
 
--- 4. Update tweet_metrics table structure (if it exists with wrong schema)
--- Check current structure and update if needed
-DO $$
-BEGIN
-    -- If tweet_metrics exists but has wrong structure, alter it
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'tweet_metrics') THEN
-        -- Add missing columns if they don't exist
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tweet_metrics' AND column_name = 'id') THEN
-            ALTER TABLE tweet_metrics ADD COLUMN id UUID PRIMARY KEY DEFAULT gen_random_uuid();
-        END IF;
-        
-        -- Rename columns if they have different names
-        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tweet_metrics' AND column_name = 'captured_at') THEN
-            ALTER TABLE tweet_metrics RENAME COLUMN captured_at TO collected_at;
-        END IF;
-        
-        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tweet_metrics' AND column_name = 'json_payload') THEN
-            ALTER TABLE tweet_metrics RENAME COLUMN json_payload TO metrics_json;
-        END IF;
-    ELSE
-        -- Create tweet_metrics table with correct structure
-        CREATE TABLE tweet_metrics (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            tweet_id TEXT NOT NULL,
-            collected_at TIMESTAMPTZ DEFAULT NOW(),
-            metrics_json JSONB NOT NULL,
-            created_at TIMESTAMPTZ DEFAULT NOW()
-        );
-    END IF;
-END $$;
+-- 4. Create proper tweet_metrics table (if needed)
+CREATE TABLE IF NOT EXISTS tweet_metrics_new (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tweet_id TEXT NOT NULL,
+    collected_at TIMESTAMPTZ DEFAULT NOW(),
+    metrics_json JSONB NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
 
--- 5. Update bot_dashboard table structure (if it exists with wrong schema)
-DO $$
-BEGIN
-    -- If bot_dashboard exists but has wrong structure, alter it
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'bot_dashboard') THEN
-        -- Add id column if missing
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'bot_dashboard' AND column_name = 'id') THEN
-            ALTER TABLE bot_dashboard ADD COLUMN id UUID DEFAULT gen_random_uuid();
-        END IF;
-        
-        -- Rename date to plan_date if needed
-        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'bot_dashboard' AND column_name = 'date') THEN
-            ALTER TABLE bot_dashboard RENAME COLUMN date TO plan_date;
-        END IF;
-    ELSE
-        -- Create bot_dashboard table with correct structure
-        CREATE TABLE bot_dashboard (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            plan_date DATE NOT NULL,
-            planned_posts_json JSONB NOT NULL,
-            created_at TIMESTAMPTZ DEFAULT NOW(),
-            updated_at TIMESTAMPTZ DEFAULT NOW()
-        );
-    END IF;
-END $$;
+-- 5. Create proper bot_dashboard table (if needed)  
+CREATE TABLE IF NOT EXISTS bot_dashboard_new (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    plan_date DATE NOT NULL,
+    planned_posts_json JSONB NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
 
 -- 6. Create indexes for performance
-CREATE INDEX IF NOT EXISTS idx_tweet_metrics_tweet_id ON tweet_metrics(tweet_id);
-CREATE INDEX IF NOT EXISTS idx_tweet_metrics_collected_at ON tweet_metrics(collected_at);
-CREATE INDEX IF NOT EXISTS idx_bot_dashboard_plan_date ON bot_dashboard(plan_date);
+CREATE INDEX IF NOT EXISTS idx_tweet_metrics_new_tweet_id ON tweet_metrics_new(tweet_id);
+CREATE INDEX IF NOT EXISTS idx_tweet_metrics_new_collected_at ON tweet_metrics_new(collected_at);
+CREATE INDEX IF NOT EXISTS idx_bot_dashboard_new_plan_date ON bot_dashboard_new(plan_date);
 CREATE INDEX IF NOT EXISTS idx_tweet_topics_category ON tweet_topics(category);
 CREATE INDEX IF NOT EXISTS idx_tweet_topics_priority ON tweet_topics(priority_score DESC);
 CREATE INDEX IF NOT EXISTS idx_tweet_images_last_used ON tweet_images(last_used_at);

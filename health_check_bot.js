@@ -17,6 +17,7 @@ async function runHealthCheck() {
         console.log('📋 Checking environment variables...');
         
         const supabaseUrl = process.env.SUPABASE_URL;
+        // Prioritize anon key as requested, fall back to service role key
         const supabaseKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
         
         if (!supabaseUrl) {
@@ -31,9 +32,9 @@ async function runHealthCheck() {
         
         console.log('✅ Environment variables OK');
         console.log(`📍 Supabase URL: ${supabaseUrl.substring(0, 30)}...`);
-        console.log(`🔑 Using ${keyType} key`);
+        console.log(`🔑 Using ${keyType} key (as requested)`);
         
-        // Step 2: Connect to Supabase
+        // Step 2: Connect to Supabase with anon key
         console.log(`🔗 Connecting to Supabase with ${keyType} key...`);
         
         const supabase = createClient(supabaseUrl, supabaseKey);
@@ -99,10 +100,10 @@ async function runHealthCheck() {
         // Provide helpful debugging info
         console.log('');
         console.log('🔧 Debugging tips:');
-        console.log('1. Check that SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set in your .env file');
+        console.log('1. Check that SUPABASE_URL and SUPABASE_ANON_KEY are set in your .env file (lines 7-9)');
         console.log('2. Verify that the bot_config table exists in Supabase');
         console.log('3. Run SIMPLE_FIX.sql in Supabase SQL Editor if tables are missing');
-        console.log('4. Check if Row Level Security is blocking access');
+        console.log('4. Check if Row Level Security policies allow anon access to bot_config');
         
         return false;
     }
