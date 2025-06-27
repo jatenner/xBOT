@@ -3,7 +3,8 @@ const path = require('path');
 
 console.log('📦 Applying pending Supabase migrations…');
 
-const supabase = spawn('npx', ['supabase', 'db', 'push', '--no-interactive'], {
+// Use --linked flag which is the default for pushing to the linked project
+const supabase = spawn('npx', ['supabase', 'db', 'push', '--linked'], {
   stdio: 'inherit',
   cwd: process.cwd()
 });
