@@ -126,6 +126,36 @@ class SupabaseService {
     this.client = createClient(supabaseUrl, supabaseKey);
   }
 
+  // Retry helper with exponential back-off
+  private async withRetries<T>(fn: () => Promise<T>): Promise<T> {
+    const maxRetries = parseInt(process.env.SUPABASE_MAX_RETRIES ?? '3');
+    let lastError: any;
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        return await fn();
+      } catch (error: any) {
+        lastError = error;
+        
+        // Don't retry config missing errors
+        if (error?.code === 'PGRST116') {
+          throw error;
+        }
+        
+        // Last attempt, don't wait
+        if (attempt === maxRetries - 1) {
+          break;
+        }
+        
+        // Exponential back-off: 300ms → 600ms → 1200ms
+        const delay = 300 * Math.pow(2, attempt);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+    
+    throw lastError;
+  }
+
   // Public getter for direct client access when needed
   get supabase(): SupabaseClient | null {
     return this.client;
@@ -152,11 +182,13 @@ class SupabaseService {
         id: crypto.randomUUID()
       };
       
-      const { data, error } = await this.client
-        .from('tweets')
-        .insert(safeData)
-        .select()
-        .single();
+      const { data, error } = await this.withRetries(() => 
+        this.client!
+          .from('tweets')
+          .insert(safeData)
+          .select()
+          .single()
+      );
 
       if (error) throw error;
       return data;
@@ -199,126 +231,119 @@ class SupabaseService {
         attempt++;
         console.log(`💾 Database save attempt ${attempt}/${maxRetries} for tweet: ${safeTweetData.tweet_id}`);
         
-        // Save to database
-        const result = await this.insertTweet(safeTweetData);
-        
-        if (!result) {
-          throw new Error('insertTweet returned null/undefined');
-        }
-        
-        // Verify the save worked
-        const verification = await this.client!
-          .from('tweets')
-          .select('*')
-          .eq('tweet_id', safeTweetData.tweet_id)
-          .single();
-        
-        if (verification.error) {
-          throw new Error(`Verification failed: ${verification.error.message}`);
-        }
-        
-        if (!verification.data) {
-          throw new Error('Tweet not found in database after save');
-        }
-        
-        console.log(`✅ Tweet successfully saved and verified: ${safeTweetData.tweet_id}`);
-        await this.logDatabaseAction('tweet_saved', { tweet_id: safeTweetData.tweet_id, attempt });
-        
-        return verification.data;
-        
+        // Use the retry wrapper for the database operation
+        const result = await this.withRetries(async () => {
+          const { data, error } = await this.client!
+            .from('tweets')
+            .select('*')
+            .eq('tweet_id', safeTweetData.tweet_id)
+            .maybeSingle();
+
+          if (error) throw error;
+          
+          if (data) {
+            console.log('✅ Tweet already exists in database');
+            return data;
+          }
+
+          // Insert new tweet
+          const { data: insertData, error: insertError } = await this.client!
+            .from('tweets')
+            .insert(safeTweetData)
+            .select()
+            .single();
+
+          if (insertError) throw insertError;
+          return insertData;
+        });
+
+        console.log('✅ Tweet successfully saved to database');
+        return result;
+
       } catch (error: any) {
         lastError = error;
         console.error(`❌ Database save attempt ${attempt} failed:`, error.message);
-        await this.logDatabaseAction('save_failed', { 
-          tweet_id: safeTweetData.tweet_id, 
-          attempt, 
-          error: error.message 
-        });
         
-        if (attempt < maxRetries) {
-          const delay = attempt * 1000; // Progressive delay
-          console.log(`⏳ Retrying in ${delay}ms...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
+        if (attempt >= maxRetries) {
+          console.error('💥 All database save attempts failed');
+          break;
         }
+        
+        // Wait before retry (but this is handled by withRetries now)
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
       }
     }
     
-    // All retries failed
-    console.error(`🚨 CRITICAL: Failed to save tweet after ${maxRetries} attempts`);
-    console.error(`🚨 Last error:`, lastError?.message);
-    await this.logDatabaseAction('save_critical_failure', { 
-      tweet_id: safeTweetData.tweet_id, 
-      error: lastError?.message 
-    });
-    
-    // Don't throw - let the tweet post to Twitter even if database fails
-    // But log it for manual intervention
     return null;
   }
 
-  // Enhanced logging for database actions
+  // System logging
   async logDatabaseAction(action: string, data: any): Promise<void> {
+    if (!this.checkClient()) return;
+    
     try {
-      // Try to insert system log - fail silently if table doesn't exist
-      await this.client!
-        .from('system_logs')
-        .insert({
-          action,
-          data,
-          timestamp: new Date().toISOString(),
-          source: 'posting_flow'
-        });
-    } catch (error: any) {
-      console.error('Failed to log database action:', error.message);
+      await this.withRetries(async () => {
+        const { error } = await this.client!
+          .from('system_logs')
+          .insert({
+            action,
+            data: JSON.stringify(data),
+            created_at: new Date().toISOString()
+          });
+        
+        if (error) throw error;
+      });
+    } catch (error) {
+      console.error('Error logging database action:', error);
     }
   }
 
-  // Daily reconciliation to fix missing tweets
+  // Check for missing tweets that were posted to X but not saved to DB
   async reconcileMissingTweets(): Promise<{ api_writes: number; db_tweets: number; missing: number } | null> {
+    if (!this.checkClient()) return null;
+    
     try {
-      const today = new Date().toISOString().split('T')[0];
-      
-      // Get API usage
-      const { data: apiUsage } = await this.client!
-        .from('api_usage')
-        .select('*')
-        .eq('date', today)
-        .single();
-      
-      // Get database tweets
-      const { data: dbTweets } = await this.client!
-        .from('tweets')
-        .select('*')
-        .gte('created_at', today + 'T00:00:00')
-        .lte('created_at', today + 'T23:59:59');
-      
-      const apiWrites = apiUsage?.writes || 0;
-      const dbCount = dbTweets?.length || 0;
-      const missing = apiWrites - dbCount;
-      
-      if (missing > 0) {
-        console.log(`🚨 RECONCILIATION: ${missing} tweets missing from database`);
-        await this.logDatabaseAction('reconciliation_needed', { 
-          api_writes: apiWrites, 
-          db_tweets: dbCount, 
-          missing 
-        });
-      }
-      
-      return { api_writes: apiWrites, db_tweets: dbCount, missing };
-      
-    } catch (error: any) {
-      console.error('Reconciliation failed:', error.message);
+      const [apiData, dbData] = await Promise.all([
+        this.withRetries(async () => {
+          const result = await this.client!
+            .from('api_usage')
+            .select('*')
+            .eq('action', 'post_tweet');
+          return result;
+        }),
+        this.withRetries(async () => {
+          const result = await this.client!
+            .from('tweets')
+            .select('*');
+          return result;
+        })
+      ]);
+
+      if (apiData.error) throw apiData.error;
+      if (dbData.error) throw dbData.error;
+
+      const apiWrites = apiData.data?.length || 0;
+      const dbTweets = dbData.data?.length || 0;
+      const missing = Math.max(0, apiWrites - dbTweets);
+
+      return { api_writes: apiWrites, db_tweets: dbTweets, missing };
+    } catch (error) {
+      console.error('Error reconciling missing tweets:', error);
       return null;
     }
   }
 
   async updateTweetEngagement(tweetId: string, engagementData: Partial<Pick<Tweet, 'likes' | 'retweets' | 'replies' | 'impressions' | 'engagement_score'>>): Promise<boolean> {
+    if (!this.checkClient()) return false;
+
     try {
-      const { error } = await this.client
-        .from('tweets')
-        .update({ ...engagementData, updated_at: new Date().toISOString() })
-        .eq('tweet_id', tweetId);
+      const { error } = await this.withRetries(async () => {
+        const result = await this.client!
+          .from('tweets')
+          .update({ ...engagementData, updated_at: new Date().toISOString() })
+          .eq('tweet_id', tweetId);
+        return result;
+      });
 
       if (error) throw error;
       return true;
@@ -328,14 +353,18 @@ class SupabaseService {
     }
   }
 
-  // Reply operations
   async insertReply(replyData: Omit<Reply, 'id' | 'created_at' | 'updated_at'>): Promise<Reply | null> {
+    if (!this.checkClient()) return null;
+
     try {
-      const { data, error } = await this.client
-        .from('replies')
-        .insert(replyData)
-        .select()
-        .single();
+      const { data, error } = await this.withRetries(async () => {
+        const result = await this.client!
+          .from('replies')
+          .insert(replyData)
+          .select()
+          .single();
+        return result;
+      });
 
       if (error) throw error;
       return data;
@@ -345,14 +374,18 @@ class SupabaseService {
     }
   }
 
-  // Target tweet operations
   async insertTargetTweet(targetData: Omit<TargetTweet, 'id' | 'created_at' | 'updated_at'>): Promise<TargetTweet | null> {
+    if (!this.checkClient()) return null;
+
     try {
-      const { data, error } = await this.client
-        .from('target_tweets')
-        .insert(targetData)
-        .select()
-        .single();
+      const { data, error } = await this.withRetries(async () => {
+        const result = await this.client!
+          .from('target_tweets')
+          .insert(targetData)
+          .select()
+          .single();
+        return result;
+      });
 
       if (error) throw error;
       return data;
@@ -363,13 +396,18 @@ class SupabaseService {
   }
 
   async getUnrepliedTargets(limit: number = 10): Promise<TargetTweet[]> {
+    if (!this.checkClient()) return [];
+
     try {
-      const { data, error } = await this.client
-        .from('target_tweets')
-        .select('*')
-        .eq('has_replied', false)
-        .order('reply_potential_score', { ascending: false })
-        .limit(limit);
+      const { data, error } = await this.withRetries(async () => {
+        const result = await this.client!
+          .from('target_tweets')
+          .select('*')
+          .eq('has_replied', false)
+          .order('reply_potential_score', { ascending: false })
+          .limit(limit);
+        return result;
+      });
 
       if (error) throw error;
       return data || [];
@@ -379,60 +417,77 @@ class SupabaseService {
     }
   }
 
-  // Bot configuration
   async getBotConfig(key: string): Promise<string | null> {
+    if (!this.checkClient()) return null;
+
     try {
-      const { data, error } = await this.client
-        .from('bot_config')
-        .select('value')
-        .eq('key', key)
-        .single();
+      const { data, error } = await this.withRetries(async () => {
+        const result = await this.client!
+          .from('bot_config')
+          .select('value')
+          .eq('key', key)
+          .single();
+        return result;
+      });
 
       if (error) throw error;
       return data?.value || null;
     } catch (error) {
-      console.error(`Error fetching bot config for key ${key}:`, error);
+      console.error('Error fetching bot config:', error);
       return null;
     }
   }
 
   async setBotConfig(key: string, value: string): Promise<boolean> {
+    if (!this.checkClient()) return false;
+
     try {
-      const { error } = await this.client
-        .from('bot_config')
-        .upsert({ key, value, updated_at: new Date().toISOString() });
+      const { error } = await this.withRetries(async () => {
+        const result = await this.client!
+          .from('bot_config')
+          .upsert({ key, value });
+        return result;
+      });
 
       if (error) throw error;
       return true;
     } catch (error) {
-      console.error(`Error setting bot config for key ${key}:`, error);
+      console.error('Error setting bot config:', error);
       return false;
     }
   }
 
-  // Analytics
   async recordEngagement(data: Omit<EngagementAnalytics, 'id' | 'recorded_at'>): Promise<boolean> {
+    if (!this.checkClient()) return false;
+
     try {
-      const { error } = await this.client
-        .from('engagement_analytics')
-        .insert(data);
+      const { error } = await this.withRetries(async () => {
+        const result = await this.client!
+          .from('engagement_analytics')
+          .insert(data);
+        return result;
+      });
 
       if (error) throw error;
       return true;
     } catch (error) {
-      console.error('Error recording engagement analytics:', error);
+      console.error('Error recording engagement:', error);
       return false;
     }
   }
 
-  // Rate limiting helpers
   async getTweetCountLastHour(): Promise<number> {
+    if (!this.checkClient()) return 0;
+
     try {
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-      const { count, error } = await this.client
-        .from('tweets')
-        .select('*', { count: 'exact', head: true })
-        .gte('created_at', oneHourAgo);
+      const { count, error } = await this.withRetries(async () => {
+        const result = await this.client!
+          .from('tweets')
+          .select('*', { count: 'exact', head: true })
+          .gte('created_at', oneHourAgo);
+        return result;
+      });
 
       if (error) throw error;
       return count || 0;
@@ -443,12 +498,17 @@ class SupabaseService {
   }
 
   async getReplyCountLastHour(): Promise<number> {
+    if (!this.checkClient()) return 0;
+
     try {
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-      const { count, error } = await this.client
-        .from('replies')
-        .select('*', { count: 'exact', head: true })
-        .gte('created_at', oneHourAgo);
+      const { count, error } = await this.withRetries(async () => {
+        const result = await this.client!
+          .from('replies')
+          .select('*', { count: 'exact', head: true })
+          .gte('created_at', oneHourAgo);
+        return result;
+      });
 
       if (error) throw error;
       return count || 0;
@@ -458,25 +518,27 @@ class SupabaseService {
     }
   }
 
-  // Kill switch check
   async isBotEnabled(): Promise<boolean> {
     const enabled = await this.getBotConfig('enabled');
     return enabled === 'true';
   }
 
-  // Learning insights methods
+  // Learning system methods
   async storeLearningInsight(data: Omit<LearningInsight, 'id' | 'created_at' | 'expires_at'>): Promise<LearningInsight | null> {
     if (!this.checkClient()) return null;
-    
+
     try {
-      const { data: insight, error } = await this.client!
-        .from('learning_insights')
-        .insert(data)
-        .select()
-        .single();
+      const { data: result, error } = await this.withRetries(async () => {
+        const response = await this.client!
+          .from('learning_insights')
+          .insert(data)
+          .select()
+          .single();
+        return response;
+      });
 
       if (error) throw error;
-      return insight;
+      return result;
     } catch (error) {
       console.error('Error storing learning insight:', error);
       return null;
@@ -484,26 +546,38 @@ class SupabaseService {
   }
 
   async getLearningInsights(type?: string | number, limit: number = 50): Promise<LearningInsight[]> {
-    if (!this.checkClient()) {
-      return [];
-    }
-    
+    if (!this.checkClient()) return [];
+
     try {
       let query = this.client!
         .from('learning_insights')
         .select('*')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(limit);
 
-      // If type is a number, treat it as limit, if string treat as type filter
-      if (typeof type === 'number') {
-        query = query.limit(type);
-      } else if (typeof type === 'string') {
-        query = query.eq('insight_type', type).limit(limit);
-      } else {
-        query = query.limit(limit);
+      // Handle both string type and number type for backwards compatibility
+      if (type !== undefined) {
+        if (typeof type === 'string') {
+          query = query.eq('insight_type', type);
+        } else {
+          // Legacy number type - convert to string equivalent
+          const typeMap: { [key: number]: string } = {
+            1: 'content_style',
+            2: 'timing_optimization',
+            3: 'engagement_pattern',
+            4: 'topic_performance'
+          };
+          const mappedType = typeMap[type];
+          if (mappedType) {
+            query = query.eq('insight_type', mappedType);
+          }
+        }
       }
 
-      const { data, error } = await query;
+      const { data, error } = await this.withRetries(async () => {
+        const result = await query;
+        return result;
+      });
 
       if (error) throw error;
       return data || [];
@@ -513,52 +587,59 @@ class SupabaseService {
     }
   }
 
-  // Content theme methods
+  // Content theme learning
   async updateContentTheme(themeName: string, engagement: number, tweetId?: string): Promise<boolean> {
     if (!this.checkClient()) return false;
-    
+
     try {
-      // Get existing theme or create new one
-      const { data: existing } = await this.client!
-        .from('content_themes')
-        .select('*')
-        .eq('theme_name', themeName)
-        .single();
+      const { data: existing } = await this.withRetries(async () => {
+        const result = await this.client!
+          .from('content_themes')
+          .select('*')
+          .eq('theme_name', themeName)
+          .single();
+        return result;
+      });
 
       if (existing) {
-        // Update existing theme
         const newTotalPosts = existing.total_posts + 1;
         const newAvgEngagement = ((existing.avg_engagement * existing.total_posts) + engagement) / newTotalPosts;
         
-        const updateData: any = {
+        let updateData: any = {
           avg_engagement: newAvgEngagement,
           total_posts: newTotalPosts,
           last_used: new Date().toISOString(),
           updated_at: new Date().toISOString()
         };
 
+        // Update best performing tweet if this one is better
         if (tweetId && engagement > existing.avg_engagement) {
           updateData.best_performing_tweet_id = tweetId;
         }
 
-        const { error } = await this.client!
-          .from('content_themes')
-          .update(updateData)
-          .eq('theme_name', themeName);
+        const { error } = await this.withRetries(async () => {
+          const result = await this.client!
+            .from('content_themes')
+            .update(updateData)
+            .eq('theme_name', themeName);
+          return result;
+        });
 
         if (error) throw error;
       } else {
-        // Create new theme
-        const { error } = await this.client!
-          .from('content_themes')
-          .insert({
-            theme_name: themeName,
-            keywords: [],
-            avg_engagement: engagement,
-            total_posts: 1,
-            best_performing_tweet_id: tweetId,
-            last_used: new Date().toISOString()
-          });
+        const { error } = await this.withRetries(async () => {
+          const result = await this.client!
+            .from('content_themes')
+            .insert({
+              theme_name: themeName,
+              keywords: [themeName],
+              avg_engagement: engagement,
+              total_posts: 1,
+              best_performing_tweet_id: tweetId,
+              last_used: new Date().toISOString()
+            });
+          return result;
+        });
 
         if (error) throw error;
       }
@@ -572,64 +653,74 @@ class SupabaseService {
 
   async getBestContentThemes(limit: number = 10): Promise<ContentTheme[]> {
     if (!this.checkClient()) return [];
-    
+
     try {
-      const { data, error } = await this.client!
-        .from('content_themes')
-        .select('*')
-        .order('avg_engagement', { ascending: false })
-        .limit(limit);
+      const { data, error } = await this.withRetries(async () => {
+        const result = await this.client!
+          .from('content_themes')
+          .select('*')
+          .gte('total_posts', 3) // Only return themes with at least 3 posts
+          .order('avg_engagement', { ascending: false })
+          .limit(limit);
+        return result;
+      });
 
       if (error) throw error;
       return data || [];
     } catch (error) {
-      console.error('Error fetching content themes:', error);
+      console.error('Error fetching best content themes:', error);
       return [];
     }
   }
 
-  // Timing insights methods
+  // Timing optimization
   async updateTimingInsight(hour: number, dayOfWeek: number, engagement: number): Promise<boolean> {
     if (!this.checkClient()) return false;
-    
+
     try {
-      // Get existing timing data
-      const { data: existing } = await this.client!
-        .from('timing_insights')
-        .select('*')
-        .eq('hour_of_day', hour)
-        .eq('day_of_week', dayOfWeek)
-        .single();
+      const { data: existing } = await this.withRetries(async () => {
+        const result = await this.client!
+          .from('timing_insights')
+          .select('*')
+          .eq('hour_of_day', hour)
+          .eq('day_of_week', dayOfWeek)
+          .single();
+        return result;
+      });
 
       if (existing) {
-        // Update existing data
         const newPostCount = existing.post_count + 1;
         const newAvgEngagement = ((existing.avg_engagement * existing.post_count) + engagement) / newPostCount;
-        const confidenceLevel = Math.min(newPostCount / 10, 1); // Max confidence at 10+ posts
+        const newConfidenceLevel = Math.min(1.0, newPostCount / 10); // Max confidence after 10 posts
 
-        const { error } = await this.client!
-          .from('timing_insights')
-          .update({
-            avg_engagement: newAvgEngagement,
-            post_count: newPostCount,
-            confidence_level: confidenceLevel,
-            last_updated: new Date().toISOString()
-          })
-          .eq('hour_of_day', hour)
-          .eq('day_of_week', dayOfWeek);
+        const { error } = await this.withRetries(async () => {
+          const result = await this.client!
+            .from('timing_insights')
+            .update({
+              avg_engagement: newAvgEngagement,
+              post_count: newPostCount,
+              confidence_level: newConfidenceLevel,
+              last_updated: new Date().toISOString()
+            })
+            .eq('hour_of_day', hour)
+            .eq('day_of_week', dayOfWeek);
+          return result;
+        });
 
         if (error) throw error;
       } else {
-        // Create new timing insight
-        const { error } = await this.client!
-          .from('timing_insights')
-          .insert({
-            hour_of_day: hour,
-            day_of_week: dayOfWeek,
-            avg_engagement: engagement,
-            post_count: 1,
-            confidence_level: 0.1
-          });
+        const { error } = await this.withRetries(async () => {
+          const result = await this.client!
+            .from('timing_insights')
+            .insert({
+              hour_of_day: hour,
+              day_of_week: dayOfWeek,
+              avg_engagement: engagement,
+              post_count: 1,
+              confidence_level: 0.1
+            });
+          return result;
+        });
 
         if (error) throw error;
       }
@@ -645,12 +736,15 @@ class SupabaseService {
     if (!this.checkClient()) return [];
     
     try {
-      const { data, error } = await this.client!
-        .from('timing_insights')
-        .select('*')
-        .gte('confidence_level', 0.3) // Only return times with some confidence
-        .order('avg_engagement', { ascending: false })
-        .limit(limit);
+      const { data, error } = await this.withRetries(async () => {
+        const result = await this.client!
+          .from('timing_insights')
+          .select('*')
+          .gte('confidence_level', 0.3) // Only return times with some confidence
+          .order('avg_engagement', { ascending: false })
+          .limit(limit);
+        return result;
+      });
 
       if (error) throw error;
       return data || [];
@@ -665,11 +759,14 @@ class SupabaseService {
     if (!this.checkClient()) return false;
     
     try {
-      const { data: existing } = await this.client!
-        .from('style_performance')
-        .select('*')
-        .eq('style_type', style)
-        .single();
+      const { data: existing } = await this.withRetries(async () => {
+        const result = await this.client!
+          .from('style_performance')
+          .select('*')
+          .eq('style_type', style)
+          .single();
+        return result;
+      });
 
       const isSuccessful = engagement >= threshold;
 
@@ -681,26 +778,32 @@ class SupabaseService {
         const successfulPosts = Math.round(existing.success_rate * existing.total_posts) + (isSuccessful ? 1 : 0);
         const newSuccessRate = successfulPosts / newTotalPosts;
 
-        const { error } = await this.client!
-          .from('style_performance')
-          .update({
-            avg_engagement: newAvgEngagement,
-            total_posts: newTotalPosts,
-            success_rate: newSuccessRate,
-            last_updated: new Date().toISOString()
-          })
-          .eq('style_type', style);
+        const { error } = await this.withRetries(async () => {
+          const result = await this.client!
+            .from('style_performance')
+            .update({
+              avg_engagement: newAvgEngagement,
+              total_posts: newTotalPosts,
+              success_rate: newSuccessRate,
+              last_updated: new Date().toISOString()
+            })
+            .eq('style_type', style);
+          return result;
+        });
 
         if (error) throw error;
       } else {
-        const { error } = await this.client!
-          .from('style_performance')
-          .insert({
-            style_type: style,
-            avg_engagement: engagement,
-            total_posts: 1,
-            success_rate: isSuccessful ? 1 : 0
-          });
+        const { error } = await this.withRetries(async () => {
+          const result = await this.client!
+            .from('style_performance')
+            .insert({
+              style_type: style,
+              avg_engagement: engagement,
+              total_posts: 1,
+              success_rate: isSuccessful ? 1 : 0
+            });
+          return result;
+        });
 
         if (error) throw error;
       }
@@ -716,11 +819,14 @@ class SupabaseService {
     if (!this.checkClient()) return [];
     
     try {
-      const { data, error } = await this.client!
-        .from('style_performance')
-        .select('*')
-        .gte('total_posts', 3) // Only return styles with at least 3 posts
-        .order('success_rate', { ascending: false });
+      const { data, error } = await this.withRetries(async () => {
+        const result = await this.client!
+          .from('style_performance')
+          .select('*')
+          .gte('total_posts', 3) // Only return styles with at least 3 posts
+          .order('success_rate', { ascending: false });
+        return result;
+      });
 
       if (error) throw error;
       return data || [];
@@ -736,11 +842,14 @@ class SupabaseService {
     
     try {
       const daysAgo = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-      const { data, error } = await this.client!
-        .from('tweets')
-        .select('*')
-        .gte('created_at', daysAgo)
-        .order('created_at', { ascending: false });
+      const { data, error } = await this.withRetries(async () => {
+        const result = await this.client!
+          .from('tweets')
+          .select('*')
+          .gte('created_at', daysAgo)
+          .order('created_at', { ascending: false });
+        return result;
+      });
 
       if (error) throw error;
       return data || [];
@@ -752,11 +861,14 @@ class SupabaseService {
 
   async getTimingInsights(): Promise<any[]> {
     try {
-      const { data, error } = await this.client
-        .from('timing_insights')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(10);
+      const { data, error } = await this.withRetries(async () => {
+        const result = await this.client!
+          .from('timing_insights')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(10);
+        return result;
+      });
 
       if (error) {
         console.error('Error fetching timing insights:', error);
@@ -776,12 +888,15 @@ class SupabaseService {
     }
 
     try {
-      const { data, error } = await this.client
-        .from('learning_insights')
-        .select('*')
-        .eq('insight_type', 'research')
-        .order('created_at', { ascending: false })
-        .limit(limit);
+      const { data, error } = await this.withRetries(async () => {
+        const result = await this.client!
+          .from('learning_insights')
+          .select('*')
+          .eq('insight_type', 'research')
+          .order('created_at', { ascending: false })
+          .limit(limit);
+        return result;
+      });
 
       if (error) throw error;
       return data || [];
@@ -812,7 +927,10 @@ class SupabaseService {
         query = query.gte('created_at', daysAgo.toISOString());
       }
 
-      const { data, error } = await query;
+      const { data, error } = await this.withRetries(async () => {
+        const result = await query;
+        return result;
+      });
 
       if (error) throw error;
       return data || [];
