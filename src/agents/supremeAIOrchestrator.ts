@@ -13,6 +13,7 @@ import { AdaptiveContentLearner } from './adaptiveContentLearner';
 import { openaiClient } from '../utils/openaiClient';
 import { intelligenceCache } from '../utils/intelligenceCache';
 import { supabaseClient } from '../utils/supabaseClient';
+import { thompsonBandit, HookStyle } from '../utils/bandit.js';
 
 interface MasterStrategy {
   mode: 'trending_opportunity' | 'engagement_building' | 'thought_leadership' | 'viral_creation' | 'educational_value' | 'community_building';
@@ -85,6 +86,7 @@ export class SupremeAIOrchestrator {
   private lastDecisionTime: Date | null = null;
   private strategicMemory: Map<string, any> = new Map();
   private performanceMetrics: Map<string, number> = new Map();
+  private currentHookStyle: HookStyle | null = null;
 
   constructor() {
     this.humanStrategicMind = new HumanLikeStrategicMind();
@@ -531,17 +533,21 @@ export class SupremeAIOrchestrator {
   // Helper methods for the Supreme AI
   private async executeWithAgent(agentName: string, contentHint: string, contentType: string): Promise<any> {
     try {
+      // Pick hook style before generating tweet
+      this.currentHookStyle = await thompsonBandit.pickHookStyle();
+      const hookHint = `Use this hook style: "${this.currentHookStyle.hook_style}"`;
+      
       switch (agentName) {
         case 'viralAgent':
           const viralResult = await this.viralAgent.generateViralTweet();
           return { success: true, content: viralResult.content };
         case 'ultraViralGenerator':
-          const ultraViralResult = await this.ultraViralGenerator.generateViralTweet(contentHint);
+          const ultraViralResult = await this.ultraViralGenerator.generateViralTweet(contentHint + '. ' + hookHint);
           return { success: true, content: ultraViralResult.content };
         case 'creativeAgent':
           const creativeResult = await this.creativeAgent.generateCreativeContent({
             type: 'original' as const,
-            topic_focus: contentHint,
+            topic_focus: contentHint + '. ' + hookHint,
             audience_type: 'professional',
             creativity_level: 'innovative',
             engagement_goal: 'discussion'
@@ -556,7 +562,14 @@ export class SupremeAIOrchestrator {
           // Fallback to main posting agent
           return await this.postTweetAgent.run(false, false);
       }
-    } catch (error) {
+    } catch (error: any) {
+      // Penalize hook style on rejection with specific reasons
+      if (this.currentHookStyle && error.message) {
+        const errorMsg = error.message.toLowerCase();
+        if (errorMsg.includes('has_hashtag') || errorMsg.includes('percent_only') || errorMsg.includes('too_short')) {
+          await thompsonBandit.penalizeHook(this.currentHookStyle.hook_style, error.message);
+        }
+      }
       return { success: false, error: error.message };
     }
   }
@@ -843,6 +856,23 @@ export class SupremeAIOrchestrator {
     }
     
     return optimizations;
+  }
+
+  /**
+   * Record engagement result for the current hook style
+   */
+  async recordEngagementResult(tweetId: string, likes: number, retweets: number): Promise<void> {
+    if (this.currentHookStyle) {
+      try {
+        await thompsonBandit.recordHookResult(this.currentHookStyle.hook_style, likes, retweets);
+        console.log(`🎯 Recorded engagement for hook "${this.currentHookStyle.hook_style}": ${likes} likes, ${retweets} retweets`);
+      } catch (error) {
+        console.warn('Failed to record hook engagement:', error);
+      } finally {
+        // Clear current hook style after recording
+        this.currentHookStyle = null;
+      }
+    }
   }
 }
 

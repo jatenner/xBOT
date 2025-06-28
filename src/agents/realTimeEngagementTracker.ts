@@ -124,6 +124,10 @@ export class RealTimeEngagementTracker {
         engagement_score: engagementRate
       });
 
+      // Record engagement result for bandit learning
+      const { supremeAIOrchestrator } = await import('./supremeAIOrchestrator.js');
+      await supremeAIOrchestrator.recordEngagementResult(tweetId, engagement.likes, engagement.retweets);
+
       // Check if this is going viral (high engagement velocity)
       const viralVelocity = await this.calculateViralVelocity(tweetId, totalEngagement);
       
