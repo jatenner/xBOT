@@ -18,8 +18,8 @@ class ThompsonBandit {
    * Pick a hook style using Thompson sampling
    */
   async pickHookStyle(): Promise<HookStyle> {
-    // Get all hook styles from database
-    const { data: hookStyles, error } = await this.supabase
+    // Get all hook styles from database using the client directly
+    const { data: hookStyles, error } = await this.supabase.supabase!
       .from('hook_bandit')
       .select('*')
       .order('id');
@@ -54,11 +54,24 @@ class ThompsonBandit {
   async recordHookResult(hookStyle: string, likes: number, retweets: number): Promise<void> {
     const isReward = (likes + retweets) >= 3;
     
-    const { error } = await this.supabase
+    // First get current values
+    const { data: currentData, error: fetchError } = await this.supabase.supabase!
+      .from('hook_bandit')
+      .select('pulls, rewards')
+      .eq('hook_style', hookStyle)
+      .single();
+
+    if (fetchError || !currentData) {
+      console.error('Failed to fetch current hook data:', fetchError);
+      return;
+    }
+
+    // Update with incremented values
+    const { error } = await this.supabase.supabase!
       .from('hook_bandit')
       .update({
-        pulls: this.supabase.sql`pulls + 1`,
-        rewards: isReward ? this.supabase.sql`rewards + 1` : this.supabase.sql`rewards`
+        pulls: currentData.pulls + 1,
+        rewards: isReward ? currentData.rewards + 1 : currentData.rewards
       })
       .eq('hook_style', hookStyle);
 
@@ -77,10 +90,23 @@ class ThompsonBandit {
       return; // Only penalize for specific quality failures
     }
 
-    const { error } = await this.supabase
+    // First get current rewards value
+    const { data: currentData, error: fetchError } = await this.supabase.supabase!
+      .from('hook_bandit')
+      .select('rewards')
+      .eq('hook_style', hookStyle)
+      .single();
+
+    if (fetchError || !currentData) {
+      console.error('Failed to fetch current hook data:', fetchError);
+      return;
+    }
+
+    // Update with decremented value (minimum 0)
+    const { error } = await this.supabase.supabase!
       .from('hook_bandit')
       .update({
-        rewards: this.supabase.sql`greatest(rewards - 1, 0)`
+        rewards: Math.max(currentData.rewards - 1, 0)
       })
       .eq('hook_style', hookStyle);
 

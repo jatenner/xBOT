@@ -176,22 +176,23 @@ class SupabaseService {
       return null;
     }
     try {
-      // Generate safe ID for the tweet record
       const safeData = {
         ...tweetData,
         id: crypto.randomUUID()
       };
       
-      const { data, error } = await this.withRetries(() => 
-        this.client!
+      const result = await this.withRetries(async () => {
+        const { data, error } = await this.client!
           .from('tweets')
           .insert(safeData)
           .select()
-          .single()
-      );
+          .single();
+        
+        if (error) throw error;
+        return data;
+      });
 
-      if (error) throw error;
-      return data;
+      return result;
     } catch (error) {
       console.error('Error inserting tweet:', error);
       return null;
