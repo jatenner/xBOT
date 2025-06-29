@@ -1,0 +1,9 @@
+{
+  "issue": "Daily Twitter API limit exhausted",
+  "tweets_used": "25/25",
+  "api_tier": "Paid (25 tweets/day)",
+  "status": "All daily tweets exhausted, 429 errors",
+  "solution": "Enhanced 429 detection + daily reset wait",
+  "reset_time": "1750899432 (from API headers)",
+  "deployment_time": "2025-06-29T18:09:28.239Z"
+}

@@ -1,0 +1,11 @@
+
+# 🚨 EMERGENCY DEPLOYMENT: Daily Limit Exhaustion Fix
+# ===================================================
+# Timestamp: 2025-06-29T18:09:28.241Z
+# Issue: Bot exhausted 25/25 daily tweets, hitting 429 errors
+# Fix: Enhanced 429 detection + daily reset waiting mode
+# Status: Critical deployment required
+
+EMERGENCY_FIX_APPLIED=true
+DEPLOYMENT_REASON=daily_limit_exhaustion_fix
+DEPLOYMENT_PRIORITY=critical
