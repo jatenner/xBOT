@@ -6,12 +6,14 @@ import { ThreadAgent } from './threadAgent';
 import { PollAgent } from './pollAgent';
 import { QuoteAgent } from './quoteAgent';
 import { RateLimitedEngagementAgent } from './rateLimitedEngagementAgent';
+import { dailyPostingManager } from '../utils/dailyPostingManager';
 import { isBotDisabled } from '../utils/flagCheck';
 import { canMakeWrite, safeWrite, getQuotaStatus, getEngagementStrategy } from '../utils/quotaGuard';
 import { chooseUniqueImage } from '../utils/chooseUniqueImage';
 import { APIOptimizer } from '../utils/apiOptimizer';
 import { UltraViralGenerator } from './ultraViralGenerator';
 import { getCurrentMonthlyPlan, getOptimizedSchedule } from '../utils/monthlyPlanner';
+import { dailyPostingManager } from '../utils/dailyPostingManager';
 
 dotenv.config();
 
@@ -153,6 +155,18 @@ export class StrategistAgent {
         priority: 0,
         reasoning: 'Bot disabled via kill switch',
         expectedEngagement: 0
+      };
+    }
+
+    // 🚨 CHECK DAILY POSTING LIMITS FIRST
+    const canPostToday = await dailyPostingManager.shouldPostNow();
+    if (!canPostToday) {
+      console.log('🚨 DAILY POSTING LIMIT REACHED: Switching to ENGAGEMENT-ONLY mode');
+      return {
+        action: 'reply',
+        priority: 95,
+        reasoning: 'Daily posting limit reached (6/6) - engaging through replies/likes only',
+        expectedEngagement: 150
       };
     }
 
