@@ -625,6 +625,23 @@ class DailyPostingManager {
    * Based on dynamic daily cap and current progress
    */
   async shouldPostNow(): Promise<boolean> {
+    // 🚨 EMERGENCY: Check for emergency posting bypass flags
+    try {
+      const { data: emergencyFlags } = await supabaseClient.supabase
+        ?.from('bot_config')
+        .select('value')
+        .eq('key', 'emergency_posting_bypass')
+        .single() || { data: null };
+
+      if (emergencyFlags?.value?.daily_limit_bypass) {
+        console.log('🚨 EMERGENCY: Daily limit bypass active - forcing post');
+        return this.checkTimingConstraints();
+      }
+    } catch (error) {
+      // Continue with normal checks if emergency flags fail
+      console.log('⚠️ Could not check emergency flags, using normal limits');
+    }
+
     const dailyCap = await this.getDailyTweetCap();
     const todaysPosts = await this.getTodaysPostCount();
     
@@ -665,6 +682,44 @@ class DailyPostingManager {
     
     // Only post during active hours (9 AM - 9 PM)
     return hour >= 9 && hour <= 21;
+  }
+
+  /**
+   * 🔄 EMERGENCY RESET: Reset today's posting count only
+   * Keep all quality and config settings unchanged
+   */
+  async emergencyResetTodaysCount(): Promise<void> {
+    const today = new Date().toISOString().split('T')[0];
+    
+    try {
+      console.log('🚨 EMERGENCY: Resetting today\'s posting count...');
+      
+      // Reset daily posting state to 0/6
+      await supabaseClient.supabase
+        ?.from('daily_posting_state')
+        .upsert({
+          date: today,
+          tweets_posted: 0,
+          posts_completed: 0,
+          max_daily_tweets: this.DAILY_TARGET,
+          posts_target: this.DAILY_TARGET,
+          last_post_time: null,
+          next_post_time: new Date().toISOString(),
+          posting_schedule: this.generateDailySchedule(),
+          emergency_mode: false,
+          strategy: 'balanced'
+        });
+      
+      // Update current state
+      this.currentState.posts_completed = 0;
+      this.currentState.emergency_mode = false;
+      
+      console.log(`✅ EMERGENCY: Daily posting reset to 0/${this.DAILY_TARGET}`);
+      console.log('🎯 Quality settings remain unchanged (6/55/0.85/90)');
+      
+    } catch (error) {
+      console.error('❌ Emergency reset failed:', error);
+    }
   }
 }
 
