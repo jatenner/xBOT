@@ -52,13 +52,13 @@ export async function initializeRuntimeConfig(): Promise<RuntimeConfig> {
     // Merge database config over defaults
     const configValue = data?.value || {};
     _runtimeConfig = {
-      maxDailyTweets: configValue?.max_daily_tweets ?? defaults.maxDailyTweets,
+      maxDailyTweets: configValue?.max_daily_tweets || configValue?.maxDailyTweets || defaults.maxDailyTweets,
       quality: {
-        readabilityMin: configValue?.quality_readability_min ?? defaults.quality.readabilityMin,
-        credibilityMin: configValue?.quality_credibility_min ?? defaults.quality.credibilityMin,
+        readabilityMin: configValue?.quality_readability_min || configValue?.quality?.readabilityMin || defaults.quality.readabilityMin,
+        credibilityMin: configValue?.quality_credibility_min || configValue?.quality?.credibilityMin || defaults.quality.credibilityMin,
       },
-      fallbackStaggerMinutes: configValue?.fallback_stagger_minutes ?? defaults.fallbackStaggerMinutes,
-      postingStrategy: configValue?.posting_strategy ?? defaults.postingStrategy,
+      fallbackStaggerMinutes: configValue?.fallback_stagger_minutes || configValue?.fallbackStaggerMinutes || defaults.fallbackStaggerMinutes,
+      postingStrategy: configValue?.posting_strategy || configValue?.postingStrategy || defaults.postingStrategy,
     };
 
     console.log('✅ Runtime config loaded from Supabase:', _runtimeConfig);

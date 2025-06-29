@@ -180,12 +180,19 @@ class DailyPostingManager {
       // 👑 SUPREME AI DECISION MAKING
       const supremeDecision = await supremeAIOrchestrator.makeSupremeDecision();
       
+      // 🚨 EMERGENCY FIX: Validate supremeDecision structure
+      if (!supremeDecision || !supremeDecision.strategy) {
+        console.warn('⚠️ Invalid supreme decision structure, using fallback');
+        await this.setupTraditionalSchedule(remaining);
+        return;
+      }
+      
       console.log('👑 SUPREME AI ORCHESTRATOR DECISION:');
-      console.log(`   🧠 Strategy: ${supremeDecision.strategy.mode}`);
-      console.log(`   🔥 Confidence: ${(supremeDecision.strategy.confidence * 100).toFixed(0)}%`);
-      console.log(`   📝 Posts planned: ${supremeDecision.strategy.postingStrategy.postCount}`);
-      console.log(`   🎯 Goal: ${supremeDecision.strategy.contentStrategy.primaryGoal}`);
-      console.log(`   💭 Reasoning: ${supremeDecision.reasoning}`);
+      console.log(`   🧠 Strategy: ${supremeDecision.strategy.mode || 'undefined'}`);
+      console.log(`   🔥 Confidence: ${supremeDecision.strategy.confidence ? (supremeDecision.strategy.confidence * 100).toFixed(0) : 0}%`);
+      console.log(`   📝 Posts planned: ${supremeDecision.strategy.postingStrategy?.postCount || 0}`);
+      console.log(`   🎯 Goal: ${supremeDecision.strategy.contentStrategy?.primaryGoal || 'undefined'}`);
+      console.log(`   💭 Reasoning: ${supremeDecision.reasoning || 'No reasoning provided'}`);
       
       if (supremeDecision.shouldPost) {
         // Execute the supreme strategy immediately
