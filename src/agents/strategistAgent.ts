@@ -8,10 +8,7 @@ import { QuoteAgent } from './quoteAgent';
 import { RateLimitedEngagementAgent } from './rateLimitedEngagementAgent';
 import { dailyPostingManager } from '../utils/dailyPostingManager';
 import { isBotDisabled } from '../utils/flagCheck';
-import { canMakeWrite, safeWrite, getQuotaStatus, getEngagementStrategy } from '../utils/quotaGuard';
-import { chooseUniqueImage } from '../utils/chooseUniqueImage';
-import { APIOptimizer } from '../utils/apiOptimizer';
-import { UltraViralGenerator } from './ultraViralGenerator';
+import { getQuotaStatus, getEngagementStrategy } from '../utils/quotaGuard';
 import { getCurrentMonthlyPlan, getOptimizedSchedule } from '../utils/monthlyPlanner';
 
 dotenv.config();
