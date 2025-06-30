@@ -98,6 +98,37 @@ export class QualityGate {
       ...customRules 
     };
 
+    // NEW: First check content coherence and specificity (early rejection)
+    const coherenceCheck = this.validateContentCoherence(content);
+    if (!coherenceCheck.isValid) {
+      return {
+        readabilityScore: 0,
+        factCount: 0,
+        sourceCredibility: 0,
+        hasUrl: false,
+        hasCitation: false,
+        characterCount: content.length,
+        hasHashtags: false,
+        passesGate: false,
+        failureReasons: [coherenceCheck.reason!]
+      };
+    }
+
+    const specificityCheck = this.validateContentSpecificity(content);
+    if (!specificityCheck.isValid) {
+      return {
+        readabilityScore: 0,
+        factCount: 0,
+        sourceCredibility: 0,
+        hasUrl: false,
+        hasCitation: false,
+        characterCount: content.length,
+        hasHashtags: false,
+        passesGate: false,
+        failureReasons: [specificityCheck.reason!]
+      };
+    }
+
     const metrics: QualityMetrics = {
       readabilityScore: this.calculateReadabilityScore(content),
       factCount: this.countFacts(content),
@@ -178,6 +209,122 @@ export class QualityGate {
     }
     
     return hasHashtags;
+  }
+
+  /**
+   * NEW: Validate content coherence and reject nonsensical tweets
+   */
+  private validateContentCoherence(content: string): { isValid: boolean; reason?: string } {
+    // Check minimum content standards
+    if (content.length < 30) {
+      return { isValid: false, reason: 'Content too short - minimum 30 characters required' };
+    }
+
+    // Check for complete sentences
+    const hasCompleteSentence = /[.!?]/.test(content);
+    if (!hasCompleteSentence) {
+      return { isValid: false, reason: 'Content lacks proper sentence structure' };
+    }
+
+    // Check for health/tech relevance
+    const healthTechKeywords = [
+      'ai', 'health', 'medical', 'technology', 'diagnostic', 'treatment', 'patient', 'clinical',
+      'research', 'study', 'disease', 'therapy', 'drug', 'hospital', 'doctor', 'medicine',
+      'biotech', 'pharma', 'digital', 'data', 'algorithm', 'innovation', 'breakthrough',
+      'telemedicine', 'wearable', 'sensor', 'genomic', 'precision', 'personalized'
+    ];
+    
+    const contentLower = content.toLowerCase();
+    const hasRelevantKeywords = healthTechKeywords.some(keyword => 
+      contentLower.includes(keyword)
+    );
+    
+    if (!hasRelevantKeywords) {
+      return { isValid: false, reason: 'Content lacks health/technology focus' };
+    }
+
+    // Check for random or nonsensical patterns
+    const nonsensicalPatterns = [
+      /\b[a-z]{1,2}\b.*\b[a-z]{1,2}\b.*\b[a-z]{1,2}\b/i, // Too many very short words
+      /^[^a-zA-Z]*$/, // Only special characters or numbers
+      /(.)\1{4,}/, // Repeated characters (5+ times)
+      /\b\w{15,}\b/, // Extremely long words (likely gibberish)
+      /[^\w\s.,!?()%-]{3,}/, // Multiple special characters in sequence
+    ];
+
+    for (const pattern of nonsensicalPatterns) {
+      if (pattern.test(content)) {
+        return { isValid: false, reason: 'Content contains nonsensical patterns' };
+      }
+    }
+
+    // Check for proper professional tone
+    const unprofessionalWords = [
+      'lol', 'omg', 'wtf', 'lmao', 'rofl', 'tbh', 'imo', 'fyi', 'asap',
+      'gonna', 'wanna', 'kinda', 'sorta', 'dunno'
+    ];
+    
+    const hasUnprofessionalWords = unprofessionalWords.some(word => 
+      contentLower.includes(word.toLowerCase())
+    );
+    
+    if (hasUnprofessionalWords) {
+      return { isValid: false, reason: 'Content contains unprofessional language' };
+    }
+
+    // Check for excessive repetition within content
+    const words = content.toLowerCase().split(/\s+/);
+    const wordCounts = new Map<string, number>();
+    
+    for (const word of words) {
+      if (word.length > 3) { // Only check meaningful words
+        wordCounts.set(word, (wordCounts.get(word) || 0) + 1);
+      }
+    }
+    
+    // Find if any word appears more than 25% of the time
+    const totalMeaningfulWords = Array.from(wordCounts.values()).reduce((sum, count) => sum + count, 0);
+    const hasExcessiveRepetition = Array.from(wordCounts.values()).some(count => 
+      count / totalMeaningfulWords > 0.25
+    );
+    
+    if (hasExcessiveRepetition) {
+      return { isValid: false, reason: 'Content has excessive word repetition' };
+    }
+
+    return { isValid: true };
+  }
+
+  /**
+   * NEW: Check for generic template language that lacks specificity
+   */
+  private validateContentSpecificity(content: string): { isValid: boolean; reason?: string } {
+    const genericPhrases = [
+      'thoughts?', 'what do you think?', 'agree or disagree?', 'comment below',
+      'share your thoughts', 'let me know', 'your opinion?', 'discuss',
+      'interesting development', 'exciting news', 'amazing breakthrough',
+      'revolutionary technology', 'game-changing', 'unprecedented',
+      'cutting-edge', 'state-of-the-art', 'next-generation'
+    ];
+
+    const contentLower = content.toLowerCase();
+    const genericCount = genericPhrases.filter(phrase => 
+      contentLower.includes(phrase)
+    ).length;
+
+    if (genericCount >= 2) {
+      return { isValid: false, reason: 'Content is too generic - uses multiple template phrases' };
+    }
+
+    // Require specific data or facts
+    const hasSpecificData = /\d+%|\d+\.\d+%|\d+x|\d+ years|\d+ million|\d+ billion|\d+ patients|\d+ trials/i.test(content);
+    const hasSpecificSource = /(stanford|harvard|mit|mayo|nature|nejm|lancet|who|fda|nih)/i.test(content);
+    
+    if (!hasSpecificData && !hasSpecificSource) {
+      return { isValid: false, reason: 'Content lacks specific data or credible source references' };
+    }
+
+    return { isValid: true };
   }
 
   /**

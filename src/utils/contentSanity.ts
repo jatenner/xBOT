@@ -311,7 +311,7 @@ function calculateSimilarity(str1: string, str2: string): number {
 /**
  * Runs all sanity checks and returns consolidated result
  */
-export async function runSanityChecks(text: string): Promise<SanityResult> {
+export async function runSanityChecks(text: string, supabase?: any): Promise<SanityResult> {
   const fixes: string[] = [];
   let currentText = text;
 
@@ -360,6 +360,18 @@ export async function runSanityChecks(text: string): Promise<SanityResult> {
       fixes,
       reason: urlCheck.reason
     };
+  }
+
+  // 6. NEW: Check for content uniqueness against database
+  if (supabase) {
+    const uniquenessCheck = await validateContentUniqueness(currentText, supabase);
+    if (!uniquenessCheck.ok) {
+      return {
+        ok: false,
+        fixes,
+        reason: uniquenessCheck.reason
+      };
+    }
   }
 
   // Update the text with fixes if any

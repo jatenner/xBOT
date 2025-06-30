@@ -201,7 +201,8 @@ CREATE TABLE follow_actions (
 ```bash
 # Apply growth metrics schema
 export SUPABASE_URL='https://your-project.supabase.co'
-export SUPABASE_SERVICE_ROLE_KEY='your-service-role-key'
+export SUPABASE_SERVICE_ROLE_KEY='your-service-role-
+key'
 chmod +x scripts/db_push.sh
 ./scripts/db_push.sh
 ```

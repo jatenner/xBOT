@@ -13,7 +13,6 @@ import { chooseUniqueImage } from '../utils/chooseUniqueImage';
 import { APIOptimizer } from '../utils/apiOptimizer';
 import { UltraViralGenerator } from './ultraViralGenerator';
 import { getCurrentMonthlyPlan, getOptimizedSchedule } from '../utils/monthlyPlanner';
-import { dailyPostingManager } from '../utils/dailyPostingManager';
 
 dotenv.config();
 
