@@ -88,7 +88,7 @@ export async function getAllConfig(): Promise<Record<string, any>> {
  */
 
 export const defaults = {
-  maxDailyTweets: 6,
+  maxDailyTweets: parseInt(process.env.MAX_DAILY_TWEETS || '17'),
   quality: { 
     readabilityMin: 55, 
     credibilityMin: 0.85 

@@ -120,6 +120,33 @@ export class DynamicPostingController {
       const fallbackStrategy = await getConfig('postingStrategy', 'balanced');
       const fallbackMode = await getConfig('mode', 'production');
       
+      // 🚨 EMERGENCY FIX: Create proper strategy structure for validation
+      const fallbackStrategyObject = {
+        mode: fallbackStrategy === 'balanced' ? 'conservative_fallback' : fallbackStrategy,
+        postingStrategy: {
+          postCount: 1,
+          urgency: 0.5,
+          timeSpacing: 180,
+          frequency: 'conservative'
+        }
+      };
+      
+      // Validate the fallback strategy against technical limits
+      const technicallyValid = await this.validateTechnicalLimits(fallbackStrategyObject);
+      
+      if (!technicallyValid.canPost) {
+        console.log(`🚨 Fallback strategy also blocked: ${technicallyValid.reason}`);
+        return {
+          shouldPost: false,
+          postCount: 0,
+          urgency: 0.5,
+          reasoning: `Fallback blocked: ${technicallyValid.reason}`,
+          strategy: 'conservative_fallback',
+          timeSpacing: 180,
+          executionPlan: []
+        };
+      }
+      
       return {
         shouldPost: true,
         postCount: 1,
@@ -241,6 +268,17 @@ export class DynamicPostingController {
     recommendedAction: string;
   }> {
     console.log('🚨 Consulting Real-Time Limits Intelligence Agent...');
+
+    // 🚨 SAFETY CHECK: Ensure strategy object is valid
+    if (!strategy || !strategy.postingStrategy) {
+      console.error('❌ Invalid strategy object passed to validateTechnicalLimits:', strategy);
+      return {
+        canPost: false,
+        reason: 'Invalid strategy configuration - missing postingStrategy',
+        remainingCapacity: 0,
+        recommendedAction: 'Fix strategy object structure and try again'
+      };
+    }
 
     try {
       // Get REAL current limits from intelligence agent
