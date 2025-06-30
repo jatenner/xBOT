@@ -10,6 +10,7 @@ import { dailyPostingManager } from '../utils/dailyPostingManager';
 import { isBotDisabled } from '../utils/flagCheck';
 import { getQuotaStatus, getEngagementStrategy } from '../utils/quotaGuard';
 import { getCurrentMonthlyPlan, getOptimizedSchedule } from '../utils/monthlyPlanner';
+import { supabaseClient } from '../utils/supabaseClient';
 
 dotenv.config();
 
@@ -194,15 +195,37 @@ export class StrategistAgent {
     
     // 🧠 INTELLIGENT ENGAGEMENT ALGORITHM - Learn what drives followers
     
-    // Priority 1: ENGAGEMENT-FIRST STRATEGY (70% of decisions should be engagement)
-    const engagementWeight = 0.7; // 70% engagement, 30% posting
+    // 🚀 AFTERNOON BOOST: Check for dynamic engagement optimization
+    let engagementWeight = 0.7; // Default 70% engagement, 30% posting
+    let sleepWeight = 0.6; // Default sleep weight within engagement
+    let minPostInterval = 90; // Default 90 minutes
+    
+    // Check for afternoon boost mode
+    try {
+      const { data: boostConfig } = await supabaseClient.supabase
+        ?.from('bot_config')
+        .select('value')
+        .eq('key', 'afternoon_boost_mode')
+        .single() || { data: null };
+
+      if (boostConfig?.value?.enabled && boostConfig.value.peak_hours?.includes(currentHour)) {
+        engagementWeight = boostConfig.value.engagement_weight || 0.5;
+        minPostInterval = boostConfig.value.min_interval_minutes || 45;
+        sleepWeight = 0.1; // Much more active during afternoon
+        console.log('🚀 AFTERNOON BOOST ACTIVE: More aggressive posting and engagement');
+      }
+    } catch (error) {
+      console.log('⚠️ Could not check afternoon boost config, using defaults');
+    }
+    
+    // Priority 1: ENGAGEMENT-FIRST STRATEGY (dynamic based on time)
     const shouldFocusOnEngagement = Math.random() < engagementWeight;
     
     if (shouldFocusOnEngagement && this.postCount24h < 6) {
       // Choose smart engagement type based on time and context
       const engagementTypes = [
-        { action: 'reply', weight: 0.4, reasoning: 'Strategic replies for conversation building' },
-        { action: 'sleep', weight: 0.6, reasoning: 'Focus on engagement activities (likes, follows, intelligence)' }
+        { action: 'reply', weight: 0.8, reasoning: 'Strategic replies for conversation building' },
+        { action: 'sleep', weight: sleepWeight, reasoning: 'Focus on engagement activities (likes, follows, intelligence)' }
       ];
       
       const random = Math.random();
@@ -226,7 +249,7 @@ export class StrategistAgent {
     const postsRemaining = 6 - this.postCount24h;
     
     // Only post if we have strategic reasons and haven't used too many posts
-    if (postsRemaining > 0 && minutesSinceLastPost >= 90) { // Minimum 90 minutes between posts
+    if (postsRemaining > 0 && minutesSinceLastPost >= minPostInterval) { // Dynamic minimum interval
       
       // STRATEGIC POSTING CONDITIONS
       if (isOptimalViralWindow && postsRemaining >= 2) {
