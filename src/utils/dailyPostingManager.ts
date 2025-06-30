@@ -4,7 +4,6 @@ import { contentCache } from './contentCache';
 import { IntelligentSchedulingAgent } from '../agents/intelligentSchedulingAgent';
 import { strategicOpportunityScheduler } from '../agents/strategicOpportunityScheduler';
 import { HumanLikeStrategicMind } from '../agents/humanLikeStrategicMind';
-import { supremeAIOrchestrator } from '../agents/supremeAIOrchestrator';
 import { getConfig } from './botConfig.js';
 import { getConfigValue } from './config';
 import * as cron from 'node-cron';
@@ -177,7 +176,8 @@ class DailyPostingManager {
     console.log('🧠 Activating SUPREME AI ORCHESTRATOR...');
     
     try {
-      // 👑 SUPREME AI DECISION MAKING
+      // 👑 SUPREME AI DECISION MAKING - Use dynamic import to avoid circular dependency
+      const { supremeAIOrchestrator } = await import('../agents/supremeAIOrchestrator');
       const supremeDecision = await supremeAIOrchestrator.makeSupremeDecision();
       
       // 🚨 EMERGENCY FIX: Validate supremeDecision structure
