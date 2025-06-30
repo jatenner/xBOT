@@ -168,7 +168,29 @@ export class StrategistAgent {
       };
     }
 
-    // 🚨 CHECK DAILY POSTING LIMITS FIRST
+    // 🚨 CHECK FOR MONTHLY API CAP WORKAROUND FIRST
+    try {
+      const { data: monthlyCapWorkaround } = await supabaseClient.supabase
+        ?.from('bot_config')
+        .select('value')
+        .eq('key', 'monthly_cap_workaround')
+        .single() || { data: null };
+
+      if (monthlyCapWorkaround?.value?.enabled) {
+        console.log('🚨 MONTHLY API CAP: Operating in posting-only mode');
+        // Force posting decision when monthly cap is active
+        return {
+          action: 'post',
+          priority: 100,
+          reasoning: 'Monthly API cap exceeded - posting-only mode active. Focusing on original content.',
+          expectedEngagement: 200
+        };
+      }
+    } catch (error) {
+      console.log('⚠️ Could not check monthly cap workaround, continuing normally');
+    }
+
+    // 🚨 CHECK DAILY POSTING LIMITS 
     const canPostToday = await dailyPostingManager.shouldPostNow();
     if (!canPostToday) {
       console.log('🚨 DAILY POSTING LIMIT REACHED: Switching to ENGAGEMENT-ONLY mode');
