@@ -36,6 +36,37 @@ export class SmartImageSelector {
 
   async chooseImage(tweetText: string): Promise<string | null> {
     try {
+      // 🚨 CRITICAL: Monthly Cap Check - Force text-only mode
+      console.log('🔍 Checking monthly cap and text-only mode settings...');
+      
+      try {
+        const { data: monthlyCapConfig } = await supabase
+          .from('bot_config')
+          .select('value')
+          .eq('key', 'monthly_cap_workaround')
+          .single() || { data: null };
+
+        const { data: textOnlyConfig } = await supabase
+          .from('bot_config')
+          .select('value')
+          .eq('key', 'emergency_text_only_mode')
+          .single() || { data: null };
+
+        // Check for monthly cap or text-only mode
+        if (monthlyCapConfig?.value?.enabled || 
+            monthlyCapConfig?.value?.force_text_only_posts ||
+            monthlyCapConfig?.value?.disable_image_generation ||
+            textOnlyConfig?.value?.enabled ||
+            textOnlyConfig?.value?.force_text_only ||
+            textOnlyConfig?.value?.disable_image_generation) {
+          console.log('🚫 MONTHLY CAP ACTIVE: Text-only mode enforced - no images');
+          return null;
+        }
+      } catch (configError) {
+        console.log('⚠️ Could not check monthly cap status, proceeding without images for safety');
+        return null;
+      }
+      
       console.log('🔍 Selecting optimal image for tweet...');
       
       // Extract keywords from tweet for search
@@ -168,8 +199,6 @@ export class SmartImageSelector {
       return [];
     }
   }
-
-
 
   private calculateRelevanceScore(description: string, query: string): number {
     if (!description) return 0.1;

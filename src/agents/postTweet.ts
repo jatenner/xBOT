@@ -380,7 +380,27 @@ export class PostTweetAgent {
 
       // Select appropriate image with enhanced debugging
       console.log('🖼️ Starting image selection process...');
-      const imageUrl = await smartImageSelector.chooseImage(tweetContent);
+      
+      // 🚨 NUCLEAR IMAGE BLOCK CHECK
+      let imageUrl: string | null = null;
+      try {
+        const { data: nuclearImageBlock } = await supabase
+          .from('bot_config')
+          .select('value')
+          .eq('key', 'nuclear_image_block')
+          .single() || { data: null };
+
+        if (nuclearImageBlock?.value?.enabled || nuclearImageBlock?.value?.block_all_images) {
+          console.log('🚫 NUCLEAR IMAGE BLOCK: Images completely disabled');
+          imageUrl = null;
+        } else {
+          // Proceed with normal image selection
+          imageUrl = await smartImageSelector.chooseImage(tweetContent);
+        }
+      } catch (error) {
+        console.log('⚠️ Could not check nuclear image block, proceeding with image selection');
+        imageUrl = await smartImageSelector.chooseImage(tweetContent);
+      }
       
       if (imageUrl) {
         const imageSource = imageUrl.includes('pexels') ? 'Pexels' : 
