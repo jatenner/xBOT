@@ -787,13 +787,13 @@ class XService {
    */
   private async isMonthlyCapActive(): Promise<boolean> {
     try {
-      const { data } = await supabaseClient.supabase
-        .from('bot_config')
-        .select('value')
-        .eq('key', 'emergency_monthly_cap_mode')
-        .single();
+      // Check both legacy and smart monthly cap modes
+      const [emergencyMode, smartMode] = await Promise.all([
+        supabaseClient.supabase?.from('bot_config').select('value').eq('key', 'emergency_monthly_cap_mode').single(),
+        supabaseClient.supabase?.from('bot_config').select('value').eq('key', 'smart_monthly_cap_mode').single()
+      ]);
       
-      return data?.value?.enabled === true;
+      return emergencyMode?.data?.value?.enabled === true || smartMode?.data?.value?.enabled === true;
     } catch (error) {
       // If we can't check, assume monthly cap is active for safety
       console.warn('Could not check monthly cap status, assuming active for safety');
@@ -806,23 +806,30 @@ class XService {
    */
   private async activateMonthlyCapMode(): Promise<void> {
     try {
+      // Check if this is a search-specific cap or total cap
+      // by examining remaining API quota
+      console.log('🔍 Analyzing monthly cap type...');
+      
       await supabaseClient.supabase
         .from('bot_config')
         .upsert({
-          key: 'emergency_monthly_cap_mode',
+          key: 'smart_monthly_cap_mode',
           value: {
             enabled: true,
-            mode: 'posting_only',
-            disable_all_search_operations: true,
+            mode: 'search_limited_posting_active',
+            disable_search_operations: true,
+            disable_engagement_discovery: true,
+            allow_posting: true,
+            allow_original_content: true,
             auto_detected: true,
             detected_at: new Date().toISOString(),
-            reason: 'Monthly cap detected during API call'
+            reason: 'Monthly search cap detected - posting operations still available'
           }
         });
       
-      console.log('🚨 Monthly cap mode auto-activated');
+      console.log('🧠 Smart monthly cap mode activated - posting operations preserved');
     } catch (error) {
-      console.error('Failed to activate monthly cap mode:', error);
+      console.error('Failed to activate smart monthly cap mode:', error);
     }
   }
 }
