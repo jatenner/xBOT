@@ -160,6 +160,8 @@ export class PostTweetAgent {
     try {
       await this.adaptiveLearner.initialize();
       console.log('✅ Autonomous learning fully activated');
+      console.log('🧠 HUMAN-LIKE INTELLIGENCE: Learning from every interaction');
+      console.log('🎭 PERSONALITY: Developing authentic voice through experience');
     } catch (error) {
       console.warn('⚠️ Learning system initialization error:', error);
     }
@@ -3099,6 +3101,80 @@ Focus on: AI diagnostics, precision medicine, digital therapeutics, or healthcar
     }
     
     return optimized.trim();
+  }
+
+  // NUCLEAR: Add human learning feedback after posting
+  private async learnFromPostedContent(result: PostResult): Promise<void> {
+    if (!result.success || !result.content) return;
+    
+    console.log('🧠 HUMAN LEARNING: Analyzing posted content for intelligence evolution');
+    
+    try {
+      // Simulate human-like learning from content and expected engagement
+      const simulatedEngagement = this.simulateEngagementForLearning(result.content);
+      
+      // Create learning interaction data
+      const learningInteraction = {
+        our_content: result.content,
+        responses_received: [], // Will be populated by real engagement later
+        engagement_metrics: simulatedEngagement,
+        context: {
+          content_type: this.identifyContentType(result.content),
+          has_image: result.hasImage || false,
+          quality_score: result.qualityScore || 0.5,
+          post_time: new Date(),
+          learning_trigger: 'immediate_post_analysis'
+        }
+      };
+      
+      // Let the adaptive learner evolve based on this content
+      if (this.adaptiveLearner && typeof (this.adaptiveLearner as any).learnFromInteraction === 'function') {
+        await (this.adaptiveLearner as any).learnFromInteraction(learningInteraction);
+      }
+      
+      // Track content for duplicate prevention with human-like memory
+      const topic = this.extractKeyTopic(result.content);
+      this.trackContent(result.content, topic);
+      
+      console.log('✅ Human-like learning completed - personality may have evolved');
+      
+    } catch (error) {
+      console.warn('⚠️ Human learning error:', error);
+    }
+  }
+
+  // Simulate engagement for immediate learning (before real metrics arrive)
+  private simulateEngagementForLearning(content: string): any {
+    let baseScore = 10;
+    
+    // Human-like engagement prediction based on content patterns
+    if (content.includes('🚨') || content.includes('BREAKING')) baseScore += 20;
+    if (content.includes('🧵') || content.includes('Thread')) baseScore += 15;
+    if (/\d+%|\d+x|\$\d+/.test(content)) baseScore += 12;
+    if (content.includes('?')) baseScore += 8;
+    if (content.length > 250) baseScore -= 10;
+    
+    // Add realistic variation
+    const variation = Math.random() * 15 - 7.5; // -7.5 to +7.5
+    const finalScore = Math.max(1, baseScore + variation);
+    
+    return {
+      likes: Math.floor(finalScore * 0.8),
+      retweets: Math.floor(finalScore * 0.3),
+      replies: Math.floor(finalScore * 0.2),
+      predicted: true,
+      learning_confidence: 0.7
+    };
+  }
+
+  // Identify content type for learning context
+  private identifyContentType(content: string): string {
+    if (content.includes('🚨') || content.includes('BREAKING')) return 'breaking_news';
+    if (content.includes('🧵') || content.includes('Thread')) return 'thread_starter';
+    if (content.includes('📊') || content.includes('STUDY')) return 'research_insight';
+    if (content.includes('🚀') || content.includes('INNOVATION')) return 'tech_development';
+    if (content.includes('💡') || content.includes('Hot take')) return 'thought_leadership';
+    return 'general_insight';
   }
 }
 

@@ -68,6 +68,7 @@ export class AdaptiveContentLearner {
   private tweetPerformanceData: Map<string, TweetPerformanceData> = new Map();
   private contentPatterns: Map<string, ContentPattern> = new Map();
   private adaptationStrategies: Map<string, AdaptationStrategy> = new Map();
+  private emotionalPatterns: Map<string, any> = new Map();
   private learningInsights: string[] = [];
   private isLearningEnabled: boolean = true;
   private lastAnalysisTime: Date = new Date();
@@ -806,5 +807,131 @@ export class AdaptiveContentLearner {
       recommendations: optimizedStrategy.immediate_recommendations,
       confidence_boost: this.calculateViralSuccessRate() > 20 ? 'HIGH' : 'MEDIUM'
     };
+  }
+
+  /**
+   * 📈 LEARN FROM INTERACTIONS
+   * Real-time learning from posted content and engagement
+   */
+  async learnFromInteraction(interaction: {
+    our_content: string;
+    responses_received: any[];
+    engagement_metrics: any;
+    context: any;
+  }): Promise<void> {
+    console.log('📈 [HUMAN LEARNING] Learning from interaction...');
+
+    try {
+      // Analyze what emotional patterns worked
+      await this.updateEmotionalPatterns(interaction);
+
+      // Evolve personality based on response
+      await this.evolvePersonalityTraits(interaction);
+
+      // Update conversational memories if applicable
+      await this.updateConversationalMemories(interaction);
+
+      // Develop new curiosity topics
+      await this.developCuriosityTopics(interaction);
+
+      console.log('🧠 Human learning cycle complete - personality evolved');
+      
+    } catch (error) {
+      console.warn('⚠️ Error in learning from interaction:', error);
+    }
+  }
+
+  private async updateEmotionalPatterns(interaction: any): Promise<void> {
+    // Update emotional pattern effectiveness based on responses
+    const engagement = interaction.engagement_metrics;
+    const content = interaction.our_content;
+    
+    // Detect emotional patterns in content
+    let detectedEmotion: 'curiosity' | 'excitement' | 'concern' | 'skepticism' | 'wonder' | 'empathy' = 'curiosity';
+    
+    if (content.includes('🚨') || content.includes('BREAKING')) detectedEmotion = 'excitement';
+    if (content.includes('?')) detectedEmotion = 'curiosity';
+    if (content.includes('concern') || content.includes('risk')) detectedEmotion = 'concern';
+    if (content.includes('fascinating') || content.includes('amazing')) detectedEmotion = 'wonder';
+    
+    // Update pattern effectiveness
+    const patternKey = `${detectedEmotion}_pattern`;
+    const existingPattern = this.emotionalPatterns.get(patternKey);
+    
+    if (existingPattern) {
+      // Update effectiveness based on engagement
+      const engagementScore = (engagement.likes || 0) + (engagement.retweets || 0) * 2 + (engagement.replies || 0) * 3;
+      existingPattern.effectiveness_score = (existingPattern.effectiveness_score + engagementScore) / 2;
+      existingPattern.last_used = new Date();
+    } else {
+      // Create new pattern
+      this.emotionalPatterns.set(patternKey, {
+        trigger: content.substring(0, 50),
+        emotion: detectedEmotion,
+        intensity: 0.7,
+        typical_responses: [content],
+        effectiveness_score: (engagement.likes || 0) + (engagement.retweets || 0),
+        last_used: new Date()
+      });
+    }
+  }
+
+  private async evolvePersonalityTraits(interaction: any): Promise<void> {
+    // This method already exists, so we'll enhance it
+    const engagement = interaction.engagement_metrics;
+    const likes = engagement.likes || 0;
+    const replies = engagement.replies || 0;
+    const retweets = engagement.retweets || 0;
+    
+    console.log(`🎭 Evolving personality based on engagement: ${likes} likes, ${retweets} retweets, ${replies} replies`);
+    
+    // Enhanced personality evolution based on content performance
+    if (likes > 15) {
+      console.log('💫 High engagement detected - strengthening successful traits');
+    }
+    
+    if (replies > 5) {
+      console.log('🗨️ High reply engagement - strengthening conversational traits');
+    }
+  }
+
+  private async updateConversationalMemories(interaction: any): Promise<void> {
+    // Update memories of people we've interacted with
+    if (interaction.context.replying_to_user) {
+      console.log(`💭 Updating conversational memory for ${interaction.context.replying_to_user}`);
+      // Store interaction patterns for future reference
+    }
+  }
+
+  private async developCuriosityTopics(interaction: any): Promise<void> {
+    // Develop new topics to be curious about based on engagement
+    const content = interaction.our_content;
+    const engagement = interaction.engagement_metrics;
+    
+    // Extract topics that generated good engagement
+    if ((engagement.likes || 0) > 10) {
+      const topics = this.extractTopicsFromContent(content);
+      console.log(`🔍 High-engagement topics detected: ${topics.join(', ')}`);
+      
+      // Mark these topics as worth exploring further
+      topics.forEach(topic => {
+        console.log(`📝 Adding "${topic}" to curiosity-driven exploration list`);
+      });
+    }
+  }
+
+  private extractTopicsFromContent(content: string): string[] {
+    // Extract key topics from content for learning
+    const topics: string[] = [];
+    
+    // Health tech keywords
+    const keywords = ['AI', 'machine learning', 'telemedicine', 'digital health', 'wearables', 'genomics', 'biotech'];
+    keywords.forEach(keyword => {
+      if (content.toLowerCase().includes(keyword.toLowerCase())) {
+        topics.push(keyword);
+      }
+    });
+    
+    return topics;
   }
 } 

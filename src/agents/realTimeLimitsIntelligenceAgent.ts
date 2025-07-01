@@ -15,6 +15,9 @@ export interface RealTimeLimits {
   twitter: {
     // EXACT current limits
     dailyTweets: { used: number; limit: number; remaining: number; resetTime: Date };
+    // NEW: Prorated daily cap to preserve monthly budget
+    proratedDailyTweets: { used: number; effectiveLimit: number; remaining: number; explanation: string };
+    hourlyTweets?: { used: number; limit: number; remaining: number; resetTime: Date };
     monthlyTweets: { used: number; limit: number; remaining: number; resetTime: Date };
     readRequests: { used: number; limit: number; remaining: number; resetTime: Date };
     
@@ -233,6 +236,116 @@ export class RealTimeLimitsIntelligenceAgent {
   }
 
   /**
+   * 📊 CALCULATE PRORATED DAILY CAP
+   * Prevents burning entire monthly budget too early by distributing remaining
+   * monthly tweets across remaining days in month.
+   */
+  private async calculateProratedDailyCap(): Promise<{
+    effectiveDailyCap: number;
+    explanation: string;
+    monthlyUsed: number;
+    daysLeftInMonth: number;
+  }> {
+    const monthlyStats = await this.getMonthlyTwitterStats();
+    const monthlyCap = parseInt(process.env.TWITTER_MONTHLY_CAP || '1500');
+    const dailyHardCap = parseInt(process.env.TWITTER_DAILY_HARD_CAP || '200');
+    
+    const usedThisMonth = monthlyStats.tweets;
+    const leftoverMonth = Math.max(0, monthlyCap - usedThisMonth);
+    
+    // Calculate days left in current month
+    const now = new Date();
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0); // Last day of month
+    const daysLeftInMonth = Math.max(1, Math.ceil((endOfMonth.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
+    
+    // Prorated daily cap = remaining monthly budget / days left
+    const proratedDailyCap = Math.ceil(leftoverMonth / daysLeftInMonth);
+    
+    // Enforce daily hard cap ceiling
+    const effectiveDailyCap = Math.min(proratedDailyCap, dailyHardCap);
+    
+    const explanation = leftoverMonth <= 0 
+      ? `Monthly budget exhausted (${usedThisMonth}/${monthlyCap})`
+      : `Prorated: ${leftoverMonth} tweets ÷ ${daysLeftInMonth} days = ${proratedDailyCap}, capped at ${dailyHardCap}`;
+    
+    console.info(`📊 Prorated Daily Cap: ${effectiveDailyCap} (${explanation})`);
+    
+    return {
+      effectiveDailyCap,
+      explanation,
+      monthlyUsed: usedThisMonth,
+      daysLeftInMonth
+    };
+  }
+
+  /**
+   * ⏰ CALCULATE HOURLY PRORATION (OPTIONAL)
+   * Smooths posting throughout the day to prevent blast posting in first hour.
+   * Only applies if TWITTER_ENABLE_HOURLY_PRORATION=true
+   */
+  private async calculateHourlyLimits(effectiveDailyCap: number): Promise<{
+    hourlyLimit: number;
+    hourlyUsed: number;
+    hourlyRemaining: number;
+    explanation: string;
+  } | null> {
+    const enableHourlyProration = process.env.TWITTER_ENABLE_HOURLY_PRORATION === 'true';
+    
+    if (!enableHourlyProration) {
+      return null; // Hourly proration disabled
+    }
+    
+    const now = new Date();
+    const currentHour = now.getHours();
+    const hoursLeftToday = 24 - currentHour;
+    
+    // Get hourly usage (tweets posted in current hour)
+    const hourStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), currentHour);
+    const hourlyUsed = await this.getHourlyTwitterUsage(hourStart);
+    
+    // Prorated hourly limit = daily cap / hours left
+    const proratedHourly = Math.max(1, Math.ceil(effectiveDailyCap / hoursLeftToday));
+    const hourlyRemaining = Math.max(0, proratedHourly - hourlyUsed);
+    
+    const explanation = `${effectiveDailyCap} daily ÷ ${hoursLeftToday} hours = ${proratedHourly}/hour`;
+    
+    console.info(`⏰ Hourly Limit: ${hourlyRemaining}/${proratedHourly} (${explanation})`);
+    
+    return {
+      hourlyLimit: proratedHourly,
+      hourlyUsed,
+      hourlyRemaining,
+      explanation
+    };
+  }
+
+  /**
+   * 🕐 GET HOURLY TWITTER USAGE
+   * Returns number of tweets posted in the given hour
+   */
+  private async getHourlyTwitterUsage(hourStart: Date): Promise<number> {
+    try {
+      const hourEnd = new Date(hourStart.getTime() + 60 * 60 * 1000);
+      
+      if (!supabaseClient.supabase) {
+        console.warn('Supabase client not available for hourly stats');
+        return 0;
+      }
+      
+      const { data } = await supabaseClient.supabase
+        .from('tweets')
+        .select('id')
+        .gte('created_at', hourStart.toISOString())
+        .lt('created_at', hourEnd.toISOString());
+      
+      return data?.length || 0;
+    } catch (error) {
+      console.warn('Could not get hourly Twitter usage:', error);
+      return 0;
+    }
+  }
+
+  /**
    * 🐦 CHECK TWITTER API LIMITS
    */
   private async checkTwitterLimits(): Promise<RealTimeLimits['twitter']> {
@@ -240,6 +353,10 @@ export class RealTimeLimitsIntelligenceAgent {
     let isLocked = false;
     
     try {
+      // Calculate prorated daily limits to preserve monthly budget
+      const proratedLimits = await this.calculateProratedDailyCap();
+      const hourlyLimits = await this.calculateHourlyLimits(proratedLimits.effectiveDailyCap);
+      
       // Get true API write limits
       const { writeRemaining, writeReset, userRemaining, userReset } = await this.fetchTwitterLimits();
       const resetTime = new Date(writeReset * 1000);
@@ -271,23 +388,50 @@ export class RealTimeLimitsIntelligenceAgent {
       // Get daily/monthly limits from our database tracking
       const dailyStats = await this.getDailyTwitterStats();
       const monthlyStats = await this.getMonthlyTwitterStats();
+      const monthlyCap = parseInt(process.env.TWITTER_MONTHLY_CAP || '1500');
+      const dailyHardCap = parseInt(process.env.TWITTER_DAILY_HARD_CAP || '200');
 
-      // Use database tracking for daily usage
+      // Use prorated daily cap instead of hard-coded limit
       const dailyUsed = dailyStats.tweets;
-      const dailyLimit = 17; // Free tier limit
-      const dailyRemaining = Math.max(0, dailyLimit - dailyUsed);
+      const proratedRemaining = Math.max(0, proratedLimits.effectiveDailyCap - dailyUsed);
+      
+      // Check if we should enforce hourly limits
+      const effectiveRemaining = hourlyLimits 
+        ? Math.min(proratedRemaining, hourlyLimits.hourlyRemaining)
+        : proratedRemaining;
+      
+      // Update canPost logic to use prorated limits
+      const monthlyBudgetOk = monthlyStats.tweets < monthlyCap;
+      const dailyBudgetOk = effectiveRemaining > 0;
+      const canPostProrated = !isLocked && (writeRemaining > 0) && monthlyBudgetOk && dailyBudgetOk;
+      
+      console.info(`🎯 Posting Check: writeRemaining=${writeRemaining}, monthlyOk=${monthlyBudgetOk}, dailyOk=${dailyBudgetOk}, result=${canPostProrated}`);
 
       return {
         dailyTweets: {
           used: dailyUsed,
-          limit: dailyLimit,
-          remaining: dailyRemaining,
+          limit: dailyHardCap,
+          remaining: Math.max(0, dailyHardCap - dailyUsed),
           resetTime: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
         },
+        proratedDailyTweets: {
+          used: dailyUsed,
+          effectiveLimit: proratedLimits.effectiveDailyCap,
+          remaining: proratedRemaining,
+          explanation: proratedLimits.explanation
+        },
+        ...(hourlyLimits && {
+          hourlyTweets: {
+            used: hourlyLimits.hourlyUsed,
+            limit: hourlyLimits.hourlyLimit,
+            remaining: hourlyLimits.hourlyRemaining,
+            resetTime: new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours() + 1)
+          }
+        }),
         monthlyTweets: {
           used: monthlyStats.tweets,
-          limit: 1500, // Basic plan limit  
-          remaining: Math.max(0, 1500 - monthlyStats.tweets),
+          limit: monthlyCap,
+          remaining: Math.max(0, monthlyCap - monthlyStats.tweets),
           resetTime: new Date(now.getFullYear(), now.getMonth() + 1, 1)
         },
         readRequests: {
@@ -312,7 +456,7 @@ export class RealTimeLimitsIntelligenceAgent {
         },
         accountStatus,
         isLocked,
-        canPost: !isLocked && (writeRemaining > 0) && (monthlyStats.tweets < 2000), // Only check writeRemaining, not userRemaining
+        canPost: canPostProrated, // Use prorated limits instead of hard-coded checks
         canRead: !isLocked && (rateLimits?.remaining || 0) > 0,
         nextSafePostTime: isLocked ? resetTime : now,
         recommendedWaitTime: isLocked ? Math.ceil((resetTime.getTime() - now.getTime()) / 60000) : 0
@@ -321,11 +465,21 @@ export class RealTimeLimitsIntelligenceAgent {
     } catch (error: any) {
       console.error('❌ Failed to check Twitter limits:', error);
       
+      // Use environment variables for fallback limits
+      const monthlyCap = parseInt(process.env.TWITTER_MONTHLY_CAP || '1500');
+      const dailyHardCap = parseInt(process.env.TWITTER_DAILY_HARD_CAP || '200');
+      
       // Return conservative fallback
       const now = new Date();
       return {
-        dailyTweets: { used: 17, limit: 17, remaining: 0, resetTime: new Date(now.getTime() + 24 * 60 * 60 * 1000) },
-        monthlyTweets: { used: 1500, limit: 1500, remaining: 0, resetTime: new Date(now.getFullYear(), now.getMonth() + 1, 1) },
+        dailyTweets: { used: dailyHardCap, limit: dailyHardCap, remaining: 0, resetTime: new Date(now.getTime() + 24 * 60 * 60 * 1000) },
+        proratedDailyTweets: { 
+          used: dailyHardCap, 
+          effectiveLimit: 0, 
+          remaining: 0, 
+          explanation: 'Error state - conservative fallback' 
+        },
+        monthlyTweets: { used: monthlyCap, limit: monthlyCap, remaining: 0, resetTime: new Date(now.getFullYear(), now.getMonth() + 1, 1) },
         readRequests: { used: 10000, limit: 10000, remaining: 0, resetTime: new Date(now.getTime() + 24 * 60 * 60 * 1000) },
         shortTermLimits: {
           tweets15min: { used: 17, limit: 17, remaining: 0, resetTime: new Date(now.getTime() + 15 * 60 * 1000) },
@@ -612,6 +766,37 @@ export class RealTimeLimitsIntelligenceAgent {
   }
 
   /**
+   * 📊 GET DAILY REMAINING WITH PRORATION
+   * Returns remaining daily capacity considering both hard cap and monthly budget proration
+   */
+  async getDailyRemaining(): Promise<number> {
+    try {
+      const proratedLimits = await this.calculateProratedDailyCap();
+      const dailyStats = await this.getDailyTwitterStats();
+      const dailyUsed = dailyStats.tweets;
+      
+      return Math.max(0, proratedLimits.effectiveDailyCap - dailyUsed);
+    } catch (error) {
+      console.warn('Could not calculate daily remaining:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * ⏰ GET HOURLY REMAINING (OPTIONAL)
+   * Returns remaining hourly capacity if hourly proration is enabled
+   */
+  async getHourlyRemaining(): Promise<number | null> {
+    if (process.env.TWITTER_ENABLE_HOURLY_PRORATION !== 'true') {
+      return null; // Hourly proration disabled
+    }
+    
+    const proratedLimits = await this.calculateProratedDailyCap();
+    const hourlyLimits = await this.calculateHourlyLimits(proratedLimits.effectiveDailyCap);
+    return hourlyLimits?.hourlyRemaining || 0;
+  }
+
+  /**
    * 📋 GET HUMAN-READABLE STATUS
    */
   async getStatusSummary(): Promise<string> {
@@ -619,7 +804,9 @@ export class RealTimeLimitsIntelligenceAgent {
     
     return `
 🚨 REAL-TIME API LIMITS STATUS:
-📝 Twitter: ${limits.twitter.canPost ? '✅' : '❌'} (${limits.twitter.dailyTweets.remaining}/${limits.twitter.dailyTweets.limit} daily)
+📝 Twitter: ${limits.twitter.canPost ? '✅' : '❌'} (${limits.twitter.proratedDailyTweets.remaining}/${limits.twitter.proratedDailyTweets.effectiveLimit} prorated daily)
+📝 Twitter Hard Cap: (${limits.twitter.dailyTweets.remaining}/${limits.twitter.dailyTweets.limit} daily)
+📝 Twitter Monthly: (${limits.twitter.monthlyTweets.remaining}/${limits.twitter.monthlyTweets.limit} monthly)
 🤖 OpenAI: ${limits.openai.canMakeRequest ? '✅' : '❌'} (${limits.openai.dailyRequests.remaining}/${limits.openai.dailyRequests.limit} daily)
 📰 NewsAPI: ${limits.newsApi.canFetchNews ? '✅' : '❌'} (${limits.newsApi.dailyRequests.remaining}/${limits.newsApi.dailyRequests.limit} daily)
 📸 Pexels: ${limits.pexels.canFetchImages ? '✅' : '❌'} (${limits.pexels.dailyRequests.remaining}/${limits.pexels.dailyRequests.limit} daily)
