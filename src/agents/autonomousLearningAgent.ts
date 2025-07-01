@@ -369,9 +369,9 @@ Respond with optimization strategies in JSON format:
             // Get their top engaging content (any topic)
             const topContent = await xClient.searchTweets(`from:${creator}`, 8);
             
-            if (topContent && topContent.length > 0) {
+            if (topContent && topContent.success && topContent.tweets.length > 0) {
               // Analyze for STRUCTURAL patterns, not content
-              await this.analyzeViralStructures(creator, topContent, industry);
+              await this.analyzeViralStructures(creator, topContent.tweets, industry);
             }
           } catch (error) {
             console.warn(`Could not analyze ${creator}'s content from ${industry}`);
@@ -665,8 +665,8 @@ Provide a comprehensive improvement roadmap in JSON format:
       // Extract structural patterns regardless of content topic
       for (const tweet of tweets) {
         const structure = this.extractTweetStructure(tweet.text);
-        const engagement = tweet.public_metrics ? 
-          (tweet.public_metrics.like_count + tweet.public_metrics.retweet_count + tweet.public_metrics.reply_count) : 0;
+        const engagement = tweet.publicMetrics ? 
+          (tweet.publicMetrics.like_count + tweet.publicMetrics.retweet_count + tweet.publicMetrics.reply_count) : 0;
         
         // Store high-engagement structural patterns
         if (engagement > 100) { // Decent engagement threshold
@@ -735,10 +735,10 @@ Provide a comprehensive improvement roadmap in JSON format:
         try {
           const viralTweets = await xClient.searchTweets(`${searchTerm} -is:retweet lang:en`, 5);
           
-          if (viralTweets && viralTweets.length > 0) {
-            for (const tweet of viralTweets) {
-              const engagement = tweet.public_metrics ? 
-                (tweet.public_metrics.like_count + tweet.public_metrics.retweet_count) : 0;
+          if (viralTweets && viralTweets.success && viralTweets.tweets.length > 0) {
+            for (const tweet of viralTweets.tweets || []) {
+              const engagement = tweet.publicMetrics ? 
+                (tweet.publicMetrics.like_count + tweet.publicMetrics.retweet_count) : 0;
               
               // Only analyze tweets with significant engagement
               if (engagement > 50) {

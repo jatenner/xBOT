@@ -147,9 +147,9 @@ export class RateLimitedEngagementAgent {
         try {
           const searchResults = await xClient.searchTweets(query, 10);
 
-          if (searchResults && searchResults.length > 0) {
+          if (searchResults && searchResults.success && searchResults.tweets.length > 0) {
             // Like the first relevant tweet
-            const tweet = searchResults[0];
+            const tweet = searchResults.tweets[0];
             
             // Check if we haven't already liked this tweet
             const { data: existingLike } = await supabase
@@ -167,7 +167,7 @@ export class RateLimitedEngagementAgent {
                 console.log(`💖 Successfully liked tweet: ${tweet.text?.substring(0, 50)}...`);
                 
                 // Log the engagement
-                await this.logEngagement('like', tweet.id, tweet.author_id);
+                await this.logEngagement('like', tweet.id, tweet.authorId);
                 
                 actions.push({
                   type: 'like',
@@ -212,8 +212,8 @@ export class RateLimitedEngagementAgent {
         try {
           const searchResults = await xClient.searchTweets(query, 5);
 
-          if (searchResults && searchResults.length > 0) {
-            const tweet = searchResults[0];
+          if (searchResults && searchResults.success && searchResults.tweets.length > 0) {
+            const tweet = searchResults.tweets[0];
             
             // Check if we haven't already replied to this tweet
             const { data: existingReply } = await supabase
@@ -232,7 +232,7 @@ export class RateLimitedEngagementAgent {
                 
                 if (replyResult.success) {
                   // Log the engagement
-                  await this.logEngagement('reply', tweet.id, tweet.author_id, replyContent);
+                  await this.logEngagement('reply', tweet.id, tweet.authorId, replyContent);
                   
                   actions.push({
                     type: 'reply',
@@ -352,12 +352,12 @@ export class RateLimitedEngagementAgent {
         try {
           const searchResults = await xClient.searchTweets(query, 10);
 
-          if (searchResults && searchResults.length > 0) {
+          if (searchResults && searchResults.success && searchResults.tweets.length > 0) {
             // Find tweets with good engagement
-            const goodTweets = searchResults.filter(tweet => 
-              tweet.public_metrics && 
-              tweet.public_metrics.like_count > 5 &&
-              tweet.public_metrics.retweet_count > 2
+            const goodTweets = searchResults.tweets.filter(tweet => 
+              tweet.publicMetrics && 
+              tweet.publicMetrics.like_count > 5 &&
+              tweet.publicMetrics.retweet_count > 2
             );
 
             if (goodTweets.length > 0) {
@@ -375,7 +375,7 @@ export class RateLimitedEngagementAgent {
                 console.log(`🔄 Would retweet: ${tweet.text?.substring(0, 50)}...`);
                 
                 // Log the engagement
-                await this.logEngagement('retweet', tweet.id, tweet.author_id);
+                await this.logEngagement('retweet', tweet.id, tweet.authorId);
                 
                 actions.push({
                   type: 'retweet',

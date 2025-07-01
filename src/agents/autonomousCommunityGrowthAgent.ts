@@ -229,32 +229,32 @@ export class AutonomousCommunityGrowthAgent {
       ];
 
       for (const query of searchQueries.slice(0, 2)) { // Limit to prevent rate limiting
-        const tweets = await xClient.searchTweets(query, 3);
+        const searchResult = await xClient.searchTweets(query, 3);
         
-        if (tweets && tweets.length > 0) {
-          // Select high-engagement tweets from relevant accounts
-          const targetTweet = tweets.find(t => 
-            t.public_metrics.like_count > 5 && 
-            t.public_metrics.like_count < 500 && // Sweet spot for engagement
-            !t.text?.toLowerCase().includes('spam')
+        if (searchResult.success && searchResult.tweets.length > 0) {
+          console.log(`🔍 Found ${searchResult.tweets.length} relevant tweets for ${query}`);
+          
+          const relevantTweet = searchResult.tweets.find(tweet => 
+            tweet.publicMetrics.like_count > 10 && 
+            !tweet.text.toLowerCase().includes('rt @')
           );
 
-          if (targetTweet) {
-            const result = await xClient.likeTweet(targetTweet.id);
+          if (relevantTweet) {
+            const result = await xClient.likeTweet(relevantTweet.id);
             
             actions.push({
               type: 'strategic_like',
-              tweet_id: targetTweet.id,
-              tweet_content: targetTweet.text?.substring(0, 100),
-              author: targetTweet.author_id,
-              engagement_potential: this.calculateEngagementPotential(targetTweet),
+              tweet_id: relevantTweet.id,
+              tweet_content: relevantTweet.text?.substring(0, 100),
+              author: relevantTweet.authorId,
+              engagement_potential: this.calculateEngagementPotential(relevantTweet),
               success: result.success,
               timestamp: new Date().toISOString()
             });
 
             if (result.success) {
-              console.log(`💖 ✅ Liked high-potential tweet: ${targetTweet.text?.substring(0, 50)}...`);
-              await this.logGrowthAction('strategic_like', targetTweet.id, targetTweet.author_id);
+              console.log(`💖 ✅ Liked high-potential tweet: ${relevantTweet.text?.substring(0, 50)}...`);
+              await this.logGrowthAction('strategic_like', relevantTweet.id, relevantTweet.authorId);
             }
 
             // Rate limiting protection
@@ -278,8 +278,8 @@ export class AutonomousCommunityGrowthAgent {
       // Find tweets asking questions or discussing health tech
       const questionTweets = await xClient.searchTweets('health tech question OR healthcare innovation what', 3);
       
-      if (questionTweets && questionTweets.length > 0) {
-        const targetTweet = questionTweets[0];
+      if (questionTweets && questionTweets.success && questionTweets.tweets.length > 0) {
+        const targetTweet = questionTweets.tweets[0];
         
         // Generate valuable, helpful reply
         const replyContent = await this.generateValueReply(targetTweet.text || '');
@@ -298,7 +298,7 @@ export class AutonomousCommunityGrowthAgent {
 
           if (result.success) {
             console.log(`💬 ✅ Added valuable reply: ${replyContent.substring(0, 50)}...`);
-            await this.logGrowthAction('value_reply', targetTweet.id, targetTweet.author_id, replyContent);
+            await this.logGrowthAction('value_reply', targetTweet.id, targetTweet.authorId, replyContent);
           }
         }
       }
@@ -398,8 +398,8 @@ export class AutonomousCommunityGrowthAgent {
       // Find trending health tech discussions
       const discussions = await xClient.searchTweets('health tech trend OR digital health future', 3);
       
-      if (discussions && discussions.length > 0) {
-        for (const discussion of discussions.slice(0, 1)) { // Limit participation
+      if (discussions && discussions.success && discussions.tweets.length > 0) {
+        for (const discussion of discussions.tweets.slice(0, 1)) { // Limit participation
           // Add thoughtful insight to ongoing discussions
           const insight = await this.generateCommunityInsight(discussion.text || '');
           
@@ -568,9 +568,9 @@ export class AutonomousCommunityGrowthAgent {
 
   // Utility methods for calculations and helpers
   private calculateEngagementPotential(tweet: any): number {
-    const likes = tweet.public_metrics?.like_count || 0;
-    const retweets = tweet.public_metrics?.retweet_count || 0;
-    const replies = tweet.public_metrics?.reply_count || 0;
+    const likes = tweet.publicMetrics?.like_count || 0;
+    const retweets = tweet.publicMetrics?.retweet_count || 0;
+    const replies = tweet.publicMetrics?.reply_count || 0;
     
     return Math.min(100, (likes * 0.5 + retweets * 2 + replies * 3));
   }

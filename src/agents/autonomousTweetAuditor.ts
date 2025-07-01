@@ -162,7 +162,7 @@ TWEET ANALYSIS:
 - Severity: ${audit.severity}
 - Suggested Fix: "${audit.suggestedEdit}"
 - Tweet Age: ${this.getTweetAge(tweet)}
-- Engagement: ${tweet.public_metrics?.like_count || 0} likes, ${tweet.public_metrics?.retweet_count || 0} retweets
+- Engagement: ${tweet.publicMetrics?.like_count || 0} likes, ${tweet.publicMetrics?.retweet_count || 0} retweets
 
 CONTEXT:
 - Account represents a professional health tech brand
@@ -420,7 +420,7 @@ Provide only the corrected tweet content:`;
   }
 
   private hasHighEngagement(tweet: any): boolean {
-    const metrics = tweet.public_metrics;
+    const metrics = tweet.publicMetrics;
     if (!metrics) return false;
     
     const totalEngagement = (metrics.like_count || 0) + (metrics.retweet_count || 0) + (metrics.reply_count || 0);

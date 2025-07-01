@@ -125,18 +125,18 @@ export class ReplyAgent {
         try {
           const searchResults = await xClient.searchTweets(`${topic} -is:retweet lang:en`, 20);
 
-          if (searchResults && searchResults.length > 0) {
-            for (const tweet of searchResults) {
+          if (searchResults && searchResults.success && searchResults.tweets.length > 0) {
+            for (const tweet of searchResults.tweets || []) {
               // Filter for tweets with decent engagement but not too overwhelming
-              const metrics = tweet.public_metrics;
+              const metrics = tweet.publicMetrics;
               if (metrics.like_count >= 5 && metrics.like_count <= 500 && 
                   metrics.reply_count < 100) {
                 
                 conversations.push({
                   id: tweet.id,
                   content: tweet.text,
-                  author: tweet.author_id,
-                  created_at: tweet.created_at,
+                  author: tweet.authorId,
+                  created_at: tweet.createdAt,
                   metrics: {
                     likes: metrics.like_count,
                     retweets: metrics.retweet_count,

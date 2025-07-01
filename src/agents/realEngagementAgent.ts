@@ -85,8 +85,8 @@ export class RealEngagementAgent {
     try {
       const searchResults = await xClient.searchTweets('digital health innovation', 5);
       
-      if (searchResults && searchResults.length > 0) {
-        const tweet = searchResults[0];
+      if (searchResults && searchResults.success && searchResults.tweets.length > 0) {
+        const tweet = searchResults.tweets[0];
         console.log(`💖 Attempting to ACTUALLY like: ${tweet.text?.substring(0, 50)}...`);
         
         const likeResult = await xClient.likeTweet(tweet.id);
@@ -100,7 +100,7 @@ export class RealEngagementAgent {
 
         if (likeResult.success) {
           console.log(`💖 ✅ SUCCESS: ACTUALLY liked tweet!`);
-          await this.logEngagement('like', tweet.id, tweet.author_id);
+          await this.logEngagement('like', tweet.id, tweet.authorId);
         } else {
           console.log(`💖 ❌ FAILED: ${likeResult.error}`);
         }
@@ -126,8 +126,8 @@ export class RealEngagementAgent {
     try {
       const searchResults = await xClient.searchTweets('health tech question', 3);
       
-      if (searchResults && searchResults.length > 0) {
-        const tweet = searchResults[0];
+      if (searchResults && searchResults.success && searchResults.tweets.length > 0) {
+        const tweet = searchResults.tweets[0];
         console.log(`💬 Attempting to ACTUALLY reply to: ${tweet.text?.substring(0, 50)}...`);
         
         const replyContent = await this.generateReply(tweet.text || '');
@@ -146,7 +146,7 @@ export class RealEngagementAgent {
           if (replyResult.success) {
             console.log(`💬 ✅ SUCCESS: ACTUALLY replied!`);
             console.log(`💬 Reply content: ${replyContent}`);
-            await this.logEngagement('reply', tweet.id, tweet.author_id, replyContent);
+            await this.logEngagement('reply', tweet.id, tweet.authorId, replyContent);
           } else {
             console.log(`💬 ❌ FAILED: ${replyResult.error}`);
           }

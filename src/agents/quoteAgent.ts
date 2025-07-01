@@ -82,7 +82,7 @@ export class QuoteAgent {
         // Filter for high engagement tweets
         const tweets = Array.isArray(result.data) ? result.data : [result.data];
         const highEngagementTweets = tweets.filter((tweet: any) => {
-          const metrics = tweet.public_metrics;
+          const metrics = tweet.publicMetrics;
           const engagementScore = (metrics.like_count * 1) + 
                                  (metrics.retweet_count * 2) + 
                                  (metrics.reply_count * 3);
@@ -96,12 +96,12 @@ export class QuoteAgent {
         if (highEngagementTweets.length > 0) {
           // Sort by engagement and pick randomly from top 3
           highEngagementTweets.sort((a: any, b: any) => {
-            const scoreA = (a.public_metrics.like_count * 1) + 
-                          (a.public_metrics.retweet_count * 2) + 
-                          (a.public_metrics.reply_count * 3);
-            const scoreB = (b.public_metrics.like_count * 1) + 
-                          (b.public_metrics.retweet_count * 2) + 
-                          (b.public_metrics.reply_count * 3);
+            const scoreA = (a.publicMetrics.like_count * 1) + 
+                          (a.publicMetrics.retweet_count * 2) + 
+                          (a.publicMetrics.reply_count * 3);
+            const scoreB = (b.publicMetrics.like_count * 1) + 
+                          (b.publicMetrics.retweet_count * 2) + 
+                          (b.publicMetrics.reply_count * 3);
             return scoreB - scoreA;
           });
 

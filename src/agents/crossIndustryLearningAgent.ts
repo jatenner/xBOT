@@ -88,8 +88,8 @@ export class CrossIndustryLearningAgent {
           // Get their recent high-engagement content
           const topContent = await xClient.searchTweets(`from:${creator}`, 8);
           
-          if (topContent && topContent.length > 0) {
-            await this.analyzeViralStructures(creator, topContent, industry);
+          if (topContent && topContent.success && topContent.tweets.length > 0) {
+            await this.analyzeViralStructures(creator, topContent.tweets, industry);
           }
           
           // Rate limiting
@@ -122,8 +122,8 @@ export class CrossIndustryLearningAgent {
       try {
         const viralTweets = await xClient.searchTweets(`${trigger} -is:retweet lang:en`, 5);
         
-        if (viralTweets && viralTweets.length > 0) {
-          for (const tweet of viralTweets) {
+        if (viralTweets && viralTweets.success && viralTweets.tweets.length > 0) {
+          for (const tweet of viralTweets.tweets || []) {
             const engagement = this.calculateEngagement(tweet);
             
             // Only analyze high-engagement content
@@ -207,9 +207,9 @@ export class CrossIndustryLearningAgent {
   }
 
   private calculateEngagement(tweet: any): number {
-    if (!tweet.public_metrics) return 0;
+    if (!tweet.publicMetrics) return 0;
     
-    const metrics = tweet.public_metrics;
+    const metrics = tweet.publicMetrics;
     return (metrics.like_count || 0) + 
            (metrics.retweet_count || 0) + 
            (metrics.reply_count || 0);

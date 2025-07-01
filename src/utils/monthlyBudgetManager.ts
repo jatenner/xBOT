@@ -218,11 +218,13 @@ class MonthlyBudgetManager {
         return 1.0; // Neutral if no data
       }
 
-      const avgEngagement = recentTweets.reduce((sum: number, tweet: any) => 
-        sum + (tweet.engagement_score || 0), 0) / recentTweets.length;
+      // Calculate average engagement score
+      const engagementScores = recentTweets.map((tweet: any) => tweet.engagement_score || 0);
+      const avgEngagement = engagementScores.reduce((sum: number, score: number) => sum + score, 0) / engagementScores.length;
 
-      const avgViralPotential = recentTweets.reduce((sum: number, tweet: any) => 
-        sum + (tweet.viral_potential || 0), 0) / recentTweets.length;
+      // Calculate average viral potential
+      const viralScores = recentTweets.map((tweet: any) => tweet.viral_potential || 0);
+      const avgViralPotential = viralScores.reduce((sum: number, score: number) => sum + score, 0) / viralScores.length;
 
       // Higher performance = more aggressive posting
       if (avgEngagement > 0.7 || avgViralPotential > 0.8) {
