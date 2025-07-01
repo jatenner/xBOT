@@ -239,14 +239,15 @@ Requirements:
 - End with engagement hooks when appropriate
 - DO NOT wrap the entire tweet in quotation marks - generate direct content only
 - Generate original content, not quoted content
+- NEVER include hashtags (zero # symbols allowed)
+- Use professional, human voice without marketing speak
+- Focus on insights and practical implications
 
 Topic: ${topic}
 Style: ${style.name}
 
 Generate engaging, varied content that follows the pattern but feels fresh and specific.`;
   }
-
-
 
   private optimizeContentFormat(content: string): string {
     // Clean up formatting issues

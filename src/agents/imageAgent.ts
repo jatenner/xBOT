@@ -13,6 +13,7 @@ export interface ImageResult {
   localPath?: string;
   altText?: string;
   error?: string;
+  reason?: string;
 }
 
 export interface ImageRequest {
@@ -160,8 +161,21 @@ export class ImageAgent {
   }
 
   async getImageForContent(request: ImageRequest): Promise<ImageResult> {
+    console.log(`🖼️ Image request for ${request.contentType}: ${request.content.substring(0, 100)}...`);
+    
+    // HUMAN VOICE: Check if content actually warrants an image
+    if (!this.shouldContentHaveImage(request.content)) {
+      console.log('🚫 Content lacks specific context for meaningful image');
+      return { success: false, reason: 'Content too generic for contextual image' };
+    }
+
     try {
-      console.log(`🖼️ ImageAgent: Selecting image for ${request.contentType} content...`);
+      // Enhanced keyword extraction with context requirements
+      const contextualKeywords = this.extractContextualKeywords(request.content);
+      if (contextualKeywords.length === 0) {
+        console.log('🚫 No specific contextual keywords found');
+        return { success: false, reason: 'Insufficient contextual keywords' };
+      }
 
       // Strategy 1: Try AI-generated image (if OpenAI DALL-E available)
       if (process.env.OPENAI_API_KEY && this.shouldUseAIGenerated(request)) {
@@ -597,6 +611,76 @@ export class ImageAgent {
   private generateBasicFallbackImage(contentType: string): string {
     // Return first available stock image as fallback
     return this.stockImageSources[0] || 'https://images.unsplash.com/photo-1559757148-5c350d0d3c56?ixlib=rb-4.0.3&w=800&q=80';
+  }
+
+  /**
+   * Check if content has enough specific context to warrant an image
+   */
+  private shouldContentHaveImage(content: string): boolean {
+    const contentLower = content.toLowerCase();
+    
+    // Require specific medical/technical context
+    const hasSpecificContext = [
+      'study', 'research', 'clinical trial', 'breakthrough', 'discovery',
+      'device', 'therapy', 'treatment', 'diagnostic', 'surgery',
+      'accuracy', 'effectiveness', 'outcome', 'result', 'finding'
+    ].some(term => contentLower.includes(term));
+
+    // Avoid generic tech mentions
+    const isGeneric = [
+      'ai', 'technology', 'digital', 'innovation', 'platform',
+      'solution', 'system', 'tool', 'app'
+    ].every(term => contentLower.includes(term) && 
+              !contentLower.includes('specific') && 
+              !contentLower.includes('study'));
+
+    return hasSpecificContext && !isGeneric;
+  }
+
+  /**
+   * Extract contextual keywords that match actual content
+   */
+  private extractContextualKeywords(content: string): string[] {
+    const contentLower = content.toLowerCase();
+    const contextualTerms: { [key: string]: string[] } = {
+      // Medical imaging & diagnostics
+      'cancer': ['oncology research', 'cancer treatment', 'tumor analysis'],
+      'mri': ['medical imaging', 'mri scan', 'radiology'],
+      'x-ray': ['radiology', 'medical imaging', 'diagnostic imaging'],
+      'ultrasound': ['medical ultrasound', 'diagnostic imaging'],
+      
+      // Surgical & therapeutic
+      'surgery': ['surgical procedure', 'operating room', 'medical procedure'],
+      'robotic surgery': ['surgical robot', 'robotic surgery', 'medical robotics'],
+      'therapy': ['medical therapy', 'treatment procedure', 'therapeutic intervention'],
+      
+      // Research & clinical
+      'clinical trial': ['medical research', 'clinical study', 'research facility'],
+      'laboratory': ['research laboratory', 'medical lab', 'scientific research'],
+      'study': ['medical research', 'scientific study', 'clinical research'],
+      
+      // Specific medical fields
+      'cardiology': ['heart medicine', 'cardiac care', 'cardiovascular'],
+      'neurology': ['brain research', 'neurological', 'neuroscience'],
+      'oncology': ['cancer research', 'oncology', 'tumor treatment'],
+      
+      // Avoid generic terms unless specific
+      'ai': contentLower.includes('diagnostic ai') || contentLower.includes('medical ai') ? 
+            ['medical artificial intelligence', 'healthcare ai'] : [],
+      'digital': contentLower.includes('digital pathology') || contentLower.includes('digital therapeutics') ?
+                ['digital healthcare', 'medical technology'] : []
+    };
+
+    const keywords: string[] = [];
+    
+    for (const [term, terms] of Object.entries(contextualTerms)) {
+      if (contentLower.includes(term) && terms.length > 0) {
+        keywords.push(...terms);
+      }
+    }
+
+    // Only return if we have truly specific medical context
+    return keywords.length >= 2 ? keywords.slice(0, 3) : [];
   }
 }
 
