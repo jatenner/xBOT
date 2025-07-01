@@ -182,6 +182,24 @@ export class RealTimeLimitsIntelligenceAgent {
       };
       
     } catch (error: any) {
+      // CRITICAL: Check for monthly cap exceeded error
+      if (error.code === 429 && error.data && error.data.title === 'UsageCapExceeded') {
+        if (error.data.detail && error.data.detail.includes('Monthly product cap')) {
+          console.error('🚨 MONTHLY CAP EXCEEDED: Twitter API monthly usage limit reached!');
+          console.error('📊 Monthly cap hit - search operations blocked until next month');
+          console.error('🎯 Bot can still POST but cannot SEARCH/READ tweets');
+          
+          // Return conservative values that allow posting but indicate monthly cap
+          return {
+            writeRemaining: 100, // Can still post tweets
+            writeReset: Math.floor(Date.now() / 1000) + (15 * 60),
+            userRemaining: 0, // Indicate monthly cap by setting user remaining to 0
+            userReset: Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60) // Reset next month
+          };
+        }
+      }
+      
+      // Handle regular rate limit errors with headers
       if (error.headers) {
         // Read all four headers and log them
         const writeRemaining = parseInt(error.headers['x-rate-limit-remaining'] || '0');
@@ -203,6 +221,14 @@ export class RealTimeLimitsIntelligenceAgent {
           userReset: userReset || Math.floor(Date.now() / 1000) + (24 * 60 * 60)
         };
       }
+      
+      // Log unexpected errors for debugging
+      console.error('❌ Unexpected Twitter API error:', {
+        code: error.code,
+        message: error.message,
+        title: error.data?.title,
+        detail: error.data?.detail
+      });
       
       // No headers available, return conservative defaults
       return {

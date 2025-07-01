@@ -1,0 +1,322 @@
+diff --git a/clear_emergency_blocks.js b/clear_emergency_blocks.js
+new file mode 100644
+index 0000000..6442afa
+--- /dev/null
++++ b/clear_emergency_blocks.js
+@@ -0,0 +1,76 @@
++require('dotenv').config();
++const { createClient } = require('@supabase/supabase-js');
++
++const supabaseUrl = process.env.SUPABASE_URL;
++const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
++
++if (!supabaseUrl || !supabaseServiceKey) {
++  console.error('❌ Missing Supabase credentials');
++  process.exit(1);
++}
++
++const supabase = createClient(supabaseUrl, supabaseServiceKey);
++
++async function clearEmergencyBlocks() {
++  console.log('🔧 Clearing emergency blocks from database...');
++  
++  try {
++    // Clear emergency timing configuration
++    const { error: emergencyError } = await supabase
++      .from('bot_config')
++      .delete()
++      .eq('key', 'emergency_timing');
++    
++    if (emergencyError && emergencyError.code !== 'PGRST116') { // PGRST116 = not found, which is OK
++      console.error('❌ Error clearing emergency timing:', emergencyError);
++    } else {
++      console.log('✅ Cleared emergency_timing config');
++    }
++    
++    // Clear emergency posting only mode
++    const { error: postingError } = await supabase
++      .from('bot_config')
++      .delete()
++      .eq('key', 'engagement_settings');
++    
++    if (postingError && postingError.code !== 'PGRST116') {
++      console.error('❌ Error clearing engagement settings:', postingError);
++    } else {
++      console.log('✅ Cleared engagement_settings config');
++    }
++    
++    // Clear any monthly cap workarounds
++    const { error: monthlyError } = await supabase
++      .from('bot_config')
++      .delete()
++      .eq('key', 'monthly_cap_workaround');
++    
++    if (monthlyError && monthlyError.code !== 'PGRST116') {
++      console.error('❌ Error clearing monthly cap workaround:', monthlyError);
++    } else {
++      console.log('✅ Cleared monthly_cap_workaround config');
++    }
++    
++    // Check what emergency configs remain
++    const { data: remainingConfigs } = await supabase
++      .from('bot_config')
++      .select('*')
++      .or('key.like.*emergency*,key.like.*block*,key.like.*cooldown*');
++    
++    if (remainingConfigs && remainingConfigs.length > 0) {
++      console.log('⚠️ Remaining emergency-related configs:');
++      remainingConfigs.forEach(config => {
++        console.log(`   ${config.key}: ${JSON.stringify(config.value)}`);
++      });
++    } else {
++      console.log('✅ No emergency blocks found in database');
++    }
++    
++    console.log('🎯 Emergency blocks cleared! Bot should resume normal operations.');
++    
++  } catch (error) {
++    console.error('❌ Error clearing emergency blocks:', error);
++  }
++}
++
++clearEmergencyBlocks(); 
+\ No newline at end of file
+diff --git a/src/agents/realTimeLimitsIntelligenceAgent.ts b/src/agents/realTimeLimitsIntelligenceAgent.ts
+index d976cf4..01a5563 100644
+--- a/src/agents/realTimeLimitsIntelligenceAgent.ts
++++ b/src/agents/realTimeLimitsIntelligenceAgent.ts
+@@ -163,9 +163,9 @@ export class RealTimeLimitsIntelligenceAgent {
+ 
+   /**
+    * 🐦 FETCH TWITTER LIMITS FROM HEADERS
+-   * Reads both write limits and user 24-hour cap, but only returns write limits
++   * Reads both write limits and user 24-hour cap, returns all four values
+    */
+-  private async fetchTwitterLimits(): Promise<{ writeRemaining: number; writeReset: number }> {
++  private async fetchTwitterLimits(): Promise<{ writeRemaining: number; writeReset: number; userRemaining: number; userReset: number }> {
+     try {
+       // Make a test call to get headers
+       await xClient.getUserByUsername('Signal_Synapse');
+@@ -173,7 +173,9 @@ export class RealTimeLimitsIntelligenceAgent {
+       // If successful, we don't have the headers, so return optimistic values
+       return {
+         writeRemaining: 100, // Conservative estimate when call succeeds
+-        writeReset: Math.floor(Date.now() / 1000) + (15 * 60) // 15 minutes from now
++        writeReset: Math.floor(Date.now() / 1000) + (15 * 60), // 15 minutes from now
++        userRemaining: 17, // Conservative estimate for user 24h cap
++        userReset: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 24 hours from now
+       };
+       
+     } catch (error: any) {
+@@ -190,36 +192,43 @@ export class RealTimeLimitsIntelligenceAgent {
+         console.info(`   x-user-limit-24hour-remaining: ${userRemaining}`);
+         console.info(`   x-user-limit-24hour-reset: ${userReset}`);
+         
+-        // Only return the real write limits
++        // Return all four values
+         return {
+           writeRemaining: writeRemaining || 0,
+-          writeReset: writeReset || Math.floor(Date.now() / 1000) + (15 * 60)
++          writeReset: writeReset || Math.floor(Date.now() / 1000) + (15 * 60),
++          userRemaining: userRemaining || 0,
++          userReset: userReset || Math.floor(Date.now() / 1000) + (24 * 60 * 60)
+         };
+       }
+       
+       // No headers available, return conservative defaults
+       return {
+         writeRemaining: 0,
+-        writeReset: Math.floor(Date.now() / 1000) + (15 * 60)
++        writeReset: Math.floor(Date.now() / 1000) + (15 * 60),
++        userRemaining: 0,
++        userReset: Math.floor(Date.now() / 1000) + (24 * 60 * 60)
+       };
+     }
+   }
+ 
+   /**
+    * 🛡️ CAN POST CHECK
+-   * Only blocks based on true API write limits, ignores user 24-hour cap
++   * Only blocks based on true API write limits (writeRemaining <= 0), ignores user 24-hour cap
+    */
+   canPost(): boolean {
+     // Check if we're in emergency cooldown
+     if (this.emergencyCooldownUntil && new Date() < this.emergencyCooldownUntil) {
++      console.log('⏸️ canPost(): Blocked by emergency cooldown until', this.emergencyCooldownUntil.toISOString());
+       return false;
+     }
+     
+     // Reset cooldown if expired
+     if (this.emergencyCooldownUntil && new Date() >= this.emergencyCooldownUntil) {
+       this.emergencyCooldownUntil = null;
++      console.log('✅ canPost(): Emergency cooldown expired, resuming normal operations');
+     }
+     
++    console.log('✅ canPost(): Allowed - no emergency cooldown active');
+     return true; // Allow posting unless in emergency cooldown
+   }
+ 
+@@ -232,21 +241,28 @@ export class RealTimeLimitsIntelligenceAgent {
+     
+     try {
+       // Get true API write limits
+-      const { writeRemaining, writeReset } = await this.fetchTwitterLimits();
++      const { writeRemaining, writeReset, userRemaining, userReset } = await this.fetchTwitterLimits();
+       const resetTime = new Date(writeReset * 1000);
++      const userResetTime = new Date(userReset * 1000);
+       
+-      // Only block when write limits are exhausted
++      // CRITICAL: Only block when TRUE API write limits are exhausted, ignore user 24h cap
+       if (writeRemaining <= 0) {
+-        console.log('🚨 RATE LIMIT BLOCK: True API write limits exhausted');
++        console.log(`🚨 RATE LIMIT BLOCK: True API write limits exhausted (writeRemaining: ${writeRemaining})`);
+         this.emergencyCooldownUntil = resetTime;
+         isLocked = true;
+         accountStatus = 'limited';
+       } else {
+-        console.log(`✅ API Write Limits OK: ${writeRemaining} remaining`);
++        console.log(`✅ API Write Limits OK: ${writeRemaining} remaining (userRemaining: ${userRemaining} - IGNORED)`);
+         accountStatus = 'active';
+         isLocked = false;
+       }
+ 
++      // Log clear distinction between write limits and user caps
++      console.info(`🔍 Rate Limit Status:`);
++      console.info(`   Write Quota (ENFORCED): ${writeRemaining} remaining, resets at ${resetTime.toISOString()}`);
++      console.info(`   User 24h Cap (IGNORED): ${userRemaining} remaining, resets at ${userResetTime.toISOString()}`);
++      console.info(`   Posting Status: ${isLocked ? 'BLOCKED by write quota' : 'ALLOWED'}`);
++
+       // Get rate limits from the X client (15-minute windows)  
+       const rateLimits = await xClient.checkRateLimit();
+ 
+@@ -296,7 +312,7 @@ export class RealTimeLimitsIntelligenceAgent {
+         },
+         accountStatus,
+         isLocked,
+-        canPost: !isLocked && (writeRemaining > 0) && (monthlyStats.tweets < 2000),
++        canPost: !isLocked && (writeRemaining > 0) && (monthlyStats.tweets < 2000), // Only check writeRemaining, not userRemaining
+         canRead: !isLocked && (rateLimits?.remaining || 0) > 0,
+         nextSafePostTime: isLocked ? resetTime : now,
+         recommendedWaitTime: isLocked ? Math.ceil((resetTime.getTime() - now.getTime()) / 60000) : 0
+diff --git a/tests/realTimeLimitsAgent.test.ts b/tests/realTimeLimitsAgent.test.ts
+new file mode 100644
+index 0000000..2080c5e
+--- /dev/null
++++ b/tests/realTimeLimitsAgent.test.ts
+@@ -0,0 +1,115 @@
++import { RealTimeLimitsIntelligenceAgent } from '../src/agents/realTimeLimitsIntelligenceAgent';
++import { xClient } from '../src/utils/xClient';
++
++// Mock the xClient
++jest.mock('../src/utils/xClient', () => ({
++  xClient: {
++    getUserByUsername: jest.fn(),
++    checkRateLimit: jest.fn()
++  }
++}));
++
++// Mock supabaseClient
++jest.mock('../src/utils/supabaseClient', () => ({
++  supabaseClient: {
++    supabase: {
++      from: jest.fn(() => ({
++        select: jest.fn(() => ({
++          eq: jest.fn(() => ({
++            gte: jest.fn(() => ({ data: [] }))
++          }))
++        }))
++      }))
++    }
++  }
++}));
++
++describe('RealTimeLimitsAgent - Rate Limit Logic', () => {
++  let agent: RealTimeLimitsIntelligenceAgent;
++  
++  beforeEach(() => {
++    agent = new RealTimeLimitsIntelligenceAgent();
++    jest.clearAllMocks();
++  });
++
++  test('should allow posting when writeRemaining > 0 even if userRemaining = 0', async () => {
++    // Mock Twitter API response with write quota available but user 24h cap exhausted
++    const mockError = {
++      headers: {
++        'x-rate-limit-remaining': '100',  // Write quota available
++        'x-rate-limit-reset': String(Math.floor(Date.now() / 1000) + 900), // 15 min future
++        'x-user-limit-24hour-remaining': '0',  // User 24h cap exhausted
++        'x-user-limit-24hour-reset': String(Math.floor(Date.now() / 1000) + 86400) // 24h future
++      }
++    };
++    
++    (xClient.getUserByUsername as jest.Mock).mockRejectedValue(mockError);
++    (xClient.checkRateLimit as jest.Mock).mockResolvedValue({ remaining: 100, resetTime: Date.now() + 900000 });
++    
++    // Test the canPost method
++    const canPost = agent.canPost();
++    
++    // Should return true because we only care about writeRemaining, not userRemaining
++    expect(canPost).toBe(true);
++    
++    // Also test the full limits check
++    const limits = await agent.getCurrentLimits(true);
++    
++    // Should be able to post because writeRemaining > 0
++    expect(limits.twitter.canPost).toBe(true);
++    expect(limits.systemStatus.canPost).toBe(true);
++  });
++
++  test('should block posting when writeRemaining = 0 regardless of userRemaining', async () => {
++    // Mock Twitter API response with write quota exhausted
++    const mockError = {
++      headers: {
++        'x-rate-limit-remaining': '0',    // Write quota exhausted
++        'x-rate-limit-reset': String(Math.floor(Date.now() / 1000) + 900),
++        'x-user-limit-24hour-remaining': '50', // User 24h cap still available
++        'x-user-limit-24hour-reset': String(Math.floor(Date.now() / 1000) + 86400)
++      }
++    };
++    
++    (xClient.getUserByUsername as jest.Mock).mockRejectedValue(mockError);
++    (xClient.checkRateLimit as jest.Mock).mockResolvedValue({ remaining: 0, resetTime: Date.now() + 900000 });
++    
++    // Get limits which should trigger emergency cooldown
++    const limits = await agent.getCurrentLimits(true);
++    
++    // Should be blocked because writeRemaining = 0
++    expect(limits.twitter.canPost).toBe(false);
++    expect(limits.systemStatus.canPost).toBe(false);
++    
++    // canPost should now return false due to emergency cooldown
++    const canPost = agent.canPost();
++    expect(canPost).toBe(false);
++  });
++
++  test('should log all four headers when fetching Twitter limits', async () => {
++    const consoleSpy = jest.spyOn(console, 'info').mockImplementation();
++    
++    const mockError = {
++      headers: {
++        'x-rate-limit-remaining': '75',
++        'x-rate-limit-reset': String(Math.floor(Date.now() / 1000) + 900),
++        'x-user-limit-24hour-remaining': '5',
++        'x-user-limit-24hour-reset': String(Math.floor(Date.now() / 1000) + 86400)
++      }
++    };
++    
++    (xClient.getUserByUsername as jest.Mock).mockRejectedValue(mockError);
++    (xClient.checkRateLimit as jest.Mock).mockResolvedValue({ remaining: 75, resetTime: Date.now() + 900000 });
++    
++    await agent.getCurrentLimits(true);
++    
++    // Verify all four headers are logged
++    expect(consoleSpy).toHaveBeenCalledWith('📊 Twitter API Headers:');
++    expect(consoleSpy).toHaveBeenCalledWith('   x-rate-limit-remaining: 75');
++    expect(consoleSpy).toHaveBeenCalledWith('   x-rate-limit-reset: ' + mockError.headers['x-rate-limit-reset']);
++    expect(consoleSpy).toHaveBeenCalledWith('   x-user-limit-24hour-remaining: 5');
++    expect(consoleSpy).toHaveBeenCalledWith('   x-user-limit-24hour-reset: ' + mockError.headers['x-user-limit-24hour-reset']);
++    
++    consoleSpy.mockRestore();
++  });
++}); 
+\ No newline at end of file

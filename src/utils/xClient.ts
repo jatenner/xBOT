@@ -1,8 +1,9 @@
 import { TwitterApi, TwitterV2IncludesHelper, TweetV2, UserV2 } from 'twitter-api-v2';
-import dotenv from 'dotenv';
+import * as dotenv from 'dotenv';
 import axios from 'axios';
 import * as fs from 'fs';
 import * as path from 'path';
+import { supabaseClient } from './supabaseClient';
 
 dotenv.config();
 
@@ -70,6 +71,28 @@ export interface TweetWithMediaOptions {
   mediaUrls?: string[];
   mediaIds?: string[];
   altText?: string[];
+}
+
+export interface TweetSearchResult {
+  success: boolean;
+  tweets: SearchedTweet[];
+  message?: string;
+  error?: string;
+}
+
+export interface SearchedTweet {
+  id: string;
+  text: string;
+  authorId: string;
+  authorUsername: string;
+  authorName: string;
+  createdAt: string;
+  publicMetrics: {
+    retweet_count: number;
+    like_count: number;
+    reply_count: number;
+    quote_count: number;
+  };
 }
 
 class XService {
@@ -379,44 +402,77 @@ class XService {
     }
   }
 
-  async searchTweets(query: string, maxResults: number = 10): Promise<TweetData[]> {
+  async searchTweets(query: string, count: number = 10): Promise<TweetSearchResult> {
+    if (!this.client) {
+      return {
+        success: false,
+        error: 'Twitter client not initialized',
+        tweets: [],
+      };
+    }
+
     try {
-      // TODO: Implement intelligent tweet searching for reply targets
-      // 1. Search for tweets in AI, health, longevity, biotech space
-      // 2. Filter for high-engagement tweets
-      // 3. Prioritize tweets from influential accounts
-      // 4. Avoid tweets we've already replied to
-      
-      const searchResults = await this.client.v2.search(query, {
-        max_results: maxResults,
-        'tweet.fields': ['created_at', 'author_id', 'public_metrics'],
-        'user.fields': ['username', 'public_metrics'],
-        expansions: ['author_id'],
+      // 🚨 CRITICAL: Check for monthly cap mode before any search operations
+      if (await this.isMonthlyCapActive()) {
+        console.log('🚫 MONTHLY CAP: Search operations disabled - returning empty results');
+        return {
+          success: true,
+          tweets: [],
+          message: 'Search disabled due to monthly API cap'
+        };
+      }
+
+      const response = await this.client.v2.search(query, {
+        max_results: Math.min(count, 100),
+        'tweet.fields': ['author_id', 'created_at', 'public_metrics', 'context_annotations'],
+        'user.fields': ['username', 'name', 'public_metrics'],
+        expansions: ['author_id']
       });
+
+      const tweets: SearchedTweet[] = [];
       
-      const tweets: TweetData[] = [];
-      
-      for (const tweet of searchResults.tweets) {
-        tweets.push({
-          id: tweet.id,
-          text: tweet.text,
-          author_id: tweet.author_id || '',
-          created_at: tweet.created_at || '',
-          public_metrics: {
-            retweet_count: tweet.public_metrics?.retweet_count || 0,
-            like_count: tweet.public_metrics?.like_count || 0,
-            reply_count: tweet.public_metrics?.reply_count || 0,
-            quote_count: tweet.public_metrics?.quote_count || 0,
-            impression_count: tweet.public_metrics?.impression_count || 0,
-          },
-        });
+      if (response.data && response.data.data) {
+        for (const tweet of response.data.data) {
+          const author = response.data.includes?.users?.find(user => user.id === tweet.author_id);
+          
+          tweets.push({
+            id: tweet.id,
+            text: tweet.text,
+            authorId: tweet.author_id,
+            authorUsername: author?.username || 'unknown',
+            authorName: author?.name || 'Unknown User',
+            createdAt: tweet.created_at || new Date().toISOString(),
+            publicMetrics: tweet.public_metrics || {
+              retweet_count: 0,
+              like_count: 0,
+              reply_count: 0,
+              quote_count: 0
+            }
+          });
+        }
+      }
+
+      return {
+        success: true,
+        tweets,
+      };
+    } catch (error: any) {
+      // Handle monthly cap error specifically
+      if (error.code === 429 && error.data?.title === 'UsageCapExceeded') {
+        console.error('🚨 Monthly cap hit during search - activating emergency mode');
+        await this.activateMonthlyCapMode();
+        return {
+          success: true,
+          tweets: [],
+          message: 'Monthly cap reached - search operations disabled'
+        };
       }
       
-      return tweets;
-      
-    } catch (error) {
-      console.error('Error searching tweets:', error);
-      return [];
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Search failed',
+        tweets: [],
+      };
     }
   }
 
@@ -711,6 +767,50 @@ class XService {
       }
       
       throw error;
+    }
+  }
+
+  /**
+   * 🚨 Check if monthly cap mode is active
+   */
+  private async isMonthlyCapActive(): Promise<boolean> {
+    try {
+      const { data } = await supabaseClient.supabase
+        .from('bot_config')
+        .select('value')
+        .eq('key', 'emergency_monthly_cap_mode')
+        .single();
+      
+      return data?.value?.enabled === true;
+    } catch (error) {
+      // If we can't check, assume monthly cap is active for safety
+      console.warn('Could not check monthly cap status, assuming active for safety');
+      return true;
+    }
+  }
+
+  /**
+   * 🚨 Activate monthly cap mode when detected
+   */
+  private async activateMonthlyCapMode(): Promise<void> {
+    try {
+      await supabaseClient.supabase
+        .from('bot_config')
+        .upsert({
+          key: 'emergency_monthly_cap_mode',
+          value: {
+            enabled: true,
+            mode: 'posting_only',
+            disable_all_search_operations: true,
+            auto_detected: true,
+            detected_at: new Date().toISOString(),
+            reason: 'Monthly cap detected during API call'
+          }
+        });
+      
+      console.log('🚨 Monthly cap mode auto-activated');
+    } catch (error) {
+      console.error('Failed to activate monthly cap mode:', error);
     }
   }
 }
