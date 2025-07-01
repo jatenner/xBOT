@@ -42,9 +42,36 @@ export class QualityGate {
 
   /**
    * 📊 GET DYNAMIC READABILITY THRESHOLD
-   * Reads current threshold from bot_config
+   * Reads current threshold from bot_config with viral-optimized defaults
    */
   async getReadabilityThreshold(): Promise<number> {
+    // Check for balanced quality rules first
+    try {
+      const { data } = await supabaseClient.supabase
+        .from('bot_config')
+        .select('value')
+        .eq('key', 'balanced_quality_rules')
+        .single();
+      
+      if (data?.value?.quality_thresholds?.min_readability_score) {
+        return data.value.quality_thresholds.min_readability_score;
+      }
+
+      // Check runtime config
+      const { data: runtimeData } = await supabaseClient.supabase
+        .from('bot_config')
+        .select('value')
+        .eq('key', 'runtime_config')
+        .single();
+      
+      if (runtimeData?.value?.quality?.readabilityMin) {
+        return runtimeData.value.quality.readabilityMin;
+      }
+    } catch (error) {
+      console.warn('Could not read quality rules from database:', error);
+    }
+    
+    // Fallback to viral-optimized threshold
     return await getConfigValue('min_readability', 45);
   }
 
