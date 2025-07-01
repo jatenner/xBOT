@@ -77,6 +77,7 @@ export class RealTimeLimitsIntelligenceAgent {
   private lastCheck: Date | null = null;
   private checkInterval: number = 30 * 60 * 1000; // 30 minutes - EMERGENCY: Reduce API calls
   private isChecking: boolean = false;
+  private emergencyCooldownUntil: Date | null = null;
 
   constructor() {
     console.log('🚨 Real-Time Limits Intelligence Agent initialized');
@@ -161,215 +162,111 @@ export class RealTimeLimitsIntelligenceAgent {
   }
 
   /**
+   * 🐦 FETCH TWITTER LIMITS FROM HEADERS
+   * Reads both write limits and user 24-hour cap, but only returns write limits
+   */
+  private async fetchTwitterLimits(): Promise<{ writeRemaining: number; writeReset: number }> {
+    try {
+      // Make a test call to get headers
+      await xClient.getUserByUsername('Signal_Synapse');
+      
+      // If successful, we don't have the headers, so return optimistic values
+      return {
+        writeRemaining: 100, // Conservative estimate when call succeeds
+        writeReset: Math.floor(Date.now() / 1000) + (15 * 60) // 15 minutes from now
+      };
+      
+    } catch (error: any) {
+      if (error.headers) {
+        // Read all four headers and log them
+        const writeRemaining = parseInt(error.headers['x-rate-limit-remaining'] || '0');
+        const writeReset = parseInt(error.headers['x-rate-limit-reset'] || '0');
+        const userRemaining = parseInt(error.headers['x-user-limit-24hour-remaining'] || '0');
+        const userReset = parseInt(error.headers['x-user-limit-24hour-reset'] || '0');
+        
+        console.info('📊 Twitter API Headers:');
+        console.info(`   x-rate-limit-remaining: ${writeRemaining}`);
+        console.info(`   x-rate-limit-reset: ${writeReset}`);
+        console.info(`   x-user-limit-24hour-remaining: ${userRemaining}`);
+        console.info(`   x-user-limit-24hour-reset: ${userReset}`);
+        
+        // Only return the real write limits
+        return {
+          writeRemaining: writeRemaining || 0,
+          writeReset: writeReset || Math.floor(Date.now() / 1000) + (15 * 60)
+        };
+      }
+      
+      // No headers available, return conservative defaults
+      return {
+        writeRemaining: 0,
+        writeReset: Math.floor(Date.now() / 1000) + (15 * 60)
+      };
+    }
+  }
+
+  /**
+   * 🛡️ CAN POST CHECK
+   * Only blocks based on true API write limits, ignores user 24-hour cap
+   */
+  canPost(): boolean {
+    // Check if we're in emergency cooldown
+    if (this.emergencyCooldownUntil && new Date() < this.emergencyCooldownUntil) {
+      return false;
+    }
+    
+    // Reset cooldown if expired
+    if (this.emergencyCooldownUntil && new Date() >= this.emergencyCooldownUntil) {
+      this.emergencyCooldownUntil = null;
+    }
+    
+    return true; // Allow posting unless in emergency cooldown
+  }
+
+  /**
    * 🐦 CHECK TWITTER API LIMITS
    */
   private async checkTwitterLimits(): Promise<RealTimeLimits['twitter']> {
     let accountStatus: 'active' | 'limited' | 'suspended' | 'unknown' = 'unknown';
     let isLocked = false;
-    let rateLimits = null;
     
-    // CRITICAL: These variables need to be declared in outer scope
-    let realDailyLimit = 17; // REAL Twitter API v2 FREE TIER limit (verified from official docs)
-    let realDailyRemaining: number | null = null;
-    let realDailyResetTime: Date | null = null;
-
     try {
-      // Get rate limits from the X client (15-minute windows)  
-      rateLimits = await xClient.checkRateLimit();
-
-      try {
-        // Test call to get daily limits from headers - try to get user info
-        await xClient.getUserByUsername('Signal_Synapse'); // Re-enabled to get real limits
+      // Get true API write limits
+      const { writeRemaining, writeReset } = await this.fetchTwitterLimits();
+      const resetTime = new Date(writeReset * 1000);
+      
+      // Only block when write limits are exhausted
+      if (writeRemaining <= 0) {
+        console.log('🚨 RATE LIMIT BLOCK: True API write limits exhausted');
+        this.emergencyCooldownUntil = resetTime;
+        isLocked = true;
+        accountStatus = 'limited';
+      } else {
+        console.log(`✅ API Write Limits OK: ${writeRemaining} remaining`);
         accountStatus = 'active';
-      } catch (error: any) {
-        console.log('⚠️ Account access test failed:', error.code);
-        
-        // Extract real limits from error headers if available (for ANY error with headers)
-        if (error.headers) {
-          console.log('🔍 DEBUG: Raw headers:', JSON.stringify(error.headers, null, 2));
-          
-          // WARNING: Twitter API headers often show incorrect limits!
-          // For FREE tier, the real limit is 17/day, but headers may show 96
-          const headerLimit = error.headers['x-user-limit-24hour-limit'];
-          const headerRemaining = error.headers['x-user-limit-24hour-remaining'];
-          
-          if (headerLimit) {
-            const parsedHeaderLimit = parseInt(headerLimit);
-            console.log('🔍 DEBUG: Header shows limit:', parsedHeaderLimit);
-            
-            // CRITICAL: Ignore fake header limits, enforce real Free tier limit
-            if (parsedHeaderLimit === 96) {
-              console.log('⚠️ FAKE HEADER DETECTED: Header shows 96 but real Free tier limit is 17');
-              realDailyLimit = 17; // Force real Free tier limit
-              console.log('🔧 CORRECTED: Using real Free tier limit of 17');
-            } else if (parsedHeaderLimit === 17) {
-              realDailyLimit = 17; // Correct Free tier limit
-              console.log('✅ CORRECT: Header shows real Free tier limit of 17');
-            } else {
-              console.log(`⚠️ UNKNOWN LIMIT: Header shows ${parsedHeaderLimit}, using Free tier default of 17`);
-              realDailyLimit = 17; // Default to Free tier
-            }
-          } else {
-            console.log('⚠️ DEBUG: x-user-limit-24hour-limit header NOT found, using Free tier default');
-            realDailyLimit = 17; // Default to Free tier
-          }
-          
-          if (headerRemaining) {
-            const parsedHeaderRemaining = parseInt(headerRemaining);
-            console.log('🔍 DEBUG: Header shows remaining:', parsedHeaderRemaining);
-            
-            // CRITICAL: Scale remaining to real Free tier limit
-            if (realDailyLimit === 17 && headerLimit && parseInt(headerLimit) === 96) {
-              // Header shows fake 96 limit, scale remaining to real 17 limit
-              const fakeUsed = 96 - parsedHeaderRemaining;
-              const realUsed = Math.min(fakeUsed, 17); // Cap at real limit
-              realDailyRemaining = Math.max(0, 17 - realUsed);
-              console.log(`🔧 SCALED: Header fake remaining ${parsedHeaderRemaining}/96 → real remaining ${realDailyRemaining}/17`);
-            } else {
-              realDailyRemaining = Math.min(parsedHeaderRemaining, 17); // Cap at real limit
-              console.log('🔍 DEBUG: Set realDailyRemaining to:', realDailyRemaining);
-            }
-          } else {
-            console.log('⚠️ DEBUG: x-user-limit-24hour-remaining header NOT found');
-          }
-          
-          if (error.headers['x-user-limit-24hour-reset']) {
-            realDailyResetTime = new Date(parseInt(error.headers['x-user-limit-24hour-reset']) * 1000);
-            console.log('🔍 DEBUG: Set realDailyResetTime to:', realDailyResetTime);
-          } else {
-            console.log('⚠️ DEBUG: x-user-limit-24hour-reset header NOT found');
-          }
-          
-          console.log(`📊 CORRECTED LIMITS: ${realDailyLimit - (realDailyRemaining || 0)}/${realDailyLimit} used, ${realDailyRemaining || 0} remaining`);
-        } else {
-          console.log('⚠️ No headers found in error response');
-        }
-        
-        // Set account status based on error code  
-        if (error.code === 429) {
-          accountStatus = 'limited';
-          isLocked = true;
-        } else if (error.code === 403) {
-          accountStatus = 'suspended';
-          isLocked = true;
-        } else if (error.code === 400) {
-          // 400 errors still give us limit headers, account is still active
-          accountStatus = 'active';
-          isLocked = false;
-        }
+        isLocked = false;
       }
+
+      // Get rate limits from the X client (15-minute windows)  
+      const rateLimits = await xClient.checkRateLimit();
 
       const now = new Date();
-      const resetTime = realDailyResetTime || new Date(now.getTime() + 15 * 60 * 1000); // Use real reset time or fallback
 
-
-      // If no headers available (API call succeeded without rate limit info), assume fresh start
-      if (realDailyRemaining === null) {
-        console.log('🔧 No rate limit headers found - assuming fresh daily start');
-        realDailyRemaining = 17; // Fresh start with full Free tier limit
-        realDailyLimit = 17;
-        console.log('✅ FORCED: Using full Free tier limit of 17/17 remaining');
-      }
-
-      // Get daily/monthly limits from our database tracking (as backup/verification)
+      // Get daily/monthly limits from our database tracking
       const dailyStats = await this.getDailyTwitterStats();
       const monthlyStats = await this.getMonthlyTwitterStats();
 
-      // 🚨 EMERGENCY: Database mismatch detection for API rate limiting issues
-      const apiUsageToday = dailyStats.tweets; // API calls made today
-      let dbTweetCount = 0;
-      
-      try {
-        // Check actual tweets saved to database
-        const today = new Date().toISOString().split('T')[0];
-        const { data: dbTweets } = await supabaseClient.supabase
-          .from('tweets')
-          .select('id')
-          .gte('created_at', today);
-        
-        dbTweetCount = dbTweets?.length || 0;
-        
-        console.log(`📊 DATABASE MISMATCH CHECK: API usage = ${apiUsageToday}, Database tweets = ${dbTweetCount}`);
-        
-        if (dbTweetCount === 0 && apiUsageToday > 0) {
-          console.log('🚨 CRITICAL: Database missing tweets - using API usage as source of truth');
-          // Use API usage count instead of broken database count
-          const conservativeUsage = Math.min(apiUsageToday + 2, 17); // Add buffer for safety
-          
-          return {
-            dailyTweets: {
-              used: conservativeUsage,
-              limit: 17,
-              remaining: Math.max(0, 17 - conservativeUsage),
-              resetTime: realDailyResetTime || new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
-            },
-            monthlyTweets: {
-              used: monthlyStats.tweets,
-              limit: 1500,
-              remaining: Math.max(0, 1500 - monthlyStats.tweets),
-              resetTime: new Date(now.getFullYear(), now.getMonth() + 1, 1)
-            },
-            readRequests: {
-              used: dailyStats.reads,
-              limit: 10000,
-              remaining: Math.max(0, 10000 - dailyStats.reads),
-              resetTime: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
-            },
-            shortTermLimits: {
-              tweets15min: { used: conservativeUsage, limit: 17, remaining: Math.max(0, 17 - conservativeUsage), resetTime },
-              reads15min: { used: 0, limit: 180, remaining: 180, resetTime }
-            },
-            accountStatus: 'active',
-            isLocked: conservativeUsage >= 17,
-            canPost: conservativeUsage < 17,
-            canRead: true,
-            nextSafePostTime: conservativeUsage >= 17 ? resetTime : now,
-            recommendedWaitTime: conservativeUsage >= 17 ? Math.ceil((resetTime.getTime() - now.getTime()) / 60000) : 0
-          };
-        }
-      } catch (error) {
-        console.error('❌ Database mismatch check failed:', error);
-      }
-
-      // EMERGENCY: Force fresh limits when no headers AND no database usage today
-      let actualDailyUsed, actualDailyRemaining;
-      
-      if (realDailyRemaining !== null) {
-        // We have real API data - use it
-        actualDailyUsed = realDailyLimit - realDailyRemaining;
-        actualDailyRemaining = realDailyRemaining;
-        console.log('📊 Using REAL API data:', actualDailyUsed, 'used,', actualDailyRemaining, 'remaining');
-      } else {
-        // No API headers - check if it's a new day
-        const today = new Date().toISOString().split('T')[0];
-        const lastUsedDate = dailyStats.lastTweetDate || '1970-01-01';
-        
-        if (lastUsedDate !== today) {
-          // New day - reset to full limits
-          actualDailyUsed = 0;
-          actualDailyRemaining = 17;
-          console.log('🌅 NEW DAY DETECTED: Reset to full 17/17 limits');
-        } else {
-          // Same day - use database tracking
-          actualDailyUsed = dailyStats.tweets;
-          actualDailyRemaining = Math.max(0, 17 - dailyStats.tweets);
-          console.log('📊 Using database data:', actualDailyUsed, 'used,', actualDailyRemaining, 'remaining');
-        }
-      }
-      
-      console.log('🔍 DEBUG: realDailyRemaining:', realDailyRemaining);
-      console.log('🔍 DEBUG: realDailyLimit:', realDailyLimit);
-      console.log('🔍 DEBUG: dailyStats.tweets:', dailyStats.tweets);
-      console.log('🔍 DEBUG: actualDailyUsed:', actualDailyUsed);
-      console.log('🔍 DEBUG: actualDailyRemaining:', actualDailyRemaining);
-      console.log(`🎯 FINAL CALCULATION: ${actualDailyUsed}/${realDailyLimit} used, ${actualDailyRemaining} remaining`);
+      // Use database tracking for daily usage
+      const dailyUsed = dailyStats.tweets;
+      const dailyLimit = 17; // Free tier limit
+      const dailyRemaining = Math.max(0, dailyLimit - dailyUsed);
 
       return {
         dailyTweets: {
-          used: actualDailyUsed,
-          limit: realDailyLimit, // Use real Twitter API limit
-          remaining: actualDailyRemaining,
-          resetTime: realDailyResetTime || new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
+          used: dailyUsed,
+          limit: dailyLimit,
+          remaining: dailyRemaining,
+          resetTime: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
         },
         monthlyTweets: {
           used: monthlyStats.tweets,
@@ -385,9 +282,9 @@ export class RealTimeLimitsIntelligenceAgent {
         },
         shortTermLimits: {
           tweets15min: {
-            used: Math.max(0, 17 - (rateLimits?.remaining || 0)),
+            used: Math.max(0, 17 - writeRemaining),
             limit: 17,
-            remaining: rateLimits?.remaining || 0,
+            remaining: writeRemaining,
             resetTime
           },
           reads15min: {
@@ -399,7 +296,7 @@ export class RealTimeLimitsIntelligenceAgent {
         },
         accountStatus,
         isLocked,
-        canPost: !isLocked && (actualDailyRemaining > 0) && (monthlyStats.tweets < 2000) && ((rateLimits?.remaining || 1) >= 0),
+        canPost: !isLocked && (writeRemaining > 0) && (monthlyStats.tweets < 2000),
         canRead: !isLocked && (rateLimits?.remaining || 0) > 0,
         nextSafePostTime: isLocked ? resetTime : now,
         recommendedWaitTime: isLocked ? Math.ceil((resetTime.getTime() - now.getTime()) / 60000) : 0
