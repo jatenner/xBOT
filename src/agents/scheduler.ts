@@ -16,7 +16,7 @@ import dotenv from 'dotenv';
 import { RealTimeEngagementTracker } from './realTimeEngagementTracker';
 import { AutonomousTweetAuditor } from './autonomousTweetAuditor';
 import { AutonomousContentOrchestrator } from './autonomousContentOrchestrator';
-import { pubmedFetcher } from './pubmedFetcher.js';
+import { pubmedFetcher } from './pubmedFetcher';
 import { supabase } from '../utils/supabaseClient.js';
 import { dailyPostingManager } from '../utils/dailyPostingManager';
 import { tweetAnalyticsCollector } from './tweetAnalyticsCollector';

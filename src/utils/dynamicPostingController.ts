@@ -3,7 +3,7 @@ import { supabaseClient } from './supabaseClient';
 import { NewsAPIAgent } from '../agents/newsAPIAgent';
 import { RealTimeTrendsAgent } from '../agents/realTimeTrendsAgent';
 import { realTimeLimitsAgent } from '../agents/realTimeLimitsIntelligenceAgent';
-import { getConfig } from './botConfig.js';
+import { getConfig } from './botConfig';
 
 /**
  * 🧠 DYNAMIC POSTING CONTROLLER

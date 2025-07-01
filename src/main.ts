@@ -6,7 +6,7 @@ dotenv.config({ path: path.resolve(__dirname, '../.env') });
 import { Scheduler } from './agents/scheduler';
 import { DynamicPostingController } from './utils/dynamicPostingController';
 import { metricsExporter } from './metrics/exporter';
-import { initializeRuntimeConfig } from './utils/supabaseConfig.js';
+import { initializeRuntimeConfig } from './utils/supabaseConfig';
 import * as cron from 'node-cron';
 import http from 'http';
 

@@ -5,7 +5,7 @@
  * Provides easy interface for agents to learn and remember
  */
 
-import { supabase } from './supabaseClient.js';
+import { supabase } from './supabaseClient';
 
 export interface AIDecision {
   agentName: string;

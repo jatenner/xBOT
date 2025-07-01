@@ -2,8 +2,8 @@
  * Runtime configuration from Supabase bot_config table
  */
 
-import { defaults } from './config.js';
-import { supabaseClient } from './supabaseClient.js';
+import { defaults } from './config';
+import { supabaseClient } from './supabaseClient';
 
 export interface RuntimeConfig {
   maxDailyTweets: number;

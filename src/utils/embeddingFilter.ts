@@ -3,8 +3,8 @@
  * Uses pgvector similarity to detect and prevent duplicate-style content
  */
 
-import { openaiClient } from './openaiClient.js';
-import { supabase } from './supabaseClient.js';
+import { openaiClient } from './openaiClient';
+import { supabase } from './supabaseClient';
 
 export interface SimilarityResult {
   isUnique: boolean;

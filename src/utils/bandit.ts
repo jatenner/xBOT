@@ -2,7 +2,7 @@
  * Thompson Sampling Bandit for Hook Style Optimization
  */
 
-import { supabaseClient } from './supabaseClient.js';
+import { supabaseClient } from './supabaseClient';
 
 export interface HookStyle {
   id: number;

@@ -1,4 +1,4 @@
-import { preserveUrlsInTweet } from './urlPreservation.js';
+import { preserveUrlsInTweet } from './urlPreservation';
 
 export interface FormattedTweet {
   content: string;

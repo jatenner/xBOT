@@ -2,7 +2,7 @@
  * Tests for the configuration system
  */
 
-import { defaults, getEnv } from '../src/utils/config.js';
+import { defaults, getEnv } from '../src/utils/config';
 
 describe('Configuration System', () => {
   test('defaults should have expected values', () => {

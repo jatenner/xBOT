@@ -3,8 +3,8 @@
  * Combines Pexels + Unsplash search and ranks by semantic relevance
  */
 
-import { openaiClient } from './openaiClient.js';
-import { supabase } from './supabaseClient.js';
+import { openaiClient } from './openaiClient';
+import { supabase } from './supabaseClient';
 
 interface ImageCandidate {
   url: string;

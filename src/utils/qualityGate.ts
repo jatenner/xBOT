@@ -1,6 +1,6 @@
 import { supabaseClient } from './supabaseClient';
 import { getConfigValue, setConfigValue } from './config';
-import { runtimeConfig } from './supabaseConfig.js';
+import { runtimeConfig } from './supabaseConfig';
 
 export interface QualityMetrics {
   readabilityScore: number;

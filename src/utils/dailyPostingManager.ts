@@ -4,11 +4,11 @@ import { contentCache } from './contentCache';
 import { IntelligentSchedulingAgent } from '../agents/intelligentSchedulingAgent';
 import { strategicOpportunityScheduler } from '../agents/strategicOpportunityScheduler';
 import { HumanLikeStrategicMind } from '../agents/humanLikeStrategicMind';
-import { getConfig } from './botConfig.js';
+import { getConfig } from './botConfig';
 import { getConfigValue } from './config';
 import { monthlyBudgetManager } from './monthlyBudgetManager';
 import * as cron from 'node-cron';
-import { runtimeConfig } from './supabaseConfig.js';
+import { runtimeConfig } from './supabaseConfig';
 
 interface DailyPostingState {
   date: string;
