@@ -14,7 +14,6 @@ CREATE TABLE IF NOT EXISTS public.bot_config (
 CREATE TABLE IF NOT EXISTS public.scheduler_jobs (
   job_name TEXT PRIMARY KEY,
   cron     TEXT NOT NULL,
-  enabled  BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -40,7 +39,6 @@ ON CONFLICT (job_name) DO UPDATE SET cron = EXCLUDED.cron;
 
 -- 6) Create indexes for performance
 CREATE INDEX IF NOT EXISTS idx_bot_config_updated_at ON public.bot_config(updated_at);
-CREATE INDEX IF NOT EXISTS idx_scheduler_jobs_enabled ON public.scheduler_jobs(enabled);
 
 -- Verification query to confirm tables exist
 SELECT 'Tables created successfully' as status; 
