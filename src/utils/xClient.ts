@@ -457,14 +457,26 @@ class XService {
         tweets,
       };
     } catch (error: any) {
-      // Handle monthly cap error specifically
-      if (error.code === 429 && error.data?.title === 'UsageCapExceeded') {
-        console.error('🚨 Monthly cap hit during search - activating emergency mode');
+      // Handle monthly cap error specifically - ONLY for actual monthly product caps
+      if (error.code === 429 && 
+          error.data?.title === 'UsageCapExceeded' &&
+          error.data?.detail?.includes('Monthly product cap')) {
+        console.error('🚨 ACTUAL Monthly cap hit during search - activating emergency mode');
         await this.activateMonthlyCapMode();
         return {
           success: true,
           tweets: [],
           message: 'Monthly cap reached - search operations disabled'
+        };
+      }
+      
+      // Handle regular 429 rate limits (NOT monthly caps)
+      if (error.code === 429) {
+        console.log('⚠️ Regular rate limit hit (not monthly cap) - will retry later');
+        return {
+          success: false,
+          error: 'Rate limit exceeded - try again later',
+          tweets: [],
         };
       }
       
