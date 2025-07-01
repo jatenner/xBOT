@@ -968,9 +968,14 @@ class SupabaseService {
       return;
     }
     
-    return this.withRetries(async () => 
-      await this.client!.from('bot_config').upsert({ key, value })
-    );
+    try {
+      const { error } = await this.withRetries(async () => 
+        await this.client!.from('bot_config').upsert({ key, value })
+      );
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error updating config:', error);
+    }
   }
 
   async getTweetsSince(since: Date): Promise<any[]> {
@@ -979,12 +984,19 @@ class SupabaseService {
       return [];
     }
     
-    return this.withRetries(async () => 
-      await this.client!.from('tweets')
-        .select('*')
-        .gte('created_at', since.toISOString())
-        .order('created_at', { ascending: false })
-    );
+    try {
+      const { data, error } = await this.withRetries(async () => 
+        await this.client!.from('tweets')
+          .select('*')
+          .gte('created_at', since.toISOString())
+          .order('created_at', { ascending: false })
+      );
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching tweets since:', error);
+      return [];
+    }
   }
 
   async saveTweet(tweet: any): Promise<any | null> {
@@ -1021,12 +1033,19 @@ class SupabaseService {
       return [];
     }
     
-    return this.withRetries(async () => 
-      await this.client!.from('knowledge_store')
-        .select('*')
-        .textSearch('text', query)
-        .limit(limit)
-    );
+    try {
+      const { data, error } = await this.withRetries(async () => 
+        await this.client!.from('knowledge_store')
+          .select('*')
+          .textSearch('text', query)
+          .limit(limit)
+      );
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error searching knowledge:', error);
+      return [];
+    }
   }
 
   async saveKnowledge(source: string, sourceId: string, text: string, embedding: number[], metadata: any = {}): Promise<any | null> {
