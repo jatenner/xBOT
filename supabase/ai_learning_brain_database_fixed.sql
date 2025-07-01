@@ -1,8 +1,55 @@
-le
 -- 🧠 AI LEARNING BRAIN DATABASE (FIXED VERSION)
 -- ===============================================
 -- Comprehensive memory and learning system for autonomous AI agents
 -- This gives your AI agents the memory they need to learn and improve
+
+-- ===================================
+-- 0. TWITTER API LIMITS TABLE (FIXED)
+-- ===================================
+CREATE TABLE IF NOT EXISTS twitter_api_limits (
+    id SERIAL PRIMARY KEY,
+    tweets_this_month INTEGER DEFAULT 0,
+    monthly_tweet_cap INTEGER DEFAULT 1500,
+    daily_posts_count INTEGER DEFAULT 0,
+    daily_post_limit INTEGER DEFAULT 75,
+    reads_this_month INTEGER DEFAULT 0,
+    monthly_read_cap INTEGER DEFAULT 50000,
+    emergency_monthly_cap_mode BOOLEAN DEFAULT false,
+    last_daily_reset TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_monthly_reset TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Initialize Twitter API limits 
+INSERT INTO twitter_api_limits (
+    id, 
+    tweets_this_month, 
+    monthly_tweet_cap, 
+    daily_posts_count, 
+    daily_post_limit,
+    reads_this_month,
+    monthly_read_cap,
+    emergency_monthly_cap_mode,
+    last_daily_reset,
+    last_monthly_reset,
+    last_updated
+) VALUES (
+    1,
+    0,
+    1500,
+    0,
+    75,
+    0,
+    50000,
+    false,
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP
+) ON CONFLICT (id) DO UPDATE SET
+    emergency_monthly_cap_mode = false,
+    daily_post_limit = 75,
+    last_updated = CURRENT_TIMESTAMP;
 
 -- ===================================
 -- 1. AI DECISION TRACKING MEMORY
@@ -199,6 +246,7 @@ CREATE INDEX IF NOT EXISTS idx_engagement_patterns_confidence ON engagement_patt
 CREATE INDEX IF NOT EXISTS idx_competitor_intelligence_handle ON competitor_intelligence(competitor_handle);
 CREATE INDEX IF NOT EXISTS idx_trend_correlations_topic ON trend_correlations(trend_topic);
 CREATE INDEX IF NOT EXISTS idx_ai_experiments_status ON ai_experiments(experiment_status);
+CREATE INDEX IF NOT EXISTS idx_twitter_api_limits_last_updated ON twitter_api_limits(last_updated);
 
 -- ===================================
 -- LEARNING FUNCTIONS (SAFE VERSIONS)
