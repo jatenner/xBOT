@@ -13,6 +13,7 @@ import { getCurrentMonthlyPlan, getOptimizedSchedule } from '../utils/monthlyPla
 import { supabaseClient } from '../utils/supabaseClient';
 import { canMakeWrite } from '../utils/quotaGuard';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { getConfig } from '../utils/botConfig';
 
 dotenv.config();
 
@@ -170,23 +171,16 @@ export class StrategistAgent {
       };
     }
 
-    // 🚨 CHECK FOR MONTHLY API CAP WORKAROUND FIRST
+    // 🚨 EMERGENCY PAUSE: Check for monthly cap workaround mode
     try {
-      const { data: monthlyCapWorkaround } = await supabaseClient.supabase
+      const { data: workaroundConfig } = await supabaseClient.supabase
         ?.from('bot_config')
         .select('value')
         .eq('key', 'monthly_cap_workaround')
         .single() || { data: null };
 
-      if (monthlyCapWorkaround?.value?.enabled) {
-        console.log('🚨 MONTHLY API CAP: Operating in posting-only mode');
-        // Force posting decision when monthly cap is active
-        return {
-          action: 'post',
-          priority: 100,
-          reasoning: 'Monthly API cap exceeded - posting-only mode active. Focusing on original content.',
-          expectedEngagement: 200
-        };
+      if (workaroundConfig?.value?.enabled) {
+        console.log('🚨 MONTHLY CAP WORKAROUND: Using alternative strategy');
       }
     } catch (error) {
       console.log('⚠️ Could not check monthly cap workaround, continuing normally');
@@ -194,12 +188,15 @@ export class StrategistAgent {
 
     // 🚨 CHECK DAILY POSTING LIMITS 
     const canPostToday = await dailyPostingManager.shouldPostNow();
+    const dailyProgress = dailyPostingManager.getDailyProgress();
+    const dailyTarget = await dailyPostingManager.getDailyTweetCap();
+    
     if (!canPostToday) {
       console.log('🚨 DAILY POSTING LIMIT REACHED: Switching to ENGAGEMENT-ONLY mode');
       return {
         action: 'reply',
         priority: 95,
-        reasoning: 'Daily posting limit reached (6/6) - engaging through replies/likes only',
+        reasoning: `Daily posting limit reached (${dailyProgress.completed}/${dailyTarget}) - engaging through replies/likes only`,
         expectedEngagement: 150
       };
     }
@@ -209,7 +206,7 @@ export class StrategistAgent {
     const optimizedSchedule = await getOptimizedSchedule();
     
     console.log(`📊 INTELLIGENT ENGAGEMENT STRATEGY:`);
-    console.log(`   Daily posts used: ${this.postCount24h}/6`);
+    console.log(`   Daily posts used: ${dailyProgress.completed}/${dailyTarget}`);
     console.log(`   Engagement ratio: ${(optimizedSchedule.engagementRatio * 100).toFixed(0)}% engagement focus`);
     console.log(`   Strategy: ${monthlyPlan.strategy}`);
 
@@ -245,7 +242,7 @@ export class StrategistAgent {
     // Priority 1: ENGAGEMENT-FIRST STRATEGY (dynamic based on time)
     const shouldFocusOnEngagement = Math.random() < engagementWeight;
     
-    if (shouldFocusOnEngagement && this.postCount24h < 6) {
+    if (shouldFocusOnEngagement && dailyProgress.completed < dailyTarget) {
       // Choose smart engagement type based on time and context
       const engagementTypes = [
         { action: 'reply', weight: 0.8, reasoning: 'Strategic replies for conversation building' },
@@ -261,7 +258,7 @@ export class StrategistAgent {
           return {
             action: type.action as 'reply' | 'sleep',
             priority: 85,
-            reasoning: `INTELLIGENT ENGAGEMENT: ${type.reasoning} (${this.postCount24h}/6 posts used)`,
+            reasoning: `INTELLIGENT ENGAGEMENT: ${type.reasoning} (${dailyProgress.completed}/${dailyTarget} posts used)`,
             expectedEngagement: type.action === 'reply' ? 120 : 80
           };
         }
@@ -270,7 +267,7 @@ export class StrategistAgent {
 
     // Priority 2: STRATEGIC POSTING WINDOWS (when posting is warranted)
     const isOptimalViralWindow = this.isOptimalViralWindow(currentHour);
-    const postsRemaining = 6 - this.postCount24h;
+    const postsRemaining = dailyTarget - dailyProgress.completed;
     
     // Only post if we have strategic reasons and haven't used too many posts
     if (postsRemaining > 0 && minutesSinceLastPost >= minPostInterval) { // Dynamic minimum interval
