@@ -38,6 +38,7 @@ export class Scheduler {
   private autonomousLearner: AutonomousLearningAgent;
   private crossIndustryLearner: CrossIndustryLearningAgent;
   private nightlyOptimizer: NightlyOptimizerAgent;
+  private draftDrainJob: NodeJS.Timeout | null = null;
   private rateLimitedEngagementAgent: RealEngagementAgent;
   
   // Growth agents
@@ -714,6 +715,59 @@ export class Scheduler {
     }
   }
 
+  private scheduleDraftDrain(): void {
+    console.log('📝 Starting draft drain job (every 30 minutes)');
+    
+    const drainDrafts = async () => {
+      try {
+        const { data: drafts } = await supabase
+          .from('drafts')
+          .select('*')
+          .eq('draft_status', 'queued')
+          .order('created_at', { ascending: true })
+          .limit(5);
+        
+        if (drafts && drafts.length > 0) {
+          console.log(`📝 Processing ${drafts.length} queued drafts`);
+          
+          for (const draft of drafts) {
+            try {
+              const result = await this.postTweetAgent.run(false, draft.content);
+              
+              if (result.success) {
+                await supabase
+                  .from('drafts')
+                  .update({ draft_status: 'posted', posted_at: new Date().toISOString() })
+                  .eq('id', draft.id);
+                  
+                console.log(`✅ Posted draft: ${draft.content.substring(0, 50)}...`);
+              } else {
+                await supabase
+                  .from('drafts')
+                  .update({ draft_status: 'failed' })
+                  .eq('id', draft.id);
+                  
+                console.log(`❌ Failed to post draft: ${result.error}`);
+              }
+            } catch (error) {
+              console.error('❌ Failed to process draft:', error);
+              await supabase
+                .from('drafts')
+                .update({ draft_status: 'failed' })
+                .eq('id', draft.id);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('❌ Draft drain error:', error);
+      }
+    };
+    
+    // Run immediately and then every 30 minutes
+    drainDrafts();
+    this.draftDrainJob = setInterval(drainDrafts, 30 * 60 * 1000);
+  }
+
   stop(): void {
     console.log('🛑 Stopping scheduler...');
     
@@ -743,6 +797,12 @@ export class Scheduler {
         console.error(`❌ Error stopping ${name} job:`, error);
       }
     });
+    
+    // Stop draft drain job
+    if (this.draftDrainJob) {
+      clearInterval(this.draftDrainJob);
+      console.log('✅ Stopped draft drain job');
+    }
     
     for (const [name, job] of this.jobs) {
       try {

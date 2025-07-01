@@ -117,13 +117,46 @@ class XService {
     }
 
     try {
-      const tweet = await this.client.v2.tweet(content);
+      const response = await this.client.v2.tweet(content);
+
+      // Check for errors but only enforce API write limits
+      if (response.errors && response.errors.length > 0) {
+        for (const error of response.errors) {
+          // Only enforce API write limits (code 88), ignore user 24-hour cap (code 187)
+          if ((error as any).code === 88) {
+            throw {
+              isRateLimit: true,
+              resetTime: new Date(Date.now() + 15 * 60 * 1000),
+              remainingRequests: 0,
+              error: `API rate limit reached: ${error.detail || error.title}`
+            };
+          }
+          
+          // Ignore user 24-hour cap errors (code 187), only log them
+          if ((error as any).code === 187) {
+            console.log('⚠️ User 24-hour cap hit (IGNORED):', error.detail || error.title);
+            continue;
+          }
+          
+          // Handle other errors normally
+          throw new Error(error.detail || error.title || 'Tweet failed');
+        }
+      }
 
       return {
         success: true,
-        tweetId: tweet.data.id,
+        tweetId: response.data.id,
       };
-    } catch (error) {
+    } catch (error: any) {
+      // Handle rate limit errors specifically
+      if (error.code === 429 || error.status === 429) {
+        console.log('📊 Rate limit error detected');
+        return {
+          success: false,
+          error: 'Rate limit exceeded',
+        };
+      }
+      
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -262,19 +295,42 @@ class XService {
         replyId: 'test_reply_' + Date.now(),
       };
     }
+    
     try {
-      // TODO: Implement rate limiting check before replying
-      
-      const reply = await this.client.v2.tweet({
+      const response = await this.client.v2.tweet({
         text: content,
         reply: {
           in_reply_to_tweet_id: replyToTweetId,
         },
       });
       
+      // Check for errors but only enforce API write limits
+      if (response.errors && response.errors.length > 0) {
+        for (const error of response.errors) {
+          // Only enforce API write limits (code 88), ignore user 24-hour cap (code 187)
+          if ((error as any).code === 88) {
+            throw {
+              isRateLimit: true,
+              resetTime: new Date(Date.now() + 15 * 60 * 1000),
+              remainingRequests: 0,
+              error: `API rate limit reached: ${error.detail || error.title}`
+            };
+          }
+          
+          // Ignore user 24-hour cap errors (code 187), only log them
+          if ((error as any).code === 187) {
+            console.log('⚠️ User 24-hour cap hit (IGNORED) during reply:', error.detail || error.title);
+            continue;
+          }
+          
+          // Handle other errors normally
+          throw new Error(error.detail || error.title || 'Reply failed');
+        }
+      }
+      
       return {
         success: true,
-        replyId: reply.data.id,
+        replyId: response.data.id,
       };
       
     } catch (error: any) {
@@ -282,7 +338,7 @@ class XService {
       
       let errorMessage = 'Unknown error occurred';
       
-      if (error.code === 429) {
+      if (error.code === 429 || error.status === 429) {
         errorMessage = 'Rate limit exceeded';
       } else if (error.code === 403) {
         errorMessage = 'Reply forbidden';

@@ -1,5 +1,5 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import dotenv from 'dotenv';
+import { createClient, SupabaseClient, PostgrestError } from '@supabase/supabase-js';
+import * as dotenv from 'dotenv';
 
 dotenv.config();
 
@@ -939,6 +939,111 @@ class SupabaseService {
       console.error('Error fetching tweets:', error);
       return [];
     }
+  }
+
+  async getTweetById(id: string): Promise<any | null> {
+    if (!this.client) {
+      console.warn('Supabase client not initialized');
+      return null;
+    }
+    return this.withRetries(async () => 
+      await this.client!.from('tweets').select('*').eq('id', id).single()
+    );
+  }
+
+  async getConfig(key: string): Promise<any | null> {
+    if (!this.client) {
+      console.warn('Supabase client not initialized');
+      return null;
+    }
+    
+    return this.withRetries(async () => 
+      await this.client!.from('bot_config').select('value').eq('key', key).single()
+    );
+  }
+
+  async updateConfig(key: string, value: any): Promise<void> {
+    if (!this.client) {
+      console.warn('Supabase client not initialized');
+      return;
+    }
+    
+    return this.withRetries(async () => 
+      await this.client!.from('bot_config').upsert({ key, value })
+    );
+  }
+
+  async getTweetsSince(since: Date): Promise<any[]> {
+    if (!this.client) {
+      console.warn('Supabase client not initialized');
+      return [];
+    }
+    
+    return this.withRetries(async () => 
+      await this.client!.from('tweets')
+        .select('*')
+        .gte('created_at', since.toISOString())
+        .order('created_at', { ascending: false })
+    );
+  }
+
+  async saveTweet(tweet: any): Promise<any | null> {
+    if (!this.client) {
+      console.warn('Supabase client not initialized');
+      return null;
+    }
+    
+    return this.withRetries(async () => 
+      await this.client!.from('tweets').insert(tweet)
+    );
+  }
+
+  async saveEngagementMetrics(tweetId: string, metrics: any): Promise<any | null> {
+    if (!this.client) {
+      console.warn('Supabase client not initialized');
+      return null;
+    }
+    
+    return this.withRetries(async () => 
+      await this.client!.from('engagement_history').insert({
+        tweet_id: tweetId,
+        likes: metrics.likes || 0,
+        retweets: metrics.retweets || 0,
+        replies: metrics.replies || 0,
+        impressions: metrics.impressions || 0
+      })
+    );
+  }
+
+  async searchKnowledge(query: string, limit: number = 10): Promise<any[]> {
+    if (!this.client) {
+      console.warn('Supabase client not initialized');
+      return [];
+    }
+    
+    return this.withRetries(async () => 
+      await this.client!.from('knowledge_store')
+        .select('*')
+        .textSearch('text', query)
+        .limit(limit)
+    );
+  }
+
+  async saveKnowledge(source: string, sourceId: string, text: string, embedding: number[], metadata: any = {}): Promise<any | null> {
+    if (!this.client) {
+      console.warn('Supabase client not initialized');
+      return null;
+    }
+    
+    return this.withRetries(async () => 
+      await this.client!.from('knowledge_store').insert({
+        source,
+        source_id: sourceId,
+        text,
+        embedding,
+        metadata
+      })
+    );
   }
 }
 
