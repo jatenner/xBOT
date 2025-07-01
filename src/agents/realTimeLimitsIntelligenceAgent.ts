@@ -163,9 +163,9 @@ export class RealTimeLimitsIntelligenceAgent {
 
   /**
    * 🐦 FETCH TWITTER LIMITS FROM HEADERS
-   * Reads both write limits and user 24-hour cap, but only returns write limits
+   * Reads both write limits and user 24-hour cap, returns all four values
    */
-  private async fetchTwitterLimits(): Promise<{ writeRemaining: number; writeReset: number }> {
+  private async fetchTwitterLimits(): Promise<{ writeRemaining: number; writeReset: number; userRemaining: number; userReset: number }> {
     try {
       // Make a test call to get headers
       await xClient.getUserByUsername('Signal_Synapse');
@@ -173,7 +173,9 @@ export class RealTimeLimitsIntelligenceAgent {
       // If successful, we don't have the headers, so return optimistic values
       return {
         writeRemaining: 100, // Conservative estimate when call succeeds
-        writeReset: Math.floor(Date.now() / 1000) + (15 * 60) // 15 minutes from now
+        writeReset: Math.floor(Date.now() / 1000) + (15 * 60), // 15 minutes from now
+        userRemaining: 17, // Conservative estimate for user 24h cap
+        userReset: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 24 hours from now
       };
       
     } catch (error: any) {
@@ -190,36 +192,43 @@ export class RealTimeLimitsIntelligenceAgent {
         console.info(`   x-user-limit-24hour-remaining: ${userRemaining}`);
         console.info(`   x-user-limit-24hour-reset: ${userReset}`);
         
-        // Only return the real write limits
+        // Return all four values
         return {
           writeRemaining: writeRemaining || 0,
-          writeReset: writeReset || Math.floor(Date.now() / 1000) + (15 * 60)
+          writeReset: writeReset || Math.floor(Date.now() / 1000) + (15 * 60),
+          userRemaining: userRemaining || 0,
+          userReset: userReset || Math.floor(Date.now() / 1000) + (24 * 60 * 60)
         };
       }
       
       // No headers available, return conservative defaults
       return {
         writeRemaining: 0,
-        writeReset: Math.floor(Date.now() / 1000) + (15 * 60)
+        writeReset: Math.floor(Date.now() / 1000) + (15 * 60),
+        userRemaining: 0,
+        userReset: Math.floor(Date.now() / 1000) + (24 * 60 * 60)
       };
     }
   }
 
   /**
    * 🛡️ CAN POST CHECK
-   * Only blocks based on true API write limits, ignores user 24-hour cap
+   * Only blocks based on true API write limits (writeRemaining <= 0), ignores user 24-hour cap
    */
   canPost(): boolean {
     // Check if we're in emergency cooldown
     if (this.emergencyCooldownUntil && new Date() < this.emergencyCooldownUntil) {
+      console.log('⏸️ canPost(): Blocked by emergency cooldown until', this.emergencyCooldownUntil.toISOString());
       return false;
     }
     
     // Reset cooldown if expired
     if (this.emergencyCooldownUntil && new Date() >= this.emergencyCooldownUntil) {
       this.emergencyCooldownUntil = null;
+      console.log('✅ canPost(): Emergency cooldown expired, resuming normal operations');
     }
     
+    console.log('✅ canPost(): Allowed - no emergency cooldown active');
     return true; // Allow posting unless in emergency cooldown
   }
 
@@ -232,20 +241,27 @@ export class RealTimeLimitsIntelligenceAgent {
     
     try {
       // Get true API write limits
-      const { writeRemaining, writeReset } = await this.fetchTwitterLimits();
+      const { writeRemaining, writeReset, userRemaining, userReset } = await this.fetchTwitterLimits();
       const resetTime = new Date(writeReset * 1000);
+      const userResetTime = new Date(userReset * 1000);
       
-      // Only block when write limits are exhausted
+      // CRITICAL: Only block when TRUE API write limits are exhausted, ignore user 24h cap
       if (writeRemaining <= 0) {
-        console.log('🚨 RATE LIMIT BLOCK: True API write limits exhausted');
+        console.log(`🚨 RATE LIMIT BLOCK: True API write limits exhausted (writeRemaining: ${writeRemaining})`);
         this.emergencyCooldownUntil = resetTime;
         isLocked = true;
         accountStatus = 'limited';
       } else {
-        console.log(`✅ API Write Limits OK: ${writeRemaining} remaining`);
+        console.log(`✅ API Write Limits OK: ${writeRemaining} remaining (userRemaining: ${userRemaining} - IGNORED)`);
         accountStatus = 'active';
         isLocked = false;
       }
+
+      // Log clear distinction between write limits and user caps
+      console.info(`🔍 Rate Limit Status:`);
+      console.info(`   Write Quota (ENFORCED): ${writeRemaining} remaining, resets at ${resetTime.toISOString()}`);
+      console.info(`   User 24h Cap (IGNORED): ${userRemaining} remaining, resets at ${userResetTime.toISOString()}`);
+      console.info(`   Posting Status: ${isLocked ? 'BLOCKED by write quota' : 'ALLOWED'}`);
 
       // Get rate limits from the X client (15-minute windows)  
       const rateLimits = await xClient.checkRateLimit();
@@ -296,7 +312,7 @@ export class RealTimeLimitsIntelligenceAgent {
         },
         accountStatus,
         isLocked,
-        canPost: !isLocked && (writeRemaining > 0) && (monthlyStats.tweets < 2000),
+        canPost: !isLocked && (writeRemaining > 0) && (monthlyStats.tweets < 2000), // Only check writeRemaining, not userRemaining
         canRead: !isLocked && (rateLimits?.remaining || 0) > 0,
         nextSafePostTime: isLocked ? resetTime : now,
         recommendedWaitTime: isLocked ? Math.ceil((resetTime.getTime() - now.getTime()) / 60000) : 0
