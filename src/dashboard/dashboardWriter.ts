@@ -6,6 +6,7 @@
 import { supabaseClient } from '../utils/supabaseClient';
 import { DynamicPostingController } from '../utils/dynamicPostingController';
 import { getConfig } from '../utils/botConfig';
+import { monthlyBudgetManager } from '../utils/monthlyBudgetManager';
 
 interface PlannedPost {
   time: string;
@@ -98,30 +99,56 @@ export class DashboardWriter {
     
     try {
       // Get bot configuration for tomorrow's strategy
-      const postingStrategy = await getConfig('posting_strategy', 'balanced');
-      const dailyTarget = parseInt(await getConfig('max_daily_tweets', '8'));
+      const postingStrategy = await getConfig('posting_strategy', 'intelligent_monthly_budget');
       
-      console.log(`🎯 Strategy: ${postingStrategy}, Target: ${dailyTarget} posts`);
+      // Get intelligent daily target from monthly budget manager
+      const budgetCalculation = await monthlyBudgetManager.getIntelligentDailyTarget();
+      const dailyTarget = budgetCalculation.final_target;
+      
+      console.log(`🎯 Strategy: ${postingStrategy}`);
+      console.log(`📊 Intelligent Daily Target: ${dailyTarget} posts`);
+      console.log(`💡 Reasoning: ${budgetCalculation.reasoning}`);
+      
+      // Get monthly budget status for context
+      const monthlyStatus = await monthlyBudgetManager.getMonthlyStatus();
+      console.log(`📈 Monthly Budget: ${monthlyStatus.used}/${monthlyStatus.budget} tweets (${(monthlyStatus.utilization * 100).toFixed(1)}%)`);
+      console.log(`📅 Days Remaining: ${monthlyStatus.daysLeft}`);
       
       // Generate posting schedule for tomorrow
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
       
-      // Define optimal posting windows (UTC)
-      const postingWindows = [
-        { start: 9, end: 10, posts: Math.ceil(dailyTarget * 0.15), priority: 3, type: 'morning_startup' },
-        { start: 11, end: 12, posts: Math.ceil(dailyTarget * 0.15), priority: 3, type: 'late_morning' },
-        { start: 13, end: 14, posts: Math.ceil(dailyTarget * 0.2), priority: 4, type: 'lunch_peak' },
-        { start: 15, end: 16, posts: Math.ceil(dailyTarget * 0.2), priority: 4, type: 'afternoon_peak' },
-        { start: 17, end: 18, posts: Math.ceil(dailyTarget * 0.15), priority: 3, type: 'evening_start' },
-        { start: 19, end: 20, posts: Math.ceil(dailyTarget * 0.15), priority: 4, type: 'evening_prime' }
+      // Dynamic posting windows based on intelligent target
+      const baseWindows = [
+        { start: 9, end: 10, ratio: 0.12, priority: 3, type: 'morning_startup' },
+        { start: 11, end: 12, ratio: 0.15, priority: 3, type: 'late_morning' },
+        { start: 13, end: 14, ratio: 0.18, priority: 4, type: 'lunch_peak' },
+        { start: 15, end: 16, ratio: 0.20, priority: 4, type: 'afternoon_peak' },
+        { start: 17, end: 18, ratio: 0.15, priority: 3, type: 'evening_start' },
+        { start: 19, end: 20, ratio: 0.20, priority: 4, type: 'evening_prime' }
       ];
+      
+      // Calculate posts per window based on daily target
+      const postingWindows = baseWindows.map(window => ({
+        ...window,
+        posts: Math.max(1, Math.ceil(dailyTarget * window.ratio))
+      }));
 
-      // Adjust remaining posts to hit target
+      // Adjust to hit exact target
       const totalPlanned = postingWindows.reduce((sum, window) => sum + window.posts, 0);
-      if (totalPlanned < dailyTarget) {
-        const remaining = dailyTarget - totalPlanned;
-        postingWindows[3].posts += remaining; // Add to afternoon peak
+      if (totalPlanned !== dailyTarget) {
+        const difference = dailyTarget - totalPlanned;
+        // Distribute difference across high-priority windows
+        const highPriorityWindows = postingWindows.filter(w => w.priority === 4);
+        if (highPriorityWindows.length > 0) {
+          const perWindow = Math.ceil(Math.abs(difference) / highPriorityWindows.length);
+          for (let i = 0; i < Math.abs(difference); i++) {
+            const windowIndex = i % highPriorityWindows.length;
+            const window = highPriorityWindows[windowIndex];
+            window.posts += difference > 0 ? 1 : -1;
+            window.posts = Math.max(1, window.posts); // Ensure at least 1 post
+          }
+        }
       }
 
       // Generate posts for each window
@@ -133,13 +160,13 @@ export class DashboardWriter {
           postTime.setUTCHours(window.start, randomMinute, 0, 0);
           
           // Determine content type based on time and strategy
-          const contentType = this.selectContentType(window.type, postingStrategy);
+          const contentType = this.selectContentType(window.type, postingStrategy, budgetCalculation);
           
           plannedPosts.push({
             time: postTime.toISOString(),
             content_type: contentType,
             priority: window.priority,
-            reasoning: `${window.type} posting window - ${postingStrategy} strategy`,
+            reasoning: `${window.type} - ${budgetCalculation.reasoning}`,
             estimated_engagement: this.estimateEngagement(contentType, window.priority)
           });
         }
@@ -147,6 +174,8 @@ export class DashboardWriter {
 
       // Sort by time
       plannedPosts.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+      
+      console.log(`✅ Generated ${plannedPosts.length} intelligent posts for tomorrow`);
       
       return plannedPosts;
       
@@ -156,24 +185,35 @@ export class DashboardWriter {
     }
   }
 
-  private selectContentType(windowType: string, strategy: string): string {
+  private selectContentType(windowType: string, strategy: string, budgetCalc: any): string {
+    // Enhanced content selection based on budget calculation
+    const isHighOpportunity = budgetCalc.opportunity_boost > 0.2;
+    const isHighPerformance = budgetCalc.performance_modifier > 1.1;
+    
     const contentTypes = {
-      morning_startup: ['industry_insight', 'research_highlight'],
-      late_morning: ['breakthrough_discovery', 'educational'],
-      lunch_peak: ['controversial_take', 'viral_stat'],
-      afternoon_peak: ['breaking_news', 'trend_analysis'],
+      morning_startup: isHighOpportunity ? ['breakthrough_discovery', 'trending_insight'] : ['industry_insight', 'research_highlight'],
+      late_morning: isHighPerformance ? ['viral_stat', 'controversial_take'] : ['educational', 'thought_leadership'],
+      lunch_peak: ['breakthrough_discovery', 'viral_stat', 'controversial_take'],
+      afternoon_peak: isHighOpportunity ? ['breaking_news', 'trending_insight', 'viral_stat'] : ['trend_analysis', 'industry_insight'],
       evening_start: ['thought_leadership', 'industry_insight'],
-      evening_prime: ['educational', 'engaging_question']
+      evening_prime: isHighPerformance ? ['engaging_question', 'viral_stat'] : ['educational', 'research_highlight']
     };
 
-    // Adjust based on strategy
-    if (strategy === 'aggressive') {
-      return ['breakthrough_discovery', 'controversial_take', 'viral_stat'][Math.floor(Math.random() * 3)];
-    } else if (strategy === 'conservative') {
-      return ['educational', 'research_highlight', 'industry_insight'][Math.floor(Math.random() * 3)];
+    // Intelligent strategy-based selection
+    if (strategy === 'intelligent_monthly_budget') {
+      if (isHighOpportunity && isHighPerformance) {
+        // High opportunity + high performance = aggressive content
+        return ['breakthrough_discovery', 'controversial_take', 'viral_stat'][Math.floor(Math.random() * 3)];
+      } else if (isHighOpportunity) {
+        // High opportunity = trending content
+        return ['trending_insight', 'breaking_news', 'viral_stat'][Math.floor(Math.random() * 3)];
+      } else if (isHighPerformance) {
+        // High performance = engaging content
+        return ['engaging_question', 'controversial_take', 'thought_leadership'][Math.floor(Math.random() * 3)];
+      }
     }
 
-    // Balanced strategy - use window-appropriate content
+    // Default to window-appropriate content
     const windowTypes = contentTypes[windowType as keyof typeof contentTypes] || ['educational'];
     return windowTypes[Math.floor(Math.random() * windowTypes.length)];
   }

@@ -6,6 +6,7 @@ import { strategicOpportunityScheduler } from '../agents/strategicOpportunitySch
 import { HumanLikeStrategicMind } from '../agents/humanLikeStrategicMind';
 import { getConfig } from './botConfig.js';
 import { getConfigValue } from './config';
+import { monthlyBudgetManager } from './monthlyBudgetManager';
 import * as cron from 'node-cron';
 import { runtimeConfig } from './supabaseConfig.js';
 
@@ -17,6 +18,7 @@ interface DailyPostingState {
   posting_schedule: string[];
   emergency_mode: boolean;
   last_post_time?: string;
+  monthly_budget_target?: number; // New: intelligent target from monthly budget
 }
 
 interface PostingWindow {
@@ -617,7 +619,7 @@ class DailyPostingManager {
    * Dynamic configuration-driven tweet limit
    */
   async getDailyTweetCap(): Promise<number> {
-    return await getConfigValue('target_tweets_per_day', 8);
+    return await getConfigValue('target_tweets_per_day', 17);
   }
 
   /**

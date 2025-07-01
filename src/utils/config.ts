@@ -88,13 +88,19 @@ export async function getAllConfig(): Promise<Record<string, any>> {
  */
 
 export const defaults = {
-  maxDailyTweets: parseInt(process.env.MAX_DAILY_TWEETS || '17'),
+  // Dynamic monthly budget management (1500 tweets/month)
+  monthlyTweetBudget: 1500, // Twitter API Free Tier limit
+  dynamicDailyTargeting: true, // Enable intelligent daily distribution
+  maxDailyTweets: 75, // Safety cap (never exceed this per day)
+  minDailyTweets: 20, // Minimum baseline activity
+  baselineDailyTarget: 50, // Default daily target (~1500/30 days)
+  
   quality: { 
     readabilityMin: 55, 
     credibilityMin: 0.85 
   },
-  fallbackStaggerMinutes: 90,
-  postingStrategy: "balanced"
+  fallbackStaggerMinutes: 30, // More responsive timing
+  postingStrategy: "intelligent_monthly_budget"
 };
 
 /**
