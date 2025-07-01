@@ -2,6 +2,7 @@ import { openaiClient } from '../utils/openaiClient';
 import { realLinkProvider } from '../utils/realLinkProvider';
 import { TrendResearchFusion } from './trendResearchFusion';
 import { QualityGate, QualityMetrics } from '../utils/qualityGate';
+import { supabase } from '../utils/supabaseClient';
 
 interface ViralContent {
   content: string;
@@ -144,13 +145,69 @@ export class UltraViralGenerator {
 
   async generateViralTweet(topic?: string, preferredTemplate?: string): Promise<ViralContent> {
     try {
+      // 🚨 CHECK CREATIVE DIVERSITY MANDATES
+      let creativeDiversityConfig: any = null;
+      let controversialConfig: any = null;
+      let hooksConfig: any = null;
+      
+      try {
+        const { data: diversity } = await supabase
+          .from('bot_config')
+          .select('value')
+          .eq('key', 'creative_format_diversity')
+          .single() || { data: null };
+          
+        const { data: controversial } = await supabase
+          .from('bot_config')
+          .select('value')
+          .eq('key', 'controversial_content_mandates')
+          .single() || { data: null };
+          
+        const { data: hooks } = await supabase
+          .from('bot_config')
+          .select('value')
+          .eq('key', 'attention_hook_mandates')
+          .single() || { data: null };
+          
+        creativeDiversityConfig = diversity?.value;
+        controversialConfig = controversial?.value;
+        hooksConfig = hooks?.value;
+        
+        if (creativeDiversityConfig?.enabled) {
+          console.log('🎨 CREATIVE DIVERSITY MODE: Enforcing creative format rotation');
+        }
+        
+        if (controversialConfig?.enabled) {
+          console.log('🔥 CONTROVERSIAL MODE: Forcing hot takes and contrarian views');
+        }
+        
+        if (hooksConfig?.enabled) {
+          console.log('⚡ ATTENTION HOOK MODE: Mandatory hooks in first 10 words');
+        }
+      } catch (configError) {
+        console.log('⚠️ Could not load creative diversity configs, using standard mode');
+      }
+      
       // Use trend-research fusion for enhanced content
       const fusionItems = await this.trendFusion.generateTrendResearchItems();
       let selectedItem = fusionItems.length > 0 ? fusionItems[0] : null;
       
-      // Select template based on preference or fusion content
-      let selectedTemplate = this.selectOptimalTemplate(preferredTemplate, selectedItem);
-      const selectedTopic = selectedItem?.trendTopic || topic || this.healthTechTopics[Math.floor(Math.random() * this.healthTechTopics.length)];
+      // FORCE CREATIVE FORMAT if mandated
+      let selectedTemplate;
+      if (creativeDiversityConfig?.enabled && creativeDiversityConfig?.mandatory_formats) {
+        selectedTemplate = this.selectCreativeFormat(creativeDiversityConfig, preferredTemplate, selectedItem);
+        console.log(`🎨 FORCED CREATIVE FORMAT: ${selectedTemplate.name}`);
+      } else {
+        selectedTemplate = this.selectOptimalTemplate(preferredTemplate, selectedItem);
+      }
+      
+      // FORCE CONTROVERSIAL TOPIC if mandated
+      let selectedTopic = selectedItem?.trendTopic || topic || this.healthTechTopics[Math.floor(Math.random() * this.healthTechTopics.length)];
+      if (controversialConfig?.enabled && controversialConfig?.controversial_topics) {
+        const controversialTopics = controversialConfig.controversial_topics;
+        selectedTopic = controversialTopics[Math.floor(Math.random() * controversialTopics.length)];
+        console.log(`🔥 FORCED CONTROVERSIAL TOPIC: ${selectedTopic}`);
+      }
       
       console.log(`🎨 Generating ${selectedTemplate.name} tweet about: ${selectedTopic}`);
       
@@ -162,11 +219,31 @@ export class UltraViralGenerator {
       // Generate content with multiple attempts for quality
       for (let attempt = 1; attempt <= 3; attempt++) {
         try {
-          const result = await this.generateWithTemplate(selectedTemplate, selectedTopic, selectedItem);
+          const result = await this.generateWithTemplate(selectedTemplate, selectedTopic, selectedItem, {
+            creativeDiversityConfig,
+            controversialConfig,
+            hooksConfig
+          });
           content = result.content;
           citation = result.citation;
           url = result.url;
           engagement_triggers = result.engagement_triggers;
+          
+          // APPLY CREATIVE DIVERSITY CHECKS
+          if (creativeDiversityConfig?.enabled || controversialConfig?.enabled || hooksConfig?.enabled) {
+            const diversityCheck = this.checkCreativeDiversity(content, {
+              creativeDiversityConfig,
+              controversialConfig,
+              hooksConfig
+            });
+            
+            if (!diversityCheck.passes) {
+              console.log(`❌ Attempt ${attempt} failed diversity check: ${diversityCheck.failures.join(', ')}`);
+              if (attempt < 3) continue;
+            } else {
+              console.log(`✅ Content passed creative diversity checks on attempt ${attempt}`);
+            }
+          }
           
           // Quality gate check
           const qualityCheck = await this.qualityGate.checkQuality(content, url, citation);
@@ -383,14 +460,14 @@ Generate engaging, varied content that follows the pattern but feels fresh and s
   /**
    * Generate content with specific template
    */
-  private async generateWithTemplate(template: TweetTemplate, topic: string, fusionItem?: any): Promise<{
+  private async generateWithTemplate(template: TweetTemplate, topic: string, fusionItem?: any, config?: any): Promise<{
     content: string;
     citation: string;
     url: string;
     engagement_triggers: string[];
   }> {
     try {
-      const prompt = this.buildEnhancedPrompt(template, topic, fusionItem);
+      const prompt = this.buildEnhancedPrompt(template, topic, fusionItem, config);
       const content = await openaiClient.generateTweet(prompt, 'viral');
       
       return {
@@ -414,7 +491,7 @@ Generate engaging, varied content that follows the pattern but feels fresh and s
   /**
    * Build enhanced prompt with trend fusion data
    */
-  private buildEnhancedPrompt(template: TweetTemplate, topic: string, fusionItem?: any): string {
+  private buildEnhancedPrompt(template: TweetTemplate, topic: string, fusionItem?: any, config?: any): string {
     let contextData = '';
     
     if (fusionItem) {
@@ -692,5 +769,74 @@ This changes everything for healthcare`;
 Revolutionary progress in healthcare technology continues to accelerate`;
     
     return fallbackContent;
+  }
+
+  private selectCreativeFormat(creativeDiversityConfig: any, preferredTemplate?: string, fusionItem?: any): TweetTemplate {
+    if (!creativeDiversityConfig?.mandatory_formats) {
+      return this.selectOptimalTemplate(preferredTemplate, fusionItem);
+    }
+    
+    const mandatoryFormats = creativeDiversityConfig.mandatory_formats;
+    
+    // Select format based on weights
+    const totalWeight = mandatoryFormats.reduce((sum: number, format: any) => sum + format.weight, 0);
+    let randomValue = Math.random() * totalWeight;
+    
+    for (const format of mandatoryFormats) {
+      randomValue -= format.weight;
+      if (randomValue <= 0) {
+        // Convert format to template structure
+        return {
+          name: format.name,
+          pattern: format.pattern,
+          examples: [format.pattern], // Use pattern as example
+          maxLength: 280,
+          requiresCitation: true
+        };
+      }
+    }
+    
+    // Fallback
+    return this.selectOptimalTemplate(preferredTemplate, fusionItem);
+  }
+
+  private checkCreativeDiversity(content: string, configs: any): { passes: boolean; failures: string[] } {
+    const failures: string[] = [];
+    const { creativeDiversityConfig, controversialConfig, hooksConfig } = configs;
+    
+    // Check for banned repetitive starts
+    if (creativeDiversityConfig?.banned_repetitive_starts) {
+      for (const bannedStart of creativeDiversityConfig.banned_repetitive_starts) {
+        if (content.toLowerCase().includes(bannedStart.toLowerCase())) {
+          failures.push(`Contains banned repetitive start: "${bannedStart}"`);
+        }
+      }
+    }
+    
+    // Check for mandatory controversial elements
+    if (controversialConfig?.enabled && controversialConfig?.mandatory_hooks) {
+      const hasControversialHook = controversialConfig.mandatory_hooks.some((hook: string) => 
+        content.includes(hook)
+      );
+      if (!hasControversialHook) {
+        failures.push('Missing mandatory controversial hook');
+      }
+    }
+    
+    // Check for attention-grabbing hooks in first 10 words
+    if (hooksConfig?.enabled && hooksConfig?.require_hook_in_first_10_words) {
+      const firstTenWords = content.split(' ').slice(0, 10).join(' ');
+      const hasAttentionHook = hooksConfig.mandatory_hook_types?.some((hookType: any) =>
+        hookType.examples.some((example: string) => firstTenWords.includes(example))
+      );
+      if (!hasAttentionHook) {
+        failures.push('Missing attention-grabbing hook in first 10 words');
+      }
+    }
+    
+    return {
+      passes: failures.length === 0,
+      failures
+    };
   }
 } 
