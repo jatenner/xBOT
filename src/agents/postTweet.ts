@@ -264,7 +264,73 @@ export class PostTweetAgent {
     try {
       const { xClient } = await import('../utils/xClient.js');
       
-      console.log('🐦 Posting to Twitter:', { content, imageUrl });
+      // 🚨 EMERGENCY CONTENT VALIDATION
+      if (!content || content.trim().length === 0) {
+        console.log('🚨 EMERGENCY: Empty content detected - using fallback');
+        
+        // Get emergency fallback content from database
+        try {
+          const { data: fallbackConfig } = await supabase
+            .from('bot_config')
+            .select('value')
+            .eq('key', 'emergency_fallback_content')
+            .single() || { data: null };
+            
+          if (fallbackConfig?.value?.enabled && fallbackConfig?.value?.fallback_templates) {
+            const templates = fallbackConfig.value.fallback_templates;
+            const insights = fallbackConfig.value.controversial_insights || [];
+            const predictions = fallbackConfig.value.bold_predictions || [];
+            
+            // Select random template and fill it
+            const template = templates[Math.floor(Math.random() * templates.length)];
+            let fallbackContent = template;
+            
+            // Fill template placeholders
+            if (template.includes('{insight}') && insights.length > 0) {
+              const insight = insights[Math.floor(Math.random() * insights.length)];
+              fallbackContent = template.replace('{insight}', insight).replace('{domain}', 'patient care');
+            } else if (template.includes('{statistic}')) {
+              const statistic = Math.floor(Math.random() * 95) + 5; // 5-99%
+              fallbackContent = template.replace('{statistic}', statistic.toString());
+            } else if (template.includes('{healthcare_setting}')) {
+              const settings = ['Mayo Clinic', 'Johns Hopkins', 'Stanford Medical', 'Cleveland Clinic'];
+              const setting = settings[Math.floor(Math.random() * settings.length)];
+              fallbackContent = template.replace('{healthcare_setting}', setting);
+            } else if (template.includes('{common_belief}')) {
+              const beliefs = ['AI can\'t replace human intuition', 'telemedicine is impersonal', 'electronic records improve efficiency'];
+              const belief = beliefs[Math.floor(Math.random() * beliefs.length)];
+              fallbackContent = template.replace('{common_belief}', belief);
+            } else if (template.includes('{bold_prediction}') && predictions.length > 0) {
+              const prediction = predictions[Math.floor(Math.random() * predictions.length)];
+              fallbackContent = template.replace('{bold_prediction}', prediction);
+            }
+            
+            content = fallbackContent;
+            console.log('✅ EMERGENCY: Using fallback content:', content.substring(0, 100) + '...');
+          } else {
+            // Ultimate fallback
+            content = "🔥 HOT TAKE: After 15 years in healthcare tech, I'm seeing patterns that will reshape the entire industry. The next 12 months will separate the winners from the obsolete. Here's what's coming...";
+            console.log('✅ EMERGENCY: Using ultimate fallback content');
+          }
+        } catch (fallbackError) {
+          console.error('❌ Fallback content fetch failed:', fallbackError);
+          content = "🔥 HOT TAKE: After 15 years in healthcare tech, I'm seeing patterns that will reshape the entire industry. The next 12 months will separate the winners from the obsolete. Here's what's coming...";
+        }
+      }
+      
+      // Additional validation
+      if (content.trim().length < 10) {
+        console.log('🚨 EMERGENCY: Content too short, enhancing...');
+        content = content + " This will fundamentally change how we approach healthcare innovation.";
+      }
+      
+      // Validate content length for Twitter
+      if (content.length > 280) {
+        console.log('🚨 EMERGENCY: Content too long, truncating...');
+        content = content.substring(0, 277) + '...';
+      }
+      
+      console.log('🐦 Posting to Twitter:', { content: content.substring(0, 100) + '...', imageUrl });
       
       // Post to actual Twitter using xClient
       let result: TweetResult;
