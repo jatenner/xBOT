@@ -2836,7 +2836,115 @@ Make it insightful, strategic, and reveal hidden implications. 250 characters ma
    */
   private async checkRateLimit(): Promise<{ canPost: boolean; reason: string }> {
     try {
-      // Check database for recent posts
+      // 🚨 FIRST: Check emergency configurations
+      console.log('🔍 Checking emergency configurations...');
+      
+      // Check emergency search block configuration
+      const { data: emergencyBlock } = await supabaseClient.supabase
+        ?.from('bot_config')
+        .select('value')
+        .eq('key', 'emergency_search_block')
+        .single() || { data: null };
+      
+      if (emergencyBlock?.value?.enable_posting_only_mode) {
+        console.log('🚨 EMERGENCY: Posting-only mode detected');
+        
+        // Even in posting-only mode, check if emergency mode is too strict
+        if (emergencyBlock.value.block_all_searches || emergencyBlock.value.emergency_mode) {
+          const emergencyTime = new Date(emergencyBlock.value.emergency_mode_until || 0);
+          const now = new Date();
+          
+          if (now < emergencyTime) {
+            return {
+              canPost: false,
+              reason: `Emergency mode active until ${emergencyTime.toLocaleString()}. All operations blocked to prevent 429 errors.`
+            };
+          }
+        }
+      }
+      
+      // Check emergency timing configuration  
+      const { data: emergencyTiming } = await supabaseClient.supabase
+        ?.from('bot_config')
+        .select('value')
+        .eq('key', 'emergency_timing')
+        .single() || { data: null };
+        
+      if (emergencyTiming?.value) {
+        const timing = emergencyTiming.value;
+        
+        // Check if we're in emergency cooldown period
+        if (timing.emergency_mode_until) {
+          const emergencyUntil = new Date(timing.emergency_mode_until);
+          const now = new Date();
+          
+          if (now < emergencyUntil) {
+            return {
+              canPost: false,
+              reason: `Emergency cooldown active until ${emergencyUntil.toLocaleString()}. Waiting for Twitter API limits to reset.`
+            };
+          }
+        }
+        
+        // Check minimum post interval from emergency config
+        if (timing.minimum_post_interval_minutes) {
+          const today = new Date().toISOString().split('T')[0];
+          const { data: todaysPosts } = await supabaseClient.supabase
+            ?.from('tweets')
+            .select('created_at')
+            .gte('created_at', today + 'T00:00:00')
+            .order('created_at', { ascending: false })
+            .limit(1) || { data: [] };
+          
+          if (todaysPosts && todaysPosts.length > 0) {
+            const lastPostTime = new Date(todaysPosts[0].created_at);
+            const timeSinceLastPost = Date.now() - lastPostTime.getTime();
+            const requiredInterval = timing.minimum_post_interval_minutes * 60 * 1000;
+            
+            if (timeSinceLastPost < requiredInterval) {
+              const waitMinutes = Math.ceil((requiredInterval - timeSinceLastPost) / 60000);
+              return {
+                canPost: false,
+                reason: `Emergency timing: Must wait ${waitMinutes} more minutes since last post (required: ${timing.minimum_post_interval_minutes} minutes)`
+              };
+            }
+          }
+        }
+      }
+      
+      // Check emergency rate limits configuration
+      const { data: emergencyRateLimits } = await supabaseClient.supabase
+        ?.from('bot_config')
+        .select('value')
+        .eq('key', 'emergency_rate_limits')
+        .single() || { data: null };
+        
+      if (emergencyRateLimits?.value?.emergency_mode) {
+        console.log('🚨 EMERGENCY: Rate limit emergency mode active');
+        
+        // Check if we've exceeded emergency limits
+        const limits = emergencyRateLimits.value;
+        const now = new Date();
+        const currentHour = now.getHours();
+        
+        // Get posts in last 15 minutes (Twitter's rate limit window)
+        const fifteenMinutesAgo = new Date(now.getTime() - 15 * 60 * 1000);
+        const { data: recentPosts } = await supabaseClient.supabase
+          ?.from('tweets')
+          .select('created_at')
+          .gte('created_at', fifteenMinutesAgo.toISOString()) || { data: [] };
+          
+        const postsLast15Min = recentPosts?.length || 0;
+        
+        if (postsLast15Min >= (limits.max_calls_per_15_min || 5)) {
+          return {
+            canPost: false,
+            reason: `Emergency rate limit: ${postsLast15Min}/${limits.max_calls_per_15_min || 5} posts in last 15 minutes. Preventing Twitter 429 errors.`
+          };
+        }
+      }
+
+      // Check regular database rate limits
       const today = new Date().toISOString().split('T')[0];
       const { data: todaysPosts } = await supabaseClient.supabase
         ?.from('tweets')
@@ -2846,35 +2954,44 @@ Make it insightful, strategic, and reveal hidden implications. 250 characters ma
       
       const postsToday = todaysPosts?.length || 0;
       
-      // Conservative daily limit
-      if (postsToday >= runtimeConfig.maxDailyTweets) {
+      // Conservative daily limit (use runtime config or emergency override)
+      let dailyLimit = runtimeConfig.maxDailyTweets;
+      
+      // Check if emergency config overrides daily limit
+      if (emergencyTiming?.value?.max_daily_tweets && emergencyTiming.value.max_daily_tweets < dailyLimit) {
+        dailyLimit = emergencyTiming.value.max_daily_tweets;
+        console.log(`🚨 Using emergency daily limit: ${dailyLimit}`);
+      }
+      
+      if (postsToday >= dailyLimit) {
         return { 
           canPost: false, 
-          reason: `Daily limit reached: ${postsToday}/${runtimeConfig.maxDailyTweets} posts today`
+          reason: `Daily limit reached: ${postsToday}/${dailyLimit} posts today`
         };
       }
       
-      // Check time since last post
+      // Check time since last post (regular check)
       if (todaysPosts && todaysPosts.length > 0) {
         const lastPostTime = new Date(todaysPosts[0].created_at);
         const timeSinceLastPost = Date.now() - lastPostTime.getTime();
-        const MIN_INTERVAL = 20 * 60 * 1000; // 20 minutes minimum
+        const MIN_INTERVAL = 30 * 60 * 1000; // 30 minutes minimum (increased from 20)
         
         if (timeSinceLastPost < MIN_INTERVAL) {
           const waitMinutes = Math.ceil((MIN_INTERVAL - timeSinceLastPost) / 60000);
           return { 
             canPost: false, 
-            reason: `Must wait ${waitMinutes} more minutes since last post`
+            reason: `Must wait ${waitMinutes} more minutes since last post (30-minute safety interval)`
           };
         }
       }
       
+      console.log('✅ All rate limit checks passed - posting allowed');
       return { canPost: true, reason: 'Rate limit check passed' };
       
     } catch (error) {
       console.log('⚠️ Rate limit check failed:', error.message);
       // Be conservative on error
-      return { canPost: false, reason: 'Rate limit check failed - being conservative' };
+      return { canPost: false, reason: 'Rate limit check failed - being conservative to prevent API errors' };
     }
   }
 }

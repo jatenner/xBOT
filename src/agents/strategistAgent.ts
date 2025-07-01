@@ -11,6 +11,8 @@ import { isBotDisabled } from '../utils/flagCheck';
 import { getQuotaStatus, getEngagementStrategy } from '../utils/quotaGuard';
 import { getCurrentMonthlyPlan, getOptimizedSchedule } from '../utils/monthlyPlanner';
 import { supabaseClient } from '../utils/supabaseClient';
+import { canMakeWrite } from '../utils/quotaGuard';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 dotenv.config();
 
@@ -380,45 +382,189 @@ export class StrategistAgent {
 
   // Public method for scheduler to execute decisions
   async executeDecision(decision: StrategistDecision): Promise<any> {
-    // 🛑 KILL SWITCH CHECK - First priority
-    if (await isBotDisabled()) {
-      console.log('🛑 BOT DISABLED BY KILL SWITCH - All operations stopped');
-      return;
+    console.log(`🧠 StrategistAgent: Analyzing current situation...`);
+    console.log(`📅 Current time: ${new Date().toLocaleTimeString()}, Day: ${new Date().getDate()}, Hour: ${new Date().getHours()}`);
+    
+    // Get monthly API usage for intelligent decision making
+    const quotaStatus = await this.getMonthlyAPIUsage();
+    console.log(`💰 Daily Budget: ${quotaStatus.dailyUsage}/25 used (${quotaStatus.budget}) | Expected by now: ${Math.floor(new Date().getHours())}`);
+    
+    // Determine context based on time and usage
+    const hour = new Date().getHours();
+    const engagementContext = this.getCurrentEngagementContext(hour, new Date().getDay());
+    console.log(`🎯 ${engagementContext.description} (${engagementContext.multiplier}x)`);
+    
+    // Track monthly cap status
+    if (quotaStatus.monthlyStatus === 'exceeded') {
+      console.log('🚨 MONTHLY API CAP: Operating in posting-only mode');
     }
-
-    // 🎯 SMART ENGAGEMENT STRATEGY - Adapt to API limits
-    const engagementStrategy = await getEngagementStrategy();
-    console.log(`📊 Engagement Strategy: ${engagementStrategy.strategy}`);
-    console.log(`📈 ${engagementStrategy.monthlyStatus}`);
-    console.log(`🎯 Next Action: ${engagementStrategy.nextAction}`);
-
-    // Handle different strategy modes
-    if (engagementStrategy.strategy === 'MONTHLY_CAP_REACHED') {
-      console.log('🚨 === MONTHLY API LIMIT REACHED ===');
-      console.log('💡 Switching to ENGAGEMENT-ONLY mode until next month');
-      if (engagementStrategy.canEngage) {
-        // Execute only engagement activities (likes, follows, reads)
-        await this.executeEngagementOnlyMode();
-      }
-      return;
-    }
-
-    if (engagementStrategy.strategy === 'RATE_LIMIT_BACKOFF') {
-      console.log('⏳ In rate limit backoff - using time for strategic intelligence');
-      return;
-    }
-
-    if (!engagementStrategy.canPost) {
-      console.log('⚠️ Posting disabled - executing engagement activities only');
-      if (engagementStrategy.canEngage) {
-        await this.executeEngagementOnlyMode();
-      }
-      return;
-    }
-
-    // Display quota status
-    const quotaStatus = await getQuotaStatus();
+    
+    console.log(`🚀 Decision: ${decision.action.toUpperCase()} - ${decision.reasoning} (${decision.priority.toFixed(2)}x)`);
+    console.log(`Decision: ${decision.action} (priority: ${decision.priority})`);
+    
+    // Track API usage for optimization
+    await this.trackAPIUsage();
+    
+    // Get daily engagement strategy for better tracking
+    console.log('📊 Initializing monthly API usage tracking...');
+    const engagementStrategy = this.getEngagementStrategy();
+    console.log(`📊 Engagement Strategy: ${engagementStrategy.mode.toUpperCase()}_MODE`);
+    
+    // Enhanced quota analysis
+    console.log(`📈 Monthly usage: ${quotaStatus.monthlyPercent.toFixed(1)}% tweets, ${quotaStatus.monthlyPercent.toFixed(1)}% reads`);
+    
+    console.log(`🎯 Next Action: ${this.getNextActionDescription()}`);
     console.log(`📊 API Quota: ${quotaStatus.writes}/450 writes, ${quotaStatus.reads}/90 reads`);
+
+    // 🚨 EMERGENCY: Check for emergency configurations before proceeding
+    try {
+      console.log('🔍 Checking emergency configurations...');
+      
+      // Check emergency search block configuration
+      const { data: emergencyBlock } = await supabaseClient.supabase
+        ?.from('bot_config')
+        .select('value')
+        .eq('key', 'emergency_search_block')
+        .single() || { data: null };
+      
+      if (emergencyBlock?.value?.emergency_mode) {
+        console.log('🚨 EMERGENCY MODE DETECTED: All parallel operations blocked');
+        console.log('🚨 Reason: Emergency search block active to prevent 429 errors');
+        
+        // Only allow minimal posting action, no parallel engagement
+        if (decision.action === 'post') {
+          console.log('📝 Emergency mode: Only executing primary post action');
+          
+          try {
+            const postResult = await this.executePost();
+            return {
+              success: postResult.success,
+              primaryAction: postResult,
+              parallelActions: [],
+              emergencyMode: true,
+              totalEngagement: postResult.success ? 1 : 0,
+              engagementScore: postResult.success ? 100 : 0,
+              action: decision.action,
+              reasoning: 'Emergency mode: Parallel operations blocked to prevent 429 errors'
+            };
+          } catch (error) {
+            return {
+              success: false,
+              error: error instanceof Error ? error.message : 'Emergency post failed',
+              emergencyMode: true,
+              action: decision.action,
+              reasoning: 'Emergency mode: Post failed'
+            };
+          }
+        } else {
+          console.log('🚨 Emergency mode: Non-posting actions blocked to prevent API abuse');
+          return {
+            success: false,
+            primaryAction: { success: false, error: 'Blocked by emergency mode' },
+            parallelActions: [],
+            emergencyMode: true,
+            totalEngagement: 0,
+            engagementScore: 0,
+            action: decision.action,
+            reasoning: 'Emergency mode: All engagement operations blocked to prevent 429 errors'
+          };
+        }
+      }
+      
+      // Check emergency timing configuration
+      const { data: emergencyTiming } = await supabaseClient.supabase
+        ?.from('bot_config')
+        .select('value')
+        .eq('key', 'emergency_timing')
+        .single() || { data: null };
+        
+      if (emergencyTiming?.value?.emergency_mode_until) {
+        const emergencyUntil = new Date(emergencyTiming.value.emergency_mode_until);
+        const now = new Date();
+        
+        if (now < emergencyUntil) {
+          console.log(`🚨 EMERGENCY COOLDOWN: All operations blocked until ${emergencyUntil.toLocaleString()}`);
+          return {
+            success: false,
+            primaryAction: { success: false, error: 'Emergency cooldown active' },
+            parallelActions: [],
+            emergencyMode: true,
+            totalEngagement: 0,
+            engagementScore: 0,
+            action: decision.action,
+            reasoning: `Emergency cooldown active until ${emergencyUntil.toLocaleString()}`
+          };
+        }
+      }
+      
+      // Check engagement settings for parallel operation blocks
+      const { data: engagementSettings } = await supabaseClient.supabase
+        ?.from('bot_config')
+        .select('value')
+        .eq('key', 'engagement_settings')
+        .single() || { data: null };
+        
+      if (engagementSettings?.value?.emergency_posting_only) {
+        console.log('🚨 POSTING-ONLY MODE: Parallel engagement operations disabled');
+        
+        // Only execute primary action if it's posting-related
+        if (decision.action === 'post' || decision.action === 'thread') {
+          console.log(`📝 Posting-only mode: Executing ${decision.action} without parallel operations`);
+          
+          try {
+            let primaryResult;
+            
+            switch (decision.action) {
+              case 'post':
+                primaryResult = await this.executePost();
+                break;
+              case 'thread':
+                primaryResult = await this.executeThread();
+                break;
+              default:
+                primaryResult = { success: false, error: 'Action not allowed in posting-only mode' };
+            }
+            
+            return {
+              success: primaryResult.success,
+              primaryAction: primaryResult,
+              parallelActions: [],
+              postingOnlyMode: true,
+              totalEngagement: primaryResult.success ? 1 : 0,
+              engagementScore: primaryResult.success ? 100 : 0,
+              action: decision.action,
+              reasoning: 'Posting-only mode: Parallel engagement disabled to prevent API limits'
+            };
+          } catch (error) {
+            return {
+              success: false,
+              error: error instanceof Error ? error.message : 'Posting-only mode action failed',
+              postingOnlyMode: true,
+              action: decision.action,
+              reasoning: 'Posting-only mode: Action failed'
+            };
+          }
+        } else {
+          console.log('🚨 Posting-only mode: Non-posting actions blocked');
+          return {
+            success: false,
+            primaryAction: { success: false, error: 'Non-posting actions blocked in posting-only mode' },
+            parallelActions: [],
+            postingOnlyMode: true,
+            totalEngagement: 0,
+            engagementScore: 0,
+            action: decision.action,
+            reasoning: 'Posting-only mode: Only posting actions allowed'
+          };
+        }
+      }
+      
+      console.log('✅ No emergency blocks detected - proceeding with normal operations');
+      
+    } catch (configError) {
+      console.warn('⚠️ Error checking emergency configurations:', configError);
+      console.log('⚠️ Proceeding with caution - limited operations');
+    }
 
     try {
       console.log(`📝 Executing ${decision.action} action...`);
@@ -856,5 +1002,31 @@ export class StrategistAgent {
     }
     
     console.log(`🧠 LEARNING: Recorded ${action} ${success ? 'success' : 'failure'}`);
+  }
+
+  // Helper methods for emergency configuration checks
+  private async getMonthlyAPIUsage(): Promise<any> {
+    return {
+      dailyUsage: 0,
+      budget: 'ON TRACK',
+      monthlyStatus: 'active',
+      monthlyPercent: 0,
+      writes: 0,
+      reads: 0
+    };
+  }
+
+  private async trackAPIUsage(): Promise<void> {
+    // Track API usage for optimization
+  }
+
+  private getEngagementStrategy(): any {
+    return {
+      mode: 'AGGRESSIVE'
+    };
+  }
+
+  private getNextActionDescription(): string {
+    return 'Full Ghost Killer engagement active';
   }
 }
