@@ -38,16 +38,14 @@ class DailyPostingManager {
   private scheduledJobs: cron.ScheduledTask[] = [];
   private useIntelligentScheduling = true;
 
-  // SAFE HUMAN-LIKE posting windows (8 posts max)
+  // INTELLIGENT HIGH-VOLUME posting windows (30-75 posts distributed optimally)
   private readonly POSTING_WINDOWS: PostingWindow[] = [
-    { start_hour: 9, end_hour: 10, posts_count: 1, priority: 3 },  // Morning
-    { start_hour: 11, end_hour: 12, posts_count: 1, priority: 3 }, // Late Morning  
-    { start_hour: 13, end_hour: 14, posts_count: 1, priority: 4 }, // Early Afternoon - PEAK
-    { start_hour: 15, end_hour: 16, posts_count: 1, priority: 4 }, // Mid Afternoon - PEAK
-    { start_hour: 17, end_hour: 18, posts_count: 1, priority: 3 }, // Late Afternoon
-    { start_hour: 19, end_hour: 20, posts_count: 1, priority: 4 }, // Evening - PEAK
-    { start_hour: 14, end_hour: 15, posts_count: 1, priority: 4 }, // Peak afternoon
-    { start_hour: 20, end_hour: 21, posts_count: 1, priority: 3 }, // Evening
+    { start_hour: 6, end_hour: 9, posts_count: 6, priority: 3 },   // Early Morning
+    { start_hour: 9, end_hour: 12, posts_count: 12, priority: 4 }, // Morning Peak
+    { start_hour: 12, end_hour: 15, posts_count: 15, priority: 5 }, // Lunch & Early Afternoon PEAK
+    { start_hour: 15, end_hour: 18, posts_count: 15, priority: 5 }, // Late Afternoon PEAK
+    { start_hour: 18, end_hour: 21, posts_count: 12, priority: 4 }, // Evening Peak
+    { start_hour: 21, end_hour: 23, posts_count: 6, priority: 3 },  // Late Evening
   ];
 
   constructor() {
@@ -449,8 +447,8 @@ class DailyPostingManager {
     }
     
     // Check daily limit
-    if (this.currentState.posts_completed >= 10) { // Conservative limit
-      console.log('🚨 DAILY LIMIT REACHED: 10 posts completed, blocking further posts');
+    if (this.currentState.posts_completed >= this.DAILY_TARGET) {
+      console.log(`🚨 DAILY LIMIT REACHED: ${this.currentState.posts_completed}/${this.DAILY_TARGET} posts completed, blocking further posts`);
       return;
     }
     try {
@@ -619,7 +617,17 @@ class DailyPostingManager {
    * Dynamic configuration-driven tweet limit
    */
   async getDailyTweetCap(): Promise<number> {
-    return await getConfigValue('target_tweets_per_day', 17);
+    try {
+      const { data: runtimeConfig } = await supabaseClient.supabase
+        ?.from('bot_config')
+        .select('value')
+        .eq('key', 'runtime_config')
+        .single() || { data: null };
+      
+      return runtimeConfig?.value?.maxDailyTweets || this.DAILY_TARGET;
+    } catch (error) {
+      return this.DAILY_TARGET; // Fallback to class property
+    }
   }
 
   /**
