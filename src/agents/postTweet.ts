@@ -24,6 +24,7 @@ import type { TweetResult } from '../utils/xClient.js';
 import { runSanityChecks } from '../utils/contentSanity';
 import { AdaptiveContentLearner } from './adaptiveContentLearner';
 import { CompetitiveIntelligenceLearner } from './competitiveIntelligenceLearner';
+import { NuclearLearningEnhancer } from './nuclearLearningEnhancer';
 import { QuoteAgent } from './quoteAgent.js';
 import { QualityGate } from '../utils/qualityGate.js';
 import { PollAgent } from './pollAgent.js';
@@ -130,6 +131,7 @@ export class PostTweetAgent {
   private viralGenerator: UltraViralGenerator;
   private adaptiveLearner: AdaptiveContentLearner;
   private competitiveLearner: CompetitiveIntelligenceLearner;
+  private nuclearLearning: NuclearLearningEnhancer;
 
   constructor() {
     this.imageAgent = new ImageAgent();
@@ -146,8 +148,9 @@ export class PostTweetAgent {
     // Initialize autonomous learning systems
     this.adaptiveLearner = new AdaptiveContentLearner();
     this.competitiveLearner = new CompetitiveIntelligenceLearner();
+    this.nuclearLearning = NuclearLearningEnhancer.getInstance();
     
-    console.log('🧠 Autonomous learning systems initialized');
+    console.log('🧠 Nuclear learning intelligence systems initialized');
     
     // Initialize learning systems in background
     this.initializeLearning();
@@ -546,15 +549,22 @@ export class PostTweetAgent {
         let content = '';
         
         // Use learning-optimized content mode selection
-        const contentMode = this.selectOptimizedContentMode(optimizedStrategy);
+        const contentMode = await this.selectOptimizedContentMode(optimizedStrategy);
         console.log(`📊 Selected content mode: ${contentMode} (learning-optimized)`);
         
         try {
           switch (contentMode) {
             case 'viral':
-              console.log('🔥 Generating viral content with learned patterns...');
-              const viralResult = await this.generateViralTweet(false, false);
-              content = viralResult.content || '';
+              console.log('🔥 Generating NUCLEAR viral content with learned patterns...');
+              // Try nuclear learning first
+              try {
+                content = await this.nuclearLearning.generateCreativeContent();
+                console.log('🧠 NUCLEAR LEARNING: Generated creative content');
+              } catch (error) {
+                console.warn('⚠️ Nuclear learning fallback to viral generator');
+                const viralResult = await this.generateViralTweet(false, false);
+                content = viralResult.content || '';
+              }
               break;
               
             case 'comprehensive':
@@ -570,20 +580,48 @@ export class PostTweetAgent {
               break;
               
             case 'trending':
-              console.log('📈 Generating trending content...');
-              const trendingResult = await this.generateTrendingTweet(false, false);
-              content = trendingResult.content || '';
+              console.log('📈 Generating NUCLEAR trending content...');
+              // Try nuclear learning for trending content
+              try {
+                const topTrend = this.nuclearLearning.getTopTrendingTopic();
+                if (topTrend) {
+                  const hook = topTrend.viral_hooks[Math.floor(Math.random() * topTrend.viral_hooks.length)];
+                  content = `${hook}\n\nThis breakthrough could reshape the entire healthcare landscape.`;
+                  console.log(`🧠 NUCLEAR TRENDING: Used topic "${topTrend.topic}" (score: ${topTrend.trend_score})`);
+                } else {
+                  throw new Error('No trending topics available');
+                }
+              } catch (error) {
+                console.warn('⚠️ Nuclear trending fallback to standard generator');
+                const trendingResult = await this.generateTrendingTweet(false, false);
+                content = trendingResult.content || '';
+              }
               break;
               
             default:
-              console.log('🎲 Generating engagement-focused content...');
-              const engagementResult = await this.generateViralTweet(false, false);
-              content = engagementResult.content || '';
+              console.log('🎲 Generating NUCLEAR engagement-focused content...');
+              // Try competitive intelligence for default case
+              try {
+                content = await this.nuclearLearning.generateCompetitorInspiredContent();
+                console.log('🧠 NUCLEAR COMPETITIVE: Generated competitor-inspired content');
+              } catch (error) {
+                console.warn('⚠️ Nuclear competitive fallback to engagement generator');
+                const engagementResult = await this.generateViralTweet(false, false);
+                content = engagementResult.content || '';
+              }
           }
           
           if (content) {
             // Apply learning-based content optimization
             content = this.applyLearningOptimizations(content, optimizedStrategy);
+            
+            // 🧠 NUCLEAR ENHANCEMENT: Enhance with viral elements
+            try {
+              content = await this.nuclearLearning.enhanceContentWithViralElements(content);
+              console.log('🧠 NUCLEAR ENHANCEMENT: Added viral elements to content');
+            } catch (error) {
+              console.warn('⚠️ Nuclear enhancement error:', error);
+            }
             
             // Extract topic for tracking
             const topic = this.extractKeyTopic(content);
@@ -618,29 +656,65 @@ export class PostTweetAgent {
     return await regenerateCallback();
   }
 
-  private selectOptimizedContentMode(optimizedStrategy: any): 'viral' | 'comprehensive' | 'engagement' | 'current_events' | 'trending' {
-    // Use learning insights to select optimal content mode
-    if (optimizedStrategy.learning_stats?.viral_success_rate > 30) {
-      console.log('🔥 High viral success rate detected - prioritizing viral content');
-      return 'viral';
-    }
-    
-    // Check for trending topics from competitive intelligence
-    if (optimizedStrategy.competitor_viral_patterns?.length > 0) {
-      console.log('📈 Competitor viral patterns detected - using trending approach');
-      return 'trending';
-    }
-    
-    // Check recent insights for content type preferences
-    const recentInsights = optimizedStrategy.latest_insights || [];
-    if (recentInsights.some((insight: string) => insight.includes('BREAKING') || insight.includes('NEWS'))) {
-      console.log('📰 News format showing success - using current events');
-      return 'current_events';
-    }
-    
-    // Default to viral if we have successful patterns
-    if (optimizedStrategy.successful_patterns?.length > 0) {
-      return 'viral';
+  private async selectOptimizedContentMode(optimizedStrategy: any): Promise<'viral' | 'comprehensive' | 'engagement' | 'current_events' | 'trending'> {
+    try {
+      // 🧠 NUCLEAR LEARNING: Get intelligent content strategy from database
+      const { data: strategyData } = await supabase
+        .from('bot_config')
+        .select('value')
+        .eq('key', 'intelligent_content_strategy')
+        .single() || { data: null };
+      
+      if (strategyData?.value?.content_mix) {
+        const contentMix = strategyData.value.content_mix;
+        
+        // Use weighted random selection based on learning data
+        const modes = [
+          { mode: 'viral', weight: contentMix.breaking_news + contentMix.hot_takes },
+          { mode: 'trending', weight: contentMix.trending_topics },
+          { mode: 'comprehensive', weight: contentMix.data_insights },
+          { mode: 'current_events', weight: contentMix.educational }
+        ];
+        
+        const totalWeight = modes.reduce((sum, m) => sum + m.weight, 0);
+        const random = Math.random() * totalWeight;
+        let accumulator = 0;
+        
+        for (const mode of modes) {
+          accumulator += mode.weight;
+          if (random <= accumulator) {
+            console.log(`🧠 NUCLEAR LEARNING: Selected ${mode.mode} mode (weight: ${mode.weight})`);
+            return mode.mode as any;
+          }
+        }
+      }
+      
+      // Use learning insights to select optimal content mode
+      if (optimizedStrategy.learning_stats?.viral_success_rate > 30) {
+        console.log('🔥 High viral success rate detected - prioritizing viral content');
+        return 'viral';
+      }
+      
+      // Check for trending topics from competitive intelligence
+      if (optimizedStrategy.competitor_viral_patterns?.length > 0) {
+        console.log('📈 Competitor viral patterns detected - using trending approach');
+        return 'trending';
+      }
+      
+      // Check recent insights for content type preferences
+      const recentInsights = optimizedStrategy.latest_insights || [];
+      if (recentInsights.some((insight: string) => insight.includes('BREAKING') || insight.includes('NEWS'))) {
+        console.log('📰 News format showing success - using current events');
+        return 'current_events';
+      }
+      
+      // Default to viral if we have successful patterns
+      if (optimizedStrategy.successful_patterns?.length > 0) {
+        return 'viral';
+      }
+      
+    } catch (error) {
+      console.warn('⚠️ Error in nuclear learning mode selection:', error);
     }
     
     // Fallback to original logic
@@ -710,34 +784,92 @@ export class PostTweetAgent {
     console.log('🚨 Generating learning-enhanced fallback content...');
     
     try {
-      // Use successful patterns from learning for fallback
-      const successfulPatterns = optimizedStrategy.successful_patterns || [];
+      // 🧠 NUCLEAR LEARNING: Get viral patterns from database
+      const { data: viralPatternsData } = await supabase
+        .from('bot_config')
+        .select('value')
+        .eq('key', 'viral_intelligence_patterns')
+        .single() || { data: null };
       
-      if (successfulPatterns.length > 0) {
-        const bestPattern = successfulPatterns[0];
-        console.log(`🔥 Using best learned pattern: ${bestPattern.description}`);
+      // 🧠 NUCLEAR LEARNING: Get trending topics from database  
+      const { data: trendingTopicsData } = await supabase
+        .from('bot_config')
+        .select('value')
+        .eq('key', 'trending_topics_intelligence')
+        .single() || { data: null };
         
-        if (bestPattern.description.includes('BREAKING')) {
-          return await this.generateBreakingNewsFallback();
-        } else if (bestPattern.description.includes('data')) {
-          return await this.generateDataDrivenFallback();
-        } else if (bestPattern.description.includes('Hot take')) {
-          return await this.generateControversialFallback();
+      // 🧠 NUCLEAR LEARNING: Get competitive intelligence
+      const { data: competitorData } = await supabase
+        .from('bot_config')
+        .select('value')
+        .eq('key', 'competitive_intelligence')
+        .single() || { data: null };
+
+      if (viralPatternsData?.value?.patterns) {
+        const patterns = viralPatternsData.value.patterns;
+        const bestPattern = patterns.find((p: any) => p.success_rate >= 85) || patterns[0];
+        
+        console.log(`🔥 Using NUCLEAR viral pattern: ${bestPattern.type} (${bestPattern.success_rate}% success)`);
+        
+        if (bestPattern.type === 'breaking_news') {
+          const hooks = trendingTopicsData?.value?.topics?.[0]?.viral_hooks || [
+            'AI just achieved 99.1% accuracy in cancer detection',
+            'New brain implant restores movement in paralyzed patients'
+          ];
+          const hook = hooks[Math.floor(Math.random() * hooks.length)];
+          return `🚨 BREAKING: ${hook}\n\nThis could revolutionize healthcare within the next 5 years. The implications are staggering.`;
+        }
+        
+        if (bestPattern.type === 'hot_take') {
+          const controversialTakes = [
+            'AI will replace 80% of medical diagnosis within 10 years, and that\'s actually good news',
+            'Digital therapeutics are more effective than pills for most mental health conditions',
+            'Healthcare AI bias isn\'t a tech problem, it\'s a data problem we\'re afraid to fix'
+          ];
+          const take = controversialTakes[Math.floor(Math.random() * controversialTakes.length)];
+          return `💡 Hot take: ${take}\n\nChange my mind in the comments 👇`;
+        }
+        
+        if (bestPattern.type === 'thread_starter') {
+          return '🧵 Thread: 5 healthcare AI breakthroughs that will blow your mind (and why #3 changes everything)\n\n1/ AI diagnostics just achieved superhuman accuracy in cancer detection...';
+        }
+        
+        if (bestPattern.type === 'data_bomb') {
+          return '📊 Wild stat: Healthcare AI market will hit $148B by 2030\n\nThat\'s a 10x increase from today. Here\'s why this explosion is inevitable and what it means for patients...';
+        }
+      }
+
+      // Use competitive intelligence formulas
+      if (competitorData?.value?.successful_formulas) {
+        const formulas = competitorData.value.successful_formulas;
+        const bestFormula = formulas.find((f: any) => f.success_rate >= 85) || formulas[0];
+        
+        console.log(`🕵️ Using competitive formula: ${bestFormula.formula} (${bestFormula.success_rate}% success)`);
+        
+        if (bestFormula.formula.includes('SHOCKING_STAT')) {
+          return 'AI accuracy in cancer detection just hit 99.1% (better than human doctors). This will save millions of lives. Are we ready for AI-first healthcare?';
+        }
+        
+        if (bestFormula.formula.includes('CONTRARIAN_TAKE')) {
+          return 'Unpopular opinion: Most health apps are useless. Only 3% have clinical evidence. But those 3% will revolutionize healthcare in the next 5 years.';
         }
       }
       
-      // Use competitive insights for fallback
-      const competitorPatterns = optimizedStrategy.competitor_viral_patterns || [];
-      if (competitorPatterns.length > 0) {
-        console.log('🕵️ Using competitive intelligence for fallback');
-        return await this.generateCompetitorInspiredFallback(competitorPatterns[0]);
+      // Use trending topics as last resort
+      if (trendingTopicsData?.value?.topics) {
+        const topics = trendingTopicsData.value.topics;
+        const hotTopic = topics.find((t: any) => t.trend_score >= 90) || topics[0];
+        const hook = hotTopic.viral_hooks?.[0] || `${hotTopic.topic} is transforming healthcare`;
+        
+        console.log(`📈 Using trending topic: ${hotTopic.topic} (score: ${hotTopic.trend_score})`);
+        return `${hook}\n\nThis breakthrough could change everything we know about modern medicine.`;
       }
       
     } catch (error) {
-      console.warn('⚠️ Learning-enhanced fallback error:', error);
+      console.warn('⚠️ Nuclear learning fallback error:', error);
     }
     
-    // Ultimate fallback
+    // Ultimate emergency fallback
     return await this.generateFallbackContent();
   }
 
