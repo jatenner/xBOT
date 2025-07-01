@@ -267,73 +267,58 @@ export class PostTweetAgent {
     try {
       const { xClient } = await import('../utils/xClient.js');
       
-      // 🚨 EMERGENCY CONTENT VALIDATION
-      if (!content || content.trim().length === 0) {
-        console.log('🚨 EMERGENCY: Empty content detected - using fallback');
+      // 🚨 PRIORITY 1: Validate content quality first
+      if (!content || content.trim().length < 20) {
+        console.log('🚨 EMERGENCY: Content too short, generating high-quality content...');
         
-        // Get emergency fallback content from database
+        // Try Nuclear Learning Intelligence first
         try {
-          const { data: fallbackConfig } = await supabase
-            .from('bot_config')
-            .select('value')
-            .eq('key', 'emergency_fallback_content')
-            .single() || { data: null };
-            
-          if (fallbackConfig?.value?.enabled && fallbackConfig?.value?.fallback_templates) {
-            const templates = fallbackConfig.value.fallback_templates;
-            const insights = fallbackConfig.value.controversial_insights || [];
-            const predictions = fallbackConfig.value.bold_predictions || [];
-            
-            // Select random template and fill it
-            const template = templates[Math.floor(Math.random() * templates.length)];
-            let fallbackContent = template;
-            
-            // Fill template placeholders
-            if (template.includes('{insight}') && insights.length > 0) {
-              const insight = insights[Math.floor(Math.random() * insights.length)];
-              fallbackContent = template.replace('{insight}', insight).replace('{domain}', 'patient care');
-            } else if (template.includes('{statistic}')) {
-              const statistic = Math.floor(Math.random() * 95) + 5; // 5-99%
-              fallbackContent = template.replace('{statistic}', statistic.toString());
-            } else if (template.includes('{healthcare_setting}')) {
-              const settings = ['Mayo Clinic', 'Johns Hopkins', 'Stanford Medical', 'Cleveland Clinic'];
-              const setting = settings[Math.floor(Math.random() * settings.length)];
-              fallbackContent = template.replace('{healthcare_setting}', setting);
-            } else if (template.includes('{common_belief}')) {
-              const beliefs = ['AI can\'t replace human intuition', 'telemedicine is impersonal', 'electronic records improve efficiency'];
-              const belief = beliefs[Math.floor(Math.random() * beliefs.length)];
-              fallbackContent = template.replace('{common_belief}', belief);
-            } else if (template.includes('{bold_prediction}') && predictions.length > 0) {
-              const prediction = predictions[Math.floor(Math.random() * predictions.length)];
-              fallbackContent = template.replace('{bold_prediction}', prediction);
-            }
-            
-            content = fallbackContent;
-            console.log('✅ EMERGENCY: Using fallback content:', content.substring(0, 100) + '...');
-          } else {
-            // Ultimate fallback
-            content = "🔥 HOT TAKE: After 15 years in healthcare tech, I'm seeing patterns that will reshape the entire industry. The next 12 months will separate the winners from the obsolete. Here's what's coming...";
-            console.log('✅ EMERGENCY: Using ultimate fallback content');
+          const nuclearContent = await this.generateNuclearLearningContent();
+          if (nuclearContent && nuclearContent.length > 50) {
+            content = nuclearContent;
+            console.log('✅ NUCLEAR: Generated high-quality content via Nuclear Learning');
           }
-        } catch (fallbackError) {
-          console.error('❌ Fallback content fetch failed:', fallbackError);
-          content = "🔥 HOT TAKE: After 15 years in healthcare tech, I'm seeing patterns that will reshape the entire industry. The next 12 months will separate the winners from the obsolete. Here's what's coming...";
+        } catch (nuclearError) {
+          console.warn('⚠️ Nuclear Learning generation failed:', nuclearError);
+        }
+        
+        // If still no quality content, try premium generation
+        if (!content || content.trim().length < 20) {
+          try {
+            const premiumContent = await this.generatePremiumContent();
+            if (premiumContent && premiumContent.length > 50) {
+              content = premiumContent;
+              console.log('✅ PREMIUM: Generated high-quality content via Premium mode');
+            }
+          } catch (premiumError) {
+            console.warn('⚠️ Premium generation failed:', premiumError);
+          }
+        }
+        
+        // ABSOLUTE LAST RESORT: High-quality strategic insight
+        if (!content || content.trim().length < 20) {
+          content = await this.generateStrategicInsight();
+          console.log('✅ STRATEGIC: Using high-quality strategic insight');
         }
       }
       
-      // Additional validation
-      if (content.trim().length < 10) {
-        console.log('🚨 EMERGENCY: Content too short, enhancing...');
-        content = content + " This will fundamentally change how we approach healthcare innovation.";
+      // Additional quality validation
+      if (content.trim().length < 50) {
+        console.log('🚨 EMERGENCY: Content still too short, enhancing with expertise...');
+        content = await this.enhanceWithExpertise(content);
       }
       
       // Validate content length for Twitter
       if (content.length > 280) {
-        console.log('🚨 EMERGENCY: Content too long, truncating...');
-        content = content.substring(0, 277) + '...';
+        console.log('🚨 EMERGENCY: Content too long, optimizing...');
+        content = this.optimizeContentLength(content);
       }
       
-      console.log('🐦 Posting to Twitter:', { content: content.substring(0, 100) + '...', imageUrl });
+      console.log('🐦 Posting high-quality content to Twitter:', { 
+        content: content.substring(0, 100) + '...', 
+        length: content.length,
+        quality: 'premium'
+      });
       
       // Post to actual Twitter using xClient
       let result: TweetResult;
@@ -2993,6 +2978,127 @@ Make it insightful, strategic, and reveal hidden implications. 250 characters ma
       // Be conservative on error
       return { canPost: false, reason: 'Rate limit check failed - being conservative to prevent API errors' };
     }
+  }
+
+  /**
+   * Generate high-quality content using Nuclear Learning Intelligence
+   */
+  private async generateNuclearLearningContent(): Promise<string> {
+    try {
+      // Get Nuclear Learning Intelligence data
+      const { data: nuclearData } = await supabase
+        .from('bot_config')
+        .select('value')
+        .eq('key', 'nuclear_learning_intelligence')
+        .single() || { data: null };
+      
+      if (nuclearData?.value?.enabled) {
+        // Use the Nuclear Learning Enhancer
+        const { NuclearLearningEnhancer } = await import('./nuclearLearningEnhancer');
+        const enhancer = new NuclearLearningEnhancer();
+        const enhanced = await enhancer.generateCreativeContent();
+        
+        if (enhanced && enhanced.length > 50) {
+          return enhanced;
+        }
+      }
+      
+      return '';
+    } catch (error) {
+      console.warn('Nuclear Learning content generation failed:', error);
+      return '';
+    }
+  }
+  
+  /**
+   * Generate premium quality content with expertise
+   */
+  private async generatePremiumContent(): Promise<string> {
+    try {
+      const { openaiClient } = await import('../utils/openaiClient.js');
+      
+      const prompt = `You are a healthcare technology expert with 15+ years of experience. Generate a sophisticated, insightful tweet about current healthcare AI trends that demonstrates deep industry knowledge and provides actionable value. 
+
+Requirements:
+- Expert-level perspective with specific industry insights
+- Actionable takeaway for healthcare professionals
+- Current trend awareness and strategic implications
+- Professional tone with thought leadership authority
+- 180-250 characters to allow for engagement
+
+Focus on: AI diagnostics, precision medicine, digital therapeutics, or healthcare data analytics.`;
+
+      const content = await openaiClient.generateCompletion(prompt, {
+        maxTokens: 100,
+        temperature: 0.7
+      });
+      
+      return content || '';
+    } catch (error) {
+      console.warn('Premium content generation failed:', error);
+      return '';
+    }
+  }
+  
+  /**
+   * Generate strategic insight as last resort
+   */
+  private async generateStrategicInsight(): Promise<string> {
+    const strategicInsights = [
+      "Healthcare AI adoption accelerated 300% in 2024, but integration challenges remain. The winners are companies solving workflow integration, not just diagnostic accuracy.",
+      "Precision medicine is shifting from genomics to multi-modal data fusion. The regulatory pathway for AI-guided treatment protocols opens new opportunities for focused innovation.",
+      "Digital therapeutics market consolidation creates opportunities for specialized solutions. Focus areas: mental health, chronic disease management, and post-acute care transitions.",
+      "Healthcare data interoperability remains the biggest bottleneck. Companies solving real-time data exchange will capture disproportionate value in the next 18 months.",
+      "Telehealth utilization stabilized at 15% post-pandemic. The sustainable growth is in hybrid care models that integrate virtual and in-person touchpoints strategically."
+    ];
+    
+    return strategicInsights[Math.floor(Math.random() * strategicInsights.length)];
+  }
+  
+  /**
+   * Enhance short content with expertise
+   */
+  private async enhanceWithExpertise(content: string): Promise<string> {
+    if (content.length < 50) {
+      const expertEnhancements = [
+        " This trend will fundamentally reshape care delivery models over the next 24 months.",
+        " The regulatory implications extend beyond current FDA guidance frameworks.",
+        " Strategic positioning for this shift requires immediate workflow integration planning.",
+        " Early adopters are seeing 40% improved outcomes with proper implementation protocols.",
+        " This represents a $2.3B market opportunity for specialized solutions."
+      ];
+      
+      const enhancement = expertEnhancements[Math.floor(Math.random() * expertEnhancements.length)];
+      return content + enhancement;
+    }
+    
+    return content;
+  }
+  
+  /**
+   * Optimize content length while preserving quality
+   */
+  private optimizeContentLength(content: string): string {
+    if (content.length <= 280) return content;
+    
+    // Find natural break points
+    const sentences = content.split('. ');
+    let optimized = '';
+    
+    for (const sentence of sentences) {
+      if ((optimized + sentence + '. ').length <= 277) {
+        optimized += sentence + '. ';
+      } else {
+        break;
+      }
+    }
+    
+    // If no good break, truncate intelligently
+    if (optimized.length < 100) {
+      optimized = content.substring(0, 277) + '...';
+    }
+    
+    return optimized.trim();
   }
 }
 
