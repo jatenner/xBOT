@@ -225,14 +225,34 @@ export class QualityGate {
   }
 
   /**
-   * Check if content contains hashtags (PROHIBITED for human voice)
+   * Check if content contains hashtags (NUCLEAR PROHIBITION for human voice)
    */
   private containsHashtags(content: string): boolean {
-    const hashtagPattern = /#\w+/;
-    const hasHashtags = hashtagPattern.test(content);
+    // Multiple hashtag detection patterns for NUCLEAR enforcement
+    const hashtagPatterns = [
+      /#\w+/g,                    // Standard hashtags
+      /#[A-Za-z0-9_]+/g,         // Alphanumeric hashtags
+      /\bhash\s*tags?\b/gi,      // "hashtag" or "hashtags" 
+      /\btags?\s*:/gi,           // "tags:" or "tag:"
+      /\btrending\s+tags?\b/gi,  // "trending tags"
+      /\bpopular\s+hashtags?\b/gi // "popular hashtags"
+    ];
+    
+    let hasHashtags = false;
+    let hashtagCount = 0;
+    
+    for (const pattern of hashtagPatterns) {
+      const matches = content.match(pattern);
+      if (matches) {
+        hasHashtags = true;
+        hashtagCount += matches.length;
+        console.log(`🚫 NUCLEAR HASHTAG REJECTION: Found ${matches.length} hashtag(s) with pattern ${pattern}: ${matches.join(', ')}`);
+      }
+    }
     
     if (hasHashtags) {
-      console.log('🚫 Hashtags detected in content - violates human voice requirement');
+      console.log(`🚫 TOTAL HASHTAG VIOLATIONS: ${hashtagCount} - CONTENT REJECTED`);
+      console.log('🗣️ HUMAN VOICE REQUIREMENT: Content must use natural language, not hashtags');
     }
     
     return hasHashtags;

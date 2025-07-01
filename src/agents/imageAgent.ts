@@ -614,27 +614,66 @@ export class ImageAgent {
   }
 
   /**
+   * 🚫 INTELLIGENT IMAGE STRATEGY: Only 25% of posts get images
    * Check if content has enough specific context to warrant an image
    */
   private shouldContentHaveImage(content: string): boolean {
     const contentLower = content.toLowerCase();
     
-    // Require specific medical/technical context
-    const hasSpecificContext = [
-      'study', 'research', 'clinical trial', 'breakthrough', 'discovery',
-      'device', 'therapy', 'treatment', 'diagnostic', 'surgery',
-      'accuracy', 'effectiveness', 'outcome', 'result', 'finding'
+    // PROHIBITED image contexts (immediate rejection)
+    const prohibitedContexts = [
+      'generic business', 'stock photos', 'tablet computers', 
+      'generic devices', 'abstract concepts', 'marketing images',
+      'ipad', 'tablet', 'smartphone', 'laptop', 'computer screen',
+      'generic tech', 'digital transformation', 'innovation concept'
+    ];
+    
+    if (prohibitedContexts.some(term => contentLower.includes(term))) {
+      console.log('🚫 REJECTED: Content mentions prohibited generic image context');
+      return false;
+    }
+
+    // REQUIRED: Must have specific medical/research context
+    const requiredSpecificContext = [
+      'surgical robot', 'mri scan', 'ct scan', 'ultrasound device',
+      'medical device', 'laboratory equipment', 'clinical trial setup',
+      'microscope', 'surgical procedure', 'medical imaging',
+      'diagnostic equipment', 'research facility', 'biotech lab',
+      'pharmaceutical research', 'gene therapy device', 'robotic surgery'
+    ];
+    
+    const hasSpecificMedicalContext = requiredSpecificContext.some(term => 
+      contentLower.includes(term));
+
+    // REQUIRED: Must have concrete research/data context
+    const hasConcreteData = [
+      'study of', 'clinical trial', 'research shows', 'data from',
+      'stanford study', 'harvard research', 'mit lab', 'nature study',
+      'published in', 'peer reviewed', 'fda approval', 'breakthrough research'
     ].some(term => contentLower.includes(term));
 
-    // Avoid generic tech mentions
-    const isGeneric = [
-      'ai', 'technology', 'digital', 'innovation', 'platform',
-      'solution', 'system', 'tool', 'app'
-    ].every(term => contentLower.includes(term) && 
-              !contentLower.includes('specific') && 
-              !contentLower.includes('study'));
+    // BLOCKED: Generic tech terms without specific medical context
+    const hasGenericTech = [
+      'ai technology', 'digital platform', 'tech solution', 'innovation platform',
+      'digital health app', 'health tech startup', 'technology disruption'
+    ].some(term => contentLower.includes(term)) && !hasSpecificMedicalContext;
 
-    return hasSpecificContext && !isGeneric;
+    if (hasGenericTech) {
+      console.log('🚫 REJECTED: Generic tech content without specific medical context');
+      return false;
+    }
+
+    const shouldHaveImage = hasSpecificMedicalContext && hasConcreteData;
+    
+    if (!shouldHaveImage) {
+      console.log('🚫 REJECTED: Content lacks specific medical context + concrete research data');
+      console.log(`   Specific medical context: ${hasSpecificMedicalContext}`);
+      console.log(`   Concrete data/research: ${hasConcreteData}`);
+    } else {
+      console.log('✅ APPROVED: Content has specific medical context + research data');
+    }
+    
+    return shouldHaveImage;
   }
 
   /**
