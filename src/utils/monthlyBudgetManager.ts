@@ -38,7 +38,7 @@ export class MonthlyBudgetManager {
       month: new Date().getMonth() + 1,
       year: new Date().getFullYear(),
       totalBudget: 2400, // Real 24-hour Twitter limit
-      dailyTweetBudget: 100, // Conservative daily target
+      dailyTweetBudget: 17, // Twitter Free Tier limit
       strategicOpportunities: 50,
       engagementFocus: true,
       currentDayTargets: {

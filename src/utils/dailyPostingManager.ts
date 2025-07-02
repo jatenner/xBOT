@@ -33,19 +33,19 @@ class DailyPostingManager {
   private intelligentScheduler: IntelligentSchedulingAgent;
   private humanStrategicMind: HumanLikeStrategicMind;
   private currentState: DailyPostingState;
-  private readonly DAILY_TARGET = 100;
+  private readonly DAILY_TARGET = 17;
   private isRunning = false;
   private scheduledJobs: cron.ScheduledTask[] = [];
   private useIntelligentScheduling = true;
 
-  // INTELLIGENT HIGH-VOLUME posting windows (30-75 posts distributed optimally)
+  // INTELLIGENT posting within Twitter limits (up to 17 posts distributed optimally)
   private readonly POSTING_WINDOWS: PostingWindow[] = [
-    { start_hour: 6, end_hour: 9, posts_count: 6, priority: 3 },   // Early Morning
-    { start_hour: 9, end_hour: 12, posts_count: 12, priority: 4 }, // Morning Peak
-    { start_hour: 12, end_hour: 15, posts_count: 15, priority: 5 }, // Lunch & Early Afternoon PEAK
-    { start_hour: 15, end_hour: 18, posts_count: 15, priority: 5 }, // Late Afternoon PEAK
-    { start_hour: 18, end_hour: 21, posts_count: 12, priority: 4 }, // Evening Peak
-    { start_hour: 21, end_hour: 23, posts_count: 6, priority: 3 },  // Late Evening
+    { start_hour: 6, end_hour: 9, posts_count: 2, priority: 3 },   // Early Morning (2 posts)
+    { start_hour: 9, end_hour: 12, posts_count: 4, priority: 4 }, // Morning Peak (4 posts)
+    { start_hour: 12, end_hour: 15, posts_count: 4, priority: 5 }, // Lunch & Early Afternoon PEAK (4 posts)
+    { start_hour: 15, end_hour: 18, posts_count: 4, priority: 5 }, // Late Afternoon PEAK (4 posts)
+    { start_hour: 18, end_hour: 21, posts_count: 2, priority: 4 }, // Evening Peak (2 posts)
+    { start_hour: 21, end_hour: 23, posts_count: 1, priority: 3 },  // Late Evening (1 post)
   ];
 
   constructor() {

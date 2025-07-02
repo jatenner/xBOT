@@ -81,14 +81,15 @@ export class RealTimeLimitsIntelligenceAgent {
   private isChecking: boolean = false;
   private emergencyCooldownUntil: Date | null = null;
 
-  // Real Twitter API v2 Free Tier Limits
-  private readonly TWITTER_DAILY_WRITE_LIMIT = 17;
-  private readonly TWITTER_MONTHLY_READ_LIMIT = 1500;
+  // Real Twitter API v2 Free Tier Limits (FROM OFFICIAL X DEVELOPER PORTAL)
+  private readonly TWITTER_DAILY_WRITE_LIMIT = 17;     // 17 tweets per 24 hours (Free tier)
+  private readonly TWITTER_READ_LIMIT_15MIN = 1;       // 1 read per 15 minutes (most endpoints)
+  private readonly TWITTER_USER_LOOKUP_DAILY = 25;     // 25 user lookups per 24 hours
 
   constructor() {
     console.log('🚨 Real-Time Limits Intelligence Agent initialized');
     console.log('📊 Mission: Provide EXACT API limit intelligence using real Twitter limits');
-    console.log(`🐦 Twitter limits: ${this.TWITTER_DAILY_WRITE_LIMIT} writes/day, ${this.TWITTER_MONTHLY_READ_LIMIT} reads/month`);
+    console.log(`🐦 Twitter limits: ${this.TWITTER_DAILY_WRITE_LIMIT} writes/day, ${this.TWITTER_READ_LIMIT_15MIN} read/15min`);
   }
 
   /**
@@ -264,12 +265,12 @@ export class RealTimeLimitsIntelligenceAgent {
       const dailyStats = await this.getDailyTwitterStats();
       const monthlyStats = await this.getMonthlyTwitterStats();
       
-      // Calculate remaining based on REAL Twitter limits
+      // Calculate remaining based on REAL Twitter Free tier limits  
       const dailyUsed = dailyStats.tweets;
       const dailyRemaining = Math.max(0, this.TWITTER_DAILY_WRITE_LIMIT - dailyUsed);
       
       const monthlyReadsUsed = monthlyStats.reads;
-      const monthlyReadsRemaining = Math.max(0, this.TWITTER_MONTHLY_READ_LIMIT - monthlyReadsUsed);
+      const monthlyReadsRemaining = Math.max(0, 10000 - monthlyReadsUsed); // Free tier: no monthly read limit, using 10000 as safe fallback
       
       // Can post if: not locked by API AND under daily limit
       const canPost = !isLocked && (writeRemaining > 0) && (dailyRemaining > 0);
@@ -295,7 +296,7 @@ export class RealTimeLimitsIntelligenceAgent {
         },
         readRequests: {
           used: monthlyReadsUsed,
-          limit: this.TWITTER_MONTHLY_READ_LIMIT,
+          limit: 10000, // Free tier: no monthly read limit, using safe fallback
           remaining: monthlyReadsRemaining,
           resetTime: readResetTime
         },
@@ -335,8 +336,8 @@ export class RealTimeLimitsIntelligenceAgent {
         },
         readRequests: {
           used: 0,
-          limit: this.TWITTER_MONTHLY_READ_LIMIT,
-          remaining: this.TWITTER_MONTHLY_READ_LIMIT,
+          limit: 10000, // Free tier: no monthly read limit, using safe fallback
+          remaining: 10000,
           resetTime: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
         },
         shortTermLimits: {

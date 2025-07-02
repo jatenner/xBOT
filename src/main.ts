@@ -245,7 +245,7 @@ async function main() {
     console.log('✅ Supreme AI Bot is now running!');
     console.log('👑 AI has full control over posting frequency and timing');
     console.log('📡 Monitoring world events for dynamic response...');
-    console.log('🚀 Ready to post 30-75 times per day based on AI decisions!');
+    console.log('🚀 Ready to post up to 17 times per day (Twitter Free Tier limit)!');
     
     // Graceful shutdown
     process.on('SIGINT', () => {

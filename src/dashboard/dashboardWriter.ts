@@ -297,7 +297,7 @@ export class DashboardWriter {
           day: new Date().getDay(),
           type: 'Real Twitter 3-hour window',
           remaining: rateLimitStatus.tweets3Hour.limit - rateLimitStatus.tweets3Hour.used,
-          target: Math.min(dailyTarget, 100), // Conservative
+          target: Math.min(dailyTarget, 17), // Twitter Free Tier limit
           reasoning: `Real Twitter limit: ${rateLimitStatus.tweets3Hour.used}/${rateLimitStatus.tweets3Hour.limit} used in 3h window`,
           priority: rateLimitStatus.tweets3Hour.used < 250 ? 90 : 30 // High priority if under limit
         },

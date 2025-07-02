@@ -520,22 +520,25 @@ export class CostOptimizer {
     const ultraLowCost = true; // 🔥 ULTRA-AGGRESSIVE COST MODE ENABLED
     
     this.config = {
-      dailyBudgetLimit: emergencyMode ? 0.50 : (ultraLowCost ? 1.00 : 10.00), // 🔥 $0.50-1.00/day maximum
+      dailyBudgetLimit: emergencyMode ? 2.00 : 15.00, // Reasonable daily budget
       enableCostTracking: true,
-      preferredModel: 'gpt-4o-mini', // 🔥 200x cheaper than GPT-4
+      preferredModel: 'gpt-4o-mini', // Cost-effective model
       fallbackModel: 'gpt-3.5-turbo',
-      maxTokensPerCall: emergencyMode ? 50 : (ultraLowCost ? 100 : 200), // 🔥 Ultra-short responses
-      maxCallsPerHour: emergencyMode ? 3 : (ultraLowCost ? 8 : 20), // 🔥 Strict rate limiting
+      maxTokensPerCall: emergencyMode ? 200 : 500, // Reasonable response length
+      maxCallsPerHour: emergencyMode ? 15 : 50, // Reasonable rate limit
       emergencyMode,
       ...config
     };
 
-    if (emergencyMode || ultraLowCost) {
-      console.log('🔥 OpenAI Cost Optimizer: ULTRA-AGGRESSIVE MODE ACTIVE');
+    if (emergencyMode) {
+      console.log('💰 OpenAI Cost Optimizer: Emergency mode active');
       console.log(`💰 Maximum daily budget: $${this.config.dailyBudgetLimit}/day`);
       console.log(`📊 Max tokens per call: ${this.config.maxTokensPerCall}`);
       console.log(`⏱️ Max calls per hour: ${this.config.maxCallsPerHour}`);
       console.log(`🎯 Target monthly cost: $${(this.config.dailyBudgetLimit * 30).toFixed(2)}`);
+    } else {
+      console.log('💰 OpenAI Cost Optimizer: Normal mode active');
+      console.log(`💰 Daily budget: $${this.config.dailyBudgetLimit}/day`);
     }
   }
 
@@ -632,19 +635,12 @@ export class CostOptimizer {
   }
 
   getOptimalModel(requestedModel?: string): string {
-    // 🔥 ALWAYS use cheapest model in ultra-cost mode
-    const ultraLowCost = true;
-    
-    if (ultraLowCost) {
-      return 'gpt-4o-mini'; // Always use cheapest model
-    }
-    
     // If we're near budget limit, use cheapest model
     if (this.dailyUsage > this.config.dailyBudgetLimit * 0.8) {
       return this.config.fallbackModel;
     }
     
-    // Otherwise use preferred model (which is already cost-optimized)
+    // Otherwise use preferred model or requested model
     return requestedModel || this.config.preferredModel;
   }
 
