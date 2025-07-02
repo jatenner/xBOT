@@ -2942,7 +2942,7 @@ Make it insightful, strategic, and reveal hidden implications. 250 characters ma
       const postsToday = todaysPosts?.length || 0;
       
       // Conservative daily limit (use runtime config or emergency override)
-      let dailyLimit = runtimeConfig.maxDailyTweets;
+      let dailyLimit = 300;
       
       // Check if emergency config overrides daily limit
       if (emergencyTiming?.value?.max_daily_tweets && emergencyTiming.value.max_daily_tweets < dailyLimit) {

@@ -105,7 +105,7 @@ export class Scheduler {
     this.isRunning = true;
 
     // 🎯 START DAILY POSTING MANAGER - Safe human-like posting
-    const dailyTarget = runtimeConfig.maxDailyTweets;
+    const dailyTarget = 100;
     console.log(`🎯 Activating Daily Posting Manager - Target: ${dailyTarget} tweets/day`);
     await dailyPostingManager.start();
 
@@ -119,7 +119,7 @@ export class Scheduler {
       console.log('💰 All expensive background analysis DISABLED');
       console.log(`💵 Daily budget limit: $${dailyBudgetLimit}`);
       console.log('📝 Basic posting mode only - optimized for 0-follower growth');
-      const dailyTarget = runtimeConfig.maxDailyTweets;
+      const dailyTarget = 100;
       console.log(`🎯 Daily Posting Manager will handle all ${dailyTarget} tweets`);
       
       // In emergency mode, let daily posting manager handle all posts

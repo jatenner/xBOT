@@ -161,54 +161,28 @@ export class StrategistAgent {
   }
 
   private async makeStrategicDecision(engagementContext: EngagementWindow, now: Date): Promise<StrategistDecision> {
-    // Check kill switch first
-    if (await isBotDisabled()) {
-      return {
-        action: 'sleep',
-        priority: 0,
-        reasoning: 'Bot disabled via kill switch',
-        expectedEngagement: 0
-      };
-    }
-
-    // 🚨 EMERGENCY PAUSE: Check for monthly cap workaround mode
-    try {
-      const { data: workaroundConfig } = await supabaseClient.supabase
-        ?.from('bot_config')
-        .select('value')
-        .eq('key', 'monthly_cap_workaround')
-        .single() || { data: null };
-
-      if (workaroundConfig?.value?.enabled) {
-        console.log('🚨 MONTHLY CAP WORKAROUND: Using alternative strategy');
-      }
-    } catch (error) {
-      console.log('⚠️ Could not check monthly cap workaround, continuing normally');
-    }
-
-    // 🚨 CHECK DAILY POSTING LIMITS 
-    const canPostToday = await dailyPostingManager.shouldPostNow();
-    const dailyProgress = dailyPostingManager.getDailyProgress();
-    const dailyTarget = await dailyPostingManager.getDailyTweetCap();
+    // 🚨 CHECK REAL TWITTER RATE LIMITS ONLY
+    const rateLimitStatus = xClient.getRateLimitStatus();
+    const canPost3Hour = rateLimitStatus.tweets3Hour.used < rateLimitStatus.tweets3Hour.limit;
+    const canPost24Hour = rateLimitStatus.tweets24Hour.used < rateLimitStatus.tweets24Hour.limit;
     
-    if (!canPostToday) {
-      console.log('🚨 DAILY POSTING LIMIT REACHED: Switching to ENGAGEMENT-ONLY mode');
+    if (!canPost3Hour || !canPost24Hour) {
+      const resetTime = !canPost3Hour ? rateLimitStatus.tweets3Hour.resetTime : rateLimitStatus.tweets24Hour.resetTime;
+      const resetIn = Math.ceil((resetTime.getTime() - now.getTime()) / 60000);
+      
+      console.log('🚨 REAL TWITTER RATE LIMIT REACHED: Switching to ENGAGEMENT-ONLY mode');
       return {
         action: 'reply',
         priority: 95,
-        reasoning: `Daily posting limit reached (${dailyProgress.completed}/${dailyTarget}) - engaging through replies/likes only`,
+        reasoning: `Real Twitter rate limit reached (${rateLimitStatus.tweets3Hour.used}/${rateLimitStatus.tweets3Hour.limit} 3h, ${rateLimitStatus.tweets24Hour.used}/${rateLimitStatus.tweets24Hour.limit} 24h). Reset in ${resetIn} minutes.`,
         expectedEngagement: 150
       };
     }
 
-    // Get engagement intelligence and performance data
-    const monthlyPlan = await getCurrentMonthlyPlan();
-    const optimizedSchedule = await getOptimizedSchedule();
-    
-    console.log(`📊 INTELLIGENT ENGAGEMENT STRATEGY:`);
-    console.log(`   Daily posts used: ${dailyProgress.completed}/${dailyTarget}`);
-    console.log(`   Engagement ratio: ${(optimizedSchedule.engagementRatio * 100).toFixed(0)}% engagement focus`);
-    console.log(`   Strategy: ${monthlyPlan.strategy}`);
+    console.log(`📊 REAL TWITTER RATE LIMITS:`);
+    console.log(`   3-hour: ${rateLimitStatus.tweets3Hour.used}/${rateLimitStatus.tweets3Hour.limit}`);
+    console.log(`   24-hour: ${rateLimitStatus.tweets24Hour.used}/${rateLimitStatus.tweets24Hour.limit}`);
+    console.log(`   Engagement context: ${engagementContext.description} (${engagementContext.multiplier}x)`);
 
     const timeSinceLastPost = now.getTime() - this.lastPostTime;
     const minutesSinceLastPost = timeSinceLastPost / (1000 * 60);
@@ -216,7 +190,7 @@ export class StrategistAgent {
     
     // 🧠 INTELLIGENT ENGAGEMENT ALGORITHM - Learn what drives followers
     
-    // 🚀 AFTERNOON BOOST: Check for dynamic engagement optimization
+    // 🚀 DYNAMIC ENGAGEMENT: Check for dynamic engagement optimization
     let engagementWeight = 0.7; // Default 70% engagement, 30% posting
     let sleepWeight = 0.6; // Default sleep weight within engagement
     let minPostInterval = 90; // Default 90 minutes
@@ -241,8 +215,11 @@ export class StrategistAgent {
     
     // Priority 1: ENGAGEMENT-FIRST STRATEGY (dynamic based on time)
     const shouldFocusOnEngagement = Math.random() < engagementWeight;
+    const remainingCapacity3h = rateLimitStatus.tweets3Hour.limit - rateLimitStatus.tweets3Hour.used;
+    const remainingCapacity24h = rateLimitStatus.tweets24Hour.limit - rateLimitStatus.tweets24Hour.used;
+    const remainingCapacity = Math.min(remainingCapacity3h, remainingCapacity24h);
     
-    if (shouldFocusOnEngagement && dailyProgress.completed < dailyTarget) {
+    if (shouldFocusOnEngagement && remainingCapacity > 50) {
       // Choose smart engagement type based on time and context
       const engagementTypes = [
         { action: 'reply', weight: 0.8, reasoning: 'Strategic replies for conversation building' },
@@ -258,7 +235,7 @@ export class StrategistAgent {
           return {
             action: type.action as 'reply' | 'sleep',
             priority: 85,
-            reasoning: `INTELLIGENT ENGAGEMENT: ${type.reasoning} (${dailyProgress.completed}/${dailyTarget} posts used)`,
+            reasoning: `INTELLIGENT ENGAGEMENT: ${type.reasoning} (${remainingCapacity} tweets remaining)`,
             expectedEngagement: type.action === 'reply' ? 120 : 80
           };
         }
@@ -267,51 +244,50 @@ export class StrategistAgent {
 
     // Priority 2: STRATEGIC POSTING WINDOWS (when posting is warranted)
     const isOptimalViralWindow = this.isOptimalViralWindow(currentHour);
-    const postsRemaining = dailyTarget - dailyProgress.completed;
     
-    // Only post if we have strategic reasons and haven't used too many posts
-    if (postsRemaining > 0 && minutesSinceLastPost >= minPostInterval) { // Dynamic minimum interval
+    // Only post if we have capacity and haven't posted too recently
+    if (remainingCapacity > 0 && minutesSinceLastPost >= minPostInterval) {
       
       // STRATEGIC POSTING CONDITIONS
-      if (isOptimalViralWindow && postsRemaining >= 2) {
+      if (isOptimalViralWindow && remainingCapacity >= 10) {
         const action = engagementContext.multiplier >= 2.0 ? 'thread' : 'post';
         return {
           action,
           priority: 90,
-          reasoning: `VIRAL WINDOW: ${action} during peak engagement (${postsRemaining} posts left)`,
+          reasoning: `VIRAL WINDOW: ${action} during peak engagement (${remainingCapacity} capacity left)`,
           expectedEngagement: action === 'thread' ? 400 : 300
         };
       }
       
       // High-impact content when we have budget
-      if (postsRemaining >= 3 && minutesSinceLastPost >= 120) {
+      if (remainingCapacity >= 20 && minutesSinceLastPost >= 120) {
         return {
           action: 'post',
           priority: 75,
-          reasoning: `STRATEGIC POST: Building thought leadership (${postsRemaining} posts remaining)`,
+          reasoning: `STRATEGIC POST: Building thought leadership (${remainingCapacity} capacity remaining)`,
           expectedEngagement: 250
         };
       }
       
       // Alternative formats for variety
-      if (postsRemaining >= 2 && Math.random() < 0.3) {
+      if (remainingCapacity >= 5 && Math.random() < 0.3) {
         const formats = ['poll', 'quote'] as const;
         const format = formats[Math.floor(Math.random() * formats.length)];
         return {
           action: format,
           priority: 70,
-          reasoning: `CONTENT VARIETY: ${format} for engagement diversity (${postsRemaining} posts left)`,
+          reasoning: `CONTENT VARIETY: ${format} for engagement diversity (${remainingCapacity} capacity left)`,
           expectedEngagement: format === 'poll' ? 200 : 150
         };
       }
     }
 
-    // Priority 3: CONSERVATION MODE (when posts are getting scarce)
-    if (postsRemaining <= 2) {
+    // Priority 3: CONSERVATION MODE (when capacity is getting low)
+    if (remainingCapacity <= 10) {
       return {
         action: 'reply',
         priority: 80,
-        reasoning: `CONSERVATION: Only ${postsRemaining} posts left, focusing on engagement`,
+        reasoning: `CONSERVATION: Only ${remainingCapacity} tweets left, focusing on engagement`,
         expectedEngagement: 100
       };
     }
@@ -330,7 +306,7 @@ export class StrategistAgent {
     return {
       action: 'reply',
       priority: 50,
-      reasoning: `FALLBACK ENGAGEMENT: Building community connections (${postsRemaining} posts available)`,
+      reasoning: `FALLBACK ENGAGEMENT: Building community connections (${remainingCapacity} capacity available)`,
       expectedEngagement: 80
     };
   }

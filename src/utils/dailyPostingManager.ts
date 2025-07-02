@@ -33,7 +33,7 @@ class DailyPostingManager {
   private intelligentScheduler: IntelligentSchedulingAgent;
   private humanStrategicMind: HumanLikeStrategicMind;
   private currentState: DailyPostingState;
-  private readonly DAILY_TARGET = runtimeConfig.maxDailyTweets;
+  private readonly DAILY_TARGET = 100;
   private isRunning = false;
   private scheduledJobs: cron.ScheduledTask[] = [];
   private useIntelligentScheduling = true;

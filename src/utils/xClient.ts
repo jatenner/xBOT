@@ -1,9 +1,10 @@
-import { TwitterApi, TwitterV2IncludesHelper, TweetV2, UserV2 } from 'twitter-api-v2';
+import { TwitterApi } from 'twitter-api-v2';
 import * as dotenv from 'dotenv';
 import axios from 'axios';
 import * as fs from 'fs';
 import * as path from 'path';
 import { supabaseClient } from './supabaseClient';
+import fetch from 'node-fetch';
 
 dotenv.config();
 
@@ -95,29 +96,47 @@ export interface SearchedTweet {
   };
 }
 
+/**
+ * Real Twitter API v2 Rate Limits (as of 2024)
+ * Free Tier Write Limits:
+ * - 300 tweets per 3-hour rolling window
+ * - 2400 tweets per 24-hour rolling window
+ */
+interface TwitterRateLimits {
+  tweets3Hour: { used: number; limit: number; resetTime: Date };
+  tweets24Hour: { used: number; limit: number; resetTime: Date };
+  lastTweetTime: Date | null;
+}
+
 class XService {
   private client: TwitterApi | null = null;
   private lastPostTime = 0;
   private minPostInterval = 90000; // 1.5 minutes minimum between posts
   private consecutiveErrors = 0;
   private maxConsecutiveErrors = 3;
+  private rateLimits: TwitterRateLimits;
+  
+  // 🎯 CACHED USER ID - No more /users/me calls!
+  private myUserId: string | null = null;
 
   constructor() {
     this.initializeClient();
+    this.initializeRateLimits();
+    this.loadCachedUserId();
   }
 
   private initializeClient(): void {
-    const apiKey = process.env.TWITTER_APP_KEY;
-    const apiSecret = process.env.TWITTER_APP_SECRET;
-    const accessToken = process.env.TWITTER_ACCESS_TOKEN;
-    const accessSecret = process.env.TWITTER_ACCESS_SECRET;
-
-    if (!apiKey || !apiSecret || !accessToken || !accessSecret) {
-      console.error('❌ Twitter API credentials not found in environment variables');
-      return;
-    }
-
     try {
+      const bearerToken = process.env.TWITTER_BEARER_TOKEN;
+      const apiKey = process.env.TWITTER_API_KEY;
+      const apiSecret = process.env.TWITTER_API_SECRET;
+      const accessToken = process.env.TWITTER_ACCESS_TOKEN;
+      const accessSecret = process.env.TWITTER_ACCESS_TOKEN_SECRET;
+
+      if (!bearerToken || !apiKey || !apiSecret || !accessToken || !accessSecret) {
+        throw new Error('Missing Twitter API credentials');
+      }
+
       this.client = new TwitterApi({
         appKey: apiKey,
         appSecret: apiSecret,
@@ -127,8 +146,91 @@ class XService {
 
       console.log('✅ X/Twitter client initialized');
     } catch (error) {
-      console.error('❌ Failed to initialize X/Twitter client:', error);
+      console.error('❌ Failed to initialize Twitter client:', error);
     }
+  }
+
+  private initializeRateLimits(): void {
+    this.rateLimits = {
+      tweets3Hour: { used: 0, limit: 300, resetTime: this.getNext3HourReset() },
+      tweets24Hour: { used: 0, limit: 2400, resetTime: this.getNext24HourReset() },
+      lastTweetTime: null
+    };
+  }
+
+  private loadCachedUserId(): void {
+    // 🎯 Use environment variable for user ID (no API call needed!)
+    this.myUserId = process.env.TWITTER_USER_ID || null;
+    
+    if (!this.myUserId) {
+      console.warn('⚠️ TWITTER_USER_ID not found in environment variables');
+      console.warn('💡 Run: node get_twitter_user_id.js to get your user ID');
+    } else {
+      console.log(`✅ Using cached user ID: ${this.myUserId}`);
+    }
+  }
+
+  private getNext3HourReset(): Date {
+    const now = new Date();
+    const next3Hour = new Date(now);
+    const hours = now.getHours();
+    const next3HourBoundary = Math.ceil((hours + 1) / 3) * 3;
+    next3Hour.setHours(next3HourBoundary, 0, 0, 0);
+    if (next3Hour <= now) {
+      next3Hour.setHours(next3Hour.getHours() + 3);
+    }
+    return next3Hour;
+  }
+
+  private getNext24HourReset(): Date {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(0, 0, 0, 0);
+    return tomorrow;
+  }
+
+  /**
+   * 🚨 REAL RATE LIMIT CHECK - Only Twitter's actual limits
+   */
+  private async checkRealRateLimits(): Promise<boolean> {
+    const now = new Date();
+    
+    // Reset counters if time windows have passed
+    if (now >= this.rateLimits.tweets3Hour.resetTime) {
+      this.rateLimits.tweets3Hour.used = 0;
+      this.rateLimits.tweets3Hour.resetTime = this.getNext3HourReset();
+    }
+    
+    if (now >= this.rateLimits.tweets24Hour.resetTime) {
+      this.rateLimits.tweets24Hour.used = 0;
+      this.rateLimits.tweets24Hour.resetTime = this.getNext24HourReset();
+    }
+    
+    // Check if we can post based on real Twitter limits
+    const can3Hour = this.rateLimits.tweets3Hour.used < this.rateLimits.tweets3Hour.limit;
+    const can24Hour = this.rateLimits.tweets24Hour.used < this.rateLimits.tweets24Hour.limit;
+    
+    if (!can3Hour) {
+      const minutesToReset = Math.ceil((this.rateLimits.tweets3Hour.resetTime.getTime() - now.getTime()) / 60000);
+      console.log(`🚨 3-hour rate limit reached (${this.rateLimits.tweets3Hour.used}/${this.rateLimits.tweets3Hour.limit}). Reset in ${minutesToReset} minutes.`);
+      return false;
+    }
+    
+    if (!can24Hour) {
+      const hoursToReset = Math.ceil((this.rateLimits.tweets24Hour.resetTime.getTime() - now.getTime()) / 3600000);
+      console.log(`🚨 24-hour rate limit reached (${this.rateLimits.tweets24Hour.used}/${this.rateLimits.tweets24Hour.limit}). Reset in ${hoursToReset} hours.`);
+      return false;
+    }
+    
+    return true;
+  }
+
+  private incrementTweetCount(): void {
+    this.rateLimits.tweets3Hour.used++;
+    this.rateLimits.tweets24Hour.used++;
+    this.rateLimits.lastTweetTime = new Date();
+    
+    console.log(`📊 Tweet count: 3h(${this.rateLimits.tweets3Hour.used}/${this.rateLimits.tweets3Hour.limit}) 24h(${this.rateLimits.tweets24Hour.used}/${this.rateLimits.tweets24Hour.limit})`);
   }
 
   async postTweet(content: string): Promise<TweetResult> {
@@ -140,49 +242,34 @@ class XService {
     }
 
     try {
-      const response = await this.client.v2.tweet(content);
-
-      // Check for errors but only enforce API write limits
-      if (response.errors && response.errors.length > 0) {
-        for (const error of response.errors) {
-          // Only enforce API write limits (code 88), ignore user 24-hour cap (code 187)
-          if ((error as any).code === 88) {
-            throw {
-              isRateLimit: true,
-              resetTime: new Date(Date.now() + 15 * 60 * 1000),
-              remainingRequests: 0,
-              error: `API rate limit reached: ${error.detail || error.title}`
-            };
-          }
-          
-          // Ignore user 24-hour cap errors (code 187), only log them
-          if ((error as any).code === 187) {
-            console.log('⚠️ User 24-hour cap hit (IGNORED):', error.detail || error.title);
-            continue;
-          }
-          
-          // Handle other errors normally
-          throw new Error(error.detail || error.title || 'Tweet failed');
-        }
-      }
-
-      return {
-        success: true,
-        tweetId: response.data.id,
-      };
-    } catch (error: any) {
-      // Handle rate limit errors specifically
-      if (error.code === 429 || error.status === 429) {
-        console.log('📊 Rate limit error detected');
+      // 🚨 CHECK REAL RATE LIMITS ONLY
+      if (!(await this.checkRealRateLimits())) {
         return {
           success: false,
-          error: 'Rate limit exceeded',
+          error: 'Real Twitter rate limit reached'
         };
+      }
+
+      const result = await this.client.v2.tweet(content);
+      this.incrementTweetCount();
+      
+      console.log(`✅ Tweet posted successfully: ${result.data.id}`);
+      
+      return {
+        success: true,
+        tweetId: result.data.id,
+      };
+    } catch (error: any) {
+      console.error('Error posting tweet:', error);
+      
+      // Handle only real 429 errors from Twitter
+      if (error.code === 429) {
+        console.log('⚠️ Real Twitter rate limit hit - will wait for reset');
       }
       
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : 'Failed to post tweet',
       };
     }
   }
@@ -196,45 +283,77 @@ class XService {
     }
 
     try {
-      let mediaBuffer: Buffer;
-
-      if (mediaUrl.startsWith('http')) {
-        // Download image from URL
-        const response = await axios.get(mediaUrl, { 
-          responseType: 'arraybuffer',
-          timeout: 10000,
-          headers: {
-            'User-Agent': 'Snap2Health-Bot/1.0'
-          }
+      // Download the media file
+      const response = await fetch(mediaUrl);
+      const buffer = await response.buffer();
+      
+      // Create a temporary file
+      const tempDir = path.join(process.cwd(), 'temp');
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+      
+      const fileName = `temp_media_${Date.now()}.${this.getFileExtension(mediaUrl)}`;
+      const filePath = path.join(tempDir, fileName);
+      
+      fs.writeFileSync(filePath, buffer);
+      
+      try {
+        // Upload media to Twitter
+        const mediaId = await this.client.v1.uploadMedia(filePath, {
+          mimeType: this.getMimeType(filePath),
+          target: 'tweet',
         });
-        mediaBuffer = Buffer.from(response.data as ArrayBuffer);
-      } else {
-        // Read local file
-        mediaBuffer = fs.readFileSync(mediaUrl);
+        
+        // Add alt text if provided
+        if (altText) {
+          await this.client.v1.createMediaMetadata(mediaId, { alt_text: { text: altText } });
+        }
+        
+        // Clean up temp file
+        fs.unlinkSync(filePath);
+        
+        return {
+          success: true,
+          mediaId: mediaId,
+        };
+      } catch (uploadError) {
+        // Clean up temp file on error
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+        throw uploadError;
       }
-
-      // Upload media to Twitter
-      const mediaId = await this.client.v1.uploadMedia(mediaBuffer, {
-        mimeType: this.getMimeType(mediaUrl),
-        target: 'tweet'
-      });
-
-      // Add alt text if provided
-      if (altText) {
-        await this.client.v1.createMediaMetadata(mediaId, { alt_text: { text: altText } });
-      }
-
-      return {
-        success: true,
-        mediaId: mediaId,
-      };
-
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error uploading media:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Media upload failed',
+        error: error instanceof Error ? error.message : 'Failed to upload media',
       };
+    }
+  }
+
+  private getFileExtension(url: string): string {
+    const urlParts = url.split('.');
+    return urlParts[urlParts.length - 1].split('?')[0] || 'jpg';
+  }
+
+  private getMimeType(filePath: string): string {
+    const ext = path.extname(filePath).toLowerCase();
+    switch (ext) {
+      case '.jpg':
+      case '.jpeg':
+        return 'image/jpeg';
+      case '.png':
+        return 'image/png';
+      case '.gif':
+        return 'image/gif';
+      case '.mp4':
+        return 'video/mp4';
+      case '.webp':
+        return 'image/webp';
+      default:
+        return 'image/jpeg';
     }
   }
 
@@ -247,122 +366,105 @@ class XService {
     }
 
     try {
+      // 🚨 CHECK REAL RATE LIMITS ONLY
+      if (!(await this.checkRealRateLimits())) {
+        return {
+          success: false,
+          error: 'Real Twitter rate limit reached'
+        };
+      }
+
       let mediaIds: string[] = [];
 
-      // Upload media if URLs provided
+      // Upload media if URLs are provided
       if (options.mediaUrls && options.mediaUrls.length > 0) {
-        for (let i = 0; i < Math.min(options.mediaUrls.length, 4); i++) { // Max 4 images
+        for (let i = 0; i < options.mediaUrls.length; i++) {
           const mediaUrl = options.mediaUrls[i];
           const altText = options.altText?.[i];
           
           const uploadResult = await this.uploadMedia(mediaUrl, altText);
           
-          if (uploadResult.success && uploadResult.mediaId) {
+          if (!uploadResult.success) {
+            return {
+              success: false,
+              error: `Failed to upload media: ${uploadResult.error}`,
+            };
+          }
+          
+          if (uploadResult.mediaId) {
             mediaIds.push(uploadResult.mediaId);
-          } else {
-            console.warn(`Failed to upload media ${i + 1}:`, uploadResult.error);
           }
         }
       }
 
-      // Use provided media IDs if available
-      if (options.mediaIds && options.mediaIds.length > 0) {
-        mediaIds.push(...options.mediaIds);
+      // Use provided media IDs if no URLs
+      if (options.mediaIds && options.mediaIds.length > 0 && mediaIds.length === 0) {
+        mediaIds = options.mediaIds;
       }
 
       // Post tweet with media
       const tweetOptions: any = {
-        text: options.text
+        text: options.text,
       };
 
       if (mediaIds.length > 0) {
-        tweetOptions.media = { media_ids: mediaIds };
+        tweetOptions.media = {
+          media_ids: mediaIds,
+        };
       }
 
-      const tweet = await this.client.v2.tweet(tweetOptions);
-
+      const result = await this.client.v2.tweet(tweetOptions);
+      this.incrementTweetCount();
+      
+      console.log(`✅ Tweet with media posted successfully: ${result.data.id}`);
+      
       return {
         success: true,
-        tweetId: tweet.data.id,
+        tweetId: result.data.id,
       };
-
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error posting tweet with media:', error);
+      
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Tweet with media failed',
+        error: error instanceof Error ? error.message : 'Failed to post tweet with media',
       };
     }
-  }
-
-  private getMimeType(filePath: string): string {
-    const ext = path.extname(filePath).toLowerCase();
-    const mimeTypes: { [key: string]: string } = {
-      '.jpg': 'image/jpeg',
-      '.jpeg': 'image/jpeg',
-      '.png': 'image/png',
-      '.gif': 'image/gif',
-      '.webp': 'image/webp',
-      '.mp4': 'video/mp4',
-      '.mov': 'video/quicktime'
-    };
-    
-    return mimeTypes[ext] || 'image/jpeg';
   }
 
   async postReply(content: string, replyToTweetId: string): Promise<ReplyResult> {
     if (!this.client) {
-      console.warn('Twitter client not initialized (test mode)');
       return {
-        success: true,
-        replyId: 'test_reply_' + Date.now(),
+        success: false,
+        error: 'Twitter client not initialized',
       };
     }
-    
+
     try {
-      const response = await this.client.v2.tweet({
-        text: content,
-        reply: {
-          in_reply_to_tweet_id: replyToTweetId,
-        },
-      });
-      
-      // Check for errors but only enforce API write limits
-      if (response.errors && response.errors.length > 0) {
-        for (const error of response.errors) {
-          // Only enforce API write limits (code 88), ignore user 24-hour cap (code 187)
-          if ((error as any).code === 88) {
-            throw {
-              isRateLimit: true,
-              resetTime: new Date(Date.now() + 15 * 60 * 1000),
-              remainingRequests: 0,
-              error: `API rate limit reached: ${error.detail || error.title}`
-            };
-          }
-          
-          // Ignore user 24-hour cap errors (code 187), only log them
-          if ((error as any).code === 187) {
-            console.log('⚠️ User 24-hour cap hit (IGNORED) during reply:', error.detail || error.title);
-            continue;
-          }
-          
-          // Handle other errors normally
-          throw new Error(error.detail || error.title || 'Reply failed');
-        }
+      // 🚨 CHECK REAL RATE LIMITS ONLY
+      if (!(await this.checkRealRateLimits())) {
+        return {
+          success: false,
+          error: 'Real Twitter rate limit reached'
+        };
       }
+
+      const result = await this.client.v2.reply(content, replyToTweetId);
+      this.incrementTweetCount();
+      
+      console.log(`✅ Reply posted successfully: ${result.data.id}`);
       
       return {
         success: true,
-        replyId: response.data.id,
+        replyId: result.data.id,
       };
-      
     } catch (error: any) {
       console.error('Error posting reply:', error);
       
       let errorMessage = 'Unknown error occurred';
       
-      if (error.code === 429 || error.status === 429) {
-        errorMessage = 'Rate limit exceeded';
+      if (error.code === 429) {
+        errorMessage = 'Real Twitter rate limit exceeded';
       } else if (error.code === 403) {
         errorMessage = 'Reply forbidden';
       } else if (error.message) {
@@ -379,7 +481,7 @@ class XService {
   async getTweetById(tweetId: string): Promise<TweetData | null> {
     try {
       const tweet = await this.client.v2.singleTweet(tweetId, {
-        'tweet.fields': ['created_at', 'author_id', 'public_metrics'],
+        'tweet.fields': ['created_at', 'public_metrics'],
       });
       
       return {
@@ -395,7 +497,6 @@ class XService {
           impression_count: tweet.data.public_metrics?.impression_count || 0,
         },
       };
-      
     } catch (error) {
       console.error('Error fetching tweet:', error);
       return null;
@@ -412,16 +513,6 @@ class XService {
     }
 
     try {
-      // 🚨 CRITICAL: Check for monthly cap mode before any search operations
-      if (await this.isMonthlyCapActive()) {
-        console.log('🚫 MONTHLY CAP: Search operations disabled - returning empty results');
-        return {
-          success: true,
-          tweets: [],
-          message: 'Search disabled due to monthly API cap'
-        };
-      }
-
       const response = await this.client.v2.search(query, {
         max_results: Math.min(count, 100),
         'tweet.fields': ['author_id', 'created_at', 'public_metrics', 'context_annotations'],
@@ -457,25 +548,12 @@ class XService {
         tweets,
       };
     } catch (error: any) {
-      // Handle monthly cap error specifically - ONLY for actual monthly product caps
-      if (error.code === 429 && 
-          error.data?.title === 'UsageCapExceeded' &&
-          error.data?.detail?.includes('Monthly product cap')) {
-        console.error('🚨 ACTUAL Monthly cap hit during search - activating emergency mode');
-        await this.activateMonthlyCapMode();
-        return {
-          success: true,
-          tweets: [],
-          message: 'Monthly cap reached - search operations disabled'
-        };
-      }
-      
-      // Handle regular 429 rate limits (NOT monthly caps)
+      // Only handle actual API errors, no artificial monthly caps
       if (error.code === 429) {
-        console.log('⚠️ Regular rate limit hit (not monthly cap) - will retry later');
+        console.log('⚠️ Search rate limit hit - will retry later');
         return {
           success: false,
-          error: 'Rate limit exceeded - try again later',
+          error: 'Search rate limit exceeded - try again later',
           tweets: [],
         };
       }
@@ -512,50 +590,31 @@ class XService {
   }
 
   async checkRateLimit(): Promise<{ remaining: number; resetTime: number }> {
-    if (!this.client) {
-      return {
-        remaining: 0,
-        resetTime: Date.now() + (15 * 60 * 1000),
-      };
-    }
-
-    try {
-      // Try to make a lightweight request to get rate limit headers
-      // Using a simple request like getting own user info
-      const me = await this.client.v2.me();
-      
-      // If successful, we have some capacity
-      return {
-        remaining: 100, // Conservative estimate when call succeeds
-        resetTime: Date.now() + (15 * 60 * 1000),
-      };
-      
-    } catch (error: any) {
-      console.error('Error checking rate limit:', error);
-      
-      // Parse error headers for rate limit info if available
-      if (error.headers) {
-        const remaining = parseInt(error.headers['x-rate-limit-remaining'] || '0');
-        const reset = parseInt(error.headers['x-rate-limit-reset'] || '0');
-        
-        return {
-          remaining: remaining || 0,
-          resetTime: reset ? reset * 1000 : Date.now() + (15 * 60 * 1000),
-        };
-      }
-      
-      // Conservative fallback
-      return {
-        remaining: 0,
-        resetTime: Date.now() + (15 * 60 * 1000),
-      };
-    }
+    // Return real rate limit status based on our tracking
+    const now = new Date();
+    const remaining3h = this.rateLimits.tweets3Hour.limit - this.rateLimits.tweets3Hour.used;
+    const remaining24h = this.rateLimits.tweets24Hour.limit - this.rateLimits.tweets24Hour.used;
+    
+    // Return the most restrictive limit
+    const remaining = Math.min(remaining3h, remaining24h);
+    const resetTime = remaining3h < remaining24h 
+      ? this.rateLimits.tweets3Hour.resetTime.getTime()
+      : this.rateLimits.tweets24Hour.resetTime.getTime();
+    
+    return {
+      remaining,
+      resetTime,
+    };
   }
 
   async getMyTweets(count: number = 10): Promise<TweetData[]> {
+    if (!this.myUserId) {
+      console.error('❌ Cannot fetch my tweets: User ID not available');
+      return [];
+    }
+
     try {
-      // TODO: Implement fetching our own tweets for engagement analysis
-      const tweets = await this.client.v2.userTimeline(await this.getMyUserId(), {
+      const tweets = await this.client.v2.userTimeline(this.myUserId, {
         max_results: count,
         'tweet.fields': ['created_at', 'public_metrics'],
       });
@@ -586,14 +645,14 @@ class XService {
     }
   }
 
-  private async getMyUserId(): Promise<string> {
-    try {
-      const me = await this.client.v2.me();
-      return me.data.id;
-    } catch (error) {
-      console.error('Error getting my user ID:', error);
-      throw error;
+  /**
+   * 🎯 Get cached user ID (no API call!)
+   */
+  getMyUserId(): string {
+    if (!this.myUserId) {
+      throw new Error('User ID not available. Set TWITTER_USER_ID environment variable.');
     }
+    return this.myUserId;
   }
 
   async likeTweet(tweetId: string): Promise<LikeResult> {
@@ -605,7 +664,7 @@ class XService {
     }
 
     try {
-      await this.client.v2.like(await this.getMyUserId(), tweetId);
+      await this.client.v2.like(this.getMyUserId(), tweetId);
       
       return {
         success: true,
@@ -639,7 +698,7 @@ class XService {
     }
 
     try {
-      await this.client.v2.follow(await this.getMyUserId(), userId);
+      await this.client.v2.follow(this.getMyUserId(), userId);
       
       return {
         success: true,
@@ -673,7 +732,7 @@ class XService {
     }
 
     try {
-      const retweet = await this.client.v2.retweet(await this.getMyUserId(), tweetId);
+      const retweet = await this.client.v2.retweet(this.getMyUserId(), tweetId);
       
       return {
         success: true,
@@ -736,10 +795,15 @@ class XService {
   }
 
   /**
-   * Enhanced tweet posting with rate limit protection
+   * Enhanced tweet posting with real rate limit protection only
    */
   async postTweetWithRateLimit(content: string): Promise<any> {
-    // Check if we need to wait
+    // Check real rate limits first
+    if (!(await this.checkRealRateLimits())) {
+      throw new Error('Real Twitter rate limit reached');
+    }
+
+    // Check if we need to wait (minimum interval protection)
     const now = Date.now();
     const timeSinceLastPost = now - this.lastPostTime;
     
@@ -760,6 +824,7 @@ class XService {
       const result = await this.client.v2.tweet(content);
       this.lastPostTime = Date.now();
       this.consecutiveErrors = 0; // Reset on success
+      this.incrementTweetCount();
       return result;
     } catch (error: any) {
       this.consecutiveErrors++;
@@ -783,54 +848,18 @@ class XService {
   }
 
   /**
-   * 🚨 Check if monthly cap mode is active
+   * Get current rate limit status
    */
-  private async isMonthlyCapActive(): Promise<boolean> {
-    try {
-      // Check both legacy and smart monthly cap modes
-      const [emergencyMode, smartMode] = await Promise.all([
-        supabaseClient.supabase?.from('bot_config').select('value').eq('key', 'emergency_monthly_cap_mode').single(),
-        supabaseClient.supabase?.from('bot_config').select('value').eq('key', 'smart_monthly_cap_mode').single()
-      ]);
-      
-      return emergencyMode?.data?.value?.enabled === true || smartMode?.data?.value?.enabled === true;
-    } catch (error) {
-      // If we can't check, assume monthly cap is active for safety
-      console.warn('Could not check monthly cap status, assuming active for safety');
-      return true;
-    }
+  getRateLimitStatus(): TwitterRateLimits {
+    return { ...this.rateLimits };
   }
 
   /**
-   * 🚨 Activate monthly cap mode when detected
+   * Reset rate limit counters (for testing or manual reset)
    */
-  private async activateMonthlyCapMode(): Promise<void> {
-    try {
-      // Check if this is a search-specific cap or total cap
-      // by examining remaining API quota
-      console.log('🔍 Analyzing monthly cap type...');
-      
-      await supabaseClient.supabase
-        .from('bot_config')
-        .upsert({
-          key: 'smart_monthly_cap_mode',
-          value: {
-            enabled: true,
-            mode: 'search_limited_posting_active',
-            disable_search_operations: true,
-            disable_engagement_discovery: true,
-            allow_posting: true,
-            allow_original_content: true,
-            auto_detected: true,
-            detected_at: new Date().toISOString(),
-            reason: 'Monthly search cap detected - posting operations still available'
-          }
-        });
-      
-      console.log('🧠 Smart monthly cap mode activated - posting operations preserved');
-    } catch (error) {
-      console.error('Failed to activate smart monthly cap mode:', error);
-    }
+  resetRateLimits(): void {
+    this.initializeRateLimits();
+    console.log('🔄 Rate limits reset');
   }
 }
 

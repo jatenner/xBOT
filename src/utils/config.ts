@@ -84,23 +84,27 @@ export async function getAllConfig(): Promise<Record<string, any>> {
 }
 
 /**
- * Core configuration defaults and environment utilities
+ * Core configuration defaults - REAL TWITTER LIMITS ONLY
+ * 
+ * Real Twitter API v2 Free Tier Limits:
+ * - 300 tweets per 3-hour rolling window
+ * - 2400 tweets per 24-hour rolling window
+ * - Rate limits are handled by xClient.ts directly
  */
 
 export const defaults = {
-  // Dynamic monthly budget management (1500 tweets/month)
-  monthlyTweetBudget: 1500, // Twitter API Free Tier limit
-  dynamicDailyTargeting: true, // Enable intelligent daily distribution
-  maxDailyTweets: 75, // Safety cap (never exceed this per day)
-  minDailyTweets: 20, // Minimum baseline activity
-  baselineDailyTarget: 50, // Default daily target (~1500/30 days)
+  // 🚨 REMOVED ARTIFICIAL LIMITS - Using real Twitter limits only
+  // Real limits: 300/3h, 2400/24h enforced by xClient.ts
   
+  // Content quality settings
   quality: { 
     readabilityMin: 55, 
     credibilityMin: 0.85 
   },
+  
+  // Posting timing (not rate limits)
   fallbackStaggerMinutes: 30, // More responsive timing
-  postingStrategy: "intelligent_monthly_budget"
+  postingStrategy: "real_twitter_limits_only"
 };
 
 /**
