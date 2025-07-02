@@ -631,9 +631,15 @@ class DailyPostingManager {
   async forceImmediateStartupPost(): Promise<void> {
     if (this.currentState.posts_completed < this.DAILY_TARGET) {
       console.log('🚀 STARTUP POST: Forcing immediate post to verify system works');
-      // Skip all rate limiting for startup
+      // 🚨 STARTUP FIX: Clear phantom last post time to force immediate posting
+      const originalLastPostTime = this.currentState.last_post_time;
       this.currentState.last_post_time = undefined;
+      console.log('🧹 STARTUP: Cleared phantom last post time to enable immediate posting');
+      
       await this.executePost('emergency');
+      
+      // Don't restore the phantom time - keep it cleared for fresh start
+      console.log('✅ STARTUP: First post attempted, system verification complete');
     }
   }
 
