@@ -79,6 +79,12 @@ class DailyPostingManager {
     // Load or initialize today's state
     await this.loadDailyState();
     
+    // 🚀 STARTUP FIX: Post immediately on startup to test system
+    if (this.currentState.posts_completed === 0) {
+      console.log('🚀 STARTUP: Posting first tweet immediately to verify system');
+      await this.forceImmediateStartupPost();
+    }
+    
     // Set up posting schedule
     await this.setupPostingSchedule();
     
@@ -126,18 +132,26 @@ class DailyPostingManager {
       const windowEnd = new Date(startOfDay);
       windowEnd.setHours(window.end_hour, 0, 0, 0);
       
-      const windowDuration = (windowEnd.getTime() - windowStart.getTime()) / (1000 * 60); // minutes
+      // 🚨 FIX: Skip windows that are completely in the past
+      if (windowEnd <= now) {
+        continue;
+      }
+      
+      // 🚨 FIX: Adjust window start to current time if partially past
+      const effectiveWindowStart = windowStart < now ? now : windowStart;
+      
+      const windowDuration = (windowEnd.getTime() - effectiveWindowStart.getTime()) / (1000 * 60); // minutes
       const interval = windowDuration / window.posts_count;
 
       for (let i = 0; i < window.posts_count; i++) {
-        // Add randomization within the window (±15 minutes)
-        const baseTime = new Date(windowStart.getTime() + (i * interval * 60 * 1000));
-        const randomOffset = (Math.random() - 0.5) * 30 * 60 * 1000; // ±15 minutes in milliseconds
+        // Add randomization within the window (±5 minutes for tighter scheduling)
+        const baseTime = new Date(effectiveWindowStart.getTime() + (i * interval * 60 * 1000));
+        const randomOffset = (Math.random() - 0.5) * 10 * 60 * 1000; // ±5 minutes in milliseconds
         const postTime = new Date(baseTime.getTime() + randomOffset);
         
-        // Ensure post time stays within the window
+        // Ensure post time stays within the window and is in the future
         const clampedTime = new Date(Math.max(
-          windowStart.getTime(),
+          Math.max(effectiveWindowStart.getTime(), now.getTime() + 60000), // At least 1 minute from now
           Math.min(postTime.getTime(), windowEnd.getTime() - 60000) // 1 minute before window end
         ));
         
@@ -436,7 +450,7 @@ class DailyPostingManager {
     
     if (lastPostTime) {
       const timeSinceLastPost = now.getTime() - lastPostTime.getTime();
-      const MIN_INTERVAL = 30 * 60 * 1000; // 30 minutes minimum
+      const MIN_INTERVAL = 5 * 60 * 1000; // 5 minutes minimum (much more reasonable)
       
       if (timeSinceLastPost < MIN_INTERVAL) {
         const waitTime = MIN_INTERVAL - timeSinceLastPost;
@@ -599,9 +613,27 @@ class DailyPostingManager {
 
   async forcePost(): Promise<void> {
     if (this.currentState.posts_completed < this.DAILY_TARGET) {
+      // Skip rate limiting for forced posts
+      const tempLastPostTime = this.currentState.last_post_time;
+      this.currentState.last_post_time = undefined; // Temporarily remove last post time
       await this.executePost('emergency');
+      if (tempLastPostTime) {
+        this.currentState.last_post_time = tempLastPostTime; // Restore it
+      }
     } else {
       console.log('✅ Daily target already reached');
+    }
+  }
+
+  /**
+   * Force immediate posting on startup - no rate limits
+   */
+  async forceImmediateStartupPost(): Promise<void> {
+    if (this.currentState.posts_completed < this.DAILY_TARGET) {
+      console.log('🚀 STARTUP POST: Forcing immediate post to verify system works');
+      // Skip all rate limiting for startup
+      this.currentState.last_post_time = undefined;
+      await this.executePost('emergency');
     }
   }
 
