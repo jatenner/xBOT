@@ -117,7 +117,7 @@ export class AutonomousCommunityGrowthAgent {
 
     try {
       // Get current follower count and engagement metrics  
-      const myUserId = await (xClient as any).getMyUserId();
+      const myUserId = xClient.getMyUserId(); // Fixed: No await needed, returns string directly
       const profile = myUserId ? await xClient.getUserByUsername(process.env.TWITTER_USERNAME || 'SignalAndSynapse') : null;
       
       // Analyze recent tweet performance
