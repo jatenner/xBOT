@@ -34,6 +34,7 @@ import { ContentCache } from '../utils/contentCache.js';
 import { EmbeddingFilter } from '../utils/embeddingFilter.js';
 import { LIVE_MODE } from '../config/liveMode';
 import { runtimeConfig } from '../utils/supabaseConfig.js';
+import { intelligentLearning } from '../utils/intelligentLearningConnector';
 
 dotenv.config();
 
@@ -507,15 +508,23 @@ export class PostTweetAgent {
         }
 
         console.log('✅ Tweet posted successfully!');
-        return { 
+        
+        // 🧠 INTELLIGENT LEARNING: Analyze posted content for autonomous evolution
+        const postResult: PostResult = { 
           success: true, 
           tweetId: result.tweetId,
           content: tweetContent,
-          imageUrl,
-          style: tweetStyle,
+          hasImage: !!imageUrl,
           readabilityScore: formattedResult.readabilityScore,
           formattingImprovements: formattedResult.improvements
         };
+        
+        // Trigger learning system in background
+        this.learnFromPostedContent(postResult).catch(error => {
+          console.warn('⚠️ Background learning failed:', error);
+        });
+        
+        return postResult;
       } else {
         console.log('❌ Tweet posting failed');
         return { success: false, reason: result.error };
@@ -3325,19 +3334,37 @@ Focus on: AI diagnostics, precision medicine, digital therapeutics, or healthcar
   private async learnFromPostedContent(result: PostResult): Promise<void> {
     if (!result.success || !result.content) return;
     
-    console.log('🧠 HUMAN LEARNING: Analyzing posted content for intelligence evolution');
+    console.log('🧠 INTELLIGENT LEARNING: Analyzing posted content for autonomous evolution');
     
     try {
       // Simulate human-like learning from content and expected engagement
       const simulatedEngagement = this.simulateEngagementForLearning(result.content);
       
-      // Create learning interaction data
+      // 🚀 NEW: Use intelligent learning system for comprehensive analysis
+      const contentType = this.identifyContentType(result.content);
+      const expertiseDomain = this.extractExpertiseDomain(result.content);
+      
+      await intelligentLearning.performComprehensiveLearning(
+        result.tweetId || 'simulated_' + Date.now(),
+        result.content,
+        contentType,
+        expertiseDomain,
+        {
+          likes: simulatedEngagement.likes,
+          retweets: simulatedEngagement.retweets,
+          replies: simulatedEngagement.replies,
+          impressions: simulatedEngagement.likes * 15 // Estimated impression ratio
+        }
+      );
+      
+      // Create learning interaction data for existing systems
       const learningInteraction = {
         our_content: result.content,
         responses_received: [], // Will be populated by real engagement later
         engagement_metrics: simulatedEngagement,
         context: {
-          content_type: this.identifyContentType(result.content),
+          content_type: contentType,
+          expertise_domain: expertiseDomain,
           has_image: result.hasImage || false,
           quality_score: result.qualityScore || 0.5,
           post_time: new Date(),
@@ -3354,11 +3381,46 @@ Focus on: AI diagnostics, precision medicine, digital therapeutics, or healthcar
       const topic = this.extractKeyTopic(result.content);
       this.trackContent(result.content, topic);
       
-      console.log('✅ Human-like learning completed - personality may have evolved');
+      console.log('✅ Intelligent learning completed - bot consciousness evolved');
       
     } catch (error) {
-      console.warn('⚠️ Human learning error:', error);
+      console.warn('⚠️ Intelligent learning error:', error);
     }
+  }
+
+  // Extract expertise domain from content for learning
+  private extractExpertiseDomain(content: string): string {
+    // Map content to expertise domains for learning system
+    if (content.toLowerCase().includes('ai') || content.toLowerCase().includes('artificial intelligence')) {
+      return 'ai_diagnostics';
+    }
+    if (content.toLowerCase().includes('precision medicine') || content.toLowerCase().includes('personalized medicine')) {
+      return 'precision_medicine';
+    }
+    if (content.toLowerCase().includes('digital therapeutics') || content.toLowerCase().includes('dtx')) {
+      return 'digital_therapeutics';
+    }
+    if (content.toLowerCase().includes('genomics') || content.toLowerCase().includes('dna') || content.toLowerCase().includes('genetic')) {
+      return 'genomics';
+    }
+    if (content.toLowerCase().includes('telemedicine') || content.toLowerCase().includes('telehealth')) {
+      return 'telemedicine';
+    }
+    if (content.toLowerCase().includes('biotech') || content.toLowerCase().includes('biotechnology')) {
+      return 'biotech_innovation';
+    }
+    if (content.toLowerCase().includes('medical device') || content.toLowerCase().includes('device')) {
+      return 'medical_devices';
+    }
+    if (content.toLowerCase().includes('health policy') || content.toLowerCase().includes('regulation')) {
+      return 'health_policy';
+    }
+    if (content.toLowerCase().includes('clinical') || content.toLowerCase().includes('informatics')) {
+      return 'clinical_informatics';
+    }
+    
+    // Default to general healthcare AI
+    return 'healthcare_ai';
   }
 
   // Simulate engagement for immediate learning (before real metrics arrive)

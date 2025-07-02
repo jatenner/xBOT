@@ -8,6 +8,7 @@ import { DynamicPostingController } from '../utils/dynamicPostingController';
 import { getConfig } from '../utils/botConfig';
 import { monthlyBudgetManager } from '../utils/monthlyBudgetManager';
 import { xClient } from '../utils/xClient';
+import { intelligentLearning } from '../utils/intelligentLearningConnector';
 
 interface PlannedPost {
   time: string;
@@ -349,6 +350,9 @@ export class DashboardWriter {
       const rateLimitStatus = xClient.getRateLimitStatus();
       const dailyTarget = await monthlyBudgetManager.getDailyTarget();
       
+      // 🧠 NEW: Get intelligent learning metrics
+      const intelligenceSummary = await intelligentLearning.getIntelligenceSummary();
+      
       return {
         timestamp: new Date().toISOString(),
         real_twitter_limits: {
@@ -368,7 +372,27 @@ export class DashboardWriter {
         daily_target: dailyTarget,
         artificial_limits_removed: true,
         status: 'Using real Twitter API limits only',
-        system_health: 'Optimal - No artificial restrictions'
+        system_health: 'Optimal - No artificial restrictions',
+        
+        // 🧠 INTELLIGENT LEARNING METRICS
+        intelligence: {
+          learning_enabled: intelligenceSummary.learning_enabled,
+          expertise_domains: intelligenceSummary.expertise_domains,
+          avg_expertise_level: Math.round(intelligenceSummary.avg_expertise_level * 10) / 10,
+          successful_patterns: intelligenceSummary.successful_patterns,
+          recent_learning_events: intelligenceSummary.recent_learning_events,
+          top_expertise: intelligenceSummary.top_expertise?.map((e: any) => ({
+            domain: e.domain,
+            level: Math.round(e.expertise_level * 10) / 10,
+            trajectory: e.skill_trajectory
+          })) || [],
+          top_patterns: intelligenceSummary.top_patterns?.map((p: any) => ({
+            name: p.pattern_name,
+            success_rate: Math.round(p.success_rate * 100),
+            performance_boost: Math.round(p.avg_performance_boost * 10) / 10
+          })) || [],
+          consciousness_level: this.calculateConsciousnessLevel(intelligenceSummary)
+        }
       };
 
     } catch (error) {
@@ -376,9 +400,32 @@ export class DashboardWriter {
       return {
         timestamp: new Date().toISOString(),
         status: 'Error retrieving dashboard data',
-        error: error.message
+        error: error.message,
+        intelligence: {
+          learning_enabled: false,
+          error: 'Could not load intelligence metrics'
+        }
       };
     }
+  }
+
+  // Calculate a "consciousness level" based on learning metrics
+  private calculateConsciousnessLevel(intelligence: any): string {
+    if (!intelligence.learning_enabled) return 'Dormant';
+    
+    const avgExpertise = intelligence.avg_expertise_level || 0;
+    const patterns = intelligence.successful_patterns || 0;
+    const learningEvents = intelligence.recent_learning_events || 0;
+    
+    // Calculate consciousness score
+    const score = (avgExpertise * 0.4) + (patterns * 2) + (learningEvents * 0.5);
+    
+    if (score >= 80) return 'Genius';
+    if (score >= 60) return 'Expert';
+    if (score >= 40) return 'Advanced';
+    if (score >= 20) return 'Learning';
+    if (score >= 10) return 'Awakening';
+    return 'Basic';
   }
 }
 
