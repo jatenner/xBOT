@@ -50,4 +50,4 @@ test_*.js
 debug_*.js
 demo_*.js
 check_*.js
-*.test.js 
+*.test.js .env.backup

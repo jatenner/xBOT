@@ -131,7 +131,7 @@ class XService {
       const apiKey = process.env.TWITTER_API_KEY;
       const apiSecret = process.env.TWITTER_API_SECRET;
       const accessToken = process.env.TWITTER_ACCESS_TOKEN;
-      const accessSecret = process.env.TWITTER_ACCESS_TOKEN_SECRET;
+      const accessSecret = process.env.TWITTER_ACCESS_SECRET;
 
       if (!bearerToken || !apiKey || !apiSecret || !accessToken || !accessSecret) {
         throw new Error('Missing Twitter API credentials');
