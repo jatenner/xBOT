@@ -25,6 +25,7 @@ import { runSanityChecks } from '../utils/contentSanity';
 import { AdaptiveContentLearner } from './adaptiveContentLearner';
 import { CompetitiveIntelligenceLearner } from './competitiveIntelligenceLearner';
 import { NuclearLearningEnhancer } from './nuclearLearningEnhancer';
+import { HumanExpertPersonality } from './humanExpertPersonality.js';
 import { QuoteAgent } from './quoteAgent';
 import { QualityGate } from '../utils/qualityGate.js';
 import { PollAgent } from './pollAgent';
@@ -132,6 +133,7 @@ export class PostTweetAgent {
   private adaptiveLearner: AdaptiveContentLearner;
   private competitiveLearner: CompetitiveIntelligenceLearner;
   private nuclearLearning: NuclearLearningEnhancer;
+  private humanExpert: HumanExpertPersonality;
 
   constructor() {
     this.imageAgent = new ImageAgent();
@@ -149,6 +151,7 @@ export class PostTweetAgent {
     this.adaptiveLearner = new AdaptiveContentLearner();
     this.competitiveLearner = new CompetitiveIntelligenceLearner();
     this.nuclearLearning = NuclearLearningEnhancer.getInstance();
+    this.humanExpert = new HumanExpertPersonality();
     
     console.log('🧠 Nuclear learning intelligence systems initialized');
     
@@ -541,6 +544,19 @@ export class PostTweetAgent {
         
         try {
           switch (contentMode) {
+            case 'human_expert':
+              console.log('🧠 Generating HUMAN EXPERT content with authentic voice...');
+              try {
+                const expertResult = await this.humanExpert.generateExpertContent();
+                content = expertResult.content;
+                console.log(`🎓 EXPERT: Generated ${expertResult.expertiseArea} content (score: ${expertResult.confidenceScore})`);
+              } catch (error) {
+                console.warn('⚠️ Human expert generation failed, falling back to viral');
+                const viralResult = await this.generateViralTweet(false, false);
+                content = viralResult.content || '';
+              }
+              break;
+              
             case 'viral':
               console.log('🔥 Generating NUCLEAR viral content with learned patterns...');
               // Try nuclear learning first
@@ -643,7 +659,7 @@ export class PostTweetAgent {
     return await regenerateCallback();
   }
 
-  private async selectOptimizedContentMode(optimizedStrategy: any): Promise<'viral' | 'comprehensive' | 'engagement' | 'current_events' | 'trending'> {
+  private async selectOptimizedContentMode(optimizedStrategy: any): Promise<'viral' | 'comprehensive' | 'engagement' | 'current_events' | 'trending' | 'human_expert'> {
     try {
       // 🧠 NUCLEAR LEARNING: Get intelligent content strategy from database
       const { data: strategyData } = await supabase
@@ -657,6 +673,7 @@ export class PostTweetAgent {
         
         // Use weighted random selection based on learning data
         const modes = [
+          { mode: 'human_expert', weight: 40 }, // Prioritize expert content
           { mode: 'viral', weight: contentMix.breaking_news + contentMix.hot_takes },
           { mode: 'trending', weight: contentMix.trending_topics },
           { mode: 'comprehensive', weight: contentMix.data_insights },
@@ -962,7 +979,7 @@ export class PostTweetAgent {
     }
   }
 
-  private selectContentMode(): 'viral' | 'comprehensive' | 'engagement' | 'current_events' | 'trending' {
+  private selectContentMode(): 'viral' | 'comprehensive' | 'engagement' | 'current_events' | 'trending' | 'human_expert' {
     const currentHour = new Date().getHours();
     const isPeakHour = (currentHour >= 9 && currentHour <= 11) || 
                       (currentHour >= 15 && currentHour <= 17) || 
@@ -970,9 +987,12 @@ export class PostTweetAgent {
     
     const randomFactor = Math.random();
     
-    // 🔥 ENGAGEMENT-FOCUSED STRATEGY: Remove boring trending content
-    // 80% viral, 15% current events, 5% comprehensive, 0% trending (boring mentions)
-    if (randomFactor < 0.8) {
+    // 🧠 PRIORITIZE HUMAN EXPERT CONTENT to eliminate bot-like patterns
+    // 60% human expert, 25% viral, 10% current events, 5% comprehensive
+    if (randomFactor < 0.6) {
+      console.log('🧠 Selected mode: HUMAN EXPERT (authentic expert insights for unique voice)');
+      return 'human_expert';
+    } else if (randomFactor < 0.85) {
       console.log('🔥 Selected mode: VIRAL (breakthrough content for maximum engagement)');
       return 'viral';
     } else if (randomFactor < 0.95) {
@@ -981,6 +1001,91 @@ export class PostTweetAgent {
     } else {
       console.log('🎯 Selected mode: COMPREHENSIVE (structured research)');
       return 'comprehensive';
+    }
+  }
+
+  private async generateHumanExpertTweet(includeSnap2HealthCTA: boolean, includeImage: boolean): Promise<PostResult> {
+    try {
+      console.log('🧠 Generating authentic human expert content...');
+
+      const expertResult = await this.humanExpert.generateExpertContent();
+      let tweetContent = expertResult.content;
+
+      console.log(`🎓 EXPERT: Generated ${expertResult.expertiseArea} content`);
+      console.log(`📊 Confidence score: ${expertResult.confidenceScore}`);
+
+      // Track content for uniqueness
+      const topic = this.extractKeyTopic(tweetContent);
+      this.trackContent(tweetContent, topic);
+
+      // Add Snap2Health CTA if requested and content allows
+      if (includeSnap2HealthCTA && tweetContent.length < 220) {
+        // Add CTA in a natural way
+        if (!tweetContent.includes('Snap2Health')) {
+          tweetContent += "\n\nSnap2Health.ai - Bridging innovation and care.";
+        }
+      }
+
+      // Get diverse image using expert keywords
+      let imageResult = null;
+      if (includeImage) {
+        console.log('🖼️ Getting diverse expert image...');
+        const imageRequest: ImageRequest = {
+          contentType: 'fact_spotlight',
+          content: tweetContent,
+          source: 'Expert Insight',
+          keywords: expertResult.imageKeywords
+        };
+        imageResult = await this.imageAgent.getImageForContent(imageRequest);
+      }
+
+      // Enforce character limit
+      const validatedContent = this.enforceCharacterLimit(tweetContent, includeSnap2HealthCTA);
+
+      // Post the expert tweet
+      let result;
+      if (imageResult?.success && imageResult.localPath) {
+        result = await xClient.postTweetWithMedia({
+          text: validatedContent,
+          mediaUrls: [imageResult.imageUrl!],
+          altText: [imageResult.altText!]
+        });
+      } else {
+        result = await xClient.postTweet(validatedContent);
+      }
+
+      if (result.success) {
+        // Store expert tweet
+        await supabaseClient.saveTweetToDatabase({
+          tweet_id: result.tweetId!,
+          content: validatedContent,
+          tweet_type: 'original',
+          content_type: 'human_expert',
+          source_attribution: expertResult.expertiseArea,
+          engagement_score: Math.round(expertResult.confidenceScore * 100),
+          likes: 0,
+          retweets: 0,
+          replies: 0,
+          impressions: 0,
+          has_snap2health_cta: includeSnap2HealthCTA
+        });
+
+        console.log(`✅ EXPERT TWEET POSTED: ${result.tweetId}`);
+        console.log(`🎯 Expert area: ${expertResult.expertiseArea}`);
+        
+        return {
+          success: true,
+          tweetId: result.tweetId,
+          content: validatedContent,
+          hasImage: !!imageResult?.success
+        };
+      } else {
+        return { success: false, error: result.error };
+      }
+
+    } catch (error) {
+      console.error('❌ Expert tweet generation failed:', error);
+      return await this.generateFallbackTweet(includeSnap2HealthCTA, includeImage);
     }
   }
 
