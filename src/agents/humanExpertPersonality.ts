@@ -100,28 +100,35 @@ export class HumanExpertPersonality {
     expertiseArea: string;
     confidenceScore: number;
   } | null> {
-    const personalPrompts: Record<string, string[]> = {
+    const detailedPersonalPrompts: Record<string, string[]> = {
       'ai_diagnostics_expert': [
-        `You're a radiologist who's been using AI diagnostic tools for 3 years. Share a specific moment when AI caught something you missed. Make it personal and conversational. Under 240 chars.`,
-        `As someone who's trained 50+ doctors on AI diagnostics, share what surprised you most about how doctors actually use these tools. Personal tone, specific details.`
+        `You're a radiologist who's been using AI diagnostic tools for 3 years. Share a specific case where AI caught a subtle finding you initially missed - include the exact pathology, how the AI flagged it, what made it hard to detect, and why this changed your diagnostic approach. Make it a detailed story with specific medical insights.`,
+        `As someone who's trained 200+ doctors on AI diagnostics, reveal the most surprising behavioral pattern you discovered about how physicians actually interact with AI recommendations. Include specific examples of resistance, adoption patterns, and the unexpected factor that determines success.`
       ],
       'digital_therapeutics_specialist': [
-        `You've prescribed digital therapeutics to 200+ patients. Share the most unexpected patient outcome you've seen. Personal story, conversational tone, under 240 chars.`,
-        `As someone who helped design FDA trials for digital therapeutics, share what the media gets wrong about these treatments. Expert perspective, accessible language.`
+        `You've prescribed digital therapeutics to 500+ patients. Share your most remarkable patient case - include their specific condition, why traditional treatment wasn't working, how the digital therapeutic changed their outcome, and what this taught you about behavior change vs medication. Tell the complete story.`,
+        `As someone who helped design FDA trials for digital therapeutics, reveal what pharmaceutical companies don't understand about digital interventions. Include specific trial design flaws you've seen, regulatory misconceptions, and why most digital health trials fail.`
       ],
       'precision_medicine_researcher': [
-        `You've analyzed genomic data for 10,000+ patients. Share the most surprising pattern you discovered about genetic responses to drugs. Expert insight, personal tone.`,
-        `As someone who's watched precision medicine evolve for 15 years, share what breakthrough moment changed everything. Personal perspective, specific example.`
+        `You've analyzed genomic data for 50,000+ patients. Share the most shocking genetic pattern you discovered that contradicts conventional medical wisdom. Include the specific genes involved, population differences you found, and why this discovery changes treatment protocols. Give detailed scientific insights.`,
+        `As someone who's watched precision medicine evolve for 15 years, reveal the breakthrough moment that changed everything - include the specific technology advance, why previous approaches were limited, and how this unlocked personalized treatment possibilities that seemed impossible before.`
+      ],
+      'clinical_informatics_expert': [
+        `You've implemented EHR systems in 30+ hospitals. Share the most counterintuitive discovery about how digital systems actually affect patient care - include specific workflow changes, unexpected efficiency bottlenecks, and why most health IT implementations fail to improve outcomes despite good intentions.`,
+        `As someone who analyzes hospital data patterns, reveal a surprising correlation you discovered that changed how clinicians think about patient outcomes. Include the specific data points, why this pattern was hidden, and how it's reshaping clinical protocols.`
       ]
     };
 
-    const prompts = personalPrompts[expertise] || personalPrompts['ai_diagnostics_expert'];
+    const prompts = detailedPersonalPrompts[expertise] || [
+      `As a ${expertise.replace('_', ' ')}, share your most significant professional discovery - include specific details about the problem you were solving, your methodology, surprising findings, and why this insight matters for the field. Make it a detailed, personal account with technical depth.`
+    ];
+    
     const selectedPrompt = prompts[Math.floor(Math.random() * prompts.length)];
 
     try {
       const content = await openaiClient.generateCompletion(selectedPrompt, {
-        maxTokens: 90,
-        temperature: 0.9 // Higher temperature for more creativity
+        maxTokens: 280, // Significantly increased for detailed content
+        temperature: 0.85
       });
 
       if (!content || content.length < 50) return null;
@@ -144,30 +151,30 @@ export class HumanExpertPersonality {
     expertiseArea: string;
     confidenceScore: number;
   } | null> {
-    const analysisPrompts: Record<string, string[]> = {
+    const detailedAnalysisPrompts: Record<string, string[]> = {
       'biotech_innovation_analyst': [
-        `Analyze why 73% of biotech startups fail in year 2, but the survivors become unicorns. What pattern do you see that others miss? Expert analysis, conversational tone.`,
-        `As someone who's evaluated 500+ biotech deals, share the one metric that predicts success better than any other. Insider perspective, specific example.`
+        `Analyze why 73% of biotech startups fail in year 2, but the survivors become unicorns. Include specific case studies, the exact inflection points that separate winners from losers, funding patterns you've observed, and the counterintuitive factor that most VCs miss when evaluating biotech deals. Give insider analysis.`,
+        `As someone who's evaluated 1000+ biotech deals, reveal the one metric that predicts success better than any other. Include specific companies that exemplify this pattern, why traditional biotech metrics fail, and how this insight has changed your investment strategy.`
       ],
       'healthcare_ai_architect': [
-        `You've designed AI systems for 20+ hospitals. Share why most healthcare AI implementations fail and what the successful ones do differently. Expert insight.`,
-        `After building AI for Mayo Clinic and Cleveland Clinic, share the biggest misconception about healthcare AI adoption. Technical insight, accessible language.`
+        `You've designed AI systems for 50+ hospitals. Reveal why 85% of healthcare AI implementations fail within 18 months. Include specific technical architecture decisions, workflow integration challenges, physician adoption barriers, and the three critical success factors that most health systems ignore.`,
+        `After building AI for Mayo Clinic, Cleveland Clinic, and Johns Hopkins, expose the biggest misconception about healthcare AI adoption. Include real examples of what works vs what doesn't, specific technical bottlenecks, and why most AI vendors fundamentally misunderstand healthcare workflows.`
       ],
       'health_economics_expert': [
-        `Analyze why digital health saves money in theory but costs more in practice. What economic pattern do policymakers miss? Expert analysis, real examples.`,
-        `You've calculated ROI for 100+ health tech implementations. Share the surprising factor that determines financial success. Insider perspective.`
+        `Analyze why digital health saves money in theory but costs 23% more in practice. Include specific economic models, hidden cost factors, real ROI data from major implementations, and why health economists consistently underestimate total cost of ownership. Give detailed financial analysis.`,
+        `You've calculated ROI for 200+ health tech implementations. Reveal the surprising factor that determines financial success - include specific examples, why conventional cost-benefit analysis fails in healthcare, and the economic pattern that predicts long-term sustainability.`
       ]
     };
 
-    const prompts = analysisPrompts[expertise] || [
-      `As a ${expertise.replace('_', ' ')}, analyze the biggest trend others are missing in your field. Expert perspective, specific insights, under 240 chars.`
+    const prompts = detailedAnalysisPrompts[expertise] || [
+      `As a ${expertise.replace('_', ' ')}, analyze the most significant trend others are missing in your field. Include specific data points, why conventional wisdom is wrong, examples of companies getting this right/wrong, and what this means for the next 2-3 years. Provide detailed expert analysis.`
     ];
 
     const selectedPrompt = prompts[Math.floor(Math.random() * prompts.length)];
 
     try {
       const content = await openaiClient.generateCompletion(selectedPrompt, {
-        maxTokens: 95,
+        maxTokens: 300,
         temperature: 0.8
       });
 
@@ -200,13 +207,13 @@ export class HumanExpertPersonality {
         return await this.generateFallbackBreakthrough(expertise);
       }
 
-      const technicalPrompt = `
-        As a ${expertise.replace('_', ' ')}, explain this breakthrough in technical terms that show deep expertise: "${latestBreakthrough.title}". 
-        Focus on the engineering/scientific implications others miss. Expert perspective, conversational tone, under 240 chars.
+      const detailedTechnicalPrompt = `
+        As a ${expertise.replace('_', ' ')}, provide an in-depth technical analysis of this breakthrough: "${latestBreakthrough.title}". 
+        Include the specific technical challenges this solves, why previous approaches failed, the engineering innovations that made this possible, measurable improvements over existing solutions, and what this enables that wasn't possible before. Give detailed expert insights that go beyond surface-level reporting.
       `;
 
-      const content = await openaiClient.generateCompletion(technicalPrompt, {
-        maxTokens: 90,
+      const content = await openaiClient.generateCompletion(detailedTechnicalPrompt, {
+        maxTokens: 320,
         temperature: 0.7
       });
 
@@ -253,17 +260,17 @@ export class HumanExpertPersonality {
     expertiseArea: string;
     confidenceScore: number;
   } | null> {
-    const futurePrompts = [
-      `Predict how ${expertise.replace('_', ' ')} will evolve in the next 18 months. What specific change will surprise everyone? Expert prediction with timeline.`,
-      `As a ${expertise.replace('_', ' ')}, forecast the one technology shift that will make current approaches obsolete. Specific prediction with reasoning.`,
-      `Looking at your field's trajectory, what capability will exist in 2026 that seems impossible today? Expert foresight with technical details.`
+    const detailedFuturePrompts = [
+      `Predict how ${expertise.replace('_', ' ')} will evolve in the next 18 months. Include specific technological developments, regulatory changes, market forces, and competitive dynamics. What change will surprise everyone and why are most experts missing this trend? Give detailed predictions with timeline and reasoning.`,
+      `As a ${expertise.replace('_', ' ')}, forecast the one technology shift that will make current approaches obsolete. Include specific technical limitations being solved, why current solutions will fail, which companies are positioning for this shift, and what new capabilities this will unlock. Detailed prediction with evidence.`,
+      `Looking at your field's trajectory, what capability will exist in 2026 that seems impossible today? Include the specific scientific breakthroughs required, current research that's heading in this direction, remaining technical hurdles, and why this will fundamentally change the field. Expert foresight with technical depth.`
     ];
 
-    const selectedPrompt = futurePrompts[Math.floor(Math.random() * futurePrompts.length)];
+    const selectedPrompt = detailedFuturePrompts[Math.floor(Math.random() * detailedFuturePrompts.length)];
 
     try {
       const content = await openaiClient.generateCompletion(selectedPrompt, {
-        maxTokens: 85,
+        maxTokens: 290,
         temperature: 0.8
       });
 
@@ -287,17 +294,17 @@ export class HumanExpertPersonality {
     expertiseArea: string;
     confidenceScore: number;
   } | null> {
-    const controversialPrompts = [
-      `Share your most unpopular opinion about ${expertise.replace('_', ' ')} that you know is correct but others resist. Expert contrarian view with evidence.`,
-      `What conventional wisdom in ${expertise.replace('_', ' ')} is completely wrong? Challenge the industry consensus with specific reasoning.`,
-      `As a ${expertise.replace('_', ' ')}, explain why the current approach to your biggest challenge is backwards. Contrarian insight with better solution.`
+    const detailedControversialPrompts = [
+      `Share your most unpopular opinion about ${expertise.replace('_', ' ')} that you know is correct but others resist. Include specific evidence, why the industry fights this truth, examples of failures caused by conventional thinking, and what needs to change. Make a compelling contrarian case with detailed reasoning.`,
+      `What conventional wisdom in ${expertise.replace('_', ' ')} is completely wrong? Challenge the industry consensus with specific data points, real-world examples of this wisdom failing, the vested interests that perpetuate this myth, and your alternative approach that actually works.`,
+      `As a ${expertise.replace('_', ' ')}, explain why the current approach to your biggest challenge is backwards. Include specific flaws in current methodology, why most practitioners get this wrong, evidence that supports your contrarian view, and your alternative solution with better outcomes.`
     ];
 
-    const selectedPrompt = controversialPrompts[Math.floor(Math.random() * controversialPrompts.length)];
+    const selectedPrompt = detailedControversialPrompts[Math.floor(Math.random() * detailedControversialPrompts.length)];
 
     try {
       const content = await openaiClient.generateCompletion(selectedPrompt, {
-        maxTokens: 90,
+        maxTokens: 300,
         temperature: 0.9
       });
 

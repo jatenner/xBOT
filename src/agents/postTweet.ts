@@ -453,12 +453,20 @@ export class PostTweetAgent {
           console.log('🚫 NUCLEAR IMAGE BLOCK: Images completely disabled');
           imageUrl = null;
         } else {
-          // Proceed with normal image selection
-          imageUrl = await smartImageSelector.chooseImage(tweetContent);
+          // Intelligent image decision - only add images that enhance the content
+          const shouldIncludeImage = this.intelligentImageDecision(tweetContent);
+          
+          if (shouldIncludeImage) {
+            imageUrl = await smartImageSelector.chooseImage(tweetContent);
+            console.log('📸 SMART IMAGE: Content benefits from visual enhancement');
+          } else {
+            console.log('📝 TEXT-ONLY: Content is engaging enough without image');
+            imageUrl = null;
+          }
         }
       } catch (error) {
-        console.log('⚠️ Could not check nuclear image block, proceeding with image selection');
-        imageUrl = await smartImageSelector.chooseImage(tweetContent);
+        console.log('⚠️ Could not check nuclear image block, defaulting to text-only');
+        imageUrl = null;
       }
       
       if (imageUrl) {
@@ -1857,6 +1865,43 @@ The implications could reshape how we approach patient care. What's your take?`;
     
     // Use the dedicated URL preservation function
     return preserveUrlsInTweet(tweet, 280);
+  }
+
+  private intelligentImageDecision(content: string): boolean {
+    // Text-first approach: Only include images when they truly add value
+    
+    // Always skip images for expert insights (they're engaging enough)
+    if (content.includes('Ever wonder') || content.includes('Here\'s what caught my attention') || 
+        content.includes('What\'s fascinating') || content.includes('The part that blew my mind')) {
+      return false;
+    }
+    
+    // Skip images for detailed technical content (focus on the insights)
+    if (content.length > 250 && (content.includes('specific') || content.includes('technical') || 
+        content.includes('detailed') || content.includes('methodology'))) {
+      return false;
+    }
+    
+    // Skip images for controversial takes and complex analysis
+    if (content.includes('unpopular opinion') || content.includes('conventional wisdom is wrong') || 
+        content.includes('backwards approach') || content.includes('contrarian')) {
+      return false;
+    }
+    
+    // Include images for breakthrough announcements and technology reveals
+    if (content.includes('breakthrough') || content.includes('just tested') || 
+        content.includes('new system') || content.includes('game changer')) {
+      return true;
+    }
+    
+    // Include images for data-heavy content
+    if (/\d+%/.test(content) || content.includes('data shows') || content.includes('study') || 
+        content.includes('research') || content.includes('clinical trial')) {
+      return true;
+    }
+    
+    // Default to text-only for expert content
+    return false;
   }
 
   private shouldIncludeImage(content: string, contentType: string): boolean {
