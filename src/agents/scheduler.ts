@@ -150,10 +150,10 @@ export class Scheduler {
       }
     }, {
       scheduled: true,
-      timezone: "UTC"
+      timezone: "America/New_York"
     });
 
-    // Schedule learning agent to run daily at 2 AM UTC (unchanged - already reasonable)
+    // Schedule learning agent to run daily at 2 AM EST (learning during off hours)
     if (!disableLearningAgents) {
       this.learningJob = cron.schedule('0 2 * * *', async () => {
         console.log('🧠 === Daily Learning Cycle Started ===');
@@ -165,7 +165,7 @@ export class Scheduler {
         }
       }, {
         scheduled: true,
-        timezone: "UTC"
+        timezone: "America/New_York"
       });
     }
 
@@ -181,19 +181,21 @@ export class Scheduler {
         }
       }, {
         scheduled: true,
-        timezone: "UTC"
+        timezone: "America/New_York"
       });
     }
 
     // Schedule engagement analysis every 2 hours during peak hours only (reduced from every 30 min)
     this.engagementJob = cron.schedule('0 */2 * * *', async () => {
-      const currentHour = new Date().getUTCHours();
-      const isPeakHour = (currentHour >= 13 && currentHour <= 15) || // 9-11 AM EST
-                        (currentHour >= 19 && currentHour <= 21) || // 3-5 PM EST  
-                        (currentHour >= 23 || currentHour <= 1);    // 7-9 PM EST
+      // Convert to Eastern Time for peak hour detection
+      const currentHour = new Date().toLocaleString("en-US", {timeZone: "America/New_York"});
+      const estHour = new Date(currentHour).getHours();
+      const isPeakHour = (estHour >= 9 && estHour <= 11) ||  // 9-11 AM EST
+                        (estHour >= 15 && estHour <= 17) || // 3-5 PM EST  
+                        (estHour >= 19 && estHour <= 21);   // 7-9 PM EST
 
       if (isPeakHour) {
-        console.log('📊 === Peak Hour Engagement Analysis ===');
+        console.log('📊 === Peak Hour Engagement Analysis (EST) ===');
         try {
           const report = await this.engagementTracker.generateEngagementReport();
           console.log('📈 Engagement Report:', report);
@@ -203,10 +205,10 @@ export class Scheduler {
       }
     }, {
       scheduled: true,
-      timezone: "UTC"
+      timezone: "America/New_York"
     });
 
-    // Schedule weekly performance report on Sundays at 9 AM UTC
+    // Schedule weekly performance report on Sundays at 9 AM EST
     this.weeklyReportJob = cron.schedule('0 9 * * 0', async () => {
       console.log('📊 === Weekly Performance Report ===');
       try {
@@ -216,7 +218,7 @@ export class Scheduler {
       }
     }, {
       scheduled: true,
-      timezone: "UTC"
+      timezone: "America/New_York"
     });
 
     // 🤖 AUTONOMOUS TWEET AUDITOR - runs every 4 hours instead of 2 to reduce API costs
@@ -230,7 +232,7 @@ export class Scheduler {
         }
       }, {
         scheduled: true,
-        timezone: "UTC"
+        timezone: "America/New_York"
       });
     }
 
@@ -246,11 +248,11 @@ export class Scheduler {
         }
       }, {
         scheduled: true,
-        timezone: "UTC"
+        timezone: "America/New_York"
       });
     }
 
-    // 🌙 NIGHTLY OPTIMIZER - runs once at 3 AM UTC
+    // 🌙 NIGHTLY OPTIMIZER - runs once at 3 AM EST
     this.nightlyOptimizerJob = cron.schedule('0 3 * * *', async () => {
       console.log('🌙 === Nightly Optimizer Cycle ===');
       try {
@@ -260,7 +262,7 @@ export class Scheduler {
       }
     }, {
       scheduled: true,
-      timezone: "UTC"
+      timezone: "America/New_York"
     });
 
     // 📊 GROWTH AGENTS - Autonomous growth loop
@@ -276,10 +278,10 @@ export class Scheduler {
       }
     }, {
       scheduled: true,
-      timezone: "UTC"
+      timezone: "America/New_York"
     });
 
-    // Strategy Learner - runs daily at 2:30 AM UTC (after engagement aggregation)
+    // Strategy Learner - runs daily at 2:30 AM EST (after engagement aggregation)
     this.strategyLearnerJob = cron.schedule('30 2 * * *', async () => {
       console.log('🧠 === Strategy Learner (ε-greedy) ===');
       try {
@@ -290,7 +292,7 @@ export class Scheduler {
       }
     }, {
       scheduled: true,
-      timezone: "UTC"
+      timezone: "America/New_York"
     });
 
     // Follow Growth Agent - runs every 4 hours
@@ -303,12 +305,12 @@ export class Scheduler {
       }
     }, {
       scheduled: true,
-      timezone: "UTC"
+      timezone: "America/New_York"
     });
 
     console.log('✅ Autonomous growth loop initialized');
     console.log('   📊 Engagement feedback: Every hour');
-    console.log('   🧠 Strategy learning: Daily at 2:30 AM UTC');
+    console.log('   🧠 Strategy learning: Daily at 2:30 AM EST');
     console.log('   👥 Follow growth: Every 4 hours');
 
     console.log('✅ Snap2Health X-Bot Scheduler started successfully');
@@ -416,20 +418,20 @@ export class Scheduler {
     console.log('⏰ Scheduler started with the following jobs:');
     console.log('   - Strategist: Every 45 minutes');
     if (!disableLearningAgents) {
-      console.log('   - Learning: Daily at 2:00 AM UTC');
+      console.log('   - Learning: Daily at 2:00 AM EST');
     }
     if (!disableLearningAgents) {
       console.log('   - Autonomous Learning: Every 12 hours');
     }
-    console.log('   - Engagement Analysis: Every 2 hours during peak hours');
+    console.log('   - Engagement Analysis: Every 2 hours during peak hours (EST)');
     console.log('   - 🔥 REAL Engagement: Every 60 minutes (ACTUAL Twitter actions)');
-    console.log('   - Weekly Report: Sundays at 9:00 AM UTC');
+    console.log('   - Weekly Report: Sundays at 9:00 AM EST');
     console.log('   - 🤖 Autonomous Tweet Auditor: Every 4 hours');
     console.log('   - 🎭 Supreme Content Orchestrator: Every 8 hours');
     console.log('   - Real-time Engagement Tracking: Continuous');
-    console.log('   - Nightly Optimizer: Daily at 3:00 AM UTC');
-    console.log('   - 📊 Tweet Analytics Collector: Daily at 1:00 AM UTC');
-    console.log('   - 📝 Dashboard Writer: Daily at 1:15 AM UTC');
+    console.log('   - Nightly Optimizer: Daily at 3:00 AM EST');
+    console.log('   - 📊 Tweet Analytics Collector: Daily at 1:00 AM EST');
+    console.log('   - 📝 Dashboard Writer: Daily at 1:15 AM EST');
     
     console.log('🧠 AUTONOMOUS INTELLIGENCE ACTIVATED:');
     console.log('   - System continuously learns and improves');

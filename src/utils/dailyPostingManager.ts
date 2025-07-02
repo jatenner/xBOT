@@ -302,7 +302,7 @@ class DailyPostingManager {
       await this.executePost('scheduled');
     }, {
       scheduled: true,
-      timezone: "UTC"
+      timezone: "America/New_York"
     });
 
     this.scheduledJobs.push(job);
@@ -376,7 +376,7 @@ class DailyPostingManager {
       }
     }, {
       scheduled: true,
-      timezone: "UTC"
+      timezone: "America/New_York"
     });
     
     this.scheduledJobs.push(strategicMonitoringJob);
@@ -405,7 +405,7 @@ class DailyPostingManager {
       }
     }, {
       scheduled: true,
-      timezone: "UTC"
+      timezone: "America/New_York"
     });
     
     this.scheduledJobs.push(intelligenceReviewJob);
@@ -427,7 +427,7 @@ class DailyPostingManager {
       await this.executePost('scheduled');
     }, {
       scheduled: true,
-      timezone: "UTC"
+      timezone: "America/New_York"
     });
 
     this.scheduledJobs.push(job);

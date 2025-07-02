@@ -169,28 +169,59 @@ export class RealTimeLimitsIntelligenceAgent {
     };
   }
 
-  /**
+    /**
    * 🐦 FETCH TWITTER LIMITS FROM HEADERS
    * Makes a test API call to get rate limit headers
    */
-  private async fetchTwitterLimits(): Promise<{ writeRemaining: number; writeReset: number; readRemaining: number; readReset: number }> {
+  private async fetchTwitterLimits(): Promise<{ writeRemaining: number; writeReset: number; readRemaining: number; readReset: number; dailyWriteRemaining: number; dailyWriteReset: number }> {
     try {
-      // Make a lightweight test call to get headers
-      await xClient.getUserByUsername('twitter'); // Well-known account
+      // First try to get current rate limit status from xClient
+      const currentStatus = xClient.getRateLimitStatus();
       
-      // If successful, we don't have rate limit headers, so return conservative estimates
-      return {
-        writeRemaining: 10, // Conservative estimate when call succeeds
-        writeReset: Math.floor(Date.now() / 1000) + (15 * 60), // 15 minutes from now
-        readRemaining: 50, // Conservative estimate 
-        readReset: Math.floor(Date.now() / 1000) + (15 * 60) // 15 minutes from now
-      };
+      // If we have recent rate limit data, use it
+      if (currentStatus && currentStatus.tweets24Hour) {
+        console.log(`📊 USING XCLIENT RATE LIMIT STATUS:`);
+        console.log(`   24h: ${currentStatus.tweets24Hour.used}/${currentStatus.tweets24Hour.limit} used`);
+        
+        const dailyRemaining = currentStatus.tweets24Hour.limit - currentStatus.tweets24Hour.used;
+        const resetTime = Math.floor(currentStatus.tweets24Hour.resetTime.getTime() / 1000);
+        
+        return {
+          writeRemaining: dailyRemaining,
+          writeReset: resetTime,
+          readRemaining: 100, // Conservative estimate
+          readReset: resetTime,
+          dailyWriteRemaining: dailyRemaining,
+          dailyWriteReset: resetTime
+        };
+      }
+      
+      // Make a lightweight test call to get headers if no cached data
+      try {
+        await xClient.getUserByUsername('twitter'); // Well-known account
+        
+        // If successful, we don't have rate limit headers, so return conservative estimates
+        const defaultReset = Math.floor(Date.now() / 1000) + (24 * 60 * 60); // 24 hours from now
+        return {
+          writeRemaining: 10, // Conservative estimate when call succeeds
+          writeReset: defaultReset,
+          readRemaining: 50, // Conservative estimate 
+          readReset: defaultReset,
+          dailyWriteRemaining: 10,
+          dailyWriteReset: defaultReset
+        };
+      } catch (testError: any) {
+        // This is expected when rate limited - extract headers
+        throw testError;
+      }
       
     } catch (error: any) {
       // Check for specific error types
-      if (error.code === 429) {
+      if (error.code === 429 || (error.data && error.data.status === 429)) {
         // Extract rate limit info from headers - use DAILY limit headers as primary source
-        const headers = error.response?.headers || error.headers || {};
+        const headers = error.response?.headers || error.headers || error.data?.headers || {};
+        
+        console.log(`📊 AVAILABLE HEADERS:`, Object.keys(headers));
         
         // 🚨 CRITICAL: Use x-app-limit-24hour headers for daily limits (most reliable)
         const appDailyRemaining = parseInt(headers['x-app-limit-24hour-remaining'] || '0');
@@ -199,33 +230,38 @@ export class RealTimeLimitsIntelligenceAgent {
         const userDailyReset = parseInt(headers['x-user-limit-24hour-reset'] || String(Math.floor(Date.now() / 1000) + 86400));
         
         // Use the most restrictive limit (app vs user)
-        const writeRemaining = Math.min(appDailyRemaining, userDailyRemaining);
-        const writeReset = Math.max(appDailyReset, userDailyReset); // Use the furthest reset time
+        const dailyWriteRemaining = Math.min(appDailyRemaining, userDailyRemaining);
+        const dailyWriteReset = Math.max(appDailyReset, userDailyReset); // Use the furthest reset time
         
         // Also try to get short-term rate limits for completeness
-        const shortTermRemaining = parseInt(headers['x-rate-limit-remaining'] || String(writeRemaining));
-        const shortTermReset = parseInt(headers['x-rate-limit-reset'] || String(writeReset));
+        const shortTermRemaining = parseInt(headers['x-rate-limit-remaining'] || String(dailyWriteRemaining));
+        const shortTermReset = parseInt(headers['x-rate-limit-reset'] || String(dailyWriteReset));
         
         console.log(`📊 TWITTER API RATE LIMIT HEADERS:`);
-        console.log(`   App 24h: ${appDailyRemaining} remaining, reset: ${new Date(appDailyReset * 1000).toISOString()}`);
-        console.log(`   User 24h: ${userDailyRemaining} remaining, reset: ${new Date(userDailyReset * 1000).toISOString()}`);
-        console.log(`   Short-term: ${shortTermRemaining} remaining, reset: ${new Date(shortTermReset * 1000).toISOString()}`);
-        console.log(`   🎯 USING: ${writeRemaining} remaining (most restrictive), reset: ${new Date(writeReset * 1000).toISOString()}`);
-        
+        console.log(`   App 24h: ${appDailyRemaining} remaining, reset: ${new Date(appDailyReset * 1000).toLocaleString('en-US', {timeZone: 'America/New_York'})}`);
+        console.log(`   User 24h: ${userDailyRemaining} remaining, reset: ${new Date(userDailyReset * 1000).toLocaleString('en-US', {timeZone: 'America/New_York'})}`);
+        console.log(`   Short-term: ${shortTermRemaining} remaining, reset: ${new Date(shortTermReset * 1000).toLocaleString('en-US', {timeZone: 'America/New_York'})}`);
+        console.log(`   🎯 DAILY LIMIT: ${dailyWriteRemaining} remaining (most restrictive), reset: ${new Date(dailyWriteReset * 1000).toLocaleString('en-US', {timeZone: 'America/New_York'})}`);
+     
         return { 
-          writeRemaining, 
-          writeReset, 
-          readRemaining: writeRemaining, // Same limit for reads in Free tier
-          readReset: writeReset 
+          writeRemaining: shortTermRemaining, 
+          writeReset: shortTermReset, 
+          readRemaining: shortTermRemaining, // Same limit for reads in Free tier
+          readReset: shortTermReset,
+          dailyWriteRemaining,
+          dailyWriteReset
         };
       }
       
-      // For other errors, return defaults
+      // For other errors, return defaults (assume blocked)
+      const defaultReset = Math.floor(Date.now() / 1000) + (24 * 60 * 60);
       return {
         writeRemaining: 0, // Assume blocked if error
-        writeReset: Math.floor(Date.now() / 1000) + (15 * 60),
+        writeReset: defaultReset,
         readRemaining: 0, // Assume blocked if error
-        readReset: Math.floor(Date.now() / 1000) + (15 * 60)
+        readReset: defaultReset,
+        dailyWriteRemaining: 0,
+        dailyWriteReset: defaultReset
       };
     }
   }
