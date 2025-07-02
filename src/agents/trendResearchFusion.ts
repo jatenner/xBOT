@@ -346,7 +346,7 @@ export class TrendResearchFusion {
         trendTopic: 'AI Diagnostics',
         trendVolume: 15000,
         researchSource: 'Nature Medicine',
-        url: 'https://nature.com/articles/ai-diagnostics-2024',
+        url: 'https://www.nature.com/articles/s41586-024-07930-y',
         institutionCredibility: 0.98,
         relevanceScore: 0.90,
         combinedScore: 0.92,

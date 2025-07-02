@@ -319,7 +319,7 @@ export class ComprehensiveContentAgent {
     return {
       content: "AI-powered health monitoring reaches new milestone: 94% accuracy in early disease detection across multiple conditions. The future of preventive medicine is here.",
       media: [],
-      researchLinks: ["https://www.nature.com/collections/artificial-intelligence-in-healthcare"],
+              researchLinks: ["https://www.nature.com/subjects/machine-learning"],
       hashtags: [],
       engagementScore: 80,
       credibilityScore: 90,

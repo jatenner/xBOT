@@ -148,7 +148,7 @@ export class RealResearchFetcher {
       },
       {
         title: "AI-Powered Drug Discovery Platform Reduces Development Time by 85%",
-        url: "https://www.nature.com/natmedicine/",
+        url: "https://www.nature.com/nm/",
         source: "Nature Medicine",
         publicationDate: "2024-12-04T16:45:00Z",
         summary: "Machine learning algorithms identify promising drug compounds in months instead of years, with 92% accuracy in predicting therapeutic effectiveness across 500+ trials.",
@@ -267,7 +267,7 @@ export class RealResearchFetcher {
     return [
       {
         title: "AI in Healthcare: Latest Breakthroughs and Applications",
-        url: "https://www.nature.com/collections/artificial-intelligence-in-healthcare",
+        url: "https://www.nature.com/subjects/machine-learning",
         source: "Nature",
         publicationDate: "2024-12-01T00:00:00Z",
         summary: "Comprehensive overview of current AI applications transforming modern healthcare delivery and patient outcomes.",

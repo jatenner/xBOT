@@ -25,7 +25,7 @@ export class RealLinkProvider {
       isWorking: true
     },
     {
-      url: "https://www.nature.com/natmedicine/",
+      url: "https://www.nature.com/nm/",
       title: "Nature Medicine",
       source: "Nature",
       credibilityScore: 98,

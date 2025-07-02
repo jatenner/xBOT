@@ -52,8 +52,8 @@ export class ResearchAgent {
       searchPattern: 'https://arxiv.org/abs/{id}'
     },
     'Nature Medicine': {
-      baseUrl: 'https://nature.com/nm',
-      searchPattern: 'https://nature.com/articles/{id}'
+          baseUrl: 'https://www.nature.com/nm',
+    searchPattern: 'https://www.nature.com/articles/s41591-{year}-{id}'
     },
     'NEJM': {
       baseUrl: 'https://nejm.org',
