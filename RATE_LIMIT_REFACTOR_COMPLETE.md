@@ -36,7 +36,8 @@
 - `src/main.ts` - Uses simplified runtime config
 
 ### Database Changes:
-- SQL migration: `fix_supabase_sql_error.sql`
+- SQL migration: `good
+fix_supabase_sql_error.sql`
 - Removes artificial limit tables and configurations
 - Adds real Twitter limits configuration
 - Cleans up monthly cap emergency modes
