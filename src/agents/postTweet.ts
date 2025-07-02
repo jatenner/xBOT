@@ -2823,8 +2823,33 @@ Make it insightful, strategic, and reveal hidden implications. 250 characters ma
    */
   private async checkRateLimit(): Promise<{ canPost: boolean; reason: string }> {
     try {
-      // 🚨 FIRST: Check emergency configurations
+      // 🚨 FIRST: Check for startup posting override
       console.log('🔍 Checking emergency configurations...');
+      
+      const { data: startupOverride } = await supabaseClient.supabase
+        ?.from('bot_config')
+        .select('value')
+        .eq('key', 'startup_posting_override')
+        .single() || { data: null };
+      
+      if (startupOverride?.value?.enabled && startupOverride.value.force_immediate_post) {
+        console.log('🚀 STARTUP OVERRIDE: Forcing immediate post - clearing phantom state');
+        
+        // Clear the override after use to prevent abuse
+        await supabaseClient.supabase
+          ?.from('bot_config')
+          .update({
+            value: {
+              ...startupOverride.value,
+              enabled: false,
+              used_at: new Date().toISOString()
+            }
+          })
+          .eq('key', 'startup_posting_override');
+        
+        console.log('✅ No emergency blocks detected - proceeding with normal operations');
+        return { canPost: true, reason: 'Startup override - phantom state cleared' };
+      }
       
       // Check emergency search block configuration
       const { data: emergencyBlock } = await supabaseClient.supabase
@@ -2961,13 +2986,13 @@ Make it insightful, strategic, and reveal hidden implications. 250 characters ma
       if (todaysPosts && todaysPosts.length > 0) {
         const lastPostTime = new Date(todaysPosts[0].created_at);
         const timeSinceLastPost = Date.now() - lastPostTime.getTime();
-        const MIN_INTERVAL = 30 * 60 * 1000; // 30 minutes minimum (increased from 20)
+        const MIN_INTERVAL = 10 * 60 * 1000; // 10 minutes minimum (reduced from 30 minutes)
         
         if (timeSinceLastPost < MIN_INTERVAL) {
           const waitMinutes = Math.ceil((MIN_INTERVAL - timeSinceLastPost) / 60000);
           return { 
             canPost: false, 
-            reason: `Must wait ${waitMinutes} more minutes since last post (30-minute safety interval)`
+            reason: `Must wait ${waitMinutes} more minutes since last post (10-minute safety interval)`
           };
         }
       }

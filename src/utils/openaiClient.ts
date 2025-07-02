@@ -520,7 +520,7 @@ export class CostOptimizer {
     const ultraLowCost = true; // 🔥 ULTRA-AGGRESSIVE COST MODE ENABLED
     
     this.config = {
-      dailyBudgetLimit: emergencyMode ? 2.00 : 15.00, // Reasonable daily budget
+      dailyBudgetLimit: emergencyMode ? 2.00 : 5.00, // $5/day budget as requested
       enableCostTracking: true,
       preferredModel: 'gpt-4o-mini', // Cost-effective model
       fallbackModel: 'gpt-3.5-turbo',
