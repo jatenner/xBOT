@@ -2975,7 +2975,48 @@ Make it insightful, strategic, and reveal hidden implications. 250 characters ma
    */
   private async checkRateLimit(): Promise<{ canPost: boolean; reason: string }> {
     try {
-      // 🚨 FIRST: Check for startup posting override
+      // 🚨 CRITICAL FIRST: Check real Twitter API limits using Real-Time Intelligence
+      console.log('🔍 Checking real Twitter API limits...');
+      const { realTimeLimitsAgent } = await import('./realTimeLimitsIntelligenceAgent');
+      
+      try {
+        const realLimits = await realTimeLimitsAgent.getCurrentLimits(true); // Force refresh
+        
+        // Check if Twitter says we can post (this is the ultimate authority)
+        if (!realLimits.twitter.canPost) {
+          const hoursUntilReset = Math.ceil((realLimits.twitter.dailyTweets.resetTime.getTime() - Date.now()) / (1000 * 60 * 60));
+          console.log(`🚨 TWITTER API BLOCKED: Daily limit exhausted (${realLimits.twitter.dailyTweets.used}/${realLimits.twitter.dailyTweets.limit})`);
+          return {
+            canPost: false,
+            reason: `Twitter daily limit exhausted: ${realLimits.twitter.dailyTweets.used}/${realLimits.twitter.dailyTweets.limit} tweets used. Resets in ${hoursUntilReset} hours at ${realLimits.twitter.dailyTweets.resetTime.toLocaleTimeString()}.`
+          };
+        }
+        
+        // Additional check: if very few remaining, be extra cautious
+        if (realLimits.twitter.dailyTweets.remaining <= 1) {
+          console.log(`⚠️ TWITTER LIMIT WARNING: Only ${realLimits.twitter.dailyTweets.remaining} tweets remaining today`);
+          
+          // Only proceed if this is an emergency or high-priority post
+          const currentHour = new Date().getHours();
+          const isPeakEngagementHour = (currentHour >= 9 && currentHour <= 11) || (currentHour >= 15 && currentHour <= 17);
+          
+          if (!isPeakEngagementHour) {
+            return {
+              canPost: false,
+              reason: `Conserving remaining ${realLimits.twitter.dailyTweets.remaining} tweets for peak engagement hours. Current hour: ${currentHour}`
+            };
+          }
+        }
+        
+        console.log(`✅ TWITTER API OK: ${realLimits.twitter.dailyTweets.remaining}/${realLimits.twitter.dailyTweets.limit} tweets remaining`);
+        
+      } catch (realLimitsError) {
+        console.error('⚠️ Real-time limits check failed:', realLimitsError);
+        // Continue with database checks as fallback, but be more conservative
+        console.log('📊 Falling back to database-based rate limiting (more conservative)');
+      }
+      
+      // 🚨 SECOND: Check for startup posting override
       console.log('🔍 Checking emergency configurations...');
       
       const { data: startupOverride } = await supabaseClient.supabase

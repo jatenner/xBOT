@@ -189,19 +189,35 @@ export class RealTimeLimitsIntelligenceAgent {
     } catch (error: any) {
       // Check for specific error types
       if (error.code === 429) {
-        // Extract rate limit info from headers if available
+        // Extract rate limit info from headers - use DAILY limit headers as primary source
         const headers = error.response?.headers || error.headers || {};
         
-        const writeRemaining = parseInt(headers['x-rate-limit-remaining'] || '0');
-        const writeReset = parseInt(headers['x-rate-limit-reset'] || String(Math.floor(Date.now() / 1000) + 900));
-        const readRemaining = parseInt(headers['x-user-limit-24hour-remaining'] || '0');
-        const readReset = parseInt(headers['x-user-limit-24hour-reset'] || String(Math.floor(Date.now() / 1000) + 86400));
+        // 🚨 CRITICAL: Use x-app-limit-24hour headers for daily limits (most reliable)
+        const appDailyRemaining = parseInt(headers['x-app-limit-24hour-remaining'] || '0');
+        const userDailyRemaining = parseInt(headers['x-user-limit-24hour-remaining'] || '0');
+        const appDailyReset = parseInt(headers['x-app-limit-24hour-reset'] || String(Math.floor(Date.now() / 1000) + 86400));
+        const userDailyReset = parseInt(headers['x-user-limit-24hour-reset'] || String(Math.floor(Date.now() / 1000) + 86400));
         
-        console.log(`📊 Rate limit headers found:`);
-        console.log(`   Write: ${writeRemaining} remaining, reset: ${new Date(writeReset * 1000).toISOString()}`);
-        console.log(`   Read: ${readRemaining} remaining, reset: ${new Date(readReset * 1000).toISOString()}`);
+        // Use the most restrictive limit (app vs user)
+        const writeRemaining = Math.min(appDailyRemaining, userDailyRemaining);
+        const writeReset = Math.max(appDailyReset, userDailyReset); // Use the furthest reset time
         
-        return { writeRemaining, writeReset, readRemaining, readReset };
+        // Also try to get short-term rate limits for completeness
+        const shortTermRemaining = parseInt(headers['x-rate-limit-remaining'] || String(writeRemaining));
+        const shortTermReset = parseInt(headers['x-rate-limit-reset'] || String(writeReset));
+        
+        console.log(`📊 TWITTER API RATE LIMIT HEADERS:`);
+        console.log(`   App 24h: ${appDailyRemaining} remaining, reset: ${new Date(appDailyReset * 1000).toISOString()}`);
+        console.log(`   User 24h: ${userDailyRemaining} remaining, reset: ${new Date(userDailyReset * 1000).toISOString()}`);
+        console.log(`   Short-term: ${shortTermRemaining} remaining, reset: ${new Date(shortTermReset * 1000).toISOString()}`);
+        console.log(`   🎯 USING: ${writeRemaining} remaining (most restrictive), reset: ${new Date(writeReset * 1000).toISOString()}`);
+        
+        return { 
+          writeRemaining, 
+          writeReset, 
+          readRemaining: writeRemaining, // Same limit for reads in Free tier
+          readReset: writeReset 
+        };
       }
       
       // For other errors, return defaults
@@ -249,24 +265,35 @@ export class RealTimeLimitsIntelligenceAgent {
       const resetTime = new Date(writeReset * 1000);
       const readResetTime = new Date(readReset * 1000);
       
+      // 🚨 CRITICAL FIX: Use Twitter API headers as source of truth
+      // The bot's database may be out of sync, but Twitter's headers are always accurate
+      const dailyUsed = this.TWITTER_DAILY_WRITE_LIMIT - writeRemaining;
+      const dailyLimit = this.TWITTER_DAILY_WRITE_LIMIT;
+      
+      console.log(`📊 TWITTER API HEADERS: ${writeRemaining} writes remaining of ${dailyLimit} daily limit`);
+      console.log(`📊 CALCULATED USAGE: ${dailyUsed}/${dailyLimit} tweets used today`);
+      
       // Only block when REAL API write limits are exhausted
       if (writeRemaining <= 0) {
-        console.log(`🚨 RATE LIMIT BLOCK: Real API write limits exhausted (writeRemaining: ${writeRemaining})`);
+        console.log(`🚨 DAILY LIMIT EXHAUSTED: Twitter says ${writeRemaining} remaining (used ${dailyUsed}/${dailyLimit})`);
         this.emergencyCooldownUntil = resetTime;
         isLocked = true;
         accountStatus = 'limited';
       } else {
-        console.log(`✅ API Write Limits OK: ${writeRemaining} remaining`);
+        console.log(`✅ DAILY LIMIT OK: ${writeRemaining} remaining (used ${dailyUsed}/${dailyLimit})`);
         accountStatus = 'active';
         isLocked = false;
       }
 
-      // Get our daily/monthly usage from database
-      const dailyStats = await this.getDailyTwitterStats();
+      // Get our database counts for informational purposes only
+      const databaseStats = await this.getDailyTwitterStats();
       const monthlyStats = await this.getMonthlyTwitterStats();
       
-      // Calculate remaining based on REAL Twitter Free tier limits  
-      const dailyUsed = dailyStats.tweets;
+      // Use Twitter API headers as source of truth, not database
+      if (databaseStats.tweets !== dailyUsed) {
+        console.log(`⚠️ DATABASE SYNC ISSUE: Database shows ${databaseStats.tweets} tweets, but Twitter API headers show ${dailyUsed} used`);
+        console.log(`📡 USING TWITTER API HEADERS as authoritative source`);
+      }
       const dailyRemaining = Math.max(0, this.TWITTER_DAILY_WRITE_LIMIT - dailyUsed);
       
       const monthlyReadsUsed = monthlyStats.reads;
