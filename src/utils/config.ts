@@ -84,7 +84,10 @@ export async function getAllConfig(): Promise<Record<string, any>> {
 }
 
 /**
- * Core configuration defaults - REAL TWITTER LIMITS ONLY
+ * Core configuration defaults - NUCLEAR MODE WITH SAFETY
+ * 
+ * REMOVED ALL ARTIFICIAL LIMITS - Let the bot be intelligent!
+ * ONLY SAFETY: Maximum 3 posts per hour (72 posts/day max)
  * 
  * Real Twitter API v2 Free Tier Limits:
  * - 300 tweets per 3-hour rolling window
@@ -93,18 +96,35 @@ export async function getAllConfig(): Promise<Record<string, any>> {
  */
 
 export const defaults = {
-  // 🚨 REMOVED ARTIFICIAL LIMITS - Using real Twitter limits only
-  // Real limits: 300/3h, 2400/24h enforced by xClient.ts
+  // 🚀 NUCLEAR MODE: Remove all artificial constraints
+  // Only real safety limit: 3 posts per hour maximum
+  maxPostsPerHour: 3,  // SAFETY NET: Prevent nuclear insanity
+  maxPostsPerDay: 72,  // 3/hour * 24 hours = reasonable maximum
   
-  // Content quality settings
+  // Remove all other artificial limits
+  minInterval: 20, // 20 minutes minimum between posts (sensible spacing)
+  
+  // Content quality settings (keep these for quality)
   quality: { 
     readabilityMin: 55, 
     credibilityMin: 0.85 
   },
   
-  // Posting timing (not rate limits)
-  fallbackStaggerMinutes: 30, // More responsive timing
-  postingStrategy: "real_twitter_limits_only"
+  // Strategy: Let the AI decide everything else
+  postingStrategy: "nuclear_intelligence_unleashed",
+  
+  // Emergency mode: DISABLED (let the bot work!)
+  emergencyMode: false,
+  disableLearning: false,
+  
+  // Budget: Reasonable but not restrictive
+  dailyBudgetLimit: 25, // Increased from $10 to $25 for more capability
+  
+  // Startup throttling: REMOVED
+  startupThrottling: false,
+  
+  // Real limits only
+  respectOnlyRealTwitterLimits: true
 };
 
 /**

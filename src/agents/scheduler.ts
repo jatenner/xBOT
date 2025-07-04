@@ -91,11 +91,6 @@ export class Scheduler {
   }
 
   async start(): Promise<void> {
-    // 🚨 EMERGENCY: Add startup delay to prevent API spam
-    console.log('⏳ EMERGENCY: Delaying scheduler startup by 3 minutes');
-    await new Promise(resolve => setTimeout(resolve, 3 * 60 * 1000));
-    console.log('✅ Scheduler startup delay complete');
-    
     if (this.isRunning) {
       console.log('⚠️ Scheduler is already running');
       return;
@@ -104,45 +99,35 @@ export class Scheduler {
     console.log('🚀 Starting Snap2Health X-Bot Scheduler...');
     this.isRunning = true;
 
-    // 🎯 START DAILY POSTING MANAGER - Safe human-like posting
-    const dailyTarget = 17;
-    console.log(`🎯 Activating Daily Posting Manager - Target: ${dailyTarget} tweets/day`);
+    // 🎯 START DAILY POSTING MANAGER - Now with NUCLEAR INTELLIGENCE
+    const dailyTarget = 72; // Up to 72 tweets per day (3 per hour max)
+    console.log(`🎯 Activating Daily Posting Manager - Target: UP TO ${dailyTarget} tweets/day`);
+    console.log(`🛡️ SAFETY: Maximum 3 posts per hour prevents nuclear insanity`);
+    console.log(`🧠 INTELLIGENCE: All learning and growth systems ENABLED`);
     await dailyPostingManager.start();
 
-    // 🚨 EMERGENCY COST MODE CHECK
-    const emergencyMode = process.env.EMERGENCY_COST_MODE === 'true';
-    const disableLearningAgents = process.env.DISABLE_LEARNING_AGENTS === 'true';
-    const dailyBudgetLimit = parseFloat(process.env.DAILY_BUDGET_LIMIT || '10');
+    // 🚀 NUCLEAR INTELLIGENCE MODE: All systems operational
+    const emergencyMode = false; // DISABLED - Let the bot work!
+    const disableLearningAgents = false; // ENABLED - Full intelligence
+    const dailyBudgetLimit = parseFloat(process.env.DAILY_BUDGET_LIMIT || '25'); // Increased budget
 
-    if (emergencyMode) {
-      console.log('🚨 === EMERGENCY COST MODE ACTIVE ===');
-      console.log('💰 All expensive background analysis DISABLED');
-      console.log(`💵 Daily budget limit: $${dailyBudgetLimit}`);
-      console.log('📝 Basic posting mode only - optimized for 0-follower growth');
-      const dailyTarget = 17;
-      console.log(`🎯 Daily Posting Manager will handle all ${dailyTarget} tweets`);
-      
-      // In emergency mode, let daily posting manager handle all posts
-      // No additional strategist scheduling needed
-      
-      console.log('⚠️ EMERGENCY MODE: Daily Posting Manager controls all posting');
-      console.log(`   - ${dailyTarget} tweets/day spread across optimal times`);
-      console.log('   - ALL learning agents: DISABLED');
-      console.log('   - ALL competitive intelligence: DISABLED');
-      console.log('   - ALL background analysis: DISABLED');
-      console.log('   - Expected daily cost: $0.50-2.00 instead of $40-50');
-      return;
-    }
+    console.log('🚀 === NUCLEAR INTELLIGENCE MODE ACTIVE ===');
+    console.log('🧠 All learning and intelligence systems: ENABLED');
+    console.log('📈 Growth agents: FULLY OPERATIONAL');
+    console.log('🎯 Strategic posting: AI-DRIVEN');
+    console.log(`💰 Daily budget: $${dailyBudgetLimit} (sufficient for growth)`);
+    console.log('⚡ Real-time adaptation: MAXIMUM');
+    console.log('🛡️ Only safety limit: 3 posts per hour');
+    
+    // Enable all intelligence systems
+    console.log('✅ Autonomous learning: ENABLED');
+    console.log('✅ Competitive intelligence: ENABLED');
+    console.log('✅ Real-time engagement: ENABLED');
+    console.log('✅ Strategic posting: ENABLED');
+    console.log('✅ Growth optimization: ENABLED');
 
-    if (disableLearningAgents) {
-      console.log('⚠️ Learning agents disabled for cost savings');
-    }
-
-    // Temporarily disable engagement tracking to avoid rate limits
-    // await this.engagementTracker.startTracking();
-
-    // Schedule strategist to run every 45 minutes instead of 15 (reduced from 96x to 32x daily)
-    this.strategistJob = cron.schedule('*/45 * * * *', async () => {
+    // Schedule strategist to run every 30 minutes (increased from 45 minutes)
+    this.strategistJob = cron.schedule('*/30 * * * *', async () => {
       try {
         await this.runStrategistCycle();
       } catch (error) {
@@ -154,54 +139,44 @@ export class Scheduler {
     });
 
     // Schedule learning agent to run daily at 2 AM EST (learning during off hours)
-    if (!disableLearningAgents) {
-      this.learningJob = cron.schedule('0 2 * * *', async () => {
-        console.log('🧠 === Daily Learning Cycle Started ===');
-        try {
-          await this.learnAgent.run();
-          console.log('🧠 === Daily Learning Cycle Completed ===');
-        } catch (error) {
-          console.error('❌ Daily learning cycle failed:', error);
-        }
-      }, {
-        scheduled: true,
-        timezone: "America/New_York"
-      });
-    }
+    this.learningJob = cron.schedule('0 2 * * *', async () => {
+      console.log('🧠 === Daily Learning Cycle Started ===');
+      try {
+        await this.learnAgent.run();
+        console.log('🧠 === Daily Learning Cycle Completed ===');
+      } catch (error) {
+        console.error('❌ Daily learning cycle failed:', error);
+      }
+    }, {
+      scheduled: true,
+      timezone: "America/New_York"
+    });
 
-    // Schedule autonomous learning every 12 hours instead of 6 (reduced from 4x to 2x daily)
-    if (!disableLearningAgents) {
-      this.autonomousLearningJob = cron.schedule('0 */12 * * *', async () => {
-        console.log('🚀 === Autonomous Learning Cycle Started ===');
-        try {
-          await this.autonomousLearner.run();
-          console.log('🚀 === Autonomous Learning Cycle Completed ===');
-        } catch (error) {
-          console.error('❌ Autonomous learning cycle failed:', error);
-        }
-      }, {
-        scheduled: true,
-        timezone: "America/New_York"
-      });
-    }
+    // Schedule autonomous learning every 8 hours (increased from 12 hours)
+    this.autonomousLearningJob = cron.schedule('0 */8 * * *', async () => {
+      console.log('🚀 === Autonomous Learning Cycle Started ===');
+      try {
+        await this.autonomousLearner.run();
+        console.log('🚀 === Autonomous Learning Cycle Completed ===');
+      } catch (error) {
+        console.error('❌ Autonomous learning cycle failed:', error);
+      }
+    }, {
+      scheduled: true,
+      timezone: "America/New_York"
+    });
 
-    // Schedule engagement analysis every 2 hours during peak hours only (reduced from every 30 min)
-    this.engagementJob = cron.schedule('0 */2 * * *', async () => {
-      // Convert to Eastern Time for peak hour detection
-      const currentHour = new Date().toLocaleString("en-US", {timeZone: "America/New_York"});
-      const estHour = new Date(currentHour).getHours();
-      const isPeakHour = (estHour >= 9 && estHour <= 11) ||  // 9-11 AM EST
-                        (estHour >= 15 && estHour <= 17) || // 3-5 PM EST  
-                        (estHour >= 19 && estHour <= 21);   // 7-9 PM EST
-
-      if (isPeakHour) {
-        console.log('📊 === Peak Hour Engagement Analysis (EST) ===');
-        try {
-          const report = await this.engagementTracker.generateEngagementReport();
-          console.log('📈 Engagement Report:', report);
-        } catch (error) {
-          console.error('❌ Engagement analysis failed:', error);
-        }
+    // Schedule engagement analysis every hour during all hours (increased from 2 hours during peak only)
+    this.engagementJob = cron.schedule('0 * * * *', async () => {
+      console.log('📊 === Hourly Engagement Analysis ===');
+      try {
+        const report = await this.engagementTracker.generateEngagementReport();
+        console.log(`📈 Current engagement rate: ${report.averageEngagementRate}%`);
+        
+        // Store engagement data for learning systems to process
+        console.log('🧠 Engagement data available for learning systems');
+      } catch (error) {
+        console.error('❌ Engagement analysis failed:', error);
       }
     }, {
       scheduled: true,
@@ -416,14 +391,14 @@ export class Scheduler {
     }
 
     console.log('⏰ Scheduler started with the following jobs:');
-    console.log('   - Strategist: Every 45 minutes');
+    console.log('   - Strategist: Every 30 minutes');
     if (!disableLearningAgents) {
       console.log('   - Learning: Daily at 2:00 AM EST');
     }
     if (!disableLearningAgents) {
-      console.log('   - Autonomous Learning: Every 12 hours');
+      console.log('   - Autonomous Learning: Every 8 hours');
     }
-    console.log('   - Engagement Analysis: Every 2 hours during peak hours (EST)');
+    console.log('   - Engagement Analysis: Every hour');
     console.log('   - 🔥 REAL Engagement: Every 60 minutes (ACTUAL Twitter actions)');
     console.log('   - Weekly Report: Sundays at 9:00 AM EST');
     console.log('   - 🤖 Autonomous Tweet Auditor: Every 4 hours');

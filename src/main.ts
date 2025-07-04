@@ -10,73 +10,13 @@ import { ensureRuntimeConfig } from './utils/supabaseConfig';
 import * as cron from 'node-cron';
 import http from 'http';
 
-// 🚨 EMERGENCY STARTUP CONSERVATION MODE
-console.log('🚨 EMERGENCY: Activating startup conservation mode');
-console.log('⏱️  Startup throttling active for first 10 minutes');
+// 🚀 NUCLEAR MODE: Remove all artificial throttling
+console.log('🚀 NUCLEAR INTELLIGENCE MODE: Unleashing the full bot potential');
+console.log('🛡️ SAFETY: Maximum 3 posts per hour to prevent insanity');
+console.log('🧠 AI INTELLIGENCE: All advanced features ENABLED');
 
-// Global startup throttling flags
-global.STARTUP_MODE = true;
-global.STARTUP_API_CALLS = 0;
-global.MAX_STARTUP_API_CALLS = 5;
-
-// Disable startup mode after 10 minutes
-setTimeout(() => {
-  global.STARTUP_MODE = false;
-  console.log('⚡ Startup conservation mode disabled - full functionality restored');
-}, 600000);
-
-// Emergency API call throttler
-global.throttleStartupAPI = function(apiName) {
-  if (!global.STARTUP_MODE) return true;
-  
-  global.STARTUP_API_CALLS++;
-  if (global.STARTUP_API_CALLS > global.MAX_STARTUP_API_CALLS) {
-    console.log(`🚨 STARTUP THROTTLE: Blocking ${apiName} call (${global.STARTUP_API_CALLS}/${global.MAX_STARTUP_API_CALLS})`);
-    return false;
-  }
-  
-  console.log(`⚡ STARTUP ALLOW: ${apiName} call (${global.STARTUP_API_CALLS}/${global.MAX_STARTUP_API_CALLS})`);
-  return true;
-};
-
-// 🚨 CRITICAL EMERGENCY STARTUP THROTTLING
-console.log('🚨 CRITICAL: Maximum startup throttling activated');
-console.log('⏱️ Delaying all operations for 2 minutes to prevent rate limits');
-
-// More aggressive global flags
-global.EMERGENCY_STARTUP_MODE = true;
-global.STARTUP_API_CALLS = 0;
-global.MAX_STARTUP_API_CALLS = 3; // Reduced from 5 to 3
-global.STARTUP_DELAY_MINUTES = 2;
-
-// Disable startup mode after 15 minutes (increased from 10)
-setTimeout(() => {
-  global.EMERGENCY_STARTUP_MODE = false;
-  global.STARTUP_MODE = false;
-  console.log('⚡ Emergency startup throttling disabled - full functionality restored');
-}, 15 * 60 * 1000);
-
-// More aggressive API call throttler
-global.throttleStartupAPI = function(apiName: string) {
-  if (!global.EMERGENCY_STARTUP_MODE && !global.STARTUP_MODE) return true;
-  
-  global.STARTUP_API_CALLS++;
-  if (global.STARTUP_API_CALLS > global.MAX_STARTUP_API_CALLS) {
-    console.log(`🚨 EMERGENCY THROTTLE: Blocking ${apiName} call (${global.STARTUP_API_CALLS}/${global.MAX_STARTUP_API_CALLS})`);
-    return false;
-  }
-  
-  console.log(`⚡ EMERGENCY ALLOW: ${apiName} call (${global.STARTUP_API_CALLS}/${global.MAX_STARTUP_API_CALLS})`);
-  return true;
-};
-
-// Add startup delay for non-critical operations
-global.startupDelay = function(operation: string, delay: number = 2000) {
-  return new Promise(resolve => {
-    console.log(`⏳ STARTUP DELAY: ${operation} delayed by ${delay/1000}s`);
-    setTimeout(resolve, delay);
-  });
-};
+// Remove all artificial startup throttling
+// The bot is now free to work at its full potential within the 3/hour safety limit
 
 // Environment variables already loaded at top of file
 

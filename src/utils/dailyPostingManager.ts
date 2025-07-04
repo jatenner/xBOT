@@ -33,19 +33,20 @@ class DailyPostingManager {
   private intelligentScheduler: IntelligentSchedulingAgent;
   private humanStrategicMind: HumanLikeStrategicMind;
   private currentState: DailyPostingState;
-  private readonly DAILY_TARGET = 17;
+  // 🚀 NUCLEAR MODE: Remove artificial 17-post limit
+  private readonly MAX_POSTS_PER_HOUR = 3; // ONLY SAFETY LIMIT
+  private readonly MAX_POSTS_PER_DAY = 72; // 3/hour * 24 hours
+  private readonly MIN_INTERVAL_MINUTES = 20; // 20 minutes minimum spacing
   private isRunning = false;
   private scheduledJobs: cron.ScheduledTask[] = [];
   private useIntelligentScheduling = true;
 
-  // INTELLIGENT posting within Twitter limits (up to 17 posts distributed optimally)
+  // 🚀 UNLEASHED POSTING WINDOWS - Let AI decide when to post within these broad windows
   private readonly POSTING_WINDOWS: PostingWindow[] = [
-    { start_hour: 6, end_hour: 9, posts_count: 2, priority: 3 },   // Early Morning (2 posts)
-    { start_hour: 9, end_hour: 12, posts_count: 4, priority: 4 }, // Morning Peak (4 posts)
-    { start_hour: 12, end_hour: 15, posts_count: 4, priority: 5 }, // Lunch & Early Afternoon PEAK (4 posts)
-    { start_hour: 15, end_hour: 18, posts_count: 4, priority: 5 }, // Late Afternoon PEAK (4 posts)
-    { start_hour: 18, end_hour: 21, posts_count: 2, priority: 4 }, // Evening Peak (2 posts)
-    { start_hour: 21, end_hour: 23, posts_count: 1, priority: 3 },  // Late Evening (1 post)
+    { start_hour: 6, end_hour: 12, posts_count: 18, priority: 5 }, // Morning: Up to 18 posts in 6 hours (3/hour max)
+    { start_hour: 12, end_hour: 18, posts_count: 18, priority: 5 }, // Afternoon: Up to 18 posts in 6 hours  
+    { start_hour: 18, end_hour: 24, posts_count: 18, priority: 4 }, // Evening: Up to 18 posts in 6 hours
+    { start_hour: 0, end_hour: 6, posts_count: 18, priority: 3 },   // Night: Up to 18 posts in 6 hours
   ];
 
   constructor() {
@@ -60,7 +61,7 @@ class DailyPostingManager {
     return {
       date: today,
       posts_completed: 0,
-      posts_target: this.DAILY_TARGET,
+      posts_target: this.MAX_POSTS_PER_DAY,
       next_post_time: new Date().toISOString(),
       posting_schedule: this.generateDailySchedule(),
       emergency_mode: false
@@ -73,7 +74,7 @@ class DailyPostingManager {
       return;
     }
 
-    console.log(`🎯 Starting Daily Posting Manager - Target: ${this.DAILY_TARGET} tweets/day`);
+    console.log(`🎯 Starting Daily Posting Manager - Target: ${this.MAX_POSTS_PER_DAY} tweets/day`);
     this.isRunning = true;
 
     // Load or initialize today's state
@@ -91,7 +92,7 @@ class DailyPostingManager {
     // Monitor and catch up if behind
     this.startMonitoring();
     
-    console.log(`📊 Daily Status: ${this.currentState.posts_completed}/${this.DAILY_TARGET} tweets completed`);
+    console.log(`📊 Daily Status: ${this.currentState.posts_completed}/${this.MAX_POSTS_PER_DAY} tweets completed`);
   }
 
   private async loadDailyState(): Promise<void> {
@@ -106,7 +107,7 @@ class DailyPostingManager {
 
       if (data && !error) {
         this.currentState = data;
-        console.log(`📊 Loaded daily state: ${data.posts_completed}/${this.DAILY_TARGET} posts completed`);
+        console.log(`📊 Loaded daily state: ${data.posts_completed}/${this.MAX_POSTS_PER_DAY} posts completed`);
       } else {
         // Create new state for today
         this.currentState = this.getDefaultState();
@@ -168,7 +169,7 @@ class DailyPostingManager {
     this.scheduledJobs = [];
 
     const now = new Date();
-    const remaining = this.DAILY_TARGET - this.currentState.posts_completed;
+    const remaining = this.MAX_POSTS_PER_DAY - this.currentState.posts_completed;
 
     if (remaining <= 0) {
       console.log('✅ Daily posting target already reached!');
@@ -223,7 +224,7 @@ class DailyPostingManager {
         await this.saveDailyState();
         
         // Calculate remaining posts after supreme execution
-        const remainingAfterSupreme = this.DAILY_TARGET - this.currentState.posts_completed;
+        const remainingAfterSupreme = this.MAX_POSTS_PER_DAY - this.currentState.posts_completed;
         
         if (remainingAfterSupreme > 0) {
           console.log(`📊 ${remainingAfterSupreme} posts remaining - scheduling traditional posts`);
@@ -335,7 +336,7 @@ class DailyPostingManager {
           console.log(`🚨 ${urgentRecommendations.length} URGENT STRATEGIC OPPORTUNITIES DETECTED!`);
           
           for (const rec of urgentRecommendations.slice(0, 3)) { // Max 3 strategic posts per check
-            if (this.currentState.posts_completed >= this.DAILY_TARGET) break;
+            if (this.currentState.posts_completed >= this.MAX_POSTS_PER_DAY) break;
             
             console.log(`🔥 STRATEGIC OPPORTUNITY: ${rec.trigger}`);
             console.log(`   📊 Urgency: ${(rec.urgency * 100).toFixed(0)}%`);
@@ -444,29 +445,37 @@ class DailyPostingManager {
   }
 
   private async executePost(trigger: 'scheduled' | 'emergency' | 'catchup'): Promise<void> {
-    // 🚨 EMERGENCY RATE LIMITING
+    // 🚀 NUCLEAR SAFETY: Check 3-posts-per-hour limit
+    const hourlyCheck = await this.checkHourlyLimit();
+    if (!hourlyCheck.canPost) {
+      console.log(`🚨 HOURLY LIMIT: ${hourlyCheck.reason}`);
+      console.log(`⏳ Next available post time: ${hourlyCheck.nextAvailableTime?.toLocaleTimeString()}`);
+      return;
+    }
+
+    // 🚨 RATE LIMITING: Maintain 20-minute minimum spacing
     const lastPostTime = this.currentState.last_post_time ? new Date(this.currentState.last_post_time) : null;
     const now = new Date();
     
     if (lastPostTime) {
       const timeSinceLastPost = now.getTime() - lastPostTime.getTime();
-      const MIN_INTERVAL = 5 * 60 * 1000; // 5 minutes minimum (much more reasonable)
+      const MIN_INTERVAL = this.MIN_INTERVAL_MINUTES * 60 * 1000; // 20 minutes
       
       if (timeSinceLastPost < MIN_INTERVAL) {
         const waitTime = MIN_INTERVAL - timeSinceLastPost;
-        console.log(`🚨 RATE LIMIT: Must wait ${Math.ceil(waitTime / 60000)} minutes since last post`);
-        console.log('🛑 Post blocked to prevent API exhaustion');
+        console.log(`⏳ SPACING LIMIT: Must wait ${Math.ceil(waitTime / 60000)} minutes since last post`);
+        console.log('🎯 Maintaining quality spacing between posts');
         return;
       }
     }
     
     // Check daily limit
-    if (this.currentState.posts_completed >= this.DAILY_TARGET) {
-      console.log(`🚨 DAILY LIMIT REACHED: ${this.currentState.posts_completed}/${this.DAILY_TARGET} posts completed, blocking further posts`);
+    if (this.currentState.posts_completed >= this.MAX_POSTS_PER_DAY) {
+      console.log(`🚨 DAILY LIMIT REACHED: ${this.currentState.posts_completed}/${this.MAX_POSTS_PER_DAY} posts completed, blocking further posts`);
       return;
     }
     try {
-      console.log(`📝 Executing ${trigger} post (${this.currentState.posts_completed + 1}/${this.DAILY_TARGET})`);
+      console.log(`📝 Executing ${trigger} post (${this.currentState.posts_completed + 1}/${this.MAX_POSTS_PER_DAY})`);
 
       // Try cache first for efficiency
       const cachedContent = await contentCache.getCachedContent('viral_tweet', [], 0.8);
@@ -487,11 +496,11 @@ class DailyPostingManager {
         this.currentState.last_post_time = new Date().toISOString();
         await this.saveDailyState();
 
-        console.log(`✅ Post ${this.currentState.posts_completed}/${this.DAILY_TARGET} completed`);
+        console.log(`✅ Post ${this.currentState.posts_completed}/${this.MAX_POSTS_PER_DAY} completed`);
 
         // Check if we've hit the target
-        if (this.currentState.posts_completed >= this.DAILY_TARGET) {
-          console.log(`🎉 DAILY TARGET REACHED! ${this.DAILY_TARGET}/${this.DAILY_TARGET} tweets completed`);
+        if (this.currentState.posts_completed >= this.MAX_POSTS_PER_DAY) {
+          console.log(`🎉 DAILY TARGET REACHED! ${this.MAX_POSTS_PER_DAY}/${this.MAX_POSTS_PER_DAY} tweets completed`);
           await this.onDailyTargetReached();
         }
       } else {
@@ -558,7 +567,7 @@ class DailyPostingManager {
       ?.from('daily_posting_log')
       .insert({
         date: this.currentState.date,
-        target: this.DAILY_TARGET,
+        target: this.MAX_POSTS_PER_DAY,
         completed: this.currentState.posts_completed,
         success: true,
         emergency_posts: this.currentState.emergency_mode ? 1 : 0
@@ -597,22 +606,22 @@ class DailyPostingManager {
     remaining: number;
     onTrack: boolean;
   } {
-    const percentage = (this.currentState.posts_completed / this.DAILY_TARGET) * 100;
+    const percentage = (this.currentState.posts_completed / this.MAX_POSTS_PER_DAY) * 100;
     const now = new Date();
     const currentHour = now.getHours();
-    const expectedByNow = Math.floor((currentHour / 24) * this.DAILY_TARGET);
+    const expectedByNow = Math.floor((currentHour / 24) * this.MAX_POSTS_PER_DAY);
     
     return {
       completed: this.currentState.posts_completed,
-      target: this.DAILY_TARGET,
+      target: this.MAX_POSTS_PER_DAY,
       percentage: Math.round(percentage),
-      remaining: this.DAILY_TARGET - this.currentState.posts_completed,
+      remaining: this.MAX_POSTS_PER_DAY - this.currentState.posts_completed,
       onTrack: this.currentState.posts_completed >= expectedByNow - 1
     };
   }
 
   async forcePost(): Promise<void> {
-    if (this.currentState.posts_completed < this.DAILY_TARGET) {
+    if (this.currentState.posts_completed < this.MAX_POSTS_PER_DAY) {
       // Skip rate limiting for forced posts
       const tempLastPostTime = this.currentState.last_post_time;
       this.currentState.last_post_time = undefined; // Temporarily remove last post time
@@ -629,7 +638,7 @@ class DailyPostingManager {
    * Force immediate posting on startup - no rate limits
    */
   async forceImmediateStartupPost(): Promise<void> {
-    if (this.currentState.posts_completed < this.DAILY_TARGET) {
+    if (this.currentState.posts_completed < this.MAX_POSTS_PER_DAY) {
       console.log('🚀 STARTUP POST: Forcing immediate post to verify system works');
       // 🚨 STARTUP FIX: Clear phantom last post time to force immediate posting
       const originalLastPostTime = this.currentState.last_post_time;
@@ -662,9 +671,9 @@ class DailyPostingManager {
         .eq('key', 'runtime_config')
         .single() || { data: null };
       
-      return runtimeConfig?.value?.maxDailyTweets || this.DAILY_TARGET;
+      return runtimeConfig?.value?.maxDailyTweets || this.MAX_POSTS_PER_DAY;
     } catch (error) {
-      return this.DAILY_TARGET; // Fallback to class property
+      return this.MAX_POSTS_PER_DAY; // Fallback to class property
     }
   }
 
@@ -749,8 +758,8 @@ class DailyPostingManager {
           date: today,
           tweets_posted: 0,
           posts_completed: 0,
-          max_daily_tweets: this.DAILY_TARGET,
-          posts_target: this.DAILY_TARGET,
+          max_daily_tweets: this.MAX_POSTS_PER_DAY,
+          posts_target: this.MAX_POSTS_PER_DAY,
           last_post_time: null,
           next_post_time: new Date().toISOString(),
           posting_schedule: this.generateDailySchedule(),
@@ -762,12 +771,34 @@ class DailyPostingManager {
       this.currentState.posts_completed = 0;
       this.currentState.emergency_mode = false;
       
-      console.log(`✅ EMERGENCY: Daily posting reset to 0/${this.DAILY_TARGET}`);
+      console.log(`✅ EMERGENCY: Daily posting reset to 0/${this.MAX_POSTS_PER_DAY}`);
       console.log('🎯 Quality settings remain unchanged (6/55/0.85/90)');
       
     } catch (error) {
       console.error('❌ Emergency reset failed:', error);
     }
+  }
+
+  private async checkHourlyLimit(): Promise<{ canPost: boolean; reason: string; nextAvailableTime?: Date }> {
+    const now = new Date();
+    const hourlyPosts = await this.getHourlyPostCount();
+    
+    if (hourlyPosts >= this.MAX_POSTS_PER_HOUR) {
+      return { canPost: false, reason: `Hourly limit reached: ${hourlyPosts}/${this.MAX_POSTS_PER_HOUR} posts posted` };
+    }
+    
+    return { canPost: true, reason: 'No hourly limit reached' };
+  }
+
+  private async getHourlyPostCount(): Promise<number> {
+    const today = new Date().toISOString().split('T')[0];
+    const hourlyPosts = await supabaseClient.supabase
+      ?.from('tweets')
+      .select('*', { count: 'exact', head: true })
+      .gte('created_at', `${today}T${new Date().toISOString().split('T')[1].split(':')[0]}:00:00Z`)
+      .lt('created_at', `${today}T${new Date().toISOString().split('T')[1].split(':')[0]}:59:59Z`);
+
+    return hourlyPosts.count || 0;
   }
 }
 
