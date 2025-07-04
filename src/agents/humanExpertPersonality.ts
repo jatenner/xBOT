@@ -323,98 +323,86 @@ export class HumanExpertPersonality {
   }
 
   private applyHumanVoice(content: string): string {
-    // Remove any hashtags first
+    // 🚫 CRITICAL: Remove ANY hashtags (absolute zero tolerance)
     content = content.replace(/#\w+/g, '');
     
-    // Apply conversational transformations
-    const transformations = [
-      // Academic to conversational
-      { from: /studies show/gi, to: "here's what I've found" },
-      { from: /research indicates/gi, to: "what's interesting is" },
-      { from: /data suggests/gi, to: "what surprised me" },
-      { from: /according to/gi, to: "what I learned from" },
-      { from: /results demonstrate/gi, to: "here's what happened" },
+    // 🚫 Remove any formal academic language completely
+    const academicReplacements = [
+      { from: /Study shows?/gi, to: "Ever wonder why" },
+      { from: /Research indicates?/gi, to: "Here's what caught my attention:" },
+      { from: /Data suggests?/gi, to: "What blew my mind:" },
+      { from: /According to/gi, to: "I learned from" },
+      { from: /Results demonstrate/gi, to: "Here's what happened:" },
+      { from: /Clinical trials show/gi, to: "The trials I've been following show" },
+      { from: /Scientists have discovered/gi, to: "We just figured out" },
+      { from: /New research reveals/gi, to: "Here's what we discovered:" },
+      { from: /Analysis suggests/gi, to: "What's wild is" },
       
-      // Formal to personal
+      // Replace formal medical terms
       { from: /patients/gi, to: "people" },
       { from: /individuals/gi, to: "folks" },
+      { from: /subjects/gi, to: "people" },
       { from: /healthcare providers/gi, to: "doctors" },
-      { from: /clinical outcomes/gi, to: "what actually happens" },
+      { from: /clinicians/gi, to: "doctors" },
+      { from: /medical professionals/gi, to: "doctors" },
+      { from: /clinical outcomes/gi, to: "what actually happens to people" },
+      { from: /therapeutic interventions/gi, to: "treatments" },
+      { from: /pharmaceutical interventions/gi, to: "medications" },
       
-      // Add conversational elements
-      { from: /^/, to: this.getRandomConversationStarter() + " " }
+      // Remove corporate speak
+      { from: /innovative solution/gi, to: "clever approach" },
+      { from: /cutting-edge/gi, to: "latest" },
+      { from: /state-of-the-art/gi, to: "most advanced" },
+      { from: /revolutionary approach/gi, to: "new way of thinking" },
+      { from: /paradigm shift/gi, to: "game changer" },
+      { from: /breakthrough technology/gi, to: "tech that's changing everything" }
     ];
 
-    transformations.forEach(({ from, to }) => {
+    // Apply all transformations
+    academicReplacements.forEach(({ from, to }) => {
       content = content.replace(from, to);
     });
 
-    // Ensure it doesn't sound robotic
-    if (this.soundsRobotic(content)) {
-      content = this.makeMoreHuman(content);
-    }
-
-    return content.trim();
-  }
-
-  private getRandomConversationStarter(): string {
-    const starters = [
+    // 🗣️ ENSURE conversational starters (from persona.txt)
+    const conversationStarters = [
       "Ever wonder why",
       "Here's what caught my attention:",
       "The part that blew my mind:",
       "What's fascinating is",
-      "I've been thinking about",
-      "Something I noticed:",
+      "Most people don't realize",
       "Here's what's wild:",
       "The thing nobody talks about:",
-      "What surprised me:",
-      "I just realized"
+      "What if I told you",
+      "We just crossed a line in"
     ];
 
-    let starter;
-    do {
-      starter = starters[Math.floor(Math.random() * starters.length)];
-    } while (this.recentSentenceStarters.has(starter));
+    // If content doesn't start conversationally, fix it
+    const hasConversationalStart = conversationStarters.some(starter => 
+      content.toLowerCase().startsWith(starter.toLowerCase())
+    );
 
-    this.recentSentenceStarters.add(starter);
-    if (this.recentSentenceStarters.size > 5) {
-      const oldest = this.recentSentenceStarters.values().next().value;
-      this.recentSentenceStarters.delete(oldest);
+    if (!hasConversationalStart) {
+      const randomStarter = conversationStarters[Math.floor(Math.random() * conversationStarters.length)];
+      content = `${randomStarter} ${content.charAt(0).toLowerCase()}${content.slice(1)}`;
     }
 
-    return starter;
-  }
+    // 🧠 Add practical impact and human context
+    if (content.length < 200 && !content.includes("This means") && !content.includes("Here's why")) {
+      const contextAdders = [
+        " This could change how you think about your health.",
+        " Here's why this matters for real people.",
+        " The implications for everyday healthcare are huge.",
+        " This reshapes everything we thought we knew."
+      ];
+      const randomContext = contextAdders[Math.floor(Math.random() * contextAdders.length)];
+      content += randomContext;
+    }
 
-  private soundsRobotic(content: string): boolean {
-    const roboticPatterns = [
-      /\d+% of/,
-      /significant improvement/,
-      /clinical trials/,
-      /breakthrough technology/,
-      /innovative solution/,
-      /cutting-edge/,
-      /state-of-the-art/,
-      /revolutionary approach/
-    ];
-
-    return roboticPatterns.some(pattern => pattern.test(content));
-  }
-
-  private makeMoreHuman(content: string): string {
-    // Add personal touches
-    const personalizations = [
-      { from: /(\d+)% of/, to: "$1% of the people I work with" },
-      { from: /clinical trials/, to: "the studies I've been following" },
-      { from: /breakthrough technology/, to: "this tech that's been fascinating me" },
-      { from: /innovative solution/, to: "clever approach" },
-      { from: /revolutionary approach/, to: "new way of thinking about this" }
-    ];
-
-    personalizations.forEach(({ from, to }) => {
-      content = content.replace(from, to);
-    });
-
-    return content;
+    // 🚫 Final check: Remove any remaining hashtags or formal language
+    content = content.replace(/#[\w]+/g, ''); // Remove any hashtags
+    content = content.replace(/\b(furthermore|moreover|additionally|subsequently)\b/gi, 'and'); // Remove formal connectors
+    
+    return content.trim();
   }
 
   private generateDiverseImageKeywords(expertise: string, contentType: string): string[] {

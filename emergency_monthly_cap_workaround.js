@@ -1,212 +1,116 @@
 #!/usr/bin/env node
 
 /**
- * 🚨 EMERGENCY: Monthly API Usage Cap Workaround
- * Focus on posting-only mode until monthly limits reset
+ * 🚨 EMERGENCY MONTHLY CAP WORKAROUND
+ * Completely disable all read operations and focus on posting only
  */
 
-const { createClient } = require('@supabase/supabase-js');
-require('dotenv').config();
+console.log('🚨 === EMERGENCY MONTHLY CAP WORKAROUND ===');
 
-async function deployMonthlyCapWorkaround() {
-  console.log('🚨 EMERGENCY: Monthly API Usage Cap Exceeded');
-  console.log('⚡ Deploying posting-only mode workaround...');
-  
-  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    console.error('❌ Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
-    process.exit(1);
-  }
-
-  const supabase = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-  );
-  
-  try {
-    // 1. 🎯 Enable posting-only mode (no search/engagement)
-    await supabase
-      .from('bot_config')
-      .upsert({
-        key: 'monthly_cap_workaround',
-        value: {
-          enabled: true,
-          posting_only_mode: true,
-          disable_search_operations: true,
-          disable_engagement_search: true,
-          focus_on_original_content: true,
-          reason: 'Monthly API usage cap exceeded - posting only until reset',
-          implemented_at: new Date().toISOString()
-        }
-      });
-
-    // 2. 📝 Override strategist to focus on original content only
-    await supabase
-      .from('bot_config')
-      .upsert({
-        key: 'emergency_posting_strategy',
-        value: {
-          mode: 'original_content_only',
-          no_reply_search: true,
-          no_engagement_search: true,
-          post_frequency: 'aggressive', // Use those 17 posts!
-          content_types: ['post', 'thread', 'poll'],
-          avoid_search_dependent_actions: true
-        }
-      });
-
-    // 3. 🔥 Temporary disable search-dependent agents
-    await supabase
-      .from('bot_config')
-      .upsert({
-        key: 'disabled_agents_monthly_cap',
-        value: {
-          disabled_until_reset: true,
-          disabled_agents: [
-            'realEngagementAgent',
-            'replyAgent', 
-            'followGrowthAgent',
-            'competitiveIntelligenceLearner'
-          ],
-          reason: 'These agents require search APIs that are monthly capped'
-        }
-      });
-
-    // 4. 💪 Boost original content generation
-    await supabase
-      .from('bot_config')
-      .upsert({
-        key: 'content_boost_mode',
-        value: {
-          enabled: true,
-          focus_on_viral_content: true,
-          use_trending_topics: true, // These don't require search
-          increase_thread_generation: true,
-          poll_creation_boost: true,
-          original_insights_mode: true
-        }
-      });
-
-    // 5. 🎯 Override afternoon boost to posting-only
-    await supabase
-      .from('bot_config')
-      .upsert({
-        key: 'afternoon_boost_mode',
-        value: {
-          enabled: true,
-          peak_hours: [13, 14, 15, 16, 17], // 1-5 PM
-          min_interval_minutes: 30, // More frequent posting
-          engagement_weight: 0.0, // 100% posting focus
-          force_activity: true,
-          posting_only_mode: true, // NEW: No search operations
-          boost_expires: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString()
-        }
-      });
-
-    // 6. 📊 Update daily limits to use all available posts
-    await supabase
-      .from('bot_config')
-      .upsert({
-        key: 'emergency_daily_targets',
-        value: {
-          target_posts_today: 17, // Use all available posts
-          post_every_minutes: 30, // Every 30 minutes
-          content_mix: {
-            original_posts: 60,
-            threads: 25, 
-            polls: 15
-          },
-          no_replies_until_monthly_reset: true
-        }
-      });
-
-    console.log('✅ Monthly API cap workaround deployed successfully!');
-    console.log('');
-    console.log('🎯 VERIFICATION:');
-    console.log('✅ Posting-only mode: ACTIVE');
-    console.log('✅ Search operations: DISABLED');
-    console.log('✅ Daily quota: 17 posts available');
-    console.log('✅ Posting frequency: Every 30 minutes');
-    console.log('');
-    console.log('🚀 IMMEDIATE ACTIONS:');
-    console.log('1. Bot will start posting immediately');
-    console.log('2. 17 high-quality posts targeted for today');
-    console.log('3. Zero engagement operations (no API waste)');
-    console.log('4. All quality controls remain active');
-    console.log('');
-    console.log('⏰ AUTOMATIC RESTORATION: July 1st when monthly limits reset');
-    
-    // 🚨 FORCE VERIFICATION: Double-check the config was applied
-    console.log('');
-    console.log('🔍 VERIFYING DEPLOYMENT...');
-    
-    const { data: verification } = await supabase
-      .from('bot_config')
-      .select('value')
-      .eq('key', 'monthly_cap_workaround')
-      .single() || { data: null };
-    
-    if (verification?.value?.enabled) {
-      console.log('✅ VERIFIED: Monthly cap workaround is ACTIVE in database');
-      console.log('📊 Config:', JSON.stringify(verification.value, null, 2));
-    } else {
-      console.log('❌ VERIFICATION FAILED: Workaround not properly enabled!');
-      console.log('🚨 FORCE ENABLING...');
-      
-      // Force enable with additional safeguards
-      await supabase
-        .from('bot_config')
-        .upsert({
-          key: 'monthly_cap_workaround',
-          value: {
-            enabled: true,
-            posting_only_mode: true,
-            disable_search_operations: true,
-            focus_on_original_content: true,
-            daily_posting_target: 17,
-            posting_interval_minutes: 30,
-            force_enabled: true,
-            deployment_timestamp: new Date().toISOString()
-          }
-        });
-      
-      console.log('✅ FORCE ENABLED: Monthly cap workaround now active');
+const configs = [
+  // Completely disable all operations that use read API
+  {
+    key: 'monthly_cap_emergency_mode',
+    value: {
+      enabled: true,
+      disable_all_reads: true,
+      disable_search_operations: true,
+      disable_engagement_tracking: true,
+      disable_competitive_intelligence: true,
+      disable_reply_finding: true,
+      disable_follow_operations: true,
+      disable_trends_analysis: true,
+      disable_news_fetching: true,
+      posting_only_mode: true,
+      reason: 'Monthly API cap exceeded - posting only mode activated',
+      timestamp: new Date().toISOString()
     }
-    
-    // 🎯 ADDITIONAL FIX: Reset daily posting state to use 17 posts
-    console.log('');
-    console.log('🔄 RESETTING DAILY POSTING LIMITS...');
-    
-    await supabase
-      .from('bot_config')
-      .upsert({
-        key: 'runtime_config',
-        value: {
-          maxDailyTweets: 17,  // Use full Free tier limit
-          quality: {
-            readabilityMin: 55,
-            credibilityMin: 0.85
-          },
-          fallbackStaggerMinutes: 30,  // Faster posting
-          postingStrategy: 'posting_only_mode'
-        }
-      });
-    
-    // Clear daily posting state to reset counters
-    const today = new Date().toISOString().split('T')[0];
-    await supabase
-      .from('daily_posting_state')
-      .delete()
-      .eq('date', today);
-    
-    console.log('✅ Daily posting limits reset to 17 posts');
-    console.log('✅ Posting interval set to 30 minutes');
-    console.log('✅ Daily state cleared for fresh start');
+  },
+  
+  // Force Human Expert content generation only
+  {
+    key: 'emergency_content_mode',
+    value: {
+      enabled: true,
+      force_human_expert_only: true,
+      disable_creative_agent: true,
+      disable_viral_agent: true,
+      disable_strategist_generation: true,
+      use_cached_content_only: true,
+      reason: 'Monthly cap emergency - Human Expert content only',
+      timestamp: new Date().toISOString()
+    }
+  },
 
-  } catch (error) {
-    console.error('❌ Emergency deployment failed:', error);
-    process.exit(1);
+  // Disable Supreme AI complex operations
+  {
+    key: 'disable_supreme_ai_complex_ops',
+    value: {
+      enabled: true,
+      disable_strategy_analysis: true,
+      disable_content_mix_calculation: true,
+      disable_trend_analysis: true,
+      disable_competitive_intel: true,
+      simple_posting_only: true,
+      reason: 'Monthly cap - simplify Supreme AI operations',
+      timestamp: new Date().toISOString()
+    }
+  },
+
+  // Set realistic daily posting schedule
+  {
+    key: 'emergency_posting_schedule',
+    value: {
+      enabled: true,
+      max_daily_posts: 8,
+      posting_hours: ['10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '21:00', '22:00'],
+      force_human_expert_mode: true,
+      no_parallel_operations: true,
+      reason: 'Monthly cap emergency - reduced posting schedule',
+      timestamp: new Date().toISOString()
+    }
   }
-}
+];
 
-// Run immediately
-deployMonthlyCapWorkaround(); 
+const sqlStatements = configs.map(config => `
+INSERT INTO bot_config (key, value) 
+VALUES ('${config.key}', '${JSON.stringify(config.value)}'::jsonb)
+ON CONFLICT (key) DO UPDATE SET 
+  value = EXCLUDED.value,
+  updated_at = NOW();
+`).join('\n');
+
+console.log('📋 Emergency Monthly Cap Workaround Configuration:');
+console.log('');
+console.log('🚫 DISABLED OPERATIONS:');
+console.log('   • All Twitter read operations');
+console.log('   • Search operations');
+console.log('   • Engagement tracking');
+console.log('   • Competitive intelligence');
+console.log('   • Reply finding');
+console.log('   • Follow operations');
+console.log('   • Trends analysis');
+console.log('   • News fetching');
+console.log('');
+console.log('✅ ENABLED OPERATIONS:');
+console.log('   • Human Expert posting only');
+console.log('   • 8 tweets per day maximum');
+console.log('   • Simple content generation');
+console.log('   • Cached content usage');
+console.log('');
+console.log('🔧 SQL TO RUN IN SUPABASE:');
+console.log('═'.repeat(50));
+console.log(sqlStatements);
+console.log('═'.repeat(50));
+console.log('');
+console.log('📊 EXPECTED RESULTS:');
+console.log('   • Zero 429 errors from read operations');
+console.log('   • Successful Human Expert tweets');
+console.log('   • Reduced API usage');
+console.log('   • Stable bot operation');
+console.log('');
+console.log('✅ MANUAL ACTION REQUIRED:');
+console.log('1. Copy the SQL above');
+console.log('2. Run it in Supabase SQL Editor');
+console.log('3. Monitor Render logs for improvements');
+console.log('4. Bot should start posting successfully within 10 minutes'); 

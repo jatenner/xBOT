@@ -636,15 +636,22 @@ export class PostTweetAgent {
           }
           
           if (content) {
-            // Apply learning-based content optimization
-            content = this.applyLearningOptimizations(content, optimizedStrategy);
-            
-            // 🧠 NUCLEAR ENHANCEMENT: Enhance with viral elements
-            try {
-              content = await this.nuclearLearning.enhanceContentWithViralElements(content);
-              console.log('🧠 NUCLEAR ENHANCEMENT: Added viral elements to content');
-            } catch (error) {
-              console.warn('⚠️ Nuclear enhancement error:', error);
+            // 🚫 EMERGENCY FIX: Skip contaminating enhancements for human expert content
+            if (contentMode === 'human_expert') {
+              console.log('🧠 PURE HUMAN EXPERT: Keeping authentic voice without contamination');
+              // No enhancements - pure persona-based content only
+            } else {
+              // Apply learning-based content optimization for other modes
+              content = this.applyLearningOptimizations(content, optimizedStrategy);
+              
+              // 🚨 EMERGENCY DISABLE: Nuclear enhancement is causing repetitive content contamination
+              // 🧠 NUCLEAR ENHANCEMENT: Enhance with viral elements (non-expert content only)
+              try {
+                // DISABLED: content = await this.nuclearLearning.enhanceContentWithViralElements(content);
+                console.log('🚨 NUCLEAR ENHANCEMENT DISABLED: Preventing viral contamination');
+              } catch (error) {
+                console.warn('⚠️ Nuclear enhancement error:', error);
+              }
             }
             
             // Extract topic for tracking
@@ -671,30 +678,19 @@ export class PostTweetAgent {
         }
       }
       
-      // If all attempts failed, generate fallback with learning insights
-      console.log('🚨 All generation attempts failed, using learning-enhanced fallback...');
-      const fallbackContent = await this.generateLearningEnhancedFallback(optimizedStrategy);
-      return fallbackContent;
+      // 🚨 EMERGENCY: Block learning-enhanced fallback that creates repetitive content
+      console.log('🚨 All generation attempts failed, generating emergency unique expert content...');
+      const emergencyContent = await this.generateEmergencyUniqueExpert();
+      return emergencyContent;
     };
 
     return await regenerateCallback();
   }
 
   private async selectOptimizedContentMode(optimizedStrategy: any): Promise<'viral' | 'comprehensive' | 'engagement' | 'current_events' | 'trending' | 'human_expert'> {
-    // 🧠 SIMPLIFIED: Force high probability of human expert content to eliminate repetition
-    const randomFactor = Math.random();
-    
-    // 80% human expert, 15% viral, 5% current events
-    if (randomFactor < 0.8) {
-      console.log('🧠 FORCED MODE: HUMAN EXPERT (eliminating repetitive bot content)');
-      return 'human_expert';
-    } else if (randomFactor < 0.95) {
-      console.log('🔥 FORCED MODE: VIRAL (limited to prevent repetition)');
-      return 'viral';
-    } else {
-      console.log('📰 FORCED MODE: CURRENT EVENTS (minimal usage)');
-      return 'current_events';
-    }
+    // 🚨 EMERGENCY CONTENT CRISIS FIX: Force 100% Human Expert to eliminate terrible repetitive content
+    console.log('🚨 EMERGENCY ANTI-REPETITION MODE: 100% HUMAN EXPERT ONLY');
+    return 'human_expert';
   }
 
   private applyLearningOptimizations(content: string, optimizedStrategy: any): string {
@@ -1027,7 +1023,41 @@ The implications could reshape how we approach patient care. What's your take?`;
     try {
       console.log('🧠 Generating authentic human expert content...');
 
-      const expertResult = await this.humanExpert.generateExpertContent();
+      // 🚨 EMERGENCY: Force Human Expert to work with multiple retries
+      let expertResult = null;
+      let attempts = 0;
+      const maxAttempts = 5;
+
+      while (!expertResult && attempts < maxAttempts) {
+        try {
+          attempts++;
+          console.log(`🔄 Human Expert attempt ${attempts}/${maxAttempts}...`);
+          expertResult = await this.humanExpert.generateExpertContent();
+          
+          if (expertResult && expertResult.content && expertResult.content.length > 30) {
+            console.log(`✅ Human Expert succeeded on attempt ${attempts}`);
+            break;
+          } else {
+            console.log(`❌ Human Expert attempt ${attempts} failed - insufficient content`);
+            expertResult = null;
+          }
+        } catch (error) {
+          console.warn(`⚠️ Human Expert attempt ${attempts} error:`, error);
+          expertResult = null;
+        }
+      }
+
+      // 🚨 EMERGENCY FALLBACK: Generate emergency unique expert content if all attempts fail
+      if (!expertResult) {
+        console.log('🚨 EMERGENCY: All Human Expert attempts failed, generating emergency unique content...');
+        expertResult = {
+          content: await this.generateEmergencyUniqueExpert(),
+          imageKeywords: ['healthcare', 'innovation', 'technology'],
+          expertiseArea: 'emergency_expert',
+          confidenceScore: 0.8
+        };
+      }
+
       let tweetContent = expertResult.content;
 
       console.log(`🎓 EXPERT: Generated ${expertResult.expertiseArea} content`);
@@ -1099,12 +1129,43 @@ The implications could reshape how we approach patient care. What's your take?`;
           hasImage: !!imageResult?.success
         };
       } else {
-        return { success: false, error: result.error };
+        // 🚨 EMERGENCY: Even if posting fails, don't use fallback - retry with emergency content
+        console.error('❌ Expert tweet posting failed, generating emergency backup...');
+        const emergencyContent = await this.generateEmergencyUniqueExpert();
+        const emergencyResult = await xClient.postTweet(emergencyContent);
+        
+        if (emergencyResult.success) {
+          return {
+            success: true,
+            tweetId: emergencyResult.tweetId,
+            content: emergencyContent,
+            hasImage: false
+          };
+        } else {
+          return { success: false, error: emergencyResult.error };
+        }
       }
 
     } catch (error) {
       console.error('❌ Expert tweet generation failed:', error);
-      return await this.generateFallbackTweet(includeSnap2HealthCTA, includeImage);
+      // 🚨 EMERGENCY: Generate emergency unique content instead of using repetitive fallback
+      try {
+        const emergencyContent = await this.generateEmergencyUniqueExpert();
+        const emergencyResult = await xClient.postTweet(emergencyContent);
+        
+        if (emergencyResult.success) {
+          return {
+            success: true,
+            tweetId: emergencyResult.tweetId,
+            content: emergencyContent,
+            hasImage: false
+          };
+        }
+      } catch (emergencyError) {
+        console.error('❌ Emergency expert generation also failed:', emergencyError);
+      }
+      
+      return { success: false, error: 'All expert content generation failed' };
     }
   }
 
