@@ -36,6 +36,7 @@ import { LIVE_MODE } from '../config/liveMode';
 import { runtimeConfig } from '../utils/supabaseConfig.js';
 import { intelligentLearning } from '../utils/intelligentLearningConnector';
 import { DiversePerspectiveEngine } from './diversePerspectiveEngine.js';
+import { ExpertIntelligenceSystem } from './expertIntelligenceSystem.js';
 
 dotenv.config();
 
@@ -137,6 +138,7 @@ export class PostTweetAgent {
   private nuclearLearning: NuclearLearningEnhancer;
   private humanExpert: HumanExpertPersonality;
   private diversePerspectiveEngine: DiversePerspectiveEngine;
+  private expertIntelligence: ExpertIntelligenceSystem;
 
   constructor() {
     this.imageAgent = new ImageAgent();
@@ -156,6 +158,7 @@ export class PostTweetAgent {
     this.nuclearLearning = NuclearLearningEnhancer.getInstance();
     this.humanExpert = new HumanExpertPersonality();
     this.diversePerspectiveEngine = new DiversePerspectiveEngine();
+    this.expertIntelligence = ExpertIntelligenceSystem.getInstance();
     
     console.log('🧠 Nuclear learning intelligence systems initialized');
     console.log('🎭 Diverse Perspective Engine initialized for unique viewpoints');
@@ -735,6 +738,12 @@ export class PostTweetAgent {
               }
               break;
               
+            case 'expert_intelligence':
+              console.log('🧠 EXPERT INTELLIGENCE: Generating content that builds on accumulated knowledge');
+              const expertResult = await this.generateExpertIntelligenceContent();
+              content = expertResult.content;
+              break;
+              
             case 'diverse_perspective':
               console.log('🎭 DIVERSE PERSPECTIVES: Generating unique viewpoint for conversation');
               const diverseResult = await this.diversePerspectiveEngine.generateDiverseContent();
@@ -811,7 +820,7 @@ export class PostTweetAgent {
     return await regenerateCallback();
   }
 
-  private async selectOptimizedContentMode(optimizedStrategy: any): Promise<'viral' | 'comprehensive' | 'engagement' | 'current_events' | 'trending' | 'human_expert' | 'diverse_perspective'> {
+  private async selectOptimizedContentMode(optimizedStrategy: any): Promise<'viral' | 'comprehensive' | 'engagement' | 'current_events' | 'trending' | 'human_expert' | 'diverse_perspective' | 'expert_intelligence'> {
     // 🎯 LOAD DATABASE CONFIGURATIONS for content distribution
     try {
       const { data: distributionConfig } = await supabase
@@ -828,12 +837,13 @@ export class PostTweetAgent {
 
       // Use database configuration if available, otherwise fallback to defaults
       let distribution = {
-        diverse_perspectives: 45,
+        expert_intelligence: 30,
+        diverse_perspectives: 25,
         human_expert: 15,
         breaking_news: 15,
         viral_content: 10,
-        trending_topics: 10,
-        comprehensive_analysis: 5
+        trending_topics: 5,
+        comprehensive_analysis: 0
       };
 
       if (distributionConfig?.value?.distribution) {
@@ -852,6 +862,12 @@ export class PostTweetAgent {
       // Convert percentages to cumulative thresholds
       const randomFactor = Math.random() * 100;
       let cumulative = 0;
+
+      cumulative += distribution.expert_intelligence;
+      if (randomFactor < cumulative) {
+        console.log('🧠 EXPERT INTELLIGENCE: Building on accumulated knowledge and expertise');
+        return 'expert_intelligence';
+      }
 
       cumulative += distribution.diverse_perspectives;
       if (randomFactor < cumulative) {
@@ -893,10 +909,13 @@ export class PostTweetAgent {
       // Fallback to hardcoded enhanced distribution
       const randomFactor = Math.random();
       
-      if (randomFactor < 0.45) {
+      if (randomFactor < 0.30) {
+        console.log('🧠 EXPERT INTELLIGENCE: Building on accumulated knowledge and expertise (fallback)');
+        return 'expert_intelligence';
+      } else if (randomFactor < 0.55) {
         console.log('🎭 DIVERSE PERSPECTIVES: Generating unique viewpoint for conversation (fallback)');
         return 'diverse_perspective';
-      } else if (randomFactor < 0.60) {
+      } else if (randomFactor < 0.70) {
         console.log('🧠 HUMAN EXPERT INSIGHTS: Deep expert analysis for authority building (fallback)');
         return 'human_expert';
       } else if (randomFactor < 0.75) {
@@ -3899,6 +3918,78 @@ Focus on: AI diagnostics, precision medicine, digital therapeutics, or healthcar
   }
 
   // NUCLEAR: Add human learning feedback after posting
+  /**
+   * 🧠 EXPERT INTELLIGENCE CONTENT GENERATION
+   * Generates content that builds on accumulated knowledge and expertise
+   */
+  private async generateExpertIntelligenceContent(): Promise<{ content: string; expertise_level: number }> {
+    try {
+      console.log('🧠 GENERATING EXPERT INTELLIGENCE CONTENT...');
+      
+      // Get current trending topic or generate one based on expertise
+      const topic = await this.selectExpertTopic();
+      
+      // Generate expert content that builds on previous knowledge
+      const expertContent = await this.expertIntelligence.generateExpertContent(topic, true);
+      
+      console.log(`🎯 EXPERT CONTENT: Level ${expertContent.expertise_level} expertise in ${topic}`);
+      console.log(`🔗 BUILDS ON: ${expertContent.builds_on.join(', ')}`);
+      console.log(`💡 INTRODUCES: ${expertContent.introduces_concepts.join(', ')}`);
+      
+      return {
+        content: expertContent.content,
+        expertise_level: expertContent.expertise_level
+      };
+      
+    } catch (error) {
+      console.error('❌ Expert intelligence content generation failed:', error);
+      
+      // Fallback to human expert content
+      const fallback = await this.generateEmergencyUniqueExpert();
+      return {
+        content: fallback,
+        expertise_level: 60
+      };
+    }
+  }
+
+  /**
+   * 🎯 SELECT EXPERT TOPIC
+   * Selects a topic based on current expertise levels and trending subjects
+   */
+  private async selectExpertTopic(): Promise<string> {
+    try {
+      // Get topics where we have high expertise
+      const expertiseDomains = [
+        'ai_healthcare', 'digital_therapeutics', 'precision_medicine',
+        'telemedicine', 'health_data_analytics', 'medical_devices',
+        'biotech_innovation', 'health_policy', 'clinical_informatics'
+      ];
+      
+      // Select based on expertise level and recent trends
+      const selectedDomain = expertiseDomains[Math.floor(Math.random() * expertiseDomains.length)];
+      
+      // Convert domain to specific topic
+      const domainTopics = {
+        'ai_healthcare': 'AI-powered diagnostic accuracy improvements',
+        'digital_therapeutics': 'FDA-approved digital therapeutics market expansion',
+        'precision_medicine': 'Genomic data integration in clinical practice',
+        'telemedicine': 'Remote patient monitoring technology adoption',
+        'health_data_analytics': 'Real-world evidence generation from health data',
+        'medical_devices': 'IoT sensors in continuous health monitoring',
+        'biotech_innovation': 'CRISPR applications in rare disease treatment',
+        'health_policy': 'Healthcare AI regulation and compliance frameworks',
+        'clinical_informatics': 'Interoperability standards in health systems'
+      };
+      
+      return domainTopics[selectedDomain] || 'Healthcare technology innovation trends';
+      
+    } catch (error) {
+      console.error('Error selecting expert topic:', error);
+      return 'Healthcare AI and digital transformation';
+    }
+  }
+
   private async learnFromPostedContent(result: PostResult): Promise<void> {
     if (!result.success || !result.content) return;
     
@@ -3944,6 +4035,19 @@ Focus on: AI diagnostics, precision medicine, digital therapeutics, or healthcar
       if (this.adaptiveLearner && typeof (this.adaptiveLearner as any).learnFromInteraction === 'function') {
         await (this.adaptiveLearner as any).learnFromInteraction(learningInteraction);
       }
+      
+      // 🧠 EXPERT INTELLIGENCE LEARNING: Build expertise from this post
+      await this.expertIntelligence.learnFromPost(
+        result.content,
+        simulatedEngagement,
+        {
+          content_type: contentType,
+          expertise_domain: expertiseDomain,
+          quality_score: result.qualityScore || 0.5,
+          post_time: new Date(),
+          has_image: result.hasImage || false
+        }
+      );
       
       // Track content for duplicate prevention with human-like memory
       const topic = this.extractKeyTopic(result.content);
