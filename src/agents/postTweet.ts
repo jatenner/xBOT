@@ -740,14 +740,34 @@ export class PostTweetAgent {
               
             case 'expert_intelligence':
               console.log('🧠 EXPERT INTELLIGENCE: Generating content that builds on accumulated knowledge');
-              const expertResult = await this.generateExpertIntelligenceContent();
-              content = expertResult.content;
+              try {
+                const expertResult = await this.generateExpertIntelligenceContent();
+                if (expertResult && expertResult.content && expertResult.content.length > 30) {
+                  content = expertResult.content;
+                  console.log(`🎓 EXPERT INTELLIGENCE SUCCESS: Level ${expertResult.expertise_level} expertise`);
+                } else {
+                  throw new Error('Expert intelligence content too short or invalid');
+                }
+              } catch (error) {
+                console.warn('⚠️ Expert intelligence failed, falling back to human expert...');
+                content = await this.generateEmergencyUniqueExpert();
+              }
               break;
               
             case 'diverse_perspective':
               console.log('🎭 DIVERSE PERSPECTIVES: Generating unique viewpoint for conversation');
-              const diverseResult = await this.diversePerspectiveEngine.generateDiverseContent();
-              content = diverseResult.content;
+              try {
+                const diverseResult = await this.diversePerspectiveEngine.generateDiverseContent();
+                if (diverseResult && diverseResult.content && diverseResult.content.length > 30) {
+                  content = diverseResult.content;
+                  console.log(`🎨 DIVERSE PERSPECTIVE SUCCESS: ${diverseResult.perspective} viewpoint`);
+                } else {
+                  throw new Error('Diverse perspective content too short or invalid');
+                }
+              } catch (error) {
+                console.warn('⚠️ Diverse perspective failed, falling back to human expert...');
+                content = await this.generateEmergencyUniqueExpert();
+              }
               break;
               
             default:
@@ -1017,7 +1037,13 @@ export class PostTweetAgent {
         'the implications are staggering',
         'this changes everything we know',
         'the future of healthcare is being written',
-        'ai, digital therapeutics, and precision medicine are converging'
+        'ai, digital therapeutics, and precision medicine are converging',
+        'machine learning algorithms identify promising drug compounds',
+        'breakthrough: machine learning algorithms identify',
+        'with 92% accuracy in predicting therapeutic effectiveness',
+        'revolutionary findings (nature medicine, 2024)',
+        'machine learning algorithms identify promising drug compounds in months instead of years',
+        'with 92% accuracy in predicting therapeutic effectiveness across 500+ trials'
       ];
 
       // Add database-configured banned patterns
@@ -1062,7 +1088,13 @@ export class PostTweetAgent {
         'artificial intelligence is revolutionizing',
         'digital health solutions are',
         'healthcare technology is advancing',
-        'medical innovation continues'
+        'medical innovation continues',
+        'machine learning algorithms identify promising drug compounds',
+        'breakthrough: machine learning algorithms identify',
+        'with 92% accuracy in predicting therapeutic effectiveness',
+        'revolutionary findings (nature medicine, 2024)',
+        'machine learning algorithms identify promising drug compounds in months instead of years',
+        'with 92% accuracy in predicting therapeutic effectiveness across 500+ trials'
       ];
       
       const contentLower = content.toLowerCase();

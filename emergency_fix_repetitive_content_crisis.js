@@ -3,170 +3,250 @@
 /**
  * 🚨 EMERGENCY FIX: REPETITIVE CONTENT CRISIS
  * 
- * The bot is posting terrible repetitive content like:
- * "As AI transforms diagnostics, precision medicine is becoming a reality..."
- * 
- * This script eliminates ALL sources of repetitive content contamination:
- * 1. Forces 100% Human Expert mode (no nuclear/viral contamination)
- * 2. Disables all Nuclear Learning Enhancement 
- * 3. Blocks learning-enhanced fallbacks
- * 4. Creates emergency pure content generation
- * 5. Restarts bot with clean content pipeline
+ * The bot is posting the same "Machine learning algorithms identify promising drug compounds"
+ * content repeatedly. This script fixes the issue by:
+ * 1. Blocking all repetitive patterns
+ * 2. Forcing Expert Intelligence and Human Expert modes
+ * 3. Disabling viral template fallbacks
+ * 4. Enhancing content quality enforcement
  */
 
 const { createClient } = require('@supabase/supabase-js');
+require('dotenv').config();
+
 const supabase = createClient(
-  process.env.SUPABASE_URL || 'https://wmehddgrvwmdgvjpjmpu.supabase.co',
-  process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndtZWhkZGdydndtZGd2anBqbXB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MTg4NTMyNzAsImV4cCI6MjAzNDQyOTI3MH0.2kbNbfLJWU-qo3TgeFCLLQfXWRhJGWKh6Ag3YuMg3Ic'
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-async function emergencyFixRepetitiveContent() {
-  console.log('🚨 EMERGENCY: FIXING REPETITIVE CONTENT CRISIS');
-  console.log('📱 Current Twitter feed shows terrible repetitive "As AI transforms diagnostics" content');
-  console.log('🔧 Implementing emergency pure Human Expert content pipeline...');
+async function fixRepetitiveContentCrisis() {
+  console.log('🚨 === FIXING REPETITIVE CONTENT CRISIS ===\\n');
 
   try {
-    // 1. Force pure Human Expert mode in database
-    console.log('\n1️⃣ Setting emergency content mode to PURE HUMAN EXPERT...');
-    await supabase
-      .from('bot_config')
-      .upsert({
-        key: 'emergency_content_mode',
-        value: {
-          mode: 'pure_human_expert_only',
-          nuclear_enhancement_disabled: true,
-          viral_contamination_blocked: true,
-          learning_fallbacks_disabled: true,
-          reason: 'Emergency fix for repetitive content crisis',
-          timestamp: new Date().toISOString()
-        }
-      });
+    // 1. BLOCK ALL REPETITIVE PATTERNS
+    console.log('🚫 BLOCKING REPETITIVE PATTERNS...');
+    
+    const bannedPatterns = [
+      'as ai transforms diagnostics',
+      'precision medicine is becoming a reality',
+      'machine learning algorithms identify promising drug compounds',
+      'breakthrough: machine learning algorithms identify',
+      'with 92% accuracy in predicting therapeutic effectiveness',
+      'revolutionary findings (nature medicine, 2024)',
+      'machine learning algorithms identify promising drug compounds in months instead of years',
+      'with 92% accuracy in predicting therapeutic effectiveness across 500+ trials',
+      'this could revolutionize healthcare',
+      'the implications are staggering',
+      'this changes everything we know',
+      'the future of healthcare is being written',
+      'ai, digital therapeutics, and precision medicine are converging',
+      'artificial intelligence is revolutionizing',
+      'digital health solutions are',
+      'healthcare technology is advancing',
+      'medical innovation continues'
+    ];
 
-    // 2. Disable all Nuclear Learning viral patterns
-    console.log('2️⃣ Disabling Nuclear Learning viral patterns...');
-    await supabase
-      .from('bot_config')
-      .upsert({
-        key: 'viral_intelligence_patterns',
-        value: {
-          patterns: [],
-          enabled: false,
-          disabled_reason: 'Emergency content crisis - patterns causing repetition',
-          emergency_mode: true
-        }
-      });
+    await supabase.from('bot_config').upsert({
+      key: 'content_quality_enforcement',
+      value: {
+        enabled: true,
+        banned_repetitive_phrases: bannedPatterns,
+        strict_uniqueness_check: true,
+        emergency_expert_fallback: true,
+        block_viral_templates: true
+      },
+      description: 'Emergency content quality enforcement to eliminate repetitive patterns',
+      created_by: 'emergency_fix_repetitive_content'
+    });
 
-    // 3. Clear all viral enhancement configurations
-    console.log('3️⃣ Clearing viral enhancement configurations...');
-    await supabase
-      .from('bot_config')
-      .upsert({
-        key: 'intelligent_content_strategy',
-        value: {
-          enabled: false,
-          strategy_mode: 'human_expert_only',
-          content_mix: {
-            human_expert: 100,
-            viral: 0,
-            nuclear: 0,
-            competitive: 0
-          },
-          emergency_pure_mode: true
-        }
-      });
+    console.log(`✅ Blocked ${bannedPatterns.length} repetitive patterns`);
 
-    // 4. Force Human Expert persona override
-    console.log('4️⃣ Forcing Human Expert persona override...');
-    await supabase
-      .from('bot_config')
-      .upsert({
-        key: 'content_generation_override',
-        value: {
-          force_human_expert: true,
-          disable_fallbacks: true,
-          disable_nuclear_enhancement: true,
-          disable_viral_patterns: true,
-          persona_only: true,
-          emergency_fix: 'repetitive_content_crisis'
-        }
-      });
+    // 2. FORCE EXPERT CONTENT DISTRIBUTION
+    console.log('🧠 FORCING EXPERT CONTENT DISTRIBUTION...');
+    
+    await supabase.from('bot_config').upsert({
+      key: 'enhanced_content_distribution',
+      value: {
+        distribution: {
+          expert_intelligence: 40,    // Increased from 30%
+          human_expert: 35,          // Increased from 15%
+          diverse_perspectives: 20,   // Reduced from 25%
+          breaking_news: 5,          // Reduced from 15%
+          viral_content: 0,          // DISABLED
+          trending_topics: 0,        // DISABLED
+          comprehensive_analysis: 0   // DISABLED
+        },
+        emergency_mode: true,
+        block_viral_fallbacks: true
+      },
+      description: 'Emergency expert-focused content distribution to eliminate repetitive content',
+      created_by: 'emergency_fix_repetitive_content'
+    });
 
-    // 5. Block all competitive intelligence contamination
-    console.log('5️⃣ Blocking competitive intelligence contamination...');
-    await supabase
-      .from('bot_config')
-      .upsert({
-        key: 'competitive_intelligence',
-        value: {
-          enabled: false,
-          patterns_blocked: true,
-          emergency_disable: true,
-          reason: 'Causing repetitive content contamination'
-        }
-      });
+    console.log('✅ Content distribution: 40% Expert Intelligence + 35% Human Expert + 20% Diverse Perspectives');
 
-    // 6. Set emergency quality standards
-    console.log('6️⃣ Setting emergency quality standards...');
-    await supabase
-      .from('bot_config')
-      .upsert({
-        key: 'emergency_quality_standards',
-        value: {
-          min_content_length: 50,
-          max_similarity_threshold: 0.3,
-          require_conversational_voice: true,
-          ban_repetitive_phrases: [
-            'As AI transforms diagnostics',
-            'precision medicine is becoming a reality',
-            'Healthcare professionals must invest',
-            'This could revolutionize healthcare'
-          ],
-          force_unique_generation: true
-        }
-      });
+    // 3. ENHANCE HUMAN EXPERT PERSONALITY SETTINGS
+    console.log('🎭 ENHANCING HUMAN EXPERT PERSONALITY...');
+    
+    await supabase.from('bot_config').upsert({
+      key: 'human_expert_personality_config',
+      value: {
+        enabled: true,
+        emergency_mode: true,
+        max_retries: 10,           // Increased retries
+        min_content_length: 50,    // Ensure substantial content
+        uniqueness_threshold: 0.3, // Stricter uniqueness
+        expertise_rotation: true,  // Force rotation through different expertise areas
+        block_template_fallbacks: true,
+        require_personal_insights: true
+      },
+      description: 'Emergency human expert configuration for authentic content generation',
+      created_by: 'emergency_fix_repetitive_content'
+    });
 
-    // 7. Clear recent content tracking to allow fresh generation
-    console.log('7️⃣ Clearing recent content tracking for fresh generation...');
-    await supabase
-      .from('bot_config')
-      .upsert({
-        key: 'content_tracking_reset',
-        value: {
-          reset_timestamp: new Date().toISOString(),
-          clear_recent_patterns: true,
-          allow_fresh_generation: true,
-          emergency_reset: true
-        }
-      });
+    console.log('✅ Human Expert Personality enhanced with emergency settings');
 
-    console.log('\n✅ EMERGENCY FIX COMPLETE - REPETITIVE CONTENT CRISIS RESOLVED');
-    console.log('🎯 Bot will now generate ONLY authentic Human Expert content');
-    console.log('🚫 ALL nuclear/viral contamination has been DISABLED');
-    console.log('💬 Content will be conversational and unique');
-    console.log('🔄 Next deployment will use pure Human Expert pipeline');
+    // 4. CONFIGURE EXPERT INTELLIGENCE SYSTEM
+    console.log('🧠 CONFIGURING EXPERT INTELLIGENCE SYSTEM...');
+    
+    await supabase.from('bot_config').upsert({
+      key: 'expert_intelligence_config',
+      value: {
+        enabled: true,
+        emergency_mode: true,
+        build_on_previous: true,
+        min_expertise_level: 70,
+        require_knowledge_connections: true,
+        block_generic_content: true,
+        force_unique_insights: true
+      },
+      description: 'Emergency expert intelligence configuration for knowledge-based content',
+      created_by: 'emergency_fix_repetitive_content'
+    });
 
-    console.log('\n📊 EMERGENCY FIX SUMMARY:');
-    console.log('   ✅ 100% Human Expert mode enforced');
-    console.log('   ✅ Nuclear Learning enhancement DISABLED');
-    console.log('   ✅ Viral pattern contamination BLOCKED');
-    console.log('   ✅ Learning fallbacks DISABLED');
-    console.log('   ✅ Competitive intelligence BLOCKED');
-    console.log('   ✅ Quality standards enforced');
-    console.log('   ✅ Content tracking reset for fresh generation');
+    console.log('✅ Expert Intelligence System configured for emergency operation');
 
-    console.log('\n🚀 READY FOR DEPLOYMENT - Content crisis eliminated!');
+    // 5. DISABLE VIRAL TEMPLATE GENERATORS
+    console.log('🚫 DISABLING VIRAL TEMPLATE GENERATORS...');
+    
+    await supabase.from('bot_config').upsert({
+      key: 'viral_content_emergency_block',
+      value: {
+        block_ultra_viral_generator: true,
+        block_nuclear_learning_templates: true,
+        block_hardcoded_templates: true,
+        emergency_expert_only: true,
+        reason: 'Repetitive content crisis - viral templates generating same content repeatedly'
+      },
+      description: 'Emergency block on viral template generators causing repetitive content',
+      created_by: 'emergency_fix_repetitive_content'
+    });
+
+    console.log('✅ Viral template generators disabled');
+
+    // 6. ENHANCE CONTENT TRACKING AND SIMILARITY DETECTION
+    console.log('📊 ENHANCING CONTENT TRACKING...');
+    
+    await supabase.from('bot_config').upsert({
+      key: 'content_similarity_enforcement',
+      value: {
+        enabled: true,
+        similarity_threshold: 0.4,  // Stricter similarity detection
+        track_last_posts: 50,       // Track more posts
+        block_similar_topics: true,
+        emergency_uniqueness_mode: true
+      },
+      description: 'Emergency content similarity detection to prevent repetition',
+      created_by: 'emergency_fix_repetitive_content'
+    });
+
+    console.log('✅ Content similarity detection enhanced');
+
+    // 7. UPDATE EMERGENCY POSTING CONFIGURATION
+    console.log('⚡ UPDATING EMERGENCY POSTING CONFIG...');
+    
+    await supabase.from('bot_config').upsert({
+      key: 'emergency_posting_config',
+      value: {
+        expert_content_only: true,
+        block_template_fallbacks: true,
+        require_manual_review: false,  // Keep automated but with quality controls
+        max_attempts_per_mode: 10,
+        emergency_uniqueness_enforcement: true
+      },
+      description: 'Emergency posting configuration to ensure quality expert content only',
+      created_by: 'emergency_fix_repetitive_content'
+    });
+
+    console.log('✅ Emergency posting configuration updated');
+
+    // 8. CLEAR ANY EXISTING REPETITIVE CONTENT FROM TRACKING
+    console.log('🗑️ CLEARING REPETITIVE CONTENT FROM TRACKING...');
+    
+    // Remove any tracked content that contains banned patterns
+    const { data: trackedContent } = await supabase
+      .from('tweets')
+      .select('id, content')
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    if (trackedContent) {
+      const repetitiveIds = trackedContent
+        .filter(tweet => 
+          bannedPatterns.some(pattern => 
+            tweet.content.toLowerCase().includes(pattern.toLowerCase())
+          )
+        )
+        .map(tweet => tweet.id);
+
+      if (repetitiveIds.length > 0) {
+        console.log(`🗑️ Found ${repetitiveIds.length} repetitive tweets in database`);
+        
+        // Mark them as repetitive for learning purposes
+        await supabase
+          .from('tweets')
+          .update({ 
+            quality_issues: 'repetitive_content',
+            updated_at: new Date().toISOString()
+          })
+          .in('id', repetitiveIds);
+          
+        console.log(`✅ Marked ${repetitiveIds.length} tweets as repetitive for learning`);
+      }
+    }
+
+    console.log('\\n🎯 === REPETITIVE CONTENT CRISIS FIX COMPLETE ===');
+    console.log('\\n📊 SUMMARY:');
+    console.log('   ✅ Blocked 17+ repetitive patterns');
+    console.log('   ✅ Content distribution: 75% Expert modes, 20% Diverse, 5% News');
+    console.log('   ✅ Viral template generators disabled');
+    console.log('   ✅ Enhanced similarity detection (40% threshold)');
+    console.log('   ✅ Human Expert Personality enhanced');
+    console.log('   ✅ Expert Intelligence System configured');
+    console.log('   ✅ Emergency posting configuration active');
+    console.log('\\n🚀 NEXT POSTS WILL BE:');
+    console.log('   🧠 Genuine expert insights with personal experience');
+    console.log('   🎭 Diverse perspectives from different viewpoints');
+    console.log('   💡 Knowledge-based content building on previous posts');
+    console.log('   🚫 NO MORE repetitive "Machine learning algorithms" templates');
+    console.log('\\n✅ BOT READY FOR HIGH-QUALITY EXPERT CONTENT GENERATION');
 
   } catch (error) {
-    console.error('❌ Emergency fix failed:', error);
-    process.exit(1);
+    console.error('❌ Error fixing repetitive content crisis:', error);
+    throw error;
   }
 }
 
-// Execute emergency fix
-emergencyFixRepetitiveContent().then(() => {
-  console.log('\n🎉 EMERGENCY FIX SUCCESSFUL');
-  process.exit(0);
-}).catch(error => {
-  console.error('💥 EMERGENCY FIX FAILED:', error);
-  process.exit(1);
-}); 
+if (require.main === module) {
+  fixRepetitiveContentCrisis()
+    .then(() => {
+      console.log('\\n🎉 Repetitive content crisis fix completed successfully!');
+      process.exit(0);
+    })
+    .catch((error) => {
+      console.error('💥 Fix failed:', error);
+      process.exit(1);
+    });
+}
+
+module.exports = { fixRepetitiveContentCrisis }; 
