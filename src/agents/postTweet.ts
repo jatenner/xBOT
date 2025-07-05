@@ -35,6 +35,7 @@ import { EmbeddingFilter } from '../utils/embeddingFilter.js';
 import { LIVE_MODE } from '../config/liveMode';
 import { runtimeConfig } from '../utils/supabaseConfig.js';
 import { intelligentLearning } from '../utils/intelligentLearningConnector';
+import { DiversePerspectiveEngine } from './diversePerspectiveEngine.js';
 
 dotenv.config();
 
@@ -135,6 +136,7 @@ export class PostTweetAgent {
   private competitiveLearner: CompetitiveIntelligenceLearner;
   private nuclearLearning: NuclearLearningEnhancer;
   private humanExpert: HumanExpertPersonality;
+  private diversePerspectiveEngine: DiversePerspectiveEngine;
 
   constructor() {
     this.imageAgent = new ImageAgent();
@@ -153,8 +155,10 @@ export class PostTweetAgent {
     this.competitiveLearner = new CompetitiveIntelligenceLearner();
     this.nuclearLearning = NuclearLearningEnhancer.getInstance();
     this.humanExpert = new HumanExpertPersonality();
+    this.diversePerspectiveEngine = new DiversePerspectiveEngine();
     
     console.log('🧠 Nuclear learning intelligence systems initialized');
+    console.log('🎭 Diverse Perspective Engine initialized for unique viewpoints');
     
     // Initialize learning systems in background
     this.initializeLearning();
@@ -622,6 +626,12 @@ export class PostTweetAgent {
               }
               break;
               
+            case 'diverse_perspective':
+              console.log('🎭 DIVERSE PERSPECTIVES: Generating unique viewpoint for conversation');
+              const diverseResult = await this.diversePerspectiveEngine.generateDiverseContent();
+              content = diverseResult.content;
+              break;
+              
             default:
               console.log('🎲 Generating NUCLEAR engagement-focused content...');
               // Try competitive intelligence for default case
@@ -691,25 +701,28 @@ export class PostTweetAgent {
     return await regenerateCallback();
   }
 
-  private async selectOptimizedContentMode(optimizedStrategy: any): Promise<'viral' | 'comprehensive' | 'engagement' | 'current_events' | 'trending' | 'human_expert'> {
-    // 🎯 BALANCED GROWTH STRATEGY: 70% Human Expert + 30% Strategic Viral for follower growth
+  private async selectOptimizedContentMode(optimizedStrategy: any): Promise<'viral' | 'comprehensive' | 'engagement' | 'current_events' | 'trending' | 'human_expert' | 'diverse_perspective'> {
+    // 🎯 DIVERSE CONTENT STRATEGY: Force different perspectives
     const randomFactor = Math.random();
     
-    if (randomFactor < 0.40) {
+    if (randomFactor < 0.35) {
+      console.log('🎭 DIVERSE PERSPECTIVES: Generating unique viewpoint for conversation');
+      return 'diverse_perspective';
+    } else if (randomFactor < 0.55) {
       console.log('🧠 HUMAN EXPERT INSIGHTS: Deep expert analysis for authority building');
       return 'human_expert';
-    } else if (randomFactor < 0.60) {
-      console.log('📰 BREAKING NEWS ANALYSIS: Latest developments with expert take');
+    } else if (randomFactor < 0.70) {
+      console.log('📰 BREAKING NEWS ANALYSIS: Timely expert takes');
       return 'current_events';
-    } else if (randomFactor < 0.75) {
-      console.log('🔥 VIRAL HEALTH FACTS: Shareable data for follower growth');
+    } else if (randomFactor < 0.85) {
+      console.log('🔥 VIRAL CONTENT: Shareable insights for growth');
       return 'viral';
-    } else if (randomFactor < 0.90) {
-      console.log('🚀 FUTURE PREDICTIONS: Thought leadership content');
+    } else if (randomFactor < 0.95) {
+      console.log('📈 TRENDING TOPICS: Real-time trend participation');
       return 'trending';
     } else {
-      console.log('💡 CONTROVERSIAL TAKES: Engagement-driving opinions');
-      return 'engagement';
+      console.log('🎯 COMPREHENSIVE ANALYSIS: Structured deep-dive');
+      return 'comprehensive';
     }
   }
 
