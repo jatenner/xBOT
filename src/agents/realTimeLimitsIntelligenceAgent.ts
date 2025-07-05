@@ -335,9 +335,14 @@ export class RealTimeLimitsIntelligenceAgent {
       const monthlyReadsUsed = monthlyStats.reads;
       const monthlyReadsRemaining = Math.max(0, 10000 - monthlyReadsUsed); // Free tier: no monthly read limit, using 10000 as safe fallback
       
-      // Can post if: not locked by API AND under daily limit
+      // 🚨 CRITICAL FIX: Twitter API v2 Free Tier has NO monthly posting limit
+      // Can post if: not locked by API AND under daily limit (NO MONTHLY CHECK FOR POSTING)
       const canPost = !isLocked && (writeRemaining > 0) && (dailyRemaining > 0);
       const canRead = readRemaining > 0 && monthlyReadsRemaining > 0;
+      
+      // 🚨 IMPORTANT: Monthly stats are informational only - do NOT use for posting limits
+      console.log(`📊 Monthly posting check: DISABLED (no monthly posting limit exists)`);
+      console.log(`📊 Daily posting check: ${dailyRemaining} remaining of ${this.TWITTER_DAILY_WRITE_LIMIT} daily limit`);
       
       console.info(`🎯 Posting Check: writeRemaining=${writeRemaining}, dailyRemaining=${dailyRemaining}, result=${canPost}`);
       console.info(`🔍 Reading Check: readRemaining=${readRemaining}, monthlyReadsRemaining=${monthlyReadsRemaining}, result=${canRead}`);
@@ -543,16 +548,30 @@ export class RealTimeLimitsIntelligenceAgent {
 
   private async getMonthlyTwitterStats(): Promise<{ tweets: number; reads: number }> {
     try {
+      // 🚨 CRITICAL FIX: Twitter API v2 Free Tier has NO monthly posting limit
+      // Only 1,500 monthly READS (not posts) - this method should NOT be used for posting limits
       const startOfMonth = new Date();
       startOfMonth.setDate(1);
       startOfMonth.setHours(0, 0, 0, 0);
       
+      // Get end of current month for proper filtering
+      const endOfMonth = new Date(startOfMonth);
+      endOfMonth.setMonth(endOfMonth.getMonth() + 1);
+      endOfMonth.setDate(0);
+      endOfMonth.setHours(23, 59, 59, 999);
+      
       const { data, error } = await supabaseClient.supabase
         ?.from('tweets')
         .select('id')
-        .gte('created_at', startOfMonth.toISOString());
+        .gte('created_at', startOfMonth.toISOString())
+        .lte('created_at', endOfMonth.toISOString());
 
       const tweets = data?.length || 0;
+      
+      // 🚨 IMPORTANT: This count is for INFORMATIONAL purposes only
+      // Twitter API v2 Free Tier has NO monthly posting limit
+      console.log(`📊 Monthly tweet count (informational only): ${tweets} - NO LIMIT ENFORCED`);
+      
       return { tweets, reads: 0 }; // Reads tracking would need separate implementation
     } catch (error) {
       console.error('Error getting monthly Twitter stats:', error);
