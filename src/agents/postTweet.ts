@@ -176,7 +176,7 @@ export class PostTweetAgent {
   }
 
   // Track content to prevent repetition
-  private trackContent(content: string, topic: string) {
+  private async trackContent(content: string, topic: string) {
     // Enhanced tracking with better logging
     console.log(`📝 Tracking content: "${content.substring(0, 50)}..."`);
     console.log(`📝 Tracking topic: "${topic}"`);
@@ -196,8 +196,117 @@ export class PostTweetAgent {
       this.recentlyUsedTopics.delete(oldest);
       console.log('🗑️ Removed oldest topic from tracking');
     }
+
+    // Track topic category for diversity enforcement
+    try {
+      const topicCategory = this.categorizeTopicForDiversity(content, topic);
+      
+      // Store in database for diversity tracking
+      await supabase.from('topic_usage_tracking').insert({
+        topic,
+        topic_category: topicCategory,
+        content_snippet: content.substring(0, 100),
+        used_at: new Date().toISOString(),
+        content_mode: 'tracked'
+      });
+
+      console.log(`📊 Now tracking ${this.recentlyUsedContent.size} pieces of content and ${this.recentlyUsedTopics.size} topics, category: ${topicCategory}`);
+      
+    } catch (error) {
+      console.warn('⚠️ Error tracking topic diversity:', error);
+      console.log(`📊 Now tracking ${this.recentlyUsedContent.size} pieces of content and ${this.recentlyUsedTopics.size} topics`);
+    }
+  }
+
+  private categorizeTopicForDiversity(content: string, topic: string): string {
+    const contentLower = content.toLowerCase();
+    const topicLower = topic.toLowerCase();
     
-    console.log(`📊 Now tracking ${this.recentlyUsedContent.size} pieces of content and ${this.recentlyUsedTopics.size} topics`);
+    // AI & Machine Learning
+    if (contentLower.includes('ai') || contentLower.includes('artificial intelligence') || 
+        contentLower.includes('machine learning') || contentLower.includes('deep learning')) {
+      return 'ai_machine_learning';
+    }
+    
+    // Mental Health & Wellness
+    if (contentLower.includes('mental health') || contentLower.includes('depression') || 
+        contentLower.includes('anxiety') || contentLower.includes('therapy') || 
+        contentLower.includes('wellness') || contentLower.includes('mindfulness')) {
+      return 'mental_health_wellness';
+    }
+    
+    // Telemedicine & Remote Care
+    if (contentLower.includes('telemedicine') || contentLower.includes('remote') || 
+        contentLower.includes('virtual') || contentLower.includes('telehealth')) {
+      return 'telemedicine_remote_care';
+    }
+    
+    // Healthcare Systems & Policy
+    if (contentLower.includes('healthcare cost') || contentLower.includes('insurance') || 
+        contentLower.includes('policy') || contentLower.includes('system') || 
+        contentLower.includes('reform') || contentLower.includes('access')) {
+      return 'healthcare_systems_policy';
+    }
+    
+    // Global Health & Accessibility
+    if (contentLower.includes('global') || contentLower.includes('developing') || 
+        contentLower.includes('africa') || contentLower.includes('accessibility') || 
+        contentLower.includes('equity') || contentLower.includes('disparities')) {
+      return 'global_health_accessibility';
+    }
+    
+    // Environmental Health
+    if (contentLower.includes('environment') || contentLower.includes('climate') || 
+        contentLower.includes('carbon') || contentLower.includes('sustainability') || 
+        contentLower.includes('pollution') || contentLower.includes('green')) {
+      return 'environmental_health';
+    }
+    
+    // Healthcare Workforce
+    if (contentLower.includes('doctor') || contentLower.includes('nurse') || 
+        contentLower.includes('physician') || contentLower.includes('burnout') || 
+        contentLower.includes('staffing') || contentLower.includes('medical education')) {
+      return 'healthcare_workforce';
+    }
+    
+    // Wearable Technology
+    if (contentLower.includes('wearable') || contentLower.includes('smartwatch') || 
+        contentLower.includes('fitness tracker') || contentLower.includes('sensor')) {
+      return 'wearable_technology';
+    }
+    
+    // Elderly Care & Aging
+    if (contentLower.includes('elderly') || contentLower.includes('senior') || 
+        contentLower.includes('aging') || contentLower.includes('geriatric') || 
+        contentLower.includes('dementia')) {
+      return 'elderly_care_aging';
+    }
+    
+    // Nutrition & Lifestyle
+    if (contentLower.includes('nutrition') || contentLower.includes('diet') || 
+        contentLower.includes('food') || contentLower.includes('exercise') || 
+        contentLower.includes('lifestyle') || contentLower.includes('metabolic')) {
+      return 'nutrition_lifestyle';
+    }
+    
+    // Default categorization
+    if (contentLower.includes('precision medicine') || contentLower.includes('genomic') || 
+        contentLower.includes('genetic') || contentLower.includes('personalized')) {
+      return 'genomics_precision_medicine';
+    }
+    
+    if (contentLower.includes('drug') || contentLower.includes('pharmaceutical') || 
+        contentLower.includes('biotech') || contentLower.includes('clinical trial')) {
+      return 'biotechnology_pharmaceuticals';
+    }
+    
+    if (contentLower.includes('digital') || contentLower.includes('app') || 
+        contentLower.includes('mobile') || contentLower.includes('platform')) {
+      return 'digital_health_apps';
+    }
+    
+    // Fallback
+    return 'general_health_tech';
   }
 
   // Check if content is too similar to recent posts
@@ -657,7 +766,8 @@ export class PostTweetAgent {
               // 🎯 STRATEGIC ENHANCEMENT: Quality viral elements for growth (non-repetitive)
               try {
                 // Only enhance if content is unique and not repetitive
-                if (!this.containsRepetitivePatterns(content)) {
+                const hasRepetitivePatterns = await this.containsRepetitivePatterns(content);
+                if (!hasRepetitivePatterns) {
                   content = await this.nuclearLearning.enhanceContentWithViralElements(content);
                   console.log('🎯 STRATEGIC ENHANCEMENT: Added quality viral elements for growth');
                 } else {
@@ -674,7 +784,7 @@ export class PostTweetAgent {
             // Enhanced uniqueness check
             if (!this.isContentTooSimilar(content, topic)) {
               console.log('✅ Generated unique content with learning optimizations');
-              this.trackContent(content, topic);
+              await this.trackContent(content, topic);
               return content;
             } else {
               console.log(`❌ Content too similar to recent posts (attempt ${i + 1})`);
@@ -702,27 +812,106 @@ export class PostTweetAgent {
   }
 
   private async selectOptimizedContentMode(optimizedStrategy: any): Promise<'viral' | 'comprehensive' | 'engagement' | 'current_events' | 'trending' | 'human_expert' | 'diverse_perspective'> {
-    // 🎯 DIVERSE CONTENT STRATEGY: Force different perspectives
-    const randomFactor = Math.random();
-    
-    if (randomFactor < 0.35) {
-      console.log('🎭 DIVERSE PERSPECTIVES: Generating unique viewpoint for conversation');
-      return 'diverse_perspective';
-    } else if (randomFactor < 0.55) {
-      console.log('🧠 HUMAN EXPERT INSIGHTS: Deep expert analysis for authority building');
-      return 'human_expert';
-    } else if (randomFactor < 0.70) {
-      console.log('📰 BREAKING NEWS ANALYSIS: Timely expert takes');
-      return 'current_events';
-    } else if (randomFactor < 0.85) {
-      console.log('🔥 VIRAL CONTENT: Shareable insights for growth');
-      return 'viral';
-    } else if (randomFactor < 0.95) {
-      console.log('📈 TRENDING TOPICS: Real-time trend participation');
-      return 'trending';
-    } else {
+    // 🎯 LOAD DATABASE CONFIGURATIONS for content distribution
+    try {
+      const { data: distributionConfig } = await supabase
+        .from('bot_config')
+        .select('value')
+        .eq('key', 'enhanced_content_distribution')
+        .single() || { data: null };
+
+      const { data: diverseConfig } = await supabase
+        .from('bot_config')
+        .select('value')
+        .eq('key', 'diverse_perspective_allocation')
+        .single() || { data: null };
+
+      // Use database configuration if available, otherwise fallback to defaults
+      let distribution = {
+        diverse_perspectives: 45,
+        human_expert: 15,
+        breaking_news: 15,
+        viral_content: 10,
+        trending_topics: 10,
+        comprehensive_analysis: 5
+      };
+
+      if (distributionConfig?.value?.distribution) {
+        distribution = distributionConfig.value.distribution;
+        console.log('📊 Using database content distribution configuration');
+      } else {
+        console.log('⚠️ Using fallback content distribution');
+      }
+
+      // Enforce diverse perspective allocation if mandated
+      if (diverseConfig?.value?.enabled && diverseConfig?.value?.allocation_percentage) {
+        distribution.diverse_perspectives = diverseConfig.value.allocation_percentage;
+        console.log(`🎭 FORCED DIVERSE ALLOCATION: ${distribution.diverse_perspectives}%`);
+      }
+
+      // Convert percentages to cumulative thresholds
+      const randomFactor = Math.random() * 100;
+      let cumulative = 0;
+
+      cumulative += distribution.diverse_perspectives;
+      if (randomFactor < cumulative) {
+        console.log('🎭 DIVERSE PERSPECTIVES: Generating unique viewpoint for conversation');
+        return 'diverse_perspective';
+      }
+
+      cumulative += distribution.human_expert;
+      if (randomFactor < cumulative) {
+        console.log('🧠 HUMAN EXPERT INSIGHTS: Deep expert analysis for authority building');
+        return 'human_expert';
+      }
+
+      cumulative += distribution.breaking_news;
+      if (randomFactor < cumulative) {
+        console.log('📰 BREAKING NEWS ANALYSIS: Timely expert takes');
+        return 'current_events';
+      }
+
+      cumulative += distribution.viral_content;
+      if (randomFactor < cumulative) {
+        console.log('🔥 VIRAL CONTENT: Shareable insights for growth');
+        return 'viral';
+      }
+
+      cumulative += distribution.trending_topics;
+      if (randomFactor < cumulative) {
+        console.log('📈 TRENDING TOPICS: Real-time trend participation');
+        return 'trending';
+      }
+
+      // Default to comprehensive
       console.log('🎯 COMPREHENSIVE ANALYSIS: Structured deep-dive');
       return 'comprehensive';
+
+    } catch (error) {
+      console.warn('⚠️ Error loading content distribution config, using fallback:', error);
+      
+      // Fallback to hardcoded enhanced distribution
+      const randomFactor = Math.random();
+      
+      if (randomFactor < 0.45) {
+        console.log('🎭 DIVERSE PERSPECTIVES: Generating unique viewpoint for conversation (fallback)');
+        return 'diverse_perspective';
+      } else if (randomFactor < 0.60) {
+        console.log('🧠 HUMAN EXPERT INSIGHTS: Deep expert analysis for authority building (fallback)');
+        return 'human_expert';
+      } else if (randomFactor < 0.75) {
+        console.log('📰 BREAKING NEWS ANALYSIS: Timely expert takes (fallback)');
+        return 'current_events';
+      } else if (randomFactor < 0.85) {
+        console.log('🔥 VIRAL CONTENT: Shareable insights for growth (fallback)');
+        return 'viral';
+      } else if (randomFactor < 0.95) {
+        console.log('📈 TRENDING TOPICS: Real-time trend participation (fallback)');
+        return 'trending';
+      } else {
+        console.log('🎯 COMPREHENSIVE ANALYSIS: Structured deep-dive (fallback)');
+        return 'comprehensive';
+      }
     }
   }
 
@@ -785,20 +974,81 @@ export class PostTweetAgent {
     return optimizedContent;
   }
 
-  private containsRepetitivePatterns(content: string): boolean {
-    const repetitivePatterns = [
-      'as ai transforms diagnostics',
-      'precision medicine is becoming a reality',
-      'healthcare professionals must invest',
-      'this could revolutionize healthcare',
-      'the implications are staggering',
-      'this changes everything we know',
-      'the future of healthcare is being written',
-      'ai, digital therapeutics, and precision medicine are converging'
-    ];
-    
-    const contentLower = content.toLowerCase();
-    return repetitivePatterns.some(pattern => contentLower.includes(pattern));
+  private async containsRepetitivePatterns(content: string): Promise<boolean> {
+    // Load banned patterns from database configuration
+    try {
+      const { data: qualityConfig } = await supabase
+        .from('bot_config')
+        .select('value')
+        .eq('key', 'content_quality_enforcement')
+        .single() || { data: null };
+
+      const { data: diversityConfig } = await supabase
+        .from('bot_config')
+        .select('value')
+        .eq('key', 'topic_diversity_enforcement')
+        .single() || { data: null };
+
+      // Combine database patterns with hardcoded ones
+      let bannedPatterns = [
+        'as ai transforms diagnostics',
+        'precision medicine is becoming a reality',
+        'healthcare professionals must invest',
+        'this could revolutionize healthcare',
+        'the implications are staggering',
+        'this changes everything we know',
+        'the future of healthcare is being written',
+        'ai, digital therapeutics, and precision medicine are converging'
+      ];
+
+      // Add database-configured banned patterns
+      if (qualityConfig?.value?.banned_repetitive_phrases) {
+        bannedPatterns = [...bannedPatterns, ...qualityConfig.value.banned_repetitive_phrases];
+      }
+
+      if (diversityConfig?.value?.banned_repetitive_patterns) {
+        bannedPatterns = [...bannedPatterns, ...diversityConfig.value.banned_repetitive_patterns];
+      }
+
+      const contentLower = content.toLowerCase();
+      const hasRepetitivePattern = bannedPatterns.some(pattern => 
+        contentLower.includes(pattern.toLowerCase())
+      );
+
+      if (hasRepetitivePattern) {
+        console.log('🚫 BLOCKED: Content contains banned repetitive patterns');
+        
+        // Log which pattern was detected for monitoring
+        const detectedPattern = bannedPatterns.find(pattern => 
+          contentLower.includes(pattern.toLowerCase())
+        );
+        console.log(`🚫 DETECTED PATTERN: "${detectedPattern}"`);
+      }
+
+      return hasRepetitivePattern;
+
+    } catch (error) {
+      console.warn('⚠️ Error loading repetitive pattern config, using fallback:', error);
+      
+      // Fallback to hardcoded patterns
+      const repetitivePatterns = [
+        'as ai transforms diagnostics',
+        'precision medicine is becoming a reality',
+        'healthcare professionals must invest',
+        'this could revolutionize healthcare',
+        'the implications are staggering',
+        'this changes everything we know',
+        'the future of healthcare is being written',
+        'ai, digital therapeutics, and precision medicine are converging',
+        'artificial intelligence is revolutionizing',
+        'digital health solutions are',
+        'healthcare technology is advancing',
+        'medical innovation continues'
+      ];
+      
+      const contentLower = content.toLowerCase();
+      return repetitivePatterns.some(pattern => contentLower.includes(pattern));
+    }
   }
 
   private async generateEmergencyUniqueExpert(): Promise<string> {
@@ -1114,7 +1364,7 @@ The implications could reshape how we approach patient care. What's your take?`;
 
       // Track content for uniqueness
       const topic = this.extractKeyTopic(tweetContent);
-      this.trackContent(tweetContent, topic);
+      await this.trackContent(tweetContent, topic);
 
       // Add Snap2Health CTA if requested and content allows
       if (includeSnap2HealthCTA && tweetContent.length < 220) {
@@ -1646,7 +1896,7 @@ The implications could reshape how we approach patient care. What's your take?`;
     }
 
     // Track the content
-    this.trackContent(tweet, contentTopic);
+    await this.trackContent(tweet, contentTopic);
 
     console.log(`✅ Generated sophisticated academic-level tweet`);
     return tweet;
@@ -1796,8 +2046,9 @@ The implications could reshape how we approach patient care. What's your take?`;
 
   // Generate completely fresh content when repetition detected
   private async generateFreshAlternativeContent(): Promise<string> {
-    // More diverse, specific topics with real data and current relevance
+    // Dramatically more diverse topics covering the full spectrum of health tech
     const freshTopics = [
+      // AI & Diagnostics
       {
         content: 'AI-powered drug discovery reducing development time from 10 years to 18 months',
         stat: '85% faster development cycles',
@@ -1805,21 +2056,59 @@ The implications could reshape how we approach patient care. What's your take?`;
         year: '2024'
       },
       {
+        content: 'AI dermatologists diagnosing skin cancer from smartphone photos',
+        stat: '94% accuracy vs 86% human doctors',
+        source: 'Harvard Medical',
+        year: '2024'
+      },
+      
+      // Wearable & Monitoring
+      {
         content: 'Wearable sensors detecting heart attacks 6 hours before symptoms appear',
         stat: '89% accuracy in prediction',
         source: 'Stanford Medicine',
         year: '2024'
       },
       {
-        content: 'Gene therapy reversing blindness in 90% of clinical trial participants',
-        stat: '200+ patients regained sight',
-        source: 'Nature Medicine',
+        content: 'Smartwatches detecting depression through heart rate patterns',
+        stat: '85% accuracy in early detection',
+        source: 'Nature Digital Medicine',
+        year: '2024'
+      },
+      
+      // Mental Health Technology
+      {
+        content: 'VR therapy treating PTSD with 73% success rate',
+        stat: 'Better than traditional therapy',
+        source: 'JAMA Psychiatry',
         year: '2024'
       },
       {
-        content: 'Digital twins of human organs predicting treatment outcomes',
-        stat: '95% accuracy in surgical planning',
-        source: 'Johns Hopkins',
+        content: 'AI chatbots providing mental health support to 2 million users',
+        stat: '67% reduction in anxiety symptoms',
+        source: 'Digital Medicine Journal',
+        year: '2024'
+      },
+      
+      // Telemedicine & Access
+      {
+        content: 'Telemedicine reducing healthcare costs by 40% in rural areas',
+        stat: 'Saving $2.8 billion annually',
+        source: 'Rural Health Research',
+        year: '2024'
+      },
+      {
+        content: 'Remote patient monitoring preventing 250,000 hospital readmissions',
+        stat: '45% reduction in readmissions',
+        source: 'American Hospital Association',
+        year: '2024'
+      },
+      
+      // Gene Therapy & Precision Medicine
+      {
+        content: 'Gene therapy reversing blindness in 90% of clinical trial participants',
+        stat: '200+ patients regained sight',
+        source: 'Nature Medicine',
         year: '2024'
       },
       {
@@ -1828,10 +2117,102 @@ The implications could reshape how we approach patient care. What's your take?`;
         source: 'New England Journal',
         year: '2024'
       },
+      
+      // Digital Therapeutics
       {
-        content: 'AI dermatologists diagnosing skin cancer from smartphone photos',
-        stat: '94% accuracy vs 86% human doctors',
-        source: 'Harvard Medical',
+        content: 'Prescription apps treating diabetes better than traditional medication',
+        stat: '23% greater A1C reduction',
+        source: 'Diabetes Care Journal',
+        year: '2024'
+      },
+      {
+        content: 'Digital therapeutics for addiction showing 68% success rate',
+        stat: 'Outperforming traditional rehab',
+        source: 'Addiction Medicine',
+        year: '2024'
+      },
+      
+      // Healthcare Costs & Policy
+      {
+        content: 'Healthcare spending reaching $4.8 trillion globally',
+        stat: '18% of GDP in developed nations',
+        source: 'WHO Global Health Report',
+        year: '2024'
+      },
+      {
+        content: 'Medical bankruptcies affecting 530,000 American families annually',
+        stat: '66% of bankruptcies medical-related',
+        source: 'American Journal of Public Health',
+        year: '2024'
+      },
+      
+      // Elderly Care & Aging
+      {
+        content: 'Smart home technology reducing falls in elderly by 55%',
+        stat: 'Preventing 180,000 injuries annually',
+        source: 'Geriatrics & Gerontology',
+        year: '2024'
+      },
+      {
+        content: 'AI companions reducing loneliness in seniors by 43%',
+        stat: 'Improving mental health outcomes',
+        source: 'Aging & Mental Health',
+        year: '2024'
+      },
+      
+      // Global Health & Accessibility
+      {
+        content: 'Mobile health programs reaching 500 million people in Africa',
+        stat: '60% improvement in vaccination rates',
+        source: 'WHO Africa Report',
+        year: '2024'
+      },
+      {
+        content: 'Portable ultrasound devices bringing diagnostics to remote areas',
+        stat: 'Serving 2 billion underserved people',
+        source: 'Global Health Innovation',
+        year: '2024'
+      },
+      
+      // Nutrition & Lifestyle Medicine
+      {
+        content: 'Personalized nutrition apps improving metabolic health by 35%',
+        stat: 'Using continuous glucose monitoring',
+        source: 'Nature Metabolism',
+        year: '2024'
+      },
+      {
+        content: 'Food as medicine programs reducing healthcare costs by $2,400 per patient',
+        stat: '28% reduction in hospitalizations',
+        source: 'American Journal of Preventive Medicine',
+        year: '2024'
+      },
+      
+      // Surgical & Medical Devices
+      {
+        content: 'Digital twins of human organs predicting treatment outcomes',
+        stat: '95% accuracy in surgical planning',
+        source: 'Johns Hopkins',
+        year: '2024'
+      },
+      {
+        content: 'Robotic surgery reducing complications by 67%',
+        stat: '50% faster recovery times',
+        source: 'Journal of Robotic Surgery',
+        year: '2024'
+      },
+      
+      // Healthcare Workforce
+      {
+        content: 'AI medical scribes saving doctors 2 hours per day',
+        stat: '40% reduction in documentation time',
+        source: 'Mayo Clinic Proceedings',
+        year: '2024'
+      },
+      {
+        content: 'Nurse burnout costing healthcare system $15 billion annually',
+        stat: '76% of nurses report burnout',
+        source: 'American Nurses Association',
         year: '2024'
       }
     ];
@@ -2710,7 +3091,7 @@ Respond with JSON:
       
       if (result?.success && result?.tweetId) {
         // 📝 CRITICAL: Track content to prevent future duplicates
-        this.trackContent(tweetContent, topicForTracking);
+        await this.trackContent(tweetContent, topicForTracking);
         
         // Store in database
         await supabaseClient.saveTweetToDatabase({
@@ -2982,6 +3363,83 @@ Make it insightful, strategic, and reveal hidden implications. 250 characters ma
           date: currentDate,
           content: 'Wearable devices detect atrial fibrillation with 98% accuracy, potentially preventing 50,000 strokes annually',
           relevance_score: 0.92,
+          urgency: this.calculateUrgencyFromDate(currentDate)
+        }
+      ],
+      mental_health_tech: [
+        {
+          type: 'research_update' as const,
+          title: 'Digital Therapy Effectiveness',
+          source: 'JAMA Psychiatry',
+          date: currentDate,
+          content: 'Cognitive behavioral therapy apps show 67% reduction in depression symptoms over 12 weeks',
+          relevance_score: 0.89,
+          urgency: this.calculateUrgencyFromDate(currentDate)
+        }
+      ],
+      telemedicine: [
+        {
+          type: 'industry_insight' as const,
+          title: 'Remote Care Adoption',
+          source: 'McKinsey Health Institute',
+          date: currentDate,
+          content: 'Telemedicine visits increased 3,800% during pandemic, with 85% of patients reporting satisfaction',
+          relevance_score: 0.86,
+          urgency: this.calculateUrgencyFromDate(currentDate)
+        }
+      ],
+      drug_discovery: [
+        {
+          type: 'breaking_news' as const,
+          title: 'AI Drug Development Speed',
+          source: 'MIT Technology Review',
+          date: currentDate,
+          content: 'AI-powered drug discovery reduces development time from 10-15 years to 3-5 years',
+          relevance_score: 0.93,
+          urgency: this.calculateUrgencyFromDate(currentDate)
+        }
+      ],
+      healthcare_costs: [
+        {
+          type: 'industry_insight' as const,
+          title: 'Healthcare Cost Crisis',
+          source: 'Commonwealth Fund',
+          date: currentDate,
+          content: 'Americans spend 2x more on healthcare than other developed nations with worse outcomes',
+          relevance_score: 0.91,
+          urgency: this.calculateUrgencyFromDate(currentDate)
+        }
+      ],
+      elderly_care: [
+        {
+          type: 'tech_development' as const,
+          title: 'Aging in Place Technology',
+          source: 'AARP Research',
+          date: currentDate,
+          content: 'Smart home health monitoring reduces emergency room visits by 45% for seniors',
+          relevance_score: 0.87,
+          urgency: this.calculateUrgencyFromDate(currentDate)
+        }
+      ],
+      global_health: [
+        {
+          type: 'breaking_news' as const,
+          title: 'Mobile Health in Africa',
+          source: 'WHO Report',
+          date: currentDate,
+          content: 'Mobile health programs reach 500 million people in sub-Saharan Africa, improving vaccination rates by 60%',
+          relevance_score: 0.84,
+          urgency: this.calculateUrgencyFromDate(currentDate)
+        }
+      ],
+      nutrition_tech: [
+        {
+          type: 'research_update' as const,
+          title: 'Personalized Nutrition Apps',
+          source: 'Nature Metabolism',
+          date: currentDate,
+          content: 'AI-powered nutrition apps using continuous glucose monitoring improve metabolic health by 35%',
+          relevance_score: 0.82,
           urgency: this.calculateUrgencyFromDate(currentDate)
         }
       ],
@@ -3489,7 +3947,7 @@ Focus on: AI diagnostics, precision medicine, digital therapeutics, or healthcar
       
       // Track content for duplicate prevention with human-like memory
       const topic = this.extractKeyTopic(result.content);
-      this.trackContent(result.content, topic);
+      await this.trackContent(result.content, topic);
       
       console.log('✅ Intelligent learning completed - bot consciousness evolved');
       

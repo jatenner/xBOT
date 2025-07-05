@@ -123,10 +123,97 @@ export class UltraViralGenerator {
   ];
 
   private healthTechTopics = [
-    "AI drug discovery", "precision medicine", "digital therapeutics", "brain-computer interfaces",
-    "gene therapy", "robotic surgery", "telemedicine", "health monitoring", "longevity research",
-    "medical imaging AI", "biomarker detection", "personalized treatment", "rare disease research",
-    "cancer immunotherapy", "mental health AI", "fitness tracking", "medical devices", "health data"
+    // AI & Machine Learning
+    "AI drug discovery", "machine learning diagnostics", "AI-powered surgery", "predictive analytics healthcare", 
+    "natural language processing medical records", "computer vision radiology", "deep learning pathology",
+    
+    // Digital Health & Apps
+    "digital therapeutics", "health monitoring apps", "mental health apps", "meditation apps", 
+    "fitness tracking", "nutrition apps", "sleep tracking", "chronic disease management apps",
+    
+    // Wearable Technology
+    "smartwatches health monitoring", "fitness trackers", "continuous glucose monitors", "heart rate monitors",
+    "blood pressure monitors", "sleep tracking devices", "stress monitoring wearables", "recovery tracking",
+    
+    // Telemedicine & Remote Care
+    "telemedicine platforms", "remote patient monitoring", "virtual consultations", "teletherapy",
+    "remote diagnostics", "digital health coaching", "virtual reality therapy", "online pharmacy",
+    
+    // Medical Devices & Equipment
+    "robotic surgery", "3D printing medical devices", "surgical robots", "diagnostic equipment",
+    "medical imaging", "ultrasound technology", "MRI innovations", "CT scan advancements",
+    
+    // Genomics & Precision Medicine
+    "precision medicine", "genetic testing", "personalized treatment", "pharmacogenomics",
+    "gene therapy", "CRISPR technology", "genetic counseling", "rare disease research",
+    
+    // Biotechnology & Pharmaceuticals
+    "biotech innovation", "drug development", "clinical trials", "vaccine development",
+    "biologics", "cell therapy", "regenerative medicine", "stem cell research",
+    
+    // Mental Health & Wellness
+    "mental health technology", "depression treatment", "anxiety management", "addiction recovery",
+    "mindfulness apps", "cognitive behavioral therapy apps", "stress management", "wellness platforms",
+    
+    // Healthcare Data & Analytics
+    "health data analytics", "medical records", "healthcare interoperability", "health informatics",
+    "population health management", "epidemiology", "health surveillance", "medical research data",
+    
+    // Healthcare Systems & Policy
+    "healthcare reform", "medical insurance", "healthcare costs", "hospital administration",
+    "healthcare access", "rural healthcare", "global health initiatives", "healthcare equity",
+    
+    // Preventive Care & Public Health
+    "preventive medicine", "health screening", "vaccination programs", "disease prevention",
+    "public health initiatives", "health education", "community health", "health promotion",
+    
+    // Elderly Care & Aging
+    "aging in place technology", "elderly care apps", "dementia care", "senior health monitoring",
+    "geriatric medicine", "long-term care", "assisted living technology", "age-related diseases",
+    
+    // Pediatric & Maternal Health
+    "pediatric healthcare", "maternal health", "pregnancy tracking", "child development",
+    "pediatric telemedicine", "newborn care", "childhood diseases", "family health",
+    
+    // Alternative & Integrative Medicine
+    "integrative medicine", "alternative therapies", "holistic health", "traditional medicine",
+    "acupuncture", "herbal medicine", "mind-body medicine", "complementary therapies",
+    
+    // Healthcare Innovation & Startups
+    "health tech startups", "medical innovation", "healthcare entrepreneurship", "venture capital healthcare",
+    "health tech funding", "medical device startups", "digital health accelerators", "healthcare disruption",
+    
+    // Regulatory & Compliance
+    "FDA approval process", "medical device regulation", "healthcare compliance", "patient privacy",
+    "HIPAA compliance", "medical ethics", "clinical trial regulations", "healthcare standards",
+    
+    // Global Health & Accessibility
+    "global health technology", "healthcare in developing countries", "medical access", "health equity",
+    "disaster medicine", "humanitarian healthcare", "medical aid", "health disparities",
+    
+    // Emerging Technologies
+    "blockchain healthcare", "quantum computing medicine", "nanotechnology medicine", "brain-computer interfaces",
+    "augmented reality surgery", "virtual reality healthcare", "IoT medical devices", "5G healthcare applications",
+    
+    // Chronic Disease Management
+    "diabetes management", "heart disease prevention", "cancer treatment", "autoimmune diseases",
+    "chronic pain management", "kidney disease", "liver disease", "respiratory diseases",
+    
+    // Nutrition & Lifestyle
+    "nutrition science", "dietary supplements", "food as medicine", "lifestyle medicine",
+    "exercise prescription", "weight management", "metabolic health", "longevity research",
+    
+    // Healthcare Workforce
+    "medical education", "nursing technology", "healthcare training", "medical simulation",
+    "healthcare staffing", "physician burnout", "healthcare workforce", "medical continuing education",
+    
+    // Patient Experience & Engagement
+    "patient engagement", "health literacy", "patient empowerment", "shared decision making",
+    "patient satisfaction", "healthcare communication", "patient advocacy", "healthcare transparency",
+    
+    // Healthcare Infrastructure
+    "hospital technology", "healthcare IT", "medical equipment", "healthcare facilities",
+    "laboratory technology", "pharmacy automation", "medical supply chain", "healthcare logistics"
   ];
 
   private viralTriggers = {

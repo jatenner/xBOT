@@ -48,26 +48,107 @@ export class DiversePerspectiveEngine {
 
   private initializeControversialTopics(): void {
     this.controversialTopics = [
+      // AI & Technology Criticism
       'Why AI diagnostics might make doctors worse at medicine',
-      'The hidden costs of "free" health apps',
-      'Why precision medicine is mostly marketing hype',
-      'How health tech is widening healthcare inequality',
-      'The dark side of patient data collection',
-      'Why telemedicine is failing rural communities',
-      'How Big Tech is destroying doctor-patient relationships',
-      'Why most digital therapeutics don\'t work',
+      'How AI is making healthcare more expensive, not cheaper',
       'The ethics of AI making life-or-death decisions',
+      'Why most health AI is just expensive pattern matching',
+      
+      // Healthcare System & Policy
+      'Why the US healthcare system is designed to bankrupt patients',
+      'How insurance companies profit from denying care',
+      'Why healthcare "innovation" mostly benefits the wealthy',
+      'The hidden costs of "free" health apps',
+      
+      // Digital Health & Apps
+      'Why most digital therapeutics don\'t work',
+      'How health tech is widening healthcare inequality',
+      'The psychological harm of health monitoring apps',
+      'Why health apps are making us more anxious about our health',
+      
+      // Data Privacy & Surveillance
+      'The dark side of patient data collection',
+      'How Big Tech is destroying doctor-patient relationships',
+      'Why health data is the new oil (and who\'s getting rich)',
+      'How wearables are creating a surveillance state',
+      
+      // Medical Practice & Education
+      'Why medical schools are failing to prepare doctors for the future',
+      'How electronic health records are destroying patient care',
+      'Why doctors are burning out faster than ever',
+      'The hidden bias in medical research',
+      
+      // Telemedicine & Access
+      'Why telemedicine is failing rural communities',
+      'How virtual care is creating a two-tier healthcare system',
+      'Why telemedicine can\'t replace human touch in healing',
+      'The digital divide in healthcare access',
+      
+      // Pharmaceutical & Drug Development
+      'Why drug prices have nothing to do with R&D costs',
+      'How pharma companies manipulate clinical trial data',
+      'Why most "breakthrough" drugs are just marketing',
+      'The hidden side effects Big Pharma doesn\'t want you to know',
+      
+      // Mental Health & Wellness
+      'Why the mental health crisis is getting worse despite more apps',
+      'How wellness culture is making us sicker',
+      'Why therapy apps can\'t replace human therapists',
+      'The dark side of mindfulness and meditation apps',
+      
+      // Healthcare Innovation & Startups
+      'Why most health startups are solving fake problems',
+      'How venture capital is corrupting healthcare innovation',
+      'Why healthcare "disruption" usually makes things worse',
+      'The hidden agenda behind "patient empowerment"',
+      
+      // Regulatory & Compliance
+      'Why FDA approval doesn\'t mean health tech actually works',
+      'How medical device companies game the approval process',
+      'Why healthcare regulation is always 10 years behind',
+      'The revolving door between regulators and industry',
+      
+      // Global Health & Inequality
+      'Why global health initiatives often make things worse',
+      'How medical tourism is draining developing countries of doctors',
+      'Why health tech solutions ignore the world\'s poorest',
+      'The colonial mindset in global health interventions',
+      
+      // Environmental & Sustainability
+      'The environmental cost of digital health solutions',
+      'Why single-use medical devices are destroying the planet',
+      'How healthcare is one of the biggest polluters',
+      'The carbon footprint of telemedicine',
+      
+      // Aging & Elder Care
+      'Why aging in place technology is abandoning seniors',
+      'How the elder care industry profits from neglect',
+      'Why most aging tech is designed by young people who don\'t understand aging',
+      'The hidden crisis in elder care technology',
+      
+      // Precision Medicine & Genomics
+      'Why precision medicine is mostly marketing hype',
+      'How genetic testing is creating new forms of discrimination',
+      'Why personalized medicine isn\'t actually personal',
+      'The false promise of gene therapy',
+      
+      // Healthcare Workforce
+      'Why nurses are leaving healthcare in record numbers',
+      'How healthcare administrators are destroying patient care',
+      'Why medical specialization is harming patients',
+      'The hidden hierarchy that\'s killing healthcare',
+      
+      // Technology Integration
+      'Why interoperability will never be solved',
       'How health tech creates new forms of medical bias',
       'Why blockchain in healthcare is mostly nonsense',
-      'The psychological harm of health monitoring apps',
-      'How venture capital is corrupting healthcare innovation',
-      'Why FDA approval doesn\'t mean health tech actually works',
-      'The environmental cost of digital health solutions',
       'How health tech is creating new addictions',
-      'Why interoperability will never be solved',
-      'The hidden agenda behind "patient empowerment"',
-      'How AI is making healthcare more expensive, not cheaper',
-      'Why most health startups are solving fake problems'
+      
+      // Patient Experience
+      'Why patient satisfaction scores are destroying healthcare',
+      'How the customer service model is wrong for healthcare',
+      'Why patients aren\'t customers and shouldn\'t be treated as such',
+      'The hidden costs of patient-centered care'
     ];
   }
 
