@@ -103,6 +103,7 @@ export const defaults = {
   
   // Remove all other artificial limits
   minInterval: 20, // 20 minutes minimum between posts (sensible spacing)
+  fallbackStaggerMinutes: 20, // Fallback stagger for safety
   
   // Content quality settings (keep these for quality)
   quality: { 

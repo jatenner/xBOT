@@ -1,5 +1,5 @@
 import { openaiClient } from '../utils/openaiClient.js';
-import { supabaseClient } from '../utils/supabaseClient.js';
+import { supabase } from '../utils/supabaseClient.js';
 import { NewsAPIAgent } from './newsAPIAgent.js';
 import { intelligentLearning } from '../utils/intelligentLearningConnector.js';
 
@@ -635,7 +635,7 @@ Generate a tweet (250 chars max) that showcases your expertise:`;
   private async storeExpertLearning(learningData: any): Promise<void> {
     // Implementation for storing expert learning data
     try {
-      await supabaseClient.from('expert_learning_data').insert({
+      await supabase.from('expert_learning_data').insert({
         content: learningData.content,
         extracted_knowledge: learningData.extractedKnowledge,
         domains: learningData.domains,

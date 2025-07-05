@@ -110,6 +110,19 @@ export interface StylePerformance {
 
 class SupabaseService {
   private client: SupabaseClient | null = null;
+  
+  // Configuration properties for compatibility
+  public fallbackStaggerMinutes: number = 20;
+  public maxPostsPerHour: number = 3;
+  public maxPostsPerDay: number = 72;
+  public minInterval: number = 20;
+  public quality = { readabilityMin: 55, credibilityMin: 0.85 };
+  public postingStrategy: string = "nuclear_intelligence_unleashed";
+  public emergencyMode: boolean = false;
+  public disableLearning: boolean = false;
+  public dailyBudgetLimit: number = 25;
+  public startupThrottling: boolean = false;
+  public respectOnlyRealTwitterLimits: boolean = true;
 
   constructor() {
     const supabaseUrl = process.env.SUPABASE_URL;
