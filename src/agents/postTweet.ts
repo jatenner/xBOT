@@ -3598,11 +3598,22 @@ Make it insightful, strategic, and reveal hidden implications. 250 characters ma
   }
 
   /**
-   * 🚨 EMERGENCY RATE LIMITING
-   * Prevents API exhaustion by enforcing strict limits
+   * 🚨 ENHANCED 24/7 RATE LIMITING WITH CHARM ENFORCEMENT
+   * Prevents API exhaustion while ensuring continuous operation and charming content
    */
-  private async checkRateLimit(): Promise<{ canPost: boolean; reason: string }> {
+  private async checkRateLimit(): Promise<{ canPost: boolean; reason: string; shouldRetry?: boolean; retryAfter?: number }> {
     try {
+      // 🔄 24/7 RESILIENCE: Check continuous operation config
+      const { data: continuousConfig } = await supabaseClient.supabase
+        ?.from('bot_config')
+        .select('value')
+        .eq('key', 'continuous_operation_config')
+        .single() || { data: null };
+
+      const neverStop = continuousConfig?.value?.never_stop || false;
+      const retryOnLimits = continuousConfig?.value?.retry_on_limits || false;
+      const retryIntervals = continuousConfig?.value?.retry_intervals || [5, 10, 15, 30, 60];
+
       // 🚨 CRITICAL FIRST: Check real Twitter API limits using Real-Time Intelligence
       console.log('🔍 Checking real Twitter API limits...');
       const { realTimeLimitsAgent } = await import('./realTimeLimitsIntelligenceAgent');
@@ -3614,10 +3625,24 @@ Make it insightful, strategic, and reveal hidden implications. 250 characters ma
         if (!realLimits.twitter.canPost) {
           const hoursUntilReset = Math.ceil((realLimits.twitter.dailyTweets.resetTime.getTime() - Date.now()) / (1000 * 60 * 60));
           console.log(`🚨 TWITTER API BLOCKED: Daily limit exhausted (${realLimits.twitter.dailyTweets.used}/${realLimits.twitter.dailyTweets.limit})`);
-          return {
-            canPost: false,
-            reason: `Twitter daily limit exhausted: ${realLimits.twitter.dailyTweets.used}/${realLimits.twitter.dailyTweets.limit} tweets used. Resets in ${hoursUntilReset} hours at ${realLimits.twitter.dailyTweets.resetTime.toLocaleTimeString()}.`
-          };
+          
+          if (neverStop && retryOnLimits) {
+            // 🔄 24/7 MODE: Don't stop, queue for retry
+            console.log('🔄 24/7 MODE: Queueing for retry when limits reset');
+            const retryAfterMinutes = Math.min(hoursUntilReset * 60, retryIntervals[0]);
+            
+            return {
+              canPost: false,
+              reason: `Twitter daily limit exhausted: ${realLimits.twitter.dailyTweets.used}/${realLimits.twitter.dailyTweets.limit} tweets used. 🔄 24/7 MODE: Will retry in ${retryAfterMinutes} minutes.`,
+              shouldRetry: true,
+              retryAfter: retryAfterMinutes
+            };
+          } else {
+            return {
+              canPost: false,
+              reason: `Twitter daily limit exhausted: ${realLimits.twitter.dailyTweets.used}/${realLimits.twitter.dailyTweets.limit} tweets used. Resets in ${hoursUntilReset} hours at ${realLimits.twitter.dailyTweets.resetTime.toLocaleTimeString()}.`
+            };
+          }
         }
         
         // Additional check: if very few remaining, be extra cautious
@@ -3628,7 +3653,7 @@ Make it insightful, strategic, and reveal hidden implications. 250 characters ma
           const currentHour = new Date().getHours();
           const isPeakEngagementHour = (currentHour >= 9 && currentHour <= 11) || (currentHour >= 15 && currentHour <= 17);
           
-          if (!isPeakEngagementHour) {
+          if (!isPeakEngagementHour && !neverStop) {
             return {
               canPost: false,
               reason: `Conserving remaining ${realLimits.twitter.dailyTweets.remaining} tweets for peak engagement hours. Current hour: ${currentHour}`
@@ -3823,6 +3848,23 @@ Make it insightful, strategic, and reveal hidden implications. 250 characters ma
       
     } catch (error) {
       console.log('⚠️ Rate limit check failed:', error.message);
+      
+      // 🔄 24/7 RESILIENCE: Even on error, check if we should retry
+      const { data: continuousConfig } = await supabaseClient.supabase
+        ?.from('bot_config')
+        .select('value')
+        .eq('key', 'continuous_operation_config')
+        .single() || { data: null };
+
+      if (continuousConfig?.value?.never_stop && continuousConfig?.value?.retry_on_limits) {
+        return {
+          canPost: false,
+          reason: 'Rate limit check failed - 🔄 24/7 MODE: Will retry',
+          shouldRetry: true,
+          retryAfter: 5 // Retry in 5 minutes on error
+        };
+      }
+      
       // Be conservative on error
       return { canPost: false, reason: 'Rate limit check failed - being conservative to prevent API errors' };
     }
@@ -4159,6 +4201,205 @@ Focus on: AI diagnostics, precision medicine, digital therapeutics, or healthcar
     if (content.includes('🚀') || content.includes('INNOVATION')) return 'tech_development';
     if (content.includes('💡') || content.includes('Hot take')) return 'thought_leadership';
     return 'general_insight';
+  }
+
+  /**
+   * 🎭 CHARM EVALUATION: Evaluate content charm level (0-10 scale)
+   */
+  private evaluateContentCharm(content: string): number {
+    let charmScore = 0;
+    
+    // Conversation starters (+2 points)
+    const conversationStarters = [
+      'ever wonder why', 'here\'s what caught my attention', 'the part that blew my mind',
+      'what\'s fascinating is', 'most people don\'t realize', 'here\'s what\'s wild',
+      'the thing nobody talks about', 'what if i told you', 'just discovered',
+      'been thinking about how'
+    ];
+    
+    if (conversationStarters.some(starter => content.toLowerCase().includes(starter))) {
+      charmScore += 2;
+    }
+    
+    // Personal insight indicators (+2 points)
+    const personalInsights = [
+      'in my experience', 'what i\'ve learned', 'after working with', 'having analyzed',
+      'from the field', 'what really happens', 'behind the scenes', 'industry secret',
+      'what insiders know', 'the reality is'
+    ];
+    
+    if (personalInsights.some(insight => content.toLowerCase().includes(insight))) {
+      charmScore += 2;
+    }
+    
+    // Human relatability (+1 point)
+    const relatabilityTerms = [
+      'real people', 'everyday', 'actually', 'honestly', 'frankly', 'truth is',
+      'surprisingly', 'turns out', 'it\'s wild that', 'crazy part'
+    ];
+    
+    if (relatabilityTerms.some(term => content.toLowerCase().includes(term))) {
+      charmScore += 1;
+    }
+    
+    // Contrarian/thought-provoking (+2 points)
+    const contrarian = [
+      'but here\'s the kicker', 'plot twist', 'counterintuitively', 'surprisingly',
+      'contrary to belief', 'what\'s shocking', 'unexpected', 'paradigm shift'
+    ];
+    
+    if (contrarian.some(phrase => content.toLowerCase().includes(phrase))) {
+      charmScore += 2;
+    }
+    
+    // Storytelling elements (+1 point)
+    const storytelling = [
+      'case study', 'story', 'example', 'patient', 'doctor told me', 'witnessed',
+      'happened', 'discovered', 'breakthrough moment'
+    ];
+    
+    if (storytelling.some(element => content.toLowerCase().includes(element))) {
+      charmScore += 1;
+    }
+    
+    // Future vision (+1 point)
+    const futureVision = [
+      'future of', 'next generation', 'coming soon', '2025', '2030', 'eventually',
+      'trend', 'direction', 'evolution', 'transformation'
+    ];
+    
+    if (futureVision.some(vision => content.toLowerCase().includes(vision))) {
+      charmScore += 1;
+    }
+    
+    // Deduct points for banned patterns (-3 points each)
+    const bannedPatterns = [
+      'study shows', 'research indicates', 'data suggests', 'according to',
+      'scientists have discovered', 'new research reveals', 'analysis suggests',
+      'results demonstrate', 'clinical trials show'
+    ];
+    
+    bannedPatterns.forEach(pattern => {
+      if (content.toLowerCase().includes(pattern)) {
+        charmScore -= 3;
+      }
+    });
+    
+    // Ensure score is between 0-10
+    return Math.max(0, Math.min(10, charmScore));
+  }
+
+  /**
+   * 🎭 CHARM ENHANCEMENT: Enhance content to increase charm level
+   */
+  private async enhanceContentCharm(content: string): Promise<string> {
+    try {
+      const { openaiClient } = await import('../utils/openaiClient.js');
+      
+      const enhancementPrompt = `Transform this health tech content to be more charming, conversational, and insightful while maintaining accuracy:
+
+Original content: "${content}"
+
+Enhancement requirements:
+1. Add a compelling conversation starter
+2. Include personal perspective or industry insight
+3. Make it relatable to real people
+4. Add thought-provoking angle
+5. Remove academic/corporate language
+6. Keep under 280 characters
+7. Maintain expert authority
+
+Transform this into charming, engaging content that sparks conversation:`;
+
+      const enhancedContent = await openaiClient.generateCompletion(enhancementPrompt, {
+        maxTokens: 120,
+        temperature: 0.8
+      });
+
+      if (enhancedContent && enhancedContent.length > 30) {
+        console.log('🎭 CHARM ENHANCED: Content transformed for better engagement');
+        return enhancedContent;
+      } else {
+        // Fallback enhancement
+        return this.applyBasicCharmEnhancement(content);
+      }
+    } catch (error) {
+      console.warn('⚠️ AI charm enhancement failed, applying basic enhancement:', error);
+      return this.applyBasicCharmEnhancement(content);
+    }
+  }
+
+  /**
+   * 🎭 BASIC CHARM ENHANCEMENT: Fallback charm improvement
+   */
+  private applyBasicCharmEnhancement(content: string): string {
+    let enhanced = content;
+    
+    // Add conversation starter if missing
+    if (!enhanced.toLowerCase().startsWith('ever wonder') && 
+        !enhanced.toLowerCase().startsWith('here\'s what') &&
+        !enhanced.toLowerCase().startsWith('what\'s fascinating')) {
+      
+      const conversationStarters = [
+        'Ever wonder why ',
+        'Here\'s what caught my attention: ',
+        'What\'s fascinating is that ',
+        'Most people don\'t realize that '
+      ];
+      
+      const starter = conversationStarters[Math.floor(Math.random() * conversationStarters.length)];
+      enhanced = starter + enhanced.charAt(0).toLowerCase() + enhanced.slice(1);
+    }
+    
+    // Remove academic language
+    enhanced = enhanced.replace(/study shows?/gi, 'we discovered');
+    enhanced = enhanced.replace(/research indicates?/gi, 'evidence suggests');
+    enhanced = enhanced.replace(/data suggests?/gi, 'what\'s interesting is');
+    enhanced = enhanced.replace(/according to/gi, 'as we learned from');
+    
+    // Add human context if content is too technical
+    if (enhanced.length < 200 && !enhanced.includes('people') && !enhanced.includes('patients')) {
+      enhanced += ' This could change how real people experience healthcare.';
+    }
+    
+    return enhanced;
+  }
+
+  /**
+   * 🚨 ENHANCED EMERGENCY CONTENT: High-quality fallback with charm
+   */
+  private async generateEnergencyContentLibrary(): Promise<string> {
+    try {
+      const { data: emergencyLibrary } = await supabaseClient.supabase
+        ?.from('emergency_content_library')
+        .select('*')
+        .gte('charm_level', 7)
+        .order('created_at', { ascending: false })
+        .limit(10) || { data: [] };
+
+      if (emergencyLibrary && emergencyLibrary.length > 0) {
+        const randomContent = emergencyLibrary[Math.floor(Math.random() * emergencyLibrary.length)];
+        console.log(`🆘 EMERGENCY LIBRARY: Using pre-approved charming content (charm level: ${randomContent.charm_level})`);
+        return randomContent.content;
+      }
+    } catch (error) {
+      console.warn('⚠️ Emergency content library unavailable:', error);
+    }
+
+    // Fallback to hardcoded charming content
+    const hardcodedCharmingContent = [
+      "Ever wonder why some health tech startups become unicorns while others crash? It's not the technology - it's how they solve real human problems vs chasing trends. The winners obsess over patient outcomes, not press releases.",
+      
+      "Here's what caught my attention: doctors who use AI diagnostics actually spend MORE time with patients, not less. The AI handles the data crunching, freeing doctors to do what they do best - heal humans.",
+      
+      "The thing nobody talks about in precision medicine: your genes are just the beginning. Your environment, stress, sleep, and gut bacteria influence how those genes express. We're conductors of our biology, not prisoners.",
+      
+      "What if I told you the most important health metric isn't in your bloodwork? It's whether you feel heard by your doctor. Patients with strong doctor relationships have 40% better outcomes.",
+      
+      "Been thinking about how drug discovery changed. We went from 15-year timelines to AI predicting molecules in minutes. But here's the kicker: proving digital predictions work in real bodies is still the bottleneck."
+    ];
+
+    return hardcodedCharmingContent[Math.floor(Math.random() * hardcodedCharmingContent.length)];
   }
 }
 
