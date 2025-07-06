@@ -91,7 +91,19 @@ export class RealTimeEngagementTracker {
 
       return userTweets;
     } catch (error: any) {
-      // Handle rate limiting gracefully
+      // 🚨 CRITICAL FIX: Handle monthly read limits properly
+      const isMonthlyReadError = error.data && 
+        error.data.title === 'UsageCapExceeded' && 
+        error.data.period === 'Monthly' && 
+        error.data.scope === 'Product';
+        
+      if (isMonthlyReadError) {
+        console.log('📊 Monthly Twitter read limit exceeded - engagement tracking suspended until next month');
+        console.log('🚨 IMPORTANT: This does NOT affect posting - bot can still post tweets normally');
+        return [];
+      }
+      
+      // Handle regular rate limiting gracefully
       if (error.code === 429 || (error.data && error.data.status === 429)) {
         console.warn('📊 Twitter API rate limited - skipping engagement tracking this cycle');
         return [];

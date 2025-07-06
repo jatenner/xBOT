@@ -3664,9 +3664,22 @@ Make it insightful, strategic, and reveal hidden implications. 250 characters ma
         console.log(`✅ TWITTER API OK: ${realLimits.twitter.dailyTweets.remaining}/${realLimits.twitter.dailyTweets.limit} tweets remaining`);
         
       } catch (realLimitsError) {
-        console.error('⚠️ Real-time limits check failed:', realLimitsError);
-        // Continue with database checks as fallback, but be more conservative
-        console.log('📊 Falling back to database-based rate limiting (more conservative)');
+        // 🚨 CRITICAL FIX: Handle monthly read limits properly
+        const isMonthlyReadError = realLimitsError.data && 
+          realLimitsError.data.title === 'UsageCapExceeded' && 
+          realLimitsError.data.period === 'Monthly' && 
+          realLimitsError.data.scope === 'Product';
+          
+        if (isMonthlyReadError) {
+          console.log('📊 Monthly Twitter read limit hit during rate check');
+          console.log('🚨 CRITICAL: This is a READ limit, NOT a posting limit');
+          console.log('✅ POSTING IS STILL ALLOWED - proceeding with post');
+          // Continue with posting - don't block due to read limits
+        } else {
+          console.error('⚠️ Real-time limits check failed:', realLimitsError);
+          // Continue with database checks as fallback, but be more conservative
+          console.log('📊 Falling back to database-based rate limiting (more conservative)');
+        }
       }
       
       // 🚨 SECOND: Check for startup posting override

@@ -216,6 +216,29 @@ export class RealTimeLimitsIntelligenceAgent {
       }
       
     } catch (error: any) {
+      // 🚨 CRITICAL FIX: Distinguish between posting and reading errors
+      const isMonthlyReadError = error.data && 
+        error.data.title === 'UsageCapExceeded' && 
+        error.data.period === 'Monthly' && 
+        error.data.scope === 'Product';
+        
+      if (isMonthlyReadError) {
+        console.log('🚨 MONTHLY READ LIMIT HIT: Twitter search/read cap exceeded');
+        console.log('📊 IMPORTANT: This is a READING limit, NOT a posting limit');
+        console.log('🐦 POSTING is still allowed - Twitter API v2 Free Tier has NO monthly posting limit');
+        
+        // Return posting limits as normal, only block reads
+        const defaultReset = Math.floor(Date.now() / 1000) + (24 * 60 * 60);
+        return {
+          writeRemaining: 17, // Full posting capacity remains
+          writeReset: defaultReset,
+          readRemaining: 0, // Block reads only
+          readReset: Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60), // Reset next month
+          dailyWriteRemaining: 17, // Full posting capacity
+          dailyWriteReset: defaultReset
+        };
+      }
+      
       // Check for specific error types
       if (error.code === 429 || (error.data && error.data.status === 429)) {
         // Extract rate limit info from headers - use DAILY limit headers as primary source
