@@ -247,19 +247,19 @@ export class BulletproofOperationManager {
       if (content) {
         // Post specific content
         const result = await xClient.postTweet(content);
-        if (result && result.id) {
+        if (result && result.success && result.tweetId) {
           return { success: true, content };
         } else {
-          return { success: false, content: '', error: 'Normal posting returned no data' };
+          return { success: false, content: '', error: result?.error || 'Normal posting returned no data' };
         }
       } else {
         // Generate and post
         const emergencyContent = this.getRandomEmergencyContent();
         const result = await xClient.postTweet(emergencyContent);
-        if (result && result.id) {
+        if (result && result.success && result.tweetId) {
           return { success: true, content: emergencyContent };
         } else {
-          return { success: false, content: '', error: 'Normal posting with generated content failed' };
+          return { success: false, content: '', error: result?.error || 'Normal posting with generated content failed' };
         }
       }
     } catch (error) {
@@ -278,10 +278,10 @@ export class BulletproofOperationManager {
       // Use xClient directly with emergency content
       const result = await xClient.postTweet(emergencyContent);
       
-      if (result && result.id) {
+      if (result && result.success && result.tweetId) {
         return { success: true, content: emergencyContent };
       } else {
-        return { success: false, content: '', error: 'Emergency content posting failed' };
+        return { success: false, content: '', error: result?.error || 'Emergency content posting failed' };
       }
     } catch (error) {
       return { success: false, content: '', error: error.message };
@@ -297,10 +297,10 @@ export class BulletproofOperationManager {
       
       const content = this.getRandomEmergencyContent();
       
-      // Temporarily disable all checks and force post
+      // Use the rate-limit protected method but bypass checks
       const result = await xClient.postTweetWithRateLimit(content);
       
-      if (result && result.data) {
+      if (result && result.data && result.data.id) {
         return { success: true, content };
       } else {
         return { success: false, content: '', error: 'Bypass posting returned no data' };
@@ -323,7 +323,7 @@ export class BulletproofOperationManager {
       // Use the rate-limit protected method as last resort
       const result = await xClient.postTweetWithRateLimit(content);
       
-      if (result && result.data) {
+      if (result && result.data && result.data.id) {
         return { success: true, content };
       } else {
         return { success: false, content: '', error: 'Raw API returned no data' };
