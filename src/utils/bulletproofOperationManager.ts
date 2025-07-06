@@ -57,8 +57,22 @@ export class BulletproofOperationManager {
     "Prediction: The next decade will see more focus on preventing disease than treating it. What preventive tech excites you most?",
     "Healthcare costs are rising, but so are innovative solutions. Which health tech innovations do you think offer the best ROI for patients?",
     "Patient experience in healthcare is finally getting the attention it deserves. What changes have you noticed in your own healthcare journey?",
-    "The ethics of AI in healthcare get more complex every day. Where do you draw the line between helpful and intrusive?"
+    "The ethics of AI in healthcare get more complex every day. Where do you draw the line between helpful and intrusive?",
+    "Telemedicine has changed everything, but are we losing the human touch in healthcare? What's your experience been?",
+    "Why do some health innovations take decades to reach patients while others spread like wildfire? The adoption puzzle fascinates me.",
+    "Healthcare worker burnout is real, but AI could be part of the solution. How do we make technology that actually helps, not hinders?",
+    "Medical errors kill more people than car accidents. Yet we're just now bringing tech-level precision to healthcare. What took so long?",
+    "Wearable health data is everywhere, but most people ignore it. What would make you actually change your behavior based on your device?",
+    "The biggest breakthroughs in medicine often come from unexpected collaborations. What's the most surprising health partnership you've seen?",
+    "Healthcare costs are crushing families, but venture capital pours billions into health tech. Are we solving the right problems?",
+    "Privacy vs. progress in health data - where do you draw the line? Your medical data could save lives, but at what cost?",
+    "Electronic health records were supposed to make everything better. Instead, doctors spend more time typing than with patients. What went wrong?",
+    "Gene therapy, immunotherapy, precision medicine - we're in a golden age of medical innovation. So why doesn't it feel that way to patients?"
   ];
+
+  // Track used emergency content to prevent immediate duplicates
+  private usedEmergencyContent: Set<string> = new Set();
+  private lastEmergencyContentReset: Date = new Date();
 
   constructor() {
     this.postAgent = new PostTweetAgent();
@@ -254,7 +268,7 @@ export class BulletproofOperationManager {
         }
       } else {
         // Generate and post
-        const emergencyContent = this.getRandomEmergencyContent();
+        const emergencyContent = await this.getUniqueEmergencyContent();
         const result = await xClient.postTweet(emergencyContent);
         if (result && result.success && result.tweetId) {
           return { success: true, content: emergencyContent };
@@ -272,7 +286,7 @@ export class BulletproofOperationManager {
    */
   private async tryEmergencyContentPosting(): Promise<{ success: boolean; content: string; error?: string }> {
     try {
-      const emergencyContent = this.getRandomEmergencyContent();
+      const emergencyContent = await this.getUniqueEmergencyContent();
       console.log('📝 Posting emergency content:', emergencyContent.substring(0, 50) + '...');
       
       // Use xClient directly with emergency content
@@ -295,7 +309,7 @@ export class BulletproofOperationManager {
     try {
       console.log('⚡ BYPASS MODE: Ignoring all rate limit checks...');
       
-      const content = this.getRandomEmergencyContent();
+      const content = await this.getUniqueEmergencyContent();
       
       // Use the rate-limit protected method but bypass checks
       const result = await xClient.postTweetWithRateLimit(content);
@@ -318,7 +332,7 @@ export class BulletproofOperationManager {
     try {
       console.log('🔧 RAW API: Direct Twitter API call...');
       
-      const content = this.getRandomEmergencyContent();
+      const content = await this.getUniqueEmergencyContent();
       
       // Use the rate-limit protected method as last resort
       const result = await xClient.postTweetWithRateLimit(content);
@@ -446,9 +460,116 @@ export class BulletproofOperationManager {
     };
   }
 
+  /**
+   * Get unique emergency content that hasn't been used recently
+   */
+  private async getUniqueEmergencyContent(): Promise<string> {
+    // Reset used content tracking every 24 hours
+    const hoursSinceReset = (Date.now() - this.lastEmergencyContentReset.getTime()) / (1000 * 60 * 60);
+    if (hoursSinceReset > 24) {
+      this.usedEmergencyContent.clear();
+      this.lastEmergencyContentReset = new Date();
+      console.log('🔄 Reset emergency content tracking after 24 hours');
+    }
+
+    // Get unused content
+    const availableContent = this.EMERGENCY_CONTENT.filter(content => 
+      !this.usedEmergencyContent.has(content)
+    );
+
+    // If all content has been used, reset and start over
+    if (availableContent.length === 0) {
+      console.log('🔄 All emergency content used, resetting for cycle');
+      this.usedEmergencyContent.clear();
+      return this.EMERGENCY_CONTENT[Math.floor(Math.random() * this.EMERGENCY_CONTENT.length)];
+    }
+
+    // Check against recent database posts to avoid duplication
+    const uniqueContent = await this.selectUniqueFromDatabase(availableContent);
+    
+    // Mark as used
+    this.usedEmergencyContent.add(uniqueContent);
+    
+    return uniqueContent;
+  }
+
+  /**
+   * Select content that doesn't match recent database posts
+   */
+  private async selectUniqueFromDatabase(candidateContent: string[]): Promise<string> {
+    try {
+      // Get recent tweets from last 48 hours
+      const twoDaysAgo = new Date();
+      twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+      
+      const { data: recentTweets } = await supabaseClient.supabase
+        ?.from('tweets')
+        .select('content')
+        .gte('created_at', twoDaysAgo.toISOString())
+        .order('created_at', { ascending: false })
+        .limit(50) || { data: [] };
+
+      if (!recentTweets || recentTweets.length === 0) {
+        // No recent tweets, any content is fine
+        return candidateContent[Math.floor(Math.random() * candidateContent.length)];
+      }
+
+      // Check each candidate against recent tweets
+      for (const content of candidateContent) {
+        let isUnique = true;
+        
+        for (const tweet of recentTweets) {
+          const similarity = this.calculateContentSimilarity(content, tweet.content);
+          if (similarity > 0.7) { // 70% similarity threshold
+            isUnique = false;
+            console.log(`🚫 Skipping similar content (${(similarity * 100).toFixed(1)}% match): ${content.substring(0, 50)}...`);
+            break;
+          }
+        }
+        
+        if (isUnique) {
+          console.log(`✅ Selected unique emergency content: ${content.substring(0, 50)}...`);
+          return content;
+        }
+      }
+
+      // If no unique content found, use the most different one
+      console.log('⚠️ No perfectly unique content found, selecting least similar');
+      return candidateContent[0];
+
+    } catch (error) {
+      console.error('❌ Error checking database uniqueness:', error);
+      // Fallback to random selection
+      return candidateContent[Math.floor(Math.random() * candidateContent.length)];
+    }
+  }
+
+  /**
+   * Calculate simple content similarity (0-1 scale)
+   */
+  private calculateContentSimilarity(content1: string, content2: string): number {
+    const normalize = (text: string) => text.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+    
+    const text1 = normalize(content1);
+    const text2 = normalize(content2);
+    
+    if (text1 === text2) return 1.0;
+    
+    const words1 = text1.split(/\s+/);
+    const words2 = text2.split(/\s+/);
+    
+    const commonWords = words1.filter(word => words2.includes(word) && word.length > 3);
+    const totalWords = Math.max(words1.length, words2.length);
+    
+    return commonWords.length / totalWords;
+  }
+
+  /**
+   * Get random emergency content (legacy method for compatibility)
+   */
   private getRandomEmergencyContent(): string {
-    const randomIndex = Math.floor(Math.random() * this.EMERGENCY_CONTENT.length);
-    return this.EMERGENCY_CONTENT[randomIndex];
+    // Use the unique method instead
+    return this.EMERGENCY_CONTENT[Math.floor(Math.random() * this.EMERGENCY_CONTENT.length)];
   }
 
   private async wait(ms: number): Promise<void> {
