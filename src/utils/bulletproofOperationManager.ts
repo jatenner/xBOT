@@ -251,15 +251,17 @@ export class BulletproofOperationManager {
    */
   private async tryNormalPosting(content?: string): Promise<{ success: boolean; content: string; error?: string }> {
     try {
+      console.log('📝 METHOD 1: Attempting normal content generation and posting...');
+      
       // Check if we should even attempt normal posting
       const canPost = await this.quickHealthCheck();
       if (!canPost.allowed) {
         return { success: false, content: '', error: canPost.reason };
       }
 
-      // Try normal posting
       if (content) {
-        // Post specific content
+        // Post specific content using xClient
+        console.log('📝 Posting provided content via xClient...');
         const result = await xClient.postTweet(content);
         if (result && result.success && result.tweetId) {
           return { success: true, content };
@@ -267,16 +269,20 @@ export class BulletproofOperationManager {
           return { success: false, content: '', error: result?.error || 'Normal posting returned no data' };
         }
       } else {
-        // Generate and post
-        const emergencyContent = await this.getUniqueEmergencyContent();
-        const result = await xClient.postTweet(emergencyContent);
-        if (result && result.success && result.tweetId) {
-          return { success: true, content: emergencyContent };
+        // Use the actual PostTweetAgent for normal content generation
+        console.log('🤖 Using PostTweetAgent for normal content generation...');
+        const result = await this.postAgent.run(false, false); // force=false, testMode=false
+        
+        if (result && result.success && result.content) {
+          return { success: true, content: result.content };
         } else {
-          return { success: false, content: '', error: result?.error || 'Normal posting with generated content failed' };
+          const errorMsg = result?.error || result?.reason || 'PostTweetAgent failed without specific error';
+          console.log(`❌ PostTweetAgent failed: ${errorMsg}`);
+          return { success: false, content: '', error: errorMsg };
         }
       }
     } catch (error) {
+      console.error('❌ Normal posting error:', error);
       return { success: false, content: '', error: error.message };
     }
   }
