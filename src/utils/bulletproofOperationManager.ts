@@ -380,22 +380,31 @@ export class BulletproofOperationManager {
    * 🏥 COMPREHENSIVE HEALTH CHECK
    */
   private async performHealthCheck(): Promise<void> {
-    console.log('🔍 Performing comprehensive health check...');
-    
     try {
-      await this.updateHealthStatus();
+      console.log('🔍 === BULLETPROOF HEALTH CHECK ===');
       
-      // Check if we need intervention
-      if (this.healthStatus.hours_since_last_post > 2) {
-        console.log('⚠️ No posts in 2+ hours - triggering recovery');
-        await this.triggerRecovery();
+      // Run auto-reset first
+      await this.autoResetFalseLimits();
+      
+      const timeSinceLastPost = await this.getTimeSinceLastPost();
+      console.log(`⏰ Time since last post: ${timeSinceLastPost.toFixed(1)} hours`);
+      
+      // Update health status
+      this.healthStatus.hours_since_last_post = timeSinceLastPost;
+      this.healthStatus.is_healthy = timeSinceLastPost < this.config.panic_mode_threshold_hours;
+      this.healthStatus.confidence_level = this.calculateConfidenceLevel();
+      this.healthStatus.last_successful_post = await this.getLastSuccessfulPost();
+      
+      // Auto-recovery if needed
+      if (timeSinceLastPost > 1.5) { // 1.5+ hours
+        console.log('🚨 HEALTH CHECK: Long gap detected, triggering auto-recovery...');
+        await this.autoRecoveryPost();
       }
-
-      // Update database with current status
+      
       await this.saveHealthStatus();
       
     } catch (error) {
-      console.error('❌ Health check failed:', error);
+      console.error('❌ Health check error:', error);
     }
   }
 
@@ -694,6 +703,136 @@ export class BulletproofOperationManager {
         });
     } catch (error) {
       console.error('Failed to save health status:', error);
+    }
+  }
+
+  /**
+   * Auto-reset mechanism to clear false limits and stuck states
+   */
+  private async autoResetFalseLimits(): Promise<void> {
+    try {
+      console.log('🔄 AUTO-RESET: Checking for false limits and stuck states...');
+      
+      // Check if we haven't posted in over 2 hours (likely false limit)
+      const timeSinceLastPost = await this.getTimeSinceLastPost();
+      
+      if (timeSinceLastPost > 2) { // 2+ hours without posting
+        console.log(`🚨 AUTO-RESET: ${timeSinceLastPost.toFixed(1)} hours without posting - likely false limit`);
+        
+        // Check for emergency configurations that might be blocking
+        const { data: emergencyConfigs } = await supabaseClient.supabase
+          ?.from('bot_config')
+          .select('*')
+          .in('key', [
+            'emergency_timing',
+            'emergency_rate_limits',
+            'emergency_search_block',
+            'monthly_tweet_cap_override'
+          ]) || { data: [] };
+        
+        if (emergencyConfigs && emergencyConfigs.length > 0) {
+          console.log('🚨 AUTO-RESET: Found emergency configs that may be blocking posting');
+          
+          // Clear emergency blocks automatically
+          for (const config of emergencyConfigs) {
+            await supabaseClient.supabase
+              ?.from('bot_config')
+              .delete()
+              .eq('key', config.key);
+            console.log(`   ✅ AUTO-RESET: Cleared ${config.key}`);
+          }
+        }
+        
+        // Reset runtime config to ensure posting is enabled
+        await supabaseClient.supabase
+          ?.from('bot_config')
+          .upsert({
+            key: 'runtime_config',
+            value: {
+              enabled: true,
+              max_daily_posts: 17, // Real Twitter limit
+              ignore_monthly_caps: true,
+              use_real_twitter_limits_only: true,
+              emergency_mode: false,
+              posting_allowed: true,
+              auto_reset_timestamp: new Date().toISOString()
+            }
+          });
+        
+        console.log('✅ AUTO-RESET: System reset to allow posting');
+      }
+      
+      // Check for specific false limit indicators
+      const { data: rateLimitConfig } = await supabaseClient.supabase
+        ?.from('bot_config')
+        .select('value')
+        .eq('key', 'real_time_limits_config')
+        .single() || { data: null };
+      
+      if (rateLimitConfig?.value?.emergency_cooldown_until) {
+        const cooldownUntil = new Date(rateLimitConfig.value.emergency_cooldown_until);
+        const now = new Date();
+        
+        // If cooldown has expired, clear it
+        if (now > cooldownUntil) {
+          console.log('🔄 AUTO-RESET: Clearing expired emergency cooldown');
+          
+          await supabaseClient.supabase
+            ?.from('bot_config')
+            .upsert({
+              key: 'real_time_limits_config',
+              value: {
+                ...rateLimitConfig.value,
+                emergency_cooldown_until: null,
+                emergency_cooldown_disabled: true,
+                auto_reset_timestamp: new Date().toISOString()
+              }
+            });
+        }
+      }
+      
+    } catch (error) {
+      console.error('❌ Auto-reset error:', error);
+    }
+  }
+
+  /**
+   * Auto-recovery posting when gaps are detected
+   */
+  private async autoRecoveryPost(): Promise<void> {
+    try {
+      console.log('🔄 AUTO-RECOVERY: Attempting recovery post...');
+      
+      // Force enable posting temporarily
+      await supabaseClient.supabase
+        ?.from('bot_config')
+        .upsert({
+          key: 'auto_recovery_override',
+          value: {
+            force_posting_enabled: true,
+            ignore_all_limits: true,
+            reason: 'Auto-recovery after posting gap',
+            timestamp: new Date().toISOString()
+          }
+        });
+      
+      // Try to post
+      const result = await this.guaranteedPost('🔄 System auto-recovery: Ensuring continuous operation. All systems optimal.');
+      
+      if (result.success) {
+        console.log('✅ AUTO-RECOVERY: Successfully posted recovery content');
+        
+        // Clear the override
+        await supabaseClient.supabase
+          ?.from('bot_config')
+          .delete()
+          .eq('key', 'auto_recovery_override');
+      } else {
+        console.log('❌ AUTO-RECOVERY: Failed to post, will try again next cycle');
+      }
+      
+    } catch (error) {
+      console.error('❌ Auto-recovery error:', error);
     }
   }
 

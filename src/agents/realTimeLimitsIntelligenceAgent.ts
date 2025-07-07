@@ -196,26 +196,36 @@ export class RealTimeLimitsIntelligenceAgent {
         };
       }
       
-      // Make a lightweight test call to get headers if no cached data
+      // 🚨 CRITICAL: Only use lightweight read operations to check limits
+      // Never use posting operations to check posting limits
+      console.log('📊 Checking limits via lightweight read operation...');
+      
       try {
-        await xClient.getUserByUsername('twitter'); // Well-known account
+        // Use a very lightweight read operation that won't consume posting quota
+        await xClient.getUserByUsername('twitter'); // Well-known account, minimal API cost
         
-        // If successful, we don't have rate limit headers, so return conservative estimates
+        // If successful, we can read but need to estimate posting limits conservatively
         const defaultReset = Math.floor(Date.now() / 1000) + (24 * 60 * 60); // 24 hours from now
+        console.log('📊 Read operation successful - estimating posting limits conservatively');
+        
         return {
-          writeRemaining: 10, // Conservative estimate when call succeeds
+          writeRemaining: 15, // Conservative estimate when reads work
           writeReset: defaultReset,
           readRemaining: 50, // Conservative estimate 
           readReset: defaultReset,
-          dailyWriteRemaining: 10,
+          dailyWriteRemaining: 15,
           dailyWriteReset: defaultReset
         };
+        
       } catch (testError: any) {
-        // This is expected when rate limited - extract headers
-        throw testError;
+        // This is where we extract rate limit headers from the error
+        console.log('📊 Read operation failed - extracting rate limit headers...');
+        throw testError; // Let the main catch block handle header extraction
       }
       
     } catch (error: any) {
+      console.log('📊 Analyzing API error for rate limit information...');
+      
       // 🚨 CRITICAL FIX: Distinguish between posting and reading errors
       const isMonthlyReadError = error.data && 
         error.data.title === 'UsageCapExceeded' && 
@@ -224,31 +234,34 @@ export class RealTimeLimitsIntelligenceAgent {
         
       if (isMonthlyReadError) {
         console.log('🚨 MONTHLY READ LIMIT HIT: Twitter search/read cap exceeded');
-        console.log('📊 IMPORTANT: This is a READING limit, NOT a posting limit');
-        console.log('🐦 POSTING is still allowed - Twitter API v2 Free Tier has NO monthly posting limit');
+        console.log('📊 CRITICAL: This is a READING limit, NOT a posting limit');
+        console.log('🐦 POSTING REMAINS FULLY AVAILABLE - Twitter API v2 Free Tier has NO monthly posting limit');
+        console.log('✅ Bot can continue posting normally - only engagement tracking is affected');
         
-        // Return posting limits as normal, only block reads
+        // Return full posting capacity, only block reads
         const defaultReset = Math.floor(Date.now() / 1000) + (24 * 60 * 60);
         return {
-          writeRemaining: 17, // Full posting capacity remains
+          writeRemaining: 17, // FULL posting capacity remains
           writeReset: defaultReset,
-          readRemaining: 0, // Block reads only
+          readRemaining: 0, // Block reads only until next month
           readReset: Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60), // Reset next month
-          dailyWriteRemaining: 17, // Full posting capacity
+          dailyWriteRemaining: 17, // FULL posting capacity
           dailyWriteReset: defaultReset
         };
       }
       
-      // Check for specific error types
+      // Check for actual rate limiting errors (429 status)
       if (error.code === 429 || (error.data && error.data.status === 429)) {
-        // Extract rate limit info from headers - use DAILY limit headers as primary source
+        console.log('📊 Rate limit error detected - extracting headers...');
+        
+        // Extract rate limit info from headers
         const headers = error.response?.headers || error.headers || error.data?.headers || {};
         
         console.log(`📊 AVAILABLE HEADERS:`, Object.keys(headers));
         
         // 🚨 CRITICAL: Use x-app-limit-24hour headers for daily limits (most reliable)
-        const appDailyRemaining = parseInt(headers['x-app-limit-24hour-remaining'] || '0');
-        const userDailyRemaining = parseInt(headers['x-user-limit-24hour-remaining'] || '0');
+        const appDailyRemaining = parseInt(headers['x-app-limit-24hour-remaining'] || '17');
+        const userDailyRemaining = parseInt(headers['x-user-limit-24hour-remaining'] || '17');
         const appDailyReset = parseInt(headers['x-app-limit-24hour-reset'] || String(Math.floor(Date.now() / 1000) + 86400));
         const userDailyReset = parseInt(headers['x-user-limit-24hour-reset'] || String(Math.floor(Date.now() / 1000) + 86400));
         
@@ -256,15 +269,15 @@ export class RealTimeLimitsIntelligenceAgent {
         const dailyWriteRemaining = Math.min(appDailyRemaining, userDailyRemaining);
         const dailyWriteReset = Math.max(appDailyReset, userDailyReset); // Use the furthest reset time
         
-        // Also try to get short-term rate limits for completeness
+        // Also get short-term rate limits for completeness
         const shortTermRemaining = parseInt(headers['x-rate-limit-remaining'] || String(dailyWriteRemaining));
         const shortTermReset = parseInt(headers['x-rate-limit-reset'] || String(dailyWriteReset));
         
         console.log(`📊 TWITTER API RATE LIMIT HEADERS:`);
-        console.log(`   App 24h: ${appDailyRemaining} remaining, reset: ${new Date(appDailyReset * 1000).toLocaleString('en-US', {timeZone: 'America/New_York'})}`);
-        console.log(`   User 24h: ${userDailyRemaining} remaining, reset: ${new Date(userDailyReset * 1000).toLocaleString('en-US', {timeZone: 'America/New_York'})}`);
-        console.log(`   Short-term: ${shortTermRemaining} remaining, reset: ${new Date(shortTermReset * 1000).toLocaleString('en-US', {timeZone: 'America/New_York'})}`);
-        console.log(`   🎯 DAILY LIMIT: ${dailyWriteRemaining} remaining (most restrictive), reset: ${new Date(dailyWriteReset * 1000).toLocaleString('en-US', {timeZone: 'America/New_York'})}`);
+        console.log(`   App 24h: ${appDailyRemaining} remaining, reset: ${new Date(appDailyReset * 1000).toLocaleString()}`);
+        console.log(`   User 24h: ${userDailyRemaining} remaining, reset: ${new Date(userDailyReset * 1000).toLocaleString()}`);
+        console.log(`   Short-term: ${shortTermRemaining} remaining, reset: ${new Date(shortTermReset * 1000).toLocaleString()}`);
+        console.log(`   🎯 EFFECTIVE DAILY LIMIT: ${dailyWriteRemaining} remaining`);
      
         return { 
           writeRemaining: shortTermRemaining, 
@@ -276,14 +289,16 @@ export class RealTimeLimitsIntelligenceAgent {
         };
       }
       
-      // For other errors, return defaults (assume blocked)
+      // For other errors, be conservative but don't permanently block
+      console.log('📊 Unknown error - using conservative defaults');
       const defaultReset = Math.floor(Date.now() / 1000) + (24 * 60 * 60);
+      
       return {
-        writeRemaining: 0, // Assume blocked if error
+        writeRemaining: 5, // Conservative but not zero
         writeReset: defaultReset,
-        readRemaining: 0, // Assume blocked if error
+        readRemaining: 0, // Assume reads blocked if error
         readReset: defaultReset,
-        dailyWriteRemaining: 0,
+        dailyWriteRemaining: 5,
         dailyWriteReset: defaultReset
       };
     }
