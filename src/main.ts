@@ -10,6 +10,7 @@ import { metricsExporter } from './metrics/exporter';
 import { ensureRuntimeConfig } from './utils/supabaseConfig';
 import * as cron from 'node-cron';
 import http from 'http';
+import { autonomousIntelligenceCore } from './agents/autonomousIntelligenceCore';
 
 // 🚀 NUCLEAR MODE: Remove all artificial throttling
 console.log('🚀 NUCLEAR INTELLIGENCE MODE: Unleashing the full bot potential');
@@ -180,178 +181,137 @@ console.log('🛡️ Starting Bulletproof AI Bot with Guaranteed Operation...');
 console.log('👑 All posting decisions made by AI - no hardcoded limits!');
 console.log('🚨 GUARANTEE: Bot will NEVER stop working due to API limit confusion!');
 
+/**
+ * 🧠 SUPREME AI SYSTEM WITH AUTONOMOUS INTELLIGENCE
+ * 
+ * This is the main orchestrator that combines all intelligence systems
+ * for autonomous decision-making and continuous learning.
+ */
+async function runSupremeAISystem() {
+  console.log('🚀 === SUPREME AI SYSTEM STARTING ===');
+  console.log('🧠 Autonomous Intelligence: ENABLED');
+  console.log('🛡️ Bulletproof Operation: ENABLED');
+  console.log('📊 Dynamic Posting: ENABLED');
+  console.log('');
+
+  // Get current consciousness level
+  const consciousnessLevel = autonomousIntelligenceCore.getConsciousnessLevel();
+  console.log(`🧠 Current Consciousness Level: ${consciousnessLevel.toFixed(1)}/100`);
+  
+  // Get knowledge summary
+  const knowledge = autonomousIntelligenceCore.getKnowledgeSummary();
+  console.log(`📚 Knowledge Base: ${knowledge.size} insight sets`);
+  
+  if (knowledge.latestInsights.length > 0) {
+    console.log('🔍 Latest Insights:');
+    knowledge.latestInsights.slice(0, 3).forEach((insight, i) => {
+      console.log(`   ${i+1}. ${insight.substring(0, 100)}...`);
+    });
+  }
+  console.log('');
+
+  while (true) {
+    try {
+      console.log('🧠 === AUTONOMOUS AI DECISION CYCLE ===');
+      
+      // 1. Let the autonomous intelligence make the primary decision
+      const aiDecision = await autonomousIntelligenceCore.makeAutonomousDecision(
+        'Should we post content now based on current conditions?',
+        ['post_now', 'wait_for_better_timing', 'analyze_more_data', 'emergency_post']
+      );
+      
+      console.log(`🧠 AI DECISION: ${aiDecision.decision}`);
+      console.log(`💭 AI REASONING: ${aiDecision.reasoning}`);
+      
+      // 2. Enhanced decision making based on AI choice
+      if (aiDecision.decision.includes('post') || aiDecision.decision === 'emergency_post') {
+        
+        // Use dynamic posting controller for intelligent posting decisions
+        const dynamicController = new DynamicPostingController();
+        const postingDecision = await dynamicController.shouldPost();
+        
+        if (postingDecision.shouldPost) {
+          console.log(`🎯 POSTING APPROVED: ${postingDecision.reason}`);
+          console.log(`📊 STRATEGY: ${postingDecision.strategy}`);
+          
+          // Execute bulletproof posting
+          const result = await bulletproofManager.guaranteedPost();
+          
+          if (result.success) {
+            console.log(`✅ POST SUCCESSFUL: ${result.method_used} - ${result.posted_content?.substring(0, 100)}...`);
+          } else {
+            console.log(`❌ POST FAILED: ${result.warnings.join(', ')}`);
+          }
+          
+        } else {
+          console.log(`⏳ POSTING DELAYED: ${postingDecision.reason}`);
+        }
+        
+      } else if (aiDecision.decision === 'analyze_more_data') {
+        console.log('🔍 AI DECISION: Gathering more intelligence before posting...');
+        
+        // Trigger additional analysis cycle
+        // This could involve checking trends, engagement patterns, etc.
+        
+      } else {
+        console.log('⏳ AI DECISION: Waiting for optimal conditions...');
+      }
+      
+      // 3. Bulletproof health monitoring (every cycle)
+      const healthStatus = await bulletproofManager.getSystemHealth();
+      console.log(`🛡️ System Health: ${healthStatus.is_healthy ? 'HEALTHY' : 'NEEDS ATTENTION'}`);
+      
+      // 4. Sleep with intelligent timing
+      const sleepDuration = consciousnessLevel > 50 ? 
+        15 * 60 * 1000 : // 15 minutes for high consciousness
+        30 * 60 * 1000;  // 30 minutes for lower consciousness
+      
+      console.log(`😴 Sleeping for ${sleepDuration / 60000} minutes (consciousness-adjusted)...`);
+      console.log('');
+      
+      await new Promise(resolve => setTimeout(resolve, sleepDuration));
+      
+    } catch (error) {
+      console.error('❌ Supreme AI System error:', error);
+      
+      // Emergency fallback
+      console.log('🚨 EMERGENCY FALLBACK: Activating bulletproof posting...');
+      await bulletproofManager.guaranteedPost();
+      
+      // Wait before retrying
+      await new Promise(resolve => setTimeout(resolve, 5 * 60 * 1000));
+    }
+  }
+}
+
 async function main() {
   try {
-    // Initialize runtime configuration from Supabase first
-    console.log('⚙️ Initializing runtime configuration...');
+    // Ensure runtime configuration is set up
     await ensureRuntimeConfig();
     
-    // 🛡️ START BULLETPROOF MONITORING FIRST
-    console.log('🛡️ Activating bulletproof operation monitoring...');
+    // Start the health check server
+    await startServer(PORT);
+    
+    // Start bulletproof continuous monitoring
     await bulletproofManager.startContinuousMonitoring();
+    console.log('🛡️ Bulletproof continuous monitoring started');
     
-    // Initialize the Supreme AI Dynamic Controller
-    const dynamicController = new DynamicPostingController();
+    // Start the Supreme AI System with Autonomous Intelligence
+    console.log('🚀 Starting Supreme AI System with Autonomous Intelligence...');
+    await runSupremeAISystem();
     
-    console.log('🧠 === SUPREME AI DYNAMIC POSTING SYSTEM ===');
-    console.log('👑 AI has full authority over posting decisions');
-    console.log('🛡️ BULLETPROOF: System guaranteed to never stop working');
-    console.log('📊 Dynamic response to breaking news and opportunities');
-    console.log('🚀 Starting intelligent posting cycle...');
-    
-    // Set up the Supreme AI decision cycle - every 30 minutes
-    cron.schedule('*/30 * * * *', async () => {
-      console.log('\n🧠 === SUPREME AI DECISION CYCLE ===');
-      console.log('👑 AI analyzing world state and making posting decisions...');
-      
-      try {
-        // 🛡️ BULLETPROOF CHECK: Ensure system is healthy
-        const isHealthy = await bulletproofManager.isSystemHealthy();
-        if (!isHealthy) {
-          console.log('🛡️ BULLETPROOF: System unhealthy, forcing recovery post...');
-          const recovered = await bulletproofManager.forcePost();
-          if (recovered) {
-            console.log('✅ BULLETPROOF: Recovery successful, continuing with normal operation');
-          } else {
-            console.log('🚨 BULLETPROOF: Recovery failed, logging for intervention');
-          }
-        }
-        
-        // Let AI make the decision
-        const decision = await dynamicController.makePostingDecision();
-        
-        console.log('🎯 SUPREME AI DECISION MADE:');
-        console.log(`   📝 Should post: ${decision.shouldPost}`);
-        console.log(`   🔢 Post count: ${decision.postCount}`);
-        console.log(`   ⚡ Urgency: ${(decision.urgency * 100).toFixed(0)}%`);
-        console.log(`   🧠 Strategy: ${decision.strategy}`);
-        console.log(`   💭 Reasoning: ${decision.reasoning}`);
-        
-        if (decision.shouldPost && decision.postCount > 0) {
-          console.log('🚀 EXECUTING SUPREME AI DECISION...');
-          
-          // 🛡️ BULLETPROOF EXECUTION: Use guaranteed posting if needed
-          try {
-            const result = await dynamicController.executeSupremeDecision(decision);
-            
-            if (result.success && result.executedPosts > 0) {
-              console.log(`✅ Supreme AI executed ${result.executedPosts} posts successfully!`);
-            } else if (result.success && result.executedPosts === 0) {
-              console.log('🤔 Supreme AI decided to wait for better opportunity');
-            } else {
-              console.log('🛡️ BULLETPROOF: Normal execution failed, using guaranteed posting...');
-              const guaranteed = await bulletproofManager.guaranteedPost();
-              if (guaranteed.success) {
-                console.log(`✅ BULLETPROOF: Guaranteed posting successful via ${guaranteed.method_used}`);
-              } else {
-                console.log('🚨 BULLETPROOF: Even guaranteed posting failed - critical issue');
-              }
-            }
-          } catch (executionError) {
-            console.log('🛡️ BULLETPROOF: Execution error, using guaranteed posting...');
-            const guaranteed = await bulletproofManager.guaranteedPost();
-            if (guaranteed.success) {
-              console.log(`✅ BULLETPROOF: Recovered via ${guaranteed.method_used}`);
-            }
-          }
-        } else {
-          console.log('🤔 Supreme AI decided not to post right now');
-          console.log(`   ⏰ Will check again in ${decision.timeSpacing} minutes`);
-        }
-        
-      } catch (error) {
-        console.error('❌ Supreme AI decision cycle failed:', error);
-        console.log('🛡️ BULLETPROOF: Decision cycle error, attempting emergency post...');
-        
-        // Emergency posting when everything fails
-        const emergency = await bulletproofManager.guaranteedPost();
-        if (emergency.success) {
-          console.log(`✅ BULLETPROOF: Emergency posting successful via ${emergency.method_used}`);
-        } else {
-          console.log('🚨 BULLETPROOF: Even emergency posting failed - system needs intervention');
-        }
-      }
-      
-    }, { scheduled: true });
-
-    // 🛡️ BULLETPROOF RECOVERY CYCLE - Every 2 hours
-    cron.schedule('0 */2 * * *', async () => {
-      console.log('\n🛡️ === BULLETPROOF RECOVERY CHECK ===');
-      
-      const systemHealth = await bulletproofManager.getSystemHealth();
-      console.log(`🔍 System health: ${systemHealth.is_healthy ? 'HEALTHY' : 'UNHEALTHY'}`);
-      console.log(`⏰ Hours since last post: ${systemHealth.hours_since_last_post.toFixed(1)}`);
-      console.log(`💪 Confidence level: ${systemHealth.confidence_level}%`);
-      
-      if (!systemHealth.is_healthy || systemHealth.hours_since_last_post > 3) {
-        console.log('🚨 BULLETPROOF: Triggering recovery posting...');
-        const recovery = await bulletproofManager.guaranteedPost();
-        
-        if (recovery.success) {
-          console.log(`✅ BULLETPROOF: Recovery successful via ${recovery.method_used}`);
-          console.log(`📝 Posted: ${recovery.posted_content.substring(0, 50)}...`);
-        } else {
-          console.log('🚨 BULLETPROOF: Recovery failed - needs manual intervention');
-        }
-      } else {
-        console.log('✅ BULLETPROOF: System healthy, no recovery needed');
-      }
-    }, { scheduled: true });
-
-    // Also start the traditional scheduler for engagement activities
-    console.log('🔄 Starting traditional scheduler for engagement activities...');
-    const scheduler = new Scheduler();
-    await scheduler.start();
-    
-    // Keep the process alive
-    console.log('✅ Bulletproof AI Bot is now running!');
-    console.log('👑 AI has full control over posting frequency and timing');
-    console.log('🛡️ GUARANTEED: System will NEVER stop working due to API issues');
-    console.log('📡 Monitoring world events for dynamic response...');
-    console.log('🚀 Ready to post up to 17 times per day (Twitter Free Tier limit)!');
-    
-    // 🛡️ BULLETPROOF PANIC MODE - Every hour check for critical issues
-    cron.schedule('0 * * * *', async () => {
-      const timeSinceLastPost = await bulletproofManager.getSystemHealth();
-      
-      if (timeSinceLastPost.hours_since_last_post > 6) {
-        console.log('😱 PANIC MODE: No posts for 6+ hours - emergency intervention');
-        const panic = await bulletproofManager.guaranteedPost();
-        
-        if (panic.success) {
-          console.log('✅ PANIC MODE: Successfully recovered system');
-        } else {
-          console.log('🚨 PANIC MODE: Even panic mode failed - CRITICAL ALERT');
-        }
-      }
-    }, { scheduled: true });
-    
-    // Graceful shutdown
-    process.on('SIGINT', () => {
-      console.log('\n🛑 Shutting down Bulletproof AI Bot gracefully...');
-      process.exit(0);
-    });
-
-    process.on('SIGTERM', () => {
-      console.log('\n🛑 Shutting down Bulletproof AI Bot gracefully...');
-      process.exit(0);
-    });
-
   } catch (error) {
-    console.error('❌ Failed to start Bulletproof AI Bot:', error);
+    console.error('❌ Fatal error in main:', error);
     
-    // 🛡️ BULLETPROOF: Even if startup fails, try to post
-    console.log('🛡️ BULLETPROOF: Startup failed, attempting emergency posting...');
-    try {
-      const emergency = await bulletproofManager.guaranteedPost('System startup encountered issues but bot is still operational. Monitoring for resolution.');
-      if (emergency.success) {
-        console.log('✅ BULLETPROOF: Emergency startup post successful');
+    // Emergency fallback - keep the system running
+    console.log('🚨 EMERGENCY MODE: Keeping system alive...');
+    setInterval(async () => {
+      try {
+        await bulletproofManager.guaranteedPost();
+      } catch (fallbackError) {
+        console.error('❌ Emergency fallback error:', fallbackError);
       }
-    } catch (emergencyError) {
-      console.error('🚨 BULLETPROOF: Even emergency posting failed during startup');
-    }
-    
-    process.exit(1);
+    }, 60 * 60 * 1000); // Every hour
   }
 }
 

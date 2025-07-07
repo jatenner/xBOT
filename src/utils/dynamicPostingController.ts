@@ -4,6 +4,7 @@ import { NewsAPIAgent } from '../agents/newsAPIAgent';
 import { RealTimeTrendsAgent } from '../agents/realTimeTrendsAgent';
 import { realTimeLimitsAgent } from '../agents/realTimeLimitsIntelligenceAgent';
 import { getConfig } from './botConfig';
+import { openaiClient } from './openaiClient';
 
 /**
  * 🧠 DYNAMIC POSTING CONTROLLER
@@ -27,6 +28,87 @@ export class DynamicPostingController {
     this.newsAgent = NewsAPIAgent.getInstance();
     this.trendsAgent = new RealTimeTrendsAgent();
     console.log('🚨 Dynamic Posting Controller now using Real-Time Limits Intelligence');
+  }
+
+  /**
+   * 🧠 SUPREME AI DECISION MAKING - Enhanced with full autonomy
+   */
+  async shouldPost(): Promise<{ shouldPost: boolean; reason: string; strategy: string }> {
+    try {
+      console.log('🧠 === SUPREME AI DECISION ANALYSIS ===');
+      
+      // Enhanced decision factors
+      const factors = await this.gatherIntelligenceFactors();
+      
+      // 🚀 INTELLIGENCE UPGRADE: More sophisticated decision making
+      const prompt = `
+SUPREME AI HEALTHCARE EXPERT DECISION ANALYSIS
+
+CURRENT CONTEXT:
+- Time: ${new Date().toLocaleString()}
+- Recent posts: ${factors.recentPostCount}
+- Engagement trend: ${factors.engagementTrend}
+- Optimal posting time: ${factors.isOptimalTime}
+- Content pipeline: ${factors.contentPipelineHealth}
+- Research freshness: ${factors.researchFreshness}
+
+DECISION FRAMEWORK:
+You are an autonomous healthcare AI with full decision-making authority. Consider:
+
+1. AUDIENCE VALUE: Will this post provide significant value to healthcare professionals?
+2. TIMING INTELLIGENCE: Is this the optimal moment based on engagement patterns?
+3. CONTENT QUALITY: Do we have high-quality, research-backed content ready?
+4. STRATEGIC POSITIONING: How does this fit our long-term expertise building?
+5. COMPETITIVE ADVANTAGE: What unique insights can we share right now?
+
+ENHANCED DECISION CRITERIA:
+- Prioritize quality over arbitrary frequency limits
+- Consider real-time healthcare news and trends
+- Factor in audience engagement patterns
+- Evaluate content uniqueness and research backing
+- Balance different content types for diversity
+
+Make an intelligent decision: Should we post now?
+Respond with: DECISION: [YES/NO] | STRATEGY: [strategy] | REASON: [detailed reasoning]
+`;
+
+      const decision = await openaiClient.generateCompletion(prompt, {
+        maxTokens: 500,
+        temperature: 0.7,
+        model: 'gpt-4' // Use best model for decisions
+      });
+
+      if (!decision) {
+        return { shouldPost: false, reason: 'AI decision system unavailable', strategy: 'wait' };
+      }
+
+      // Parse AI decision
+      const shouldPost = decision.includes('DECISION: YES');
+      const strategyMatch = decision.match(/STRATEGY: ([^|]+)/);
+      const reasonMatch = decision.match(/REASON: (.+)/);
+      
+      const strategy = strategyMatch ? strategyMatch[1].trim() : 'autonomous';
+      const reason = reasonMatch ? reasonMatch[1].trim() : decision;
+
+      console.log(`🧠 AI DECISION: ${shouldPost ? 'POST' : 'WAIT'}`);
+      console.log(`📊 STRATEGY: ${strategy}`);
+      console.log(`💭 REASONING: ${reason}`);
+
+      return { shouldPost, reason, strategy };
+      
+    } catch (error) {
+      console.error('❌ Supreme AI decision error:', error);
+      
+      // Fallback to intelligent defaults
+      const factors = await this.gatherIntelligenceFactors();
+      const shouldPost = factors.isOptimalTime && factors.contentPipelineHealth > 0.7;
+      
+      return { 
+        shouldPost, 
+        reason: 'Fallback decision based on optimal timing and content quality',
+        strategy: 'intelligent_fallback'
+      };
+    }
   }
 
   /**
@@ -522,6 +604,25 @@ export class DynamicPostingController {
     } catch (error) {
       console.error('❌ Failed to log supreme decision:', error);
     }
+  }
+
+  private async gatherIntelligenceFactors(): Promise<{
+    recentPostCount: number;
+    engagementTrend: string;
+    isOptimalTime: boolean;
+    contentPipelineHealth: number;
+    researchFreshness: number;
+  }> {
+    // Implementation of gatherIntelligenceFactors method
+    // This method should return an object with the necessary factors
+    // For now, we'll use placeholder values
+    return {
+      recentPostCount: 5,
+      engagementTrend: 'increasing',
+      isOptimalTime: true,
+      contentPipelineHealth: 0.8,
+      researchFreshness: 0.9
+    };
   }
 }
 

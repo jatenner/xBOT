@@ -122,25 +122,61 @@ Generate a single, engaging health tech tweet that follows the viral guidelines 
     }
   }
 
-  async generateCompletion(prompt: string, options: {
-    maxTokens?: number;
-    temperature?: number;
-    model?: string;
-  } = {}): Promise<string> {
+  /**
+   * Generate a completion using the best available model
+   */
+  async generateCompletion(
+    prompt: string, 
+    options: {
+      maxTokens?: number;
+      temperature?: number;
+      model?: string;
+    } = {}
+  ): Promise<string | null> {
     try {
+      // 🧠 INTELLIGENCE UPGRADE: Use GPT-4 for superior reasoning
+      const model = options.model || 'gpt-4'; // Upgraded from gpt-4o-mini
+      const maxTokens = options.maxTokens || 400; // Increased for better content
+      const temperature = options.temperature || 0.8;
+
+      console.log(`🧠 Generating content with ${model} (${maxTokens} tokens, temp: ${temperature})`);
+
       const completion = await this.client.chat.completions.create({
-        model: options.model || 'gpt-4o-mini', // Default to cheaper model instead of GPT-4
+        model,
         messages: [
-          { role: 'user', content: prompt }
+          {
+            role: 'system',
+            content: 'You are a senior healthcare technology expert with 15+ years of experience. Generate precise, research-backed content with specific data, study citations, and expert insights. Always include exact numbers, percentages, and institutional references.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
         ],
-        max_tokens: options.maxTokens || 300, // Reduced from 500
-        temperature: options.temperature || 0.6, // Reduced from 0.7
+        max_tokens: maxTokens,
+        temperature,
+        presence_penalty: 0.1,
+        frequency_penalty: 0.1
       });
 
-      return completion.choices[0]?.message?.content || '';
+      const content = completion.choices[0]?.message?.content;
+      
+      if (content) {
+        console.log(`✅ Generated ${content.length} characters with ${model}`);
+        return content.trim();
+      }
+
+      return null;
     } catch (error) {
-      console.error('Error generating completion:', error);
-      throw error;
+      console.error('❌ OpenAI completion error:', error);
+      
+      // Fallback to GPT-4o-mini if GPT-4 fails (cost/rate limit)
+      if (options.model !== 'gpt-4o-mini') {
+        console.log('🔄 Falling back to GPT-4o-mini...');
+        return this.generateCompletion(prompt, { ...options, model: 'gpt-4o-mini' });
+      }
+      
+      return null;
     }
   }
 
