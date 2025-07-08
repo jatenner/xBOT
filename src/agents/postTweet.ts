@@ -37,6 +37,8 @@ import { runtimeConfig } from '../utils/supabaseConfig.js';
 import { intelligentLearning } from '../utils/intelligentLearningConnector';
 import { DiversePerspectiveEngine } from './diversePerspectiveEngine.js';
 import { ExpertIntelligenceSystem } from './expertIntelligenceSystem.js';
+import { rateLimitManager } from '../utils/intelligentRateLimitManager';
+import { intelligentPostingDecision } from './intelligentPostingDecisionAgent';
 
 dotenv.config();
 
@@ -51,6 +53,14 @@ export interface PostResult {
   missionAlignment?: ContentEvaluation;
   readabilityScore?: number;
   formattingImprovements?: string[];
+  decisionInfo?: {
+    shouldPost: boolean;
+    reason: string;
+    strategy: string;
+    confidence: number;
+    waitTime?: number;
+    nextDecisionTime?: Date;
+  };
 }
 
 interface ContentItem {
@@ -479,14 +489,51 @@ export class PostTweetAgent {
   }
 
   async run(force: boolean = false, testMode: boolean = false): Promise<any> {
-    // 🚨 EMERGENCY RATE LIMITING
-    const rateLimitCheck = await this.checkRateLimit();
-    if (!rateLimitCheck.canPost) {
-      console.log('🚨 RATE LIMIT BLOCK: Cannot post -', rateLimitCheck.reason);
-      return { success: false, reason: rateLimitCheck.reason };
-    }
     try {
       console.log('🐦 === POST TWEET AGENT ACTIVATED ===');
+      
+      // 🧠 INTELLIGENT POSTING DECISION: Think before posting
+      if (!force && !testMode) {
+        console.log('🧠 === MAKING INTELLIGENT POSTING DECISION ===');
+        const decision = await intelligentPostingDecision.makePostingDecision();
+        
+        if (!decision.shouldPost) {
+          console.log(`🧠 DECISION: ${decision.strategy.toUpperCase()} - ${decision.reason}`);
+          console.log(`⏰ Next decision check: ${decision.nextDecisionTime.toLocaleString()}`);
+          
+          if (decision.contentGuidance) {
+            console.log(`💡 Content guidance: ${decision.contentGuidance.type} - ${decision.contentGuidance.reasoning}`);
+          }
+          
+          return { 
+            success: false, 
+            reason: decision.reason,
+            decisionInfo: {
+              shouldPost: decision.shouldPost,
+              reason: decision.reason,
+              strategy: decision.strategy,
+              confidence: decision.confidence,
+              waitTime: decision.waitTime,
+              nextDecisionTime: decision.nextDecisionTime
+            }
+          };
+        }
+        
+        console.log(`🧠 DECISION: POST NOW - ${decision.reason} (${Math.round(decision.confidence * 100)}% confidence)`);
+        if (decision.contentGuidance) {
+          console.log(`💡 Content guidance: ${decision.contentGuidance.type} for ${decision.contentGuidance.targetAudience}`);
+          console.log(`📊 Performance expectation: ${decision.performanceExpectation.expectedLikes} likes, ${decision.performanceExpectation.viralPotential * 100}% viral potential`);
+        }
+      }
+
+      // 🚨 EMERGENCY RATE LIMITING (still check as backup)
+      const rateLimitCheck = await this.checkRateLimit();
+      if (!rateLimitCheck.canPost) {
+        console.log('🚨 RATE LIMIT BLOCK: Cannot post -', rateLimitCheck.reason);
+        return { success: false, reason: rateLimitCheck.reason };
+      }
+      
+      console.log('✅ All decision checks passed - proceeding with posting');
       
       // Check live posting mode
       if (!LIVE_MODE) {
@@ -3603,6 +3650,21 @@ Make it insightful, strategic, and reveal hidden implications. 250 characters ma
    */
   private async checkRateLimit(): Promise<{ canPost: boolean; reason: string; shouldRetry?: boolean; retryAfter?: number }> {
     try {
+      // 🧠 FIRST: Check intelligent rate limit manager
+      const rateLimitStatus = await rateLimitManager.canMakeCall('twitter', 'post');
+      
+      if (rateLimitStatus.isLimited) {
+        const message = `Smart rate limiting: blocked for ${rateLimitStatus.waitTimeMinutes} minutes. Strategy: ${rateLimitStatus.strategy}. Next retry: ${rateLimitStatus.nextRetryTime?.toLocaleTimeString()}`;
+        console.warn(`⏳ ${message}`);
+        
+        return {
+          canPost: false,
+          reason: message,
+          shouldRetry: rateLimitStatus.canRetry,
+          retryAfter: rateLimitStatus.waitTimeMinutes
+        };
+      }
+
       // 🔄 24/7 RESILIENCE: Check continuous operation config
       const { data: continuousConfig } = await supabaseClient.supabase
         ?.from('bot_config')

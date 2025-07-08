@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { supabaseClient } from './supabaseClient';
+import { rateLimitManager } from './intelligentRateLimitManager';
 
 dotenv.config();
 
@@ -133,6 +134,15 @@ Generate a single, engaging health tech tweet that follows the viral guidelines 
       model?: string;
     } = {}
   ): Promise<string | null> {
+    // 🧠 Check intelligent rate limit manager first
+    const rateLimitStatus = await rateLimitManager.canMakeCall('openai', 'chat');
+    
+    if (rateLimitStatus.isLimited) {
+      const message = `OpenAI rate limited for ${rateLimitStatus.waitTimeMinutes} minutes. Next retry: ${rateLimitStatus.nextRetryTime?.toLocaleTimeString()}`;
+      console.warn(`⏳ ${message}`);
+      return null;
+    }
+
     try {
       // 🧠 INTELLIGENCE UPGRADE: Use GPT-4 for superior reasoning
       const model = options.model || 'gpt-4'; // Upgraded from gpt-4o-mini
@@ -163,12 +173,24 @@ Generate a single, engaging health tech tweet that follows the viral guidelines 
       
       if (content) {
         console.log(`✅ Generated ${content.length} characters with ${model}`);
+        
+        // 🧠 Report successful call to rate limit manager
+        await rateLimitManager.handleSuccessfulCall('openai', 'chat');
+        
         return content.trim();
       }
 
       return null;
     } catch (error) {
       console.error('❌ OpenAI completion error:', error);
+      
+      // 🧠 Report error to rate limit manager for intelligent handling
+      const recoveryPlan = await rateLimitManager.handleAPIError('openai', 'chat', error);
+      
+      console.log(`🔄 Recovery plan: ${recoveryPlan.message}`);
+      if (recoveryPlan.alternativeAction) {
+        console.log(`💡 Alternative: ${recoveryPlan.alternativeAction}`);
+      }
       
       // Fallback to GPT-4o-mini if GPT-4 fails (cost/rate limit)
       if (options.model !== 'gpt-4o-mini') {

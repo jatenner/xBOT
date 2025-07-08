@@ -5,6 +5,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { supabaseClient } from './supabaseClient';
 import fetch from 'node-fetch';
+import { rateLimitManager, RateLimitStatus } from './intelligentRateLimitManager';
 
 dotenv.config();
 
@@ -241,6 +242,31 @@ class XService {
       };
     }
 
+    // 🧠 Check intelligent rate limit manager first
+    const rateLimitStatus = await rateLimitManager.canMakeCall('twitter', 'post');
+    
+    if (rateLimitStatus.isLimited) {
+      const message = `Rate limited for ${rateLimitStatus.waitTimeMinutes} minutes. Next retry: ${rateLimitStatus.nextRetryTime?.toLocaleTimeString()}`;
+      console.warn(`⏳ ${message}`);
+      return { 
+        success: false, 
+        error: message
+      };
+    }
+
+    // Additional strategy-based delays
+    if (rateLimitStatus.strategy === 'exponential_backoff' && rateLimitStatus.waitTimeMinutes) {
+      const waitMs = rateLimitStatus.waitTimeMinutes * 60 * 1000;
+      if (Date.now() - this.lastPostTime < waitMs) {
+        const waitTime = Math.ceil((waitMs - (Date.now() - this.lastPostTime)) / 1000);
+        console.warn(`⏳ Strategic delay: Wait ${waitTime}s before next post`);
+        return { 
+          success: false, 
+          error: `Strategic rate limiting: Wait ${waitTime} seconds` 
+        };
+      }
+    }
+
     try {
       // 🚨 CHECK REAL RATE LIMITS ONLY
       if (!(await this.checkRealRateLimits())) {
@@ -253,6 +279,9 @@ class XService {
       const result = await this.client.v2.tweet(content);
       this.incrementTweetCount();
       
+      // 🧠 Report successful call to rate limit manager
+      await rateLimitManager.handleSuccessfulCall('twitter', 'post');
+      
       console.log(`✅ Tweet posted successfully: ${result.data.id}`);
       
       return {
@@ -262,9 +291,21 @@ class XService {
     } catch (error: any) {
       console.error('Error posting tweet:', error);
       
+      // 🧠 Report error to rate limit manager for intelligent handling
+      const recoveryPlan = await rateLimitManager.handleAPIError('twitter', 'post', error);
+      
+      console.log(`🔄 Recovery plan: ${recoveryPlan.message}`);
+      if (recoveryPlan.alternativeAction) {
+        console.log(`💡 Alternative: ${recoveryPlan.alternativeAction}`);
+      }
+      
       // Handle only real 429 errors from Twitter
       if (error.code === 429) {
-        console.log('⚠️ Real Twitter rate limit hit - will wait for reset');
+        console.log(`🚨 Real Twitter rate limit hit - ${recoveryPlan.message}`);
+        return {
+          success: false,
+          error: `Rate limit: ${recoveryPlan.message}`
+        };
       }
       
       return {
