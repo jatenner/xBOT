@@ -552,22 +552,22 @@ export class CostOptimizer {
   private callHistory: Array<{timestamp: number, cost: number, model: string, tokens: number}> = [];
   
   constructor(config: Partial<CostOptimizationConfig> = {}) {
-    const emergencyMode = process.env.EMERGENCY_COST_MODE === 'true';
+    const emergencyMode = process.env.EMERGENCY_COST_MODE === 'true' || true; // Force emergency mode
     const ultraLowCost = true; // 🔥 ULTRA-AGGRESSIVE COST MODE ENABLED
     
     this.config = {
-      dailyBudgetLimit: emergencyMode ? 2.00 : 5.00, // $5/day budget as requested
+      dailyBudgetLimit: emergencyMode ? 1.00 : 2.00, // Ultra-strict $1/day budget
       enableCostTracking: true,
       preferredModel: 'gpt-4o-mini', // Cost-effective model
       fallbackModel: 'gpt-3.5-turbo',
-      maxTokensPerCall: emergencyMode ? 200 : 500, // Reasonable response length
-      maxCallsPerHour: emergencyMode ? 15 : 50, // Reasonable rate limit
+      maxTokensPerCall: emergencyMode ? 100 : 200, // Severely reduced tokens
+      maxCallsPerHour: emergencyMode ? 5 : 10, // Drastically reduced calls
       emergencyMode,
       ...config
     };
 
     if (emergencyMode) {
-      console.log('💰 OpenAI Cost Optimizer: Emergency mode active');
+      console.log('💰 OpenAI Cost Optimizer: ULTRA-EMERGENCY mode active');
       console.log(`💰 Maximum daily budget: $${this.config.dailyBudgetLimit}/day`);
       console.log(`📊 Max tokens per call: ${this.config.maxTokensPerCall}`);
       console.log(`⏱️ Max calls per hour: ${this.config.maxCallsPerHour}`);
@@ -590,8 +590,8 @@ export class CostOptimizer {
       this.lastHourReset = now;
     }
 
-    // 🔥 ULTRA-STRICT: Check if we're near daily budget (90% threshold)
-    if (this.dailyUsage >= this.config.dailyBudgetLimit * 0.9) {
+    // 🔥 ULTRA-STRICT: Check if we're near daily budget (70% threshold instead of 90%)
+    if (this.dailyUsage >= this.config.dailyBudgetLimit * 0.7) {
       return { 
         allowed: false, 
         reason: `Near daily budget limit (${((this.dailyUsage/this.config.dailyBudgetLimit)*100).toFixed(1)}% used)` 
@@ -607,12 +607,12 @@ export class CostOptimizer {
     }
 
     // 🔥 ULTRA-STRICT: Check if too many recent calls (burst protection)
-    const last10Minutes = Date.now() - (10 * 60 * 1000);
-    const recentCalls = this.callHistory.filter(call => call.timestamp > last10Minutes);
-    if (recentCalls.length >= 3) {
+    const last5Minutes = Date.now() - (5 * 60 * 1000);
+    const recentCalls = this.callHistory.filter(call => call.timestamp > last5Minutes);
+    if (recentCalls.length >= 1) {
       return {
         allowed: false,
-        reason: 'Burst protection: Too many calls in last 10 minutes'
+        reason: 'Burst protection: Too many calls in last 5 minutes'
       };
     }
 

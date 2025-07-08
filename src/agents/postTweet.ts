@@ -3845,13 +3845,13 @@ Make it insightful, strategic, and reveal hidden implications. 250 characters ma
       if (todaysPosts && todaysPosts.length > 0) {
         const lastPostTime = new Date(todaysPosts[0].created_at);
         const timeSinceLastPost = Date.now() - lastPostTime.getTime();
-        const MIN_INTERVAL = 10 * 60 * 1000; // 10 minutes minimum (reduced from 30 minutes)
+        const MIN_INTERVAL = 30 * 60 * 1000; // 30 minutes minimum (increased from 10 minutes for quality spacing)
         
         if (timeSinceLastPost < MIN_INTERVAL) {
           const waitMinutes = Math.ceil((MIN_INTERVAL - timeSinceLastPost) / 60000);
           return { 
             canPost: false, 
-            reason: `Must wait ${waitMinutes} more minutes since last post (10-minute safety interval)`
+            reason: `Must wait ${waitMinutes} more minutes since last post (30-minute quality interval)`
           };
         }
       }

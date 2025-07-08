@@ -1,194 +1,162 @@
-// Force early .env loading before any other imports
-import dotenv from 'dotenv';
-import path from 'path';
-dotenv.config({ path: path.resolve(__dirname, '../.env') });
+#!/usr/bin/env node
 
-import { Scheduler } from './agents/scheduler';
-import { DynamicPostingController } from './utils/dynamicPostingController';
+import express from 'express';
+import cors from 'cors';
 import { bulletproofManager } from './utils/bulletproofOperationManager';
-import { metricsExporter } from './metrics/exporter';
-import { ensureRuntimeConfig } from './utils/supabaseConfig';
-import * as cron from 'node-cron';
-import http from 'http';
 import { autonomousIntelligenceCore } from './agents/autonomousIntelligenceCore';
+import { DynamicPostingController } from './utils/dynamicPostingController';
+import { ensureRuntimeConfig } from './utils/supabaseConfig';
 
-// 🚀 NUCLEAR MODE: Remove all artificial throttling
-console.log('🚀 NUCLEAR INTELLIGENCE MODE: Unleashing the full bot potential');
-console.log('🛡️ BULLETPROOF OPERATION: System NEVER stops working');
-console.log('🛡️ SAFETY: Maximum 3 posts per hour to prevent insanity');
-console.log('🧠 AI INTELLIGENCE: All advanced features ENABLED');
+// EMERGENCY IMPORTS
+import { startServerSingleton, getServerInstance, closeServer } from './utils/serverSingleton';
+import { isEmergencyMode, EMERGENCY_BOT_CONFIG } from './config/emergencyConfig';
+import { emergencyLearningLimiter } from './utils/emergencyLearningLimiter';
 
-// Remove all artificial startup throttling
-// The bot is now free to work at its full potential within the 3/hour safety limit
+// Create Express app
+const app = express();
 
-// Environment variables already loaded at top of file
+// Enable CORS and JSON parsing
+app.use(cors());
+app.use(express.json());
 
-// Health check endpoint for Render
-const server = http.createServer(async (req, res) => {
-  // Add CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-  if (req.method === 'OPTIONS') {
-    res.writeHead(200);
-    res.end();
-    return;
-  }
-
-  if (req.url === '/health' && req.method === 'GET') {
-    const systemHealth = await bulletproofManager.getSystemHealth();
-    
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ 
-      status: 'healthy', 
-      timestamp: new Date().toISOString(),
-      service: 'snap2health-xbot',
-      bulletproof_status: {
-        is_healthy: systemHealth.is_healthy,
-        hours_since_last_post: systemHealth.hours_since_last_post,
-        confidence_level: systemHealth.confidence_level,
-        in_panic_mode: systemHealth.in_panic_mode
-      },
-      ghost_killer_active: process.env.GHOST_ACCOUNT_SYNDROME_FIX === 'true',
-      aggressive_mode: process.env.AGGRESSIVE_ENGAGEMENT_MODE === 'true',
-      growth_loop_enabled: process.env.GROWTH_LOOP_ENABLED === 'true',
-      node_env: process.env.NODE_ENV || 'development'
-    }));
-  } else if (req.url === '/metrics' && req.method === 'GET') {
-    // Prometheus metrics endpoint
-    await metricsExporter.handleMetricsRequest(req as any, res as any);
-  } else if (req.url === '/dashboard' && req.method === 'GET') {
-    const systemHealth = await bulletproofManager.getSystemHealth();
-    
-    res.writeHead(200, { 'Content-Type': 'text/html' });
-    res.end(`
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Snap2Health X-Bot Growth Dashboard</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 40px; background: #1a1a1a; color: #fff; }
-        .metric { background: #2d2d2d; padding: 20px; margin: 10px 0; border-radius: 8px; }
-        .header { color: #4CAF50; font-size: 24px; margin-bottom: 20px; }
-        .value { font-size: 32px; font-weight: bold; color: #2196F3; }
-        .label { font-size: 14px; color: #aaa; }
-        .healthy { color: #4CAF50; }
-        .warning { color: #ff9800; }
-        .critical { color: #f44336; }
-    </style>
-</head>
-<body>
-    <div class="header">🛡️ Bulletproof X-Bot Dashboard</div>
-    <div class="metric">
-        <div class="label">System Health</div>
-        <div class="value ${systemHealth.is_healthy ? 'healthy' : 'critical'}">
-          ${systemHealth.is_healthy ? '🟢 HEALTHY' : '🔴 NEEDS ATTENTION'}
-        </div>
-    </div>
-    <div class="metric">
-        <div class="label">Hours Since Last Post</div>
-        <div class="value ${systemHealth.hours_since_last_post < 2 ? 'healthy' : systemHealth.hours_since_last_post < 6 ? 'warning' : 'critical'}">
-          ${systemHealth.hours_since_last_post.toFixed(1)}h
-        </div>
-    </div>
-    <div class="metric">
-        <div class="label">Confidence Level</div>
-        <div class="value ${systemHealth.confidence_level > 80 ? 'healthy' : systemHealth.confidence_level > 50 ? 'warning' : 'critical'}">
-          ${systemHealth.confidence_level}%
-        </div>
-    </div>
-    <div class="metric">
-        <div class="label">Panic Mode</div>
-        <div class="value ${systemHealth.in_panic_mode ? 'critical' : 'healthy'}">
-          ${systemHealth.in_panic_mode ? '😱 ACTIVE' : '✅ NORMAL'}
-        </div>
-    </div>
-    <div class="metric">
-        <div class="label">Growth Loop</div>
-        <div class="value">${process.env.GROWTH_LOOP_ENABLED === 'true' ? '✅ ENABLED' : '❌ DISABLED'}</div>
-    </div>
-    <div class="metric">
-        <div class="label">Environment</div>
-        <div class="value">${process.env.NODE_ENV || 'development'}</div>
-    </div>
-    <div class="metric">
-        <div class="label">Metrics Endpoint</div>
-        <div class="value"><a href="/metrics" style="color: #2196F3;">/metrics</a></div>
-    </div>
-    <div class="metric">
-        <div class="label">Last Updated</div>
-        <div class="value">${new Date().toISOString()}</div>
-    </div>
-</body>
-</html>
-    `);
-  } else if (req.url === '/force-post' && req.method === 'GET') {
-    // Emergency force post endpoint
-    try {
-      const result = await bulletproofManager.forcePost();
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ 
-        success: result,
-        message: result ? 'Emergency post successful' : 'Emergency post failed',
-        timestamp: new Date().toISOString()
-      }));
-    } catch (error) {
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ 
-        success: false, 
-        error: error.message,
-        timestamp: new Date().toISOString()
-      }));
+// Health check endpoint
+app.get('/health', async (req, res) => {
+  try {
+    // 🚨 EMERGENCY MODE CHECK
+    if (isEmergencyMode()) {
+      res.json({
+        status: 'EMERGENCY_MODE',
+        timestamp: new Date().toISOString(),
+        emergency_mode: true,
+        learning_disabled: true,
+        cost_protection: true,
+        message: 'Bot running in emergency mode with cost protection'
+      });
+      return;
     }
-  } else {
-    res.writeHead(404, { 'Content-Type': 'text/plain' });
-    res.end('Not Found');
+
+    const health = await bulletproofManager.getSystemHealth();
+    res.json({
+      status: health.is_healthy ? 'healthy' : 'degraded',
+      ...health,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
   }
 });
 
-// Start health check server with better error handling
+// Dashboard endpoint
+app.get('/dashboard', (req, res) => {
+  res.send(`
+    <h1>🧠 Bot Intelligence Dashboard</h1>
+    <p><strong>Emergency Mode:</strong> ${isEmergencyMode() ? 'ACTIVE' : 'INACTIVE'}</p>
+    <p><strong>Cost Protection:</strong> ${process.env.EMERGENCY_COST_MODE === 'true' ? 'ENABLED' : 'DISABLED'}</p>
+    <p><strong>Learning:</strong> ${process.env.DISABLE_LEARNING_AGENTS === 'true' ? 'DISABLED' : 'ENABLED'}</p>
+    <p><a href="/health">Health Check</a></p>
+    <p><a href="/force-post">Emergency Post</a></p>
+  `);
+});
+
+// Emergency post endpoint
+app.post('/force-post', async (req, res) => {
+  try {
+    console.log('🚨 Emergency post triggered via API');
+    const result = await bulletproofManager.guaranteedPost();
+    res.json({
+      success: true,
+      result,
+      emergency_mode: isEmergencyMode(),
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Catch-all for other routes
+app.use((req, res) => {
+  if (req.url === '/') {
+    res.json({
+      status: 'Bot is running',
+      emergency_mode: isEmergencyMode(),
+      endpoints: ['/health', '/dashboard', '/force-post'],
+      timestamp: new Date().toISOString()
+    });
+  } else {
+    res.status(404).json({
+      error: 'Not Found',
+      emergency_mode: isEmergencyMode(),
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// 🚨 EMERGENCY SERVER STARTUP - SINGLETON ONLY
 const PORT = parseInt(process.env.PORT || '3000', 10);
-
-// Add retry logic for port binding
-function startServer(port: number, retries = 3): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const tryStart = (currentPort: number, attemptsLeft: number) => {
-      const currentServer = server.listen(currentPort, () => {
-        console.log(`🔍 Health check server running on port ${currentPort}`);
-        console.log(`🛡️ Bulletproof status: /health`);
-        console.log(`📊 Dashboard: /dashboard`);
-        console.log(`🚨 Emergency post: /force-post`);
-        resolve();
-      });
-
-      currentServer.on('error', (error: any) => {
-        if (error.code === 'EADDRINUSE' && attemptsLeft > 0) {
-          console.log(`⚠️ Port ${currentPort} in use, trying ${currentPort + 1}...`);
-          setTimeout(() => tryStart(currentPort + 1, attemptsLeft - 1), 1000);
-        } else {
-          console.error(`❌ Server error on port ${currentPort}:`, error);
-          reject(error);
-        }
-      });
-    };
-
-    tryStart(port, retries);
-  });
-}
 
 console.log('🛡️ Starting Bulletproof AI Bot with Guaranteed Operation...');
 console.log('👑 All posting decisions made by AI - no hardcoded limits!');
 console.log('🚨 GUARANTEE: Bot will NEVER stop working due to API limit confusion!');
 
+// 🚨 EMERGENCY MODE CHECK
+if (isEmergencyMode()) {
+  console.log('🚨 ==========================================');
+  console.log('🚨 EMERGENCY MODE ACTIVATED');
+  console.log('🚨 ==========================================');
+  console.log('💰 Cost protection: ENABLED');
+  console.log('🧠 Learning loops: DISABLED');
+  console.log('🔒 Server singleton: ENABLED');
+  console.log('⚡ Simple mode: ENABLED');
+  console.log('🚨 ==========================================');
+}
+
 /**
- * 🧠 SUPREME AI SYSTEM WITH AUTONOMOUS INTELLIGENCE
- * 
- * This is the main orchestrator that combines all intelligence systems
- * for autonomous decision-making and continuous learning.
+ * 🧠 SUPREME AI SYSTEM WITH AUTONOMOUS INTELLIGENCE (EMERGENCY SAFE)
  */
 async function runSupremeAISystem() {
   console.log('🚀 === SUPREME AI SYSTEM STARTING ===');
+  
+  // 🚨 EMERGENCY MODE OVERRIDES
+  if (isEmergencyMode()) {
+    console.log('🚨 EMERGENCY MODE: Simplified operation only');
+    console.log('🛡️ Basic posting enabled, advanced features disabled');
+    console.log('');
+    
+    // Simple emergency posting loop with heavy rate limiting
+    while (true) {
+      try {
+        console.log('🚨 Emergency cycle starting...');
+        
+        // Very conservative posting with long intervals
+        const result = await bulletproofManager.guaranteedPost();
+        
+        if (result.success) {
+          console.log(`✅ Emergency post successful: ${result.posted_content?.substring(0, 100)}...`);
+        } else {
+          console.log(`❌ Emergency post failed: ${result.warnings.join(', ')}`);
+        }
+        
+        // Long sleep in emergency mode (2 hours)
+        console.log('😴 Emergency mode: Sleeping for 2 hours...');
+        await new Promise(resolve => setTimeout(resolve, 2 * 60 * 60 * 1000));
+        
+      } catch (error) {
+        console.error('❌ Emergency cycle error:', error);
+        await new Promise(resolve => setTimeout(resolve, 30 * 60 * 1000)); // 30 min on error
+      }
+    }
+  }
+
+  // Normal operation (only if not in emergency mode)
   console.log('🧠 Autonomous Intelligence: ENABLED');
   console.log('🛡️ Bulletproof Operation: ENABLED');
   console.log('📊 Dynamic Posting: ENABLED');
@@ -212,7 +180,17 @@ async function runSupremeAISystem() {
 
   while (true) {
     try {
+      // 🚨 LEARNING RATE LIMIT CHECK
+      if (!emergencyLearningLimiter.canPerformLearning()) {
+        console.log('🚨 Learning rate limit reached, skipping AI decision cycle');
+        await new Promise(resolve => setTimeout(resolve, 60 * 60 * 1000)); // 1 hour
+        continue;
+      }
+
       console.log('🧠 === AUTONOMOUS AI DECISION CYCLE ===');
+      
+      // Record learning call
+      emergencyLearningLimiter.recordLearningCall();
       
       // 1. Let the autonomous intelligence make the primary decision
       const aiDecision = await autonomousIntelligenceCore.makeAutonomousDecision(
@@ -250,9 +228,6 @@ async function runSupremeAISystem() {
       } else if (aiDecision.decision === 'analyze_more_data') {
         console.log('🔍 AI DECISION: Gathering more intelligence before posting...');
         
-        // Trigger additional analysis cycle
-        // This could involve checking trends, engagement patterns, etc.
-        
       } else {
         console.log('⏳ AI DECISION: Waiting for optimal conditions...');
       }
@@ -261,10 +236,12 @@ async function runSupremeAISystem() {
       const healthStatus = await bulletproofManager.getSystemHealth();
       console.log(`🛡️ System Health: ${healthStatus.is_healthy ? 'HEALTHY' : 'NEEDS ATTENTION'}`);
       
-      // 4. Sleep with intelligent timing
-      const sleepDuration = consciousnessLevel > 50 ? 
-        15 * 60 * 1000 : // 15 minutes for high consciousness
-        30 * 60 * 1000;  // 30 minutes for lower consciousness
+      // 4. Sleep with intelligent timing (EMERGENCY EXTENDED)
+      const sleepDuration = emergencyLearningLimiter.isEmergencyMode() ? 
+        60 * 60 * 1000 : // 1 hour in emergency mode
+        consciousnessLevel > 50 ? 
+          15 * 60 * 1000 : // 15 minutes for high consciousness
+          30 * 60 * 1000;  // 30 minutes for lower consciousness
       
       console.log(`😴 Sleeping for ${sleepDuration / 60000} minutes (consciousness-adjusted)...`);
       console.log('');
@@ -289,8 +266,9 @@ async function main() {
     // Ensure runtime configuration is set up
     await ensureRuntimeConfig();
     
-    // Start the health check server
-    await startServer(PORT);
+    // 🚨 EMERGENCY: Use singleton server to prevent conflicts
+    console.log('🔧 Starting server with singleton pattern...');
+    await startServerSingleton(app, PORT);
     
     // Start bulletproof continuous monitoring
     await bulletproofManager.startContinuousMonitoring();
@@ -315,29 +293,34 @@ async function main() {
   }
 }
 
-// Start the health check server first
-startServer(PORT)
-  .then(() => {
-    // Then start the main application
-    return main();
-  })
-  .catch((error) => {
-    console.error('❌ Failed to start server or application:', error);
-    process.exit(1);
-  });
+// 🚨 SINGLE ENTRY POINT - NO DUPLICATE SERVER STARTS
+main().catch((error) => {
+  console.error('❌ Failed to start application:', error);
+  process.exit(1);
+});
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (error) => {
   console.error('💥 Uncaught exception:', error);
+  closeServer(); // Clean shutdown
   process.exit(1);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
   console.error('💥 Unhandled rejection at:', promise, 'reason:', reason);
+  closeServer(); // Clean shutdown
   process.exit(1);
 });
 
-// Run the application
-if (require.main === module) {
-  main();
-} 
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('🛑 SIGTERM received, shutting down gracefully...');
+  closeServer();
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  console.log('🛑 SIGINT received, shutting down gracefully...');
+  closeServer();
+  process.exit(0);
+}); 

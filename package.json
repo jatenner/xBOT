@@ -6,7 +6,7 @@
   "scripts": {
     "build": "NODE_OPTIONS=--max_old_space_size=1024 tsc",
     "migrate": "node scripts/db_push.js",
-    "start": "npm run migrate && node dist/index.js",
+    "start": "EMERGENCY_MODE=true node dist/index.js",
     "dev": "npm run setup-check && nodemon src/index.js",
     "test": "jest",
     "lint": "eslint .",
@@ -23,7 +23,10 @@
     "test-apis": "node test_apis.js",
     "setup-db": "node init_database.js && node -e \"require('./supabase/advanced_optimization_schema.sql')\"",
     "setup-check": "node -e \"console.log('🔍 Checking setup...'); if (!require('fs').existsSync('.env')) { console.log('⚠️ No .env file found. Run: npm run setup-apis'); process.exit(1); }\"",
-    "build-minimal": "node --max-old-space-size=1024 ./node_modules/.bin/tsc --incremental --skipLibCheck"
+    "build-minimal": "node --max-old-space-size=1024 ./node_modules/.bin/tsc --incremental --skipLibCheck",
+    "emergency": "node emergency_start.js",
+    "safe-start": "EMERGENCY_MODE=true npm start",
+    "start-original": "npm run migrate && node dist/index.js"
   },
   "keywords": [
     "twitter",

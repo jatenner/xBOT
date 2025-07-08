@@ -126,8 +126,8 @@ export class Scheduler {
     console.log('✅ Strategic posting: ENABLED');
     console.log('✅ Growth optimization: ENABLED');
 
-    // Schedule strategist to run every 30 minutes (increased from 45 minutes)
-    this.strategistJob = cron.schedule('*/30 * * * *', async () => {
+    // Schedule strategist to run every 2 hours instead of 30 minutes (massive cost reduction)
+    this.strategistJob = cron.schedule('0 */2 * * *', async () => {
       try {
         await this.runStrategistCycle();
       } catch (error) {
@@ -138,37 +138,41 @@ export class Scheduler {
       timezone: "America/New_York"
     });
 
-    // Schedule learning agent to run daily at 2 AM EST (learning during off hours)
-    this.learningJob = cron.schedule('0 2 * * *', async () => {
-      console.log('🧠 === Daily Learning Cycle Started ===');
-      try {
-        await this.learnAgent.run();
-        console.log('🧠 === Daily Learning Cycle Completed ===');
-      } catch (error) {
-        console.error('❌ Daily learning cycle failed:', error);
+    // Schedule learning agent to run weekly instead of daily (huge cost savings)
+    this.learningJob = cron.schedule('0 2 * * 0', async () => {
+      if (!emergencyMode) { // Only if not in emergency mode
+        console.log('🧠 === Weekly Learning Cycle Started ===');
+        try {
+          await this.learnAgent.run();
+          console.log('🧠 === Weekly Learning Cycle Completed ===');
+        } catch (error) {
+          console.error('❌ Weekly learning cycle failed:', error);
+        }
       }
     }, {
       scheduled: true,
       timezone: "America/New_York"
     });
 
-    // Schedule autonomous learning every 8 hours (increased from 12 hours)
-    this.autonomousLearningJob = cron.schedule('0 */8 * * *', async () => {
-      console.log('🚀 === Autonomous Learning Cycle Started ===');
-      try {
-        await this.autonomousLearner.run();
-        console.log('🚀 === Autonomous Learning Cycle Completed ===');
-      } catch (error) {
-        console.error('❌ Autonomous learning cycle failed:', error);
+    // Schedule autonomous learning every 24 hours instead of 8 hours (cost reduction)
+    this.autonomousLearningJob = cron.schedule('0 3 * * *', async () => {
+      if (!emergencyMode && !disableLearningAgents) {
+        console.log('🚀 === Daily Autonomous Learning Cycle Started ===');
+        try {
+          await this.autonomousLearner.run();
+          console.log('🚀 === Daily Autonomous Learning Cycle Completed ===');
+        } catch (error) {
+          console.error('❌ Daily autonomous learning cycle failed:', error);
+        }
       }
     }, {
       scheduled: true,
       timezone: "America/New_York"
     });
 
-    // Schedule engagement analysis every hour during all hours (increased from 2 hours during peak only)
-    this.engagementJob = cron.schedule('0 * * * *', async () => {
-      console.log('📊 === Hourly Engagement Analysis ===');
+    // Schedule engagement analysis every 6 hours instead of every hour (major cost savings)
+    this.engagementJob = cron.schedule('0 */6 * * *', async () => {
+      console.log('📊 === 6-Hour Engagement Analysis ===');
       try {
         const report = await this.engagementTracker.generateEngagementReport();
         console.log(`📈 Current engagement rate: ${report.averageEngagementRate}%`);
@@ -196,10 +200,10 @@ export class Scheduler {
       timezone: "America/New_York"
     });
 
-    // 🤖 AUTONOMOUS TWEET AUDITOR - runs every 4 hours instead of 2 to reduce API costs
-    if (!disableLearningAgents) {
-      this.tweetAuditorJob = cron.schedule('0 */4 * * *', async () => {
-        console.log('🤖 === Autonomous Tweet Auditor Cycle ===');
+    // 🤖 AUTONOMOUS TWEET AUDITOR - runs weekly instead of every 4 hours to reduce API costs
+    if (!disableLearningAgents && !emergencyMode) {
+      this.tweetAuditorJob = cron.schedule('0 4 * * 1', async () => {
+        console.log('🤖 === Weekly Autonomous Tweet Auditor Cycle ===');
         try {
           await this.autonomousTweetAuditor.runAutonomousAudit();
         } catch (error) {
@@ -211,10 +215,10 @@ export class Scheduler {
       });
     }
 
-    // 🎭 AUTONOMOUS CONTENT ORCHESTRATOR - runs twice daily instead of every 4 hours
-    if (!disableLearningAgents) {
-      this.orchestratorJob = cron.schedule('0 6,18 * * *', async () => {
-        console.log('🎭 === Content Orchestrator Cycle ===');
+    // 🎭 AUTONOMOUS CONTENT ORCHESTRATOR - runs weekly instead of twice daily
+    if (!disableLearningAgents && !emergencyMode) {
+      this.orchestratorJob = cron.schedule('0 5 * * 1', async () => {
+        console.log('🎭 === Weekly Content Orchestrator Cycle ===');
         try {
           // Note: AutonomousContentOrchestrator may not have a run method
           console.log('🎭 Content orchestrator placeholder');
@@ -293,26 +297,28 @@ export class Scheduler {
     console.log(`🧠 Learning agents: ${disableLearningAgents ? 'DISABLED' : 'ENABLED'}`);
     console.log(`💵 Daily budget limit: $${dailyBudgetLimit}`);
 
-    // 🔥 REAL ENGAGEMENT AGENT - reduce to every 60 minutes instead of 30 (still frequent but reasonable)
-    this.rateLimitedEngagementJob = cron.schedule('0 * * * *', async () => {
-      console.log('🔥 === REAL ENGAGEMENT AGENT TRIGGERED ===');
-      console.log('🎯 Performing ACTUAL Twitter likes, follows, and replies');
-      try {
-        const result = await this.rateLimitedEngagementAgent.run();
-        if (result.success) {
-          console.log(`✅ Real engagement completed: ${result.message}`);
-          console.log(`🎯 ACTUAL actions performed: ${result.actions.length}`);
-          
-          // Count successful real actions
-          const successful = result.actions.filter(a => a.success);
-          if (successful.length > 0) {
-            console.log(`💖 Real Twitter engagement achieved: ${successful.length} successful actions`);
+    // 🔥 REAL ENGAGEMENT AGENT - reduce to every 4 hours instead of 60 minutes (major cost savings)
+    this.rateLimitedEngagementJob = cron.schedule('0 */4 * * *', async () => {
+      if (!emergencyMode) { // Skip during emergency mode
+        console.log('🔥 === REAL ENGAGEMENT AGENT TRIGGERED ===');
+        console.log('🎯 Performing ACTUAL Twitter likes, follows, and replies');
+        try {
+          const result = await this.rateLimitedEngagementAgent.run();
+          if (result.success) {
+            console.log(`✅ Real engagement completed: ${result.message}`);
+            console.log(`🎯 ACTUAL actions performed: ${result.actions.length}`);
+            
+            // Count successful real actions
+            const successful = result.actions.filter(a => a.success);
+            if (successful.length > 0) {
+              console.log(`💖 Real Twitter engagement achieved: ${successful.length} successful actions`);
+            }
+          } else {
+            console.log(`⚠️ Real engagement failed: ${result.message}`);
           }
-        } else {
-          console.log(`⚠️ Real engagement failed: ${result.message}`);
+        } catch (error) {
+          console.error('❌ Real engagement agent failed:', error);
         }
-      } catch (error) {
-        console.error('❌ Real engagement agent failed:', error);
       }
     }, { scheduled: true });
 
