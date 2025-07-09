@@ -574,30 +574,26 @@ export class CostOptimizer {
   private callHistory: Array<{timestamp: number, cost: number, model: string, tokens: number}> = [];
   
   constructor(config: Partial<CostOptimizationConfig> = {}) {
-    const emergencyMode = process.env.EMERGENCY_COST_MODE === 'true' || true; // Force emergency mode
+    const emergencyMode = true; // 🚨 FORCE ULTRA-EMERGENCY MODE
     const ultraLowCost = true; // 🔥 ULTRA-AGGRESSIVE COST MODE ENABLED
     
     this.config = {
-      dailyBudgetLimit: emergencyMode ? 1.00 : 2.00, // Ultra-strict $1/day budget
+      dailyBudgetLimit: 1.00, // 🚨 EMERGENCY: Max $1/day budget
       enableCostTracking: true,
-      preferredModel: 'gpt-4o-mini', // Cost-effective model
-      fallbackModel: 'gpt-3.5-turbo',
-      maxTokensPerCall: emergencyMode ? 100 : 200, // Severely reduced tokens
-      maxCallsPerHour: emergencyMode ? 5 : 10, // Drastically reduced calls
-      emergencyMode,
+      preferredModel: 'gpt-3.5-turbo', // 🚨 CHEAPEST MODEL ONLY
+      fallbackModel: 'gpt-3.5-turbo',  // 🚨 NO EXPENSIVE FALLBACKS
+      maxTokensPerCall: 75, // 🚨 ULTRA-REDUCED: Max 75 tokens per call
+      maxCallsPerHour: 3,   // 🚨 ULTRA-REDUCED: Max 3 calls per hour
+      emergencyMode: true,
       ...config
     };
 
-    if (emergencyMode) {
-      console.log('💰 OpenAI Cost Optimizer: ULTRA-EMERGENCY mode active');
-      console.log(`💰 Maximum daily budget: $${this.config.dailyBudgetLimit}/day`);
-      console.log(`📊 Max tokens per call: ${this.config.maxTokensPerCall}`);
-      console.log(`⏱️ Max calls per hour: ${this.config.maxCallsPerHour}`);
-      console.log(`🎯 Target monthly cost: $${(this.config.dailyBudgetLimit * 30).toFixed(2)}`);
-    } else {
-      console.log('💰 OpenAI Cost Optimizer: Normal mode active');
-      console.log(`💰 Daily budget: $${this.config.dailyBudgetLimit}/day`);
-    }
+    console.log('🚨 OpenAI Cost Optimizer: ULTRA-EMERGENCY mode active');
+    console.log(`💰 Maximum daily budget: $${this.config.dailyBudgetLimit}/day`);
+    console.log(`📊 Max tokens per call: ${this.config.maxTokensPerCall}`);
+    console.log(`⏱️ Max calls per hour: ${this.config.maxCallsPerHour}`);
+    console.log(`🎯 Target monthly cost: $${(this.config.dailyBudgetLimit * 30).toFixed(2)}`);
+    console.log(`🔥 Model locked to: ${this.config.preferredModel}`);
   }
 
   async canMakeCall(): Promise<{ allowed: boolean; reason?: string }> {
