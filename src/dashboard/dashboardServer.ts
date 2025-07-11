@@ -12,6 +12,7 @@ import OpenAI from 'openai';
 import { isBotDisabled, setBotDisabled } from '../utils/flagCheck';
 import { recordWrite } from '../utils/quotaGuard';
 import dotenv from 'dotenv';
+import { emergencyBudgetLockdown } from '../utils/emergencyBudgetLockdown';
 
 dotenv.config();
 
@@ -525,6 +526,9 @@ export class MasterControlDashboard {
 
   private async processAIQuery(message: string): Promise<string> {
     try {
+      // 🚨 EMERGENCY BUDGET CHECK FIRST - NO EXCEPTIONS
+      await emergencyBudgetLockdown.enforceBeforeAICall('dashboardAIQuery');
+      
       // Get current system context
       const systemStatus = await this.collectSystemStatus();
       const recentTweets = await supabaseClient.getRecentTweets(5) as DashboardTweet[];

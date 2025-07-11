@@ -96,10 +96,10 @@ export async function getAllConfig(): Promise<Record<string, any>> {
  */
 
 export const defaults = {
-  // 🚀 NUCLEAR MODE: Remove all artificial constraints
-  // Only real safety limit: 3 posts per hour maximum
-  maxPostsPerHour: 3,  // SAFETY NET: Prevent nuclear insanity
-  maxPostsPerDay: 72,  // 3/hour * 24 hours = reasonable maximum
+  // 🚨 UPDATED: SmartPostingOrchestrator now controls all posting decisions
+  // These are fallback values only - orchestrator is the authority
+  maxPostsPerHour: 1,  // SAFE: Maximum 1 post per hour (6 per day)
+  maxPostsPerDay: 6,   // CONTROLLED: 6 high-quality posts with perfect spacing
   
   // Remove all other artificial limits
   minInterval: 20, // 20 minutes minimum between posts (sensible spacing)
@@ -118,8 +118,8 @@ export const defaults = {
   emergencyMode: false,
   disableLearning: false,
   
-  // Budget: Reasonable but not restrictive
-  dailyBudgetLimit: 25, // Increased from $10 to $25 for more capability
+  // Budget: Strict cost control
+  dailyBudgetLimit: 3, // ENFORCED: $3.00/day maximum - down from $25
   
   // Startup throttling: REMOVED
   startupThrottling: false,

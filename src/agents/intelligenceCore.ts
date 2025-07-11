@@ -2,6 +2,7 @@ import { xClient } from '../utils/xClient';
 import OpenAI from 'openai';
 import fs from 'fs/promises';
 import path from 'path';
+import { emergencyBudgetLockdown } from '../utils/emergencyBudgetLockdown';
 
 interface MemoryEntry {
   timestamp: number;
@@ -109,6 +110,9 @@ export class AutonomousIntelligenceCore {
   }
 
   private async analyzeSituation(context: any): Promise<any> {
+    // 🚨 EMERGENCY BUDGET CHECK FIRST
+    await emergencyBudgetLockdown.enforceBeforeAICall('analyzeSituation');
+    
     const analysis = await this.openai.chat.completions.create({
       model: "gpt-4o-mini", // 🔥 COST OPTIMIZATION: GPT-4 → GPT-4o-mini (99.5% cost reduction)
       messages: [
@@ -175,6 +179,9 @@ export class AutonomousIntelligenceCore {
       return { wisdom: 'no_prior_experience', confidence: 0.1 };
     }
 
+    // 🚨 EMERGENCY BUDGET CHECK FIRST
+    await emergencyBudgetLockdown.enforceBeforeAICall('consultMemory');
+
     const memoryAnalysis = await this.openai.chat.completions.create({
       model: "gpt-4o-mini", // 🔥 COST OPTIMIZATION: GPT-4 → GPT-4o-mini (99.5% cost reduction)
       messages: [
@@ -197,6 +204,9 @@ export class AutonomousIntelligenceCore {
 
   private async synthesizeDecision(inputs: any): Promise<any> {
     console.log('⚡ Synthesizing autonomous decision...');
+    
+    // 🚨 EMERGENCY BUDGET CHECK FIRST
+    await emergencyBudgetLockdown.enforceBeforeAICall('synthesizeDecision');
     
     const decision = await this.openai.chat.completions.create({
       model: "gpt-4o-mini", // 🔥 COST OPTIMIZATION: GPT-4 → GPT-4o-mini (99.5% cost reduction)

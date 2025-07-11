@@ -2,10 +2,12 @@
 
 import express from 'express';
 import cors from 'cors';
+import { legendaryAICoordinator } from './utils/legendaryAICoordinator';
 import { bulletproofManager } from './utils/bulletproofOperationManager';
 import { autonomousIntelligenceCore } from './agents/autonomousIntelligenceCore';
-import { DynamicPostingController } from './utils/dynamicPostingController';
 import { ensureRuntimeConfig } from './utils/supabaseConfig';
+import { Scheduler } from './agents/scheduler';
+import { emergencyBudgetLockdown } from './utils/emergencyBudgetLockdown';
 
 // EMERGENCY IMPORTS
 import { startServerSingleton, getServerInstance, closeServer } from './utils/serverSingleton';
@@ -18,6 +20,27 @@ const app = express();
 // Enable CORS and JSON parsing
 app.use(cors());
 app.use(express.json());
+
+// Emergency budget status endpoint
+app.get('/budget-status', async (req, res) => {
+  try {
+    const budgetStatus = await emergencyBudgetLockdown.getStatusReport();
+    const lockdownStatus = await emergencyBudgetLockdown.isLockedDown();
+    
+    res.json({
+      status: lockdownStatus.lockdownActive ? 'LOCKDOWN_ACTIVE' : 'OPERATIONAL',
+      budget_report: budgetStatus,
+      lockdown_details: lockdownStatus,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'ERROR',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
 
 // Health check endpoint
 app.get('/health', async (req, res) => {
@@ -36,9 +59,12 @@ app.get('/health', async (req, res) => {
     }
 
     const health = await bulletproofManager.getSystemHealth();
+    const legendaryStatus = legendaryAICoordinator.getSystemStatus();
+    
     res.json({
       status: health.is_healthy ? 'healthy' : 'degraded',
       ...health,
+      legendary_ai: legendaryStatus,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
@@ -52,25 +78,42 @@ app.get('/health', async (req, res) => {
 
 // Dashboard endpoint
 app.get('/dashboard', (req, res) => {
+  const legendaryStatus = legendaryAICoordinator.getSystemStatus();
+  
   res.send(`
-    <h1>🧠 Bot Intelligence Dashboard</h1>
+    <h1>🏆 Legendary AI Coordination System Dashboard</h1>
     <p><strong>Emergency Mode:</strong> ${isEmergencyMode() ? 'ACTIVE' : 'INACTIVE'}</p>
-    <p><strong>Cost Protection:</strong> ${process.env.EMERGENCY_COST_MODE === 'true' ? 'ENABLED' : 'DISABLED'}</p>
-    <p><strong>Learning:</strong> ${process.env.DISABLE_LEARNING_AGENTS === 'true' ? 'DISABLED' : 'ENABLED'}</p>
+    <p><strong>Legendary AI:</strong> ${legendaryStatus.isRunning ? 'ACTIVE' : 'INACTIVE'}</p>
+    <p><strong>Posts Today:</strong> ${legendaryStatus.coordinationState.postsToday}/6</p>
+    <p><strong>Budget Remaining:</strong> $${legendaryStatus.coordinationState.budgetRemaining?.toFixed(2) || '0.00'}</p>
+    <p><strong>Burst Protection:</strong> ${legendaryStatus.coordinationState.burstProtectionActive ? 'ACTIVE' : 'INACTIVE'}</p>
+    <p><strong>Active AI Agent:</strong> ${legendaryStatus.coordinationState.activeAIAgent || 'None'}</p>
+    <p><strong>Current Strategy:</strong> ${legendaryStatus.coordinationState.currentStrategy || 'None'}</p>
+    <hr>
+    <h3>🧠 AI Agents Status</h3>
+    <ul>
+      <li>Supreme AI Orchestrator: ${legendaryStatus.aiAgents.supremeOrchestrator}</li>
+      <li>Intelligent Decision Agent: ${legendaryStatus.aiAgents.intelligentDecisionAgent}</li>
+      <li>Strategic Scheduler: ${legendaryStatus.aiAgents.strategicScheduler}</li>
+      <li>Timing Agent: ${legendaryStatus.aiAgents.timingAgent}</li>
+      <li>Limits Agent: ${legendaryStatus.aiAgents.limitsAgent}</li>
+      <li>Autonomous Core: ${legendaryStatus.aiAgents.autonomousCore}</li>
+    </ul>
+    <hr>
     <p><a href="/health">Health Check</a></p>
-    <p><a href="/force-post">Emergency Post</a></p>
+    <p><a href="/force-post">Manual Post</a></p>
   `);
 });
 
-// Emergency post endpoint
+// Manual post endpoint
 app.post('/force-post', async (req, res) => {
   try {
-    console.log('🚨 Emergency post triggered via API');
-    const result = await bulletproofManager.guaranteedPost();
+    console.log('🔧 Manual post triggered via API');
+    const result = await legendaryAICoordinator.manualPost('API trigger');
     res.json({
-      success: true,
-      result,
+      success: result.success,
       emergency_mode: isEmergencyMode(),
+      result: result,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
@@ -85,16 +128,20 @@ app.post('/force-post', async (req, res) => {
 // Catch-all for other routes
 app.use((req, res) => {
   if (req.url === '/') {
+    const legendaryStatus = legendaryAICoordinator.getSystemStatus();
     res.json({
-      status: 'Bot is running',
-      emergency_mode: isEmergencyMode(),
+      status: 'Legendary AI Coordination System running',
+      legendary_ai_active: legendaryStatus.isRunning,
+      burst_protection: true,
+      ai_agents_count: 6,
+      posts_today: legendaryStatus.coordinationState.postsToday,
+      max_posts: legendaryStatus.burstProtection.maxPostsPerDay,
       endpoints: ['/health', '/dashboard', '/force-post'],
       timestamp: new Date().toISOString()
     });
   } else {
     res.status(404).json({
       error: 'Not Found',
-      emergency_mode: isEmergencyMode(),
       timestamp: new Date().toISOString()
     });
   }
@@ -103,9 +150,14 @@ app.use((req, res) => {
 // 🚨 EMERGENCY SERVER STARTUP - SINGLETON ONLY
 const PORT = parseInt(process.env.PORT || '3000', 10);
 
-console.log('🛡️ Starting Bulletproof AI Bot with Guaranteed Operation...');
-console.log('👑 All posting decisions made by AI - no hardcoded limits!');
-console.log('🚨 GUARANTEE: Bot will NEVER stop working due to API limit confusion!');
+console.log('🏆 Starting Legendary AI Coordination System...');
+console.log('👑 SUPREME AI ORCHESTRATOR: Coordinating all decisions');
+console.log('🧠 INTELLIGENT AGENTS: Strategic timing and content optimization');
+console.log('🛡️ BURST PROTECTION: 2-hour minimum spacing, 6 posts maximum per day');
+console.log('🎯 STRATEGIC OPPORTUNITIES: Real-time trend and news detection');
+console.log('⏰ TIMING OPTIMIZATION: AI-powered optimal posting windows');
+console.log('💰 BUDGET AWARENESS: Integrated cost management across all agents');
+console.log('🚀 REAL-TIME LIMITS: Live API status monitoring');
 
 // 🚨 EMERGENCY MODE CHECK
 if (isEmergencyMode()) {
@@ -120,10 +172,31 @@ if (isEmergencyMode()) {
 }
 
 /**
- * 🧠 SUPREME AI SYSTEM WITH AUTONOMOUS INTELLIGENCE (EMERGENCY SAFE)
+ * 🏆 LEGENDARY AI COORDINATION SYSTEM
+ * 
+ * This system coordinates all your sophisticated AI agents:
+ * - SupremeAIOrchestrator: Master strategic intelligence
+ * - IntelligentPostingDecisionAgent: Smart timing decisions
+ * - StrategicOpportunityScheduler: Trend and news detection
+ * - TimingOptimizationAgent: Optimal posting windows
+ * - RealTimeLimitsIntelligenceAgent: Live API monitoring
+ * - AutonomousIntelligenceCore: Learning and adaptation
+ * 
+ * With legendary burst protection:
+ * - 2-hour minimum spacing between posts
+ * - Maximum 6 posts per day (professional limit)
+ * - Budget awareness across all decisions
+ * - Real-time burst pattern detection
  */
-async function runSupremeAISystem() {
-  console.log('🚀 === SUPREME AI SYSTEM STARTING ===');
+async function runLegendaryAISystem() {
+  console.log('🏆 === LEGENDARY AI COORDINATION SYSTEM STARTING ===');
+  console.log('👑 Supreme AI Orchestrator: LOADING');
+  console.log('🧠 Intelligent Decision Agent: LOADING');
+  console.log('🎯 Strategic Opportunity Scheduler: LOADING');
+  console.log('⏰ Timing Optimization Agent: LOADING');
+  console.log('🚀 Real-Time Limits Intelligence: LOADING');
+  console.log('🤖 Autonomous Intelligence Core: LOADING');
+  console.log('🛡️ Legendary Burst Protection: ACTIVATING');
   
   // 🚨 EMERGENCY MODE OVERRIDES
   if (isEmergencyMode()) {
@@ -156,104 +229,78 @@ async function runSupremeAISystem() {
     }
   }
 
-  // Normal operation (only if not in emergency mode)
-  console.log('🧠 Autonomous Intelligence: ENABLED');
-  console.log('🛡️ Bulletproof Operation: ENABLED');
-  console.log('📊 Dynamic Posting: ENABLED');
+  // Start the Legendary AI Coordination System
+  console.log('🏆 Initializing Legendary AI Coordination System...');
+  console.log('👑 All AI agents will be coordinated under supreme intelligence');
+  console.log('🛡️ Burst protection will prevent 16-tweet disasters');
+  console.log('🎯 Strategic opportunities will be detected in real-time');
+  console.log('⏰ Optimal timing will be calculated dynamically');
+  console.log('💰 Budget management integrated across all decisions');
   console.log('');
 
-  // Get current consciousness level
-  const consciousnessLevel = autonomousIntelligenceCore.getConsciousnessLevel();
-  console.log(`🧠 Current Consciousness Level: ${consciousnessLevel.toFixed(1)}/100`);
+  // Start the Legendary AI Coordinator
+  try {
+    await legendaryAICoordinator.start();
+    console.log('✅ Legendary AI Coordination System started successfully');
+  } catch (error) {
+    console.error('❌ Failed to start Legendary AI Coordination System:', error);
+    throw error;
+  }
   
-  // Get knowledge summary
-  const knowledge = autonomousIntelligenceCore.getKnowledgeSummary();
-  console.log(`📚 Knowledge Base: ${knowledge.size} insight sets`);
-  
-  if (knowledge.latestInsights.length > 0) {
-    console.log('🔍 Latest Insights:');
-    knowledge.latestInsights.slice(0, 3).forEach((insight, i) => {
-      console.log(`   ${i+1}. ${insight.substring(0, 100)}...`);
-    });
+  // Also start the scheduler for background learning agents
+  console.log('📅 Starting background AI agent scheduler...');
+  try {
+    const scheduler = new Scheduler();
+    await scheduler.start();
+    console.log('✅ Background AI scheduler started successfully');
+  } catch (error) {
+    console.warn('⚠️ Background scheduler had issues:', error);
   }
   console.log('');
 
+  // Legendary monitoring loop - let the coordinator handle everything
   while (true) {
     try {
-      // 🚨 LEARNING RATE LIMIT CHECK
-      if (!emergencyLearningLimiter.canPerformLearning()) {
-        console.log('🚨 Learning rate limit reached, skipping AI decision cycle');
-        await new Promise(resolve => setTimeout(resolve, 60 * 60 * 1000)); // 1 hour
-        continue;
-      }
-
-      console.log('🧠 === AUTONOMOUS AI DECISION CYCLE ===');
+      console.log('🏆 === LEGENDARY AI SYSTEM HEALTH CHECK ===');
       
-      // Record learning call
-      emergencyLearningLimiter.recordLearningCall();
+      // Check legendary coordinator status
+      const coordinatorStatus = legendaryAICoordinator.getSystemStatus();
+      console.log(`👑 Legendary AI: ${coordinatorStatus.isRunning ? 'ACTIVE' : 'INACTIVE'}`);
+      console.log(`📊 Posts today: ${coordinatorStatus.coordinationState.postsToday}/6`);
+      console.log(`💰 Budget remaining: $${coordinatorStatus.coordinationState.budgetRemaining?.toFixed(2) || '0.00'}`);
+      console.log(`🛡️ Burst protection: ${coordinatorStatus.coordinationState.burstProtectionActive ? 'ACTIVE' : 'INACTIVE'}`);
       
-      // 1. Let the autonomous intelligence make the primary decision
-      const aiDecision = await autonomousIntelligenceCore.makeAutonomousDecision(
-        'Should we post content now based on current conditions?',
-        ['post_now', 'wait_for_better_timing', 'analyze_more_data', 'emergency_post']
-      );
-      
-      console.log(`🧠 AI DECISION: ${aiDecision.decision}`);
-      console.log(`💭 AI REASONING: ${aiDecision.reasoning}`);
-      
-      // 2. Enhanced decision making based on AI choice
-      if (aiDecision.decision.includes('post') || aiDecision.decision === 'emergency_post') {
-        
-        // Use dynamic posting controller for intelligent posting decisions
-        const dynamicController = new DynamicPostingController();
-        const postingDecision = await dynamicController.shouldPost();
-        
-        if (postingDecision.shouldPost) {
-          console.log(`🎯 POSTING APPROVED: ${postingDecision.reason}`);
-          console.log(`📊 STRATEGY: ${postingDecision.strategy}`);
-          
-          // Execute bulletproof posting
-          const result = await bulletproofManager.guaranteedPost();
-          
-          if (result.success) {
-            console.log(`✅ POST SUCCESSFUL: ${result.method_used} - ${result.posted_content?.substring(0, 100)}...`);
-          } else {
-            console.log(`❌ POST FAILED: ${result.warnings.join(', ')}`);
-          }
-          
-        } else {
-          console.log(`⏳ POSTING DELAYED: ${postingDecision.reason}`);
-        }
-        
-      } else if (aiDecision.decision === 'analyze_more_data') {
-        console.log('🔍 AI DECISION: Gathering more intelligence before posting...');
-        
-      } else {
-        console.log('⏳ AI DECISION: Waiting for optimal conditions...');
-      }
-      
-      // 3. Bulletproof health monitoring (every cycle)
+      // Check bulletproof system health as backup
       const healthStatus = await bulletproofManager.getSystemHealth();
-      console.log(`🛡️ System Health: ${healthStatus.is_healthy ? 'HEALTHY' : 'NEEDS ATTENTION'}`);
+      console.log(`🛡️ Bulletproof backup: ${healthStatus.is_healthy ? 'HEALTHY' : 'NEEDS ATTENTION'}`);
       
-      // 4. Sleep with intelligent timing (EMERGENCY EXTENDED)
-      const sleepDuration = emergencyLearningLimiter.isEmergencyMode() ? 
-        60 * 60 * 1000 : // 1 hour in emergency mode
-        consciousnessLevel > 50 ? 
-          15 * 60 * 1000 : // 15 minutes for high consciousness
-          30 * 60 * 1000;  // 30 minutes for lower consciousness
+      if (!coordinatorStatus.isRunning) {
+        console.log('⚠️ Legendary coordinator is not running - restarting...');
+        await legendaryAICoordinator.start();
+      }
       
-      console.log(`😴 Sleeping for ${sleepDuration / 60000} minutes (consciousness-adjusted)...`);
+      // The legendary coordinator handles all AI decisions automatically
+      // We just need to monitor and ensure it stays healthy
+      
+      console.log('😴 Legendary monitoring sleep for 30 minutes...');
+      console.log('🏆 All AI agents continue coordinated operation in background');
       console.log('');
       
-      await new Promise(resolve => setTimeout(resolve, sleepDuration));
+      await new Promise(resolve => setTimeout(resolve, 30 * 60 * 1000)); // 30 minutes
       
     } catch (error) {
-      console.error('❌ Supreme AI System error:', error);
+      console.error('❌ Legendary monitoring loop error:', error);
       
       // Emergency fallback
       console.log('🚨 EMERGENCY FALLBACK: Activating bulletproof posting...');
       await bulletproofManager.guaranteedPost();
+      
+      // Try to restart legendary coordinator
+      try {
+        await legendaryAICoordinator.start();
+      } catch (restartError) {
+        console.error('❌ Could not restart legendary coordinator:', restartError);
+      }
       
       // Wait before retrying
       await new Promise(resolve => setTimeout(resolve, 5 * 60 * 1000));
@@ -262,6 +309,26 @@ async function runSupremeAISystem() {
 }
 
 async function main() {
+  console.log('🚀 === SNAP2HEALTH X-BOT MAIN STARTING ===');
+  
+  // 🚨 EMERGENCY BUDGET CHECK AT STARTUP
+  console.log('💰 === CHECKING EMERGENCY BUDGET STATUS ===');
+  try {
+    const budgetStatus = await emergencyBudgetLockdown.getStatusReport();
+    console.log(budgetStatus);
+    
+    const lockdownStatus = await emergencyBudgetLockdown.isLockedDown();
+    if (lockdownStatus.lockdownActive) {
+      console.error('🚨 CRITICAL: BUDGET LOCKDOWN ACTIVE - NO AI OPERATIONS WILL RUN');
+      console.error('🚨 System will only provide basic health checks until tomorrow');
+    } else {
+      console.log('✅ Budget system operational - AI operations allowed');
+    }
+  } catch (error) {
+    console.error('❌ Budget status check failed:', error);
+  }
+  console.log('');
+
   try {
     // Ensure runtime configuration is set up
     await ensureRuntimeConfig();
@@ -270,26 +337,26 @@ async function main() {
     console.log('🔧 Starting server with singleton pattern...');
     await startServerSingleton(app, PORT);
     
-    // Start bulletproof continuous monitoring
+    // Start bulletproof continuous monitoring as backup
     await bulletproofManager.startContinuousMonitoring();
-    console.log('🛡️ Bulletproof continuous monitoring started');
+    console.log('🛡️ Bulletproof continuous monitoring started as backup');
     
-    // Start the Supreme AI System with Autonomous Intelligence
-    console.log('🚀 Starting Supreme AI System with Autonomous Intelligence...');
-    await runSupremeAISystem();
+    // Start the Legendary AI Coordination System
+    console.log('🏆 Starting Legendary AI Coordination System...');
+    await runLegendaryAISystem();
     
   } catch (error) {
     console.error('❌ Fatal error in main:', error);
     
     // Emergency fallback - keep the system running
-    console.log('🚨 EMERGENCY MODE: Keeping system alive...');
+    console.log('🚨 EMERGENCY MODE: Keeping system alive with bulletproof posting...');
     setInterval(async () => {
       try {
         await bulletproofManager.guaranteedPost();
       } catch (fallbackError) {
         console.error('❌ Emergency fallback error:', fallbackError);
       }
-    }, 60 * 60 * 1000); // Every hour
+    }, 2 * 60 * 60 * 1000); // Every 2 hours - respecting burst protection
   }
 }
 
@@ -302,12 +369,14 @@ main().catch((error) => {
 // Handle uncaught exceptions
 process.on('uncaughtException', (error) => {
   console.error('💥 Uncaught exception:', error);
+  legendaryAICoordinator.stop(); // Clean shutdown
   closeServer(); // Clean shutdown
   process.exit(1);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
   console.error('💥 Unhandled rejection at:', promise, 'reason:', reason);
+  legendaryAICoordinator.stop(); // Clean shutdown
   closeServer(); // Clean shutdown
   process.exit(1);
 });
@@ -315,12 +384,14 @@ process.on('unhandledRejection', (reason, promise) => {
 // Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('🛑 SIGTERM received, shutting down gracefully...');
+  legendaryAICoordinator.stop();
   closeServer();
   process.exit(0);
 });
 
 process.on('SIGINT', () => {
   console.log('🛑 SIGINT received, shutting down gracefully...');
+  legendaryAICoordinator.stop();
   closeServer();
   process.exit(0);
 }); 

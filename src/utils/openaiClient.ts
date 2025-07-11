@@ -4,6 +4,8 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { supabaseClient } from './supabaseClient';
 import { rateLimitManager } from './intelligentRateLimitManager';
+import { dailyBudgetAccounting } from './dailyBudgetAccounting';
+import { emergencyBudgetLockdown } from './emergencyBudgetLockdown';
 
 dotenv.config();
 
@@ -31,6 +33,9 @@ export interface CostOptimizationConfig {
   maxTokensPerCall: number;
   maxCallsPerHour: number;
   emergencyMode: boolean; // New emergency mode flag
+  burstProtection: boolean; // Prevent API call bursts
+  minCallInterval: number; // Minimum seconds between calls
+  emergencyBrakeThreshold: number; // Stop spending at this threshold
 }
 
 export class OpenAIService {
@@ -49,6 +54,9 @@ export class OpenAIService {
     temperature?: number;
     model?: string;
   }): Promise<string> {
+    // 🚨 EMERGENCY BUDGET CHECK FIRST
+    await emergencyBudgetLockdown.enforceBeforeAICall('generateContent');
+    
     try {
       return await this.generateCompletion(options.prompt, {
         maxTokens: options.maxTokens,
@@ -62,6 +70,9 @@ export class OpenAIService {
   }
 
   async generateTweet(contextOrOptions?: string | TweetGenerationOptions, contentType?: string): Promise<string> {
+    // 🚨 EMERGENCY BUDGET CHECK FIRST
+    await emergencyBudgetLockdown.enforceBeforeAICall('generateTweet');
+    
     try {
       // Handle both old string parameter and new options object
       let context: string | undefined;
@@ -134,6 +145,9 @@ Generate a single, engaging health tech tweet that follows the viral guidelines 
       model?: string;
     } = {}
   ): Promise<string | null> {
+    // 🚨 EMERGENCY BUDGET CHECK FIRST - NO EXCEPTIONS
+    await emergencyBudgetLockdown.enforceBeforeAICall('generateCompletion');
+    
     // 🧠 Check intelligent rate limit manager first
     const rateLimitStatus = await rateLimitManager.canMakeCall('openai', 'chat');
     
@@ -143,13 +157,30 @@ Generate a single, engaging health tech tweet that follows the viral guidelines 
       return null;
     }
 
+    // 🏦 CHECK DAILY BUDGET BEFORE MAKING CALL
+    const model = options.model || 'gpt-4o-mini'; // Default to cheaper model
+    const maxTokens = options.maxTokens || 200; // Reduced default
+    
+    const budgetCheck = await dailyBudgetAccounting.canAffordOperation(
+      'content_generation',
+      maxTokens,
+      model
+    );
+
+    if (!budgetCheck.canAfford) {
+      console.warn(`💰 BUDGET LIMIT: ${budgetCheck.recommendation}`);
+      return null;
+    }
+
+    // Get optimal token limit based on remaining budget
+    const optimalTokens = await dailyBudgetAccounting.getOptimalTokenLimit('content_generation');
+    const finalTokens = Math.min(maxTokens, optimalTokens);
+
     try {
-      // 🧠 INTELLIGENCE UPGRADE: Use GPT-4 for superior reasoning
-      const model = options.model || 'gpt-4'; // Upgraded from gpt-4o-mini
-      const maxTokens = options.maxTokens || 400; // Increased for better content
+      // Use budget-optimized settings
       const temperature = options.temperature || 0.8;
 
-      console.log(`🧠 Generating content with ${model} (${maxTokens} tokens, temp: ${temperature})`);
+      console.log(`🧠 Generating content with ${model} (${finalTokens} tokens, temp: ${temperature}) - Budget: $${budgetCheck.remainingBudget.toFixed(4)} remaining`);
 
       const completion = await this.client.chat.completions.create({
         model,
@@ -163,7 +194,7 @@ Generate a single, engaging health tech tweet that follows the viral guidelines 
             content: prompt
           }
         ],
-        max_tokens: maxTokens,
+        max_tokens: finalTokens,
         temperature,
         presence_penalty: 0.1,
         frequency_penalty: 0.1
@@ -172,7 +203,16 @@ Generate a single, engaging health tech tweet that follows the viral guidelines 
       const content = completion.choices[0]?.message?.content;
       
       if (content) {
-        console.log(`✅ Generated ${content.length} characters with ${model}`);
+        // 🏦 RECORD BUDGET TRANSACTION
+        const actualTokens = completion.usage?.total_tokens || finalTokens;
+        const transaction = await dailyBudgetAccounting.recordTransaction(
+          'content_generation',
+          model,
+          actualTokens,
+          `Generated ${content.length} chars: "${content.substring(0, 50)}..."`
+        );
+
+        console.log(`✅ Generated ${content.length} characters with ${model} | Cost: $${transaction.cost.toFixed(6)} | Remaining: $${transaction.remainingBudget.toFixed(4)}`);
         
         // 🧠 Report successful call to rate limit manager
         await rateLimitManager.handleSuccessfulCall('openai', 'chat');
@@ -574,17 +614,18 @@ export class CostOptimizer {
   private callHistory: Array<{timestamp: number, cost: number, model: string, tokens: number}> = [];
   
   constructor(config: Partial<CostOptimizationConfig> = {}) {
-    const emergencyMode = true; // 🚨 FORCE ULTRA-EMERGENCY MODE
-    const ultraLowCost = true; // 🔥 ULTRA-AGGRESSIVE COST MODE ENABLED
-    
+    // 🚨 ULTRA-COST PROTECTION - Updated to $3.00/day limit
     this.config = {
-      dailyBudgetLimit: 1.00, // 🚨 EMERGENCY: Max $1/day budget
+      dailyBudgetLimit: 3.00,           // ENFORCED: $3.00/day maximum
       enableCostTracking: true,
-      preferredModel: 'gpt-3.5-turbo', // 🚨 CHEAPEST MODEL ONLY
-      fallbackModel: 'gpt-3.5-turbo',  // 🚨 NO EXPENSIVE FALLBACKS
-      maxTokensPerCall: 75, // 🚨 ULTRA-REDUCED: Max 75 tokens per call
-      maxCallsPerHour: 3,   // 🚨 ULTRA-REDUCED: Max 3 calls per hour
+      preferredModel: 'gpt-4o-mini',    // 99.5% cheaper than GPT-4 but high quality
+      fallbackModel: 'gpt-3.5-turbo',  // Cheap fallback
+      maxTokensPerCall: 100,            // Reduced from 150 to 100 for cost savings
+      maxCallsPerHour: 4,               // Reduced from 6 to 4 for cost control
       emergencyMode: true,
+      burstProtection: true,            // Prevent call bursts
+      minCallInterval: 900,             // 15 minutes between calls (increased from 7.5)
+      emergencyBrakeThreshold: 2.50,   // Stop at $2.50/day (83% of budget)
       ...config
     };
 
