@@ -1,562 +1,406 @@
 /**
- * 🚀 STREAMLINED POST AGENT
+ * 🚀 STREAMLINED POST AGENT - VIRAL HEALTH THEME PAGE
  * 
- * Clean, focused posting agent that replaces the 4,497-line monolith.
- * Follows single responsibility principle with clear separation of concerns.
+ * Optimized for viral content and massive audience growth.
+ * Focus: Health theme page that builds followers through engaging content.
  * 
  * Features:
- * - Focused posting logic only
- * - Integrated quality assurance
- * - Budget-aware operations
- * - Performance tracking
- * - Modular content generation
+ * - Viral health content generation
+ * - Audience engagement optimization  
+ * - Follower growth tactics
+ * - Content variety and consistency
+ * - Maximum shareability
  */
 
-import { unifiedBudget, type OperationCost } from '../utils/unifiedBudgetManager';
+import { unifiedBudget } from '../utils/unifiedBudgetManager';
 import { twitterRateLimits } from '../utils/twitterRateLimits';
-import { qualityEngine, type ContentAnalysis } from '../utils/contentQualityEngine';
-import { engagementTracker } from '../utils/engagementGrowthTracker';
-import { xClient } from '../utils/xClient';
+import { qualityEngine } from '../utils/contentQualityEngine';
+import { smartContentEngine } from '../utils/smartContentEngine';
+import { viralHealthThemeAgent } from './viralHealthThemeAgent';
+import { audienceEngagementEngine } from '../utils/audienceEngagementEngine';
 import { supabaseClient } from '../utils/supabaseClient';
+import { xClient } from '../utils/xClient';
 
-export interface PostRequest {
-  content?: string;
-  contentType?: string;
-  forcePost?: boolean;
-  includeImage?: boolean;
-  priority?: 'critical' | 'important' | 'optional';
-}
-
-export interface PostResult {
+export interface StreamlinedPostResult {
   success: boolean;
-  tweetId?: string;
   content?: string;
-  qualityScore?: number;
-  error?: string;
-  budgetUsed?: number;
-  rateLimitStatus?: any;
-  improvements?: string[];
-}
-
-export interface ContentStrategy {
-  type: 'research_insight' | 'breaking_news' | 'analysis' | 'expert_opinion' | 'trend_discussion';
-  urgency: number; // 0-1
-  expectedEngagement: number; // 0-1
-  budgetRequirement: number; // USD
+  postId?: string;
+  contentType?: string;
+  engagementStrategy?: string;
+  expectedEngagement?: string;
+  reason?: string;
+  cost?: number;
 }
 
 export class StreamlinedPostAgent {
-  private static instance: StreamlinedPostAgent;
-  
-  // Content generation strategies ordered by effectiveness
-  private static readonly CONTENT_STRATEGIES: ContentStrategy[] = [
-    {
-      type: 'research_insight',
-      urgency: 0.8,
-      expectedEngagement: 0.75,
-      budgetRequirement: 0.12
-    },
-    {
-      type: 'breaking_news',
-      urgency: 0.9,
-      expectedEngagement: 0.8,
-      budgetRequirement: 0.15
-    },
-    {
-      type: 'expert_opinion',
-      urgency: 0.6,
-      expectedEngagement: 0.7,
-      budgetRequirement: 0.10
-    },
-    {
-      type: 'analysis',
-      urgency: 0.5,
-      expectedEngagement: 0.65,
-      budgetRequirement: 0.08
-    },
-    {
-      type: 'trend_discussion',
-      urgency: 0.7,
-      expectedEngagement: 0.6,
-      budgetRequirement: 0.06
-    }
-  ];
-
-  static getInstance(): StreamlinedPostAgent {
-    if (!StreamlinedPostAgent.instance) {
-      StreamlinedPostAgent.instance = new StreamlinedPostAgent();
-    }
-    return StreamlinedPostAgent.instance;
-  }
-
   /**
-   * 🎯 MAIN POSTING METHOD
+   * 🎯 MAIN POSTING EXECUTION
    */
-  async createPost(request: PostRequest = {}): Promise<PostResult> {
-    console.log('🚀 === STREAMLINED POST CREATION ===');
+  async run(forcePost: boolean = false): Promise<StreamlinedPostResult> {
+    console.log('🚀 === VIRAL HEALTH THEME PAGE - STREAMLINED POST AGENT ===');
     
     try {
       // 1. Pre-flight checks
-      const preflightResult = await this.runPreflightChecks(request);
-      if (!preflightResult.canProceed) {
-        return {
-          success: false,
-          error: preflightResult.reason,
-          rateLimitStatus: preflightResult.rateLimitStatus
-        };
+      const canPost = await this.performPreflightChecks(forcePost);
+      if (!canPost.allowed) {
+        return { success: false, reason: canPost.reason };
       }
 
-      // 2. Generate or validate content
-      const contentResult = await this.getOrGenerateContent(request);
-      if (!contentResult.success) {
-        return {
-          success: false,
-          error: contentResult.error,
-          budgetUsed: contentResult.budgetUsed
-        };
+      // 2. Generate viral health content
+      const viralContent = await viralHealthThemeAgent.generateViralHealthContent();
+      console.log(`🎯 Generated ${viralContent.contentType} content targeting ${viralContent.audienceTarget} audience`);
+
+      // 3. Get engagement strategy
+      const engagementStrategy = await audienceEngagementEngine.getViralEngagementStrategy();
+      console.log(`📈 Using ${engagementStrategy.contentFormat} format with ${engagementStrategy.followerGrowthPotential} viral potential`);
+
+      // 4. Optimize content for engagement
+      const optimizedContent = await this.optimizeForEngagement(viralContent, engagementStrategy);
+
+      // 5. Quality assurance
+      const qualityCheck = await qualityEngine.analyzeContent(optimizedContent);
+      if (!qualityCheck.overall.passed) {
+        console.log(`❌ Quality check failed: ${qualityCheck.overall.issues.join(', ')}`);
+        return { success: false, reason: `Quality check failed: ${qualityCheck.overall.issues.join(', ')}` };
       }
 
-      // 3. Quality assurance
-      const qualityResult = await this.ensureContentQuality(contentResult.content!, request.contentType);
-      if (!qualityResult.success) {
-        return {
-          success: false,
-          error: `Quality check failed: ${qualityResult.error}`,
-          qualityScore: qualityResult.qualityScore,
-          improvements: qualityResult.improvements
-        };
-      }
-
-      // 4. Post to Twitter
-      const postResult = await this.postToTwitter(qualityResult.content!, request);
+      // 6. Post to Twitter
+      const postResult = await this.postToTwitter(optimizedContent);
       if (!postResult.success) {
-        return {
-          success: false,
-          error: postResult.error,
-          budgetUsed: (contentResult.budgetUsed || 0) + (qualityResult.budgetUsed || 0)
-        };
+        return { success: false, reason: postResult.reason };
       }
 
-      // 5. Track performance
-      await this.trackPostPerformance(postResult.tweetId!, qualityResult.content!, request.contentType || 'general');
+      // 7. Track performance
+      await this.trackViralPerformance(postResult.postId!, viralContent, engagementStrategy);
+
+      console.log(`✅ VIRAL HEALTH POST SUCCESSFUL!`);
+      console.log(`📊 Content Type: ${viralContent.contentType}`);
+      console.log(`🎯 Expected Engagement: ${viralContent.expectedEngagement}`);
+      console.log(`📈 Growth Potential: ${engagementStrategy.followerGrowthPotential}`);
 
       return {
         success: true,
-        tweetId: postResult.tweetId,
-        content: qualityResult.content,
-        qualityScore: qualityResult.qualityScore,
-        budgetUsed: (contentResult.budgetUsed || 0) + (qualityResult.budgetUsed || 0),
-        improvements: qualityResult.improvements
+        content: optimizedContent,
+        postId: postResult.postId,
+        contentType: viralContent.contentType,
+        engagementStrategy: engagementStrategy.contentFormat,
+        expectedEngagement: viralContent.expectedEngagement,
+        cost: postResult.cost || 0
       };
 
     } catch (error) {
-      console.error('❌ Post creation failed:', error);
-      return {
-        success: false,
-        error: `System error: ${error.message}`
+      console.error('❌ Streamlined posting failed:', error);
+      return { 
+        success: false, 
+        reason: `Posting failed: ${error.message}`,
+        cost: 0 
       };
     }
   }
 
   /**
-   * 🔍 PRE-FLIGHT CHECKS
+   * ✅ PREFLIGHT CHECKS
    */
-  private async runPreflightChecks(request: PostRequest): Promise<{
-    canProceed: boolean;
-    reason?: string;
-    rateLimitStatus?: any;
-  }> {
-    console.log('🔍 Running pre-flight checks...');
-
-    // Check rate limits
-    const rateLimitStatus = await twitterRateLimits.canPost();
-    if (!rateLimitStatus.canPost) {
-      return {
-        canProceed: false,
-        reason: `Rate limited: ${rateLimitStatus.reason}`,
-        rateLimitStatus
-      };
-    }
-
-    // Check budget availability
-    const estimatedBudget = this.estimatePostBudget(request);
-    const budgetStatus = await unifiedBudget.getBudgetStatus();
-    
-    if (budgetStatus.remainingBudget < estimatedBudget && !request.forcePost) {
-      return {
-        canProceed: false,
-        reason: `Insufficient budget: need $${estimatedBudget.toFixed(4)}, have $${budgetStatus.remainingBudget.toFixed(4)}`
-      };
-    }
-
-    // Emergency lockdown check
-    if (budgetStatus.isLocked && !request.forcePost) {
-      return {
-        canProceed: false,
-        reason: 'Emergency budget lockdown active'
-      };
-    }
-
-    console.log('✅ Pre-flight checks passed');
-    return { canProceed: true };
-  }
-
-  /**
-   * 📝 CONTENT GENERATION
-   */
-  private async getOrGenerateContent(request: PostRequest): Promise<{
-    success: boolean;
-    content?: string;
-    error?: string;
-    budgetUsed?: number;
-  }> {
-    // If content provided, validate and return
-    if (request.content) {
-      console.log('📝 Using provided content');
-      return {
-        success: true,
-        content: request.content,
-        budgetUsed: 0
-      };
-    }
-
-    // Generate content based on strategy
-    console.log('🎨 Generating new content...');
-    return await this.generateStrategicContent(request);
-  }
-
-  /**
-   * 🎨 STRATEGIC CONTENT GENERATION
-   */
-  private async generateStrategicContent(request: PostRequest): Promise<{
-    success: boolean;
-    content?: string;
-    error?: string;
-    budgetUsed?: number;
-  }> {
-    const contentType = request.contentType || 'research_insight';
-    
-    // Find the strategy for this content type
-    const strategy = StreamlinedPostAgent.CONTENT_STRATEGIES.find(s => s.type === contentType) ||
-                    StreamlinedPostAgent.CONTENT_STRATEGIES[0];
-
-    const operationCost: OperationCost = {
-      type: 'content_generation',
-      estimatedCost: strategy.budgetRequirement,
-      priority: request.priority || 'important',
-      fallbackAvailable: true
-    };
-
-    const budgetCheck = await unifiedBudget.canAfford(operationCost);
-    if (!budgetCheck.approved) {
-      console.log('💡 Using fallback content due to budget constraints');
-      return this.generateFallbackContent(strategy.type);
-    }
-
+  private async performPreflightChecks(forcePost: boolean): Promise<{ allowed: boolean; reason?: string }> {
     try {
-      const content = await this.generateContentByType(strategy.type);
-      
-      if (content) {
-        await unifiedBudget.recordSpending(operationCost, strategy.budgetRequirement);
-        return {
-          success: true,
-          content,
-          budgetUsed: strategy.budgetRequirement
-        };
-      } else {
-        return this.generateFallbackContent(strategy.type);
+      // Budget check
+      const budgetStatus = await unifiedBudget.canAfford({
+        type: 'content_generation',
+        estimatedCost: 0.50,
+        priority: 'critical',
+        fallbackAvailable: true
+      });
+      if (!budgetStatus.approved) {
+        return { allowed: false, reason: `Budget limit: ${budgetStatus.reason}` };
       }
 
-    } catch (error) {
-      console.error('❌ Content generation failed:', error);
-      return this.generateFallbackContent(strategy.type);
-    }
-  }
+      // Rate limit check
+      const rateLimitStatus = await twitterRateLimits.canPost();
+      if (!rateLimitStatus.canPost && !forcePost) {
+        return { allowed: false, reason: `Rate limit: ${rateLimitStatus.reason}` };
+      }
 
-  /**
-   * 🏭 CONTENT GENERATION BY TYPE
-   */
-  private async generateContentByType(type: string): Promise<string | null> {
-    const templates = {
-      research_insight: [
-        "New study in {journal} reveals: {finding}. Analysis of {sample_size} participants shows {result}.",
-        "Research breakthrough: {discovery} could transform {field}. Published in {source}.",
-        "Data analysis reveals: {insight}. This changes how we think about {domain}."
-      ],
-      breaking_news: [
-        "Breaking: {headline}. {institution} announces {development}.",
-        "Just announced: {news}. Industry implications: {impact}.",
-        "Update: {event} shows {outcome}. Expert analysis: {insight}."
-      ],
-      expert_opinion: [
-        "Industry perspective: {opinion} based on {experience}. Key insight: {takeaway}.",
-        "Expert analysis: {assessment}. Having worked with {context}, I see {trend}.",
-        "Professional take: {viewpoint}. The data suggests {conclusion}."
-      ],
-      analysis: [
-        "Deep dive: {topic} analysis reveals {pattern}. Key factors: {elements}.",
-        "Trend analysis: {observation} across {timeframe}. Implications: {meaning}.",
-        "Data breakdown: {statistics} show {trend}. What it means: {interpretation}."
-      ],
-      trend_discussion: [
-        "Trending: {topic} gaining momentum. Why this matters: {significance}.",
-        "Hot topic: {discussion} in {field}. Community insights: {perspective}.",
-        "Current focus: {trend} driving {change}. Industry response: {reaction}."
-      ]
-    };
+      // Daily posting check (theme pages post 3-6 times per day)
+      const dailyCount = await this.getDailyPostCount();
+      if (dailyCount >= 6 && !forcePost) {
+        return { allowed: false, reason: 'Daily limit of 6 viral posts reached (theme page optimization)' };
+      }
 
-    const typeTemplates = templates[type] || templates.research_insight;
-    const template = typeTemplates[Math.floor(Math.random() * typeTemplates.length)];
-
-    // In a real implementation, this would use AI to fill in the template
-    // For now, return a placeholder
-    return this.fillTemplate(template, type);
-  }
-
-  /**
-   * 🛡️ FALLBACK CONTENT GENERATION
-   */
-  private async generateFallbackContent(type: string): Promise<{
-    success: boolean;
-    content?: string;
-    error?: string;
-    budgetUsed?: number;
-  }> {
-    const fallbackTemplates = {
-      research_insight: [
-        "Latest healthcare AI research shows promising results in diagnostic accuracy. Early studies indicate 15% improvement over traditional methods.",
-        "New telemedicine adoption data reveals 78% patient satisfaction in rural areas. Digital health equity remains key focus.",
-        "Precision medicine advances continue with personalized treatment protocols showing 25% better outcomes."
-      ],
-      breaking_news: [
-        "FDA announces new guidelines for digital health platforms. Implementation begins Q2 2024.",
-        "Major healthcare system adopts AI-powered diagnostic tools across 50+ facilities.",
-        "Healthcare funding reaches $12B this quarter, with 60% going to preventive care technologies."
-      ],
-      expert_opinion: [
-        "Healthcare transformation accelerates as AI integration becomes standard practice. The focus shifts from adoption to optimization.",
-        "Industry analysis: Remote patient monitoring grows 200% annually. Quality care delivery evolves with technology.",
-        "Expert insight: Healthcare data interoperability remains the biggest challenge for seamless patient care."
-      ]
-    };
-
-    const templates = fallbackTemplates[type] || fallbackTemplates.research_insight;
-    const content = templates[Math.floor(Math.random() * templates.length)];
-
-    return {
-      success: true,
-      content,
-      budgetUsed: 0
-    };
-  }
-
-  /**
-   * ✨ QUALITY ASSURANCE
-   */
-  private async ensureContentQuality(content: string, contentType?: string): Promise<{
-    success: boolean;
-    content?: string;
-    qualityScore?: number;
-    error?: string;
-    improvements?: string[];
-    budgetUsed?: number;
-  }> {
-    console.log('✨ Ensuring content quality...');
-
-    const analysis = await qualityEngine.analyzeContent(content, contentType || 'general');
-    
-    if (!analysis.overall.passed) {
-      // Try to improve the content
-      const improvement = await qualityEngine.improveContent(content, analysis);
-      
-      if (improvement && improvement.quality_gain > 5) {
-        const newAnalysis = await qualityEngine.analyzeContent(improvement.improved, contentType);
-        
-        if (newAnalysis.overall.passed) {
-          return {
-            success: true,
-            content: improvement.improved,
-            qualityScore: newAnalysis.overall.score,
-            improvements: improvement.improvements_made,
-            budgetUsed: 0.008 // Cost of improvement
-          };
+      // Spacing check (minimum 2 hours between posts for theme pages)
+      const lastPostTime = await this.getLastPostTime();
+      if (lastPostTime) {
+        const hoursSinceLastPost = (Date.now() - lastPostTime.getTime()) / (1000 * 60 * 60);
+        if (hoursSinceLastPost < 2 && !forcePost) {
+          return { allowed: false, reason: `Spacing: ${(2 - hoursSinceLastPost).toFixed(1)} hours until next post` };
         }
       }
-      
-      return {
-        success: false,
-        error: `Quality score too low: ${analysis.overall.score}/100`,
-        qualityScore: analysis.overall.score,
-        improvements: analysis.overall.improvements
-      };
+
+      return { allowed: true };
+
+    } catch (error) {
+      console.error('❌ Preflight check error:', error);
+      return { allowed: false, reason: 'System error during preflight checks' };
+    }
+  }
+
+  /**
+   * 🔥 OPTIMIZE FOR ENGAGEMENT
+   */
+  private async optimizeForEngagement(
+    viralContent: any, 
+    engagementStrategy: any
+  ): Promise<string> {
+    let content = viralContent.content;
+
+    // Add viral hooks if content doesn't have them
+    if (!this.hasViralHook(content)) {
+      const hooks = audienceEngagementEngine.getViralContentHooks();
+      const randomHook = hooks[Math.floor(Math.random() * hooks.length)];
+      content = `${randomHook}\n\n${content}`;
     }
 
-    return {
-      success: true,
-      content,
-      qualityScore: analysis.overall.score,
-      budgetUsed: 0
-    };
+    // Add engagement call-to-action
+    const cta = audienceEngagementEngine.generateCallToAction(
+      viralContent.contentType, 
+      viralContent.expectedEngagement
+    );
+    
+    // Add hashtags optimized for viral reach
+    const viralHashtags = audienceEngagementEngine.getViralHashtags(viralContent.contentType);
+    const hashtagString = viralHashtags.slice(0, 5).join(' ');
+
+    // Ensure content is within Twitter limits
+    const maxLength = 280 - hashtagString.length - cta.length - 10; // Buffer for spacing
+    if (content.length > maxLength) {
+      content = content.substring(0, maxLength - 3) + '...';
+    }
+
+    // Combine all elements
+    const finalContent = `${content}\n\n${cta}\n\n${hashtagString}`;
+
+    return finalContent;
+  }
+
+  /**
+   * 🎯 CHECK FOR VIRAL HOOK
+   */
+  private hasViralHook(content: string): boolean {
+    const viralIndicators = [
+      'BREAKING:', 'JUST IN:', 'Did you know', '🔥', '💥', '⚡',
+      'Plot twist:', 'Hot take:', 'Unpopular opinion:', 'Secret:',
+      'Thread:', '🧵', 'Game-changer:', 'Mind-blowing'
+    ];
+
+    return viralIndicators.some(indicator => 
+      content.toLowerCase().includes(indicator.toLowerCase())
+    );
   }
 
   /**
    * 🐦 POST TO TWITTER
    */
-  private async postToTwitter(content: string, request: PostRequest): Promise<{
-    success: boolean;
-    tweetId?: string;
-    error?: string;
-  }> {
-    console.log('🐦 Posting to Twitter...');
-
+  private async postToTwitter(content: string): Promise<{ success: boolean; postId?: string; reason?: string; cost?: number }> {
     try {
+      console.log('🐦 Posting viral health content to Twitter...');
+      console.log(`📝 Content preview: ${content.substring(0, 100)}...`);
+
+      // Record budget usage
+      await unifiedBudget.recordSpending({
+        type: 'content_generation',
+        estimatedCost: 0.10,
+        priority: 'critical',
+        fallbackAvailable: false
+      }, 0.10);
+
+      // Post using X client
       const result = await xClient.postTweet(content);
       
       if (result.success && result.tweetId) {
-        // Record the post in rate limits
-        await twitterRateLimits.recordPost();
+        console.log(`✅ Posted successfully! Tweet ID: ${result.tweetId}`);
         
-        console.log(`✅ Tweet posted successfully: ${result.tweetId}`);
-        return {
-          success: true,
-          tweetId: result.tweetId
+        // Store in database
+        await this.storeTweetInDatabase(result.tweetId, content);
+        
+        return { 
+          success: true, 
+          postId: result.tweetId,
+          cost: 0.10
         };
       } else {
-        return {
-          success: false,
-          error: result.error || 'Failed to post tweet'
+        console.error('❌ Twitter posting failed:', result.error);
+        return { 
+          success: false, 
+          reason: result.error || 'Unknown Twitter API error' 
         };
       }
 
     } catch (error) {
-      console.error('❌ Twitter posting failed:', error);
-      return {
-        success: false,
-        error: `Twitter error: ${error.message}`
+      console.error('❌ Twitter posting error:', error);
+      return { 
+        success: false, 
+        reason: `Twitter API error: ${error.message}` 
       };
     }
   }
 
   /**
-   * 📊 PERFORMANCE TRACKING
+   * 💾 STORE TWEET IN DATABASE
    */
-  private async trackPostPerformance(tweetId: string, content: string, contentType: string): Promise<void> {
+  private async storeTweetInDatabase(tweetId: string, content: string): Promise<void> {
     try {
-      // Record in engagement tracker
-      await engagementTracker.recordTweetPerformance(tweetId, content, contentType);
-      
-      // Store in database
-      if (supabaseClient.supabase) {
-        await supabaseClient.supabase
-          .from('tweets')
-          .insert({
-            tweet_id: tweetId,
-            content,
-            tweet_type: contentType,
-            created_at: new Date().toISOString()
-          });
+      if (!supabaseClient.supabase) return;
+
+      await supabaseClient.supabase
+        .from('tweets')
+        .insert({
+          id: tweetId,
+          content: content,
+          content_type: 'viral_health_theme',
+          created_at: new Date().toISOString(),
+          is_viral_optimized: true,
+          theme_page_content: true
+        });
+
+    } catch (error) {
+      console.warn('Could not store tweet in database:', error);
+    }
+  }
+
+  /**
+   * 📊 TRACK VIRAL PERFORMANCE
+   */
+  private async trackViralPerformance(
+    tweetId: string, 
+    viralContent: any, 
+    engagementStrategy: any
+  ): Promise<void> {
+    try {
+      // Track with viral health theme agent
+      await viralHealthThemeAgent.trackViralPerformance(viralContent, tweetId);
+
+      // Track with audience engagement engine
+      await audienceEngagementEngine.trackEngagementPerformance(
+        tweetId,
+        engagementStrategy,
+        { likes: 0, retweets: 0, replies: 0 } // Initial values
+      );
+
+    } catch (error) {
+      console.warn('Could not track viral performance:', error);
+    }
+  }
+
+  /**
+   * 📅 GET DAILY POST COUNT
+   */
+  private async getDailyPostCount(): Promise<number> {
+    try {
+      if (!supabaseClient.supabase) return 0;
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const { count } = await supabaseClient.supabase
+        .from('tweets')
+        .select('*', { count: 'exact', head: true })
+        .gte('created_at', today.toISOString());
+
+      return count || 0;
+
+    } catch (error) {
+      console.warn('Could not get daily post count:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * ⏰ GET LAST POST TIME
+   */
+  private async getLastPostTime(): Promise<Date | null> {
+    try {
+      if (!supabaseClient.supabase) return null;
+
+      const { data } = await supabaseClient.supabase
+        .from('tweets')
+        .select('created_at')
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (data && data.length > 0) {
+        return new Date(data[0].created_at);
       }
 
-      console.log(`📊 Performance tracking initialized for tweet: ${tweetId}`);
+      return null;
+
     } catch (error) {
-      console.error('❌ Performance tracking failed:', error);
+      console.warn('Could not get last post time:', error);
+      return null;
     }
   }
 
   /**
-   * 🔧 HELPER METHODS
+   * 📊 GET PERFORMANCE METRICS
    */
-  private estimatePostBudget(request: PostRequest): number {
-    let budget = 0.05; // Base cost for posting
+  async getPerformanceMetrics(): Promise<any> {
+    try {
+      if (!supabaseClient.supabase) return null;
 
-    if (!request.content) {
-      // Add content generation cost
-      const contentType = request.contentType || 'research_insight';
-      const strategy = StreamlinedPostAgent.CONTENT_STRATEGIES.find(s => s.type === contentType);
-      budget += strategy?.budgetRequirement || 0.10;
+      // Get recent viral content performance
+      const { data: recentPosts } = await supabaseClient.supabase
+        .from('tweets')
+        .select('content, likes, retweets, replies, content_type')
+        .eq('theme_page_content', true)
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      if (!recentPosts) return null;
+
+      const totalEngagement = recentPosts.reduce((sum, post) => 
+        sum + (post.likes || 0) + (post.retweets || 0) + (post.replies || 0), 0
+      );
+
+      const averageEngagement = totalEngagement / recentPosts.length;
+      const viralPosts = recentPosts.filter(post => 
+        (post.likes || 0) + (post.retweets || 0) > 50
+      );
+
+      return {
+        totalPosts: recentPosts.length,
+        averageEngagement: averageEngagement.toFixed(1),
+        viralPosts: viralPosts.length,
+        engagementRate: ((totalEngagement / recentPosts.length) / 1000 * 100).toFixed(2) + '%',
+        topContentTypes: this.getTopContentTypes(recentPosts)
+      };
+
+    } catch (error) {
+      console.warn('Could not get performance metrics:', error);
+      return null;
     }
-
-    // Add quality assurance cost
-    budget += 0.01;
-
-    return budget;
   }
 
-  private fillTemplate(template: string, type: string): string {
-    const placeholders = {
-      journal: 'Nature Medicine',
-      finding: 'AI diagnostics improve accuracy by 15%',
-      sample_size: '10,000',
-      result: 'significant improvement in early detection',
-      discovery: 'Machine learning algorithm',
-      field: 'healthcare diagnostics',
-      source: 'Stanford Medical School',
-      insight: 'personalized medicine shows promise',
-      domain: 'precision healthcare',
-      headline: 'FDA approves new AI diagnostic tool',
-      institution: 'Mayo Clinic',
-      development: 'breakthrough in cancer detection',
-      news: 'Healthcare AI funding reaches $2B',
-      impact: 'faster diagnosis, better outcomes',
-      event: 'Clinical trial results',
-      outcome: '25% improvement in treatment success',
-      opinion: 'AI integration accelerates healthcare transformation',
-      experience: '15 years in health tech',
-      takeaway: 'focus on patient-centered design',
-      assessment: 'Healthcare AI adoption exceeds expectations',
-      context: '500+ healthcare startups',
-      trend: 'shift toward preventive care',
-      viewpoint: 'Data interoperability remains crucial',
-      conclusion: 'collaboration drives innovation',
-      topic: 'Healthcare technology trends',
-      pattern: 'consistent growth in telemedicine',
-      elements: 'accessibility, quality, cost reduction',
-      observation: 'Remote patient monitoring adoption',
-      timeframe: '2023-2024',
-      meaning: 'improved access to rural healthcare',
-      statistics: 'Recent survey data',
-      interpretation: 'patient satisfaction increases significantly',
-      discussion: 'AI ethics in healthcare',
-      significance: 'shapes future medical practice',
-      perspective: 'balanced approach needed',
-      change: 'industry-wide digital transformation',
-      reaction: 'increased investment in training'
-    };
-
-    let filled = template;
-    Object.entries(placeholders).forEach(([key, value]) => {
-      filled = filled.replace(new RegExp(`{${key}}`, 'g'), value);
+  /**
+   * 📈 GET TOP CONTENT TYPES
+   */
+  private getTopContentTypes(posts: any[]): any[] {
+    const contentTypeCount = {};
+    posts.forEach(post => {
+      const type = post.content_type || 'unknown';
+      contentTypeCount[type] = (contentTypeCount[type] || 0) + 1;
     });
 
-    return filled;
+    return Object.entries(contentTypeCount)
+      .sort(([,a], [,b]) => (b as number) - (a as number))
+      .slice(0, 3)
+      .map(([type, count]) => ({ type, count }));
   }
 
   /**
-   * 📈 STATUS METHODS
+   * 🎯 FORCE VIRAL POST
    */
-  async getSystemStatus(): Promise<{
-    canPost: boolean;
-    rateLimitStatus: any;
-    budgetStatus: any;
-    qualitySystemStatus: string;
-  }> {
-    const [rateLimitStatus, budgetStatus] = await Promise.all([
-      twitterRateLimits.canPost(),
-      unifiedBudget.getBudgetStatus()
-    ]);
-
-    return {
-      canPost: rateLimitStatus.canPost && budgetStatus.canAffordOperation,
-      rateLimitStatus,
-      budgetStatus,
-      qualitySystemStatus: 'operational'
-    };
-  }
-
-  async getPerformanceMetrics(): Promise<any> {
-    return await engagementTracker.getPerformanceDashboard();
+  async forceViralPost(contentType?: string): Promise<StreamlinedPostResult> {
+    console.log('🔥 FORCING VIRAL HEALTH THEME POST...');
+    return await this.run(true);
   }
 }
 
-// Export singleton instance
-export const streamlinedPostAgent = StreamlinedPostAgent.getInstance(); 
+export const streamlinedPostAgent = new StreamlinedPostAgent(); 
