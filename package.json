@@ -55,7 +55,11 @@
     "twitter-api-v2": "^1.17.2",
     "winston": "^3.14.2",
     "ws": "^8.18.0",
-    "xml2js": "^0.6.2"
+    "xml2js": "^0.6.2",
+    "@opentelemetry/api": "^1.7.0",
+    "@opentelemetry/sdk-node": "^0.45.0",
+    "@opentelemetry/exporter-otlp-http": "^0.45.0",
+    "@opentelemetry/instrumentation-http": "^0.45.0"
   },
   "devDependencies": {
     "@types/cheerio": "^0.22.35",
