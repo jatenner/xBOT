@@ -111,16 +111,16 @@ export interface StylePerformance {
 class SupabaseService {
   private client: SupabaseClient | null = null;
   
-  // Configuration properties for compatibility
-  public fallbackStaggerMinutes: number = 20;
-  public maxPostsPerHour: number = 3;
-  public maxPostsPerDay: number = 72;
+  // Configuration properties for compatibility (UPDATED for smart orchestration)
+  public fallbackStaggerMinutes: number = 120; // 2 hours between posts
+  public maxPostsPerHour: number = 1;          // Maximum 1 post per hour
+  public maxPostsPerDay: number = 6;           // 6 perfectly spaced posts per day
   public minInterval: number = 20;
   public quality = { readabilityMin: 55, credibilityMin: 0.85 };
   public postingStrategy: string = "nuclear_intelligence_unleashed";
   public emergencyMode: boolean = false;
   public disableLearning: boolean = false;
-  public dailyBudgetLimit: number = 25;
+  public dailyBudgetLimit: number = 3;
   public startupThrottling: boolean = false;
   public respectOnlyRealTwitterLimits: boolean = true;
 

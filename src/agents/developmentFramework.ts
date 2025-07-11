@@ -1,5 +1,6 @@
 import { AutonomousIntelligenceCore } from './intelligenceCore';
 import OpenAI from 'openai';
+import { emergencyBudgetLockdown } from '../utils/emergencyBudgetLockdown';
 
 interface TestScenario {
   name: string;
@@ -56,6 +57,9 @@ export class DevelopmentFramework {
   }
 
   private async designExperiments(): Promise<any> {
+    // 🚨 EMERGENCY BUDGET CHECK FIRST
+    await emergencyBudgetLockdown.enforceBeforeAICall('designExperiments');
+    
     const experimentDesign = await this.openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
@@ -130,6 +134,9 @@ export class DevelopmentFramework {
   }
 
   private async simulateExperiment(experiment: any): Promise<SimulationResult> {
+    // 🚨 EMERGENCY BUDGET CHECK FIRST
+    await emergencyBudgetLockdown.enforceBeforeAICall('simulateExperiment');
+    
     // Use AI to simulate realistic outcomes
     const simulation = await this.openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -170,6 +177,9 @@ export class DevelopmentFramework {
 
   private async extractMetaLearnings(): Promise<void> {
     console.log('🔬 === EXTRACTING META-LEARNINGS ===');
+    
+    // 🚨 EMERGENCY BUDGET CHECK FIRST
+    await emergencyBudgetLockdown.enforceBeforeAICall('extractMetaLearnings');
     
     const metaAnalysis = await this.openai.chat.completions.create({
       model: "gpt-4o-mini",

@@ -33,21 +33,27 @@ class DailyPostingManager {
   private intelligentScheduler: IntelligentSchedulingAgent;
   private humanStrategicMind: HumanLikeStrategicMind;
   private currentState: DailyPostingState;
-  // 🚀 NUCLEAR MODE: Remove artificial 17-post limit
-  private readonly MAX_POSTS_PER_HOUR = 3; // ONLY SAFETY LIMIT
-  private readonly MAX_POSTS_PER_DAY = 72; // 3/hour * 24 hours
-  private readonly MIN_INTERVAL_MINUTES = 20; // 20 minutes minimum spacing
+  // 🚨 DEPRECATED: This class is being replaced by SmartPostingOrchestrator
+  // These settings are kept for compatibility but SmartPostingOrchestrator is the authority
+  private readonly MAX_POSTS_PER_HOUR = 1; // NEVER more than 1 post per hour
+  private readonly MAX_POSTS_PER_DAY = 6; // Only 6 high-quality posts per day
+  private readonly MIN_INTERVAL_MINUTES = 120; // 2 hours minimum spacing (anti-burst)
   private isRunning = false;
   private scheduledJobs: cron.ScheduledTask[] = [];
   private useIntelligentScheduling = true;
 
-  // 🚀 UNLEASHED POSTING WINDOWS - Let AI decide when to post within these broad windows
-  private readonly POSTING_WINDOWS: PostingWindow[] = [
-    { start_hour: 6, end_hour: 12, posts_count: 18, priority: 5 }, // Morning: Up to 18 posts in 6 hours (3/hour max)
-    { start_hour: 12, end_hour: 18, posts_count: 18, priority: 5 }, // Afternoon: Up to 18 posts in 6 hours  
-    { start_hour: 18, end_hour: 24, posts_count: 18, priority: 4 }, // Evening: Up to 18 posts in 6 hours
-    { start_hour: 0, end_hour: 6, posts_count: 18, priority: 3 },   // Night: Up to 18 posts in 6 hours
+  // 🎯 PERFECT POSTING SCHEDULE - 6 posts evenly spaced throughout the day
+  private readonly PERFECT_SCHEDULE = [
+    { hour: 8, minute: 0, description: 'Morning professional audience' },
+    { hour: 11, minute: 30, description: 'Late morning engagement' },
+    { hour: 14, minute: 0, description: 'Lunch break audience' },
+    { hour: 16, minute: 30, description: 'Afternoon professional break' },
+    { hour: 19, minute: 0, description: 'Evening engagement' },
+    { hour: 21, minute: 30, description: 'Late evening audience' }
   ];
+  
+  // Legacy posting windows (disabled in favor of perfect schedule)
+  private readonly POSTING_WINDOWS: PostingWindow[] = [];
 
   constructor() {
     this.postTweetAgent = new PostTweetAgent();
@@ -124,42 +130,23 @@ class DailyPostingManager {
   private generateDailySchedule(): string[] {
     const schedule: string[] = [];
     const now = new Date();
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-    for (const window of this.POSTING_WINDOWS) {
-      const windowStart = new Date(startOfDay);
-      windowStart.setHours(window.start_hour, 0, 0, 0);
+    // Generate schedule from PERFECT_SCHEDULE
+    for (const slot of this.PERFECT_SCHEDULE) {
+      const postTime = new Date(today);
+      postTime.setHours(slot.hour, slot.minute, 0, 0);
       
-      const windowEnd = new Date(startOfDay);
-      windowEnd.setHours(window.end_hour, 0, 0, 0);
-      
-      // 🚨 FIX: Skip windows that are completely in the past
-      if (windowEnd <= now) {
-        continue;
-      }
-      
-      // 🚨 FIX: Adjust window start to current time if partially past
-      const effectiveWindowStart = windowStart < now ? now : windowStart;
-      
-      const windowDuration = (windowEnd.getTime() - effectiveWindowStart.getTime()) / (1000 * 60); // minutes
-      const interval = windowDuration / window.posts_count;
-
-      for (let i = 0; i < window.posts_count; i++) {
-        // Add randomization within the window (±5 minutes for tighter scheduling)
-        const baseTime = new Date(effectiveWindowStart.getTime() + (i * interval * 60 * 1000));
-        const randomOffset = (Math.random() - 0.5) * 10 * 60 * 1000; // ±5 minutes in milliseconds
-        const postTime = new Date(baseTime.getTime() + randomOffset);
-        
-        // Ensure post time stays within the window and is in the future
-        const clampedTime = new Date(Math.max(
-          Math.max(effectiveWindowStart.getTime(), now.getTime() + 60000), // At least 1 minute from now
-          Math.min(postTime.getTime(), windowEnd.getTime() - 60000) // 1 minute before window end
-        ));
-        
-        schedule.push(clampedTime.toISOString());
+      // Only schedule future posts
+      if (postTime > now) {
+        schedule.push(postTime.toISOString());
+        console.log(`📅 Scheduled: ${slot.description} at ${postTime.toLocaleTimeString()}`);
+      } else {
+        console.log(`⏭️ Skipped past time: ${slot.description} (${postTime.toLocaleTimeString()})`);
       }
     }
 
+    console.log(`🎯 Perfect schedule created: ${schedule.length} posts remaining today`);
     return schedule.sort();
   }
 
