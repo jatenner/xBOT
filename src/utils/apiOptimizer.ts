@@ -13,12 +13,12 @@ export class APIOptimizer {
   private supabase: SupabaseClient;
   private usage: APIUsageTracker;
   
-  // FREE TIER LIMITS (Conservative estimates)
+  // REAL TWITTER FREE TIER LIMITS (Updated January 2025)
   private readonly LIMITS = {
-    DAILY_READS: 1500,    // Conservative limit for reads
-    DAILY_WRITES: 17,     // EXACT daily target for optimal growth
-    MONTHLY_READS: 40000, // Conservative monthly limit
-    MONTHLY_WRITES: 500   // Conservative monthly limit
+    DAILY_READS: 3,        // 100 reads/month ÷ 30 days = ~3 per day (conservative)
+    DAILY_WRITES: 16,      // 500 posts/month ÷ 30 days = ~16 per day (use full quota)
+    MONTHLY_READS: 100,    // Twitter free tier: 100 reads per month
+    MONTHLY_WRITES: 500    // Twitter free tier: 500 posts per month
   };
 
   constructor(supabase: SupabaseClient) {

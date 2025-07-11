@@ -22,6 +22,7 @@ import { dailyPostingManager } from '../utils/dailyPostingManager';
 import { tweetAnalyticsCollector } from './tweetAnalyticsCollector';
 import { dashboardWriter } from '../dashboard/dashboardWriter';
 import { runtimeConfig } from '../utils/supabaseConfig.js';
+import { emergencyBudgetLockdown } from '../utils/emergencyBudgetLockdown';
 
 dotenv.config();
 
@@ -63,6 +64,7 @@ export class Scheduler {
   private tweetAuditorJob: cron.ScheduledTask | null = null;
   private orchestratorJob: cron.ScheduledTask | null = null;
   private nightlyOptimizerJob: cron.ScheduledTask | null = null;
+  private emergencyBudgetResetJob: cron.ScheduledTask | null = null;
   
   // Growth job schedulers
   private engagementFeedbackJob: cron.ScheduledTask | null = null;
@@ -109,7 +111,7 @@ export class Scheduler {
     // 🚀 NUCLEAR INTELLIGENCE MODE: All systems operational
     const emergencyMode = false; // DISABLED - Let the bot work!
     const disableLearningAgents = false; // ENABLED - Full intelligence
-    const dailyBudgetLimit = parseFloat(process.env.DAILY_BUDGET_LIMIT || '25'); // Increased budget
+    const dailyBudgetLimit = parseFloat(process.env.DAILY_BUDGET_LIMIT || '3'); // Updated to match budget enforcer
 
     console.log('🚀 === NUCLEAR INTELLIGENCE MODE ACTIVE ===');
     console.log('🧠 All learning and intelligence systems: ENABLED');
@@ -125,6 +127,21 @@ export class Scheduler {
     console.log('✅ Real-time engagement: ENABLED');
     console.log('✅ Strategic posting: ENABLED');
     console.log('✅ Growth optimization: ENABLED');
+
+    // 🚨 EMERGENCY BUDGET: Daily reset at midnight UTC
+    this.emergencyBudgetResetJob = cron.schedule('0 0 * * *', async () => {
+      console.log('🔄 === DAILY EMERGENCY BUDGET RESET ===');
+      try {
+        await emergencyBudgetLockdown.deactivateLockdown();
+        const status = await emergencyBudgetLockdown.getStatusReport();
+        console.log(status);
+      } catch (error) {
+        console.error('❌ Emergency budget reset failed:', error);
+      }
+    }, {
+      scheduled: true,
+      timezone: "UTC"
+    });
 
     // Schedule strategist to run every 2 hours instead of 30 minutes (massive cost reduction)
     this.strategistJob = cron.schedule('0 */2 * * *', async () => {
@@ -142,10 +159,10 @@ export class Scheduler {
     this.learningJob = cron.schedule('0 2 * * 0', async () => {
       if (!emergencyMode) { // Only if not in emergency mode
         console.log('🧠 === Weekly Learning Cycle Started ===');
-        try {
-          await this.learnAgent.run();
+      try {
+        await this.learnAgent.run();
           console.log('🧠 === Weekly Learning Cycle Completed ===');
-        } catch (error) {
+      } catch (error) {
           console.error('❌ Weekly learning cycle failed:', error);
         }
       }
@@ -158,10 +175,10 @@ export class Scheduler {
     this.autonomousLearningJob = cron.schedule('0 3 * * *', async () => {
       if (!emergencyMode && !disableLearningAgents) {
         console.log('🚀 === Daily Autonomous Learning Cycle Started ===');
-        try {
-          await this.autonomousLearner.run();
+      try {
+        await this.autonomousLearner.run();
           console.log('🚀 === Daily Autonomous Learning Cycle Completed ===');
-        } catch (error) {
+      } catch (error) {
           console.error('❌ Daily autonomous learning cycle failed:', error);
         }
       }
@@ -300,24 +317,24 @@ export class Scheduler {
     // 🔥 REAL ENGAGEMENT AGENT - reduce to every 4 hours instead of 60 minutes (major cost savings)
     this.rateLimitedEngagementJob = cron.schedule('0 */4 * * *', async () => {
       if (!emergencyMode) { // Skip during emergency mode
-        console.log('🔥 === REAL ENGAGEMENT AGENT TRIGGERED ===');
-        console.log('🎯 Performing ACTUAL Twitter likes, follows, and replies');
-        try {
-          const result = await this.rateLimitedEngagementAgent.run();
-          if (result.success) {
-            console.log(`✅ Real engagement completed: ${result.message}`);
-            console.log(`🎯 ACTUAL actions performed: ${result.actions.length}`);
-            
-            // Count successful real actions
-            const successful = result.actions.filter(a => a.success);
-            if (successful.length > 0) {
-              console.log(`💖 Real Twitter engagement achieved: ${successful.length} successful actions`);
-            }
-          } else {
-            console.log(`⚠️ Real engagement failed: ${result.message}`);
+      console.log('🔥 === REAL ENGAGEMENT AGENT TRIGGERED ===');
+      console.log('🎯 Performing ACTUAL Twitter likes, follows, and replies');
+      try {
+        const result = await this.rateLimitedEngagementAgent.run();
+        if (result.success) {
+          console.log(`✅ Real engagement completed: ${result.message}`);
+          console.log(`🎯 ACTUAL actions performed: ${result.actions.length}`);
+          
+          // Count successful real actions
+          const successful = result.actions.filter(a => a.success);
+          if (successful.length > 0) {
+            console.log(`💖 Real Twitter engagement achieved: ${successful.length} successful actions`);
           }
-        } catch (error) {
-          console.error('❌ Real engagement agent failed:', error);
+        } else {
+          console.log(`⚠️ Real engagement failed: ${result.message}`);
+        }
+      } catch (error) {
+        console.error('❌ Real engagement agent failed:', error);
         }
       }
     }, { scheduled: true });
@@ -374,6 +391,7 @@ export class Scheduler {
     this.jobs.set('tweetAuditor', this.tweetAuditorJob);
     this.jobs.set('orchestrator', this.orchestratorJob);
     this.jobs.set('nightlyOptimizer', this.nightlyOptimizerJob);
+    this.jobs.set('emergencyBudgetReset', this.emergencyBudgetResetJob);
 
     // Start all jobs
     this.strategistJob.start();
@@ -387,6 +405,7 @@ export class Scheduler {
     this.tweetAuditorJob.start();
     this.orchestratorJob.start();
     this.nightlyOptimizerJob.start();
+    this.emergencyBudgetResetJob.start();
 
     // Start engagement tracker
     try {
@@ -413,6 +432,7 @@ export class Scheduler {
     console.log('   - Nightly Optimizer: Daily at 3:00 AM EST');
     console.log('   - 📊 Tweet Analytics Collector: Daily at 1:00 AM EST');
     console.log('   - 📝 Dashboard Writer: Daily at 1:15 AM EST');
+    console.log('   - 🔄 Emergency Budget Reset: Daily at 00:00 UTC');
     
     console.log('🧠 AUTONOMOUS INTELLIGENCE ACTIVATED:');
     console.log('   - System continuously learns and improves');
@@ -767,7 +787,8 @@ export class Scheduler {
       { name: 'nightly-optimizer', job: this.nightlyOptimizerJob },
       { name: 'engagement-feedback', job: this.engagementFeedbackJob },
       { name: 'strategy-learner', job: this.strategyLearnerJob },
-      { name: 'follow-growth', job: this.followGrowthJob }
+      { name: 'follow-growth', job: this.followGrowthJob },
+      { name: 'emergencyBudgetReset', job: this.emergencyBudgetResetJob }
     ];
 
     cronJobs.forEach(({ name, job }) => {

@@ -527,11 +527,11 @@ export class PostTweetAgent {
       }
 
       // 🚨 EMERGENCY RATE LIMITING (still check as backup)
-      const rateLimitCheck = await this.checkRateLimit();
-      if (!rateLimitCheck.canPost) {
-        console.log('🚨 RATE LIMIT BLOCK: Cannot post -', rateLimitCheck.reason);
-        return { success: false, reason: rateLimitCheck.reason };
-      }
+    const rateLimitCheck = await this.checkRateLimit();
+    if (!rateLimitCheck.canPost) {
+      console.log('🚨 RATE LIMIT BLOCK: Cannot post -', rateLimitCheck.reason);
+      return { success: false, reason: rateLimitCheck.reason };
+    }
       
       console.log('✅ All decision checks passed - proceeding with posting');
       
