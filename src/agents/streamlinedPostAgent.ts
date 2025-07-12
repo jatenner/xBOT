@@ -20,6 +20,8 @@ import { viralHealthThemeAgent } from './viralHealthThemeAgent';
 import { audienceEngagementEngine } from '../utils/audienceEngagementEngine';
 import { supabaseClient } from '../utils/supabaseClient';
 import { xClient } from '../utils/xClient';
+import { viralFollowerGrowthAgent } from './viralFollowerGrowthAgent';
+import { aggressiveEngagementAgent } from './aggressiveEngagementAgent';
 
 export interface StreamlinedPostResult {
   success: boolean;
@@ -46,9 +48,9 @@ export class StreamlinedPostAgent {
         return { success: false, reason: canPost.reason };
       }
 
-      // 2. Generate viral health content
-      const viralContent = await viralHealthThemeAgent.generateViralHealthContent();
-      console.log(`🎯 Generated ${viralContent.contentType} content targeting ${viralContent.audienceTarget} audience`);
+      // 2. Generate viral follower growth content
+      const viralContent = await viralFollowerGrowthAgent.generateViralContent();
+      console.log(`🎯 Generated ${viralContent.contentType} content with ${viralContent.viralPotential}% viral potential`);
 
       // 3. Get engagement strategy
       const engagementStrategy = await audienceEngagementEngine.getViralEngagementStrategy();
@@ -73,9 +75,9 @@ export class StreamlinedPostAgent {
       // 7. Track performance
       await this.trackViralPerformance(postResult.postId!, viralContent, engagementStrategy);
 
-      console.log(`✅ VIRAL HEALTH POST SUCCESSFUL!`);
+      console.log(`✅ VIRAL FOLLOWER GROWTH POST SUCCESSFUL!`);
       console.log(`📊 Content Type: ${viralContent.contentType}`);
-      console.log(`🎯 Expected Engagement: ${viralContent.expectedEngagement}`);
+      console.log(`🎯 Viral Potential: ${viralContent.viralPotential}%`);
       console.log(`📈 Growth Potential: ${engagementStrategy.followerGrowthPotential}`);
 
       return {
@@ -84,7 +86,7 @@ export class StreamlinedPostAgent {
         postId: postResult.postId,
         contentType: viralContent.contentType,
         engagementStrategy: engagementStrategy.contentFormat,
-        expectedEngagement: viralContent.expectedEngagement,
+        expectedEngagement: `${viralContent.viralPotential}%`,
         cost: postResult.cost || 0
       };
 
