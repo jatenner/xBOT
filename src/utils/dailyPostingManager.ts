@@ -1,5 +1,5 @@
 import { supabaseClient } from './supabaseClient';
-import { PostTweetAgent } from '../agents/postTweet';
+import { StreamlinedPostAgent } from '../agents/streamlinedPostAgent'; // Changed from PostTweetAgent
 import { contentCache } from './contentCache';
 import { IntelligentSchedulingAgent } from '../agents/intelligentSchedulingAgent';
 import { strategicOpportunityScheduler } from '../agents/strategicOpportunityScheduler';
@@ -29,7 +29,7 @@ interface PostingWindow {
 }
 
 class DailyPostingManager {
-  private postTweetAgent: PostTweetAgent;
+  private postTweetAgent: StreamlinedPostAgent; // Changed from PostTweetAgent
   private intelligentScheduler: IntelligentSchedulingAgent;
   private humanStrategicMind: HumanLikeStrategicMind;
   private currentState: DailyPostingState;
@@ -56,7 +56,7 @@ class DailyPostingManager {
   private readonly POSTING_WINDOWS: PostingWindow[] = [];
 
   constructor() {
-    this.postTweetAgent = new PostTweetAgent();
+    this.postTweetAgent = new StreamlinedPostAgent(); // Changed from PostTweetAgent
     this.intelligentScheduler = new IntelligentSchedulingAgent();
     this.humanStrategicMind = new HumanLikeStrategicMind();
     this.currentState = this.getDefaultState();
@@ -475,7 +475,7 @@ class DailyPostingManager {
         await contentCache.markContentUsed(cachedContent.id);
       } else {
         // Generate fresh content
-        result = await this.postTweetAgent.run(false, false);
+        result = await this.postTweetAgent.run(false);
       }
 
       if (result.success) {

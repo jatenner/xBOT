@@ -391,6 +391,17 @@ export class LegendaryAICoordinator {
         case 'BulletproofManager':
           executionResult = await bulletproofManager.guaranteedPost();
           break;
+        case 'StreamlinedPostAgent':
+          // Use the viral follower growth system
+          const { StreamlinedPostAgent } = await import('../agents/streamlinedPostAgent');
+          const viralAgent = new StreamlinedPostAgent();
+          const viralResult = await viralAgent.run(false);
+          executionResult = { 
+            success: viralResult.success, 
+            executedPosts: viralResult.success ? 1 : 0,
+            content: viralResult.content
+          };
+          break;
         default:
           // Fallback to bulletproof posting
           executionResult = await bulletproofManager.guaranteedPost();
@@ -574,6 +585,7 @@ export class LegendaryAICoordinator {
       'StrategicScheduler': 'strategic_opportunity',
       'TimingAgent': 'optimal_timing',
       'LimitsAgent': 'safe_posting',
+      'StreamlinedPostAgent': 'viral_follower_growth',
       'BulletproofManager': 'guaranteed_delivery'
     };
     return strategies[agent] || 'fallback';

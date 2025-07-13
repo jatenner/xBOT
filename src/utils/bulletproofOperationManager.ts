@@ -13,7 +13,7 @@
 
 import { supabaseClient } from './supabaseClient';
 import { xClient } from './xClient';
-import { PostTweetAgent } from '../agents/postTweet';
+import { StreamlinedPostAgent } from '../agents/streamlinedPostAgent';
 import { realTimeLimitsAgent } from '../agents/realTimeLimitsIntelligenceAgent';
 
 export interface ContinuousOperationConfig {
@@ -41,7 +41,7 @@ export class BulletproofOperationManager {
   private static instance: BulletproofOperationManager;
   private config: ContinuousOperationConfig;
   private healthStatus: SystemHealthStatus;
-  private postAgent: PostTweetAgent;
+  private postAgent: StreamlinedPostAgent;
   private isRecovering: boolean = false;
   private recoveryAttempts: number = 0;
   private lastHealthCheck: Date = new Date();
@@ -75,7 +75,7 @@ export class BulletproofOperationManager {
   private lastEmergencyContentReset: Date = new Date();
 
   constructor() {
-    this.postAgent = new PostTweetAgent();
+    this.postAgent = new StreamlinedPostAgent();
     this.initializeConfig();
     this.initializeHealthStatus();
   }
@@ -269,15 +269,15 @@ export class BulletproofOperationManager {
           return { success: false, content: '', error: result?.error || 'Normal posting returned no data' };
         }
       } else {
-        // Use the actual PostTweetAgent for normal content generation
-        console.log('🤖 Using PostTweetAgent for normal content generation...');
-        const result = await this.postAgent.run(false, false); // force=false, testMode=false
+        // Use the actual StreamlinedPostAgent for viral content generation
+        console.log('🤖 Using StreamlinedPostAgent for viral content generation...');
+        const result = await this.postAgent.run(false); // force=false
         
         if (result && result.success && result.content) {
           return { success: true, content: result.content };
         } else {
-          const errorMsg = result?.error || result?.reason || 'PostTweetAgent failed without specific error';
-          console.log(`❌ PostTweetAgent failed: ${errorMsg}`);
+          const errorMsg = result?.reason || 'StreamlinedPostAgent failed without specific error';
+          console.log(`❌ StreamlinedPostAgent failed: ${errorMsg}`);
           return { success: false, content: '', error: errorMsg };
         }
       }
