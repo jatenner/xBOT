@@ -84,10 +84,10 @@ export async function getAllConfig(): Promise<Record<string, any>> {
 }
 
 /**
- * Core configuration defaults - NUCLEAR MODE WITH SAFETY
+ * Core configuration defaults - OPTIMIZED FOR MAXIMUM TWEET OUTPUT
  * 
- * REMOVED ALL ARTIFICIAL LIMITS - Let the bot be intelligent!
- * ONLY SAFETY: Maximum 3 posts per hour (72 posts/day max)
+ * UPDATED: Now uses SmartBudgetOptimizer to maximize tweets within $3 budget
+ * Target: 10-15 tweets per day (up from 6) with smart cost allocation
  * 
  * Real Twitter API v2 Free Tier Limits:
  * - 300 tweets per 3-hour rolling window
@@ -96,37 +96,169 @@ export async function getAllConfig(): Promise<Record<string, any>> {
  */
 
 export const defaults = {
-  // 🚨 UPDATED: SmartPostingOrchestrator now controls all posting decisions
-  // These are fallback values only - orchestrator is the authority
-  maxPostsPerHour: 1,  // SAFE: Maximum 1 post per hour (6 per day)
-  maxPostsPerDay: 6,   // CONTROLLED: 6 high-quality posts with perfect spacing
+  // 🎯 OPTIMIZED: Higher posting frequency with smart budget management
+  maxPostsPerHour: 2,  // Up from 1 - allows 2 posts per hour (24 max per day)
+  maxPostsPerDay: 15,  // Up from 6 - target 10-15 tweets with budget optimization
   
-  // Remove all other artificial limits
-  minInterval: 20, // 20 minutes minimum between posts (sensible spacing)
-  fallbackStaggerMinutes: 20, // Fallback stagger for safety
+  // Reduced intervals for more frequent posting
+  minInterval: 30, // 30 minutes minimum between posts (was 20)
+  fallbackStaggerMinutes: 30, // 30 minutes for fallback stagger
   
-  // Content quality settings (keep these for quality)
+  // Content quality settings (balanced for volume)
   quality: { 
-    readabilityMin: 55, 
-    credibilityMin: 0.85 
+    readabilityMin: 50,    // Slightly lower for volume (was 55)
+    credibilityMin: 0.80   // Slightly lower for volume (was 0.85)
   },
   
-  // Strategy: Let the AI decide everything else
-  postingStrategy: "nuclear_intelligence_unleashed",
+  // Strategy: Smart budget-aware posting
+  postingStrategy: "smart_budget_optimized",
   
-  // Emergency mode: DISABLED (let the bot work!)
+  // Emergency mode: DISABLED (let the optimizer work!)
   emergencyMode: false,
   disableLearning: false,
   
-  // Budget: Strict cost control
-  dailyBudgetLimit: 3, // ENFORCED: $3.00/day maximum - down from $25
+  // Budget: Strict cost control with smart allocation
+  dailyBudgetLimit: 3, // ENFORCED: $3.00/day maximum with smart optimization
+  budgetOptimizationEnabled: true, // New: enable smart budget optimization
   
-  // Startup throttling: REMOVED
+  // Smart posting settings
+  enableSmartBudgetOptimizer: true,
+  targetTweetsPerDay: 12, // Optimal target with budget constraints
+  minimumTweetsPerDay: 10, // Minimum to avoid ghost account
+  
+  // Cost optimization
+  useFallbackContent: true,
+  enableEmergencyContent: true,
+  cacheOptimization: true,
+  
+  // Startup throttling: DISABLED
   startupThrottling: false,
   
   // Real limits only
-  respectOnlyRealTwitterLimits: true
+  respectOnlyRealTwitterLimits: true,
+  
+  // Budget allocation (new)
+  budgetAllocation: {
+    contentGeneration: 0.65,  // 65% for tweet content
+    engagement: 0.20,         // 20% for engagement analysis
+    learning: 0.10,           // 10% for learning systems
+    emergency: 0.05           // 5% emergency reserve
+  }
 };
+
+/**
+ * 🎯 GET DYNAMIC POSTING CONFIGURATION
+ * Adjusts posting frequency based on budget optimization
+ */
+export async function getDynamicConfig() {
+  try {
+    if (!defaults.enableSmartBudgetOptimizer) {
+      return defaults;
+    }
+
+    // Dynamic import to avoid circular dependencies
+    const { smartBudgetOptimizer } = await import('./smartBudgetOptimizer');
+    const plan = await smartBudgetOptimizer.createDailyPlan();
+    const optimization = smartBudgetOptimizer.getCostOptimization(plan.budgetPerTweet);
+
+    // Adjust posting frequency based on budget plan
+    const dynamicConfig = {
+      ...defaults,
+      maxPostsPerDay: plan.targetTweets,
+      targetTweetsPerDay: plan.targetTweets,
+      maxPostsPerHour: Math.min(2, Math.ceil(plan.targetTweets / 12)), // Spread over 12 hours
+      
+      // Adjust quality based on budget per tweet
+      quality: {
+        readabilityMin: optimization.qualityLevel === 'premium' ? 60 : 
+                       optimization.qualityLevel === 'high' ? 55 :
+                       optimization.qualityLevel === 'good' ? 50 : 45,
+        credibilityMin: optimization.qualityLevel === 'premium' ? 0.90 :
+                       optimization.qualityLevel === 'high' ? 0.85 :
+                       optimization.qualityLevel === 'good' ? 0.80 : 0.75
+      },
+      
+      // Adjust content generation settings
+      contentGeneration: {
+        maxTokensPerTweet: optimization.maxTokensPerTweet,
+        aiCallsPerTweet: optimization.aiCallsPerTweet,
+        qualityLevel: optimization.qualityLevel,
+        estimatedCostPerTweet: optimization.estimatedCostPerTweet
+      },
+      
+      // Dynamic intervals based on tweet target
+      minInterval: Math.max(20, Math.floor((16 * 60) / plan.targetTweets)), // Spread over 16 active hours
+      
+      // Aggressiveness settings
+      aggressiveMode: plan.aggressivenessLevel === 'maximum' || plan.aggressivenessLevel === 'aggressive',
+      conservativeMode: plan.aggressivenessLevel === 'conservative',
+      
+      // Budget info for agents
+      budgetInfo: {
+        remainingBudget: plan.remainingBudget,
+        budgetPerTweet: plan.budgetPerTweet,
+        aggressivenessLevel: plan.aggressivenessLevel,
+        recommendations: plan.recommendations
+      }
+    };
+
+    console.log(`🎯 DYNAMIC CONFIG: ${plan.targetTweets} tweets, $${plan.budgetPerTweet.toFixed(3)}/tweet, ${optimization.qualityLevel} quality`);
+    
+    return dynamicConfig;
+
+  } catch (error) {
+    console.error('❌ Failed to get dynamic config:', error);
+    return defaults;
+  }
+}
+
+/**
+ * 📊 GET POSTING FREQUENCY RECOMMENDATION
+ */
+export async function getPostingFrequencyRecommendation(): Promise<{
+  recommendedPostsPerDay: number;
+  recommendedInterval: number;
+  reasoning: string;
+  budgetUtilization: number;
+}> {
+  try {
+    const { smartBudgetOptimizer } = await import('./smartBudgetOptimizer');
+    const plan = await smartBudgetOptimizer.createDailyPlan();
+    const currentSpending = plan.dailyBudget - plan.remainingBudget;
+    const budgetUtilization = currentSpending / plan.dailyBudget;
+
+    let recommendedPostsPerDay = plan.targetTweets;
+    let reasoning = '';
+
+    if (budgetUtilization < 0.3 && plan.remainingTweets > 8) {
+      recommendedPostsPerDay = Math.min(15, plan.targetTweets + 2);
+      reasoning = 'Budget under-utilized - increase posting frequency';
+    } else if (budgetUtilization > 0.8 && plan.remainingTweets > 5) {
+      recommendedPostsPerDay = Math.max(10, plan.targetTweets - 1);
+      reasoning = 'Budget heavily used - maintain sustainable pace';
+    } else {
+      reasoning = 'Optimal posting frequency for current budget utilization';
+    }
+
+    const recommendedInterval = Math.max(30, Math.floor((16 * 60) / recommendedPostsPerDay));
+
+    return {
+      recommendedPostsPerDay,
+      recommendedInterval,
+      reasoning,
+      budgetUtilization
+    };
+
+  } catch (error) {
+    console.error('❌ Failed to get frequency recommendation:', error);
+    return {
+      recommendedPostsPerDay: 12,
+      recommendedInterval: 80,
+      reasoning: 'Fallback recommendation due to system error',
+      budgetUtilization: 0.5
+    };
+  }
+}
 
 /**
  * Safe environment variable getter with fallback
