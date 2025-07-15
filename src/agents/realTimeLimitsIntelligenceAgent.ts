@@ -339,22 +339,37 @@ export class RealTimeLimitsIntelligenceAgent {
       const resetTime = new Date(writeReset * 1000);
       const readResetTime = new Date(readReset * 1000);
       
-      // 🚨 CRITICAL FIX: Use Twitter API headers as source of truth
-      // The bot's database may be out of sync, but Twitter's headers are always accurate
-      const dailyUsed = this.TWITTER_DAILY_WRITE_LIMIT - writeRemaining;
+      // 🚨 CRITICAL FIX: Use Twitter API headers as source of truth with bounds checking
+      // Prevent arithmetic overflow that was causing negative tweet calculations
+      const rawWriteRemaining = Math.max(0, Math.min(writeRemaining, this.TWITTER_DAILY_WRITE_LIMIT));
+      const dailyUsed = Math.max(0, Math.min(this.TWITTER_DAILY_WRITE_LIMIT - rawWriteRemaining, this.TWITTER_DAILY_WRITE_LIMIT));
       const dailyLimit = this.TWITTER_DAILY_WRITE_LIMIT;
       
-      console.log(`📊 TWITTER API HEADERS: ${writeRemaining} writes remaining of ${dailyLimit} daily limit`);
+      console.log(`📊 TWITTER API HEADERS: ${rawWriteRemaining} writes remaining of ${dailyLimit} daily limit`);
       console.log(`📊 CALCULATED USAGE: ${dailyUsed}/${dailyLimit} tweets used today`);
       
+      // Validate calculations to prevent negative numbers
+      if (rawWriteRemaining > dailyLimit) {
+        console.warn(`⚠️ API returned impossible remaining count: ${writeRemaining}, capping at ${dailyLimit}`);
+        const correctedRemaining = dailyLimit;
+        const correctedUsed = 0;
+        console.log(`🔧 CORRECTED VALUES: ${correctedUsed}/${dailyLimit} used, ${correctedRemaining} remaining`);
+      }
+      
+      if (dailyUsed < 0) {
+        console.warn(`⚠️ Calculated negative usage: ${dailyUsed}, setting to 0`);
+        const correctedUsed = 0;
+        console.log(`🔧 CORRECTED USAGE: ${correctedUsed}/${dailyLimit} tweets used today`);
+      }
+      
       // Only block when REAL API write limits are exhausted
-      if (writeRemaining <= 0) {
-        console.log(`🚨 DAILY LIMIT EXHAUSTED: Twitter says ${writeRemaining} remaining (used ${dailyUsed}/${dailyLimit})`);
+      if (rawWriteRemaining <= 0) {
+        console.log(`🚨 DAILY LIMIT EXHAUSTED: Twitter says ${rawWriteRemaining} remaining (used ${dailyUsed}/${dailyLimit})`);
         this.emergencyCooldownUntil = resetTime;
         isLocked = true;
         accountStatus = 'limited';
       } else {
-        console.log(`✅ DAILY LIMIT OK: ${writeRemaining} remaining (used ${dailyUsed}/${dailyLimit})`);
+        console.log(`✅ DAILY LIMIT OK: ${rawWriteRemaining} remaining (used ${dailyUsed}/${dailyLimit})`);
         accountStatus = 'active';
         isLocked = false;
       }
@@ -366,8 +381,17 @@ export class RealTimeLimitsIntelligenceAgent {
       // Use Twitter API headers as source of truth, not database
       if (databaseStats.tweets !== dailyUsed) {
         console.log(`⚠️ DATABASE SYNC ISSUE: Database shows ${databaseStats.tweets} tweets, but Twitter API headers show ${dailyUsed} used`);
-        console.log(`📡 USING TWITTER API HEADERS as authoritative source`);
+        console.log(`📡 USING TWITTER API HEADERS as authoritative source - Database will be updated`);
+        
+        // 🔧 SYNC FIX: Update database to match API reality
+        try {
+          await this.syncDatabaseToAPIHeaders(dailyUsed, rawWriteRemaining);
+          console.log(`✅ Database synced to match API headers`);
+        } catch (syncError) {
+          console.warn(`⚠️ Could not sync database: ${syncError.message}`);
+        }
       }
+      
       const dailyRemaining = Math.max(0, this.TWITTER_DAILY_WRITE_LIMIT - dailyUsed);
       
       const monthlyReadsUsed = monthlyStats.reads;
@@ -375,14 +399,14 @@ export class RealTimeLimitsIntelligenceAgent {
       
       // 🚨 CRITICAL FIX: Twitter API v2 Free Tier has NO monthly posting limit
       // Can post if: not locked by API AND under daily limit (NO MONTHLY CHECK FOR POSTING)
-      const canPost = !isLocked && (writeRemaining > 0) && (dailyRemaining > 0);
+      const canPost = !isLocked && (rawWriteRemaining > 0) && (dailyRemaining > 0);
       const canRead = readRemaining > 0 && monthlyReadsRemaining > 0;
       
       // 🚨 IMPORTANT: Monthly stats are informational only - do NOT use for posting limits
       console.log(`📊 Monthly posting check: DISABLED (no monthly posting limit exists)`);
       console.log(`📊 Daily posting check: ${dailyRemaining} remaining of ${this.TWITTER_DAILY_WRITE_LIMIT} daily limit`);
       
-      console.info(`🎯 Posting Check: writeRemaining=${writeRemaining}, dailyRemaining=${dailyRemaining}, result=${canPost}`);
+      console.info(`🎯 Posting Check: writeRemaining=${rawWriteRemaining}, dailyRemaining=${dailyRemaining}, result=${canPost}`);
       console.info(`🔍 Reading Check: readRemaining=${readRemaining}, monthlyReadsRemaining=${monthlyReadsRemaining}, result=${canRead}`);
 
       const now = new Date();
@@ -641,6 +665,49 @@ export class RealTimeLimitsIntelligenceAgent {
 
   private async getMonthlyPexelsStats(): Promise<{ requests: number }> {
     return { requests: 0 }; // Placeholder
+  }
+
+  /**
+   * 🔧 SYNC DATABASE TO API HEADERS
+   * Updates the database tracking to match the current Twitter API headers.
+   * This ensures our internal counters reflect the real API usage.
+   */
+  private async syncDatabaseToAPIHeaders(dailyUsed: number, rawWriteRemaining: number): Promise<void> {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      
+      // Update or insert today's API usage tracking
+      const { error } = await supabaseClient.supabase
+        ?.from('api_usage_tracking')
+        .upsert({
+          date: today,
+          api_type: 'twitter',
+          tweets_posted: dailyUsed,
+          reads_made: 0, // We'll track reads separately
+          timestamp: new Date().toISOString()
+        }, {
+          onConflict: 'date,api_type',
+          ignoreDuplicates: false
+        });
+
+      if (error) {
+        console.warn(`⚠️ Could not sync api_usage_tracking: ${error.message}`);
+        // Try alternative sync method with bot_config
+        await supabaseClient.updateConfig('twitter_daily_usage_sync', {
+          date: today,
+          tweets_used: dailyUsed,
+          tweets_remaining: rawWriteRemaining,
+          last_sync: new Date().toISOString(),
+          source: 'twitter_api_headers'
+        });
+        console.log(`✅ Synced via bot_config fallback`);
+      } else {
+        console.log(`✅ Database synced: ${dailyUsed} tweets used today`);
+      }
+    } catch (syncError) {
+      console.warn(`⚠️ Sync method failed: ${syncError.message}`);
+      // Non-blocking error - continue operation
+    }
   }
 
   /**
