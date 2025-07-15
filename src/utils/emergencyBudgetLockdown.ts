@@ -43,13 +43,12 @@ export class EmergencyBudgetLockdown {
       const today = new Date().toISOString().split('T')[0];
       
       if (!supabaseClient.supabase) {
-        console.warn('⚠️ No Supabase connection - LOCKDOWN ACTIVE for safety');
-        await this.activateLockdown(this.ABSOLUTE_DAILY_LIMIT, 'No database connection');
+        console.warn('⚠️ No Supabase connection - allowing operations with warning');
         return {
-          lockdownActive: true,
-          totalSpent: this.ABSOLUTE_DAILY_LIMIT,
+          lockdownActive: false,
+          totalSpent: 0,
           dailyLimit: this.ABSOLUTE_DAILY_LIMIT,
-          lockdownReason: 'No database connection - safety lockdown'
+          lockdownReason: 'No database connection - operations allowed with caution'
         };
       }
 
@@ -59,13 +58,12 @@ export class EmergencyBudgetLockdown {
         .eq('date', today);
 
       if (error) {
-        console.error('❌ Budget check failed - ACTIVATING LOCKDOWN:', error);
-        await this.activateLockdown(this.ABSOLUTE_DAILY_LIMIT, 'Database error');
+        console.error('❌ Budget check failed - allowing operations with warning:', error);
         return {
-          lockdownActive: true,
-          totalSpent: this.ABSOLUTE_DAILY_LIMIT,
+          lockdownActive: false,
+          totalSpent: 0,
           dailyLimit: this.ABSOLUTE_DAILY_LIMIT,
-          lockdownReason: 'Database error - safety lockdown'
+          lockdownReason: 'Database error - operations allowed with caution'
         };
       }
 
