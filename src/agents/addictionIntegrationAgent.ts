@@ -7,6 +7,7 @@
  */
 
 import { addictionViralEngine } from './addictionViralEngine';
+import { viralThemeEngine } from './viralThemeEngine';
 import { supabase } from '../utils/supabaseClient';
 
 export class AddictionIntegrationAgent {
@@ -87,14 +88,53 @@ export class AddictionIntegrationAgent {
   }
 
   /**
-   * 🎪 Generate addictive content
+   * 🎪 Generate addictive themed content
    */
   public async generateContent(topic?: string): Promise<string> {
     if (!this.isActive) {
       throw new Error('Addiction system not active');
     }
 
-    return addictionViralEngine.generateAddictiveContent(topic);
+    try {
+      // Get today's posting target for theme planning
+      const todayTarget = await this.getTodaysPostingTarget();
+      
+      // Generate daily theme plan if not exists
+      const dailyPlan = viralThemeEngine.getDailyPlan();
+      if (dailyPlan.length === 0) {
+        await viralThemeEngine.generateDailyThemePlan(todayTarget);
+      }
+      
+      // Get current post index (based on posts made today)
+      const postsToday = await this.getPostsMadeToday();
+      const planIndex = Math.min(postsToday, dailyPlan.length - 1);
+      
+      // Generate themed content
+      const themedContent = await viralThemeEngine.generateThemedContent(planIndex, topic);
+      
+      console.log(`🎨 Generated themed content (index ${planIndex}): ${themedContent.substring(0, 100)}...`);
+      
+      return themedContent;
+    } catch (error) {
+      console.error('❌ Theme content generation failed, falling back to addiction engine:', error);
+      return addictionViralEngine.generateAddictiveContent(topic);
+    }
+  }
+
+  private async getPostsMadeToday(): Promise<number> {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const { data } = await supabase
+        .from('tweets')
+        .select('id')
+        .gte('created_at', today + 'T00:00:00.000Z')
+        .lt('created_at', today + 'T23:59:59.999Z');
+      
+      return data?.length || 0;
+    } catch (error) {
+      console.error('Error getting posts made today:', error);
+      return 0;
+    }
   }
 
   /**

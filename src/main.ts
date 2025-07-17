@@ -9,6 +9,11 @@ import { ensureRuntimeConfig } from './utils/supabaseConfig';
 import { Scheduler } from './agents/scheduler';
 import { emergencyBudgetLockdown } from './utils/emergencyBudgetLockdown';
 
+// ADDICTION VIRAL SYSTEM IMPORTS
+import { addictionViralEngine } from './agents/addictionViralEngine';
+import { addictionIntegrationAgent } from './agents/addictionIntegrationAgent';
+import { viralThemeEngine } from './agents/viralThemeEngine';
+
 // EMERGENCY IMPORTS
 import { startServerSingleton, getServerInstance, closeServer } from './utils/serverSingleton';
 import { isEmergencyMode, EMERGENCY_BOT_CONFIG } from './config/emergencyConfig';
@@ -42,10 +47,67 @@ app.get('/budget-status', async (req, res) => {
   }
 });
 
+// Addiction system status endpoint
+app.get('/addiction-status', async (req, res) => {
+  try {
+    const addictionStatus = await addictionIntegrationAgent.getStatus();
+    const viralEngine = await addictionViralEngine.getDynamicPostingFrequency();
+    const currentTheme = viralThemeEngine.getCurrentTheme();
+    const dailyPlan = viralThemeEngine.getDailyPlan();
+    const themePerformance = await viralThemeEngine.getThemePerformance();
+    
+    res.json({
+      addiction_system: {
+        active: addictionStatus.active,
+        next_posting: addictionStatus.nextPosting,
+        today_target: addictionStatus.todayTarget,
+        momentum_detected: addictionStatus.momentumDetected,
+        dynamic_frequency: viralEngine
+      },
+      viral_themes: {
+        current_theme: currentTheme?.name || 'Not set',
+        daily_plan_posts: dailyPlan.length,
+        themes_today: [...new Set(dailyPlan.map(p => p.theme))],
+        theme_performance: themePerformance
+      },
+      content_strategy: {
+        viral_hooks: '70%',
+        controversial: '30%', 
+        academic: '5%',
+        themes_active: viralThemeEngine.getCurrentTheme() !== null
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'ERROR',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // Health check endpoint
 app.get('/health', async (req, res) => {
   try {
-    // 🚨 EMERGENCY MODE CHECK
+    // 🔥 ADDICTION SYSTEM CHECK FIRST
+    const addictionStatus = await addictionIntegrationAgent.getStatus();
+    
+    if (addictionStatus.active) {
+      res.json({
+        status: '🔥 ADDICTION VIRAL MODE ACTIVE',
+        addiction_system: addictionStatus,
+        emergency_mode: false, // Overridden by addiction system
+        posting_frequency: `${addictionStatus.todayTarget} posts/day (dynamic)`,
+        content_strategy: '70% viral hooks, 30% controversial, 5% academic',
+        learning_active: true,
+        system_mode: 'VIRAL_OPTIMIZATION',
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+    
+    // 🚨 EMERGENCY MODE CHECK (fallback)
     if (isEmergencyMode()) {
       res.json({
         status: 'EMERGENCY_MODE',
@@ -105,15 +167,58 @@ app.get('/dashboard', (req, res) => {
   `);
 });
 
-// Manual post endpoint
+// Manual post endpoint with addiction system
 app.post('/force-post', async (req, res) => {
   try {
     console.log('🔧 Manual post triggered via API');
+    
+    // Check if addiction system should handle this
+    const addictionStatus = await addictionIntegrationAgent.getStatus();
+    if (addictionStatus.active) {
+      const shouldPost = await addictionIntegrationAgent.shouldPostNow();
+      if (shouldPost) {
+        const addictiveContent = await addictionIntegrationAgent.generateContent();
+        console.log('🔥 Addiction system generating viral content');
+        
+        res.json({
+          success: true,
+          system: 'ADDICTION_VIRAL',
+          content_preview: addictiveContent.substring(0, 100) + '...',
+          addiction_status: addictionStatus,
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+    }
+    
+    // Fallback to original system
     const result = await legendaryAICoordinator.manualPost('API trigger');
     res.json({
       success: result.success,
+      system: 'LEGACY',
       emergency_mode: isEmergencyMode(),
       result: result,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Force addiction system activation endpoint
+app.post('/activate-addiction', async (req, res) => {
+  try {
+    console.log('🔥 Force activating addiction viral system');
+    await addictionIntegrationAgent.forceActivation();
+    
+    res.json({
+      success: true,
+      message: 'Addiction viral system force activated',
+      status: await addictionIntegrationAgent.getStatus(),
       timestamp: new Date().toISOString()
     });
   } catch (error) {
@@ -189,7 +294,39 @@ if (isEmergencyMode()) {
  * - Real-time burst pattern detection
  */
 async function runLegendaryAISystem() {
-  console.log('🏆 === LEGENDARY AI COORDINATION SYSTEM STARTING ===');
+  console.log('🔥 === ADDICTION VIRAL SYSTEM INITIALIZING ===');
+  
+  try {
+    // 🔥 FIRST PRIORITY: Initialize Addiction System
+    console.log('🔥 Addiction Viral Engine: INITIALIZING');
+    console.log('🎯 Addiction Integration Agent: INITIALIZING');
+    
+    // Check and activate addiction system
+    const addictionStatus = await addictionIntegrationAgent.getStatus();
+    if (addictionStatus.active) {
+      console.log('✅ ADDICTION VIRAL SYSTEM: ACTIVE');
+      console.log(`📊 Dynamic posting: ${addictionStatus.todayTarget} posts/day`);
+      console.log(`⚡ Momentum detected: ${addictionStatus.momentumDetected ? 'YES' : 'NO'}`);
+      console.log(`🎪 Next posting: ${addictionStatus.nextPosting.toLocaleTimeString()}`);
+      console.log('🎯 Content strategy: 70% viral hooks, 30% controversial, 5% academic');
+      console.log('🧠 Learning system: Active (30min intervals)');
+      console.log('🚨 Emergency modes: OVERRIDDEN');
+    } else {
+      console.log('⚠️ Addiction system inactive - activating...');
+      await addictionIntegrationAgent.forceActivation();
+      console.log('✅ ADDICTION VIRAL SYSTEM: FORCE ACTIVATED');
+    }
+    
+    // Trigger learning update
+    await addictionViralEngine.performLearningUpdate();
+    console.log('🧠 Addiction learning system: UPDATED');
+    
+  } catch (addictionError) {
+    console.error('❌ Addiction system initialization failed:', addictionError);
+    console.log('⚠️ Falling back to legacy system');
+  }
+  
+  console.log('\n🏆 === LEGACY AI COORDINATION SYSTEM (FALLBACK) ===');
   console.log('👑 Supreme AI Orchestrator: LOADING');
   console.log('🧠 Intelligent Decision Agent: LOADING');
   console.log('🎯 Strategic Opportunity Scheduler: LOADING');
