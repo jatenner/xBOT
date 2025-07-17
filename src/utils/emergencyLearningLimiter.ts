@@ -1,10 +1,9 @@
-
-// Emergency learning rate limiter to prevent cost runaway
+// 🚀 VIRAL LEARNING ENABLER - Emergency learning blocks DISABLED
 export class EmergencyLearningLimiter {
   private static instance: EmergencyLearningLimiter;
   private learningCalls: number = 0;
   private lastReset: number = Date.now();
-  private readonly MAX_CALLS_PER_HOUR = 1; // Reduced from 2 to 1
+  private readonly MAX_CALLS_PER_HOUR = 10; // Increased for viral mode
   private readonly HOUR_IN_MS = 3600000;
   
   static getInstance(): EmergencyLearningLimiter {
@@ -23,19 +22,16 @@ export class EmergencyLearningLimiter {
       this.lastReset = now;
     }
     
-    // ULTRA-STRICT: Block learning entirely for cost protection
-    if (this.isEmergencyMode()) {
-      console.log('🚨 Emergency mode: All learning blocked for cost protection');
-      return false;
-    }
+    // 🚀 VIRAL MODE: Always allow learning for viral optimization
+    console.log('🚀 Viral mode: Learning enabled for viral optimization');
     
-    // Check if we're over limit
+    // Check if we're over limit (generous limits for viral mode)
     if (this.learningCalls >= this.MAX_CALLS_PER_HOUR) {
-      console.log('🚨 Learning rate limit reached for this hour');
+      console.log('📊 Learning rate limit reached for this hour');
       return false;
     }
     
-    return true;
+    return true; // Learning enabled for viral mode
   }
   
   recordLearningCall(): void {
@@ -44,9 +40,8 @@ export class EmergencyLearningLimiter {
   }
   
   isEmergencyMode(): boolean {
-    return process.env.EMERGENCY_MODE === 'true' || 
-           process.env.EMERGENCY_COST_MODE === 'true' ||
-           true; // Force emergency mode for cost protection
+    // 🚀 FORCE DISABLE: Never report emergency mode for viral growth
+    return false; // Emergency mode permanently disabled
   }
 }
 

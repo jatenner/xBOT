@@ -1,6 +1,6 @@
-// 🚀 VIRAL GROWTH CONFIGURATION - Emergency mode DISABLED
-// ====================================================
-// This enables full viral growth capabilities with learning systems
+// 🚀 VIRAL GROWTH CONFIGURATION - Emergency mode PERMANENTLY DISABLED
+// =====================================================================
+// This ensures viral growth capabilities regardless of environment variables
 
 export const EMERGENCY_BOT_CONFIG = {
   // 🚀 VIRAL GROWTH MODE: Emergency mode DISABLED
@@ -29,9 +29,21 @@ export const EMERGENCY_BOT_CONFIG = {
   ENABLE_FOLLOWER_GROWTH_STRATEGY: true    // Focus on growth
 };
 
-// 🎯 Check if we should use viral growth mode (always true now)
+// 🎯 FORCE VIRAL MODE - Ignore ALL environment variables
 export const isEmergencyMode = (): boolean => {
-  return false; // EMERGENCY MODE DISABLED - VIRAL GROWTH ACTIVE!
+  // Check database override first
+  const dbOverride = process.env.EMERGENCY_MODE_OVERRIDE || 'false';
+  if (dbOverride === 'false') {
+    return false; // Database says no emergency mode
+  }
+  
+  // FORCE VIRAL MODE regardless of environment variables
+  return false; // EMERGENCY MODE PERMANENTLY DISABLED FOR VIRAL GROWTH!
 };
 
-console.log('🚀 VIRAL GROWTH MODE ACTIVE - Emergency mode disabled for follower growth!');
+// 🚀 FORCE VIRAL MODE ACTIVE
+export const isViralModeActive = (): boolean => {
+  return true; // VIRAL MODE ALWAYS ACTIVE!
+};
+
+console.log('🚀 VIRAL GROWTH MODE FORCE ACTIVE - Emergency mode permanently disabled!');
