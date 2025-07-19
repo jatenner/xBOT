@@ -10,6 +10,7 @@ import { budgetEnforcer } from './budgetEnforcer'; // Updated import
 import { getBudgetAwareOpenAI } from './budgetAwareOpenAI'; // New import
 import { supabaseClient } from './supabaseClient';
 import { AwarenessLogger } from './awarenessLogger'; // Fixed import
+import { followerGrowthLearner } from './followerGrowthLearner'; // Add autonomous learning
 
 interface AIDecisionResult {
   shouldPost: boolean;
@@ -95,6 +96,7 @@ export class LegendaryAICoordinator {
     console.log('⏰ Timing Optimization Agent: READY');
     console.log('🚀 Real-Time Limits Intelligence: READY');
     console.log('🤖 Autonomous Intelligence Core: READY');
+    console.log('🧠 Follower Growth Learner: READY');
     console.log('🛡️ Anti-Burst Protection: ACTIVE');
     console.log('💰 Budget Management: INTEGRATED');
     console.log('🏆 === LEGENDARY SYSTEM READY ===');
@@ -170,20 +172,23 @@ export class LegendaryAICoordinator {
   }
 
   /**
-   * 🧠 COORDINATE AI DECISION MAKING
+   * 🧠 COORDINATE AI DECISION MAKING - Enhanced with Learning & Parallel Execution
    * Gets input from all AI agents and makes a coordinated decision
    */
   private async coordinateAIDecision(): Promise<AIDecisionResult> {
+    const startTime = Date.now();
     console.log('🧠 Coordinating AI agents for decision making...');
     
-    // Gather intelligence from all agents in parallel
+    // 1. Parallel execution of learning insights and agent decisions
     const [
+      learningInsights,
       supremeDecision,
       intelligentDecision,
       strategicOpportunities,
       timingAnalysis,
       limitsStatus
-    ] = await Promise.all([
+    ] = await Promise.allSettled([
+      followerGrowthLearner.getLearningInsights(),
       this.getSupremeDecision(),
       this.getIntelligentDecision(),
       this.getStrategicOpportunities(),
@@ -191,21 +196,102 @@ export class LegendaryAICoordinator {
       this.getLimitsStatus()
     ]);
 
-    // Coordinate all inputs into final decision
-    const coordinatedDecision = await this.synthesizeAIInputs({
-      supremeDecision,
-      intelligentDecision,
-      strategicOpportunities,
-      timingAnalysis,
-      limitsStatus
-    });
+    // 2. Extract results with error handling
+    const extractResult = (result: PromiseSettledResult<any>, defaultValue: any = null) => {
+      return result.status === 'fulfilled' ? result.value : defaultValue;
+    };
+
+    const insights = extractResult(learningInsights, { success_patterns: [], avoid_patterns: [] });
+    const decisions = {
+      supremeDecision: extractResult(supremeDecision),
+      intelligentDecision: extractResult(intelligentDecision),
+      strategicOpportunities: extractResult(strategicOpportunities),
+      timingAnalysis: extractResult(timingAnalysis),
+      limitsStatus: extractResult(limitsStatus)
+    };
+
+    console.log(`🧠 Learning insights: ${insights.success_patterns.length} success patterns, ${insights.avoid_patterns.length} patterns to avoid`);
+    console.log(`⚡ Parallel execution completed in ${Date.now() - startTime}ms`);
+
+    // 3. Apply learning insights to decisions
+    const learningOptimizedDecisions = this.applyLearningInsights(decisions, insights);
+
+    // 4. Coordinate all inputs into final decision
+    const coordinatedDecision = await this.synthesizeAIInputs(learningOptimizedDecisions);
 
     console.log(`🎯 Coordinated AI Decision: ${coordinatedDecision.shouldPost ? 'POST' : 'WAIT'}`);
     console.log(`🤖 Primary AI Agent: ${coordinatedDecision.aiAgent}`);
     console.log(`📊 Confidence: ${coordinatedDecision.confidence}%`);
     console.log(`💭 Reasoning: ${coordinatedDecision.reasoning}`);
+    console.log(`🧠 Learning-optimized: ${insights.success_patterns.length > 0 ? 'YES' : 'NO'}`);
+    console.log(`⚡ Total coordination time: ${Date.now() - startTime}ms`);
 
     return coordinatedDecision;
+  }
+
+  /**
+   * 🧠 APPLY LEARNING INSIGHTS TO DECISIONS
+   */
+  private applyLearningInsights(decisions: any, learningInsights: any): any {
+    try {
+      // Apply learning to supreme decision
+      if (decisions.supremeDecision && learningInsights.success_patterns.length > 0) {
+        console.log('🔥 Applying successful patterns to Supreme AI decision');
+        
+        // Boost confidence for content types that gained followers
+        for (const pattern of learningInsights.success_patterns.slice(0, 3)) {
+          if (pattern.pattern?.content_type) {
+            // Influence the supreme decision towards successful content types
+            if (decisions.supremeDecision.strategy) {
+              decisions.supremeDecision.strategy.contentOptimization = {
+                preferredContentType: pattern.pattern.content_type,
+                expectedFollowerGrowth: pattern.followers_gained || 0,
+                viralPotential: pattern.pattern.f_per_1k || 0
+              };
+            }
+          }
+        }
+      }
+
+      // Apply learning to timing decisions
+      if (decisions.intelligentDecision && learningInsights.success_patterns.length > 0) {
+        console.log('⏰ Applying timing insights to intelligent decision');
+        
+        // Find timing patterns that gained followers
+        for (const pattern of learningInsights.success_patterns) {
+          if (pattern.pattern?.timing && pattern.followers_gained > 0) {
+            const currentHour = new Date().getHours();
+            if (Math.abs(currentHour - pattern.pattern.timing) <= 1) {
+              // Boost confidence if current time matches successful timing
+              decisions.intelligentDecision.confidence = Math.min(1.0, 
+                (decisions.intelligentDecision.confidence || 0.5) + 0.2);
+              console.log(`⏰ Timing boost: Current hour ${currentHour} matches successful pattern`);
+            }
+          }
+        }
+      }
+
+      // Avoid failed patterns
+      if (learningInsights.avoid_patterns.length > 0) {
+        console.log('🚫 Applying avoidance patterns to all decisions');
+        
+        for (const pattern of learningInsights.avoid_patterns.slice(0, 2)) {
+          if (pattern.pattern?.failed_elements?.includes('academic_language')) {
+            // Signal to avoid academic content
+            if (decisions.supremeDecision?.strategy) {
+              decisions.supremeDecision.strategy.avoidAcademicLanguage = true;
+            }
+          }
+        }
+      }
+
+      console.log('✅ Learning insights applied to all AI decisions');
+      return decisions;
+
+    } catch (error) {
+      console.warn('⚠️ Failed to apply learning insights:', error);
+      return decisions; // Return original if optimization fails
+    }
   }
 
   /**
@@ -366,7 +452,7 @@ export class LegendaryAICoordinator {
   }
 
   /**
-   * 🚀 EXECUTE COORDINATED DECISION
+   * 🚀 EXECUTE COORDINATED DECISION - Enhanced with Learning Tracking
    */
   private async executeCoordinatedDecision(decision: AIDecisionResult): Promise<void> {
     console.log(`🚀 Executing coordinated decision via ${decision.aiAgent}`);
@@ -399,7 +485,9 @@ export class LegendaryAICoordinator {
           executionResult = { 
             success: viralResult.success, 
             executedPosts: viralResult.success ? 1 : 0,
-            content: viralResult.content
+            content: viralResult.content,
+            contentType: viralResult.contentType || 'viral',
+            postId: viralResult.postId
           };
           break;
         default:
@@ -414,8 +502,12 @@ export class LegendaryAICoordinator {
         this.coordinationState.currentStrategy = decision.strategy;
         this.coordinationState.activeAIAgent = decision.aiAgent;
 
+        // 🧠 AUTONOMOUS LEARNING: Track this execution for learning
+        await this.trackExecutionForLearning(decision, executionResult);
+
         console.log(`✅ Execution successful: ${executionResult.executedPosts || 1} posts created`);
         console.log(`🤖 AI Agent: ${decision.aiAgent}, Strategy: ${decision.strategy}, Confidence: ${decision.confidence}`);
+        console.log(`🧠 Execution tracked for autonomous learning`);
       } else {
         console.log('❌ Execution failed');
         console.log('📊 Decision:', JSON.stringify(decision, null, 2));
@@ -425,6 +517,47 @@ export class LegendaryAICoordinator {
     } catch (error) {
       console.error('❌ Execution error:', error);
       console.error('📊 Decision that failed:', JSON.stringify(decision, null, 2));
+    }
+  }
+
+  /**
+   * 🧠 TRACK EXECUTION FOR AUTONOMOUS LEARNING
+   */
+  private async trackExecutionForLearning(decision: AIDecisionResult, executionResult: any): Promise<void> {
+    try {
+      if (!executionResult.success || !executionResult.content) return;
+
+      console.log('🧠 Recording execution for autonomous learning...');
+
+      // Wait a moment then track initial performance
+      setTimeout(async () => {
+        try {
+          // Simulate initial engagement metrics (in production, would fetch from Twitter API)
+          const initialMetrics = {
+            likes: 0,
+            retweets: 0,
+            replies: 0,
+            impressions: 1000, // Estimated initial impressions
+            new_followers: 0 // Will be updated later
+          };
+
+          // Record with follower growth learner
+          await followerGrowthLearner.learnFromPost(
+            executionResult.postId || `coordinated_${Date.now()}`,
+            executionResult.content,
+            executionResult.contentType || decision.strategy,
+            initialMetrics
+          );
+
+          console.log('✅ Execution recorded for autonomous learning');
+
+        } catch (learningError) {
+          console.warn('⚠️ Failed to record execution for learning:', learningError);
+        }
+      }, 5000); // Wait 5 seconds before initial tracking
+
+    } catch (error) {
+      console.warn('⚠️ Learning tracking setup failed:', error);
     }
   }
 

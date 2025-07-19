@@ -526,12 +526,19 @@ export class PostTweetAgent {
         }
       }
 
+      // 🚨 CRITICAL: BURST PROTECTION CHECK (FIRST PRIORITY)
+      const burstCheck = await this.checkBurstProtection();
+      if (!burstCheck.canPost) {
+        console.log('🛡️ BURST PROTECTION BLOCK:', burstCheck.reason);
+        return { success: false, reason: burstCheck.reason };
+      }
+
       // 🚨 EMERGENCY RATE LIMITING (still check as backup)
-    const rateLimitCheck = await this.checkRateLimit();
-    if (!rateLimitCheck.canPost) {
-      console.log('🚨 RATE LIMIT BLOCK: Cannot post -', rateLimitCheck.reason);
-      return { success: false, reason: rateLimitCheck.reason };
-    }
+      const rateLimitCheck = await this.checkRateLimit();
+      if (!rateLimitCheck.canPost) {
+        console.log('🚨 RATE LIMIT BLOCK: Cannot post -', rateLimitCheck.reason);
+        return { success: false, reason: rateLimitCheck.reason };
+      }
       
       console.log('✅ All decision checks passed - proceeding with posting');
       
@@ -742,15 +749,37 @@ export class PostTweetAgent {
               break;
               
             case 'viral':
-              console.log('🔥 Generating NON-REPETITIVE viral content...');
-              // Generate diverse viral content, avoid the repetitive "BREAKTHROUGH" pattern
+              console.log('🔥 Generating VIRAL FOLLOWER GROWTH content...');
+              // 🚨 EMERGENCY FIX: Use actual viral follower growth agents instead of academic content
               try {
-                content = await this.nuclearLearning.generateCreativeContent();
-                console.log('🧠 NUCLEAR LEARNING: Generated creative content');
-              } catch (error) {
-                console.warn('⚠️ Nuclear learning fallback to viral generator');
-                const viralResult = await this.generateViralTweet(false, false);
-                content = viralResult.content || '';
+                // Import the viral follower growth agent
+                const { viralFollowerGrowthAgent } = await import('./viralFollowerGrowthAgent.js');
+                const viralContent = await viralFollowerGrowthAgent.generateViralContent();
+                
+                content = viralContent.content;
+                console.log(`🔥 VIRAL SUCCESS: ${viralContent.contentType} with ${viralContent.viralPotential}% potential`);
+                console.log(`🎯 Engagement hooks: ${viralContent.engagementHooks.join(', ')}`);
+                console.log(`📈 Follow triggers: ${viralContent.followTriggers.join(', ')}`);
+                
+                // Track viral performance
+                try {
+                  await viralFollowerGrowthAgent.trackViralPerformance(viralContent, 'pending_post_id');
+                } catch (trackError) {
+                  console.warn('⚠️ Failed to track viral performance:', trackError);
+                }
+                
+              } catch (viralError) {
+                console.warn('⚠️ Viral follower growth agent failed, trying ultra viral generator:', viralError);
+                try {
+                  // Fallback to ultra viral generator for controversial content  
+                  const ultraViralResult = await this.viralGenerator.generateViralTweet();
+                  content = ultraViralResult.content;
+                  console.log('🔥 ULTRA VIRAL FALLBACK: Generated controversial content');
+                } catch (ultraError) {
+                  console.warn('⚠️ Ultra viral fallback to nuclear learning:', ultraError);
+                  content = await this.nuclearLearning.generateCreativeContent();
+                  console.log('🧠 NUCLEAR LEARNING FALLBACK: Generated creative content');
+                }
               }
               break;
               
@@ -888,6 +917,75 @@ export class PostTweetAgent {
   }
 
   private async selectOptimizedContentMode(optimizedStrategy: any): Promise<'viral' | 'comprehensive' | 'engagement' | 'current_events' | 'trending' | 'human_expert' | 'diverse_perspective' | 'expert_intelligence'> {
+    // 🚨 FIRST: CHECK EMERGENCY VIRAL OVERRIDE
+    try {
+      const { data: emergencyOverride } = await supabase
+        .from('bot_config')
+        .select('value')
+        .eq('key', 'emergency_viral_override')
+        .single() || { data: null };
+      
+      if (emergencyOverride?.value?.enabled && emergencyOverride?.value?.posts_remaining > 0) {
+        console.log('🚨 EMERGENCY VIRAL OVERRIDE ACTIVE!');
+        console.log(`🔥 Forcing viral content generation (${emergencyOverride.value.posts_remaining} posts remaining)`);
+        
+        // Decrement posts remaining
+        await supabase
+          .from('bot_config')
+          .update({
+            value: {
+              ...emergencyOverride.value,
+              posts_remaining: emergencyOverride.value.posts_remaining - 1
+            },
+            updated_at: new Date().toISOString()
+          })
+          .eq('key', 'emergency_viral_override');
+        
+        return 'viral'; // FORCE VIRAL CONTENT
+      }
+    } catch (error) {
+      console.warn('⚠️ Failed to check emergency viral override:', error);
+    }
+
+    // 🚫 CHECK CONTENT BLOCKING CONFIG
+    try {
+      const { data: blockingConfig } = await supabase
+        .from('bot_config')
+        .select('value')
+        .eq('key', 'content_blocking_config')
+        .single() || { data: null };
+      
+      if (blockingConfig?.value?.blocked_content_types?.includes('viral_health_theme')) {
+        console.log('🚫 Academic content blocked - forcing viral alternatives');
+        // Block academic/expert content modes, force viral
+        return 'viral';
+      }
+    } catch (error) {
+      console.warn('⚠️ Failed to check content blocking config:', error);
+    }
+
+    // 🎯 CHECK AI CONTENT SELECTION OVERRIDE
+    try {
+      const { data: aiOverride } = await supabase
+        .from('bot_config')
+        .select('value')
+        .eq('key', 'ai_content_selection_override')
+        .single() || { data: null };
+      
+      if (aiOverride?.value?.enabled && aiOverride?.value?.force_viral_priority) {
+        console.log('🤖 AI CONTENT OVERRIDE: Prioritizing viral agents');
+        // 80% chance viral, 20% other viral types
+        const viralRandom = Math.random();
+        if (viralRandom < 0.8) {
+          return 'viral';
+        } else {
+          return Math.random() < 0.5 ? 'trending' : 'engagement';
+        }
+      }
+    } catch (error) {
+      console.warn('⚠️ Failed to check AI content override:', error);
+    }
+
     // 🎯 LOAD DATABASE CONFIGURATIONS for content distribution
     try {
       const { data: distributionConfig } = await supabase
@@ -1369,24 +1467,35 @@ The implications could reshape how we approach patient care. What's your take?`;
       const { data, error } = await supabase
         .from('tweets')
         .insert({
+          tweet_id: twitterId || `local_${Date.now()}`, // Use tweet_id instead of twitter_id
           content,
           image_url: imageUrl,
-          style,
-          twitter_id: twitterId,
-          posted_at: new Date().toISOString(),
-          created_at: new Date().toISOString()
+          tweet_type: 'original',
+          content_type: style || 'viral_content', // Use content_type instead of style
+          content_category: style || 'general',
+          source_attribution: 'PostTweetAgent',
+          engagement_score: 0,
+          likes: 0,
+          retweets: 0,
+          replies: 0,
+          impressions: 0,
+          has_snap2health_cta: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         })
         .select('id')
         .single();
 
       if (error) {
-        console.error('Database storage error:', error);
+        console.error('❌ Database storage error:', error);
+        console.error('Error details:', error);
         return null;
       }
 
+      console.log(`✅ Tweet stored in database with ID: ${data?.id}`);
       return data?.id || null;
     } catch (error) {
-      console.error('Error storing tweet:', error);
+      console.error('❌ Error storing tweet:', error);
       return null;
     }
   }
@@ -3642,6 +3751,96 @@ Make it insightful, strategic, and reveal hidden implications. 250 characters ma
     
     // Return a random conversational enhancement
     return endings[Math.floor(Math.random() * endings.length)];
+  }
+
+  /**
+   * 🛡️ BURST PROTECTION SYSTEM
+   * Prevents rapid posting that could trigger API blocks or account suspension
+   */
+  private async checkBurstProtection(): Promise<{ canPost: boolean; reason: string }> {
+    try {
+      console.log('🛡️ Checking burst protection...');
+      
+      // Check if burst protection is enabled
+      const { data: burstConfig } = await supabaseClient.supabase
+        ?.from('bot_config')
+        .select('value')
+        .eq('key', 'burst_protection_system')
+        .single() || { data: null };
+      
+      if (!burstConfig?.value?.enabled) {
+        console.log('⚠️ Burst protection not configured - allowing post');
+        return { canPost: true, reason: 'No burst protection configured' };
+      }
+      
+      const config = burstConfig.value;
+      const now = new Date();
+      
+      // Get recent posts for burst detection
+      const timeWindows = [
+        { name: '1 minute', minutes: 1, maxPosts: config.max_posts_per_minute || 1 },
+        { name: '5 minutes', minutes: 5, maxPosts: config.max_posts_per_5_min || 1 },
+        { name: '15 minutes', minutes: 15, maxPosts: config.max_posts_per_15_min || 1 },
+        { name: '1 hour', minutes: 60, maxPosts: config.max_posts_per_hour || 1 },
+        { name: '24 hours', minutes: 1440, maxPosts: config.max_posts_per_day || 6 }
+      ];
+      
+      for (const window of timeWindows) {
+        const windowStart = new Date(now.getTime() - window.minutes * 60 * 1000);
+        
+        const { data: recentPosts } = await supabaseClient.supabase
+          ?.from('tweets')
+          .select('created_at')
+          .gte('created_at', windowStart.toISOString()) || { data: [] };
+        
+        const postsInWindow = recentPosts?.length || 0;
+        
+        if (postsInWindow >= window.maxPosts) {
+          console.log(`🛡️ BURST BLOCKED: ${postsInWindow}/${window.maxPosts} posts in last ${window.name}`);
+          return { 
+            canPost: false, 
+            reason: `Burst protection: ${postsInWindow}/${window.maxPosts} posts in last ${window.name}` 
+          };
+        }
+        
+        console.log(`✅ ${window.name}: ${postsInWindow}/${window.maxPosts} posts`);
+      }
+      
+      // Check minimum interval since last post
+      const minInterval = config.min_seconds_between_posts || 7200; // 2 hours default
+      
+      const { data: lastPost } = await supabaseClient.supabase
+        ?.from('tweets')
+        .select('created_at')
+        .order('created_at', { ascending: false })
+        .limit(1) || { data: [] };
+      
+      if (lastPost && lastPost.length > 0) {
+        const lastPostTime = new Date(lastPost[0].created_at);
+        const timeSinceLastPost = (now.getTime() - lastPostTime.getTime()) / 1000;
+        
+        if (timeSinceLastPost < minInterval) {
+          const waitSeconds = Math.ceil(minInterval - timeSinceLastPost);
+          const waitMinutes = Math.ceil(waitSeconds / 60);
+          
+          console.log(`🛡️ INTERVAL BLOCKED: ${Math.round(timeSinceLastPost)} < ${minInterval} seconds`);
+          return { 
+            canPost: false, 
+            reason: `Burst protection: Wait ${waitMinutes} more minutes (${minInterval}s minimum interval)` 
+          };
+        }
+        
+        console.log(`✅ Interval OK: ${Math.round(timeSinceLastPost)} seconds since last post`);
+      }
+      
+      console.log('✅ All burst protection checks passed');
+      return { canPost: true, reason: 'Burst protection passed' };
+      
+    } catch (error) {
+      console.error('❌ Burst protection check failed:', error);
+      // Fail safe - block posting on error
+      return { canPost: false, reason: 'Burst protection check failed - being conservative' };
+    }
   }
 
   /**

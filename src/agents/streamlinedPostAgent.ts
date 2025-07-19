@@ -22,6 +22,7 @@ import { supabaseClient } from '../utils/supabaseClient';
 import { xClient } from '../utils/xClient';
 import { viralFollowerGrowthAgent } from './viralFollowerGrowthAgent';
 import { aggressiveEngagementAgent } from './aggressiveEngagementAgent';
+import { followerGrowthLearner } from '../utils/followerGrowthLearner';
 
 export interface StreamlinedPostResult {
   success: boolean;
@@ -48,25 +49,105 @@ export class StreamlinedPostAgent {
         return { success: false, reason: canPost.reason };
       }
 
-      // 2. Generate viral follower growth content
-      const viralContent = await viralFollowerGrowthAgent.generateViralContent();
-      console.log(`🎯 Generated ${viralContent.contentType} content with ${viralContent.viralPotential}% viral potential`);
+      // 2. CHECK VIRAL SYSTEM CONFIGURATION
+      console.log('🔥 Checking viral system configuration...');
+      const { data: viralConfig } = await supabaseClient.supabase
+        ?.from('bot_config')
+        .select('value')
+        .eq('key', 'viral_follower_growth_agent_enabled')
+        .single() || { data: null };
 
-      // 3. Get engagement strategy
+      // Handle both string and object formats for viral config
+      let viralEnabled = false;
+      if (viralConfig?.value) {
+        const value = viralConfig.value;
+        if (typeof value === 'string') {
+          viralEnabled = value === 'true';
+        } else if (typeof value === 'object' && value !== null) {
+          viralEnabled = value.enabled || value.force_active;
+        } else {
+          viralEnabled = Boolean(value);
+        }
+      }
+      console.log(`🔥 Viral follower growth agent: ${viralEnabled ? '✅ ENABLED' : '❌ DISABLED'}`);
+
+      // 3. CHECK FOR ACADEMIC CONTENT BLOCKING
+      const { data: blockConfig } = await supabaseClient.supabase
+        ?.from('bot_config')
+        .select('value')
+        .eq('key', 'block_academic_content')
+        .single() || { data: null };
+
+      // Handle both string and object formats for block config
+      let blockAcademic = false;
+      if (blockConfig?.value) {
+        const value = blockConfig.value;
+        if (typeof value === 'string') {
+          blockAcademic = value === 'true';
+        } else if (typeof value === 'object' && value !== null) {
+          blockAcademic = value.enabled;
+        } else {
+          blockAcademic = Boolean(value);
+        }
+      }
+      console.log(`🚫 Block academic content: ${blockAcademic ? '✅ ACTIVE' : '❌ INACTIVE'}`);
+
+      // 4. Get learning insights to optimize content generation
+      const learningInsights = await followerGrowthLearner.getLearningInsights();
+      console.log(`🧠 Applied ${learningInsights.success_patterns.length} success patterns and avoiding ${learningInsights.avoid_patterns.length} failed patterns`);
+
+      // 5. Generate viral follower growth content with learning optimization
+      let viralContent;
+      if (viralEnabled) {
+        console.log('🔥 Using VIRAL FOLLOWER GROWTH AGENT for content generation');
+        viralContent = await viralFollowerGrowthAgent.generateViralContent();
+        console.log(`🎯 Generated ${viralContent.contentType} content with ${viralContent.viralPotential}% viral potential`);
+        console.log(`🔥 Engagement hooks: ${viralContent.engagementHooks.join(', ')}`);
+        console.log(`📈 Follow triggers: ${viralContent.followTriggers.join(', ')}`);
+        
+        // Apply learning optimizations to content
+        viralContent = await this.applyLearningOptimizations(viralContent, learningInsights);
+      } else {
+        console.log('⚠️ Viral agent disabled, falling back to viral health theme agent');
+        viralContent = await viralHealthThemeAgent.generateViralHealthContent();
+        console.log(`🎯 Generated ${viralContent.contentType} content`);
+      }
+
+      // 5. Get engagement strategy
       const engagementStrategy = await audienceEngagementEngine.getViralEngagementStrategy();
       console.log(`📈 Using ${engagementStrategy.contentFormat} format with ${engagementStrategy.followerGrowthPotential} viral potential`);
 
-      // 4. Optimize content for engagement
+      // 6. Optimize content for engagement and ensure it's VIRAL not academic
       const optimizedContent = await this.optimizeForEngagement(viralContent, engagementStrategy);
+      
+      // 7. Verify content is NOT academic
+      if (blockAcademic && this.isAcademicContent(optimizedContent)) {
+        console.log('🚫 BLOCKED: Content detected as academic, regenerating viral content...');
+        // Force regenerate with viral content
+        const forceViralContent = await viralFollowerGrowthAgent.generateViralContent();
+        const reoptimizedContent = await this.optimizeForEngagement(forceViralContent, engagementStrategy);
+        console.log('🔥 REGENERATED: Using viral follower growth content instead');
+        return this.processViralContent(reoptimizedContent, forceViralContent, engagementStrategy);
+      }
 
-      // 5. Quality assurance
+      return this.processViralContent(optimizedContent, viralContent, engagementStrategy);
+
+    } catch (error) {
+      console.error('❌ StreamlinedPostAgent error:', error);
+      return { success: false, reason: error.message };
+    }
+  }
+
+  private async processViralContent(optimizedContent: string, viralContent: any, engagementStrategy: any): Promise<StreamlinedPostResult> {
+    try {
+      // Quality assurance
       const qualityCheck = await qualityEngine.analyzeContent(optimizedContent);
       if (!qualityCheck.overall.passed) {
         console.log(`❌ Quality check failed: ${qualityCheck.overall.issues.join(', ')}`);
         return { success: false, reason: `Quality check failed: ${qualityCheck.overall.issues.join(', ')}` };
       }
 
-      // 6. Post to Twitter
+      // Post to Twitter
       const postResult = await this.postToTwitter(optimizedContent);
       if (!postResult.success) {
         return { success: false, reason: postResult.reason };
@@ -246,30 +327,72 @@ export class StreamlinedPostAgent {
   }
 
   /**
+   * 🚫 CHECK IF CONTENT IS ACADEMIC
+   */
+  private isAcademicContent(content: string): boolean {
+    const academicKeywords = [
+      'study', 'research', 'clinical', 'analysis', 'algorithm', 
+      'machine learning', 'data', 'findings', 'according to',
+      'breakthrough', 'milestone', 'drug discovery', 'pharmaceutical',
+      'patients', 'medical', 'healthcare ai', 'trial', 'evidence'
+    ];
+    
+    const contentLower = content.toLowerCase();
+    const academicMatches = academicKeywords.filter(keyword => 
+      contentLower.includes(keyword)
+    ).length;
+    
+    // If more than 2 academic keywords, consider it academic
+    const isAcademic = academicMatches >= 2;
+    
+    if (isAcademic) {
+      console.log(`🚫 Academic content detected: ${academicMatches} keywords found`);
+      console.log(`🔍 Keywords: ${academicKeywords.filter(k => contentLower.includes(k)).join(', ')}`);
+    }
+    
+    return isAcademic;
+  }
+
+  /**
    * 💾 STORE TWEET IN DATABASE
    */
   private async storeTweetInDatabase(tweetId: string, content: string): Promise<void> {
     try {
       if (!supabaseClient.supabase) return;
 
-      await supabaseClient.supabase
+      const { data, error } = await supabaseClient.supabase
         .from('tweets')
         .insert({
-          id: tweetId,
+          tweet_id: tweetId,
           content: content,
+          tweet_type: 'original',
           content_type: 'viral_health_theme',
+          content_category: 'viral_theme',
+          source_attribution: 'StreamlinedPostAgent',
+          engagement_score: 0,
+          likes: 0,
+          retweets: 0,
+          replies: 0,
+          impressions: 0,
+          has_snap2health_cta: false,
           created_at: new Date().toISOString(),
-          is_viral_optimized: true,
-          theme_page_content: true
+          updated_at: new Date().toISOString()
         });
 
+      if (error) {
+        console.error('❌ Database storage error:', error);
+        console.error('Error details:', error);
+      } else {
+        console.log(`✅ Tweet stored in database: ${tweetId}`);
+      }
+
     } catch (error) {
-      console.warn('Could not store tweet in database:', error);
+      console.error('❌ Could not store tweet in database:', error);
     }
   }
 
   /**
-   * 📊 TRACK VIRAL PERFORMANCE
+   * 📊 TRACK VIRAL PERFORMANCE & LEARNING
    */
   private async trackViralPerformance(
     tweetId: string, 
@@ -287,8 +410,105 @@ export class StreamlinedPostAgent {
         { likes: 0, retweets: 0, replies: 0 } // Initial values
       );
 
+      // 🧠 LEARNING INTEGRATION: Record this post for learning analysis
+      await this.recordForLearning(tweetId, viralContent, engagementStrategy);
+
+      console.log(`🧠 Post recorded for learning analysis`);
+
     } catch (error) {
       console.warn('Could not track viral performance:', error);
+    }
+  }
+
+  /**
+   * 🧠 APPLY LEARNING OPTIMIZATIONS TO CONTENT
+   */
+  private async applyLearningOptimizations(viralContent: any, learningInsights: any): Promise<any> {
+    try {
+      let optimizedContent = { ...viralContent };
+
+      // Apply successful patterns
+      for (const pattern of learningInsights.success_patterns) {
+        if (pattern.pattern?.engagement_hooks?.includes('breaking_news_emoji') && 
+            !optimizedContent.content.includes('🚨')) {
+          optimizedContent.content = '🚨 ' + optimizedContent.content;
+          console.log('🔥 Applied breaking news hook from learning');
+        }
+
+        if (pattern.pattern?.viral_elements?.includes('shock_value') && 
+            !optimizedContent.content.includes('shocking')) {
+          // Don't modify content too aggressively, just boost viral potential
+          optimizedContent.viralPotential = Math.min(100, optimizedContent.viralPotential + 10);
+          console.log('📈 Boosted viral potential based on learning');
+        }
+      }
+
+      // Avoid failed patterns
+      for (const pattern of learningInsights.avoid_patterns) {
+        if (pattern.pattern?.failed_elements?.includes('academic_language') && 
+            (optimizedContent.content.includes('study shows') || optimizedContent.content.includes('research indicates'))) {
+          console.log('🚫 Avoiding academic language based on learning');
+          optimizedContent.content = optimizedContent.content
+            .replace(/study shows/gi, 'new data reveals')
+            .replace(/research indicates/gi, 'evidence suggests');
+        }
+      }
+
+      console.log(`🧠 Learning optimizations applied to ${optimizedContent.contentType} content`);
+      return optimizedContent;
+
+    } catch (error) {
+      console.warn('Failed to apply learning optimizations:', error);
+      return viralContent; // Return original if optimization fails
+    }
+  }
+
+  /**
+   * 🧠 RECORD POST FOR LEARNING SYSTEM
+   */
+  private async recordForLearning(tweetId: string, viralContent: any, engagementStrategy: any): Promise<void> {
+    try {
+      // Check if learning is enabled
+      const { data: learningConfig } = await supabaseClient.supabase
+        ?.from('bot_config')
+        .select('value')
+        .eq('key', 'learning_enabled')
+        .single() || { data: null };
+
+      if (!learningConfig?.value?.enabled) {
+        console.log('⚠️ Learning system disabled, skipping learning record');
+        return;
+      }
+
+      // Record post for learning analysis with follower-growth focus
+      const learningData = {
+        tweet_id: tweetId,
+        content_type: viralContent.contentType || 'unknown',
+        viral_potential: viralContent.viralPotential || 0,
+        engagement_strategy: engagementStrategy.contentFormat || 'standard',
+        follow_triggers: viralContent.followTriggers || [],
+        expected_engagement: engagementStrategy.followerGrowthPotential || 'medium',
+        learning_timestamp: new Date().toISOString(),
+        learning_status: 'pending_analysis',
+        success_metrics: {
+          target_followers: viralContent.viralPotential > 70 ? 5 : 2,
+          target_engagement_rate: viralContent.viralPotential > 50 ? 5.0 : 3.0,
+          viral_threshold: viralContent.viralPotential
+        },
+        optimization_goal: 'follower_growth_primary'
+      };
+
+      // Store in learning tracking (using bot_config as fallback storage)
+      await supabaseClient.supabase?.from('bot_config').upsert({
+        key: `learning_post_${tweetId}`,
+        value: learningData,
+        updated_at: new Date().toISOString()
+      });
+
+      console.log(`🎓 Post ${tweetId} recorded for follower-growth learning (${viralContent.contentType || 'unknown'}, ${viralContent.viralPotential || 0}% viral potential)`);
+      
+    } catch (error) {
+      console.warn('Failed to record post for learning:', error);
     }
   }
 

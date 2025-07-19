@@ -33,11 +33,10 @@ class DailyPostingManager {
   private intelligentScheduler: IntelligentSchedulingAgent;
   private humanStrategicMind: HumanLikeStrategicMind;
   private currentState: DailyPostingState;
-  // 🚨 DEPRECATED: This class is being replaced by SmartPostingOrchestrator
-  // These settings are kept for compatibility but SmartPostingOrchestrator is the authority
-  private readonly MAX_POSTS_PER_HOUR = 1; // NEVER more than 1 post per hour
-  private readonly MAX_POSTS_PER_DAY = 6; // Only 6 high-quality posts per day
-  private readonly MIN_INTERVAL_MINUTES = 120; // 2 hours minimum spacing (anti-burst)
+  // 🚨 UPDATED: Now uses database configuration for flexibility
+  private MAX_POSTS_PER_HOUR = 1; // NEVER more than 1 post per hour
+  private MAX_POSTS_PER_DAY = 6; // Default 6 posts, but loads from database
+  private MIN_INTERVAL_MINUTES = 120; // Default 2 hours, but loads from database
   private isRunning = false;
   private scheduledJobs: cron.ScheduledTask[] = [];
   private useIntelligentScheduling = true;
@@ -62,6 +61,35 @@ class DailyPostingManager {
     this.currentState = this.getDefaultState();
   }
 
+  /**
+   * 🔧 Load configuration from database to prevent hardcoded limits
+   */
+  private async loadDatabaseConfig(): Promise<void> {
+    try {
+      const { data: unifiedConfig } = await supabaseClient.supabase
+        ?.from('bot_config')
+        .select('value')
+        .eq('key', 'unified_daily_target')
+        .single() || { data: null };
+
+      if (unifiedConfig?.value) {
+        this.MAX_POSTS_PER_DAY = unifiedConfig.value.max_posts_per_day || 6;
+        this.MAX_POSTS_PER_HOUR = unifiedConfig.value.max_posts_per_hour || 1;
+        this.MIN_INTERVAL_MINUTES = unifiedConfig.value.min_interval_minutes || 120;
+        
+        console.log('📊 Database config loaded:');
+        console.log(`   📝 Max posts/day: ${this.MAX_POSTS_PER_DAY}`);
+        console.log(`   ⏰ Max posts/hour: ${this.MAX_POSTS_PER_HOUR}`);
+        console.log(`   🕐 Min interval: ${this.MIN_INTERVAL_MINUTES} minutes`);
+      } else {
+        console.log('📊 Using default posting limits (database config not found)');
+      }
+    } catch (error) {
+      console.error('❌ Failed to load database config:', error);
+      console.log('📊 Using default posting limits');
+    }
+  }
+
   private getDefaultState(): DailyPostingState {
     const today = new Date().toISOString().split('T')[0];
     return {
@@ -79,6 +107,9 @@ class DailyPostingManager {
       console.log('📅 Daily Posting Manager already running');
       return;
     }
+
+    // 🔧 Load database configuration first
+    await this.loadDatabaseConfig();
 
     console.log(`🎯 Starting Daily Posting Manager - Target: ${this.MAX_POSTS_PER_DAY} tweets/day`);
     this.isRunning = true;
@@ -341,11 +372,26 @@ class DailyPostingManager {
           console.log('   🧠 Strategic mind is monitoring and waiting for the right moment...');
         }
         
-        // Fallback: Check if we're behind schedule
+        // 🚨 EMERGENCY FIX: Disabled catch-up posting to prevent 17-tweet bursts
+        // Check for catch-up disable flag
+        const { data: catchupConfig } = await supabaseClient.supabase
+          ?.from('bot_config')
+          .select('value')
+          .eq('key', 'disable_strategic_catch_up')
+          .single() || { data: null };
+
+        if (catchupConfig?.value?.catch_up_posting_disabled) {
+          console.log('🛑 Catch-up posting DISABLED - preventing burst posting');
+          console.log('   📊 This prevents 17-tweet bursts at 10:30 AM');
+          return;
+        }
+
+        // Fallback: Check if we're behind schedule (ONLY if not disabled)
         const progress = this.getDailyProgress();
         if (!progress.onTrack && progress.remaining > 0) {
-          console.log('⚡ Behind schedule - activating catch-up mode');
-          await this.activateEmergencyPosting(1);
+          console.log('⚡ Behind schedule - would activate catch-up but DISABLED for safety');
+          console.log(`   📊 Progress: ${progress.completed}/${progress.target} posts`);
+          console.log('   🛡️ Burst protection prevents catch-up posting');
         }
         
       } catch (error) {

@@ -8,6 +8,9 @@ import { autonomousIntelligenceCore } from './agents/autonomousIntelligenceCore'
 import { ensureRuntimeConfig } from './utils/supabaseConfig';
 import { Scheduler } from './agents/scheduler';
 import { emergencyBudgetLockdown } from './utils/emergencyBudgetLockdown';
+import { systemMonitor } from './utils/systemMonitor';
+import { circuitBreakerManager } from './utils/circuitBreaker';
+import { CacheManager } from './utils/intelligentCache';
 
 // ADDICTION VIRAL SYSTEM IMPORTS
 import { addictionViralEngine } from './agents/addictionViralEngine';
@@ -470,6 +473,13 @@ async function main() {
     // Ensure runtime configuration is set up
     await ensureRuntimeConfig();
     
+    // 🚀 Initialize improved system components
+    console.log('🧠 Initializing system monitoring and optimization...');
+    await CacheManager.initialize();
+    await systemMonitor.startMonitoring(60000); // 1 minute intervals
+    circuitBreakerManager.startMonitoring();
+    console.log('✅ System monitoring and optimization initialized');
+    
     // 🚨 EMERGENCY: Use singleton server to prevent conflicts
     console.log('🔧 Starting server with singleton pattern...');
     await startServerSingleton(app, PORT);
@@ -528,6 +538,8 @@ process.on('SIGTERM', () => {
 
 process.on('SIGINT', () => {
   console.log('🛑 SIGINT received, shutting down gracefully...');
+  systemMonitor.stopMonitoring();
+  CacheManager.shutdown();
   legendaryAICoordinator.stop();
   closeServer();
   process.exit(0);
