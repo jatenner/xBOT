@@ -480,6 +480,15 @@ async function main() {
     circuitBreakerManager.startMonitoring();
     console.log('✅ System monitoring and optimization initialized');
     
+    // 🛡️ Initialize enhanced rate limit management
+    console.log('🛡️ Initializing enhanced rate limit management...');
+    const { rateLimitHandler } = await import('./utils/enhancedRateLimitHandler');
+    const { smartPostingManager } = await import('./utils/smartPostingManager');
+    
+    // Log current rate limit status
+    await rateLimitHandler.logStatus();
+    console.log('✅ Enhanced rate limit management initialized');
+    
     // 🚨 EMERGENCY: Use singleton server to prevent conflicts
     console.log('🔧 Starting server with singleton pattern...');
     await startServerSingleton(app, PORT);
