@@ -492,6 +492,31 @@ export class PostTweetAgent {
     try {
       console.log('🐦 === POST TWEET AGENT ACTIVATED ===');
       
+      // 🚨 CRITICAL: UNIFIED POSTING COORDINATOR (Prevents burst posting)
+      if (!force && !testMode) {
+        const { unifiedPostingCoordinator } = await import('../utils/unifiedPostingCoordinator');
+        const coordinatorDecision = await unifiedPostingCoordinator.canPostNow('PostTweetAgent', 'medium');
+        
+        if (!coordinatorDecision.canPost) {
+          console.log(`🚨 POSTING COORDINATOR BLOCK: ${coordinatorDecision.reason}`);
+          console.log(`⏰ Next allowed time: ${coordinatorDecision.nextAllowedTime.toLocaleString()}`);
+          console.log(`⌛ Wait time: ${coordinatorDecision.recommendedWaitMinutes} minutes`);
+          
+          return {
+            success: false,
+            reason: coordinatorDecision.reason,
+            coordinatorInfo: {
+              canPost: coordinatorDecision.canPost,
+              reason: coordinatorDecision.reason,
+              nextAllowedTime: coordinatorDecision.nextAllowedTime,
+              waitMinutes: coordinatorDecision.recommendedWaitMinutes
+            }
+          };
+        }
+        
+        console.log(`✅ POSTING COORDINATOR APPROVED: ${coordinatorDecision.reason}`);
+      }
+      
       // 🧠 INTELLIGENT POSTING DECISION: Think before posting
       if (!force && !testMode) {
         console.log('🧠 === MAKING INTELLIGENT POSTING DECISION ===');
@@ -684,6 +709,12 @@ export class PostTweetAgent {
           replies: 0,
           impressions: 0
         });
+        
+        // 🚨 CRITICAL: Record with unified coordinator to prevent burst posting
+        if (!testMode) {
+          const { unifiedPostingCoordinator } = await import('../utils/unifiedPostingCoordinator');
+          await unifiedPostingCoordinator.recordPost('PostTweetAgent', result.tweetId!, tweetContent);
+        }
         
         // Store content embedding for future uniqueness checking
         if (tweetId) {

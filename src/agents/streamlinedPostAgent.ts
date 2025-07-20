@@ -43,6 +43,23 @@ export class StreamlinedPostAgent {
     console.log('🚀 === VIRAL HEALTH THEME PAGE - STREAMLINED POST AGENT ===');
     
     try {
+      // 0. UNIFIED POSTING COORDINATOR CHECK (Prevents burst posting)
+      if (!forcePost) {
+        const { unifiedPostingCoordinator } = await import('../utils/unifiedPostingCoordinator');
+        const coordinatorDecision = await unifiedPostingCoordinator.canPostNow('StreamlinedPostAgent', 'high');
+        
+        if (!coordinatorDecision.canPost) {
+          console.log(`🚨 COORDINATOR BLOCK: ${coordinatorDecision.reason}`);
+          return {
+            success: false,
+            reason: coordinatorDecision.reason,
+            cost: 0
+          };
+        }
+        
+        console.log(`✅ COORDINATOR APPROVED: ${coordinatorDecision.reason}`);
+      }
+
       // 1. Pre-flight checks
       const canPost = await this.performPreflightChecks(forcePost);
       if (!canPost.allowed) {
@@ -316,6 +333,10 @@ export class StreamlinedPostAgent {
           replies: 0,
           impressions: 0
         });
+
+        // Record with unified coordinator to prevent burst posting
+        const { unifiedPostingCoordinator } = await import('../utils/unifiedPostingCoordinator');
+        await unifiedPostingCoordinator.recordPost('StreamlinedPostAgent', result.tweetId, content);
         
         return { 
           success: true, 
