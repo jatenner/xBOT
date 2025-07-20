@@ -301,8 +301,21 @@ export class StreamlinedPostAgent {
       if (result.success && result.tweetId) {
         console.log(`✅ Posted successfully! Tweet ID: ${result.tweetId}`);
         
-        // Store in database
-        await this.storeTweetInDatabase(result.tweetId, content);
+        // Store in database using FIXED storage system
+        const { fixedSupabaseClient } = await import('../utils/fixedSupabaseClient');
+        await fixedSupabaseClient.saveTweetToDatabase({
+          tweet_id: result.tweetId,
+          content: content,
+          tweet_type: 'original',
+          content_type: 'viral_health_theme',
+          source_attribution: 'StreamlinedPostAgent',
+          engagement_score: 90, // High score for viral content
+          has_snap2health_cta: false,
+          likes: 0,
+          retweets: 0,
+          replies: 0,
+          impressions: 0
+        });
         
         return { 
           success: true, 

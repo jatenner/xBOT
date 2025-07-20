@@ -669,8 +669,21 @@ export class PostTweetAgent {
       const result = await this.postToTwitter(tweetContent, imageUrl);
       
       if (result.success) {
-        // Store in database with style and embedding
-        const tweetId = await this.storeTweetInDatabase(tweetContent, imageUrl, tweetStyle, result.tweetId);
+        // Store in database with FIXED storage system
+        const { fixedSupabaseClient } = await import('../utils/fixedSupabaseClient');
+        const tweetId = await fixedSupabaseClient.saveTweetToDatabase({
+          tweet_id: result.tweetId!,
+          content: tweetContent,
+          tweet_type: 'original',
+          content_type: tweetStyle || 'viral_content',
+          source_attribution: 'PostTweetAgent',
+          engagement_score: 85, // Default high score for posted content
+          has_snap2health_cta: tweetContent.toLowerCase().includes('snap2health'),
+          likes: 0,
+          retweets: 0,
+          replies: 0,
+          impressions: 0
+        });
         
         // Store content embedding for future uniqueness checking
         if (tweetId) {
@@ -732,40 +745,59 @@ export class PostTweetAgent {
         try {
           switch (contentMode) {
             case 'human_expert':
-              console.log('🧠 Generating HUMAN EXPERT content with authentic voice...');
+              console.log('🧠 Generating HUMAN EXPERT content with viral positioning...');
               try {
                 const expertResult = await this.humanExpert.generateExpertContent();
                 if (expertResult && expertResult.content && expertResult.content.length > 30) {
-                  content = expertResult.content;
+                  // ENHANCE human expert content with viral positioning
+                  const { ViralContentForcer } = await import('../utils/viralContentForcer.js');
+                  content = ViralContentForcer.enhanceContentForViral(expertResult.content);
                   console.log(`🎓 EXPERT SUCCESS: ${expertResult.expertiseArea} (score: ${expertResult.confidenceScore})`);
+                  console.log(`🔥 VIRAL ENHANCEMENT: Score ${ViralContentForcer.calculateViralScore(content)}/100`);
                 } else {
                   throw new Error('Expert content too short or invalid');
                 }
               } catch (error) {
-                console.warn('⚠️ Human expert failed, generating emergency unique content...');
-                // Generate emergency unique content instead of falling back to repetitive viral
-                content = await this.generateEmergencyUniqueExpert();
+                console.warn('⚠️ Human expert failed, using viral template fallback...');
+                // Use viral template instead of academic fallback
+                const { ViralContentForcer } = await import('../utils/viralContentForcer.js');
+                content = ViralContentForcer.getRandomViralContent();
+                console.log('🚀 FALLBACK: Using proven viral template');
               }
               break;
               
             case 'viral':
               console.log('🔥 Generating VIRAL FOLLOWER GROWTH content...');
-              // 🚨 EMERGENCY FIX: Use actual viral follower growth agents instead of academic content
+              // 🚨 PRIORITY 1: Use VIRAL CONTENT FORCER for maximum engagement
               try {
-                // Import the viral follower growth agent
-                const { viralFollowerGrowthAgent } = await import('./viralFollowerGrowthAgent.js');
-                const viralContent = await viralFollowerGrowthAgent.generateViralContent();
+                // Import viral content forcer for emergency override
+                const { ViralContentForcer } = await import('../utils/viralContentForcer.js');
                 
-                content = viralContent.content;
-                console.log(`🔥 VIRAL SUCCESS: ${viralContent.contentType} with ${viralContent.viralPotential}% potential`);
-                console.log(`🎯 Engagement hooks: ${viralContent.engagementHooks.join(', ')}`);
-                console.log(`📈 Follow triggers: ${viralContent.followTriggers.join(', ')}`);
+                // Check if we should use pre-made viral templates (faster, guaranteed viral)
+                if (Math.random() < 0.4) { // 40% chance to use proven viral templates
+                  content = ViralContentForcer.getRandomViralContent();
+                  console.log('🚀 USING PROVEN VIRAL TEMPLATE (guaranteed engagement)');
+                } else {
+                  // Generate new viral content with viral follower growth agent
+                  const { viralFollowerGrowthAgent } = await import('./viralFollowerGrowthAgent.js');
+                  const viralContent = await viralFollowerGrowthAgent.generateViralContent();
+                  
+                  // Enhance with viral forcer to ensure maximum engagement
+                  content = ViralContentForcer.enhanceContentForViral(viralContent.content);
+                  console.log(`🔥 VIRAL SUCCESS: ${viralContent.contentType} with ${viralContent.viralPotential}% potential`);
+                  console.log(`🎯 Engagement hooks: ${viralContent.engagementHooks.join(', ')}`);
+                  console.log(`📈 Follow triggers: ${viralContent.followTriggers.join(', ')}`);
+                }
                 
-                // Track viral performance
-                try {
-                  await viralFollowerGrowthAgent.trackViralPerformance(viralContent, 'pending_post_id');
-                } catch (trackError) {
-                  console.warn('⚠️ Failed to track viral performance:', trackError);
+                // Calculate and log viral score
+                const viralScore = ViralContentForcer.calculateViralScore(content);
+                console.log(`📊 VIRAL SCORE: ${viralScore}/100 (Target: 70+)`);
+                
+                // If score is too low, use a proven template instead
+                if (viralScore < 70) {
+                  console.log('⚠️ Viral score too low, switching to proven template...');
+                  content = ViralContentForcer.getRandomViralContent();
+                  console.log(`🚀 USING EMERGENCY VIRAL TEMPLATE (score: ${ViralContentForcer.calculateViralScore(content)}/100)`);
                 }
                 
               } catch (viralError) {
@@ -1508,20 +1540,18 @@ The implications could reshape how we approach patient care. What's your take?`;
     
     const randomFactor = Math.random();
     
-    // 🧠 PRIORITIZE HUMAN EXPERT CONTENT to eliminate bot-like patterns
-    // 60% human expert, 25% viral, 10% current events, 5% comprehensive
-    if (randomFactor < 0.6) {
-      console.log('🧠 Selected mode: HUMAN EXPERT (authentic expert insights for unique voice)');
-      return 'human_expert';
-    } else if (randomFactor < 0.85) {
-      console.log('🔥 Selected mode: VIRAL (breakthrough content for maximum engagement)');
+    // 🚨 FORCE VIRAL CONTENT FOR ENGAGEMENT GROWTH
+    // 70% viral, 20% human expert, 10% engagement (NO academic/comprehensive)
+    // This fixes the boring academic content problem
+    if (randomFactor < 0.7) {
+      console.log('🔥 Selected mode: VIRAL (maximum engagement and follow-worthy content)');
       return 'viral';
-    } else if (randomFactor < 0.95) {
-      console.log('📰 Selected mode: CURRENT EVENTS (real health tech news)');
-      return 'current_events';
+    } else if (randomFactor < 0.9) {
+      console.log('🧠 Selected mode: HUMAN EXPERT (authentic expert insights with viral positioning)');
+      return 'human_expert';
     } else {
-      console.log('🎯 Selected mode: COMPREHENSIVE (structured research)');
-      return 'comprehensive';
+      console.log('⚡ Selected mode: ENGAGEMENT (high-interaction content)');
+      return 'engagement';
     }
   }
 
