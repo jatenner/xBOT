@@ -101,12 +101,12 @@ export class Scheduler {
     console.log('🚀 Starting Snap2Health X-Bot Scheduler...');
     this.isRunning = true;
 
-    // 🎯 START DAILY POSTING MANAGER - Now with NUCLEAR INTELLIGENCE
-    const dailyTarget = 72; // Up to 72 tweets per day (3 per hour max)
-    console.log(`🎯 Activating Daily Posting Manager - Target: UP TO ${dailyTarget} tweets/day`);
-    console.log(`🛡️ SAFETY: Maximum 3 posts per hour prevents nuclear insanity`);
-    console.log(`🧠 INTELLIGENCE: All learning and growth systems ENABLED`);
-    await dailyPostingManager.start();
+    // 🚨 DISABLED: Daily Posting Manager (caused burst posting)
+    console.log('🚨 DAILY POSTING MANAGER: DISABLED');
+    console.log('❌ REASON: Was causing 17+ burst posts');
+    console.log('✅ REPLACEMENT: Master Posting Gate with proper coordination');
+    console.log('📊 NEW LIMIT: 8 posts/day with 90+ minute spacing');
+    // await dailyPostingManager.start(); // DISABLED - Replaced by MasterPostingGate
 
     // 🚀 NUCLEAR INTELLIGENCE MODE: All systems operational
     const emergencyMode = false; // DISABLED - Let the bot work!
@@ -143,10 +143,17 @@ export class Scheduler {
       timezone: "UTC"
     });
 
-    // Schedule strategist to run every 2 hours instead of 30 minutes (massive cost reduction)
+    // 🚨 DISABLED: Strategist posting job (caused conflicts)
+    console.log('🚨 STRATEGIST JOB: DISABLED');
+    console.log('❌ REASON: Conflicts with Master Posting Gate coordination');
+    console.log('✅ SOLUTION: All posting now goes through single coordinated system');
+    
+    // Schedule strategist to run every 2 hours for learning ONLY (no posting)
     this.strategistJob = cron.schedule('0 */2 * * *', async () => {
       try {
-        await this.runStrategistCycle();
+        console.log('🧠 STRATEGIST: Learning cycle only (no posting)');
+        // await this.runStrategistCycle(); // DISABLED - Was causing burst posts
+        console.log('📊 Strategist learning deferred to Master Posting Gate');
       } catch (error) {
         console.error('❌ Strategist cycle failed:', error);
       }

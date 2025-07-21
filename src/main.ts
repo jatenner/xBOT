@@ -387,15 +387,17 @@ async function runLegendaryAISystem() {
     throw error;
   }
   
-  // Also start the scheduler for background learning agents
-  console.log('📅 Starting background AI agent scheduler...');
-  try {
-    const scheduler = new Scheduler();
-    await scheduler.start();
-    console.log('✅ Background AI scheduler started successfully');
-  } catch (error) {
-    console.warn('⚠️ Background scheduler had issues:', error);
-  }
+  // 🚨 DISABLED: Background scheduler (caused burst posting conflicts)
+  console.log('🚨 BACKGROUND SCHEDULER: DISABLED');
+  console.log('❌ REASON: Multiple cron jobs causing burst posting');  
+  console.log('✅ REPLACEMENT: Master Posting Gate handles all scheduling');
+  // try {
+  //   const scheduler = new Scheduler();
+  //   await scheduler.start();
+  //   console.log('✅ Background AI scheduler started successfully');
+  // } catch (error) {
+  //   console.warn('⚠️ Background scheduler had issues:', error);
+  // }
   console.log('');
 
   // Legendary monitoring loop - let the coordinator handle everything
@@ -497,9 +499,14 @@ async function main() {
     await bulletproofManager.startContinuousMonitoring();
     console.log('🛡️ Bulletproof continuous monitoring started as backup');
     
-    // Start the Legendary AI Coordination System
-    console.log('🏆 Starting Legendary AI Coordination System...');
-    await runLegendaryAISystem();
+    // 🚨 CRITICAL FIX: Replace all conflicting systems with Master Posting Gate
+    console.log('🚨 === REPLACING BROKEN SYSTEMS ===');
+    console.log('❌ PROBLEM: Multiple systems causing 17+ burst posts');
+    console.log('✅ SOLUTION: Single coordinated posting gate');
+    console.log('');
+    
+    const { masterPostingGate } = await import('./utils/masterPostingGate');
+    await masterPostingGate.start();
     
   } catch (error) {
     console.error('❌ Fatal error in main:', error);
