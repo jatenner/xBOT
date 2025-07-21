@@ -1,0 +1,14 @@
+{
+  "tweetSavingWorking": false,
+  "analyticsWorking": false,
+  "workingTables": [
+    "tweets",
+    "engagement_data",
+    "ai_learning_data",
+    "viral_content_performance",
+    "learning_insights",
+    "follower_tracking"
+  ],
+  "strategy": "needs_repair",
+  "fallbackApproach": "needs_manual_fix"
+}

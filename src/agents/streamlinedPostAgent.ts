@@ -466,7 +466,7 @@ export class StreamlinedPostAgent {
         if (pattern.pattern?.engagement_hooks?.includes('breaking_news_emoji') && 
             !optimizedContent.content.includes('🚨')) {
           optimizedContent.content = '🚨 ' + optimizedContent.content;
-          console.log('🔥 Applied breaking news hook from learning');
+          console.log('🔥 Applied "Ever wonder why" hook from learning');
         }
 
         if (pattern.pattern?.viral_elements?.includes('shock_value') && 
@@ -480,11 +480,11 @@ export class StreamlinedPostAgent {
       // Avoid failed patterns
       for (const pattern of learningInsights.avoid_patterns) {
         if (pattern.pattern?.failed_elements?.includes('academic_language') && 
-            (optimizedContent.content.includes('study shows') || optimizedContent.content.includes('research indicates'))) {
+            (optimizedContent.content.includes('"Ever wonder why"') || optimizedContent.content.includes('"Ever wonder why"'))) {
           console.log('🚫 Avoiding academic language based on learning');
           optimizedContent.content = optimizedContent.content
-            .replace(/study shows/gi, 'new data reveals')
-            .replace(/research indicates/gi, 'evidence suggests');
+            .replace(/"Ever wonder why"/gi, 'new data reveals')
+            .replace(/"Ever wonder why"/gi, 'evidence suggests');
         }
       }
 

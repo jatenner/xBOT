@@ -34,17 +34,17 @@ export interface OperationCost {
 
 export class UnifiedBudgetManager {
   private static instance: UnifiedBudgetManager;
-  private static readonly DAILY_LIMIT = 3.00;
-  private static readonly EMERGENCY_LIMIT = 2.80;
+  private static readonly DAILY_LIMIT = 5.00;
+  private static readonly EMERGENCY_LIMIT = 4.75;
   private static readonly LOCKDOWN_FILE = '.budget_lockdown';
   
-  // Budget allocation (optimized for content over decisions)
+  // Budget allocation (optimized for content over decisions) - $5.00 budget
   private static readonly ALLOCATION = {
-    content_generation: 0.60,    // $1.80 - Core content creation
-    decision_making: 0.15,       // $0.45 - Strategic decisions only
-    quality_check: 0.15,         // $0.45 - Essential quality gates
-    image_selection: 0.05,       // $0.15 - Minimal image AI
-    learning: 0.05               // $0.15 - Critical learning only
+    content_generation: 0.70,    // $3.50 - Core content creation
+    decision_making: 0.10,       // $0.50 - Strategic decisions only
+    quality_check: 0.10,         // $0.50 - Essential quality gates
+    image_selection: 0.05,       // $0.25 - Minimal image AI
+    learning: 0.05               // $0.25 - Critical learning only
   };
 
   private cachedStatus: BudgetStatus | null = null;

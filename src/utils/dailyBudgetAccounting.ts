@@ -36,17 +36,17 @@ export interface DailyBudgetStatus {
 }
 
 export class DailyBudgetAccounting {
-  private readonly HARD_DAILY_LIMIT = 3.00; // $3.00 maximum per day - ENFORCED
-  private readonly EMERGENCY_BRAKE_THRESHOLD = 2.50; // Stop at $2.50 to prevent overrun
-  private readonly WARNING_THRESHOLD = 2.00; // Warning at $2.00
+  private readonly HARD_DAILY_LIMIT = 5.00; // $5.00 maximum per day - ENFORCED
+  private readonly EMERGENCY_BRAKE_THRESHOLD = 4.75; // Stop at $4.75 to prevent overrun
+  private readonly WARNING_THRESHOLD = 4.00; // Warning at $4.00
   private readonly COST_PER_1K_TOKENS = 0.00015; // gpt-4o-mini cost
   
-  // Budget allocation strategy
+  // Budget allocation strategy for $5.00 daily budget
   private readonly BUDGET_ALLOCATION = {
-    content_generation: 0.60, // 60% for content creation ($1.80)
-    engagement_tracking: 0.15, // 15% for engagement analysis ($0.45)
-    learning_systems: 0.15,    // 15% for learning/optimization ($0.45)
-    emergency_reserve: 0.10    // 10% emergency buffer ($0.30)
+    content_generation: 0.70, // 70% for content creation ($3.50)
+    engagement_tracking: 0.15, // 15% for engagement analysis ($0.75)
+    learning_systems: 0.10,    // 10% for learning/optimization ($0.50)
+    emergency_reserve: 0.05    // 5% emergency buffer ($0.25)
   };
 
   constructor() {

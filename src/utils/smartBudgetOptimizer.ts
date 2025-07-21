@@ -1,14 +1,15 @@
 /**
  * 🎯 SMART BUDGET OPTIMIZER
  * 
- * Maximizes tweet output within $3 daily budget to prevent "ghost account" syndrome.
+ * Maximizes tweet output within $5 daily budget to prevent "ghost account" syndrome.
  * Intelligently allocates budget to ensure consistent daily tweeting.
  * 
  * Goals:
  * - Use 95%+ of daily budget every day
- * - Maintain 10-15 tweets per day (up from 6)
+ * - Maintain 12-20 tweets per day with $5 budget
  * - Smart cost per tweet optimization
  * - Prevent budget waste from being too conservative
+ * - NEVER exceed $5.00 per 24-hour period
  */
 
 import { supabaseClient } from './supabaseClient';
@@ -33,18 +34,18 @@ interface CostOptimization {
 }
 
 export class SmartBudgetOptimizer {
-  private static readonly DAILY_BUDGET = 3.00;
-  private static readonly MINIMUM_TWEETS_PER_DAY = 10;
-  private static readonly OPTIMAL_TWEETS_PER_DAY = 12;
-  private static readonly MAX_TWEETS_PER_DAY = 15;
-  private static readonly EMERGENCY_RESERVE = 0.30; // $0.30 emergency buffer
+  private static readonly DAILY_BUDGET = 5.00;
+  private static readonly MINIMUM_TWEETS_PER_DAY = 12;
+  private static readonly OPTIMAL_TWEETS_PER_DAY = 15;
+  private static readonly MAX_TWEETS_PER_DAY = 20;
+  private static readonly EMERGENCY_RESERVE = 0.25; // $0.25 emergency buffer
   
-  // Cost targets (optimized for volume)
+  // Cost targets (optimized for volume with $5 budget)
   private static readonly COST_TARGETS = {
-    cheap: 0.15,      // $0.15 per tweet (20 tweets/day possible)
-    balanced: 0.20,   // $0.20 per tweet (15 tweets/day)
-    quality: 0.25,    // $0.25 per tweet (12 tweets/day)
-    premium: 0.30     // $0.30 per tweet (10 tweets/day)
+    cheap: 0.20,      // $0.20 per tweet (25 tweets/day possible)
+    balanced: 0.25,   // $0.25 per tweet (20 tweets/day)
+    quality: 0.30,    // $0.30 per tweet (16 tweets/day)
+    premium: 0.40     // $0.40 per tweet (12 tweets/day)
   };
 
   /**

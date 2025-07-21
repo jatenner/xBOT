@@ -54,13 +54,18 @@ export class MasterPostingGate {
     // 🚨 STOP ALL CONFLICTING SYSTEMS
     await this.stopConflictingSystems();
 
+    // 🧠 START INTELLIGENT POSTING OPTIMIZER
+    console.log('🧠 Starting Intelligent Posting Optimizer...');
+    const { intelligentPostingOptimizer } = await import('../agents/intelligentPostingOptimizerAgent');
+    await intelligentPostingOptimizer.startContinuousLearning();
+
     // 🎯 SINGLE COORDINATED POSTING SCHEDULE
     await this.setupCoordinatedSchedule();
 
     console.log('✅ Master Posting Gate operational');
     console.log('🛡️ All posting now coordinated through single gate');
-    console.log('⏰ Posts will be properly spaced (90+ minutes apart)');
-    console.log('📊 Maximum 8 posts per day during optimal hours');
+    console.log('🧠 AI continuously optimizing frequency and timing');
+    console.log('📊 Dynamic limits based on engagement performance');
   }
 
   /**

@@ -12,10 +12,10 @@ export class UnifiedPostingCoordinator {
   private postsToday: number = 0;
   private todaysSchedule: PostingSlot[] = [];
   
-  // CRITICAL SETTINGS
-  private readonly MINIMUM_SPACING_MINUTES = 90; // Minimum 90 minutes between posts
-  private readonly DAILY_POST_LIMIT = 8; // Maximum 8 posts per day (quality over quantity)
-  private readonly OPTIMAL_HOURS = [9, 11, 14, 16, 17, 19, 20]; // Peak engagement hours
+  // DYNAMIC SETTINGS (updated by intelligent optimizer)
+  private minimumSpacingMinutes = 90; // Starting point, updated by AI
+  private dailyPostLimit = 8; // Starting point, updated by AI
+  private optimalHours = [9, 11, 14, 16, 17, 19, 20]; // Starting point, updated by AI
 
   private constructor() {
     this.initializeDailySchedule();
@@ -41,14 +41,14 @@ export class UnifiedPostingCoordinator {
     const currentHour = now.getHours();
 
     // 1. CHECK DAILY LIMIT
-    if (this.postsToday >= this.DAILY_POST_LIMIT && priority !== 'urgent') {
+    if (this.postsToday >= this.dailyPostLimit && priority !== 'urgent') {
       const tomorrow = new Date(now);
       tomorrow.setDate(tomorrow.getDate() + 1);
       tomorrow.setHours(9, 0, 0, 0);
 
       return {
         canPost: false,
-        reason: `Daily limit reached (${this.postsToday}/${this.DAILY_POST_LIMIT})`,
+        reason: `Daily limit reached (${this.postsToday}/${this.dailyPostLimit})`,
         nextAllowedTime: tomorrow,
         recommendedWaitMinutes: Math.ceil((tomorrow.getTime() - now.getTime()) / (1000 * 60))
       };
@@ -58,11 +58,11 @@ export class UnifiedPostingCoordinator {
     if (this.lastPostTime) {
       const minutesSinceLastPost = (now.getTime() - this.lastPostTime.getTime()) / (1000 * 60);
       
-      if (minutesSinceLastPost < this.MINIMUM_SPACING_MINUTES && priority !== 'urgent') {
-        const waitMinutes = this.MINIMUM_SPACING_MINUTES - minutesSinceLastPost;
+      if (minutesSinceLastPost < this.minimumSpacingMinutes && priority !== 'urgent') {
+        const waitMinutes = this.minimumSpacingMinutes - minutesSinceLastPost;
         const nextTime = new Date(now.getTime() + waitMinutes * 60 * 1000);
 
-        console.log(`🚨 SPACING BLOCK: ${Math.ceil(minutesSinceLastPost)} minutes since last post (need ${this.MINIMUM_SPACING_MINUTES})`);
+        console.log(`🚨 SPACING BLOCK: ${Math.ceil(minutesSinceLastPost)} minutes since last post (need ${this.minimumSpacingMinutes})`);
 
         return {
           canPost: false,
@@ -74,42 +74,23 @@ export class UnifiedPostingCoordinator {
     }
 
     // 3. CHECK OPTIMAL TIMING
-    const isOptimalHour = this.OPTIMAL_HOURS.includes(currentHour);
+    const isOptimalHour = this.optimalHours.includes(currentHour);
     
     if (!isOptimalHour && priority === 'low') {
       const nextOptimalTime = this.getNextOptimalTime(currentHour);
       return {
         canPost: false,
-        reason: `Low priority posts wait for optimal hours (${this.OPTIMAL_HOURS.join(', ')})`,
+        reason: `Low priority posts wait for optimal hours (${this.optimalHours.join(', ')})`,
         nextAllowedTime: nextOptimalTime,
         recommendedWaitMinutes: Math.ceil((nextOptimalTime.getTime() - now.getTime()) / (1000 * 60))
       };
     }
 
-    // 4. CHECK SCHEDULE CONFLICTS
-    const hasScheduleConflict = this.todaysSchedule.some(slot => {
-      const slotTime = new Date(slot.scheduledTime);
-      const timeDiff = Math.abs(slotTime.getTime() - now.getTime()) / (1000 * 60);
-      return timeDiff < 30; // 30-minute buffer around scheduled posts
-    });
-
-    if (hasScheduleConflict && priority !== 'urgent') {
-      const nextSlot = this.getNextAvailableSlot();
-      return {
-        canPost: false,
-        reason: 'Schedule conflict with planned posts',
-        nextAllowedTime: nextSlot,
-        recommendedWaitMinutes: Math.ceil((nextSlot.getTime() - now.getTime()) / (1000 * 60))
-      };
-    }
-
-    // 5. ALL CHECKS PASSED - APPROVE POSTING
-    console.log(`✅ POSTING APPROVED: ${agentName} (${priority} priority)`);
-    
+    // ✅ APPROVED TO POST
     return {
       canPost: true,
-      reason: `Approved: Good timing and spacing (${this.postsToday}/${this.DAILY_POST_LIMIT} today)`,
-      nextAllowedTime: new Date(now.getTime() + this.MINIMUM_SPACING_MINUTES * 60 * 1000),
+      reason: `Approved: Good timing and spacing (${this.postsToday}/${this.dailyPostLimit} today)`,
+      nextAllowedTime: new Date(now.getTime() + this.minimumSpacingMinutes * 60 * 1000),
       recommendedWaitMinutes: 0
     };
   }
@@ -122,23 +103,11 @@ export class UnifiedPostingCoordinator {
     this.lastPostTime = now;
     this.postsToday += 1;
 
-    console.log(`📝 POST RECORDED: ${agentName} (${this.postsToday}/${this.DAILY_POST_LIMIT} today)`);
-    console.log(`⏰ Next post eligible: ${new Date(now.getTime() + this.MINIMUM_SPACING_MINUTES * 60 * 1000).toLocaleString()}`);
+    console.log(`📝 POST RECORDED: ${agentName} (${this.postsToday}/${this.dailyPostLimit} today)`);
+    console.log(`⏰ Next post eligible: ${new Date(now.getTime() + this.minimumSpacingMinutes * 60 * 1000).toLocaleString()}`);
 
     // Store in database for persistence
-    try {
-      await supabaseClient.supabase
-        ?.from('posting_coordination')
-        .upsert({
-          date: now.toISOString().split('T')[0],
-          posts_today: this.postsToday,
-          last_post_time: now.toISOString(),
-          last_posting_agent: agentName,
-          last_tweet_id: tweetId
-        }, { onConflict: 'date' });
-    } catch (error) {
-      console.warn('⚠️ Failed to record post coordination:', error);
-    }
+    await this.saveTodaysState();
   }
 
   /**
@@ -150,7 +119,7 @@ export class UnifiedPostingCoordinator {
 
     let nextOptimalTime: Date;
     if (this.lastPostTime) {
-      const minNextTime = new Date(this.lastPostTime.getTime() + this.MINIMUM_SPACING_MINUTES * 60 * 1000);
+      const minNextTime = new Date(this.lastPostTime.getTime() + this.minimumSpacingMinutes * 60 * 1000);
       nextOptimalTime = this.getNextOptimalTime(minNextTime.getHours());
       if (nextOptimalTime.getTime() < minNextTime.getTime()) {
         nextOptimalTime = minNextTime;
@@ -161,25 +130,25 @@ export class UnifiedPostingCoordinator {
 
     return {
       postsToday: this.postsToday,
-      dailyLimit: this.DAILY_POST_LIMIT,
+      dailyLimit: this.dailyPostLimit,
       lastPostTime: this.lastPostTime,
       nextOptimalTime,
       minutesUntilNextPost: this.lastPostTime 
-        ? Math.max(0, this.MINIMUM_SPACING_MINUTES - (now.getTime() - this.lastPostTime.getTime()) / (1000 * 60))
+        ? Math.max(0, this.minimumSpacingMinutes - (now.getTime() - this.lastPostTime.getTime()) / (1000 * 60))
         : 0,
-      isOptimalHour: this.OPTIMAL_HOURS.includes(now.getHours()),
-      remainingPosts: this.DAILY_POST_LIMIT - this.postsToday
+      isOptimalHour: this.optimalHours.includes(now.getHours()),
+      remainingPosts: this.dailyPostLimit - this.postsToday
     };
   }
 
   /**
-   * 🕐 GET NEXT OPTIMAL TIME
+   * ⏰ GET NEXT OPTIMAL TIME
    */
   private getNextOptimalTime(currentHour: number): Date {
     const now = new Date();
     
-    // Find next optimal hour today
-    const nextHourToday = this.OPTIMAL_HOURS.find(hour => hour > currentHour);
+    // Find next hour today
+    const nextHourToday = this.optimalHours.find(hour => hour > currentHour);
     
     if (nextHourToday) {
       const nextTime = new Date(now);
@@ -187,79 +156,53 @@ export class UnifiedPostingCoordinator {
       return nextTime;
     }
     
-    // No more optimal hours today, use first optimal hour tomorrow
+    // Use first hour tomorrow
     const tomorrow = new Date(now);
     tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(this.OPTIMAL_HOURS[0], 0, 0, 0);
+    tomorrow.setHours(this.optimalHours[0], 0, 0, 0);
     return tomorrow;
   }
 
   /**
-   * 📅 GET NEXT AVAILABLE SLOT
+   * 📅 GET NEXT POSTING SLOT
    */
-  private getNextAvailableSlot(): Date {
+  getNextPostingSlot(): Date {
     const now = new Date();
-    let nextSlot = new Date(now.getTime() + this.MINIMUM_SPACING_MINUTES * 60 * 1000);
+    let nextSlot = new Date(now.getTime() + this.minimumSpacingMinutes * 60 * 1000);
     
-    // Check against existing schedule
-    while (this.todaysSchedule.some(slot => {
-      const slotTime = new Date(slot.scheduledTime);
-      const timeDiff = Math.abs(slotTime.getTime() - nextSlot.getTime()) / (1000 * 60);
-      return timeDiff < 30;
-    })) {
-      nextSlot = new Date(nextSlot.getTime() + 30 * 60 * 1000); // Move 30 minutes forward
+    // Ensure it's during optimal hours
+    const nextOptimalTime = this.getNextOptimalTime(nextSlot.getHours());
+    
+    if (nextOptimalTime.getTime() > nextSlot.getTime()) {
+      nextSlot = nextOptimalTime;
     }
     
     return nextSlot;
   }
 
   /**
-   * 🔄 LOAD TODAY'S STATE
+   * 🧠 UPDATE SETTINGS FROM INTELLIGENT OPTIMIZER
    */
-  private async loadTodaysState(): Promise<void> {
-    const today = new Date().toISOString().split('T')[0];
-    
-    try {
-      const { data } = await supabaseClient.supabase
-        ?.from('posting_coordination')
-        .select('*')
-        .eq('date', today)
-        .single() || { data: null };
-
-      if (data) {
-        this.postsToday = data.posts_today || 0;
-        this.lastPostTime = data.last_post_time ? new Date(data.last_post_time) : null;
-      } else {
-        // Reset for new day
-        this.postsToday = 0;
-        this.lastPostTime = null;
-      }
-    } catch (error) {
-      console.warn('⚠️ Failed to load posting state:', error);
+  updateSettings(newSettings: {
+    dailyPostLimit?: number;
+    minimumSpacingMinutes?: number;
+    optimalHours?: number[];
+  }): void {
+    if (newSettings.dailyPostLimit !== undefined) {
+      console.log(`🔧 Updating daily post limit: ${this.dailyPostLimit} → ${newSettings.dailyPostLimit}`);
+      this.dailyPostLimit = newSettings.dailyPostLimit;
     }
-  }
-
-  /**
-   * 📅 INITIALIZE DAILY SCHEDULE
-   */
-  private initializeDailySchedule(): void {
-    const today = new Date();
-    this.todaysSchedule = [];
-
-    // Create scheduled slots for optimal hours
-    this.OPTIMAL_HOURS.forEach((hour, index) => {
-      const slotTime = new Date(today);
-      slotTime.setHours(hour, Math.random() * 30, 0, 0); // Random minutes within the hour
-      
-      this.todaysSchedule.push({
-        scheduledTime: slotTime.toISOString(),
-        priority: index < 3 ? 'high' : 'medium', // First 3 slots are high priority
-        contentType: 'scheduled',
-        agentName: 'auto-scheduler'
-      });
-    });
-
-    console.log(`📅 Daily schedule initialized: ${this.todaysSchedule.length} optimal posting slots`);
+    
+    if (newSettings.minimumSpacingMinutes !== undefined) {
+      console.log(`🔧 Updating minimum spacing: ${this.minimumSpacingMinutes} → ${newSettings.minimumSpacingMinutes} minutes`);
+      this.minimumSpacingMinutes = newSettings.minimumSpacingMinutes;
+    }
+    
+    if (newSettings.optimalHours !== undefined) {
+      console.log(`🔧 Updating optimal hours: [${this.optimalHours.join(', ')}] → [${newSettings.optimalHours.join(', ')}]`);
+      this.optimalHours = newSettings.optimalHours;
+      this.initializeDailySchedule(); // Rebuild schedule with new hours
+    }
   }
 
   /**
@@ -278,6 +221,80 @@ export class UnifiedPostingCoordinator {
       .eq('date', today);
       
     console.log('✅ Posting coordinator reset complete');
+  }
+
+  /**
+   * 📅 INITIALIZE DAILY SCHEDULE  
+   */
+  private initializeDailySchedule(): void {
+    this.todaysSchedule = [];
+    const today = new Date();
+    
+    this.optimalHours.forEach((hour, index) => {
+      const slotTime = new Date(today);
+      slotTime.setHours(hour, 0, 0, 0);
+      
+      this.todaysSchedule.push({
+        time: slotTime,
+        isOptimal: true,
+        isUsed: false,
+        priority: index < 3 ? 'high' : 'medium'
+      });
+    });
+    
+    console.log(`📅 Daily schedule initialized: ${this.todaysSchedule.length} optimal posting slots`);
+  }
+
+  /**
+   * 💾 SAVE STATE TO DATABASE
+   */
+  private async saveTodaysState(): Promise<void> {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      
+      await supabaseClient.supabase
+        ?.from('posting_coordination')
+        .upsert({
+          date: today,
+          posts_today: this.postsToday,
+          last_post_time: this.lastPostTime?.toISOString() || null,
+          last_posting_agent: 'unified_coordinator',
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'date' });
+        
+    } catch (error) {
+      console.error('❌ Failed to save posting state:', error);
+    }
+  }
+
+  /**
+   * 📚 LOAD STATE FROM DATABASE
+   */
+  private async loadTodaysState(): Promise<void> {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      
+      const { data } = await supabaseClient.supabase
+        ?.from('posting_coordination')
+        .select('*')
+        .eq('date', today)
+        .single() || { data: null };
+        
+      if (data) {
+        this.postsToday = data.posts_today || 0;
+        this.lastPostTime = data.last_post_time ? new Date(data.last_post_time) : null;
+      } else {
+        // First time today
+        this.postsToday = 0;
+        this.lastPostTime = null;
+      }
+      
+    } catch (error) {
+      console.error('❌ Failed to load posting state:', error);
+      // Continue with defaults
+      this.postsToday = 0;
+      this.lastPostTime = null;
+    }
   }
 }
 
@@ -300,10 +317,10 @@ interface PostingStatus {
 }
 
 interface PostingSlot {
-  scheduledTime: string;
+  time: Date;
+  isOptimal: boolean;
+  isUsed: boolean;
   priority: 'low' | 'medium' | 'high';
-  contentType: string;
-  agentName: string;
 }
 
 // Export singleton instance

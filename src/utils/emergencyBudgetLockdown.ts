@@ -18,8 +18,8 @@ interface EmergencyStatus {
 }
 
 export class EmergencyBudgetLockdown {
-  private static readonly ABSOLUTE_DAILY_LIMIT = 3.00;
-  private static readonly EMERGENCY_LIMIT = 2.80; // Stop at $2.80 to be safe
+  private static readonly ABSOLUTE_DAILY_LIMIT = 5.00;
+  private static readonly EMERGENCY_LIMIT = 4.75; // Stop at $4.75 to be safe
   private static readonly LOCKDOWN_FILE = path.join(process.cwd(), '.budget_lockdown');
   
   /**
@@ -184,4 +184,12 @@ export class EmergencyBudgetLockdown {
 }
 
 // Export for use in other modules
-export const emergencyBudgetLockdown = EmergencyBudgetLockdown; 
+export const emergencyBudgetLockdown = EmergencyBudgetLockdown;
+
+// Export default for better compatibility
+export default EmergencyBudgetLockdown;
+
+// CommonJS compatibility
+module.exports = EmergencyBudgetLockdown;
+module.exports.emergencyBudgetLockdown = EmergencyBudgetLockdown;
+module.exports.default = EmergencyBudgetLockdown; 

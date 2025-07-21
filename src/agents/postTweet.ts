@@ -38,6 +38,7 @@ import { intelligentLearning } from '../utils/intelligentLearningConnector';
 import { DiversePerspectiveEngine } from './diversePerspectiveEngine.js';
 import { ExpertIntelligenceSystem } from './expertIntelligenceSystem.js';
 import { rateLimitManager } from '../utils/intelligentRateLimitManager';
+import { RealTimeContentLearningEngine } from './realTimeContentLearningEngine';
 import { intelligentPostingDecision } from './intelligentPostingDecisionAgent';
 
 dotenv.config();

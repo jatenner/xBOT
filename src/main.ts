@@ -17,10 +17,16 @@ import { addictionViralEngine } from './agents/addictionViralEngine';
 import { addictionIntegrationAgent } from './agents/addictionIntegrationAgent';
 import { viralThemeEngine } from './agents/viralThemeEngine';
 
+// 🎯 AUTONOMOUS TWITTER GROWTH MASTER
+import { autonomousTwitterGrowthMaster } from './agents/autonomousTwitterGrowthMaster';
+
 // EMERGENCY IMPORTS
 import { startServerSingleton, getServerInstance, closeServer } from './utils/serverSingleton';
 import { isEmergencyMode, EMERGENCY_BOT_CONFIG } from './config/emergencyConfig';
 import { emergencyLearningLimiter } from './utils/emergencyLearningLimiter';
+
+// 🛡️ AUTONOMOUS SYSTEM MONITOR
+import { autonomousSystemMonitor } from './utils/autonomousSystemMonitor';
 
 // Create Express app
 const app = express();
@@ -90,55 +96,65 @@ app.get('/addiction-status', async (req, res) => {
   }
 });
 
-// Health check endpoint
-app.get('/health', async (req, res) => {
-  try {
-    // 🔥 ADDICTION SYSTEM CHECK FIRST
-    const addictionStatus = await addictionIntegrationAgent.getStatus();
-    
-    if (addictionStatus.active) {
-      res.json({
-        status: '🔥 ADDICTION VIRAL MODE ACTIVE',
-        addiction_system: addictionStatus,
-        emergency_mode: false, // Overridden by addiction system
-        posting_frequency: `${addictionStatus.todayTarget} posts/day (dynamic)`,
-        content_strategy: '70% viral hooks, 30% controversial, 5% academic',
-        learning_active: true,
-        system_mode: 'VIRAL_OPTIMIZATION',
-        timestamp: new Date().toISOString()
-      });
-      return;
-    }
-    
-    // 🚨 EMERGENCY MODE CHECK (fallback)
-    if (isEmergencyMode()) {
-      res.json({
-        status: 'EMERGENCY_MODE',
-        timestamp: new Date().toISOString(),
-        emergency_mode: true,
-        learning_disabled: true,
-        cost_protection: true,
-        message: 'Bot running in emergency mode with cost protection'
-      });
-      return;
-    }
+// Basic health check endpoint
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    autonomous_growth_master: autonomousTwitterGrowthMaster.getSystemStatus(),
+    system_monitor: autonomousSystemMonitor.getSystemStatus(),
+    live_posting: process.env.LIVE_POSTING_ENABLED === 'true',
+    autonomous_mode: process.env.AUTONOMOUS_MODE === 'true'
+  });
+});
 
-    const health = await bulletproofManager.getSystemHealth();
-    const legendaryStatus = legendaryAICoordinator.getSystemStatus();
-    
+// 🛡️ System monitoring endpoint
+app.get('/system-health', async (req, res) => {
+  try {
+    const health = await autonomousSystemMonitor.performHealthCheck();
     res.json({
-      status: health.is_healthy ? 'healthy' : 'degraded',
-      ...health,
-      legendary_ai: legendaryStatus,
+      system_health: health,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
     res.status(500).json({
-      status: 'error',
-      error: error.message,
+      error: 'Health check failed',
+      message: error.message,
       timestamp: new Date().toISOString()
     });
   }
+});
+
+// 📊 Autonomous Growth Master status endpoint
+app.get('/autonomous-status', (req, res) => {
+  try {
+    const status = autonomousTwitterGrowthMaster.getSystemStatus();
+    res.json({
+      autonomous_growth_master: status,
+      system_health: {
+        isRunning: status.isRunning,
+        isLearning: status.isLearning,
+        predictionAccuracy: `${Math.round(status.predictionAccuracy * 100)}%`,
+        followerGrowthRate: status.followerGrowthRate,
+        patternsLearned: status.patternsLearned
+      },
+      last_check: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to get autonomous status',
+      message: error.message
+    });
+  }
+});
+
+// Simple performance metrics endpoint
+app.get('/metrics', (req, res) => {
+  res.json({
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Dashboard endpoint
@@ -255,8 +271,8 @@ app.use((req, res) => {
   }
 });
 
-// 🚨 EMERGENCY SERVER STARTUP - SINGLETON ONLY
-const PORT = parseInt(process.env.PORT || '3000', 10);
+// Port configuration for Render
+const PORT = parseInt(process.env.PORT || '10000', 10);
 
 console.log('🏆 Starting Legendary AI Coordination System...');
 console.log('👑 SUPREME AI ORCHESTRATOR: Coordinating all decisions');
@@ -490,6 +506,28 @@ async function main() {
     // Log current rate limit status
     await rateLimitHandler.logStatus();
     console.log('✅ Enhanced rate limit management initialized');
+    
+    // 🎯 INITIALIZE AUTONOMOUS TWITTER GROWTH MASTER
+    console.log('🎯 === INITIALIZING AUTONOMOUS TWITTER GROWTH MASTER ===');
+    try {
+      await autonomousTwitterGrowthMaster.startAutonomousOperation();
+      console.log('✅ Autonomous Twitter Growth Master operational - 24/7 predictive follower growth');
+      console.log('🧠 Features active: Content analysis, decision making, learning, self-healing');
+    } catch (error) {
+      console.error('❌ Failed to start Autonomous Growth Master:', error);
+      console.log('⚠️ System will continue with standard operation');
+    }
+    
+    // 🛡️ INITIALIZE AUTONOMOUS SYSTEM MONITOR
+    console.log('🛡️ === INITIALIZING AUTONOMOUS SYSTEM MONITOR ===');
+    try {
+      await autonomousSystemMonitor.startMonitoring();
+      console.log('✅ Autonomous System Monitor operational - 24/7 health monitoring and self-healing');
+      console.log('🔧 Features active: Health checks, self-healing, performance tracking, error recovery');
+    } catch (error) {
+      console.error('❌ Failed to start Autonomous System Monitor:', error);
+      console.log('⚠️ System will continue without autonomous monitoring');
+    }
     
     // 🚨 EMERGENCY: Use singleton server to prevent conflicts
     console.log('🔧 Starting server with singleton pattern...');

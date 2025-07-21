@@ -11,6 +11,7 @@ import { RealEngagementAgent } from './realEngagementAgent';
 import { EngagementFeedbackAgent } from './engagementFeedbackAgent';
 import { StrategyLearner } from './strategyLearner';
 import { FollowGrowthAgent } from './followGrowthAgent';
+import { autonomousTwitterGrowthMaster } from './autonomousTwitterGrowthMaster';
 
 import dotenv from 'dotenv';
 import { RealTimeEngagementTracker } from './realTimeEngagementTracker';
@@ -70,6 +71,10 @@ export class Scheduler {
   private engagementFeedbackJob: cron.ScheduledTask | null = null;
   private strategyLearnerJob: cron.ScheduledTask | null = null;
   private followGrowthJob: cron.ScheduledTask | null = null;
+  
+  // 🎯 AUTONOMOUS TWITTER GROWTH MASTER
+  private autonomousGrowthMasterJob: cron.ScheduledTask | null = null;
+  private autonomousGrowthRunning = false;
 
   constructor() {
     this.strategistAgent = new StrategistAgent();
@@ -100,6 +105,15 @@ export class Scheduler {
 
     console.log('🚀 Starting Snap2Health X-Bot Scheduler...');
     this.isRunning = true;
+
+    // 🎯 FIRST PRIORITY: Start Autonomous Twitter Growth Master
+    console.log('🎯 === STARTING AUTONOMOUS TWITTER GROWTH MASTER ===');
+    try {
+      await autonomousTwitterGrowthMaster.startAutonomousOperation();
+      console.log('✅ Autonomous Twitter Growth Master operational');
+    } catch (error) {
+      console.error('❌ Failed to start Autonomous Growth Master:', error);
+    }
 
     // 🚨 DISABLED: Daily Posting Manager (caused burst posting)
     console.log('🚨 DAILY POSTING MANAGER: DISABLED');
@@ -311,10 +325,74 @@ export class Scheduler {
       timezone: "America/New_York"
     });
 
+    // 🎯 AUTONOMOUS TWITTER GROWTH MASTER - runs every 30 minutes
+    this.autonomousGrowthMasterJob = cron.schedule('*/30 * * * *', async () => {
+      console.log('🎯 === AUTONOMOUS TWITTER GROWTH MASTER CYCLE ===');
+      
+      // 🛡️ CYCLE PROTECTION: Prevent concurrent runs
+      if (this.autonomousGrowthRunning) {
+        console.log('⏸️ Previous autonomous cycle still running, skipping this cycle...');
+        return;
+      }
+      
+      this.autonomousGrowthRunning = true;
+      try {
+        const result = await autonomousTwitterGrowthMaster.runAutonomousCycle();
+        
+        if (result.shouldPost) {
+          console.log(`🚀 Autonomous decision: POST content`);
+          console.log(`📊 Expected: ${result.decision.expected_performance?.followers} followers`);
+          console.log(`🎯 Confidence: ${Math.round(result.confidence * 100)}%`);
+          
+          // Use the optimized content if available
+          const contentToPost = result.optimizedContent || await autonomousTwitterGrowthMaster.generateFollowerOptimizedContent();
+          
+          // Post through the unified system
+          const { unifiedPostingCoordinator } = await import('../utils/unifiedPostingCoordinator');
+          const canPost = await unifiedPostingCoordinator.canPostNow('AutonomousGrowthMaster', 'high');
+          
+          if (canPost.canPost) {
+            // Post the content using streamlined agent
+            const { StreamlinedPostAgent } = await import('./streamlinedPostAgent');
+            const streamlinedAgent = new StreamlinedPostAgent();
+            const postResult = await streamlinedAgent.run(true); // Force post
+            
+            if (postResult.success && postResult.postId) {
+              console.log('✅ Autonomous posting successful');
+              // Track the impact
+              const prediction = await autonomousTwitterGrowthMaster.analyzeContentBeforePosting(contentToPost);
+              await autonomousTwitterGrowthMaster.trackFollowerGrowthImpact(postResult.postId, prediction);
+            } else {
+              console.log('❌ Autonomous posting failed');
+            }
+          } else {
+            console.log(`⏸️ Posting delayed: ${canPost.reason}`);
+          }
+        } else {
+          console.log(`⏸️ Autonomous decision: ${result.decision.action.toUpperCase()}`);
+          console.log(`📋 Reasoning: ${result.reasoning.join(', ')}`);
+        }
+      } catch (error) {
+        console.error('❌ Autonomous growth master cycle failed:', error);
+        // Perform self-healing
+        try {
+          await autonomousTwitterGrowthMaster.performSelfHealing();
+        } catch (healError) {
+          console.error('❌ Self-healing failed:', healError);
+        }
+      } finally {
+        this.autonomousGrowthRunning = false; // Reset running flag after cycle
+      }
+    }, {
+      scheduled: true,
+      timezone: "America/New_York"
+    });
+
     console.log('✅ Autonomous growth loop initialized');
     console.log('   📊 Engagement feedback: Every hour');
     console.log('   🧠 Strategy learning: Daily at 2:30 AM EST');
     console.log('   👥 Follow growth: Every 4 hours');
+    console.log('   🎯 Autonomous Growth Master: Every 30 minutes (PREDICTIVE + AUTONOMOUS)');
 
     console.log('✅ Snap2Health X-Bot Scheduler started successfully');
     console.log(`📅 Emergency mode: ${emergencyMode ? 'ON' : 'OFF'}`);
@@ -399,6 +477,7 @@ export class Scheduler {
     this.jobs.set('orchestrator', this.orchestratorJob);
     this.jobs.set('nightlyOptimizer', this.nightlyOptimizerJob);
     this.jobs.set('emergencyBudgetReset', this.emergencyBudgetResetJob);
+    this.jobs.set('autonomousGrowthMaster', this.autonomousGrowthMasterJob);
 
     // Start all jobs
     this.strategistJob.start();
@@ -413,6 +492,7 @@ export class Scheduler {
     this.orchestratorJob.start();
     this.nightlyOptimizerJob.start();
     this.emergencyBudgetResetJob.start();
+    this.autonomousGrowthMasterJob.start();
 
     // Start engagement tracker
     try {
@@ -440,6 +520,7 @@ export class Scheduler {
     console.log('   - 📊 Tweet Analytics Collector: Daily at 1:00 AM EST');
     console.log('   - 📝 Dashboard Writer: Daily at 1:15 AM EST');
     console.log('   - 🔄 Emergency Budget Reset: Daily at 00:00 UTC');
+    console.log('   - 🎯 Autonomous Growth Master: Every 30 minutes');
     
     console.log('🧠 AUTONOMOUS INTELLIGENCE ACTIVATED:');
     console.log('   - System continuously learns and improves');
@@ -795,6 +876,7 @@ export class Scheduler {
       { name: 'engagement-feedback', job: this.engagementFeedbackJob },
       { name: 'strategy-learner', job: this.strategyLearnerJob },
       { name: 'follow-growth', job: this.followGrowthJob },
+      { name: 'autonomous-growth-master', job: this.autonomousGrowthMasterJob },
       { name: 'emergencyBudgetReset', job: this.emergencyBudgetResetJob }
     ];
 

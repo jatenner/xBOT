@@ -118,7 +118,7 @@ export const defaults = {
   disableLearning: false,
   
   // Budget: Strict cost control with smart allocation
-  dailyBudgetLimit: 3, // ENFORCED: $3.00/day maximum with smart optimization
+  dailyBudgetLimit: 5, // ENFORCED: $5.00/day maximum with smart optimization
   budgetOptimizationEnabled: true, // New: enable smart budget optimization
   
   // Smart posting settings
