@@ -2,6 +2,7 @@
 import { xClient } from '../utils/xClient';
 import { supabaseClient } from '../utils/supabaseClient';
 import { formatTweet } from '../utils/formatTweet';
+import { SimpleViralHealthGenerator } from './simpleViralHealthGenerator';
 import { UltraViralGenerator } from './ultraViralGenerator';
 import { openaiClient } from '../utils/openaiClient';
 import { LIVE_MODE } from '../config/liveMode';
@@ -15,9 +16,11 @@ export interface PostResult {
 }
 
 export class PostTweetAgent {
+  private simpleHealthGenerator: SimpleViralHealthGenerator;
   private viralGenerator: UltraViralGenerator;
 
   constructor() {
+    this.simpleHealthGenerator = new SimpleViralHealthGenerator();
     this.viralGenerator = new UltraViralGenerator();
   }
 
@@ -32,10 +35,11 @@ export class PostTweetAgent {
         console.log('🧠 Using Growth Master optimized content');
         content = optimizedContent;
       } else {
-        // Generate viral content as fallback
-        console.log('🎯 Generating viral content...');
-        const viralResult = await this.viralGenerator.generateViralTweet();
-        content = viralResult.content || 'Health tech breakthrough happening now! The future of medicine is here.';
+        // Generate simple viral health content by default
+        console.log('🍌 Generating simple viral health content...');
+        const healthContent = await this.simpleHealthGenerator.generateSimpleViralHealth();
+        content = healthContent.content;
+        console.log(`📊 Follow potential: ${healthContent.followGrowthPotential}%`);
       }
       
       // Format content
@@ -58,7 +62,7 @@ export class PostTweetAgent {
               .insert({
                 tweet_id: result.tweetId,
                 content: content,
-                tweet_type: optimizedContent ? 'intelligent' : 'viral',
+                tweet_type: optimizedContent ? 'intelligent' : 'simple_health',
                 created_at: new Date().toISOString()
               });
             console.log('📊 Tweet saved to database');
