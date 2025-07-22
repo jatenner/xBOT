@@ -1,7 +1,7 @@
 import { RealTimeTrendsAgent } from './realTimeTrendsAgent';
-import { RealResearchFetcher } from './realResearchFetcher';
-import { NewsAPIAgent } from './newsAPIAgent';
-import { EmbeddingFilter } from '../utils/embeddingFilter';
+// Removed broken realResearchFetcher import
+// Removed broken newsAPIAgent import
+// Removed broken embeddingFilter import
 
 interface TrendResearchItem {
   id: string;

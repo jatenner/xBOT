@@ -2,7 +2,7 @@ import { xClient } from '../utils/xClient';
 import { openaiClient } from '../utils/openaiClient';
 import { supabaseClient } from '../utils/supabaseClient';
 import { RealEngagementAgent } from './realEngagementAgent';
-import { EngagementMaximizerAgent } from './engagementMaximizerAgent';
+// Removed broken import: EngagementMaximizerAgent
 
 interface GrowthMetrics {
   followers_gained: number;
@@ -33,7 +33,7 @@ interface CommunityTarget {
 
 export class AutonomousCommunityGrowthAgent {
   private realEngagementAgent: RealEngagementAgent;
-  private engagementMaximizer: EngagementMaximizerAgent;
+  // private engagementMaximizer: EngagementMaximizerAgent;
   private growthStrategies: EngagementStrategy[] = [];
   private currentMetrics: GrowthMetrics = {
     followers_gained: 0,
@@ -46,7 +46,7 @@ export class AutonomousCommunityGrowthAgent {
 
   constructor() {
     this.realEngagementAgent = new RealEngagementAgent();
-    this.engagementMaximizer = new EngagementMaximizerAgent();
+    // this.engagementMaximizer = new EngagementMaximizerAgent();
     this.initializeGrowthStrategies();
   }
 

@@ -1,5 +1,5 @@
 import { xClient } from '../utils/xClient';
-import { NewsAPIAgent } from './newsAPIAgent';
+// Removed broken newsAPIAgent import
 import axios from 'axios';
 
 interface TrendingTopic {

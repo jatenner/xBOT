@@ -1,35 +1,47 @@
 {
   "compilerOptions": {
-    "target": "ES2022",
-    "module": "CommonJS",
-    "moduleResolution": "node",
+    "target": "ES2020",
+    "module": "commonjs",
+    "lib": ["ES2020"],
     "outDir": "./dist",
     "rootDir": "./src",
     "strict": false,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
     "declaration": false,
     "sourceMap": false,
-    "removeComments": true,
-    "noEmitOnError": false,
-    "resolveJsonModule": true,
-    "allowSyntheticDefaultImports": true,
     "noImplicitAny": false,
-    "strictNullChecks": false,
-    "strictPropertyInitialization": false,
-    "incremental": true,
-    "tsBuildInfoFile": "./dist/.tsbuildinfo"
+    "strictNullChecks": false
   },
   "include": [
-    "src/**/*"
+    "src/main.ts",
+    "src/agents/postTweet.ts",
+    "src/agents/simpleViralHealthGenerator.ts",
+    "src/agents/scheduler.ts",
+    "src/agents/newsAPIAgent.ts",
+    "src/agents/realResearchFetcher.ts",
+    "src/agents/embeddingFilter.ts",
+    "src/utils/xClient.ts",
+    "src/utils/minimalSupabaseClient.ts",
+    "src/utils/formatTweet.ts",
+    "src/utils/openaiClient.ts",
+    "src/utils/intelligentRateLimitManager.ts",
+    "src/utils/smartBudgetOptimizer.ts",
+    "src/config/liveMode.ts"
   ],
   "exclude": [
     "node_modules",
     "dist",
     "**/*.test.ts",
     "**/*.spec.ts",
-    "test_*.ts",
-    "demo_*.js"
+    "tests/**/*",
+    "src/agents/!(postTweet|simpleViralHealthGenerator|scheduler|newsAPIAgent|realResearchFetcher|embeddingFilter).ts",
+    "src/utils/!(xClient|minimalSupabaseClient|formatTweet|openaiClient|intelligentRateLimitManager|smartBudgetOptimizer).ts",
+    "src/dashboard/**/*",
+    "src/singletons/**/*",
+    "src/metrics/**/*",
+    "src/config/!(liveMode).ts"
   ]
 } 

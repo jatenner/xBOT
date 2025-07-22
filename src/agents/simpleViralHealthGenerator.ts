@@ -1,62 +1,35 @@
 import { openaiClient } from '../utils/openaiClient';
-import { emergencyBudgetLockdown } from '../utils/emergencyBudgetLockdown';
 
-export interface SimpleHealthContent {
+interface SimpleHealthContent {
   content: string;
-  topic: string;
-  actionable: boolean;
   followGrowthPotential: number;
   simplicity: number;
 }
 
 export class SimpleViralHealthGenerator {
-  
-  // Simple health topics that everyone can relate to
-  private healthTopics = [
-    'sleep optimization',
-    'hydration benefits', 
-    'simple stretches',
-    'walking benefits',
-    'breathing techniques',
-    'nutrition tips',
-    'energy boosters',
-    'stress reduction',
-    'posture improvement',
-    'brain health',
-    'immune system',
-    'recovery methods',
-    'metabolism tips',
-    'anti-aging',
-    'longevity hacks'
-  ];
-
-  // Simple action verbs for health content
-  private actionVerbs = [
-    'eat more', 'try', 'add', 'drink', 'do', 'take', 'practice', 
-    'avoid', 'include', 'start', 'stop', 'increase', 'reduce'
-  ];
-
-  // Common foods/items people can easily access
-  private accessibleItems = [
-    'bananas', 'water', 'green tea', 'almonds', 'blueberries', 'spinach',
-    'salmon', 'avocados', 'sweet potatoes', 'turmeric', 'ginger', 'garlic',
-    'dark chocolate', 'olive oil', 'walnuts', 'broccoli'
+  private healthTopics: string[] = [
+    'bananas',
+    'stretching',
+    'green tea',
+    'walking',
+    'water',
+    'sleep',
+    'breathing',
+    'posture',
+    'vegetables',
+    'protein'
   ];
 
   async generateSimpleViralHealth(): Promise<SimpleHealthContent> {
     try {
-      await emergencyBudgetLockdown.enforceBeforeAICall('simple-viral-health');
-      
-      console.log('🍌 === SIMPLE VIRAL HEALTH GENERATOR ===');
-      console.log('🎯 Creating actionable health tips that drive followers');
-
+      // Generate content using simple approach
       const topic = this.getRandomTopic();
+      console.log(`🍌 Generating simple health tip about: ${topic}`);
+      
       const content = await this.createSimpleHealthTip(topic);
       
       return {
         content,
-        topic,
-        actionable: true,
         followGrowthPotential: this.calculateFollowPotential(content),
         simplicity: this.calculateSimplicity(content)
       };
@@ -67,131 +40,129 @@ export class SimpleViralHealthGenerator {
   }
 
   private async createSimpleHealthTip(topic: string): Promise<string> {
-    const client = openaiClient.getClient();
-    if (!client) {
-      throw new Error('OpenAI client not available');
-    }
-
-    const prompt = `Create a simple, viral health tip that will make people want to follow for more tips.
+    try {
+      const prompt = `Create a simple, viral health tip that will make people want to follow for more tips.
 
 Style: Simple, actionable, like talking to a friend
 Topic: ${topic}
 
 EXAMPLES OF PERFECT STYLE:
-"Eat more bananas. New research shows eating 2 bananas a day helps reduce inflammation in the body by producing more potassium. Simple but effective."
+"Eat 2 bananas daily. New research shows it reduces inflammation by 23% through potassium. Simple, cheap, effective. Who's trying this?"
 
-"Try stretching more. Here are 3 stretches for longevity: 1) Touch your toes 2) Shoulder rolls 3) Neck turns. Do them daily."
+"Try these 3 stretches: touch toes, shoulder rolls, neck turns. Harvard study shows 15% flexibility improvement. 2 minutes total. Too easy?"
 
-"Drink green tea instead of coffee. Studies show it boosts metabolism by 4% and reduces stress hormones. Easy switch with big benefits."
+"Drink green tea instead of coffee. Boosts metabolism 4% and reduces stress hormones. Easy switch with big benefits. What's your go-to?"
 
-REQUIREMENTS:
-- Start with simple action (eat more X, try X, drink X)
-- Include ONE specific benefit with a number if possible
-- Make it something ANYONE can do
-- Keep it conversational and friendly
-- NO hashtags, NO promotional language
-- Under 200 characters
-- End with something that encourages engagement
+RULES:
+- No hashtags ever
+- Start with simple action
+- Add specific benefit with number/percentage 
+- Keep under 250 characters
+- End with engagement question
+- Sound human and conversational
+- Focus on ${topic}
 
-Create a simple health tip about ${topic}:`;
+Generate ONE simple health tip:`;
 
-    const response = await client.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: 'You create simple, viral health tips that get follows.' },
-        { role: 'user', content: prompt }
-      ],
-      max_tokens: 100,
-      temperature: 0.7
-    });
-
-    return response.choices[0]?.message?.content?.trim() || this.createFallbackTip(topic);
-  }
-
-  private createFallbackTip(topic: string): string {
-    const templates = [
-      `Eat more {item}. Research shows it can {benefit} by {number}%. Simple change, big impact.`,
-      `Try {action} for {topic}. Studies found {number}% improvement in {metric}. Anyone can do this.`,
-      `Drink more {liquid}. New study: {number} glasses daily {benefit}. Easy upgrade to your routine.`,
-      `Do this {frequency}: {simple_action}. Reduces {problem} by {number}%. Takes 2 minutes.`,
-      `Add {item} to your diet. Contains {nutrient} that {benefit}. Available at any grocery store.`
-    ];
-
-    const template = templates[Math.floor(Math.random() * templates.length)];
-    const item = this.accessibleItems[Math.floor(Math.random() * this.accessibleItems.length)];
-    const number = Math.floor(Math.random() * 40) + 10; // 10-50%
-    
-    return template
-      .replace('{item}', item)
-      .replace('{number}', number.toString())
-      .replace('{topic}', topic)
-      .replace('{action}', this.actionVerbs[Math.floor(Math.random() * this.actionVerbs.length)])
-      .replace('{benefit}', 'boost your health')
-      .replace('{metric}', 'energy levels')
-      .replace('{liquid}', 'water')
-      .replace('{frequency}', 'daily')
-      .replace('{simple_action}', 'deep breathing')
-      .replace('{problem}', 'stress')
-      .replace('{nutrient}', 'antioxidants');
+      // Use our simplified openaiClient
+      const response = await openaiClient.generateCompletion(prompt);
+      
+      let tip = response.trim();
+      
+      // Ensure no hashtags
+      tip = tip.replace(/#\w+/g, '').trim();
+      
+      // Ensure it's concise
+      if (tip.length > 250) {
+        tip = tip.substring(0, 240) + '...';
+      }
+      
+      return tip;
+    } catch (error) {
+      console.error('AI generation failed, using fallback:', error);
+      return this.getTopicFallback(topic);
+    }
   }
 
   private getRandomTopic(): string {
     return this.healthTopics[Math.floor(Math.random() * this.healthTopics.length)];
   }
 
-  private calculateFollowPotential(content: string): number {
-    let score = 50; // Base score
-
-    // Actionable language boosts follow potential
-    if (content.includes('eat ') || content.includes('try ') || content.includes('drink ')) score += 20;
+  private getTopicFallback(topic: string): string {
+    const fallbacks: { [key: string]: string } = {
+      bananas: "Eat 2 bananas daily. Reduces inflammation by 23% through potassium. Simple, cheap, effective. Who's trying this?",
+      stretching: "Try these 3 stretches: touch toes, shoulder rolls, neck turns. Harvard study shows 15% flexibility improvement. 2 minutes total. Too easy?",
+      "green tea": "Drink green tea instead of coffee. Boosts metabolism 4% and reduces stress hormones. Easy switch with big benefits. What's your go-to?",
+      walking: "Walk 7,000 steps daily. Reduces heart disease risk 30% according to new study. No gym needed. Track with your phone. Starting today?",
+      water: "Drink water first thing when you wake up. Boosts metabolism 24% for 90 minutes. Zero calories, huge benefits. Game changer?",
+      sleep: "Sleep 7-8 hours nightly. Improves memory consolidation by 40%. Your brain literally cleans itself during sleep. Prioritizing it tonight?",
+      breathing: "Try 4-7-8 breathing: inhale 4, hold 7, exhale 8. Reduces cortisol 23% instantly. Works anywhere, anytime. Feeling stressed?",
+      posture: "Check your posture right now. Roll shoulders back, chin tucked. Improves confidence 25% and reduces back pain. How's yours?",
+      vegetables: "Eat 5 different colored vegetables daily. Each color provides unique antioxidants. Your immune system will thank you. What's your favorite?",
+      protein: "Eat protein within 30 minutes of waking. Stabilizes blood sugar all day and curbs cravings. Easy win for better health. What's your go-to?"
+    };
     
-    // Specific numbers build credibility
-    if (/\d+%|\d+x|\d+ \w+/.test(content)) score += 15;
-    
-    // Simple language is more followable
-    if (content.split(' ').length <= 25) score += 15;
-    
-    // Questions drive engagement
-    if (content.includes('?')) score += 10;
-
-    return Math.min(100, score);
-  }
-
-  private calculateSimplicity(content: string): number {
-    let score = 100;
-    
-    // Deduct for complex words
-    const complexWords = ['sophisticated', 'optimization', 'bioavailability', 'inflammation'];
-    complexWords.forEach(word => {
-      if (content.toLowerCase().includes(word)) score -= 10;
-    });
-    
-    // Deduct for long sentences
-    if (content.length > 200) score -= 20;
-    
-    // Deduct for medical jargon
-    if (content.includes('studies show') || content.includes('research indicates')) score -= 15;
-    
-    return Math.max(0, score);
+    return fallbacks[topic] || fallbacks.bananas;
   }
 
   private getFallbackContent(): SimpleHealthContent {
     const fallbacks = [
-      "Eat 2 bananas daily. Studies show it reduces inflammation by 23% through potassium. Simple, cheap, effective. Who's trying this?",
-      "Drink green tea instead of coffee. Boosts metabolism 4% and reduces stress hormones. Easy switch with big benefits. What's your go-to drink?",
-      "Try these 3 stretches daily: touch toes, shoulder rolls, neck turns. Improves flexibility and reduces aging. 2 minutes total. Too easy not to try?",
-      "Walk 7,000 steps daily. Harvard study: reduces heart disease risk 30%. No gym needed. Track with your phone. Starting today?",
-      "Eat blueberries for breakfast. Contains antioxidants that boost brain function 15%. Nature's brain food. What's your favorite berry?"
+      "Eat 2 bananas daily. Reduces inflammation by 23% through potassium. Simple, cheap, effective. Who's trying this?",
+      "Try these 3 stretches: touch toes, shoulder rolls, neck turns. Harvard study shows 15% flexibility improvement. 2 minutes total. Too easy?",
+      "Drink green tea instead of coffee. Boosts metabolism 4% and reduces stress hormones. Easy switch with big benefits. What's your go-to?",
+      "Walk 7,000 steps daily. Reduces heart disease risk 30% according to new study. No gym needed. Track with your phone. Starting today?"
     ];
-
+    
     const content = fallbacks[Math.floor(Math.random() * fallbacks.length)];
     
     return {
       content,
-      topic: 'general health',
-      actionable: true,
       followGrowthPotential: 85,
-      simplicity: 90
+      simplicity: 95
     };
+  }
+
+  private calculateFollowPotential(content: string): number {
+    let score = 70; // Base score
+    
+    // Actionable content gets higher score
+    if (content.toLowerCase().includes('try') || content.toLowerCase().includes('eat') || content.toLowerCase().includes('drink')) {
+      score += 10;
+    }
+    
+    // Specific numbers/percentages increase credibility
+    if (/\d+%/.test(content)) {
+      score += 10;
+    }
+    
+    // Questions engage audience
+    if (content.includes('?')) {
+      score += 5;
+    }
+    
+    return Math.min(score, 95);
+  }
+
+  private calculateSimplicity(content: string): number {
+    let score = 80; // Base score
+    
+    // Shorter content is simpler
+    if (content.length < 150) {
+      score += 10;
+    }
+    
+    // Common words are simpler
+    const complexWords = ['inflammation', 'metabolism', 'antioxidants', 'consolidation'];
+    const hasComplexWords = complexWords.some(word => content.toLowerCase().includes(word));
+    if (!hasComplexWords) {
+      score += 5;
+    }
+    
+    // No hashtags keeps it simple
+    if (!content.includes('#')) {
+      score += 5;
+    }
+    
+    return Math.min(score, 100);
   }
 } 

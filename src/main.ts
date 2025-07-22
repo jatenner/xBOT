@@ -1,19 +1,23 @@
 
 import { scheduler } from './agents/scheduler';
-import { supabaseClient } from './utils/supabaseClient';
+import { minimalSupabaseClient } from './utils/minimalSupabaseClient';
 import { LIVE_MODE } from './config/liveMode';
 
 async function main() {
-  console.log('🚀 Starting Clean Twitter Bot...');
+  console.log('🚀 Starting Simple Health Twitter Bot...');
   console.log(`🔧 Live Mode: ${LIVE_MODE ? 'ENABLED' : 'DISABLED'}`);
   
   try {
     // Test database connection
-    const { data, error } = await supabaseClient.supabase?.from('tweets').select('count').limit(1);
-    if (error) {
-      console.warn('⚠️ Database connection issue:', error.message);
+    if (minimalSupabaseClient.supabase) {
+      const result = await minimalSupabaseClient.supabase.from('tweets').select('count').limit(1);
+      if (result?.error) {
+        console.warn('⚠️ Database connection issue:', result.error.message);
+      } else {
+        console.log('✅ Database connected');
+      }
     } else {
-      console.log('✅ Database connected');
+      console.log('⚠️ Database not configured');
     }
   } catch (error) {
     console.warn('⚠️ Database test failed:', error);
@@ -22,8 +26,8 @@ async function main() {
   // Start scheduler
   await scheduler.start();
   
-  console.log('🎉 Clean Twitter Bot is running!');
-  console.log('🐦 Will post every 2 hours');
+  console.log('🎉 Simple Health Twitter Bot is running!');
+  console.log('🍌 Posting simple, viral health tips');
   console.log('📊 Check logs for posting activity');
 }
 

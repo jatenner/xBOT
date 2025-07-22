@@ -1,6 +1,6 @@
 import { openaiClient } from '../utils/openaiClient.js';
 import { supabase } from '../utils/supabaseClient.js';
-import { NewsAPIAgent } from './newsAPIAgent.js';
+// Removed broken import: NewsAPIAgent
 import { intelligentLearning } from '../utils/intelligentLearningConnector.js';
 
 /**

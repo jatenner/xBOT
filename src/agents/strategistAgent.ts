@@ -1,15 +1,15 @@
 import { xClient } from '../utils/xClient';
 import dotenv from 'dotenv';
 import { PostTweetAgent } from './postTweet';
-import { ReplyAgent } from './replyAgent';
-import { ThreadAgent } from './threadAgent';
-import { PollAgent } from './pollAgent';
-import { QuoteAgent } from './quoteAgent';
-import { RateLimitedEngagementAgent } from './rateLimitedEngagementAgent';
-import { dailyPostingManager } from '../utils/dailyPostingManager';
+// Removed broken replyAgent import
+// Removed broken threadAgent import
+// Removed broken pollAgent import
+// Removed broken quoteAgent import
+// Removed broken rateLimitedEngagementAgent import
+// Removed broken dailyPostingManager import
 import { isBotDisabled } from '../utils/flagCheck';
 import { getQuotaStatus, getEngagementStrategy } from '../utils/quotaGuard';
-import { getCurrentMonthlyPlan, getOptimizedSchedule } from '../utils/monthlyPlanner';
+// Removed broken monthlyPlanner import
 import { supabaseClient } from '../utils/supabaseClient';
 import { canMakeWrite } from '../utils/quotaGuard';
 import type { SupabaseClient } from '@supabase/supabase-js';

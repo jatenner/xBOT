@@ -1,7 +1,6 @@
 
 import * as cron from 'node-cron';
 import { PostTweetAgent } from './postTweet';
-import { autonomousTwitterGrowthMaster } from './autonomousTwitterGrowthMaster';
 
 export class Scheduler {
   private postTweetAgent: PostTweetAgent;
@@ -18,90 +17,43 @@ export class Scheduler {
       return;
     }
 
-    console.log('🚀 Starting Intelligent Twitter Bot Scheduler...');
+    console.log('🚀 Starting Simple Health Bot Scheduler...');
     this.isRunning = true;
 
-    // Start autonomous growth master
-    try {
-      await autonomousTwitterGrowthMaster.startAutonomousOperation();
-      console.log('✅ Autonomous Twitter Growth Master operational');
-    } catch (error) {
-      console.error('❌ Failed to start Autonomous Growth Master:', error);
-    }
-
-    // Check every 30 minutes if we should post (intelligent timing)
+    // Check every 30 minutes for posting opportunities
     this.intelligentCheckJob = cron.schedule('*/30 * * * *', async () => {
       try {
-        console.log('🧠 Intelligent posting check...');
-        await this.performIntelligentPostingCycle();
+        console.log('🍌 Checking for optimal posting time...');
+        
+        const now = new Date();
+        const hour = now.getHours();
+        
+        // Optimal health content times: 7AM, 12PM, 6PM, 8PM
+        const optimalHours = [7, 12, 18, 20];
+        
+        if (optimalHours.includes(hour)) {
+          console.log('🎯 Optimal time detected - posting simple health content...');
+          const result = await this.postTweetAgent.run();
+          
+          if (result.success) {
+            console.log('✅ Simple health tip posted successfully!');
+          } else {
+            console.log('❌ Post failed:', result.error);
+          }
+        } else {
+          console.log(`⏰ Not optimal time (current: ${hour}h, optimal: ${optimalHours.join(', ')}h)`);
+        }
       } catch (error) {
-        console.error('❌ Intelligent posting check error:', error);
+        console.error('❌ Scheduler error:', error);
       }
     });
 
-    console.log('✅ Intelligent Scheduler started - checking every 30 minutes for optimal posting opportunities');
-    console.log('🧠 System will autonomously decide when, what, and if to post based on:');
-    console.log('   📊 Content quality predictions');
-    console.log('   ⏰ Optimal timing analysis'); 
-    console.log('   🎯 Follower growth potential');
-    console.log('   📈 Learned engagement patterns');
-  }
-
-  private async performIntelligentPostingCycle(): Promise<void> {
-    try {
-      console.log('🎯 === INTELLIGENT POSTING CYCLE ===');
-      
-      // Run the autonomous cycle to get intelligent decision
-      const cycle = await autonomousTwitterGrowthMaster.runAutonomousCycle();
-      
-      console.log(`🤖 Decision: ${cycle.decision.action.toUpperCase()}`);
-      console.log(`🧠 Reasoning: ${cycle.reasoning.join(', ')}`);
-      console.log(`🎯 Confidence: ${Math.round(cycle.confidence * 100)}%`);
-      
-      if (cycle.shouldPost && cycle.optimizedContent) {
-        console.log('🚀 Proceeding with intelligent post...');
-        
-        // Use the optimized content from the growth master
-        const result = await this.postTweetAgent.run(false, false, cycle.optimizedContent);
-        
-        if (result.success) {
-          console.log('✅ Intelligent post successful!');
-          console.log(`📊 Expected performance: ${cycle.decision.expected_performance?.followers || 0} followers`);
-          
-          // Track the result for learning
-          if (result.tweetId) {
-            await this.trackPostingSuccess(result.tweetId, cycle.decision);
-          }
-        } else {
-          console.log('❌ Intelligent post failed:', result.error);
-        }
-      } else {
-        console.log('⏸️ Not posting - conditions not optimal');
-        
-        if (cycle.decision.action === 'delay' && cycle.decision.optimal_timing) {
-          const delay = new Date(cycle.decision.optimal_timing).getTime() - Date.now();
-          const delayHours = Math.round(delay / (1000 * 60 * 60 * 100)) / 10;
-          console.log(`⏰ Will check again for optimal timing in ${delayHours} hours`);
-        }
-      }
-      
-    } catch (error) {
-      console.error('❌ Intelligent posting cycle failed:', error);
-    }
-  }
-
-  private async trackPostingSuccess(tweetId: string, decision: any): Promise<void> {
-    try {
-      console.log(`📊 Tracking performance for intelligent post: ${tweetId}`);
-      // The growth master will handle the detailed tracking
-      // This is just for immediate feedback
-    } catch (error) {
-      console.error('❌ Failed to track posting success:', error);
-    }
+    console.log('✅ Scheduler started - checking every 30 minutes');
+    console.log('🎯 Optimal posting times: 7AM, 12PM, 6PM, 8PM');
   }
 
   async stop(): Promise<void> {
-    console.log('🛑 Stopping intelligent scheduler...');
+    console.log('🛑 Stopping scheduler...');
     this.isRunning = false;
     
     if (this.intelligentCheckJob) {
@@ -109,7 +61,7 @@ export class Scheduler {
       this.intelligentCheckJob = null;
     }
     
-    console.log('✅ Intelligent scheduler stopped');
+    console.log('✅ Scheduler stopped');
   }
 }
 
