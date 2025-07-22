@@ -30,13 +30,13 @@ export class Scheduler {
     this.resetDailyCountIfNeeded();
 
     // Post immediately if we're behind schedule
-    console.log('🍌 Checking for immediate posting opportunity...');
+    console.log('🔥 Checking for immediate viral health posting opportunity...');
     await this.checkAndPost();
 
     // Check every 10 minutes for maximum responsiveness (6x per hour)
     this.intelligentCheckJob = cron.schedule('*/10 * * * *', async () => {
       try {
-        console.log('🍌 High-frequency check for posting...');
+        console.log('🔥 High-frequency check for viral health posting...');
         await this.checkAndPost();
       } catch (error) {
         console.error('❌ Scheduler error:', error);
@@ -45,7 +45,7 @@ export class Scheduler {
 
     console.log('✅ HIGH-FREQUENCY Scheduler started - checking every 10 minutes');
     console.log('🎯 Intelligent spacing: ~50 minutes between posts');
-    console.log('🍌 Focus: "Eat 2 bananas daily" style content ONLY');
+    console.log('🔥 Content: Health news, supplements, fitness, biohacking, food tips - ANYTHING that gets followers');
     console.log('⏰ Active hours: 6 AM - 11 PM (17 hour window)');
   }
 
@@ -85,7 +85,7 @@ export class Scheduler {
     
     if (shouldPost) {
       console.log(`🎯 POSTING NOW (${this.dailyPostCount + 1}/${this.targetDailyPosts})`);
-      console.log('🍌 Generating banana-style simple health tip...');
+      console.log('🔥 Generating viral health content - news, supplements, fitness, biohacking, food tips...');
       
       const result = await this.postTweetAgent.run();
       

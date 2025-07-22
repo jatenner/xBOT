@@ -20,15 +20,10 @@
     "src/agents/postTweet.ts",
     "src/agents/simpleViralHealthGenerator.ts",
     "src/agents/scheduler.ts",
-    "src/agents/newsAPIAgent.ts",
-    "src/agents/realResearchFetcher.ts",
-    "src/agents/embeddingFilter.ts",
     "src/utils/xClient.ts",
     "src/utils/minimalSupabaseClient.ts",
     "src/utils/formatTweet.ts",
     "src/utils/openaiClient.ts",
-    "src/utils/intelligentRateLimitManager.ts",
-    "src/utils/smartBudgetOptimizer.ts",
     "src/config/liveMode.ts"
   ],
   "exclude": [
@@ -37,11 +32,12 @@
     "**/*.test.ts",
     "**/*.spec.ts",
     "tests/**/*",
-    "src/agents/!(postTweet|simpleViralHealthGenerator|scheduler|newsAPIAgent|realResearchFetcher|embeddingFilter).ts",
-    "src/utils/!(xClient|minimalSupabaseClient|formatTweet|openaiClient|intelligentRateLimitManager|smartBudgetOptimizer).ts",
+    "src/agents/!(postTweet|simpleViralHealthGenerator|scheduler).ts",
+    "src/utils/!(xClient|minimalSupabaseClient|formatTweet|openaiClient).ts",
     "src/dashboard/**/*",
     "src/singletons/**/*",
     "src/metrics/**/*",
-    "src/config/!(liveMode).ts"
+    "src/config/!(liveMode).ts",
+    "src/prompts/**/*"
   ]
 } 

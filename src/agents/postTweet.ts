@@ -84,11 +84,13 @@ export class PostTweetAgent {
         console.log('🧠 Using provided optimized content');
         content = optimizedContent;
       } else {
-        // Generate simple viral health content by default
-        console.log('🍌 Generating simple viral health content...');
+        // Generate viral health content (ANY type that gets followers)
+        console.log('🔥 Generating viral health content for maximum followers...');
         const healthContent = await this.simpleHealthGenerator.generateSimpleViralHealth();
         content = healthContent.content;
-        console.log(`📊 Follow potential: ${healthContent.followGrowthPotential}%`);
+        console.log(`📊 Content type: ${healthContent.contentType}`);
+        console.log(`📈 Follow potential: ${healthContent.followGrowthPotential}%`);
+        console.log(`🎯 Engagement hooks: ${healthContent.engagementHooks.join(', ')}`);
       }
 
       // Format content

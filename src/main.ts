@@ -4,8 +4,10 @@ import { minimalSupabaseClient } from './utils/minimalSupabaseClient';
 import { LIVE_MODE } from './config/liveMode';
 
 async function main() {
-  console.log('🚀 Starting Simple Health Twitter Bot...');
+  console.log('🔥 Starting VIRAL HEALTH Twitter Bot...');
   console.log(`🔧 Live Mode: ${LIVE_MODE ? 'ENABLED' : 'DISABLED'}`);
+  console.log('🎯 Content: Health news, supplements, fitness, biohacking, food tips');
+  console.log('📊 Target: 17 viral health posts per day');
   
   try {
     // Test database connection
@@ -23,12 +25,12 @@ async function main() {
     console.warn('⚠️ Database test failed:', error);
   }
 
-  // Start scheduler
+  // Start our ONLY scheduler (no other systems)
   await scheduler.start();
   
-  console.log('🎉 Simple Health Twitter Bot is running!');
-  console.log('🍌 Posting simple, viral health tips');
-  console.log('📊 Check logs for posting activity');
+  console.log('🎉 VIRAL HEALTH Twitter Bot is LIVE!');
+  console.log('🔥 Generating diverse health content for maximum followers');
+  console.log('📊 Check logs for posting activity every ~50 minutes');
 }
 
 // Start the application
