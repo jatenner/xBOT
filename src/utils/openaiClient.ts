@@ -1,154 +1,144 @@
 import { contentTracker } from './contentTracker';
 
-// Significantly expanded content pools for maximum diversity
-const viralHealthTemplates = [
-  "💡 {tip} - try this for 7 days and see the difference",
-  "🔥 Scientists just discovered: {tip}",
-  "⚡ Game changer: {tip}",
-  "🧠 Your body will thank you: {tip}",
-  "💪 Simple habit that works: {tip}",
-  "🎯 Health hack: {tip}",
-  "✨ This changed everything: {tip}",
-  "🚀 Pro tip: {tip}",
-  "💎 Golden rule: {tip}",
-  "🔑 Secret weapon: {tip}",
-  "📈 Breakthrough: {tip}",
-  "🌟 Life hack: {tip}",
-  "⚡ Quick win: {tip}",
-  "🎯 Daily reminder: {tip}",
-  "🔥 Hot tip: {tip}",
-  "💡 Simple truth: {tip}",
-  "🚀 Level up: {tip}",
-  "💪 Power move: {tip}",
-  "🧬 Biohack: {tip}",
-  "⭐ Pro secret: {tip}"
+// FOLLOWER-FOCUSED VIRAL CONTENT (What actually gets follows on Twitter)
+const massFollowerTemplates = [
+  "This will make you question everything: {content}",
+  "Plot twist nobody saw coming: {content}", 
+  "I've been keeping this secret for 3 years: {content}",
+  "Everyone does this wrong and it's costing them: {content}",
+  "The billion dollar industry doesn't want you to know: {content}",
+  "After studying 10,000 cases, I found this: {content}",
+  "Unpopular opinion that will trigger people: {content}",
+  "What I learned from the world's healthiest person: {content}",
+  "The mistake 99% of people make daily: {content}",
+  "Industry insider reveals shocking truth: {content}",
+  "Your doctor probably doesn't know this: {content}",
+  "This changed my life in 30 days: {content}",
+  "Most expensive health advice is wrong: {content}",
+  "I was wrong about this for 10 years: {content}",
+  "The science that big pharma buried: {content}"
 ];
 
-const healthNews = [
-  "new Stanford study shows drinking green tea 30 minutes before meals burns 23% more fat",
-  "Harvard researchers find taking magnesium before bed improves deep sleep by 40%",
-  "Mayo Clinic confirms: walking after meals reduces blood sugar spikes by 30%",
-  "Johns Hopkins study: morning sunlight exposure regulates circadian rhythm in 3 days",
-  "MIT research reveals cold showers boost metabolism for 24 hours",
-  "UCLA finds: probiotics with 50+ billion CFU heal leaky gut in 2 weeks",
-  "Yale study: zone 2 cardio burns fat for 12 hours post-workout",
-  "Cleveland Clinic: omega-3 from fish oil reduces anxiety by 25%",
-  "New research: intermittent fasting increases growth hormone 500%",
-  "Latest study: vitamin D3 + K2 prevents calcium buildup in arteries"
+// VIRAL FOLLOWER CONTENT (Controversial, personal, shocking)
+const viralFollowerContent = [
+  "most supplements are expensive urine and big pharma knows it",
+  "your morning routine is probably destroying your health",
+  "the food pyramid was created by cereal companies, not doctors",
+  "organic food is mostly a marketing scam with 2% difference",
+  "your expensive gym membership is less effective than walking",
+  "bottled water is tap water with 1000% markup",
+  "detox teas and cleanses literally do nothing except empty your wallet",
+  "8 glasses of water daily is myth created by bottled water companies",
+  "your fitbit is lying to you about calories burned",
+  "multivitamins have zero scientific backing for healthy adults",
+  "the wellness industry is bigger scam than cryptocurrency",
+  "your expensive protein powder is no better than eggs",
+  "meditation apps are digital snake oil for anxious millennials",
+  "superfoods are marketing terms, not scientific categories",
+  "cold showers don't boost metabolism more than regular exercise",
+  "biohacking is rebranding basic health advice for tech bros",
+  "your sleep tracker is making your sleep worse through anxiety",
+  "juice cleanses destroy your metabolism and gut bacteria",
+  "activated charcoal products can interfere with medications",
+  "alkaline water is pseudoscience with fancy pH meters",
+  "blue light glasses are placebo for people who stare at screens",
+  "standing desks don't burn significantly more calories than sitting",
+  "gluten-free products are often less healthy than regular versions",
+  "the keto diet works for weight loss but not for the reasons they claim",
+  "intermittent fasting is just calorie restriction with a timer"
 ];
 
-const biohackTips = [
-  "breathe through your nose - mouth breathing kills gains",
-  "eat protein within 30 minutes of waking to boost metabolism",
-  "add sea salt to water for better hydration",
-  "stop eating 3 hours before bed for deeper sleep",
-  "do 20 squats every hour you sit",
-  "chew your food 30 times for better digestion",
-  "drink 16oz water first thing every morning",
-  "take cold showers for 30 seconds to boost immune system",
-  "get sunlight in your eyes within first hour of waking",
-  "walk barefoot on grass for 10 minutes daily"
+// PERSONAL STORY HOOKS (Build connection and authority)
+const personalStoryHooks = [
+  "A patient told me something that changed everything about",
+  "I spent $10,000 learning this the hard way:",
+  "After 15 years in medicine, I finally understand",
+  "The healthiest 90-year-old I know does this one thing:",
+  "My biggest medical school failure taught me",
+  "I used to believe this myth until I studied",
+  "The sickest patient I treated had perfect lab results. Here's why:",
+  "I was completely wrong about this for my entire career:",
+  "The billionaire who hired me taught me this secret:",
+  "After reviewing 1000+ studies, I discovered"
 ];
 
-const supplementTips = [
-  "creatine monohydrate 5g daily boosts brain function 15%",
-  "magnesium glycinate 400mg before bed = perfect sleep",
-  "vitamin D3 4000IU + K2 100mcg together prevents deficiency",
-  "omega-3 fish oil 2g daily reduces inflammation markers",
-  "curcumin with black pepper increases absorption 2000%",
-  "NAD+ precursors reverse cellular aging at the mitochondrial level",
-  "lion's mane mushroom grows new brain cells",
-  "ashwagandha 600mg reduces cortisol by 30%",
-  "glycine 3g before bed increases deep sleep phases",
-  "zinc 15mg daily boosts immune system and testosterone"
+// CONTROVERSY STARTERS (Drive engagement and follows)
+const controversyStarters = [
+  "stop taking vitamin D supplements unless you're actually deficient",
+  "cardio is overrated for fat loss and strength training is underrated", 
+  "most mental health issues are nutrition and sleep problems disguised",
+  "the Mediterranean diet only works because it eliminates processed food",
+  "counting calories is more effective than any trendy diet plan",
+  "your expensive skincare routine matters less than sleep and stress",
+  "genetic testing for health is mostly fortune telling with data",
+  "CrossFit has higher injury rates than most people realize",
+  "plant-based doesn't automatically mean healthier or more sustainable",
+  "your anxiety might be caffeine withdrawal in disguise"
 ];
-
-const exerciseTips = [
-  "zone 2 cardio for 45 minutes burns fat for 24 hours",
-  "strength training 3x week prevents muscle loss after 30",
-  "morning walks regulate blood sugar better than evening",
-  "10,000 steps daily reduces all-cause mortality by 40%",
-  "high-intensity intervals boost metabolism for 48 hours",
-  "resistance bands build muscle anywhere, anytime",
-  "deadlifts activate more muscles than any other exercise",
-  "swimming is the only exercise that works every muscle",
-  "yoga increases flexibility and reduces stress hormones",
-  "pilates strengthens core better than traditional ab work"
-];
-
-const nutritionSecrets = [
-  "eating blueberries daily reduces inflammation markers by 25%",
-  "fermented foods heal gut microbiome in 2 weeks",
-  "bone broth provides collagen for joint health",
-  "avocados increase nutrient absorption from vegetables",
-  "dark chocolate 70%+ improves cognitive function",
-  "green leafy vegetables prevent cognitive decline",
-  "wild-caught salmon has 10x more omega-3 than farmed",
-  "grass-fed beef contains natural CLA for fat burning",
-  "organic vegetables have 60% more antioxidants",
-  "apple cider vinegar before meals stabilizes blood sugar"
-];
-
-// Content type mapping for learning
-const contentTypes = {
-  'health_news': healthNews,
-  'biohack_tips': biohackTips,
-  'supplement_tips': supplementTips,
-  'exercise_tips': exerciseTips,
-  'nutrition_secrets': nutritionSecrets
-};
 
 let usedContent = new Set<string>();
 
 export class OpenAIClient {
   async generateCompletion(prompt: string, options?: any): Promise<string> {
-    console.log('🤖 OpenAI Client: Generating diverse viral health content');
+    console.log('🔥 OpenAI Client: Generating VIRAL FOLLOWER MAGNET content');
     
     let content = '';
     let attempts = 0;
-    const maxAttempts = 50;
+    const maxAttempts = 30;
 
-    // Keep generating until we get unique content
     while (attempts < maxAttempts) {
-      // Randomly select content type and template
-      const typeKeys = Object.keys(contentTypes);
-      const selectedType = typeKeys[Math.floor(Math.random() * typeKeys.length)];
-      const tips = contentTypes[selectedType as keyof typeof contentTypes];
-      const tip = tips[Math.floor(Math.random() * tips.length)];
-      const template = viralHealthTemplates[Math.floor(Math.random() * viralHealthTemplates.length)];
-      
-      content = template.replace('{tip}', tip);
-      
-      // Check if content is unique
-      const isUnique = await contentTracker.isContentUnique(content);
-      if (isUnique && !usedContent.has(content)) {
-        usedContent.add(content);
+      // Randomly choose content strategy
+      const strategy = Math.random();
+      let finalContent = '';
+
+      if (strategy < 0.4) {
+        // 40% - Controversial hot takes (highest follower conversion)
+        const hook = controversyStarters[Math.floor(Math.random() * controversyStarters.length)];
+        const template = massFollowerTemplates[Math.floor(Math.random() * massFollowerTemplates.length)];
+        finalContent = template.replace('{content}', hook);
+      } else if (strategy < 0.7) {
+        // 30% - Personal authority stories 
+        const hook = personalStoryHooks[Math.floor(Math.random() * personalStoryHooks.length)];
+        const insight = viralFollowerContent[Math.floor(Math.random() * viralFollowerContent.length)];
+        finalContent = `${hook} ${insight}`;
+      } else {
+        // 30% - Viral shocking content
+        const template = massFollowerTemplates[Math.floor(Math.random() * massFollowerTemplates.length)];
+        const shock = viralFollowerContent[Math.floor(Math.random() * viralFollowerContent.length)];
+        finalContent = template.replace('{content}', shock);
+      }
+
+      // Check uniqueness
+      const isUnique = await contentTracker.isContentUnique(finalContent);
+      if (isUnique && !usedContent.has(finalContent)) {
+        usedContent.add(finalContent);
         
-        // Track the content generation
+        // Track for learning
         contentTracker.trackContent({
-          contentHash: contentTracker.generateContentHash(content),
-          content,
-          contentType: selectedType,
-          template,
-          topic: tip,
+          contentHash: contentTracker.generateContentHash(finalContent),
+          content: finalContent,
+          contentType: strategy < 0.4 ? 'controversial' : strategy < 0.7 ? 'personal_authority' : 'viral_shock',
+          template: 'follower_magnet',
+          topic: 'viral_growth',
           posted: false
         });
         
-        console.log(`📝 Generated unique ${selectedType}: "${content}"`);
-        return content;
+        console.log(`🎯 Generated FOLLOWER MAGNET: "${finalContent}"`);
+        console.log(`📈 Content strategy: ${strategy < 0.4 ? 'CONTROVERSIAL' : strategy < 0.7 ? 'PERSONAL AUTHORITY' : 'VIRAL SHOCK'}`);
+        return finalContent;
       }
       
       attempts++;
     }
 
-    // Fallback if somehow we can't generate unique content
-    const fallback = `🚀 Health tip: ${Date.now()} - stay hydrated, move daily, sleep well`;
-    console.warn('⚠️ Using fallback content after max attempts');
+    // Fallback
+    const fallback = `Plot twist nobody saw coming: most health advice you follow is actually making you poorer, not healthier`;
+    console.warn('⚠️ Using follower-focused fallback content');
     return fallback;
   }
 
   async chat(messages: any[]): Promise<string> {
-    return this.generateCompletion('Generate viral health content');
+    return this.generateCompletion('Generate viral follower magnet content');
   }
 }
 
