@@ -104,7 +104,7 @@ export class RealEngagementAgent {
       const randomQuery = this.HEALTH_SEARCH_QUERIES[Math.floor(Math.random() * this.HEALTH_SEARCH_QUERIES.length)];
       console.log(`🔍 Searching for: "${randomQuery}"`);
       
-      const searchResult = await xClient.searchTweets(randomQuery, 5);
+      const searchResult = await xClient.searchTweets(randomQuery, 10);
       
       if (searchResult.success && searchResult.data.length > 0) {
         // Extract tweet IDs for liking/replying

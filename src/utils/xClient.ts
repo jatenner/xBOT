@@ -124,7 +124,7 @@ class XService {
       
       // Use Twitter API v2 recent search with proper parameters
       const result = await this.client.v2.search(query, {
-        max_results: Math.min(count, 10), // Start with smaller limit for testing
+        max_results: Math.max(Math.min(count, 100), 10), // Twitter requires 10-100
         'tweet.fields': ['author_id', 'created_at', 'public_metrics'],
         expansions: ['author_id']
       });
