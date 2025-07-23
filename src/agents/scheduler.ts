@@ -1,11 +1,14 @@
 
 import * as cron from 'node-cron';
 import { PostTweetAgent } from './postTweet';
+import { RealEngagementAgent } from './realEngagementAgent';
 
 export class Scheduler {
   private postTweetAgent: PostTweetAgent;
+  private realEngagementAgent: RealEngagementAgent;
   private isRunning = false;
   private intelligentCheckJob: cron.ScheduledTask | null = null;
+  private engagementJob: cron.ScheduledTask | null = null;
   private dailyPostCount = 0;
   private lastPostTime: Date | null = null;
   private targetDailyPosts = 17; // Maximize daily posting for growth
@@ -13,6 +16,7 @@ export class Scheduler {
 
   constructor() {
     this.postTweetAgent = new PostTweetAgent();
+    this.realEngagementAgent = new RealEngagementAgent();
     this.resetDailyCountIfNeeded();
   }
 
@@ -43,7 +47,31 @@ export class Scheduler {
       }
     });
 
+    // 🤝 REAL ENGAGEMENT: Run every 30 minutes
+    this.engagementJob = cron.schedule('*/30 * * * *', async () => {
+      try {
+        console.log('🤝 === REAL ENGAGEMENT CYCLE ===');
+        const result = await this.realEngagementAgent.run();
+        
+        if (result.success) {
+          console.log(`✅ Engagement cycle complete: ${result.message}`);
+          const successful = result.actions.filter(a => a.success);
+          if (successful.length > 0) {
+            console.log(`🎯 Real Twitter actions performed: ${successful.length}`);
+            successful.forEach(action => {
+              console.log(`   ${action.action_type === 'like' ? '❤️' : action.action_type === 'reply' ? '💬' : action.action_type === 'follow' ? '👥' : '🔄'} ${action.action_type} → ${action.target_type} ${action.target_id}`);
+            });
+          }
+        } else {
+          console.log(`❌ Engagement cycle failed: ${result.message}`);
+        }
+      } catch (error) {
+        console.error('❌ Engagement error:', error);
+      }
+    });
+
     console.log('✅ HIGH-FREQUENCY Scheduler started - checking every 10 minutes');
+    console.log('🤝 REAL ENGAGEMENT started - running every 30 minutes');
     console.log('🎯 Intelligent spacing: ~50 minutes between posts');
     console.log('🔥 Content: Health news, supplements, fitness, biohacking, food tips - ANYTHING that gets followers');
     console.log('⏰ Active hours: 6 AM - 11 PM (17 hour window)');
@@ -180,7 +208,13 @@ export class Scheduler {
       this.intelligentCheckJob = null;
     }
     
+    if (this.engagementJob) {
+      this.engagementJob.stop();
+      this.engagementJob = null;
+    }
+    
     console.log('✅ High-frequency scheduler stopped');
+    console.log('✅ Real engagement agent stopped');
     console.log(`📊 Final daily count: ${this.dailyPostCount}/${this.targetDailyPosts} posts`);
   }
 }

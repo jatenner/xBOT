@@ -1,59 +1,73 @@
 import { xClient } from '../utils/xClient';
-import { openaiClient } from '../utils/openaiClient';
-import { supabase } from '../utils/supabaseClient';
+import { EngagementDatabaseLogger, type EngagementAction } from '../utils/engagementDatabaseLogger';
 
-interface EngagementAction {
-  type: 'like' | 'reply' | 'follow' | 'retweet';
-  tweetId?: string;
-  userId?: string;
-  content?: string;
-  success: boolean;
-  error?: string;
+interface EngagementTargets {
+  healthTweets: string[];
+  healthUsers: string[];
+  trending: string[];
 }
 
 export class RealEngagementAgent {
+  private readonly HEALTH_SEARCH_QUERIES = [
+    'intermittent fasting',
+    'gut health microbiome',
+    'longevity research',
+    'sleep optimization',
+    'nutrition science',
+    'biohacking tips',
+    'metabolism boost',
+    'anti-aging',
+    'fitness motivation',
+    'healthy lifestyle'
+  ];
+
   async run(): Promise<{ success: boolean; message: string; actions: EngagementAction[] }> {
     console.log('🤝 === REAL ENGAGEMENT AGENT ACTIVATED ===');
     
-    // 🚨 GHOST SYNDROME BREAKER MODE
-    const isGhostSyndromeBreaker = process.env.GHOST_SYNDROME_BREAKER === 'true';
-    const isEmergencyMode = process.env.EMERGENCY_ENGAGEMENT_MODE === 'true';
-    const engagementFreq = process.env.ENGAGEMENT_FREQUENCY || 'normal';
-    const dailyTarget = parseInt(process.env.DAILY_ENGAGEMENT_TARGET || '50');
-    
-    if (isGhostSyndromeBreaker) {
-      console.log('🚨 GHOST SYNDROME BREAKER ACTIVATED');
-      console.log('🎯 Mission: Break algorithm suppression through aggressive engagement');
-      console.log(`📊 Target: ${dailyTarget} engagements today`);
-      console.log('⚡ Strategy: High-frequency community interaction');
+    // Check if engagement table exists
+    const tableReady = await EngagementDatabaseLogger.ensureEngagementTableExists();
+    if (!tableReady) {
+      console.warn('⚠️ Engagement table not ready - actions will be logged to console only');
     }
-
-    const engagementMultiplier = engagementFreq === 'aggressive' ? 2.5 : 
-                                isEmergencyMode ? 3.0 : 1.0;
     
-    const targetLikes = Math.floor((dailyTarget * 0.6) * engagementMultiplier); // 60% likes
-    const targetReplies = Math.floor((dailyTarget * 0.25) * engagementMultiplier); // 25% replies  
-    const targetFollows = Math.floor((dailyTarget * 0.15) * engagementMultiplier); // 15% follows
-
-    console.log(`🎯 Today's Engagement Targets:`);
-    console.log(`   ❤️  Likes: ${targetLikes}`);
-    console.log(`   💬 Replies: ${targetReplies}`);
-    console.log(`   👥 Follows: ${targetFollows}`);
+    // Check current rate limits
+    const rateLimits = await EngagementDatabaseLogger.checkEngagementRateLimits();
+    console.log('📊 Current Daily Engagement:');
+    console.log(`   ❤️  Likes: ${rateLimits.dailyLikes}/1000`);
+    console.log(`   💬 Replies: ${rateLimits.dailyReplies}/300`);
+    console.log(`   👥 Follows: ${rateLimits.dailyFollows}/400`);
+    console.log(`   🔄 Retweets: ${rateLimits.dailyRetweets}/300`);
     
     const allActions: EngagementAction[] = [];
     
     try {
-      // Perform 2 REAL likes
-      const likeActions = await this.performRealLikes();
-      allActions.push(...likeActions);
+      // 1. Find engagement targets
+      const targets = await this.findEngagementTargets();
+      console.log(`🎯 Found targets: ${targets.healthTweets.length} tweets, ${targets.healthUsers.length} users`);
       
-      // Perform 1 REAL reply  
-      const replyActions = await this.performRealReplies();
-      allActions.push(...replyActions);
+      // 2. Perform REAL likes (if not at limit)
+      if (rateLimits.canLike && targets.healthTweets.length > 0) {
+        const likeActions = await this.performRealLikes(targets.healthTweets.slice(0, 3));
+        allActions.push(...likeActions);
+      } else {
+        console.log('⏸️ Skipping likes: Daily limit reached or no targets');
+      }
       
-      // Perform 1 REAL follow
-      const followActions = await this.performRealFollows();
-      allActions.push(...followActions);
+      // 3. Perform REAL replies (if not at limit)
+      if (rateLimits.canReply && targets.healthTweets.length > 0) {
+        const replyActions = await this.performRealReplies(targets.healthTweets.slice(0, 1));
+        allActions.push(...replyActions);
+      } else {
+        console.log('⏸️ Skipping replies: Daily limit reached or no targets');
+      }
+      
+      // 4. Perform REAL follows (if not at limit)
+      if (rateLimits.canFollow && targets.healthUsers.length > 0) {
+        const followActions = await this.performRealFollows(targets.healthUsers.slice(0, 2));
+        allActions.push(...followActions);
+      } else {
+        console.log('⏸️ Skipping follows: Daily limit reached or no targets');
+      }
       
       const successful = allActions.filter(a => a.success);
       
@@ -64,7 +78,7 @@ export class RealEngagementAgent {
       
       return {
         success: true,
-        message: `Real engagement: ${successful.length}/${allActions.length} actual actions`,
+        message: `Real engagement: ${successful.length}/${allActions.length} actual Twitter API actions`,
         actions: allActions
       };
       
@@ -78,173 +92,201 @@ export class RealEngagementAgent {
     }
   }
 
-  private async performRealLikes(): Promise<EngagementAction[]> {
-    const actions: EngagementAction[] = [];
-    console.log('💖 === PERFORMING REAL LIKES ===');
-    
+  private async findEngagementTargets(): Promise<EngagementTargets> {
+    const targets: EngagementTargets = {
+      healthTweets: [],
+      healthUsers: [],
+      trending: []
+    };
+
     try {
-      const searchResults = await xClient.searchTweets('digital health innovation', 5);
+      // Search for recent health content to engage with
+      const randomQuery = this.HEALTH_SEARCH_QUERIES[Math.floor(Math.random() * this.HEALTH_SEARCH_QUERIES.length)];
+      console.log(`🔍 Searching for: "${randomQuery}"`);
       
-      if (searchResults && searchResults.success && searchResults.tweets.length > 0) {
-        const tweet = searchResults.tweets[0];
-        console.log(`💖 Attempting to ACTUALLY like: ${tweet.text?.substring(0, 50)}...`);
+      const searchResult = await xClient.searchTweets(randomQuery, 5);
+      
+      if (searchResult.success && searchResult.data.length > 0) {
+        // Extract tweet IDs for liking/replying
+        targets.healthTweets = searchResult.data.map((tweet: any) => tweet.id).filter(Boolean);
         
-        const likeResult = await xClient.likeTweet(tweet.id);
+        // Extract user IDs for following
+        targets.healthUsers = searchResult.data.map((tweet: any) => tweet.author_id).filter(Boolean);
+        
+        console.log(`✅ Found ${targets.healthTweets.length} tweets and ${targets.healthUsers.length} users`);
+      } else {
+        console.warn('⚠️ Search returned no results or failed');
+      }
+
+    } catch (error) {
+      console.error('❌ Error finding engagement targets:', error);
+    }
+
+    return targets;
+  }
+
+  private async performRealLikes(tweetIds: string[]): Promise<EngagementAction[]> {
+    const actions: EngagementAction[] = [];
+    console.log(`❤️ Performing REAL likes on ${tweetIds.length} tweets...`);
+
+    for (const tweetId of tweetIds) {
+      try {
+        const result = await xClient.likeTweet(tweetId);
         
         const action: EngagementAction = {
-          type: 'like',
-          tweetId: tweet.id,
-          success: likeResult.success,
-          error: likeResult.error
+          action_type: 'like',
+          target_id: tweetId,
+          target_type: 'tweet',
+          success: result.success,
+          error_message: result.error,
+          response_data: result.data
         };
 
-        if (likeResult.success) {
-          console.log(`💖 ✅ SUCCESS: ACTUALLY liked tweet!`);
-          await this.logEngagement('like', tweet.id, tweet.authorId);
-        } else {
-          console.log(`💖 ❌ FAILED: ${likeResult.error}`);
-        }
-        
         actions.push(action);
-      }
-    } catch (error) {
-      console.error('❌ Like attempt failed:', error);
-      actions.push({
-        type: 'like',
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      });
-    }
-    
-    return actions;
-  }
-
-  private async performRealReplies(): Promise<EngagementAction[]> {
-    const actions: EngagementAction[] = [];
-    console.log('💬 === PERFORMING REAL REPLIES ===');
-    
-    try {
-      const searchResults = await xClient.searchTweets('health tech question', 3);
-      
-      if (searchResults && searchResults.success && searchResults.tweets.length > 0) {
-        const tweet = searchResults.tweets[0];
-        console.log(`💬 Attempting to ACTUALLY reply to: ${tweet.text?.substring(0, 50)}...`);
         
-        const replyContent = await this.generateReply(tweet.text || '');
+        // Log to database
+        await EngagementDatabaseLogger.logEngagement(action);
         
-        if (replyContent) {
-          const replyResult = await xClient.postReply(replyContent, tweet.id);
-          
-          const action: EngagementAction = {
-            type: 'reply',
-            tweetId: tweet.id,
-            content: replyContent,
-            success: replyResult.success,
-            error: replyResult.error
-          };
-
-          if (replyResult.success) {
-            console.log(`💬 ✅ SUCCESS: ACTUALLY replied!`);
-            console.log(`💬 Reply content: ${replyContent}`);
-            await this.logEngagement('reply', tweet.id, tweet.authorId, replyContent);
-          } else {
-            console.log(`💬 ❌ FAILED: ${replyResult.error}`);
-          }
-          
-          actions.push(action);
+        if (result.success) {
+          console.log(`✅ REAL LIKE: Successfully liked tweet ${tweetId}`);
+        } else {
+          console.log(`❌ LIKE FAILED: ${result.error}`);
         }
-      }
-    } catch (error) {
-      console.error('❌ Reply attempt failed:', error);
-      actions.push({
-        type: 'reply',
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      });
-    }
-    
-    return actions;
-  }
 
-  private async performRealFollows(): Promise<EngagementAction[]> {
-    const actions: EngagementAction[] = [];
-    console.log('👥 === PERFORMING REAL FOLLOWS ===');
-    
-    try {
-      const usersToFollow = await xClient.getUsersToFollow('health tech CEO', 3);
-      
-      if (usersToFollow && usersToFollow.length > 0) {
-        const user = usersToFollow[0];
-        console.log(`👥 Attempting to ACTUALLY follow: @${user.username} (${user.name})`);
-        
-        const followResult = await xClient.followUser(user.id);
+        // Rate limiting: 1 second delay between likes
+        await this.sleep(1000);
+
+      } catch (error) {
+        console.error(`❌ Error liking tweet ${tweetId}:`, error);
         
         const action: EngagementAction = {
-          type: 'follow',
-          userId: user.id,
-          success: followResult.success,
-          error: followResult.error
+          action_type: 'like',
+          target_id: tweetId,
+          target_type: 'tweet',
+          success: false,
+          error_message: error instanceof Error ? error.message : 'Unknown error'
         };
-
-        if (followResult.success) {
-          console.log(`👥 ✅ SUCCESS: ACTUALLY followed @${user.username}!`);
-          await this.logEngagement('follow', null, user.id);
-        } else {
-          console.log(`👥 ❌ FAILED: ${followResult.error}`);
-        }
         
         actions.push(action);
+        await EngagementDatabaseLogger.logEngagement(action);
       }
-    } catch (error) {
-      console.error('❌ Follow attempt failed:', error);
-      actions.push({
-        type: 'follow',
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      });
     }
-    
+
     return actions;
   }
 
-  private async generateReply(originalTweet: string): Promise<string | null> {
-    try {
-      const prompt = `Generate a helpful reply to this health tech tweet. Keep under 280 chars, be professional, add value.
+  private async performRealReplies(tweetIds: string[]): Promise<EngagementAction[]> {
+    const actions: EngagementAction[] = [];
+    console.log(`💬 Performing REAL replies on ${tweetIds.length} tweets...`);
 
-Tweet: "${originalTweet}"
+    const replyTemplates = [
+      "Great insights! Thanks for sharing this valuable information.",
+      "This is exactly what people need to hear. Appreciate you posting this!",
+      "Really helpful content - definitely saving this for later.",
+      "Love seeing evidence-based health content like this. Keep it up!",
+      "This aligns perfectly with what I've been learning. Thanks!"
+    ];
 
-Reply:`;
+    for (const tweetId of tweetIds) {
+      try {
+        const replyContent = replyTemplates[Math.floor(Math.random() * replyTemplates.length)];
+        const result = await xClient.postReply(replyContent, tweetId);
+        
+        const action: EngagementAction = {
+          action_type: 'reply',
+          target_id: tweetId,
+          target_type: 'tweet',
+          content: replyContent,
+          success: result.success,
+          error_message: result.error,
+          response_data: result.data
+        };
 
-      const reply = await openaiClient.generateCompletion(prompt, {
-        maxTokens: 80,
-        temperature: 0.7,
-        model: 'gpt-4o-mini'
-      });
+        actions.push(action);
+        
+        // Log to database
+        await EngagementDatabaseLogger.logEngagement(action);
+        
+        if (result.success) {
+          console.log(`✅ REAL REPLY: Successfully replied to tweet ${tweetId}`);
+        } else {
+          console.log(`❌ REPLY FAILED: ${result.error}`);
+        }
 
-      return reply && reply.length <= 280 ? reply.trim() : null;
-    } catch (error) {
-      console.error('❌ Failed to generate reply:', error);
-      return null;
+        // Rate limiting: 3 seconds delay between replies
+        await this.sleep(3000);
+
+      } catch (error) {
+        console.error(`❌ Error replying to tweet ${tweetId}:`, error);
+        
+        const action: EngagementAction = {
+          action_type: 'reply',
+          target_id: tweetId,
+          target_type: 'tweet',
+          content: 'Reply attempt failed',
+          success: false,
+          error_message: error instanceof Error ? error.message : 'Unknown error'
+        };
+        
+        actions.push(action);
+        await EngagementDatabaseLogger.logEngagement(action);
+      }
     }
+
+    return actions;
   }
 
-  private async logEngagement(
-    actionType: 'like' | 'reply' | 'follow' | 'retweet',
-    tweetId: string | null,
-    userId: string | null,
-    content?: string
-  ): Promise<void> {
-    try {
-      await supabase.from('engagement_history').insert({
-        action_type: actionType,
-        tweet_id: tweetId,
-        user_id: userId,
-        content: content,
-        created_at: new Date().toISOString()
-      });
-      console.log(`📝 Logged REAL ${actionType} action to database`);
-    } catch (error) {
-      console.error('❌ Failed to log engagement:', error);
+  private async performRealFollows(userIds: string[]): Promise<EngagementAction[]> {
+    const actions: EngagementAction[] = [];
+    console.log(`👥 Performing REAL follows on ${userIds.length} users...`);
+
+    for (const userId of userIds) {
+      try {
+        const result = await xClient.followUser(userId);
+        
+        const action: EngagementAction = {
+          action_type: 'follow',
+          target_id: userId,
+          target_type: 'user',
+          success: result.success,
+          error_message: result.error,
+          response_data: result.data
+        };
+
+        actions.push(action);
+        
+        // Log to database
+        await EngagementDatabaseLogger.logEngagement(action);
+        
+        if (result.success) {
+          console.log(`✅ REAL FOLLOW: Successfully followed user ${userId}`);
+        } else {
+          console.log(`❌ FOLLOW FAILED: ${result.error}`);
+        }
+
+        // Rate limiting: 5 seconds delay between follows
+        await this.sleep(5000);
+
+      } catch (error) {
+        console.error(`❌ Error following user ${userId}:`, error);
+        
+        const action: EngagementAction = {
+          action_type: 'follow',
+          target_id: userId,
+          target_type: 'user',
+          success: false,
+          error_message: error instanceof Error ? error.message : 'Unknown error'
+        };
+        
+        actions.push(action);
+        await EngagementDatabaseLogger.logEngagement(action);
+      }
     }
+
+    return actions;
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 }
