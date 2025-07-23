@@ -3,6 +3,7 @@ import { xClient } from '../utils/xClient';
 import { minimalSupabaseClient } from '../utils/minimalSupabaseClient';
 import { formatTweet } from '../utils/formatTweet';
 import { SimpleViralHealthGenerator } from './simpleViralHealthGenerator';
+import { DiverseContentAgent } from './diverseContentAgent';
 import { LIVE_MODE } from '../config/liveMode';
 
 export interface PostResult {
@@ -16,6 +17,7 @@ export interface PostResult {
 
 export class PostTweetAgent {
   private simpleHealthGenerator: SimpleViralHealthGenerator;
+  private diverseContentAgent: DiverseContentAgent;
   private dailyPostCount = 0;
   private lastResetDate: string | null = null;
   private maxDailyPosts = 20; // Safety limit (higher than scheduler's 17)
@@ -24,6 +26,7 @@ export class PostTweetAgent {
 
   constructor() {
     this.simpleHealthGenerator = new SimpleViralHealthGenerator();
+    this.diverseContentAgent = new DiverseContentAgent();
     this.resetDailyCountIfNeeded();
   }
 
@@ -84,13 +87,27 @@ export class PostTweetAgent {
         console.log('🧠 Using provided optimized content');
         content = optimizedContent;
       } else {
-        // Generate viral health content (ANY type that gets followers)
-        console.log('🔥 Generating viral health content for maximum followers...');
-        const healthContent = await this.simpleHealthGenerator.generateSimpleViralHealth();
-        content = healthContent.content;
-        console.log(`📊 Content type: ${healthContent.contentType}`);
-        console.log(`📈 Follow potential: ${healthContent.followGrowthPotential}%`);
-        console.log(`🎯 Engagement hooks: ${healthContent.engagementHooks.join(', ')}`);
+        // Use diverse content agent to prevent repetition
+        console.log('🎨 Generating diverse, non-repetitive health content...');
+        
+        // Check content variety first
+        const variety = await this.diverseContentAgent.getContentVariety();
+        console.log(`📊 Content variety score: ${(variety.varietyScore * 100).toFixed(1)}%`);
+        
+        // Generate diverse content
+        const diverseContent = await this.diverseContentAgent.generateDiverseContent();
+        
+        if (diverseContent.success) {
+          content = diverseContent.content;
+          console.log(`📊 Content type: ${diverseContent.type}`);
+          console.log(`🎯 Non-repetitive content generated`);
+        } else {
+          // Fallback to original generator
+          console.warn('⚠️ Diverse content failed, using fallback generator');
+          const healthContent = await this.simpleHealthGenerator.generateSimpleViralHealth();
+          content = healthContent.content;
+          console.log(`📊 Fallback content type: ${healthContent.contentType}`);
+        }
       }
 
       // Format content
