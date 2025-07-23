@@ -13,6 +13,8 @@ export class Scheduler {
   private lastPostTime: Date | null = null;
   private targetDailyPosts = 17; // Maximize daily posting for growth
   private lastResetDate: string | null = null;
+  private consecutiveRateLimitErrors = 0;
+  private lastRateLimitTime: Date | null = null;
 
   constructor() {
     this.postTweetAgent = new PostTweetAgent();
@@ -90,6 +92,13 @@ export class Scheduler {
     // Reset counter if new day
     this.resetDailyCountIfNeeded();
     
+    // Check rate limit backoff
+    if (this.isInRateLimitBackoff()) {
+      const backoffMinutes = this.getRateLimitBackoffMinutes();
+      console.log(`⏸️ Rate limit backoff active. Waiting ${backoffMinutes} more minutes before retry.`);
+      return;
+    }
+    
     const now = new Date();
     const hour = now.getHours();
     const currentMinutes = now.getMinutes();
@@ -121,12 +130,21 @@ export class Scheduler {
         this.dailyPostCount++;
         this.lastPostTime = now;
         
+        // Reset rate limit tracking on success
+        this.consecutiveRateLimitErrors = 0;
+        this.lastRateLimitTime = null;
+        
         console.log('✅ Simple health tip posted successfully!');
         console.log(`📝 Content: "${result.content}"`);
         console.log(`📊 Daily progress: ${this.dailyPostCount}/${this.targetDailyPosts} posts`);
         console.log(`⏰ Next post in ~${this.getMinutesToNextPost()} minutes`);
       } else {
         console.log('❌ Post failed:', result.error);
+        
+        // Check if this is a rate limit error
+        if (result.error && result.error.includes('429')) {
+          this.handleRateLimitError();
+        }
       }
     } else {
       const nextPostTime = this.getMinutesToNextPost();
@@ -197,6 +215,44 @@ export class Scheduler {
     const timeToNextPost = idealIntervalMs - timeSinceLastPost;
 
     return Math.max(0, Math.round(timeToNextPost / (60 * 1000)));
+  }
+
+  private handleRateLimitError(): void {
+    this.consecutiveRateLimitErrors++;
+    this.lastRateLimitTime = new Date();
+    
+    const backoffMinutes = Math.min(30, this.consecutiveRateLimitErrors * 5); // 5, 10, 15, 20, 25, 30 minutes max
+    
+    console.log(`🚫 Rate limit detected! Backing off for ${backoffMinutes} minutes (error #${this.consecutiveRateLimitErrors})`);
+    console.log(`📊 This preserves API quota for engagement system`);
+    
+    if (this.consecutiveRateLimitErrors >= 5) {
+      console.log(`⚠️ Multiple rate limits detected. Daily posting may be exhausted.`);
+      console.log(`🎯 Focus will shift to engagement-only mode until tomorrow`);
+    }
+  }
+
+  private isInRateLimitBackoff(): boolean {
+    if (!this.lastRateLimitTime || this.consecutiveRateLimitErrors === 0) {
+      return false;
+    }
+    
+    const backoffMinutes = Math.min(30, this.consecutiveRateLimitErrors * 5);
+    const backoffMs = backoffMinutes * 60 * 1000;
+    const timeSinceRateLimit = Date.now() - this.lastRateLimitTime.getTime();
+    
+    return timeSinceRateLimit < backoffMs;
+  }
+
+  private getRateLimitBackoffMinutes(): number {
+    if (!this.lastRateLimitTime) return 0;
+    
+    const backoffMinutes = Math.min(30, this.consecutiveRateLimitErrors * 5);
+    const backoffMs = backoffMinutes * 60 * 1000;
+    const timeSinceRateLimit = Date.now() - this.lastRateLimitTime.getTime();
+    const remainingMs = backoffMs - timeSinceRateLimit;
+    
+    return Math.max(0, Math.round(remainingMs / (60 * 1000)));
   }
 
   async stop(): Promise<void> {
