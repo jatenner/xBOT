@@ -2,81 +2,76 @@
 import * as cron from 'node-cron';
 import { PostTweetAgent } from './postTweet';
 import { RealEngagementAgent } from './realEngagementAgent';
+import { AggressiveFollowerGrowthAgent } from './aggressiveFollowerGrowthAgent';
+import { FollowerGrowthDiagnostic } from './followerGrowthDiagnostic';
 
 export class Scheduler {
   private postTweetAgent: PostTweetAgent;
   private realEngagementAgent: RealEngagementAgent;
-  private isRunning = false;
-  private intelligentCheckJob: cron.ScheduledTask | null = null;
-  private engagementJob: cron.ScheduledTask | null = null;
+  private aggressiveGrowthAgent: AggressiveFollowerGrowthAgent;
+  private growthDiagnostic: FollowerGrowthDiagnostic;
   private dailyPostCount = 0;
+  private targetDailyPosts = 17;
   private lastPostTime: Date | null = null;
-  private targetDailyPosts = 17; // Maximize daily posting for growth
   private lastResetDate: string | null = null;
+  
+  // Rate limiting
   private consecutiveRateLimitErrors = 0;
   private lastRateLimitTime: Date | null = null;
+  
+  // Cron jobs
+  private postingJob: cron.ScheduledTask | null = null;
+  private engagementJob: cron.ScheduledTask | null = null;
+  private growthJob: cron.ScheduledTask | null = null;
+  private diagnosticJob: cron.ScheduledTask | null = null;
 
   constructor() {
     this.postTweetAgent = new PostTweetAgent();
     this.realEngagementAgent = new RealEngagementAgent();
+    this.aggressiveGrowthAgent = new AggressiveFollowerGrowthAgent();
+    this.growthDiagnostic = new FollowerGrowthDiagnostic();
     this.resetDailyCountIfNeeded();
   }
 
   async start(): Promise<void> {
-    if (this.isRunning) {
-      console.log('⚠️ Scheduler is already running');
-      return;
-    }
-
     console.log('🚀 Starting HIGH-FREQUENCY Simple Health Bot Scheduler...');
     console.log(`🎯 TARGET: ${this.targetDailyPosts} posts per day for maximum growth`);
-    this.isRunning = true;
-
-    // Reset daily counter if needed
-    this.resetDailyCountIfNeeded();
-
-    // Post immediately if we're behind schedule
-    console.log('🔥 Checking for immediate viral health posting opportunity...');
+    
+    // Initial growth diagnostic
+    console.log('🔍 Running initial follower growth diagnostic...');
+    await this.growthDiagnostic.runCompleteGrowthAudit();
+    
+    // Immediate posting check
     await this.checkAndPost();
-
-    // Check every 10 minutes for maximum responsiveness (6x per hour)
-    this.intelligentCheckJob = cron.schedule('*/10 * * * *', async () => {
-      try {
-        console.log('🔥 High-frequency check for viral health posting...');
-        await this.checkAndPost();
-      } catch (error) {
-        console.error('❌ Scheduler error:', error);
-      }
+    
+    // Schedule regular posting checks (every 10 minutes)
+    this.postingJob = cron.schedule('*/10 * * * *', async () => {
+      await this.checkAndPost();
     });
 
-    // 🤝 REAL ENGAGEMENT: Run every 30 minutes
+    // Schedule real engagement (every 30 minutes)  
     this.engagementJob = cron.schedule('*/30 * * * *', async () => {
-      try {
-        console.log('🤝 === REAL ENGAGEMENT CYCLE ===');
-        const result = await this.realEngagementAgent.run();
-        
-        if (result.success) {
-          console.log(`✅ Engagement cycle complete: ${result.message}`);
-          const successful = result.actions.filter(a => a.success);
-          if (successful.length > 0) {
-            console.log(`🎯 Real Twitter actions performed: ${successful.length}`);
-            successful.forEach(action => {
-              console.log(`   ${action.action_type === 'like' ? '❤️' : action.action_type === 'reply' ? '💬' : action.action_type === 'follow' ? '👥' : '🔄'} ${action.action_type} → ${action.target_type} ${action.target_id}`);
-            });
-          }
-        } else {
-          console.log(`❌ Engagement cycle failed: ${result.message}`);
-        }
-      } catch (error) {
-        console.error('❌ Engagement error:', error);
-      }
+      await this.realEngagementAgent.run();
+    });
+
+    // Schedule aggressive follower growth (every 45 minutes)
+    this.growthJob = cron.schedule('*/45 * * * *', async () => {
+      console.log('🚀 === AGGRESSIVE FOLLOWER GROWTH CYCLE ===');
+      await this.aggressiveGrowthAgent.runAggressiveGrowthCycle();
+    });
+
+    // Schedule daily growth diagnostic (every 4 hours)
+    this.diagnosticJob = cron.schedule('0 */4 * * *', async () => {
+      console.log('📊 Running follower growth diagnostic...');
+      await this.growthDiagnostic.runCompleteGrowthAudit();
     });
 
     console.log('✅ HIGH-FREQUENCY Scheduler started - checking every 10 minutes');
     console.log('🤝 REAL ENGAGEMENT started - running every 30 minutes');
-    console.log('🎯 Intelligent spacing: ~50 minutes between posts');
-    console.log('🔥 Content: Health news, supplements, fitness, biohacking, food tips - ANYTHING that gets followers');
-    console.log('⏰ Active hours: 6 AM - 11 PM EST (17 hour window)');
+    console.log('🚀 AGGRESSIVE GROWTH started - running every 45 minutes');
+    console.log('📊 GROWTH DIAGNOSTIC started - running every 4 hours');
+    
+    this.logSchedulerInfo();
   }
 
   private resetDailyCountIfNeeded(): void {
@@ -267,21 +262,38 @@ export class Scheduler {
 
   async stop(): Promise<void> {
     console.log('🛑 Stopping high-frequency scheduler...');
-    this.isRunning = false;
     
-    if (this.intelligentCheckJob) {
-      this.intelligentCheckJob.stop();
-      this.intelligentCheckJob = null;
+    if (this.postingJob) {
+      this.postingJob.stop();
+      this.postingJob = null;
     }
     
     if (this.engagementJob) {
       this.engagementJob.stop();
       this.engagementJob = null;
     }
+
+    if (this.growthJob) {
+      this.growthJob.stop();
+      this.growthJob = null;
+    }
+
+    if (this.diagnosticJob) {
+      this.diagnosticJob.stop();
+      this.diagnosticJob = null;
+    }
     
     console.log('✅ High-frequency scheduler stopped');
     console.log('✅ Real engagement agent stopped');
+    console.log('✅ Aggressive growth agent stopped');
+    console.log('✅ Growth diagnostic stopped');
     console.log(`📊 Final daily count: ${this.dailyPostCount}/${this.targetDailyPosts} posts`);
+  }
+
+  private logSchedulerInfo(): void {
+    console.log('🎯 Intelligent spacing: ~50 minutes between posts');
+    console.log('🔥 Content: Health news, supplements, fitness, biohacking, food tips - ANYTHING that gets followers');
+    console.log('⏰ Active hours: 6 AM - 11 PM EST (17 hour window)');
   }
 }
 
