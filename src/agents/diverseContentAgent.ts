@@ -267,75 +267,90 @@ export class DiverseContentAgent {
     const keywords = new Set<string>();
     
     databaseContent.forEach(item => {
-      // Extract SPECIFIC health topics and phrases that should never repeat
+      // Extract SPECIFIC CONTEXTS and ANGLES that should never repeat, not just topics
       const content = item.content.toLowerCase();
       
-      // Extract compound health phrases (exact phrases to avoid)
-      const healthPhrases = [
-        'sleep trackers', 'meditation apps', 'vitamin d supplements', 'probiotics fail',
-        'guided meditation', 'fitness trackers', 'supplements are', 'most people',
-        'new research reveals', 'breaking:', 'this will change everything',
-        'your doctor probably', 'plot twist nobody', 'i was completely wrong',
-        'industry insider reveals', 'medical breakthrough everyone missed'
+      // Extract specific contexts/angles that create repetition (not just topics)
+      const specificContexts = [
+        'are completely ineffective', 'create anxiety that worsens', 'prevent you from developing',
+        'doctors won\'t tell you', 'industry doesn\'t want you to know', 'medical breakthrough everyone missed',
+        'plot twist nobody saw coming', 'i was completely wrong about', 'your doctor probably doesn\'t know',
+        'new research reveals', 'breaking:', 'this will change everything you think about',
+        'most people think', 'everyone\'s doing', 'the truth about', 'what nobody tells you',
+        'use d2 instead of d3', 'have poor absorption without', 'take them with the wrong foods',
+        'constant external guidance keeps your brain', 'stress of monitoring performance triggers',
+        'apps can prevent you from developing real', 'trackers create anxiety that'
       ];
       
-      healthPhrases.forEach(phrase => {
-        if (content.includes(phrase)) {
-          keywords.add(phrase);
+      specificContexts.forEach(context => {
+        if (content.includes(context)) {
+          keywords.add(context);
         }
       });
       
-      // Extract specific topics mentioned
-      const specificTopics = content.match(/\b(?:sleep|meditation|vitamin|probiotic|supplement|tracker|app|research|study|data)\w*\b/g) || [];
-      specificTopics.forEach(topic => {
-        if (topic.length > 4) {
-          keywords.add(topic);
+      // Extract specific claims/angles that shouldn't repeat
+      const specificClaims = content.match(/(?:are|is|causes?|prevents?|creates?|triggers?|reveals?)\s+[^.!?]{10,50}/g) || [];
+      specificClaims.forEach(claim => {
+        if (claim.length > 15 && claim.length < 60) {
+          keywords.add(claim.trim());
         }
       });
     });
     
-    console.log(`🔍 Extracted ${keywords.size} specific health keywords and phrases`);
-    console.log(`🚫 Blocked phrases: ${Array.from(keywords).slice(0, 10).join(', ')}...`);
+    console.log(`🔍 Extracted ${keywords.size} specific contexts and angles (not blocking topics)`);
+    console.log(`🚫 Blocked contexts: ${Array.from(keywords).slice(0, 5).join(', ')}...`);
     return Array.from(keywords);
   }
 
   private extractDatabaseTopics(databaseContent: DatabaseContent[]): string[] {
-    const topics = new Set<string>();
+    const contexts = new Set<string>();
     
     databaseContent.forEach(item => {
-      // Extract main topics from recent content
+      // Extract ANGLES and CONTEXTS, not just topics
       const content = item.content.toLowerCase();
       
-      // Main health categories that shouldn't repeat
-      const mainTopics = [
-        'sleep', 'meditation', 'supplements', 'vitamins', 'probiotics', 
-        'fitness trackers', 'health apps', 'nutrition', 'exercise',
-        'stress', 'anxiety', 'tracking', 'monitoring', 'apps'
+      // Extract opening patterns that create repetitive feel (not topics)
+      const repetitiveOpenings = [
+        'breaking:', 'new research reveals', 'your doctor probably', 'plot twist nobody',
+        'this will change everything', 'i was completely wrong', 'industry insider reveals',
+        'medical breakthrough everyone missed', 'most people think', 'doctors won\'t tell you',
+        'everyone\'s doing', 'the truth about', 'what nobody tells you'
       ];
       
-      mainTopics.forEach(topic => {
-        if (content.includes(topic)) {
-          topics.add(topic);
+      repetitiveOpenings.forEach(opening => {
+        if (content.includes(opening)) {
+          contexts.add(opening);
         }
       });
       
-      // Extract opening phrases that create repetitive feel
-      const openingPatterns = [
-        'breaking:', 'new research', 'your doctor', 'plot twist',
-        'this will change', 'i was wrong', 'industry insider',
-        'medical breakthrough', 'everyone missed'
+      // Extract specific negative framings that shouldn't repeat
+      const negativeFramings = [
+        'are ineffective', 'are fraud', 'don\'t work', 'create anxiety', 'prevent development',
+        'worsen', 'trigger stress', 'cause problems', 'are misleading'
       ];
       
-      openingPatterns.forEach(pattern => {
-        if (content.includes(pattern)) {
-          topics.add(pattern);
+      negativeFramings.forEach(framing => {
+        if (content.includes(framing)) {
+          contexts.add(framing);
+        }
+      });
+      
+      // Extract specific positive framings
+      const positiveFramings = [
+        'are amazing', 'work perfectly', 'boost performance', 'improve dramatically', 
+        'optimize function', 'enhance significantly'
+      ];
+      
+      positiveFramings.forEach(framing => {
+        if (content.includes(framing)) {
+          contexts.add(framing);
         }
       });
     });
     
-    console.log(`🔍 Extracted ${topics.size} main topics from database`);
-    console.log(`🚫 Blocked topics: ${Array.from(topics).slice(0, 8).join(', ')}...`);
-    return Array.from(topics);
+    console.log(`🔍 Extracted ${contexts.size} repetitive contexts and framings`);
+    console.log(`🚫 Blocked contexts: ${Array.from(contexts).slice(0, 8).join(', ')}...`);
+    return Array.from(contexts);
   }
 
   private async isContentCompletelyUnique(
@@ -346,54 +361,58 @@ export class DiverseContentAgent {
   ): Promise<{ unique: boolean; reason?: string }> {
     const contentLower = content.toLowerCase();
     
-    // 1. Check for SPECIFIC health topic overlap (strict blocking)
-    const healthTopicMatches = allTopics.filter(topic => contentLower.includes(topic));
-    if (healthTopicMatches.length > 0) {
-      return { unique: false, reason: `Contains recent health topic: "${healthTopicMatches[0]}"` };
+    // 1. Check for SPECIFIC CONTEXTS/ANGLES overlap (not blocking topics themselves)
+    const contextMatches = allTopics.filter(context => contentLower.includes(context));
+    if (contextMatches.length > 0) {
+      return { unique: false, reason: `Contains recent context/angle: "${contextMatches[0]}"` };
     }
     
-    // 2. Check for meaningful health keyword overlap (strict - even 1 match blocks)
-    const meaningfulKeywordMatches = allKeywords.filter(keyword => 
-      keyword.length > 4 && // Only longer, meaningful keywords
-      contentLower.includes(keyword)
+    // 2. Check for specific CLAIMS/FRAMINGS that shouldn't repeat (not topics)
+    const claimMatches = allKeywords.filter(claim => 
+      claim.length > 10 && // Only longer claims/contexts
+      contentLower.includes(claim)
     );
     
-    if (meaningfulKeywordMatches.length > 0) { // Changed from > 1 to > 0 (zero tolerance)
-      return { unique: false, reason: `Contains recent health keywords: ${meaningfulKeywordMatches.slice(0, 2).join(', ')}` };
+    if (claimMatches.length > 0) {
+      return { unique: false, reason: `Contains recent claim/framing: "${claimMatches[0]}"` };
     }
     
-    // 3. Check for content similarity with database content (strict matching)
+    // 3. Check for content similarity ONLY if it's the same topic with same angle
     for (const dbContent of databaseContent) {
-      const similarity = this.calculateContentSimilarity(content, dbContent.content);
-      if (similarity > 0.4) { // Reduced from 0.7 to 0.4 (much stricter)
-        return { unique: false, reason: `Too similar to previous tweet (${Math.round(similarity * 100)}% match): "${dbContent.content.substring(0, 50)}..."` };
+      // First check if it's about the same topic
+      const sharedTopics = this.findSharedTopics(content, dbContent.content);
+      if (sharedTopics.length > 0) {
+        // Only check similarity if it's the same topic (to catch same angle)
+        const similarity = this.calculateContentSimilarity(content, dbContent.content);
+        if (similarity > 0.6) { // Higher threshold since we only check similar topics
+          return { unique: false, reason: `Same topic "${sharedTopics[0]}" with similar angle (${Math.round(similarity * 100)}% match): "${dbContent.content.substring(0, 50)}..."` };
+        }
       }
     }
     
-    // 4. Check for banned opening patterns (exact matches)
-    const bannedOpenings = [
+    // 4. Check for banned repetitive sentence structures (not content)
+    const bannedStructures = [
       'breaking:', 'new research reveals', 'your doctor probably', 'plot twist nobody',
       'this will change everything', 'i was completely wrong', 'industry insider reveals',
-      'medical breakthrough everyone missed', 'most people think', 'doctors won\'t tell you',
-      'everyone\'s doing', 'the truth about', 'what nobody tells you'
+      'most people think', 'doctors won\'t tell you', 'everyone\'s doing'
     ];
     
-    for (const opening of bannedOpenings) {
-      if (contentLower.includes(opening)) {
-        return { unique: false, reason: `Contains banned opening pattern: "${opening}"` };
+    for (const structure of bannedStructures) {
+      if (contentLower.includes(structure)) {
+        return { unique: false, reason: `Contains repetitive structure: "${structure}"` };
       }
     }
     
-    // 5. Check for repetitive health themes (strict blocking)
-    const repeatedThemes = [
-      'supplements are ineffective', 'trackers create anxiety', 'apps prevent development',
-      'most supplements', 'tracking anxiety', 'meditation apps', 'fitness trackers',
-      'sleep trackers', 'vitamin d', 'probiotics fail', 'guided meditation'
+    // 5. Check for repetitive CLAIMS about topics (not the topics themselves)
+    const repeatedClaims = [
+      'are completely ineffective', 'create anxiety that worsens', 'prevent you from developing',
+      'use d2 instead of d3', 'have poor absorption without', 'trigger stress response',
+      'keep your brain in reactive state', 'apps prevent real development'
     ];
     
-    for (const theme of repeatedThemes) {
-      if (contentLower.includes(theme)) {
-        return { unique: false, reason: `Contains repetitive theme: "${theme}"` };
+    for (const claim of repeatedClaims) {
+      if (contentLower.includes(claim)) {
+        return { unique: false, reason: `Contains repetitive claim: "${claim}"` };
       }
     }
     
@@ -405,17 +424,22 @@ export class DiverseContentAgent {
       }
     }
     
-    // 7. Check for similar sentence structures
-    const sentenceStarters = contentLower.match(/^[^.!?]*[.!?]/)?.[0] || contentLower.substring(0, 50);
-    for (const dbContent of databaseContent) {
-      const dbStarter = dbContent.content.toLowerCase().match(/^[^.!?]*[.!?]/)?.[0] || dbContent.content.toLowerCase().substring(0, 50);
-      const starterSimilarity = this.calculateContentSimilarity(sentenceStarters, dbStarter);
-      if (starterSimilarity > 0.6) {
-        return { unique: false, reason: `Similar sentence structure to previous tweet: "${dbStarter.substring(0, 40)}..."` };
-      }
-    }
-    
     return { unique: true };
+  }
+
+  // Helper method to find shared topics between two pieces of content
+  private findSharedTopics(content1: string, content2: string): string[] {
+    const topics = [
+      'vitamin d', 'meditation', 'sleep', 'probiotics', 'supplements', 'fitness tracker',
+      'health app', 'nutrition', 'exercise', 'stress', 'anxiety', 'tracking', 'monitoring'
+    ];
+    
+    const content1Lower = content1.toLowerCase();
+    const content2Lower = content2.toLowerCase();
+    
+    return topics.filter(topic => 
+      content1Lower.includes(topic) && content2Lower.includes(topic)
+    );
   }
 
   private calculateContentSimilarity(content1: string, content2: string): number {
@@ -435,36 +459,36 @@ export class DiverseContentAgent {
   }
 
   private buildUniquePrompt(template: ContentTemplate, allTopics: string[], allKeywords: string[], attempt: number): string {
-    // Focus on meaningful health topics only (not common words)
-    const healthTopicsToAvoid = allTopics.filter(topic => topic.length > 4).slice(0, 8).join(', ');
-    const healthKeywordsToAvoid = allKeywords.filter(keyword => keyword.length > 6).slice(0, 10).join(', ');
+    // Get a random topic, avoiding recently used ones
+    const availableTopics = this.getRandomUnusedTopic(allTopics);
     
-    const basePrompt = `Generate a unique health/wellness tweet using this structure: "${template.structure}"
+    return `${template.structure}
 
-CRITICAL: This content must avoid recently covered health topics.
+TOPIC FOCUS: ${availableTopics}
 
-🚫 AVOID RECENT HEALTH TOPICS: ${healthTopicsToAvoid}
-🚫 AVOID RECENT HEALTH KEYWORDS: ${healthKeywordsToAvoid}
-🚫 BANNED EXACT PHRASES: "caloric restriction extends lifespan", "autophagy and reduced IGF-1", "muscle loss accelerates aging"
+CRITICAL: Create content about this topic with a UNIQUE ANGLE/CONTEXT:
 
-FOCUS ON FRESH TOPICS:
-- Different body system (cardiovascular, nervous, endocrine, digestive)
-- Different health mechanism (absorption, synthesis, transport, elimination)  
-- Different time-based optimization (morning, evening, post-workout, fasting)
-- Different measurement approach (temperature, timing, quantity, frequency)
+DIFFERENT ANGLES FOR SAME TOPICS (examples):
+• Vitamin D: "fraud/ineffective" vs "timing matters" vs "cofactor requirements" vs "dosage myths"
+• Meditation apps: "prevent development" vs "specific features work" vs "timing strategies" vs "type selection"
+• Sleep trackers: "create anxiety" vs "useful metrics" vs "when to ignore" vs "accuracy insights"
+• Probiotics: "most fail" vs "specific strains work" vs "timing matters" vs "food sources better"
 
-SUGGESTED FRESH TOPIC: ${this.getRandomUnusedTopic(allTopics)}
+AVOID THESE REPETITIVE CONTEXTS/ANGLES:
+${allKeywords.slice(0, 10).join('\n• ')}
+
+AVOID THESE SENTENCE STRUCTURES:
+${allTopics.slice(0, 8).join('\n• ')}
 
 REQUIREMENTS:
-- Include specific data/percentages/numbers
-- Make it immediately actionable
-- Under 280 characters
-- Professional but engaging tone
-- Focus on practical health optimization
+- Same topic OK, but COMPLETELY different angle/context
+- NO repetitive claims like "are ineffective", "create anxiety", "prevent development"  
+- NO repetitive openings like "Breaking:", "Your doctor probably", "Plot twist"
+- Focus on PRACTICAL, ACTIONABLE insights
+- Maximum 270 characters
+- Sound like a health expert sharing genuine insight
 
-Generate ONE completely unique health tip:`;
-
-    return basePrompt;
+Generate unique health content that provides a fresh perspective on the topic.`;
   }
 
   private getRandomUnusedTopic(usedTopics: string[]): string {
