@@ -294,33 +294,38 @@ export class Scheduler {
 
   private async getTodaysPostCount(): Promise<number> {
     try {
-      // Get today's date in EST
-      const now = new Date();
-      const estDate = new Date(now.toLocaleString("en-US", {timeZone: "America/New_York"}));
-      const todayStart = new Date(estDate.getFullYear(), estDate.getMonth(), estDate.getDate());
-      const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
+      // SIMPLE APPROACH: Check last 24 hours of posts
+      // This avoids complex timezone conversion issues
+      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
       
-      // Convert to UTC for database query
-      const startUTC = new Date(todayStart.getTime() - (estDate.getTimezoneOffset() * 60000));
-      const endUTC = new Date(todayEnd.getTime() - (estDate.getTimezoneOffset() * 60000));
+      console.log(`🔍 Checking posts since: ${twentyFourHoursAgo.toISOString()}`);
 
       const { data, error } = await supabaseClient.supabase
         ?.from('tweets')
-        .select('id')
-        .gte('created_at', startUTC.toISOString())
-        .lt('created_at', endUTC.toISOString()) || { data: null, error: null };
+        .select('tweet_id, created_at, content')
+        .gte('created_at', twentyFourHoursAgo.toISOString())
+        .order('created_at', { ascending: false }) || { data: null, error: null };
 
       if (error) {
-        console.warn('⚠️ Could not fetch today\'s post count:', error);
+        console.warn('⚠️ Could not fetch recent posts:', error);
         return 0;
       }
 
       const count = data?.length || 0;
-      console.log(`🔍 Database check: Found ${count} posts today (EST timezone)`);
+      console.log(`🔍 Database check: Found ${count} posts in last 24 hours`);
+      
+      // Log recent posts for verification
+      if (data && data.length > 0) {
+        console.log('📋 Recent posts:');
+        data.slice(0, 3).forEach((tweet, i) => {
+          console.log(`  ${i + 1}. ${tweet.created_at} - ${tweet.content.substring(0, 60)}...`);
+        });
+      }
+      
       return count;
 
     } catch (error) {
-      console.error('❌ Error getting today\'s post count:', error);
+      console.error('❌ Error getting recent post count:', error);
       return 0;
     }
   }

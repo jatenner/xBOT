@@ -228,15 +228,17 @@ export class DiverseContentAgent {
 
   private async getRecentDatabaseContent(): Promise<DatabaseContent[]> {
     try {
-      // Get recent tweets from the last 14 days (expanded from 7)
-      const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+      // Get recent tweets from the last 7 days (more comprehensive check)
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      
+      console.log(`🔍 Fetching database content since: ${sevenDaysAgo.toISOString()}`);
       
       const { data, error } = await supabaseClient.supabase
         ?.from('tweets')
-        .select('content, created_at, tweet_type, content_type')
-        .gte('created_at', fourteenDaysAgo.toISOString())
+        .select('content, created_at, tweet_type, content_type, tweet_id')
+        .gte('created_at', sevenDaysAgo.toISOString())
         .order('created_at', { ascending: false })
-        .limit(100) || { data: null, error: null }; // Increased from 50 to 100
+        .limit(50) || { data: null, error: null };
 
       if (error) {
         console.warn('⚠️ Could not fetch recent database content:', error);
@@ -249,6 +251,13 @@ export class DiverseContentAgent {
       }
 
       console.log(`📊 Found ${data.length} recent tweets in database for uniqueness checking`);
+      
+      // Log some examples for verification
+      console.log('📋 Sample recent tweets:');
+      data.slice(0, 3).forEach((tweet, i) => {
+        console.log(`  ${i + 1}. ${tweet.created_at} (ID: ${tweet.tweet_id})`);
+        console.log(`     "${tweet.content.substring(0, 80)}..."`);
+      });
       
       return data.map(item => ({
         content: item.content || '',
