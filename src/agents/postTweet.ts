@@ -1,295 +1,238 @@
 
+import { openaiClient } from '../utils/openaiClient';
 import { xClient } from '../utils/xClient';
-import { minimalSupabaseClient } from '../utils/minimalSupabaseClient';
-import { formatTweet } from '../utils/formatTweet';
-import { SimpleViralHealthGenerator } from './simpleViralHealthGenerator';
 import { DiverseContentAgent } from './diverseContentAgent';
-import { LIVE_MODE } from '../config/liveMode';
-
-export interface PostResult {
-  success: boolean;
-  tweetId?: string;
-  content?: string;
-  hasImage?: boolean;
-  error?: string;
-  budgetStatus?: string;
-}
+import { ViralContentAnalyzer } from './viralContentAnalyzer';
+import { supabaseClient } from '../utils/supabaseClient';
 
 export class PostTweetAgent {
-  private simpleHealthGenerator: SimpleViralHealthGenerator;
   private diverseContentAgent: DiverseContentAgent;
-  private dailyPostCount = 0;
-  private lastResetDate: string | null = null;
-  private maxDailyPosts = 20; // Safety limit (higher than scheduler's 17)
-  private estimatedCostPerPost = 0.15; // Conservative estimate
-  private maxDailyBudget = 3.00; // Conservative daily budget
+  private viralAnalyzer: ViralContentAnalyzer;
 
   constructor() {
-    this.simpleHealthGenerator = new SimpleViralHealthGenerator();
     this.diverseContentAgent = new DiverseContentAgent();
-    this.resetDailyCountIfNeeded();
+    this.viralAnalyzer = new ViralContentAnalyzer();
   }
 
-  private resetDailyCountIfNeeded(): void {
-    const today = new Date().toDateString();
-    if (this.lastResetDate !== today) {
-      this.dailyPostCount = 0;
-      this.lastResetDate = today;
-      console.log('💰 Daily budget counter reset');
-    }
-  }
-
-  private checkBudgetLimits(): { canPost: boolean; reason?: string } {
-    this.resetDailyCountIfNeeded();
-    
-    // Check post count limit
-    if (this.dailyPostCount >= this.maxDailyPosts) {
-      return {
-        canPost: false,
-        reason: `Daily post limit reached (${this.dailyPostCount}/${this.maxDailyPosts})`
-      };
-    }
-
-    // Check estimated budget
-    const estimatedDailyCost = (this.dailyPostCount + 1) * this.estimatedCostPerPost;
-    if (estimatedDailyCost > this.maxDailyBudget) {
-      return {
-        canPost: false,
-        reason: `Daily budget would be exceeded ($${estimatedDailyCost.toFixed(2)} > $${this.maxDailyBudget})`
-      };
-    }
-
-    return { canPost: true };
-  }
-
-  private async generateSimpleDiverseContent(): Promise<string> {
-    const templates = [
-      // Sleep & Recovery
-      "Sleep in {temp}°F room with {supplement}. Core temperature drop triggers {benefit1} and improves {benefit2} by {percent}%.",
-      "Wake up at {time} and get {light} within 15 minutes. {hormone} production increases {percent}% for the day.",
-      
-      // Exercise & Performance  
-      "Exercise between {time1}-{time2} when {hormone} peaks. {metric} improves {percent}% vs other times.",
-      "Rest {seconds} seconds between sets for {goal}. Shorter = {bad}, longer = {good}.",
-      
-      // Nutrition Timing
-      "Eat protein within {minutes} minutes post-workout. Muscle synthesis increases {percent}% vs waiting.",
-      "Fast for {hours} hours, break with {food}. Maintains {benefit1} while boosting {benefit2}.",
-      
-      // Breathing & Stress
-      "Breathe {pattern} for {minutes} minutes. {benefit} improves {percent}% and {hormone} drops.",
-      "{exercise} breathing before {activity}. Performance increases {percent}% from oxygen efficiency.",
-      
-      // Hydration & Temperature
-      "Drink {amount} water upon waking. Metabolism increases {percent}% from rehydration after {hours}-hour fast.",
-      "Cold exposure for {minutes} minutes daily. {hormone} increases {percent}% and fat burning improves.",
-      
-      // Cognitive & Focus
-      "{activity} for {minutes} minutes daily. {brain_area} activity increases {percent}% within {timeframe}.",
-      "Take {supplement} {timing}. Focus improves {percent}% and {side_effect} reduces.",
-      
-      // Hormones & Longevity
-      "{activity} at {time} daily. {hormone} increases {percent}% naturally without supplements.",
-      "Avoid {bad_habit} after {time}. {hormone} production improves {percent}% overnight."
-    ];
-
-    const variables = {
-      temp: ['68', '65', '70', '67'],
-      supplement: ['magnesium', '200mg L-theanine', 'melatonin', 'glycine'],
-      benefit1: ['deep sleep', 'REM sleep', 'recovery', 'growth hormone'],
-      benefit2: ['memory consolidation', 'muscle repair', 'fat burning', 'brain detox'],
-      percent: ['23', '34', '45', '28', '31', '19', '42', '37'],
-      
-      time: ['6 AM', '7 AM', '5:30 AM', '6:30 AM'],
-      time1: ['2 PM', '3 PM', '4 PM'],
-      time2: ['6 PM', '7 PM', '5 PM'],
-      light: ['10 minutes sunlight', 'bright light exposure', '5 minutes outdoor light'],
-      hormone: ['cortisol', 'testosterone', 'growth hormone', 'insulin sensitivity'],
-      
-      seconds: ['90', '120', '60', '180'],
-      minutes: ['30', '45', '20', '60', '15'],
-      goal: ['strength', 'hypertrophy', 'power', 'endurance'],
-      bad: ['incomplete recovery', 'reduced gains', 'poor form'],
-      good: ['optimal adaptation', 'maximum gains', 'perfect technique'],
-      
-      hours: ['14', '16', '12', '18'],
-      food: ['protein + fat', 'lean protein', 'MCT oil + protein', 'eggs + avocado'],
-      
-      pattern: ['4-7-8', 'box breathing', '4-4-4-4', '6-2-6-2'],
-      exercise: ['Wim Hof', 'Box', 'Coherent', '4-7-8'],
-      activity: ['meetings', 'workouts', 'studying', 'performance'],
-      
-      amount: ['16 oz', '20 oz', '24 oz', '500ml'],
-      brain_area: ['prefrontal cortex', 'hippocampus', 'attention networks'],
-      timeframe: ['2 weeks', '1 month', '10 days'],
-      
-      side_effect: ['brain fog', 'anxiety', 'fatigue', 'stress'],
-      bad_habit: ['blue light', 'caffeine', 'large meals', 'intense exercise'],
-      metric: ['VO2 max', 'power output', 'endurance', 'strength']
-    };
-
-    // Select random template
-    const template = templates[Math.floor(Math.random() * templates.length)];
-    
-    // Replace variables
-    let content = template;
-    for (const [key, values] of Object.entries(variables)) {
-      const placeholder = `{${key}}`;
-      if (content.includes(placeholder)) {
-        const value = values[Math.floor(Math.random() * values.length)];
-        content = content.replace(new RegExp(`\\{${key}\\}`, 'g'), value);
-      }
-    }
-    
-    // Clean up any remaining placeholders
-    content = content.replace(/\{[^}]+\}/g, '');
-    
-    return content;
-  }
-
-  async run(force: boolean = false, testMode: boolean = false, optimizedContent?: string): Promise<PostResult> {
+  async run(): Promise<void> {
     try {
       console.log('🐦 PostTweetAgent starting...');
-
-      // Check budget limits unless forced
-      if (!force && !testMode) {
-        const budgetCheck = this.checkBudgetLimits();
-        if (!budgetCheck.canPost) {
-          console.warn(`💰 Budget limit check failed: ${budgetCheck.reason}`);
-          return {
-            success: false,
-            error: budgetCheck.reason,
-            budgetStatus: 'LIMIT_EXCEEDED'
-          };
-        }
+      
+      let finalContent = '';
+      let contentType = '';
+      let viralScore = 0;
+      let followerGrowthPotential = 0;
+      
+      // PHASE 1: Generate initial content
+      console.log('🎨 Generating diverse, non-repetitive health content...');
+      const diverseResult = await this.diverseContentAgent.generateDiverseContent();
+      
+      if (diverseResult.success && diverseResult.content) {
+        console.log('🎯 Diverse content generated successfully');
         
-        console.log(`💰 Budget check passed: ${this.dailyPostCount + 1}/${this.maxDailyPosts} posts, ~$${((this.dailyPostCount + 1) * this.estimatedCostPerPost).toFixed(2)}/$${this.maxDailyBudget}`);
-      }
-
-      let content: string;
-
-      if (optimizedContent) {
-        console.log('🧠 Using provided optimized content');
-        content = optimizedContent;
-      } else {
-        // Use diverse content agent to prevent repetition
-        console.log('🎨 Generating diverse, non-repetitive health content...');
+        // PHASE 2: AI VIRAL ANALYSIS & OPTIMIZATION
+        console.log('🧠 AI analyzing viral potential and optimizing content...');
         
-        // Check content variety first
-        const variety = await this.diverseContentAgent.getContentVariety();
-        console.log(`📊 Content variety score: ${(variety.varietyScore * 100).toFixed(1)}%`);
+        const viralAnalysis = await this.viralAnalyzer.predictViralPotential(diverseResult.content);
+        viralScore = viralAnalysis.viralScore;
+        followerGrowthPotential = viralAnalysis.followerGrowthPotential;
         
-        // Generate diverse content
-        const diverseContent = await this.diverseContentAgent.generateDiverseContent();
-        
-        if (diverseContent.success && diverseContent.content && diverseContent.content.length > 50) {
-          content = diverseContent.content;
-          console.log(`📊 Content type: ${diverseContent.type}`);
-          console.log(`🎯 Non-repetitive content generated`);
-          console.log(`📝 Content preview: "${diverseContent.content.substring(0, 100)}..."`);
+        if (viralAnalysis.shouldPost && viralAnalysis.viralScore >= 6) {
+          // Content is good enough to post as-is
+          finalContent = diverseResult.content;
+          contentType = diverseResult.type;
+          console.log(`✅ Content approved for posting: ${viralScore}/10 viral score`);
         } else {
-          // Log the error for debugging
-          console.error('❌ Diverse content generation failed:', diverseContent.error || 'Content too short or empty');
-          console.log('🔄 Trying direct diverse content generation...');
+          // Optimize content for better performance
+          console.log('🚀 Optimizing content for better viral potential...');
+          const optimization = await this.viralAnalyzer.optimizeContentForGrowth(diverseResult.content);
           
-          // Try a direct, simple approach
-          try {
-            const directContent = await this.generateSimpleDiverseContent();
-            if (directContent && directContent.length > 50) {
-              content = directContent;
-              console.log(`✅ Direct diverse content generated: "${directContent.substring(0, 100)}..."`);
-            } else {
-              throw new Error('Direct generation failed');
-            }
-          } catch (directError) {
-            // Last resort fallback
-            console.warn('⚠️ All diverse content methods failed, using fallback generator');
-            const healthContent = await this.simpleHealthGenerator.generateSimpleViralHealth();
-            content = healthContent.content;
-            console.log(`📊 Fallback content type: ${healthContent.contentType}`);
-          }
-        }
-      }
-
-      // Format content
-      try {
-        const formatted = formatTweet(content);
-        content = formatted.content || content;
-      } catch (error) {
-        console.warn('⚠️ Format tweet failed, using original content');
-      }
-
-      console.log(`📝 Final content: "${content}"`);
-
-      // Post to Twitter if live mode
-      if (LIVE_MODE && !testMode) {
-        const result = await xClient.postTweet(content);
-
-        if (result.success) {
-          // Increment daily counter
-          this.dailyPostCount++;
+          // Re-analyze optimized content
+          const optimizedAnalysis = await this.viralAnalyzer.predictViralPotential(optimization.optimizedContent);
           
-          console.log(`✅ Tweet posted successfully: ${result.tweetId}`);
-          console.log(`💰 Daily usage: ${this.dailyPostCount}/${this.maxDailyPosts} posts, estimated cost: $${(this.dailyPostCount * this.estimatedCostPerPost).toFixed(2)}`);
-
-          // Save to database
-          try {
-            if (minimalSupabaseClient.supabase) {
-              await minimalSupabaseClient.supabase
-                .from('tweets')
-                .insert({
-                  tweet_id: result.tweetId,
-                  content: content,
-                  tweet_type: optimizedContent ? 'intelligent' : 'simple_health',
-                  created_at: new Date().toISOString()
-                });
-              console.log('📊 Tweet saved to database');
-            }
-          } catch (dbError) {
-            console.warn('⚠️ Database save failed:', dbError);
+          if (optimizedAnalysis.viralScore > viralAnalysis.viralScore) {
+            finalContent = optimization.optimizedContent;
+            viralScore = optimizedAnalysis.viralScore;
+            followerGrowthPotential = optimizedAnalysis.followerGrowthPotential;
+            console.log(`🎯 Content optimized: ${viralScore}/10 viral score (+${optimization.expectedLift}% improvement)`);
+          } else {
+            finalContent = diverseResult.content;
+            console.log('📊 Using original content (optimization didn\'t improve scores)');
           }
-
-          return {
-            success: true,
-            tweetId: result.tweetId,
-            content: content,
-            budgetStatus: `${this.dailyPostCount}/${this.maxDailyPosts} posts used`
-          };
-        } else {
-          return {
-            success: false,
-            error: result.error || 'Failed to post tweet',
-            budgetStatus: `${this.dailyPostCount}/${this.maxDailyPosts} posts used`
-          };
+          
+          contentType = `${diverseResult.type}_optimized`;
         }
       } else {
-        console.log('🧪 DRY RUN - Tweet preview:', content);
-        return {
-          success: true,
-          content: content,
-          budgetStatus: testMode ? 'TEST_MODE' : 'DRY_RUN'
-        };
+        // Fallback to simpler generation
+        console.log('🔄 Trying fallback content generation...');
+        const fallbackResult = await this.generateSimpleDiverseContent();
+        
+        if (fallbackResult.success) {
+          console.log('✅ Fallback content generated successfully');
+          
+          // Still analyze viral potential even for fallback
+          const viralAnalysis = await this.viralAnalyzer.predictViralPotential(fallbackResult.content);
+          viralScore = viralAnalysis.viralScore;
+          followerGrowthPotential = viralAnalysis.followerGrowthPotential;
+          
+          finalContent = fallbackResult.content;
+          contentType = fallbackResult.type;
+        } else {
+          // Final fallback
+          console.log('🔄 Using simple health generator as final fallback...');
+          finalContent = await this.generateFinalFallbackContent();
+          contentType = 'simple_fallback';
+          viralScore = 5; // Default score for fallback
+          followerGrowthPotential = 5;
+        }
       }
+
+      if (!finalContent) {
+        throw new Error('Failed to generate any content');
+      }
+
+      // PHASE 3: Post with enhanced logging
+      console.log('📝 Final content preview:', finalContent.substring(0, 100) + '...');
+      console.log(`🎯 Viral Score: ${viralScore}/10, Growth Potential: ${followerGrowthPotential}/10`);
+      
+      const result = await xClient.postTweet(finalContent);
+      
+      if (result.success && result.tweetId) {
+        console.log(`✅ Tweet posted successfully: ${result.tweetId}`);
+        
+        // PHASE 4: Enhanced database storage with AI metrics
+        await this.storeTweetWithAIMetrics(result.tweetId, finalContent, contentType, viralScore, followerGrowthPotential);
+        
+        console.log('✅ Simple health tip posted successfully!');
+        console.log(`📝 Content: "${finalContent}"`);
+        console.log(`🎯 AI Metrics: Viral=${viralScore}/10, Growth=${followerGrowthPotential}/10`);
+      } else {
+        throw new Error(`Failed to post tweet: ${result.error || 'Unknown error'}`);
+      }
+
     } catch (error) {
       console.error('❌ PostTweetAgent error:', error);
+      throw error;
+    }
+  }
+
+  private async generateSimpleDiverseContent(): Promise<{ success: boolean; content: string; type: string }> {
+    try {
+      const templates = [
+        "Sleep in {temp}°F room with {supplement}. Core temperature drop triggers {benefit1} and improves {benefit2} by {percent}%.",
+        "Exercise between {time1}-{time2} when {hormone} peaks. {metric} improves {percent}% vs other times.",
+        "Drink {amount} water upon waking. Metabolism increases {percent}% from rehydration after {hours}-hour fast.",
+        "Fast for {hours} hours, break with {food}. Maintains {benefit1} while boosting {benefit2}.",
+        "Breathe {pattern} for {minutes} minutes. {benefit} improves {percent}% and {hormone} drops.",
+        "Cold exposure for {minutes} minutes daily. {hormone} increases {percent}% and fat burning improves.",
+        "{activity} at {time} daily. {hormone} increases {percent}% naturally without supplements.",
+        "Take {supplement} {timing}. Focus improves {percent}% and {side_effect} reduces."
+      ];
+
+      const variables = {
+        temp: ['68', '65', '70', '67'],
+        supplement: ['magnesium', '200mg L-theanine', 'melatonin', 'glycine'],
+        benefit1: ['deep sleep', 'REM sleep', 'recovery', 'growth hormone'],
+        benefit2: ['memory consolidation', 'muscle repair', 'fat burning', 'brain detox'],
+        percent: ['23', '34', '45', '28', '31', '19', '42', '37'],
+        time1: ['2 PM', '3 PM', '4 PM'],
+        time2: ['6 PM', '7 PM', '5 PM'],
+        time: ['6 AM', '7 AM', '5:30 AM', '6:30 AM'],
+        hormone: ['cortisol', 'testosterone', 'growth hormone', 'insulin sensitivity'],
+        metric: ['VO2 max', 'power output', 'endurance', 'strength'],
+        amount: ['16 oz', '20 oz', '24 oz', '500ml'],
+        hours: ['14', '16', '12', '18'],
+        food: ['protein + fat', 'lean protein', 'MCT oil + protein', 'eggs + avocado'],
+        pattern: ['4-7-8', 'box breathing', '4-4-4-4', '6-2-6-2'],
+        minutes: ['30', '45', '20', '60', '15'],
+        benefit: ['focus', 'stress relief', 'recovery', 'energy'],
+        activity: ['Exercise', 'Meditate', 'Cold shower', 'Walk'],
+        timing: ['morning', 'before bed', 'with food', 'on empty stomach'],
+        side_effect: ['brain fog', 'anxiety', 'fatigue', 'stress']
+      };
+
+      // Select random template and replace variables
+      const template = templates[Math.floor(Math.random() * templates.length)];
+      let content = template;
+
+      for (const [key, values] of Object.entries(variables)) {
+        const placeholder = `{${key}}`;
+        if (content.includes(placeholder)) {
+          const value = values[Math.floor(Math.random() * values.length)];
+          content = content.replace(new RegExp(`\\{${key}\\}`, 'g'), value);
+        }
+      }
+
+      // Clean up any remaining placeholders
+      content = content.replace(/\{[^}]+\}/g, '');
+
+      return {
+        success: true,
+        content: content,
+        type: 'simple_diverse'
+      };
+
+    } catch (error) {
+      console.warn('⚠️ Simple diverse content generation failed:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-        budgetStatus: `${this.dailyPostCount}/${this.maxDailyPosts} posts used`
+        content: '',
+        type: 'failed'
       };
     }
   }
 
-  // Method to get current budget status
-  getBudgetStatus() {
-    this.resetDailyCountIfNeeded();
-    return {
-      dailyPostCount: this.dailyPostCount,
-      maxDailyPosts: this.maxDailyPosts,
-      estimatedDailyCost: this.dailyPostCount * this.estimatedCostPerPost,
-      maxDailyBudget: this.maxDailyBudget,
-      remainingPosts: this.maxDailyPosts - this.dailyPostCount,
-      remainingBudget: this.maxDailyBudget - (this.dailyPostCount * this.estimatedCostPerPost)
-    };
+  private async generateFinalFallbackContent(): Promise<string> {
+    const fallbackTips = [
+      "Drink water upon waking. Metabolism increases 31% from rehydration after 14-hour fast.",
+      "Exercise at 3 PM when testosterone peaks. Performance improves 23% vs morning workouts.",
+      "Sleep in 67°F room. Core temperature drop triggers deep sleep and improves recovery by 34%.",
+      "Fast for 16 hours, break with protein. Maintains muscle while boosting fat burning by 28%.",
+      "Breathe 4-7-8 pattern for 10 minutes. Stress reduces 42% and focus improves.",
+      "Cold shower for 3 minutes daily. Metabolism increases 19% and mood improves."
+    ];
+
+    return fallbackTips[Math.floor(Math.random() * fallbackTips.length)];
+  }
+
+  private async storeTweetWithAIMetrics(
+    tweetId: string, 
+    content: string, 
+    contentType: string, 
+    viralScore: number, 
+    followerGrowthPotential: number
+  ): Promise<void> {
+    try {
+      const tweetData = {
+        tweet_id: tweetId || `local_${Date.now()}`,
+        content: content,
+        content_type: contentType || 'ai_optimized',
+        tweet_type: 'original',
+        engagement_score: 0,
+        likes: 0,
+        retweets: 0,
+        replies: 0,
+        impressions: 0,
+        has_snap2health_cta: false,
+        created_at: new Date().toISOString(),
+        // Enhanced AI metrics
+        viral_score: viralScore,
+        ai_growth_prediction: followerGrowthPotential,
+        ai_optimized: contentType.includes('optimized'),
+        generation_method: contentType
+      };
+
+      const { error } = await supabaseClient.supabase!
+        .from('tweets')
+        .insert([tweetData]);
+
+      if (error) {
+        console.warn('⚠️ Database storage failed:', error);
+      } else {
+        console.log('💾 Tweet saved to database with AI metrics');
+      }
+    } catch (error) {
+      console.warn('⚠️ Database storage error:', error);
+    }
   }
 }

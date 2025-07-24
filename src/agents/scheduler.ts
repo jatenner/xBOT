@@ -133,9 +133,10 @@ export class Scheduler {
       console.log(`🎯 POSTING NOW (${this.dailyPostCount + 1}/${this.targetDailyPosts})`);
       console.log('🔥 Generating viral health content - news, supplements, fitness, biohacking, food tips...');
       
-      const result = await this.postTweetAgent.run();
-      
-      if (result.success) {
+      try {
+        await this.postTweetAgent.run();
+        
+        // If we get here, posting was successful
         this.dailyPostCount++;
         this.lastPostTime = now;
         
@@ -143,15 +144,15 @@ export class Scheduler {
         this.consecutiveRateLimitErrors = 0;
         this.lastRateLimitTime = null;
         
-        console.log('✅ Simple health tip posted successfully!');
-        console.log(`📝 Content: "${result.content}"`);
         console.log(`📊 Daily progress: ${this.dailyPostCount}/${this.targetDailyPosts} posts`);
         console.log(`⏰ Next post in ~${this.getMinutesToNextPost()} minutes`);
-      } else {
-        console.log('❌ Post failed:', result.error);
+        
+      } catch (error) {
+        console.log('❌ Post failed:', error);
         
         // Check if this is a rate limit error
-        if (result.error && result.error.includes('429')) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        if (errorMessage.includes('429')) {
           this.handleRateLimitError();
         }
       }
