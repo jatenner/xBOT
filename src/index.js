@@ -40,3 +40,4 @@ try {
   console.error('❌ Failed to start bot:', error);
   process.exit(1);
 }
+// Force deployment Thu Jul 24 14:34:18 EDT 2025
