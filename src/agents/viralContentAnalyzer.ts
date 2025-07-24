@@ -26,35 +26,34 @@ export class ViralContentAnalyzer {
 
 Rate each aspect 1-10 and predict engagement. Focus on health content that attracts followers.
 
-YOU MUST RESPOND WITH ONLY VALID JSON. NO OTHER TEXT.
+RESPOND WITH EXACTLY THIS JSON FORMAT AND NOTHING ELSE:
+{"viralScore":7,"followerGrowthPotential":8,"engagementPrediction":6,"improvements":["suggestion1","suggestion2"],"shouldPost":true,"reasoning":"detailed explanation"}
 
-{
-  "viralScore": 7,
-  "followerGrowthPotential": 8,
-  "engagementPrediction": 6,
-  "improvements": ["suggestion1", "suggestion2"],
-  "shouldPost": true,
-  "reasoning": "detailed explanation"
-}
-
-CRITICAL: ONLY JSON, NO EXTRA TEXT BEFORE OR AFTER.`;
+NO MARKDOWN, NO EXPLANATION, NO EXTRA TEXT - ONLY THE JSON OBJECT.`;
 
       const response = await openaiClient.generateCompletion(prompt, {
-        maxTokens: 200,
-        temperature: 0.3,
+        maxTokens: 150,
+        temperature: 0.1, // Lower temperature for more consistent JSON
         model: 'gpt-4o-mini'
       });
 
-      // Extract JSON from response (handle cases where OpenAI adds extra text)
+      // More aggressive JSON extraction
       let jsonStr = response.trim();
       
-      // Look for JSON object bounds
-      const jsonStart = jsonStr.indexOf('{');
-      const jsonEnd = jsonStr.lastIndexOf('}');
+      // Remove any markdown formatting
+      jsonStr = jsonStr.replace(/```json\n?/g, '').replace(/```\n?/g, '');
       
-      if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
-        jsonStr = jsonStr.substring(jsonStart, jsonEnd + 1);
+      // Look for JSON object bounds - be more precise
+      const jsonStart = jsonStr.indexOf('{');
+      const lastBrace = jsonStr.lastIndexOf('}');
+      
+      if (jsonStart !== -1 && lastBrace !== -1 && lastBrace > jsonStart) {
+        jsonStr = jsonStr.substring(jsonStart, lastBrace + 1);
       }
+
+      // Try to clean up common issues
+      jsonStr = jsonStr.replace(/'/g, '"'); // Replace single quotes with double quotes
+      jsonStr = jsonStr.replace(/,\s*}/g, '}'); // Remove trailing commas
 
       try {
         const analysis = JSON.parse(jsonStr);
@@ -70,6 +69,7 @@ CRITICAL: ONLY JSON, NO EXTRA TEXT BEFORE OR AFTER.`;
         };
       } catch (parseError) {
         console.warn('⚠️ JSON parsing failed, using fallback analysis:', parseError);
+        console.warn('⚠️ Raw response was:', response.substring(0, 100) + '...');
         // Fallback: basic content analysis
         return this.getFallbackAnalysis(content);
       }
