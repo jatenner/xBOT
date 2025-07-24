@@ -126,9 +126,9 @@ export class DiverseContentAgent {
       console.log(`🚫 Complete blacklist: ${allTopics.length} topics, ${allKeywords.length} keywords blocked`);
       console.log(`🚫 Recent database topics: ${databaseTopics.slice(0, 5).join(', ')}...`);
       
-      // Try up to 7 different attempts to ensure uniqueness
+      // Try up to 10 different attempts to ensure uniqueness (increased from 7)
       let attempts = 0;
-      const maxAttempts = 7;
+      const maxAttempts = 10;
       
       while (attempts < maxAttempts) {
         attempts++;
@@ -148,13 +148,19 @@ export class DiverseContentAgent {
         const prompt = this.buildUniquePrompt(selectedTemplate, allTopics, allKeywords, attempts);
         
         const content = await openaiClient.generateCompletion(prompt, {
-          maxTokens: 120,
+          maxTokens: 100, // Reduced from 120 to prevent long tweets
           temperature: 0.95, // Higher temperature for more variation
           model: 'gpt-4o-mini'
         });
 
         if (!content || content.length < 50) {
           console.warn(`⚠️ Generated content too short on attempt ${attempts}`);
+          continue;
+        }
+
+        // STRICT CHARACTER LIMIT CHECK - PREVENT CUT-OFF TWEETS
+        if (content.length > 275) {
+          console.warn(`⚠️ Content too long (${content.length} chars) on attempt ${attempts}, regenerating...`);
           continue;
         }
 
@@ -165,8 +171,8 @@ export class DiverseContentAgent {
           continue;
         }
 
-        // Content is unique - process and return
-        const finalContent = content.length <= 280 ? content : content.substring(0, 277) + '...';
+        // Content is unique and proper length - process and return
+        const finalContent = content.length <= 275 ? content : content.substring(0, 272) + '...';
         const topic = this.extractTopic(finalContent);
         const opening = finalContent.split(' ').slice(0, 4).join(' '); // Track more words
 
@@ -182,7 +188,7 @@ export class DiverseContentAgent {
         await this.logContentGeneration(finalContent, selectedTemplate.type);
 
         console.log(`✅ Unique content generated after ${attempts} attempts`);
-        console.log(`📊 Final content: "${finalContent.substring(0, 100)}..."`);
+        console.log(`📊 Final content (${finalContent.length} chars): "${finalContent}"`);
         return {
           content: finalContent,
           type: selectedTemplate.type,
@@ -222,15 +228,15 @@ export class DiverseContentAgent {
 
   private async getRecentDatabaseContent(): Promise<DatabaseContent[]> {
     try {
-      // Get recent tweets from the last 7 days
-      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      // Get recent tweets from the last 14 days (expanded from 7)
+      const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
       
       const { data, error } = await supabaseClient.supabase
         ?.from('tweets')
         .select('content, created_at, tweet_type, content_type')
-        .gte('created_at', sevenDaysAgo.toISOString())
+        .gte('created_at', fourteenDaysAgo.toISOString())
         .order('created_at', { ascending: false })
-        .limit(50) || { data: null, error: null };
+        .limit(100) || { data: null, error: null }; // Increased from 50 to 100
 
       if (error) {
         console.warn('⚠️ Could not fetch recent database content:', error);
@@ -242,6 +248,8 @@ export class DiverseContentAgent {
         return [];
       }
 
+      console.log(`📊 Found ${data.length} recent tweets in database for uniqueness checking`);
+      
       return data.map(item => ({
         content: item.content || '',
         content_hash: this.generateContentHash(item.content || ''),
@@ -259,36 +267,35 @@ export class DiverseContentAgent {
     const keywords = new Set<string>();
     
     databaseContent.forEach(item => {
-      // Extract only MEANINGFUL health keywords, not common words
+      // Extract SPECIFIC health topics and phrases that should never repeat
       const content = item.content.toLowerCase();
       
-      // Focus on specific health/medical terms that should be avoided
-      const healthKeywords = [
-        'caloric restriction', 'autophagy', 'igf-1', 'muscle mass', 'lifespan',
-        'metabolism', 'statins', 'cholesterol', 'thermogenic', 'cold showers',
-        'blue light', 'sleep tracking', 'fasted cardio', 'amino acids',
-        'cortisol', 'placebo effect', 'blood vessels', 'hormone production',
-        'brain function', 'rehydration', 'selenium', 'organic vegetables',
-        'soil minerals', 'analyzing cases', 'antioxidants'
+      // Extract compound health phrases (exact phrases to avoid)
+      const healthPhrases = [
+        'sleep trackers', 'meditation apps', 'vitamin d supplements', 'probiotics fail',
+        'guided meditation', 'fitness trackers', 'supplements are', 'most people',
+        'new research reveals', 'breaking:', 'this will change everything',
+        'your doctor probably', 'plot twist nobody', 'i was completely wrong',
+        'industry insider reveals', 'medical breakthrough everyone missed'
       ];
       
-      // Only add meaningful health keywords, not common words
-      healthKeywords.forEach(keyword => {
-        if (content.includes(keyword)) {
-          keywords.add(keyword);
+      healthPhrases.forEach(phrase => {
+        if (content.includes(phrase)) {
+          keywords.add(phrase);
         }
       });
       
-      // Extract specific compound phrases (2-3 words) that are health-specific
-      const healthPhrases = content.match(/\b(?:(?:vitamin|mineral|hormone|enzyme|protein|amino|fatty)\s+\w+|\w+\s+(?:deficiency|absorption|synthesis|production|metabolism))\b/g) || [];
-      healthPhrases.forEach(phrase => {
-        if (phrase.length > 6) { // Only meaningful phrases
-          keywords.add(phrase);
+      // Extract specific topics mentioned
+      const specificTopics = content.match(/\b(?:sleep|meditation|vitamin|probiotic|supplement|tracker|app|research|study|data)\w*\b/g) || [];
+      specificTopics.forEach(topic => {
+        if (topic.length > 4) {
+          keywords.add(topic);
         }
       });
     });
     
-    console.log(`🔍 Extracted ${keywords.size} meaningful health keywords (vs generic words)`);
+    console.log(`🔍 Extracted ${keywords.size} specific health keywords and phrases`);
+    console.log(`🚫 Blocked phrases: ${Array.from(keywords).slice(0, 10).join(', ')}...`);
     return Array.from(keywords);
   }
 
@@ -296,28 +303,38 @@ export class DiverseContentAgent {
     const topics = new Set<string>();
     
     databaseContent.forEach(item => {
-      // Extract specific health topics, not generic words
+      // Extract main topics from recent content
       const content = item.content.toLowerCase();
       
-      // Focus on specific health domains that should be tracked
-      const specificHealthTopics = [
-        'sleep', 'metabolism', 'exercise', 'fasting', 'nutrition', 'supplements',
-        'hormones', 'stress', 'recovery', 'longevity', 'cardiovascular', 
-        'brain health', 'gut health', 'immune system', 'inflammation',
-        'cholesterol', 'blood sugar', 'hydration', 'breathing', 'cold exposure',
-        'heat therapy', 'light therapy', 'circadian rhythm', 'muscle building',
-        'fat loss', 'cognitive enhancement', 'memory', 'focus', 'energy'
+      // Main health categories that shouldn't repeat
+      const mainTopics = [
+        'sleep', 'meditation', 'supplements', 'vitamins', 'probiotics', 
+        'fitness trackers', 'health apps', 'nutrition', 'exercise',
+        'stress', 'anxiety', 'tracking', 'monitoring', 'apps'
       ];
       
-      // Only track specific health topics, not common words
-      specificHealthTopics.forEach(topic => {
+      mainTopics.forEach(topic => {
         if (content.includes(topic)) {
           topics.add(topic);
         }
       });
+      
+      // Extract opening phrases that create repetitive feel
+      const openingPatterns = [
+        'breaking:', 'new research', 'your doctor', 'plot twist',
+        'this will change', 'i was wrong', 'industry insider',
+        'medical breakthrough', 'everyone missed'
+      ];
+      
+      openingPatterns.forEach(pattern => {
+        if (content.includes(pattern)) {
+          topics.add(pattern);
+        }
+      });
     });
     
-    console.log(`🔍 Extracted ${topics.size} specific health topics (focused approach)`);
+    console.log(`🔍 Extracted ${topics.size} main topics from database`);
+    console.log(`🚫 Blocked topics: ${Array.from(topics).slice(0, 8).join(', ')}...`);
     return Array.from(topics);
   }
 
@@ -329,52 +346,72 @@ export class DiverseContentAgent {
   ): Promise<{ unique: boolean; reason?: string }> {
     const contentLower = content.toLowerCase();
     
-    // 1. Check for SPECIFIC health topic overlap (not common words)
+    // 1. Check for SPECIFIC health topic overlap (strict blocking)
     const healthTopicMatches = allTopics.filter(topic => contentLower.includes(topic));
     if (healthTopicMatches.length > 0) {
       return { unique: false, reason: `Contains recent health topic: "${healthTopicMatches[0]}"` };
     }
     
-    // 2. Check for meaningful health keyword overlap (not common words like "their", "better")
+    // 2. Check for meaningful health keyword overlap (strict - even 1 match blocks)
     const meaningfulKeywordMatches = allKeywords.filter(keyword => 
-      keyword.length > 6 && // Only longer, meaningful keywords
+      keyword.length > 4 && // Only longer, meaningful keywords
       contentLower.includes(keyword)
     );
     
-    if (meaningfulKeywordMatches.length > 1) { // Allow 1 match, block 2+
+    if (meaningfulKeywordMatches.length > 0) { // Changed from > 1 to > 0 (zero tolerance)
       return { unique: false, reason: `Contains recent health keywords: ${meaningfulKeywordMatches.slice(0, 2).join(', ')}` };
     }
     
-    // 3. Check for content similarity with database content (exact phrase matching)
+    // 3. Check for content similarity with database content (strict matching)
     for (const dbContent of databaseContent) {
       const similarity = this.calculateContentSimilarity(content, dbContent.content);
-      if (similarity > 0.7) { // Increase threshold to 70% (was 60%)
-        return { unique: false, reason: `Too similar to previous tweet (${Math.round(similarity * 100)}% match)` };
+      if (similarity > 0.4) { // Reduced from 0.7 to 0.4 (much stricter)
+        return { unique: false, reason: `Too similar to previous tweet (${Math.round(similarity * 100)}% match): "${dbContent.content.substring(0, 50)}..."` };
       }
     }
     
-    // 4. Check for specific banned patterns (exact matches only)
-    const bannedExactPatterns = [
-      'caloric restriction extends lifespan',
-      'autophagy and reduced igf-1', 
-      'muscle loss accelerates aging',
-      'organic vegetables.*selenium',
-      'analyzing.*medical cases',
-      'cold showers.*metabolism.*15 minutes'
+    // 4. Check for banned opening patterns (exact matches)
+    const bannedOpenings = [
+      'breaking:', 'new research reveals', 'your doctor probably', 'plot twist nobody',
+      'this will change everything', 'i was completely wrong', 'industry insider reveals',
+      'medical breakthrough everyone missed', 'most people think', 'doctors won\'t tell you',
+      'everyone\'s doing', 'the truth about', 'what nobody tells you'
     ];
     
-    for (const pattern of bannedExactPatterns) {
-      const regex = new RegExp(pattern, 'i');
-      if (regex.test(content)) {
-        return { unique: false, reason: `Contains banned exact pattern: "${pattern}"` };
+    for (const opening of bannedOpenings) {
+      if (contentLower.includes(opening)) {
+        return { unique: false, reason: `Contains banned opening pattern: "${opening}"` };
       }
     }
     
-    // 5. Check content hash for exact duplicates
+    // 5. Check for repetitive health themes (strict blocking)
+    const repeatedThemes = [
+      'supplements are ineffective', 'trackers create anxiety', 'apps prevent development',
+      'most supplements', 'tracking anxiety', 'meditation apps', 'fitness trackers',
+      'sleep trackers', 'vitamin d', 'probiotics fail', 'guided meditation'
+    ];
+    
+    for (const theme of repeatedThemes) {
+      if (contentLower.includes(theme)) {
+        return { unique: false, reason: `Contains repetitive theme: "${theme}"` };
+      }
+    }
+    
+    // 6. Check content hash for exact duplicates
     const contentHash = this.generateContentHash(content);
     for (const dbContent of databaseContent) {
       if (dbContent.content_hash === contentHash) {
         return { unique: false, reason: 'Identical content hash found in database' };
+      }
+    }
+    
+    // 7. Check for similar sentence structures
+    const sentenceStarters = contentLower.match(/^[^.!?]*[.!?]/)?.[0] || contentLower.substring(0, 50);
+    for (const dbContent of databaseContent) {
+      const dbStarter = dbContent.content.toLowerCase().match(/^[^.!?]*[.!?]/)?.[0] || dbContent.content.toLowerCase().substring(0, 50);
+      const starterSimilarity = this.calculateContentSimilarity(sentenceStarters, dbStarter);
+      if (starterSimilarity > 0.6) {
+        return { unique: false, reason: `Similar sentence structure to previous tweet: "${dbStarter.substring(0, 40)}..."` };
       }
     }
     
