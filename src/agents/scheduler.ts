@@ -294,38 +294,47 @@ export class Scheduler {
 
   private async getTodaysPostCount(): Promise<number> {
     try {
-      // SIMPLE APPROACH: Check last 24 hours of posts
-      // This avoids complex timezone conversion issues
-      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      // Get today's start in EST timezone
+      const now = new Date();
+      const estNow = new Date(now.toLocaleString("en-US", {timeZone: "America/New_York"}));
       
-      console.log(`🔍 Checking posts since: ${twentyFourHoursAgo.toISOString()}`);
+      // Start of today in EST (midnight EST)
+      const todayStartEST = new Date(estNow.getFullYear(), estNow.getMonth(), estNow.getDate());
+      
+      // Convert to UTC for database query
+      const estOffset = estNow.getTimezoneOffset() + 240; // EST is UTC-5 (300 minutes), but we want the opposite
+      const todayStartUTC = new Date(todayStartEST.getTime() + (estOffset * 60000));
+      
+      console.log(`🔍 Checking posts since today's start (EST): ${todayStartUTC.toISOString()}`);
 
       const { data, error } = await supabaseClient.supabase
         ?.from('tweets')
         .select('tweet_id, created_at, content')
-        .gte('created_at', twentyFourHoursAgo.toISOString())
+        .gte('created_at', todayStartUTC.toISOString())
         .order('created_at', { ascending: false }) || { data: null, error: null };
 
       if (error) {
-        console.warn('⚠️ Could not fetch recent posts:', error);
+        console.warn('⚠️ Could not fetch today\'s posts:', error);
         return 0;
       }
 
       const count = data?.length || 0;
-      console.log(`🔍 Database check: Found ${count} posts in last 24 hours`);
+      console.log(`🔍 Database check: Found ${count} posts since today's start (EST)`);
       
       // Log recent posts for verification
       if (data && data.length > 0) {
-        console.log('📋 Recent posts:');
-        data.slice(0, 3).forEach((tweet, i) => {
-          console.log(`  ${i + 1}. ${tweet.created_at} - ${tweet.content.substring(0, 60)}...`);
+        console.log('📋 Today\'s posts:');
+        data.slice(0, 5).forEach((tweet, i) => {
+          const tweetTime = new Date(tweet.created_at);
+          const estTime = tweetTime.toLocaleString("en-US", {timeZone: "America/New_York"});
+          console.log(`  ${i + 1}. ${estTime} EST - ${tweet.content.substring(0, 60)}...`);
         });
       }
       
       return count;
 
     } catch (error) {
-      console.error('❌ Error getting recent post count:', error);
+      console.error('❌ Error getting today\'s post count:', error);
       return 0;
     }
   }
