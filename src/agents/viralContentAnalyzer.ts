@@ -20,30 +20,44 @@ export class ViralContentAnalyzer {
   
   async predictViralPotential(content: string): Promise<ViralPrediction> {
     try {
-      const prompt = `Analyze this health content for viral potential and follower growth:
+      const prompt = `You are a JSON generator. Analyze this health content for viral potential:
 
 "${content}"
 
-Rate each aspect 1-10 and predict engagement. Focus on health content that attracts followers.
+OUTPUT ONLY THIS EXACT JSON STRUCTURE:
+{"viralScore":7,"followerGrowthPotential":8,"engagementPrediction":6,"improvements":["add specific data","include controversy"],"shouldPost":true,"reasoning":"explains why viral"}
 
-RESPOND WITH EXACTLY THIS JSON FORMAT AND NOTHING ELSE:
-{"viralScore":7,"followerGrowthPotential":8,"engagementPrediction":6,"improvements":["suggestion1","suggestion2"],"shouldPost":true,"reasoning":"detailed explanation"}
+RULES:
+- viralScore: 1-10 number only
+- followerGrowthPotential: 1-10 number only  
+- engagementPrediction: 1-10 number only
+- improvements: array of 2 strings
+- shouldPost: true or false only
+- reasoning: single explanatory string
 
-NO MARKDOWN, NO EXPLANATION, NO EXTRA TEXT - ONLY THE JSON OBJECT.`;
+RESPOND WITH ONLY THE JSON OBJECT. NO OTHER TEXT.`;
 
       const response = await openaiClient.generateCompletion(prompt, {
-        maxTokens: 150,
-        temperature: 0.1, // Lower temperature for more consistent JSON
+        maxTokens: 120,
+        temperature: 0.0, // Zero temperature for maximum consistency
         model: 'gpt-4o-mini'
       });
 
-      // More aggressive JSON extraction
+      // Ultra-aggressive JSON extraction
       let jsonStr = response.trim();
       
-      // Remove any markdown formatting
-      jsonStr = jsonStr.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+      // If response doesn't start with {, it's not JSON - use fallback immediately
+      if (!jsonStr.startsWith('{')) {
+        console.warn('⚠️ OpenAI returned non-JSON, using fallback. Response:', jsonStr.substring(0, 50) + '...');
+        return this.getFallbackAnalysis(content);
+      }
       
-      // Look for JSON object bounds - be more precise
+      // Remove any markdown or extra formatting
+      jsonStr = jsonStr.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+      jsonStr = jsonStr.replace(/^[^{]*/, ''); // Remove everything before first {
+      jsonStr = jsonStr.replace(/[^}]*$/, '}'); // Ensure ends with }
+      
+      // Find JSON boundaries
       const jsonStart = jsonStr.indexOf('{');
       const lastBrace = jsonStr.lastIndexOf('}');
       
@@ -51,26 +65,26 @@ NO MARKDOWN, NO EXPLANATION, NO EXTRA TEXT - ONLY THE JSON OBJECT.`;
         jsonStr = jsonStr.substring(jsonStart, lastBrace + 1);
       }
 
-      // Try to clean up common issues
-      jsonStr = jsonStr.replace(/'/g, '"'); // Replace single quotes with double quotes
-      jsonStr = jsonStr.replace(/,\s*}/g, '}'); // Remove trailing commas
+      // Clean up common JSON issues
+      jsonStr = jsonStr.replace(/'/g, '"'); // Single to double quotes
+      jsonStr = jsonStr.replace(/,(\s*[}\]])/g, '$1'); // Remove trailing commas
+      jsonStr = jsonStr.replace(/([{,]\s*)(\w+):/g, '$1"$2":'); // Quote unquoted keys
 
       try {
         const analysis = JSON.parse(jsonStr);
         
-        // Validate required fields and provide defaults
+        // Validate and return with proper types
         return {
-          viralScore: Math.max(1, Math.min(10, analysis.viralScore || 5)),
-          followerGrowthPotential: Math.max(1, Math.min(10, analysis.followerGrowthPotential || 5)),
-          engagementPrediction: Math.max(1, Math.min(10, analysis.engagementPrediction || 5)),
-          improvements: Array.isArray(analysis.improvements) ? analysis.improvements : [],
-          shouldPost: typeof analysis.shouldPost === 'boolean' ? analysis.shouldPost : true,
-          reasoning: typeof analysis.reasoning === 'string' ? analysis.reasoning : 'Analysis completed'
+          viralScore: Math.max(1, Math.min(10, Number(analysis.viralScore) || 5)),
+          followerGrowthPotential: Math.max(1, Math.min(10, Number(analysis.followerGrowthPotential) || 5)),
+          engagementPrediction: Math.max(1, Math.min(10, Number(analysis.engagementPrediction) || 5)),
+          improvements: Array.isArray(analysis.improvements) ? analysis.improvements.slice(0, 3) : ['Add data', 'More specific'],
+          shouldPost: Boolean(analysis.shouldPost !== false),
+          reasoning: String(analysis.reasoning || 'Content analysis completed')
         };
       } catch (parseError) {
-        console.warn('⚠️ JSON parsing failed, using fallback analysis:', parseError);
-        console.warn('⚠️ Raw response was:', response.substring(0, 100) + '...');
-        // Fallback: basic content analysis
+        console.warn('⚠️ JSON parsing failed after cleanup:', parseError);
+        console.warn('⚠️ Cleaned JSON was:', jsonStr.substring(0, 100) + '...');
         return this.getFallbackAnalysis(content);
       }
 
@@ -217,7 +231,7 @@ Focus on topics that will:
       viralScore: Math.min(10, score),
       followerGrowthPotential: Math.min(10, score),
       engagementPrediction: Math.min(10, score - 1),
-      improvements: ['Add more specific data', 'Include actionable advice'],
+      improvements: ['Add more specific data', 'Include controversy'],
       shouldPost: true,
       reasoning: 'Fallback analysis based on content patterns'
     };
