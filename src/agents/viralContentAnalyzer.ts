@@ -60,15 +60,17 @@ OVERALL RECOMMENDATION:
 - What's the follower growth potential?
 - Key reasoning
 
-Format as JSON:
+CRITICAL: You must respond with ONLY valid JSON in this exact format:
 {
-  "viralScore": number,
-  "followerGrowthPotential": number, 
-  "engagementPrediction": number,
+  "viralScore": 7,
+  "followerGrowthPotential": 8, 
+  "engagementPrediction": 6,
   "improvements": ["improvement1", "improvement2"],
-  "shouldPost": boolean,
+  "shouldPost": true,
   "reasoning": "detailed explanation"
-}`;
+}
+
+Do not include any text before or after the JSON. Only return the JSON object.`;
 
       const response = await openaiClient.generateCompletion(prompt, {
         maxTokens: 500,
@@ -127,13 +129,15 @@ RULES:
 - Make it immediately valuable
 - Create follow-worthy authority
 
-Return JSON:
+CRITICAL: You must respond with ONLY valid JSON in this exact format:
 {
   "originalContent": "original text",
   "optimizedContent": "improved version", 
-  "improvements": ["what was changed/improved"],
-  "expectedLift": number (estimated % improvement in performance)
-}`;
+  "improvements": ["what was changed", "what was improved"],
+  "expectedLift": 25
+}
+
+Do not include any text before or after the JSON. Only return the JSON object.`;
 
       const response = await openaiClient.generateCompletion(prompt, {
         maxTokens: 400,
