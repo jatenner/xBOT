@@ -64,53 +64,86 @@ export class PostTweetAgent {
 
   private async generateSimpleDiverseContent(): Promise<string> {
     const templates = [
-      "Take {amount} {supplement} {timing}. Most people are deficient and it improves {benefit} by {percent}%.",
-      "Exercise between {time} when {hormone} peaks. {effect} is highest and performance improves {percent}%.",
-      "New {source} study: {action} {result}. Even {minimal} helps.",
-      "{nutrient}: {amount} with {cofactor} in the {timing}. Without {cofactor}, {problem}.",
-      "Breathe through your nose during exercise. Increases {metric} by {percent}% vs mouth breathing.",
-      "Sleep in {temp}°F room. Core temperature drop triggers {benefit1} and {benefit2}.",
-      "Fast for {hours} hours but break it with {macros}. Maintains {goal1} while {goal2}."
+      // Sleep & Recovery
+      "Sleep in {temp}°F room with {supplement}. Core temperature drop triggers {benefit1} and improves {benefit2} by {percent}%.",
+      "Wake up at {time} and get {light} within 15 minutes. {hormone} production increases {percent}% for the day.",
+      
+      // Exercise & Performance  
+      "Exercise between {time1}-{time2} when {hormone} peaks. {metric} improves {percent}% vs other times.",
+      "Rest {seconds} seconds between sets for {goal}. Shorter = {bad}, longer = {good}.",
+      
+      // Nutrition Timing
+      "Eat protein within {minutes} minutes post-workout. Muscle synthesis increases {percent}% vs waiting.",
+      "Fast for {hours} hours, break with {food}. Maintains {benefit1} while boosting {benefit2}.",
+      
+      // Breathing & Stress
+      "Breathe {pattern} for {minutes} minutes. {benefit} improves {percent}% and {hormone} drops.",
+      "{exercise} breathing before {activity}. Performance increases {percent}% from oxygen efficiency.",
+      
+      // Hydration & Temperature
+      "Drink {amount} water upon waking. Metabolism increases {percent}% from rehydration after {hours}-hour fast.",
+      "Cold exposure for {minutes} minutes daily. {hormone} increases {percent}% and fat burning improves.",
+      
+      // Cognitive & Focus
+      "{activity} for {minutes} minutes daily. {brain_area} activity increases {percent}% within {timeframe}.",
+      "Take {supplement} {timing}. Focus improves {percent}% and {side_effect} reduces.",
+      
+      // Hormones & Longevity
+      "{activity} at {time} daily. {hormone} increases {percent}% naturally without supplements.",
+      "Avoid {bad_habit} after {time}. {hormone} production improves {percent}% overnight."
     ];
 
     const variables = {
-      amount: ['2g', '5g', '1000mg', '4000 IU', '200mg', '3g'],
-      supplement: ['magnesium glycinate', 'vitamin D', 'omega-3', 'creatine', 'zinc', 'B12'],
-      timing: ['30 minutes before bed', 'in the morning', 'with dinner', 'post-workout', 'on empty stomach'],
-      benefit: ['deep sleep', 'energy levels', 'recovery', 'focus', 'muscle growth', 'fat burning'],
-      percent: ['23', '40', '15', '300', '50', '67', '85'],
-      time: ['6-8 AM', '2-4 PM', 'evening', 'morning'],
-      hormone: ['cortisol', 'testosterone', 'growth hormone', 'insulin'],
-      effect: ['Testosterone', 'Focus', 'Energy', 'Recovery'],
-      source: ['Harvard', 'Stanford', 'Japanese', 'MIT', 'Mayo Clinic'],
-      action: ['5 minutes of morning sunlight', 'walking after meals', 'cold exposure'],
-      result: ['regulates circadian rhythm better than melatonin', 'reduces blood sugar spikes by 45%'],
-      minimal: ['2 minutes', '30 seconds', '10 minutes'],
-      nutrient: ['Vitamin D', 'Magnesium', 'Omega-3', 'Creatine'],
-      cofactor: ['K2', 'magnesium', 'healthy fats', 'vitamin C'],
-      problem: ['calcium goes to arteries instead of bones', 'absorption drops 70%'],
-      metric: ['oxygen efficiency', 'performance', 'endurance'],
-      temp: ['67', '65', '68'],
-      benefit1: ['deeper sleep', 'better recovery', 'growth hormone release'],
-      benefit2: ['fat burning', 'muscle repair', 'immune function'],
-      hours: ['16', '18', '12', '14'],
-      macros: ['protein + fat', 'healthy fats', 'lean protein'],
-      goal1: ['muscle', 'energy', 'metabolism'],
-      goal2: ['burning fat', 'staying alert', 'losing weight']
+      temp: ['68', '65', '70', '67'],
+      supplement: ['magnesium', '200mg L-theanine', 'melatonin', 'glycine'],
+      benefit1: ['deep sleep', 'REM sleep', 'recovery', 'growth hormone'],
+      benefit2: ['memory consolidation', 'muscle repair', 'fat burning', 'brain detox'],
+      percent: ['23', '34', '45', '28', '31', '19', '42', '37'],
+      
+      time: ['6 AM', '7 AM', '5:30 AM', '6:30 AM'],
+      time1: ['2 PM', '3 PM', '4 PM'],
+      time2: ['6 PM', '7 PM', '5 PM'],
+      light: ['10 minutes sunlight', 'bright light exposure', '5 minutes outdoor light'],
+      hormone: ['cortisol', 'testosterone', 'growth hormone', 'insulin sensitivity'],
+      
+      seconds: ['90', '120', '60', '180'],
+      minutes: ['30', '45', '20', '60', '15'],
+      goal: ['strength', 'hypertrophy', 'power', 'endurance'],
+      bad: ['incomplete recovery', 'reduced gains', 'poor form'],
+      good: ['optimal adaptation', 'maximum gains', 'perfect technique'],
+      
+      hours: ['14', '16', '12', '18'],
+      food: ['protein + fat', 'lean protein', 'MCT oil + protein', 'eggs + avocado'],
+      
+      pattern: ['4-7-8', 'box breathing', '4-4-4-4', '6-2-6-2'],
+      exercise: ['Wim Hof', 'Box', 'Coherent', '4-7-8'],
+      activity: ['meetings', 'workouts', 'studying', 'performance'],
+      
+      amount: ['16 oz', '20 oz', '24 oz', '500ml'],
+      brain_area: ['prefrontal cortex', 'hippocampus', 'attention networks'],
+      timeframe: ['2 weeks', '1 month', '10 days'],
+      
+      side_effect: ['brain fog', 'anxiety', 'fatigue', 'stress'],
+      bad_habit: ['blue light', 'caffeine', 'large meals', 'intense exercise'],
+      metric: ['VO2 max', 'power output', 'endurance', 'strength']
     };
 
+    // Select random template
     const template = templates[Math.floor(Math.random() * templates.length)];
+    
+    // Replace variables
     let content = template;
-
-    // Replace placeholders with random values
     for (const [key, values] of Object.entries(variables)) {
       const placeholder = `{${key}}`;
       if (content.includes(placeholder)) {
-        const randomValue = values[Math.floor(Math.random() * values.length)];
-        content = content.replace(placeholder, randomValue);
+        const value = values[Math.floor(Math.random() * values.length)];
+        content = content.replace(new RegExp(`\\{${key}\\}`, 'g'), value);
       }
     }
-
+    
+    // Clean up any remaining placeholders
+    content = content.replace(/\{[^}]+\}/g, '');
+    
     return content;
   }
 
