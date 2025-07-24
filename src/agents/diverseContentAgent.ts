@@ -259,16 +259,36 @@ export class DiverseContentAgent {
     const keywords = new Set<string>();
     
     databaseContent.forEach(item => {
-      // Extract meaningful keywords from database content
-      const words = item.content.toLowerCase()
-        .split(/\s+/)
-        .filter(word => word.length > 4) // Only longer, meaningful words
-        .map(word => word.replace(/[^\w]/g, '')) // Clean punctuation
-        .filter(word => word.length > 3); // Filter again after cleaning
+      // Extract only MEANINGFUL health keywords, not common words
+      const content = item.content.toLowerCase();
       
-      words.forEach(word => keywords.add(word));
+      // Focus on specific health/medical terms that should be avoided
+      const healthKeywords = [
+        'caloric restriction', 'autophagy', 'igf-1', 'muscle mass', 'lifespan',
+        'metabolism', 'statins', 'cholesterol', 'thermogenic', 'cold showers',
+        'blue light', 'sleep tracking', 'fasted cardio', 'amino acids',
+        'cortisol', 'placebo effect', 'blood vessels', 'hormone production',
+        'brain function', 'rehydration', 'selenium', 'organic vegetables',
+        'soil minerals', 'analyzing cases', 'antioxidants'
+      ];
+      
+      // Only add meaningful health keywords, not common words
+      healthKeywords.forEach(keyword => {
+        if (content.includes(keyword)) {
+          keywords.add(keyword);
+        }
+      });
+      
+      // Extract specific compound phrases (2-3 words) that are health-specific
+      const healthPhrases = content.match(/\b(?:(?:vitamin|mineral|hormone|enzyme|protein|amino|fatty)\s+\w+|\w+\s+(?:deficiency|absorption|synthesis|production|metabolism))\b/g) || [];
+      healthPhrases.forEach(phrase => {
+        if (phrase.length > 6) { // Only meaningful phrases
+          keywords.add(phrase);
+        }
+      });
     });
     
+    console.log(`🔍 Extracted ${keywords.size} meaningful health keywords (vs generic words)`);
     return Array.from(keywords);
   }
 
@@ -276,32 +296,28 @@ export class DiverseContentAgent {
     const topics = new Set<string>();
     
     databaseContent.forEach(item => {
-      // Extract topics from content - focus on key phrases
+      // Extract specific health topics, not generic words
       const content = item.content.toLowerCase();
       
-      // Extract specific health topics that commonly appear
-      const healthTopics = [
-        'sleep', 'nutrition', 'exercise', 'metabolism', 'hormone', 'stress',
-        'vitamin', 'mineral', 'supplement', 'diet', 'fasting', 'breathing',
-        'recovery', 'muscle', 'fat', 'energy', 'focus', 'brain', 'heart',
-        'immune', 'gut', 'microbiome', 'antioxidant', 'inflammation'
+      // Focus on specific health domains that should be tracked
+      const specificHealthTopics = [
+        'sleep', 'metabolism', 'exercise', 'fasting', 'nutrition', 'supplements',
+        'hormones', 'stress', 'recovery', 'longevity', 'cardiovascular', 
+        'brain health', 'gut health', 'immune system', 'inflammation',
+        'cholesterol', 'blood sugar', 'hydration', 'breathing', 'cold exposure',
+        'heat therapy', 'light therapy', 'circadian rhythm', 'muscle building',
+        'fat loss', 'cognitive enhancement', 'memory', 'focus', 'energy'
       ];
       
-      healthTopics.forEach(topic => {
+      // Only track specific health topics, not common words
+      specificHealthTopics.forEach(topic => {
         if (content.includes(topic)) {
           topics.add(topic);
         }
       });
-      
-      // Extract compound topics (e.g., "organic vegetables", "cold exposure")
-      const phrases = content.match(/\b\w+\s+\w+\b/g) || [];
-      phrases.forEach(phrase => {
-        if (phrase.length > 8) { // Only meaningful phrases
-          topics.add(phrase);
-        }
-      });
     });
     
+    console.log(`🔍 Extracted ${topics.size} specific health topics (focused approach)`);
     return Array.from(topics);
   }
 
@@ -312,53 +328,49 @@ export class DiverseContentAgent {
     databaseContent: DatabaseContent[]
   ): Promise<{ unique: boolean; reason?: string }> {
     const contentLower = content.toLowerCase();
-    const contentWords = contentLower.split(/\s+/).map(word => word.replace(/[^\w]/g, ''));
     
-    // 1. Check for topic similarity (any recent topic keywords)
-    for (const topic of allTopics) {
-      if (contentLower.includes(topic)) {
-        return { unique: false, reason: `Contains recent topic: "${topic}"` };
-      }
+    // 1. Check for SPECIFIC health topic overlap (not common words)
+    const healthTopicMatches = allTopics.filter(topic => contentLower.includes(topic));
+    if (healthTopicMatches.length > 0) {
+      return { unique: false, reason: `Contains recent health topic: "${healthTopicMatches[0]}"` };
     }
     
-    // 2. Check for keyword overlap (more than 3 recent keywords)
-    const keywordMatches = allKeywords.filter(keyword => 
-      contentWords.some(word => word.includes(keyword) || keyword.includes(word))
+    // 2. Check for meaningful health keyword overlap (not common words like "their", "better")
+    const meaningfulKeywordMatches = allKeywords.filter(keyword => 
+      keyword.length > 6 && // Only longer, meaningful keywords
+      contentLower.includes(keyword)
     );
     
-    if (keywordMatches.length > 3) {
-      return { unique: false, reason: `Too many keyword matches: ${keywordMatches.slice(0, 3).join(', ')}...` };
+    if (meaningfulKeywordMatches.length > 1) { // Allow 1 match, block 2+
+      return { unique: false, reason: `Contains recent health keywords: ${meaningfulKeywordMatches.slice(0, 2).join(', ')}` };
     }
     
-    // 3. Check for content similarity with database content (fuzzy matching)
+    // 3. Check for content similarity with database content (exact phrase matching)
     for (const dbContent of databaseContent) {
       const similarity = this.calculateContentSimilarity(content, dbContent.content);
-      if (similarity > 0.6) { // 60% similarity threshold
+      if (similarity > 0.7) { // Increase threshold to 70% (was 60%)
         return { unique: false, reason: `Too similar to previous tweet (${Math.round(similarity * 100)}% match)` };
       }
     }
     
-    // 4. Check for specific content patterns that were repeated
-    const problematicPatterns = [
-      'organic vegetables',
-      'selenium-rich soil',
-      'depleted soil',
-      'analyzing.*cases',
-      'antioxidants.*grown',
-      'organic farms',
-      'caloric restriction.*lifespan',
-      'muscle mass.*aging',
-      'autophagy.*igf'
+    // 4. Check for specific banned patterns (exact matches only)
+    const bannedExactPatterns = [
+      'caloric restriction extends lifespan',
+      'autophagy and reduced igf-1', 
+      'muscle loss accelerates aging',
+      'organic vegetables.*selenium',
+      'analyzing.*medical cases',
+      'cold showers.*metabolism.*15 minutes'
     ];
     
-    for (const pattern of problematicPatterns) {
+    for (const pattern of bannedExactPatterns) {
       const regex = new RegExp(pattern, 'i');
       if (regex.test(content)) {
-        return { unique: false, reason: `Contains banned pattern: "${pattern}"` };
+        return { unique: false, reason: `Contains banned exact pattern: "${pattern}"` };
       }
     }
     
-    // 5. Check content hash against database
+    // 5. Check content hash for exact duplicates
     const contentHash = this.generateContentHash(content);
     for (const dbContent of databaseContent) {
       if (dbContent.content_hash === contentHash) {
@@ -386,35 +398,34 @@ export class DiverseContentAgent {
   }
 
   private buildUniquePrompt(template: ContentTemplate, allTopics: string[], allKeywords: string[], attempt: number): string {
-    // Create focused avoid lists for the prompt
-    const keyTopicsToAvoid = allTopics.slice(0, 10).join(', ');
-    const keyKeywordsToAvoid = allKeywords.slice(0, 15).join(', ');
+    // Focus on meaningful health topics only (not common words)
+    const healthTopicsToAvoid = allTopics.filter(topic => topic.length > 4).slice(0, 8).join(', ');
+    const healthKeywordsToAvoid = allKeywords.filter(keyword => keyword.length > 6).slice(0, 10).join(', ');
     
     const basePrompt = `Generate a unique health/wellness tweet using this structure: "${template.structure}"
 
-CRITICAL: This content must be COMPLETELY DIFFERENT from all previous posts.
+CRITICAL: This content must avoid recently covered health topics.
 
-🚫 FORBIDDEN TOPICS: ${keyTopicsToAvoid}
-🚫 FORBIDDEN KEYWORDS: ${keyKeywordsToAvoid}
-🚫 BANNED PATTERNS: organic vegetables, soil minerals, selenium, caloric restriction, muscle loss, autophagy, IGF-1
+🚫 AVOID RECENT HEALTH TOPICS: ${healthTopicsToAvoid}
+🚫 AVOID RECENT HEALTH KEYWORDS: ${healthKeywordsToAvoid}
+🚫 BANNED EXACT PHRASES: "caloric restriction extends lifespan", "autophagy and reduced IGF-1", "muscle loss accelerates aging"
 
-MUST BE UNIQUE:
-- Different scientific mechanism/pathway
-- Different health domain entirely  
-- Different numbers/percentages
-- Different biological system
-- Different research angle
+FOCUS ON FRESH TOPICS:
+- Different body system (cardiovascular, nervous, endocrine, digestive)
+- Different health mechanism (absorption, synthesis, transport, elimination)  
+- Different time-based optimization (morning, evening, post-workout, fasting)
+- Different measurement approach (temperature, timing, quantity, frequency)
 
-TOPIC FOR ATTEMPT #${attempt}: ${this.getRandomUnusedTopic(allTopics)}
+SUGGESTED FRESH TOPIC: ${this.getRandomUnusedTopic(allTopics)}
 
 REQUIREMENTS:
-- Include specific data/percentages
+- Include specific data/percentages/numbers
 - Make it immediately actionable
 - Under 280 characters
 - Professional but engaging tone
-- Zero similarity to previous content
+- Focus on practical health optimization
 
-Generate ONE completely unique tweet:`;
+Generate ONE completely unique health tip:`;
 
     return basePrompt;
   }
