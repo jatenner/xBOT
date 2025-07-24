@@ -54,7 +54,7 @@ export class PostTweetAgent {
             finalContent = optimization.optimizedContent;
             viralScore = optimizedAnalysis.viralScore;
             followerGrowthPotential = optimizedAnalysis.followerGrowthPotential;
-            console.log(`🎯 Content optimized: ${viralScore}/10 viral score (+${optimization.expectedLift}% improvement)`);
+            console.log(`🎯 Content optimized: ${viralScore}/10 viral score (${optimization.improvementReason})`);
           } else {
             finalContent = diverseResult.content;
             console.log('📊 Using original content (optimization didn\'t improve scores)');
@@ -195,44 +195,66 @@ export class PostTweetAgent {
     return fallbackTips[Math.floor(Math.random() * fallbackTips.length)];
   }
 
-  private async storeTweetWithAIMetrics(
-    tweetId: string, 
-    content: string, 
-    contentType: string, 
-    viralScore: number, 
-    followerGrowthPotential: number
-  ): Promise<void> {
+  private async storeTweetWithAIMetrics(tweetId: string, content: string, contentType: string, viralScore: number, followerGrowthPotential: number): Promise<void> {
     try {
-      const tweetData = {
-        tweet_id: tweetId || `local_${Date.now()}`,
-        content: content,
-        content_type: contentType || 'ai_optimized',
-        tweet_type: 'original',
-        engagement_score: 0,
-        likes: 0,
-        retweets: 0,
-        replies: 0,
-        impressions: 0,
-        has_snap2health_cta: false,
-        created_at: new Date().toISOString(),
-        // Enhanced AI metrics
-        viral_score: viralScore,
-        ai_growth_prediction: followerGrowthPotential,
-        ai_optimized: contentType.includes('optimized'),
-        generation_method: contentType
-      };
-
-      const { error } = await supabaseClient.supabase!
-        .from('tweets')
-        .insert([tweetData]);
+      const { error } = await supabaseClient.supabase
+        ?.from('tweets')
+        .insert({
+          tweet_id: tweetId,
+          content: content,
+          content_type: contentType,
+          viral_score: viralScore,
+          ai_growth_prediction: followerGrowthPotential,
+          ai_optimized: true,
+          generation_method: 'ai_enhanced',
+          created_at: new Date().toISOString()
+        }) || { error: null };
 
       if (error) {
-        console.warn('⚠️ Database storage failed:', error);
+        console.error('⚠️ Database storage failed:', error);
       } else {
-        console.log('💾 Tweet saved to database with AI metrics');
+        console.log('✅ Tweet stored with AI metrics successfully');
       }
+
+      // Also update content_uniqueness table with tweet_ids as bigint array
+      const contentHash = this.generateContentHash(content);
+      const { error: uniquenessError } = await supabaseClient.supabase
+        ?.from('content_uniqueness')
+        .upsert({
+          content_hash: contentHash,
+          original_content: content,
+          content_topic: contentType,
+          content_keywords: this.extractKeywords(content),
+          tweet_ids: [parseInt(tweetId)], // Convert to bigint array
+          usage_count: 1,
+          first_used_at: new Date().toISOString()
+        }, {
+          onConflict: 'content_hash',
+          ignoreDuplicates: false
+        }) || { error: null };
+
+      if (uniquenessError) {
+        console.warn('⚠️ Content uniqueness update failed:', uniquenessError);
+      }
+
     } catch (error) {
-      console.warn('⚠️ Database storage error:', error);
+      console.error('❌ Database storage error:', error);
     }
+  }
+
+  private generateContentHash(content: string): string {
+    const crypto = require('crypto');
+    return crypto.createHash('md5').update(content.toLowerCase().trim()).digest('hex');
+  }
+
+  private extractKeywords(content: string): string[] {
+    // Extract meaningful health keywords
+    const words = content.toLowerCase().match(/\b[a-zA-Z]{4,}\b/g) || [];
+    const healthKeywords = words.filter(word => 
+      ['metabolism', 'cortisol', 'hormone', 'protein', 'vitamin', 'mineral', 
+       'supplement', 'exercise', 'sleep', 'stress', 'nutrition', 'health',
+       'mechanism', 'research', 'study', 'blood', 'muscle', 'brain'].includes(word)
+    );
+    return healthKeywords.slice(0, 10); // Limit to 10 keywords
   }
 }

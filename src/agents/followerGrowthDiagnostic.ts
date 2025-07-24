@@ -15,10 +15,10 @@ interface GrowthDiagnostic {
 
 interface FollowerStrategy {
   targetAccounts: string[];
-  engagementTactics: string[];
-  contentAdjustments: string[];
-  timingOptimizations: string[];
+  dailyActions: string[];
+  contentStrategy: string[];
   urgentActions: string[];
+  expectedGrowthRate: number;
 }
 
 export class FollowerGrowthDiagnostic {
@@ -84,86 +84,85 @@ export class FollowerGrowthDiagnostic {
     }
   }
 
-  async createAggressiveGrowthStrategy(): Promise<FollowerStrategy> {
+  async createAggressiveGrowthStrategy(currentFollowers: number): Promise<FollowerStrategy> {
     try {
-      console.log('🚀 CREATING AGGRESSIVE FOLLOWER ACQUISITION STRATEGY...');
-      
-      const prompt = `
-You are a Twitter growth hacker who specializes in rapid follower acquisition for health/wellness accounts.
+      const prompt = `Create an aggressive follower acquisition strategy for a health Twitter account with ${currentFollowers} followers.
 
-MISSION: Get this health account from 13 followers to 1000+ followers as fast as possible.
+YOU MUST RESPOND WITH ONLY VALID JSON. NO OTHER TEXT.
 
-TARGET AUDIENCE FOR HEALTH CONTENT:
-- Fitness enthusiasts
-- Biohackers
-- Health-conscious professionals  
-- Wellness seekers
-- Nutrition nerds
-- Longevity optimizers
-
-AGGRESSIVE GROWTH TACTICS:
-
-1. TARGET ACCOUNTS (High-value for engagement):
-   - Health influencers with 10K-100K followers
-   - Active fitness/wellness accounts
-   - Accounts with engaged audiences
-   - People who reply to health content
-
-2. ENGAGEMENT TACTICS (Maximum follow-back rate):
-   - Strategic replies that add value
-   - Likes on high-engagement health posts
-   - Follow accounts likely to follow back
-   - Join health/wellness conversations
-
-3. CONTENT ADJUSTMENTS (Viral health content):
-   - More controversial but accurate takes
-   - Personal authority demonstrations
-   - Engagement-baiting questions
-   - Thread-worthy insights
-
-4. TIMING OPTIMIZATIONS:
-   - Peak health audience activity times
-   - Trend-jacking health news
-   - Seasonal health content
-   - Event-based posting
-
-5. URGENT ACTIONS (Immediate implementation):
-   - Profile optimization for follow-worthiness
-   - Bio adjustment for clear value prop
-   - Content audit and improvement
-   - Engagement blitz on target accounts
-
-Return JSON with specific actionable tactics:
 {
-  "targetAccounts": ["@username1", "@username2", "@username3"],
-  "engagementTactics": ["tactic1", "tactic2", "tactic3"],
-  "contentAdjustments": ["change1", "change2", "change3"],
-  "timingOptimizations": ["timing1", "timing2", "timing3"],
-  "urgentActions": ["action1", "action2", "action3"]
-}`;
+  "targetAccounts": ["@account1", "@account2", "@account3"],
+  "dailyActions": ["action1", "action2", "action3"],
+  "contentStrategy": ["strategy1", "strategy2"],
+  "urgentActions": ["urgent1", "urgent2"],
+  "expectedGrowthRate": 25
+}
+
+CRITICAL: ONLY JSON, NO EXTRA TEXT BEFORE OR AFTER.`;
 
       const response = await openaiClient.generateCompletion(prompt, {
-        maxTokens: 500,
-        temperature: 0.4,
+        maxTokens: 200,
+        temperature: 0.3,
         model: 'gpt-4o-mini'
       });
 
-      const strategy = JSON.parse(response) as FollowerStrategy;
+      // Extract JSON from response
+      let jsonStr = response.trim();
+      const jsonStart = jsonStr.indexOf('{');
+      const jsonEnd = jsonStr.lastIndexOf('}');
       
-      console.log(`🎯 Aggressive Strategy Created: ${strategy.urgentActions.length} urgent actions identified`);
-      
-      return strategy;
+      if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
+        jsonStr = jsonStr.substring(jsonStart, jsonEnd + 1);
+      }
+
+      try {
+        const strategy = JSON.parse(jsonStr);
+        return {
+          targetAccounts: Array.isArray(strategy.targetAccounts) ? strategy.targetAccounts : 
+            ['@hubermanlab', '@bengreenfield', '@drmarkhyman'],
+          dailyActions: Array.isArray(strategy.dailyActions) ? strategy.dailyActions :
+            ['Like viral health content', 'Reply to health influencers', 'Follow health enthusiasts'],
+          contentStrategy: Array.isArray(strategy.contentStrategy) ? strategy.contentStrategy :
+            ['Post controversial health takes', 'Share actionable tips', 'Use viral hooks'],
+          urgentActions: Array.isArray(strategy.urgentActions) ? strategy.urgentActions :
+            ['Optimize bio for clarity', 'Increase posting frequency', 'Engage with trending topics'],
+          expectedGrowthRate: typeof strategy.expectedGrowthRate === 'number' ? strategy.expectedGrowthRate : 25
+        };
+      } catch (parseError) {
+        console.warn('⚠️ Growth strategy JSON parsing failed, using fallback:', parseError);
+        return this.getFallbackGrowthStrategy();
+      }
 
     } catch (error) {
-      console.warn('⚠️ Growth strategy creation failed:', error);
-      return {
-        targetAccounts: ['@hubermanlab', '@bengreenfield', '@drmarkhyman'],
-        engagementTactics: ['Reply to trending health posts', 'Like viral health content', 'Follow health enthusiasts'],
-        contentAdjustments: ['More controversial takes', 'Personal stories', 'Engagement questions'],
-        timingOptimizations: ['Post during health audience peak times', 'Trend-jack health news'],
-        urgentActions: ['Optimize bio', 'Engagement blitz', 'Content audit']
-      };
+      console.error('❌ Growth strategy creation error:', error);
+      return this.getFallbackGrowthStrategy();
     }
+  }
+
+  private getFallbackGrowthStrategy(): FollowerStrategy {
+    return {
+      targetAccounts: ['@hubermanlab', '@bengreenfield', '@drmarkhyman', '@peterattiamd', '@bengreenfield'],
+      dailyActions: [
+        'Like 20 viral health posts daily',
+        'Reply to 5 health influencer tweets',
+        'Follow 10 health enthusiasts',
+        'Share controversial health takes',
+        'Post actionable health tips'
+      ],
+      contentStrategy: [
+        'Controversial but accurate health statements',
+        'Actionable tips with specific numbers',
+        'Behind-the-scenes health industry insights',
+        'Personal health transformation stories'
+      ],
+      urgentActions: [
+        'Optimize bio with clear value proposition',
+        'Increase posting to 17 tweets/day',
+        'Engage aggressively with health community',
+        'Use trending health hashtags strategically'
+      ],
+      expectedGrowthRate: 30
+    };
   }
 
   async generateViralFollowerMagnet(): Promise<string> {
@@ -250,7 +249,7 @@ Generate ONE tweet that will be a follower magnet:`;
     console.log('🚨 RUNNING COMPLETE FOLLOWER GROWTH AUDIT...');
     
     const diagnostic = await this.diagnoseGrowthProblem();
-    const strategy = await this.createAggressiveGrowthStrategy();
+    const strategy = await this.createAggressiveGrowthStrategy(diagnostic.currentFollowers);
     const viralContent = await this.generateViralFollowerMagnet();
     
     console.log('\n🔍 === GROWTH DIAGNOSTIC RESULTS ===');

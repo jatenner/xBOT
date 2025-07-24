@@ -10,155 +10,136 @@ interface ViralPrediction {
 }
 
 interface ContentOptimization {
-  originalContent: string;
   optimizedContent: string;
-  improvements: string[];
-  expectedLift: number;
+  improvementReason: string;
+  viralScore: number;
+  followerGrowthPotential: number;
 }
 
 export class ViralContentAnalyzer {
   
   async predictViralPotential(content: string): Promise<ViralPrediction> {
     try {
-      console.log('🧠 AI analyzing viral potential...');
-      
-      const prompt = `
-You are a legendary social media growth expert who has helped accounts gain millions of followers.
+      const prompt = `Analyze this health content for viral potential and follower growth:
 
-Analyze this health/wellness tweet for MAXIMUM FOLLOWER GROWTH potential:
+"${content}"
 
-CONTENT: "${content}"
+Rate each aspect 1-10 and predict engagement. Focus on health content that attracts followers.
 
-Rate each factor 1-10 and explain:
+YOU MUST RESPOND WITH ONLY VALID JSON. NO OTHER TEXT.
 
-1. VIRAL POTENTIAL (1-10):
-   - Hook strength
-   - Controversy/surprise factor
-   - Shareability
-   - Emotional impact
-
-2. FOLLOWER CONVERSION (1-10):
-   - Authority demonstration
-   - Value provided
-   - Credibility signals
-   - Follow-worthy factor
-
-3. ENGAGEMENT PREDICTION (1-10):
-   - Comment-bait potential
-   - Discussion starter
-   - Quote tweet worthy
-   - Save/bookmark appeal
-
-4. IMPROVEMENTS NEEDED:
-   - Specific changes to increase scores
-   - Better hooks/openings
-   - More compelling data
-   - Stronger positioning
-
-OVERALL RECOMMENDATION:
-- Should we post this? (Yes/No)
-- What's the follower growth potential?
-- Key reasoning
-
-CRITICAL: You must respond with ONLY valid JSON in this exact format:
 {
   "viralScore": 7,
-  "followerGrowthPotential": 8, 
+  "followerGrowthPotential": 8,
   "engagementPrediction": 6,
-  "improvements": ["improvement1", "improvement2"],
+  "improvements": ["suggestion1", "suggestion2"],
   "shouldPost": true,
   "reasoning": "detailed explanation"
 }
 
-Do not include any text before or after the JSON. Only return the JSON object.`;
+CRITICAL: ONLY JSON, NO EXTRA TEXT BEFORE OR AFTER.`;
 
       const response = await openaiClient.generateCompletion(prompt, {
-        maxTokens: 500,
+        maxTokens: 200,
         temperature: 0.3,
         model: 'gpt-4o-mini'
       });
 
-      const analysis = JSON.parse(response) as ViralPrediction;
+      // Extract JSON from response (handle cases where OpenAI adds extra text)
+      let jsonStr = response.trim();
       
-      console.log(`🎯 Viral Analysis: ${analysis.viralScore}/10 viral, ${analysis.followerGrowthPotential}/10 growth`);
-      console.log(`📊 Recommendation: ${analysis.shouldPost ? 'POST IT' : 'IMPROVE FIRST'}`);
+      // Look for JSON object bounds
+      const jsonStart = jsonStr.indexOf('{');
+      const jsonEnd = jsonStr.lastIndexOf('}');
       
-      return analysis;
+      if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
+        jsonStr = jsonStr.substring(jsonStart, jsonEnd + 1);
+      }
+
+      try {
+        const analysis = JSON.parse(jsonStr);
+        
+        // Validate required fields and provide defaults
+        return {
+          viralScore: Math.max(1, Math.min(10, analysis.viralScore || 5)),
+          followerGrowthPotential: Math.max(1, Math.min(10, analysis.followerGrowthPotential || 5)),
+          engagementPrediction: Math.max(1, Math.min(10, analysis.engagementPrediction || 5)),
+          improvements: Array.isArray(analysis.improvements) ? analysis.improvements : [],
+          shouldPost: typeof analysis.shouldPost === 'boolean' ? analysis.shouldPost : true,
+          reasoning: typeof analysis.reasoning === 'string' ? analysis.reasoning : 'Analysis completed'
+        };
+      } catch (parseError) {
+        console.warn('⚠️ JSON parsing failed, using fallback analysis:', parseError);
+        // Fallback: basic content analysis
+        return this.getFallbackAnalysis(content);
+      }
 
     } catch (error) {
-      console.warn('⚠️ Viral analysis failed:', error);
-      return {
-        viralScore: 5,
-        followerGrowthPotential: 5,
-        engagementPrediction: 5,
-        improvements: ['Analysis failed - posting with default scoring'],
-        shouldPost: true,
-        reasoning: 'Fallback due to analysis error'
-      };
+      console.error('❌ Viral analysis error:', error);
+      return this.getFallbackAnalysis(content);
     }
   }
 
-  async optimizeContentForGrowth(content: string, targetAudience: string = 'health-conscious professionals'): Promise<ContentOptimization> {
+  async optimizeContentForGrowth(content: string): Promise<ContentOptimization> {
     try {
-      console.log('🚀 AI optimizing content for maximum growth...');
-      
-      const prompt = `
-You are a legendary health content creator who consistently goes viral and gains thousands of followers per month.
+      const prompt = `Optimize this health content for maximum viral potential and follower growth:
 
-ORIGINAL CONTENT: "${content}"
-TARGET AUDIENCE: ${targetAudience}
+"${content}"
 
-Your task: Create a MORE POWERFUL version that will:
-1. Get MORE followers
-2. Drive MORE engagement  
-3. Establish MORE authority
-4. Create MORE viral potential
+Create an improved version that will get more followers, engagement, and shares.
 
-OPTIMIZATION TECHNIQUES:
-- Stronger hooks (numbers, controversy, surprise)
-- More compelling data/statistics
-- Better emotional triggers
-- Clearer value proposition
-- Enhanced credibility signals
-- Optimal length and structure
+YOU MUST RESPOND WITH ONLY VALID JSON. NO OTHER TEXT.
 
-RULES:
-- Keep under 280 characters
-- Maintain factual accuracy
-- Include specific data/numbers
-- Make it immediately valuable
-- Create follow-worthy authority
-
-CRITICAL: You must respond with ONLY valid JSON in this exact format:
 {
-  "originalContent": "original text",
-  "optimizedContent": "improved version", 
-  "improvements": ["what was changed", "what was improved"],
-  "expectedLift": 25
+  "optimizedContent": "improved version here",
+  "improvementReason": "why this is better",
+  "viralScore": 8,
+  "followerGrowthPotential": 9
 }
 
-Do not include any text before or after the JSON. Only return the JSON object.`;
+CRITICAL: ONLY JSON, NO EXTRA TEXT BEFORE OR AFTER.`;
 
       const response = await openaiClient.generateCompletion(prompt, {
-        maxTokens: 400,
+        maxTokens: 150,
         temperature: 0.4,
         model: 'gpt-4o-mini'
       });
 
-      const optimization = JSON.parse(response) as ContentOptimization;
+      // Extract JSON from response
+      let jsonStr = response.trim();
+      const jsonStart = jsonStr.indexOf('{');
+      const jsonEnd = jsonStr.lastIndexOf('}');
       
-      console.log(`🎯 Content optimized: ${optimization.expectedLift}% expected improvement`);
-      console.log(`✨ Key improvements: ${optimization.improvements.join(', ')}`);
-      
-      return optimization;
+      if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
+        jsonStr = jsonStr.substring(jsonStart, jsonEnd + 1);
+      }
+
+      try {
+        const optimization = JSON.parse(jsonStr);
+        
+        return {
+          optimizedContent: optimization.optimizedContent || content,
+          improvementReason: optimization.improvementReason || 'Content optimized',
+          viralScore: Math.max(1, Math.min(10, optimization.viralScore || 6)),
+          followerGrowthPotential: Math.max(1, Math.min(10, optimization.followerGrowthPotential || 6))
+        };
+      } catch (parseError) {
+        console.warn('⚠️ Optimization JSON parsing failed, using original:', parseError);
+        return {
+          optimizedContent: content,
+          improvementReason: 'Optimization failed, using original',
+          viralScore: 5,
+          followerGrowthPotential: 5
+        };
+      }
 
     } catch (error) {
-      console.warn('⚠️ Content optimization failed:', error);
+      console.error('❌ Content optimization error:', error);
       return {
-        originalContent: content,
         optimizedContent: content,
-        improvements: ['Optimization failed - using original'],
-        expectedLift: 0
+        improvementReason: 'Optimization failed',
+        viralScore: 5,
+        followerGrowthPotential: 5
       };
     }
   }
@@ -217,5 +198,28 @@ Focus on topics that will:
         'Recovery optimization'
       ];
     }
+  }
+
+  private getFallbackAnalysis(content: string): ViralPrediction {
+    // Simple heuristic analysis when AI fails
+    const hasNumbers = /\d/.test(content);
+    const hasControversy = /(?:wrong|mistake|lie|fraud|hide|secret)/i.test(content);
+    const hasSpecifics = /(?:mechanism|study|research|data)/i.test(content);
+    const hasAction = /(?:boost|increase|improve|optimize|prevent)/i.test(content);
+    
+    let score = 5;
+    if (hasNumbers) score += 1;
+    if (hasControversy) score += 1;
+    if (hasSpecifics) score += 1;
+    if (hasAction) score += 1;
+    
+    return {
+      viralScore: Math.min(10, score),
+      followerGrowthPotential: Math.min(10, score),
+      engagementPrediction: Math.min(10, score - 1),
+      improvements: ['Add more specific data', 'Include actionable advice'],
+      shouldPost: true,
+      reasoning: 'Fallback analysis based on content patterns'
+    };
   }
 } 
