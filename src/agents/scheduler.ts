@@ -76,15 +76,17 @@ export class Scheduler {
     console.log('🤝 REAL ENGAGEMENT started - running every 30 minutes');
     console.log('🎯 Intelligent spacing: ~50 minutes between posts');
     console.log('🔥 Content: Health news, supplements, fitness, biohacking, food tips - ANYTHING that gets followers');
-    console.log('⏰ Active hours: 6 AM - 11 PM (17 hour window)');
+    console.log('⏰ Active hours: 6 AM - 11 PM PST (17 hour window)');
   }
 
   private resetDailyCountIfNeeded(): void {
-    const today = new Date().toDateString();
+    // 🌐 TIMEZONE FIX: Use PST for daily reset
+    const pstTime = new Date(new Date().toLocaleString("en-US", {timeZone: "America/Los_Angeles"}));
+    const today = pstTime.toDateString();
     if (this.lastResetDate !== today) {
       this.dailyPostCount = 0;
       this.lastResetDate = today;
-      console.log(`🔄 Daily counter reset - Target: ${this.targetDailyPosts} posts today`);
+      console.log(`🔄 Daily counter reset (PST) - Target: ${this.targetDailyPosts} posts today`);
     }
   }
 
@@ -99,17 +101,24 @@ export class Scheduler {
       return;
     }
     
+    // 🌐 TIMEZONE FIX: Convert to PST/PDT (user's timezone)
     const now = new Date();
-    const hour = now.getHours();
-    const currentMinutes = now.getMinutes();
+    const pstTime = new Date(now.toLocaleString("en-US", {timeZone: "America/Los_Angeles"}));
+    const hour = pstTime.getHours();
+    const currentMinutes = pstTime.getMinutes();
     
-    // Active posting hours: 6 AM to 11 PM (17 hours)
+    console.log(`🕐 Server time: ${now.getHours()}:${now.getMinutes().toString().padStart(2, '0')} UTC`);
+    console.log(`🌴 PST time: ${hour}:${currentMinutes.toString().padStart(2, '0')} PST`);
+    
+    // Active posting hours: 6 AM to 11 PM PST (17 hours)
     const isActiveHours = hour >= 6 && hour <= 23;
     
     if (!isActiveHours) {
-      console.log(`😴 Outside active hours (6 AM - 11 PM). Current: ${hour}:${currentMinutes.toString().padStart(2, '0')}`);
+      console.log(`😴 Outside active hours (6 AM - 11 PM PST). Current PST: ${hour}:${currentMinutes.toString().padStart(2, '0')}`);
       return;
     }
+    
+    console.log(`🌞 ACTIVE HOURS: ${hour}:${currentMinutes.toString().padStart(2, '0')} PST is within 6 AM - 11 PM posting window`);
 
     // Check if we've hit daily limit
     if (this.dailyPostCount >= this.targetDailyPosts) {
@@ -117,8 +126,8 @@ export class Scheduler {
       return;
     }
 
-    // Calculate optimal timing
-    const shouldPost = this.shouldPostNow(now);
+    // Calculate optimal timing (using PST time)
+    const shouldPost = this.shouldPostNow(pstTime);
     
     if (shouldPost) {
       console.log(`🎯 POSTING NOW (${this.dailyPostCount + 1}/${this.targetDailyPosts})`);
