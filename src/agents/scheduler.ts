@@ -4,6 +4,7 @@ import { PostTweetAgent } from './postTweet';
 import { RealEngagementAgent } from './realEngagementAgent';
 import { AggressiveFollowerGrowthAgent } from './aggressiveFollowerGrowthAgent';
 import { FollowerGrowthDiagnostic } from './followerGrowthDiagnostic';
+import { supabaseClient } from '../utils/supabaseClient';
 
 export class Scheduler {
   private postTweetAgent: PostTweetAgent;
@@ -34,44 +35,75 @@ export class Scheduler {
   }
 
   async start(): Promise<void> {
-    console.log('🚀 Starting HIGH-FREQUENCY Simple Health Bot Scheduler...');
-    console.log(`🎯 TARGET: ${this.targetDailyPosts} posts per day for maximum growth`);
-    
-    // Initial growth diagnostic
-    console.log('🔍 Running initial follower growth diagnostic...');
-    await this.growthDiagnostic.runCompleteGrowthAudit();
-    
-    // Immediate posting check
-    await this.checkAndPost();
-    
-    // Schedule regular posting checks (every 10 minutes)
-    this.postingJob = cron.schedule('*/10 * * * *', async () => {
-      await this.checkAndPost();
-    });
+    try {
+      console.log('🚀 Starting HIGH-FREQUENCY Simple Health Bot Scheduler...');
+      console.log('🎯 TARGET: 17 posts per day for maximum growth');
 
-    // Schedule real engagement (every 30 minutes)  
-    this.engagementJob = cron.schedule('*/30 * * * *', async () => {
-      await this.realEngagementAgent.run();
-    });
+      // Check current time and set timezone
+      const now = new Date();
+      const serverTime = now.toISOString();
+      const estTime = new Date(now.toLocaleString("en-US", {timeZone: "America/New_York"}));
+      
+      console.log(`🕐 Server time: ${serverTime.split('T')[1].split('.')[0]} UTC`);
+      console.log(`🗽 EST time: ${estTime.getHours()}:${estTime.getMinutes().toString().padStart(2, '0')} EST`);
 
-    // Schedule aggressive follower growth (every 45 minutes)
-    this.growthJob = cron.schedule('*/45 * * * *', async () => {
-      console.log('🚀 === AGGRESSIVE FOLLOWER GROWTH CYCLE ===');
-      await this.aggressiveGrowthAgent.runAggressiveGrowthCycle();
-    });
+      // Get ACTUAL daily post count from database
+      const todaysActualCount = await this.getTodaysPostCount();
+      this.dailyPostCount = todaysActualCount;
+      
+      console.log(`📊 REAL Daily progress: ${this.dailyPostCount}/${this.targetDailyPosts} posts (from database)`);
+      
+      if (this.dailyPostCount >= this.targetDailyPosts) {
+        console.log('🎯 Daily target already reached! Will continue with engagement and optimization.');
+      }
 
-    // Schedule daily growth diagnostic (every 4 hours)
-    this.diagnosticJob = cron.schedule('0 */4 * * *', async () => {
-      console.log('📊 Running follower growth diagnostic...');
+      // Run initial diagnostics
+      console.log('🔍 Running initial follower growth diagnostic...');
       await this.growthDiagnostic.runCompleteGrowthAudit();
-    });
 
-    console.log('✅ HIGH-FREQUENCY Scheduler started - checking every 10 minutes');
-    console.log('🤝 REAL ENGAGEMENT started - running every 30 minutes');
-    console.log('🚀 AGGRESSIVE GROWTH started - running every 45 minutes');
-    console.log('📊 GROWTH DIAGNOSTIC started - running every 4 hours');
-    
-    this.logSchedulerInfo();
+      // Check if we should post now
+      await this.checkAndPost();
+
+      // Schedule regular checks
+      this.postingJob = cron.schedule('*/10 * * * *', async () => {
+        await this.checkAndPost();
+      });
+
+      // Schedule engagement every 30 minutes
+      this.engagementJob = cron.schedule('*/30 * * * *', async () => {
+        console.log('🤝 Running real engagement cycle...');
+        await this.realEngagementAgent.run();
+      });
+
+      // Schedule aggressive growth every 45 minutes
+      this.growthJob = cron.schedule('*/45 * * * *', async () => {
+        console.log('🚀 Running aggressive follower growth...');
+        await this.aggressiveGrowthAgent.runAggressiveGrowthCycle();
+      });
+
+      // Schedule growth diagnostic every 4 hours
+      this.diagnosticJob = cron.schedule('0 */4 * * *', async () => {
+        console.log('📊 Running growth diagnostic...');
+        await this.growthDiagnostic.runCompleteGrowthAudit();
+      });
+
+      const minutesToNext = this.getMinutesToNextPost();
+      console.log(`🎯 Intelligent spacing: ~${minutesToNext} minutes between posts`);
+      console.log('🔥 Content: Health news, supplements, fitness, biohacking, food tips - ANYTHING that gets followers');
+      console.log('⏰ Active hours: 6 AM - 11 PM EST (17 hour window)');
+      
+      console.log('✅ HIGH-FREQUENCY Scheduler started - checking every 10 minutes');
+      console.log('🤝 REAL ENGAGEMENT started - running every 30 minutes');
+      console.log('🚀 AGGRESSIVE GROWTH started - running every 45 minutes');
+      console.log('📊 GROWTH DIAGNOSTIC started - running every 4 hours');
+      
+      console.log('🎉 VIRAL HEALTH Twitter Bot is LIVE!');
+      console.log('🔥 Generating diverse health content for maximum followers');
+      console.log('📊 Check logs for posting activity every ~50 minutes');
+
+    } catch (error) {
+      console.error('❌ Scheduler start error:', error);
+    }
   }
 
   private resetDailyCountIfNeeded(): void {
@@ -260,6 +292,39 @@ export class Scheduler {
     return Math.max(0, Math.round(remainingMs / (60 * 1000)));
   }
 
+  private async getTodaysPostCount(): Promise<number> {
+    try {
+      // Get today's date in EST
+      const now = new Date();
+      const estDate = new Date(now.toLocaleString("en-US", {timeZone: "America/New_York"}));
+      const todayStart = new Date(estDate.getFullYear(), estDate.getMonth(), estDate.getDate());
+      const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
+      
+      // Convert to UTC for database query
+      const startUTC = new Date(todayStart.getTime() - (estDate.getTimezoneOffset() * 60000));
+      const endUTC = new Date(todayEnd.getTime() - (estDate.getTimezoneOffset() * 60000));
+
+      const { data, error } = await supabaseClient.supabase
+        ?.from('tweets')
+        .select('id')
+        .gte('created_at', startUTC.toISOString())
+        .lt('created_at', endUTC.toISOString()) || { data: null, error: null };
+
+      if (error) {
+        console.warn('⚠️ Could not fetch today\'s post count:', error);
+        return 0;
+      }
+
+      const count = data?.length || 0;
+      console.log(`🔍 Database check: Found ${count} posts today (EST timezone)`);
+      return count;
+
+    } catch (error) {
+      console.error('❌ Error getting today\'s post count:', error);
+      return 0;
+    }
+  }
+
   async stop(): Promise<void> {
     console.log('🛑 Stopping high-frequency scheduler...');
     
@@ -288,12 +353,6 @@ export class Scheduler {
     console.log('✅ Aggressive growth agent stopped');
     console.log('✅ Growth diagnostic stopped');
     console.log(`📊 Final daily count: ${this.dailyPostCount}/${this.targetDailyPosts} posts`);
-  }
-
-  private logSchedulerInfo(): void {
-    console.log('🎯 Intelligent spacing: ~50 minutes between posts');
-    console.log('🔥 Content: Health news, supplements, fitness, biohacking, food tips - ANYTHING that gets followers');
-    console.log('⏰ Active hours: 6 AM - 11 PM EST (17 hour window)');
   }
 }
 
