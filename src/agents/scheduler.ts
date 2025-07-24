@@ -76,17 +76,17 @@ export class Scheduler {
     console.log('🤝 REAL ENGAGEMENT started - running every 30 minutes');
     console.log('🎯 Intelligent spacing: ~50 minutes between posts');
     console.log('🔥 Content: Health news, supplements, fitness, biohacking, food tips - ANYTHING that gets followers');
-    console.log('⏰ Active hours: 6 AM - 11 PM PST (17 hour window)');
+    console.log('⏰ Active hours: 6 AM - 11 PM EST (17 hour window)');
   }
 
   private resetDailyCountIfNeeded(): void {
-    // 🌐 TIMEZONE FIX: Use PST for daily reset
-    const pstTime = new Date(new Date().toLocaleString("en-US", {timeZone: "America/Los_Angeles"}));
-    const today = pstTime.toDateString();
+    // 🌐 TIMEZONE FIX: Use Eastern Time for daily reset (user is in New York)
+    const estTime = new Date(new Date().toLocaleString("en-US", {timeZone: "America/New_York"}));
+    const today = estTime.toDateString();
     if (this.lastResetDate !== today) {
       this.dailyPostCount = 0;
       this.lastResetDate = today;
-      console.log(`🔄 Daily counter reset (PST) - Target: ${this.targetDailyPosts} posts today`);
+      console.log(`🔄 Daily counter reset (EST) - Target: ${this.targetDailyPosts} posts today`);
     }
   }
 
@@ -101,24 +101,24 @@ export class Scheduler {
       return;
     }
     
-    // 🌐 TIMEZONE FIX: Convert to PST/PDT (user's timezone)
+    // 🌐 TIMEZONE FIX: Convert to Eastern Time (user is in New York)
     const now = new Date();
-    const pstTime = new Date(now.toLocaleString("en-US", {timeZone: "America/Los_Angeles"}));
-    const hour = pstTime.getHours();
-    const currentMinutes = pstTime.getMinutes();
+    const estTime = new Date(now.toLocaleString("en-US", {timeZone: "America/New_York"}));
+    const hour = estTime.getHours();
+    const currentMinutes = estTime.getMinutes();
     
     console.log(`🕐 Server time: ${now.getHours()}:${now.getMinutes().toString().padStart(2, '0')} UTC`);
-    console.log(`🌴 PST time: ${hour}:${currentMinutes.toString().padStart(2, '0')} PST`);
+    console.log(`🗽 EST time: ${hour}:${currentMinutes.toString().padStart(2, '0')} EST`);
     
-    // Active posting hours: 6 AM to 11 PM PST (17 hours)
+    // Active posting hours: 6 AM to 11 PM EST (17 hours)
     const isActiveHours = hour >= 6 && hour <= 23;
     
     if (!isActiveHours) {
-      console.log(`😴 Outside active hours (6 AM - 11 PM PST). Current PST: ${hour}:${currentMinutes.toString().padStart(2, '0')}`);
+      console.log(`😴 Outside active hours (6 AM - 11 PM EST). Current EST: ${hour}:${currentMinutes.toString().padStart(2, '0')}`);
       return;
     }
     
-    console.log(`🌞 ACTIVE HOURS: ${hour}:${currentMinutes.toString().padStart(2, '0')} PST is within 6 AM - 11 PM posting window`);
+    console.log(`🌞 ACTIVE HOURS: ${hour}:${currentMinutes.toString().padStart(2, '0')} EST is within 6 AM - 11 PM posting window`);
 
     // Check if we've hit daily limit
     if (this.dailyPostCount >= this.targetDailyPosts) {
@@ -126,8 +126,8 @@ export class Scheduler {
       return;
     }
 
-    // Calculate optimal timing (using PST time)
-    const shouldPost = this.shouldPostNow(pstTime);
+    // Calculate optimal timing (using EST time)
+    const shouldPost = this.shouldPostNow(estTime);
     
     if (shouldPost) {
       console.log(`🎯 POSTING NOW (${this.dailyPostCount + 1}/${this.targetDailyPosts})`);
