@@ -1,5 +1,6 @@
 import { openaiClient } from '../utils/openaiClient';
 import { supabaseClient } from '../utils/supabaseClient';
+import * as crypto from 'crypto';
 
 interface ContentTemplate {
   type: string;
@@ -12,6 +13,13 @@ interface UsedContent {
   topic: string;
   opening: string;
   timestamp: Date;
+}
+
+interface DatabaseContent {
+  content: string;
+  content_hash: string;
+  created_at: string;
+  tweet_type: string;
 }
 
 export class DiverseContentAgent {
@@ -98,16 +106,29 @@ export class DiverseContentAgent {
       const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
       this.recentContent = this.recentContent.filter(item => item.timestamp > cutoff);
 
-      // AGGRESSIVE UNIQUENESS: Get detailed blacklist from recent content
+      // 🔍 DATABASE CONTENT CHECK: Get all recent content from database
+      const databaseContent = await this.getRecentDatabaseContent();
+      console.log(`🔍 Database content check: ${databaseContent.length} recent tweets found`);
+
+      // AGGRESSIVE UNIQUENESS: Get detailed blacklist from both memory and database
       const recentTopics = this.recentContent.map(item => item.topic.toLowerCase());
       const recentOpenings = this.recentContent.map(item => item.opening.toLowerCase());
       const recentKeywords = this.extractAllKeywords(this.recentContent);
-
-      console.log(`🚫 Content blacklist: ${recentTopics.length} topics, ${recentKeywords.length} keywords blocked`);
       
-      // Try up to 5 different template types to ensure uniqueness
+      // Extract keywords and topics from database content
+      const databaseKeywords = this.extractDatabaseKeywords(databaseContent);
+      const databaseTopics = this.extractDatabaseTopics(databaseContent);
+      
+      // Combine memory and database blacklists
+      const allKeywords = [...new Set([...recentKeywords, ...databaseKeywords])];
+      const allTopics = [...new Set([...recentTopics, ...databaseTopics])];
+
+      console.log(`🚫 Complete blacklist: ${allTopics.length} topics, ${allKeywords.length} keywords blocked`);
+      console.log(`🚫 Recent database topics: ${databaseTopics.slice(0, 5).join(', ')}...`);
+      
+      // Try up to 7 different attempts to ensure uniqueness
       let attempts = 0;
-      const maxAttempts = 5;
+      const maxAttempts = 7;
       
       while (attempts < maxAttempts) {
         attempts++;
@@ -124,11 +145,11 @@ export class DiverseContentAgent {
         console.log(`🎯 Attempt ${attempts}: Using template '${selectedTemplate.type}'`);
 
         // Generate content with strict uniqueness requirements
-        const prompt = this.buildUniquePrompt(selectedTemplate, recentTopics, recentKeywords, attempts);
+        const prompt = this.buildUniquePrompt(selectedTemplate, allTopics, allKeywords, attempts);
         
         const content = await openaiClient.generateCompletion(prompt, {
           maxTokens: 120,
-          temperature: 0.9, // Higher temperature for more variation
+          temperature: 0.95, // Higher temperature for more variation
           model: 'gpt-4o-mini'
         });
 
@@ -137,8 +158,8 @@ export class DiverseContentAgent {
           continue;
         }
 
-        // STRICT UNIQUENESS CHECK
-        const isUnique = this.isContentUnique(content, recentTopics, recentKeywords);
+        // STRICT UNIQUENESS CHECK (memory + database)
+        const isUnique = await this.isContentCompletelyUnique(content, allTopics, allKeywords, databaseContent);
         if (!isUnique.unique) {
           console.warn(`🚫 Content rejected (attempt ${attempts}): ${isUnique.reason}`);
           continue;
@@ -161,6 +182,7 @@ export class DiverseContentAgent {
         await this.logContentGeneration(finalContent, selectedTemplate.type);
 
         console.log(`✅ Unique content generated after ${attempts} attempts`);
+        console.log(`📊 Final content: "${finalContent.substring(0, 100)}..."`);
         return {
           content: finalContent,
           type: selectedTemplate.type,
@@ -198,92 +220,232 @@ export class DiverseContentAgent {
     return Array.from(keywords);
   }
 
-  private isContentUnique(content: string, recentTopics: string[], recentKeywords: string[]): { unique: boolean; reason?: string } {
+  private async getRecentDatabaseContent(): Promise<DatabaseContent[]> {
+    try {
+      // Get recent tweets from the last 7 days
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      
+      const { data, error } = await supabaseClient.supabase
+        ?.from('tweets')
+        .select('content, created_at, tweet_type, content_type')
+        .gte('created_at', sevenDaysAgo.toISOString())
+        .order('created_at', { ascending: false })
+        .limit(50) || { data: null, error: null };
+
+      if (error) {
+        console.warn('⚠️ Could not fetch recent database content:', error);
+        return [];
+      }
+
+      if (!data || data.length === 0) {
+        console.log('📭 No recent content found in database');
+        return [];
+      }
+
+      return data.map(item => ({
+        content: item.content || '',
+        content_hash: this.generateContentHash(item.content || ''),
+        created_at: item.created_at || '',
+        tweet_type: item.tweet_type || 'unknown'
+      }));
+
+    } catch (error) {
+      console.warn('⚠️ Database content fetch failed:', error);
+      return [];
+    }
+  }
+
+  private extractDatabaseKeywords(databaseContent: DatabaseContent[]): string[] {
+    const keywords = new Set<string>();
+    
+    databaseContent.forEach(item => {
+      // Extract meaningful keywords from database content
+      const words = item.content.toLowerCase()
+        .split(/\s+/)
+        .filter(word => word.length > 4) // Only longer, meaningful words
+        .map(word => word.replace(/[^\w]/g, '')) // Clean punctuation
+        .filter(word => word.length > 3); // Filter again after cleaning
+      
+      words.forEach(word => keywords.add(word));
+    });
+    
+    return Array.from(keywords);
+  }
+
+  private extractDatabaseTopics(databaseContent: DatabaseContent[]): string[] {
+    const topics = new Set<string>();
+    
+    databaseContent.forEach(item => {
+      // Extract topics from content - focus on key phrases
+      const content = item.content.toLowerCase();
+      
+      // Extract specific health topics that commonly appear
+      const healthTopics = [
+        'sleep', 'nutrition', 'exercise', 'metabolism', 'hormone', 'stress',
+        'vitamin', 'mineral', 'supplement', 'diet', 'fasting', 'breathing',
+        'recovery', 'muscle', 'fat', 'energy', 'focus', 'brain', 'heart',
+        'immune', 'gut', 'microbiome', 'antioxidant', 'inflammation'
+      ];
+      
+      healthTopics.forEach(topic => {
+        if (content.includes(topic)) {
+          topics.add(topic);
+        }
+      });
+      
+      // Extract compound topics (e.g., "organic vegetables", "cold exposure")
+      const phrases = content.match(/\b\w+\s+\w+\b/g) || [];
+      phrases.forEach(phrase => {
+        if (phrase.length > 8) { // Only meaningful phrases
+          topics.add(phrase);
+        }
+      });
+    });
+    
+    return Array.from(topics);
+  }
+
+  private async isContentCompletelyUnique(
+    content: string, 
+    allTopics: string[], 
+    allKeywords: string[], 
+    databaseContent: DatabaseContent[]
+  ): Promise<{ unique: boolean; reason?: string }> {
     const contentLower = content.toLowerCase();
     const contentWords = contentLower.split(/\s+/).map(word => word.replace(/[^\w]/g, ''));
     
-    // Check for topic similarity (any recent topic keywords)
-    for (const topic of recentTopics) {
+    // 1. Check for topic similarity (any recent topic keywords)
+    for (const topic of allTopics) {
       if (contentLower.includes(topic)) {
         return { unique: false, reason: `Contains recent topic: "${topic}"` };
       }
     }
     
-    // Check for keyword overlap (more than 2 recent keywords)
-    const keywordMatches = recentKeywords.filter(keyword => 
+    // 2. Check for keyword overlap (more than 3 recent keywords)
+    const keywordMatches = allKeywords.filter(keyword => 
       contentWords.some(word => word.includes(keyword) || keyword.includes(word))
     );
     
-    if (keywordMatches.length > 2) {
-      return { unique: false, reason: `Too many keyword matches: ${keywordMatches.join(', ')}` };
+    if (keywordMatches.length > 3) {
+      return { unique: false, reason: `Too many keyword matches: ${keywordMatches.slice(0, 3).join(', ')}...` };
     }
     
-    // Check for specific content patterns that were repeated
+    // 3. Check for content similarity with database content (fuzzy matching)
+    for (const dbContent of databaseContent) {
+      const similarity = this.calculateContentSimilarity(content, dbContent.content);
+      if (similarity > 0.6) { // 60% similarity threshold
+        return { unique: false, reason: `Too similar to previous tweet (${Math.round(similarity * 100)}% match)` };
+      }
+    }
+    
+    // 4. Check for specific content patterns that were repeated
     const problematicPatterns = [
       'organic vegetables',
       'selenium-rich soil',
       'depleted soil',
       'analyzing.*cases',
       'antioxidants.*grown',
-      'organic farms'
+      'organic farms',
+      'caloric restriction.*lifespan',
+      'muscle mass.*aging',
+      'autophagy.*igf'
     ];
     
     for (const pattern of problematicPatterns) {
       const regex = new RegExp(pattern, 'i');
       if (regex.test(content)) {
-        return { unique: false, reason: `Contains problematic pattern: "${pattern}"` };
+        return { unique: false, reason: `Contains banned pattern: "${pattern}"` };
+      }
+    }
+    
+    // 5. Check content hash against database
+    const contentHash = this.generateContentHash(content);
+    for (const dbContent of databaseContent) {
+      if (dbContent.content_hash === contentHash) {
+        return { unique: false, reason: 'Identical content hash found in database' };
       }
     }
     
     return { unique: true };
   }
 
-  private buildUniquePrompt(template: ContentTemplate, recentTopics: string[], recentKeywords: string[], attempt: number): string {
-    const avoidList = [...recentTopics, ...recentKeywords].join(', ');
+  private calculateContentSimilarity(content1: string, content2: string): number {
+    // Simple similarity calculation based on shared words
+    const words1 = new Set(content1.toLowerCase().split(/\s+/).map(w => w.replace(/[^\w]/g, '')));
+    const words2 = new Set(content2.toLowerCase().split(/\s+/).map(w => w.replace(/[^\w]/g, '')));
+    
+    const intersection = new Set([...words1].filter(x => words2.has(x)));
+    const union = new Set([...words1, ...words2]);
+    
+    return intersection.size / union.size;
+  }
+
+  private generateContentHash(content: string): string {
+    // Generate a hash for content comparison
+    return crypto.createHash('md5').update(content.toLowerCase().replace(/\s+/g, ' ').trim()).digest('hex');
+  }
+
+  private buildUniquePrompt(template: ContentTemplate, allTopics: string[], allKeywords: string[], attempt: number): string {
+    // Create focused avoid lists for the prompt
+    const keyTopicsToAvoid = allTopics.slice(0, 10).join(', ');
+    const keyKeywordsToAvoid = allKeywords.slice(0, 15).join(', ');
     
     const basePrompt = `Generate a unique health/wellness tweet using this structure: "${template.structure}"
 
-CRITICAL: The content must be completely different from recent posts. 
+CRITICAL: This content must be COMPLETELY DIFFERENT from all previous posts.
 
-FORBIDDEN TOPICS/KEYWORDS: ${avoidList}
+🚫 FORBIDDEN TOPICS: ${keyTopicsToAvoid}
+🚫 FORBIDDEN KEYWORDS: ${keyKeywordsToAvoid}
+🚫 BANNED PATTERNS: organic vegetables, soil minerals, selenium, caloric restriction, muscle loss, autophagy, IGF-1
 
-MUST AVOID: organic vegetables, soil, selenium, antioxidants, farms, analyzing cases
+MUST BE UNIQUE:
+- Different scientific mechanism/pathway
+- Different health domain entirely  
+- Different numbers/percentages
+- Different biological system
+- Different research angle
+
+TOPIC FOR ATTEMPT #${attempt}: ${this.getRandomUnusedTopic(allTopics)}
 
 REQUIREMENTS:
-- Completely new topic not in forbidden list
-- Use different scientific approach/angle
-- Include specific numbers/percentages
-- Make it actionable and valuable
+- Include specific data/percentages
+- Make it immediately actionable
 - Under 280 characters
 - Professional but engaging tone
+- Zero similarity to previous content
 
-ATTEMPT #${attempt}: Focus on ${this.getRandomTopic()} 
-
-Generate ONE tweet only:`;
+Generate ONE completely unique tweet:`;
 
     return basePrompt;
   }
 
-  private getRandomTopic(): string {
-    const topics = [
-      'sleep optimization',
-      'exercise timing',
-      'nutrient absorption',
-      'stress management',
-      'cognitive enhancement',
-      'metabolic health',
-      'hydration science', 
-      'breathing techniques',
-      'hormonal balance',
-      'recovery methods',
-      'longevity research',
-      'immune system',
-      'gut health',
-      'mental clarity',
-      'energy levels'
+  private getRandomUnusedTopic(usedTopics: string[]): string {
+    const allPossibleTopics = [
+      'sleep optimization', 'exercise timing', 'nutrient absorption', 'stress management',
+      'cognitive enhancement', 'metabolic health', 'hydration science', 'breathing techniques',
+      'hormonal balance', 'recovery methods', 'longevity research', 'immune system',
+      'gut health', 'mental clarity', 'energy levels', 'blood sugar control',
+      'circulation improvement', 'memory enhancement', 'fat burning', 'muscle building',
+      'bone health', 'skin health', 'eye health', 'liver detox', 'kidney function',
+      'thyroid optimization', 'adrenal health', 'neurotransmitter balance',
+      'inflammation reduction', 'oxidative stress', 'cellular repair', 'DNA protection',
+      'mitochondrial function', 'protein synthesis', 'enzyme activation',
+      'micronutrient timing', 'meal frequency', 'fasting windows', 'circadian rhythm',
+      'light therapy', 'cold therapy', 'heat therapy', 'sound therapy',
+      'posture correction', 'movement patterns', 'flexibility training',
+      'balance improvement', 'coordination enhancement', 'reaction time'
     ];
     
-    return topics[Math.floor(Math.random() * topics.length)];
+    // Filter out used topics
+    const availableTopics = allPossibleTopics.filter(topic => 
+      !usedTopics.some(used => topic.toLowerCase().includes(used.toLowerCase()) || used.toLowerCase().includes(topic.toLowerCase()))
+    );
+    
+    if (availableTopics.length === 0) {
+      return 'advanced health optimization';
+    }
+    
+    return availableTopics[Math.floor(Math.random() * availableTopics.length)];
   }
 
   private buildPrompt(template: ContentTemplate, recentTopics: string[], recentOpenings: string[]): string {
