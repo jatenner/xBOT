@@ -5,12 +5,14 @@ import { RealEngagementAgent } from './realEngagementAgent';
 import { AggressiveFollowerGrowthAgent } from './aggressiveFollowerGrowthAgent';
 import { FollowerGrowthDiagnostic } from './followerGrowthDiagnostic';
 import { secureSupabaseClient } from '../utils/secureSupabaseClient';
+import { TwitterQuotaManager } from '../utils/twitterQuotaManager';
 
 export class Scheduler {
   private postTweetAgent: PostTweetAgent;
   private realEngagementAgent: RealEngagementAgent;
   private aggressiveGrowthAgent: AggressiveFollowerGrowthAgent;
   private growthDiagnostic: FollowerGrowthDiagnostic;
+  private quotaManager: TwitterQuotaManager;
   private dailyPostCount = 0;
   private targetDailyPosts = 17;
   private lastPostTime: Date | null = null;
@@ -31,6 +33,7 @@ export class Scheduler {
     this.realEngagementAgent = new RealEngagementAgent();
     this.aggressiveGrowthAgent = new AggressiveFollowerGrowthAgent();
     this.growthDiagnostic = new FollowerGrowthDiagnostic();
+    this.quotaManager = TwitterQuotaManager.getInstance();
     this.resetDailyCountIfNeeded();
   }
 
@@ -147,7 +150,17 @@ export class Scheduler {
     
     console.log(`🌞 ACTIVE HOURS: ${hour}:${currentMinutes.toString().padStart(2, '0')} EST is within 6 AM - 11 PM posting window`);
 
-    // Check if we've hit daily limit
+    // ✅ ENHANCED: Check Twitter quota before posting
+    const quotaCheck = await this.quotaManager.canPost();
+    if (!quotaCheck.canPost) {
+      const waitTime = quotaCheck.waitUntil ? Math.ceil((quotaCheck.waitUntil.getTime() - Date.now()) / (1000 * 60)) : 0;
+      console.log(`🚫 QUOTA EXHAUSTED: ${quotaCheck.reason}`);
+      console.log(`⏰ Quota resets in ${waitTime} minutes at ${quotaCheck.waitUntil?.toLocaleTimeString()}`);
+      console.log(`📊 Switching to engagement-only mode until quota resets`);
+      return;
+    }
+
+    // Check if we've hit daily limit (secondary check)
     if (this.dailyPostCount >= this.targetDailyPosts) {
       console.log(`✅ Daily target reached! Posted ${this.dailyPostCount}/${this.targetDailyPosts} times today`);
       return;
@@ -167,6 +180,9 @@ export class Scheduler {
         this.dailyPostCount++;
         this.lastPostTime = now;
         
+        // ✅ ENHANCED: Record the post in quota manager
+        await this.quotaManager.recordPost();
+        
         // Reset rate limit tracking on success
         this.consecutiveRateLimitErrors = 0;
         this.lastRateLimitTime = null;
@@ -180,7 +196,9 @@ export class Scheduler {
         // Check if this is a rate limit error
         const errorMessage = error instanceof Error ? error.message : String(error);
         if (errorMessage.includes('429')) {
-          this.handleRateLimitError();
+          // ✅ ENHANCED: Refresh quota on rate limit to get accurate data
+          await this.quotaManager.refreshQuota();
+          await this.handleRateLimitError();
         }
       }
     } else {
@@ -254,18 +272,33 @@ export class Scheduler {
     return Math.max(0, Math.round(timeToNextPost / (60 * 1000)));
   }
 
-  private handleRateLimitError(): void {
+  private async handleRateLimitError(): Promise<void> {
     this.consecutiveRateLimitErrors++;
     this.lastRateLimitTime = new Date();
     
-    const backoffMinutes = Math.min(30, this.consecutiveRateLimitErrors * 5); // 5, 10, 15, 20, 25, 30 minutes max
+    // ✅ ENHANCED: Get accurate quota information
+    const quota = await this.quotaManager.getCurrentQuota();
+    const timeUntilReset = await this.quotaManager.getTimeUntilReset();
+    const resetHours = Math.ceil(timeUntilReset / (1000 * 60 * 60));
     
-    console.log(`🚫 Rate limit detected! Backing off for ${backoffMinutes} minutes (error #${this.consecutiveRateLimitErrors})`);
-    console.log(`📊 This preserves API quota for engagement system`);
-    
-    if (this.consecutiveRateLimitErrors >= 5) {
-      console.log(`⚠️ Multiple rate limits detected. Daily posting may be exhausted.`);
-      console.log(`🎯 Focus will shift to engagement-only mode until tomorrow`);
+    if (quota.isExhausted) {
+      console.log(`🚫 DAILY QUOTA EXHAUSTED: Used ${quota.dailyUsed}/${quota.dailyLimit} tweets`);
+      console.log(`⏰ Quota resets in ~${resetHours} hours at ${quota.resetTime.toLocaleTimeString()}`);
+      console.log(`📊 Bot will focus on engagement until quota resets`);
+      
+      // Set a longer backoff for quota exhaustion
+      this.consecutiveRateLimitErrors = 10; // Force max backoff
+    } else {
+      const backoffMinutes = Math.min(30, this.consecutiveRateLimitErrors * 5); // 5, 10, 15, 20, 25, 30 minutes max
+      
+      console.log(`🚫 Rate limit detected! Backing off for ${backoffMinutes} minutes (error #${this.consecutiveRateLimitErrors})`);
+      console.log(`📊 This preserves API quota for engagement system`);
+      console.log(`📊 Quota status: ${quota.dailyUsed}/${quota.dailyLimit} used, ${quota.dailyRemaining} remaining`);
+      
+      if (this.consecutiveRateLimitErrors >= 5) {
+        console.log(`⚠️ Multiple rate limits detected. Daily posting may be exhausted.`);
+        console.log(`🎯 Focus will shift to engagement-only mode until tomorrow`);
+      }
     }
   }
 

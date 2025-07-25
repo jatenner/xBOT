@@ -1,4 +1,4 @@
-import { supabaseClient } from './supabaseClient';
+import { secureSupabaseClient } from './secureSupabaseClient';
 import { StreamlinedPostAgent } from '../agents/streamlinedPostAgent'; // Changed from PostTweetAgent
 import { contentCache } from './contentCache';
 import { IntelligentSchedulingAgent } from '../agents/intelligentSchedulingAgent';

@@ -2,12 +2,22 @@
 import { scheduler } from './agents/scheduler';
 import { minimalSupabaseClient } from './utils/minimalSupabaseClient';
 import { LIVE_MODE } from './config/liveMode';
+import ProcessLock from './utils/processLock';
 
 async function main() {
   console.log('🔥 Starting VIRAL HEALTH Twitter Bot...');
+  
+  // CRITICAL: Acquire process lock to prevent multiple instances
+  const lockResult = await ProcessLock.acquire();
+  if (!lockResult.success) {
+    console.error('🚫 Cannot start bot:', lockResult.error);
+    console.log('🔍 Make sure no other bot instances are running');
+    process.exit(1);
+  }
+  
   console.log(`🔧 Live Mode: ${LIVE_MODE ? 'ENABLED' : 'DISABLED'}`);
   console.log('🎯 Content: Health news, supplements, fitness, biohacking, food tips');
-  console.log('📊 Target: 17 viral health posts per day');
+  console.log('📊 Target: 17 viral health posts per day (FREE TIER COMPLIANT)');
   
   try {
     // Test database connection

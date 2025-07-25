@@ -18,6 +18,26 @@ export class PostTweetAgent {
     try {
       console.log('🐦 PostTweetAgent starting...');
       
+      // PHASE 0: Check daily limits and process lock
+      const { RobustTweetStorage } = await import('../utils/robustTweetStorage');
+      const ProcessLock = (await import('../utils/processLock')).default;
+      
+      // Check if another instance is running
+      const lockStatus = ProcessLock.checkStatus();
+      if (lockStatus.lockExists && !lockStatus.hasLock) {
+        console.log('🚫 Another bot instance is already running. Exiting to prevent conflicts.');
+        return;
+      }
+      
+      // Check daily tweet limit
+      const status = await RobustTweetStorage.getStatus();
+      if (status.limitReached) {
+        console.log(`🚫 Daily tweet limit reached! (${status.tweetsToday}/17) No more posts until tomorrow.`);
+        return;
+      }
+      
+      console.log(`📊 Daily Status: ${status.tweetsToday}/17 tweets posted, ${status.remaining} remaining`);
+      
       let finalContent = '';
       let contentType = '';
       let viralScore = 0;
@@ -197,8 +217,11 @@ export class PostTweetAgent {
 
   private async storeTweetWithAIMetrics(tweetId: string, content: string, contentType: string, viralScore: number, followerGrowthPotential: number): Promise<void> {
     try {
-      // Use secure client for tweet storage
-      const storeResult = await secureSupabaseClient.storeTweet({
+      // Import robust storage system
+      const { RobustTweetStorage } = await import('../utils/robustTweetStorage');
+      
+      // Use robust storage with retry logic and daily limit enforcement
+      const storeResult = await RobustTweetStorage.storeTweet({
         tweet_id: tweetId,
         content: content,
         content_type: contentType,
@@ -209,9 +232,14 @@ export class PostTweetAgent {
       });
 
       if (!storeResult.success) {
-        console.error('⚠️ Database storage failed:', storeResult.error);
+        console.error('⚠️ Robust database storage failed:', storeResult.error);
+        
+        if (storeResult.limit_reached) {
+          console.log('🚫 Daily tweet limit reached! Bot will stop posting until tomorrow.');
+          // Could add logic here to gracefully stop the bot
+        }
       } else {
-        console.log('✅ Tweet stored with AI metrics successfully');
+        console.log(`✅ Tweet stored with robust system! Count: ${storeResult.tweet_count_today}/17`);
       }
 
       // Also update content_uniqueness table
