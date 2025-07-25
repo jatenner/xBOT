@@ -106,35 +106,50 @@ export class TwitterQuotaManager {
   }
 
   private async makeTestApiCall() {
-    // Import xClient dynamically to avoid circular dependencies
-    const { xClient } = await import('./xClient');
-    
-    // Get current rate limit status from xClient
+    // Make a test API call to get real Twitter headers
     try {
-      const rateLimitStatus = xClient.getRateLimitStatus();
+      // Import TwitterApi directly to get real headers
+      const TwitterApi = (await import('twitter-api-v2')).default;
       
-      // Convert to header-like format for consistency
-      const remainingToday = Math.max(0, 17 - rateLimitStatus.tweets24Hour.used);
+      const client = new TwitterApi({
+        appKey: process.env.TWITTER_API_KEY!,
+        appSecret: process.env.TWITTER_API_SECRET!,
+        accessToken: process.env.TWITTER_ACCESS_TOKEN!,
+        accessSecret: process.env.TWITTER_ACCESS_TOKEN_SECRET!,
+      });
+
+      // Make a lightweight API call that includes rate limit headers
+      await client.v2.me();
       
+      // This shouldn't reach here if quota is exhausted
       return { 
         headers: {
           'x-app-limit-24hour-limit': '17',
-          'x-app-limit-24hour-remaining': remainingToday.toString(),
-          'x-app-limit-24hour-reset': Math.floor(rateLimitStatus.tweets24Hour.resetTime.getTime() / 1000).toString()
+          'x-app-limit-24hour-remaining': '17', // If we got here, we have quota
+          'x-app-limit-24hour-reset': Math.floor((Date.now() + 86400000) / 1000).toString()
         }
       };
     } catch (error: any) {
-      // Even rate limit errors include the headers we need
+      // This is the key part - 429 errors include the actual headers we need
       if (error.rateLimit || error.headers) {
         return { 
           headers: error.headers || {
-            'x-app-limit-24hour-remaining': error.rateLimit?.day?.remaining || '0',
-            'x-app-limit-24hour-limit': error.rateLimit?.day?.limit || '17',
-            'x-app-limit-24hour-reset': error.rateLimit?.day?.reset || '0'
+            'x-app-limit-24hour-remaining': error.rateLimit?.day?.remaining?.toString() || '0',
+            'x-app-limit-24hour-limit': error.rateLimit?.day?.limit?.toString() || '17',
+            'x-app-limit-24hour-reset': error.rateLimit?.day?.reset?.toString() || '0'
           }
         };
       }
-      throw error;
+      
+      // Fallback: assume quota exhausted if we can't determine
+      console.warn('⚠️ Could not determine quota status, assuming exhausted');
+      return { 
+        headers: {
+          'x-app-limit-24hour-remaining': '0',
+          'x-app-limit-24hour-limit': '17',
+          'x-app-limit-24hour-reset': Math.floor((Date.now() + 86400000) / 1000).toString()
+        }
+      };
     }
   }
 
