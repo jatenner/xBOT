@@ -109,13 +109,30 @@ export class TwitterQuotaManager {
     // Import xClient dynamically to avoid circular dependencies
     const { xClient } = await import('./xClient');
     
-    // Make a lightweight call that includes rate limit headers
+    // Get current rate limit status from xClient
     try {
-      return await xClient.v2.me();
+      const rateLimitStatus = xClient.getRateLimitStatus();
+      
+      // Convert to header-like format for consistency
+      const remainingToday = Math.max(0, 17 - rateLimitStatus.tweets24Hour.used);
+      
+      return { 
+        headers: {
+          'x-app-limit-24hour-limit': '17',
+          'x-app-limit-24hour-remaining': remainingToday.toString(),
+          'x-app-limit-24hour-reset': Math.floor(rateLimitStatus.tweets24Hour.resetTime.getTime() / 1000).toString()
+        }
+      };
     } catch (error: any) {
       // Even rate limit errors include the headers we need
-      if (error.headers) {
-        return { headers: error.headers };
+      if (error.rateLimit || error.headers) {
+        return { 
+          headers: error.headers || {
+            'x-app-limit-24hour-remaining': error.rateLimit?.day?.remaining || '0',
+            'x-app-limit-24hour-limit': error.rateLimit?.day?.limit || '17',
+            'x-app-limit-24hour-reset': error.rateLimit?.day?.reset || '0'
+          }
+        };
       }
       throw error;
     }
