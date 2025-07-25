@@ -24,7 +24,15 @@ class SecureSupabaseClientManager {
       const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY; // Use service role key
       
       if (!supabaseUrl || !supabaseServiceKey) {
+        console.error('❌ Missing environment variables:');
+        console.error('SUPABASE_URL:', supabaseUrl ? '✅ Set' : '❌ Missing');
+        console.error('SUPABASE_SERVICE_ROLE_KEY:', supabaseServiceKey ? '✅ Set' : '❌ Missing');
         throw new Error('Missing Supabase credentials: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+      }
+
+      // Validate service role key format
+      if (!supabaseServiceKey.startsWith('eyJ') && !supabaseServiceKey.startsWith('sbp_')) {
+        throw new Error('Invalid service role key format. Should start with "eyJ" or "sbp_"');
       }
 
       // Create client with service role key for full access
@@ -32,6 +40,9 @@ class SecureSupabaseClientManager {
         auth: {
           autoRefreshToken: false,
           persistSession: false
+        },
+        db: {
+          schema: 'public'
         }
       });
 
@@ -196,12 +207,13 @@ class SecureSupabaseClientManager {
         .insert({
           tweet_id: tweetData.tweet_id,
           content: tweetData.content,
+          tweet_type: tweetData.content_type || 'standard',
           content_type: tweetData.content_type || 'standard',
           viral_score: tweetData.viral_score || 5,
           ai_growth_prediction: tweetData.ai_growth_prediction || 5,
           ai_optimized: tweetData.ai_optimized || false,
-          generation_method: tweetData.generation_method || 'standard',
-          created_at: new Date().toISOString()
+          generation_method: tweetData.generation_method || 'standard'
+          // Don't include created_at - let database handle it
         });
 
       if (error) {

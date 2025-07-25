@@ -4,7 +4,7 @@ import { PostTweetAgent } from './postTweet';
 import { RealEngagementAgent } from './realEngagementAgent';
 import { AggressiveFollowerGrowthAgent } from './aggressiveFollowerGrowthAgent';
 import { FollowerGrowthDiagnostic } from './followerGrowthDiagnostic';
-import { supabaseClient } from '../utils/supabaseClient';
+import { secureSupabaseClient } from '../utils/secureSupabaseClient';
 
 export class Scheduler {
   private postTweetAgent: PostTweetAgent;
@@ -307,7 +307,7 @@ export class Scheduler {
       
       console.log(`🔍 Checking posts since today's start (EST): ${todayStartUTC.toISOString()}`);
 
-      const { data, error } = await supabaseClient.supabase
+      const { data, error } = await secureSupabaseClient.supabase
         ?.from('tweets')
         .select('tweet_id, created_at, content')
         .gte('created_at', todayStartUTC.toISOString())

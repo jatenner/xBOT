@@ -18,7 +18,7 @@ import { qualityEngine } from '../utils/contentQualityEngine';
 import { smartContentEngine } from '../utils/smartContentEngine';
 import { viralHealthThemeAgent } from './viralHealthThemeAgent';
 import { audienceEngagementEngine } from '../utils/audienceEngagementEngine';
-import { supabaseClient } from '../utils/supabaseClient';
+import { secureSupabaseClient } from '../utils/secureSupabaseClient';
 import { xClient } from '../utils/xClient';
 import { viralFollowerGrowthAgent } from './viralFollowerGrowthAgent';
 import { aggressiveEngagementAgent } from './aggressiveEngagementAgent';
@@ -250,9 +250,9 @@ export class StreamlinedPostAgent {
    */
   private async storeTweetInDatabase(tweetId: string, content: string): Promise<void> {
     try {
-      if (!supabaseClient.supabase) return;
+      if (!secureSupabaseClient.supabase) return;
 
-      await supabaseClient.supabase
+      await secureSupabaseClient.supabase
         .from('tweets')
         .insert({
           id: tweetId,
@@ -297,12 +297,12 @@ export class StreamlinedPostAgent {
    */
   private async getDailyPostCount(): Promise<number> {
     try {
-      if (!supabaseClient.supabase) return 0;
+      if (!secureSupabaseClient.supabase) return 0;
 
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      const { count } = await supabaseClient.supabase
+      const { count } = await secureSupabaseClient.supabase
         .from('tweets')
         .select('*', { count: 'exact', head: true })
         .gte('created_at', today.toISOString());
@@ -320,9 +320,9 @@ export class StreamlinedPostAgent {
    */
   private async getLastPostTime(): Promise<Date | null> {
     try {
-      if (!supabaseClient.supabase) return null;
+      if (!secureSupabaseClient.supabase) return null;
 
-      const { data } = await supabaseClient.supabase
+      const { data } = await secureSupabaseClient.supabase
         .from('tweets')
         .select('created_at')
         .order('created_at', { ascending: false })
@@ -345,10 +345,10 @@ export class StreamlinedPostAgent {
    */
   async getPerformanceMetrics(): Promise<any> {
     try {
-      if (!supabaseClient.supabase) return null;
+      if (!secureSupabaseClient.supabase) return null;
 
       // Get recent viral content performance
-      const { data: recentPosts } = await supabaseClient.supabase
+      const { data: recentPosts } = await secureSupabaseClient.supabase
         .from('tweets')
         .select('content, likes, retweets, replies, content_type')
         .eq('theme_page_content', true)

@@ -3,7 +3,7 @@ import { openaiClient } from '../utils/openaiClient';
 import { xClient } from '../utils/xClient';
 import { DiverseContentAgent } from './diverseContentAgent';
 import { ViralContentAnalyzer } from './viralContentAnalyzer';
-import { supabaseClient } from '../utils/supabaseClient';
+import { secureSupabaseClient } from '../utils/secureSupabaseClient';
 
 export class PostTweetAgent {
   private diverseContentAgent: DiverseContentAgent;
@@ -197,44 +197,34 @@ export class PostTweetAgent {
 
   private async storeTweetWithAIMetrics(tweetId: string, content: string, contentType: string, viralScore: number, followerGrowthPotential: number): Promise<void> {
     try {
-      const { error } = await supabaseClient.supabase
-        ?.from('tweets')
-        .insert({
-          tweet_id: tweetId,
-          content: content,
-          content_type: contentType,
-          viral_score: viralScore,
-          ai_growth_prediction: followerGrowthPotential,
-          ai_optimized: true,
-          generation_method: 'ai_enhanced',
-          created_at: new Date().toISOString()
-        }) || { error: null };
+      // Use secure client for tweet storage
+      const storeResult = await secureSupabaseClient.storeTweet({
+        tweet_id: tweetId,
+        content: content,
+        content_type: contentType,
+        viral_score: viralScore,
+        ai_growth_prediction: followerGrowthPotential,
+        ai_optimized: true,
+        generation_method: 'ai_enhanced'
+      });
 
-      if (error) {
-        console.error('⚠️ Database storage failed:', error);
+      if (!storeResult.success) {
+        console.error('⚠️ Database storage failed:', storeResult.error);
       } else {
         console.log('✅ Tweet stored with AI metrics successfully');
       }
 
-      // Also update content_uniqueness table with tweet_ids as bigint array
+      // Also update content_uniqueness table
       const contentHash = this.generateContentHash(content);
-      const { error: uniquenessError } = await supabaseClient.supabase
-        ?.from('content_uniqueness')
-        .upsert({
-          content_hash: contentHash,
-          original_content: content,
-          content_topic: contentType,
-          content_keywords: this.extractKeywords(content),
-          tweet_ids: [parseInt(tweetId)], // Convert to bigint array
-          usage_count: 1,
-          first_used_at: new Date().toISOString()
-        }, {
-          onConflict: 'content_hash',
-          ignoreDuplicates: false
-        }) || { error: null };
+      const uniquenessResult = await secureSupabaseClient.storeContentUniqueness({
+        content_hash: contentHash,
+        original_content: content,
+        content_topic: contentType,
+        content_keywords: this.extractKeywords(content)
+      });
 
-      if (uniquenessError) {
-        console.warn('⚠️ Content uniqueness update failed:', uniquenessError);
+      if (!uniquenessResult.success) {
+        console.warn('⚠️ Content uniqueness update failed:', uniquenessResult.error);
       }
 
     } catch (error) {
