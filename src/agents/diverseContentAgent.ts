@@ -1,5 +1,5 @@
 import { openaiClient } from '../utils/openaiClient';
-import { supabaseClient } from '../utils/supabaseClient';
+import { secureSupabaseClient } from '../utils/secureSupabaseClient';
 import * as crypto from 'crypto';
 
 interface ContentTemplate {
@@ -233,37 +233,28 @@ export class DiverseContentAgent {
       
       console.log(`🔍 Fetching database content since: ${sevenDaysAgo.toISOString()}`);
       
-      const { data, error } = await supabaseClient.supabase
-        ?.from('tweets')
-        .select('content, created_at, tweet_type, content_type, tweet_id')
-        .gte('created_at', sevenDaysAgo.toISOString())
-        .order('created_at', { ascending: false })
-        .limit(50) || { data: null, error: null };
-
-      if (error) {
-        console.warn('⚠️ Could not fetch recent database content:', error);
-        return [];
-      }
-
-      if (!data || data.length === 0) {
+      // Use secure database function for better performance and security
+      const recentContent = await secureSupabaseClient.getRecentContentForUniqueness(7);
+      
+      if (recentContent.length === 0) {
         console.log('📭 No recent content found in database');
         return [];
       }
 
-      console.log(`📊 Found ${data.length} recent tweets in database for uniqueness checking`);
+      console.log(`📊 Found ${recentContent.length} recent tweets in database for uniqueness checking`);
       
       // Log some examples for verification
       console.log('📋 Sample recent tweets:');
-      data.slice(0, 3).forEach((tweet, i) => {
+      recentContent.slice(0, 3).forEach((tweet, i) => {
         console.log(`  ${i + 1}. ${tweet.created_at} (ID: ${tweet.tweet_id})`);
         console.log(`     "${tweet.content.substring(0, 80)}..."`);
       });
       
-      return data.map(item => ({
+      return recentContent.map(item => ({
         content: item.content || '',
-        content_hash: this.generateContentHash(item.content || ''),
+        content_hash: item.content_hash || this.generateContentHash(item.content || ''),
         created_at: item.created_at || '',
-        tweet_type: item.tweet_type || 'unknown'
+        tweet_type: 'standard'
       }));
 
     } catch (error) {
@@ -572,15 +563,12 @@ Generate ONE unique ${template.type} tweet:`;
 
   private async logContentGeneration(content: string, type: string): Promise<void> {
     try {
-      if (!supabaseClient.supabase) return;
-
-      await supabaseClient.supabase
-        .from('content_generation_log')
-        .insert({
-          content_type: type,
-          content_preview: content.substring(0, 100),
-          generated_at: new Date().toISOString()
-        });
+      // Use secure client for logging
+      await secureSupabaseClient.storeContentUniqueness({
+        content_hash: this.generateContentHash(content),
+        original_content: content,
+        content_topic: type
+      });
 
     } catch (error) {
       // Fail silently - logging shouldn't break content generation
