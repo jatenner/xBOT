@@ -6,6 +6,7 @@ import { AggressiveFollowerGrowthAgent } from './aggressiveFollowerGrowthAgent';
 import { FollowerGrowthDiagnostic } from './followerGrowthDiagnostic';
 import { secureSupabaseClient } from '../utils/secureSupabaseClient';
 import { TwitterQuotaManager } from '../utils/twitterQuotaManager';
+import { intelligentQuotaScheduler } from '../utils/intelligentQuotaScheduler';
 
 export class Scheduler {
   private postTweetAgent: PostTweetAgent;
@@ -72,6 +73,15 @@ export class Scheduler {
         await this.checkAndPost();
       });
 
+      // 🔔 QUOTA RESET MONITORING: Check every 5 minutes for quota resets
+      const quotaMonitorJob = cron.schedule('*/5 * * * *', async () => {
+        const quotaCheck = await intelligentQuotaScheduler.checkQuotaReset();
+        if (quotaCheck.hasReset) {
+          console.log('🚀 QUOTA RESET DETECTED! Triggering immediate posting check...');
+          await this.checkAndPost();
+        }
+      });
+
       // Schedule engagement every 30 minutes
       this.engagementJob = cron.schedule('*/30 * * * *', async () => {
         console.log('🤝 Running real engagement cycle...');
@@ -124,14 +134,35 @@ export class Scheduler {
     // Reset counter if new day
     this.resetDailyCountIfNeeded();
     
-    // Check rate limit backoff
-    if (this.isInRateLimitBackoff()) {
-      const backoffMinutes = this.getRateLimitBackoffMinutes();
-      console.log(`⏸️ Rate limit backoff active. Waiting ${backoffMinutes} more minutes before retry.`);
-      return;
+    // 🧠 INTELLIGENT QUOTA MANAGEMENT: Check if quota has reset
+    const quotaResetCheck = await intelligentQuotaScheduler.checkQuotaReset();
+    if (quotaResetCheck.hasReset) {
+      console.log('🚀 QUOTA RESET! Immediately posting first tweet of new cycle...');
+      this.consecutiveRateLimitErrors = 0;
+      this.lastRateLimitTime = null;
+      // Continue to posting logic below
     }
     
-    // 🌐 TIMEZONE FIX: Convert to Eastern Time (user is in New York)
+    // Check rate limit backoff (but allow posting if quota reset)
+    if (this.isInRateLimitBackoff() && !quotaResetCheck.hasReset) {
+      const backoffMinutes = this.getRateLimitBackoffMinutes();
+      console.log(`⏸️ Rate limit backoff active. Waiting ${backoffMinutes} more minutes before retry.`);
+      
+      // But check if quota reset during backoff
+      if (backoffMinutes > 60) {
+        const checkReset = await intelligentQuotaScheduler.checkQuotaReset();
+        if (checkReset.hasReset) {
+          console.log('🎉 Quota reset detected during backoff! Resuming posting...');
+        } else {
+          return;
+        }
+      } else {
+        return;
+      }
+    }
+    
+    // 🧠 GET INTELLIGENT SCHEDULE
+    const schedule = await intelligentQuotaScheduler.getOptimalSchedule();
     const now = new Date();
     const estTime = new Date(now.toLocaleString("en-US", {timeZone: "America/New_York"}));
     const hour = estTime.getHours();
@@ -140,38 +171,50 @@ export class Scheduler {
     console.log(`🕐 Server time: ${now.getHours()}:${now.getMinutes().toString().padStart(2, '0')} UTC`);
     console.log(`🗽 EST time: ${hour}:${currentMinutes.toString().padStart(2, '0')} EST`);
     
+    // 📊 QUOTA STATUS REPORT
+    const utilizationReport = await intelligentQuotaScheduler.getQuotaUtilizationReport();
+    console.log(`📊 QUOTA STATUS: ${utilizationReport.used}/${17} used (${(utilizationReport.utilizationRate * 100).toFixed(0)}%)`);
+    console.log(`🎯 STRATEGY: ${schedule.strategy.toUpperCase()} - ${utilizationReport.recommendation}`);
+    console.log(`⏰ NEXT OPTIMAL: ${schedule.nextPostTime.toLocaleTimeString()} EST (${schedule.optimalInterval}min interval)`);
+    
     // Active posting hours: 6 AM to 11 PM EST (17 hours)
     const isActiveHours = hour >= 6 && hour <= 23;
     
     if (!isActiveHours) {
       console.log(`😴 Outside active hours (6 AM - 11 PM EST). Current EST: ${hour}:${currentMinutes.toString().padStart(2, '0')}`);
+      
+      // If we have remaining quota and it's close to end of day, warn
+      if (schedule.postsRemaining > 3) {
+        console.log(`⚠️ WARNING: ${schedule.postsRemaining} tweets unused! Consider extending active hours.`);
+      }
       return;
     }
     
     console.log(`🌞 ACTIVE HOURS: ${hour}:${currentMinutes.toString().padStart(2, '0')} EST is within 6 AM - 11 PM posting window`);
 
-    // ✅ ENHANCED: Check Twitter quota before posting
-    const quotaCheck = await this.quotaManager.canPost();
-    if (!quotaCheck.canPost) {
-      const waitTime = quotaCheck.waitUntil ? Math.ceil((quotaCheck.waitUntil.getTime() - Date.now()) / (1000 * 60)) : 0;
-      console.log(`🚫 QUOTA EXHAUSTED: ${quotaCheck.reason}`);
-      console.log(`⏰ Quota resets in ${waitTime} minutes at ${quotaCheck.waitUntil?.toLocaleTimeString()}`);
+    // ✅ ENHANCED: Check quota exhaustion with intelligent handling
+    if (schedule.postsRemaining === 0) {
+      const hoursUntilReset = Math.ceil((schedule.quotaResetTime.getTime() - Date.now()) / (1000 * 60 * 60));
+      console.log(`🚫 QUOTA EXHAUSTED: All 17 daily tweets used!`);
+      console.log(`⏰ Quota resets in ~${hoursUntilReset} hours at ${schedule.quotaResetTime.toLocaleTimeString()}`);
       console.log(`📊 Switching to engagement-only mode until quota resets`);
+      console.log(`🎯 Will automatically resume posting when quota resets`);
+      
+      // Set a check for closer to reset time
+      const minutesUntilReset = Math.ceil((schedule.quotaResetTime.getTime() - Date.now()) / (1000 * 60));
+      if (minutesUntilReset <= 30) {
+        console.log(`🔔 Quota resets in ${minutesUntilReset} minutes - preparing for immediate resumption!`);
+      }
+      
       return;
     }
 
-    // Check if we've hit daily limit (secondary check)
-    if (this.dailyPostCount >= this.targetDailyPosts) {
-      console.log(`✅ Daily target reached! Posted ${this.dailyPostCount}/${this.targetDailyPosts} times today`);
-      return;
-    }
-
-    // Calculate optimal timing (using EST time)
-    const shouldPost = this.shouldPostNow(estTime);
+    // 🧠 INTELLIGENT POSTING DECISION
+    const shouldPost = schedule.shouldPostNow;
     
     if (shouldPost) {
-      console.log(`🎯 POSTING NOW (${this.dailyPostCount + 1}/${this.targetDailyPosts})`);
-      console.log('🔥 Generating viral health content - news, supplements, fitness, biohacking, food tips...');
+      console.log(`🎯 POSTING NOW (${17 - schedule.postsRemaining + 1}/17) - Strategy: ${schedule.strategy}`);
+      console.log('🔥 Generating viral health content - maximizing our 17 daily tweets...');
       
       try {
         await this.postTweetAgent.run();
@@ -187,8 +230,17 @@ export class Scheduler {
         this.consecutiveRateLimitErrors = 0;
         this.lastRateLimitTime = null;
         
-        console.log(`📊 Daily progress: ${this.dailyPostCount}/${this.targetDailyPosts} posts`);
-        console.log(`⏰ Next post in ~${this.getMinutesToNextPost()} minutes`);
+        // 📊 POST-SUCCESS ANALYSIS
+        const newUtilization = await intelligentQuotaScheduler.getQuotaUtilizationReport();
+        console.log(`📊 Updated quota: ${newUtilization.used}/17 used, ${newUtilization.remaining} remaining`);
+        console.log(`⏰ Next optimal post: ${schedule.nextPostTime.toLocaleTimeString()} EST`);
+        
+        // 🎯 STRATEGIC MESSAGING
+        if (newUtilization.remaining === 0) {
+          console.log(`🎉 ALL 17 DAILY TWEETS USED! Perfect quota utilization achieved!`);
+        } else if (newUtilization.remaining <= 3 && schedule.hoursRemaining <= 3) {
+          console.log(`🔥 FINAL PUSH: ${newUtilization.remaining} tweets remaining with ${schedule.hoursRemaining.toFixed(1)} active hours left!`);
+        }
         
       } catch (error) {
         console.log('❌ Post failed:', error);
@@ -202,8 +254,10 @@ export class Scheduler {
         }
       }
     } else {
-      const nextPostTime = this.getMinutesToNextPost();
-      console.log(`⏰ Waiting for optimal timing. Next post in ~${nextPostTime} minutes (${this.dailyPostCount}/${this.targetDailyPosts} posted today)`);
+      const timeToNext = Math.ceil((schedule.nextPostTime.getTime() - Date.now()) / (1000 * 60));
+      console.log(`⏰ INTELLIGENT TIMING: Next post in ${timeToNext} minutes at ${schedule.nextPostTime.toLocaleTimeString()}`);
+      console.log(`📊 Current: ${utilizationReport.used}/17 used, ${schedule.postsRemaining} remaining, ${schedule.hoursRemaining.toFixed(1)}h left`);
+      console.log(`🎯 Strategy: ${schedule.strategy} - optimal distribution for maximum daily utilization`);
     }
   }
 
