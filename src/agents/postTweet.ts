@@ -252,24 +252,38 @@ export class PostTweetAgent {
 
     } catch (error) {
       console.error('❌ ULTIMATE STORAGE CRITICAL ERROR:', error);
-      // Fallback: try simple storage
+      
+      // EMERGENCY SAVING: Absolutely bulletproof fallback
+      console.log('🚨 Activating EMERGENCY DATABASE SAVING...');
+      
       try {
-        console.log('🔄 Attempting fallback storage...');
-        const { secureSupabaseClient } = await import('../utils/secureSupabaseClient');
-        await secureSupabaseClient.supabase?.from('tweets').insert({
+        const { EmergencyDatabaseSaving } = await import('../utils/emergencyDatabaseSaving');
+        
+        const emergencyResult = await EmergencyDatabaseSaving.emergencySave({
           tweet_id: tweetId,
           content: content,
           content_type: contentType,
           viral_score: viralScore,
-          ai_growth_prediction: followerGrowthPotential,
-          ai_optimized: true,
-          generation_method: 'ai_enhanced',
           success: true,
-          created_at: new Date().toISOString()
+          posted_to_twitter: true,
+          emergency_save: true
         });
-        console.log('✅ Fallback storage succeeded');
-      } catch (fallbackError) {
-        console.error('❌ Both Ultimate and fallback storage failed:', fallbackError);
+        
+        if (emergencyResult.success) {
+          console.log(`🚨 EMERGENCY SAVE SUCCESS via ${emergencyResult.method}!`);
+          if (emergencyResult.database_id) {
+            console.log(`💾 Database ID: ${emergencyResult.database_id}`);
+          }
+        } else {
+          console.error('🔥 EMERGENCY SAVE FAILED:', emergencyResult.error);
+          console.error('💥 CRITICAL: Tweet posted to Twitter but NO database record!');
+          console.error(`📝 Lost tweet: ${tweetId} - "${content.substring(0, 100)}..."`);
+        }
+        
+      } catch (emergencyError) {
+        console.error('💥 EMERGENCY SYSTEM CRASHED:', emergencyError);
+        console.error('🚨 TOTAL SYSTEM FAILURE: Tweet posted but not saved anywhere!');
+        console.error(`📝 Lost tweet: ${tweetId} - "${content.substring(0, 100)}..."`);
       }
     }
   }
