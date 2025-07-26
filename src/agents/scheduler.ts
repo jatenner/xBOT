@@ -211,8 +211,21 @@ export class Scheduler {
       return;
     }
 
-    // 🧠 ULTIMATE POSTING DECISION: Use database truth + intelligent timing
-    const shouldPost = schedule.shouldPostNow && ultimateStatus.can_post;
+    // 🤖 HUMAN-LIKE POSTING CHECK: Prevent burst posting and ensure natural behavior
+    const { HumanLikePostingManager } = await import('../utils/humanLikePostingManager');
+    const humanCheck = await HumanLikePostingManager.canPostNow();
+    
+    if (!humanCheck.can_post) {
+      console.log(`🤖 HUMAN-LIKE TIMING: ${humanCheck.reason}`);
+      if (humanCheck.wait_minutes) {
+        console.log(`⏰ Next posting window: ${humanCheck.next_optimal_time?.toLocaleTimeString()} (${humanCheck.wait_minutes} min)`);
+      }
+      console.log(`🎯 Maintaining natural human-like posting patterns`);
+      return;
+    }
+
+    // 🧠 ULTIMATE POSTING DECISION: Database truth + intelligent timing + human behavior
+    const shouldPost = schedule.shouldPostNow && ultimateStatus.can_post && humanCheck.can_post;
     
     if (shouldPost) {
       console.log(`🎯 POSTING NOW (${ultimateStatus.daily_used + 1}/17) - Strategy: ${schedule.strategy}`);
