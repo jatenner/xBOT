@@ -15,16 +15,22 @@ import * as cron from 'node-cron';
 import { autonomousPostingEngine } from './autonomousPostingEngine';
 import { RealEngagementAgent } from '../agents/realEngagementAgent';
 import { FollowerGrowthDiagnostic } from '../agents/followerGrowthDiagnostic';
+import { TweetAnalyticsCollector } from '../agents/tweetAnalyticsCollector';
+import { RealTimeEngagementTracker } from '../agents/realTimeEngagementTracker';
 
 export class UnifiedScheduler {
   private static instance: UnifiedScheduler;
   private engagementAgent: RealEngagementAgent;
   private growthDiagnostic: FollowerGrowthDiagnostic;
+  private analyticsCollector: TweetAnalyticsCollector;
+  private engagementTracker: RealTimeEngagementTracker;
   
   // Cron jobs
   private postingJob: cron.ScheduledTask | null = null;
   private engagementJob: cron.ScheduledTask | null = null;
   private diagnosticJob: cron.ScheduledTask | null = null;
+  private analyticsJob: cron.ScheduledTask | null = null;
+  private metricsJob: cron.ScheduledTask | null = null;
   
   // Status tracking
   private isRunning = false;
@@ -35,6 +41,8 @@ export class UnifiedScheduler {
   private constructor() {
     this.engagementAgent = new RealEngagementAgent();
     this.growthDiagnostic = new FollowerGrowthDiagnostic();
+    this.analyticsCollector = new TweetAnalyticsCollector();
+    this.engagementTracker = new RealTimeEngagementTracker();
   }
 
   static getInstance(): UnifiedScheduler {
@@ -84,12 +92,24 @@ export class UnifiedScheduler {
         await this.runGrowthDiagnostic();
       });
       
+      // Schedule analytics collection every 2 hours
+      this.analyticsJob = cron.schedule('0 */2 * * *', async () => {
+        await this.runAnalyticsCollection();
+      });
+      
+      // Schedule metrics updating every hour
+      this.metricsJob = cron.schedule('0 * * * *', async () => {
+        await this.runMetricsUpdate();
+      });
+      
       this.isRunning = true;
       
       console.log('✅ UNIFIED AUTONOMOUS SCHEDULER ACTIVE');
       console.log('📊 Posting checks: Every 10 minutes');
       console.log('🤝 Engagement cycles: Every 30 minutes');
       console.log('📈 Growth analysis: Every 4 hours');
+      console.log('📊 Analytics collection: Every 2 hours');
+      console.log('⚡ Metrics updating: Every hour');
       console.log('🎉 Bot is now fully autonomous and operational!');
       
     } catch (error) {
@@ -196,6 +216,39 @@ export class UnifiedScheduler {
   }
 
   /**
+   * 📊 ANALYTICS COLLECTION
+   */
+  private async runAnalyticsCollection(): Promise<void> {
+    try {
+      console.log('\n📊 === AUTONOMOUS ANALYTICS COLLECTION ===');
+      
+      await this.analyticsCollector.run();
+      
+      console.log('✅ Analytics collection completed');
+      
+    } catch (error) {
+      console.error('❌ Analytics collection error:', error);
+    }
+  }
+
+  /**
+   * ⚡ METRICS UPDATE
+   */
+  private async runMetricsUpdate(): Promise<void> {
+    try {
+      console.log('\n⚡ === AUTONOMOUS METRICS UPDATE ===');
+      
+      // Get recent tweets and update their engagement metrics
+      await this.engagementTracker.trackRecentTweets();
+      
+      console.log('✅ Metrics update completed');
+      
+    } catch (error) {
+      console.error('❌ Metrics update error:', error);
+    }
+  }
+
+  /**
    * 📊 SYSTEM STATUS DISPLAY
    */
   private async displaySystemStatus(): Promise<void> {
@@ -273,6 +326,16 @@ export class UnifiedScheduler {
     if (this.diagnosticJob) {
       this.diagnosticJob.stop();
       this.diagnosticJob = null;
+    }
+    
+    if (this.analyticsJob) {
+      this.analyticsJob.stop();
+      this.analyticsJob = null;
+    }
+    
+    if (this.metricsJob) {
+      this.metricsJob.stop();
+      this.metricsJob = null;
     }
     
     this.isRunning = false;

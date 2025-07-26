@@ -59,14 +59,19 @@ export class RealTimeEngagementTracker {
     console.log('🛑 Engagement tracking stopped');
   }
 
-  private async trackRecentTweets(): Promise<void> {
+  async trackRecentTweets(): Promise<void> {
     try {
       console.log('📊 Tracking recent tweet engagement...');
 
       // Get tweets from last 24 hours for tracking
-      const recentTweets = await this.getRecentTweets();
+      const recentTweetsResult = await this.getRecentTweets();
+      
+      if (!Array.isArray(recentTweetsResult)) {
+        console.log('⚠️ No valid tweet data returned');
+        return;
+      }
 
-      for (const tweet of recentTweets) {
+      for (const tweet of recentTweetsResult) {
         await this.updateTweetEngagement(tweet);
         // Analyze viral patterns is handled within updateTweetEngagement
       }
@@ -82,14 +87,14 @@ export class RealTimeEngagementTracker {
   private async getRecentTweets(): Promise<any[]> {
     try {
       // Get user's recent tweets from X API
-      const userTweets = await xClient.getMyTweets(20);
+      const userTweetsResult = await xClient.getMyTweets(20);
       
-      if (!userTweets || userTweets.length === 0) {
+      if (!userTweetsResult || !userTweetsResult.success || !Array.isArray(userTweetsResult.data)) {
         console.log('No recent tweets to track');
         return [];
       }
 
-      return userTweets;
+      return userTweetsResult.data;
     } catch (error: any) {
       // 🚨 CRITICAL FIX: Handle monthly read limits properly
       const isMonthlyReadError = error.data && 
@@ -137,8 +142,9 @@ export class RealTimeEngagementTracker {
       });
 
       // Record engagement result for bandit learning
-      const { supremeAIOrchestrator } = await import('./supremeAIOrchestrator.js');
-      await supremeAIOrchestrator.recordEngagementResult(tweetId, engagement.likes, engagement.retweets);
+      // TODO: Re-enable when supremeAIOrchestrator is available
+      // const { supremeAIOrchestrator } = await import('./supremeAIOrchestrator.js');
+      // await supremeAIOrchestrator.recordEngagementResult(tweetId, engagement.likes, engagement.retweets);
 
       // Check if this is going viral (high engagement velocity)
       const viralVelocity = await this.calculateViralVelocity(tweetId, totalEngagement);
