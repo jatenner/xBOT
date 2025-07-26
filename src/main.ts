@@ -1,11 +1,11 @@
 
-import { scheduler } from './agents/scheduler';
+import { unifiedScheduler } from './core/unifiedScheduler';
 import { minimalSupabaseClient } from './utils/minimalSupabaseClient';
 import { LIVE_MODE } from './config/liveMode';
 import ProcessLock from './utils/processLock';
 
 async function main() {
-  console.log('🔥 Starting VIRAL HEALTH Twitter Bot...');
+  console.log('🤖 Starting UNIFIED AUTONOMOUS TWITTER BOT...');
   
   // CRITICAL: Acquire process lock to prevent multiple instances
   const lockResult = await ProcessLock.acquire();
@@ -16,8 +16,9 @@ async function main() {
   }
   
   console.log(`🔧 Live Mode: ${LIVE_MODE ? 'ENABLED' : 'DISABLED'}`);
-  console.log('🎯 Content: Health news, supplements, fitness, biohacking, food tips');
-  console.log('📊 Target: 17 viral health posts per day (FREE TIER COMPLIANT)');
+  console.log('🎯 Mission: Autonomous, intelligent health content for maximum growth');
+  console.log('📊 Architecture: Unified, bulletproof, self-healing');
+  console.log('🚀 Capability: Truly autonomous operation without manual intervention');
   
   try {
     // Test database connection
@@ -35,12 +36,12 @@ async function main() {
     console.warn('⚠️ Database test failed:', error);
   }
 
-  // Start our ONLY scheduler (no other systems)
-  await scheduler.start();
+  // Start the UNIFIED AUTONOMOUS SYSTEM
+  await unifiedScheduler.start();
   
-  console.log('🎉 VIRAL HEALTH Twitter Bot is LIVE!');
-  console.log('🔥 Generating diverse health content for maximum followers');
-  console.log('📊 Check logs for posting activity every ~50 minutes');
+  console.log('🎉 UNIFIED AUTONOMOUS TWITTER BOT IS OPERATIONAL!');
+  console.log('🤖 System is now fully autonomous and self-managing');
+  console.log('📊 Performance metrics available via unifiedScheduler.getPerformanceMetrics()');
 }
 
 // Start the application

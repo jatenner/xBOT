@@ -106,8 +106,15 @@ CRITICAL: ONLY JSON, NO EXTRA TEXT BEFORE OR AFTER.`;
         model: 'gpt-4o-mini'
       });
 
-      // Extract JSON from response
+      // Check if response looks like JSON
       let jsonStr = response.trim();
+      
+      // If it doesn't start with {, it's probably content text, not JSON
+      if (!jsonStr.startsWith('{')) {
+        console.log('📝 OpenAI returned content text instead of JSON, using fallback strategy');
+        return this.getFallbackGrowthStrategy();
+      }
+      
       const jsonStart = jsonStr.indexOf('{');
       const jsonEnd = jsonStr.lastIndexOf('}');
       
@@ -117,6 +124,12 @@ CRITICAL: ONLY JSON, NO EXTRA TEXT BEFORE OR AFTER.`;
 
       try {
         const strategy = JSON.parse(jsonStr);
+        
+        // Validate the parsed object has expected structure
+        if (!strategy || typeof strategy !== 'object') {
+          throw new Error('Invalid strategy object');
+        }
+        
         return {
           targetAccounts: Array.isArray(strategy.targetAccounts) ? strategy.targetAccounts : 
             ['@hubermanlab', '@bengreenfield', '@drmarkhyman'],
@@ -129,7 +142,7 @@ CRITICAL: ONLY JSON, NO EXTRA TEXT BEFORE OR AFTER.`;
           expectedGrowthRate: typeof strategy.expectedGrowthRate === 'number' ? strategy.expectedGrowthRate : 25
         };
       } catch (parseError) {
-        console.warn('⚠️ Growth strategy JSON parsing failed, using fallback:', parseError);
+        console.log('⚠️ Growth strategy JSON parsing failed, using fallback. Response was:', jsonStr.substring(0, 100) + '...');
         return this.getFallbackGrowthStrategy();
       }
 
