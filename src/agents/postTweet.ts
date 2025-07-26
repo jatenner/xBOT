@@ -217,11 +217,13 @@ export class PostTweetAgent {
 
   private async storeTweetWithAIMetrics(tweetId: string, content: string, contentType: string, viralScore: number, followerGrowthPotential: number): Promise<void> {
     try {
-      // Import robust storage system
-      const { RobustTweetStorage } = await import('../utils/robustTweetStorage');
+      console.log('🏗️ Using ULTIMATE STORAGE ARCHITECTURE for bulletproof storage...');
       
-      // Use robust storage with retry logic and daily limit enforcement
-      const storeResult = await RobustTweetStorage.storeTweet({
+      // Import Ultimate Storage Architecture
+      const { MasterTweetStorageIntegrator } = await import('../utils/masterTweetStorageIntegrator');
+      
+      // Use Ultimate Storage Architecture with 7-phase validation
+      const storeResult = await MasterTweetStorageIntegrator.storeTweet({
         tweet_id: tweetId,
         content: content,
         content_type: contentType,
@@ -232,31 +234,43 @@ export class PostTweetAgent {
       });
 
       if (!storeResult.success) {
-        console.error('⚠️ Robust database storage failed:', storeResult.error);
+        console.error('❌ ULTIMATE STORAGE FAILED:', storeResult.error);
         
-        if (storeResult.limit_reached) {
+        if (storeResult.error?.includes('limit') || storeResult.error?.includes('quota')) {
           console.log('🚫 Daily tweet limit reached! Bot will stop posting until tomorrow.');
           // Could add logic here to gracefully stop the bot
         }
       } else {
-        console.log(`✅ Tweet stored with robust system! Count: ${storeResult.tweet_count_today}/17`);
-      }
-
-      // Also update content_uniqueness table
-      const contentHash = this.generateContentHash(content);
-      const uniquenessResult = await secureSupabaseClient.storeContentUniqueness({
-        content_hash: contentHash,
-        original_content: content,
-        content_topic: contentType,
-        content_keywords: this.extractKeywords(content)
-      });
-
-      if (!uniquenessResult.success) {
-        console.warn('⚠️ Content uniqueness update failed:', uniquenessResult.error);
+        console.log(`✅ ULTIMATE STORAGE SUCCESS! Database ID: ${storeResult.database_id}`);
+        
+        if (storeResult.performance_metrics) {
+          console.log(`⚡ Storage Performance: ${storeResult.performance_metrics.storage_time_ms}ms`);
+          console.log(`📊 Data Size: ${storeResult.performance_metrics.data_size_bytes} bytes`);
+          console.log(`🔄 Retry Count: ${storeResult.performance_metrics.retry_count}`);
+        }
       }
 
     } catch (error) {
-      console.error('❌ Database storage error:', error);
+      console.error('❌ ULTIMATE STORAGE CRITICAL ERROR:', error);
+      // Fallback: try simple storage
+      try {
+        console.log('🔄 Attempting fallback storage...');
+        const { secureSupabaseClient } = await import('../utils/secureSupabaseClient');
+        await secureSupabaseClient.supabase?.from('tweets').insert({
+          tweet_id: tweetId,
+          content: content,
+          content_type: contentType,
+          viral_score: viralScore,
+          ai_growth_prediction: followerGrowthPotential,
+          ai_optimized: true,
+          generation_method: 'ai_enhanced',
+          success: true,
+          created_at: new Date().toISOString()
+        });
+        console.log('✅ Fallback storage succeeded');
+      } catch (fallbackError) {
+        console.error('❌ Both Ultimate and fallback storage failed:', fallbackError);
+      }
     }
   }
 

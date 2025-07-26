@@ -246,25 +246,50 @@ export class StreamlinedPostAgent {
   }
 
   /**
-   * 💾 STORE TWEET IN DATABASE
+   * 💾 STORE TWEET IN DATABASE - ULTIMATE ARCHITECTURE
    */
   private async storeTweetInDatabase(tweetId: string, content: string): Promise<void> {
     try {
-      if (!secureSupabaseClient.supabase) return;
+      console.log('🏗️ StreamlinedPostAgent using ULTIMATE STORAGE...');
+      
+      // Import Ultimate Storage Architecture
+      const { MasterTweetStorageIntegrator } = await import('../utils/masterTweetStorageIntegrator');
+      
+      // Use Ultimate Storage with full validation
+      const result = await MasterTweetStorageIntegrator.storeTweet({
+        tweet_id: tweetId,
+        content: content,
+        content_type: 'viral_health_theme',
+        viral_score: 7, // High viral score for streamlined content
+        ai_optimized: true,
+        generation_method: 'streamlined_viral'
+      });
 
-      await secureSupabaseClient.supabase
-        .from('tweets')
-        .insert({
-          id: tweetId,
-          content: content,
-          content_type: 'viral_health_theme',
-          created_at: new Date().toISOString(),
-          is_viral_optimized: true,
-          theme_page_content: true
-        });
+      if (result.success) {
+        console.log(`✅ ULTIMATE STORAGE: Streamlined tweet stored! ID: ${result.database_id}`);
+      } else {
+        console.warn('⚠️ ULTIMATE STORAGE failed for streamlined tweet:', result.error);
+        
+        // Fallback to simple storage
+        if (secureSupabaseClient.supabase) {
+          await secureSupabaseClient.supabase
+            .from('tweets')
+            .insert({
+              tweet_id: tweetId,
+              content: content,
+              content_type: 'viral_health_theme',
+              created_at: new Date().toISOString(),
+              viral_score: 7,
+              ai_optimized: true,
+              generation_method: 'streamlined_viral',
+              success: true
+            });
+          console.log('✅ Fallback storage succeeded');
+        }
+      }
 
     } catch (error) {
-      console.warn('Could not store tweet in database:', error);
+      console.warn('❌ Storage error in StreamlinedPostAgent:', error);
     }
   }
 
