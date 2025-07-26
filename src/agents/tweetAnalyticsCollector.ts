@@ -44,23 +44,25 @@ export class TweetAnalyticsCollector {
           console.log(`📊 Fetching metrics for tweet ${tweet.tweet_id}`);
           
           // Fetch fresh metrics from Twitter API
-          const tweetData = await xClient.getTweetById(tweet.tweet_id);
+          const tweetResult = await xClient.getTweetById(tweet.tweet_id);
           
-          if (!tweetData) {
+          if (!tweetResult || !tweetResult.success || !tweetResult.data) {
             console.warn(`⚠️ Could not fetch data for tweet ${tweet.tweet_id}`);
             errorCount++;
             continue;
           }
+
+          const tweetData = tweetResult.data;
 
           // Upsert metrics into tweet_metrics table
           const { error: upsertError } = await supabaseClient.supabase
             ?.from('tweet_metrics')
             .upsert({
               tweet_id: tweet.tweet_id,
-              like_count: tweetData.public_metrics.like_count,
-              retweet_count: tweetData.public_metrics.retweet_count,
-              reply_count: tweetData.public_metrics.reply_count,
-              quote_count: tweetData.public_metrics.quote_count,
+              like_count: tweetData.public_metrics?.like_count || 0,
+              retweet_count: tweetData.public_metrics?.retweet_count || 0,
+              reply_count: tweetData.public_metrics?.reply_count || 0,
+              quote_count: tweetData.public_metrics?.quote_count || 0,
               captured_at: new Date().toISOString()
             }, {
               onConflict: 'tweet_id'
@@ -70,7 +72,7 @@ export class TweetAnalyticsCollector {
             console.error(`❌ Error upserting metrics for tweet ${tweet.tweet_id}:`, upsertError);
             errorCount++;
           } else {
-            console.log(`✅ Updated metrics for tweet ${tweet.tweet_id}: ${tweetData.public_metrics.like_count} likes, ${tweetData.public_metrics.retweet_count} retweets`);
+            console.log(`✅ Updated metrics for tweet ${tweet.tweet_id}: ${tweetData.public_metrics?.like_count || 0} likes, ${tweetData.public_metrics?.retweet_count || 0} retweets`);
             successCount++;
           }
 
