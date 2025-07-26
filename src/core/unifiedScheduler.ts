@@ -17,6 +17,7 @@ import { RealEngagementAgent } from '../agents/realEngagementAgent';
 import { FollowerGrowthDiagnostic } from '../agents/followerGrowthDiagnostic';
 import { TweetAnalyticsCollector } from '../agents/tweetAnalyticsCollector';
 import { RealTimeEngagementTracker } from '../agents/realTimeEngagementTracker';
+import { continuousTweetMonitor } from './continuousTweetMonitor';
 
 export class UnifiedScheduler {
   private static instance: UnifiedScheduler;
@@ -69,6 +70,10 @@ export class UnifiedScheduler {
       // Initial status check
       await this.displaySystemStatus();
       
+      // Start continuous tweet monitoring (CRITICAL!)
+      console.log('🔄 Starting continuous tweet performance monitoring...');
+      await continuousTweetMonitor.startMonitoring();
+      
       // Run initial growth diagnostic
       console.log('🔍 Running initial growth analysis...');
       await this.runGrowthDiagnostic();
@@ -110,7 +115,8 @@ export class UnifiedScheduler {
       console.log('📈 Growth analysis: Every 4 hours');
       console.log('📊 Analytics collection: Every 2 hours');
       console.log('⚡ Metrics updating: Every hour');
-      console.log('🎉 Bot is now fully autonomous and operational!');
+      console.log('🔄 CONTINUOUS MONITORING: 🆕 Fresh tweets (5min), ⚡ Active tweets (15min), 🔥 Viral tweets (3min)');
+      console.log('🎉 Bot is now fully autonomous with REAL-TIME data synchronization!');
       
     } catch (error) {
       console.error('❌ Unified Scheduler startup error:', error);
@@ -312,6 +318,9 @@ export class UnifiedScheduler {
    */
   async stop(): Promise<void> {
     console.log('🛑 Stopping Unified Autonomous Scheduler...');
+    
+    // Stop continuous monitoring first
+    await continuousTweetMonitor.stopMonitoring();
     
     if (this.postingJob) {
       this.postingJob.stop();
