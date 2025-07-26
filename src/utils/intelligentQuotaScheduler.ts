@@ -122,27 +122,41 @@ export class IntelligentQuotaScheduler {
   }
 
   /**
-   * Determine optimal posting strategy
+   * Determine optimal posting strategy - FIXED FOR MAXIMUM POSTING
    */
   private determineStrategy(postsRemaining: number, hoursRemaining: number, estNow: Date): OptimalSchedule['strategy'] {
     const currentHour = estNow.getHours();
     const quotaUtilization = (this.TARGET_DAILY_TWEETS - postsRemaining) / this.TARGET_DAILY_TWEETS;
+    const postsPerHourRequired = hoursRemaining > 0 ? postsRemaining / hoursRemaining : 0;
     
-    // Final push strategy in last 3 hours
+    console.log(`📊 Strategy calculation: ${postsRemaining} posts remaining, ${hoursRemaining.toFixed(1)}h left, ${(quotaUtilization * 100).toFixed(1)}% used`);
+    
+    // Final push strategy in last 3 hours with many posts left
     if (hoursRemaining <= 3 && postsRemaining > 3) {
+      console.log('🚀 Strategy: FINAL_PUSH - Racing against time');
       return 'final_push';
     }
     
-    // Aggressive if we're behind schedule
-    if (quotaUtilization < 0.5 && currentHour > 12) {
+    // Aggressive if we need more than 1 post per hour
+    if (postsPerHourRequired > 1.0) {
+      console.log('🔥 Strategy: AGGRESSIVE - Need to catch up');
       return 'aggressive';
     }
     
-    // Conservative if we're ahead of schedule
+    // Aggressive if we're significantly behind schedule (less than 50% utilized)
+    if (quotaUtilization < 0.5) {
+      console.log('⚡ Strategy: AGGRESSIVE - Behind schedule');
+      return 'aggressive';
+    }
+    
+    // Conservative only if we're way ahead of schedule (more than 80% utilized with lots of time)
     if (quotaUtilization > 0.8 && hoursRemaining > 6) {
+      console.log('🐌 Strategy: CONSERVATIVE - Ahead of schedule');
       return 'conservative';
     }
     
+    // Default to balanced for moderate usage
+    console.log('⚖️ Strategy: BALANCED - Steady posting');
     return 'balanced';
   }
 
@@ -181,33 +195,48 @@ export class IntelligentQuotaScheduler {
   }
 
   /**
-   * Determine if we should post right now
+   * Determine if we should post right now - FIXED FOR MAXIMUM POSTING
    */
   private async shouldPostNow(strategy: OptimalSchedule['strategy'], estNow: Date, postsRemaining: number): Promise<boolean> {
     const currentHour = estNow.getHours();
+    const timeSinceLastPost = await this.timeSinceLastPost();
+    
+    console.log(`🕐 shouldPostNow: ${strategy} strategy, ${timeSinceLastPost.toFixed(1)} min since last post`);
     
     // Always post if it's our first post of the day
     if (postsRemaining === this.TARGET_DAILY_TWEETS) {
+      console.log('✅ First post of day - posting now');
       return true;
     }
     
-    // Strategy-based decisions
+    // Strategy-based decisions with more intelligent timing
     switch (strategy) {
       case 'aggressive':
-        return true; // Post aggressively to catch up
+        // Post every 30 minutes when aggressive
+        const shouldPostAggressive = timeSinceLastPost >= 30;
+        console.log(`🔥 Aggressive: ${shouldPostAggressive ? 'YES' : 'NO'} (need 30+ min, have ${timeSinceLastPost.toFixed(1)})`);
+        return shouldPostAggressive;
       
       case 'final_push':
-        return postsRemaining > 0; // Use all remaining quota
+        // Post every 20 minutes in final push
+        const shouldPostFinalPush = timeSinceLastPost >= 20;
+        console.log(`🚀 Final push: ${shouldPostFinalPush ? 'YES' : 'NO'} (need 20+ min, have ${timeSinceLastPost.toFixed(1)})`);
+        return shouldPostFinalPush;
       
       case 'balanced':
         // Post if we haven't posted in the last 45 minutes
-        return (await this.timeSinceLastPost()) >= 45;
+        const shouldPostBalanced = timeSinceLastPost >= 45;
+        console.log(`⚖️ Balanced: ${shouldPostBalanced ? 'YES' : 'NO'} (need 45+ min, have ${timeSinceLastPost.toFixed(1)})`);
+        return shouldPostBalanced;
       
       case 'conservative':
-        // Space out posts more
-        return (await this.timeSinceLastPost()) >= 90;
+        // Space out posts more (but not too much - max 60 minutes)
+        const shouldPostConservative = timeSinceLastPost >= 60;
+        console.log(`🐌 Conservative: ${shouldPostConservative ? 'YES' : 'NO'} (need 60+ min, have ${timeSinceLastPost.toFixed(1)})`);
+        return shouldPostConservative;
       
       default:
+        console.log('❌ Unknown strategy - defaulting to NO');
         return false;
     }
   }
