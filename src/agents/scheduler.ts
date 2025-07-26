@@ -171,10 +171,12 @@ export class Scheduler {
     console.log(`🕐 Server time: ${now.getHours()}:${now.getMinutes().toString().padStart(2, '0')} UTC`);
     console.log(`🗽 EST time: ${hour}:${currentMinutes.toString().padStart(2, '0')} EST`);
     
-    // 📊 QUOTA STATUS REPORT
-    const utilizationReport = await intelligentQuotaScheduler.getQuotaUtilizationReport();
-    console.log(`📊 QUOTA STATUS: ${utilizationReport.used}/${17} used (${(utilizationReport.utilizationRate * 100).toFixed(0)}%)`);
-    console.log(`🎯 STRATEGY: ${schedule.strategy.toUpperCase()} - ${utilizationReport.recommendation}`);
+    // 📊 ULTIMATE QUOTA STATUS REPORT - Using database truth
+    const { UltimateQuotaManager } = await import('../utils/ultimateQuotaManager');
+    const ultimateStatus = await UltimateQuotaManager.getQuotaStatus();
+    
+    console.log(`📊 QUOTA STATUS: ${ultimateStatus.daily_used}/${ultimateStatus.daily_limit} used (${ultimateStatus.percentage_used}%)`);
+    console.log(`🎯 STRATEGY: ${schedule.strategy.toUpperCase()} - ${ultimateStatus.can_post ? 'CAN POST' : 'QUOTA EXHAUSTED'}`);
     console.log(`⏰ NEXT OPTIMAL: ${schedule.nextPostTime.toLocaleTimeString()} EST (${schedule.optimalInterval}min interval)`);
     
     // Active posting hours: 6 AM to 11 PM EST (17 hours)
@@ -192,16 +194,16 @@ export class Scheduler {
     
     console.log(`🌞 ACTIVE HOURS: ${hour}:${currentMinutes.toString().padStart(2, '0')} EST is within 6 AM - 11 PM posting window`);
 
-    // ✅ ENHANCED: Check quota exhaustion with intelligent handling
-    if (schedule.postsRemaining === 0) {
-      const hoursUntilReset = Math.ceil((schedule.quotaResetTime.getTime() - Date.now()) / (1000 * 60 * 60));
+    // ✅ ULTIMATE QUOTA CHECK: Use database truth instead of broken estimates
+    if (!ultimateStatus.can_post) {
+      const hoursUntilReset = Math.ceil((ultimateStatus.reset_time.getTime() - Date.now()) / (1000 * 60 * 60));
       console.log(`🚫 QUOTA EXHAUSTED: All 17 daily tweets used!`);
-      console.log(`⏰ Quota resets in ~${hoursUntilReset} hours at ${schedule.quotaResetTime.toLocaleTimeString()}`);
+      console.log(`⏰ Quota resets in ~${hoursUntilReset} hours at ${ultimateStatus.reset_time.toLocaleTimeString()}`);
       console.log(`📊 Switching to engagement-only mode until quota resets`);
       console.log(`🎯 Will automatically resume posting when quota resets`);
       
       // Set a check for closer to reset time
-      const minutesUntilReset = Math.ceil((schedule.quotaResetTime.getTime() - Date.now()) / (1000 * 60));
+      const minutesUntilReset = Math.ceil((ultimateStatus.reset_time.getTime() - Date.now()) / (1000 * 60));
       if (minutesUntilReset <= 30) {
         console.log(`🔔 Quota resets in ${minutesUntilReset} minutes - preparing for immediate resumption!`);
       }
@@ -209,11 +211,11 @@ export class Scheduler {
       return;
     }
 
-    // 🧠 INTELLIGENT POSTING DECISION
-    const shouldPost = schedule.shouldPostNow;
+    // 🧠 ULTIMATE POSTING DECISION: Use database truth + intelligent timing
+    const shouldPost = schedule.shouldPostNow && ultimateStatus.can_post;
     
     if (shouldPost) {
-      console.log(`🎯 POSTING NOW (${17 - schedule.postsRemaining + 1}/17) - Strategy: ${schedule.strategy}`);
+      console.log(`🎯 POSTING NOW (${ultimateStatus.daily_used + 1}/17) - Strategy: ${schedule.strategy}`);
       console.log('🔥 Generating viral health content - maximizing our 17 daily tweets...');
       
       try {
@@ -230,16 +232,16 @@ export class Scheduler {
         this.consecutiveRateLimitErrors = 0;
         this.lastRateLimitTime = null;
         
-        // 📊 POST-SUCCESS ANALYSIS
-        const newUtilization = await intelligentQuotaScheduler.getQuotaUtilizationReport();
-        console.log(`📊 Updated quota: ${newUtilization.used}/17 used, ${newUtilization.remaining} remaining`);
+        // 📊 POST-SUCCESS ANALYSIS - ULTIMATE ACCURACY
+        const updatedStatus = await UltimateQuotaManager.forceRefresh();
+        console.log(`📊 Updated quota: ${updatedStatus.daily_used}/17 used, ${updatedStatus.daily_remaining} remaining`);
         console.log(`⏰ Next optimal post: ${schedule.nextPostTime.toLocaleTimeString()} EST`);
         
         // 🎯 STRATEGIC MESSAGING
-        if (newUtilization.remaining === 0) {
+        if (updatedStatus.daily_remaining === 0) {
           console.log(`🎉 ALL 17 DAILY TWEETS USED! Perfect quota utilization achieved!`);
-        } else if (newUtilization.remaining <= 3 && schedule.hoursRemaining <= 3) {
-          console.log(`🔥 FINAL PUSH: ${newUtilization.remaining} tweets remaining with ${schedule.hoursRemaining.toFixed(1)} active hours left!`);
+        } else if (updatedStatus.daily_remaining <= 3 && schedule.hoursRemaining <= 3) {
+          console.log(`🔥 FINAL PUSH: ${updatedStatus.daily_remaining} tweets remaining with ${schedule.hoursRemaining.toFixed(1)} active hours left!`);
         }
         
       } catch (error) {
@@ -256,7 +258,7 @@ export class Scheduler {
     } else {
       const timeToNext = Math.ceil((schedule.nextPostTime.getTime() - Date.now()) / (1000 * 60));
       console.log(`⏰ INTELLIGENT TIMING: Next post in ${timeToNext} minutes at ${schedule.nextPostTime.toLocaleTimeString()}`);
-      console.log(`📊 Current: ${utilizationReport.used}/17 used, ${schedule.postsRemaining} remaining, ${schedule.hoursRemaining.toFixed(1)}h left`);
+      console.log(`📊 Current: ${ultimateStatus.daily_used}/17 used, ${schedule.postsRemaining} remaining, ${schedule.hoursRemaining.toFixed(1)}h left`);
       console.log(`🎯 Strategy: ${schedule.strategy} - optimal distribution for maximum daily utilization`);
     }
   }
