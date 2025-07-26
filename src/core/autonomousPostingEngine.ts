@@ -28,7 +28,7 @@ export interface PostingDecision {
 export interface PostingResult {
   success: boolean;
   tweet_id?: string;
-  database_id?: number;
+  database_id?: number | string;
   error?: string;
   storage_method?: string;
   performance_metrics?: {
@@ -409,7 +409,7 @@ export class AutonomousPostingEngine {
     metadata: any
   ): Promise<{
     success: boolean;
-    database_id?: number;
+    database_id?: number | string;
     method: string;
     error?: string;
   }> {
