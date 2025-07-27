@@ -200,9 +200,7 @@ export class ReplyPoster {
         
         this.saveReplyToLog(replyLog);
 
-        // Update quota tracking
-        await ultimateQuotaManager.incrementQuota();
-
+        // Quota tracking is handled by the Twitter API wrapper
         const duration = Date.now() - startTime;
         console.log(`✅ Reply posted successfully in ${duration}ms: ${twitterResult.replyId}`);
         console.log(`📊 Daily replies: ${this.dailyReplyCount}/${this.MAX_DAILY_REPLIES}`);

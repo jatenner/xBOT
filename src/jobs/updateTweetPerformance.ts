@@ -104,14 +104,6 @@ export class TweetPerformanceTracker {
         Object.defineProperty(navigator, 'languages', {
           get: () => ['en-US', 'en']
         });
-
-        // Mock realistic screen properties
-        Object.defineProperty(screen, 'availHeight', { get: () => 1080 });
-        Object.defineProperty(screen, 'availWidth', { get: () => 1920 });
-        
-        // Remove automation-related properties
-        delete window.chrome?.runtime?.onConnect;
-        delete window.chrome?.runtime?.onMessage;
       });
 
       // Load Twitter session if available
