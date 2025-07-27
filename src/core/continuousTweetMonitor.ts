@@ -49,12 +49,12 @@ export class ContinuousTweetMonitor {
   private intervals: NodeJS.Timeout[] = [];
   
   private readonly config: MonitoringConfig = {
-    fresh_tweet_interval_minutes: 5,      // Check new tweets every 5 minutes
-    active_tweet_interval_minutes: 15,    // Check active tweets every 15 minutes
-    viral_tweet_interval_minutes: 3,      // Check viral tweets every 3 minutes
+    fresh_tweet_interval_minutes: 30,     // Check new tweets every 30 minutes (rate limit friendly)
+    active_tweet_interval_minutes: 60,    // Check active tweets every hour
+    viral_tweet_interval_minutes: 15,     // Check viral tweets every 15 minutes
     viral_threshold: 50,                  // 50+ engagement velocity = viral
     active_hours: 48,                     // Monitor tweets for 48 hours
-    max_tweets_per_check: 10,             // Respect API limits
+    max_tweets_per_check: 5,              // Reduced to respect API limits
     learning_feedback_enabled: true,      // Enable AI learning
     real_time_optimization: true          // Enable optimization
   };
