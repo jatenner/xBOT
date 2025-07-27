@@ -258,6 +258,8 @@ export class AutonomousPostingEngine {
 
   /**
    * 🎯 INTELLIGENT STRATEGY DETERMINATION
+   * 
+   * UPDATED: More aggressive strategy selection for higher posting frequency
    */
   private determineOptimalStrategy(
     quotaStatus: any, 
@@ -269,26 +271,33 @@ export class AutonomousPostingEngine {
     console.log(`📊 Analysis: ${quotaStatus.daily_remaining} posts, ${remainingHours.toFixed(1)}h left, ${postsPerHourNeeded.toFixed(2)} posts/hour needed`);
     
     // Emergency: System failures or critical catching up needed
-    if (this.consecutiveFailures >= this.MAX_FAILURES || postsPerHourNeeded > 2.5) {
+    if (this.consecutiveFailures >= this.MAX_FAILURES || postsPerHourNeeded > 2.0) {
       return 'emergency';
     }
     
-    // Aggressive: Need to catch up significantly
-    if (postsPerHourNeeded > 1.2 || quotaStatus.percentage_used < 25) {
+    // Aggressive: Default for high posting frequency (more aggressive than before)
+    if (postsPerHourNeeded > 0.8 || quotaStatus.percentage_used < 40) {
       return 'aggressive';
     }
     
-    // Conservative: Well ahead of schedule
-    if (quotaStatus.percentage_used > 80 && remainingHours > 8) {
+    // Balanced: Only when moderately ahead
+    if (quotaStatus.percentage_used >= 40 && quotaStatus.percentage_used < 70) {
+      return 'balanced';
+    }
+    
+    // Conservative: Only when significantly ahead of schedule
+    if (quotaStatus.percentage_used >= 70 && remainingHours > 6) {
       return 'conservative';
     }
     
-    // Balanced: Normal pace
-    return 'balanced';
+    // Default to aggressive for maximum posting frequency
+    return 'aggressive';
   }
 
   /**
-   * ⏰ INTELLIGENT TIMING CONSTRAINTS
+   * ⏰ INTELLIGENT TIMING CONSTRAINTS  
+   * 
+   * UPDATED: More aggressive posting to meet 90-minute maximum goal
    */
   private async checkTimingConstraints(strategy: string, estNow: Date): Promise<{
     can_post_now: boolean;
@@ -299,17 +308,23 @@ export class AutonomousPostingEngine {
     // Get time since last post from database (accurate)
     const timeSinceLastPost = await this.getTimeSinceLastPost();
     
-    // Strategy-based intervals (much more reasonable than old system)
+    // 🎯 OPTIMIZED INTERVALS: Much more aggressive for higher posting frequency
     const intervals = {
-      emergency: 15,   // 15 minutes - urgent catching up
-      aggressive: 25,  // 25 minutes - active posting
-      balanced: 40,    // 40 minutes - steady pace
-      conservative: 60 // 60 minutes - relaxed pace
+      emergency: 10,   // 10 minutes - urgent catching up
+      aggressive: 45,  // 45 minutes - active posting (down from 25 to space better)
+      balanced: 60,    // 60 minutes - steady pace  
+      conservative: 90 // 90 minutes - maximum interval (user's requirement)
     };
     
-    const requiredInterval = intervals[strategy] || 40;
+    const requiredInterval = intervals[strategy] || 60;
     
     console.log(`⏰ Timing: ${timeSinceLastPost.toFixed(1)} min since last post, need ${requiredInterval}+ min for ${strategy}`);
+    
+    // 🚨 OVERRIDE: If it's been 90+ minutes, always allow posting regardless of strategy
+    if (timeSinceLastPost >= 90) {
+      console.log('🚨 OVERRIDE: 90+ minutes elapsed - forcing post for frequency compliance');
+      return { can_post_now: true };
+    }
     
     if (timeSinceLastPost >= requiredInterval) {
       return { can_post_now: true };
@@ -576,11 +591,36 @@ export class AutonomousPostingEngine {
   // Helper methods
   private async getTimeSinceLastPost(): Promise<number> {
     try {
-      const quotaStatus = await UltimateQuotaManager.getQuotaStatus();
-      // This should include last post time; for now use a safe fallback
+      // Get actual last post time from database
+      const { supabaseClient } = await import('../utils/supabaseClient');
+      
+      const { data: lastTweet, error } = await supabaseClient.supabase
+        ?.from('tweets')
+        ?.select('created_at')
+        ?.eq('success', true)
+        ?.order('created_at', { ascending: false })
+        ?.limit(1)
+        ?.single();
+
+      if (error) {
+        console.warn('⚠️ Could not query last post time from database:', error);
+        return this.lastPostTime ? (Date.now() - this.lastPostTime.getTime()) / (1000 * 60) : 999;
+      }
+
+      if (lastTweet && lastTweet.created_at) {
+        const lastPostTime = new Date(lastTweet.created_at);
+        const minutesSince = (Date.now() - lastPostTime.getTime()) / (1000 * 60);
+        console.log(`📊 Database: Last post was ${minutesSince.toFixed(1)} minutes ago at ${lastPostTime.toLocaleString()}`);
+        return minutesSince;
+      }
+
+      // No posts found in database
+      console.log('📊 Database: No previous posts found, allowing immediate posting');
+      return 999; // Safe fallback - allow posting
+
+    } catch (error) {
+      console.warn('⚠️ Error checking last post time:', error);
       return this.lastPostTime ? (Date.now() - this.lastPostTime.getTime()) / (1000 * 60) : 999;
-    } catch {
-      return 999; // Safe fallback
     }
   }
 
