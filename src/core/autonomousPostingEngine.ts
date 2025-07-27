@@ -1,20 +1,14 @@
 /**
- * 🤖 AUTONOMOUS POSTING ENGINE
+ * 🚀 AUTONOMOUS POSTING ENGINE
  * 
- * This is the unified, bulletproof core that replaces all fragmented posting systems.
- * Designed for complete autonomy, reliability, and intelligent operation.
- * 
- * REPLACES:
- * - intelligentQuotaScheduler (broken strategy logic)
- * - humanLikePostingManager (too restrictive)
- * - Multiple posting agents (fragmented)
- * - Conflicting quota systems
+ * Unified, bulletproof core for all posting decisions and execution
+ * Replaces all fragmented posting systems with one intelligent engine
  */
 
+import { PostTweetAgent } from '../agents/postTweet';
 import { UltimateQuotaManager } from '../utils/ultimateQuotaManager';
 import { MasterTweetStorageIntegrator } from '../utils/masterTweetStorageIntegrator';
 import { EmergencyDatabaseSaving } from '../utils/emergencyDatabaseSaving';
-import { PostTweetAgent } from '../agents/postTweet';
 
 export interface PostingDecision {
   should_post: boolean;
@@ -393,6 +387,21 @@ export class AutonomousPostingEngine {
       }
       
     } catch (error) {
+      // 🚨 CRITICAL FIX: Capture Twitter reset timestamp from 429 errors
+      if (error.code === 429) {
+        const headers = error.headers || error.response?.headers || {};
+        const resetTimestamp = parseInt(headers['x-app-limit-24hour-reset'] || headers['x-user-limit-24hour-reset'] || '0');
+        
+        if (resetTimestamp > 0) {
+          console.log('💾 CAPTURING TWITTER RESET TIMESTAMP for accurate recovery...');
+          await UltimateQuotaManager.storeTwitterResetTimestamp(resetTimestamp);
+          
+          const resetTime = new Date(resetTimestamp * 1000);
+          const minutesUntilReset = Math.ceil((resetTime.getTime() - Date.now()) / 60000);
+          console.log(`⏰ Twitter limits will reset in ~${minutesUntilReset} minutes at ${resetTime.toLocaleString()}`);
+        }
+      }
+      
       return {
         success: false,
         error: error.message
