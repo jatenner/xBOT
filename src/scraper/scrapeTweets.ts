@@ -69,7 +69,11 @@ export class StealthTweetScraper {
           '--no-zygote',
           '--disable-gpu',
           '--disable-web-security',
-          '--disable-features=VizDisplayCompositor'
+          '--disable-features=VizDisplayCompositor',
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-renderer-backgrounding',
+          '--disable-blink-features=AutomationControlled'
         ]
       });
 

@@ -63,24 +63,25 @@ export class TweetPerformanceTracker {
     try {
       console.log('🕵️ Initializing stealth performance tracker...');
       
-      // Launch browser with enhanced stealth settings
-      this.browser = await chromium.launch({
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
-          '--disable-gpu',
-          '--disable-web-security',
-          '--disable-features=VizDisplayCompositor',
-          '--disable-background-timer-throttling',
-          '--disable-backgrounding-occluded-windows',
-          '--disable-renderer-backgrounding'
-        ]
-      });
+             // Launch browser with enhanced stealth settings
+       this.browser = await chromium.launch({
+         headless: true,
+         args: [
+           '--no-sandbox',
+           '--disable-setuid-sandbox',
+           '--disable-dev-shm-usage',
+           '--disable-accelerated-2d-canvas',
+           '--no-first-run',
+           '--no-zygote',
+           '--disable-gpu',
+           '--disable-web-security',
+           '--disable-features=VizDisplayCompositor',
+           '--disable-background-timer-throttling',
+           '--disable-backgrounding-occluded-windows',
+           '--disable-renderer-backgrounding',
+           '--disable-blink-features=AutomationControlled'
+         ]
+       });
 
       // Create page with realistic settings
       this.page = await this.browser.newPage({
