@@ -17,6 +17,14 @@ import { RealEngagementAgent } from '../agents/realEngagementAgent';
 import { FollowerGrowthDiagnostic } from '../agents/followerGrowthDiagnostic';
 // Removed unused analytics collectors - using dailyAnalyticsOrchestrator instead
 import { dailyAnalyticsOrchestrator } from './dailyAnalyticsOrchestrator';
+// Add reply system imports
+import { stealthTweetScraper } from '../scraper/scrapeTweets';
+import { replyAgent } from '../agents/replyAgent';
+import { replyPoster } from '../twitter/postReply';
+// Add performance tracking import
+import { tweetPerformanceTracker } from '../jobs/updateTweetPerformance';
+// Add content learning import  
+import { realTimeContentLearningEngine } from '../agents/realTimeContentLearningEngine';
 
 export class UnifiedScheduler {
   private static instance: UnifiedScheduler;
@@ -29,13 +37,22 @@ export class UnifiedScheduler {
   private engagementJob: cron.ScheduledTask | null = null;
   private diagnosticJob: cron.ScheduledTask | null = null;
   private analyticsJob: cron.ScheduledTask | null = null;
+  private replyJob: cron.ScheduledTask | null = null; // Reply system job
+  private performanceJob: cron.ScheduledTask | null = null; // NEW: Performance tracking job
+  private learningJob: cron.ScheduledTask | null = null; // NEW: Content learning job
   // metricsJob removed - using daily analytics instead
   
   // Status tracking
   private isRunning = false;
   private totalPosts = 0;
   private totalFailures = 0;
+  private totalReplies = 0; // Reply tracking
+  private totalPerformanceUpdates = 0; // NEW: Performance tracking
+  private totalLearningCycles = 0; // NEW: Learning tracking
   private lastPostTime: Date | null = null;
+  private lastReplyTime: Date | null = null; // Reply time tracking
+  private lastPerformanceUpdate: Date | null = null; // NEW: Performance time tracking
+  private lastLearningUpdate: Date | null = null; // NEW: Learning time tracking
 
   private constructor() {
     this.engagementAgent = new RealEngagementAgent();
@@ -62,6 +79,7 @@ export class UnifiedScheduler {
     console.log('🤖 === UNIFIED AUTONOMOUS SCHEDULER STARTING ===');
     console.log('🎯 Goal: 17 viral health posts per day with maximum growth');
     console.log('🔧 Architecture: Unified, autonomous, bulletproof');
+    console.log('🕵️ NEW: Stealth reply system for engagement growth');
     
     try {
       // Initial status check
@@ -76,6 +94,15 @@ export class UnifiedScheduler {
         console.log(`📊 Analytics result: ${analyticsResult.tweets_analyzed} tweets, ${analyticsResult.api_calls_used} API calls`);
       } else {
         console.log('⏰ Daily analytics already completed today');
+      }
+      
+      // Initialize stealth scraper
+      console.log('🕵️ Initializing stealth tweet scraper...');
+      const scraperReady = await stealthTweetScraper.initialize();
+      if (scraperReady) {
+        console.log('✅ Stealth scraper initialized successfully');
+      } else {
+        console.log('⚠️ Stealth scraper failed to initialize - reply system disabled');
       }
       
       // Run initial growth diagnostic
@@ -101,23 +128,45 @@ export class UnifiedScheduler {
         await this.runGrowthDiagnostic();
       });
       
-      // Schedule daily analytics (API-limit aware) - once per day at 3 AM UTC
+      // Schedule daily analytics once per day at 3 AM UTC
       this.analyticsJob = cron.schedule('0 3 * * *', async () => {
         await this.runDailyAnalytics();
       });
       
-      this.isRunning = true;
+      // Schedule reply system every 60 minutes
+      if (scraperReady) {
+        this.replyJob = cron.schedule('0 */1 * * *', async () => {
+          await this.runReplySystem();
+        });
+        console.log('✅ Reply system scheduled every 60 minutes');
+      } else {
+        console.log('⚠️ Reply system disabled - scraper not ready');
+      }
       
-      console.log('✅ UNIFIED AUTONOMOUS SCHEDULER ACTIVE');
+      // Schedule performance tracking every 30 minutes
+      this.performanceJob = cron.schedule('*/30 * * * *', async () => {
+        await this.runPerformanceTracking();
+      });
+      console.log('✅ Performance tracking scheduled every 30 minutes');
+      
+      // Schedule content learning engine every 24 hours at 4 AM UTC
+      this.learningJob = cron.schedule('0 4 * * *', async () => {
+        await this.runContentLearning();
+      });
+      console.log('✅ Content learning scheduled every 24 hours at 4 AM UTC');
+      
+      this.isRunning = true;
+      console.log('✅ All systems operational and scheduled');
       console.log('📊 Posting checks: Every 10 minutes');
       console.log('🤝 Engagement cycles: Every 30 minutes');
-      console.log('📈 Growth analysis: Every 4 hours');
-      console.log('📊 STRATEGIC ANALYTICS: Once daily at 3 AM UTC (API-limit aware)');
-      console.log('🎯 Analytics budget: 20 API calls/day for maximum learning');
-      console.log('🎉 Bot is now fully autonomous with API-LIMIT AWARE intelligence!');
+      console.log('🎭 Reply system: Every 60 minutes');
+      console.log('📈 Performance tracking: Every 30 minutes');
+      console.log('🧠 Content learning: Every 24 hours (4 AM UTC)');
+      console.log('📊 Growth analysis: Every 4 hours');
+      console.log('📊 Daily analytics: 3 AM UTC');
       
     } catch (error) {
-      console.error('❌ Unified Scheduler startup error:', error);
+      console.error('❌ Failed to start unified scheduler:', error);
       throw error;
     }
   }
@@ -305,12 +354,109 @@ export class UnifiedScheduler {
   }
 
   /**
+   * 🎭 RUN REPLY SYSTEM
+   * Called by the scheduler every 60 minutes
+   */
+  async runReplySystem(): Promise<void> {
+    if (!this.isRunning) return;
+    
+    try {
+      console.log('🎭 === REPLY SYSTEM CYCLE STARTING ===');
+      const result = await replyAgent.runReplySystem();
+      
+      if (result.success) {
+        this.totalReplies += result.repliesPosted;
+        this.lastReplyTime = new Date();
+        console.log(`✅ Reply cycle successful: ${result.repliesPosted} replies posted`);
+      } else {
+        console.log(`⚠️ Reply cycle completed with issues: ${result.summary}`);
+      }
+      
+      // Log errors if any
+      if (result.errors.length > 0) {
+        console.log('⚠️ Reply system errors:');
+        result.errors.forEach(error => console.log(`   - ${error}`));
+      }
+      
+    } catch (error) {
+      console.error('❌ Reply system cycle failed:', error);
+    }
+  }
+
+  /**
+   * 📊 RUN PERFORMANCE TRACKING
+   * Called by the scheduler every 30 minutes
+   */
+  async runPerformanceTracking(): Promise<void> {
+    if (!this.isRunning) return;
+    
+    try {
+      console.log('📊 === PERFORMANCE TRACKING CYCLE STARTING ===');
+      const result = await tweetPerformanceTracker.runPerformanceUpdate();
+      
+      if (result.success) {
+        this.totalPerformanceUpdates += result.tweetsUpdated;
+        this.lastPerformanceUpdate = new Date();
+        console.log(`✅ Performance tracking successful: ${result.tweetsUpdated} tweets updated`);
+      } else {
+        console.log(`⚠️ Performance tracking completed with issues: ${result.summary}`);
+      }
+      
+      // Log errors if any
+      if (result.errors.length > 0) {
+        console.log('⚠️ Performance tracking errors:');
+        result.errors.forEach(error => console.log(`   - ${error}`));
+      }
+      
+    } catch (error) {
+      console.error('❌ Performance tracking cycle failed:', error);
+    }
+  }
+
+  /**
+   * 🧠 RUN CONTENT LEARNING
+   * Called by the scheduler every 24 hours at 4 AM UTC
+   */
+  async runContentLearning(): Promise<void> {
+    if (!this.isRunning) return;
+    
+    try {
+      console.log('🧠 === CONTENT LEARNING CYCLE STARTING ===');
+      const result = await realTimeContentLearningEngine.analyzeAndGenerateStrategy();
+      
+      if (result.success) {
+        this.totalLearningCycles++;
+        this.lastLearningUpdate = new Date();
+        console.log(`✅ Content learning successful: ${result.confidence * 100}% confidence with ${result.dataPoints} data points`);
+        console.log(`📊 Generated optimized strategy from ${result.dataPoints} tweets`);
+        
+        // Log key insights
+        if (result.insights.bestTimeBlocks.length > 0) {
+          console.log(`⏰ Best posting times: ${result.insights.bestTimeBlocks.join(', ')}`);
+        }
+        if (result.insights.keywordsToPrioritize.length > 0) {
+          console.log(`🔑 Top keywords: ${result.insights.keywordsToPrioritize.slice(0, 3).join(', ')}`);
+        }
+        if (result.insights.highPerformanceTones.length > 0) {
+          console.log(`🎭 Best reply tones: ${result.insights.highPerformanceTones.join(', ')}`);
+        }
+      } else {
+        console.log(`⚠️ Content learning completed with issues: ${result.summary}`);
+        if (result.error) {
+          console.log(`❌ Learning error: ${result.error}`);
+        }
+      }
+      
+    } catch (error) {
+      console.error('❌ Content learning cycle failed:', error);
+    }
+  }
+
+  /**
    * 🛑 STOP SCHEDULER
    */
   async stop(): Promise<void> {
     console.log('🛑 Stopping Unified Autonomous Scheduler...');
-    
-    // No continuous monitoring to stop - using daily analytics instead
     
     if (this.postingJob) {
       this.postingJob.stop();
@@ -331,13 +477,26 @@ export class UnifiedScheduler {
       this.analyticsJob.stop();
       this.analyticsJob = null;
     }
-    
-    // metricsJob removed - using daily analytics instead
+
+    if (this.replyJob) {
+      this.replyJob.stop();
+      this.replyJob = null;
+    }
+
+    if (this.performanceJob) {
+      this.performanceJob.stop();
+      this.performanceJob = null;
+    }
+
+    if (this.learningJob) {
+      this.learningJob.stop();
+      this.learningJob = null;
+    }
     
     this.isRunning = false;
     
     console.log('✅ Unified Scheduler stopped');
-    console.log(`📊 Final stats: ${this.totalPosts} posts, ${this.totalFailures} failures`);
+    console.log(`📊 Final stats: ${this.totalPosts} posts, ${this.totalReplies} replies, ${this.totalPerformanceUpdates} performance updates, ${this.totalLearningCycles} learning cycles`);
   }
 
   /**

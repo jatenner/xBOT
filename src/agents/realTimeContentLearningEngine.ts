@@ -11,537 +11,615 @@
  * 5. Continuously evolving content quality without human intervention
  */
 
-import { openaiClient } from '../utils/openaiClient';
 import { supabaseClient } from '../utils/supabaseClient';
-import { globalContentFilter } from '../utils/globalContentInterceptor';
-import { emergencyBudgetLockdown } from '../utils/emergencyBudgetLockdown';
+import * as fs from 'fs';
+import * as path from 'path';
 
-interface ContentLearningData {
-  content_id: string;
-  original_content: string;
-  improved_content?: string;
-  content_score: number;
-  improvement_actions: string[];
-  engagement_prediction: number;
-  actual_engagement?: number;
-  learning_insights: string[];
-  pattern_matches: string[];
-  optimization_applied: boolean;
-  timestamp: Date;
+// Performance insights interface
+export interface PerformanceInsights {
+  bestTimeBlocks: string[];
+  highPerformanceTones: string[];
+  keywordsToPrioritize: string[];
+  contentPatterns: {
+    avgEngagement: number;
+    topPerformingLength: number;
+    mostViralTimes: string[];
+    underperformingPatterns: string[];
+  };
+  replyInsights: {
+    bestReplyTones: string[];
+    avgReplyEngagement: number;
+    topReplyKeywords: string[];
+  };
+  temporalPatterns: {
+    hourlyPerformance: { [hour: string]: number };
+    weekdayPerformance: { [day: string]: number };
+    optimalPostingWindows: string[];
+  };
 }
 
-interface ContentPattern {
-  pattern_id: string;
-  pattern_type: 'viral_hook' | 'engagement_driver' | 'conversion_trigger' | 'human_touch' | 'authority_builder';
-  description: string;
-  example_content: string;
-  success_rate: number;
-  avg_engagement_boost: number;
-  usage_frequency: number;
-  last_used: Date;
-  effectiveness_trend: 'improving' | 'stable' | 'declining';
+// Analysis result interface
+export interface ContentAnalysisResult {
+  success: boolean;
+  insights: PerformanceInsights;
+  confidence: number;
+  dataPoints: number;
+  generatedAt: string;
+  summary: string;
+  error?: string;
+}
+
+// Tweet performance data for analysis
+interface TweetAnalysisData {
+  tweet_id: string;
+  content: string;
+  content_type: string;
+  likes: number;
+  retweets: number;
+  replies: number;
+  engagement_score: number;
+  created_at: string;
+  performance_log: any[];
+  gpt_reply_score?: number;
+  reply_tone?: string;
 }
 
 export class RealTimeContentLearningEngine {
-  private static instance: RealTimeContentLearningEngine | null = null;
-  
-  private contentHistory: Map<string, ContentLearningData> = new Map();
-  private successfulPatterns: Map<string, ContentPattern> = new Map();
-  private failedPatterns: Map<string, ContentPattern> = new Map();
-  private improvementStrategies: string[] = [];
-  private learningEnabled: boolean = true;
+  private strategyPath = path.join(process.cwd(), 'src', 'strategy', 'tweetingStrategy.ts');
+  private analysisLogPath = path.join(process.cwd(), 'logs', 'content-learning.json');
+  private readonly MIN_DATA_POINTS = 10; // Minimum tweets needed for reliable analysis
+  private readonly CONFIDENCE_THRESHOLD = 0.7;
 
   constructor() {
-    this.initializeBasePatterns();
-    console.log('🧠 Real-Time Content Learning Engine initialized');
-    console.log('📈 Active learning and improvement system ready');
+    this.ensureDirectories();
   }
 
-  public static getInstance(): RealTimeContentLearningEngine {
-    if (!RealTimeContentLearningEngine.instance) {
-      RealTimeContentLearningEngine.instance = new RealTimeContentLearningEngine();
+  private ensureDirectories(): void {
+    const strategyDir = path.dirname(this.strategyPath);
+    const logsDir = path.dirname(this.analysisLogPath);
+    
+    if (!fs.existsSync(strategyDir)) {
+      fs.mkdirSync(strategyDir, { recursive: true });
     }
-    return RealTimeContentLearningEngine.instance;
+    
+    if (!fs.existsSync(logsDir)) {
+      fs.mkdirSync(logsDir, { recursive: true });
+    }
   }
 
   /**
-   * 🎯 MAIN METHOD: Analyze and improve content in real-time
+   * 🧠 MAIN CONTENT LEARNING ORCHESTRATOR
+   * Analyzes all performance data and generates optimized strategy
    */
-  async analyzeAndImproveContent(content: string, contentType: string = 'tweet'): Promise<{
-    original_content: string;
-    improved_content: string;
-    improvements_made: string[];
-    content_score: number;
-    engagement_prediction: number;
-    learning_applied: boolean;
-  }> {
+  async analyzeAndGenerateStrategy(): Promise<ContentAnalysisResult> {
+    console.log('🧠 === REAL-TIME CONTENT LEARNING STARTING ===');
+    const startTime = Date.now();
+
     try {
-      await emergencyBudgetLockdown.enforceBeforeAICall('content-learning');
+      // Step 1: Gather performance data
+      console.log('📊 Step 1: Gathering performance data...');
+      const tweetData = await this.gatherPerformanceData();
       
-      console.log('🧠 === REAL-TIME CONTENT LEARNING ===');
-      console.log(`Analyzing: "${content.substring(0, 80)}..."`);
-      
-      // 1. Analyze current content quality
-      const contentAnalysis = await this.analyzeContentQuality(content);
-      
-      // 2. Apply learned patterns to improve content
-      const improvedContent = await this.applyLearningImprovements(content, contentAnalysis);
-      
-      // 3. Predict engagement for both versions
-      const originalPrediction = await this.predictEngagement(content);
-      const improvedPrediction = await this.predictEngagement(improvedContent.content);
-      
-      // 4. Store learning data
-      const learningData: ContentLearningData = {
-        content_id: `learning_${Date.now()}`,
-        original_content: content,
-        improved_content: improvedContent.content,
-        content_score: improvedContent.score,
-        improvement_actions: improvedContent.improvements,
-        engagement_prediction: improvedPrediction,
-        learning_insights: improvedContent.insights,
-        pattern_matches: improvedContent.patterns_used,
-        optimization_applied: true,
-        timestamp: new Date()
-      };
-      
-      this.contentHistory.set(learningData.content_id, learningData);
-      
-      // 5. Apply human filter
-      const finalContent = globalContentFilter(improvedContent.content);
-      
-      console.log(`✅ Content improved: ${contentAnalysis.score}→${improvedContent.score} (+${improvedContent.score - contentAnalysis.score})`);
-      console.log(`📈 Engagement prediction: ${originalPrediction.toFixed(1)}%→${improvedPrediction.toFixed(1)}% (+${(improvedPrediction - originalPrediction).toFixed(1)}%)`);
-      console.log(`🎯 Improvements: ${improvedContent.improvements.join(', ')}`);
-      
-      return {
-        original_content: content,
-        improved_content: finalContent,
-        improvements_made: improvedContent.improvements,
-        content_score: improvedContent.score,
-        engagement_prediction: improvedPrediction,
-        learning_applied: true
-      };
-      
-    } catch (error) {
-      console.error('❌ Real-time learning error:', error);
-      // Return original content if learning fails
-      return {
-        original_content: content,
-        improved_content: globalContentFilter(content),
-        improvements_made: [],
-        content_score: 50,
-        engagement_prediction: 3.0,
-        learning_applied: false
-      };
-    }
-  }
-
-  /**
-   * 📊 Analyze content quality and identify improvement opportunities
-   */
-  private async analyzeContentQuality(content: string): Promise<{
-    score: number;
-    issues: string[];
-    opportunities: string[];
-    pattern_matches: string[];
-  }> {
-    const analysis = {
-      score: 50,
-      issues: [] as string[],
-      opportunities: [] as string[],
-      pattern_matches: [] as string[]
-    };
-
-    // Human authenticity check
-    if (content.includes('#')) {
-      analysis.issues.push('Contains hashtags (not human-like)');
-      analysis.score -= 15;
-    } else {
-      analysis.score += 10;
-      analysis.pattern_matches.push('hashtag-free');
-    }
-
-    // Conversational tone check
-    if (content.includes("I've") || content.includes("I'm") || content.includes("Been") || content.includes("what I")) {
-      analysis.score += 15;
-      analysis.pattern_matches.push('conversational-tone');
-    } else {
-      analysis.opportunities.push('Add personal perspective');
-    }
-
-    // Engagement hooks
-    if (content.includes('?')) {
-      analysis.score += 10;
-      analysis.pattern_matches.push('engagement-question');
-    } else {
-      analysis.opportunities.push('Add engaging question');
-    }
-
-    // Data/specificity
-    if (/\d+%|\d+x|\$\d+|\d+ years|\d+ hours/.test(content)) {
-      analysis.score += 15;
-      analysis.pattern_matches.push('specific-data');
-    } else {
-      analysis.opportunities.push('Add specific data or numbers');
-    }
-
-    // Length optimization
-    if (content.length > 250) {
-      analysis.issues.push('Too long (may get truncated)');
-      analysis.score -= 10;
-    } else if (content.length < 100) {
-      analysis.opportunities.push('Could be more detailed');
-    } else {
-      analysis.score += 5;
-    }
-
-    // Authority indicators
-    if (content.includes('research') || content.includes('study') || content.includes('data shows')) {
-      analysis.score += 10;
-      analysis.pattern_matches.push('authority-building');
-    } else {
-      analysis.opportunities.push('Add research backing');
-    }
-
-    // Avoid robotic language
-    if (content.includes('BREAKING:') || content.includes('Key takeaway:') || content.includes('🚨')) {
-      analysis.issues.push('Contains robotic marketing language');
-      analysis.score -= 20;
-    }
-
-    return analysis;
-  }
-
-  /**
-   * 🚀 Apply learned patterns to improve content
-   */
-  private async applyLearningImprovements(content: string, analysis: any): Promise<{
-    content: string;
-    score: number;
-    improvements: string[];
-    insights: string[];
-    patterns_used: string[];
-  }> {
-    let improvedContent = content;
-    const improvements: string[] = [];
-    const insights: string[] = [];
-    const patternsUsed: string[] = [];
-    let score = analysis.score;
-
-    // Get best performing patterns
-    const topPatterns = Array.from(this.successfulPatterns.values())
-      .filter(p => p.success_rate > 70)
-      .sort((a, b) => b.avg_engagement_boost - a.avg_engagement_boost)
-      .slice(0, 5);
-
-    // Apply improvements based on learned patterns
-    const improvementPrompt = `Improve this content using proven engagement patterns:
-
-Original content: "${content}"
-
-Issues to fix: ${analysis.issues.join(', ') || 'None'}
-Opportunities: ${analysis.opportunities.join(', ') || 'Already optimized'}
-
-Apply these proven patterns:
-${topPatterns.map(p => `- ${p.description}: ${p.example_content}`).join('\n')}
-
-Improvement requirements:
-1. NEVER use hashtags (proven to reduce authenticity)
-2. Add personal perspective ("I've noticed", "Been tracking", "In my experience")
-3. Include specific data or timeframes
-4. Add engaging question at the end
-5. Keep conversational and human-like
-6. Maintain professional credibility
-7. Stay under 250 characters
-8. Remove any robotic marketing language
-
-Return only the improved content, nothing else.`;
-
-    const improvedResponse = await openaiClient.generateCompletion(improvementPrompt, {
-      maxTokens: 150,
-      temperature: 0.7
-    });
-
-    if (improvedResponse && improvedResponse.trim() !== content) {
-      improvedContent = improvedResponse.trim();
-      improvements.push('Applied learned engagement patterns');
-      score += 20;
-      patternsUsed.push('learned-optimization');
-    }
-
-    // Remove hashtags if any remain
-    if (improvedContent.includes('#')) {
-      improvedContent = improvedContent.replace(/#\w+/g, '').replace(/\s+/g, ' ').trim();
-      improvements.push('Removed hashtags for authenticity');
-      score += 10;
-    }
-
-    // Ensure human voice
-    if (!improvedContent.includes("I") && !improvedContent.includes("Been") && !improvedContent.includes("what")) {
-      // Add personal touch
-      const personalStarters = ["I've been tracking this:", "Been noticing:", "What I find interesting:"];
-      const randomStarter = personalStarters[Math.floor(Math.random() * personalStarters.length)];
-      improvedContent = `${randomStarter} ${improvedContent}`;
-      improvements.push('Added personal perspective');
-      score += 15;
-      patternsUsed.push('human-voice');
-    }
-
-    // Add question if missing
-    if (!improvedContent.includes('?')) {
-      const questions = [
-        "What's your take?",
-        "Thoughts?",
-        "Anyone else seeing this?",
-        "What do you think?",
-        "Am I missing something?"
-      ];
-      const randomQuestion = questions[Math.floor(Math.random() * questions.length)];
-      improvedContent = `${improvedContent} ${randomQuestion}`;
-      improvements.push('Added engagement question');
-      score += 10;
-      patternsUsed.push('engagement-driver');
-    }
-
-    // Learning insights
-    insights.push(`Applied ${patternsUsed.length} successful patterns`);
-    insights.push(`Content score improved: ${analysis.score}→${score}`);
-    if (improvements.length > 0) {
-      insights.push(`Improvements: ${improvements.join(', ')}`);
-    }
-
-    return {
-      content: improvedContent,
-      score: Math.min(100, score),
-      improvements,
-      insights,
-      patterns_used: patternsUsed
-    };
-  }
-
-  /**
-   * 📈 Predict engagement based on learned patterns
-   */
-  private async predictEngagement(content: string): Promise<number> {
-    let baseScore = 3.0; // Base engagement rate
-
-    // Apply learned multipliers
-    if (!content.includes('#')) baseScore += 1.5; // Hashtag-free bonus
-    if (content.includes('?')) baseScore += 1.0; // Question bonus
-    if (/\d+%|\d+x|\$\d+/.test(content)) baseScore += 1.2; // Data bonus
-    if (content.includes("I've") || content.includes("Been")) baseScore += 0.8; // Personal bonus
-    if (content.length > 100 && content.length < 200) baseScore += 0.5; // Length bonus
-
-    // Pattern bonuses from successful patterns
-    for (const pattern of this.successfulPatterns.values()) {
-      if (pattern.success_rate > 80 && content.toLowerCase().includes(pattern.description.toLowerCase())) {
-        baseScore += pattern.avg_engagement_boost;
-      }
-    }
-
-    return Math.min(12.0, baseScore); // Cap at 12% engagement rate
-  }
-
-  /**
-   * 📊 Learn from posted content performance
-   */
-  async learnFromPerformance(contentId: string, actualEngagement: {
-    likes: number;
-    retweets: number;
-    replies: number;
-    impressions?: number;
-  }): Promise<void> {
-    try {
-      const learningData = this.contentHistory.get(contentId);
-      if (!learningData) return;
-
-      // Calculate actual engagement rate
-      const totalEngagement = actualEngagement.likes + actualEngagement.retweets + (actualEngagement.replies * 2);
-      const engagementRate = actualEngagement.impressions 
-        ? (totalEngagement / actualEngagement.impressions) * 100
-        : totalEngagement * 0.1; // Estimate if impressions not available
-
-      learningData.actual_engagement = engagementRate;
-
-      // Learn from performance
-      if (engagementRate > learningData.engagement_prediction * 1.2) {
-        // Great performance - strengthen patterns
-        await this.strengthenSuccessfulPatterns(learningData);
-        console.log(`🔥 High performance: ${engagementRate.toFixed(1)}% engagement - learning from success!`);
-      } else if (engagementRate < learningData.engagement_prediction * 0.6) {
-        // Poor performance - mark patterns to avoid
-        await this.markFailedPatterns(learningData);
-        console.log(`⚠️ Low performance: ${engagementRate.toFixed(1)}% engagement - learning from failure`);
+      if (tweetData.length < this.MIN_DATA_POINTS) {
+        return {
+          success: false,
+          insights: this.getDefaultStrategy(),
+          confidence: 0,
+          dataPoints: tweetData.length,
+          generatedAt: new Date().toISOString(),
+          summary: `Insufficient data: ${tweetData.length}/${this.MIN_DATA_POINTS} tweets needed for reliable analysis`,
+          error: 'Not enough data points for analysis'
+        };
       }
 
-      // Update learning insights
-      learningData.learning_insights.push(`Actual engagement: ${engagementRate.toFixed(1)}% (predicted: ${learningData.engagement_prediction.toFixed(1)}%)`);
-      
-      // Store performance data for future learning
-      await this.storePerformanceLearning(learningData, engagementRate);
+      // Step 2: Analyze temporal patterns
+      console.log('⏰ Step 2: Analyzing temporal patterns...');
+      const temporalInsights = this.analyzeTemporalPatterns(tweetData);
+
+      // Step 3: Analyze content performance
+      console.log('📝 Step 3: Analyzing content performance...');
+      const contentInsights = this.analyzeContentPatterns(tweetData);
+
+      // Step 4: Analyze reply performance
+      console.log('💬 Step 4: Analyzing reply performance...');
+      const replyInsights = this.analyzeReplyPatterns(tweetData);
+
+      // Step 5: Extract keywords and topics
+      console.log('🔍 Step 5: Extracting high-performing keywords...');
+      const keywordInsights = this.extractTopKeywords(tweetData);
+
+      // Step 6: Generate comprehensive insights
+      const insights: PerformanceInsights = {
+        bestTimeBlocks: temporalInsights.optimalPostingWindows,
+        highPerformanceTones: replyInsights.bestReplyTones,
+        keywordsToPrioritize: keywordInsights,
+        contentPatterns: {
+          avgEngagement: contentInsights.avgEngagement,
+          topPerformingLength: contentInsights.optimalLength,
+          mostViralTimes: temporalInsights.mostViralTimes,
+          underperformingPatterns: contentInsights.underperformingPatterns
+        },
+        replyInsights: {
+          bestReplyTones: replyInsights.bestReplyTones,
+          avgReplyEngagement: replyInsights.avgEngagement,
+          topReplyKeywords: replyInsights.topKeywords
+        },
+        temporalPatterns: temporalInsights
+      };
+
+      // Step 7: Calculate confidence score
+      const confidence = this.calculateConfidence(tweetData.length, insights);
+
+      // Step 8: Generate and save strategy
+      console.log('💾 Step 8: Generating optimized strategy...');
+      await this.generateStrategyFile(insights, confidence);
+
+      // Step 9: Log analysis results
+      await this.logAnalysisResults(insights, confidence, tweetData.length);
+
+      const duration = Date.now() - startTime;
+      const summary = `🧠 Learning complete: Analyzed ${tweetData.length} tweets, confidence ${Math.round(confidence * 100)}%, generated optimized strategy in ${Math.round(duration / 1000)}s`;
+
+      console.log(summary);
+
+      return {
+        success: true,
+        insights,
+        confidence,
+        dataPoints: tweetData.length,
+        generatedAt: new Date().toISOString(),
+        summary
+      };
 
     } catch (error) {
-      console.error('❌ Error learning from performance:', error);
+      console.error('❌ Content learning failed:', error);
+      return {
+        success: false,
+        insights: this.getDefaultStrategy(),
+        confidence: 0,
+        dataPoints: 0,
+        generatedAt: new Date().toISOString(),
+        summary: `Content learning failed: ${error.message}`,
+        error: error.message
+      };
     }
   }
 
   /**
-   * 🎯 Get current learning insights for content generation
+   * 📊 Gather performance data from Supabase
    */
-  getOptimizationStrategy(): {
-    successful_patterns: string[];
-    failed_patterns: string[];
-    improvement_strategies: string[];
-    engagement_boosters: string[];
-    content_guidelines: string[];
-  } {
-    const successful = Array.from(this.successfulPatterns.values())
-      .filter(p => p.success_rate > 70)
-      .sort((a, b) => b.avg_engagement_boost - a.avg_engagement_boost)
-      .slice(0, 5);
+  private async gatherPerformanceData(): Promise<TweetAnalysisData[]> {
+    try {
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
-    const failed = Array.from(this.failedPatterns.values())
-      .slice(0, 3);
+      // Query tweets with performance data
+      const { data: tweets, error } = await supabaseClient.supabase
+        ?.from('tweets')
+        ?.select(`
+          tweet_id,
+          content,
+          content_type,
+          likes,
+          retweets,
+          replies,
+          engagement_score,
+          created_at,
+          performance_log,
+          gpt_reply_score
+        `)
+        ?.eq('success', true)
+        ?.gte('created_at', thirtyDaysAgo)
+        ?.order('created_at', { ascending: false });
+
+      if (error) {
+        throw new Error(`Database error: ${error.message}`);
+      }
+
+      // Also get reply data if available
+      const { data: replyData, error: replyError } = await supabaseClient.supabase
+        ?.from('replies') // Assuming you have a replies table
+        ?.select('original_tweet_id, content, reply_tone, likes, retweets, created_at')
+        ?.gte('created_at', thirtyDaysAgo)
+        ?.limit(100)
+        ?.maybeSingle();
+
+      console.log(`📊 Gathered ${tweets?.length || 0} tweets for analysis`);
+      
+      return tweets || [];
+
+    } catch (error) {
+      console.error('❌ Error gathering performance data:', error);
+      return [];
+    }
+  }
+
+  /**
+   * ⏰ Analyze temporal patterns for optimal posting times
+   */
+  private analyzeTemporalPatterns(tweets: TweetAnalysisData[]): any {
+    const hourlyPerformance: { [hour: string]: number[] } = {};
+    const weekdayPerformance: { [day: string]: number[] } = {};
+    const viralTimes: string[] = [];
+
+    tweets.forEach(tweet => {
+      const date = new Date(tweet.created_at);
+      const hour = date.getHours();
+      const weekday = date.toLocaleDateString('en-US', { weekday: 'short' });
+      const timeBlock = `${weekday} ${this.formatHour(hour)}`;
+      
+      // Calculate engagement rate (likes + retweets + replies)
+      const engagement = tweet.likes + tweet.retweets + tweet.replies;
+      const engagementRate = engagement / Math.max(1, tweet.engagement_score || 1);
+
+      // Track hourly performance
+      if (!hourlyPerformance[hour]) hourlyPerformance[hour] = [];
+      hourlyPerformance[hour].push(engagementRate);
+
+      // Track weekday performance
+      if (!weekdayPerformance[weekday]) weekdayPerformance[weekday] = [];
+      weekdayPerformance[weekday].push(engagementRate);
+
+      // Track viral content times (high engagement)
+      if (engagement > 20) { // Threshold for "viral"
+        viralTimes.push(timeBlock);
+      }
+    });
+
+    // Calculate average performance for each time period
+    const avgHourlyPerformance: { [hour: string]: number } = {};
+    Object.keys(hourlyPerformance).forEach(hour => {
+      const performances = hourlyPerformance[hour];
+      avgHourlyPerformance[hour] = performances.reduce((a, b) => a + b, 0) / performances.length;
+    });
+
+    const avgWeekdayPerformance: { [day: string]: number } = {};
+    Object.keys(weekdayPerformance).forEach(day => {
+      const performances = weekdayPerformance[day];
+      avgWeekdayPerformance[day] = performances.reduce((a, b) => a + b, 0) / performances.length;
+    });
+
+    // Find optimal posting windows
+    const optimalHours = Object.entries(avgHourlyPerformance)
+      .sort(([,a], [,b]) => b - a)
+      .slice(0, 3)
+      .map(([hour]) => parseInt(hour));
+
+    const optimalDays = Object.entries(avgWeekdayPerformance)
+      .sort(([,a], [,b]) => b - a)
+      .slice(0, 3)
+      .map(([day]) => day);
+
+    // Generate optimal posting windows
+    const optimalPostingWindows: string[] = [];
+    optimalDays.forEach(day => {
+      optimalHours.forEach(hour => {
+        optimalPostingWindows.push(`${day} ${this.formatHour(hour)}`);
+      });
+    });
 
     return {
-      successful_patterns: successful.map(p => p.description),
-      failed_patterns: failed.map(p => p.description),
-      improvement_strategies: this.improvementStrategies,
-      engagement_boosters: [
-        'Add personal perspective ("I\'ve noticed", "Been tracking")',
-        'Include specific data and numbers',
-        'Ask engaging questions',
-        'Remove all hashtags',
-        'Keep conversational tone',
-        'Add research backing'
-      ],
-      content_guidelines: [
-        'NEVER use hashtags',
-        'Always sound human and conversational',
-        'Include personal opinions and observations',
-        'Back claims with data when possible',
-        'End with engaging questions',
-        'Keep under 250 characters',
-        'Avoid robotic marketing language'
-      ]
+      hourlyPerformance: avgHourlyPerformance,
+      weekdayPerformance: avgWeekdayPerformance,
+      optimalPostingWindows: optimalPostingWindows.slice(0, 4), // Top 4 windows
+      mostViralTimes: [...new Set(viralTimes)].slice(0, 3) // Top 3 viral times
     };
   }
 
   /**
-   * 📈 Initialize base successful patterns from your existing data
+   * 📝 Analyze content patterns for optimization
    */
-  private initializeBasePatterns(): void {
-    // Based on your human-style tweets that performed well
-    this.successfulPatterns.set('human_observation', {
-      pattern_id: 'human_observation',
-      pattern_type: 'human_touch',
-      description: 'Personal observation pattern',
-      example_content: 'I keep noticing this pattern in healthcare AI...',
-      success_rate: 95,
-      avg_engagement_boost: 2.5,
-      usage_frequency: 0,
-      last_used: new Date(),
-      effectiveness_trend: 'improving'
-    });
+  private analyzeContentPatterns(tweets: TweetAnalysisData[]): any {
+    const lengthPerformance: { length: number; engagement: number }[] = [];
+    const contentTypePerformance: { [type: string]: number[] } = {};
+    const underperformingPatterns: string[] = [];
 
-    this.successfulPatterns.set('tracking_trend', {
-      pattern_id: 'tracking_trend',
-      pattern_type: 'authority_builder',
-      description: 'Trend tracking pattern',
-      example_content: 'Been tracking this trend: AI-assisted diagnostics are showing...',
-      success_rate: 90,
-      avg_engagement_boost: 2.0,
-      usage_frequency: 0,
-      last_used: new Date(),
-      effectiveness_trend: 'improving'
-    });
+    let totalEngagement = 0;
 
-    this.successfulPatterns.set('no_hashtags', {
-      pattern_id: 'no_hashtags',
-      pattern_type: 'human_touch',
-      description: 'Hashtag-free content',
-      example_content: 'Content without any hashtags for authenticity',
-      success_rate: 100,
-      avg_engagement_boost: 1.5,
-      usage_frequency: 0,
-      last_used: new Date(),
-      effectiveness_trend: 'stable'
-    });
+    tweets.forEach(tweet => {
+      const engagement = tweet.likes + tweet.retweets + tweet.replies;
+      totalEngagement += engagement;
 
-    // Patterns to avoid (based on poor performance)
-    this.failedPatterns.set('hashtag_heavy', {
-      pattern_id: 'hashtag_heavy',
-      pattern_type: 'engagement_driver',
-      description: 'Multiple hashtags',
-      example_content: 'Content with #AI #HealthTech #Innovation hashtags',
-      success_rate: 10,
-      avg_engagement_boost: -1.0,
-      usage_frequency: 0,
-      last_used: new Date(),
-      effectiveness_trend: 'declining'
-    });
+      // Track length vs performance
+      lengthPerformance.push({
+        length: tweet.content.length,
+        engagement
+      });
 
-    this.failedPatterns.set('robotic_language', {
-      pattern_id: 'robotic_language',
-      pattern_type: 'viral_hook',
-      description: 'Marketing language',
-      example_content: 'BREAKING: Key takeaway: Industry insight:',
-      success_rate: 15,
-      avg_engagement_boost: -0.8,
-      usage_frequency: 0,
-      last_used: new Date(),
-      effectiveness_trend: 'declining'
-    });
+      // Track content type performance
+      const type = tweet.content_type || 'general';
+      if (!contentTypePerformance[type]) contentTypePerformance[type] = [];
+      contentTypePerformance[type].push(engagement);
 
-    console.log('📊 Initialized base learning patterns');
-    console.log(`✅ ${this.successfulPatterns.size} successful patterns loaded`);
-    console.log(`❌ ${this.failedPatterns.size} failed patterns to avoid`);
-  }
-
-  private async strengthenSuccessfulPatterns(learningData: ContentLearningData): Promise<void> {
-    // Strengthen patterns that led to success
-    for (const patternId of learningData.pattern_matches) {
-      const pattern = this.successfulPatterns.get(patternId);
-      if (pattern) {
-        pattern.success_rate = Math.min(100, pattern.success_rate + 2);
-        pattern.avg_engagement_boost += 0.1;
-        pattern.effectiveness_trend = 'improving';
-        pattern.last_used = new Date();
+      // Identify underperforming patterns
+      if (engagement < 2) { // Low engagement threshold
+        const words = tweet.content.toLowerCase().split(' ');
+        words.forEach(word => {
+          if (word.length > 6 && !underperformingPatterns.includes(word)) {
+            underperformingPatterns.push(word);
+          }
+        });
       }
-    }
+    });
+
+    // Find optimal content length
+    const sortedByLength = lengthPerformance.sort((a, b) => b.engagement - a.engagement);
+    const topPerforming = sortedByLength.slice(0, Math.ceil(sortedByLength.length * 0.2)); // Top 20%
+    const avgTopLength = topPerforming.reduce((sum, item) => sum + item.length, 0) / topPerforming.length;
+
+    return {
+      avgEngagement: totalEngagement / tweets.length,
+      optimalLength: Math.round(avgTopLength),
+      contentTypePerformance,
+      underperformingPatterns: underperformingPatterns.slice(0, 5) // Top 5 to avoid
+    };
   }
 
-  private async markFailedPatterns(learningData: ContentLearningData): Promise<void> {
-    // Learn from patterns that didn't work
-    for (const patternId of learningData.pattern_matches) {
-      const pattern = this.successfulPatterns.get(patternId);
-      if (pattern) {
-        pattern.success_rate = Math.max(0, pattern.success_rate - 5);
-        pattern.effectiveness_trend = 'declining';
-        
-        // Move to failed patterns if success rate drops too low
-        if (pattern.success_rate < 30) {
-          this.failedPatterns.set(patternId, pattern);
-          this.successfulPatterns.delete(patternId);
+  /**
+   * 💬 Analyze reply patterns and tones
+   */
+  private analyzeReplyPatterns(tweets: TweetAnalysisData[]): any {
+    const tonePerformance: { [tone: string]: number[] } = {};
+    const replyKeywords: { [keyword: string]: number } = {};
+    let totalReplyEngagement = 0;
+    let replyCount = 0;
+
+    tweets.forEach(tweet => {
+      if (tweet.gpt_reply_score && tweet.gpt_reply_score > 0) {
+        replyCount++;
+        totalReplyEngagement += tweet.gpt_reply_score;
+
+        // Extract tone from content (simplified analysis)
+        const tone = this.detectTone(tweet.content);
+        if (!tonePerformance[tone]) tonePerformance[tone] = [];
+        tonePerformance[tone].push(tweet.gpt_reply_score);
+
+        // Extract keywords from high-performing replies
+        if (tweet.gpt_reply_score > 0.7) {
+          const words = tweet.content.toLowerCase().match(/\b\w{4,}\b/g) || [];
+          words.forEach(word => {
+            replyKeywords[word] = (replyKeywords[word] || 0) + 1;
+          });
         }
       }
+    });
+
+    // Find best performing tones
+    const bestTones = Object.entries(tonePerformance)
+      .map(([tone, scores]) => ({
+        tone,
+        avgScore: scores.reduce((a, b) => a + b, 0) / scores.length
+      }))
+      .sort((a, b) => b.avgScore - a.avgScore)
+      .slice(0, 3)
+      .map(item => item.tone);
+
+    // Find top reply keywords
+    const topKeywords = Object.entries(replyKeywords)
+      .sort(([,a], [,b]) => b - a)
+      .slice(0, 5)
+      .map(([keyword]) => keyword);
+
+    return {
+      bestReplyTones: bestTones,
+      avgEngagement: replyCount > 0 ? totalReplyEngagement / replyCount : 0,
+      topKeywords
+    };
+  }
+
+  /**
+   * 🔍 Extract top-performing keywords
+   */
+  private extractTopKeywords(tweets: TweetAnalysisData[]): string[] {
+    const keywordPerformance: { [keyword: string]: number[] } = {};
+
+    tweets.forEach(tweet => {
+      const engagement = tweet.likes + tweet.retweets + tweet.replies;
+      
+      // Extract meaningful keywords (4+ characters, not common words)
+      const words = tweet.content.toLowerCase().match(/\b\w{4,}\b/g) || [];
+      const filteredWords = words.filter(word => 
+        !['this', 'that', 'with', 'have', 'will', 'been', 'they', 'were', 'said', 'each', 'which', 'their', 'time', 'about'].includes(word)
+      );
+
+      filteredWords.forEach(word => {
+        if (!keywordPerformance[word]) keywordPerformance[word] = [];
+        keywordPerformance[word].push(engagement);
+      });
+    });
+
+    // Calculate average performance for each keyword
+    const keywordAverages = Object.entries(keywordPerformance)
+      .map(([keyword, engagements]) => ({
+        keyword,
+        avgEngagement: engagements.reduce((a, b) => a + b, 0) / engagements.length,
+        frequency: engagements.length
+      }))
+      .filter(item => item.frequency >= 2) // Keyword must appear at least twice
+      .sort((a, b) => b.avgEngagement - a.avgEngagement)
+      .slice(0, 8)
+      .map(item => item.keyword);
+
+    return keywordAverages;
+  }
+
+  /**
+   * 🎭 Detect tone from content
+   */
+  private detectTone(content: string): string {
+    const lowerContent = content.toLowerCase();
+    
+    if (lowerContent.includes('interesting') || lowerContent.includes('fascinating') || lowerContent.includes('insight')) {
+      return 'insightful';
+    } else if (lowerContent.includes('plot twist') || lowerContent.includes('irony') || lowerContent.includes('wild')) {
+      return 'clever';
+    } else if (lowerContent.includes('exactly') || lowerContent.includes('absolutely') || lowerContent.includes('yes')) {
+      return 'supportive';
+    } else if (lowerContent.includes('?') || lowerContent.includes('curious') || lowerContent.includes('wonder')) {
+      return 'questioning';
+    } else if (lowerContent.includes('though') || lowerContent.includes('except') || lowerContent.includes('caveat')) {
+      return 'corrective';
+    }
+    
+    return 'neutral';
+  }
+
+  /**
+   * ⏰ Format hour for display
+   */
+  private formatHour(hour: number): string {
+    if (hour === 0) return '12AM';
+    if (hour < 12) return `${hour}AM`;
+    if (hour === 12) return '12PM';
+    return `${hour - 12}PM`;
+  }
+
+  /**
+   * 📊 Calculate confidence score
+   */
+  private calculateConfidence(dataPoints: number, insights: PerformanceInsights): number {
+    let confidence = 0;
+
+    // Data quantity factor (0-0.4)
+    confidence += Math.min(dataPoints / 50, 0.4);
+
+    // Insight quality factors (0-0.6)
+    if (insights.bestTimeBlocks.length > 0) confidence += 0.15;
+    if (insights.highPerformanceTones.length > 0) confidence += 0.15;
+    if (insights.keywordsToPrioritize.length > 0) confidence += 0.15;
+    if (insights.contentPatterns.avgEngagement > 0) confidence += 0.15;
+
+    return Math.min(confidence, 1.0);
+  }
+
+  /**
+   * 💾 Generate strategy file
+   */
+  private async generateStrategyFile(insights: PerformanceInsights, confidence: number): Promise<void> {
+    const strategyContent = `// 🧠 AUTO-GENERATED CONTENT STRATEGY
+// Generated: ${new Date().toISOString()}
+// Confidence: ${Math.round(confidence * 100)}%
+// Data source: Real-time performance analysis
+
+export const optimizedStrategy = {
+  // 📅 Best posting times based on engagement data
+  bestTimeBlocks: ${JSON.stringify(insights.bestTimeBlocks, null, 2)},
+  
+  // 🎭 Highest performing reply tones
+  highPerformanceTones: ${JSON.stringify(insights.highPerformanceTones, null, 2)},
+  
+  // 🔑 Keywords that drive engagement
+  keywordsToPrioritize: ${JSON.stringify(insights.keywordsToPrioritize, null, 2)},
+  
+  // 📊 Content optimization insights
+  contentOptimization: {
+    optimalLength: ${insights.contentPatterns.topPerformingLength},
+    avgEngagement: ${Math.round(insights.contentPatterns.avgEngagement * 100) / 100},
+    viralTimes: ${JSON.stringify(insights.contentPatterns.mostViralTimes, null, 2)},
+    avoidPatterns: ${JSON.stringify(insights.contentPatterns.underperformingPatterns, null, 2)}
+  },
+  
+  // 💬 Reply strategy insights  
+  replyStrategy: {
+    bestTones: ${JSON.stringify(insights.replyInsights.bestReplyTones, null, 2)},
+    topKeywords: ${JSON.stringify(insights.replyInsights.topReplyKeywords, null, 2)},
+    avgEngagement: ${Math.round(insights.replyInsights.avgReplyEngagement * 100) / 100}
+  },
+  
+  // ⏰ Temporal patterns
+  temporalInsights: {
+    hourlyPerformance: ${JSON.stringify(insights.temporalPatterns.hourlyPerformance, null, 2)},
+    weekdayPerformance: ${JSON.stringify(insights.temporalPatterns.weekdayPerformance, null, 2)},
+    optimalWindows: ${JSON.stringify(insights.temporalPatterns.optimalPostingWindows, null, 2)}
+  },
+  
+  // 🎯 Strategy metadata
+  metadata: {
+    generatedAt: "${new Date().toISOString()}",
+    confidence: ${confidence},
+    version: "auto-learning-v1"
+  }
+};
+
+// 🚀 Export for autonomous growth master integration
+export default optimizedStrategy;
+`;
+
+    fs.writeFileSync(this.strategyPath, strategyContent);
+    console.log(`✅ Strategy file generated: ${this.strategyPath}`);
+  }
+
+  /**
+   * 📝 Log analysis results
+   */
+  private async logAnalysisResults(insights: PerformanceInsights, confidence: number, dataPoints: number): Promise<void> {
+    try {
+      let logData = { analyses: [] };
+      
+      if (fs.existsSync(this.analysisLogPath)) {
+        logData = JSON.parse(fs.readFileSync(this.analysisLogPath, 'utf8'));
+      }
+
+      logData.analyses.push({
+        timestamp: new Date().toISOString(),
+        dataPoints,
+        confidence,
+        insights,
+        summary: `Analyzed ${dataPoints} tweets with ${Math.round(confidence * 100)}% confidence`
+      });
+
+      // Keep only last 10 analyses
+      if (logData.analyses.length > 10) {
+        logData.analyses = logData.analyses.slice(-10);
+      }
+
+      fs.writeFileSync(this.analysisLogPath, JSON.stringify(logData, null, 2));
+      console.log(`📝 Analysis logged: ${this.analysisLogPath}`);
+    } catch (error) {
+      console.warn('⚠️ Could not log analysis results:', error);
     }
   }
 
-  private async storePerformanceLearning(learningData: ContentLearningData, engagementRate: number): Promise<void> {
-    try {
-      // Store in database for persistent learning
-      await supabaseClient.supabase?.from('bot_config').upsert({
-        key: `content_learning_${learningData.content_id}`,
-        value: {
-          ...learningData,
-          actual_engagement: engagementRate
-        },
-        updated_at: new Date().toISOString()
-      });
-    } catch (error) {
-      console.warn('Failed to store learning data:', error);
-    }
+  /**
+   * 🎯 Get default strategy for fallback
+   */
+  private getDefaultStrategy(): PerformanceInsights {
+    return {
+      bestTimeBlocks: ['Mon 11AM', 'Wed 3PM', 'Thu 4PM'],
+      highPerformanceTones: ['insightful', 'clever'],
+      keywordsToPrioritize: ['health', 'research', 'breakthrough'],
+      contentPatterns: {
+        avgEngagement: 0,
+        topPerformingLength: 150,
+        mostViralTimes: [],
+        underperformingPatterns: []
+      },
+      replyInsights: {
+        bestReplyTones: ['insightful', 'supportive'],
+        avgReplyEngagement: 0,
+        topReplyKeywords: []
+      },
+      temporalPatterns: {
+        hourlyPerformance: {},
+        weekdayPerformance: {},
+        optimalPostingWindows: ['Mon 11AM', 'Wed 3PM', 'Thu 4PM']
+      }
+    };
   }
-} 
+
+  /**
+   * 📊 Get learning statistics
+   */
+  getLearningStat(): any {
+    return {
+      minDataPoints: this.MIN_DATA_POINTS,
+      confidenceThreshold: this.CONFIDENCE_THRESHOLD,
+      strategyPath: this.strategyPath,
+      analysisLogPath: this.analysisLogPath,
+      lastAnalysis: fs.existsSync(this.analysisLogPath) ? 
+        JSON.parse(fs.readFileSync(this.analysisLogPath, 'utf8')).analyses?.slice(-1)[0] : null
+    };
+  }
+}
+
+// Export singleton instance
+export const realTimeContentLearningEngine = new RealTimeContentLearningEngine(); 
