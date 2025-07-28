@@ -34,8 +34,8 @@ export interface OperationCost {
 
 export class UnifiedBudgetManager {
   private static instance: UnifiedBudgetManager;
-  private static readonly DAILY_LIMIT = 5.00;
-  private static readonly EMERGENCY_LIMIT = 4.75;
+  private static readonly DAILY_LIMIT = 7.50;
+  private static readonly EMERGENCY_LIMIT = 7.25;
   private static readonly LOCKDOWN_FILE = '.budget_lockdown';
   
   // Budget allocation (optimized for content over decisions) - $5.00 budget

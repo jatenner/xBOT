@@ -60,32 +60,53 @@ export class AutonomousPostingEngine {
   }
 
   /**
-   * 🧠 INTELLIGENT POSTING DECISION
+   * 🧠 INTELLIGENT POSTING DECISION (ENHANCED WITH EMERGENCY OVERRIDE)
    */
   async makePostingDecision(): Promise<PostingDecision> {
     try {
-      console.log('🧠 Making intelligent posting decision...');
+      console.log('🧠 === MAKING INTELLIGENT POSTING DECISION ===');
 
-      // Check budget status
-      const lockdownStatus = await emergencyBudgetLockdown.isLockedDown();
-      if (lockdownStatus.lockdownActive) {
-        return {
-          should_post: false,
-          reason: 'Emergency budget lockdown active',
-          confidence: 1.0,
-          strategy: 'conservative',
-          wait_minutes: 60
-        };
-      }
-
-      // Get last post time from database
+      // Get last post time from database first
       const lastPost = await this.getLastPostFromDatabase();
       const now = new Date();
       const minutesSinceLastPost = lastPost 
         ? Math.floor((now.getTime() - new Date(lastPost.created_at).getTime()) / (1000 * 60))
         : 1000; // Large number if no posts
-
-      console.log(`⏰ Minutes since last post: ${minutesSinceLastPost}`);
+      
+      const hoursSinceLastPost = minutesSinceLastPost / 60;
+      
+      console.log(`⏰ Time since last post: ${minutesSinceLastPost} minutes (${hoursSinceLastPost.toFixed(1)} hours)`);
+      
+      // Check budget status with emergency override capability
+      const lockdownStatus = await emergencyBudgetLockdown.isLockedDown(hoursSinceLastPost);
+      
+      console.log(`💰 Budget Status: ${lockdownStatus.lockdownActive ? 'LOCKED' : 'OK'}`);
+      console.log(`💵 Spending: $${lockdownStatus.totalSpent.toFixed(2)} / $${lockdownStatus.dailyLimit.toFixed(2)}`);
+      console.log(`📝 Reason: ${lockdownStatus.lockdownReason}`);
+      
+      // EMERGENCY OVERRIDE: Force post if 12+ hours have passed
+      if (hoursSinceLastPost >= 12) {
+        console.log(`🚨 EMERGENCY OVERRIDE: ${hoursSinceLastPost.toFixed(1)} hours since last post - FORCING POST`);
+        return {
+          should_post: true,
+          reason: `Emergency override: ${hoursSinceLastPost.toFixed(1)} hours since last post`,
+          confidence: 1.0,
+          strategy: 'aggressive'
+        };
+      }
+      
+      // If budget locked and less than 12 hours, respect lockdown but explain clearly
+      if (lockdownStatus.lockdownActive) {
+        const hoursUntilOverride = Math.max(0, 12 - hoursSinceLastPost);
+        console.log(`🛑 Budget lockdown active - will override in ${hoursUntilOverride.toFixed(1)} hours`);
+        return {
+          should_post: false,
+          reason: `Budget lockdown active ($${lockdownStatus.totalSpent.toFixed(2)}/${lockdownStatus.dailyLimit}) - emergency override in ${hoursUntilOverride.toFixed(1)}h`,
+          confidence: 1.0,
+          strategy: 'conservative',
+          wait_minutes: Math.min(hoursUntilOverride * 60, 60)
+        };
+      }
 
       // Enhanced posting strategy with reduced intervals
       const currentHour = now.getHours();
@@ -94,6 +115,7 @@ export class AutonomousPostingEngine {
       const isActiveHours = currentHour >= 6 && currentHour <= 23;
       
       if (!isActiveHours) {
+        console.log(`🌙 Outside active hours (${currentHour}:00) - waiting until 6 AM`);
         return {
           should_post: false,
           reason: 'Outside active hours (6 AM - 11 PM)',
@@ -103,7 +125,7 @@ export class AutonomousPostingEngine {
         };
       }
 
-      // Reduced posting intervals for more frequent posts
+      // Adaptive posting intervals based on time since last post
       let requiredInterval: number;
       let strategy: 'aggressive' | 'balanced' | 'conservative';
       let confidence: number;
@@ -113,19 +135,29 @@ export class AutonomousPostingEngine {
         requiredInterval = 120; // 2 hours
         strategy = 'conservative';
         confidence = 0.6;
-      } else if (minutesSinceLastPost >= 180) {
-        // Aggressive mode for catch-up
-        requiredInterval = 45; // 45 minutes
+        console.log(`⚠️ Conservative mode: ${this.consecutiveFailures} consecutive failures`);
+      } else if (minutesSinceLastPost >= 480) { // 8+ hours
+        // Aggressive catch-up mode
+        requiredInterval = 30; // 30 minutes
         strategy = 'aggressive';
         confidence = 0.95;
-      } else if (minutesSinceLastPost >= 90) {
+        console.log(`🚀 Aggressive catch-up mode: ${hoursSinceLastPost.toFixed(1)} hours since last post`);
+      } else if (minutesSinceLastPost >= 240) { // 4+ hours
         // Balanced mode
         requiredInterval = 60; // 1 hour
         strategy = 'balanced';
         confidence = 0.85;
+        console.log(`⚖️ Balanced mode: ${hoursSinceLastPost.toFixed(1)} hours since last post`);
+      } else if (minutesSinceLastPost >= 90) { // 1.5+ hours
+        // Standard mode
+        requiredInterval = 90; // 1.5 hours
+        strategy = 'balanced';
+        confidence = 0.75;
+        console.log(`📊 Standard mode: ${hoursSinceLastPost.toFixed(1)} hours since last post`);
       } else {
         // Too soon
-        const waitTime = requiredInterval - minutesSinceLastPost;
+        const waitTime = 90 - minutesSinceLastPost;
+        console.log(`⏱️ Too soon: only ${minutesSinceLastPost} minutes since last post`);
         return {
           should_post: false,
           reason: `Too soon since last post (${minutesSinceLastPost}min ago)`,
@@ -137,15 +169,17 @@ export class AutonomousPostingEngine {
 
       // Enhanced decision logic
       if (minutesSinceLastPost >= requiredInterval) {
-        console.log(`✅ Decision: POST (${strategy} strategy, ${confidence * 100}% confidence)`);
+        console.log(`✅ DECISION: POST (${strategy} strategy, ${confidence * 100}% confidence)`);
+        console.log(`📊 Interval met: ${minutesSinceLastPost}min >= ${requiredInterval}min required`);
         return {
           should_post: true,
-          reason: `${strategy} posting after ${minutesSinceLastPost} minutes`,
+          reason: `${strategy} posting after ${hoursSinceLastPost.toFixed(1)} hours`,
           confidence,
           strategy
         };
       } else {
         const waitTime = requiredInterval - minutesSinceLastPost;
+        console.log(`⏳ DECISION: WAIT ${waitTime} minutes (${strategy} strategy)`);
         return {
           should_post: false,
           reason: `Waiting for optimal interval (${waitTime} min remaining)`,
