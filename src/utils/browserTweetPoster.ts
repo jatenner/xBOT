@@ -56,6 +56,23 @@ export class BrowserTweetPoster {
       if (executablePath) {
         console.log(`🔍 Using detected executable: ${executablePath}`);
         launchOptions.executablePath = executablePath;
+      } else {
+        // Force Playwright to try installing if no executable found
+        console.log('⚠️ No executable found, attempting Playwright install...');
+        try {
+          const { execSync } = require('child_process');
+          execSync('npx playwright install chromium', { stdio: 'inherit' });
+          console.log('✅ Playwright install completed');
+          
+          // Try detection again after install
+          const newPath = await this.findChromiumExecutable();
+          if (newPath) {
+            console.log(`🔍 Found executable after install: ${newPath}`);
+            launchOptions.executablePath = newPath;
+          }
+        } catch (installError) {
+          console.log(`⚠️ Playwright install failed: ${installError.message}`);
+        }
       }
 
       try {
@@ -64,7 +81,7 @@ export class BrowserTweetPoster {
       } catch (launchError) {
         console.log(`❌ Failed to launch browser: ${launchError.message}`);
         
-        // Fallback 1: Try without custom executable path
+        // Fallback 1: Try without custom executable path  
         if (launchOptions.executablePath) {
           console.log('🔄 Trying without custom executable path...');
           delete launchOptions.executablePath;
@@ -72,8 +89,20 @@ export class BrowserTweetPoster {
             this.browser = await chromium.launch(launchOptions);
             console.log('✅ Successfully launched browser with default executable');
           } catch (defaultError) {
-            console.log(`❌ Default executable failed: ${defaultError.message}`);
-            throw defaultError;
+            console.log(`❌ Default executable also failed: ${defaultError.message}`);
+            
+            // Fallback 2: Try minimal configuration
+            console.log('🔄 Trying minimal browser configuration as last resort...');
+            try {
+              this.browser = await chromium.launch({
+                headless: true,
+                args: ['--no-sandbox', '--disable-setuid-sandbox']
+              });
+              console.log('✅ Successfully launched browser with minimal config');
+            } catch (minimalError) {
+              console.log(`❌ All fallbacks failed: ${minimalError.message}`);
+              throw minimalError;
+            }
           }
         } else {
           throw launchError;
@@ -179,19 +208,28 @@ export class BrowserTweetPoster {
       }
     }
 
-    // Extended static fallback paths for various Render configurations
+    // Extended static fallback paths for various Render configurations  
+    // Prioritize regular chromium over headless shell
     const fallbackPaths = [
-      // Latest known versions
+      // Latest known chromium versions (preferred)
       '/opt/render/.cache/ms-playwright/chromium-1054/chrome-linux/chrome',
       '/opt/render/.cache/ms-playwright/chromium-1048/chrome-linux/chrome', 
       '/opt/render/.cache/ms-playwright/chromium-1181/chrome-linux/chrome',
       '/opt/render/.cache/ms-playwright/chromium-1195/chrome-linux/chrome',
+      '/opt/render/.cache/ms-playwright/chromium-1200/chrome-linux/chrome',
+      '/opt/render/.cache/ms-playwright/chromium-1210/chrome-linux/chrome',
       
-      // Older versions that might exist
+      // Older chromium versions
       '/opt/render/.cache/ms-playwright/chromium-1000/chrome-linux/chrome',
       '/opt/render/.cache/ms-playwright/chromium-1020/chrome-linux/chrome',
+      '/opt/render/.cache/ms-playwright/chromium-1030/chrome-linux/chrome',
+      '/opt/render/.cache/ms-playwright/chromium-1040/chrome-linux/chrome',
       
-      // Headless shell as last resort
+      // Alternative locations on Render
+      '/home/render/.cache/ms-playwright/chromium-1054/chrome-linux/chrome',
+      process.env.HOME + '/.cache/ms-playwright/chromium-1054/chrome-linux/chrome',
+      
+      // Headless shell as absolute last resort (deprecated)
       '/opt/render/.cache/ms-playwright/chromium_headless_shell-1181/chrome-linux/headless_shell',
       '/opt/render/.cache/ms-playwright/chromium_headless_shell-1054/chrome-linux/headless_shell'
     ];
