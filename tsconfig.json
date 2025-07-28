@@ -46,6 +46,7 @@
     "src/jobs/updateFollowerCount.ts",
     "src/dashboard/analyticsServer.ts",
     "src/dashboard/analyticsLauncher.ts",
+    "src/utils/browserTweetPoster.ts",
     "src/config/liveMode.ts"
   ],
   "exclude": [
