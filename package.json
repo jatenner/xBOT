@@ -5,7 +5,6 @@
   "main": "dist/main.js",
   "scripts": {
     "build": "NODE_OPTIONS=--max_old_space_size=1024 tsc",
-    "postinstall": "npx playwright install chromium || echo 'Playwright install failed - continuing build'",
     "migrate": "node scripts/db_push.js",
     "start": "node dist/main.js",
     "dev": "npm run setup-check && nodemon src/index.js",
