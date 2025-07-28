@@ -6,8 +6,8 @@
 echo "🚀 Starting Render build process..."
 
 # Install Playwright browsers with system dependencies
-echo "📦 Installing Playwright browsers and dependencies..."
-npx playwright install --with-deps chromium
+echo "📦 Installing Playwright browsers (Render-compatible)..."
+npx playwright install chromium
 
 # Verify Playwright installation
 echo "🔍 Verifying Playwright installation..."
