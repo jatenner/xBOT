@@ -91,17 +91,17 @@ export class TweetPerformanceTracker {
         timezoneId: 'America/New_York'
       });
 
-      // Enhanced stealth measures
+      // Enhanced stealth measures - using string to avoid TypeScript issues
       await this.page.addInitScript(() => {
         // Override webdriver detection
-        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+        Object.defineProperty((window as any).navigator, 'webdriver', { get: () => undefined });
         
         // Override automation indicators
-        Object.defineProperty(navigator, 'plugins', {
+        Object.defineProperty((window as any).navigator, 'plugins', {
           get: () => [1, 2, 3, 4, 5]
         });
         
-        Object.defineProperty(navigator, 'languages', {
+        Object.defineProperty((window as any).navigator, 'languages', {
           get: () => ['en-US', 'en']
         });
       });
@@ -232,7 +232,7 @@ export class TweetPerformanceTracker {
       // Extract metrics using page evaluation
       const metrics = await this.page.evaluate(() => {
         try {
-          const tweetElement = document.querySelector('[data-testid="tweet"]');
+          const tweetElement = (document as any).querySelector('[data-testid="tweet"]');
           if (!tweetElement) return null;
 
           // Find engagement buttons
@@ -241,7 +241,7 @@ export class TweetPerformanceTracker {
           const replyButton = tweetElement.querySelector('[data-testid="reply"]');
 
           // Extract numbers from aria-labels or text content
-          const extractNumber = (element: Element | null): number => {
+          const extractNumber = (element: any): number => {
             if (!element) return 0;
             
             const ariaLabel = element.getAttribute('aria-label') || '';

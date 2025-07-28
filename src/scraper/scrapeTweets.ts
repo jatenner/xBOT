@@ -82,18 +82,18 @@ export class StealthTweetScraper {
         userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       });
 
-      // Additional stealth measures
+      // Additional stealth measures - using window reference to avoid TypeScript issues
       await this.page.addInitScript(() => {
         // Override webdriver detection
-        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+        Object.defineProperty((window as any).navigator, 'webdriver', { get: () => undefined });
         
         // Override plugins detection
-        Object.defineProperty(navigator, 'plugins', {
+        Object.defineProperty((window as any).navigator, 'plugins', {
           get: () => [1, 2, 3, 4, 5]
         });
         
         // Override languages
-        Object.defineProperty(navigator, 'languages', {
+        Object.defineProperty((window as any).navigator, 'languages', {
           get: () => ['en-US', 'en']
         });
       });
@@ -142,7 +142,7 @@ export class StealthTweetScraper {
       const sessionData = {
         cookies,
         timestamp: Date.now(),
-        userAgent: await this.page.evaluate(() => navigator.userAgent)
+        userAgent: await this.page.evaluate(() => (window as any).navigator.userAgent)
       };
       
       fs.writeFileSync(this.sessionPath, JSON.stringify(sessionData, null, 2));
@@ -192,8 +192,8 @@ export class StealthTweetScraper {
       await this.page.waitForSelector('[data-testid="tweet"]', { timeout: 10000 });
       
       // Extract tweet data
-      const tweets = await this.page.evaluate((maxResults) => {
-        const tweetElements = document.querySelectorAll('[data-testid="tweet"]');
+      const tweets = await this.page.evaluate((maxResults: number) => {
+        const tweetElements = (document as any).querySelectorAll('[data-testid="tweet"]');
         const extractedTweets: any[] = [];
         
         for (let i = 0; i < Math.min(tweetElements.length, maxResults); i++) {

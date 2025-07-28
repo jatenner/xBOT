@@ -1,17 +1,17 @@
 import { AutonomousIntelligenceCore } from './agents/intelligenceCore';
 import { DevelopmentFramework } from './agents/developmentFramework';
-import { StrategistAgent } from './agents/strategistAgent';
+// import { StrategistAgent } from './agents/strategistAgent'; // Temporarily disabled
 
 class AutonomousDevelopmentSystem {
   private intelligence: AutonomousIntelligenceCore;
   private devFramework: DevelopmentFramework;
-  private strategist: StrategistAgent;
+  // private strategist: StrategistAgent; // Temporarily disabled
   private developmentCycles: number = 0;
 
   constructor() {
     this.intelligence = new AutonomousIntelligenceCore();
     this.devFramework = new DevelopmentFramework(this.intelligence);
-    this.strategist = new StrategistAgent();
+    // this.strategist = new StrategistAgent(); // Temporarily disabled
   }
 
   async startDevelopment(): Promise<void> {
