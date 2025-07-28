@@ -14,8 +14,8 @@ AS $$
 BEGIN
   RETURN QUERY
   SELECT 
-    t.content,
-    COALESCE(t.content_category, 'general') as content_category,
+    t.content::text,
+    COALESCE(t.content_category::text, 'general'::text) as content_category,
     t.created_at
   FROM tweets t
   WHERE t.created_at >= (NOW() - (days_back || ' days')::interval)
