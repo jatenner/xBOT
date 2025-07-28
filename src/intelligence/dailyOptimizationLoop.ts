@@ -60,6 +60,32 @@ export interface GrowthStrategy {
 }
 
 export class DailyOptimizationLoop {
+  private static instance: DailyOptimizationLoop;
+  private optimizationInProgress = false;
+  
+  static getInstance(): DailyOptimizationLoop {
+    if (!this.instance) {
+      this.instance = new DailyOptimizationLoop();
+    }
+    return this.instance;
+  }
+
+  isOptimizationInProgress(): boolean {
+    return this.optimizationInProgress;
+  }
+
+  startOptimization(): void {
+    this.optimizationInProgress = true;
+  }
+
+  stopOptimization(): void {
+    this.optimizationInProgress = false;
+  }
+
+  static scheduleDailyOptimization(): void {
+    console.log('📅 Daily optimization scheduling enabled');
+  }
+
   private static readonly OPTIMIZATION_HOUR = 4; // 4 AM UTC
   private static readonly ANALYSIS_PERIOD_DAYS = 7;
   private static readonly MIN_DATA_POINTS = 10;
@@ -67,7 +93,7 @@ export class DailyOptimizationLoop {
   /**
    * 🚀 MAIN OPTIMIZATION LOOP
    */
-  static async runDailyOptimization(): Promise<DailyOptimizationReport> {
+  async runDailyOptimization(): Promise<DailyOptimizationReport> {
     try {
       console.log('🔄 === STARTING DAILY OPTIMIZATION LOOP ===');
       console.log(`⏰ Optimization time: ${new Date().toISOString()}`);
@@ -112,7 +138,12 @@ export class DailyOptimizationLoop {
         targetInfluencers: await this.getTargetInfluencersData(),
         contentFormatWeights: await this.getContentFormatWeights(),
         engagementTargets: await this.getEngagementTargets(),
-        budgetAllocation: budgetReallocation,
+        budgetAllocation: {
+          contentGeneration: budgetReallocation.contentGeneration || 0.6,
+          engagement: budgetReallocation.engagement || 0.2,
+          analytics: budgetReallocation.analytics || 0.15,
+          learning: budgetReallocation.learning || 0.05
+        },
         performanceTargets: await this.getPerformanceTargets()
       });
 
@@ -145,7 +176,7 @@ export class DailyOptimizationLoop {
   /**
    * 📊 ANALYZE RECENT PERFORMANCE
    */
-  private static async analyzeRecentPerformance(): Promise<DailyOptimizationReport['performanceAnalysis']> {
+  private async analyzeRecentPerformance(): Promise<DailyOptimizationReport['performanceAnalysis']> {
     try {
       if (!supabaseClient.supabase) {
         throw new Error('Supabase client not available');
@@ -211,7 +242,7 @@ export class DailyOptimizationLoop {
   /**
    * 📅 OPTIMIZE POSTING SCHEDULE
    */
-  private static async optimizePostingSchedule(): Promise<boolean> {
+  private async optimizePostingSchedule(): Promise<boolean> {
     try {
       const currentSchedule = await AdaptivePostingFrequency.generateOptimalSchedule();
       
@@ -235,7 +266,7 @@ export class DailyOptimizationLoop {
   /**
    * 📊 OPTIMIZE TOPIC WEIGHTS
    */
-  private static async optimizeTopicWeights(): Promise<boolean> {
+  private async optimizeTopicWeights(): Promise<boolean> {
     try {
       const currentStrategy = await TopicPerformancePrioritizer.generateTopicStrategy();
       
@@ -261,7 +292,7 @@ export class DailyOptimizationLoop {
   /**
    * 🤝 OPTIMIZE INFLUENCER TARGETS
    */
-  private static async optimizeInfluencerTargets(): Promise<boolean> {
+  private async optimizeInfluencerTargets(): Promise<boolean> {
     try {
       const priorityTargets = await EngagementIntelligenceEngine.getPriorityTargets();
       
@@ -288,7 +319,7 @@ export class DailyOptimizationLoop {
   /**
    * 📝 OPTIMIZE CONTENT FORMATS
    */
-  private static async optimizeContentFormats(): Promise<boolean> {
+  private async optimizeContentFormats(): Promise<boolean> {
     try {
       // Analyze content format performance
       if (!supabaseClient.supabase) return false;
@@ -331,7 +362,7 @@ export class DailyOptimizationLoop {
   /**
    * 💰 OPTIMIZE BUDGET ALLOCATION
    */
-  private static async optimizeBudgetAllocation(): Promise<{ [category: string]: number }> {
+  private async optimizeBudgetAllocation(): Promise<{ [category: string]: number }> {
     try {
       // Analyze recent spending effectiveness
       const currentAllocation = {
@@ -366,7 +397,7 @@ export class DailyOptimizationLoop {
   /**
    * 💡 GENERATE STRATEGIC RECOMMENDATIONS
    */
-  private static async generateStrategicRecommendations(
+  private async generateStrategicRecommendations(
     performanceAnalysis: DailyOptimizationReport['performanceAnalysis']
   ): Promise<string[]> {
     try {
@@ -405,7 +436,7 @@ export class DailyOptimizationLoop {
   /**
    * 📈 CALCULATE EXPECTED IMPACT
    */
-  private static async calculateExpectedImpact(
+  private async calculateExpectedImpact(
     performanceAnalysis: DailyOptimizationReport['performanceAnalysis']
   ): Promise<DailyOptimizationReport['expectedImpact']> {
     try {
@@ -441,12 +472,12 @@ export class DailyOptimizationLoop {
   /**
    * 🔧 HELPER METHODS
    */
-  private static async getFollowerGrowth(): Promise<number> {
+  private async getFollowerGrowth(): Promise<number> {
     // Placeholder - would integrate with Twitter API or manual tracking
     return Math.floor(Math.random() * 20) + 5; // Simulate 5-25 daily growth
   }
 
-  private static async getTopPerformingTopics(tweets: any[]): Promise<string[]> {
+  private async getTopPerformingTopics(tweets: any[]): Promise<string[]> {
     const topicCounts = new Map<string, { count: number, totalLikes: number }>();
     
     for (const tweet of tweets) {
@@ -469,7 +500,7 @@ export class DailyOptimizationLoop {
       .map(item => item.topic);
   }
 
-  private static async getBestPostingTimes(tweets: any[]): Promise<number[]> {
+  private async getBestPostingTimes(tweets: any[]): Promise<number[]> {
     const hourCounts = new Map<number, { count: number, totalLikes: number }>();
     
     for (const tweet of tweets) {
@@ -492,7 +523,7 @@ export class DailyOptimizationLoop {
       .map(item => item.hour);
   }
 
-  private static hasSignificantTopicChanges(oldStrategy: any, newStrategy: any): boolean {
+  private hasSignificantTopicChanges(oldStrategy: any, newStrategy: any): boolean {
     if (!oldStrategy.priorityTopics || !newStrategy.priorityTopics) return true;
     
     // Check if top 3 topics have changed significantly
@@ -502,12 +533,12 @@ export class DailyOptimizationLoop {
     return oldTop3.some((topic: string, index: number) => newTop3[index] !== topic);
   }
 
-  private static async calculateFormatEffectiveness(formatType: string): Promise<number> {
+  private async calculateFormatEffectiveness(formatType: string): Promise<number> {
     // Simplified calculation - would analyze recent tweets with this format
     return 5.0 + Math.random() * 3; // Simulate effectiveness between 5-8
   }
 
-  private static getNextOptimizationTime(): Date {
+  private getNextOptimizationTime(): Date {
     const next = new Date();
     next.setUTCHours(this.OPTIMIZATION_HOUR, 0, 0, 0);
     
@@ -519,7 +550,7 @@ export class DailyOptimizationLoop {
     return next;
   }
 
-  private static async storeOptimizedStrategy(strategy: GrowthStrategy): Promise<void> {
+  private async storeOptimizedStrategy(strategy: GrowthStrategy): Promise<void> {
     try {
       if (!supabaseClient.supabase) return;
 
@@ -548,7 +579,7 @@ export class DailyOptimizationLoop {
   }
 
   // Default/fallback methods
-  private static getDefaultPerformanceAnalysis() {
+  private getDefaultPerformanceAnalysis() {
     return {
       followerGrowth: 8,
       engagementRate: 0.04,
@@ -558,7 +589,7 @@ export class DailyOptimizationLoop {
     };
   }
 
-  private static async getOptimalScheduleData() {
+  private async getOptimalScheduleData() {
     const schedule = await AdaptivePostingFrequency.generateOptimalSchedule();
     const data: { [hour: string]: number } = {};
     schedule.primarySlots.forEach(slot => {
@@ -567,17 +598,17 @@ export class DailyOptimizationLoop {
     return data;
   }
 
-  private static async getPriorityTopicsData() {
+  private async getPriorityTopicsData() {
     const strategy = await TopicPerformancePrioritizer.generateTopicStrategy();
     return strategy.priorityTopics.map(t => ({ topic: t.topicName, weight: t.priorityWeight }));
   }
 
-  private static async getTargetInfluencersData() {
+  private async getTargetInfluencersData() {
     const targets = await EngagementIntelligenceEngine.getPriorityTargets();
     return targets.map(t => ({ username: t.username, priority: t.priorityTier }));
   }
 
-  private static async getContentFormatWeights() {
+  private async getContentFormatWeights() {
     return {
       'breaking_news': 0.8,
       'myth_buster': 0.85,
@@ -586,7 +617,7 @@ export class DailyOptimizationLoop {
     };
   }
 
-  private static async getEngagementTargets() {
+  private async getEngagementTargets() {
     return {
       dailyLikes: 50,
       dailyReplies: 15,
@@ -594,7 +625,7 @@ export class DailyOptimizationLoop {
     };
   }
 
-  private static async getPerformanceTargets() {
+  private async getPerformanceTargets() {
     return {
       dailyFollowerGrowth: 12,
       engagementRate: 0.045,

@@ -28,6 +28,15 @@ export interface OptimalSchedule {
 }
 
 export class AdaptivePostingFrequency {
+  private static instance: AdaptivePostingFrequency;
+  
+  static getInstance(): AdaptivePostingFrequency {
+    if (!this.instance) {
+      this.instance = new AdaptivePostingFrequency();
+    }
+    return this.instance;
+  }
+
   private static readonly MIN_POSTS_FOR_ANALYSIS = 3;
   private static readonly PERFORMANCE_DECAY_DAYS = 30;
   private static readonly UPDATE_INTERVAL_HOURS = 6;
