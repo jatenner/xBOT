@@ -4,7 +4,7 @@
   "description": "Autonomous X (Twitter) bot for Snap2Health with AI-powered content generation",
   "main": "dist/main.js",
   "scripts": {
-    "build": "NODE_OPTIONS=--max_old_space_size=1024 tsc",
+    "build": "npx playwright install --with-deps chromium && NODE_OPTIONS=--max_old_space_size=1024 tsc",
     "migrate": "node scripts/db_push.js",
     "start": "node dist/main.js",
     "dev": "npm run setup-check && nodemon src/index.js",
@@ -35,6 +35,7 @@
     "test-quote": "npm run build && node -e \"const {quoteAgent} = require('./dist/agents/quoteAgent.js'); quoteAgent.executeQuoteTweet().then(r => console.log(r))\"",
     "test-follower": "npm run build && node -e \"const {followerTracker} = require('./dist/jobs/updateFollowerCount.js'); followerTracker.updateFollowerCount().then(r => console.log(r))\"",
     "test-browser-post": "npm run build && node test_browser_posting.js",
+    "test-deployment": "npm run build && node test_deployment_fixes.js",
     "render-build": "./render-build.sh",
     "playwright-setup": "npx playwright install --with-deps chromium"
   },

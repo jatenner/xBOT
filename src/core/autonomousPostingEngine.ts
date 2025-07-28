@@ -444,7 +444,7 @@ export class AutonomousPostingEngine {
   }
 
   /**
-   * 🐦 TWITTER POSTING (Simplified)
+   * 🐦 TWITTER POSTING (API + Browser Fallback)
    */
   private async postToTwitter(content: string): Promise<{
     success: boolean;
@@ -452,27 +452,27 @@ export class AutonomousPostingEngine {
     error?: string;
   }> {
     try {
-      // Import Twitter client
+      // First attempt: Try Twitter API
+      console.log('🔄 Attempting API posting...');
       const { xClient } = await import('../utils/xClient');
       
       const result = await xClient.postTweet(content);
       
       if (result.success && result.tweetId) {
-        console.log(`✅ Twitter post successful: ${result.tweetId}`);
+        console.log(`✅ Twitter API post successful: ${result.tweetId}`);
         return {
           success: true,
           tweet_id: result.tweetId
         };
       } else {
-        return {
-          success: false,
-          error: result.error || 'Unknown Twitter error'
-        };
+        console.log('⚠️ API posting failed, checking for 429...');
       }
       
     } catch (error) {
-      // 🚨 CRITICAL FIX: Capture Twitter reset timestamp from 429 errors
+      // 🚨 Handle 429 errors and capture reset timestamp
       if (error.code === 429) {
+        console.log('🚨 429 API limit hit - switching to browser posting...');
+        
         const headers = error.headers || error.response?.headers || {};
         const resetTimestamp = parseInt(headers['x-app-limit-24hour-reset'] || headers['x-user-limit-24hour-reset'] || '0');
         
@@ -484,11 +484,54 @@ export class AutonomousPostingEngine {
           const minutesUntilReset = Math.ceil((resetTime.getTime() - Date.now()) / 60000);
           console.log(`⏰ Twitter limits will reset in ~${minutesUntilReset} minutes at ${resetTime.toLocaleString()}`);
         }
+        
+        // Fallback to browser posting
+        return await this.postViaBrowser(content);
       }
       
+      console.log(`❌ API posting error (non-429): ${error.message}`);
+      
+      // For non-429 errors, still try browser posting as fallback
+      return await this.postViaBrowser(content);
+    }
+  }
+
+  /**
+   * 🌐 BROWSER POSTING FALLBACK
+   */
+  private async postViaBrowser(content: string): Promise<{
+    success: boolean;
+    tweet_id?: string;
+    error?: string;
+  }> {
+    try {
+      console.log('🌐 Attempting browser posting...');
+      
+      // Import browser poster
+      const { browserTweetPoster } = await import('../utils/browserTweetPoster');
+      
+      // Post via browser
+      const result = await browserTweetPoster.postTweet(content);
+      
+      if (result.success) {
+        console.log(`✅ Browser post successful: ${result.tweetId || 'browser_post'}`);
+        return {
+          success: true,
+          tweet_id: result.tweetId || `browser_${Date.now()}`
+        };
+      } else {
+        console.log(`❌ Browser posting failed: ${result.error}`);
+        return {
+          success: false,
+          error: `Browser posting failed: ${result.error}`
+        };
+      }
+      
+    } catch (error) {
+      console.log(`❌ Browser posting error: ${error.message}`);
       return {
         success: false,
-        error: error.message
+        error: `Browser posting error: ${error.message}`
       };
     }
   }
