@@ -23,6 +23,14 @@ export class BrowserTweetPoster {
     try {
       console.log('🚀 Initializing Browser Tweet Poster...');
       
+      // Set environment variables for Playwright global installation
+      process.env.PLAYWRIGHT_BROWSERS_PATH = '0';  // Use global system directory
+      process.env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = 'false';
+      
+      console.log('🔧 Playwright environment:');
+      console.log(`   PLAYWRIGHT_BROWSERS_PATH: ${process.env.PLAYWRIGHT_BROWSERS_PATH}`);
+      console.log(`   PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: ${process.env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD}`);
+
       let launchOptions: any = {
         headless: true,
         args: [
@@ -51,77 +59,49 @@ export class BrowserTweetPoster {
         ]
       };
 
-      // Set environment variables for Playwright
-      process.env.PLAYWRIGHT_BROWSERS_PATH = process.env.PLAYWRIGHT_BROWSERS_PATH || '/opt/render/.cache/ms-playwright';
-      process.env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = 'false';
-
-      // Dynamic executable path detection for Render
-      const executablePath = await this.findChromiumExecutable();
-      if (executablePath) {
-        console.log(`🔍 Using detected executable: ${executablePath}`);
-        launchOptions.executablePath = executablePath;
-      } else {
-        // Force Playwright to install if no executable found
-        console.log('⚠️ No executable found, attempting Playwright install...');
-        try {
-          const { execSync } = require('child_process');
-          console.log('🔄 Running: PLAYWRIGHT_BROWSERS_PATH=/opt/render/.cache/ms-playwright npx playwright install chromium --force');
-          execSync('PLAYWRIGHT_BROWSERS_PATH=/opt/render/.cache/ms-playwright npx playwright install chromium --force', { 
-            stdio: 'inherit',
-            env: { 
-              ...process.env, 
-              PLAYWRIGHT_BROWSERS_PATH: '/opt/render/.cache/ms-playwright',
-              PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 'false'
-            }
-          });
-          console.log('✅ Playwright install completed');
-          
-          // Try detection again after install
-          const newPath = await this.findChromiumExecutable();
-          if (newPath) {
-            console.log(`🔍 Found executable after install: ${newPath}`);
-            launchOptions.executablePath = newPath;
-          }
-        } catch (installError) {
-          console.log(`⚠️ Playwright install failed: ${installError.message}`);
-        }
-      }
-
+      // Try to launch browser with global Playwright installation
+      console.log('🌐 Attempting to launch browser with global Playwright installation...');
+      
       try {
         this.browser = await chromium.launch(launchOptions);
-        console.log('✅ Successfully launched browser');
+        console.log('✅ Successfully launched browser with global installation');
       } catch (launchError) {
         console.log(`❌ Failed to launch browser: ${launchError.message}`);
         
-        // Fallback 1: Try without custom executable path  
-        if (launchOptions.executablePath) {
-          console.log('🔄 Trying without custom executable path...');
-          delete launchOptions.executablePath;
-          try {
-            this.browser = await chromium.launch(launchOptions);
-            console.log('✅ Successfully launched browser with default executable');
-          } catch (defaultError) {
-            console.log(`❌ Default executable also failed: ${defaultError.message}`);
-            
-            // Fallback 2: Try minimal configuration
-            console.log('🔄 Trying minimal browser configuration as last resort...');
-            try {
-              this.browser = await chromium.launch({
-                headless: true,
-                args: ['--no-sandbox', '--disable-setuid-sandbox'],
-                env: { 
-                  ...process.env, 
-                  PLAYWRIGHT_BROWSERS_PATH: '/opt/render/.cache/ms-playwright'
-                }
-              });
-              console.log('✅ Successfully launched browser with minimal config');
-            } catch (minimalError) {
-              console.log(`❌ All fallbacks failed: ${minimalError.message}`);
-              throw minimalError;
+        // Fallback: Force runtime installation and retry
+        console.log('🔄 Attempting runtime Playwright installation...');
+        try {
+          const { execSync } = require('child_process');
+          console.log('🎭 Running: PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install chromium --force');
+          execSync('PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install chromium --force', { 
+            stdio: 'inherit',
+            env: { 
+              ...process.env, 
+              PLAYWRIGHT_BROWSERS_PATH: '0',
+              PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 'false'
             }
+          });
+          console.log('✅ Runtime Playwright install completed');
+          
+          // Retry browser launch after installation
+          this.browser = await chromium.launch(launchOptions);
+          console.log('✅ Successfully launched browser after runtime installation');
+          
+        } catch (installError) {
+          console.log(`❌ Runtime installation failed: ${installError.message}`);
+          
+          // Final fallback: Try minimal configuration
+          console.log('🔄 Trying minimal browser configuration as last resort...');
+          try {
+            this.browser = await chromium.launch({
+              headless: true,
+              args: ['--no-sandbox', '--disable-setuid-sandbox']
+            });
+            console.log('✅ Successfully launched browser with minimal config');
+          } catch (minimalError) {
+            console.log(`❌ All fallbacks failed: ${minimalError.message}`);
+            throw minimalError;
           }
-        } else {
-          throw launchError;
         }
       }
 
@@ -151,8 +131,8 @@ export class BrowserTweetPoster {
 
     } catch (error) {
       console.error('❌ Error initializing Browser Tweet Poster:', error);
-      console.log('💡 This may be due to missing Playwright browsers on Render');
-      console.log('🔧 Check that build script installed Playwright correctly');
+      console.log('💡 This may be due to missing Playwright browsers');
+      console.log('🔧 Check that runtime installation completed successfully');
       console.log('🔍 Environment variables:');
       console.log(`   PLAYWRIGHT_BROWSERS_PATH: ${process.env.PLAYWRIGHT_BROWSERS_PATH}`);
       console.log(`   PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: ${process.env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD}`);
