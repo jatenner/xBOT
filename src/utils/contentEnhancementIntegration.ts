@@ -12,7 +12,7 @@
  * that eliminates repetition, improves quality, and maximizes engagement.
  */
 
-import { ideaFingerprintDeduplication } from './ideaFingerprintDeduplication';
+import { enhancedSemanticUniqueness } from './enhancedSemanticUniqueness';
 import { contentKnowledgeBase } from './contentKnowledgeBase';
 import { promptTemplateRotation } from './promptTemplateRotation';
 import { engagementLearningEngine } from './engagementLearningEngine';
@@ -162,7 +162,7 @@ export class ContentEnhancementIntegration {
           console.log(`📝 Generated candidate: "${candidateContent.substring(0, 80)}..."`);
 
           // Step 6: Check idea fingerprint uniqueness
-          const fingerprintResult = await ideaFingerprintDeduplication.checkIdeaFingerprint(candidateContent);
+          const fingerprintResult = await enhancedSemanticUniqueness.checkContentUniqueness(candidateContent);
           
           if (!fingerprintResult.isAllowed) {
             console.log(`🚫 Idea fingerprint conflict detected, regenerating...`);
@@ -386,10 +386,10 @@ Generate ONLY the tweet text, no quotes or extra formatting:`;
 
       // Store idea fingerprint
       if (metadata.ideaFingerprint && metadata.fingerprintResult?.fingerprint) {
-        await ideaFingerprintDeduplication.storeApprovedFingerprint(
-          metadata.fingerprintResult.fingerprint,
+        await enhancedSemanticUniqueness.storeApprovedContent(
           tweetId,
-          content
+          content,
+          metadata.fingerprintResult.fingerprint
         );
       }
 
@@ -421,11 +421,9 @@ Generate ONLY the tweet text, no quotes or extra formatting:`;
         );
       }
 
-      // Update fingerprint performance
-      await ideaFingerprintDeduplication.updateFingerprintPerformance(
-        update.tweetId,
-        update.engagement
-      );
+      // Update fingerprint performance  
+      // Note: Enhanced semantic uniqueness handles performance tracking differently
+      // Performance is now tracked via the tweet_performance_analysis table
 
       console.log('✅ Performance metrics updated successfully');
 
@@ -474,7 +472,7 @@ Generate ONLY the tweet text, no quotes or extra formatting:`;
 
       // 3. Cleanup old data
       try {
-        const fingerprintCleanup = await ideaFingerprintDeduplication.cleanupOldFingerprints();
+        const fingerprintCleanup = await enhancedSemanticUniqueness.cleanupOldFingerprints();
         operations.push(`Cleaned up ${fingerprintCleanup} old fingerprints`);
 
         const templateCleanup = await promptTemplateRotation.cleanupOldUsageHistory();
@@ -531,7 +529,7 @@ Generate ONLY the tweet text, no quotes or extra formatting:`;
         learningAnalytics,
         trendingAnalytics
       ] = await Promise.all([
-        ideaFingerprintDeduplication.getFingerprintAnalytics(),
+        enhancedSemanticUniqueness.getUniquenessAnalytics(),
         contentKnowledgeBase.getAnalytics(),
         promptTemplateRotation.getRotationAnalytics(),
         engagementLearningEngine.getLearningAnalytics(),
@@ -583,7 +581,7 @@ Generate ONLY the tweet text, no quotes or extra formatting:`;
 
       // Test each system
       const tests = [
-        { name: 'fingerprint_deduplication', test: () => ideaFingerprintDeduplication.checkIdeaFingerprint('Test health content') },
+        { name: 'fingerprint_deduplication', test: () => enhancedSemanticUniqueness.checkContentUniqueness('Test health content') },
         { name: 'knowledge_base', test: () => contentKnowledgeBase.getUnusedIdea({ limit: 1 }) },
         { name: 'template_rotation', test: () => promptTemplateRotation.getOptimalTemplate() },
         { name: 'trending_topics', test: () => realTrendingTopicFetcher.getTrendingTopicsForContent(1) },
