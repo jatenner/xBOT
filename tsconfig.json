@@ -42,6 +42,10 @@
     "src/utils/awarenessLogger.ts",
     "src/utils/initTwitterSession.ts",
     "src/test/testScraper.ts",
+    "src/agents/quoteAgent.ts",
+    "src/jobs/updateFollowerCount.ts",
+    "src/dashboard/analyticsServer.ts",
+    "src/dashboard/analyticsLauncher.ts",
     "src/config/liveMode.ts"
   ],
   "exclude": [

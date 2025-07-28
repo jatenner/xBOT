@@ -30,7 +30,10 @@
     "init-session": "npm run build && node dist/utils/initTwitterSession.js",
     "test-session": "npm run build && node dist/utils/initTwitterSession.js test",
     "test-scraper": "npm run build && node dist/test/testScraper.js",
-    "test-scraper-quick": "npm run build && node dist/test/testScraper.js search"
+    "test-scraper-quick": "npm run build && node dist/test/testScraper.js search",
+    "analytics": "npm run build && node dist/dashboard/analyticsLauncher.js",
+    "test-quote": "npm run build && node -e \"const {quoteAgent} = require('./dist/agents/quoteAgent.js'); quoteAgent.executeQuoteTweet().then(r => console.log(r))\"",
+    "test-follower": "npm run build && node -e \"const {followerTracker} = require('./dist/jobs/updateFollowerCount.js'); followerTracker.updateFollowerCount().then(r => console.log(r))\""
   },
   "keywords": [
     "twitter",
