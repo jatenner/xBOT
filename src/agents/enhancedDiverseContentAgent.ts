@@ -189,10 +189,7 @@ export class EnhancedDiverseContentAgent {
         }
 
         // Check semantic uniqueness (including core idea analysis)
-        const uniquenessResult = await enhancedSemanticUniqueness.checkUniqueness(
-          candidateContent,
-          attempts
-        );
+        const uniquenessResult = await EnhancedSemanticUniqueness.checkContentUniqueness(candidateContent);
 
         if (!uniquenessResult.success) {
           console.warn(`⚠️ Uniqueness check failed on attempt ${attempts}: ${uniquenessResult.error}`);

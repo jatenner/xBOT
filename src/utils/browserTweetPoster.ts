@@ -112,6 +112,35 @@ export class BrowserTweetPoster {
   }
 
   /**
+   * 🔐 LOAD TWITTER SESSION
+   * Load authentication cookies from file
+   */
+  private async loadSession(): Promise<boolean> {
+    try {
+      if (!fs.existsSync(this.sessionPath)) {
+        console.error('❌ Twitter session file not found:', this.sessionPath);
+        return false;
+      }
+
+      const sessionData = JSON.parse(fs.readFileSync(this.sessionPath, 'utf8'));
+      
+      if (!sessionData.cookies || !Array.isArray(sessionData.cookies)) {
+        console.error('❌ Invalid session data structure');
+        return false;
+      }
+
+      // Load cookies into page context
+      await this.page!.context().addCookies(sessionData.cookies);
+      console.log(`✅ Loaded ${sessionData.cookies.length} session cookies`);
+      
+      return true;
+    } catch (error: any) {
+      console.error('❌ Failed to load Twitter session:', error);
+      return false;
+    }
+  }
+
+  /**
    * 🔒 ENHANCED SESSION VALIDATION
    */
   private async validateSession(): Promise<boolean> {

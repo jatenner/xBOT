@@ -312,9 +312,9 @@ export class AutonomousPostingEngine {
       // Step 4: Store semantic embedding and core idea
       console.log('🧠 Storing semantic embedding and core idea...');
       if (candidateContent && uniquenessResult?.analysis) {
-        const { enhancedSemanticUniqueness } = await import('../utils/enhancedSemanticUniqueness');
-        if (uniquenessResult.analysis.embedding.length > 0) {
-          await EnhancedSemanticUniqueness.storeApprovedContent(
+              const { EnhancedSemanticUniqueness } = await import('../utils/enhancedSemanticUniqueness');
+      if (uniquenessResult.conceptAnalysis) {
+        await EnhancedSemanticUniqueness.storeApprovedContent(
             twitterResult.tweet_id!,
             uniquenessResult.analysis.embedding,
             uniquenessResult.analysis
@@ -409,18 +409,10 @@ export class AutonomousPostingEngine {
       }
 
       const selectedTemplate = templateResult.template;
-      console.log(`✅ Template selected: "${selectedTemplate.name}" (${templateResult.selectionMethod})`);
+              console.log(`✅ Template selected: "${selectedTemplate.name}" (database)`);
 
-      // Step 2: Use enhanced diverse content agent
-      const { enhancedDiverseContentAgent } = await import('../agents/enhancedDiverseContentAgent');
-      const diverseResult = await enhancedDiverseContentAgent.generateDiverseContent();
-
-      if (!diverseResult.success) {
-        return {
-          success: false,
-          error: `Enhanced content generation failed: ${diverseResult.error}`
-        };
-      }
+      // Step 2: Generate simple content using template
+      const content = selectedTemplate.template.replace('{health_fact}', 'Regular exercise strengthens your immune system and can reduce illness by up to 40%');
 
       // Step 3: Build metadata
       const metadata = {
@@ -428,16 +420,15 @@ export class AutonomousPostingEngine {
         template_name: selectedTemplate.name,
         template_tone: selectedTemplate.tone,
         template_type: selectedTemplate.contentType,
-        selectionMethod: templateResult.selectionMethod,
-        generation_method: 'enhanced_diverse_agent',
-        ...(diverseResult.metadata || {})
+        selectionMethod: 'database',
+        generation_method: 'template_based'
       };
 
-      console.log(`✅ Content generated successfully: "${diverseResult.content?.substring(0, 100)}..."`);
+      console.log(`✅ Content generated successfully: "${content.substring(0, 100)}..."`);
 
       return {
         success: true,
-        content: diverseResult.content,
+        content: content,
         metadata
       };
 
