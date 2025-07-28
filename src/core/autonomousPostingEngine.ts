@@ -9,6 +9,7 @@ import { PostTweetAgent } from '../agents/postTweet';
 import { UltimateQuotaManager } from '../utils/ultimateQuotaManager';
 import { MasterTweetStorageIntegrator } from '../utils/masterTweetStorageIntegrator';
 import { EmergencyDatabaseSaving } from '../utils/emergencyDatabaseSaving';
+import { isTweetTooSimilar } from '../utils/semanticUniquenessCheck';
 
 export interface PostingDecision {
   should_post: boolean;
@@ -153,21 +154,60 @@ export class AutonomousPostingEngine {
     let generationTime = 0;
     let postingTime = 0;
     let storageTime = 0;
+    let contentGenerationAttempts = 0;
+    const MAX_CONTENT_ATTEMPTS = 5; // Maximum attempts to generate unique content
 
     try {
-      // Step 1: Generate content
-      console.log('🧠 Generating intelligent content...');
+      // Step 1: Generate unique content with semantic duplication check
+      console.log('🧠 Generating intelligent and unique content...');
       const generationStart = Date.now();
       
-      // Use PostTweetAgent's content generation
-      const contentResult = await this.generateContent();
+      let contentResult: any;
+      let candidateContent: string;
+      
+      // Retry loop for generating semantically unique content
+      do {
+        contentGenerationAttempts++;
+        console.log(`🔄 Content generation attempt ${contentGenerationAttempts}/${MAX_CONTENT_ATTEMPTS}`);
+        
+        // Use PostTweetAgent's content generation
+        contentResult = await this.generateContent();
+        
+        if (!contentResult.success) {
+          console.log(`❌ Content generation failed on attempt ${contentGenerationAttempts}: ${contentResult.error}`);
+          break; // Exit the loop if generation fails
+        }
+        
+        candidateContent = contentResult.content;
+        console.log(`📝 Generated candidate: "${candidateContent.substring(0, 100)}..."`);
+        
+        // Check for semantic similarity
+        const isTooSimilar = await isTweetTooSimilar(candidateContent);
+        
+        if (!isTooSimilar) {
+          console.log('✅ Content is semantically unique - proceeding with posting');
+          break; // Content is unique, exit the loop
+        } else {
+          console.log(`🛑 Content too similar to previous posts (attempt ${contentGenerationAttempts}/${MAX_CONTENT_ATTEMPTS})`);
+          
+          if (contentGenerationAttempts >= MAX_CONTENT_ATTEMPTS) {
+            console.log('⚠️ Max content generation attempts reached - posting anyway to maintain frequency');
+            break; // Post anyway after max attempts to maintain posting frequency
+          } else {
+            console.log('🔄 Regenerating content for uniqueness...');
+            // Continue the loop to try again
+          }
+        }
+        
+      } while (contentGenerationAttempts < MAX_CONTENT_ATTEMPTS);
+      
       generationTime = Date.now() - generationStart;
       
       if (!contentResult.success) {
         this.consecutiveFailures++;
         return {
           success: false,
-          error: `Content generation failed: ${contentResult.error}`,
+          error: `Content generation failed after ${contentGenerationAttempts} attempts: ${contentResult.error}`,
           performance_metrics: {
             generation_time_ms: generationTime,
             posting_time_ms: 0,
@@ -176,6 +216,8 @@ export class AutonomousPostingEngine {
           }
         };
       }
+
+      console.log(`✅ Content generation completed after ${contentGenerationAttempts} attempts`);
 
       // Step 2: Post to Twitter
       console.log('🐦 Posting to Twitter...');

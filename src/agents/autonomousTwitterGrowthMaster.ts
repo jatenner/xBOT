@@ -751,17 +751,33 @@ export class AutonomousTwitterGrowthMaster {
           {
             role: 'system',
             content: `You are a Twitter growth expert focused on follower acquisition. Create content that will gain followers by being:
+
+CRITICAL NOVELTY REQUIREMENTS:
+- Do NOT repeat topics or language from past tweets
+- Prioritize COMPLETELY NEW angles and perspectives  
+- Avoid similar phrasing or sentence structures from recent content
+- Introduce fresh insights, not variations of previous ideas
+- Use unique vocabulary and different ways of expressing health concepts
+- Be semantically distinct from any previous health content
+
+CONTENT STRATEGY:
 1. Broadly appealing (not too niche)
 2. Using conversation hooks
 3. Including specific data
 4. Asking engaging questions
 5. Using successful patterns: ${successfulPatterns}
 
-Focus on health, wellness, biohacking, and longevity topics that appeal to a broad audience.`
+Focus on health, wellness, biohacking, and longevity topics that appeal to a broad audience.
+
+UNIQUENESS CHECK: Before generating, ensure your content:
+- Introduces a topic/angle NOT covered in recent tweets
+- Uses fresh vocabulary and phrasing
+- Provides genuinely new value or perspective
+- Avoids semantic similarity to past content`
           },
           {
             role: 'user',
-            content: 'Create a tweet optimized for maximum follower growth. Make it engaging, use a hook, include data, and ask a question. Keep under 280 characters.'
+            content: 'Create a completely unique and novel tweet optimized for maximum follower growth. Make it engaging, use a hook, include data, and ask a question. Ensure it is semantically distinct from any previous health content. Keep under 280 characters.'
           }
         ],
         max_tokens: 150,
