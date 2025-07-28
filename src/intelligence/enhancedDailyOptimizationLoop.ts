@@ -321,7 +321,7 @@ Provide strategic insights in JSON format:
 
       // Optimize posting schedule
       const postingOptimizer = AdaptivePostingFrequency.getInstance();
-      await postingOptimizer.updatePostingAnalytics();
+      await AdaptivePostingFrequency.updatePostingAnalytics();
       optimizations.postingScheduleChanges = {
         newOptimalTimes: insights.topPerformingTimes,
         scheduleConfidence: 0.85,
@@ -330,7 +330,7 @@ Provide strategic insights in JSON format:
 
       // Optimize topic priorities
       const topicOptimizer = TopicPerformancePrioritizer.getInstance();
-      await topicOptimizer.updateTopicAnalytics();
+      await TopicPerformancePrioritizer.updateTopicAnalytics();
       optimizations.topicPriorityChanges = {
         promotedTopics: insights.bestTopics,
         demotedTopics: this.identifyUnderperformingTopics(analysis),
@@ -339,7 +339,7 @@ Provide strategic insights in JSON format:
 
       // Optimize engagement targets
       const engagementOptimizer = EngagementIntelligenceEngine.getInstance();
-      await engagementOptimizer.updateInfluencerMetrics();
+      await EngagementIntelligenceEngine.analyzeInfluencerPerformance();
       optimizations.engagementTargetChanges = {
         priorityInfluencers: insights.topInfluencers,
         newEngagementSchedule: this.optimizeEngagementTiming(analysis),

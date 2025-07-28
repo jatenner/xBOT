@@ -407,7 +407,12 @@ export class IntelligentGrowthMaster {
       
       // Update configuration based on optimization results
       if (report?.strategicChanges.budgetReallocation) {
-        this.config.budgetAllocation = report.strategicChanges.budgetReallocation;
+        this.config.budgetAllocation = {
+          contentGeneration: report.strategicChanges.budgetReallocation.contentGeneration || 0.6,
+          analytics: report.strategicChanges.budgetReallocation.analytics || 0.2,
+          engagement: report.strategicChanges.budgetReallocation.engagement || 0.15,
+          learning: report.strategicChanges.budgetReallocation.learning || 0.05
+        };
         await this.saveConfiguration();
       }
 
