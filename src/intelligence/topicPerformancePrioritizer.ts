@@ -34,6 +34,15 @@ export interface TopicStrategy {
 }
 
 export class TopicPerformancePrioritizer {
+  private static instance: TopicPerformancePrioritizer;
+  
+  static getInstance(): TopicPerformancePrioritizer {
+    if (!this.instance) {
+      this.instance = new TopicPerformancePrioritizer();
+    }
+    return this.instance;
+  }
+
   private static readonly MIN_POSTS_FOR_ANALYSIS = 2;
   private static readonly VIRAL_THRESHOLD = 100; // likes threshold for viral content
   private static readonly SATURATION_THRESHOLD = 0.8;

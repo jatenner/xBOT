@@ -78,7 +78,7 @@ export class EnhancedAutonomousPostingEngine {
       
       // Initialize intelligence systems
       if (PRODUCTION_CONFIG.intelligence.enabled) {
-        await IntelligentGrowthMaster.initialize();
+        await IntelligentGrowthMaster.getInstance().initialize();
         this.intelligenceInitialized = true;
         console.log('✅ Intelligence systems initialized');
       }
@@ -128,7 +128,7 @@ export class EnhancedAutonomousPostingEngine {
       // Get intelligent recommendations
       let recommendations;
       if (this.intelligenceInitialized) {
-        recommendations = await IntelligentGrowthMaster.getPostingRecommendations();
+        recommendations = await IntelligentGrowthMaster.getInstance().getPostingRecommendations();
       } else {
         recommendations = this.getDefaultRecommendations();
       }

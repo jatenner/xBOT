@@ -59,29 +59,51 @@ export interface GrowthRecommendations {
 }
 
 export class IntelligentGrowthMaster {
-  private static config: IntelligentGrowthConfig = {
-    enabled: true,
-    optimizationLevel: 'balanced',
-    learningRate: 0.15,
-    adaptivePosting: true,
-    topicOptimization: true,
-    engagementIntelligence: true,
-    dailyOptimization: true,
-    budgetAllocation: {
-      contentGeneration: 0.60,
-      analytics: 0.20,
-      engagement: 0.15,
-      learning: 0.05
-    }
-  };
+  private static instance: IntelligentGrowthMaster;
+  private config: IntelligentGrowthConfig;
+  private isInitialized = false;
+  private lastUpdateTime: Date | null = null;
+  
+  // Component instances
+  private adaptivePosting: AdaptivePostingFrequency | null = null;
+  private topicPrioritizer: TopicPerformancePrioritizer | null = null;
+  private engagementIntelligence: EngagementIntelligenceEngine | null = null;
+  private dailyOptimizer: DailyOptimizationLoop | null = null;
 
-  private static lastOptimization: Date | null = null;
-  private static optimizationInProgress = false;
+  static getInstance(): IntelligentGrowthMaster {
+    if (!this.instance) {
+      this.instance = new IntelligentGrowthMaster();
+    }
+    return this.instance;
+  }
+
+  constructor() {
+    this.config = {
+      enabled: true,
+      optimizationLevel: 'balanced',
+      learningRate: 0.15,
+      adaptivePosting: true,
+      topicOptimization: true,
+      engagementIntelligence: true,
+      dailyOptimization: true,
+      budgetAllocation: {
+        contentGeneration: 0.60,
+        analytics: 0.20,
+        engagement: 0.15,
+        learning: 0.05
+      }
+    };
+  }
 
   /**
    * 🚀 INITIALIZE INTELLIGENT GROWTH SYSTEM
    */
-  static async initialize(): Promise<void> {
+  async initialize(): Promise<void> {
+    if (this.isInitialized) {
+      console.log('⚠️ Intelligent Growth Master already initialized.');
+      return;
+    }
+
     try {
       console.log('🧠 === INITIALIZING INTELLIGENT GROWTH MASTER ===');
 
@@ -94,24 +116,30 @@ export class IntelligentGrowthMaster {
       // Initialize all intelligence components
       if (this.config.adaptivePosting) {
         console.log('📅 Initializing adaptive posting frequency system');
+        this.adaptivePosting = AdaptivePostingFrequency.getInstance();
         await AdaptivePostingFrequency.updatePostingAnalytics();
       }
 
       if (this.config.topicOptimization) {
         console.log('📊 Initializing topic performance prioritizer');
+        this.topicPrioritizer = TopicPerformancePrioritizer.getInstance();
         await TopicPerformancePrioritizer.updateTopicAnalytics();
       }
 
       if (this.config.engagementIntelligence) {
         console.log('🤝 Initializing engagement intelligence engine');
+        this.engagementIntelligence = EngagementIntelligenceEngine.getInstance();
         await EngagementIntelligenceEngine.analyzeInfluencerPerformance();
       }
 
       // Schedule daily optimization if enabled
       if (this.config.dailyOptimization) {
-        this.scheduleDailyOptimization();
+        this.dailyOptimizer = DailyOptimizationLoop.getInstance();
+        DailyOptimizationLoop.scheduleDailyOptimization();
       }
 
+      this.isInitialized = true;
+      this.lastUpdateTime = new Date();
       console.log('✅ Intelligent Growth Master initialized successfully');
       console.log(`🎯 Optimization Level: ${this.config.optimizationLevel}`);
       console.log(`📈 Learning Rate: ${this.config.learningRate}`);
@@ -125,7 +153,7 @@ export class IntelligentGrowthMaster {
   /**
    * 🎯 GET INTELLIGENT POSTING RECOMMENDATIONS
    */
-  static async getPostingRecommendations(): Promise<GrowthRecommendations> {
+  async getPostingRecommendations(): Promise<GrowthRecommendations> {
     try {
       console.log('🧠 === GENERATING INTELLIGENT POSTING RECOMMENDATIONS ===');
 
@@ -148,7 +176,7 @@ export class IntelligentGrowthMaster {
   /**
    * ⏰ GET OPTIMAL POSTING TIMING
    */
-  private static async getOptimalPostingTiming(): Promise<GrowthRecommendations['postingTiming']> {
+  private async getOptimalPostingTiming(): Promise<GrowthRecommendations['postingTiming']> {
     try {
       if (!this.config.adaptivePosting) {
         return {
@@ -179,7 +207,7 @@ export class IntelligentGrowthMaster {
   /**
    * 📊 GET CONTENT STRATEGY
    */
-  private static async getContentStrategy(): Promise<GrowthRecommendations['contentStrategy']> {
+  private async getContentStrategy(): Promise<GrowthRecommendations['contentStrategy']> {
     try {
       if (!this.config.topicOptimization) {
         return {
@@ -225,7 +253,7 @@ export class IntelligentGrowthMaster {
   /**
    * 🤝 GET ENGAGEMENT ACTIONS
    */
-  private static async getEngagementActions(): Promise<GrowthRecommendations['engagementActions']> {
+  private async getEngagementActions(): Promise<GrowthRecommendations['engagementActions']> {
     try {
       if (!this.config.engagementIntelligence) {
         return [{
@@ -278,7 +306,7 @@ export class IntelligentGrowthMaster {
   /**
    * 💡 GET STRATEGIC INSIGHTS
    */
-  private static async getStrategicInsights(): Promise<string[]> {
+  private async getStrategicInsights(): Promise<string[]> {
     try {
       const insights: string[] = [];
       
@@ -324,7 +352,7 @@ export class IntelligentGrowthMaster {
   /**
    * 📈 GET CURRENT GROWTH METRICS
    */
-  static async getCurrentGrowthMetrics(): Promise<GrowthMetrics> {
+  async getCurrentGrowthMetrics(): Promise<GrowthMetrics> {
     try {
       // This would integrate with actual analytics
       const metrics: GrowthMetrics = {
@@ -366,20 +394,19 @@ export class IntelligentGrowthMaster {
   /**
    * 🔄 RUN DAILY OPTIMIZATION
    */
-  static async runDailyOptimization(): Promise<void> {
+  async runDailyOptimization(): Promise<void> {
     try {
-      if (this.optimizationInProgress) {
+      if (this.dailyOptimizer?.isOptimizationInProgress()) {
         console.log('⚠️ Daily optimization already in progress - skipping');
         return;
       }
 
-      this.optimizationInProgress = true;
-      console.log('🔄 === STARTING DAILY OPTIMIZATION ===');
-
-      const report = await DailyOptimizationLoop.runDailyOptimization();
+      this.dailyOptimizer?.startOptimization();
+      
+      const report = await this.dailyOptimizer?.runDailyOptimization();
       
       // Update configuration based on optimization results
-      if (report.strategicChanges.budgetReallocation) {
+      if (report?.strategicChanges.budgetReallocation) {
         this.config.budgetAllocation = report.strategicChanges.budgetReallocation;
         await this.saveConfiguration();
       }
@@ -387,21 +414,21 @@ export class IntelligentGrowthMaster {
       // Store optimization report
       await this.storeOptimizationReport(report);
 
-      this.lastOptimization = new Date();
+      this.lastUpdateTime = new Date();
       console.log('✅ Daily optimization completed successfully');
-      console.log(`📊 Expected impact: +${report.expectedImpact.followerGrowthProjection} followers`);
+      console.log(`📊 Expected impact: +${report?.expectedImpact.followerGrowthProjection} followers`);
 
     } catch (error) {
       console.error('❌ Daily optimization failed:', error);
     } finally {
-      this.optimizationInProgress = false;
+      this.dailyOptimizer?.stopOptimization();
     }
   }
 
   /**
    * 🔧 UTILITY METHODS
    */
-  private static async validateSystemDependencies(): Promise<void> {
+  private async validateSystemDependencies(): Promise<void> {
     if (!supabaseClient.supabase) {
       throw new Error('Supabase client not available');
     }
@@ -426,7 +453,7 @@ export class IntelligentGrowthMaster {
     }
   }
 
-  private static async loadConfiguration(): Promise<void> {
+  private async loadConfiguration(): Promise<void> {
     try {
       if (!supabaseClient.supabase) return;
 
@@ -445,40 +472,18 @@ export class IntelligentGrowthMaster {
     }
   }
 
-  private static async saveConfiguration(): Promise<void> {
+  private async saveConfiguration(): Promise<void> {
     // Configuration would be saved to database or config file
     console.log('💾 Configuration updated');
   }
 
-  private static scheduleDailyOptimization(): void {
-    const now = new Date();
-    const next4AM = new Date();
-    next4AM.setUTCHours(4, 0, 0, 0);
-    
-    if (next4AM.getTime() <= now.getTime()) {
-      next4AM.setDate(next4AM.getDate() + 1);
-    }
-    
-    const msUntil4AM = next4AM.getTime() - now.getTime();
-    
-    setTimeout(() => {
-      this.runDailyOptimization();
-      // Schedule daily recurrence
-      setInterval(() => {
-        this.runDailyOptimization();
-      }, 24 * 60 * 60 * 1000);
-    }, msUntil4AM);
-
-    console.log(`⏰ Daily optimization scheduled for ${next4AM.toISOString()}`);
-  }
-
-  private static determineOptimalAction(target: any): 'like' | 'reply' | 'follow' {
+  private determineOptimalAction(target: any): 'like' | 'reply' | 'follow' {
     if (target.responseRate > 0.3) return 'reply';
     if (target.engagementValue > 8.0) return 'follow';
     return 'like';
   }
 
-  private static async getTopContentFormats(): Promise<Array<{format: string, effectiveness: number}>> {
+  private async getTopContentFormats(): Promise<Array<{format: string, effectiveness: number}>> {
     try {
       if (!supabaseClient.supabase) return [{ format: 'educational', effectiveness: 7.0 }];
 
@@ -495,7 +500,7 @@ export class IntelligentGrowthMaster {
     }
   }
 
-  private static async generateLearningInsights(): Promise<string[]> {
+  private async generateLearningInsights(): Promise<string[]> {
     const insights = [
       "AI system is learning optimal content patterns from recent viral posts",
       "Engagement intelligence has identified 3 new high-value influencer targets"
@@ -508,7 +513,7 @@ export class IntelligentGrowthMaster {
     return insights;
   }
 
-  private static async storeOptimizationReport(report: any): Promise<void> {
+  private async storeOptimizationReport(report: any): Promise<void> {
     try {
       if (!supabaseClient.supabase) return;
 
@@ -532,31 +537,31 @@ export class IntelligentGrowthMaster {
   }
 
   // Metric calculation methods (simplified implementations)
-  private static async getFollowerGrowth24h(): Promise<number> {
+  private async getFollowerGrowth24h(): Promise<number> {
     return Math.floor(Math.random() * 20) + 5; // Simulate 5-25 growth
   }
 
-  private static async getEngagementRate(): Promise<number> {
+  private async getEngagementRate(): Promise<number> {
     return 0.03 + Math.random() * 0.02; // Simulate 3-5% engagement rate
   }
 
-  private static async getViralTweetCount(): Promise<number> {
+  private async getViralTweetCount(): Promise<number> {
     return Math.floor(Math.random() * 3); // 0-2 viral tweets
   }
 
-  private static async getPostingAccuracy(): Promise<number> {
+  private async getPostingAccuracy(): Promise<number> {
     return 0.6 + Math.random() * 0.3; // 60-90% accuracy
   }
 
-  private static async getTopicPerformanceScore(): Promise<number> {
+  private async getTopicPerformanceScore(): Promise<number> {
     return 6.0 + Math.random() * 3; // 6-9 performance score
   }
 
-  private static async getInfluencerROI(): Promise<number> {
+  private async getInfluencerROI(): Promise<number> {
     return 5.0 + Math.random() * 4; // 5-9 ROI score
   }
 
-  private static getDefaultRecommendations(): GrowthRecommendations {
+  private getDefaultRecommendations(): GrowthRecommendations {
     return {
       postingTiming: {
         nextOptimalTime: new Date(Date.now() + (2 * 60 * 60 * 1000)),
@@ -585,19 +590,19 @@ export class IntelligentGrowthMaster {
   /**
    * 📊 PUBLIC API METHODS
    */
-  static isEnabled(): boolean {
+  isEnabled(): boolean {
     return this.config.enabled;
   }
 
-  static getOptimizationLevel(): string {
+  getOptimizationLevel(): string {
     return this.config.optimizationLevel;
   }
 
-  static getLastOptimizationTime(): Date | null {
-    return this.lastOptimization;
+  getLastOptimizationTime(): Date | null {
+    return this.lastUpdateTime;
   }
 
-  static isOptimizationInProgress(): boolean {
-    return this.optimizationInProgress;
+  isOptimizationInProgress(): boolean {
+    return this.dailyOptimizer?.isOptimizationInProgress() || false;
   }
 } 

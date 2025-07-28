@@ -187,124 +187,56 @@ export class BrowserTweetPoster {
     }
   }
 
-  async postTweet(content: string): Promise<{
-    success: boolean;
-    tweet_id?: string;
-    error?: string;
-    confirmed?: boolean;
-    was_posted?: boolean;
-  }> {
-    if (!this.isInitialized) {
-      const initSuccess = await this.initialize();
-      if (!initSuccess) {
-        return { success: false, error: 'Failed to initialize browser' };
-      }
-    }
+  /**
+   * 🐦 POST TWEET TO TWITTER
+   * The main entry point for posting tweets with enhanced reliability
+   */
+  async postTweet(content: string): Promise<{ success: boolean; tweet_id?: string; error?: string }> {
+    try {
+      console.log('🚀 === ENHANCED TWITTER POSTING ENGINE STARTING ===');
+      console.log(`📝 Content: "${content}"`);
+      console.log(`📏 Length: ${content.length} characters`);
 
-    console.log('🐦 === ENHANCED TWEET POSTING STARTED ===');
-    console.log(`📝 Content: "${content}"`);
-    
-    const maxRetries = 4; // Increased retries
-    let lastError: Error | null = null;
-
-    // Enhanced posting strategies with better URLs and timing
-    const strategies = [
-      { 
-        name: 'Compose_Direct', 
-        url: 'https://x.com/compose/tweet',
-        waitTime: 4000 
-      },
-      { 
-        name: 'Home_Compose', 
-        url: 'https://x.com/home',
-        waitTime: 5000 
-      },
-      { 
-        name: 'Home_Alternative', 
-        url: 'https://x.com/',
-        waitTime: 6000 
-      }
-    ];
-
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      console.log(`🔄 === ATTEMPT ${attempt}/${maxRetries} ===`);
-
-      if (attempt > 1) {
-        // Progressive backoff delay
-        const backoffDelay = Math.min(2000 * Math.pow(2, attempt - 1), 10000);
-        console.log(`⏳ Waiting ${backoffDelay}ms before retry...`);
-        await this.page!.waitForTimeout(backoffDelay);
-      }
-
-      for (const strategy of strategies) {
-        try {
-          console.log(`🔄 Trying ${strategy.name} strategy: ${strategy.url}`);
-          
-          // Navigate to target page with enhanced error handling
-          await this.page!.goto(strategy.url, {
-            waitUntil: 'domcontentloaded',
-            timeout: 60000 // Increased timeout
-          });
-
-          await this.debugScreenshot(`pre-compose-${strategy.name}-attempt-${attempt}`);
-          await this.page!.waitForTimeout(strategy.waitTime);
-
-          // Enhanced textarea finding and filling
-          const textareaResult = await this.findAndFillTextarea(content);
-          if (!textareaResult.success) {
-            console.log(`❌ ${strategy.name} textarea failed: ${textareaResult.error}`);
-            lastError = new Error(textareaResult.error);
-            continue;
-          }
-
-          // Enhanced post button finding and clicking
-          const postResult = await this.findAndClickPostButton();
-          if (!postResult.success) {
-            console.log(`❌ Post button failed in ${strategy.name}: ${postResult.error}`);
-            lastError = new Error(postResult.error);
-            continue;
-          }
-
-          // Enhanced confirmation with multiple validation methods
-          console.log('⏳ Waiting for tweet to post and confirming...');
-          await this.page!.waitForTimeout(10000); // Longer wait for posting
-
-          const confirmationResult = await this.confirmTweetPosted(content);
-          
-          if (confirmationResult.confirmed) {
-            console.log('🎉 === TWEET POSTED SUCCESSFULLY ===');
-            console.log(`✅ Strategy: ${strategy.name}`);
-            console.log(`🆔 Tweet ID: ${confirmationResult.tweet_id || 'detected'}`);
-            console.log(`📊 Confirmation: ${confirmationResult.confirmed ? 'YES' : 'NO'}`);
-            
-            return {
-              success: true,
-              tweet_id: confirmationResult.tweet_id,
-              confirmed: true,
-              was_posted: true
-            };
-          } else {
-            console.log(`⚠️ Could not confirm tweet was posted via ${strategy.name}`);
-            lastError = new Error(confirmationResult.error || 'Tweet confirmation failed');
-            continue;
-          }
-
-        } catch (strategyError: any) {
-          console.error(`❌ Strategy ${strategy.name} failed:`, strategyError.message);
-          lastError = strategyError;
-          await this.debugScreenshot(`error-${strategy.name}-attempt-${attempt}`);
-          continue;
+      // Initialize browser if needed
+      if (!this.isInitialized) {
+        const initialized = await this.initialize();
+        if (!initialized) {
+          return { success: false, error: 'Failed to initialize browser' };
         }
       }
-    }
 
-    console.log('💥 === ALL POSTING ATTEMPTS FAILED ===');
-    return {
-      success: false,
-      error: lastError?.message || 'All posting strategies failed after maximum retries',
-      confirmed: false,
-      was_posted: false
-    };
+      // Navigate to Twitter compose with enhanced error handling
+      const navigated = await this.navigateToCompose();
+      if (!navigated) {
+        return { success: false, error: 'Failed to navigate to compose page' };
+      }
+
+      // Input content with enhanced reliability
+      const contentInputted = await this.inputContent(content);
+      if (!contentInputted) {
+        return { success: false, error: 'Failed to input tweet content' };
+      }
+
+      // Post the tweet with enhanced confirmation
+      const posted = await this.submitTweet(content);
+      if (!posted.success) {
+        return { success: false, error: posted.error };
+      }
+
+      console.log('✅ Tweet posted successfully!');
+      return { 
+        success: true, 
+        tweet_id: posted.tweet_id,
+        error: undefined 
+      };
+
+    } catch (error: any) {
+      console.error('❌ Critical error in tweet posting:', error);
+      return { 
+        success: false, 
+        error: `Critical posting error: ${error.message}` 
+      };
+    }
   }
 
   /**
@@ -999,6 +931,352 @@ export class BrowserTweetPoster {
       return null;
     } catch {
       return null;
+    }
+  }
+
+  /**
+   * 📌 NAVIGATE TO TWITTER COMPOSE PAGE
+   * Navigates to the compose page with enhanced error handling
+   */
+  private async navigateToCompose(): Promise<boolean> {
+    try {
+      console.log('🔗 Navigating to Twitter compose page...');
+      await this.page!.goto('https://twitter.com/compose/tweet', {
+        waitUntil: 'domcontentloaded',
+        timeout: this.isRenderDeployment ? 90000 : 60000
+      });
+      await this.page!.waitForTimeout(2000);
+      console.log('✅ Navigated to compose page successfully');
+      return true;
+    } catch (error: any) {
+      console.error('❌ Failed to navigate to compose page:', error);
+      await this.debugScreenshot('navigate-to-compose-failed');
+      return false;
+    }
+  }
+
+  /**
+   * �� INPUT CONTENT INTO THE COMPOSER
+   * Inputs the tweet content into the textarea with enhanced reliability
+   */
+  private async inputContent(content: string): Promise<boolean> {
+    try {
+      console.log('📝 Inputting content into the composer...');
+      const textareaResult = await this.findAndFillTextarea(content);
+      if (!textareaResult.success) {
+        console.error('❌ Failed to input content into the composer:', textareaResult.error);
+        return false;
+      }
+      console.log('✅ Content inputted successfully');
+      return true;
+    } catch (error: any) {
+      console.error('❌ Error during content input:', error);
+      return false;
+    }
+  }
+
+  /**
+   * 📤 SUBMIT THE TWEET
+   * Submits the tweet with enhanced confirmation and error handling
+   */
+  private async submitTweet(content: string): Promise<{ success: boolean; tweet_id?: string; error?: string }> {
+    try {
+      console.log('📤 Submitting the tweet...');
+      const postResult = await this.findAndClickPostButton();
+      if (!postResult.success) {
+        console.error('❌ Failed to submit tweet:', postResult.error);
+        return { success: false, error: postResult.error };
+      }
+
+      const confirmationResult = await this.confirmTweetPosted(content);
+      if (!confirmationResult.confirmed) {
+        console.error('❌ Tweet submission confirmation failed:', confirmationResult.error);
+        return { success: false, error: confirmationResult.error };
+      }
+
+      console.log('✅ Tweet submitted successfully!');
+      return { 
+        success: true, 
+        tweet_id: confirmationResult.tweet_id 
+      };
+    } catch (error: any) {
+      console.error('❌ Error during tweet submission:', error);
+      return { 
+        success: false, 
+        error: `Submission error: ${error.message}` 
+      };
+    }
+  }
+
+  /**
+   * 👍 LIKE A TWEET
+   * Enhanced like functionality with browser automation
+   */
+  async likeTweet(tweetId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      console.log(`👍 Liking tweet: ${tweetId}`);
+
+      if (!this.isInitialized) {
+        const initialized = await this.initialize();
+        if (!initialized) {
+          return { success: false, error: 'Failed to initialize browser' };
+        }
+      }
+
+      // Navigate to the tweet
+      const tweetUrl = `https://twitter.com/x/status/${tweetId}`;
+      await this.page!.goto(tweetUrl, { waitUntil: 'networkidle', timeout: 30000 });
+      await this.page!.waitForTimeout(2000);
+
+      // Find and click like button with multiple selectors
+      const likeSelectors = [
+        '[data-testid="like"]',
+        '[aria-label*="Like"]',
+        '[role="button"][aria-label*="like"]',
+        'button[data-testid="like"]'
+      ];
+
+      for (const selector of likeSelectors) {
+        try {
+          const element = await this.page!.waitForSelector(selector, { timeout: 5000 });
+          if (element) {
+            await element.click();
+            await this.page!.waitForTimeout(1000);
+            console.log('✅ Tweet liked successfully');
+            return { success: true };
+          }
+        } catch (error) {
+          continue;
+        }
+      }
+
+      return { success: false, error: 'Could not find like button' };
+
+    } catch (error: any) {
+      console.error('❌ Error liking tweet:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * 👥 FOLLOW A USER
+   * Enhanced follow functionality with browser automation
+   */
+  async followUser(username: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      console.log(`👥 Following user: @${username}`);
+
+      if (!this.isInitialized) {
+        const initialized = await this.initialize();
+        if (!initialized) {
+          return { success: false, error: 'Failed to initialize browser' };
+        }
+      }
+
+      // Navigate to user profile
+      const profileUrl = `https://twitter.com/${username}`;
+      await this.page!.goto(profileUrl, { waitUntil: 'networkidle', timeout: 30000 });
+      await this.page!.waitForTimeout(2000);
+
+      // Find and click follow button with multiple selectors
+      const followSelectors = [
+        '[data-testid="follow"]',
+        '[aria-label*="Follow"]',
+        '[role="button"]:has-text("Follow")',
+        'button:has-text("Follow")'
+      ];
+
+      for (const selector of followSelectors) {
+        try {
+          const element = await this.page!.waitForSelector(selector, { timeout: 5000 });
+          if (element) {
+            const buttonText = await element.textContent();
+            if (buttonText && buttonText.includes('Follow') && !buttonText.includes('Following')) {
+              await element.click();
+              await this.page!.waitForTimeout(1000);
+              console.log(`✅ Successfully followed @${username}`);
+              return { success: true };
+            }
+          }
+        } catch (error) {
+          continue;
+        }
+      }
+
+      return { success: false, error: 'Could not find follow button or user already followed' };
+
+    } catch (error: any) {
+      console.error('❌ Error following user:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * 👋 UNFOLLOW A USER
+   * Enhanced unfollow functionality with browser automation
+   */
+  async unfollowUser(username: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      console.log(`👋 Unfollowing user: @${username}`);
+
+      if (!this.isInitialized) {
+        const initialized = await this.initialize();
+        if (!initialized) {
+          return { success: false, error: 'Failed to initialize browser' };
+        }
+      }
+
+      // Navigate to user profile
+      const profileUrl = `https://twitter.com/${username}`;
+      await this.page!.goto(profileUrl, { waitUntil: 'networkidle', timeout: 30000 });
+      await this.page!.waitForTimeout(2000);
+
+      // Find and click following button to unfollow
+      const unfollowSelectors = [
+        '[data-testid="unfollow"]',
+        '[aria-label*="Following"]',
+        '[role="button"]:has-text("Following")',
+        'button:has-text("Following")'
+      ];
+
+      for (const selector of unfollowSelectors) {
+        try {
+          const element = await this.page!.waitForSelector(selector, { timeout: 5000 });
+          if (element) {
+            await element.click();
+            await this.page!.waitForTimeout(500);
+            
+            // Confirm unfollow in modal if it appears
+            try {
+              const confirmButton = await this.page!.waitForSelector('[data-testid="confirmationSheetConfirm"]', { timeout: 3000 });
+              if (confirmButton) {
+                await confirmButton.click();
+                await this.page!.waitForTimeout(1000);
+              }
+            } catch (error) {
+              // No confirmation modal, that's fine
+            }
+
+            console.log(`✅ Successfully unfollowed @${username}`);
+            return { success: true };
+          }
+        } catch (error) {
+          continue;
+        }
+      }
+
+      return { success: false, error: 'Could not find following button or user not followed' };
+
+    } catch (error: any) {
+      console.error('❌ Error unfollowing user:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * 💬 POST A REPLY TO A TWEET
+   * Enhanced reply functionality with browser automation
+   */
+  async postReply(tweetId: string, replyContent: string): Promise<{ success: boolean; tweet_id?: string; error?: string }> {
+    try {
+      console.log(`💬 Posting reply to tweet: ${tweetId}`);
+      console.log(`📝 Reply content: "${replyContent}"`);
+
+      if (!this.isInitialized) {
+        const initialized = await this.initialize();
+        if (!initialized) {
+          return { success: false, error: 'Failed to initialize browser' };
+        }
+      }
+
+      // Navigate to the tweet
+      const tweetUrl = `https://twitter.com/x/status/${tweetId}`;
+      await this.page!.goto(tweetUrl, { waitUntil: 'networkidle', timeout: 30000 });
+      await this.page!.waitForTimeout(2000);
+
+      // Find and click reply button
+      const replySelectors = [
+        '[data-testid="reply"]',
+        '[aria-label*="Reply"]',
+        '[role="button"][aria-label*="reply"]'
+      ];
+
+      let replyClicked = false;
+      for (const selector of replySelectors) {
+        try {
+          const element = await this.page!.waitForSelector(selector, { timeout: 5000 });
+          if (element) {
+            await element.click();
+            await this.page!.waitForTimeout(1000);
+            replyClicked = true;
+            break;
+          }
+        } catch (error) {
+          continue;
+        }
+      }
+
+      if (!replyClicked) {
+        return { success: false, error: 'Could not find reply button' };
+      }
+
+      // Find reply text area and input content
+      const textAreaSelectors = [
+        '[data-testid="tweetTextarea_0"]',
+        '[role="textbox"][aria-label*="reply"]',
+        '[contenteditable="true"][aria-label*="Tweet"]'
+      ];
+
+      let contentInputted = false;
+      for (const selector of textAreaSelectors) {
+        try {
+          const textArea = await this.page!.waitForSelector(selector, { timeout: 5000 });
+          if (textArea) {
+            await textArea.click();
+            await this.page!.waitForTimeout(500);
+            await textArea.fill(replyContent);
+            await this.page!.waitForTimeout(1000);
+            contentInputted = true;
+            break;
+          }
+        } catch (error) {
+          continue;
+        }
+      }
+
+      if (!contentInputted) {
+        return { success: false, error: 'Could not find reply text area' };
+      }
+
+      // Find and click reply submit button
+      const submitSelectors = [
+        '[data-testid="tweetButton"]',
+        '[role="button"]:has-text("Reply")',
+        'button:has-text("Reply")'
+      ];
+
+      for (const selector of submitSelectors) {
+        try {
+          const element = await this.page!.waitForSelector(selector, { timeout: 5000 });
+          if (element) {
+            const isEnabled = await element.isEnabled();
+            if (isEnabled) {
+              await element.click();
+              await this.page!.waitForTimeout(2000);
+              console.log('✅ Reply posted successfully');
+              return { success: true, tweet_id: `reply_${Date.now()}` };
+            }
+          }
+        } catch (error) {
+          continue;
+        }
+      }
+
+      return { success: false, error: 'Could not find or click reply submit button' };
+
+    } catch (error: any) {
+      console.error('❌ Error posting reply:', error);
+      return { success: false, error: error.message };
     }
   }
 

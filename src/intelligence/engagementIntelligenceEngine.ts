@@ -57,6 +57,15 @@ export interface EngagementOpportunity {
 }
 
 export class EngagementIntelligenceEngine {
+  private static instance: EngagementIntelligenceEngine;
+  
+  static getInstance(): EngagementIntelligenceEngine {
+    if (!this.instance) {
+      this.instance = new EngagementIntelligenceEngine();
+    }
+    return this.instance;
+  }
+
   private static readonly TARGET_INFLUENCERS = [
     'hubermanlab', 'drmarkhyman', 'peterattiamd', 'bengreenfield',
     'drrhondapatrick', 'theliverfactor', 'drdavinagha', 'drjasonchung'
