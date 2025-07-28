@@ -9,7 +9,7 @@
  * - Comprehensive error handling
  */
 
-import { enhancedSemanticUniqueness } from '../utils/enhancedSemanticUniqueness';
+import { EnhancedSemanticUniqueness } from '../utils/enhancedSemanticUniqueness';
 import { trendingTopicsEngine } from '../utils/trendingTopicsEngine';
 import { promptTemplateManager } from '../utils/promptTemplateManager';
 import { enhancedOpenAIClient } from '../utils/enhancedOpenAIClient';

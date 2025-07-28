@@ -55,23 +55,18 @@ export class PromptTemplateRotation {
   private static readonly TONE_BALANCE_THRESHOLD = 0.4; // Max 40% of recent usage for any tone
 
   /**
-   * 🎯 GET OPTIMAL TEMPLATE FOR CURRENT CONDITIONS
+   * 🎯 SELECT OPTIMAL TEMPLATE (Enhanced with Fallbacks)
    */
   static async getOptimalTemplate(options: TemplateSelectionOptions = {}): Promise<TemplateSelectionResult> {
     try {
       const currentHour = options.currentHour || new Date().getHours();
       console.log(`🔁 Selecting optimal template for hour ${currentHour}...`);
 
-      // Step 1: Get recent tone usage to avoid overuse
+      // Get recent tone usage to avoid overuse
       const recentToneUsage = await this.getRecentToneUsage();
       const overusedTones = this.identifyOverusedTones(recentToneUsage);
 
-      console.log(`📊 Recent tone usage: ${recentToneUsage.map(t => `${t.tone}:${t.usageCount}`).join(', ')}`);
-      if (overusedTones.length > 0) {
-        console.log(`⚠️ Overused tones to avoid: ${overusedTones.join(', ')}`);
-      }
-
-      // Step 2: Use stored procedure to get optimal template
+      // Try database function first
       const { data, error } = await supabaseClient.supabase
         .rpc('get_optimal_prompt_template', {
           current_hour: currentHour,
@@ -80,6 +75,7 @@ export class PromptTemplateRotation {
 
       if (error) {
         console.error('❌ Template selection query failed:', error);
+        console.log('🔄 Using fallback template selection...');
         return await this.getFallbackTemplate(options);
       }
 
@@ -90,6 +86,12 @@ export class PromptTemplateRotation {
 
       const selectedTemplate = this.mapDatabaseToInterface(data[0]);
       
+      // Validate the template has required fields
+      if (!selectedTemplate || !selectedTemplate.template || !selectedTemplate.template.trim()) {
+        console.log('⚠️ Invalid template data - using fallback');
+        return await this.getFallbackTemplate(options);
+      }
+
       console.log(`✅ Selected template: "${selectedTemplate.name}" (${selectedTemplate.tone}, ${selectedTemplate.timePreference})`);
 
       return {
@@ -100,6 +102,7 @@ export class PromptTemplateRotation {
 
     } catch (error) {
       console.error('❌ Template selection error:', error);
+      console.log('🔄 Using emergency fallback...');
       return await this.getFallbackTemplate(options);
     }
   }
@@ -329,39 +332,74 @@ export class PromptTemplateRotation {
   }
 
   /**
-   * 🔄 GET FALLBACK TEMPLATE
+   * 🛡️ ROBUST FALLBACK TEMPLATE SYSTEM
    */
-  private static async getFallbackTemplate(options: TemplateSelectionOptions): Promise<TemplateSelectionResult> {
+  private static async getFallbackTemplate(options: TemplateSelectionOptions = {}): Promise<TemplateSelectionResult> {
     try {
-      console.log('🔄 Using fallback template selection...');
+      console.log('🛡️ Getting fallback template...');
 
-      // Get any active template with reasonable performance
-      const templates = await this.getTemplatesByCriteria({
-        active: true,
-        minPerformanceScore: 0.3
-      });
+      // Try to get any active template from database
+      const { data: activeTemplates, error } = await supabaseClient.supabase
+        .from('enhanced_prompt_templates')
+        .select('*')
+        .eq('active', true)
+        .limit(5);
 
-      if (templates.length === 0) {
-        return {
-          success: false,
-          error: 'No fallback templates available'
-        };
+      if (!error && activeTemplates && activeTemplates.length > 0) {
+        // Pick a random active template
+        const randomTemplate = activeTemplates[Math.floor(Math.random() * activeTemplates.length)];
+        const template = this.mapDatabaseToInterface(randomTemplate);
+        
+        if (template && template.template && template.template.trim()) {
+          console.log(`✅ Using random active template: ${template.name}`);
+          return {
+            success: true,
+            template,
+            selectionReason: 'Random active template (fallback)'
+          };
+        }
       }
 
-      // Select randomly from top 50% performers
-      const topPerformers = templates.slice(0, Math.max(1, Math.floor(templates.length * 0.5)));
-      const selectedTemplate = topPerformers[Math.floor(Math.random() * topPerformers.length)];
+      // Emergency hardcoded template if database fails
+      console.log('🚨 Using emergency hardcoded template');
+      const emergencyTemplate: EnhancedPromptTemplate = {
+        id: 'emergency_template',
+        name: 'Emergency Health Tip',
+        template: 'Health tip: {health_fact} This simple change can make a big difference in your wellness journey. What health goal are you working on today? #HealthTip #Wellness',
+        tone: 'friendly',
+        contentType: 'tip',
+        timePreference: 'any',
+        performanceScore: 0.5, // Placeholder, will be updated
+        usageCount: 0, // Placeholder, will be updated
+        active: true
+      };
 
       return {
         success: true,
-        template: selectedTemplate,
-        selectionReason: 'Fallback selection from top performers'
+        template: emergencyTemplate,
+        selectionReason: 'Emergency hardcoded template'
       };
 
     } catch (error) {
+      console.error('❌ Fallback template selection failed:', error);
+      
+      // Absolute last resort - minimal template
+      const lastResortTemplate: EnhancedPromptTemplate = {
+        id: 'last_resort',
+        name: 'Minimal Health Content',
+        template: 'Quick health reminder: Stay hydrated, get enough sleep, and move your body daily. Small habits lead to big changes! #Health #Wellness',
+        tone: 'friendly',
+        contentType: 'tip',
+        timePreference: 'any',
+        performanceScore: 0.5, // Placeholder, will be updated
+        usageCount: 0, // Placeholder, will be updated
+        active: true
+      };
+
       return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Fallback failed'
+        success: true,
+        template: lastResortTemplate,
+        selectionReason: 'Last resort template'
       };
     }
   }
@@ -480,21 +518,78 @@ export class PromptTemplateRotation {
   }
 
   /**
-   * 🔧 HELPER METHOD TO MAP DATABASE TO INTERFACE
+   * 🗺️ ENHANCED DATABASE TO INTERFACE MAPPING
    */
-  private static mapDatabaseToInterface(dbTemplate: any): EnhancedPromptTemplate {
-    return {
-      id: dbTemplate.id,
-      name: dbTemplate.name,
-      template: dbTemplate.template,
-      tone: dbTemplate.tone,
-      contentType: dbTemplate.content_type,
-      timePreference: dbTemplate.time_preference,
-      performanceScore: dbTemplate.performance_score || 0,
-      usageCount: dbTemplate.usage_count || 0,
-      lastUsed: dbTemplate.last_used,
-      active: dbTemplate.active !== false
-    };
+  private static mapDatabaseToInterface(dbTemplate: any): EnhancedPromptTemplate | null {
+    try {
+      if (!dbTemplate) {
+        console.log('⚠️ Empty database template provided');
+        return null;
+      }
+
+      // Validate required fields
+      if (!dbTemplate.id || !dbTemplate.template || typeof dbTemplate.template !== 'string') {
+        console.log('⚠️ Invalid template structure:', dbTemplate);
+        return null;
+      }
+
+      const template: EnhancedPromptTemplate = {
+        id: dbTemplate.id,
+        name: dbTemplate.name || 'Unnamed Template',
+        template: dbTemplate.template.trim(),
+        tone: dbTemplate.tone || 'neutral',
+        contentType: dbTemplate.content_type || 'general',
+        timePreference: dbTemplate.time_preference || 'any',
+        performanceScore: dbTemplate.performance_score || 0,
+        usageCount: dbTemplate.usage_count || 0,
+        active: dbTemplate.active !== false
+      };
+
+      // Final validation
+      if (template.template.length < 10) {
+        console.log('⚠️ Template too short, likely invalid');
+        return null;
+      }
+
+      return template;
+
+    } catch (error) {
+      console.error('❌ Error mapping database template:', error);
+      return null;
+    }
+  }
+
+  /**
+   * 🔍 EXTRACT PLACEHOLDERS FROM TEMPLATE (ENHANCED SAFETY)
+   */
+  private static extractPlaceholders(template: string): string[] {
+    try {
+      // Enhanced validation to prevent undefined.match errors
+      if (!template || typeof template !== 'string' || template.trim() === '') {
+        return [];
+      }
+
+      // Additional safety check for null/undefined
+      const safeTemplate = String(template);
+      const matches = safeTemplate.match(/\{([^}]+)\}/g);
+      
+      if (!matches || !Array.isArray(matches)) {
+        return [];
+      }
+
+      return matches.map(match => {
+        try {
+          return match.replace(/[{}]/g, '');
+        } catch (replaceError) {
+          console.warn('⚠️ Error processing placeholder:', match);
+          return '';
+        }
+      }).filter(placeholder => placeholder.length > 0);
+      
+    } catch (error) {
+      console.error('❌ Error extracting placeholders:', error);
+      return [];
+    }
   }
 
   /**

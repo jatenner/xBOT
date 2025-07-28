@@ -234,12 +234,13 @@ export class UnifiedScheduler {
         this.totalPosts++;
         this.lastPostTime = new Date();
         
-        console.log('✅ === AUTONOMOUS POST SUCCESS ===');
-        console.log(`🐦 Tweet ID: ${result.tweet_id}`);
-        console.log(`💾 Database ID: ${result.database_id}`);
-        console.log(`📊 Storage method: ${result.storage_method}`);
-        console.log(`⚡ Performance: ${result.performance_metrics?.total_time_ms}ms total`);
-        console.log(`📈 Session stats: ${this.totalPosts} posts, ${this.totalFailures} failures`);
+        console.log(`✅ AUTONOMOUS POST SUCCESSFUL in ${result.performance_metrics.total_time_ms}ms`);
+        console.log(`🆔 Tweet ID: ${result.tweet_id}`);
+        console.log(`📊 Was Posted: ${result.was_posted ? 'YES' : 'NO'}`);
+        console.log(`📊 Confirmed: ${result.confirmed ? 'YES' : 'NO'}`);
+        console.log(`📊 Content Attempts: ${result.content_metadata?.attempts_made || 'N/A'}`);
+        
+        console.log('✅ POST EXECUTION COMPLETED');
         
       } else {
         this.totalFailures++;
