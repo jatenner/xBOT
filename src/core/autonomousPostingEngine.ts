@@ -461,14 +461,31 @@ export class AutonomousPostingEngine {
       return browserResult;
     }
     
-    // If browser posting fails, log the issue but don't fall back to API
-    // (since API has hard limits and we want unlimited posting)
+    // If browser posting fails, temporarily use API as emergency fallback
+    // until Playwright installation is fixed
     console.log(`❌ Browser posting failed: ${browserResult.error}`);
-    console.log('💡 Browser posting is the primary method - no API fallback to avoid limits');
+    console.log('🚨 TEMPORARY: Falling back to API posting while fixing Playwright installation');
+    
+    try {
+      // Emergency API fallback
+      const { xClient } = await import('../utils/xClient');
+      const apiResult = await xClient.postTweet(content);
+      
+      if (apiResult.success && apiResult.tweetId) {
+        console.log(`✅ Emergency API post successful: ${apiResult.tweetId}`);
+        console.log('⚠️ NOTE: This uses API quota - will switch back to browser once Playwright is fixed');
+        return {
+          success: true,
+          tweet_id: apiResult.tweetId
+        };
+      }
+    } catch (apiError) {
+      console.log(`❌ Emergency API fallback also failed: ${apiError.message}`);
+    }
     
     return {
       success: false,
-      error: `Browser posting failed: ${browserResult.error}`
+      error: `Both browser and API posting failed: ${browserResult.error}`
     };
   }
 
