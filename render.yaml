@@ -2,48 +2,22 @@
   "services": [
     {
       "type": "web",
-      "name": "xbot-autonomous-twitter",
+      "name": "snap2health-xbot",
       "env": "node",
-      "buildCommand": "npm install",
+      "buildCommand": "./render-build.sh",
       "startCommand": "npm start",
+      "plan": "starter",
       "envVars": [
         {
           "key": "NODE_ENV",
           "value": "production"
         },
         {
-          "key": "SUPABASE_URL",
-          "sync": false
-        },
-        {
-          "key": "SUPABASE_SERVICE_ROLE_KEY",
-          "sync": false
-        },
-        {
-          "key": "TWITTER_API_KEY",
-          "sync": false
-        },
-        {
-          "key": "TWITTER_API_SECRET",
-          "sync": false
-        },
-        {
-          "key": "TWITTER_ACCESS_TOKEN",
-          "sync": false
-        },
-        {
-          "key": "TWITTER_ACCESS_TOKEN_SECRET",
-          "sync": false
-        },
-        {
-          "key": "TWITTER_BEARER_TOKEN",
-          "sync": false
-        },
-        {
-          "key": "OPENAI_API_KEY",
-          "sync": false
+          "key": "NODE_OPTIONS",
+          "value": "--max_old_space_size=1024"
         }
-      ]
+      ],
+      "healthCheckPath": "/health"
     }
   ]
 }
