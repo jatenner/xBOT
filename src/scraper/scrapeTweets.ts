@@ -187,14 +187,37 @@ export class StealthTweetScraper {
       
       console.log(`🔍 Searching for tweets: "${query}"`);
       
-      // Navigate to Twitter search
+      // Navigate to Twitter search with improved timeout and fallback
       const searchUrl = `https://twitter.com/search?q=${encodeURIComponent(query)}&src=typed_query&f=live`;
-      await this.page.goto(searchUrl, { waitUntil: 'networkidle' });
       
-      // Wait for tweets to load
-      await this.page.waitForSelector('[data-testid="tweet"]', { timeout: 10000 });
+      try {
+        await this.page.goto(searchUrl, { 
+          waitUntil: 'domcontentloaded',
+          timeout: 60000 
+        });
+      } catch (gotoError) {
+        // Take screenshot for debugging and try with different wait strategy
+        console.log('🔧 First navigation attempt failed, trying fallback...');
+        await this.page.screenshot({ path: 'twitter-search-error.png' });
+        
+        await this.page.goto(searchUrl, { 
+          waitUntil: 'load',
+          timeout: 60000 
+        });
+      }
       
-      // Extract tweet data
+             // Wait for tweets to load with fallback
+       try {
+         await this.page.waitForSelector('[data-testid="tweet"]', { timeout: 15000 });
+       } catch (selectorError) {
+         // Fallback: wait for any article element (tweets are wrapped in articles)
+         await this.page.waitForSelector('article', { timeout: 15000 });
+       }
+       
+       // Small delay to ensure content is fully loaded and appear more human
+       await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 2000));
+       
+       // Extract tweet data
       const tweets = await this.page.evaluate((maxResults: number) => {
         const tweetElements = (document as any).querySelectorAll('[data-testid="tweet"]');
         const extractedTweets: any[] = [];
