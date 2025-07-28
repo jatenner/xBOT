@@ -1,11 +1,13 @@
 /**
- * 🚀 BROWSER TWEET POSTER (ENHANCED 2024)
+ * 🚀 BROWSER TWEET POSTER (ENHANCED 2024 - PRODUCTION READY)
  * 
  * Posts tweets using Playwright browser automation with bulletproof reliability:
  * - Enhanced 2024 X.com selectors with progressive fallbacks
  * - Smart retry logic with exponential backoff
  * - Robust confirmation system with multiple validation methods
  * - Enhanced error handling and debug capabilities
+ * - Render.com deployment optimizations
+ * - Emergency fallback mechanisms
  */
 
 import { chromium, Browser, Page } from 'playwright';
@@ -19,6 +21,7 @@ export class BrowserTweetPoster {
   private isInitialized = false;
   private sessionPath = path.join(process.cwd(), 'twitter-auth.json');
   private debugMode = process.env.DEBUG_SCREENSHOT === 'true';
+  private isRenderDeployment = process.env.RENDER === 'true' || process.env.NODE_ENV === 'production';
 
   async initialize(): Promise<boolean> {
     if (this.isInitialized) {
@@ -28,132 +31,128 @@ export class BrowserTweetPoster {
     try {
       console.log('🌐 Initializing enhanced browser for tweet posting...');
       
-      // Set Playwright environment variables for Render compatibility
-      process.env.PLAYWRIGHT_BROWSERS_PATH = '0';
-      process.env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = 'false';
-
-      // Runtime installation fallback
-      try {
-        const { exec } = require('child_process');
-        await new Promise((resolve, reject) => {
-          exec('npx playwright install chromium --force', (error: any, stdout: any, stderr: any) => {
-            if (error) {
-              console.log('⚠️ Runtime Playwright install failed (might be already installed):', error.message);
-            } else {
-              console.log('✅ Runtime Playwright install completed');
-            }
-            resolve(true); // Don't fail initialization if this fails
-          });
-        });
-      } catch (installError) {
-        console.log('⚠️ Skipping runtime install due to error:', installError);
+      // Enhanced Render.com compatibility
+      if (this.isRenderDeployment) {
+        console.log('🚀 Detected Render deployment - applying production optimizations');
+        process.env.PLAYWRIGHT_BROWSERS_PATH = '0';
+        process.env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = 'false';
+        process.env.PLAYWRIGHT_CHROMIUM_USE_HEADLESS_NEW = 'true';
       }
 
-      const launchOptions = getChromiumLaunchOptions();
+      // Enhanced browser launch with Render optimizations
+      const launchOptions = {
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--disable-web-security',
+          '--disable-features=VizDisplayCompositor',
+          '--no-first-run',
+          '--disable-background-timer-throttling',
+          '--disable-renderer-backgrounding',
+          '--disable-backgrounding-occluded-windows',
+          '--single-process', // Critical for Render
+          '--memory-pressure-off',
+          '--max_old_space_size=512'
+        ],
+        ...(this.isRenderDeployment && {
+          executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined,
+          timeout: 90000 // Longer timeout for Render
+        })
+      };
+
+      console.log('🔧 Launching browser with production-ready configuration...');
       this.browser = await chromium.launch(launchOptions);
       
       this.page = await this.browser.newPage({
         viewport: { width: 1280, height: 720 },
-        userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       });
 
-      // Enhanced stealth configuration
-      await this.page.addInitScript(() => {
-        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-        Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
-        Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
-        delete (window as any).cdc_adoQpoasnfa76pfcZLmcfl_Array;
-        delete (window as any).cdc_adoQpoasnfa76pfcZLmcfl_Promise;
-        delete (window as any).cdc_adoQpoasnfa76pfcZLmcfl_Symbol;
-      });
-
-      // Enhanced network interception for better performance
+      // Enhanced network interception for performance
       await this.page.route('**/*', (route) => {
+        const resourceType = route.request().resourceType();
         const url = route.request().url();
-        // Block unnecessary resources to speed up page loads
-        if (url.includes('.jpg') || url.includes('.png') || url.includes('.gif') || 
-            url.includes('analytics') || url.includes('tracking') || url.includes('ads')) {
+        
+        // Block heavy resources to speed up loading
+        if (['image', 'media', 'font', 'stylesheet'].includes(resourceType) ||
+            url.includes('analytics') || url.includes('tracking') || 
+            url.includes('ads') || url.includes('doubleclick')) {
           route.abort();
         } else {
           route.continue();
         }
       });
 
-      // Load Twitter session
-      await this.loadTwitterSession();
-      
-      console.log('✅ Enhanced browser initialized successfully');
+      // Load session with enhanced error handling
+      const sessionLoaded = await this.loadSession();
+      if (!sessionLoaded) {
+        console.error('❌ Failed to load Twitter session');
+        return false;
+      }
+
+      // Enhanced session validation
+      const sessionValid = await this.validateSession();
+      if (!sessionValid) {
+        console.error('❌ Twitter session validation failed');
+        return false;
+      }
+
       this.isInitialized = true;
+      console.log('✅ Browser initialization completed successfully');
       return true;
 
-    } catch (error) {
-      console.error('❌ Failed to initialize browser:', error);
-      if (this.browser) {
-        await this.browser.close();
-        this.browser = null;
-      }
+    } catch (error: any) {
+      console.error('❌ Browser initialization failed:', error);
+      await this.cleanup();
       return false;
     }
   }
 
-  private async loadTwitterSession(): Promise<void> {
-    try {
-      if (fs.existsSync(this.sessionPath)) {
-        const sessionData = JSON.parse(fs.readFileSync(this.sessionPath, 'utf8'));
-        console.log('🔐 Loading saved Twitter session...');
-        
-        // Navigate to X.com first
-        await this.page!.goto('https://x.com', { waitUntil: 'domcontentloaded', timeout: 45000 });
-        
-        // Set cookies
-        if (sessionData.cookies && Array.isArray(sessionData.cookies)) {
-          await this.page!.context().addCookies(sessionData.cookies);
-          console.log(`✅ Loaded ${sessionData.cookies.length} session cookies`);
-        }
-
-        // Enhanced session validation
-        await this.page!.reload({ waitUntil: 'domcontentloaded', timeout: 45000 });
-        await this.page!.waitForTimeout(3000);
-
-        // Check if we're actually logged in
-        const isLoggedIn = await this.validateSession();
-        if (!isLoggedIn) {
-          console.warn('⚠️ Session validation failed - may need manual re-authentication');
-        } else {
-          console.log('✅ Twitter session validated successfully');
-        }
-
-      } else {
-        console.log('⚠️ No saved Twitter session found - manual authentication required');
-        await this.page!.goto('https://x.com/login', { waitUntil: 'domcontentloaded', timeout: 45000 });
-      }
-    } catch (error) {
-      console.error('❌ Failed to load Twitter session:', error);
-      throw error;
-    }
-  }
-
+  /**
+   * 🔒 ENHANCED SESSION VALIDATION
+   */
   private async validateSession(): Promise<boolean> {
+    if (!this.page) return false;
+
     try {
-      // Look for indicators that we're logged in
-      const loggedInSelectors = [
-        'div[data-testid="SideNav_AccountSwitcher_Button"]',
-        'a[data-testid="AppTabBar_Profile_Link"]',
-        'div[data-testid="primaryColumn"]',
+      console.log('🔐 Validating Twitter session...');
+      
+      // Navigate to home with enhanced timeout
+      await this.page.goto('https://twitter.com/home', {
+        waitUntil: 'domcontentloaded',
+        timeout: this.isRenderDeployment ? 90000 : 60000
+      });
+
+      // Enhanced session check with multiple fallbacks
+      const sessionIndicators = [
+        '[data-testid="primaryNavigation"]',
+        '[data-testid="tweet-compose-button"]', 
+        '[data-testid="SideNav_AccountSwitcher_Button"]',
+        '[aria-label="Home"]',
         'nav[role="navigation"]'
       ];
 
-      for (const selector of loggedInSelectors) {
+      for (const indicator of sessionIndicators) {
         try {
-          await this.page!.waitForSelector(selector, { timeout: 5000 });
+          await this.page.waitForSelector(indicator, { 
+            timeout: this.isRenderDeployment ? 30000 : 15000,
+            state: 'visible' 
+          });
+          console.log(`✅ Session validated with: ${indicator}`);
           return true;
-        } catch (e) {
+        } catch (error) {
+          console.log(`⚠️ Session check failed for: ${indicator}`);
           continue;
         }
       }
 
+      console.error('❌ No session indicators found - user may not be logged in');
       return false;
-    } catch (error) {
+
+    } catch (error: any) {
       console.error('❌ Session validation error:', error);
       return false;
     }

@@ -205,10 +205,9 @@ export class AutonomousPostingEngine {
         console.log(`📝 Generated candidate: "${candidateContent.substring(0, 100)}..."`);
         
         // Enhanced semantic uniqueness check (0.75 threshold)
-        const { enhancedSemanticUniqueness } = await import('../utils/enhancedSemanticUniqueness');
+        const { EnhancedSemanticUniqueness } = await import('../utils/enhancedSemanticUniqueness');
         uniquenessResult = await EnhancedSemanticUniqueness.checkContentUniqueness(
-          candidateContent,
-          contentGenerationAttempts
+          candidateContent
         );
 
         if (!uniquenessResult.success) {
@@ -220,11 +219,11 @@ export class AutonomousPostingEngine {
           console.log('✅ Content is semantically unique - proceeding with posting');
           break;
         } else {
-          const similarity = uniquenessResult.analysis.maxSimilarity;
+          const similarity = uniquenessResult.similarityScore;
           console.log(`🛑 Content too similar to previous posts (similarity: ${(similarity * 100).toFixed(1)}%)`);
           
-          if (uniquenessResult.suppressionReasons && uniquenessResult.suppressionReasons.length > 0) {
-            console.log(`📋 Suppression reasons: ${uniquenessResult.suppressionReasons.join(', ')}`);
+          if (uniquenessResult.conflictingContent) {
+            console.log(`📋 Conflict: Similar to tweet from ${uniquenessResult.conflictingContent.daysSince} days ago`);
           }
           
           if (contentGenerationAttempts >= MAX_CONTENT_ATTEMPTS) {
@@ -399,7 +398,7 @@ export class AutonomousPostingEngine {
       // Step 1: Get robust template (never returns undefined)
       const { RobustTemplateSelection } = await import('../utils/robustTemplateSelection');
       const templateResult = await RobustTemplateSelection.getTemplate({
-        current_hour: new Date().getHours()
+        currentHour: new Date().getHours()
       });
 
       if (!templateResult.success || !templateResult.template) {
@@ -410,7 +409,7 @@ export class AutonomousPostingEngine {
       }
 
       const selectedTemplate = templateResult.template;
-      console.log(`✅ Template selected: "${selectedTemplate.name}" (${templateResult.selection_method})`);
+      console.log(`✅ Template selected: "${selectedTemplate.name}" (${templateResult.selectionMethod})`);
 
       // Step 2: Use enhanced diverse content agent
       const { enhancedDiverseContentAgent } = await import('../agents/enhancedDiverseContentAgent');
@@ -428,8 +427,8 @@ export class AutonomousPostingEngine {
         template_id: selectedTemplate.id,
         template_name: selectedTemplate.name,
         template_tone: selectedTemplate.tone,
-        template_type: selectedTemplate.content_type,
-        selection_method: templateResult.selection_method,
+        template_type: selectedTemplate.contentType,
+        selectionMethod: templateResult.selectionMethod,
         generation_method: 'enhanced_diverse_agent',
         ...(diverseResult.metadata || {})
       };
