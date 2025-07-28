@@ -37,6 +37,7 @@
     "test-browser-post": "npm run build && node dist/utils/browserTweetPoster.js",
     "test-deployment": "npm run build && node dist/deploymentTest.js",
     "test-semantic": "npm run build && node dist/test/testSemanticUniqueness.js",
+    "test-browser-posting": "npm run build && node dist/test/testBrowserPosting.js",
     "cache-user-id": "npm run build && node dist/scripts/cacheTwitterUserId.js",
     "render-build": "./render-build.sh",
     "playwright-setup": "npx playwright install chromium --force"
