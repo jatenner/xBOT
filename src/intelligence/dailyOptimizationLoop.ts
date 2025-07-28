@@ -182,8 +182,9 @@ export class DailyOptimizationLoop {
         throw new Error('Supabase client not available');
       }
 
+      // Get analysis date range (last 7 days)
       const analysisStartDate = new Date();
-      analysisStartDate.setDate(analysisStartDate.getDate() - this.ANALYSIS_PERIOD_DAYS);
+      analysisStartDate.setDate(analysisStartDate.getDate() - DailyOptimizationLoop.ANALYSIS_PERIOD_DAYS);
 
       // Get recent tweets for analysis
       const { data: recentTweets, error: tweetsError } = await supabaseClient.supabase
@@ -195,7 +196,7 @@ export class DailyOptimizationLoop {
 
       if (tweetsError) throw tweetsError;
 
-      if (!recentTweets || recentTweets.length < this.MIN_DATA_POINTS) {
+      if (!recentTweets || recentTweets.length < DailyOptimizationLoop.MIN_DATA_POINTS) {
         console.log('⚠️ Insufficient data for comprehensive analysis');
         return this.getDefaultPerformanceAnalysis();
       }
@@ -540,9 +541,9 @@ export class DailyOptimizationLoop {
 
   private getNextOptimizationTime(): Date {
     const next = new Date();
-    next.setUTCHours(this.OPTIMIZATION_HOUR, 0, 0, 0);
+    next.setUTCHours(DailyOptimizationLoop.OPTIMIZATION_HOUR, 0, 0, 0);
     
-    // If it's already past 4 AM today, schedule for tomorrow
+    // If it's past 4 AM today, schedule for tomorrow
     if (next.getTime() <= Date.now()) {
       next.setDate(next.getDate() + 1);
     }
