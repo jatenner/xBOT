@@ -218,8 +218,11 @@ export class AutonomousSystemController {
    */
   private async startDashboard(): Promise<void> {
     return new Promise((resolve, reject) => {
-      const server = this.app.listen(3002, () => {
-        console.log('📊 Dashboard server started on http://localhost:3002');
+      const PORT = parseInt(process.env.PORT || '3002', 10);
+      const HOST = '0.0.0.0';
+      
+      const server = this.app.listen(PORT, HOST, () => {
+        console.log(`📊 Dashboard server started on http://${HOST}:${PORT}`);
         this.updateComponentStatus('dashboard', 'active');
         resolve();
       });

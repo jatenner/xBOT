@@ -51,3 +51,4 @@ debug_*.js
 demo_*.js
 check_*.js
 *.test.js .env.backup
+browsers/

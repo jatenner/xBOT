@@ -141,6 +141,12 @@ export class TopicPerformancePrioritizer {
 
       // Process each tweet to extract topics
       for (const tweet of tweets) {
+        // Skip tweets with missing or invalid text
+        if (!tweet?.text || typeof tweet.text !== 'string') {
+          console.warn('⚠️ Skipping tweet with invalid text:', tweet?.id || 'unknown');
+          continue;
+        }
+
         const topics = await this.extractTopicsFromTweet(tweet.text);
         
         for (const topicData of topics) {
@@ -242,6 +248,12 @@ export class TopicPerformancePrioritizer {
    */
   private static async extractTopicsFromTweet(tweetText: string): Promise<Array<{topic: string, category: string}>> {
     try {
+      // Check if tweetText is valid
+      if (!tweetText || typeof tweetText !== 'string') {
+        console.warn('⚠️ Invalid tweet text provided for topic extraction:', tweetText);
+        return [{ topic: 'general_health', category: 'health' }];
+      }
+
       // Simplified topic extraction based on health keywords
       const healthKeywords = {
         'gut_health': ['gut', 'microbiome', 'digestive', 'probiotics', 'fiber'],

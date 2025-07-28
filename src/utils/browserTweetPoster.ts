@@ -64,7 +64,30 @@ export class BrowserTweetPoster {
       };
 
       console.log('🔧 Launching browser with production-ready configuration...');
-      this.browser = await chromium.launch(launchOptions);
+      console.log(`📂 Current PLAYWRIGHT_BROWSERS_PATH: ${process.env.PLAYWRIGHT_BROWSERS_PATH || 'not set'}`);
+      
+      try {
+        this.browser = await chromium.launch(launchOptions);
+        console.log('✅ Browser launched successfully');
+      } catch (launchError) {
+        console.error('❌ Browser launch failed with error:', launchError);
+        console.error('🔍 Browser launch diagnostics:');
+        console.error(`   - PLAYWRIGHT_BROWSERS_PATH: ${process.env.PLAYWRIGHT_BROWSERS_PATH || 'not set'}`);
+        console.error(`   - Current working directory: ${process.cwd()}`);
+        console.error(`   - Environment: ${this.isRenderDeployment ? 'Render' : 'Local'}`);
+        console.error(`   - Launch options:`, JSON.stringify(launchOptions, null, 2));
+        
+        // Try to provide helpful debugging info
+        if (launchError.message.includes('Executable doesn\'t exist')) {
+          console.error('💡 Browser binary missing. This usually means:');
+          console.error('   1. Playwright browsers not installed during build');
+          console.error('   2. Incorrect PLAYWRIGHT_BROWSERS_PATH');
+          console.error('   3. Render cache issues');
+          console.error('🔧 Try running: npm run install-browsers');
+        }
+        
+        throw launchError;
+      }
       
       this.page = await this.browser.newPage({
         viewport: { width: 1280, height: 720 },
