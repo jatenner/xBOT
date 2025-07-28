@@ -120,14 +120,17 @@ export class StealthTweetScraper {
         
         if (this.page && sessionData.cookies) {
           await this.page.context().addCookies(sessionData.cookies);
-          console.log('✅ Twitter session loaded from file');
+          console.log(`✅ Twitter session loaded (${sessionData.cookies.length} cookies)`);
+          console.log(`🕐 Session created: ${sessionData.createdAt || 'Unknown'}`);
           this.isLoggedIn = true;
         }
       } else {
-        console.log('⚠️ No Twitter session found - manual login may be required');
+        console.log('⚠️ No Twitter session found at twitter-auth.json');
+        console.log('💡 Run: npm run build && node dist/utils/initTwitterSession.js');
       }
     } catch (error) {
       console.error('❌ Failed to load session:', error);
+      console.log('💡 If session is corrupted, delete twitter-auth.json and re-initialize');
     }
   }
 
@@ -325,6 +328,28 @@ export class StealthTweetScraper {
     } catch (error) {
       console.error('❌ Error closing browser:', error);
     }
+  }
+
+  /**
+   * 🧪 Test scraping with "ai health" search
+   */
+  async testAIHealthSearch(limit: number = 5): Promise<TweetSearchResult> {
+    console.log('🧪 Testing AI health search...');
+    const result = await this.searchTweets('ai health', limit);
+    
+    if (result.success && result.tweets) {
+      console.log(`✅ Successfully scraped ${result.tweets.length} AI health tweets:`);
+      result.tweets.forEach((tweet, index) => {
+        console.log(`\n${index + 1}. @${tweet.author.username}`);
+        console.log(`   ${tweet.content.substring(0, 100)}...`);
+        console.log(`   💖 ${tweet.engagement.likes} | 🔁 ${tweet.engagement.retweets} | 💬 ${tweet.engagement.replies}`);
+        console.log(`   🔗 ${tweet.url}`);
+      });
+    } else {
+      console.log('❌ Failed to scrape AI health tweets:', result.error);
+    }
+    
+    return result;
   }
 
   /**

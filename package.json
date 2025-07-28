@@ -26,7 +26,11 @@
     "build-minimal": "node --max-old-space-size=1024 ./node_modules/.bin/tsc --incremental --skipLibCheck",
     "emergency": "node emergency_start.js",
     "safe-start": "EMERGENCY_MODE=true npm start",
-    "start-original": "npm run migrate && node dist/main.js"
+    "start-original": "npm run migrate && node dist/main.js",
+    "init-session": "npm run build && node dist/utils/initTwitterSession.js",
+    "test-session": "npm run build && node dist/utils/initTwitterSession.js test",
+    "test-scraper": "npm run build && node dist/test/testScraper.js",
+    "test-scraper-quick": "npm run build && node dist/test/testScraper.js search"
   },
   "keywords": [
     "twitter",
