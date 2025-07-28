@@ -388,10 +388,12 @@ export class MasterAutonomousController {
    * 🌐 START DASHBOARD
    */
   private startDashboard(): void {
-    const PORT = 3002;
+    const PORT = parseInt(process.env.PORT || '3002', 10);
+    const HOST = '0.0.0.0'; // Listen on all interfaces for Render
     
-    this.server = this.app.listen(PORT, () => {
-      console.log(`🌐 Dashboard server running on http://localhost:${PORT}`);
+    this.server = this.app.listen(PORT, HOST, () => {
+      console.log(`🌐 Dashboard server running on http://${HOST}:${PORT}`);
+      console.log(`🌍 External access: Use your Render app URL or public IP:${PORT}`);
     });
   }
 
