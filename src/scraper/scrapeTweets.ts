@@ -1,6 +1,7 @@
 import { chromium, Browser, Page } from 'playwright';
 import * as fs from 'fs';
 import * as path from 'path';
+import { getChromiumLaunchOptions } from '../utils/playwrightUtils';
 
 // Tweet data interface
 export interface ScrapedTweet {
@@ -57,25 +58,11 @@ export class StealthTweetScraper {
     try {
       console.log('🕵️ Initializing stealth browser...');
       
-      // Launch browser with stealth settings
-      this.browser = await chromium.launch({
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
-          '--disable-gpu',
-          '--disable-web-security',
-          '--disable-features=VizDisplayCompositor',
-          '--disable-background-timer-throttling',
-          '--disable-backgrounding-occluded-windows',
-          '--disable-renderer-backgrounding',
-          '--disable-blink-features=AutomationControlled'
-        ]
-      });
+      // Get launch options with correct executable path
+      const launchOptions = getChromiumLaunchOptions();
+      
+      // Launch browser with stealth settings and correct executable
+      this.browser = await chromium.launch(launchOptions);
 
       // Create page with stealth settings
       this.page = await this.browser.newPage({

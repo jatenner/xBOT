@@ -9,6 +9,8 @@ import { chromium, Browser, Page } from 'playwright';
 import { minimalSupabaseClient } from '../utils/minimalSupabaseClient';
 import * as fs from 'fs';
 import * as path from 'path';
+import { supabase } from '../utils/supabaseClient';
+import { getChromiumLaunchOptions } from '../utils/playwrightUtils';
 
 interface FollowerData {
   followerCount: number;
@@ -44,25 +46,11 @@ export class FollowerTracker {
     try {
       console.log('📈 Initializing Follower Tracker...');
 
-      // Launch browser with stealth settings
-      this.browser = await chromium.launch({
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
-          '--disable-gpu',
-          '--disable-web-security',
-          '--disable-features=VizDisplayCompositor',
-          '--disable-background-timer-throttling',
-          '--disable-backgrounding-occluded-windows',
-          '--disable-renderer-backgrounding',
-          '--disable-blink-features=AutomationControlled'
-        ]
-      });
+      // Get launch options with correct executable path
+      const launchOptions = getChromiumLaunchOptions();
+
+      // Launch browser with stealth settings and correct executable
+      this.browser = await chromium.launch(launchOptions);
 
       // Create page with realistic settings
       this.page = await this.browser.newPage({
