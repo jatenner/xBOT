@@ -116,9 +116,21 @@ export class AutonomousCommunityGrowthAgent {
     console.log('📊 ANALYZING CURRENT GROWTH STATUS...');
 
     try {
-      // Get current follower count and engagement metrics  
+      // Get current follower count and engagement metrics using cached user ID
       const myUserId = xClient.getMyUserId(); // Fixed: No await needed, returns string directly
-      const profile = myUserId ? await xClient.getUserByUsername(process.env.TWITTER_USERNAME || 'SignalAndSynapse') : null;
+      const username = xClient.getMyUsername(); 
+      
+      console.log(`👤 Using cached credentials: ${username} (${myUserId})`);
+      
+      // Only make API call if we have valid user ID
+      let profile = null;
+      if (myUserId) {
+        try {
+          profile = await xClient.getUserByUsername(username || process.env.TWITTER_USERNAME || 'SignalAndSynapse');
+        } catch (error) {
+          console.log('⚠️ Could not fetch profile, using fallback data');
+        }
+      }
       
       // Analyze recent tweet performance
       const recentTweets = await this.getRecentTweetPerformance();
@@ -142,7 +154,9 @@ export class AutonomousCommunityGrowthAgent {
       return status;
 
     } catch (error) {
-      console.warn('Using estimated growth status');
+      console.warn('⚠️ API error detected, using estimated growth status (avoids 429 errors)');
+      console.log(`📊 Error details: ${error.message}`);
+      
       return {
         followers: 50, // Estimated starting point
         following: 100,
