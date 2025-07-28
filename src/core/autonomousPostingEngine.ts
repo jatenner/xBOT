@@ -444,73 +444,28 @@ export class AutonomousPostingEngine {
   }
 
   /**
-   * 🌐 BROWSER-FIRST TWITTER POSTING (No API Limits!)
+   * 🌐 BROWSER-ONLY TWITTER POSTING (Unlimited Tweets!)
    */
   private async postToTwitter(content: string): Promise<{
     success: boolean;
     tweet_id?: string;
     error?: string;
   }> {
-    // ALWAYS use browser posting first - unlimited capacity!
-    console.log('🌐 Using browser-based posting (unlimited tweets!)...');
-    
-    const browserResult = await this.postViaBrowser(content);
-    
-    if (browserResult.success) {
-      console.log(`✅ Browser posting successful: ${browserResult.tweet_id}`);
-      return browserResult;
-    }
-    
-    // If browser posting fails, temporarily use API as emergency fallback
-    // until Playwright installation is fixed
-    console.log(`❌ Browser posting failed: ${browserResult.error}`);
-    console.log('🚨 TEMPORARY: Falling back to API posting while fixing Playwright installation');
+    console.log('🌐 Using browser-based posting (unlimited capacity!)...');
     
     try {
-      // Emergency API fallback
-      const { xClient } = await import('../utils/xClient');
-      const apiResult = await xClient.postTweet(content);
+      // Import and use browser tweet poster
+      const { BrowserTweetPoster } = await import('../utils/browserTweetPoster');
+      const browserPoster = new BrowserTweetPoster();
       
-      if (apiResult.success && apiResult.tweetId) {
-        console.log(`✅ Emergency API post successful: ${apiResult.tweetId}`);
-        console.log('⚠️ NOTE: This uses API quota - will switch back to browser once Playwright is fixed');
-        return {
-          success: true,
-          tweet_id: apiResult.tweetId
-        };
-      }
-    } catch (apiError) {
-      console.log(`❌ Emergency API fallback also failed: ${apiError.message}`);
-    }
-    
-    return {
-      success: false,
-      error: `Both browser and API posting failed: ${browserResult.error}`
-    };
-  }
-
-  /**
-   * 🌐 BROWSER POSTING FALLBACK
-   */
-  private async postViaBrowser(content: string): Promise<{
-    success: boolean;
-    tweet_id?: string;
-    error?: string;
-  }> {
-    try {
-      console.log('🌐 Attempting browser posting...');
-      
-      // Import browser poster
-      const { browserTweetPoster } = await import('../utils/browserTweetPoster');
-      
-      // Post via browser
-      const result = await browserTweetPoster.postTweet(content);
+      // Post via browser automation
+      const result = await browserPoster.postTweet(content);
       
       if (result.success) {
-        console.log(`✅ Browser post successful: ${result.tweetId || 'browser_post'}`);
+        console.log(`✅ Browser posting successful: ${result.tweet_id}`);
         return {
           success: true,
-          tweet_id: result.tweetId || `browser_${Date.now()}`
+          tweet_id: result.tweet_id
         };
       } else {
         console.log(`❌ Browser posting failed: ${result.error}`);
@@ -521,14 +476,15 @@ export class AutonomousPostingEngine {
       }
       
     } catch (error) {
-      console.log(`❌ Browser posting error: ${error.message}`);
-      console.log('💡 Browser posting not available - this may be due to Playwright installation issues');
+      console.error('❌ Error in browser posting:', error);
       return {
         success: false,
-        error: `Browser posting not available: ${error.message}`
+        error: `Browser posting error: ${error.message}`
       };
     }
   }
+
+
 
   /**
    * 💾 DATABASE STORAGE (Emergency Protected)

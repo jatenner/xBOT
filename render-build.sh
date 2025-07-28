@@ -11,17 +11,24 @@ echo "🚀 Starting Render build process for Snap2Health xBOT..."
 echo "📦 Installing npm dependencies..."
 npm ci
 
-# Step 2: Install Playwright (Render-compatible, no system deps)
-echo "🎭 Installing Playwright browsers (Render-compatible)..."
-npx playwright install chromium
+# Step 2: Install Playwright browsers with system dependencies (Render compatible)
+echo "🎭 Installing Playwright browsers..."
+npx playwright install chromium --force
 
 # Step 3: Verify Playwright installation
 echo "🔍 Verifying Playwright installation..."
 npx playwright --version
 
-# Step 4: List installed browsers for debugging
-echo "📋 Checking installed browser locations..."
-find /opt/render/.cache/ms-playwright -name "*chrome*" -type f 2>/dev/null || echo "Browser paths not found in cache"
+# Step 4: Debug browser installation paths
+echo "📋 Debugging browser installation..."
+echo "Checking /opt/render/.cache/ms-playwright directory:"
+ls -la /opt/render/.cache/ms-playwright/ 2>/dev/null || echo "No playwright cache found"
+
+echo "Searching for chromium executables:"
+find /opt/render/.cache/ms-playwright -name "*chrom*" -type f 2>/dev/null | head -10 || echo "No chromium found"
+
+echo "Searching for any browser executables:"
+find /opt/render/.cache/ms-playwright -type f -executable 2>/dev/null | head -10 || echo "No executables found"
 
 # Step 5: Build TypeScript project
 echo "🔨 Building TypeScript project..."

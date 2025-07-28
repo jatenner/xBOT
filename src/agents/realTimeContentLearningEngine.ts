@@ -161,7 +161,7 @@ export class RealTimeContentLearningEngine {
       const summary = `🧠 Learning complete: Analyzed ${tweetData.length} tweets, confidence ${Math.round(confidence * 100)}%, generated optimized strategy in ${Math.round(duration / 1000)}s`;
 
       console.log(summary);
-
+      
       return {
         success: true,
         insights,
@@ -170,7 +170,7 @@ export class RealTimeContentLearningEngine {
         generatedAt: new Date().toISOString(),
         summary
       };
-
+      
     } catch (error) {
       console.error('❌ Content learning failed:', error);
       return {
