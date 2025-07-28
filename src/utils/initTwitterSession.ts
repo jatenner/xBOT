@@ -10,6 +10,7 @@
 import { chromium, Browser, Page } from 'playwright';
 import * as fs from 'fs';
 import * as path from 'path';
+import { getChromiumLaunchOptions } from './playwrightUtils';
 
 class TwitterSessionInitializer {
   private browser: Browser | null = null;
@@ -21,22 +22,12 @@ class TwitterSessionInitializer {
       console.log('🚀 Launching browser for manual Twitter login...');
       console.log('📝 You will need to log in manually when the browser opens.');
       
+      // Get launch options with correct executable path (non-headless for manual login)
+      const launchOptions = getChromiumLaunchOptions();
+      launchOptions.headless = false; // Non-headless for manual login
+      
       // Launch browser in non-headless mode for manual login
-      this.browser = await chromium.launch({
-        headless: false, // Non-headless for manual login
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
-          '--disable-gpu',
-          '--disable-web-security',
-          '--disable-features=VizDisplayCompositor',
-          '--disable-blink-features=AutomationControlled'
-        ]
-      });
+      this.browser = await chromium.launch(launchOptions);
 
       // Create page with realistic settings
       this.page = await this.browser.newPage({

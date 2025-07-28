@@ -1,7 +1,8 @@
 import { chromium, Browser, Page } from 'playwright';
-import { supabaseClient } from '../utils/supabaseClient';
 import * as fs from 'fs';
 import * as path from 'path';
+import { supabase } from '../utils/supabaseClient';
+import { getChromiumLaunchOptions } from '../utils/playwrightUtils';
 
 // Performance update result interface
 export interface PerformanceUpdateResult {
@@ -57,31 +58,17 @@ export class TweetPerformanceTracker {
   }
 
   /**
-   * 🚀 Initialize stealth browser for performance tracking
+   * 🚀 Initialize the performance tracker
    */
   async initialize(): Promise<boolean> {
     try {
-      console.log('🕵️ Initializing stealth performance tracker...');
-      
-             // Launch browser with enhanced stealth settings
-       this.browser = await chromium.launch({
-         headless: true,
-         args: [
-           '--no-sandbox',
-           '--disable-setuid-sandbox',
-           '--disable-dev-shm-usage',
-           '--disable-accelerated-2d-canvas',
-           '--no-first-run',
-           '--no-zygote',
-           '--disable-gpu',
-           '--disable-web-security',
-           '--disable-features=VizDisplayCompositor',
-           '--disable-background-timer-throttling',
-           '--disable-backgrounding-occluded-windows',
-           '--disable-renderer-backgrounding',
-           '--disable-blink-features=AutomationControlled'
-         ]
-       });
+      console.log('📊 Initializing Tweet Performance Tracker...');
+
+      // Get launch options with correct executable path
+      const launchOptions = getChromiumLaunchOptions();
+
+      // Launch browser with stealth settings and correct executable
+      this.browser = await chromium.launch(launchOptions);
 
       // Create page with realistic settings
       this.page = await this.browser.newPage({
@@ -91,29 +78,14 @@ export class TweetPerformanceTracker {
         timezoneId: 'America/New_York'
       });
 
-      // Enhanced stealth measures - using string to avoid TypeScript issues
-      await this.page.addInitScript(() => {
-        // Override webdriver detection
-        Object.defineProperty((window as any).navigator, 'webdriver', { get: () => undefined });
-        
-        // Override automation indicators
-        Object.defineProperty((window as any).navigator, 'plugins', {
-          get: () => [1, 2, 3, 4, 5]
-        });
-        
-        Object.defineProperty((window as any).navigator, 'languages', {
-          get: () => ['en-US', 'en']
-        });
-      });
-
-      // Load Twitter session if available
+      // Load session if available
       await this.loadTwitterSession();
-      
-      console.log('✅ Stealth performance tracker initialized');
+
+      console.log('✅ Tweet Performance Tracker initialized successfully');
       return true;
-      
+
     } catch (error) {
-      console.error('❌ Failed to initialize performance tracker:', error);
+      console.error('❌ Error initializing Tweet Performance Tracker:', error);
       return false;
     }
   }
@@ -161,7 +133,7 @@ export class TweetPerformanceTracker {
       const thirtyDaysAgo = new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString();
 
       // Query tweets that need updates
-      const { data: tweets, error } = await supabaseClient.supabase
+      const { data: tweets, error } = await supabase
         ?.from('tweets')
         ?.select('id, tweet_id, content, created_at, performance_log, last_performance_update')
         ?.eq('success', true)
@@ -347,7 +319,7 @@ export class TweetPerformanceTracker {
       }
 
       // Update the database
-      const { error } = await supabaseClient.supabase
+      const { error } = await supabase
         ?.from('tweets')
         ?.update({
           likes: performanceData.currentMetrics.likes,

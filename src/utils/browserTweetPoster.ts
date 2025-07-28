@@ -8,6 +8,7 @@
 import { chromium, Browser, Page } from 'playwright';
 import * as fs from 'fs';
 import * as path from 'path';
+import { getChromiumLaunchOptions } from './playwrightUtils';
 
 export class BrowserTweetPoster {
   private browser: Browser | null = null;
@@ -31,40 +32,15 @@ export class BrowserTweetPoster {
       console.log(`   PLAYWRIGHT_BROWSERS_PATH: ${process.env.PLAYWRIGHT_BROWSERS_PATH}`);
       console.log(`   PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: ${process.env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD}`);
 
-      let launchOptions: any = {
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
-          '--disable-gpu',
-          '--disable-web-security',
-          '--disable-features=VizDisplayCompositor',
-          '--disable-background-timer-throttling',
-          '--disable-backgrounding-occluded-windows',
-          '--disable-renderer-backgrounding',
-          '--disable-blink-features=AutomationControlled',
-          '--disable-extensions',
-          '--disable-plugins',
-          '--disable-default-apps',
-          '--disable-sync',
-          '--disable-translate',
-          '--hide-scrollbars',
-          '--mute-audio',
-          '--no-default-browser-check',
-          '--no-pings'
-        ]
-      };
+      // Get launch options with correct executable path
+      const launchOptions = getChromiumLaunchOptions();
 
-      // Try to launch browser with global Playwright installation
-      console.log('🌐 Attempting to launch browser with global Playwright installation...');
+      // Try to launch browser with correct executable path
+      console.log('🌐 Attempting to launch browser with detected executable...');
       
       try {
         this.browser = await chromium.launch(launchOptions);
-        console.log('✅ Successfully launched browser with global installation');
+        console.log('✅ Successfully launched browser with detected executable');
       } catch (launchError) {
         console.log(`❌ Failed to launch browser: ${launchError.message}`);
         
@@ -83,14 +59,17 @@ export class BrowserTweetPoster {
           });
           console.log('✅ Runtime Playwright install completed');
           
+          // Get updated launch options after installation
+          const updatedLaunchOptions = getChromiumLaunchOptions();
+          
           // Retry browser launch after installation
-          this.browser = await chromium.launch(launchOptions);
+          this.browser = await chromium.launch(updatedLaunchOptions);
           console.log('✅ Successfully launched browser after runtime installation');
           
         } catch (installError) {
           console.log(`❌ Runtime installation failed: ${installError.message}`);
           
-          // Final fallback: Try minimal configuration
+          // Final fallback: Try minimal configuration without explicit path
           console.log('🔄 Trying minimal browser configuration as last resort...');
           try {
             this.browser = await chromium.launch({
