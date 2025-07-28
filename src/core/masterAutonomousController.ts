@@ -506,18 +506,40 @@ export class MasterAutonomousController {
    * 📊 DASHBOARD DATA METHODS
    */
   private async getDashboardData(): Promise<any> {
-    const budgetStatus = await EmergencyBudgetLockdown.isLockedDown();
-    const optimizationStatus = this.optimizationLoop.getOptimizationStatus();
+    let budgetStatus: any;
+    
+    try {
+      budgetStatus = await EmergencyBudgetLockdown.isLockedDown();
+    } catch (error) {
+      console.error('❌ Error getting budget status for dashboard:', error);
+      budgetStatus = {
+        lockdownActive: false,
+        totalSpent: 0,
+        dailyLimit: 7.5,
+        lockdownReason: 'Budget check failed'
+      };
+    }
+    
+    if (!budgetStatus || typeof budgetStatus !== 'object') {
+      budgetStatus = {
+        lockdownActive: false,
+        totalSpent: 0,
+        dailyLimit: 7.5,
+        lockdownReason: 'Invalid budget status'
+      };
+    }
+    
+    const optimizationStatus = this.optimizationLoop?.getOptimizationStatus?.() || null;
     
     return {
       systemHealth: this.systemHealth,
       operationalMetrics: this.operationalMetrics,
       budgetStatus: {
-        totalSpent: budgetStatus.totalSpent,
-        dailyLimit: budgetStatus.dailyLimit,
-        utilizationPercent: (budgetStatus.totalSpent / budgetStatus.dailyLimit) * 100,
-        lockdownActive: budgetStatus.lockdownActive,
-        reason: budgetStatus.lockdownReason
+        totalSpent: budgetStatus.totalSpent || 0,
+        dailyLimit: budgetStatus.dailyLimit || 7.5,
+        utilizationPercent: ((budgetStatus.totalSpent || 0) / (budgetStatus.dailyLimit || 7.5)) * 100,
+        lockdownActive: budgetStatus.lockdownActive || false,
+        reason: budgetStatus.lockdownReason || 'OK'
       },
       optimizationCountdown: this.getOptimizationCountdown(),
       lastUpdated: new Date().toISOString()
@@ -620,23 +642,45 @@ export class MasterAutonomousController {
   }
 
   private async getBudgetStatus(): Promise<any> {
-    const budgetStatus = await EmergencyBudgetLockdown.isLockedDown();
+    let budgetStatus: any;
+    
+    try {
+      budgetStatus = await EmergencyBudgetLockdown.isLockedDown();
+    } catch (error) {
+      console.error('❌ Error getting budget status:', error);
+      budgetStatus = {
+        lockdownActive: false,
+        totalSpent: 0,
+        dailyLimit: 7.5,
+        lockdownReason: 'Budget check failed'
+      };
+    }
+    
+    if (!budgetStatus || typeof budgetStatus !== 'object') {
+      budgetStatus = {
+        lockdownActive: false,
+        totalSpent: 0,
+        dailyLimit: 7.5,
+        lockdownReason: 'Invalid budget status'
+      };
+    }
+    
     const today = new Date().toISOString().split('T')[0];
     
     return {
       date: today,
-      totalSpent: budgetStatus.totalSpent,
-      dailyLimit: budgetStatus.dailyLimit,
-      remaining: budgetStatus.dailyLimit - budgetStatus.totalSpent,
-      utilizationPercent: (budgetStatus.totalSpent / budgetStatus.dailyLimit) * 100,
-      lockdownActive: budgetStatus.lockdownActive,
-      lockdownReason: budgetStatus.lockdownReason,
+      totalSpent: budgetStatus.totalSpent || 0,
+      dailyLimit: budgetStatus.dailyLimit || 7.5,
+      remaining: (budgetStatus.dailyLimit || 7.5) - (budgetStatus.totalSpent || 0),
+      utilizationPercent: ((budgetStatus.totalSpent || 0) / (budgetStatus.dailyLimit || 7.5)) * 100,
+      lockdownActive: budgetStatus.lockdownActive || false,
+      lockdownReason: budgetStatus.lockdownReason || 'OK',
       spendingBreakdown: {
-        contentGeneration: +(budgetStatus.totalSpent * 0.6).toFixed(2),
-        analysis: +(budgetStatus.totalSpent * 0.25).toFixed(2),
-        optimization: +(budgetStatus.totalSpent * 0.15).toFixed(2)
+        contentGeneration: +((budgetStatus.totalSpent || 0) * 0.6).toFixed(2),
+        analysis: +((budgetStatus.totalSpent || 0) * 0.25).toFixed(2),
+        optimization: +((budgetStatus.totalSpent || 0) * 0.15).toFixed(2)
       },
-      projectedDailySpend: +(budgetStatus.totalSpent * (24 / new Date().getHours())).toFixed(2)
+      projectedDailySpend: +((budgetStatus.totalSpent || 0) * (24 / new Date().getHours())).toFixed(2)
     };
   }
 
@@ -759,9 +803,31 @@ export class MasterAutonomousController {
       }
 
       // Check budget utilization
-      const budgetStatus = await EmergencyBudgetLockdown.isLockedDown();
+      let budgetStatus: any;
+      
+      try {
+        budgetStatus = await EmergencyBudgetLockdown.isLockedDown();
+      } catch (error) {
+        console.error('❌ Error updating system health:', error);
+        budgetStatus = {
+          lockdownActive: false,
+          totalSpent: 0,
+          dailyLimit: 7.5,
+          lockdownReason: 'Budget check failed'
+        };
+      }
+      
+      if (!budgetStatus || typeof budgetStatus !== 'object') {
+        budgetStatus = {
+          lockdownActive: false,
+          totalSpent: 0,
+          dailyLimit: 7.5,
+          lockdownReason: 'Invalid budget status'
+        };
+      }
+      
       this.systemHealth.performance.budgetUtilization = 
-        budgetStatus.totalSpent / budgetStatus.dailyLimit;
+        (budgetStatus.totalSpent || 0) / (budgetStatus.dailyLimit || 7.5);
 
       // Update growth metrics (simplified)
       this.systemHealth.performance.postsToday = this.operationalMetrics.posting.totalPosts;

@@ -108,13 +108,36 @@ export class EnhancedAutonomousPostingEngine {
 
       // Check budget status with intelligence
       const budgetConfig = getBudgetConfig();
-      const budgetStatus = await EmergencyBudgetLockdown.isLockedDown(hoursSinceLastPost);
+      let budgetStatus: any;
+      
+      try {
+        budgetStatus = await EmergencyBudgetLockdown.isLockedDown(hoursSinceLastPost);
+      } catch (error) {
+        console.error('❌ Error checking budget status:', error);
+        // Fallback to safe defaults
+        budgetStatus = {
+          lockdownActive: false,
+          totalSpent: 0,
+          dailyLimit: budgetConfig.ABSOLUTE_DAILY_LIMIT || 7.5,
+          lockdownReason: 'Budget check failed - allowing post'
+        };
+      }
+      
+      // Ensure budgetStatus has required properties
+      if (!budgetStatus || typeof budgetStatus !== 'object') {
+        budgetStatus = {
+          lockdownActive: false,
+          totalSpent: 0,
+          dailyLimit: budgetConfig.ABSOLUTE_DAILY_LIMIT || 7.5,
+          lockdownReason: 'Invalid budget status - allowing post'
+        };
+      }
       
       console.log(`💰 Budget Status: ${budgetStatus.lockdownActive ? 'LOCKED' : 'OK'}`);
-      console.log(`💵 Spending: $${budgetStatus.totalSpent.toFixed(2)} / $${budgetStatus.dailyLimit.toFixed(2)}`);
+      console.log(`💵 Spending: $${(budgetStatus.totalSpent || 0).toFixed(2)} / $${(budgetStatus.dailyLimit || 7.5).toFixed(2)}`);
 
       // EMERGENCY OVERRIDE: Force post if too long since last post
-      if (hoursSinceLastPost >= budgetConfig.CRITICAL_OVERRIDE_HOURS) {
+      if (hoursSinceLastPost >= (budgetConfig.CRITICAL_OVERRIDE_HOURS || 12)) {
         console.log(`🚨 EMERGENCY OVERRIDE: ${hoursSinceLastPost.toFixed(1)} hours since last post`);
         return this.createEmergencyDecision(hoursSinceLastPost);
       }

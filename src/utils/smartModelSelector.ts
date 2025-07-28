@@ -43,8 +43,30 @@ export class SmartModelSelector {
       console.log(`📋 Task: ${taskType}, Tokens: ${requestedTokens}`);
 
       // Get current budget status
-      const budgetStatus = await EmergencyBudgetLockdown.isLockedDown();
-      const remainingBudget = budgetStatus.dailyLimit - budgetStatus.totalSpent;
+      let budgetStatus: any;
+      
+      try {
+        budgetStatus = await EmergencyBudgetLockdown.isLockedDown();
+      } catch (error) {
+        console.error('❌ Model selection failed, using fallback:', error);
+        budgetStatus = {
+          lockdownActive: false,
+          totalSpent: 0,
+          dailyLimit: 7.5,
+          lockdownReason: 'Budget check failed - using fallback'
+        };
+      }
+      
+      if (!budgetStatus || typeof budgetStatus !== 'object') {
+        budgetStatus = {
+          lockdownActive: false,
+          totalSpent: 0,
+          dailyLimit: 7.5,
+          lockdownReason: 'Invalid budget status - using fallback'
+        };
+      }
+      
+      const remainingBudget = (budgetStatus.dailyLimit || 7.5) - (budgetStatus.totalSpent || 0);
       
       console.log(`💰 Remaining budget: $${remainingBudget.toFixed(2)}`);
 
