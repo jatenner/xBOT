@@ -4,8 +4,8 @@
       "type": "web",
       "name": "snap2health-xbot",
       "env": "node",
-      "buildCommand": "./render-build.sh",
-      "startCommand": "./start.sh",
+      "buildCommand": "npm ci && npm run build",
+      "startCommand": "npm start",
       "plan": "starter",
       "envVars": [
         {
@@ -18,7 +18,7 @@
         },
         {
           "key": "PLAYWRIGHT_BROWSERS_PATH",
-          "value": "/opt/render/.cache/ms-playwright"
+          "value": "0"
         },
         {
           "key": "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD",
