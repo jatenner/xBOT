@@ -12,6 +12,7 @@
  */
 
 import { secureSupabaseClient } from '../utils/secureSupabaseClient';
+import { minimalSupabaseClient } from '../utils/minimalSupabaseClient';
 import { xClient } from '../utils/xClient';
 
 interface TweetPerformanceData {
@@ -257,30 +258,37 @@ export class ContinuousTweetMonitor {
   }
 
   /**
-   * 📊 FETCH REAL TWEET PERFORMANCE FROM TWITTER
+   * 📊 FETCH REAL TWEET PERFORMANCE FROM TWITTER (BROWSER-BASED SCRAPING)
    */
   private async fetchTweetPerformance(tweetId: string): Promise<TweetPerformanceData | null> {
     try {
-      const tweetResult = await xClient.getTweetById(tweetId);
+      console.log(`🔍 Getting performance data for tweet: ${tweetId}`);
       
-      if (!tweetResult || !tweetResult.success || !tweetResult.data) {
+      // Get performance data from the existing performance tracking system
+      const perfResponse = await minimalSupabaseClient.supabase
+        ?.from('tweets')
+        .select('performance_log, likes, retweets, replies, impressions, created_at')
+        .eq('tweet_id', tweetId)
+        .single();
+
+      if (perfResponse?.error || !perfResponse?.data) {
+        console.warn(`⚠️ No performance data found for tweet ${tweetId}`);
         return null;
       }
 
-      const tweetData = tweetResult.data;
-      const metrics = tweetData.public_metrics || {};
-
-      const likes = metrics.like_count || 0;
-      const retweets = metrics.retweet_count || 0;
-      const replies = metrics.reply_count || 0;
-      const quotes = metrics.quote_count || 0;
-      const impressions = metrics.impression_count || 0;
+      const performanceData = perfResponse.data;
+      const likes = performanceData.likes || 0;
+      const retweets = performanceData.retweets || 0;
+      const replies = performanceData.replies || 0;
+      const quotes = 0; // Not available via scraping
+      const impressions = performanceData.impressions || 0;
 
       const totalEngagement = likes + retweets + replies + quotes;
-      const engagement_rate = impressions > 0 ? (totalEngagement / impressions) * 100 : 0;
+      const engagement_rate = impressions > 0 ? (totalEngagement / impressions) * 100 : 
+                              totalEngagement > 0 ? totalEngagement * 2 : 0; // Estimated rate
 
       // Calculate viral velocity (engagement per hour since posting)
-      const createdAt = new Date(tweetData.created_at || Date.now());
+      const createdAt = new Date(performanceData.created_at || Date.now());
       const hoursAge = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60);
       const viral_velocity = hoursAge > 0 ? totalEngagement / hoursAge : totalEngagement;
 
@@ -298,7 +306,7 @@ export class ContinuousTweetMonitor {
       };
 
     } catch (error) {
-      console.warn(`⚠️ Failed to fetch performance for ${tweetId}:`, error.message);
+      console.warn(`⚠️ Failed to scrape performance for ${tweetId}:`, error.message);
       return null;
     }
   }

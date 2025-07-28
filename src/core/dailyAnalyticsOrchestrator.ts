@@ -12,6 +12,7 @@
  */
 
 import { secureSupabaseClient } from '../utils/secureSupabaseClient';
+import { minimalSupabaseClient } from '../utils/minimalSupabaseClient';
 import { xClient } from '../utils/xClient';
 
 interface TweetAnalytics {
@@ -101,15 +102,10 @@ export class DailyAnalyticsOrchestrator {
       
       console.log(`🎯 Prioritized ${tweetsToAnalyze.length} tweets for analysis`);
 
-      // Step 3: Analyze tweets within API limits
+      // Step 3: Analyze tweets using browser-based performance data (no API limits)
       const analytics: TweetAnalytics[] = [];
       
       for (const tweet of tweetsToAnalyze) {
-        if (apiCallsUsed >= this.config.max_api_calls_per_day) {
-          console.log(`🚫 API limit reached (${apiCallsUsed}/${this.config.max_api_calls_per_day})`);
-          break;
-        }
-
         try {
           const tweetAnalytics = await this.analyzeTweet(tweet);
           if (tweetAnalytics) {
@@ -117,14 +113,12 @@ export class DailyAnalyticsOrchestrator {
             await this.saveTweetAnalytics(tweetAnalytics);
             tweetsAnalyzed++;
           }
-          apiCallsUsed++;
 
-          // Rate limiting between calls
-          await this.sleep(2000); // 2 seconds between API calls
+          // Small delay between database operations
+          await this.sleep(200); // 200ms between database calls
 
         } catch (error) {
           console.warn(`⚠️ Failed to analyze tweet ${tweet.tweet_id}:`, error.message);
-          apiCallsUsed++; // Count failed calls too
         }
       }
 
@@ -137,12 +131,12 @@ export class DailyAnalyticsOrchestrator {
 
       console.log('✅ === DAILY ANALYTICS COMPLETE ===');
       console.log(`📊 Tweets analyzed: ${tweetsAnalyzed}`);
-      console.log(`🔌 API calls used: ${apiCallsUsed}/${this.config.max_api_calls_per_day}`);
+      console.log(`🔍 Using browser-based performance tracking (no API limits)`);
       console.log(`🧠 Learning insights: ${insights.length}`);
 
       this.lastRunTime = new Date();
 
-      return this.getSuccessResult(tweetsAnalyzed, apiCallsUsed, learningInsights);
+      return this.getSuccessResult(tweetsAnalyzed, 0, learningInsights); // 0 API calls used
 
     } catch (error) {
       console.error('❌ Daily analytics error:', error);
@@ -216,27 +210,32 @@ export class DailyAnalyticsOrchestrator {
   }
 
   /**
-   * 📊 ANALYZE SINGLE TWEET (1 API call)
+   * 📊 ANALYZE SINGLE TWEET (Browser-based scraping)
    */
   private async analyzeTweet(tweet: any): Promise<TweetAnalytics | null> {
     try {
-      const tweetResult = await xClient.getTweetById(tweet.tweet_id);
-      
-      if (!tweetResult || !tweetResult.success || !tweetResult.data) {
+      // Get the most recent performance data from the performance tracking system
+      const perfResponse = await minimalSupabaseClient.supabase
+        ?.from('tweets')
+        .select('performance_log, likes, retweets, replies, impressions')
+        .eq('tweet_id', tweet.tweet_id)
+        .single();
+
+      if (perfResponse?.error || !perfResponse?.data) {
+        console.warn(`⚠️ No performance data found for tweet ${tweet.tweet_id}`);
         return null;
       }
 
-      const tweetData = tweetResult.data;
-      const metrics = tweetData.public_metrics || {};
-
-      const likes = metrics.like_count || 0;
-      const retweets = metrics.retweet_count || 0;
-      const replies = metrics.reply_count || 0;
-      const quotes = metrics.quote_count || 0;
-      const impressions = metrics.impression_count || 0;
+      const performanceData = perfResponse.data;
+      const likes = performanceData.likes || 0;
+      const retweets = performanceData.retweets || 0;
+      const replies = performanceData.replies || 0;
+      const quotes = 0; // Not available via scraping
+      const impressions = performanceData.impressions || 0;
 
       const totalEngagement = likes + retweets + replies + quotes;
-      const engagement_rate = impressions > 0 ? (totalEngagement / impressions) * 100 : 0;
+      const engagement_rate = impressions > 0 ? (totalEngagement / impressions) * 100 : 
+                              totalEngagement > 0 ? totalEngagement * 2 : 0; // Estimated rate
 
       return {
         tweet_id: tweet.tweet_id,
@@ -252,7 +251,7 @@ export class DailyAnalyticsOrchestrator {
       };
 
     } catch (error) {
-      console.warn(`⚠️ Failed to fetch analytics for ${tweet.tweet_id}:`, error.message);
+      console.warn(`⚠️ Failed to analyze tweet ${tweet.tweet_id}:`, error.message);
       return null;
     }
   }
