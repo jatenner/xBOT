@@ -26,7 +26,11 @@ interface ContentGenerationResult {
     attempts_made: number;
     generation_time_ms: number;
     quality_score: number;
+    core_idea_fingerprint?: string;
+    core_idea_category?: string;
+    novelty_reasons?: string[];
   };
+  uniqueness_analysis?: any;
   error?: string;
 }
 
@@ -87,8 +91,12 @@ export class EnhancedDiverseContentAgent {
           similarity_score: contentResult.similarity_score,
           attempts_made: contentResult.attempts_made,
           generation_time_ms: Date.now() - startTime,
-          quality_score: this.calculateQualityScore(contentResult.content, trendingContext)
-        }
+          quality_score: this.calculateQualityScore(contentResult.content, trendingContext),
+          core_idea_fingerprint: contentResult.uniqueness_analysis?.ideaFingerprint,
+          core_idea_category: contentResult.uniqueness_analysis?.coreIdeaAnalysis?.idea_category,
+          novelty_reasons: contentResult.uniqueness_analysis?.coreIdeaAnalysis?.novelty_reasons
+        },
+        uniqueness_analysis: contentResult.uniqueness_analysis
       };
 
     } catch (error) {
@@ -142,6 +150,7 @@ export class EnhancedDiverseContentAgent {
     content: string;
     similarity_score: number;
     attempts_made: number;
+    uniqueness_analysis?: any;
     error?: string;
   }> {
     let attempts = 0;
@@ -179,7 +188,7 @@ export class EnhancedDiverseContentAgent {
           continue;
         }
 
-        // Check semantic uniqueness
+        // Check semantic uniqueness (including core idea analysis)
         const uniquenessResult = await enhancedSemanticUniqueness.checkUniqueness(
           candidateContent,
           attempts
@@ -196,24 +205,28 @@ export class EnhancedDiverseContentAgent {
           bestSimilarityScore = uniquenessResult.analysis.maxSimilarity;
         }
 
-        // Content is unique enough
+        // Content is unique enough (both text and core idea)
         if (uniquenessResult.isUnique) {
-          console.log(`✅ Unique content generated on attempt ${attempts} (similarity: ${uniquenessResult.analysis.maxSimilarity.toFixed(3)})`);
-          
-          // Store embedding for future comparison
-          if (uniquenessResult.analysis.embedding.length > 0) {
-            // We'll store this after we get the tweet ID
+          console.log(`✅ Unique content generated on attempt ${attempts}`);
+          console.log(`📊 Text similarity: ${uniquenessResult.analysis.maxSimilarity.toFixed(3)}`);
+          if (uniquenessResult.analysis.coreIdeaAnalysis) {
+            console.log(`🧠 Core idea: ${uniquenessResult.analysis.coreIdeaAnalysis.main_claim} (${uniquenessResult.analysis.coreIdeaAnalysis.idea_category})`);
           }
-
+          
           return {
             success: true,
             content: candidateContent,
             similarity_score: uniquenessResult.analysis.maxSimilarity,
-            attempts_made: attempts
+            attempts_made: attempts,
+            uniqueness_analysis: uniquenessResult.analysis
           };
         }
 
-        console.log(`🔄 Content too similar (${uniquenessResult.analysis.maxSimilarity.toFixed(3)} > 0.88), trying again...`);
+        // Log why content was rejected
+        if (uniquenessResult.analysis.coreIdeaAnalysis) {
+          console.log(`🧠 Core idea rejected: ${uniquenessResult.analysis.coreIdeaAnalysis.novelty_reasons?.join(', ') || 'Too similar to existing idea'}`);
+        }
+        console.log(`🔄 Content similarity too high (${uniquenessResult.analysis.maxSimilarity.toFixed(3)} > 0.88), trying again...`);
 
       } catch (error) {
         console.error(`❌ Attempt ${attempts} failed:`, error);

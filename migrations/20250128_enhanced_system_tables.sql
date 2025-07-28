@@ -23,6 +23,58 @@ CREATE INDEX IF NOT EXISTS idx_uniqueness_logs_is_unique ON uniqueness_logs (is_
 CREATE INDEX IF NOT EXISTS idx_uniqueness_logs_similarity ON uniqueness_logs (max_similarity);
 
 -- ===============================================
+-- CORE IDEA TRACKING SYSTEM
+-- ===============================================
+
+-- Table for tracking core health ideas and preventing repetition
+CREATE TABLE IF NOT EXISTS core_ideas (
+    id TEXT PRIMARY KEY,
+    fingerprint TEXT UNIQUE NOT NULL,
+    category TEXT NOT NULL,
+    main_claim TEXT NOT NULL,
+    supporting_evidence TEXT DEFAULT '',
+    health_domain TEXT DEFAULT 'general',
+    idea_embedding JSONB DEFAULT '[]'::jsonb,
+    novelty_score DECIMAL(4,3) DEFAULT 0,
+    performance_score DECIMAL(6,4) DEFAULT 0,
+    first_used TIMESTAMPTZ DEFAULT NOW(),
+    last_used TIMESTAMPTZ DEFAULT NOW(),
+    usage_count INTEGER DEFAULT 1,
+    engagement_data JSONB DEFAULT '{
+        "total_likes": 0,
+        "total_retweets": 0,
+        "total_replies": 0,
+        "avg_engagement_rate": 0
+    }'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes for core ideas
+CREATE INDEX IF NOT EXISTS idx_core_ideas_fingerprint ON core_ideas (fingerprint);
+CREATE INDEX IF NOT EXISTS idx_core_ideas_category ON core_ideas (category);
+CREATE INDEX IF NOT EXISTS idx_core_ideas_last_used ON core_ideas (last_used);
+CREATE INDEX IF NOT EXISTS idx_core_ideas_performance ON core_ideas (performance_score DESC);
+CREATE INDEX IF NOT EXISTS idx_core_ideas_novelty ON core_ideas (novelty_score DESC);
+
+-- Table for linking tweets to core ideas
+CREATE TABLE IF NOT EXISTS tweet_ideas (
+    id BIGSERIAL PRIMARY KEY,
+    tweet_id TEXT NOT NULL,
+    idea_fingerprint TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes for tweet-idea linking
+CREATE INDEX IF NOT EXISTS idx_tweet_ideas_tweet_id ON tweet_ideas (tweet_id);
+CREATE INDEX IF NOT EXISTS idx_tweet_ideas_fingerprint ON tweet_ideas (idea_fingerprint);
+
+-- Enhanced uniqueness logs with core idea tracking
+ALTER TABLE uniqueness_logs ADD COLUMN IF NOT EXISTS core_idea_fingerprint TEXT;
+ALTER TABLE uniqueness_logs ADD COLUMN IF NOT EXISTS core_idea_category TEXT;
+ALTER TABLE uniqueness_logs ADD COLUMN IF NOT EXISTS novelty_reasons JSONB DEFAULT '[]'::jsonb;
+
+-- ===============================================
 -- TRENDING TOPICS ENGINE
 -- ===============================================
 
@@ -430,10 +482,97 @@ ON CONFLICT (strategy_type) DO UPDATE SET
     updated_at = NOW();
 
 -- ===============================================
+-- CORE IDEA ANALYTICS STORED PROCEDURES
+-- ===============================================
+
+-- Function to get idea performance insights
+CREATE OR REPLACE FUNCTION get_idea_performance_insights() RETURNS TABLE (
+    recent_claims TEXT[],
+    top_categories JSONB,
+    underexplored_domains TEXT[]
+) AS $$
+BEGIN
+    RETURN QUERY
+    WITH recent_claims AS (
+        SELECT ARRAY_AGG(main_claim ORDER BY last_used DESC) as claims
+        FROM (
+            SELECT DISTINCT main_claim, last_used
+            FROM core_ideas 
+            WHERE last_used >= NOW() - INTERVAL '30 days'
+            ORDER BY last_used DESC 
+            LIMIT 20
+        ) recent
+    ),
+    top_categories AS (
+        SELECT JSONB_AGG(
+            JSONB_BUILD_OBJECT(
+                'category', category,
+                'avg_engagement', ROUND(AVG(performance_score)::NUMERIC, 3)
+            ) ORDER BY AVG(performance_score) DESC
+        ) as categories
+        FROM core_ideas
+        WHERE performance_score > 0
+        GROUP BY category
+        LIMIT 5
+    )
+    SELECT 
+        COALESCE((SELECT claims FROM recent_claims), ARRAY[]::TEXT[]) as recent_claims,
+        COALESCE((SELECT categories FROM top_categories), '[]'::JSONB) as top_categories,
+        ARRAY['biohacking', 'longevity', 'environmental_health', 'sleep_optimization', 'gut_health']::TEXT[] as underexplored_domains;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function to get core idea analytics
+CREATE OR REPLACE FUNCTION get_idea_analytics() RETURNS TABLE (
+    total_ideas BIGINT,
+    novel_ideas_rate DECIMAL(4,3),
+    avg_novelty_score DECIMAL(4,3),
+    top_performing_categories JSONB,
+    suppression_stats JSONB
+) AS $$
+BEGIN
+    RETURN QUERY
+    WITH idea_stats AS (
+        SELECT 
+            COUNT(*) as total,
+            COUNT(*) FILTER (WHERE novelty_score >= 0.85) as novel_count,
+            AVG(novelty_score) as avg_novelty,
+            COUNT(*) FILTER (WHERE last_used >= NOW() - INTERVAL '30 days') as recent_used
+        FROM core_ideas
+    ),
+    category_performance AS (
+        SELECT JSONB_AGG(
+            JSONB_BUILD_OBJECT(
+                'category', category,
+                'performance', ROUND(AVG(performance_score)::NUMERIC, 4)
+            ) ORDER BY AVG(performance_score) DESC
+        ) as perf_data
+        FROM core_ideas
+        WHERE performance_score > 0
+        GROUP BY category
+        LIMIT 5
+    )
+    SELECT 
+        s.total::BIGINT as total_ideas,
+        ROUND((s.novel_count::DECIMAL / NULLIF(s.total, 0)), 3)::DECIMAL(4,3) as novel_ideas_rate,
+        ROUND(s.avg_novelty::NUMERIC, 3)::DECIMAL(4,3) as avg_novelty_score,
+        COALESCE(cp.perf_data, '[]'::JSONB) as top_performing_categories,
+        JSONB_BUILD_OBJECT(
+            'suppressed_count', s.recent_used,
+            'suppression_rate', ROUND((s.recent_used::DECIMAL / NULLIF(s.total, 0)), 3)
+        ) as suppression_stats
+    FROM idea_stats s
+    CROSS JOIN category_performance cp;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ===============================================
 -- COMMENTS AND DOCUMENTATION
 -- ===============================================
 
 COMMENT ON TABLE uniqueness_logs IS 'Logs semantic uniqueness checks for content generation';
+COMMENT ON TABLE core_ideas IS 'Tracks core health ideas and prevents repetition of concepts across time';
+COMMENT ON TABLE tweet_ideas IS 'Links tweets to their underlying core ideas for performance tracking';
 COMMENT ON TABLE trending_topics IS 'Stores trending health topics for content enhancement';
 COMMENT ON TABLE prompt_templates IS 'A/B testing framework for prompt templates';
 COMMENT ON TABLE template_usage IS 'Tracks which templates are used for which tweets';

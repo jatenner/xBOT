@@ -347,7 +347,7 @@ EXPECTED_IMPROVEMENT: [percentage estimate]`;
             keyword: keywordInsights[0].insight_value.split(', ')[0],
             category: 'health',
             popularity_score: keywordInsights[0].performance_score * 100,
-            source: 'engagement_learning',
+            source: 'mock',
             last_updated: new Date().toISOString()
           }
         ]);
@@ -478,7 +478,7 @@ ${optimizations.length} templates improved with expected ${
         .from('prompt_templates')
         .update({
           template: optimization.optimized_template,
-          version: supabaseClient.supabase.raw('version + 1'),
+          // version: version + 1, // Increment version manually or use trigger
           updated_at: new Date().toISOString()
         })
         .eq('id', templateId);

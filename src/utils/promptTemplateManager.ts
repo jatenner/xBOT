@@ -147,7 +147,7 @@ export class PromptTemplateManager {
   }
 
   /**
-   * 📈 UPDATE TEMPLATE PERFORMANCE
+   * 📈 UPDATE TEMPLATE AND IDEA PERFORMANCE
    */
   static async updateTemplatePerformance(
     tweetId: string,
@@ -168,26 +168,29 @@ export class PromptTemplateManager {
 
       if (error || !usageData) {
         console.log(`⚠️ No template usage found for tweet ${tweetId}`);
-        return;
+      } else {
+        // Update template performance metrics
+        await supabaseClient.supabase
+          .from('template_performance')
+          .upsert({
+            template_id: usageData.template_id,
+            tweet_id: tweetId,
+            likes: engagement.likes,
+            retweets: engagement.retweets,
+            replies: engagement.replies,
+            impressions: engagement.impressions || 0,
+            engagement_rate: this.calculateEngagementRate(engagement),
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'template_id,tweet_id'
+          });
+
+        console.log(`📊 Updated template performance for ${usageData.template_id}`);
       }
 
-      // Update performance metrics
-      await supabaseClient.supabase
-        .from('template_performance')
-        .upsert({
-          template_id: usageData.template_id,
-          tweet_id: tweetId,
-          likes: engagement.likes,
-          retweets: engagement.retweets,
-          replies: engagement.replies,
-          impressions: engagement.impressions || 0,
-          engagement_rate: this.calculateEngagementRate(engagement),
-          updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'template_id,tweet_id'
-        });
-
-      console.log(`📊 Updated performance for template ${usageData.template_id}`);
+      // Update core idea performance
+      const { coreIdeaTracker } = await import('./coreIdeaTracker');
+      await coreIdeaTracker.updateIdeaPerformance(tweetId, engagement);
     } catch (error) {
       console.error('❌ Failed to update template performance:', error);
     }
