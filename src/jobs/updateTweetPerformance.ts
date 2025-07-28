@@ -220,16 +220,35 @@ export class TweetPerformanceTracker {
 
       console.log(`🔍 Scraping metrics for tweet: ${tweetId}`);
       
-      // Navigate to tweet
-      await this.page.goto(tweetUrl, { 
-        waitUntil: 'networkidle',
-        timeout: 30000 
-      });
+      // Navigate to tweet with improved timeout and fallback
+      try {
+        await this.page.goto(tweetUrl, { 
+          waitUntil: 'domcontentloaded',
+          timeout: 60000 
+        });
+      } catch (gotoError) {
+        // Take screenshot for debugging and try with different wait strategy
+        console.log('🔧 Tweet navigation failed, trying fallback...');
+        await this.page.screenshot({ path: `tweet-error-${tweetId}.png` });
+        
+        await this.page.goto(tweetUrl, { 
+          waitUntil: 'load',
+          timeout: 60000 
+        });
+      }
 
-      // Wait for tweet content to load
-      await this.page.waitForSelector('[data-testid="tweet"]', { timeout: 15000 });
+             // Wait for tweet content to load with fallback
+       try {
+         await this.page.waitForSelector('[data-testid="tweet"]', { timeout: 15000 });
+       } catch (selectorError) {
+         // Fallback: wait for any article element (tweets are wrapped in articles)
+         await this.page.waitForSelector('article', { timeout: 15000 });
+       }
 
-      // Extract metrics using page evaluation
+       // Small delay to ensure content is fully loaded and appear more human
+       await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
+
+       // Extract metrics using page evaluation
       const metrics = await this.page.evaluate(() => {
         try {
           const tweetElement = (document as any).querySelector('[data-testid="tweet"]');

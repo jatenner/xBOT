@@ -48,10 +48,21 @@ class TwitterSessionInitializer {
 
       // Navigate to Twitter login
       console.log('🔍 Navigating to Twitter login page...');
-      await this.page.goto('https://twitter.com/login', { 
-        waitUntil: 'networkidle',
-        timeout: 30000 
-      });
+      try {
+        await this.page.goto('https://twitter.com/login', { 
+          waitUntil: 'domcontentloaded',
+          timeout: 60000 
+        });
+      } catch (gotoError) {
+        // Take screenshot for debugging and try with different wait strategy
+        console.log('🔧 Login page navigation failed, trying fallback...');
+        await this.page.screenshot({ path: 'twitter-login-error.png' });
+        
+        await this.page.goto('https://twitter.com/login', { 
+          waitUntil: 'load',
+          timeout: 60000 
+        });
+      }
 
       console.log('👆 Please complete the login process in the browser window.');
       console.log('⏳ Waiting for you to log in and navigate to your feed...');
@@ -137,10 +148,18 @@ class TwitterSessionInitializer {
       await this.page.context().addCookies(sessionData.cookies);
 
       // Test by going to Twitter home
-      await this.page.goto('https://twitter.com/home', { 
-        waitUntil: 'networkidle',
-        timeout: 15000 
-      });
+      try {
+        await this.page.goto('https://twitter.com/home', { 
+          waitUntil: 'domcontentloaded',
+          timeout: 60000 
+        });
+      } catch (gotoError) {
+        // Try with different wait strategy
+        await this.page.goto('https://twitter.com/home', { 
+          waitUntil: 'load',
+          timeout: 60000 
+        });
+      }
 
       // Check if logged in (look for compose tweet button)
       const isLoggedIn = await this.page.locator('[data-testid="SideNav_NewTweet_Button"]').isVisible();
