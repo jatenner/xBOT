@@ -529,9 +529,10 @@ export class AutonomousPostingEngine {
       
     } catch (error) {
       console.log(`❌ Browser posting error: ${error.message}`);
+      console.log('💡 Browser posting not available - this may be due to Playwright installation issues');
       return {
         success: false,
-        error: `Browser posting error: ${error.message}`
+        error: `Browser posting not available: ${error.message}`
       };
     }
   }

@@ -38,9 +38,10 @@ export class BrowserTweetPoster {
     try {
       console.log('🚀 Initializing Browser Tweet Poster...');
 
-      // Launch browser with stealth settings
+      // Launch browser with stealth settings (Render-compatible)
       this.browser = await chromium.launch({
         headless: true,
+        executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
@@ -75,6 +76,8 @@ export class BrowserTweetPoster {
 
     } catch (error) {
       console.error('❌ Error initializing Browser Tweet Poster:', error);
+      console.log('💡 This may be due to Playwright not being fully installed on Render');
+      console.log('🔄 Browser posting will be disabled, but API posting will continue');
       return false;
     }
   }
