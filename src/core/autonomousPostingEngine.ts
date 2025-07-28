@@ -79,22 +79,29 @@ export class AutonomousPostingEngine {
         };
       }
 
-      // Step 3: Check posting hours (6 AM - 11 PM EST)
+      // Step 3: Check posting hours (5 AM - 1 AM EST) - More aggressive schedule
       const estNow = new Date(new Date().toLocaleString("en-US", {timeZone: "America/New_York"}));
       const currentHour = estNow.getHours();
+      const currentMinute = estNow.getMinutes();
       
-      if (currentHour < 6 || currentHour >= 23) {
-        const nextActiveHour = currentHour < 6 ? 6 : 30; // 6 AM next day
+      // Only block posting during deep night hours (1:30 AM - 4:30 AM)
+      const isDeepNight = (currentHour >= 2 && currentHour < 5) || 
+                         (currentHour === 1 && currentMinute >= 30) ||
+                         (currentHour === 5 && currentMinute < 30);
+      
+      if (isDeepNight) {
         const nextActiveTime = new Date(estNow);
-        nextActiveTime.setHours(nextActiveHour, 0, 0, 0);
-        if (nextActiveHour === 30) { // Next day
+        nextActiveTime.setHours(5, 30, 0, 0);
+        if (currentHour < 5) {
+          // Same day at 5:30 AM
+        } else {
+          // Next day at 5:30 AM
           nextActiveTime.setDate(nextActiveTime.getDate() + 1);
-          nextActiveTime.setHours(6, 0, 0, 0);
         }
         
         return {
           should_post: false,
-          reason: `Outside active hours (${currentHour}:${estNow.getMinutes().toString().padStart(2, '0')} EST)`,
+          reason: `Deep night quiet hours (${currentHour}:${estNow.getMinutes().toString().padStart(2, '0')} EST)`,
           wait_minutes: this.getMinutesUntilTime(nextActiveTime),
           next_post_time: nextActiveTime,
           strategy: 'conservative',
@@ -313,26 +320,26 @@ export class AutonomousPostingEngine {
     console.log(`📊 Analysis: ${quotaStatus.daily_remaining} posts, ${remainingHours.toFixed(1)}h left, ${postsPerHourNeeded.toFixed(2)} posts/hour needed`);
     
     // Emergency: System failures or critical catching up needed
-    if (this.consecutiveFailures >= this.MAX_FAILURES || postsPerHourNeeded > 2.0) {
+    if (this.consecutiveFailures >= this.MAX_FAILURES || postsPerHourNeeded > 2.5) {
       return 'emergency';
     }
     
-    // Aggressive: Default for high posting frequency (more aggressive than before)
-    if (postsPerHourNeeded > 0.8 || quotaStatus.percentage_used < 40) {
+    // Aggressive: Default strategy for maximum growth (lowered thresholds)
+    if (postsPerHourNeeded > 0.5 || quotaStatus.percentage_used < 60) {
       return 'aggressive';
     }
     
-    // Balanced: Only when moderately ahead
-    if (quotaStatus.percentage_used >= 40 && quotaStatus.percentage_used < 70) {
+    // Balanced: Only when moderately ahead (lowered threshold)
+    if (quotaStatus.percentage_used >= 60 && quotaStatus.percentage_used < 80) {
       return 'balanced';
     }
     
-    // Conservative: Only when significantly ahead of schedule
-    if (quotaStatus.percentage_used >= 70 && remainingHours > 6) {
+    // Conservative: Only when significantly ahead of schedule (raised threshold)
+    if (quotaStatus.percentage_used >= 80 && remainingHours > 4) {
       return 'conservative';
     }
     
-    // Default to aggressive for maximum posting frequency
+    // Default to aggressive for maximum posting frequency and growth
     return 'aggressive';
   }
 
