@@ -54,7 +54,16 @@ export class BrowserTweetPoster {
           '--disable-background-timer-throttling',
           '--disable-backgrounding-occluded-windows',
           '--disable-renderer-backgrounding',
-          '--disable-blink-features=AutomationControlled'
+          '--disable-blink-features=AutomationControlled',
+          '--disable-extensions',
+          '--disable-plugins',
+          '--disable-default-apps',
+          '--disable-sync',
+          '--disable-translate',
+          '--hide-scrollbars',
+          '--mute-audio',
+          '--no-default-browser-check',
+          '--no-pings'
         ]
       };
 
@@ -84,7 +93,20 @@ export class BrowserTweetPoster {
       if (!this.browser) {
         console.log('🔄 Trying default Playwright executable...');
         delete launchOptions.executablePath;
-        this.browser = await chromium.launch(launchOptions);
+        try {
+          this.browser = await chromium.launch(launchOptions);
+          console.log('✅ Successfully launched browser with default executable');
+        } catch (defaultError) {
+          console.log(`❌ Default executable also failed: ${defaultError.message}`);
+          
+          // Final fallback: try with minimal args
+          console.log('🔄 Trying minimal browser configuration...');
+          this.browser = await chromium.launch({
+            headless: true,
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
+          });
+          console.log('✅ Successfully launched browser with minimal configuration');
+        }
       }
 
       // Create page with realistic settings

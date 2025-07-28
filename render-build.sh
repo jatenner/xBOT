@@ -11,9 +11,9 @@ echo "🚀 Starting Render build process for Snap2Health xBOT..."
 echo "📦 Installing npm dependencies..."
 npm ci
 
-# Step 2: Install Playwright with system dependencies
-echo "🎭 Installing Playwright browsers and system dependencies..."
-npx playwright install --with-deps chromium
+# Step 2: Install Playwright (Render-compatible, no system deps)
+echo "🎭 Installing Playwright browsers (Render-compatible)..."
+npx playwright install chromium
 
 # Step 3: Verify Playwright installation
 echo "🔍 Verifying Playwright installation..."
