@@ -119,60 +119,92 @@ export class BrowserTweetPoster {
     if (process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH) {
       const envPath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
       if (fs.existsSync(envPath)) {
+        console.log(`✅ Using environment variable: ${envPath}`);
         return envPath;
       }
     }
 
-    // Dynamic detection for Render
-    try {
-      const playwrightCache = '/opt/render/.cache/ms-playwright';
-      if (fs.existsSync(playwrightCache)) {
-        console.log('📂 Found Playwright cache directory');
-        
-        // Get all directories
-        const dirs = fs.readdirSync(playwrightCache);
-        console.log(`📋 Found directories: ${dirs.join(', ')}`);
-        
-        // Look for chromium directories
-        const chromiumDirs = dirs.filter(dir => dir.includes('chromium'));
-        console.log(`🔍 Chromium directories: ${chromiumDirs.join(', ')}`);
-        
-        for (const dir of chromiumDirs) {
-          const dirPath = path.join(playwrightCache, dir);
+    // Check multiple possible cache locations
+    const cacheLocations = [
+      '/opt/render/.cache/ms-playwright',
+      process.env.HOME + '/.cache/ms-playwright',
+      '/home/render/.cache/ms-playwright'
+    ];
+
+    for (const cacheDir of cacheLocations) {
+      try {
+        if (fs.existsSync(cacheDir)) {
+          console.log(`📂 Found Playwright cache: ${cacheDir}`);
           
-          // Common executable locations
-          const possibleExecs = [
-            'chrome-linux/chrome',
-            'chrome-linux/headless_shell',
-            'chrome',
-            'headless_shell'
-          ];
+          // Get all directories
+          const dirs = fs.readdirSync(cacheDir);
+          console.log(`📋 Available directories: ${dirs.join(', ')}`);
           
-          for (const exec of possibleExecs) {
-            const fullPath = path.join(dirPath, exec);
-            if (fs.existsSync(fullPath)) {
-              console.log(`✅ Found executable: ${fullPath}`);
-              return fullPath;
+          // Look for chromium directories (any version)
+          const chromiumDirs = dirs.filter(dir => 
+            dir.includes('chromium') && !dir.includes('headless_shell')
+          );
+          console.log(`🔍 Chromium directories: ${chromiumDirs.join(', ')}`);
+          
+          for (const dir of chromiumDirs) {
+            const dirPath = path.join(cacheDir, dir);
+            
+            // Prioritized executable locations (prefer regular chrome over headless_shell)
+            const possibleExecs = [
+              'chrome-linux/chrome',        // Full Chrome (preferred)
+              'chrome',                     // Direct chrome executable
+              'chrome-linux/headless_shell', // Headless shell fallback
+              'headless_shell'              // Direct headless shell
+            ];
+            
+            for (const exec of possibleExecs) {
+              const fullPath = path.join(dirPath, exec);
+              if (fs.existsSync(fullPath)) {
+                console.log(`✅ Found executable: ${fullPath}`);
+                
+                // Verify it's actually executable
+                try {
+                  fs.accessSync(fullPath, fs.constants.F_OK | fs.constants.X_OK);
+                  return fullPath;
+                } catch (permError) {
+                  console.log(`⚠️ Found but not executable: ${fullPath}`);
+                  continue;
+                }
+              }
             }
           }
         }
+      } catch (error) {
+        console.log(`⚠️ Error checking ${cacheDir}: ${error.message}`);
       }
-    } catch (error) {
-      console.log(`⚠️ Error during dynamic detection: ${error.message}`);
     }
 
-    // Static fallback paths for known Render configurations
+    // Extended static fallback paths for various Render configurations
     const fallbackPaths = [
+      // Latest known versions
+      '/opt/render/.cache/ms-playwright/chromium-1054/chrome-linux/chrome',
+      '/opt/render/.cache/ms-playwright/chromium-1048/chrome-linux/chrome', 
       '/opt/render/.cache/ms-playwright/chromium-1181/chrome-linux/chrome',
+      '/opt/render/.cache/ms-playwright/chromium-1195/chrome-linux/chrome',
+      
+      // Older versions that might exist
+      '/opt/render/.cache/ms-playwright/chromium-1000/chrome-linux/chrome',
+      '/opt/render/.cache/ms-playwright/chromium-1020/chrome-linux/chrome',
+      
+      // Headless shell as last resort
       '/opt/render/.cache/ms-playwright/chromium_headless_shell-1181/chrome-linux/headless_shell',
-      '/opt/render/.cache/ms-playwright/chromium-1181/chrome',
-      '/opt/render/.cache/ms-playwright/chromium_headless_shell-1181/headless_shell'
+      '/opt/render/.cache/ms-playwright/chromium_headless_shell-1054/chrome-linux/headless_shell'
     ];
 
     for (const fallbackPath of fallbackPaths) {
       if (fs.existsSync(fallbackPath)) {
-        console.log(`✅ Found fallback executable: ${fallbackPath}`);
-        return fallbackPath;
+        try {
+          fs.accessSync(fallbackPath, fs.constants.F_OK | fs.constants.X_OK);
+          console.log(`✅ Found fallback executable: ${fallbackPath}`);
+          return fallbackPath;
+        } catch (permError) {
+          console.log(`⚠️ Found but not executable: ${fallbackPath}`);
+        }
       }
     }
 

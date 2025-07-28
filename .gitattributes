@@ -1,0 +1,21 @@
+# Ensure shell scripts maintain executable permissions
+*.sh eol=lf
+render-build.sh eol=lf
+
+# TypeScript and JavaScript files
+*.ts eol=lf
+*.js eol=lf
+*.json eol=lf
+
+# SQL files 
+*.sql eol=lf
+
+# Markdown files
+*.md eol=lf
+
+# HTML files
+*.html eol=lf
+
+# Environment files
+.env* eol=lf
+*.env eol=lf 
