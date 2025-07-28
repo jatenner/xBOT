@@ -526,7 +526,15 @@ Generate unique health content that provides a fresh perspective on the topic.`;
 
     return `Generate a ${template.type} health tweet following this structure: ${template.structure}
 
-REQUIREMENTS:
+CRITICAL NOVELTY REQUIREMENTS:
+- Do NOT repeat topics or language from past tweets
+- Prioritize COMPLETELY NEW angles and perspectives
+- Avoid similar phrasing or sentence structures from recent content
+- Introduce fresh insights, not variations of previous ideas
+- Use unique vocabulary and different ways of expressing health concepts
+- Be semantically distinct from any previous health content
+
+CONTENT REQUIREMENTS:
 - Under 280 characters
 - Specific, actionable information
 - Include numbers/percentages when possible
@@ -534,12 +542,18 @@ REQUIREMENTS:
 - Be direct and valuable
 - Target health enthusiasts and biohackers
 
-EXAMPLES of this type:
+EXAMPLES of this type (for style reference only - DO NOT copy concepts):
 ${template.examples.slice(0, 2).join('\n')}
 
 ${avoidTopics}${avoidOpenings}
 
-Generate ONE unique ${template.type} tweet:`;
+UNIQUENESS CHECK: Before generating, ensure your content:
+1. Introduces a topic/angle NOT covered in recent tweets
+2. Uses fresh vocabulary and phrasing
+3. Provides genuinely new value or perspective
+4. Avoids semantic similarity to past content
+
+Generate ONE completely unique and novel ${template.type} tweet:`;
   }
 
   private extractTopic(content: string): string {
