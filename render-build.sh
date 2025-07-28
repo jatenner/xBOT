@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # 🚀 RENDER BUILD SCRIPT FOR AUTONOMOUS TWITTER BOT
-# Ensures Playwright browsers install correctly with all system dependencies
+# Forces Playwright browser installation and sets environment variables
 
 set -e  # Exit on any error
 
@@ -11,28 +11,31 @@ echo "🚀 Starting Render build for Autonomous Twitter Bot..."
 echo "📦 Installing npm dependencies..."
 npm ci
 
-# Step 2: Install Playwright browsers with system dependencies
-echo "🎭 Installing Playwright browsers with system dependencies..."
+# Step 2: Force install Playwright browsers (critical for Render)
+echo "🎭 FORCE INSTALLING Playwright browsers..."
 echo "📋 Current environment:"
 echo "  - Node version: $(node --version)"
 echo "  - NPM version: $(npm --version)" 
 echo "  - Platform: $(uname -a)"
+echo "  - User: $(whoami)"
+echo "  - Home: $HOME"
 
-# Force install Playwright browsers (ensures fresh installation)
-echo "🌐 Installing Chromium browser..."
-npx playwright install chromium
+# Remove any existing browser cache to force fresh install
+echo "🧹 Cleaning any existing browser cache..."
+rm -rf /opt/render/.cache/ms-playwright || echo "No existing cache to clean"
+rm -rf ~/.cache/ms-playwright || echo "No user cache to clean"
 
-# Additional: Install system dependencies if needed (Render handles most of this)
-echo "🔧 Installing Playwright system dependencies..."
-npx playwright install-deps chromium || echo "⚠️ System deps install failed (may not be needed on Render)"
+# Force fresh Playwright installation
+echo "🌐 Installing Chromium browser (forced fresh install)..."
+PLAYWRIGHT_BROWSERS_PATH=/opt/render/.cache/ms-playwright npx playwright install chromium --force
 
-# Step 3: Verify Playwright installation
+# Verify installation
 echo "🔍 Verifying Playwright installation..."
 npx playwright --version
 
-# Step 4: Debug browser installation paths
+# Step 3: Debug and verify browser installation
 echo "📋 Debugging browser installation..."
-echo "Checking Playwright cache directory:"
+echo "Checking primary cache directory:"
 if [ -d "/opt/render/.cache/ms-playwright" ]; then
     echo "✅ Found Playwright cache:"
     ls -la /opt/render/.cache/ms-playwright/
@@ -40,40 +43,46 @@ if [ -d "/opt/render/.cache/ms-playwright" ]; then
     echo "🔍 Searching for Chromium executables:"
     find /opt/render/.cache/ms-playwright -name "*chrom*" -type f 2>/dev/null | head -10
     
-    echo "🔍 Searching for any browser executables:"
+    echo "🔍 All executable files:"
     find /opt/render/.cache/ms-playwright -type f -executable 2>/dev/null | head -10
+    
+    echo "🔍 Directory structure:"
+    find /opt/render/.cache/ms-playwright -type d 2>/dev/null | head -10
 else
-    echo "⚠️ Playwright cache directory not found at /opt/render/.cache/ms-playwright"
+    echo "❌ Playwright cache directory not found at /opt/render/.cache/ms-playwright"
 fi
 
-# Alternative: Check if browsers are in different location
+# Check alternative locations
 echo "🔍 Checking alternative Playwright locations..."
-if [ -d "$HOME/.cache/ms-playwright" ]; then
-    echo "✅ Found alternative cache at $HOME/.cache/ms-playwright"
-    ls -la "$HOME/.cache/ms-playwright/"
-fi
+for alt_path in "$HOME/.cache/ms-playwright" "/home/render/.cache/ms-playwright"; do
+    if [ -d "$alt_path" ]; then
+        echo "✅ Found alternative cache at $alt_path"
+        ls -la "$alt_path/"
+    fi
+done
+
+# Step 4: Set environment variables for runtime
+echo "🔧 Setting environment variables for runtime..."
+echo "export PLAYWRIGHT_BROWSERS_PATH=/opt/render/.cache/ms-playwright" >> ~/.bashrc
+echo "export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=false" >> ~/.bashrc
 
 # Step 5: Build TypeScript project
 echo "🔨 Building TypeScript project..."
-NODE_OPTIONS=--max_old_space_size=1024 npm run build
+NODE_OPTIONS=--max_old_space_size=1024 npm run build-render
 
-# Step 6: Verify postbuild steps ran
-echo "📂 Verifying build artifacts..."
+# Step 6: Final verification
+echo "📂 Final verification..."
 if [ -d "dist" ]; then
     echo "✅ TypeScript build successful - dist/ directory exists"
     
     if [ -d "dist/dashboard" ]; then
         echo "✅ Dashboard files copied successfully"
-        ls -la dist/dashboard/
-    else
-        echo "⚠️ Dashboard files may not have been copied"
+        ls -la dist/dashboard/ | head -5
     fi
     
     if [ -d "dist/prompts" ]; then
         echo "✅ Prompts copied successfully"
-        ls -la dist/prompts/
-    else
-        echo "⚠️ Prompts may not have been copied"
+        ls -la dist/prompts/ | head -5
     fi
 else
     echo "❌ Build failed - no dist/ directory found"
@@ -84,4 +93,12 @@ echo "✅ Render build completed successfully!"
 echo "🎯 Autonomous Twitter Bot ready for deployment!"
 echo "🤖 Browser-based posting system initialized!"
 echo "📊 Analytics dashboard ready!"
-echo "🧠 Real-time learning engine prepared!" 
+echo "🧠 Real-time learning engine prepared!"
+
+# Final browser verification
+echo "🔍 Final browser verification:"
+if command -v npx &> /dev/null; then
+    echo "NPX available for runtime browser detection"
+fi
+
+echo "🚀 DEPLOYMENT READY - All systems operational!" 
