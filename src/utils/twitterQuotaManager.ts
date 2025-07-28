@@ -106,51 +106,18 @@ export class TwitterQuotaManager {
   }
 
   private async makeTestApiCall() {
-    // Make a test API call to get real Twitter headers
-    try {
-      // Import TwitterApi directly to get real headers
-      const TwitterApi = (await import('twitter-api-v2')).default;
-      
-      const client = new TwitterApi({
-        appKey: process.env.TWITTER_API_KEY!,
-        appSecret: process.env.TWITTER_API_SECRET!,
-        accessToken: process.env.TWITTER_ACCESS_TOKEN!,
-        accessSecret: process.env.TWITTER_ACCESS_TOKEN_SECRET!,
-      });
-
-      // Make a lightweight API call that includes rate limit headers
-      await client.v2.me();
-      
-      // This shouldn't reach here if quota is exhausted
-      return { 
-        headers: {
-          'x-app-limit-24hour-limit': '17',
-          'x-app-limit-24hour-remaining': '17', // If we got here, we have quota
-          'x-app-limit-24hour-reset': Math.floor((Date.now() + 86400000) / 1000).toString()
-        }
-      };
-    } catch (error: any) {
-      // This is the key part - 429 errors include the actual headers we need
-      if (error.rateLimit || error.headers) {
-        return { 
-          headers: error.headers || {
-            'x-app-limit-24hour-remaining': error.rateLimit?.day?.remaining?.toString() || '0',
-            'x-app-limit-24hour-limit': error.rateLimit?.day?.limit?.toString() || '17',
-            'x-app-limit-24hour-reset': error.rateLimit?.day?.reset?.toString() || '0'
-          }
-        };
+    // NO LONGER MAKE ACTUAL API CALLS - This was causing 429 errors!
+    // Instead, return conservative estimates to avoid hitting limits
+    console.log('🚫 Skipping test API call to avoid 429 errors');
+    console.log('📊 Using conservative rate limit estimates');
+    
+    return { 
+      headers: {
+        'x-app-limit-24hour-limit': '17',
+        'x-app-limit-24hour-remaining': '10', // Conservative estimate
+        'x-app-limit-24hour-reset': Math.floor((Date.now() + 86400000) / 1000).toString()
       }
-      
-      // Fallback: assume quota exhausted if we can't determine
-      console.warn('⚠️ Could not determine quota status, assuming exhausted');
-      return { 
-        headers: {
-          'x-app-limit-24hour-remaining': '0',
-          'x-app-limit-24hour-limit': '17',
-          'x-app-limit-24hour-reset': Math.floor((Date.now() + 86400000) / 1000).toString()
-        }
-      };
-    }
+    };
   }
 
   private parseQuotaFromHeaders(headers: any): TwitterQuota {
