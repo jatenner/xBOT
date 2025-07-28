@@ -40,6 +40,8 @@
     "src/utils/ultimateQuotaManager.ts",
     "src/utils/emergencyBudgetLockdown.ts",
     "src/utils/awarenessLogger.ts",
+    "src/utils/initTwitterSession.ts",
+    "src/test/testScraper.ts",
     "src/config/liveMode.ts"
   ],
   "exclude": [
