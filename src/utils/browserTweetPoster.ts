@@ -58,10 +58,12 @@ export class BrowserTweetPoster {
         ]
       };
 
-      // Try different executable paths for Render
+      // Try different executable paths for Render (updated for latest Playwright)
       const possiblePaths = [
         '/opt/render/.cache/ms-playwright/chromium_headless_shell-1181/chrome-linux/headless_shell',
         '/opt/render/.cache/ms-playwright/chromium-1181/chrome-linux/chrome',
+        '/opt/render/.cache/ms-playwright/chromium_headless_shell-1181/headless_shell',
+        '/opt/render/.cache/ms-playwright/chromium-1181/chrome',
         process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
       ].filter(Boolean);
 
@@ -102,8 +104,9 @@ export class BrowserTweetPoster {
 
     } catch (error) {
       console.error('❌ Error initializing Browser Tweet Poster:', error);
-      console.log('💡 This may be due to Playwright not being fully installed on Render');
-      console.log('🔄 Browser posting will be disabled, but API posting will continue');
+      console.log('💡 This may be due to Playwright installation issues on Render');
+      console.log('🔧 Check that render-build.sh installed Playwright correctly');
+      console.log('📋 Expected path: /opt/render/.cache/ms-playwright/chromium_headless_shell-1181/');
       return false;
     }
   }

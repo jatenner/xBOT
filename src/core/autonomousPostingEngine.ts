@@ -444,61 +444,31 @@ export class AutonomousPostingEngine {
   }
 
   /**
-   * 🐦 TWITTER POSTING (API + Browser Fallback)
+   * 🌐 BROWSER-FIRST TWITTER POSTING (No API Limits!)
    */
   private async postToTwitter(content: string): Promise<{
     success: boolean;
     tweet_id?: string;
     error?: string;
   }> {
-    try {
-      // First attempt: Try Twitter API
-      console.log('🔄 Attempting API posting...');
-      const { xClient } = await import('../utils/xClient');
-      
-      const result = await xClient.postTweet(content);
-      
-      if (result.success && result.tweetId) {
-        console.log(`✅ Twitter API post successful: ${result.tweetId}`);
-        return {
-          success: true,
-          tweet_id: result.tweetId
-        };
-      } else {
-        console.log('⚠️ API posting failed, checking for 429...');
-      }
-      
-    } catch (error) {
-      // 🚨 Handle 429 errors and capture reset timestamp
-      if (error.code === 429) {
-        console.log('🚨 429 API limit hit - switching to browser posting...');
-        
-        const headers = error.headers || error.response?.headers || {};
-        const resetTimestamp = parseInt(headers['x-app-limit-24hour-reset'] || headers['x-user-limit-24hour-reset'] || '0');
-        
-        if (resetTimestamp > 0) {
-          console.log('💾 CAPTURING TWITTER RESET TIMESTAMP for accurate recovery...');
-          await UltimateQuotaManager.storeTwitterResetTimestamp(resetTimestamp);
-          
-          const resetTime = new Date(resetTimestamp * 1000);
-          const minutesUntilReset = Math.ceil((resetTime.getTime() - Date.now()) / 60000);
-          console.log(`⏰ Twitter limits will reset in ~${minutesUntilReset} minutes at ${resetTime.toLocaleString()}`);
-        }
-        
-        // Fallback to browser posting
-        return await this.postViaBrowser(content);
-      }
-      
-      console.log(`❌ API posting error (non-429): ${error.message}`);
-      
-      // For non-429 errors, still try browser posting as fallback
-      return await this.postViaBrowser(content);
+    // ALWAYS use browser posting first - unlimited capacity!
+    console.log('🌐 Using browser-based posting (unlimited tweets!)...');
+    
+    const browserResult = await this.postViaBrowser(content);
+    
+    if (browserResult.success) {
+      console.log(`✅ Browser posting successful: ${browserResult.tweet_id}`);
+      return browserResult;
     }
     
-    // If API succeeded but no explicit success flag, return failure
+    // If browser posting fails, log the issue but don't fall back to API
+    // (since API has hard limits and we want unlimited posting)
+    console.log(`❌ Browser posting failed: ${browserResult.error}`);
+    console.log('💡 Browser posting is the primary method - no API fallback to avoid limits');
+    
     return {
       success: false,
-      error: 'API posting returned undefined result'
+      error: `Browser posting failed: ${browserResult.error}`
     };
   }
 

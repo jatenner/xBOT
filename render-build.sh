@@ -1,20 +1,31 @@
 #!/bin/bash
 
-# 🚀 RENDER BUILD SCRIPT FOR PLAYWRIGHT
-# Installs Playwright browsers and dependencies for Render deployment
+# 🚀 RENDER BUILD SCRIPT FOR SNAP2HEALTH XBOT
+# Ensures Playwright installs correctly with all dependencies
 
-echo "🚀 Starting Render build process..."
+set -e  # Exit on any error
 
-# Install Playwright browsers with system dependencies
-echo "📦 Installing Playwright browsers (Render-compatible)..."
-npx playwright install chromium
+echo "🚀 Starting Render build process for Snap2Health xBOT..."
 
-# Verify Playwright installation
+# Step 1: Install npm dependencies
+echo "📦 Installing npm dependencies..."
+npm ci
+
+# Step 2: Install Playwright with system dependencies
+echo "🎭 Installing Playwright browsers and system dependencies..."
+npx playwright install --with-deps chromium
+
+# Step 3: Verify Playwright installation
 echo "🔍 Verifying Playwright installation..."
 npx playwright --version
 
-# Build the TypeScript project
-echo "🔨 Building TypeScript project..."
-npm run build
+# Step 4: List installed browsers for debugging
+echo "📋 Checking installed browser locations..."
+find /opt/render/.cache/ms-playwright -name "*chrome*" -type f 2>/dev/null || echo "Browser paths not found in cache"
 
-echo "✅ Render build completed successfully!" 
+# Step 5: Build TypeScript project
+echo "🔨 Building TypeScript project..."
+NODE_OPTIONS=--max_old_space_size=1024 npm run build
+
+echo "✅ Render build completed successfully!"
+echo "🎯 Ready for autonomous Twitter domination!" 
