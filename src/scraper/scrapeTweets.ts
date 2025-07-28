@@ -158,8 +158,8 @@ export class StealthTweetScraper {
   /**
    * 🔍 Search for tweets by query
    */
-  async searchTweets(query: string, maxResults: number = 10): Promise<TweetSearchResult> {
-    if (!this.page) {
+  async searchTweets(query: string, maxResults: number = 20): Promise<TweetSearchResult> {
+    if (!this.browser || !this.page) {
       return {
         success: false,
         tweets: [],
@@ -174,83 +174,70 @@ export class StealthTweetScraper {
       
       console.log(`🔍 Searching for tweets: "${query}"`);
       
-      // Navigate to Twitter search with improved timeout and fallback
+      // Navigate to Twitter search with longer timeout
       const searchUrl = `https://twitter.com/search?q=${encodeURIComponent(query)}&src=typed_query&f=live`;
-      
+      await this.page.goto(searchUrl, { 
+        waitUntil: 'domcontentloaded', 
+        timeout: 90000 // Increased from 60s to 90s
+      });
+
+      // Wait for search results with increased timeout
       try {
-        await this.page.goto(searchUrl, { 
-          waitUntil: 'domcontentloaded',
-          timeout: 60000 
+        await this.page.waitForSelector('article[data-testid="tweet"]', { 
+          timeout: 30000 // Increased from 15s to 30s
         });
-      } catch (gotoError) {
-        // Take screenshot for debugging and try with different wait strategy
-        console.log('🔧 First navigation attempt failed, trying fallback...');
-        await this.page.screenshot({ path: 'twitter-search-error.png' });
-        
-        await this.page.goto(searchUrl, { 
-          waitUntil: 'load',
-          timeout: 60000 
-        });
+      } catch (selectorError) {
+        // Fallback: wait for any article elements
+        console.log('🔧 Primary selector failed, trying fallback...');
+        await this.page.waitForSelector('article', { timeout: 20000 });
       }
-      
-             // Wait for tweets to load with fallback
-       try {
-         await this.page.waitForSelector('[data-testid="tweet"]', { timeout: 15000 });
-       } catch (selectorError) {
-         // Fallback: wait for any article element (tweets are wrapped in articles)
-         await this.page.waitForSelector('article', { timeout: 15000 });
-       }
-       
-       // Small delay to ensure content is fully loaded and appear more human
-       await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 2000));
-       
-       // Extract tweet data
-      const tweets = await this.page.evaluate((maxResults: number) => {
-        const tweetElements = (document as any).querySelectorAll('[data-testid="tweet"]');
-        const extractedTweets: any[] = [];
-        
-        for (let i = 0; i < Math.min(tweetElements.length, maxResults); i++) {
-          const tweetElement = tweetElements[i];
+
+      // Extract tweets with enhanced error handling
+      const tweets = await this.page.evaluate((maxResults) => {
+        try {
+          const tweetElements = Array.from(document.querySelectorAll('article[data-testid="tweet"]')).slice(0, maxResults);
           
-          try {
-            // Extract tweet ID from URL
-            const tweetLink = tweetElement.querySelector('a[href*="/status/"]');
-            const tweetUrl = tweetLink?.getAttribute('href') || '';
-            const tweetId = tweetUrl.split('/status/')[1]?.split('?')[0] || '';
-            
-            // Extract content
-            const contentElement = tweetElement.querySelector('[data-testid="tweetText"]');
-            const content = contentElement?.textContent || '';
-            
-            // Extract author info
-            const authorElement = tweetElement.querySelector('[data-testid="User-Name"]');
-            const authorLinks = authorElement?.querySelectorAll('a');
-            const displayName = authorLinks?.[0]?.textContent || '';
-            const username = authorLinks?.[1]?.textContent?.replace('@', '') || '';
-            
-            // Check if verified
-            const verifiedIcon = tweetElement.querySelector('[data-testid="icon-verified"]');
-            const verified = !!verifiedIcon;
-            
-            // Extract engagement metrics
-            const likeButton = tweetElement.querySelector('[data-testid="like"]');
-            const retweetButton = tweetElement.querySelector('[data-testid="retweet"]');
-            const replyButton = tweetElement.querySelector('[data-testid="reply"]');
-            
-            const likes = parseInt(likeButton?.getAttribute('aria-label')?.match(/\d+/)?.[0] || '0');
-            const retweets = parseInt(retweetButton?.getAttribute('aria-label')?.match(/\d+/)?.[0] || '0');
-            const replies = parseInt(replyButton?.getAttribute('aria-label')?.match(/\d+/)?.[0] || '0');
-            
-            // Extract timestamp
-            const timeElement = tweetElement.querySelector('time');
-            const timestamp = timeElement?.getAttribute('datetime') || new Date().toISOString();
-            
-            // Check if this is a reply
-            const isReply = tweetElement.querySelector('[data-testid="socialContext"]')?.textContent?.includes('Replying to') || false;
-            
-            if (tweetId && content && username) {
-              extractedTweets.push({
-                tweetId,
+          return tweetElements.map((tweet, index) => {
+            try {
+              // Extract basic tweet data
+              const textElement = tweet.querySelector('[data-testid="tweetText"]');
+              const authorElement = tweet.querySelector('[data-testid="User-Name"]');
+              const linkElement = tweet.querySelector('a[href*="/status/"]');
+              
+              const content = textElement?.textContent?.trim() || '';
+              
+              // Extract author info
+              const authorLinks = authorElement?.querySelectorAll('a');
+              const displayName = authorLinks?.[0]?.textContent?.trim() || 'Unknown';
+              const username = authorLinks?.[1]?.textContent?.replace('@', '').trim() || 'unknown';
+              const verified = !!tweet.querySelector('[data-testid="icon-verified"]');
+              
+              // Extract tweet ID from link
+              let tweetId = '';
+              if (linkElement) {
+                const href = linkElement.getAttribute('href') || '';
+                const match = href.match(/\/status\/(\d+)/);
+                if (match) tweetId = match[1];
+              }
+
+              // Extract engagement metrics
+              const likeButton = tweet.querySelector('[data-testid="like"]');
+              const retweetButton = tweet.querySelector('[data-testid="retweet"]');
+              const replyButton = tweet.querySelector('[data-testid="reply"]');
+              
+              const likes = parseInt(likeButton?.getAttribute('aria-label')?.match(/\d+/)?.[0] || '0');
+              const retweets = parseInt(retweetButton?.getAttribute('aria-label')?.match(/\d+/)?.[0] || '0');
+              const replies = parseInt(replyButton?.getAttribute('aria-label')?.match(/\d+/)?.[0] || '0');
+
+              // Extract timestamp
+              const timeElement = tweet.querySelector('time');
+              const timestamp = timeElement?.getAttribute('datetime') || new Date().toISOString();
+
+              // Check if this is a reply
+              const isReply = !!tweet.querySelector('[data-testid="socialContext"]')?.textContent?.includes('Replying to');
+
+              return {
+                tweetId: tweetId || `fallback_${Date.now()}_${index}`,
                 content,
                 author: {
                   username,
@@ -263,18 +250,20 @@ export class StealthTweetScraper {
                   replies
                 },
                 timestamp,
-                url: `https://twitter.com${tweetUrl}`,
+                url: tweetId ? `https://twitter.com/${username}/status/${tweetId}` : '',
                 isReply
-              });
+              };
+            } catch (elementError) {
+              console.log(`⚠️ Error processing tweet element ${index}:`, elementError.message);
+              return null;
             }
-          } catch (error) {
-            console.warn('Failed to extract tweet data:', error);
-          }
+          }).filter(tweet => tweet && tweet.content.length > 0);
+        } catch (evaluationError) {
+          console.log('⚠️ Error in page evaluation:', evaluationError.message);
+          return [];
         }
-        
-        return extractedTweets;
       }, maxResults);
-      
+
       console.log(`✅ Found ${tweets.length} tweets for query: "${query}"`);
       
       return {
@@ -283,16 +272,30 @@ export class StealthTweetScraper {
         searchQuery: query,
         totalFound: tweets.length,
       };
-      
+
     } catch (error) {
-      console.error('❌ Failed to search tweets:', error);
-      return {
-        success: false,
-        tweets: [],
-        searchQuery: query,
-        totalFound: 0,
-        error: error.message
-      };
+      console.log('🔧 First navigation attempt failed, trying fallback...');
+      
+      // Enhanced fallback with screenshot
+      try {
+        await this.page.screenshot({ 
+          path: `logs/search_error_${Date.now()}.png`,
+          timeout: 45000 // Increased timeout for screenshots
+        });
+        
+        console.log(`❌ Failed to search tweets: ${error.message}`);
+        return {
+          success: false,
+          tweets: [],
+          searchQuery: query,
+          totalFound: 0,
+          error: error.message
+        }; // Return empty array instead of throwing
+        
+      } catch (screenshotError) {
+        console.log(`❌ Screenshot also failed: ${screenshotError.message}`);
+        throw error; // Re-throw original error
+      }
     }
   }
 
