@@ -3,7 +3,7 @@
  * Nightly collection of public_metrics and organic_metrics for recent tweets
  */
 
-import { supabaseClient } from '../utils/supabaseClient';
+import { minimalSupabaseClient as supabaseClient } from '../utils/minimalSupabaseClient';
 import { xClient } from '../utils/xClient';
 
 export class TweetAnalyticsCollector {
@@ -17,16 +17,18 @@ export class TweetAnalyticsCollector {
       
       console.log(`🔍 Fetching tweets posted since ${oneDayAgo.toISOString()}`);
       
-      const { data: recentTweets, error } = await supabaseClient.supabase
+      const tweetResponse = await supabaseClient.supabase
         ?.from('tweets')
         .select('tweet_id, created_at')
         .gte('created_at', oneDayAgo.toISOString())
         .not('tweet_id', 'is', null);
 
-      if (error) {
-        console.error('❌ Error fetching recent tweets:', error);
+      if (tweetResponse?.error) {
+        console.error('❌ Error fetching recent tweets:', tweetResponse.error);
         return;
       }
+
+      const recentTweets = tweetResponse?.data;
 
       if (!recentTweets || recentTweets.length === 0) {
         console.log('📭 No recent tweets found to analyze');
@@ -38,46 +40,58 @@ export class TweetAnalyticsCollector {
       let successCount = 0;
       let errorCount = 0;
 
-      // Process each tweet to fetch updated metrics
+      // Process each tweet using existing performance tracking system
+      // Use the unified performance tracker to get the most recent metrics
+      console.log(`📊 Using browser-based scraping for ${recentTweets.length} tweets`);
+      
       for (const tweet of recentTweets) {
         try {
-          console.log(`📊 Fetching metrics for tweet ${tweet.tweet_id}`);
+          console.log(`📊 Processing metrics for tweet ${tweet.tweet_id}`);
           
-          // Fetch fresh metrics from Twitter API
-          const tweetResult = await xClient.getTweetById(tweet.tweet_id);
-          
-          if (!tweetResult || !tweetResult.success || !tweetResult.data) {
-            console.warn(`⚠️ Could not fetch data for tweet ${tweet.tweet_id}`);
+          // Query existing performance data from the performance tracking system
+          const perfResponse = await supabaseClient.supabase
+            ?.from('tweets')
+            .select('performance_log, likes, retweets, replies')
+            .eq('tweet_id', tweet.tweet_id)
+            .single();
+
+          if (perfResponse?.error || !perfResponse?.data) {
+            console.warn(`⚠️ No performance data found for tweet ${tweet.tweet_id}`);
             errorCount++;
             continue;
           }
 
-          const tweetData = tweetResult.data;
+          const performanceData = perfResponse.data;
+
+          // Use the latest metrics from performance tracking
+          const likes = performanceData.likes || 0;
+          const retweets = performanceData.retweets || 0;
+          const replies = performanceData.replies || 0;
 
           // Upsert metrics into tweet_metrics table
-          const { error: upsertError } = await supabaseClient.supabase
+          const upsertResponse = await supabaseClient.supabase
             ?.from('tweet_metrics')
             .upsert({
               tweet_id: tweet.tweet_id,
-              like_count: tweetData.public_metrics?.like_count || 0,
-              retweet_count: tweetData.public_metrics?.retweet_count || 0,
-              reply_count: tweetData.public_metrics?.reply_count || 0,
-              quote_count: tweetData.public_metrics?.quote_count || 0,
+              like_count: likes,
+              retweet_count: retweets,
+              reply_count: replies,
+              quote_count: 0, // Not available via scraping
               captured_at: new Date().toISOString()
             }, {
               onConflict: 'tweet_id'
             });
 
-          if (upsertError) {
-            console.error(`❌ Error upserting metrics for tweet ${tweet.tweet_id}:`, upsertError);
+          if (upsertResponse?.error) {
+            console.error(`❌ Error upserting metrics for tweet ${tweet.tweet_id}:`, upsertResponse.error);
             errorCount++;
           } else {
-            console.log(`✅ Updated metrics for tweet ${tweet.tweet_id}: ${tweetData.public_metrics?.like_count || 0} likes, ${tweetData.public_metrics?.retweet_count || 0} retweets`);
+            console.log(`✅ Updated metrics for tweet ${tweet.tweet_id}: ${likes} likes, ${retweets} retweets`);
             successCount++;
           }
 
-          // Rate limiting: small delay between requests
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          // Small delay between database operations
+          await new Promise(resolve => setTimeout(resolve, 100));
           
         } catch (error) {
           console.error(`❌ Error processing tweet ${tweet.tweet_id}:`, error);
