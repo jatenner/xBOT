@@ -9,7 +9,7 @@ import { PostTweetAgent } from '../agents/postTweet';
 import { UltimateQuotaManager } from '../utils/ultimateQuotaManager';
 import { MasterTweetStorageIntegrator } from '../utils/masterTweetStorageIntegrator';
 import { EmergencyDatabaseSaving } from '../utils/emergencyDatabaseSaving';
-import { isTweetTooSimilar } from '../utils/semanticUniquenessCheck';
+// Semantic uniqueness checking now handled by enhancedSemanticUniqueness (imported dynamically)
 
 export interface PostingDecision {
   should_post: boolean;
@@ -171,13 +171,14 @@ export class AutonomousPostingEngine {
       
       let contentResult: any;
       let candidateContent: string;
+      let uniquenessResult: any;
       
       // Retry loop for generating semantically unique content
       do {
         contentGenerationAttempts++;
         console.log(`🔄 Content generation attempt ${contentGenerationAttempts}/${MAX_CONTENT_ATTEMPTS}`);
         
-        // Use PostTweetAgent's content generation
+        // Use EnhancedDiverseContentAgent's content generation
         contentResult = await this.generateContent();
         
         if (!contentResult.success) {
@@ -188,15 +189,23 @@ export class AutonomousPostingEngine {
         candidateContent = contentResult.content;
         console.log(`📝 Generated candidate: "${candidateContent.substring(0, 100)}..."`);
         
-        // Check for semantic similarity
-        const isTooSimilar = await isTweetTooSimilar(candidateContent);
-        
-        if (!isTooSimilar) {
+        // Check for semantic similarity using the enhanced system
+        const { enhancedSemanticUniqueness } = await import('../utils/enhancedSemanticUniqueness');
+        uniquenessResult = await enhancedSemanticUniqueness.checkUniqueness(
+          candidateContent,
+          contentGenerationAttempts
+        );
+
+        if (!uniquenessResult.success) {
+          console.warn(`⚠️ Uniqueness check failed: ${uniquenessResult.error}. Proceeding with caution.`);
+          break; // Assume unique if check fails to avoid blocking
+        }
+
+        if (uniquenessResult.isUnique) {
           console.log('✅ Content is semantically unique - proceeding with posting');
           break; // Content is unique, exit the loop
         } else {
-          console.log(`🛑 Content too similar to previous posts (attempt ${contentGenerationAttempts}/${MAX_CONTENT_ATTEMPTS})`);
-          
+          console.log(`🛑 Content too similar to previous posts (similarity: ${uniquenessResult.analysis.maxSimilarity.toFixed(3)})`);
           if (contentGenerationAttempts >= MAX_CONTENT_ATTEMPTS) {
             console.log('⚠️ Max content generation attempts reached - posting anyway to maintain frequency');
             break; // Post anyway after max attempts to maintain posting frequency
@@ -258,7 +267,20 @@ export class AutonomousPostingEngine {
       );
       storageTime = Date.now() - storageStart;
 
-      // Step 4: Initialize engagement tracking for learning
+      // Step 4: Store semantic embedding and core idea
+      console.log('🧠 Storing semantic embedding and core idea...');
+      if (candidateContent && uniquenessResult?.analysis) {
+        const { enhancedSemanticUniqueness } = await import('../utils/enhancedSemanticUniqueness');
+        if (uniquenessResult.analysis.embedding.length > 0) {
+          await enhancedSemanticUniqueness.storeEmbedding(
+            twitterResult.tweet_id!,
+            uniquenessResult.analysis.embedding,
+            uniquenessResult.analysis
+          );
+        }
+      }
+
+      // Step 5: Initialize engagement tracking for learning
       console.log('📊 Initializing engagement tracking for learning...');
       await this.initializeEngagementTracking(
         twitterResult.tweet_id!,
@@ -402,16 +424,14 @@ export class AutonomousPostingEngine {
     error?: string;
   }> {
     try {
-      // Import the sophisticated content generation systems
-      const { DiverseContentAgent } = await import('../agents/diverseContentAgent');
-      const { RealTimeContentLearningEngine } = await import('../agents/realTimeContentLearningEngine');
-      // const { UltraViralGenerator } = await import('../agents/ultraViralGenerator'); // Temporarily disabled
+      // Import the enhanced content generation systems
+      const { enhancedDiverseContentAgent } = await import('../agents/enhancedDiverseContentAgent');
+      const { engagementDrivenLearningAgent } = await import('../agents/engagementDrivenLearningAgent');
       
-      console.log('🧠 INTELLIGENT CONTENT GENERATION...');
+      console.log('🧠 ENHANCED INTELLIGENT CONTENT GENERATION...');
       
-      // Step 1: Generate diverse base content
-      const diverseAgent = new DiverseContentAgent();
-      const diverseResult = await diverseAgent.generateDiverseContent();
+      // Step 1: Generate diverse content with core idea tracking
+      const diverseResult = await enhancedDiverseContentAgent.generateDiverseContent();
       
       if (!diverseResult.success || !diverseResult.content) {
         console.warn('⚠️ Diverse content generation failed, trying viral generator...');

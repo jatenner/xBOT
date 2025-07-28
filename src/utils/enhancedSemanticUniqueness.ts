@@ -24,6 +24,9 @@ interface SemanticAnalysis {
   };
   attemptNumber: number;
   embedding: number[];
+  coreIdeaAnalysis?: any;
+  suppressionCheck?: any;
+  ideaFingerprint?: string;
 }
 
 interface UniquenessResult {
@@ -40,16 +43,42 @@ export class EnhancedSemanticUniqueness {
   private static openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
   /**
-   * 🎯 MAIN UNIQUENESS CHECK
+   * 🎯 MAIN UNIQUENESS CHECK (Enhanced with Core Idea Detection)
    */
   static async checkUniqueness(
     candidateText: string,
     attemptNumber: number = 1
   ): Promise<UniquenessResult> {
     try {
-      console.log(`🔍 Uniqueness check attempt ${attemptNumber}/${this.MAX_ATTEMPTS}: "${candidateText.substring(0, 60)}..."`);
+      console.log(`🔍 Enhanced uniqueness check attempt ${attemptNumber}/${this.MAX_ATTEMPTS}: "${candidateText.substring(0, 60)}..."`);
 
-      // Generate embedding for candidate
+      // Step 1: Check core idea uniqueness first
+      const { coreIdeaTracker } = await import('./coreIdeaTracker');
+      const ideaValidation = await coreIdeaTracker.analyzeAndValidateIdea(candidateText, attemptNumber);
+      
+      if (!ideaValidation.should_proceed) {
+        console.log(`🧠 Core idea check failed: ${ideaValidation.analysis.novelty_reasons.join(', ')}`);
+        return {
+          success: true,
+          isUnique: false,
+          analysis: {
+            isUnique: false,
+            maxSimilarity: ideaValidation.analysis.similarity_score,
+            similarTweet: ideaValidation.analysis.closest_idea ? {
+              id: ideaValidation.analysis.closest_idea.fingerprint,
+              content: ideaValidation.analysis.closest_idea.main_claim,
+              similarity: ideaValidation.analysis.similarity_score,
+              created_at: ideaValidation.analysis.closest_idea.last_used
+            } : undefined,
+            attemptNumber,
+            embedding: [],
+            coreIdeaAnalysis: ideaValidation.analysis,
+            suppressionCheck: ideaValidation.suppression
+          }
+        };
+      }
+
+      // Step 2: If core idea is novel, check text-level semantic similarity
       const embedding = await this.generateEmbedding(candidateText);
       if (!embedding) {
         return {
@@ -59,7 +88,8 @@ export class EnhancedSemanticUniqueness {
             isUnique: true,
             maxSimilarity: 0,
             attemptNumber,
-            embedding: []
+            embedding: [],
+            coreIdeaAnalysis: ideaValidation.analysis
           },
           error: 'Failed to generate embedding'
         };
@@ -95,7 +125,9 @@ export class EnhancedSemanticUniqueness {
         maxSimilarity,
         similarTweet: mostSimilarTweet,
         attemptNumber,
-        embedding
+        embedding,
+        coreIdeaAnalysis: ideaValidation.analysis,
+        ideaFingerprint: ideaValidation.fingerprint
       };
 
       // Log the analysis
@@ -103,7 +135,7 @@ export class EnhancedSemanticUniqueness {
 
       // Store embedding if content is unique
       if (isUnique) {
-        console.log(`✅ Content is unique (max similarity: ${maxSimilarity.toFixed(3)})`);
+        console.log(`✅ Content is unique - Core idea: NOVEL, Text similarity: ${maxSimilarity.toFixed(3)}`);
       } else {
         console.log(`🚫 Content too similar (${maxSimilarity.toFixed(3)} > ${this.SIMILARITY_THRESHOLD})`);
         if (mostSimilarTweet) {
@@ -118,7 +150,7 @@ export class EnhancedSemanticUniqueness {
       };
 
     } catch (error) {
-      console.error('❌ Uniqueness check failed:', error);
+      console.error('❌ Enhanced uniqueness check failed:', error);
       return {
         success: false,
         isUnique: true, // Assume unique on error to avoid blocking
@@ -226,18 +258,35 @@ export class EnhancedSemanticUniqueness {
   }
 
   /**
-   * 💾 STORE EMBEDDING FOR FUTURE COMPARISON
+   * 💾 STORE EMBEDDING AND CORE IDEA FOR FUTURE COMPARISON
    */
-  static async storeEmbedding(tweetId: string, embedding: number[]): Promise<void> {
+  static async storeEmbedding(
+    tweetId: string, 
+    embedding: number[], 
+    analysis?: SemanticAnalysis
+  ): Promise<void> {
     try {
+      // Store text embedding
       await supabaseClient.supabase
         .from('tweets')
         .update({ semantic_embedding: embedding })
         .eq('id', tweetId);
 
-      console.log(`💾 Stored embedding for tweet ${tweetId}`);
+      // Store core idea if available
+      if (analysis?.coreIdeaAnalysis && analysis?.ideaFingerprint) {
+        const { coreIdeaTracker } = await import('./coreIdeaTracker');
+        await coreIdeaTracker.storeApprovedIdea(
+          analysis.ideaFingerprint,
+          analysis.coreIdeaAnalysis,
+          embedding,
+          tweetId,
+          1 - analysis.maxSimilarity // Convert similarity to novelty score
+        );
+      }
+
+      console.log(`💾 Stored embedding and core idea for tweet ${tweetId}`);
     } catch (error) {
-      console.error('❌ Failed to store embedding:', error);
+      console.error('❌ Failed to store embedding and idea:', error);
     }
   }
 
