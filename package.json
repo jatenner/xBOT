@@ -4,8 +4,7 @@
   "description": "Autonomous X (Twitter) bot for Snap2Health with AI-powered content generation",
   "main": "dist/main.js",
   "scripts": {
-    "build": "npx playwright install chromium && NODE_OPTIONS=--max_old_space_size=1024 tsc",
-    "postinstall": "echo 'Installing Playwright...' && npx playwright install chromium || echo 'Playwright install failed but continuing'",
+    "build": "NODE_OPTIONS=--max_old_space_size=1024 tsc",
     "render-build": "./render-build.sh",
     "migrate": "node scripts/db_push.js",
     "start": "node dist/main.js",
