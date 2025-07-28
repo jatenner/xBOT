@@ -25,6 +25,12 @@ import { replyPoster } from '../twitter/postReply';
 import { tweetPerformanceTracker } from '../jobs/updateTweetPerformance';
 // Add content learning import  
 import { realTimeContentLearningEngine } from '../agents/realTimeContentLearningEngine';
+// Add quote agent import
+import { quoteAgent } from '../agents/quoteAgent';
+// Add follower tracker import
+import { followerTracker } from '../jobs/updateFollowerCount';
+// Add analytics server import
+import { analyticsServer } from '../dashboard/analyticsServer';
 
 export class UnifiedScheduler {
   private static instance: UnifiedScheduler;
@@ -40,6 +46,8 @@ export class UnifiedScheduler {
   private replyJob: cron.ScheduledTask | null = null; // Reply system job
   private performanceJob: cron.ScheduledTask | null = null; // NEW: Performance tracking job
   private learningJob: cron.ScheduledTask | null = null; // NEW: Content learning job
+  private quoteJob: cron.ScheduledTask | null = null; // NEW: Quote tweet job
+  private followerJob: cron.ScheduledTask | null = null; // NEW: Follower tracking job
   // metricsJob removed - using daily analytics instead
   
   // Status tracking
@@ -49,10 +57,14 @@ export class UnifiedScheduler {
   private totalReplies = 0; // Reply tracking
   private totalPerformanceUpdates = 0; // NEW: Performance tracking
   private totalLearningCycles = 0; // NEW: Learning tracking
+  private totalQuoteTweets = 0; // NEW: Quote tweet tracking
+  private totalFollowerUpdates = 0; // NEW: Follower tracking
   private lastPostTime: Date | null = null;
   private lastReplyTime: Date | null = null; // Reply time tracking
   private lastPerformanceUpdate: Date | null = null; // NEW: Performance time tracking
   private lastLearningUpdate: Date | null = null; // NEW: Learning time tracking
+  private lastQuoteTime: Date | null = null; // NEW: Quote tweet time tracking
+  private lastFollowerUpdate: Date | null = null; // NEW: Follower time tracking
 
   private constructor() {
     this.engagementAgent = new RealEngagementAgent();
@@ -154,6 +166,26 @@ export class UnifiedScheduler {
         await this.runContentLearning();
       });
       console.log('✅ Content learning scheduled every 24 hours at 4 AM UTC');
+      
+      // Schedule quote tweet system every 2 hours
+      this.quoteJob = cron.schedule('0 */2 * * *', async () => {
+        await this.runQuoteSystem();
+      });
+      console.log('✅ Quote tweet system scheduled every 2 hours');
+      
+      // Schedule follower tracking once daily at 6 AM UTC
+      this.followerJob = cron.schedule('0 6 * * *', async () => {
+        await this.runFollowerTracking();
+      });
+      console.log('✅ Follower tracking scheduled daily at 6 AM UTC');
+      
+      // Start analytics server
+      try {
+        await analyticsServer.start();
+        console.log('✅ Analytics dashboard server started');
+      } catch (error) {
+        console.log('⚠️ Analytics server failed to start:', error.message);
+      }
       
       this.isRunning = true;
       console.log('✅ All systems operational and scheduled');
@@ -449,6 +481,75 @@ export class UnifiedScheduler {
       
     } catch (error) {
       console.error('❌ Content learning cycle failed:', error);
+    }
+  }
+
+  /**
+   * 🎯 RUN QUOTE TWEET SYSTEM
+   */
+  private async runQuoteSystem(): Promise<void> {
+    try {
+      console.log('\n🎯 === QUOTE TWEET SYSTEM ===');
+      
+      const result = await quoteAgent.executeQuoteTweet();
+      
+      if (result.success && result.quoteTweet) {
+        this.totalQuoteTweets++;
+        this.lastQuoteTime = new Date();
+        
+        console.log(`✅ Quote tweet posted: ${result.quoteTweet.content}`);
+        console.log(`📊 Quoted @${result.quoteTweet.originalAuthor} - Total quotes today: ${this.totalQuoteTweets}`);
+        
+        // Send activity log to dashboard
+        analyticsServer.sendActivityLog(
+          `Quote tweet posted: "${result.quoteTweet.content.substring(0, 50)}..." (from @${result.quoteTweet.originalAuthor})`
+        );
+      } else if (result.skippedReason) {
+        console.log(`⏰ Quote tweet skipped: ${result.skippedReason}`);
+      } else {
+        console.log(`❌ Quote tweet failed: ${result.error}`);
+      }
+      
+    } catch (error) {
+      console.error('❌ Error running quote system:', error.message);
+    }
+  }
+
+  /**
+   * 📈 RUN FOLLOWER TRACKING
+   */
+  private async runFollowerTracking(): Promise<void> {
+    try {
+      console.log('\n📈 === FOLLOWER TRACKING ===');
+      
+      const result = await followerTracker.updateFollowerCount();
+      
+      if (result.success && result.data) {
+        this.totalFollowerUpdates++;
+        this.lastFollowerUpdate = new Date();
+        
+        const growth = result.data.growthSinceYesterday;
+        const growthText = growth >= 0 ? `+${growth}` : `${growth}`;
+        
+        console.log(`✅ Follower count updated: ${result.data.followerCount} (${growthText})`);
+        console.log(`📊 Engagement rate: ${result.data.engagementRate}%`);
+        
+        // Send activity log to dashboard
+        analyticsServer.sendActivityLog(
+          `Follower count: ${result.data.followerCount} (${growthText}) - Engagement: ${result.data.engagementRate}%`,
+          growth >= 0 ? 'success' : 'warning'
+        );
+      } else {
+        console.log(`❌ Follower tracking failed: ${result.error}`);
+        
+        analyticsServer.sendActivityLog(
+          `Follower tracking failed: ${result.error}`,
+          'error'
+        );
+      }
+      
+    } catch (error) {
+      console.error('❌ Error running follower tracking:', error.message);
     }
   }
 
