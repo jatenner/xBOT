@@ -39,9 +39,8 @@ export class BrowserTweetPoster {
       console.log('🚀 Initializing Browser Tweet Poster...');
 
       // Launch browser with stealth settings (Render-compatible)
-      this.browser = await chromium.launch({
+      let launchOptions: any = {
         headless: true,
-        executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
@@ -57,7 +56,34 @@ export class BrowserTweetPoster {
           '--disable-renderer-backgrounding',
           '--disable-blink-features=AutomationControlled'
         ]
-      });
+      };
+
+      // Try different executable paths for Render
+      const possiblePaths = [
+        '/opt/render/.cache/ms-playwright/chromium_headless_shell-1181/chrome-linux/headless_shell',
+        '/opt/render/.cache/ms-playwright/chromium-1181/chrome-linux/chrome',
+        process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+      ].filter(Boolean);
+
+      for (const path of possiblePaths) {
+        try {
+          console.log(`🔍 Trying Chromium path: ${path}`);
+          launchOptions.executablePath = path;
+          this.browser = await chromium.launch(launchOptions);
+          console.log(`✅ Successfully launched browser with: ${path}`);
+          break;
+        } catch (pathError) {
+          console.log(`❌ Failed with path ${path}: ${pathError.message}`);
+          continue;
+        }
+      }
+
+      // If all paths failed, try without specifying executable path
+      if (!this.browser) {
+        console.log('🔄 Trying default Playwright executable...');
+        delete launchOptions.executablePath;
+        this.browser = await chromium.launch(launchOptions);
+      }
 
       // Create page with realistic settings
       this.page = await this.browser.newPage({

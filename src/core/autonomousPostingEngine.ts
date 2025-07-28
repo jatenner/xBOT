@@ -494,6 +494,12 @@ export class AutonomousPostingEngine {
       // For non-429 errors, still try browser posting as fallback
       return await this.postViaBrowser(content);
     }
+    
+    // If API succeeded but no explicit success flag, return failure
+    return {
+      success: false,
+      error: 'API posting returned undefined result'
+    };
   }
 
   /**
