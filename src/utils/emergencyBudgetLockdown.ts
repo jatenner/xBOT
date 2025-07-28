@@ -18,18 +18,35 @@ interface EmergencyStatus {
 }
 
 export class EmergencyBudgetLockdown {
-  private static readonly ABSOLUTE_DAILY_LIMIT = 5.00;
-  private static readonly EMERGENCY_LIMIT = 4.75; // Stop at $4.75 to be safe
+  private static readonly ABSOLUTE_DAILY_LIMIT = 7.50; // Increased to $7.50
+  private static readonly EMERGENCY_LIMIT = 7.25; // Stop at $7.25 to be safe
+  private static readonly CRITICAL_OVERRIDE_HOURS = 12; // Force post after 12+ hours
   private static readonly LOCKDOWN_FILE = path.join(process.cwd(), '.budget_lockdown');
   
   /**
-   * 🛑 CHECK IF SYSTEM IS LOCKED DOWN
+   * 🛑 CHECK IF SYSTEM IS LOCKED DOWN (ENHANCED WITH OVERRIDE)
    */
-  static async isLockedDown(): Promise<EmergencyStatus> {
+  static async isLockedDown(lastPostHours?: number): Promise<EmergencyStatus> {
     try {
+      console.log(`💰 === BUDGET STATUS CHECK ===`);
+      
       // Check file-based lockdown first (fastest)
       if (fs.existsSync(this.LOCKDOWN_FILE)) {
         const lockdownData = JSON.parse(fs.readFileSync(this.LOCKDOWN_FILE, 'utf8'));
+        
+        // CRITICAL OVERRIDE: If 12+ hours since last post, force allow one post
+        if (lastPostHours && lastPostHours >= this.CRITICAL_OVERRIDE_HOURS) {
+          console.log(`🚨 CRITICAL OVERRIDE: ${lastPostHours} hours since last post - allowing emergency post`);
+          return {
+            lockdownActive: false,
+            totalSpent: lockdownData.totalSpent || this.ABSOLUTE_DAILY_LIMIT,
+            dailyLimit: this.ABSOLUTE_DAILY_LIMIT,
+            lockdownReason: `Emergency override: ${lastPostHours}h since last post`,
+            lockdownTime: new Date(lockdownData.timestamp)
+          };
+        }
+        
+        console.log(`🛑 Budget lockdown active: ${lockdownData.reason}`);
         return {
           lockdownActive: true,
           totalSpent: lockdownData.totalSpent || this.ABSOLUTE_DAILY_LIMIT,
@@ -43,7 +60,7 @@ export class EmergencyBudgetLockdown {
       const today = new Date().toISOString().split('T')[0];
       
       if (!supabaseClient.supabase) {
-        console.warn('⚠️ No Supabase connection - allowing operations with warning');
+        console.log('⚠️ No Supabase connection - allowing operations with warning');
         return {
           lockdownActive: false,
           totalSpent: 0,
@@ -58,7 +75,7 @@ export class EmergencyBudgetLockdown {
         .eq('date', today);
 
       if (error) {
-        console.error('❌ Budget check failed - allowing operations with warning:', error);
+        console.log('❌ Budget check failed - allowing operations with warning:', error);
         return {
           lockdownActive: false,
           totalSpent: 0,
@@ -68,9 +85,24 @@ export class EmergencyBudgetLockdown {
       }
 
       const totalSpent = data?.reduce((sum, tx) => sum + tx.cost_usd, 0) || 0;
+      
+      console.log(`💵 Daily spending: $${totalSpent.toFixed(2)} / $${this.ABSOLUTE_DAILY_LIMIT.toFixed(2)}`);
+      console.log(`⚡ Emergency limit: $${this.EMERGENCY_LIMIT.toFixed(2)}`);
 
       if (totalSpent >= this.EMERGENCY_LIMIT) {
+        // CRITICAL OVERRIDE: If 12+ hours since last post, allow one more post
+        if (lastPostHours && lastPostHours >= this.CRITICAL_OVERRIDE_HOURS) {
+          console.log(`🚨 CRITICAL OVERRIDE: ${lastPostHours} hours since last post - allowing emergency post despite budget`);
+          return {
+            lockdownActive: false,
+            totalSpent,
+            dailyLimit: this.ABSOLUTE_DAILY_LIMIT,
+            lockdownReason: `Emergency override: ${lastPostHours}h since last post (budget: $${totalSpent.toFixed(2)})`,
+          };
+        }
+        
         await this.activateLockdown(totalSpent, `Daily limit exceeded: $${totalSpent.toFixed(2)}`);
+        console.log(`🛑 LOCKDOWN ACTIVATED: Daily limit exceeded`);
         return {
           lockdownActive: true,
           totalSpent,
@@ -80,6 +112,7 @@ export class EmergencyBudgetLockdown {
         };
       }
 
+      console.log(`✅ Budget OK: $${totalSpent.toFixed(2)} remaining: $${(this.ABSOLUTE_DAILY_LIMIT - totalSpent).toFixed(2)}`);
       return {
         lockdownActive: false,
         totalSpent,

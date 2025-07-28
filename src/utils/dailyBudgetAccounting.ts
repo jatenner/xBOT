@@ -36,8 +36,8 @@ export interface DailyBudgetStatus {
 }
 
 export class DailyBudgetAccounting {
-  private readonly HARD_DAILY_LIMIT = 5.00; // $5.00 maximum per day - ENFORCED
-  private readonly EMERGENCY_BRAKE_THRESHOLD = 4.75; // Stop at $4.75 to prevent overrun
+  private readonly HARD_DAILY_LIMIT = 7.50; // $7.50 maximum per day - ENFORCED
+  private readonly EMERGENCY_BRAKE_THRESHOLD = 7.25; // Stop at $7.25 to prevent overrun
   private readonly WARNING_THRESHOLD = 4.00; // Warning at $4.00
   private readonly COST_PER_1K_TOKENS = 0.00015; // gpt-4o-mini cost
   
