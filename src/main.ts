@@ -81,7 +81,7 @@ async function main(): Promise<void> {
     console.log('');
     console.log('🎉 === AUTONOMOUS TWITTER GROWTH MASTER ONLINE ===');
     console.log('');
-    console.log('📊 Dashboard: http://localhost:3002');
+    console.log('📊 Dashboard: http://localhost:3000');
     console.log('🤖 The bot is now fully autonomous and learning...');
     console.log('');
     console.log('🔥 EXPECTED RESULTS:');
@@ -102,7 +102,7 @@ async function main(): Promise<void> {
     console.log('   ✅ Generate comprehensive growth analytics');
     console.log('');
     console.log('🚀 FULLY AUTONOMOUS - NO HUMAN INTERVENTION REQUIRED!');
-    console.log('📈 Monitor progress at http://localhost:3002');
+    console.log('📈 Monitor progress at http://localhost:3000');
     console.log('');
 
     // Keep the process running
