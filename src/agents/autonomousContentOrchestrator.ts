@@ -47,56 +47,15 @@ export class AutonomousContentOrchestrator {
     error?: string;
     contentPlan?: ContentPlan;
   }> {
-    try {
-      console.log('🎯 === AUTONOMOUS CONTENT ORCHESTRATION STARTING ===');
-      console.log(`📅 ${new Date().toISOString()}`);
-      console.log('🎨 Generating optimized content for @SignalAndSynapse...');
-      
-      // 1. Create content plan based on learning insights
-      const contentPlan = await this.createContentPlan(topic, forceFormat);
-      console.log(`📋 Content plan: ${contentPlan.optimal_format} about ${contentPlan.recommended_topic}`);
-      console.log(`🎯 Expected engagement: ${contentPlan.expected_engagement.toFixed(2)}%`);
-
-      // 2. Generate content using enhanced generator
-      console.log('🎨 Generating content with learned optimizations...');
-      const generatedPost = await enhancedContentGenerator.generatePost(
-        contentPlan.recommended_topic, 
-        contentPlan.optimal_format
-      );
-
-      // 3. Optimize content for engagement if it's a thread
-      if (Array.isArray(generatedPost.content)) {
-        console.log('🧵 Optimizing thread for maximum engagement...');
-        generatedPost.content = await threadPostingAgent.optimizeThreadForEngagement(generatedPost.content);
-      }
-
-      // 4. Post content using thread posting agent
-      console.log('📝 Posting content to Twitter...');
-      const postResult = await threadPostingAgent.postContent(generatedPost);
-
-      if (!postResult.success) {
-        throw new Error(`Posting failed: ${postResult.error}`);
-      }
-
-      // 5. Start performance tracking
-      console.log('📊 Initiating performance tracking...');
-      await engagementLearningAgent.trackPostPerformance(postResult, generatedPost);
-
-      // 6. Update current session
-      await this.updateCurrentSession(generatedPost, postResult);
-
-      console.log('✅ === AUTONOMOUS CONTENT ORCHESTRATION COMPLETED ===');
-      console.log(`📝 Posted: ${postResult.metadata.post_type} with ${postResult.metadata.tweet_count} tweet(s)`);
-      console.log(`🆔 Tweet ID(s): ${postResult.tweetIds.join(', ')}`);
-
-      return {
-        success: true,
-        generatedPost,
-        postResult,
-        contentPlan
-      };
-
-    } catch (error) {
+    // 🚨 EMERGENCY DISABLED: This orchestrator was bypassing quality gates
+    console.log('🚫 EMERGENCY: Autonomous Content Orchestrator completely disabled');
+    console.log('⚠️ This system was orchestrating low-quality content generation');
+    
+    return {
+      success: false,
+      error: 'EMERGENCY: Content orchestration disabled for quality issues'
+    };
+  } catch (error) {
       console.error('❌ Autonomous content orchestration failed:', error);
       
       return {

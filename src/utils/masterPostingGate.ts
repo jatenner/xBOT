@@ -99,20 +99,14 @@ export class MasterPostingGate {
 
     // 🎯 SINGLE POSTING CHECK SCHEDULE
     // Check every 30 minutes if we should post, but respect coordinator rules
-    const mainPostingJob = cron.schedule('*/30 * * * *', async () => {
-      await this.handleScheduledPostingCheck();
-    }, { scheduled: false });
+    // 🚨 EMERGENCY DISABLED: Main posting job was bypassing quality gates
 
     // 🕐 OPTIMAL HOUR POSTING CHECKS
     // Additional checks during peak hours
-    const optimalHourJob = cron.schedule('0 9,11,14,16,17,19,20 * * *', async () => {
-      await this.handleOptimalHourPosting();
-    }, { scheduled: false });
+    // 🚨 EMERGENCY DISABLED: Optimal hour job was bypassing quality gates
 
     // 🔄 DAILY RESET AND STATUS
-    const dailyResetJob = cron.schedule('0 0 * * *', async () => {
-      await this.handleDailyReset();
-    }, { scheduled: false });
+    // 🚨 EMERGENCY DISABLED: Daily reset job was bypassing quality gates
 
     // Store and start jobs
     this.activeJobs.set('main-posting', mainPostingJob);

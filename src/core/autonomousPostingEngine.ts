@@ -48,6 +48,8 @@ interface PostingResult {
 }
 
 export class AutonomousPostingEngine {
+  // 🚨 NUCLEAR VALIDATION ACTIVE - This is the ONLY posting system that should run
+  // All other posting systems have been emergency disabled for quality issues
   private static instance: AutonomousPostingEngine;
   private lastPostTime: Date | null = null;
   private consecutiveFailures = 0;
