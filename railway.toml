@@ -4,7 +4,8 @@ builder = "NIXPACKS"
 [deploy]
 startCommand = "node dist/main.js"
 healthcheckPath = "/health"
-healthcheckTimeout = 300
+healthcheckTimeout = 60
+healthcheckInitialDelay = 30
 restartPolicyType = "always"
 replicas = 1
 
