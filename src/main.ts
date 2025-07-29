@@ -23,13 +23,17 @@ function startHealthServer(): Promise<void> {
     const PORT = parseInt(process.env.PORT || '3000', 10);
     const HOST = '0.0.0.0';
 
+    // Basic middleware
+    app.use(express.json());
+
     // Health endpoint - always responds, even if bot isn't ready
-    app.get('/health', (req, res) => {
+    app.get('/health', (_req, res) => {
+      console.log('🏥 Health check requested');
       res.status(200).send('ok');
     });
 
     // Status endpoint for debugging
-    app.get('/status', (req, res) => {
+    app.get('/status', (_req, res) => {
       res.json({
         status: botStatus,
         timestamp: new Date().toISOString(),
@@ -38,11 +42,19 @@ function startHealthServer(): Promise<void> {
       });
     });
 
+    // Catch-all error handler
+    app.use((error: any, _req: any, res: any, _next: any) => {
+      console.error('❌ Express error:', error);
+      if (!res.headersSent) {
+        res.status(500).send('Internal Server Error');
+      }
+    });
+
     // Start server
     healthServer = app.listen(PORT, HOST, () => {
-      console.log(`✅ Health server running on port ${PORT}`);
-      console.log(`🌍 Railway health check endpoint: /health`);
-      console.log(`📊 Status endpoint: /status`);
+      console.log(`✅ Health server running on http://${HOST}:${PORT}`);
+      console.log(`🚄 Railway health check endpoint: http://${HOST}:${PORT}/health`);
+      console.log(`📊 Status endpoint: http://${HOST}:${PORT}/status`);
       resolve();
     });
 
