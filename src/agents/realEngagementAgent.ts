@@ -21,75 +21,14 @@ export class RealEngagementAgent {
     'healthy lifestyle'
   ];
 
-  async run(): Promise<{ success: boolean; message: string; actions: EngagementAction[] }> {
-    console.log('🤝 === REAL ENGAGEMENT AGENT ACTIVATED ===');
-    
-    // Check if engagement table exists
-    const tableReady = await EngagementDatabaseLogger.ensureEngagementTableExists();
-    if (!tableReady) {
-      console.warn('⚠️ Engagement table not ready - actions will be logged to console only');
-    }
-    
-    // Check current rate limits
-    const rateLimits = await EngagementDatabaseLogger.checkEngagementRateLimits();
-    console.log('📊 Current Daily Engagement:');
-    console.log(`   ❤️  Likes: ${rateLimits.dailyLikes}/1000`);
-    console.log(`   💬 Replies: ${rateLimits.dailyReplies}/300`);
-    console.log(`   👥 Follows: ${rateLimits.dailyFollows}/400`);
-    console.log(`   🔄 Retweets: ${rateLimits.dailyRetweets}/300`);
-    
-    const allActions: EngagementAction[] = [];
-    
-    try {
-      // 1. Find engagement targets
-      const targets = await this.findEngagementTargets();
-      console.log(`🎯 Found targets: ${targets.healthTweets.length} tweets, ${targets.healthUsers.length} users`);
-      
-      // 2. Perform REAL likes (if not at limit)
-      if (rateLimits.canLike && targets.healthTweets.length > 0) {
-        const likeActions = await this.performRealLikes(targets.healthTweets.slice(0, 3));
-        allActions.push(...likeActions);
-      } else {
-        console.log('⏸️ Skipping likes: Daily limit reached or no targets');
-      }
-      
-      // 3. Perform REAL replies (if not at limit)
-      if (rateLimits.canReply && targets.healthTweets.length > 0) {
-        const replyActions = await this.performRealReplies(targets.healthTweets.slice(0, 1));
-        allActions.push(...replyActions);
-      } else {
-        console.log('⏸️ Skipping replies: Daily limit reached or no targets');
-      }
-      
-      // 4. Perform REAL follows (if not at limit)
-      if (rateLimits.canFollow && targets.healthUsers.length > 0) {
-        const followActions = await this.performRealFollows(targets.healthUsers.slice(0, 2));
-        allActions.push(...followActions);
-      } else {
-        console.log('⏸️ Skipping follows: Daily limit reached or no targets');
-      }
-      
-      const successful = allActions.filter(a => a.success);
-      
-      console.log('📊 === REAL ENGAGEMENT COMPLETE ===');
-      console.log(`🎯 Attempted: ${allActions.length} actions`);
-      console.log(`✅ Successful: ${successful.length} actions`);
-      console.log(`❌ Failed: ${allActions.length - successful.length} actions`);
-      
-      return {
-        success: true,
-        message: `Real engagement: ${successful.length}/${allActions.length} actual Twitter API actions`,
-        actions: allActions
-      };
-      
-    } catch (error) {
-      console.error('❌ Real engagement failed:', error);
-      return {
-        success: false,
-        message: `Error: ${error instanceof Error ? error.message : 'Unknown'}`,
-        actions: allActions
-      };
-    }
+  async run(): Promise<{ success: boolean; message: string; actions?: any[] }> {
+      // 🚨 EMERGENCY DISABLED: This was posting fake content
+    console.log('🚫 Real Engagement Agent DISABLED - was posting fake content');
+    return {
+      success: false,
+      message: 'Engagement agent disabled to prevent fake content posting',
+      actions: []
+    };
   }
 
   private async findEngagementTargets(): Promise<EngagementTargets> {
