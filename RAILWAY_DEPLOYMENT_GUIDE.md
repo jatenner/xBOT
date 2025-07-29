@@ -1,5 +1,52 @@
 # 🚄 Railway Deployment Guide for xBOT
 
+## ⚠️ **CRITICAL: SET ENVIRONMENT VARIABLES FIRST**
+
+Your deployment is failing because required environment variables are missing. **Set these in Railway before the bot can start:**
+
+### 🔧 **Railway Environment Setup**
+
+1. Go to your Railway project: https://railway.app/project/[your-project-id]
+2. Click **"Variables"** tab  
+3. Add these **REQUIRED** environment variables:
+
+```bash
+# OpenAI Configuration
+OPENAI_API_KEY=sk-your-openai-api-key-here
+
+# Twitter API Configuration  
+TWITTER_API_KEY=your-twitter-api-key
+TWITTER_API_SECRET=your-twitter-api-secret
+TWITTER_ACCESS_TOKEN=your-twitter-access-token
+TWITTER_ACCESS_TOKEN_SECRET=your-twitter-access-token-secret
+TWITTER_USERNAME=your-twitter-handle-without-@
+
+# Supabase Database Configuration
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
+```
+
+4. **Optional** environment variables (for enhanced features):
+```bash
+TWITTER_BEARER_TOKEN=your-bearer-token
+SUPABASE_ANON_KEY=your-anon-key
+NEWS_API_KEY=your-news-api-key
+PEXELS_API_KEY=your-pexels-api-key
+```
+
+5. Click **"Deploy"** after adding variables
+
+### 🔍 **Check Environment Status**
+
+After deployment, visit these endpoints to debug:
+- **Health Check**: `https://your-app.railway.app/health` (should return "ok")
+- **Environment Status**: `https://your-app.railway.app/env` (shows missing variables)
+- **Bot Status**: `https://your-app.railway.app/status` (shows bot state)
+
+---
+
+## 🚀 Deployment Instructions
+
 ## 📋 **Prerequisites**
 
 - Railway account (free tier available)
