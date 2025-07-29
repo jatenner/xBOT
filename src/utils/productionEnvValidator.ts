@@ -21,6 +21,8 @@ export interface SafeEnvConfig {
   TWITTER_ACCESS_TOKEN: string;
   TWITTER_ACCESS_TOKEN_SECRET: string;
   TWITTER_USERNAME: string;
+  TWITTER_SCREEN_NAME: string;
+  TWITTER_USER_ID: string;
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
   
@@ -61,6 +63,8 @@ export class ProductionEnvValidator {
         'TWITTER_ACCESS_TOKEN',
         'TWITTER_ACCESS_TOKEN_SECRET',
         'TWITTER_USERNAME',
+        'TWITTER_SCREEN_NAME',
+        'TWITTER_USER_ID',
         'SUPABASE_URL',
         'SUPABASE_SERVICE_ROLE_KEY'
       ];
@@ -88,6 +92,24 @@ export class ProductionEnvValidator {
           !parsed.SUPABASE_SERVICE_ROLE_KEY.startsWith('eyJ') && 
           !parsed.SUPABASE_SERVICE_ROLE_KEY.startsWith('sbp_')) {
         warnings.push('SUPABASE_SERVICE_ROLE_KEY format may be incorrect');
+      }
+
+      // Validate Twitter credentials format
+      if (parsed.TWITTER_ACCESS_TOKEN && !parsed.TWITTER_ACCESS_TOKEN.includes('-')) {
+        errors.push('TWITTER_ACCESS_TOKEN should contain a hyphen (format: userid-token)');
+      }
+
+      if (parsed.TWITTER_USER_ID && !/^\d+$/.test(parsed.TWITTER_USER_ID)) {
+        errors.push('TWITTER_USER_ID must be a numeric string');
+      }
+
+      if (parsed.TWITTER_SCREEN_NAME && (parsed.TWITTER_SCREEN_NAME.startsWith('@') || parsed.TWITTER_SCREEN_NAME.includes(' '))) {
+        errors.push('TWITTER_SCREEN_NAME should not include @ symbol or spaces');
+      }
+
+      if (parsed.TWITTER_USERNAME && parsed.TWITTER_SCREEN_NAME && 
+          parsed.TWITTER_USERNAME !== parsed.TWITTER_SCREEN_NAME) {
+        warnings.push('TWITTER_USERNAME and TWITTER_SCREEN_NAME should match');
       }
 
       // Optional string variables
@@ -256,6 +278,8 @@ export class ProductionEnvValidator {
         TWITTER_ACCESS_TOKEN: '',
         TWITTER_ACCESS_TOKEN_SECRET: '',
         TWITTER_USERNAME: '',
+        TWITTER_SCREEN_NAME: '',
+        TWITTER_USER_ID: '',
         SUPABASE_URL: '',
         SUPABASE_SERVICE_ROLE_KEY: '',
         NODE_ENV: 'production',
