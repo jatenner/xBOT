@@ -12,6 +12,8 @@
 // Core imports for autonomous posting
 import { supabaseClient } from '../utils/supabaseClient';
 import { emergencyBudgetLockdown } from '../utils/emergencyBudgetLockdown';
+import { contentFactChecker } from '../utils/contentFactChecker';
+import { isCleanStandaloneContent } from '../config/cleanPostingConfig';
 
 interface PostingDecision {
   should_post: boolean;
@@ -510,6 +512,46 @@ export class AutonomousPostingEngine {
     confirmed?: boolean;
   }> {
     try {
+      console.log('🔍 Pre-posting content validation...');
+      
+      // Step 1: Clean content validation
+      if (!isCleanStandaloneContent(content)) {
+        console.error('❌ Content failed clean posting validation');
+        return {
+          success: false,
+          error: 'Content appears to be reply-like or templated',
+          was_posted: false,
+          confirmed: false
+        };
+      }
+
+      // Step 2: Fact-checking gate
+      console.log('🔍 Running fact-check validation...');
+      const factCheck = await contentFactChecker.checkContent({
+        content: content,
+        contentType: 'tweet',
+        strictMode: false // Normal mode for tweets
+      });
+
+      if (!factCheck.shouldPost) {
+        console.error(`❌ Content failed fact check: ${factCheck.reasoning}`);
+        console.log(`   Issues: ${factCheck.issues.join(', ')}`);
+        console.log(`   Risk level: ${factCheck.riskLevel}`);
+        
+        return {
+          success: false,
+          error: `Fact check failed: ${factCheck.reasoning}`,
+          was_posted: false,
+          confirmed: false
+        };
+      }
+
+      console.log(`✅ Content passed fact check (confidence: ${(factCheck.confidence * 100).toFixed(0)}%)`);
+      if (factCheck.corrections.length > 0) {
+        console.log(`💡 Suggestions: ${factCheck.corrections.join(', ')}`);
+      }
+
+      // Step 3: Post to Twitter via browser automation
       console.log('🐦 Posting to Twitter via browser automation...');
       
       const { browserTweetPoster } = await import('../utils/browserTweetPoster');

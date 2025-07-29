@@ -7,6 +7,7 @@
 
 import { BudgetAwareOpenAI } from '../utils/budgetAwareOpenAI';
 import { secureSupabaseClient } from '../utils/secureSupabaseClient';
+import { styleMixer, StyleLabel } from '../utils/styleMixer';
 
 interface ContentFormat {
     name: string;
@@ -144,7 +145,7 @@ export class EliteTwitterContentStrategist {
             const content = await this.generateEliteContent(selectedFormat, topic, request);
             
             // 5. Validate and optimize for virality
-            const optimizedContent = this.optimizeForVirality(content, selectedFormat);
+            const optimizedContent = await this.optimizeForVirality(content, selectedFormat);
             
             return {
                 content: optimizedContent.content,
@@ -287,38 +288,169 @@ Choose single tweet vs thread based on what would perform better for this specif
         return response.response.choices[0].message.content.trim();
     }
 
-    private optimizeForVirality(rawContent: string, format: ContentFormat): any {
-        // Parse and optimize the generated content
-        const lines = rawContent.split('\n').filter(line => line.trim());
-        const isThread = lines.length > 3 || rawContent.includes('🧵') || rawContent.includes('/1');
-        
-        let hook_type = "unknown";
-        const firstLine = lines[0]?.toLowerCase() || "";
-        
-        if (firstLine.includes("you've been lied")) hook_type = "deception_reveal";
-        else if (firstLine.includes("new study") || firstLine.includes("%")) hook_type = "research_stat";
-        else if (firstLine.includes("what if") || firstLine.includes("why")) hook_type = "question_hook";
-        else if (firstLine.includes("everyone says") || firstLine.includes("popular belief")) hook_type = "contrarian";
-        else hook_type = "authority";
+    /**
+     * 🎯 Optimize content for virality and apply style variation
+     */
+    private async optimizeForVirality(content: string, format: ContentFormat): Promise<any> {
+        try {
+            console.log('🔥 Optimizing content for virality...');
 
-        // Predict engagement based on format and hook quality
-        let predicted_engagement = format.engagement_multiplier * 15; // Base 15%
-        
-        // Boost based on hook quality
-        if (hook_type === "research_stat") predicted_engagement *= 1.3;
-        if (hook_type === "contrarian") predicted_engagement *= 1.4;
-        if (hook_type === "deception_reveal") predicted_engagement *= 1.5;
-        
-        // Thread vs single tweet adjustment
-        if (isThread) predicted_engagement *= 1.2;
-        
-        return {
-            content: isThread ? lines : rawContent,
-            hook_type,
-            predicted_engagement: Math.min(predicted_engagement, 45), // Cap at 45%
-            reasoning: `Selected ${format.name} format with ${hook_type} hook for ${isThread ? 'thread' : 'single tweet'} delivery`,
-            content_type: isThread ? 'thread' : 'tweet'
+            // Step 1: Apply style variation
+            const currentHour = new Date().getHours();
+            const styleResult = await styleMixer.mixStyle(content, {
+                maxLength: 270, // Leave room for potential edits
+                timeOfDay: currentHour,
+                topic: format.name
+            });
+
+            let optimizedContent = styleResult.styledContent;
+            console.log(`🎨 Style applied: ${styleResult.styleUsed} (${styleResult.shouldUseStyle ? 'styled' : 'original'})`);
+
+            // Step 2: Apply viral optimization prompts
+            if (Math.random() < 0.3) { // 30% chance for additional optimization
+                optimizedContent = await this.applyViralOptimization(optimizedContent, format);
+            }
+
+            // Step 3: Record format performance
+            await this.updateFormatPerformance(format.name, optimizedContent, styleResult.styleUsed);
+
+            // Step 4: Analyze the optimized content and create result structure
+            const lines = optimizedContent.split('\n').filter(line => line.trim());
+            const isThread = lines.length > 3 || optimizedContent.includes('🧵') || optimizedContent.includes('/1');
+            
+            let hook_type = "unknown";
+            const firstLine = lines[0]?.toLowerCase() || "";
+            
+            if (firstLine.includes("you've been lied")) hook_type = "deception_reveal";
+            else if (firstLine.includes("new study") || firstLine.includes("%")) hook_type = "research_stat";
+            else if (firstLine.includes("what if") || firstLine.includes("why")) hook_type = "question_hook";
+            else if (firstLine.includes("everyone says") || firstLine.includes("popular belief")) hook_type = "contrarian";
+            else if (styleResult.styleUsed.includes('Data-driven')) hook_type = "authority";
+            else if (styleResult.styleUsed.includes('Contrarian')) hook_type = "contrarian";
+            else hook_type = "authority";
+
+            // Predict engagement based on format and style
+            let predicted_engagement = format.engagement_multiplier * 15; // Base 15%
+            
+            // Boost based on hook quality and style
+            if (hook_type === "research_stat") predicted_engagement *= 1.3;
+            if (hook_type === "contrarian") predicted_engagement *= 1.4;
+            if (hook_type === "deception_reveal") predicted_engagement *= 1.5;
+            if (styleResult.shouldUseStyle) predicted_engagement *= 1.1; // Style bonus
+            
+            // Thread vs single tweet adjustment
+            if (isThread) predicted_engagement *= 1.2;
+
+            return {
+                content: isThread ? lines : optimizedContent,
+                hook_type,
+                predicted_engagement: Math.min(predicted_engagement, 45), // Cap at 45%
+                reasoning: `Selected ${format.name} format with ${hook_type} hook${styleResult.shouldUseStyle ? ` and ${styleResult.styleUsed} style` : ''} for ${isThread ? 'thread' : 'single tweet'} delivery`,
+                content_type: isThread ? 'thread' : 'tweet',
+                style_applied: styleResult.styleUsed,
+                style_reasoning: styleResult.reasoning
+            };
+
+        } catch (error) {
+            console.error('❌ Virality optimization failed:', error);
+            // Return basic structure on error
+            return {
+                content: content,
+                hook_type: "unknown",
+                predicted_engagement: 5,
+                reasoning: `Fallback due to error: ${error.message}`,
+                content_type: 'tweet'
+            };
+        }
+    }
+
+    /**
+     * 🚀 Apply additional viral optimization techniques
+     */
+    private async applyViralOptimization(content: string, format: ContentFormat): Promise<string> {
+        try {
+            const viralPrompt = `
+VIRAL OPTIMIZATION: Make this tweet more engaging and shareable.
+
+CURRENT: "${content}"
+FORMAT: ${format.name}
+
+Apply ONE of these viral techniques:
+1. Add a hook that creates curiosity gap
+2. Include a specific number or statistic
+3. Add a surprising twist or contrarian angle
+4. Create urgency or scarcity
+5. Ask an engaging question
+
+Keep under 280 characters. Make it impossible to scroll past.
+
+OPTIMIZED:`;
+
+            const messages = [
+                { role: 'user' as const, content: viralPrompt }
+            ];
+
+            const response = await this.budgetAwareOpenAI.createChatCompletion(messages, {
+                priority: 'important',
+                operationType: 'viral_optimization',
+                model: 'gpt-4o-mini',
+                maxTokens: 100,
+                temperature: 0.7,
+                forTweetGeneration: true
+            });
+
+            if (response?.success && response?.response?.choices?.[0]?.message?.content) {
+                const optimized = response.response.choices[0].message.content.trim();
+                console.log(`🚀 Viral optimization: "${optimized}"`);
+                return optimized;
+            }
+
+            return content;
+        } catch (error) {
+            console.error('❌ Viral optimization failed:', error);
+            return content;
+        }
+    }
+
+    /**
+     * 📊 Update format performance in database
+     */
+    private async updateFormatPerformance(formatName: string, content: string, styleUsed: StyleLabel): Promise<void> {
+        try {
+            if (!secureSupabaseClient.supabase) return;
+
+            // Use database function to update performance
+            const { error } = await secureSupabaseClient.supabase
+                .rpc('update_format_performance', {
+                    p_topic: this.extractTopicFromFormat(formatName),
+                    p_format: formatName,
+                    p_engagement: 0.05 // Default engagement, will be updated with real data
+                });
+
+            if (error) {
+                console.error('❌ Failed to update format performance:', error);
+            } else {
+                console.log(`📊 Updated performance for ${formatName}`);
+            }
+        } catch (error) {
+            console.error('❌ Performance update error:', error);
+        }
+    }
+
+    /**
+     * 🔄 Extract topic from format name
+     */
+    private extractTopicFromFormat(formatName: string): string {
+        const topicMap: { [key: string]: string } = {
+            'Hook-Value-CTA': 'general_health',
+            'Research_Bomb': 'research',
+            'Story_Revelation': 'personal_stories',
+            'Contrarian_Truth': 'myth_busting',
+            'Quick_Insight': 'tips',
+            'Thread_Breakdown': 'education'
         };
+
+        return topicMap[formatName] || 'general_health';
     }
 
     private generateFallbackContent(): GeneratedContent {
