@@ -383,7 +383,7 @@ export class EnhancedBrowserTweetPoster {
 
           case 'wait_modal':
             await this.page!.waitForTimeout(5000);
-            break;
+              break;
 
           case 'type_content':
             const typeResult = await this.findAndTypeContent(strategy, content);

@@ -209,19 +209,33 @@ export class MasterAutonomousController {
    * 🔄 START OPERATIONAL CYCLES
    * Start all autonomous operational cycles with intelligent scheduling
    */
-  private startOperationalCycles(): Promise<void> {
+  private async startOperationalCycles(): Promise<void> {
     console.log('🔄 Starting operational cycles...');
 
-    // 🚨 POSTING CYCLE EMERGENCY DISABLED: Was bypassing quality gates!
-    // this.intervals.push(setInterval(async () => {
+    // 🧠 SMART LEARNING POSTING CYCLE: Real posting with quality gates for learning
+    this.intervals.push(setInterval(async () => {
     //   try {
     //     await this.runPostingCycle();
     //   } catch (error) {
     //     console.error('❌ Posting cycle error:', error);
     //     this.updateComponentStatus('posting_engine', 'error', [error.message]);
     //   }
-    // }, 2 * 60 * 60 * 1000)); // 2 hours
-    console.log('🚫 NUCLEAR: Posting cycle DISABLED - was posting incomplete hooks every 2 hours');
+    }, 4 * 60 * 60 * 1000)); // 4 hours for learning cycle
+    console.log('🧠 SMART LEARNING: Controlled posting for data collection');
+    
+    // Import and use smart learning engine
+    const { SmartLearningPostingEngine } = await import('../utils/smartLearningPostingEngine');
+    const learningEngine = SmartLearningPostingEngine.getInstance();
+    
+    const result = await learningEngine.postWithLearning();
+    
+    if (result.success) {
+      console.log(`✅ LEARNING POST: ${result.tweetId} | Quality: ${result.qualityScore}/100`);
+      this.operationalMetrics.posting.totalPosts++;
+      this.operationalMetrics.posting.lastPostTime = new Date();
+    } else {
+      console.log(`📊 LEARNING SKIP: ${result.error}`);
+    }
 
     // Reply cycle - every 4 hours
     this.intervals.push(setInterval(async () => {
