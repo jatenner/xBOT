@@ -64,7 +64,7 @@ export class SmartLearningPostingEngine {
       const qualityAnalysis = analyzeContentQuality(content);
       console.log(`📊 Quality Score: ${qualityAnalysis.viral_score}/100`);
       
-      if (qualityAnalysis.viral_score < 70) {
+      if (qualityAnalysis.viral_score < 50) {
         console.log('📈 Quality too low for posting - storing for learning');
         await this.storeLearningData(content, qualityAnalysis, false, 'quality_too_low');
         return {
