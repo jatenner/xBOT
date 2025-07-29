@@ -9,7 +9,7 @@
  * - Comprehensive error handling
  */
 
-import { EnhancedSemanticUniqueness } from '../utils/enhancedSemanticUniqueness';
+import { enhancedSemanticUniqueness } from '../utils/enhancedSemanticUniqueness';
 import { trendingTopicsEngine } from '../utils/trendingTopicsEngine';
 import { promptTemplateManager } from '../utils/promptTemplateManager';
 import { enhancedOpenAIClient } from '../utils/enhancedOpenAIClient';
@@ -189,7 +189,10 @@ export class EnhancedDiverseContentAgent {
         }
 
         // Check semantic uniqueness (including core idea analysis)
-        const uniquenessResult = await EnhancedSemanticUniqueness.checkContentUniqueness(candidateContent);
+        const uniquenessResult = await enhancedSemanticUniqueness.checkUniqueness(
+          candidateContent,
+          attempts
+        );
 
         if (!uniquenessResult.success) {
           console.warn(`⚠️ Uniqueness check failed on attempt ${attempts}: ${uniquenessResult.error}`);
