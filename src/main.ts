@@ -27,11 +27,26 @@ async function initializeBot(): Promise<void> {
 
     // Environment validation - DON'T throw errors that kill health server
     console.log('🔧 Validating system configuration...');
-    const envCheck = validateEnvironment();
+    
+    let envCheck;
+    try {
+      envCheck = validateEnvironment();
+    } catch (envError) {
+      console.error('❌ Environment validation failed:', envError);
+      updateBotStatus('environment_validation_error');
+      
+      // Schedule retry instead of throwing
+      setTimeout(() => {
+        console.log('🔄 Retrying bot initialization...');
+        initializeBot().catch(console.error);
+      }, 5 * 60 * 1000); // 5 minutes
+      
+      return; // Exit gracefully without throwing
+    }
     
     if (!envCheck.valid) {
       console.error('❌ Missing required environment variables:');
-      envCheck.missing.forEach(key => console.error(`   - ${key}`));
+      envCheck.missing.forEach((key: string) => console.error(`   - ${key}`));
       console.error('');
       console.error('💡 Please configure these environment variables in Railway:');
       console.error('   1. Go to your Railway project settings');
@@ -46,7 +61,7 @@ async function initializeBot(): Promise<void> {
       // Schedule retry instead of throwing
       setTimeout(() => {
         console.log('🔄 Retrying bot initialization...');
-        initializeBot();
+        initializeBot().catch(console.error);
       }, 5 * 60 * 1000); // 5 minutes
       
       return; // Exit gracefully without throwing
@@ -54,7 +69,7 @@ async function initializeBot(): Promise<void> {
 
     if (envCheck.warnings.length > 0) {
       console.warn('⚠️ Optional environment variables missing:');
-      envCheck.warnings.forEach(key => console.warn(`   - ${key}`));
+      envCheck.warnings.forEach((key: string) => console.warn(`   - ${key}`));
       console.warn('   (System will operate with reduced functionality)');
       console.log('');
     }
@@ -131,9 +146,10 @@ async function initializeBot(): Promise<void> {
     console.error('⚠️ Health server will continue running for Railway health checks');
     console.error('🔄 Bot will attempt to restart in 5 minutes...');
     
+    // Schedule retry without throwing
     setTimeout(() => {
       console.log('🔄 Attempting to restart bot...');
-      initializeBot();
+      initializeBot().catch(console.error);
     }, 5 * 60 * 1000);
   }
 }
@@ -152,18 +168,40 @@ async function main(): Promise<void> {
 
     // STEP 2: Initialize bot (can fail without affecting health server)
     console.log('🤖 Starting bot initialization...');
-    await initializeBot();
+    
+    // Wrap bot initialization in try-catch to prevent it from killing health server
+    try {
+      await initializeBot();
+    } catch (botError) {
+      console.error('❌ Bot initialization failed, but health server continues running:', botError);
+      updateBotStatus('bot_init_failed');
+      
+      // Schedule retry
+      setTimeout(() => {
+        console.log('🔄 Retrying bot initialization...');
+        initializeBot().catch((retryError) => {
+          console.error('❌ Bot retry failed:', retryError);
+          updateBotStatus('bot_retry_failed');
+        });
+      }, 5 * 60 * 1000);
+    }
 
   } catch (error) {
     console.error('❌ Fatal error in main():', error);
-    console.error('⚠️ Health server should still be running for Railway');
+    console.error('⚠️ Attempting to restart health server...');
     updateBotStatus('main_error');
     
-    // Try to restart after delay
-    setTimeout(() => {
-      console.log('🔄 Attempting to restart main process...');
-      main();
-    }, 5 * 60 * 1000);
+    // If health server fails, try to restart it
+    setTimeout(async () => {
+      console.log('🔄 Attempting to restart health server...');
+      try {
+        await startHealthServer();
+        console.log('✅ Health server restarted successfully');
+      } catch (restartError) {
+        console.error('❌ Failed to restart health server:', restartError);
+        process.exit(1); // Exit completely if we can't start health server
+      }
+    }, 5000);
   }
 }
 

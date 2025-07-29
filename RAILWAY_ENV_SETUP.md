@@ -49,6 +49,14 @@ DAILY_BUDGET_LIMIT=7.5
 MAX_DAILY_POSTS=17
 ```
 
+## 🚀 **Quick Setup Commands**
+
+After setting variables:
+
+1. **Redeploy**: Railway will automatically redeploy with new variables
+2. **Monitor**: Watch the deployment logs for successful startup
+3. **Verify**: Check health endpoints once deployed
+
 ## 🔍 **Verification Steps**
 
 After setting variables and deploying:
@@ -62,6 +70,7 @@ After setting variables and deploying:
 - **"service unavailable"** → Missing required environment variables
 - **"environment_error"** → Check `/env` endpoint for missing variables  
 - **Bot not starting** → Verify OpenAI/Twitter API credentials are valid
+- **Health check failing** → Wait 30-60 seconds for initial startup
 
 ## ✅ **Success Indicators**
 
@@ -69,3 +78,21 @@ After setting variables and deploying:
 - `/env` shows `"valid": true`
 - `/status` shows `"status": "running"`
 - Bot logs show successful initialization
+
+## 🔑 **How to Get API Keys**
+
+### OpenAI API Key:
+1. Visit https://platform.openai.com/api-keys
+2. Create new secret key
+3. Copy the key (starts with `sk-`)
+
+### Twitter API Keys:
+1. Visit https://developer.twitter.com/en/portal/dashboard
+2. Create new project/app
+3. Generate API keys and access tokens
+4. Enable OAuth 1.0a
+
+### Supabase Keys:
+1. Visit your Supabase project dashboard
+2. Go to Settings → API
+3. Copy URL and Service Role key
