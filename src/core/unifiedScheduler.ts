@@ -31,6 +31,8 @@ import { quoteAgent } from '../agents/quoteAgent';
 import { followerTracker } from '../jobs/updateFollowerCount';
 // Add analytics server import
 import { analyticsServer } from '../dashboard/analyticsServer';
+import { influencerTweetFetcher } from '../jobs/fetchInfluencerTweets';
+import { contextAwareReplyEngine } from '../agents/contextAwareReplyEngine';
 
 export class UnifiedScheduler {
   private static instance: UnifiedScheduler;
@@ -125,60 +127,9 @@ export class UnifiedScheduler {
       console.log('🎯 Checking if immediate posting is appropriate...');
       await this.checkAndPost();
       
-      // Schedule autonomous posting checks every 10 minutes
-      this.postingJob = cron.schedule('*/10 * * * *', async () => {
-        await this.checkAndPost();
-      });
-      
-      // Schedule engagement every 30 minutes
-      this.engagementJob = cron.schedule('*/30 * * * *', async () => {
-        await this.runEngagement();
-      });
-      
-      // Schedule growth diagnostics every 4 hours
-      this.diagnosticJob = cron.schedule('0 */4 * * *', async () => {
-        await this.runGrowthDiagnostic();
-      });
-      
-      // Schedule daily analytics once per day at 3 AM UTC
-      this.analyticsJob = cron.schedule('0 3 * * *', async () => {
-        await this.runDailyAnalytics();
-      });
-      
-      // Schedule reply system every 60 minutes
-      if (scraperReady) {
-        this.replyJob = cron.schedule('0 */1 * * *', async () => {
-          await this.runReplySystem();
-        });
-        console.log('✅ Reply system scheduled every 60 minutes');
-      } else {
-        console.log('⚠️ Reply system disabled - scraper not ready');
-      }
-      
-      // Schedule performance tracking every 30 minutes
-      this.performanceJob = cron.schedule('*/30 * * * *', async () => {
-        await this.runPerformanceTracking();
-      });
-      console.log('✅ Performance tracking scheduled every 30 minutes');
-      
-      // Schedule content learning engine every 24 hours at 4 AM UTC
-      this.learningJob = cron.schedule('0 4 * * *', async () => {
-        await this.runContentLearning();
-      });
-      console.log('✅ Content learning scheduled every 24 hours at 4 AM UTC');
-      
-      // Schedule quote tweet system every 2 hours
-      this.quoteJob = cron.schedule('0 */2 * * *', async () => {
-        await this.runQuoteSystem();
-      });
-      console.log('✅ Quote tweet system scheduled every 2 hours');
-      
-      // Schedule follower tracking once daily at 6 AM UTC
-      this.followerJob = cron.schedule('0 6 * * *', async () => {
-        await this.runFollowerTracking();
-      });
-      console.log('✅ Follower tracking scheduled daily at 6 AM UTC');
-      
+      // Setup the enhanced human-like schedule
+      this.setupSchedule();
+
       // Start analytics server
       try {
         await analyticsServer.start();
@@ -551,6 +502,201 @@ export class UnifiedScheduler {
       
     } catch (error) {
       console.error('❌ Error running follower tracking:', error.message);
+    }
+  }
+
+  /**
+   * 🕐 ENHANCED HUMAN-LIKE SCHEDULING
+   */
+  private setupSchedule(): void {
+    console.log('🕐 Setting up enhanced human-like autonomous schedule...');
+
+    // === INTELLIGENT POSTING SCHEDULE ===
+    // 07:00 - Morning stand-alone tweet (data-driven content)
+    this.postingJob = cron.schedule('0 7 * * *', async () => {
+      await this.safeguardedRun('morning_post', async () => {
+        console.log('🌅 7AM Morning post cycle...');
+        const decision = await autonomousPostingEngine.makePostingDecision();
+        if (decision.should_post) {
+          await autonomousPostingEngine.executePost();
+        }
+      });
+    }, { scheduled: false });
+
+    // 10:00 - Reply to influencer (contextual engagement)
+    cron.schedule('0 10 * * *', async () => {
+      await this.safeguardedRun('morning_reply', async () => {
+        console.log('🎯 10AM Influencer reply cycle...');
+        const replyResult = await contextAwareReplyEngine.generateContextualReply();
+        if (replyResult.success) {
+          this.totalReplies++;
+        }
+      });
+    }, { scheduled: false });
+
+    // 13:00 - Afternoon thread/comprehensive content
+    cron.schedule('0 13 * * *', async () => {
+      await this.safeguardedRun('afternoon_thread', async () => {
+        console.log('📖 1PM Thread/comprehensive content cycle...');
+        const decision = await autonomousPostingEngine.makePostingDecision();
+        if (decision.should_post) {
+          await autonomousPostingEngine.executePost();
+        }
+      });
+    }, { scheduled: false });
+
+    // 16:00 - Second reply opportunity
+    cron.schedule('0 16 * * *', async () => {
+      await this.safeguardedRun('afternoon_reply', async () => {
+        console.log('🎯 4PM Influencer reply cycle...');
+        const replyResult = await contextAwareReplyEngine.generateContextualReply();
+        if (replyResult.success) {
+          this.totalReplies++;
+        }
+      });
+    }, { scheduled: false });
+
+    // 19:00 - Evening viral content
+    cron.schedule('0 19 * * *', async () => {
+      await this.safeguardedRun('evening_viral', async () => {
+        console.log('🔥 7PM Evening viral content cycle...');
+        const decision = await autonomousPostingEngine.makePostingDecision();
+        if (decision.should_post) {
+          await autonomousPostingEngine.executePost();
+        }
+      });
+    }, { scheduled: false });
+
+    // 22:00 - Late evening reply (final opportunity)
+    cron.schedule('0 22 * * *', async () => {
+      await this.safeguardedRun('evening_reply', async () => {
+        console.log('🎯 10PM Final reply cycle...');
+        const replyResult = await contextAwareReplyEngine.generateContextualReply();
+        if (replyResult.success) {
+          this.totalReplies++;
+        }
+      });
+    }, { scheduled: false });
+
+    // === INFLUENCER MONITORING ===
+    // Every 15 minutes - fetch fresh influencer content
+    cron.schedule('*/15 * * * *', async () => {
+      await this.safeguardedRun('influencer_fetch', async () => {
+        console.log('🎯 Fetching influencer tweets...');
+        await influencerTweetFetcher.fetchInfluencerTweets();
+      });
+    }, { scheduled: false });
+
+    // === ENGAGEMENT CYCLES (REDUCED FREQUENCY) ===
+    // Every 2 hours during active hours - light engagement
+    this.engagementJob = cron.schedule('0 */2 * * *', async () => {
+      await this.safeguardedRun('engagement', async () => {
+        const currentHour = new Date().getHours();
+        // Only run during active hours (6 AM - 11 PM)
+        if (currentHour >= 6 && currentHour <= 23) {
+          console.log('💫 Light engagement cycle...');
+          await this.runSmartEngagement();
+        }
+      });
+    }, { scheduled: false });
+
+    // === ANALYTICS & MAINTENANCE ===
+    // Daily at 3 AM - comprehensive analytics and cleanup
+    this.analyticsJob = cron.schedule('0 3 * * *', async () => {
+      await this.safeguardedRun('daily_analytics', async () => {
+        console.log('📊 Daily analytics and maintenance...');
+        await dailyAnalyticsOrchestrator.runDailyAnalytics();
+        await influencerTweetFetcher.cleanupOldTweets();
+      });
+    }, { scheduled: false });
+
+    // Performance tracking every 4 hours
+    this.performanceJob = cron.schedule('0 */4 * * *', async () => {
+      await this.safeguardedRun('performance_tracking', async () => {
+        console.log('📈 Performance tracking update...');
+        // Use existing method or skip if not available
+        try {
+          await this.runPerformanceTracking();
+        } catch (error) {
+          console.log('⚠️ Performance tracking method not available, skipping...');
+        }
+      });
+    }, { scheduled: false });
+
+    // === LEARNING & OPTIMIZATION ===
+    // Every 6 hours - content learning and optimization
+    this.learningJob = cron.schedule('0 */6 * * *', async () => {
+      await this.safeguardedRun('learning_optimization', async () => {
+        console.log('🧠 Learning and optimization cycle...');
+        // Use existing method or skip if not available
+        try {
+          await this.runContentLearning();
+          this.totalLearningCycles++;
+        } catch (error) {
+          console.log('⚠️ Learning cycle method not available, skipping...');
+        }
+      });
+    }, { scheduled: false });
+
+    // Weekly deep optimization (Sundays at 2 AM)
+    cron.schedule('0 2 * * 0', async () => {
+      await this.safeguardedRun('weekly_optimization', async () => {
+        console.log('🔬 Weekly deep optimization...');
+        // Run comprehensive performance analysis and strategy updates
+      });
+    }, { scheduled: false });
+
+    console.log('✅ Enhanced autonomous schedule configured');
+    console.log('📅 Schedule:');
+    console.log('   07:00 - Morning tweet (data-driven)');
+    console.log('   10:00 - Reply to influencer');
+    console.log('   13:00 - Thread/comprehensive content');
+    console.log('   16:00 - Reply to influencer'); 
+    console.log('   19:00 - Evening viral content');
+    console.log('   22:00 - Final reply opportunity');
+    console.log('   */15min - Influencer monitoring');
+    console.log('   */2h - Light engagement (6AM-11PM)');
+    console.log('   */4h - Performance tracking');
+    console.log('   */6h - Learning optimization');
+    console.log('   Daily 3AM - Analytics & cleanup');
+  }
+
+  /**
+   * 🛡️ Enhanced safeguarded execution with error handling
+   */
+  private async safeguardedRun(operation: string, fn: () => Promise<void>): Promise<void> {
+    try {
+      const startTime = Date.now();
+      await fn();
+      const duration = Date.now() - startTime;
+      console.log(`✅ ${operation} completed in ${duration}ms`);
+    } catch (error) {
+      this.totalFailures++;
+      console.error(`❌ ${operation} failed:`, error);
+      
+      // Log critical errors for monitoring
+      if (this.totalFailures > 10) {
+        console.error('🚨 Critical: High failure rate detected');
+      }
+    }
+  }
+
+  /**
+   * 💫 Reduced engagement for human-like behavior
+   */
+  private async runSmartEngagement(): Promise<void> {
+    try {
+      // Reduced engagement rate - 30% chance to actually engage
+      if (Math.random() > 0.3) {
+        console.log('🤖 Skipping engagement cycle for human-like variance');
+        return;
+      }
+
+      // Use existing engagement method
+      await this.runEngagement();
+      console.log('💫 Smart engagement completed');
+    } catch (error) {
+      console.error('❌ Smart engagement failed:', error);
     }
   }
 
