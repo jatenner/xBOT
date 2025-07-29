@@ -1,0 +1,9 @@
+Dockerfile*
+.dockerignore*
+render.yaml
+browsers/
+.env.local
+.env.example
+*.backup
+node_modules/
+.git/

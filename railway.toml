@@ -1,10 +1,13 @@
 [build]
-builder = "dockerfile"
+builder = "nixpacks"
 
 [deploy]
+startCommand = "node dist/main.js"
 healthcheckPath = "/health"
-healthcheckTimeout = 30
+healthcheckTimeout = 300
 restartPolicyType = "always"
+replicas = 1
 
 [env]
-NODE_ENV = "production" 
+NODE_ENV = "production"
+PLAYWRIGHT_BROWSERS_PATH = "0"

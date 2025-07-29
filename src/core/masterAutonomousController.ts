@@ -389,11 +389,12 @@ export class MasterAutonomousController {
    */
   private startDashboard(): void {
     const PORT = parseInt(process.env.PORT || '3002', 10);
-    const HOST = '0.0.0.0'; // Listen on all interfaces for Render
+    const HOST = '0.0.0.0'; // Listen on all interfaces for Railway
     
     this.server = this.app.listen(PORT, HOST, () => {
-      console.log(`🌐 Dashboard server running on http://${HOST}:${PORT}`);
-      console.log(`🌍 External access: Use your Render app URL or public IP:${PORT}`);
+      console.log(`🚄 Railway Dashboard server running on http://${HOST}:${PORT}`);
+      console.log(`🌍 External access: Use your Railway app URL:${PORT}`);
+      console.log(`📊 Dashboard available at: https://your-railway-app.up.railway.app`);
     });
   }
 
@@ -404,6 +405,17 @@ export class MasterAutonomousController {
     this.app = express();
     this.app.use(express.json());
     this.app.use(express.static('public'));
+
+    // Health check endpoint for Railway
+    this.app.get('/health', (req, res) => {
+      res.status(200).json({
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+        version: '1.0.0',
+        bot_status: this.isRunning ? 'active' : 'stopped'
+      });
+    });
 
     // Dashboard endpoint
     this.app.get('/', (req, res) => {
