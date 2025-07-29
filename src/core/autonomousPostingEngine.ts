@@ -94,51 +94,35 @@ export class AutonomousPostingEngine {
 
       console.log(`⏰ Minutes since last post: ${minutesSinceLastPost}`);
 
-      // Enhanced posting strategy with reduced intervals
-      const currentHour = now.getHours();
-      
-      // Active hours: 6 AM to 11 PM
-      const isActiveHours = currentHour >= 6 && currentHour <= 23;
-      
-      if (!isActiveHours) {
-        return {
-          should_post: false,
-          reason: 'Outside active hours (6 AM - 11 PM)',
-          confidence: 0.9,
-          strategy: 'conservative',
-          wait_minutes: Math.max(360 - (currentHour * 60), 30) // Wait until 6 AM
-        };
-      }
-
-      // Reduced posting intervals for more frequent posts
+      // Realistic posting intervals for human-like behavior (3-8 posts/day)
       let requiredInterval: number;
       let strategy: 'aggressive' | 'balanced' | 'conservative';
       let confidence: number;
 
       if (this.consecutiveFailures >= 2) {
         // Conservative mode after failures
-        requiredInterval = 120; // 2 hours
+        requiredInterval = 360; // 6 hours
         strategy = 'conservative';
         confidence = 0.6;
-      } else if (minutesSinceLastPost >= 180) {
-        // Aggressive mode for catch-up
-        requiredInterval = 45; // 45 minutes
+      } else if (minutesSinceLastPost >= 480) {
+        // Aggressive mode for catch-up (8+ hours)
+        requiredInterval = 180; // 3 hours
         strategy = 'aggressive';
         confidence = 0.95;
-      } else if (minutesSinceLastPost >= 90) {
-        // Balanced mode
-        requiredInterval = 60; // 1 hour
+      } else if (minutesSinceLastPost >= 240) {
+        // Balanced mode (4+ hours)
+        requiredInterval = 240; // 4 hours
         strategy = 'balanced';
         confidence = 0.85;
       } else {
-        // Too soon
-        const waitTime = requiredInterval - minutesSinceLastPost;
+        // Too soon - maintain human-like spacing
+        const waitTime = 180 - minutesSinceLastPost; // Minimum 3 hours between posts
         return {
           should_post: false,
-          reason: `Too soon since last post (${minutesSinceLastPost}min ago)`,
+          reason: `Maintaining human-like posting frequency (${minutesSinceLastPost}min ago)`,
           confidence: 0.8,
           strategy: 'balanced',
-          wait_minutes: Math.max(waitTime, 15)
+          wait_minutes: Math.max(waitTime, 30)
         };
       }
 
@@ -392,7 +376,7 @@ export class AutonomousPostingEngine {
   }
 
   /**
-   * 🎨 GENERATE CONTENT WITH ROBUST TEMPLATE SELECTION
+   * 🎨 GENERATE CONTENT WITH BANDIT-DRIVEN INTELLIGENT SELECTION
    */
   private async generateContent(): Promise<{
     success: boolean;
@@ -401,17 +385,41 @@ export class AutonomousPostingEngine {
     error?: string;
   }> {
     try {
-      console.log('🧠 Generating content with intelligent learning system...');
+      console.log('🧠 Generating content with bandit-driven learning system...');
 
-      // Step 1: Use the elite Twitter content strategist for viral content
+      // Step 1: Use bandit algorithm to select optimal format
+      const { banditFormatSelector } = await import('../intelligence/banditFormatSelector');
+      
+      const banditSelection = await banditFormatSelector.selectFormat({
+        exploration_rate: 0.15, // 15% exploration, 85% exploitation
+        exclude_recent: true,    // Avoid recently used formats
+        min_sample_size: 2       // Require at least 2 posts for confidence
+      });
+
+      console.log(`🎰 Bandit selected: ${banditSelection.format_type}/${banditSelection.hook_type}/${banditSelection.content_category}`);
+      console.log(`📊 Selection confidence: ${(banditSelection.confidence * 100).toFixed(1)}%`);
+      console.log(`💡 Reasoning: ${banditSelection.reasoning}`);
+
+      // Step 2: Get optimal timing information
+      const now = new Date();
+      const timingInfo = {
+        hour_of_day: now.getHours(),
+        day_of_week: now.getDay(),
+        posted_hour: now.getHours(),
+        posted_day_of_week: now.getDay()
+      };
+
+      // Step 3: Use the elite Twitter content strategist with bandit-selected format
       const { EliteTwitterContentStrategist } = await import('../agents/eliteTwitterContentStrategist');
       const eliteStrategist = EliteTwitterContentStrategist.getInstance();
       
       const contentRequest = {
-        topic: this.getOptimalTopic(),
-        format_preference: this.getOptimalFormat(),
+        topic: banditSelection.content_category || this.getOptimalTopic(),
+        format_preference: this.mapFormatToPreference(banditSelection.format_type),
         tone: this.getOptimalTone() as 'authoritative' | 'conversational' | 'provocative',
-        target_engagement: 25 // Target 25% engagement rate
+        target_engagement: 25, // Target 25% engagement rate
+        format_type: banditSelection.format_type,
+        hook_type: banditSelection.hook_type
       };
 
       console.log(`🎯 Elite content request: ${JSON.stringify(contentRequest)}`);
@@ -436,18 +444,22 @@ export class AutonomousPostingEngine {
         success: true,
         content: contentString,
         metadata: {
-          generation_method: 'elite_viral_strategist',
+          generation_method: 'bandit_elite_strategist',
+          format_type: banditSelection.format_type,
+          hook_type: banditSelection.hook_type,
+          content_category: banditSelection.content_category,
           format_used: eliteResult.format_used,
           predicted_engagement: eliteResult.predicted_engagement,
-          hook_type: eliteResult.hook_type,
           content_type: eliteResult.content_type,
           reasoning: eliteResult.reasoning,
-          content_category: 'health_science'
+          bandit_confidence: banditSelection.confidence,
+          bandit_reasoning: banditSelection.reasoning,
+          timing_info: timingInfo
         }
       };
 
     } catch (error) {
-      console.error('❌ Intelligent content generation failed:', error);
+      console.error('❌ Bandit-driven content generation failed:', error);
       return await this.fallbackContentGeneration();
     }
   }
@@ -694,40 +706,110 @@ export class AutonomousPostingEngine {
     confirmed: boolean
   ): Promise<{ success: boolean; error?: string }> {
     try {
+      console.log(`💾 Storing tweet in learning database: ${tweetId}`);
+
+      const now = new Date();
       const tweetData = {
-        id: tweetId,
-        content: content,
-        platform: 'twitter',
-        posted_at: new Date().toISOString(),
-        agent_type: 'autonomous_enhanced',
-        metadata: metadata,
-        was_posted: metadata.was_posted || false, // Safety flag
-        confirmed: confirmed, // Confirmation flag
-        performance_log: {
-          likes: 0,
-          retweets: 0,
-          replies: 0,
-          impressions: 0,
-          last_updated: new Date().toISOString()
-        },
-        created_at: new Date().toISOString()
+        tweet_id: tweetId,
+        content,
+        quality_score: metadata.predicted_engagement || 75,
+        quality_issues: [],
+        audience_growth_potential: metadata.predicted_engagement || 75,
+        was_posted: confirmed,
+        post_reason: `Auto-posted by ${metadata.generation_method || 'system'}`,
+        created_at: now.toISOString(),
+        content_length: content.length,
+        has_hook: this.hasHook(content),
+        has_call_to_action: this.hasCallToAction(content),
+        posting_hour: now.getHours(),
+        posting_day_of_week: now.getDay(),
+        format_type: metadata.format_type || 'unknown',
+        hook_type: metadata.hook_type || 'unknown',
+        content_category: metadata.content_category || 'general',
+        bandit_confidence: metadata.bandit_confidence || 0.5,
+        predicted_engagement: metadata.predicted_engagement || 0
       };
 
-      const { error } = await supabaseClient.supabase
-        .from('tweets')
-        .upsert(tweetData, { onConflict: 'id' });
+      // Store in learning_posts table
+      const { error: learningError } = await supabaseClient.supabase
+        .from('learning_posts')
+        .insert(tweetData);
 
-      if (error) {
-        console.error('❌ Database storage failed:', error);
-        return { success: false, error: error.message };
+      if (learningError) {
+        console.error('❌ Error storing in learning_posts:', learningError);
+      } else {
+        console.log('✅ Stored in learning_posts table');
       }
 
-      console.log('✅ Tweet stored in database with safety flags');
+      // Also store in main tweets table for backward compatibility
+      const { error: tweetsError } = await supabaseClient.supabase
+        .from('tweets')
+        .insert({
+          id: tweetId,
+          content,
+          posted: confirmed,
+          created_at: now.toISOString(),
+          tweet_data: metadata
+        });
+
+      if (tweetsError) {
+        console.warn('⚠️ Could not store in tweets table:', tweetsError);
+      }
+
+      // Initialize format stats if this is a new format combination
+      if (metadata.format_type && metadata.hook_type && metadata.content_category) {
+        await this.initializeFormatStats(
+          metadata.format_type,
+          metadata.hook_type,
+          metadata.content_category
+        );
+      }
+
       return { success: true };
 
     } catch (error) {
-      console.error('❌ Database storage error:', error);
+      console.error('❌ Database storage failed:', error);
       return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * 🆕 INITIALIZE FORMAT STATS FOR NEW COMBINATIONS
+   */
+  private async initializeFormatStats(formatType: string, hookType: string, contentCategory: string): Promise<void> {
+    try {
+      // Check if stats already exist
+      const { data: existingStats } = await supabaseClient.supabase
+        .from('format_stats')
+        .select('id')
+        .eq('format_type', formatType)
+        .eq('hook_type', hookType)
+        .eq('content_category', contentCategory)
+        .single();
+
+      if (!existingStats) {
+        // Initialize new format stats entry
+        await supabaseClient.supabase
+          .from('format_stats')
+          .insert({
+            format_type: formatType,
+            hook_type: hookType,
+            content_category: contentCategory,
+            total_posts: 0,
+            avg_likes: 0,
+            avg_retweets: 0,
+            avg_engagement_rate: 0,
+            total_reward: 0,
+            avg_reward: 0,
+            alpha: 1, // Beta distribution priors
+            beta: 1,
+            last_updated: new Date().toISOString()
+          });
+
+        console.log(`🆕 Initialized format stats: ${formatType}/${hookType}/${contentCategory}`);
+      }
+    } catch (error) {
+      console.warn('⚠️ Could not initialize format stats:', error);
     }
   }
 
@@ -855,6 +937,64 @@ export class AutonomousPostingEngine {
         consecutive_failures: this.consecutiveFailures
       };
     }
+  }
+
+  /**
+   * 🗺️ MAP BANDIT FORMAT TO PREFERENCE
+   */
+  private mapFormatToPreference(formatType: string): 'short' | 'thread' | 'auto' {
+    const formatMap = {
+      'data_insight': 'short',
+      'story_format': 'thread',
+      'question_format': 'short',
+      'myth_buster': 'short',
+      'personal_story': 'thread',
+      'controversial_take': 'short',
+      'how_to_guide': 'thread',
+      'scientific_breakdown': 'thread'
+    };
+    
+    return formatMap[formatType] || 'auto';
+  }
+
+  /**
+   * 🔍 Check if content contains a hook (e.g., "here's how to", "here are", "the secret to")
+   */
+  private hasHook(content: string): boolean {
+    const hookPatterns = [
+      /here's how to .+(?:in \d+ minutes?)?:?\s*$/i,
+      /here are \d+ ways to .+:?\s*$/i,
+      /the secret to .+ is:?\s*$/i,
+      /\d+ tips for .+:?\s*$/i,
+      /want to know how to .+\?\s*$/i,
+      /i'll show you how to .+:?\s*$/i,
+      /learn how to .+ in .+:?\s*$/i,
+      /discover the .+ that .+:?\s*$/i,
+      /here's what i found:?\s*$/i,
+      /this will change everything:?\s*$/i
+    ];
+
+    return hookPatterns.some(pattern => pattern.test(content.trim()));
+  }
+
+  /**
+   * 🔍 Check if content contains a call-to-action (e.g., "click here", "learn more", "subscribe")
+   */
+  private hasCallToAction(content: string): boolean {
+    const ctaPatterns = [
+      /click here/i,
+      /learn more/i,
+      /subscribe/i,
+      /follow/i,
+      /join/i,
+      /register/i,
+      /download/i,
+      /get started/i,
+      /start now/i,
+      /begin/i
+    ];
+
+    return ctaPatterns.some(pattern => pattern.test(content.trim()));
   }
 }
 

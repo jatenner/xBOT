@@ -79,7 +79,7 @@ export class ActiveTwitterBrowser {
    */
   private async initializeBrowser(): Promise<void> {
     try {
-      this.browser = await railwayPlaywright.getBrowser();
+      this.browser = await railwayPlaywright.performBrowserAction(async (page) => page.context().browser(), null);
       
       const context = await this.browser.newContext({
         userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',

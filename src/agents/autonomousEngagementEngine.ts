@@ -187,9 +187,9 @@ export class AutonomousEngagementEngine {
           if (action.type === 'like') {
             console.log(`👍 Liking tweet from @${action.targetUsername}`);
             // Real like action would go here
-          } else if (action.type === 'reply') {
-            console.log(`💬 Replying to @${action.targetUsername}`);
-            // Real reply action would go here
+          } else if (action.type === 'follow') {
+            console.log(`➕ Following @${action.targetUsername}`);
+            // Real follow action would go here
           }
           
           console.log('✅ Real engagement action completed');
