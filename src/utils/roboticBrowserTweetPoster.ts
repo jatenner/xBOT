@@ -73,7 +73,7 @@ export class RoboticBrowserTweetPoster {
                 '[data-testid="tweetButton"]',
                 'button[role="button"]:has-text("Post")',
                 'button[role="button"]:has-text("Tweet")',
-                'div[role="button"]:has-text("Post")'
+                '[data-testid="tweetButton"]'
             ],
             description: 'Post/Tweet button'
         },
@@ -403,7 +403,7 @@ export class RoboticBrowserTweetPoster {
             await this.page!.waitForFunction(
                 () => window.location.href.includes('/status/') || 
                       window.location.pathname === '/home',
-                { timeout: 10000 }
+                { timeout: 30000 }
             );
             console.log('✅ URL change confirmation detected');
             return await this.extractTweetId();
@@ -415,7 +415,7 @@ export class RoboticBrowserTweetPoster {
         try {
             await this.page!.waitForSelector(this.SELECTORS.tweetTextArea.primary, { 
                 state: 'detached', 
-                timeout: 8000 
+                timeout: 30000 
             });
             console.log('✅ Compose area disappearance confirmed');
             return await this.extractTweetId();
@@ -432,7 +432,7 @@ export class RoboticBrowserTweetPoster {
     private async findElementWithStrategy(strategy: SelectorStrategy): Promise<ElementHandle | null> {
         // Try primary selector first
         try {
-            const element = await this.page!.waitForSelector(strategy.primary, { timeout: 5000 });
+            const element = await this.page!.waitForSelector(strategy.primary, { timeout: 30000 });
             if (element) {
                 console.log(`✅ Found element using primary selector: ${strategy.description}`);
                 return element;
@@ -444,7 +444,7 @@ export class RoboticBrowserTweetPoster {
         // Try fallback selectors
         for (let i = 0; i < strategy.fallbacks.length; i++) {
             try {
-                const element = await this.page!.waitForSelector(strategy.fallbacks[i], { timeout: 3000 });
+                const element = await this.page!.waitForSelector(strategy.fallbacks[i], { timeout: 30000 });
                 if (element) {
                     console.log(`✅ Found element using fallback ${i + 1}: ${strategy.description}`);
                     return element;
@@ -464,8 +464,8 @@ export class RoboticBrowserTweetPoster {
         for (let attempt = 1; attempt <= 3; attempt++) {
             try {
                 // Ensure element is visible and stable
-                await element.waitForElementState('visible', { timeout: 5000 });
-                await element.waitForElementState('stable', { timeout: 3000 });
+                await element.waitForElementState('visible', { timeout: 30000 });
+                await element.waitForElementState('stable', { timeout: 30000 });
                 
                 // Try different click methods
                 if (attempt === 1) {
@@ -519,7 +519,7 @@ export class RoboticBrowserTweetPoster {
             // Check if we're on X.com
             const currentUrl = this.page!.url();
             if (!currentUrl.includes('x.com') && !currentUrl.includes('twitter.com')) {
-                await this.page!.goto('https://x.com', { waitUntil: 'domcontentloaded', timeout: 15000 });
+                await this.page!.goto('https://x.com', { waitUntil: 'domcontentloaded', timeout: 30000 });
             }
 
             // Look for login indicators
@@ -546,7 +546,7 @@ export class RoboticBrowserTweetPoster {
         try {
             console.log('🔄 Attempting session recovery...');
             
-            await this.page!.goto('https://x.com', { waitUntil: 'domcontentloaded', timeout: 20000 });
+            await this.page!.goto('https://x.com', { waitUntil: 'domcontentloaded', timeout: 30000 });
             await this.sleep(3000);
             
             return await this.verifySessionHealth();
@@ -723,7 +723,7 @@ export class RoboticBrowserTweetPoster {
         try {
             console.log('🔄 Recovering page state...');
             
-            await this.page!.reload({ waitUntil: 'domcontentloaded', timeout: 15000 });
+            await this.page!.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
             await this.sleep(3000);
             
             console.log('✅ Page recovery completed');
