@@ -11,3 +11,5 @@ replicas = 1
 [env]
 NODE_ENV = "production"
 PLAYWRIGHT_BROWSERS_PATH = "0"
+NPM_CONFIG_FUND = "false"
+NPM_CONFIG_AUDIT = "false"
