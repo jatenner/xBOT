@@ -437,28 +437,14 @@ Maximum ${request.maxLength || 200} characters.`;
     tweetId?: string;
     error?: string;
   }> {
-    try {
-      // Use browser poster to navigate to tweet and reply
-      const result = await browserTweetPoster.postTweet(content);
-      
-      if (result.success) {
-        return {
-          success: true,
-          tweetId: result.tweet_id
-        };
-      } else {
-        return {
-          success: false,
-          error: result.error || 'Browser posting failed'
-        };
-      }
-    } catch (error) {
-      console.error('❌ Reply posting failed:', error);
-      return {
-        success: false,
-        error: error.message
-      };
-    }
+    // 🚨 NUCLEAR DISABLED: This method was posting fake replies to real Twitter
+    console.log('🚫 NUCLEAR: postReply method completely disabled');
+    console.log(`⚠️ Would have posted: "${content.substring(0, 50)}..."`);
+    
+    return {
+      success: false,
+      error: 'NUCLEAR EMERGENCY: Reply posting disabled - was posting fake content to real Twitter'
+    };
   }
 
   /**

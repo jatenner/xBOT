@@ -15,6 +15,7 @@ import { emergencyBudgetLockdown } from '../utils/emergencyBudgetLockdown';
 import { contentFactChecker } from '../utils/contentFactChecker';
 import { isCleanStandaloneContent } from '../config/cleanPostingConfig';
 import { isEmergencyBlockedContent } from '../config/emergencyContentValidation';
+import { isNuclearBlockedContent } from '../config/nuclearContentValidation';
 
 interface PostingDecision {
   should_post: boolean;
@@ -578,6 +579,17 @@ export class AutonomousPostingEngine {
         return {
           success: false,
           error: 'Content blocked by emergency validation - fake or incomplete content detected',
+          was_posted: false,
+          confirmed: false
+        };
+      }
+
+      // Step 1.7: NUCLEAR content validation (absolute last resort)
+      if (isNuclearBlockedContent(content)) {
+        console.error('🚨 NUCLEAR BLOCK: Content matches nuclear blocked patterns');
+        return {
+          success: false,
+          error: 'Content blocked by NUCLEAR validation - absolutely forbidden content detected',
           was_posted: false,
           confirmed: false
         };
