@@ -42,6 +42,18 @@ function startHealthServer(): Promise<void> {
       });
     });
 
+    // Environment check endpoint for debugging Railway deployment
+    app.get('/env', (_req, res) => {
+      const envCheck = validateEnvironment();
+      res.json({
+        valid: envCheck.valid,
+        missing_required: envCheck.missing,
+        missing_optional: envCheck.warnings,
+        status: botStatus,
+        message: envCheck.valid ? 'Environment configured correctly' : 'Missing required environment variables'
+      });
+    });
+
     // Catch-all error handler
     app.use((error: any, _req: any, res: any, _next: any) => {
       console.error('❌ Express error:', error);
@@ -80,7 +92,7 @@ async function initializeBot(): Promise<void> {
 
     botStatus = 'validating_environment';
 
-    // Environment validation
+    // Environment validation - DON'T throw errors that kill health server
     console.log('🔧 Validating system configuration...');
     const envCheck = validateEnvironment();
     
@@ -88,9 +100,23 @@ async function initializeBot(): Promise<void> {
       console.error('❌ Missing required environment variables:');
       envCheck.missing.forEach(key => console.error(`   - ${key}`));
       console.error('');
-      console.error('💡 Please ensure all required API keys and credentials are set in your .env file');
+      console.error('💡 Please configure these environment variables in Railway:');
+      console.error('   1. Go to your Railway project settings');
+      console.error('   2. Navigate to Variables tab');
+      console.error('   3. Add the missing environment variables');
+      console.error('   4. Redeploy the service');
+      console.error('');
+      console.error('🏥 Health server will continue running for Railway health checks');
+      console.error('🔄 Bot will retry initialization every 5 minutes until env vars are set');
       botStatus = 'environment_error';
-      throw new Error('Missing required environment variables');
+      
+      // Schedule retry instead of throwing
+      setTimeout(() => {
+        console.log('🔄 Retrying bot initialization...');
+        initializeBot();
+      }, 5 * 60 * 1000); // 5 minutes
+      
+      return; // Exit gracefully without throwing
     }
 
     if (envCheck.warnings.length > 0) {
