@@ -14,6 +14,7 @@ import { supabaseClient } from '../utils/supabaseClient';
 import { emergencyBudgetLockdown } from '../utils/emergencyBudgetLockdown';
 import { contentFactChecker } from '../utils/contentFactChecker';
 import { isCleanStandaloneContent } from '../config/cleanPostingConfig';
+import { isEmergencyBlockedContent } from '../config/emergencyContentValidation';
 
 interface PostingDecision {
   should_post: boolean;
@@ -566,6 +567,17 @@ export class AutonomousPostingEngine {
         return {
           success: false,
           error: 'Content is incomplete hook without delivering value',
+          was_posted: false,
+          confirmed: false
+        };
+      }
+
+      // Step 1.6: Emergency content validation (nuclear safety)
+      if (isEmergencyBlockedContent(content)) {
+        console.error('🚨 EMERGENCY BLOCK: Content matches emergency blocked patterns');
+        return {
+          success: false,
+          error: 'Content blocked by emergency validation - fake or incomplete content detected',
           was_posted: false,
           confirmed: false
         };
