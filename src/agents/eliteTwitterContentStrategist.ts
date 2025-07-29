@@ -233,41 +233,54 @@ CONTEXT:
 - Topic: ${topic}
 - Target: Health-conscious, educated audience seeking actionable insights
 
-REQUIREMENTS:
-1. Create content that will genuinely go viral (25%+ engagement rate)
-2. Use a STRONG hook that stops scrolling immediately
-3. Provide genuine value - insights, data, or surprising revelations
-4. Be specific and credible - no vague health advice
-5. Choose between single tweet or thread based on what performs better
-6. Use proven psychological triggers: curiosity gaps, authority, social proof
-7. Make it shareable - people should want to save/share this
+CRITICAL REQUIREMENTS:
+1. NEVER create incomplete hook-only content like "Here's how to..." without the actual information
+2. ALWAYS provide complete, actionable value in your response
+3. If you use a hook, immediately follow with the actual content/tips/insights
+4. Every tweet must be self-contained and valuable on its own
+5. No cliffhangers, no "here's how..." without the how
+6. Include specific, actionable advice that people can use immediately
 
-EXAMPLES OF VIRAL HOOKS:
-- "You've been lied to about [topic]..."
-- "New study: [shocking statistic]..."
-- "I analyzed 1000+ [studies/cases]. Here's what I found:"
-- "Why [popular belief] is completely wrong..."
-- "The $X billion industry doesn't want you to know..."
+CONTENT STRUCTURE OPTIONS:
+A) COMPLETE SINGLE TWEET: Hook + Value + CTA (under 280 chars)
+   Example: "Sleep researchers found that 15-20°C room temperature increases deep sleep by 23%. Your bedroom is probably too warm. Try this: set thermostat to 18°C, use breathable sheets, keep feet uncovered. Track your sleep quality for a week. What temperature works best for you?"
 
-FORMAT GUIDELINES:
-- Single Tweet: 1 powerful insight, 240 chars max, complete thought
-- Thread: Hook tweet + 3-7 follow-ups with numbered insights
-- Use line breaks for readability
-- Bold claims backed by logic/data
-- End with engagement driver (question, call to save, etc.)
+B) VALUE THREAD: Hook + 3-5 specific, actionable tips
+   Example: 
+   Tweet 1: "5 evidence-based ways to increase energy without caffeine (from 200+ studies):"
+   Tweet 2: "1/ Cold exposure: 2-3 min cold shower increases norepinephrine by 200%, lasting 3+ hours"
+   Tweet 3: "2/ Protein timing: 25g within 1 hour of waking prevents afternoon crashes"
+   [Continue with specific tips...]
 
-Generate content that would make someone stop scrolling, read carefully, and immediately share.`;
+FORBIDDEN CONTENT:
+❌ "Here's how to optimize X in 5 minutes:" (without the how)
+❌ "The secret to Y that doctors don't want you to know:" (without the secret)
+❌ "I discovered the key to Z:" (without revealing the key)
+❌ Any hook without immediate value delivery
+
+REQUIRED ELEMENTS:
+✅ Specific data/numbers when possible
+✅ Actionable steps people can implement today
+✅ Complete information in the tweet/thread
+✅ Clear value proposition from the first tweet
+✅ Engaging but not clickbait-y tone
+
+Generate content that immediately provides value, not just promises it.`;
 
         const userPrompt = `Create viral ${format.name} content about "${topic}". 
 
-Make it:
-- Immediately attention-grabbing
-- Genuinely valuable/surprising  
-- Shareable and memorable
-- Appropriate for health/wellness audience
-- Optimized for maximum engagement
+CRITICAL: Provide COMPLETE, actionable information. Do NOT create incomplete hooks like "Here's how to..." without the actual how.
 
-Choose single tweet vs thread based on what would perform better for this specific insight.`;
+Requirements:
+- Include specific tips, numbers, or insights people can use immediately
+- If single tweet: Hook + complete value + call to action (under 280 chars)  
+- If thread: Hook + 3-5 numbered actionable tips with specific details
+- No cliffhangers or incomplete content
+- Make it immediately valuable to anyone reading
+
+Example quality: "New study: Taking magnesium glycinate 400mg 2 hours before bed increased deep sleep by 37% in 8 weeks. Unlike melatonin, it doesn't cause dependence. Best brands: Natural Calm, Doctor's Best. Have you tried magnesium for sleep?"
+
+Deliver complete value, not just promise it.`;
 
         const response = await this.budgetAwareOpenAI.createChatCompletion([
             { role: 'system', content: systemPrompt },
