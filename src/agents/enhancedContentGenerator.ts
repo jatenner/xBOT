@@ -333,16 +333,19 @@ export class EnhancedContentGenerator {
       
       console.log(`🤖 Using ${modelSelection.model} for content generation`);
       
-      // TODO: Implement actual OpenAI call here
+      // ✅ ACTUAL OPENAI IMPLEMENTATION
+      const openaiClient = new (await import('../utils/openaiClient')).OpenAIClient();
+      
+      const completion = await openaiClient.generateCompletion(prompt, {
+        maxTokens: format.type === 'short_tweet' ? 100 : 300,
+        temperature: 0.8,
+        model: modelSelection.model
+      });
+      
+      return completion || this.generateFallbackContent().content;
       // For now, return mock content based on format
       
-      if (format.type === 'short_tweet') {
-        return this.generateMockShortTweet(style, topicContext);
-      } else if (format.type === 'medium_thread') {
-        return this.generateMockMediumThread(style, topicContext, format.callToAction!);
-      } else {
-        return this.generateMockFullThread(style, topicContext, format.callToAction!);
-      }
+// Mock content replaced with actual OpenAI generation above
 
     } catch (error) {
       console.error('❌ Content generation failed:', error);

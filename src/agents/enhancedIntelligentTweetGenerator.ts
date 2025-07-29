@@ -80,7 +80,7 @@ export class EnhancedIntelligentTweetGenerator {
     private CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
 
     private constructor() {
-        this.budgetAwareOpenAI = BudgetAwareOpenAI.getInstance();
+        this.budgetAwareOpenAI = new BudgetAwareOpenAI(process.env.OPENAI_API_KEY!);
     }
 
     public static getInstance(): EnhancedIntelligentTweetGenerator {
@@ -355,28 +355,31 @@ export class EnhancedIntelligentTweetGenerator {
             throw new Error('No active system prompt available');
         }
 
-        const response = await this.budgetAwareOpenAI.createCompletion({
+        const messages = [
+            {
+                role: 'system' as const,
+                content: this.learningData.activePrompt.system_prompt
+            },
+            {
+                role: 'user' as const, 
+                content: prompt
+            }
+        ];
+
+        const response = await this.budgetAwareOpenAI.createChatCompletion(messages, {
+            priority: 'important',
+            operationType: 'intelligent_tweet_generation',
             model: 'gpt-4o-mini',
-            messages: [
-                {
-                    role: 'system',
-                    content: this.learningData.activePrompt.system_prompt
-                },
-                {
-                    role: 'user', 
-                    content: prompt
-                }
-            ],
-            max_tokens: 300,
+            maxTokens: 300,
             temperature: request.experimental ? 0.9 : 0.7,
-            top_p: 0.95
+            forTweetGeneration: true
         });
 
-        if (!response?.choices?.[0]?.message?.content) {
+        if (!response?.success || !response?.response?.choices?.[0]?.message?.content) {
             throw new Error('No content generated from OpenAI');
         }
 
-        return response.choices[0].message.content.trim();
+        return response.response.choices[0].message.content.trim();
     }
 
     /**
