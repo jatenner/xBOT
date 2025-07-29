@@ -66,8 +66,8 @@ CONSERVATIVE_MODE=true
 # OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
 # OTEL_SERVICE_NAME=xbot 
 
-# === RENDER DEPLOYMENT ENVIRONMENT VARIABLES ===
-# Copy these to your Render service environment variables
+# === RAILWAY DEPLOYMENT ENVIRONMENT VARIABLES ===
+# Copy these to your Railway service environment variables
 
 # === REQUIRED API KEYS ===
 OPENAI_API_KEY=your_openai_api_key_here
@@ -80,9 +80,8 @@ TWITTER_DISPLAY_NAME=Snap2Health
 
 # === DEPLOYMENT SETTINGS ===
 NODE_ENV=production
-PORT=10000
-RENDER=true
-PLAYWRIGHT_BROWSERS_PATH=/opt/render/.cache/ms-playwright
+PORT=3002
+RAILWAY_ENVIRONMENT=production
 
 # === BUDGET SETTINGS ===
 OPENAI_BUDGET_LIMIT=7.5
@@ -92,8 +91,10 @@ DAILY_BUDGET_LIMIT=7.5
 NEWS_API_KEY=optional_news_api_key_here
 DEBUG_SCREENSHOT=false
 
-# === RENDER SPECIFIC ===
-# These are automatically set by Render:
-# RENDER_SERVICE_ID
-# RENDER_SERVICE_NAME
-# RENDER_EXTERNAL_URL 
+# === RAILWAY SPECIFIC ===
+# These are automatically set by Railway:
+# RAILWAY_ENVIRONMENT_ID
+# RAILWAY_SERVICE_ID
+# RAILWAY_PROJECT_ID
+# RAILWAY_DEPLOYMENT_ID
+# RAILWAY_PUBLIC_DOMAIN 

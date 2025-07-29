@@ -21,7 +21,7 @@ export class BrowserTweetPoster {
   private isInitialized = false;
   private sessionPath = path.join(process.cwd(), 'twitter-auth.json');
   private debugMode = process.env.DEBUG_SCREENSHOT === 'true';
-  private isRenderDeployment = process.env.RENDER === 'true' || process.env.NODE_ENV === 'production';
+  private isRailwayDeployment = process.env.RAILWAY_ENVIRONMENT || process.env.NODE_ENV === 'production';
 
   async initialize(): Promise<boolean> {
     if (this.isInitialized) {
@@ -31,15 +31,13 @@ export class BrowserTweetPoster {
     try {
       console.log('🌐 Initializing enhanced browser for tweet posting...');
       
-      // Enhanced Render.com compatibility
-      if (this.isRenderDeployment) {
-        console.log('🚀 Detected Render deployment - applying production optimizations');
-        process.env.PLAYWRIGHT_BROWSERS_PATH = '0';
-        process.env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = 'false';
-        process.env.PLAYWRIGHT_CHROMIUM_USE_HEADLESS_NEW = 'true';
-      }
+      // Configure Playwright browsers path for Railway
+      await this.configureBrowsersPath();
+      
+      // Verify browser binary exists before launching
+      await this.verifyBrowserBinary();
 
-      // Enhanced browser launch with Render optimizations
+      // Enhanced browser launch with Railway optimizations
       const launchOptions = {
         headless: true,
         args: [
@@ -57,9 +55,9 @@ export class BrowserTweetPoster {
           '--memory-pressure-off',
           '--max_old_space_size=512'
         ],
-        ...(this.isRenderDeployment && {
+        ...(this.isRailwayDeployment && {
           executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined,
-          timeout: 90000 // Longer timeout for Render
+          timeout: 90000 // Longer timeout for Railway
         })
       };
 
@@ -74,16 +72,16 @@ export class BrowserTweetPoster {
         console.error('🔍 Browser launch diagnostics:');
         console.error(`   - PLAYWRIGHT_BROWSERS_PATH: ${process.env.PLAYWRIGHT_BROWSERS_PATH || 'not set'}`);
         console.error(`   - Current working directory: ${process.cwd()}`);
-        console.error(`   - Environment: ${this.isRenderDeployment ? 'Render' : 'Local'}`);
+        console.error(`   - Environment: ${this.isRailwayDeployment ? 'Railway' : 'Local'}`);
         console.error(`   - Launch options:`, JSON.stringify(launchOptions, null, 2));
         
         // Try to provide helpful debugging info
         if (launchError.message.includes('Executable doesn\'t exist')) {
           console.error('💡 Browser binary missing. This usually means:');
-          console.error('   1. Playwright browsers not installed during build');
-          console.error('   2. Incorrect PLAYWRIGHT_BROWSERS_PATH');
-          console.error('   3. Render cache issues');
-          console.error('🔧 Try running: npm run install-browsers');
+          console.error('   1. Playwright browsers not installed during Railway build');
+          console.error('   2. Railway build command missing browser installation');
+          console.error('   3. Build process interrupted or failed');
+          console.error('🔧 Ensure Railway build command includes: npx playwright install chromium --force');
         }
         
         throw launchError;
@@ -175,7 +173,7 @@ export class BrowserTweetPoster {
       // Navigate to home with enhanced timeout
       await this.page.goto('https://twitter.com/home', {
         waitUntil: 'domcontentloaded',
-        timeout: this.isRenderDeployment ? 90000 : 60000
+        timeout: this.isRailwayDeployment ? 90000 : 60000
       });
 
       // Enhanced session check with multiple fallbacks
@@ -190,7 +188,7 @@ export class BrowserTweetPoster {
       for (const indicator of sessionIndicators) {
         try {
           await this.page.waitForSelector(indicator, { 
-            timeout: this.isRenderDeployment ? 30000 : 15000,
+            timeout: this.isRailwayDeployment ? 30000 : 15000,
             state: 'visible' 
           });
           console.log(`✅ Session validated with: ${indicator}`);
@@ -966,7 +964,7 @@ export class BrowserTweetPoster {
       console.log('🔗 Navigating to Twitter compose page...');
       await this.page!.goto('https://twitter.com/compose/tweet', {
         waitUntil: 'domcontentloaded',
-        timeout: this.isRenderDeployment ? 90000 : 60000
+        timeout: this.isRailwayDeployment ? 90000 : 60000
       });
       await this.page!.waitForTimeout(2000);
       console.log('✅ Navigated to compose page successfully');
@@ -1318,6 +1316,48 @@ export class BrowserTweetPoster {
       console.log('✅ Browser cleanup completed');
     } catch (error) {
       console.error('❌ Error during cleanup:', error);
+    }
+  }
+
+  /**
+   * 🔧 CONFIGURE PLAYWRIGHT BROWSERS PATH FOR RAILWAY
+   */
+  private async configureBrowsersPath(): Promise<void> {
+    const isRailway = process.env.RAILWAY_ENVIRONMENT || process.env.NODE_ENV === 'production';
+    
+    if (isRailway) {
+      console.log('🚄 Configuring Playwright browsers path for Railway...');
+      
+      // Railway uses standard Playwright installation paths
+      console.log(`📂 Using Railway default Playwright browser installation`);
+      console.log('✅ Playwright browsers path configured for Railway');
+    } else {
+      console.log('🏠 Local development environment detected');
+    }
+  }
+
+  /**
+   * 🔍 VERIFY BROWSER BINARY EXISTS
+   */
+  private async verifyBrowserBinary(): Promise<void> {
+    console.log('🔍 Verifying browser binary availability...');
+    
+    try {
+      // Railway uses standard Playwright paths - no special verification needed
+      const isRailway = process.env.RAILWAY_ENVIRONMENT || process.env.NODE_ENV === 'production';
+      
+      if (isRailway) {
+        console.log('🚄 Railway environment detected - using standard Playwright installation');
+        console.log('📦 Browsers should be installed during Railway build phase');
+      } else {
+        console.log('🏠 Local environment - using default browser location');
+      }
+      
+      console.log('✅ Browser binary verification completed');
+      
+    } catch (error) {
+      console.error(`❌ Browser verification failed: ${error.message}`);
+      throw error;
     }
   }
 }

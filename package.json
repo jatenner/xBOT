@@ -4,14 +4,10 @@
   "description": "Autonomous X (Twitter) bot for Snap2Health with AI-powered content generation",
   "main": "dist/main.js",
   "scripts": {
-    "build": "npm run install-browsers && NODE_OPTIONS=--max_old_space_size=1024 tsc",
-    "build-render": "npm run install-browsers && NODE_OPTIONS=--max_old_space_size=1024 tsc",
-    "install-browsers": "node scripts/playwright-setup.js",
-    "verify-browsers": "PLAYWRIGHT_BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH:-$PWD/browsers} node -e \"require('./playwright.config.js')\"",
-    "safe-build": "echo '⚠️ Playwright installation failed, building without browsers...' && NODE_OPTIONS=--max_old_space_size=1024 tsc",
+    "build": "npx playwright install chromium --force && NODE_OPTIONS=--max_old_space_size=1024 tsc",
+    "start": "node dist/main.js",
     "postbuild": "mkdir -p dist/dashboard && cp src/dashboard/*.html dist/dashboard/ 2>/dev/null || true && mkdir -p dist/prompts && cp -r src/prompts/* dist/prompts/ && echo 'Build completed successfully'",
-    "start": "PLAYWRIGHT_BROWSERS_PATH=/opt/render/.cache/ms-playwright npm run runtime-install && node dist/main.js",
-    "runtime-install": "npm run verify-browsers && echo '✅ Ready to start bot...'",
+    "runtime-install": "echo '🚄 Railway deployment ready - starting bot...' && echo '✅ Ready to start bot...'",
     "migrate": "node scripts/db_push.js",
     "dev": "npm run setup-check && nodemon src/index.js",
     "test": "jest",
@@ -56,7 +52,8 @@
   "author": "Snap2Health",
   "license": "MIT",
   "engines": {
-    "node": "22.14.0"
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.1",
