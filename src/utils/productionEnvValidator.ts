@@ -38,6 +38,13 @@ export interface SafeEnvConfig {
   DAILY_BUDGET_LIMIT: number;
   MAX_DAILY_POSTS: number;
   
+  // Budget and emergency controls
+  EMERGENCY_BUDGET_LIMIT: number;
+  BUDGET_LOCKDOWN_THRESHOLD: number;
+  ENABLE_EMERGENCY_LOCKDOWN: boolean;
+  API_RETRY_DELAY: number;
+  DATABASE_RETRY_DELAY_MS: number;
+  
   // JSON configurations (safely parsed)
   POSTING_CONFIG?: any;
   BUDGET_CONFIG?: any;
@@ -134,6 +141,13 @@ export class ProductionEnvValidator {
       parsed.PORT = this.safeGetEnvNumber('PORT', 3000);
       parsed.DAILY_BUDGET_LIMIT = this.safeGetEnvNumber('DAILY_BUDGET_LIMIT', 7.5);
       parsed.MAX_DAILY_POSTS = this.safeGetEnvNumber('MAX_DAILY_POSTS', 17);
+
+      // Budget and emergency controls with safe defaults
+      parsed.EMERGENCY_BUDGET_LIMIT = this.safeGetEnvNumber('EMERGENCY_BUDGET_LIMIT', 7.25);
+      parsed.BUDGET_LOCKDOWN_THRESHOLD = this.safeGetEnvNumber('BUDGET_LOCKDOWN_THRESHOLD', 7.0);
+      parsed.ENABLE_EMERGENCY_LOCKDOWN = this.safeGetEnvBoolean('ENABLE_EMERGENCY_LOCKDOWN', true);
+      parsed.API_RETRY_DELAY = this.safeGetEnvNumber('API_RETRY_DELAY', 5000);
+      parsed.DATABASE_RETRY_DELAY_MS = this.safeGetEnvNumber('DATABASE_RETRY_DELAY_MS', 3000);
 
       // Safe JSON parsing with fallbacks
       parsed.POSTING_CONFIG = this.safeParseJSON('POSTING_CONFIG', {
@@ -285,7 +299,12 @@ export class ProductionEnvValidator {
         NODE_ENV: 'production',
         PORT: 3000,
         DAILY_BUDGET_LIMIT: 7.5,
-        MAX_DAILY_POSTS: 17
+        MAX_DAILY_POSTS: 17,
+        EMERGENCY_BUDGET_LIMIT: 7.25,
+        BUDGET_LOCKDOWN_THRESHOLD: 7.0,
+        ENABLE_EMERGENCY_LOCKDOWN: true,
+        API_RETRY_DELAY: 5000,
+        DATABASE_RETRY_DELAY_MS: 3000
       };
     } else {
       this.cachedConfig = validation.parsed as SafeEnvConfig;

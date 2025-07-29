@@ -11,6 +11,7 @@
 import { startHealthServer, updateBotStatus } from './healthServer';
 import { railwayPlaywright } from './utils/railwayPlaywrightManager';
 import { ProductionEnvValidator } from './utils/productionEnvValidator';
+import { execSync } from 'child_process';
 
 let botController: any = null;
 let isShuttingDown = false;
@@ -178,6 +179,51 @@ function startHealthMonitoring(): void {
 }
 
 /**
+ * 🎭 ENSURE PLAYWRIGHT IS AVAILABLE FOR RAILWAY
+ */
+async function ensurePlaywrightForRailway(): Promise<void> {
+  try {
+    const isRailway = process.env.RAILWAY_ENVIRONMENT_NAME || process.env.NIXPACKS_METADATA;
+    
+    if (isRailway) {
+      console.log('🚄 Railway deployment detected - ensuring Playwright is available...');
+      
+      // Set Railway-specific Playwright configuration
+      process.env.PLAYWRIGHT_BROWSERS_PATH = process.env.PLAYWRIGHT_BROWSERS_PATH || '0';
+      
+      // Runtime Playwright installation for Railway
+      try {
+        console.log('📦 Runtime Playwright installation...');
+        execSync('npx playwright install chromium --with-deps', { 
+          stdio: 'inherit',
+          timeout: 120000 // 2 minute timeout
+        });
+        console.log('✅ Playwright runtime installation completed');
+      } catch (depsError) {
+        console.warn('⚠️ Full installation failed, trying basic install...');
+        
+        try {
+          execSync('npx playwright install chromium', { 
+            stdio: 'inherit',
+            timeout: 60000 // 1 minute timeout
+          });
+          console.log('✅ Basic Playwright installation completed');
+        } catch (basicError) {
+          console.error('❌ Playwright runtime install failed:', basicError);
+          console.warn('⚠️ Browser automation will use fallback mode');
+        }
+      }
+    } else {
+      console.log('💻 Local environment detected - skipping runtime Playwright install');
+    }
+    
+  } catch (error) {
+    console.error('❌ Playwright runtime installation error:', error);
+    console.warn('⚠️ Continuing startup - browser automation may be limited');
+  }
+}
+
+/**
  * 🏠 MAIN ENTRY POINT - RAILWAY OPTIMIZED
  * Health server starts INSTANTLY, everything else happens in background
  */
@@ -188,6 +234,9 @@ async function main(): Promise<void> {
     console.log(`🌍 Platform: ${process.platform}`);
     console.log(`📦 Node: ${process.version}`);
     console.log('');
+
+    // STEP 0: Ensure Playwright is available for Railway deployment
+    await ensurePlaywrightForRailway();
 
     // STEP 1: Start health server IMMEDIATELY (Railway requirement)
     console.log('🏥 Starting health server for Railway health checks...');
