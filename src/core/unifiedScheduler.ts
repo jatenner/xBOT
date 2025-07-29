@@ -217,23 +217,10 @@ export class UnifiedScheduler {
    * 🤝 ENGAGEMENT CYCLE
    */
   private async runEngagement(): Promise<void> {
-    try {
-      console.log('\n🤝 === AUTONOMOUS ENGAGEMENT CYCLE ===');
-      
-      const engagementResult = await this.engagementAgent.run();
-      
-      if (engagementResult.success) {
-        console.log('✅ Engagement cycle completed successfully');
-        console.log(`📊 Actions: ${engagementResult.actions?.length || 0}`);
-        console.log(`📝 Summary: ${engagementResult.message}`);
-      } else {
-        console.log('⚠️ Engagement cycle had issues');
-        console.log(`📝 Message: ${engagementResult.message}`);
-      }
-      
-    } catch (error) {
-      console.error('❌ Engagement cycle error:', error);
-    }
+    // 🚨 EMERGENCY DISABLED: This was posting fake content via engagementAgent
+    console.log('🚫 General engagement system DISABLED - was posting fake content');
+    console.log('✅ Only using human-like content generation and influencer replies');
+    return;
   }
 
   /**
@@ -342,29 +329,10 @@ export class UnifiedScheduler {
    * Called by the scheduler every 60 minutes
    */
   async runReplySystem(): Promise<void> {
-    if (!this.isRunning) return;
-    
-    try {
-      console.log('🎭 === REPLY SYSTEM CYCLE STARTING ===');
-      const result = await replyAgent.runReplySystem();
-      
-      if (result.success) {
-        this.totalReplies += result.repliesPosted;
-        this.lastReplyTime = new Date();
-        console.log(`✅ Reply cycle successful: ${result.repliesPosted} replies posted`);
-      } else {
-        console.log(`⚠️ Reply cycle completed with issues: ${result.summary}`);
-      }
-      
-      // Log errors if any
-      if (result.errors.length > 0) {
-        console.log('⚠️ Reply system errors:');
-        result.errors.forEach(error => console.log(`   - ${error}`));
-      }
-      
-    } catch (error) {
-      console.error('❌ Reply system cycle failed:', error);
-    }
+    // 🚨 EMERGENCY DISABLED: This was posting fake "Reply to tweet mock_tweet_..." content
+    console.log('🚫 Old reply system DISABLED - was posting fake mock_tweet replies');
+    console.log('✅ Using new contextAwareReplyEngine for real influencer replies only');
+    return;
   }
 
   /**
@@ -595,7 +563,7 @@ export class UnifiedScheduler {
         // Only run during active hours (6 AM - 11 PM)
         if (currentHour >= 6 && currentHour <= 23) {
           console.log('💫 Light engagement cycle...');
-          await this.runSmartEngagement();
+          // DISABLED: await this.runSmartEngagement(); // Was posting fake content
         }
       });
     }, { scheduled: false });
@@ -685,19 +653,10 @@ export class UnifiedScheduler {
    * 💫 Reduced engagement for human-like behavior
    */
   private async runSmartEngagement(): Promise<void> {
-    try {
-      // Reduced engagement rate - 30% chance to actually engage
-      if (Math.random() > 0.3) {
-        console.log('🤖 Skipping engagement cycle for human-like variance');
-        return;
-      }
-
-      // Use existing engagement method
-      await this.runEngagement();
-      console.log('💫 Smart engagement completed');
-    } catch (error) {
-      console.error('❌ Smart engagement failed:', error);
-    }
+    // 🚨 EMERGENCY DISABLED: This was posting fake content
+    console.log('🚫 Smart engagement DISABLED - was posting fake replies');
+    console.log('✅ Bot now focuses ONLY on original, complete tweets');
+    return;
   }
 
   /**

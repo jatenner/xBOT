@@ -177,73 +177,21 @@ export class AutonomousEngagementEngine {
   private async executeEngagementAction(action: EngagementAction): Promise<EngagementResult> {
     const startTime = new Date();
 
-    try {
-      const poster = new BrowserTweetPoster();
-      let response;
+    // 🚨 EMERGENCY DISABLED: This was posting fake "Reply to tweet mock_tweet_..." content
+    console.log('🚫 Engagement actions DISABLED - was posting fake content');
+    console.log(`📝 Would have performed: ${action.type} on ${action.targetTweetId || action.targetUsername}`);
 
-      switch (action.type) {
-        case 'like':
-          response = await poster.postTweet(`Reply to tweet ${action.targetTweetId}`);
-          break;
-        
-        case 'follow':
-          response = await poster.postTweet(`Action for user ${action.targetUsername}`);
-          if (response.success) {
-            this.followTracker.set(action.targetUsername, new Date());
-          }
-          break;
-        
-        case 'unfollow':
-          response = await poster.postTweet(`Action for user ${action.targetUsername}`);
-          if (response.success) {
-            this.followTracker.delete(action.targetUsername);
-          }
-          break;
-        
-        default:
-          throw new Error(`Unknown action type: ${action.type}`);
-      }
-
-      // Calculate learning metrics
-      const timingAccuracy = this.calculateTimingAccuracy(action.scheduledTime, startTime);
-      const strategicValue = this.calculateStrategicValue(action, response);
-
-      const result: EngagementResult = {
-        success: response.success,
-        action,
-        executionTime: startTime,
-        response,
-        learningData: {
-          engagementScore: response.success ? action.expectedROI : 0,
-          timingAccuracy,
-          strategicValue
-        },
-        error: response.error
-      };
-
-      // Store learning data
-      await this.storeLearningData(result);
-      
-      // Update engagement history
-      const history = this.engagementHistory.get(action.targetUsername) || [];
-      history.push(result);
-      this.engagementHistory.set(action.targetUsername, history);
-
-      return result;
-
-    } catch (error: any) {
-      return {
-        success: false,
-        action,
-        executionTime: startTime,
-        learningData: {
-          engagementScore: 0,
-          timingAccuracy: 0,
-          strategicValue: 0
-        },
-        error: error.message
-      };
-    }
+    return {
+      success: false,
+      action,
+      executionTime: startTime,
+      learningData: {
+        engagementScore: 0,
+        timingAccuracy: 0,
+        strategicValue: 0
+      },
+      error: 'Fake content posting disabled - engagement engine completely disabled'
+    };
   }
 
   /**
