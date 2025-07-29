@@ -5,7 +5,7 @@
   "main": "dist/main.js",
   "scripts": {
     "build": "NODE_OPTIONS=--max_old_space_size=1024 tsc",
-    "postinstall": "npx playwright install chromium || echo 'Playwright install failed - will use fallback'",
+    "postinstall": "npx playwright install chromium",
     "start": "node dist/main.js",
     "dev": "npm run setup-check && nodemon src/index.js",
     "postbuild": "mkdir -p dist/dashboard && cp src/dashboard/*.html dist/dashboard/ 2>/dev/null || true && mkdir -p dist/prompts && cp -r src/prompts/* dist/prompts/ && echo 'Build completed successfully'",

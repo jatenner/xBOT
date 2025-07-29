@@ -5,6 +5,7 @@
  */
 
 import { chromium, Browser, Page, BrowserContext } from 'playwright';
+import { execSync } from 'child_process';
 import { updatePlaywrightStatus } from '../healthServer';
 
 export interface PlaywrightStatus {
@@ -49,6 +50,9 @@ class RailwayPlaywrightManager {
    * 🔄 ATTEMPT BROWSER SETUP WITH RETRIES
    */
   private async attemptBrowserSetup(): Promise<void> {
+    // Ensure Playwright binaries are available before launching
+    await this.ensurePlaywrightBinaries();
+    
     for (let attempt = 1; attempt <= this.MAX_RETRIES; attempt++) {
       try {
         console.log(`🎭 Playwright setup attempt ${attempt}/${this.MAX_RETRIES}...`);
@@ -253,6 +257,46 @@ class RailwayPlaywrightManager {
     this.initPromise = null;
     this.status.retryCount = 0;
     return this.initializeAsync();
+  }
+
+  /**
+   * 🔧 ENSURE PLAYWRIGHT BINARIES ARE AVAILABLE
+   */
+  private async ensurePlaywrightBinaries(): Promise<void> {
+    try {
+      console.log('🔧 Ensuring Playwright browser binaries are available...');
+      
+      // Set Railway-specific browser path
+      const isRailway = process.env.RAILWAY_ENVIRONMENT_NAME || process.env.NIXPACKS_METADATA;
+      if (isRailway) {
+        process.env.PLAYWRIGHT_BROWSERS_PATH = process.env.PLAYWRIGHT_BROWSERS_PATH || '0';
+        console.log('🚄 Railway environment detected - using standard Playwright installation');
+      }
+      
+      // Try to install chromium with dependencies if not available
+      try {
+        console.log('📦 Installing Playwright Chromium with dependencies...');
+        execSync('npx playwright install chromium --with-deps', { 
+          stdio: 'inherit',
+          timeout: 120000 // 2 minute timeout
+        });
+        console.log('✅ Playwright browser binaries verified/installed');
+      } catch (depsError) {
+        console.warn('⚠️ Installing with dependencies failed, trying without deps...');
+        
+        // Fallback: install without dependencies
+        execSync('npx playwright install chromium', { 
+          stdio: 'inherit',
+          timeout: 60000 // 1 minute timeout
+        });
+        console.log('✅ Playwright chromium installed via fallback method');
+      }
+      
+    } catch (error) {
+      console.warn('⚠️ Playwright binary installation failed:', error);
+      console.warn('⚠️ Continuing with existing binaries (if any)...');
+      console.warn('⚠️ Browser automation may use fallback mode if binaries unavailable');
+    }
   }
 }
 
