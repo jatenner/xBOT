@@ -481,70 +481,67 @@ export class UnifiedScheduler {
 
     // === INTELLIGENT POSTING SCHEDULE ===
     // 07:00 - Morning stand-alone tweet (data-driven content)
-    this.postingJob = cron.schedule('0 7 * * *', async () => {
-      await this.safeguardedRun('morning_post', async () => {
-        console.log('🌅 7AM Morning post cycle...');
-        const decision = await autonomousPostingEngine.makePostingDecision();
-        if (decision.should_post) {
-          await autonomousPostingEngine.executePost();
-        }
-      });
-    }, { scheduled: false });
-
-    // 10:00 - Reply to influencer (contextual engagement)
-    cron.schedule('0 10 * * *', async () => {
-      await this.safeguardedRun('morning_reply', async () => {
-        console.log('🎯 10AM Influencer reply cycle...');
-        const replyResult = await contextAwareReplyEngine.generateContextualReply();
-        if (replyResult.success) {
-          this.totalReplies++;
-        }
-      });
-    }, { scheduled: false });
+    this.postingJob = // 🚨 NUCLEAR DISABLED: Reply job completely disabled
+    // cron.schedule('0 7 * * *', async () => {
+    //       await this.safeguardedRun('morning_post', async () => {
+    //         console.log('🌅 7AM Morning post cycle...');
+    //         const decision = await autonomousPostingEngine.makePostingDecision();
+    //         if (decision.should_post) {
+    //           await autonomousPostingEngine.executePost();
+    //         }
+    //       });
+    //     }, { scheduled: false });
+    // 
+    //     // 10:00 - Reply to influencer (contextual engagement)
+    //     cron.schedule('0 10 * * *', async () => {
+    //       await this.safeguardedRun('morning_reply', async () => {
+    //         console.log('🎯 10AM Influencer reply cycle...');
+    //         // 🚨 NUCLEAR DISABLED: const replyResult = await contextAwareReplyEngine.generateContextualReply();
+    //         // 🚨 NUCLEAR DISABLED: Reply functionality completely disabled
+    //       });
+    //     }, { scheduled: false });
 
     // 13:00 - Afternoon thread/comprehensive content
-    cron.schedule('0 13 * * *', async () => {
-      await this.safeguardedRun('afternoon_thread', async () => {
-        console.log('📖 1PM Thread/comprehensive content cycle...');
-        const decision = await autonomousPostingEngine.makePostingDecision();
-        if (decision.should_post) {
-          await autonomousPostingEngine.executePost();
-        }
-      });
-    }, { scheduled: false });
-
-    // 16:00 - Second reply opportunity
-    cron.schedule('0 16 * * *', async () => {
-      await this.safeguardedRun('afternoon_reply', async () => {
-        console.log('🎯 4PM Influencer reply cycle...');
-        const replyResult = await contextAwareReplyEngine.generateContextualReply();
-        if (replyResult.success) {
-          this.totalReplies++;
-        }
-      });
-    }, { scheduled: false });
+    // 🚨 NUCLEAR DISABLED: Reply job completely disabled
+    // cron.schedule('0 13 * * *', async () => {
+    //       await this.safeguardedRun('afternoon_thread', async () => {
+    //         console.log('📖 1PM Thread/comprehensive content cycle...');
+    //         const decision = await autonomousPostingEngine.makePostingDecision();
+    //         if (decision.should_post) {
+    //           await autonomousPostingEngine.executePost();
+    //         }
+    //       });
+    //     }, { scheduled: false });
+    // 
+    //     // 16:00 - Second reply opportunity
+    //     cron.schedule('0 16 * * *', async () => {
+    //       await this.safeguardedRun('afternoon_reply', async () => {
+    //         console.log('🎯 4PM Influencer reply cycle...');
+    //         // 🚨 NUCLEAR DISABLED: const replyResult = await contextAwareReplyEngine.generateContextualReply();
+    //         // 🚨 NUCLEAR DISABLED: Reply functionality completely disabled
+    //       });
+    //     }, { scheduled: false });
 
     // 19:00 - Evening viral content
-    cron.schedule('0 19 * * *', async () => {
-      await this.safeguardedRun('evening_viral', async () => {
-        console.log('🔥 7PM Evening viral content cycle...');
-        const decision = await autonomousPostingEngine.makePostingDecision();
-        if (decision.should_post) {
-          await autonomousPostingEngine.executePost();
-        }
-      });
-    }, { scheduled: false });
-
-    // 22:00 - Late evening reply (final opportunity)
-    cron.schedule('0 22 * * *', async () => {
-      await this.safeguardedRun('evening_reply', async () => {
-        console.log('🎯 10PM Final reply cycle...');
-        const replyResult = await contextAwareReplyEngine.generateContextualReply();
-        if (replyResult.success) {
-          this.totalReplies++;
-        }
-      });
-    }, { scheduled: false });
+    // 🚨 NUCLEAR DISABLED: Reply job completely disabled
+    // cron.schedule('0 19 * * *', async () => {
+    //       await this.safeguardedRun('evening_viral', async () => {
+    //         console.log('🔥 7PM Evening viral content cycle...');
+    //         const decision = await autonomousPostingEngine.makePostingDecision();
+    //         if (decision.should_post) {
+    //           await autonomousPostingEngine.executePost();
+    //         }
+    //       });
+    //     }, { scheduled: false });
+    // 
+    //     // 22:00 - Late evening reply (final opportunity)
+    //     cron.schedule('0 22 * * *', async () => {
+    //       await this.safeguardedRun('evening_reply', async () => {
+    //         console.log('🎯 10PM Final reply cycle...');
+    //         // 🚨 NUCLEAR DISABLED: const replyResult = await contextAwareReplyEngine.generateContextualReply();
+    //         // 🚨 NUCLEAR DISABLED: Reply functionality completely disabled
+    //       });
+    //     }, { scheduled: false });
 
     // === INFLUENCER MONITORING ===
     // Every 15 minutes - fetch fresh influencer content
