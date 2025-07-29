@@ -1,5 +1,6 @@
 import { TwitterApi, UserV2 } from 'twitter-api-v2';
 import { getCachedUserId, cacheUserId, getCachedUsername, validateCacheStatus } from './userIdCache';
+import { TwitterConfigService, getTwitterCredentials, getTwitterUserInfo, getDisplayName } from './twitterConfig';
 
 // Rate limit tracking
 interface RateLimitInfo {
@@ -64,96 +65,141 @@ class XService {
     this.initializationAttempted = true;
 
     try {
-      console.log('🔐 Initializing Twitter client...');
+      console.log('🔐 Initializing Twitter client with production-safe configuration...');
       
-      this.client = new TwitterApi({
-        appKey: process.env.TWITTER_API_KEY!,
-        appSecret: process.env.TWITTER_API_SECRET!,
-        accessToken: process.env.TWITTER_ACCESS_TOKEN!,
-        accessSecret: process.env.TWITTER_ACCESS_TOKEN_SECRET!,
-      });
-
-      // Only call API if we don't have cached user ID
-      if (!this.userId) {
-        console.log('🔍 No cached user ID, making ONE-TIME API call...');
-        await this.initializeUserIdOnce();
+      // Validate Twitter configuration first
+      const configValidation = TwitterConfigService.validateTwitterConfig();
+      if (!configValidation.valid) {
+        console.error('❌ Twitter configuration validation failed:');
+        configValidation.errors.forEach(error => console.error(`   - ${error}`));
+        throw new Error('Invalid Twitter configuration');
       }
 
+      // Get validated credentials
+      const credentials = getTwitterCredentials();
+      const userInfo = getTwitterUserInfo();
+      
+      // Initialize Twitter client with validated credentials
+      this.client = new TwitterApi({
+        appKey: credentials.apiKey,
+        appSecret: credentials.apiSecret,
+        accessToken: credentials.accessToken,
+        accessSecret: credentials.accessTokenSecret,
+      });
+
+      // Use environment-provided user info instead of API call
+      this.userId = userInfo.userId;
+      this.username = userInfo.screenName;
+
+      // Cache the user info for future use
+      await cacheUserId(this.userId, this.username);
+
       console.log(`✅ XService initialized successfully`);
-      console.log(`👤 User ID: ${this.userId}`);
-      console.log(`📧 Username: ${this.username}`);
+      console.log(`👤 User: ${getDisplayName()}`);
+      console.log(`🔑 Credentials: Validated from environment`);
       
       return true;
     } catch (error) {
       console.error('❌ Failed to initialize XService:', error);
-      console.log('🔄 Continuing with cached data if available...');
-      return !!this.userId; // Return true if we have cached user ID
+      
+      // Try to fallback to cached data
+      const cachedUserId = await getCachedUserId();
+      const cachedUsername = await getCachedUsername();
+      
+      if (cachedUserId && cachedUsername) {
+        console.log('🔄 Using cached user data as fallback...');
+        this.userId = cachedUserId;
+        this.username = cachedUsername;
+        return true;
+      }
+      
+      console.error('🚨 No cached data available - XService initialization failed');
+      return false;
     }
   }
 
   /**
-   * ONE-TIME user ID initialization (caches result to prevent future API calls)
+   * 🆔 PRODUCTION-SAFE USER INFO ACCESS
+   * Uses environment variables instead of API calls
    */
-  private async initializeUserIdOnce(): Promise<void> {
-    try {
-      if (!this.client) {
-        throw new Error('Twitter client not initialized');
-      }
+  private initializeUserFromEnvironment(): void {
+    const userInfo = getTwitterUserInfo();
+    
+    if (userInfo.userId !== '0') {
+      this.userId = userInfo.userId;
+      this.username = userInfo.screenName;
       
-      console.log('🔄 Making ONE-TIME user lookup API call (will be cached)...');
-      const user = await this.client.v2.me();
-      
-      this.userId = user.data.id;
-      this.username = user.data.username;
-      
-      // Cache the result to prevent future API calls
-      cacheUserId(this.userId, this.username);
-      
-      console.log(`✅ User credentials cached: @${this.username} (${this.userId})`);
-      console.log('🚫 This API call will NOT be repeated again (cached)');
-    } catch (error) {
-      console.error('❌ Failed to get user ID from API:', error);
-      
-      // If API fails, check if we have any fallback data
-      if (!this.userId) {
-        console.log('⚠️ Using fallback user ID detection...');
-        
-        // Try to extract from environment or use default
-        this.userId = process.env.TWITTER_USER_ID || null;
-        this.username = process.env.TWITTER_USERNAME || null;
-        
-        if (this.userId) {
-          console.log(`✅ Using fallback user ID: ${this.userId}`);
-          cacheUserId(this.userId, this.username || 'unknown');
-        }
-      }
-      
-      throw error; // Re-throw to indicate initialization issue
+      console.log(`✅ User info loaded from environment: @${this.username} (${this.userId})`);
+      console.log('🚫 No API calls needed - using environment variables');
+    } else {
+      console.error('❌ Invalid user info in environment variables');
+      throw new Error('Twitter user information not available in environment');
     }
   }
 
   /**
-   * Get user ID (uses cache, no API calls)
+   * 🆔 GET USER ID (production-safe with environment fallback)
    */
   getMyUserId(): string | null {
-    if (!this.userId) {
-      console.log('⚠️ User ID not available, attempting to load from cache...');
-      this.userId = getCachedUserId();
+    if (this.userId) {
+      return this.userId;
+    }
+    
+    // Fallback to environment variable
+    const userInfo = getTwitterUserInfo();
+    if (userInfo.userId !== '0') {
+      this.userId = userInfo.userId;
+      return this.userId;
+    }
+    
+    // Final fallback to cache
+    console.log('⚠️ Using cached user ID as last resort...');
+    const cached = getCachedUserId();
+    if (cached) {
+      this.userId = cached;
     }
     
     return this.userId;
   }
 
   /**
-   * Get username (uses cache, no API calls)
+   * 👤 GET USERNAME (production-safe with environment fallback)
    */
   getMyUsername(): string | null {
-    if (!this.username) {
-      console.log('⚠️ Username not available, attempting to load from cache...');
-      this.username = getCachedUsername();
+    if (this.username) {
+      return this.username;
+    }
+    
+    // Fallback to environment variable
+    const userInfo = getTwitterUserInfo();
+    if (userInfo.screenName !== 'INVALID') {
+      this.username = userInfo.screenName;
+      return this.username;
+    }
+    
+    // Final fallback to cache
+    console.log('⚠️ Using cached username as last resort...');
+    const cached = getCachedUsername();
+    if (cached) {
+      this.username = cached;
     }
     
     return this.username;
+  }
+
+  /**
+   * 🏷️ GET MENTION TAG (for replies and self-mentions)
+   */
+  getMentionTag(): string {
+    const userInfo = getTwitterUserInfo();
+    return `@${userInfo.screenName}`;
+  }
+
+  /**
+   * 🎯 GET DISPLAY NAME (for logging and UI)
+   */
+  getDisplayName(): string {
+    return getDisplayName();
   }
 
   async postTweet(content: string): Promise<{ success: boolean; tweetId?: string; error?: string }> {

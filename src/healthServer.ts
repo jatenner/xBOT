@@ -5,6 +5,7 @@
  */
 
 import express from 'express';
+import { TwitterConfigService } from './utils/twitterConfig';
 
 export interface HealthServerStatus {
   server?: any;
@@ -80,6 +81,8 @@ export function startHealthServer(): Promise<void> {
           'TWITTER_ACCESS_TOKEN',
           'TWITTER_ACCESS_TOKEN_SECRET',
           'TWITTER_USERNAME',
+          'TWITTER_SCREEN_NAME',
+          'TWITTER_USER_ID',
           'SUPABASE_URL',
           'SUPABASE_SERVICE_ROLE_KEY'
         ];
@@ -87,11 +90,38 @@ export function startHealthServer(): Promise<void> {
         const missing = requiredVars.filter(key => !process.env[key]);
         const valid = missing.length === 0;
 
+        // Get Twitter configuration status
+        let twitterStatus = 'not_checked';
+        let twitterInfo = {};
+        
+        try {
+          const twitterValidation = TwitterConfigService.validateTwitterConfig();
+          twitterStatus = twitterValidation.valid ? 'valid' : 'invalid';
+          
+          if (twitterValidation.valid && twitterValidation.userInfo) {
+            twitterInfo = {
+              account: `@${twitterValidation.userInfo.screenName}`,
+              user_id: twitterValidation.userInfo.userId,
+              credentials_ok: true
+            };
+          } else {
+            twitterInfo = {
+              errors: twitterValidation.errors,
+              warnings: twitterValidation.warnings
+            };
+          }
+        } catch (error) {
+          twitterStatus = 'validation_error';
+          twitterInfo = { error: 'Twitter validation failed' };
+        }
+
         res.json({
           valid,
           missing_required: missing,
           status: healthServerStatus.botStatus,
           playwright: healthServerStatus.playwrightStatus,
+          twitter_config: twitterStatus,
+          twitter_info: twitterInfo,
           message: valid ? 'Environment configured correctly' : `Missing ${missing.length} required variables`
         });
       } catch (error) {
@@ -99,6 +129,7 @@ export function startHealthServer(): Promise<void> {
           error: 'Environment validation failed',
           status: healthServerStatus.botStatus,
           playwright: healthServerStatus.playwrightStatus,
+          twitter_config: 'check_failed',
           message: 'Environment check error but server is alive'
         });
       }
