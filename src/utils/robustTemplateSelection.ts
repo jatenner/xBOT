@@ -166,8 +166,7 @@ export class RobustTemplateSelection {
       
       const result = await promptTemplateRotation.getOptimalTemplate({
         currentHour: options.current_hour || new Date().getHours(),
-        contentType: options.content_type,
-        tone: options.tone
+        contentType: options.content_type || options.tone || 'tip'
       });
 
       if (result.success && result.template && result.template.template && result.template.template.trim()) {

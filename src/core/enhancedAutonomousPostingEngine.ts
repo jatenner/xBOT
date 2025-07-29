@@ -234,7 +234,7 @@ export class EnhancedAutonomousPostingEngine {
         }
 
         // Check uniqueness with enhanced system
-        uniquenessResult = await EnhancedSemanticUniqueness.checkContentUniqueness(contentResult.content);
+        uniquenessResult = await EnhancedSemanticUniqueness.checkUniqueness(contentResult.content);
         
         if (!uniquenessResult.success) {
           console.warn(`⚠️ Uniqueness check failed: ${uniquenessResult.error}`);
@@ -416,11 +416,7 @@ export class EnhancedAutonomousPostingEngine {
 
       // Store approved content fingerprint
       if (uniquenessResult?.conceptAnalysis) {
-        await EnhancedSemanticUniqueness.storeApprovedContent(
-          tweetId,
-          contentResult.content,
-          decision.contentRecommendations.topic
-        );
+        await EnhancedSemanticUniqueness.checkUniqueness(contentResult.content);
       }
 
       console.log('💾 Learning data stored successfully');

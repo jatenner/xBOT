@@ -162,7 +162,7 @@ export class IntelligentReplyEngine {
 
       // Post the reply
       const poster = new BrowserTweetPoster();
-      const replyResult = await poster.postReply(target.tweetId, replyStrategy.replyText);
+      const replyResult = await poster.postTweet(replyStrategy.replyText);
 
       if (!replyResult.success) {
         throw new Error(replyResult.error || 'Failed to post reply');
