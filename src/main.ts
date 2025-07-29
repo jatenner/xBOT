@@ -10,6 +10,7 @@
 
 import { startHealthServer, updateBotStatus } from './healthServer';
 import { railwayPlaywright } from './utils/railwayPlaywrightManager';
+import { ProductionEnvValidator } from './utils/productionEnvValidator';
 
 let botController: any = null;
 let isShuttingDown = false;
@@ -28,26 +29,15 @@ async function initializeBotAsync(): Promise<void> {
 
     updateBotStatus('environment_check');
 
-    // Environment validation (non-blocking)
-    console.log('🔧 Checking environment variables...');
+    // Environment validation (non-blocking) - using production validator
+    console.log('🔧 Validating environment configuration...');
     
     try {
-      const requiredVars = [
-        'OPENAI_API_KEY',
-        'TWITTER_API_KEY', 
-        'TWITTER_API_SECRET',
-        'TWITTER_ACCESS_TOKEN',
-        'TWITTER_ACCESS_TOKEN_SECRET',
-        'TWITTER_USERNAME',
-        'SUPABASE_URL',
-        'SUPABASE_SERVICE_ROLE_KEY'
-      ];
-
-      const missing = requiredVars.filter(key => !process.env[key]);
+      const envResult = ProductionEnvValidator.validateEnvironment();
       
-      if (missing.length > 0) {
-        console.error('❌ Missing required environment variables:');
-        missing.forEach((key: string) => console.error(`   - ${key}`));
+      if (!envResult.valid) {
+        console.error('❌ Environment validation failed:');
+        envResult.errors.forEach((error: string) => console.error(`   - ${error}`));
         console.error('');
         console.error('💡 Set these in Railway dashboard → Variables tab');
         console.error('📚 See RAILWAY_ENV_SETUP.md for complete setup guide');
@@ -64,7 +54,15 @@ async function initializeBotAsync(): Promise<void> {
         return;
       }
 
-      console.log('✅ All required environment variables present');
+      if (envResult.warnings.length > 0) {
+        console.warn('⚠️ Environment warnings:');
+        envResult.warnings.forEach((warning: string) => console.warn(`   - ${warning}`));
+        console.warn('   (System will operate with reduced functionality)');
+        console.log('');
+      }
+
+      console.log('✅ Environment validation passed');
+      console.log(`📊 Configuration: ${Object.keys(envResult.parsed).length} variables loaded`);
       
     } catch (envError) {
       console.error('❌ Environment validation error:', envError);

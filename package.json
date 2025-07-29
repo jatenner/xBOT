@@ -4,7 +4,8 @@
   "description": "Autonomous X (Twitter) bot for Snap2Health with AI-powered content generation",
   "main": "dist/main.js",
   "scripts": {
-    "build": "npx playwright install chromium --force && NODE_OPTIONS=--max_old_space_size=1024 tsc",
+    "build": "NODE_OPTIONS=--max_old_space_size=1024 tsc",
+    "postinstall": "npx playwright install chromium || echo 'Playwright install failed - will use fallback'",
     "start": "node dist/main.js",
     "dev": "npm run setup-check && nodemon src/index.js",
     "postbuild": "mkdir -p dist/dashboard && cp src/dashboard/*.html dist/dashboard/ 2>/dev/null || true && mkdir -p dist/prompts && cp -r src/prompts/* dist/prompts/ && echo 'Build completed successfully'",
@@ -14,7 +15,9 @@
     "migrate": "node scripts/db_push.js",
     "dashboard": "node src/dashboard/dashboardLauncher.js",
     "health-check": "curl http://localhost:3000/health || echo 'Health check failed'",
-    "env-check": "curl http://localhost:3000/env || echo 'Environment check failed'"
+    "env-check": "curl http://localhost:3000/env || echo 'Environment check failed'",
+    "playwright-setup": "npx playwright install-deps chromium && npx playwright install chromium",
+    "validate-env": "node -e \"const { ProductionEnvValidator } = require('./dist/utils/productionEnvValidator.js'); const result = ProductionEnvValidator.validateEnvironment(); console.log(JSON.stringify(result, null, 2));\""
   },
   "keywords": [
     "twitter",

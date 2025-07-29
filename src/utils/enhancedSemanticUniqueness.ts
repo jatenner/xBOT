@@ -138,7 +138,44 @@ Return JSON:
         throw new Error('Empty GPT response');
       }
 
-      const analysis = JSON.parse(responseText);
+      // Safe JSON parsing with comprehensive error handling
+      let analysis;
+      try {
+        // Clean the response to remove common GPT formatting issues
+        let cleanedResponse = responseText;
+        
+        // Remove markdown code blocks if present
+        cleanedResponse = cleanedResponse.replace(/```json\s*/gi, '');
+        cleanedResponse = cleanedResponse.replace(/```\s*/g, '');
+        
+        // Remove any text before first { or after last }
+        const jsonStart = cleanedResponse.indexOf('{');
+        const jsonEnd = cleanedResponse.lastIndexOf('}');
+        
+        if (jsonStart === -1 || jsonEnd === -1 || jsonEnd <= jsonStart) {
+          throw new Error('No valid JSON object found in response');
+        }
+        
+        cleanedResponse = cleanedResponse.substring(jsonStart, jsonEnd + 1);
+        
+        // Additional cleaning for common JSON issues
+        cleanedResponse = cleanedResponse.replace(/,(\s*[}\]])/g, '$1'); // Remove trailing commas
+        cleanedResponse = cleanedResponse.replace(/([{,]\s*)(\w+):/g, '$1"$2":'); // Quote unquoted keys
+        
+        analysis = JSON.parse(cleanedResponse);
+        
+        // Validate it's an object
+        if (!analysis || typeof analysis !== 'object') {
+          throw new Error('Parsed result is not a valid object');
+        }
+        
+      } catch (parseError) {
+        console.warn('⚠️ JSON parsing failed for health concepts:', parseError);
+        console.warn('⚠️ Raw response was:', responseText.substring(0, 200) + '...');
+        
+        // Return fallback analysis
+        return this.getFallbackConcepts(content);
+      }
       
       // Validate and clean data
       return {
@@ -161,6 +198,58 @@ Return JSON:
         extractionConfidence: 0.3
       };
     }
+  }
+
+  /**
+   * 🛡️ FALLBACK CONCEPT EXTRACTION
+   * Simple rule-based extraction when AI fails
+   */
+  private static getFallbackConcepts(content: string): HealthConceptAnalysis {
+    const healthKeywords = {
+      nutrition: ['vitamin', 'mineral', 'protein', 'carb', 'fat', 'calorie', 'diet', 'food'],
+      fitness: ['exercise', 'workout', 'cardio', 'strength', 'muscle', 'training'],
+      wellness: ['stress', 'sleep', 'meditation', 'mindfulness', 'mental', 'health'],
+      medical: ['doctor', 'medicine', 'treatment', 'therapy', 'diagnosis', 'symptom']
+    };
+
+    const foundConcepts: string[] = [];
+    const contentLower = content.toLowerCase();
+
+    // Extract keywords from content
+    for (const [domain, keywords] of Object.entries(healthKeywords)) {
+      for (const keyword of keywords) {
+        if (contentLower.includes(keyword) && foundConcepts.length < 3) {
+          foundConcepts.push(keyword);
+        }
+      }
+    }
+
+    // Determine primary concept and category
+    let primaryConcept = 'general_health';
+    let healthCategory = 'general';
+    
+    if (foundConcepts.length > 0) {
+      primaryConcept = foundConcepts[0].replace(/\s+/g, '_');
+      
+      // Determine category based on found keywords
+      for (const [domain, keywords] of Object.entries(healthKeywords)) {
+        if (keywords.some(keyword => foundConcepts.includes(keyword))) {
+          healthCategory = domain;
+          break;
+        }
+      }
+    }
+
+    console.log(`🛡️ Using fallback concept: ${primaryConcept} (${healthCategory})`);
+    
+    return {
+      primaryConcept,
+      supportingConcepts: foundConcepts.slice(1), // Remaining concepts as supporting
+      healthCategory,
+      specificClaims: [],
+      conceptComplexity: 'basic',
+      extractionConfidence: 0.5
+    };
   }
 
   /**
