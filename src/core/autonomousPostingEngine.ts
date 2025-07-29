@@ -396,39 +396,45 @@ export class AutonomousPostingEngine {
     try {
       console.log('🧠 Generating content with intelligent learning system...');
 
-      // Step 1: Use the sophisticated learning-based generator
-      const { EnhancedIntelligentTweetGenerator } = await import('../agents/enhancedIntelligentTweetGenerator');
-      const intelligentGenerator = EnhancedIntelligentTweetGenerator.getInstance();
+      // Step 1: Use the elite Twitter content strategist for viral content
+      const { EliteTwitterContentStrategist } = await import('../agents/eliteTwitterContentStrategist');
+      const eliteStrategist = EliteTwitterContentStrategist.getInstance();
       
-      const generationRequest = {
-        topic_preference: this.getOptimalTopic(),
-        length: this.getOptimalLength(),
-        tone: this.getOptimalTone(),
-        include_learning_data: true
+      const contentRequest = {
+        topic: this.getOptimalTopic(),
+        format_preference: this.getOptimalFormat(),
+        tone: this.getOptimalTone() as 'authoritative' | 'conversational' | 'provocative',
+        target_engagement: 25 // Target 25% engagement rate
       };
 
-      console.log(`🎯 Generation request: ${JSON.stringify(generationRequest)}`);
+      console.log(`🎯 Elite content request: ${JSON.stringify(contentRequest)}`);
       
-      const intelligentResult = await intelligentGenerator.generateIntelligentTweet(generationRequest);
+      const eliteResult = await eliteStrategist.generateViralContent(contentRequest);
 
-      if (!intelligentResult || !intelligentResult.content) {
-        console.warn('⚠️ Intelligent generation failed, falling back to enhanced content generator');
+      if (!eliteResult || !eliteResult.content) {
+        console.warn('⚠️ Elite generation failed, falling back to enhanced content generator');
         return await this.fallbackContentGeneration();
       }
 
-      console.log(`✅ Intelligent content generated: "${intelligentResult.content.substring(0, 100)}..."`);
-      console.log(`📊 Predicted engagement: ${intelligentResult.predicted_engagement}%`);
-      console.log(`🎯 Confidence score: ${intelligentResult.confidence_score}%`);
+      const contentString = Array.isArray(eliteResult.content) ? 
+        eliteResult.content.join('\n\n') : 
+        eliteResult.content;
+
+      console.log(`✅ Elite content generated: "${contentString.substring(0, 100)}..."`);
+      console.log(`📊 Predicted engagement: ${eliteResult.predicted_engagement}%`);
+      console.log(`🎯 Format used: ${eliteResult.format_used}`);
+      console.log(`🎪 Hook type: ${eliteResult.hook_type}`);
 
       return {
         success: true,
-        content: intelligentResult.content,
+        content: contentString,
         metadata: {
-          generation_method: 'intelligent_learning_based',
-          format_used: intelligentResult.format_used,
-          predicted_engagement: intelligentResult.predicted_engagement,
-          confidence_score: intelligentResult.confidence_score,
-          learning_insights_used: intelligentResult.learning_context?.formats_referenced?.length || 0,
+          generation_method: 'elite_viral_strategist',
+          format_used: eliteResult.format_used,
+          predicted_engagement: eliteResult.predicted_engagement,
+          hook_type: eliteResult.hook_type,
+          content_type: eliteResult.content_type,
+          reasoning: eliteResult.reasoning,
           content_category: 'health_science'
         }
       };
@@ -452,7 +458,17 @@ export class AutonomousPostingEngine {
   }
 
   private getOptimalTone(): string {
-    return 'authoritative_yet_accessible';
+    const hour = new Date().getHours();
+    if (hour < 12) return 'authoritative';     // Morning: authority
+    if (hour < 18) return 'conversational';   // Afternoon: accessible
+    return 'provocative';                      // Evening: engaging
+  }
+
+  private getOptimalFormat(): 'short' | 'thread' | 'auto' {
+    const hour = new Date().getHours();
+    if (hour < 10) return 'short';    // Morning: quick insights
+    if (hour < 16) return 'thread';   // Afternoon: detailed content
+    return 'auto';                    // Evening: algorithm decides
   }
 
   private async fallbackContentGeneration(): Promise<any> {
