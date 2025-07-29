@@ -221,8 +221,8 @@ export class MasterAutonomousController {
         console.error('❌ Posting cycle error:', error);
         this.updateComponentStatus('posting_engine', 'error', [error.message]);
       }
-    }, 3 * 60 * 60 * 1000)); // 3 hours for realistic human-like posting (3-8 posts/day)
-    console.log('🧠 ADAPTIVE LEARNING: Intelligent scheduling with optimization');
+    }, 15 * 60 * 1000)); // 15 minutes for better timing optimization (was 3 hours)
+    console.log('🧠 ADAPTIVE LEARNING: Intelligent scheduling with optimization (15-minute cycles)');
     
     // Import adaptive scheduler
     const { AdaptiveLearningScheduler } = await import('../utils/adaptiveLearningScheduler');
@@ -860,6 +860,17 @@ export class MasterAutonomousController {
     
     try {
       budgetStatus = await EmergencyBudgetLockdown.isLockedDown();
+      
+      // Additional validation to ensure all required properties exist
+      if (budgetStatus && typeof budgetStatus === 'object') {
+        budgetStatus = {
+          lockdownActive: budgetStatus.lockdownActive ?? false,
+          totalSpent: budgetStatus.totalSpent ?? 0,
+          dailyLimit: budgetStatus.dailyLimit ?? 7.5,
+          lockdownReason: budgetStatus.lockdownReason ?? 'OK',
+          lockdownTime: budgetStatus.lockdownTime
+        };
+      }
     } catch (error) {
       console.error('❌ Error getting budget status:', error);
       budgetStatus = {
