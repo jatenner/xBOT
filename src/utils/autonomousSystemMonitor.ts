@@ -10,7 +10,7 @@
  */
 
 import { autonomousTwitterGrowthMaster } from '../agents/autonomousTwitterGrowthMaster';
-import { emergencyBudgetLockdown } from './emergencyBudgetLockdown';
+import { EmergencyBudgetLockdown } from './emergencyBudgetLockdown';
 import { supabase } from './supabaseClient';
 
 interface SystemHealth {
@@ -205,7 +205,7 @@ export class AutonomousSystemMonitor {
             
             // If it's a new day, try to reset the lockdown
             if (today !== yesterday) {
-              await emergencyBudgetLockdown.deactivateLockdown();
+              await EmergencyBudgetLockdown.deactivateLockdown();
               console.log('✅ Daily budget reset - lockdown cleared');
             }
           } catch (error) {
@@ -327,8 +327,8 @@ export class AutonomousSystemMonitor {
 
   private async checkBudgetSystem() {
     try {
-      const status = await emergencyBudgetLockdown.getStatusReport();
-      const lockdown = await emergencyBudgetLockdown.isLockedDown();
+      const status = await EmergencyBudgetLockdown.getStatusReport();
+      const lockdown = await EmergencyBudgetLockdown.isLockedDown();
       
       return {
         active: true,

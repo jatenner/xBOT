@@ -8,7 +8,7 @@
 import { autonomousPostingEngine } from '../core/autonomousPostingEngine';
 import { enhancedSemanticUniqueness } from './enhancedSemanticUniqueness';
 import { robustTemplateSelection } from './robustTemplateSelection';
-import { emergencyBudgetLockdown } from './emergencyBudgetLockdown';
+import { EmergencyBudgetLockdown } from './emergencyBudgetLockdown';
 import { supabaseClient } from './supabaseClient';
 import { browserTweetPoster } from './browserTweetPoster';
 
@@ -317,7 +317,7 @@ export class SystemHealthEndpoint {
     lockdown_reason: string | null;
   }> {
     try {
-      const lockdownStatus = await emergencyBudgetLockdown.isLockedDown();
+      const lockdownStatus = await EmergencyBudgetLockdown.isLockedDown();
       
       const remaining = lockdownStatus.dailyLimit - lockdownStatus.totalSpent;
       let status: 'operational' | 'warning' | 'lockdown' = 'operational';
