@@ -40,7 +40,7 @@ function startHealthServer(): Promise<void> {
 
     // Start server
     healthServer = app.listen(PORT, HOST, () => {
-      console.log(`🏥 Health server started on ${HOST}:${PORT}`);
+      console.log(`✅ Health server running on port ${PORT}`);
       console.log(`🌍 Railway health check endpoint: /health`);
       console.log(`📊 Status endpoint: /status`);
       resolve();
@@ -110,6 +110,8 @@ async function initializeBot(): Promise<void> {
     await botController.startAutonomousOperation();
 
     botStatus = 'running';
+
+    console.log('🤖 Bot initialized');
 
     // Success message
     console.log('');
