@@ -100,7 +100,7 @@ export class BrowserTweetPoster {
 
         // Reload page to activate session
         await this.page!.reload({ waitUntil: 'domcontentloaded' });
-        await this.page!.waitForTimeout(2000);
+        await this.page!.waitForTimeout(5000);
         
         console.log('✅ Twitter session loaded successfully');
       } else {
@@ -162,11 +162,11 @@ export class BrowserTweetPoster {
             // Navigate to target page
             await this.page!.goto(strategy.url, {
               waitUntil: 'domcontentloaded',
-              timeout: 45000
+              timeout: 30000
             });
 
             await this.debugScreenshot(`pre-compose-${strategy.name}-attempt-${attempt}`);
-            await this.page!.waitForTimeout(3000); // Longer stabilization time
+            await this.page!.waitForTimeout(5000); // Longer stabilization time
 
             // Find and interact with tweet compose area
             const textareaResult = await this.findAndFillTextarea(content);
@@ -186,7 +186,7 @@ export class BrowserTweetPoster {
 
             // Enhanced confirmation with multiple checks
             console.log('⏳ Waiting for tweet to post and confirming...');
-            await this.page!.waitForTimeout(8000); // Longer wait for posting
+            await this.page!.waitForTimeout(5000); // Longer wait for posting
 
             const confirmationResult = await this.confirmTweetPosted(content);
             
@@ -325,12 +325,12 @@ export class BrowserTweetPoster {
       try {
         // Method 1: Click, clear, and type (most reliable)
         await textarea.click();
-        await this.page!.waitForTimeout(1000);
+        await this.page!.waitForTimeout(5000);
         
         // Clear any existing content
         await this.page!.keyboard.press('Control+A');
         await this.page!.keyboard.press('Delete');
-        await this.page!.waitForTimeout(500);
+        await this.page!.waitForTimeout(5000);
         
         // Type content with natural delays
         await this.page!.keyboard.type(content, { delay: 80 });
@@ -341,14 +341,14 @@ export class BrowserTweetPoster {
         try {
           // Method 2: Direct fill
           await textarea.fill('');
-          await this.page!.waitForTimeout(500);
+          await this.page!.waitForTimeout(5000);
           await textarea.fill(content);
         } catch (fillError) {
           console.log('⚠️ Method 2 failed, trying method 3...');
           
           // Method 3: Focus and type character by character
           await textarea.focus();
-          await this.page!.waitForTimeout(1000);
+          await this.page!.waitForTimeout(5000);
           await this.page!.keyboard.press('Control+A');
           
           // Type character by character for maximum compatibility
@@ -359,7 +359,7 @@ export class BrowserTweetPoster {
       }
 
       // Enhanced content verification
-      await this.page!.waitForTimeout(2000);
+      await this.page!.waitForTimeout(5000);
       
       const verifications = [
         () => textarea.textContent(),
@@ -418,20 +418,62 @@ export class BrowserTweetPoster {
   /**
    * 🔘 ENHANCED POST BUTTON FINDING WITH 2024 X.COM SELECTORS
    */
-  private async findAndClickPostButton(): Promise<{ success: boolean; error?: string }> {
+  private 
+  /**
+   * 🎯 EMERGENCY POST BUTTON FINDER
+   */
+  async findPostButtonAggressive(): Promise<any> {
+    const selectors = [
+      '[data-testid="tweetButton"]',
+      '[data-testid="tweetButtonInline"]',
+      'button[data-testid="tweetButton"]',
+      'div[data-testid="tweetButton"]',
+      'button[role="button"]:not([aria-label*="Close"])',
+      '[role="button"]:not([aria-label*="Close"]):not([aria-label*="Back"])',
+      'button:has-text("Post")',
+      'div:has-text("Post")[role="button"]'
+    ];
+    
+    for (const selector of selectors) {
+      try {
+        console.log(`🔍 Trying post button selector: ${selector}`);
+        const element = await this.page!.waitForSelector(selector, { 
+          timeout: 15000,
+          state: 'attached'
+        });
+        
+        if (element) {
+          // Verify it's actually clickable and not disabled
+          const isVisible = await element.isVisible();
+          const isEnabled = await element.isEnabled();
+          
+          if (isVisible && isEnabled) {
+            console.log(`✅ Found working post button: ${selector}`);
+            return element;
+          }
+        }
+      } catch (error) {
+        console.log(`⚠️  Post button selector failed: ${selector}`);
+      }
+    }
+    
+    throw new Error('Could not find any working post button selector');
+  }
+
+  async findAndClickPostButton(): Promise<{ success: boolean; error?: string }> {
     try {
       // Updated selectors for current X.com UI (2024)
       const postButtonSelectors = [
         // Most current X.com selectors
         'div[aria-label="Post"]',                                // Current X.com primary
-        'button[aria-label="Post"]',                             // X.com button variant
+        '[data-testid="tweetButton"]',                             // X.com button variant
         'div[data-testid="tweetButtonInline"]',                  // Legacy primary
         'div[data-testid="tweetButton"]',                        // Legacy alternative
         'button[data-testid="tweetButtonInline"]',               // Button variant
         'button[data-testid="tweetButton"]',                     // Button alternative
         '[role="button"][aria-label="Post"]',                   // Role button with Post
         '[role="button"][data-testid*="tweet"]',                // Generic role button
-        'div[role="button"]:has-text("Post")',                  // Text-based Post
+        '[data-testid="tweetButton"]',                  // Text-based Post
         'button:has-text("Post")',                              // Button with Post text
         '[aria-label*="Post"]:not([aria-label*="Post text"])',  // Aria label for button
         'div[aria-label="Tweet"]',                              // Legacy Tweet button
@@ -491,7 +533,7 @@ export class BrowserTweetPoster {
           
           // Scroll button into view if needed
           await postButton.scrollIntoViewIfNeeded();
-          await this.page!.waitForTimeout(500);
+          await this.page!.waitForTimeout(5000);
           
           // Multiple click methods
           if (clickAttempt === 1) {
@@ -505,7 +547,7 @@ export class BrowserTweetPoster {
             await postButton.dispatchEvent('click');
           }
           
-          await this.page!.waitForTimeout(1000);
+          await this.page!.waitForTimeout(5000);
           
           // Check if click was successful by looking for URL change or posting indicators
           const currentUrl = this.page!.url();
@@ -513,7 +555,7 @@ export class BrowserTweetPoster {
           
           // Wait for potential posting indicators
           try {
-            await this.page!.waitForTimeout(2000);
+            await this.page!.waitForTimeout(5000);
             
             // Check for successful posting indicators
             const postingIndicators = [
@@ -526,7 +568,7 @@ export class BrowserTweetPoster {
             
             for (const indicator of postingIndicators) {
               try {
-                await this.page!.waitForSelector(indicator, { timeout: 3000 });
+                await this.page!.waitForSelector(indicator, { timeout: 30000 });
                 console.log(`✅ Found posting success indicator: ${indicator}`);
                 return { success: true };
               } catch {
@@ -553,7 +595,7 @@ export class BrowserTweetPoster {
               error: `Failed to click post button after ${maxClickAttempts} attempts: ${clickError.message}` 
             };
           }
-          await this.page!.waitForTimeout(1000);
+          await this.page!.waitForTimeout(5000);
         }
       }
 
@@ -594,7 +636,7 @@ export class BrowserTweetPoster {
       
       for (const indicator of successIndicators) {
         try {
-          await this.page!.waitForSelector(indicator, { timeout: 3000 });
+          await this.page!.waitForSelector(indicator, { timeout: 30000 });
           console.log(`✅ Found posting confirmation: ${indicator}`);
           return { 
             confirmed: true, 
@@ -621,13 +663,13 @@ export class BrowserTweetPoster {
         // Go to profile/home to check for recent tweet
         await this.page!.goto('https://x.com/home', { 
           waitUntil: 'domcontentloaded',
-          timeout: 20000 
+          timeout: 30000 
         });
-        await this.page!.waitForTimeout(3000);
+        await this.page!.waitForTimeout(5000);
         
         // Look for tweet content in recent posts
         const contentPreview = originalContent.substring(0, 50);
-        const foundContent = await this.page!.locator(`text="${contentPreview}"`).first().isVisible({ timeout: 5000 });
+        const foundContent = await this.page!.locator(`text="${contentPreview}"`).first().isVisible({ timeout: 30000 });
         
         if (foundContent) {
           console.log(`✅ Found tweet content on timeline: "${contentPreview}..."`);
@@ -644,13 +686,13 @@ export class BrowserTweetPoster {
       try {
         await this.page!.goto('https://x.com/compose/post', { 
           waitUntil: 'domcontentloaded',
-          timeout: 20000 
+          timeout: 30000 
         });
-        await this.page!.waitForTimeout(2000);
+        await this.page!.waitForTimeout(5000);
         
         // If composer is empty, it likely means the previous tweet was posted
         const textareaSelector = 'div[aria-label="Post text"]';
-        await this.page!.waitForSelector(textareaSelector, { timeout: 10000 });
+        await this.page!.waitForSelector(textareaSelector, { timeout: 30000 });
         const textarea = this.page!.locator(textareaSelector).first();
         const currentText = await textarea.textContent() || '';
         

@@ -382,7 +382,7 @@ export class EnhancedBrowserTweetPoster {
             break;
 
           case 'wait_modal':
-            await this.page!.waitForTimeout(2000);
+            await this.page!.waitForTimeout(5000);
             break;
 
           case 'type_content':
@@ -495,7 +495,7 @@ export class EnhancedBrowserTweetPoster {
 
       // Click the compose button
       await result.element.click();
-      await this.page!.waitForTimeout(2000);
+      await this.page!.waitForTimeout(5000);
 
       console.log(`✅ Successfully clicked compose button: ${result.selector}`);
       return { success: true, selector: result.selector };
@@ -556,7 +556,7 @@ export class EnhancedBrowserTweetPoster {
       }
 
       // Wait a moment for content validation
-            await this.page!.waitForTimeout(1500);
+            await this.page!.waitForTimeout(5000);
             
       const result = await this.findElementWithStrategy(selectorStrategy);
       
@@ -568,7 +568,7 @@ export class EnhancedBrowserTweetPoster {
 
       // Click the post button
       await result.element.click();
-      await this.page!.waitForTimeout(3000);
+      await this.page!.waitForTimeout(5000);
 
       console.log('✅ Successfully clicked post button');
       return { success: true };
@@ -606,7 +606,7 @@ export class EnhancedBrowserTweetPoster {
         await element.click();
         await this.page!.keyboard.press('Control+A');
         await this.page!.keyboard.press('Delete');
-        await this.page!.waitForTimeout(300);
+        await this.page!.waitForTimeout(5000);
         await this.page!.keyboard.type(content, { delay: 50 });
       },
       // Method 2: Fill method
@@ -629,7 +629,7 @@ export class EnhancedBrowserTweetPoster {
         await methods[i]();
         
         // Verify content was entered
-        await this.page!.waitForTimeout(1000);
+        await this.page!.waitForTimeout(5000);
         const currentText = await this.getElementText(element);
         
         if (currentText && currentText.includes(content.substring(0, 20))) {
@@ -657,12 +657,12 @@ export class EnhancedBrowserTweetPoster {
   private async fallbackComposeClick(): Promise<{ success: boolean; selector?: string; error?: string }> {
     for (const selector of this.ENHANCED_SELECTORS.compose_entry_points) {
       try {
-        await this.page!.waitForSelector(selector, { timeout: 8000 });
+        await this.page!.waitForSelector(selector, { timeout: 30000 });
         const element = this.page!.locator(selector).first();
         
         if (await element.isVisible() && await element.isEnabled()) {
           await element.click();
-          await this.page!.waitForTimeout(1500);
+          await this.page!.waitForTimeout(5000);
           return { success: true, selector };
         }
       } catch (error) {
@@ -675,7 +675,7 @@ export class EnhancedBrowserTweetPoster {
   private async fallbackContentType(content: string): Promise<{ success: boolean; error?: string }> {
     for (const selector of this.ENHANCED_SELECTORS.content_areas) {
       try {
-        await this.page!.waitForSelector(selector, { timeout: 8000 });
+        await this.page!.waitForSelector(selector, { timeout: 30000 });
         const element = this.page!.locator(selector).first();
         
         if (await element.isVisible() && await element.isEnabled()) {
@@ -692,12 +692,12 @@ export class EnhancedBrowserTweetPoster {
   private async fallbackSubmitPost(): Promise<{ success: boolean; error?: string }> {
     for (const selector of this.ENHANCED_SELECTORS.submission_buttons) {
       try {
-        await this.page!.waitForSelector(selector, { timeout: 8000 });
+        await this.page!.waitForSelector(selector, { timeout: 30000 });
         const element = this.page!.locator(selector).first();
         
         if (await element.isVisible() && await element.isEnabled()) {
           await element.click();
-          await this.page!.waitForTimeout(2000);
+          await this.page!.waitForTimeout(5000);
           return { success: true };
         }
       } catch (error) {
@@ -726,7 +726,7 @@ export class EnhancedBrowserTweetPoster {
       });
       
       // Wait for page to be ready
-      await this.page!.waitForSelector(this.ENHANCED_SELECTORS.navigation[0], { timeout: 15000 });
+      await this.page!.waitForSelector(this.ENHANCED_SELECTORS.navigation[0], { timeout: 30000 });
     } catch (error) {
       console.warn('⚠️ Navigation to home failed, continuing...');
     }
@@ -735,7 +735,7 @@ export class EnhancedBrowserTweetPoster {
   private async verifyPostSubmitted(): Promise<{ success: boolean; tweet_id?: string; error?: string }> {
     try {
       // Wait for any success indicators or redirect
-        await this.page!.waitForTimeout(3000);
+        await this.page!.waitForTimeout(5000);
         
       // Look for success indicators
       const successIndicators = [
@@ -747,7 +747,7 @@ export class EnhancedBrowserTweetPoster {
 
       for (const indicator of successIndicators) {
         try {
-          await this.page!.waitForSelector(indicator, { timeout: 5000 });
+          await this.page!.waitForSelector(indicator, { timeout: 30000 });
           console.log(`✅ Found success indicator: ${indicator}`);
           return { 
             success: true, 
@@ -828,11 +828,11 @@ export class EnhancedBrowserTweetPoster {
       await this.page!.context().addCookies(sessionData.cookies);
 
       // Verify session works
-      await this.page!.goto('https://twitter.com/home', { timeout: 20000 });
+      await this.page!.goto('https://twitter.com/home', { timeout: 30000 });
       
       // Check if we're logged in
       try {
-        await this.page!.waitForSelector(this.ENHANCED_SELECTORS.navigation[0], { timeout: 10000 });
+        await this.page!.waitForSelector(this.ENHANCED_SELECTORS.navigation[0], { timeout: 30000 });
         console.log('✅ Session verified successfully');
         return true;
       } catch (error) {
