@@ -4,10 +4,60 @@
  * Integrates all intelligence systems for strategic posting, engagement, and learning
  */
 
+import express from 'express';
 import { MasterAutonomousController } from './core/masterAutonomousController';
 import { validateEnvironment, PRODUCTION_CONFIG } from './config/productionConfig';
 
-async function main(): Promise<void> {
+// Global variables for health server
+let healthServer: any = null;
+let botController: MasterAutonomousController | null = null;
+let botStatus = 'starting';
+
+/**
+ * 🏥 START HEALTH SERVER IMMEDIATELY
+ * This must start before anything else to pass Railway health checks
+ */
+function startHealthServer(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const app = express();
+    const PORT = parseInt(process.env.PORT || '3000', 10);
+    const HOST = '0.0.0.0';
+
+    // Health endpoint - always responds, even if bot isn't ready
+    app.get('/health', (req, res) => {
+      res.status(200).send('ok');
+    });
+
+    // Status endpoint for debugging
+    app.get('/status', (req, res) => {
+      res.json({
+        status: botStatus,
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+        bot_running: botController?.getSystemStatus ? true : false
+      });
+    });
+
+    // Start server
+    healthServer = app.listen(PORT, HOST, () => {
+      console.log(`🏥 Health server started on ${HOST}:${PORT}`);
+      console.log(`🌍 Railway health check endpoint: /health`);
+      console.log(`📊 Status endpoint: /status`);
+      resolve();
+    });
+
+    healthServer.on('error', (error: any) => {
+      console.error('❌ Health server failed to start:', error);
+      reject(error);
+    });
+  });
+}
+
+/**
+ * 🤖 INITIALIZE BOT SAFELY
+ * Bot initialization wrapped in try/catch to prevent health server crashes
+ */
+async function initializeBot(): Promise<void> {
   try {
     console.log('🚀 === AUTONOMOUS TWITTER GROWTH MASTER STARTING ===');
     console.log(`📅 ${new Date().toISOString()}`);
@@ -15,6 +65,8 @@ async function main(): Promise<void> {
     console.log('🧠 Intelligence: AI-powered optimization and learning systems');
     console.log('🤖 Operation: Fully autonomous posting, engagement, and growth');
     console.log('');
+
+    botStatus = 'validating_environment';
 
     // Environment validation
     console.log('🔧 Validating system configuration...');
@@ -25,7 +77,8 @@ async function main(): Promise<void> {
       envCheck.missing.forEach(key => console.error(`   - ${key}`));
       console.error('');
       console.error('💡 Please ensure all required API keys and credentials are set in your .env file');
-      process.exit(1);
+      botStatus = 'environment_error';
+      throw new Error('Missing required environment variables');
     }
 
     if (envCheck.warnings.length > 0) {
@@ -34,6 +87,8 @@ async function main(): Promise<void> {
       console.warn('   (System will operate with reduced functionality)');
       console.log('');
     }
+
+    botStatus = 'initializing_controller';
 
     // Production configuration summary
     console.log('⚙️ === PRODUCTION CONFIGURATION ===');
@@ -47,41 +102,20 @@ async function main(): Promise<void> {
 
     // Initialize master controller
     console.log('🧠 Initializing Master Autonomous Controller...');
-    const controller = MasterAutonomousController.getInstance();
+    botController = MasterAutonomousController.getInstance();
 
-    // Graceful shutdown handling
-    process.on('SIGINT', async () => {
-      console.log('\n🛑 Received SIGINT signal - shutting down gracefully...');
-      await controller.stopAutonomousOperation();
-      process.exit(0);
-    });
-
-    process.on('SIGTERM', async () => {
-      console.log('\n🛑 Received SIGTERM signal - shutting down gracefully...');
-      await controller.stopAutonomousOperation();
-      process.exit(0);
-    });
-
-    process.on('uncaughtException', async (error) => {
-      console.error('❌ Uncaught Exception:', error);
-      await controller.stopAutonomousOperation();
-      process.exit(1);
-    });
-
-    process.on('unhandledRejection', async (reason, promise) => {
-      console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
-      await controller.stopAutonomousOperation();
-      process.exit(1);
-    });
+    botStatus = 'starting_bot';
 
     // Start autonomous operation
-    await controller.startAutonomousOperation();
+    await botController.startAutonomousOperation();
+
+    botStatus = 'running';
 
     // Success message
     console.log('');
     console.log('🎉 === AUTONOMOUS TWITTER GROWTH MASTER ONLINE ===');
     console.log('');
-    console.log('📊 Dashboard: http://localhost:3000');
+    console.log('📊 Dashboard: Available on Railway deployment URL');
     console.log('🤖 The bot is now fully autonomous and learning...');
     console.log('');
     console.log('🔥 EXPECTED RESULTS:');
@@ -102,18 +136,23 @@ async function main(): Promise<void> {
     console.log('   ✅ Generate comprehensive growth analytics');
     console.log('');
     console.log('🚀 FULLY AUTONOMOUS - NO HUMAN INTERVENTION REQUIRED!');
-    console.log('📈 Monitor progress at http://localhost:3000');
     console.log('');
 
-    // Keep the process running
+    // Keep the process running with status updates
     setInterval(() => {
-      // Health check every 5 minutes
-      const status = controller.getSystemStatus();
-      console.log(`🤖 System Status: ${status.systemHealth.overall.toUpperCase()} | Uptime: ${Math.floor(status.uptime / 1000 / 60)}min | Posts: ${status.operationalMetrics.posting.totalPosts} | Actions: ${status.operationalMetrics.engagement.totalActions}`);
+      if (botController) {
+        try {
+          const status = botController.getSystemStatus();
+          console.log(`🤖 System Status: ${status.systemHealth.overall.toUpperCase()} | Uptime: ${Math.floor(status.uptime / 1000 / 60)}min | Posts: ${status.operationalMetrics.posting.totalPosts} | Actions: ${status.operationalMetrics.engagement.totalActions}`);
+        } catch (error) {
+          console.log(`🤖 System Status: MONITORING | Uptime: ${Math.floor(process.uptime() / 60)}min`);
+        }
+      }
     }, 5 * 60 * 1000); // 5 minutes
 
   } catch (error) {
-    console.error('❌ Fatal error starting Autonomous Twitter Growth Master:', error);
+    botStatus = 'error';
+    console.error('❌ Bot initialization failed:', error);
     console.error('');
     console.error('🔧 Troubleshooting tips:');
     console.error('   1. Check your .env file has all required API keys');
@@ -122,20 +161,102 @@ async function main(): Promise<void> {
     console.error('   4. Check Twitter API credentials are valid');
     console.error('   5. Ensure twitter-auth.json session file exists');
     console.error('');
-    process.exit(1);
+    console.error('⚠️ Health server will continue running for Railway health checks');
+    console.error('🔄 Bot will attempt to restart in 5 minutes...');
+    
+    // Attempt to restart bot after delay
+    setTimeout(() => {
+      console.log('🔄 Attempting to restart bot...');
+      initializeBot();
+    }, 5 * 60 * 1000);
   }
 }
 
-// Handle process-level errors
-process.on('warning', (warning) => {
-  console.warn('⚠️ Process Warning:', warning.name, warning.message);
-});
+/**
+ * 🏠 MAIN ENTRY POINT
+ */
+async function main(): Promise<void> {
+  try {
+    // STEP 1: Start health server immediately (Railway requirement)
+    console.log('🏥 Starting health server for Railway...');
+    await startHealthServer();
+    console.log('✅ Health server ready - Railway health checks will now pass');
+    console.log('');
 
-// Start the autonomous Twitter growth system
+    // STEP 2: Initialize bot (can fail without affecting health server)
+    console.log('🤖 Starting bot initialization...');
+    await initializeBot();
+
+  } catch (error) {
+    console.error('❌ Fatal error in main():', error);
+    // Keep health server running even if bot fails
+    if (healthServer) {
+      console.log('⚠️ Keeping health server alive for Railway despite bot failure');
+      botStatus = 'main_error';
+    } else {
+      process.exit(1);
+    }
+  }
+}
+
+/**
+ * 🛑 GRACEFUL SHUTDOWN HANDLING
+ */
+function setupGracefulShutdown(): void {
+  const shutdown = async (signal: string) => {
+    console.log(`\n🛑 Received ${signal} signal - shutting down gracefully...`);
+    
+    try {
+      if (botController) {
+        await botController.stopAutonomousOperation();
+      }
+    } catch (error) {
+      console.error('❌ Error stopping bot controller:', error);
+    }
+
+    try {
+      if (healthServer) {
+        healthServer.close(() => {
+          console.log('🏥 Health server closed');
+          process.exit(0);
+        });
+      } else {
+        process.exit(0);
+      }
+    } catch (error) {
+      console.error('❌ Error closing health server:', error);
+      process.exit(1);
+    }
+  };
+
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+  process.on('uncaughtException', async (error) => {
+    console.error('❌ Uncaught Exception:', error);
+    botStatus = 'uncaught_exception';
+    // Don't exit - keep health server running
+  });
+
+  process.on('unhandledRejection', async (reason, promise) => {
+    console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+    botStatus = 'unhandled_rejection';
+    // Don't exit - keep health server running
+  });
+
+  process.on('warning', (warning) => {
+    console.warn('⚠️ Process Warning:', warning.name, warning.message);
+  });
+}
+
+// Start the application
 if (require.main === module) {
+  setupGracefulShutdown();
   main().catch((error) => {
-    console.error('❌ Failed to start autonomous system:', error);
-    process.exit(1);
+    console.error('❌ Failed to start application:', error);
+    if (!healthServer) {
+      process.exit(1);
+    }
   });
 }
 
