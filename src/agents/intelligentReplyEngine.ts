@@ -160,15 +160,18 @@ export class IntelligentReplyEngine {
       console.log(`🎭 Human-like score: ${(replyStrategy.humanlikeScore * 100).toFixed(1)}%`);
       console.log(`💬 Reply: "${replyStrategy.replyText}"`);
 
-      // Post the reply
-      const poster = new BrowserTweetPoster();
-      const replyResult = await poster.postTweet(replyStrategy.replyText);
+      // DISABLED: Reply functionality (bot should only post original content)
+      console.log('⚠️ Reply functionality disabled - bot should only post original tweets');
+      console.log(`📝 Would have replied: "${replyStrategy.replyText}"`);
+      
+      // Return success without actually posting reply
+      const replyResult = { 
+        success: true, 
+        tweet_id: 'reply_disabled_' + Date.now(),
+        reason: 'Reply functionality disabled - focusing on original content only'
+      };
 
-      if (!replyResult.success) {
-        throw new Error(replyResult.error || 'Failed to post reply');
-      }
-
-      console.log('✅ Reply posted successfully!');
+      console.log('✅ Reply simulation completed (not actually posted)');
 
       // Update counters and learning data
       this.dailyReplies++;
