@@ -29,19 +29,19 @@ export class EnhancedAutonomousPostingEngine {
     console.log('🚫 NUCLEAR: Enhanced Posting Engine completely disabled');
     console.log('⚠️ This was generating "Here\'s how to optimize..." without quality validation');
     console.log('✅ Use ONLY quality-gated AutonomousPostingEngine with nuclear validation');
-    
-    return {
-      success: false,
-      performance: {
-        posted: false,
-        uniquenessScore: 0,
-        intelligenceScore: 0,
-        timing: new Date().toISOString()
-      },
-      learningData: {
+      
+      return {
+        success: false,
+        performance: {
+          posted: false,
+          uniquenessScore: 0,
+          intelligenceScore: 0,
+          timing: new Date().toISOString()
+        },
+        learningData: {
         topicUsed: 'system_disabled',
         formatUsed: 'nuclear_disabled',
-        timingAccuracy: 0
+          timingAccuracy: 0
       },
       error: 'NUCLEAR EMERGENCY: Enhanced posting engine disabled for quality violations'
     };
