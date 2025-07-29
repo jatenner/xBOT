@@ -388,13 +388,13 @@ export class MasterAutonomousController {
    * 🌐 START DASHBOARD
    */
   private startDashboard(): void {
-    const PORT = parseInt(process.env.PORT || '3002', 10);
+    const PORT = parseInt(process.env.PORT || '3000', 10);
     const HOST = '0.0.0.0'; // Listen on all interfaces for Railway
     
     this.server = this.app.listen(PORT, HOST, () => {
       console.log(`🚄 Railway Dashboard server running on http://${HOST}:${PORT}`);
-      console.log(`🌍 External access: Use your Railway app URL:${PORT}`);
-      console.log(`📊 Dashboard available at: https://your-railway-app.up.railway.app`);
+      console.log(`🌍 External access: Use your Railway app URL`);
+      console.log(`📊 Dashboard available at your Railway deployment URL`);
     });
   }
 
@@ -408,13 +408,7 @@ export class MasterAutonomousController {
 
     // Health check endpoint for Railway
     this.app.get('/health', (req, res) => {
-      res.status(200).json({
-        status: 'healthy',
-        timestamp: new Date().toISOString(),
-        uptime: process.uptime(),
-        version: '1.0.0',
-        bot_status: this.isRunning ? 'active' : 'stopped'
-      });
+      res.status(200).send('ok');
     });
 
     // Dashboard endpoint
