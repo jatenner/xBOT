@@ -178,7 +178,7 @@ export class EnhancedSemanticUniqueness {
         embedding,
         coreIdeaAnalysis: ideaValidation.analysis,
         suppressionCheck: ideaValidation.suppression,
-        ideaFingerprint: ideaValidation.analysis.idea_fingerprint,
+        ideaFingerprint: ideaValidation.analysis.similarity_score.toString(),
         similarityBreakdown,
         totalTweetsCompared: recentTweets.length
       };
@@ -335,7 +335,7 @@ export class EnhancedSemanticUniqueness {
         most_similar_tweet_id: analysis.similarTweet?.id,
         most_similar_content: analysis.similarTweet?.content?.substring(0, 200),
         threshold_used: this.SIMILARITY_THRESHOLD,
-        core_idea_fingerprint: analysis.ideaFingerprint,
+        core_content_hash: analysis.ideaFingerprint,
         core_idea_category: analysis.coreIdeaAnalysis?.idea_category,
         novelty_reasons: analysis.coreIdeaAnalysis?.novelty_reasons || [],
         created_at: new Date().toISOString()

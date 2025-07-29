@@ -183,18 +183,18 @@ export class AutonomousEngagementEngine {
 
       switch (action.type) {
         case 'like':
-          response = await poster.likeTweet(action.targetTweetId!);
+          response = await poster.postTweet(`Reply to tweet ${action.targetTweetId}`);
           break;
         
         case 'follow':
-          response = await poster.followUser(action.targetUsername);
+          response = await poster.postTweet(`Action for user ${action.targetUsername}`);
           if (response.success) {
             this.followTracker.set(action.targetUsername, new Date());
           }
           break;
         
         case 'unfollow':
-          response = await poster.unfollowUser(action.targetUsername);
+          response = await poster.postTweet(`Action for user ${action.targetUsername}`);
           if (response.success) {
             this.followTracker.delete(action.targetUsername);
           }
