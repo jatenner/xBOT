@@ -185,7 +185,7 @@ export class MasterAutonomousController {
 
     try {
       // Initialize posting engine
-      await this.postingEngine.initialize();
+      // await this.postingEngine.initialize(); // Enhanced engine disabled
       this.updateComponentStatus('posting_engine', 'active');
 
       // Initialize growth master (this initializes other intelligence components)
@@ -212,15 +212,16 @@ export class MasterAutonomousController {
   private startOperationalCycles(): Promise<void> {
     console.log('🔄 Starting operational cycles...');
 
-    // Posting cycle - every 2 hours with intelligent decisions
-    this.intervals.push(setInterval(async () => {
-      try {
-        await this.runPostingCycle();
-      } catch (error) {
-        console.error('❌ Posting cycle error:', error);
-        this.updateComponentStatus('posting_engine', 'error', [error.message]);
-      }
-    }, 2 * 60 * 60 * 1000)); // 2 hours
+    // 🚨 POSTING CYCLE EMERGENCY DISABLED: Was bypassing quality gates!
+    // this.intervals.push(setInterval(async () => {
+    //   try {
+    //     await this.runPostingCycle();
+    //   } catch (error) {
+    //     console.error('❌ Posting cycle error:', error);
+    //     this.updateComponentStatus('posting_engine', 'error', [error.message]);
+    //   }
+    // }, 2 * 60 * 60 * 1000)); // 2 hours
+    console.log('🚫 NUCLEAR: Posting cycle DISABLED - was posting incomplete hooks every 2 hours');
 
     // Reply cycle - every 4 hours
     this.intervals.push(setInterval(async () => {
@@ -264,7 +265,7 @@ export class MasterAutonomousController {
     }, 15 * 60 * 1000)); // 15 minutes
 
     // Start immediate cycles (with delays to avoid overwhelming)
-    setTimeout(() => this.runPostingCycle(), 30000); // 30 seconds
+    // 🚨 NUCLEAR DISABLED: setTimeout(() => this.runPostingCycle(), 30000); // Was posting immediately
     setTimeout(() => this.runEngagementCycle(), 60000); // 1 minute
     setTimeout(() => this.runReplyCycle(), 90000); // 1.5 minutes
 
@@ -276,32 +277,13 @@ export class MasterAutonomousController {
    * 📝 RUN POSTING CYCLE
    */
   private async runPostingCycle(): Promise<void> {
-    console.log('📝 === AUTONOMOUS POSTING CYCLE ===');
+    // 🚨 NUCLEAR DISABLED: This method was posting incomplete hooks bypassing quality gates
+    console.log('🚫 NUCLEAR: Posting cycle completely disabled');
+    console.log('⚠️ This was the MAIN system posting "Here\'s how to optimize..." content');
+    console.log('✅ Quality-gated posting system is the ONLY active posting method now');
     
-    try {
-      const result = await this.postingEngine.executeIntelligentPost();
-      
-      if (result.success) {
-        console.log(`✅ Posted: "${result.content?.substring(0, 50)}..."`);
-        this.operationalMetrics.posting.totalPosts++;
-        this.operationalMetrics.posting.lastPostTime = new Date();
-        
-        // Update success rate
-        const successCount = this.operationalMetrics.posting.totalPosts;
-        this.operationalMetrics.posting.successRate = successCount / (successCount + 1);
-      } else {
-        console.log(`ℹ️ Posting skipped: ${result.error}`);
-      }
-
-      this.updateComponentStatus('posting_engine', 'active', [], {
-        lastResult: result.success ? 'success' : 'skipped',
-        reason: result.error || 'Posted successfully'
-      });
-
-    } catch (error) {
-      console.error('❌ Posting cycle failed:', error);
-      this.updateComponentStatus('posting_engine', 'error', [error.message]);
-    }
+    this.updateComponentStatus('posting_engine', 'offline', ['Emergency disabled for quality violations']);
+    return;
   }
 
   /**
@@ -719,7 +701,7 @@ export class MasterAutonomousController {
    * 🔧 HELPER METHODS
    */
   private initializeCoreComponents(): void {
-    this.postingEngine = EnhancedAutonomousPostingEngine.getInstance();
+    this.postingEngine = new EnhancedAutonomousPostingEngine();
     this.replyEngine = IntelligentReplyEngine.getInstance();
     this.engagementEngine = AutonomousEngagementEngine.getInstance();
     this.optimizationLoop = EnhancedDailyOptimizationLoop.getInstance();
