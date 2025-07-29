@@ -4,82 +4,15 @@
  * Integrates all intelligence systems for strategic posting, engagement, and learning
  */
 
-import express from 'express';
+import { startHealthServer, updateBotStatus } from './healthServer';
 import { MasterAutonomousController } from './core/masterAutonomousController';
 import { validateEnvironment, PRODUCTION_CONFIG } from './config/productionConfig';
 
-// Global variables for health server
-let healthServer: any = null;
 let botController: MasterAutonomousController | null = null;
-let botStatus = 'starting';
 
 /**
- * 🏥 START HEALTH SERVER IMMEDIATELY
- * This must start before anything else to pass Railway health checks
- */
-function startHealthServer(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const app = express();
-    const PORT = parseInt(process.env.PORT || '3000', 10);
-    const HOST = '0.0.0.0';
-
-    // Basic middleware
-    app.use(express.json());
-
-    // Health endpoint - always responds, even if bot isn't ready
-    app.get('/health', (_req, res) => {
-      console.log('🏥 Health check requested');
-      res.status(200).send('ok');
-    });
-
-    // Status endpoint for debugging
-    app.get('/status', (_req, res) => {
-      res.json({
-        status: botStatus,
-        timestamp: new Date().toISOString(),
-        uptime: process.uptime(),
-        bot_running: botController?.getSystemStatus ? true : false
-      });
-    });
-
-    // Environment check endpoint for debugging Railway deployment
-    app.get('/env', (_req, res) => {
-      const envCheck = validateEnvironment();
-      res.json({
-        valid: envCheck.valid,
-        missing_required: envCheck.missing,
-        missing_optional: envCheck.warnings,
-        status: botStatus,
-        message: envCheck.valid ? 'Environment configured correctly' : 'Missing required environment variables'
-      });
-    });
-
-    // Catch-all error handler
-    app.use((error: any, _req: any, res: any, _next: any) => {
-      console.error('❌ Express error:', error);
-      if (!res.headersSent) {
-        res.status(500).send('Internal Server Error');
-      }
-    });
-
-    // Start server
-    healthServer = app.listen(PORT, HOST, () => {
-      console.log(`✅ Health server running on http://${HOST}:${PORT}`);
-      console.log(`🚄 Railway health check endpoint: http://${HOST}:${PORT}/health`);
-      console.log(`📊 Status endpoint: http://${HOST}:${PORT}/status`);
-      resolve();
-    });
-
-    healthServer.on('error', (error: any) => {
-      console.error('❌ Health server failed to start:', error);
-      reject(error);
-    });
-  });
-}
-
-/**
- * 🤖 INITIALIZE BOT SAFELY
- * Bot initialization wrapped in try/catch to prevent health server crashes
+ * 🤖 INITIALIZE BOT LOGIC
+ * This runs AFTER the health server is already responding to Railway
  */
 async function initializeBot(): Promise<void> {
   try {
@@ -90,7 +23,7 @@ async function initializeBot(): Promise<void> {
     console.log('🤖 Operation: Fully autonomous posting, engagement, and growth');
     console.log('');
 
-    botStatus = 'validating_environment';
+    updateBotStatus('validating_environment');
 
     // Environment validation - DON'T throw errors that kill health server
     console.log('🔧 Validating system configuration...');
@@ -108,7 +41,7 @@ async function initializeBot(): Promise<void> {
       console.error('');
       console.error('🏥 Health server will continue running for Railway health checks');
       console.error('🔄 Bot will retry initialization every 5 minutes until env vars are set');
-      botStatus = 'environment_error';
+      updateBotStatus('environment_error');
       
       // Schedule retry instead of throwing
       setTimeout(() => {
@@ -126,9 +59,6 @@ async function initializeBot(): Promise<void> {
       console.log('');
     }
 
-    botStatus = 'initializing_controller';
-
-    // Production configuration summary
     console.log('⚙️ === PRODUCTION CONFIGURATION ===');
     console.log(`💰 Daily Budget: $${PRODUCTION_CONFIG.budget.dailyLimit}`);
     console.log(`📝 Max Daily Posts: ${PRODUCTION_CONFIG.posting.maxDailyPosts}`);
@@ -138,17 +68,14 @@ async function initializeBot(): Promise<void> {
     console.log(`🛡️ Safety: Anti-spam ${PRODUCTION_CONFIG.safety.antiSpamEnabled ? 'ON' : 'OFF'}, Human-like behavior ${PRODUCTION_CONFIG.safety.humanLikeBehavior ? 'ON' : 'OFF'}`);
     console.log('');
 
-    // Initialize master controller
+    updateBotStatus('initializing_controller');
     console.log('🧠 Initializing Master Autonomous Controller...');
     botController = MasterAutonomousController.getInstance();
 
-    botStatus = 'starting_bot';
-
-    // Start autonomous operation
+    updateBotStatus('starting_bot');
     await botController.startAutonomousOperation();
 
-    botStatus = 'running';
-
+    updateBotStatus('running', botController);
     console.log('🤖 Bot initialized');
 
     // Success message
@@ -178,7 +105,7 @@ async function initializeBot(): Promise<void> {
     console.log('🚀 FULLY AUTONOMOUS - NO HUMAN INTERVENTION REQUIRED!');
     console.log('');
 
-    // Keep the process running with status updates
+    // Status monitoring
     setInterval(() => {
       if (botController) {
         try {
@@ -191,11 +118,11 @@ async function initializeBot(): Promise<void> {
     }, 5 * 60 * 1000); // 5 minutes
 
   } catch (error) {
-    botStatus = 'error';
+    updateBotStatus('error');
     console.error('❌ Bot initialization failed:', error);
     console.error('');
     console.error('🔧 Troubleshooting tips:');
-    console.error('   1. Check your .env file has all required API keys');
+    console.error('   1. Check your Railway environment variables');
     console.error('   2. Ensure Supabase database is accessible');
     console.error('   3. Verify OpenAI API key has sufficient credits');
     console.error('   4. Check Twitter API credentials are valid');
@@ -204,7 +131,6 @@ async function initializeBot(): Promise<void> {
     console.error('⚠️ Health server will continue running for Railway health checks');
     console.error('🔄 Bot will attempt to restart in 5 minutes...');
     
-    // Attempt to restart bot after delay
     setTimeout(() => {
       console.log('🔄 Attempting to restart bot...');
       initializeBot();
@@ -214,6 +140,7 @@ async function initializeBot(): Promise<void> {
 
 /**
  * 🏠 MAIN ENTRY POINT
+ * Health server starts FIRST, then bot initializes
  */
 async function main(): Promise<void> {
   try {
@@ -229,13 +156,14 @@ async function main(): Promise<void> {
 
   } catch (error) {
     console.error('❌ Fatal error in main():', error);
-    // Keep health server running even if bot fails
-    if (healthServer) {
-      console.log('⚠️ Keeping health server alive for Railway despite bot failure');
-      botStatus = 'main_error';
-    } else {
-      process.exit(1);
-    }
+    console.error('⚠️ Health server should still be running for Railway');
+    updateBotStatus('main_error');
+    
+    // Try to restart after delay
+    setTimeout(() => {
+      console.log('🔄 Attempting to restart main process...');
+      main();
+    }, 5 * 60 * 1000);
   }
 }
 
@@ -249,24 +177,14 @@ function setupGracefulShutdown(): void {
     try {
       if (botController) {
         await botController.stopAutonomousOperation();
+        console.log('🤖 Bot controller stopped');
       }
     } catch (error) {
       console.error('❌ Error stopping bot controller:', error);
     }
 
-    try {
-      if (healthServer) {
-        healthServer.close(() => {
-          console.log('🏥 Health server closed');
-          process.exit(0);
-        });
-      } else {
-        process.exit(0);
-      }
-    } catch (error) {
-      console.error('❌ Error closing health server:', error);
-      process.exit(1);
-    }
+    // Health server handles its own shutdown via healthServer.ts
+    process.exit(0);
   };
 
   process.on('SIGINT', () => shutdown('SIGINT'));
@@ -274,14 +192,24 @@ function setupGracefulShutdown(): void {
 
   process.on('uncaughtException', async (error) => {
     console.error('❌ Uncaught Exception:', error);
-    botStatus = 'uncaught_exception';
-    // Don't exit - keep health server running
+    updateBotStatus('uncaught_exception');
+    
+    // Don't exit - let health server stay alive
+    setTimeout(() => {
+      console.log('🔄 Attempting to restart after uncaught exception...');
+      initializeBot();
+    }, 5 * 60 * 1000);
   });
 
   process.on('unhandledRejection', async (reason, promise) => {
     console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
-    botStatus = 'unhandled_rejection';
-    // Don't exit - keep health server running
+    updateBotStatus('unhandled_rejection');
+    
+    // Don't exit - let health server stay alive
+    setTimeout(() => {
+      console.log('🔄 Attempting to restart after unhandled rejection...');
+      initializeBot();
+    }, 5 * 60 * 1000);
   });
 
   process.on('warning', (warning) => {
@@ -294,10 +222,7 @@ if (require.main === module) {
   setupGracefulShutdown();
   main().catch((error) => {
     console.error('❌ Failed to start application:', error);
-    if (!healthServer) {
-      process.exit(1);
-    }
+    updateBotStatus('startup_failed');
+    // Don't exit - health server should stay alive
   });
 }
-
-export { main };
