@@ -7,7 +7,7 @@
 
 import { PromptPool } from '../utils/promptPool';
 import { supabaseClient } from '../utils/supabaseClient';
-import { emergencyBudgetLockdown } from '../utils/emergencyBudgetLockdown';
+import { EmergencyBudgetLockdown } from '../utils/emergencyBudgetLockdown';
 
 export class PromptPoolCurator {
   private promptPool: PromptPool;
@@ -21,7 +21,7 @@ export class PromptPoolCurator {
     
     try {
       // 🚨 EMERGENCY BUDGET CHECK - Skip if budget exceeded
-      const lockdownStatus = await emergencyBudgetLockdown.isLockedDown();
+      const lockdownStatus = await EmergencyBudgetLockdown.isLockedDown();
       if (lockdownStatus.lockdownActive) {
         console.log('🚨 Budget lockdown active - skipping prompt curation (uses no AI)');
         return;

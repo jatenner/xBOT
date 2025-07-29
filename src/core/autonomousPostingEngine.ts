@@ -11,7 +11,7 @@
 
 // Core imports for autonomous posting
 import { supabaseClient } from '../utils/supabaseClient';
-import { emergencyBudgetLockdown } from '../utils/emergencyBudgetLockdown';
+import { EmergencyBudgetLockdown } from '../utils/emergencyBudgetLockdown';
 
 interface PostingDecision {
   should_post: boolean;
@@ -78,7 +78,7 @@ export class AutonomousPostingEngine {
       console.log(`⏰ Time since last post: ${minutesSinceLastPost} minutes (${hoursSinceLastPost.toFixed(1)} hours)`);
       
       // Check budget status with emergency override capability
-      const lockdownStatus = await emergencyBudgetLockdown.isLockedDown(hoursSinceLastPost);
+      const lockdownStatus = await EmergencyBudgetLockdown.isLockedDown(hoursSinceLastPost);
       
       console.log(`💰 Budget Status: ${lockdownStatus.lockdownActive ? 'LOCKED' : 'OK'}`);
       console.log(`💵 Spending: $${lockdownStatus.totalSpent.toFixed(2)} / $${lockdownStatus.dailyLimit.toFixed(2)}`);

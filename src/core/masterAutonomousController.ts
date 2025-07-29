@@ -388,13 +388,13 @@ export class MasterAutonomousController {
    * 🌐 START DASHBOARD
    */
   private startDashboard(): void {
-    const PORT = parseInt(process.env.PORT || '3000', 10);
+    const PORT = parseInt(process.env.DASHBOARD_PORT || '3002', 10); // Use different port
     const HOST = '0.0.0.0'; // Listen on all interfaces for Railway
     
     this.server = this.app.listen(PORT, HOST, () => {
-      console.log(`🚄 Railway Dashboard server running on http://${HOST}:${PORT}`);
-      console.log(`🌍 External access: Use your Railway app URL`);
-      console.log(`📊 Dashboard available at your Railway deployment URL`);
+      console.log(`📊 Dashboard server running on http://${HOST}:${PORT}`);
+      console.log(`🌍 External access: Dashboard on port ${PORT}`);
+      console.log(`📊 Dashboard available at your Railway deployment URL:${PORT}`);
     });
   }
 
