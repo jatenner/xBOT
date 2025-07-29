@@ -560,32 +560,20 @@ export class PromptTemplateRotation {
   }
 
   /**
-   * 🔍 EXTRACT PLACEHOLDERS FROM TEMPLATE (ENHANCED SAFETY)
+   * 🔍 EXTRACT PLACEHOLDERS FROM TEMPLATE
    */
   private static extractPlaceholders(template: string): string[] {
     try {
-      // Enhanced validation to prevent undefined.match errors
-      if (!template || typeof template !== 'string' || template.trim() === '') {
+      if (!template || typeof template !== 'string') {
         return [];
       }
 
-      // Additional safety check for null/undefined
-      const safeTemplate = String(template);
-      const matches = safeTemplate.match(/\{([^}]+)\}/g);
-      
-      if (!matches || !Array.isArray(matches)) {
+      const matches = template.match(/\{([^}]+)\}/g);
+      if (!matches) {
         return [];
       }
 
-      return matches.map(match => {
-        try {
-          return match.replace(/[{}]/g, '');
-        } catch (replaceError) {
-          console.warn('⚠️ Error processing placeholder:', match);
-          return '';
-        }
-      }).filter(placeholder => placeholder.length > 0);
-      
+      return matches.map(match => match.replace(/[{}]/g, ''));
     } catch (error) {
       console.error('❌ Error extracting placeholders:', error);
       return [];

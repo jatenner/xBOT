@@ -1,572 +1,471 @@
 /**
- * 🎯 ROBUST TEMPLATE SELECTION SYSTEM (2024)
+ * 🛡️ ROBUST TEMPLATE SELECTION SYSTEM
  * 
- * Enhanced template selection system with bulletproof error handling.
- * Fixes undefined.match errors and provides intelligent fallbacks.
- * 
- * Key Features:
- * - Multi-layer fallback system
- * - Safe string handling with null checks
- * - Performance-based template selection
- * - Time-of-day optimization
- * - Error recovery and logging
+ * Ensures template selection NEVER returns undefined with multiple fallback layers:
+ * - Database template selection
+ * - Emergency fallback templates
+ * - Hardcoded backup templates
+ * - Comprehensive error handling
  */
 
-import { minimalSupabaseClient } from './minimalSupabaseClient';
+import { supabaseClient } from './supabaseClient';
 
-interface RobustPromptTemplate {
+interface Template {
   id: string;
   name: string;
   template: string;
-  tone: string;
-  contentType: string;
-  timePreference: string;
-  performanceScore: number;
-  usageCount: number;
-  active: boolean;
-  lastUsed?: string;
+  tone: 'friendly' | 'controversial' | 'scientific' | 'personal';
+  content_type: 'tip' | 'fact' | 'myth_bust' | 'insight' | 'question';
+  time_preference: 'morning' | 'afternoon' | 'evening' | 'any';
+  performance_score?: number;
+  usage_count?: number;
+  active?: boolean;
 }
 
 interface TemplateSelectionResult {
   success: boolean;
-  template?: RobustPromptTemplate;
-  selectionReason: string;
+  template: Template;
+  selection_method: string;
   error?: string;
 }
 
-interface TemplateSelectionOptions {
-  currentHour?: number;
-  tone?: string;
-  contentType?: string;
-  excludeRecentlyUsed?: boolean;
-}
-
 export class RobustTemplateSelection {
-  private static readonly MIN_HOURS_BETWEEN_SAME_TEMPLATE = 12;
-  private static readonly PERFORMANCE_WEIGHT = 0.4;
-  private static readonly TIME_WEIGHT = 0.3;
-  private static readonly FRESHNESS_WEIGHT = 0.3;
-
-  // Emergency fallback templates
-  private static readonly EMERGENCY_TEMPLATES: RobustPromptTemplate[] = [
+  private static readonly EMERGENCY_TEMPLATES: Template[] = [
     {
-      id: 'emergency_1',
-      name: 'Health Tip Emergency',
-      template: 'Health reminder: {health_fact} Small daily changes lead to big wellness improvements! #HealthTip #Wellness',
+      id: 'emergency_health_tip',
+      name: 'Emergency Health Tip',
+      template: 'Health tip: {health_fact} This simple change can make a big difference in your wellness journey. What health goal are you working on today? #HealthTip #Wellness',
       tone: 'friendly',
-      contentType: 'tip',
-      timePreference: 'any',
-      performanceScore: 0.6,
-      usageCount: 0,
+      content_type: 'tip',
+      time_preference: 'any',
+      performance_score: 0.5,
+      usage_count: 0,
       active: true
     },
     {
-      id: 'emergency_2', 
-      name: 'Motivation Emergency',
-      template: 'Your wellness journey matters: {motivational_insight} Every step forward counts! #Motivation #Health',
-      tone: 'motivational',
-      contentType: 'motivation',
-      timePreference: 'any',
-      performanceScore: 0.6,
-      usageCount: 0,
+      id: 'emergency_health_fact',
+      name: 'Emergency Health Fact',
+      template: 'Did you know: {health_fact} The human body is truly amazing! What health fact surprised you the most? #HealthFacts #Wellness',
+      tone: 'friendly',
+      content_type: 'fact',
+      time_preference: 'any',
+      performance_score: 0.5,
+      usage_count: 0,
       active: true
     },
     {
-      id: 'emergency_3',
-      name: 'Science Emergency',
-      template: 'Research shows: {science_fact} Understanding your body helps optimize your health! #HealthScience #Wellness',
-      tone: 'educational',
-      contentType: 'science',
-      timePreference: 'any',
-      performanceScore: 0.6,
-      usageCount: 0,
+      id: 'emergency_myth_bust',
+      name: 'Emergency Myth Buster',
+      template: 'Myth buster: {controversial_statement} The science shows: {scientific_reasoning} What health myths have you heard? #MythBuster #HealthScience',
+      tone: 'scientific',
+      content_type: 'myth_bust',
+      time_preference: 'any',
+      performance_score: 0.5,
+      usage_count: 0,
+      active: true
+    },
+    {
+      id: 'emergency_insight',
+      name: 'Emergency Health Insight',
+      template: 'Health insight: {health_insight} This is why understanding your body matters. What insights have changed your health habits? #HealthInsights #Wellness',
+      tone: 'personal',
+      content_type: 'insight',
+      time_preference: 'any',
+      performance_score: 0.5,
+      usage_count: 0,
+      active: true
+    },
+    {
+      id: 'emergency_question',
+      name: 'Emergency Health Question',
+      template: 'Question for you: {thought_provoking_question} I find this fascinating because {reasoning}. What are your thoughts? #HealthChat #Wellness',
+      tone: 'friendly',
+      content_type: 'question',
+      time_preference: 'any',
+      performance_score: 0.5,
+      usage_count: 0,
       active: true
     }
   ];
 
   /**
-   * 🎯 MAIN TEMPLATE SELECTION
-   * Robust selection with multiple fallback layers
+   * 🎯 GUARANTEED TEMPLATE SELECTION (NEVER RETURNS UNDEFINED)
    */
-  static async getTemplate(options: TemplateSelectionOptions = {}): Promise<TemplateSelectionResult> {
+  static async getTemplate(options: {
+    content_type?: string;
+    tone?: string;
+    current_hour?: number;
+  } = {}): Promise<TemplateSelectionResult> {
+    console.log('🎯 Starting robust template selection...');
+    
     try {
-      console.log('🎯 Starting robust template selection...');
+      // Method 1: Try enhanced prompt template rotation
+      const rotationResult = await this.tryPromptTemplateRotation(options);
+      if (rotationResult.success && rotationResult.template) {
+        console.log(`✅ Selected via rotation: ${rotationResult.template.name}`);
+        return {
+          success: true,
+          template: rotationResult.template,
+          selection_method: 'prompt_template_rotation'
+        };
+      }
 
-      // Step 1: Try database selection
-      const databaseResult = await this.selectFromDatabase(options);
+      // Method 2: Try direct database query
+      const databaseResult = await this.tryDatabaseSelection(options);
       if (databaseResult.success && databaseResult.template) {
-        return databaseResult;
+        console.log(`✅ Selected via database: ${databaseResult.template.name}`);
+        return {
+          success: true,
+          template: databaseResult.template,
+          selection_method: 'database_direct'
+        };
       }
 
-      console.log('⚠️ Database selection failed, trying emergency templates...');
-
-      // Step 2: Try emergency templates
-      const emergencyResult = this.selectEmergencyTemplate(options);
-      if (emergencyResult.success && emergencyResult.template) {
-        return emergencyResult;
+      // Method 3: Try simple active template selection
+      const activeResult = await this.tryActiveTemplateSelection();
+      if (activeResult.success && activeResult.template) {
+        console.log(`✅ Selected active template: ${activeResult.template.name}`);
+        return {
+          success: true,
+          template: activeResult.template,
+          selection_method: 'active_template'
+        };
       }
 
-      console.log('🚨 All template selection failed, using absolute fallback...');
+      // Method 4: Emergency fallback templates
+      console.log('⚠️ All database methods failed, using emergency templates');
+      const emergencyTemplate = this.selectEmergencyTemplate(options);
+      
+      return {
+        success: true,
+        template: emergencyTemplate,
+        selection_method: 'emergency_fallback'
+      };
 
-      // Step 3: Absolute fallback
-      return this.getAbsoluteFallback();
-
-    } catch (error: any) {
-      console.error('❌ Template selection system failed:', error);
-      return this.getAbsoluteFallback();
+    } catch (error) {
+      console.error('❌ All template selection methods failed:', error);
+      
+      // Ultimate fallback - guaranteed to work
+      const ultimateTemplate = this.EMERGENCY_TEMPLATES[0];
+      
+      return {
+        success: true,
+        template: ultimateTemplate,
+        selection_method: 'ultimate_fallback',
+        error: `Template selection failed: ${error.message}`
+      };
     }
   }
 
   /**
-   * 🗃️ SELECT FROM DATABASE
-   * Try to get optimal template from database
+   * 🔄 TRY PROMPT TEMPLATE ROTATION
    */
-  private static async selectFromDatabase(options: TemplateSelectionOptions): Promise<TemplateSelectionResult> {
+  private static async tryPromptTemplateRotation(options: any): Promise<{ success: boolean; template?: Template }> {
     try {
-      if (!minimalSupabaseClient.supabase) {
-        return { success: false, selectionReason: 'Database not available' };
+      const { promptTemplateRotation } = await import('./promptTemplateRotation');
+      
+      const result = await promptTemplateRotation.getOptimalTemplate({
+        currentHour: options.current_hour || new Date().getHours(),
+        contentType: options.content_type,
+        tone: options.tone
+      });
+
+      if (result.success && result.template && result.template.template && result.template.template.trim()) {
+        return {
+          success: true,
+          template: this.normalizeTemplate(result.template)
+        };
       }
 
-      // Get active templates
-      const { data: templates, error } = await minimalSupabaseClient.supabase
+      return { success: false };
+    } catch (error) {
+      console.log('⚠️ Prompt template rotation failed:', error.message);
+      return { success: false };
+    }
+  }
+
+  /**
+   * 🗃️ TRY DIRECT DATABASE SELECTION
+   */
+  private static async tryDatabaseSelection(options: any): Promise<{ success: boolean; template?: Template }> {
+    try {
+      const currentHour = options.current_hour || new Date().getHours();
+      
+      // Determine time preference
+      let timePreference = 'any';
+      if (currentHour >= 6 && currentHour <= 11) {
+        timePreference = 'morning';
+      } else if (currentHour >= 12 && currentHour <= 17) {
+        timePreference = 'afternoon';
+      } else if (currentHour >= 18 && currentHour <= 23) {
+        timePreference = 'evening';
+      }
+
+      // Build query conditions
+      let query = supabaseClient.supabase
+        .from('enhanced_prompt_templates')
+        .select('*')
+        .eq('active', true);
+
+      // Add filters based on options
+      if (options.content_type) {
+        query = query.eq('content_type', options.content_type);
+      }
+      
+      if (options.tone) {
+        query = query.eq('tone', options.tone);
+      }
+
+      // Try time-specific first, then any time
+      const timeQueries = [
+        query.eq('time_preference', timePreference),
+        query.in('time_preference', [timePreference, 'any'])
+      ];
+
+      for (const timeQuery of timeQueries) {
+        const { data, error } = await timeQuery
+          .order('performance_score', { ascending: false })
+          .order('usage_count', { ascending: true })
+          .limit(5);
+
+        if (!error && data && data.length > 0) {
+          // Pick a random template from top performers
+          const randomTemplate = data[Math.floor(Math.random() * data.length)];
+          
+          if (randomTemplate && randomTemplate.template && randomTemplate.template.trim()) {
+            return {
+              success: true,
+              template: this.normalizeTemplate(randomTemplate)
+            };
+          }
+        }
+      }
+
+      return { success: false };
+    } catch (error) {
+      console.log('⚠️ Database template selection failed:', error.message);
+      return { success: false };
+    }
+  }
+
+  /**
+   * 📋 TRY ACTIVE TEMPLATE SELECTION
+   */
+  private static async tryActiveTemplateSelection(): Promise<{ success: boolean; template?: Template }> {
+    try {
+      const { data, error } = await supabaseClient.supabase
         .from('enhanced_prompt_templates')
         .select('*')
         .eq('active', true)
-        .order('performance_score', { ascending: false })
         .limit(20);
 
-      if (error || !templates || templates.length === 0) {
-        console.log('⚠️ No templates found in database');
-        return { success: false, selectionReason: 'No templates available' };
+      if (!error && data && data.length > 0) {
+        // Filter out templates with empty template text
+        const validTemplates = data.filter(t => t.template && t.template.trim().length > 0);
+        
+        if (validTemplates.length > 0) {
+          const randomTemplate = validTemplates[Math.floor(Math.random() * validTemplates.length)];
+          
+          return {
+            success: true,
+            template: this.normalizeTemplate(randomTemplate)
+          };
+        }
       }
 
-      // Convert and validate templates
-      const validTemplates = templates
-        .map(t => this.safeMapTemplate(t))
-        .filter(t => t !== null) as RobustPromptTemplate[];
-
-      if (validTemplates.length === 0) {
-        return { success: false, selectionReason: 'No valid templates found' };
-      }
-
-      // Score and select best template
-      const scoredTemplates = validTemplates.map(template => ({
-        template,
-        score: this.calculateTemplateScore(template, options)
-      }));
-
-      // Sort by score (highest first)
-      scoredTemplates.sort((a, b) => b.score - a.score);
-
-      const selectedTemplate = scoredTemplates[0].template;
-      
-      console.log(`✅ Selected database template: ${selectedTemplate.name} (score: ${scoredTemplates[0].score.toFixed(2)})`);
-
-      return {
-        success: true,
-        template: selectedTemplate,
-        selectionReason: `Database selection - score: ${scoredTemplates[0].score.toFixed(2)}`
-      };
-
-    } catch (error: any) {
-      console.error('❌ Database template selection failed:', error);
-      return { success: false, selectionReason: 'Database selection error', error: error.message };
+      return { success: false };
+    } catch (error) {
+      console.log('⚠️ Active template selection failed:', error.message);
+      return { success: false };
     }
   }
 
   /**
    * 🚨 SELECT EMERGENCY TEMPLATE
-   * Use hardcoded emergency templates when database fails
    */
-  private static selectEmergencyTemplate(options: TemplateSelectionOptions): TemplateSelectionResult {
-    try {
-      console.log('🚨 Using emergency template selection...');
-
-      // Filter templates by criteria if provided
-      let candidateTemplates = [...this.EMERGENCY_TEMPLATES];
-
-      if (options.tone) {
-        const toneFiltered = candidateTemplates.filter(t => 
-          this.safeStringIncludes(t.tone, options.tone!) || 
-          this.safeStringIncludes(options.tone!, t.tone)
-        );
-        if (toneFiltered.length > 0) {
-          candidateTemplates = toneFiltered;
-        }
+  private static selectEmergencyTemplate(options: any): Template {
+    // Filter by content type if specified
+    let candidates = this.EMERGENCY_TEMPLATES;
+    
+    if (options.content_type) {
+      const filtered = candidates.filter(t => t.content_type === options.content_type);
+      if (filtered.length > 0) {
+        candidates = filtered;
       }
-
-      if (options.contentType) {
-        const typeFiltered = candidateTemplates.filter(t => 
-          this.safeStringIncludes(t.contentType, options.contentType!) ||
-          this.safeStringIncludes(options.contentType!, t.contentType)
-        );
-        if (typeFiltered.length > 0) {
-          candidateTemplates = typeFiltered;
-        }
-      }
-
-      // Select random template from candidates
-      const selectedTemplate = candidateTemplates[Math.floor(Math.random() * candidateTemplates.length)];
-
-      console.log(`✅ Selected emergency template: ${selectedTemplate.name}`);
-
-      return {
-        success: true,
-        template: selectedTemplate,
-        selectionReason: 'Emergency template selection'
-      };
-
-    } catch (error: any) {
-      console.error('❌ Emergency template selection failed:', error);
-      return { success: false, selectionReason: 'Emergency selection error', error: error.message };
     }
+    
+    if (options.tone) {
+      const filtered = candidates.filter(t => t.tone === options.tone);
+      if (filtered.length > 0) {
+        candidates = filtered;
+      }
+    }
+
+    // Return random emergency template
+    return candidates[Math.floor(Math.random() * candidates.length)];
   }
 
   /**
-   * 🛡️ ABSOLUTE FALLBACK
-   * Last resort template that should always work
+   * 🔧 NORMALIZE TEMPLATE FORMAT
    */
-  private static getAbsoluteFallback(): TemplateSelectionResult {
-    const fallbackTemplate: RobustPromptTemplate = {
-      id: 'absolute_fallback',
-      name: 'Absolute Fallback',
-      template: 'Remember: Your health is your wealth. Take one small step today toward better wellness! #Health #Wellness #SelfCare',
-      tone: 'motivational',
-      contentType: 'general',
-      timePreference: 'any',
-      performanceScore: 0.5,
-      usageCount: 0,
-      active: true
-    };
-
-    console.log('🛡️ Using absolute fallback template');
-
+  private static normalizeTemplate(rawTemplate: any): Template {
     return {
-      success: true,
-      template: fallbackTemplate,
-      selectionReason: 'Absolute fallback - system recovery'
+      id: rawTemplate.id || `template_${Date.now()}`,
+      name: rawTemplate.name || 'Health Template',
+      template: rawTemplate.template || 'Health tip: {health_fact} Stay healthy! #Health',
+      tone: rawTemplate.tone || 'friendly',
+      content_type: rawTemplate.content_type || 'tip',
+      time_preference: rawTemplate.time_preference || 'any',
+      performance_score: rawTemplate.performance_score || 0.5,
+      usage_count: rawTemplate.usage_count || 0,
+      active: rawTemplate.active !== false
     };
   }
 
   /**
-   * 📊 CALCULATE TEMPLATE SCORE
-   * Score templates based on multiple factors
+   * 🔍 VALIDATE TEMPLATE
    */
-  private static calculateTemplateScore(template: RobustPromptTemplate, options: TemplateSelectionOptions): number {
-    let score = 0;
-
-    // Performance score component (0-1)
-    const performanceComponent = Math.min(1, Math.max(0, template.performanceScore)) * this.PERFORMANCE_WEIGHT;
-    score += performanceComponent;
-
-    // Time preference component (0-1)
-    const timeComponent = this.calculateTimeScore(template, options.currentHour || new Date().getHours()) * this.TIME_WEIGHT;
-    score += timeComponent;
-
-    // Freshness component (0-1) - prefer less used templates
-    const maxUsage = 100; // Assume max usage for normalization
-    const freshnessComponent = Math.max(0, 1 - (template.usageCount / maxUsage)) * this.FRESHNESS_WEIGHT;
-    score += freshnessComponent;
-
-    return Math.min(1, Math.max(0, score));
-  }
-
-  /**
-   * 🕐 CALCULATE TIME SCORE
-   * Score based on time preference match
-   */
-  private static calculateTimeScore(template: RobustPromptTemplate, currentHour: number): number {
-    const timeOfDay = this.getTimeOfDay(currentHour);
+  static validateTemplate(template: any): boolean {
+    if (!template) return false;
+    if (!template.template || typeof template.template !== 'string') return false;
+    if (template.template.trim().length === 0) return false;
+    if (!template.id || !template.name) return false;
     
-    if (!template.timePreference || template.timePreference === 'any') {
-      return 0.7; // Neutral score for any-time templates
-    }
-
-    if (this.safeStringIncludes(template.timePreference, timeOfDay)) {
-      return 1.0; // Perfect match
-    }
-
-    // Partial matches
-    if (timeOfDay === 'morning' && this.safeStringIncludes(template.timePreference, 'day')) {
-      return 0.8;
-    }
-    if (timeOfDay === 'afternoon' && this.safeStringIncludes(template.timePreference, 'day')) {
-      return 0.8;
-    }
-
-    return 0.3; // Low score for mismatch
+    return true;
   }
 
   /**
-   * 🕐 GET TIME OF DAY
-   * Safe time categorization
+   * 📊 GET SELECTION ANALYTICS
    */
-  private static getTimeOfDay(hour: number): string {
-    const safeHour = Math.max(0, Math.min(23, hour || 12)); // Default to noon if invalid
-
-    if (safeHour >= 6 && safeHour < 12) return 'morning';
-    if (safeHour >= 12 && safeHour < 18) return 'afternoon';
-    if (safeHour >= 18 && safeHour < 24) return 'evening';
-    return 'late_night';
-  }
-
-  /**
-   * 🛡️ SAFE TEMPLATE MAPPING
-   * Safely map database template with extensive validation
-   */
-  private static safeMapTemplate(dbTemplate: any): RobustPromptTemplate | null {
+  static async getSelectionAnalytics(): Promise<{
+    total_templates: number;
+    active_templates: number;
+    by_tone: Record<string, number>;
+    by_content_type: Record<string, number>;
+    avg_performance: number;
+  }> {
     try {
-      // Null/undefined check
-      if (!dbTemplate || typeof dbTemplate !== 'object') {
-        return null;
+      const { data, error } = await supabaseClient.supabase
+        .from('enhanced_prompt_templates')
+        .select('*');
+
+      if (error || !data) {
+        return {
+          total_templates: 0,
+          active_templates: 0,
+          by_tone: {},
+          by_content_type: {},
+          avg_performance: 0
+        };
       }
 
-      // Required field validation
-      const id = this.safeString(dbTemplate.id);
-      const template = this.safeString(dbTemplate.template);
-      
-      if (!id || !template || template.length < 5) {
-        console.log('⚠️ Invalid template: missing required fields');
-        return null;
-      }
-
-      // Safe field extraction with defaults
-      const mappedTemplate: RobustPromptTemplate = {
-        id,
-        name: this.safeString(dbTemplate.name) || 'Unnamed Template',
-        template: template.trim(),
-        tone: this.safeString(dbTemplate.tone) || 'neutral',
-        contentType: this.safeString(dbTemplate.content_type) || 'general',
-        timePreference: this.safeString(dbTemplate.time_preference) || 'any',
-        performanceScore: this.safeNumber(dbTemplate.performance_score, 0),
-        usageCount: this.safeNumber(dbTemplate.usage_count, 0),
-        active: dbTemplate.active !== false, // Default to true unless explicitly false
-        lastUsed: this.safeString(dbTemplate.last_used)
+      const analytics = {
+        total_templates: data.length,
+        active_templates: data.filter(t => t.active).length,
+        by_tone: {} as Record<string, number>,
+        by_content_type: {} as Record<string, number>,
+        avg_performance: 0
       };
 
-      return mappedTemplate;
-
-    } catch (error: any) {
-      console.error('❌ Template mapping failed:', error);
-      return null;
-    }
-  }
-
-  /**
-   * 🔒 SAFE STRING EXTRACTION
-   * Safely extract string with null/undefined protection
-   */
-  private static safeString(value: any): string {
-    if (value === null || value === undefined) {
-      return '';
-    }
-    
-    if (typeof value === 'string') {
-      return value.trim();
-    }
-    
-    try {
-      return String(value).trim();
-    } catch {
-      return '';
-    }
-  }
-
-  /**
-   * 🔢 SAFE NUMBER EXTRACTION
-   * Safely extract number with validation
-   */
-  private static safeNumber(value: any, defaultValue: number = 0): number {
-    if (value === null || value === undefined) {
-      return defaultValue;
-    }
-    
-    if (typeof value === 'number' && !isNaN(value)) {
-      return Math.max(0, value); // Ensure non-negative
-    }
-    
-    try {
-      const parsed = parseFloat(String(value));
-      return isNaN(parsed) ? defaultValue : Math.max(0, parsed);
-    } catch {
-      return defaultValue;
-    }
-  }
-
-  /**
-   * 🔍 SAFE STRING INCLUDES
-   * Safe string inclusion check with null protection
-   */
-  private static safeStringIncludes(haystack: any, needle: any): boolean {
-    try {
-      const safeHaystack = this.safeString(haystack).toLowerCase();
-      const safeNeedle = this.safeString(needle).toLowerCase();
-      
-      if (!safeHaystack || !safeNeedle) {
-        return false;
-      }
-      
-      return safeHaystack.includes(safeNeedle);
-    } catch {
-      return false;
-    }
-  }
-
-  /**
-   * 🔧 EXTRACT PLACEHOLDERS SAFELY
-   * Safe placeholder extraction with protection against undefined.match
-   */
-  static extractPlaceholders(template: string): string[] {
-    try {
-      const safeTemplate = this.safeString(template);
-      
-      if (!safeTemplate || safeTemplate.length === 0) {
-        return [];
-      }
-
-      // Safe regex matching with null checks
-      const matches = safeTemplate.match(/\{([^}]+)\}/g);
-      
-      if (!matches || !Array.isArray(matches)) {
-        return [];
-      }
-
-      return matches
-        .map(match => {
-          try {
-            return match.replace(/[{}]/g, '').trim();
-          } catch {
-            return '';
-          }
-        })
-        .filter(placeholder => placeholder.length > 0);
-
-    } catch (error: any) {
-      console.error('❌ Placeholder extraction failed:', error);
-      return [];
-    }
-  }
-
-  /**
-   * 📊 RECORD TEMPLATE USAGE
-   * Record template usage for performance tracking
-   */
-  static async recordTemplateUsage(
-    templateId: string,
-    tweetId: string,
-    performanceScore?: number
-  ): Promise<void> {
-    try {
-      if (!minimalSupabaseClient.supabase) {
-        console.log('⚠️ Cannot record usage - database not available');
-        return;
-      }
-
-      // Record in usage history
-      await minimalSupabaseClient.supabase
-        .from('prompt_rotation_history')
-        .insert({
-          template_id: templateId,
-          tweet_id: tweetId,
-          performance_score: performanceScore || 0,
-          time_used: new Date().toISOString()
-        });
-
-      console.log(`📝 Recorded template usage: ${templateId} for tweet ${tweetId}`);
-
-    } catch (error: any) {
-      console.error('❌ Failed to record template usage:', error);
-    }
-  }
-
-  /**
-   * 🧪 TEST TEMPLATE SYSTEM
-   * Comprehensive test of the template selection system
-   */
-  static async testTemplateSystem(): Promise<{
-    success: boolean;
-    tests: {
-      name: string;
-      passed: boolean;
-      details: string;
-    }[];
-  }> {
-    console.log('🧪 Testing robust template selection system...');
-    
-    const tests = [
-      {
-        name: 'Safe String Handling',
-        passed: false,
-        details: ''
-      },
-      {
-        name: 'Placeholder Extraction',
-        passed: false,
-        details: ''
-      },
-      {
-        name: 'Template Selection',
-        passed: false,
-        details: ''
-      },
-      {
-        name: 'Fallback System',
-        passed: false,
-        details: ''
-      }
-    ];
-
-    try {
-      // Test 1: Safe string handling
-      const nullString = this.safeString(null);
-      const undefinedString = this.safeString(undefined);
-      const validString = this.safeString('  test  ');
-      
-      tests[0].passed = nullString === '' && undefinedString === '' && validString === 'test';
-      tests[0].details = `null: "${nullString}", undefined: "${undefinedString}", valid: "${validString}"`;
-
-      // Test 2: Placeholder extraction
-      const placeholders1 = this.extractPlaceholders('{health_fact} and {tip}');
-      const placeholders2 = this.extractPlaceholders(null as any);
-      const placeholders3 = this.extractPlaceholders('No placeholders here');
-      
-      tests[1].passed = placeholders1.length === 2 && 
-                      placeholders1.includes('health_fact') && 
-                      placeholders1.includes('tip') &&
-                      placeholders2.length === 0 &&
-                      placeholders3.length === 0;
-      tests[1].details = `Found: ${placeholders1.join(', ')} | Null result: ${placeholders2.length} | No match: ${placeholders3.length}`;
-
-      // Test 3: Template selection
-      const selectionResult = await this.getTemplate({ currentHour: 10, tone: 'friendly' });
-      tests[2].passed = selectionResult.success && selectionResult.template !== undefined;
-      tests[2].details = `Success: ${selectionResult.success}, Template: ${selectionResult.template?.name || 'none'}, Reason: ${selectionResult.selectionReason}`;
-
-      // Test 4: Fallback system
-      const fallbackResult = this.getAbsoluteFallback();
-      tests[3].passed = fallbackResult.success && 
-                       fallbackResult.template !== undefined && 
-                       fallbackResult.template.template.length > 0;
-      tests[3].details = `Fallback template: ${fallbackResult.template?.name || 'none'}`;
-
-      const allTestsPassed = tests.every(test => test.passed);
-      
-      console.log(`🎯 Template system test ${allTestsPassed ? 'PASSED' : 'FAILED'}`);
-      tests.forEach(test => {
-        console.log(`  ${test.passed ? '✅' : '❌'} ${test.name}: ${test.details}`);
+      // Count by tone
+      data.forEach(template => {
+        const tone = template.tone || 'unknown';
+        analytics.by_tone[tone] = (analytics.by_tone[tone] || 0) + 1;
+        
+        const contentType = template.content_type || 'unknown';
+        analytics.by_content_type[contentType] = (analytics.by_content_type[contentType] || 0) + 1;
       });
 
-      return {
-        success: allTestsPassed,
-        tests
-      };
+      // Calculate average performance
+      const validScores = data.filter(t => typeof t.performance_score === 'number');
+      if (validScores.length > 0) {
+        analytics.avg_performance = validScores.reduce((sum, t) => sum + t.performance_score, 0) / validScores.length;
+      }
 
-    } catch (error: any) {
-      console.error('❌ Template system test failed:', error);
+      return analytics;
+    } catch (error) {
+      console.error('❌ Failed to get selection analytics:', error);
       return {
-        success: false,
-        tests: tests.map(test => ({ ...test, details: `Test failed: ${error.message}` }))
+        total_templates: 0,
+        active_templates: 0,
+        by_tone: {},
+        by_content_type: {},
+        avg_performance: 0
       };
     }
   }
-} 
+
+  /**
+   * 🧪 TEST TEMPLATE SELECTION
+   */
+  static async testTemplateSelection(): Promise<{
+    test_passed: boolean;
+    results: Array<{
+      method: string;
+      success: boolean;
+      template_id?: string;
+      template_name?: string;
+      error?: string;
+    }>;
+  }> {
+    console.log('🧪 Testing template selection system...');
+    
+    const testResults = [];
+    let allTestsPassed = true;
+
+    // Test various scenarios
+    const testCases = [
+      { content_type: 'tip', tone: 'friendly' },
+      { content_type: 'fact', tone: 'scientific' },
+      { content_type: 'myth_bust', tone: 'controversial' },
+      { current_hour: 9 }, // Morning
+      { current_hour: 15 }, // Afternoon
+      { current_hour: 20 }, // Evening
+      {} // No preferences
+    ];
+
+    for (let i = 0; i < testCases.length; i++) {
+      const testCase = testCases[i];
+      try {
+        const result = await this.getTemplate(testCase);
+        
+        const testResult = {
+          method: `test_case_${i + 1}`,
+          success: result.success && this.validateTemplate(result.template),
+          template_id: result.template?.id,
+          template_name: result.template?.name,
+          error: result.error
+        };
+
+        testResults.push(testResult);
+        
+        if (!testResult.success) {
+          allTestsPassed = false;
+        }
+
+        console.log(`Test ${i + 1}: ${testResult.success ? '✅' : '❌'} ${testResult.template_name || 'No template'}`);
+
+      } catch (error) {
+        const testResult = {
+          method: `test_case_${i + 1}`,
+          success: false,
+          error: error.message
+        };
+        
+        testResults.push(testResult);
+        allTestsPassed = false;
+        
+        console.log(`Test ${i + 1}: ❌ Error: ${error.message}`);
+      }
+    }
+
+    console.log(`🎯 Template selection test ${allTestsPassed ? 'PASSED' : 'FAILED'}`);
+    
+    return {
+      test_passed: allTestsPassed,
+      results: testResults
+    };
+  }
+}
+
+export const robustTemplateSelection = RobustTemplateSelection; 

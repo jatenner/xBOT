@@ -11,7 +11,7 @@
  */
 
 import { contentEnhancementIntegration } from '../utils/contentEnhancementIntegration';
-import { enhancedSemanticUniqueness } from '../utils/enhancedSemanticUniqueness';
+import { ideaFingerprintDeduplication } from '../utils/ideaFingerprintDeduplication';
 import { contentKnowledgeBase } from '../utils/contentKnowledgeBase';
 import { promptTemplateRotation } from '../utils/promptTemplateRotation';
 import { engagementLearningEngine } from '../utils/engagementLearningEngine';
@@ -30,7 +30,7 @@ async function testContentEnhancements() {
   console.log('1️⃣ Testing Idea Fingerprint Deduplication...');
   try {
     const testContent = "Cold water can boost your metabolism by 8-30% for 90 minutes as your body works to warm it up.";
-    const fingerprintResult = await enhancedSemanticUniqueness.checkContentUniqueness(testContent);
+    const fingerprintResult = await ideaFingerprintDeduplication.checkIdeaFingerprint(testContent);
     
     if (fingerprintResult.isAllowed && fingerprintResult.fingerprint) {
       console.log(`   ✅ Fingerprint extracted: "${fingerprintResult.fingerprint.fingerprint}"`);
@@ -44,7 +44,7 @@ async function testContentEnhancements() {
     }
     
     // Test analytics
-    const fingerprintAnalytics = await enhancedSemanticUniqueness.getUniquenessAnalytics();
+    const fingerprintAnalytics = await ideaFingerprintDeduplication.getFingerprintAnalytics();
     console.log(`   📊 Analytics: ${fingerprintAnalytics.totalFingerprints} total fingerprints tracked\n`);
     
   } catch (error) {

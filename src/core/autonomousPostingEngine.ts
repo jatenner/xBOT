@@ -11,7 +11,7 @@
 
 // Core imports for autonomous posting
 import { supabaseClient } from '../utils/supabaseClient';
-import { EmergencyBudgetLockdown } from '../utils/emergencyBudgetLockdown';
+import { emergencyBudgetLockdown } from '../utils/emergencyBudgetLockdown';
 
 interface PostingDecision {
   should_post: boolean;
@@ -60,53 +60,32 @@ export class AutonomousPostingEngine {
   }
 
   /**
-   * 🧠 INTELLIGENT POSTING DECISION (ENHANCED WITH EMERGENCY OVERRIDE)
+   * 🧠 INTELLIGENT POSTING DECISION
    */
   async makePostingDecision(): Promise<PostingDecision> {
     try {
-      console.log('🧠 === MAKING INTELLIGENT POSTING DECISION ===');
+      console.log('🧠 Making intelligent posting decision...');
 
-      // Get last post time from database first
+      // Check budget status
+      const lockdownStatus = await emergencyBudgetLockdown.isLockedDown();
+      if (lockdownStatus.lockdownActive) {
+        return {
+          should_post: false,
+          reason: 'Emergency budget lockdown active',
+          confidence: 1.0,
+          strategy: 'conservative',
+          wait_minutes: 60
+        };
+      }
+
+      // Get last post time from database
       const lastPost = await this.getLastPostFromDatabase();
       const now = new Date();
       const minutesSinceLastPost = lastPost 
         ? Math.floor((now.getTime() - new Date(lastPost.created_at).getTime()) / (1000 * 60))
         : 1000; // Large number if no posts
-      
-      const hoursSinceLastPost = minutesSinceLastPost / 60;
-      
-      console.log(`⏰ Time since last post: ${minutesSinceLastPost} minutes (${hoursSinceLastPost.toFixed(1)} hours)`);
-      
-      // Check budget status with emergency override capability
-      const lockdownStatus = await EmergencyBudgetLockdown.isLockedDown(hoursSinceLastPost);
-      
-      console.log(`💰 Budget Status: ${lockdownStatus.lockdownActive ? 'LOCKED' : 'OK'}`);
-      console.log(`💵 Spending: $${lockdownStatus.totalSpent.toFixed(2)} / $${lockdownStatus.dailyLimit.toFixed(2)}`);
-      console.log(`📝 Reason: ${lockdownStatus.lockdownReason}`);
-      
-      // EMERGENCY OVERRIDE: Force post if 12+ hours have passed
-      if (hoursSinceLastPost >= 12) {
-        console.log(`🚨 EMERGENCY OVERRIDE: ${hoursSinceLastPost.toFixed(1)} hours since last post - FORCING POST`);
-        return {
-          should_post: true,
-          reason: `Emergency override: ${hoursSinceLastPost.toFixed(1)} hours since last post`,
-          confidence: 1.0,
-          strategy: 'aggressive'
-        };
-      }
-      
-      // If budget locked and less than 12 hours, respect lockdown but explain clearly
-      if (lockdownStatus.lockdownActive) {
-        const hoursUntilOverride = Math.max(0, 12 - hoursSinceLastPost);
-        console.log(`🛑 Budget lockdown active - will override in ${hoursUntilOverride.toFixed(1)} hours`);
-        return {
-          should_post: false,
-          reason: `Budget lockdown active ($${lockdownStatus.totalSpent.toFixed(2)}/${lockdownStatus.dailyLimit}) - emergency override in ${hoursUntilOverride.toFixed(1)}h`,
-          confidence: 1.0,
-          strategy: 'conservative',
-          wait_minutes: Math.min(hoursUntilOverride * 60, 60)
-        };
-      }
+
+      console.log(`⏰ Minutes since last post: ${minutesSinceLastPost}`);
 
       // Enhanced posting strategy with reduced intervals
       const currentHour = now.getHours();
@@ -115,7 +94,6 @@ export class AutonomousPostingEngine {
       const isActiveHours = currentHour >= 6 && currentHour <= 23;
       
       if (!isActiveHours) {
-        console.log(`🌙 Outside active hours (${currentHour}:00) - waiting until 6 AM`);
         return {
           should_post: false,
           reason: 'Outside active hours (6 AM - 11 PM)',
@@ -125,7 +103,7 @@ export class AutonomousPostingEngine {
         };
       }
 
-      // Adaptive posting intervals based on time since last post
+      // Reduced posting intervals for more frequent posts
       let requiredInterval: number;
       let strategy: 'aggressive' | 'balanced' | 'conservative';
       let confidence: number;
@@ -135,29 +113,19 @@ export class AutonomousPostingEngine {
         requiredInterval = 120; // 2 hours
         strategy = 'conservative';
         confidence = 0.6;
-        console.log(`⚠️ Conservative mode: ${this.consecutiveFailures} consecutive failures`);
-      } else if (minutesSinceLastPost >= 480) { // 8+ hours
-        // Aggressive catch-up mode
-        requiredInterval = 30; // 30 minutes
+      } else if (minutesSinceLastPost >= 180) {
+        // Aggressive mode for catch-up
+        requiredInterval = 45; // 45 minutes
         strategy = 'aggressive';
         confidence = 0.95;
-        console.log(`🚀 Aggressive catch-up mode: ${hoursSinceLastPost.toFixed(1)} hours since last post`);
-      } else if (minutesSinceLastPost >= 240) { // 4+ hours
+      } else if (minutesSinceLastPost >= 90) {
         // Balanced mode
         requiredInterval = 60; // 1 hour
         strategy = 'balanced';
         confidence = 0.85;
-        console.log(`⚖️ Balanced mode: ${hoursSinceLastPost.toFixed(1)} hours since last post`);
-      } else if (minutesSinceLastPost >= 90) { // 1.5+ hours
-        // Standard mode
-        requiredInterval = 90; // 1.5 hours
-        strategy = 'balanced';
-        confidence = 0.75;
-        console.log(`📊 Standard mode: ${hoursSinceLastPost.toFixed(1)} hours since last post`);
       } else {
         // Too soon
-        const waitTime = 90 - minutesSinceLastPost;
-        console.log(`⏱️ Too soon: only ${minutesSinceLastPost} minutes since last post`);
+        const waitTime = requiredInterval - minutesSinceLastPost;
         return {
           should_post: false,
           reason: `Too soon since last post (${minutesSinceLastPost}min ago)`,
@@ -169,17 +137,15 @@ export class AutonomousPostingEngine {
 
       // Enhanced decision logic
       if (minutesSinceLastPost >= requiredInterval) {
-        console.log(`✅ DECISION: POST (${strategy} strategy, ${confidence * 100}% confidence)`);
-        console.log(`📊 Interval met: ${minutesSinceLastPost}min >= ${requiredInterval}min required`);
+        console.log(`✅ Decision: POST (${strategy} strategy, ${confidence * 100}% confidence)`);
         return {
           should_post: true,
-          reason: `${strategy} posting after ${hoursSinceLastPost.toFixed(1)} hours`,
+          reason: `${strategy} posting after ${minutesSinceLastPost} minutes`,
           confidence,
           strategy
         };
       } else {
         const waitTime = requiredInterval - minutesSinceLastPost;
-        console.log(`⏳ DECISION: WAIT ${waitTime} minutes (${strategy} strategy)`);
         return {
           should_post: false,
           reason: `Waiting for optimal interval (${waitTime} min remaining)`,
@@ -239,9 +205,10 @@ export class AutonomousPostingEngine {
         console.log(`📝 Generated candidate: "${candidateContent.substring(0, 100)}..."`);
         
         // Enhanced semantic uniqueness check (0.75 threshold)
-        const { EnhancedSemanticUniqueness } = await import('../utils/enhancedSemanticUniqueness');
-        uniquenessResult = await EnhancedSemanticUniqueness.checkContentUniqueness(
-          candidateContent
+        const { enhancedSemanticUniqueness } = await import('../utils/enhancedSemanticUniqueness');
+        uniquenessResult = await enhancedSemanticUniqueness.checkUniqueness(
+          candidateContent,
+          contentGenerationAttempts
         );
 
         if (!uniquenessResult.success) {
@@ -253,11 +220,11 @@ export class AutonomousPostingEngine {
           console.log('✅ Content is semantically unique - proceeding with posting');
           break;
         } else {
-          const similarity = uniquenessResult.similarityScore;
+          const similarity = uniquenessResult.analysis.maxSimilarity;
           console.log(`🛑 Content too similar to previous posts (similarity: ${(similarity * 100).toFixed(1)}%)`);
           
-          if (uniquenessResult.conflictingContent) {
-            console.log(`📋 Conflict: Similar to tweet from ${uniquenessResult.conflictingContent.daysSince} days ago`);
+          if (uniquenessResult.suppressionReasons && uniquenessResult.suppressionReasons.length > 0) {
+            console.log(`📋 Suppression reasons: ${uniquenessResult.suppressionReasons.join(', ')}`);
           }
           
           if (contentGenerationAttempts >= MAX_CONTENT_ATTEMPTS) {
@@ -346,9 +313,9 @@ export class AutonomousPostingEngine {
       // Step 4: Store semantic embedding and core idea
       console.log('🧠 Storing semantic embedding and core idea...');
       if (candidateContent && uniquenessResult?.analysis) {
-              const { EnhancedSemanticUniqueness } = await import('../utils/enhancedSemanticUniqueness');
-      if (uniquenessResult.conceptAnalysis) {
-        await EnhancedSemanticUniqueness.storeApprovedContent(
+        const { enhancedSemanticUniqueness } = await import('../utils/enhancedSemanticUniqueness');
+        if (uniquenessResult.analysis.embedding.length > 0) {
+          await enhancedSemanticUniqueness.storeEmbedding(
             twitterResult.tweet_id!,
             uniquenessResult.analysis.embedding,
             uniquenessResult.analysis
@@ -430,9 +397,9 @@ export class AutonomousPostingEngine {
       console.log('🎨 Generating content with robust template selection...');
 
       // Step 1: Get robust template (never returns undefined)
-      const { RobustTemplateSelection } = await import('../utils/robustTemplateSelection');
-      const templateResult = await RobustTemplateSelection.getTemplate({
-        currentHour: new Date().getHours()
+      const { robustTemplateSelection } = await import('../utils/robustTemplateSelection');
+      const templateResult = await robustTemplateSelection.getTemplate({
+        current_hour: new Date().getHours()
       });
 
       if (!templateResult.success || !templateResult.template) {
@@ -443,26 +410,35 @@ export class AutonomousPostingEngine {
       }
 
       const selectedTemplate = templateResult.template;
-              console.log(`✅ Template selected: "${selectedTemplate.name}" (database)`);
+      console.log(`✅ Template selected: "${selectedTemplate.name}" (${templateResult.selection_method})`);
 
-      // Step 2: Generate simple content using template
-      const content = selectedTemplate.template.replace('{health_fact}', 'Regular exercise strengthens your immune system and can reduce illness by up to 40%');
+      // Step 2: Use enhanced diverse content agent
+      const { enhancedDiverseContentAgent } = await import('../agents/enhancedDiverseContentAgent');
+      const diverseResult = await enhancedDiverseContentAgent.generateDiverseContent();
+
+      if (!diverseResult.success) {
+        return {
+          success: false,
+          error: `Enhanced content generation failed: ${diverseResult.error}`
+        };
+      }
 
       // Step 3: Build metadata
       const metadata = {
         template_id: selectedTemplate.id,
         template_name: selectedTemplate.name,
         template_tone: selectedTemplate.tone,
-        template_type: selectedTemplate.contentType,
-        selectionMethod: 'database',
-        generation_method: 'template_based'
+        template_type: selectedTemplate.content_type,
+        selection_method: templateResult.selection_method,
+        generation_method: 'enhanced_diverse_agent',
+        ...(diverseResult.metadata || {})
       };
 
-      console.log(`✅ Content generated successfully: "${content.substring(0, 100)}..."`);
+      console.log(`✅ Content generated successfully: "${diverseResult.content?.substring(0, 100)}..."`);
 
       return {
         success: true,
-        content: content,
+        content: diverseResult.content,
         metadata
       };
 
@@ -493,15 +469,15 @@ export class AutonomousPostingEngine {
 
       if (result.success) {
         console.log('✅ Tweet posted successfully via browser automation');
-        console.log(`   ✅ Success: ${result.success ? 'YES' : 'NO'}`);
-        console.log(`   📝 Tweet ID: ${result.tweet_id || 'none'}`);
-        console.log(`   ❌ Error: ${result.error || 'none'}`);
+        console.log(`   🆔 Tweet ID: ${result.tweet_id}`);
+        console.log(`   ✅ Confirmed: ${result.confirmed ? 'YES' : 'NO'}`);
+        console.log(`   📝 Was Posted: ${result.was_posted ? 'YES' : 'NO'}`);
         
         return {
           success: true,
-          tweet_id: result.tweet_id || `auto_${Date.now()}`,
-          was_posted: true,
-          confirmed: true
+          tweet_id: result.tweet_id,
+          was_posted: result.was_posted || false,
+          confirmed: result.confirmed || false
         };
       } else {
         console.error('❌ Browser tweet posting failed:', result.error);
