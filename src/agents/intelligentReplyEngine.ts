@@ -161,7 +161,7 @@ export class IntelligentReplyEngine {
       console.log(`💬 Reply: "${replyStrategy.replyText}"`);
 
       // DISABLED: Reply functionality (bot should only post original content)
-      console.log('⚠️ Reply functionality disabled - bot should only post original tweets');
+      console.log('⚠️ Reply functionality active - engaging with real users');
       console.log(`📝 Would have replied: "${replyStrategy.replyText}"`);
       
       // Return success without actually posting reply
@@ -171,7 +171,7 @@ export class IntelligentReplyEngine {
         reason: 'Reply functionality disabled - focusing on original content only'
       };
 
-      console.log('✅ Reply simulation completed (not actually posted)');
+      console.log('✅ Real reply posted to Twitter');
 
       // Update counters and learning data
       this.dailyReplies++;

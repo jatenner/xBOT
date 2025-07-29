@@ -437,22 +437,35 @@ Maximum ${request.maxLength || 200} characters.`;
     tweetId?: string;
     error?: string;
   }> {
-    // 🚨 NUCLEAR DISABLED: This method was posting fake replies to real Twitter
-    console.log('🚫 NUCLEAR: postReply method completely disabled');
-    console.log(`⚠️ Would have posted: "${content.substring(0, 50)}..."`);
-    
-    return {
-      success: false,
-      error: 'NUCLEAR EMERGENCY: Reply posting disabled - was posting fake content to real Twitter'
-    };
+    try {
+      console.log('🚀 POSTING REAL REPLY...');
+      
+      const { BrowserTweetPoster } = await import('../utils/browserTweetPoster');
+      const poster = new BrowserTweetPoster();
+      const result = await poster.postTweet(content);
+      
+      if (result.success) {
+        console.log('✅ Reply posted successfully to real Twitter!');
+        return {
+          success: true,
+          tweetId: result.tweet_id
+        };
+      } else {
+        return {
+          success: false,
+          error: result.error || 'Posting failed'
+        };
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message
+      };
+    }
   }
 
-  /**
-   * 💾 Record reply in database for tracking
-   */
-  private async recordReplyHistory(target: ReplyTarget, content: string, replyTweetId: string, citation: any): Promise<void> {
+  private async recordReplyHistory(target: ReplyTarget, content: string): Promise<void> {
     try {
-      if (!secureSupabaseClient.supabase) return;
 
       const replyData = {
         target_tweet_id: target.tweetId,
