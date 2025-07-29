@@ -16,6 +16,7 @@ import { contentFactChecker } from '../utils/contentFactChecker';
 import { isCleanStandaloneContent } from '../config/cleanPostingConfig';
 import { isEmergencyBlockedContent } from '../config/emergencyContentValidation';
 import { isNuclearBlockedContent } from '../config/nuclearContentValidation';
+import { analyzeContentQuality, shouldPostContent } from '../utils/contentQualityAnalyzer';
 
 interface PostingDecision {
   should_post: boolean;
@@ -594,6 +595,27 @@ export class AutonomousPostingEngine {
           confirmed: false
         };
       }
+
+      // Step 1.8: Content quality analysis for audience growth
+      console.log('🎯 Analyzing content quality for viral potential...');
+      const qualityAnalysis = analyzeContentQuality(content);
+      
+      if (!shouldPostContent(qualityAnalysis)) {
+        console.error('❌ Content failed quality analysis for audience building');
+        console.log('📊 Quality Analysis:');
+        console.log(`   Viral Score: ${qualityAnalysis.viral_score}/100`);
+        console.log(`   Issues: ${qualityAnalysis.quality_issues.join(', ')}`);
+        console.log(`   Improvements: ${qualityAnalysis.improvements.join(', ')}`);
+        
+        return {
+          success: false,
+          error: `Content quality too low for audience building: ${qualityAnalysis.quality_issues.join(', ')}`,
+          was_posted: false,
+          confirmed: false
+        };
+      }
+      
+      console.log(`✅ Content quality analysis passed - Viral Score: ${qualityAnalysis.viral_score}/100`);
 
       // Step 2: Fact-checking gate
       console.log('🔍 Running fact-check validation...');
