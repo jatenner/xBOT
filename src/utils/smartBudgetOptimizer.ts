@@ -11,6 +11,30 @@ export class SmartBudgetOptimizer {
   async getDailySpending(): Promise<number> {
     return 0.50; // Stub amount
   }
+
+  async createDailyPlan(): Promise<any> {
+    return {
+      budgetPerTweet: 0.05,
+      maxTweetsToday: 10,
+      remainingBudget: 2.00
+    };
+  }
+
+  getCostOptimization(budgetPerTweet: number): any {
+    return {
+      recommendedModel: 'gpt-4o-mini',
+      maxTokens: 150,
+      estimatedCost: budgetPerTweet
+    };
+  }
+
+  async getBudgetUtilizationReport(): Promise<any> {
+    return {
+      todaySpent: 0.50,
+      remainingBudget: 1.50,
+      utilizationRate: 0.25
+    };
+  }
 }
 
 export const smartBudgetOptimizer = new SmartBudgetOptimizer(); 
