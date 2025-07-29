@@ -473,6 +473,41 @@ export class AutonomousPostingEngine {
     return 'auto';                    // Evening: algorithm decides
   }
 
+  /**
+   * 🔍 Check if content is an incomplete hook without value
+   */
+  private isIncompleteHookContent(content: string): boolean {
+    const incompletePatterns = [
+      /here's how to .+(?:in \d+ minutes?)?:?\s*$/i,
+      /here are \d+ ways to .+:?\s*$/i,
+      /the secret to .+ is:?\s*$/i,
+      /\d+ tips for .+:?\s*$/i,
+      /want to know how to .+\?\s*$/i,
+      /i'll show you how to .+:?\s*$/i,
+      /learn how to .+ in .+:?\s*$/i,
+      /discover the .+ that .+:?\s*$/i,
+      /here's what i found:?\s*$/i,
+      /this will change everything:?\s*$/i
+    ];
+
+    // Check if content ends with a hook pattern without substance
+    for (const pattern of incompletePatterns) {
+      if (pattern.test(content.trim())) {
+        console.log(`🚨 Detected incomplete hook pattern: ${pattern.source}`);
+        return true;
+      }
+    }
+
+    // Check for very short content that looks like just a hook
+    if (content.trim().length < 50 && 
+        (content.includes('how to') || content.includes('ways to') || content.includes('secret to'))) {
+      console.log('🚨 Detected suspiciously short hook-like content');
+      return true;
+    }
+
+    return false;
+  }
+
   private async fallbackContentGeneration(): Promise<any> {
     try {
       // Use enhanced content generator as fallback
@@ -520,6 +555,17 @@ export class AutonomousPostingEngine {
         return {
           success: false,
           error: 'Content appears to be reply-like or templated',
+          was_posted: false,
+          confirmed: false
+        };
+      }
+
+      // Step 1.5: Complete content validation (no incomplete hooks)
+      if (this.isIncompleteHookContent(content)) {
+        console.error('❌ Content failed completeness validation - appears to be incomplete hook');
+        return {
+          success: false,
+          error: 'Content is incomplete hook without delivering value',
           was_posted: false,
           confirmed: false
         };

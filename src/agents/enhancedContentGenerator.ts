@@ -538,7 +538,35 @@ export class EnhancedContentGenerator {
   }
 
   private buildContentPrompt(format: ContentFormat, style: ContentStyle, topicContext: TopicContext, topic?: string): string {
-    return `Generate a ${format.type} for @SignalAndSynapse about ${topic || topicContext.category} using ${style.tone} tone and ${style.structure} structure. Target ${topicContext.complexity} complexity level. Focus on ${topicContext.urgency} content with ${topicContext.engagement_potential} engagement potential.`;
+    return `You are creating health/wellness content for @SignalAndSynapse. 
+
+CRITICAL REQUIREMENT: Provide COMPLETE, actionable information. NEVER create incomplete hooks like "Here's how to..." without the actual how.
+
+Format: ${format.type}
+Topic: ${topic || topicContext.category}
+Tone: ${style.tone}
+Structure: ${style.structure}
+
+REQUIREMENTS:
+1. Include specific, actionable advice that people can use immediately
+2. If single tweet: Hook + complete value + call to action (under 280 chars)
+3. If thread: Hook + 3-5 numbered actionable tips with specific details
+4. No cliffhangers or incomplete content
+5. Make it immediately valuable to anyone reading
+
+FORBIDDEN:
+❌ "Here's how to optimize X:" (without the how)
+❌ "The secret to Y:" (without revealing the secret)
+❌ "5 ways to improve Z:" (without listing the ways)
+
+REQUIRED:
+✅ Specific data/numbers when possible
+✅ Complete information in the tweet/thread
+✅ Actionable steps people can implement today
+
+Example quality: "New study: Taking 400mg magnesium glycinate 2 hours before bed increased deep sleep by 37% in 8 weeks. Unlike melatonin, no dependence. Best brands: Natural Calm, Doctor's Best. Have you tried magnesium for sleep?"
+
+Generate complete, valuable content that delivers on its promise immediately.`;
   }
 
   private generateFallbackContent(): GeneratedPost {
