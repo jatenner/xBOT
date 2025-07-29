@@ -220,8 +220,24 @@ export class MasterAutonomousController {
     //     console.error('❌ Posting cycle error:', error);
     //     this.updateComponentStatus('posting_engine', 'error', [error.message]);
     //   }
-    }, 4 * 60 * 60 * 1000)); // 4 hours for learning cycle
-    console.log('🧠 SMART LEARNING: Controlled posting for data collection');
+    }, 30 * 60 * 1000)); // 30 minutes adaptive learning cycle
+    console.log('🧠 ADAPTIVE LEARNING: Intelligent scheduling with optimization');
+    
+    // Import adaptive scheduler
+    const { AdaptiveLearningScheduler } = await import('../utils/adaptiveLearningScheduler');
+    const scheduler = AdaptiveLearningScheduler.getInstance();
+    
+    // Update learning insights every cycle
+    await scheduler.updateLearningInsights();
+    
+    // Get adaptive strategy
+    const strategy = scheduler.getAdaptiveStrategy();
+    console.log(`📊 Strategy: ${strategy.strategy} | Confidence: ${(strategy.confidence*100).toFixed(1)}%`);
+    
+    if (!strategy.shouldPost) {
+      console.log('⏰ Not optimal time for posting - skipping cycle');
+      return;
+    }
     
     // Import and use smart learning engine
     const { SmartLearningPostingEngine } = await import('../utils/smartLearningPostingEngine');
@@ -233,6 +249,9 @@ export class MasterAutonomousController {
       console.log(`✅ LEARNING POST: ${result.tweetId} | Quality: ${result.qualityScore}/100`);
       this.operationalMetrics.posting.totalPosts++;
       this.operationalMetrics.posting.lastPostTime = new Date();
+      
+      // Update learning insights after successful post
+      await scheduler.updateLearningInsights();
     } else {
       console.log(`📊 LEARNING SKIP: ${result.error}`);
     }
@@ -245,7 +264,7 @@ export class MasterAutonomousController {
         console.error('❌ Reply cycle error:', error);
         this.updateComponentStatus('reply_engine', 'error', [error.message]);
       }
-    }, 4 * 60 * 60 * 1000)); // 4 hours
+    }, 90 * 60 * 1000)); // 1.5 hours (90 minutes)
 
     // Engagement cycle - every 3 hours
     this.intervals.push(setInterval(async () => {
