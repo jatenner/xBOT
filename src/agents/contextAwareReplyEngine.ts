@@ -137,7 +137,7 @@ export class ContextAwareReplyEngine {
       }
 
       // Step 6: Record in database
-      await this.recordReplyHistory(target, generatedReply.content, postResult.tweetId, citation);
+      await this.recordReplyHistory(target, generatedReply.content);
 
       // Step 7: Mark target as replied to
       await replyTargetSelector.markAsRepliedTo(target.tweetId, postResult.tweetId);
@@ -466,14 +466,13 @@ Maximum ${request.maxLength || 200} characters.`;
 
   private async recordReplyHistory(target: ReplyTarget, content: string): Promise<void> {
     try {
-
       const replyData = {
         target_tweet_id: target.tweetId,
         target_author: target.author,
         target_content_excerpt: target.contentExcerpt,
-        reply_tweet_id: replyTweetId,
+        reply_tweet_id: '',
         reply_content: content,
-        citation_used: citation?.citationText || null,
+        citation_used: null,
         response_tone: target.replyStyle,
         engagement_received: {},
         posted_at: new Date().toISOString(),

@@ -12,6 +12,7 @@ import { AutonomousEngagementEngine } from '../agents/autonomousEngagementEngine
 import { EnhancedDailyOptimizationLoop } from '../intelligence/enhancedDailyOptimizationLoop';
 import { IntelligentGrowthMaster } from '../intelligence/intelligentGrowthMaster';
 import { EmergencyBudgetLockdown } from '../utils/emergencyBudgetLockdown';
+import { supabaseClient } from '../utils/supabaseClient';
 import express from 'express';
 import { createServer } from 'http';
 
@@ -214,13 +215,13 @@ export class MasterAutonomousController {
 
     // 🧠 SMART LEARNING POSTING CYCLE: Real posting with quality gates for learning
     this.intervals.push(setInterval(async () => {
-    //   try {
-    //     await this.runPostingCycle();
-    //   } catch (error) {
-    //     console.error('❌ Posting cycle error:', error);
-    //     this.updateComponentStatus('posting_engine', 'error', [error.message]);
-    //   }
-    }, 30 * 60 * 1000)); // 30 minutes adaptive learning cycle
+      try {
+        await this.runPostingCycle();
+      } catch (error) {
+        console.error('❌ Posting cycle error:', error);
+        this.updateComponentStatus('posting_engine', 'error', [error.message]);
+      }
+    }, 3 * 60 * 60 * 1000)); // 3 hours for realistic human-like posting (3-8 posts/day)
     console.log('🧠 ADAPTIVE LEARNING: Intelligent scheduling with optimization');
     
     // Import adaptive scheduler
@@ -298,7 +299,7 @@ export class MasterAutonomousController {
     }, 15 * 60 * 1000)); // 15 minutes
 
     // Start immediate cycles (with delays to avoid overwhelming)
-    // 🚨 NUCLEAR DISABLED: setTimeout(() => this.runPostingCycle(), 30000); // Was posting immediately
+    setTimeout(() => this.runPostingCycle(), 30000); // First posting check in 30 seconds
     setTimeout(() => this.runEngagementCycle(), 60000); // 1 minute
     setTimeout(() => this.runReplyCycle(), 90000); // 1.5 minutes
 
@@ -327,6 +328,27 @@ export class MasterAutonomousController {
       }
     }, 15 * 60 * 1000)); // 15 minutes
 
+    // 📊 ENGAGEMENT METRICS COLLECTION CYCLE: Real-time metrics every 10 minutes
+    this.intervals.push(setInterval(async () => {
+      try {
+        await this.runEngagementMetricsCollection();
+      } catch (error) {
+        console.error('❌ Engagement metrics collection error:', error);
+        this.updateComponentStatus('metrics_collector', 'error', [error.message]);
+      }
+    }, 10 * 60 * 1000)); // 10 minutes
+    console.log('📊 ENGAGEMENT METRICS: Real-time collection every 10 minutes');
+
+    // Start metrics collection immediately
+    try {
+      const { engagementMetricsCollector } = await import('../jobs/engagementMetricsCollector');
+      await engagementMetricsCollector.startCollection();
+      this.updateComponentStatus('metrics_collector', 'active');
+    } catch (error) {
+      console.error('❌ Failed to start engagement metrics collection:', error);
+      this.updateComponentStatus('metrics_collector', 'error', [error.message]);
+    }
+
     console.log('✅ All operational cycles started');
     return Promise.resolve();
   }
@@ -335,13 +357,43 @@ export class MasterAutonomousController {
    * 📝 RUN POSTING CYCLE
    */
   private async runPostingCycle(): Promise<void> {
-    // 🚨 NUCLEAR DISABLED: This method was posting incomplete hooks bypassing quality gates
-    console.log('🚫 NUCLEAR: Posting cycle completely disabled');
-    console.log('⚠️ This was the MAIN system posting "Here\'s how to optimize..." content');
-    console.log('✅ Quality-gated posting system is the ONLY active posting method now');
-    
-    this.updateComponentStatus('posting_engine', 'offline', ['Emergency disabled for quality violations']);
-    return;
+    console.log('📝 === AUTONOMOUS POSTING CYCLE ===');
+    this.updateComponentStatus('posting_cycle', 'active');
+
+    try {
+      // Use the main autonomous posting engine
+      const autonomousPostingEngine = (await import('../core/autonomousPostingEngine')).AutonomousPostingEngine.getInstance();
+      
+      // Make intelligent posting decision
+      const decision = await autonomousPostingEngine.makePostingDecision();
+      
+      console.log(`📋 Decision: ${decision.should_post ? 'POST' : 'WAIT'}`);
+      console.log(`📝 Reason: ${decision.reason}`);
+      
+      if (!decision.should_post) {
+        console.log(`⏰ Waiting: ${decision.wait_minutes} minutes`);
+        this.updateComponentStatus('posting_cycle', 'warning', [decision.reason]);
+        return;
+      }
+      
+      // Execute post
+      console.log('🚀 Executing autonomous post...');
+      const result = await autonomousPostingEngine.executePost();
+      
+      if (result.success) {
+        console.log(`✅ Tweet posted successfully! ID: ${result.tweet_id}`);
+        this.operationalMetrics.posting.totalPosts++;
+        this.operationalMetrics.posting.lastPostTime = new Date();
+        this.updateComponentStatus('posting_cycle', 'active', [`Posted: ${result.tweet_id}`]);
+      } else {
+        console.error(`❌ Posting failed: ${result.error}`);
+        this.updateComponentStatus('posting_cycle', 'error', [result.error || 'Unknown error']);
+      }
+
+    } catch (error: any) {
+      console.error('❌ Posting cycle failed:', error);
+      this.updateComponentStatus('posting_cycle', 'error', [error.message]);
+    }
   }
 
   /**
@@ -409,6 +461,120 @@ export class MasterAutonomousController {
     } catch (error) {
       console.error('❌ Daily optimization failed:', error);
       this.updateComponentStatus('optimization_loop', 'error', [error.message]);
+    }
+  }
+
+  /**
+   * 📊 RUN ENGAGEMENT METRICS COLLECTION
+   */
+  private async runEngagementMetricsCollection(): Promise<void> {
+    console.log('📊 === ENGAGEMENT METRICS COLLECTION ===');
+    this.updateComponentStatus('metrics_collection', 'active');
+    
+    try {
+      const { engagementMetricsCollector } = await import('../jobs/engagementMetricsCollector');
+      
+      const result = await engagementMetricsCollector.collectMetrics();
+      
+      if (result.success) {
+        console.log(`✅ Metrics collection: ${result.tweets_processed} tweets, ${result.new_metrics} new snapshots`);
+        
+        if (result.finalized_tweets > 0) {
+          console.log(`🏁 Finalized ${result.finalized_tweets} tweets for learning`);
+          await this.runRewardCalculation(result.finalized_tweets);
+        }
+        
+        this.updateComponentStatus('metrics_collection', 'active', [], {
+          tweets_processed: result.tweets_processed,
+          new_metrics: result.new_metrics,
+          finalized_tweets: result.finalized_tweets,
+          last_collection: new Date().toISOString()
+        });
+      } else {
+        console.error(`❌ Metrics collection failed: ${result.error}`);
+        this.updateComponentStatus('metrics_collection', 'error', [result.error || 'Unknown error']);
+      }
+      
+    } catch (error: any) {
+      console.error('❌ Engagement metrics collection failed:', error);
+      this.updateComponentStatus('metrics_collection', 'error', [error.message]);
+    }
+  }
+
+  /**
+   * 🏆 RUN REWARD CALCULATION FOR FINALIZED TWEETS
+   */
+  private async runRewardCalculation(finalizedCount: number): Promise<void> {
+    try {
+      console.log(`🏆 Calculating rewards for ${finalizedCount} finalized tweets...`);
+      
+      // Get finalized tweets from the last 48 hours
+      const { data: finalizedTweets, error } = await supabaseClient.supabase
+        .from('learning_posts')
+        .select('*')
+        .not('tweet_id', 'is', null)
+        .gte('created_at', new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString())
+        .order('created_at', { ascending: false })
+        .limit(10); // Process up to 10 at a time
+
+      if (error || !finalizedTweets) {
+        console.warn('⚠️ Could not fetch finalized tweets for reward calculation');
+        return;
+      }
+
+      for (const tweet of finalizedTweets) {
+        if (tweet.likes_count !== undefined && tweet.format_type && tweet.hook_type) {
+          try {
+            // Import reward calculator
+            const { RewardCalculator } = await import('../utils/rewardCalculator');
+            
+            // Calculate reward
+            const engagement = {
+              likes: tweet.likes_count || 0,
+              retweets: tweet.retweets_count || 0,
+              replies: tweet.replies_count || 0,
+              bookmarks: 0, // Not tracked yet
+              impressions: tweet.impressions || 0
+            };
+
+            const formatInfo = {
+              format_type: tweet.format_type,
+              hook_type: tweet.hook_type,
+              content_category: tweet.content_category || 'general'
+            };
+
+            const timingInfo = {
+              hour_of_day: tweet.posting_hour || new Date(tweet.created_at).getHours(),
+              day_of_week: tweet.posting_day_of_week || new Date(tweet.created_at).getDay()
+            };
+
+            // Update all stats with reward
+            const rewardResult = await RewardCalculator.updateAllStats(engagement, formatInfo, timingInfo);
+            
+            if (rewardResult.success) {
+              console.log(`🎯 Reward calculated: ${rewardResult.reward} for tweet ${tweet.tweet_id}`);
+              
+              // Update bandit with reward
+              const { banditFormatSelector } = await import('../intelligence/banditFormatSelector');
+              await banditFormatSelector.updateWithReward(
+                formatInfo.format_type,
+                formatInfo.hook_type,
+                formatInfo.content_category,
+                rewardResult.reward,
+                tweet.engagement_rate || 0
+              );
+            }
+
+          } catch (rewardError) {
+            console.warn(`⚠️ Could not calculate reward for tweet ${tweet.tweet_id}:`, rewardError);
+          }
+        }
+      }
+
+      console.log(`✅ Reward calculation completed for ${finalizedTweets.length} tweets`);
+
+    } catch (error) {
+      console.error('❌ Reward calculation failed:', error);
     }
   }
 
