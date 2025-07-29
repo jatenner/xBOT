@@ -515,10 +515,16 @@ export class AutonomousPostingEngine {
       }
     }
 
-    // Check for very short content that looks like just a hook
-    if (content.trim().length < 50 && 
+    // Increased minimum length from 50 to 80 characters
+    if (content.trim().length < 80 && 
         (content.includes('how to') || content.includes('ways to') || content.includes('secret to'))) {
-      console.log('🚨 Detected suspiciously short hook-like content');
+      console.log(`🚨 Detected suspiciously short hook-like content (${content.trim().length} chars)`);
+      return true;
+    }
+
+    // Additional check for extremely short content that's obviously incomplete
+    if (content.trim().length < 30) {
+      console.log(`🚨 Content too short: ${content.trim().length} characters`);
       return true;
     }
 

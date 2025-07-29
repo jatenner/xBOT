@@ -53,9 +53,19 @@ export class AdaptiveLearningScheduler {
         console.log(`📈 HIGH ENGAGEMENT HOUR: ${currentHour}:00 (${(hourEngagement*100).toFixed(1)}%)`);
         return true;
       }
+    } else {
+      // LEARNING PHASE: More permissive posting to gather data
+      // Post every 15 minutes during learning phase (first 100 posts)
+      const minutes = new Date().getMinutes();
+      const shouldPost = minutes % 15 === 0; // Every 15 minutes instead of 30
+      
+      if (shouldPost) {
+        console.log(`🧠 LEARNING PHASE: Posting every 15 minutes to gather data (${currentHour}:${minutes.toString().padStart(2, '0')})`);
+        return true;
+      }
     }
 
-    // Default: Post every 30 minutes during active hours
+    // Fallback: Post every 30 minutes during active hours
     const minutes = new Date().getMinutes();
     const shouldPost = minutes % this.basePostingInterval === 0;
     
@@ -211,7 +221,7 @@ export class AdaptiveLearningScheduler {
     const shouldReply = this.shouldReplyNow();
     
     let strategy = 'standard_schedule';
-    let confidence = 0.5;
+    let confidence = 0.7; // Increased from 0.5 to be more permissive
     
     if (this.learningInsights) {
       const currentHour = new Date().getHours();
@@ -226,8 +236,12 @@ export class AdaptiveLearningScheduler {
         confidence = 0.7;
       } else if (engagement < 0.02) {
         strategy = 'low_engagement_window';
-        confidence = 0.3;
+        confidence = 0.5; // Still allowing posts during low engagement for learning
       }
+    } else {
+      // LEARNING PHASE: Higher confidence to encourage data collection
+      strategy = 'learning_data_collection';
+      confidence = 0.8;
     }
     
     return {
