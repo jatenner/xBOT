@@ -5,9 +5,6 @@
  */
 
 import express from 'express';
-import { TwitterConfigService } from './utils/twitterConfigService';
-import { ProductionEnvValidator } from './utils/productionEnvValidator';
-import { railway24x7Manager } from './utils/railway24x7Manager';
 
 export interface HealthServerStatus {
   server?: any;
@@ -50,8 +47,6 @@ export function startHealthServer(): Promise<void> {
     app.get('/status', async (_req, res) => {
       try {
         const uptime = Date.now() - healthServerStatus.startTime.getTime();
-        const railway24x7Status = await railway24x7Manager.getHealthSummary();
-        
         res.json({
           status: healthServerStatus.botStatus,
           playwright: healthServerStatus.playwrightStatus,
@@ -63,8 +58,7 @@ export function startHealthServer(): Promise<void> {
           host: healthServerStatus.host,
           node_version: process.version,
           platform: process.platform,
-          arch: process.arch,
-          railway_24x7: railway24x7Status.railway_24x7
+          arch: process.arch
         });
       } catch (error) {
         // Even if status fails, return something
@@ -98,27 +92,6 @@ export function startHealthServer(): Promise<void> {
         // Get Twitter configuration status
         let twitterStatus = 'not_checked';
         let twitterInfo = {};
-        
-        try {
-          const twitterValidation = TwitterConfigService.validateTwitterConfig();
-          twitterStatus = twitterValidation.valid ? 'valid' : 'invalid';
-          
-          if (twitterValidation.valid && twitterValidation.userInfo) {
-            twitterInfo = {
-              account: `@${twitterValidation.userInfo.screenName}`,
-              user_id: twitterValidation.userInfo.userId,
-              credentials_ok: true
-            };
-          } else {
-            twitterInfo = {
-              errors: twitterValidation.errors,
-              warnings: twitterValidation.warnings
-            };
-          }
-        } catch (error) {
-          twitterStatus = 'validation_error';
-          twitterInfo = { error: 'Twitter validation failed' };
-        }
 
         res.json({
           valid,

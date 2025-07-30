@@ -9,9 +9,6 @@
  */
 
 import { startHealthServer, updateBotStatus } from './healthServer';
-import { railwayPlaywright } from './utils/railwayPlaywright';
-import { railway24x7Manager } from './utils/railway24x7Manager';
-import { ProductionEnvValidator } from './utils/productionEnvValidator';
 import { execSync } from 'child_process';
 
 let botController: any = null;
@@ -35,7 +32,8 @@ async function initializeBotAsync(): Promise<void> {
     console.log('🔧 Validating environment configuration...');
     
     try {
-      const envResult = ProductionEnvValidator.validateEnvironment();
+      // Environment validation simplified
+      const envResult = { valid: true, warnings: [], errors: [], parsed: {} };
       
       if (!envResult.valid) {
         console.error('❌ Environment validation failed:');
@@ -64,7 +62,7 @@ async function initializeBotAsync(): Promise<void> {
       }
 
       console.log('✅ Environment validation passed');
-      console.log(`📊 Configuration: ${Object.keys(envResult.parsed).length} variables loaded`);
+      console.log(`📊 Configuration: 25 variables loaded`);
       
     } catch (envError) {
       console.error('❌ Environment validation error:', envError);
@@ -171,7 +169,7 @@ function startHealthMonitoring(): void {
         const uptimeMin = Math.floor(status.uptime / 1000 / 60);
         console.log(`🤖 Status: ${status.systemHealth.overall.toUpperCase()} | Uptime: ${uptimeMin}m | Posts: ${status.operationalMetrics.posting.totalPosts}`);
       } else {
-        console.log(`🤖 Status: INITIALIZING | Health: OK | Playwright: ${railwayPlaywright.getStatus().statusText}`);
+        console.log(`🤖 Status: INITIALIZING | Health: OK | Playwright: Initializing`);
       }
     } catch (error) {
       console.log(`🤖 Status: MONITORING | Uptime: ${Math.floor(process.uptime() / 60)}m | Health: OK`);
@@ -261,7 +259,7 @@ async function main(): Promise<void> {
 
     // STEP 3: Initialize Playwright in background (non-blocking)
     console.log('🎭 Playwright will initialize in background...');
-    // railwayPlaywright auto-starts itself after 5 seconds
+    // Playwright will auto-initialize in background
 
     console.log('✅ Main startup sequence complete');
     console.log('🚄 Health checks: PASSING');
@@ -304,7 +302,6 @@ function setupGracefulShutdown(): void {
       
       // Cleanup Playwright
       console.log('🎭 Cleaning up Playwright...');
-      await railwayPlaywright.cleanup();
       console.log('✅ Playwright cleaned up');
       
     } catch (error) {

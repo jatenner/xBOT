@@ -25,6 +25,7 @@ import { isCleanStandaloneContent } from '../config/cleanPostingConfig';
 import { isEmergencyBlockedContent } from '../config/emergencyContentValidation';
 import { isNuclearBlockedContent } from '../config/nuclearContentValidation';
 import { analyzeContentQuality, shouldPostContent } from '../utils/contentQualityAnalyzer';
+import { bulletproofContentGenerator } from '../utils/bulletproofContentGenerator';
 
 interface PostingDecision {
   should_post: boolean;
@@ -393,87 +394,71 @@ export class AutonomousPostingEngine {
     error?: string;
   }> {
     try {
-      console.log('🧠 Generating content with bandit-driven learning system...');
+      console.log('🛡️ Using bulletproof content generation...');
 
-      // Step 1: Use bandit algorithm to select optimal format
-      const { banditFormatSelector } = await import('../intelligence/banditFormatSelector');
-      
-      const banditSelection = await banditFormatSelector.selectFormat({
-        exploration_rate: 0.15, // 15% exploration, 85% exploitation
-        exclude_recent: true,    // Avoid recently used formats
-        min_sample_size: 2       // Require at least 2 posts for confidence
-      });
-
-      console.log(`🎰 Bandit selected: ${banditSelection.format_type}/${banditSelection.hook_type}/${banditSelection.content_category}`);
-      console.log(`📊 Selection confidence: ${(banditSelection.confidence * 100).toFixed(1)}%`);
-      console.log(`💡 Reasoning: ${banditSelection.reasoning}`);
-
-      // Step 2: Get optimal timing information and check if now is optimal
-      const now = new Date();
-      const timingCheck = await learningSystemIntegration.isOptimalPostingTime();
-      const timingInfo = {
-        hour_of_day: now.getHours(),
-        day_of_week: now.getDay(),
-        posted_hour: now.getHours(),
-        posted_day_of_week: now.getDay(),
-        timing_optimality: timingCheck.score,
-        timing_reasoning: timingCheck.reasoning
-      };
-
-      console.log(`⏰ Timing analysis: ${timingCheck.reasoning}`);
-
-      // Step 3: Use the elite Twitter content strategist with bandit-selected format
-      const { EliteTwitterContentStrategist } = await import('../agents/eliteTwitterContentStrategist');
-      const eliteStrategist = EliteTwitterContentStrategist.getInstance();
-      
+      // Use bulletproof content generator (ALWAYS works)
       const contentRequest = {
-        topic: banditSelection.content_category || this.getOptimalTopic(),
-        format_preference: this.mapFormatToPreference(banditSelection.format_type),
+        topic: this.getOptimalTopic(),
+        format_preference: 'short',
         tone: this.getOptimalTone() as 'authoritative' | 'conversational' | 'provocative',
-        target_engagement: 25, // Target 25% engagement rate
-        format_type: banditSelection.format_type,
-        hook_type: banditSelection.hook_type
+        target_engagement: 25
       };
 
-      console.log(`🎯 Elite content request: ${JSON.stringify(contentRequest)}`);
+      console.log(`🎯 Bulletproof content request: ${JSON.stringify(contentRequest)}`);
       
-      const eliteResult = await eliteStrategist.generateViralContent(contentRequest);
+      const bulletproofResult = await bulletproofContentGenerator.generateContent(contentRequest);
 
-      if (!eliteResult || !eliteResult.content) {
-        console.warn('⚠️ Elite generation failed, falling back to enhanced content generator');
-        return await this.fallbackContentGeneration();
+      if (!bulletproofResult || !bulletproofResult.content) {
+        console.error('🚨 CRITICAL: Even bulletproof generation failed!');
+        return {
+          success: false,
+          error: 'All content generation methods failed'
+        };
       }
 
-      const contentString = Array.isArray(eliteResult.content) ? 
-        eliteResult.content.join('\n\n') : 
-        eliteResult.content;
+      const contentString = Array.isArray(bulletproofResult.content) ? 
+        bulletproofResult.content.join('\n\n') : 
+        bulletproofResult.content;
 
-      console.log(`✅ Elite content generated: "${contentString.substring(0, 100)}..."`);
-      console.log(`📊 Predicted engagement: ${eliteResult.predicted_engagement}%`);
-      console.log(`🎯 Format used: ${eliteResult.format_used}`);
-      console.log(`🎪 Hook type: ${eliteResult.hook_type}`);
+      console.log(`✅ Bulletproof content generated: "${contentString.substring(0, 100)}..."`);
+      console.log(`📊 Predicted engagement: ${bulletproofResult.predicted_engagement}%`);
+      console.log(`🎯 Format used: ${bulletproofResult.format_used}`);
+      console.log(`🎪 Hook type: ${bulletproofResult.hook_type}`);
+      console.log(`🛡️ Source: ${bulletproofResult.source}`);
 
       return {
         success: true,
         content: contentString,
         metadata: {
-          generation_method: 'bandit_elite_strategist',
-          format_type: banditSelection.format_type,
-          hook_type: banditSelection.hook_type,
-          content_category: banditSelection.content_category,
-          format_used: eliteResult.format_used,
-          predicted_engagement: eliteResult.predicted_engagement,
-          content_type: eliteResult.content_type,
-          reasoning: eliteResult.reasoning,
-          bandit_confidence: banditSelection.confidence,
-          bandit_reasoning: banditSelection.reasoning,
-          timing_info: timingInfo
+          generation_method: 'bulletproof_generator',
+          format_used: bulletproofResult.format_used,
+          predicted_engagement: bulletproofResult.predicted_engagement,
+          hook_type: bulletproofResult.hook_type,
+          confidence: bulletproofResult.confidence,
+          source: bulletproofResult.source
         }
       };
 
     } catch (error) {
-      console.error('❌ Bandit-driven content generation failed:', error);
-      return await this.fallbackContentGeneration();
+      console.error('❌ Bulletproof content generation failed:', error);
+      // Even if this fails, try emergency fallback
+      try {
+        const emergencyResult = await bulletproofContentGenerator.generateContent({});
+        return {
+          success: true,
+          content: emergencyResult.content,
+          metadata: {
+            generation_method: 'emergency_fallback',
+            source: emergencyResult.source
+          }
+        };
+      } catch (emergencyError) {
+        console.error('🚨 CRITICAL: Emergency fallback failed!', emergencyError);
+        return {
+          success: false,
+          error: `All generation methods failed: ${error.message}`
+        };
+      }
     }
   }
 
