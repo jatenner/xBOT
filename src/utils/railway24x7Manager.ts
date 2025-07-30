@@ -5,7 +5,7 @@
  * Implements aggressive keep-alive, monitoring, and recovery systems.
  */
 
-import { SupabaseService } from './supabaseClient';
+import { supabaseClient } from './supabaseClient';
 import { EmergencyBudgetLockdown } from './emergencyBudgetLockdown';
 
 interface Railway24x7Status {
@@ -29,10 +29,7 @@ export class Railway24x7Manager {
   private monitoringInterval: NodeJS.Timeout | null = null;
   private memoryCleanupInterval: NodeJS.Timeout | null = null;
   private lastRecoveryTime?: Date;
-  private supabaseService: SupabaseService;
-
   private constructor() {
-    this.supabaseService = new SupabaseService();
     this.initializeRailway24x7();
   }
 
@@ -295,7 +292,7 @@ export class Railway24x7Manager {
   private async saveStatusToDatabase(status: Railway24x7Status): Promise<void> {
     try {
       // Save to Supabase for monitoring
-      await this.supabaseService.logEvent('railway_24x7_status', {
+      await supabaseClient.logEvent('railway_24x7_status', {
         uptime_seconds: status.uptime_seconds,
         memory_usage_mb: status.memory_usage_mb,
         health_check_count: status.health_check_count,
