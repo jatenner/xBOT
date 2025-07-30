@@ -50,8 +50,8 @@ export function validateContentIsNotReply(content: string): boolean {
         'replying to',
         'in response to',
         'mock_tweet_',
-        'action for user',
-        '@' // @ mentions suggest replies unless clearly original
+        'action for user'
+        // Removed '@' - legitimate templates can use @ mentions
     ];
     
     const contentLower = content.toLowerCase();
@@ -59,12 +59,30 @@ export function validateContentIsNotReply(content: string): boolean {
 }
 
 export function isCleanStandaloneContent(content: string): boolean {
-    // Must be standalone valuable content
-    const hasValue = content.length > 50 && 
-                    content.includes('.') && 
-                    !content.startsWith('Reply to');
-                    
-    const isNotReply = validateContentIsNotReply(content);
+    // PHASE 1: Allow template content - be more permissive for data collection
+    const hasMinimumLength = content.trim().length > 15;
+    const isNotObviousReply = validateContentIsNotReply(content) && !content.startsWith('Reply to');
     
-    return hasValue && isNotReply;
+    // Allow templates with various punctuation patterns
+    const hasValue = hasMinimumLength && (
+        content.includes('.') || 
+        content.includes('?') || 
+        content.includes('!') ||
+        content.includes(':') || // Allow "Health tip:" style content
+        content.includes('\n') || // Allow multi-line content
+        /[A-Z].*[a-z]/.test(content) // Has at least one proper sentence structure
+    );
+    
+    // Allow common template patterns that are legitimate
+    const isLegitimateTemplate = [
+        'health tip',
+        'reminder:',
+        'quick poll',
+        'what\'s',
+        'which health',
+        'stay hydrated',
+        'small consistent changes'
+    ].some(pattern => content.toLowerCase().includes(pattern));
+    
+    return (hasValue || isLegitimateTemplate) && isNotObviousReply;
 }
