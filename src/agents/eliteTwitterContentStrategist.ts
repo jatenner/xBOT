@@ -366,7 +366,7 @@ Deliver complete value, not just promise it.`;
             else hook_type = "authority";
 
             // Predict engagement based on format and style
-            let predicted_engagement = format.engagement_multiplier * 15; // Base 15%
+            let predicted_engagement = (format.engagement_multiplier || 1.5) * 15; // Base 15%
             
             // Boost based on hook quality and style
             if (hook_type === "research_stat") predicted_engagement *= 1.3;
