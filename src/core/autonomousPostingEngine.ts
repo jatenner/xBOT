@@ -19,6 +19,7 @@
 
 import { supabaseClient } from '../utils/supabaseClient';
 import { emergencyBudgetLockdown } from '../utils/emergencyBudgetLockdown';
+import { learningSystemIntegration } from '../utils/learningSystemIntegration';
 import { contentFactChecker } from '../utils/contentFactChecker';
 import { isCleanStandaloneContent } from '../config/cleanPostingConfig';
 import { isEmergencyBlockedContent } from '../config/emergencyContentValidation';
@@ -407,14 +408,19 @@ export class AutonomousPostingEngine {
       console.log(`📊 Selection confidence: ${(banditSelection.confidence * 100).toFixed(1)}%`);
       console.log(`💡 Reasoning: ${banditSelection.reasoning}`);
 
-      // Step 2: Get optimal timing information
+      // Step 2: Get optimal timing information and check if now is optimal
       const now = new Date();
+      const timingCheck = await learningSystemIntegration.isOptimalPostingTime();
       const timingInfo = {
         hour_of_day: now.getHours(),
         day_of_week: now.getDay(),
         posted_hour: now.getHours(),
-        posted_day_of_week: now.getDay()
+        posted_day_of_week: now.getDay(),
+        timing_optimality: timingCheck.score,
+        timing_reasoning: timingCheck.reasoning
       };
+
+      console.log(`⏰ Timing analysis: ${timingCheck.reasoning}`);
 
       // Step 3: Use the elite Twitter content strategist with bandit-selected format
       const { EliteTwitterContentStrategist } = await import('../agents/eliteTwitterContentStrategist');
