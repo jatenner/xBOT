@@ -40,7 +40,7 @@ let connectedClients = new Set();
 function startRailwayLogStream() {
   console.log('📡 Starting Railway log stream...');
   
-  railwayProcess = spawn('railway', ['logs', '--environment', 'production', '-f'], {
+  railwayProcess = spawn('railway', ['logs'], {
     stdio: ['ignore', 'pipe', 'pipe']
   });
 
