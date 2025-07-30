@@ -92,7 +92,7 @@ export class BulletproofContentGenerator {
       
       if (!factCheckResult.shouldPost) {
         console.log(`⚠️ Content failed safety check: ${factCheckResult.reasoning}`);
-        console.log(`Issues: ${factCheckResult.issues.join(', ')}`);
+        console.log(`Issues: ${factCheckResult.issues ? factCheckResult.issues.join(', ') : 'No specific issues listed'}`);
         
         // If safety check fails, use a safer fallback
         const safeFallbacks = [
@@ -114,7 +114,10 @@ export class BulletproofContentGenerator {
         
         console.log('🛡️ Using safety-validated fallback content');
       } else {
-        console.log(`✅ Content passed safety check (${(factCheckResult.confidence * 100).toFixed(0)}% confidence)`);
+        console.log(`✅ Content passed safety check (${factCheckResult.confidence ? (factCheckResult.confidence * 100).toFixed(0) : 'N/A'}% confidence)`);
+        if (factCheckResult.suggestions) {
+          console.log('💡 Suggestions:', factCheckResult.suggestions);
+        }
       }
     } catch (checkError) {
       console.log('⚠️ Safety check failed, allowing content:', checkError.message);
@@ -130,7 +133,7 @@ export class BulletproofContentGenerator {
   private async tryAIGeneration(request: ContentRequest): Promise<GeneratedContent | null> {
     try {
       // Import feature flags
-      const { canUseEliteStrategist } = await import('../config/featureFlags');
+      const { canUseEliteStrategist, getStrategistUsageRate, getCurrentPhase } = await import('../config/featureFlags');
       
       if (!canUseEliteStrategist()) {
         console.log('🎛️ Elite strategist disabled via feature flag');
@@ -138,7 +141,16 @@ export class BulletproofContentGenerator {
         return null;
       }
       
-      console.log('🎯 Elite strategist ENABLED - attempting AI generation');
+      // Check phase-based usage rate
+      const usageRate = getStrategistUsageRate();
+      const phase = getCurrentPhase();
+      
+      if (Math.random() > usageRate) {
+        console.log(`🎲 Skipping AI generation (Phase: ${phase.phase}, Usage: ${Math.round(usageRate * 100)}%)`);
+        return null;
+      }
+      
+      console.log(`🎯 Elite strategist ENABLED - Phase: ${phase.phase} (${Math.round(usageRate * 100)}% AI usage)`);
 
       const contentRequest = {
         topic: request.topic || 'health optimization',
@@ -236,32 +248,46 @@ export class BulletproofContentGenerator {
   private getTopicTemplates(topic: string): string[] {
     const topicTemplates = {
       health: [
-        "What if {claim} is actually {opposite}?",
-        "New study: {discovery} changes everything about {topic}.",
-        "Why {common_belief} might be wrong about {specific_area}.",
-        "The {time_period} habit that {benefit} according to research.",
-        "How {simple_action} could {dramatic_outcome} in {timeframe}."
+        "What's one {topic} habit you wish you'd started 10 years ago?",
+        "Plot twist: {conventional_wisdom} about {topic} is completely wrong.",
+        "Quick question: What's your biggest {topic} challenge right now?",
+        "Hot take: {surprising_claim} about {topic}.",
+        "Rate your {topic}: A) Excellent B) Good C) Needs work D) What's that? 😅"
       ],
       fitness: [
-        "The workout mistake that's {negative_outcome}.",
-        "Why {popular_exercise} isn't working for most people.",
-        "This {simple_change} improved {metric} by {percentage}.",
-        "What happens when you {action} for {duration}?",
-        "The {adjective} truth about {fitness_topic}."
+        "Gym confession: {relatable_mistake} 😅",
+        "What's the {fitness_topic} you love to hate but know it works?",
+        "Fitness myth busted: {common_belief} is actually {reality}.",
+        "The best workout is the one you'll actually do. What's yours?",
+        "What's your weirdest {fitness_topic} habit that actually works?"
       ],
       nutrition: [
-        "The food that {unexpected_benefit} according to science.",
-        "Why {popular_diet_advice} is actually {problem}.",
-        "This {nutrient} deficiency affects {large_number} people.",
-        "What {expert_type} eat vs. what they recommend.",
-        "The {meal_timing} mistake that {consequence}."
+        "Food companies don't want you to know this {nutrition_topic} secret...",
+        "That moment when you realize {common_food} isn't healthy 😳",
+        "What's the strangest {nutrition_topic} combination that works?",
+        "Nutrition labels are designed to confuse you. Here's what to look for:",
+        "What's one {nutrition_topic} change that made a huge difference?"
+      ],
+      sleep: [
+        "What's the strangest thing that helps you sleep better?",
+        "Sleep hack that sounds fake but works: {sleep_tip}",
+        "Rate your sleep: A) Dead to the world B) Tossing & turning C) What sleep?",
+        "Why do we treat sleep like it's optional when it's life or death?",
+        "What's your biggest sleep disruptor?"
+      ],
+      mental_health: [
+        "Mental health check: What's one thing you need to hear today?",
+        "What's a small self-care act that makes a big difference?",
+        "Normalize talking about mental health like physical health.",
+        "What's your go-to strategy when you're feeling overwhelmed?",
+        "Mental health plot twist: Saying no is saying yes to yourself."
       ],
       default: [
-        "What if everything you know about {topic} is wrong?",
-        "New research reveals {surprising_finding} about {subject}.",
-        "Why {conventional_wisdom} might be {problem}.",
-        "The {simple_thing} that {big_impact}.",
-        "How {small_change} led to {significant_result}."
+        "What's one thing about {topic} nobody talks about but should?",
+        "If {topic} advice came with warning labels, what would yours say?",
+        "What's the biggest {topic} lie you were told growing up?",
+        "Quick poll: What's your {topic} superpower?",
+        "What would you tell your younger self about {topic}?"
       ]
     };
 
@@ -322,17 +348,40 @@ export class BulletproofContentGenerator {
    * 📋 INITIALIZE FALLBACK TEMPLATES
    */
   private initializeFallbackTemplates(): void {
+    // Enhanced templates designed for higher engagement
     this.fallbackTemplates = [
-      "What if the health advice you've been following is wrong?",
-      "New research changes everything about longevity.",
-      "The supplement industry doesn't want you to know this.",
-      "Why some people age slower than others.",
-      "This daily habit could transform your health.",
-      "The biggest health myth finally debunked.",
-      "What happens when you stop this common habit?",
-      "Why your doctor might be wrong about this trend.",
-      "Ancient practice beats modern medicine.",
-      "Simple change, massive health transformation."
+      // Question hooks (drive comments)
+      "What's the one health habit that completely changed your life? 👇",
+      "Quick poll: What's your biggest health struggle? A) Sleep B) Nutrition C) Exercise D) Stress",
+      "What's one health myth you believed for way too long?",
+      "If you could only give one piece of health advice, what would it be?",
+      "What's the weirdest health tip that actually works?",
+      
+      // Contrarian hooks (viral potential)
+      "Unpopular opinion: Expensive supplements won't fix a poor lifestyle.",
+      "Hot take: Your 'healthy' smoothie might have more sugar than soda 🤯",
+      "Plot twist: The food pyramid was basically upside down this whole time.",
+      "Controversial: Doing cardio for hours isn't the secret to fat loss.",
+      
+      // Curiosity gaps (drive clicks)
+      "This kitchen spice might be the secret to better sleep...",
+      "Scientists discovered something surprising about people who live past 100:",
+      "The Japanese concept that could revolutionize your health mindset:",
+      
+      // Personal/relatable (build connection)
+      "Me: I'll start eating healthy Monday. Also me: Orders pizza Sunday night 🍕",
+      "That moment you realize you've been breathing wrong your entire life 😅",
+      "Anyone else need a PhD to understand nutrition labels?",
+      
+      // Value-driven (save/share worthy)
+      "3 signs your body is begging you to slow down:",
+      "The 5-minute rule that changed my approach to daily movement:",
+      "Why your sleep routine matters more than your morning routine:",
+      
+      // Safe fallbacks
+      "Small consistent changes lead to big health improvements 🌱",
+      "Health isn't just what you eat - it's how you live.",
+      "Your body keeps the score. Treat it with respect."
     ];
   }
 

@@ -213,6 +213,22 @@ export function startHealthServer(): Promise<void> {
 }
 
 /**
+ * Stop health server gracefully
+ */
+export async function stopHealthServer(): Promise<void> {
+  return new Promise((resolve) => {
+    if (healthServerStatus.server) {
+      healthServerStatus.server.close(() => {
+        console.log('🏥 Health server stopped');
+        resolve();
+      });
+    } else {
+      resolve();
+    }
+  });
+}
+
+/**
  * Update bot status (called from main bot)
  */
 export function updateBotStatus(status: string, controller?: any): void {

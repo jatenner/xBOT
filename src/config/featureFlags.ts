@@ -81,7 +81,10 @@ export class FeatureFlagManager {
   }
   
   private loadFromEnvironment(): void {
-    // AI Features
+    // Handle phased rollout first
+    this.loadPhaseBasedFlags();
+    
+    // AI Features (can override phase defaults)
     if (process.env.ENABLE_ELITE_STRATEGIST === 'true') {
       this.flags.ai.eliteContentStrategist = true;
       console.log('🎯 Elite Content Strategist ENABLED via environment');
@@ -111,6 +114,43 @@ export class FeatureFlagManager {
     if (process.env.DRY_RUN === 'true') {
       this.flags.debug.dryRunMode = true;
       console.log('🧪 DRY RUN MODE enabled - no actual posting');
+    }
+  }
+  
+  private loadPhaseBasedFlags(): void {
+    const phase = process.env.BOT_PHASE || 'data_collection';
+    console.log(`🎯 Bot Phase: ${phase}`);
+    
+    switch (phase) {
+      case 'data_collection':
+        // Phase 1: Template-only, data collection
+        console.log('📊 Phase 1: Data Collection Mode - Templates only');
+        break;
+        
+      case 'ai_trial':
+        // Phase 2: Enable AI strategist at 40% usage
+        this.flags.ai.eliteContentStrategist = true;
+        console.log('🧠 Phase 2: AI Trial Mode - 40% AI content generation');
+        break;
+        
+      case 'learning_loop':
+        // Phase 3: Enable bandit learning + higher AI usage
+        this.flags.ai.eliteContentStrategist = true;
+        this.flags.ai.banditLearning = true;
+        console.log('🎓 Phase 3: Learning Loop - AI optimization active');
+        break;
+        
+      case 'growth_mode':
+        // Phase 4: Full engagement optimization
+        this.flags.ai.eliteContentStrategist = true;
+        this.flags.ai.banditLearning = true;
+        this.flags.ai.engagementOptimization = true;
+        this.flags.advanced.autonomousEngagement = true;
+        console.log('🚀 Phase 4: Growth Mode - Full AI engagement system');
+        break;
+        
+      default:
+        console.log('⚠️ Unknown phase, defaulting to data collection mode');
     }
   }
   
@@ -171,6 +211,50 @@ export class FeatureFlagManager {
     
     return shouldEnable;
   }
+  
+  // Phase management
+  getCurrentPhase(): { phase: string; description: string; aiUsage: number } {
+    const phase = process.env.BOT_PHASE || 'data_collection';
+    const phases = {
+      data_collection: { description: 'Data Collection - Template-only posting for baseline metrics', aiUsage: 0 },
+      ai_trial: { description: 'AI Content Trial - 40% AI generation vs templates', aiUsage: 0.4 },
+      learning_loop: { description: 'Learning Loop - 60% AI with bandit optimization', aiUsage: 0.6 },
+      growth_mode: { description: 'Growth Mode - 80% AI with full engagement automation', aiUsage: 0.8 }
+    };
+    
+    return {
+      phase,
+      description: phases[phase]?.description || 'Unknown phase',
+      aiUsage: phases[phase]?.aiUsage || 0
+    };
+  }
+  
+  getStrategistUsageRate(): number {
+    const customRate = parseFloat(process.env.STRATEGIST_USAGE_RATE || '0');
+    if (customRate > 0) return Math.min(customRate, 1.0);
+    
+    const phase = this.getCurrentPhase();
+    return phase.aiUsage;
+  }
+  
+  getMaxDailyPosts(): number {
+    const base = parseInt(process.env.MAX_DAILY_POSTS || '6');
+    const phase = process.env.BOT_PHASE || 'data_collection';
+    
+    const limits = {
+      data_collection: 6,
+      ai_trial: 8,
+      learning_loop: 10,
+      growth_mode: 12
+    };
+    
+    return Math.min(base, limits[phase] || 6);
+  }
+  
+  getFactCheckThreshold(): number {
+    const threshold = parseFloat(process.env.FACT_CHECK_THRESHOLD || '0.7');
+    return Math.max(0.5, Math.min(1.0, threshold));
+  }
 }
 
 // Export singleton instance
@@ -186,3 +270,9 @@ export const canUseBanditLearning = (): boolean => featureFlags.canUseBanditLear
 export const canOptimizeEngagement = (): boolean => featureFlags.canOptimizeEngagement();
 export const isVerboseLogging = (): boolean => featureFlags.isVerboseLogging();
 export const isDryRun = (): boolean => featureFlags.isDryRun();
+
+// Phase management exports
+export const getCurrentPhase = () => featureFlags.getCurrentPhase();
+export const getStrategistUsageRate = () => featureFlags.getStrategistUsageRate();
+export const getMaxDailyPosts = () => featureFlags.getMaxDailyPosts();
+export const getFactCheckThreshold = () => featureFlags.getFactCheckThreshold();
