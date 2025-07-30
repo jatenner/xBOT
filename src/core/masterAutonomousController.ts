@@ -167,7 +167,18 @@ export class MasterAutonomousController {
     }
 
     if (envValidation.warnings.length > 0) {
-      console.warn(`⚠️ Optional environment variables missing: ${envValidation.warnings.join(', ')}`);
+      // Only log optional warnings once and filter out non-critical ones
+      const criticalWarnings = envValidation.warnings.filter(warning => 
+        !['NEWS_API_KEY', 'PEXELS_API_KEY'].includes(warning)
+      );
+      
+      if (criticalWarnings.length > 0) {
+        console.warn(`⚠️ Optional environment variables missing: ${criticalWarnings.join(', ')}`);
+      }
+      
+      if (envValidation.warnings.includes('NEWS_API_KEY')) {
+        console.log('🔧 NEWS_API_KEY not set - news features disabled (this is optional)');
+      }
     }
 
     // Check budget configuration
@@ -1028,42 +1039,58 @@ export class MasterAutonomousController {
         this.systemHealth.performance.systemUptime = Date.now() - this.startTime.getTime();
       }
 
-      // Check budget utilization
-      let budgetStatus: any;
+      // Check budget utilization with comprehensive error handling
+      let budgetStatus: any = {
+        lockdownActive: false,
+        totalSpent: 0,
+        dailyLimit: 7.5,
+        lockdownReason: 'Default values'
+      };
       
       try {
-        budgetStatus = await EmergencyBudgetLockdown.isLockedDown();
+        // Ensure EmergencyBudgetLockdown is available and has the method
+        if (EmergencyBudgetLockdown && typeof EmergencyBudgetLockdown.isLockedDown === 'function') {
+          const budgetResult = await EmergencyBudgetLockdown.isLockedDown();
+          if (budgetResult && typeof budgetResult === 'object') {
+            budgetStatus = {
+              lockdownActive: budgetResult.lockdownActive || false,
+              totalSpent: budgetResult.totalSpent || 0,
+              dailyLimit: budgetResult.dailyLimit || 7.5,
+              lockdownReason: budgetResult.lockdownReason || 'OK'
+            };
+          }
+        } else {
+          console.log('🔧 EmergencyBudgetLockdown not available, using default budget status');
+        }
       } catch (error) {
-        console.error('❌ Error updating system health:', error);
-        budgetStatus = {
-          lockdownActive: false,
-          totalSpent: 0,
-          dailyLimit: 7.5,
-          lockdownReason: 'Budget check failed'
-        };
+        console.log('🔧 Budget check error (using defaults):', error.message);
+        // budgetStatus already has safe defaults
       }
       
-      if (!budgetStatus || typeof budgetStatus !== 'object') {
-        budgetStatus = {
-          lockdownActive: false,
-          totalSpent: 0,
-          dailyLimit: 7.5,
-          lockdownReason: 'Invalid budget status'
-        };
+      // Safely calculate budget utilization
+      const totalSpent = typeof budgetStatus.totalSpent === 'number' ? budgetStatus.totalSpent : 0;
+      const dailyLimit = typeof budgetStatus.dailyLimit === 'number' ? budgetStatus.dailyLimit : 7.5;
+      this.systemHealth.performance.budgetUtilization = totalSpent / dailyLimit;
+
+      // Update growth metrics with safety checks
+      this.systemHealth.performance.postsToday = this.operationalMetrics?.posting?.totalPosts || 0;
+      this.systemHealth.performance.engagementToday = this.operationalMetrics?.engagement?.totalActions || 0;
+
+      // Generate next actions with error protection
+      try {
+        this.systemHealth.nextActions = this.generateNextActions();
+      } catch (actionError) {
+        console.log('🔧 Error generating next actions:', actionError.message);
+        this.systemHealth.nextActions = ['Monitor system health', 'Check budget status'];
       }
-      
-      this.systemHealth.performance.budgetUtilization = 
-        (budgetStatus.totalSpent || 0) / (budgetStatus.dailyLimit || 7.5);
-
-      // Update growth metrics (simplified)
-      this.systemHealth.performance.postsToday = this.operationalMetrics.posting.totalPosts;
-      this.systemHealth.performance.engagementToday = this.operationalMetrics.engagement.totalActions;
-
-      // Generate next actions
-      this.systemHealth.nextActions = this.generateNextActions();
 
     } catch (error) {
       console.error('❌ Error updating system health:', error);
+      // Ensure system health has safe defaults
+      this.systemHealth.performance.budgetUtilization = 0;
+      this.systemHealth.performance.postsToday = 0;
+      this.systemHealth.performance.engagementToday = 0;
+      this.systemHealth.nextActions = ['System health check failed', 'Manual intervention may be needed'];
     }
   }
 

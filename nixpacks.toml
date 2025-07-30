@@ -19,3 +19,4 @@ cmd = 'node dist/main.js'
 
 [variables]
 NODE_ENV = 'production'
+SKIP_PLAYWRIGHT = 'false'
