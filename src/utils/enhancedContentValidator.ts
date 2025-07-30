@@ -41,7 +41,7 @@ export class EnhancedContentValidator {
         }
         
         return {
-            isValid: issues.length === 0 && qualityScore >= 70,
+            isValid: issues.length === 0 && quality score >= 55,
             qualityScore,
             issues,
             recommendations

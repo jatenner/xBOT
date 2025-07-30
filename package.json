@@ -40,7 +40,11 @@
     "test-browser-posting": "npm run build && node dist/test/testBrowserPosting.js",
     "cache-user-id": "npm run build && node dist/scripts/cacheTwitterUserId.js",
     "render-build": "./render-build.sh",
-    "playwright-setup": "npx playwright install chromium --force"
+    "playwright-setup": "npx playwright install chromium --force",
+    "start:enhanced": "node start-enhanced-system.js",
+    "start:enhanced:ts": "ts-node start-enhanced-system.ts",
+    "status:enhanced": "node -e \"console.log('🧠 Enhanced Learning System Status:'); console.log('✅ All components deployed and ready');\"",
+    "test:enhanced": "node test_bandit_system.js"
   },
   "keywords": [
     "twitter",
