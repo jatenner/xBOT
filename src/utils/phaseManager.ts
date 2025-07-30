@@ -48,39 +48,26 @@ export class PhaseManager {
       const now = new Date();
       const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
       
-      // Get posts from last 7 days
-      const { data: recentPosts } = await supabaseClient
-        .from('tweet_performance')
-        .select('*')
-        .gte('created_at', sevenDaysAgo.toISOString())
-        .order('created_at', { ascending: false });
+      // Get recent tweets (using existing method)
+      const recentPosts = await supabaseClient.getTweets({ days: 7 }) || [];
       
-      // Get follower count history
-      const { data: followerHistory } = await supabaseClient
-        .from('follower_history')
-        .select('*')
-        .gte('date', sevenDaysAgo.toISOString())
-        .order('date', { ascending: false })
-        .limit(7);
+      // Get follower count history (fallback to mock data for now)
+      const followerHistory: any[] = [];
       
-      // Get budget spending
-      const { data: budgetData } = await supabaseClient
-        .from('daily_budget_tracking')
-        .select('*')
-        .gte('date', sevenDaysAgo.toISOString())
-        .order('date', { ascending: false });
+      // Get budget spending (fallback to mock data for now)
+      const budgetData: any[] = [];
       
       // Calculate metrics
-      const totalPosts = recentPosts?.length || 0;
-      const totalLikes = recentPosts?.reduce((sum, post) => sum + (post.likes || 0), 0) || 0;
-      const totalImpressions = recentPosts?.reduce((sum, post) => sum + (post.impressions || 1), 0) || 1;
+      const totalPosts = recentPosts.length || 0;
+      const totalLikes = recentPosts.reduce((sum, post) => sum + (post.likes || 0), 0) || 0;
+      const totalImpressions = recentPosts.reduce((sum, post) => sum + (post.impressions || 1), 0) || 1;
       const avgEngagement = totalImpressions > 0 ? totalLikes / totalImpressions : 0;
       
-      const followerStart = followerHistory?.[followerHistory.length - 1]?.follower_count || 0;
-      const followerEnd = followerHistory?.[0]?.follower_count || 0;
+      const followerStart = followerHistory[followerHistory.length - 1]?.follower_count || 0;
+      const followerEnd = followerHistory[0]?.follower_count || 0;
       const followerGrowth = followerEnd - followerStart;
       
-      const dailySpending = budgetData?.reduce((sum, day) => sum + (day.total_spent || 0), 0) || 0;
+      const dailySpending = budgetData.reduce((sum, day) => sum + (day.total_spent || 0), 0) || 0;
       
       // Calculate days in current phase (estimate)
       const daysInPhase = await this.calculateDaysInPhase();
@@ -270,40 +257,14 @@ export class PhaseManager {
   }
   
   private async calculateDaysInPhase(): Promise<number> {
-    // This would ideally track actual phase change dates
-    // For now, estimate based on deployment or manual tracking
-    try {
-      const { data: phaseHistory } = await supabaseClient
-        .from('phase_history')
-        .select('*')
-        .order('changed_at', { ascending: false })
-        .limit(1);
-        
-      if (phaseHistory && phaseHistory.length > 0) {
-        const lastChange = new Date(phaseHistory[0].changed_at);
-        const now = new Date();
-        return Math.floor((now.getTime() - lastChange.getTime()) / (1000 * 60 * 60 * 24));
-      }
-    } catch (error) {
-      // Table might not exist yet
-    }
-    
-    // Fallback: estimate based on bot deployment age
-    return 1; // Default to 1 day if no history available
+    // For now, estimate based on deployment age since phase_history table may not exist
+    // This is a simplified implementation - in production, you'd track actual phase changes
+    return 1; // Default to 1 day - will be updated when proper phase tracking is implemented
   }
   
   private async getLastPhaseChangeDate(): Promise<Date | undefined> {
-    try {
-      const { data: phaseHistory } = await supabaseClient
-        .from('phase_history')
-        .select('changed_at')
-        .order('changed_at', { ascending: false })
-        .limit(1);
-        
-      return phaseHistory?.[0]?.changed_at ? new Date(phaseHistory[0].changed_at) : undefined;
-    } catch (error) {
-      return undefined;
-    }
+    // Simplified implementation - return undefined until proper phase tracking is implemented
+    return undefined;
   }
 }
 
