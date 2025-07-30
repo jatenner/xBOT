@@ -98,7 +98,7 @@ class BulletproofRailwayMonitor {
 
     console.log(`📡 Connecting to Railway logs... (attempt ${this.reconnectCount + 1})`);
     
-    this.logProcess = spawn('railway', ['logs', '--follow'], {
+    this.logProcess = spawn('railway', ['logs'], {
       stdio: 'pipe',
       shell: true
     });
