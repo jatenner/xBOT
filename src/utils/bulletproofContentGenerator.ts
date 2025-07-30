@@ -115,8 +115,8 @@ export class BulletproofContentGenerator {
         console.log('🛡️ Using safety-validated fallback content');
       } else {
         console.log(`✅ Content passed safety check (${factCheckResult.confidence ? (factCheckResult.confidence * 100).toFixed(0) : 'N/A'}% confidence)`);
-        if (factCheckResult.suggestions) {
-          console.log('💡 Suggestions:', factCheckResult.suggestions);
+        if (factCheckResult.corrections && factCheckResult.corrections.length > 0) {
+          console.log('💡 Suggestions:', factCheckResult.corrections.join(', '));
         }
       }
     } catch (checkError) {
