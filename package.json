@@ -44,7 +44,11 @@
     "start:enhanced": "node start-enhanced-system.js",
     "start:enhanced:ts": "ts-node start-enhanced-system.ts",
     "status:enhanced": "node -e \"console.log('🧠 Enhanced Learning System Status:'); console.log('✅ All components deployed and ready');\"",
-    "test:enhanced": "node test_bandit_system.js"
+    "test:enhanced": "node test_bandit_system.js",
+    "monitor": "node monitor_enhanced_system.js",
+    "fix-quality": "node fix_content_quality_issues.js",
+    "logs": "node railway_log_server.js",
+    "verify": "node verify_railway_deployment.js"
   },
   "keywords": [
     "twitter",
@@ -73,7 +77,7 @@
     "socket.io": "^4.7.4",
     "twitter-api-v2": "^1.17.2",
     "winston": "^3.14.2",
-    "ws": "^8.18.0",
+    "ws": "^8.18.3",
     "xml2js": "^0.6.2"
   },
   "devDependencies": {
