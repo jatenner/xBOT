@@ -1083,4 +1083,4 @@ export const supabaseClient = new SupabaseService();
 
 // Export direct client access for new utilities that need raw supabase access
 const serviceInstance = new SupabaseService();
-export const supabase = serviceInstance['client']; 
+export const supabase = serviceInstance['client']!; // Non-null assertion since we validate in constructor 

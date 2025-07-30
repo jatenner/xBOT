@@ -6,7 +6,7 @@
  * Uses Thompson Sampling with contextual features for intelligent decision-making.
  */
 
-import { supabaseClient } from '../utils/supabaseClient';
+import { supabase } from '../utils/supabaseClient';
 import { emergencyBudgetLockdown } from '../utils/emergencyBudgetLockdown';
 
 interface ContextualFeatures {
@@ -190,7 +190,7 @@ export class ContextualBanditSelector {
 
     try {
       // Get recent post performance data
-      const { data: recentPosts, error } = await supabaseClient
+      const { data: recentPosts, error } = await supabase
         .from('learning_posts')
         .select('*')
         .eq('was_posted', true)
@@ -297,7 +297,7 @@ export class ContextualBanditSelector {
     error?: string;
   }> {
     try {
-      const { data: existingArms, error } = await supabaseClient
+      const { data: existingArms, error } = await supabase
         .from('contextual_bandit_arms')
         .select('*')
         .order('last_updated', { ascending: false });
@@ -360,7 +360,7 @@ export class ContextualBanditSelector {
         last_updated: new Date().toISOString()
       }));
 
-      const { data, error } = await supabaseClient
+      const { data, error } = await supabase
         .from('contextual_bandit_arms')
         .insert(armsToInsert)
         .select();
@@ -504,7 +504,7 @@ export class ContextualBanditSelector {
       console.log(`🎯 Updating arm ${feedback.armId} with reward ${feedback.reward.toFixed(3)}`);
       
       // Load current arm state
-      const { data: currentArm, error: fetchError } = await supabaseClient
+      const { data: currentArm, error: fetchError } = await supabase
         .from('contextual_bandit_arms')
         .select('*')
         .eq('arm_id', feedback.armId)
@@ -534,7 +534,7 @@ export class ContextualBanditSelector {
       }
 
       // Update database
-      const { data: updatedData, error: updateError } = await supabaseClient
+      const { data: updatedData, error: updateError } = await supabase
         .from('contextual_bandit_arms')
         .update({
           success_count: newSuccessCount,
@@ -551,7 +551,7 @@ export class ContextualBanditSelector {
       }
 
       // Store reward feedback history
-      await supabaseClient
+      await supabase
         .from('contextual_bandit_history')
         .insert({
           arm_id: feedback.armId,
