@@ -4,22 +4,18 @@ nixPkgs = ['nodejs_18', 'npm-9_x']
 [phases.install]
 cmds = [
   'npm ci --production=false',
-  'echo "📦 Installing Playwright browsers for Railway..."',
-  'npx playwright install-deps chromium || echo "⚠️ Browser deps install failed - will use fallback"',
-  'npx playwright install chromium || echo "⚠️ Browser install failed - will use fallback"'
+  'npx playwright install-deps',
+  'npx playwright install chromium'
 ]
 
 [phases.build]
 cmds = [
-  'echo "🔧 Building TypeScript application..."',
-  'NODE_OPTIONS=--max_old_space_size=1024 npm run build',
-  'echo "✅ Build completed - Railway deployment ready"'
+  'npm run build'
 ]
 
 [start]
-cmd = 'node dist/main.js'
+cmd = 'npm start'
 
 [variables]
 NODE_ENV = 'production'
-PLAYWRIGHT_BROWSERS_PATH = '0'
-PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = 'false'
+PLAYWRIGHT_BROWSERS_PATH = '/opt/render/.cache/ms-playwright'

@@ -9,7 +9,8 @@
  */
 
 import { startHealthServer, updateBotStatus } from './healthServer';
-import { railwayPlaywright } from './utils/railwayPlaywrightManager';
+import { railwayPlaywright } from './utils/railwayPlaywright';
+import { railway24x7Manager } from './utils/railway24x7Manager';
 import { ProductionEnvValidator } from './utils/productionEnvValidator';
 import { execSync } from 'child_process';
 
