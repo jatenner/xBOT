@@ -2,7 +2,10 @@
   "compilerOptions": {
     "target": "ES2020",
     "module": "commonjs",
-    "lib": ["ES2020", "DOM"],
+    "lib": [
+      "ES2020",
+      "DOM"
+    ],
     "outDir": "./dist",
     "rootDir": "./src",
     "strict": false,
@@ -13,7 +16,10 @@
     "declaration": false,
     "sourceMap": false,
     "noImplicitAny": false,
-    "strictNullChecks": false
+    "strictNullChecks": false,
+    "noImplicitReturns": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
   },
   "include": [
     "src/main.ts",
@@ -57,7 +63,7 @@
     "tests/**/*",
     "src/agents/autonomousLearningAgent.ts",
     "src/agents/autonomousTwitterGrowthMaster.ts",
-    "src/agents/realTimeTrendsAgent.ts", 
+    "src/agents/realTimeTrendsAgent.ts",
     "src/agents/trendResearchFusion.ts",
     "src/agents/ultraViralGenerator.ts",
     "src/agents/strategistAgent.ts",
@@ -67,4 +73,4 @@
     "src/singletons/**/*",
     "src/metrics/**/*"
   ]
-} 
+}

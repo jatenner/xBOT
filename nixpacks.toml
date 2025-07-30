@@ -3,18 +3,23 @@ nixPkgs = ['nodejs_18', 'npm-9_x']
 
 [phases.install]
 cmds = [
-  'npm ci --production=false',
-  'npx playwright install-deps',
-  'npx playwright install chromium'
+  'npm ci --production=false --legacy-peer-deps',
+  'echo "📦 Playwright browser installation..."',
+  'npx playwright install-deps chromium || echo "⚠️ Browser deps optional"',
+  'npx playwright install chromium || echo "⚠️ Browser install optional"'
 ]
 
 [phases.build]
 cmds = [
-  'npm run build'
+  'echo "🔧 Building TypeScript application..."',
+  'NODE_OPTIONS=--max_old_space_size=1024 npx tsc',
+  'mkdir -p dist/dashboard && cp src/dashboard/*.html dist/dashboard/ 2>/dev/null || true',
+  'mkdir -p dist/prompts && cp -r src/prompts/* dist/prompts/ 2>/dev/null || true',
+  'echo "✅ Build completed - Railway deployment ready"'
 ]
 
 [start]
-cmd = 'npm start'
+cmd = 'node dist/main.js'
 
 [variables]
 NODE_ENV = 'production'
