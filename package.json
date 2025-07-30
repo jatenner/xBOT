@@ -27,15 +27,7 @@
     "emergency": "node emergency_start.js",
     "safe-start": "EMERGENCY_MODE=true npm start",
     "start-original": "npm run migrate && node dist/main.js",
-    "logs": "node railway_log_server.js",
-    "logs-auto": "./start_bulletproof_logs.sh",
-    "logs-bulletproof": "node bulletproof_railway_logs.js",
-    "logs-ultimate": "node ultimate_railway_monitor.js",
-    "logs-simple": "node simple_railway_monitor.js",
-    "logs-perfect": "node perfect_railway_logs.js",
-    "railway-optimize": "node railway_deploy_optimization.js",
-    "deploy-railway": "npm run railway-optimize && git add . && git commit -m 'Railway 24/7 optimization' && git push origin main",
-    "logs-old": "node auto_railway_logs_monitor.js",
+    "logs": "node perfect_railway_logs.js",
     "init-session": "npm run build && node dist/utils/initTwitterSession.js",
     "test-session": "npm run build && node dist/utils/initTwitterSession.js test",
     "test-scraper": "npm run build && node dist/test/testScraper.js",
@@ -70,8 +62,8 @@
   "author": "Snap2Health",
   "license": "MIT",
   "engines": {
-    "node": ">=18.0.0",
-    "npm": ">=9.0.0"
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.1",

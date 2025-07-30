@@ -47,12 +47,14 @@ export class BulletproofContentGenerator {
   async generateContent(request: ContentRequest = {}): Promise<GeneratedContent> {
     console.log('🛡️ === BULLETPROOF CONTENT GENERATION ===');
     
+    let generatedContent: GeneratedContent | null = null;
+    
     // Layer 1: Try AI generation
     try {
       const aiContent = await this.tryAIGeneration(request);
       if (aiContent) {
         console.log('✅ AI generation successful');
-        return aiContent;
+        generatedContent = aiContent;
       }
     } catch (error) {
       console.log('⚠️ AI generation failed, trying template fallback');
@@ -60,27 +62,84 @@ export class BulletproofContentGenerator {
     }
 
     // Layer 2: Try template-based generation
-    try {
-      const templateContent = await this.tryTemplateGeneration(request);
-      if (templateContent) {
-        console.log('✅ Template generation successful');
-        return templateContent;
+    if (!generatedContent) {
+      try {
+        const templateContent = await this.tryTemplateGeneration(request);
+        if (templateContent) {
+          console.log('✅ Template generation successful');
+          generatedContent = templateContent;
+        }
+      } catch (error) {
+        console.log('⚠️ Template generation failed, using emergency fallback');
       }
-    } catch (error) {
-      console.log('⚠️ Template generation failed, using emergency fallback');
     }
 
     // Layer 3: Emergency fallback (always works)
-    console.log('🚨 Using emergency fallback content');
-    return this.generateEmergencyFallback(request);
+    if (!generatedContent) {
+      console.log('🚨 Using emergency fallback content');
+      generatedContent = this.generateEmergencyFallback(request);
+    }
+
+    // Layer 4: Safety validation (lightweight fact check)
+    try {
+      console.log('🔍 Running lightweight safety check...');
+      const factCheckResult = await this.factChecker.checkContent({
+        content: generatedContent.content,
+        contentType: 'tweet',
+        strictMode: false,
+        allowSpeculation: true
+      });
+      
+      if (!factCheckResult.shouldPost) {
+        console.log(`⚠️ Content failed safety check: ${factCheckResult.reasoning}`);
+        console.log(`Issues: ${factCheckResult.issues.join(', ')}`);
+        
+        // If safety check fails, use a safer fallback
+        const safeFallbacks = [
+          "Health tip: Stay hydrated, get enough sleep, and move your body daily.",
+          "What's one small healthy habit you want to build this week?",
+          "Reminder: Small consistent changes lead to big health improvements.",
+          "Which health topic would you like to learn more about?",
+          "Share one thing you're grateful for today - gratitude impacts health!"
+        ];
+        
+        generatedContent = {
+          content: safeFallbacks[Math.floor(Math.random() * safeFallbacks.length)],
+          predicted_engagement: 10,
+          format_used: 'Safe_Fallback',
+          hook_type: 'question',
+          confidence: 95,
+          source: 'fallback'
+        };
+        
+        console.log('🛡️ Using safety-validated fallback content');
+      } else {
+        console.log(`✅ Content passed safety check (${(factCheckResult.confidence * 100).toFixed(0)}% confidence)`);
+      }
+    } catch (checkError) {
+      console.log('⚠️ Safety check failed, allowing content:', checkError.message);
+      // Continue with original content if safety check fails
+    }
+
+    return generatedContent;
   }
 
   /**
-   * 🤖 TRY AI GENERATION
+   * 🤖 TRY AI GENERATION (FEATURE FLAG CONTROLLED)
    */
   private async tryAIGeneration(request: ContentRequest): Promise<GeneratedContent | null> {
     try {
-      // Use the elite strategist with error handling
+      // Import feature flags
+      const { canUseEliteStrategist } = await import('../config/featureFlags');
+      
+      if (!canUseEliteStrategist()) {
+        console.log('🎛️ Elite strategist disabled via feature flag');
+        console.log('🔄 Skipping AI generation - using template fallback');
+        return null;
+      }
+      
+      console.log('🎯 Elite strategist ENABLED - attempting AI generation');
+
       const contentRequest = {
         topic: request.topic || 'health optimization',
         format_preference: (request.format_preference as 'short' | 'thread' | 'auto') || 'short',
@@ -89,19 +148,15 @@ export class BulletproofContentGenerator {
       };
       
       const viralContent = await this.eliteStrategist.generateViralContent(contentRequest);
-
+      
       if (!viralContent || !viralContent.content) {
         throw new Error('No content generated from AI');
       }
-
-      // EMERGENCY: Skip fact check to ensure posting works
-      let isFactCheckPassed = true;
-      console.log('🚨 EMERGENCY MODE: Fact checking disabled for deployment stability');
-
+      
       const contentString = Array.isArray(viralContent.content) ? 
         viralContent.content.join('\n\n') : 
         viralContent.content;
-
+      
       return {
         content: contentString,
         predicted_engagement: viralContent.predicted_engagement || 25,

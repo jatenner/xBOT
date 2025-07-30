@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ['nodejs_18']
+nixPkgs = ['nodejs_20']
 
 [phases.install]
 cmds = ['npm install']
@@ -9,7 +9,9 @@ cmds = [
   'npx tsc',
   'mkdir -p dist/dashboard dist/prompts',
   'cp -r src/dashboard/*.html dist/dashboard/ 2>/dev/null || true',
-  'cp -r src/prompts/* dist/prompts/ 2>/dev/null || true'
+  'cp -r src/prompts/* dist/prompts/ 2>/dev/null || true',
+  'echo "🗄️ Running database auto-migration..."',
+  'node scripts/auto-migrate.js || echo "⚠️ Migration will run at startup"'
 ]
 
 [start]
