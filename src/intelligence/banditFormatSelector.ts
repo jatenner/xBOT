@@ -5,7 +5,7 @@
  * based on historical performance data. Balances exploration vs exploitation.
  */
 
-import { supabaseClient } from '../utils/supabaseClient';
+import { supabase } from '../utils/supabaseClient';
 import { RewardCalculator } from '../utils/rewardCalculator';
 
 interface BanditArm {
@@ -116,7 +116,7 @@ export class BanditFormatSelector {
     }
 
     try {
-      const { data, error } = await supabaseClient.supabase
+      const { data, error } = await supabase
         .from('format_stats')
         .select('*')
         .gte('total_posts', 1) // At least 1 post
@@ -345,7 +345,7 @@ export class BanditFormatSelector {
    */
   private async recordSelection(arm: BanditArm): Promise<void> {
     try {
-      await supabaseClient.supabase
+      await supabase
         .from('format_stats')
         .update({ last_selected: new Date().toISOString() })
         .eq('format_type', arm.format_type)
@@ -374,7 +374,7 @@ export class BanditFormatSelector {
       const failure = 1 - success;
 
       // Get current values first, then update
-      const { data: currentStats } = await supabaseClient.supabase
+      const { data: currentStats } = await supabase
         .from('format_stats')
         .select('alpha, beta')
         .eq('format_type', format_type)
@@ -386,7 +386,7 @@ export class BanditFormatSelector {
         const newAlpha = currentStats.alpha + success;
         const newBeta = currentStats.beta + failure;
 
-        const { error } = await supabaseClient.supabase
+        const { error } = await supabase
           .from('format_stats')
           .update({
             alpha: newAlpha,

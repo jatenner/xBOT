@@ -4,7 +4,7 @@
  * Utilities to connect bot logic with the learning database functions
  */
 
-import { supabaseClient } from './supabaseClient';
+import { supabase } from './supabaseClient';
 
 export interface OptimalTiming {
   optimal_hour: number;
@@ -28,7 +28,7 @@ export class LearningSystemIntegration {
    */
   static async getOptimalPostingTime(targetDayOfWeek?: number): Promise<OptimalTiming | null> {
     try {
-      const { data, error } = await supabaseClient.rpc('get_optimal_posting_time', {
+      const { data, error } = await supabase.rpc('get_optimal_posting_time', {
         target_day_of_week: targetDayOfWeek || null
       });
 
@@ -49,7 +49,7 @@ export class LearningSystemIntegration {
    */
   static async getBestContentFormat(): Promise<string> {
     try {
-      const { data, error } = await supabaseClient.rpc('get_best_content_format');
+      const { data, error } = await supabase.rpc('get_best_content_format');
 
       if (error) {
         console.error('❌ Failed to get best content format:', error);
@@ -68,7 +68,7 @@ export class LearningSystemIntegration {
    */
   static async getBanditArmStatistics(): Promise<BanditArmStats[]> {
     try {
-      const { data, error } = await supabaseClient.rpc('get_bandit_arm_statistics');
+      const { data, error } = await supabase.rpc('get_bandit_arm_statistics');
 
       if (error) {
         console.error('❌ Failed to get bandit statistics:', error);
@@ -93,7 +93,7 @@ export class LearningSystemIntegration {
     impressions?: number
   ): Promise<boolean> {
     try {
-      const { data, error } = await supabaseClient.rpc('update_tweet_performance', {
+      const { data, error } = await supabase.rpc('update_tweet_performance', {
         tweet_id_param: tweetId,
         new_likes: likes,
         new_retweets: retweets,
@@ -123,7 +123,7 @@ export class LearningSystemIntegration {
     impressions?: number
   ): Promise<number> {
     try {
-      const { data, error } = await supabaseClient.rpc('calculate_engagement_score', {
+      const { data, error } = await supabase.rpc('calculate_engagement_score', {
         likes_count: likes,
         retweets_count: retweets,
         replies_count: replies,
