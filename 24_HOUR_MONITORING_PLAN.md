@@ -128,7 +128,7 @@ npm run logs-auto
 ### **✅ SYSTEM STABILITY**
 - **Railway deployment**: Successful builds and continuous operation
 - **Error resilience**: Graceful handling of API limits, network issues
-- **Budget control**: Staying within daily $2.80 AI usage limits
+- **Budget control**: Staying within daily $7.50 AI usage limits (emergency lockdown at $7.25)
 - **Memory management**: No memory leaks or performance degradation
 - **Database integrity**: Proper learning data storage and retrieval
 
