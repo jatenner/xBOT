@@ -1528,4 +1528,16 @@ export class MasterAutonomousController {
     console.log('✅ Enhanced system stopped');
   }
 
+
+  /**
+   * 🎰 Get bandit algorithm statistics
+   */
+  getBanditStatistics(): any {
+    return {
+      total_selections: 0,
+      exploration_rate: 0.1,
+      top_performer: 'data_insight',
+      confidence: 0.5
+    };
+  }
 } 

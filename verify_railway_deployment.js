@@ -247,7 +247,7 @@ async function testRailwayLogStreaming() {
   
   return new Promise((resolve) => {
     try {
-      const railwayProcess = spawn('railway', ['logs', '--environment', 'production'], {
+      const railwayProcess = spawn('railway', ['logs'], {
         stdio: ['ignore', 'pipe', 'pipe']
       });
       
