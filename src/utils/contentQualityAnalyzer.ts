@@ -32,22 +32,19 @@ export function analyzeContentQuality(content: string): ContentAnalysis {
         improvements.push("Add more specific, actionable details");
     }
     
-    // Check for authority signals
+    // Check for authority signals (suggestion, not requirement)
     if (!/\d+/.test(content) && !/study|research|data/i.test(content)) {
-        issues.push("Lacks authority signals (no data/research mentioned)");
-        improvements.push("Add statistics, study results, or specific numbers");
+        improvements.push("Consider adding statistics, study results, or specific numbers for more authority");
     }
     
-    // Check for engagement triggers
+    // Check for engagement triggers (suggestion, not requirement)
     if (!/\?\s*$/.test(content)) {
-        issues.push("No engagement trigger (question) at the end");
-        improvements.push("End with a question to drive replies");
+        improvements.push("Consider ending with a question to drive replies");
     }
     
-    // Check for shareability
+    // Check for shareability (suggestion, not requirement)
     if (!/surprising|shocking|wrong|myth|truth|secret|backwards|lie|scam|fake|exposed|revealed|hidden|breakthrough|discover/i.test(content)) {
-        issues.push("Lacks viral triggers (surprise, controversy, revelation)");
-        improvements.push("Include surprising or contrarian insights");
+        improvements.push("Consider including surprising or contrarian insights for more shares");
     }
     
     // Calculate scores
@@ -72,5 +69,11 @@ export function analyzeContentQuality(content: string): ContentAnalysis {
 }
 
 export function shouldPostContent(analysis: ContentAnalysis): boolean {
-    return analysis.viral_score >= 70 && analysis.quality_issues.length === 0;
+    // More permissive during learning phase - focus on critical issues only
+    const hasCriticalIssues = analysis.quality_issues.some(issue => 
+        issue.includes('CRITICAL') || issue.includes('Incomplete hook')
+    );
+    
+    // Allow posts with viral score 40+ and no critical issues
+    return analysis.viral_score >= 40 && !hasCriticalIssues;
 }
