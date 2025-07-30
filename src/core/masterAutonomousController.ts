@@ -5,6 +5,7 @@
  * Fully autonomous operation with intelligent decision-making and learning
  */
 
+import { enhancedAutonomousController } from './enhancedAutonomousController';
 import { PRODUCTION_CONFIG, validateEnvironment, getBudgetConfig, getGrowthTargets } from '../config/productionConfig';
 import { EnhancedAutonomousPostingEngine } from './enhancedAutonomousPostingEngine';
 import { IntelligentReplyEngine } from '../agents/intelligentReplyEngine';
@@ -1490,4 +1491,41 @@ export class MasterAutonomousController {
   async getGrowthAnalytics(): Promise<any> {
     return await this.growthMaster.getCurrentGrowthMetrics();
   }
+
+  /**
+   * 🚀 Start enhanced autonomous system
+   */
+  async startEnhancedSystem(): Promise<void> {
+    console.log('🚀 Starting enhanced autonomous learning system...');
+    
+    try {
+      // Start the enhanced controller
+      await enhancedAutonomousController.startEnhancedSystem();
+      
+      // Display status
+      await enhancedAutonomousController.displaySystemStatus();
+      
+      console.log('✅ Enhanced autonomous system is now running');
+      
+    } catch (error) {
+      console.error('❌ Failed to start enhanced system:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 📊 Get enhanced system status
+   */
+  getEnhancedSystemStatus(): any {
+    return enhancedAutonomousController.getSystemStatus();
+  }
+
+  /**
+   * 🛑 Stop enhanced system
+   */
+  async stopEnhancedSystem(): Promise<void> {
+    await enhancedAutonomousController.stopEnhancedSystem();
+    console.log('✅ Enhanced system stopped');
+  }
+
 } 

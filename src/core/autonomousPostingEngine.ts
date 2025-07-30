@@ -10,6 +10,13 @@
  */
 
 // Core imports for autonomous posting
+
+// Enhanced Learning System Imports
+import { enhancedTimingOptimizer } from '../utils/enhancedTimingOptimizer';
+import { twoPassContentGenerator } from '../utils/twoPassContentGenerator';
+import { contextualBanditSelector } from '../intelligence/contextualBanditSelector';
+import { enhancedBudgetOptimizer } from '../utils/enhancedBudgetOptimizer';
+
 import { supabaseClient } from '../utils/supabaseClient';
 import { emergencyBudgetLockdown } from '../utils/emergencyBudgetLockdown';
 import { contentFactChecker } from '../utils/contentFactChecker';
@@ -516,14 +523,14 @@ export class AutonomousPostingEngine {
     }
 
     // Increased minimum length from 50 to 80 characters
-    if (content.trim().length < 80 && 
+    if (content.trim().length < 60 && 
         (content.includes('how to') || content.includes('ways to') || content.includes('secret to'))) {
       console.log(`🚨 Detected suspiciously short hook-like content (${content.trim().length} chars)`);
       return true;
     }
 
     // Additional check for extremely short content that's obviously incomplete
-    if (content.trim().length < 30) {
+    if (content.trim().length < 20) {
       console.log(`🚨 Content too short: ${content.trim().length} characters`);
       return true;
     }
@@ -1002,6 +1009,72 @@ export class AutonomousPostingEngine {
 
     return ctaPatterns.some(pattern => pattern.test(content.trim()));
   }
+
+  /**
+   * 🧠 Enhanced content generation using two-pass system and contextual bandit
+   */
+  private async generateEnhancedContent(): Promise<{ success: boolean; content?: string; context?: any }> {
+    try {
+      console.log('🧠 === ENHANCED CONTENT GENERATION ===');
+
+      // Get current context
+      const currentHour = new Date().getHours();
+      const context = {
+        hour_of_day: currentHour,
+        day_of_week: new Date().getDay(),
+        content_category: 'health_optimization',
+        format_type: 'data_insight', // Will be overridden by bandit
+        hook_type: 'question',
+        budget_utilization: 0.5, // Would get from budget system
+        recent_engagement_rate: 0.03
+      };
+
+      // Use contextual bandit to select optimal format
+      const banditSelection = await contextualBanditSelector.selectArm(context, 'format');
+      
+      if (banditSelection) {
+        context.format_type = banditSelection.arm_name;
+        console.log(`🎰 Bandit selected format: ${banditSelection.arm_name}`);
+      }
+
+      // Generate content using two-pass system
+      const contentRequest = {
+        format_type: context.format_type,
+        hook_type: context.hook_type,
+        content_category: context.content_category,
+        target_length: 'medium' as const,
+        quality_threshold: 75,
+        max_attempts: 3
+      };
+
+      const result = await twoPassContentGenerator.generateContent(contentRequest);
+      
+      if (result.success) {
+        console.log(`✅ Enhanced content generated (quality: ${result.quality_scores?.completeness || 0}/100)`);
+        
+        // Log budget operation
+        await enhancedBudgetOptimizer.logBudgetOperation(
+          'content_generation',
+          'two_pass_system',
+          300,
+          result.generation_stats?.total_cost || 0.01
+        );
+
+        return {
+          success: true,
+          content: result.final_content,
+          context: { ...context, banditSelection }
+        };
+      }
+
+      return { success: false };
+
+    } catch (error) {
+      console.error('❌ Enhanced content generation failed:', error);
+      return { success: false };
+    }
+  }
+
 }
 
 export const autonomousPostingEngine = AutonomousPostingEngine.getInstance(); 
