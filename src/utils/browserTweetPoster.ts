@@ -462,18 +462,20 @@ export class BrowserTweetPoster {
 
   async findAndClickPostButton(): Promise<{ success: boolean; error?: string }> {
     try {
-      // Updated selectors for current X.com UI (2024)
+      // Optimized selectors for current X.com UI - working selectors first
       const postButtonSelectors = [
-        // Most current X.com selectors
-        'div[aria-label="Post"]',                                // Current X.com primary
-        '[data-testid="tweetButton"]',                             // X.com button variant
+        // WORKING selectors first (fast)
+        '[data-testid="tweetButton"]',                             // This works! (logs show success)
+        'div[data-testid="tweetButton"]',                        // Alternative data-testid
+        'button[data-testid="tweetButton"]',                     // Button variant
+        '[data-testid="tweetButtonInline"]',                      // Inline variant
         'div[data-testid="tweetButtonInline"]',                  // Legacy primary
-        'div[data-testid="tweetButton"]',                        // Legacy alternative
         'button[data-testid="tweetButtonInline"]',               // Button variant
-        'button[data-testid="tweetButton"]',                     // Button alternative
+        
+        // SLOWER selectors (known to sometimes fail)
+        'div[aria-label="Post"]',                                // Often times out
         '[role="button"][aria-label="Post"]',                   // Role button with Post
         '[role="button"][data-testid*="tweet"]',                // Generic role button
-        '[data-testid="tweetButton"]',                  // Text-based Post
         'button:has-text("Post")',                              // Button with Post text
         '[aria-label*="Post"]:not([aria-label*="Post text"])',  // Aria label for button
         'div[aria-label="Tweet"]',                              // Legacy Tweet button
@@ -488,7 +490,8 @@ export class BrowserTweetPoster {
       // Try each selector with progressive timeouts
       for (let i = 0; i < postButtonSelectors.length; i++) {
         const selector = postButtonSelectors[i];
-        const timeout = i < 5 ? 20000 : 10000; // Longer timeout for first few selectors
+        // Shorter timeout for known working selectors, longer for fallbacks
+        const timeout = i < 6 ? 8000 : 15000; // Fast timeout for working selectors
         
         try {
           console.log(`🔍 Trying post button selector: ${selector} (timeout: ${timeout}ms)`);
