@@ -48,7 +48,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 
 # Stream logs with follow flag (-f) for continuous output
-railway logs --env production -f
+railway logs --environment production -f
 
 echo ""
 echo "📊 Log streaming ended." 
