@@ -141,13 +141,19 @@ export class TopicPerformancePrioritizer {
 
       // Process each tweet to extract topics
       for (const tweet of tweets) {
+        // Get tweet text from either 'text' or 'content' field
+        const tweetText = tweet?.text || tweet?.content;
+        
         // Skip tweets with missing or invalid text
-        if (!tweet?.text || typeof tweet.text !== 'string') {
-          console.warn('⚠️ Skipping tweet with invalid text:', tweet?.id || 'unknown');
+        if (!tweetText || typeof tweetText !== 'string' || tweetText.trim().length < 10) {
+          // Don't spam logs with warnings, just log once
+          if (tweets.indexOf(tweet) === 0) {
+            console.log('🔧 Some tweets have missing content fields - this is normal for old data');
+          }
           continue;
         }
 
-        const topics = await this.extractTopicsFromTweet(tweet.text);
+        const topics = await this.extractTopicsFromTweet(tweetText);
         
         for (const topicData of topics) {
           const key = topicData.topic.toLowerCase();
