@@ -13,6 +13,7 @@ import { AutonomousEngagementEngine } from '../agents/autonomousEngagementEngine
 import { EnhancedDailyOptimizationLoop } from '../intelligence/enhancedDailyOptimizationLoop';
 import { IntelligentGrowthMaster } from '../intelligence/intelligentGrowthMaster';
 import { EmergencyBudgetLockdown } from '../utils/emergencyBudgetLockdown';
+import { logPhaseStatus, getPhasePerformance } from '../utils/phaseManager';
 import { supabaseClient } from '../utils/supabaseClient';
 import express from 'express';
 import { createServer } from 'http';
@@ -211,6 +212,13 @@ export class MasterAutonomousController {
       this.updateComponentStatus('optimization_loop', 'active');
 
       console.log('✅ All systems initialized successfully');
+      
+      // Log current phase status and advancement recommendations
+      try {
+        await logPhaseStatus();
+      } catch (error) {
+        console.log('📊 Phase status check skipped:', error.message);
+      }
 
     } catch (error) {
       console.error('❌ Error initializing systems:', error);

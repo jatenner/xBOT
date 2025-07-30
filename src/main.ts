@@ -291,30 +291,77 @@ function setupGracefulShutdown(): void {
     isShuttingDown = true;
     
     console.log(`\n🛑 Received ${signal} - graceful shutdown starting...`);
+    console.log(`🕰️ Shutdown reason: Railway signal ${signal} (likely deployment or resource limit)`);
+    
+    const shutdownTimeout = setTimeout(() => {
+      console.log('⚠️ Shutdown timeout reached, forcing exit');
+      process.exit(1);
+    }, 25000); // 25 seconds for graceful shutdown
     
     try {
-      // Stop bot operations
+      // Update health status
+      updateBotStatus('shutting_down');
+      
+      // Stop bot operations gracefully
       if (botController) {
         console.log('🤖 Stopping bot controller...');
-        await botController.stopAutonomousOperation();
+        await Promise.race([
+          botController.stopAutonomousOperation(),
+          new Promise(resolve => setTimeout(resolve, 10000)) // 10s timeout
+        ]);
         console.log('✅ Bot controller stopped');
       }
       
-      // Cleanup Playwright
+      // Cleanup Playwright gracefully
       console.log('🎭 Cleaning up Playwright...');
+      try {
+        const { browserTweetPoster } = await import('./utils/browserTweetPoster');
+        await Promise.race([
+          browserTweetPoster.cleanup?.() || Promise.resolve(),
+          new Promise(resolve => setTimeout(resolve, 5000)) // 5s timeout
+        ]);
+      } catch (err) {
+        console.log('⚠️ Playwright cleanup skipped:', err.message);
+      }
       console.log('✅ Playwright cleaned up');
+      
+      // Final health server cleanup
+      console.log('🛑 Shutting down health server...');
+      const { stopHealthServer } = await import('./healthServer');
+      await stopHealthServer();
+      console.log('🏥 Health server closed gracefully');
       
     } catch (error) {
       console.error('❌ Error during shutdown:', error);
     }
-
+    
+    clearTimeout(shutdownTimeout);
     console.log('✅ Graceful shutdown complete');
     process.exit(0);
   };
 
-  // Handle shutdown signals
-  process.on('SIGINT', () => shutdown('SIGINT'));
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  // Handle shutdown signals with immediate response
+  process.on('SIGINT', () => {
+    console.log('🔴 SIGINT received from user (Ctrl+C)');
+    shutdown('SIGINT');
+  });
+  
+  process.on('SIGTERM', () => {
+    console.log('🔴 SIGTERM received from Railway (deployment/resource limit)');
+    shutdown('SIGTERM');
+  });
+  
+  // Handle Railway-specific signals
+  process.on('SIGUSR1', () => {
+    console.log('🔵 SIGUSR1 received from Railway (restart request)');
+    shutdown('SIGUSR1');
+  });
+  
+  process.on('SIGUSR2', () => {
+    console.log('🔵 SIGUSR2 received from Railway (log reopen)');
+    // For SIGUSR2, don't shutdown - just log
+    console.log('📝 Log reopen signal - continuing operation');
+  });
 
   // Handle uncaught exceptions gracefully
   process.on('uncaughtException', (error) => {
