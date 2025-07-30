@@ -5,7 +5,9 @@
  */
 
 import express from 'express';
-import { TwitterConfigService } from './utils/twitterConfig';
+import { TwitterConfigService } from './utils/twitterConfigService';
+import { ProductionEnvValidator } from './utils/productionEnvValidator';
+import { railway24x7Manager } from './utils/railway24x7Manager';
 
 export interface HealthServerStatus {
   server?: any;
@@ -45,9 +47,11 @@ export function startHealthServer(): Promise<void> {
     });
 
     // Detailed status for debugging (but never fails)
-    app.get('/status', (_req, res) => {
+    app.get('/status', async (_req, res) => {
       try {
         const uptime = Date.now() - healthServerStatus.startTime.getTime();
+        const railway24x7Status = await railway24x7Manager.getHealthSummary();
+        
         res.json({
           status: healthServerStatus.botStatus,
           playwright: healthServerStatus.playwrightStatus,
@@ -59,7 +63,8 @@ export function startHealthServer(): Promise<void> {
           host: healthServerStatus.host,
           node_version: process.version,
           platform: process.platform,
-          arch: process.arch
+          arch: process.arch,
+          railway_24x7: railway24x7Status.railway_24x7
         });
       } catch (error) {
         // Even if status fails, return something

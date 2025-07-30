@@ -33,6 +33,8 @@
     "logs-ultimate": "node ultimate_railway_monitor.js",
     "logs-simple": "node simple_railway_monitor.js",
     "logs-perfect": "node perfect_railway_logs.js",
+    "railway-optimize": "node railway_deploy_optimization.js",
+    "deploy-railway": "npm run railway-optimize && git add . && git commit -m 'Railway 24/7 optimization' && git push origin main",
     "logs-old": "node auto_railway_logs_monitor.js",
     "init-session": "npm run build && node dist/utils/initTwitterSession.js",
     "test-session": "npm run build && node dist/utils/initTwitterSession.js test",
