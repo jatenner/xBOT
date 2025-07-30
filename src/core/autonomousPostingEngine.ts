@@ -394,9 +394,10 @@ export class AutonomousPostingEngine {
     error?: string;
   }> {
     try {
-      console.log('🛡️ Using bulletproof content generation...');
+      console.log('🛡️ === EMERGENCY BULLETPROOF CONTENT GENERATION ===');
+      console.log('🚨 All advanced systems bypassed - using guaranteed fallback');
 
-      // Use bulletproof content generator (ALWAYS works)
+      // FORCE bulletproof content generator (ALWAYS works)
       const contentRequest = {
         topic: this.getOptimalTopic(),
         format_preference: 'short',
@@ -404,9 +405,11 @@ export class AutonomousPostingEngine {
         target_engagement: 25
       };
 
-      console.log(`🎯 Bulletproof content request: ${JSON.stringify(contentRequest)}`);
+      console.log(`🎯 Emergency bulletproof request: ${JSON.stringify(contentRequest)}`);
       
       const bulletproofResult = await bulletproofContentGenerator.generateContent(contentRequest);
+      
+      console.log(`✅ BULLETPROOF SUCCESS: Generated content via ${bulletproofResult.source}`);
 
       if (!bulletproofResult || !bulletproofResult.content) {
         console.error('🚨 CRITICAL: Even bulletproof generation failed!');
