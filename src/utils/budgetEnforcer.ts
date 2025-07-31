@@ -72,7 +72,7 @@ export class BudgetEnforcer {
       if (status.remainingBudget < requiredBudget) {
         return {
           canAfford: false,
-          reason: `Insufficient budget: need $${(requiredBudget || 0).toFixed(4)} (${priority}), have $${(status.remainingBudget || 0).toFixed(4)}`,
+          reason: `Insufficient budget: need $${requiredBudget.toFixed(4)} (${priority}), have $${status.remainingBudget.toFixed(4)}`,
           remainingBudget: status.remainingBudget
         };
       }
@@ -89,10 +89,10 @@ export class BudgetEnforcer {
         };
       }
 
-      console.log(`✅ BUDGET: ${operationType} approved - $${(estimatedCost || 0).toFixed(4)} (${priority})`);
+      console.log(`✅ BUDGET: ${operationType} approved - $${estimatedCost.toFixed(4)} (${priority})`);
       return {
         canAfford: true,
-        reason: `Operation approved - $${(estimatedCost || 0).toFixed(4)} within ${priority} budget`,
+        reason: `Operation approved - $${estimatedCost.toFixed(4)} within ${priority} budget`,
         remainingBudget: status.remainingBudget
       };
 
