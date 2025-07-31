@@ -98,7 +98,7 @@ export class AutonomousContentOrchestrator {
 
       // Calculate expected engagement
       const expectedEngagement = this.calculateExpectedEngagement(optimalFormat, recommendedTopic);
-      reasoning.push(`Expected engagement: ${expectedEngagement.toFixed(2)}%`);
+      reasoning.push(`Expected engagement: ${(expectedEngagement || 0).toFixed(2)}%`);
 
       return {
         optimal_format: optimalFormat,
