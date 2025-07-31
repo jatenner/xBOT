@@ -221,7 +221,7 @@ export class MasterAutonomousController {
         }
       } else {
         console.log('📊 Viral Growth Coordinator: Disabled (not in growth_mode)');
-        this.updateComponentStatus('viral_growth_coordinator', 'inactive');
+        this.updateComponentStatus('viral_growth_coordinator', 'offline');
       }
 
       // All engines are ready
