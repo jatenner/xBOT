@@ -55,7 +55,7 @@ export class IntelligentEngagementAgent {
   };
 
   private constructor() {
-    this.scraper = StealthTweetScraper.getInstance();
+    this.scraper = new StealthTweetScraper();
   }
 
   static getInstance(): IntelligentEngagementAgent {
@@ -176,12 +176,14 @@ export class IntelligentEngagementAgent {
       for (const query of searchQueries.slice(0, 3)) { // Limit searches
         console.log(`🔍 Searching for: "${query}"`);
         
-        const tweets = await this.scraper.searchTweets(query, 15);
+        const searchResult = await this.scraper.searchTweets(query, 15);
 
-        for (const tweet of tweets) {
-          const target = await this.evaluateEngagementTarget(tweet);
-          if (target && target.engagement_probability > 0.3) {
-            targets.push(target);
+        if (searchResult.success) {
+          for (const tweet of searchResult.tweets) {
+            const target = await this.evaluateEngagementTarget(tweet);
+            if (target && target.engagement_probability > 0.3) {
+              targets.push(target);
+            }
           }
         }
       }
@@ -204,13 +206,13 @@ export class IntelligentEngagementAgent {
    */
   private async evaluateEngagementTarget(tweet: ScrapedTweet): Promise<EngagementTarget | null> {
     try {
-      const hoursOld = this.calculateHoursSincePosted(tweet.created_at);
+      const hoursOld = this.calculateHoursSincePosted(tweet.timestamp);
       
       // Skip very old tweets or very new tweets (engagement window passed)
       if (hoursOld > 48 || hoursOld < 0.5) return null;
 
       // Calculate engagement metrics
-      const totalEngagement = (tweet.likes || 0) + (tweet.retweets || 0) + (tweet.replies || 0);
+      const totalEngagement = (tweet.engagement.likes || 0) + (tweet.engagement.retweets || 0) + (tweet.engagement.replies || 0);
       const engagementRate = totalEngagement / Math.max(1000, 1000);
 
       // Topic relevance scoring
@@ -228,13 +230,13 @@ export class IntelligentEngagementAgent {
       });
 
       return {
-        tweet_id: tweet.id,
-        author_username: tweet.author_username,
+        tweet_id: tweet.tweetId,
+        author_username: tweet.author.username,
         content: tweet.content,
         engagement_score: totalEngagement,
-        like_count: tweet.likes || 0,
-        retweet_count: tweet.retweets || 0,
-        reply_count: tweet.replies || 0,
+        like_count: tweet.engagement.likes || 0,
+        retweet_count: tweet.engagement.retweets || 0,
+        reply_count: tweet.engagement.replies || 0,
         hours_since_posted: hoursOld,
         topic_relevance: topicRelevance,
         author_follower_count: 1000,
@@ -492,18 +494,13 @@ export class IntelligentEngagementAgent {
   }
 
   private async recordEngagementOutcome(target: EngagementTarget, result: EngagementResult): Promise<void> {
-    // Store engagement data for learning
+    // Store engagement data for learning (simplified for now)
     try {
-      await supabaseClient
-        .from('engagement_history')
-        .insert({
-          tweet_id: target.tweet_id,
-          author_username: target.author_username,
-          action: result.action,
-          engagement_probability: target.engagement_probability,
-          success: result.success,
-          created_at: new Date().toISOString()
-        });
+      console.log(`📊 Recording engagement: ${result.action} on ${target.tweet_id} by @${target.author_username} - Success: ${result.success}`);
+      
+      // TODO: Implement proper database storage when engagement_history table is created
+      // For now, just log the engagement for monitoring
+      
     } catch (error) {
       console.error('❌ Failed to record engagement:', error);
     }
