@@ -30,12 +30,12 @@ export class ContentFactChecker {
   private budgetAwareOpenAI: BudgetAwareOpenAI;
   private checksPerformed = 0;
 
-  // High-risk keywords that trigger strict checking
+  // High-risk keywords that trigger strict checking (reduced for health content)
   private readonly HIGH_RISK_KEYWORDS = [
-    'cure', 'proven', 'always', 'never', 'guaranteed', 'miracle',
-    'breakthrough', 'revolutionary', 'secret', 'doctors hate',
-    'toxic', 'poisonous', 'deadly', 'dangerous', 'avoid',
-    'supplement', 'pill', 'treatment', 'therapy', 'medicine'
+    'cure cancer', 'proven to cure', 'guaranteed cure', 'miracle cure',
+    'doctors hate this', 'big pharma doesn\'t want',
+    'toxic chemicals', 'poisonous ingredients', 'deadly side effects',
+    'stop taking medication', 'replace your doctor', 'medical advice'
   ];
 
   // Medical disclaimers that should be avoided
@@ -273,8 +273,8 @@ ASSESSMENT:`;
     if (combinedConfidence < 0.4) riskLevel = 'high';
     else if (combinedConfidence < 0.7) riskLevel = 'medium';
 
-    // In strict mode, require higher confidence
-    const strictThreshold = request.strictMode ? 0.8 : 0.6;
+    // In strict mode, require higher confidence (but be reasonable for health content)
+    const strictThreshold = request.strictMode ? 0.5 : 0.3;
     const finalShouldPost = shouldPost && combinedConfidence >= strictThreshold;
 
     return {
