@@ -78,8 +78,9 @@ export class StyleMixer {
     timeOfDay?: number;
     lastStyleUsed?: StyleLabel;
   } = {}): Promise<StyleMixResult> {
+    const contentString = typeof content === 'string' ? content : String(content);
+    
     try {
-      const contentString = typeof content === 'string' ? content : String(content);
       console.log(`🎨 Style mixing for: "${contentString.substring(0, 50)}..."`);
 
       // Determine if we should apply styling (30% chance normally)
