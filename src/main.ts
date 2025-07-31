@@ -78,6 +78,21 @@ async function initializeBotAsync(): Promise<void> {
 
     updateBotStatus('initializing_systems');
 
+    // Initialize Twitter session for persistent browser automation
+    console.log('🔑 Initializing Twitter session...');
+    try {
+      const { ensureTwitterSession } = await import('./utils/initTwitterSession');
+      const sessionReady = await ensureTwitterSession();
+      if (sessionReady) {
+        console.log('✅ Twitter session loaded successfully');
+      } else {
+        console.log('⚠️ Twitter session not available - browser posting may fail');
+      }
+    } catch (sessionError) {
+      console.error('❌ Twitter session initialization failed:', sessionError);
+      console.log('⚠️ Continuing without session - browser posting will use fallback mode');
+    }
+
     // Import bot systems only after environment validation
     console.log('📦 Loading bot systems...');
     

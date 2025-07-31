@@ -52,7 +52,7 @@
     "fix-quality": "node fix_content_quality_issues.js",
     "verify": "node verify_railway_deployment.js",
     "railway-start": "node dist/main.js",
-    "post-now": "npm run build && node immediate_post_now.js",
+    "post-now": "SKIP_PLAYWRIGHT=true npm run build && node immediate_post_now.js",
     "force-post": "node force_post_railway.js",
     "railway-status": "node railway_status.js",
     "force-post-help": "node force_post_web.js"

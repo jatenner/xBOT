@@ -203,4 +203,62 @@ if (require.main === module) {
   main();
 }
 
+/**
+ * 🔑 ENSURE TWITTER SESSION FOR RAILWAY
+ * This function ensures the Twitter session is available at startup
+ */
+export async function ensureTwitterSession(): Promise<boolean> {
+  console.log('🔑 === INITIALIZING TWITTER SESSION FOR RAILWAY ===');
+  
+  const sessionPath = path.join('/app/data', 'twitter_session.json');
+  const fallbackPath = path.join(process.cwd(), 'twitter_session.json');
+  
+  try {
+    // Create /app/data directory if it doesn't exist (Railway volume)
+    const dataDir = path.dirname(sessionPath);
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+      console.log(`📁 Created data directory: ${dataDir}`);
+    }
+    
+    // Check if session exists in Railway volume
+    if (fs.existsSync(sessionPath)) {
+      console.log('✅ Twitter session found in Railway volume');
+      
+      // Test if session is valid
+      const sessionData = JSON.parse(fs.readFileSync(sessionPath, 'utf8'));
+      const ageHours = (Date.now() - sessionData.timestamp) / (1000 * 60 * 60);
+      
+      if (ageHours < 24) { // Session valid for 24 hours
+        console.log(`✅ Session is fresh (${Math.floor(ageHours)} hours old)`);
+        return true;
+      } else {
+        console.log('⚠️ Session is stale, will need refresh');
+      }
+    }
+    
+    // Check for fallback session in project root
+    if (fs.existsSync(fallbackPath)) {
+      console.log('📋 Copying session from project root to Railway volume...');
+      const sessionData = fs.readFileSync(fallbackPath, 'utf8');
+      fs.writeFileSync(sessionPath, sessionData);
+      console.log('✅ Session copied to Railway volume');
+      return true;
+    }
+    
+    // No session found - log warning but don't fail
+    console.log('⚠️ No Twitter session found');
+    console.log('💡 The bot will attempt to use headless mode or fallback posting');
+    console.log(`📂 Expected session path: ${sessionPath}`);
+    console.log('🔧 To add session: Run init-session locally then upload twitter_session.json to Railway');
+    
+    return false;
+    
+  } catch (error) {
+    console.error('❌ Error ensuring Twitter session:', error);
+    console.log('⚠️ Continuing without persistent session - browser posting may fail');
+    return false;
+  }
+}
+
 export { TwitterSessionInitializer }; 

@@ -228,8 +228,23 @@ export class AutonomousPostingEngine {
           }
           
           if (contentGenerationAttempts >= MAX_CONTENT_ATTEMPTS) {
-            console.log('⚠️ Max content generation attempts reached - posting anyway to maintain frequency');
-            break;
+            console.log('🛑 Max content generation attempts reached - STOPPING to prevent duplicates');
+            return {
+              success: false,
+              error: `Failed to generate unique content after ${MAX_CONTENT_ATTEMPTS} attempts. All candidates were too similar to existing posts.`,
+              was_posted: false,
+              confirmed: false,
+              performance_metrics: {
+                generation_time_ms: Date.now() - generationStart,
+                posting_time_ms: 0,
+                storage_time_ms: 0,
+                total_time_ms: Date.now() - startTime
+              },
+              content_metadata: {
+                attempts_made: contentGenerationAttempts,
+                uniqueness_score: uniquenessResult?.analysis?.maxSimilarity
+              }
+            };
           } else {
             console.log('🔄 Regenerating content for uniqueness...');
           }
