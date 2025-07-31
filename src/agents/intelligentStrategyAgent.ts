@@ -148,8 +148,8 @@ export class IntelligentStrategyAgent {
       };
 
       console.log(`🎯 Strategy decision: ${optimalFormat} about ${topicDecision.topic}`);
-      console.log(`📊 Expected engagement: ${expectedEngagement.toFixed(2)}%`);
-      console.log(`🎯 Confidence: ${(confidenceScore * 100).toFixed(1)}%`);
+      console.log(`📊 Expected engagement: ${(expectedEngagement || 0).toFixed(2)}%`);
+      console.log(`🎯 Confidence: ${((confidenceScore || 0) * 100).toFixed(1)}%`);
 
       return decision;
 

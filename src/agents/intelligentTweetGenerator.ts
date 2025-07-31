@@ -121,8 +121,8 @@ export class IntelligentTweetGenerator {
       });
 
       console.log('✅ === INTELLIGENT GENERATION COMPLETE ===');
-      console.log(`📊 Predicted engagement: ${validationResult.predicted_engagement.toFixed(3)}`);
-      console.log(`🎯 Confidence: ${validationResult.confidence_score.toFixed(2)}`);
+      console.log(`📊 Predicted engagement: ${(validationResult.predicted_engagement || 0).toFixed(3)}`);
+      console.log(`🎯 Confidence: ${(validationResult.confidence_score || 0).toFixed(2)}`);
 
       return {
         success: true,
