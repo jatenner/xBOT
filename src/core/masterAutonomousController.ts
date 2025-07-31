@@ -206,6 +206,23 @@ export class MasterAutonomousController {
       await this.growthMaster.initialize();
       this.updateComponentStatus('growth_master', 'active');
 
+      // Initialize viral growth coordinator if in growth mode
+      if (process.env.BOT_PHASE === 'growth_mode') {
+        console.log('🚀 Initializing Viral Growth Coordinator for maximum follower acquisition...');
+        try {
+          const { viralGrowthCoordinator } = await import('./viralGrowthCoordinator');
+          await viralGrowthCoordinator.activateViralGrowth();
+          this.updateComponentStatus('viral_growth_coordinator', 'active');
+          console.log('✅ Viral Growth Coordinator: ACTIVATED');
+        } catch (error) {
+          console.error('❌ Failed to initialize Viral Growth Coordinator:', error);
+          this.updateComponentStatus('viral_growth_coordinator', 'error', [error.message]);
+        }
+      } else {
+        console.log('📊 Viral Growth Coordinator: Disabled (not in growth_mode)');
+        this.updateComponentStatus('viral_growth_coordinator', 'inactive');
+      }
+
       // All engines are ready
       this.updateComponentStatus('reply_engine', 'active');
       this.updateComponentStatus('engagement_engine', 'active');
