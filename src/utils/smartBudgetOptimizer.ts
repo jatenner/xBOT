@@ -24,7 +24,10 @@ export class SmartBudgetOptimizer {
     return {
       recommendedModel: 'gpt-4o-mini',
       maxTokens: 150,
-      estimatedCost: budgetPerTweet
+      maxTokensPerTweet: 200,
+      estimatedCost: budgetPerTweet,
+      estimatedCostPerTweet: budgetPerTweet,
+      qualityLevel: 'optimized'
     };
   }
 

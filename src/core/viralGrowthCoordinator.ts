@@ -392,7 +392,12 @@ export class ViralGrowthCoordinator {
         lastUpdated: new Date().toISOString()
       });
     } catch (error) {
-      console.warn('⚠️ Could not update dashboard:', error.message);
+      // Ignore duplicate key errors - they're harmless for dashboard updates
+      if (error.message.includes('duplicate key') || error.message.includes('already exists')) {
+        console.log('📊 Dashboard metrics already updated (duplicate key ignored)');
+      } else {
+        console.warn('⚠️ Could not update dashboard:', error.message);
+      }
     }
   }
 
