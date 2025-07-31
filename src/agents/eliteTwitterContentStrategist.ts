@@ -321,7 +321,13 @@ Deliver complete value, not just promise it.`;
             throw new Error('No content generated from OpenAI');
         }
 
-        return response.response.choices[0].message.content.trim();
+        return {
+            content: response.response.choices[0].message.content.trim(),
+            predicted_engagement: 25, // Default prediction
+            reasoning: `Generated using ${format.name} format`,
+            hook_type: 'authority',
+            content_type: 'tweet'
+        };
     }
 
     /**
