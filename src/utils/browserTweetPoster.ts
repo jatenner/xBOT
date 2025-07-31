@@ -534,9 +534,13 @@ export class BrowserTweetPoster {
         try {
           console.log(`🖱️ Clicking post button (attempt ${clickAttempt}/${maxClickAttempts})...`);
           
-          // Scroll button into view if needed
-          await postButton.scrollIntoViewIfNeeded();
-          await this.page!.waitForTimeout(5000);
+          // Scroll button into view if needed (with timeout protection)
+          try {
+            await postButton.scrollIntoViewIfNeeded({ timeout: 10000 });
+          } catch (scrollError) {
+            console.log(`⚠️ Scroll timeout, trying direct click: ${scrollError.message}`);
+          }
+          await this.page!.waitForTimeout(2000);
           
           // Multiple click methods
           if (clickAttempt === 1) {
@@ -571,7 +575,7 @@ export class BrowserTweetPoster {
             
             for (const indicator of postingIndicators) {
               try {
-                await this.page!.waitForSelector(indicator, { timeout: 30000 });
+                await this.page!.waitForSelector(indicator, { timeout: 8000 });
                 console.log(`✅ Found posting success indicator: ${indicator}`);
                 return { success: true };
               } catch {
