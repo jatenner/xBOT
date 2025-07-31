@@ -210,7 +210,8 @@ export class MasterAutonomousController {
       if (process.env.BOT_PHASE === 'growth_mode') {
         console.log('🚀 Initializing Viral Growth Coordinator for maximum follower acquisition...');
         try {
-          const { viralGrowthCoordinator } = await import('./viralGrowthCoordinator');
+          const viralGrowthModule = await import('./viralGrowthCoordinator');
+          const viralGrowthCoordinator = viralGrowthModule.viralGrowthCoordinator;
           await viralGrowthCoordinator.activateViralGrowth();
           this.updateComponentStatus('viral_growth_coordinator', 'active');
           console.log('✅ Viral Growth Coordinator: ACTIVATED');

@@ -6,7 +6,6 @@
  */
 
 import { autonomousPostingEngine } from './autonomousPostingEngine';
-import { masterAutonomousController } from './masterAutonomousController';
 import { supabaseClient } from '../utils/supabaseClient';
 import { emergencyBudgetLockdown } from '../utils/emergencyBudgetLockdown';
 import { DailyOptimizationLoop } from '../intelligence/dailyOptimizationLoop';
@@ -189,9 +188,6 @@ export class ViralGrowthCoordinator {
     console.log('🤝 === EXECUTING VIRAL ENGAGEMENT CYCLE ===');
 
     try {
-      // Use the existing master autonomous controller's engagement system
-      const controller = masterAutonomousController;
-      
       // Get intelligent engagement recommendations
       const growthMaster = IntelligentGrowthMaster.getInstance();
       const recommendations = await growthMaster.getPostingRecommendations();
@@ -286,9 +282,9 @@ export class ViralGrowthCoordinator {
       
       const viralHits = performance?.filter(p => (p.engagement_rate || 0) > 0.05).length || 0;
 
-      // Budget efficiency
-      const budgetStatus = await emergencyBudgetLockdown.getDailySpending();
-      const budgetEfficiency = budgetStatus.remaining / budgetStatus.limit;
+      // Budget efficiency  
+      const budgetStatus = await emergencyBudgetLockdown.isLockedDown();
+      const budgetEfficiency = budgetStatus.lockdownActive ? 0 : 0.8; // Assume good efficiency if not locked
 
       // System health assessment
       let systemHealth: ViralGrowthMetrics['systemHealth'] = 'excellent';
