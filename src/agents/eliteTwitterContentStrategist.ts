@@ -145,7 +145,7 @@ export class EliteTwitterContentStrategist {
             const content = await this.generateEliteContent(selectedFormat, topic, request);
             
             // 5. Validate and optimize for virality
-            const optimizedContent = await this.optimizeForVirality(content.content, selectedFormat);
+            const optimizedContent = await this.optimizeForVirality(content, selectedFormat);
             
             return {
                 content: optimizedContent.content,
