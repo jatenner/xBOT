@@ -374,6 +374,11 @@ Deliver complete value, not just promise it.`;
             // Predict engagement based on format and style
             let predicted_engagement = (format.engagement_multiplier || 1.5) * 15; // Base 15%
             
+            // Ensure predicted_engagement is never NaN or undefined
+            if (isNaN(predicted_engagement) || !isFinite(predicted_engagement)) {
+                predicted_engagement = 15; // Safe fallback
+            }
+            
             // Boost based on hook quality and style
             if (hook_type === "research_stat") predicted_engagement *= 1.3;
             if (hook_type === "contrarian") predicted_engagement *= 1.4;
