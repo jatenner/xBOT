@@ -1,4 +1,5 @@
 import { supabaseClient } from './supabaseClient';
+import { refreshDailyLimit } from './adaptivePostingFrequency';
 
 /**
  * 🎯 UNIFIED POSTING COORDINATOR
@@ -40,15 +41,16 @@ export class UnifiedPostingCoordinator {
     const now = new Date();
     const currentHour = now.getHours();
 
-    // 1. CHECK DAILY LIMIT
-    if (this.postsToday >= this.dailyPostLimit && priority !== 'urgent') {
+    // 1. CHECK DYNAMIC DAILY LIMIT (AI-controlled)
+    const dynamicLimit = await refreshDailyLimit();
+    if (this.postsToday >= dynamicLimit && priority !== 'urgent') {
       const tomorrow = new Date(now);
       tomorrow.setDate(tomorrow.getDate() + 1);
       tomorrow.setHours(9, 0, 0, 0);
 
       return {
         canPost: false,
-        reason: `Daily limit reached (${this.postsToday}/${this.dailyPostLimit})`,
+        reason: `Daily limit reached (${this.postsToday}/${dynamicLimit}) - AI controlled`,
         nextAllowedTime: tomorrow,
         recommendedWaitMinutes: Math.ceil((tomorrow.getTime() - now.getTime()) / (1000 * 60))
       };
@@ -89,7 +91,7 @@ export class UnifiedPostingCoordinator {
     // ✅ APPROVED TO POST
     return {
       canPost: true,
-      reason: `Approved: Good timing and spacing (${this.postsToday}/${this.dailyPostLimit} today)`,
+      reason: `Approved: Good timing and spacing (${this.postsToday}/${dynamicLimit} today)`,
       nextAllowedTime: new Date(now.getTime() + this.minimumSpacingMinutes * 60 * 1000),
       recommendedWaitMinutes: 0
     };
@@ -103,7 +105,7 @@ export class UnifiedPostingCoordinator {
     this.lastPostTime = now;
     this.postsToday += 1;
 
-    console.log(`📝 POST RECORDED: ${agentName} (${this.postsToday}/${this.dailyPostLimit} today)`);
+    console.log(`📝 POST RECORDED: ${agentName} (${this.postsToday}/${await refreshDailyLimit()} today)`);
     console.log(`⏰ Next post eligible: ${new Date(now.getTime() + this.minimumSpacingMinutes * 60 * 1000).toLocaleString()}`);
 
     // Store in database for persistence
@@ -128,16 +130,18 @@ export class UnifiedPostingCoordinator {
       nextOptimalTime = this.getNextOptimalTime(now.getHours());
     }
 
+    const currentDynamicLimit = await refreshDailyLimit();
+    
     return {
       postsToday: this.postsToday,
-      dailyLimit: this.dailyPostLimit,
+      dailyLimit: currentDynamicLimit, // Use dynamic limit
       lastPostTime: this.lastPostTime,
       nextOptimalTime,
       minutesUntilNextPost: this.lastPostTime 
         ? Math.max(0, this.minimumSpacingMinutes - (now.getTime() - this.lastPostTime.getTime()) / (1000 * 60))
         : 0,
       isOptimalHour: this.optimalHours.includes(now.getHours()),
-      remainingPosts: this.dailyPostLimit - this.postsToday
+      remainingPosts: currentDynamicLimit - this.postsToday
     };
   }
 

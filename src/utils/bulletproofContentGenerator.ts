@@ -94,13 +94,51 @@ export class BulletproofContentGenerator {
         console.log(`⚠️ Content failed safety check: ${factCheckResult.reasoning}`);
         console.log(`Issues: ${factCheckResult.issues ? factCheckResult.issues.join(', ') : 'No specific issues listed'}`);
         
-        // If safety check fails, use a safer fallback
+        // If safety check fails, use a diverse pool of safer fallbacks
         const safeFallbacks = [
+          // Health tips and insights
           "Health tip: Stay hydrated, get enough sleep, and move your body daily.",
-          "What's one small healthy habit you want to build this week?",
+          "Your morning routine sets the tone for your entire day. What's yours?",
           "Reminder: Small consistent changes lead to big health improvements.",
+          "The best investment you can make is in your own health.",
+          "Progress, not perfection, is the goal when building healthy habits.",
+          "Your body is your temple. How are you honoring it today?",
+          "Health is wealth - invest in yourself every single day.",
+          "What's one healthy habit you've been putting off starting?",
+          
+          // Engagement questions
+          "What's one small healthy habit you want to build this week?",
           "Which health topic would you like to learn more about?",
-          "Share one thing you're grateful for today - gratitude impacts health!"
+          "What's your biggest health challenge right now?",
+          "Share one healthy meal you've enjoyed recently!",
+          "What motivates you to stay healthy?",
+          "Which wellness trend are you most curious about?",
+          "What's your favorite way to de-stress after a long day?",
+          "How do you prioritize your mental health?",
+          
+          // Gratitude and mindset
+          "Share one thing you're grateful for today - gratitude impacts health!",
+          "Positive thinking isn't just mental - it affects your physical health too.",
+          "Mindfulness isn't a trend, it's a necessity for modern life.",
+          "Your mindset is the foundation of your health journey.",
+          "Gratitude practice: Name 3 things your body did for you today.",
+          "Mental health is just as important as physical health.",
+          
+          // Motivational content
+          "Every healthy choice you make is an investment in your future self.",
+          "You don't have to be perfect, you just have to start.",
+          "Your health journey is unique - don't compare it to others.",
+          "Consistency beats perfection every time in health and wellness.",
+          "Small steps daily lead to big changes yearly.",
+          "The best time to start taking care of your health is now.",
+          
+          // Educational hooks
+          "Did you know that stress directly impacts your immune system?",
+          "Sleep quality affects everything from mood to metabolism.",
+          "Hydration isn't just about drinking water - it's about cellular health.",
+          "Your gut health influences your mental health more than you think.",
+          "Movement is medicine - even 10 minutes makes a difference.",
+          "Nutrition is about nourishing your body, not restricting it."
         ];
         
         generatedContent = {

@@ -237,7 +237,22 @@ export class FeatureFlagManager {
     return phase.aiUsage;
   }
   
-  getMaxDailyPosts(): number {
+  async getMaxDailyPosts(): Promise<number> {
+    // Try to get adaptive posting limit from runtime config first
+    try {
+      const { RuntimeConfigManager } = await import('../utils/runtimeConfigManager');
+      const adaptiveLimit = await RuntimeConfigManager.get('daily_post_cap', null);
+      
+      if (adaptiveLimit !== null && !isNaN(Number(adaptiveLimit)) && Number(adaptiveLimit) > 0) {
+        const limit = Number(adaptiveLimit);
+        console.log(`📊 Using AI-optimized daily posting limit: ${limit}`);
+        return limit;
+      }
+    } catch (error) {
+      console.warn('⚠️ Could not get adaptive posting limit, falling back to phase-based limits:', error.message);
+    }
+    
+    // Fallback to phase-based limits if adaptive system unavailable
     const base = parseInt(process.env.MAX_DAILY_POSTS || '6');
     const phase = process.env.BOT_PHASE || 'data_collection';
     
@@ -274,5 +289,5 @@ export const isDryRun = (): boolean => featureFlags.isDryRun();
 // Phase management exports
 export const getCurrentPhase = () => featureFlags.getCurrentPhase();
 export const getStrategistUsageRate = () => featureFlags.getStrategistUsageRate();
-export const getMaxDailyPosts = () => featureFlags.getMaxDailyPosts();
+export const getMaxDailyPosts = async () => await featureFlags.getMaxDailyPosts();
 export const getFactCheckThreshold = () => featureFlags.getFactCheckThreshold();
