@@ -58,7 +58,7 @@ export class BudgetAwareOpenAI {
         actualMaxTokens = Math.min(maxTokens, optimization.maxTokensPerTweet);
         estimatedCost = optimization.estimatedCostPerTweet;
         
-        console.log(`🎯 TWEET OPTIMIZATION: ${optimization.qualityLevel} quality, ${actualMaxTokens} tokens, $${estimatedCost.toFixed(3)} budget`);
+        console.log(`🎯 TWEET OPTIMIZATION: ${optimization.qualityLevel} quality, ${actualMaxTokens} tokens, $${(estimatedCost || 0).toFixed(3)} budget`);
       }
       
       // Check budget before making the call
