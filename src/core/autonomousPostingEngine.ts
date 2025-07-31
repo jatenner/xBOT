@@ -432,10 +432,10 @@ export class AutonomousPostingEngine {
           if (eliteResult && eliteResult.content) {
             const contentString = Array.isArray(eliteResult.content) ? 
               eliteResult.content.join('\n\n') : 
-              eliteResult.content;
+              (typeof eliteResult.content === 'string' ? eliteResult.content : JSON.stringify(eliteResult.content));
 
             console.log(`✅ ELITE SUCCESS: Generated viral content`);
-            console.log(`📝 Content: "${contentString.substring(0, 100)}..."`);
+            console.log(`📝 Content: "${typeof contentString === 'string' ? contentString.substring(0, 100) : String(contentString).substring(0, 100)}..."`);
             console.log(`📊 Predicted engagement: ${eliteResult.predicted_engagement}%`);
             console.log(`🎯 Format used: ${eliteResult.format_used}`);
             console.log(`🎪 Hook type: ${eliteResult.hook_type}`);
@@ -486,9 +486,9 @@ export class AutonomousPostingEngine {
 
       const contentString = Array.isArray(bulletproofResult.content) ? 
         bulletproofResult.content.join('\n\n') : 
-        bulletproofResult.content;
+        (typeof bulletproofResult.content === 'string' ? bulletproofResult.content : String(bulletproofResult.content));
 
-      console.log(`✅ Bulletproof content generated: "${contentString.substring(0, 100)}..."`);
+      console.log(`✅ Bulletproof content generated: "${typeof contentString === 'string' ? contentString.substring(0, 100) : String(contentString).substring(0, 100)}..."`);
       console.log(`📊 Predicted engagement: ${bulletproofResult.predicted_engagement}%`);
       console.log(`🎯 Format used: ${bulletproofResult.format_used}`);
       console.log(`🎪 Hook type: ${bulletproofResult.hook_type}`);
