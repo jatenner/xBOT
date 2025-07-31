@@ -89,10 +89,10 @@ export class BudgetEnforcer {
         };
       }
 
-      console.log(`✅ BUDGET: ${operationType} approved - $${estimatedCost.toFixed(4)} (${priority})`);
+      console.log(`✅ BUDGET: ${operationType} approved - $${(estimatedCost || 0).toFixed(4)} (${priority})`);
       return {
         canAfford: true,
-        reason: `Operation approved - $${estimatedCost.toFixed(4)} within ${priority} budget`,
+        reason: `Operation approved - $${(estimatedCost || 0).toFixed(4)} within ${priority} budget`,
         remainingBudget: status.remainingBudget
       };
 
