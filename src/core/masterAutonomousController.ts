@@ -224,6 +224,50 @@ export class MasterAutonomousController {
         this.updateComponentStatus('viral_growth_coordinator', 'offline');
       }
 
+      // Initialize Guardian News Integration
+      if (process.env.GUARDIAN_API_KEY && process.env.ENABLE_GUARDIAN === 'true') {
+        console.log('📰 Initializing Guardian News Integration...');
+        try {
+          const { NewsAPIAgent } = await import('../agents/newsAPIAgent');
+          const newsAgent = NewsAPIAgent.getInstance();
+          
+          // Test Guardian API connection
+          const testNews = await newsAgent.getHealthTechNews();
+          if (testNews.length > 0) {
+            this.updateComponentStatus('news_integration', 'active');
+            console.log(`✅ Guardian News Integration: ACTIVE (${testNews.length} articles available)`);
+          } else {
+            this.updateComponentStatus('news_integration', 'warning', ['No articles retrieved']);
+            console.log('⚠️ Guardian News Integration: Connected but no articles');
+          }
+        } catch (error) {
+          console.error('❌ Failed to initialize Guardian News:', error);
+          this.updateComponentStatus('news_integration', 'error', [error.message]);
+        }
+      } else {
+        console.log('📰 Guardian News Integration: Disabled (no API key or ENABLE_GUARDIAN=false)');
+        this.updateComponentStatus('news_integration', 'offline');
+      }
+
+      // Initialize Intelligent Engagement System
+      if (process.env.ENABLE_SMART_ENGAGEMENT === 'true') {
+        console.log('🤝 Initializing Intelligent Engagement System...');
+        try {
+          const { intelligentEngagementAgent } = await import('../agents/intelligentEngagementAgent');
+          this.updateComponentStatus('intelligent_engagement', 'active');
+          console.log('✅ Intelligent Engagement System: READY');
+          
+          // Schedule engagement cycles
+          this.scheduleEngagementCycles();
+        } catch (error) {
+          console.error('❌ Failed to initialize Intelligent Engagement:', error);
+          this.updateComponentStatus('intelligent_engagement', 'error', [error.message]);
+        }
+      } else {
+        console.log('🤝 Intelligent Engagement: Disabled (ENABLE_SMART_ENGAGEMENT=false)');
+        this.updateComponentStatus('intelligent_engagement', 'offline');
+      }
+
       // All engines are ready
       this.updateComponentStatus('reply_engine', 'active');
       this.updateComponentStatus('engagement_engine', 'active');
@@ -1535,6 +1579,46 @@ export class MasterAutonomousController {
 
   async forcePost(): Promise<any> {
     return await this.postingEngine.executeIntelligentPost();
+  }
+
+  /**
+   * 🤝 SCHEDULE ENGAGEMENT CYCLES
+   * Schedule intelligent engagement to run periodically
+   */
+  private scheduleEngagementCycles(): void {
+    console.log('🕒 Scheduling intelligent engagement cycles...');
+    
+    // Run engagement every 2-3 hours during active hours
+    const engagementInterval = (2 + Math.random()) * 60 * 60 * 1000; // 2-3 hours
+    
+    setInterval(async () => {
+      try {
+        const currentHour = new Date().getHours();
+        
+        // Only engage during reasonable hours (8 AM - 10 PM)
+        if (currentHour >= 8 && currentHour <= 22) {
+          console.log('🤝 Running scheduled engagement cycle...');
+          
+          const { intelligentEngagementAgent } = await import('../agents/intelligentEngagementAgent');
+          const result = await intelligentEngagementAgent.runEngagementCycle();
+          
+          if (result.success) {
+            console.log(`✅ Engagement cycle completed: ${result.insights.performance_summary}`);
+            this.updateComponentStatus('intelligent_engagement', 'active');
+          } else {
+            console.log(`⚠️ Engagement cycle had issues: ${JSON.stringify(result.insights)}`);
+            this.updateComponentStatus('intelligent_engagement', 'warning', ['Engagement cycle issues']);
+          }
+        } else {
+          console.log('😴 Skipping engagement - outside active hours (8 AM - 10 PM)');
+        }
+      } catch (error) {
+        console.error('❌ Engagement cycle error:', error);
+        this.updateComponentStatus('intelligent_engagement', 'error', [error.message]);
+      }
+    }, engagementInterval);
+    
+    console.log(`✅ Engagement cycles scheduled every ${Math.round(engagementInterval / (60 * 60 * 1000))} hours`);
   }
 
   async forceOptimization(): Promise<any> {

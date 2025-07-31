@@ -409,10 +409,60 @@ export class AutonomousPostingEngine {
     error?: string;
   }> {
     try {
-      console.log('🛡️ === EMERGENCY BULLETPROOF CONTENT GENERATION ===');
-      console.log('🚨 All advanced systems bypassed - using guaranteed fallback');
+      // Check if Elite Content Strategist is enabled
+      if (process.env.ENABLE_ELITE_STRATEGIST === 'true') {
+        console.log('🎯 === ELITE CONTENT STRATEGIST ACTIVATED ===');
+        console.log('🚀 Using AI-powered viral content generation...');
 
-      // FORCE bulletproof content generator (ALWAYS works)
+        try {
+          const { EliteTwitterContentStrategist } = await import('../agents/eliteTwitterContentStrategist');
+          const strategist = EliteTwitterContentStrategist.getInstance();
+          
+          const contentRequest = {
+            topic: this.getOptimalTopic(),
+            format_preference: 'short' as const,
+            tone: this.getOptimalTone() as 'authoritative' | 'conversational' | 'provocative',
+            target_engagement: 35 // Higher target for Elite Strategist
+          };
+
+          console.log(`🎯 Elite strategist request: ${JSON.stringify(contentRequest)}`);
+          
+          const eliteResult = await strategist.generateViralContent(contentRequest);
+          
+          if (eliteResult && eliteResult.content) {
+            const contentString = Array.isArray(eliteResult.content) ? 
+              eliteResult.content.join('\n\n') : 
+              eliteResult.content;
+
+            console.log(`✅ ELITE SUCCESS: Generated viral content`);
+            console.log(`📝 Content: "${contentString.substring(0, 100)}..."`);
+            console.log(`📊 Predicted engagement: ${eliteResult.predicted_engagement}%`);
+            console.log(`🎯 Format used: ${eliteResult.format_used}`);
+            console.log(`🎪 Hook type: ${eliteResult.hook_type}`);
+            console.log(`🧠 Source: Elite Content Strategist`);
+
+            return {
+              success: true,
+              content: contentString,
+              metadata: {
+                source: 'elite_strategist',
+                format_used: eliteResult.format_used,
+                hook_type: eliteResult.hook_type,
+                predicted_engagement: eliteResult.predicted_engagement,
+                reasoning: eliteResult.reasoning
+              }
+            };
+          }
+        } catch (eliteError) {
+          console.error('❌ Elite Content Strategist failed:', eliteError);
+          console.log('🔄 Falling back to bulletproof content generator...');
+        }
+      }
+
+      // Fallback to bulletproof content generator
+      console.log('🛡️ === BULLETPROOF CONTENT GENERATION ===');
+      console.log('🚨 Using guaranteed fallback content generation');
+
       const contentRequest = {
         topic: this.getOptimalTopic(),
         format_preference: 'short',
@@ -420,7 +470,7 @@ export class AutonomousPostingEngine {
         target_engagement: 25
       };
 
-      console.log(`🎯 Emergency bulletproof request: ${JSON.stringify(contentRequest)}`);
+      console.log(`🎯 Bulletproof request: ${JSON.stringify(contentRequest)}`);
       
       const bulletproofResult = await bulletproofContentGenerator.generateContent(contentRequest);
       

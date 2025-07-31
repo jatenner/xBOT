@@ -528,30 +528,38 @@ export class BrowserTweetPoster {
 
       console.log(`🔘 Using post button selector: ${usedSelector}`);
 
-      // Enhanced clicking with multiple attempts
+      // Enhanced posting with keyboard shortcut first, then clicking
       const maxClickAttempts = 3;
       for (let clickAttempt = 1; clickAttempt <= maxClickAttempts; clickAttempt++) {
         try {
-          console.log(`🖱️ Clicking post button (attempt ${clickAttempt}/${maxClickAttempts})...`);
+          console.log(`🎯 Posting attempt ${clickAttempt}/${maxClickAttempts}...`);
           
-          // Scroll button into view if needed (with timeout protection)
-          try {
-            await postButton.scrollIntoViewIfNeeded({ timeout: 10000 });
-          } catch (scrollError) {
-            console.log(`⚠️ Scroll timeout, trying direct click: ${scrollError.message}`);
-          }
-          await this.page!.waitForTimeout(2000);
-          
-          // Multiple click methods
           if (clickAttempt === 1) {
-            // Method 1: Regular click
-            await postButton.click();
-          } else if (clickAttempt === 2) {
-            // Method 2: Force click
-            await postButton.click({ force: true });
+            // Method 1: Try keyboard shortcut first (fastest and most reliable)
+            console.log('⌨️ Attempting keyboard shortcut (Cmd+Enter / Ctrl+Enter)...');
+            const modifierKey = process.platform === 'darwin' ? 'Meta' : 'Control';
+            await this.page!.keyboard.press(`${modifierKey}+Enter`);
+            console.log(`✅ Keyboard shortcut sent: ${modifierKey}+Enter`);
           } else {
-            // Method 3: Dispatch click event
-            await postButton.dispatchEvent('click');
+            // Fallback to clicking methods
+            console.log(`🖱️ Fallback: Clicking post button (attempt ${clickAttempt}/${maxClickAttempts})...`);
+            
+            // Scroll button into view if needed (with timeout protection)
+            try {
+              await postButton.scrollIntoViewIfNeeded({ timeout: 5000 });
+            } catch (scrollError) {
+              console.log(`⚠️ Scroll timeout, trying direct click: ${scrollError.message}`);
+            }
+            await this.page!.waitForTimeout(1000);
+            
+            // Multiple click methods
+            if (clickAttempt === 2) {
+              // Method 2: Regular click
+              await postButton.click();
+            } else {
+              // Method 3: Force click
+              await postButton.click({ force: true });
+            }
           }
           
           await this.page!.waitForTimeout(5000);
