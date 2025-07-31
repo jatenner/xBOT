@@ -23,11 +23,14 @@ async function immediatePostNow() {
 
     // 2. Temporarily override spacing for immediate post
     console.log('⚡ TEMPORARILY REDUCING SPACING FOR IMMEDIATE TEST');
+    const forceMode = process.env.FORCE_POST_NOW === 'true';
     unifiedPostingCoordinator.updateSettings({
-      minimumSpacingMinutes: 1, // 1 minute spacing for immediate test
+      minimumSpacingMinutes: forceMode ? 0 : 1, // No spacing if forced from Railway
       dailyPostLimit: 15 // Increase limit
     });
-    console.log('✅ Spacing reduced to 1 minute for immediate posting');
+    console.log(`🔧 Updating daily post limit: ${status.dailyLimit} → 15`);
+    console.log(`🔧 Updating minimum spacing: ${forceMode ? '0' : '90'} → ${forceMode ? '0' : '1'} minutes`);
+    console.log(`✅ Spacing ${forceMode ? 'DISABLED' : 'reduced to 1 minute'} for immediate posting`);
     console.log('');
 
     // 3. Immediate posting attempt

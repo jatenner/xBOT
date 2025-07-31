@@ -52,7 +52,9 @@
     "fix-quality": "node fix_content_quality_issues.js",
     "verify": "node verify_railway_deployment.js",
     "railway-start": "node dist/main.js",
-    "post-now": "npm run build && node immediate_post_now.js"
+    "post-now": "npm run build && node immediate_post_now.js",
+    "force-post": "node force_post_railway.js",
+    "railway-status": "node railway_status.js"
   },
   "keywords": [
     "twitter",
