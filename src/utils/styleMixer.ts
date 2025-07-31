@@ -79,27 +79,28 @@ export class StyleMixer {
     lastStyleUsed?: StyleLabel;
   } = {}): Promise<StyleMixResult> {
     try {
-      console.log(`🎨 Style mixing for: "${content.substring(0, 50)}..."`);
+      const contentString = typeof content === 'string' ? content : String(content);
+      console.log(`🎨 Style mixing for: "${contentString.substring(0, 50)}..."`);
 
       // Determine if we should apply styling (30% chance normally)
       const shouldStyle = options.forceStyle || Math.random() < 0.3;
       
       if (!shouldStyle) {
         return {
-          styledContent: content,
+          styledContent: contentString,
           styleUsed: '🧠 Data-driven', // Default
           shouldUseStyle: false,
           reasoning: 'Random selection chose no styling',
-          originalLength: content.length,
-          finalLength: content.length
+          originalLength: contentString.length,
+          finalLength: contentString.length
         };
       }
 
       // Select optimal style
-      const selectedStyle = await this.selectOptimalStyle(content, options);
+      const selectedStyle = await this.selectOptimalStyle(contentString, options);
       
       // Apply the style
-      const styledContent = this.applyStyle(content, selectedStyle, options);
+      const styledContent = this.applyStyle(contentString, selectedStyle, options);
       
       // Update usage statistics
       await this.updateStyleUsage(selectedStyle, styledContent.length);
@@ -111,19 +112,19 @@ export class StyleMixer {
         styleUsed: selectedStyle,
         shouldUseStyle: true,
         reasoning: `Applied ${selectedStyle} based on ${this.getSelectionReasoning(selectedStyle, options)}`,
-        originalLength: content.length,
+        originalLength: contentString.length,
         finalLength: styledContent.length
       };
 
     } catch (error) {
       console.error('❌ Style mixing failed:', error);
       return {
-        styledContent: content,
+        styledContent: contentString,
         styleUsed: '🧠 Data-driven',
         shouldUseStyle: false,
         reasoning: `Error: ${error.message}`,
-        originalLength: content.length,
-        finalLength: content.length
+        originalLength: contentString.length,
+        finalLength: contentString.length
       };
     }
   }

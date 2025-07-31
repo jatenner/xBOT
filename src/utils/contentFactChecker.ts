@@ -60,7 +60,8 @@ export class ContentFactChecker {
    */
   async checkContent(request: FactCheckRequest): Promise<FactCheckResult> {
     try {
-      console.log(`🔍 Fact-checking content: "${request.content.substring(0, 60)}..."`);
+      const contentString = typeof request.content === 'string' ? request.content : String(request.content);
+      console.log(`🔍 Fact-checking content: "${contentString.substring(0, 60)}..."`);
 
       // Check budget constraints
       const lockdownStatus = await emergencyBudgetLockdown.isLockedDown();
@@ -70,7 +71,7 @@ export class ContentFactChecker {
       }
 
       // Step 1: Quick safety scan
-      const safetyCheck = this.performSafetyCheck(request.content);
+      const safetyCheck = this.performSafetyCheck(contentString);
       if (!safetyCheck.isSafe) {
         return {
           isValid: false,
@@ -80,7 +81,7 @@ export class ContentFactChecker {
           riskLevel: 'high',
           shouldPost: false,
           reasoning: 'Failed safety check: ' + safetyCheck.issues.join(', '),
-          checkedContent: request.content
+          checkedContent: contentString
         };
       }
 
