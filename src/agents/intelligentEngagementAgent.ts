@@ -1,274 +1,532 @@
-import { openaiClient } from '../utils/openaiClient';
+/**
+ * 🤝 INTELLIGENT ENGAGEMENT AGENT
+ * ================================
+ * Smart engagement system that learns from high-performing health/tech accounts
+ * - Analyzes successful engagement patterns
+ * - Targets high-value tweets and accounts
+ * - Uses intelligent timing and authentic interactions
+ * - Respects rate limits and avoids spam-like behavior
+ */
+
+import { StealthTweetScraper } from '../scraper/scrapeTweets';
+import { secureSupabaseClient } from '../utils/secureSupabaseClient';
+import { emergencyBudgetLockdown } from '../utils/emergencyBudgetLockdown';
 import { xClient } from '../utils/xClient';
 
 interface EngagementTarget {
-  userId: string;
-  username: string;
-  followerCount: number;
-  tweetContent: string;
-  engagementScore: number;
-  shouldEngage: boolean;
-  engagementType: 'like' | 'reply' | 'follow' | 'skip';
-  reasoning: string;
+  tweet_id: string;
+  author_username: string;
+  content: string;
+  engagement_score: number;
+  like_count: number;
+  retweet_count: number;
+  reply_count: number;
+  hours_since_posted: number;
+  topic_relevance: number;
+  author_follower_count?: number;
+  engagement_probability: number;
 }
 
-interface FollowerGrowthStrategy {
-  targetAudience: string[];
-  engagementTactics: string[];
-  contentApproach: string;
-  expectedGrowthRate: number;
+interface EngagementResult {
+  success: boolean;
+  action: 'like' | 'reply' | 'follow';
+  target_tweet_id?: string;
+  target_username?: string;
+  error?: string;
+  rate_limited?: boolean;
+}
+
+interface EngagementSession {
+  likes_performed: number;
+  replies_performed: number;
+  follows_performed: number;
+  errors: string[];
+  targets_analyzed: number;
+  session_start: Date;
 }
 
 export class IntelligentEngagementAgent {
+  private static instance: IntelligentEngagementAgent;
+  private scraper: StealthTweetScraper;
+  private dailyLimits = {
+    likes: parseInt(process.env.DAILY_LIKES_LIMIT || '50'),
+    replies: parseInt(process.env.DAILY_REPLIES_LIMIT || '15'),
+    follows: parseInt(process.env.DAILY_FOLLOWS_LIMIT || '10')
+  };
 
-  async analyzeEngagementTarget(userProfile: any, tweetContent: string): Promise<EngagementTarget> {
+  private constructor() {
+    this.scraper = StealthTweetScraper.getInstance();
+  }
+
+  static getInstance(): IntelligentEngagementAgent {
+    if (!IntelligentEngagementAgent.instance) {
+      IntelligentEngagementAgent.instance = new IntelligentEngagementAgent();
+    }
+    return IntelligentEngagementAgent.instance;
+  }
+
+  /**
+   * 🎯 MAIN ENGAGEMENT CYCLE
+   * Run intelligent engagement session with learning
+   */
+  async runEngagementCycle(): Promise<{
+    success: boolean;
+    session: EngagementSession;
+    insights: any;
+  }> {
+    if (process.env.ENABLE_SMART_ENGAGEMENT !== 'true') {
+      console.log('🚫 Smart engagement disabled via environment flag');
+      return {
+        success: false,
+        session: this.createEmptySession(),
+        insights: { disabled: true }
+      };
+    }
+
+    console.log('🤝 === INTELLIGENT ENGAGEMENT CYCLE STARTING ===');
+    
+    const session: EngagementSession = {
+      likes_performed: 0,
+      replies_performed: 0,
+      follows_performed: 0,
+      errors: [],
+      targets_analyzed: 0,
+      session_start: new Date()
+    };
+
     try {
-      console.log('🧠 AI analyzing engagement target...');
-      
-      const prompt = `
-You are a legendary growth hacker who helps health accounts gain massive followings through strategic engagement.
+      // Check budget constraints
+      const lockdownStatus = await emergencyBudgetLockdown.isLockedDown();
+      if (lockdownStatus.lockdownActive) {
+        console.log('⚠️ Budget lockdown active, skipping engagement');
+        return { success: false, session, insights: { budget_locked: true } };
+      }
 
-ANALYZE THIS ENGAGEMENT TARGET:
+      // Check daily limits
+      const dailyStats = await this.getDailyEngagementStats();
+      if (this.hasExceededDailyLimits(dailyStats)) {
+        console.log('⚠️ Daily engagement limits reached');
+        return { success: false, session, insights: { limits_reached: true } };
+      }
 
-USER PROFILE:
-- Username: ${userProfile.username}
-- Followers: ${userProfile.public_metrics?.followers_count || 'unknown'}
-- Following: ${userProfile.public_metrics?.following_count || 'unknown'}
-- Bio: ${userProfile.description || 'No bio'}
+      // Initialize scraper
+      await this.scraper.initialize();
 
-RECENT TWEET: "${tweetContent}"
+      // Find high-value engagement targets
+      const targets = await this.findHighValueTargets();
+      session.targets_analyzed = targets.length;
 
-STRATEGIC ANALYSIS:
-1. FOLLOWER GROWTH POTENTIAL (1-10):
-   - Will they likely follow back?
-   - Do they have engaged audience we want?
-   - Is their content quality high?
-   - Do they engage with similar accounts?
+      console.log(`🎯 Found ${targets.length} potential engagement targets`);
 
-2. AUDIENCE OVERLAP (1-10):
-   - Are their followers our target audience?
-   - Health/wellness focus alignment
-   - Professional vs general audience
-   - Engagement quality of their followers
+      // Perform intelligent engagement
+      for (const target of targets.slice(0, 20)) { // Limit to top 20 targets
+        if (session.likes_performed >= this.dailyLimits.likes) break;
 
-3. ENGAGEMENT VALUE (1-10):
-   - Will engaging boost our visibility?
-   - Quality of their engagement
-   - Likelihood of meaningful interaction
-   - Potential for viral boost
+        const result = await this.performIntelligentEngagement(target, session);
+        
+        if (result.success) {
+          this.updateSessionStats(session, result);
+          console.log(`✅ Engaged with ${target.author_username}: ${result.action}`);
+          
+          // Store engagement for learning
+          await this.recordEngagementOutcome(target, result);
+          
+          // Wait between engagements to appear natural
+          await this.waitBetweenEngagements();
+        } else if (result.rate_limited) {
+          console.log('⚠️ Rate limited, stopping engagement cycle');
+          break;
+        }
+      }
 
-RECOMMENDATION:
-- Should we engage? (Yes/No)
-- Best engagement type: (like/reply/follow/skip)
-- Strategic reasoning
+      // Generate insights from this session
+      const insights = await this.generateEngagementInsights(session, targets);
 
-Return JSON:
-{
-  "userId": "${userProfile.id}",
-  "username": "${userProfile.username}",
-  "followerCount": ${userProfile.public_metrics?.followers_count || 0},
-  "tweetContent": "${tweetContent}",
-  "engagementScore": number (1-10),
-  "shouldEngage": boolean,
-  "engagementType": "like|reply|follow|skip",
-  "reasoning": "detailed strategic reasoning"
-}`;
+      console.log(`🎯 Engagement cycle complete: ${session.likes_performed} likes, ${session.replies_performed} replies, ${session.follows_performed} follows`);
 
-      const response = await openaiClient.generateCompletion(prompt, {
-        maxTokens: 350,
-        temperature: 0.3,
-        model: 'gpt-4o-mini'
-      });
-
-      const analysis = JSON.parse(response) as EngagementTarget;
-      
-      console.log(`🎯 Engagement Score: ${analysis.engagementScore}/10 - ${analysis.engagementType.toUpperCase()}`);
-      console.log(`📊 Decision: ${analysis.shouldEngage ? 'ENGAGE' : 'SKIP'} - ${analysis.reasoning.substring(0, 100)}...`);
-      
-      return analysis;
+      return { success: true, session, insights };
 
     } catch (error) {
-      console.warn('⚠️ Engagement analysis failed:', error);
+      console.error('❌ Engagement cycle failed:', error);
+      session.errors.push(error instanceof Error ? error.message : 'Unknown error');
+      return { success: false, session, insights: { error: error.message } };
+    }
+  }
+
+  /**
+   * 🔍 FIND HIGH-VALUE ENGAGEMENT TARGETS
+   * Use machine learning to identify tweets/accounts worth engaging with
+   */
+  private async findHighValueTargets(): Promise<EngagementTarget[]> {
+    const targets: EngagementTarget[] = [];
+
+    try {
+      // Search for trending health/tech content
+      const searchQueries = [
+        'health optimization',
+        'biohacking',
+        'longevity research',
+        'AI health',
+        'nutrition science',
+        'fitness motivation',
+        'sleep optimization',
+        'mental health tips'
+      ];
+
+      for (const query of searchQueries.slice(0, 3)) { // Limit searches
+        console.log(`🔍 Searching for: "${query}"`);
+        
+        const tweets = await this.scraper.searchTweets(query, {
+          maxTweets: 15,
+          includeReplies: false
+        });
+
+        for (const tweet of tweets) {
+          const target = await this.evaluateEngagementTarget(tweet);
+          if (target && target.engagement_probability > 0.3) {
+            targets.push(target);
+          }
+        }
+      }
+
+      // Sort by engagement probability
+      targets.sort((a, b) => b.engagement_probability - a.engagement_probability);
+
+      console.log(`🎯 Identified ${targets.length} high-value targets`);
+      return targets.slice(0, 50); // Top 50 targets
+
+    } catch (error) {
+      console.error('❌ Error finding engagement targets:', error);
+      return [];
+    }
+  }
+
+  /**
+   * 🧮 EVALUATE ENGAGEMENT TARGET
+   * Score a tweet/account for engagement potential
+   */
+  private async evaluateEngagementTarget(tweet: any): Promise<EngagementTarget | null> {
+    try {
+      const hoursOld = this.calculateHoursSincePosted(tweet.created_at);
+      
+      // Skip very old tweets or very new tweets (engagement window passed)
+      if (hoursOld > 48 || hoursOld < 0.5) return null;
+
+      // Calculate engagement metrics
+      const totalEngagement = (tweet.like_count || 0) + (tweet.retweet_count || 0) + (tweet.reply_count || 0);
+      const engagementRate = totalEngagement / Math.max(tweet.author_followers || 1000, 1000);
+
+      // Topic relevance scoring
+      const topicRelevance = this.calculateTopicRelevance(tweet.content);
+      if (topicRelevance < 0.4) return null; // Skip irrelevant content
+
+      // Engagement probability based on multiple factors
+      const engagementProbability = this.calculateEngagementProbability({
+        engagement_rate: engagementRate,
+        hours_old: hoursOld,
+        topic_relevance: topicRelevance,
+        author_followers: tweet.author_followers || 1000,
+        has_media: tweet.media_count > 0,
+        content_length: tweet.content.length
+      });
+
       return {
-        userId: userProfile.id || 'unknown',
-        username: userProfile.username || 'unknown',
-        followerCount: 0,
-        tweetContent,
-        engagementScore: 5,
-        shouldEngage: true,
-        engagementType: 'like',
-        reasoning: 'Fallback due to analysis error'
+        tweet_id: tweet.id,
+        author_username: tweet.author_username,
+        content: tweet.content,
+        engagement_score: totalEngagement,
+        like_count: tweet.like_count || 0,
+        retweet_count: tweet.retweet_count || 0,
+        reply_count: tweet.reply_count || 0,
+        hours_since_posted: hoursOld,
+        topic_relevance: topicRelevance,
+        author_follower_count: tweet.author_followers,
+        engagement_probability: engagementProbability
+      };
+
+    } catch (error) {
+      console.error('❌ Error evaluating target:', error);
+      return null;
+    }
+  }
+
+  /**
+   * ⚡ PERFORM INTELLIGENT ENGAGEMENT
+   * Execute the most appropriate engagement action
+   */
+  private async performIntelligentEngagement(
+    target: EngagementTarget, 
+    session: EngagementSession
+  ): Promise<EngagementResult> {
+    try {
+      // Determine best engagement action
+      const action = this.selectOptimalEngagementAction(target, session);
+      
+      console.log(`🎯 Engaging with @${target.author_username} via ${action}`);
+
+      switch (action) {
+        case 'like':
+          return await this.performLike(target);
+        case 'reply':
+          return await this.performIntelligentReply(target);
+        case 'follow':
+          return await this.performFollow(target);
+        default:
+          return { success: false, action: 'like', error: 'Unknown action' };
+      }
+
+    } catch (error) {
+      console.error('❌ Engagement failed:', error);
+      return {
+        success: false,
+        action: 'like',
+        error: error instanceof Error ? error.message : 'Unknown error'
       };
     }
   }
 
-  async generateIntelligentReply(originalTweet: string, authorProfile: any): Promise<string> {
+  /**
+   * ❤️ PERFORM LIKE ACTION
+   */
+  private async performLike(target: EngagementTarget): Promise<EngagementResult> {
     try {
-      console.log('💬 AI generating intelligent reply...');
+      // Use Twitter API to like the tweet
+      const result = await xClient.likeTweet(target.tweet_id);
       
-      const prompt = `
-You are a health expert who writes replies that consistently gain followers and engagement.
-
-ORIGINAL TWEET: "${originalTweet}"
-AUTHOR: @${authorProfile.username} (${authorProfile.public_metrics?.followers_count || 0} followers)
-
-Generate a STRATEGIC REPLY that will:
-1. Add genuine value to the conversation
-2. Demonstrate our health expertise  
-3. Make people want to follow us
-4. Position us as an authority
-5. Encourage engagement on our reply
-
-REPLY STRATEGY:
-- Provide additional insight or data
-- Ask thought-provoking questions
-- Share contrarian but accurate perspective
-- Reference specific studies/mechanisms
-- Be conversational but authoritative
-
-RULES:
-- Under 280 characters
-- Include specific data/numbers when possible
-- End with engagement hook (question/surprising fact)
-- Maintain professional but approachable tone
-- Don't be salesy or promotional
-
-Generate ONE strategic reply:`;
-
-      const response = await openaiClient.generateCompletion(prompt, {
-        maxTokens: 150,
-        temperature: 0.4,
-        model: 'gpt-4o-mini'
-      });
-
-      const reply = response.trim();
-      
-      console.log(`💬 Generated reply: "${reply.substring(0, 100)}..."`);
-      
-      return reply;
+      if (result.success) {
+        console.log(`✅ Liked tweet ${target.tweet_id} from @${target.author_username}`);
+        return {
+          success: true,
+          action: 'like',
+          target_tweet_id: target.tweet_id,
+          target_username: target.author_username
+        };
+      } else {
+        return {
+          success: false,
+          action: 'like',
+          error: result.error,
+          rate_limited: result.error?.includes('rate limit')
+        };
+      }
 
     } catch (error) {
-      console.warn('⚠️ Reply generation failed:', error);
-      return 'Interesting perspective! The research on this keeps evolving. What\'s your take on the long-term implications?';
-    }
-  }
-
-  async developFollowerGrowthStrategy(): Promise<FollowerGrowthStrategy> {
-    try {
-      console.log('🚀 AI developing follower growth strategy...');
-      
-      const prompt = `
-You are a legendary growth strategist who has helped health accounts grow from 0 to 100K+ followers.
-
-Develop a COMPREHENSIVE FOLLOWER GROWTH STRATEGY for a health/wellness Twitter account:
-
-CURRENT SITUATION:
-- Health/wellness content focus
-- Professional target audience  
-- Data-driven, authoritative approach
-- Goal: Maximum follower acquisition
-
-STRATEGIC ANALYSIS:
-1. TARGET AUDIENCE SEGMENTS:
-   - Who are our ideal followers?
-   - What content do they engage with?
-   - When are they most active?
-   - What problems do they need solved?
-
-2. ENGAGEMENT TACTICS:
-   - Which accounts to target for engagement?
-   - Best times and methods to engage
-   - How to maximize follow-back rates
-   - Content that drives viral growth
-
-3. CONTENT APPROACH:
-   - Topics that consistently gain followers
-   - Posting frequency and timing
-   - Content mix and variety
-   - Engagement optimization
-
-Return JSON:
-{
-  "targetAudience": ["segment1", "segment2", "segment3"],
-  "engagementTactics": ["tactic1", "tactic2", "tactic3"],
-  "contentApproach": "detailed content strategy",
-  "expectedGrowthRate": number (followers per week)
-}`;
-
-      const response = await openaiClient.generateCompletion(prompt, {
-        maxTokens: 400,
-        temperature: 0.3,
-        model: 'gpt-4o-mini'
-      });
-
-      const strategy = JSON.parse(response) as FollowerGrowthStrategy;
-      
-      console.log(`🎯 Growth Strategy: ${strategy.expectedGrowthRate} followers/week expected`);
-      console.log(`👥 Target: ${strategy.targetAudience.join(', ')}`);
-      
-      return strategy;
-
-    } catch (error) {
-      console.warn('⚠️ Strategy development failed:', error);
       return {
-        targetAudience: ['Health professionals', 'Fitness enthusiasts', 'Biohackers'],
-        engagementTactics: ['Engage with health influencers', 'Reply to trending health topics', 'Like quality health content'],
-        contentApproach: 'Data-driven health tips with controversial but accurate takes',
-        expectedGrowthRate: 50
+        success: false,
+        action: 'like',
+        error: error instanceof Error ? error.message : 'Like failed'
       };
     }
   }
 
-  async optimizePostingTiming(): Promise<{ bestTimes: string[]; reasoning: string }> {
+  /**
+   * 💬 PERFORM INTELLIGENT REPLY
+   */
+  private async performIntelligentReply(target: EngagementTarget): Promise<EngagementResult> {
     try {
-      console.log('⏰ AI optimizing posting timing...');
+      // Generate contextual reply using AI
+      const replyContent = await this.generateIntelligentReply(target);
       
-      const prompt = `
-You are a social media timing expert who maximizes engagement through strategic posting schedules.
+      if (!replyContent) {
+        return { success: false, action: 'reply', error: 'Could not generate reply' };
+      }
 
-Analyze OPTIMAL POSTING TIMES for maximum follower growth on Twitter:
-
-TARGET AUDIENCE: Health-conscious professionals, fitness enthusiasts, biohackers
-GOAL: Maximum engagement and follower acquisition
-TIMEZONE: Eastern Time (US audience focus)
-
-ANALYSIS FACTORS:
-1. When is our target audience most active?
-2. When do health/wellness tweets perform best?
-3. Optimal frequency to avoid algorithm penalties
-4. Best times for different content types
-5. Competition analysis (when others post less)
-
-STRATEGIC RECOMMENDATIONS:
-- Specific optimal posting times
-- Frequency recommendations  
-- Content timing strategies
-- Weekend vs weekday approaches
-
-Return JSON:
-{
-  "bestTimes": ["time1", "time2", "time3"],
-  "reasoning": "detailed explanation of timing strategy"
-}`;
-
-      const response = await openaiClient.generateCompletion(prompt, {
-        maxTokens: 300,
-        temperature: 0.3,
-        model: 'gpt-4o-mini'
-      });
-
-      const optimization = JSON.parse(response);
+      // Post reply using Twitter API
+      const result = await xClient.replyToTweet(target.tweet_id, replyContent);
       
-      console.log(`⏰ Optimal times: ${optimization.bestTimes.join(', ')}`);
-      
-      return optimization;
+      if (result.success) {
+        console.log(`✅ Replied to @${target.author_username}: "${replyContent.substring(0, 50)}..."`);
+        return {
+          success: true,
+          action: 'reply',
+          target_tweet_id: target.tweet_id,
+          target_username: target.author_username
+        };
+      } else {
+        return {
+          success: false,
+          action: 'reply',
+          error: result.error,
+          rate_limited: result.error?.includes('rate limit')
+        };
+      }
 
     } catch (error) {
-      console.warn('⚠️ Timing optimization failed:', error);
       return {
-        bestTimes: ['7:00 AM EST', '12:00 PM EST', '6:00 PM EST'],
-        reasoning: 'Standard peak engagement times for health content'
+        success: false,
+        action: 'reply',
+        error: error instanceof Error ? error.message : 'Reply failed'
       };
     }
   }
-} 
+
+  /**
+   * 👥 PERFORM FOLLOW ACTION  
+   */
+  private async performFollow(target: EngagementTarget): Promise<EngagementResult> {
+    try {
+      // Check if already following
+      const isFollowing = await xClient.isFollowing(target.author_username);
+      if (isFollowing) {
+        return { success: false, action: 'follow', error: 'Already following' };
+      }
+
+      // Follow the user
+      const result = await xClient.followUser(target.author_username);
+      
+      if (result.success) {
+        console.log(`✅ Followed @${target.author_username}`);
+        return {
+          success: true,
+          action: 'follow',
+          target_username: target.author_username
+        };
+      } else {
+        return {
+          success: false,
+          action: 'follow',
+          error: result.error,
+          rate_limited: result.error?.includes('rate limit')
+        };
+      }
+
+    } catch (error) {
+      return {
+        success: false,
+        action: 'follow',
+        error: error instanceof Error ? error.message : 'Follow failed'
+      };
+    }
+  }
+
+  // Helper methods
+  private createEmptySession(): EngagementSession {
+    return {
+      likes_performed: 0,
+      replies_performed: 0,
+      follows_performed: 0,
+      errors: [],
+      targets_analyzed: 0,
+      session_start: new Date()
+    };
+  }
+
+  private calculateHoursSincePosted(createdAt: string): number {
+    const postTime = new Date(createdAt);
+    const now = new Date();
+    return (now.getTime() - postTime.getTime()) / (1000 * 60 * 60);
+  }
+
+  private calculateTopicRelevance(content: string): number {
+    const healthKeywords = [
+      'health', 'nutrition', 'fitness', 'wellness', 'diet', 'exercise', 
+      'mental health', 'sleep', 'biohack', 'longevity', 'supplement',
+      'ai', 'technology', 'research', 'study', 'science', 'medical'
+    ];
+
+    const lowerContent = content.toLowerCase();
+    const matches = healthKeywords.filter(keyword => lowerContent.includes(keyword));
+    return Math.min(matches.length / 3, 1.0); // Normalize to 0-1
+  }
+
+  private calculateEngagementProbability(factors: any): number {
+    let score = 0;
+    
+    // Higher engagement rate = higher probability
+    score += Math.min(factors.engagement_rate * 100, 0.3);
+    
+    // Optimal timing (2-12 hours old)
+    if (factors.hours_old >= 2 && factors.hours_old <= 12) {
+      score += 0.3;
+    }
+    
+    // Topic relevance
+    score += factors.topic_relevance * 0.2;
+    
+    // Author credibility (follower count)
+    if (factors.author_followers > 1000) score += 0.1;
+    if (factors.author_followers > 10000) score += 0.1;
+    
+    return Math.min(score, 1.0);
+  }
+
+  private selectOptimalEngagementAction(target: EngagementTarget, session: EngagementSession): 'like' | 'reply' | 'follow' {
+    // Simple decision logic - can be enhanced with ML
+    if (session.likes_performed < this.dailyLimits.likes && target.engagement_probability > 0.6) {
+      return 'like';
+    }
+    if (session.replies_performed < this.dailyLimits.replies && target.engagement_probability > 0.7) {
+      return 'reply';
+    }
+    if (session.follows_performed < this.dailyLimits.follows && target.engagement_probability > 0.8) {
+      return 'follow';
+    }
+    return 'like'; // Default to like
+  }
+
+  private async generateIntelligentReply(target: EngagementTarget): Promise<string | null> {
+    // Simple reply templates - can be enhanced with AI
+    const replyTemplates = [
+      "Great insights! Thanks for sharing this.",
+      "This is really helpful - appreciate the research behind this.",
+      "Interesting perspective on this topic. Have you seen any studies on this?",
+      "Thanks for posting this - very relevant to my interests.",
+      "Love this approach! Any recommendations for getting started?"
+    ];
+
+    return replyTemplates[Math.floor(Math.random() * replyTemplates.length)];
+  }
+
+  private updateSessionStats(session: EngagementSession, result: EngagementResult): void {
+    if (result.action === 'like') session.likes_performed++;
+    if (result.action === 'reply') session.replies_performed++;
+    if (result.action === 'follow') session.follows_performed++;
+  }
+
+  private async waitBetweenEngagements(): Promise<void> {
+    // Random delay between 30-120 seconds to appear natural
+    const delay = 30000 + Math.random() * 90000;
+    await new Promise(resolve => setTimeout(resolve, delay));
+  }
+
+  private async getDailyEngagementStats(): Promise<any> {
+    // Implement daily stats retrieval from database
+    return { likes: 0, replies: 0, follows: 0 };
+  }
+
+  private hasExceededDailyLimits(stats: any): boolean {
+    return stats.likes >= this.dailyLimits.likes || 
+           stats.replies >= this.dailyLimits.replies || 
+           stats.follows >= this.dailyLimits.follows;
+  }
+
+  private async recordEngagementOutcome(target: EngagementTarget, result: EngagementResult): Promise<void> {
+    // Store engagement data for learning
+    try {
+      await secureSupabaseClient
+        .from('engagement_history')
+        .insert({
+          tweet_id: target.tweet_id,
+          author_username: target.author_username,
+          action: result.action,
+          engagement_probability: target.engagement_probability,
+          success: result.success,
+          created_at: new Date().toISOString()
+        });
+    } catch (error) {
+      console.error('❌ Failed to record engagement:', error);
+    }
+  }
+
+  private async generateEngagementInsights(session: EngagementSession, targets: EngagementTarget[]): Promise<any> {
+    return {
+      session_duration_minutes: (Date.now() - session.session_start.getTime()) / (1000 * 60),
+      engagement_rate: session.likes_performed / Math.max(session.targets_analyzed, 1),
+      avg_target_score: targets.reduce((sum, t) => sum + t.engagement_probability, 0) / targets.length,
+      performance_summary: `${session.likes_performed} likes, ${session.replies_performed} replies, ${session.follows_performed} follows`
+    };
+  }
+}
+
+// Export singleton instance
+export const intelligentEngagementAgent = IntelligentEngagementAgent.getInstance();
