@@ -225,85 +225,88 @@ export class EliteTwitterContentStrategist {
     }
 
     private async generateEliteContent(format: ContentFormat, topic: string, request: ContentRequest): Promise<any> {
-        const systemPrompt = `You are an elite Twitter growth strategist focused on building massive audience through viral health content.
+        const systemPrompt = `You are an elite Twitter growth strategist who creates professional health content that mimics top accounts like @hubermanlab and @foundmyfitness.
 
-MISSION: Create content that gets 1000+ likes, 100+ retweets, and 50+ new followers per post.
+MISSION: Create professional, authoritative content that builds credibility and follower trust.
 
-AUDIENCE BUILDING STRATEGY:
-- Target health-conscious professionals aged 25-45
-- Focus on counterintuitive insights that challenge common beliefs  
-- Provide immediate, actionable value
-- Use data and research to build authority
-- Create content people WANT to share and follow for more
+PROFESSIONAL STANDARDS:
+- Write like a respected health expert, not a social media influencer
+- Use ONE strategic emoji maximum (🧠 for cognitive, 🔬 for research, 💡 for insights)
+- NO hashtags (they look amateurish)
+- NO "Tweet 1:", "Tweet 2:" labels (amateur formatting)
+- NO excessive punctuation or clickbait language
+- Complete sentences with proper punctuation
 
-VIRAL CONTENT REQUIREMENTS:
-1. HOOK: Start with something shocking, contrarian, or surprising
-2. VALUE: Provide specific, actionable insights people can use today
-3. AUTHORITY: Include data, studies, or research when possible
-4. ENGAGEMENT: End with a question or call to action
-5. SHAREABILITY: Make it worth saving/sharing
+TOP ACCOUNT STYLE PATTERNS:
+1. CONTRARIAN + EVIDENCE: "Most people believe X. But research shows Y. Here's why: [evidence]"
+2. AUTHORITY OPENER: "Stanford researchers discovered..." / "New study reveals..."
+3. QUESTION + ANSWER: "Why does X happen? Scientists found Y. What this means: Z"
+4. STATISTIC + CONTEXT: "X% of people experience Y. The reason: Z. For you: W"
 
-AUDIENCE GROWTH FOCUS:
-- Every tweet should make someone think "I need to follow this account"
-- Challenge popular health myths with evidence
-- Share personal stories with universal lessons
-- Provide insights others don't share
-- Build trust through consistent value delivery
+PROFESSIONAL FORMATTING:
+- Strategic line breaks for readability
+- Proper spacing and punctuation
+- No corporate "Tweet Thread:" headers
+- No amateur numbering systems
+- One cohesive, well-written piece
 
-CONTEXT:
-- Format: ${format.name}
-- Structure: ${format.structure} 
-- Topic: ${topic}
-- Target: Health-conscious, educated audience seeking actionable insights
+CONTENT STRUCTURE:
+Single Professional Tweet:
+"New research shows X. Stanford scientists found Y in a study of 1,200 participants.
 
-CRITICAL REQUIREMENTS:
-1. NEVER create incomplete hook-only content like "Here's how to..." without the actual information
-2. ALWAYS provide complete, actionable value in your response
-3. If you use a hook, immediately follow with the actual content/tips/insights
-4. Every tweet must be self-contained and valuable on its own
-5. No cliffhangers, no "here's how..." without the how
-6. Include specific, actionable advice that people can use immediately
+The mechanism: Z happens when W.
 
-CONTENT STRUCTURE OPTIONS:
-A) COMPLETE SINGLE TWEET: Hook + Value + CTA (under 280 chars)
-   Example: "Sleep researchers found that 15-20°C room temperature increases deep sleep by 23%. Your bedroom is probably too warm. Try this: set thermostat to 18°C, use breathable sheets, keep feet uncovered. Track your sleep quality for a week. What temperature works best for you?"
+Try this: [specific action]. 
 
-B) VALUE THREAD: Hook + 3-5 specific, actionable tips
-   Example: 
-   Tweet 1: "5 evidence-based ways to increase energy without caffeine (from 200+ studies):"
-   Tweet 2: "1/ Cold exposure: 2-3 min cold shower increases norepinephrine by 200%, lasting 3+ hours"
-   Tweet 3: "2/ Protein timing: 25g within 1 hour of waking prevents afternoon crashes"
-   [Continue with specific tips...]
+What's been your experience?"
 
-FORBIDDEN CONTENT:
-❌ "Here's how to optimize X in 5 minutes:" (without the how)
-❌ "The secret to Y that doctors don't want you to know:" (without the secret)
-❌ "I discovered the key to Z:" (without revealing the key)
-❌ Any hook without immediate value delivery
+FORBIDDEN ELEMENTS:
+❌ "Tweet 1:", "Tweet 2:", "Thread:" labels
+❌ Multiple emojis (🚨 💡 🔥 ⚡)
+❌ Hashtags (#HealthTips #Biohacking)
+❌ Excessive punctuation (!!! ???)
+❌ Corporate formatting
+❌ Clickbait language
 
 REQUIRED ELEMENTS:
-✅ Specific data/numbers when possible
-✅ Actionable steps people can implement today
-✅ Complete information in the tweet/thread
-✅ Clear value proposition from the first tweet
-✅ Engaging but not clickbait-y tone
+✅ Professional tone like top health accounts
+✅ Maximum 1 contextual emoji
+✅ Proper sentence structure
+✅ Research-backed claims
+✅ Specific, actionable advice
+✅ Natural conversation style
 
-Generate content that immediately provides value, not just promises it.`;
+Generate content that looks like it came from a respected health expert's account.`;
 
-        const userPrompt = `Create viral ${format.name} content about "${topic}". 
+        const userPrompt = `Create professional health content about "${topic}" that looks like it came from @hubermanlab or @foundmyfitness.
 
-CRITICAL: Provide COMPLETE, actionable information. Do NOT create incomplete hooks like "Here's how to..." without the actual how.
+CRITICAL FORMATTING RULES:
+❌ NO "Tweet 1:", "Tweet 2:", "Thread:" labels
+❌ NO multiple emojis (maximum 1 if relevant)
+❌ NO hashtags
+❌ NO corporate/amateur formatting
 
-Requirements:
-- Include specific tips, numbers, or insights people can use immediately
-- If single tweet: Hook + complete value + call to action (under 280 chars)  
-- If thread: Hook + 3-5 numbered actionable tips with specific details
-- No cliffhangers or incomplete content
-- Make it immediately valuable to anyone reading
+✅ Professional, complete sentences
+✅ Research-backed claims with specific data
+✅ Strategic line breaks for readability
+✅ One cohesive, well-written piece
 
-Example quality: "New study: Taking magnesium glycinate 400mg 2 hours before bed increased deep sleep by 37% in 8 weeks. Unlike melatonin, it doesn't cause dependence. Best brands: Natural Calm, Doctor's Best. Have you tried magnesium for sleep?"
+CONTENT REQUIREMENTS:
+- Include specific studies, numbers, or research findings
+- Provide actionable advice people can implement
+- Complete information, no cliffhangers
+- Professional tone like top health experts
 
-Deliver complete value, not just promise it.`;
+EXAMPLE QUALITY:
+"New research from Stanford shows magnesium glycinate (400mg, 2 hours before bed) increased deep sleep by 37% over 8 weeks.
+
+Unlike melatonin, it doesn't cause dependence. The mechanism: magnesium activates GABA receptors, promoting relaxation.
+
+Best forms: glycinate or threonate. Avoid oxide (poor absorption).
+
+Have you noticed sleep improvements with magnesium?"
+
+Write ONE professional tweet that provides complete value immediately.`;
 
         const response = await this.budgetAwareOpenAI.createChatCompletion([
             { role: 'system', content: systemPrompt },
@@ -321,10 +324,29 @@ Deliver complete value, not just promise it.`;
             throw new Error('No content generated from OpenAI');
         }
 
+        // 🎯 APPLY PROFESSIONAL FORMATTING
+        const rawContent = response.response.choices[0].message.content.trim();
+        let formattedContent = rawContent;
+        
+        try {
+            const { ProfessionalTweetFormatter } = await import('../utils/professionalTweetFormatter');
+            formattedContent = ProfessionalTweetFormatter.formatTweet(rawContent);
+            
+            // Quality check the formatted content
+            const qualityScore = ProfessionalTweetFormatter.analyzeQuality(formattedContent);
+            console.log(`📊 Tweet quality: ${qualityScore.overall}/100 (completeness: ${qualityScore.completeness}, engagement: ${qualityScore.engagement})`);
+            
+            if (qualityScore.issues.length > 0) {
+                console.log(`⚠️ Quality issues: ${qualityScore.issues.join(', ')}`);
+            }
+        } catch (error) {
+            console.warn('⚠️ Professional formatting failed, using raw content:', error);
+        }
+
         return {
-            content: response.response.choices[0].message.content.trim(),
+            content: formattedContent,
             predicted_engagement: 25, // Default prediction
-            reasoning: `Generated using ${format.name} format`,
+            reasoning: `Generated using ${format.name} format with professional formatting`,
             hook_type: 'authority',
             content_type: 'tweet'
         };
