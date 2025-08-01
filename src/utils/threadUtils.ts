@@ -3,6 +3,8 @@
  * Converts numbered thread drafts into proper Twitter thread arrays
  */
 
+import { formatTweetForReadability, addSmartHashtags } from './tweetFormatting';
+
 export interface ThreadParseResult {
   isThread: boolean;
   tweets: string[];
@@ -42,6 +44,42 @@ export function cleanSingleTweet(content: string): string {
     .replace(/\s+/g, ' ') // Multiple spaces to single (after list transform)
     .replace(/\n\s+/g, '\n') // Clean up line spacing
     .trim();
+}
+
+/**
+ * 🧵 ENHANCED THREAD PARSING - Better content splitting and formatting
+ */
+export async function parseContentIntoThread(content: string): Promise<ThreadParseResult> {
+  // First try the existing numbered parsing
+  const existingResult = parseNumberedThread(content);
+  if (existingResult.isThread && existingResult.tweets.length > 1) {
+    return existingResult;
+  }
+  
+  // If not a numbered thread, check if we should make it one
+  try {
+    const { shouldBeThread, splitIntoThread } = await import('./tweetFormatting');
+    if (shouldBeThread(content)) {
+      const threadTweets = splitIntoThread(content);
+      
+      if (threadTweets.length > 1) {
+        return {
+          isThread: true,
+          tweets: threadTweets,
+          originalContent: content
+        };
+      }
+    }
+  } catch (error) {
+    console.warn('Error in enhanced thread parsing, using fallback:', error);
+  }
+  
+  // Default to single tweet
+  return {
+    isThread: false,
+    tweets: [content],
+    originalContent: content
+  };
 }
 
 /**
@@ -238,7 +276,7 @@ export async function enhanceTwitterContent(content: string | string[], isThread
 }
 
 /**
- * 🎯 ENHANCE HOOK TWEET - Make it compelling and viral
+ * 🎯 ENHANCE HOOK TWEET - Make it compelling and viral with proper formatting
  */
 function enhanceHookTweet(tweet: string, isPartOfThread: boolean = false): string {
   let enhanced = tweet;
@@ -251,7 +289,7 @@ function enhanceHookTweet(tweet: string, isPartOfThread: boolean = false): strin
     .replace(/^🚨\s*/i, '') // Remove leading 🚨
     .trim();
   
-  // 🔥 VIRAL HOOK PATTERNS - Start with impact (removed THREAD from check)
+  // 🔥 VIRAL HOOK PATTERNS - Start with impact
   if (!/^(Most people|New study|Research shows|Breaking:|Scientists|Want to|The)/i.test(enhanced)) {
     // Transform common patterns into viral hooks
     if (/boost.*mental.*performance.*40%/i.test(enhanced)) {
@@ -277,7 +315,6 @@ function enhanceHookTweet(tweet: string, isPartOfThread: boolean = false): strin
     } else if (/nutrition|diet|food|gut|immune/i.test(enhanced)) {
       enhanced = `🥗 ${enhanced}`;
     }
-    // Removed 🚨 - too aggressive and corporate looking
   }
   
   // 🔥 Make language more compelling and conversational
@@ -288,21 +325,19 @@ function enhanceHookTweet(tweet: string, isPartOfThread: boolean = false): strin
     .replace(/^(\d+)\s+ways/, 'The $1 ways')
     .replace(/science-backed/, 'science-backed')
     .replace(/\!+$/, '') // Remove trailing exclamations
-    
+  
+  // 📱 SMART FORMATTING: Break long content into readable chunks
+  enhanced = formatTweetForReadability(enhanced);
+  
   // ⬇️ Add thread indicator ONLY if this is actually part of a thread
   if (isPartOfThread && !enhanced.includes('?') && !enhanced.includes('👇') && !enhanced.includes('🧵')) {
-    enhanced += ' 👇';
+    enhanced += '\n\n👇';
   }
   
-  // 📱 Add breathing space after hook for mobile readability
-  if (!enhanced.includes('\n') && enhanced.length > 80) {
-    const firstSentence = enhanced.match(/^[^.!?]*[.!?]/);
-    if (firstSentence) {
-      enhanced = enhanced.replace(firstSentence[0], firstSentence[0] + '\n');
-    }
-  }
+  // 🏷️ Add strategic hashtags
+  enhanced = addSmartHashtags(enhanced);
   
-  return enhanced;
+  return enhanced.trim();
 }
 
 /**
@@ -374,19 +409,27 @@ function enhanceFollowupTweet(tweet: string, index: number): string {
 function enhanceFollowupTweetContent(tweet: string): string {
   let enhanced = tweet;
   
-  // 🎨 Transform corporate **bold** formatting into Twitter-native format
+  // 📱 Apply smart formatting for readability first
+  enhanced = formatTweetForReadability(enhanced);
+  
+  // 🎨 Transform corporate **bold** formatting into Twitter-native format with emojis
   enhanced = enhanced
     .replace(/\*\*([^*]+)\*\*/g, '$1:') // Convert **Hydration** to Hydration:
+    .replace(/Morning Sunlight:/i, '☀️ **Morning Sunlight:**')
+    .replace(/Breathwork:/i, '🫁 **Breathwork:**')
+    .replace(/Intermittent Fasting:/i, '⏱️ **Intermittent Fasting:**')
+    .replace(/Sleep:/i, '😴 **Sleep:**')
+    .replace(/Exercise:/i, '💪 **Exercise:**')
+    .replace(/Nutrition:/i, '🥗 **Nutrition:**')
+    .replace(/Hydration:/i, '💧 **Hydration:**')
     
-  // 💡 Add visual breaks for long content (improve mobile readability)
-  if (enhanced.length > 120 && !enhanced.includes('\n')) {
-    // Add line break after first complete thought
-    const breakPoint = enhanced.search(/[.!]\s+[A-Z]/);
-    if (breakPoint > 40 && breakPoint < 100) {
-      enhanced = enhanced.slice(0, breakPoint + 1) + '\n\n' + enhanced.slice(breakPoint + 1);
-    }
-  }
-  
+  // 🎯 Improve specific health content formatting
+  enhanced = enhanced
+    .replace(/(\d+)\s*mins?\s*of\s*/gi, '$1 minutes of ')
+    .replace(/30\s*mins?\s*of\s*waking/gi, '30 minutes of waking')
+    .replace(/within 30 minutes/gi, 'within **30 minutes**')
+    .replace(/(\d+)%/g, '**$1%**') // Emphasize percentages
+    
   // 🚀 Ensure actionable language for tips
   enhanced = enhanced
     .replace(/^(\d+[\.\/]|\d+\)|[\u0030-\u0039]\uFE0F?\u20E3|→)?\s*Consider\s+/i, '$1Try ')
