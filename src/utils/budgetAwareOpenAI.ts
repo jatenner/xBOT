@@ -10,6 +10,64 @@
 import { OpenAI } from 'openai';
 import { budgetEnforcer, BudgetPriority } from './budgetEnforcer';
 import { smartBudgetOptimizer } from './smartBudgetOptimizer';
+import * as crypto from 'crypto';
+
+// 🗂️ LRU Cache for OpenAI completions (avoids duplicate API calls)
+interface CacheEntry {
+  response: any;
+  timestamp: number;
+  cost: number;
+}
+
+class CompletionCache {
+  private cache = new Map<string, CacheEntry>();
+  private readonly MAX_SIZE = 100;
+  private readonly TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+  generateKey(messages: any[], model: string, maxTokens: number, temperature: number): string {
+    const content = JSON.stringify({ messages, model, maxTokens, temperature });
+    return crypto.createHash('sha256').update(content).digest('hex').substring(0, 16);
+  }
+
+  get(key: string): CacheEntry | null {
+    const entry = this.cache.get(key);
+    if (!entry) return null;
+    
+    // Check if expired
+    if (Date.now() - entry.timestamp > this.TTL_MS) {
+      this.cache.delete(key);
+      return null;
+    }
+    
+    // Move to end (LRU)
+    this.cache.delete(key);
+    this.cache.set(key, entry);
+    return entry;
+  }
+
+  set(key: string, response: any, cost: number): void {
+    // Remove oldest if at capacity
+    if (this.cache.size >= this.MAX_SIZE) {
+      const firstKey = this.cache.keys().next().value;
+      this.cache.delete(firstKey);
+    }
+    
+    this.cache.set(key, {
+      response,
+      timestamp: Date.now(),
+      cost
+    });
+  }
+
+  getStats(): { size: number; hitRate: number } {
+    return {
+      size: this.cache.size,
+      hitRate: 0 // TODO: track hits/misses if needed
+    };
+  }
+}
+
+const completionCache = new CompletionCache();
 
 export interface BudgetAwareRequestOptions {
   priority: BudgetPriority;
@@ -18,6 +76,7 @@ export interface BudgetAwareRequestOptions {
   model?: string;
   temperature?: number;
   forTweetGeneration?: boolean; // New: indicates this is for tweet generation
+  existingContent?: string; // For dynamic token calculation
 }
 
 export class BudgetAwareOpenAI {
@@ -26,6 +85,42 @@ export class BudgetAwareOpenAI {
 
   constructor(apiKey: string) {
     this.openai = new OpenAI({ apiKey });
+  }
+
+  /**
+   * 🎯 DYNAMIC TOKEN CALCULATION - Smart token allocation based on content
+   */
+  private calculateOptimalTokens(operation: string, existingContent?: string): number {
+    const baseTokens = {
+      content_generation: 150,
+      fact_checking: 50,
+      quality_check: 40,
+      style_optimization: 80,
+      trending_topic: 60,
+      decision_making: 70
+    };
+
+    let tokens = baseTokens[operation] || 100;
+    
+    // If we have existing content, scale based on its length
+    if (existingContent) {
+      const wordCount = existingContent.trim().split(/\s+/).length;
+      // Target 1.2x the input length (rough tokens ≈ words × 1.3)
+      const dynamicTokens = Math.ceil(wordCount * 1.2 * 1.3);
+      tokens = Math.max(tokens, dynamicTokens);
+    }
+    
+    // Cap at reasonable maximums
+    const maxTokens = {
+      content_generation: 250,
+      fact_checking: 80,
+      quality_check: 60,
+      style_optimization: 120,
+      trending_topic: 100,
+      decision_making: 100
+    };
+    
+    return Math.min(tokens, maxTokens[operation] || 150);
   }
 
   /**
@@ -38,16 +133,34 @@ export class BudgetAwareOpenAI {
     const {
       priority,
       operationType,
-      maxTokens = 100,
+      maxTokens,
       model = 'gpt-4o-mini',
       temperature = 0.3,
-      forTweetGeneration = false
+      forTweetGeneration = false,
+      existingContent
     } = options;
 
+    // 🎯 DYNAMIC TOKEN OPTIMIZATION
+    const optimalTokens = maxTokens || this.calculateOptimalTokens(operationType, existingContent);
+    console.log(`🎯 Dynamic tokens: ${optimalTokens} for ${operationType} ${existingContent ? `(content: ${existingContent.length} chars)` : '(no content)'}`);
+
     try {
+      // 🗂️ CHECK CACHE FIRST (massive cost savings!)
+      const cacheKey = completionCache.generateKey(messages, model, optimalTokens, temperature);
+      const cached = completionCache.get(cacheKey);
+      
+      if (cached) {
+        console.log(`💾 CACHE HIT: ${operationType} - saved $${cached.cost.toFixed(4)}`);
+        return {
+          success: true,
+          response: cached.response,
+          cost: 0 // No actual cost, using cache
+        };
+      }
+
       // Calculate estimated cost
-      let estimatedCost = this.calculateEstimatedCost(maxTokens, model);
-      let actualMaxTokens = maxTokens;
+      let estimatedCost = this.calculateEstimatedCost(optimalTokens, model);
+      let actualMaxTokens = optimalTokens;
 
       // If this is for tweet generation, optimize using SmartBudgetOptimizer
       if (forTweetGeneration) {
@@ -55,7 +168,7 @@ export class BudgetAwareOpenAI {
         const optimization = smartBudgetOptimizer.getCostOptimization(plan.budgetPerTweet);
         
         // Adjust tokens and cost based on optimization
-        actualMaxTokens = Math.min(maxTokens, optimization.maxTokensPerTweet);
+        actualMaxTokens = Math.min(optimalTokens, optimization.maxTokensPerTweet);
         estimatedCost = optimization.estimatedCostPerTweet;
         
         console.log(`🎯 TWEET OPTIMIZATION: ${optimization.qualityLevel} quality, ${actualMaxTokens} tokens, $${(estimatedCost || 0).toFixed(3)} budget`);
@@ -107,6 +220,9 @@ export class BudgetAwareOpenAI {
         priority,
         `${actualTokens} tokens (optimized)`
       );
+
+      // 🗂️ CACHE THE RESPONSE for future use
+      completionCache.set(cacheKey, response, actualCost);
 
       // Log efficiency for tweet generation
       if (forTweetGeneration) {
