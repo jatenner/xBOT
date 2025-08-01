@@ -201,8 +201,16 @@ export function enhanceTwitterContent(content: string | string[]): string | stri
 function enhanceHookTweet(tweet: string): string {
   let enhanced = tweet;
   
-  // 🔥 VIRAL HOOK PATTERNS - Start with impact
-  if (!/^(Most people|New study|🚨|🧵|Research shows|THREAD|Breaking:|Scientists|Want to|The)/i.test(enhanced)) {
+  // 🧹 REMOVE CORPORATE THREAD HEADERS FIRST
+  enhanced = enhanced
+    .replace(/^🚨\s*THREAD:\s*/i, '') // Remove "🚨 THREAD: "
+    .replace(/^🧵\s*THREAD:\s*/i, '') // Remove "🧵 THREAD: "
+    .replace(/^THREAD:\s*/i, '') // Remove "THREAD: "
+    .replace(/^🚨\s*/i, '') // Remove leading 🚨
+    .trim();
+  
+  // 🔥 VIRAL HOOK PATTERNS - Start with impact (removed THREAD from check)
+  if (!/^(Most people|New study|Research shows|Breaking:|Scientists|Want to|The)/i.test(enhanced)) {
     // Transform common patterns into viral hooks
     if (/boost.*mental.*performance.*40%/i.test(enhanced)) {
       enhanced = enhanced.replace(/^.*boost your mental performance by 40%.*?with/i, 'Want to boost your mental performance by 40%? Here are');
@@ -216,8 +224,8 @@ function enhanceHookTweet(tweet: string): string {
     }
   }
   
-  // 🎨 Add category-specific emojis for engagement  
-  if (!enhanced.match(/^[🧠🔬💪🥗🚨⚡]/)) {
+  // 🎨 Add SUBTLE category-specific emojis for engagement (only if missing)
+  if (!enhanced.match(/^[🧠🔬💪🥗⚡]/)) {
     if (/mental|brain|cognitive|performance|focus/i.test(enhanced)) {
       enhanced = `🧠 ${enhanced}`;
     } else if (/study|research|science|discover/i.test(enhanced)) {
@@ -226,9 +234,8 @@ function enhanceHookTweet(tweet: string): string {
       enhanced = `💪 ${enhanced}`;
     } else if (/nutrition|diet|food|gut|immune/i.test(enhanced)) {
       enhanced = `🥗 ${enhanced}`;
-    } else if (/breakthrough|game.?chang/i.test(enhanced)) {
-      enhanced = `🚨 ${enhanced}`;
     }
+    // Removed 🚨 - too aggressive and corporate looking
   }
   
   // 🔥 Make language more compelling and conversational
