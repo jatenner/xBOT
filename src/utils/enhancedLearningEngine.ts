@@ -176,6 +176,11 @@ export class EnhancedLearningEngine {
       .not('tweet_performance_scores.overall_score', 'is', null);
 
     if (error || !data) {
+      // Handle missing table relationships gracefully
+      if (error?.code === 'PGRST200' && error?.message?.includes('Could not find a relationship')) {
+        console.log('📊 Skipping content type analysis - table relationships not configured yet');
+        return [];
+      }
       console.warn('⚠️ Failed to fetch content type data:', error);
       return [];
     }
@@ -265,6 +270,11 @@ export class EnhancedLearningEngine {
       .not('tweet_performance_scores.overall_score', 'is', null);
 
     if (error || !data) {
+      // Handle missing table relationships gracefully
+      if (error?.code === 'PGRST200' && error?.message?.includes('Could not find a relationship')) {
+        console.log('📊 Skipping timing analysis - table relationships not configured yet');
+        return [];
+      }
       console.warn('⚠️ Failed to fetch timing data:', error);
       return [];
     }
@@ -388,6 +398,11 @@ export class EnhancedLearningEngine {
       .not('tweet_performance_scores.overall_score', 'is', null);
 
     if (error || !data) {
+      // Handle missing table relationships gracefully
+      if (error?.code === 'PGRST200' && error?.message?.includes('Could not find a relationship')) {
+        console.log('📊 Skipping tone analysis - table relationships not configured yet');
+        return [];
+      }
       console.warn('⚠️ Failed to fetch tone data:', error);
       return [];
     }
@@ -465,6 +480,11 @@ export class EnhancedLearningEngine {
       .not('primary_topic', 'is', null);
 
     if (error || !data) {
+      // Handle missing table relationships gracefully
+      if (error?.code === 'PGRST200' && error?.message?.includes('Could not find a relationship')) {
+        console.log('📊 Skipping topic analysis - table relationships not configured yet');
+        return [];
+      }
       console.warn('⚠️ Failed to fetch topic data:', error);
       return [];
     }
@@ -546,6 +566,11 @@ export class EnhancedLearningEngine {
       .not('tweet_performance_scores.overall_score', 'is', null);
 
     if (error || !data) {
+      // Handle missing table relationships gracefully
+      if (error?.code === 'PGRST200' && error?.message?.includes('Could not find a relationship')) {
+        console.log('📊 Skipping format analysis - table relationships not configured yet');
+        return [];
+      }
       console.warn('⚠️ Failed to fetch format data:', error);
       return [];
     }

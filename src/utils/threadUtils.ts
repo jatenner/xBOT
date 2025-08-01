@@ -17,6 +17,9 @@ export function cleanSingleTweet(content: string): string {
     .replace(/^\*\*[^*]+\*\*\s*/, '') // Remove **bold headers**
     .replace(/^Research_Bomb\s+Thread[^:\n]*:?\s*/i, '') // Remove "Research_Bomb Thread:"
     .replace(/^Thread[^:\n]*:?\s*/i, '') // Remove "Thread:"
+    .replace(/^\*\*Thread[^:\n]*\*\*:?\s*/i, '') // Remove "**Thread:**"
+    .replace(/^Tweet\s*Thread[^:\n]*:?\s*/i, '') // Remove "Tweet Thread:"
+    .replace(/^\*\*Tweet\s*Thread[^:\n]*\*\*:?\s*/i, '') // Remove "**Tweet Thread:**"
     .replace(/^Here's\s+the\s+breakdown[^:\n]*:?\s*/i, '') // Remove "Here's the breakdown:"
     .replace(/^Tweet\s*\d+\s*[:\/]\s*/i, '') // Remove "Tweet 1:"
     .replace(/^\d+\s*[:\/]\s*/, '') // Remove "1:"
@@ -45,6 +48,10 @@ export function parseNumberedThread(raw: string): ThreadParseResult {
     .replace(/^\s*Here are \d+[^:\n]*:?\s*/i, '') // Remove "Here are 4 surprising truths:"
     .replace(/^\s*\d+\s+evidence-based\s+ways[^:\n]*:?\s*/i, '') // Remove "5 evidence-based ways to..."
     .replace(/^\s*\d+\s+ways[^:\n]*:?\s*/i, '') // Remove "3 ways to..."
+    .replace(/^Tweet\s*Thread[^:\n]*:?\s*/i, '') // Remove "Tweet Thread:" header
+    .replace(/^\*\*Tweet\s*Thread[^:\n]*\*\*:?\s*/i, '') // Remove "**Tweet Thread:**" header
+    .replace(/^Thread\s*:\s*/i, '') // Remove simple "Thread:" header
+    .replace(/^\*\*Thread\s*:\*\*\s*/i, '') // Remove "**Thread:**" header
     .trim();
 
   // Split on "Tweet X:" headers (case insensitive, flexible spacing and numbering)

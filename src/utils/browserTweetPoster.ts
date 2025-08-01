@@ -17,7 +17,7 @@ export class BrowserTweetPoster {
   private browser: Browser | null = null;
   private page: Page | null = null;
   private isInitialized = false;
-  private sessionPath = path.join(process.cwd(), 'twitter-auth.json');
+  private sessionPath = this.getSessionPath();
 
   async initialize(): Promise<boolean> {
     if (this.isInitialized) {
@@ -81,6 +81,20 @@ export class BrowserTweetPoster {
       }
       return false;
     }
+  }
+
+  private getSessionPath(): string {
+    // Check Railway volume path first, then fallback paths
+    const railwayPath = path.join('/app/data', 'twitter_session.json');
+    const fallbackPath = path.join(process.cwd(), 'twitter-auth.json');
+    const backupPath = path.join(process.cwd(), 'twitter_session.json');
+    
+    if (fs.existsSync(railwayPath)) return railwayPath;
+    if (fs.existsSync(fallbackPath)) return fallbackPath;
+    if (fs.existsSync(backupPath)) return backupPath;
+    
+    // Default to Railway path for future uploads
+    return railwayPath;
   }
 
   private async loadTwitterSession(): Promise<void> {
