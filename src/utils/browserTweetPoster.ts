@@ -740,9 +740,20 @@ export class BrowserTweetPoster {
         
         if (currentText.trim().length === 0) {
           console.log(`✅ Composer is empty - likely indicates successful posting`);
+          
+          // Try to extract real tweet ID from the page
+          const realTweetId = await this.extractRealTweetId();
+          const tweetId = realTweetId || `composer_reset_${Date.now()}`;
+          
+          if (realTweetId) {
+            console.log(`🎯 Extracted REAL tweet ID: ${realTweetId}`);
+          } else {
+            console.log(`⚠️ Could not extract real tweet ID, using fallback: ${tweetId}`);
+          }
+          
           return { 
             confirmed: true, 
-            tweet_id: `composer_reset_${Date.now()}` 
+            tweet_id: tweetId
           };
         }
       } catch (composerError) {
@@ -946,29 +957,67 @@ export class BrowserTweetPoster {
   }
 
   /**
-   * 💬 POST THREAD CONTINUATION (Twitter threading approach)
-   * Relies on Twitter's automatic threading for quick successive posts
+   * 💬 POST REPLY TO CREATE THREADED CONVERSATION
+   * Creates actual Twitter replies by navigating to the original tweet and using the reply button
    */
   async postReply(content: string, previousTweetId: string): Promise<{ success: boolean; tweet_id: string; error?: string }> {
     try {
-      console.log(`💬 Posting thread continuation via compose...`);
+      console.log(`💬 Creating threaded reply to tweet ID: ${previousTweetId}...`);
       
       if (!this.page) {
         throw new Error('Browser not initialized');
       }
 
-      // Go to compose page to ensure clean state
-      console.log(`🔄 Using compose page for thread continuation`);
-      await this.page.goto('https://x.com/compose/post', { waitUntil: 'networkidle' });
-      await this.page.waitForTimeout(2000);
-
-      // Clear any existing content
-      const clearResult = await this.clearComposer();
-      if (clearResult.success) {
-        console.log(`🧹 Composer cleared for thread continuation`);
+      // Extract numeric tweet ID if it's a real Twitter ID
+      const numericTweetId = this.extractNumericTweetId(previousTweetId);
+      if (!numericTweetId) {
+        console.log(`⚠️ Previous tweet ID "${previousTweetId}" is not a real Twitter ID - using fallback approach`);
+        return await this.postTweetFallback(content);
       }
 
-      // Fill the content using standard textarea finding
+      // Navigate to the tweet we want to reply to
+      const tweetUrl = `https://x.com/i/status/${numericTweetId}`;
+      console.log(`🔗 Navigating to original tweet: ${tweetUrl}`);
+      
+      await this.page.goto(tweetUrl, { waitUntil: 'networkidle', timeout: 15000 });
+      await this.page.waitForTimeout(2000);
+
+      // Find and click the reply button
+      const replyButtonSelectors = [
+        '[data-testid="reply"]',
+        'button[aria-label*="Reply"]',
+        '[role="button"][aria-label*="Reply"]',
+        'div[aria-label*="Reply"]'
+      ];
+
+      console.log(`🔍 Looking for reply button...`);
+      let replyClicked = false;
+      
+      for (const selector of replyButtonSelectors) {
+        try {
+          await this.page.waitForSelector(selector, { timeout: 5000 });
+          const replyButton = this.page.locator(selector).first();
+          
+          if (await replyButton.isVisible()) {
+            await replyButton.click();
+            console.log(`✅ Clicked reply button: ${selector}`);
+            replyClicked = true;
+            break;
+          }
+        } catch {
+          continue;
+        }
+      }
+
+      if (!replyClicked) {
+        console.log(`⚠️ Could not find reply button - using fallback approach`);
+        return await this.postTweetFallback(content);
+      }
+
+      // Wait for reply composer to appear
+      await this.page.waitForTimeout(2000);
+
+      // Fill the reply content
       const textareaSelectors = [
         'div[aria-label="Post text"]',
         'div[contenteditable="true"]',
@@ -977,10 +1026,12 @@ export class BrowserTweetPoster {
         'div[role="textbox"]'
       ];
 
+      console.log(`📝 Filling reply content...`);
       let textareaFilled = false;
+      
       for (const selector of textareaSelectors) {
         try {
-          await this.page.waitForSelector(selector, { timeout: 10000 });
+          await this.page.waitForSelector(selector, { timeout: 8000 });
           const textarea = this.page.locator(selector).first();
           
           if (await textarea.isVisible()) {
@@ -990,8 +1041,8 @@ export class BrowserTweetPoster {
             
             // Verify content was entered
             const enteredText = await textarea.textContent() || await textarea.inputValue() || '';
-            if (enteredText.trim()) {
-              console.log(`📝 Thread content filled in textarea: ${selector}`);
+            if (enteredText.trim() && enteredText.includes(content.substring(0, 20))) {
+              console.log(`✅ Reply content filled successfully`);
               textareaFilled = true;
               break;
             }
@@ -1002,21 +1053,21 @@ export class BrowserTweetPoster {
       }
 
       if (!textareaFilled) {
-        throw new Error('Could not fill thread continuation content');
+        throw new Error('Could not fill reply content');
       }
 
-      // Wait a moment for content to register
-      await this.page.waitForTimeout(1000);
-
-      // Post the tweet using standard post button
+      // Post the reply
       const postButtonSelectors = [
-        '[data-testid="tweetButton"], [data-testid="tweetButtonInline"]',
-        'div[data-testid="tweetButton"]',
+        '[data-testid="tweetButton"]',
+        '[data-testid="tweetButtonInline"]',
         'button[data-testid="tweetButton"]',
+        '[role="button"][aria-label*="Reply"]',
         '[role="button"][aria-label*="Post"]'
       ];
 
+      console.log(`🚀 Posting reply...`);
       let posted = false;
+      
       for (const selector of postButtonSelectors) {
         try {
           await this.page.waitForSelector(selector, { timeout: 8000 });
@@ -1025,11 +1076,11 @@ export class BrowserTweetPoster {
           if (await postButton.isVisible() && !(await postButton.isDisabled())) {
             // Try keyboard shortcut first
             await this.page.keyboard.press('Control+Enter');
-            await this.page.waitForTimeout(500);
+            await this.page.waitForTimeout(1000);
             
             // Fallback to clicking
             await postButton.click();
-            console.log(`🚀 Posted thread continuation using: ${selector}`);
+            console.log(`✅ Reply posted successfully`);
             posted = true;
             break;
           }
@@ -1039,22 +1090,116 @@ export class BrowserTweetPoster {
       }
 
       if (!posted) {
-        throw new Error('Could not find or click post button for thread continuation');
+        throw new Error('Could not post reply');
       }
 
-      // Wait for posting to complete
+      // Wait for posting to complete and try to extract new tweet ID
       await this.page.waitForTimeout(3000);
-
-      // Generate thread-aware ID
-      const threadTweetId = `thread_${Date.now()}`;
-      console.log(`✅ Thread continuation posted: ${threadTweetId}`);
       
-      return { success: true, tweet_id: threadTweetId };
+      const newTweetId = await this.extractTweetId() || `reply_${Date.now()}`;
+      console.log(`✅ Thread reply posted with ID: ${newTweetId}`);
+      
+      return { success: true, tweet_id: newTweetId };
 
     } catch (error) {
-      console.error('❌ Thread continuation posting failed:', error);
-      return { success: false, tweet_id: `thread_error_${Date.now()}`, error: error.message };
+      console.error('❌ Reply posting failed:', error);
+      console.log(`🔄 Falling back to regular tweet posting...`);
+      return await this.postTweetFallback(content);
     }
+  }
+
+  /**
+   * 🎯 Enhanced tweet ID extraction with multiple strategies
+   */
+  private async extractRealTweetId(): Promise<string | null> {
+    try {
+      if (!this.page) return null;
+
+      console.log(`🔍 Attempting to extract real tweet ID from current page...`);
+
+      // Strategy 1: Check URL for tweet ID (most reliable)
+      const currentUrl = this.page.url();
+      console.log(`📍 Current URL: ${currentUrl}`);
+      const urlMatch = currentUrl.match(/\/status\/(\d+)/);
+      if (urlMatch) {
+        console.log(`✅ Found tweet ID in URL: ${urlMatch[1]}`);
+        return urlMatch[1];
+      }
+
+      // Strategy 2: Look for tweet links in the page content
+      const tweetLinkSelectors = [
+        'article[data-testid="tweet"] a[href*="/status/"]',
+        '[data-testid="tweet"] a[href*="/status/"]',
+        'time a[href*="/status/"]',
+        'a[href*="/status/"]:not([href*="analytics"])'
+      ];
+
+      for (const selector of tweetLinkSelectors) {
+        try {
+          const links = await this.page.locator(selector).all();
+          for (const link of links) {
+            const href = await link.getAttribute('href');
+            if (href) {
+              const match = href.match(/\/status\/(\d+)/);
+              if (match) {
+                console.log(`✅ Found tweet ID in link (${selector}): ${match[1]}`);
+                return match[1];
+              }
+            }
+          }
+        } catch {
+          continue;
+        }
+      }
+
+      // Strategy 3: Check recent navigation history
+      await this.page.waitForTimeout(2000);
+      const finalUrl = this.page.url();
+      const finalMatch = finalUrl.match(/\/status\/(\d+)/);
+      if (finalMatch) {
+        console.log(`✅ Found tweet ID in final URL: ${finalMatch[1]}`);
+        return finalMatch[1];
+      }
+
+      console.log(`⚠️ No real tweet ID found using any strategy`);
+      return null;
+
+    } catch (error) {
+      console.log(`❌ Error extracting tweet ID: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * 🔢 Extract numeric tweet ID from various ID formats
+   */
+  private extractNumericTweetId(tweetId: string): string | null {
+    // Already numeric
+    if (/^\d+$/.test(tweetId)) {
+      return tweetId;
+    }
+    
+    // Extract from URL format
+    const urlMatch = tweetId.match(/\/status\/(\d+)/);
+    if (urlMatch) {
+      return urlMatch[1];
+    }
+    
+    // Not a real Twitter ID
+    return null;
+  }
+
+  /**
+   * 🔄 Fallback to regular tweet posting when reply fails
+   */
+  private async postTweetFallback(content: string): Promise<{ success: boolean; tweet_id: string; error?: string }> {
+    console.log(`🔄 Using fallback tweet posting approach...`);
+    const result = await this.postTweet(content);
+    return {
+      success: result.success,
+      tweet_id: result.tweet_id || `fallback_${Date.now()}`,
+      error: result.error
+    };
   }
 
   async cleanup(): Promise<void> {

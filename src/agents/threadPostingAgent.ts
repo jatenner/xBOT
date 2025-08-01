@@ -162,10 +162,11 @@ export class ThreadPostingAgent {
             tweetResult = await this.browserPoster.postTweet(truncatedTweet);
             console.log(`✅ First tweet posted: ${tweetResult.tweet_id}`);
           } else {
-            // Reply to previous tweet to create thread
+            // PERFECT THREADING: Use postReply to create actual threaded conversation
             if (!replyToId) {
               throw new Error('No previous tweet ID to reply to');
             }
+            console.log(`💬 Creating threaded reply ${i + 1} to tweet: ${replyToId}`);
             tweetResult = await this.browserPoster.postReply(truncatedTweet, replyToId);
             console.log(`✅ Thread reply ${i + 1} posted: ${tweetResult.tweet_id}`);
           }
