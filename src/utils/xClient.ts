@@ -181,6 +181,19 @@ class XService {
     } catch (error: any) {
       console.error('Error posting tweet:', error);
       
+      // Handle rate limiting (429) specifically
+      if (error.code === 429 || (error.data && error.data.status === 429)) {
+        const resetTime = error.rateLimit?.reset;
+        if (resetTime) {
+          const waitSeconds = Math.max(60, resetTime - Math.floor(Date.now() / 1000));
+          console.warn(`🚫 Rate limited. Waiting ${waitSeconds} seconds before retry...`);
+          return {
+            success: false,
+            error: `Rate limited. Wait ${waitSeconds} seconds before retry.`,
+          };
+        }
+      }
+      
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to post tweet',

@@ -989,12 +989,16 @@ export class AutonomousPostingEngine {
       console.log(`💾 Storing tweet in learning database: ${tweetId}`);
 
       const now = new Date();
+      // Ensure all numeric fields are properly rounded integers
+      const safeEngagement = Math.round(metadata.predicted_engagement || 75);
+      const safeBanditConfidence = Math.round((metadata.bandit_confidence || 0.5) * 100) / 100; // Round to 2 decimals
+      
       const tweetData = {
         tweet_id: tweetId,
         content,
-        quality_score: metadata.predicted_engagement || 75,
+        quality_score: safeEngagement,
         quality_issues: [],
-        audience_growth_potential: metadata.predicted_engagement || 75,
+        audience_growth_potential: safeEngagement,
         was_posted: confirmed,
         post_reason: `Auto-posted by ${metadata.generation_method || 'system'}`,
         created_at: now.toISOString(),
@@ -1006,8 +1010,8 @@ export class AutonomousPostingEngine {
         format_type: metadata.format_type || 'unknown',
         hook_type: metadata.hook_type || 'unknown',
         content_category: metadata.content_category || 'general',
-        bandit_confidence: metadata.bandit_confidence || 0.5,
-        predicted_engagement: metadata.predicted_engagement || 0
+        bandit_confidence: safeBanditConfidence,
+        predicted_engagement: safeEngagement
       };
 
       // Store in learning_posts table
@@ -1021,19 +1025,26 @@ export class AutonomousPostingEngine {
         console.log('✅ Stored in learning_posts table');
       }
 
-      // Also store in main tweets table for backward compatibility
-      const { error: tweetsError } = await supabaseClient.supabase
-        .from('tweets')
-        .insert({
-          id: tweetId,
-          content,
-          posted: confirmed,
-          created_at: now.toISOString(),
-          tweet_data: metadata
-        });
+      // Also store in main tweets table for backward compatibility (only for numeric IDs)
+      const isNumericId = /^\d+$/.test(tweetId);
+      if (isNumericId) {
+        const { error: tweetsError } = await supabaseClient.supabase
+          .from('tweets')
+          .insert({
+            id: tweetId,
+            content,
+            posted: confirmed,
+            created_at: now.toISOString(),
+            tweet_data: metadata
+          });
 
-      if (tweetsError) {
-        console.warn('⚠️ Could not store in tweets table:', tweetsError);
+        if (tweetsError) {
+          console.warn('⚠️ Could not store in tweets table:', tweetsError);
+        } else {
+          console.log('✅ Stored in tweets table (numeric ID)');
+        }
+      } else {
+        console.log(`📝 Skipped tweets table storage for non-numeric ID: ${tweetId}`);
       }
 
       // Initialize format stats if this is a new format combination
