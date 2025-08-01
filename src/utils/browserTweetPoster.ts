@@ -489,15 +489,15 @@ export class BrowserTweetPoster {
 
   async findAndClickPostButton(): Promise<{ success: boolean; error?: string }> {
     try {
-      // Optimized selectors for current X.com UI - working selectors first
+      // 🎯 ENHANCED SELECTORS FOR X.COM 2025 - Multiple fallbacks
       const postButtonSelectors = [
-        // WORKING selectors first (fast)
-        '[data-testid="tweetButton"]',                             // This works! (logs show success)
-        'div[data-testid="tweetButton"]',                        // Alternative data-testid
-        'button[data-testid="tweetButton"]',                     // Button variant
-        '[data-testid="tweetButtonInline"]',                      // Inline variant
-        'div[data-testid="tweetButtonInline"]',                  // Legacy primary
-        'button[data-testid="tweetButtonInline"]',               // Button variant
+        // PRIMARY SELECTORS - X.com uses these for posting
+        '[data-testid="tweetButton"], [data-testid="tweetButtonInline"]',  // Combined primary selectors
+        '[data-testid="tweetButton"]',                             // Standard post button
+        '[data-testid="tweetButtonInline"]',                      // Inline variant (threads)
+        'button[data-testid="tweetButton"]',                     // Button element variant
+        'div[data-testid="tweetButton"]',                        // Div element variant
+        'button[data-testid="tweetButtonInline"]',               // Inline button variant
         
         // SLOWER selectors (known to sometimes fail)
         'div[aria-label="Post"]',                                // Often times out

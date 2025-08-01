@@ -451,15 +451,18 @@ export class AutonomousPostingEngine {
               (typeof eliteResult.content === 'string' ? eliteResult.content : JSON.stringify(eliteResult.content));
 
             // 🧵 Parse for thread content and clean formatting
-            const { parseNumberedThread, cleanSingleTweet } = await import('../utils/threadUtils');
+            const { parseNumberedThread, cleanSingleTweet, enhanceTwitterContent } = await import('../utils/threadUtils');
             const threadResult = parseNumberedThread(contentString);
             
             let finalContent: string | string[];
             if (threadResult.isThread) {
-              finalContent = threadResult.tweets;
+              // 🚀 ENHANCE THREAD for viral potential
+              finalContent = enhanceTwitterContent(threadResult.tweets) as string[];
             } else {
               // Clean single tweet of corporate formatting
-              finalContent = cleanSingleTweet(contentString);
+              const cleanedTweet = cleanSingleTweet(contentString);
+              // 🚀 ENHANCE SINGLE TWEET for viral potential
+              finalContent = enhanceTwitterContent(cleanedTweet) as string;
             }
             const contentType = threadResult.isThread ? 'thread' : 'tweet';
 
@@ -528,15 +531,18 @@ export class AutonomousPostingEngine {
         (typeof bulletproofResult.content === 'string' ? bulletproofResult.content : String(bulletproofResult.content));
 
       // 🧵 Parse for thread content and clean formatting
-      const { parseNumberedThread, cleanSingleTweet } = await import('../utils/threadUtils');
+      const { parseNumberedThread, cleanSingleTweet, enhanceTwitterContent } = await import('../utils/threadUtils');
       const threadResult = parseNumberedThread(contentString);
       
       let finalContent: string | string[];
       if (threadResult.isThread) {
-        finalContent = threadResult.tweets;
+        // 🚀 ENHANCE THREAD for viral potential
+        finalContent = enhanceTwitterContent(threadResult.tweets) as string[];
       } else {
         // Clean single tweet of corporate formatting
-        finalContent = cleanSingleTweet(contentString);
+        const cleanedTweet = cleanSingleTweet(contentString);
+        // 🚀 ENHANCE SINGLE TWEET for viral potential
+        finalContent = enhanceTwitterContent(cleanedTweet) as string;
       }
       const contentType = threadResult.isThread ? 'thread' : 'tweet';
 
