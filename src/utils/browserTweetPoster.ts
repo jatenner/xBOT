@@ -168,6 +168,19 @@ export class BrowserTweetPoster {
             await this.debugScreenshot(`pre-compose-${strategy.name}-attempt-${attempt}`);
             await this.page!.waitForTimeout(5000); // Longer stabilization time
 
+            // Clear any existing content first (prevents duplicates on retries)
+            try {
+              console.log('🧹 Clearing composer before posting...');
+              const clearResult = await this.clearComposer();
+              if (clearResult.success) {
+                console.log('✅ Composer cleared successfully');
+              } else {
+                console.log(`⚠️ Composer clearing failed: ${clearResult.error}`);
+              }
+            } catch (clearError) {
+              console.log(`⚠️ Composer clearing error: ${clearError.message}`);
+            }
+
             // Find and interact with tweet compose area
             const textareaResult = await this.findAndFillTextarea(content);
             if (!textareaResult.success) {
@@ -846,6 +859,75 @@ export class BrowserTweetPoster {
       return null;
     } catch {
       return null;
+    }
+  }
+
+  /**
+   * 🧹 Clear composer content to prevent duplicates on retries
+   */
+  async clearComposer(): Promise<{ success: boolean; error?: string }> {
+    try {
+      if (!this.page) {
+        return { success: false, error: 'No page available' };
+      }
+
+      // Standard textarea selectors used in findAndFillTextarea
+      const textareaSelectors = [
+        'div[aria-label="Post text"]',
+        'div[contenteditable="true"]',
+        'div[data-testid="tweetTextarea_0"]',
+        'div[data-testid="tweetTextarea"]',
+        'div[role="textbox"]',
+        'textarea[placeholder*="happening"]'
+      ];
+
+      let cleared = false;
+
+      for (const selector of textareaSelectors) {
+        try {
+          await this.page.waitForSelector(selector, { timeout: 3000 });
+          const textarea = this.page.locator(selector).first();
+          
+          if (await textarea.isVisible()) {
+            // Multiple clearing methods
+            await textarea.click();
+            await this.page.waitForTimeout(500);
+            
+            // Method 1: Select all and delete
+            await this.page.keyboard.press('Control+A');
+            await this.page.keyboard.press('Delete');
+            
+            // Method 2: Fill with empty string
+            await textarea.fill('');
+            
+            // Method 3: Clear via evaluation
+            await this.page.evaluate((sel) => {
+              const el = document.querySelector(sel);
+              if (el) {
+                (el as any).value = '';
+                (el as any).textContent = '';
+                (el as any).innerText = '';
+              }
+            }, selector);
+
+            cleared = true;
+            console.log(`🧹 Cleared composer using selector: ${selector}`);
+            break;
+          }
+        } catch (selectorError) {
+          // Continue to next selector
+          continue;
+        }
+      }
+
+      if (!cleared) {
+        return { success: false, error: 'Could not find composer to clear' };
+      }
+
+      return { success: true };
+
+    } catch (error) {
+      return { success: false, error: error.message };
     }
   }
 
