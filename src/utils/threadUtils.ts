@@ -10,6 +10,23 @@ export interface ThreadParseResult {
 }
 
 /**
+ * 🧹 Clean corporate/template formatting from single tweets
+ */
+export function cleanSingleTweet(content: string): string {
+  return content
+    .replace(/^\*\*[^*]+\*\*\s*/, '') // Remove **bold headers**
+    .replace(/^Research_Bomb\s+Thread[^:\n]*:?\s*/i, '') // Remove "Research_Bomb Thread:"
+    .replace(/^Thread[^:\n]*:?\s*/i, '') // Remove "Thread:"
+    .replace(/^Here's\s+the\s+breakdown[^:\n]*:?\s*/i, '') // Remove "Here's the breakdown:"
+    .replace(/^Tweet\s*\d+\s*[:\/]\s*/i, '') // Remove "Tweet 1:"
+    .replace(/^\d+\s*[:\/]\s*/, '') // Remove "1:"
+    .replace(/\*{2,}/g, '') // Remove multiple asterisks
+    .replace(/^\s*[-•]\s*/, '') // Remove bullet points at start
+    .replace(/\.\.\.$/, '') // Remove trailing ...
+    .trim();
+}
+
+/**
  * Parse numbered thread content like:
  * "**Thread: Title**
  * Tweet 1: First tweet content
@@ -20,15 +37,17 @@ export interface ThreadParseResult {
 export function parseNumberedThread(raw: string): ThreadParseResult {
   const originalContent = raw;
   
-  // Remove the optional **Thread:** header and clean up
+  // Remove the optional **Thread:** header and clean up more aggressively
   const cleaned = raw
     .replace(/^\*\*?Thread[^:\n]*:?\*\*?/i, '')
     .replace(/^\s*Here are \d+[^:\n]*:?\s*/i, '') // Remove "Here are 4 surprising truths:"
+    .replace(/^\s*\d+\s+evidence-based\s+ways[^:\n]*:?\s*/i, '') // Remove "5 evidence-based ways to..."
+    .replace(/^\s*\d+\s+ways[^:\n]*:?\s*/i, '') // Remove "3 ways to..."
     .trim();
 
-  // Split on "Tweet X:" headers (case insensitive, flexible spacing)
+  // Split on "Tweet X:" headers (case insensitive, flexible spacing and numbering)
   const parts = cleaned
-    .split(/(?:\n|^)\s*Tweet\s*\d+\s*:\s*/i)
+    .split(/(?:\n|^)\s*(?:Tweet\s*\d+\s*[:\/]|\d+\s*[:\/])\s*/i)
     .map(part => part.trim())
     .filter(Boolean);
 
@@ -36,15 +55,20 @@ export function parseNumberedThread(raw: string): ThreadParseResult {
   const isThread = parts.length > 1;
   
   if (isThread) {
-    // Clean up each tweet part
+    // Clean up each tweet part more aggressively
     const tweets = parts.map(tweet => {
       return tweet
         .replace(/^\*\*/, '') // Remove leading **
         .replace(/\*\*$/, '') // Remove trailing **
         .replace(/^"/, '')    // Remove leading quote
         .replace(/"$/, '')    // Remove trailing quote
+        .replace(/^\d+\/\s*/, '') // Remove "1/ " numbering
+        .replace(/^\d+\)\s*/, '') // Remove "1) " numbering
+        .replace(/^\d+\.\s*/, '') // Remove "1. " numbering
+        .replace(/^[-•]\s*/, '') // Remove bullet points
+        .replace(/\s*\.\.\.$/, '') // Remove trailing ...
         .trim();
-    }).filter(tweet => tweet.length > 0);
+    }).filter(tweet => tweet.length > 0 && tweet.length > 10); // Filter out very short fragments
 
     console.log(`🧵 Parsed thread: ${tweets.length} tweets from numbered content`);
     return {

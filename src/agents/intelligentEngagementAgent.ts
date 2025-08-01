@@ -500,7 +500,7 @@ export class IntelligentEngagementAgent {
       
       // TODO: Implement proper database storage when engagement_history table is created
       // For now, just log the engagement for monitoring
-      
+
     } catch (error) {
       console.error('❌ Failed to record engagement:', error);
     }

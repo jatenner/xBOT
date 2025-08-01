@@ -202,12 +202,22 @@ export class AutonomousPostingEngine {
         }
         
         candidateContent = contentResult.content;
-        console.log(`📝 Generated candidate: "${candidateContent.substring(0, 100)}..."`);
+        
+        // 🔧 Safe string conversion for logging - handle both string and string[] 
+        const contentPreview = Array.isArray(candidateContent) 
+          ? candidateContent[0] || 'Empty array'
+          : (typeof candidateContent === 'string' ? candidateContent : String(candidateContent));
+        console.log(`📝 Generated candidate: "${contentPreview.substring(0, 100)}..."`);
+        
+        // 🔧 Convert candidateContent to string for uniqueness check
+        const contentForUniqueness = Array.isArray(candidateContent)
+          ? candidateContent.join(' ')
+          : (typeof candidateContent === 'string' ? candidateContent : String(candidateContent));
         
         // Enhanced semantic uniqueness check (0.75 threshold)
         const { enhancedSemanticUniqueness } = await import('../utils/enhancedSemanticUniqueness');
         uniquenessResult = await enhancedSemanticUniqueness.checkUniqueness(
-          candidateContent,
+          contentForUniqueness,
           contentGenerationAttempts
         );
 
@@ -327,7 +337,13 @@ export class AutonomousPostingEngine {
 
       // Step 4: Store semantic embedding and core idea
       console.log('🧠 Storing semantic embedding and core idea...');
-      if (candidateContent && uniquenessResult?.analysis) {
+      
+      // Convert final content to string for embedding storage
+      const finalContentString = Array.isArray(contentResult.content)
+        ? contentResult.content.join(' ')
+        : (typeof contentResult.content === 'string' ? contentResult.content : String(contentResult.content));
+        
+      if (finalContentString && uniquenessResult?.analysis) {
         const { enhancedSemanticUniqueness } = await import('../utils/enhancedSemanticUniqueness');
         if (uniquenessResult.analysis.embedding.length > 0) {
           await enhancedSemanticUniqueness.storeEmbedding(
@@ -434,11 +450,17 @@ export class AutonomousPostingEngine {
               eliteResult.content.join('\n\n') : 
               (typeof eliteResult.content === 'string' ? eliteResult.content : JSON.stringify(eliteResult.content));
 
-            // 🧵 Parse for thread content
-            const { parseNumberedThread } = await import('../utils/threadUtils');
+            // 🧵 Parse for thread content and clean formatting
+            const { parseNumberedThread, cleanSingleTweet } = await import('../utils/threadUtils');
             const threadResult = parseNumberedThread(contentString);
             
-            const finalContent = threadResult.isThread ? threadResult.tweets : contentString;
+            let finalContent: string | string[];
+            if (threadResult.isThread) {
+              finalContent = threadResult.tweets;
+            } else {
+              // Clean single tweet of corporate formatting
+              finalContent = cleanSingleTweet(contentString);
+            }
             const contentType = threadResult.isThread ? 'thread' : 'tweet';
 
             console.log(`✅ ELITE SUCCESS: Generated viral content`);
@@ -505,11 +527,17 @@ export class AutonomousPostingEngine {
         bulletproofResult.content.join('\n\n') : 
         (typeof bulletproofResult.content === 'string' ? bulletproofResult.content : String(bulletproofResult.content));
 
-      // 🧵 Parse for thread content
-      const { parseNumberedThread } = await import('../utils/threadUtils');
+      // 🧵 Parse for thread content and clean formatting
+      const { parseNumberedThread, cleanSingleTweet } = await import('../utils/threadUtils');
       const threadResult = parseNumberedThread(contentString);
       
-      const finalContent = threadResult.isThread ? threadResult.tweets : contentString;
+      let finalContent: string | string[];
+      if (threadResult.isThread) {
+        finalContent = threadResult.tweets;
+      } else {
+        // Clean single tweet of corporate formatting
+        finalContent = cleanSingleTweet(contentString);
+      }
       const contentType = threadResult.isThread ? 'thread' : 'tweet';
 
       console.log(`✅ Bulletproof content generated: "${typeof contentString === 'string' ? contentString.substring(0, 100) : String(contentString).substring(0, 100)}..."`);
@@ -706,6 +734,14 @@ export class AutonomousPostingEngine {
             console.log(`✅ Thread posted successfully: ${threadResult.tweetIds.length} tweets`);
             console.log(`🆔 Thread root ID: ${threadResult.tweetIds[0]}`);
             
+            // 🛡️ Record posted thread to prevent future duplicates
+            try {
+              const { duplicatePostPrevention } = await import('../utils/duplicatePostPrevention');
+              await duplicatePostPrevention.recordPostedContent(content, threadResult.tweetIds[0]);
+            } catch (recordError) {
+              console.warn('⚠️ Failed to record thread for duplicate prevention:', recordError.message);
+            }
+            
             return {
               success: true,
               tweet_id: threadResult.tweetIds[0], // Return root tweet ID
@@ -736,7 +772,25 @@ export class AutonomousPostingEngine {
       // 📝 SINGLE TWEET HANDLING (original logic)
       console.log('🔍 Pre-posting content validation...');
       
-      // Step 1: Clean content validation
+      // Step 1: Duplicate content check
+      console.log('🛡️ Checking for duplicate content...');
+      const { duplicatePostPrevention } = await import('../utils/duplicatePostPrevention');
+      const duplicateCheck = await duplicatePostPrevention.checkForDuplicate(content);
+      
+      if (duplicateCheck.isDuplicate) {
+        console.error(`❌ Duplicate content detected: ${duplicateCheck.reason}`);
+        console.error(`📝 Similar content: "${duplicateCheck.similarContent?.substring(0, 100)}..."`);
+        return {
+          success: false,
+          error: `Duplicate content: ${duplicateCheck.reason}`,
+          was_posted: false,
+          confirmed: false
+        };
+      }
+      
+      console.log(`✅ Content is unique (hash: ${duplicateCheck.contentHash.substring(0, 16)}...)`);
+
+      // Step 2: Clean content validation
       if (!isCleanStandaloneContent(content)) {
         console.error('❌ Content failed clean posting validation');
         return {
@@ -838,6 +892,13 @@ export class AutonomousPostingEngine {
         console.log(`   🆔 Tweet ID: ${result.tweet_id}`);
         console.log(`   ✅ Confirmed: ${result.confirmed ? 'YES' : 'NO'}`);
         console.log(`   📝 Was Posted: ${result.was_posted ? 'YES' : 'NO'}`);
+        
+        // 🛡️ Record posted content to prevent future duplicates
+        try {
+          await duplicatePostPrevention.recordPostedContent(content, result.tweet_id);
+        } catch (recordError) {
+          console.warn('⚠️ Failed to record post for duplicate prevention:', recordError.message);
+        }
         
         return {
           success: true,
