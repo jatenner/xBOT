@@ -51,10 +51,9 @@ BEGIN
     END IF;
 END $$;
 
--- Update migration history
-INSERT INTO migration_history (filename, applied_at, notes) 
+-- Update migration history (without notes column)
+INSERT INTO migration_history (filename, applied_at) 
 VALUES (
     '20250201_fix_learning_posts_column.sql',
-    NOW(),
-    'Added predicted_engagement column and fixed tweet_id type'
+    NOW()
 ) ON CONFLICT (filename) DO NOTHING;
