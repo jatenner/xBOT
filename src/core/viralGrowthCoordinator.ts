@@ -393,8 +393,11 @@ export class ViralGrowthCoordinator {
       });
     } catch (error) {
       // Ignore duplicate key errors - they're harmless for dashboard updates
-      if (error.message.includes('duplicate key') || error.message.includes('already exists')) {
-        console.log('📊 Dashboard metrics already updated (duplicate key ignored)');
+      if (error.message?.includes('duplicate key') || 
+          error.message?.includes('already exists') || 
+          error.code === '23505') {
+        // Silently ignore - UPSERT should handle this but sometimes logs still show
+        return;
       } else {
         console.warn('⚠️ Could not update dashboard:', error.message);
       }
