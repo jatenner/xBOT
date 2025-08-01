@@ -44,6 +44,13 @@ export class ThreadPostingAgent {
     try {
       console.log(`📝 Posting ${Array.isArray(generatedPost.content) ? 'thread' : 'single tweet'} for @SignalAndSynapse...`);
 
+      // Initialize Twitter client if needed
+      console.log('🔐 Ensuring Twitter client is initialized...');
+      const clientReady = await xClient.initialize();
+      if (!clientReady) {
+        throw new Error('Failed to initialize Twitter client - check API credentials');
+      }
+
       // Validate content
       if (!this.validateContent(generatedPost.content)) {
         throw new Error('Content validation failed');
