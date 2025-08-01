@@ -268,14 +268,14 @@ ASSESSMENT:`;
 
     // Combine AI results with safety assessment
     const combinedConfidence = Math.min(aiCheck.confidence * 0.9, 0.95); // Slight reduction for AI uncertainty
-    const shouldPost = aiCheck.isValid && combinedConfidence > 0.15;
+    const shouldPost = aiCheck.isValid && combinedConfidence > 0.1; // Lower threshold for health content
     
     let riskLevel: 'low' | 'medium' | 'high' = 'low';
     if (combinedConfidence < 0.4) riskLevel = 'high';
     else if (combinedConfidence < 0.7) riskLevel = 'medium';
 
     // In strict mode, require higher confidence (but be reasonable for health content)
-    const strictThreshold = request.strictMode ? 0.4 : 0.2;
+    const strictThreshold = request.strictMode ? 0.25 : 0.15; // More lenient thresholds
     const finalShouldPost = shouldPost && combinedConfidence >= strictThreshold;
 
     return {

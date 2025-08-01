@@ -3,7 +3,8 @@
  * Sophisticated system for posting single tweets and multi-tweet threads
  */
 
-import { xClient } from '../utils/xClient';
+// Import browser automation instead of API client
+import { BrowserTweetPoster } from '../utils/browserTweetPoster';
 // Database operations simplified for production reliability
 import { GeneratedPost } from './enhancedContentGenerator';
 import { ProductionEnvValidator } from '../utils/productionEnvValidator';
@@ -36,6 +37,11 @@ export class ThreadPostingAgent {
   private readonly TWEET_DELAY_MS = 3000; // 3 seconds between tweets in thread
   private readonly MAX_THREAD_LENGTH = 25; // Twitter's max thread length
   private readonly CHARACTER_LIMIT = 280;
+  private browserPoster: BrowserTweetPoster;
+
+  constructor() {
+    this.browserPoster = new BrowserTweetPoster();
+  }
 
   /**
    * 🚀 MAIN POSTING FUNCTION - HANDLES BOTH SINGLE TWEETS AND THREADS
@@ -44,12 +50,9 @@ export class ThreadPostingAgent {
     try {
       console.log(`📝 Posting ${Array.isArray(generatedPost.content) ? 'thread' : 'single tweet'} for @SignalAndSynapse...`);
 
-      // Initialize Twitter client if needed
-      console.log('🔐 Ensuring Twitter client is initialized...');
-      const clientReady = await xClient.initialize();
-      if (!clientReady) {
-        throw new Error('Failed to initialize Twitter client - check API credentials');
-      }
+      // Initialize browser automation
+      console.log('🔐 Initializing browser automation...');
+      await this.browserPoster.initialize();
 
       // Validate content
       if (!this.validateContent(generatedPost.content)) {
@@ -103,18 +106,19 @@ export class ThreadPostingAgent {
       // Truncate if necessary
       const truncatedContent = this.truncateContent(content);
       
-      // Post tweet
-      const tweetResult = await xClient.postTweet(truncatedContent);
+      // Post tweet using browser automation
+      await this.browserPoster.initialize();
+      const tweetResult = await this.browserPoster.postTweet(truncatedContent);
       
-      if (!tweetResult.success || !tweetResult.tweetId) {
+      if (!tweetResult.success || !tweetResult.tweet_id) {
         throw new Error(`Tweet posting failed: ${tweetResult.error}`);
       }
 
-      console.log(`✅ Tweet posted successfully: ${tweetResult.tweetId}`);
+      console.log(`✅ Tweet posted successfully via browser: ${tweetResult.tweet_id}`);
 
       return {
         success: true,
-        tweetIds: [tweetResult.tweetId],
+        tweetIds: [tweetResult.tweet_id],
         metadata: {
           post_type: 'single_tweet',
           tweet_count: 1,
@@ -150,29 +154,23 @@ export class ThreadPostingAgent {
         console.log(`📝 Posting tweet ${i + 1}/${content.length}...`);
         
         try {
-          // Post tweet (for threads, we'll use postTweet for the first tweet and postReply for subsequent ones)
-          let tweetResult;
-          
+          // Use browser automation for all thread tweets
           if (i === 0) {
-            // First tweet in thread
-            tweetResult = await xClient.postTweet(truncatedTweet);
-          } else {
-            // Reply to previous tweet
-            tweetResult = await xClient.postReply(truncatedTweet, replyToId!);
-            // Convert postReply response format to match postTweet format
-            if (tweetResult.success && tweetResult.data) {
-              tweetResult.tweetId = tweetResult.data.id || tweetResult.data.data?.id;
-            }
+            // Initialize browser for first tweet
+            await this.browserPoster.initialize();
           }
           
-          if (!tweetResult.success || !tweetResult.tweetId) {
+          // Post tweet using browser automation
+          const tweetResult = await this.browserPoster.postTweet(truncatedTweet);
+          
+          if (!tweetResult.success || !tweetResult.tweet_id) {
             throw new Error(`Tweet ${i + 1} posting failed: ${tweetResult.error}`);
           }
 
-          tweetIds.push(tweetResult.tweetId);
-          replyToId = tweetResult.tweetId; // Next tweet will reply to this one
+          tweetIds.push(tweetResult.tweet_id);
+          replyToId = tweetResult.tweet_id; // Next tweet will reply to this one
           
-          console.log(`✅ Tweet ${i + 1}/${content.length} posted: ${tweetResult.tweetId}`);
+          console.log(`✅ Tweet ${i + 1}/${content.length} posted via browser: ${tweetResult.tweet_id}`);
 
           // Wait between tweets (except for last tweet)
           if (i < content.length - 1) {
