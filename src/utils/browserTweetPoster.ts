@@ -945,6 +945,131 @@ export class BrowserTweetPoster {
     }
   }
 
+  /**
+   * 💬 POST REPLY TO TWEET (for threads)
+   */
+  async postReply(content: string, replyToTweetId: string): Promise<{ success: boolean; tweet_id: string; error?: string }> {
+    try {
+      console.log(`💬 Posting reply to tweet ${replyToTweetId}...`);
+      
+      if (!this.page) {
+        throw new Error('Browser not initialized');
+      }
+
+      // Navigate to the tweet we want to reply to
+      const tweetUrl = `https://x.com/i/status/${replyToTweetId}`;
+      console.log(`🔗 Navigating to: ${tweetUrl}`);
+      await this.page.goto(tweetUrl, { waitUntil: 'networkidle' });
+      await this.page.waitForTimeout(2000);
+
+      // Find and click the reply button
+      const replyButtonSelectors = [
+        '[data-testid="reply"]',
+        'button[aria-label*="Reply"]',
+        '[role="button"][aria-label*="Reply"]'
+      ];
+
+      let replyClicked = false;
+      for (const selector of replyButtonSelectors) {
+        try {
+          await this.page.waitForSelector(selector, { timeout: 5000 });
+          const replyButton = this.page.locator(selector).first();
+          
+          if (await replyButton.isVisible()) {
+            await replyButton.click();
+            console.log(`🔘 Clicked reply button: ${selector}`);
+            replyClicked = true;
+            break;
+          }
+        } catch {
+          continue;
+        }
+      }
+
+      if (!replyClicked) {
+        throw new Error('Could not find or click reply button');
+      }
+
+      // Wait for reply composer to appear
+      await this.page.waitForTimeout(1500);
+
+      // Find and fill the reply textarea
+      const replyTextareaSelectors = [
+        'div[aria-label="Post text"]',
+        'div[data-testid="tweetTextarea_0"]',
+        'div[contenteditable="true"]',
+        'div[role="textbox"]'
+      ];
+
+      let textareaFilled = false;
+      for (const selector of replyTextareaSelectors) {
+        try {
+          await this.page.waitForSelector(selector, { timeout: 5000 });
+          const textarea = this.page.locator(selector).first();
+          
+          if (await textarea.isVisible()) {
+            await textarea.click();
+            await this.page.waitForTimeout(500);
+            await textarea.fill(content);
+            console.log(`📝 Filled reply textarea: ${selector}`);
+            textareaFilled = true;
+            break;
+          }
+        } catch {
+          continue;
+        }
+      }
+
+      if (!textareaFilled) {
+        throw new Error('Could not find or fill reply textarea');
+      }
+
+      // Wait a moment for content to register
+      await this.page.waitForTimeout(1000);
+
+      // Find and click the reply post button
+      const postButtonSelectors = [
+        '[data-testid="tweetButton"]',
+        '[data-testid="tweetButtonInline"]',
+        'button[aria-label*="Reply"]'
+      ];
+
+      let posted = false;
+      for (const selector of postButtonSelectors) {
+        try {
+          await this.page.waitForSelector(selector, { timeout: 5000 });
+          const postButton = this.page.locator(selector).first();
+          
+          if (await postButton.isVisible() && !(await postButton.isDisabled())) {
+            await postButton.click();
+            console.log(`🚀 Clicked reply post button: ${selector}`);
+            posted = true;
+            break;
+          }
+        } catch {
+          continue;
+        }
+      }
+
+      if (!posted) {
+        throw new Error('Could not find or click reply post button');
+      }
+
+      // Wait for reply to post
+      await this.page.waitForTimeout(3000);
+
+      // Try to get the new tweet ID
+      const newTweetId = await this.extractTweetId() || `reply_${Date.now()}`;
+
+      console.log(`✅ Reply posted successfully: ${newTweetId}`);
+      return { success: true, tweet_id: newTweetId };
+
+    } catch (error) {
+      console.error('❌ Reply posting failed:', error);
+      return { success: false, tweet_id: `reply_error_${Date.now()}`, error: error.message };
+    }
+  }
+
   async cleanup(): Promise<void> {
     try {
       console.log('🧹 Cleaning up browser resources...');

@@ -263,10 +263,12 @@ function enhanceFollowupTweet(tweet: string, index: number): string {
   let enhanced = tweet;
   
   // 🔢 Ensure professional thread numbering (1/ format) - only if not already numbered
-  if (!/^(\d+[\.\/]|\d+\)|[A-Z]\))/g.test(enhanced.trim())) {
+  const hasNumbering = /^(\d+[\.\/]|\d+\)|[A-Z]\))/g.test(enhanced.trim());
+  
+  if (!hasNumbering) {
     enhanced = `${index}/ ${enhanced}`;
   } else {
-    // Replace existing numbering with clean 1/ format
+    // Replace existing numbering with consistent format (avoid double numbering)
     enhanced = enhanced.replace(/^(\d+[\.\)]|\d+\/)\s*/, `${index}/ `);
   }
   

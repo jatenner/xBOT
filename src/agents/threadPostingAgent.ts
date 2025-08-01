@@ -154,14 +154,21 @@ export class ThreadPostingAgent {
         console.log(`📝 Posting tweet ${i + 1}/${content.length}...`);
         
         try {
-          // Use browser automation for all thread tweets
-          if (i === 0) {
-            // Initialize browser for first tweet
-            await this.browserPoster.initialize();
-          }
+          let tweetResult;
           
-          // Post tweet using browser automation
-          const tweetResult = await this.browserPoster.postTweet(truncatedTweet);
+          if (i === 0) {
+            // Initialize browser and post first tweet
+            await this.browserPoster.initialize();
+            tweetResult = await this.browserPoster.postTweet(truncatedTweet);
+            console.log(`✅ First tweet posted: ${tweetResult.tweet_id}`);
+          } else {
+            // Reply to previous tweet to create thread
+            if (!replyToId) {
+              throw new Error('No previous tweet ID to reply to');
+            }
+            tweetResult = await this.browserPoster.postReply(truncatedTweet, replyToId);
+            console.log(`✅ Thread reply ${i + 1} posted: ${tweetResult.tweet_id}`);
+          }
           
           if (!tweetResult.success || !tweetResult.tweet_id) {
             throw new Error(`Tweet ${i + 1} posting failed: ${tweetResult.error}`);
@@ -169,8 +176,6 @@ export class ThreadPostingAgent {
 
           tweetIds.push(tweetResult.tweet_id);
           replyToId = tweetResult.tweet_id; // Next tweet will reply to this one
-          
-          console.log(`✅ Tweet ${i + 1}/${content.length} posted via browser: ${tweetResult.tweet_id}`);
 
           // Wait between tweets (except for last tweet)
           if (i < content.length - 1) {
