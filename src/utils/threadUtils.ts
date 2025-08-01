@@ -3,7 +3,8 @@
  * Converts numbered thread drafts into proper Twitter thread arrays
  */
 
-import { formatTweetForReadability, addSmartHashtags } from './tweetFormatting';
+import { formatTweetForReadability } from './tweetFormatting';
+import { ProfessionalTweetFormatter } from './professionalTweetFormatter';
 
 export interface ThreadParseResult {
   isThread: boolean;
@@ -326,16 +327,13 @@ function enhanceHookTweet(tweet: string, isPartOfThread: boolean = false): strin
     .replace(/science-backed/, 'science-backed')
     .replace(/\!+$/, '') // Remove trailing exclamations
   
-  // 📱 SMART FORMATTING: Break long content into readable chunks
-  enhanced = formatTweetForReadability(enhanced);
+  // 🎯 PROFESSIONAL FORMATTING: Apply elite-level formatting
+  enhanced = ProfessionalTweetFormatter.formatTweet(enhanced);
   
   // ⬇️ Add thread indicator ONLY if this is actually part of a thread
   if (isPartOfThread && !enhanced.includes('?') && !enhanced.includes('👇') && !enhanced.includes('🧵')) {
     enhanced += '\n\n👇';
   }
-  
-  // 🏷️ Add strategic hashtags
-  enhanced = addSmartHashtags(enhanced);
   
   return enhanced.trim();
 }
@@ -409,41 +407,24 @@ function enhanceFollowupTweet(tweet: string, index: number): string {
 function enhanceFollowupTweetContent(tweet: string): string {
   let enhanced = tweet;
   
-  // 📱 Apply smart formatting for readability first
-  enhanced = formatTweetForReadability(enhanced);
+  // 🎯 PROFESSIONAL FORMATTING: Apply elite-level formatting
+  enhanced = ProfessionalTweetFormatter.formatTweet(enhanced);
   
-  // 🎨 Transform corporate **bold** formatting into Twitter-native format with emojis
+  // 🎨 Health-specific enhancements for thread content
   enhanced = enhanced
-    .replace(/\*\*([^*]+)\*\*/g, '$1:') // Convert **Hydration** to Hydration:
-    .replace(/Morning Sunlight:/i, '☀️ **Morning Sunlight:**')
-    .replace(/Breathwork:/i, '🫁 **Breathwork:**')
-    .replace(/Intermittent Fasting:/i, '⏱️ **Intermittent Fasting:**')
-    .replace(/Sleep:/i, '😴 **Sleep:**')
-    .replace(/Exercise:/i, '💪 **Exercise:**')
-    .replace(/Nutrition:/i, '🥗 **Nutrition:**')
-    .replace(/Hydration:/i, '💧 **Hydration:**')
+    .replace(/Morning Sunlight:/i, '☀️ Morning Sunlight:')
+    .replace(/Breathwork:/i, '🫁 Breathwork:')
+    .replace(/Intermittent Fasting:/i, '⏱️ Intermittent Fasting:')
+    .replace(/Sleep:/i, '😴 Sleep:')
+    .replace(/Exercise:/i, '💪 Exercise:')
+    .replace(/Nutrition:/i, '🥗 Nutrition:')
+    .replace(/Hydration:/i, '💧 Hydration:')
     
   // 🎯 Improve specific health content formatting
   enhanced = enhanced
     .replace(/(\d+)\s*mins?\s*of\s*/gi, '$1 minutes of ')
     .replace(/30\s*mins?\s*of\s*waking/gi, '30 minutes of waking')
-    .replace(/within 30 minutes/gi, 'within **30 minutes**')
-    .replace(/(\d+)%/g, '**$1%**') // Emphasize percentages
-    
-  // 🚀 Ensure actionable language for tips
-  enhanced = enhanced
-    .replace(/^(\d+[\.\/]|\d+\)|[\u0030-\u0039]\uFE0F?\u20E3|→)?\s*Consider\s+/i, '$1Try ')
-    .replace(/^(\d+[\.\/]|\d+\)|[\u0030-\u0039]\uFE0F?\u20E3|→)?\s*You\s+should\s+/i, '$1')
-    .replace(/^(\d+[\.\/]|\d+\)|[\u0030-\u0039]\uFE0F?\u20E3|→)?\s*It\s+is\s+recommended\s+to\s+/i, '$1')
-    .replace(/per day/g, 'daily')
-    .replace(/\s+—\s+aim\s+for/, ' (aim for')
-    .replace(/\s+—\s+/, ' - ')
-    
-  // 📱 Clean up excessive spacing and formatting
-  enhanced = enhanced
-    .replace(/\s+/g, ' ') // Multiple spaces to single
-    .replace(/\n\s*\n\s*\n/g, '\n\n') // Max 2 line breaks
-    .trim();
+    .replace(/within 30 minutes/gi, 'within 30 minutes')
     
   return enhanced;
 }

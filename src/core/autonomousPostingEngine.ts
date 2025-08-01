@@ -26,6 +26,8 @@ import { isEmergencyBlockedContent } from '../config/emergencyContentValidation'
 import { isNuclearBlockedContent } from '../config/nuclearContentValidation';
 import { analyzeContentQuality, shouldPostContent } from '../utils/contentQualityAnalyzer';
 import { bulletproofContentGenerator } from '../utils/bulletproofContentGenerator';
+import { IntelligentPostingOptimizer } from '../utils/intelligentPostingOptimizer';
+import { ProfessionalTweetFormatter } from '../utils/professionalTweetFormatter';
 
 interface PostingDecision {
   should_post: boolean;

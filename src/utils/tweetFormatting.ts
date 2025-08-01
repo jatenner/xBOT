@@ -35,66 +35,33 @@ export function formatTweetForReadability(content: string): string {
 }
 
 /**
- * 🏷️ ADD SMART HASHTAGS - Strategic hashtag placement for discoverability
+ * 🎨 PROFESSIONAL EMOJI ENHANCEMENT - Thoughtful, strategic emoji usage
  */
-export function addSmartHashtags(content: string): string {
-  // Don't add hashtags if already present
-  if (content.includes('#')) {
-    return content;
+export function addProfessionalEmojis(content: string): string {
+  // Only add emojis if they genuinely enhance the message
+  let enhanced = content;
+  
+  // 🧠 Brain/cognitive content - only if discussing mental performance
+  if (/mental clarity|cognitive|brain function|focus/i.test(content) && !content.includes('🧠')) {
+    enhanced = enhanced.replace(/^/, '🧠 ');
   }
   
-  const hashtags: string[] = [];
-  
-  // 🎯 Topic-based hashtags (max 2-3 for health content)
-  if (/mental|brain|cognitive|focus|memory/i.test(content)) {
-    hashtags.push('#BrainHealth');
-  }
-  if (/sleep|rest|recovery/i.test(content)) {
-    hashtags.push('#SleepOptimization');
-  }
-  if (/nutrition|diet|food|eating/i.test(content)) {
-    hashtags.push('#HealthyEating');
-  }
-  if (/exercise|workout|fitness|training/i.test(content)) {
-    hashtags.push('#FitnessScience');
-  }
-  if (/longevity|aging|lifespan/i.test(content)) {
-    hashtags.push('#Longevity');
-  }
-  if (/supplement|vitamin|mineral/i.test(content)) {
-    hashtags.push('#Supplements');
-  }
-  if (/stress|anxiety|cortisol/i.test(content)) {
-    hashtags.push('#StressManagement');
-  }
-  if (/immune|health|wellness/i.test(content)) {
-    hashtags.push('#WellnessTips');
-  }
-  if (/study|research|science/i.test(content)) {
-    hashtags.push('#HealthScience');
+  // 🔬 Scientific studies - only for research-backed claims
+  else if (/study shows|research reveals|scientists found/i.test(content) && !content.includes('🔬')) {
+    enhanced = enhanced.replace(/^/, '🔬 ');
   }
   
-  // 🔬 Add general hashtags if no specific ones match
-  if (hashtags.length === 0) {
-    hashtags.push('#Health');
+  // 💡 Insights/discoveries - for breakthrough information
+  else if (/did you know|breakthrough|discovery/i.test(content) && !content.includes('💡')) {
+    enhanced = enhanced.replace(/^/, '💡 ');
   }
   
-  // 📈 Always add a growth/viral hashtag
-  const viralTags = ['#HealthHacks', '#WellnessTips', '#HealthyLiving'];
-  const randomViralTag = viralTags[Math.floor(Math.random() * viralTags.length)];
-  if (!hashtags.includes(randomViralTag)) {
-    hashtags.push(randomViralTag);
+  // ⚡ Energy/performance - for energy-related content
+  else if (/energy|performance|boost.*by.*%/i.test(content) && !content.includes('⚡')) {
+    enhanced = enhanced.replace(/^/, '⚡ ');
   }
   
-  // 🎯 Limit to 2-3 hashtags max (Twitter best practice)
-  const selectedTags = hashtags.slice(0, 3);
-  
-  // 📍 Add hashtags at the end with proper spacing
-  if (selectedTags.length > 0) {
-    return content + '\n\n' + selectedTags.join(' ');
-  }
-  
-  return content;
+  return enhanced;
 }
 
 /**
@@ -172,10 +139,7 @@ export function formatFinalTweet(content: string, isFirstInThread: boolean = fal
   // 📱 Apply readability formatting
   formatted = formatTweetForReadability(formatted);
   
-  // 🏷️ Add hashtags (only to first tweet in thread to avoid spam)
-  if (isFirstInThread || !content.includes('2️⃣')) {
-    formatted = addSmartHashtags(formatted);
-  }
+  // Note: No hashtags - they look amateurish for professional health content
   
   return formatted;
 }
