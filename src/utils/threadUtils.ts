@@ -69,9 +69,9 @@ export function parseNumberedThread(raw: string): ThreadParseResult {
     .replace(/^\s*Here's\s+the\s+breakdown[^:\n]*:?\s*\n?/im, '')
     .trim();
 
-  // 🧵 IMPROVED SPLIT - Split on Tweet markers and clean thoroughly
+  // 🧵 IMPROVED SPLIT - Split on Tweet markers and clean thoroughly  
   const parts = cleaned
-    .split(/(?:\n|^)\s*(?:["""'']|[-•])?\s*(?:Tweet\s*\d+\s*[:\/]|\d+\s*[:\/])\s*/im)
+    .split(/(?:\n|^)\s*(?:["""''`]|[-•])?\s*(?:Tweet\s*\d+\s*[:\/]|\d+\s*[:\/])\s*/im)
     .map(part => part.trim())
     .filter(part => {
       // Filter out empty parts and standalone header fragments
@@ -91,10 +91,11 @@ export function parseNumberedThread(raw: string): ThreadParseResult {
         .replace(/^\*{1,2}/, '') // Remove leading * or **
         .replace(/\*{1,2}$/, '') // Remove trailing * or **
         .replace(/\*{2,}/g, '') // Remove any remaining ** bold markers
-        .replace(/^["""'']/, '') // Remove leading quotes (smart quotes)
-        .replace(/["""'']$/, '') // Remove trailing quotes (smart quotes)
+        .replace(/^["""''`]\s*/, '') // Remove leading quotes (smart quotes + backticks)
+        .replace(/\s*["""''`]$/, '') // Remove trailing quotes (smart quotes + backticks)
+        .replace(/^["""''`].*?Tweet\s*\d+\s*[:\/]/i, '') // Remove quote-wrapped "Tweet X:" entirely
         .replace(/^\d+\/\s*/, '') // Remove "1/ " numbering
-        .replace(/^\d+\)\s*/, '') // Remove "1) " numbering
+        .replace(/^\d+\)\s*/, '') // Remove "1) " numbering  
         .replace(/^\d+\.\s*/, '') // Remove "1. " numbering
         .replace(/^[-•]\s*/, '') // Remove bullet points
         .replace(/\s*\.\.\.$/, '') // Remove trailing ...
@@ -174,31 +175,72 @@ export function cleanThreadContent(tweets: string[]): string[] {
 }
 
 /**
- * 🚀 ENHANCE TWEET CONTENT FOR VIRAL POTENTIAL
- * Transform tweets to match popular health/tech account styles
+ * 🔢 Convert number to emoji format for stylish threading
  */
-export function enhanceTwitterContent(content: string | string[]): string | string[] {
+function getEmojiNumber(num: number): string {
+  const emojiMap: { [key: number]: string } = {
+    1: '1️⃣',
+    2: '2️⃣', 
+    3: '3️⃣',
+    4: '4️⃣',
+    5: '5️⃣',
+    6: '6️⃣',
+    7: '7️⃣',
+    8: '8️⃣',
+    9: '9️⃣',
+    10: '🔟'
+  };
+  
+  return emojiMap[num] || `${num}.`; // Fallback to number with dot for 11+
+}
+
+/**
+ * 🚀 ENHANCE TWEET CONTENT FOR VIRAL POTENTIAL
+ * Transform tweets to match popular health/tech account styles with adaptive styling
+ */
+export async function enhanceTwitterContent(content: string | string[], isThread?: boolean): Promise<string | string[]> {
   if (Array.isArray(content)) {
-    // Handle threads - make first tweet a compelling hook
-    return content.map((tweet, index) => {
-      if (index === 0) {
-        // First tweet should be a compelling hook
-        return enhanceHookTweet(tweet);
-      } else {
-        // Subsequent tweets should be clear and actionable
-        return enhanceFollowupTweet(tweet, index);
-      }
-    });
+    // Handle threads with adaptive styling
+    try {
+      const { AdaptiveThreadStyler } = await import('./adaptiveThreadStyler');
+      const styler = AdaptiveThreadStyler.getInstance();
+      const optimalStyle = await styler.selectOptimalStyle();
+      
+      console.log(`🎨 Applying thread style: ${optimalStyle.name}`);
+      
+      // Apply the selected style to the thread
+      const styledTweets = styler.applyStyleToThread(content, optimalStyle);
+      
+      return styledTweets.map((tweet, index) => {
+        if (index === 0) {
+          // First tweet should be a compelling hook (already styled) - this IS part of a thread
+          return enhanceHookTweet(tweet, true);
+        } else {
+          // Subsequent tweets are already styled with numbering
+          return enhanceFollowupTweetContent(tweet);
+        }
+      });
+    } catch (error) {
+      console.error('❌ Adaptive styling failed, using fallback:', error);
+      // Fallback to original enhancement
+      return content.map((tweet, index) => {
+        if (index === 0) {
+          return enhanceHookTweet(tweet, true);
+        } else {
+          return enhanceFollowupTweet(tweet, index);
+        }
+      });
+    }
   } else {
-    // Single tweet enhancement
-    return enhanceHookTweet(content);
+    // Single tweet enhancement - pass whether this is part of a thread
+    return enhanceHookTweet(content, isThread || false);
   }
 }
 
 /**
  * 🎯 ENHANCE HOOK TWEET - Make it compelling and viral
  */
-function enhanceHookTweet(tweet: string): string {
+function enhanceHookTweet(tweet: string, isPartOfThread: boolean = false): string {
   let enhanced = tweet;
   
   // 🧹 REMOVE CORPORATE THREAD HEADERS FIRST
@@ -247,8 +289,8 @@ function enhanceHookTweet(tweet: string): string {
     .replace(/science-backed/, 'science-backed')
     .replace(/\!+$/, '') // Remove trailing exclamations
     
-  // ⬇️ Add thread indicator if not a question
-  if (!enhanced.includes('?') && !enhanced.includes('👇') && !enhanced.includes('🧵')) {
+  // ⬇️ Add thread indicator ONLY if this is actually part of a thread
+  if (isPartOfThread && !enhanced.includes('?') && !enhanced.includes('👇') && !enhanced.includes('🧵')) {
     enhanced += ' 👇';
   }
   
@@ -269,14 +311,24 @@ function enhanceHookTweet(tweet: string): string {
 function enhanceFollowupTweet(tweet: string, index: number): string {
   let enhanced = tweet;
   
-  // 🔢 Ensure professional thread numbering (1/ format) - only if not already numbered
-  const hasNumbering = /^(\d+[\.\/]|\d+\)|[A-Z]\))/g.test(enhanced.trim());
+  // 🔢 SMART NUMBERING SYSTEM - Try different styles and learn which works best
+  const numberingStyles = [
+    `${index}/`, // Current style: "1/"
+    `${getEmojiNumber(index)}`, // Emoji style: "1️⃣"
+    `${index}.`, // Dot style: "1."
+    `${index})` // Parenthesis style: "1)"
+  ];
+  
+  // For now, use emoji numbering (we'll add A/B testing later)
+  const emojiNumbering = getEmojiNumber(index);
+  
+  const hasNumbering = /^(\d+[\.\/]|\d+\)|[A-Z]\)|[\u0030-\u0039]\uFE0F?\u20E3)/g.test(enhanced.trim());
   
   if (!hasNumbering) {
-    enhanced = `${index}/ ${enhanced}`;
+    enhanced = `${emojiNumbering} ${enhanced}`;
   } else {
-    // Replace existing numbering with consistent format (avoid double numbering)
-    enhanced = enhanced.replace(/^(\d+[\.\)]|\d+\/)\s*/, `${index}/ `);
+    // Replace existing numbering with emoji format (avoid double numbering)
+    enhanced = enhanced.replace(/^(\d+[\.\)]|\d+\/|\d\uFE0F?\u20E3)\s*/, `${emojiNumbering} `);
   }
   
   // 🎨 Transform corporate **bold** formatting into Twitter-native format
@@ -303,6 +355,43 @@ function enhanceFollowupTweet(tweet: string, index: number): string {
     .replace(/^(\d+\/)?\s*Consider\s+/i, '$1Try ')
     .replace(/^(\d+\/)?\s*You\s+should\s+/i, '$1')
     .replace(/^(\d+\/)?\s*It\s+is\s+recommended\s+to\s+/i, '$1')
+    .replace(/per day/g, 'daily')
+    .replace(/\s+—\s+aim\s+for/, ' (aim for')
+    .replace(/\s+—\s+/, ' - ')
+    
+  // 📱 Clean up excessive spacing and formatting
+  enhanced = enhanced
+    .replace(/\s+/g, ' ') // Multiple spaces to single
+    .replace(/\n\s*\n\s*\n/g, '\n\n') // Max 2 line breaks
+    .trim();
+    
+  return enhanced;
+}
+
+/**
+ * 📝 ENHANCE FOLLOWUP TWEET CONTENT (without numbering, since it's handled by styler)
+ */
+function enhanceFollowupTweetContent(tweet: string): string {
+  let enhanced = tweet;
+  
+  // 🎨 Transform corporate **bold** formatting into Twitter-native format
+  enhanced = enhanced
+    .replace(/\*\*([^*]+)\*\*/g, '$1:') // Convert **Hydration** to Hydration:
+    
+  // 💡 Add visual breaks for long content (improve mobile readability)
+  if (enhanced.length > 120 && !enhanced.includes('\n')) {
+    // Add line break after first complete thought
+    const breakPoint = enhanced.search(/[.!]\s+[A-Z]/);
+    if (breakPoint > 40 && breakPoint < 100) {
+      enhanced = enhanced.slice(0, breakPoint + 1) + '\n\n' + enhanced.slice(breakPoint + 1);
+    }
+  }
+  
+  // 🚀 Ensure actionable language for tips
+  enhanced = enhanced
+    .replace(/^(\d+[\.\/]|\d+\)|[\u0030-\u0039]\uFE0F?\u20E3|→)?\s*Consider\s+/i, '$1Try ')
+    .replace(/^(\d+[\.\/]|\d+\)|[\u0030-\u0039]\uFE0F?\u20E3|→)?\s*You\s+should\s+/i, '$1')
+    .replace(/^(\d+[\.\/]|\d+\)|[\u0030-\u0039]\uFE0F?\u20E3|→)?\s*It\s+is\s+recommended\s+to\s+/i, '$1')
     .replace(/per day/g, 'daily')
     .replace(/\s+—\s+aim\s+for/, ' (aim for')
     .replace(/\s+—\s+/, ' - ')

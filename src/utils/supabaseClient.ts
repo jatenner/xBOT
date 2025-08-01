@@ -139,6 +139,14 @@ class SupabaseService {
     this.client = createClient(supabaseUrl, supabaseKey);
   }
 
+  // RPC method for calling PostgreSQL functions
+  async rpc(functionName: string, params: any = {}) {
+    if (!this.client) {
+      throw new Error('Supabase client not initialized');
+    }
+    return this.client.rpc(functionName, params);
+  }
+
   // Retry helper with exponential back-off
   private async withRetries<T>(fn: () => Promise<T>): Promise<T> {
     const maxRetries = parseInt(process.env.SUPABASE_MAX_RETRIES ?? '3');

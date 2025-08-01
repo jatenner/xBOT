@@ -450,30 +450,46 @@ export class AutonomousPostingEngine {
               eliteResult.content.join('\n\n') : 
               (typeof eliteResult.content === 'string' ? eliteResult.content : JSON.stringify(eliteResult.content));
 
+            // 🤖 INTELLIGENT POST TYPE DETECTION
+            const { IntelligentPostTypeDetector } = await import('../utils/intelligentPostTypeDetector');
+            const typeDecision = IntelligentPostTypeDetector.analyzeContent(contentString);
+            
             // 🧵 Parse for thread content and clean formatting
             const { parseNumberedThread, cleanSingleTweet, enhanceTwitterContent } = await import('../utils/threadUtils');
-            const threadResult = parseNumberedThread(contentString);
             
             let finalContent: string | string[];
-            if (threadResult.isThread) {
-              // 🚀 ENHANCE THREAD for viral potential
-              finalContent = enhanceTwitterContent(threadResult.tweets) as string[];
+            let actualIsThread = false;
+            
+            if (typeDecision.shouldBeThread) {
+              // AI thinks this should be a thread - try to parse it
+              const threadResult = parseNumberedThread(contentString);
+              if (threadResult.isThread && threadResult.tweets.length > 1) {
+                // Successfully parsed as thread
+                finalContent = await enhanceTwitterContent(threadResult.tweets, true) as string[];
+                actualIsThread = true;
+                console.log(`🧵 THREAD DECISION: AI detected ${threadResult.tweets.length} tweets`);
+              } else {
+                // AI wanted thread but content doesn't parse as one - treat as single
+                const cleanedTweet = cleanSingleTweet(contentString);
+                finalContent = await enhanceTwitterContent(cleanedTweet, false) as string;
+                console.log(`📝 SINGLE FALLBACK: AI wanted thread but content doesn't split properly`);
+              }
             } else {
-              // Clean single tweet of corporate formatting
+              // AI thinks this should be single tweet
               const cleanedTweet = cleanSingleTweet(contentString);
-              // 🚀 ENHANCE SINGLE TWEET for viral potential
-              finalContent = enhanceTwitterContent(cleanedTweet) as string;
+              finalContent = await enhanceTwitterContent(cleanedTweet, false) as string;
+              console.log(`📝 SINGLE DECISION: AI determined single tweet format`);
             }
-            const contentType = threadResult.isThread ? 'thread' : 'tweet';
+            const contentType = actualIsThread ? 'thread' : 'tweet';
 
             console.log(`✅ ELITE SUCCESS: Generated viral content`);
-            if (threadResult.isThread) {
-              console.log(`🧵 THREAD DETECTED: ${threadResult.tweets.length} tweets`);
-              threadResult.tweets.forEach((tweet, i) => {
+            if (actualIsThread && Array.isArray(finalContent)) {
+              console.log(`🧵 THREAD DETECTED: ${finalContent.length} tweets`);
+              finalContent.forEach((tweet, i) => {
                 console.log(`📝 Tweet ${i + 1}: "${tweet.substring(0, 80)}..."`);
               });
             } else {
-              console.log(`📝 Content: "${typeof contentString === 'string' ? contentString.substring(0, 100) : String(contentString).substring(0, 100)}..."`);
+              console.log(`📝 Content: "${typeof finalContent === 'string' ? finalContent.substring(0, 100) : String(finalContent).substring(0, 100)}..."`);
             }
             console.log(`📊 Predicted engagement: ${eliteResult.predicted_engagement}%`);
             console.log(`🎯 Format used: ${eliteResult.format_used}`);
@@ -490,8 +506,8 @@ export class AutonomousPostingEngine {
                 predicted_engagement: eliteResult.predicted_engagement,
                 reasoning: eliteResult.reasoning,
                 content_type: contentType,
-                is_thread: threadResult.isThread,
-                tweet_count: threadResult.isThread ? threadResult.tweets.length : 1
+                is_thread: actualIsThread,
+                tweet_count: actualIsThread && Array.isArray(finalContent) ? finalContent.length : 1
               }
             };
           }
@@ -530,26 +546,42 @@ export class AutonomousPostingEngine {
         bulletproofResult.content.join('\n\n') : 
         (typeof bulletproofResult.content === 'string' ? bulletproofResult.content : String(bulletproofResult.content));
 
+      // 🤖 INTELLIGENT POST TYPE DETECTION
+      const { IntelligentPostTypeDetector } = await import('../utils/intelligentPostTypeDetector');
+      const typeDecision = IntelligentPostTypeDetector.analyzeContent(contentString);
+      
       // 🧵 Parse for thread content and clean formatting
       const { parseNumberedThread, cleanSingleTweet, enhanceTwitterContent } = await import('../utils/threadUtils');
-      const threadResult = parseNumberedThread(contentString);
       
       let finalContent: string | string[];
-      if (threadResult.isThread) {
-        // 🚀 ENHANCE THREAD for viral potential
-        finalContent = enhanceTwitterContent(threadResult.tweets) as string[];
+      let actualIsThread = false;
+      
+      if (typeDecision.shouldBeThread) {
+        // AI thinks this should be a thread - try to parse it
+        const threadResult = parseNumberedThread(contentString);
+        if (threadResult.isThread && threadResult.tweets.length > 1) {
+          // Successfully parsed as thread
+          finalContent = await enhanceTwitterContent(threadResult.tweets, true) as string[];
+          actualIsThread = true;
+          console.log(`🧵 BULLETPROOF THREAD: AI detected ${threadResult.tweets.length} tweets`);
+        } else {
+          // AI wanted thread but content doesn't parse as one - treat as single
+          const cleanedTweet = cleanSingleTweet(contentString);
+          finalContent = await enhanceTwitterContent(cleanedTweet, false) as string;
+          console.log(`📝 BULLETPROOF SINGLE FALLBACK: AI wanted thread but content doesn't split properly`);
+        }
       } else {
-        // Clean single tweet of corporate formatting
+        // AI thinks this should be single tweet
         const cleanedTweet = cleanSingleTweet(contentString);
-        // 🚀 ENHANCE SINGLE TWEET for viral potential
-        finalContent = enhanceTwitterContent(cleanedTweet) as string;
+        finalContent = await enhanceTwitterContent(cleanedTweet, false) as string;
+        console.log(`📝 BULLETPROOF SINGLE: AI determined single tweet format`);
       }
-      const contentType = threadResult.isThread ? 'thread' : 'tweet';
+      const contentType = actualIsThread ? 'thread' : 'tweet';
 
       console.log(`✅ Bulletproof content generated: "${typeof contentString === 'string' ? contentString.substring(0, 100) : String(contentString).substring(0, 100)}..."`);
-      if (threadResult.isThread) {
-        console.log(`🧵 BULLETPROOF THREAD: ${threadResult.tweets.length} tweets`);
-        threadResult.tweets.forEach((tweet, i) => {
+      if (actualIsThread && Array.isArray(finalContent)) {
+        console.log(`🧵 BULLETPROOF THREAD: ${finalContent.length} tweets`);
+        finalContent.forEach((tweet, i) => {
           console.log(`📝 Tweet ${i + 1}: "${tweet.substring(0, 80)}..."`);
         });
       }
@@ -569,8 +601,8 @@ export class AutonomousPostingEngine {
           confidence: bulletproofResult.confidence,
           source: bulletproofResult.source,
           content_type: contentType,
-          is_thread: threadResult.isThread,
-          tweet_count: threadResult.isThread ? threadResult.tweets.length : 1
+          is_thread: actualIsThread,
+          tweet_count: actualIsThread && Array.isArray(finalContent) ? finalContent.length : 1
         }
       };
 
