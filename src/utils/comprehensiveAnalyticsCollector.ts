@@ -20,24 +20,24 @@ import { emergencyBudgetLockdown } from './emergencyBudgetLockdown';
 
 export interface TweetAnalyticsData {
   tweet_id: string;
-  snapshot_interval: 'initial' | '1h' | '6h' | '24h' | '72h' | 'weekly';
+  snapshot_interval?: 'initial' | '1h' | '6h' | '24h' | '72h' | 'weekly';
   
   // Core engagement metrics
   likes: number;
   retweets: number;
   replies: number;
-  quotes: number;
-  bookmarks: number;
+  quotes?: number;
+  bookmarks?: number;
   
   // Discovery metrics
   impressions: number;
-  profile_visits: number;
-  detail_expands: number;
-  url_clicks: number;
-  media_views: number;
+  profile_visits?: number;
+  detail_expands?: number;
+  url_clicks?: number;
+  media_views?: number;
   
   // Follower impact
-  new_followers_attributed: number;
+  new_followers_attributed?: number;
   
   // Data source
   collected_via: 'api' | 'browser' | 'estimated';
@@ -45,40 +45,40 @@ export interface TweetAnalyticsData {
 
 export interface ContentFeatures {
   tweet_id: string;
-  content_type: string;
-  tone_profile: string;
-  format_style: string;
+  content_type?: string;
+  tone_profile?: string;
+  format_style?: string;
   
   // Structure analysis
-  character_count: number;
-  word_count: number;
-  sentence_count: number;
-  paragraph_count: number;
+  character_count?: number;
+  word_count?: number;
+  sentence_count?: number;
+  paragraph_count?: number;
   
   // Engagement elements
-  has_question: boolean;
-  has_call_to_action: boolean;
-  has_emoji: boolean;
-  emoji_count: number;
-  has_hashtags: boolean;
-  hashtag_count: number;
-  has_mentions: boolean;
-  mention_count: number;
-  has_media: boolean;
-  has_links: boolean;
+  has_question?: boolean;
+  has_call_to_action?: boolean;
+  has_emoji?: boolean;
+  emoji_count?: number;
+  has_hashtags?: boolean;
+  hashtag_count?: number;
+  has_mentions?: boolean;
+  mention_count?: number;
+  has_media?: boolean;
+  has_links?: boolean;
   
   // AI analysis
-  primary_topic: string;
-  secondary_topics: string[];
-  key_phrases: string[];
-  sentiment_score: number;
-  complexity_score: number;
+  primary_topic?: string;
+  secondary_topics?: string[];
+  key_phrases?: string[];
+  sentiment_score?: number;
+  complexity_score?: number;
   
   // Timing
-  posted_hour: number;
-  posted_day_of_week: number;
-  posted_month: number;
-  is_weekend: boolean;
+  posted_hour?: number;
+  posted_day_of_week?: number;
+  posted_month?: number;
+  is_weekend?: boolean;
 }
 
 export class ComprehensiveAnalyticsCollector {
@@ -446,7 +446,7 @@ Complexity: 1 (very simple) to 10 (highly technical)`;
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
       ], {
-        priority: 'low',
+        priority: 'optional' as any,
         operationType: 'content_analysis',
         model: 'gpt-4o-mini',
         maxTokens: 200,
