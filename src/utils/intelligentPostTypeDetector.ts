@@ -45,7 +45,10 @@ export class IntelligentPostTypeDetector {
       /\b(\d+)\s+(ways|tips|reasons|myths|steps|hacks|methods|strategies)\b/i,
       /here\s+are\s+\d+/i,
       /\d+\s+evidence-based/i,
-      /breakdown/i
+      /breakdown/i,
+      /\d+[\.\)]\s+.*?\d+[\.\)]/s,  // Multiple numbered points
+      /first.*second.*third/i,       // Sequential language
+      /morning.*breathwork.*fasting/i // Multiple distinct topics
     ];
     
     const hasListContent = listIndicators.some(pattern => pattern.test(rawContent));
