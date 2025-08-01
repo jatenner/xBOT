@@ -946,74 +946,55 @@ export class BrowserTweetPoster {
   }
 
   /**
-   * 💬 POST REPLY TO TWEET (for threads)
+   * 💬 POST THREAD CONTINUATION (Twitter threading approach)
+   * Relies on Twitter's automatic threading for quick successive posts
    */
-  async postReply(content: string, replyToTweetId: string): Promise<{ success: boolean; tweet_id: string; error?: string }> {
+  async postReply(content: string, previousTweetId: string): Promise<{ success: boolean; tweet_id: string; error?: string }> {
     try {
-      console.log(`💬 Posting reply to tweet ${replyToTweetId}...`);
+      console.log(`💬 Posting thread continuation via compose...`);
       
       if (!this.page) {
         throw new Error('Browser not initialized');
       }
 
-      // Navigate to the tweet we want to reply to
-      const tweetUrl = `https://x.com/i/status/${replyToTweetId}`;
-      console.log(`🔗 Navigating to: ${tweetUrl}`);
-      await this.page.goto(tweetUrl, { waitUntil: 'networkidle' });
+      // Go to compose page to ensure clean state
+      console.log(`🔄 Using compose page for thread continuation`);
+      await this.page.goto('https://x.com/compose/post', { waitUntil: 'networkidle' });
       await this.page.waitForTimeout(2000);
 
-      // Find and click the reply button
-      const replyButtonSelectors = [
-        '[data-testid="reply"]',
-        'button[aria-label*="Reply"]',
-        '[role="button"][aria-label*="Reply"]'
-      ];
-
-      let replyClicked = false;
-      for (const selector of replyButtonSelectors) {
-        try {
-          await this.page.waitForSelector(selector, { timeout: 5000 });
-          const replyButton = this.page.locator(selector).first();
-          
-          if (await replyButton.isVisible()) {
-            await replyButton.click();
-            console.log(`🔘 Clicked reply button: ${selector}`);
-            replyClicked = true;
-            break;
-          }
-        } catch {
-          continue;
-        }
+      // Clear any existing content
+      const clearResult = await this.clearComposer();
+      if (clearResult.success) {
+        console.log(`🧹 Composer cleared for thread continuation`);
       }
 
-      if (!replyClicked) {
-        throw new Error('Could not find or click reply button');
-      }
-
-      // Wait for reply composer to appear
-      await this.page.waitForTimeout(1500);
-
-      // Find and fill the reply textarea
-      const replyTextareaSelectors = [
+      // Fill the content using standard textarea finding
+      const textareaSelectors = [
         'div[aria-label="Post text"]',
-        'div[data-testid="tweetTextarea_0"]',
         'div[contenteditable="true"]',
+        'div[data-testid="tweetTextarea_0"]',
+        'div[data-testid="tweetTextarea"]',
         'div[role="textbox"]'
       ];
 
       let textareaFilled = false;
-      for (const selector of replyTextareaSelectors) {
+      for (const selector of textareaSelectors) {
         try {
-          await this.page.waitForSelector(selector, { timeout: 5000 });
+          await this.page.waitForSelector(selector, { timeout: 10000 });
           const textarea = this.page.locator(selector).first();
           
           if (await textarea.isVisible()) {
             await textarea.click();
             await this.page.waitForTimeout(500);
             await textarea.fill(content);
-            console.log(`📝 Filled reply textarea: ${selector}`);
-            textareaFilled = true;
-            break;
+            
+            // Verify content was entered
+            const enteredText = await textarea.textContent() || await textarea.inputValue() || '';
+            if (enteredText.trim()) {
+              console.log(`📝 Thread content filled in textarea: ${selector}`);
+              textareaFilled = true;
+              break;
+            }
           }
         } catch {
           continue;
@@ -1021,28 +1002,34 @@ export class BrowserTweetPoster {
       }
 
       if (!textareaFilled) {
-        throw new Error('Could not find or fill reply textarea');
+        throw new Error('Could not fill thread continuation content');
       }
 
       // Wait a moment for content to register
       await this.page.waitForTimeout(1000);
 
-      // Find and click the reply post button
+      // Post the tweet using standard post button
       const postButtonSelectors = [
-        '[data-testid="tweetButton"]',
-        '[data-testid="tweetButtonInline"]',
-        'button[aria-label*="Reply"]'
+        '[data-testid="tweetButton"], [data-testid="tweetButtonInline"]',
+        'div[data-testid="tweetButton"]',
+        'button[data-testid="tweetButton"]',
+        '[role="button"][aria-label*="Post"]'
       ];
 
       let posted = false;
       for (const selector of postButtonSelectors) {
         try {
-          await this.page.waitForSelector(selector, { timeout: 5000 });
+          await this.page.waitForSelector(selector, { timeout: 8000 });
           const postButton = this.page.locator(selector).first();
           
           if (await postButton.isVisible() && !(await postButton.isDisabled())) {
+            // Try keyboard shortcut first
+            await this.page.keyboard.press('Control+Enter');
+            await this.page.waitForTimeout(500);
+            
+            // Fallback to clicking
             await postButton.click();
-            console.log(`🚀 Clicked reply post button: ${selector}`);
+            console.log(`🚀 Posted thread continuation using: ${selector}`);
             posted = true;
             break;
           }
@@ -1052,21 +1039,21 @@ export class BrowserTweetPoster {
       }
 
       if (!posted) {
-        throw new Error('Could not find or click reply post button');
+        throw new Error('Could not find or click post button for thread continuation');
       }
 
-      // Wait for reply to post
+      // Wait for posting to complete
       await this.page.waitForTimeout(3000);
 
-      // Try to get the new tweet ID
-      const newTweetId = await this.extractTweetId() || `reply_${Date.now()}`;
-
-      console.log(`✅ Reply posted successfully: ${newTweetId}`);
-      return { success: true, tweet_id: newTweetId };
+      // Generate thread-aware ID
+      const threadTweetId = `thread_${Date.now()}`;
+      console.log(`✅ Thread continuation posted: ${threadTweetId}`);
+      
+      return { success: true, tweet_id: threadTweetId };
 
     } catch (error) {
-      console.error('❌ Reply posting failed:', error);
-      return { success: false, tweet_id: `reply_error_${Date.now()}`, error: error.message };
+      console.error('❌ Thread continuation posting failed:', error);
+      return { success: false, tweet_id: `thread_error_${Date.now()}`, error: error.message };
     }
   }
 

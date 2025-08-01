@@ -34,7 +34,7 @@ export interface ThreadPosting {
 }
 
 export class ThreadPostingAgent {
-  private readonly TWEET_DELAY_MS = 3000; // 3 seconds between tweets in thread
+  private readonly TWEET_DELAY_MS = 5000; // 5 seconds between tweets for reliable threading
   private readonly MAX_THREAD_LENGTH = 25; // Twitter's max thread length
   private readonly CHARACTER_LIMIT = 280;
   private browserPoster: BrowserTweetPoster;
