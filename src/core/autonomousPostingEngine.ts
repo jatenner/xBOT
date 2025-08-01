@@ -124,8 +124,8 @@ export class AutonomousPostingEngine {
         strategy = 'balanced';
         confidence = 0.85;
       } else {
-        // Too soon - maintain human-like spacing
-        const waitTime = 180 - minutesSinceLastPost; // Minimum 3 hours between posts
+        // Too soon - maintain human-like spacing with stronger protection
+        const waitTime = Math.max(180 - minutesSinceLastPost, 60); // Minimum 3 hours, wait at least 1 hour
         return {
           should_post: false,
           reason: `Maintaining human-like posting frequency (${minutesSinceLastPost}min ago)`,
@@ -1257,7 +1257,10 @@ export class AutonomousPostingEngine {
   /**
    * 🔍 Check if content contains a hook (e.g., "here's how to", "here are", "the secret to")
    */
-  private hasHook(content: string): boolean {
+  private hasHook(content: string | string[]): boolean {
+    // Handle both string and array inputs
+    const contentString = Array.isArray(content) ? content.join(' ') : content;
+    
     const hookPatterns = [
       /here's how to .+(?:in \d+ minutes?)?:?\s*$/i,
       /here are \d+ ways to .+:?\s*$/i,
@@ -1271,7 +1274,7 @@ export class AutonomousPostingEngine {
       /this will change everything:?\s*$/i
     ];
 
-    return hookPatterns.some(pattern => pattern.test(content.trim()));
+    return hookPatterns.some(pattern => pattern.test(contentString.trim()));
   }
 
   /**
