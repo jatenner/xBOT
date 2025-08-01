@@ -22,6 +22,8 @@ export function cleanSingleTweet(content: string): string {
     .replace(/^\d+\s*[:\/]\s*/, '') // Remove "1:"
     .replace(/\*{2,}/g, '') // Remove multiple asterisks
     .replace(/^\s*[-•]\s*/, '') // Remove bullet points at start
+    .replace(/^["""'']\s*/, '') // Remove leading quotes (smart quotes)
+    .replace(/["""'']\s*$/, '') // Remove trailing quotes (smart quotes)
     .replace(/\.\.\.$/, '') // Remove trailing ...
     .trim();
 }
@@ -46,8 +48,9 @@ export function parseNumberedThread(raw: string): ThreadParseResult {
     .trim();
 
   // Split on "Tweet X:" headers (case insensitive, flexible spacing and numbering)
+  // Allow optional quotes/bullets before Tweet markers
   const parts = cleaned
-    .split(/(?:\n|^)\s*(?:Tweet\s*\d+\s*[:\/]|\d+\s*[:\/])\s*/i)
+    .split(/(?:\n|^)\s*(?:["""'']|[-•])?\s*(?:Tweet\s*\d+\s*[:\/]|\d+\s*[:\/])\s*/i)
     .map(part => part.trim())
     .filter(Boolean);
 
@@ -60,8 +63,8 @@ export function parseNumberedThread(raw: string): ThreadParseResult {
       return tweet
         .replace(/^\*\*/, '') // Remove leading **
         .replace(/\*\*$/, '') // Remove trailing **
-        .replace(/^"/, '')    // Remove leading quote
-        .replace(/"$/, '')    // Remove trailing quote
+        .replace(/^["""'']/, '') // Remove leading quotes (smart quotes)
+        .replace(/["""'']$/, '') // Remove trailing quotes (smart quotes)
         .replace(/^\d+\/\s*/, '') // Remove "1/ " numbering
         .replace(/^\d+\)\s*/, '') // Remove "1) " numbering
         .replace(/^\d+\.\s*/, '') // Remove "1. " numbering

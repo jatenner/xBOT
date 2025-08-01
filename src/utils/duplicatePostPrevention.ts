@@ -16,6 +16,8 @@ export interface DuplicateCheckResult {
 
 export class DuplicatePostPrevention {
   private static instance: DuplicatePostPrevention;
+  private static recentHashes = new Set<string>(); // In-memory cache for last 50 posts
+  private static maxCacheSize = 50;
   
   private constructor() {}
   
@@ -36,6 +38,17 @@ export class DuplicatePostPrevention {
       const contentHash = this.generateContentHash(normalizedContent);
       
       console.log(`🔍 Checking duplicate for hash: ${contentHash.substring(0, 16)}...`);
+      
+      // IMMEDIATE in-memory check (prevents concurrent duplicates)
+      if (DuplicatePostPrevention.recentHashes.has(contentHash)) {
+        console.log('🚫 IMMEDIATE DUPLICATE detected in memory cache');
+        return {
+          isDuplicate: true,
+          contentHash,
+          reason: 'Content already processed in current session',
+          confidence: 1.0
+        };
+      }
       
       // Check exact hash match first (fastest)
       const exactMatch = await this.checkExactHash(contentHash);
@@ -74,6 +87,17 @@ export class DuplicatePostPrevention {
       const normalizedContent = this.normalizeContent(content);
       const contentHash = this.generateContentHash(normalizedContent);
       
+      // Add to in-memory cache immediately
+      DuplicatePostPrevention.recentHashes.add(contentHash);
+      
+      // Trim cache if too large (keep most recent)
+      if (DuplicatePostPrevention.recentHashes.size > DuplicatePostPrevention.maxCacheSize) {
+        const hashesArray = Array.from(DuplicatePostPrevention.recentHashes);
+        DuplicatePostPrevention.recentHashes.clear();
+        // Keep the last 25 hashes
+        hashesArray.slice(-25).forEach(hash => DuplicatePostPrevention.recentHashes.add(hash));
+      }
+      
       const { error } = await supabaseClient.supabase
         .from('post_history')
         .insert({
@@ -88,7 +112,7 @@ export class DuplicatePostPrevention {
         throw error;
       }
         
-      console.log(`✅ Recorded post history: ${contentHash.substring(0, 16)}...`);
+      console.log(`✅ Recorded post history: ${contentHash.substring(0, 16)}... (cached in memory)`);
       
     } catch (error) {
       console.warn('⚠️ Failed to record post history:', error.message);

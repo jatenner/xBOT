@@ -74,6 +74,8 @@ export class RuntimeConfigManager {
           key,
           value: jsonValue,
           updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'key'
         });
 
       if (error) {
