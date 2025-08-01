@@ -721,14 +721,33 @@ export class AutonomousPostingEngine {
           
           console.log(`✅ Thread validation passed: ${content.length} tweets, max length ${validation.maxLength} chars`);
           
-          // Post the thread
+          // Post the thread with proper GeneratedPost structure
           const threadResult = await threadAgent.postContent({
             content,
-            metadata: { 
-              format: 'numbered_thread',
-              source: 'autonomous_posting_engine'
+            format: {
+              type: 'full_thread',
+              tweetCount: content.length,
+              characterLimit: 280,
+              structure: ['hook', 'body', 'conclusion']
+            },
+            style: {
+              tone: 'educational',
+              structure: 'facts',
+              personality: 'balanced'
+            },
+            topic: {
+              category: 'health_science',
+              complexity: 'intermediate',
+              urgency: 'evergreen',
+              engagement_potential: 'high'
+            },
+            metadata: {
+              estimated_engagement: 0.35,
+              confidence_score: 0.8,
+              generation_timestamp: new Date().toISOString(),
+              model_used: 'autonomous_posting_engine'
             }
-          } as any);
+          });
           
           if (threadResult.success && threadResult.tweetIds && threadResult.tweetIds.length > 0) {
             console.log(`✅ Thread posted successfully: ${threadResult.tweetIds.length} tweets`);
