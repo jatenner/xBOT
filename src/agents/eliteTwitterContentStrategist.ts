@@ -353,32 +353,67 @@ Write ONE professional tweet that provides complete value immediately.`;
     }
 
     /**
-     * 🎯 Optimize content for virality and apply style variation
+     * 🎯 Optimize content for virality with PROFESSIONAL formatting
      */
     private async optimizeForVirality(content: string, format: ContentFormat): Promise<any> {
         try {
-            console.log('🔥 Optimizing content for virality...');
+            console.log('🔥 Optimizing content for virality (professional mode)...');
 
-            // Step 1: Apply style variation
+            // Step 1: Style tracking only (no amateur formatting applied)
             const currentHour = new Date().getHours();
             const styleResult = await styleMixer.mixStyle(content, {
-                maxLength: 270, // Leave room for potential edits
+                maxLength: 270,
                 timeOfDay: currentHour,
                 topic: format.name
             });
 
             let optimizedContent = styleResult.styledContent;
-            console.log(`🎨 Style applied: ${styleResult.styleUsed} (${styleResult.shouldUseStyle ? 'styled' : 'original'})`);
+            console.log(`🎨 Style tracked: ${styleResult.styleUsed} (no amateur formatting applied)`);
 
-            // Step 2: Apply viral optimization prompts
-            if (Math.random() < 0.3) { // 30% chance for additional optimization
+            // Step 2: Apply viral optimization prompts (professional only)
+            if (Math.random() < 0.3) {
                 optimizedContent = await this.applyViralOptimization(optimizedContent, format);
             }
 
-            // Step 3: Record format performance
+            // 🚨 CRITICAL FIX: Strip amateur formatting that may have leaked through
+            optimizedContent = optimizedContent
+                .replace(/^[""'']|\s*[""'']$/g, '')  // Remove outer quotes
+                .replace(/\*\*(Tweet|Thread)[^*]*\*\*/gi, '')  // Remove **Tweet 1:** etc
+                .replace(/^🧠\s*Data-driven\s*[•·]\s*/i, '')  // Remove "🧠 Data-driven • "
+                .replace(/^🔥\s*Contrarian\s*[•·]\s*/i, '')   // Remove "🔥 Contrarian • "
+                .replace(/^📊\s*Research\s*Reveal\s*[•·]\s*/i, '')  // Remove "📊 Research Reveal • "
+                .replace(/^💡\s*Quick\s*Tip\s*[•·]\s*/i, '')   // Remove "💡 Quick Tip • "
+                .replace(/^📝\s*Mini-Story\s*[•·]\s*/i, '')   // Remove "📝 Mini-Story • "
+                .replace(/^🎯\s*Action-Oriented\s*[•·]\s*/i, '')  // Remove "🎯 Action-Oriented • "
+                .replace(/^(Research shows|Studies indicate|Data reveals|Evidence suggests):\s*/i, '') // Remove amateur hooks
+                .trim();
+
+            // Step 3: Apply PROFESSIONAL formatting to final content
+            try {
+                const { ProfessionalTweetFormatter } = await import('../utils/professionalTweetFormatter');
+                optimizedContent = ProfessionalTweetFormatter.formatTweet(optimizedContent);
+                console.log('✅ Professional formatting applied to final content');
+            } catch (error) {
+                console.warn('⚠️ Professional formatting failed, using cleaned content:', error);
+            }
+
+            // Step 4: Enforce one-emoji rule
+            const emojiRegex = /[\u{1F600}-\u{1F64F}|\u{1F300}-\u{1F5FF}|\u{1F680}-\u{1F6FF}|\u{1F1E0}-\u{1F1FF}]/gu;
+            const emojis = optimizedContent.match(emojiRegex) || [];
+            if (emojis.length > 1) {
+                console.log(`🚨 Too many emojis (${emojis.length}), keeping only the first one`);
+                let kept = false;
+                optimizedContent = optimizedContent.replace(emojiRegex, (match) => {
+                    if (kept) return '';
+                    kept = true;
+                    return match;
+                });
+            }
+
+            // Step 5: Record format performance
             await this.updateFormatPerformance(format.name, optimizedContent, styleResult.styleUsed);
 
-            // Step 4: Analyze the optimized content and create result structure
+            // Step 6: Analyze the optimized content and create result structure
             const lines = optimizedContent.split('\n').filter(line => line.trim());
             const isThread = lines.length > 3 || optimizedContent.includes('🧵') || optimizedContent.includes('/1');
             
@@ -394,35 +429,32 @@ Write ONE professional tweet that provides complete value immediately.`;
             else hook_type = "authority";
 
             // Predict engagement based on format and style
-            let predicted_engagement = (format.engagement_multiplier || 1.5) * 15; // Base 15%
+            let predicted_engagement = (format.engagement_multiplier || 1.5) * 15;
             
-            // Ensure predicted_engagement is never NaN or undefined
             if (isNaN(predicted_engagement) || !isFinite(predicted_engagement)) {
-                predicted_engagement = 15; // Safe fallback
+                predicted_engagement = 15;
             }
             
             // Boost based on hook quality and style
             if (hook_type === "research_stat") predicted_engagement *= 1.3;
             if (hook_type === "contrarian") predicted_engagement *= 1.4;
             if (hook_type === "deception_reveal") predicted_engagement *= 1.5;
-            if (styleResult.shouldUseStyle) predicted_engagement *= 1.1; // Style bonus
+            if (styleResult.shouldUseStyle) predicted_engagement *= 1.1;
             
-            // Thread vs single tweet adjustment
             if (isThread) predicted_engagement *= 1.2;
 
             return {
                 content: isThread ? lines : optimizedContent,
                 hook_type,
-                predicted_engagement: Math.min(predicted_engagement, 45), // Cap at 45%
-                reasoning: `Selected ${format.name} format with ${hook_type} hook${styleResult.shouldUseStyle ? ` and ${styleResult.styleUsed} style` : ''} for ${isThread ? 'thread' : 'single tweet'} delivery`,
+                predicted_engagement: Math.min(predicted_engagement, 45),
+                reasoning: `Professional ${format.name} format with ${hook_type} hook (${emojis.length <= 1 ? 'one emoji' : 'multi-emoji fixed'}) for ${isThread ? 'thread' : 'single tweet'}`,
                 content_type: isThread ? 'thread' : 'tweet',
                 style_applied: styleResult.styleUsed,
-                style_reasoning: styleResult.reasoning
+                style_reasoning: 'Professional formatting with amateur elements stripped'
             };
 
         } catch (error) {
             console.error('❌ Virality optimization failed:', error);
-            // Return basic structure on error
             return {
                 content: content,
                 hook_type: "unknown",

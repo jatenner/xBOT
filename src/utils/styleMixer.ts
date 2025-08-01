@@ -106,13 +106,13 @@ export class StyleMixer {
       // Update usage statistics
       await this.updateStyleUsage(selectedStyle, styledContent.length);
 
-      console.log(`✨ Applied ${selectedStyle} style: "${styledContent}"`);
+      console.log(`✨ Style tracked: ${selectedStyle} (professional mode - no amateur formatting applied)`);
 
       return {
         styledContent,
         styleUsed: selectedStyle,
         shouldUseStyle: true,
-        reasoning: `Applied ${selectedStyle} based on ${this.getSelectionReasoning(selectedStyle, options)}`,
+        reasoning: `Tracked ${selectedStyle} style (no amateur formatting applied)`,
         originalLength: contentString.length,
         finalLength: styledContent.length
       };
@@ -261,39 +261,17 @@ export class StyleMixer {
   }
 
   /**
-   * ✨ Apply selected style to content
+   * ✨ Apply selected style to content - PROFESSIONAL MODE ONLY
+   * 🚫 NO MORE AMATEUR PREFIXES OR LABELS
    */
   private applyStyle(content: string, style: StyleLabel, options: any): string {
-    const styleConfig = STYLE_VARIATIONS[style];
-    const maxLength = options.maxLength || 280;
-
-    // Calculate available space for prefix
-    const availableSpace = maxLength - content.length - 3; // 3 chars for " • "
-
-    if (availableSpace < 10) {
-      // Not enough space for styling
-      return content;
-    }
-
-    // 70% chance to use prefix, 30% chance to use modifier
-    if (Math.random() < 0.7) {
-      // Use prefix style
-      const styledContent = `${styleConfig.prefix} • ${content}`;
-      
-      if (styledContent.length <= maxLength) {
-        return styledContent;
-      }
-    }
-
-    // Use hook-based styling if prefix doesn't fit
-    const hook = styleConfig.hooks[Math.floor(Math.random() * styleConfig.hooks.length)];
-    const hookStyled = `${hook}: ${content}`;
+    // 🎯 PROFESSIONAL FORMATTING: No more prefixes or amateur labels
+    // The style selection is now only used for internal tracking and decisions
+    // Content should already be professionally formatted by ProfessionalTweetFormatter
     
-    if (hookStyled.length <= maxLength) {
-      return hookStyled;
-    }
-
-    // Fallback: return original if styling makes it too long
+    console.log(`🎨 Style tracker: ${style} (content unchanged - professional mode)`);
+    
+    // Return content unchanged - let ProfessionalTweetFormatter handle all formatting
     return content;
   }
 
