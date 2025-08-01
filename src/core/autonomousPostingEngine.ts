@@ -890,6 +890,21 @@ export class AutonomousPostingEngine {
             } catch (analyticsError) {
               console.warn('⚠️ Analytics collection failed (non-blocking):', analyticsError.message);
             }
+
+            // 📈 FOLLOWER TRACKING: Wire follower change tracking
+            try {
+              const { FollowerTracker } = await import('../utils/followerTracker');
+              const tracker = FollowerTracker.getInstance();
+              // Track in background - don't block the posting flow
+              setImmediate(() => {
+                tracker.trackFollowerChange(threadResult.tweetIds[0]).catch(error => {
+                  console.warn('⚠️ Follower tracking failed (non-blocking):', error.message);
+                });
+              });
+              console.log('📈 Follower tracking initiated for thread');
+            } catch (trackerError) {
+              console.warn('⚠️ Follower tracker not available:', trackerError.message);
+            }
             
             return {
               success: true,
@@ -1062,6 +1077,21 @@ export class AutonomousPostingEngine {
           console.log('📊 Analytics collection initiated for single tweet');
         } catch (analyticsError) {
           console.warn('⚠️ Analytics collection failed (non-blocking):', analyticsError.message);
+        }
+
+        // 📈 FOLLOWER TRACKING: Wire follower change tracking
+        try {
+          const { FollowerTracker } = await import('../utils/followerTracker');
+          const tracker = FollowerTracker.getInstance();
+          // Track in background - don't block the posting flow
+          setImmediate(() => {
+            tracker.trackFollowerChange(result.tweet_id).catch(error => {
+              console.warn('⚠️ Follower tracking failed (non-blocking):', error.message);
+            });
+          });
+          console.log('📈 Follower tracking initiated for single tweet');
+        } catch (trackerError) {
+          console.warn('⚠️ Follower tracker not available:', trackerError.message);
         }
         
         return {

@@ -397,6 +397,21 @@ Write ONE professional tweet that provides complete value immediately.`;
                 console.warn('⚠️ Professional formatting failed, using cleaned content:', error);
             }
 
+            // 📝 GRAMMAR MICRO-PASS: Final polish for perfect grammar
+            try {
+                const { grammarEnhancer } = await import('../utils/grammarEnhancer');
+                const grammarResult = await grammarEnhancer.enhanceGrammar(optimizedContent);
+                
+                if (grammarResult.improvementsFound) {
+                    optimizedContent = grammarResult.enhanced;
+                    console.log(`✨ Grammar enhanced (${grammarResult.tokensUsed} tokens)`);
+                } else {
+                    console.log(`✅ Grammar already perfect (${grammarResult.tokensUsed} tokens)`);
+                }
+            } catch (error) {
+                console.warn('⚠️ Grammar enhancement failed (non-blocking):', error);
+            }
+
             // Step 4: Enforce one-emoji rule
             const emojiRegex = /[\u{1F600}-\u{1F64F}|\u{1F300}-\u{1F5FF}|\u{1F680}-\u{1F6FF}|\u{1F1E0}-\u{1F1FF}]/gu;
             const emojis = optimizedContent.match(emojiRegex) || [];
