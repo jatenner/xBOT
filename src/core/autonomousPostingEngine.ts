@@ -761,6 +761,21 @@ export class AutonomousPostingEngine {
               console.warn('⚠️ Failed to record thread for duplicate prevention:', recordError.message);
             }
             
+            // 📊 Trigger comprehensive analytics collection
+            try {
+              const { advancedAnalyticsOrchestrator } = await import('../jobs/advancedAnalyticsOrchestrator');
+              await advancedAnalyticsOrchestrator.processNewPost({
+                tweet_id: threadResult.tweetIds[0],
+                content: Array.isArray(content) ? content.join('\n\n') : content,
+                posted_at: new Date(),
+                content_type: 'thread',
+                source: 'autonomous_posting_engine'
+              });
+              console.log('📊 Analytics collection initiated for thread');
+            } catch (analyticsError) {
+              console.warn('⚠️ Analytics collection failed (non-blocking):', analyticsError.message);
+            }
+            
             return {
               success: true,
               tweet_id: threadResult.tweetIds[0], // Return root tweet ID
@@ -917,6 +932,21 @@ export class AutonomousPostingEngine {
           await duplicatePostPrevention.recordPostedContent(content, result.tweet_id);
         } catch (recordError) {
           console.warn('⚠️ Failed to record post for duplicate prevention:', recordError.message);
+        }
+        
+        // 📊 Trigger comprehensive analytics collection
+        try {
+          const { advancedAnalyticsOrchestrator } = await import('../jobs/advancedAnalyticsOrchestrator');
+          await advancedAnalyticsOrchestrator.processNewPost({
+            tweet_id: result.tweet_id,
+            content: content,
+            posted_at: new Date(),
+            content_type: 'single_tweet',
+            source: 'autonomous_posting_engine'
+          });
+          console.log('📊 Analytics collection initiated for single tweet');
+        } catch (analyticsError) {
+          console.warn('⚠️ Analytics collection failed (non-blocking):', analyticsError.message);
         }
         
         return {

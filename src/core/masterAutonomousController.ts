@@ -294,6 +294,18 @@ export class MasterAutonomousController {
         console.log('📊 Phase status check skipped:', error.message);
       }
 
+      // 📊 Initialize Advanced Analytics Orchestrator
+      try {
+        console.log('📊 Initializing Advanced Analytics Orchestrator...');
+        const { advancedAnalyticsOrchestrator } = await import('../jobs/advancedAnalyticsOrchestrator');
+        await advancedAnalyticsOrchestrator.start();
+        this.updateComponentStatus('analytics_orchestrator', 'active');
+        console.log('✅ Advanced Analytics Orchestrator: ACTIVE');
+      } catch (analyticsError) {
+        console.error('❌ Failed to initialize analytics orchestrator:', analyticsError);
+        this.updateComponentStatus('analytics_orchestrator', 'error', [analyticsError.message]);
+      }
+
     } catch (error) {
       console.error('❌ Error initializing systems:', error);
       throw error;
