@@ -14,7 +14,8 @@ export interface ThreadParseResult {
  */
 export function cleanSingleTweet(content: string): string {
   return content
-    // 🎯 REMOVE ALL THREAD HEADERS - Make tweets look professional
+    // 🎯 REMOVE ALL THREAD/TWEET HEADERS - Make tweets look professional
+    .replace(/^\s*\*{0,2}Tweet\s*:?\*{0,2}\s*/im, '') // Remove "**Tweet:**" or "Tweet:"
     .replace(/^\s*\*{0,2}Tweet\s*Thread[^:\n]*:?\*{0,2}\s*/im, '') // Remove "**Tweet Thread:**" variants
     .replace(/^\s*\*{0,2}Thread[^:\n]*:?\*{0,2}\s*/im, '') // Remove "**Thread:**" variants
     .replace(/^\s*\*{0,2}Research_Bomb\s+Thread[^:\n]*:?\*{0,2}\s*/i, '') // Remove "Research_Bomb Thread:"
@@ -30,12 +31,16 @@ export function cleanSingleTweet(content: string): string {
     .replace(/^\s*Here\s+(are|is)\s+\d+[^:\n]*:?\s*/i, '')
     
     // ✨ CLEAN FORMATTING - Remove excessive styling
-    .replace(/\*{2,}/g, '') // Remove multiple asterisks
+    .replace(/\*{2,}/g, '') // Remove multiple asterisks **bold**
     .replace(/^\s*[-•·]\s*/, '') // Remove bullet points at start
     .replace(/^["""''`]\s*/, '') // Remove leading quotes
     .replace(/["""''`]\s*$/, '') // Remove trailing quotes
     .replace(/\.\.\.$/, '') // Remove trailing ellipsis
-    .replace(/\s+/g, ' ') // Multiple spaces to single
+    
+    // 🔥 TRANSFORM INLINE LISTS into clean format  
+    .replace(/(\d+\))\s*/g, '\n\n$1 ') // "1) content 2) content" -> line breaks
+    .replace(/\s+/g, ' ') // Multiple spaces to single (after list transform)
+    .replace(/\n\s+/g, '\n') // Clean up line spacing
     .trim();
 }
 
@@ -52,6 +57,8 @@ export function parseNumberedThread(raw: string): ThreadParseResult {
   
   // 🎯 COMPREHENSIVE HEADER REMOVAL - Remove all thread header variants
   let cleaned = raw
+    // Remove **Tweet:** (single tweet markers that leak through)
+    .replace(/^\s*\*{0,2}Tweet\s*:?\*{0,2}\s*\n?/im, '')
     // Remove **Tweet Thread:** and variants
     .replace(/^\s*\*{0,2}Tweet\s*Thread[^:\n]*:?\*{0,2}\s*\n?/im, '')
     .replace(/^\s*\*{0,2}Thread[^:\n]*:?\*{0,2}\s*\n?/im, '')
@@ -81,8 +88,9 @@ export function parseNumberedThread(raw: string): ThreadParseResult {
     // Clean up each tweet part more aggressively
     const tweets = parts.map(tweet => {
       return tweet
-        .replace(/^\*\*/, '') // Remove leading **
-        .replace(/\*\*$/, '') // Remove trailing **
+        .replace(/^\*{1,2}/, '') // Remove leading * or **
+        .replace(/\*{1,2}$/, '') // Remove trailing * or **
+        .replace(/\*{2,}/g, '') // Remove any remaining ** bold markers
         .replace(/^["""'']/, '') // Remove leading quotes (smart quotes)
         .replace(/["""'']$/, '') // Remove trailing quotes (smart quotes)
         .replace(/^\d+\/\s*/, '') // Remove "1/ " numbering
@@ -193,27 +201,57 @@ export function enhanceTwitterContent(content: string | string[]): string | stri
 function enhanceHookTweet(tweet: string): string {
   let enhanced = tweet;
   
-  // Ensure it starts with impact, not generic intro
-  if (!/^(Most people|New study|🚨|🧵|Research shows|THREAD|Breaking:|Scientists)/i.test(enhanced)) {
-    // Add engagement hooks for health content
-    if (/mental|brain|cognitive|performance/i.test(enhanced)) {
-      enhanced = `🧠 ${enhanced}`;
-    } else if (/study|research|science/i.test(enhanced)) {
-      enhanced = `🔬 ${enhanced}`;
-    } else if (/exercise|workout|fitness/i.test(enhanced)) {
-      enhanced = `💪 ${enhanced}`;
-    } else if (/nutrition|diet|food/i.test(enhanced)) {
-      enhanced = `🥗 ${enhanced}`;
+  // 🔥 VIRAL HOOK PATTERNS - Start with impact
+  if (!/^(Most people|New study|🚨|🧵|Research shows|THREAD|Breaking:|Scientists|Want to|The)/i.test(enhanced)) {
+    // Transform common patterns into viral hooks
+    if (/boost.*mental.*performance.*40%/i.test(enhanced)) {
+      enhanced = enhanced.replace(/^.*boost your mental performance by 40%.*?with/i, 'Want to boost your mental performance by 40%? Here are');
+    } else if (/(\d+).*ways?.*to/i.test(enhanced)) {
+      const match = enhanced.match(/(\d+).*ways?.*to\s*(.*)/i);
+      if (match) {
+        enhanced = `The ${match[1]} science-backed ways to ${match[2]}`;
+      }
+    } else if (/immune.*system/i.test(enhanced)) {
+      enhanced = enhanced.replace(/^.*70%.*of.*immune/i, 'Did you know 70% of your immune');
     }
   }
   
-  // Ensure compelling language
+  // 🎨 Add category-specific emojis for engagement  
+  if (!enhanced.match(/^[🧠🔬💪🥗🚨⚡]/)) {
+    if (/mental|brain|cognitive|performance|focus/i.test(enhanced)) {
+      enhanced = `🧠 ${enhanced}`;
+    } else if (/study|research|science|discover/i.test(enhanced)) {
+      enhanced = `🔬 ${enhanced}`;
+    } else if (/exercise|workout|fitness|muscle/i.test(enhanced)) {
+      enhanced = `💪 ${enhanced}`;
+    } else if (/nutrition|diet|food|gut|immune/i.test(enhanced)) {
+      enhanced = `🥗 ${enhanced}`;
+    } else if (/breakthrough|game.?chang/i.test(enhanced)) {
+      enhanced = `🚨 ${enhanced}`;
+    }
+  }
+  
+  // 🔥 Make language more compelling and conversational
   enhanced = enhanced
     .replace(/^Boost your/, 'Want to boost your')
     .replace(/^Here are \d+/, 'The')
+    .replace(/^(\d+)\s+evidence-based\s+ways/, 'The $1 science-backed ways')
+    .replace(/^(\d+)\s+ways/, 'The $1 ways')
     .replace(/science-backed/, 'science-backed')
-    .replace(/\!$/, '') // Remove trailing exclamation if exists
-    .replace(/$/, enhanced.includes('?') ? '' : ' 👇'); // Add thread indicator
+    .replace(/\!+$/, '') // Remove trailing exclamations
+    
+  // ⬇️ Add thread indicator if not a question
+  if (!enhanced.includes('?') && !enhanced.includes('👇') && !enhanced.includes('🧵')) {
+    enhanced += ' 👇';
+  }
+  
+  // 📱 Add breathing space after hook for mobile readability
+  if (!enhanced.includes('\n') && enhanced.length > 80) {
+    const firstSentence = enhanced.match(/^[^.!?]*[.!?]/);
+    if (firstSentence) {
+      enhanced = enhanced.replace(firstSentence[0], firstSentence[0] + '\n');
+    }
+  }
   
   return enhanced;
 }
@@ -224,15 +262,47 @@ function enhanceHookTweet(tweet: string): string {
 function enhanceFollowupTweet(tweet: string, index: number): string {
   let enhanced = tweet;
   
-  // Ensure numbered tweets start with clear indicators
-  if (!/^(\d+[\.\/]|\d+\)|[A-Z]\))/g.test(enhanced)) {
+  // 🔢 Ensure professional thread numbering (1/ format) - only if not already numbered
+  if (!/^(\d+[\.\/]|\d+\)|[A-Z]\))/g.test(enhanced.trim())) {
     enhanced = `${index}/ ${enhanced}`;
+  } else {
+    // Replace existing numbering with clean 1/ format
+    enhanced = enhanced.replace(/^(\d+[\.\)]|\d+\/)\s*/, `${index}/ `);
   }
   
-  // Clean up bold formatting that doesn't work on Twitter
+  // 🎨 Transform corporate **bold** formatting into Twitter-native format
   enhanced = enhanced
-    .replace(/\*\*([^*]+)\*\*/g, '$1:') // Convert **Term** to Term:
-    .replace(/^(\d+[\.\/]|\d+\))\s*([^:]+):\s*/, '$1 $2: ') // Clean up spacing
+    .replace(/\*\*([^*]+)\*\*/g, '$1:') // Convert **Hydration** to Hydration:
+    .replace(/^(\d+[\.\/]|\d+\))\s*([^:]+):\s*/, '$1 $2: ') // Clean up "1/ Term: content"
+    
+  // 🔥 Make bullet-style lists more readable
+  enhanced = enhanced
+    .replace(/^\d+\)\s*/, `${index}/ `) // Convert "1) content" to "1/ content"
+    .replace(/^\d+\.\s*/, `${index}/ `) // Convert "1. content" to "1/ content"
+    
+  // 💡 Add visual breaks for long content (improve mobile readability)
+  if (enhanced.length > 120 && !enhanced.includes('\n')) {
+    // Add line break after first complete thought
+    const breakPoint = enhanced.search(/[.!]\s+[A-Z]/);
+    if (breakPoint > 40 && breakPoint < 100) {
+      enhanced = enhanced.slice(0, breakPoint + 1) + '\n\n' + enhanced.slice(breakPoint + 1);
+    }
+  }
   
+  // 🚀 Ensure actionable language for tips
+  enhanced = enhanced
+    .replace(/^(\d+\/)?\s*Consider\s+/i, '$1Try ')
+    .replace(/^(\d+\/)?\s*You\s+should\s+/i, '$1')
+    .replace(/^(\d+\/)?\s*It\s+is\s+recommended\s+to\s+/i, '$1')
+    .replace(/per day/g, 'daily')
+    .replace(/\s+—\s+aim\s+for/, ' (aim for')
+    .replace(/\s+—\s+/, ' - ')
+    
+  // 📱 Clean up excessive spacing and formatting
+  enhanced = enhanced
+    .replace(/\s+/g, ' ') // Multiple spaces to single
+    .replace(/\n\s*\n\s*\n/g, '\n\n') // Max 2 line breaks
+    .trim();
+    
   return enhanced;
 }
