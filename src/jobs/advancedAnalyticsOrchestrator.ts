@@ -278,13 +278,15 @@ export class AdvancedAnalyticsOrchestrator {
       const dominantContentType = Object.keys(contentTypeCounts).reduce((a, b) => 
         contentTypeCounts[a] > contentTypeCounts[b] ? a : b, 'single_tip');
       
-      const hourCounts = contentData?.reduce((counts, item) => {
+      const hourCounts = contentData?.reduce((counts: Record<string, number>, item: any) => {
         counts[item.posted_hour] = (counts[item.posted_hour] || 0) + 1;
         return counts;
-      }, {}) || {};
+      }, {} as Record<string, number>) || {};
       
-      const optimalHour = Object.keys(hourCounts).reduce((a, b) => 
-        hourCounts[a] > hourCounts[b] ? parseInt(a) : parseInt(b), 12);
+      const optimalHour = Object.keys(hourCounts).length > 0 
+        ? parseInt(Object.keys(hourCounts).reduce((a, b) => 
+            hourCounts[a] > hourCounts[b] ? a : b)) 
+        : 12;
       
       // Store summary
       const { error: summaryError } = await supabaseClient.supabase

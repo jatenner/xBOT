@@ -27,6 +27,15 @@ export interface PerformancePattern {
   sample_size: number;
   confidence_level: number;
   validation_status?: 'active' | 'testing' | 'deprecated';
+  // Additional fields that may be present from database
+  pattern_description?: string;
+  last_validated?: string;
+  updated_at?: string;
+  overall_score?: number;
+  follower_score?: number;
+  new_followers_attributed?: number;
+  scores?: number[];
+  followers?: number[];
 }
 
 export interface ContentRecommendation {
@@ -181,8 +190,21 @@ export class EnhancedLearningEngine {
           tweets: []
         };
       }
-      groups[type].scores.push(item.tweet_performance_scores.overall_score);
-      groups[type].followers.push(item.tweet_analytics.new_followers_attributed || 0);
+      
+      // Safely extract scores and followers from database response
+      const performanceData = Array.isArray(item.tweet_performance_scores) 
+        ? item.tweet_performance_scores[0] 
+        : item.tweet_performance_scores;
+      const analyticsData = Array.isArray(item.tweet_analytics) 
+        ? item.tweet_analytics[0] 
+        : item.tweet_analytics;
+      
+      if (performanceData?.overall_score !== undefined) {
+        groups[type].scores.push(performanceData.overall_score);
+      }
+      if (analyticsData?.new_followers_attributed !== undefined) {
+        groups[type].followers.push(analyticsData.new_followers_attributed);
+      }
       groups[type].tweets.push(item.tweet_id);
       return groups;
     }, {});
@@ -194,9 +216,9 @@ export class EnhancedLearningEngine {
       const followers = (group as any).followers;
       const sampleSize = scores.length;
       
-      if (sampleSize >= 3) {
-        const avgScore = scores.reduce((a, b) => a + b, 0) / scores.length;
-        const avgFollowers = followers.reduce((a, b) => a + b, 0) / followers.length;
+      if (sampleSize >= 3 && scores.length > 0 && followers.length > 0) {
+        const avgScore = scores.reduce((a: number, b: number) => a + b, 0) / scores.length;
+        const avgFollowers = followers.reduce((a: number, b: number) => a + b, 0) / followers.length;
         
         // Calculate confidence based on sample size and consistency
         const scoreVariance = this.calculateVariance(scores);
@@ -250,28 +272,40 @@ export class EnhancedLearningEngine {
     const patterns: PerformancePattern[] = [];
     
     // Analyze by hour
-    const hourlyData = data.reduce((groups, item) => {
+    const hourlyData = data.reduce((groups: any, item: any) => {
       const hour = item.posted_hour;
       if (!groups[hour]) {
         groups[hour] = { scores: [], followers: [] };
       }
-      groups[hour].scores.push(item.tweet_performance_scores.overall_score);
-      groups[hour].followers.push(item.tweet_analytics.new_followers_attributed || 0);
+      
+      // Safely extract scores and followers from database response
+      const performanceData = Array.isArray(item.tweet_performance_scores) 
+        ? item.tweet_performance_scores[0] 
+        : item.tweet_performance_scores;
+      const analyticsData = Array.isArray(item.tweet_analytics) 
+        ? item.tweet_analytics[0] 
+        : item.tweet_analytics;
+      
+      if (performanceData?.overall_score !== undefined) {
+        groups[hour].scores.push(performanceData.overall_score);
+      }
+      if (analyticsData?.new_followers_attributed !== undefined) {
+        groups[hour].followers.push(analyticsData.new_followers_attributed);
+      }
       return groups;
     }, {});
 
     for (const [hour, group] of Object.entries(hourlyData)) {
-      const scores = group.scores;
-      const followers = group.followers;
+      const scores = (group as any).scores;
+      const followers = (group as any).followers;
       const sampleSize = scores.length;
       
-      if (sampleSize >= 3) {
-        const avgScore = scores.reduce((a, b) => a + b, 0) / scores.length;
-        const avgFollowers = followers.reduce((a, b) => a + b, 0) / followers.length;
+      if (sampleSize >= 3 && scores.length > 0 && followers.length > 0) {
+        const avgScore = scores.reduce((a: number, b: number) => a + b, 0) / scores.length;
+        const avgFollowers = followers.reduce((a: number, b: number) => a + b, 0) / followers.length;
         const confidence = Math.min(0.3 + (sampleSize / 15), 0.9);
         
         patterns.push({
-          id: `timing_hour_${hour}`,
           pattern_type: 'timing',
           pattern_name: `Hour ${hour}`,
           pattern_features: { hour: parseInt(hour) },
@@ -285,28 +319,40 @@ export class EnhancedLearningEngine {
     }
     
     // Analyze weekend vs weekday
-    const weekendData = data.reduce((groups, item) => {
+    const weekendData = data.reduce((groups: any, item: any) => {
       const key = item.is_weekend ? 'weekend' : 'weekday';
       if (!groups[key]) {
         groups[key] = { scores: [], followers: [] };
       }
-      groups[key].scores.push(item.tweet_performance_scores.overall_score);
-      groups[key].followers.push(item.tweet_analytics.new_followers_attributed || 0);
+      
+      // Safely extract scores and followers from database response
+      const performanceData = Array.isArray(item.tweet_performance_scores) 
+        ? item.tweet_performance_scores[0] 
+        : item.tweet_performance_scores;
+      const analyticsData = Array.isArray(item.tweet_analytics) 
+        ? item.tweet_analytics[0] 
+        : item.tweet_analytics;
+      
+      if (performanceData?.overall_score !== undefined) {
+        groups[key].scores.push(performanceData.overall_score);
+      }
+      if (analyticsData?.new_followers_attributed !== undefined) {
+        groups[key].followers.push(analyticsData.new_followers_attributed);
+      }
       return groups;
     }, {});
 
     for (const [period, group] of Object.entries(weekendData)) {
-      const scores = group.scores;
-      const followers = group.followers;
+      const scores = (group as any).scores;
+      const followers = (group as any).followers;
       const sampleSize = scores.length;
       
-      if (sampleSize >= 5) {
-        const avgScore = scores.reduce((a, b) => a + b, 0) / scores.length;
-        const avgFollowers = followers.reduce((a, b) => a + b, 0) / followers.length;
+      if (sampleSize >= 5 && scores.length > 0 && followers.length > 0) {
+        const avgScore = scores.reduce((a: number, b: number) => a + b, 0) / scores.length;
+        const avgFollowers = followers.reduce((a: number, b: number) => a + b, 0) / followers.length;
         const confidence = Math.min(0.4 + (sampleSize / 20), 0.9);
         
         patterns.push({
-          id: `timing_${period}`,
           pattern_type: 'timing',
           pattern_name: period,
           pattern_features: { is_weekend: period === 'weekend' },
@@ -347,30 +393,42 @@ export class EnhancedLearningEngine {
     }
 
     // Group by tone and calculate performance
-    const toneGroups = data.reduce((groups, item) => {
+    const toneGroups = data.reduce((groups: any, item: any) => {
       const tone = item.tone_profile;
       if (!groups[tone]) {
         groups[tone] = { scores: [], followers: [] };
       }
-      groups[tone].scores.push(item.tweet_performance_scores.overall_score);
-      groups[tone].followers.push(item.tweet_analytics.new_followers_attributed || 0);
+      
+      // Safely extract scores and followers from database response
+      const performanceData = Array.isArray(item.tweet_performance_scores) 
+        ? item.tweet_performance_scores[0] 
+        : item.tweet_performance_scores;
+      const analyticsData = Array.isArray(item.tweet_analytics) 
+        ? item.tweet_analytics[0] 
+        : item.tweet_analytics;
+      
+      if (performanceData?.overall_score !== undefined) {
+        groups[tone].scores.push(performanceData.overall_score);
+      }
+      if (analyticsData?.new_followers_attributed !== undefined) {
+        groups[tone].followers.push(analyticsData.new_followers_attributed);
+      }
       return groups;
     }, {});
 
     const patterns: PerformancePattern[] = [];
     
     for (const [tone, group] of Object.entries(toneGroups)) {
-      const scores = group.scores;
-      const followers = group.followers;
+      const scores = (group as any).scores;
+      const followers = (group as any).followers;
       const sampleSize = scores.length;
       
-      if (sampleSize >= 3) {
-        const avgScore = scores.reduce((a, b) => a + b, 0) / scores.length;
-        const avgFollowers = followers.reduce((a, b) => a + b, 0) / followers.length;
+      if (sampleSize >= 3 && scores.length > 0 && followers.length > 0) {
+        const avgScore = scores.reduce((a: number, b: number) => a + b, 0) / scores.length;
+        const avgFollowers = followers.reduce((a: number, b: number) => a + b, 0) / followers.length;
         const confidence = Math.min(0.4 + (sampleSize / 15), 0.9);
         
         patterns.push({
-          id: `tone_${tone}`,
           pattern_type: 'tone',
           pattern_name: tone,
           pattern_features: { tone_profile: tone },
@@ -412,26 +470,39 @@ export class EnhancedLearningEngine {
     }
 
     // Group by topic and calculate performance
-    const topicGroups = data.reduce((groups, item) => {
+    const topicGroups = data.reduce((groups: any, item: any) => {
       const topic = item.primary_topic;
       if (!groups[topic]) {
         groups[topic] = { scores: [], followers: [] };
       }
-      groups[topic].scores.push(item.tweet_performance_scores.overall_score);
-      groups[topic].followers.push(item.tweet_analytics.new_followers_attributed || 0);
+      
+      // Safely extract scores and followers from database response
+      const performanceData = Array.isArray(item.tweet_performance_scores) 
+        ? item.tweet_performance_scores[0] 
+        : item.tweet_performance_scores;
+      const analyticsData = Array.isArray(item.tweet_analytics) 
+        ? item.tweet_analytics[0] 
+        : item.tweet_analytics;
+      
+      if (performanceData?.overall_score !== undefined) {
+        groups[topic].scores.push(performanceData.overall_score);
+      }
+      if (analyticsData?.new_followers_attributed !== undefined) {
+        groups[topic].followers.push(analyticsData.new_followers_attributed);
+      }
       return groups;
     }, {});
 
     const patterns: PerformancePattern[] = [];
     
     for (const [topic, group] of Object.entries(topicGroups)) {
-      const scores = group.scores;
-      const followers = group.followers;
+      const scores = (group as any).scores;
+      const followers = (group as any).followers;
       const sampleSize = scores.length;
       
-      if (sampleSize >= 3) {
-        const avgScore = scores.reduce((a, b) => a + b, 0) / scores.length;
-        const avgFollowers = followers.reduce((a, b) => a + b, 0) / followers.length;
+      if (sampleSize >= 3 && scores.length > 0 && followers.length > 0) {
+        const avgScore = scores.reduce((a: number, b: number) => a + b, 0) / scores.length;
+        const avgFollowers = followers.reduce((a: number, b: number) => a + b, 0) / followers.length;
         const confidence = Math.min(0.4 + (sampleSize / 15), 0.9);
         
         patterns.push({
@@ -482,24 +553,37 @@ export class EnhancedLearningEngine {
     const patterns: PerformancePattern[] = [];
     
     // Analyze format styles
-    const formatGroups = data.reduce((groups, item) => {
+    const formatGroups = data.reduce((groups: any, item: any) => {
       const format = item.format_style;
       if (!groups[format]) {
         groups[format] = { scores: [], followers: [] };
       }
-      groups[format].scores.push(item.tweet_performance_scores.overall_score);
-      groups[format].followers.push(item.tweet_analytics.new_followers_attributed || 0);
+      
+      // Safely extract scores and followers from database response
+      const performanceData = Array.isArray(item.tweet_performance_scores) 
+        ? item.tweet_performance_scores[0] 
+        : item.tweet_performance_scores;
+      const analyticsData = Array.isArray(item.tweet_analytics) 
+        ? item.tweet_analytics[0] 
+        : item.tweet_analytics;
+      
+      if (performanceData?.overall_score !== undefined) {
+        groups[format].scores.push(performanceData.overall_score);
+      }
+      if (analyticsData?.new_followers_attributed !== undefined) {
+        groups[format].followers.push(analyticsData.new_followers_attributed);
+      }
       return groups;
     }, {});
 
     for (const [format, group] of Object.entries(formatGroups)) {
-      const scores = group.scores;
-      const followers = group.followers;
+      const scores = (group as any).scores;
+      const followers = (group as any).followers;
       const sampleSize = scores.length;
       
-      if (sampleSize >= 3) {
-        const avgScore = scores.reduce((a, b) => a + b, 0) / scores.length;
-        const avgFollowers = followers.reduce((a, b) => a + b, 0) / followers.length;
+      if (sampleSize >= 3 && scores.length > 0 && followers.length > 0) {
+        const avgScore = scores.reduce((a: number, b: number) => a + b, 0) / scores.length;
+        const avgFollowers = followers.reduce((a: number, b: number) => a + b, 0) / followers.length;
         const confidence = Math.min(0.4 + (sampleSize / 15), 0.9);
         
         patterns.push({
@@ -520,19 +604,39 @@ export class EnhancedLearningEngine {
     const elementAnalysis = ['has_question', 'has_call_to_action', 'has_emoji', 'has_hashtags'];
     
     for (const element of elementAnalysis) {
-      const withElement = data.filter(item => item[element]);
-      const withoutElement = data.filter(item => !item[element]);
+      const withElement = data.filter((item: any) => item[element]);
+      const withoutElement = data.filter((item: any) => !item[element]);
       
       if (withElement.length >= 3 && withoutElement.length >= 3) {
-        const withScores = withElement.map(item => item.tweet_performance_scores.overall_score);
-        const withFollowers = withElement.map(item => item.tweet_analytics.new_followers_attributed || 0);
-        const withoutScores = withoutElement.map(item => item.tweet_performance_scores.overall_score);
-        const withoutFollowers = withoutElement.map(item => item.tweet_analytics.new_followers_attributed || 0);
+        const withScores = withElement.map((item: any) => {
+          const performanceData = Array.isArray(item.tweet_performance_scores) 
+            ? item.tweet_performance_scores[0] 
+            : item.tweet_performance_scores;
+          return performanceData?.overall_score || 0;
+        });
+        const withFollowers = withElement.map((item: any) => {
+          const analyticsData = Array.isArray(item.tweet_analytics) 
+            ? item.tweet_analytics[0] 
+            : item.tweet_analytics;
+          return analyticsData?.new_followers_attributed || 0;
+        });
+        const withoutScores = withoutElement.map((item: any) => {
+          const performanceData = Array.isArray(item.tweet_performance_scores) 
+            ? item.tweet_performance_scores[0] 
+            : item.tweet_performance_scores;
+          return performanceData?.overall_score || 0;
+        });
+        const withoutFollowers = withoutElement.map((item: any) => {
+          const analyticsData = Array.isArray(item.tweet_analytics) 
+            ? item.tweet_analytics[0] 
+            : item.tweet_analytics;
+          return analyticsData?.new_followers_attributed || 0;
+        });
         
-        const withAvgScore = withScores.reduce((a, b) => a + b, 0) / withScores.length;
-        const withAvgFollowers = withFollowers.reduce((a, b) => a + b, 0) / withFollowers.length;
-        const withoutAvgScore = withoutScores.reduce((a, b) => a + b, 0) / withoutScores.length;
-        const withoutAvgFollowers = withoutFollowers.reduce((a, b) => a + b, 0) / withoutFollowers.length;
+        const withAvgScore = withScores.reduce((a: number, b: number) => a + b, 0) / withScores.length;
+        const withAvgFollowers = withFollowers.reduce((a: number, b: number) => a + b, 0) / withFollowers.length;
+        const withoutAvgScore = withoutScores.reduce((a: number, b: number) => a + b, 0) / withoutScores.length;
+        const withoutAvgFollowers = withoutFollowers.reduce((a: number, b: number) => a + b, 0) / withoutFollowers.length;
         
         // Only create pattern if there's a meaningful difference
         const scoreDiff = withAvgScore - withoutAvgScore;
