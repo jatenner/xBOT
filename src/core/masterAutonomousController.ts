@@ -198,6 +198,18 @@ export class MasterAutonomousController {
     console.log('🧠 Initializing all intelligence systems...');
 
     try {
+      // Initialize daily budget tracking system
+      console.log('💰 Initializing daily budget tracking...');
+      try {
+        const { dailyBudgetAccounting } = await import('../utils/dailyBudgetAccounting');
+        await dailyBudgetAccounting.initialize();
+        this.updateComponentStatus('budget_system', 'active');
+        console.log('✅ Daily budget tracking initialized');
+      } catch (budgetError) {
+        console.error('❌ Failed to initialize budget tracking:', budgetError);
+        this.updateComponentStatus('budget_system', 'error', [budgetError.message]);
+      }
+
       // Initialize posting engine
       // await this.postingEngine.initialize(); // Enhanced engine disabled
       this.updateComponentStatus('posting_engine', 'active');

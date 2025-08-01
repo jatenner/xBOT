@@ -49,8 +49,26 @@ export class DailyBudgetAccounting {
     emergency_reserve: 0.05    // 5% emergency buffer ($0.25)
   };
 
+  private _initialized = false;
+
   constructor() {
-    this.initializeDailyBudget();
+    // Don't call async initialization in constructor
+  }
+
+  /**
+   * 🚀 Initialize daily budget tracking (call this once at startup)
+   */
+  async initialize(): Promise<void> {
+    if (this._initialized) return;
+    
+    try {
+      await this.initializeDailyBudget();
+      this._initialized = true;
+      console.log('✅ DailyBudgetAccounting initialized successfully');
+    } catch (error) {
+      console.error('❌ Failed to initialize DailyBudgetAccounting:', error);
+      throw error;
+    }
   }
 
   /**
@@ -126,6 +144,12 @@ export class DailyBudgetAccounting {
     const today = this.getTodayString();
 
     try {
+      // Ensure initialization
+      if (!this._initialized) {
+        console.log('⚠️ DailyBudgetAccounting not initialized, initializing now...');
+        await this.initialize();
+      }
+
       // Get current budget status
       const currentStatus = await this.getTodaysBudgetStatus();
       if (!currentStatus) {

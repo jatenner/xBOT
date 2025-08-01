@@ -404,7 +404,7 @@ export class AutonomousPostingEngine {
    */
   private async generateContent(): Promise<{
     success: boolean;
-    content?: string;
+    content?: string | string[];
     metadata?: any;
     error?: string;
   }> {
@@ -434,8 +434,22 @@ export class AutonomousPostingEngine {
               eliteResult.content.join('\n\n') : 
               (typeof eliteResult.content === 'string' ? eliteResult.content : JSON.stringify(eliteResult.content));
 
+            // 🧵 Parse for thread content
+            const { parseNumberedThread } = await import('../utils/threadUtils');
+            const threadResult = parseNumberedThread(contentString);
+            
+            const finalContent = threadResult.isThread ? threadResult.tweets : contentString;
+            const contentType = threadResult.isThread ? 'thread' : 'tweet';
+
             console.log(`✅ ELITE SUCCESS: Generated viral content`);
-            console.log(`📝 Content: "${typeof contentString === 'string' ? contentString.substring(0, 100) : String(contentString).substring(0, 100)}..."`);
+            if (threadResult.isThread) {
+              console.log(`🧵 THREAD DETECTED: ${threadResult.tweets.length} tweets`);
+              threadResult.tweets.forEach((tweet, i) => {
+                console.log(`📝 Tweet ${i + 1}: "${tweet.substring(0, 80)}..."`);
+              });
+            } else {
+              console.log(`📝 Content: "${typeof contentString === 'string' ? contentString.substring(0, 100) : String(contentString).substring(0, 100)}..."`);
+            }
             console.log(`📊 Predicted engagement: ${eliteResult.predicted_engagement}%`);
             console.log(`🎯 Format used: ${eliteResult.format_used}`);
             console.log(`🎪 Hook type: ${eliteResult.hook_type}`);
@@ -443,13 +457,16 @@ export class AutonomousPostingEngine {
 
             return {
               success: true,
-              content: contentString,
+              content: finalContent,
               metadata: {
                 source: 'elite_strategist',
                 format_used: eliteResult.format_used,
                 hook_type: eliteResult.hook_type,
                 predicted_engagement: eliteResult.predicted_engagement,
-                reasoning: eliteResult.reasoning
+                reasoning: eliteResult.reasoning,
+                content_type: contentType,
+                is_thread: threadResult.isThread,
+                tweet_count: threadResult.isThread ? threadResult.tweets.length : 1
               }
             };
           }
@@ -488,7 +505,20 @@ export class AutonomousPostingEngine {
         bulletproofResult.content.join('\n\n') : 
         (typeof bulletproofResult.content === 'string' ? bulletproofResult.content : String(bulletproofResult.content));
 
+      // 🧵 Parse for thread content
+      const { parseNumberedThread } = await import('../utils/threadUtils');
+      const threadResult = parseNumberedThread(contentString);
+      
+      const finalContent = threadResult.isThread ? threadResult.tweets : contentString;
+      const contentType = threadResult.isThread ? 'thread' : 'tweet';
+
       console.log(`✅ Bulletproof content generated: "${typeof contentString === 'string' ? contentString.substring(0, 100) : String(contentString).substring(0, 100)}..."`);
+      if (threadResult.isThread) {
+        console.log(`🧵 BULLETPROOF THREAD: ${threadResult.tweets.length} tweets`);
+        threadResult.tweets.forEach((tweet, i) => {
+          console.log(`📝 Tweet ${i + 1}: "${tweet.substring(0, 80)}..."`);
+        });
+      }
       console.log(`📊 Predicted engagement: ${bulletproofResult.predicted_engagement}%`);
       console.log(`🎯 Format used: ${bulletproofResult.format_used}`);
       console.log(`🎪 Hook type: ${bulletproofResult.hook_type}`);
@@ -496,14 +526,17 @@ export class AutonomousPostingEngine {
 
       return {
         success: true,
-        content: contentString,
+        content: finalContent,
         metadata: {
           generation_method: 'bulletproof_generator',
           format_used: bulletproofResult.format_used,
           predicted_engagement: bulletproofResult.predicted_engagement,
           hook_type: bulletproofResult.hook_type,
           confidence: bulletproofResult.confidence,
-          source: bulletproofResult.source
+          source: bulletproofResult.source,
+          content_type: contentType,
+          is_thread: threadResult.isThread,
+          tweet_count: threadResult.isThread ? threadResult.tweets.length : 1
         }
       };
 
@@ -628,7 +661,7 @@ export class AutonomousPostingEngine {
   /**
    * 🐦 POST TO TWITTER WITH ENHANCED CONFIRMATION
    */
-  private async postToTwitter(content: string): Promise<{
+  private async postToTwitter(content: string | string[]): Promise<{
     success: boolean;
     tweet_id?: string;
     error?: string;
@@ -636,6 +669,71 @@ export class AutonomousPostingEngine {
     confirmed?: boolean;
   }> {
     try {
+      // 🧵 THREAD HANDLING - Use ThreadPostingAgent for arrays
+      if (Array.isArray(content)) {
+        console.log(`🧵 Posting thread with ${content.length} tweets via ThreadPostingAgent...`);
+        
+        try {
+          const { ThreadPostingAgent } = await import('../agents/threadPostingAgent');
+          const threadAgent = new ThreadPostingAgent();
+          
+          // Validate thread before posting
+          const { validateThread } = await import('../utils/threadUtils');
+          const validation = validateThread(content);
+          
+          if (!validation.valid) {
+            console.error('❌ Thread validation failed:', validation.issues.join(', '));
+            return {
+              success: false,
+              error: `Thread validation failed: ${validation.issues.join(', ')}`,
+              was_posted: false,
+              confirmed: false
+            };
+          }
+          
+          console.log(`✅ Thread validation passed: ${content.length} tweets, max length ${validation.maxLength} chars`);
+          
+          // Post the thread
+          const threadResult = await threadAgent.postContent({
+            content,
+            metadata: { 
+              format: 'numbered_thread',
+              source: 'autonomous_posting_engine'
+            }
+          } as any);
+          
+          if (threadResult.success && threadResult.tweetIds && threadResult.tweetIds.length > 0) {
+            console.log(`✅ Thread posted successfully: ${threadResult.tweetIds.length} tweets`);
+            console.log(`🆔 Thread root ID: ${threadResult.tweetIds[0]}`);
+            
+            return {
+              success: true,
+              tweet_id: threadResult.tweetIds[0], // Return root tweet ID
+              was_posted: true,
+              confirmed: true
+            };
+          } else {
+            console.error('❌ Thread posting failed via ThreadPostingAgent');
+            return {
+              success: false,
+              error: threadResult.error || 'Thread posting failed',
+              was_posted: false,
+              confirmed: false
+            };
+          }
+          
+        } catch (threadError) {
+          console.error('❌ Thread posting error:', threadError);
+          return {
+            success: false,
+            error: `Thread posting failed: ${threadError.message}`,
+            was_posted: false,
+            confirmed: false
+          };
+        }
+      }
+      
+      // 📝 SINGLE TWEET HANDLING (original logic)
       console.log('🔍 Pre-posting content validation...');
       
       // Step 1: Clean content validation
@@ -1072,7 +1170,7 @@ export class AutonomousPostingEngine {
   /**
    * 🧠 Enhanced content generation using two-pass system and contextual bandit
    */
-  private async generateEnhancedContent(): Promise<{ success: boolean; content?: string; context?: any }> {
+  private async generateEnhancedContent(): Promise<{ success: boolean; content?: string | string[]; context?: any }> {
     try {
       console.log('🧠 === ENHANCED CONTENT GENERATION ===');
 
