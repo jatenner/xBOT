@@ -11,6 +11,8 @@
  */
 
 import { supabaseClient } from './supabaseClient';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export interface BudgetTransaction {
   id: string;
@@ -178,6 +180,13 @@ export class DailyBudgetAccounting {
         remaining_budget: this.HARD_DAILY_LIMIT - newTotal,
         description: description
       };
+
+      // Save transaction
+      // Also append to local cache for offline fallback
+      try {
+        const line = `${today},${cost.toFixed(6)}\n`;
+        fs.appendFileSync(path.join(process.cwd(), '.daily_spending.log'), line);
+      } catch (_e) {/* ignore */}
 
       // Save transaction
       if (supabaseClient.supabase) {

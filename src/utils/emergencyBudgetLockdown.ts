@@ -9,6 +9,28 @@ import { supabaseClient } from './supabaseClient';
 import * as fs from 'fs';
 import * as path from 'path';
 
+// 🗂️ Local spending cache (fallback when DB offline)
+const SPENT_CACHE_FILE = path.join(process.cwd(), '.daily_spending.log');
+
+function getToday(): string {
+  return new Date().toISOString().split('T')[0];
+}
+
+function readLocalSpentCache(): number {
+  try {
+    if (!fs.existsSync(SPENT_CACHE_FILE)) return 0;
+    const lines = fs.readFileSync(SPENT_CACHE_FILE, 'utf8').trim().split('\n');
+    const todayLines = lines.filter(l => l.startsWith(getToday()));
+    return todayLines.reduce((sum, line) => {
+      const parts = line.split(',');
+      const amt = parseFloat(parts[1]);
+      return sum + (isNaN(amt) ? 0 : amt);
+    }, 0);
+  } catch (_e) {
+    return 0;
+  }
+}
+
 interface EmergencyStatus {
   lockdownActive: boolean;
   totalSpent: number;
@@ -60,12 +82,13 @@ export class EmergencyBudgetLockdown {
       const today = new Date().toISOString().split('T')[0];
       
       if (!supabaseClient.supabase) {
-        console.log('⚠️ No Supabase connection - allowing operations with warning');
+        const fallbackSpent = readLocalSpentCache();
+        console.log(`⚠️ No Supabase connection – using local cache ($${fallbackSpent.toFixed(2)} spent today)`);
         return {
           lockdownActive: false,
-          totalSpent: 0,
+          totalSpent: fallbackSpent,
           dailyLimit: this.ABSOLUTE_DAILY_LIMIT,
-          lockdownReason: 'No database connection - operations allowed with caution'
+          lockdownReason: 'Offline budget mode (cache)'
         };
       }
 
