@@ -74,16 +74,19 @@ export class DuplicatePostPrevention {
       const normalizedContent = this.normalizeContent(content);
       const contentHash = this.generateContentHash(normalizedContent);
       
-      await supabaseClient.supabase
+      const { error } = await supabaseClient.supabase
         .from('post_history')
         .insert({
           content_hash: contentHash,
           original_content: Array.isArray(content) ? content.join('\n\n') : content,
           tweet_id: tweetId,
           posted_at: new Date().toISOString()
-        })
-        .onConflict('content_hash')
-        .ignore(); // Ignore if already exists
+        });
+        
+      // Ignore duplicate key errors (unique constraint violations)
+      if (error && !error.message.includes('duplicate key')) {
+        throw error;
+      }
         
       console.log(`✅ Recorded post history: ${contentHash.substring(0, 16)}...`);
       
