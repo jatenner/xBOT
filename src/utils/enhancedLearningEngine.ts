@@ -18,29 +18,29 @@ import { BudgetAwareOpenAI } from './budgetAwareOpenAI';
 import { emergencyBudgetLockdown } from './emergencyBudgetLockdown';
 
 export interface PerformancePattern {
-  id: string;
+  id?: string;
   pattern_type: 'content_type' | 'timing' | 'format' | 'tone' | 'topic';
   pattern_name: string;
-  pattern_features: any;
+  pattern_features?: any;
   avg_performance_score: number;
   avg_follower_growth: number;
   sample_size: number;
   confidence_level: number;
-  validation_status: 'active' | 'testing' | 'deprecated';
+  validation_status?: 'active' | 'testing' | 'deprecated';
 }
 
 export interface ContentRecommendation {
-  recommended_content_type: string;
-  recommended_tone: string;
-  recommended_format: string;
-  optimal_timing: {
+  recommended_content_type?: string;
+  recommended_tone?: string;
+  recommended_format?: string;
+  optimal_timing?: {
     hour: number;
     day_of_week: number;
   };
-  predicted_performance_score: number;
-  predicted_follower_growth: number;
-  confidence: number;
-  reasoning: string;
+  predicted_performance_score?: number;
+  predicted_follower_growth?: number;
+  confidence?: number;
+  reasoning?: string;
 }
 
 export interface LearningInsights {
@@ -172,17 +172,17 @@ export class EnhancedLearningEngine {
     }
 
     // Group by content type and calculate averages
-    const typeGroups = data.reduce((groups, item) => {
+    const typeGroups = data.reduce((groups: any, item: any) => {
       const type = item.content_type;
       if (!groups[type]) {
         groups[type] = {
           scores: [],
-          follower_counts: [],
+          followers: [],
           tweets: []
         };
       }
       groups[type].scores.push(item.tweet_performance_scores.overall_score);
-      groups[type].follower_counts.push(item.tweet_analytics.new_followers_attributed || 0);
+      groups[type].followers.push(item.tweet_analytics.new_followers_attributed || 0);
       groups[type].tweets.push(item.tweet_id);
       return groups;
     }, {});
@@ -190,8 +190,8 @@ export class EnhancedLearningEngine {
     const patterns: PerformancePattern[] = [];
     
     for (const [contentType, group] of Object.entries(typeGroups)) {
-      const scores = group.scores;
-      const followers = group.follower_counts;
+      const scores = (group as any).scores;
+      const followers = (group as any).followers;
       const sampleSize = scores.length;
       
       if (sampleSize >= 3) {
@@ -206,7 +206,6 @@ export class EnhancedLearningEngine {
         );
         
         patterns.push({
-          id: `content_type_${contentType}`,
           pattern_type: 'content_type',
           pattern_name: contentType,
           pattern_features: { content_type: contentType },
