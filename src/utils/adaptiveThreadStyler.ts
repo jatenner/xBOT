@@ -73,12 +73,68 @@ export class AdaptiveThreadStyler {
   }
 
   /**
-   * 🎯 SELECT BEST PERFORMING STYLE OR EXPERIMENT WITH NEW ONES
+   * 🎯 SELECT OPTIMAL STYLE USING LINUCB CONTEXTUAL BANDIT
    */
-  async selectOptimalStyle(): Promise<ThreadStyle> {
+  async selectOptimalStyle(context?: any): Promise<ThreadStyle> {
     try {
-      // 80% of time: use best performing style
-      // 20% of time: experiment with different styles
+      // Try LinUCB bandit first for intelligent selection
+      const selectedStyle = await this.selectWithLinUCB(context);
+      if (selectedStyle) {
+        return selectedStyle;
+      }
+      
+      // Fallback to 80/20 exploit/explore
+      return this.fallbackSelection();
+      
+    } catch (error) {
+      console.error('❌ Error selecting thread style:', error);
+      return this.threadStyles[0]; // Default to emoji numbers
+    }
+  }
+
+  /**
+   * 🧠 Use LinUCB contextual bandit for intelligent style selection
+   */
+  private async selectWithLinUCB(inputContext?: any): Promise<ThreadStyle | null> {
+    try {
+      const { ContextualBandit } = await import('../intelligence/contextualBandit');
+      const bandit = ContextualBandit.getInstance();
+      
+      // Build context for bandit decision
+      const banditContext = await this.buildBanditContext(inputContext);
+      
+      // Convert thread styles to bandit actions
+      const actions = this.threadStyles.map(style => ({
+        id: style.id,
+        name: style.name,
+        type: 'thread_style' as const,
+        parameters: { style: style.id }
+      }));
+      
+      // Let bandit select optimal action
+      const selectedAction = await bandit.selectAction(banditContext, actions);
+      
+      // Find corresponding thread style
+      const selectedStyle = this.threadStyles.find(s => s.id === selectedAction.id);
+      
+      if (selectedStyle) {
+        console.log(`🎯 LinUCB selected style: ${selectedStyle.name}`);
+        return selectedStyle;
+      }
+      
+      return null;
+      
+    } catch (error) {
+      console.warn('⚠️ LinUCB selection failed, using fallback:', error);
+      return null;
+    }
+  }
+
+  /**
+   * 🔄 Fallback to original 80/20 exploit/explore
+   */
+  private async fallbackSelection(): Promise<ThreadStyle> {
+    try {
       const shouldExperiment = Math.random() < 0.2;
       
       if (shouldExperiment) {
@@ -89,9 +145,49 @@ export class AdaptiveThreadStyler {
         return await this.getBestPerformingStyle();
       }
     } catch (error) {
-      console.error('❌ Error selecting thread style:', error);
-      return this.threadStyles[0]; // Default to emoji numbers
+      console.error('❌ Error in fallback selection:', error);
+      return this.threadStyles[0];
     }
+  }
+
+  /**
+   * 🧠 Build context for bandit decision
+   */
+  private async buildBanditContext(inputContext?: any): Promise<any> {
+    const now = new Date();
+    const hour = now.getHours();
+    const dayOfWeek = now.getDay();
+    
+    // Get recent engagement rate
+    let recentEngagementRate = 0.0;
+    try {
+      const { supabaseClient } = await import('../utils/supabaseClient');
+      const { data } = await supabaseClient.supabase
+        .from('tweets')
+        .select('engagement_score, impressions')
+        .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+        .order('created_at', { ascending: false })
+        .limit(5);
+      
+      if (data && data.length > 0) {
+        const avgEngagement = data.reduce((sum, tweet) => sum + tweet.engagement_score, 0) / data.length;
+        const avgImpressions = data.reduce((sum, tweet) => sum + (tweet.impressions || 1), 0) / data.length;
+        recentEngagementRate = avgEngagement / Math.max(avgImpressions, 1);
+      }
+    } catch (error) {
+      console.warn('Could not get recent engagement rate:', error);
+    }
+    
+    return {
+      hour,
+      dayOfWeek,
+      contentLength: inputContext?.contentLength || 150,
+      emojiCount: inputContext?.emojiCount || 1,
+      hasHook: inputContext?.hasHook || true,
+      topicCluster: inputContext?.topicCluster || 'general_health',
+      recentEngagementRate,
+      followerCount: inputContext?.followerCount || 1000
+    };
   }
 
   /**

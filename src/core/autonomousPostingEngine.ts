@@ -335,6 +335,56 @@ export class AutonomousPostingEngine {
       );
       storageTime = Date.now() - storageStart;
 
+      // 📈 STEP 3.5: Set up intelligent follower tracking
+      try {
+        const { FollowerTracker } = await import('../utils/followerTracker');
+        const followerTracker = FollowerTracker.getInstance();
+        
+        // Schedule follower tracking (async - doesn't block posting)
+        setTimeout(async () => {
+          try {
+            const followerDelta = await followerTracker.trackFollowerChange(twitterResult.tweet_id!);
+            if (followerDelta) {
+              console.log(`📈 Follower impact: ${followerDelta.followerGain > 0 ? '+' : ''}${followerDelta.followerGain} followers (confidence: ${Math.round(followerDelta.confidence * 100)}%)`);
+              
+              // Update bandit with follower reward
+              if (contentResult.metadata?.style_used) {
+                const { ContextualBandit } = await import('../intelligence/contextualBandit');
+                const bandit = ContextualBandit.getInstance();
+                
+                const banditContext = {
+                  hour: new Date().getHours(),
+                  dayOfWeek: new Date().getDay(),
+                  contentLength: Array.isArray(contentResult.content) ? 
+                    contentResult.content.join(' ').length : 
+                    String(contentResult.content).length,
+                  emojiCount: String(contentResult.content).match(/[\u{1F600}-\u{1F64F}]|\u{1F300}-\u{1F5FF}|\u{1F680}-\u{1F6FF}|\u{1F1E0}-\u{1F1FF}/gu)?.length || 0,
+                  hasHook: this.hasHook(contentResult.content),
+                  topicCluster: contentResult.metadata?.topic || 'general_health',
+                  recentEngagementRate: 0.1,
+                  followerCount: 1000
+                };
+                
+                await bandit.updateReward(contentResult.metadata.style_used, banditContext, {
+                  followerGain: followerDelta.followerGain,
+                  engagementRate: contentResult.metadata?.predicted_engagement || 0.1,
+                  impressions: 100, // Placeholder
+                  timeToEffect: followerDelta.timeWindow,
+                  confidence: followerDelta.confidence
+                });
+                
+                console.log(`🎯 Updated bandit learning for style: ${contentResult.metadata.style_used}`);
+              }
+            }
+          } catch (error) {
+            console.warn('⚠️ Follower tracking analysis failed:', error);
+          }
+        }, 90 * 60 * 1000); // Wait 90 minutes for follower data to settle
+        
+      } catch (error) {
+        console.warn('⚠️ Follower tracking setup failed:', error);
+      }
+
       // Step 4: Store semantic embedding and core idea
       console.log('🧠 Storing semantic embedding and core idea...');
       
@@ -464,20 +514,45 @@ export class AutonomousPostingEngine {
               // AI thinks this should be a thread - try to parse it
               const threadResult = parseNumberedThread(contentString);
               if (threadResult.isThread && threadResult.tweets.length > 1) {
-                // Successfully parsed as thread
-                finalContent = await enhanceTwitterContent(threadResult.tweets, true) as string[];
+                // 🔥 ENHANCE with trending topics first
+                const { TrendInjector } = await import('../intelligence/trendInjector');
+                const trendInjector = TrendInjector.getInstance();
+                const trendEnhanced = await trendInjector.enhanceWithTrends(
+                  threadResult.tweets.join('\n'), 'thread'
+                );
+                
+                // Successfully parsed as thread - enhance with adaptive styling
+                finalContent = await enhanceTwitterContent(
+                  trendEnhanced.enhancedContent.split('\n').filter(t => t.trim()), 
+                  true
+                ) as string[];
                 actualIsThread = true;
                 console.log(`🧵 THREAD DECISION: AI detected ${threadResult.tweets.length} tweets`);
+                if (trendEnhanced.injectedKeywords.length > 0) {
+                  console.log(`📰 Trending topics injected: ${trendEnhanced.injectedKeywords.join(', ')}`);
+                }
               } else {
                 // AI wanted thread but content doesn't parse as one - treat as single
                 const cleanedTweet = cleanSingleTweet(contentString);
-                finalContent = await enhanceTwitterContent(cleanedTweet, false) as string;
+                
+                // 🔥 ENHANCE single tweet with trending topics
+                const { TrendInjector } = await import('../intelligence/trendInjector');
+                const trendInjector = TrendInjector.getInstance();
+                const trendEnhanced = await trendInjector.enhanceWithTrends(cleanedTweet, 'single');
+                
+                finalContent = await enhanceTwitterContent(trendEnhanced.enhancedContent, false) as string;
                 console.log(`📝 SINGLE FALLBACK: AI wanted thread but content doesn't split properly`);
               }
             } else {
               // AI thinks this should be single tweet
               const cleanedTweet = cleanSingleTweet(contentString);
-              finalContent = await enhanceTwitterContent(cleanedTweet, false) as string;
+              
+              // 🔥 ENHANCE with trending topics
+              const { TrendInjector } = await import('../intelligence/trendInjector');
+              const trendInjector = TrendInjector.getInstance();
+              const trendEnhanced = await trendInjector.enhanceWithTrends(cleanedTweet, 'single');
+              
+              finalContent = await enhanceTwitterContent(trendEnhanced.enhancedContent, false) as string;
               console.log(`📝 SINGLE DECISION: AI determined single tweet format`);
             }
             const contentType = actualIsThread ? 'thread' : 'tweet';

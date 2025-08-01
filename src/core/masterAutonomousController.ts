@@ -1124,6 +1124,23 @@ export class MasterAutonomousController {
     } else {
       this.systemHealth.overall = 'good';
     }
+
+    // 🚨 INTELLIGENT ALERTING INTEGRATION
+    try {
+      // Analyze health and send alerts if needed (async - doesn't block)
+      setImmediate(async () => {
+        try {
+          const { IntelligentAlerting } = await import('../utils/intelligentAlerting');
+          const alerting = IntelligentAlerting.getInstance();
+          await alerting.analyzeSystemHealth(this.systemHealth);
+        } catch (error) {
+          console.warn('⚠️ Alert analysis failed:', error);
+        }
+      });
+      
+    } catch (error) {
+      console.warn('⚠️ Intelligent alerting not available:', error);
+    }
   }
 
   private async updateSystemHealth(): Promise<void> {
