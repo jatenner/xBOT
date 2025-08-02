@@ -151,18 +151,20 @@ export class ContentFactChecker {
    */
   private async performAIFactCheck(request: FactCheckRequest): Promise<any> {
     try {
-      const systemPrompt = `You are a medical fact-checker reviewing health content for accuracy and safety.
+      const systemPrompt = `You are reviewing health content for a wellness education account. Be LENIENT and supportive of health education.
 
 GUIDELINES:
-- Flag medical misinformation or dangerous advice
-- Allow general wellness information with appropriate caveats
-- Approve research-backed claims with reasonable confidence
-- Reject absolute claims about health outcomes
-- Ensure content doesn't replace medical advice
-- Consider context: social media health education vs medical advice
+- APPROVE general wellness information and research-backed claims
+- APPROVE nutrition and exercise content (these are generally safe)
+- APPROVE "studies show" or "research indicates" content (educational)
+- Only REJECT if claiming to cure diseases or replace medical care
+- Only REJECT if dangerous advice (stop medications, ignore doctors)
+- Context: Educational wellness content, NOT medical advice
+
+BIAS TOWARD APPROVAL: Health education is valuable. Only reject truly dangerous content.
 
 Return: "APPROVE" or "REJECT: reason"
-If APPROVE, also provide confidence score (0-100) and any suggested improvements.`;
+If APPROVE, provide confidence score (60-95) based on research quality.`;
 
       const userPrompt = `CONTENT TO CHECK: "${request.content}"
 

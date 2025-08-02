@@ -16,8 +16,9 @@ export interface DuplicateCheckResult {
 
 export class DuplicatePostPrevention {
   private static instance: DuplicatePostPrevention;
-  private static recentHashes = new Set<string>(); // In-memory cache for last 50 posts
+  private static recentHashes = new Map<string, number>(); // Hash -> timestamp (for temporal checking)
   private static maxCacheSize = 50;
+  private static CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes TTL for in-memory cache
   
   private constructor() {}
   
@@ -39,15 +40,25 @@ export class DuplicatePostPrevention {
       
       console.log(`🔍 Checking duplicate for hash: ${contentHash.substring(0, 16)}...`);
       
-      // IMMEDIATE in-memory check (prevents concurrent duplicates)
-      if (DuplicatePostPrevention.recentHashes.has(contentHash)) {
-        console.log('🚫 IMMEDIATE DUPLICATE detected in memory cache');
-        return {
-          isDuplicate: true,
-          contentHash,
-          reason: 'Content already processed in current session',
-          confidence: 1.0
-        };
+      // IMMEDIATE in-memory check with TTL (prevents concurrent duplicates)
+      const now = Date.now();
+      const cachedTime = DuplicatePostPrevention.recentHashes.get(contentHash);
+      
+      if (cachedTime) {
+        const ageMinutes = (now - cachedTime) / (1000 * 60);
+        if (ageMinutes < 5) { // Only block if within 5 minutes
+          console.log(`🚫 IMMEDIATE DUPLICATE detected in memory cache (${ageMinutes.toFixed(1)}m ago)`);
+          return {
+            isDuplicate: true,
+            contentHash,
+            reason: `Content already processed ${ageMinutes.toFixed(1)} minutes ago`,
+            confidence: 1.0
+          };
+        } else {
+          // Remove expired entry
+          DuplicatePostPrevention.recentHashes.delete(contentHash);
+          console.log(`🔄 Expired cache entry removed (${ageMinutes.toFixed(1)}m old)`);
+        }
       }
       
       // Check exact hash match first (fastest)
@@ -87,15 +98,26 @@ export class DuplicatePostPrevention {
       const normalizedContent = this.normalizeContent(content);
       const contentHash = this.generateContentHash(normalizedContent);
       
-      // Add to in-memory cache immediately
-      DuplicatePostPrevention.recentHashes.add(contentHash);
+      // Add to in-memory cache with timestamp
+      const now = Date.now();
+      DuplicatePostPrevention.recentHashes.set(contentHash, now);
       
-      // Trim cache if too large (keep most recent)
+      // Clean up expired entries and trim cache if too large
+      const expiredEntries = Array.from(DuplicatePostPrevention.recentHashes.entries())
+        .filter(([hash, timestamp]) => (now - timestamp) > DuplicatePostPrevention.CACHE_TTL_MS);
+      
+      expiredEntries.forEach(([hash]) => DuplicatePostPrevention.recentHashes.delete(hash));
+      
+      // Trim cache if still too large (keep most recent)
       if (DuplicatePostPrevention.recentHashes.size > DuplicatePostPrevention.maxCacheSize) {
-        const hashesArray = Array.from(DuplicatePostPrevention.recentHashes);
+        const sortedEntries = Array.from(DuplicatePostPrevention.recentHashes.entries())
+          .sort((a, b) => b[1] - a[1]); // Sort by timestamp, newest first
+        
         DuplicatePostPrevention.recentHashes.clear();
-        // Keep the last 25 hashes
-        hashesArray.slice(-25).forEach(hash => DuplicatePostPrevention.recentHashes.add(hash));
+        // Keep the 25 most recent entries
+        sortedEntries.slice(0, 25).forEach(([hash, timestamp]) => 
+          DuplicatePostPrevention.recentHashes.set(hash, timestamp)
+        );
       }
       
       const { error } = await supabaseClient.supabase

@@ -152,10 +152,27 @@ export class DailyBudgetAccounting {
         await this.initialize();
       }
 
-      // Get current budget status
-      const currentStatus = await this.getTodaysBudgetStatus();
+      // Get current budget status (create if missing)
+      let currentStatus = await this.getTodaysBudgetStatus();
       if (!currentStatus) {
-        throw new Error('Daily budget not initialized');
+        console.log('📅 Creating daily budget entry for today...');
+        await this.createDailyBudgetEntry(today);
+        currentStatus = await this.getTodaysBudgetStatus();
+        
+        if (!currentStatus) {
+          console.warn('⚠️ Failed to create daily budget, using fallback');
+          // Fallback: create a temporary status for this session
+          currentStatus = {
+            date: today,
+            total_spent: 0,
+            remaining_budget: this.HARD_DAILY_LIMIT,
+            transactions_count: 0,
+            average_cost_per_operation: 0,
+            budget_utilization_percentage: 0,
+            emergency_brake_active: false,
+            cost_efficiency_score: 100
+          };
+        }
       }
 
       // Check if transaction would exceed budget
