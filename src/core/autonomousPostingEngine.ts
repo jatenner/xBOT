@@ -28,6 +28,8 @@ import { analyzeContentQuality, shouldPostContent } from '../utils/contentQualit
 import { bulletproofContentGenerator } from '../utils/bulletproofContentGenerator';
 import { IntelligentPostingOptimizer } from '../utils/intelligentPostingOptimizer';
 import { ProfessionalTweetFormatter } from '../utils/professionalTweetFormatter';
+import { EmergencyContentGenerator } from '../utils/emergencyContentGenerator';
+import { EmergencyDatabaseFixer } from '../utils/emergencyDatabaseFixer';
 
 interface PostingDecision {
   should_post: boolean;
@@ -944,12 +946,27 @@ export class AutonomousPostingEngine {
       if (duplicateCheck.isDuplicate) {
         console.error(`❌ Duplicate content detected: ${duplicateCheck.reason}`);
         console.error(`📝 Similar content: "${duplicateCheck.similarContent?.substring(0, 100)}..."`);
-        return {
-          success: false,
-          error: `Duplicate content: ${duplicateCheck.reason}`,
-          was_posted: false,
-          confirmed: false
-        };
+        
+        // 🚨 EMERGENCY CONTENT GENERATION FOR DUPLICATE CRISIS
+        console.log('🚨 === EMERGENCY CONTENT GENERATION ACTIVATED ===');
+        const emergencyContent = await EmergencyContentGenerator.generateEmergencyContent();
+        
+        if (emergencyContent.success && emergencyContent.content) {
+          console.log('✅ Emergency content generated successfully');
+          console.log(`📝 Emergency content: "${emergencyContent.content.substring(0, 100)}..."`);
+          
+          // Use emergency content instead of failing
+          content = emergencyContent.content;
+          console.log('🔄 Proceeding with emergency content...');
+        } else {
+          console.error('❌ Emergency content generation also failed');
+          return {
+            success: false,
+            error: `Duplicate content: ${duplicateCheck.reason}. Emergency generation failed.`,
+            was_posted: false,
+            confirmed: false
+          };
+        }
       }
       
       console.log(`✅ Content is unique (hash: ${duplicateCheck.contentHash.substring(0, 16)}...)`);

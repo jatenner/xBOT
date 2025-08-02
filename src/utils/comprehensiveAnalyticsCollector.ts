@@ -479,12 +479,14 @@ Complexity: 1 (very simple) to 10 (highly technical)`;
   }
   
   /**
-   * 💾 STORE ANALYTICS DATA
+   * 💾 STORE ANALYTICS DATA (WITH EMERGENCY DATABASE FIXING)
    */
   private static async storeAnalyticsData(data: TweetAnalyticsData): Promise<void> {
-    const { error } = await supabaseClient.supabase
-      .from('tweet_analytics')
-      .upsert({
+    try {
+      // 🚨 EMERGENCY DATABASE SAFETY: Ensure tweet exists before storing analytics
+      const { EmergencyDatabaseFixer } = await import('./emergencyDatabaseFixer');
+      
+      const analyticsData = {
         tweet_id: data.tweet_id,
         snapshot_interval: data.snapshot_interval,
         snapshot_time: new Date().toISOString(),
@@ -510,13 +512,31 @@ Complexity: 1 (very simple) to 10 (highly technical)`;
         click_through_rate: data.impressions > 0 ? 
           (data.url_clicks / data.impressions * 100) : 0,
         
-        collected_via: data.collected_via
-      }, {
-        onConflict: 'tweet_id,snapshot_interval'
-      });
+        collected_via: data.collected_via,
+        content: `Analytics for tweet ${data.tweet_id}` // For emergency tweet creation
+      };
 
-    if (error) {
-      console.error('❌ Failed to store analytics data:', error);
+      // Use safe storage that handles FK constraints
+      const success = await EmergencyDatabaseFixer.storeAnalyticsSafely(data.tweet_id, analyticsData);
+      
+      if (!success) {
+        console.warn('⚠️ Safe analytics storage failed, falling back to direct insertion');
+        
+        // Fallback to original method
+        const { error } = await supabaseClient.supabase
+          .from('tweet_analytics')
+          .upsert(analyticsData, {
+            onConflict: 'tweet_id,snapshot_interval'
+          });
+
+        if (error) {
+          console.error('❌ Failed to store analytics data:', error);
+          throw error;
+        }
+      }
+      
+    } catch (error) {
+      console.error('❌ Analytics storage error:', error);
       throw error;
     }
   }
