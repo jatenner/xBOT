@@ -20,13 +20,13 @@ export class IntelligentPostTypeDetector {
     let threadScore = 0;
     let singleScore = 0;
     
-    // Factor 1: Length analysis
+    // Factor 1: Length analysis (more conservative)
     const length = rawContent.length;
-    if (length > 280) {
+    if (length > 400) {
       threadScore += 3;
       reasoning.push(`Content length ${length} chars suggests thread`);
-    } else if (length < 200) {
-      singleScore += 2;
+    } else if (length < 280) {
+      singleScore += 3;
       reasoning.push(`Content length ${length} chars suggests single tweet`);
     }
     
@@ -81,9 +81,9 @@ export class IntelligentPostTypeDetector {
       reasoning.push('Contains actionable advice patterns suggesting thread');
     }
     
-    // Factor 7: Research/study mentions (often threads)
+    // Factor 7: Research/study mentions (only for longer content)
     const hasResearchContent = /\b(study|research|scientists|found that|according to)\b/i.test(rawContent);
-    if (hasResearchContent && length > 180) {
+    if (hasResearchContent && length > 300 && sentences.length > 3) {
       threadScore += 1;
       reasoning.push('Contains research references suggesting detailed thread');
     }
