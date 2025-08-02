@@ -30,6 +30,7 @@ import { IntelligentPostingOptimizer } from '../utils/intelligentPostingOptimize
 import { ProfessionalTweetFormatter } from '../utils/professionalTweetFormatter';
 import { EmergencyContentGenerator } from '../utils/emergencyContentGenerator';
 import { EmergencyDatabaseFixer } from '../utils/emergencyDatabaseFixer';
+import { EmergencyPostingActivator } from '../utils/emergencyPostingActivator';
 
 interface PostingDecision {
   should_post: boolean;
@@ -298,6 +299,20 @@ export class AutonomousPostingEngine {
       
       if (!twitterResult.success) {
         this.consecutiveFailures++;
+        
+        // 🚨 EMERGENCY ACTIVATION: If 5+ consecutive failures, activate emergency mode
+        if (this.consecutiveFailures >= 5) {
+          console.log('🚨 === ACTIVATING EMERGENCY POSTING MODE ===');
+          console.log(`💥 ${this.consecutiveFailures} consecutive failures detected`);
+          
+          try {
+            await EmergencyPostingActivator.activateEmergencyGrowth();
+            console.log('✅ Emergency growth mode activated');
+          } catch (emergencyError) {
+            console.error('❌ Emergency activation failed:', emergencyError);
+          }
+        }
+        
         return {
           success: false,
           error: `Twitter posting failed: ${twitterResult.error}`,
