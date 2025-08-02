@@ -56,7 +56,7 @@ export class GrammarEnhancer {
       const options: BudgetAwareRequestOptions = {
         priority: 'optional',
         operationType: 'grammar_enhancement',
-        maxTokens: 25, // Minimal tokens for grammar fixes
+        maxTokens: Math.max(150, Math.ceil(content.length * 1.2)), // Ensure enough tokens to complete sentences
         model: 'gpt-3.5-turbo', // Cheaper model for simple fixes
         temperature: 0.1, // Low temperature for consistency
         existingContent: content
@@ -73,8 +73,15 @@ export class GrammarEnhancer {
         };
       }
 
-      const enhanced = result.response.choices[0].message.content.trim();
+      let enhanced = result.response.choices[0].message.content.trim();
       const tokensUsed = result.response.usage?.total_tokens || 25;
+      
+      // 🚨 CRITICAL: Validate sentence completion
+      if (!this.isSentenceComplete(enhanced)) {
+        console.warn('⚠️ Grammar enhancer returned incomplete sentence, using original');
+        enhanced = content; // Fallback to original if incomplete
+      }
+      
       const improvementsFound = enhanced !== content && enhanced.length > 0;
 
       if (improvementsFound) {
@@ -120,6 +127,39 @@ export class GrammarEnhancer {
 
     // If no obvious issues found, likely already well-formatted
     return !issues.some(pattern => pattern.test(content));
+  }
+
+  /**
+   * 🚨 SENTENCE COMPLETION VALIDATOR - Prevents mid-sentence cutoffs
+   */
+  private isSentenceComplete(content: string): boolean {
+    if (!content || content.length === 0) return false;
+    
+    const trimmed = content.trim();
+    
+    // Check for proper sentence endings
+    if (/[.!?]$/.test(trimmed)) {
+      return true;
+    }
+    
+    // Check for incomplete sentences (ends with prepositions, articles, etc.)
+    const incompleteEndings = [
+      /\b(with|for|to|in|on|at|by|of|and|or|but|if|when|that|which|who|what|how|why|where)\s*$/i,
+      /\b(a|an|the)\s*$/i,
+      /\b(can|will|should|could|would|may|might|must)\s*$/i,
+      /\b(is|are|was|were|has|have|had)\s*$/i,
+      /[,;:]\s*$/,
+      /\?\s*$/  // Question marks at the end without proper closure
+    ];
+    
+    const isIncomplete = incompleteEndings.some(pattern => pattern.test(trimmed));
+    
+    if (isIncomplete) {
+      console.warn(`🚨 Incomplete sentence detected: "${trimmed.slice(-30)}"`);
+      return false;
+    }
+    
+    return true;
   }
 
   /**
