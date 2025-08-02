@@ -127,19 +127,28 @@ export class EmergencyPostingActivator {
     console.log('🔥 === ACTIVATING VIRAL POSTING MODE ===');
     
     try {
+      // Check for emergency config file first
+      const emergencyConfigPath = '.emergency_config.json';
+      let emergencyConfig = null;
+      
+      if (require('fs').existsSync(emergencyConfigPath)) {
+        emergencyConfig = JSON.parse(require('fs').readFileSync(emergencyConfigPath, 'utf8'));
+        console.log('📋 Found emergency config file');
+      }
+      
       const { RuntimeConfigManager } = await import('./runtimeConfigManager');
       
       // Enable maximum growth settings
       await RuntimeConfigManager.set('emergency_posting_mode', true);
-      await RuntimeConfigManager.set('viral_content_probability', 1.0); // 100% viral content
-      await RuntimeConfigManager.set('daily_post_cap', 20); // Increase posting limit
-      await RuntimeConfigManager.set('min_hours_between_posts', 1); // Post every hour
-      await RuntimeConfigManager.set('force_trending_topics', true);
-      await RuntimeConfigManager.set('engagement_multiplier', 2.0);
+      await RuntimeConfigManager.set('viral_content_probability', emergencyConfig?.viral_content_probability || 1.0);
+      await RuntimeConfigManager.set('daily_post_cap', emergencyConfig?.daily_post_cap || 20);
+      await RuntimeConfigManager.set('min_hours_between_posts', emergencyConfig?.min_hours_between_posts || 1);
+      await RuntimeConfigManager.set('force_trending_topics', emergencyConfig?.force_trending_topics || true);
+      await RuntimeConfigManager.set('engagement_multiplier', emergencyConfig?.engagement_multiplier || 2.0);
       
       // Clear duplicate prevention temporarily
-      await RuntimeConfigManager.set('duplicate_threshold', 0.5); // Lower threshold
-      await RuntimeConfigManager.set('semantic_similarity_threshold', 0.5);
+      await RuntimeConfigManager.set('duplicate_threshold', emergencyConfig?.duplicate_threshold || 0.5);
+      await RuntimeConfigManager.set('semantic_similarity_threshold', emergencyConfig?.semantic_similarity_threshold || 0.5);
       
       console.log('🚀 VIRAL MODE ACTIVATED:');
       console.log('   📊 100% viral content');
