@@ -1,0 +1,11 @@
+{
+  "emergency_posting_mode": true,
+  "viral_content_probability": 1,
+  "daily_post_cap": 20,
+  "min_hours_between_posts": 1,
+  "force_trending_topics": true,
+  "engagement_multiplier": 2,
+  "duplicate_threshold": 0.5,
+  "semantic_similarity_threshold": 0.5,
+  "activated_at": "2025-08-02T20:53:48.777Z"
+}
