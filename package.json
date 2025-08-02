@@ -56,7 +56,8 @@
     "post-now": "SKIP_PLAYWRIGHT=true npm run build && node immediate_post_now.js",
     "force-post": "node force_post_railway.js",
     "railway-status": "node railway_status.js",
-    "force-post-help": "node force_post_web.js"
+    "force-post-help": "node force_post_web.js",
+    "emergency-growth": "node scripts/emergency-activate-growth.js"
   },
   "keywords": [
     "twitter",
