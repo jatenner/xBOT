@@ -341,9 +341,14 @@ export class MasterAutonomousController {
     const strategy = scheduler.getAdaptiveStrategy();
     console.log(`📊 Strategy: ${strategy.strategy} | Confidence: ${(strategy.confidence*100).toFixed(1)}%`);
     
-    if (!strategy.shouldPost) {
-      console.log('⏰ Not optimal time for posting - skipping cycle');
+    if (!strategy.shouldPost && strategy.confidence < 0.6) {
+      console.log('⏰ Low confidence posting decision - skipping cycle');
       return;
+    }
+    
+    // Post even during low engagement windows for learning and growth
+    if (!strategy.shouldPost) {
+      console.log('🚀 Overriding scheduling decision - posting for community growth');
     }
     
     // Import and use smart learning engine
