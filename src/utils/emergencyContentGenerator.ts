@@ -24,24 +24,26 @@ export class EmergencyContentGenerator {
       
       const emergencyPrompt = `Create a unique health/wellness tweet for ${new Date().toLocaleDateString()}. 
 
+CRITICAL: DO NOT include the identifier "${uniqueIdentifier}" in the actual tweet content. It's only for internal tracking.
+
 REQUIREMENTS:
-- Must be exactly unique (include random element: ${uniqueIdentifier})
-- Professional health content
+- Professional health content with unique angle
 - No hashtags  
 - Single emoji only
 - Under 280 characters
 - Science-based but accessible
 - Engaging hook
+- Complete, valuable information
 
 EXAMPLE TOPICS:
-- Sleep optimization
-- Nutrition timing
-- Exercise benefits
-- Mental health
-- Longevity research
-- Stress management
+- Sleep optimization with specific tips
+- Nutrition timing with actionable advice
+- Exercise benefits with research data
+- Mental health strategies
+- Longevity research findings
+- Stress management techniques
 
-Make it sound human and interesting. Include the identifier ${uniqueIdentifier} naturally in the content.`;
+Create completely original content that provides real value to health-conscious readers. Be specific and actionable.`;
 
       const messages = [
         { role: 'system' as const, content: 'You are a health content expert creating unique, engaging tweets.' },
