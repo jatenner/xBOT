@@ -101,7 +101,7 @@ export class FeatureFlagManager {
     }
     
     // Advanced Features
-    if (process.env.ENABLE_AUTO_ENGAGEMENT === 'true') {
+    if (process.env.ENABLE_AUTO_ENGAGEMENT === 'true' || process.env.ENABLE_SMART_ENGAGEMENT === 'true') {
       this.flags.advanced.autonomousEngagement = true;
       console.log('🤝 Autonomous Engagement ENABLED via environment');
     }

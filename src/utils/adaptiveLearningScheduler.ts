@@ -236,7 +236,7 @@ export class AdaptiveLearningScheduler {
         confidence = 0.7;
       } else if (engagement < 0.02) {
         strategy = 'low_engagement_window';
-        confidence = 0.5; // Still allowing posts during low engagement for learning
+        confidence = 0.7; // More aggressive - need data to learn optimal times
       }
     } else {
       // LEARNING PHASE: Higher confidence to encourage data collection
