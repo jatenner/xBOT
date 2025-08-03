@@ -954,7 +954,31 @@ export class AutonomousPostingEngine {
       // 📝 SINGLE TWEET HANDLING (original logic)
       console.log('🔍 Pre-posting content validation...');
       
-      // Step 1: Bulletproof duplicate content check
+      // Step 1: Autonomous content improvement and validation
+      console.log('🚀 Running autonomous content improvement...');
+      const { AutonomousTweetImprover } = await import('../intelligence/autonomousTweetImprover');
+      const tweetImprover = AutonomousTweetImprover.getInstance();
+      const improvementResult = await tweetImprover.improveContentAutonomously(content);
+      
+      if (!improvementResult.should_post) {
+        console.error(`❌ Content failed autonomous improvement: ${improvementResult.reasoning}`);
+        return {
+          success: false,
+          error: `Content improvement required: ${improvementResult.reasoning}`,
+          was_posted: false,
+          confirmed: false
+        };
+      }
+      
+      if (improvementResult.improvements_made.length > 0) {
+        console.log(`✅ Applied ${improvementResult.improvements_made.length} autonomous improvements`);
+        content = improvementResult.improved_content as string; // Use improved content
+        improvementResult.improvements_made.forEach(improvement => {
+          console.log(`   🔧 ${improvement.improvement_type}: ${improvement.reasoning}`);
+        });
+      }
+
+      // Step 2: Bulletproof duplicate content check
       console.log('🛡️ Running bulletproof duplicate analysis...');
       const { BulletproofDuplicatePrevention } = await import('../utils/bulletproofDuplicatePrevention');
       const bulletproofDuplicates = BulletproofDuplicatePrevention.getInstance();
@@ -988,7 +1012,7 @@ export class AutonomousPostingEngine {
       
       console.log(`✅ Content is unique (hash: ${duplicateCheck.content_hash.substring(0, 16)}...)`);
 
-      // Step 2: Clean content validation
+      // Step 3: Clean content validation
       if (!isCleanStandaloneContent(content)) {
         console.error('❌ Content failed clean posting validation');
         return {
