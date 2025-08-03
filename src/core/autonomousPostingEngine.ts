@@ -885,10 +885,11 @@ export class AutonomousPostingEngine {
             console.log(`✅ Thread posted successfully: ${threadResult.tweetIds.length} tweets`);
             console.log(`🆔 Thread root ID: ${threadResult.tweetIds[0]}`);
             
-            // 🛡️ Record posted thread to prevent future duplicates
+            // 🛡️ Record posted thread in bulletproof duplicate prevention
             try {
-              const { duplicatePostPrevention } = await import('../utils/duplicatePostPrevention');
-              await duplicatePostPrevention.recordPostedContent(content, threadResult.tweetIds[0]);
+              const { BulletproofDuplicatePrevention } = await import('../utils/bulletproofDuplicatePrevention');
+              const bulletproofDuplicates = BulletproofDuplicatePrevention.getInstance();
+              await bulletproofDuplicates.recordApprovedContent(content, threadResult.tweetIds[0]);
             } catch (recordError) {
               console.warn('⚠️ Failed to record thread for duplicate prevention:', recordError.message);
             }
@@ -953,14 +954,15 @@ export class AutonomousPostingEngine {
       // 📝 SINGLE TWEET HANDLING (original logic)
       console.log('🔍 Pre-posting content validation...');
       
-      // Step 1: Duplicate content check
-      console.log('🛡️ Checking for duplicate content...');
-      const { duplicatePostPrevention } = await import('../utils/duplicatePostPrevention');
-      const duplicateCheck = await duplicatePostPrevention.checkForDuplicate(content);
+      // Step 1: Bulletproof duplicate content check
+      console.log('🛡️ Running bulletproof duplicate analysis...');
+      const { BulletproofDuplicatePrevention } = await import('../utils/bulletproofDuplicatePrevention');
+      const bulletproofDuplicates = BulletproofDuplicatePrevention.getInstance();
+      const duplicateCheck = await bulletproofDuplicates.performComprehensiveDuplicateCheck(content);
       
       if (duplicateCheck.isDuplicate) {
         console.error(`❌ Duplicate content detected: ${duplicateCheck.reason}`);
-        console.error(`📝 Similar content: "${duplicateCheck.similarContent?.substring(0, 100)}..."`);
+        console.error(`📝 Similar content: "${duplicateCheck.similar_content?.substring(0, 100)}..."`);
         
         // 🚨 EMERGENCY CONTENT GENERATION FOR DUPLICATE CRISIS
         console.log('🚨 === EMERGENCY CONTENT GENERATION ACTIVATED ===');
@@ -984,7 +986,7 @@ export class AutonomousPostingEngine {
         }
       }
       
-      console.log(`✅ Content is unique (hash: ${duplicateCheck.contentHash.substring(0, 16)}...)`);
+      console.log(`✅ Content is unique (hash: ${duplicateCheck.content_hash.substring(0, 16)}...)`);
 
       // Step 2: Clean content validation
       if (!isCleanStandaloneContent(content)) {
@@ -1089,9 +1091,11 @@ export class AutonomousPostingEngine {
         console.log(`   ✅ Confirmed: ${result.confirmed ? 'YES' : 'NO'}`);
         console.log(`   📝 Was Posted: ${result.was_posted ? 'YES' : 'NO'}`);
         
-        // 🛡️ Record posted content to prevent future duplicates
+        // 🛡️ Record posted content in bulletproof duplicate prevention
         try {
-          await duplicatePostPrevention.recordPostedContent(content, result.tweet_id);
+          const { BulletproofDuplicatePrevention } = await import('../utils/bulletproofDuplicatePrevention');
+          const bulletproofDuplicates = BulletproofDuplicatePrevention.getInstance();
+          await bulletproofDuplicates.recordApprovedContent(content, result.tweet_id);
         } catch (recordError) {
           console.warn('⚠️ Failed to record post for duplicate prevention:', recordError.message);
         }

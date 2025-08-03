@@ -349,7 +349,7 @@ Requirements:
         .delete()
         .lt('date_used', cutoffDate.toISOString());
 
-      const deletedCount = data?.length || 0;
+      const deletedCount = error ? 0 : 1; // Supabase delete doesn't return count reliably
       console.log(`🧹 Cleaned up ${deletedCount} old fingerprints (older than ${this.DEDUPLICATION_WINDOW_DAYS} days)`);
       
       return deletedCount;
