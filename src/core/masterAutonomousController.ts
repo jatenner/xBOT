@@ -12,6 +12,8 @@ import { IntelligentReplyEngine } from '../agents/intelligentReplyEngine';
 import { AutonomousEngagementEngine } from '../agents/autonomousEngagementEngine';
 import { EnhancedDailyOptimizationLoop } from '../intelligence/enhancedDailyOptimizationLoop';
 import { IntelligentGrowthMaster } from '../intelligence/intelligentGrowthMaster';
+import { MasterLearningCoordinator } from '../intelligence/masterLearningCoordinator';
+import { CompetitiveIntelligenceEngine } from '../intelligence/competitiveIntelligenceEngine';
 import { EmergencyBudgetLockdown } from '../utils/emergencyBudgetLockdown';
 import { logPhaseStatus, getPhasePerformance } from '../utils/phaseManager';
 import { supabaseClient } from '../utils/supabaseClient';
@@ -82,6 +84,10 @@ export class MasterAutonomousController {
   private engagementEngine: AutonomousEngagementEngine;
   private optimizationLoop: EnhancedDailyOptimizationLoop;
   private growthMaster: IntelligentGrowthMaster;
+  
+  // Advanced learning systems
+  private masterLearningCoordinator: MasterLearningCoordinator;
+  private competitiveIntelligence: CompetitiveIntelligenceEngine;
 
   static getInstance(): MasterAutonomousController {
     if (!this.instance) {
@@ -399,6 +405,26 @@ export class MasterAutonomousController {
         this.updateComponentStatus('optimization_loop', 'error', [error.message]);
       }
     }, 60 * 60 * 1000)); // 1 hour
+
+    // Advanced learning coordination - every 6 hours
+    this.intervals.push(setInterval(async () => {
+      try {
+        await this.runAdvancedLearningCycle();
+      } catch (error) {
+        console.error('❌ Advanced learning cycle error:', error);
+        this.updateComponentStatus('advanced_learning', 'error', [error.message]);
+      }
+    }, 6 * 60 * 60 * 1000)); // 6 hours
+
+    // Competitive intelligence - every 12 hours
+    this.intervals.push(setInterval(async () => {
+      try {
+        await this.runCompetitiveAnalysis();
+      } catch (error) {
+        console.error('❌ Competitive analysis error:', error);
+        this.updateComponentStatus('competitive_intelligence', 'error', [error.message]);
+      }
+    }, 12 * 60 * 60 * 1000)); // 12 hours
 
     // System health monitoring - every 15 minutes
     this.intervals.push(setInterval(async () => {
@@ -1052,6 +1078,10 @@ export class MasterAutonomousController {
     this.engagementEngine = AutonomousEngagementEngine.getInstance();
     this.optimizationLoop = EnhancedDailyOptimizationLoop.getInstance();
     this.growthMaster = IntelligentGrowthMaster.getInstance();
+    
+    // Initialize advanced learning systems
+    this.masterLearningCoordinator = MasterLearningCoordinator.getInstance();
+    this.competitiveIntelligence = CompetitiveIntelligenceEngine.getInstance();
   }
 
   private initializeSystemHealth(): void {
@@ -1669,6 +1699,82 @@ export class MasterAutonomousController {
 
   async forceOptimization(): Promise<any> {
     return await this.optimizationLoop.runDailyOptimization();
+  }
+
+  /**
+   * 🧠 RUN ADVANCED LEARNING CYCLE
+   * Coordinates all learning systems for maximum intelligence
+   */
+  private async runAdvancedLearningCycle(): Promise<void> {
+    try {
+      console.log('🧠 === ADVANCED LEARNING CYCLE STARTING ===');
+      
+      const result = await this.masterLearningCoordinator.runMasterLearningCycle();
+      
+      if (result.success) {
+        console.log(`✅ Advanced learning completed: ${result.insights.length} insights generated`);
+        console.log(`🎯 Follower growth forecast: +${result.follower_growth_forecast} followers (24h)`);
+        
+        this.updateComponentStatus('advanced_learning', 'active');
+        
+        // Update operational metrics with learning insights
+        this.operationalMetrics.intelligence.learningAccuracy = 
+          result.insights.reduce((sum, insight) => sum + insight.confidence, 0) / result.insights.length;
+        this.operationalMetrics.intelligence.strategicInsights = result.insights.length;
+        
+      } else {
+        console.error('❌ Advanced learning cycle failed:', result.error);
+        this.updateComponentStatus('advanced_learning', 'error', [result.error || 'Unknown error']);
+      }
+      
+    } catch (error) {
+      console.error('❌ Advanced learning cycle error:', error);
+      this.updateComponentStatus('advanced_learning', 'error', [error.message]);
+    }
+  }
+
+  /**
+   * 🔍 RUN COMPETITIVE ANALYSIS
+   * Analyzes top accounts and identifies growth opportunities
+   */
+  private async runCompetitiveAnalysis(): Promise<void> {
+    try {
+      console.log('🔍 === COMPETITIVE INTELLIGENCE ANALYSIS ===');
+      
+      const result = await this.competitiveIntelligence.runCompetitiveAnalysis();
+      
+      if (result.success && result.report) {
+        console.log(`✅ Competitive analysis completed`);
+        console.log(`📊 Analyzed ${result.report.top_competitors.length} competitors`);
+        console.log(`🔥 Found ${result.report.viral_patterns.length} viral patterns`);
+        console.log(`📈 Identified ${result.report.trend_predictions.length} trend opportunities`);
+        console.log(`🎯 Generated ${result.adaptations?.length || 0} adaptation strategies`);
+        
+        this.updateComponentStatus('competitive_intelligence', 'active');
+        
+        // Update metrics with competitive intelligence
+        this.operationalMetrics.intelligence.strategicInsights += result.report.viral_patterns.length;
+        
+      } else {
+        console.error('❌ Competitive analysis failed:', result.error);
+        this.updateComponentStatus('competitive_intelligence', 'error', [result.error || 'Unknown error']);
+      }
+      
+    } catch (error) {
+      console.error('❌ Competitive analysis error:', error);
+      this.updateComponentStatus('competitive_intelligence', 'error', [error.message]);
+    }
+  }
+
+  /**
+   * 🚀 FORCE ADVANCED LEARNING CYCLE
+   * Manual trigger for immediate learning optimization
+   */
+  async forceAdvancedLearning(): Promise<any> {
+    console.log('🚀 Forcing advanced learning cycle...');
+    await this.runAdvancedLearningCycle();
+    await this.runCompetitiveAnalysis();
+    return { success: true, message: 'Advanced learning cycles completed' };
   }
 
   async getGrowthAnalytics(): Promise<any> {
