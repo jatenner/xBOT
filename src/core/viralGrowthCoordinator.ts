@@ -387,9 +387,11 @@ export class ViralGrowthCoordinator {
     // Update runtime config for dashboard display
     try {
       const { RuntimeConfigManager } = await import('../utils/runtimeConfigManager');
-      await RuntimeConfigManager.set('viral_growth_metrics', {
-        ...metrics,
-        lastUpdated: new Date().toISOString()
+      await RuntimeConfigManager.getInstance().updateConfig({
+        current_strategy: JSON.stringify({
+          ...metrics,
+          lastUpdated: new Date().toISOString()
+        })
       });
     } catch (error) {
       // Ignore duplicate key errors - they're harmless for dashboard updates

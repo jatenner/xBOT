@@ -139,16 +139,15 @@ export class EmergencyPostingActivator {
       const { RuntimeConfigManager } = await import('./runtimeConfigManager');
       
       // Enable maximum growth settings
-      await RuntimeConfigManager.set('emergency_posting_mode', true);
-      await RuntimeConfigManager.set('viral_content_probability', emergencyConfig?.viral_content_probability || 1.0);
-      await RuntimeConfigManager.set('daily_post_cap', emergencyConfig?.daily_post_cap || 20);
-      await RuntimeConfigManager.set('min_hours_between_posts', emergencyConfig?.min_hours_between_posts || 1);
-      await RuntimeConfigManager.set('force_trending_topics', emergencyConfig?.force_trending_topics || true);
-      await RuntimeConfigManager.set('engagement_multiplier', emergencyConfig?.engagement_multiplier || 2.0);
-      
-      // Clear duplicate prevention temporarily
-      await RuntimeConfigManager.set('duplicate_threshold', emergencyConfig?.duplicate_threshold || 0.5);
-      await RuntimeConfigManager.set('semantic_similarity_threshold', emergencyConfig?.semantic_similarity_threshold || 0.5);
+      await RuntimeConfigManager.getInstance().updateConfig({
+        daily_post_cap: emergencyConfig?.daily_post_cap || 20,
+        min_hours_between_posts: emergencyConfig?.min_hours_between_posts || 1,
+        posting_enabled: true,
+        engagement_enabled: true,
+        viral_threshold: 20, // Lower threshold for emergency mode
+        quality_threshold: 60, // Lower quality threshold for volume
+        current_strategy: 'emergency_viral_growth'
+      });
       
       console.log('🚀 VIRAL MODE ACTIVATED:');
       console.log('   📊 100% viral content');
@@ -185,7 +184,9 @@ export class EmergencyPostingActivator {
         lastUpdated: new Date().toISOString()
       };
       
-      await RuntimeConfigManager.set('viral_growth_metrics', resetMetrics);
+      await RuntimeConfigManager.getInstance().updateConfig({
+        current_strategy: JSON.stringify(resetMetrics)
+      });
       console.log('✅ Growth metrics reset for emergency posting');
       
     } catch (error) {
