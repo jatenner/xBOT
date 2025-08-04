@@ -1,0 +1,18 @@
+{
+  "account_type": "small_account",
+  "max_daily_posts": 4,
+  "min_viral_score_required": 7,
+  "posting_strategy": "quality_over_quantity",
+  "optimal_hours": [
+    8,
+    9,
+    19,
+    20
+  ],
+  "target_followers": 50,
+  "current_followers": 17,
+  "engagement_priority": true,
+  "controversy_level_min": 3,
+  "community_engagement_daily": 15,
+  "updated_at": "2025-08-04T23:06:48.816Z"
+}
