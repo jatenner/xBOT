@@ -94,57 +94,81 @@ export async function parseContentIntoThread(content: string): Promise<ThreadPar
 export function parseNumberedThread(raw: string): ThreadParseResult {
   const originalContent = raw;
   
-  // 🎯 COMPREHENSIVE HEADER REMOVAL - Remove all thread header variants
+  // 🚨 CRITICAL FIX: Check for numbered patterns like "1/4", "2/4", "3/4"
+  const hasNumberedPattern = /\d+\/\d+/.test(raw);
+  const hasThreadMarkers = raw.includes('🧵') || raw.includes('THREAD');
+  
+  if (!hasNumberedPattern && !hasThreadMarkers) {
+    console.log(`📝 Single tweet detected (no numbered format)`);
+    return {
+      isThread: false,
+      tweets: [raw.trim()],
+      originalContent
+    };
+  }
+  
+  console.log('🧵 Thread indicators detected, parsing numbered content...');
+  
+  // Remove thread header indicators first
   let cleaned = raw
-    // Remove **Tweet:** (single tweet markers that leak through)
-    .replace(/^\s*\*{0,2}Tweet\s*:?\*{0,2}\s*\n?/im, '')
-    // Remove **Tweet Thread:** and variants
+    .replace(/🧵\s*THREAD\s*🧵\s*/g, '')
+    .replace(/Here's why:\s*/g, '')
     .replace(/^\s*\*{0,2}Tweet\s*Thread[^:\n]*:?\*{0,2}\s*\n?/im, '')
     .replace(/^\s*\*{0,2}Thread[^:\n]*:?\*{0,2}\s*\n?/im, '')
-    // Remove "Here are X ways..." intros
-    .replace(/^\s*Here\s+(are|is)\s+\d+[^:\n]*:?\s*\n?/im, '')
-    .replace(/^\s*\d+\s+(evidence-based\s+)?ways[^:\n]*:?\s*\n?/im, '')
-    // Remove generic intro patterns
-    .replace(/^\s*Here's\s+the\s+breakdown[^:\n]*:?\s*\n?/im, '')
     .trim();
-
-  // 🧵 IMPROVED SPLIT - Split on Tweet markers and clean thoroughly  
-  const parts = cleaned
-    .split(/(?:\n|^)\s*(?:["""''`]|[-•])?\s*(?:Tweet\s*\d+\s*[:\/]|\d+\s*[:\/])\s*/im)
-    .map(part => part.trim())
-    .filter(part => {
-      // Filter out empty parts and standalone header fragments
-      return part && 
-             part.length > 5 && 
-             !/^(tweet\s*thread|thread)\s*:?\s*$/i.test(part) &&
-             !/^\*{0,2}(tweet\s*thread|thread)\*{0,2}\s*:?\s*$/i.test(part);
-    });
-
-  // If we successfully split into multiple parts, it's a thread
-  const isThread = parts.length > 1;
   
-  if (isThread) {
-    // Clean up each tweet part more aggressively
-    const tweets = parts.map(tweet => {
+  // 🎯 FIXED PARSING: Split on numbered patterns like "1/4", "2/4", "3/4"
+  const parts = cleaned.split(/\s+(\d+\/\d+)\s+/);
+  
+  const tweets = [];
+  let currentTweet = '';
+  
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    
+    // If this part is a number pattern (1/4, 2/4, etc.), start a new tweet
+    if (part && part.match(/^\d+\/\d+$/)) {
+      // Save previous tweet if it exists
+      if (currentTweet.trim()) {
+        tweets.push(currentTweet.trim());
+      }
+      // Start new tweet
+      currentTweet = '';
+    } else {
+      // Add content to current tweet
+      currentTweet += part + ' ';
+    }
+  }
+  
+  // Add the last tweet
+  if (currentTweet.trim()) {
+    tweets.push(currentTweet.trim());
+  }
+  
+  // Clean up each tweet
+  const cleanedTweets = tweets
+    .map(part => part.trim())
+    .filter(part => part.length > 10) // Remove very short fragments
+    .map(tweet => {
       return tweet
+        .replace(/^\d+\/\d+\s*/, '') // Remove any remaining number patterns
         .replace(/^\*{1,2}/, '') // Remove leading * or **
         .replace(/\*{1,2}$/, '') // Remove trailing * or **
         .replace(/\*{2,}/g, '') // Remove any remaining ** bold markers
-        .replace(/^["""''`]\s*/, '') // Remove leading quotes (smart quotes + backticks)
-        .replace(/\s*["""''`]$/, '') // Remove trailing quotes (smart quotes + backticks)
-        .replace(/^["""''`].*?Tweet\s*\d+\s*[:\/]/i, '') // Remove quote-wrapped "Tweet X:" entirely
-        .replace(/^\d+\/\s*/, '') // Remove "1/ " numbering
-        .replace(/^\d+\)\s*/, '') // Remove "1) " numbering  
-        .replace(/^\d+\.\s*/, '') // Remove "1. " numbering
-        .replace(/^[-•]\s*/, '') // Remove bullet points
-        .replace(/\s*\.\.\.$/, '') // Remove trailing ...
+        .replace(/^["""''`]\s*/, '') // Remove leading quotes
+        .replace(/\s*["""''`]$/, '') // Remove trailing quotes
+        .replace(/\s+/g, ' ') // Normalize spaces
         .trim();
-    }).filter(tweet => tweet.length > 0 && tweet.length > 10); // Filter out very short fragments
+    });
 
-    console.log(`🧵 Parsed thread: ${tweets.length} tweets from numbered content`);
+  // If we successfully split into multiple parts, it's a thread
+  const isThread = cleanedTweets.length > 1;
+  
+  if (isThread) {
+    console.log(`🧵 Successfully parsed thread: ${cleanedTweets.length} tweets from numbered content`);
     return {
       isThread: true,
-      tweets,
+      tweets: cleanedTweets,
       originalContent
     };
   }
