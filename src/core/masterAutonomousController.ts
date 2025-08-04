@@ -241,6 +241,28 @@ export class MasterAutonomousController {
       await this.growthMaster.initialize();
       this.updateComponentStatus('growth_master', 'active');
 
+      // 🧠 INITIALIZE ALGORITHM MASTERY SYSTEMS
+      console.log('🧠 Initializing Algorithm Mastery Systems...');
+      try {
+        // Start Real-Time Data Pipeline
+        await this.initializeDataPipeline();
+        console.log('✅ Real-Time Data Pipeline: ACTIVE');
+        
+        // Run initial algorithm analysis
+        await this.runAlgorithmAnalysis();
+        console.log('✅ Twitter Algorithm Engine: ACTIVE');
+        
+        // Run initial psychology analysis
+        await this.runPsychologyAnalysis();
+        console.log('✅ Follower Psychology Engine: ACTIVE');
+        
+        this.updateComponentStatus('algorithm_mastery', 'active');
+        console.log('🧠 Algorithm Mastery Systems: ALL ACTIVE');
+      } catch (algorithmError) {
+        console.error('❌ Failed to initialize Algorithm Mastery Systems:', algorithmError);
+        this.updateComponentStatus('algorithm_mastery', 'error', [algorithmError.message]);
+      }
+
       // Initialize viral growth coordinator if in growth mode
       if (process.env.BOT_PHASE === 'growth_mode') {
         console.log('🚀 Initializing Viral Growth Coordinator for maximum follower acquisition...');
