@@ -344,7 +344,17 @@ Return ONLY the content, formatted for Twitter:`;
         operationType: 'viral_content_generation'
       });
 
-      const rawContent = typeof response.response === 'string' ? response.response : JSON.stringify(response.response || '');
+      // Extract actual content from OpenAI response
+      let rawContent: string;
+      if (typeof response.response === 'string') {
+        rawContent = response.response;
+      } else if (response.response?.choices?.[0]?.message?.content) {
+        rawContent = response.response.choices[0].message.content;
+      } else {
+        rawContent = JSON.stringify(response.response || '');
+      }
+      
+      console.log(`📝 Generated content preview: ${rawContent.substring(0, 100)}...`);
       
       // Determine if it's a thread or single tweet
       const isThread = rawContent.includes('\n\n') || rawContent.length > 280 || rawContent.includes('🧵');
@@ -352,6 +362,15 @@ Return ONLY the content, formatted for Twitter:`;
       if (isThread) {
         // Split into thread
         const threadTweets = this.parseIntoThread(rawContent);
+        // FIX: Ensure we always return content, even if thread parsing fails
+        if (threadTweets.length === 0) {
+          console.warn('⚠️ Thread parsing returned empty array, using raw content as single tweet');
+          return {
+            content: rawContent.trim(),
+            content_type: 'single_tweet',
+            raw_content: rawContent
+          };
+        }
         return {
           content: threadTweets,
           content_type: 'thread',
@@ -369,7 +388,9 @@ Return ONLY the content, formatted for Twitter:`;
       console.error('❌ Content generation failed:', error);
       
       // Fallback to template example with topic injection
+      const selectedTopic = trendingTopics.length > 0 ? trendingTopics[0] : 'health optimization';
       const fallbackContent = template.example_content.replace(/\[topic\]/g, selectedTopic);
+      console.log(`🔄 Using fallback content: ${fallbackContent.substring(0, 100)}...`);
       return {
         content: fallbackContent,
         content_type: 'single_tweet',
