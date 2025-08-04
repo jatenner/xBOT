@@ -241,7 +241,8 @@ export class FeatureFlagManager {
     // Try to get adaptive posting limit from runtime config first
     try {
       const { RuntimeConfigManager } = await import('../utils/runtimeConfigManager');
-      const adaptiveLimit = await RuntimeConfigManager.get('daily_post_cap', null);
+      const config = await RuntimeConfigManager.getInstance().getConfig();
+      const adaptiveLimit = config.daily_post_cap;
       
       if (adaptiveLimit !== null && !isNaN(Number(adaptiveLimit)) && Number(adaptiveLimit) > 0) {
         const limit = Number(adaptiveLimit);
