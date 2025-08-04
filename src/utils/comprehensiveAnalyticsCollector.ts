@@ -512,8 +512,8 @@ Complexity: 1 (very simple) to 10 (highly technical)`;
         click_through_rate: data.impressions > 0 ? 
           (data.url_clicks / data.impressions * 100) : 0,
         
-        collected_via: data.collected_via,
-        content: `Analytics for tweet ${data.tweet_id}` // For emergency tweet creation
+        collected_via: data.collected_via
+        // Removed: analytics content creation - this was causing analytics messages to be posted
       };
 
       // Use safe storage that handles FK constraints

@@ -522,10 +522,18 @@ export class MasterAutonomousController {
       }
     }, 15 * 60 * 1000)); // 15 minutes
 
+    // ENGAGEMENT COLLECTION CYCLE - every 30 minutes
+    this.intervals.push(setInterval(() => {
+      this.runEngagementCollection().catch(error => 
+        console.error('❌ Engagement collection error:', error)
+      );
+    }, 30 * 60 * 1000)); // 30 minutes
+
     // Start immediate cycles (with delays to avoid overwhelming)
     setTimeout(() => this.runPostingCycle(), 30000); // First posting check in 30 seconds
     setTimeout(() => this.runEngagementCycle(), 60000); // 1 minute
     setTimeout(() => this.runReplyCycle(), 90000); // 1.5 minutes
+    setTimeout(() => this.runEngagementCollection(), 120000); // 2 minutes
 
     
     // Twitter browsing cycle - every 15 minutes
@@ -633,6 +641,30 @@ export class MasterAutonomousController {
     } catch (error) {
       console.error('❌ Reply cycle failed:', error);
       this.updateComponentStatus('reply_engine', 'error', [error.message]);
+    }
+  }
+
+  /**
+   * 📊 RUN ENGAGEMENT COLLECTION CYCLE
+   * Collect real Twitter engagement metrics
+   */
+  private async runEngagementCollection(): Promise<void> {
+    console.log('📊 === REAL ENGAGEMENT COLLECTION CYCLE ===');
+    
+    try {
+      const { realEngagementCollector } = await import('../jobs/realEngagementCollector');
+      const result = await realEngagementCollector.collectRecentEngagement();
+      
+      if (result.success) {
+        console.log(`✅ Collected metrics for ${result.tweets_processed} tweets, updated ${result.metrics_updated}`);
+        this.updateComponentStatus('engagement_collector', 'active', [`Updated: ${result.metrics_updated} tweets`]);
+      } else {
+        console.error(`❌ Engagement collection failed: ${result.error}`);
+        this.updateComponentStatus('engagement_collector', 'error', [result.error || 'Unknown error']);
+      }
+    } catch (error: any) {
+      console.error('❌ Engagement collection cycle failed:', error);
+      this.updateComponentStatus('engagement_collector', 'error', [error.message]);
     }
   }
 

@@ -958,13 +958,13 @@ export class AutonomousPostingEngine {
     console.log('🎯 Checking for viral growth opportunity...');
     
     // Use viral growth system for strategic follower acquisition
-    if (Math.random() < 0.3) { // 30% chance to use viral system
+    if (Math.random() < 1.0) { // 100% chance to use viral system until engagement improves
       try {
         const { ViralFollowerGrowthMaster } = await import('../agents/viralFollowerGrowthMaster');
         const viralMaster = ViralFollowerGrowthMaster.getInstance();
         const viralResult = await viralMaster.generateViralContent();
         
-        if (viralResult.viral_score > 70) {
+        if (viralResult.viral_score > 30) { // Lowered threshold to allow more content through
           console.log(`🚀 Using viral content system (score: ${viralResult.viral_score})`);
           content = viralResult.content;
           
