@@ -14,6 +14,8 @@ import { EnhancedDailyOptimizationLoop } from '../intelligence/enhancedDailyOpti
 import { IntelligentGrowthMaster } from '../intelligence/intelligentGrowthMaster';
 import { MasterLearningCoordinator } from '../intelligence/masterLearningCoordinator';
 import { CompetitiveIntelligenceEngine } from '../intelligence/competitiveIntelligenceEngine';
+import { FollowerGrowthOrchestrator } from '../intelligence/followerGrowthOrchestrator';
+import { CommunityEngagementMaster } from '../intelligence/communityEngagementMaster';
 import { EmergencyBudgetLockdown } from '../utils/emergencyBudgetLockdown';
 import { logPhaseStatus, getPhasePerformance } from '../utils/phaseManager';
 import { supabaseClient } from '../utils/supabaseClient';
@@ -53,12 +55,17 @@ export interface OperationalMetrics {
     likeCount: number;
     followCount: number;
     followbackRate: number;
+    community_actions: number;
+    total_reach: number;
   };
   growth: {
     dailyFollowerGrowth: number;
     weeklyGrowthTrend: number;
     engagementRate: number;
     viralTweetCount: number;
+    followers_projected: number;
+    content_generated: boolean;
+    engagement_executed: boolean;
   };
   intelligence: {
     optimizationCycles: number;
@@ -88,6 +95,8 @@ export class MasterAutonomousController {
   // Advanced learning systems
   private masterLearningCoordinator: MasterLearningCoordinator;
   private competitiveIntelligence: CompetitiveIntelligenceEngine;
+  private followerGrowthOrchestrator: FollowerGrowthOrchestrator;
+  private communityEngagementMaster: CommunityEngagementMaster;
 
   static getInstance(): MasterAutonomousController {
     if (!this.instance) {
@@ -424,7 +433,29 @@ export class MasterAutonomousController {
         console.error('❌ Competitive analysis error:', error);
         this.updateComponentStatus('competitive_intelligence', 'error', [error.message]);
       }
-    }, 12 * 60 * 60 * 1000)); // 12 hours
+    }, 12 * 60 * 60 * 1000));
+
+    // 🚀 FOLLOWER GROWTH ORCHESTRATION - Every 4 hours for aggressive growth
+    this.intervals.push(setInterval(async () => {
+      try {
+        console.log('🚀 === FOLLOWER GROWTH ORCHESTRATION CYCLE ===');
+        await this.runFollowerGrowthOrchestration();
+      } catch (error) {
+        console.error('❌ Follower growth orchestration failed:', error);
+        this.updateComponentStatus('follower_growth', 'error', [error.message]);
+      }
+    }, 4 * 60 * 60 * 1000));
+
+    // 🤝 COMMUNITY ENGAGEMENT - Every 2 hours for consistent engagement
+    this.intervals.push(setInterval(async () => {
+      try {
+        console.log('🤝 === COMMUNITY ENGAGEMENT CYCLE ===');
+        await this.runCommunityEngagement();
+      } catch (error) {
+        console.error('❌ Community engagement cycle failed:', error);
+        this.updateComponentStatus('community_engagement', 'error', [error.message]);
+      }
+    }, 2 * 60 * 60 * 1000)); // 12 hours
 
     // System health monitoring - every 15 minutes
     this.intervals.push(setInterval(async () => {
@@ -1082,6 +1113,8 @@ export class MasterAutonomousController {
     // Initialize advanced learning systems
     this.masterLearningCoordinator = MasterLearningCoordinator.getInstance();
     this.competitiveIntelligence = CompetitiveIntelligenceEngine.getInstance();
+    this.followerGrowthOrchestrator = FollowerGrowthOrchestrator.getInstance();
+    this.communityEngagementMaster = CommunityEngagementMaster.getInstance();
   }
 
   private initializeSystemHealth(): void {
@@ -1118,13 +1151,18 @@ export class MasterAutonomousController {
         replyCount: 0,
         likeCount: 0,
         followCount: 0,
-        followbackRate: 0
+        followbackRate: 0,
+        community_actions: 0,
+        total_reach: 0
       },
       growth: {
         dailyFollowerGrowth: 0,
         weeklyGrowthTrend: 0,
         engagementRate: 0,
-        viralTweetCount: 0
+        viralTweetCount: 0,
+        followers_projected: 0,
+        content_generated: false,
+        engagement_executed: false
       },
       intelligence: {
         optimizationCycles: 0,
@@ -1775,6 +1813,97 @@ export class MasterAutonomousController {
     await this.runAdvancedLearningCycle();
     await this.runCompetitiveAnalysis();
     return { success: true, message: 'Advanced learning cycles completed' };
+  }
+
+  /**
+   * 🚀 RUN FOLLOWER GROWTH ORCHESTRATION
+   */
+  private async runFollowerGrowthOrchestration(): Promise<void> {
+    try {
+      console.log('🚀 Executing comprehensive follower growth strategy...');
+      
+      const result = await this.followerGrowthOrchestrator.executeGrowthStrategy();
+      
+      // Update operational metrics
+      this.operationalMetrics.growth.followers_projected += result.followers_projected;
+      this.operationalMetrics.growth.content_generated = result.content_generated;
+      this.operationalMetrics.growth.engagement_executed = result.engagement_executed;
+      
+      // Update component status
+      this.updateComponentStatus('follower_growth', 'active', [
+        `Projected followers: +${result.followers_projected}`,
+        `Content generated: ${result.content_generated}`,
+        `Engagement executed: ${result.engagement_executed}`,
+        result.growth_summary
+      ]);
+
+      console.log(`✅ Growth orchestration complete: ${result.growth_summary}`);
+      
+    } catch (error) {
+      console.error('❌ Follower growth orchestration failed:', error);
+      this.updateComponentStatus('follower_growth', 'error', [`Growth orchestration error: ${error.message}`]);
+    }
+  }
+
+  /**
+   * 🤝 RUN COMMUNITY ENGAGEMENT
+   */
+  private async runCommunityEngagement(): Promise<void> {
+    try {
+      console.log('🤝 Executing strategic community engagement...');
+      
+      const result = await this.communityEngagementMaster.executeStrategicEngagement();
+      
+      // Update operational metrics
+      this.operationalMetrics.engagement.community_actions += result.actions_taken;
+      this.operationalMetrics.engagement.total_reach += result.total_reach;
+      this.operationalMetrics.growth.followers_projected += result.expected_followers;
+      
+      // Update component status
+      this.updateComponentStatus('community_engagement', 'active', [
+        `Actions taken: ${result.actions_taken}`,
+        `Expected followers: +${result.expected_followers}`,
+        `Total reach: ${result.total_reach.toLocaleString()}`,
+        result.engagement_summary
+      ]);
+
+      console.log(`✅ Community engagement complete: ${result.engagement_summary}`);
+      
+    } catch (error) {
+      console.error('❌ Community engagement failed:', error);
+      this.updateComponentStatus('community_engagement', 'error', [`Community engagement error: ${error.message}`]);
+    }
+  }
+
+  /**
+   * 🎯 FORCE FOLLOWER GROWTH CYCLE (MANUAL TRIGGER)
+   */
+  async forceFollowerGrowth(): Promise<any> {
+    try {
+      console.log('🎯 === FORCED FOLLOWER GROWTH CYCLE ===');
+      
+      await this.runFollowerGrowthOrchestration();
+      await this.runCommunityEngagement();
+      
+      // Get daily growth plan
+      const dailyPlan = await this.followerGrowthOrchestrator.generateDailyGrowthPlan();
+      
+      return {
+        growth_orchestration_completed: true,
+        community_engagement_completed: true,
+        daily_plan: dailyPlan,
+        projected_followers: this.operationalMetrics.growth.followers_projected,
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error('❌ Forced follower growth failed:', error);
+      return {
+        growth_orchestration_completed: false,
+        community_engagement_completed: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      };
+    }
   }
 
   async getGrowthAnalytics(): Promise<any> {
