@@ -1,0 +1,17 @@
+{
+  "account_type": "small_account",
+  "current_followers": 17,
+  "target_followers": 50,
+  "days_to_target": 30,
+  "strategy": "quality_over_quantity",
+  "max_daily_posts": 4,
+  "min_viral_score": 7,
+  "daily_engagement_actions": 15,
+  "optimal_posting_hours": [
+    8,
+    9,
+    19,
+    20
+  ],
+  "activated_at": "2025-08-04T23:01:22.230Z"
+}

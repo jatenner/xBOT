@@ -1,0 +1,22 @@
+{
+  "daily_actions_target": 15,
+  "replies_per_day": 8,
+  "likes_per_day": 20,
+  "follows_per_day": 5,
+  "target_account_types": [
+    "health_micro_influencers",
+    "fitness_coaches",
+    "nutrition_experts",
+    "biohackers",
+    "wellness_practitioners"
+  ],
+  "follower_range_targets": {
+    "min": 100,
+    "max": 5000
+  },
+  "engagement_times": [
+    "09:00",
+    "13:00",
+    "20:00"
+  ]
+}

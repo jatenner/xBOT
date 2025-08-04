@@ -1,0 +1,101 @@
+{
+  "system_type": "small_account_growth",
+  "activated_at": "2025-08-04T23:06:49.242Z",
+  "target_transformation": "17_to_50_followers_30_days",
+  "strategy": "quality_over_quantity_with_community_engagement",
+  "configs": {
+    "small_account_strategy": {
+      "account_type": "small_account",
+      "max_daily_posts": 4,
+      "min_viral_score_required": 7,
+      "posting_strategy": "quality_over_quantity",
+      "optimal_hours": [
+        8,
+        9,
+        19,
+        20
+      ],
+      "target_followers": 50,
+      "current_followers": 17,
+      "engagement_priority": true,
+      "controversy_level_min": 3,
+      "community_engagement_daily": 15,
+      "updated_at": "2025-08-04T23:06:48.816Z"
+    },
+    "posting_quality_rules": {
+      "min_hours_between_posts": 4,
+      "max_posts_per_day": 4,
+      "min_viral_score": 7,
+      "required_engagement_hooks": true,
+      "controversy_level_required": 3,
+      "optimal_posting_times": [
+        "08:00",
+        "09:00",
+        "19:00",
+        "20:00"
+      ],
+      "content_quality_gates": [
+        "engagement_hook_present",
+        "controversy_level_adequate",
+        "viral_score_sufficient",
+        "daily_limit_not_exceeded"
+      ]
+    },
+    "community_engagement_strategy": {
+      "daily_actions_target": 15,
+      "replies_per_day": 8,
+      "likes_per_day": 20,
+      "follows_per_day": 5,
+      "target_account_types": [
+        "health_micro_influencers",
+        "fitness_coaches",
+        "nutrition_experts",
+        "biohackers",
+        "wellness_practitioners"
+      ],
+      "follower_range_targets": {
+        "min": 100,
+        "max": 5000
+      },
+      "engagement_times": [
+        "09:00",
+        "13:00",
+        "20:00"
+      ]
+    },
+    "growth_tracking_metrics": {
+      "baseline_followers": 17,
+      "target_followers": 50,
+      "target_timeline_days": 30,
+      "required_daily_growth": 1.1,
+      "success_metrics": {
+        "avg_likes_target": 1,
+        "engagement_rate_target": 1,
+        "success_rate_target": 25,
+        "follower_growth_rate_target": 3.67
+      },
+      "weekly_milestones": [
+        {
+          "week": 1,
+          "target_followers": 25,
+          "target_avg_likes": 0.3
+        },
+        {
+          "week": 2,
+          "target_followers": 35,
+          "target_avg_likes": 0.5
+        },
+        {
+          "week": 3,
+          "target_followers": 45,
+          "target_avg_likes": 0.7
+        },
+        {
+          "week": 4,
+          "target_followers": 50,
+          "target_avg_likes": 1
+        }
+      ]
+    }
+  }
+}

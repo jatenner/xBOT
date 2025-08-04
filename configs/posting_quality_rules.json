@@ -1,0 +1,19 @@
+{
+  "min_hours_between_posts": 4,
+  "max_posts_per_day": 4,
+  "min_viral_score": 7,
+  "required_engagement_hooks": true,
+  "controversy_level_required": 3,
+  "optimal_posting_times": [
+    "08:00",
+    "09:00",
+    "19:00",
+    "20:00"
+  ],
+  "content_quality_gates": [
+    "engagement_hook_present",
+    "controversy_level_adequate",
+    "viral_score_sufficient",
+    "daily_limit_not_exceeded"
+  ]
+}
