@@ -579,7 +579,15 @@ Return JSON:
         operationType: 'concept_extraction'
       });
 
-      const result = JSON.parse(response.response || '{}');
+      let result: any = {};
+      try {
+        const responseText = typeof response.response === 'string' ? response.response : JSON.stringify(response.response || {});
+        result = JSON.parse(responseText);
+      } catch (parseError) {
+        console.warn('⚠️ Failed to parse concept extraction response, using fallback');
+        result = { concepts: [], topic: 'general' };
+      }
+      
       return {
         concepts: result.concepts || [],
         topic: result.topic || 'general',

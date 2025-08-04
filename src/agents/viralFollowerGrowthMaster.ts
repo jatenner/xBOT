@@ -252,7 +252,14 @@ export class ViralFollowerGrowthMaster {
         operationType: 'trend_analysis'
       });
 
-      const topics = JSON.parse(response.response || '[]');
+      let topics: string[] = [];
+      try {
+        const responseText = typeof response.response === 'string' ? response.response : JSON.stringify(response.response);
+        topics = JSON.parse(responseText);
+      } catch (parseError) {
+        console.warn('⚠️ Failed to parse trending topics, using fallback');
+        topics = [];
+      }
       return Array.isArray(topics) ? topics : [
         'seed oils toxicity',
         'carnivore diet benefits',
@@ -337,7 +344,7 @@ Return ONLY the content, formatted for Twitter:`;
         operationType: 'viral_content_generation'
       });
 
-      const rawContent = response.response || '';
+      const rawContent = typeof response.response === 'string' ? response.response : JSON.stringify(response.response || '');
       
       // Determine if it's a thread or single tweet
       const isThread = rawContent.includes('\n\n') || rawContent.length > 280 || rawContent.includes('🧵');
