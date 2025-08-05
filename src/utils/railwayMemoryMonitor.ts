@@ -3,9 +3,18 @@
  * Tracks memory usage to prevent resource exhaustion
  */
 
+interface MemoryUsage {
+    rss: number;
+    heapUsed: number;
+    heapTotal: number;
+    external: number;
+    railwayLimit: number;
+    usage_percent: number;
+}
+
 export class RailwayMemoryMonitor {
     
-    static getMemoryUsage() {
+    static getMemoryUsage(): MemoryUsage {
         const usage = process.memoryUsage();
         const MB = 1024 * 1024;
         
@@ -19,12 +28,12 @@ export class RailwayMemoryMonitor {
         };
     }
     
-    static isMemoryHigh() {
+    static isMemoryHigh(): boolean {
         const usage = this.getMemoryUsage();
         return usage.usage_percent > 85; // Trigger emergency mode at 85%
     }
     
-    static logMemoryStatus() {
+    static logMemoryStatus(): MemoryUsage {
         const usage = this.getMemoryUsage();
         const status = usage.usage_percent > 85 ? '🚨 HIGH' : 
                      usage.usage_percent > 70 ? '⚠️ MODERATE' : '✅ OK';

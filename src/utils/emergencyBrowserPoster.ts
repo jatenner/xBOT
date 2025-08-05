@@ -3,15 +3,16 @@
  * Railway-optimized posting with extreme memory efficiency
  */
 
-import { chromium } from 'playwright';
+import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import { ULTRA_LIGHT_BROWSER_OPTIONS, EMERGENCY_BROWSER_OPTIONS } from '../config/ultraLightBrowserConfig';
 
 export class EmergencyBrowserPoster {
+    private browser: Browser | null = null;
+    private context: BrowserContext | null = null;
+    private page: Page | null = null;
     
     constructor() {
-        this.browser = null;
-        this.context = null;
-        this.page = null;
+        // Properties are initialized above
     }
     
     /**
