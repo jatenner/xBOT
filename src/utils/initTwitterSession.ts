@@ -221,6 +221,43 @@ export async function ensureTwitterSession(): Promise<boolean> {
       console.log(`📁 Created data directory: ${dataDir}`);
     }
     
+    // 🔑 CHECK ENVIRONMENT VARIABLE FIRST (Railway deployment)
+    if (process.env.TWITTER_SESSION_DATA) {
+      console.log('🔑 Found TWITTER_SESSION_DATA environment variable');
+      try {
+        const sessionData = JSON.parse(process.env.TWITTER_SESSION_DATA);
+        
+        // Validate session data structure
+        if (sessionData.cookies && Array.isArray(sessionData.cookies) && sessionData.cookies.length > 0) {
+          // Write to expected path
+          fs.writeFileSync(sessionPath, JSON.stringify(sessionData, null, 2));
+          console.log(`✅ Twitter session loaded from environment variable`);
+          console.log(`📊 Session contains ${sessionData.cookies.length} cookies`);
+          
+          // Check session age if timestamp exists
+          if (sessionData.timestamp) {
+            const ageHours = (Date.now() - sessionData.timestamp) / (1000 * 60 * 60);
+            console.log(`⏰ Session age: ${Math.floor(ageHours)} hours old`);
+            
+            if (ageHours < 48) { // Allow 48 hours for environment sessions
+              console.log('✅ Session is fresh and ready to use');
+              return true;
+            } else {
+              console.log('⚠️ Session is older than 48 hours, but will still attempt to use');
+            }
+          } else {
+            console.log('⚠️ No timestamp in session data, age unknown');
+          }
+          
+          return true;
+        } else {
+          console.log('❌ Invalid session data in environment variable - missing or empty cookies array');
+        }
+      } catch (parseError) {
+        console.log('❌ Failed to parse TWITTER_SESSION_DATA environment variable:', parseError);
+      }
+    }
+    
     // Check if session exists in Railway volume
     if (fs.existsSync(sessionPath)) {
       console.log('✅ Twitter session found in Railway volume');
