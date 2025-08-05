@@ -199,7 +199,7 @@ export class StreamlinedPostAgent {
   }
 
   /**
-   * 🐦 POST TO TWITTER
+   * 🐦 POST TO TWITTER (WITH THREADING SUPPORT)
    */
   private async postToTwitter(content: string): Promise<{ success: boolean; postId?: string; reason?: string; cost?: number }> {
     try {
@@ -214,7 +214,45 @@ export class StreamlinedPostAgent {
         fallbackAvailable: false
       }, 0.10);
 
-      // Post using X client
+      // 🧵 CRITICAL FIX: Check if content should be a thread
+      const { IntelligentPostTypeDetector } = await import('../utils/intelligentPostTypeDetector');
+      const typeDecision = IntelligentPostTypeDetector.analyzeContent(content);
+      
+      if (typeDecision.shouldBeThread) {
+        console.log('🧵 THREADING DETECTED: Content should be posted as thread');
+        
+        // Parse content into thread
+        const { parseNumberedThread } = await import('../utils/threadUtils');
+        const threadResult = parseNumberedThread(content);
+        
+        if (threadResult.isThread && threadResult.tweets.length > 1) {
+          console.log(`🧵 POSTING THREAD: ${threadResult.tweets.length} tweets`);
+          
+          // Use ThreadPostingAgent for proper threading
+          const { ThreadPostingAgent } = await import('./threadPostingAgent');
+          const threadPoster = new ThreadPostingAgent();
+          
+          const threadPostResult = await threadPoster.postContent({
+            content: threadResult.tweets,
+            metadata: { source: 'StreamlinedPostAgent', viral_content: true }
+          });
+          
+          if (threadPostResult.success) {
+            console.log(`✅ THREAD POSTED: ${threadPostResult.tweetIds.length} tweets`);
+            return { 
+              success: true, 
+              postId: threadPostResult.tweetIds[0], // Return first tweet ID
+              cost: 0.10
+            };
+          } else {
+            console.error('❌ Thread posting failed, falling back to single tweet');
+            // Fall through to single tweet posting
+          }
+        }
+      }
+
+      // Post as single tweet (original logic)
+      console.log('📝 Posting as single tweet');
       const result = await xClient.postTweet(content);
       
       if (result.success && result.tweetId) {
