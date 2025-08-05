@@ -12,6 +12,8 @@ import { chromium, Browser, Page } from 'playwright';
 import * as fs from 'fs';
 import * as path from 'path';
 import { getChromiumLaunchOptions } from './playwrightUtils';
+import { emergencyBrowserPoster } from './emergencyBrowserPoster.js';
+import { memoryMonitor } from './railwayMemoryMonitor.js';
 import { RailwayResourceMonitor } from './railwayResourceMonitor';
 
 export class BrowserTweetPoster {
@@ -267,6 +269,29 @@ export class BrowserTweetPoster {
       }
     } catch (error) {
       console.log('❌ Emergency retry failed:', error.message);
+    }
+    
+    // Method 4: Ultra-light emergency browser for Railway memory exhaustion
+    console.log('🚨 Attempting ultra-light emergency browser posting...');
+    try {
+      // Check memory status
+      const memoryStatus = memoryMonitor.logMemoryStatus();
+      
+      console.log('🚨 ACTIVATING ULTRA-LIGHT EMERGENCY MODE');
+      console.log('🎯 Railway memory exhaustion detected - using minimal browser');
+      
+      const emergencySuccess = await emergencyBrowserPoster.emergencyPostTweet(content);
+      if (emergencySuccess) {
+        console.log('✅ Emergency ultra-light posting successful!');
+        return {
+          success: true,
+          method_used: 'emergency_ultra_light',
+          confirmed: true,
+          was_posted: true
+        };
+      }
+    } catch (error) {
+      console.log('❌ Ultra-light emergency posting failed:', error.message);
     }
     
     return {
