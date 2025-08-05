@@ -96,13 +96,14 @@ export async function parseContentIntoThread(content: string): Promise<ThreadPar
 export function parseNumberedThread(raw: string): ThreadParseResult {
   const originalContent = raw;
   
-  // 🚨 ENHANCED: Check for multiple thread patterns
+  // 🚨 ENHANCED: Check for multiple thread patterns  
   const hasNumberedPattern = /\d+\/\d*\s*/.test(raw);
-  const hasRoundPattern = /Round\s+\d+/i.test(raw);
+  const hasRoundPattern = /Round\s+\d+/i.test(raw); // Keep for sports content only
   const hasTweetPattern = /Tweet\s+\d+/i.test(raw);
   const hasThreadMarkers = raw.includes('🧵') || raw.includes('THREAD');
+  const hasNaturalBreaks = raw.split('\n\n').length > 2; // Natural thread breaks
   
-  if (!hasNumberedPattern && !hasRoundPattern && !hasTweetPattern && !hasThreadMarkers) {
+  if (!hasNumberedPattern && !hasRoundPattern && !hasTweetPattern && !hasThreadMarkers && !hasNaturalBreaks) {
     console.log(`📝 Single tweet detected (no numbered format)`);
     return {
       isThread: false,
@@ -124,9 +125,17 @@ export function parseNumberedThread(raw: string): ThreadParseResult {
   let tweets = [];
   
   // 🎯 ENHANCED PARSING: Handle multiple thread patterns
-  if (hasRoundPattern) {
-    // Parse "Round 1", "Round 2", etc. (Joe Orrico style)
-    console.log('🏈 Parsing Round-based thread (Joe Orrico style)...');
+  if (hasNaturalBreaks && !hasNumberedPattern && !hasTweetPattern && !hasRoundPattern) {
+    // Parse natural thread breaks (double line breaks)
+    console.log('📝 Parsing natural thread breaks...');
+    const naturalParts = cleaned.split(/\n\n+/).filter(part => part.trim().length > 20);
+    if (naturalParts.length > 1) {
+      tweets = naturalParts;
+    }
+    
+  } else if (hasRoundPattern) {
+    // Parse "Round 1", "Round 2", etc. (for sports content only)
+    console.log('🏈 Parsing Round-based thread (sports content)...');
     const roundParts = cleaned.split(/\s*(Round\s+\d+)\s*/i);
     
     let currentTweet = '';

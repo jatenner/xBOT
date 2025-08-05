@@ -329,12 +329,14 @@ CONTENT LENGTH:
 - If simple message: Single tweet (under 280 chars)
 - If complex: Thread (3-7 tweets)
 
-THREAD FORMATTING (Joe Orrico Style):
-- Use "Round 1", "Round 2", "Round 3" etc. for professional threading
-- Each round should contain substantial content
-- Format like: "Round 1\n\n[Content for round 1]\n\nRound 2\n\n[Content for round 2]"
+THREAD FORMATTING (Professional Structure):
+- Create natural flowing threads with substantial content in each tweet
+- Use logical progression that makes sense for the health topic
+- Format with proper spacing: double line breaks between major sections
 - NO numbered lists like "1/", "2/", "3/" (looks amateur)
 - NO "Tweet 1:", "Tweet 2:" labels (unprofessional)
+- NO "Round 1", "Round 2" unless specifically talking about sports/drafts
+- Each tweet should be able to stand alone but connect to build a complete story
 
 HEALTH CONTENT FOCUS:
 - Generate content about health, longevity, nutrition, fitness, or wellness
