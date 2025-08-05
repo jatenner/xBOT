@@ -206,6 +206,35 @@ export class ProfessionalTweetFormatter {
       issues.push('Too many sentences without breaks');
     }
     
+    // 🚨 ESSAY DETECTION - Prevent academic walls of text
+    if (content.length > 350 && !content.includes('\n\n')) {
+      readability -= 50;
+      issues.push('Essay-like wall of text detected');
+    }
+    
+    if (content.split(/[.!?]/).length > 6) {
+      readability -= 40;
+      issues.push('Too many sentences - sounds like academic paper');
+    }
+    
+    // Check for academic language patterns
+    const academicPatterns = [
+      /Research shows that.{50,}/i,
+      /Studies indicate that.{50,}/i,
+      /Here's the real story:/i,
+      /\b(furthermore|moreover|additionally|consequently)\b/gi
+    ];
+    
+    let academicScore = 0;
+    academicPatterns.forEach(pattern => {
+      if (pattern.test(content)) academicScore++;
+    });
+    
+    if (academicScore >= 2) {
+      readability -= 35;
+      issues.push('Academic writing style not suitable for viral content');
+    }
+    
     // Check engagement
     const hasHook = /^(Most people|Did you know|New study|Scientists|Research shows|Breakthrough)/i.test(content);
     if (!hasHook) {
