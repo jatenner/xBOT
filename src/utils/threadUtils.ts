@@ -88,17 +88,21 @@ export async function parseContentIntoThread(content: string): Promise<ThreadPar
  * "**Thread: Title**
  * Tweet 1: First tweet content
  * Tweet 2: Second tweet content..."
+ * OR Joe Orrico style:
+ * "Round 1\nContent...\n\nRound 2\nMore content..."
  * 
  * Into clean array: ["First tweet content", "Second tweet content"]
  */
 export function parseNumberedThread(raw: string): ThreadParseResult {
   const originalContent = raw;
   
-  // 🚨 CRITICAL FIX: Check for numbered patterns like "1/7", "2/7", "1/", "2/"
+  // 🚨 ENHANCED: Check for multiple thread patterns
   const hasNumberedPattern = /\d+\/\d*\s*/.test(raw);
+  const hasRoundPattern = /Round\s+\d+/i.test(raw);
+  const hasTweetPattern = /Tweet\s+\d+/i.test(raw);
   const hasThreadMarkers = raw.includes('🧵') || raw.includes('THREAD');
   
-  if (!hasNumberedPattern && !hasThreadMarkers) {
+  if (!hasNumberedPattern && !hasRoundPattern && !hasTweetPattern && !hasThreadMarkers) {
     console.log(`📝 Single tweet detected (no numbered format)`);
     return {
       isThread: false,
@@ -117,32 +121,88 @@ export function parseNumberedThread(raw: string): ThreadParseResult {
     .replace(/^\s*\*{0,2}Thread[^:\n]*:?\*{0,2}\s*\n?/im, '')
     .trim();
   
-  // 🎯 FIXED PARSING: Split on numbered patterns like "1/7", "2/7", "1/", "2/"
-  const parts = cleaned.split(/\s+(\d+\/\d*)\s*/);
+  let tweets = [];
   
-  const tweets = [];
-  let currentTweet = '';
-  
-  for (let i = 0; i < parts.length; i++) {
-    const part = parts[i];
+  // 🎯 ENHANCED PARSING: Handle multiple thread patterns
+  if (hasRoundPattern) {
+    // Parse "Round 1", "Round 2", etc. (Joe Orrico style)
+    console.log('🏈 Parsing Round-based thread (Joe Orrico style)...');
+    const roundParts = cleaned.split(/\s*(Round\s+\d+)\s*/i);
     
-    // If this part is a number pattern (1/7, 2/7, 1/, 2/, etc.), start a new tweet
-    if (part && part.match(/^\d+\/\d*$/)) {
-      // Save previous tweet if it exists
-      if (currentTweet.trim()) {
-        tweets.push(currentTweet.trim());
+    let currentTweet = '';
+    for (let i = 0; i < roundParts.length; i++) {
+      const part = roundParts[i];
+      
+      if (part && part.match(/^Round\s+\d+$/i)) {
+        // Save previous tweet if it exists
+        if (currentTweet.trim()) {
+          tweets.push(currentTweet.trim());
+        }
+        // Start new tweet with Round header
+        currentTweet = part + '\n\n';
+      } else if (part && part.trim()) {
+        // Add content to current tweet
+        currentTweet += part.trim();
       }
-      // Start new tweet
-      currentTweet = '';
-    } else {
-      // Add content to current tweet
-      currentTweet += part + ' ';
     }
-  }
-  
-  // Add the last tweet
-  if (currentTweet.trim()) {
-    tweets.push(currentTweet.trim());
+    
+    // Add the last tweet
+    if (currentTweet.trim()) {
+      tweets.push(currentTweet.trim());
+    }
+    
+  } else if (hasTweetPattern) {
+    // Parse "Tweet 1", "Tweet 2", etc.
+    console.log('📝 Parsing Tweet-numbered thread...');
+    const tweetParts = cleaned.split(/\s*(Tweet\s+\d+[:\s]*)/i);
+    
+    let currentTweet = '';
+    for (let i = 0; i < tweetParts.length; i++) {
+      const part = tweetParts[i];
+      
+      if (part && part.match(/^Tweet\s+\d+/i)) {
+        // Save previous tweet if it exists
+        if (currentTweet.trim()) {
+          tweets.push(currentTweet.trim());
+        }
+        currentTweet = '';
+      } else if (part && part.trim()) {
+        currentTweet += part.trim() + ' ';
+      }
+    }
+    
+    if (currentTweet.trim()) {
+      tweets.push(currentTweet.trim());
+    }
+    
+  } else {
+    // Default: Parse numbered patterns like "1/7", "2/7", "1/", "2/"
+    console.log('🔢 Parsing numbered thread (1/7, 2/7 style)...');
+    const parts = cleaned.split(/\s+(\d+\/\d*)\s*/);
+    
+    let currentTweet = '';
+    
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      
+      // If this part is a number pattern (1/7, 2/7, 1/, 2/, etc.), start a new tweet
+      if (part && part.match(/^\d+\/\d*$/)) {
+        // Save previous tweet if it exists
+        if (currentTweet.trim()) {
+          tweets.push(currentTweet.trim());
+        }
+        // Start new tweet
+        currentTweet = '';
+      } else {
+        // Add content to current tweet
+        currentTweet += part + ' ';
+      }
+    }
+    
+    // Add the last tweet
+    if (currentTweet.trim()) {
+      tweets.push(currentTweet.trim());
+    }
   }
   
   // Clean up each tweet

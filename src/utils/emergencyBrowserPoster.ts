@@ -92,26 +92,111 @@ export class EmergencyBrowserPoster {
                 throw new Error('Emergency browser initialization failed');
             }
             
-            // Navigate to Twitter with minimal resources
-            await this.page.goto('https://twitter.com/compose/tweet', {
+            // Load session first by going to main Twitter page
+            console.log('🔐 Loading Twitter session...');
+            await this.page.goto('https://x.com', {
                 waitUntil: 'domcontentloaded',
-                timeout: 10000
+                timeout: 15000
             });
             
-            // Wait for compose area (minimal wait)
-            const composeSelector = '[data-testid="tweetTextarea_0"]';
-            await this.page.waitForSelector(composeSelector, { timeout: 5000 });
+            // Load session cookies if available
+            const sessionPath = '/app/data/twitter_session.json';
+            try {
+                if (require('fs').existsSync(sessionPath)) {
+                    const sessionData = JSON.parse(require('fs').readFileSync(sessionPath, 'utf8'));
+                    if (sessionData.cookies) {
+                        await this.context.addCookies(sessionData.cookies);
+                        console.log(`✅ Loaded ${sessionData.cookies.length} session cookies`);
+                        
+                        // Reload page to activate session
+                        await this.page.reload({ waitUntil: 'domcontentloaded' });
+                        await this.page.waitForTimeout(3000);
+                    }
+                }
+            } catch (sessionError) {
+                console.log('⚠️ Session loading failed, continuing without session');
+            }
             
-            // Type content efficiently
-            await this.page.fill(composeSelector, content);
+            // Navigate to compose modal by clicking tweet button
+            console.log('🚀 Opening tweet composer...');
+            
+            // Try multiple compose button selectors
+            const composeButtons = [
+                '[data-testid="SideNav_NewTweet_Button"]',
+                '[aria-label="Tweet"]',
+                '[href="/compose/tweet"]',
+                'a[href="/compose/tweet"]'
+            ];
+            
+            let composeClicked = false;
+            for (const selector of composeButtons) {
+                try {
+                    await this.page.waitForSelector(selector, { timeout: 3000 });
+                    await this.page.click(selector);
+                    composeClicked = true;
+                    console.log(`✅ Clicked compose button: ${selector}`);
+                    break;
+                } catch (e) {
+                    continue;
+                }
+            }
+            
+            if (!composeClicked) {
+                throw new Error('Could not find tweet compose button');
+            }
+            
+            // Wait for compose modal and type content
+            console.log('📝 Typing tweet content...');
+            const textareaSelectors = [
+                '[data-testid="tweetTextarea_0"]',
+                '[role="textbox"][aria-label*="Tweet"]',
+                '.notranslate'
+            ];
+            
+            let textareaFound = false;
+            for (const selector of textareaSelectors) {
+                try {
+                    await this.page.waitForSelector(selector, { timeout: 5000 });
+                    await this.page.fill(selector, content);
+                    textareaFound = true;
+                    console.log(`✅ Typed content in: ${selector}`);
+                    break;
+                } catch (e) {
+                    continue;
+                }
+            }
+            
+            if (!textareaFound) {
+                throw new Error('Could not find tweet textarea');
+            }
             
             // Click tweet button
-            const tweetButton = '[data-testid="tweetButton"]';
-            await this.page.waitForSelector(tweetButton, { timeout: 3000 });
-            await this.page.click(tweetButton);
+            console.log('🚀 Publishing tweet...');
+            const tweetButtons = [
+                '[data-testid="tweetButton"]',
+                '[data-testid="tweetButtonInline"]',
+                '[role="button"][aria-label*="Tweet"]'
+            ];
             
-            // Minimal success verification
-            await this.page.waitForTimeout(2000);
+            let tweetButtonClicked = false;
+            for (const selector of tweetButtons) {
+                try {
+                    await this.page.waitForSelector(selector, { timeout: 3000 });
+                    await this.page.click(selector);
+                    tweetButtonClicked = true;
+                    console.log(`✅ Clicked tweet button: ${selector}`);
+                    break;
+                } catch (e) {
+                    continue;
+                }
+            }
+            
+            if (!tweetButtonClicked) {
+                throw new Error('Could not find tweet button');
+            }
+            
+            // Wait for success confirmation
+            await this.page.waitForTimeout(3000);
             
             success = true;
             console.log('✅ Emergency posting successful');
