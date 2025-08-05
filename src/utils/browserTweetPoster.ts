@@ -12,8 +12,8 @@ import { chromium, Browser, Page } from 'playwright';
 import * as fs from 'fs';
 import * as path from 'path';
 import { getChromiumLaunchOptions } from './playwrightUtils';
-import { emergencyBrowserPoster } from './emergencyBrowserPoster.js';
-import { memoryMonitor } from './railwayMemoryMonitor.js';
+import { emergencyBrowserPoster } from './emergencyBrowserPoster';
+import { memoryMonitor } from './railwayMemoryMonitor';
 import { RailwayResourceMonitor } from './railwayResourceMonitor';
 
 export class BrowserTweetPoster {
