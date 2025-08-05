@@ -38,13 +38,20 @@ export class SinglePostingManager {
 
   private scheduleNextPost(): void {
     const now = new Date();
-    const nextPost = new Date(now.getTime() + (60 * 60 * 1000)); // 1 hour from now
+    // 🚀 URGENT FIX: Post immediately if this is the first post, otherwise every 30 minutes
+    const isFirstPost = this.nextPostTime === null;
+    const delayMinutes = isFirstPost ? 0.5 : 30; // 30 seconds for first post, then 30 minutes
+    const nextPost = new Date(now.getTime() + (delayMinutes * 60 * 1000));
     
     this.nextPostTime = nextPost;
     
     const timeUntilNext = nextPost.getTime() - now.getTime();
     
-    console.log(`⏰ Next post scheduled for: ${nextPost.toLocaleString()}`);
+    if (isFirstPost) {
+      console.log(`🚀 IMMEDIATE FIRST POST: Posting in 30 seconds...`);
+    } else {
+      console.log(`⏰ Next post scheduled for: ${nextPost.toLocaleString()} (${delayMinutes} minutes)`);
+    }
     
     setTimeout(async () => {
       if (this.isRunning) {
@@ -57,20 +64,31 @@ export class SinglePostingManager {
   private async executePost(): Promise<void> {
     try {
       console.log('🚀 === SINGLE POSTING EXECUTION ===');
+      console.log('🧠 Making intelligent posting decision...');
       
       const decision = await this.postingEngine.makePostingDecision();
       
+      console.log(`📋 Decision: ${decision.should_post ? 'POST' : 'WAIT'} (${(decision.confidence * 100).toFixed(1)}% confidence)`);
+      console.log(`📝 Strategy: ${decision.strategy.toUpperCase()}`);
+      
       if (decision.should_post) {
         console.log('✅ Posting decision: APPROVED');
+        console.log('🚀 === AUTONOMOUS POSTING EXECUTION ===');
+        
         const result = await this.postingEngine.executePost();
         
         if (result.success) {
-          console.log(`✅ Tweet posted successfully`);
+          console.log(`✅ Tweet posted successfully! ID: ${result.tweet_id || 'generated'}`);
+          console.log(`📊 Method: ${result.method_used || 'autonomous'}`);
         } else {
           console.log(`❌ Tweet posting failed: ${result.error}`);
+          console.log('🔄 Will retry in next cycle...');
         }
       } else {
         console.log(`❌ Posting decision: DENIED - ${decision.reason}`);
+        if (decision.wait_minutes) {
+          console.log(`⏰ Suggested wait: ${decision.wait_minutes} minutes`);
+        }
       }
       
     } catch (error) {
