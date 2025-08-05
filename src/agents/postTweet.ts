@@ -115,6 +115,49 @@ export class PostTweetAgent {
       console.log('📝 Final content preview:', finalContent.substring(0, 100) + '...');
       console.log(`🎯 Viral Score: ${viralScore}/10, Growth Potential: ${followerGrowthPotential}/10`);
       
+      // 🧵 CRITICAL FIX: Check if content should be a thread before posting
+      const { IntelligentPostTypeDetector } = await import('../utils/intelligentPostTypeDetector');
+      const typeDecision = IntelligentPostTypeDetector.analyzeContent(finalContent);
+      
+      if (typeDecision.shouldBeThread) {
+        console.log('🧵 THREADING DETECTED: Content should be posted as thread');
+        
+        // Parse content into thread
+        const { parseNumberedThread } = await import('../utils/threadUtils');
+        const threadResult = parseNumberedThread(finalContent);
+        
+        if (threadResult.isThread && threadResult.tweets.length > 1) {
+          console.log(`🧵 POSTING THREAD: ${threadResult.tweets.length} tweets`);
+          
+          // Use ThreadPostingAgent for proper threading
+          const { ThreadPostingAgent } = await import('./threadPostingAgent');
+          const threadPoster = new ThreadPostingAgent();
+          
+          const threadPostResult = await threadPoster.postContent({
+            content: threadResult.tweets,
+            metadata: { source: 'PostTweetAgent' }
+          });
+          
+          if (threadPostResult.success) {
+            console.log(`✅ THREAD POSTED: ${threadPostResult.tweetIds.length} tweets`);
+            
+            // Store with AI metrics for first tweet
+            await this.storeTweetWithAIMetrics(threadPostResult.tweetIds[0], finalContent, contentType, viralScore, followerGrowthPotential);
+            
+            return { 
+              success: true, 
+              content: finalContent,
+              tweetId: threadPostResult.tweetIds[0] // Return first tweet ID
+            };
+          } else {
+            console.error('❌ Thread posting failed, falling back to single tweet');
+            // Fall through to single tweet posting
+          }
+        }
+      }
+
+      // Post as single tweet (original logic)
+      console.log('📝 Posting as single tweet');
       const result = await xClient.postTweet(finalContent);
       
       if (result.success && result.tweetId) {
