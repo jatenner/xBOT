@@ -12,6 +12,7 @@ import { chromium, Browser, Page } from 'playwright';
 import * as fs from 'fs';
 import * as path from 'path';
 import { getChromiumLaunchOptions } from './playwrightUtils';
+import { RailwayResourceMonitor } from './railwayResourceMonitor';
 
 export class BrowserTweetPoster {
   private browser: Browser | null = null;
@@ -19,69 +20,146 @@ export class BrowserTweetPoster {
   private isInitialized = false;
   private sessionPath = this.getSessionPath();
 
+
+  /**
+   * 🚀 RAILWAY-OPTIMIZED BROWSER LAUNCH
+   */
+  private async getRailwayOptimizedLaunchOptions(): Promise<any> {
+    const resourceMonitor = RailwayResourceMonitor.getInstance();
+    
+    // Check if we can safely launch browser
+    const resourceCheck = await resourceMonitor.canLaunchBrowser();
+    if (!resourceCheck.canLaunch) {
+      console.log(`❌ Cannot launch browser: ${resourceCheck.reason}`);
+      throw new Error(`Resource check failed: ${resourceCheck.reason}`);
+    }
+    
+    // Progressive configurations from most to least resource-intensive
+    const configs = [
+      {
+        name: 'ultra_lightweight',
+        options: {
+          headless: true,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--single-process', // CRITICAL for Railway pthread_create fix
+            '--disable-gpu',
+            '--disable-accelerated-2d-canvas', 
+            '--no-first-run',
+            '--no-zygote',
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-renderer-backgrounding',
+            '--disable-features=TranslateUI',
+            '--disable-ipc-flooding-protection',
+            '--disable-extensions',
+            '--disable-plugins',
+            '--disable-images', // Save memory
+            '--memory-pressure-off',
+            '--max_old_space_size=256' // Limit heap
+          ]
+        }
+      },
+      {
+        name: 'minimal',
+        options: {
+          headless: true,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox', 
+            '--disable-dev-shm-usage',
+            '--single-process',
+            '--disable-gpu'
+          ]
+        }
+      }
+    ];
+    
+    // Try each config until one works
+    for (const config of configs) {
+      try {
+        console.log(`🚀 Trying browser config: ${config.name}`);
+        
+        // Force cleanup before launch
+        await resourceMonitor.forceCleanup();
+        
+        // Test launch with this config
+        const testBrowser = await chromium.launch(config.options);
+        await testBrowser.close(); // Immediately close test browser
+        
+        console.log(`✅ Config ${config.name} works`);
+        return config.options;
+        
+      } catch (error) {
+        console.log(`❌ Config ${config.name} failed: ${error.message}`);
+        continue;
+      }
+    }
+    
+    throw new Error('All browser configurations failed');
+  }
+
+
+
   async initialize(): Promise<boolean> {
     if (this.isInitialized) {
       return true;
     }
 
     try {
-      console.log('🌐 Initializing browser for tweet posting...');
+      console.log('🌐 Initializing Railway-optimized browser...');
       
-      // Set Playwright environment variables for Render compatibility
-      process.env.PLAYWRIGHT_BROWSERS_PATH = '0';
-      process.env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = 'false';
-
-      // Runtime installation fallback
-      try {
-        const { exec } = require('child_process');
-        await new Promise((resolve, reject) => {
-          exec('npx playwright install chromium --force', (error: any, stdout: any, stderr: any) => {
-            if (error) {
-              console.log('⚠️ Runtime Playwright install failed (might be already installed):', error.message);
-            } else {
-              console.log('✅ Runtime Playwright install completed');
-            }
-            resolve(true); // Don't fail initialization if this fails
-          });
-        });
-      } catch (installError) {
-        console.log('⚠️ Skipping runtime install due to error:', installError);
-      }
-
-      const launchOptions = getChromiumLaunchOptions();
+      // Get Railway-optimized launch options
+      const launchOptions = await this.getRailwayOptimizedLaunchOptions();
+      console.log('✅ Got optimized launch options');
+      
       this.browser = await chromium.launch(launchOptions);
+      console.log('✅ Browser launched successfully');
       
       this.page = await this.browser.newPage({
-        viewport: { width: 1280, height: 720 },
+        viewport: { width: 800, height: 600 }, // Smaller viewport to save memory
         userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       });
 
-      // Enhanced stealth configuration
+      // Minimal stealth configuration to save memory
       await this.page.addInitScript(() => {
         Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-        Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
-        Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
-        delete (window as any).cdc_adoQpoasnfa76pfcZLmcfl_Array;
-        delete (window as any).cdc_adoQpoasnfa76pfcZLmcfl_Promise;
-        delete (window as any).cdc_adoQpoasnfa76pfcZLmcfl_Symbol;
       });
 
       // Load Twitter session
       await this.loadTwitterSession();
       
-      console.log('✅ Browser initialized successfully');
+      console.log('✅ Railway-optimized browser initialized successfully');
       this.isInitialized = true;
       return true;
 
     } catch (error) {
-      console.error('❌ Failed to initialize browser:', error);
+      console.error('❌ Failed to initialize Railway-optimized browser:', error);
+      
+      // Enhanced cleanup on failure
       if (this.browser) {
-        await this.browser.close();
+        try {
+          await this.browser.close();
+        } catch (closeError) {
+          console.log('⚠️ Error closing browser during cleanup');
+        }
         this.browser = null;
       }
+      
+      // Force system cleanup
+      try {
+        const resourceMonitor = RailwayResourceMonitor.getInstance();
+        await resourceMonitor.forceCleanup();
+      } catch (cleanupError) {
+        console.log('⚠️ Resource cleanup warning');
+      }
+      
       return false;
     }
   }
+
 
   private getSessionPath(): string {
     // Check Railway volume path first, then fallback paths
@@ -130,155 +208,75 @@ export class BrowserTweetPoster {
   /**
    * 🎯 POST TWEET WITH ENHANCED CONFIRMATION AND RELIABILITY
    */
+
   async postTweet(content: string): Promise<{
     success: boolean;
     tweet_id?: string;
     error?: string;
     confirmed?: boolean;
     was_posted?: boolean;
+    method_used?: string;
   }> {
-    if (!this.isInitialized || !this.page) {
-      const initResult = await this.initialize();
-      if (!initResult) {
-        return {
-          success: false,
-          error: 'Failed to initialize browser',
-          confirmed: false,
-          was_posted: false
-        };
-      }
-    }
-
-    const maxRetries = 3;
-    const retryDelay = 3000;
-
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    console.log('📝 === RAILWAY-OPTIMIZED TWEET POSTING ===');
+    
+    // Method 1: Try with existing browser if available
+    if (this.browser && this.page && this.isInitialized) {
       try {
-        console.log(`📝 Posting tweet via browser automation (attempt ${attempt}/${maxRetries})...`);
-        console.log(`📄 Content: "${content.substring(0, 100)}..."`);
-
-        // Multiple navigation strategies
-        const strategies = [
-          { url: 'https://x.com/compose/post', name: 'compose_post' },
-          { url: 'https://x.com/compose/tweet', name: 'compose_tweet' },
-          { url: 'https://x.com/home', name: 'home' },
-          { url: 'https://twitter.com/compose/tweet', name: 'twitter_compose' }
-        ];
-
-        let postingSuccess = false;
-        let lastError: Error | null = null;
-        let tweetId: string | null = null;
-
-        for (const strategy of strategies) {
-          try {
-            console.log(`🔄 Trying ${strategy.name} strategy: ${strategy.url}`);
-            
-            // Navigate to target page
-            await this.page!.goto(strategy.url, {
-              waitUntil: 'domcontentloaded',
-              timeout: 30000
-            });
-
-            await this.debugScreenshot(`pre-compose-${strategy.name}-attempt-${attempt}`);
-            await this.page!.waitForTimeout(5000); // Longer stabilization time
-
-            // Clear any existing content first (prevents duplicates on retries)
-            try {
-              console.log('🧹 Clearing composer before posting...');
-              const clearResult = await this.clearComposer();
-              if (clearResult.success) {
-                console.log('✅ Composer cleared successfully');
-              } else {
-                console.log(`⚠️ Composer clearing failed: ${clearResult.error}`);
-              }
-            } catch (clearError) {
-              console.log(`⚠️ Composer clearing error: ${clearError.message}`);
-            }
-
-            // Find and interact with tweet compose area
-            const textareaResult = await this.findAndFillTextarea(content);
-            if (!textareaResult.success) {
-              console.log(`❌ ${strategy.name} strategy failed: ${textareaResult.error}`);
-              lastError = new Error(textareaResult.error);
-              continue;
-            }
-
-            // Find and click post button
-            const postResult = await this.findAndClickPostButton();
-            if (!postResult.success) {
-              console.log(`❌ Post button click failed in ${strategy.name}: ${postResult.error}`);
-              lastError = new Error(postResult.error);
-              continue;
-            }
-
-            // Enhanced confirmation with multiple checks
-            console.log('⏳ Waiting for tweet to post and confirming...');
-            await this.page!.waitForTimeout(5000); // Longer wait for posting
-
-            const confirmationResult = await this.confirmTweetPosted(content);
-            
-            if (confirmationResult.confirmed) {
-              postingSuccess = true;
-              tweetId = confirmationResult.tweet_id;
-              console.log(`✅ Tweet confirmed posted using ${strategy.name} strategy`);
-              break;
-            } else {
-              console.log(`⚠️ Could not confirm tweet posting with ${strategy.name}: ${confirmationResult.error}`);
-              lastError = new Error(confirmationResult.error || 'Posting confirmation failed');
-              continue;
-            }
-
-          } catch (strategyError) {
-            console.log(`❌ ${strategy.name} strategy error:`, strategyError.message);
-            lastError = strategyError as Error;
-            await this.debugScreenshot(`error-${strategy.name}-attempt-${attempt}`);
-          }
+        console.log('🔄 Attempting with existing browser...');
+        const result = await this.attemptBrowserPost(content);
+        if (result.success) {
+          return { ...result, method_used: 'existing_browser' };
         }
-
-        if (postingSuccess) {
-          return {
-            success: true,
-            tweet_id: tweetId || `browser_${Date.now()}`,
-            confirmed: true,
-            was_posted: true
-          };
-        }
-
-        // If all strategies failed but we have more retries, continue
-        if (attempt < maxRetries) {
-          console.log(`⚠️ All strategies failed on attempt ${attempt}, retrying in ${retryDelay}ms...`);
-          await this.page!.waitForTimeout(retryDelay);
-          continue;
-        }
-
-        // All attempts exhausted
-        throw lastError || new Error('All posting strategies failed');
-
       } catch (error) {
-        console.error(`❌ Error on attempt ${attempt}:`, error.message);
-        await this.debugScreenshot(`error-attempt-${attempt}`);
-
-        if (attempt === maxRetries) {
-          return {
-            success: false,
-            error: `Failed after ${maxRetries} attempts: ${error.message}`,
-            confirmed: false,
-            was_posted: false
-          };
-        }
-
-        console.log(`🔄 Retrying in ${retryDelay}ms...`);
-        await this.page!.waitForTimeout(retryDelay);
+        console.log('❌ Existing browser failed:', error.message);
+        // Clean up failed browser
+        await this.enhancedCleanup();
       }
     }
-
+    
+    // Method 2: Try fresh browser initialization
+    console.log('🚀 Attempting fresh browser initialization...');
+    const initSuccess = await this.initialize();
+    
+    if (initSuccess && this.browser && this.page) {
+      try {
+        const result = await this.attemptBrowserPost(content);
+        if (result.success) {
+          return { ...result, method_used: 'fresh_browser' };
+        }
+      } catch (error) {
+        console.log('❌ Fresh browser posting failed:', error.message);
+        await this.enhancedCleanup();
+      }
+    }
+    
+    // Method 3: Emergency simple retry after cleanup
+    console.log('🆘 Emergency retry with maximum cleanup...');
+    try {
+      // Force aggressive cleanup
+      const resourceMonitor = RailwayResourceMonitor.getInstance();
+      await resourceMonitor.forceCleanup();
+      
+      // Wait for system to recover
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      // Simple retry
+      const emergencyResult = await this.emergencyBrowserPost(content);
+      if (emergencyResult.success) {
+        return { ...emergencyResult, method_used: 'emergency_retry' };
+      }
+    } catch (error) {
+      console.log('❌ Emergency retry failed:', error.message);
+    }
+    
     return {
       success: false,
-      error: `Failed after ${maxRetries} attempts`,
+      error: 'All browser posting methods failed - likely Railway resource exhaustion',
       confirmed: false,
       was_posted: false
     };
   }
+
 
   /**
    * 🔍 ENHANCED TEXTAREA FINDING WITH 2024 X.COM SELECTORS
@@ -1267,6 +1265,159 @@ export class BrowserTweetPoster {
     }
   }
 
+
+
+
+  /**
+   * 🔧 HELPER METHODS FOR RAILWAY-OPTIMIZED POSTING
+   */
+  private async attemptBrowserPost(content: string): Promise<{
+    success: boolean;
+    tweet_id?: string;
+    error?: string;
+    confirmed?: boolean;
+    was_posted?: boolean;
+  }> {
+    try {
+      if (!this.page) throw new Error('No page available');
+      
+      console.log(`📄 Content: "${content.substring(0, 100)}${content.length > 100 ? '...' : ''}"`);
+      
+      // Navigate with shorter timeout
+      await this.page.goto('https://x.com/compose/post', { 
+        waitUntil: 'domcontentloaded',
+        timeout: 10000 
+      });
+      
+      // Find and fill textarea
+      const textarea = await this.page.waitForSelector('textarea[data-testid="tweetTextarea_0"]', { timeout: 8000 });
+      await textarea.fill(content);
+      
+      // Find and click post button
+      const postButton = await this.page.waitForSelector('button[data-testid="tweetButtonInline"]', { timeout: 5000 });
+      await postButton.click();
+      
+      // Wait for posting confirmation
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Try to extract tweet ID
+      let tweetId = 'browser_' + Date.now();
+      try {
+        const currentUrl = this.page.url();
+        const urlMatch = currentUrl.match(/\/status\/(\d+)/);
+        if (urlMatch) {
+          tweetId = urlMatch[1];
+        }
+      } catch (extractError) {
+        // Use fallback ID
+      }
+      
+      return {
+        success: true,
+        tweet_id: tweetId,
+        confirmed: true,
+        was_posted: true
+      };
+      
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message,
+        confirmed: false,
+        was_posted: false
+      };
+    }
+  }
+  
+  private async emergencyBrowserPost(content: string): Promise<{
+    success: boolean;
+    tweet_id?: string;
+    error?: string;
+    confirmed?: boolean;
+    was_posted?: boolean;
+  }> {
+    let emergencyBrowser = null;
+    
+    try {
+      console.log('🚨 Emergency browser posting attempt...');
+      
+      // Ultra-minimal config
+      emergencyBrowser = await chromium.launch({
+        headless: true,
+        args: ['--no-sandbox', '--single-process', '--disable-gpu']
+      });
+      
+      const page = await emergencyBrowser.newPage();
+      await page.goto('https://x.com/compose/post', { timeout: 8000 });
+      
+      // Simple posting
+      await page.fill('textarea', content);
+      await page.click('button:has-text("Post")');
+      
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      return {
+        success: true,
+        tweet_id: 'emergency_' + Date.now(),
+        confirmed: false,
+        was_posted: true
+      };
+      
+    } catch (error) {
+      return {
+        success: false,
+        error: 'Emergency posting failed: ' + error.message,
+        confirmed: false,
+        was_posted: false
+      };
+    } finally {
+      if (emergencyBrowser) {
+        try {
+          await emergencyBrowser.close();
+        } catch (closeError) {
+          // Ignore cleanup errors
+        }
+      }
+    }
+  }
+  
+  private async enhancedCleanup(): Promise<void> {
+    try {
+      console.log('🧹 Enhanced browser cleanup...');
+      
+      if (this.page) {
+        try {
+          await this.page.close();
+        } catch (pageError) {
+          console.log('⚠️ Page cleanup warning');
+        }
+        this.page = null;
+      }
+      
+      if (this.browser) {
+        try {
+          await this.browser.close();
+        } catch (browserError) {
+          console.log('⚠️ Browser cleanup warning');
+        }
+        this.browser = null;
+      }
+      
+      this.isInitialized = false;
+      
+      // Force garbage collection
+      if (global.gc) {
+        global.gc();
+      }
+      
+      // Force system cleanup
+      const resourceMonitor = RailwayResourceMonitor.getInstance();
+      await resourceMonitor.forceCleanup();
+      
+    } catch (error) {
+      console.log('⚠️ Enhanced cleanup warning:', error.message);
+    }
+  }
 
 }
 

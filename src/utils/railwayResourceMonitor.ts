@@ -3,6 +3,8 @@
  * Monitors system resources and prevents crashes
  */
 
+import { exec } from 'child_process';
+
 export class RailwayResourceMonitor {
   private static instance: RailwayResourceMonitor;
   
@@ -69,7 +71,6 @@ export class RailwayResourceMonitor {
       // Kill any hanging Chrome processes (Railway only)
       if (process.env.NODE_ENV === 'production') {
         try {
-          import { exec } from 'child_process';
           exec('pkill -f chrome || true');
           console.log('✅ Cleaned up Chrome processes');
         } catch (error) {
@@ -85,7 +86,6 @@ export class RailwayResourceMonitor {
   private async countActiveProcesses(): Promise<number> {
     return new Promise((resolve) => {
       try {
-        import { exec } from 'child_process';
         exec('ps aux | grep chrome | grep -v grep | wc -l', (error, stdout) => {
           if (error) {
             resolve(0);
