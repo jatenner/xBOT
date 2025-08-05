@@ -30,9 +30,10 @@ export class IntelligentPostTypeDetector {
       reasoning.push(`Content length ${length} chars suggests single tweet`);
     }
     
-    // Factor 2: Explicit numbered structure
+    // Factor 2: Explicit numbered structure (FIXED for 1/, 2/, 3/ patterns)
     const hasNumberedTweets = /Tweet\s*\d+[:\/]/i.test(rawContent) || 
                              /^\d+[.\/\)]\s/m.test(rawContent) ||
+                             /\d+\/\s/.test(rawContent) ||  // NEW: Detect 1/, 2/, 3/ patterns
                              rawContent.split(/Tweet\s*\d+/).length > 2;
     
     if (hasNumberedTweets) {
