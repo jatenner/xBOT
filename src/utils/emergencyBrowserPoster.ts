@@ -198,10 +198,33 @@ export class EmergencyBrowserPoster {
             
             // Click tweet button
             console.log('🚀 Publishing tweet...');
+            
+            // Debug: Log all buttons on page to help troubleshoot
+            try {
+                const allButtons = await this.page.$$eval('button', buttons => 
+                    buttons.map(btn => ({
+                        text: btn.textContent?.trim(),
+                        ariaLabel: btn.getAttribute('aria-label'),
+                        testId: btn.getAttribute('data-testid'),
+                        type: btn.getAttribute('type')
+                    })).filter(btn => btn.text || btn.ariaLabel || btn.testId)
+                );
+                console.log('🔍 Available buttons:', JSON.stringify(allButtons.slice(0, 10), null, 2));
+            } catch (debugError) {
+                console.log('⚠️ Debug button enumeration failed');
+            }
+            
             const tweetButtons = [
                 '[data-testid="tweetButton"]',
                 '[data-testid="tweetButtonInline"]',
-                '[role="button"][aria-label*="Tweet"]'
+                '[role="button"][aria-label*="Tweet"]',
+                '[role="button"][aria-label="Post"]',
+                '[data-testid="tweetButton-default"]',
+                '[data-testid="postButton"]',
+                'button[type="submit"]',
+                'button:has-text("Tweet")',
+                'button:has-text("Post")',
+                '[aria-label*="Post"]'
             ];
             
             let tweetButtonClicked = false;
@@ -213,6 +236,7 @@ export class EmergencyBrowserPoster {
                     console.log(`✅ Clicked tweet button: ${selector}`);
                     break;
                 } catch (e) {
+                    console.log(`❌ Failed to find tweet button: ${selector}`);
                     continue;
                 }
             }
