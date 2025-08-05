@@ -5,6 +5,7 @@
 
 // Import browser automation instead of API client
 import { BrowserTweetPoster } from '../utils/browserTweetPoster';
+import { emergencyBrowserPoster } from '../utils/emergencyBrowserPoster.js';
 // Database operations simplified for production reliability
 import { GeneratedPost } from './enhancedContentGenerator';
 import { ProductionEnvValidator } from '../utils/productionEnvValidator';
@@ -186,6 +187,28 @@ export class ThreadPostingAgent {
 
         } catch (tweetError) {
           console.error(`❌ Failed to post tweet ${i + 1}:`, tweetError);
+          
+          // Try emergency ultra-light browser for first tweet
+          if (i === 0 && tweetError.message?.includes('All browser posting methods failed')) {
+            console.log('🚨 Attempting emergency ultra-light posting for first tweet...');
+            try {
+              const emergencySuccess = await emergencyBrowserPoster.emergencyPostTweet(truncatedTweet);
+              if (emergencySuccess) {
+                console.log('✅ Emergency ultra-light posting successful for first tweet!');
+                tweetIds.push('emergency_posted_' + Date.now()); // Placeholder ID
+                replyToId = 'emergency_posted_' + Date.now();
+                
+                // Continue with next tweet
+                if (i < content.length - 1) {
+                  console.log(`⏳ Waiting ${this.TWEET_DELAY_MS}ms before next tweet...`);
+                  await this.sleep(this.TWEET_DELAY_MS);
+                }
+                continue;
+              }
+            } catch (emergencyError) {
+              console.log('❌ Emergency posting also failed:', emergencyError.message);
+            }
+          }
           
           // If we've posted some tweets, return partial success
           if (tweetIds.length > 0) {
