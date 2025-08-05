@@ -306,43 +306,67 @@ CONTROVERSY LEVEL: ${template.controversy_level}
 PSYCHOLOGICAL TRIGGERS TO INCLUDE:
 ${template.psychological_triggers.map(trigger => `- ${trigger}`).join('\n')}
 
-VIRAL CONTENT REQUIREMENTS:
-1. START WITH A HOOK that stops scrolling
-2. Use controversy to spark debate
-3. Include personal authority/expertise
-4. Add social proof elements
-5. Create FOMO (fear of missing out)
-6. End with strong call to action
-7. Make people want to reply/retweet
-8. Target engagement: ${template.expected_engagement}+ likes
+🎯 VIRAL TWITTER CONTENT REQUIREMENTS:
+1. HOOK: Start with shocking statement, question, or bold claim (max 1 line)
+2. ENGAGEMENT: Make people want to comment, retweet, follow you
+3. CONTROVERSY: Challenge common beliefs (but stay factual)
+4. SOCIAL PROOF: "Studies show..." or "Research proves..."
+5. CALL TO ACTION: End with question or request for engagement
+6. TARGET: ${template.expected_engagement}+ likes minimum
 
-WRITING STYLE:
-- Confident and authoritative
-- Slightly controversial but not offensive
-- Personal and relatable
-- Uses "you" to speak directly to reader
-- Short punchy sentences
-- Strategic line breaks for emphasis
-- 1-2 emojis maximum (only if they add value)
+📱 TWITTER-NATIVE WRITING STYLE:
+- Write like viral Twitter accounts, NOT academic papers
+- Use 1-2 sentences maximum per paragraph
+- Add line breaks for easy reading on mobile
+- Direct, conversational tone (like talking to friends)
+- Strategic controversy that sparks debate
+- NO walls of text or essay paragraphs
+- 1-2 relevant emojis only
 
-CONTENT LENGTH:
-- If simple message: Single tweet (under 280 chars)
-- If complex: Thread (3-7 tweets)
+📏 STRICT LENGTH LIMITS:
+- Single tweet: 150-250 characters (NOT 400+ char essays!)
+- Thread: 2-4 tweets max, each under 280 chars
+- NEVER create long academic explanations
 
-THREAD FORMATTING (Professional Structure):
-- Create natural flowing threads with substantial content in each tweet
-- Use logical progression that makes sense for the health topic
-- Format with proper spacing: double line breaks between major sections
-- NO numbered lists like "1/", "2/", "3/" (looks amateur)
-- NO "Tweet 1:", "Tweet 2:" labels (unprofessional)
-- NO "Round 1", "Round 2" unless specifically talking about sports/drafts
-- Each tweet should be able to stand alone but connect to build a complete story
+🧵 THREAD FORMAT (Only if needed):
+- Each tweet stands alone and is engaging
+- Natural flow between tweets, not essay paragraphs
+- Use double line breaks between tweets
+- NO academic explanations or research citations within tweets
+- Focus on engagement, not education
 
-HEALTH CONTENT FOCUS:
-- Generate content about health, longevity, nutrition, fitness, or wellness
-- Use evidence-based claims
-- Reference studies or research when possible
-- Stay within health/medical domain
+🏥 HEALTH CONTENT APPROACH:
+- Make health tips sound exciting and controversial
+- Challenge myths people believe
+- Use "shocking" discoveries or "hidden truths"
+- Reference studies briefly ("New study shows...")
+- Focus on results people want (energy, longevity, weight loss)
+
+📝 EXAMPLES OF VIRAL HEALTH TWEETS (COPY THIS STYLE):
+
+GOOD EXAMPLE (viral format):
+"Most doctors won't tell you this:
+
+Eating late doesn't make you fat.
+Your metabolism doesn't "shut down" at night.
+
+The real problem? Most late-night eating is mindless snacking.
+
+What time do you usually eat dinner? 🤔"
+
+BAD EXAMPLE (essay format):
+"Recent research from Harvard Medical School indicates that the commonly held belief about late-night eating and weight gain may be more nuanced than previously thought. While it's true that eating late can contribute to weight gain, the mechanism isn't what most people think..."
+
+GOOD EXAMPLE (controversial hook):
+"The vitamin industry doesn't want you to know this:
+
+95% of supplements are useless.
+
+Your expensive multivitamin? Probably making expensive urine.
+
+The only 3 supplements most people actually need: 👇"
+
+📋 YOUR TASK: Create content like the GOOD examples, never like the BAD example.
 
 Generate content that will get people talking, sharing, and following.
 
