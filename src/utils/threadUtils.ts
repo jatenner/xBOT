@@ -94,8 +94,8 @@ export async function parseContentIntoThread(content: string): Promise<ThreadPar
 export function parseNumberedThread(raw: string): ThreadParseResult {
   const originalContent = raw;
   
-  // 🚨 CRITICAL FIX: Check for numbered patterns like "1/4", "2/4", "3/4"
-  const hasNumberedPattern = /\d+\/\d+/.test(raw);
+  // 🚨 CRITICAL FIX: Check for numbered patterns like "1/", "2/", "3/" (not "1/4", "2/4")
+  const hasNumberedPattern = /\d+\//.test(raw);
   const hasThreadMarkers = raw.includes('🧵') || raw.includes('THREAD');
   
   if (!hasNumberedPattern && !hasThreadMarkers) {
@@ -117,8 +117,8 @@ export function parseNumberedThread(raw: string): ThreadParseResult {
     .replace(/^\s*\*{0,2}Thread[^:\n]*:?\*{0,2}\s*\n?/im, '')
     .trim();
   
-  // 🎯 FIXED PARSING: Split on numbered patterns like "1/4", "2/4", "3/4"
-  const parts = cleaned.split(/\s+(\d+\/\d+)\s+/);
+  // 🎯 FIXED PARSING: Split on numbered patterns like "1/", "2/", "3/" (not "1/4")
+  const parts = cleaned.split(/\s+(\d+\/)\s*/);
   
   const tweets = [];
   let currentTweet = '';
@@ -126,8 +126,8 @@ export function parseNumberedThread(raw: string): ThreadParseResult {
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i];
     
-    // If this part is a number pattern (1/4, 2/4, etc.), start a new tweet
-    if (part && part.match(/^\d+\/\d+$/)) {
+    // If this part is a number pattern (1/, 2/, etc.), start a new tweet
+    if (part && part.match(/^\d+\/$/)) {
       // Save previous tweet if it exists
       if (currentTweet.trim()) {
         tweets.push(currentTweet.trim());
@@ -151,7 +151,7 @@ export function parseNumberedThread(raw: string): ThreadParseResult {
     .filter(part => part.length > 10) // Remove very short fragments
     .map(tweet => {
       return tweet
-        .replace(/^\d+\/\d+\s*/, '') // Remove any remaining number patterns
+        .replace(/^\d+\/\s*/, '') // Remove any remaining number patterns
         .replace(/^\*{1,2}/, '') // Remove leading * or **
         .replace(/\*{1,2}$/, '') // Remove trailing * or **
         .replace(/\*{2,}/g, '') // Remove any remaining ** bold markers
