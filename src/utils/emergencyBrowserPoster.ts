@@ -101,6 +101,7 @@ export class EmergencyBrowserPoster {
             
             // Load session cookies if available
             const sessionPath = '/app/data/twitter_session.json';
+            let sessionLoaded = false;
             try {
                 if (require('fs').existsSync(sessionPath)) {
                     const sessionData = JSON.parse(require('fs').readFileSync(sessionPath, 'utf8'));
@@ -111,10 +112,23 @@ export class EmergencyBrowserPoster {
                         // Reload page to activate session
                         await this.page.reload({ waitUntil: 'domcontentloaded' });
                         await this.page.waitForTimeout(3000);
+                        
+                        // Check if we're actually logged in
+                        try {
+                            await this.page.waitForSelector('[data-testid="SideNav_NewTweet_Button"], [aria-label="Tweet"], [href="/compose/tweet"]', { timeout: 5000 });
+                            sessionLoaded = true;
+                            console.log('✅ Twitter session validated - user is logged in');
+                        } catch (e) {
+                            console.log('⚠️ Session validation failed - user appears logged out');
+                        }
                     }
                 }
             } catch (sessionError) {
                 console.log('⚠️ Session loading failed, continuing without session');
+            }
+            
+            if (!sessionLoaded) {
+                throw new Error('Twitter session invalid - user needs to log in');
             }
             
             // Navigate to compose modal by clicking tweet button
