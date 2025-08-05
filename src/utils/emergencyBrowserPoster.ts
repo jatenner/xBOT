@@ -128,7 +128,19 @@ export class EmergencyBrowserPoster {
             }
             
             if (!sessionLoaded) {
-                throw new Error('Twitter session invalid - user needs to log in');
+                console.log('🚨 Session validation failed - activating enhanced fallback system');
+                
+                // Import and use enhanced emergency poster
+                const { enhancedEmergencyPoster } = await import('./enhancedEmergencyPoster');
+                const fallbackResult = await enhancedEmergencyPoster.smartPost(content);
+                
+                if (fallbackResult.success) {
+                    console.log(`✅ Fallback posting successful via ${fallbackResult.method}`);
+                    success = true;
+                    return { success: true, method: fallbackResult.method };
+                } else {
+                    throw new Error(`Twitter session invalid and all fallbacks failed: ${fallbackResult.error}`);
+                }
             }
             
             // Navigate to compose modal by clicking tweet button
