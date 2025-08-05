@@ -110,7 +110,13 @@ class BulletproofRailwayMonitor {
     this.logProcess.stderr.on('data', (data) => {
       const error = data.toString().trim();
       if (error && !error.includes('Warning')) {
-        console.error(`❌ Railway CLI Error: ${error}`);
+        // Special handling for 429 rate limiting errors
+        if (error.includes('429') || error.includes('Too Many Requests')) {
+          console.log('⚠️ Railway logs disconnected (rate limited - 429 error)');
+          this.reconnectDelay = Math.min(this.reconnectDelay * 2, 300000); // Longer backoff for 429s
+        } else {
+          console.error(`❌ Railway CLI Error: ${error}`);
+        }
         this.stats.errors++;
       }
     });
