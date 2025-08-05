@@ -4,7 +4,7 @@
  */
 
 import { chromium } from 'playwright';
-import { ULTRA_LIGHT_BROWSER_OPTIONS, EMERGENCY_BROWSER_OPTIONS } from '../config/ultraLightBrowserConfig.js';
+import { ULTRA_LIGHT_BROWSER_OPTIONS, EMERGENCY_BROWSER_OPTIONS } from '../config/ultraLightBrowserConfig';
 
 export class EmergencyBrowserPoster {
     

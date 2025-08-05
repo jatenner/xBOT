@@ -5,7 +5,7 @@
 
 // Import browser automation instead of API client
 import { BrowserTweetPoster } from '../utils/browserTweetPoster';
-import { emergencyBrowserPoster } from '../utils/emergencyBrowserPoster.js';
+import { emergencyBrowserPoster } from '../utils/emergencyBrowserPoster';
 // Database operations simplified for production reliability
 import { GeneratedPost } from './enhancedContentGenerator';
 import { ProductionEnvValidator } from '../utils/productionEnvValidator';
