@@ -13,7 +13,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { getChromiumLaunchOptions } from './playwrightUtils';
 import { emergencyBrowserPoster } from './emergencyBrowserPoster';
-import { memoryMonitor } from './railwayMemoryMonitor';
+import { RailwayMemoryMonitor } from './railwayMemoryMonitor';
 import { RailwayResourceMonitor } from './railwayResourceMonitor';
 
 export class BrowserTweetPoster {
@@ -275,7 +275,7 @@ export class BrowserTweetPoster {
     console.log('🚨 Attempting ultra-light emergency browser posting...');
     try {
       // Check memory status
-      const memoryStatus = memoryMonitor.logMemoryStatus();
+      const memoryStatus = RailwayMemoryMonitor.logMemoryStatus();
       
       console.log('🚨 ACTIVATING ULTRA-LIGHT EMERGENCY MODE');
       console.log('🎯 Railway memory exhaustion detected - using minimal browser');
