@@ -39,6 +39,8 @@ export class MasterPostingGate {
    * This replaces all other posting systems
    */
   async start(): Promise<void> {
+    console.log('🚫 EMERGENCY DISABLED: Master Posting Gate disabled to prevent duplicates');
+    return;
     if (this.isRunning) {
       console.log('⚠️ Master Posting Gate already running');
       return;

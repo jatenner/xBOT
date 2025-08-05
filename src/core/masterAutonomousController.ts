@@ -362,6 +362,8 @@ export class MasterAutonomousController {
    * Start all autonomous operational cycles with intelligent scheduling
    */
   private async startOperationalCycles(): Promise<void> {
+    // 🚨 CRITICAL: Clear existing intervals to prevent duplicates
+    this.clearAllIntervals();
     console.log('🔄 Starting operational cycles...');
 
     // 🧠 SMART LEARNING POSTING CYCLE: Real posting with quality gates for learning
@@ -372,7 +374,7 @@ export class MasterAutonomousController {
         console.error('❌ Posting cycle error:', error);
         this.updateComponentStatus('posting_engine', 'error', [error.message]);
       }
-    }, 15 * 60 * 1000)); // 15 minutes for better timing optimization (was 3 hours)
+    }, 30 * 60 * 1000)); // 30 minutes (REDUCED to prevent spam) for better timing optimization (was 3 hours)
     console.log('🧠 ADAPTIVE LEARNING: Intelligent scheduling with optimization (15-minute cycles)');
     
     // Import adaptive scheduler
@@ -520,7 +522,7 @@ export class MasterAutonomousController {
       } catch (error) {
         console.error('❌ Health monitoring error:', error);
       }
-    }, 15 * 60 * 1000)); // 15 minutes
+    }, 30 * 60 * 1000)); // 30 minutes (REDUCED to prevent spam)
 
     // ENGAGEMENT COLLECTION CYCLE - every 30 minutes
     this.intervals.push(setInterval(() => {
@@ -558,7 +560,7 @@ export class MasterAutonomousController {
       } catch (error) {
         console.error('❌ Twitter browsing error:', error);
       }
-    }, 15 * 60 * 1000)); // 15 minutes
+    }, 30 * 60 * 1000)); // 30 minutes (REDUCED to prevent spam)
 
     // 📊 ENGAGEMENT METRICS COLLECTION CYCLE: Real-time metrics every 10 minutes
     this.intervals.push(setInterval(async () => {
@@ -1298,6 +1300,19 @@ export class MasterAutonomousController {
         strategicInsights: 0
       }
     };
+  }
+
+  
+  /**
+   * 🧹 CLEAR ALL INTERVALS TO PREVENT DUPLICATES
+   */
+  private clearAllIntervals(): void {
+    console.log('🧹 Clearing existing intervals to prevent duplicates...');
+    this.intervals.forEach(interval => {
+      clearInterval(interval);
+    });
+    this.intervals = [];
+    console.log('✅ All intervals cleared');
   }
 
   private updateComponentStatus(component: string, status: 'active' | 'warning' | 'error' | 'offline', errors: string[] = [], metrics?: any): void {

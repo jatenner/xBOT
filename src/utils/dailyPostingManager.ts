@@ -285,7 +285,7 @@ class DailyPostingManager {
   private scheduleIntelligentPost(post: any): void {
     const cronExpression = `${post.scheduledTime.getMinutes()} ${post.scheduledTime.getHours()} ${post.scheduledTime.getDate()} ${post.scheduledTime.getMonth() + 1} *`;
     
-    const job = // 🚨 EMERGENCY DISABLED: cron.schedule(cronExpression, async () => {
+    const job = // 🚨 EMERGENCY DISABLED: // EMERGENCY DISABLED: cron.schedule(cronExpression, async () => {
       console.log(`🧠 Executing intelligent post: ${post.triggerReason}`);
       await this.executePost('scheduled');
     }, {
@@ -301,7 +301,7 @@ class DailyPostingManager {
     console.log('🎯 Setting up STRATEGIC OPPORTUNITY monitoring...');
     
     // 🧠 HUMAN-LIKE STRATEGIC MONITORING: Think like a savvy Twitter user every 2 hours
-    const strategicMonitoringJob = // 🚨 EMERGENCY DISABLED: cron.schedule('0 */2 * * *', async () => {
+    const strategicMonitoringJob = // 🚨 EMERGENCY DISABLED: // EMERGENCY DISABLED: cron.schedule('0 */2 * * *', async () => {
       try {
         console.log('🧠 THINKING LIKE A STRATEGIC HUMAN...');
         console.log('   👀 Scanning trends, news, and opportunities...');
@@ -370,7 +370,7 @@ class DailyPostingManager {
     this.scheduledJobs.push(strategicMonitoringJob);
     
     // 🧠 STRATEGIC INTELLIGENCE REVIEW: Analyze and optimize daily
-    const intelligenceReviewJob = // 🚨 EMERGENCY DISABLED: cron.schedule('0 6 * * *', async () => {
+    const intelligenceReviewJob = // 🚨 EMERGENCY DISABLED: // EMERGENCY DISABLED: cron.schedule('0 6 * * *', async () => {
       try {
         console.log('🧠 DAILY STRATEGIC INTELLIGENCE REVIEW...');
         
@@ -411,7 +411,7 @@ class DailyPostingManager {
   private schedulePost(postTime: Date): void {
     const cronExpression = `${postTime.getMinutes()} ${postTime.getHours()} ${postTime.getDate()} ${postTime.getMonth() + 1} *`;
     
-    const job = // 🚨 EMERGENCY DISABLED: cron.schedule(cronExpression, async () => {
+    const job = // 🚨 EMERGENCY DISABLED: // EMERGENCY DISABLED: cron.schedule(cronExpression, async () => {
       await this.executePost('scheduled');
     }, {
       scheduled: true,
@@ -513,12 +513,12 @@ class DailyPostingManager {
 
   private startMonitoring(): void {
     // Check progress every hour
-    // 🚨 EMERGENCY DISABLED: cron.schedule('0 * * * *', async () => {
+    // 🚨 EMERGENCY DISABLED: // EMERGENCY DISABLED: cron.schedule('0 * * * *', async () => {
       await this.checkProgress();
     }, { scheduled: true });
 
     // Daily reset at midnight
-    // 🚨 EMERGENCY DISABLED: cron.schedule('0 0 * * *', async () => {
+    // 🚨 EMERGENCY DISABLED: // EMERGENCY DISABLED: cron.schedule('0 0 * * *', async () => {
       await this.resetDaily();
     }, { scheduled: true });
   }

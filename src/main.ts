@@ -114,7 +114,13 @@ async function initializeBotAsync(): Promise<void> {
 
       updateBotStatus('starting_operations');
       console.log('🚀 Starting autonomous operations...');
-      await botController.startAutonomousOperation();
+      // Use Single Posting Manager instead of multiple systems
+      const { SinglePostingManager } = await import('./core/singlePostingManager');
+      const singleManager = SinglePostingManager.getInstance();
+      await singleManager.start();
+      
+      console.log('🎯 SINGLE POSTING MANAGER ACTIVE');
+      console.log('🚫 All duplicate posting systems disabled');
 
       updateBotStatus('running', botController);
       console.log('🤖 Bot fully operational!');
