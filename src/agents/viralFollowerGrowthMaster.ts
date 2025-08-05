@@ -487,7 +487,19 @@ Return ONLY the content, formatted for Twitter:`;
    * 🔧 HELPER METHODS
    */
   private parseIntoThread(content: string): string[] {
-    // Split content into thread tweets
+    console.log('🧵 ViralFollowerGrowthMaster: Parsing thread content...');
+    
+    // 🚨 CRITICAL FIX: Use the proper thread parsing logic that handles numbered patterns
+    const { parseNumberedThread } = require('../utils/threadUtils');
+    const parseResult = parseNumberedThread(content);
+    
+    if (parseResult.isThread && parseResult.tweets.length > 1) {
+      console.log(`✅ Viral content parsed into ${parseResult.tweets.length} tweets`);
+      return parseResult.tweets.filter(tweet => tweet.length <= 280);
+    }
+    
+    // Fallback: Split content into thread tweets using old method
+    console.log('📝 Fallback: Using simple split method...');
     const tweets = content.split(/\n\n+/).filter(tweet => tweet.trim().length > 0);
     
     // Ensure first tweet has thread indicator

@@ -1219,6 +1219,55 @@ export class BrowserTweetPoster {
       console.error('❌ Error during cleanup:', error);
     }
   }
+
+  /**
+   * 🔧 API FALLBACK: Simple API posting when browser fails
+   */
+  private async postViaAPI(content: string): Promise<{
+    success: boolean;
+    tweet_id?: string;
+    error?: string;
+    confirmed?: boolean;
+    was_posted?: boolean;
+  }> {
+    try {
+      console.log('📡 Attempting API fallback posting...');
+      
+      // Import X client for API posting
+      const { xClient } = await import('../utils/xClient');
+      const apiClient = xClient;
+      
+      if (!apiClient) {
+        throw new Error('API client not available');
+      }
+      
+      // Simple text post via API
+      const result = await apiClient.postTweet(content);
+      
+      if (result.success && result.tweetId) {
+        console.log('✅ API posting successful');
+        return {
+          success: true,
+          tweet_id: result.tweetId,
+          confirmed: true,
+          was_posted: true
+        };
+      } else {
+        throw new Error('API posting returned no tweet ID');
+      }
+      
+    } catch (error) {
+      console.error('❌ API fallback failed:', error);
+      return {
+        success: false,
+        error: `API fallback failed: ${error.message}`,
+        confirmed: false,
+        was_posted: false
+      };
+    }
+  }
+
+
 }
 
 export const browserTweetPoster = new BrowserTweetPoster(); 

@@ -1573,7 +1573,7 @@ export class AutonomousPostingEngine {
   /**
    * 📱 POST DIRECTLY TO TWITTER (BYPASSING NORMAL FLOW)
    */
-  private async postDirectly(content: string): Promise<{
+    private async postDirectly(content: string): Promise<{
     success: boolean;
     tweet_id?: string;
     error?: string;
@@ -1581,12 +1581,15 @@ export class AutonomousPostingEngine {
     confirmed: boolean;
   }> {
     try {
+      console.log('🌐 Attempting direct browser posting...');
+      
       // Use browser poster directly
       const { BrowserTweetPoster } = await import('../utils/browserTweetPoster');
       const browserPoster = new BrowserTweetPoster();
       const result = await browserPoster.postTweet(content);
       
       if (result.success && result.tweet_id) {
+        console.log('✅ Browser posting successful');
         // Store in database
         await this.storeInDatabase(content, result.tweet_id, false, result.confirmed || false);
         
@@ -1597,18 +1600,19 @@ export class AutonomousPostingEngine {
           confirmed: true
         };
       } else {
+        console.log('❌ Browser posting failed, but result was returned gracefully');
         return {
           success: false,
-          error: result.error || 'Direct posting failed',
+          error: result.error || 'Browser posting failed with unknown error',
           was_posted: false,
           confirmed: false
         };
       }
     } catch (error) {
-      console.error('❌ Direct posting failed:', error);
+      console.error('❌ Direct posting failed with exception:', error);
       return {
         success: false,
-        error: `Direct posting error: ${error}`,
+        error: `Direct posting error: ${error.message}`,
         was_posted: false,
         confirmed: false
       };
