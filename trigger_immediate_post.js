@@ -13,7 +13,7 @@ async function triggerImmediatePost() {
     console.log('⚡ Forcing immediate tweet...');
     
     // Import the posting engine
-    const { AutonomousPostingEngine } = await import('./src/core/autonomousPostingEngine.js');
+    const { AutonomousPostingEngine } = await import('./dist/src/core/autonomousPostingEngine.js');
     const engine = AutonomousPostingEngine.getInstance();
     
     // Check decision first
@@ -36,7 +36,6 @@ async function triggerImmediatePost() {
     if (result.success) {
       console.log('✅ === POST SUCCESSFUL ===');
       console.log(`🐦 Tweet ID: ${result.tweet_id || 'generated'}`);
-      console.log(`📊 Method: ${result.method_used || 'autonomous'}`);
       console.log(`📝 Content: ${result.content_preview || 'N/A'}`);
       
       console.log('\n🎉 SUCCESS! The posting system is working!');

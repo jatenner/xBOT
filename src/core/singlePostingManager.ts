@@ -79,7 +79,7 @@ export class SinglePostingManager {
         
         if (result.success) {
           console.log(`✅ Tweet posted successfully! ID: ${result.tweet_id || 'generated'}`);
-          console.log(`📊 Method: ${result.method_used || 'autonomous'}`);
+          console.log(`📊 Posting time: ${result.performance_metrics?.posting_time_ms || 0}ms`);
         } else {
           console.log(`❌ Tweet posting failed: ${result.error}`);
           console.log('🔄 Will retry in next cycle...');
