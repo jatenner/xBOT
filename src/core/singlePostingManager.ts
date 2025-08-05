@@ -19,7 +19,7 @@ export class SinglePostingManager {
   }
 
   constructor() {
-    this.postingEngine = new AutonomousPostingEngine();
+    this.postingEngine = AutonomousPostingEngine.getInstance();
   }
 
   async start(): Promise<void> {
@@ -65,7 +65,7 @@ export class SinglePostingManager {
         const result = await this.postingEngine.executePost();
         
         if (result.success) {
-          console.log(`✅ Tweet posted successfully: ${result.content_preview}`);
+          console.log(`✅ Tweet posted successfully`);
         } else {
           console.log(`❌ Tweet posting failed: ${result.error}`);
         }

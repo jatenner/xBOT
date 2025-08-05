@@ -14,56 +14,6 @@ import * as path from 'path';
 import { getChromiumLaunchOptions } from './playwrightUtils';
 
 export class BrowserTweetPoster {
-  /**
-   * 🧹 RAILWAY MEMORY CLEANUP
-   */
-  private async cleanupResources(): Promise<void> {
-    try {
-      if (this.page && !this.page.isClosed()) {
-        await this.page.close();
-      }
-      if (this.context) {
-        await this.context.close();
-      }
-      if (this.browser) {
-        await this.browser.close();
-      }
-      
-      // Force garbage collection if available
-      if (global.gc) {
-        global.gc();
-      }
-      
-      console.log('✅ Browser resources cleaned up');
-    } catch (error) {
-      console.log('⚠️ Cleanup warning:', error.message);
-    }
-  }
-  /**
-   * 🧹 RAILWAY MEMORY CLEANUP
-   */
-  private async cleanupResources(): Promise<void> {
-    try {
-      if (this.page && !this.page.isClosed()) {
-        await this.page.close();
-      }
-      if (this.context) {
-        await this.context.close();
-      }
-      if (this.browser) {
-        await this.browser.close();
-      }
-      
-      // Force garbage collection if available
-      if (global.gc) {
-        global.gc();
-      }
-      
-      console.log('✅ Browser resources cleaned up');
-    } catch (error) {
-      console.log('⚠️ Cleanup warning:', error.message);
-    }
-  }
   private browser: Browser | null = null;
   private page: Page | null = null;
   private isInitialized = false;

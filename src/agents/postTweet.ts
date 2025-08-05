@@ -135,7 +135,15 @@ export class PostTweetAgent {
           
           const threadPostResult = await threadPoster.postContent({
             content: threadResult.tweets,
-            metadata: { source: 'PostTweetAgent' }
+            format: 'THREAD' as any,
+            style: 'HEALTH_EDUCATION' as any,
+            topic: 'HEALTH_EDUCATION' as any,
+            metadata: { 
+              estimated_engagement: 0,
+              confidence_score: 0.8,
+              generation_timestamp: Date.now().toString(),
+              model_used: 'gpt-4o-mini'
+            }
           });
           
           if (threadPostResult.success) {
@@ -144,11 +152,7 @@ export class PostTweetAgent {
             // Store with AI metrics for first tweet
             await this.storeTweetWithAIMetrics(threadPostResult.tweetIds[0], finalContent, contentType, viralScore, followerGrowthPotential);
             
-            return { 
-              success: true, 
-              content: finalContent,
-              tweetId: threadPostResult.tweetIds[0] // Return first tweet ID
-            };
+                        // Thread posted successfully, continue with normal flow
           } else {
             console.error('❌ Thread posting failed, falling back to single tweet');
             // Fall through to single tweet posting
