@@ -585,21 +585,22 @@ export class AutonomousPostingEngine {
             } else {
               console.log(`📝 Content: "${typeof finalContent === 'string' ? finalContent.substring(0, 100) : String(finalContent).substring(0, 100)}..."`);
             }
-            console.log(`📊 Predicted engagement: ${eliteResult.predicted_engagement}%`);
-            console.log(`🎯 Format used: ${eliteResult.format_used}`);
-            console.log(`🎪 Hook type: ${eliteResult.hook_type}`);
+            console.log(`📊 Expected engagement: ${eliteResult.expected_engagement}%`);
+            console.log(`🎯 Content type: ${eliteResult.content_type}`);
+            console.log(`🎪 Viral score: ${eliteResult.viral_score}`);
             console.log(`🧠 Source: Elite Content Strategist`);
 
             return {
               success: true,
               content: finalContent,
               metadata: {
-                source: 'elite_strategist',
-                format_used: eliteResult.format_used,
-                hook_type: eliteResult.hook_type,
-                predicted_engagement: eliteResult.predicted_engagement,
-                reasoning: eliteResult.reasoning,
-                content_type: contentType,
+                source: 'viral_growth_master',
+                content_type: eliteResult.content_type,
+                viral_score: eliteResult.viral_score,
+                expected_engagement: eliteResult.expected_engagement,
+                controversy_level: eliteResult.controversy_level,
+                psychological_triggers: eliteResult.psychological_triggers,
+                posting_strategy: eliteResult.posting_strategy,
                 is_thread: actualIsThread,
                 tweet_count: actualIsThread && Array.isArray(finalContent) ? finalContent.length : 1
               }
