@@ -5,8 +5,8 @@
  * Uses your sophisticated learning infrastructure for maximum accuracy
  */
 
-import { supabase } from '../config/supabase';
-import { openaiService } from '../services/openaiService';
+import { supabaseClient } from '../utils/supabaseClient';
+import { openaiClient } from '../utils/openaiClient';
 
 interface ContentAnalysis {
   content: string;
@@ -90,35 +90,35 @@ export class PredictiveGrowthEngine {
    * Pulls data from your learning infrastructure
    */
   private async gatherHistoricalData() {
-    const [
+          const [
       recentTweets,
       performancePatterns,
       banditData,
       followerGrowth
     ] = await Promise.all([
       // Recent tweet performance
-      supabase
+      supabaseClient
         .from('tweets')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(50),
         
       // Learned performance patterns
-      supabase
+      supabaseClient
         .from('learned_performance_patterns')
         .select('*')
         .order('confidence_score', { ascending: false })
         .limit(20),
         
       // Bandit algorithm insights
-      supabase
+      supabaseClient
         .from('bandit_performance_analysis')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(10),
         
       // Follower growth analytics
-      supabase
+      supabaseClient
         .from('follower_growth_analytics')
         .select('*')
         .order('date', { ascending: false })
@@ -139,7 +139,12 @@ export class PredictiveGrowthEngine {
    */
   private async analyzeContentQuality(content: string, contentType: string): Promise<number> {
     try {
-      const analysis = await openaiService.createCompletion({
+      const client = openaiClient.getClient();
+      if (!client) {
+        throw new Error('OpenAI client not available');
+      }
+      
+      const analysis = await client.chat.completions.create({
         messages: [{
           role: 'system',
           content: `You are an expert Twitter growth analyst. Analyze this ${contentType} content for follower growth potential.
@@ -168,10 +173,10 @@ export class PredictiveGrowthEngine {
         temperature: 0.3
       });
 
-      const result = JSON.parse(analysis.content || '{"score": 50}');
+      const result = JSON.parse(analysis.choices[0]?.message?.content || '{"score": 50}');
       
       // Store content analysis for learning
-      await supabase.from('content_performance_analysis').insert({
+      await supabaseClient.from('content_performance_analysis').insert({
         content_hash: this.hashContent(content),
         content_type: contentType,
         quality_score: result.score,
@@ -198,7 +203,7 @@ export class PredictiveGrowthEngine {
   private async analyzeTimingOptimization(timing: ContentAnalysis['timing']): Promise<number> {
     try {
       // Get optimal posting windows
-      const { data: optimalWindows } = await supabase
+      const { data: optimalWindows } = await supabaseClient
         .from('optimal_posting_windows')
         .select('*')
         .eq('day_of_week', timing.dayOfWeek)
@@ -215,7 +220,7 @@ export class PredictiveGrowthEngine {
       const score = Math.min(100, bestWindow.engagement_multiplier * 50);
       
       // Store timing analysis
-      await supabase.from('posting_time_analytics').insert({
+      await supabaseClient.from('posting_time_analytics').insert({
         hour_posted: timing.hour,
         day_of_week: timing.dayOfWeek,
         timing_score: score,
@@ -248,7 +253,7 @@ export class PredictiveGrowthEngine {
       ((100 - context.competitorActivity) * competitorWeight); // Less competition = better
 
     // Store context analysis
-    await supabase.from('posting_context_analysis').insert({
+    await supabaseClient.from('posting_context_analysis').insert({
       recent_performance: context.recentPerformance,
       audience_activity: context.audienceActivity,
       competitor_activity: context.competitorActivity,
@@ -299,7 +304,12 @@ Return JSON only:
   }
 }`;
 
-      const prediction = await openaiService.createCompletion({
+      const client = openaiClient.getClient();
+      if (!client) {
+        throw new Error('OpenAI client not available');
+      }
+      
+      const prediction = await client.chat.completions.create({
         messages: [{
           role: 'system',
           content: 'You are a precise Twitter growth prediction AI. Return only valid JSON.'
@@ -311,7 +321,7 @@ Return JSON only:
         temperature: 0.2
       });
 
-      return JSON.parse(prediction.content || '{}');
+      return JSON.parse(prediction.choices[0]?.message?.content || '{}');
       
     } catch (error) {
       console.error('Prediction model error:', error);
@@ -324,7 +334,7 @@ Return JSON only:
    * Saves prediction to enable future learning
    */
   private async storePredictionForLearning(analysis: ContentAnalysis, prediction: GrowthPrediction) {
-    await supabase.from('content_performance_predictions').insert({
+    await supabaseClient.from('content_performance_predictions').insert({
       content_hash: this.hashContent(analysis.content),
       content_type: analysis.contentType,
       predicted_followers: prediction.predictedFollowers,

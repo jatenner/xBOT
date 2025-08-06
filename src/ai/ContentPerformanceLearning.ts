@@ -5,8 +5,8 @@
  * Leverages your sophisticated learning table infrastructure
  */
 
-import { supabase } from '../config/supabase';
-import { openaiService } from '../services/openaiService';
+import { supabaseClientClient } from '../utils/supabaseClientClient';
+import { openaiClient } from '../utils/openaiClient';
 
 interface PerformanceData {
   tweetId: string;
@@ -93,7 +93,7 @@ export class ContentPerformanceLearning {
    */
   private async gatherRecentPerformanceData(): Promise<PerformanceData[]> {
     // Get recent tweets with actual performance
-    const { data: recentTweets } = await supabase
+    const { data: recentTweets } = await supabaseClient
       .from('tweets')
       .select(`
         id, tweet_id, content, content_type,
@@ -109,7 +109,7 @@ export class ContentPerformanceLearning {
     // Get predictions for these tweets
     const tweetHashes = recentTweets.map(t => this.hashContent(t.content));
     
-    const { data: predictions } = await supabase
+    const { data: predictions } = await supabaseClient
       .from('content_performance_predictions')
       .select('*')
       .in('content_hash', tweetHashes);
@@ -335,7 +335,12 @@ export class ContentPerformanceLearning {
 
       if (topPerformers.length < 3) return [];
 
-      const analysis = await openaiService.createCompletion({
+      const client = openaiClient.getClient();
+      if (!client) {
+        throw new Error('OpenAI client not available');
+      }
+      
+      const analysis = await client.chat.completions.create({
         messages: [{
           role: 'system',
           content: `You are an expert Twitter growth analyst. Analyze these high-performing tweets to find patterns that drive follower growth and engagement.
@@ -366,7 +371,7 @@ ${topPerformers.map((t, i) =>
         temperature: 0.3
       });
 
-      const aiInsights = JSON.parse(analysis.content || '[]');
+      const aiInsights = JSON.parse(analysis.choices[0]?.message?.content || '[]');
       return aiInsights.slice(0, 3); // Limit to top 3 insights
       
     } catch (error) {
@@ -390,11 +395,11 @@ ${topPerformers.map((t, i) =>
       source: 'content_performance_learning'
     }));
 
-    await supabase.from('ai_learning_insights').insert(insertData);
+    await supabaseClient.from('ai_learning_insights').insert(insertData);
     
     // Also update learned patterns table
     for (const insight of insights) {
-      await supabase.from('learned_performance_patterns').upsert({
+      await supabaseClient.from('learned_performance_patterns').upsert({
         pattern_id: insight.pattern,
         confidence_score: insight.confidence,
         impact_level: insight.impact,
