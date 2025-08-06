@@ -280,17 +280,18 @@ export class BrowserTweetPoster {
       console.log('🚨 ACTIVATING ULTRA-LIGHT EMERGENCY MODE');
       console.log('🎯 Railway memory exhaustion detected - using minimal browser');
       
-      const emergencySuccess = await emergencyBrowserPoster.emergencyPostTweet(content);
-      if (emergencySuccess) {
+      const emergencyResult = await emergencyBrowserPoster.emergencyPostTweet(content);
+      if (emergencyResult.success) {
         console.log('✅ Emergency ultra-light posting successful!');
         return {
           success: true,
           method_used: 'emergency_ultra_light',
           confirmed: true,
-          was_posted: true
+          was_posted: true,
+          tweet_id: emergencyResult.tweet_id
         };
       } else {
-        console.log('❌ Emergency posting returned false');
+        console.log('❌ Emergency posting returned false:', emergencyResult.error);
       }
     } catch (error) {
       console.log('❌ Ultra-light emergency posting failed:', error.message);

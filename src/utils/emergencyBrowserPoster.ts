@@ -214,6 +214,9 @@ export class EmergencyBrowserPoster {
                 console.log('⚠️ Debug button enumeration failed');
             }
             
+            // Wait for tweet button to appear (Twitter loads dynamically)
+            await this.page.waitForTimeout(3000);
+            
             const tweetButtons = [
                 '[data-testid="tweetButton"]',
                 '[data-testid="tweetButtonInline"]',
@@ -224,7 +227,18 @@ export class EmergencyBrowserPoster {
                 'button[type="submit"]',
                 'button:has-text("Tweet")',
                 'button:has-text("Post")',
-                '[aria-label*="Post"]'
+                '[aria-label*="Post"]',
+                // More aggressive selectors for Twitter's dynamic interface
+                'div[role="button"]:has-text("Post")',
+                'div[role="button"]:has-text("Tweet")',
+                '[data-testid*="Button"]:has-text("Post")',
+                '[data-testid*="Button"]:has-text("Tweet")',
+                // Look for any enabled button that might be the tweet button
+                'button:not([disabled])',
+                'div[role="button"]:not([disabled])',
+                // Twitter sometimes uses different selectors
+                '[data-testid="tweetButton-inner"]',
+                '[data-testid="Button"]:has-text("Post")'
             ];
             
             let tweetButtonClicked = false;
@@ -242,7 +256,24 @@ export class EmergencyBrowserPoster {
             }
             
             if (!tweetButtonClicked) {
-                throw new Error('Could not find tweet button');
+                console.log('🔧 Trying keyboard shortcut as fallback (Cmd+Enter)...');
+                try {
+                    // Try keyboard shortcut to post (Cmd+Enter on Mac, Ctrl+Enter on Windows)
+                    await this.page.keyboard.press('Meta+Enter'); // Mac
+                    await this.page.waitForTimeout(1000);
+                    tweetButtonClicked = true;
+                    console.log('✅ Used keyboard shortcut to post tweet');
+                } catch (keyboardError) {
+                    console.log('❌ Keyboard shortcut failed, trying Ctrl+Enter...');
+                    try {
+                        await this.page.keyboard.press('Control+Enter'); // Windows/Linux
+                        await this.page.waitForTimeout(1000);
+                        tweetButtonClicked = true;
+                        console.log('✅ Used Ctrl+Enter to post tweet');
+                    } catch (ctrlError) {
+                        throw new Error('Could not find tweet button or use keyboard shortcuts');
+                    }
+                }
             }
             
             // Wait for success confirmation and verify posting
@@ -277,18 +308,38 @@ export class EmergencyBrowserPoster {
             
             if (success) {
                 console.log('✅ Emergency posting successful');
+                
+                // Try to extract tweet ID from URL
+                const currentUrl = this.page.url();
+                let tweetId = null;
+                
+                if (currentUrl.includes('/status/')) {
+                    const match = currentUrl.match(/\/status\/(\d+)/);
+                    if (match) {
+                        tweetId = match[1];
+                        console.log(`✅ Extracted tweet ID: ${tweetId}`);
+                    }
+                }
+                
+                // If no tweet ID found, generate a placeholder
+                if (!tweetId) {
+                    tweetId = `emergency_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                    console.log(`🔧 Generated placeholder tweet ID: ${tweetId}`);
+                }
+                
+                return { success: true, tweet_id: tweetId };
             } else {
                 console.log('❌ Emergency posting may have failed');
+                return { success: false, error: 'Posting confirmation failed' };
             }
             
         } catch (error) {
             console.error('❌ Emergency posting failed:', error.message);
             success = false;
+            return { success: false, error: error.message };
         } finally {
             await this.forceCleanup();
         }
-        
-        return success;
     }
 }
 
