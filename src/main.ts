@@ -1,3 +1,4 @@
+
 /**
  * 🚀 XBOT MAIN ENTRY POINT - RAILWAY OPTIMIZED
  * 
@@ -112,15 +113,20 @@ async function initializeBotAsync(): Promise<void> {
       console.log('🧠 Creating Master Autonomous Controller...');
       botController = MasterAutonomousController.getInstance();
 
+      // 🧠 START DAILY LEARNING SYSTEM
+      console.log('📚 Starting AI learning system...');
+      try {
+        const { dailyLearningScheduler } = await import('./ai/DailyLearningScheduler');
+        await dailyLearningScheduler.start();
+        console.log('✅ Daily learning system active');
+      } catch (learningError) {
+        console.error('⚠️ Learning system startup failed:', learningError);
+        console.log('📝 Bot will continue without learning system');
+      }
+
       updateBotStatus('starting_operations');
       console.log('🚀 Starting autonomous operations...');
-      // Use Single Posting Manager instead of multiple systems
-      const { SinglePostingManager } = await import('./core/singlePostingManager');
-      const singleManager = SinglePostingManager.getInstance();
-      await singleManager.start();
-      
-      console.log('🎯 SINGLE POSTING MANAGER ACTIVE');
-      console.log('🚫 All duplicate posting systems disabled');
+      await botController.startAutonomousOperation();
 
       updateBotStatus('running', botController);
       console.log('🤖 Bot fully operational!');
