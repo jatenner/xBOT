@@ -9,7 +9,7 @@ import { predictiveGrowthEngine } from './PredictiveGrowthEngine';
 import { contentPerformanceLearning } from './ContentPerformanceLearning';
 import { contentStrategyOptimizer } from './ContentStrategyOptimizer';
 import { systematicABTesting } from './SystematicABTesting';
-import { supabaseClient } from '../utils/supabaseClient';
+import { supabase } from '../utils/supabaseClient';
 
 interface GrowthDecision {
   shouldPost: boolean;
@@ -136,7 +136,7 @@ export class GrowthMasterOrchestrator {
   }> {
     try {
       // Get recent follower growth data
-      const { data: growthData } = await supabaseClient.supabaseClient
+      const { data: growthData } = await supabaseClient
         .from('follower_growth_analytics')
         .select('*')
         .order('date', { ascending: false })
@@ -205,7 +205,7 @@ export class GrowthMasterOrchestrator {
       }
       
       // 2. Store performance data for learning
-      await supabaseClient.supabaseClient.from('growth_performance_log').insert({
+      await supabaseClient.from('growth_performance_log').insert({
         content_hash: contentHash,
         actual_followers: actualMetrics.followers,
         actual_likes: actualMetrics.likes,
@@ -217,7 +217,7 @@ export class GrowthMasterOrchestrator {
       
       // 3. Update learning signals
       const isHighPerforming = actualMetrics.followers > 2 || actualMetrics.likes > 50;
-      await supabaseClient.supabaseClient.from('algorithm_signals').insert({
+      await supabaseClient.from('algorithm_signals').insert({
         signal_type: isHighPerforming ? 'high_performance' : 'standard_performance',
         signal_data: {
           contentHash,
@@ -321,18 +321,18 @@ export class GrowthMasterOrchestrator {
     optimization: any
   ): Promise<DailyGrowthReport> {
     // Get today's performance
-    const { data: todayGrowth } = await supabaseClient.supabaseClient
+    const { data: todayGrowth } = await supabaseClient
       .from('follower_growth_analytics')
       .select('*')
       .gte('date', new Date().toISOString().split('T')[0])
       .single();
 
-    const { data: todayTweets } = await supabaseClient.supabaseClient
+    const { data: todayTweets } = await supabaseClient
       .from('tweets')
       .select('*')
       .gte('posted_at', new Date().toISOString().split('T')[0]);
 
-    const { data: activeTests } = await supabaseClient.supabaseClient
+    const { data: activeTests } = await supabaseClient
       .from('ab_tests')
       .select('test_id')
       .eq('status', 'active');
@@ -360,7 +360,7 @@ export class GrowthMasterOrchestrator {
   }
 
   private async storeLearningCycleResults(report: DailyGrowthReport) {
-    await supabaseClient.supabaseClient.from('daily_growth_strategy').insert({
+    await supabaseClient.from('daily_growth_strategy').insert({
       date: report.date,
       followers_gained: report.followersGained,
       tweets_posted: report.tweetsPosted,
@@ -414,7 +414,7 @@ export class GrowthMasterOrchestrator {
   }
 
   private async logGrowthDecision(content: any, prediction: any, decision: any, abAssignment: any) {
-    await supabaseClient.supabaseClient.from('growth_decision_log').insert({
+    await supabaseClient.from('growth_decision_log').insert({
       content_hash: this.hashContent(content.content),
       predicted_followers: prediction.predictedFollowers,
       prediction_confidence: prediction.confidence,
