@@ -5,7 +5,7 @@
  */
 
 import { growthMasterOrchestrator } from './GrowthMasterOrchestrator';
-import { supabase } from '../utils/supabaseClient';
+import { supabase, supabaseClient } from '../utils/supabaseClient';
 
 export class DailyLearningScheduler {
   private static instance: DailyLearningScheduler;

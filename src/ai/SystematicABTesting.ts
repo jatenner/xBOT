@@ -5,7 +5,7 @@
  * to find what drives the most follower growth
  */
 
-import { supabase } from '../utils/supabaseClient';
+import { supabase, supabaseClient } from '../utils/supabaseClient';
 import { EnhancedOpenAIClient } from '../utils/enhancedOpenAIClient';
 
 interface ABTestConfig {

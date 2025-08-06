@@ -5,7 +5,7 @@
  * Integrates with your bandit algorithm and strategy decision tables
  */
 
-import { supabase } from '../utils/supabaseClient';
+import { supabase, supabaseClient } from '../utils/supabaseClient';
 import { openaiService } from '../services/openaiService';
 import { contentPerformanceLearning } from './ContentPerformanceLearning';
 
