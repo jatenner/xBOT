@@ -9,7 +9,7 @@ import { predictiveGrowthEngine } from './PredictiveGrowthEngine';
 import { contentPerformanceLearning } from './ContentPerformanceLearning';
 import { contentStrategyOptimizer } from './ContentStrategyOptimizer';
 import { systematicABTesting } from './SystematicABTesting';
-import { supabaseClient.supabaseClient } from '../utils/supabaseClient.supabaseClient';
+import { supabaseClient } from '../utils/supabaseClient';
 
 interface GrowthDecision {
   shouldPost: boolean;
