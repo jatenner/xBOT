@@ -93,7 +93,8 @@ export class EmergencyPostingActivator {
         // Store in database for tracking
         try {
           const { EmergencyDatabaseFixer } = await import('./emergencyDatabaseFixer');
-          await EmergencyDatabaseFixer.ensureTweetExists(result.tweet_id, emergencyContent.content);
+          const tweetId = result.tweet_id || `emergency_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          await EmergencyDatabaseFixer.ensureTweetExists(tweetId, emergencyContent.content);
         } catch (dbError) {
           console.warn('⚠️ Database storage failed:', dbError);
         }

@@ -192,11 +192,11 @@ export class ThreadPostingAgent {
           if (i === 0 && tweetError.message?.includes('All browser posting methods failed')) {
             console.log('🚨 Attempting emergency ultra-light posting for first tweet...');
             try {
-              const emergencySuccess = await emergencyBrowserPoster.emergencyPostTweet(truncatedTweet);
-              if (emergencySuccess) {
+              const emergencyResult = await emergencyBrowserPoster.emergencyPostTweet(truncatedTweet);
+              if (emergencyResult.success) {
                 console.log('✅ Emergency ultra-light posting successful for first tweet!');
-                tweetIds.push('emergency_posted_' + Date.now()); // Placeholder ID
-                replyToId = 'emergency_posted_' + Date.now();
+                tweetIds.push(emergencyResult.tweet_id);
+                replyToId = emergencyResult.tweet_id;
                 
                 // Continue with next tweet
                 if (i < content.length - 1) {
