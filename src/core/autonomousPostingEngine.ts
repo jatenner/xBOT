@@ -17,7 +17,7 @@
 // import { contextualBanditSelector } from '../intelligence/contextualBanditSelector';
 // import { enhancedBudgetOptimizer } from '../utils/enhancedBudgetOptimizer';
 
-import { supabaseClient } from '../utils/supabaseClient';
+import { supabaseClient.supabaseClient } from '../utils/supabaseClient.supabaseClient';
 import { emergencyBudgetLockdown } from '../utils/emergencyBudgetLockdown';
 import { learningSystemIntegration } from '../utils/learningSystemIntegration';
 import { contentFactChecker } from '../utils/contentFactChecker';
@@ -230,7 +230,7 @@ export class AutonomousPostingEngine {
     const now = new Date();
     
     // Get recent performance context
-    const { data: recentTweets } = await supabaseClient
+    const { data: recentTweets } = await supabaseClient.supabaseClient.supabaseClient.supabase
       .from('tweets')
       .select('new_followers, likes, retweets')
       .order('posted_at', { ascending: false })
@@ -1360,7 +1360,7 @@ export class AutonomousPostingEngine {
       };
 
       // Store in learning_posts table
-      const { error: learningError } = await supabaseClient.supabase
+      const { error: learningError } = await supabaseClient.supabase.supabaseClient.supabase
         .from('learning_posts')
         .insert(tweetData);
 
@@ -1373,7 +1373,7 @@ export class AutonomousPostingEngine {
       // Also store in main tweets table for backward compatibility (only for numeric IDs)
       const isNumericId = /^\d+$/.test(tweetId);
       if (isNumericId) {
-        const { error: tweetsError } = await supabaseClient.supabase
+        const { error: tweetsError } = await supabaseClient.supabase.supabaseClient.supabase
           .from('tweets')
           .insert({
             id: tweetId,
@@ -1415,7 +1415,7 @@ export class AutonomousPostingEngine {
   private async initializeFormatStats(formatType: string, hookType: string, contentCategory: string): Promise<void> {
     try {
       // Check if stats already exist
-      const { data: existingStats } = await supabaseClient.supabase
+      const { data: existingStats } = await supabaseClient.supabase.supabaseClient.supabase
         .from('format_stats')
         .select('id')
         .eq('format_type', formatType)
@@ -1425,7 +1425,7 @@ export class AutonomousPostingEngine {
 
       if (!existingStats) {
         // Initialize new format stats entry
-        await supabaseClient.supabase
+        await supabaseClient.supabase.supabaseClient.supabase
           .from('format_stats')
           .insert({
             format_type: formatType,
@@ -1475,7 +1475,7 @@ export class AutonomousPostingEngine {
         created_at: new Date().toISOString()
       };
 
-      await supabaseClient.supabase
+      await supabaseClient.supabase.supabaseClient.supabase
         .from('tweet_performance_analysis')
         .insert(performanceData);
 
@@ -1490,7 +1490,7 @@ export class AutonomousPostingEngine {
    */
   private async getLastPostFromDatabase(): Promise<any> {
     try {
-      const { data, error } = await supabaseClient.supabase
+      const { data, error } = await supabaseClient.supabase.supabaseClient.supabase
         .from('tweets')
         .select('created_at, id, was_posted, confirmed')
         .order('created_at', { ascending: false })
@@ -1522,7 +1522,7 @@ export class AutonomousPostingEngine {
     consecutive_failures: number;
   }> {
     try {
-      const { data: allPosts } = await supabaseClient.supabase
+      const { data: allPosts } = await supabaseClient.supabase.supabaseClient.supabase
         .from('tweets')
         .select('created_at, was_posted, confirmed')
         .order('created_at', { ascending: false });
@@ -1735,7 +1735,7 @@ export class AutonomousPostingEngine {
     try {
       if (!tweetId) return;
 
-      const { error } = await supabaseClient.supabase
+      const { error } = await supabaseClient.supabase.supabaseClient.supabase
         .from('viral_content_usage')
         .insert({
           tweet_id: tweetId,
