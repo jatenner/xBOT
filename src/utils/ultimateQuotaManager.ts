@@ -214,12 +214,12 @@ export class UltimateQuotaManager {
       // Get the last stored reset timestamp from our API error tracking
       const { data: rateLimitData, error } = await supabaseClient.supabase
         ?.from('system_status')
-        ?.select('config_value')
+        ?.select('value')
         ?.eq('config_key', 'twitter_reset_timestamp')
         ?.single();
 
-      if (!error && rateLimitData?.config_value) {
-        const storedResetTimestamp = parseInt(rateLimitData.config_value);
+      if (!error && rateLimitData?.value) {
+        const storedResetTimestamp = parseInt(rateLimitData.value);
         const resetTime = new Date(storedResetTimestamp * 1000);
         const now = new Date();
         
@@ -261,7 +261,7 @@ export class UltimateQuotaManager {
         ?.from('system_status')
         ?.upsert({
           config_key: 'twitter_reset_timestamp',
-          config_value: resetTimestamp.toString(),
+          value: resetTimestamp.toString(),
           updated_at: new Date().toISOString()
         });
 

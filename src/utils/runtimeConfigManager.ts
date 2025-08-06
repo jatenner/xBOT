@@ -57,11 +57,11 @@ export class RuntimeConfigManager {
       const { error } = await supabaseClient.supabase
         .from('bot_config')
         .upsert({
-          config_key: 'runtime_config',
-          config_value: newConfig,
+          key: 'runtime_config',
+          value: newConfig,
           updated_at: new Date().toISOString()
         }, {
-          onConflict: 'config_key'
+          onConflict: 'key'
         });
 
       if (error) {
@@ -166,8 +166,8 @@ export class RuntimeConfigManager {
     try {
       const { data, error } = await supabaseClient.supabase
         .from('bot_config')
-        .select('config_value')
-        .eq('config_key', 'runtime_config')
+        .select('value')
+        .eq('key', 'runtime_config')
         .single();
 
       if (error && error.code !== 'PGRST116') { // PGRST116 = no rows found
@@ -176,8 +176,8 @@ export class RuntimeConfigManager {
         return;
       }
 
-      if (data?.config_value) {
-        this.config = data.config_value as RuntimeConfig;
+      if (data?.value) {
+        this.config = data.value as RuntimeConfig;
       } else {
         // Initialize with default config
         this.config = this.getDefaultConfig();
