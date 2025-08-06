@@ -289,11 +289,15 @@ export class BrowserTweetPoster {
           confirmed: true,
           was_posted: true
         };
+      } else {
+        console.log('❌ Emergency posting returned false');
       }
     } catch (error) {
       console.log('❌ Ultra-light emergency posting failed:', error.message);
     }
     
+    // Only reach here if all methods failed
+    console.log('❌ All browser posting methods exhausted');
     return {
       success: false,
       error: 'All browser posting methods failed - likely Railway resource exhaustion',
