@@ -500,8 +500,8 @@ export class AutonomousPostingEngine {
         console.log('🚀 Using AI-powered viral content generation...');
 
         try {
-          const { EliteTwitterContentStrategist } = await import('../agents/eliteTwitterContentStrategist');
-          const strategist = EliteTwitterContentStrategist.getInstance();
+                const { ViralFollowerGrowthMaster } = await import('../agents/viralFollowerGrowthMaster');
+      const viralMaster = ViralFollowerGrowthMaster.getInstance();
           
           const contentRequest = {
             topic: this.getOptimalTopic(),
@@ -512,7 +512,7 @@ export class AutonomousPostingEngine {
 
           console.log(`🎯 Elite strategist request: ${JSON.stringify(contentRequest)}`);
           
-          const eliteResult = await strategist.generateViralContent(contentRequest);
+          const eliteResult = await viralMaster.generateViralContent('health_tip');
           
           if (eliteResult && eliteResult.content) {
             const contentString = Array.isArray(eliteResult.content) ? 
