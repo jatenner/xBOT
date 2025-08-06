@@ -305,7 +305,7 @@ export class TwitterMasterIntegration {
                 .from('twitter_master_config')
                 .upsert({
                     config_key: key,
-                    config_value: value,
+                    value: value,
                     updated_at: new Date().toISOString()
                 });
         } catch (error) {
