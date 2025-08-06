@@ -309,22 +309,90 @@ export class EmergencyBrowserPoster {
             if (success) {
                 console.log('✅ Emergency posting successful');
                 
-                // Try to extract tweet ID from URL
-                const currentUrl = this.page.url();
+                // CRITICAL: Try multiple methods to extract REAL Twitter tweet ID
                 let tweetId = null;
+                
+                // Method 1: Check current URL for tweet ID
+                let currentUrl = this.page.url();
+                console.log(`🔍 Current URL: ${currentUrl}`);
                 
                 if (currentUrl.includes('/status/')) {
                     const match = currentUrl.match(/\/status\/(\d+)/);
                     if (match) {
                         tweetId = match[1];
-                        console.log(`✅ Extracted tweet ID: ${tweetId}`);
+                        console.log(`✅ Method 1 - Extracted tweet ID from URL: ${tweetId}`);
                     }
                 }
                 
-                // If no tweet ID found, generate a placeholder
+                // Method 2: Wait and check URL again (Twitter sometimes navigates slowly)
                 if (!tweetId) {
+                    console.log('🔄 Method 2 - Waiting for Twitter navigation...');
+                    await this.page.waitForTimeout(3000);
+                    currentUrl = this.page.url();
+                    console.log(`🔍 Updated URL: ${currentUrl}`);
+                    
+                    if (currentUrl.includes('/status/')) {
+                        const match = currentUrl.match(/\/status\/(\d+)/);
+                        if (match) {
+                            tweetId = match[1];
+                            console.log(`✅ Method 2 - Extracted tweet ID from updated URL: ${tweetId}`);
+                        }
+                    }
+                }
+                
+                // Method 3: Look for tweet elements on page
+                if (!tweetId) {
+                    console.log('🔄 Method 3 - Searching for tweet elements...');
+                    try {
+                        // Look for article elements with data-testid containing tweet ID
+                        const tweetElements = await this.page.$$eval('article[data-testid="tweet"]', 
+                            articles => articles.map(article => article.getAttribute('data-testid'))
+                        );
+                        
+                        for (const testId of tweetElements) {
+                            if (testId && testId.includes('-')) {
+                                const match = testId.match(/(\d+)/);
+                                if (match && match[1].length > 10) { // Twitter IDs are long
+                                    tweetId = match[1];
+                                    console.log(`✅ Method 3 - Extracted tweet ID from element: ${tweetId}`);
+                                    break;
+                                }
+                            }
+                        }
+                    } catch (elementError) {
+                        console.log('⚠️ Method 3 failed - no tweet elements found');
+                    }
+                }
+                
+                // Method 4: Check page history/navigation
+                if (!tweetId) {
+                    console.log('🔄 Method 4 - Checking browser history...');
+                    try {
+                        // Force reload to check final URL
+                        await this.page.waitForTimeout(2000);
+                        currentUrl = this.page.url();
+                        
+                        if (currentUrl.includes('/status/')) {
+                            const match = currentUrl.match(/\/status\/(\d+)/);
+                            if (match) {
+                                tweetId = match[1];
+                                console.log(`✅ Method 4 - Extracted tweet ID from final URL: ${tweetId}`);
+                            }
+                        }
+                    } catch (historyError) {
+                        console.log('⚠️ Method 4 failed');
+                    }
+                }
+                
+                // ONLY generate placeholder if absolutely no real ID found
+                if (!tweetId) {
+                    console.log('🚨 CRITICAL: Could not extract real Twitter ID - threading will fail');
                     tweetId = `emergency_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
                     console.log(`🔧 Generated placeholder tweet ID: ${tweetId}`);
+                    
+                    // Log this as a serious issue for debugging
+                    console.log('❌ THREADING ISSUE: Emergency poster failed to get real tweet ID');
+                    console.log('❌ This will cause individual tweets instead of proper threads');
                 }
                 
                 return { success: true, tweet_id: tweetId };
