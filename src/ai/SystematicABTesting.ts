@@ -6,7 +6,7 @@
  */
 
 import { supabase } from '../utils/supabaseClient';
-import { openaiService } from '../services/openaiService';
+import { EnhancedOpenAIClient } from '../utils/enhancedOpenAIClient';
 
 interface ABTestConfig {
   testId: string;
