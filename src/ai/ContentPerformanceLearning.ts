@@ -6,7 +6,7 @@
  */
 
 import { supabase } from '../utils/supabaseClient';
-import { openaiClient } from '../utils/openaiClient';
+import { EnhancedOpenAIClient } from '../utils/enhancedOpenAIClient';
 
 interface PerformanceData {
   tweetId: string;
@@ -335,43 +335,20 @@ export class ContentPerformanceLearning {
 
       if (topPerformers.length < 3) return [];
 
-      const client = openaiClient.getClient();
-      if (!client) {
-        throw new Error('OpenAI client not available');
-      }
-      
-      const analysis = await client.chat.completions.create({
-        messages: [{
-          role: 'system',
-          content: `You are an expert Twitter growth analyst. Analyze these high-performing tweets to find patterns that drive follower growth and engagement.
+      const analysis = await EnhancedOpenAIClient.generateContent(
+        `Analyze these high-performing tweets for patterns. Return JSON array: [{"pattern": "name", "confidence": 0.8, "impact": "high", "recommendation": "advice"}]
 
-Look for:
-- Content themes that work
-- Writing styles that engage
-- Structural patterns (length, format, hooks)
-- Timing insights
-- Engagement drivers
-
-Return insights as JSON array:
-[{
-  "pattern": "pattern_name",
-  "confidence": 0.8,
-  "impact": "high|medium|low", 
-  "recommendation": "actionable advice",
-  "evidence": {"key": "value"}
-}]`
-        }, {
-          role: 'user',
-          content: `Analyze these high-performing tweets:
-${topPerformers.map((t, i) => 
+Tweets: ${topPerformers.map((t, i) => 
   `${i+1}. "${t.content}" (${t.actualFollowers} followers, ${t.actualLikes} likes)`
-).join('\n')}`
-        }],
-        max_tokens: 800,
-        temperature: 0.3
-      });
+).join('\n')}`,
+        {
+          model: 'gpt-4o-mini',
+          max_tokens: 600,
+          temperature: 0.3
+        }
+      );
 
-      const aiInsights = JSON.parse(analysis.choices[0]?.message?.content || '[]');
+      const aiInsights = JSON.parse(analysis.content || '[]');
       return aiInsights.slice(0, 3); // Limit to top 3 insights
       
     } catch (error) {

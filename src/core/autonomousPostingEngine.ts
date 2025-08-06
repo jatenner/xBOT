@@ -17,7 +17,7 @@
 // import { contextualBanditSelector } from '../intelligence/contextualBanditSelector';
 // import { enhancedBudgetOptimizer } from '../utils/enhancedBudgetOptimizer';
 
-import { supabase } from '../utils/supabaseClient';
+import { supabase, supabaseClient } from '../utils/supabaseClient';
 import { emergencyBudgetLockdown } from '../utils/emergencyBudgetLockdown';
 import { learningSystemIntegration } from '../utils/learningSystemIntegration';
 import { contentFactChecker } from '../utils/contentFactChecker';

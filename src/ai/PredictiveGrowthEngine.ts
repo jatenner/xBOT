@@ -6,7 +6,7 @@
  */
 
 import { supabase } from '../utils/supabaseClient';
-import { openaiClient } from '../utils/openaiClient';
+import { EnhancedOpenAIClient } from '../utils/enhancedOpenAIClient';
 
 interface ContentAnalysis {
   content: string;
@@ -139,41 +139,16 @@ export class PredictiveGrowthEngine {
    */
   private async analyzeContentQuality(content: string, contentType: string): Promise<number> {
     try {
-      const client = openaiClient.getClient();
-      if (!client) {
-        throw new Error('OpenAI client not available');
-      }
-      
-      const analysis = await client.chat.completions.create({
-        messages: [{
-          role: 'system',
-          content: `You are an expert Twitter growth analyst. Analyze this ${contentType} content for follower growth potential.
-          
-          Score from 0-100 based on:
-          - Viral potential (shareability, relatability)
-          - Educational value (will people learn something?)
-          - Engagement hooks (questions, controversial takes, actionable tips)
-          - Authority building (positions author as expert)
-          - Community building (encourages responses/discussion)
-          
-          Return ONLY a JSON object with:
-          {
-            "score": number (0-100),
-            "viral_elements": ["element1", "element2"],
-            "engagement_hooks": ["hook1", "hook2"],
-            "improvement_suggestions": ["suggestion1", "suggestion2"],
-            "target_audience": "description",
-            "growth_potential": "low|medium|high"
-          }`
-        }, {
-          role: 'user',
-          content: `Analyze this ${contentType}: "${content}"`
-        }],
-        max_tokens: 500,
-        temperature: 0.3
-      });
+      const analysis = await EnhancedOpenAIClient.generateContent(
+        `Analyze this ${contentType} content for Twitter follower growth potential. Score 0-100 based on viral potential, engagement hooks, and growth appeal. Content: "${content}" Return JSON: {"score": number, "viral_elements": [], "engagement_hooks": [], "growth_potential": "low|medium|high"}`,
+        {
+          model: 'gpt-4o-mini',
+          max_tokens: 300,
+          temperature: 0.3
+        }
+      );
 
-      const result = JSON.parse(analysis.choices[0]?.message?.content || '{"score": 50}');
+      const result = JSON.parse(analysis.content || '{"score": 50}');
       
       // Store content analysis for learning
       await supabase.from('content_performance_analysis').insert({
@@ -304,24 +279,13 @@ Return JSON only:
   }
 }`;
 
-      const client = openaiClient.getClient();
-      if (!client) {
-        throw new Error('OpenAI client not available');
-      }
-      
-      const prediction = await client.chat.completions.create({
-        messages: [{
-          role: 'system',
-          content: 'You are a precise Twitter growth prediction AI. Return only valid JSON.'
-        }, {
-          role: 'user',
-          content: prompt
-        }],
+      const prediction = await EnhancedOpenAIClient.generateContent(prompt, {
+        model: 'gpt-4o-mini',
         max_tokens: 600,
         temperature: 0.2
       });
 
-      return JSON.parse(prediction.choices[0]?.message?.content || '{}');
+      return JSON.parse(prediction.content || '{}');
       
     } catch (error) {
       console.error('Prediction model error:', error);
