@@ -94,13 +94,11 @@ export class RealEngagementEngine {
     try {
       console.log('📝 === PERFORMING REAL POST ===');
       
-      // Generate high-quality content
-      const { EliteTwitterContentStrategist } = await import('../agents/eliteTwitterContentStrategist');
-      const strategist = EliteTwitterContentStrategist.getInstance();
+      // Generate high-quality viral content
+      const { ViralFollowerGrowthMaster } = await import('../agents/viralFollowerGrowthMaster');
+      const viralMaster = ViralFollowerGrowthMaster.getInstance();
       
-      const contentResult = await strategist.generateViralContent({
-        topic: 'gut_health'
-      });
+      const contentResult = await viralMaster.generateViralContent('health_tip');
       
       if (!contentResult || !contentResult.content) {
         return {

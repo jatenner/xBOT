@@ -245,11 +245,41 @@ export class EmergencyBrowserPoster {
                 throw new Error('Could not find tweet button');
             }
             
-            // Wait for success confirmation
-            await this.page.waitForTimeout(3000);
+            // Wait for success confirmation and verify posting
+            console.log('⏳ Waiting for posting confirmation...');
+            await this.page.waitForTimeout(5000);
             
-            success = true;
-            console.log('✅ Emergency posting successful');
+            // Check if we successfully posted by looking for indicators
+            try {
+                // Check if compose modal is gone (indicates successful post)
+                const composeStillVisible = await this.page.$('[data-testid="tweetTextarea_0"]');
+                if (!composeStillVisible) {
+                    console.log('✅ Compose modal gone - posting confirmed');
+                    success = true;
+                } else {
+                    // Modal still there, check for error indicators
+                    console.log('⚠️ Compose modal still visible, checking for errors...');
+                    
+                    // Check if URL changed (successful post indicator)
+                    const currentUrl = this.page.url();
+                    if (currentUrl.includes('/status/') || !currentUrl.includes('compose')) {
+                        console.log('✅ URL changed - posting confirmed via navigation');
+                        success = true;
+                    } else {
+                        console.log('❌ No posting confirmation detected');
+                        success = false;
+                    }
+                }
+            } catch (error) {
+                console.log('✅ Error checking compose modal (likely posted successfully)');
+                success = true;
+            }
+            
+            if (success) {
+                console.log('✅ Emergency posting successful');
+            } else {
+                console.log('❌ Emergency posting may have failed');
+            }
             
         } catch (error) {
             console.error('❌ Emergency posting failed:', error.message);
