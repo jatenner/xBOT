@@ -5,7 +5,7 @@
  * to find what drives the most follower growth
  */
 
-import { supabaseClientClient } from '../utils/supabaseClientClient';
+import { supabaseClient.supabaseClient } from '../utils/supabaseClient.supabaseClient';
 import { openaiService } from '../services/openaiService';
 
 interface ABTestConfig {
@@ -45,7 +45,7 @@ export class SystematicABTesting {
     
     try {
       // Store test configuration
-      const { data: test } = await supabaseClient
+      const { data: test } = await supabaseClient.supabaseClient
         .from('ab_tests')
         .insert({
           test_id: config.testId,
@@ -90,7 +90,7 @@ export class SystematicABTesting {
   }> {
     try {
       // Get active tests
-      const { data: activeTests } = await supabaseClient
+      const { data: activeTests } = await supabaseClient.supabaseClient
         .from('ab_tests')
         .select('*')
         .eq('status', 'active')
@@ -110,7 +110,7 @@ export class SystematicABTesting {
           const variant = assignments.control <= assignments.variant ? 'control' : 'variant';
           
           // Record assignment
-          await supabaseClient.from('algorithm_ab_tests').insert({
+          await supabaseClient.supabaseClient.from('algorithm_ab_tests').insert({
             test_id: test.test_id,
             content_hash: contentHash,
             assigned_variant: variant,
@@ -149,7 +149,7 @@ export class SystematicABTesting {
   ) {
     try {
       // Get test assignment
-      const { data: assignment } = await supabaseClient
+      const { data: assignment } = await supabaseClient.supabaseClient
         .from('algorithm_ab_tests')
         .select('*')
         .eq('test_id', testId)
@@ -162,7 +162,7 @@ export class SystematicABTesting {
       }
 
       // Store performance data
-      await supabaseClient.from('ab_test_results').insert({
+      await supabaseClient.supabaseClient.from('ab_test_results').insert({
         test_id: testId,
         content_hash: contentHash,
         variant: assignment.assigned_variant,
@@ -187,7 +187,7 @@ export class SystematicABTesting {
       console.log(`📈 Analyzing A/B test: ${testId}`);
       
       // Get test configuration
-      const { data: test } = await supabaseClient
+      const { data: test } = await supabaseClient.supabaseClient
         .from('ab_tests')
         .select('*')
         .eq('test_id', testId)
@@ -196,7 +196,7 @@ export class SystematicABTesting {
       if (!test) return null;
 
       // Get all results
-      const { data: results } = await supabaseClient
+      const { data: results } = await supabaseClient.supabaseClient
         .from('ab_test_results')
         .select('*')
         .eq('test_id', testId);
@@ -280,12 +280,12 @@ export class SystematicABTesting {
       
       // Get recent performance data
       const [recentTweets, currentStrategy] = await Promise.all([
-        supabaseClient
+        supabaseClient.supabaseClient
           .from('tweets')
           .select('*')
           .order('posted_at', { ascending: false })
           .limit(50),
-        supabaseClient
+        supabaseClient.supabaseClient
           .from('content_strategies')
           .select('*')
           .eq('is_active', true)
@@ -329,7 +329,7 @@ export class SystematicABTesting {
       }
       
       // 3. Store cycle results
-      await supabaseClient.from('testing_cycle_log').insert({
+      await supabaseClient.supabaseClient.from('testing_cycle_log').insert({
         cycle_date: new Date().toISOString(),
         completed_tests: completedTests.length,
         active_tests: activeTestCount,
@@ -346,7 +346,7 @@ export class SystematicABTesting {
 
   // Helper methods
   private async initializeTestTracking(testId: string) {
-    await supabaseClient.from('algorithm_signals').insert({
+    await supabaseClient.supabaseClient.from('algorithm_signals').insert({
       signal_type: 'ab_test_started',
       signal_data: { testId },
       confidence: 1.0,
@@ -355,7 +355,7 @@ export class SystematicABTesting {
   }
 
   private async getTestAssignments(testId: string) {
-    const { data: assignments } = await supabaseClient
+    const { data: assignments } = await supabaseClient.supabaseClient
       .from('algorithm_ab_tests')
       .select('assigned_variant')
       .eq('test_id', testId);
@@ -369,14 +369,14 @@ export class SystematicABTesting {
   private async checkTestCompletion(testId: string) {
     const assignments = await this.getTestAssignments(testId);
     
-    const { data: test } = await supabaseClient
+    const { data: test } = await supabaseClient.supabaseClient
       .from('ab_tests')
       .select('min_sample_size, status')
       .eq('test_id', testId)
       .single();
 
     if (test && assignments.total >= test.min_sample_size && test.status === 'active') {
-      await supabaseClient
+      await supabaseClient.supabaseClient
         .from('ab_tests')
         .update({ status: 'completed', completed_at: new Date().toISOString() })
         .eq('test_id', testId);
@@ -431,7 +431,7 @@ export class SystematicABTesting {
   }
 
   private async storeTestAnalysis(testId: string, result: ABTestResult) {
-    await supabaseClient.from('ab_test_analysis').insert({
+    await supabaseClient.supabaseClient.from('ab_test_analysis').insert({
       test_id: testId,
       winner_variant: result.winner,
       confidence_level: result.confidence,
@@ -443,7 +443,7 @@ export class SystematicABTesting {
     });
 
     // Update test status
-    await supabaseClient
+    await supabaseClient.supabaseClient
       .from('ab_tests')
       .update({ status: 'analyzed' })
       .eq('test_id', testId);
@@ -500,7 +500,7 @@ export class SystematicABTesting {
   }
 
   private async analyzeCompletedTests(): Promise<ABTestResult[]> {
-    const { data: completedTests } = await supabaseClient
+    const { data: completedTests } = await supabaseClient.supabaseClient
       .from('ab_tests')
       .select('test_id')
       .eq('status', 'completed');
@@ -516,7 +516,7 @@ export class SystematicABTesting {
   }
 
   private async getActiveTestCount(): Promise<number> {
-    const { data: activeTests } = await supabaseClient
+    const { data: activeTests } = await supabaseClient.supabaseClient
       .from('ab_tests')
       .select('test_id')
       .eq('status', 'active');

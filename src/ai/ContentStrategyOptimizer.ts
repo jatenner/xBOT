@@ -5,7 +5,7 @@
  * Integrates with your bandit algorithm and strategy decision tables
  */
 
-import { supabaseClientClient } from '../utils/supabaseClientClient';
+import { supabaseClient } from '../utils/supabaseClient';
 import { openaiService } from '../services/openaiService';
 import { contentPerformanceLearning } from './ContentPerformanceLearning';
 
@@ -327,7 +327,7 @@ export class ContentStrategyOptimizer {
     recommendations: OptimizationRecommendation[]
   ) {
     // Store in content_strategy_decisions table
-    await supabaseClient.from('content_strategy_decisions').insert({
+    await supabaseClient.supabase.from('content_strategy_decisions').insert({
       previous_strategy: oldStrategy,
       new_strategy: newStrategy,
       recommendations: recommendations,
@@ -338,7 +338,7 @@ export class ContentStrategyOptimizer {
     });
 
     // Update current strategy
-    await supabaseClient.from('content_strategies').insert({
+    await supabaseClient.supabase.from('content_strategies').insert({
       strategy_name: `optimized_${Date.now()}`,
       strategy_config: newStrategy,
       optimization_source: 'ai_learning',
