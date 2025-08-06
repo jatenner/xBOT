@@ -5,7 +5,7 @@
  * Uses your sophisticated learning infrastructure for maximum accuracy
  */
 
-import { supabaseClient.supabaseClient } from '../utils/supabaseClient.supabaseClient';
+import { supabaseClient } from '../utils/supabaseClient';
 import { openaiClient } from '../utils/openaiClient';
 
 interface ContentAnalysis {

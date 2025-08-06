@@ -5,7 +5,7 @@
  * to find what drives the most follower growth
  */
 
-import { supabaseClient.supabaseClient } from '../utils/supabaseClient.supabaseClient';
+import { supabaseClient } from '../utils/supabaseClient';
 import { openaiService } from '../services/openaiService';
 
 interface ABTestConfig {

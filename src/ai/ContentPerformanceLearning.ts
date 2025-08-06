@@ -5,7 +5,7 @@
  * Leverages your sophisticated learning table infrastructure
  */
 
-import { supabaseClient.supabase } from '../utils/supabaseClient.supabase';
+import { supabaseClient } from '../utils/supabaseClient';
 import { openaiClient } from '../utils/openaiClient';
 
 interface PerformanceData {
