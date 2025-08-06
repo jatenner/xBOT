@@ -5,7 +5,7 @@
  * Leverages your sophisticated learning table infrastructure
  */
 
-import { supabaseClient } from '../utils/supabaseClient';
+import { supabase } from '../utils/supabaseClient';
 import { openaiClient } from '../utils/openaiClient';
 
 interface PerformanceData {
@@ -93,7 +93,7 @@ export class ContentPerformanceLearning {
    */
   private async gatherRecentPerformanceData(): Promise<PerformanceData[]> {
     // Get recent tweets with actual performance
-    const { data: recentTweets } = await supabaseClient.supabase
+    const { data: recentTweets } = await supabase
       .from('tweets')
       .select(`
         id, tweet_id, content, content_type,
@@ -109,7 +109,7 @@ export class ContentPerformanceLearning {
     // Get predictions for these tweets
     const tweetHashes = recentTweets.map(t => this.hashContent(t.content));
     
-    const { data: predictions } = await supabaseClient.supabase
+    const { data: predictions } = await supabase
       .from('content_performance_predictions')
       .select('*')
       .in('content_hash', tweetHashes);
@@ -395,11 +395,11 @@ ${topPerformers.map((t, i) =>
       source: 'content_performance_learning'
     }));
 
-    await supabaseClient.supabase.from('ai_learning_insights').insert(insertData);
+    await supabase.from('ai_learning_insights').insert(insertData);
     
     // Also update learned patterns table
     for (const insight of insights) {
-      await supabaseClient.supabase.from('learned_performance_patterns').upsert({
+      await supabase.from('learned_performance_patterns').upsert({
         pattern_id: insight.pattern,
         confidence_score: insight.confidence,
         impact_level: insight.impact,

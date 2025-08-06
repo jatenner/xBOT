@@ -5,7 +5,7 @@
  * Uses your sophisticated learning infrastructure for maximum accuracy
  */
 
-import { supabaseClient } from '../utils/supabaseClient';
+import { supabase } from '../utils/supabaseClient';
 import { openaiClient } from '../utils/openaiClient';
 
 interface ContentAnalysis {
@@ -97,28 +97,28 @@ export class PredictiveGrowthEngine {
       followerGrowth
     ] = await Promise.all([
       // Recent tweet performance
-      supabaseClient.supabase
+      supabase
         .from('tweets')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(50),
         
       // Learned performance patterns
-      supabaseClient.supabase
+      supabase
         .from('learned_performance_patterns')
         .select('*')
         .order('confidence_score', { ascending: false })
         .limit(20),
         
       // Bandit algorithm insights
-      supabaseClient.supabase
+      supabase
         .from('bandit_performance_analysis')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(10),
         
       // Follower growth analytics
-      supabaseClient.supabase
+      supabase
         .from('follower_growth_analytics')
         .select('*')
         .order('date', { ascending: false })
@@ -176,7 +176,7 @@ export class PredictiveGrowthEngine {
       const result = JSON.parse(analysis.choices[0]?.message?.content || '{"score": 50}');
       
       // Store content analysis for learning
-      await supabaseClient.supabase.from('content_performance_analysis').insert({
+      await supabase.from('content_performance_analysis').insert({
         content_hash: this.hashContent(content),
         content_type: contentType,
         quality_score: result.score,
@@ -203,7 +203,7 @@ export class PredictiveGrowthEngine {
   private async analyzeTimingOptimization(timing: ContentAnalysis['timing']): Promise<number> {
     try {
       // Get optimal posting windows
-      const { data: optimalWindows } = await supabaseClient.supabase
+      const { data: optimalWindows } = await supabase
         .from('optimal_posting_windows')
         .select('*')
         .eq('day_of_week', timing.dayOfWeek)
@@ -220,7 +220,7 @@ export class PredictiveGrowthEngine {
       const score = Math.min(100, bestWindow.engagement_multiplier * 50);
       
       // Store timing analysis
-      await supabaseClient.supabase.from('posting_time_analytics').insert({
+      await supabase.from('posting_time_analytics').insert({
         hour_posted: timing.hour,
         day_of_week: timing.dayOfWeek,
         timing_score: score,
@@ -253,7 +253,7 @@ export class PredictiveGrowthEngine {
       ((100 - context.competitorActivity) * competitorWeight); // Less competition = better
 
     // Store context analysis
-    await supabaseClient.supabase.from('posting_context_analysis').insert({
+    await supabase.from('posting_context_analysis').insert({
       recent_performance: context.recentPerformance,
       audience_activity: context.audienceActivity,
       competitor_activity: context.competitorActivity,
@@ -334,7 +334,7 @@ Return JSON only:
    * Saves prediction to enable future learning
    */
   private async storePredictionForLearning(analysis: ContentAnalysis, prediction: GrowthPrediction) {
-    await supabaseClient.supabase.from('content_performance_predictions').insert({
+    await supabase.from('content_performance_predictions').insert({
       content_hash: this.hashContent(analysis.content),
       content_type: analysis.contentType,
       predicted_followers: prediction.predictedFollowers,
