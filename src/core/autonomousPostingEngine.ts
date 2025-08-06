@@ -31,14 +31,18 @@ import { ProfessionalTweetFormatter } from '../utils/professionalTweetFormatter'
 import { EmergencyContentGenerator } from '../utils/emergencyContentGenerator';
 import { EmergencyDatabaseFixer } from '../utils/emergencyDatabaseFixer';
 import { EmergencyPostingActivator } from '../utils/emergencyPostingActivator';
+import { growthMasterOrchestrator } from '../ai/GrowthMasterOrchestrator';
 
 interface PostingDecision {
   should_post: boolean;
   reason: string;
   confidence: number;
-  strategy: 'aggressive' | 'balanced' | 'conservative';
+  strategy: 'aggressive' | 'balanced' | 'conservative' | 'growth_optimized';
   content?: string;
   wait_minutes?: number;
+  growth_prediction?: any;
+  ab_test_assignment?: any;
+  growth_recommendations?: string[];
 }
 
 interface PostingResult {
@@ -81,11 +85,12 @@ export class AutonomousPostingEngine {
   }
 
   /**
-   * 🧠 INTELLIGENT POSTING DECISION
+   * 🧠 INTELLIGENT POSTING DECISION (ENHANCED WITH GROWTH AI)
    */
   async makePostingDecision(): Promise<PostingDecision> {
     try {
       console.log('🧠 Making intelligent posting decision...');
+      console.log('🎯 === GROWTH-OPTIMIZED POSTING DECISION ===');
 
       // Check budget status
       const lockdownStatus = await emergencyBudgetLockdown.isLockedDown();
@@ -140,15 +145,60 @@ export class AutonomousPostingEngine {
         };
       }
 
-      // Enhanced decision logic
+      // Enhanced decision logic with Growth AI Integration
       if (minutesSinceLastPost >= requiredInterval) {
-        console.log(`✅ Decision: POST (${strategy} strategy, ${confidence * 100}% confidence)`);
-        return {
-          should_post: true,
-          reason: `${strategy} posting after ${minutesSinceLastPost} minutes`,
-          confidence,
-          strategy
-        };
+        console.log(`✅ Timing check passed: ${strategy} posting after ${minutesSinceLastPost} minutes`);
+        
+        // 🚀 GROWTH AI DECISION LAYER
+        try {
+          console.log('🎯 Consulting Growth Master Orchestrator...');
+          
+          // Generate sample content for analysis (in production, this would be the actual planned content)
+          const contentAnalysis = await this.prepareContentForGrowthAnalysis(strategy);
+          
+          // Get growth-optimized decision
+          const growthDecision = await growthMasterOrchestrator.makeGrowthDecision(contentAnalysis);
+          
+          console.log(`🧠 Growth AI recommendation: ${growthDecision.shouldPost ? 'POST' : 'WAIT'}`);
+          console.log(`📊 Growth prediction: ${growthDecision.prediction?.predictedFollowers || 0} followers`);
+          console.log(`💡 Reasoning: ${growthDecision.reasoning}`);
+          
+          if (growthDecision.shouldPost) {
+            // Growth AI approves - proceed with posting
+            return {
+              should_post: true,
+              reason: `Growth AI approved: ${growthDecision.reasoning}`,
+              confidence: Math.max(confidence, growthDecision.confidence),
+              strategy,
+              growth_prediction: growthDecision.prediction,
+              ab_test_assignment: growthDecision.abTestAssignment
+            };
+          } else {
+            // Growth AI suggests waiting
+            console.log('⚠️ Growth AI suggests waiting for better opportunity');
+            console.log(`💡 Alternatives: ${growthDecision.alternativeRecommendations?.join(', ')}`);
+            
+            return {
+              should_post: false,
+              reason: `Growth AI recommendation: ${growthDecision.reasoning}`,
+              confidence: growthDecision.confidence,
+              strategy: 'growth_optimized',
+              wait_minutes: 60, // Wait 1 hour before next growth analysis
+              growth_recommendations: growthDecision.alternativeRecommendations
+            };
+          }
+          
+        } catch (growthError) {
+          console.error('⚠️ Growth AI error, falling back to basic decision:', growthError);
+          // Fallback to original logic if Growth AI fails
+          return {
+            should_post: true,
+            reason: `${strategy} posting after ${minutesSinceLastPost} minutes (Growth AI fallback)`,
+            confidence,
+            strategy
+          };
+        }
+        
       } else {
         const waitTime = requiredInterval - minutesSinceLastPost;
         return {
@@ -170,6 +220,64 @@ export class AutonomousPostingEngine {
         wait_minutes: 30
       };
     }
+  }
+
+  /**
+   * 🎯 PREPARE CONTENT FOR GROWTH ANALYSIS
+   * Creates content analysis object for Growth AI system
+   */
+  private async prepareContentForGrowthAnalysis(strategy: string): Promise<any> {
+    const now = new Date();
+    
+    // Get recent performance context
+    const { data: recentTweets } = await supabaseClient
+      .from('tweets')
+      .select('new_followers, likes, retweets')
+      .order('posted_at', { ascending: false })
+      .limit(10);
+
+    const avgRecentPerformance = recentTweets?.length ? 
+      recentTweets.reduce((sum, t) => sum + (t.new_followers || 0), 0) / recentTweets.length * 100 : 50;
+
+    // Create sample content analysis (in production, use actual planned content)
+    return {
+      content: "Sample health content for analysis", // This would be the actual content being considered
+      contentType: 'text', // Will be determined by actual content
+      timing: {
+        hour: now.getHours(),
+        dayOfWeek: now.getDay(),
+        optimal: this.isOptimalTime(now.getHours(), now.getDay())
+      },
+      context: {
+        recentPerformance: avgRecentPerformance,
+        audienceActivity: this.estimateAudienceActivity(now.getHours()),
+        competitorActivity: 30 // Placeholder - could integrate competitor monitoring
+      }
+    };
+  }
+
+  /**
+   * ⏰ CHECK IF TIME IS OPTIMAL FOR POSTING
+   */
+  private isOptimalTime(hour: number, dayOfWeek: number): boolean {
+    // Optimal times: 9-11 AM, 1-3 PM, 6-8 PM on weekdays
+    const optimalHours = [9, 10, 11, 13, 14, 15, 18, 19, 20];
+    const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;
+    
+    return isWeekday && optimalHours.includes(hour);
+  }
+
+  /**
+   * 👥 ESTIMATE CURRENT AUDIENCE ACTIVITY
+   */
+  private estimateAudienceActivity(hour: number): number {
+    // Higher activity during work hours and evening
+    if (hour >= 9 && hour <= 11) return 80; // Morning peak
+    if (hour >= 13 && hour <= 15) return 85; // Afternoon peak
+    if (hour >= 18 && hour <= 21) return 90; // Evening peak
+    if (hour >= 6 && hour <= 8) return 60; // Early morning
+    if (hour >= 22 && hour <= 23) return 50; // Late evening
+    return 30; // Night/very early morning
   }
 
   /**
