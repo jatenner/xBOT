@@ -5,7 +5,7 @@
  * Integrates with your bandit algorithm and strategy decision tables
  */
 
-import { supabase } from '../config/supabase';
+import { supabaseClientClient } from '../utils/supabaseClientClient';
 import { openaiService } from '../services/openaiService';
 import { contentPerformanceLearning } from './ContentPerformanceLearning';
 
@@ -102,7 +102,7 @@ export class ContentStrategyOptimizer {
    */
   private async getCurrentStrategy(): Promise<StrategyConfig> {
     // Get latest strategy from content_strategies table
-    const { data: latestStrategy } = await supabase
+    const { data: latestStrategy } = await supabaseClient
       .from('content_strategies')
       .select('*')
       .order('created_at', { ascending: false })
@@ -127,19 +127,19 @@ export class ContentStrategyOptimizer {
       followerGrowth,
       engagementMetrics
     ] = await Promise.all([
-      supabase
+      supabaseClient
         .from('tweets')
         .select('*')
         .order('posted_at', { ascending: false })
         .limit(30),
         
-      supabase
+      supabaseClient
         .from('follower_growth_analytics')
         .select('*')
         .order('date', { ascending: false })
         .limit(7),
         
-      supabase
+      supabaseClient
         .from('engagement_metrics')
         .select('*')
         .order('calculated_at', { ascending: false })
@@ -240,7 +240,7 @@ export class ContentStrategyOptimizer {
   private async analyzeTimingOptimization(performance: any): Promise<OptimizationRecommendation[]> {
     try {
       // Get optimal posting windows data
-      const { data: optimalWindows } = await supabase
+      const { data: optimalWindows } = await supabaseClient
         .from('optimal_posting_windows')
         .select('*')
         .order('engagement_multiplier', { ascending: false })
@@ -327,7 +327,7 @@ export class ContentStrategyOptimizer {
     recommendations: OptimizationRecommendation[]
   ) {
     // Store in content_strategy_decisions table
-    await supabase.from('content_strategy_decisions').insert({
+    await supabaseClient.from('content_strategy_decisions').insert({
       previous_strategy: oldStrategy,
       new_strategy: newStrategy,
       recommendations: recommendations,
@@ -338,7 +338,7 @@ export class ContentStrategyOptimizer {
     });
 
     // Update current strategy
-    await supabase.from('content_strategies').insert({
+    await supabaseClient.from('content_strategies').insert({
       strategy_name: `optimized_${Date.now()}`,
       strategy_config: newStrategy,
       optimization_source: 'ai_learning',
@@ -348,7 +348,7 @@ export class ContentStrategyOptimizer {
     });
 
     // Mark previous strategies as inactive
-    await supabase
+    await supabaseClient
       .from('content_strategies')
       .update({ is_active: false })
       .neq('created_at', new Date().toISOString());

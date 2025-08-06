@@ -5,7 +5,7 @@
  */
 
 import { growthMasterOrchestrator } from './GrowthMasterOrchestrator';
-import { supabase } from '../config/supabase';
+import { supabaseClientClient } from '../utils/supabaseClientClient';
 
 export class DailyLearningScheduler {
   private static instance: DailyLearningScheduler;
@@ -86,7 +86,7 @@ export class DailyLearningScheduler {
       this.lastRunDate = today;
 
       // Store scheduler status
-      await supabase.from('system_status').upsert({
+      await supabaseClient.from('system_status').upsert({
         component: 'daily_learning_scheduler',
         status: 'completed',
         last_run: new Date().toISOString(),
@@ -103,7 +103,7 @@ export class DailyLearningScheduler {
       console.error('❌ Daily learning cycle error:', error);
       
       // Log error but don't crash
-      await supabase.from('system_alerts').insert({
+      await supabaseClient.from('system_alerts').insert({
         alert_type: 'daily_learning_error',
         severity: 'medium',
         message: `Daily learning cycle failed: ${error.message}`,
