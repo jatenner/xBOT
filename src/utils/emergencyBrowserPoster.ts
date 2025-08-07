@@ -219,7 +219,7 @@ export class EmergencyBrowserPoster {
             await this.page.waitForTimeout(3000);
             
             // Use modern Twitter selector with intelligent detection
-            const tweetButtonClicked = await ModernTwitterSelectors.findAndClickPostButton(this.page);
+            let tweetButtonClicked = await ModernTwitterSelectors.findAndClickPostButton(this.page);
             
             if (!tweetButtonClicked) {
                 console.log('🔧 Trying keyboard shortcut as fallback (Cmd+Enter)...');
