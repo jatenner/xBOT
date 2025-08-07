@@ -5,7 +5,7 @@
  * Integrates with your bandit algorithm and strategy decision tables
  */
 
-import { supabase, supabaseClient } from '../utils/supabaseClient';
+import { supabase } from '../utils/supabase';
 import { openaiService } from '../services/openaiService';
 import { contentPerformanceLearning } from './ContentPerformanceLearning';
 
@@ -102,7 +102,7 @@ export class ContentStrategyOptimizer {
    */
   private async getCurrentStrategy(): Promise<StrategyConfig> {
     // Get latest strategy from content_strategies table
-    const { data: latestStrategy } = await supabaseClient
+    const { data: latestStrategy } = await supabase
       .from('content_strategies')
       .select('*')
       .order('created_at', { ascending: false })
@@ -127,19 +127,19 @@ export class ContentStrategyOptimizer {
       followerGrowth,
       engagementMetrics
     ] = await Promise.all([
-      supabaseClient
+      supabase
         .from('tweets')
         .select('*')
         .order('posted_at', { ascending: false })
         .limit(30),
         
-      supabaseClient
+      supabase
         .from('follower_growth_analytics')
         .select('*')
         .order('date', { ascending: false })
         .limit(7),
         
-      supabaseClient
+      supabase
         .from('engagement_metrics')
         .select('*')
         .order('calculated_at', { ascending: false })
@@ -240,7 +240,7 @@ export class ContentStrategyOptimizer {
   private async analyzeTimingOptimization(performance: any): Promise<OptimizationRecommendation[]> {
     try {
       // Get optimal posting windows data
-      const { data: optimalWindows } = await supabaseClient
+      const { data: optimalWindows } = await supabase
         .from('optimal_posting_windows')
         .select('*')
         .order('engagement_multiplier', { ascending: false })
@@ -348,7 +348,7 @@ export class ContentStrategyOptimizer {
     });
 
     // Mark previous strategies as inactive
-    await supabaseClient
+    await supabase
       .from('content_strategies')
       .update({ is_active: false })
       .neq('created_at', new Date().toISOString());
