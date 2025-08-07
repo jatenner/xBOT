@@ -101,24 +101,30 @@ export class MasterPostingGate {
 
     // 🎯 SINGLE POSTING CHECK SCHEDULE
     // Check every 30 minutes if we should post, but respect coordinator rules
-    // 🚨 EMERGENCY DISABLED: Main posting job was bypassing quality gates
+    const mainPostingJob = cron.schedule('*/30 * * * *', async () => {
+      // Emergency disabled to prevent quality gate bypass
+      console.log('🚫 Main posting job disabled to prevent quality gate bypass');
+    }, { scheduled: false });
 
     // 🕐 OPTIMAL HOUR POSTING CHECKS
     // Additional checks during peak hours
-    // 🚨 EMERGENCY DISABLED: Optimal hour job was bypassing quality gates
+    const optimalHourJob = cron.schedule('0 9,11,14,16,17,19,20 * * *', async () => {
+      // Emergency disabled to prevent quality gate bypass
+      console.log('🚫 Optimal hour job disabled to prevent quality gate bypass');
+    }, { scheduled: false });
 
     // 🔄 DAILY RESET AND STATUS
-    // 🚨 EMERGENCY DISABLED: Daily reset job was bypassing quality gates
+    const dailyResetJob = cron.schedule('0 0 * * *', async () => {
+      // Emergency disabled to prevent quality gate bypass
+      console.log('🚫 Daily reset job disabled to prevent quality gate bypass');
+    }, { scheduled: false });
 
-    // Store and start jobs
+    // Store jobs (but don't start them since they're disabled)
     this.activeJobs.set('main-posting', mainPostingJob);
     this.activeJobs.set('optimal-hours', optimalHourJob);
     this.activeJobs.set('daily-reset', dailyResetJob);
 
-    // Start all jobs
-    mainPostingJob.start();
-    optimalHourJob.start();
-    dailyResetJob.start();
+    // Jobs are scheduled:false so they won't actually run
 
     console.log('✅ Coordinated schedule active:');
     console.log('   📋 Main checks: Every 30 minutes');
