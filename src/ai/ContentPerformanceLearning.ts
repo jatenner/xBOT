@@ -31,7 +31,7 @@ interface LearningInsight {
   confidence: number;
   impact: 'high' | 'medium' | 'low';
   recommendation: string;
-  evidence: any[];
+  evidence: any;
 }
 
 export class ContentPerformanceLearning {
