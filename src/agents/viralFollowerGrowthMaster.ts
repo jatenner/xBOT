@@ -281,25 +281,95 @@ export class ViralFollowerGrowthMaster {
   private async getDiverseFallbackTopics(): Promise<string[]> {
     try {
       // Get recently used topics from database to avoid repeating them
-      const { data: recentTopics } = await supabaseClient.supabase
+      const cutoffDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      console.log(`🔍 Querying tweets since: ${cutoffDate}`);
+      
+      const { data: recentTopics, error } = await supabaseClient.supabase
         .from('tweets')
-        .select('content')
-        .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()) // Last 24 hours
-        .limit(20);
+        .select('content, created_at, tweet_id')
+        .gte('created_at', cutoffDate)
+        .limit(50); // Increased limit to catch more content
+      
+      if (error) {
+        console.warn('⚠️ Database query error:', error.message);
+      }
+      
+      console.log(`📊 Found ${recentTopics?.length || 0} recent tweets in database`);
+      if (recentTopics && recentTopics.length > 0) {
+        console.log('📋 Sample recent tweets:');
+        recentTopics.slice(0, 3).forEach((tweet, i) => {
+          console.log(`  ${i + 1}. ${tweet.created_at}: "${tweet.content.substring(0, 80)}..."`);
+        });
+      }
 
-      // Extract topics from recent content
+      // Extract topics from recent content with comprehensive pattern matching
       const usedTopics = new Set<string>();
       if (recentTopics) {
         recentTopics.forEach(tweet => {
           const content = tweet.content.toLowerCase();
-          if (content.includes('blue light')) usedTopics.add('blue light');
-          if (content.includes('sleep')) usedTopics.add('sleep');
-          if (content.includes('gut health')) usedTopics.add('gut health');
-          if (content.includes('intermittent fasting')) usedTopics.add('intermittent fasting');
-          if (content.includes('seed oils')) usedTopics.add('seed oils');
-          if (content.includes('carnivore')) usedTopics.add('carnivore');
-          if (content.includes('meditation')) usedTopics.add('meditation');
-          if (content.includes('supplements')) usedTopics.add('supplements');
+          
+          // 🔍 COMPREHENSIVE TOPIC DETECTION
+          // Blue light variations
+          if (content.includes('blue light') || content.includes('screen time') || content.includes('bluelight')) {
+            usedTopics.add('blue light');
+            usedTopics.add('sleep disruption');
+            usedTopics.add('screen time');
+          }
+          
+          // Sleep-related topics  
+          if (content.includes('sleep') || content.includes('insomnia') || content.includes('bedtime')) {
+            usedTopics.add('sleep');
+            usedTopics.add('sleep habits');
+            usedTopics.add('sleep quality');
+          }
+          
+          // Diet and nutrition
+          if (content.includes('seed oil') || content.includes('vegetable oil') || content.includes('cooking oil')) {
+            usedTopics.add('seed oils');
+            usedTopics.add('cooking oils');
+          }
+          
+          if (content.includes('carnivore') || content.includes('meat diet') || content.includes('animal based')) {
+            usedTopics.add('carnivore');
+            usedTopics.add('meat diet');
+          }
+          
+          if (content.includes('plant based') || content.includes('vegan') || content.includes('vegetarian')) {
+            usedTopics.add('plant based');
+            usedTopics.add('vegan diet');
+          }
+          
+          // Health topics
+          if (content.includes('gut health') || content.includes('microbiome') || content.includes('digestion')) {
+            usedTopics.add('gut health');
+            usedTopics.add('microbiome');
+          }
+          
+          if (content.includes('intermittent fasting') || content.includes('fasting') || content.includes('if ')) {
+            usedTopics.add('intermittent fasting');
+            usedTopics.add('fasting');
+          }
+          
+          if (content.includes('supplement') || content.includes('vitamin') || content.includes('mineral')) {
+            usedTopics.add('supplements');
+            usedTopics.add('vitamins');
+          }
+          
+          if (content.includes('meditation') || content.includes('mindfulness') || content.includes('mental health')) {
+            usedTopics.add('meditation');
+            usedTopics.add('mindfulness');
+          }
+          
+          // Exercise and fitness
+          if (content.includes('exercise') || content.includes('workout') || content.includes('fitness')) {
+            usedTopics.add('exercise');
+            usedTopics.add('fitness');
+          }
+          
+          if (content.includes('cardio') || content.includes('running') || content.includes('walking')) {
+            usedTopics.add('cardio');
+            usedTopics.add('aerobic exercise');
+          }
         });
       }
 
@@ -363,12 +433,36 @@ export class ViralFollowerGrowthMaster {
         'sustainable health practices'
       ];
 
-      // Filter out recently used topics
+      // Filter out recently used topics with enhanced matching
       const availableTopics = allTopics.filter(topic => {
-        const topicWords = topic.toLowerCase().split(' ');
-        return !Array.from(usedTopics).some(usedTopic => 
-          topicWords.some(word => usedTopic.includes(word) || word.includes(usedTopic))
-        );
+        const topicLower = topic.toLowerCase();
+        const topicWords = topicLower.split(' ');
+        
+        // Check if any used topic matches this topic
+        return !Array.from(usedTopics).some(usedTopic => {
+          const usedTopicLower = usedTopic.toLowerCase();
+          
+          // Direct substring match
+          if (topicLower.includes(usedTopicLower) || usedTopicLower.includes(topicLower)) {
+            console.log(`🚫 Filtering out "${topic}" (matches used topic: "${usedTopic}")`);
+            return true;
+          }
+          
+          // Word-level matching for compound topics
+          const usedWords = usedTopicLower.split(' ');
+          const hasWordMatch = topicWords.some(topicWord => 
+            usedWords.some(usedWord => 
+              topicWord.includes(usedWord) || usedWord.includes(topicWord)
+            )
+          );
+          
+          if (hasWordMatch) {
+            console.log(`🚫 Filtering out "${topic}" (word match with: "${usedTopic}")`);
+            return true;
+          }
+          
+          return false;
+        });
       });
 
       console.log(`✅ Available diverse topics: ${availableTopics.length}/${allTopics.length}`);
