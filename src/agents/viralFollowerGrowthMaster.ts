@@ -12,6 +12,7 @@
 
 import { BudgetAwareOpenAI } from '../utils/budgetAwareOpenAI';
 import { supabaseClient } from '../utils/supabaseClient';
+import { resilientSupabaseClient } from '../utils/resilientSupabaseClient';
 import OpenAI from 'openai';
 
 interface ViralContentTemplate {
@@ -284,15 +285,21 @@ export class ViralFollowerGrowthMaster {
       const cutoffDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       console.log(`🔍 Querying tweets since: ${cutoffDate}`);
       
-      const { data: recentTopics, error } = await supabaseClient.supabase
-        .from('tweets')
-        .select('content, created_at, tweet_id')
-        .gte('created_at', cutoffDate)
-        .limit(50); // Increased limit to catch more content
-      
-      if (error) {
-        console.warn('⚠️ Database query error:', error.message);
-      }
+      // Use resilient client with fallback
+      const recentTopics = await resilientSupabaseClient.executeWithRetry(
+        async () => {
+          const { data, error } = await supabaseClient.supabase!
+            .from('tweets')
+            .select('content, created_at, tweet_id')
+            .gte('created_at', cutoffDate)
+            .limit(50);
+          
+          if (error) throw new Error(error.message);
+          return data || [];
+        },
+        'getDiverseFallbackTopics',
+        [] // Empty fallback - will use default topics
+      );
       
       console.log(`📊 Found ${recentTopics?.length || 0} recent tweets in database`);
       if (recentTopics && recentTopics.length > 0) {
