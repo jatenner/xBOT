@@ -157,34 +157,30 @@ export class AutonomousPostingEngine {
           const contentAnalysis = await this.prepareContentForGrowthAnalysis(strategy);
           
           // Get growth-optimized decision
-          const growthDecision = await growthMasterOrchestrator.makeGrowthDecision(contentAnalysis);
+          const growthDecision = await growthMasterOrchestrator.makeGrowthDecision(contentAnalysis, { timing: {} });
           
           console.log(`🧠 Growth AI recommendation: ${growthDecision.shouldPost ? 'POST' : 'WAIT'}`);
-          console.log(`📊 Growth prediction: ${growthDecision.prediction?.predictedFollowers || 0} followers`);
-          console.log(`💡 Reasoning: ${growthDecision.reasoning}`);
+          console.log(`📊 Growth confidence: ${growthDecision.confidence}`);
+          console.log(`💡 Reasoning: ${growthDecision.reason}`);
           
           if (growthDecision.shouldPost) {
             // Growth AI approves - proceed with posting
             return {
               should_post: true,
-              reason: `Growth AI approved: ${growthDecision.reasoning}`,
+              reason: `Growth AI approved: ${growthDecision.reason}`,
               confidence: Math.max(confidence, growthDecision.confidence),
-              strategy,
-              growth_prediction: growthDecision.prediction,
-              ab_test_assignment: growthDecision.abTestAssignment
+              strategy: growthDecision.strategy
             };
           } else {
             // Growth AI suggests waiting
             console.log('⚠️ Growth AI suggests waiting for better opportunity');
-            console.log(`💡 Alternatives: ${growthDecision.alternativeRecommendations?.join(', ')}`);
             
             return {
               should_post: false,
-              reason: `Growth AI recommendation: ${growthDecision.reasoning}`,
+              reason: `Growth AI recommendation: ${growthDecision.reason}`,
               confidence: growthDecision.confidence,
-              strategy: 'growth_optimized',
-              wait_minutes: 60, // Wait 1 hour before next growth analysis
-              growth_recommendations: growthDecision.alternativeRecommendations
+              strategy: growthDecision.strategy,
+              wait_minutes: 60
             };
           }
           
@@ -229,15 +225,8 @@ export class AutonomousPostingEngine {
   private async prepareContentForGrowthAnalysis(strategy: string): Promise<any> {
     const now = new Date();
     
-    // Get recent performance context
-    const { data: recentTweets } = await supabaseClient.supabase
-      .from('tweets')
-      .select('new_followers, likes, retweets')
-      .order('posted_at', { ascending: false })
-      .limit(10);
-
-    const avgRecentPerformance = recentTweets?.length ? 
-      recentTweets.reduce((sum, t) => sum + (t.new_followers || 0), 0) / recentTweets.length * 100 : 50;
+    // Simplified performance context (avoid database calls for now)
+    const avgRecentPerformance = 60; // Default baseline performance score
 
     // Create sample content analysis (in production, use actual planned content)
     return {
