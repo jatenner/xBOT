@@ -2,10 +2,7 @@
   "compilerOptions": {
     "target": "ES2020",
     "module": "commonjs",
-    "lib": [
-      "ES2020",
-      "DOM"
-    ],
+    "lib": ["ES2020", "DOM"],
     "outDir": "./dist",
     "rootDir": "./src",
     "strict": false,
@@ -19,58 +16,18 @@
     "strictNullChecks": false,
     "noImplicitReturns": false,
     "noUnusedLocals": false,
-    "noUnusedParameters": false
+    "noUnusedParameters": false,
+    "incremental": true,
+    "noEmitOnError": false
   },
   "include": [
-    "src/main.ts",
-    "src/index.ts",
-    "src/developmentLauncher.ts",
-    "src/agents/postTweet.ts",
-    "src/agents/simpleViralHealthGenerator.ts",
-    "src/agents/scheduler.ts",
-    "src/agents/diverseContentAgent.ts",
-    "src/agents/realTimeContentLearningEngine.ts",
-    "src/agents/replyAgent.ts",
-    "src/core/autonomousPostingEngine.ts",
-    "src/core/continuousTweetMonitor.ts",
-    "src/core/unifiedScheduler.ts",
-    "src/core/dailyAnalyticsOrchestrator.ts",
-    "src/jobs/updateTweetPerformance.ts",
-    "src/scraper/scrapeTweets.ts",
-    "src/twitter/postReply.ts",
-    "src/strategy/tweetingStrategy.ts",
-    "src/utils/xClient.ts",
-    "src/utils/minimalSupabaseClient.ts",
-    "src/utils/formatTweet.ts",
-    "src/utils/openaiClient.ts",
-    "src/utils/ultimateQuotaManager.ts",
-    "src/utils/emergencyBudgetLockdown.ts",
-    "src/utils/awarenessLogger.ts",
-    "src/utils/initTwitterSession.ts",
-    "src/test/testScraper.ts",
-    "src/agents/quoteAgent.ts",
-    "src/jobs/updateFollowerCount.ts",
-    "src/dashboard/analyticsServer.ts",
-    "src/dashboard/analyticsLauncher.ts",
-    "src/utils/browserTweetPoster.ts",
-    "src/config/liveMode.ts"
+    "src/**/*"
   ],
   "exclude": [
     "node_modules",
     "dist",
     "**/*.test.ts",
     "**/*.spec.ts",
-    "tests/**/*",
-    "src/agents/autonomousLearningAgent.ts",
-    "src/agents/autonomousTwitterGrowthMaster.ts",
-    "src/agents/realTimeTrendsAgent.ts",
-    "src/agents/trendResearchFusion.ts",
-    "src/agents/ultraViralGenerator.ts",
-    "src/agents/strategistAgent.ts",
-    "src/utils/config.ts",
-    "src/utils/budgetAwareOpenAI.ts",
-    "src/dashboard/**/*",
-    "src/singletons/**/*",
-    "src/metrics/**/*"
+    "tests/**/*"
   ]
 }
