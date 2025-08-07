@@ -36,10 +36,10 @@ RUN npm ci --omit=dev --no-audit --no-fund --loglevel=warn || true
 # Copy built app and needed files
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/src ./src
-COPY --from=build /app/emergency_simple_start.js ./
 COPY --from=build /app/.npmrc ./
 
-# Default port (adjust if your app uses another)
+# Default port (Railway sets PORT); keep 3000 for local
 EXPOSE 3000
 
-CMD ["node", "emergency_simple_start.js"]
+# Start full app entrypoint
+CMD ["node", "dist/main.js"]
