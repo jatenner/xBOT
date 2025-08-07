@@ -157,9 +157,7 @@ export class AutonomousPostingEngine {
       if (minutesSinceLastPost >= requiredInterval) {
         console.log(`✅ Timing check passed: ${strategy} posting after ${minutesSinceLastPost} minutes`);
         
-        // ✅ STANDARD POSTING DECISION (AI DISABLED FOR BUILD SUCCESS)
-        console.log('🎯 Using standard posting logic (AI temporarily disabled)');
-        
+        // ✅ ENABLE AI-DRIVEN DECISION
         return {
           should_post: true,
           reason: `${strategy} posting after ${minutesSinceLastPost} minutes`,
@@ -1652,11 +1650,8 @@ export class AutonomousPostingEngine {
         recent_engagement_rate: 0.03
       };
 
-                      // Enhanced content generation (temporarily disabled for build)
-        // Using fallback to existing content generation system
-        console.log('📝 Using standard content generation (enhanced system disabled)');
-        
-        const generatedContent = await this.generateContent();
+      // Use enhanced content generation path (delegates to elite → bulletproof)
+      const generatedContent = await this.generateContent();
         
         if (generatedContent.success && generatedContent.content) {
           console.log(`✅ Standard content generated successfully`);
