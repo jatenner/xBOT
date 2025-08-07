@@ -280,7 +280,12 @@ Return a JSON object with:
         temperature: 0.3
       });
 
-      const analysis = JSON.parse(response.choices[0].message.content || '{}');
+      let content = response.choices[0].message.content || '{}';
+      
+      // Remove markdown code blocks if present
+      content = content.replace(/```json\s*/g, '').replace(/```\s*$/g, '').trim();
+      
+      const analysis = JSON.parse(content);
       return analysis;
 
     } catch (error) {

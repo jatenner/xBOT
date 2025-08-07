@@ -5,6 +5,7 @@
 
 -- Add missing columns to tweet_analytics table
 ALTER TABLE tweet_analytics 
+ADD COLUMN IF NOT EXISTS collected_at TIMESTAMP DEFAULT NOW(),
 ADD COLUMN IF NOT EXISTS click_through_rate NUMERIC DEFAULT 0,
 ADD COLUMN IF NOT EXISTS is_viral BOOLEAN DEFAULT FALSE,
 ADD COLUMN IF NOT EXISTS thread_performance JSONB DEFAULT '{}',

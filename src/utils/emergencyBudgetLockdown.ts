@@ -240,7 +240,10 @@ export class EmergencyBudgetLockdown {
 }
 
 // Export for use in other modules
-export const emergencyBudgetLockdown = EmergencyBudgetLockdown;
+export const emergencyBudgetLockdown = {
+  isLockedDown: EmergencyBudgetLockdown.isLockedDown.bind(EmergencyBudgetLockdown),
+  enforceBeforeAICall: EmergencyBudgetLockdown.enforceBeforeAICall.bind(EmergencyBudgetLockdown)
+};
 
 // Export default for better compatibility
 export default EmergencyBudgetLockdown;
