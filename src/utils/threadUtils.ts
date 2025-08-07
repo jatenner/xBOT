@@ -97,7 +97,7 @@ export function parseNumberedThread(raw: string): ThreadParseResult {
   const originalContent = raw;
   
   // 🚨 ENHANCED: Check for multiple thread patterns  
-  const hasNumberedPattern = /\d+\/\d*\s*/.test(raw);
+  const hasNumberedPattern = /\d+\/[\d🧠💭🔍🌍😱🚀]*\s*/.test(raw) || /\b\d+\/\s/.test(raw); // Fixed: Allow emoji patterns like 1/🧠
   const hasRoundPattern = /Round\s+\d+/i.test(raw); // Keep for sports content only
   const hasTweetPattern = /Tweet\s+\d+/i.test(raw);
   const hasThreadMarkers = raw.includes('🧵') || raw.includes('THREAD');
@@ -185,24 +185,27 @@ export function parseNumberedThread(raw: string): ThreadParseResult {
     }
     
   } else {
-    // Default: Parse numbered patterns like "1/7", "2/7", "1/", "2/"
-    console.log('🔢 Parsing numbered thread (1/7, 2/7 style)...');
-    const parts = cleaned.split(/\s+(\d+\/\d*)\s*/);
+    // Default: Parse numbered patterns like "1/7", "2/7", "1/", "2/", "1/🧠", etc.
+    console.log('🔢 Parsing numbered thread (1/7, 2/7, 1/🧠 style)...');
+    
+    // Enhanced regex to match numbered patterns with emojis or numbers
+    const enhancedPattern = /\s+(\d+\/[\d🧠💭🔍🌍😱🚀]*)\s*/g;
+    const parts = cleaned.split(enhancedPattern);
     
     let currentTweet = '';
     
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i];
       
-      // If this part is a number pattern (1/7, 2/7, 1/, 2/, etc.), start a new tweet
-      if (part && part.match(/^\d+\/\d*$/)) {
+      // If this part is a number pattern (1/7, 2/7, 1/, 2/, 1/🧠, etc.), start a new tweet
+      if (part && part.match(/^\d+\/[\d🧠💭🔍🌍😱🚀]*$/)) {
         // Save previous tweet if it exists
         if (currentTweet.trim()) {
           tweets.push(currentTweet.trim());
         }
         // Start new tweet
         currentTweet = '';
-      } else {
+      } else if (part && part.trim()) {
         // Add content to current tweet
         currentTweet += part + ' ';
       }
@@ -220,7 +223,7 @@ export function parseNumberedThread(raw: string): ThreadParseResult {
     .filter(part => part.length > 10) // Remove very short fragments
     .map(tweet => {
       return tweet
-        .replace(/^\d+\/\d*\s*/, '') // Remove any remaining number patterns
+        .replace(/^\d+\/[\d🧠💭🔍🌍😱🚀]*\s*/, '') // Remove any remaining number patterns (including emojis)
         .replace(/^\*{1,2}/, '') // Remove leading * or **
         .replace(/\*{1,2}$/, '') // Remove trailing * or **
         .replace(/\*{2,}/g, '') // Remove any remaining ** bold markers
