@@ -18,6 +18,7 @@
 // import { enhancedBudgetOptimizer } from '../utils/enhancedBudgetOptimizer';
 
 import { supabase, supabaseClient } from '../utils/supabaseClient';
+import { EmergencyOfflineMode } from '../utils/emergencyOfflineMode';
 import { emergencyBudgetLockdown } from '../utils/emergencyBudgetLockdown';
 import { learningSystemIntegration } from '../utils/learningSystemIntegration';
 import { contentFactChecker } from '../utils/contentFactChecker';
@@ -246,6 +247,12 @@ export class AutonomousPostingEngine {
   async executePost(): Promise<PostingResult> {
     console.log('🚀 === AUTONOMOUS POSTING EXECUTION ===');
     
+    // 🚨 EMERGENCY: Check for Supabase outage
+    const isSupabaseDown = await EmergencyOfflineMode.detectSupabaseOutage();
+    if (isSupabaseDown && !EmergencyOfflineMode.isOffline()) {
+      await EmergencyOfflineMode.activateOfflineMode();
+    }
+    
     const startTime = Date.now();
     let generationTime = 0;
     let postingTime = 0;
@@ -267,7 +274,24 @@ export class AutonomousPostingEngine {
         contentGenerationAttempts++;
         console.log(`🔄 Content generation attempt ${contentGenerationAttempts}/${MAX_CONTENT_ATTEMPTS}`);
         
-        contentResult = await this.generateContent();
+        // 🚨 OFFLINE MODE: Use emergency content if database is down
+        if (EmergencyOfflineMode.isOffline()) {
+          console.log('🚨 Using emergency offline content due to Supabase outage');
+          const offlineContent = await EmergencyOfflineMode.getOfflineContent();
+          if (offlineContent) {
+            contentResult = {
+              success: true,
+              content: offlineContent.content,
+              content_type: offlineContent.type,
+              expected_engagement: 30,
+              source: 'Emergency Offline Mode'
+            };
+          } else {
+            contentResult = { success: false, error: 'No offline content available' };
+          }
+        } else {
+          contentResult = await this.generateContent();
+        }
         
         if (!contentResult.success) {
           console.log(`❌ Content generation failed on attempt ${contentGenerationAttempts}: ${contentResult.error}`);
@@ -1292,6 +1316,19 @@ export class AutonomousPostingEngine {
   ): Promise<{ success: boolean; error?: string }> {
     try {
       console.log(`💾 Storing tweet in learning database: ${tweetId}`);
+      
+      // 🚨 OFFLINE MODE: Store data offline if database is down
+      if (EmergencyOfflineMode.isOffline()) {
+        console.log('🚨 Database unavailable - storing tweet data offline');
+        await EmergencyOfflineMode.storeOfflineData('tweets', {
+          tweet_id: tweetId,
+          content,
+          metadata,
+          confirmed,
+          timestamp: new Date().toISOString()
+        });
+        return { success: true };
+      }
 
       const now = new Date();
       // Ensure all numeric fields are properly rounded integers

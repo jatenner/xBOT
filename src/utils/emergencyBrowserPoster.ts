@@ -5,6 +5,7 @@
 
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import { ULTRA_LIGHT_BROWSER_OPTIONS, EMERGENCY_BROWSER_OPTIONS } from '../config/ultraLightBrowserConfig';
+import { ModernTwitterSelectors } from './modernTwitterSelectors';
 
 export class EmergencyBrowserPoster {
     private browser: Browser | null = null;
@@ -217,43 +218,8 @@ export class EmergencyBrowserPoster {
             // Wait for tweet button to appear (Twitter loads dynamically)
             await this.page.waitForTimeout(3000);
             
-            const tweetButtons = [
-                '[data-testid="tweetButton"]',
-                '[data-testid="tweetButtonInline"]',
-                '[role="button"][aria-label*="Tweet"]',
-                '[role="button"][aria-label="Post"]',
-                '[data-testid="tweetButton-default"]',
-                '[data-testid="postButton"]',
-                'button[type="submit"]',
-                'button:has-text("Tweet")',
-                'button:has-text("Post")',
-                '[aria-label*="Post"]',
-                // More aggressive selectors for Twitter's dynamic interface
-                'div[role="button"]:has-text("Post")',
-                'div[role="button"]:has-text("Tweet")',
-                '[data-testid*="Button"]:has-text("Post")',
-                '[data-testid*="Button"]:has-text("Tweet")',
-                // Look for any enabled button that might be the tweet button
-                'button:not([disabled])',
-                'div[role="button"]:not([disabled])',
-                // Twitter sometimes uses different selectors
-                '[data-testid="tweetButton-inner"]',
-                '[data-testid="Button"]:has-text("Post")'
-            ];
-            
-            let tweetButtonClicked = false;
-            for (const selector of tweetButtons) {
-                try {
-                    await this.page.waitForSelector(selector, { timeout: 3000 });
-                    await this.page.click(selector);
-                    tweetButtonClicked = true;
-                    console.log(`✅ Clicked tweet button: ${selector}`);
-                    break;
-                } catch (e) {
-                    console.log(`❌ Failed to find tweet button: ${selector}`);
-                    continue;
-                }
-            }
+            // Use modern Twitter selector with intelligent detection
+            const tweetButtonClicked = await ModernTwitterSelectors.findAndClickPostButton(this.page);
             
             if (!tweetButtonClicked) {
                 console.log('🔧 Trying keyboard shortcut as fallback (Cmd+Enter)...');
