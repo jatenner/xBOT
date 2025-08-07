@@ -457,7 +457,7 @@ Return as JSON array of content insights.`;
     };
 
     // Store/update profile
-    await supabaseClient.supabase.from('follower_psychology_profiles').upsert({
+    await supabaseClient.supabase!.from('follower_psychology_profiles').upsert({
       follower_segment: segment,
       trigger_preferences: profile.trigger_preferences,
       content_preferences: profile.content_preferences,
@@ -520,7 +520,7 @@ Return as JSON array of content insights.`;
   private async storeInsights(insights: FollowerInsight[]): Promise<void> {
     try {
       for (const insight of insights) {
-        await supabaseClient.supabase.from('algorithm_insights').insert({
+        await supabaseClient.supabase!.from('algorithm_insights').insert({
           insight_type: insight.insight_type,
           recommendation: insight.actionable_recommendation,
           expected_impact: insight.expected_impact,

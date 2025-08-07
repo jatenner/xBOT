@@ -518,7 +518,7 @@ Return ONLY a JSON array:
         .from('real_trending_topics')
         .update({
           used: true,
-          usage_count: supabaseClient.supabase.raw('usage_count + 1'),
+          usage_count: supabaseClient.supabase!.raw('usage_count + 1'),
           last_used: new Date().toISOString()
         })
         .eq('id', topicId);

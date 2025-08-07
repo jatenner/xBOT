@@ -127,8 +127,8 @@ export class DailyBudgetAccounting {
 
     if (supabaseClient.supabase) {
       await Promise.all([
-        supabaseClient.supabase.rpc('exec_sql', { sql: createTransactionsTable }),
-        supabaseClient.supabase.rpc('exec_sql', { sql: createDailyBudgetTable })
+        supabaseClient.supabase!.rpc('exec_sql', { sql: createTransactionsTable }),
+        supabaseClient.supabase!.rpc('exec_sql', { sql: createDailyBudgetTable })
       ]);
     }
   }

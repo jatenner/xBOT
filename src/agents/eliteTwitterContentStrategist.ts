@@ -593,7 +593,7 @@ OPTIMIZED:`;
      */
     async recordPerformance(content: string, engagement: any): Promise<void> {
         try {
-            await secureSupabaseClient.supabase.from('elite_content_performance').insert({
+            await secureSupabaseClient.supabase!.from('elite_content_performance').insert({
                 content,
                 likes: engagement.likes || 0,
                 retweets: engagement.retweets || 0,
