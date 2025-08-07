@@ -33,6 +33,7 @@ import { followerTracker } from '../jobs/updateFollowerCount';
 import { analyticsServer } from '../dashboard/analyticsServer';
 import { influencerTweetFetcher } from '../jobs/fetchInfluencerTweets';
 import { contextAwareReplyEngine } from '../agents/contextAwareReplyEngine';
+import { postingLock } from '../utils/postingLock';
 
 export class UnifiedScheduler {
   private static instance: UnifiedScheduler;
@@ -176,9 +177,14 @@ export class UnifiedScheduler {
         return;
       }
       
-      // Step 2: Execute posting
+      // Step 2: Acquire lock then execute posting
+      const lockAcquired = await postingLock.acquire(5 * 60 * 1000);
+      if (!lockAcquired) {
+        console.log('🔒 Posting lock held by another process. Skipping this cycle.');
+        return;
+      }
+
       console.log('\n🚀 EXECUTING AUTONOMOUS POST...');
-      
       const result = await autonomousPostingEngine.executePost();
       
       if (result.success) {
@@ -206,9 +212,11 @@ export class UnifiedScheduler {
           await this.runEmergencyDiagnostics();
         }
       }
+      await postingLock.release();
       
     } catch (error) {
       console.error('💥 Autonomous posting check error:', error);
+      try { await postingLock.release(); } catch {}
       this.totalFailures++;
     }
   }
