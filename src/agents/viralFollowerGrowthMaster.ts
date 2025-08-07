@@ -150,7 +150,14 @@ export class ViralFollowerGrowthMaster {
       // Step 4: Add psychological triggers and engagement hooks
       const enhancedContent = await this.addPsychologicalTriggers(viralContent, template);
       
-      // Step 5: Calculate viral potential and engagement prediction
+      // Step 5: Check content uniqueness before proceeding
+      const isUnique = await this.checkContentUniqueness(enhancedContent.content);
+      if (!isUnique) {
+        console.log('🚫 Content too similar to recent posts, regenerating...');
+        return this.generateViralContent(requestedType);
+      }
+      
+      // Step 6: Calculate viral potential and engagement prediction
       const viralMetrics = await this.calculateViralPotential(enhancedContent, template);
       
       console.log(`✅ Viral content generated: ${viralMetrics.viral_score}/100 viral score`);
@@ -260,28 +267,163 @@ export class ViralFollowerGrowthMaster {
         console.warn('⚠️ Failed to parse trending topics, using fallback');
         topics = [];
       }
-      return Array.isArray(topics) ? topics : [
-        'seed oils toxicity',
-        'carnivore diet benefits',
-        'blue light sleep disruption',
-        'intermittent fasting myths',
-        'vaccine side effects',
-        'fluoride water dangers',
-        'meditation vs medication',
-        'sugar addiction epidemic',
-        'EMF radiation health risks',
-        'natural immunity superiority'
-      ];
+      return Array.isArray(topics) ? topics : await this.getDiverseFallbackTopics();
 
     } catch (error) {
       console.warn('⚠️ Trending topics fallback:', error);
-      return [
-        'seed oils are poison',
-        'cardio makes you fat',
-        'supplements are scams',
-        'doctors know nothing about nutrition',
-        'mental health is gut health'
+      return await this.getDiverseFallbackTopics();
+    }
+  }
+
+  /**
+   * 📚 GET DIVERSE FALLBACK TOPICS WITH ROTATION
+   */
+  private async getDiverseFallbackTopics(): Promise<string[]> {
+    try {
+      // Get recently used topics from database to avoid repeating them
+      const { data: recentTopics } = await supabaseClient.supabase
+        .from('tweets')
+        .select('content')
+        .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()) // Last 24 hours
+        .limit(20);
+
+      // Extract topics from recent content
+      const usedTopics = new Set<string>();
+      if (recentTopics) {
+        recentTopics.forEach(tweet => {
+          const content = tweet.content.toLowerCase();
+          if (content.includes('blue light')) usedTopics.add('blue light');
+          if (content.includes('sleep')) usedTopics.add('sleep');
+          if (content.includes('gut health')) usedTopics.add('gut health');
+          if (content.includes('intermittent fasting')) usedTopics.add('intermittent fasting');
+          if (content.includes('seed oils')) usedTopics.add('seed oils');
+          if (content.includes('carnivore')) usedTopics.add('carnivore');
+          if (content.includes('meditation')) usedTopics.add('meditation');
+          if (content.includes('supplements')) usedTopics.add('supplements');
+        });
+      }
+
+      console.log(`🚫 Blacklisted recently used topics: ${Array.from(usedTopics).join(', ')}`);
+
+      // Comprehensive topic pool with better diversity
+      const allTopics = [
+        // Nutrition & Diet (varied approaches)
+        'ketogenic diet metabolic benefits',
+        'plant-based protein myths debunked',
+        'processed foods inflammation link',
+        'micronutrient deficiency epidemic',
+        'food combining science',
+        'anti-inflammatory foods',
+        'metabolic flexibility training',
+        
+        // Fitness & Movement
+        'strength training longevity benefits',
+        'walking vs running for health',
+        'functional movement patterns',
+        'high-intensity interval training',
+        'mobility vs flexibility',
+        'bodyweight training efficiency',
+        
+        // Mental Health & Cognitive
+        'dopamine detox effectiveness',
+        'cold exposure therapy benefits',
+        'breathwork for anxiety',
+        'forest bathing stress reduction',
+        'digital minimalism mental health',
+        'neuroplasticity brain training',
+        
+        // Biohacking & Optimization
+        'circadian rhythm optimization',
+        'heat shock proteins sauna',
+        'mitochondrial health boosting',
+        'HRV heart rate variability',
+        'nootropics cognitive enhancement',
+        'grounding earthing benefits',
+        
+        // Preventive Health
+        'vitamin D3 deficiency pandemic',
+        'magnesium absorption issues',
+        'omega-3 inflammation balance',
+        'probiotics gut microbiome',
+        'antioxidants oxidative stress',
+        'hydration electrolyte balance',
+        
+        // Alternative Medicine
+        'acupuncture pain relief',
+        'herbal medicine vs pharmaceuticals',
+        'chiropractic adjustment benefits',
+        'massage therapy recovery',
+        'aromatherapy mood enhancement',
+        
+        // Technology & Health
+        'EMF protection strategies',
+        'air quality indoor pollution',
+        'water filtration importance',
+        'organic vs conventional foods',
+        'sustainable health practices'
       ];
+
+      // Filter out recently used topics
+      const availableTopics = allTopics.filter(topic => {
+        const topicWords = topic.toLowerCase().split(' ');
+        return !Array.from(usedTopics).some(usedTopic => 
+          topicWords.some(word => usedTopic.includes(word) || word.includes(usedTopic))
+        );
+      });
+
+      console.log(`✅ Available diverse topics: ${availableTopics.length}/${allTopics.length}`);
+
+      // Return random selection of 10 topics, or all available if less than 10
+      const shuffled = availableTopics.sort(() => 0.5 - Math.random());
+      return shuffled.slice(0, Math.min(10, shuffled.length));
+
+    } catch (error) {
+      console.warn('⚠️ Failed to get diverse topics, using basic fallback');
+      return [
+        'metabolic flexibility training',
+        'circadian rhythm optimization',
+        'functional movement patterns',
+        'anti-inflammatory foods',
+        'neuroplasticity brain training'
+      ];
+    }
+  }
+
+  /**
+   * 🔍 CHECK CONTENT UNIQUENESS AGAINST RECENT POSTS
+   */
+  private async checkContentUniqueness(content: string | string[]): Promise<boolean> {
+    try {
+      const contentText = Array.isArray(content) ? content.join(' ') : content;
+      const contentWords = contentText.toLowerCase().split(/\s+/).filter(word => word.length > 3);
+      
+      // Get recent posts from last 48 hours  
+      const { data: recentPosts } = await supabaseClient.supabase
+        .from('tweets')
+        .select('content')
+        .gte('created_at', new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString())
+        .limit(20);
+
+      if (!recentPosts || recentPosts.length === 0) {
+        return true; // No recent posts to compare against
+      }
+
+      // Check similarity with each recent post
+      for (const post of recentPosts) {
+        const postWords = post.content.toLowerCase().split(/\s+/).filter(word => word.length > 3);
+        const commonWords = contentWords.filter(word => postWords.includes(word));
+        const similarity = commonWords.length / Math.max(contentWords.length, postWords.length);
+        
+        if (similarity > 0.4) { // More than 40% word overlap
+          console.log(`🚫 High similarity detected: ${(similarity * 100).toFixed(1)}% with recent post`);
+          return false;
+        }
+      }
+
+      return true;
+    } catch (error) {
+      console.warn('⚠️ Uniqueness check failed, assuming unique:', error);
+      return true;
     }
   }
 
@@ -293,7 +435,8 @@ export class ViralFollowerGrowthMaster {
     content_type: 'single_tweet' | 'thread';
     raw_content: string;
   }> {
-    const selectedTopic = trendingTopics[Math.floor(Math.random() * Math.min(3, trendingTopics.length))];
+    // 🎯 IMPROVED TOPIC SELECTION: Use all available topics, not just first 3
+    const selectedTopic = trendingTopics[Math.floor(Math.random() * trendingTopics.length)];
     
     const contentPrompt = `Create viral Twitter content using this template and topic:
 
