@@ -276,8 +276,9 @@ export class MasterAutonomousController {
         this.updateComponentStatus('algorithm_mastery', 'error', [algorithmError.message]);
       }
 
-      // Initialize viral growth coordinator if in growth mode
-      if (process.env.BOT_PHASE === 'growth_mode') {
+      // 🚀 FORCE ACTIVATE VIRAL GROWTH FOR FOLLOWER GROWTH (Always on for small accounts)
+      console.log('🚀 FORCING VIRAL GROWTH ACTIVATION FOR SMALL ACCOUNT GROWTH...');
+      if (true) { // Always activate for follower growth
         console.log('🚀 Initializing Viral Growth Coordinator for maximum follower acquisition...');
         try {
           const viralGrowthModule = await import('./viralGrowthCoordinator');
@@ -387,7 +388,7 @@ export class MasterAutonomousController {
         console.error('❌ Posting cycle error:', error);
         this.updateComponentStatus('posting_engine', 'error', [error.message]);
       }
-    }, 30 * 60 * 1000)); // 30 minutes (REDUCED to prevent spam) for better timing optimization (was 3 hours)
+    }, 15 * 60 * 1000)); // 15 minutes (OPTIMIZED for small account growth) - checks every 15min, posts based on intelligent logic
     console.log('🧠 ADAPTIVE LEARNING: Intelligent scheduling with optimization (15-minute cycles)');
     
     // Import adaptive scheduler
