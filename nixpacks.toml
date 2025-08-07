@@ -1,18 +1,4 @@
-# 🚫 MINIMAL NIXPACKS - NO CACHE
-# Nuclear approach to avoid all NPM cache issues
-
+# Disable Nixpacks by pointing to Docker strategy (Railway prefers Dockerfile if present)
+# This file is intentionally minimal to avoid Nixpacks cache mounts which caused EBUSY.
 [variables]
-NODE_ENV = "production"
-NPM_CONFIG_CACHE = "/dev/null"
-NPM_CONFIG_UPDATE_NOTIFIER = "false"
-NPM_CONFIG_FUND = "false"
-NPM_CONFIG_AUDIT = "false"
-
-[phases.install]
-cmd = "npm install --no-cache --no-fund --no-audit"
-
-[phases.build]
-cmd = "npm run build"
-
-[start]
-cmd = "npm start"
+DISABLE_NIXPACKS = "true"
