@@ -1,22 +1,28 @@
-[phases.setup]
-nixPkgs = ['nodejs_20']
+# 🚀 OPTIMIZED RAILWAY BUILD CONFIGURATION
+# Prevents build timeouts and speeds up deployment
 
-[phases.install]
-cmds = ['npm install']
-
-[phases.build] 
-cmds = [
-  'npx tsc',
-  'mkdir -p dist/dashboard dist/prompts',
-  'cp -r src/dashboard/*.html dist/dashboard/ 2>/dev/null || true',
-  'cp -r src/prompts/* dist/prompts/ 2>/dev/null || true',
-  'echo "🗄️ Running database auto-migration..."',
-  'node scripts/auto-migrate.js || echo "⚠️ Migration will run at startup"'
-]
+[build]
+  # Optimize Node.js build
+  cmd = "npm ci --omit=dev --cache .npm && npm run build"
 
 [start]
-cmd = 'node dist/main.js'
+  cmd = "npm start"
 
 [variables]
-NODE_ENV = 'production'
-SKIP_PLAYWRIGHT = 'false'
+  # Optimize Node.js for Railway
+  NODE_ENV = "production"
+  NPM_CONFIG_CACHE = ".npm"
+  # Increase build timeout
+  NPM_CONFIG_TIMEOUT = "300000"
+  # Reduce memory usage during build
+  NODE_OPTIONS = "--max-old-space-size=1024"
+
+[phases.build]
+  # Use faster npm ci instead of npm install
+  cmds = [
+    "npm ci --omit=dev --cache .npm",
+    "npm run build"
+  ]
+
+[phases.start]
+  cmd = "npm start"
