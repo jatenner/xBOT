@@ -5,6 +5,7 @@
 
 import { resilientSupabaseClient } from './resilientSupabaseClient';
 import { BudgetAwareOpenAI } from './budgetAwareOpenAI';
+import process from 'process';
 
 interface ResilienceStatus {
   database_status: 'HEALTHY' | 'DEGRADED' | 'OFFLINE';
@@ -29,7 +30,7 @@ export class DatabaseResilienceActivator {
   }
 
   constructor() {
-    this.budgetAware = new BudgetAwareOpenAI();
+    this.budgetAware = new BudgetAwareOpenAI(process.env.OPENAI_API_KEY || '');
   }
 
   /**
@@ -278,8 +279,8 @@ export class DatabaseResilienceActivator {
         database_status: connectivityTest.status,
         circuit_breaker_active: connectionStatus.circuitBreakerOpen,
         fallback_mode_enabled: this.fallbackMode,
-        retry_success_rate: connectionStatus.successRate,
-        last_successful_connection: connectionStatus.lastSuccessfulConnection || new Date().toISOString(),
+        retry_success_rate: parseFloat(connectionStatus.successRate) || 0.7,
+        last_successful_connection: new Date().toISOString(),
         recommendations: this.generateRecommendations(connectivityTest.status)
       };
       

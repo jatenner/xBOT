@@ -574,7 +574,7 @@ export class AutonomousPostingEngine {
 
           console.log(`🎯 Elite strategist request: ${JSON.stringify(contentRequest)}`);
           
-          const eliteResult = await viralMaster.generateViralContent('health_tip');
+          const eliteResult = await viralMaster.generateSupremeIntelligenceContent();
           
           if (eliteResult && eliteResult.content) {
             const contentString = Array.isArray(eliteResult.content) ? 
@@ -1025,7 +1025,7 @@ export class AutonomousPostingEngine {
       try {
         const { ViralFollowerGrowthMaster } = await import('../agents/viralFollowerGrowthMaster');
         const viralMaster = ViralFollowerGrowthMaster.getInstance();
-        const viralResult = await viralMaster.generateViralContent();
+        const viralResult = await viralMaster.generateSupremeIntelligenceContent();
         
         if (viralResult.viral_score > 30) { // Lowered threshold to allow more content through
           console.log(`🚀 Using viral content system (score: ${viralResult.viral_score})`);

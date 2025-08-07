@@ -13,6 +13,7 @@
 import { BudgetAwareOpenAI } from '../utils/budgetAwareOpenAI';
 import { supabaseClient } from '../utils/supabaseClient';
 import { resilientSupabaseClient } from '../utils/resilientSupabaseClient';
+import { SupremeContentIntelligence } from '../intelligence/supremeContentIntelligence';
 import OpenAI from 'openai';
 
 interface ViralContentTemplate {
@@ -55,6 +56,7 @@ export class ViralFollowerGrowthMaster {
   private static instance: ViralFollowerGrowthMaster;
   private budgetAwareOpenAI: BudgetAwareOpenAI;
   private openai: OpenAI;
+  private supremeContentIntelligence: SupremeContentIntelligence;
   
   // Viral content templates proven to drive follower growth
   private static readonly VIRAL_TEMPLATES: ViralContentTemplate[] = [
@@ -130,10 +132,63 @@ export class ViralFollowerGrowthMaster {
   constructor() {
     this.budgetAwareOpenAI = new BudgetAwareOpenAI(process.env.OPENAI_API_KEY || '');
     this.openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    this.supremeContentIntelligence = SupremeContentIntelligence.getInstance();
   }
 
   /**
-   * 🎯 GENERATE VIRAL CONTENT FOR FOLLOWER GROWTH
+   * 🔄 Map supreme content types to viral content types
+   */
+  private mapContentType(supremeType: string): 'single_tweet' | 'thread' | 'quote_tweet' {
+    switch (supremeType) {
+      case 'thread':
+        return 'thread';
+      case 'quote':
+        return 'quote_tweet';
+      default:
+        return 'single_tweet';
+    }
+  }
+
+  /**
+   * 🧠 GENERATE SUPREME INTELLIGENCE CONTENT (NEW METHOD)
+   */
+  async generateSupremeIntelligenceContent(): Promise<ViralContentResult> {
+    try {
+      console.log('🧠 === SUPREME INTELLIGENCE CONTENT GENERATION ===');
+      
+      // Use the supreme content intelligence system
+      const supremeResult = await this.supremeContentIntelligence.generateSupremeContent();
+      
+      if (supremeResult.success && supremeResult.intelligence_analysis.approved) {
+        console.log(`🧠 Supreme content approved: ${supremeResult.content_type} | Quality: ${supremeResult.quality_score}% | Growth Potential: ${supremeResult.follower_growth_potential}%`);
+        
+        const mappedContentType = this.mapContentType(supremeResult.content_type);
+        
+        return {
+          content: supremeResult.content,
+          content_type: mappedContentType,
+          viral_score: supremeResult.follower_growth_potential,
+          controversy_level: 'high',
+          psychological_triggers: ['authority', 'contrarian', 'expertise'],
+          expected_engagement: supremeResult.quality_score,
+          target_demographics: ['health_enthusiasts', 'wellness_seekers'],
+          posting_strategy: 'supreme_intelligence_optimized',
+          engagement_hooks: [`${supremeResult.content_type}_hook`, 'authority_positioning'],
+          call_to_action: 'follow_for_expert_insights'
+        };
+      } else {
+        console.warn('⚠️ Supreme content not approved, falling back to viral system');
+        return await this.generateViralContent();
+      }
+      
+    } catch (error) {
+      console.warn('⚠️ Supreme intelligence generation failed, using viral fallback:', error);
+      return await this.generateViralContent();
+    }
+  }
+
+  /**
+   * 🎯 GENERATE VIRAL CONTENT FOR FOLLOWER GROWTH (ENHANCED)
    */
   async generateViralContent(requestedType?: string): Promise<ViralContentResult> {
     try {

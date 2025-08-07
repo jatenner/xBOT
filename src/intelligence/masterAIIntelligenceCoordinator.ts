@@ -5,6 +5,7 @@
 
 import { resilientSupabaseClient } from '../utils/resilientSupabaseClient';
 import { BudgetAwareOpenAI } from '../utils/budgetAwareOpenAI';
+import process from 'process';
 
 interface AIAgent {
   name: string;
@@ -104,7 +105,7 @@ export class MasterAIIntelligenceCoordinator {
   }
 
   constructor() {
-    this.budgetAware = new BudgetAwareOpenAI();
+    this.budgetAware = new BudgetAwareOpenAI(process.env.OPENAI_API_KEY || '');
     this.intelligenceState = {
       global_context: {},
       active_agents: this.AI_AGENTS.filter(agent => agent.active),
@@ -372,10 +373,9 @@ Respond with ONLY JSON:
   "prioritize_engagement": true/false,
   "prioritize_algorithm": true/false,
   "priority_reasoning": "explanation of strategy"
-}`, {
+}`, 'critical', 'supreme_coordination', {
         model: 'gpt-4o-mini',
-        max_tokens: 300,
-        operation_type: 'supreme_coordination'
+        maxTokens: 300
       });
 
       if (response.success && response.content) {
@@ -461,10 +461,9 @@ Generate 2-3 key meta-learning insights that improve the coordination of all AI 
 Respond with JSON:
 {
   "insights": ["insight1", "insight2", "insight3"]
-}`, {
+}`, 'important', 'meta_learning', {
         model: 'gpt-4o-mini',
-        max_tokens: 200,
-        operation_type: 'meta_learning'
+        maxTokens: 200
       });
 
       if (metaLearning.success && metaLearning.content) {
