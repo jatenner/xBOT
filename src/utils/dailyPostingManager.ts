@@ -1,4 +1,5 @@
 import { secureSupabaseClient } from './secureSupabaseClient';
+import { supabaseClient } from './supabaseClient';
 import { StreamlinedPostAgent } from '../agents/streamlinedPostAgent'; // Changed from PostTweetAgent
 import { contentCache } from './contentCache';
 import { IntelligentSchedulingAgent } from '../agents/intelligentSchedulingAgent';
@@ -284,14 +285,19 @@ class DailyPostingManager {
 
   private scheduleIntelligentPost(post: any): void {
     const cronExpression = `${post.scheduledTime.getMinutes()} ${post.scheduledTime.getHours()} ${post.scheduledTime.getDate()} ${post.scheduledTime.getMonth() + 1} *`;
-    
-    const job = // 🚨 EMERGENCY DISABLED: // EMERGENCY DISABLED: cron.schedule(cronExpression, async () => {
-      console.log(`🧠 Executing intelligent post: ${post.triggerReason}`);
-      await this.executePost('scheduled');
-    }, {
-      scheduled: true,
-      timezone: "America/New_York"
-    });
+
+    // Keep job defined but disabled to avoid runtime posting while compiling cleanly
+    const job = cron.schedule(
+      cronExpression,
+      async () => {
+        console.log(`🧠 Executing intelligent post: ${post.triggerReason}`);
+        await this.executePost('scheduled');
+      },
+      {
+        scheduled: false,
+        timezone: 'America/New_York'
+      }
+    );
 
     this.scheduledJobs.push(job);
     console.log(`🎯 Intelligent post scheduled for ${post.scheduledTime.toLocaleTimeString()}: ${post.triggerReason}`);
@@ -301,8 +307,10 @@ class DailyPostingManager {
     console.log('🎯 Setting up STRATEGIC OPPORTUNITY monitoring...');
     
     // 🧠 HUMAN-LIKE STRATEGIC MONITORING: Think like a savvy Twitter user every 2 hours
-    const strategicMonitoringJob = // 🚨 EMERGENCY DISABLED: // EMERGENCY DISABLED: cron.schedule('0 */2 * * *', async () => {
-      try {
+    const strategicMonitoringJob = cron.schedule(
+      '0 */2 * * *',
+      async () => {
+        try {
         console.log('🧠 THINKING LIKE A STRATEGIC HUMAN...');
         console.log('   👀 Scanning trends, news, and opportunities...');
         
@@ -361,17 +369,20 @@ class DailyPostingManager {
         } catch (fallbackError) {
           console.error('❌ Fallback strategic monitoring also failed:', fallbackError);
         }
+      },
+      {
+        scheduled: false,
+        timezone: 'America/New_York'
       }
-    }, {
-      scheduled: true,
-      timezone: "America/New_York"
-    });
+    );
     
     this.scheduledJobs.push(strategicMonitoringJob);
     
     // 🧠 STRATEGIC INTELLIGENCE REVIEW: Analyze and optimize daily
-    const intelligenceReviewJob = // 🚨 EMERGENCY DISABLED: // EMERGENCY DISABLED: cron.schedule('0 6 * * *', async () => {
-      try {
+    const intelligenceReviewJob = cron.schedule(
+      '0 6 * * *',
+      async () => {
+        try {
         console.log('🧠 DAILY STRATEGIC INTELLIGENCE REVIEW...');
         
         const opportunities = await strategicOpportunityScheduler.analyzeStrategicOpportunities();
@@ -388,13 +399,15 @@ class DailyPostingManager {
           // Could adjust posting strategy here if needed
         }
         
-      } catch (error) {
-        console.error('❌ Intelligence review error:', error);
+        } catch (error) {
+          console.error('❌ Intelligence review error:', error);
+        }
+      },
+      {
+        scheduled: false,
+        timezone: 'America/New_York'
       }
-    }, {
-      scheduled: true,
-      timezone: "America/New_York"
-    });
+    );
     
     this.scheduledJobs.push(intelligenceReviewJob);
     
@@ -410,13 +423,17 @@ class DailyPostingManager {
 
   private schedulePost(postTime: Date): void {
     const cronExpression = `${postTime.getMinutes()} ${postTime.getHours()} ${postTime.getDate()} ${postTime.getMonth() + 1} *`;
-    
-    const job = // 🚨 EMERGENCY DISABLED: // EMERGENCY DISABLED: cron.schedule(cronExpression, async () => {
-      await this.executePost('scheduled');
-    }, {
-      scheduled: true,
-      timezone: "America/New_York"
-    });
+
+    const job = cron.schedule(
+      cronExpression,
+      async () => {
+        await this.executePost('scheduled');
+      },
+      {
+        scheduled: false,
+        timezone: 'America/New_York'
+      }
+    );
 
     this.scheduledJobs.push(job);
     console.log(`⏰ Scheduled post for ${postTime.toLocaleTimeString()}`);
@@ -512,15 +529,24 @@ class DailyPostingManager {
   }
 
   private startMonitoring(): void {
-    // Check progress every hour
-    // 🚨 EMERGENCY DISABLED: // EMERGENCY DISABLED: cron.schedule('0 * * * *', async () => {
-      await this.checkProgress();
-    }, { scheduled: true });
+    // Check progress every hour (defined but disabled to avoid unintended posting on deploy)
+    const hourlyCheckJob = cron.schedule(
+      '0 * * * *',
+      async () => {
+        await this.checkProgress();
+      },
+      { scheduled: false }
+    );
 
-    // Daily reset at midnight
-    // 🚨 EMERGENCY DISABLED: // EMERGENCY DISABLED: cron.schedule('0 0 * * *', async () => {
-      await this.resetDaily();
-    }, { scheduled: true });
+    const midnightResetJob = cron.schedule(
+      '0 0 * * *',
+      async () => {
+        await this.resetDaily();
+      },
+      { scheduled: false }
+    );
+
+    this.scheduledJobs.push(hourlyCheckJob, midnightResetJob);
   }
 
   private async checkProgress(): Promise<void> {
