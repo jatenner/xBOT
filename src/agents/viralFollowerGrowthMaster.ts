@@ -298,7 +298,8 @@ export class ViralFollowerGrowthMaster {
       if (recentTopics && recentTopics.length > 0) {
         console.log('📋 Sample recent tweets:');
         recentTopics.slice(0, 3).forEach((tweet, i) => {
-          console.log(`  ${i + 1}. ${tweet.created_at}: "${tweet.content.substring(0, 80)}..."`);
+          const content = tweet.content || 'Unknown content';
+          console.log(`  ${i + 1}. ${tweet.created_at}: "${content.substring(0, 80)}..."`);
         });
       }
 
@@ -306,6 +307,11 @@ export class ViralFollowerGrowthMaster {
       const usedTopics = new Set<string>();
       if (recentTopics) {
         recentTopics.forEach(tweet => {
+          // Handle null/undefined content
+          if (!tweet.content || typeof tweet.content !== 'string') {
+            console.log(`⚠️ Skipping tweet with invalid content: ${tweet.tweet_id}`);
+            return;
+          }
           const content = tweet.content.toLowerCase();
           
           // 🔍 COMPREHENSIVE TOPIC DETECTION
@@ -581,7 +587,7 @@ ${template.psychological_triggers.map(trigger => `- ${trigger}`).join('\n')}
 
 📝 EXAMPLES OF VIRAL HEALTH TWEETS (COPY THIS STYLE):
 
-GOOD EXAMPLE (viral format):
+GOOD EXAMPLE (controversial fact):
 "Most doctors won't tell you this:
 
 Eating late doesn't make you fat.
@@ -589,23 +595,50 @@ Your metabolism doesn't "shut down" at night.
 
 The real problem? Most late-night eating is mindless snacking.
 
-What time do you usually eat dinner? 🤔"
+Focus on what you eat, not when you eat it."
 
-BAD EXAMPLE (essay format):
-"Recent research from Harvard Medical School indicates that the commonly held belief about late-night eating and weight gain may be more nuanced than previously thought. While it's true that eating late can contribute to weight gain, the mechanism isn't what most people think..."
-
-GOOD EXAMPLE (controversial hook):
+GOOD EXAMPLE (myth-busting):
 "The vitamin industry doesn't want you to know this:
 
 95% of supplements are useless.
 
 Your expensive multivitamin? Probably making expensive urine.
 
-The only 3 supplements most people actually need: 👇"
+Save your money. Get nutrients from real food instead."
 
-📋 YOUR TASK: Create content like the GOOD examples, never like the BAD example.
+GOOD EXAMPLE (shocking revelation):
+"Your "healthy" breakfast is sabotaging your day:
 
-Generate content that will get people talking, sharing, and following.
+• Oatmeal spikes blood sugar 
+• Granola is candy in disguise
+• Orange juice = liquid sugar
+
+Try: Eggs, avocado, and berries instead.
+
+Your energy will thank you."
+
+BAD EXAMPLE (question-heavy):
+"What do you think about intermittent fasting? Have you tried it? What time do you usually eat dinner? Let me know in the comments!"
+
+BAD EXAMPLE (essay format):
+"Recent research from Harvard Medical School indicates that the commonly held belief about late-night eating and weight gain may be more nuanced..."
+
+📋 YOUR TASK: Create content like the GOOD examples, never like the BAD examples.
+
+🚫 AVOID THESE PATTERNS:
+- Don't end with questions ("What do you think?", "Let me know!")
+- Don't ask for engagement ("Comment below!", "Share if you agree!")
+- Don't make it about the reader's personal experience
+- Don't use question-heavy content
+
+✅ DO THESE INSTEAD:
+- Make bold, confident statements
+- Provide actionable advice
+- Challenge common beliefs
+- Give specific, practical tips
+- End with value, not questions
+
+Generate content that delivers immediate value and gets people talking through controversy, not questions.
 
 Return ONLY the content, formatted for Twitter:`;
 
