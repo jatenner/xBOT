@@ -50,6 +50,9 @@
     "src/utils/railwayResourceMonitor.ts",
     "src/utils/followerGrowthLearner.ts",
     "src/agents/intelligentPostingOptimizerAgent.ts",
+    "src/utils/aiService.ts",
+    "src/utils/postingLock.ts",
+    "src/config/persona.ts",
     "src/jobs/**/*",
     "src/types/**/*"
   ],

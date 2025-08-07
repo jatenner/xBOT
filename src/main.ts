@@ -98,35 +98,13 @@ async function initializeBotAsync(): Promise<void> {
     console.log('📦 Loading bot systems...');
     
     try {
-      // Dynamic imports to avoid early failures
-      const { MasterAutonomousController } = await import('./core/masterAutonomousController');
-      const { PRODUCTION_CONFIG } = await import('./config/productionConfig');
-
-      console.log('⚙️ === PRODUCTION CONFIGURATION ===');
-      console.log(`💰 Daily Budget: $${PRODUCTION_CONFIG.budget.dailyLimit}`);
-      console.log(`📝 Max Daily Posts: ${PRODUCTION_CONFIG.posting.maxDailyPosts}`);
-      console.log(`🤝 Daily Engagement: ${PRODUCTION_CONFIG.engagement.dailyLikes} likes, ${PRODUCTION_CONFIG.engagement.dailyReplies} replies, ${PRODUCTION_CONFIG.engagement.dailyFollows} follows`);
-      console.log(`🧠 Intelligence: ${PRODUCTION_CONFIG.intelligence.enabled ? 'ENABLED' : 'DISABLED'} (${PRODUCTION_CONFIG.intelligence.optimizationLevel} mode)`);
-      console.log('');
-
-      updateBotStatus('creating_controller');
-      console.log('🧠 Creating Master Autonomous Controller...');
-      botController = MasterAutonomousController.getInstance();
-
-      // 🧠 AI LEARNING SYSTEM TEMPORARILY DISABLED FOR BUILD SUCCESS
-console.log('📚 AI learning system temporarily disabled for stable deployment');
-// try {
-//   const { dailyLearningScheduler } = await import('./ai/DailyLearningScheduler');
-//   await dailyLearningScheduler.start();
-//   console.log('✅ Daily learning system active');
-// } catch (learningError) {
-//   console.error('⚠️ Learning system startup failed:', learningError);
-//   console.log('📝 Bot will continue without learning system');
-// }
-
+      // Consolidated startup: use UnifiedScheduler only
+      const { UnifiedScheduler } = await import('./core/unifiedScheduler');
+      const scheduler = UnifiedScheduler.getInstance();
       updateBotStatus('starting_operations');
-      console.log('🚀 Starting autonomous operations...');
-      await botController.startAutonomousOperation();
+      console.log('🚀 Starting Unified Scheduler...');
+      await scheduler.start();
+      botController = scheduler as any;
 
       updateBotStatus('running', botController);
       console.log('🤖 Bot fully operational!');
