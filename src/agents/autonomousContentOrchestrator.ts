@@ -47,15 +47,16 @@ export class AutonomousContentOrchestrator {
     error?: string;
     contentPlan?: ContentPlan;
   }> {
-    // 🚨 EMERGENCY DISABLED: This orchestrator was bypassing quality gates
-    console.log('🚫 EMERGENCY: Autonomous Content Orchestrator completely disabled');
-    console.log('⚠️ This system was orchestrating low-quality content generation');
-    
-    return {
-      success: false,
-      error: 'EMERGENCY: Content orchestration disabled for quality issues'
-    };
-  } catch (error) {
+    try {
+      // 🚨 EMERGENCY DISABLED: This orchestrator was bypassing quality gates
+      console.log('🚫 EMERGENCY: Autonomous Content Orchestrator completely disabled');
+      console.log('⚠️ This system was orchestrating low-quality content generation');
+      
+      return {
+        success: false,
+        error: 'EMERGENCY: Content orchestration disabled for quality issues'
+      };
+    } catch (error) {
       console.error('❌ Autonomous content orchestration failed:', error);
       
       return {
