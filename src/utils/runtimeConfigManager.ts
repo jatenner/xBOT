@@ -33,6 +33,24 @@ export class RuntimeConfigManager {
   }
 
   /**
+   * 🔧 STATIC HELPER: Set single config value
+   * Used by immediateGrowthAccelerator and other agents
+   */
+  static async set(key: string, value: any): Promise<void> {
+    const instance = RuntimeConfigManager.getInstance();
+    return instance.updateConfig({ [key]: value } as any);
+  }
+
+  /**
+   * 🔧 STATIC HELPER: Set multiple config values
+   * Used by immediateGrowthAccelerator and other agents
+   */
+  static async setBulk(updates: Record<string, any>): Promise<void> {
+    const instance = RuntimeConfigManager.getInstance();
+    return instance.updateConfig(updates as any);
+  }
+
+  /**
    * 📥 GET CURRENT CONFIGURATION
    */
   async getConfig(): Promise<RuntimeConfig> {
