@@ -311,63 +311,64 @@ class DailyPostingManager {
       '0 */2 * * *',
       async () => {
         try {
-        console.log('🧠 THINKING LIKE A STRATEGIC HUMAN...');
-        console.log('   👀 Scanning trends, news, and opportunities...');
-        
-        // Get human-like strategic analysis
-        const humanAnalysis = await this.humanStrategicMind.analyzeWorldLikeHuman();
-        
-        console.log('🧠 HUMAN-LIKE STRATEGIC ANALYSIS:');
-        console.log(`   💡 Strategic insights: ${humanAnalysis.insights.length}`);
-        console.log(`   📝 Posting opportunities: ${humanAnalysis.postingRecommendations.length}`);
-        console.log(`   🎯 Strategic thinking: "${humanAnalysis.strategicNarrative}"`);
-        
-        // Execute high-urgency recommendations
-        const urgentRecommendations = humanAnalysis.postingRecommendations.filter(r => 
-          r.urgency > 0.6 && (r.when === 'immediate' || r.when === 'within_hour')
-        );
-        
-        if (urgentRecommendations.length > 0) {
-          console.log(`🚨 ${urgentRecommendations.length} URGENT STRATEGIC OPPORTUNITIES DETECTED!`);
+          console.log('🧠 THINKING LIKE A STRATEGIC HUMAN...');
+          console.log('   👀 Scanning trends, news, and opportunities...');
           
-          for (const rec of urgentRecommendations.slice(0, 3)) { // Max 3 strategic posts per check
-            if (this.currentState.posts_completed >= this.MAX_POSTS_PER_DAY) break;
+          // Get human-like strategic analysis
+          const humanAnalysis = await this.humanStrategicMind.analyzeWorldLikeHuman();
+          
+          console.log('🧠 HUMAN-LIKE STRATEGIC ANALYSIS:');
+          console.log(`   💡 Strategic insights: ${humanAnalysis.insights.length}`);
+          console.log(`   📝 Posting opportunities: ${humanAnalysis.postingRecommendations.length}`);
+          console.log(`   🎯 Strategic thinking: "${humanAnalysis.strategicNarrative}"`);
+          
+          // Execute high-urgency recommendations
+          const urgentRecommendations = humanAnalysis.postingRecommendations.filter(r => 
+            r.urgency > 0.6 && (r.when === 'immediate' || r.when === 'within_hour')
+          );
+          
+          if (urgentRecommendations.length > 0) {
+            console.log(`🚨 ${urgentRecommendations.length} URGENT STRATEGIC OPPORTUNITIES DETECTED!`);
             
-            console.log(`🔥 STRATEGIC OPPORTUNITY: ${rec.trigger}`);
-            console.log(`   📊 Urgency: ${(rec.urgency * 100).toFixed(0)}%`);
-            console.log(`   📝 Posts: ${rec.postCount}`);
-            console.log(`   🎯 Content type: ${rec.contentType}`);
-            console.log(`   💡 Angles: ${rec.contentAngles.join(', ')}`);
-            
-            // 🚨 EMERGENCY FIX: Disabled strategic burst posting
-            console.log('🛑 Strategic burst posting DISABLED - preventing API spam');
-            console.log(`   Would have posted ${rec.postCount} times but blocked for safety`);
-            // Removed actual posting code to prevent API exhaustion
+            for (const rec of urgentRecommendations.slice(0, 3)) { // Max 3 strategic posts per check
+              if (this.currentState.posts_completed >= this.MAX_POSTS_PER_DAY) break;
+              
+              console.log(`🔥 STRATEGIC OPPORTUNITY: ${rec.trigger}`);
+              console.log(`   📊 Urgency: ${(rec.urgency * 100).toFixed(0)}%`);
+              console.log(`   📝 Posts: ${rec.postCount}`);
+              console.log(`   🎯 Content type: ${rec.contentType}`);
+              console.log(`   💡 Angles: ${rec.contentAngles.join(', ')}`);
+              
+              // 🚨 EMERGENCY FIX: Disabled strategic burst posting
+              console.log('🛑 Strategic burst posting DISABLED - preventing API spam');
+              console.log(`   Would have posted ${rec.postCount} times but blocked for safety`);
+              // Removed actual posting code to prevent API exhaustion
+            }
+          } else {
+            console.log('📊 No urgent strategic opportunities detected');
+            console.log('   🧠 Strategic mind is monitoring and waiting for the right moment...');
           }
-        } else {
-          console.log('📊 No urgent strategic opportunities detected');
-          console.log('   🧠 Strategic mind is monitoring and waiting for the right moment...');
-        }
-        
-        // Fallback: Check if we're behind schedule
-        const progress = this.getDailyProgress();
-        if (!progress.onTrack && progress.remaining > 0) {
-          console.log('⚡ Behind schedule - activating catch-up mode');
-          await this.activateEmergencyPosting(1);
-        }
-        
-      } catch (error) {
-        console.error('❌ Human-like strategic monitoring error:', error);
-        
-        // Fallback to basic strategic monitoring
-        try {
-          const basicDecision = await strategicOpportunityScheduler.shouldPostStrategically();
-          if (basicDecision.shouldPost && basicDecision.urgency > 0.7) {
-            console.log('🔄 Fallback: Basic strategic opportunity detected');
-            await this.executePost('emergency');
+          
+          // Fallback: Check if we're behind schedule
+          const progress = this.getDailyProgress();
+          if (!progress.onTrack && progress.remaining > 0) {
+            console.log('⚡ Behind schedule - activating catch-up mode');
+            await this.activateEmergencyPosting(1);
           }
-        } catch (fallbackError) {
-          console.error('❌ Fallback strategic monitoring also failed:', fallbackError);
+          
+        } catch (error) {
+          console.error('❌ Human-like strategic monitoring error:', error);
+          
+          // Fallback to basic strategic monitoring
+          try {
+            const basicDecision = await strategicOpportunityScheduler.shouldPostStrategically();
+            if (basicDecision.shouldPost && basicDecision.urgency > 0.7) {
+              console.log('🔄 Fallback: Basic strategic opportunity detected');
+              await this.executePost('emergency');
+            }
+          } catch (fallbackError) {
+            console.error('❌ Fallback strategic monitoring also failed:', fallbackError);
+          }
         }
       },
       {
@@ -383,22 +384,22 @@ class DailyPostingManager {
       '0 6 * * *',
       async () => {
         try {
-        console.log('🧠 DAILY STRATEGIC INTELLIGENCE REVIEW...');
-        
-        const opportunities = await strategicOpportunityScheduler.analyzeStrategicOpportunities();
-        
-        console.log(`🎯 STRATEGIC ANALYSIS:`);
-        console.log(`   📊 ${opportunities.opportunities.length} opportunities identified`);
-        console.log(`   📝 ${opportunities.totalRecommendedPosts} posts recommended`);
-        console.log(`   🔥 Confidence: ${opportunities.confidenceScore}%`);
-        console.log(`   🧠 Strategic reasons: ${opportunities.strategicReasons.join(', ')}`);
-        
-        // If high confidence and many opportunities, be more aggressive
-        if (opportunities.confidenceScore > 80 && opportunities.opportunities.length > 5) {
-          console.log('🚀 High-opportunity day detected - optimizing for maximum engagement');
-          // Could adjust posting strategy here if needed
-        }
-        
+          console.log('🧠 DAILY STRATEGIC INTELLIGENCE REVIEW...');
+          
+          const opportunities = await strategicOpportunityScheduler.analyzeStrategicOpportunities();
+          
+          console.log(`🎯 STRATEGIC ANALYSIS:`);
+          console.log(`   📊 ${opportunities.opportunities.length} opportunities identified`);
+          console.log(`   📝 ${opportunities.totalRecommendedPosts} posts recommended`);
+          console.log(`   🔥 Confidence: ${opportunities.confidenceScore}%`);
+          console.log(`   🧠 Strategic reasons: ${opportunities.strategicReasons.join(', ')}`);
+          
+          // If high confidence and many opportunities, be more aggressive
+          if (opportunities.confidenceScore > 80 && opportunities.opportunities.length > 5) {
+            console.log('🚀 High-opportunity day detected - optimizing for maximum engagement');
+            // Could adjust posting strategy here if needed
+          }
+          
         } catch (error) {
           console.error('❌ Intelligence review error:', error);
         }
