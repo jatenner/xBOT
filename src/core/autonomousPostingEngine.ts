@@ -116,7 +116,7 @@ export class AutonomousPostingEngine {
 
       // Realistic posting intervals for human-like behavior (3-8 posts/day)
       let requiredInterval: number;
-      let strategy: 'aggressive' | 'balanced' | 'conservative' | 'growth';
+      let strategy: 'aggressive' | 'balanced' | 'conservative' | 'growth_optimized';
       let confidence: number;
 
       // 🚀 SMALL ACCOUNT GROWTH OPTIMIZATION: Aggressive posting for follower growth
@@ -138,7 +138,7 @@ export class AutonomousPostingEngine {
       } else if (minutesSinceLastPost >= 90) {
         // Growth mode (1.5+ hours) - NEW for small accounts
         requiredInterval = 90; // 1.5 hours
-        strategy = 'growth';
+        strategy = 'growth_optimized';
         confidence = 0.80;
       } else {
         // Too soon - but much more permissive for small account growth
@@ -147,7 +147,7 @@ export class AutonomousPostingEngine {
           should_post: false,
           reason: `Small account growth spacing (${minutesSinceLastPost}min ago, need ${90}min)`,
           confidence: 0.6,
-          strategy: 'growth',
+          strategy: 'growth_optimized',
           wait_minutes: Math.max(waitTime, 15)
         };
       }
