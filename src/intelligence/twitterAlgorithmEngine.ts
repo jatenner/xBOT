@@ -464,7 +464,7 @@ Return as JSON array of triggers with conversion rates.`;
     try {
       // Store algorithm signals
       if (signals.length > 0) {
-        await supabaseClient.supabase.from('algorithm_signals').insert(
+        await supabaseClient.supabase!.from('algorithm_signals').insert(
           signals.map(signal => ({
             signal_type: signal.signal_type,
             signal_strength: signal.signal_strength,
@@ -478,7 +478,7 @@ Return as JSON array of triggers with conversion rates.`;
       
       // Store viral patterns
       if (patterns.length > 0) {
-        await supabaseClient.supabase.from('viral_patterns').upsert(
+        await supabaseClient.supabase!.from('viral_patterns').upsert(
           patterns.map(pattern => ({
             pattern_id: pattern.pattern_id,
             pattern_type: pattern.pattern_type,
@@ -495,7 +495,7 @@ Return as JSON array of triggers with conversion rates.`;
       
       // Store algorithm insights
       if (insights.length > 0) {
-        await supabaseClient.supabase.from('algorithm_insights').insert(
+        await supabaseClient.supabase!.from('algorithm_insights').insert(
           insights.map(insight => ({
             insight_type: insight.insight_type,
             recommendation: insight.recommendation,

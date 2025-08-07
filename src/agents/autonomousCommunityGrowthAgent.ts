@@ -737,7 +737,7 @@ Insight:`;
     try {
       // Use the supabase client correctly
       if (supabaseClient.supabase) {
-        await supabaseClient.supabase.from('growth_metrics').insert({
+        await supabaseClient.supabase!.from('growth_metrics').insert({
           ...metrics,
           created_at: new Date().toISOString()
         });
@@ -751,7 +751,7 @@ Insight:`;
     try {
       // Use the supabase client correctly
       if (supabaseClient.supabase) {
-        await supabaseClient.supabase.from('growth_actions').insert({
+        await supabaseClient.supabase!.from('growth_actions').insert({
           action_type: action,
           tweet_id: tweetId,
           user_id: userId,

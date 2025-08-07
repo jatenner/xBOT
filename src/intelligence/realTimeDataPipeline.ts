@@ -223,7 +223,7 @@ export class RealTimeDataPipeline {
       };
 
       // Store in velocity tracking table
-      await supabaseClient.supabase.from('engagement_velocity_tracking').insert({
+      await supabaseClient.supabase!.from('engagement_velocity_tracking').insert({
         tweet_id: tweetId,
         likes_count: metrics.likes_count,
         retweets_count: metrics.retweets_count,
@@ -320,7 +320,7 @@ export class RealTimeDataPipeline {
 
       // Store trending topics
       if (trendingTopics.length > 0) {
-        await supabaseClient.supabase.from('health_trending_topics').insert(
+        await supabaseClient.supabase!.from('health_trending_topics').insert(
           trendingTopics.map(topic => ({
             topic: topic.topic,
             trend_strength: topic.trend_strength,
@@ -397,7 +397,7 @@ export class RealTimeDataPipeline {
       }
 
       // Store competitor analysis
-      await supabaseClient.supabase.from('competitor_analysis').insert({
+      await supabaseClient.supabase!.from('competitor_analysis').insert({
         competitor_handle: handle,
         tweet_content: 'AI Analysis Summary',
         likes_count: 0,
@@ -468,7 +468,7 @@ Return as JSON object with synthesis insights.`;
 
       // Store actionable insights
       if (insights.content_recommendations) {
-        await supabaseClient.supabase.from('algorithm_insights').insert({
+        await supabaseClient.supabase!.from('algorithm_insights').insert({
           insight_type: 'content_strategy',
           recommendation: JSON.stringify(insights.content_recommendations),
           expected_impact: 30,

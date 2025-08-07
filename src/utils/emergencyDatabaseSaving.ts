@@ -183,7 +183,7 @@ export class EmergencyDatabaseSaving {
       RETURNING id;
     `;
     
-    const { data, error } = await secureSupabaseClient.supabase.rpc('execute_sql', {
+    const { data, error } = await secureSupabaseClient.supabase!.rpc('execute_sql', {
       sql_query: sql,
       params: [
         tweetData.tweet_id,

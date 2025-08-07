@@ -212,7 +212,7 @@ export class FollowerTracker {
    */
   private async getSnapshotBefore(minutes: number): Promise<FollowerSnapshot | null> {
     try {
-      const { data, error } = await supabaseClient.supabase.from('follower_snapshots')
+      const { data, error } = await supabaseClient.supabase!.from('follower_snapshots')
         .select('*')
         .gte('timestamp', new Date(Date.now() - minutes * 60 * 1000).toISOString())
         .order('timestamp', { ascending: false })
@@ -242,7 +242,7 @@ export class FollowerTracker {
    */
   private async storeSnapshot(snapshot: FollowerSnapshot): Promise<void> {
     try {
-      await supabaseClient.supabase.from('follower_snapshots').insert({
+      await supabaseClient.supabase!.from('follower_snapshots').insert({
         timestamp: snapshot.timestamp.toISOString(),
         follower_count: snapshot.followerCount,
         following_count: snapshot.followingCount,
@@ -259,7 +259,7 @@ export class FollowerTracker {
    */
   private async storeFollowerDelta(delta: FollowerDelta): Promise<void> {
     try {
-      await supabaseClient.supabase.from('follower_deltas').insert({
+      await supabaseClient.supabase!.from('follower_deltas').insert({
         tweet_id: delta.associatedTweetId,
         before_count: delta.beforeSnapshot.followerCount,
         after_count: delta.afterSnapshot.followerCount,
@@ -282,7 +282,7 @@ export class FollowerTracker {
     // In production, this would be called by a scheduled job
     // For now, we'll return existing data if available
     try {
-      const { data, error } = await supabaseClient.supabase.from('follower_deltas')
+      const { data, error } = await supabaseClient.supabase!.from('follower_deltas')
         .select('*')
         .eq('tweet_id', tweetId)
         .single();

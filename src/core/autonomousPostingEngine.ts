@@ -1314,7 +1314,7 @@ export class AutonomousPostingEngine {
       };
 
       // Store in learning_posts table
-      const { error: learningError } = await supabase.supabase
+      const { error: learningError } = await supabaseClient.supabase
         .from('learning_posts')
         .insert(tweetData);
 
@@ -1327,7 +1327,7 @@ export class AutonomousPostingEngine {
       // Also store in main tweets table for backward compatibility (only for numeric IDs)
       const isNumericId = /^\d+$/.test(tweetId);
       if (isNumericId) {
-        const { error: tweetsError } = await supabase.supabase
+        const { error: tweetsError } = await supabaseClient.supabase
           .from('tweets')
           .insert({
             id: tweetId,
@@ -1369,7 +1369,7 @@ export class AutonomousPostingEngine {
   private async initializeFormatStats(formatType: string, hookType: string, contentCategory: string): Promise<void> {
     try {
       // Check if stats already exist
-      const { data: existingStats } = await supabase.supabase
+      const { data: existingStats } = await supabaseClient.supabase
         .from('format_stats')
         .select('id')
         .eq('format_type', formatType)
@@ -1379,7 +1379,7 @@ export class AutonomousPostingEngine {
 
       if (!existingStats) {
         // Initialize new format stats entry
-        await supabase.supabase
+        await supabaseClient.supabase
           .from('format_stats')
           .insert({
             format_type: formatType,
@@ -1429,7 +1429,7 @@ export class AutonomousPostingEngine {
         created_at: new Date().toISOString()
       };
 
-      await supabase.supabase
+      await supabaseClient.supabase
         .from('tweet_performance_analysis')
         .insert(performanceData);
 
@@ -1444,7 +1444,7 @@ export class AutonomousPostingEngine {
    */
   private async getLastPostFromDatabase(): Promise<any> {
     try {
-      const { data, error } = await supabase.supabase
+      const { data, error } = await supabaseClient.supabase
         .from('tweets')
         .select('created_at, id, was_posted, confirmed')
         .order('created_at', { ascending: false })
@@ -1476,7 +1476,7 @@ export class AutonomousPostingEngine {
     consecutive_failures: number;
   }> {
     try {
-      const { data: allPosts } = await supabase.supabase
+      const { data: allPosts } = await supabaseClient.supabase
         .from('tweets')
         .select('created_at, was_posted, confirmed')
         .order('created_at', { ascending: false });
@@ -1689,7 +1689,7 @@ export class AutonomousPostingEngine {
     try {
       if (!tweetId) return;
 
-      const { error } = await supabase.supabase
+      const { error } = await supabaseClient.supabase
         .from('viral_content_usage')
         .insert({
           tweet_id: tweetId,

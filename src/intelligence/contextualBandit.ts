@@ -247,7 +247,7 @@ export class ContextualBandit {
    */
   private async persistBanditState(actionId: string, state: LinUCBState): Promise<void> {
     try {
-      await supabaseClient.supabase.from('bandit_states').upsert({
+      await supabaseClient.supabase!.from('bandit_states').upsert({
         action_id: actionId,
         matrix_a: JSON.stringify(state.A),
         vector_b: JSON.stringify(state.b),
@@ -265,7 +265,7 @@ export class ContextualBandit {
    */
   private async logActionSelection(context: BanditContext, action: BanditAction, score: number): Promise<void> {
     try {
-      await supabaseClient.supabase.from('bandit_selections').insert({
+      await supabaseClient.supabase!.from('bandit_selections').insert({
         action_id: action.id,
         action_name: action.name,
         action_type: action.type,

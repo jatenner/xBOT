@@ -101,7 +101,7 @@ export class RewardCalculator {
       console.log(`📊 Updating format stats: ${update.format_type}/${update.hook_type}/${update.content_category}`);
 
       // Use SQL function to update format stats
-      const { data, error } = await supabaseClient.supabase.rpc('update_format_stats', {
+      const { data, error } = await supabaseClient.supabase!.rpc('update_format_stats', {
         p_format_type: update.format_type,
         p_hook_type: update.hook_type,
         p_content_category: update.content_category,
@@ -137,7 +137,7 @@ export class RewardCalculator {
       console.log(`🕐 Updating timing stats: ${update.hour_of_day}h, day ${update.day_of_week}`);
 
       // Use SQL function to update timing stats
-      const { data, error } = await supabaseClient.supabase.rpc('update_timing_stats', {
+      const { data, error } = await supabaseClient.supabase!.rpc('update_timing_stats', {
         p_hour_of_day: update.hour_of_day,
         p_day_of_week: update.day_of_week,
         p_reward: update.reward,
