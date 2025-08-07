@@ -4,7 +4,7 @@
  * Bulletproof error handling with fallbacks
  */
 
-import { EmergencyBudgetLockdown } from './emergencyBudgetLockdown';
+import { emergencyBudgetLockdown } from './emergencyBudgetLockdown';
 import { ProductionEnvValidator } from './productionEnvValidator';
 
 export interface ModelSelection {
@@ -29,12 +29,12 @@ export class SmartModelSelector {
       let budgetStatus: any;
       
       try {
-        // Validate EmergencyBudgetLockdown is available
-        if (!EmergencyBudgetLockdown || typeof EmergencyBudgetLockdown.isLockedDown !== 'function') {
-          throw new Error('EmergencyBudgetLockdown not properly initialized');
+        // Validate emergencyBudgetLockdown is available
+        if (!emergencyBudgetLockdown || typeof emergencyBudgetLockdown.isLockedDown !== 'function') {
+          throw new Error('emergencyBudgetLockdown not properly initialized');
         }
         
-        budgetStatus = await EmergencyBudgetLockdown.isLockedDown();
+        budgetStatus = await emergencyBudgetLockdown.isLockedDown();
         
         // Validate budget status structure
         if (!budgetStatus || typeof budgetStatus !== 'object') {
