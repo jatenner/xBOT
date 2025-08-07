@@ -340,22 +340,37 @@ export class EmergencyBrowserPoster {
                     }
                 }
                 
-                // Method 3: Look for tweet elements on page
+                // Method 3: Look for the newest tweet (just posted) on timeline
                 if (!tweetId) {
-                    console.log('🔄 Method 3 - Searching for tweet elements...');
+                    console.log('🔄 Method 3 - Searching for newest tweet on timeline...');
                     try {
-                        // Look for article elements with data-testid containing tweet ID
-                        const tweetElements = await this.page.$$eval('article[data-testid="tweet"]', 
-                            articles => articles.map(article => article.getAttribute('data-testid'))
-                        );
+                        // Wait for timeline to update with new tweet
+                        await this.page.waitForTimeout(3000);
                         
-                        for (const testId of tweetElements) {
-                            if (testId && testId.includes('-')) {
-                                const match = testId.match(/(\d+)/);
-                                if (match && match[1].length > 10) { // Twitter IDs are long
+                        // Look for the first tweet article (most recent)
+                        const firstTweetLink = await this.page.$('article[data-testid="tweet"] a[href*="/status/"]');
+                        if (firstTweetLink) {
+                            const href = await firstTweetLink.getAttribute('href');
+                            if (href) {
+                                const match = href.match(/\/status\/(\d+)/);
+                                if (match) {
                                     tweetId = match[1];
-                                    console.log(`✅ Method 3 - Extracted tweet ID from element: ${tweetId}`);
-                                    break;
+                                    console.log(`✅ Method 3 - Extracted newest tweet ID: ${tweetId}`);
+                                }
+                            }
+                        }
+                        
+                        // Alternative: Try looking for time links
+                        if (!tweetId) {
+                            const timeLinks = await this.page.$$('article[data-testid="tweet"] time a[href*="/status/"]');
+                            if (timeLinks.length > 0) {
+                                const href = await timeLinks[0].getAttribute('href');
+                                if (href) {
+                                    const match = href.match(/\/status\/(\d+)/);
+                                    if (match) {
+                                        tweetId = match[1];
+                                        console.log(`✅ Method 3 (alt) - Extracted tweet ID from time link: ${tweetId}`);
+                                    }
                                 }
                             }
                         }
@@ -364,23 +379,83 @@ export class EmergencyBrowserPoster {
                     }
                 }
                 
-                // Method 4: Check page history/navigation
+                // Method 4: Search for tweet with matching content
                 if (!tweetId) {
-                    console.log('🔄 Method 4 - Checking browser history...');
+                    console.log('🔄 Method 4 - Searching for tweet with matching content...');
                     try {
-                        // Force reload to check final URL
-                        await this.page.waitForTimeout(2000);
+                        // Create multiple content patterns for matching
+                        const contentPreview = content.substring(0, 50).trim();
+                        const firstWords = content.split(' ').slice(0, 5).join(' ');
+                        const contentWithoutEmojis = content.replace(/[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '').trim();
+                        
+                        console.log(`🔍 Looking for tweet with content patterns:`);
+                        console.log(`   Preview: "${contentPreview}..."`);
+                        console.log(`   First words: "${firstWords}"`);
+                        
+                        // Get all tweet articles and check their content
+                        const tweets = await this.page.$$('article[data-testid="tweet"]');
+                        console.log(`🔍 Found ${tweets.length} tweets on timeline to check`);
+                        
+                        for (let i = 0; i < Math.min(tweets.length, 8); i++) { // Check first 8 tweets
+                            try {
+                                const tweetElement = tweets[i];
+                                const tweetText = await tweetElement.$eval('[data-testid="tweetText"]', el => el.textContent);
+                                
+                                if (tweetText) {
+                                    const cleanTweetText = tweetText.trim();
+                                    console.log(`   Tweet ${i + 1}: "${cleanTweetText.substring(0, 60)}..."`);
+                                    
+                                    // Multiple matching strategies
+                                    const isMatch = 
+                                        cleanTweetText.includes(contentPreview) ||
+                                        cleanTweetText.includes(firstWords) ||
+                                        cleanTweetText.startsWith(content.substring(0, 30)) ||
+                                        (contentWithoutEmojis.length > 20 && cleanTweetText.includes(contentWithoutEmojis.substring(0, 30)));
+                                    
+                                    if (isMatch) {
+                                        console.log(`✅ Content match found in tweet ${i + 1}!`);
+                                        
+                                        // Found matching content, extract tweet ID
+                                        const tweetLink = await tweetElement.$('a[href*="/status/"]');
+                                        if (tweetLink) {
+                                            const href = await tweetLink.getAttribute('href');
+                                            if (href) {
+                                                const match = href.match(/\/status\/(\d+)/);
+                                                if (match) {
+                                                    tweetId = match[1];
+                                                    console.log(`✅ Method 4 - Found tweet with matching content: ${tweetId}`);
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } catch (tweetError) {
+                                console.log(`⚠️ Error checking tweet ${i + 1}: ${tweetError.message}`);
+                                continue;
+                            }
+                        }
+                    } catch (searchError) {
+                        console.log('⚠️ Method 4 failed - content search error');
+                    }
+                }
+                
+                // Method 5: Last resort - check final URL after longer wait
+                if (!tweetId) {
+                    console.log('🔄 Method 5 - Final URL check...');
+                    try {
+                        await this.page.waitForTimeout(5000);
                         currentUrl = this.page.url();
                         
                         if (currentUrl.includes('/status/')) {
                             const match = currentUrl.match(/\/status\/(\d+)/);
                             if (match) {
                                 tweetId = match[1];
-                                console.log(`✅ Method 4 - Extracted tweet ID from final URL: ${tweetId}`);
+                                console.log(`✅ Method 5 - Extracted tweet ID from final URL: ${tweetId}`);
                             }
                         }
-                    } catch (historyError) {
-                        console.log('⚠️ Method 4 failed');
+                    } catch (finalError) {
+                        console.log('⚠️ Method 5 failed');
                     }
                 }
                 
