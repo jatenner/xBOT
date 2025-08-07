@@ -116,33 +116,39 @@ export class AutonomousPostingEngine {
 
       // Realistic posting intervals for human-like behavior (3-8 posts/day)
       let requiredInterval: number;
-      let strategy: 'aggressive' | 'balanced' | 'conservative';
+      let strategy: 'aggressive' | 'balanced' | 'conservative' | 'growth';
       let confidence: number;
 
-      if (this.consecutiveFailures >= 2) {
-        // Conservative mode after failures
-        requiredInterval = 360; // 6 hours
+      // 🚀 SMALL ACCOUNT GROWTH OPTIMIZATION: Aggressive posting for follower growth
+      if (this.consecutiveFailures >= 3) {
+        // Conservative mode only after multiple failures
+        requiredInterval = 180; // 3 hours (reduced from 6)
         strategy = 'conservative';
-        confidence = 0.6;
-      } else if (minutesSinceLastPost >= 480) {
-        // Aggressive mode for catch-up (8+ hours)
-        requiredInterval = 180; // 3 hours
+        confidence = 0.7;
+      } else if (minutesSinceLastPost >= 180) {
+        // Aggressive mode for growth (3+ hours)
+        requiredInterval = 90; // 1.5 hours (reduced from 3)
         strategy = 'aggressive';
         confidence = 0.95;
-      } else if (minutesSinceLastPost >= 240) {
-        // Balanced mode (4+ hours)
-        requiredInterval = 240; // 4 hours
+      } else if (minutesSinceLastPost >= 120) {
+        // Balanced mode (2+ hours)
+        requiredInterval = 120; // 2 hours (reduced from 4)
         strategy = 'balanced';
         confidence = 0.85;
+      } else if (minutesSinceLastPost >= 90) {
+        // Growth mode (1.5+ hours) - NEW for small accounts
+        requiredInterval = 90; // 1.5 hours
+        strategy = 'growth';
+        confidence = 0.80;
       } else {
-        // Too soon - maintain human-like spacing with stronger protection
-        const waitTime = Math.max(180 - minutesSinceLastPost, 60); // Minimum 3 hours, wait at least 1 hour
+        // Too soon - but much more permissive for small account growth
+        const waitTime = Math.max(90 - minutesSinceLastPost, 15); // Minimum 1.5 hours, wait at least 15 min
         return {
           should_post: false,
-          reason: `Maintaining human-like posting frequency (${minutesSinceLastPost}min ago)`,
-          confidence: 0.8,
-          strategy: 'balanced',
-          wait_minutes: Math.max(waitTime, 30)
+          reason: `Small account growth spacing (${minutesSinceLastPost}min ago, need ${90}min)`,
+          confidence: 0.6,
+          strategy: 'growth',
+          wait_minutes: Math.max(waitTime, 15)
         };
       }
 

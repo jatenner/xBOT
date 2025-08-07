@@ -31,14 +31,35 @@ export class IntelligentCommunityEngagementEngine {
   private browser: Browser | null = null;
   private page: Page | null = null;
 
-  // Target health influencers for strategic engagement
+  // 🎯 EXPANDED TARGET HEALTH INFLUENCERS FOR MAXIMUM GROWTH
   private readonly TARGET_INFLUENCERS = [
+    // Tier 1: High-Impact Health/Medical Influencers
     { username: 'hubermanlab', priority: 10, followers: 5000000 },
+    { username: 'peterattia', priority: 10, followers: 3000000 },
     { username: 'drmarkhyman', priority: 9, followers: 2000000 },
+    { username: 'rhondapatrick', priority: 9, followers: 1500000 },
+    { username: 'davidsinclairharvard', priority: 9, followers: 2500000 },
+    
+    // Tier 2: Active Health/Biohacking Community
     { username: 'bengreenfield', priority: 8, followers: 800000 },
-    { username: 'drdavinagile', priority: 7, followers: 500000 },
-    { username: 'biohackerdoc', priority: 6, followers: 300000 },
-    { username: 'seanCroxton', priority: 5, followers: 200000 }
+    { username: 'gundrymd', priority: 8, followers: 600000 },
+    { username: 'drjasonfung', priority: 8, followers: 400000 },
+    { username: 'maxlugavere', priority: 8, followers: 300000 },
+    { username: 'thomasdelauer', priority: 8, followers: 1200000 },
+    
+    // Tier 3: Nutrition & Wellness Experts
+    { username: 'carnivoremd', priority: 7, followers: 450000 },
+    { username: 'drdavinagner', priority: 7, followers: 500000 },
+    { username: 'biohackerdoc', priority: 7, followers: 300000 },
+    { username: 'robbwolf', priority: 7, followers: 250000 },
+    { username: 'chriskresser', priority: 7, followers: 200000 },
+    
+    // Tier 4: Emerging Health Voices
+    { username: 'seanCroxton', priority: 6, followers: 200000 },
+    { username: 'drpaulclayton', priority: 6, followers: 150000 },
+    { username: 'theliverking', priority: 6, followers: 1200000 },
+    { username: 'drcaseykellogg', priority: 6, followers: 180000 },
+    { username: 'drwillcole', priority: 6, followers: 220000 }
   ];
 
   static getInstance(): IntelligentCommunityEngagementEngine {
@@ -259,20 +280,43 @@ export class IntelligentCommunityEngagementEngine {
       // Wait for tweets to load
       await this.page!.waitForSelector('[data-testid="tweet"]', { timeout: 15000 });
 
-      // Click reply on the most recent tweet
+      // Click reply on the most recent tweet with retry logic
       const replyButton = await this.page!.locator('[data-testid="reply"]').first();
       
       if (await replyButton.count() > 0) {
         await replyButton.click();
         
-        // Wait for compose dialog
-        await this.page!.waitForSelector('[data-testid="tweetTextarea_0"]', { timeout: 10000 });
+        // Wait for compose dialog with multiple fallback selectors
+        try {
+          await this.page!.waitForSelector('[data-testid="tweetTextarea_0"]', { timeout: 30000 });
+        } catch (selectorError) {
+          // Try alternative selectors if primary fails
+          console.log('⚠️ Primary selector failed, trying alternatives...');
+          try {
+            await this.page!.waitForSelector('div[data-testid="tweetTextarea_0"]', { timeout: 15000 });
+          } catch (altError) {
+            await this.page!.waitForSelector('[role="textbox"][data-testid*="tweet"]', { timeout: 15000 });
+          }
+        }
         
-        // Type the reply
-        await this.page!.fill('[data-testid="tweetTextarea_0"]', action.content);
+        // Type the reply with retry
+        try {
+          await this.page!.fill('[data-testid="tweetTextarea_0"]', action.content);
+        } catch (fillError) {
+          // Try alternative approach
+          await this.page!.locator('[data-testid="tweetTextarea_0"]').fill(action.content);
+        }
         
-        // Post the reply
-        await this.page!.click('[data-testid="tweetButton"]');
+        // Add small delay for content to register
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Post the reply with retry
+        try {
+          await this.page!.click('[data-testid="tweetButton"]');
+        } catch (buttonError) {
+          // Try alternative button selector
+          await this.page!.click('[data-testid="tweetButtonInline"]');
+        }
         
         console.log(`💬 Replied to @${action.target_username}: ${action.content.substring(0, 50)}...`);
         return true;
