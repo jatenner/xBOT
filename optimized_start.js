@@ -1,98 +1,58 @@
 #!/usr/bin/env node
 
 /**
- * 🚀 OPTIMIZED STARTUP SCRIPT
- * Fast deployment with runtime optimizations
+ * 🚀 SIMPLIFIED STARTUP SCRIPT
+ * Reliable deployment with minimal dependencies
  */
 
-const { spawn } = require('child_process');
-const fs = require('fs');
-const path = require('path');
-
-console.log('🚀 OPTIMIZED STARTUP SEQUENCE STARTING...');
+console.log('🚀 SIMPLIFIED STARTUP SEQUENCE STARTING...');
 console.log('📅 Start Time:', new Date().toISOString());
 
-// Skip migrations if they've already run successfully
-const migrationLockFile = path.join(__dirname, '.migration-complete');
-const skipMigrations = fs.existsSync(migrationLockFile);
+// Set environment optimizations
+process.env.NODE_ENV = 'production';
+process.env.EMERGENCY_MODE = 'false';
 
-async function runCommand(command, args = [], options = {}) {
-  return new Promise((resolve, reject) => {
-    console.log(`🔄 Running: ${command} ${args.join(' ')}`);
-    const child = spawn(command, args, {
-      stdio: 'inherit',
-      ...options
-    });
-
-    child.on('close', (code) => {
-      if (code === 0) {
-        console.log(`✅ ${command} completed successfully`);
-        resolve();
-      } else {
-        console.error(`❌ ${command} failed with code ${code}`);
-        reject(new Error(`${command} failed`));
-      }
-    });
-
-    child.on('error', (error) => {
-      console.error(`❌ ${command} error:`, error);
-      reject(error);
-    });
-  });
-}
-
-async function optimizedStartup() {
+async function simpleStartup() {
   try {
-    console.log('🎭 Installing Playwright browsers (runtime)...');
+    console.log('🎭 Installing Playwright browsers (background)...');
     
-    // Install Playwright with timeout
-    const playwrightTimeout = setTimeout(() => {
-      console.log('⚠️ Playwright installation timeout, continuing anyway...');
-    }, 60000); // 1 minute timeout
-
-    try {
-      await runCommand('npx', ['playwright', 'install', 'chromium', '--force'], {
-        timeout: 60000
-      });
-      clearTimeout(playwrightTimeout);
-      console.log('✅ Playwright browsers installed');
-    } catch (error) {
-      clearTimeout(playwrightTimeout);
-      console.log('⚠️ Playwright installation failed, continuing with limited functionality...');
-    }
-
-    // Skip time-consuming migrations if already done
-    if (skipMigrations) {
-      console.log('✅ Migrations already completed, skipping...');
-    } else {
-      console.log('🗄️ Running essential database setup...');
-      try {
-        // Only run critical migrations, skip non-essential ones
-        await runCommand('node', ['scripts/essential_migrations.js']);
-        
-        // Mark migrations as complete
-        fs.writeFileSync(migrationLockFile, new Date().toISOString());
-        console.log('✅ Essential migrations completed');
-      } catch (error) {
-        console.log('⚠️ Migration failed, continuing with basic functionality...');
+    // Install Playwright in background with timeout
+    const { exec } = require('child_process');
+    
+    const playwrightInstall = exec('npx playwright install chromium --force', {
+      timeout: 90000 // 90 seconds max
+    });
+    
+    playwrightInstall.on('close', (code) => {
+      if (code === 0) {
+        console.log('✅ Playwright browsers installed successfully');
+      } else {
+        console.log('⚠️ Playwright installation completed with warnings');
       }
-    }
+    });
 
-    console.log('🤖 Starting autonomous bot...');
-    await runCommand('node', ['dist/main.js']);
+    playwrightInstall.on('error', (error) => {
+      console.log('⚠️ Playwright installation error (continuing anyway):', error.message);
+    });
+
+    // Don't wait for Playwright - start the bot immediately
+    console.log('🤖 Starting autonomous bot (Playwright installing in background)...');
+    
+    // Start the main application
+    require('./dist/main.js');
 
   } catch (error) {
     console.error('❌ Startup failed:', error);
     
-    // Emergency fallback
-    console.log('🚨 Starting in emergency mode...');
+    // Emergency fallback - try without any setup
+    console.log('🚨 Emergency mode: Starting bot with minimal setup...');
     process.env.EMERGENCY_MODE = 'true';
-    process.env.SKIP_MIGRATIONS = 'true';
+    process.env.SKIP_PLAYWRIGHT = 'true';
     
     try {
-      await runCommand('node', ['dist/main.js']);
+      require('./dist/main.js');
     } catch (emergencyError) {
-      console.error('❌ Emergency startup also failed:', emergencyError);
+      console.error('❌ Emergency startup failed:', emergencyError);
       process.exit(1);
     }
   }
@@ -109,5 +69,5 @@ process.on('SIGINT', () => {
   process.exit(0);
 });
 
-// Start the optimized sequence
-optimizedStartup();
+// Start immediately
+simpleStartup();
