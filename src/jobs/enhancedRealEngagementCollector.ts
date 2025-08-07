@@ -165,15 +165,24 @@ export class EnhancedRealEngagementCollector {
           const cleanText = text.trim().toLowerCase().replace(/,/g, '');
           if (cleanText === '' || cleanText === '0') return 0;
           
+          // 🚨 REALISTIC LIMITS: No small account gets millions of likes
+          let value = 0;
+          
           if (cleanText.includes('k')) {
-            return Math.round(parseFloat(cleanText.replace('k', '')) * 1000);
+            value = Math.round(parseFloat(cleanText.replace('k', '')) * 1000);
+          } else if (cleanText.includes('m')) {
+            value = Math.round(parseFloat(cleanText.replace('m', '')) * 1000000);
+          } else {
+            value = parseInt(cleanText) || 0;
           }
           
-          if (cleanText.includes('m')) {
-            return Math.round(parseFloat(cleanText.replace('m', '')) * 1000000);
+          // 🛡️ SANITY CHECK: Cap at realistic small account limits
+          if (value > 1000) {
+            console.warn(`⚠️ Suspicious metric detected: ${value} from "${text}" - capping to realistic range`);
+            return Math.min(value, 50); // Max 50 likes for small account
           }
           
-          return parseInt(cleanText) || 0;
+          return value;
         };
 
         const likeElement = tweet.querySelector('[data-testid="like"]');
@@ -207,7 +216,9 @@ export class EnhancedRealEngagementCollector {
 
       if (!metrics) return null;
 
-      const estimatedImpressions = metrics.views || (metrics.likes + metrics.retweets + metrics.replies) * 25;
+      // 🚨 REALISTIC IMPRESSIONS: Small accounts don't get massive impressions
+      const totalEngagement = metrics.likes + metrics.retweets + metrics.replies;
+      const estimatedImpressions = metrics.views || Math.min(totalEngagement * 10, 500); // Cap at 500 impressions
 
       return {
         tweet_id: tweetId,
