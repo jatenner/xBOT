@@ -238,7 +238,9 @@ export class BulletproofTwitterDataCollector {
 
     try {
       // Set mobile user agent
-      await this.page.setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15');
+      await this.page.setExtraHTTPHeaders({
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15'
+      });
       
       const mobileUrl = `https://mobile.twitter.com/anyuser/status/${tweetId}`;
       await this.page.goto(mobileUrl, { 
@@ -326,30 +328,34 @@ export class BulletproofTwitterDataCollector {
   private async storeInDatabase(tweetData: TweetData): Promise<void> {
     try {
       // Store tweet data
-      await resilientSupabaseClient.upsert('tweets', {
-        tweet_id: tweetData.id,
-        content: tweetData.content,
-        author: tweetData.author,
-        posted_at: tweetData.posted_at,
-        likes: tweetData.metrics.likes,
-        retweets: tweetData.metrics.retweets,
-        replies: tweetData.metrics.replies,
-        impressions: tweetData.metrics.impressions,
-        updated_at: new Date().toISOString()
-      });
+      await resilientSupabaseClient.supabase
+        .from('tweets')
+        .upsert({
+          tweet_id: tweetData.id,
+          content: tweetData.content,
+          author: tweetData.author,
+          posted_at: tweetData.posted_at,
+          likes: tweetData.metrics.likes,
+          retweets: tweetData.metrics.retweets,
+          replies: tweetData.metrics.replies,
+          impressions: tweetData.metrics.impressions,
+          updated_at: new Date().toISOString()
+        });
 
       // Store detailed metrics
-      await resilientSupabaseClient.upsert('tweet_analytics', {
-        tweet_id: tweetData.id,
-        likes: tweetData.metrics.likes,
-        retweets: tweetData.metrics.retweets,
-        replies: tweetData.metrics.replies,
-        quotes: tweetData.metrics.quotes,
-        bookmarks: tweetData.metrics.bookmarks,
-        impressions: tweetData.metrics.impressions,
-        engagement_rate: tweetData.metrics.engagement_rate,
-        collected_at: tweetData.metrics.scraped_at
-      });
+      await resilientSupabaseClient.supabase
+        .from('tweet_analytics')
+        .upsert({
+          tweet_id: tweetData.id,
+          likes: tweetData.metrics.likes,
+          retweets: tweetData.metrics.retweets,
+          replies: tweetData.metrics.replies,
+          quotes: tweetData.metrics.quotes,
+          bookmarks: tweetData.metrics.bookmarks,
+          impressions: tweetData.metrics.impressions,
+          engagement_rate: tweetData.metrics.engagement_rate,
+          collected_at: tweetData.metrics.scraped_at
+        });
 
     } catch (error) {
       console.error('Database storage failed:', error);

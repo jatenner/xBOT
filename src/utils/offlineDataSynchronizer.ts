@@ -180,7 +180,7 @@ export class OfflineDataSynchronizer {
         if (offlineData.tweets && offlineData.tweets.length > 0) {
           for (const tweet of offlineData.tweets) {
             try {
-              await resilientSupabaseClient.upsert('tweets', tweet);
+              await resilientSupabaseClient.supabase.from('tweets').upsert(tweet);
               syncStatus.tweets_synced++;
               console.log(`✅ Synced tweet: ${tweet.tweet_id}`);
             } catch (error) {
@@ -194,7 +194,7 @@ export class OfflineDataSynchronizer {
         if (offlineData.analytics && offlineData.analytics.length > 0) {
           for (const analytics of offlineData.analytics) {
             try {
-              await resilientSupabaseClient.upsert('tweet_analytics', analytics);
+              await resilientSupabaseClient.supabase.from('tweet_analytics').upsert(analytics);
               syncStatus.analytics_synced++;
               console.log(`✅ Synced analytics: ${analytics.tweet_id}`);
             } catch (error) {
@@ -208,7 +208,7 @@ export class OfflineDataSynchronizer {
         if (offlineData.posts && offlineData.posts.length > 0) {
           for (const post of offlineData.posts) {
             try {
-              await resilientSupabaseClient.insert('post_history', post);
+              await resilientSupabaseClient.supabase.from('post_history').insert(post);
               syncStatus.posts_synced++;
               console.log(`✅ Synced post: ${post.tweet_id}`);
             } catch (error) {
@@ -285,7 +285,7 @@ export class OfflineDataSynchronizer {
               if (Array.isArray(data)) {
                 for (const item of data) {
                   try {
-                    await resilientSupabaseClient.upsert('engagement_history', item);
+                    await resilientSupabaseClient.supabase.from('engagement_history').upsert(item);
                     syncStatus.analytics_synced++;
                   } catch (error) {
                     syncStatus.errors.push(`Engagement sync failed: ${item.id || 'unknown'}`);

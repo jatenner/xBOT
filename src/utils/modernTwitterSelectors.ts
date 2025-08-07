@@ -52,7 +52,7 @@ export class ModernTwitterSelectors {
               
               if (isVisible && isEnabled) {
                 console.log('Found post button via text search:', text, ariaLabel);
-                button.click();
+                (button as HTMLElement).click();
                 return true;
               }
             }
@@ -93,7 +93,7 @@ export class ModernTwitterSelectors {
               const rect = button.getBoundingClientRect();
               if (rect.width > 0 && rect.height > 0) {
                 console.log('Found submit-style button:', button.outerHTML.substring(0, 100));
-                button.click();
+                (button as HTMLElement).click();
                 return true;
               }
             }
