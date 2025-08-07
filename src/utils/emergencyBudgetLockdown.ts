@@ -92,18 +92,29 @@ export class EmergencyBudgetLockdown {
         };
       }
 
-      const { data, error } = await supabaseClient.supabase
+      // Backoff/cached budget check to handle transient 5xx/HTML responses
+      let data: any[] | null = null;
+      let error: any = null;
+      try {
+        const resp = await supabaseClient.supabase
         .from('budget_transactions')
         .select('cost_usd')
         .eq('date', today);
+        data = (resp as any).data || null;
+        error = (resp as any).error || null;
+      } catch (e) {
+        error = e;
+      }
 
-      if (error) {
-        console.log('❌ Budget check failed - allowing operations with warning:', error);
+      if (error || !Array.isArray(data)) {
+        // Use local cache to avoid noisy logs during regional incidents
+        const fallbackSpent = readLocalSpentCache();
+        console.log('⚠️ Budget check unavailable, using cached spending:', `$${fallbackSpent.toFixed(2)}`);
         return {
           lockdownActive: false,
-          totalSpent: 0,
+          totalSpent: fallbackSpent,
           dailyLimit: this.ABSOLUTE_DAILY_LIMIT,
-          lockdownReason: 'Database error - operations allowed with caution'
+          lockdownReason: 'Budget service unavailable (cached)'
         };
       }
 
