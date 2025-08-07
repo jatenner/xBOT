@@ -10,6 +10,7 @@
 import { OpenAI } from 'openai';
 import { budgetEnforcer, BudgetPriority } from './budgetEnforcer';
 import { smartBudgetOptimizer } from './smartBudgetOptimizer';
+import { SupremeAIPromptOptimizer } from './supremeAIPromptOptimizer';
 import * as crypto from 'crypto';
 
 // 🗂️ LRU Cache for OpenAI completions (avoids duplicate API calls)
@@ -394,8 +395,8 @@ export class BudgetAwareOpenAI {
   }
 
   /**
-   * 🎯 PRIORITY-BASED COMPLETION
-   * Convenience method for common AI operations
+   * 🎯 SUPREME AI PRIORITY-BASED COMPLETION
+   * Enhanced with follower growth optimization
    */
   async generateContent(
     prompt: string,
@@ -406,18 +407,58 @@ export class BudgetAwareOpenAI {
       temperature?: number;
       systemPrompt?: string;
       forTweetGeneration?: boolean;
+      model?: 'gpt-4o' | 'gpt-4o-mini';
+      content_type?: 'viral' | 'educational' | 'controversial' | 'trend' | 'reply';
+      target_audience?: 'health_enthusiasts' | 'general' | 'professionals';
     } = {}
-  ): Promise<{ success: boolean; content?: string; error?: string; cost: number }> {
+  ): Promise<{ success: boolean; content?: string; error?: string; cost: number; quality_score?: number; growth_factor?: number }> {
+    
+    // 🧠 SUPREME AI OPTIMIZATION: Use prompt optimizer for follower growth
+    let finalPrompt = prompt;
+    let finalModel = options.model || 'gpt-4o-mini';
+    let finalTemperature = options.temperature || 0.3;
+    let finalMaxTokens = options.maxTokens || 100;
+    let qualityScore = 7;
+    let growthFactor = 1.0;
+
+    // Apply supreme optimization for key operations
+    const growthOperations = ['viral_content_generation', 'strategic_reply', 'engagement_optimization', 'content_generation'];
+    
+    if (growthOperations.includes(operationType) || options.forTweetGeneration) {
+      try {
+        const optimized = SupremeAIPromptOptimizer.optimizePromptForFollowerGrowth(prompt, {
+          operation: operationType,
+          current_followers: 500, // Default - could be dynamic
+          recent_engagement: 15,  // Default - could be dynamic
+          time_of_day: new Date().getHours(),
+          content_type: options.content_type || 'viral',
+          target_audience: options.target_audience || 'health_enthusiasts'
+        });
+
+        finalPrompt = optimized.prompt;
+        finalModel = optimized.model;
+        finalTemperature = optimized.temperature;
+        finalMaxTokens = optimized.max_tokens;
+        qualityScore = optimized.expected_quality;
+        growthFactor = optimized.follower_growth_factor;
+
+        console.log(`🧠 Supreme AI optimization applied: ${operationType} - Quality: ${qualityScore}/10, Growth Factor: ${growthFactor}x`);
+      } catch (error) {
+        console.warn('⚠️ Supreme optimization failed, using default prompt');
+      }
+    }
+
     const messages = [
       ...(options.systemPrompt ? [{ role: 'system', content: options.systemPrompt }] : []),
-      { role: 'user', content: prompt }
+      { role: 'user', content: finalPrompt }
     ];
 
     const result = await this.createChatCompletion(messages, {
       priority,
       operationType,
-      maxTokens: options.maxTokens || 100,
-      temperature: options.temperature || 0.3,
+      maxTokens: finalMaxTokens,
+      temperature: finalTemperature,
+      model: finalModel,
       forTweetGeneration: options.forTweetGeneration || false
     });
 
@@ -425,14 +466,18 @@ export class BudgetAwareOpenAI {
       return {
         success: true,
         content: result.response.choices[0]?.message?.content || '',
-        cost: result.cost
+        cost: result.cost,
+        quality_score: qualityScore,
+        growth_factor: growthFactor
       };
     }
 
     return {
       success: false,
       error: result.error,
-      cost: result.cost
+      cost: result.cost,
+      quality_score: qualityScore,
+      growth_factor: growthFactor
     };
   }
 
