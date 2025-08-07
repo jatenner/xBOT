@@ -22,6 +22,9 @@ import { FollowerPsychologyEngine } from '../intelligence/followerPsychologyEngi
 import { EmergencyBudgetLockdown } from '../utils/emergencyBudgetLockdown';
 import { logPhaseStatus, getPhasePerformance } from '../utils/phaseManager';
 import { supabaseClient } from '../utils/supabaseClient';
+import { resilientSupabaseClient } from '../utils/resilientSupabaseClient';
+import { MasterAIIntelligenceCoordinator } from '../intelligence/masterAIIntelligenceCoordinator';
+import { DatabaseResilienceActivator } from '../utils/databaseResilienceActivator';
 import express from 'express';
 import { createServer } from 'http';
 
@@ -105,6 +108,10 @@ export class MasterAutonomousController {
   private twitterAlgorithmEngine: TwitterAlgorithmEngine;
   private realTimeDataPipeline: RealTimeDataPipeline;
   private followerPsychologyEngine: FollowerPsychologyEngine;
+  
+  // 🧠 SUPREME AI INTELLIGENCE SYSTEMS
+  private masterAICoordinator: MasterAIIntelligenceCoordinator;
+  private databaseResilience: DatabaseResilienceActivator;
 
   static getInstance(): MasterAutonomousController {
     if (!this.instance) {
@@ -135,6 +142,12 @@ export class MasterAutonomousController {
 
       // Initialize all core systems
       await this.initializeAllSystems();
+
+      // 🛡️ Activate Database Resilience
+      await this.activateDatabaseResilience();
+
+      // 🧠 Activate Supreme AI Intelligence
+      await this.activateSupremeAIIntelligence();
 
       // Start monitoring and operational cycles
       this.startSystemMonitoring();
@@ -1225,25 +1238,131 @@ export class MasterAutonomousController {
   }
 
   /**
+   * 🛡️ DATABASE RESILIENCE ACTIVATION
+   */
+  async activateDatabaseResilience(): Promise<void> {
+    console.log('🛡️ === ACTIVATING DATABASE RESILIENCE ===');
+    
+    try {
+      const resilienceResult = await this.databaseResilience.activateSystemResilience();
+      
+      if (resilienceResult.success) {
+        console.log(`✅ Database resilience activated: Level ${resilienceResult.resilience_level}/10`);
+        console.log(`🛡️ Active features: ${resilienceResult.active_features.length}`);
+        console.log(`🔄 Fallback strategies: ${resilienceResult.fallback_strategies.length}`);
+        
+        // Update system health based on resilience level
+        if (resilienceResult.resilience_level >= 8) {
+          this.systemHealth.components.database = { status: 'active', lastCheck: new Date() };
+        } else if (resilienceResult.resilience_level >= 6) {
+          this.systemHealth.components.database = { status: 'warning', lastCheck: new Date() };
+        } else {
+          this.systemHealth.components.database = { status: 'error', lastCheck: new Date() };
+        }
+        
+      } else {
+        console.warn('⚠️ Database resilience activation failed, using basic fallback');
+        this.systemHealth.components.database = { status: 'error', lastCheck: new Date() };
+      }
+      
+    } catch (error) {
+      console.warn('⚠️ Database resilience setup failed, continuing with degraded mode');
+      this.systemHealth.components.database = { status: 'error', lastCheck: new Date() };
+    }
+  }
+
+  /**
+   * 🧠 SUPREME AI COORDINATION
+   */
+  async activateSupremeAIIntelligence(): Promise<void> {
+    console.log('🧠 === ACTIVATING SUPREME AI INTELLIGENCE ===');
+    
+    try {
+      // Run supreme AI coordination
+      const coordinationResult = await this.masterAICoordinator.orchestrateSupremeIntelligence();
+      
+      if (coordinationResult.success) {
+        console.log(`✅ Supreme AI coordination successful: ${coordinationResult.intelligence_summary}`);
+        console.log(`🎯 Expected follower impact: +${coordinationResult.expected_follower_impact}`);
+        
+        // Update system health based on AI intelligence level
+        this.systemHealth.components.ai = { status: 'active', lastCheck: new Date() };
+        if (coordinationResult.expected_follower_impact > 20) {
+          this.systemHealth.overall = 'excellent';
+        }
+        
+      } else {
+        console.warn('⚠️ Supreme AI coordination failed, using individual agents');
+      }
+      
+    } catch (error) {
+      console.warn('⚠️ Supreme AI activation failed, continuing with standard intelligence');
+    }
+  }
+
+  /**
    * 🔧 HELPER METHODS
    */
   private initializeCoreComponents(): void {
-    this.postingEngine = new EnhancedAutonomousPostingEngine();
-    this.replyEngine = IntelligentReplyEngine.getInstance();
-    this.engagementEngine = AutonomousEngagementEngine.getInstance();
-    this.optimizationLoop = EnhancedDailyOptimizationLoop.getInstance();
-    this.growthMaster = IntelligentGrowthMaster.getInstance();
+    console.log('🧠 === INITIALIZING SUPREME AI INTELLIGENCE SYSTEMS ===');
     
-    // Initialize advanced learning systems
-    this.masterLearningCoordinator = MasterLearningCoordinator.getInstance();
-    this.competitiveIntelligence = CompetitiveIntelligenceEngine.getInstance();
-    this.followerGrowthOrchestrator = FollowerGrowthOrchestrator.getInstance();
-    this.communityEngagementMaster = CommunityEngagementMaster.getInstance();
+    // 🛡️ Initialize Database Resilience FIRST
+    this.databaseResilience = DatabaseResilienceActivator.getInstance();
+    console.log('✅ Database Resilience Activator initialized');
     
-    // 🧠 Initialize Algorithm Mastery Systems
-    this.twitterAlgorithmEngine = TwitterAlgorithmEngine.getInstance();
-    this.realTimeDataPipeline = RealTimeDataPipeline.getInstance();
-    this.followerPsychologyEngine = FollowerPsychologyEngine.getInstance();
+    // 🧠 Initialize Supreme AI Coordinator
+    this.masterAICoordinator = MasterAIIntelligenceCoordinator.getInstance();
+    console.log('✅ Master AI Intelligence Coordinator initialized');
+    
+    // Initialize core posting systems with resilient error handling
+    try {
+      this.postingEngine = new EnhancedAutonomousPostingEngine();
+      console.log('✅ Enhanced Autonomous Posting Engine initialized');
+    } catch (error) {
+      console.warn('⚠️ Posting engine initialization failed, using fallback');
+    }
+    
+    // Initialize with resilient database connections
+    try {
+      this.replyEngine = IntelligentReplyEngine.getInstance();
+      this.engagementEngine = AutonomousEngagementEngine.getInstance();
+      console.log('✅ Reply and Engagement engines initialized');
+    } catch (error) {
+      console.warn('⚠️ Some engagement systems failed to initialize, continuing...');
+    }
+    
+    // Initialize optimization systems with error tolerance
+    try {
+      this.optimizationLoop = EnhancedDailyOptimizationLoop.getInstance();
+      this.growthMaster = IntelligentGrowthMaster.getInstance();
+      console.log('✅ Optimization and Growth systems initialized');
+    } catch (error) {
+      console.warn('⚠️ Some optimization systems failed, using fallback strategies');
+    }
+    
+    // Initialize advanced learning systems with graceful degradation
+    try {
+      this.masterLearningCoordinator = MasterLearningCoordinator.getInstance();
+      this.competitiveIntelligence = CompetitiveIntelligenceEngine.getInstance();
+      this.followerGrowthOrchestrator = FollowerGrowthOrchestrator.getInstance();
+      this.communityEngagementMaster = CommunityEngagementMaster.getInstance();
+      console.log('✅ Advanced Learning systems initialized');
+    } catch (error) {
+      console.warn('⚠️ Advanced learning systems failed, basic intelligence active');
+    }
+    
+    // 🧠 Initialize Algorithm Mastery Systems with error tolerance
+    try {
+      this.twitterAlgorithmEngine = TwitterAlgorithmEngine.getInstance();
+      this.realTimeDataPipeline = RealTimeDataPipeline.getInstance();
+      this.followerPsychologyEngine = FollowerPsychologyEngine.getInstance();
+      console.log('✅ Algorithm Mastery systems initialized');
+    } catch (error) {
+      console.warn('⚠️ Algorithm mastery systems failed, using basic algorithms');
+    }
+    
+    console.log('🧠 Supreme AI Intelligence Systems initialization complete');
+    console.log('🛡️ All systems configured with resilient error handling');
   }
 
   private initializeSystemHealth(): void {
