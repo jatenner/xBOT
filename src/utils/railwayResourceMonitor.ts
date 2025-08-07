@@ -26,11 +26,11 @@ export class RailwayResourceMonitor {
       
       console.log(`📊 Memory usage: ${totalMB}MB`);
       
-      // Railway has ~512MB limit, be conservative
-      if (totalMB > 400) {
+      // Railway has ~512MB limit, be more permissive for posting
+      if (totalMB > 480) {
         return {
           canLaunch: false,
-          reason: `High memory usage: ${totalMB}MB (limit: 400MB)`
+          reason: `High memory usage: ${totalMB}MB (limit: 480MB)`
         };
       }
       

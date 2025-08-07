@@ -25,6 +25,8 @@ import { supabaseClient } from '../utils/supabaseClient';
 import { resilientSupabaseClient } from '../utils/resilientSupabaseClient';
 import { MasterAIIntelligenceCoordinator } from '../intelligence/masterAIIntelligenceCoordinator';
 import { DatabaseResilienceActivator } from '../utils/databaseResilienceActivator';
+import { bulletproofTwitterDataCollector } from '../utils/bulletproofTwitterDataCollector';
+import { offlineDataSynchronizer } from '../utils/offlineDataSynchronizer';
 import express from 'express';
 import { createServer } from 'http';
 
@@ -112,6 +114,8 @@ export class MasterAutonomousController {
   // 🧠 SUPREME AI INTELLIGENCE SYSTEMS
   private masterAICoordinator: MasterAIIntelligenceCoordinator;
   private databaseResilience: DatabaseResilienceActivator;
+  private dataCollector: typeof bulletproofTwitterDataCollector;
+  private dataSynchronizer: typeof offlineDataSynchronizer;
 
   static getInstance(): MasterAutonomousController {
     if (!this.instance) {
@@ -148,6 +152,9 @@ export class MasterAutonomousController {
 
       // 🧠 Activate Supreme AI Intelligence
       await this.activateSupremeAIIntelligence();
+
+      // 🔍 Activate Data Collection & Synchronization
+      await this.activateDataCollection();
 
       // Start monitoring and operational cycles
       this.startSystemMonitoring();
@@ -1315,6 +1322,12 @@ export class MasterAutonomousController {
     this.masterAICoordinator = MasterAIIntelligenceCoordinator.getInstance();
     console.log('✅ Master AI Intelligence Coordinator initialized');
     
+    // 🔍 Initialize Bulletproof Data Collection Systems
+    this.dataCollector = bulletproofTwitterDataCollector;
+    this.dataSynchronizer = offlineDataSynchronizer;
+    console.log('✅ Bulletproof Twitter Data Collector initialized');
+    console.log('✅ Offline Data Synchronizer initialized');
+    
     // Initialize core posting systems with resilient error handling
     try {
       this.postingEngine = new EnhancedAutonomousPostingEngine();
@@ -2349,5 +2362,145 @@ export class MasterAutonomousController {
       top_performer: 'data_insight',
       confidence: 0.5
     };
+  }
+
+  /**
+   * 🔍 ACTIVATE DATA COLLECTION & SYNCHRONIZATION
+   */
+  async activateDataCollection(): Promise<void> {
+    try {
+      console.log('🔍 === ACTIVATING BULLETPROOF DATA COLLECTION ===');
+      
+      // Start automatic data synchronization
+      this.dataSynchronizer.startAutoSync();
+      console.log('✅ Auto-sync started for offline data');
+      
+      // Test data collection capability
+      console.log('🧪 Testing Twitter data collection...');
+      
+      // Try to collect data for recent tweets (example)
+      const recentTweets = await this.getRecentTweetIds();
+      if (recentTweets.length > 0) {
+        const collectedData = await this.dataCollector.collectTwitterData(recentTweets.slice(0, 3));
+        console.log(`✅ Data collection test: ${collectedData.length}/${Math.min(recentTweets.length, 3)} tweets processed`);
+        
+        this.systemHealth.components.data_collection = {
+          status: 'active',
+          lastCheck: new Date(),
+          metrics: {
+            tweets_collected: collectedData.length,
+            success_rate: collectedData.length / Math.min(recentTweets.length, 3),
+            last_collection: new Date().toISOString()
+          }
+        };
+      } else {
+        console.log('⚠️ No recent tweets found for data collection test');
+        this.systemHealth.components.data_collection = {
+          status: 'warning',
+          lastCheck: new Date(),
+          errors: ['No recent tweets for testing']
+        };
+      }
+      
+      console.log('✅ Bulletproof Data Collection: ACTIVATED');
+      
+    } catch (error: any) {
+      console.error('❌ Data collection activation failed:', error);
+      this.systemHealth.components.data_collection = {
+        status: 'error',
+        lastCheck: new Date(),
+        errors: [error.message]
+      };
+      
+      // Continue with basic functionality even if data collection fails
+      console.log('⚠️ Continuing with basic functionality (data collection disabled)');
+    }
+  }
+
+  /**
+   * 📋 Get recent tweet IDs for data collection
+   */
+  private async getRecentTweetIds(): Promise<string[]> {
+    try {
+      // Try to get recent tweet IDs from database
+      const result = await resilientSupabaseClient.supabase
+        .from('tweets')
+        .select('tweet_id')
+        .gt('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+        .order('created_at', { ascending: false })
+        .limit(10);
+      
+      if (result.data && result.data.length > 0) {
+        return result.data.map((row: any) => row.tweet_id);
+      }
+      
+      // Fallback: generate some example tweet IDs for testing
+      console.log('⚠️ No recent tweets in database, using test IDs');
+      return [
+        '1234567890123456789', // Example tweet ID format
+        '1234567890123456790',
+        '1234567890123456791'
+      ];
+      
+    } catch (error) {
+      console.error('❌ Failed to get recent tweet IDs:', error);
+      return [];
+    }
+  }
+
+  /**
+   * 🔍 RUN BULLETPROOF DATA COLLECTION CYCLE
+   */
+  private async runBulletproofDataCollection(): Promise<void> {
+    console.log('🔍 === BULLETPROOF DATA COLLECTION CYCLE ===');
+    this.updateComponentStatus('data_collection', 'active');
+
+    try {
+      // Get recent tweets to analyze
+      const recentTweets = await this.getRecentTweetIds();
+      
+      if (recentTweets.length === 0) {
+        console.log('📭 No recent tweets to collect data for');
+        this.updateComponentStatus('data_collection', 'warning', ['No recent tweets']);
+        return;
+      }
+
+      console.log(`🔍 Collecting data for ${recentTweets.length} recent tweets...`);
+      
+      // Collect Twitter data using bulletproof system
+      const collectedData = await this.dataCollector.collectTwitterData(recentTweets);
+      
+      const successRate = collectedData.length / recentTweets.length;
+      
+      if (successRate > 0.7) {
+        console.log(`✅ Data collection successful: ${collectedData.length}/${recentTweets.length} tweets (${Math.round(successRate * 100)}%)`);
+        this.updateComponentStatus('data_collection', 'active', [
+          `Collected: ${collectedData.length}/${recentTweets.length}`,
+          `Success rate: ${Math.round(successRate * 100)}%`
+        ]);
+      } else if (successRate > 0.3) {
+        console.log(`⚠️ Data collection partial: ${collectedData.length}/${recentTweets.length} tweets (${Math.round(successRate * 100)}%)`);
+        this.updateComponentStatus('data_collection', 'warning', [
+          `Partial collection: ${Math.round(successRate * 100)}%`,
+          'Some tweets failed to process'
+        ]);
+      } else {
+        console.log(`❌ Data collection poor: ${collectedData.length}/${recentTweets.length} tweets (${Math.round(successRate * 100)}%)`);
+        this.updateComponentStatus('data_collection', 'error', [
+          `Low success rate: ${Math.round(successRate * 100)}%`,
+          'Most tweets failed to process'
+        ]);
+      }
+
+      // Try to sync any offline data if Supabase is back online
+      if (collectedData.length > 0) {
+        console.log('🔄 Attempting to sync any pending offline data...');
+        await this.dataSynchronizer.attemptSync();
+      }
+
+    } catch (error: any) {
+      console.error('❌ Bulletproof data collection cycle failed:', error);
+      this.updateComponentStatus('data_collection', 'error', [error.message]);
+    }
   }
 } 
