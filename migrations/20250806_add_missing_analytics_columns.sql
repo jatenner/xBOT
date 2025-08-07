@@ -3,25 +3,24 @@
 -- Based on actual schema analysis from Supabase 2025-08-06
 -- This adds ONLY the missing columns that are causing storage errors
 
--- Add missing columns to tweet_analytics table
-ALTER TABLE tweet_analytics 
-ADD COLUMN IF NOT EXISTS collected_at TIMESTAMP DEFAULT NOW(),
-ADD COLUMN IF NOT EXISTS click_through_rate NUMERIC DEFAULT 0,
-ADD COLUMN IF NOT EXISTS is_viral BOOLEAN DEFAULT FALSE,
-ADD COLUMN IF NOT EXISTS thread_performance JSONB DEFAULT '{}',
-ADD COLUMN IF NOT EXISTS optimal_timing JSONB DEFAULT '{}',
-ADD COLUMN IF NOT EXISTS audience_segment VARCHAR(50) DEFAULT 'general',
-ADD COLUMN IF NOT EXISTS growth_attribution JSONB DEFAULT '{}',
-ADD COLUMN IF NOT EXISTS learning_features JSONB DEFAULT '{}',
-ADD COLUMN IF NOT EXISTS ab_test_group VARCHAR(50) DEFAULT 'control',
-ADD COLUMN IF NOT EXISTS success_prediction NUMERIC DEFAULT 0.5,
-ADD COLUMN IF NOT EXISTS posting_strategy VARCHAR(50) DEFAULT 'balanced',
-ADD COLUMN IF NOT EXISTS content_category VARCHAR(100),
-ADD COLUMN IF NOT EXISTS hashtag_performance JSONB DEFAULT '{}',
-ADD COLUMN IF NOT EXISTS time_to_peak_engagement INTEGER DEFAULT 0,
-ADD COLUMN IF NOT EXISTS geographic_reach JSONB DEFAULT '{}',
-ADD COLUMN IF NOT EXISTS device_breakdown JSONB DEFAULT '{}',
-ADD COLUMN IF NOT EXISTS referral_sources JSONB DEFAULT '{}';
+-- Add missing columns to tweet_analytics table (one at a time for Supabase compatibility)
+ALTER TABLE tweet_analytics ADD COLUMN IF NOT EXISTS collected_at TIMESTAMP DEFAULT NOW();
+ALTER TABLE tweet_analytics ADD COLUMN IF NOT EXISTS click_through_rate NUMERIC DEFAULT 0;
+ALTER TABLE tweet_analytics ADD COLUMN IF NOT EXISTS is_viral BOOLEAN DEFAULT FALSE;
+ALTER TABLE tweet_analytics ADD COLUMN IF NOT EXISTS thread_performance JSONB DEFAULT '{}';
+ALTER TABLE tweet_analytics ADD COLUMN IF NOT EXISTS optimal_timing JSONB DEFAULT '{}';
+ALTER TABLE tweet_analytics ADD COLUMN IF NOT EXISTS audience_segment VARCHAR(50) DEFAULT 'general';
+ALTER TABLE tweet_analytics ADD COLUMN IF NOT EXISTS growth_attribution JSONB DEFAULT '{}';
+ALTER TABLE tweet_analytics ADD COLUMN IF NOT EXISTS learning_features JSONB DEFAULT '{}';
+ALTER TABLE tweet_analytics ADD COLUMN IF NOT EXISTS ab_test_group VARCHAR(50) DEFAULT 'control';
+ALTER TABLE tweet_analytics ADD COLUMN IF NOT EXISTS success_prediction NUMERIC DEFAULT 0.5;
+ALTER TABLE tweet_analytics ADD COLUMN IF NOT EXISTS posting_strategy VARCHAR(50) DEFAULT 'balanced';
+ALTER TABLE tweet_analytics ADD COLUMN IF NOT EXISTS content_category VARCHAR(100);
+ALTER TABLE tweet_analytics ADD COLUMN IF NOT EXISTS hashtag_performance JSONB DEFAULT '{}';
+ALTER TABLE tweet_analytics ADD COLUMN IF NOT EXISTS time_to_peak_engagement INTEGER DEFAULT 0;
+ALTER TABLE tweet_analytics ADD COLUMN IF NOT EXISTS geographic_reach JSONB DEFAULT '{}';
+ALTER TABLE tweet_analytics ADD COLUMN IF NOT EXISTS device_breakdown JSONB DEFAULT '{}';
+ALTER TABLE tweet_analytics ADD COLUMN IF NOT EXISTS referral_sources JSONB DEFAULT '{}';
 
 -- Create indexes for performance
 CREATE INDEX IF NOT EXISTS idx_tweet_analytics_is_viral ON tweet_analytics(is_viral);
