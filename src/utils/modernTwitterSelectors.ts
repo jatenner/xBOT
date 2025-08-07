@@ -87,7 +87,8 @@ export class ModernTwitterSelectors {
             }
             
             // Look for submit-like characteristics
-            if (button.type === 'submit' || className.includes('submit') || 
+            const buttonElement = button as HTMLButtonElement | HTMLInputElement;
+            if (buttonElement.type === 'submit' || className.includes('submit') || 
                 className.includes('primary') || className.includes('tweet')) {
               
               const rect = button.getBoundingClientRect();
