@@ -221,14 +221,16 @@ export class CompetitiveIntelligenceEngine {
    */
   private async analyzeCompetitorAccount(username: string): Promise<CompetitorAccount> {
     try {
-      // Simulated analysis - in real implementation would use Twitter API or scraping
+      // 🚨 REALISTIC COMPETITOR DATA ONLY - No fake millions
+      console.warn('⚠️ Using placeholder competitor data - real analysis disabled');
+      
       const mockData: CompetitorAccount = {
         username,
-        follower_count: Math.floor(Math.random() * 1000000) + 100000,
-        engagement_rate: Math.random() * 0.1 + 0.02, // 2-12%
+        follower_count: Math.floor(Math.random() * 10000) + 1000, // 1K-10K realistic range
+        engagement_rate: Math.random() * 0.05 + 0.01, // 1-6% realistic engagement
         content_categories: this.getHealthContentCategories(),
-        posting_frequency: Math.floor(Math.random() * 5) + 1, // 1-5 posts per day
-        growth_rate: Math.random() * 1000 + 100, // 100-1100 followers per day
+        posting_frequency: Math.floor(Math.random() * 3) + 1, // 1-3 posts per day
+        growth_rate: Math.random() * 50 + 10, // 10-60 followers per day (realistic)
         last_analyzed: new Date().toISOString()
       };
 

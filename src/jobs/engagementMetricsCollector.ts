@@ -241,18 +241,22 @@ export class EngagementMetricsCollector {
    * 📱 GENERATE SIMULATED METRICS (Placeholder for real metrics)
    */
   private generateSimulatedMetrics(tweetId: string): TweetMetrics {
-    // Simulate realistic engagement metrics
-    const hoursSinceCreation = Math.random() * 48;
-    const baseEngagement = Math.floor(Math.random() * 20) + 1;
+    // 🚨 REALISTIC SMALL ACCOUNT METRICS ONLY
+    console.warn('⚠️ Using simulated metrics - real scraping failed');
+    
+    // Small account: 0-5 likes, 0-1 retweets, 0-2 replies maximum
+    const likes = Math.floor(Math.random() * 6); // 0-5 likes
+    const retweets = Math.random() < 0.3 ? Math.floor(Math.random() * 2) : 0; // 0-1 retweets, 30% chance
+    const replies = Math.random() < 0.4 ? Math.floor(Math.random() * 3) : 0; // 0-2 replies, 40% chance
     
     return {
       tweet_id: tweetId,
-      likes: Math.floor(baseEngagement * (0.8 + Math.random() * 0.4)),
-      retweets: Math.floor(baseEngagement * 0.2 * Math.random()),
-      replies: Math.floor(baseEngagement * 0.3 * Math.random()),
-      quotes: Math.floor(baseEngagement * 0.1 * Math.random()),
-      bookmarks: Math.floor(baseEngagement * 0.15 * Math.random()),
-      impressions: Math.floor(baseEngagement * (50 + Math.random() * 100)),
+      likes: likes,
+      retweets: retweets,
+      replies: replies,
+      quotes: 0, // Small accounts rarely get quotes
+      bookmarks: Math.random() < 0.2 ? 1 : 0, // Rare bookmarks
+      impressions: Math.max(20, (likes + retweets + replies) * 5), // Minimum 20 impressions
       posted_at: new Date().toISOString()
     };
   }

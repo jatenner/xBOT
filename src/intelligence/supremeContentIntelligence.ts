@@ -303,7 +303,7 @@ Respond with JSON:
     
     const contentResult = await this.budgetAware.generateContent(optimizedPrompt, 'critical', 'supreme_content_generation', {
       model: 'gpt-4o',
-      maxTokens: strategy.content_type === 'thread' ? 1000 : 300,
+      maxTokens: strategy.content_type === 'thread' ? 800 : 250,
       temperature: 0.8,
       content_type: 'viral',
       target_audience: 'health_enthusiasts'
@@ -366,10 +366,11 @@ ${this.getContentTypeSpecificInstructions(strategy.content_type)}
         return `
 📜 THREAD REQUIREMENTS:
 - 3-5 tweets connected by numbering (1/, 2/, 3/, etc.)
-- Each tweet can stand alone but builds to a conclusion
-- Use compelling hooks in first tweet
-- Include specific data/research in middle tweets
-- End with actionable insight or surprising conclusion`;
+- Each tweet MUST be under 250 characters (critical for Twitter limits)
+- Use compelling hooks in first tweet (under 200 chars)
+- Include specific data/research in middle tweets (under 250 chars each)
+- End with actionable insight or surprising conclusion (under 200 chars)
+- Keep each tweet concise and punchy for maximum impact`;
 
       case 'question':
         return `
@@ -401,10 +402,11 @@ ${this.getContentTypeSpecificInstructions(strategy.content_type)}
       default:
         return `
 📝 SINGLE TWEET REQUIREMENTS:
-- One powerful, standalone insight
+- One powerful, standalone insight (under 250 characters)
 - Pack maximum value in minimal words
 - Use authoritative but accessible language
-- Include hook that demonstrates expertise`;
+- Include hook that demonstrates expertise
+- Keep concise and punchy for maximum engagement`;
     }
   }
 
