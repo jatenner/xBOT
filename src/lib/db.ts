@@ -29,9 +29,11 @@ async function getRedisClient() {
 
   if (!redis && !redisAvailable) {
     try {
-      // Dynamic import - only loads if ioredis is installed
-      const Redis = await import('ioredis');
-      redis = new Redis.default(REDIS_URL!, {
+      // Try to dynamically import Redis only at runtime
+      const ioredisModule = await eval('import("ioredis")');
+      const RedisClass = ioredisModule.default;
+      
+      redis = new RedisClass(REDIS_URL!, {
         retryDelayOnFailover: 100,
         enableReadyCheck: false,
         maxRetriesPerRequest: 3,
@@ -44,6 +46,7 @@ async function getRedisClient() {
       redis.on('error', (err: any) => console.error('❌ Redis Cloud error:', err));
       
       redisAvailable = true;
+      console.log('🚀 Redis Cloud client initialized successfully');
     } catch (error) {
       console.log('📋 Redis not available, using Supabase-only mode');
       redisAvailable = false;
