@@ -127,6 +127,52 @@ export function startHealthServer(): Promise<void> {
       });
     });
 
+    // Redis health check endpoint
+    app.get('/health/redis', async (_req, res) => {
+      try {
+        const { DB } = await import('./lib/db');
+        const health = await DB.healthCheck();
+        
+        if (health.redis === 'ok') {
+          res.status(200).json({ redis: 'ok', ...health });
+        } else {
+          res.status(503).json({ redis: health.redis, ...health });
+        }
+      } catch (error) {
+        console.error('❌ Redis health check failed:', error);
+        res.status(503).json({ 
+          redis: 'error', 
+          error: error.message,
+          timestamp: new Date().toISOString()
+        });
+      }
+    });
+
+    // Database health check endpoint (both Redis and Supabase)
+    app.get('/health/database', async (_req, res) => {
+      try {
+        const { DB } = await import('./lib/db');
+        const health = await DB.healthCheck();
+        
+        const httpStatus = health.overall === 'healthy' ? 200 : 
+                          health.overall === 'degraded' ? 503 : 500;
+        
+        res.status(httpStatus).json({
+          database: health.overall,
+          redis: health.redis,
+          supabase: health.supabase,
+          timestamp: new Date().toISOString()
+        });
+      } catch (error) {
+        console.error('❌ Database health check failed:', error);
+        res.status(500).json({ 
+          database: 'error', 
+          error: error.message,
+          timestamp: new Date().toISOString()
+        });
+      }
+    });
+
     // Basic info endpoint
     app.get('/', (_req, res) => {
       const uptime = Date.now() - healthServerStatus.startTime.getTime();
@@ -140,7 +186,9 @@ export function startHealthServer(): Promise<void> {
           health: '/health - Railway health checks',
           status: '/status - Detailed bot status',
           environment: '/env - Environment variables check',
-          playwright: '/playwright - Browser automation status'
+          playwright: '/playwright - Browser automation status',
+          redis: '/health/redis - Redis Cloud health check',
+          database: '/health/database - Full database health check'
         },
         message: 'Health server is always available - bot may still be initializing'
       });
