@@ -33,37 +33,43 @@ async function initializeBotAsync(): Promise<void> {
     console.log('🔧 Validating environment configuration...');
     
     try {
-      // Environment validation simplified
-      const envResult = { valid: true, warnings: [], errors: [], parsed: {} };
-      
-      if (!envResult.valid) {
-        console.error('❌ Environment validation failed:');
-        envResult.errors.forEach((error: string) => console.error(`   - ${error}`));
-        console.error('');
-        console.error('💡 Set these in Railway dashboard → Variables tab');
-        console.error('📚 See RAILWAY_ENV_SETUP.md for complete setup guide');
-        console.error('');
-        console.error('🏥 Health server continues running - bot will retry every 5 minutes');
-        updateBotStatus('missing_env_vars');
-        
-        // Schedule retry
-        setTimeout(() => {
-          console.log('🔄 Retrying bot initialization...');
-          initializeBotAsync().catch(console.error);
-        }, 5 * 60 * 1000); // 5 minutes
-        
-        return;
-      }
+              // Comprehensive health check
+        console.log('🩺 Running comprehensive system health check...');
+        const { ComprehensiveHealthCheck } = await import('./utils/comprehensiveHealthCheck');
+        const healthResult = await ComprehensiveHealthCheck.runFullHealthCheck();
 
-      if (envResult.warnings.length > 0) {
-        console.warn('⚠️ Environment warnings:');
-        envResult.warnings.forEach((warning: string) => console.warn(`   - ${warning}`));
-        console.warn('   (System will operate with reduced functionality)');
-        console.log('');
-      }
+        if (healthResult.overall === 'CRITICAL') {
+          console.error('❌ Critical health check failures detected:');
+          healthResult.results.filter(r => r.status === 'CRITICAL').forEach(result => {
+            console.error(`   - ${result.component}: ${result.details}`);
+            if (result.recommendations) {
+              result.recommendations.forEach(rec => console.error(`     💡 ${rec}`));
+            }
+          });
+          console.error('');
+          console.error('🏥 Health server continues running - bot will retry every 5 minutes');
+          updateBotStatus('critical_health_failures');
 
-      console.log('✅ Environment validation passed');
-      console.log(`📊 Configuration: 25 variables loaded`);
+          // Schedule retry
+          setTimeout(() => {
+            console.log('🔄 Retrying bot initialization after health fixes...');
+            initializeBotAsync().catch(console.error);
+          }, 5 * 60 * 1000); // 5 minutes
+
+          return;
+        }
+
+        if (healthResult.overall === 'WARNING') {
+          console.warn('⚠️ Health check warnings:');
+          healthResult.results.filter(r => r.status === 'WARNING').forEach(result => {
+            console.warn(`   - ${result.component}: ${result.details}`);
+          });
+          console.warn('   (System will operate with reduced functionality)');
+          console.log('');
+        }
+
+        console.log('✅ Health check passed');
+        console.log(`📊 Overall status: ${healthResult.overall}`);
       
     } catch (envError) {
       console.error('❌ Environment validation error:', envError);

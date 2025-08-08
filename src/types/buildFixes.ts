@@ -8,6 +8,22 @@ export interface PostingResult {
   tweetId?: string;
   reason?: string;
   error?: string;
+  emergency_mode?: boolean;
+  tweet_id?: string;
+  was_posted?: boolean;
+  confirmed?: boolean;
+  performance_metrics?: {
+    generation_time_ms: number;
+    posting_time_ms: number;
+    storage_time_ms: number;
+    total_time_ms: number;
+  };
+  content_metadata?: {
+    attempts_made: number;
+    uniqueness_score?: number;
+    template_used?: string;
+    selection_method?: string;
+  };
 }
 
 export interface ThreadPostResult {
