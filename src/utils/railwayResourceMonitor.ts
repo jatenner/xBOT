@@ -38,11 +38,18 @@ export class RailwayResourceMonitor {
       const activeProcesses = process.env.NODE_ENV === 'production' ? 
         await this.countActiveProcesses() : 0;
       
-      if (activeProcesses > 2) {
-        return {
-          canLaunch: false,
-          reason: `Too many active processes: ${activeProcesses}`
-        };
+      if (activeProcesses > 3) {
+        // Force cleanup and recheck
+        await this.forceCleanup();
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2s
+        
+        const activeAfterCleanup = await this.countActiveProcesses();
+        if (activeAfterCleanup > 3) {
+          return {
+            canLaunch: false,
+            reason: `Too many active processes: ${activeAfterCleanup} (after cleanup)`
+          };
+        }
       }
       
       return { canLaunch: true };
@@ -71,7 +78,12 @@ export class RailwayResourceMonitor {
       // Kill any hanging Chrome processes (Railway only)
       if (process.env.NODE_ENV === 'production') {
         try {
+          // More aggressive cleanup
           exec('pkill -f chrome || true');
+          exec('pkill -f chromium || true');
+          exec('pkill -f headless_shell || true');
+          // Wait a moment for processes to die
+          await new Promise(resolve => setTimeout(resolve, 1000));
           console.log('✅ Cleaned up Chrome processes');
         } catch (error) {
           // Ignore errors, this is best-effort cleanup
