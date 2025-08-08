@@ -12,11 +12,11 @@
 // import { BudgetAwareOpenAI } from '../utils/budgetAwareOpenAI';
 // import { SecureSupabaseClient } from '../utils/secureSupabaseClient';
 
-// Import existing generators
-import { ViralFollowerGrowthMaster } from '../agents/viralFollowerGrowthMaster';
-import { IntelligentTweetGenerator } from '../agents/intelligentTweetGenerator';
-import { EnhancedContentGenerator } from '../agents/enhancedContentGenerator';
-import { DiverseContentAgent } from '../agents/diverseContentAgent';
+// Use dynamic imports for generators to avoid build issues
+// import { ViralFollowerGrowthMaster } from '../agents/viralFollowerGrowthMaster';
+// import { IntelligentTweetGenerator } from '../agents/intelligentTweetGenerator';
+// import { EnhancedContentGenerator } from '../agents/enhancedContentGenerator';
+// import { DiverseContentAgent } from '../agents/diverseContentAgent';
 
 interface ContentCandidate {
   content: string | string[];
@@ -71,13 +71,27 @@ export class ContentSelectionEngine {
    */
   private async initializeDependencies(): Promise<void> {
     if (!this.openai) {
-      const { BudgetAwareOpenAI } = await import('../utils/budgetAwareOpenAI');
-      this.openai = new BudgetAwareOpenAI(process.env.OPENAI_API_KEY!);
+      try {
+        const { BudgetAwareOpenAI } = await import('../utils/budgetAwareOpenAI');
+        this.openai = new BudgetAwareOpenAI(process.env.OPENAI_API_KEY!);
+      } catch (error) {
+        console.warn('BudgetAwareOpenAI not available, using basic OpenAI client');
+        // Fallback to basic OpenAI if needed
+        const { OpenAI } = await import('openai');
+        this.openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+      }
     }
     
     if (!this.supabase) {
-      const { SecureSupabaseClient } = await import('../utils/secureSupabaseClient');
-      this.supabase = new SecureSupabaseClient();
+      try {
+        const { SecureSupabaseClient } = await import('../utils/secureSupabaseClient');
+        this.supabase = new SecureSupabaseClient();
+      } catch (error) {
+        console.warn('SecureSupabaseClient not available, using basic supabase client');
+        // Fallback to basic supabase client
+        const { supabase } = await import('../utils/supabaseClient');
+        this.supabase = supabase;
+      }
     }
   }
 
@@ -168,28 +182,32 @@ export class ContentSelectionEngine {
     const candidates: ContentCandidate[] = [];
     
     try {
-      // Get instances of existing generators with safety checks
+      // Get instances of existing generators with dynamic imports and safety checks
       let viralMaster, intelligentGenerator, enhancedGenerator, diverseAgent;
       
       try {
+        const { ViralFollowerGrowthMaster } = await import('../agents/viralFollowerGrowthMaster');
         viralMaster = ViralFollowerGrowthMaster.getInstance();
       } catch (error) {
         console.warn('ViralFollowerGrowthMaster not available:', error);
       }
       
       try {
+        const { IntelligentTweetGenerator } = await import('../agents/intelligentTweetGenerator');
         intelligentGenerator = IntelligentTweetGenerator.getInstance();
       } catch (error) {
         console.warn('IntelligentTweetGenerator not available:', error);
       }
       
       try {
+        const { EnhancedContentGenerator } = await import('../agents/enhancedContentGenerator');
         enhancedGenerator = new EnhancedContentGenerator();
       } catch (error) {
         console.warn('EnhancedContentGenerator not available:', error);
       }
       
       try {
+        const { DiverseContentAgent } = await import('../agents/diverseContentAgent');
         diverseAgent = new DiverseContentAgent();
       } catch (error) {
         console.warn('DiverseContentAgent not available:', error);
@@ -331,18 +349,39 @@ Return ONLY a JSON object:
   "controversy_balance": 0-100
 }`;
 
-    try {
-      const response = await this.openai.createChatCompletion([
-        { role: 'user', content: prompt }
-      ], {
-        model: 'gpt-4o-mini',
-        maxTokens: 200,
-        temperature: 0.3,
-        priority: 'medium',
-        operationType: 'content_scoring'
-      });
+          try {
+        let response;
+        if (this.openai.createChatCompletion) {
+          // Using BudgetAwareOpenAI
+          response = await this.openai.createChatCompletion([
+            { role: 'user', content: prompt }
+          ], {
+            model: 'gpt-4o-mini',
+            maxTokens: 200,
+            temperature: 0.3,
+            priority: 'medium',
+            operationType: 'content_scoring'
+          });
+        } else {
+          // Using basic OpenAI client
+          response = await this.openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [{ role: 'user', content: prompt }],
+            max_tokens: 200,
+            temperature: 0.3
+          });
+        }
 
-      const jsonMatch = (response.response as any).match(/\{[\s\S]*\}/);
+      let responseText;
+      if (response.response) {
+        responseText = response.response;
+      } else if (response.choices && response.choices[0]) {
+        responseText = response.choices[0].message.content;
+      } else {
+        responseText = JSON.stringify(response);
+      }
+
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const scores = JSON.parse(jsonMatch[0]);
         return {
