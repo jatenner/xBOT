@@ -8,7 +8,8 @@
  * 4. Optimizes thread structure for maximum engagement
  */
 
-import { BudgetAwareOpenAI } from '../utils/budgetAwareOpenAI';
+// Use dynamic imports to avoid build issues
+// import { BudgetAwareOpenAI } from '../utils/budgetAwareOpenAI';
 
 export interface ThreadDetection {
   isThread: boolean;
@@ -34,10 +35,20 @@ export interface ThreadStructure {
 
 export class ThreadStructureEngine {
   private static instance: ThreadStructureEngine;
-  private openai: BudgetAwareOpenAI;
+  private openai: any;
 
   constructor() {
-    this.openai = new BudgetAwareOpenAI(process.env.OPENAI_API_KEY!);
+    this.openai = null;
+  }
+
+  /**
+   * 🔧 INITIALIZE DEPENDENCIES DYNAMICALLY
+   */
+  private async initializeDependencies(): Promise<void> {
+    if (!this.openai) {
+      const { BudgetAwareOpenAI } = await import('../utils/budgetAwareOpenAI');
+      this.openai = new BudgetAwareOpenAI(process.env.OPENAI_API_KEY!);
+    }
   }
 
   static getInstance(): ThreadStructureEngine {
@@ -53,6 +64,9 @@ export class ThreadStructureEngine {
    */
   async detectThreadIntent(content: string): Promise<ThreadDetection> {
     console.log('🧵 Analyzing content for thread structure...');
+
+    // Initialize dependencies
+    await this.initializeDependencies();
 
     // Quick heuristic check first
     const heuristicResult = this.quickThreadDetection(content);
@@ -233,6 +247,9 @@ Return ONLY a JSON object:
    */
   async createThreadStructure(content: string, tweetCount: number): Promise<ThreadStructure> {
     console.log(`🧵 Creating ${tweetCount}-tweet thread structure...`);
+
+    // Initialize dependencies
+    await this.initializeDependencies();
 
     // Use AI to intelligently segment the content
     const segments = await this.segmentContentIntelligently(content, tweetCount);
