@@ -556,6 +556,35 @@ export class AutonomousPostingEngine {
       this.consecutiveFailures++;
       console.error('❌ AUTONOMOUS POSTING FAILED:', error);
       
+      // 🚨 EMERGENCY FALLBACK: Try emergency posting system
+      console.log('🚨 Attempting emergency posting system as last resort...');
+      try {
+        const { EmergencyPostingSystem } = await import('../utils/emergencyPostingSystem');
+        const emergencyResult = await EmergencyPostingSystem.emergencyPost();
+        
+        if (emergencyResult.success) {
+          console.log('✅ Emergency posting system succeeded!');
+          return {
+            success: true,
+            tweet_id: emergencyResult.tweet_id || 'emergency_post',
+            was_posted: true,
+            confirmed: true,
+            performance_metrics: {
+              generation_time_ms: generationTime,
+              posting_time_ms: Date.now() - startTime,
+              storage_time_ms: 0,
+              total_time_ms: Date.now() - startTime
+            },
+            content_metadata: {
+              attempts_made: contentGenerationAttempts
+            },
+            emergency_mode: true
+          };
+        }
+      } catch (emergencyError) {
+        console.error('❌ Emergency posting also failed:', emergencyError);
+      }
+      
       return {
         success: false,
         error: `Posting execution failed: ${error.message}`,

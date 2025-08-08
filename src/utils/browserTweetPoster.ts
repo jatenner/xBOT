@@ -36,17 +36,53 @@ export class BrowserTweetPoster {
       throw new Error(`Resource check failed: ${resourceCheck.reason}`);
     }
     
+    // Check if using Alpine Chromium
+    const isAlpine = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
+    const baseOptions = {
+      headless: true,
+      executablePath: isAlpine ? '/usr/bin/chromium-browser' : undefined,
+    };
+    
+    console.log(`🌐 Browser mode: ${isAlpine ? 'Alpine Chromium' : 'Playwright Chromium'}`);
+    
     // Progressive configurations from most to least resource-intensive
     const configs = [
       {
-        name: 'ultra_lightweight',
+        name: 'alpine_optimized',
         options: {
-          headless: true,
+          ...baseOptions,
           args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
             '--single-process', // CRITICAL for Railway pthread_create fix
+            '--disable-gpu',
+            '--disable-software-rasterizer',
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-renderer-backgrounding',
+            '--disable-features=TranslateUI',
+            '--disable-ipc-flooding-protection',
+            '--disable-extensions',
+            '--disable-plugins',
+            '--disable-images', // Save memory
+            '--memory-pressure-off',
+            '--max_old_space_size=256', // Limit heap
+            '--disable-web-security',
+            '--disable-features=VizDisplayCompositor',
+            '--window-size=800,600'
+          ]
+        }
+      },
+      {
+        name: 'ultra_lightweight',
+        options: {
+          ...baseOptions,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--single-process',
             '--disable-gpu',
             '--disable-accelerated-2d-canvas', 
             '--no-first-run',
@@ -58,16 +94,16 @@ export class BrowserTweetPoster {
             '--disable-ipc-flooding-protection',
             '--disable-extensions',
             '--disable-plugins',
-            '--disable-images', // Save memory
+            '--disable-images',
             '--memory-pressure-off',
-            '--max_old_space_size=256' // Limit heap
+            '--max_old_space_size=256'
           ]
         }
       },
       {
         name: 'minimal',
         options: {
-          headless: true,
+          ...baseOptions,
           args: [
             '--no-sandbox',
             '--disable-setuid-sandbox', 
