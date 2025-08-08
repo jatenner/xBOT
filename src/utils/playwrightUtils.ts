@@ -14,6 +14,18 @@ import * as path from 'path';
 export function getChromiumExecutablePath(): string | undefined {
   console.log('🔍 Detecting Chromium executable path...');
   
+  // PRIORITY 1: Alpine Chromium on Railway (always use this on Railway/production)
+  const isRailway = process.env.RAILWAY_ENVIRONMENT || process.env.NODE_ENV === 'production';
+  if (isRailway) {
+    const alpinePath = '/usr/bin/chromium-browser';
+    if (fs.existsSync(alpinePath)) {
+      console.log(`✅ Using Alpine Chromium: ${alpinePath}`);
+      return alpinePath;
+    } else {
+      console.log('⚠️ Alpine Chromium not found, falling back to Playwright detection');
+    }
+  }
+  
   // For development and local environments, let Playwright auto-detect
   if (process.env.NODE_ENV !== 'production') {
     console.log('🏠 Development environment - using Playwright auto-detection');

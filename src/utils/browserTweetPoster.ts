@@ -36,8 +36,10 @@ export class BrowserTweetPoster {
       throw new Error(`Resource check failed: ${resourceCheck.reason}`);
     }
     
-    // Check if using Alpine Chromium
-    const isAlpine = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
+    // Force Alpine Chromium on Railway (Railway always uses Alpine Linux)
+    const isRailway = process.env.RAILWAY_ENVIRONMENT || process.env.NODE_ENV === 'production';
+    const isAlpine = isRailway || process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
+    
     const baseOptions = {
       headless: true,
       executablePath: isAlpine ? '/usr/bin/chromium-browser' : undefined,
