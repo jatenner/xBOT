@@ -53,6 +53,7 @@ interface PostingResult {
   error?: string;
   was_posted?: boolean;
   confirmed?: boolean;
+  emergency_mode?: boolean;
   performance_metrics: {
     generation_time_ms: number;
     posting_time_ms: number;
