@@ -32,6 +32,14 @@ else
     fi
 fi
 
+# Setup Redis if available
+if [ -n "$REDIS_URL" ] || [ -n "$REDIS_CONNECTION_STRING" ]; then
+  echo "🔍 Redis detected, setting up hot-path..."
+  node scripts/setupRedis.js 2>/dev/null || echo "⚠️ Redis setup failed, continuing with Supabase-only"
+else
+  echo "📋 Running in Supabase-only mode"
+fi
+
 # Start the bot
 echo "🤖 Starting bot application..."
 exec node dist/main.js 

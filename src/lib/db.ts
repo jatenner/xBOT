@@ -11,33 +11,45 @@
  * - Hourly flush: Redis → Supabase for durability
  */
 
-import * as Redis from 'ioredis';
+// Dynamic imports to handle missing dependencies gracefully
 import { createClient } from '@supabase/supabase-js';
 
 // Environment configuration
-const USE_SUPABASE_ONLY = process.env.USE_SUPABASE_ONLY === 'true';
+const USE_SUPABASE_ONLY = process.env.USE_SUPABASE_ONLY !== 'false'; // Default to Supabase-only
 const REDIS_URL = process.env.REDIS_URL || process.env.REDIS_CONNECTION_STRING;
 
-// Initialize Redis Cloud connection
-const redis = new Redis.default(REDIS_URL!, {
-  retryDelayOnFailover: 100,
-  enableReadyCheck: false,
-  maxRetriesPerRequest: 3,
-  lazyConnect: true,
-  // Redis Cloud SSL configuration
-  tls: REDIS_URL?.startsWith('rediss://') ? {} : undefined,
-});
+// Initialize Redis Cloud connection (lazy loading)
+let redis: any = null;
+async function getRedisClient() {
+  if (!redis && !USE_SUPABASE_ONLY && REDIS_URL) {
+    try {
+      const Redis = await import('ioredis');
+      redis = new Redis.default(REDIS_URL!, {
+        retryDelayOnFailover: 100,
+        enableReadyCheck: false,
+        maxRetriesPerRequest: 3,
+        lazyConnect: true,
+        // Redis Cloud SSL configuration
+        tls: REDIS_URL?.startsWith('rediss://') ? {} : undefined,
+      });
+      
+      // Connection event handlers
+      redis.on('connect', () => console.log('✅ Redis Cloud connected'));
+      redis.on('ready', () => console.log('🚀 Redis Cloud ready'));
+      redis.on('error', (err: any) => console.error('❌ Redis Cloud error:', err));
+    } catch (error) {
+      console.warn('⚠️ Redis not available, falling back to Supabase-only mode');
+      redis = null;
+    }
+  }
+  return redis;
+}
 
 // Initialize Supabase client
 const supa = createClient(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
-
-// Connection event handlers
-redis.on('connect', () => console.log('✅ Redis Cloud connected'));
-redis.on('ready', () => console.log('🚀 Redis Cloud ready'));
-redis.on('error', (err) => console.error('❌ Redis Cloud error:', err));
 
 interface Tweet {
   id: string;
@@ -74,6 +86,11 @@ export const DB = {
       return this.saveTweetDurable(tweet);
     }
 
+    const redisClient = await getRedisClient();
+    if (!redisClient) {
+      return this.saveTweetDurable(tweet);
+    }
+
     try {
       const tweetData = {
         ...tweet,
@@ -82,19 +99,19 @@ export const DB = {
       };
 
       // Store tweet hash
-      await redis.hset(`tweet:${tweet.id}`, tweetData);
+      await redisClient.hset(`tweet:${tweet.id}`, tweetData);
       
       // Add to recent tweets sorted set (score = timestamp)
       const timestamp = new Date(tweet.posted_at).getTime();
-      await redis.zadd('recent_tweets', timestamp, tweet.id);
+      await redisClient.zadd('recent_tweets', timestamp, tweet.id);
       
       // Keep only last 1000 tweets in hot cache
-      await redis.zremrangebyrank('recent_tweets', 0, -1001);
+      await redisClient.zremrangebyrank('recent_tweets', 0, -1001);
       
       // Add to daily count for rate limiting
       const today = new Date().toISOString().split('T')[0];
-      await redis.incr(`daily_count:${today}`);
-      await redis.expire(`daily_count:${today}`, 86400 * 2); // 2 days TTL
+      await redisClient.incr(`daily_count:${today}`);
+      await redisClient.expire(`daily_count:${today}`, 86400 * 2); // 2 days TTL
 
       console.log(`🚀 Tweet ${tweet.id} saved to Redis hot cache`);
       
@@ -112,9 +129,14 @@ export const DB = {
       return this.getRecentTweetsDurable(n);
     }
 
+    const redisClient = await getRedisClient();
+    if (!redisClient) {
+      return this.getRecentTweetsDurable(n);
+    }
+
     try {
       // Get most recent tweet IDs (newest first)
-      const ids = await redis.zrevrange('recent_tweets', 0, n - 1);
+      const ids = await redisClient.zrevrange('recent_tweets', 0, n - 1);
       
       if (ids.length === 0) {
         console.log('📥 No tweets in Redis cache, falling back to Supabase');
@@ -124,7 +146,7 @@ export const DB = {
       // Get tweet data for each ID
       const tweets: Tweet[] = [];
       for (const id of ids) {
-        const tweetData = await redis.hgetall(`tweet:${id}`);
+        const tweetData = await redisClient.hgetall(`tweet:${id}`);
         if (Object.keys(tweetData).length > 0) {
           tweets.push(tweetData as any);
         }
