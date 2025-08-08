@@ -1374,7 +1374,7 @@ export class AutonomousPostingEngine {
         created_at: now.toISOString(),
         content_length: content.length,
         has_hook: this.hasHook(content),
-        has_call_to_action: this.hasCallToAction(content),
+        has_call_to_action: this.hasCallToAction(Array.isArray(content) ? content.join(' ') : content),
         posting_hour: now.getHours(),
         posting_day_of_week: now.getDay(),
         format_type: metadata.format_type || 'unknown',
