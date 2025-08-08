@@ -3,8 +3,13 @@
  * Extreme memory optimization for 512MB Railway containers
  */
 
+// Detect if we're on Railway/Alpine Linux
+const isRailway = process.env.RAILWAY_ENVIRONMENT || process.env.NODE_ENV === 'production';
+const alpineExecutablePath = isRailway ? '/usr/bin/chromium-browser' : undefined;
+
 export const ULTRA_LIGHT_BROWSER_OPTIONS = {
     headless: true,
+    executablePath: alpineExecutablePath,
     args: [
         // Memory optimization (CRITICAL for Railway)
         '--no-sandbox',
@@ -56,6 +61,7 @@ export const ULTRA_LIGHT_BROWSER_OPTIONS = {
 
 export const EMERGENCY_BROWSER_OPTIONS = {
     headless: true,
+    executablePath: alpineExecutablePath,
     args: [
         '--no-sandbox',
         '--disable-setuid-sandbox', 
