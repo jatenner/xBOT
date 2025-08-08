@@ -92,7 +92,7 @@ export class EnhancedDiverseContentAgent {
           attempts_made: contentResult.attempts_made,
           generation_time_ms: Date.now() - startTime,
           quality_score: this.calculateQualityScore(contentResult.content, trendingContext),
-          core_idea_fingerprint: contentResult.uniqueness_analysis?.ideaFingerprint,
+          // core_idea_fingerprint: contentResult.uniqueness_analysis?.ideaFingerprint, // Temporarily disabled
           core_idea_category: contentResult.uniqueness_analysis?.coreIdeaAnalysis?.idea_category,
           novelty_reasons: contentResult.uniqueness_analysis?.coreIdeaAnalysis?.novelty_reasons
         },
