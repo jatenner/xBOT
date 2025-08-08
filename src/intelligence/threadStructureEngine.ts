@@ -46,8 +46,14 @@ export class ThreadStructureEngine {
    */
   private async initializeDependencies(): Promise<void> {
     if (!this.openai) {
-      const { BudgetAwareOpenAI } = await import('../utils/budgetAwareOpenAI');
-      this.openai = new BudgetAwareOpenAI(process.env.OPENAI_API_KEY!);
+      try {
+        const { BudgetAwareOpenAI } = await import('../utils/budgetAwareOpenAI');
+        this.openai = new BudgetAwareOpenAI(process.env.OPENAI_API_KEY!);
+      } catch (error) {
+        console.warn('BudgetAwareOpenAI not available, using basic OpenAI client');
+        const { OpenAI } = await import('openai');
+        this.openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+      }
     }
   }
 
@@ -185,17 +191,36 @@ Return ONLY a JSON object:
 }`;
 
     try {
-      const response = await this.openai.createChatCompletion([
-        { role: 'user', content: prompt }
-      ], {
-        model: 'gpt-4o-mini',
-        maxTokens: 150,
-        temperature: 0.3,
-        priority: 'medium',
-        operationType: 'thread_detection'
-      });
+      let response;
+      if (this.openai.createChatCompletion) {
+        response = await this.openai.createChatCompletion([
+          { role: 'user', content: prompt }
+        ], {
+          model: 'gpt-4o-mini',
+          maxTokens: 150,
+          temperature: 0.3,
+          priority: 'medium',
+          operationType: 'thread_detection'
+        });
+      } else {
+        response = await this.openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 150,
+          temperature: 0.3
+        });
+      }
 
-      const jsonMatch = (response.response as any).match(/\{[\s\S]*\}/);
+      let responseText;
+      if (response.response) {
+        responseText = response.response;
+      } else if (response.choices && response.choices[0]) {
+        responseText = response.choices[0].message.content;
+      } else {
+        responseText = JSON.stringify(response);
+      }
+
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const result = JSON.parse(jsonMatch[0]);
         return {
@@ -296,17 +321,36 @@ Return ONLY a JSON array of exactly ${targetCount} strings:
 ["segment 1", "segment 2", ...]`;
 
     try {
-      const response = await this.openai.createChatCompletion([
-        { role: 'user', content: prompt }
-      ], {
-        model: 'gpt-4o',
-        maxTokens: 600,
-        temperature: 0.4,
-        priority: 'medium',
-        operationType: 'thread_segmentation'
-      });
+      let response;
+      if (this.openai.createChatCompletion) {
+        response = await this.openai.createChatCompletion([
+          { role: 'user', content: prompt }
+        ], {
+          model: 'gpt-4o',
+          maxTokens: 600,
+          temperature: 0.4,
+          priority: 'medium',
+          operationType: 'thread_segmentation'
+        });
+      } else {
+        response = await this.openai.chat.completions.create({
+          model: 'gpt-4o',
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 600,
+          temperature: 0.4
+        });
+      }
 
-      const jsonMatch = (response.response as any).match(/\[[\s\S]*\]/);
+      let responseText;
+      if (response.response) {
+        responseText = response.response;
+      } else if (response.choices && response.choices[0]) {
+        responseText = response.choices[0].message.content;
+      } else {
+        responseText = JSON.stringify(response);
+      }
+
+      const jsonMatch = responseText.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
         const segments = JSON.parse(jsonMatch[0]);
         if (Array.isArray(segments) && segments.length === targetCount) {
