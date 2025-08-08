@@ -13,7 +13,8 @@
  * - Metrics collection for monitoring
  */
 
-import { DB } from '../src/lib/db';
+// Dynamic import to handle missing Redis dependencies
+let DB: any;
 
 interface FlushMetrics {
   startTime: Date;
@@ -40,9 +41,18 @@ async function main(): Promise<void> {
   console.log(`⏰ Start time: ${metrics.startTime.toISOString()}`);
   
   try {
+    // Import DB module
+    try {
+      const dbModule = await import('../src/lib/db');
+      DB = dbModule.DB;
+    } catch (error) {
+      console.log('📋 Database module not available, skipping flush');
+      process.exit(0);
+    }
+
     // Check if we're in Supabase-only mode
-    if (process.env.USE_SUPABASE_ONLY === 'true') {
-      console.log('📋 USE_SUPABASE_ONLY=true, skipping Redis flush');
+    if (process.env.USE_SUPABASE_ONLY !== 'false') {
+      console.log('📋 Supabase-only mode, skipping Redis flush');
       process.exit(0);
     }
 
