@@ -289,40 +289,38 @@ export class AutonomousPostingEngine {
             contentResult = { success: false, error: 'No offline content available' };
           }
         } else {
-          // 🧠 INTELLIGENT CONTENT SELECTION (attempt 1 only for performance)
+          // 🧠 SIMPLE INTELLIGENT CONTENT SELECTION (attempt 1 only for performance)
           if (contentGenerationAttempts === 1) {
             try {
-              console.log('🎯 === INTELLIGENT CONTENT SELECTION ===');
-              const { ContentSelectionEngine } = await import('../intelligence/contentSelectionEngine');
-              const selectionEngine = ContentSelectionEngine.getInstance();
+              console.log('🎯 === SIMPLE INTELLIGENT CONTENT SELECTION ===');
+              const { SimpleContentSelector } = await import('../intelligence/simpleContentSelector');
+              const selector = SimpleContentSelector.getInstance();
               
-              const selectionResult = await selectionEngine.selectBestContent({
-                content_type: 'auto',
-                time_of_day: new Date().toLocaleTimeString(),
+              const selectionResult = await selector.selectBestContent({
+                topic: 'health',
+                style: 'viral',
+                content_type: 'auto'
               });
               
-              if (selectionResult.should_post && selectionResult.selected_candidate) {
-                console.log(`🏆 INTELLIGENT SELECTION SUCCESS: Score ${selectionResult.score?.total_score}/100`);
-                console.log(`📊 Breakdown: V${selectionResult.score?.breakdown.viral_potential} E${selectionResult.score?.breakdown.engagement_hooks} Q${selectionResult.score?.breakdown.content_quality}`);
-                console.log(`🔮 Predicted engagement: ${selectionResult.score?.predicted_engagement.toFixed(1)}%`);
+              if (selectionResult.should_post && selectionResult.content) {
+                console.log(`🏆 INTELLIGENT SELECTION SUCCESS: Score ${selectionResult.score}/100`);
+                console.log(`💭 Reasoning: ${selectionResult.reasoning}`);
+                console.log(`📊 Alternatives considered: ${selectionResult.alternatives_considered}`);
                 
                 contentResult = {
                   success: true,
-                  content: selectionResult.selected_candidate.content,
+                  content: selectionResult.content,
                   metadata: {
-                    ...selectionResult.selected_candidate.metadata,
-                    intelligence_score: selectionResult.score?.total_score,
-                    predicted_engagement: selectionResult.score?.predicted_engagement,
-                    selection_confidence: selectionResult.score?.confidence,
-                    generator_used: selectionResult.selected_candidate.generator,
+                    intelligence_score: selectionResult.score,
+                    selection_reasoning: selectionResult.reasoning,
                     alternatives_considered: selectionResult.alternatives_considered,
-                    source: 'Intelligent Selection Engine'
+                    source: 'Simple Intelligence Engine'
                   }
                 };
                 
                 console.log('✅ Using intelligent content selection');
               } else {
-                console.log(`🚫 Intelligent selection rejected: ${selectionResult.rejection_reason}`);
+                console.log(`🚫 Intelligent selection rejected: ${selectionResult.reasoning}`);
                 throw new Error('Content quality below threshold');
               }
               
@@ -683,32 +681,24 @@ export class AutonomousPostingEngine {
               eliteResult.content.join('\n\n') : 
               (typeof eliteResult.content === 'string' ? eliteResult.content : JSON.stringify(eliteResult.content));
 
-            // 🧠 ENHANCED INTELLIGENT THREAD STRUCTURE DETECTION
+            // 🧵 SIMPLE INTELLIGENT THREAD DETECTION
             let finalContent: string | string[];
             let actualIsThread = false;
             
             try {
-              const { ThreadStructureEngine } = await import('../intelligence/threadStructureEngine');
-              const threadEngine = ThreadStructureEngine.getInstance();
+              const { SimpleThreadDetector } = await import('../intelligence/simpleThreadDetector');
+              const threadDetector = SimpleThreadDetector.getInstance();
               
-              console.log('🧵 Analyzing content with enhanced thread intelligence...');
-              const threadDetection = await threadEngine.detectThreadIntent(contentString);
+              console.log('🧵 Analyzing content with simple thread intelligence...');
+              const threadAnalysis = await threadDetector.analyzeContent(contentString);
               
-              console.log(`📊 Thread analysis: ${threadDetection.isThread ? 'THREAD' : 'SINGLE'} (${threadDetection.confidence}% confidence)`);
-              console.log(`💭 Reasoning: ${threadDetection.reasoning}`);
+              console.log(`📊 Thread analysis: ${threadAnalysis.isThread ? 'THREAD' : 'SINGLE'} (${threadAnalysis.confidence}% confidence)`);
+              console.log(`💭 Reasoning: ${threadAnalysis.reasoning}`);
               
-              if (threadDetection.isThread) {
-                // Create optimized thread structure
-                const threadStructure = await threadEngine.createThreadStructure(
-                  contentString, 
-                  threadDetection.suggestedTweetCount
-                );
+              if (threadAnalysis.isThread && threadAnalysis.suggestedStructure) {
+                console.log(`🧵 Creating thread with ${threadAnalysis.suggestedStructure.length} tweets`);
                 
-                console.log(`🎯 Thread type: ${threadStructure.threadType}`);
-                console.log(`📈 Engagement strategy: ${threadStructure.engagementStrategy}`);
-                console.log(`📊 Metadata: ${threadStructure.tweets.length} tweets, ${threadStructure.metadata.engagementPotential}% engagement potential`);
-                
-                finalContent = threadStructure.tweets;
+                finalContent = threadAnalysis.suggestedStructure;
                 actualIsThread = true;
                 
                 // 🔥 ENHANCE with trending topics if available
@@ -732,24 +722,7 @@ export class AutonomousPostingEngine {
                 const { cleanSingleTweet } = await import('../utils/threadUtils');
                 const cleanedTweet = cleanSingleTweet(contentString);
                 
-                // 🔥 ENHANCE single tweet with trending topics
-                try {
-                  const { TrendInjector } = await import('../intelligence/trendInjector');
-                  const trendInjector = TrendInjector.getInstance();
-                  const trendEnhanced = await trendInjector.enhanceWithTrends(cleanedTweet, 'single');
-                  
-                  const { enhanceTwitterContent } = await import('../utils/threadUtils');
-                  finalContent = await enhanceTwitterContent(trendEnhanced.enhancedContent, false) as string;
-                  
-                  if (trendEnhanced.injectedKeywords.length > 0) {
-                    console.log(`📰 Trending topics injected: ${trendEnhanced.injectedKeywords.join(', ')}`);
-                  }
-                } catch (trendError) {
-                  console.log('⚠️ Trend injection failed, using clean tweet');
-                  const { enhanceTwitterContent } = await import('../utils/threadUtils');
-                  finalContent = await enhanceTwitterContent(cleanedTweet, false) as string;
-                }
-                
+                finalContent = cleanedTweet;
                 console.log(`📝 SINGLE TWEET: Optimized for engagement`);
               }
               
