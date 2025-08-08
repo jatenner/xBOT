@@ -701,21 +701,8 @@ export class AutonomousPostingEngine {
                 finalContent = threadAnalysis.suggestedStructure;
                 actualIsThread = true;
                 
-                // 🔥 ENHANCE with trending topics if available
-                try {
-                  const { TrendInjector } = await import('../intelligence/trendInjector');
-                  const trendInjector = TrendInjector.getInstance();
-                  const trendEnhanced = await trendInjector.enhanceWithTrends(
-                    threadStructure.tweets.join('\n'), 'thread'
-                  );
-                  
-                  if (trendEnhanced.injectedKeywords.length > 0) {
-                    finalContent = trendEnhanced.enhancedContent.split('\n').filter(t => t.trim());
-                    console.log(`📰 Trending topics injected: ${trendEnhanced.injectedKeywords.join(', ')}`);
-                  }
-                } catch (trendError) {
-                  console.log('⚠️ Trend injection failed, using structured thread');
-                }
+                // Thread structure created successfully
+                console.log(`✅ Thread created with ${finalContent.length} tweets`);
                 
               } else {
                 // Single tweet - clean and optimize
