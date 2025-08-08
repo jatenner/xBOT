@@ -1,0 +1,44 @@
+# 🧪 DOCKER COMPOSE FOR INTEGRATION TESTING
+# ==========================================
+# 
+# Provides Redis service for integration tests.
+# Usage: docker-compose -f docker-compose.test.yml up -d
+
+version: '3.8'
+
+services:
+  # Redis for testing
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --requirepass testpassword
+    environment:
+      - REDIS_PASSWORD=testpassword
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "testpassword", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - redis_test_data:/data
+
+  # Test runner service (optional)
+  test:
+    build: .
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - NODE_ENV=test
+      - REDIS_URL=redis://default:testpassword@redis:6379
+      - SUPABASE_URL=https://test.supabase.co
+      - SUPABASE_SERVICE_ROLE_KEY=test-key
+      - USE_SUPABASE_ONLY=false
+    command: npm test
+    volumes:
+      - .:/app
+      - /app/node_modules
+
+volumes:
+  redis_test_data:
