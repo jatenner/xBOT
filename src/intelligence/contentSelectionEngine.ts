@@ -8,8 +8,9 @@
  * 4. Learns from performance to improve future selections
  */
 
-import { BudgetAwareOpenAI } from '../utils/budgetAwareOpenAI';
-import { SecureSupabaseClient } from '../utils/secureSupabaseClient';
+// Use dynamic imports to avoid build issues
+// import { BudgetAwareOpenAI } from '../utils/budgetAwareOpenAI';
+// import { SecureSupabaseClient } from '../utils/secureSupabaseClient';
 
 // Import existing generators
 import { ViralFollowerGrowthMaster } from '../agents/viralFollowerGrowthMaster';
@@ -51,8 +52,8 @@ interface PostingDecision {
 
 export class ContentSelectionEngine {
   private static instance: ContentSelectionEngine;
-  private openai: BudgetAwareOpenAI;
-  private supabase: SecureSupabaseClient;
+  private openai: any;
+  private supabase: any;
   
   // Quality thresholds
   private static readonly MIN_POSTING_SCORE = 65; // Only post if 65/100+
@@ -60,8 +61,24 @@ export class ContentSelectionEngine {
   private static readonly CANDIDATE_COUNT = 5;    // Generate 5 candidates per posting opportunity
 
   constructor() {
-    this.openai = new BudgetAwareOpenAI(process.env.OPENAI_API_KEY!);
-    this.supabase = new SecureSupabaseClient();
+    // Initialize with null, will be loaded dynamically
+    this.openai = null;
+    this.supabase = null;
+  }
+
+  /**
+   * 🔧 INITIALIZE DEPENDENCIES DYNAMICALLY
+   */
+  private async initializeDependencies(): Promise<void> {
+    if (!this.openai) {
+      const { BudgetAwareOpenAI } = await import('../utils/budgetAwareOpenAI');
+      this.openai = new BudgetAwareOpenAI(process.env.OPENAI_API_KEY!);
+    }
+    
+    if (!this.supabase) {
+      const { SecureSupabaseClient } = await import('../utils/secureSupabaseClient');
+      this.supabase = new SecureSupabaseClient();
+    }
   }
 
   static getInstance(): ContentSelectionEngine {
@@ -85,6 +102,8 @@ export class ContentSelectionEngine {
     console.log(`📋 Request: ${JSON.stringify(request)}`);
 
     try {
+      // Initialize dependencies
+      await this.initializeDependencies();
       // Step 1: Generate multiple candidates from different generators
       const candidates = await this.generateCandidates(request);
       console.log(`🎨 Generated ${candidates.length} content candidates`);
@@ -149,29 +168,52 @@ export class ContentSelectionEngine {
     const candidates: ContentCandidate[] = [];
     
     try {
-      // Get instances of existing generators
-      const viralMaster = ViralFollowerGrowthMaster.getInstance();
-      const intelligentGenerator = IntelligentTweetGenerator.getInstance();
-      const enhancedGenerator = new EnhancedContentGenerator();
-      const diverseAgent = new DiverseContentAgent();
+      // Get instances of existing generators with safety checks
+      let viralMaster, intelligentGenerator, enhancedGenerator, diverseAgent;
+      
+      try {
+        viralMaster = ViralFollowerGrowthMaster.getInstance();
+      } catch (error) {
+        console.warn('ViralFollowerGrowthMaster not available:', error);
+      }
+      
+      try {
+        intelligentGenerator = IntelligentTweetGenerator.getInstance();
+      } catch (error) {
+        console.warn('IntelligentTweetGenerator not available:', error);
+      }
+      
+      try {
+        enhancedGenerator = new EnhancedContentGenerator();
+      } catch (error) {
+        console.warn('EnhancedContentGenerator not available:', error);
+      }
+      
+      try {
+        diverseAgent = new DiverseContentAgent();
+      } catch (error) {
+        console.warn('DiverseContentAgent not available:', error);
+      }
 
-      // Generate from each source (parallel for speed)
-      const generationPromises = [
-        // Viral content generator (usually high engagement)
-        this.generateFromViral(viralMaster, request),
-        
-        // Intelligent generator (learning-based)
-        this.generateFromIntelligent(intelligentGenerator, request),
-        
-        // Enhanced generator (format-optimized)
-        this.generateFromEnhanced(enhancedGenerator, request),
-        
-        // Diverse agent (template variety)
-        this.generateFromDiverse(diverseAgent, request),
-        
-        // Additional viral attempt with different parameters
-        this.generateFromViral(viralMaster, { ...request, force_controversial: true })
-      ];
+      // Generate from each source (parallel for speed) - only if available
+      const generationPromises = [];
+      
+      if (viralMaster) {
+        generationPromises.push(this.generateFromViral(viralMaster, request));
+        generationPromises.push(this.generateFromViral(viralMaster, { ...request, force_controversial: true }));
+      }
+      
+      if (intelligentGenerator) {
+        generationPromises.push(this.generateFromIntelligent(intelligentGenerator, request));
+      }
+      
+      if (enhancedGenerator) {
+        generationPromises.push(this.generateFromEnhanced(enhancedGenerator, request));
+      }
+      
+      if (diverseAgent) {
+        generationPromises.push(this.generateFromDiverse(diverseAgent, request));
+      }
 
       const results = await Promise.allSettled(generationPromises);
       
@@ -441,13 +483,16 @@ Return ONLY a JSON object:
   private async generateFromViral(generator: any, request: any): Promise<ContentCandidate | null> {
     try {
       const result = await generator.generateViralContent({ ...request });
-      return {
-        content: result.content,
-        content_type: result.content_type,
-        generator: 'viral',
-        raw_content: result.raw_content,
-        metadata: result
-      };
+      if (result && result.content) {
+        return {
+          content: result.content,
+          content_type: result.content_type || 'single_tweet',
+          generator: 'viral',
+          raw_content: result.raw_content || result.content,
+          metadata: result
+        };
+      }
+      return null;
     } catch (error) {
       console.warn('Viral generator failed:', error);
       return null;
@@ -457,13 +502,16 @@ Return ONLY a JSON object:
   private async generateFromIntelligent(generator: any, request: any): Promise<ContentCandidate | null> {
     try {
       const result = await generator.generateIntelligentTweet(request);
-      return {
-        content: result.content,
-        content_type: Array.isArray(result.content) ? 'thread' : 'single_tweet',
-        generator: 'intelligent',
-        raw_content: Array.isArray(result.content) ? result.content.join('\n') : result.content,
-        metadata: result
-      };
+      if (result && result.content) {
+        return {
+          content: result.content,
+          content_type: Array.isArray(result.content) ? 'thread' : 'single_tweet',
+          generator: 'intelligent',
+          raw_content: Array.isArray(result.content) ? result.content.join('\n') : result.content,
+          metadata: result
+        };
+      }
+      return null;
     } catch (error) {
       console.warn('Intelligent generator failed:', error);
       return null;
