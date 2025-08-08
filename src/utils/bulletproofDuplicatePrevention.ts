@@ -508,7 +508,7 @@ export class BulletproofDuplicatePrevention {
         .insert({
           content_hash: analysis.content_hash,
           original_content: analysis.normalized_content,
-          idea_fingerprint: analysis.idea_fingerprint,
+          // idea_fingerprint: analysis.idea_fingerprint, // Temporarily disabled for schema cache
           semantic_embedding: analysis.semantic_embedding,
           key_concepts: analysis.key_concepts,
           topic_category: analysis.topic_category,

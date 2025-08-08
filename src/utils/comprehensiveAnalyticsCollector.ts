@@ -176,12 +176,12 @@ export class ComprehensiveAnalyticsCollector {
     let page: Page | null = null;
     
     try {
-      // Initialize browser if needed
+      // Initialize browser if needed with correct path
       if (!this.browser) {
-        this.browser = await chromium.launch({
-          headless: true,
-          args: ['--no-sandbox', '--disable-setuid-sandbox']
-        });
+        const { getChromiumLaunchOptions } = await import('./playwrightUtils');
+        const launchOptions = getChromiumLaunchOptions(['--headless']);
+        
+        this.browser = await chromium.launch(launchOptions);
       }
       
       page = await this.browser.newPage();
@@ -455,7 +455,14 @@ Complexity: 1 (very simple) to 10 (highly technical)`;
       });
 
       if (response?.success && response?.response?.choices?.[0]?.message?.content) {
-        const analysis = JSON.parse(response.response.choices[0].message.content);
+        let content = response.response.choices[0].message.content.trim();
+        
+        // Clean up markdown code blocks and common AI formatting issues
+        content = content.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+        content = content.replace(/^[^{]*/, ''); // Remove everything before first {
+        content = content.replace(/[^}]*$/, '}'); // Ensure ends with }
+        
+        const analysis = JSON.parse(content);
         return {
           primary_topic: analysis.primary_topic || 'general_health',
           secondary_topics: analysis.secondary_topics || [],
@@ -507,8 +514,8 @@ Complexity: 1 (very simple) to 10 (highly technical)`;
         
         engagement_rate: data.impressions > 0 ? 
           ((data.likes + data.retweets + data.replies) / data.impressions * 100) : 0,
-        profile_visit_rate: data.impressions > 0 ? 
-          (data.profile_visits / data.impressions * 100) : 0,
+        // profile_visit_rate: data.impressions > 0 ? 
+        //   (data.profile_visits / data.impressions * 100) : 0,
         click_through_rate: data.impressions > 0 ? 
           (data.url_clicks / data.impressions * 100) : 0,
         
