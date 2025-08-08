@@ -14,8 +14,8 @@
 // Dynamic imports to handle missing dependencies gracefully
 import { createClient } from '@supabase/supabase-js';
 
-// Environment configuration - Enable Redis by default when available
-const USE_SUPABASE_ONLY = process.env.USE_SUPABASE_ONLY === 'true'; // Default to Redis+Supabase
+// Environment configuration - Default to Supabase-only for build safety
+const USE_SUPABASE_ONLY = process.env.USE_SUPABASE_ONLY !== 'false'; // Default to Supabase-only, enable Redis with env var
 const REDIS_URL = process.env.REDIS_URL || process.env.REDIS_CONNECTION_STRING;
 
 // Initialize Redis Cloud connection (completely optional)

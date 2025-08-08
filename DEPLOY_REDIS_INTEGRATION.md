@@ -20,6 +20,7 @@ Your Redis + Supabase dual-database system is ready to deploy! Follow these step
 In Railway Environment Variables:
 - REDIS_URL = [copy from Redis service]
 - USE_SUPABASE_ONLY = false
+- INSTALL_REDIS_DEPS = true
 ```
 
 ### **Step 3: Deploy** (Automatic)
