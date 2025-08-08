@@ -488,17 +488,25 @@ export class UnifiedScheduler {
     console.log('🕐 Setting up enhanced human-like autonomous schedule...');
 
     // === INTELLIGENT POSTING SCHEDULE ===
+    // 🚀 CRITICAL FIX: Re-enable posting with 10-minute intelligent checks
+    this.postingJob = cron.schedule('*/10 * * * *', async () => {
+      await this.safeguardedRun('intelligent_posting_check', async () => {
+        console.log('\n🕐 === AUTONOMOUS POSTING CHECK ===');
+        await this.checkAndPost();
+      });
+    }, { scheduled: true });
+
     // 07:00 - Morning stand-alone tweet (data-driven content)
-    this.postingJob = // 🚨 NUCLEAR DISABLED: Reply job completely disabled
-    // cron.schedule('0 7 * * *', async () => {
-    //       await this.safeguardedRun('morning_post', async () => {
-    //         console.log('🌅 7AM Morning post cycle...');
-    //         const decision = await autonomousPostingEngine.makePostingDecision();
-    //         if (decision.should_post) {
-    //           await autonomousPostingEngine.executePost();
-    //         }
-    //       });
-    //     }, { scheduled: false });
+    cron.schedule('0 7 * * *', async () => {
+      await this.safeguardedRun('morning_post', async () => {
+        console.log('🌅 7AM Morning post cycle...');
+        const decision = await autonomousPostingEngine.makePostingDecision();
+        if (decision.should_post) {
+          await autonomousPostingEngine.executePost();
+          this.totalPosts++;
+        }
+      });
+    }, { scheduled: true });
     // 
     //     // 10:00 - Reply to influencer (contextual engagement)
     //     cron.schedule('0 10 * * *', async () => {
@@ -510,16 +518,16 @@ export class UnifiedScheduler {
     //     }, { scheduled: false });
 
     // 13:00 - Afternoon thread/comprehensive content
-    // 🚨 NUCLEAR DISABLED: Reply job completely disabled
-    // cron.schedule('0 13 * * *', async () => {
-    //       await this.safeguardedRun('afternoon_thread', async () => {
-    //         console.log('📖 1PM Thread/comprehensive content cycle...');
-    //         const decision = await autonomousPostingEngine.makePostingDecision();
-    //         if (decision.should_post) {
-    //           await autonomousPostingEngine.executePost();
-    //         }
-    //       });
-    //     }, { scheduled: false });
+    cron.schedule('0 13 * * *', async () => {
+      await this.safeguardedRun('afternoon_thread', async () => {
+        console.log('📖 1PM Thread/comprehensive content cycle...');
+        const decision = await autonomousPostingEngine.makePostingDecision();
+        if (decision.should_post) {
+          await autonomousPostingEngine.executePost();
+          this.totalPosts++;
+        }
+      });
+    }, { scheduled: true });
     // 
     //     // 16:00 - Second reply opportunity
     //     cron.schedule('0 16 * * *', async () => {
@@ -531,16 +539,16 @@ export class UnifiedScheduler {
     //     }, { scheduled: false });
 
     // 19:00 - Evening viral content
-    // 🚨 NUCLEAR DISABLED: Reply job completely disabled
-    // cron.schedule('0 19 * * *', async () => {
-    //       await this.safeguardedRun('evening_viral', async () => {
-    //         console.log('🔥 7PM Evening viral content cycle...');
-    //         const decision = await autonomousPostingEngine.makePostingDecision();
-    //         if (decision.should_post) {
-    //           await autonomousPostingEngine.executePost();
-    //         }
-    //       });
-    //     }, { scheduled: false });
+    cron.schedule('0 19 * * *', async () => {
+      await this.safeguardedRun('evening_viral', async () => {
+        console.log('🔥 7PM Evening viral content cycle...');
+        const decision = await autonomousPostingEngine.makePostingDecision();
+        if (decision.should_post) {
+          await autonomousPostingEngine.executePost();
+          this.totalPosts++;
+        }
+      });
+    }, { scheduled: true });
     // 
     //     // 22:00 - Late evening reply (final opportunity)
     //     cron.schedule('0 22 * * *', async () => {
@@ -558,7 +566,7 @@ export class UnifiedScheduler {
         console.log('🎯 Fetching influencer tweets...');
         await influencerTweetFetcher.fetchInfluencerTweets();
       });
-    }, { scheduled: false });
+    }, { scheduled: true });
 
     // === ENGAGEMENT CYCLES (REDUCED FREQUENCY) ===
     // Every 2 hours during active hours - light engagement
@@ -571,7 +579,7 @@ export class UnifiedScheduler {
           // DISABLED: await this.runSmartEngagement(); // Was posting fake content
         }
       });
-    }, { scheduled: false });
+    }, { scheduled: true });
 
     // === ANALYTICS & MAINTENANCE ===
     // Daily at 3 AM - comprehensive analytics and cleanup
@@ -581,7 +589,7 @@ export class UnifiedScheduler {
         await dailyAnalyticsOrchestrator.runDailyAnalytics();
         await influencerTweetFetcher.cleanupOldTweets();
       });
-    }, { scheduled: false });
+    }, { scheduled: true });
 
     // Performance tracking every 4 hours
     this.performanceJob = cron.schedule('0 */4 * * *', async () => {
@@ -594,7 +602,7 @@ export class UnifiedScheduler {
           console.log('⚠️ Performance tracking method not available, skipping...');
         }
       });
-    }, { scheduled: false });
+    }, { scheduled: true });
 
     // === LEARNING & OPTIMIZATION ===
     // Every 6 hours - content learning and optimization
@@ -609,7 +617,7 @@ export class UnifiedScheduler {
           console.log('⚠️ Learning cycle method not available, skipping...');
         }
       });
-    }, { scheduled: false });
+    }, { scheduled: true });
 
     // Weekly deep optimization (Sundays at 2 AM)
     cron.schedule('0 2 * * 0', async () => {
@@ -617,7 +625,7 @@ export class UnifiedScheduler {
         console.log('🔬 Weekly deep optimization...');
         // Run comprehensive performance analysis and strategy updates
       });
-    }, { scheduled: false });
+    }, { scheduled: true });
 
     console.log('✅ Enhanced autonomous schedule configured');
     console.log('📅 Schedule:');
