@@ -33,18 +33,16 @@ export async function getRedisClient() {
       const ioredisModule = await eval('import("ioredis")');
       const RedisClass = ioredisModule.default;
       
-      redis = new RedisClass(REDIS_URL!, {
+      // Temporarily disable SSL to test if non-SSL connection works
+      const testUrl = REDIS_URL!.replace('rediss://', 'redis://');
+      console.log('🔧 Testing Redis without SSL first...');
+      
+      redis = new RedisClass(testUrl, {
         retryDelayOnFailover: 100,
         enableReadyCheck: false,
         maxRetriesPerRequest: 3,
         lazyConnect: true,
-        tls: REDIS_URL?.startsWith('rediss://') ? {
-          rejectUnauthorized: false,
-          checkServerIdentity: () => undefined,
-          // Force older TLS version that should be compatible
-          minVersion: 'TLSv1.2',
-          maxVersion: 'TLSv1.3',
-        } : undefined,
+        // No TLS config - test plain Redis connection
       });
       
       redis.on('connect', () => console.log('✅ Redis Cloud connected'));
