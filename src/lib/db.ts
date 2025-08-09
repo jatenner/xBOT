@@ -23,6 +23,11 @@ let redis: any = null;
 let redisAvailable = false;
 
 export async function getRedisClient() {
+  // Temporarily disable Redis due to SSL compatibility issues on Railway
+  console.log('⚠️ Redis temporarily disabled due to SSL/TLS version incompatibility on Railway');
+  console.log('🔧 System will operate in Supabase-only mode until SSL issue is resolved');
+  return null;
+  
   if (USE_SUPABASE_ONLY || !REDIS_URL) {
     return null;
   }
