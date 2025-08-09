@@ -51,22 +51,29 @@ export class EmergencyPostingSystem {
   /**
    * 🔥 EMERGENCY POST - WORKS EVEN DURING OUTAGES
    */
-  static async emergencyPost(): Promise<{ success: boolean; error?: string; tweet_id?: string }> {
+  static async emergencyPost(providedContent?: string | string[]): Promise<{ success: boolean; error?: string; tweet_id?: string }> {
     try {
       console.log('🚨 === EMERGENCY POSTING SYSTEM ACTIVATED ===');
       
-      // 1. Get emergency content
-      const content = this.getEmergencyContent();
-      console.log(`📝 Emergency content: ${content.text.substring(0, 50)}...`);
+      // 1. Use provided content or get emergency content
+      let content: string | string[];
+      if (providedContent) {
+        content = providedContent;
+        console.log(`📝 Using provided content: ${Array.isArray(providedContent) ? `${providedContent.length}-tweet thread` : providedContent.substring(0, 50) + '...'}`);
+      } else {
+        const emergencyContent = this.getEmergencyContent();
+        content = emergencyContent.text;
+        console.log(`📝 Emergency fallback content: ${emergencyContent.text.substring(0, 50)}...`);
+      }
       
-      // 2. Try Alpine Chromium posting
-      const result = await this.postWithAlpineChromium(content.text);
-      
-      if (result.success) {
-        console.log('✅ Emergency post successful!');
+      // 2. Handle threads vs single tweets
+      if (Array.isArray(content)) {
+        console.log(`🧵 Emergency thread posting: ${content.length} tweets`);
+        const result = await this.postEmergencyThread(content);
         return result;
       } else {
-        console.log('❌ Emergency posting failed:', result.error);
+        console.log('📝 Emergency single tweet posting');
+        const result = await this.postWithAlpineChromium(content);
         return result;
       }
       
@@ -82,6 +89,50 @@ export class EmergencyPostingSystem {
   private static getEmergencyContent(): EmergencyContent {
     const randomIndex = Math.floor(Math.random() * this.FALLBACK_CONTENT.length);
     return this.FALLBACK_CONTENT[randomIndex];
+  }
+
+  /**
+   * 🧵 POST EMERGENCY THREAD
+   */
+  private static async postEmergencyThread(threadContent: string[]): Promise<{ success: boolean; error?: string; tweet_id?: string }> {
+    try {
+      console.log(`🧵 Emergency thread posting: ${threadContent.length} tweets`);
+      
+      // Use the ThreadPostingAgent even in emergency mode
+      const { ThreadPostingAgent } = await import('../agents/threadPostingAgent');
+      const threadAgent = new ThreadPostingAgent();
+      
+      const threadResult = await threadAgent.postContent({
+        content: threadContent,
+        format: {
+          type: 'full_thread',
+          tweetCount: threadContent.length,
+          characterLimit: 280,
+          structure: ['hook', 'body', 'conclusion']
+        },
+        metadata: { 
+          source: 'EmergencyPostingSystem',
+          emergency_mode: true
+        }
+      });
+      
+      if (threadResult.success && threadResult.tweetIds.length > 0) {
+        console.log(`✅ Emergency thread posted: ${threadResult.tweetIds.length} tweets`);
+        return {
+          success: true,
+          tweet_id: threadResult.tweetIds[0] // Return first tweet ID
+        };
+      } else {
+        console.log('❌ Emergency thread posting failed, falling back to first tweet only');
+        // Fallback: post just the first tweet
+        return await this.postWithAlpineChromium(threadContent[0]);
+      }
+      
+    } catch (error: any) {
+      console.error('❌ Emergency thread posting failed:', error);
+      // Fallback: post just the first tweet
+      return await this.postWithAlpineChromium(threadContent[0]);
+    }
   }
 
   /**
