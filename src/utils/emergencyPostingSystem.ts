@@ -66,6 +66,13 @@ export class EmergencyPostingSystem {
         console.log(`📝 Emergency fallback content: ${emergencyContent.text.substring(0, 50)}...`);
       }
       
+      // 🧾 EMERGENCY PREPROCESSING - Apply same standards even in emergency mode
+      console.log('🧾 === EMERGENCY CONTENT PREPROCESSING ===');
+      const { preprocessForPosting, getPreprocessingSummary } = await import('./postingPreprocessor');
+      
+      content = preprocessForPosting(content);
+      console.log(getPreprocessingSummary());
+      
       // 2. Handle threads vs single tweets
       if (Array.isArray(content)) {
         console.log(`🧵 Emergency thread posting: ${content.length} tweets`);
