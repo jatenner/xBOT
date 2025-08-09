@@ -97,7 +97,7 @@ export function parseNumberedThread(raw: string): ThreadParseResult {
   const originalContent = raw;
   
   // 🚨 ENHANCED: Check for multiple thread patterns  
-  const hasNumberedPattern = /\d+\/[\d🧠💭🔍🌍😱🚀]*\s*/.test(raw) || /\b\d+\/\s/.test(raw); // Fixed: Allow emoji patterns like 1/🧠
+  const hasNumberedPattern = /\d+\/[\d🧠💭🔍🌍😱🚀]*\s*/.test(raw) || /\d+\/\s/.test(raw); // Fixed: Allow emoji patterns like 1/🧠 and patterns at start
   const hasRoundPattern = /Round\s+\d+/i.test(raw); // Keep for sports content only
   const hasTweetPattern = /Tweet\s+\d+/i.test(raw);
   const hasThreadMarkers = raw.includes('🧵') || raw.includes('THREAD');
@@ -188,8 +188,8 @@ export function parseNumberedThread(raw: string): ThreadParseResult {
     // Default: Parse numbered patterns like "1/7", "2/7", "1/", "2/", "1/🧠", etc.
     console.log('🔢 Parsing numbered thread (1/7, 2/7, 1/🧠 style)...');
     
-    // Enhanced regex to match numbered patterns with emojis or numbers
-    const enhancedPattern = /\s+(\d+\/[\d🧠💭🔍🌍😱🚀]*)\s*/g;
+    // Enhanced regex to match numbered patterns with emojis or numbers (including at start of content)
+    const enhancedPattern = /(\d+\/[\d🧠💭🔍🌍😱🚀]*)\s*/g;
     const parts = cleaned.split(enhancedPattern);
     
     let currentTweet = '';
