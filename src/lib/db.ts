@@ -41,6 +41,9 @@ export async function getRedisClient() {
         tls: REDIS_URL?.startsWith('rediss://') ? {
           rejectUnauthorized: false,
           checkServerIdentity: () => undefined,
+          // Force older TLS version that should be compatible
+          minVersion: 'TLSv1.2',
+          maxVersion: 'TLSv1.3',
         } : undefined,
       });
       
