@@ -258,15 +258,16 @@ export class AutonomousPostingEngine {
     let storageTime = 0;
     let contentGenerationAttempts = 0;
     const MAX_CONTENT_ATTEMPTS = 5;
+    
+    // Declare contentResult outside try block so it's available in catch
+    let contentResult: any;
+    let candidateContent: string;
+    let uniquenessResult: any;
 
     try {
       // Step 1: Generate unique content with enhanced deduplication
       console.log('🧠 Generating intelligent and unique content...');
       const generationStart = Date.now();
-      
-      let contentResult: any;
-      let candidateContent: string;
-      let uniquenessResult: any;
       
       // Retry loop for generating semantically unique content
       do {
@@ -599,11 +600,22 @@ export class AutonomousPostingEngine {
       this.consecutiveFailures++;
       console.error('❌ AUTONOMOUS POSTING FAILED:', error);
       
-      // 🚨 EMERGENCY FALLBACK: Try emergency posting system
+      // 🚨 EMERGENCY FALLBACK: Try emergency posting system with generated content
       console.log('🚨 Attempting emergency posting system as last resort...');
       try {
         const { EmergencyPostingSystem } = await import('../utils/emergencyPostingSystem');
-        const emergencyResult = await EmergencyPostingSystem.emergencyPost();
+        
+        // Pass the generated content to emergency system (preserving thread structure)
+        let emergencyContent;
+        if (contentResult?.content) {
+          emergencyContent = contentResult.content;
+          console.log(`📝 Using generated content for emergency posting: ${Array.isArray(contentResult.content) ? `${contentResult.content.length}-tweet thread` : 'single tweet'}`);
+        } else {
+          console.log('⚠️ No content available for emergency posting, using fallback');
+          emergencyContent = undefined; // Will use hardcoded fallback
+        }
+        
+        const emergencyResult = await EmergencyPostingSystem.emergencyPost(emergencyContent);
         
         if (emergencyResult.success) {
           console.log('✅ Emergency posting system succeeded!');
