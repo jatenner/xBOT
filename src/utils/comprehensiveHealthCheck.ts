@@ -140,8 +140,7 @@ export class ComprehensiveHealthCheck {
       const { databaseHealthMonitor } = await import('./databaseHealthMonitor');
       
       // Perform a quick health check
-      await databaseHealthMonitor.runHealthCheck();
-      const health = databaseHealthMonitor.getStatus();
+      const health = await databaseHealthMonitor.forceHealthCheck();
       
       // Check Supabase status
       if (!health.supabase.available) {
