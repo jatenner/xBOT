@@ -26,60 +26,122 @@ export class RailwayBrowserManager {
   }
 
   /**
-   * 🚀 Launch a managed browser instance
+   * 🚀 Launch a managed browser instance with EAGAIN handling
    */
   async launchBrowser(id: string = 'default'): Promise<{ browser: Browser; page: Page } | null> {
-    try {
-      console.log(`🚀 Launching managed browser: ${id}`);
-      
-      // Check if we can safely launch
-      const canLaunch = await this.resourceMonitor.canLaunchBrowser();
-      if (!canLaunch.canLaunch) {
-        console.log(`❌ Cannot launch browser: ${canLaunch.reason}`);
-        return null;
+    const maxRetries = 5;
+    let retryCount = 0;
+
+    while (retryCount < maxRetries) {
+      try {
+        console.log(`🚀 Launching managed browser: ${id} (attempt ${retryCount + 1}/${maxRetries})`);
+        
+        // Aggressive pre-launch cleanup on retries
+        if (retryCount > 0) {
+          console.log(`🧹 Pre-launch cleanup (attempt ${retryCount + 1})`);
+          await this.forceResourceCleanup();
+          
+          // Progressive wait on retries to let Railway recover
+          const waitTime = Math.min(1000 * Math.pow(2, retryCount), 10000);
+          console.log(`⏱️ Waiting ${waitTime}ms for Railway resource recovery...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+        }
+
+        // Check if we can safely launch
+        const canLaunch = await this.resourceMonitor.canLaunchBrowser();
+        if (!canLaunch.canLaunch) {
+          console.log(`❌ Cannot launch browser: ${canLaunch.reason}`);
+          
+          // Force cleanup and try again
+          await this.forceResourceCleanup();
+          retryCount++;
+          continue;
+        }
+
+        // Close existing browser with same ID if exists
+        await this.closeBrowser(id);
+
+        // Railway-specific browser configuration to handle EAGAIN
+        const browser = await chromium.launch({
+          headless: true,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--disable-features=VizDisplayCompositor',
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-renderer-backgrounding',
+            '--disable-web-security',
+            '--memory-pressure-off',
+            '--max_old_space_size=256', // Reduced from 384
+            '--single-process',
+            '--disable-extensions',
+            '--disable-plugins',
+            '--disable-images', // Disable images to save resources
+            '--disable-javascript', // Will re-enable after navigation
+            '--no-first-run',
+            '--no-default-browser-check',
+            '--disable-default-apps',
+            '--disable-background-networking',
+            '--disable-sync',
+            '--disable-translate',
+            '--hide-scrollbars',
+            '--mute-audio',
+            '--no-zygote', // Critical for Railway
+            '--disable-ipc-flooding-protection'
+          ],
+          chromiumSandbox: false,
+          timeout: 45000, // Increased timeout for Railway
+          // Use system Chromium if available
+          executablePath: process.env.NODE_ENV === 'production' ? undefined : undefined
+        });
+
+        // Create page with ultra-minimal resource usage
+        const page = await browser.newPage({
+          viewport: { width: 800, height: 600 },
+          userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          // Disable unnecessary features
+          javaScriptEnabled: false, // Will enable when needed
+          extraHTTPHeaders: {
+            'Accept-Language': 'en-US,en;q=0.9'
+          }
+        });
+
+        // Store reference for cleanup
+        this.activeBrowsers.set(id, browser);
+
+        console.log(`✅ Browser launched successfully: ${id} on attempt ${retryCount + 1}`);
+        return { browser, page };
+
+      } catch (error) {
+        retryCount++;
+        const isEAGAIN = error.message.includes('EAGAIN') || error.message.includes('spawn');
+        
+        console.error(`❌ Browser launch attempt ${retryCount} failed:`, {
+          error: error.message,
+          isEAGAIN,
+          willRetry: retryCount < maxRetries
+        });
+
+        if (isEAGAIN && retryCount < maxRetries) {
+          console.log(`🔄 EAGAIN detected - performing aggressive cleanup before retry...`);
+          await this.forceResourceCleanup();
+          // Force garbage collection if available
+          if (global.gc) {
+            global.gc();
+            await new Promise(resolve => setTimeout(resolve, 100));
+            global.gc();
+          }
+        } else if (retryCount >= maxRetries) {
+          console.error(`💥 All browser launch attempts exhausted for ${id}`);
+          return null;
+        }
       }
-
-      // Close existing browser with same ID if exists
-      await this.closeBrowser(id);
-
-      // Launch new browser with Railway-optimized settings
-      const browser = await chromium.launch({
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
-          '--disable-features=VizDisplayCompositor',
-          '--disable-background-timer-throttling',
-          '--disable-backgrounding-occluded-windows',
-          '--disable-renderer-backgrounding',
-          '--disable-web-security',
-          '--memory-pressure-off',
-          '--max_old_space_size=384',
-          '--single-process'
-        ],
-        chromiumSandbox: false,
-        timeout: 30000
-      });
-
-      // Create page with minimal resource usage
-      const page = await browser.newPage({
-        viewport: { width: 800, height: 600 },
-        userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      });
-
-      // Store reference for cleanup
-      this.activeBrowsers.set(id, browser);
-
-      console.log(`✅ Browser launched successfully: ${id}`);
-      return { browser, page };
-
-    } catch (error) {
-      console.error(`❌ Failed to launch browser ${id}:`, error);
-      await this.resourceMonitor.aggressiveCleanup();
-      return null;
     }
+
+    return null;
   }
 
   /**
@@ -115,6 +177,36 @@ export class RailwayBrowserManager {
     // Force cleanup
     await this.resourceMonitor.forceCleanup();
     console.log('✅ All browsers closed and cleaned up');
+  }
+
+  /**
+   * 🔥 Force aggressive resource cleanup for EAGAIN recovery
+   */
+  private async forceResourceCleanup(): Promise<void> {
+    try {
+      console.log('🔥 Force resource cleanup initiated...');
+      
+      // Close all active browsers
+      for (const [id, browser] of this.activeBrowsers.entries()) {
+        try {
+          await browser.close();
+          console.log(`🧹 Force closed browser: ${id}`);
+        } catch (error) {
+          console.log(`⚠️ Error force-closing browser ${id}:`, error.message);
+        }
+      }
+      this.activeBrowsers.clear();
+
+      // Aggressive OS-level cleanup
+      await this.resourceMonitor.aggressiveCleanup();
+      
+      // Give Railway time to recover file descriptors and processes
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      console.log('✅ Force resource cleanup completed');
+    } catch (error) {
+      console.error('❌ Error during force resource cleanup:', error);
+    }
   }
 
   /**

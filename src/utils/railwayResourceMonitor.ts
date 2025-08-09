@@ -103,37 +103,82 @@ export class RailwayResourceMonitor {
   }
 
   /**
-   * 🔥 AGGRESSIVE cleanup for stubborn processes
+   * 🔥 AGGRESSIVE cleanup for stubborn processes and EAGAIN recovery
    */
   async aggressiveCleanup(): Promise<void> {
     try {
-      console.log('🔥 AGGRESSIVE cleanup mode...');
+      console.log('🔥 AGGRESSIVE cleanup mode for EAGAIN recovery...');
       
       if (process.env.NODE_ENV === 'production') {
         try {
-          // Nuclear option - kill ALL browser processes
+          // Step 1: Nuclear process cleanup
+          console.log('🧨 Step 1: Nuclear process cleanup');
           exec('pkill -9 -f chrome || true');
           exec('pkill -9 -f chromium || true'); 
           exec('pkill -9 -f headless_shell || true');
           exec('pkill -9 -f playwright || true');
+          exec('pkill -9 -f node.*browser || true'); // Kill any hanging node browser processes
           
-          // Clean up any temp files
+          // Step 2: File descriptor cleanup
+          console.log('🧨 Step 2: File descriptor cleanup');
+          exec('lsof | grep chrome | awk \'{print $2}\' | xargs -r kill -9 || true');
+          exec('lsof | grep chromium | awk \'{print $2}\' | xargs -r kill -9 || true');
+          
+          // Step 3: Temp file and socket cleanup  
+          console.log('🧨 Step 3: Temp file and socket cleanup');
           exec('rm -rf /tmp/.X* || true');
           exec('rm -rf /tmp/playwright* || true');
           exec('rm -rf /tmp/chromium* || true');
+          exec('rm -rf /tmp/chrome* || true');
+          exec('rm -rf /tmp/.browser* || true');
+          exec('find /tmp -name "*chrome*" -type f -delete || true');
+          exec('find /tmp -name "*playwright*" -type f -delete || true');
           
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          console.log('🔥 Aggressive cleanup completed');
+          // Step 4: Shared memory cleanup (critical for EAGAIN)
+          console.log('🧨 Step 4: Shared memory cleanup');
+          exec('rm -rf /dev/shm/.org.chromium.* || true');
+          exec('rm -rf /dev/shm/chrome* || true');
+          exec('ipcs -m | awk \'$3 == "0x00000000" {print $2}\' | xargs -r ipcrm shm || true');
+          
+          // Step 5: Force filesystem sync to free up descriptors
+          console.log('🧨 Step 5: Filesystem sync');
+          exec('sync || true');
+          
+          // Step 6: Extended wait for Railway resource recovery
+          console.log('🧨 Step 6: Extended resource recovery wait');
+          await new Promise(resolve => setTimeout(resolve, 5000)); // Increased wait time
+          
+          console.log('🔥 EAGAIN-focused aggressive cleanup completed');
         } catch (error) {
-          console.log('⚠️ Aggressive cleanup warning');
+          console.log('⚠️ Aggressive cleanup warning:', error.message);
         }
       }
       
-      // Force multiple garbage collections
+      // Step 7: Force multiple garbage collections with delays
+      console.log('🧨 Step 7: Memory pressure relief');
       if (global.gc) {
-        global.gc();
-        await new Promise(resolve => setTimeout(resolve, 100));
-        global.gc();
+        for (let i = 0; i < 3; i++) {
+          global.gc();
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+      }
+      
+      // Step 8: Clear any remaining Node.js handles
+      if (process.env.NODE_ENV === 'production') {
+        try {
+          // Force close any remaining handles (best effort)
+          process._getActiveHandles().forEach(handle => {
+            try {
+              if (handle && typeof handle.close === 'function') {
+                handle.close();
+              }
+            } catch (e) {
+              // Ignore errors in handle cleanup
+            }
+          });
+        } catch (error) {
+          // Handle cleanup is best effort
+        }
       }
       
     } catch (error) {
