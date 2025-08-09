@@ -22,7 +22,7 @@ const USE_SUPABASE_ONLY = process.env.USE_SUPABASE_ONLY === 'true' || !REDIS_URL
 let redis: any = null;
 let redisAvailable = false;
 
-async function getRedisClient() {
+export async function getRedisClient() {
   if (USE_SUPABASE_ONLY || !REDIS_URL) {
     return null;
   }
