@@ -35,7 +35,7 @@ export class ModernTwitterSelectors {
         
         // First check if textarea has content before attempting to post
         const hasContent = await page.evaluate(() => {
-          const textareas = document.querySelectorAll('[data-testid="tweetTextarea_0"], [role="textbox"]');
+          const textareas = Array.from(document.querySelectorAll('[data-testid="tweetTextarea_0"], [role="textbox"]'));
           for (const textarea of textareas) {
             if (textarea.textContent && textarea.textContent.trim().length > 0) {
               return true;
