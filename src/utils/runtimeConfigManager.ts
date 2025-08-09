@@ -97,9 +97,9 @@ export class RuntimeConfigManager {
         setTimeout(() => reject(new Error('Database update timeout after 10 seconds')), 10000)
       );
 
-      const result = await Promise.race([updatePromise, timeoutPromise]);
+      const result = await Promise.race([updatePromise, timeoutPromise]) as any;
 
-      if (result.error) {
+      if (result?.error) {
         console.error('❌ Failed to update runtime config:', result.error);
         throw result.error;
       }
