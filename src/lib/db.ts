@@ -23,11 +23,6 @@ let redis: any = null;
 let redisAvailable = false;
 
 export async function getRedisClient() {
-  // Temporarily disable Redis due to SSL compatibility issues on Railway
-  console.log('⚠️ Redis temporarily disabled due to SSL/TLS version incompatibility on Railway');
-  console.log('🔧 System will operate in Supabase-only mode until SSL issue is resolved');
-  return null;
-  
   if (USE_SUPABASE_ONLY || !REDIS_URL) {
     return null;
   }
@@ -38,26 +33,82 @@ export async function getRedisClient() {
       const ioredisModule = await eval('import("ioredis")');
       const RedisClass = ioredisModule.default;
       
-      // Parse the Redis URL manually to handle authentication properly
-      const url = new URL(REDIS_URL!);
-      console.log('🔧 Connecting to Redis Cloud with proper auth...');
+      console.log('🔧 Attempting Redis Cloud connection with multiple strategies...');
       
-      redis = new RedisClass({
-        host: url.hostname,
-        port: parseInt(url.port) || 6380,
-        username: url.username || 'default',
-        password: url.password || '',
-        retryDelayOnFailover: 100,
-        enableReadyCheck: false,
-        maxRetriesPerRequest: 3,
-        lazyConnect: true,
-        // Start with SSL enabled since Redis Cloud requires it
-        tls: REDIS_URL?.startsWith('rediss://') ? {
-          rejectUnauthorized: false,
-          checkServerIdentity: () => undefined,
-          servername: url.hostname,
-        } : undefined,
-      });
+      // Strategy 1: Try with aggressive SSL bypass
+      try {
+        const url = new URL(REDIS_URL!);
+        console.log('📡 Strategy 1: Aggressive SSL bypass');
+        
+        redis = new RedisClass({
+          host: url.hostname,
+          port: parseInt(url.port) || 17514,
+          username: url.username || 'default',
+          password: url.password || '',
+          retryDelayOnFailover: 100,
+          enableReadyCheck: false,
+          maxRetriesPerRequest: 2,
+          lazyConnect: true,
+          connectTimeout: 10000,
+          commandTimeout: 5000,
+          tls: REDIS_URL?.startsWith('rediss://') ? {
+            rejectUnauthorized: false,
+            checkServerIdentity: () => undefined,
+            servername: url.hostname,
+            // Disable all SSL verification
+            secureProtocol: 'TLS_method',
+            ciphers: 'ALL',
+            honorCipherOrder: false,
+          } : undefined,
+        });
+        
+        // Test the connection
+        await redis.connect();
+        console.log('✅ Strategy 1 successful - Redis connected with aggressive SSL bypass');
+        
+      } catch (sslError) {
+        console.log('⚠️ Strategy 1 failed, trying Strategy 2: Node Redis client');
+        
+        try {
+          // Strategy 2: Try using node-redis instead of ioredis
+          const nodeRedisModule = await eval('import("redis")');
+          const { createClient } = nodeRedisModule;
+          
+          const url = new URL(REDIS_URL!);
+          redis = createClient({
+            socket: {
+              host: url.hostname,
+              port: parseInt(url.port) || 17514,
+              tls: true,
+              rejectUnauthorized: false,
+              checkServerIdentity: () => undefined,
+            },
+            username: url.username || 'default',
+            password: url.password || '',
+          });
+          
+          await redis.connect();
+          console.log('✅ Strategy 2 successful - Redis connected with node-redis client');
+          
+        } catch (nodeRedisError) {
+          console.log('⚠️ Strategy 2 failed, trying Strategy 3: Upstash Redis');
+          
+          try {
+            // Strategy 3: Try Upstash Redis client (HTTP-based, no SSL issues)
+            const upstashModule = await eval('import("@upstash/redis")');
+            const { Redis: UpstashRedis } = upstashModule;
+            
+            // For this to work, we'd need Upstash Redis URL
+            console.log('⚠️ Strategy 3 requires Upstash Redis URL - skipping for now');
+            throw new Error('Upstash not configured');
+            
+          } catch (upstashError) {
+            console.log('❌ All Redis strategies failed, falling back to Supabase-only mode');
+            console.log('🔧 Redis errors:', { sslError: sslError.message, nodeRedisError: nodeRedisError.message });
+            throw sslError;
+          }
+        }
+      }
       
       redis.on('connect', () => console.log('✅ Redis Cloud connected'));
       redis.on('ready', () => console.log('🚀 Redis Cloud ready'));
