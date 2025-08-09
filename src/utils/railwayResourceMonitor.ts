@@ -167,15 +167,18 @@ export class RailwayResourceMonitor {
       if (process.env.NODE_ENV === 'production') {
         try {
           // Force close any remaining handles (best effort)
-          process._getActiveHandles().forEach(handle => {
-            try {
-              if (handle && typeof handle.close === 'function') {
-                handle.close();
+          const handles = (process as any)._getActiveHandles?.();
+          if (handles) {
+            handles.forEach((handle: any) => {
+              try {
+                if (handle && typeof handle.close === 'function') {
+                  handle.close();
+                }
+              } catch (e) {
+                // Ignore errors in handle cleanup
               }
-            } catch (e) {
-              // Ignore errors in handle cleanup
-            }
-          });
+            });
+          }
         } catch (error) {
           // Handle cleanup is best effort
         }
