@@ -38,7 +38,10 @@ export async function getRedisClient() {
         enableReadyCheck: false,
         maxRetriesPerRequest: 3,
         lazyConnect: true,
-        tls: REDIS_URL?.startsWith('rediss://') ? {} : undefined,
+        tls: REDIS_URL?.startsWith('rediss://') ? {
+          rejectUnauthorized: false,
+          checkServerIdentity: () => undefined,
+        } : undefined,
       });
       
       redis.on('connect', () => console.log('✅ Redis Cloud connected'));
