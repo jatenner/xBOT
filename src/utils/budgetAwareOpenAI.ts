@@ -147,16 +147,23 @@ export class BudgetAwareOpenAI {
 
     try {
       // 🗂️ CHECK CACHE FIRST (massive cost savings!)
+      // Skip cache for content generation to prevent duplicate content
       const cacheKey = completionCache.generateKey(messages, model, optimalTokens, temperature);
-      const cached = completionCache.get(cacheKey);
+      const shouldUseCache = operationType !== 'supreme_content_generation' && operationType !== 'content_generation' && operationType !== 'viral_content';
       
-      if (cached) {
-        console.log(`💾 CACHE HIT: ${operationType} - saved $${cached.cost.toFixed(4)}`);
-        return {
-          success: true,
-          response: cached.response,
-          cost: 0 // No actual cost, using cache
-        };
+      if (shouldUseCache) {
+        const cached = completionCache.get(cacheKey);
+        
+        if (cached) {
+          console.log(`💾 CACHE HIT: ${operationType} - saved $${cached.cost.toFixed(4)}`);
+          return {
+            success: true,
+            response: cached.response,
+            cost: 0 // No actual cost, using cache
+          };
+        }
+      } else {
+        console.log(`🚫 Skipping cache for ${operationType} to ensure unique content`);
       }
 
       // Calculate estimated cost
@@ -222,8 +229,12 @@ export class BudgetAwareOpenAI {
         `${actualTokens} tokens (optimized)`
       );
 
-      // 🗂️ CACHE THE RESPONSE for future use
-      completionCache.set(cacheKey, response, actualCost);
+      // 🗂️ CACHE THE RESPONSE for future use (only if not content generation)
+      if (shouldUseCache) {
+        completionCache.set(cacheKey, response, actualCost);
+      } else {
+        console.log(`🚫 Skipping cache storage for ${operationType} to prevent duplicate content`);
+      }
 
       // Log efficiency for tweet generation
       if (forTweetGeneration) {
