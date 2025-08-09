@@ -67,7 +67,7 @@ export class ModernTwitterSelectors {
               // Check for buttons that might just be icons or have minimal text
               (button.closest('[data-testid*="tweet"]') !== null) ||
               // Look for submit-type buttons in compose areas
-              (button.type === 'submit' && button.closest('[data-testid*="compose"]'));
+              ((button as HTMLButtonElement).type === 'submit' && button.closest('[data-testid*="compose"]'));
             
             if (isPostButton) {
               // Check if button is visible and enabled
