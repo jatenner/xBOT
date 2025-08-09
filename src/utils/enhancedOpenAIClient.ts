@@ -79,12 +79,12 @@ export class EnhancedOpenAIClient {
 
     console.log(`🤖 Generating content with ${model} (${operation_type})`);
 
-    // Check cache first
+    // Check cache first (but not for content generation to avoid duplicates)
     const cacheKey = this.generateCacheKey(prompt, model, temperature);
-    if (fallback_to_cache) {
+    if (fallback_to_cache && operation_type !== 'content_generation' && operation_type !== 'supreme_content_generation') {
       const cachedContent = await this.getCachedContent(cacheKey);
       if (cachedContent) {
-        console.log('📋 Using cached content');
+        console.log('📋 Using cached content for non-content operation');
         return {
           success: true,
           content: cachedContent.content,
@@ -95,6 +95,8 @@ export class EnhancedOpenAIClient {
           response_time_ms: Date.now() - startTime
         };
       }
+    } else if (operation_type === 'content_generation' || operation_type === 'supreme_content_generation') {
+      console.log('🚫 Skipping cache for content generation to ensure uniqueness');
     }
 
     // Enhance prompt with trending topics if requested
