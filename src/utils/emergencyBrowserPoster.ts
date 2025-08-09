@@ -330,8 +330,15 @@ export class EmergencyBrowserPoster {
                     }
                 }
                 
-                // Method 3: Look for the newest tweet (just posted) on timeline
+                // Method 3: CRITICAL VALIDATION - Check if we actually posted
                 if (!tweetId) {
+                    // If we're still on compose page, posting failed
+                    if (currentUrl.includes('/compose/')) {
+                        console.log('❌ POSTING FAILED: Still on compose page after button click');
+                        console.log('🔍 This indicates the tweet was NOT actually posted');
+                        return { success: false, error: 'Posting failed - remained on compose page' };
+                    }
+                    
                     console.log('🔄 Method 3 - Searching for newest tweet on timeline...');
                     try {
                         // Wait for timeline to update with new tweet

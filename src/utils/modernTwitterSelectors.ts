@@ -29,9 +29,25 @@ export class ModernTwitterSelectors {
         }
       }
       
-      // Method 2: Look for buttons containing "Post" or "Tweet" text
+      // Method 2: Look for buttons containing "Post" or "Tweet" text WITH VALIDATION
       try {
         console.log('🔍 Looking for buttons with Post/Tweet text...');
+        
+        // First check if textarea has content before attempting to post
+        const hasContent = await page.evaluate(() => {
+          const textareas = document.querySelectorAll('[data-testid="tweetTextarea_0"], [role="textbox"]');
+          for (const textarea of textareas) {
+            if (textarea.textContent && textarea.textContent.trim().length > 0) {
+              return true;
+            }
+          }
+          return false;
+        });
+        
+        if (!hasContent) {
+          console.log('❌ No content detected in textarea - posting would fail');
+          return false;
+        }
         
         // Check for visible, enabled buttons with specific text patterns
         const postButtonFound = await page.evaluate(() => {
@@ -48,10 +64,13 @@ export class ModernTwitterSelectors {
               // Check if button is visible and enabled
               const rect = button.getBoundingClientRect();
               const isVisible = rect.width > 0 && rect.height > 0;
-              const isEnabled = !button.hasAttribute('disabled');
+              const isEnabled = !button.hasAttribute('disabled') && !button.classList.contains('disabled');
               
-              if (isVisible && isEnabled) {
-                console.log('Found post button via text search:', text, ariaLabel);
+              // Additional validation - check if button looks like it can actually post
+              const hasValidColor = window.getComputedStyle(button).backgroundColor !== 'rgba(0, 0, 0, 0)';
+              
+              if (isVisible && isEnabled && hasValidColor) {
+                console.log('Found validated post button:', text, ariaLabel);
                 (button as HTMLElement).click();
                 return true;
               }
