@@ -38,7 +38,7 @@ export class PostTweetAgent {
       
       console.log(`📊 Daily Status: ${status.tweetsToday}/17 tweets posted, ${status.remaining} remaining`);
       
-      let finalContent = '';
+      let finalContent: string | string[] = '';
       let contentType = '';
       let viralScore = 0;
       let followerGrowthPotential = 0;
@@ -111,13 +111,59 @@ export class PostTweetAgent {
         throw new Error('Failed to generate any content');
       }
 
-      // PHASE 3: Post with enhanced logging
-      console.log('📝 Final content preview:', finalContent.substring(0, 100) + '...');
+      // PHASE 3: Content preprocessing
+      console.log('🧾 === CONTENT PREPROCESSING PHASE ===');
+      const { preprocessForPosting, getPreprocessingSummary } = await import('../utils/postingPreprocessor');
+      
+      finalContent = preprocessForPosting(finalContent) as string | string[];
+      console.log(getPreprocessingSummary());
+      
+      // PHASE 4: Post with enhanced logging
+      const previewContent = Array.isArray(finalContent) ? finalContent[0] : finalContent;
+      console.log('📝 Final content preview:', previewContent.substring(0, 100) + '...');
       console.log(`🎯 Viral Score: ${viralScore}/10, Growth Potential: ${followerGrowthPotential}/10`);
       
       // 🧵 CRITICAL FIX: Check if content should be a thread before posting
+      // If preprocessor already determined it's a thread, skip detection
+      if (Array.isArray(finalContent)) {
+        console.log('🧵 PREPROCESSOR THREAD: Content already structured as thread by preprocessor');
+        
+        // Use ThreadPostingAgent for proper threading
+        const { ThreadPostingAgent } = await import('./threadPostingAgent');
+        const threadPoster = new ThreadPostingAgent();
+        
+        const threadPostResult = await threadPoster.postContent({
+          content: finalContent,
+          format: 'THREAD' as any,
+          style: 'HEALTH_EDUCATION' as any,
+          topic: 'HEALTH_EDUCATION' as any,
+          metadata: { 
+            estimated_engagement: 0,
+            confidence_score: 0.8,
+            generation_timestamp: Date.now().toString(),
+            model_used: 'gpt-4o-mini'
+          }
+        });
+        
+        if (threadPostResult.success) {
+          console.log(`✅ PREPROCESSOR THREAD POSTED: ${threadPostResult.tweetIds.length} tweets`);
+          
+          // Store with AI metrics for first tweet
+          const contentForStorage = Array.isArray(finalContent) ? finalContent.join('\n\n') : finalContent;
+          await this.storeTweetWithAIMetrics(threadPostResult.tweetIds[0], contentForStorage, contentType, viralScore, followerGrowthPotential);
+          
+          return;
+        } else {
+          console.error('❌ Preprocessor thread posting failed, falling back to single tweet');
+          finalContent = finalContent[0]; // Use first tweet as fallback
+        }
+      }
+      
+      // Handle single tweet or fallback from failed thread
+      const contentString = Array.isArray(finalContent) ? finalContent[0] : finalContent;
+      
       const { IntelligentPostTypeDetector } = await import('../utils/intelligentPostTypeDetector');
-      const typeDecision = IntelligentPostTypeDetector.analyzeContent(finalContent);
+      const typeDecision = IntelligentPostTypeDetector.analyzeContent(contentString);
       
       if (typeDecision.shouldBeThread) {
         console.log('🧵 THREADING DETECTED: Content should be posted as thread');

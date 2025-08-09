@@ -1018,6 +1018,16 @@ export class AutonomousPostingEngine {
     confirmed?: boolean;
   }> {
     try {
+      // 🧾 PREPROCESSING PHASE - Claude's comprehensive content optimization
+      console.log('🧾 === CONTENT PREPROCESSING PHASE ===');
+      const { preprocessForPosting, getPreprocessingSummary } = await import('../utils/postingPreprocessor');
+      
+      const preprocessedContent = preprocessForPosting(content);
+      console.log(getPreprocessingSummary());
+      
+      // Update content reference for rest of method
+      content = preprocessedContent;
+      
       // 🧵 THREAD HANDLING - Use ThreadPostingAgent for arrays
       if (Array.isArray(content)) {
         console.log(`🧵 Posting thread with ${content.length} tweets via ThreadPostingAgent...`);
