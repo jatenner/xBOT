@@ -677,40 +677,51 @@ export class AutonomousPostingEngine {
           const eliteResult = await viralMaster.generateSupremeIntelligenceContent();
           
           if (eliteResult && eliteResult.content) {
-            const contentString = Array.isArray(eliteResult.content) ? 
-              eliteResult.content.join('\n\n') : 
-              (typeof eliteResult.content === 'string' ? eliteResult.content : JSON.stringify(eliteResult.content));
+            // 🧵 PRESERVE ARRAY STRUCTURE FOR PROPER THREAD HANDLING
+            const rawContent = eliteResult.content;
+            const contentString = Array.isArray(rawContent) ? 
+              rawContent.join('\n\n') : 
+              (typeof rawContent === 'string' ? rawContent : JSON.stringify(rawContent));
 
             // 🧵 SIMPLE INTELLIGENT THREAD DETECTION
             let finalContent: string | string[];
             let actualIsThread = false;
             
             try {
-              const { SimpleThreadDetector } = await import('../intelligence/simpleThreadDetector');
-              const threadDetector = SimpleThreadDetector.getInstance();
-              
-              console.log('🧵 Analyzing content with simple thread intelligence...');
-              const threadAnalysis = await threadDetector.analyzeContent(contentString);
-              
-              console.log(`📊 Thread analysis: ${threadAnalysis.isThread ? 'THREAD' : 'SINGLE'} (${threadAnalysis.confidence}% confidence)`);
-              console.log(`💭 Reasoning: ${threadAnalysis.reasoning}`);
-              
-              if (threadAnalysis.isThread && threadAnalysis.suggestedStructure) {
-                console.log(`🧵 Creating thread with ${threadAnalysis.suggestedStructure.length} tweets`);
-                
-                finalContent = threadAnalysis.suggestedStructure;
+              // 🧵 CHECK IF CONTENT IS ALREADY STRUCTURED AS THREAD
+              if (Array.isArray(rawContent) && rawContent.length > 1) {
+                console.log(`🧵 Content already structured as ${rawContent.length}-tweet thread`);
+                finalContent = rawContent;
                 actualIsThread = true;
-                
-                // Thread structure created successfully
-                console.log(`✅ Thread created with ${finalContent.length} tweets`);
-                
+                console.log(`✅ Using pre-structured thread with ${finalContent.length} tweets`);
               } else {
-                // Single tweet - clean and optimize
-                const { cleanSingleTweet } = await import('../utils/threadUtils');
-                const cleanedTweet = cleanSingleTweet(contentString);
+                // 🧵 ANALYZE SINGLE CONTENT FOR THREAD POTENTIAL
+                const { SimpleThreadDetector } = await import('../intelligence/simpleThreadDetector');
+                const threadDetector = SimpleThreadDetector.getInstance();
                 
-                finalContent = cleanedTweet;
-                console.log(`📝 SINGLE TWEET: Optimized for engagement`);
+                console.log('🧵 Analyzing content with simple thread intelligence...');
+                const threadAnalysis = await threadDetector.analyzeContent(contentString);
+                
+                console.log(`📊 Thread analysis: ${threadAnalysis.isThread ? 'THREAD' : 'SINGLE'} (${threadAnalysis.confidence}% confidence)`);
+                console.log(`💭 Reasoning: ${threadAnalysis.reasoning}`);
+                
+                if (threadAnalysis.isThread && threadAnalysis.suggestedStructure) {
+                  console.log(`🧵 Creating thread with ${threadAnalysis.suggestedStructure.length} tweets`);
+                  
+                  finalContent = threadAnalysis.suggestedStructure;
+                  actualIsThread = true;
+                  
+                  // Thread structure created successfully
+                  console.log(`✅ Thread created with ${finalContent.length} tweets`);
+                  
+                } else {
+                  // Single tweet - clean and optimize
+                  const { cleanSingleTweet } = await import('../utils/threadUtils');
+                  const cleanedTweet = cleanSingleTweet(contentString);
+                  
+                  finalContent = cleanedTweet;
+                  console.log(`📝 SINGLE TWEET: Optimized for engagement`);
+                }
               }
               
             } catch (threadEngineError) {
