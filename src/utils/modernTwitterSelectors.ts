@@ -52,30 +52,67 @@ export class ModernTwitterSelectors {
         // Check for visible, enabled buttons with specific text patterns
         const postButtonFound = await page.evaluate(() => {
           const buttons = Array.from(document.querySelectorAll('button, div[role="button"]'));
+          console.log(`🔍 Scanning ${buttons.length} buttons for post functionality...`);
           
           for (const button of buttons) {
             const text = button.textContent?.toLowerCase() || '';
             const ariaLabel = button.getAttribute('aria-label')?.toLowerCase() || '';
+            const dataTestId = button.getAttribute('data-testid') || '';
             
-            // Look for Post/Tweet related content
-            if (text.includes('post') || text.includes('tweet') || 
-                ariaLabel.includes('post') || ariaLabel.includes('tweet')) {
-              
+            // Expanded search patterns for modern Twitter/X
+            const isPostButton = 
+              text.includes('post') || text.includes('tweet') || text === 'post' || 
+              ariaLabel.includes('post') || ariaLabel.includes('tweet') ||
+              dataTestId.includes('tweet') || dataTestId.includes('post') ||
+              // Check for buttons that might just be icons or have minimal text
+              (button.closest('[data-testid*="tweet"]') !== null) ||
+              // Look for submit-type buttons in compose areas
+              (button.type === 'submit' && button.closest('[data-testid*="compose"]'));
+            
+            if (isPostButton) {
               // Check if button is visible and enabled
               const rect = button.getBoundingClientRect();
               const isVisible = rect.width > 0 && rect.height > 0;
-              const isEnabled = !button.hasAttribute('disabled') && !button.classList.contains('disabled');
+              const isEnabled = !button.hasAttribute('disabled') && 
+                               !button.classList.contains('disabled') &&
+                               !button.hasAttribute('aria-disabled');
               
               // Additional validation - check if button looks like it can actually post
-              const hasValidColor = window.getComputedStyle(button).backgroundColor !== 'rgba(0, 0, 0, 0)';
+              const styles = window.getComputedStyle(button);
+              const hasValidColor = styles.backgroundColor !== 'rgba(0, 0, 0, 0)' &&
+                                  styles.backgroundColor !== 'transparent';
+              
+              console.log(`🔍 Checking button: text="${text}" aria="${ariaLabel}" testid="${dataTestId}" visible=${isVisible} enabled=${isEnabled} colored=${hasValidColor}`);
               
               if (isVisible && isEnabled && hasValidColor) {
-                console.log('Found validated post button:', text, ariaLabel);
+                console.log(`✅ Found validated post button: text="${text}" aria="${ariaLabel}" testid="${dataTestId}"`);
                 (button as HTMLElement).click();
                 return true;
               }
             }
           }
+          
+          // Fallback: Look for any prominently positioned button that might be the post button
+          console.log('🔍 Fallback: Looking for prominent buttons...');
+          for (const button of buttons) {
+            const rect = button.getBoundingClientRect();
+            const isVisible = rect.width > 0 && rect.height > 0;
+            const isEnabled = !button.hasAttribute('disabled') && !button.classList.contains('disabled');
+            const styles = window.getComputedStyle(button);
+            
+            // Look for buttons with Twitter's blue color (likely post buttons)
+            const bgColor = styles.backgroundColor;
+            const isBlueish = bgColor.includes('rgb(29, 155, 240)') || // Twitter blue
+                            bgColor.includes('rgb(26, 140, 216)') || // Darker blue
+                            styles.color.includes('rgb(255, 255, 255)'); // White text (common on post buttons)
+            
+            if (isVisible && isEnabled && isBlueish && rect.width > 50 && rect.height > 30) {
+              console.log(`✅ Found prominent button by color/size: bg="${bgColor}" size=${rect.width}x${rect.height}`);
+              (button as HTMLElement).click();
+              return true;
+            }
+          }
+          
           return false;
         });
         

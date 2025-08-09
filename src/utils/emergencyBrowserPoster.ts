@@ -5,6 +5,7 @@
 
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import { ULTRA_LIGHT_BROWSER_OPTIONS, EMERGENCY_BROWSER_OPTIONS } from '../config/ultraLightBrowserConfig';
+import { railwayBrowserManager } from './railwayBrowserManager';
 import { ModernTwitterSelectors } from './modernTwitterSelectors';
 
 export class EmergencyBrowserPoster {
@@ -26,14 +27,16 @@ export class EmergencyBrowserPoster {
             // Force cleanup any existing processes
             await this.forceCleanup();
             
-            // Use emergency config
-            this.browser = await chromium.launch(EMERGENCY_BROWSER_OPTIONS);
+            // Use managed browser launch for better resource control
+            const browserData = await railwayBrowserManager.launchBrowser('emergency');
+            if (!browserData) {
+                console.error('❌ Failed to launch managed emergency browser');
+                return false;
+            }
             
-            this.context = await this.browser.newContext({
-                userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-            });
-            
-            this.page = await this.context.newPage();
+            this.browser = browserData.browser;
+            this.page = browserData.page;
+            this.context = this.page.context();
             
             console.log('✅ Emergency browser initialized');
             return true;
@@ -50,20 +53,13 @@ export class EmergencyBrowserPoster {
      */
     async forceCleanup() {
         try {
-            if (this.page) {
-                await this.page.close().catch(() => {});
-                this.page = null;
-            }
+            // Use managed cleanup
+            await railwayBrowserManager.closeBrowser('emergency');
             
-            if (this.context) {
-                await this.context.close().catch(() => {});
-                this.context = null;
-            }
-            
-            if (this.browser) {
-                await this.browser.close().catch(() => {});
-                this.browser = null;
-            }
+            // Clear local references
+            this.page = null;
+            this.context = null;
+            this.browser = null;
             
             // Force garbage collection
             if (global.gc) {

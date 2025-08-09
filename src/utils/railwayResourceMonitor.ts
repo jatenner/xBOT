@@ -38,17 +38,24 @@ export class RailwayResourceMonitor {
       const activeProcesses = process.env.NODE_ENV === 'production' ? 
         await this.countActiveProcesses() : 0;
       
-      if (activeProcesses > 3) {
+      if (activeProcesses > 8) {
         // Force cleanup and recheck
         await this.forceCleanup();
-        await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2s
+        await new Promise(resolve => setTimeout(resolve, 3000)); // Wait 3s for processes to die
         
         const activeAfterCleanup = await this.countActiveProcesses();
-        if (activeAfterCleanup > 3) {
-          return {
-            canLaunch: false,
-            reason: `Too many active processes: ${activeAfterCleanup} (after cleanup)`
-          };
+        if (activeAfterCleanup > 8) {
+          // Try one more aggressive cleanup
+          await this.aggressiveCleanup();
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          const finalCount = await this.countActiveProcesses();
+          if (finalCount > 8) {
+            return {
+              canLaunch: false,
+              reason: `Too many active processes: ${finalCount} (after cleanup)`
+            };
+          }
         }
       }
       
@@ -92,6 +99,45 @@ export class RailwayResourceMonitor {
       
     } catch (error) {
       console.log('⚠️ Cleanup warning:', error.message);
+    }
+  }
+
+  /**
+   * 🔥 AGGRESSIVE cleanup for stubborn processes
+   */
+  async aggressiveCleanup(): Promise<void> {
+    try {
+      console.log('🔥 AGGRESSIVE cleanup mode...');
+      
+      if (process.env.NODE_ENV === 'production') {
+        try {
+          // Nuclear option - kill ALL browser processes
+          exec('pkill -9 -f chrome || true');
+          exec('pkill -9 -f chromium || true'); 
+          exec('pkill -9 -f headless_shell || true');
+          exec('pkill -9 -f playwright || true');
+          
+          // Clean up any temp files
+          exec('rm -rf /tmp/.X* || true');
+          exec('rm -rf /tmp/playwright* || true');
+          exec('rm -rf /tmp/chromium* || true');
+          
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          console.log('🔥 Aggressive cleanup completed');
+        } catch (error) {
+          console.log('⚠️ Aggressive cleanup warning');
+        }
+      }
+      
+      // Force multiple garbage collections
+      if (global.gc) {
+        global.gc();
+        await new Promise(resolve => setTimeout(resolve, 100));
+        global.gc();
+      }
+      
+    } catch (error) {
+      console.log('⚠️ Aggressive cleanup error:', error.message);
     }
   }
 
