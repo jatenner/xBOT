@@ -34,6 +34,7 @@ import { analyticsServer } from '../dashboard/analyticsServer';
 import { influencerTweetFetcher } from '../jobs/fetchInfluencerTweets';
 import { contextAwareReplyEngine } from '../agents/contextAwareReplyEngine';
 import { postingLock } from '../utils/postingLock';
+import { databaseHealthMonitor } from '../utils/databaseHealthMonitor';
 
 export class UnifiedScheduler {
   private static instance: UnifiedScheduler;
@@ -97,6 +98,26 @@ export class UnifiedScheduler {
     console.log('🕵️ NEW: Stealth reply system for engagement growth');
     
     try {
+      // Start database health monitoring first
+      console.log('🔍 Starting database health monitoring...');
+      databaseHealthMonitor.startMonitoring(30000); // Check every 30 seconds
+      
+      // Verify dual database mode is working
+      const dbVerification = await databaseHealthMonitor.verifyDualDatabaseMode();
+      console.log('📋 Database Configuration:');
+      console.log(`   Redis URL: ${dbVerification.redisDetected ? '✅' : '❌'}`);
+      console.log(`   Redis Connected: ${dbVerification.redisConnected ? '✅' : '❌'}`);
+      console.log(`   Supabase Connected: ${dbVerification.supabaseConnected ? '✅' : '❌'}`);
+      console.log(`   USE_SUPABASE_ONLY: ${dbVerification.environmentVars.USE_SUPABASE_ONLY}`);
+      
+      if (!dbVerification.redisConnected && dbVerification.redisDetected) {
+        console.log('🚨 WARNING: Redis URL found but connection failed!');
+      }
+      
+      if (!dbVerification.redisDetected) {
+        console.log('⚠️ WARNING: Redis not detected - running in Supabase-only mode');
+      }
+      
       // Initial status check
       await this.displaySystemStatus();
       

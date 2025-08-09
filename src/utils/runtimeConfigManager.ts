@@ -68,11 +68,21 @@ export class RuntimeConfigManager {
    */
   async updateConfig(updates: Partial<RuntimeConfig>): Promise<void> {
     try {
+      // Check database health before attempting update
+      const { databaseHealthMonitor } = await import('./databaseHealthMonitor');
+      const dbStatus = databaseHealthMonitor.getStatus();
+      
+      if (!dbStatus.supabase.available) {
+        console.log('⚠️ Supabase unavailable, skipping config update');
+        console.log(`   Error: ${dbStatus.supabase.error}`);
+        return; // Skip update to prevent 522 errors
+      }
+
       const currentConfig = await this.getConfig();
       const newConfig = { ...currentConfig, ...updates };
 
-      // Store in database
-      const { error } = await supabaseClient.supabase
+      // Store in database with timeout protection
+      const updatePromise = supabaseClient.supabase
         .from('bot_config')
         .upsert({
           key: 'runtime_config',
@@ -81,6 +91,13 @@ export class RuntimeConfigManager {
         }, {
           onConflict: 'key'
         });
+
+      // Add timeout protection to prevent hanging
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Database update timeout after 10 seconds')), 10000)
+      );
+
+      const { error } = await Promise.race([updatePromise, timeoutPromise]);
 
       if (error) {
         console.error('❌ Failed to update runtime config:', error);
