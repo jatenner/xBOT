@@ -109,10 +109,20 @@ export class EmergencyPostingSystem {
           tweetCount: threadContent.length,
           characterLimit: 280,
           structure: ['hook', 'body', 'conclusion']
-        },
+        } as any,
+        style: {
+          tone: 'professional',
+          language: 'english'
+        } as any,
+        topic: {
+          category: 'health',
+          engagement_potential: 'high'
+        } as any,
         metadata: { 
-          source: 'EmergencyPostingSystem',
-          emergency_mode: true
+          estimated_engagement: 75,
+          confidence_score: 0.8,
+          generation_timestamp: new Date().toISOString(),
+          model_used: 'emergency-system'
         }
       });
       
