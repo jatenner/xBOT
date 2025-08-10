@@ -26,7 +26,7 @@
     "setup-db": "node init_database.js && node -e \"require('./supabase/advanced_optimization_schema.sql')\"",
     "setup-check": "node -e \"console.log('🔍 Checking setup...'); if (!require('fs').existsSync('.env')) { console.log('⚠️ No .env file found. Run: npm run setup-apis'); process.exit(1); }\"",
     "build-minimal": "node --max-old-space-size=1024 ./node_modules/.bin/tsc --incremental --skipLibCheck",
-    "emergency": "node --expose-gc emergency_start.js",
+    "emergency": "node --max-old-space-size=400 emergency_main.js",
     "safe-start": "EMERGENCY_MODE=true npm start",
     "start-original": "npm run migrate && node dist/main.js",
     "logs": "node bulletproof_railway_monitor.js",
