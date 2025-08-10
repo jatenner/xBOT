@@ -28,8 +28,8 @@ class UltraSimpleBot {
     const memory = process.memoryUsage();
     console.log(`📊 Startup memory: ${Math.round(memory.heapUsed / 1024 / 1024)}MB`);
     
-    // Simple health check endpoint (Railway needs this)
-    this.startHealthServer();
+    // Health server already started in main() - no need to start again
+    console.log('🌐 Health server already running (started in main)');
     
     // Simple posting schedule (every 60 minutes)
     setInterval(() => {
@@ -162,8 +162,19 @@ class UltraSimpleBot {
 
 async function main() {
   try {
+    console.log('🚀 === ULTRA-SIMPLE BOT MAIN START ===');
+    
+    // Start health server IMMEDIATELY (before anything else)
+    console.log('🌐 Starting immediate health server...');
+    await startImmediateHealthServer();
+    
+    // Wait a moment to ensure health server is ready
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
     const bot = new UltraSimpleBot();
     await bot.start();
+    
+    console.log('✅ === ULTRA-SIMPLE BOT FULLY STARTED ===');
     
     // Graceful shutdown
     process.on('SIGTERM', () => {
@@ -178,8 +189,67 @@ async function main() {
     
   } catch (error: any) {
     console.error('💥 Startup failed:', error.message);
+    console.error('💥 Stack:', error.stack);
     process.exit(1);
   }
+}
+
+// IMMEDIATE health server that starts before everything else
+async function startImmediateHealthServer(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    try {
+      console.log('🌐 Creating IMMEDIATE health server...');
+      const http = require('http');
+      
+      const server = http.createServer((req: any, res: any) => {
+        const url = req.url;
+        console.log(`📞 IMMEDIATE health check: ${req.method} ${url}`);
+        
+        if (url === '/health' || url === '/' || url === '/ping') {
+          const memory = process.memoryUsage();
+          const memoryMB = Math.round(memory.heapUsed / 1024 / 1024);
+          
+          const response = JSON.stringify({
+            status: 'healthy',
+            mode: 'ultra-simple-immediate',
+            memory: `${memoryMB}MB`,
+            uptime: Math.round(process.uptime()),
+            timestamp: new Date().toISOString(),
+            message: 'Railway health check OK'
+          });
+          
+          res.writeHead(200, { 
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'no-cache'
+          });
+          res.end(response);
+          
+          console.log(`✅ IMMEDIATE health check OK: ${memoryMB}MB memory`);
+        } else {
+          res.writeHead(200, { 'Content-Type': 'text/plain' });
+          res.end('xBOT Ultra-Simple Mode');
+        }
+      });
+      
+      const port = process.env.PORT || 3000;
+      
+      server.listen(port, '0.0.0.0', () => {
+        console.log(`🌐 IMMEDIATE health server READY on 0.0.0.0:${port}`);
+        console.log(`🌐 Railway health endpoint: http://0.0.0.0:${port}/health`);
+        resolve();
+      });
+      
+      server.on('error', (error: any) => {
+        console.error('❌ IMMEDIATE health server error:', error.message);
+        reject(error);
+      });
+      
+    } catch (error: any) {
+      console.error('❌ Failed to create IMMEDIATE health server:', error.message);
+      reject(error);
+    }
+  });
 }
 
 main();
