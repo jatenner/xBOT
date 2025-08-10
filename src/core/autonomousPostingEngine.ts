@@ -150,14 +150,13 @@ export class AutonomousPostingEngine {
 
   private async storeInDatabase(content: string, tweetId: string): Promise<void> {
     try {
-      const { createClient } = await import('@supabase/supabase-js');
+      // Use the unified DatabaseManager instead of direct Supabase calls
+      const { DatabaseManager } = await import('../lib/db');
+      const dbManager = DatabaseManager.getInstance();
       
-      const supabase = createClient(
-        process.env.SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
-      );
-
-      await supabase.from('tweets').insert({
+      await dbManager.initialize();
+      
+      const success = await dbManager.insertTweet({
         content,
         tweet_id: tweetId,
         posted_at: new Date().toISOString(),
@@ -165,7 +164,11 @@ export class AutonomousPostingEngine {
         status: 'posted'
       });
 
-      console.log('📊 Stored tweet in database');
+      if (success) {
+        console.log('📊 Stored tweet in unified database system');
+      } else {
+        console.warn('⚠️ Database storage failed - check connection status');
+      }
     } catch (error: any) {
       console.error('⚠️ Failed to store in database:', error.message);
       // Don't throw - posting succeeded even if DB failed
