@@ -23,6 +23,38 @@ let redis: any = null;
 let redisAvailable = false;
 
 export async function getRedisClient() {
+
+  // EMERGENCY: Memory cleanup before Redis connection
+  if (global.gc) {
+    global.gc();
+  }
+  
+  // Emergency memory check
+  const memUsage = process.memoryUsage();
+  const rssMB = Math.round(memUsage.rss / 1024 / 1024);
+  console.log(`🔧 Memory before Redis connection: ${rssMB}MB`);
+  
+  if (rssMB > 400) {
+    console.log('⚠️ Memory too high for Redis connection, skipping');
+    return null;
+  }
+
+
+  // EMERGENCY: Memory cleanup before Redis connection
+  if (global.gc) {
+    global.gc();
+  }
+  
+  // Emergency memory check
+  const memUsage = process.memoryUsage();
+  const rssMB = Math.round(memUsage.rss / 1024 / 1024);
+  console.log(`🔧 Memory before Redis connection: ${rssMB}MB`);
+  
+  if (rssMB > 400) {
+    console.log('⚠️ Memory too high for Redis connection, skipping');
+    return null;
+  }
+
   if (USE_SUPABASE_ONLY || !REDIS_URL) {
     return null;
   }
