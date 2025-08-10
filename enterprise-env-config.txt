@@ -1,0 +1,159 @@
+# 🏢 ENTERPRISE AUTONOMOUS TWITTER BOT - ENVIRONMENT CONFIGURATION
+# Copy these variables to your Railway environment variables dashboard
+
+# ===== CORE APPLICATION =====
+NODE_ENV=production
+PORT=3000
+
+# ===== SUPABASE DATABASE =====
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+
+# ===== TWITTER API =====
+TWITTER_CONSUMER_KEY=your-consumer-key
+TWITTER_CONSUMER_SECRET=your-consumer-secret
+TWITTER_ACCESS_TOKEN=your-access-token
+TWITTER_ACCESS_TOKEN_SECRET=your-access-token-secret
+
+# ===== OPENAI API =====
+OPENAI_API_KEY=your-openai-api-key
+
+# ===== ENTERPRISE DATABASE CONFIGURATION =====
+# Connection Pool Settings
+DB_POOL_SIZE=10
+DB_TIMEOUT=10000
+DB_RETRIES=3
+SUPABASE_SCHEMA=public
+
+# Query Performance
+QUERY_TIMEOUT=30000
+CACHE_TIMEOUT=300000
+ENABLE_DB_METRICS=true
+
+# ===== REDIS CLUSTER CONFIGURATION =====
+# Primary Redis (REQUIRED - Set up at upstash.com or Railway Redis)
+REDIS_URL=redis://default:password@host:port
+
+# Optional: Fallback Redis instances for high availability
+REDIS_FALLBACK_URLS=redis://fallback1:port,redis://fallback2:port
+REDIS_BACKUP_URLS=redis://backup1:port,redis://backup2:port
+
+# Redis Performance
+REDIS_TIMEOUT=5000
+REDIS_RETRIES=3
+REDIS_CLUSTER_ENABLED=false
+REDIS_AUTO_DISCOVERY=true
+REDIS_MAX_REDIRECTIONS=16
+REDIS_FAILOVER_DELAY=100
+
+# Redis Cache Settings
+REDIS_KEY_PREFIX=xbot:
+REDIS_CONNECT_TIMEOUT=5000
+REDIS_COMMAND_TIMEOUT=3000
+REDIS_KEEP_ALIVE=true
+REDIS_COMPRESSION=false
+
+# ===== MIGRATION ENGINE =====
+# Automatic Migrations
+AUTO_MIGRATE_ON_STARTUP=true
+MIGRATIONS_PATH=./migrations
+SCHEMA_TABLE=schema_versions
+MIGRATION_LOCK_TABLE=migration_locks
+
+# Migration Safety
+MIGRATION_BACKUP_ENABLED=true
+MIGRATION_BACKUP_PATH=./backups
+MIGRATION_VALIDATE=true
+MIGRATION_PARALLEL=false
+MIGRATION_MAX_CONCURRENCY=3
+MIGRATION_DRY_RUN=false
+MIGRATION_TIMEOUT=300000
+
+# ===== MONITORING & ALERTING =====
+# System Monitoring
+ENABLE_DB_MONITORING=true
+SYSTEM_HEALTH_CHECK_INTERVAL=60000
+REDIS_HEALTH_INTERVAL=30000
+REDIS_METRICS=true
+
+# Performance Monitoring
+REDIS_LATENCY_THRESHOLD=100
+REDIS_ERROR_RATE_THRESHOLD=0.05
+REDIS_CONNECTION_THRESHOLD=100
+
+# ===== BACKUP & RECOVERY =====
+ENABLE_AUTO_BACKUPS=true
+BACKUP_RETENTION_DAYS=30
+BACKUP_SCHEDULE=0 2 * * *
+
+# ===== ALERTING CONFIGURATION =====
+# Webhook Notifications (Optional)
+ALERT_WEBHOOK_URL=https://your-webhook-endpoint.com
+ALERT_WEBHOOK_HEADERS={"Authorization":"Bearer token","Content-Type":"application/json"}
+
+# Slack Integration (Optional)
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK
+
+# Discord Integration (Optional)  
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR/DISCORD/WEBHOOK
+
+# ===== BOT BEHAVIOR CONFIGURATION =====
+# Content Generation
+DEFAULT_CONTENT_TOPICS=hydration,sleep,exercise,nutrition,mental_health,wellness
+AI_MODEL=gpt-4
+AI_TEMPERATURE=0.7
+AI_MAX_TOKENS=280
+
+# Posting Schedule
+POSTING_HOURS=9,12,15,18
+POSTING_TIMEZONE=UTC
+MAX_POSTS_PER_DAY=4
+MIN_INTERVAL_HOURS=3
+
+# Performance Targets
+MIN_ENGAGEMENT_RATE=0.03
+TARGET_FOLLOWER_GROWTH=10
+VIRAL_POTENTIAL_THRESHOLD=0.7
+
+# ===== ADVANCED FEATURES =====
+# Circuit Breaker Configuration
+CIRCUIT_BREAKER_THRESHOLD=5
+CIRCUIT_BREAKER_TIMEOUT=60000
+CIRCUIT_BREAKER_SUCCESS_THRESHOLD=3
+
+# Load Balancer Settings
+REDIS_LOAD_BALANCER_ENABLED=true
+REDIS_HEALTH_CHECK_INTERVAL=10000
+REDIS_MAX_RETRIES=3
+REDIS_BACKOFF_MULTIPLIER=1.5
+
+# Memory Management
+MAX_OLD_SPACE_SIZE=512
+MEMORY_MONITORING_ENABLED=true
+GC_ENABLED=true
+
+# ===== SECURITY SETTINGS =====
+# Database Security
+DB_SSL_ENABLED=true
+REDIS_SSL_ENABLED=true
+CONNECTION_ENCRYPTION=true
+
+# API Rate Limiting
+TWITTER_RATE_LIMIT_ENABLED=true
+OPENAI_RATE_LIMIT_ENABLED=true
+
+# ===== DEVELOPMENT SETTINGS =====
+# Logging
+LOG_LEVEL=info
+ENABLE_QUERY_LOGGING=false
+ENABLE_PERFORMANCE_LOGGING=true
+
+# Testing
+ENABLE_TEST_MODE=false
+MOCK_TWITTER_API=false
+MOCK_REDIS=false
+
+# Debug Features
+ENABLE_DEBUG_HEADERS=false
+ENABLE_QUERY_EXPLAIN=false
+ENABLE_MIGRATION_DEBUG=false

@@ -150,27 +150,74 @@ export class AutonomousPostingEngine {
 
   private async storeInDatabase(content: string, tweetId: string): Promise<void> {
     try {
-      // Use the unified DatabaseManager instead of direct Supabase calls
-      const { DatabaseManager } = await import('../lib/db');
-      const dbManager = DatabaseManager.getInstance();
+      // Use the enterprise-grade Advanced Database Manager
+      const { AdvancedDatabaseManager } = await import('../lib/advancedDatabaseManager');
+      const dbManager = AdvancedDatabaseManager.getInstance();
       
       await dbManager.initialize();
       
-      const success = await dbManager.insertTweet({
+      // Execute with advanced query optimization and monitoring
+      const success = await dbManager.executeQuery(
+        'insert_tweet',
+        async (client) => {
+          const { error } = await client.from('tweets').insert({
+            content,
+            tweet_id: tweetId,
+            posted_at: new Date().toISOString(),
+            platform: 'twitter',
+            status: 'posted',
+            engagement_score: 0,
+            likes: 0,
+            retweets: 0,
+            replies: 0
+          });
+          
+          if (error) throw error;
+          return true;
+        },
+        `tweet_insert_${tweetId}`, // Cache key
+        300000 // 5 minute cache
+      );
+
+      // Cache tweet data in Redis for quick access
+      await dbManager.cacheSet(`tweet:${tweetId}`, {
         content,
-        tweet_id: tweetId,
         posted_at: new Date().toISOString(),
         platform: 'twitter',
         status: 'posted'
-      });
+      }, 3600); // 1 hour cache
 
-      if (success) {
-        console.log('📊 Stored tweet in unified database system');
-      } else {
-        console.warn('⚠️ Database storage failed - check connection status');
-      }
+      console.log('🏢 Stored tweet in enterprise database system with caching');
+      
+      // Emit success event for monitoring
+      dbManager.emit('tweetStored', { tweetId, content: content.substring(0, 100) });
+      
     } catch (error: any) {
-      console.error('⚠️ Failed to store in database:', error.message);
+      console.error('⚠️ Enterprise database storage failed:', error.message);
+      
+      // Record metric for monitoring system
+      try {
+        const { DatabaseMonitoringSystem } = await import('../lib/databaseMonitoringSystem');
+        const { createClient } = await import('@supabase/supabase-js');
+        
+        const supabase = createClient(
+          process.env.SUPABASE_URL!,
+          process.env.SUPABASE_SERVICE_ROLE_KEY!
+        );
+        
+        const monitor = DatabaseMonitoringSystem.getInstance(supabase);
+        monitor.addCustomMetric({
+          timestamp: new Date(),
+          metric: 'tweet_storage_error',
+          value: 1,
+          unit: 'errors',
+          source: 'application',
+          tags: { operation: 'store_tweet', error: error.message.substring(0, 50) }
+        });
+      } catch (monitorError) {
+        // Monitoring failed, but don't block the main operation
+      }
+      
       // Don't throw - posting succeeded even if DB failed
     }
   }
