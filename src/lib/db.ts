@@ -42,8 +42,13 @@ export class DatabaseManager {
 
       this.supabase = createClient(supabaseUrl, supabaseKey);
       
-      // Test connection
-      const { error } = await this.supabase.from('tweets').select('count').limit(1);
+      // Test connection with timeout
+      const testPromise = this.supabase.from('tweets').select('count').limit(1);
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Supabase connection timeout')), 10000)
+      );
+      
+      const { error } = await Promise.race([testPromise, timeoutPromise]) as any;
       
       if (error) {
         console.warn('⚠️ Supabase connection test failed:', error.message);
@@ -73,8 +78,13 @@ export class DatabaseManager {
         tls: redisUrl.includes('rediss://') ? {} : undefined,
       });
 
-      // Test connection
-      await this.redis.ping();
+      // Test connection with timeout
+      const pingPromise = this.redis.ping();
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Redis ping timeout')), 5000)
+      );
+      
+      await Promise.race([pingPromise, timeoutPromise]);
       this.isRedisConnected = true;
       console.log('✅ Redis connected');
 
