@@ -1,1 +1,1 @@
-web: node simple_health_server.js
+web: node dist/main.js
