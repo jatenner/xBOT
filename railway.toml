@@ -1,5 +1,5 @@
 [build]
-command = "echo '🚨 EMERGENCY BUILD - Health server only' && echo 'Build complete'"
+command = "echo '🚨 STANDALONE HEALTH SERVER - No build needed' && echo 'simple_health_server.js ready'"
 
 [deploy]
 healthcheckPath = "/health"
