@@ -68,30 +68,34 @@ export class DatabaseManager {
       const redisUrl = process.env.REDIS_URL;
       
       if (!redisUrl) {
-        console.log('📝 No Redis URL provided, skipping Redis');
+        console.log('📝 No Redis URL provided, operating in Supabase-only mode');
+        this.isRedisConnected = false;
         return;
       }
 
+      console.log('🔗 Attempting Redis connection...');
       this.redis = new Redis(redisUrl, {
-        maxRetriesPerRequest: 3,
-        connectTimeout: 10000,
+        maxRetriesPerRequest: 1, // Reduced retries for faster failover
+        connectTimeout: 5000,    // Reduced timeout
+        lazyConnect: true,       // Don't connect immediately
         tls: redisUrl.includes('rediss://') ? {} : undefined,
       });
 
-      // Test connection with timeout
+      // Test connection with short timeout
       const pingPromise = this.redis.ping();
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Redis ping timeout')), 5000)
+        setTimeout(() => reject(new Error('Redis ping timeout')), 3000)
       );
       
       await Promise.race([pingPromise, timeoutPromise]);
       this.isRedisConnected = true;
-      console.log('✅ Redis connected');
+      console.log('✅ Redis connected successfully');
 
     } catch (error: any) {
-      console.error('❌ Redis initialization failed:', error.message);
+      console.warn('⚠️ Redis unavailable, continuing with Supabase-only mode:', error.message);
       this.isRedisConnected = false;
       this.redis = null;
+      // Don't throw - bot should work without Redis
     }
   }
 
