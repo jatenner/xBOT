@@ -1,413 +1,95 @@
+#!/usr/bin/env node
 
 /**
- * 🚀 XBOT MAIN ENTRY POINT - RAILWAY OPTIMIZED
+ * 🚀 MEMORY-EFFICIENT MAIN ENTRY POINT
  * 
- * Railway-compatible startup sequence:
- * 1. Health server starts IMMEDIATELY (< 1 second)
- * 2. Bot initialization happens in background (non-blocking)
- * 3. Playwright setup happens asynchronously (with fallbacks)
- * 4. All failures are graceful - health server stays alive
+ * Optimized for Railway's 512MB memory limit
+ * Uses lazy loading and efficient resource management
  */
 
-import { startHealthServer, updateBotStatus } from './healthServer';
-import { execSync } from 'child_process';
+import dotenv from 'dotenv';
+dotenv.config();
 
-let botController: any = null;
-let isShuttingDown = false;
+// Memory optimization: Set Node.js memory limit
+process.env.NODE_OPTIONS = '--max-old-space-size=450'; // 450MB limit (safety buffer)
 
-/**
- * 🤖 INITIALIZE BOT IN BACKGROUND (NON-BLOCKING)
- * This runs AFTER health server is responding to Railway
- */
-async function initializeBotAsync(): Promise<void> {
+console.log('🚀 XBOT MEMORY-EFFICIENT STARTUP');
+console.log('===================================');
+
+async function main() {
   try {
-    console.log('🚀 === XBOT BACKGROUND INITIALIZATION STARTING ===');
-    console.log(`📅 ${new Date().toISOString()}`);
-    console.log('🎯 Mission: Autonomous Twitter growth with browser automation');
-    console.log('🚄 Platform: Railway.app optimized');
-    console.log('');
+    // Check memory at startup
+    const initialMemory = process.memoryUsage();
+    console.log(`🔧 Initial memory: ${Math.round(initialMemory.heapUsed / 1024 / 1024)}MB`);
 
-    updateBotStatus('environment_check');
+    // Check environment
+    const isRailway = process.env.RAILWAY_ENVIRONMENT_ID || process.env.RAILWAY_PROJECT_ID;
+    console.log(`🌍 Environment: ${isRailway ? 'Railway' : 'Local'}`);
 
-    // Environment validation (non-blocking) - using production validator
-    console.log('🔧 Validating environment configuration...');
+    // Initialize memory-efficient controller
+    console.log('📦 Loading memory-efficient controller...');
+    const { memoryEfficientController } = await import('./core/memoryEfficientController');
     
-    try {
-              // Comprehensive health check
-        console.log('🩺 Running comprehensive system health check...');
-        const { ComprehensiveHealthCheck } = await import('./utils/comprehensiveHealthCheck');
-        const healthResult = await ComprehensiveHealthCheck.runFullHealthCheck();
+    // Check memory after loading
+    const postLoadMemory = process.memoryUsage();
+    console.log(`📊 Memory after loading: ${Math.round(postLoadMemory.heapUsed / 1024 / 1024)}MB`);
 
-        if (healthResult.overall === 'CRITICAL') {
-          console.error('❌ Critical health check failures detected:');
-          healthResult.results.filter(r => r.status === 'CRITICAL').forEach(result => {
-            console.error(`   - ${result.component}: ${result.details}`);
-            if (result.recommendations) {
-              result.recommendations.forEach(rec => console.error(`     💡 ${rec}`));
-            }
-          });
-          console.error('');
-          console.error('🏥 Health server continues running - bot will retry every 5 minutes');
-          updateBotStatus('critical_health_failures');
+    // Start the autonomous system
+    await memoryEfficientController.start();
 
-          // Schedule retry
-          setTimeout(() => {
-            console.log('🔄 Retrying bot initialization after health fixes...');
-            initializeBotAsync().catch(console.error);
-          }, 5 * 60 * 1000); // 5 minutes
+    // Setup graceful shutdown
+    process.on('SIGTERM', async () => {
+      console.log('🛑 Received SIGTERM, shutting down gracefully...');
+      await memoryEfficientController.stop();
+      process.exit(0);
+    });
 
-          return;
-        }
+    process.on('SIGINT', async () => {
+      console.log('🛑 Received SIGINT, shutting down gracefully...');
+      await memoryEfficientController.stop();
+      process.exit(0);
+    });
 
-        if (healthResult.overall === 'WARNING') {
-          console.warn('⚠️ Health check warnings:');
-          healthResult.results.filter(r => r.status === 'WARNING').forEach(result => {
-            console.warn(`   - ${result.component}: ${result.details}`);
-          });
-          console.warn('   (System will operate with reduced functionality)');
-          console.log('');
-        }
-
-        console.log('✅ Health check passed');
-        console.log(`📊 Overall status: ${healthResult.overall}`);
+    // Memory monitoring
+    setInterval(() => {
+      const usage = process.memoryUsage();
+      const usageMB = Math.round(usage.heapUsed / 1024 / 1024);
       
-    } catch (envError) {
-      console.error('❌ Environment validation error:', envError);
-      updateBotStatus('env_validation_error');
-      
-      setTimeout(() => {
-        console.log('🔄 Retrying environment validation...');
-        initializeBotAsync().catch(console.error);
-      }, 2 * 60 * 1000); // 2 minutes
-      
-      return;
-    }
-
-    updateBotStatus('initializing_systems');
-
-    // Initialize Twitter session for persistent browser automation
-    console.log('🔑 Initializing Twitter session...');
-    try {
-      const { ensureTwitterSession } = await import('./utils/initTwitterSession');
-      const sessionReady = await ensureTwitterSession();
-      if (sessionReady) {
-        console.log('✅ Twitter session loaded successfully');
-      } else {
-        console.log('⚠️ Twitter session not available - browser posting may fail');
-      }
-    } catch (sessionError) {
-      console.error('❌ Twitter session initialization failed:', sessionError);
-      console.log('⚠️ Continuing without session - browser posting will use fallback mode');
-    }
-
-    // Import bot systems only after environment validation
-    console.log('📦 Loading bot systems...');
-    
-    try {
-      // Consolidated startup: use UnifiedScheduler only
-      const { UnifiedScheduler } = await import('./core/unifiedScheduler');
-      const scheduler = UnifiedScheduler.getInstance();
-      updateBotStatus('starting_operations');
-      console.log('🚀 Starting Unified Scheduler...');
-      await scheduler.start();
-      botController = scheduler as any;
-
-      updateBotStatus('running', botController);
-      console.log('🤖 Bot fully operational!');
-
-      // Success message
-      console.log('');
-      console.log('🎉 === XBOT ONLINE AND AUTONOMOUS ===');
-      console.log('');
-      console.log('📊 Dashboard: Available on Railway deployment URL:3002');
-      console.log('🤖 The bot is now fully autonomous and learning...');
-      console.log('🎭 Browser automation: Check /playwright endpoint for status');
-      console.log('');
-      console.log('🎯 EXPECTED RESULTS:');
-      console.log('   • 15+ new followers every day');
-      console.log('   • 45%+ engagement rate on posts');
-      console.log('   • Intelligent timing optimization');
-      console.log('   • Strategic influencer engagement');
-      console.log('');
-      console.log('🚀 FULLY AUTONOMOUS - NO HUMAN INTERVENTION REQUIRED!');
-      console.log('');
-
-      // Start health monitoring
-      startHealthMonitoring();
-
-    } catch (systemError) {
-      console.error('❌ Failed to load bot systems:', systemError);
-      updateBotStatus('system_load_error');
-      
-      setTimeout(() => {
-        console.log('🔄 Retrying system initialization...');
-        initializeBotAsync().catch(console.error);
-      }, 3 * 60 * 1000); // 3 minutes
-      
-      return;
-    }
-
-  } catch (error) {
-    updateBotStatus('initialization_error');
-    console.error('❌ Bot initialization failed:', error);
-    console.error('');
-    console.error('🔧 Troubleshooting:');
-    console.error('   1. Check Railway environment variables');
-    console.error('   2. Verify API keys are valid');
-    console.error('   3. Check deployment logs for specific errors');
-    console.error('   4. Visit /status endpoint for detailed diagnostics');
-    console.error('');
-    console.error('⚠️ Health server continues running - bot will retry in 5 minutes');
-    
-    // Schedule retry
-    setTimeout(() => {
-      console.log('🔄 Attempting bot restart...');
-      initializeBotAsync().catch(console.error);
-    }, 5 * 60 * 1000); // 5 minutes
-  }
-}
-
-/**
- * 📊 HEALTH MONITORING (NON-BLOCKING)
- */
-function startHealthMonitoring(): void {
-  setInterval(() => {
-    if (isShuttingDown) return;
-    
-    try {
-      if (botController) {
-        const status = botController.getSystemStatus();
-        const uptimeMin = Math.floor(status.uptime / 1000 / 60);
-        console.log(`🤖 Status: ${status.systemHealth.overall.toUpperCase()} | Uptime: ${uptimeMin}m | Posts: ${status.operationalMetrics.posting.totalPosts}`);
-      } else {
-        console.log(`🤖 Status: INITIALIZING | Health: OK | Playwright: Initializing`);
-      }
-    } catch (error) {
-      console.log(`🤖 Status: MONITORING | Uptime: ${Math.floor(process.uptime() / 60)}m | Health: OK`);
-    }
-  }, 5 * 60 * 1000); // 5 minutes
-}
-
-/**
- * 🎭 ENSURE PLAYWRIGHT IS AVAILABLE FOR RAILWAY
- */
-async function ensurePlaywrightForRailway(): Promise<void> {
-  try {
-    const isRailway = process.env.RAILWAY_ENVIRONMENT_NAME || process.env.NIXPACKS_METADATA;
-    
-    if (isRailway) {
-      console.log('🚄 Railway deployment detected - ensuring Playwright is available...');
-      
-      // Set Railway-specific Playwright configuration
-      process.env.PLAYWRIGHT_BROWSERS_PATH = process.env.PLAYWRIGHT_BROWSERS_PATH || '0';
-      
-      // Runtime Playwright installation for Railway
-      try {
-        console.log('📦 Runtime Playwright installation...');
-        execSync('npx playwright install chromium --with-deps', { 
-          stdio: 'inherit',
-          timeout: 120000 // 2 minute timeout
-        });
-        console.log('✅ Playwright runtime installation completed');
-      } catch (depsError) {
-        console.warn('⚠️ Full installation failed, trying basic install...');
+      if (usageMB > 400) { // 400MB warning
+        console.warn(`⚠️ HIGH MEMORY USAGE: ${usageMB}MB`);
         
-        try {
-          execSync('npx playwright install chromium', { 
-            stdio: 'inherit',
-            timeout: 60000 // 1 minute timeout
-          });
-          console.log('✅ Basic Playwright installation completed');
-        } catch (basicError) {
-          console.error('❌ Playwright runtime install failed:', basicError);
-          console.warn('⚠️ Browser automation will use fallback mode');
+        // Force garbage collection
+        if (global.gc) {
+          global.gc();
+          const afterGC = process.memoryUsage();
+          const afterMB = Math.round(afterGC.heapUsed / 1024 / 1024);
+          console.log(`🧹 After GC: ${afterMB}MB`);
         }
       }
-    } else {
-      console.log('💻 Local environment detected - skipping runtime Playwright install');
-    }
-    
-  } catch (error) {
-    console.error('❌ Playwright runtime installation error:', error);
-    console.warn('⚠️ Continuing startup - browser automation may be limited');
+    }, 60000); // Check every minute
+
+    console.log('✅ XBOT Memory-Efficient System Running Successfully');
+    console.log('🎯 Target: <400MB memory usage');
+    console.log('⚡ Features: Autonomous posting, learning, Redis integration');
+
+  } catch (error: any) {
+    console.error('❌ Startup failed:', error.message);
+    console.error(error.stack);
+    process.exit(1);
   }
 }
 
-/**
- * 🏠 MAIN ENTRY POINT - RAILWAY OPTIMIZED
- * Health server starts INSTANTLY, everything else happens in background
- */
-async function main(): Promise<void> {
-  try {
-    console.log('🚄 === RAILWAY DEPLOYMENT STARTING ===');
-    console.log(`📅 Startup: ${new Date().toISOString()}`);
-    console.log(`🌍 Platform: ${process.platform}`);
-    console.log(`📦 Node: ${process.version}`);
-    console.log('');
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('💥 Uncaught Exception:', error.message);
+  console.error(error.stack);
+  process.exit(1);
+});
 
-    // STEP 0: Ensure Playwright is available for Railway deployment
-    await ensurePlaywrightForRailway();
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
+  process.exit(1);
+});
 
-    // STEP 1: Start health server IMMEDIATELY (Railway requirement)
-    console.log('🏥 Starting health server for Railway health checks...');
-    const healthStartTime = Date.now();
-    
-    await startHealthServer();
-    
-    const healthDuration = Date.now() - healthStartTime;
-    console.log(`✅ Health server READY in ${healthDuration}ms`);
-    console.log('🚄 Railway health checks will now PASS');
-    console.log('');
-
-    // STEP 2: Initialize bot in background (non-blocking)
-    console.log('🤖 Starting bot initialization in background...');
-    setTimeout(() => {
-      initializeBotAsync().catch((error) => {
-        console.error('❌ Background bot initialization failed:', error);
-        updateBotStatus('background_init_failed');
-      });
-    }, 1000); // Small delay to ensure health server is fully ready
-
-    // STEP 3: Initialize Playwright in background (non-blocking)
-    console.log('🎭 Playwright will initialize in background...');
-    // Playwright will auto-initialize in background
-
-    console.log('✅ Main startup sequence complete');
-    console.log('🚄 Health checks: PASSING');
-    console.log('🤖 Bot: Initializing in background');
-    console.log('🎭 Playwright: Will auto-initialize');
-    console.log('');
-
-  } catch (error) {
-    console.error('❌ CRITICAL: Main startup failed:', error);
-    updateBotStatus('main_startup_failed');
-    
-    // Try to restart main after delay
-    setTimeout(() => {
-      console.log('🔄 Attempting main restart...');
-      main().catch((restartError) => {
-        console.error('❌ Main restart failed:', restartError);
-        process.exit(1); // Exit if we can't start main process
-      });
-    }, 10000); // 10 seconds
-  }
-}
-
-/**
- * 🛑 GRACEFUL SHUTDOWN HANDLING
- */
-function setupGracefulShutdown(): void {
-  const shutdown = async (signal: string) => {
-    if (isShuttingDown) return;
-    isShuttingDown = true;
-    
-    console.log(`\n🛑 Received ${signal} - graceful shutdown starting...`);
-    console.log(`🕰️ Shutdown reason: Railway signal ${signal} (likely deployment or resource limit)`);
-    
-    const shutdownTimeout = setTimeout(() => {
-      console.log('⚠️ Shutdown timeout reached, forcing exit');
-      process.exit(1);
-    }, 25000); // 25 seconds for graceful shutdown
-    
-    try {
-      // Update health status
-      updateBotStatus('shutting_down');
-      
-      // Stop bot operations gracefully
-      if (botController) {
-        console.log('🤖 Stopping bot controller...');
-        await Promise.race([
-          botController.stopAutonomousOperation(),
-          new Promise(resolve => setTimeout(resolve, 10000)) // 10s timeout
-        ]);
-        console.log('✅ Bot controller stopped');
-      }
-      
-      // Cleanup Playwright gracefully
-      console.log('🎭 Cleaning up Playwright...');
-      try {
-        const { browserTweetPoster } = await import('./utils/browserTweetPoster');
-        await Promise.race([
-          browserTweetPoster.cleanup?.() || Promise.resolve(),
-          new Promise(resolve => setTimeout(resolve, 5000)) // 5s timeout
-        ]);
-      } catch (err) {
-        console.log('⚠️ Playwright cleanup skipped:', err.message);
-      }
-      console.log('✅ Playwright cleaned up');
-      
-      // Final health server cleanup
-      console.log('🛑 Shutting down health server...');
-      const { stopHealthServer } = await import('./healthServer');
-      await stopHealthServer();
-      console.log('🏥 Health server closed gracefully');
-      
-    } catch (error) {
-      console.error('❌ Error during shutdown:', error);
-    }
-    
-    clearTimeout(shutdownTimeout);
-    console.log('✅ Graceful shutdown complete');
-    process.exit(0);
-  };
-
-  // Handle shutdown signals with immediate response
-  process.on('SIGINT', () => {
-    console.log('🔴 SIGINT received from user (Ctrl+C)');
-    shutdown('SIGINT');
-  });
-  
-  process.on('SIGTERM', () => {
-    console.log('🔴 SIGTERM received from Railway (deployment/resource limit)');
-    shutdown('SIGTERM');
-  });
-  
-  // Handle Railway-specific signals
-  process.on('SIGUSR1', () => {
-    console.log('🔵 SIGUSR1 received from Railway (restart request)');
-    shutdown('SIGUSR1');
-  });
-  
-  process.on('SIGUSR2', () => {
-    console.log('🔵 SIGUSR2 received from Railway (log reopen)');
-    // For SIGUSR2, don't shutdown - just log
-    console.log('📝 Log reopen signal - continuing operation');
-  });
-
-  // Handle uncaught exceptions gracefully
-  process.on('uncaughtException', (error) => {
-    console.error('❌ Uncaught Exception (health server continues):', error);
-    updateBotStatus('uncaught_exception');
-    
-    // Don't exit - health server stays alive
-    setTimeout(() => {
-      console.log('🔄 Attempting recovery...');
-      initializeBotAsync().catch(console.error);
-    }, 30000); // 30 seconds
-  });
-
-  process.on('unhandledRejection', (reason) => {
-    console.error('❌ Unhandled Rejection (health server continues):', reason);
-    updateBotStatus('unhandled_rejection');
-    
-    // Don't exit - health server stays alive
-    setTimeout(() => {
-      console.log('🔄 Attempting recovery...');
-      initializeBotAsync().catch(console.error);
-    }, 30000); // 30 seconds
-  });
-
-  process.on('warning', (warning) => {
-    console.warn('⚠️ Process Warning:', warning.name, warning.message);
-  });
-}
-
-// 🚀 START THE APPLICATION
-if (require.main === module) {
-  setupGracefulShutdown();
-  main().catch((error) => {
-    console.error('❌ Failed to start application:', error);
-    updateBotStatus('startup_failed');
-    // Don't exit - health server might still be working
-  });
-}
+// Start the application
+main();
