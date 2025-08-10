@@ -8,7 +8,7 @@
  * NO imports of any complex systems
  */
 
-import dotenv from 'dotenv';
+import * as dotenv from 'dotenv';
 dotenv.config();
 
 // Set strict memory limits
