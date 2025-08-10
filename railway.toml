@@ -1,5 +1,5 @@
 [build]
-command = "echo '🚨 STANDALONE HEALTH SERVER - No build needed' && echo 'simple_health_server.js ready'"
+command = "echo '🤖 Building Autonomous Twitter Bot...' && npm ci && npm run build && echo '✅ Bot build complete'"
 
 [deploy]
 healthcheckPath = "/health"

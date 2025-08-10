@@ -12,6 +12,10 @@ console.log('🌐 Creating emergency health server...');
 
 const http = require('http');
 
+// Force immediate startup log
+console.log('📦 Node.js version:', process.version);
+console.log('📦 Memory at startup:', Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + 'MB');
+
 // Create immediate health server
 const server = http.createServer((req, res) => {
   const url = req.url;
@@ -46,10 +50,22 @@ const server = http.createServer((req, res) => {
 
 const port = process.env.PORT || 3000;
 
+console.log(`🌐 BINDING to port ${port}...`);
+console.log(`🌐 Expected Railway health URL: http://0.0.0.0:${port}/health`);
+
 server.listen(port, '0.0.0.0', () => {
   console.log(`🌐 STANDALONE health server READY on 0.0.0.0:${port}`);
   console.log(`🌐 Railway health endpoint: http://0.0.0.0:${port}/health`);
   console.log('✅ === STANDALONE HEALTH SERVER RUNNING ===');
+  
+  // Immediate self-test
+  console.log('🧪 Performing immediate self-test...');
+  const selfTest = http.get(`http://localhost:${port}/health`, (res) => {
+    console.log(`🧪 Self-test response: ${res.statusCode}`);
+  });
+  selfTest.on('error', (err) => {
+    console.log(`🧪 Self-test error: ${err.message}`);
+  });
 });
 
 server.on('error', (error) => {
