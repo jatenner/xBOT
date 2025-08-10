@@ -44,36 +44,59 @@ class UltraSimpleBot {
   
   private startHealthServer() {
     try {
-      const express = require('express');
-      const app = express();
+      console.log('🌐 Starting MINIMAL health server...');
+      const http = require('http');
       
-      app.get('/health', (req: any, res: any) => {
-        const memory = process.memoryUsage();
-        const memoryMB = Math.round(memory.heapUsed / 1024 / 1024);
+      const server = http.createServer((req: any, res: any) => {
+        console.log(`📞 Health check: ${req.method} ${req.url}`);
         
-        res.json({
-          status: 'healthy',
-          memory: `${memoryMB}MB`,
-          posts: this.postCount,
-          uptime: process.uptime()
-        });
-      });
-      
-      app.get('/', (req: any, res: any) => {
-        res.json({
-          name: 'xBOT Ultra-Simple Mode',
-          status: 'running',
-          memory: `${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`,
-          posts: this.postCount
-        });
+        if (req.url === '/health' || req.url === '/') {
+          const memory = process.memoryUsage();
+          const memoryMB = Math.round(memory.heapUsed / 1024 / 1024);
+          
+          const response = JSON.stringify({
+            status: 'healthy',
+            mode: 'ultra-simple',
+            memory: `${memoryMB}MB`,
+            posts: this.postCount,
+            uptime: Math.round(process.uptime()),
+            timestamp: new Date().toISOString()
+          });
+          
+          res.writeHead(200, { 
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          });
+          res.end(response);
+          
+          console.log(`✅ Health check responded: ${memoryMB}MB memory`);
+        } else {
+          res.writeHead(404, { 'Content-Type': 'text/plain' });
+          res.end('Not Found');
+        }
       });
       
       const port = process.env.PORT || 3000;
-      app.listen(port, () => {
-        console.log(`🌐 Health server running on port ${port}`);
+      server.listen(port, '0.0.0.0', () => {
+        console.log(`🌐 MINIMAL health server running on 0.0.0.0:${port}`);
+        console.log(`🌐 Health endpoint: http://localhost:${port}/health`);
       });
+      
     } catch (error: any) {
-      console.error('❌ Health server failed:', error.message);
+      console.error('❌ MINIMAL health server failed:', error.message);
+      // Try to create an even simpler server
+      try {
+        const http = require('http');
+        const server = http.createServer((req: any, res: any) => {
+          res.writeHead(200, { 'Content-Type': 'text/plain' });
+          res.end('OK');
+        });
+        server.listen(process.env.PORT || 3000, () => {
+          console.log('🌐 EMERGENCY server started (text only)');
+        });
+      } catch (emergencyError: any) {
+        console.error('💥 Even emergency server failed:', emergencyError.message);
+      }
     }
   }
   
