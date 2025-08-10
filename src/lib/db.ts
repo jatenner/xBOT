@@ -53,8 +53,6 @@ export async function getRedisClient() {
     console.error('❌ Bulletproof Redis error:', error.message);
     return null;
   }
-
-}
 }
 
 // Initialize Supabase client
