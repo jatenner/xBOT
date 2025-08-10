@@ -20,36 +20,69 @@ export class BulletproofRedis {
       return false;
     }
 
-    console.log('🔧 Bulletproof Redis: Trying multiple strategies...');
+    console.log('🔧 Railway-Optimized Redis Connection...');
 
-    // Strategy 1: Try ioredis with SSL bypass
+    // PERMANENT FIX: Railway-specific SSL configuration
     try {
       const Redis = await import('ioredis');
       const RedisClass = Redis.default || Redis;
       
-      this.client = new RedisClass(REDIS_URL, {
+      // Parse URL for Railway environment
+      const url = new URL(REDIS_URL);
+      const isRailway = process.env.RAILWAY_ENVIRONMENT_ID || process.env.RAILWAY_PROJECT_ID;
+      
+      console.log(`🚀 Connecting to Redis Cloud on ${isRailway ? 'Railway' : 'Local'} environment`);
+      
+      this.client = new RedisClass({
+        host: url.hostname,
+        port: parseInt(url.port) || 6379,
+        username: url.username || 'default',
+        password: url.password,
+        
+        // Memory-efficient settings
         lazyConnect: true,
+        enableReadyCheck: false,
         retryDelayOnFailover: 100,
-        maxRetriesPerRequest: 2,
-        connectTimeout: 10000,
-        // BULLETPROOF SSL BYPASS
+        maxRetriesPerRequest: 3,
+        connectTimeout: 15000,
+        commandTimeout: 10000,
+        
+        // RAILWAY-SPECIFIC SSL CONFIGURATION
         tls: REDIS_URL.startsWith('rediss://') ? {
+          // Railway OpenSSL compatibility
           rejectUnauthorized: false,
           checkServerIdentity: () => undefined,
-          // Try multiple TLS versions
-          secureProtocol: 'TLS_method',
-          minVersion: 'TLSv1',
-          maxVersion: 'TLSv1.3',
+          servername: url.hostname,
+          
+          // Railway-specific TLS settings (PERMANENT FIX)
+          ...(isRailway ? {
+            // Railway uses specific OpenSSL version - configure accordingly
+            minVersion: 'TLSv1.2',
+            maxVersion: 'TLSv1.2', // Force TLS 1.2 for Railway
+            ciphers: [
+              'ECDHE-RSA-AES128-GCM-SHA256',
+              'ECDHE-RSA-AES256-GCM-SHA384',
+              'ECDHE-RSA-AES128-SHA256',
+              'ECDHE-RSA-AES256-SHA384'
+            ].join(':'),
+            ecdhCurve: 'auto',
+          } : {
+            // Local development settings
+            minVersion: 'TLSv1.2',
+            maxVersion: 'TLSv1.3',
+          })
         } : undefined,
       });
 
       await this.client.connect();
-      await this.client.ping();
-      this.connectionMethod = 'ioredis-ssl-bypass';
-      console.log('✅ Bulletproof Redis: ioredis SSL bypass successful');
+      const pingResult = await this.client.ping();
+      
+      this.connectionMethod = `ioredis-${isRailway ? 'railway' : 'local'}-ssl`;
+      console.log(`✅ Redis connected: ${pingResult} (${this.connectionMethod})`);
       return true;
-    } catch (error) {
-      console.log(`❌ Strategy 1 failed: ${error.message}`);
+      
+    } catch (error: any) {
+      console.log(`❌ Railway-optimized connection failed: ${error.message}`);
     }
 
     // Strategy 2: Try non-SSL connection (for testing)
