@@ -1,5 +1,5 @@
 [build]
-command = "echo '🔨 BUILD START' && npm run build-clean && echo '🔨 BUILD COMPLETE - checking files...' && ls -la dist/ && echo '🔨 Checking simpleMain.js...' && ls -la dist/simpleMain.js"
+command = "echo '🚨 EMERGENCY BUILD - Health server only' && echo 'Build complete'"
 
 [deploy]
 healthcheckPath = "/health"
