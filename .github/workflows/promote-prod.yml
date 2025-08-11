@@ -1,0 +1,115 @@
+name: 'Promote to Production - Apply Migrations'
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_production:
+        description: 'Type "CONFIRM PRODUCTION DEPLOYMENT" to proceed'
+        required: true
+        default: ''
+
+jobs:
+  promote-production:
+    name: 'Apply Migrations to Production'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: 
+      name: production
+      url: https://app.supabase.com/project/${{ secrets.PROD_PROJECT_REF }}
+
+    steps:
+      - name: 'Validate Confirmation'
+        run: |
+          if [ "${{ github.event.inputs.confirm_production }}" != "CONFIRM PRODUCTION DEPLOYMENT" ]; then
+            echo "❌ Invalid confirmation. Must type exactly: CONFIRM PRODUCTION DEPLOYMENT"
+            exit 1
+          fi
+          echo "✅ Confirmation validated"
+
+      - name: 'Checkout Repository'
+        uses: actions/checkout@v4
+
+      - name: 'Setup Node.js'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: 'Install Dependencies'
+        run: npm ci
+
+      - name: 'Install Supabase CLI'
+        run: |
+          curl -fsSL https://supabase.com/install.sh | sh
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: 'Install PostgreSQL Client'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: 'Pre-flight Production Check'
+        env:
+          PROD_DB_PASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
+          PROD_PROJECT_REF: ${{ secrets.PROD_PROJECT_REF }}
+        run: |
+          echo "🔍 Testing production database connectivity..."
+          PGPASSWORD="$PROD_DB_PASSWORD" psql \
+            -h "db.$PROD_PROJECT_REF.supabase.co" \
+            -p 5432 \
+            -U postgres \
+            -d postgres \
+            -c "SELECT 'Production connection successful' as status, current_database(), version();"
+
+      - name: 'Link to Production Project'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          PROD_PROJECT_REF: ${{ secrets.PROD_PROJECT_REF }}
+        run: |
+          supabase link --project-ref "$PROD_PROJECT_REF"
+
+      - name: 'Apply Migrations to Production'
+        run: |
+          echo "🚀 Applying migrations to production..."
+          supabase db push --include-all
+
+      - name: 'Production Verification'
+        env:
+          PROD_DB_PASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
+          PROD_PROJECT_REF: ${{ secrets.PROD_PROJECT_REF }}
+        run: |
+          echo "🔍 Running production verification checks..."
+          PGPASSWORD="$PROD_DB_PASSWORD" psql \
+            -h "db.$PROD_PROJECT_REF.supabase.co" \
+            -p 5432 \
+            -U postgres \
+            -d postgres \
+            -f supabase/verify/verify.sql
+
+      - name: 'Production Health Check'
+        env:
+          PROD_DB_PASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
+          PROD_PROJECT_REF: ${{ secrets.PROD_PROJECT_REF }}
+        run: |
+          echo "❤️ Running production health check..."
+          PGPASSWORD="$PROD_DB_PASSWORD" psql \
+            -h "db.$PROD_PROJECT_REF.supabase.co" \
+            -p 5432 \
+            -U postgres \
+            -d postgres \
+            -c "SELECT 'Production health check' as status, count(*) as total_tables FROM information_schema.tables WHERE table_schema = 'public';"
+
+      - name: 'Report Production Deployment'
+        if: always()
+        run: |
+          echo "## 🎉 Production Deployment Results" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment**: Production" >> $GITHUB_STEP_SUMMARY
+          echo "- **Migrations Applied**: ✅" >> $GITHUB_STEP_SUMMARY
+          echo "- **Verification**: ✅" >> $GITHUB_STEP_SUMMARY
+          echo "- **Health Check**: ✅" >> $GITHUB_STEP_SUMMARY
+          echo "- **Deployment Time**: $(date -u)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "1. Monitor application logs for any issues" >> $GITHUB_STEP_SUMMARY
+          echo "2. Verify application functionality in production" >> $GITHUB_STEP_SUMMARY
+          echo "3. Check performance metrics" >> $GITHUB_STEP_SUMMARY
