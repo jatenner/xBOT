@@ -1,4 +1,11 @@
-# Disable Nixpacks by pointing to Docker strategy (Railway prefers Dockerfile if present)
-# This file is intentionally minimal to avoid Nixpacks cache mounts which caused EBUSY.
-[variables]
-DISABLE_NIXPACKS = "true"
+[phases.setup]
+nixPkgs = ['nodejs', 'chromium']
+
+[phases.install]
+cmds = ['npm ci']
+
+[phases.build]
+cmds = ['npm run build']
+
+[start]
+cmd = 'node railway-start.js'

@@ -17,38 +17,32 @@ const playwright = spawn('npx', ['playwright', 'install', 'chromium'], {
 playwright.on('close', (code) => {
   if (code === 0) {
     console.log('✅ Playwright browsers installed successfully');
-    console.log('🤖 Starting main application...');
-    
-    // Start the main application
-    const main = spawn('node', ['dist/main.js'], {
-      stdio: 'inherit',
-      cwd: process.cwd()
-    });
-    
-    main.on('close', (code) => {
-      console.log(`🛑 Main application exited with code ${code}`);
-      process.exit(code);
-    });
-    
-    main.on('error', (error) => {
-      console.error('💥 Main application error:', error);
-      process.exit(1);
-    });
-    
   } else {
     console.error('❌ Playwright installation failed with code:', code);
-    console.log('🆘 Attempting to start without Playwright...');
-    
-    // Try to start anyway
-    const main = spawn('node', ['dist/main.js'], {
-      stdio: 'inherit',
-      cwd: process.cwd()
-    });
-    
-    main.on('close', (code) => {
-      process.exit(code);
-    });
+    console.log('🆘 Will handle browser installation at runtime...');
   }
+  
+  console.log('🤖 Starting main application...');
+  
+  // Start the main application
+  const main = spawn('node', ['dist/main.js'], {
+    stdio: 'inherit',
+    cwd: process.cwd(),
+    env: { 
+      ...process.env, 
+      PLAYWRIGHT_RUNTIME_INSTALL: 'true' // Signal to install at runtime if needed
+    }
+  });
+  
+  main.on('close', (code) => {
+    console.log(`🛑 Main application exited with code ${code}`);
+    process.exit(code);
+  });
+  
+  main.on('error', (error) => {
+    console.error('💥 Main application error:', error);
+    process.exit(1);
+  });
 });
 
 playwright.on('error', (error) => {
