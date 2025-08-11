@@ -247,6 +247,83 @@ export function startHealthServer(): Promise<void> {
     process.on('SIGINT', gracefulShutdown);
     process.on('SIGTERM', gracefulShutdown);
     
+    // AI Content Generation endpoint
+    app.post('/generate-content', express.json(), async (req, res) => {
+      try {
+        if (!healthServerStatus.botController) {
+          return res.status(503).json({ error: 'Bot controller not initialized' });
+        }
+
+        const { AutonomousTwitterPoster } = await import('./agents/autonomousTwitterPoster');
+        const { IntelligentContentGenerator } = await import('./agents/intelligentContentGenerator');
+        
+        const contentGenerator = IntelligentContentGenerator.getInstance();
+        const request = req.body || {};
+        const content = await contentGenerator.generateContent(request);
+        
+        res.json({
+          success: true,
+          content: content.content,
+          isThread: content.isThread,
+          contentScore: content.contentScore,
+          estimatedEngagement: content.estimatedEngagement
+        });
+      } catch (error: any) {
+        console.error('❌ Content generation failed:', error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // AI Posting endpoint
+    app.post('/ai-post', express.json(), async (req, res) => {
+      try {
+        if (!healthServerStatus.botController) {
+          return res.status(503).json({ error: 'Bot controller not initialized' });
+        }
+
+        const { AutonomousTwitterPoster } = await import('./agents/autonomousTwitterPoster');
+        const twitterPoster = AutonomousTwitterPoster.getInstance();
+        await twitterPoster.initialize();
+        
+        const options = req.body || {};
+        const result = await twitterPoster.createAndPostContent(undefined, options);
+        
+        res.json(result);
+      } catch (error: any) {
+        console.error('❌ AI posting failed:', error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // AI Analytics endpoint
+    app.get('/ai-analytics', async (req, res) => {
+      try {
+        if (!healthServerStatus.botController) {
+          return res.status(503).json({ error: 'Bot controller not initialized' });
+        }
+
+        const { IntelligentContentGenerator } = await import('./agents/intelligentContentGenerator');
+        const { SimpleEngagementAnalyzer } = await import('./intelligence/simpleEngagementAnalyzer');
+        
+        const contentGenerator = IntelligentContentGenerator.getInstance();
+        const engagementAnalyzer = SimpleEngagementAnalyzer.getInstance();
+        
+        const topTopics = await contentGenerator.getTopPerformingTopics(10);
+        const bestTimes = engagementAnalyzer.getBestPostingTimes();
+        
+        res.json({
+          topPerformingTopics: topTopics,
+          bestPostingTimes: bestTimes,
+          aiSystemsStatus: 'operational'
+        });
+      } catch (error: any) {
+        console.error('❌ AI analytics failed:', error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    console.log('🧠 AI endpoints mounted: /generate-content, /ai-post, /ai-analytics');
+
     // Handle uncaught exceptions without crashing health server
     process.on('uncaughtException', (error) => {
       console.error('❌ Uncaught Exception (health server continues):', error);
