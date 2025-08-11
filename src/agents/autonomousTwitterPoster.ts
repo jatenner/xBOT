@@ -1,12 +1,9 @@
 import { IntelligentContentGenerator, ContentGenerationRequest } from './intelligentContentGenerator';
 import { SimpleEngagementAnalyzer } from '../intelligence/simpleEngagementAnalyzer';
 import { AdvancedDatabaseManager } from '../lib/advancedDatabaseManager';
-import { TwitterApi } from 'twitter-api-v2';
 import { Browser, Page } from 'playwright';
 
 export interface PostingOptions {
-  useAPI?: boolean;
-  useBrowser?: boolean;
   dryRun?: boolean;
   forcePost?: boolean;
 }
@@ -15,7 +12,7 @@ export interface PostingResult {
   success: boolean;
   tweetId?: string;
   content: string;
-  method: 'api' | 'browser' | 'failed';
+  method: 'browser' | 'failed';
   error?: string;
   metrics?: {
     contentScore: number;
@@ -28,7 +25,6 @@ export class AutonomousTwitterPoster {
   private contentGenerator: IntelligentContentGenerator;
   private engagementAnalyzer: SimpleEngagementAnalyzer;
   private db: AdvancedDatabaseManager;
-  private twitterClient: TwitterApi | null = null;
   private browser: Browser | null = null;
 
   private constructor() {
@@ -47,30 +43,11 @@ export class AutonomousTwitterPoster {
   public async initialize(): Promise<void> {
     try {
       console.log('🤖 Initializing Autonomous Twitter Poster...');
-
-      // Initialize Twitter API client only if credentials are available
-      if (process.env.TWITTER_ACCESS_TOKEN && process.env.TWITTER_CONSUMER_KEY) {
-        try {
-          this.twitterClient = new TwitterApi({
-            appKey: process.env.TWITTER_CONSUMER_KEY!,
-            appSecret: process.env.TWITTER_CONSUMER_SECRET!,
-            accessToken: process.env.TWITTER_ACCESS_TOKEN!,
-            accessSecret: process.env.TWITTER_ACCESS_TOKEN_SECRET!,
-          });
-          console.log('✅ Twitter API client initialized');
-        } catch (apiError: any) {
-          console.warn('⚠️ Twitter API initialization failed, will use browser posting only:', apiError.message);
-          this.twitterClient = null;
-        }
-      } else {
-        console.log('🌐 No Twitter API credentials found, using browser posting only');
-        this.twitterClient = null;
-      }
-
+      console.log('🌐 Browser-only posting mode (No Twitter API)');
       console.log('✅ Autonomous Twitter Poster initialized (Browser posting mode)');
     } catch (error: any) {
       console.warn('⚠️ Twitter Poster initialization warning:', error.message);
-      // Don't throw - we can still use browser posting
+      // Don't throw - initialization is minimal for browser-only mode
     }
   }
 
@@ -124,7 +101,7 @@ export class AutonomousTwitterPoster {
         return {
           success: true,
           content: generatedContent.content,
-          method: 'api',
+          method: 'browser',
           metrics: {
             contentScore: generatedContent.contentScore,
             estimatedEngagement: generatedContent.estimatedEngagement
@@ -160,108 +137,49 @@ export class AutonomousTwitterPoster {
   }
 
   private async postSingle(content: string, options: PostingOptions): Promise<PostingResult> {
-    // Try API first if available
-    if ((options.useAPI !== false) && this.twitterClient) {
-      try {
-        console.log('📡 Posting via Twitter API...');
-        const tweet = await this.twitterClient.v2.tweet(content);
-        
-        return {
-          success: true,
-          tweetId: tweet.data.id,
-          content,
-          method: 'api'
-        };
-      } catch (error: any) {
-        console.warn('⚠️ API posting failed:', error.message);
-      }
+    // Browser posting only
+    try {
+      console.log('🌐 Posting via browser automation...');
+      const tweetId = await this.postViaBrowser(content);
+      
+      return {
+        success: true,
+        tweetId,
+        content,
+        method: 'browser'
+      };
+    } catch (error: any) {
+      console.warn('⚠️ Browser posting failed:', error.message);
+      return {
+        success: false,
+        content,
+        method: 'failed',
+        error: `Browser posting failed: ${error.message}`
+      };
     }
-
-    // Try browser posting if API fails or not preferred
-    if (options.useBrowser !== false) {
-      try {
-        console.log('🌐 Posting via browser automation...');
-        const tweetId = await this.postViaBrowser(content);
-        
-        return {
-          success: true,
-          tweetId,
-          content,
-          method: 'browser'
-        };
-      } catch (error: any) {
-        console.warn('⚠️ Browser posting failed:', error.message);
-      }
-    }
-
-    return {
-      success: false,
-      content,
-      method: 'failed',
-      error: 'All posting methods failed'
-    };
   }
 
   private async postThread(threadParts: string[], options: PostingOptions): Promise<PostingResult> {
-    // Threads are more complex - prefer API for reliability
-    if ((options.useAPI !== false) && this.twitterClient) {
-      try {
-        console.log(`🧵 Posting thread with ${threadParts.length} parts via API...`);
-        
-        let previousTweetId: string | undefined;
-        const tweetIds: string[] = [];
-
-        for (const [index, part] of threadParts.entries()) {
-          const tweet = await this.twitterClient.v2.tweet({
-            text: part,
-            reply: previousTweetId ? { in_reply_to_tweet_id: previousTweetId } : undefined
-          });
-          
-          tweetIds.push(tweet.data.id);
-          previousTweetId = tweet.data.id;
-          
-          console.log(`✅ Posted thread part ${index + 1}/${threadParts.length}`);
-          
-          // Small delay between thread posts
-          if (index < threadParts.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 2000));
-          }
-        }
-
-        return {
-          success: true,
-          tweetId: tweetIds[0], // Return first tweet ID as main thread ID
-          content: threadParts.join('\n\n'),
-          method: 'api'
-        };
-      } catch (error: any) {
-        console.warn('⚠️ Thread API posting failed:', error.message);
-      }
+    // Browser posting only for threads
+    try {
+      console.log('🌐 Posting thread via browser automation...');
+      const tweetId = await this.postThreadViaBrowser(threadParts);
+      
+      return {
+        success: true,
+        tweetId,
+        content: threadParts.join('\n\n'),
+        method: 'browser'
+      };
+    } catch (error: any) {
+      console.warn('⚠️ Browser thread posting failed:', error.message);
+      return {
+        success: false,
+        content: threadParts.join('\n\n'),
+        method: 'failed',
+        error: `Browser thread posting failed: ${error.message}`
+      };
     }
-
-    // Fallback to browser for threads (more complex)
-    if (options.useBrowser !== false) {
-      try {
-        console.log('🌐 Posting thread via browser automation...');
-        const tweetId = await this.postThreadViaBrowser(threadParts);
-        
-        return {
-          success: true,
-          tweetId,
-          content: threadParts.join('\n\n'),
-          method: 'browser'
-        };
-      } catch (error: any) {
-        console.warn('⚠️ Browser thread posting failed:', error.message);
-      }
-    }
-
-    return {
-      success: false,
-      content: threadParts.join('\n\n'),
-      method: 'failed',
-      error: 'All thread posting methods failed'
-    };
   }
 
   private async postViaBrowser(content: string): Promise<string> {
