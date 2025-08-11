@@ -73,7 +73,7 @@ export class EnterpriseSystemController extends EventEmitter {
     autoMigrate: process.env.AUTO_MIGRATE_ON_STARTUP === 'true',
     enableMonitoring: process.env.ENABLE_DB_MONITORING !== 'false',
     enableBackups: process.env.ENABLE_AUTO_BACKUPS === 'true',
-    healthCheckInterval: parseInt(process.env.SYSTEM_HEALTH_CHECK_INTERVAL || '60000'),
+          healthCheckInterval: parseInt(process.env.SYSTEM_HEALTH_CHECK_INTERVAL || '300000'), // 5 minutes
   };
 
   private constructor() {

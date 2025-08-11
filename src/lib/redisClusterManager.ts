@@ -269,7 +269,7 @@ export class RedisClusterManager extends EventEmitter {
         compressionEnabled: process.env.REDIS_COMPRESSION === 'true'
       },
       monitoring: {
-        healthCheckInterval: parseInt(process.env.REDIS_HEALTH_INTERVAL || '120000'), // 2 minutes to reduce spam
+        healthCheckInterval: parseInt(process.env.REDIS_HEALTH_INTERVAL || '300000'), // 5 minutes to reduce spam
         performanceMetrics: process.env.REDIS_METRICS !== 'false',
         alertThresholds: {
           latency: parseInt(process.env.REDIS_LATENCY_THRESHOLD || '100'),
@@ -350,7 +350,11 @@ export class RedisClusterManager extends EventEmitter {
   }
 
   private async performInitialHealthCheck(): Promise<void> {
-    console.log('🩺 Performing initial Redis health check...');
+    // Only log every 10th health check to reduce spam
+    const shouldLog = Date.now() % 10 === 0;
+    if (shouldLog) {
+      console.log('🩺 Performing Redis health check...');
+    }
     
     const endpoints = this.loadBalancer.getAllEndpoints();
     const healthChecks = endpoints.map(endpoint => this.checkEndpointHealth(endpoint));
@@ -358,7 +362,9 @@ export class RedisClusterManager extends EventEmitter {
     await Promise.allSettled(healthChecks);
     
     const healthyCount = this.loadBalancer.getHealthyEndpoints().length;
-    console.log(`✅ Redis health check complete: ${healthyCount}/${endpoints.length} endpoints healthy`);
+    if (shouldLog || healthyCount !== endpoints.length) {
+      console.log(`✅ Redis health check complete: ${healthyCount}/${endpoints.length} endpoints healthy`);
+    }
   }
 
   private async checkEndpointHealth(endpoint: RedisEndpoint): Promise<void> {
