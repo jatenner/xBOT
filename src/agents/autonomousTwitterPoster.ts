@@ -1,6 +1,7 @@
 import { IntelligentContentGenerator, ContentGenerationRequest } from './intelligentContentGenerator';
 import { SimpleEngagementAnalyzer } from '../intelligence/simpleEngagementAnalyzer';
 import { AdvancedDatabaseManager } from '../lib/advancedDatabaseManager';
+import { TwitterSessionManager } from '../utils/sessionManager';
 import { Browser, Page } from 'playwright';
 
 export interface PostingOptions {
@@ -25,12 +26,14 @@ export class AutonomousTwitterPoster {
   private contentGenerator: IntelligentContentGenerator;
   private engagementAnalyzer: SimpleEngagementAnalyzer;
   private db: AdvancedDatabaseManager;
+  private sessionManager: TwitterSessionManager;
   private browser: Browser | null = null;
 
   private constructor() {
     this.contentGenerator = IntelligentContentGenerator.getInstance();
     this.engagementAnalyzer = SimpleEngagementAnalyzer.getInstance();
     this.db = AdvancedDatabaseManager.getInstance();
+    this.sessionManager = TwitterSessionManager.getInstance();
   }
 
   public static getInstance(): AutonomousTwitterPoster {
@@ -248,36 +251,16 @@ export class AutonomousTwitterPoster {
     }
 
     try {
-      const context = await browser.newContext();
+      // Use persistent session to reduce login frequency
+      const context = await this.sessionManager.getPersistentContext(browser);
       const page = await context.newPage();
 
-      // Navigate to Twitter login
+      // Ensure we're logged in (only logs in if needed)
       console.log('🌐 Navigating to Twitter...');
-      await page.goto('https://twitter.com/login');
-      await page.waitForTimeout(3000);
-
-      // Check if we need to login
-      try {
-        // Try to find login form
-        const usernameInput = await page.locator('input[name="text"]').first();
-        if (await usernameInput.isVisible()) {
-          console.log('🔐 Logging into Twitter...');
-          
-          // Enter username/email
-          await usernameInput.fill(process.env.TWITTER_USERNAME || process.env.TWITTER_EMAIL || '');
-          await page.locator('[role="button"][type="button"]').filter({ hasText: 'Next' }).click();
-          await page.waitForTimeout(2000);
-
-          // Enter password
-          const passwordInput = await page.locator('input[name="password"]').first();
-          await passwordInput.fill(process.env.TWITTER_PASSWORD || '');
-          await page.locator('[role="button"][type="button"]').filter({ hasText: 'Log in' }).click();
-          await page.waitForTimeout(5000);
-          
-          console.log('✅ Twitter login completed');
-        }
-      } catch (loginError: any) {
-        console.log('ℹ️ Already logged in or login failed, continuing...');
+      const loginSuccess = await this.sessionManager.ensureLoggedIn(page);
+      
+      if (!loginSuccess) {
+        throw new Error('Failed to login to Twitter');
       }
 
       // Navigate to compose tweet
