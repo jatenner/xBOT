@@ -1,13 +1,12 @@
-import { TwitterApi } from 'twitter-api-v2';
 import * as cron from 'node-cron';
 import { AdaptivePostingScheduler } from '../intelligence/adaptivePostingScheduler';
 
 export class AutonomousPostingEngine {
   private static instance: AutonomousPostingEngine;
-  private twitterClient: TwitterApi | null = null;
   private isRunning = false;
   private scheduler: AdaptivePostingScheduler;
   private intelligentTimerInterval: NodeJS.Timeout | null = null;
+  private browserPoster: any = null;
 
   private constructor() {
     this.scheduler = AdaptivePostingScheduler.getInstance();
@@ -24,15 +23,16 @@ export class AutonomousPostingEngine {
     try {
       console.log('🚀 Initializing Autonomous Posting Engine...');
 
-      // Initialize Twitter client
-      this.twitterClient = new TwitterApi({
-        appKey: process.env.TWITTER_CONSUMER_KEY!,
-        appSecret: process.env.TWITTER_CONSUMER_SECRET!,
-        accessToken: process.env.TWITTER_ACCESS_TOKEN!,
-        accessSecret: process.env.TWITTER_ACCESS_TOKEN_SECRET!,
-      });
-
-      console.log('✅ Twitter client initialized');
+      // Initialize browser poster (Playwright-based)
+      try {
+        const { AutonomousTwitterPoster } = await import('../agents/autonomousTwitterPoster');
+        this.browserPoster = AutonomousTwitterPoster.getInstance();
+        await this.browserPoster.initialize();
+        console.log('✅ Browser poster initialized');
+      } catch (error: any) {
+        console.warn('⚠️ Browser poster initialization failed, will initialize on first use:', error.message);
+        // Don't throw - we can initialize the browser poster later when needed
+      }
       
       // Start intelligent adaptive posting schedule
       this.startAutonomousSchedule();
@@ -103,8 +103,12 @@ export class AutonomousPostingEngine {
     try {
       console.log('📝 Executing autonomous post...');
 
-      if (!this.twitterClient) {
-        throw new Error('Twitter client not initialized');
+      // Ensure browser poster is available
+      if (!this.browserPoster) {
+        console.log('🔄 Initializing browser poster...');
+        const { AutonomousTwitterPoster } = await import('../agents/autonomousTwitterPoster');
+        this.browserPoster = AutonomousTwitterPoster.getInstance();
+        await this.browserPoster.initialize();
       }
 
       // Generate content using AI
@@ -112,13 +116,20 @@ export class AutonomousPostingEngine {
       
       console.log(`📝 Generated content: ${content.substring(0, 80)}...`);
 
-      // Post to Twitter
-      const tweet = await this.twitterClient.v2.tweet(content);
+      // Post to Twitter using browser automation (call the private method via reflection)
+      const result = await (this.browserPoster as any).postSingle(content, { 
+        useBrowser: true,
+        useAPI: false
+      });
       
-      console.log(`✅ Posted tweet successfully: ${tweet.data.id}`);
+      if (!result.success) {
+        throw new Error(result.error || 'Browser posting failed');
+      }
+      
+      console.log(`✅ Posted tweet successfully: ${result.tweetId}`);
 
       // Store in database
-      await this.storeInDatabase(content, tweet.data.id);
+      await this.storeInDatabase(content, result.tweetId || 'browser_' + Date.now());
 
       return { success: true, content };
 
@@ -136,8 +147,12 @@ export class AutonomousPostingEngine {
       console.log(`🧠 Executing intelligent post (Score: ${Math.round(opportunity.score)}/100)`);
       console.log(`🎯 Context: ${opportunity.reason}`);
 
-      if (!this.twitterClient) {
-        throw new Error('Twitter client not initialized');
+      // Ensure browser poster is available
+      if (!this.browserPoster) {
+        console.log('🔄 Initializing browser poster...');
+        const { AutonomousTwitterPoster } = await import('../agents/autonomousTwitterPoster');
+        this.browserPoster = AutonomousTwitterPoster.getInstance();
+        await this.browserPoster.initialize();
       }
 
       // Generate content with intelligent context
@@ -145,15 +160,22 @@ export class AutonomousPostingEngine {
       
       console.log(`📝 Generated intelligent content: ${content.substring(0, 80)}...`);
 
-      // Post to Twitter
-      const tweet = await this.twitterClient.v2.tweet(content);
+      // Post to Twitter using browser automation (call the private method via reflection)
+      const result = await (this.browserPoster as any).postSingle(content, { 
+        useBrowser: true,
+        useAPI: false
+      });
       
-      console.log(`✅ Posted intelligent tweet successfully: ${tweet.data.id}`);
+      if (!result.success) {
+        throw new Error(result.error || 'Browser posting failed');
+      }
+      
+      console.log(`✅ Posted intelligent tweet successfully: ${result.tweetId}`);
       console.log(`📊 Opportunity utilized: ${opportunity.urgency} urgency`);
 
       // Store performance data for learning
-      await this.storeInDatabase(content, tweet.data.id);
-      await this.storeIntelligentPostData(tweet.data.id, opportunity, content);
+      await this.storeInDatabase(content, result.tweetId || 'browser_' + Date.now());
+      await this.storeIntelligentPostData(result.tweetId || 'browser_' + Date.now(), opportunity, content);
 
       return { success: true, content };
     } catch (error: any) {
