@@ -1,12 +1,17 @@
 import { TwitterApi } from 'twitter-api-v2';
 import * as cron from 'node-cron';
+import { AdaptivePostingScheduler } from '../intelligence/adaptivePostingScheduler';
 
 export class AutonomousPostingEngine {
   private static instance: AutonomousPostingEngine;
   private twitterClient: TwitterApi | null = null;
   private isRunning = false;
+  private scheduler: AdaptivePostingScheduler;
+  private intelligentTimerInterval: NodeJS.Timeout | null = null;
 
-  private constructor() {}
+  private constructor() {
+    this.scheduler = AdaptivePostingScheduler.getInstance();
+  }
 
   public static getInstance(): AutonomousPostingEngine {
     if (!AutonomousPostingEngine.instance) {
@@ -29,10 +34,12 @@ export class AutonomousPostingEngine {
 
       console.log('✅ Twitter client initialized');
       
-      // Start autonomous posting schedule
+      // Start intelligent adaptive posting schedule
       this.startAutonomousSchedule();
       
-      console.log('✅ Autonomous Posting Engine ready');
+      console.log('✅ Intelligent Adaptive Posting Engine ready');
+      console.log('🧠 Features: trending analysis, engagement windows, breaking news detection');
+      console.log('🎯 Posting frequency: adaptive based on opportunities (5min-6hrs)');
     } catch (error: any) {
       console.error('❌ Failed to initialize Autonomous Posting Engine:', error.message);
       throw error;
@@ -45,20 +52,51 @@ export class AutonomousPostingEngine {
       return;
     }
 
-    console.log('📅 Starting autonomous posting schedule...');
+    console.log('🧠 Starting intelligent adaptive posting schedule...');
     
-    // Post every 3 hours
-    cron.schedule('0 */3 * * *', () => {
-      this.executePost().catch(console.error);
+    // INTELLIGENT POSTING: Check every 5 minutes for optimal opportunities
+    this.intelligentTimerInterval = setInterval(async () => {
+      try {
+        const opportunity = await this.scheduler.shouldPostNow();
+        
+        if (opportunity.score > 50) { // Threshold for posting
+          console.log(`🎯 Posting opportunity detected! Score: ${Math.round(opportunity.score)}/100`);
+          console.log(`📝 Reason: ${opportunity.reason}`);
+          console.log(`⚡ Urgency: ${opportunity.urgency}`);
+          
+          // Execute intelligent post
+          this.executeIntelligentPost(opportunity).catch(console.error);
+        } else {
+          console.log(`⏳ Waiting for better opportunity. Current score: ${Math.round(opportunity.score)}/100 - ${opportunity.reason}`);
+            }
+          } catch (error) {
+        console.error('❌ Error in intelligent posting analysis:', error);
+      }
+    }, 5 * 60 * 1000); // Check every 5 minutes
+
+    // FALLBACK: Still maintain basic schedule as safety net
+    cron.schedule('0 */6 * * *', async () => {
+      const opportunity = await this.scheduler.shouldPostNow();
+      if (opportunity.score < 30) { // Only if no recent good opportunities
+        console.log('🔄 Fallback posting: No recent opportunities detected');
+        this.executePost().catch(console.error);
+      }
     });
 
-    // Initial post after 2 minutes
-    setTimeout(() => {
-      this.executePost().catch(console.error);
+    // Initial intelligent check after 2 minutes
+    setTimeout(async () => {
+      const opportunity = await this.scheduler.shouldPostNow();
+      console.log(`🚀 Initial posting analysis: ${Math.round(opportunity.score)}/100 - ${opportunity.reason}`);
+      
+      if (opportunity.score > 30) {
+        this.executeIntelligentPost(opportunity).catch(console.error);
+      }
     }, 2 * 60 * 1000);
 
     this.isRunning = true;
-    console.log('✅ Autonomous posting schedule started');
+    console.log('✅ Intelligent adaptive posting system activated');
+    console.log('🎯 Will analyze posting opportunities every 5 minutes');
+    console.log('📊 Factors: trending topics, audience activity, engagement windows, breaking news');
   }
 
   public async executePost(): Promise<{ success: boolean; content?: string; error?: string }> {
@@ -86,6 +124,40 @@ export class AutonomousPostingEngine {
 
     } catch (error: any) {
       console.error('❌ Failed to execute post:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Execute intelligent post with context-aware content
+   */
+  public async executeIntelligentPost(opportunity: any): Promise<{ success: boolean; content?: string; error?: string }> {
+    try {
+      console.log(`🧠 Executing intelligent post (Score: ${Math.round(opportunity.score)}/100)`);
+      console.log(`🎯 Context: ${opportunity.reason}`);
+
+      if (!this.twitterClient) {
+        throw new Error('Twitter client not initialized');
+      }
+
+      // Generate content with intelligent context
+      const content = await this.generateIntelligentContent(opportunity);
+      
+      console.log(`📝 Generated intelligent content: ${content.substring(0, 80)}...`);
+
+      // Post to Twitter
+      const tweet = await this.twitterClient.v2.tweet(content);
+      
+      console.log(`✅ Posted intelligent tweet successfully: ${tweet.data.id}`);
+      console.log(`📊 Opportunity utilized: ${opportunity.urgency} urgency`);
+
+      // Store performance data for learning
+      await this.storeInDatabase(content, tweet.data.id);
+      await this.storeIntelligentPostData(tweet.data.id, opportunity, content);
+
+      return { success: true, content };
+    } catch (error: any) {
+      console.error('❌ Failed to execute intelligent post:', error.message);
       return { success: false, error: error.message };
     }
   }
@@ -161,14 +233,14 @@ export class AutonomousPostingEngine {
         'insert_tweet',
         async (client) => {
           const { error } = await client.from('tweets').insert({
-            content,
-            tweet_id: tweetId,
+        content,
+        tweet_id: tweetId,
             posted_at: new Date().toISOString(),
             platform: 'twitter',
             status: 'posted',
-            engagement_score: 0,
-            likes: 0,
-            retweets: 0,
+        engagement_score: 0,
+        likes: 0,
+        retweets: 0,
             replies: 0
           });
           
@@ -222,9 +294,105 @@ export class AutonomousPostingEngine {
     }
   }
 
+  /**
+   * Generate intelligent content based on posting opportunity
+   */
+  private async generateIntelligentContent(opportunity: any): Promise<string> {
+    try {
+      const { OpenAI } = await import('openai');
+      
+      const openai = new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY,
+      });
+
+      // Build intelligent prompt based on opportunity context
+      let contextPrompt = `You are a health and wellness expert creating a Twitter post. `;
+      
+      if (opportunity.contentHints && opportunity.contentHints.length > 0) {
+        contextPrompt += `Focus on: ${opportunity.contentHints.join(', ')}. `;
+      }
+      
+      if (opportunity.urgency === 'critical') {
+        contextPrompt += `This is time-sensitive content that should capture immediate attention. `;
+      }
+      
+      if (opportunity.reason.includes('trending')) {
+        contextPrompt += `Tap into current trending topics while maintaining health focus. `;
+      }
+      
+      if (opportunity.reason.includes('engagement')) {
+        contextPrompt += `This is a high-engagement window - make it conversational and engaging. `;
+      }
+      
+      contextPrompt += `Create a concise, human-like tweet about health/wellness. Be conversational, avoid corporate speak, minimal hashtags. Maximum 280 characters.`;
+
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4',
+        messages: [
+          {
+            role: 'system',
+            content: contextPrompt
+          },
+          {
+            role: 'user',
+            content: 'Create an engaging health/wellness tweet that sounds like a real person.'
+          }
+        ],
+        max_tokens: 100,
+        temperature: 0.8,
+      });
+
+      let content = response.choices[0]?.message?.content || 'Stay hydrated and take care of yourself today! 💧';
+      
+      // Ensure it's within Twitter's limit
+      if (content.length > 280) {
+        content = content.substring(0, 277) + '...';
+      }
+
+      return content;
+    } catch (error) {
+      console.error('Failed to generate intelligent content:', error);
+      return 'Taking a moment to focus on your health today can make all the difference. What small healthy choice will you make right now?';
+    }
+  }
+
+  /**
+   * Store intelligent posting data for learning
+   */
+  private async storeIntelligentPostData(tweetId: string, opportunity: any, content: string): Promise<void> {
+    try {
+      const { AdvancedDatabaseManager } = await import('../lib/advancedDatabaseManager');
+      const dbManager = AdvancedDatabaseManager.getInstance();
+      
+      await dbManager.executeQuery(
+        'store_intelligent_post_data',
+        async (client) => {
+          const { data, error } = await client
+            .from('intelligent_posts')
+        .insert({
+          tweet_id: tweetId,
+              opportunity_score: opportunity.score,
+              urgency: opportunity.urgency,
+              posting_reason: opportunity.reason,
+              content_hints: opportunity.contentHints?.join(', ') || '',
+              content: content,
+          posted_at: new Date().toISOString()
+        });
+
+          if (error) throw error;
+          return data;
+        }
+      );
+      
+      console.log('📊 Intelligent posting data stored for learning');
+    } catch (error) {
+      console.warn('Failed to store intelligent posting data:', error);
+    }
+  }
+
   public getStatus(): { isRunning: boolean; lastPost?: Date } {
-    return {
+          return {
       isRunning: this.isRunning
     };
-  }
+}
 }
