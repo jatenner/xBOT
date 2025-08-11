@@ -183,6 +183,29 @@ export class AutonomousTwitterPoster {
   }
 
   private async postViaBrowser(content: string): Promise<string> {
+    // Runtime browser installation for Railway
+    try {
+      console.log('🎭 Checking Playwright browser availability...');
+      const { execSync } = require('child_process');
+      
+      // Test if browsers are available
+      const playwright = await import('playwright');
+      try {
+        await playwright.chromium.launch({ headless: true });
+        console.log('✅ Playwright browsers are available');
+      } catch (browserError: any) {
+        if (browserError.message.includes("Executable doesn't exist")) {
+          console.log('🔧 Installing Playwright browsers at runtime...');
+          execSync('npx playwright install chromium', { stdio: 'inherit' });
+          console.log('✅ Runtime browser installation complete');
+        } else {
+          throw browserError;
+        }
+      }
+    } catch (installError: any) {
+      console.warn('⚠️ Browser installation failed:', installError.message);
+    }
+
     const playwright = await import('playwright');
     const browser = await playwright.chromium.launch({
       headless: true,
