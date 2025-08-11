@@ -194,9 +194,11 @@ export class AutonomousTwitterPoster {
         await playwright.chromium.launch({ headless: true });
         console.log('✅ Playwright browsers are available');
       } catch (browserError: any) {
-        if (browserError.message.includes("Executable doesn't exist")) {
+        if (browserError.message.includes("Executable doesn't exist") || browserError.message.includes("ENOENT")) {
           console.log('🔧 Installing Playwright browsers at runtime...');
           execSync('npx playwright install chromium', { stdio: 'inherit' });
+          console.log('🔧 Setting executable permissions...');
+          execSync('chmod +x /opt/render/.cache/ms-playwright/chromium_headless_shell-*/chrome-linux/headless_shell', { stdio: 'inherit' });
           console.log('✅ Runtime browser installation complete');
         } else {
           throw browserError;
@@ -207,10 +209,43 @@ export class AutonomousTwitterPoster {
     }
 
     const playwright = await import('playwright');
-    const browser = await playwright.chromium.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
+    
+    // Try different browser launch configurations for Railway
+    let browser;
+    const launchOptions = [
+      // Standard headless with Railway-specific args
+      {
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--single-process'
+        ]
+      },
+      // Fallback with system chromium
+      {
+        headless: true,
+        executablePath: '/usr/bin/chromium-browser',
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
+      }
+    ];
+    
+    for (const options of launchOptions) {
+      try {
+        console.log('🌐 Attempting browser launch...');
+        browser = await playwright.chromium.launch(options);
+        console.log('✅ Browser launched successfully');
+        break;
+      } catch (launchError: any) {
+        console.warn('⚠️ Browser launch failed, trying next option...', launchError.message);
+      }
+    }
+    
+    if (!browser) {
+      throw new Error('All browser launch attempts failed');
+    }
 
     try {
       const context = await browser.newContext();
