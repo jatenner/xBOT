@@ -1,0 +1,136 @@
+name: Promote - Apply Migrations to PROD
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_production:
+        description: 'Type "CONFIRM" to apply migrations to production'
+        required: true
+        default: ''
+
+jobs:
+  production-deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - name: Validate confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirm_production }}" != "CONFIRM" ]; then
+            echo "❌ Production deployment requires typing 'CONFIRM'"
+            echo "   Received: '${{ github.event.inputs.confirm_production }}'"
+            exit 1
+          fi
+          echo "✅ Production deployment confirmed"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install Supabase CLI
+        run: |
+          curl -sSfL https://supabase.com/install.sh | sh
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Verify Supabase CLI
+        run: supabase --version
+
+      - name: Link to production project
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          PROD_PROJECT_REF: ${{ secrets.PROD_PROJECT_REF }}
+        run: |
+          echo "🔗 Linking to production project..."
+          supabase link --project-ref "$PROD_PROJECT_REF"
+
+      - name: Backup production schema
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          echo "💾 Creating production schema backup..."
+          supabase db dump --local > production_schema_backup_$(date +%Y%m%d_%H%M%S).sql
+          echo "✅ Schema backup created"
+
+      - name: Apply migrations to production
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          echo "🚀 Applying migrations to production..."
+          supabase db push --include-all
+
+      - name: Verify production deployment
+        env:
+          PROD_PROJECT_REF: ${{ secrets.PROD_PROJECT_REF }}
+          PROD_DB_PASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
+        run: |
+          echo "🔍 Verifying production deployment..."
+          
+          # Test basic connectivity
+          PGPASSWORD="$PROD_DB_PASSWORD" psql \
+            "host=db.$PROD_PROJECT_REF.supabase.co port=5432 user=postgres dbname=postgres sslmode=require" \
+            -c "SELECT 'Production deployment verified' as status, now() as timestamp;" \
+            -v ON_ERROR_STOP=1
+          
+          # Verify views were created
+          VIEW_COUNT=$(PGPASSWORD="$PROD_DB_PASSWORD" psql \
+            "host=db.$PROD_PROJECT_REF.supabase.co port=5432 user=postgres dbname=postgres sslmode=require" \
+            -t -c "SELECT COUNT(*) FROM information_schema.views WHERE table_name LIKE 'vw_%' AND table_schema = 'public';" \
+            | tr -d ' ')
+          
+          echo "📊 Analytics views created: $VIEW_COUNT"
+          
+          if [ "$VIEW_COUNT" -lt "6" ]; then
+            echo "❌ Expected at least 6 analytics views, found $VIEW_COUNT"
+            exit 1
+          fi
+          
+          echo "✅ Production verification complete"
+
+      - name: Read-only validation
+        env:
+          PROD_PROJECT_REF: ${{ secrets.PROD_PROJECT_REF }}
+          PROD_DB_PASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
+        run: |
+          echo "📋 Running read-only validation..."
+          
+          # Check schema version
+          PGPASSWORD="$PROD_DB_PASSWORD" psql \
+            "host=db.$PROD_PROJECT_REF.supabase.co port=5432 user=postgres dbname=postgres sslmode=require" \
+            -c "SELECT config_value->'version' as schema_version FROM bot_config WHERE environment = 'production' AND config_key = 'schema_version' LIMIT 1;" \
+            -v ON_ERROR_STOP=1
+          
+          # Check migration audit log
+          PGPASSWORD="$PROD_DB_PASSWORD" psql \
+            "host=db.$PROD_PROJECT_REF.supabase.co port=5432 user=postgres dbname=postgres sslmode=require" \
+            -c "SELECT event_type, component, ts FROM audit_log WHERE event_type = 'MIGRATION_COMPLETE' ORDER BY ts DESC LIMIT 3;" \
+            -v ON_ERROR_STOP=1
+
+      - name: Log deployment completion
+        env:
+          PROD_PROJECT_REF: ${{ secrets.PROD_PROJECT_REF }}
+          PROD_DB_PASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
+        run: |
+          echo "📝 Logging deployment completion..."
+          PGPASSWORD="$PROD_DB_PASSWORD" psql \
+            "host=db.$PROD_PROJECT_REF.supabase.co port=5432 user=postgres dbname=postgres sslmode=require" \
+            -c "INSERT INTO audit_log (event_type, component, event_data, context) VALUES ('PRODUCTION_DEPLOYMENT', 'github_actions', '{\"workflow\": \"promote-prod\", \"actor\": \"${{ github.actor }}\", \"ref\": \"${{ github.ref }}\"}', '{\"timestamp\": \"$(date -Iseconds)\", \"environment\": \"production\"}');" \
+            -v ON_ERROR_STOP=1
+
+      - name: Success summary
+        run: |
+          echo "🎉 Production deployment complete!"
+          echo ""
+          echo "✅ Migrations applied successfully"
+          echo "✅ Schema verification passed"
+          echo "✅ Analytics views created"
+          echo "✅ Audit log updated"
+          echo ""
+          echo "Next steps:"
+          echo "1. Monitor system health"
+          echo "2. Enable learning_engine_v2 flag when ready"
+          echo "3. Start with post_fraction=0 (shadow mode)"
+          echo "4. Gradually increase post_fraction for rollout"
