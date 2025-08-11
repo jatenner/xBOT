@@ -261,10 +261,10 @@ export function startHealthServer(): Promise<void> {
         }
 
         const { IntelligentContentGenerator } = await import('./agents/intelligentContentGenerator');
-        const { SimpleEngagementAnalyzer } = await import('./intelligence/simpleEngagementAnalyzer');
+        const { EngagementAnalyzer } = await import('./intelligence/engagementAnalyzer');
         
         const contentGenerator = IntelligentContentGenerator.getInstance();
-        const engagementAnalyzer = SimpleEngagementAnalyzer.getInstance();
+        const engagementAnalyzer = EngagementAnalyzer.getInstance();
         
         const topTopics = await contentGenerator.getTopPerformingTopics(10);
         const bestTimes = engagementAnalyzer.getBestPostingTimes();

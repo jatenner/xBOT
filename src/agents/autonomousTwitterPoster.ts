@@ -1,5 +1,5 @@
 import { IntelligentContentGenerator, ContentGenerationRequest } from './intelligentContentGenerator';
-import { SimpleEngagementAnalyzer } from '../intelligence/simpleEngagementAnalyzer';
+import { EngagementAnalyzer } from '../intelligence/engagementAnalyzer';
 import { AdvancedDatabaseManager } from '../lib/advancedDatabaseManager';
 import { TwitterSessionManager } from '../utils/sessionManager';
 import { Browser, Page } from 'playwright';
@@ -24,14 +24,14 @@ export interface PostingResult {
 export class AutonomousTwitterPoster {
   private static instance: AutonomousTwitterPoster;
   private contentGenerator: IntelligentContentGenerator;
-  private engagementAnalyzer: SimpleEngagementAnalyzer;
+  private engagementAnalyzer: EngagementAnalyzer;
   private db: AdvancedDatabaseManager;
   private sessionManager: TwitterSessionManager;
   private browser: Browser | null = null;
 
   private constructor() {
     this.contentGenerator = IntelligentContentGenerator.getInstance();
-    this.engagementAnalyzer = SimpleEngagementAnalyzer.getInstance();
+    this.engagementAnalyzer = EngagementAnalyzer.getInstance();
     this.db = AdvancedDatabaseManager.getInstance();
     this.sessionManager = TwitterSessionManager.getInstance();
   }
@@ -213,10 +213,10 @@ export class AutonomousTwitterPoster {
 
     const playwright = await import('playwright');
     
-    // Try different browser launch configurations for Railway
+    // Enhanced browser launch configurations for maximum Railway compatibility
     let browser;
     const launchOptions = [
-      // Standard headless with Railway-specific args
+      // Primary: Railway-optimized Chromium with memory management
       {
         headless: true,
         args: [
@@ -224,14 +224,52 @@ export class AutonomousTwitterPoster {
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
           '--disable-gpu',
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-renderer-backgrounding',
+          '--disable-extensions',
+          '--disable-plugins',
+          '--disable-default-apps',
+          '--no-first-run',
+          '--disable-web-security',
+          '--disable-features=TranslateUI',
+          '--disable-ipc-flooding-protection',
+          '--memory-pressure-off',
+          '--max_old_space_size=400',
           '--single-process'
-        ]
+        ],
+        timeout: 30000,
+        ignoreDefaultArgs: ['--disable-extensions']
       },
-      // Fallback with system chromium
+      // Secondary: System chromium fallback
       {
         headless: true,
         executablePath: '/usr/bin/chromium-browser',
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+        args: [
+          '--no-sandbox', 
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--single-process'
+        ],
+        timeout: 20000
+      },
+      // Tertiary: Minimal resource mode
+      {
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--disable-extensions',
+          '--disable-plugins',
+          '--disable-images',
+          '--disable-javascript',
+          '--single-process',
+          '--memory-pressure-off'
+        ],
+        timeout: 15000
       }
     ];
     

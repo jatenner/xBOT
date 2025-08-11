@@ -2,7 +2,7 @@ import { AutonomousPostingEngine } from './autonomousPostingEngine';
 import { DatabaseManager } from '../lib/db';
 import { AutonomousTwitterPoster } from '../agents/autonomousTwitterPoster';
 import { IntelligentContentGenerator } from '../agents/intelligentContentGenerator';
-import { SimpleEngagementAnalyzer } from '../intelligence/simpleEngagementAnalyzer';
+import { EngagementAnalyzer } from '../intelligence/engagementAnalyzer';
 import express from 'express';
 
 export class AutonomousController {
@@ -11,7 +11,7 @@ export class AutonomousController {
   private databaseManager: DatabaseManager;
   private twitterPoster: AutonomousTwitterPoster;
   private contentGenerator: IntelligentContentGenerator;
-  private engagementAnalyzer: SimpleEngagementAnalyzer;
+  private engagementAnalyzer: EngagementAnalyzer;
   private expressApp: express.Application;
   private isInitialized = false;
 
@@ -20,7 +20,7 @@ export class AutonomousController {
     this.databaseManager = DatabaseManager.getInstance();
     this.twitterPoster = AutonomousTwitterPoster.getInstance();
     this.contentGenerator = IntelligentContentGenerator.getInstance();
-    this.engagementAnalyzer = SimpleEngagementAnalyzer.getInstance();
+    this.engagementAnalyzer = EngagementAnalyzer.getInstance();
     this.expressApp = express();
   }
 
