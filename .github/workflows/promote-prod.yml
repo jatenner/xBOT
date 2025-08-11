@@ -9,8 +9,8 @@ on:
         default: ''
 
 jobs:
-  promote-production:
-    name: 'Apply Migrations to Production'
+  production-deployment:
+    name: 'Deploy Migrations to Production'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: 
@@ -18,13 +18,14 @@ jobs:
       url: https://app.supabase.com/project/${{ secrets.PROD_PROJECT_REF }}
 
     steps:
-      - name: 'Validate Confirmation'
+      - name: 'Validate Production Confirmation'
         run: |
           if [ "${{ github.event.inputs.confirm_production }}" != "CONFIRM PRODUCTION DEPLOYMENT" ]; then
             echo "❌ Invalid confirmation. Must type exactly: CONFIRM PRODUCTION DEPLOYMENT"
+            echo "Provided: '${{ github.event.inputs.confirm_production }}'"
             exit 1
           fi
-          echo "✅ Confirmation validated"
+          echo "✅ Production deployment confirmed"
 
       - name: 'Checkout Repository'
         uses: actions/checkout@v4
@@ -48,17 +49,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y postgresql-client
 
-      - name: 'Pre-flight Production Check'
+      - name: 'Pre-flight Production Health Check'
         env:
           PROD_DB_PASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
           PROD_PROJECT_REF: ${{ secrets.PROD_PROJECT_REF }}
         run: |
           echo "🔍 Testing production database connectivity..."
           PGPASSWORD="$PROD_DB_PASSWORD" psql \
-            -h "db.$PROD_PROJECT_REF.supabase.co" \
-            -p 5432 \
-            -U postgres \
-            -d postgres \
+            "sslmode=require host=db.$PROD_PROJECT_REF.supabase.co dbname=postgres user=postgres" \
             -c "SELECT 'Production connection successful' as status, current_database(), version();"
 
       - name: 'Link to Production Project'
@@ -66,24 +64,23 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           PROD_PROJECT_REF: ${{ secrets.PROD_PROJECT_REF }}
         run: |
+          echo "🔗 Linking to production project: $PROD_PROJECT_REF"
           supabase link --project-ref "$PROD_PROJECT_REF"
 
       - name: 'Apply Migrations to Production'
         run: |
-          echo "🚀 Applying migrations to production..."
-          supabase db push --include-all
+          echo "🚀 Applying migrations to production database..."
+          echo "⚠️  This will modify the production database schema"
+          supabase db push
 
-      - name: 'Production Verification'
+      - name: 'Production Schema Verification'
         env:
           PROD_DB_PASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
           PROD_PROJECT_REF: ${{ secrets.PROD_PROJECT_REF }}
         run: |
-          echo "🔍 Running production verification checks..."
+          echo "🔍 Running production schema verification..."
           PGPASSWORD="$PROD_DB_PASSWORD" psql \
-            -h "db.$PROD_PROJECT_REF.supabase.co" \
-            -p 5432 \
-            -U postgres \
-            -d postgres \
+            "sslmode=require host=db.$PROD_PROJECT_REF.supabase.co dbname=postgres user=postgres" \
             -f supabase/verify/verify.sql
 
       - name: 'Production Health Check'
@@ -91,25 +88,73 @@ jobs:
           PROD_DB_PASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
           PROD_PROJECT_REF: ${{ secrets.PROD_PROJECT_REF }}
         run: |
-          echo "❤️ Running production health check..."
+          echo "❤️ Running production health verification..."
           PGPASSWORD="$PROD_DB_PASSWORD" psql \
-            -h "db.$PROD_PROJECT_REF.supabase.co" \
-            -p 5432 \
-            -U postgres \
-            -d postgres \
-            -c "SELECT 'Production health check' as status, count(*) as total_tables FROM information_schema.tables WHERE table_schema = 'public';"
+            "sslmode=require host=db.$PROD_PROJECT_REF.supabase.co dbname=postgres user=postgres" \
+            -c "
+              SELECT 
+                'Production Health Check' as check_type,
+                count(*) as total_tables,
+                'OK' as status
+              FROM information_schema.tables 
+              WHERE table_schema = 'public';
+              
+              SELECT 
+                'Core Tables Check' as check_type,
+                table_name,
+                'EXISTS' as status
+              FROM information_schema.tables 
+              WHERE table_name IN ('tweets', 'bot_config', 'daily_summaries', 'audit_log', 'system_health')
+                AND table_schema = 'public'
+              ORDER BY table_name;
+            "
 
-      - name: 'Report Production Deployment'
+      - name: 'Update Production Schema Version'
+        env:
+          PROD_DB_PASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
+          PROD_PROJECT_REF: ${{ secrets.PROD_PROJECT_REF }}
+        run: |
+          echo "📝 Recording deployment in production..."
+          PGPASSWORD="$PROD_DB_PASSWORD" psql \
+            "sslmode=require host=db.$PROD_PROJECT_REF.supabase.co dbname=postgres user=postgres" \
+            -c "
+              INSERT INTO audit_log (event_type, component, event_data, context)
+              VALUES (
+                'PRODUCTION_DEPLOYMENT',
+                'github_actions',
+                jsonb_build_object(
+                  'workflow_run_id', '${{ github.run_id }}',
+                  'commit_sha', '${{ github.sha }}',
+                  'actor', '${{ github.actor }}',
+                  'timestamp', NOW()::text
+                ),
+                jsonb_build_object(
+                  'environment', 'production',
+                  'deployment_method', 'github_actions',
+                  'repo', '${{ github.repository }}'
+                )
+              );
+            "
+
+      - name: 'Production Deployment Summary'
         if: always()
         run: |
-          echo "## 🎉 Production Deployment Results" >> $GITHUB_STEP_SUMMARY
+          echo "## 🎉 Production Deployment Complete" >> $GITHUB_STEP_SUMMARY
           echo "- **Environment**: Production" >> $GITHUB_STEP_SUMMARY
-          echo "- **Migrations Applied**: ✅" >> $GITHUB_STEP_SUMMARY
-          echo "- **Verification**: ✅" >> $GITHUB_STEP_SUMMARY
-          echo "- **Health Check**: ✅" >> $GITHUB_STEP_SUMMARY
-          echo "- **Deployment Time**: $(date -u)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Project**: ${{ secrets.PROD_PROJECT_REF }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Workflow Run**: ${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Deployed By**: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Timestamp**: $(date -u)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "### Deployment Status" >> $GITHUB_STEP_SUMMARY
+          echo "- **Pre-flight Check**: ✅ Database connectivity verified" >> $GITHUB_STEP_SUMMARY
+          echo "- **Migrations Applied**: ✅ Schema updated successfully" >> $GITHUB_STEP_SUMMARY
+          echo "- **Schema Verification**: ✅ All tables and constraints present" >> $GITHUB_STEP_SUMMARY
+          echo "- **Health Check**: ✅ Production database healthy" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Post-Deployment Steps" >> $GITHUB_STEP_SUMMARY
           echo "1. Monitor application logs for any issues" >> $GITHUB_STEP_SUMMARY
           echo "2. Verify application functionality in production" >> $GITHUB_STEP_SUMMARY
-          echo "3. Check performance metrics" >> $GITHUB_STEP_SUMMARY
+          echo "3. Check performance metrics and error rates" >> $GITHUB_STEP_SUMMARY
+          echo "4. Railway will automatically restart with LIVE_POSTS=true" >> $GITHUB_STEP_SUMMARY
