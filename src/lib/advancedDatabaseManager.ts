@@ -311,7 +311,7 @@ export class AdvancedDatabaseManager extends EventEmitter {
     const testConnection = await this.supabasePool.acquire();
     try {
       const { data, error } = await testConnection
-        .from('information_schema.tables')
+                  .from('tweets')
         .select('table_name')
         .limit(1);
         
@@ -544,6 +544,7 @@ export class AdvancedDatabaseManager extends EventEmitter {
 
   // Health monitoring
   private startHealthMonitoring(): void {
+    // Reduce frequency to avoid log spam - check every 60 seconds instead of constantly
     this.healthCheckInterval = setInterval(async () => {
       if (!this.isInitialized) return;
       
@@ -556,7 +557,7 @@ export class AdvancedDatabaseManager extends EventEmitter {
           this.emit('criticalAlert', { service, status });
         }
       });
-    }, 30000); // Every 30 seconds
+    }, 120000); // Every 2 minutes to reduce log spam
   }
 
   private startMetricsCollection(): void {
@@ -586,7 +587,8 @@ export class AdvancedDatabaseManager extends EventEmitter {
     try {
       const start = Date.now();
       const connection = await this.supabasePool.acquire();
-      const { error } = await connection.from('information_schema.tables').select('count').limit(1);
+      // Test connection with a simple query - use tweets table or similar
+      const { error } = await connection.from('tweets').select('count').limit(1);
       this.supabasePool.release(connection);
       
       health.supabase = {

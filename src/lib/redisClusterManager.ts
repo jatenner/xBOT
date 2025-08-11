@@ -269,7 +269,7 @@ export class RedisClusterManager extends EventEmitter {
         compressionEnabled: process.env.REDIS_COMPRESSION === 'true'
       },
       monitoring: {
-        healthCheckInterval: parseInt(process.env.REDIS_HEALTH_INTERVAL || '30000'),
+        healthCheckInterval: parseInt(process.env.REDIS_HEALTH_INTERVAL || '120000'), // 2 minutes to reduce spam
         performanceMetrics: process.env.REDIS_METRICS !== 'false',
         alertThresholds: {
           latency: parseInt(process.env.REDIS_LATENCY_THRESHOLD || '100'),

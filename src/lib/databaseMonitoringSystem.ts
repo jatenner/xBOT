@@ -765,7 +765,8 @@ export class DatabaseMonitoringSystem extends EventEmitter {
 
       // Query response time test
       const queryStart = Date.now();
-      await this.supabase.from('information_schema.tables').select('count').limit(1);
+      // Test with tweets table instead of information_schema
+      await this.supabase.from('tweets').select('count').limit(1);
       const queryDuration = Date.now() - queryStart;
 
       this.metricsCollector.addMetric({
@@ -912,7 +913,7 @@ export class DatabaseMonitoringSystem extends EventEmitter {
     try {
       const start = Date.now();
       const { data, error } = await Promise.race([
-        this.supabase.from('information_schema.tables').select('count').limit(1),
+        this.supabase.from('tweets').select('count').limit(1),
         new Promise<never>((_, reject) => 
           setTimeout(() => reject(new Error('Health check timeout')), 10000)
         )
