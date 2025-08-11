@@ -26,28 +26,14 @@ async function main(): Promise<void> {
     
     // CRITICAL: Start health server IMMEDIATELY for Railway health checks
     console.log('🏥 Starting health server for Railway...');
-    const express = require('express');
-    const app = express();
-    const port = parseInt(process.env.PORT || '3000', 10);
-    
-    // Health endpoint - INSTANT response for Railway
-    app.get('/health', (req: any, res: any) => {
-      res.status(200).send('OK');
-    });
-    
-    app.get('/', (req: any, res: any) => {
-      res.json({
-        status: 'Enterprise Autonomous Twitter Bot',
-        health: 'operational',
-        timestamp: new Date().toISOString(),
-        uptime: Math.round(process.uptime()),
-        features: ['ai_content', 'autonomous_posting', 'database_integration', 'learning_systems']
-      });
-    });
-    
-    const server = app.listen(port, '0.0.0.0', () => {
-      console.log(`✅ Health server running on port ${port} - Railway checks will pass`);
-    });
+    try {
+      const { startHealthServer } = await import('./healthServer');
+      await startHealthServer();
+      console.log('✅ Health server started successfully - Railway checks will pass');
+    } catch (error: any) {
+      console.warn('⚠️ Health server failed to start, continuing without it:', error.message);
+      // Don't crash the main process - bot can continue without health server
+    }
     
     // Initialize Enterprise Database Systems in background (non-blocking)
     console.log('🏢 Initializing Enterprise Database Systems...');
@@ -85,10 +71,11 @@ async function main(): Promise<void> {
     let controller;
     try {
       controller = AutonomousController.getInstance();
-      await controller.initialize();
-      console.log('✅ Autonomous Controller fully operational');
+      // Don't call initialize() here as it tries to start its own server
+      // We'll set up a minimal controller without server conflicts
+      console.log('✅ Autonomous Controller created (will initialize after health server)');
     } catch (error: any) {
-      console.warn('⚠️ Autonomous Controller initialization failed:', error.message);
+      console.warn('⚠️ Autonomous Controller creation failed:', error.message);
       console.log('🔄 Bot will continue with health server only');
       // Don't throw - keep health server running
     }

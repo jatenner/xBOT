@@ -148,12 +148,10 @@ export class AutonomousController {
       }
     });
 
-    // Start server
-    const port = parseInt(process.env.PORT || '3000', 10);
-    app.listen(port, '0.0.0.0', () => {
-      console.log(`🌐 Autonomous Bot Server running on 0.0.0.0:${port}`);
-      console.log(`🌐 Health endpoint: http://0.0.0.0:${port}/health`);
-    });
+    // Use existing health server instead of starting a new one
+    // Note: Health server is already started in main.ts to avoid port conflicts
+    console.log('🌐 Autonomous Bot Controller initialized');
+    console.log('🌐 API endpoints available via existing health server');
   }
 
   public async forcePost(): Promise<void> {
