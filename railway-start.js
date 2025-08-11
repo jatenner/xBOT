@@ -4,7 +4,8 @@ const { spawn } = require('child_process');
 const path = require('path');
 
 console.log('🚀 Railway startup script starting...');
-console.log('🎭 Installing Playwright browsers...');
+console.log('🌐 Working directory:', process.cwd());
+console.log('🎭 Installing Playwright browsers (CRITICAL for browser automation)...');
 
 // Install Playwright browsers first with better Railway compatibility
 const playwright = spawn('npx', ['playwright', 'install', 'chromium'], {
