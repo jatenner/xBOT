@@ -9,7 +9,7 @@
     "install-playwright": "if [ \"$SKIP_PLAYWRIGHT\" = \"true\" ]; then echo 'Skipping Playwright installation'; else npx playwright install chromium --force; fi",
     "build-render": "PLAYWRIGHT_BROWSERS_PATH=/opt/render/.cache/ms-playwright npx playwright install chromium --force && NODE_OPTIONS=--max_old_space_size=1024 tsc",
     "postbuild": "mkdir -p dist/dashboard && cp src/dashboard/*.html dist/dashboard/ 2>/dev/null || true && mkdir -p dist/prompts && cp -r src/prompts/* dist/prompts/ && echo 'Build completed successfully'",
-    "start": "node dist/emergencyMain.js",
+    "start": "node dist/ultraMinimalMain.js",
     "runtime-install": "echo '🎭 Installing Playwright browsers at runtime...' && PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install chromium --force",
     "migrate": "node scripts/db_push.js",
     "dev": "npm run setup-check && nodemon src/index.js",
