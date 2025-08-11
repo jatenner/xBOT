@@ -206,55 +206,13 @@ export function startHealthServer(): Promise<void> {
       }
     });
 
-    // Start server with maximum resilience
-    healthServerStatus.server = app.listen(healthServerStatus.port, healthServerStatus.host, () => {
-      console.log(`✅ Health server READY on http://${healthServerStatus.host}:${healthServerStatus.port}`);
-      console.log(`🚄 Railway health check: GET /health → 200 OK`);
-      console.log(`📊 Status endpoint: GET /status`);
-      console.log(`🔍 Environment check: GET /env`);
-      console.log(`🎭 Playwright status: GET /playwright`);
-      console.log(`⚡ Server startup time: ${Date.now() - healthServerStatus.startTime.getTime()}ms`);
-      resolve();
-    });
-
-    // Handle server errors gracefully
-    healthServerStatus.server.on('error', (error: any) => {
-      console.error('❌ Health server failed to start:', error);
-      
-      // Try alternative port if Railway assigns different one
-      if (error.code === 'EADDRINUSE') {
-        console.log('🔄 Port in use, trying alternative...');
-        // Don't reject - Railway might handle this
-        setTimeout(() => resolve(), 1000);
-      } else {
-        reject(error);
-      }
-    });
-
-    // Graceful shutdown handling
-    const gracefulShutdown = () => {
-      console.log('🛑 Shutting down health server...');
-      if (healthServerStatus.server) {
-        healthServerStatus.server.close(() => {
-          console.log('🏥 Health server closed gracefully');
-          process.exit(0);
-        });
-      } else {
-        process.exit(0);
-      }
-    };
-
-    process.on('SIGINT', gracefulShutdown);
-    process.on('SIGTERM', gracefulShutdown);
-    
     // AI Content Generation endpoint
-    app.post('/generate-content', express.json(), async (req, res) => {
+    app.post('/generate-content', async (req, res) => {
       try {
         if (!healthServerStatus.botController) {
           return res.status(503).json({ error: 'Bot controller not initialized' });
         }
 
-        const { AutonomousTwitterPoster } = await import('./agents/autonomousTwitterPoster');
         const { IntelligentContentGenerator } = await import('./agents/intelligentContentGenerator');
         
         const contentGenerator = IntelligentContentGenerator.getInstance();
@@ -275,7 +233,7 @@ export function startHealthServer(): Promise<void> {
     });
 
     // AI Posting endpoint
-    app.post('/ai-post', express.json(), async (req, res) => {
+    app.post('/ai-post', async (req, res) => {
       try {
         if (!healthServerStatus.botController) {
           return res.status(503).json({ error: 'Bot controller not initialized' });
@@ -323,6 +281,47 @@ export function startHealthServer(): Promise<void> {
     });
 
     console.log('🧠 AI endpoints mounted: /generate-content, /ai-post, /ai-analytics');
+
+    // Start server with maximum resilience
+    healthServerStatus.server = app.listen(healthServerStatus.port, healthServerStatus.host, () => {
+      console.log(`✅ Health server READY on http://${healthServerStatus.host}:${healthServerStatus.port}`);
+      console.log(`🚄 Railway health check: GET /health → 200 OK`);
+      console.log(`📊 Status endpoint: GET /status`);
+      console.log(`🔍 Environment check: GET /env`);
+      console.log(`🎭 Playwright status: GET /playwright`);
+      console.log(`⚡ Server startup time: ${Date.now() - healthServerStatus.startTime.getTime()}ms`);
+      resolve();
+    });
+
+    // Handle server errors gracefully
+    healthServerStatus.server.on('error', (error: any) => {
+      console.error('❌ Health server failed to start:', error);
+      
+      // Try alternative port if Railway assigns different one
+      if (error.code === 'EADDRINUSE') {
+        console.log('🔄 Port in use, trying alternative...');
+        // Don't reject - Railway might handle this
+        setTimeout(() => resolve(), 1000);
+      } else {
+        reject(error);
+      }
+    });
+
+    // Graceful shutdown handling
+    const gracefulShutdown = () => {
+      console.log('🛑 Shutting down health server...');
+      if (healthServerStatus.server) {
+        healthServerStatus.server.close(() => {
+          console.log('🏥 Health server closed gracefully');
+          process.exit(0);
+        });
+      } else {
+        process.exit(0);
+      }
+    };
+
+    process.on('SIGINT', gracefulShutdown);
+    process.on('SIGTERM', gracefulShutdown);
 
     // Handle uncaught exceptions without crashing health server
     process.on('uncaughtException', (error) => {
