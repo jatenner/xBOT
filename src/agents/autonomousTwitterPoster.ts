@@ -288,12 +288,49 @@ export class AutonomousTwitterPoster {
       // Type content
       console.log('⌨️ Typing tweet content...');
       const tweetBox = await page.locator('[data-testid="tweetTextarea_0"]').first();
+      await tweetBox.click(); // Focus first
+      await page.waitForTimeout(500);
       await tweetBox.fill(content);
       await page.waitForTimeout(1000);
 
-      // Click post button
+      // Trigger input event to enable post button
+      await tweetBox.dispatchEvent('input');
+      await page.waitForTimeout(1000);
+
+      // Wait for post button to be enabled
+      console.log('🔄 Waiting for post button to be enabled...');
       const postButton = await page.locator('[data-testid="tweetButtonInline"]').first();
-      await postButton.click();
+      await postButton.waitFor({ state: 'attached' });
+      
+      // Try multiple post button selectors
+      const postSelectors = [
+        '[data-testid="tweetButtonInline"]',
+        '[data-testid="tweetButton"]', 
+        '[role="button"]:has-text("Post")',
+        'button:has-text("Tweet")'
+      ];
+      
+      let posted = false;
+      for (const selector of postSelectors) {
+        try {
+          const button = await page.locator(selector).first();
+          if (await button.isEnabled()) {
+            console.log(`✅ Found enabled post button: ${selector}`);
+            await button.click();
+            posted = true;
+            break;
+          }
+        } catch (e) {
+          console.log(`⚠️ Post button ${selector} not found or enabled`);
+        }
+      }
+      
+      if (!posted) {
+        // Fallback: press Ctrl+Enter (tweet shortcut)
+        console.log('🔄 Using keyboard shortcut to post...');
+        await page.keyboard.press('Control+Enter');
+      }
+      
       await page.waitForTimeout(3000);
 
       // Extract tweet ID from URL (simplified)
