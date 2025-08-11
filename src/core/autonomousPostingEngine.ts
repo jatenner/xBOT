@@ -1,5 +1,7 @@
 import * as cron from 'node-cron';
 import { AdaptivePostingScheduler } from '../intelligence/adaptivePostingScheduler';
+import { TweetPerformanceTracker } from '../intelligence/tweetPerformanceTracker';
+import { IntelligentLearningEngine } from '../intelligence/intelligentLearningEngine';
 
 export class AutonomousPostingEngine {
   private static instance: AutonomousPostingEngine;
@@ -7,9 +9,14 @@ export class AutonomousPostingEngine {
   private scheduler: AdaptivePostingScheduler;
   private intelligentTimerInterval: NodeJS.Timeout | null = null;
   private browserPoster: any = null;
+  private performanceTracker: TweetPerformanceTracker;
+  private learningEngine: IntelligentLearningEngine;
+  private currentFollowerCount: number = 0;
 
   private constructor() {
     this.scheduler = AdaptivePostingScheduler.getInstance();
+    this.performanceTracker = TweetPerformanceTracker.getInstance();
+    this.learningEngine = IntelligentLearningEngine.getInstance();
   }
 
   public static getInstance(): AutonomousPostingEngine {
@@ -34,11 +41,26 @@ export class AutonomousPostingEngine {
         // Don't throw - we can initialize the browser poster later when needed
       }
       
+      // Initialize learning systems
+      console.log('🧠 Initializing learning and performance tracking systems...');
+      
+      // Initialize learning engine
+      await this.learningEngine.initialize();
+      console.log('✅ Intelligent Learning Engine initialized');
+      
+      // Start performance tracking
+      await this.performanceTracker.schedulePerformanceTracking();
+      console.log('✅ Automated performance tracking started');
+      
+      // Get baseline follower count
+      this.currentFollowerCount = await this.performanceTracker.getCurrentFollowerCount();
+      console.log(`📊 Current follower count: ${this.currentFollowerCount}`);
+      
       // Start intelligent adaptive posting schedule
       this.startAutonomousSchedule();
       
       console.log('✅ Intelligent Adaptive Posting Engine ready');
-      console.log('🧠 Features: trending analysis, engagement windows, breaking news detection');
+      console.log('🧠 Features: trending analysis, engagement windows, breaking news detection, performance learning');
       console.log('🎯 Posting frequency: adaptive based on opportunities (5min-6hrs)');
     } catch (error: any) {
       console.error('❌ Failed to initialize Autonomous Posting Engine:', error.message);
@@ -171,9 +193,20 @@ export class AutonomousPostingEngine {
       console.log(`✅ Posted intelligent tweet successfully: ${result.tweetId}`);
       console.log(`📊 Opportunity utilized: ${opportunity.urgency} urgency`);
 
+      const tweetId = result.tweetId || 'browser_' + Date.now();
+
       // Store performance data for learning
-      await this.storeInDatabase(content, result.tweetId || 'browser_' + Date.now());
-      await this.storeIntelligentPostData(result.tweetId || 'browser_' + Date.now(), opportunity, content);
+      await this.storeInDatabase(content, tweetId);
+      await this.storeIntelligentPostData(tweetId, opportunity, content);
+      
+      // Predict performance for validation
+      const prediction = await this.learningEngine.predictContentPerformance(content);
+      console.log(`🎯 Predicted performance: ${prediction.expectedLikes} likes, ${prediction.expectedFollowers} new followers`);
+      
+      // Schedule performance tracking for this tweet
+      await this.schedulePerformanceTracking(tweetId, content, prediction);
+      
+      console.log('📊 Intelligent posting data stored for learning');
 
       return { success: true, content };
     } catch (error: any) {
@@ -315,7 +348,7 @@ export class AutonomousPostingEngine {
   }
 
   /**
-   * Generate intelligent content based on posting opportunity
+   * Generate intelligent content based on posting opportunity and learned patterns
    */
   private async generateIntelligentContent(opportunity: any): Promise<string> {
     try {
@@ -325,11 +358,34 @@ export class AutonomousPostingEngine {
         apiKey: process.env.OPENAI_API_KEY,
       });
 
-      // Build intelligent prompt based on opportunity context
+      // Get content recommendations from learning engine
+      console.log('🧠 Getting content recommendations from learning engine...');
+      const recommendations = await this.learningEngine.getContentRecommendations();
+      
+      // Build intelligent prompt based on opportunity context AND learned patterns
       let contextPrompt = `You are a health and wellness expert creating a Twitter post. `;
       
+      // Apply learning insights to prompt
+      if (recommendations.optimalLength > 0) {
+        contextPrompt += `Target around ${recommendations.optimalLength} characters for optimal engagement. `;
+      }
+      
+      if (recommendations.bestTopics.length > 0) {
+        contextPrompt += `Focus on high-performing topics: ${recommendations.bestTopics.join(', ')}. `;
+      }
+      
+      if (recommendations.contentStyle) {
+        contextPrompt += `Use ${recommendations.contentStyle} style content as it performs best. `;
+      }
+      
+      if (recommendations.engagementHooks.length > 0) {
+        const hook = recommendations.engagementHooks[Math.floor(Math.random() * recommendations.engagementHooks.length)];
+        contextPrompt += `Consider starting with engaging hooks like "${hook}". `;
+      }
+      
+      // Add opportunity-specific context
       if (opportunity.contentHints && opportunity.contentHints.length > 0) {
-        contextPrompt += `Focus on: ${opportunity.contentHints.join(', ')}. `;
+        contextPrompt += `Context: ${opportunity.contentHints.join(', ')}. `;
       }
       
       if (opportunity.urgency === 'critical') {
@@ -344,7 +400,7 @@ export class AutonomousPostingEngine {
         contextPrompt += `This is a high-engagement window - make it conversational and engaging. `;
       }
       
-      contextPrompt += `Create a concise, human-like tweet about health/wellness. Be conversational, avoid corporate speak, minimal hashtags. Maximum 280 characters.`;
+      contextPrompt += `Create a concise, human-like tweet about health/wellness. Be conversational, avoid corporate speak, minimal hashtags. Expected performance score: ${recommendations.expectedScore}/100.`;
 
       const response = await openai.chat.completions.create({
         model: 'gpt-4',
@@ -411,8 +467,102 @@ export class AutonomousPostingEngine {
   }
 
   public getStatus(): { isRunning: boolean; lastPost?: Date } {
-          return {
+    return {
       isRunning: this.isRunning
     };
-}
+  }
+
+  /**
+   * Schedule performance tracking for a specific tweet
+   */
+  private async schedulePerformanceTracking(tweetId: string, content: string, prediction: any): Promise<void> {
+    try {
+      // Get current follower count before tracking
+      const beforeFollowers = await this.performanceTracker.getCurrentFollowerCount();
+      
+      // Schedule tracking at intervals: 1h, 6h, 24h
+      const trackingIntervals = [
+        { delay: 60 * 60 * 1000, label: '1 hour' },      // 1 hour
+        { delay: 6 * 60 * 60 * 1000, label: '6 hours' },  // 6 hours  
+        { delay: 24 * 60 * 60 * 1000, label: '24 hours' } // 24 hours
+      ];
+
+      trackingIntervals.forEach(({ delay, label }) => {
+        setTimeout(async () => {
+          try {
+            console.log(`📊 Tracking ${label} performance for tweet ${tweetId}...`);
+            
+            // For browser tweets, we can't get individual tweet metrics easily
+            // So we'll track overall account performance and attribute growth
+            const afterFollowers = await this.performanceTracker.getCurrentFollowerCount();
+            const followerGrowth = afterFollowers - beforeFollowers;
+            
+            // Store growth attribution
+            await this.storePerformanceData(tweetId, {
+              timeframe: label,
+              follower_growth: followerGrowth,
+              predicted_likes: prediction.expectedLikes,
+              predicted_followers: prediction.expectedFollowers,
+              confidence: prediction.confidenceScore
+            });
+            
+            console.log(`✅ ${label} tracking complete: ${followerGrowth} new followers`);
+            
+            // Trigger learning update if we have enough data
+            if (label === '24 hours') {
+              console.log('🧠 Triggering learning update after 24h tracking...');
+              await this.learningEngine.learnFromPerformanceData();
+            }
+            
+          } catch (error: any) {
+            console.error(`⚠️ ${label} performance tracking failed:`, error.message);
+          }
+        }, delay);
+      });
+
+      console.log(`⏰ Performance tracking scheduled for ${tweetId} (1h, 6h, 24h intervals)`);
+      
+    } catch (error: any) {
+      console.error('⚠️ Failed to schedule performance tracking:', error.message);
+    }
+  }
+
+  /**
+   * Store performance tracking data
+   */
+  private async storePerformanceData(tweetId: string, data: any): Promise<void> {
+    try {
+      const { AdvancedDatabaseManager } = await import('../lib/advancedDatabaseManager');
+      const dbManager = AdvancedDatabaseManager.getInstance();
+      await dbManager.initialize();
+
+      // Update learning_posts with performance data
+      await dbManager.executeQuery(
+        'update_performance_data',
+        async (client) => {
+          const { error } = await client
+            .from('learning_posts')
+            .update({
+              converted_followers: data.follower_growth,
+              viral_potential_score: Math.round((data.follower_growth / Math.max(data.predicted_followers, 1)) * 100),
+              learning_metadata: {
+                ...data,
+                tracked_at: new Date().toISOString()
+              }
+            })
+            .eq('tweet_id', tweetId);
+          
+          if (error) throw error;
+          return true;
+        },
+        `performance_${tweetId}_${data.timeframe}`,
+        300000
+      );
+
+      console.log(`📊 Performance data stored for ${tweetId} (${data.timeframe})`);
+      
+    } catch (error: any) {
+      console.error('⚠️ Failed to store performance data:', error.message);
+    }
+  }
 }
