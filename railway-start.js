@@ -1,0 +1,65 @@
+#!/usr/bin/env node
+
+const { spawn } = require('child_process');
+const path = require('path');
+
+console.log('🚀 Railway startup script starting...');
+console.log('🎭 Installing Playwright browsers...');
+
+// Install Playwright browsers first
+const playwright = spawn('npx', ['playwright', 'install', 'chromium', '--force'], {
+  stdio: 'inherit',
+  cwd: process.cwd()
+});
+
+playwright.on('close', (code) => {
+  if (code === 0) {
+    console.log('✅ Playwright browsers installed successfully');
+    console.log('🤖 Starting main application...');
+    
+    // Start the main application
+    const main = spawn('node', ['dist/main.js'], {
+      stdio: 'inherit',
+      cwd: process.cwd()
+    });
+    
+    main.on('close', (code) => {
+      console.log(`🛑 Main application exited with code ${code}`);
+      process.exit(code);
+    });
+    
+    main.on('error', (error) => {
+      console.error('💥 Main application error:', error);
+      process.exit(1);
+    });
+    
+  } else {
+    console.error('❌ Playwright installation failed with code:', code);
+    console.log('🆘 Attempting to start without Playwright...');
+    
+    // Try to start anyway
+    const main = spawn('node', ['dist/main.js'], {
+      stdio: 'inherit',
+      cwd: process.cwd()
+    });
+    
+    main.on('close', (code) => {
+      process.exit(code);
+    });
+  }
+});
+
+playwright.on('error', (error) => {
+  console.error('💥 Playwright installation error:', error);
+  console.log('🆘 Starting without Playwright...');
+  
+  // Start the main app anyway
+  const main = spawn('node', ['dist/main.js'], {
+    stdio: 'inherit',
+    cwd: process.cwd()
+  });
+  
+  main.on('close', (code) => {
+    process.exit(code);
+  });
+});

@@ -1,1 +1,1 @@
-web: npm run playwright-setup && node dist/main.js
+web: node railway-start.js
