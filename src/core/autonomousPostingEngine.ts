@@ -367,17 +367,17 @@ export class AutonomousPostingEngine {
       await dbManager.executeQuery(
         'store_intelligent_post_data',
         async (client) => {
-          const { data, error } = await client
+                    const { data, error } = await client
             .from('intelligent_posts')
-        .insert({
-          tweet_id: tweetId,
-              opportunity_score: opportunity.score,
-              urgency: opportunity.urgency,
-              posting_reason: opportunity.reason,
+            .insert({
+              tweet_id: tweetId,
+              score_value: opportunity.score,
+              urgency_level: opportunity.urgency,
+              reason_text: opportunity.reason,
               content_hints: opportunity.contentHints?.join(', ') || '',
-              content: content,
-          posted_at: new Date().toISOString()
-        });
+              tweet_content: content,
+              posted_timestamp: new Date().toISOString()
+            });
 
           if (error) throw error;
           return data;

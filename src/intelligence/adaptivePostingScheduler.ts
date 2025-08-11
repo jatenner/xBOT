@@ -183,7 +183,7 @@ export class AdaptivePostingScheduler {
           const { data, error } = await client
             .from('trending_topics')
             .select('*')
-            .order('momentum', { ascending: false })
+            .order('momentum_score', { ascending: false })
             .limit(5);
           
           if (error) throw error;
@@ -192,11 +192,11 @@ export class AdaptivePostingScheduler {
       );
 
       return trends.map(trend => ({
-        topic: trend.topic,
-        momentum: trend.momentum || 0.5,
-        relevanceToHealth: this.calculateHealthRelevance(trend.topic),
-        competition: trend.competition || 0.7,
-        opportunity: this.calculateOpportunityScore(trend)
+        topic: trend.topic_name,
+        momentum: trend.momentum_score || 0.5,
+        relevanceToHealth: trend.health_relevance || 0.1,
+        competition: trend.competition_level || 0.7,
+        opportunity: trend.final_score || 0.2
       }));
     } catch (error) {
       console.warn('Failed to analyze trending topics:', error);
@@ -215,9 +215,10 @@ export class AdaptivePostingScheduler {
         'get_engagement_window',
         async (client) => {
           const { data, error } = await client
-            .from('time_performance')
+            .from('engagement_windows')
             .select('*')
-            .eq('hour_of_day', currentHour)
+            .eq('hour_24', currentHour)
+            .eq('weekday', new Date().getDay())
             .single();
           
           if (error) throw error;
@@ -230,9 +231,9 @@ export class AdaptivePostingScheduler {
       return {
         startHour: currentHour,
         endHour: (currentHour + 1) % 24,
-        averageEngagement: windowData.engagement_rate || 0.1,
-        followerActivity: windowData.viral_score || 0.1,
-        optimalFrequency: this.calculateOptimalFrequency(windowData)
+        averageEngagement: windowData.avg_engagement || 0.1,
+        followerActivity: windowData.follower_activity || 0.1,
+        optimalFrequency: windowData.optimal_frequency || 0.33
       };
     } catch (error) {
       console.warn('Failed to get engagement window:', error);
