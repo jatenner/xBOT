@@ -71,9 +71,11 @@ async function main(): Promise<void> {
     let controller;
     try {
       controller = AutonomousController.getInstance();
-      // Don't call initialize() here as it tries to start its own server
-      // We'll set up a minimal controller without server conflicts
-      console.log('✅ Autonomous Controller created (will initialize after health server)');
+      // Initialize just the bot components (no health server conflict)
+      controller.initializeComponents().catch((error: any) => {
+        console.warn('⚠️ Background bot initialization failed:', error.message);
+      });
+      console.log('✅ Autonomous Controller created and initializing...');
     } catch (error: any) {
       console.warn('⚠️ Autonomous Controller creation failed:', error.message);
       console.log('🔄 Bot will continue with health server only');
@@ -82,7 +84,9 @@ async function main(): Promise<void> {
     
     console.log('='.repeat(70));
     console.log('🎉 === ENTERPRISE AUTONOMOUS TWITTER BOT FULLY OPERATIONAL ===');
-    console.log('🔄 Bot will post autonomously every 3 hours');
+    console.log('🧠 Intelligent adaptive posting system activated');
+    console.log('🎯 Posting frequency: Dynamic 5min-6hrs based on opportunities');
+    console.log('📊 Intelligence: trending topics, engagement windows, audience activity');
     console.log('🌐 Health server running for Railway health checks');
     console.log('🏢 Enterprise database systems active with monitoring');
     console.log('='.repeat(70));
