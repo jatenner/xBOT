@@ -224,29 +224,49 @@ export class AutonomousPostingEngine {
         apiKey: process.env.OPENAI_API_KEY,
       });
 
-      const healthTopics = [
-        'hydration and water intake',
-        'sleep quality and circadian rhythms',
-        'exercise and movement',
-        'nutrition and healthy eating',
-        'stress management techniques',
-        'mental health awareness',
-        'preventive healthcare',
-        'healthy habits formation'
+      const viralTopics = [
+        'simple life hacks that actually work',
+        'productivity tips for busy people',
+        'surprising science facts',
+        'morning routine optimization',
+        'technology trends and insights',
+        'financial wellness and money tips',
+        'travel and lifestyle discoveries',
+        'career growth strategies',
+        'relationship and communication insights',
+        'creative thinking and innovation',
+        'time management techniques',
+        'personal development insights',
+        'nutrition myths debunked',
+        'exercise efficiency tips',
+        'sleep optimization hacks',
+        'stress reduction techniques',
+        'mindfulness and focus tips',
+        'health research breakthroughs',
+        'workplace wellness strategies',
+        'sustainable living tips'
       ];
 
-      const randomTopic = healthTopics[Math.floor(Math.random() * healthTopics.length)];
+      const randomTopic = viralTopics[Math.floor(Math.random() * viralTopics.length)];
 
-      const prompt = `Create a helpful, engaging tweet about ${randomTopic}. 
-      Make it conversational, actionable, and under 280 characters. 
-      Include a question to encourage engagement. 
-      Keep it human-like with minimal hashtags.`;
+      const contentStyles = [
+        `Write a viral tweet about ${randomTopic}. Sound like a real person sharing something useful. No quotes, no corporate speak. Be direct and engaging.`,
+        `Create a relatable post about ${randomTopic}. Start with "Just realized..." or "Pro tip:" or "Anyone else...". Keep it casual and authentic.`,
+        `Share an insight about ${randomTopic}. Write like you're texting a friend. No hashtags unless absolutely necessary. Make it shareable.`,
+        `Drop some knowledge about ${randomTopic}. Be the person who always has interesting facts. Keep it conversational and surprising.`,
+        `Post about ${randomTopic} like you just discovered something cool. Use simple language that anyone can understand.`
+      ];
+      
+      const randomStyle = contentStyles[Math.floor(Math.random() * contentStyles.length)];
 
       const response = await openai.chat.completions.create({
         model: 'gpt-3.5-turbo',
-        messages: [{ role: 'user', content: prompt }],
+        messages: [{ 
+          role: 'user', 
+          content: randomStyle 
+        }],
         max_tokens: 100,
-        temperature: 0.8,
+        temperature: 0.9, // Higher creativity
       });
 
       const content = response.choices[0]?.message?.content?.trim();
@@ -260,16 +280,21 @@ export class AutonomousPostingEngine {
     } catch (error: any) {
       console.error('❌ AI content generation failed:', error.message);
       
-      // Fallback to simple content
-      const fallbackTopics = [
-        'Stay hydrated! Drinking enough water improves energy and focus. How many glasses do you aim for daily?',
-        'Quality sleep is the foundation of good health. What helps you wind down before bed?',
-        'Small daily movements add up. Even a 10-minute walk can boost your mood. What movement brings you joy?',
-        'Eating colorful foods provides diverse nutrients. What\'s your favorite colorful meal?',
-        'Deep breathing can instantly reduce stress. Try 4-7-8 breathing: inhale 4, hold 7, exhale 8. How do you manage stress?'
+      // Fallback to diverse, viral content
+      const fallbackContent = [
+        'Just learned that taking breaks actually makes you more productive. Anyone else feel guilty about resting?',
+        'Pro tip: Set your phone to grayscale. Instantly makes social media less addictive',
+        'The 2-minute rule changed my life: if it takes less than 2 minutes, do it now',
+        'Coffee naps are real: drink coffee, nap for 20 minutes, wake up superhuman',
+        'Your brain uses 20% of your energy. No wonder thinking is exhausting',
+        'Hot showers before bed actually make you sleep worse. Cold rooms are the secret',
+        'Compound interest applies to habits too. Small daily improvements = massive results',
+        'Most successful people have one thing in common: they finish what they start',
+        'The best time to learn something new is when you think you\'re too old for it',
+        'Your future self will either thank you or blame you for what you do today'
       ];
       
-      return fallbackTopics[Math.floor(Math.random() * fallbackTopics.length)];
+      return fallbackContent[Math.floor(Math.random() * fallbackContent.length)];
     }
   }
 

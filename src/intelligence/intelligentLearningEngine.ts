@@ -329,17 +329,18 @@ export class IntelligentLearningEngine {
   }
 
   private extractTopics(content: string): string[] {
-    const healthTopics = [
-      'nutrition', 'diet', 'exercise', 'fitness', 'sleep', 'stress', 'mental health',
-      'supplements', 'vitamins', 'protein', 'cardio', 'strength', 'yoga', 'meditation',
-      'wellness', 'immunity', 'recovery', 'hydration', 'metabolism', 'weight loss',
-      'mindfulness', 'therapy', 'anxiety', 'depression', 'self-care'
+    const viralTopics = [
+      'productivity', 'life hacks', 'tips', 'career', 'finance', 'tech', 'science',
+      'relationships', 'communication', 'success', 'mindset', 'learning', 'creativity',
+      'business', 'entrepreneurship', 'innovation', 'psychology', 'habits', 'motivation',
+      'time management', 'goal setting', 'personal growth', 'leadership', 'networking',
+      'health', 'fitness', 'nutrition', 'wellness', 'self-care', 'mental health'
     ];
 
     const lowerContent = content.toLowerCase();
     const foundTopics: string[] = [];
 
-    healthTopics.forEach(topic => {
+    viralTopics.forEach(topic => {
       if (lowerContent.includes(topic)) {
         foundTopics.push(topic);
       }
@@ -615,7 +616,7 @@ export class IntelligentLearningEngine {
     if ([7, 12, 18, 20].includes(hour)) score += 10;
 
     // Topic boost
-    if (topics.includes('mental health') || topics.includes('wellness')) score += 15;
+          if (topics.includes('productivity') || topics.includes('life hacks') || topics.includes('tips')) score += 15;
 
     return Math.min(100, score);
   }
@@ -752,7 +753,7 @@ export class IntelligentLearningEngine {
   private getDefaultRecommendations() {
     return {
       optimalLength: 150,
-      bestTopics: ['mental health', 'wellness', 'self-care'],
+              bestTopics: ['productivity tips', 'life hacks', 'surprising facts'],
       optimalTime: { hour: 12, confidence: 0.5 },
       contentStyle: 'question',
       engagementHooks: ['Did you know', 'Quick reminder', 'Pro tip'],
