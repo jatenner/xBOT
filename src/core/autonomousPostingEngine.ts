@@ -2,6 +2,7 @@ import * as cron from 'node-cron';
 import { AdaptivePostingScheduler } from '../intelligence/adaptivePostingScheduler';
 import { TweetPerformanceTracker } from '../intelligence/tweetPerformanceTracker';
 import { IntelligentLearningEngine } from '../intelligence/intelligentLearningEngine';
+import { FollowerGrowthOptimizer } from '../intelligence/followerGrowthOptimizer';
 
 export class AutonomousPostingEngine {
   private static instance: AutonomousPostingEngine;
@@ -11,12 +12,14 @@ export class AutonomousPostingEngine {
   private browserPoster: any = null;
   private performanceTracker: TweetPerformanceTracker;
   private learningEngine: IntelligentLearningEngine;
+  private followerOptimizer: FollowerGrowthOptimizer;
   private currentFollowerCount: number = 0;
 
   private constructor() {
     this.scheduler = AdaptivePostingScheduler.getInstance();
     this.performanceTracker = TweetPerformanceTracker.getInstance();
     this.learningEngine = IntelligentLearningEngine.getInstance();
+    this.followerOptimizer = FollowerGrowthOptimizer.getInstance();
   }
 
   public static getInstance(): AutonomousPostingEngine {
@@ -47,6 +50,10 @@ export class AutonomousPostingEngine {
       // Initialize learning engine
       await this.learningEngine.initialize();
       console.log('✅ Intelligent Learning Engine initialized');
+      
+      // Initialize follower growth optimizer
+      await this.followerOptimizer.initialize();
+      console.log('🎯 Follower Growth Optimizer initialized - ready for viral content!');
       
       // Start performance tracking
       await this.performanceTracker.schedulePerformanceTracking();
@@ -198,6 +205,15 @@ export class AutonomousPostingEngine {
       // Store performance data for learning
       await this.storeInDatabase(content, tweetId);
       await this.storeIntelligentPostData(tweetId, opportunity, content);
+      
+      // Analyze viral potential of content
+      const viralAnalysis = await this.followerOptimizer.analyzeViralPotential(content);
+      console.log(`🔥 Viral score: ${viralAnalysis.viralScore}/100, Follower potential: ${viralAnalysis.followerPotential}/100`);
+      
+      // Log optimization suggestions
+      if (viralAnalysis.improvementSuggestions.length > 0) {
+        console.log(`💡 Next time: ${viralAnalysis.improvementSuggestions[0]}`);
+      }
       
       // Predict performance for validation
       const prediction = await this.learningEngine.predictContentPerformance(content);
@@ -383,12 +399,23 @@ export class AutonomousPostingEngine {
         apiKey: process.env.OPENAI_API_KEY,
       });
 
-      // Get content recommendations from learning engine
+      // Get viral growth strategy and content recommendations
       console.log('🧠 Getting content recommendations from learning engine...');
+      console.log('🎯 Optimizing content for maximum follower growth...');
+      
+      const growthStrategy = await this.followerOptimizer.getOptimalGrowthStrategy();
+      console.log(`📈 Growth strategy: ${growthStrategy.strategy} (Expected: +${growthStrategy.expectedFollowerGrowth} followers)`);
+      
       const recommendations = await this.learningEngine.getContentRecommendations();
       
-      // Build intelligent prompt based on opportunity context AND learned patterns
-      let contextPrompt = `You are a health and wellness expert creating a Twitter post. `;
+      // Build viral content prompt based on growth strategy and learned patterns
+      let contextPrompt = `You are a viral content creator with millions of followers. Create a ${growthStrategy.strategy} post that will gain maximum followers. `;
+      
+      // Add strategy-specific requirements
+      contextPrompt += `Strategy: ${growthStrategy.description} `;
+      if (growthStrategy.contentRequirements.length > 0) {
+        contextPrompt += `Requirements: ${growthStrategy.contentRequirements.join(', ')}. `;
+      }
       
       // Apply learning insights to prompt
       if (recommendations.optimalLength > 0) {
@@ -537,6 +564,19 @@ export class AutonomousPostingEngine {
             if (label === '24 hours') {
               console.log('🧠 Triggering learning update after 24h tracking...');
               await this.learningEngine.learnFromPerformanceData();
+              
+              // Learn from viral successes for follower optimization
+              if (followerGrowth > 5) { // Significant follower growth
+                console.log(`🔥 Viral success detected! Learning from ${followerGrowth} new followers...`);
+                await this.followerOptimizer.learnFromViralSuccess(tweetId, {
+                  likes: prediction.expectedLikes || 0,
+                  retweets: Math.round((prediction.expectedLikes || 0) * 0.1),
+                  replies: Math.round((prediction.expectedLikes || 0) * 0.05),
+                  impressions: Math.round((prediction.expectedLikes || 0) * 10),
+                  followersGained: followerGrowth,
+                  content: content
+                });
+              }
             }
             
           } catch (error: any) {
