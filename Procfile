@@ -1,1 +1,1 @@
-web: node dist/ultraMinimalMain.js
+web: node dist/main.js

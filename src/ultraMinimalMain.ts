@@ -6,7 +6,7 @@ async function startUltraMinimalBot(): Promise<void> {
     console.log('🎯 Single purpose: Pass Railway health checks');
     
     const app = express();
-    const port = process.env.PORT || 3000;
+    const port = parseInt(process.env.PORT || '3000', 10);
     
     // CRITICAL: Health endpoint for Railway - INSTANT 200 OK
     app.get('/health', (req, res) => {
