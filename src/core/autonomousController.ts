@@ -1,17 +1,26 @@
 import { AutonomousPostingEngine } from './autonomousPostingEngine';
 import { DatabaseManager } from '../lib/db';
+import { AutonomousTwitterPoster } from '../agents/autonomousTwitterPoster';
+import { IntelligentContentGenerator } from '../agents/intelligentContentGenerator';
+import { SimpleEngagementAnalyzer } from '../intelligence/simpleEngagementAnalyzer';
 import express from 'express';
 
 export class AutonomousController {
   private static instance: AutonomousController;
   private postingEngine: AutonomousPostingEngine;
   private databaseManager: DatabaseManager;
+  private twitterPoster: AutonomousTwitterPoster;
+  private contentGenerator: IntelligentContentGenerator;
+  private engagementAnalyzer: SimpleEngagementAnalyzer;
   private expressApp: express.Application;
   private isInitialized = false;
 
   private constructor() {
     this.postingEngine = AutonomousPostingEngine.getInstance();
     this.databaseManager = DatabaseManager.getInstance();
+    this.twitterPoster = AutonomousTwitterPoster.getInstance();
+    this.contentGenerator = IntelligentContentGenerator.getInstance();
+    this.engagementAnalyzer = SimpleEngagementAnalyzer.getInstance();
     this.expressApp = express();
   }
 
@@ -40,10 +49,20 @@ export class AutonomousController {
   }
 
   private async bootComponents(): Promise<void> {
+    console.log('🔄 Initializing database manager...');
     await this.databaseManager.initialize();
+    
+    console.log('🔄 Initializing posting engine...');
     await this.postingEngine.initialize();
+    
+    console.log('🔄 Initializing AI Twitter poster...');
+    await this.twitterPoster.initialize();
+    
+    console.log('🔄 AI systems ready');
+    // Content generator and engagement analyzer are singletons that initialize on first use
+    
     this.isInitialized = true;
-    console.log('✅ === AUTONOMOUS TWITTER BOT READY ===');
+    console.log('✅ === AUTONOMOUS TWITTER BOT WITH AI SYSTEMS READY ===');
   }
 
   private setupHealthServer(): void {
@@ -143,6 +162,64 @@ export class AutonomousController {
         console.log('📝 Manual post requested via API');
         const result = await this.postingEngine.executePost();
         res.json(result);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // AI Content Generation endpoint
+    app.post('/generate-content', async (req, res) => {
+      try {
+        if (!this.isInitialized) {
+          return res.status(503).json({ error: 'Bot still initializing' });
+        }
+
+        const request = req.body || {};
+        const content = await this.contentGenerator.generateContent(request);
+        
+        res.json({
+          success: true,
+          content: content.content,
+          isThread: content.isThread,
+          contentScore: content.contentScore,
+          estimatedEngagement: content.estimatedEngagement
+        });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // AI Posting endpoint
+    app.post('/ai-post', async (req, res) => {
+      try {
+        if (!this.isInitialized) {
+          return res.status(503).json({ error: 'Bot still initializing' });
+        }
+
+        const options = req.body || {};
+        const result = await this.twitterPoster.createAndPostContent(undefined, options);
+        
+        res.json(result);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // AI Analytics endpoint
+    app.get('/ai-analytics', async (req, res) => {
+      try {
+        if (!this.isInitialized) {
+          return res.status(503).json({ error: 'Bot still initializing' });
+        }
+
+        const topTopics = await this.contentGenerator.getTopPerformingTopics(10);
+        const bestTimes = await this.engagementAnalyzer.getBestPostingTimes();
+        
+        res.json({
+          topPerformingTopics: topTopics,
+          bestPostingTimes: bestTimes,
+          aiSystemsStatus: 'operational'
+        });
       } catch (error: any) {
         res.status(500).json({ error: error.message });
       }
