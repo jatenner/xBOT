@@ -59,54 +59,106 @@ export class TwitterSessionManager {
    */
   public async ensureLoggedIn(page: any): Promise<boolean> {
     try {
-      // Check if already logged in
-      await page.goto('https://twitter.com/home', { waitUntil: 'networkidle' });
+      // Check if already logged in by trying to access home
+      await page.goto('https://twitter.com/home', { 
+        waitUntil: 'domcontentloaded',
+        timeout: 15000 
+      });
       
       // If we can see the home feed, we're logged in
       const homeIndicator = await page.locator('[data-testid="primaryColumn"]').first();
-      if (await homeIndicator.isVisible({ timeout: 5000 })) {
+      if (await homeIndicator.isVisible({ timeout: 8000 })) {
         console.log('✅ Already logged in to Twitter');
         return true;
       }
     } catch (error) {
       // Not logged in, proceed with login
+      console.log('🔐 Need to login to Twitter');
     }
 
-    // Need to login
+    // Need to login - use the modern Twitter login flow
     console.log('🔐 Logging into Twitter...');
     
     try {
-      await page.goto('https://twitter.com/login', { waitUntil: 'networkidle' });
-      await page.waitForTimeout(2000);
+      // Navigate to the proper login endpoint
+      await page.goto('https://twitter.com/i/flow/login', { 
+        waitUntil: 'domcontentloaded',
+        timeout: 30000 
+      });
+      await page.waitForTimeout(3000);
 
-      // Enter username/email
-      const usernameInput = await page.locator('input[name="text"]').first();
-      if (await usernameInput.isVisible()) {
-        await usernameInput.fill(process.env.TWITTER_USERNAME || process.env.TWITTER_EMAIL || '');
-        await page.locator('[role="button"]').filter({ hasText: 'Next' }).click();
-        await page.waitForTimeout(2000);
+      // Wait for and fill username field
+      console.log('📝 Entering username...');
+      await page.waitForSelector('input[autocomplete="username"]', { timeout: 15000 });
+      const usernameField = page.locator('input[autocomplete="username"]').first();
+      await usernameField.fill(process.env.TWITTER_USERNAME || process.env.TWITTER_EMAIL || '');
+      
+      // Click Next button
+      await page.locator('[role="button"][data-testid="LoginForm_Login_Button"]').click();
+      await page.waitForTimeout(3000);
 
-        // Enter password
-        const passwordInput = await page.locator('input[name="password"]').first();
-        await passwordInput.fill(process.env.TWITTER_PASSWORD || '');
-        await page.locator('[role="button"]').filter({ hasText: 'Log in' }).click();
-        await page.waitForTimeout(5000);
-
-        // Verify login success
-        await page.waitForURL('**/home', { timeout: 10000 });
-        console.log('✅ Twitter login completed successfully');
-        
-        // Update session timestamp
-        this.lastLoginTime = Date.now();
-        
-        return true;
+      // Handle potential phone/email verification step
+      try {
+        const phoneVerification = page.locator('input[data-testid="ocfEnterTextTextInput"]');
+        if (await phoneVerification.isVisible({ timeout: 5000 })) {
+          console.log('📱 Phone verification detected, entering username...');
+          await phoneVerification.fill(process.env.TWITTER_USERNAME || '');
+          await page.locator('[data-testid="ocfEnterTextNextButton"]').click();
+          await page.waitForTimeout(2000);
+        }
+      } catch (e) {
+        // Phone verification not required, continue
       }
+
+      // Enter password
+      console.log('🔑 Entering password...');
+      await page.waitForSelector('input[name="password"]', { timeout: 10000 });
+      const passwordField = page.locator('input[name="password"]').first();
+      await passwordField.fill(process.env.TWITTER_PASSWORD || '');
+      
+      // Click Login button
+      await page.locator('[data-testid="LoginForm_Login_Button"]').click();
+      await page.waitForTimeout(5000);
+
+      // Wait for successful login with multiple success indicators
+      try {
+        await Promise.race([
+          page.waitForURL('**/home', { timeout: 15000 }),
+          page.waitForURL('**/timeline', { timeout: 15000 }),
+          page.waitForSelector('[data-testid="tweet"]', { timeout: 15000 }),
+          page.waitForSelector('[data-testid="primaryColumn"]', { timeout: 15000 })
+        ]);
+        
+        console.log('✅ Twitter login completed successfully');
+        this.lastLoginTime = Date.now();
+        return true;
+        
+      } catch (waitError) {
+        // Check if we're actually logged in despite timeout
+        const finalUrl = page.url();
+        if (finalUrl.includes('/home') || finalUrl.includes('/timeline') || 
+           (finalUrl.includes('twitter.com') && !finalUrl.includes('/login') && !finalUrl.includes('/flow'))) {
+          console.log('✅ Twitter login successful (detected via URL check)');
+          this.lastLoginTime = Date.now();
+          return true;
+        }
+        throw waitError;
+      }
+      
     } catch (loginError: any) {
       console.error('❌ Twitter login failed:', loginError.message);
+      console.error('🔍 Current URL:', page.url());
+      
+      // Take screenshot for debugging in development
+      try {
+        if (process.env.NODE_ENV === 'development') {
+          await page.screenshot({ path: 'login_error.png' });
+          console.log('📸 Login error screenshot saved');
+        }
+      } catch (e) {}
+      
       return false;
     }
-
-    return false;
   }
 
   /**
