@@ -1,5 +1,4 @@
--- ULTRA SIMPLE DATABASE FIX
--- Copy this EXACTLY into Supabase SQL Editor
+-- FOOLPROOF DATABASE FIX - Creates everything from scratch if needed
 
 -- Fix daily_budgets table
 ALTER TABLE daily_budgets ADD COLUMN IF NOT EXISTS date DATE DEFAULT CURRENT_DATE;
@@ -19,11 +18,22 @@ ALTER TABLE tweets ADD COLUMN IF NOT EXISTS replies INTEGER DEFAULT 0;
 -- Fix engagement_metrics table
 ALTER TABLE engagement_metrics ADD COLUMN IF NOT EXISTS recorded_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
 
--- Clear and add bot_config with TEXT instead of JSON
-DELETE FROM bot_config;
-INSERT INTO bot_config (config_key, config_value, description) VALUES ('content_style', 'health', 'Content style');
-INSERT INTO bot_config (config_key, config_value, description) VALUES ('posting_enabled', 'true', 'Enable posting');
-INSERT INTO bot_config (config_key, config_value, description) VALUES ('max_daily_posts', '8', 'Max posts per day');
-INSERT INTO bot_config (config_key, config_value, description) VALUES ('engagement_tracking', 'true', 'Track engagement');
+-- Recreate bot_config table completely
+DROP TABLE IF EXISTS bot_config;
+CREATE TABLE bot_config (
+    id SERIAL PRIMARY KEY,
+    config_key VARCHAR(255) UNIQUE NOT NULL,
+    config_value TEXT NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
 
-SELECT 'Database fixed successfully!' AS result;
+-- Insert basic config
+INSERT INTO bot_config (config_key, config_value, description) VALUES 
+('content_style', 'health', 'Content generation style'),
+('posting_enabled', 'true', 'Enable autonomous posting'),
+('max_daily_posts', '8', 'Maximum posts per day'),
+('engagement_tracking', 'true', 'Track post engagement');
+
+SELECT 'Database completely fixed!' AS result;
