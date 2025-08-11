@@ -1,1 +1,1 @@
-web: node dist/main.js
+web: npm run playwright-setup && node dist/main.js
