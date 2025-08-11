@@ -48,6 +48,20 @@ export class AutonomousController {
     }
   }
 
+  /**
+   * Initialize just the bot components without creating a health server
+   * Used when health server is already running elsewhere
+   */
+  public async initializeComponents(): Promise<void> {
+    try {
+      console.log('🧠 Initializing intelligent posting components...');
+      await this.bootComponents();
+    } catch (error: any) {
+      console.error('💥 Bot components initialization failed:', error.message);
+      throw error;
+    }
+  }
+
   private async bootComponents(): Promise<void> {
     console.log('🔄 Initializing database manager...');
     await this.databaseManager.initialize();

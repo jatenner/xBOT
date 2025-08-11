@@ -280,7 +280,44 @@ export function startHealthServer(): Promise<void> {
       }
     });
 
-    console.log('🧠 AI endpoints mounted: /generate-content, /ai-post, /ai-analytics');
+    // Test intelligent posting endpoint
+app.post('/test-intelligent-post', async (req, res) => {
+  try {
+    if (!healthServerStatus.botController) {
+      return res.status(503).json({ error: 'Bot controller not initialized' });
+    }
+
+    const { AutonomousPostingEngine } = await import('./core/autonomousPostingEngine');
+    const { AdaptivePostingScheduler } = await import('./intelligence/adaptivePostingScheduler');
+    
+    const postingEngine = AutonomousPostingEngine.getInstance();
+    const scheduler = AdaptivePostingScheduler.getInstance();
+    
+    // Test the intelligent posting analysis
+    const opportunity = await scheduler.shouldPostNow();
+    
+    console.log(`🧠 TEST: Intelligent posting analysis - Score: ${Math.round(opportunity.score)}/100`);
+    console.log(`📝 Reason: ${opportunity.reason}`);
+    console.log(`⚡ Urgency: ${opportunity.urgency}`);
+    
+    res.json({
+      success: true,
+      intelligentAnalysis: {
+        score: opportunity.score,
+        reason: opportunity.reason,
+        urgency: opportunity.urgency,
+        suggestedDelay: opportunity.suggestedDelay,
+        contentHints: opportunity.contentHints
+      },
+      message: `Intelligent posting analysis complete. Score: ${Math.round(opportunity.score)}/100`
+    });
+  } catch (error: any) {
+    console.error('❌ Test intelligent posting failed:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+console.log('🧠 AI endpoints mounted: /generate-content, /ai-post, /ai-analytics, /test-intelligent-post');
 
     // Start server with maximum resilience
     healthServerStatus.server = app.listen(healthServerStatus.port, healthServerStatus.host, () => {
