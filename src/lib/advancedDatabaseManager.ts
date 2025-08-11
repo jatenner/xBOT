@@ -325,16 +325,18 @@ export class AdvancedDatabaseManager extends EventEmitter {
   private async initializeRedisWithFailover(): Promise<void> {
     console.log('💾 Setting up Redis with failover...');
     
-    const redisOptions = {
-      connectTimeout: this.config.redis.timeout,
-      lazyConnect: true,
-      maxRetriesPerRequest: this.config.redis.retries,
-      retryDelayOnFailover: 100,
-      enableOfflineQueue: false,
-      family: 4,
-      keepAlive: 30000,
-      keyPrefix: 'xbot:',
-    };
+    
+            const redisOptions = {
+                host: 'redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com',
+                port: 17514,
+                password: 'uYu9N5O1MH1aiHIH7DMS9z0v1zsyIipU',
+                tls: false, // Railway compatibility
+                connectTimeout: this.config.redis.connectTimeout,
+                lazyConnect: this.config.redis.lazyConnect,
+                maxRetriesPerRequest: this.config.redis.maxRetriesPerRequest,
+                retryDelayOnFailover: 100,
+                keyPrefix: this.config.redis.keyPrefix
+            };
 
     try {
       if (this.config.redis.cluster) {
