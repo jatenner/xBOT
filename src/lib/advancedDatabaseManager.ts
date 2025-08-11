@@ -312,7 +312,7 @@ export class AdvancedDatabaseManager extends EventEmitter {
     try {
       const { data, error } = await testConnection
                   .from('tweets')
-        .select('table_name')
+        .select('id')
         .limit(1);
         
       if (error) throw error;
