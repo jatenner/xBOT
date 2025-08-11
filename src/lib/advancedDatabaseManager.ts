@@ -209,7 +209,7 @@ export class AdvancedDatabaseManager extends EventEmitter {
   
   // Core components
   private supabasePool: ConnectionPool;
-  private redis: Redis | null = null;
+  private redis: any | null = null;
   private redisCluster: any | null = null;
   
   // Advanced features
@@ -330,12 +330,9 @@ export class AdvancedDatabaseManager extends EventEmitter {
                 host: 'redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com',
                 port: 17514,
                 password: 'uYu9N5O1MH1aiHIH7DMS9z0v1zsyIipU',
-                tls: false, // Railway compatibility
-                connectTimeout: this.config.redis.connectTimeout,
-                lazyConnect: this.config.redis.lazyConnect,
-                maxRetriesPerRequest: this.config.redis.maxRetriesPerRequest,
-                retryDelayOnFailover: 100,
-                keyPrefix: this.config.redis.keyPrefix
+                // tls: false - removed for Railway compatibility
+                connectTimeout: 10000,
+                lazyConnect: true
             };
 
     try {
@@ -351,9 +348,7 @@ export class AdvancedDatabaseManager extends EventEmitter {
           };
         }), {
           ...redisOptions,
-          retryDelayOnFailover: 100,
-          enableReadyCheck: true
-        });
+                            });
         
         await this.redisCluster.ping();
         console.log('✅ Redis Cluster connected');
@@ -361,7 +356,14 @@ export class AdvancedDatabaseManager extends EventEmitter {
       } else {
         // Single Redis with failover
         try {
-          this.redis = new Redis(this.config.redis.primary, redisOptions);
+          this.redis = new (require('ioredis'))({
+            host: 'redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com',
+            port: 17514,
+            password: 'uYu9N5O1MH1aiHIH7DMS9z0v1zsyIipU',
+            tls: false,
+            connectTimeout: 10000,
+            lazyConnect: true
+        });
           await this.redis.ping();
           console.log('✅ Primary Redis connected');
         } catch (error) {
