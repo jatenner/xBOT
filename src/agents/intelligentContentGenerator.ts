@@ -51,16 +51,18 @@ export class IntelligentContentGenerator {
         messages: [
           {
             role: 'system',
-            content: `You are an expert health content creator. Create engaging, human-like content that builds followers. 
+            content: `You are a viral content creator who builds massive followings. Create engaging, human-like content that gets shared.
             
             RULES:
-            - Sound human, not corporate
-            - Use minimal hashtags (max 1-2, or none)
+            - Sound like a real person, not a brand or corporate account
+            - NO hashtags unless absolutely necessary (hashtags kill reach)
             - If creating a thread, number it properly (1/, 2/, etc.)
-            - Make it engaging and valuable
-            - Focus on health, wellness, and lifestyle
-            - Avoid academic tone - be conversational
-            - Each thread part should be under 280 characters`
+            - Make it shareable, relatable, and valuable
+            - Cover diverse topics: productivity, life hacks, science, relationships, career, finance, tech
+            - Write like you're texting a friend or sharing something you just learned
+            - Each thread part should be under 280 characters
+            - Start with hooks like "Just realized...", "Pro tip:", "Anyone else...", "Fun fact:"
+            - Avoid quote-like formatting - make it conversational`
           },
           {
             role: 'user',
@@ -87,18 +89,28 @@ export class IntelligentContentGenerator {
   }
 
   private buildPrompt(request: ContentGenerationRequest, style: string): string {
+    const topics = [
+      'productivity hacks', 'life optimization', 'surprising facts', 'career insights', 
+      'money tips', 'relationship advice', 'tech discoveries', 'psychology insights',
+      'time management', 'personal growth', 'science breakthroughs', 'learning techniques',
+      'creativity tips', 'health optimization', 'wellness hacks', 'success principles'
+    ];
+    
+    const randomTopic = request.topic || topics[Math.floor(Math.random() * topics.length)];
+    
     const prompts = {
-      thread: `Create a Twitter thread about ${request.topic || 'health and wellness'}. 
-              Make it ${request.mood || 'informative'} and ${request.targetLength || 'medium'} length.
-              Style: ${style}. Format as numbered thread (1/, 2/, etc.)`,
+      thread: `Create a viral Twitter thread about ${randomTopic}. 
+              Start with a hook, then break down insights. Make it ${request.mood || 'engaging'}.
+              Number each part (1/, 2/, etc.). Sound human and shareable.`,
       
-      single: `Create a single engaging tweet about ${request.topic || 'health and wellness'}. 
-               Make it ${request.mood || 'engaging'} and ${request.targetLength || 'short'}.
-               Style: ${style}`,
+      single: `Create a viral tweet about ${randomTopic}. 
+               Make it ${request.mood || 'engaging'} and relatable.
+               Start with "Just learned...", "Pro tip:", "Fun fact:", or "Anyone else...".
+               No hashtags. Sound like a real person.`,
                
-      reply: `Create an engaging reply about ${request.topic || 'health and wellness'}. 
-              Make it ${request.mood || 'helpful'} and conversational.
-              Style: ${style}`
+      reply: `Create a helpful reply about ${randomTopic}. 
+              Be conversational and add value. 
+              Sound like you're genuinely helping a friend.`
     };
 
     return prompts[request.contentType] || prompts.single;
