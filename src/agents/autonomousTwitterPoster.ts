@@ -251,11 +251,42 @@ export class AutonomousTwitterPoster {
       const context = await browser.newContext();
       const page = await context.newPage();
 
-      // Navigate to Twitter
+      // Navigate to Twitter login
+      console.log('🌐 Navigating to Twitter...');
+      await page.goto('https://twitter.com/login');
+      await page.waitForTimeout(3000);
+
+      // Check if we need to login
+      try {
+        // Try to find login form
+        const usernameInput = await page.locator('input[name="text"]').first();
+        if (await usernameInput.isVisible()) {
+          console.log('🔐 Logging into Twitter...');
+          
+          // Enter username/email
+          await usernameInput.fill(process.env.TWITTER_USERNAME || process.env.TWITTER_EMAIL || '');
+          await page.locator('[role="button"][type="button"]').filter({ hasText: 'Next' }).click();
+          await page.waitForTimeout(2000);
+
+          // Enter password
+          const passwordInput = await page.locator('input[name="password"]').first();
+          await passwordInput.fill(process.env.TWITTER_PASSWORD || '');
+          await page.locator('[role="button"][type="button"]').filter({ hasText: 'Log in' }).click();
+          await page.waitForTimeout(5000);
+          
+          console.log('✅ Twitter login completed');
+        }
+      } catch (loginError: any) {
+        console.log('ℹ️ Already logged in or login failed, continuing...');
+      }
+
+      // Navigate to compose tweet
+      console.log('📝 Opening tweet composer...');
       await page.goto('https://twitter.com/compose/tweet');
       await page.waitForTimeout(3000);
 
       // Type content
+      console.log('⌨️ Typing tweet content...');
       const tweetBox = await page.locator('[data-testid="tweetTextarea_0"]').first();
       await tweetBox.fill(content);
       await page.waitForTimeout(1000);
