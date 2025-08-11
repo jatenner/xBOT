@@ -60,7 +60,10 @@
     "emergency-growth": "node scripts/emergency-activate-growth.js",
     "start-emergency": "npm run build && npm run emergency",
     "start:emergency": "node dist/emergencyMain.js",
-    "start:full": "node dist/main.js"
+    "start:full": "node dist/main.js",
+    "db:shadow": "bash scripts/migrate-shadow.sh",
+    "db:stage": "bash scripts/migrate-stage.sh",
+    "db:prod": "bash scripts/migrate-prod.sh"
   },
   "keywords": [
     "twitter",
