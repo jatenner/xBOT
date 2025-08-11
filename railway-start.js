@@ -6,10 +6,11 @@ const path = require('path');
 console.log('🚀 Railway startup script starting...');
 console.log('🎭 Installing Playwright browsers...');
 
-// Install Playwright browsers first
-const playwright = spawn('npx', ['playwright', 'install', 'chromium', '--force'], {
+// Install Playwright browsers first with better Railway compatibility
+const playwright = spawn('npx', ['playwright', 'install', 'chromium'], {
   stdio: 'inherit',
-  cwd: process.cwd()
+  cwd: process.cwd(),
+  timeout: 180000 // 3 minutes timeout for Railway
 });
 
 playwright.on('close', (code) => {

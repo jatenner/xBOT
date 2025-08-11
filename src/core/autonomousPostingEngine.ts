@@ -118,8 +118,7 @@ export class AutonomousPostingEngine {
 
       // Post to Twitter using browser automation (call the private method via reflection)
       const result = await (this.browserPoster as any).postSingle(content, { 
-        useBrowser: true,
-        useAPI: false
+        forcePost: true
       });
       
       if (!result.success) {
@@ -162,8 +161,7 @@ export class AutonomousPostingEngine {
 
       // Post to Twitter using browser automation (call the private method via reflection)
       const result = await (this.browserPoster as any).postSingle(content, { 
-        useBrowser: true,
-        useAPI: false
+        forcePost: true
       });
       
       if (!result.success) {
