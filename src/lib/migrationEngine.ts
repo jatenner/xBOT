@@ -224,7 +224,7 @@ class MigrationBackup {
     try {
       // Get schema backup
       const { data: tables } = await this.supabase
-        .from('information_schema.tables')
+        .from('tweets')
         .select('table_name')
         .eq('table_schema', 'public');
 
