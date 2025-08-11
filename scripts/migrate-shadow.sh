@@ -16,11 +16,10 @@ NC='\033[0m' # No Color
 
 # Configuration
 POSTGRES_VERSION="15"
-CONTAINER_NAME="xbot-shadow-test-$$"
+CONTAINER_NAME="xbot-shadow"
 DB_NAME="shadow_test"
 DB_USER="postgres"
 DB_PASSWORD="shadow_test_pass"
-DB_PORT="5433"
 
 # Function to cleanup
 cleanup() {
@@ -53,8 +52,13 @@ docker run --name $CONTAINER_NAME \
     -e POSTGRES_USER=$DB_USER \
     -e POSTGRES_PASSWORD=$DB_PASSWORD \
     -e POSTGRES_DB=$DB_NAME \
-    -p $DB_PORT:5432 \
+    -p 0:5432 \
     -d postgres:$POSTGRES_VERSION
+
+# Discover the actual port
+echo -e "${BLUE}🔍 Discovering mapped port...${NC}"
+DB_PORT=$(docker port $CONTAINER_NAME 5432/tcp | cut -d: -f2)
+echo -e "${BLUE}📍 PostgreSQL mapped to port: $DB_PORT${NC}"
 
 # Wait for PostgreSQL to be ready
 echo -e "${BLUE}⏳ Waiting for PostgreSQL to be ready...${NC}"

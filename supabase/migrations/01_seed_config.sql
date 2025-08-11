@@ -9,29 +9,60 @@ VALUES
     (
         'production', 
         'schema_version', 
-        '{"version": "1.0.0", "migration": "baseline", "timestamp": "' || NOW()::TEXT || '"}',
-        '{"created_by": "baseline_migration", "purpose": "schema_tracking"}',
+        jsonb_build_object(
+            'version', '1.0.0',
+            'migration', 'baseline',
+            'timestamp', NOW()::TEXT
+        ),
+        jsonb_build_object(
+            'created_by', 'baseline_migration',
+            'purpose', 'schema_tracking'
+        ),
         NOW()
     ),
     (
         'production',
         'redis_config',
-        '{"enabled": true, "ttl_default": 3600, "max_memory": "256mb", "eviction_policy": "allkeys-lru"}',
-        '{"created_by": "baseline_migration", "purpose": "redis_hot_path"}',
+        jsonb_build_object(
+            'enabled', true,
+            'ttl_default', 3600,
+            'max_memory', '256mb',
+            'eviction_policy', 'allkeys-lru'
+        ),
+        jsonb_build_object(
+            'created_by', 'baseline_migration',
+            'purpose', 'redis_hot_path'
+        ),
         NOW()
     ),
     (
         'production',
         'rate_limits',
-        '{"posts_per_hour": 12, "posts_per_day": 75, "api_calls_per_minute": 100, "emergency_brake": true}',
-        '{"created_by": "baseline_migration", "purpose": "twitter_compliance"}',
+        jsonb_build_object(
+            'posts_per_hour', 12,
+            'posts_per_day', 75,
+            'api_calls_per_minute', 100,
+            'emergency_brake', true
+        ),
+        jsonb_build_object(
+            'created_by', 'baseline_migration',
+            'purpose', 'twitter_compliance'
+        ),
         NOW()
     ),
     (
         'production',
         'feature_flags',
-        '{"autonomous_posting": true, "redis_dual_store": true, "analytics_collection": true, "growth_optimization": true}',
-        '{"created_by": "baseline_migration", "purpose": "feature_control"}',
+        jsonb_build_object(
+            'autonomous_posting', true,
+            'redis_dual_store', true,
+            'analytics_collection', true,
+            'growth_optimization', true
+        ),
+        jsonb_build_object(
+            'created_by', 'baseline_migration',
+            'purpose', 'feature_control'
+        ),
         NOW()
     )
 ON CONFLICT ON CONSTRAINT bot_config_env_key_unique 
@@ -46,29 +77,60 @@ VALUES
     (
         'staging', 
         'schema_version', 
-        '{"version": "1.0.0", "migration": "baseline", "timestamp": "' || NOW()::TEXT || '"}',
-        '{"created_by": "baseline_migration", "purpose": "schema_tracking"}',
+        jsonb_build_object(
+            'version', '1.0.0',
+            'migration', 'baseline',
+            'timestamp', NOW()::TEXT
+        ),
+        jsonb_build_object(
+            'created_by', 'baseline_migration',
+            'purpose', 'schema_tracking'
+        ),
         NOW()
     ),
     (
         'staging',
         'redis_config',
-        '{"enabled": true, "ttl_default": 1800, "max_memory": "128mb", "eviction_policy": "allkeys-lru"}',
-        '{"created_by": "baseline_migration", "purpose": "redis_hot_path"}',
+        jsonb_build_object(
+            'enabled', true,
+            'ttl_default', 1800,
+            'max_memory', '128mb',
+            'eviction_policy', 'allkeys-lru'
+        ),
+        jsonb_build_object(
+            'created_by', 'baseline_migration',
+            'purpose', 'redis_hot_path'
+        ),
         NOW()
     ),
     (
         'staging',
         'rate_limits',
-        '{"posts_per_hour": 6, "posts_per_day": 25, "api_calls_per_minute": 50, "emergency_brake": true}',
-        '{"created_by": "baseline_migration", "purpose": "twitter_compliance"}',
+        jsonb_build_object(
+            'posts_per_hour', 6,
+            'posts_per_day', 25,
+            'api_calls_per_minute', 50,
+            'emergency_brake', true
+        ),
+        jsonb_build_object(
+            'created_by', 'baseline_migration',
+            'purpose', 'twitter_compliance'
+        ),
         NOW()
     ),
     (
         'staging',
         'feature_flags',
-        '{"autonomous_posting": false, "redis_dual_store": true, "analytics_collection": true, "growth_optimization": false}',
-        '{"created_by": "baseline_migration", "purpose": "feature_control"}',
+        jsonb_build_object(
+            'autonomous_posting', false,
+            'redis_dual_store', true,
+            'analytics_collection', true,
+            'growth_optimization', false
+        ),
+        jsonb_build_object(
+            'created_by', 'baseline_migration',
+            'purpose', 'feature_control'
+        ),
         NOW()
     )
 ON CONFLICT ON CONSTRAINT bot_config_env_key_unique 
