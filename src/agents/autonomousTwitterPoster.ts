@@ -48,21 +48,29 @@ export class AutonomousTwitterPoster {
     try {
       console.log('🤖 Initializing Autonomous Twitter Poster...');
 
-      // Initialize Twitter API client
-      if (process.env.TWITTER_ACCESS_TOKEN) {
-        this.twitterClient = new TwitterApi({
-          appKey: process.env.TWITTER_CONSUMER_KEY!,
-          appSecret: process.env.TWITTER_CONSUMER_SECRET!,
-          accessToken: process.env.TWITTER_ACCESS_TOKEN!,
-          accessSecret: process.env.TWITTER_ACCESS_TOKEN_SECRET!,
-        });
-        console.log('✅ Twitter API client initialized');
+      // Initialize Twitter API client only if credentials are available
+      if (process.env.TWITTER_ACCESS_TOKEN && process.env.TWITTER_CONSUMER_KEY) {
+        try {
+          this.twitterClient = new TwitterApi({
+            appKey: process.env.TWITTER_CONSUMER_KEY!,
+            appSecret: process.env.TWITTER_CONSUMER_SECRET!,
+            accessToken: process.env.TWITTER_ACCESS_TOKEN!,
+            accessSecret: process.env.TWITTER_ACCESS_TOKEN_SECRET!,
+          });
+          console.log('✅ Twitter API client initialized');
+        } catch (apiError: any) {
+          console.warn('⚠️ Twitter API initialization failed, will use browser posting only:', apiError.message);
+          this.twitterClient = null;
+        }
+      } else {
+        console.log('🌐 No Twitter API credentials found, using browser posting only');
+        this.twitterClient = null;
       }
 
-      console.log('✅ Autonomous Twitter Poster initialized');
+      console.log('✅ Autonomous Twitter Poster initialized (Browser posting mode)');
     } catch (error: any) {
-      console.error('❌ Failed to initialize poster:', error.message);
-      throw error;
+      console.warn('⚠️ Twitter Poster initialization warning:', error.message);
+      // Don't throw - we can still use browser posting
     }
   }
 
