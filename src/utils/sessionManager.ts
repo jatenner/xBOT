@@ -48,10 +48,17 @@ export class TwitterSessionManager {
     const storageState = await this.getStorageState();
     this.persistentContext = await browser.newContext({
       userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      viewport: { width: 1920, height: 1080 },
-      // Store session data to maintain login
-      storageState
+      viewport: { width: 1920, height: 1080 }
     });
+
+    // Ensure we start clean then load our known-good cookies
+    if (storageState && storageState.cookies && storageState.cookies.length > 0) {
+      await this.persistentContext.clearCookies();
+      await this.persistentContext.addCookies(storageState.cookies);
+      console.log(`[session] Applied ${storageState.cookies.length} cookies to context`);
+    } else {
+      console.warn('[session] No cookies to apply - will require login');
+    }
 
     this.lastLoginTime = now;
     return this.persistentContext;
