@@ -433,20 +433,30 @@ export class AutonomousTwitterPoster {
       } catch {}
     }
 
-    // Use session manager to create context with stored cookies
+    // Use stable launchPersistentContext approach
     const playwright = await import('playwright');
     console.log('🌐 Creating new persistent browser context...');
     
-    const browser = await playwright.chromium.launch({
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu'
-      ]
-    });
+    this.persistentContext = await playwright.chromium.launchPersistentContext(
+      this.userDataDir,
+      {
+        headless: true,
+        viewport: { width: 1280, height: 800 },
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--disable-extensions',
+          '--no-first-run',
+          '--no-default-browser-check'
+        ],
+        timeout: 60000
+      }
+    );
 
-    this.persistentContext = await this.sessionManager.getPersistentContext(browser);
+    // Load stored cookies via session manager
+    await this.sessionManager.applyStoredSession(this.persistentContext);
 
     // Set timeouts for robustness
     this.persistentContext.setDefaultTimeout(30000);
