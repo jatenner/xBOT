@@ -2,7 +2,7 @@ import { IntelligentContentGenerator, ContentGenerationRequest } from './intelli
 import { EngagementAnalyzer } from '../intelligence/engagementAnalyzer';
 import { AdvancedDatabaseManager } from '../lib/advancedDatabaseManager';
 import { TwitterSessionManager } from '../utils/sessionManager';
-import { Browser, Page } from 'playwright';
+import { Browser, Page, BrowserContext } from 'playwright';
 
 export interface PostingOptions {
   dryRun?: boolean;
@@ -27,13 +27,20 @@ export class AutonomousTwitterPoster {
   private engagementAnalyzer: EngagementAnalyzer;
   private db: AdvancedDatabaseManager;
   private sessionManager: TwitterSessionManager;
-  private browser: Browser | null = null;
+  private persistentContext: BrowserContext | null = null;
+  private readonly userDataDir: string;
+  private isShuttingDown = false;
 
   private constructor() {
     this.contentGenerator = IntelligentContentGenerator.getInstance();
     this.engagementAnalyzer = EngagementAnalyzer.getInstance();
     this.db = AdvancedDatabaseManager.getInstance();
     this.sessionManager = TwitterSessionManager.getInstance();
+    this.userDataDir = "/app/.pw-data";
+    
+    // Setup graceful shutdown handlers
+    process.on('SIGTERM', () => this.gracefulShutdown());
+    process.on('SIGINT', () => this.gracefulShutdown());
   }
 
   public static getInstance(): AutonomousTwitterPoster {
@@ -45,6 +52,9 @@ export class AutonomousTwitterPoster {
 
   public async initialize(): Promise<void> {
     try {
+      // Startup banner with build info
+      const pkg = require('../../package.json');
+      console.log(`🚀 BUILD:${pkg.version} APP_ENV:${process.env.APP_ENV} LIVE_POSTS:${process.env.LIVE_POSTS}`);
       console.log('🤖 Initializing Autonomous Twitter Poster...');
       console.log('🌐 Browser-only posting mode (No Twitter API)');
       console.log('✅ Autonomous Twitter Poster initialized (Browser posting mode)');
@@ -186,124 +196,33 @@ export class AutonomousTwitterPoster {
   }
 
   private async postViaBrowser(content: string): Promise<string> {
-    // Runtime browser installation for Railway
-    try {
-      console.log('🎭 Checking Playwright browser availability...');
-      const { execSync } = require('child_process');
-      
-      // Test if browsers are available
-      const playwright = await import('playwright');
-      try {
-        await playwright.chromium.launch({ headless: true });
-        console.log('✅ Playwright browsers are available');
-      } catch (browserError: any) {
-        if (browserError.message.includes("Executable doesn't exist") || browserError.message.includes("ENOENT")) {
-          console.log('🔧 Installing Playwright browsers at runtime...');
-          execSync('npx playwright install chromium', { stdio: 'inherit' });
-          console.log('🔧 Setting executable permissions...');
-          execSync('chmod +x /opt/render/.cache/ms-playwright/chromium_headless_shell-*/chrome-linux/headless_shell', { stdio: 'inherit' });
-          console.log('✅ Runtime browser installation complete');
-        } else {
-          throw browserError;
-        }
-      }
-    } catch (installError: any) {
-      console.warn('⚠️ Browser installation failed:', installError.message);
-    }
-
-    const playwright = await import('playwright');
+    console.log('🌐 Posting via browser automation...');
     
-    // Enhanced browser launch configurations for maximum Railway compatibility
-    let browser;
-    const launchOptions = [
-      // Primary: Railway-optimized Chromium with memory management
-      {
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
-          '--disable-background-timer-throttling',
-          '--disable-backgrounding-occluded-windows',
-          '--disable-renderer-backgrounding',
-          '--disable-extensions',
-          '--disable-plugins',
-          '--disable-default-apps',
-          '--no-first-run',
-          '--disable-web-security',
-          '--disable-features=TranslateUI',
-          '--disable-ipc-flooding-protection',
-          '--memory-pressure-off',
-          '--max_old_space_size=400',
-          '--single-process'
-        ],
-        timeout: 30000,
-        ignoreDefaultArgs: ['--disable-extensions']
-      },
-      // Secondary: System chromium fallback
-      {
-        headless: true,
-        executablePath: '/usr/bin/chromium-browser',
-        args: [
-          '--no-sandbox', 
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
-          '--single-process'
-        ],
-        timeout: 20000
-      },
-      // Tertiary: Minimal resource mode
-      {
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
-          '--disable-extensions',
-          '--disable-plugins',
-          '--disable-images',
-          '--disable-javascript',
-          '--single-process',
-          '--memory-pressure-off'
-        ],
-        timeout: 15000
-      }
-    ];
-    
-    for (const options of launchOptions) {
-      try {
-        console.log('🌐 Attempting browser launch...');
-        browser = await playwright.chromium.launch(options);
-        console.log('✅ Browser launched successfully');
-        break;
-      } catch (launchError: any) {
-        console.warn('⚠️ Browser launch failed, trying next option...', launchError.message);
-      }
-    }
-    
-    if (!browser) {
-      throw new Error('All browser launch attempts failed');
-    }
-
-    try {
-      // Use persistent session to reduce login frequency
-      const context = await this.sessionManager.getPersistentContext(browser);
-      const page = await context.newPage();
-
-      // Ensure we're logged in (only logs in if needed)
+    return await this.withPage(async (page) => {
+      // Navigate directly to Twitter home to check if logged in
       console.log('🌐 Navigating to Twitter...');
-      const loginSuccess = await this.sessionManager.ensureLoggedIn(page);
+      await page.goto('https://twitter.com/home', { 
+        waitUntil: "domcontentloaded", 
+        timeout: 60000 
+      });
       
-      if (!loginSuccess) {
-        throw new Error('Failed to login to Twitter');
+      // Check if we're already logged in by looking for compose button
+      const isLoggedIn = await page.locator('[data-testid="SideNav_NewTweet_Button"], [aria-label="Post"]').first().isVisible({ timeout: 5000 }).catch(() => false);
+      
+      if (!isLoggedIn) {
+        console.log('🔐 Need to login to Twitter...');
+        // For now, throw error - login flow will be handled separately
+        throw new Error('Not logged in to Twitter - login required');
       }
+      
+      console.log('✅ Already logged in to Twitter');
 
       // Navigate to compose tweet
       console.log('📝 Opening tweet composer...');
-      await page.goto('https://twitter.com/compose/tweet');
+      await page.goto('https://twitter.com/compose/tweet', { 
+        waitUntil: "domcontentloaded", 
+        timeout: 60000 
+      });
       await page.waitForTimeout(3000);
 
       // Type content
@@ -361,10 +280,7 @@ export class AutonomousTwitterPoster {
 
       console.log('✅ Posted via browser, tweet ID:', tweetId);
       return tweetId;
-
-    } finally {
-      await browser.close();
-    }
+    });
   }
 
   private async postThreadViaBrowser(threadParts: string[]): Promise<string> {
@@ -491,6 +407,105 @@ export class AutonomousTwitterPoster {
     } catch (error) {
       console.warn('Failed to get today post count, defaulting to 0');
       return 0;
+    }
+  }
+
+  /**
+   * Robust browser context management with proper health checks
+   */
+  private contextIsHealthy(ctx?: BrowserContext | null): boolean {
+    try {
+      return !!ctx && !!ctx.browser()?.isConnected();
+    } catch {
+      return false;
+    }
+  }
+
+  private async ensureContext(): Promise<BrowserContext> {
+    if (this.contextIsHealthy(this.persistentContext)) {
+      return this.persistentContext!;
+    }
+
+    // Cleanup old context
+    if (this.persistentContext) {
+      try {
+        await this.persistentContext.close();
+      } catch {}
+    }
+
+    // Use session manager to create context with stored cookies
+    const playwright = await import('playwright');
+    console.log('🌐 Creating new persistent browser context...');
+    
+    const browser = await playwright.chromium.launch({
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu'
+      ]
+    });
+
+    this.persistentContext = await this.sessionManager.getPersistentContext(browser);
+
+    // Set timeouts for robustness
+    this.persistentContext.setDefaultTimeout(30000);
+    this.persistentContext.setDefaultNavigationTimeout(60000);
+    
+    console.log('✅ Browser launched successfully');
+    return this.persistentContext;
+  }
+
+  private async withPage<T>(fn: (page: Page) => Promise<T>): Promise<T> {
+    for (let i = 0; i < 3; i++) {
+      const context = await this.ensureContext();
+      
+      try {
+        const page = await context.newPage();
+        console.log('✅ New page created successfully');
+        
+        // Initialize page with blank document
+        await page.goto("about:blank", { waitUntil: "domcontentloaded" });
+        
+        const result = await fn(page);
+        
+        try {
+          await page.close();
+        } catch {}
+        
+        return result;
+      } catch (error: any) {
+        const msg = String(error?.message || error);
+        console.warn(`⚠️ withPage attempt ${i + 1} failed:`, msg);
+        
+        if (msg.includes("Target page, context or browser has been closed")) {
+          try {
+            await context.close();
+          } catch {}
+          this.persistentContext = null; // Force recreate next loop
+          continue; // Retry
+        }
+        
+        // For other errors, don't retry
+        throw error;
+      }
+    }
+    throw new Error("Browser operation failed after retries");
+  }
+
+  private async gracefulShutdown(): Promise<void> {
+    if (this.isShuttingDown) return;
+    
+    console.log('🛑 Graceful shutdown initiated...');
+    this.isShuttingDown = true;
+    
+    try {
+      if (this.persistentContext) {
+        await this.persistentContext.close();
+      }
+      console.log('✅ Browser resources cleaned up');
+    } catch (error) {
+      console.warn('⚠️ Cleanup warning:', error);
     }
   }
 }
