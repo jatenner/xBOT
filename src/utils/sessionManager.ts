@@ -80,6 +80,40 @@ export class TwitterSessionManager {
   }
 
   /**
+   * Apply stored session to an existing persistent context
+   */
+  async applyStoredSession(context: any): Promise<void> {
+    const now = Date.now();
+    
+    // Load stored cookies and apply them
+    const storageState = await this.getStorageState();
+    
+    if (storageState && storageState.cookies && storageState.cookies.length > 0) {
+      await context.clearCookies();
+      await context.addCookies(storageState.cookies);
+      console.log(`[session] Applied ${storageState.cookies.length} cookies to context`);
+      
+      // Verify login status
+      const loggedIn = await isLoggedIn(context);
+      if (!loggedIn) {
+        console.warn('[session] Cookies applied but not logged in - attempting fallback login');
+        const loginSuccess = await performTwitterLogin(context);
+        if (!loginSuccess) {
+          console.error('[session] ❌ Fallback login failed');
+        }
+      }
+    } else {
+      console.warn('[session] No cookies available - attempting fallback login');
+      const loginSuccess = await performTwitterLogin(context);
+      if (!loginSuccess) {
+        console.error('[session] ❌ Fallback login failed - Twitter interactions will fail');
+      }
+    }
+
+    this.lastLoginTime = now;
+  }
+
+  /**
    * Perform Twitter login only when needed
    */
   public async ensureLoggedIn(page: any): Promise<boolean> {
