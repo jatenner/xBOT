@@ -4,6 +4,7 @@
  */
 
 import { loadTwitterCookiesFromSupabase } from './twitterCookies';
+import { performTwitterLogin, isLoggedIn } from './twitterAuth';
 
 export class TwitterSessionManager {
   private static instance: TwitterSessionManager;
@@ -56,8 +57,22 @@ export class TwitterSessionManager {
       await this.persistentContext.clearCookies();
       await this.persistentContext.addCookies(storageState.cookies);
       console.log(`[session] Applied ${storageState.cookies.length} cookies to context`);
+      
+      // Verify login status
+      const loggedIn = await isLoggedIn(this.persistentContext);
+      if (!loggedIn) {
+        console.warn('[session] Cookies applied but not logged in - attempting fallback login');
+        const loginSuccess = await performTwitterLogin(this.persistentContext);
+        if (!loginSuccess) {
+          console.error('[session] ❌ Fallback login failed');
+        }
+      }
     } else {
-      console.warn('[session] No cookies to apply - will require login');
+      console.warn('[session] No cookies available - attempting fallback login');
+      const loginSuccess = await performTwitterLogin(this.persistentContext);
+      if (!loginSuccess) {
+        console.error('[session] ❌ Fallback login failed - Twitter interactions will fail');
+      }
     }
 
     this.lastLoginTime = now;
