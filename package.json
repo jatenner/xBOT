@@ -11,7 +11,7 @@
 
     "postbuild": "mkdir -p dist/dashboard && cp src/dashboard/*.html dist/dashboard/ 2>/dev/null || true && mkdir -p dist/prompts && cp -r src/prompts/* dist/prompts/ && echo 'Build completed successfully'",
     "start": "node railway-start.js",
-    "runtime-install": "echo '🎭 Installing Playwright browsers at runtime...' && PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install chromium --force",
+
     "migrate": "node scripts/db_push.js",
     "dev": "npm run setup-check && nodemon src/index.js",
     "test": "jest",
