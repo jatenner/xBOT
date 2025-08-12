@@ -205,7 +205,7 @@ export class AdaptivePostingScheduler {
   }
 
   /**
-   * Get current engagement window data
+   * Get current engagement window data with graceful fallback
    */
   private async getCurrentEngagementWindow(): Promise<EngagementWindow | null> {
     try {
@@ -226,7 +226,7 @@ export class AdaptivePostingScheduler {
         }
       );
 
-      if (!windowData) return null;
+      if (!windowData) return this.getDefaultEngagementWindow(currentHour);
 
       return {
         startHour: currentHour,
@@ -235,10 +235,49 @@ export class AdaptivePostingScheduler {
         followerActivity: windowData.follower_activity || 0.1,
         optimalFrequency: windowData.optimal_frequency || 0.33
       };
-    } catch (error) {
+    } catch (error: any) {
+      // Check for the specific "no rows returned" error
+      if (error.code === 'PGRST116' || error.message?.includes('0 rows')) {
+        if (!this.hasLoggedEngagementWarning) {
+          console.warn('⚠️ Engagement windows not seeded; using defaults');
+          this.hasLoggedEngagementWarning = true;
+        }
+        return this.getDefaultEngagementWindow(new Date().getHours());
+      }
+      
       console.warn('Failed to get engagement window:', error);
-      return null;
+      return this.getDefaultEngagementWindow(new Date().getHours());
     }
+  }
+
+  private hasLoggedEngagementWarning = false;
+
+  /**
+   * Get default engagement windows for local timezone
+   */
+  private getDefaultEngagementWindow(currentHour: number): EngagementWindow {
+    // Default high-engagement windows: 9am, 12pm, 6pm
+    const defaultWindows = [
+      { hour: 9, engagement: 0.35, activity: 0.4, frequency: 0.5 },   // Morning peak
+      { hour: 12, engagement: 0.4, activity: 0.45, frequency: 0.6 },  // Lunch peak
+      { hour: 18, engagement: 0.45, activity: 0.5, frequency: 0.7 },  // Evening peak
+      { hour: 20, engagement: 0.3, activity: 0.35, frequency: 0.4 },  // Night activity
+    ];
+
+    // Find closest window or use moderate defaults
+    const closestWindow = defaultWindows.reduce((closest, window) => {
+      const currentDist = Math.abs(currentHour - window.hour);
+      const closestDist = Math.abs(currentHour - closest.hour);
+      return currentDist < closestDist ? window : closest;
+    });
+
+    return {
+      startHour: currentHour,
+      endHour: (currentHour + 1) % 24,
+      averageEngagement: closestWindow.engagement,
+      followerActivity: closestWindow.activity,
+      optimalFrequency: closestWindow.frequency
+    };
   }
 
   /**

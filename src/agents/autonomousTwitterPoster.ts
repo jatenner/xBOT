@@ -36,7 +36,7 @@ export class AutonomousTwitterPoster {
     this.engagementAnalyzer = EngagementAnalyzer.getInstance();
     this.db = AdvancedDatabaseManager.getInstance();
     this.sessionManager = TwitterSessionManager.getInstance();
-    this.userDataDir = "/app/.pw-data";
+    this.userDataDir = process.env.PW_USER_DATA_DIR || "/app/.pw-data";
     
     // Setup graceful shutdown handlers
     process.on('SIGTERM', () => this.gracefulShutdown());

@@ -53,8 +53,13 @@ export class TweetPerformanceTracker {
       // Extract engagement metrics from tweet
       const metrics = await this.extractTweetMetrics(page, tweetUrl);
       
-      // Get current follower count for attribution
-      const followerData = await this.getFollowerCount(page);
+      // Get current follower count for attribution (non-blocking)
+      let followerData = 0;
+      try {
+        followerData = await this.getFollowerCount(page);
+      } catch (error) {
+        console.warn('Follower count fetch failed, continuing with tracking:', error);
+      }
       
       console.log(`✅ Tweet metrics collected: ${metrics.likes} likes, ${metrics.retweets} retweets, ${metrics.replies} replies`);
       
@@ -182,17 +187,20 @@ export class TweetPerformanceTracker {
   }
 
   /**
-   * Get current follower count for growth attribution
+   * Get current follower count for growth attribution (non-blocking)
    */
   private async getFollowerCount(page: Page): Promise<number> {
     try {
-      // Navigate to profile
-      await page.goto('https://twitter.com/Signal_Synapse');
+      // Navigate to profile with robust timeout settings
+      await page.goto('https://twitter.com/Signal_Synapse', { 
+        waitUntil: "domcontentloaded", 
+        timeout: 60000 
+      });
       await page.waitForTimeout(2000);
       
-      // Get follower count
+      // Get follower count with timeout
       const followerElement = await page.locator('[href$="/followers"] span, [data-testid="UserName"] + div span').first();
-      if (await followerElement.isVisible()) {
+      if (await followerElement.isVisible({ timeout: 10000 })) {
         const text = await followerElement.textContent();
         if (text) {
           return this.parseEngagementNumber(text);
