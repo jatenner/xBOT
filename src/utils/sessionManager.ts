@@ -3,6 +3,8 @@
  * Reduces login frequency and Twitter security alerts
  */
 
+import { loadTwitterCookiesFromSupabase } from './twitterCookies';
+
 export class TwitterSessionManager {
   private static instance: TwitterSessionManager;
   private persistentContext: any = null;
@@ -43,11 +45,12 @@ export class TwitterSessionManager {
     }
 
     // Create new context with session persistence
+    const storageState = await this.getStorageState();
     this.persistentContext = await browser.newContext({
       userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       viewport: { width: 1920, height: 1080 },
       // Store session data to maintain login
-      storageState: this.getStorageState()
+      storageState
     });
 
     this.lastLoginTime = now;
@@ -178,10 +181,14 @@ export class TwitterSessionManager {
   /**
    * Get stored session state
    */
-  private getStorageState(): any {
-    // In a production environment, load from Redis or file
-    // For now, return undefined to create fresh sessions
-    return undefined;
+  private async getStorageState(): Promise<any> {
+    try {
+      const storageState = await loadTwitterCookiesFromSupabase();
+      return storageState;
+    } catch (error) {
+      console.warn('[session] Failed to load storage state:', (error as Error).message);
+      return undefined;
+    }
   }
 
   /**
