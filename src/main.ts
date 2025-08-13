@@ -19,6 +19,7 @@ import { AutonomousController } from './core/autonomousController';
 import { EnterpriseSystemController } from './core/enterpriseSystemController';
 import { getBrowser } from './utils/browser';
 import { logPlaywrightProbe } from './utils/browserProbe';
+import { TwitterSessionManager } from './utils/twitterSessionManager';
 
 async function main(): Promise<void> {
   try {
@@ -29,6 +30,16 @@ async function main(): Promise<void> {
     
     // Browser probe before launching
     await logPlaywrightProbe();
+    
+    // Check Twitter session
+    const sessionInfo = TwitterSessionManager.getSessionInfo();
+    console.log(`🐦 Twitter Session: ${sessionInfo.message}`);
+    
+    if (!sessionInfo.hasSession) {
+      console.log('⚠️ WARNING: No valid Twitter session found');
+      console.log('📝 Bot will run in read-only mode until session is configured');
+      console.log('💡 To fix: Save Twitter cookies to data/twitter_session.json');
+    }
     
     // CRITICAL: Start health server IMMEDIATELY for Railway health checks
     console.log('🏥 Starting health server for Railway...');
@@ -124,6 +135,16 @@ async function main(): Promise<void> {
     
     process.on('unhandledRejection', (reason, promise) => {
       console.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
+      
+      // Don't exit for Twitter session errors - let the bot continue in read-only mode
+      const reasonStr = String(reason);
+      if (reasonStr.includes('POST_SKIPPED_NO_SESSION') || 
+          reasonStr.includes('POST_SKIPPED_PLAYWRIGHT') ||
+          reasonStr.includes('Not logged in to Twitter')) {
+        console.log('⚠️ Non-fatal error: Bot will continue in read-only mode');
+        return;
+      }
+      
       process.exit(1);
     });
     
