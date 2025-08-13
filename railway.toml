@@ -1,5 +1,5 @@
 [build]
-command = "echo '🤖 Building Autonomous Twitter Bot...' && npm install && npm run build && echo '✅ Bot build complete'"
+builder = "DOCKERFILE"
 
 [deploy]
 healthcheckPath = "/health"
@@ -16,3 +16,5 @@ size = "1GB"
 [env]
 NODE_ENV = "production"
 RAILWAY_ENVIRONMENT = "production"
+NPM_CONFIG_CACHE = "/tmp/.npm"
+LIVE_POSTS = "false"
