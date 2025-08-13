@@ -410,106 +410,36 @@ export class AutonomousTwitterPoster {
     }
   }
 
-  /**
-   * Robust browser context management with proper health checks
-   */
-  private contextIsHealthy(ctx?: BrowserContext | null): boolean {
-    try {
-      return !!ctx && !!ctx.browser()?.isConnected();
-    } catch {
-      return false;
-    }
-  }
 
-  private async ensureContext(): Promise<BrowserContext> {
-    if (this.contextIsHealthy(this.persistentContext)) {
-      return this.persistentContext!;
-    }
-
-    // Cleanup old context
-    if (this.persistentContext) {
-      try {
-        await this.persistentContext.close();
-      } catch {}
-    }
-
-    // Use stable launchPersistentContext approach  
-    const playwright = await import('playwright');
-    console.log('🌐 Creating new persistent browser context...');
-    
-    this.persistentContext = await playwright.chromium.launchPersistentContext(
-      process.env.PW_USER_DATA_DIR || '/tmp/pw-profile',
-      {
-        headless: true,
-        viewport: { width: 1280, height: 800 },
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage', 
-          '--disable-gpu',
-          '--no-first-run',
-          '--no-default-browser-check'
-        ],
-        timeout: 60000,
-      }
-    );
-
-    // Apply stored session cookies
-    await this.sessionManager.applyStoredSession(this.persistentContext);
-
-    // Set timeouts for robustness
-    this.persistentContext.setDefaultTimeout(30000);
-    this.persistentContext.setDefaultNavigationTimeout(60000);
-    
-    console.log('✅ Browser launched successfully');
-    return this.persistentContext;
-  }
-
-  private contextIsHealthy(context: any): boolean {
-    try {
-      // Replace any .isClosed() checks with this
-      context.pages();
-      return true;
-    } catch {
-      return false;
-    }
-  }
 
   private async withPage<T>(fn: (page: Page) => Promise<T>): Promise<T> {
-    for (let i = 0; i < 3; i++) {
-      const context = await this.ensureContext();
+    try {
+      const page = await this.getFreshPage();
+      console.log('✅ New page created successfully');
+      
+      const result = await fn(page);
       
       try {
-        const page = await context.newPage();
-        console.log('✅ New page created successfully');
-        
-        // Initialize page with blank document
-        await page.goto("about:blank", { waitUntil: "domcontentloaded" });
-        
-        const result = await fn(page);
-        
-        try {
-          await page.close();
-        } catch {}
-        
-        return result;
-      } catch (error: any) {
-        const msg = String(error?.message || error);
-        console.warn(`⚠️ withPage attempt ${i + 1} failed:`, msg);
-        
-        if (msg.includes("Target page, context or browser has been closed")) {
-          try {
-            await context.close();
-          } catch {}
-          this.persistentContext = null; // Force recreate next loop
-          continue; // Retry
-        }
-        
-        // For other errors, don't retry
-        throw error;
+        await page.close();
+      } catch {}
+      
+      return result;
+    } catch (error: any) {
+      const msg = String(error?.message || error);
+      console.error('⚠️ Browser posting failed:', msg);
+      
+      if (msg.includes("Target page, context or browser has been closed") || 
+          msg.includes("Browser closed")) {
+        console.log('❌ POST_ABORTED_PLAYWRIGHT_UNAVAILABLE');
       }
+      
+      throw new Error(`Browser posting failed: ${msg}`);
     }
-    throw new Error("Browser operation failed after retries");
+  }
+
+  private async getFreshPage() {
+    const { getFreshPage } = await import('../utils/browser');
+    return getFreshPage();
   }
 
   private async gracefulShutdown(): Promise<void> {
