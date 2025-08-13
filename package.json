@@ -13,7 +13,6 @@
     "probe:local": "node scripts/probe_playwright.js",
     "probe:remote": "curl -sSf $PROD_URL/playwright",
     "post:dry": "curl -sSf -X POST $PROD_URL/ai-post -H 'content-type: application/json' -d '{\"topic\":\"smoke-test\",\"dryRun\":true}'",
-
     "postbuild": "mkdir -p dist/dashboard && cp src/dashboard/*.html dist/dashboard/ 2>/dev/null || true && mkdir -p dist/prompts && cp -r src/prompts/* dist/prompts/ && echo 'Build completed successfully'",
     "start": "npm run start:prod",
     "migrate:prod": "node scripts/bulletproof_migrate.js",
@@ -100,7 +99,7 @@
     "ioredis": "^5.3.2",
     "node-cron": "^3.0.3",
     "openai": "^4.56.0",
-    "playwright": "^1.40.0",
+    "playwright-core": "^1.54.2",
     "redis": "^4.7.1",
     "socket.io": "^4.7.4",
     "twitter-api-v2": "^1.17.2",
@@ -120,8 +119,8 @@
     "@types/ws": "^8.5.12",
     "@types/xml2js": "^0.4.14",
     "jest": "^29.7.0",
-    "ts-jest": "^29.4.0",
     "supabase": "^1.200.3",
+    "ts-jest": "^29.4.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.5.4"
   }

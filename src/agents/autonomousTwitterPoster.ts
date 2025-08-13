@@ -3,7 +3,7 @@ import { EngagementAnalyzer } from '../intelligence/engagementAnalyzer';
 import { AdvancedDatabaseManager } from '../lib/advancedDatabaseManager';
 import { TwitterSessionManager } from '../utils/sessionManager';
 import { getPageWithStorage } from '../utils/browser';
-import { Browser, Page, BrowserContext } from 'playwright';
+import { Browser, Page, BrowserContext } from 'playwright-core';
 
 export interface PostingOptions {
   dryRun?: boolean;

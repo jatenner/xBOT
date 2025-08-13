@@ -1,4 +1,4 @@
-import { Browser, Page } from 'playwright';
+import { Browser, Page } from 'playwright-core';
 
 export interface TweetMetrics {
   tweetId: string;
@@ -284,7 +284,7 @@ export class TweetPerformanceTracker {
    */
   private async getBrowserPage(): Promise<Page> {
     if (!this.browser) {
-      const playwright = await import('playwright');
+      const playwright = await import('playwright-core');
       this.browser = await playwright.chromium.launch({
         headless: true,
         args: ['--no-sandbox', '--disable-setuid-sandbox']
