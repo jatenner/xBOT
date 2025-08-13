@@ -183,6 +183,52 @@ export function startHealthServer(): Promise<void> {
       }
     });
 
+    // Session status endpoint
+    app.get('/session', (_req, res) => {
+      try {
+        const fs = require('fs');
+        const path = require('path');
+        const sessionPath = path.resolve('data', 'twitter_session.json');
+        
+        let hasFile = false;
+        let cookieNames: string[] = [];
+        let loggedInGuess = false;
+        
+        try {
+          if (fs.existsSync(sessionPath)) {
+            hasFile = true;
+            const sessionData = JSON.parse(fs.readFileSync(sessionPath, 'utf8'));
+            cookieNames = (sessionData.cookies || []).map((c: any) => c.name);
+            
+            // Simple heuristic: if we have auth-related cookies, probably logged in
+            const authCookies = cookieNames.filter(name => 
+              name.includes('auth') || 
+              name.includes('session') || 
+              name.includes('token') ||
+              name === 'ct0' || // X CSRF token
+              name === 'twid'   // Twitter ID
+            );
+            loggedInGuess = authCookies.length > 0;
+          }
+        } catch (err) {
+          // Keep defaults
+        }
+        
+        res.json({
+          hasFile,
+          cookieNames: cookieNames.slice(0, 20), // Limit output
+          cookieCount: cookieNames.length,
+          loggedInGuess,
+          timestamp: new Date().toISOString()
+        });
+      } catch (error) {
+        res.status(500).json({ 
+          error: 'Session check failed',
+          timestamp: new Date().toISOString()
+        });
+      }
+    });
+
     // Basic info endpoint
     app.get('/', (_req, res) => {
       const uptime = Date.now() - healthServerStatus.startTime.getTime();
@@ -198,7 +244,8 @@ export function startHealthServer(): Promise<void> {
           environment: '/env - Environment variables check',
           playwright: '/playwright - Browser automation status',
           redis: '/health/redis - Redis Cloud health check',
-          database: '/health/database - Full database health check'
+          database: '/health/database - Full database health check',
+          session: '/session - Twitter session status'
         },
         message: 'Health server is always available - bot may still be initializing'
       });

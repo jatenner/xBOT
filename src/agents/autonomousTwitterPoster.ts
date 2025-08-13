@@ -2,6 +2,7 @@ import { IntelligentContentGenerator, ContentGenerationRequest } from './intelli
 import { EngagementAnalyzer } from '../intelligence/engagementAnalyzer';
 import { AdvancedDatabaseManager } from '../lib/advancedDatabaseManager';
 import { TwitterSessionManager } from '../utils/twitterSessionManager';
+import { isLoggedIn } from '../utils/xLoggedIn';
 import { getPageWithStorage } from '../utils/browser';
 import { Browser, Page, BrowserContext } from 'playwright';
 
@@ -217,25 +218,18 @@ export class AutonomousTwitterPoster {
     return await this.withPage(async (page) => {
       // Navigate directly to Twitter home to check if logged in
       console.log('🌐 Navigating to Twitter...');
-      await page.goto('https://twitter.com/home', { 
-        waitUntil: "domcontentloaded", 
-        timeout: 60000 
-      });
+      // Use robust login detection
+      const loggedIn = await isLoggedIn(page);
       
-      // Check if we're already logged in by looking for compose button
-      const isLoggedIn = await page.locator('[data-testid="SideNav_NewTweet_Button"], [aria-label="Post"]').first().isVisible({ timeout: 5000 }).catch(() => false);
-      
-      if (!isLoggedIn) {
-        console.log('🔐 Need to login to Twitter...');
-        // For now, throw error - login flow will be handled separately
-        throw new Error('Not logged in to Twitter - login required');
+      if (!loggedIn) {
+        throw new Error('POST_SKIPPED_PLAYWRIGHT: login_required');
       }
       
-      console.log('✅ Already logged in to Twitter');
+      console.log('✅ LOGIN_CHECK: Confirmed logged in to X');
 
       // Navigate to compose tweet
       console.log('📝 Opening tweet composer...');
-      await page.goto('https://twitter.com/compose/tweet', { 
+      await page.goto('https://x.com/compose/tweet', { 
         waitUntil: "domcontentloaded", 
         timeout: 60000 
       });
