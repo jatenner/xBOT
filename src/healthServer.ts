@@ -116,17 +116,22 @@ export function startHealthServer(): Promise<void> {
     // Playwright status endpoint - returns simple text for verification
     app.get('/playwright', async (_req, res) => {
       try {
-        // Quick test that Playwright can launch a browser
-        const { chromium } = await import('playwright');
-        const browser = await chromium.launch({ 
-          headless: true, 
-          args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
-        });
-        await browser.close();
+        // Use our robust browser factory instead of direct chromium launch
+        const { getBrowser } = await import('./utils/browser');
+        const browser = await getBrowser();
         
-        res.set('Content-Type', 'text/plain');
-        res.send('PLAYWRIGHT_OK');
+        // Quick test - just check if browser is connected
+        const isConnected = browser.isConnected();
+        
+        if (isConnected) {
+          healthServerStatus.playwrightStatus = 'ready';
+          res.set('Content-Type', 'text/plain');
+          res.send('PLAYWRIGHT_OK');
+        } else {
+          throw new Error('Browser not connected');
+        }
       } catch (error: any) {
+        healthServerStatus.playwrightStatus = 'failed';
         res.set('Content-Type', 'text/plain');
         res.status(500).send(`PLAYWRIGHT_FAIL: ${error.message}`);
       }
