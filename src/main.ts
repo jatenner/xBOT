@@ -11,6 +11,7 @@
  * - API endpoints for control
  */
 
+import "./boot/env-playwright";
 import * as dotenv from 'dotenv';
 dotenv.config();
 
@@ -27,7 +28,7 @@ async function main(): Promise<void> {
     console.log('='.repeat(70));
     
     // Browser probe before launching
-    logPlaywrightProbe();
+    await logPlaywrightProbe();
     
     // CRITICAL: Start health server IMMEDIATELY for Railway health checks
     console.log('🏥 Starting health server for Railway...');

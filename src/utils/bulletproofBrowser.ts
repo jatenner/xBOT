@@ -84,8 +84,7 @@ export class BulletproofBrowser {
             console.log(`🔧 Running: ${command}`);
             execSync(command, { 
               stdio: 'inherit', 
-              timeout: 180000, // 3 minutes max
-              env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: '0' }
+              timeout: 180000 // 3 minutes max
             });
             console.log(`✅ Successfully executed: ${command}`);
             
