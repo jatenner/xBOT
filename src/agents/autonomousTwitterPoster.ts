@@ -3,7 +3,7 @@ import { EngagementAnalyzer } from '../intelligence/engagementAnalyzer';
 import { AdvancedDatabaseManager } from '../lib/advancedDatabaseManager';
 import { TwitterSessionManager } from '../utils/sessionManager';
 import { getPageWithStorage } from '../utils/browser';
-import { Browser, Page, BrowserContext } from 'playwright-core';
+import { Browser, Page, BrowserContext } from 'playwright';
 
 export interface PostingOptions {
   dryRun?: boolean;
@@ -197,6 +197,14 @@ export class AutonomousTwitterPoster {
   }
 
   private async postViaBrowser(content: string): Promise<string> {
+    console.log('🎭 POST_START');
+    
+    // Guard against real posting during verification
+    if (process.env.LIVE_POSTS !== 'true') {
+      console.log('📋 POST_SKIPPED_LIVE_OFF - LIVE_POSTS not enabled');
+      throw new Error('POST_SKIPPED_LIVE_OFF');
+    }
+    
     console.log('🌐 Posting via browser automation...');
     
     return await this.withPage(async (page) => {

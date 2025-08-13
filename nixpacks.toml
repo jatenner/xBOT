@@ -1,11 +1,20 @@
+[variables]
+NPM_CONFIG_CACHE="/tmp/.npm"
+
 [phases.setup]
-nixPkgs = ['nodejs', 'chromium']
+nixPkgs = ["bash", "curl"]
 
 [phases.install]
-cmds = ['npm install']
+commands = [
+  "npm ci --omit=dev"
+]
 
 [phases.build]
-cmds = ['npm run build']
+commands = [
+  # Install browsers with system deps (Railway will allow this)
+  "npx playwright install --with-deps chromium",
+  "npm run build"
+]
 
 [start]
-cmd = 'npm start'
+cmd = "npm run start:prod"

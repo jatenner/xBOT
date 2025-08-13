@@ -1,4 +1,4 @@
-import { BrowserContext, Page } from 'playwright-core';
+import { BrowserContext, Page } from 'playwright';
 import { saveTwitterCookiesToSupabase } from './twitterCookies';
 
 /**
