@@ -11,6 +11,9 @@
  * - API endpoints for control
  */
 
+import { ensureSessionStorageFile } from "./bootstrap/sessionLoader";
+ensureSessionStorageFile();
+
 import "./boot/env-playwright";
 import * as dotenv from 'dotenv';
 dotenv.config();

@@ -52,3 +52,6 @@ demo_*.js
 check_*.js
 *.test.js .env.backup
 browsers/
+
+# Session files (contain authentication cookies)
+data/twitter_session.json

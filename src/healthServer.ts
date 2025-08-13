@@ -186,40 +186,16 @@ export function startHealthServer(): Promise<void> {
     // Session status endpoint
     app.get('/session', (_req, res) => {
       try {
-        const fs = require('fs');
-        const path = require('path');
-        const sessionPath = path.resolve('data', 'twitter_session.json');
+        const { readSession, SESSION_FILE, cookieNames } = require('../lib/sessionState');
         
-        let hasFile = false;
-        let cookieNames: string[] = [];
-        let loggedInGuess = false;
-        
-        try {
-          if (fs.existsSync(sessionPath)) {
-            hasFile = true;
-            const sessionData = JSON.parse(fs.readFileSync(sessionPath, 'utf8'));
-            cookieNames = (sessionData.cookies || []).map((c: any) => c.name);
-            
-            // Simple heuristic: if we have auth-related cookies, probably logged in
-            const authCookies = cookieNames.filter(name => 
-              name.includes('auth') || 
-              name.includes('session') || 
-              name.includes('token') ||
-              name === 'ct0' || // X CSRF token
-              name === 'twid'   // Twitter ID
-            );
-            loggedInGuess = authCookies.length > 0;
-          }
-        } catch (err) {
-          // Keep defaults
-        }
+        const state = readSession();
+        const names = cookieNames(state);
         
         res.json({
-          hasFile,
-          cookieNames: cookieNames.slice(0, 20), // Limit output
-          cookieCount: cookieNames.length,
-          loggedInGuess,
-          timestamp: new Date().toISOString()
+          path: SESSION_FILE,
+          exists: state !== null,
+          cookieNames: names,
+          count: names.length
         });
       } catch (error) {
         res.status(500).json({ 

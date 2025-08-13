@@ -2,6 +2,7 @@ import { chromium, Browser, Page, BrowserContext } from 'playwright';
 import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
+import { readSession, SESSION_FILE, cookieNames } from '../lib/sessionState';
 
 class PlaywrightFactory {
   private static instance: PlaywrightFactory;
@@ -64,31 +65,19 @@ class PlaywrightFactory {
       try {
         const browser = await this.getBrowser();
         
-        // Always try to load data/twitter_session.json first, then fallback to provided path
-        const defaultSessionPath = path.resolve('data', 'twitter_session.json');
-        const sessionPath = storagePath || defaultSessionPath;
+        // Use centralized session state management
+        const state = readSession();
         
-        // Prepare context options with fallback for invalid storage state
-        let contextOptions: any = {};
+        // Prepare context options with session object
+        let contextOptions: any = {
+          storageState: state ?? undefined, // use object if present
+        };
         
-        try {
-          // Check if storage file exists and is valid
-          if (fs.existsSync(sessionPath)) {
-            const stats = fs.statSync(sessionPath);
-            if (stats.size > 0) {
-              // Load and log session info
-              const sessionData = JSON.parse(fs.readFileSync(sessionPath, 'utf8'));
-              const cookieNames = (sessionData.cookies || []).map((c: any) => c.name);
-              
-              contextOptions.storageState = sessionPath;
-              console.log(`📱 SESSION: loaded storageState with cookies: ${cookieNames.length}`);
-              console.log(`📱 SESSION: cookie names: ${cookieNames.slice(0, 10).join(', ')}${cookieNames.length > 10 ? '...' : ''}`);
-            }
-          } else {
-            console.log('🆕 SESSION: no storageState found – starting without cookies');
-          }
-        } catch (storageError) {
-          console.warn('⚠️ SESSION: Invalid storage state file, creating fresh session:', storageError.message);
+        // Helpful logs
+        if (state) {
+          console.log(`PLAYWRIGHT_STORAGE: loaded ${cookieNames(state).length} cookies from object (path: ${SESSION_FILE}) → [${cookieNames(state).join(", ")}]`);
+        } else {
+          console.log(`PLAYWRIGHT_STORAGE: NO storageState found at ${SESSION_FILE} — continuing without cookies`);
         }
         
         const ctx = await browser.newContext(contextOptions);
