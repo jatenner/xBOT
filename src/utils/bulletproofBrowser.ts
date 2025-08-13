@@ -68,14 +68,15 @@ export class BulletproofBrowser {
     console.log('🔍 Checking Playwright installation...');
 
     try {
-      if (this.isRailway || this.isRender) {
-        // Production environments: Install with system dependencies
+      // ALWAYS try to install Playwright in production environments
+      if (this.isRailway || this.isRender || this.isProduction) {
         console.log('📦 Installing Playwright for production environment...');
         
         const installCommands = [
-          'npx playwright install chromium',  // Railway doesn't need --with-deps
+          'npx playwright install chromium',
+          'npx playwright install chromium --force',
           'npx playwright install --with-deps chromium',
-          'npm install playwright chromium'   // Last resort
+          'npm install -g playwright && npx playwright install chromium'
         ];
 
         for (const command of installCommands) {
@@ -83,10 +84,17 @@ export class BulletproofBrowser {
             console.log(`🔧 Running: ${command}`);
             execSync(command, { 
               stdio: 'inherit', 
-              timeout: 120000 // 2 minutes max
+              timeout: 180000, // 3 minutes max
+              env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: '0' }
             });
             console.log(`✅ Successfully executed: ${command}`);
-            break;
+            
+            // Verify installation worked
+            const verifyResult = await this.verifyPlaywrightInstallation();
+            if (verifyResult) {
+              console.log('✅ Playwright installation verified');
+              break;
+            }
           } catch (error: any) {
             console.warn(`⚠️ Command failed: ${command}`, error.message);
           }
