@@ -186,12 +186,30 @@ export class AutonomousPostingEngine {
       // Generate content with intelligent context
       const content = await this.generateIntelligentContent(opportunity);
       
-      console.log(`📝 Generated intelligent content: ${content.substring(0, 80)}...`);
-
-      // Post to Twitter using browser automation (call the private method via reflection)
-      const result = await (this.browserPoster as any).postSingle(content, { 
-        forcePost: true
-      });
+      // Handle both single strings and thread arrays
+      let result: any;
+      if (Array.isArray(content)) {
+        console.log(`📝 Generated intelligent thread: ${content.length} tweets`);
+        console.log(`📝 Thread preview: ${content[0].substring(0, 80)}...`);
+        
+        // Post as proper thread using the new method
+        result = await this.browserPoster.postThread(content);
+        result = { success: true, tweetId: result.rootTweetId };
+      } else {
+        console.log(`📝 Generated intelligent content: ${content.substring(0, 80)}...`);
+        
+        // Post single tweet (only if config allows)
+        const { loadBotConfig } = await import('../config');
+        const config = await loadBotConfig();
+        
+        if (!config.fallbackSingleTweetOk) {
+          throw new Error('FALLBACK_SINGLE_TWEET_DISABLED: Single tweet fallback disabled by config');
+        }
+        
+        result = await (this.browserPoster as any).postSingle(content, { 
+          forcePost: true
+        });
+      }
       
       if (!result.success) {
         throw new Error(result.error || 'Browser posting failed');
@@ -202,12 +220,15 @@ export class AutonomousPostingEngine {
 
       const tweetId = result.tweetId || 'browser_' + Date.now();
 
+      // Convert content for storage and analysis
+      const contentForStorage = Array.isArray(content) ? content.join('\n\n') : content;
+      
       // Store performance data for learning
-      await this.storeInDatabase(content, tweetId);
-      await this.storeIntelligentPostData(tweetId, opportunity, content);
+      await this.storeInDatabase(contentForStorage, tweetId);
+      await this.storeIntelligentPostData(tweetId, opportunity, contentForStorage);
       
       // Analyze viral potential of content
-      const viralAnalysis = await this.followerOptimizer.analyzeViralPotential(content);
+      const viralAnalysis = await this.followerOptimizer.analyzeViralPotential(contentForStorage);
       console.log(`🔥 Viral score: ${viralAnalysis.viralScore}/100, Follower potential: ${viralAnalysis.followerPotential}/100`);
       
       // Log optimization suggestions
@@ -216,15 +237,15 @@ export class AutonomousPostingEngine {
       }
       
       // Predict performance for validation
-      const prediction = await this.learningEngine.predictContentPerformance(content);
+      const prediction = await this.learningEngine.predictContentPerformance(contentForStorage);
       console.log(`🎯 Predicted performance: ${prediction.expectedLikes} likes, ${prediction.expectedFollowers} new followers`);
       
       // Schedule performance tracking for this tweet
-      await this.schedulePerformanceTracking(tweetId, content, prediction);
+      await this.schedulePerformanceTracking(tweetId, contentForStorage, prediction);
       
       console.log('📊 Intelligent posting data stored for learning');
 
-      return { success: true, content };
+      return { success: true, content: contentForStorage };
     } catch (error: any) {
       console.error('❌ Failed to execute intelligent post:', error.message);
       return { success: false, error: error.message };
@@ -391,7 +412,7 @@ export class AutonomousPostingEngine {
   /**
    * Generate intelligent content based on posting opportunity and learned patterns
    */
-  private async generateIntelligentContent(opportunity: any): Promise<string> {
+  private async generateIntelligentContent(opportunity: any): Promise<string | string[]> {
     try {
       // 20% chance to use Signal_Synapse thread format for health content
       const useSignalSynapse = Math.random() < 0.2;
@@ -495,7 +516,7 @@ export class AutonomousPostingEngine {
   /**
    * Generate Signal_Synapse format health thread
    */
-  private async generateSignalSynapseContent(opportunity: any): Promise<string> {
+  private async generateSignalSynapseContent(opportunity: any): Promise<string[]> {
     try {
       const { IntelligentContentGenerator } = await import('../agents/intelligentContentGenerator');
       const contentGenerator = IntelligentContentGenerator.getInstance();
@@ -506,18 +527,15 @@ export class AutonomousPostingEngine {
       console.log(`✅ Generated Signal_Synapse thread: ${threadData.topic} (${threadData.hook_type})`);
       console.log(`🎯 Predicted scores: clarity=${threadData.predicted_scores.hook_clarity}, novelty=${threadData.predicted_scores.novelty}`);
       
-      // Convert the structured thread to a single posting string
-      // For thread posting, we'll post the first tweet initially
-      const firstTweet = threadData.tweets[0];
-      
-      // Store the full thread data for potential future use
+      // Store the full thread data for tracking
       await this.storeSignalSynapseThreadData(threadData, opportunity);
       
-      return firstTweet;
+      // Return the full tweets array for proper thread posting
+      return threadData.tweets;
     } catch (error) {
       console.error('❌ Failed to generate Signal_Synapse content:', error);
-      // Fallback to regular content generation
-      return 'Taking a moment to focus on evidence-based health insights. What wellness practice has made the biggest difference in your life?';
+      // Fallback to single tweet (array with one element)
+      return ['Taking a moment to focus on evidence-based health insights. What wellness practice has made the biggest difference in your life?'];
     }
   }
 
@@ -556,8 +574,9 @@ export class AutonomousPostingEngine {
       );
       
       console.log('📊 Signal_Synapse thread data stored for learning');
-    } catch (error) {
-      console.warn('Failed to store Signal_Synapse thread data:', error);
+    } catch (error: any) {
+      console.error('STORE_FAIL_THREAD_JSON: Failed to store Signal_Synapse thread data:', error.message);
+      throw error; // Don't swallow storage errors - fail the posting
     }
   }
 
