@@ -73,8 +73,8 @@ export class BulletproofBrowser {
         console.log('📦 Installing Playwright for production environment...');
         
         const installCommands = [
+          'npx playwright install chromium',  // Railway doesn't need --with-deps
           'npx playwright install --with-deps chromium',
-          'npx playwright install chromium',  // Fallback without deps
           'npm install playwright chromium'   // Last resort
         ];
 
