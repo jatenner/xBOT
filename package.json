@@ -4,7 +4,7 @@
   "description": "Autonomous X (Twitter) bot for Snap2Health with AI-powered content generation",
   "main": "dist/main.js",
   "scripts": {
-    "postinstall": "echo '🎭 Installing Playwright browsers...' && PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install --with-deps chromium && echo '✅ Playwright installation completed'",
+    "postinstall": "npx playwright install --with-deps chromium",
     "build": "tsc -p .",
     "build-clean": "rm -rf dist && npm run build",
     "install-playwright": "if [ \"$SKIP_PLAYWRIGHT\" = \"true\" ]; then echo 'Skipping Playwright installation'; else npx playwright install chromium --force; fi",
