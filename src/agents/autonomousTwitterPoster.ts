@@ -377,21 +377,33 @@ export class AutonomousTwitterPoster {
 
   private async getDailyPostLimit(): Promise<number> {
     try {
+      // Environment variable takes precedence
+      const envMax = Number(process.env.MAX_DAILY_POSTS);
+      if (Number.isFinite(envMax) && envMax > 0) {
+        console.log("CONFIG: MAX_DAILY_POSTS =", envMax, "(env:", process.env.MAX_DAILY_POSTS, ")");
+        return envMax;
+      }
+      
+      // Fallback to database value
       const result = await this.db.executeQuery(
         'get_daily_post_limit',
         async (client) => {
           const { data, error } = await client
             .from('bot_config')
-            .select('config_value')
-            .eq('config_key', 'max_daily_posts')
+            .select('value')
+            .eq('key', 'max_daily_posts')
             .single();
           if (error) throw error;
           return data;
         }
       );
-      return parseInt(result?.config_value) || 8;
+      
+      const dbValueOrDefault = parseInt(result?.value) || 8;
+      console.log("CONFIG: MAX_DAILY_POSTS =", dbValueOrDefault, "(env:", process.env.MAX_DAILY_POSTS, ")");
+      return dbValueOrDefault;
     } catch (error) {
       console.warn('Failed to get daily limit, defaulting to 8');
+      console.log("CONFIG: MAX_DAILY_POSTS = 8 (env:", process.env.MAX_DAILY_POSTS, ")");
       return 8;
     }
   }
