@@ -1,6 +1,7 @@
 import { chromium, Browser, Page, BrowserContext } from 'playwright';
 import { execSync } from 'child_process';
 import * as fs from 'fs';
+import * as path from 'path';
 
 class PlaywrightFactory {
   private static instance: PlaywrightFactory;
@@ -63,24 +64,31 @@ class PlaywrightFactory {
       try {
         const browser = await this.getBrowser();
         
+        // Always try to load data/twitter_session.json first, then fallback to provided path
+        const defaultSessionPath = path.resolve('data', 'twitter_session.json');
+        const sessionPath = storagePath || defaultSessionPath;
+        
         // Prepare context options with fallback for invalid storage state
         let contextOptions: any = {};
         
-        if (storagePath) {
-          try {
-            // Check if storage file exists and is valid
-            if (fs.existsSync(storagePath)) {
-              const stats = fs.statSync(storagePath);
-              if (stats.size > 0) {
-                contextOptions.storageState = storagePath;
-                console.log(`📱 Loading existing session from ${storagePath}`);
-              }
-            } else {
-              console.log('🆕 Creating new Twitter session');
+        try {
+          // Check if storage file exists and is valid
+          if (fs.existsSync(sessionPath)) {
+            const stats = fs.statSync(sessionPath);
+            if (stats.size > 0) {
+              // Load and log session info
+              const sessionData = JSON.parse(fs.readFileSync(sessionPath, 'utf8'));
+              const cookieNames = (sessionData.cookies || []).map((c: any) => c.name);
+              
+              contextOptions.storageState = sessionPath;
+              console.log(`📱 SESSION: loaded storageState with cookies: ${cookieNames.length}`);
+              console.log(`📱 SESSION: cookie names: ${cookieNames.slice(0, 10).join(', ')}${cookieNames.length > 10 ? '...' : ''}`);
             }
-          } catch (storageError) {
-            console.warn('⚠️ Invalid storage state file, creating fresh session:', storageError.message);
+          } else {
+            console.log('🆕 SESSION: no storageState found – starting without cookies');
           }
+        } catch (storageError) {
+          console.warn('⚠️ SESSION: Invalid storage state file, creating fresh session:', storageError.message);
         }
         
         const ctx = await browser.newContext(contextOptions);

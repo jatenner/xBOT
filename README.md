@@ -95,15 +95,51 @@ LIVE_POSTING_ENABLED=true
 **What is dry-run?**  
 Dry-run executes every pipeline stage (idea generation → image fetch → logs) except the final `POST /2/tweets`. It's controlled by `LIVE_POSTING_ENABLED`. When false you'll see `🧪 DRY RUN – Tweet preview:` log lines; when true the bot actually tweets.
 
-## 7. NPM Scripts
+## 7. Seeding X Session
+
+### Quick Setup (Local)
+1. **Seed session**: `npm run seed:x-session`
+2. **Log in manually** when browser opens at x.com/login
+3. **Close browser** when done - session auto-saved to `data/twitter_session.json`
+4. **Test session**: `npm run test:x-session` (opens x.com/home with saved session)
+
+### Production Deployment
+1. **Generate base64** from local session:
+   ```bash
+   # macOS/Linux
+   base64 -i data/twitter_session.json
+   
+   # Windows
+   certutil -encode data/twitter_session.json temp.b64 && type temp.b64 | findstr /v "CERTIFICATE"
+   ```
+
+2. **Set Railway environment variable**:
+   ```bash
+   TWITTER_SESSION_B64=eyJjb29raWVzIjpbey...
+   ```
+
+3. **Verify deployment**: Check `/session` endpoint shows `loggedInGuess: true`
+
+### Session Management Scripts
+- `npm run seed:x-session` - Interactive login to save session
+- `npm run test:x-session` - Test saved session by opening x.com/home
+- `npm run clear:x-session` - Delete saved session file
+- `npm run print:x-cookies` - Show cookie names from session file
+
+### Health Endpoints
+- `/session` - Session status: `{ hasFile, cookieNames, loggedInGuess }`
+- `/health` - Railway health checks
+- `/status` - Detailed bot status
+
+## 8. NPM Scripts
 `dev` • `cron` • `tweet` • `reply` • `learn` • `lint`
 
-## 8. Deployment
+## 9. Deployment
 Vercel Cron (*/10 *) → `pnpm cron` **or** Railway always-on worker → `pnpm dev`.
 
 Render automatically runs all new migrations on every deploy via `npm run migrate`. The migration script uses `npx supabase db push` which works in production since Render provides `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` environment variables.
 
-## 9. Advanced Content Pipeline
+## 10. Advanced Content Pipeline
 
 ### 🔬 Trend-Research Fusion
 Combines real-time trends with research data for viral potential:
@@ -134,7 +170,7 @@ Multi-factor validation before posting:
 - PhD-level persona integration from `persona_phd.txt`
 - 80/20 insights-to-questions ratio
 
-## 10. Autonomous Growth Loop
+## 11. Autonomous Growth Loop
 
 ### 📈 F/1K Optimization System
 The bot optimizes for **Followers-per-1000-Impressions (F/1K)** using machine learning:
@@ -252,10 +288,10 @@ git push origin main
 
 All deployments include autonomous growth loop with F/1K optimization
 
-## 11. Safety Nets
+## 12. Safety Nets
 Rate-limit guard, OpenAI moderation, Supabase kill-switch, full audit trail.
 
-## 12. Implementation Tasks
+## 13. Implementation Tasks
 1. Scaffold file tree & TS config.  
 2. Implement wrappers (`xClient`, `openaiClient`, `supabaseClient`).  
 3. Stub agents with `run()` methods & TODOs.  
