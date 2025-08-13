@@ -1,5 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import Redis from 'ioredis';
+import { AutoMigrationRunner } from './migrationRunner';
 
 export class DatabaseManager {
   private static instance: DatabaseManager;
@@ -22,6 +23,14 @@ export class DatabaseManager {
       console.log('🗄️ Initializing Database Manager...');
       
       await this.initializeSupabase();
+      
+      // Run automatic migrations if Supabase is connected
+      if (this.isSupabaseConnected) {
+        console.log('🔄 Running automatic migrations...');
+        const migrationRunner = new AutoMigrationRunner();
+        await migrationRunner.runPendingMigrations();
+      }
+      
       await this.initializeRedis();
       
       console.log('✅ Database Manager initialized');

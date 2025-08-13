@@ -1,20 +1,15 @@
 [build]
-builder = "DOCKERFILE"
+builder = "nixpacks"
+buildCommand = "npm ci && npx playwright install --with-deps chromium && npm run build"
 
 [deploy]
 healthcheckPath = "/health"
-healthcheckTimeout = 300
-restartPolicyType = "ON_FAILURE"
-restartPolicyMaxRetries = 10
-
-# Persistent volume for session storage
-[[deploy.volumes]]
-name = "session-data"
-mountPath = "/app/data"
-size = "1GB"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
 
 [env]
+PLAYWRIGHT_BROWSERS_PATH = "0"
+PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "false" 
 NODE_ENV = "production"
-RAILWAY_ENVIRONMENT = "production"
-NPM_CONFIG_CACHE = "/tmp/.npm"
-LIVE_POSTS = "false"
+PORT = "8080"
