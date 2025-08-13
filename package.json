@@ -10,7 +10,7 @@
     "install-playwright": "if [ \"$SKIP_PLAYWRIGHT\" = \"true\" ]; then echo 'Skipping Playwright installation'; else npx playwright install chromium --force; fi",
 
     "postbuild": "mkdir -p dist/dashboard && cp src/dashboard/*.html dist/dashboard/ 2>/dev/null || true && mkdir -p dist/prompts && cp -r src/prompts/* dist/prompts/ && echo 'Build completed successfully'",
-    "start": "node dist/main.js",
+    "start": "npm run start:prod",
     "migrate:prod": "bash -lc 'set -euo pipefail; set -a; source ./.env-prod-cli.sh; set +a; npx supabase db push --project-ref \"$PROD_PROJECT_REF\"'",
     "migrate:stg": "bash -lc 'set -euo pipefail; set -a; source ./.env.staging-cli.sh; set +a; npx supabase db push --project-ref \"$STAGING_PROJECT_REF\"'",
     "start:prod": "npm run migrate:prod && node dist/main.js",
