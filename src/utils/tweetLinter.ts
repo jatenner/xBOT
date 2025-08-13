@@ -30,21 +30,46 @@ export function lintAndSplitThread(rawTweets: string[]): LintResult {
   }
   
   // Enforce hashtag rules: max 2 total, none in T1
-  const allHashtags = tweets.flatMap(t => t.match(/#\w+/g) || []);
-  if (allHashtags.length > 2) {
+  let allHashtags = tweets.flatMap(t => t.match(/#\w+/g) || []);
+  if (allHashtags.length > 2 || (tweets.length > 0 && tweets[0].includes('#'))) {
     tweets[0] = tweets[0].replace(/#\w+/g, '').trim(); // Remove all hashtags from T1
-    reasons.push(`Removed hashtags from T1, limited to 2 total hashtags`);
+    
+    // Keep only first 2 hashtags in remaining tweets
+    let hashtagCount = 0;
+    for (let i = 1; i < tweets.length; i++) {
+      tweets[i] = tweets[i].replace(/#\w+/g, (match) => {
+        if (hashtagCount < 2) {
+          hashtagCount++;
+          return match;
+        }
+        return '';
+      }).replace(/\s+/g, ' ').trim();
+    }
+    
+    reasons.push(`Enforced hashtag rules: removed from T1, limited to 2 total`);
   }
   
-  // Add continuation markers for threads
-  if (tweets.length > 1) {
-    for (let i = 1; i < tweets.length; i++) {
-      if (!tweets[i].match(/\(\d+\/\d+\)/)) {
-        tweets[i] = `(${i + 1}/${tweets.length}) ${tweets[i]}`;
-        if (tweets[i].length > 260) {
-          tweets[i] = truncateAtWordBoundary(tweets[i], 260);
-        }
+  // Ensure penultimate tweet has "Sources:" if we have multiple tweets
+  if (tweets.length >= 3) {
+    const sourcesIndex = tweets.length - 2;
+    if (!tweets[sourcesIndex].toLowerCase().includes('sources:')) {
+      tweets[sourcesIndex] = `Sources: ${tweets[sourcesIndex]}`;
+      if (tweets[sourcesIndex].length > 260) {
+        tweets[sourcesIndex] = truncateAtWordBoundary(tweets[sourcesIndex], 260);
       }
+      reasons.push(`Added "Sources:" to penultimate tweet`);
+    }
+  }
+  
+  // Ensure last tweet is CTA format
+  if (tweets.length >= 2) {
+    const lastIndex = tweets.length - 1;
+    if (!tweets[lastIndex].toLowerCase().includes('follow') && !tweets[lastIndex].toLowerCase().includes('cta:')) {
+      tweets[lastIndex] = `CTA: ${tweets[lastIndex]}`;
+      if (tweets[lastIndex].length > 260) {
+        tweets[lastIndex] = truncateAtWordBoundary(tweets[lastIndex], 260);
+      }
+      reasons.push(`Formatted last tweet as CTA`);
     }
   }
   
