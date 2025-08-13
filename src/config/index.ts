@@ -1,6 +1,10 @@
 export interface BotConfig {
   maxDailyPosts: number;
   livePostsEnabled: boolean;
+  enableThreads: boolean;
+  threadMinTweets: number;
+  threadMaxTweets: number;
+  fallbackSingleTweetOk: boolean;
 }
 
 export async function loadBotConfig(): Promise<BotConfig> {
@@ -16,8 +20,22 @@ export async function loadBotConfig(): Promise<BotConfig> {
     console.log(`CONFIG: MAX_DAILY_POSTS = ${maxDailyPosts} (default)`);
   }
   
+  const enableThreads = process.env.ENABLE_THREADS !== 'false';
+  const threadMinTweets = Number(process.env.THREAD_MIN_TWEETS) || 4;
+  const threadMaxTweets = Number(process.env.THREAD_MAX_TWEETS) || 8;
+  const fallbackSingleTweetOk = process.env.FALLBACK_SINGLE_TWEET_OK === 'true';
+
+  console.log(`CONFIG: ENABLE_THREADS = ${enableThreads}`);
+  console.log(`CONFIG: THREAD_MIN_TWEETS = ${threadMinTweets}`);
+  console.log(`CONFIG: THREAD_MAX_TWEETS = ${threadMaxTweets}`);
+  console.log(`CONFIG: FALLBACK_SINGLE_TWEET_OK = ${fallbackSingleTweetOk}`);
+
   return {
     maxDailyPosts,
-    livePostsEnabled: process.env.LIVE_POSTS !== 'false'
+    livePostsEnabled: process.env.LIVE_POSTS !== 'false',
+    enableThreads,
+    threadMinTweets,
+    threadMaxTweets,
+    fallbackSingleTweetOk
   };
 }

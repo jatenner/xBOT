@@ -1,5 +1,7 @@
 import OpenAI from 'openai';
 import { AdvancedDatabaseManager } from '../lib/advancedDatabaseManager';
+import { GeneratedThread, validateGeneratedThread } from '../generation/threadTypes';
+import { loadBotConfig } from '../config';
 
 export interface ContentGenerationRequest {
   contentType: 'thread' | 'single' | 'reply';
@@ -105,97 +107,111 @@ export class IntelligentContentGenerator {
     }
   }
 
-  public async generateSignalSynapseThread(topic?: string): Promise<SignalSynapseThreadData> {
-    try {
-      console.log('🧬 Generating Signal_Synapse health thread...', { topic });
+  public async generateSignalSynapseThread(topic?: string): Promise<GeneratedThread> {
+    const config = await loadBotConfig();
+    let lastError: Error | null = null;
 
-      const prompt = this.buildSignalSynapsePrompt(topic);
-      
-      const response = await this.openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: `You are the Content Director and Data Ops for @Signal_Synapse.
+    // Try up to 3 times to generate a valid thread
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        console.log(`🧬 Generating Signal_Synapse health thread (attempt ${attempt}/3)...`, { topic });
+
+        const prompt = this.buildSignalSynapsePrompt(topic);
+        
+        const response = await this.openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content: `You are the Content Director and Data Ops for @Signal_Synapse.
 Produce high-engagement, science-grounded Twitter/X threads AND return machine-readable JSON.
 
 OUTPUT RULES
 - Return JSON ONLY (no prose/markdown) with the exact schema below.
-- Each tweet ≤ 260 chars. Max 1 emoji per tweet. 0–2 hashtags TOTAL (never in T1).
+- Each tweet ≤ 240 chars. Max 1 emoji per tweet. 0–2 hashtags TOTAL (never in T1).
 - Include 2–3 credible sources (CDC, NIH, WHO, Cochrane, PubMed, NHS, Harvard Chan, etc.).
 - Tone: friendly, practical, cautious with claims ("may/can"). Add brief non-medical-advice line if needed.
-- Vary angles to avoid repetition.
+- Generate exactly ${config.threadMinTweets}-${config.threadMaxTweets} tweets.
 
 THREAD STRUCTURE
 1) Hook (T1): curiosity + clear benefit; no hashtags.
-2) Body (T2–T6): one idea or step each.
-3) Sources (penultimate): list links.
-4) CTA (final): soft follow/bookmark/reply.
-
-LEARNING LABELS (required)
-- hook_type: ["stat","myth_bust","how_to","story"]
-- cta: ["follow_for_series","reply_with_goal","bookmark_checklist"]
-- tags: 3–6 single-word labels
-- predicted_scores: 0–100 for {hook_clarity, novelty, evidence, cta_strength}
-- content_notes: 1–2 sentences summarizing the key claim & why it should work
+2) Body (T2–T(n-2)): one idea or step each.
+3) Sources (T(n-1)): "Sources: [URL1] [URL2] [URL3]"
+4) CTA (Tn): "Follow @Signal_Synapse for daily evidence-based health wins"
 
 SCHEMA (return exactly this shape):
 {
   "topic": "string",
-  "hook_type": "stat | myth_bust | how_to | story",
-  "cta": "follow_for_series | reply_with_goal | bookmark_checklist",
+  "hook_type": "stat | myth_bust | checklist | how_to | story",
   "hashtags": ["string", "..."],
   "source_urls": ["https://...", "..."],
-  "tags": ["string","string","string"],
   "predicted_scores": { "hook_clarity": 0, "novelty": 0, "evidence": 0, "cta_strength": 0 },
-  "content_notes": "string",
-  "tweets": ["T1", "T2", "T3", "T4", "T5", "T6 (optional)", "T7 (optional)"]
+  "tweets": ["T1", "T2", "T3", "T4", "T5", "..."]
 }
 
-SELF-CHECK BEFORE ANSWERING
-- Tighten hook; remove filler; enforce length & emoji/hashtag limits.
-- Sources must match claims; soften language or swap sources if not.
-- Ensure final tweet's CTA matches the selected "cta".
 RETURN JSON ONLY.`
-          },
-          {
-            role: 'user',
-            content: prompt
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          max_tokens: 2000,
+          temperature: 0.7
+        });
+
+        const content = response.choices[0]?.message?.content || '';
+        
+        // Parse the JSON response
+        let threadData: any;
+        try {
+          threadData = JSON.parse(content);
+        } catch (parseError) {
+          lastError = new Error(`Invalid JSON response from AI: ${parseError}`);
+          console.warn(`Attempt ${attempt}: JSON parse failed`);
+          continue;
+        }
+
+        // Validate the response structure
+        try {
+          const validatedThread = validateGeneratedThread(threadData);
+          
+          // Check thread length constraints
+          if (validatedThread.tweets.length < config.threadMinTweets || 
+              validatedThread.tweets.length > config.threadMaxTweets) {
+            lastError = new Error(`Thread length ${validatedThread.tweets.length} outside bounds [${config.threadMinTweets}, ${config.threadMaxTweets}]`);
+            console.warn(`Attempt ${attempt}: Invalid thread length`);
+            continue;
           }
-        ],
-        max_tokens: 2000,
-        temperature: 0.7
-      });
 
-      const content = response.choices[0]?.message?.content || '';
-      
-      // Parse the JSON response
-      let threadData: SignalSynapseThreadData;
-      try {
-        threadData = JSON.parse(content);
-      } catch (parseError) {
-        console.error('❌ Failed to parse Signal_Synapse JSON response:', parseError);
-        throw new Error('Invalid JSON response from AI');
+          // Store the thread data for learning
+          await this.storeGeneratedThread(validatedThread);
+          
+          console.log('✅ Generated Signal_Synapse thread:', {
+            topic: validatedThread.topic,
+            hook_type: validatedThread.hook_type,
+            tweet_count: validatedThread.tweets.length,
+            predicted_scores: validatedThread.predicted_scores
+          });
+          
+          return validatedThread;
+          
+        } catch (validationError: any) {
+          lastError = validationError;
+          console.warn(`Attempt ${attempt}: Validation failed: ${validationError.message}`);
+          continue;
+        }
+        
+      } catch (error: any) {
+        lastError = error;
+        console.warn(`Attempt ${attempt}: Generation failed: ${error.message}`);
+        continue;
       }
-
-      // Validate the response structure
-      this.validateSignalSynapseThread(threadData);
-      
-      // Store the thread data for learning
-      await this.storeSignalSynapseThread(threadData);
-      
-      console.log('✅ Generated Signal_Synapse thread:', {
-        topic: threadData.topic,
-        hook_type: threadData.hook_type,
-        tweet_count: threadData.tweets.length,
-        predicted_scores: threadData.predicted_scores
-      });
-      
-      return threadData;
-    } catch (error: any) {
-      console.error('❌ Signal_Synapse thread generation failed:', error.message);
-      throw error;
     }
+
+    // All attempts failed
+    console.error('THREAD_ABORT_INVALID_LENGTH: Failed to generate valid thread after 3 attempts');
+    throw lastError || new Error('Thread generation failed');
   }
 
   private buildPrompt(request: ContentGenerationRequest, style: string): string {
@@ -406,6 +422,31 @@ RETURN JSON ONLY.`
     // Validate hashtag limit
     if (data.hashtags.length > 2) {
       throw new Error('Too many hashtags (max 2 allowed)');
+    }
+  }
+
+  private async storeGeneratedThread(data: GeneratedThread): Promise<void> {
+    try {
+      await this.db.executeQuery('store_generated_thread', async (client) => {
+        const { error } = await client
+          .from('content_candidates')
+          .insert({
+            topic: data.topic,
+            tweets_json: data,
+            evaluator_scores_json: data.predicted_scores,
+            chosen: true
+          });
+
+        if (error) {
+          console.error('STORE_FAIL_THREAD_JSON:', error.message);
+          throw new Error(`Failed to store thread JSON: ${error.message}`);
+        }
+
+        return { success: true };
+      });
+    } catch (error: any) {
+      console.error('STORE_FAIL_THREAD_JSON:', error.message);
+      throw error;
     }
   }
 

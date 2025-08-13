@@ -3,7 +3,20 @@ export interface LintResult {
   reasons: string[];
 }
 
-export function lintAndSplitThread(rawTweets: string[]): LintResult {
+export function lintAndSplitThread(rawTweets: string | string[]): LintResult {
+  // Strict validation: reject single strings
+  if (typeof rawTweets === 'string') {
+    throw new Error('LINTER_INPUT_MUST_BE_ARRAY: Input must be an array of tweets, not a single string');
+  }
+
+  if (!Array.isArray(rawTweets)) {
+    throw new Error('LINTER_INPUT_MUST_BE_ARRAY: Input must be an array of tweets');
+  }
+
+  if (rawTweets.length === 0) {
+    throw new Error('NO_TWEETS_ARRAY_ABORT: Empty tweets array provided');
+  }
+
   const tweets: string[] = [];
   const reasons: string[] = [];
   
@@ -73,6 +86,18 @@ export function lintAndSplitThread(rawTweets: string[]): LintResult {
     }
   }
   
+  // Final validation
+  if (tweets.length === 0) {
+    throw new Error('THREAD_ABORT_LINT_FAIL: All tweets were filtered out during linting');
+  }
+
+  // Validate each tweet length
+  for (let i = 0; i < tweets.length; i++) {
+    if (tweets[i].length > 260) {
+      throw new Error(`THREAD_ABORT_LINT_FAIL: Tweet ${i + 1} still exceeds 260 chars after linting`);
+    }
+  }
+
   return { tweets, reasons };
 }
 

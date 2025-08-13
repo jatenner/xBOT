@@ -134,7 +134,14 @@ export class AutonomousTwitterPoster {
       let postingResult: PostingResult;
 
       if (generatedContent.isThread) {
-        postingResult = await this.postThread(generatedContent.threadParts!, options);
+        // Use the new thread posting method and convert result
+        const threadResult = await this.postThread(generatedContent.threadParts!);
+        postingResult = {
+          success: true,
+          tweetId: threadResult.rootTweetId,
+          content: generatedContent.threadParts!.join('\n\n'),
+          method: 'browser'
+        };
       } else {
         postingResult = await this.postSingle(generatedContent.content, options);
       }
@@ -180,30 +187,9 @@ export class AutonomousTwitterPoster {
     }
   }
 
-  private async postThread(threadParts: string[], options: PostingOptions): Promise<PostingResult> {
-    // Browser posting only for threads
-    try {
-      console.log('🌐 Posting thread via browser automation...');
-      const tweetId = await this.postViaBrowser(threadParts.join('\n\n'));
-      
-      return {
-        success: true,
-        tweetId,
-        content: threadParts.join('\n\n'),
-        method: 'browser'
-      };
-    } catch (error: any) {
-      console.warn('⚠️ Browser thread posting failed:', error.message);
-      return {
-        success: false,
-        content: threadParts.join('\n\n'),
-        method: 'failed',
-        error: `Browser thread posting failed: ${error.message}`
-      };
-    }
-  }
 
-  private async postViaBrowser(content: string): Promise<string> {
+
+  private async postViaBrowser(content: string | string[]): Promise<string> {
     console.log('🎭 POST_START');
     
     // Guard against real posting during verification
@@ -221,8 +207,27 @@ export class AutonomousTwitterPoster {
     
     console.log('🌐 Posting via browser automation...');
     
-    // Treat content as potential thread and lint it
-    const rawTweets = content.includes('\n\n') ? content.split('\n\n') : [content];
+    // Handle input: either string or array
+    let rawTweets: string[];
+    if (typeof content === 'string') {
+      // Only allow single strings if config permits
+      const { loadBotConfig } = await import('../config');
+      const config = await loadBotConfig();
+      
+      if (!config.fallbackSingleTweetOk) {
+        throw new Error('FALLBACK_SINGLE_TWEET_DISABLED: Single tweet posting disabled by config');
+      }
+      
+      rawTweets = content.includes('\n\n') ? content.split('\n\n') : [content];
+    } else {
+      rawTweets = content;
+    }
+    
+    if (!rawTweets || rawTweets.length === 0) {
+      throw new Error('NO_TWEETS_ARRAY_ABORT: No tweets provided for posting');
+    }
+    
+    // Lint the tweets
     const { tweets, reasons } = lintAndSplitThread(rawTweets);
     const totalChars = tweets.reduce((sum, t) => sum + t.length, 0);
     
@@ -280,68 +285,224 @@ export class AutonomousTwitterPoster {
     });
   }
 
-  private async postThreadChain(tweets: string[]): Promise<string> {
+  /**
+   * Post a proper thread as reply chain: T1 → permalink → Reply → T2..Tn
+   */
+  public async postThread(tweets: string[]): Promise<{rootTweetId: string; permalink: string; replyIds: string[]}> {
+    if (!tweets || tweets.length === 0) {
+      throw new Error('NO_TWEETS_ARRAY_ABORT: Empty tweets array provided');
+    }
+
     return await this.withPage(async (page) => {
-      // Navigate and check login
-      const loggedIn = await isLoggedIn(page);
+      // Check login using resilient selectors
+      await page.goto('https://x.com/home', { waitUntil: 'domcontentloaded' });
+      
+      let loggedIn = false;
+      for (const selector of SELECTORS.accountSwitcher) {
+        try {
+          const element = await page.locator(selector).first();
+          if (await element.isVisible({ timeout: 3000 })) {
+            loggedIn = true;
+            break;
+          }
+        } catch {
+          continue;
+        }
+      }
+
       if (!loggedIn) {
         throw new Error('POST_SKIPPED_PLAYWRIGHT: login_required');
       }
       
       console.log('✅ LOGIN_CHECK: Confirmed logged in to X');
       
-      // Post T1
-      console.log('THREAD_POST: posting T1');
-      await page.goto('https://x.com/home', { waitUntil: 'domcontentloaded' });
-      await page.click(SEL.composerBox);
-      await page.fill(SEL.composerBox, tweets[0]);
+      // Step 1: Post T1
+      console.log('🧵 THREAD_POST: T1 posting...');
+      await page.goto('https://x.com/compose/tweet', { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(2000);
       
-      const posted = await this.tryPostWithFallbacks(page);
-      if (!posted) {
-        throw new Error('Failed to post T1');
+      // Use resilient selectors for compose area
+      let composed = false;
+      for (const selector of SELECTORS.composeArea) {
+        try {
+          await page.click(selector, { timeout: 2000 });
+          await page.fill(selector, tweets[0]);
+          composed = true;
+          break;
+        } catch {
+          continue;
+        }
+      }
+
+      if (!composed) {
+        throw new Error('Failed to find compose area');
       }
       
-      await page.waitForTimeout(2000);
-      console.log('THREAD_POST: T1 posted');
-      
-      // Find the posted tweet and get its permalink
-      const tweetLink = await page.locator(SEL.tweetPermalinkAnchor).first();
-      const tweetUrl = await tweetLink.getAttribute('href');
-      if (!tweetUrl) throw new Error('Could not find posted tweet URL');
-      
-      const fullUrl = tweetUrl.startsWith('http') ? tweetUrl : `https://x.com${tweetUrl}`;
-      await page.goto(fullUrl, { waitUntil: 'domcontentloaded' });
-      
-      // Post remaining tweets as replies
-      for (let i = 1; i < tweets.length; i++) {
+      // Post T1 with resilient selectors
+      let posted = false;
+      for (const selector of SELECTORS.postButton) {
         try {
-          console.log(`THREAD_POST: posting reply ${i + 1}/${tweets.length}`);
-          
-          await page.click(SEL.replyBtn);
-          await page.waitForSelector(SEL.composerBox, { timeout: 5000 });
-          await page.fill(SEL.composerBox, tweets[i]);
-          
-          const replyPosted = await this.tryPostWithFallbacks(page);
-          if (!replyPosted) {
-            console.log(`THREAD_RESUME_POINT=${i + 1}`);
-            throw new Error(`Failed to post reply ${i + 1}`);
+          await page.click(selector, { timeout: 3000 });
+          posted = true;
+          break;
+        } catch {
+          continue;
+        }
+      }
+
+      if (!posted) {
+        // Keyboard fallback
+        try {
+          await page.keyboard.press('Meta+Enter');
+          posted = true;
+        } catch {
+          try {
+            await page.keyboard.press('Control+Enter');
+            posted = true;
+          } catch {
+            throw new Error('Failed to post T1 - all methods failed');
           }
-          
-          // Wait and verify with jitter
-          await page.waitForTimeout(Math.random() * 500 + 400); // 400-900ms jitter
-          console.log(`THREAD_POST: reply ${i + 1}/${tweets.length} posted`);
-          
-        } catch (error) {
-          console.log(`THREAD_RESUME_POINT=${i + 1}`);
-          throw error;
         }
       }
       
-      console.log(`THREAD_COMPLETE: ${tweets.length} tweets`);
+      // Wait for navigation to permalink
+      await page.waitForTimeout(3000);
       
-      const tweetId = `thread_${Date.now()}`;
-      return tweetId;
+      // Extract permalink and tweet ID
+      const currentUrl = page.url();
+      const tweetIdMatch = currentUrl.match(/status\/(\d+)/);
+      if (!tweetIdMatch) {
+        throw new Error('Failed to extract tweet ID from URL');
+      }
+      
+      const rootTweetId = tweetIdMatch[1];
+      const permalink = currentUrl;
+      
+      console.log(`THREAD_POST:T1 id=${rootTweetId} permalink=${permalink}`);
+      
+      // If only one tweet, we're done
+      if (tweets.length === 1) {
+        return { rootTweetId, permalink, replyIds: [] };
+      }
+      
+      // Step 2: Post replies
+      const replyIds: string[] = [];
+      
+      for (let i = 1; i < tweets.length; i++) {
+        // Check for resume point
+        const resumePoint = process.env.THREAD_RESUME_POINT;
+        if (resumePoint && parseInt(resumePoint) > i + 1) {
+          console.log(`THREAD_RESUME: Skipping to ${resumePoint}`);
+          continue;
+        }
+        
+        // Retry logic for each reply
+        let replySuccess = false;
+        let replyId = '';
+        
+        for (let retryAttempt = 1; retryAttempt <= 3; retryAttempt++) {
+          try {
+            console.log(`THREAD_REPLY: ${i + 1}/${tweets.length} posting (attempt ${retryAttempt}/3)...`);
+            
+            // Navigate to the root tweet permalink
+            await page.goto(permalink, { waitUntil: 'domcontentloaded' });
+            await page.waitForTimeout(1500);
+            
+            // Click reply button with resilient selectors
+            let replyClicked = false;
+            for (const selector of SELECTORS.replyButton) {
+              try {
+                await page.click(selector, { timeout: 3000 });
+                replyClicked = true;
+                break;
+              } catch {
+                continue;
+              }
+            }
+
+            if (!replyClicked) {
+              throw new Error('Failed to click reply button');
+            }
+            
+            // Wait for compose area and fill
+            await page.waitForTimeout(1000);
+            let replyComposed = false;
+            for (const selector of SELECTORS.composeArea) {
+              try {
+                await page.waitForSelector(selector, { timeout: 5000 });
+                await page.fill(selector, tweets[i]);
+                replyComposed = true;
+                break;
+              } catch {
+                continue;
+              }
+            }
+
+            if (!replyComposed) {
+              throw new Error('Failed to fill reply compose area');
+            }
+            
+            // Post reply
+            let replyPosted = false;
+            for (const selector of SELECTORS.postButton) {
+              try {
+                await page.click(selector, { timeout: 3000 });
+                replyPosted = true;
+                break;
+              } catch {
+                continue;
+              }
+            }
+
+            if (!replyPosted) {
+              // Keyboard fallback
+              try {
+                await page.keyboard.press('Meta+Enter');
+                replyPosted = true;
+              } catch {
+                await page.keyboard.press('Control+Enter');
+                replyPosted = true;
+              }
+            }
+            
+            // Wait for network idle and extract reply ID
+            await page.waitForTimeout(2000);
+            
+            // Try to get the reply ID from the URL or generate one
+            const newUrl = page.url();
+            const newTweetMatch = newUrl.match(/status\/(\d+)/);
+            replyId = newTweetMatch ? newTweetMatch[1] : `reply_${rootTweetId}_${i}`;
+            
+            replySuccess = true;
+            console.log(`THREAD_REPLY ${i + 1}/N id=${replyId}`);
+            break;
+            
+          } catch (error: any) {
+            console.warn(`Reply attempt ${retryAttempt} failed: ${error.message}`);
+            if (retryAttempt === 3) {
+              console.log(`THREAD_PARTIAL_FAIL i=${i + 1}`);
+              throw new Error(`Failed to post reply ${i + 1} after 3 attempts`);
+            }
+            await page.waitForTimeout(2000 * retryAttempt); // Exponential backoff
+          }
+        }
+        
+        if (replySuccess) {
+          replyIds.push(replyId);
+          // Random jitter between replies
+          await page.waitForTimeout(Math.random() * 500 + 400);
+        }
+      }
+      
+      console.log(`THREAD_COMPLETE root=${rootTweetId} replies=${replyIds.length}`);
+      
+      return { rootTweetId, permalink, replyIds };
     });
+  }
+
+  private async postThreadChain(tweets: string[]): Promise<string> {
+    const result = await this.postThread(tweets);
+    return result.rootTweetId;
   }
   
   private async tryPostWithFallbacks(page: Page): Promise<boolean> {
