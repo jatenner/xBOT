@@ -393,6 +393,14 @@ export class AutonomousPostingEngine {
    */
   private async generateIntelligentContent(opportunity: any): Promise<string> {
     try {
+      // 20% chance to use Signal_Synapse thread format for health content
+      const useSignalSynapse = Math.random() < 0.2;
+      
+      if (useSignalSynapse) {
+        console.log('🧬 Generating Signal_Synapse health thread...');
+        return await this.generateSignalSynapseContent(opportunity);
+      }
+
       const { OpenAI } = await import('openai');
       
       const openai = new OpenAI({
@@ -481,6 +489,75 @@ export class AutonomousPostingEngine {
     } catch (error) {
       console.error('Failed to generate intelligent content:', error);
       return 'Taking a moment to focus on your health today can make all the difference. What small healthy choice will you make right now?';
+    }
+  }
+
+  /**
+   * Generate Signal_Synapse format health thread
+   */
+  private async generateSignalSynapseContent(opportunity: any): Promise<string> {
+    try {
+      const { IntelligentContentGenerator } = await import('../agents/intelligentContentGenerator');
+      const contentGenerator = IntelligentContentGenerator.getInstance();
+      
+      // Generate the structured thread data
+      const threadData = await contentGenerator.generateSignalSynapseThread();
+      
+      console.log(`✅ Generated Signal_Synapse thread: ${threadData.topic} (${threadData.hook_type})`);
+      console.log(`🎯 Predicted scores: clarity=${threadData.predicted_scores.hook_clarity}, novelty=${threadData.predicted_scores.novelty}`);
+      
+      // Convert the structured thread to a single posting string
+      // For thread posting, we'll post the first tweet initially
+      const firstTweet = threadData.tweets[0];
+      
+      // Store the full thread data for potential future use
+      await this.storeSignalSynapseThreadData(threadData, opportunity);
+      
+      return firstTweet;
+    } catch (error) {
+      console.error('❌ Failed to generate Signal_Synapse content:', error);
+      // Fallback to regular content generation
+      return 'Taking a moment to focus on evidence-based health insights. What wellness practice has made the biggest difference in your life?';
+    }
+  }
+
+  /**
+   * Store Signal_Synapse thread data for learning and future posting
+   */
+  private async storeSignalSynapseThreadData(threadData: any, opportunity: any): Promise<void> {
+    try {
+      const { AdvancedDatabaseManager } = await import('../lib/advancedDatabaseManager');
+      const dbManager = AdvancedDatabaseManager.getInstance();
+      
+      await dbManager.executeQuery(
+        'store_signal_synapse_posting_data',
+        async (client) => {
+          const { error } = await client
+            .from('signal_synapse_posting_data')
+            .insert({
+              topic: threadData.topic,
+              hook_type: threadData.hook_type,
+              cta: threadData.cta,
+              hashtags: threadData.hashtags,
+              source_urls: threadData.source_urls,
+              tags: threadData.tags,
+              predicted_scores: threadData.predicted_scores,
+              content_notes: threadData.content_notes,
+              tweets: threadData.tweets,
+              tweet_count: threadData.tweets.length,
+              opportunity_score: opportunity.score,
+              opportunity_reason: opportunity.reason,
+              posted_at: new Date().toISOString()
+            });
+
+          if (error) throw error;
+          return { success: true };
+        }
+      );
+      
+      console.log('📊 Signal_Synapse thread data stored for learning');
+    } catch (error) {
+      console.warn('Failed to store Signal_Synapse thread data:', error);
     }
   }
 
