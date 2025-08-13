@@ -7,7 +7,7 @@
     "postinstall": "npx playwright install --with-deps chromium",
     "build": "tsc -p .",
     "build-clean": "rm -rf dist && npm run build",
-    "install-playwright": "if [ \"$SKIP_PLAYWRIGHT\" = \"true\" ]; then echo 'Skipping Playwright installation'; else npx playwright install chromium --force; fi",
+    "probe:pw": "node scripts/probe_playwright.js",
 
     "postbuild": "mkdir -p dist/dashboard && cp src/dashboard/*.html dist/dashboard/ 2>/dev/null || true && mkdir -p dist/prompts && cp -r src/prompts/* dist/prompts/ && echo 'Build completed successfully'",
     "start": "npm run start:prod",
