@@ -17,6 +17,7 @@ dotenv.config();
 import { AutonomousController } from './core/autonomousController';
 import { EnterpriseSystemController } from './core/enterpriseSystemController';
 import { getBrowser } from './utils/browser';
+import { logPlaywrightProbe } from './utils/browserProbe';
 
 async function main(): Promise<void> {
   try {
@@ -24,6 +25,9 @@ async function main(): Promise<void> {
     console.log(`🌟 Node.js version: ${process.version}`);
     console.log(`📦 Memory at startup: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`);
     console.log('='.repeat(70));
+    
+    // Browser probe before launching
+    logPlaywrightProbe();
     
     // CRITICAL: Start health server IMMEDIATELY for Railway health checks
     console.log('🏥 Starting health server for Railway...');

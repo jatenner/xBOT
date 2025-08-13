@@ -1,15 +1,2 @@
 [build]
-builder = "nixpacks"
-buildCommand = "npm ci && echo 'Installing Playwright browsers...' && npx playwright install chromium --force && echo 'Verifying Playwright...' && npx playwright --version && echo 'Playwright install complete' && npm run build"
-
-[deploy]
-healthcheckPath = "/health"
-healthcheckTimeout = 30
-restartPolicyType = "on_failure"
-restartPolicyMaxRetries = 3
-
-[env]
-PLAYWRIGHT_BROWSERS_PATH = "0"
-PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "false" 
-NODE_ENV = "production"
-PORT = "8080"
+builder = "DOCKERFILE"
