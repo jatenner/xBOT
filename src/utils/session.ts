@@ -65,8 +65,7 @@ export function createContextWithSession(browser: any): Promise<BrowserContext> 
   
   if (state) {
     const cookieCount = state.cookies?.length ?? 0;
-    const cookieNames = state.cookies?.map(c => c.name) ?? [];
-    console.log(`PLAYWRIGHT_STORAGE: loaded ${cookieCount} cookies from object (path: ${SESSION_FILE}) → [${cookieNames.join(', ')}]`);
+    console.log(`PLAYWRIGHT_STORAGE: loaded ${cookieCount} cookies (path: /app/data/twitter_session.json)`);
   }
   
   return browser.newContext({
