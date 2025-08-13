@@ -1,5 +1,5 @@
 [build]
-command = "echo '🤖 Building Autonomous Twitter Bot...' && npm ci && npm run build && echo '✅ Bot build complete'"
+command = "echo '🤖 Building Autonomous Twitter Bot...' && npm install && npm run build && echo '✅ Bot build complete'"
 
 [deploy]
 healthcheckPath = "/health"
@@ -15,4 +15,4 @@ size = "1GB"
 
 [env]
 NODE_ENV = "production"
-PLAYWRIGHT_BROWSERS_PATH = "/opt/render/.cache/ms-playwright"
+RAILWAY_ENVIRONMENT = "production"
