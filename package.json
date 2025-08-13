@@ -4,14 +4,14 @@
   "description": "Autonomous X (Twitter) bot for Snap2Health with AI-powered content generation",
   "main": "dist/main.js",
   "scripts": {
-    "postinstall": "npx playwright install --with-deps chromium",
+    "postinstall": "echo '🎭 Installing Playwright browsers...' && PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install --with-deps chromium && echo '✅ Playwright installation completed'",
     "build": "tsc -p .",
     "build-clean": "rm -rf dist && npm run build",
     "install-playwright": "if [ \"$SKIP_PLAYWRIGHT\" = \"true\" ]; then echo 'Skipping Playwright installation'; else npx playwright install chromium --force; fi",
 
     "postbuild": "mkdir -p dist/dashboard && cp src/dashboard/*.html dist/dashboard/ 2>/dev/null || true && mkdir -p dist/prompts && cp -r src/prompts/* dist/prompts/ && echo 'Build completed successfully'",
     "start": "npm run start:prod",
-    "migrate:prod": "node scripts/simple_migrate.js",
+    "migrate:prod": "node scripts/bulletproof_migrate.js",
     "migrate:stg": "bash -lc 'set -euo pipefail; set -a; source ./.env.staging-cli.sh; set +a; npx supabase db push --project-ref \"$STAGING_PROJECT_REF\"'",
     "start:prod": "npm run migrate:prod && node dist/main.js",
     "start:stg": "npm run migrate:stg && node dist/main.js",
