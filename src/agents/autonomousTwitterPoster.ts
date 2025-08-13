@@ -1,7 +1,7 @@
 import { IntelligentContentGenerator, ContentGenerationRequest } from './intelligentContentGenerator';
 import { EngagementAnalyzer } from '../intelligence/engagementAnalyzer';
 import { AdvancedDatabaseManager } from '../lib/advancedDatabaseManager';
-import { TwitterSessionManager } from '../utils/sessionManager';
+import { TwitterSessionManager } from '../utils/twitterSessionManager';
 import { getPageWithStorage } from '../utils/browser';
 import { Browser, Page, BrowserContext } from 'playwright';
 
