@@ -27,7 +27,7 @@ export class AutonomousTwitterPoster {
   private contentGenerator: IntelligentContentGenerator;
   private engagementAnalyzer: EngagementAnalyzer;
   private db: AdvancedDatabaseManager;
-  private sessionManager: TwitterSessionManager;
+  // TwitterSessionManager uses static methods, no instance needed
   private persistentContext: BrowserContext | null = null;
   private readonly userDataDir: string;
   private isShuttingDown = false;
@@ -36,7 +36,7 @@ export class AutonomousTwitterPoster {
     this.contentGenerator = IntelligentContentGenerator.getInstance();
     this.engagementAnalyzer = EngagementAnalyzer.getInstance();
     this.db = AdvancedDatabaseManager.getInstance();
-    this.sessionManager = TwitterSessionManager.getInstance();
+    // TwitterSessionManager uses static methods only
     this.userDataDir = process.env.PW_USER_DATA_DIR || "/app/.pw-data";
     
     // Setup graceful shutdown handlers
