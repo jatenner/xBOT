@@ -16,7 +16,7 @@
     "start": "npm run start:prod",
     "migrate:prod": "node scripts/bulletproof_migrate.js",
     "migrate:stg": "bash -lc 'set -euo pipefail; set -a; source ./.env.staging-cli.sh; set +a; npx supabase db push --project-ref \"$STAGING_PROJECT_REF\"'",
-    "start:prod": "node dist/main.js",
+    "start:prod": "npm run migrate:prod && node dist/main.js",
     "start:stg": "npm run migrate:stg && node dist/main.js",
     "migrate": "node scripts/db_push.js",
     "dev": "npm run setup-check && nodemon src/index.js",
