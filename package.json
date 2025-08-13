@@ -10,7 +10,7 @@
     "install-playwright": "if [ \"$SKIP_PLAYWRIGHT\" = \"true\" ]; then echo 'Skipping Playwright installation'; else npx playwright install chromium --force; fi",
 
     "postbuild": "mkdir -p dist/dashboard && cp src/dashboard/*.html dist/dashboard/ 2>/dev/null || true && mkdir -p dist/prompts && cp -r src/prompts/* dist/prompts/ && echo 'Build completed successfully'",
-    "start": "node railway-start.js",
+    "start": "node dist/main.js",
 
     "migrate": "node scripts/db_push.js",
     "dev": "npm run setup-check && nodemon src/index.js",
