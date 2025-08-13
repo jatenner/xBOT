@@ -95,7 +95,7 @@ LIVE_POSTING_ENABLED=true
 **What is dry-run?**  
 Dry-run executes every pipeline stage (idea generation → image fetch → logs) except the final `POST /2/tweets`. It's controlled by `LIVE_POSTING_ENABLED`. When false you'll see `🧪 DRY RUN – Tweet preview:` log lines; when true the bot actually tweets.
 
-## 7. Seeding X Session
+## 7. 🔐 Twitter Session
 
 ### Quick Setup (Local)
 1. **Seed session**: `npm run seed:x-session`
@@ -107,13 +107,12 @@ Dry-run executes every pipeline stage (idea generation → image fetch → logs)
 1. **Generate base64** from local session:
    ```bash
    # macOS (copy to clipboard)
-   base64 < data/twitter_session.json | pbcopy
+   npm run b64:x-session
    
-   # Linux (copy to clipboard)
-   base64 -w0 data/twitter_session.json | xclip -selection c
-   
-   # Or just output to terminal
-   base64 -i data/twitter_session.json
+   # Manual methods:
+   base64 < data/twitter_session.json | pbcopy    # macOS
+   base64 -w0 data/twitter_session.json | xclip -selection c  # Linux
+   base64 -i data/twitter_session.json           # Output to terminal
    ```
 
 2. **Set Railway environment variable**:
@@ -121,18 +120,37 @@ Dry-run executes every pipeline stage (idea generation → image fetch → logs)
    TWITTER_SESSION_B64=eyJjb29raWVzIjpbey...
    ```
 
-3. **Verify deployment**: Check `/session` endpoint shows `loggedInGuess: true`
+3. **Verify deployment**: Check `/session` endpoint shows cookies loaded
+
+### Session Rotation & Debug
+- **Auto-save**: After each successful post, session state is automatically saved back
+- **Debug flag**: Set `PRINT_SESSION_B64_ON_SAVE=true` to log masked base64 for rotation
+- **When to rotate**: After password changes, 2FA updates, or login issues
+- **Emergency**: If bot shows `login_required`, update `TWITTER_SESSION_B64` with fresh session
 
 ### Session Management Scripts
 - `npm run seed:x-session` - Interactive login to save session
 - `npm run test:x-session` - Test saved session by opening x.com/home
 - `npm run clear:x-session` - Delete saved session file
 - `npm run print:x-cookies` - Show cookie names array from session file
+- `npm run b64:x-session` - Copy session base64 to clipboard (macOS)
 
 ### Health Endpoints
 - `/session` - Session status: `{ path, exists, cookieNames, count }`
 - `/health` - Railway health checks
 - `/status` - Detailed bot status
+
+## 7.1. DB Sanity
+
+### Database Health Check
+- `/db/check-latest` - Returns latest 5 tweets with masked content for verification
+- Bypasses RLS using service role for reliable health monitoring
+- No caching - always fresh data from database
+
+### Admin Testing
+- `POST /db/admin-test` - DB insert test (requires `X-Admin-Key: <ADMIN_SECRET>` header)
+- Tests write permissions to `diagnostics_log` table if available
+- Safe fallback if diagnostics table not configured
 
 ## 8. NPM Scripts
 `dev` • `cron` • `tweet` • `reply` • `learn` • `lint`

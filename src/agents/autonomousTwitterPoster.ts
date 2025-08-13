@@ -3,6 +3,7 @@ import { EngagementAnalyzer } from '../intelligence/engagementAnalyzer';
 import { AdvancedDatabaseManager } from '../lib/advancedDatabaseManager';
 import { TwitterSessionManager } from '../utils/twitterSessionManager';
 import { isLoggedIn } from '../utils/xLoggedIn';
+import { saveStorageStateBack } from '../utils/sessionLoader';
 import { getPageWithStorage } from '../utils/browser';
 import { Browser, Page, BrowserContext } from 'playwright';
 
@@ -466,10 +467,10 @@ export class AutonomousTwitterPoster {
       
       // Save storage state after successful operation
       try {
-        await ctx.storageState({ path: sessionPath });
-        console.log('💾 Storage state saved successfully');
+        const currentStorageState = await ctx.storageState();
+        saveStorageStateBack(currentStorageState);
       } catch (saveError) {
-        console.warn('⚠️ Failed to save storage state:', saveError);
+        console.warn('SESSION_LOADER: Failed to save storage state back:', saveError);
       }
       
       return result;

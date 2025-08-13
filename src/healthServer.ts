@@ -205,6 +205,132 @@ export function startHealthServer(): Promise<void> {
       }
     });
 
+    // DB sanity check - latest tweets
+    app.get('/db/check-latest', async (_req, res) => {
+      try {
+        // Simple check without requiring database manager initialization
+        const { createClient } = require('@supabase/supabase-js');
+        
+        const supabaseUrl = process.env.SUPABASE_URL;
+        const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+        
+        if (!supabaseUrl || !supabaseKey) {
+          return res.status(503).json({ 
+            error: 'Database not configured',
+            timestamp: new Date().toISOString()
+          });
+        }
+        
+        const supabase = createClient(supabaseUrl, supabaseKey);
+        
+        // Get latest 5 tweets
+        const { data, error } = await supabase
+          .from('tweets')
+          .select('id, source, created_at, content')
+          .order('created_at', { ascending: false })
+          .limit(5);
+        
+        if (error) {
+          return res.status(500).json({ 
+            error: 'DB_CHECK: Query failed',
+            details: error.message,
+            timestamp: new Date().toISOString()
+          });
+        }
+        
+        // Mask content for security
+        const maskedData = data?.map(tweet => ({
+          id: tweet.id,
+          source: tweet.source,
+          created_at: tweet.created_at,
+          content_preview: tweet.content ? tweet.content.substring(0, 50) + '...' : null
+        }));
+        
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.json({
+          status: 'healthy',
+          latest_tweets: maskedData,
+          count: maskedData?.length || 0,
+          timestamp: new Date().toISOString()
+        });
+        
+      } catch (error) {
+        res.status(500).json({ 
+          error: 'DB_CHECK: Health check failed',
+          timestamp: new Date().toISOString()
+        });
+      }
+    });
+
+    // Admin-only DB insert test
+    app.post('/db/admin-test', async (req, res) => {
+      try {
+        const adminKey = req.headers['x-admin-key'];
+        const expectedKey = process.env.ADMIN_SECRET || 'test-secret-123';
+        
+        if (!adminKey || adminKey !== expectedKey) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+        
+        // Try to insert into diagnostics_log table if it exists
+        const { createClient } = require('@supabase/supabase-js');
+        
+        const supabaseUrl = process.env.SUPABASE_URL;
+        const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+        
+        if (!supabaseUrl || !supabaseKey) {
+          return res.status(503).json({ 
+            error: 'Database not configured'
+          });
+        }
+        
+        const supabase = createClient(supabaseUrl, supabaseKey);
+        
+        // Check if diagnostics_log table exists
+        const { data: tables } = await supabase
+          .from('information_schema.tables')
+          .select('table_name')
+          .eq('table_name', 'diagnostics_log')
+          .eq('table_schema', 'public');
+        
+        if (!tables || tables.length === 0) {
+          return res.json({ 
+            status: 'ok',
+            message: 'diagnostics table not configured',
+            timestamp: new Date().toISOString()
+          });
+        }
+        
+        // Insert test record
+        const { error } = await supabase
+          .from('diagnostics_log')
+          .insert({
+            event_type: 'admin_test',
+            message: 'Health check insert test',
+            created_at: new Date().toISOString()
+          });
+        
+        if (error) {
+          return res.status(500).json({ 
+            error: 'Insert test failed',
+            details: error.message
+          });
+        }
+        
+        res.json({
+          status: 'ok',
+          message: 'Test insert successful',
+          timestamp: new Date().toISOString()
+        });
+        
+      } catch (error) {
+        res.status(500).json({ 
+          error: 'Admin test failed',
+          timestamp: new Date().toISOString()
+        });
+      }
+    });
+
     // Basic info endpoint
     app.get('/', (_req, res) => {
       const uptime = Date.now() - healthServerStatus.startTime.getTime();
@@ -221,7 +347,9 @@ export function startHealthServer(): Promise<void> {
           playwright: '/playwright - Browser automation status',
           redis: '/health/redis - Redis Cloud health check',
           database: '/health/database - Full database health check',
-          session: '/session - Twitter session status'
+          session: '/session - Twitter session status',
+          db_latest: '/db/check-latest - Latest 5 tweets from DB',
+          admin_test: 'POST /db/admin-test - Admin DB insert test (requires X-Admin-Key header)'
         },
         message: 'Health server is always available - bot may still be initializing'
       });
