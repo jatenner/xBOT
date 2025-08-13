@@ -326,25 +326,30 @@ Default configuration values:
 
 ## Verification
 
-After deployment, verify the system is working correctly:
+After Railway deployment with Dockerfile, verify the system is working correctly:
 
 ```bash
-# Set production URL environment
-source prod-cli-CORRECTED.sh
+# Test Playwright endpoint (should return PLAYWRIGHT_OK)
+curl http://127.0.0.1:8080/playwright
 
-# Scan recent logs for key markers
-npm run rail:scan
-
-# Test Playwright endpoint
-npm run probe:remote
-
-# Test dry-run posting
-npm run post:dry
+# Check logs for factory initialization and posting safety
+railway logs --service xBOT | rg "PLAYWRIGHT_FACTORY_READY|POST_SKIPPED_LIVE_OFF"
 ```
 
-Expected outputs:
-- `rail:scan`: Should show `PLAYWRIGHT_FACTORY_READY` and no `Installing Playwright` or `headless_shell` errors
-- `probe:remote`: Should return `{"status":"initializing"}` or similar valid JSON
-- `post:dry`: Should return success response for dry-run post
+**Success Criteria:**
+- Playwright endpoint returns `PLAYWRIGHT_OK`
+- Logs show `PLAYWRIGHT_FACTORY_READY` (browser factory initialized)
+- Logs show `POST_SKIPPED_LIVE_OFF` (posting safety guard active)
+- No `headless_shell`, `ENOENT`, or `EBUSY` errors in logs
+
+**Additional Verification:**
+```bash
+# Inside Railway container
+railway run --service xBOT -- curl -sSf http://127.0.0.1:8080/playwright && echo
+railway run --service xBOT -- curl -sSf http://127.0.0.1:8080/status && echo
+
+# Ensure no browser installation errors
+railway logs --service xBOT --lines 400 | grep -i headless_shell || echo "✅ none"
+```
 
 ## Installation

@@ -1,10 +1,9 @@
-FROM mcr.microsoft.com/playwright:v1.54.2-jammy
+FROM mcr.microsoft.com/playwright:v1.47.0-jammy
 WORKDIR /app
-ENV NODE_ENV=production NPM_CONFIG_CACHE=/tmp/.npm LIVE_POSTS=false
+ENV NODE_ENV=production
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --omit=dev
 COPY . .
 RUN npm run build
-RUN npm prune --omit=dev
 EXPOSE 8080
-CMD ["npm","run","start:prod"]
+CMD ["npm", "run", "start:prod"]
