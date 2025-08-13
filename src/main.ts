@@ -11,8 +11,8 @@
  * - API endpoints for control
  */
 
-import { ensureTwitterSessionReady } from "./utils/sessionLoader";
-ensureTwitterSessionReady();
+import { ensureSessionFromEnv } from "./utils/session";
+ensureSessionFromEnv();
 
 import "./boot/env-playwright";
 import * as dotenv from 'dotenv';

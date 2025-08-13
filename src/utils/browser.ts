@@ -2,7 +2,7 @@ import { chromium, Browser, Page, BrowserContext } from 'playwright';
 import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import { readSession, SESSION_FILE, cookieNames } from '../lib/sessionState';
+import { loadSessionState } from './session';
 
 class PlaywrightFactory {
   private static instance: PlaywrightFactory;
@@ -66,19 +66,12 @@ class PlaywrightFactory {
         const browser = await this.getBrowser();
         
         // Use centralized session state management
-        const state = readSession();
+        const state = loadSessionState();
         
         // Prepare context options with session object
         let contextOptions: any = {
           storageState: state ?? undefined, // use object if present
         };
-        
-        // Helpful logs
-        if (state) {
-          console.log(`PLAYWRIGHT_STORAGE: loaded ${cookieNames(state).length} cookies from object (path: ${SESSION_FILE}) → [${cookieNames(state).join(", ")}]`);
-        } else {
-          console.log(`PLAYWRIGHT_STORAGE: NO storageState found at ${SESSION_FILE} — continuing without cookies`);
-        }
         
         const ctx = await browser.newContext(contextOptions);
         const page = await ctx.newPage();
