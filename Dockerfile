@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/playwright:v1.47.0-jammy
+FROM mcr.microsoft.com/playwright:v1.54.2-jammy
 WORKDIR /app
 ENV NODE_ENV=production NPM_CONFIG_CACHE=/tmp/.npm LIVE_POSTS=false
 COPY package*.json ./
