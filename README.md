@@ -106,11 +106,14 @@ Dry-run executes every pipeline stage (idea generation → image fetch → logs)
 ### Production Deployment
 1. **Generate base64** from local session:
    ```bash
-   # macOS/Linux
-   base64 -i data/twitter_session.json
+   # macOS (copy to clipboard)
+   base64 < data/twitter_session.json | pbcopy
    
-   # Windows
-   certutil -encode data/twitter_session.json temp.b64 && type temp.b64 | findstr /v "CERTIFICATE"
+   # Linux (copy to clipboard)
+   base64 -w0 data/twitter_session.json | xclip -selection c
+   
+   # Or just output to terminal
+   base64 -i data/twitter_session.json
    ```
 
 2. **Set Railway environment variable**:
@@ -124,10 +127,10 @@ Dry-run executes every pipeline stage (idea generation → image fetch → logs)
 - `npm run seed:x-session` - Interactive login to save session
 - `npm run test:x-session` - Test saved session by opening x.com/home
 - `npm run clear:x-session` - Delete saved session file
-- `npm run print:x-cookies` - Show cookie names from session file
+- `npm run print:x-cookies` - Show cookie names array from session file
 
 ### Health Endpoints
-- `/session` - Session status: `{ hasFile, cookieNames, loggedInGuess }`
+- `/session` - Session status: `{ path, exists, cookieNames, count }`
 - `/health` - Railway health checks
 - `/status` - Detailed bot status
 
