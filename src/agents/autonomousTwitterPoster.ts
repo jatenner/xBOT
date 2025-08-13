@@ -5,6 +5,8 @@ import { TwitterSessionManager } from '../utils/twitterSessionManager';
 import { isLoggedIn } from '../utils/xLoggedIn';
 import { saveStorageStateBack } from '../utils/sessionLoader';
 import { getPageWithStorage } from '../utils/browser';
+import { lintAndSplitThread } from '../utils/tweetLinter';
+import { SEL } from '../utils/selectors';
 import { Browser, Page, BrowserContext } from 'playwright';
 
 export interface PostingOptions {
@@ -179,7 +181,7 @@ export class AutonomousTwitterPoster {
     // Browser posting only for threads
     try {
       console.log('🌐 Posting thread via browser automation...');
-      const tweetId = await this.postThreadViaBrowser(threadParts);
+      const tweetId = await this.postViaBrowser(threadParts.join('\n\n'));
       
       return {
         success: true,
@@ -216,10 +218,24 @@ export class AutonomousTwitterPoster {
     
     console.log('🌐 Posting via browser automation...');
     
+    // Treat content as potential thread and lint it
+    const rawTweets = content.includes('\n\n') ? content.split('\n\n') : [content];
+    const { tweets, reasons } = lintAndSplitThread(rawTweets);
+    const totalChars = tweets.reduce((sum, t) => sum + t.length, 0);
+    
+    console.log(`LINTER: tweets=${tweets.length}, totalChars=${totalChars}, fixes=[${reasons.join(', ')}]`);
+    
+    if (tweets.length === 1) {
+      return await this.postSingleTweet(tweets[0]);
+    } else {
+      return await this.postThreadChain(tweets);
+    }
+  }
+
+  private async postSingleTweet(content: string): Promise<string> {
     return await this.withPage(async (page) => {
       // Navigate directly to Twitter home to check if logged in
       console.log('🌐 Navigating to Twitter...');
-      // Use robust login detection
       const loggedIn = await isLoggedIn(page);
       
       if (!loggedIn) {
@@ -236,50 +252,17 @@ export class AutonomousTwitterPoster {
       });
       await page.waitForTimeout(3000);
 
-      // Type content
+      // Type content using robust selectors
       console.log('⌨️ Typing tweet content...');
-      const tweetBox = await page.locator('[data-testid="tweetTextarea_0"]').first();
-      await tweetBox.click(); // Focus first
+      await page.click(SEL.composerBox);
       await page.waitForTimeout(500);
-      await tweetBox.fill(content);
+      await page.fill(SEL.composerBox, content);
       await page.waitForTimeout(1000);
 
-      // Trigger input event to enable post button
-      await tweetBox.dispatchEvent('input');
-      await page.waitForTimeout(1000);
-
-      // Wait for post button to be enabled
-      console.log('🔄 Waiting for post button to be enabled...');
-      const postButton = await page.locator('[data-testid="tweetButtonInline"]').first();
-      await postButton.waitFor({ state: 'attached' });
-      
-      // Try multiple post button selectors
-      const postSelectors = [
-        '[data-testid="tweetButtonInline"]',
-        '[data-testid="tweetButton"]', 
-        '[role="button"]:has-text("Post")',
-        'button:has-text("Tweet")'
-      ];
-      
-      let posted = false;
-      for (const selector of postSelectors) {
-        try {
-          const button = await page.locator(selector).first();
-          if (await button.isEnabled()) {
-            console.log(`✅ Found enabled post button: ${selector}`);
-            await button.click();
-            posted = true;
-            break;
-          }
-        } catch (e) {
-          console.log(`⚠️ Post button ${selector} not found or enabled`);
-        }
-      }
-      
+      // Post using robust selectors
+      const posted = await this.tryPostWithFallbacks(page);
       if (!posted) {
-        // Fallback: press Ctrl+Enter (tweet shortcut)
-        console.log('🔄 Using keyboard shortcut to post...');
-        await page.keyboard.press('Control+Enter');
+        throw new Error('Failed to post tweet - all post methods failed');
       }
       
       await page.waitForTimeout(3000);
@@ -294,11 +277,102 @@ export class AutonomousTwitterPoster {
     });
   }
 
-  private async postThreadViaBrowser(threadParts: string[]): Promise<string> {
-    // Simplified - post as single long tweet for now
-    const fullContent = threadParts.join('\n\n');
-    return await this.postViaBrowser(fullContent);
+  private async postThreadChain(tweets: string[]): Promise<string> {
+    return await this.withPage(async (page) => {
+      // Navigate and check login
+      const loggedIn = await isLoggedIn(page);
+      if (!loggedIn) {
+        throw new Error('POST_SKIPPED_PLAYWRIGHT: login_required');
+      }
+      
+      console.log('✅ LOGIN_CHECK: Confirmed logged in to X');
+      
+      // Post T1
+      console.log('THREAD_POST: posting T1');
+      await page.goto('https://x.com/home', { waitUntil: 'domcontentloaded' });
+      await page.click(SEL.composerBox);
+      await page.fill(SEL.composerBox, tweets[0]);
+      
+      const posted = await this.tryPostWithFallbacks(page);
+      if (!posted) {
+        throw new Error('Failed to post T1');
+      }
+      
+      await page.waitForTimeout(2000);
+      console.log('THREAD_POST: T1 posted');
+      
+      // Find the posted tweet and get its permalink
+      const tweetLink = await page.locator(SEL.tweetPermalinkAnchor).first();
+      const tweetUrl = await tweetLink.getAttribute('href');
+      if (!tweetUrl) throw new Error('Could not find posted tweet URL');
+      
+      const fullUrl = tweetUrl.startsWith('http') ? tweetUrl : `https://x.com${tweetUrl}`;
+      await page.goto(fullUrl, { waitUntil: 'domcontentloaded' });
+      
+      // Post remaining tweets as replies
+      for (let i = 1; i < tweets.length; i++) {
+        try {
+          console.log(`THREAD_POST: posting reply ${i + 1}/${tweets.length}`);
+          
+          await page.click(SEL.replyBtn);
+          await page.waitForSelector(SEL.composerBox, { timeout: 5000 });
+          await page.fill(SEL.composerBox, tweets[i]);
+          
+          const replyPosted = await this.tryPostWithFallbacks(page);
+          if (!replyPosted) {
+            console.log(`THREAD_RESUME_POINT=${i + 1}`);
+            throw new Error(`Failed to post reply ${i + 1}`);
+          }
+          
+          // Wait and verify with jitter
+          await page.waitForTimeout(Math.random() * 500 + 400); // 400-900ms jitter
+          console.log(`THREAD_POST: reply ${i + 1}/${tweets.length} posted`);
+          
+        } catch (error) {
+          console.log(`THREAD_RESUME_POINT=${i + 1}`);
+          throw error;
+        }
+      }
+      
+      console.log(`THREAD_COMPLETE: ${tweets.length} tweets`);
+      
+      const tweetId = `thread_${Date.now()}`;
+      return tweetId;
+    });
   }
+  
+  private async tryPostWithFallbacks(page: Page): Promise<boolean> {
+    const selectors = [
+      '[data-testid="tweetButton"]',
+      '[data-testid="tweetButtonInline"]', 
+      'button[role="button"][aria-label*="Post"]',
+      'button[role="button"]:has-text("Post")'
+    ];
+    
+    for (const selector of selectors) {
+      try {
+        await page.click(selector, { timeout: 2000 });
+        return true;
+      } catch {
+        continue;
+      }
+    }
+    
+    // Keyboard fallback
+    try {
+      await page.keyboard.press('Meta+Enter'); // Cmd+Enter on Mac
+      return true;
+    } catch {
+      try {
+        await page.keyboard.press('Control+Enter'); // Ctrl+Enter on Windows/Linux
+        return true;
+      } catch {
+        return false;
+      }
+    }
+  }
+
+
 
   private async generateSmartContentRequest(): Promise<ContentGenerationRequest> {
     // Get top performing topics
