@@ -8,7 +8,7 @@
     "build": "tsc -p .",
     "build-clean": "rm -rf dist && npm run build",
     "rail:logs": "railway logs --service xBOT | tail -n 400",
-    "rail:scan": "railway logs --service xBOT | tail -n 400 | grep -E 'PLAYWRIGHT_FACTORY_READY|POST_START|POST_SKIPPED_(PLAYWRIGHT|LIVE_OFF)|DB_(SEEDED_DEFAULT_WINDOWS|WINDOWS_OK)|PGRST116|headless_shell|ENOENT|Target page' || true",
+    "rail:scan": "railway logs --service xBOT | tail -n 400 | grep -E 'PLAYWRIGHT_FACTORY_READY|POST_SKIPPED_(PLAYWRIGHT|LIVE_OFF)|PGRST116|headless_shell|Target page|ENOENT' || true",
     "probe:pw": "node scripts/probe_playwright.js",
     "probe:remote": "curl -sSf $PROD_URL/playwright",
     "post:dry": "curl -sSf -X POST $PROD_URL/ai-post -H 'content-type: application/json' -d '{\"topic\":\"smoke\",\"dryRun\":true}'",
@@ -16,7 +16,7 @@
     "start": "npm run start:prod",
     "migrate:prod": "node scripts/bulletproof_migrate.js",
     "migrate:stg": "bash -lc 'set -euo pipefail; set -a; source ./.env.staging-cli.sh; set +a; npx supabase db push --project-ref \"$STAGING_PROJECT_REF\"'",
-    "start:prod": "npm run migrate:prod && node dist/main.js",
+    "start:prod": "node dist/main.js",
     "start:stg": "npm run migrate:stg && node dist/main.js",
     "migrate": "node scripts/db_push.js",
     "dev": "npm run setup-check && nodemon src/index.js",
@@ -84,8 +84,7 @@
   "author": "Snap2Health",
   "license": "MIT",
   "engines": {
-    "node": ">=20.0.0",
-    "npm": ">=10.0.0"
+    "node": ">=20 <21"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.1",
