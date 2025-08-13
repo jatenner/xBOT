@@ -349,7 +349,8 @@ export function startHealthServer(): Promise<void> {
           database: '/health/database - Full database health check',
           session: '/session - Twitter session status',
           db_latest: '/db/check-latest - Latest 5 tweets from DB',
-          admin_test: 'POST /db/admin-test - Admin DB insert test (requires X-Admin-Key header)'
+          admin_test: 'POST /db/admin-test - Admin DB insert test (requires X-Admin-Key header)',
+          signal_synapse: 'POST /generate/signal-synapse - Generate Signal_Synapse health thread (JSON format)'
         },
         message: 'Health server is always available - bot may still be initializing'
       });
@@ -390,6 +391,34 @@ export function startHealthServer(): Promise<void> {
       } catch (error: any) {
         console.error('❌ Content generation failed:', error);
         res.status(500).json({ error: error.message });
+      }
+    });
+
+    // Signal_Synapse thread generation endpoint
+    app.post('/generate/signal-synapse', async (req, res) => {
+      try {
+        console.log('🧬 Signal_Synapse thread generation requested');
+        
+        const { IntelligentContentGenerator } = await import('./agents/intelligentContentGenerator');
+        const contentGenerator = IntelligentContentGenerator.getInstance();
+        
+        const topic = req.body?.topic || undefined;
+        const threadData = await contentGenerator.generateSignalSynapseThread(topic);
+        
+        console.log(`✅ Generated Signal_Synapse thread: ${threadData.topic}`);
+        
+        res.json({
+          status: 'success',
+          data: threadData,
+          timestamp: new Date().toISOString()
+        });
+      } catch (error: any) {
+        console.error('❌ Signal_Synapse generation failed:', error);
+        res.status(500).json({ 
+          error: 'Signal_Synapse generation failed',
+          details: error.message,
+          timestamp: new Date().toISOString()
+        });
       }
     });
 
