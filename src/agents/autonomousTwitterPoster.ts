@@ -205,6 +205,13 @@ export class AutonomousTwitterPoster {
       throw new Error('POST_SKIPPED_LIVE_OFF');
     }
     
+    // Check if we have a valid Twitter session before attempting to post
+    if (!TwitterSessionManager.hasValidSession()) {
+      console.log('⚠️ POST_SKIPPED_NO_SESSION: No valid Twitter session found');
+      console.log('💡 To fix: Save Twitter cookies to data/twitter_session.json');
+      throw new Error('POST_SKIPPED_NO_SESSION: No valid Twitter session - cookies required for browser posting');
+    }
+    
     console.log('🌐 Posting via browser automation...');
     
     return await this.withPage(async (page) => {
