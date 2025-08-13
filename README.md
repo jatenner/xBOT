@@ -324,4 +324,27 @@ Default configuration values:
 - **fallback_stagger_minutes**: 90 (post spacing fallback)
 - **posting_strategy**: "balanced" (posting behavior mode)
 
+## Verification
+
+After deployment, verify the system is working correctly:
+
+```bash
+# Set production URL environment
+source prod-cli-CORRECTED.sh
+
+# Scan recent logs for key markers
+npm run rail:scan
+
+# Test Playwright endpoint
+npm run probe:remote
+
+# Test dry-run posting
+npm run post:dry
+```
+
+Expected outputs:
+- `rail:scan`: Should show `PLAYWRIGHT_FACTORY_READY` and no `Installing Playwright` or `headless_shell` errors
+- `probe:remote`: Should return `{"status":"initializing"}` or similar valid JSON
+- `post:dry`: Should return success response for dry-run post
+
 ## Installation

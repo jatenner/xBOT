@@ -16,6 +16,7 @@ dotenv.config();
 
 import { AutonomousController } from './core/autonomousController';
 import { EnterpriseSystemController } from './core/enterpriseSystemController';
+import { getBrowser } from './utils/browser';
 
 async function main(): Promise<void> {
   try {
@@ -59,6 +60,14 @@ async function main(): Promise<void> {
     try {
       await enterpriseController.initializeEnterpriseSystems();
       console.log('✅ Enterprise systems fully operational');
+    
+    // Initialize Playwright factory
+    try {
+      await getBrowser();
+      console.log('🎭 PLAYWRIGHT_FACTORY_READY');
+    } catch (error: any) {
+      console.warn('⚠️ Playwright factory initialization failed:', error.message);
+    }
     } catch (error: any) {
       console.warn('⚠️ Enterprise systems partially failed, continuing with degraded mode:', error.message);
       console.log('🔄 Bot will operate with available systems only');

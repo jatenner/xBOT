@@ -215,11 +215,12 @@ export class AdaptivePostingScheduler {
         'get_engagement_window',
         async (client) => {
           const { data, error } = await client
-            .from('engagement_windows')
+            .from('optimal_posting_windows')
             .select('*')
-            .eq('hour_24', currentHour)
-            .eq('weekday', new Date().getDay())
-            .single();
+            .eq('window_start', currentHour)
+            .eq('day_of_week', new Date().getDay() || 7) // 1=Mon, 7=Sun
+            .limit(1)
+            .maybeSingle();
           
           if (error) throw error;
           return data;
@@ -232,8 +233,8 @@ export class AdaptivePostingScheduler {
         startHour: currentHour,
         endHour: (currentHour + 1) % 24,
         averageEngagement: windowData.avg_engagement || 0.1,
-        followerActivity: windowData.follower_activity || 0.1,
-        optimalFrequency: windowData.optimal_frequency || 0.33
+        followerActivity: windowData.effectiveness_score || 0.1,
+        optimalFrequency: windowData.confidence || 0.33
       };
     } catch (error: any) {
       // Check for the specific "no rows returned" error

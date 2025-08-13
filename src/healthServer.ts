@@ -113,18 +113,23 @@ export function startHealthServer(): Promise<void> {
       }
     });
 
-    // Playwright status endpoint
-    app.get('/playwright', (_req, res) => {
-      res.json({
-        status: healthServerStatus.playwrightStatus,
-        message: {
-          'initializing': 'Playwright is being set up in background',
-          'ready': 'Playwright browser ready for automation',
-          'failed': 'Playwright setup failed - using fallback mode',
-          'disabled': 'Playwright disabled - health-only mode'
-        }[healthServerStatus.playwrightStatus],
-        fallback_available: true
-      });
+    // Playwright status endpoint - returns simple text for verification
+    app.get('/playwright', async (_req, res) => {
+      try {
+        // Quick test that Playwright can launch a browser
+        const { chromium } = await import('playwright');
+        const browser = await chromium.launch({ 
+          headless: true, 
+          args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+        });
+        await browser.close();
+        
+        res.set('Content-Type', 'text/plain');
+        res.send('PLAYWRIGHT_OK');
+      } catch (error: any) {
+        res.set('Content-Type', 'text/plain');
+        res.status(500).send(`PLAYWRIGHT_FAIL: ${error.message}`);
+      }
     });
 
     // Redis health check endpoint

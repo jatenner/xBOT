@@ -21,6 +21,7 @@ export REDIS_PREFIX='prod:'
 export APP_ENV='production'
 export LIVE_POSTS='true'
 export APP_SCHEMA_VERSION='1'
+export PROD_URL='https://xbot-production.up.railway.app'
 
 echo "🚀 Production CLI environment loaded successfully"
 echo "📋 Configuration: APP_ENV=$APP_ENV, LIVE_POSTS=$LIVE_POSTS, REDIS_PREFIX=$REDIS_PREFIX"

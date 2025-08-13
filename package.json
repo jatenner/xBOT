@@ -8,6 +8,11 @@
     "build": "tsc -p .",
     "build-clean": "rm -rf dist && npm run build",
     "probe:pw": "node scripts/probe_playwright.js",
+    "rail:logs": "railway logs --service xBOT | tail -n 400",
+    "rail:scan": "railway logs --service xBOT | tail -n 400 | grep -E 'PLAYWRIGHT_FACTORY_READY|POST_START|POST_SKIPPED_PLAYWRIGHT|DB_SEEDED_DEFAULT_WINDOWS|DB_WINDOWS_OK|PGRST116|headless_shell|ENOENT|Target page' || true",
+    "probe:local": "node scripts/probe_playwright.js",
+    "probe:remote": "curl -sSf $PROD_URL/playwright",
+    "post:dry": "curl -sSf -X POST $PROD_URL/ai-post -H 'content-type: application/json' -d '{\"topic\":\"smoke-test\",\"dryRun\":true}'",
 
     "postbuild": "mkdir -p dist/dashboard && cp src/dashboard/*.html dist/dashboard/ 2>/dev/null || true && mkdir -p dist/prompts && cp -r src/prompts/* dist/prompts/ && echo 'Build completed successfully'",
     "start": "npm run start:prod",

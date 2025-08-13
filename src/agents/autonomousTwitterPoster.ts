@@ -2,6 +2,7 @@ import { IntelligentContentGenerator, ContentGenerationRequest } from './intelli
 import { EngagementAnalyzer } from '../intelligence/engagementAnalyzer';
 import { AdvancedDatabaseManager } from '../lib/advancedDatabaseManager';
 import { TwitterSessionManager } from '../utils/sessionManager';
+import { getPageWithStorage } from '../utils/browser';
 import { Browser, Page, BrowserContext } from 'playwright';
 
 export interface PostingOptions {
@@ -414,33 +415,31 @@ export class AutonomousTwitterPoster {
 
   private async withPage<T>(fn: (page: Page) => Promise<T>): Promise<T> {
     try {
-      const page = await this.getFreshPage();
+      console.log('🎭 POST_START');
+      const { ctx, page } = await getPageWithStorage('/tmp/twitter-auth.json');
       console.log('✅ New page created successfully');
       
       const result = await fn(page);
       
+      // Save storage state after successful operation
       try {
-        await page.close();
+        await ctx.storageState({ path: '/tmp/twitter-auth.json' });
+      } catch {}
+      
+      try {
+        await ctx.close();
       } catch {}
       
       return result;
     } catch (error: any) {
       const msg = String(error?.message || error);
-      console.error('⚠️ Browser posting failed:', msg);
+      console.error('⚠️ POST_SKIPPED_PLAYWRIGHT:', error.name, '-', msg);
       
-      if (msg.includes("Target page, context or browser has been closed") || 
-          msg.includes("Browser closed")) {
-        console.log('❌ POST_ABORTED_PLAYWRIGHT_UNAVAILABLE');
-      }
-      
-      throw new Error(`Browser posting failed: ${msg}`);
+      return Promise.reject(new Error(`POST_SKIPPED_PLAYWRIGHT: ${msg}`));
     }
   }
 
-  private async getFreshPage() {
-    const { getFreshPage } = await import('../utils/browser');
-    return getFreshPage();
-  }
+
 
   private async gracefulShutdown(): Promise<void> {
     if (this.isShuttingDown) return;
