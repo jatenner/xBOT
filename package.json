@@ -9,6 +9,8 @@
     "build-clean": "rm -rf dist && npm run build",
     "rail:logs": "railway logs --service xBOT | tail -n 400",
     "rail:scan": "railway logs --service xBOT | tail -n 400 | grep -E 'PLAYWRIGHT_FACTORY_READY|POST_SKIPPED_(PLAYWRIGHT|LIVE_OFF)|PGRST116|headless_shell|Target page|ENOENT' || true",
+    "seed:session": "mkdir -p data && npx playwright open --save-storage=data/twitter_session.json https://x.com/login",
+    "test:session": "node tools/testSession.js",
     "seed:x-session": "ts-node -T tools/seedSession.ts",
     "lint:sample": "ts-node -T tools/tryLinter.ts",
     "print:b64-session": "ts-node tools/session-cli.ts print-b64",

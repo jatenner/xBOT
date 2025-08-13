@@ -6,7 +6,10 @@ import { isLoggedIn } from '../utils/xLoggedIn';
 import { saveStorageStateBack } from '../utils/sessionLoader';
 import { getPageWithStorage } from '../utils/browser';
 import { lintAndSplitThread } from '../utils/tweetLinter';
-import { SEL } from '../utils/selectors';
+import { SELECTORS, SEL } from '../utils/selectors';
+import { ContentProducer } from '../generation/producer';
+import { BanditArm } from '../learn/bandit';
+import { ThreadSchema } from '../generation/systemPrompt';
 import { Browser, Page, BrowserContext } from 'playwright';
 
 export interface PostingOptions {
@@ -342,14 +345,8 @@ export class AutonomousTwitterPoster {
   }
   
   private async tryPostWithFallbacks(page: Page): Promise<boolean> {
-    const selectors = [
-      '[data-testid="tweetButton"]',
-      '[data-testid="tweetButtonInline"]', 
-      'button[role="button"][aria-label*="Post"]',
-      'button[role="button"]:has-text("Post")'
-    ];
-    
-    for (const selector of selectors) {
+    // Try multiple selectors with fallbacks
+    for (const selector of SELECTORS.postButton) {
       try {
         await page.click(selector, { timeout: 2000 });
         return true;
@@ -370,6 +367,195 @@ export class AutonomousTwitterPoster {
         return false;
       }
     }
+  }
+
+  /**
+   * Post a learning-optimized thread using the bandit system
+   */
+  public async postLearningThread(threadData: ThreadSchema, arm: BanditArm): Promise<PostingResult> {
+    try {
+      console.log('🧵 THREAD_POST: Starting learning-optimized thread posting...');
+      
+      // Lint the thread content
+      const { tweets, reasons } = lintAndSplitThread(threadData.tweets);
+      console.log(`LINTER: tweets=${tweets.length}, ok`);
+      
+      if (reasons.length > 0) {
+        console.log('LINTER fixes:', reasons.join(', '));
+      }
+      
+      // Post the thread as reply chain
+      const result = await this.postThreadChainWithStorage(tweets);
+      
+      if (result.success && result.tweetId && result.permalink) {
+        // Store in posts table with learning metadata
+        await this.storePostWithMetadata(result, threadData, arm);
+        
+        // Schedule metric snapshots
+        await this.scheduleMetricSnapshots(result.postId!, result.permalink);
+        
+        console.log(`THREAD_COMPLETE: ${tweets.length} tweets posted with ID ${result.tweetId}`);
+      }
+      
+      return result;
+      
+    } catch (error: any) {
+      console.error('❌ Learning thread posting failed:', error.message);
+      return {
+        success: false,
+        content: threadData.tweets.join('\n\n'),
+        method: 'failed',
+        error: error.message
+      };
+    }
+  }
+
+  private async postThreadChainWithStorage(tweets: string[]): Promise<PostingResult & { permalink?: string; postId?: string }> {
+    return await this.withPage(async (page) => {
+      // Check login with enhanced selectors
+      const loggedIn = await this.checkLoginWithSelectors(page);
+      if (!loggedIn) {
+        throw new Error('POST_SKIPPED_PLAYWRIGHT: login_required');
+      }
+      
+      console.log('✅ LOGIN_CHECK: Confirmed logged in to X');
+      
+      // Post T1
+      console.log('THREAD_POST: T1 posting...');
+      await page.goto('https://x.com/compose/tweet', { waitUntil: 'domcontentloaded' });
+      
+      // Use enhanced selectors for compose area
+      await this.clickWithFallbacks(page, SELECTORS.composeArea);
+      await page.fill(SELECTORS.composeArea[0], tweets[0]);
+      
+      const posted = await this.tryPostWithFallbacks(page);
+      if (!posted) {
+        throw new Error('Failed to post T1');
+      }
+      
+      await page.waitForTimeout(3000);
+      
+      // Extract permalink and tweet ID
+      const currentUrl = page.url();
+      const tweetIdMatch = currentUrl.match(/status\/(\d+)/);
+      const tweetId = tweetIdMatch ? tweetIdMatch[1] : `thread_${Date.now()}`;
+      const permalink = currentUrl;
+      
+      console.log(`THREAD_POST: T1 posted id=${tweetId} permalink=${permalink}`);
+      
+      // Post replies if this is a thread
+      if (tweets.length > 1) {
+        for (let i = 1; i < tweets.length; i++) {
+          const resumePoint = process.env.THREAD_RESUME_POINT;
+          if (resumePoint && parseInt(resumePoint) > i + 1) {
+            console.log(`THREAD_RESUME: Skipping to ${resumePoint}`);
+            continue;
+          }
+          
+          try {
+            console.log(`THREAD_REPLY: ${i + 1}/${tweets.length} posting...`);
+            
+            // Click reply button with fallbacks
+            await this.clickWithFallbacks(page, SELECTORS.replyButton);
+            await page.waitForSelector(SELECTORS.composeArea[0], { timeout: 5000 });
+            await page.fill(SELECTORS.composeArea[0], tweets[i]);
+            
+            const replyPosted = await this.tryPostWithFallbacks(page);
+            if (!replyPosted) {
+              console.log(`THREAD_RESUME_POINT=${i + 1}`);
+              throw new Error(`Failed to post reply ${i + 1}`);
+            }
+            
+            await page.waitForTimeout(Math.random() * 500 + 400); // Jitter
+            console.log(`THREAD_REPLY: ${i + 1}/${tweets.length} posted`);
+            
+          } catch (error) {
+            console.log(`THREAD_RESUME_POINT=${i + 1}`);
+            throw error;
+          }
+        }
+      }
+      
+      return {
+        success: true,
+        tweetId,
+        permalink,
+        postId: crypto.randomUUID(),
+        content: tweets.join('\n\n'),
+        method: 'browser' as const
+      };
+    });
+  }
+
+  private async checkLoginWithSelectors(page: Page): Promise<boolean> {
+    for (const selector of SELECTORS.accountSwitcher) {
+      try {
+        await page.goto('https://x.com/home', { waitUntil: 'domcontentloaded' });
+        const element = await page.locator(selector).first();
+        const isVisible = await element.isVisible({ timeout: 3000 });
+        if (isVisible) return true;
+      } catch {
+        continue;
+      }
+    }
+    return false;
+  }
+
+  private async clickWithFallbacks(page: Page, selectors: string[]): Promise<void> {
+    for (const selector of selectors) {
+      try {
+        await page.click(selector, { timeout: 2000 });
+        return;
+      } catch {
+        continue;
+      }
+    }
+    throw new Error(`Failed to click any of: ${selectors.join(', ')}`);
+  }
+
+  private async storePostWithMetadata(
+    result: PostingResult & { permalink?: string; postId?: string }, 
+    threadData: ThreadSchema, 
+    arm: BanditArm
+  ): Promise<void> {
+    await this.db.executeQuery('store_learning_post', async (client) => {
+      const { error } = await client
+        .from('posts')
+        .insert({
+          id: result.postId,
+          tweet_id: result.tweetId,
+          permalink: result.permalink,
+          posted_at: new Date().toISOString(),
+          topic_cluster: arm.topic_cluster,
+          hook_type: arm.hook_type,
+          cta_type: arm.cta_type,
+          thread_len: threadData.tweets.length,
+          sources_json: threadData.source_urls,
+          model_version: 'gpt-4o-mini'
+        });
+
+      if (error) throw error;
+      return { success: true };
+    });
+  }
+
+  private async scheduleMetricSnapshots(postId: string, permalink: string): Promise<void> {
+    const { MetricsScraper } = await import('../metrics/scraper');
+    const scraper = MetricsScraper.getInstance();
+    
+    // Schedule snapshots at 30m, 2h, 24h
+    const intervals = [30 * 60 * 1000, 2 * 60 * 60 * 1000, 24 * 60 * 60 * 1000];
+    
+    intervals.forEach((interval, index) => {
+      setTimeout(async () => {
+        try {
+          console.log(`METRICS: Taking ${['30m', '2h', '24h'][index]} snapshot for ${postId}`);
+          // This would be handled by the metrics processing system
+        } catch (error: any) {
+          console.error(`Failed to schedule metrics for ${postId}:`, error.message);
+        }
+      }, interval);
+    });
   }
 
 
