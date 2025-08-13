@@ -13,6 +13,7 @@
     "test:x-session": "npx playwright open --load-storage=data/twitter_session.json https://x.com/home",
     "clear:x-session": "rm -f data/twitter_session.json && echo 'Session cleared'",
     "print:x-cookies": "node -e \"console.log(JSON.parse(require('fs').readFileSync('data/twitter_session.json','utf8')).cookies.map(c=>c.name))\"",
+    "b64:x-session": "base64 < data/twitter_session.json | pbcopy && echo 'Session base64 copied to clipboard'",
     "probe:pw": "node scripts/probe_playwright.js",
     "probe:remote": "curl -sSf $PROD_URL/playwright",
     "post:dry": "curl -sSf -X POST $PROD_URL/ai-post -H 'content-type: application/json' -d '{\"topic\":\"smoke\",\"dryRun\":true}'",
