@@ -414,28 +414,61 @@ export class AutonomousTwitterPoster {
 
 
   private async withPage<T>(fn: (page: Page) => Promise<T>): Promise<T> {
+    let ctx: any = null;
+    let page: any = null;
+    
     try {
       console.log('🎭 POST_START');
-      const { ctx, page } = await getPageWithStorage('/tmp/twitter-auth.json');
+      
+      // Use persistent storage path that survives Railway restarts
+      const sessionPath = process.env.RAILWAY_ENVIRONMENT === 'production' 
+        ? '/app/data/twitter-session.json'  // Persistent volume in Railway
+        : '/tmp/twitter-auth.json';         // Local development
+      
+      // Ensure directory exists for persistent storage
+      if (process.env.RAILWAY_ENVIRONMENT === 'production') {
+        const sessionDir = require('path').dirname(sessionPath);
+        try {
+          require('fs').mkdirSync(sessionDir, { recursive: true });
+        } catch (dirError) {
+          console.warn('⚠️ Could not create session directory:', dirError.message);
+        }
+      }
+      
+      const pageData = await getPageWithStorage(sessionPath);
+      ctx = pageData.ctx;
+      page = pageData.page;
       console.log('✅ New page created successfully');
       
+      // Execute the posting function
       const result = await fn(page);
       
       // Save storage state after successful operation
       try {
-        await ctx.storageState({ path: '/tmp/twitter-auth.json' });
-      } catch {}
-      
-      try {
-        await ctx.close();
-      } catch {}
+        await ctx.storageState({ path: sessionPath });
+        console.log('💾 Storage state saved successfully');
+      } catch (saveError) {
+        console.warn('⚠️ Failed to save storage state:', saveError);
+      }
       
       return result;
+      
     } catch (error: any) {
       const msg = String(error?.message || error);
       console.error('⚠️ POST_SKIPPED_PLAYWRIGHT:', error.name, '-', msg);
       
       return Promise.reject(new Error(`POST_SKIPPED_PLAYWRIGHT: ${msg}`));
+      
+    } finally {
+      // Always clean up resources in finally block
+      if (ctx) {
+        try {
+          await ctx.close();
+          console.log('🧹 Browser context cleaned up');
+        } catch (cleanupError) {
+          console.warn('⚠️ Context cleanup warning:', cleanupError);
+        }
+      }
     }
   }
 
