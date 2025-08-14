@@ -3,12 +3,8 @@ export interface LintResult {
   reasons: string[];
 }
 
-export function lintAndSplitThread(rawTweets: string | string[]): LintResult {
-  // Strict validation: reject single strings
-  if (typeof rawTweets === 'string') {
-    throw new Error('LINTER_INPUT_MUST_BE_ARRAY: Input must be an array of tweets, not a single string');
-  }
-
+export function lintAndSplitThread(rawTweets: string[]): LintResult {
+  // Strict validation: only accept arrays
   if (!Array.isArray(rawTweets)) {
     throw new Error('LINTER_INPUT_MUST_BE_ARRAY: Input must be an array of tweets');
   }
@@ -23,9 +19,9 @@ export function lintAndSplitThread(rawTweets: string | string[]): LintResult {
   for (let i = 0; i < rawTweets.length; i++) {
     let content = rawTweets[i].trim();
     
-    // Hard cap at 260 chars (20 char headroom)
-    if (content.length > 260) {
-      const truncated = truncateAtWordBoundary(content, 260);
+    // Hard cap at 240 chars for strict compliance
+    if (content.length > 240) {
+      const truncated = truncateAtWordBoundary(content, 240);
       if (truncated !== content) {
         reasons.push(`Tweet ${i + 1}: truncated from ${content.length} to ${truncated.length} chars`);
         content = truncated;
@@ -91,10 +87,13 @@ export function lintAndSplitThread(rawTweets: string | string[]): LintResult {
     throw new Error('THREAD_ABORT_LINT_FAIL: All tweets were filtered out during linting');
   }
 
-  // Validate each tweet length
+  // Validate each tweet length (strict 240 char limit)
   for (let i = 0; i < tweets.length; i++) {
-    if (tweets[i].length > 260) {
-      throw new Error(`THREAD_ABORT_LINT_FAIL: Tweet ${i + 1} still exceeds 260 chars after linting`);
+    if (tweets[i].length > 240) {
+      throw new Error(`THREAD_ABORT_LINT_FAIL: Tweet ${i + 1} still exceeds 240 chars after linting (${tweets[i].length})`);
+    }
+    if (!tweets[i].trim()) {
+      throw new Error(`THREAD_ABORT_LINT_FAIL: Tweet ${i + 1} is empty after linting`);
     }
   }
 
@@ -117,14 +116,14 @@ function truncateAtWordBoundary(text: string, maxLength: number): string {
   return truncated.trim();
 }
 
-function limitEmojis(text: string): string {
+function limitEmojis(text: string, maxCount: number = 1): string {
   const emojiRegex = /[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]/gu;
   const emojis = text.match(emojiRegex) || [];
   
-  if (emojis.length <= 1) return text;
+  if (emojis.length <= maxCount) return text;
   
   let result = text;
-  for (let i = 1; i < emojis.length; i++) {
+  for (let i = maxCount; i < emojis.length; i++) {
     result = result.replace(emojis[i], '');
   }
   

@@ -509,6 +509,61 @@ app.post('/test-intelligent-post', async (req, res) => {
 
 console.log('🧠 AI endpoints mounted: /generate-content, /ai-post, /ai-analytics, /test-intelligent-post');
 
+// Force thread posting endpoint
+app.get('/force-thread', async (req, res) => {
+  try {
+    const topic = req.query.topic as string;
+    const mode = req.query.mode as string;
+    
+    if (!topic) {
+      return res.status(400).json({ error: 'topic parameter required' });
+    }
+    
+    const validModes = ['how_to', 'myth_bust', 'checklist', 'story', 'stat_drop'];
+    const hookType = mode && validModes.includes(mode) ? mode : 'how_to';
+    
+    console.log(`FORCE_THREAD_START topic="${topic}" mode="${hookType}"`);
+    
+    // Import and use the thread generation system
+    const { IntelligentContentGenerator } = await import('./agents/intelligentContentGenerator');
+    const { AutonomousTwitterPoster } = await import('./agents/autonomousTwitterPoster');
+    const { lintAndSplitThread } = await import('./utils/tweetLinter');
+    
+    const contentGenerator = IntelligentContentGenerator.getInstance();
+    const poster = AutonomousTwitterPoster.getInstance();
+    
+    // Generate thread with specific topic and mode
+    const threadData = await contentGenerator.generateSignalSynapseThread(topic);
+    
+    // Validate and lint
+    const { tweets } = lintAndSplitThread(threadData.tweets);
+    
+    console.log(`FORCE_THREAD: Generated ${tweets.length} tweets`);
+    
+    // Post the thread
+    const result = await poster.postThread(tweets);
+    
+    console.log(`FORCE_THREAD_COMPLETE: ${result.permalink}`);
+    
+    res.json({
+      success: true,
+      topic,
+      hook_type: threadData.hook_type,
+      tweet_count: tweets.length,
+      root_id: result.rootTweetId,
+      permalink: result.permalink,
+      reply_count: result.replyIds.length
+    });
+    
+  } catch (error: any) {
+    console.error('FORCE_THREAD_ERROR:', error.message);
+    res.status(500).json({ 
+      error: error.message,
+      success: false 
+    });
+  }
+});
+
     // Start server with maximum resilience
     healthServerStatus.server = app.listen(healthServerStatus.port, healthServerStatus.host, () => {
       console.log(`✅ Health server READY on http://${healthServerStatus.host}:${healthServerStatus.port}`);
@@ -516,6 +571,7 @@ console.log('🧠 AI endpoints mounted: /generate-content, /ai-post, /ai-analyti
       console.log(`📊 Status endpoint: GET /status`);
       console.log(`🔍 Environment check: GET /env`);
       console.log(`🎭 Playwright status: GET /playwright`);
+      console.log(`🚀 Force post: GET /force-thread?topic=<topic>&mode=<hook_type>`);
       console.log(`⚡ Server startup time: ${Date.now() - healthServerStatus.startTime.getTime()}ms`);
       resolve();
     });

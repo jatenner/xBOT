@@ -47,6 +47,7 @@
     "start-original": "npm run migrate && node dist/main.js",
     "logs": "node bulletproof_railway_monitor.js",
     "dry:thread": "tsx tools/dryRunThread.ts",
+    "post:thread": "tsx tools/forceThread.ts",
     "logs-old": "node perfect_railway_logs.js",
     "init-session": "npm run build && node dist/utils/initTwitterSession.js",
     "test-session": "npm run build && node dist/utils/initTwitterSession.js test",
