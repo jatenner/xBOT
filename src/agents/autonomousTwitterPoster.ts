@@ -762,7 +762,9 @@ export class AutonomousTwitterPoster {
               throw new Error(`Failed to post reply ${i + 1}`);
             }
             
-            await page.waitForTimeout(Math.random() * 500 + 400); // Jitter
+            // Human delay between tweets (2-2.5 seconds)
+            const delayMs = 2000 + Math.random() * 500;
+            await page.waitForTimeout(delayMs);
             console.log(`THREAD_REPLY: ${i + 1}/${tweets.length} posted`);
             
           } catch (error) {
