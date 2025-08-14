@@ -409,4 +409,107 @@ railway run --service xBOT -- curl -sSf http://127.0.0.1:8080/status && echo
 railway logs --service xBOT --lines 400 | grep -i headless_shell || echo "✅ none"
 ```
 
+## Thread Integrity System
+
+### Environment Variables
+
+**Thread Validation Settings:**
+```bash
+THREAD_MIN_TWEETS=5                # Minimum tweets required for valid thread
+THREAD_MAX_TWEETS=9                # Maximum tweets allowed in thread
+THREAD_RETRY_ATTEMPTS=3            # Max retry attempts for invalid threads
+THREAD_RETRY_BASE_MS=500           # Base delay for retry backoff (ms)
+THREAD_STRICT_REPLY_MODE=true      # Enforce real reply chains
+TWEET_MAX_CHARS_HARD=279           # Hard character limit per tweet
+FORCE_NO_HASHTAGS=true             # Strip all hashtags from content
+EMOJI_MAX=2                        # Maximum emojis per tweet
+FALLBACK_SINGLE_TWEET_OK=false     # Allow fallback to single when thread fails
+```
+
+### Force Thread Testing
+
+**Test thread generation and validation:**
+```bash
+# Test single post (clean format)
+curl -fsS "$SERVICE_URL/ai-post?format=single&topic=sleep&hook=tip"
+
+# Test thread reply chain (5-9 tweets)
+curl -fsS "$SERVICE_URL/force-thread?topic=stress%20recovery&mode=how_to"
+
+# Test longform fallback to thread
+curl -fsS "$SERVICE_URL/ai-post?format=longform_single&topic=ultra-processed%20food"
+```
+
+### Expected Healthy Log Lines
+
+**Single Post Logs:**
+```
+FORMAT_DECISION: final=single, tweets=1
+LINTER: format=single, tweets=1, t1_chars=245, actions=[emoji_reduce]
+POST_START
+LOGIN_CHECK: Confirmed logged in to X
+POST_DONE: id=1234567890123456789
+```
+
+**Thread Post Logs:**
+```
+FORMAT_DECISION: want=thread, initial_tweets=7
+THREAD_VALIDATE: k=7 OK
+FORMAT_DECISION: final=thread, tweets=7
+POST_START
+THREAD_CHAIN: k=1/7, in_reply_to=none
+POST_DONE: id=1234567890123456789
+THREAD_CHAIN: k=2/7, in_reply_to=1234567890123456789
+POST_DONE: id=1234567890123456790
+...
+SESSION_SAVED: cookies=42
+```
+
+**Thread Validation & Retry Logs:**
+```
+THREAD_VALIDATE: k=3 < min=5 → REASK(1/3)
+THREAD_REASK: attempt=1/3 topic="stress recovery (Coach style)..."
+THREAD_VALIDATE: k=6 OK (attempt=1)
+```
+
+**Fallback Scenarios:**
+```
+# When fallback allowed
+THREAD_FALLBACK: to=single (allowed=true)
+
+# When fallback disabled
+THREAD_SKIP: fallback=false reason=invalid_thread
+```
+
+### Warning Signs
+
+**❌ Thread Generation Failures:**
+```
+THREAD_GEN_FAIL: reason=too_short attempt=3/3
+THREAD_VALIDATION_FAILED: too_short (k=3)
+THREAD_GENERATION_FAILED: Unable to generate valid thread after retries
+```
+
+**❌ Format Issues:**
+```
+FORMAT_SANITIZER: removed_thread_language_single (frequent)
+THREAD_VALIDATE: k=1 failed → reason=T1_thread_fluff
+```
+
+### Running Tests
+
+```bash
+# Test thread validation logic
+npm run test:thread-integrity
+
+# Test format sanitization
+npm run test:format
+
+# Test tweet linting
+npm run test:linter
+
+# Full test suite
+npm test
+```
+
 ## Installation
