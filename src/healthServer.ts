@@ -666,4 +666,4 @@ export function updatePlaywrightStatus(status: 'initializing' | 'ready' | 'faile
  */
 export function getHealthServerStatus(): HealthServerStatus {
   return { ...healthServerStatus };
-}// Force Railway rebuild Thu Aug 14 13:41:32 EDT 2025
+}
