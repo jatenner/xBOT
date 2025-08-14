@@ -287,6 +287,7 @@ export class AutonomousTwitterPoster {
 
   /**
    * Post a proper thread as reply chain: T1 → permalink → Reply → T2..Tn
+   * Implements strict Playwright-only posting with proper error handling
    */
   public async postThread(tweets: string[]): Promise<{rootTweetId: string; permalink: string; replyIds: string[]}> {
     if (!tweets || tweets.length === 0) {
@@ -496,8 +497,43 @@ export class AutonomousTwitterPoster {
       
       console.log(`THREAD_COMPLETE root=${rootTweetId} replies=${replyIds.length}`);
       
+      // Store the thread in posts table
+      await this.storeThreadPost(rootTweetId, permalink, tweets, replyIds);
+      
       return { rootTweetId, permalink, replyIds };
     });
+  }
+
+  /**
+   * Store thread post data in database
+   */
+  private async storeThreadPost(rootId: string, permalink: string, tweets: string[], replyIds: string[]): Promise<void> {
+    try {
+      const { AdvancedDatabaseManager } = await import('../lib/advancedDatabaseManager');
+      const dbManager = AdvancedDatabaseManager.getInstance();
+      
+      await dbManager.executeQuery('store_thread_post', async (client) => {
+        const { error } = await client
+          .from('posts')
+          .insert({
+            root_id: rootId,
+            permalink,
+            tweets_json: { tweets, reply_ids: replyIds },
+            posted_at: new Date().toISOString()
+          });
+
+        if (error) {
+          console.error('Failed to store thread post:', error.message);
+          throw error;
+        }
+
+        console.log(`📊 Thread post stored: ${rootId}`);
+        return { success: true };
+      });
+    } catch (error: any) {
+      console.warn(`Failed to store thread post ${rootId}:`, error.message);
+      // Don't throw - posting succeeded even if storage failed
+    }
   }
 
   private async postThreadChain(tweets: string[]): Promise<string> {
