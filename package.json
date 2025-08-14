@@ -1,6 +1,6 @@
 {
   "name": "snap2health-xbot",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Autonomous X (Twitter) bot for Snap2Health with AI-powered content generation",
   "main": "dist/main.js",
   "scripts": {
