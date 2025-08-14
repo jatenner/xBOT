@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { loadSessionState } from './session';
 
-class PlaywrightFactory {
+export class PlaywrightFactory {
   private static instance: PlaywrightFactory;
   private browserPromise: Promise<Browser> | null = null;
   private isInitialized = false;
