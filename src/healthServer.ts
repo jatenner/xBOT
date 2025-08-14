@@ -5,6 +5,7 @@
  */
 
 import express from 'express';
+import { SessionLoader } from './utils/sessionLoader';
 
 export interface HealthServerStatus {
   server?: any;
@@ -186,7 +187,6 @@ export function startHealthServer(): Promise<void> {
     // Session status endpoint
     app.get('/session', (_req, res) => {
       try {
-        const { SessionLoader } = require('./utils/sessionLoader');
         const lastResult = SessionLoader.getLastResult();
         
         if (lastResult) {
@@ -580,6 +580,7 @@ app.get('/force-thread', async (req, res) => {
       console.log(`📊 Status endpoint: GET /status`);
       console.log(`🔍 Environment check: GET /env`);
       console.log(`🎭 Playwright status: GET /playwright`);
+      console.log(`🔐 Session diagnostics: GET /session`);
       console.log(`🚀 Force post: GET /force-thread?topic=<topic>&mode=<hook_type>`);
       console.log(`⚡ Server startup time: ${Date.now() - healthServerStatus.startTime.getTime()}ms`);
       resolve();
