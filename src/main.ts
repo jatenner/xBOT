@@ -11,8 +11,13 @@
  * - API endpoints for control
  */
 
-import { ensureSessionFromEnv } from "./utils/session";
-ensureSessionFromEnv();
+import { SessionLoader } from "./utils/sessionLoader";
+
+// Bootstrap session with robust validation
+const sessionResult = SessionLoader.load();
+if (!sessionResult.ok) {
+  console.log('WARNING: No valid Twitter session found — running in read-only until session is configured');
+}
 
 import "./boot/env-playwright";
 import * as dotenv from 'dotenv';
