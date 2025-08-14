@@ -786,16 +786,23 @@ export class AutonomousTwitterPoster {
   }
 
   private async checkLoginWithSelectors(page: Page): Promise<boolean> {
+    console.log('LOGIN_CHECK: Navigating to x.com/home to check login status...');
+    
     for (const selector of SELECTORS.accountSwitcher) {
       try {
         await page.goto('https://x.com/home', { waitUntil: 'domcontentloaded' });
         const element = await page.locator(selector).first();
         const isVisible = await element.isVisible({ timeout: 3000 });
-        if (isVisible) return true;
+        if (isVisible) {
+          console.log(`LOGIN_CHECK: Found authenticated indicator: [data-testid="SideNav_AccountSwitcher_Button"]`);
+          return true;
+        }
       } catch {
         continue;
       }
     }
+    
+    console.log('LOGIN_CHECK: Not logged in (login_required)');
     return false;
   }
 

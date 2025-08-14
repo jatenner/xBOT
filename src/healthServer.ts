@@ -186,17 +186,26 @@ export function startHealthServer(): Promise<void> {
     // Session status endpoint
     app.get('/session', (_req, res) => {
       try {
-        const { readSession, SESSION_FILE, cookieNames } = require('../lib/sessionState');
+        const { SessionLoader } = require('./utils/sessionLoader');
+        const lastResult = SessionLoader.getLastResult();
         
-        const state = readSession();
-        const names = cookieNames(state);
-        
-        res.json({
-          path: SESSION_FILE,
-          exists: state !== null,
-          cookieNames: names,
-          count: names.length
-        });
+        if (lastResult) {
+          res.json({
+            valid: lastResult.ok,
+            cookies: lastResult.cookieCount,
+            path: lastResult.path,
+            source: lastResult.source,
+            updatedAt: lastResult.updatedAt || 'unknown'
+          });
+        } else {
+          res.json({
+            valid: false,
+            cookies: 0,
+            path: process.env.SESSION_CANONICAL_PATH || '/app/data/twitter_session.json',
+            source: 'none',
+            updatedAt: 'never'
+          });
+        }
       } catch (error) {
         res.status(500).json({ 
           error: 'Session check failed',
