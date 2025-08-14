@@ -6,11 +6,23 @@ import { isLoggedIn } from '../utils/xLoggedIn';
 import { saveStorageStateBack } from '../utils/sessionLoader';
 import { getPageWithStorage } from '../utils/browser';
 import { lintAndSplitThread } from '../utils/tweetLinter';
+import { sanitizeForFormat, FinalFormat, containsThreadLanguage, getSanitizationSummary } from '../utils/formatSanitizer';
+import { validateThread, ThreadDraft, getThreadValidationConfig } from '../utils/threadValidator';
+import { loadBotConfig } from '../config';
 import { SELECTORS, SEL } from '../utils/selectors';
 import { ContentProducer } from '../generation/producer';
 import { BanditArm } from '../learn/bandit';
 import { ThreadSchema } from '../generation/systemPrompt';
 import { Browser, Page, BrowserContext } from 'playwright';
+
+// Environment variable defaults
+const FALLBACK_SINGLE_TWEET_OK = process.env.FALLBACK_SINGLE_TWEET_OK !== 'false'; // default true
+const ENABLE_THREADS = process.env.ENABLE_THREADS !== 'false'; // default true
+const THREAD_MIN_TWEETS = parseInt(process.env.THREAD_MIN_TWEETS || '4');
+const THREAD_MAX_TWEETS = parseInt(process.env.THREAD_MAX_TWEETS || '8');
+const THREAD_STRICT_REPLY_MODE = process.env.THREAD_STRICT_REPLY_MODE !== 'false'; // default true
+const LONGFORM_AUTODETECT = process.env.LONGFORM_AUTODETECT !== 'false'; // default true
+const LONGFORM_FALLBACK_TO_THREAD = process.env.LONGFORM_FALLBACK_TO_THREAD !== 'false'; // default true
 
 export interface PostingOptions {
   dryRun?: boolean;
@@ -228,7 +240,7 @@ export class AutonomousTwitterPoster {
     }
     
     // Lint the tweets
-    const { tweets, reasons } = lintAndSplitThread(rawTweets);
+    const { tweets, reasons } = lintAndSplitThread(rawTweets, 'thread');
     const totalChars = tweets.reduce((sum, t) => sum + t.length, 0);
     
     console.log(`LINTER: tweets=${tweets.length}, totalChars=${totalChars}, fixes=[${reasons.join(', ')}]`);
@@ -240,10 +252,31 @@ export class AutonomousTwitterPoster {
     }
   }
 
-  private async postSingleTweet(content: string): Promise<string> {
+  /**
+   * Post a single tweet with format sanitization and validation
+   */
+  private async postSingleTweet(content: string, finalFormat: FinalFormat = 'single'): Promise<string> {
     return await this.withPage(async (page) => {
+      console.log('POST_START');
+      
+      // Apply format sanitization
+      const originalContent = content;
+      let sanitizedContent = sanitizeForFormat(content, finalFormat);
+      
+      // Apply linting
+      const { tweets } = lintAndSplitThread([sanitizedContent], finalFormat);
+      sanitizedContent = tweets[0];
+      
+      // Final sanitization check for singles
+      if (finalFormat === 'single' && containsThreadLanguage(sanitizedContent)) {
+        const summary = getSanitizationSummary(sanitizedContent, sanitizeForFormat(sanitizedContent, 'single'));
+        sanitizedContent = sanitizeForFormat(sanitizedContent, 'single');
+        console.log(`FORMAT_SANITIZER: removed_thread_language_single, actions=[${summary.join('|')}]`);
+      }
+      
+      console.log(`FORMAT_DECISION: final=${finalFormat}, reason=engine, tweets=1`);
+      
       // Navigate directly to Twitter home to check if logged in
-      console.log('🌐 Navigating to Twitter...');
       const loggedIn = await isLoggedIn(page);
       
       if (!loggedIn) {
@@ -253,7 +286,6 @@ export class AutonomousTwitterPoster {
       console.log('✅ LOGIN_CHECK: Confirmed logged in to X');
 
       // Navigate to compose tweet
-      console.log('📝 Opening tweet composer...');
       await page.goto('https://x.com/compose/tweet', { 
         waitUntil: "domcontentloaded", 
         timeout: 60000 
@@ -261,10 +293,9 @@ export class AutonomousTwitterPoster {
       await page.waitForTimeout(3000);
 
       // Type content using robust selectors
-      console.log('⌨️ Typing tweet content...');
       await page.click(SEL.composerBox);
       await page.waitForTimeout(500);
-      await page.fill(SEL.composerBox, content);
+      await page.fill(SEL.composerBox, sanitizedContent);
       await page.waitForTimeout(1000);
 
       // Post using robust selectors
@@ -280,37 +311,91 @@ export class AutonomousTwitterPoster {
       const tweetIdMatch = currentUrl.match(/status\/(\d+)/);
       const tweetId = tweetIdMatch ? tweetIdMatch[1] : `browser_${Date.now()}`;
 
-      console.log('✅ Posted via browser, tweet ID:', tweetId);
+      console.log(`POST_DONE: id=${tweetId}`);
+      
+      // Save session cookies
+      const cookieCount = await this.saveCookiesCount(page);
+      console.log(`SESSION_SAVED: cookies=${cookieCount}`);
+      
       return tweetId;
     });
   }
 
   /**
-   * Post a proper thread as reply chain: T1 → permalink → Reply → T2..Tn
-   * Implements strict Playwright-only posting with proper error handling
+   * Post a proper thread as reply chain with format sanitization and strict validation
+   * Implements real reply chains with human delays and retry logic
    */
-  public async postThread(tweets: string[]): Promise<{rootTweetId: string; permalink: string; replyIds: string[]}> {
+  public async postThread(tweets: string[], finalFormat: FinalFormat = 'thread'): Promise<{rootTweetId: string; permalink: string; replyIds: string[]}> {
     if (!tweets || tweets.length === 0) {
       throw new Error('NO_TWEETS_ARRAY_ABORT: Empty tweets array provided');
     }
 
     return await this.withPage(async (page) => {
-      // Check login using resilient selectors
-      await page.goto('https://x.com/home', { waitUntil: 'domcontentloaded' });
+      console.log('POST_START');
       
-      let loggedIn = false;
-      for (const selector of SELECTORS.accountSwitcher) {
-        try {
-          const element = await page.locator(selector).first();
-          if (await element.isVisible({ timeout: 3000 })) {
-            loggedIn = true;
-            break;
+      // If this is a thread format, apply strict validation
+      if (finalFormat === 'thread') {
+        const config = await loadBotConfig();
+        const threadDraft: ThreadDraft = { tweets: tweets.map(text => ({ text })) };
+        
+        // Validate thread integrity
+        const validation = validateThread(threadDraft);
+        
+        if (!validation.ok) {
+          console.log(`THREAD_VALIDATE: k=${validation.k || tweets.length} failed → reason=${validation.reason}`);
+          
+          if (config.fallbackSingleTweetOk) {
+            console.log('THREAD_FALLBACK: to=single (allowed=true)');
+            const singleContent = sanitizeForFormat(tweets[0], 'single');
+            return {
+              rootTweetId: await this.postSingleTweet(singleContent, 'single'),
+              permalink: '',
+              replyIds: []
+            };
+          } else {
+            console.log('THREAD_SKIP: fallback=false reason=invalid_thread');
+            throw new Error(`THREAD_VALIDATION_FAILED: ${validation.reason} (k=${validation.k})`);
           }
-        } catch {
-          continue;
+        }
+        
+        // Use the repaired tweets from validation
+        const sanitizedTweets = validation.repairedTweets!;
+        console.log(`THREAD_VALIDATE: k=${sanitizedTweets.length} OK`);
+        console.log(`FORMAT_DECISION: final=thread, tweets=${sanitizedTweets.length}`);
+        
+        // Continue with validated and repaired tweets
+        return await this.postValidatedThread(page, sanitizedTweets);
+      } else {
+        // Apply format sanitization for single posts
+        let sanitizedTweets = tweets.map(tweet => sanitizeForFormat(tweet, finalFormat));
+        
+        // Apply linting to the content
+        const { tweets: lintedTweets } = lintAndSplitThread(sanitizedTweets, finalFormat);
+        sanitizedTweets = lintedTweets;
+        
+        console.log(`FORMAT_DECISION: final=${finalFormat}, tweets=${sanitizedTweets.length}`);
+        
+        if (sanitizedTweets.length === 1) {
+          return {
+            rootTweetId: await this.postSingleTweet(sanitizedTweets[0], finalFormat),
+            permalink: '',
+            replyIds: []
+          };
+        } else {
+          // Multiple tweets but not thread format - use thread chain
+          return await this.postValidatedThread(page, sanitizedTweets);
         }
       }
+    });
+  }
 
+  /**
+   * Post a validated thread with proper reply chains
+   */
+  private async postValidatedThread(page: any, sanitizedTweets: string[]): Promise<{rootTweetId: string; permalink: string; replyIds: string[]}> {
+      
+      // Check login
+      const loggedIn = await isLoggedIn(page);
       if (!loggedIn) {
         throw new Error('POST_SKIPPED_PLAYWRIGHT: login_required');
       }
@@ -318,7 +403,7 @@ export class AutonomousTwitterPoster {
       console.log('✅ LOGIN_CHECK: Confirmed logged in to X');
       
       // Step 1: Post T1
-      console.log('🧵 THREAD_POST: T1 posting...');
+      console.log(`THREAD_CHAIN: k=1/${sanitizedTweets.length}, in_reply_to=none`);
       await page.goto('https://x.com/compose/tweet', { waitUntil: 'domcontentloaded' });
       await page.waitForTimeout(2000);
       
@@ -327,7 +412,7 @@ export class AutonomousTwitterPoster {
       for (const selector of SELECTORS.composeArea) {
         try {
           await page.click(selector, { timeout: 2000 });
-          await page.fill(selector, tweets[0]);
+          await page.fill(selector, sanitizedTweets[0]);
           composed = true;
           break;
         } catch {
@@ -379,34 +464,35 @@ export class AutonomousTwitterPoster {
       const rootTweetId = tweetIdMatch[1];
       const permalink = currentUrl;
       
-      console.log(`THREAD_POST:T1 id=${rootTweetId} permalink=${permalink}`);
+      console.log(`POST_DONE: id=${rootTweetId}`);
       
       // If only one tweet, we're done
-      if (tweets.length === 1) {
+      if (sanitizedTweets.length === 1) {
+        const cookieCount = await this.saveCookiesCount(page);
+        console.log(`SESSION_SAVED: cookies=${cookieCount}`);
         return { rootTweetId, permalink, replyIds: [] };
       }
       
-      // Step 2: Post replies
+      // Step 2: Post replies with proper reply chain and human delays
       const replyIds: string[] = [];
+      let currentInReplyTo = rootTweetId;
       
-      for (let i = 1; i < tweets.length; i++) {
-        // Check for resume point
-        const resumePoint = process.env.THREAD_RESUME_POINT;
-        if (resumePoint && parseInt(resumePoint) > i + 1) {
-          console.log(`THREAD_RESUME: Skipping to ${resumePoint}`);
-          continue;
-        }
+      for (let i = 1; i < sanitizedTweets.length; i++) {
+        // Human delay between posts (600-1200ms)
+        const humanDelay = Math.floor(Math.random() * 600) + 600;
+        await page.waitForTimeout(humanDelay);
+        
+        console.log(`THREAD_CHAIN: k=${i + 1}/${sanitizedTweets.length}, in_reply_to=${currentInReplyTo}`);
         
         // Retry logic for each reply
         let replySuccess = false;
         let replyId = '';
         
-        for (let retryAttempt = 1; retryAttempt <= 3; retryAttempt++) {
+        for (let retryAttempt = 1; retryAttempt <= 2; retryAttempt++) {
           try {
-            console.log(`THREAD_REPLY: ${i + 1}/${tweets.length} posting (attempt ${retryAttempt}/3)...`);
-            
-            // Navigate to the root tweet permalink
-            await page.goto(permalink, { waitUntil: 'domcontentloaded' });
+            // Navigate to the tweet we're replying to
+            const replyToUrl = `https://x.com/x/status/${currentInReplyTo}`;
+            await page.goto(replyToUrl, { waitUntil: 'domcontentloaded' });
             await page.waitForTimeout(1500);
             
             // Click reply button with resilient selectors
@@ -431,7 +517,7 @@ export class AutonomousTwitterPoster {
             for (const selector of SELECTORS.composeArea) {
               try {
                 await page.waitForSelector(selector, { timeout: 5000 });
-                await page.fill(selector, tweets[i]);
+                await page.fill(selector, sanitizedTweets[i]);
                 replyComposed = true;
                 break;
               } catch {
@@ -475,33 +561,46 @@ export class AutonomousTwitterPoster {
             replyId = newTweetMatch ? newTweetMatch[1] : `reply_${rootTweetId}_${i}`;
             
             replySuccess = true;
-            console.log(`THREAD_REPLY ${i + 1}/N id=${replyId}`);
+            console.log(`POST_DONE: id=${replyId}`);
             break;
             
           } catch (error: any) {
-            console.warn(`Reply attempt ${retryAttempt} failed: ${error.message}`);
-            if (retryAttempt === 3) {
-              console.log(`THREAD_PARTIAL_FAIL i=${i + 1}`);
-              throw new Error(`Failed to post reply ${i + 1} after 3 attempts`);
+            if (retryAttempt === 2) {
+              console.log(`THREAD_ABORTED_AFTER: k=${i + 1}, error=${error.message}`);
+              // Save what we have so far
+              const cookieCount = await this.saveCookiesCount(page);
+              console.log(`SESSION_SAVED: cookies=${cookieCount}`);
+              return { rootTweetId, permalink, replyIds };
             }
-            await page.waitForTimeout(2000 * retryAttempt); // Exponential backoff
+            await page.waitForTimeout(1000 * retryAttempt); // Small backoff
           }
         }
         
         if (replySuccess) {
           replyIds.push(replyId);
-          // Random jitter between replies
-          await page.waitForTimeout(Math.random() * 500 + 400);
+          currentInReplyTo = replyId; // Next reply replies to this one
         }
       }
       
-      console.log(`THREAD_COMPLETE root=${rootTweetId} replies=${replyIds.length}`);
-      
-      // Store the thread in posts table
-      await this.storeThreadPost(rootTweetId, permalink, tweets, replyIds);
+      // Save session cookies
+      const cookieCount = await this.saveCookiesCount(page);
+      console.log(`SESSION_SAVED: cookies=${cookieCount}`);
       
       return { rootTweetId, permalink, replyIds };
-    });
+  }
+
+  /**
+   * Save session cookies and return count
+   */
+  private async saveCookiesCount(page: Page): Promise<number> {
+    try {
+      await saveStorageStateBack(page.context());
+      const context = page.context();
+      const cookies = await context.cookies();
+      return cookies.length;
+    } catch {
+      return 0;
+    }
   }
 
   /**
@@ -573,13 +672,13 @@ export class AutonomousTwitterPoster {
     try {
       console.log('🧵 THREAD_POST: Starting learning-optimized thread posting...');
       
-      // Lint the thread content
-      const { tweets, reasons } = lintAndSplitThread(threadData.tweets);
-      console.log(`LINTER: tweets=${tweets.length}, ok`);
-      
-      if (reasons.length > 0) {
-        console.log('LINTER fixes:', reasons.join(', '));
-      }
+          // Lint the thread content
+    const { tweets, reasons } = lintAndSplitThread(threadData.tweets, 'thread');
+    console.log(`LINTER: tweets=${tweets.length}, ok`);
+    
+    if (reasons.length > 0) {
+      console.log('LINTER fixes:', reasons.join(', '));
+    }
       
       // Post the thread as reply chain
       const result = await this.postThreadChainWithStorage(tweets);

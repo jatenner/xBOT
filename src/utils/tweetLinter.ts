@@ -1,9 +1,24 @@
+import { FinalFormat } from './formatSanitizer';
+
 export interface LintResult {
   tweets: string[];
   reasons: string[];
 }
 
-export function lintAndSplitThread(rawTweets: string[]): LintResult {
+// Environment variable defaults (read at function call time for testing flexibility)
+function getTweetMaxCharsHard(): number {
+  return parseInt(process.env.TWEET_MAX_CHARS_HARD || '279');
+}
+
+function getEmojiMax(): number {
+  return parseInt(process.env.EMOJI_MAX || '2');
+}
+
+function getForceNoHashtags(): boolean {
+  return process.env.FORCE_NO_HASHTAGS === 'true';
+}
+
+export function lintAndSplitThread(rawTweets: string[], finalFormat: FinalFormat = 'thread'): LintResult {
   // Strict validation: only accept arrays
   if (!Array.isArray(rawTweets)) {
     throw new Error('LINTER_INPUT_MUST_BE_ARRAY: Input must be an array of tweets');
@@ -19,89 +34,111 @@ export function lintAndSplitThread(rawTweets: string[]): LintResult {
   for (let i = 0; i < rawTweets.length; i++) {
     let content = rawTweets[i].trim();
     
-    // Hard cap at 240 chars for strict compliance
-    if (content.length > 240) {
-      const truncated = truncateAtWordBoundary(content, 240);
-      if (truncated !== content) {
-        reasons.push(`Tweet ${i + 1}: truncated from ${content.length} to ${truncated.length} chars`);
-        content = truncated;
+    const TWEET_MAX_CHARS_HARD = getTweetMaxCharsHard();
+    const EMOJI_MAX = getEmojiMax();
+    
+    // Apply different length limits based on format and position
+    let maxLength: number;
+    if (finalFormat === 'single' || finalFormat === 'longform_single') {
+      maxLength = TWEET_MAX_CHARS_HARD; // 279 for singles
+    } else {
+      // Thread tweets: 240 for T1 (before-the-fold), 270 for T2+
+      maxLength = i === 0 ? 240 : 270;
+    }
+    
+    // Only trim if above the limit (don't reduce below TWEET_MAX_CHARS_HARD for singles)
+    if (content.length > maxLength) {
+      if (finalFormat === 'single' && content.length <= TWEET_MAX_CHARS_HARD) {
+        // Don't trim singles that are within hard limit
+      } else {
+        try {
+          const truncated = truncateAtWordBoundary(content, maxLength);
+          if (truncated !== content) {
+            reasons.push(`trim`);
+            content = truncated;
+          }
+        } catch (error: any) {
+          // If truncation fails, throw a linter error
+          throw new Error(`THREAD_ABORT_LINT_FAIL: Tweet ${i + 1} cannot be trimmed to ${maxLength} chars (${content.length} chars, no word boundaries)`);
+        }
       }
     }
     
-    // Count emojis and limit to 1
+    // Count emojis and limit to EMOJI_MAX
     const emojiCount = (content.match(/[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]/gu) || []).length;
-    if (emojiCount > 1) {
-      content = limitEmojis(content);
-      reasons.push(`Tweet ${i + 1}: limited to 1 emoji (had ${emojiCount})`);
+    if (emojiCount > EMOJI_MAX) {
+      // Only reduce emojis if above cap, never remove emojis inside bullets/parentheticals
+      const beforeEmoji = content;
+      content = limitEmojis(content, EMOJI_MAX);
+      if (content !== beforeEmoji) {
+        reasons.push(`emoji_reduce`);
+      }
     }
     
     tweets.push(content);
   }
   
-  // Enforce hashtag rules: max 2 total, none in T1
-  let allHashtags = tweets.flatMap(t => t.match(/#\w+/g) || []);
-  if (allHashtags.length > 2 || (tweets.length > 0 && tweets[0].includes('#'))) {
-    tweets[0] = tweets[0].replace(/#\w+/g, '').trim(); // Remove all hashtags from T1
-    
-    // Keep only first 2 hashtags in remaining tweets
-    let hashtagCount = 0;
-    for (let i = 1; i < tweets.length; i++) {
-      tweets[i] = tweets[i].replace(/#\w+/g, (match) => {
-        if (hashtagCount < 2) {
-          hashtagCount++;
-          return match;
-        }
-        return '';
-      }).replace(/\s+/g, ' ').trim();
-    }
-    
-    reasons.push(`Enforced hashtag rules: removed from T1, limited to 2 total`);
-  }
-  
-  // Ensure penultimate tweet has "Sources:" if we have multiple tweets
-  if (tweets.length >= 3) {
-    const sourcesIndex = tweets.length - 2;
-    if (!tweets[sourcesIndex].toLowerCase().includes('sources:')) {
-      tweets[sourcesIndex] = `Sources: ${tweets[sourcesIndex]}`;
-      if (tweets[sourcesIndex].length > 260) {
-        tweets[sourcesIndex] = truncateAtWordBoundary(tweets[sourcesIndex], 260);
+  // Handle hashtags based on FORCE_NO_HASHTAGS setting
+  const FORCE_NO_HASHTAGS = getForceNoHashtags();
+  if (FORCE_NO_HASHTAGS) {
+    // Strip all hashtags when FORCE_NO_HASHTAGS=true
+    let hashtagsRemoved = false;
+    for (let i = 0; i < tweets.length; i++) {
+      const beforeHashtag = tweets[i];
+      tweets[i] = tweets[i].replace(/#\w+/g, '').replace(/\s+/g, ' ').trim();
+      if (tweets[i] !== beforeHashtag) {
+        hashtagsRemoved = true;
       }
-      reasons.push(`Added "Sources:" to penultimate tweet`);
+    }
+    if (hashtagsRemoved) {
+      reasons.push('hashtags_removed');
     }
   }
-  
-  // Ensure last tweet is CTA format
-  if (tweets.length >= 2) {
-    const lastIndex = tweets.length - 1;
-    if (!tweets[lastIndex].toLowerCase().includes('follow') && !tweets[lastIndex].toLowerCase().includes('cta:')) {
-      tweets[lastIndex] = `CTA: ${tweets[lastIndex]}`;
-      if (tweets[lastIndex].length > 260) {
-        tweets[lastIndex] = truncateAtWordBoundary(tweets[lastIndex], 260);
-      }
-      reasons.push(`Formatted last tweet as CTA`);
-    }
-  }
+  // If FORCE_NO_HASHTAGS is false, we leave hashtags alone entirely
   
   // Final validation
   if (tweets.length === 0) {
     throw new Error('THREAD_ABORT_LINT_FAIL: All tweets were filtered out during linting');
   }
 
-  // Validate each tweet length (strict 240 char limit)
+  // Validate each tweet length based on format
+  const TWEET_MAX_CHARS_HARD = getTweetMaxCharsHard();
   for (let i = 0; i < tweets.length; i++) {
-    if (tweets[i].length > 240) {
-      throw new Error(`THREAD_ABORT_LINT_FAIL: Tweet ${i + 1} still exceeds 240 chars after linting (${tweets[i].length})`);
+    let maxLength: number;
+    if (finalFormat === 'single' || finalFormat === 'longform_single') {
+      maxLength = TWEET_MAX_CHARS_HARD;
+    } else {
+      maxLength = i === 0 ? 240 : 270;
+    }
+    
+    if (tweets[i].length > maxLength) {
+      throw new Error(`THREAD_ABORT_LINT_FAIL: Tweet ${i + 1} still exceeds ${maxLength} chars after linting (${tweets[i].length})`);
     }
     if (!tweets[i].trim()) {
       throw new Error(`THREAD_ABORT_LINT_FAIL: Tweet ${i + 1} is empty after linting`);
     }
   }
 
+  // Emit concise one-liner log
+  const actionsStr = reasons.length > 0 ? reasons.join('|') : 'none';
+  const t1Length = tweets.length > 0 ? tweets[0].length : 0;
+  console.log(`LINTER: format=${finalFormat}, tweets=${tweets.length}, t1_chars=${t1Length}, actions=[${actionsStr}]`);
+
   return { tweets, reasons };
 }
 
 function truncateAtWordBoundary(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
+  
+  // If text is way too long (more than 1.5x the limit), it may be hard to trim
+  if (text.length > maxLength * 1.5) {
+    // Check if we can find any spaces at all
+    const hasSpaces = text.includes(' ');
+    if (!hasSpaces) {
+      // No spaces in a very long text - can't trim properly
+      throw new Error('Cannot trim text with no word boundaries');
+    }
+  }
   
   let truncated = text.substring(0, maxLength);
   const lastSpace = truncated.lastIndexOf(' ');
@@ -116,7 +153,7 @@ function truncateAtWordBoundary(text: string, maxLength: number): string {
   return truncated.trim();
 }
 
-function limitEmojis(text: string, maxCount: number = 1): string {
+function limitEmojis(text: string, maxCount: number = getEmojiMax()): string {
   const emojiRegex = /[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]/gu;
   const emojis = text.match(emojiRegex) || [];
   
