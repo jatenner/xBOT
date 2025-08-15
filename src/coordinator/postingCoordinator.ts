@@ -107,8 +107,13 @@ export class PostingCoordinator {
 
           console.log(`✅ Generated thread: ${thread.tweets.length} tweets`);
 
-          // Quality assessment
-          qualityReport = scoreThread(thread.hook, thread.tweets);
+          // Quality assessment - use the built-in quality score from the LLM
+          qualityReport = {
+            score: thread.quality.score,
+            reasons: thread.quality.reasons,
+            dims: thread.quality.rubric,
+            passed: thread.quality.score >= 90
+          };
           console.log(formatQualityReport(qualityReport));
 
           if (qualityReport.passed) {
@@ -137,7 +142,7 @@ export class PostingCoordinator {
 
       // Deduplication check
       console.log(`🔍 Checking for duplicates...`);
-      const isDuplicate = await isDuplicateThread([{ text: thread.hook }, ...thread.tweets]);
+      const isDuplicate = await isDuplicateThread([{ text: thread.hook_A }, ...thread.tweets]);
       if (isDuplicate) {
         return { success: false, error: 'Thread content is too similar to recent posts' };
       }
@@ -145,7 +150,7 @@ export class PostingCoordinator {
       // Post the thread if threading is enabled
       if (config.ENABLE_THREADS) {
         console.log(`🧵 Posting complete thread...`);
-        const postResult = await postThread(page, thread.hook, thread.tweets);
+        const postResult = await postThread(page, thread.hook_A, thread.tweets);
 
         if (!postResult.success) {
           return { 
@@ -155,13 +160,13 @@ export class PostingCoordinator {
         }
 
         // Store signatures and thread record
-        const allTweets = [{ text: thread.hook }, ...thread.tweets];
+        const allTweets = [{ text: thread.hook_A }, ...thread.tweets];
         await storeTweetSignatures(postResult.ids, allTweets);
         await storeThreadRecord(
           postResult.rootId,
           postResult.ids.slice(1), // Reply IDs (excluding root)
           thread.topic,
-          thread.hook,
+          thread.hook_A,
           qualityReport.score
         );
 
@@ -182,11 +187,14 @@ export class PostingCoordinator {
       } else {
         // Threading disabled - just log what would be posted
         console.log(`📝 Threading disabled - would post:`);
-        console.log(`   Hook: ${thread.hook}`);
+        console.log(`   Hook A: ${thread.hook_A}`);
+        console.log(`   Hook B: ${thread.hook_B}`);
         thread.tweets.forEach((tweet, i) => {
           console.log(`   Tweet ${i + 1}: ${tweet.text}`);
         });
+        console.log(`   CTA: ${thread.cta}`);
         console.log(`   Quality Score: ${qualityReport.score}/100`);
+        console.log(`   Pillar: ${thread.metadata.pillar}`);
 
         return { success: false, error: 'Threading disabled (ENABLE_THREADS=false)' };
       }

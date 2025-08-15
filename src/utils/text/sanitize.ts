@@ -32,8 +32,8 @@ export function validateTweetText(text: string): { valid: boolean; reason?: stri
     return { valid: false, reason: `Too short: ${stripped.length} chars (min 120)` };
   }
   
-  if (stripped.length > 260) {
-    return { valid: false, reason: `Too long: ${stripped.length} chars (max 260)` };
+  if (stripped.length > 240) {
+    return { valid: false, reason: `Too long: ${stripped.length} chars (max 240)` };
   }
   
   if (stripped.includes('...')) {

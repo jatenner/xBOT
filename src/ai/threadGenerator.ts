@@ -3,58 +3,100 @@ import OpenAI from 'openai';
 import { stripFormatting, validateTweetText } from '../utils/text/sanitize';
 
 const TweetSchema = z.object({
-  text: z.string().min(120).max(260)
+  text: z.string().min(120).max(240)
 });
 
 export const ThreadSchema = z.object({
   topic: z.string(),
-  hook: z.string().min(60).max(200),
-  tweets: z.array(TweetSchema).min(5).max(9)
+  hook_A: z.string().min(120).max(200),
+  hook_B: z.string().min(120).max(200),
+  tweets: z.array(TweetSchema).min(5).max(9),
+  cta: z.string(),
+  metadata: z.object({
+    angle: z.string(),
+    pillar: z.string(),
+    evidence_mode: z.string(),
+    spice_level: z.number()
+  }),
+  quality: z.object({
+    score: z.number(),
+    reasons: z.array(z.string()),
+    rubric: z.object({
+      completeness: z.number(),
+      value: z.number(),
+      clarity: z.number(),
+      actionability: z.number(),
+      evidence: z.number(),
+      human_warmth: z.number()
+    })
+  })
 });
 
 export type GeneratedThread = z.infer<typeof ThreadSchema>;
 
 const systemPrompt = `
-You produce COMPLETE Twitter threads for a general audience interested in health, performance, habits, cognition.
+You are a growth writer for X (Twitter) focused on rapid audience building. Your job is to create threads that a discerning reader would bookmark and share. You never output filler, headings, or teasers. You always deliver complete, specific, human-sounding ideas.
 
-CRITICAL RULES:
-- Output STRICT JSON only, no markdown, no explanations
-- Each tweet is self-contained with concrete tips/examples/numbers
-- NO teasers, NO ellipses, NO "let's dive in", NO "more details coming"
-- Style: clear, direct, specific. No fluff. No hashtags. No emojis. No sales.
-- Length per tweet: 120–260 chars. End naturally (no punctuation spam).
-- Include specific numbers, studies, or actionable steps in most tweets
-- Make each tweet valuable on its own
+Hard rules (must pass validation):
+- Return strictly JSON (no markdown, no code fences).
+- Thread length: 5–9 tweets.
+- Per-tweet length: 120–240 characters after sanitization.
+- No "let's dive in", "thread below", "more soon…", ellipses endings, headings (###), hashtags, emojis, or AI tells.
+- Each tweet contains at least one concrete element: number, step, micro-example, heuristic, or comparison.
+- If making a claim, add a brief why or mechanism (human-level reasoning).
+- Voice: human, warm, concise. No corporate tone. No false personal claims; use brand "we" or neutral POV.
 
-VIRAL PATTERNS TO USE:
-- "90% of people don't know..."
-- "Study of 50,000 people found..."
-- "This simple change increased X by 40%..."
-- "The #1 mistake people make..."
-- "I've been tracking this for 2 years..."
+Quality rubric (must score ≥ 90):
+- Completeness (40): Each tweet stands alone; no teasers.
+- Value (25): New, contrarian, or concisely distilled; at least 3 non-obvious specifics.
+- Clarity (15): Short sentences, everyday words; no hedging.
+- Actionability (10): Steps/checklist/if-then cues readers can do today.
+- Evidence (5): Mini-mechanism, tiny case, or number (no cherry-picked junk).
+- Human warmth (5): Feels like a smart friend; one line of empathy or "why this matters".
 
-OUTPUT FORMAT (exact JSON):
+OUTPUT JSON SCHEMA:
 {
-  "topic": "brief topic description",
-  "hook": "engaging opening tweet 60-200 chars",
-  "tweets": [
-    {"text": "first main tweet with concrete detail"},
-    {"text": "second tweet with specific example or number"},
-    {"text": "third tweet with actionable step"},
-    {"text": "fourth tweet with evidence or study"},
-    {"text": "fifth tweet with clear takeaway or question"}
-  ]
+  "topic": "string",
+  "hook_A": "string (120–200 chars, bold curiosity + payoff)",
+  "hook_B": "string (alternative hook for A/B test)",
+  "tweets": [{"text": "string (120–240 chars each)"}],
+  "cta": "string (1 line, soft, no hashtags/emojis)",
+  "metadata": {
+    "angle": "string",
+    "pillar": "string",
+    "evidence_mode": "mini-study | mechanism | case | checklist",
+    "spice_level": 1
+  },
+  "quality": {
+    "score": 0,
+    "reasons": ["string"], 
+    "rubric": {
+      "completeness": 0,
+      "value": 0,
+      "clarity": 0,
+      "actionability": 0,
+      "evidence": 0,
+      "human_warmth": 0
+    }
+  }
 }
 `;
 
 export async function generateThread(topic: string, openai: OpenAI): Promise<GeneratedThread> {
   const userPrompt = `
+Account context:
+- account_niche: "health optimization for busy professionals"
+- audience_profile: "time-poor 25–45, wants practical wins, skeptical of fluff"
+- brand_voice: "clear, calm, evidence-first, no hype"
+- content_pillars: ["sleep", "nutrition", "habit design", "cognition"]
+- cta_style: "soft"
+- spice_level: 2
+
 Topic: "${topic}"
 
-Generate a complete Twitter thread with 5-7 tweets. Each tweet must contain at least one concrete detail (number, step, heuristic, or mini-example).
+Create a thread that delivers specific, actionable value. Choose a single sharp promise for the reader (what they'll be able to do after reading). Include 5–9 concrete steps, numbers, heuristics, or micro-stories. Each tweet should stand alone.
 
-Return JSON matching the exact format specified in system prompt.
-Ensure: 5–9 tweets; each 120-260 chars; no markdown; no ellipses; complete thoughts only.
+Return JSON matching the exact schema in system prompt. Quality score must be ≥ 90.
 `;
 
   const response = await openai.chat.completions.create({
@@ -85,14 +127,28 @@ Ensure: 5–9 tweets; each 120-260 chars; no markdown; no ellipses; complete tho
   // Sanitize and re-validate lengths after strip
   const cleaned: GeneratedThread = {
     ...schemaResult.data,
-    hook: stripFormatting(schemaResult.data.hook),
-    tweets: schemaResult.data.tweets.map(t => ({ text: stripFormatting(t.text) }))
+    hook_A: stripFormatting(schemaResult.data.hook_A),
+    hook_B: stripFormatting(schemaResult.data.hook_B),
+    tweets: schemaResult.data.tweets.map(t => ({ text: stripFormatting(t.text) })),
+    cta: stripFormatting(schemaResult.data.cta),
+    metadata: schemaResult.data.metadata,
+    quality: schemaResult.data.quality
   };
 
+  // Validate quality score requirement
+  if (cleaned.quality.score < 90) {
+    throw new Error(`Quality score too low: ${cleaned.quality.score}/100. Reasons: ${cleaned.quality.reasons.join(', ')}`);
+  }
+
   // Validate each tweet individually
-  const hookValidation = validateTweetText(cleaned.hook);
-  if (!hookValidation.valid) {
-    throw new Error(`Hook validation failed: ${hookValidation.reason}`);
+  const hookAValidation = validateTweetText(cleaned.hook_A);
+  if (!hookAValidation.valid) {
+    throw new Error(`Hook A validation failed: ${hookAValidation.reason}`);
+  }
+
+  const hookBValidation = validateTweetText(cleaned.hook_B);
+  if (!hookBValidation.valid) {
+    throw new Error(`Hook B validation failed: ${hookBValidation.reason}`);
   }
 
   cleaned.tweets.forEach((tweet, i) => {
