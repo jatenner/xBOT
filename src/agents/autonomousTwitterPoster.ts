@@ -1084,4 +1084,21 @@ export class AutonomousTwitterPoster {
       console.warn('⚠️ Cleanup warning:', error);
     }
   }
+
+  /**
+   * Get the current page for use by other components
+   */
+  public async getPage() {
+    if (!this.persistentContext) {
+      await this.initialize();
+    }
+    
+    // Create a new page if needed
+    const pages = this.persistentContext?.pages() || [];
+    if (pages.length === 0) {
+      return await this.persistentContext?.newPage();
+    }
+    
+    return pages[0];
+  }
 }
