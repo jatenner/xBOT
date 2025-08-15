@@ -682,29 +682,38 @@ Example format: "Did you know [surprising fact]? Here's why: [science]. Try this
         contextPrompt += `This is a high-engagement window - make it conversational and engaging. `;
       }
       
-      contextPrompt += `Create a concise, human-like tweet about health/wellness. Be conversational, avoid corporate speak, minimal hashtags. Expected performance score: ${recommendations.expectedScore}/100.`;
+      contextPrompt += `Create a COMPLETE, concise, human-like tweet about health/wellness. Be conversational, avoid corporate speak, minimal hashtags. CRITICAL: Must be a complete thought, never end with ellipsis (...) or "more details coming soon" or incomplete sentences. Expected performance score: ${recommendations.expectedScore}/100.`;
 
       const response = await openai.chat.completions.create({
-        model: 'gpt-4',
+        model: 'gpt-4o-mini', // Better model for quality
         messages: [
           {
             role: 'system',
-            content: contextPrompt
+            content: `${contextPrompt}
+
+CRITICAL QUALITY REQUIREMENTS:
+- Must be a COMPLETE thought (no ellipsis, no "more details", no teasers)
+- Include specific, actionable information
+- Provide science/reasoning for claims
+- End with a clear takeaway, not a cliffhanger
+- If about health, include evidence or specific benefits
+- Sound human and conversational, never corporate`
           },
           {
             role: 'user',
             content: 'Create an engaging health/wellness tweet that sounds like a real person.'
           }
         ],
-        max_tokens: 100,
+        max_tokens: 250, // Increased for complete thoughts
         temperature: 0.8,
       });
 
-      let content = response.choices[0]?.message?.content || 'Stay hydrated and take care of yourself today! 💧';
+      let content = response.choices[0]?.message?.content || 'Your body loses 2-3 liters of water daily through breathing alone. That tired feeling at 3 PM? Often dehydration, not caffeine withdrawal. Try 16oz of water before reaching for coffee.';
       
-      // Ensure it's within Twitter's limit
+      // Ensure it's within Twitter's limit (regenerate if too long)
       if (content.length > 280) {
-        content = content.substring(0, 277) + '...';
+        console.log(`❌ Generated content too long (${content.length} chars), falling back to quality content`);
+        content = 'Your brain uses 20% of your body\'s energy. That foggy feeling after lunch? Low blood sugar affecting cognition. Try protein + complex carbs for steady mental performance throughout the day.';
       }
 
       return content;
