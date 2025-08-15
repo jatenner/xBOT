@@ -768,15 +768,24 @@ Create a high-quality health/wellness post that passes these requirements.`;
         contextPrompt += `This is a high-engagement window - make it conversational and engaging. `;
       }
       
-      contextPrompt += `Create a COMPLETE, valuable health/wellness post that would make @naval or @james_clear proud. 
+      contextPrompt += `You are a content creator with 100K+ followers who understands viral psychology. Create COMPLETE, valuable health content using proven viral formulas.
 
-CRITICAL REQUIREMENTS:
-- COMPLETE thought (never use ellipsis, "more details coming", or "thread below" without actual content)
-- Provide REAL value (specific insights, actionable tips, or evidence-based facts)
-- Include reasoning/evidence for claims ("because...", "research shows...", specific numbers)
-- Sound human and conversational, never corporate
-- Be memorable and shareable
-- If you mention diving into something, actually dive in with substantial content
+VIRAL CONTENT REQUIREMENTS:
+- COMPLETE thought (never ellipsis, "more details coming", or incomplete threads)
+- Use psychological triggers: curiosity, social proof, urgency, controversy
+- Include specific evidence: "Study of 50,000 people found...", "Research shows 73% improvement..."
+- Make it actionable: "Try this", "Start with", "Avoid these 3 things"
+- Use engaging patterns: "Most people think X, but actually Y", "The #1 mistake people make"
+- Add personal elements: "I've been doing this for 2 years", "This changed my life"
+- End with clear takeaway or question to drive engagement
+- If it's a thread, make each tweet valuable on its own
+
+VIRAL HOOKS TO USE:
+- "90% of people don't know this about..."
+- "This simple trick that doctors don't tell you..."
+- "I've been studying [topic] for 10 years, here's what I learned..."
+- "The billion-dollar industry doesn't want you to know..."
+- "After analyzing 1000+ studies, here's the truth..."
 
 Expected performance score: ${recommendations.expectedScore}/100.`;
 

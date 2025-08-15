@@ -454,69 +454,44 @@ export class AutonomousTwitterPoster {
       // Wait for navigation to permalink
       await page.waitForTimeout(3000);
       
-      // BULLETPROOF URL EXTRACTION WITH COMPREHENSIVE LOGGING
-      const currentUrl = page.url();
-      console.log(`🔍 POST_URL_CHECK: Current URL after posting: ${currentUrl}`);
+      // BULLETPROOF TWEET ID EXTRACTION FOR PROPER THREADS
+      const { TwitterThreadFixer } = await import('../lib/twitterThreadFixer');
+      
+      console.log(`🔍 POST_URL_CHECK: Current URL after posting: ${page.url()}`);
       console.log(`🔍 POST_URL_CHECK: Page title: ${await page.title().catch(() => 'unknown')}`);
       
-      // Try multiple URL patterns for tweet ID extraction
-      let tweetIdMatch = null;
-      let extractionMethod = 'unknown';
+      // Use advanced tweet ID extraction
+      const extractedId = await TwitterThreadFixer.extractTweetId(page);
       
-      // Method 1: Standard /status/ pattern
-      tweetIdMatch = currentUrl.match(/status\/(\d+)/);
-      if (tweetIdMatch) {
-        extractionMethod = '/status/ pattern';
-      }
-      
-      // Method 2: Tweet URL pattern
-      if (!tweetIdMatch) {
-        tweetIdMatch = currentUrl.match(/tweet\/(\d+)/);
-        if (tweetIdMatch) extractionMethod = '/tweet/ pattern';
-      }
-      
-      // Method 3: Ending with ID pattern
-      if (!tweetIdMatch) {
-        tweetIdMatch = currentUrl.match(/\/(\d+)$/);
-        if (tweetIdMatch) extractionMethod = 'ending with ID pattern';
-      }
-      
-      // Method 4: Any 19-digit number (Twitter ID format)
-      if (!tweetIdMatch) {
-        tweetIdMatch = currentUrl.match(/(\d{19})/);
-        if (tweetIdMatch) extractionMethod = '19-digit number pattern';
-      }
-      
-      // Method 5: Any long number sequence (15+ digits)
-      if (!tweetIdMatch) {
-        tweetIdMatch = currentUrl.match(/(\d{15,})/);
-        if (tweetIdMatch) extractionMethod = 'long number sequence';
-      }
-      
-      if (!tweetIdMatch) {
-        console.warn(`⚠️ Could not extract tweet ID from URL: ${currentUrl}`);
-        console.log(`🔍 URL Analysis: protocol=${new URL(currentUrl).protocol}, host=${new URL(currentUrl).host}, pathname=${new URL(currentUrl).pathname}`);
+      if (!extractedId) {
+        const currentUrl = page.url();
+        console.warn(`⚠️ CRITICAL: Could not extract real tweet ID from URL: ${currentUrl}`);
         
-        // EMERGENCY STRATEGY: Check if we're on Twitter at all
+        // EMERGENCY STRATEGY: Check if we're on Twitter
         if (currentUrl.includes('x.com') || currentUrl.includes('twitter.com')) {
-          // We posted successfully but can't extract ID - use timestamp fallback
           const fallbackId = `posted_${Date.now()}`;
-          console.log(`✅ EMERGENCY_SUCCESS: Posted successfully, using fallback ID: ${fallbackId}`);
+          console.log(`⚠️ THREAD_WILL_FAIL: Using fallback ID ${fallbackId} - this prevents proper threading!`);
           return {
             rootTweetId: fallbackId,
             permalink: currentUrl,
             replyIds: []
           };
         } else {
-          // Something went very wrong - we're not even on Twitter
           throw new Error(`Not on Twitter after posting attempt. URL: ${currentUrl}`);
         }
       }
       
-      console.log(`✅ Tweet ID extracted using ${extractionMethod}: ${tweetIdMatch[1]}`);
+      // Verify the tweet actually exists before proceeding with thread
+      const tweetExists = await TwitterThreadFixer.verifyTweetExists(page, extractedId);
+      if (!tweetExists) {
+        console.warn(`⚠️ TWEET_VERIFICATION_FAILED: Tweet ${extractedId} may not exist yet`);
+        // Continue anyway - might be timing issue
+      }
       
-      const rootTweetId = tweetIdMatch[1];
-      const permalink = currentUrl;
+      console.log(`✅ REAL_TWEET_ID_EXTRACTED: ${extractedId} - ready for threading!`);
+      
+      const rootTweetId = extractedId;
+      const permalink = page.url();
       
       console.log(`POST_DONE: id=${rootTweetId}`);
       
