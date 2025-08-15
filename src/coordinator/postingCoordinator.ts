@@ -9,6 +9,9 @@ import { generateThread, regenerateWithFeedback } from '../ai/threadGenerator';
 import { scoreThread, formatQualityReport } from '../quality/qualityGate';
 import { isDuplicateThread, storeTweetSignatures, storeThreadRecord } from '../utils/dedupe';
 import { postThread, deletePartialThread } from '../posting/playwrightPoster';
+import { ContentSelector } from '../utils/content/selector';
+import { ViralHookGenerator } from '../utils/content/viralHooks';
+import { EngagementTracker } from '../utils/engagement/tracker';
 import { createClient } from '@supabase/supabase-js';
 
 export interface PostingResult {
@@ -25,12 +28,18 @@ export interface PostingResult {
 export class PostingCoordinator {
   private openai: OpenAI;
   private supabase: any;
+  private contentSelector: ContentSelector;
+  private hookGenerator: ViralHookGenerator;
+  private engagementTracker: EngagementTracker;
 
   constructor() {
     this.openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY!
     });
     this.supabase = createClient(config.SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY);
+    this.contentSelector = ContentSelector.getInstance();
+    this.hookGenerator = ViralHookGenerator.getInstance();
+    this.engagementTracker = EngagementTracker.getInstance();
   }
 
   async shouldAllowPosting(): Promise<{ allowed: boolean; reason?: string }> {
@@ -75,8 +84,8 @@ export class PostingCoordinator {
     }
   }
 
-  async executePost(page: Page, topic: string): Promise<PostingResult> {
-    console.log(`🚀 Starting posting pipeline for topic: "${topic}"`);
+  async executePost(page: Page, fallbackTopic?: string): Promise<PostingResult> {
+    console.log(`🚀 Starting viral content posting pipeline`);
     console.log(`📋 Config: threads=${config.ENABLE_THREADS}, quality_min=${config.QUALITY_MIN_SCORE}, force=${config.FORCE_POST}`);
 
     try {
@@ -86,7 +95,21 @@ export class PostingCoordinator {
         return { success: false, error: postingCheck.reason };
       }
 
-      // Generate thread content
+      // 🎯 STEP 1: Intelligent content selection
+      console.log(`🎯 Selecting optimal content parameters...`);
+      const selection = await this.contentSelector.selectContent();
+      console.log(`✅ Content selection: ${selection.pillar}/${selection.angle} (spice=${selection.spice_level})`);
+
+      // 🎣 STEP 2: Generate viral hooks
+      console.log(`🎣 Generating viral hooks...`);
+      const hooks = this.hookGenerator.generateHooks(
+        selection.topic, 
+        selection.pillar, 
+        selection.angle, 
+        selection.spice_level
+      );
+
+      // 🧠 STEP 3: Generate thread content
       console.log(`🧠 Generating thread content...`);
       let thread;
       let qualityReport;
@@ -99,13 +122,17 @@ export class PostingCoordinator {
 
         try {
           if (attempts === 1) {
-            thread = await generateThread(topic, this.openai);
+            thread = await generateThread(selection, this.openai);
           } else {
             // Regenerate with feedback from quality gate
-            thread = await regenerateWithFeedback(topic, this.openai, qualityReport?.reasons || []);
+            thread = await regenerateWithFeedback(selection.topic, this.openai, qualityReport?.reasons || []);
           }
 
           console.log(`✅ Generated thread: ${thread.tweets.length} tweets`);
+
+          // Override hooks with our viral ones
+          thread.hook_A = hooks.hook_A;
+          thread.hook_B = hooks.hook_B;
 
           // Quality assessment - use the built-in quality score from the LLM
           qualityReport = {
@@ -147,10 +174,16 @@ export class PostingCoordinator {
         return { success: false, error: 'Thread content is too similar to recent posts' };
       }
 
-      // Post the thread if threading is enabled
+      // 🧵 STEP 4: Post the thread if threading is enabled
       if (config.ENABLE_THREADS) {
-        console.log(`🧵 Posting complete thread...`);
-        const postResult = await postThread(page, thread.hook_A, thread.tweets);
+        // Determine which hook to use (A/B testing logic)
+        const hookToUse = await this.determineHookToUse(selection.pillar);
+        const selectedHook = hookToUse === 'A' ? thread.hook_A : thread.hook_B;
+        
+        console.log(`🧵 Posting complete thread with hook ${hookToUse}...`);
+        console.log(`🎣 Hook: ${selectedHook.substring(0, 80)}...`);
+        
+        const postResult = await postThread(page, selectedHook, thread.tweets);
 
         if (!postResult.success) {
           return { 
@@ -159,20 +192,41 @@ export class PostingCoordinator {
           };
         }
 
-        // Store signatures and thread record
-        const allTweets = [{ text: thread.hook_A }, ...thread.tweets];
+        // 📊 STEP 5: Store comprehensive tracking data
+        const allTweets = [{ text: selectedHook }, ...thread.tweets];
         await storeTweetSignatures(postResult.ids, allTweets);
-        await storeThreadRecord(
+        
+        // Enhanced thread record with all metadata
+        await this.storeEnhancedThreadRecord(
           postResult.rootId,
-          postResult.ids.slice(1), // Reply IDs (excluding root)
-          thread.topic,
-          thread.hook_A,
+          postResult.ids.slice(1),
+          thread,
+          selection,
+          hooks,
+          hookToUse,
           qualityReport.score
+        );
+
+        // 📅 STEP 6: Schedule engagement evaluation
+        this.engagementTracker.scheduleEvaluation(postResult.rootId);
+        
+        // 📈 STEP 7: Record selection for learning
+        await this.contentSelector.recordSelectionOutcome(
+          selection,
+          {
+            rootId: postResult.rootId,
+            qualityScore: qualityReport.score
+          },
+          'pending', // Will be updated after 2h evaluation
+          0 // Will be updated after 2h evaluation
         );
 
         console.log(`🎉 Thread posted successfully!`);
         console.log(`   Root ID: ${postResult.rootId}`);
         console.log(`   Reply IDs: ${postResult.ids.slice(1).join(', ')}`);
+        console.log(`   Hook used: ${hookToUse} (${hooks.pattern_used})`);
+        console.log(`   Quality score: ${qualityReport.score}/100`);
+        console.log(`   Pillar: ${selection.pillar} | Angle: ${selection.angle} | Spice: ${selection.spice_level}`);
 
         return {
           success: true,
@@ -205,6 +259,114 @@ export class PostingCoordinator {
         success: false, 
         error: error instanceof Error ? error.message : String(error) 
       };
+    }
+  }
+
+  /**
+   * Determine which hook (A or B) to use based on performance
+   */
+  private async determineHookToUse(pillar: string): Promise<'A' | 'B'> {
+    try {
+      // Get recent performance for this pillar
+      const { data, error } = await this.supabase
+        .from('hook_performance')
+        .select('hook_used, engagement_bucket, engagement_score')
+        .eq('pillar', pillar)
+        .gte('posted_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+        .order('posted_at', { ascending: false });
+
+      if (error || !data || data.length < 4) {
+        // Not enough data, alternate between A and B
+        const lastHook = data?.[0]?.hook_used || 'B';
+        return lastHook === 'A' ? 'B' : 'A';
+      }
+
+      // Calculate performance for each hook
+      const hookAPerf = data.filter(h => h.hook_used === 'A');
+      const hookBPerf = data.filter(h => h.hook_used === 'B');
+
+      if (hookAPerf.length === 0) return 'A';
+      if (hookBPerf.length === 0) return 'B';
+
+      const avgScoreA = hookAPerf.reduce((sum, h) => sum + (h.engagement_score || 0), 0) / hookAPerf.length;
+      const avgScoreB = hookBPerf.reduce((sum, h) => sum + (h.engagement_score || 0), 0) / hookBPerf.length;
+
+      // If A is significantly better, use A more often (70% of time)
+      // Otherwise alternate or favor B
+      if (avgScoreA > avgScoreB * 1.2) {
+        return Math.random() < 0.7 ? 'A' : 'B';
+      } else if (avgScoreB > avgScoreA * 1.2) {
+        return Math.random() < 0.7 ? 'B' : 'A';
+      } else {
+        // Similar performance, alternate
+        const lastHook = data[0]?.hook_used || 'B';
+        return lastHook === 'A' ? 'B' : 'A';
+      }
+
+    } catch (error) {
+      console.warn('Error determining hook, defaulting to A:', error);
+      return 'A';
+    }
+  }
+
+  /**
+   * Store enhanced thread record with all metadata
+   */
+  private async storeEnhancedThreadRecord(
+    rootTweetId: string,
+    replyTweetIds: string[],
+    thread: any,
+    selection: any,
+    hooks: any,
+    hookUsed: string,
+    qualityScore: number
+  ): Promise<void> {
+    try {
+      // Store main thread record
+      await storeThreadRecord(rootTweetId, replyTweetIds, thread.topic, 
+        hookUsed === 'A' ? thread.hook_A : thread.hook_B, qualityScore);
+
+      // Update with enhanced metadata
+      const { error: updateError } = await this.supabase
+        .from('posted_threads')
+        .update({
+          metadata: {
+            pillar: selection.pillar,
+            angle: selection.angle,
+            spice_level: selection.spice_level,
+            evidence_mode: selection.evidence_mode,
+            selection_reasoning: selection.reasoning
+          },
+          hook_used: hookUsed
+        })
+        .eq('root_tweet_id', rootTweetId);
+
+      if (updateError) {
+        console.error('Failed to update thread metadata:', updateError);
+      }
+
+      // Store hook performance data
+      const { error: hookError } = await this.supabase
+        .from('hook_performance')
+        .insert({
+          root_tweet_id: rootTweetId,
+          hook_used: hookUsed,
+          hook_text: hookUsed === 'A' ? thread.hook_A : thread.hook_B,
+          pillar: selection.pillar,
+          angle: selection.angle,
+          pattern_used: hooks.pattern_used,
+          psychology_trigger: hooks.psychology_trigger,
+          posted_at: new Date().toISOString()
+        });
+
+      if (hookError) {
+        console.warn('Could not store hook performance data:', hookError);
+      }
+
+      console.log(`✅ Stored enhanced thread metadata and hook performance`);
+
+    } catch (error) {
+      console.error('Error storing enhanced thread record:', error);
     }
   }
 }

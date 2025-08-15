@@ -187,8 +187,12 @@ export class AutonomousPostingEngine {
    */
   public async executeIntelligentPost(opportunity: any): Promise<{ success: boolean; content?: string; error?: string }> {
     try {
-      console.log(`🧠 Executing intelligent post (Score: ${Math.round(opportunity.score)}/100)`);
+      console.log(`🧠 Executing VIRAL intelligent post (Score: ${Math.round(opportunity.score)}/100)`);
       console.log(`🎯 Context: ${opportunity.reason}`);
+
+      // Use the new posting coordinator for viral content generation
+      const { PostingCoordinator } = await import('../coordinator/postingCoordinator');
+      const coordinator = new PostingCoordinator();
 
       // Ensure browser poster is available
       if (!this.browserPoster) {
@@ -198,95 +202,50 @@ export class AutonomousPostingEngine {
         await this.browserPoster.initialize();
       }
 
-      // Generate content with intelligent context
-      let content = await this.generateIntelligentContent(opportunity);
-      
-      // Use comprehensive quality gate validation
-      const { ContentQualityGate } = await import('../lib/contentQualityGate');
-      const qualityGate = ContentQualityGate.getInstance();
-      const qualityCheck = qualityGate.validateContent(content);
-      
-      if (!qualityCheck.passed) {
-        console.log(`❌ Content failed quality gate (${qualityCheck.score}/100):`, qualityCheck.feedback.join(', '));
-        
-        // Try to regenerate once with feedback
-        if (qualityCheck.score > 40) {
-          console.log('🔄 Attempting to regenerate with quality feedback...');
-          const improvedContent = await this.regenerateWithFeedback(opportunity, qualityCheck.improvements);
-          
-          const improvedCheck = qualityGate.validateContent(improvedContent);
-          if (improvedCheck.passed) {
-            console.log(`✅ Regenerated content passed quality gate (${improvedCheck.score}/100)`);
-            // Continue with improved content
-            content = improvedContent;
-          }
-        } else {
-          return { success: false, error: `Content quality too low: ${qualityCheck.score}/100` };
-        }
+      // Get the page from browser poster
+      const page = await this.browserPoster.getPage();
+      if (!page) {
+        return { success: false, error: 'Failed to get browser page' };
       }
+
+      // Execute the full viral posting pipeline
+      const result = await coordinator.executePost(page);
       
-      console.log(`✅ Content passed quality gate (${qualityCheck.score}/100)`);
+      if (result.success && result.threadData) {
+        console.log(`✅ Posted viral thread successfully: ${result.threadData.rootId}`);
+        console.log(`📊 Quality score: ${result.threadData.qualityScore}/100`);
+        console.log(`📊 Opportunity utilized: ${opportunity.urgency} urgency`);
+
+        const tweetId = result.threadData.rootId;
+        const contentForStorage = `${result.threadData.topic} (viral thread)`;
       
-      // Handle both single strings and thread arrays
-      let result: any;
-      if (Array.isArray(content)) {
-        console.log(`📝 Generated intelligent thread: ${content.length} tweets`);
-        console.log(`📝 Thread preview: ${content[0].substring(0, 80)}...`);
+        // Store performance data for learning
+        await this.storeInDatabase(contentForStorage, tweetId);
+        await this.storeIntelligentPostData(tweetId, opportunity, contentForStorage);
         
-        // Post as proper thread using the new method
-        result = await this.browserPoster.postThread(content);
-        result = { success: true, tweetId: result.rootTweetId };
+        // Analyze viral potential of content
+        const viralAnalysis = await this.followerOptimizer.analyzeViralPotential(contentForStorage);
+        console.log(`🔥 Viral score: ${viralAnalysis.viralScore}/100, Follower potential: ${viralAnalysis.followerPotential}/100`);
+        
+        // Log optimization suggestions
+        if (viralAnalysis.improvementSuggestions.length > 0) {
+          console.log(`💡 Next time: ${viralAnalysis.improvementSuggestions[0]}`);
+        }
+        
+        // Predict performance for validation
+        const prediction = await this.learningEngine.predictContentPerformance(contentForStorage);
+        console.log(`🎯 Predicted performance: ${prediction.expectedLikes} likes, ${prediction.expectedFollowers} new followers`);
+        
+        // Schedule performance tracking for this tweet
+        await this.schedulePerformanceTracking(tweetId, contentForStorage, prediction);
+        
+        console.log('📊 Intelligent posting data stored for learning');
+
+        return { success: true, content: contentForStorage };
       } else {
-        console.log(`📝 Generated intelligent content: ${content.substring(0, 80)}...`);
-        
-        // Post single tweet (only if config allows)
-        const { loadBotConfig } = await import('../config');
-        const config = await loadBotConfig();
-        
-        if (!config.fallbackSingleTweetOk) {
-          throw new Error('FALLBACK_SINGLE_TWEET_DISABLED: Single tweet fallback disabled by config');
-        }
-        
-        result = await (this.browserPoster as any).postSingle(content, { 
-          forcePost: true
-        });
+        console.warn(`⚠️ Viral posting failed: ${result.error}`);
+        return { success: false, error: result.error };
       }
-      
-      if (!result.success) {
-        throw new Error(result.error || 'Browser posting failed');
-      }
-      
-      console.log(`✅ Posted intelligent tweet successfully: ${result.tweetId}`);
-      console.log(`📊 Opportunity utilized: ${opportunity.urgency} urgency`);
-
-      const tweetId = result.tweetId || 'browser_' + Date.now();
-
-      // Convert content for storage and analysis
-      const contentForStorage = Array.isArray(content) ? content.join('\n\n') : content;
-      
-      // Store performance data for learning
-      await this.storeInDatabase(contentForStorage, tweetId);
-      await this.storeIntelligentPostData(tweetId, opportunity, contentForStorage);
-      
-      // Analyze viral potential of content
-      const viralAnalysis = await this.followerOptimizer.analyzeViralPotential(contentForStorage);
-      console.log(`🔥 Viral score: ${viralAnalysis.viralScore}/100, Follower potential: ${viralAnalysis.followerPotential}/100`);
-      
-      // Log optimization suggestions
-      if (viralAnalysis.improvementSuggestions.length > 0) {
-        console.log(`💡 Next time: ${viralAnalysis.improvementSuggestions[0]}`);
-      }
-      
-      // Predict performance for validation
-      const prediction = await this.learningEngine.predictContentPerformance(contentForStorage);
-      console.log(`🎯 Predicted performance: ${prediction.expectedLikes} likes, ${prediction.expectedFollowers} new followers`);
-      
-      // Schedule performance tracking for this tweet
-      await this.schedulePerformanceTracking(tweetId, contentForStorage, prediction);
-      
-      console.log('📊 Intelligent posting data stored for learning');
-
-      return { success: true, content: contentForStorage };
     } catch (error: any) {
       console.error('❌ Failed to execute intelligent post:', error.message);
       return { success: false, error: error.message };
