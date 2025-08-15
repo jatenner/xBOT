@@ -143,7 +143,20 @@ export class AutonomousPostingEngine {
       }
 
       // Generate content using AI
-      const content = await this.generateContent();
+      let content = await this.generateContent();
+      
+      // Apply quality gate to basic content too
+      const { ContentQualityGate } = await import('../lib/contentQualityGate');
+      const qualityGate = ContentQualityGate.getInstance();
+      const qualityCheck = qualityGate.validateContent(content);
+      
+      if (!qualityCheck.passed) {
+        console.log(`❌ Basic content failed quality gate (${qualityCheck.score}/100)`);
+        // Use high-quality fallback
+        const examples = qualityGate.getQualityExamples();
+        content = examples[Math.floor(Math.random() * examples.length)];
+        console.log(`🔄 Using quality fallback content`);
+      }
       
       console.log(`📝 Generated content: ${content.substring(0, 80)}...`);
 
@@ -186,13 +199,33 @@ export class AutonomousPostingEngine {
       }
 
       // Generate content with intelligent context
-      const content = await this.generateIntelligentContent(opportunity);
+      let content = await this.generateIntelligentContent(opportunity);
       
-      // Validate content quality before posting
-      if (!this.validateContentQuality(content)) {
-        console.log('❌ Generated content failed quality check, skipping post');
-        return { success: false, error: 'Content quality validation failed' };
+      // Use comprehensive quality gate validation
+      const { ContentQualityGate } = await import('../lib/contentQualityGate');
+      const qualityGate = ContentQualityGate.getInstance();
+      const qualityCheck = qualityGate.validateContent(content);
+      
+      if (!qualityCheck.passed) {
+        console.log(`❌ Content failed quality gate (${qualityCheck.score}/100):`, qualityCheck.feedback.join(', '));
+        
+        // Try to regenerate once with feedback
+        if (qualityCheck.score > 40) {
+          console.log('🔄 Attempting to regenerate with quality feedback...');
+          const improvedContent = await this.regenerateWithFeedback(opportunity, qualityCheck.improvements);
+          
+          const improvedCheck = qualityGate.validateContent(improvedContent);
+          if (improvedCheck.passed) {
+            console.log(`✅ Regenerated content passed quality gate (${improvedCheck.score}/100)`);
+            // Continue with improved content
+            content = improvedContent;
+          }
+        } else {
+          return { success: false, error: `Content quality too low: ${qualityCheck.score}/100` };
+        }
       }
+      
+      console.log(`✅ Content passed quality gate (${qualityCheck.score}/100)`);
       
       // Handle both single strings and thread arrays
       let result: any;
@@ -473,6 +506,59 @@ Example format: "Did you know [surprising fact]? Here's why: [science]. Try this
   }
 
   /**
+   * Regenerate content with specific quality feedback
+   */
+  private async regenerateWithFeedback(opportunity: any, improvements: string[]): Promise<string | string[]> {
+    try {
+      const { OpenAI } = await import('openai');
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      
+      const feedbackPrompt = `The previous content failed quality checks. Please improve it based on this feedback:
+${improvements.join('\n- ')}
+
+REQUIREMENTS:
+- Must be COMPLETE (no teasers, no "more details coming", no ellipsis endings)
+- Provide specific, actionable value 
+- Include reasoning or evidence
+- Sound human and conversational
+- Be clear and understandable
+- If mentioning "thread below" or "dive into", actually provide the content
+
+Create a high-quality health/wellness post that passes these requirements.`;
+
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a quality content creator who writes complete, valuable posts like @naval, @ShaneAParrish, or @james_clear. Never write teasers or incomplete thoughts.'
+          },
+          {
+            role: 'user',
+            content: feedbackPrompt
+          }
+        ],
+        max_tokens: 300,
+        temperature: 0.6, // Lower for more focused content
+      });
+
+      const content = response.choices[0]?.message?.content?.trim();
+      
+      if (!content) {
+        throw new Error('No content generated during regeneration');
+      }
+
+      console.log(`🔄 Regenerated content: ${content.substring(0, 100)}...`);
+      return content;
+
+    } catch (error) {
+      console.error('Failed to regenerate content:', error);
+      // Return a high-quality fallback
+      return 'Your gut produces 90% of your serotonin. That "gut feeling" about decisions? It\'s literally your microbiome influencing your brain. Fiber feeds good bacteria, which improves both digestion and mood.';
+    }
+  }
+
+  /**
    * Validate content quality before posting
    */
   private validateContentQuality(content: string | string[]): boolean {
@@ -682,7 +768,17 @@ Example format: "Did you know [surprising fact]? Here's why: [science]. Try this
         contextPrompt += `This is a high-engagement window - make it conversational and engaging. `;
       }
       
-      contextPrompt += `Create a COMPLETE, concise, human-like tweet about health/wellness. Be conversational, avoid corporate speak, minimal hashtags. CRITICAL: Must be a complete thought, never end with ellipsis (...) or "more details coming soon" or incomplete sentences. Expected performance score: ${recommendations.expectedScore}/100.`;
+      contextPrompt += `Create a COMPLETE, valuable health/wellness post that would make @naval or @james_clear proud. 
+
+CRITICAL REQUIREMENTS:
+- COMPLETE thought (never use ellipsis, "more details coming", or "thread below" without actual content)
+- Provide REAL value (specific insights, actionable tips, or evidence-based facts)
+- Include reasoning/evidence for claims ("because...", "research shows...", specific numbers)
+- Sound human and conversational, never corporate
+- Be memorable and shareable
+- If you mention diving into something, actually dive in with substantial content
+
+Expected performance score: ${recommendations.expectedScore}/100.`;
 
       const response = await openai.chat.completions.create({
         model: 'gpt-4o-mini', // Better model for quality
