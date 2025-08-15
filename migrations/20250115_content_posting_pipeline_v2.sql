@@ -1,5 +1,6 @@
--- xBOT Content & Posting Pipeline Migrations
--- Run this on Railway before deploying the new code
+-- xBOT Content & Posting Pipeline V2.0 Migration
+-- Date: 2025-01-15
+-- Purpose: Add tables for new quality-first posting system
 
 -- Add missing columns to learning_posts (idempotent)
 ALTER TABLE IF EXISTS learning_posts
@@ -38,3 +39,18 @@ CREATE INDEX IF NOT EXISTS posted_threads_root_id_idx ON posted_threads(root_twe
 
 -- Clean up any orphaned data
 DELETE FROM learning_posts WHERE tweet_id LIKE 'posted_%' AND created_at < NOW() - INTERVAL '7 days';
+
+-- Add to migration history
+INSERT INTO migration_history (filename, applied_at) 
+VALUES ('20250115_content_posting_pipeline_v2.sql', NOW())
+ON CONFLICT (filename) DO NOTHING;
+
+-- Success message
+DO $$ 
+BEGIN
+  RAISE NOTICE '✅ Content & Posting Pipeline V2.0 migration completed successfully';
+  RAISE NOTICE '📊 Enhanced learning_posts with impressions, metadata columns';
+  RAISE NOTICE '🔍 Added posted_tweets table for deduplication tracking';
+  RAISE NOTICE '🧵 Added posted_threads table for thread performance tracking';
+  RAISE NOTICE '📈 Added indexes for optimal query performance';
+END $$;

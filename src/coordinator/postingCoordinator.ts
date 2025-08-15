@@ -9,7 +9,7 @@ import { generateThread, regenerateWithFeedback } from '../ai/threadGenerator';
 import { scoreThread, formatQualityReport } from '../quality/qualityGate';
 import { isDuplicateThread, storeTweetSignatures, storeThreadRecord } from '../utils/dedupe';
 import { postThread, deletePartialThread } from '../posting/playwrightPoster';
-import { AdvancedDatabaseManager } from '../lib/advancedDatabaseManager';
+import { createClient } from '@supabase/supabase-js';
 
 export interface PostingResult {
   success: boolean;
@@ -24,13 +24,13 @@ export interface PostingResult {
 
 export class PostingCoordinator {
   private openai: OpenAI;
-  private dbManager: AdvancedDatabaseManager;
+  private supabase: any;
 
   constructor() {
     this.openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY!
     });
-    this.dbManager = AdvancedDatabaseManager.getInstance();
+    this.supabase = createClient(config.SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY);
   }
 
   async shouldAllowPosting(): Promise<{ allowed: boolean; reason?: string }> {
@@ -41,23 +41,18 @@ export class PostingCoordinator {
 
     // Check minimum time between posts
     try {
-      const result = await this.dbManager.executeQuery(
-        'check_last_post_time',
-        async (client) => {
-          const { data, error } = await client
-            .from('posted_threads')
-            .select('posted_at')
-            .order('posted_at', { ascending: false })
-            .limit(1);
+      const { data, error } = await this.supabase
+        .from('posted_threads')
+        .select('posted_at')
+        .order('posted_at', { ascending: false })
+        .limit(1);
 
-          if (error) {
-            console.warn('Error checking last post time:', error);
-            return null;
-          }
+      if (error) {
+        console.warn('Error checking last post time:', error);
+        return { allowed: true };
+      }
 
-          return data?.[0]?.posted_at || null;
-        }
-      );
+      const result = data?.[0]?.posted_at || null;
 
       if (result) {
         const lastPostTime = new Date(result);

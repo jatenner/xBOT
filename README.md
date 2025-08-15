@@ -60,11 +60,10 @@ OPENAI_TEMPERATURE=0.4
 ```
 
 #### 2. Database Setup
-Run the migrations:
-```sql
--- Connect to your Supabase SQL editor and run:
--- (Copy contents of MIGRATIONS.sql)
-```
+Migrations run automatically on deployment! The system will apply:
+- `migrations/20250115_content_posting_pipeline_v2.sql`
+- Enhanced `learning_posts` table with quality tracking
+- New `posted_tweets` and `posted_threads` tables
 
 #### 3. Deploy & Test
 ```bash
@@ -99,8 +98,7 @@ Watch for these log patterns:
 - [ ] Set `ENABLE_THREADS=false` initially
 - [ ] Set `FORCE_POST=false` 
 - [ ] Set `MIN_HOURS_BETWEEN_POSTS=2`
-- [ ] Run `MIGRATIONS.sql` in Supabase
-- [ ] Deploy to Railway
+- [ ] Deploy to Railway (migrations run automatically)
 - [ ] Test: `npm run e2e:dry "topic"` - should show complete JSON thread
 
 ### Verification Phase  
@@ -184,9 +182,9 @@ PostingCoordinator
 - **PostingCoordinator** (`src/coordinator/postingCoordinator.ts`): Orchestrates entire pipeline
 
 ### Database Schema:
-- `posted_tweets`: Deduplication tracking with text signatures
-- `posted_threads`: Thread metadata and performance tracking  
-- `learning_posts`: Enhanced with impressions, metadata columns
+- `posted_tweets`: Deduplication tracking with text signatures (auto-created)
+- `posted_threads`: Thread metadata and performance tracking (auto-created)
+- `learning_posts`: Enhanced with impressions, metadata columns (auto-migrated)
 
 ## 🐛 Troubleshooting
 
