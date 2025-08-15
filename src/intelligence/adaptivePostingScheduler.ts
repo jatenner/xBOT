@@ -130,8 +130,8 @@ export class AdaptivePostingScheduler {
       }
     }
 
-    // 4. AUDIENCE ACTIVITY (0-20 points)
-    const audienceScore = audienceActivity.onlineFollowers * 20;
+    // 4. AUDIENCE ACTIVITY (0-25 points) - Increased from 20
+    const audienceScore = audienceActivity.onlineFollowers * 25;
     opportunity.score += audienceScore;
     if (audienceScore > 15) {
       opportunity.reason += `👥 High audience activity (${Math.round(audienceScore)}pts). `;
@@ -393,7 +393,8 @@ export class AdaptivePostingScheduler {
   }
 
   private calculateEngagementScore(currentHour: number, window: EngagementWindow): number {
-    return Math.min(30, window.averageEngagement * 30 + window.followerActivity * 20);
+    // Increased scoring to make posting more likely
+    return Math.min(30, window.averageEngagement * 40 + window.followerActivity * 30);
   }
 
   private calculateOptimalFrequency(windowData: any): number {

@@ -88,7 +88,7 @@ export class AutonomousPostingEngine {
       try {
         const opportunity = await this.scheduler.shouldPostNow();
         
-        if (opportunity.score > 50) { // Threshold for posting
+        if (opportunity.score > 35) { // Lowered threshold for posting (was 50)
           console.log(`🎯 Posting opportunity detected! Score: ${Math.round(opportunity.score)}/100`);
           console.log(`📝 Reason: ${opportunity.reason}`);
           console.log(`⚡ Urgency: ${opportunity.urgency}`);
@@ -117,7 +117,7 @@ export class AutonomousPostingEngine {
       const opportunity = await this.scheduler.shouldPostNow();
       console.log(`🚀 Initial posting analysis: ${Math.round(opportunity.score)}/100 - ${opportunity.reason}`);
       
-      if (opportunity.score > 30) {
+      if (opportunity.score > 25) {
         this.executeIntelligentPost(opportunity).catch(console.error);
       }
     }, 2 * 60 * 1000);
