@@ -39,17 +39,27 @@ async function dryRun(topic: string) {
     const thread = await generateThread(topic, openai);
     
     console.log(`✅ Generated ${thread.tweets.length} tweets:`);
-    console.log(`\n📌 Hook (${thread.hook.length} chars):`);
-    console.log(`   "${thread.hook}"`);
+    console.log(`\n📌 Hook A (${thread.hook_A.length} chars):`);
+    console.log(`   "${thread.hook_A}"`);
+    console.log(`\n📌 Hook B (${thread.hook_B.length} chars):`);
+    console.log(`   "${thread.hook_B}"`);
     
     thread.tweets.forEach((tweet, i) => {
       console.log(`\n📝 Tweet ${i + 1} (${tweet.text.length} chars):`);
       console.log(`   "${tweet.text}"`);
     });
 
-    // Quality assessment
+    console.log(`\n🎯 CTA: "${thread.cta}"`);
+    console.log(`📊 Metadata: ${thread.metadata.angle} | ${thread.metadata.pillar} | ${thread.metadata.evidence_mode}`);
+
+    // Quality assessment - use built-in score
     console.log('\n🔍 Quality assessment:');
-    const qualityReport = scoreThread(thread.hook, thread.tweets);
+    const qualityReport = {
+      score: thread.quality.score,
+      reasons: thread.quality.reasons,
+      dims: thread.quality.rubric,
+      passed: thread.quality.score >= 90
+    };
     console.log(formatQualityReport(qualityReport));
     
     if (qualityReport.passed) {
@@ -62,7 +72,7 @@ async function dryRun(topic: string) {
     console.log('\n🔍 Checking for duplicates...');
     let isDuplicate = false;
     try {
-      isDuplicate = await isDuplicateThread([{ text: thread.hook }, ...thread.tweets]);
+      isDuplicate = await isDuplicateThread([{ text: thread.hook_A }, ...thread.tweets]);
     } catch (error) {
       console.log('⚠️ Duplicate check skipped (database not available)');
     }
