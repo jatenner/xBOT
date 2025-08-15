@@ -88,15 +88,17 @@ export class AutonomousPostingEngine {
       try {
         const opportunity = await this.scheduler.shouldPostNow();
         
-        if (opportunity.score > 35) { // Lowered threshold for posting (was 50)
-          console.log(`🎯 Posting opportunity detected! Score: ${Math.round(opportunity.score)}/100`);
+        const dynamicThreshold = await this.calculateDynamicThreshold();
+        
+        if (opportunity.score > dynamicThreshold) {
+          console.log(`🎯 Posting opportunity detected! Score: ${Math.round(opportunity.score)}/100 (threshold: ${dynamicThreshold})`);
           console.log(`📝 Reason: ${opportunity.reason}`);
           console.log(`⚡ Urgency: ${opportunity.urgency}`);
           
           // Execute intelligent post
           this.executeIntelligentPost(opportunity).catch(console.error);
         } else {
-          console.log(`⏳ Waiting for better opportunity. Current score: ${Math.round(opportunity.score)}/100 - ${opportunity.reason}`);
+          console.log(`⏳ Waiting for better opportunity. Current score: ${Math.round(opportunity.score)}/100 (need: ${dynamicThreshold}) - ${opportunity.reason}`);
             }
           } catch (error) {
         console.error('❌ Error in intelligent posting analysis:', error);
@@ -186,6 +188,12 @@ export class AutonomousPostingEngine {
       // Generate content with intelligent context
       const content = await this.generateIntelligentContent(opportunity);
       
+      // Validate content quality before posting
+      if (!this.validateContentQuality(content)) {
+        console.log('❌ Generated content failed quality check, skipping post');
+        return { success: false, error: 'Content quality validation failed' };
+      }
+      
       // Handle both single strings and thread arrays
       let result: any;
       if (Array.isArray(content)) {
@@ -261,49 +269,54 @@ export class AutonomousPostingEngine {
         apiKey: process.env.OPENAI_API_KEY,
       });
 
-      const viralTopics = [
-        'simple life hacks that actually work',
-        'productivity tips for busy people',
-        'surprising science facts',
-        'morning routine optimization',
-        'technology trends and insights',
-        'financial wellness and money tips',
-        'travel and lifestyle discoveries',
-        'career growth strategies',
-        'relationship and communication insights',
-        'creative thinking and innovation',
-        'time management techniques',
-        'personal development insights',
-        'nutrition myths debunked',
-        'exercise efficiency tips',
-        'sleep optimization hacks',
-        'stress reduction techniques',
-        'mindfulness and focus tips',
-        'health research breakthroughs',
-        'workplace wellness strategies',
-        'sustainable living tips'
+      const healthTopics = [
+        'hydration science and health benefits',
+        'sleep quality optimization tips',
+        'stress management techniques that work',
+        'nutrition myths debunked by science',
+        'exercise efficiency and recovery',
+        'mental health awareness insights',
+        'preventive healthcare strategies',
+        'immune system strengthening habits',
+        'mindfulness and cognitive health',
+        'workplace wellness best practices',
+        'healthy aging science breakthroughs',
+        'gut health and microbiome research',
+        'cardiovascular health optimization',
+        'brain health and memory enhancement',
+        'hormonal health and balance'
       ];
 
-      const randomTopic = viralTopics[Math.floor(Math.random() * viralTopics.length)];
+      const randomTopic = healthTopics[Math.floor(Math.random() * healthTopics.length)];
 
-      const contentStyles = [
-        `Write a viral tweet about ${randomTopic}. Sound like a real person sharing something useful. No quotes, no corporate speak. Be direct and engaging.`,
-        `Create a relatable post about ${randomTopic}. Start with "Just realized..." or "Pro tip:" or "Anyone else...". Keep it casual and authentic.`,
-        `Share an insight about ${randomTopic}. Write like you're texting a friend. No hashtags unless absolutely necessary. Make it shareable.`,
-        `Drop some knowledge about ${randomTopic}. Be the person who always has interesting facts. Keep it conversational and surprising.`,
-        `Post about ${randomTopic} like you just discovered something cool. Use simple language that anyone can understand.`
-      ];
-      
-      const randomStyle = contentStyles[Math.floor(Math.random() * contentStyles.length)];
+      const highQualityPrompt = `Create a complete, engaging health tweet about ${randomTopic}.
+
+Requirements:
+- Start with an attention-grabbing hook or surprising fact
+- Provide 2-3 specific, actionable insights
+- Include the science/reasoning why it works
+- End with a clear takeaway or call-to-action
+- Sound human and conversational, not corporate
+- Be complete and informative (not just a teaser)
+- Target length: 200-240 characters
+- No hashtags
+
+Example format: "Did you know [surprising fact]? Here's why: [science]. Try this: [actionable tip]. The result: [benefit]."`;
 
       const response = await openai.chat.completions.create({
-        model: 'gpt-3.5-turbo',
-        messages: [{ 
-          role: 'user', 
-          content: randomStyle 
-        }],
-        max_tokens: 100,
-        temperature: 0.9, // Higher creativity
+        model: 'gpt-4o-mini', // Better model
+        messages: [
+          { 
+            role: 'system', 
+            content: 'You are a health communication expert who creates engaging, evidence-based content that helps people improve their wellbeing.' 
+          },
+          { 
+            role: 'user', 
+            content: highQualityPrompt 
+          }
+        ],
+        max_tokens: 300, // Increased from 100
+        temperature: 0.7, // Balanced creativity
       });
 
       const content = response.choices[0]?.message?.content?.trim();
@@ -312,26 +325,210 @@ export class AutonomousPostingEngine {
         throw new Error('No content generated from OpenAI');
       }
 
+      // Quality validation
+      if (content.length < 50) {
+        throw new Error('Generated content too short');
+      }
+
+      if (content.includes('...') && content.length < 150) {
+        throw new Error('Content appears incomplete (contains ellipsis and too short)');
+      }
+
+      console.log(`✅ Generated high-quality content: ${content.length} chars`);
       return content;
 
     } catch (error: any) {
       console.error('❌ AI content generation failed:', error.message);
       
-      // Fallback to diverse, viral content
+      // Fallback to high-quality health content
       const fallbackContent = [
-        'Just learned that taking breaks actually makes you more productive. Anyone else feel guilty about resting?',
-        'Pro tip: Set your phone to grayscale. Instantly makes social media less addictive',
-        'The 2-minute rule changed my life: if it takes less than 2 minutes, do it now',
-        'Coffee naps are real: drink coffee, nap for 20 minutes, wake up superhuman',
-        'Your brain uses 20% of your energy. No wonder thinking is exhausting',
-        'Hot showers before bed actually make you sleep worse. Cold rooms are the secret',
-        'Compound interest applies to habits too. Small daily improvements = massive results',
-        'Most successful people have one thing in common: they finish what they start',
-        'The best time to learn something new is when you think you\'re too old for it',
-        'Your future self will either thank you or blame you for what you do today'
+        'Your body loses 2-3 liters of water daily through breathing and skin. That "8 glasses" rule? It\'s actually closer to 10-12 for optimal brain function and energy levels.',
+        'Sleep debt is real debt - you can\'t just "catch up" on weekends. Missing 1 hour of sleep reduces your immune function by 70% the next day. Consistency beats duration.',
+        'Walking after meals drops blood sugar by 30% compared to sitting. Even a 2-minute walk helps. Your pancreas will thank you, and your energy won\'t crash.',
+        'Chronic stress shrinks your prefrontal cortex (decision-making) while growing your amygdala (fear center). Deep breathing for 60 seconds can reverse this in real-time.',
+        'Your gut produces 90% of your serotonin. That "gut feeling" is literally your microbiome talking to your brain. Fiber feeds good bacteria = better mood.',
+        'Cold exposure for 30 seconds boosts norepinephrine by 530%. This neurotransmitter improves focus, mood, and fat burning. Start with cold shower endings.',
+        'Sitting for 6+ hours daily increases death risk by 40%. Standing desks help, but movement every 30 minutes is the key. Set reminders to save your spine.',
+        'Your circadian rhythm controls 80% of your hormones. Blue light after sunset confuses your body clock. Use night mode or glasses after 8 PM for better sleep.'
       ];
       
       return fallbackContent[Math.floor(Math.random() * fallbackContent.length)];
+    }
+  }
+
+  /**
+   * Calculate dynamic posting threshold based on recent performance and goals
+   */
+  private async calculateDynamicThreshold(): Promise<number> {
+    try {
+      const recentMetrics = await this.getRecentPerformanceMetrics();
+      
+      // Base threshold starts at 40 (between old 35 and 50)
+      let threshold = 40;
+      
+      // ADJUST BASED ON RECENT PERFORMANCE
+      if (recentMetrics.avgEngagement > 5) {
+        // Good engagement - can be more selective
+        threshold += 10;
+        console.log(`📈 Good engagement (${recentMetrics.avgEngagement}) - raising threshold +10`);
+      } else if (recentMetrics.avgEngagement < 2) {
+        // Poor engagement - be less selective
+        threshold -= 10;
+        console.log(`📉 Poor engagement (${recentMetrics.avgEngagement}) - lowering threshold -10`);
+      }
+      
+      // ADJUST BASED ON POSTING FREQUENCY
+      const timeSinceLastPost = await this.getTimeSinceLastPost();
+      if (timeSinceLastPost > 480) { // 8+ hours
+        threshold -= 15; // Post even with lower scores
+        console.log(`⏰ Long gap (${Math.round(timeSinceLastPost/60)}h) - lowering threshold -15`);
+      } else if (timeSinceLastPost < 120) { // Less than 2 hours
+        threshold += 20; // Require much higher scores
+        console.log(`🚫 Recent post (${Math.round(timeSinceLastPost)}m) - raising threshold +20`);
+      }
+      
+      // ADJUST BASED ON FOLLOWER GROWTH GOAL
+      const followerGrowth = await this.getRecentFollowerGrowth();
+      if (followerGrowth < 1) { // Growing slowly
+        threshold -= 5; // Post more to increase visibility
+        console.log(`👥 Slow growth (${followerGrowth}/day) - lowering threshold -5`);
+      }
+      
+      // ENSURE REASONABLE BOUNDS
+      threshold = Math.max(25, Math.min(70, threshold));
+      
+      return threshold;
+      
+    } catch (error) {
+      console.warn('Failed to calculate dynamic threshold, using default:', error);
+      return 40; // Safe default
+    }
+  }
+
+  private async getRecentPerformanceMetrics(): Promise<{ avgEngagement: number; posts: number }> {
+    try {
+      const { AdvancedDatabaseManager } = await import('../lib/advancedDatabaseManager');
+      const dbManager = AdvancedDatabaseManager.getInstance();
+      
+      const metrics = await dbManager.executeQuery('get_recent_metrics', async (client) => {
+        const { data, error } = await client
+          .from('tweets')
+          .select('likes, retweets, replies, posted_at')
+          .gte('posted_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()) // Last 7 days
+          .order('posted_at', { ascending: false });
+        
+        if (error) throw error;
+        return data || [];
+      });
+
+      if (metrics.length === 0) return { avgEngagement: 0, posts: 0 };
+
+      const totalEngagement = metrics.reduce((sum: number, tweet: any) => 
+        sum + (tweet.likes || 0) + (tweet.retweets || 0) + (tweet.replies || 0), 0);
+      
+      return {
+        avgEngagement: totalEngagement / metrics.length,
+        posts: metrics.length
+      };
+    } catch (error) {
+      return { avgEngagement: 0, posts: 0 };
+    }
+  }
+
+  private async getTimeSinceLastPost(): Promise<number> {
+    try {
+      const { AdvancedDatabaseManager } = await import('../lib/advancedDatabaseManager');
+      const dbManager = AdvancedDatabaseManager.getInstance();
+      
+      const lastPost = await dbManager.executeQuery('get_last_post', async (client) => {
+        const { data, error } = await client
+          .from('tweets')
+          .select('posted_at')
+          .order('posted_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
+        if (error) throw error;
+        return data;
+      });
+
+      if (!lastPost) return 999; // No previous posts
+
+      const timeDiff = Date.now() - new Date(lastPost.posted_at).getTime();
+      return Math.floor(timeDiff / (1000 * 60)); // Minutes
+    } catch (error) {
+      return 999;
+    }
+  }
+
+  private async getRecentFollowerGrowth(): Promise<number> {
+    try {
+      // This would track follower count changes
+      // For now, return estimated based on engagement
+      const metrics = await this.getRecentPerformanceMetrics();
+      return Math.max(0, metrics.avgEngagement / 5); // Rough estimate
+    } catch (error) {
+      return 0;
+    }
+  }
+
+  /**
+   * Validate content quality before posting
+   */
+  private validateContentQuality(content: string | string[]): boolean {
+    try {
+      const contentToCheck = Array.isArray(content) ? content[0] : content;
+      
+      // Basic length checks
+      if (contentToCheck.length < 30) {
+        console.log(`❌ Content too short: ${contentToCheck.length} chars`);
+        return false;
+      }
+
+      if (contentToCheck.length > 280) {
+        console.log(`❌ Content too long: ${contentToCheck.length} chars`);
+        return false;
+      }
+
+      // Check for incomplete content indicators
+      const incompleteness = [
+        /\.\.\.$/, // Ends with ellipsis
+        /^Let's dive into/, // Generic hook without follow-through
+        /Here's what you need to know:$/, // Hook without actual info
+        /Stay tuned for more$/, // Incomplete teaser
+        /More details coming soon$/, // Incomplete teaser
+      ];
+
+      for (const pattern of incompleteness) {
+        if (pattern.test(contentToCheck)) {
+          console.log(`❌ Content appears incomplete: matches pattern ${pattern}`);
+          return false;
+        }
+      }
+
+      // Quality indicators (should have at least 2)
+      const qualityIndicators = [
+        /\b(study|research|science|scientists?|evidence|data)\b/i, // Evidence-based
+        /\b(try|start|avoid|consider|remember)\b/i, // Actionable
+        /\b(because|why|how|reason|due to)\b/i, // Explanatory
+        /\b(\d+%|\d+ times?|\d+ hours?|\d+ minutes?)\b/i, // Specific numbers
+        /\b(improve|increase|reduce|better|enhance)\b/i, // Benefits
+      ];
+
+      const qualityScore = qualityIndicators.reduce((score, pattern) => 
+        score + (pattern.test(contentToCheck) ? 1 : 0), 0);
+
+      if (qualityScore < 2) {
+        console.log(`❌ Content quality too low: score ${qualityScore}/5`);
+        return false;
+      }
+
+      console.log(`✅ Content passed quality check: ${qualityScore}/5 quality indicators`);
+      return true;
+
+    } catch (error) {
+      console.warn('Content validation error:', error);
+      return false; // Fail safe
     }
   }
 
