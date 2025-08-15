@@ -494,9 +494,13 @@ Example format: "Did you know [surprising fact]? Here's why: [science]. Try this
       const incompleteness = [
         /\.\.\.$/, // Ends with ellipsis
         /^Let's dive into/, // Generic hook without follow-through
+        /Let's dive into/, // Any "Let's dive into" anywhere
+        /Let's explore/, // Similar incomplete hooks
         /Here's what you need to know:$/, // Hook without actual info
         /Stay tuned for more$/, // Incomplete teaser
         /More details coming soon$/, // Incomplete teaser
+        /💧.*dive into.*health/, // The specific hydration pattern
+        /does more than quench.*dive into/, // Exact hydration post pattern
       ];
 
       for (const pattern of incompleteness) {
