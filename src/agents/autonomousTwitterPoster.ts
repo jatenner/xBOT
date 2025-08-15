@@ -454,7 +454,8 @@ export class AutonomousTwitterPoster {
       // Wait for navigation to permalink
       await page.waitForTimeout(3000);
       
-            // BULLETPROOF URL EXTRACTION WITH COMPREHENSIVE LOGGING
+      // BULLETPROOF URL EXTRACTION WITH COMPREHENSIVE LOGGING
+      const currentUrl = page.url();
       console.log(`🔍 POST_URL_CHECK: Current URL after posting: ${currentUrl}`);
       console.log(`🔍 POST_URL_CHECK: Page title: ${await page.title().catch(() => 'unknown')}`);
       
@@ -513,19 +514,6 @@ export class AutonomousTwitterPoster {
       }
       
       console.log(`✅ Tweet ID extracted using ${extractionMethod}: ${tweetIdMatch[1]}`);
-      }
-      
-      if (!tweetIdMatch) {
-        console.warn(`⚠️ Could not extract tweet ID from URL: ${currentUrl}`);
-        // Generate a fallback ID based on timestamp
-        const fallbackId = `browser_${Date.now()}`;
-        console.log(`🔄 Using fallback ID: ${fallbackId}`);
-        return {
-          rootTweetId: fallbackId,
-          permalink: currentUrl,
-          replyIds: []
-        };
-      }
       
       const rootTweetId = tweetIdMatch[1];
       const permalink = currentUrl;
