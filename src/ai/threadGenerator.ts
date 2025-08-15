@@ -82,21 +82,45 @@ OUTPUT JSON SCHEMA:
 }
 `;
 
-export async function generateThread(topic: string, openai: OpenAI): Promise<GeneratedThread> {
+export async function generateThread(
+  selection: {
+    topic: string;
+    pillar: string;
+    angle: string;
+    spice_level: number;
+    evidence_mode: string;
+  },
+  openai: OpenAI
+): Promise<GeneratedThread> {
   const userPrompt = `
 Account context:
 - account_niche: "health optimization for busy professionals"
-- audience_profile: "time-poor 25–45, wants practical wins, skeptical of fluff"
+- audience_profile: "time-poor 25–45, wants practical wins, skeptical of fluff"  
 - brand_voice: "clear, calm, evidence-first, no hype"
 - content_pillars: ["sleep", "nutrition", "habit design", "cognition"]
 - cta_style: "soft"
-- spice_level: 2
+- spice_level: ${selection.spice_level}
 
-Topic: "${topic}"
+Content parameters:
+- Topic: "${selection.topic}"
+- Pillar: "${selection.pillar}"
+- Angle: "${selection.angle}"
+- Evidence mode: "${selection.evidence_mode}"
 
 Create a thread that delivers specific, actionable value. Choose a single sharp promise for the reader (what they'll be able to do after reading). Include 5–9 concrete steps, numbers, heuristics, or micro-stories. Each tweet should stand alone.
 
-Return JSON matching the exact schema in system prompt. Quality score must be ≥ 90.
+Thread structure requirements:
+1) Problem → 2) Mechanism (why) → 3–5) Steps (if X do Y) → 6) Quick win (today) → 7) Safeguard/pitfall → 8) Tiny case/number → 9) Recap + CTA
+
+Quality requirements:
+- Each tweet contains 1 concrete element: number, step, heuristic, or micro-example
+- At least 2 non-obvious specifics per thread
+- One mechanism line explaining "because [physiology/behavioral reason]"
+- Length 120–240 chars per tweet
+- No markdown, teasers, ellipses, AI tells, hashtags, emojis
+- Quality score must be ≥ 90
+
+Return JSON matching the exact schema in system prompt.
 `;
 
   const response = await openai.chat.completions.create({
@@ -200,8 +224,12 @@ Return JSON matching the exact format specified in system prompt.
 
   const cleaned: GeneratedThread = {
     ...schemaResult.data,
-    hook: stripFormatting(schemaResult.data.hook),
-    tweets: schemaResult.data.tweets.map(t => ({ text: stripFormatting(t.text) }))
+    hook_A: stripFormatting(schemaResult.data.hook_A),
+    hook_B: stripFormatting(schemaResult.data.hook_B),
+    tweets: schemaResult.data.tweets.map(t => ({ text: stripFormatting(t.text) })),
+    cta: stripFormatting(schemaResult.data.cta),
+    metadata: schemaResult.data.metadata,
+    quality: schemaResult.data.quality
   };
 
   // Re-validate

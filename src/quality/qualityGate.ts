@@ -51,11 +51,11 @@ export function scoreThread(hook: string, tweets: { text: string }[]): QualityRe
   ).length >= Math.ceil(tweets.length / 3);
 
   const hasPersonal = allTexts.filter(t => 
-    /\b(I've|my|personally|in my experience|after \d+ years?)\b/i.test(t.text)
+    /\b(I've|my|personally|in my experience|after \d+ years?)\b/i.test(t)
   ).length >= 1;
 
   const hasEngagement = allTexts.filter(t => 
-    /\?$|what's your|do you|have you|which one|tell me/i.test(t.text)
+    /\?$|what's your|do you|have you|which one|tell me/i.test(t)
   ).length >= 1;
 
   // Dimension scoring (0–10 each)

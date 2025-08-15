@@ -120,9 +120,20 @@ async function postSingleTweet(
       await page.waitForSelector('[data-testid="tweetTextarea_0"]', { timeout: 15000 });
     }
 
-    // Clear any existing text and type our content
+    // FINAL SANITIZER: Strip any remaining formatting and validate
+    const { stripFormatting, validateTweetText } = await import('../utils/text/sanitize');
+    const sanitizedText = stripFormatting(text);
+    
+    const validation = validateTweetText(sanitizedText);
+    if (!validation.valid) {
+      throw new Error(`Final validation failed: ${validation.reason}. Text: "${sanitizedText}"`);
+    }
+    
+    console.log(`📝 Final sanitized text (${sanitizedText.length} chars): ${sanitizedText.substring(0, 80)}${sanitizedText.length > 80 ? '...' : ''}`);
+    
+    // Clear any existing text and type our sanitized content
     await page.fill('[data-testid="tweetTextarea_0"]', '');
-    await page.type('[data-testid="tweetTextarea_0"]', text);
+    await page.type('[data-testid="tweetTextarea_0"]', sanitizedText);
     
     // Wait a moment for the interface to update
     await page.waitForTimeout(500);
