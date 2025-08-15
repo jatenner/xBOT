@@ -20,7 +20,7 @@ export const config = {
   
   // Database
   SUPABASE_URL: process.env.SUPABASE_URL!,
-  SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY!,
+  SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY!,
   
   // Other
   NODE_ENV: process.env.NODE_ENV ?? 'development',
@@ -31,7 +31,7 @@ export function validateEnvironment(lenient = false): void {
   const required = [
     'OPENAI_API_KEY',
     'SUPABASE_URL', 
-    'SUPABASE_ANON_KEY'
+    'SUPABASE_SERVICE_ROLE_KEY' // Use the existing service role key
   ];
   
   const missing = required.filter(key => !process.env[key]);
