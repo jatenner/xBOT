@@ -4,512 +4,264 @@
 > **Andrew Huberman + Peter Attia + Marc Andreessen + Sam Altman + David Sinclair + Gary Brecka**, with **Duncan Trussell's humor**.  
 > It educates on AI-driven health, riffs on deep-tech startups, cracks witty one-liners, and (softly) funnels traffic to **Snap2Health**.
 
-## 0. Outcome
-A strategic growth engine that tweets, replies, learns and iterates 24/7 with *zero* daily babysitting.
+## 🛠️ New Content & Posting Pipeline (v2.0)
 
-## 1. KPIs
+This bot now features a **bulletproof posting system** with quality gates, thread completion, and real tweet ID extraction.
 
-| Objective | 7-day Target |
-|-----------|--------------|
-| Originals posted | ≥ 21 |
-| High-reach replies | ≥ 35 |
-| Avg. engagement score↑ | Week-over-week |
-| Snap2Health CTA | 1 in 6 tweets |
-| Scheduler uptime | ≥ 99 % |
+### Key Features:
+- ✅ **JSON-first content generation** (no more Markdown artifacts)
+- ✅ **85/100 quality gate** (completeness, value, evidence, actionability)
+- ✅ **Real thread posting** with proper reply chains
+- ✅ **Deduplication** prevents posting similar content within 7 days
+- ✅ **Rate limiting** respects minimum hours between posts
+- ✅ **Bulletproof Playwright** extracts real tweet IDs from CreateTweet responses
 
-`eng_score = likes + 2·retweets + 3·replies`
+## 🚀 Quick Start
 
-## 2. Architecture
-
-```
-StrategistAgent ─► (decides Post / Reply / Sleep)
-│
-├─► PostTweetAgent (orig. content)
-├─► ReplyAgent (opportunistic replies)
-└─► LearnAgent (engagement feedback)
-```
-
-Shared helpers: **xClient**, **openaiClient**, **supabaseClient**.
-
-## 3. Folder Layout
-```
-src/
-  agents/
-    strategistAgent.ts
-    postTweet.ts
-    replyAgent.ts
-    learnAgent.ts
-    scheduler.ts
-  utils/
-    xClient.ts
-    openaiClient.ts
-    supabaseClient.ts
-    formatTweet.ts
-  prompts/
-    tweetPrompt.txt
-    replyPrompt.txt
-supabase/schema.sql
-.env.example
-package.json
-README.md
-```
-
-## 4. Supabase DDL
-(see `supabase/schema.sql`)
-
-## 5. Persona Prompt (to embed)
-
-```
-System:
-You blend Harvard-level medical authority with Marc Andreessen's tech optimism,
-Sam Altman's AGI futurism, David Sinclair's longevity focus, Gary Brecka's biomarker zeal,
-and Duncan Trussell's cosmic humor.
-
-Goals:
-• Illuminate AI × health.
-• Spark conversation (ask bold questions).
-• Soft Snap2Health plug roughly every sixth tweet.
-
-Style:
-• 1-2 sentences or 4-6-bullet threads.
-• Emojis sparingly: 🧠 🤖 🩺 ⏳ 💡 📊.
-• Cite stats/anecdotes; never spam.
-```
-
-## 6. Environment (.env.example)
-
-```
-OPENAI_API_KEY=
-TWITTER_APP_KEY=
-TWITTER_APP_SECRET=
-TWITTER_ACCESS_TOKEN=
-TWITTER_ACCESS_SECRET=
-TWITTER_BEARER_TOKEN=
-SUPABASE_URL=
-SUPABASE_SERVICE_ROLE_KEY=
-DISABLE_BOT=false
-MAX_DAILY_TWEETS=280
-LIVE_POSTING_ENABLED=true
-```
-
-**What is dry-run?**  
-Dry-run executes every pipeline stage (idea generation → image fetch → logs) except the final `POST /2/tweets`. It's controlled by `LIVE_POSTING_ENABLED`. When false you'll see `🧪 DRY RUN – Tweet preview:` log lines; when true the bot actually tweets.
-
-## 7. 🔐 Twitter Session
-
-### Quick Setup (Local)
-1. **Seed session**: `npm run seed:x-session`
-2. **Log in manually** when browser opens at x.com/login
-3. **Close browser** when done - session auto-saved to `data/twitter_session.json`
-4. **Test session**: `npm run test:x-session` (opens x.com/home with saved session)
-
-### Production Deployment
-1. **Generate base64** from local session:
-   ```bash
-   # macOS (copy to clipboard)
-   npm run b64:x-session
-   
-   # Manual methods:
-   base64 < data/twitter_session.json | pbcopy    # macOS
-   base64 -w0 data/twitter_session.json | xclip -selection c  # Linux
-   base64 -i data/twitter_session.json           # Output to terminal
-   ```
-
-2. **Set Railway environment variable**:
-   ```bash
-   TWITTER_SESSION_B64=eyJjb29raWVzIjpbey...
-   ```
-
-3. **Verify deployment**: Check `/session` endpoint shows cookies loaded
-
-### Session Rotation & Debug
-- **Auto-save**: After each successful post, session state is automatically saved back
-- **Debug flag**: Set `PRINT_SESSION_B64_ON_SAVE=true` to log masked base64 for rotation
-- **When to rotate**: After password changes, 2FA updates, or login issues
-- **Emergency**: If bot shows `login_required`, update `TWITTER_SESSION_B64` with fresh session
-
-### Session Management Scripts
-- `npm run seed:x-session` - Interactive login to save session
-- `npm run test:x-session` - Test saved session by opening x.com/home
-- `npm run clear:x-session` - Delete saved session file
-- `npm run print:x-cookies` - Show cookie names array from session file
-- `npm run b64:x-session` - Copy session base64 to clipboard (macOS)
-
-### Health Endpoints
-- `/session` - Session status: `{ path, exists, cookieNames, count }`
-- `/health` - Railway health checks
-- `/status` - Detailed bot status
-
-## 7.1. DB Sanity
-
-### Database Health Check
-- `/db/check-latest` - Returns latest 5 tweets with masked content for verification
-- Bypasses RLS using service role for reliable health monitoring
-- No caching - always fresh data from database
-
-### Admin Testing
-- `POST /db/admin-test` - DB insert test (requires `X-Admin-Key: <ADMIN_SECRET>` header)
-- Tests write permissions to `diagnostics_log` table if available
-- Safe fallback if diagnostics table not configured
-
-## 8. NPM Scripts
-`dev` • `cron` • `tweet` • `reply` • `learn` • `lint`
-
-## 9. Deployment
-Vercel Cron (*/10 *) → `pnpm cron` **or** Railway always-on worker → `pnpm dev`.
-
-Render automatically runs all new migrations on every deploy via `npm run migrate`. The migration script uses `npx supabase db push` which works in production since Render provides `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` environment variables.
-
-## 10. Advanced Content Pipeline
-
-### 🔬 Trend-Research Fusion
-Combines real-time trends with research data for viral potential:
-- **TrendResearchFusion**: Merges top 10 Twitter trends with PubMed/NewsAPI articles
-- **Credibility Scoring**: Nature (0.98), Stanford (0.92), NIH (0.96), WHO (0.95)
-- **Relevance Analysis**: Cosine similarity + trend volume scoring
-- **Top 3 Selection**: Highest combined viral potential items
-
-### 🎨 Advanced Tweet Composer
-PhD-level content generation with multiple templates:
-- **BREAKING_NEWS**: 🚨 format with citations (260 chars max)
-- **PHD_THREAD**: 🧵 sophisticated analysis with paradigmatic insights
-- **QUICK_STAT**: 📊 data-driven content (200 chars max)
-- **VISUAL_SNACK**: 💡 bite-sized insights (180 chars max)
-
-### 🚪 Quality Gate System
-Multi-factor validation before posting:
-- **Readability Score**: ≥45 Flesch Reading Ease
-- **Fact Count**: ≥2 verifiable claims/statistics
-- **Source Credibility**: ≥0.8 institutional backing
-- **URL/Citation**: Required for research-backed content
-- **Character Limits**: Template-specific maximums
-- **Rejection Logging**: Failed drafts stored in `rejected_drafts` table
-
-### 📊 Sophistication Metrics
-- Uses academic vocabulary (paradigmatic, epistemological, ontological)
-- Focuses on systemic implications vs isolated statistics
-- PhD-level persona integration from `persona_phd.txt`
-- 80/20 insights-to-questions ratio
-
-## 11. Autonomous Growth Loop
-
-### 📈 F/1K Optimization System
-The bot optimizes for **Followers-per-1000-Impressions (F/1K)** using machine learning:
-
-#### 🧠 Strategy Learner (ε-greedy Algorithm)
-- **Exploration**: 10% random content style selection
-- **Exploitation**: 90% best-performing style based on 7-day F/1K average
-- **Adaptive ε**: Increases exploration when performance drops, decreases when thriving
-- **Content Styles**: educational, breaking_news, viral_take, data_story, thought_leadership, community_building, trending_analysis, research_insight
-
-#### 📊 Engagement Feedback Agent
-- **Hourly Data Collection**: Fetches tweet metrics via Twitter API v2
-- **Follower Attribution**: Estimates new followers per tweet using engagement scoring
-- **Nightly Aggregation**: Computes daily F/1K metrics and stores in `growth_metrics` table
-- **Performance Tracking**: Updates `style_rewards` for continuous learning
-
-#### 👥 Follow Growth Agent
-- **Strategic Following**: 25 follows/day from competitor follower lists
-- **Smart Unfollowing**: 25 unfollows/day after 4-day delay for non-reciprocals
-- **Quality Filtering**: Bot detection, ratio analysis, engagement level validation
-- **Ratio Guard**: Pauses following when followers/following < 1.1
-
-#### 🕘 Scheduling
-- **Engagement Feedback**: Every hour (`0 * * * *`)
-- **Strategy Learning**: Daily at 2:30 AM UTC (`30 2 * * *`)
-- **Follow Growth**: Every 4 hours (`15 */4 * * *`)
-
-#### 🗃️ Database Schema
-```sql
--- F/1K tracking with auto-calculated metric
-CREATE TABLE growth_metrics (
-    day DATE PRIMARY KEY,
-    impressions BIGINT DEFAULT 0,
-    new_followers INT DEFAULT 0,
-    f_per_1k NUMERIC GENERATED ALWAYS AS 
-        (CASE WHEN impressions = 0 THEN 0 ELSE new_followers * 1000.0 / impressions END) STORED
-);
-
--- ε-greedy learning rewards
-CREATE TABLE style_rewards (
-    style_name VARCHAR(100) UNIQUE,
-    f_per_1k_reward NUMERIC DEFAULT 0,
-    sample_count INT DEFAULT 0
-);
-
--- Rate-limited follow/unfollow tracking
-CREATE TABLE follow_actions (
-    target_username VARCHAR(255),
-    action_type VARCHAR(20) CHECK (action_type IN ('follow', 'unfollow')),
-    action_date DATE DEFAULT CURRENT_DATE,
-    success BOOLEAN DEFAULT FALSE
-);
-```
-
-#### 🎯 Growth Metrics
-- **Target F/1K**: 3-5 new followers per 1000 impressions
-- **Daily Limits**: 25 follows, 25 unfollows (Twitter API compliance)
-- **Learning Rate**: Style performance updates every 24 hours
-- **Safety Guards**: Ratio monitoring, quota limits, bot detection
-
-## 🚀 Deploy Flow
-
-### Prerequisites
-```bash
-# Apply growth metrics schema
-export SUPABASE_URL='https://your-project.supabase.co'
-export SUPABASE_SERVICE_ROLE_KEY='your-service-role-
-key'
-chmod +x scripts/db_push.sh
-./scripts/db_push.sh
-```
-
-### Local Testing
+### Development
 ```bash
 # Install dependencies
 npm install
 
-# Build TypeScript
+# Set up environment (copy env.example to .env and fill in values)
+cp env.example .env
+
+# Run dry test
+npm run e2e:dry "Sleep optimization for night owls"
+
+# Build and start
 npm run build
-
-# Run unit tests
-npm test
-
-# Run load testing
-npm install -g k6
-k6 run scripts/soak_test.js
+npm start
 ```
 
-### Production Deployment
+### Production (Railway)
+
+#### 1. Environment Variables
+Set these in Railway dashboard:
 ```bash
-# Push to main branch (triggers CI/CD)
-git add .
-git commit -m "Deploy autonomous growth loop"
-git push origin main
-```
-
-#### Deployment Pipeline
-1. **Lint** → ESLint code quality check
-2. **Build** → TypeScript compilation
-3. **Jest** → Unit tests (strategyLearner, followGrowthAgent)
-4. **k6 Load Test** → 200 RPS for 1 minute with <1% failure rate
-5. **Deploy Gate** → Automatic deployment if all tests pass
-
-#### Render Configuration
-- **Production**: `xbot-prod` (starter-plus, 1-3 instances, auto-scale)
-- **Staging**: `xbot-stage` (starter, 1 instance, DRY_RUN=true)
-- **Health Check**: `/health` endpoint
-- **Metrics**: `/metrics` (Prometheus format)
-- **Dashboard**: `/dashboard` (basic UI)
-
-#### Monitoring Stack
-- **k6 Soak Testing**: `scripts/soak_test.js` (200 RPS load validation)
-- **Prometheus Metrics**: `src/metrics/exporter.ts` (/metrics endpoint)
-- **Grafana Dashboard**: `grafana_dashboard_growth.json` (F/1K visualization)
-
-All deployments include autonomous growth loop with F/1K optimization
-
-## 12. Safety Nets
-Rate-limit guard, OpenAI moderation, Supabase kill-switch, full audit trail.
-
-## 13. Implementation Tasks
-1. Scaffold file tree & TS config.  
-2. Implement wrappers (`xClient`, `openaiClient`, `supabaseClient`).  
-3. Stub agents with `run()` methods & TODOs.  
-4. Scheduler with node-cron (Strategist 15 min, Learn 02:00 UTC).  
-5. Populate prompts with persona + 3 example tweets, 2 example replies.  
-6. Ensure `pnpm run dev` prints "💚 All agents completed".
-
-© 2025 Snap2Health # Force Render redeploy with correct TypeScript build
-# Force redeploy Thu Jun 19 13:26:05 EDT 2025
-
-## Environment Configuration
-
-### Required Environment Variables (Secrets Only)
-
-Only these environment variables are required for deployment on Render. All other settings (tweet limits, quality gates, posting strategy) are stored in the `bot_config` table in Supabase and can be changed without redeployment.
-
-```bash
-# OpenAI API
-OPENAI_API_KEY=your_openai_api_key
-
-# Twitter API Credentials  
-TWITTER_BEARER_TOKEN=your_bearer_token
-
-# Supabase Database
+# Core
+OPENAI_API_KEY=sk-your-key
 SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+SUPABASE_ANON_KEY=your-key
+TWITTER_SESSION_B64=your-session-cookies
+
+# Safety controls (start with these)
+ENABLE_THREADS=false
+FORCE_POST=false
+MIN_HOURS_BETWEEN_POSTS=2
+
+# Quality controls
+QUALITY_MIN_SCORE=85
+ALLOW_HASHTAGS=false
+
+# AI settings
+OPENAI_MODEL=gpt-4o-mini
+OPENAI_TEMPERATURE=0.4
 ```
 
-### Optional Environment Variables
-
-```bash
-# Development/Testing
-LIVE_POSTING_ENABLED=true     # false for dry-run mode
-DISABLE_BOT=false             # emergency stop switch
-NODE_ENV=production           # development/production
-```
-
-### Configuration Table
-
-All non-secret settings are stored in the `bot_config` table and can be updated via SQL:
-
+#### 2. Database Setup
+Run the migrations:
 ```sql
--- Example: Change daily tweet limit
-UPDATE bot_config 
-SET value = jsonb_set(value, '{max_daily_tweets}', '8') 
-WHERE key = 'runtime_config';
-
--- Example: Adjust quality requirements
-UPDATE bot_config 
-SET value = jsonb_set(
-  jsonb_set(value, '{quality_readability_min}', '60'),
-  '{quality_credibility_min}', '0.9'
-)
-WHERE key = 'runtime_config';
-
--- Example: Change posting strategy
-UPDATE bot_config 
-SET value = jsonb_set(value, '{posting_strategy}', '"aggressive"') 
-WHERE key = 'runtime_config';
+-- Connect to your Supabase SQL editor and run:
+-- (Copy contents of MIGRATIONS.sql)
 ```
 
-Default configuration values:
-- **max_daily_tweets**: 6 (conservative API limit)
-- **quality_readability_min**: 55 (Flesch Reading Ease)
-- **quality_credibility_min**: 0.85 (source credibility)
-- **fallback_stagger_minutes**: 90 (post spacing fallback)
-- **posting_strategy**: "balanced" (posting behavior mode)
-
-## Verification
-
-After Railway deployment with Dockerfile, verify the system is working correctly:
-
+#### 3. Deploy & Test
 ```bash
-# Test Playwright endpoint (should return PLAYWRIGHT_OK)
-curl http://127.0.0.1:8080/playwright
+# Deploy code
+git push origin main
 
-# Check logs for factory initialization and posting safety
-railway logs --service xBOT | rg "PLAYWRIGHT_FACTORY_READY|POST_SKIPPED_LIVE_OFF"
+# Test content generation (dry run)
+npm run e2e:dry "Hydration myths and science"
+
+# Monitor logs
+npm run logs
 ```
 
-**Success Criteria:**
-- Playwright endpoint returns `PLAYWRIGHT_OK`
-- Logs show `PLAYWRIGHT_FACTORY_READY` (browser factory initialized)
-- Logs show `POST_SKIPPED_LIVE_OFF` (posting safety guard active)
-- No `headless_shell`, `ENOENT`, or `EBUSY` errors in logs
-
-**Additional Verification:**
+#### 4. Enable Threading (after verification)
+Once you see logs like `🎯 Extracted tweet ID: 1234567890` and quality scores ≥85:
 ```bash
-# Inside Railway container
-railway run --service xBOT -- curl -sSf http://127.0.0.1:8080/playwright && echo
-railway run --service xBOT -- curl -sSf http://127.0.0.1:8080/status && echo
-
-# Ensure no browser installation errors
-railway logs --service xBOT --lines 400 | grep -i headless_shell || echo "✅ none"
+# In Railway dashboard:
+ENABLE_THREADS=true
 ```
 
-## Thread Integrity System
+#### 5. Monitor
+Watch for these log patterns:
+```
+✅ Posted thread successfully: 1234567890
+📊 Quality score: 87/100
+🧵 Thread posted: root=123 replies=456,789,012
+```
 
-### Environment Variables
+## 📋 Ops Checklist
 
-**Thread Validation Settings:**
+### Initial Setup
+- [ ] Set `ENABLE_THREADS=false` initially
+- [ ] Set `FORCE_POST=false` 
+- [ ] Set `MIN_HOURS_BETWEEN_POSTS=2`
+- [ ] Run `MIGRATIONS.sql` in Supabase
+- [ ] Deploy to Railway
+- [ ] Test: `npm run e2e:dry "topic"` - should show complete JSON thread
+
+### Verification Phase  
+- [ ] Monitor logs for `🎯 Extracted tweet ID: [real-number]` (not `posted_timestamp`)
+- [ ] Confirm quality scores ≥ 85/100
+- [ ] Check Twitter account manually - tweets should be complete, not cut off
+- [ ] Verify no "Failed to extract tweet ID" errors
+
+### Go Live
+- [ ] Set `ENABLE_THREADS=true` once tweet ID extraction confirmed
+- [ ] Monitor for successful thread completions: `✅ Posted thread successfully`
+- [ ] Watch for follower/engagement growth
+- [ ] Adjust `MIN_HOURS_BETWEEN_POSTS` based on performance
+
+### Ongoing Monitoring
+- [ ] Quality scores staying ≥ 85/100
+- [ ] No duplicate content warnings
+- [ ] Thread completion rate ~100%
+- [ ] Engagement trending upward
+
+## 🧪 Testing
+
+### Dry Run (No Posting)
 ```bash
-THREAD_MIN_TWEETS=5                # Minimum tweets required for valid thread
-THREAD_MAX_TWEETS=9                # Maximum tweets allowed in thread
-THREAD_RETRY_ATTEMPTS=3            # Max retry attempts for invalid threads
-THREAD_RETRY_BASE_MS=500           # Base delay for retry backoff (ms)
-THREAD_STRICT_REPLY_MODE=true      # Enforce real reply chains
-TWEET_MAX_CHARS_HARD=279           # Hard character limit per tweet
-FORCE_NO_HASHTAGS=true             # Strip all hashtags from content
-EMOJI_MAX=2                        # Maximum emojis per tweet
-FALLBACK_SINGLE_TWEET_OK=false     # Allow fallback to single when thread fails
+# Test content generation and quality gate
+npm run e2e:dry "Sleep routine for night owls"
+npm run e2e:dry "Nutrition timing for athletes"
+npm run e2e:dry "Stress reduction techniques"
 ```
 
-### Force Thread Testing
-
-**Test thread generation and validation:**
+### Manual Testing
 ```bash
-# Test single post (clean format)
-curl -fsS "$SERVICE_URL/ai-post?format=single&topic=sleep&hook=tip"
+# Check browser automation (requires logged-in session)
+npm run test:session
 
-# Test thread reply chain (5-9 tweets)
-curl -fsS "$SERVICE_URL/force-thread?topic=stress%20recovery&mode=how_to"
-
-# Test longform fallback to thread
-curl -fsS "$SERVICE_URL/ai-post?format=longform_single&topic=ultra-processed%20food"
-```
-
-### Expected Healthy Log Lines
-
-**Single Post Logs:**
-```
-FORMAT_DECISION: final=single, tweets=1
-LINTER: format=single, tweets=1, t1_chars=245, actions=[emoji_reduce]
-POST_START
-LOGIN_CHECK: Confirmed logged in to X
-POST_DONE: id=1234567890123456789
-```
-
-**Thread Post Logs:**
-```
-FORMAT_DECISION: want=thread, initial_tweets=7
-THREAD_VALIDATE: k=7 OK
-FORMAT_DECISION: final=thread, tweets=7
-POST_START
-THREAD_CHAIN: k=1/7, in_reply_to=none
-POST_DONE: id=1234567890123456789
-THREAD_CHAIN: k=2/7, in_reply_to=1234567890123456789
-POST_DONE: id=1234567890123456790
-...
-SESSION_SAVED: cookies=42
-```
-
-**Thread Validation & Retry Logs:**
-```
-THREAD_VALIDATE: k=3 < min=5 → REASK(1/3)
-THREAD_REASK: attempt=1/3 topic="stress recovery (Coach style)..."
-THREAD_VALIDATE: k=6 OK (attempt=1)
-```
-
-**Fallback Scenarios:**
-```
-# When fallback allowed
-THREAD_FALLBACK: to=single (allowed=true)
-
-# When fallback disabled
-THREAD_SKIP: fallback=false reason=invalid_thread
-```
-
-### Warning Signs
-
-**❌ Thread Generation Failures:**
-```
-THREAD_GEN_FAIL: reason=too_short attempt=3/3
-THREAD_VALIDATION_FAILED: too_short (k=3)
-THREAD_GENERATION_FAILED: Unable to generate valid thread after retries
-```
-
-**❌ Format Issues:**
-```
-FORMAT_SANITIZER: removed_thread_language_single (frequent)
-THREAD_VALIDATE: k=1 failed → reason=T1_thread_fluff
-```
-
-### Running Tests
-
-```bash
-# Test thread validation logic
-npm run test:thread-integrity
-
-# Test format sanitization
-npm run test:format
-
-# Test tweet linting
-npm run test:linter
-
-# Full test suite
+# Test specific components
 npm test
 ```
 
-## Installation
+## 📊 Content Quality Standards
+
+### Quality Gate Criteria (85/100 minimum):
+- **Completeness (40%)**: No ellipses, no teasers, complete thoughts
+- **Value (25%)**: Specific numbers, studies, actionable advice  
+- **Clarity (15%)**: Easy to understand, no jargon
+- **Actionability (10%)**: Clear steps readers can take
+- **Evidence (5%)**: Studies, research, credible sources
+- **Engagement (5%)**: Questions, personal touches, relatability
+
+### Example High-Quality Thread:
+```
+Hook: "90% of people think they need 8 hours of sleep. New research shows it's not about duration—it's about timing."
+
+Tweet 1: "Study of 50,000 people found that sleep quality beats quantity. Going to bed at 10 PM with 6.5 hours beats midnight with 8 hours."
+
+Tweet 2: "Your circadian rhythm peaks at specific times. Missing your 'sleep window' by 2 hours reduces recovery by 40%, even with more total sleep."
+
+Tweet 3: "Try this: Track your natural tiredness for 3 days. When do you first feel sleepy? That's your optimal bedtime, regardless of duration."
+
+Tweet 4: "I've been following this for 6 months. Same 6.5 hours, but timing it right increased my HRV by 23% and morning energy by 40%."
+
+Tweet 5: "Quality sleep isn't about the clock—it's about your biology. Work with your rhythm, not against it."
+```
+
+## 🔧 Architecture
+
+### New Pipeline Flow:
+```
+PostingCoordinator
+├── generateThread() → JSON thread (5-9 tweets)
+├── scoreThread() → Quality gate (≥85/100) 
+├── isDuplicateThread() → Deduplication check
+├── postThread() → Playwright with real ID extraction
+└── storeThreadRecord() → Database tracking
+```
+
+### Key Components:
+- **ThreadGenerator** (`src/ai/threadGenerator.ts`): JSON-based content generation
+- **QualityGate** (`src/quality/qualityGate.ts`): Multi-dimensional scoring
+- **PlaywrightPoster** (`src/posting/playwrightPoster.ts`): Bulletproof thread posting
+- **PostingCoordinator** (`src/coordinator/postingCoordinator.ts`): Orchestrates entire pipeline
+
+### Database Schema:
+- `posted_tweets`: Deduplication tracking with text signatures
+- `posted_threads`: Thread metadata and performance tracking  
+- `learning_posts`: Enhanced with impressions, metadata columns
+
+## 🐛 Troubleshooting
+
+### Common Issues:
+
+**"Quality gate failed"**
+- Check `QUALITY_MIN_SCORE` (default 85)
+- Review failure reasons in logs
+- Content may be too generic or incomplete
+
+**"Failed to extract tweet ID"** 
+- Session cookies may be expired
+- X.com interface may have changed
+- Check `TWITTER_SESSION_B64` validity
+
+**"Threading disabled"**
+- Set `ENABLE_THREADS=true` after verification
+- Check browser posting logs first
+
+**"Content too similar to recent posts"**
+- Deduplication is working correctly
+- Try different topics or wait 7 days
+- Check `posted_tweets` table for signatures
+
+### Debug Commands:
+```bash
+# Check configuration
+npm run logs | grep "🔧 Bot Configuration"
+
+# Monitor quality scores  
+npm run logs | grep "Quality Gate"
+
+# Watch thread posting
+npm run logs | grep "Posted thread successfully"
+
+# Check for errors
+npm run logs | grep "❌"
+```
+
+## 📝 Content Strategy
+
+### Viral Topic Categories:
+1. **Sleep optimization** - timing, quality, recovery
+2. **Nutrition science** - timing, myths, latest research  
+3. **Stress reduction** - practical techniques, studies
+4. **Exercise timing** - when, why, how much
+5. **Cognitive enhancement** - focus, memory, clarity
+6. **Longevity research** - cutting-edge findings
+7. **Technology & health** - wearables, tracking, AI
+8. **Habit formation** - psychology, systems, tracking
+
+### Engagement Patterns:
+- **Curiosity gaps**: "90% of people don't know..."
+- **Social proof**: "Study of 50,000 people found..."  
+- **Personal experience**: "I've been tracking this for..."
+- **Contrarian takes**: "Everyone thinks X, but actually Y..."
+- **Specific numbers**: "Increased performance by 23%..."
+
+## 🔐 Security & Privacy
+
+- Session cookies stored as base64 environment variables
+- No sensitive data logged
+- Rate limiting prevents spam/bans
+- Deduplication prevents repetitive content
+- Quality gates prevent low-value posts
+
+## 📈 Performance Metrics
+
+Track these in Supabase dashboard:
+- **Quality scores** (aim for 85-95/100)
+- **Thread completion rate** (should be ~100%) 
+- **Engagement per post** (likes + retweets + replies)
+- **Follower growth rate** (track weekly)
+- **Content uniqueness** (no duplicates within 7 days)
+
+---
+
+Built with ❤️ for autonomous, high-quality health content that actually helps people.
