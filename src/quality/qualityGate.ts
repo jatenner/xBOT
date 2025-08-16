@@ -1,6 +1,7 @@
 import Ajv from 'ajv';
 import { MIN_QUALITY_SCORE, TWEET_MAX_CHARS } from '../config/env';
 import { ContentResult } from '../ai/prompts';
+import { throttleWarn } from '../utils/log';
 
 const ajv = new Ajv();
 
@@ -47,6 +48,36 @@ const contentSchema = {
 };
 
 const validateContentSchema = ajv.compile(contentSchema);
+
+/**
+ * Normalize single format content to exactly 1 tweet
+ * Auto-repairs generation issues before validation
+ */
+export function normalizeSingle(content: any): any {
+  if (!content || !content.tweets || !Array.isArray(content.tweets)) {
+    throw new Error('Invalid content structure for normalization');
+  }
+
+  // Keep exactly one tweet; trim extra; enforce <=280 chars
+  let firstTweet = (content.tweets[0] || '').toString().trim();
+  
+  if (!firstTweet) {
+    throw new Error('Empty tweet after generation');
+  }
+  
+  // Truncate if too long
+  if (firstTweet.length > 280) {
+    firstTweet = firstTweet.slice(0, 276) + ' …';
+    throttleWarn('tweet-truncated', `Tweet truncated from ${content.tweets[0].length} to 280 chars`);
+  }
+  
+  // Return normalized structure
+  return {
+    ...content,
+    format: 'single',
+    tweets: [firstTweet]
+  };
+}
 
 /**
  * Banned phrases that indicate low-quality content
@@ -190,7 +221,20 @@ export class QualityGate {
       }
     } else if (content.format === 'single') {
       if (content.tweets.length !== 1) {
-        errors.push('Single format must have exactly 1 tweet');
+        // Auto-normalize instead of hard fail
+        const originalLength = content.tweets.length;
+        try {
+          const normalized = normalizeSingle(content);
+          content.tweets = normalized.tweets;
+          throttleWarn('single-auto-normalized', `Auto-normalized single format from ${originalLength} to 1 tweet`);
+          
+          // Verify normalization worked
+          if (content.tweets.length !== 1) {
+            errors.push(`Single format normalization failed: still has ${content.tweets.length} tweets after repair`);
+          }
+        } catch (normError) {
+          errors.push(`Single format normalization failed: ${normError}`);
+        }
       }
     }
     

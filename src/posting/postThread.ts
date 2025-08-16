@@ -2,6 +2,8 @@ import { Page, BrowserContext } from 'playwright';
 import { browserManager } from './BrowserManager';
 import { storeTweetMetrics } from '../db/index';
 import { throttledError } from '../utils/throttledWarn';
+import { TwitterComposer, PostResult as ComposerResult } from './TwitterComposer';
+import { throttleWarn, throttleError } from '../utils/log';
 
 interface TweetResult {
   success: boolean;
@@ -84,11 +86,26 @@ export class TwitterPoster {
       return await browserManager.withContext('posting', async (context) => {
         const page = await context.newPage();
         
-        // Set up network interception for this posting session
+        // Set up network interception for tweet ID capture
         this.setupNetworkInterception(page);
         this.capturedTweetIds.clear();
         
-        return await this.executeSingleTweetPost(page, content, topic);
+        // Use robust TwitterComposer
+        const composer = new TwitterComposer(page);
+        const result = await composer.postSingleTweet(content);
+        
+        if (result.success) {
+          // Try to get actual tweet ID from network capture
+          const capturedId = this.getLatestCapturedTweetId();
+          const tweetId = capturedId || result.tweetId || 'unknown';
+          
+          console.log(`✅ Posted single tweet: ${tweetId}`);
+          await storeTweetMetrics({ tweet_id: tweetId, content, topic });
+          return { success: true, tweetId };
+        } else {
+          throttleError('composer-single-fail', `Single tweet post failed: ${result.error}`);
+          return { success: false, error: result.error };
+        }
       });
       
     } catch (error: any) {
@@ -97,39 +114,7 @@ export class TwitterPoster {
     }
   }
 
-  private async executeSingleTweetPost(page: Page, content: string, topic?: string): Promise<TweetResult> {
-    try {
-      // Navigate to compose
-      await page.goto('https://x.com/compose/tweet', { waitUntil: 'networkidle' });
-      
-      // Wait for composer and type content
-      const tweetTextarea = await page.waitForSelector('[data-testid="tweetTextarea_0"]', { timeout: 10000 });
-      await tweetTextarea.fill(content);
-      
-      // Post tweet
-      const postButton = await page.waitForSelector('[data-testid="tweetButtonInline"]', { timeout: 5000 });
-      await postButton.click();
-      
-      // Wait for posting to complete
-      await page.waitForTimeout(3000);
-      
-      // Get tweet ID from captured network data
-      const tweetId = this.getLatestCapturedTweetId();
-      
-      if (tweetId) {
-        console.log(`✅ Posted single tweet: ${tweetId}`);
-        await storeTweetMetrics({ tweet_id: tweetId, content, topic });
-        return { success: true, tweetId };
-      } else {
-        console.warn('⚠️ Tweet posted but ID not captured from network');
-        return { success: true, tweetId: 'unknown' };
-      }
-      
-    } catch (error: any) {
-      console.error('❌ Failed to execute single tweet post:', error);
-      return { success: false, error: error.message };
-    }
-  }
+
 
   async postThread(tweets: string[], topic?: string): Promise<ThreadResult> {
     try {
@@ -142,22 +127,35 @@ export class TwitterPoster {
         this.setupNetworkInterception(page);
         this.capturedTweetIds.clear();
         
+        // Use TwitterComposer for robust posting
+        const composer = new TwitterComposer(page);
+        
         // Post first tweet
-        const firstResult = await this.executeSingleTweetPost(page, tweets[0], topic);
-        if (!firstResult.success || !firstResult.tweetId) {
+        const firstResult = await composer.postSingleTweet(tweets[0]);
+        if (!firstResult.success) {
+          throttleError('composer-thread-first-fail', `Thread first tweet failed: ${firstResult.error}`);
           return { success: false, error: `Failed to post first tweet: ${firstResult.error}` };
         }
         
-        const rootTweetId = firstResult.tweetId;
+        const capturedId = this.getLatestCapturedTweetId();
+        const rootTweetId = capturedId || firstResult.tweetId || 'unknown';
         const replyIds: string[] = [];
+        
+        console.log(`✅ Posted thread root: ${rootTweetId}`);
         
         // Post replies if there are more tweets
         for (let i = 1; i < tweets.length; i++) {
-          const replyResult = await this.postReply(page, tweets[i], rootTweetId);
-          if (replyResult.success && replyResult.tweetId) {
-            replyIds.push(replyResult.tweetId);
-          } else {
-            console.warn(`⚠️ Failed to post reply ${i + 1}: ${replyResult.error}`);
+          try {
+            const replyResult = await composer.postReply(tweets[i], rootTweetId);
+            if (replyResult.success) {
+              const replyId = this.getLatestCapturedTweetId() || replyResult.tweetId || 'unknown';
+              replyIds.push(replyId);
+              console.log(`✅ Posted reply ${i}: ${replyId}`);
+            } else {
+              throttleWarn('composer-reply-fail', `Failed to post reply ${i + 1}: ${replyResult.error}`);
+            }
+          } catch (replyError: any) {
+            throttleWarn('composer-reply-error', `Reply ${i + 1} error: ${replyError.message}`);
           }
         }
         
@@ -166,35 +164,7 @@ export class TwitterPoster {
       });
       
     } catch (error: any) {
-      throttledError(`Failed to post thread: ${error.message}`, 'post_thread');
-      return { success: false, error: error.message };
-    }
-  }
-
-  private async postReply(page: Page, content: string, targetTweetId: string): Promise<TweetResult> {
-    try {
-      // Navigate to the tweet to reply to
-      await page.goto(`https://x.com/i/web/status/${targetTweetId}`, { waitUntil: 'networkidle' });
-      
-      // Click reply button
-      const replyButton = await page.waitForSelector('[data-testid="reply"]', { timeout: 10000 });
-      await replyButton.click();
-      
-      // Wait for reply composer and type content
-      const replyTextarea = await page.waitForSelector('[data-testid="tweetTextarea_0"]', { timeout: 5000 });
-      await replyTextarea.fill(content);
-      
-      // Post reply
-      const postButton = await page.waitForSelector('[data-testid="tweetButton"]', { timeout: 5000 });
-      await postButton.click();
-      
-      // Wait for posting to complete
-      await page.waitForTimeout(3000);
-      
-      const tweetId = this.getLatestCapturedTweetId();
-      return { success: !!tweetId, tweetId: tweetId || 'unknown' };
-      
-    } catch (error: any) {
+      throttleError('post-thread-error', `Failed to post thread: ${error.message}`);
       return { success: false, error: error.message };
     }
   }

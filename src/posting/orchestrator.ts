@@ -1,7 +1,7 @@
 import { CadenceGuard } from './cadenceGuard';
 import { TwitterPoster } from './postThread';
 import { getContentGenerator } from '../ai/generate';
-import { validateContent, sanitizeForPosting, validateFinalLength } from '../quality/qualityGate';
+import { validateContent, sanitizeForPosting, validateFinalLength, normalizeSingle } from '../quality/qualityGate';
 import { scheduleMetricsTracking } from '../metrics/trackTweet';
 import { storeLearningPost } from '../db/index';
 import { getPostLock } from '../infra/postLockInstance';
@@ -148,12 +148,20 @@ export class PostingOrchestrator {
 
         console.log(`✅ ${currentPhase}: Content generated (${contentResult.attempts} attempts, score: ${contentResult.qualityScore}/100)`);
 
-        // Phase 3: Quality Gate
+        // Phase 3: Quality Gate with normalization
         currentPhase = PostingPhase.QUALITY_GATE;
         console.log(`📍 ${currentPhase}: Final quality validation`);
         
         const validationStart = Date.now();
-        const qualityResult = validateContent(contentResult.content);
+        
+        // Auto-repair single format before validation
+        let normalizedContent = contentResult.content;
+        if (format === 'single' && normalizedContent.tweets && normalizedContent.tweets.length !== 1) {
+          console.log(`🔧 Normalizing single format from ${normalizedContent.tweets.length} to 1 tweet`);
+          normalizedContent = normalizeSingle(normalizedContent);
+        }
+        
+        const qualityResult = validateContent(normalizedContent);
         const validationTime = Date.now() - validationStart;
 
         if (!qualityResult.passed) {
@@ -176,8 +184,8 @@ export class PostingOrchestrator {
         
         const postingStart = Date.now();
         
-        // Sanitize tweets
-        const sanitizedTweets = contentResult.content.tweets.map(tweet => {
+        // Sanitize tweets (use normalized content)
+        const sanitizedTweets = normalizedContent.tweets.map(tweet => {
           const sanitized = sanitizeForPosting(tweet);
           const lengthCheck = validateFinalLength(sanitized);
           
@@ -230,7 +238,7 @@ export class PostingOrchestrator {
         
         // Store learning data
         await this.storePostData(
-          contentResult.content,
+          normalizedContent,
           rootTweetId!,
           qualityResult.score
         );
