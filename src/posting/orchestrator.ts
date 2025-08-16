@@ -4,6 +4,9 @@ import { getContentGenerator } from '../ai/generate';
 import { validateContent, sanitizeForPosting, validateFinalLength } from '../quality/qualityGate';
 import { scheduleMetricsTracking } from '../metrics/trackTweet';
 import { storeLearningPost } from '../db/index';
+import { getPostLock } from '../infra/postLockInstance';
+import { throttledWarn } from '../utils/throttledWarn';
+import { browserManager } from './BrowserManager';
 
 /**
  * Posting phases for clear logging
@@ -46,7 +49,6 @@ export interface PostingResult {
  */
 export class PostingOrchestrator {
   private static instance: PostingOrchestrator | null = null;
-  private isPosting = false;
 
   static getInstance(): PostingOrchestrator {
     if (!this.instance) {
@@ -56,23 +58,43 @@ export class PostingOrchestrator {
   }
 
   /**
-   * Execute a complete posting workflow with loop prevention
+   * Execute a complete posting workflow with distributed lock prevention
    */
   async executePost(request: PostingRequest = {}): Promise<PostingResult> {
     const startTime = Date.now();
     let currentPhase = PostingPhase.CADENCE_CHECK;
 
-    // Prevent concurrent posting
-    if (this.isPosting) {
-      console.log('⚠️ Posting already in progress, skipping');
-      return {
-        success: false,
-        phase: PostingPhase.FAILED,
-        error: 'Another post is already in progress'
-      };
-    }
+    // Use distributed PostLock instead of local isPosting flag
+    const postLock = getPostLock();
+    const reason = `orchestrator_post_${request.topic || 'auto'}`;
 
-    this.isPosting = true;
+    return await postLock.run(
+      reason,
+      async (corrId) => this.executePostInternal(request, startTime, corrId),
+      () => {
+        throttledWarn('Another post is already in progress', 'posting_locked');
+        return {
+          success: false,
+          phase: PostingPhase.FAILED,
+          error: 'Another post is already in progress'
+        };
+      }
+    ) || {
+      success: false,
+      phase: PostingPhase.FAILED,
+      error: 'Another post is already in progress'
+    };
+  }
+
+  /**
+   * Internal posting workflow (runs within PostLock)
+   */
+  private async executePostInternal(
+    request: PostingRequest,
+    startTime: number,
+    corrId: string
+  ): Promise<PostingResult> {
+    let currentPhase = PostingPhase.CADENCE_CHECK;
 
     try {
       console.log('🚀 POST_ORCHESTRATOR: Starting posting workflow');
@@ -175,7 +197,6 @@ export class PostingOrchestrator {
 
         // Execute posting
         const poster = new TwitterPoster();
-        await poster.initialize();
 
         let postResult;
         if (sanitizedTweets.length === 1) {
@@ -258,8 +279,6 @@ export class PostingOrchestrator {
         phase: PostingPhase.FAILED,
         error: error instanceof Error ? error.message : 'Unknown error'
       };
-    } finally {
-      this.isPosting = false;
     }
   }
 
@@ -271,8 +290,12 @@ export class PostingOrchestrator {
     reason?: string;
     nextAllowedAt?: Date;
   }> {
-    if (this.isPosting) {
-      return { allowed: false, reason: 'Post currently in progress' };
+    // Check distributed posting lock
+    const postLock = getPostLock();
+    const lockStatus = await postLock.status();
+    
+    if (lockStatus.locked && !lockStatus.stale) {
+      return { allowed: false, reason: 'Post currently in progress by another instance' };
     }
 
     try {
@@ -302,13 +325,16 @@ export class PostingOrchestrator {
   /**
    * Get posting status
    */
-  getStatus(): {
+  async getStatus(): Promise<{
     isPosting: boolean;
     canPost: boolean;
-  } {
+  }> {
+    const lockStatus = await getPostLock().status();
+    const isPosting = lockStatus.locked && !lockStatus.stale;
+    
     return {
-      isPosting: this.isPosting,
-      canPost: !this.isPosting
+      isPosting,
+      canPost: !isPosting
     };
   }
 
