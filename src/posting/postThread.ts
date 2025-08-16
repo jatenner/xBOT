@@ -1,5 +1,6 @@
 import { Page } from 'playwright';
-import { createContext, resetBrowser } from '../playwright/browserFactory';
+import { getPageWithStorage } from '../utils/browser';
+import { resetBrowser } from '../playwright/browserFactory';
 import { storeTweetMetrics } from '../db/index';
 
 interface TweetResult {
@@ -24,13 +25,14 @@ export class TwitterPoster {
 
   async initialize(): Promise<void> {
     try {
-      const context = await createContext();
-      this.page = await context.newPage();
+      // Get browser page with Twitter session loaded
+      const { ctx, page } = await getPageWithStorage();
+      this.page = page;
       
       // Set up network interception for tweet ID capture
       this.setupNetworkInterception();
       
-      console.log('🐦 TwitterPoster initialized with network interception');
+      console.log('🐦 TwitterPoster initialized with network interception and Twitter session');
     } catch (error) {
       console.error('Failed to initialize TwitterPoster:', error);
       throw error;
