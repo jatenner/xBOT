@@ -1,177 +1,116 @@
-#!/usr/bin/env node
+import { validateEnvironment } from './config/env';
+import { startHealthServer } from './server';
+import { executePost } from './posting/orchestrator';
+import { closeBrowser } from './playwright/browserFactory';
+import { closeDatabaseConnections } from './db/index';
+import { closeCadenceGuard } from './posting/cadenceGuard';
 
 /**
- * 🤖 AUTONOMOUS TWITTER BOT - MAIN ENTRY POINT
- * 
- * Full-featured autonomous Twitter bot with:
- * - AI-powered content generation
- * - Autonomous posting schedule  
- * - Database integration (Supabase + Redis)
- * - Health monitoring
- * - API endpoints for control
+ * Main application entry point with proper error handling and graceful shutdown
  */
-
-import { SessionLoader } from "./utils/sessionLoader";
-
-// Bootstrap session with robust validation
-const sessionResult = SessionLoader.load();
-if (!sessionResult.ok) {
-  console.log('WARNING: No valid Twitter session found — running in read-only until session is configured');
-}
-
-import "./boot/env-playwright";
-import * as dotenv from 'dotenv';
-dotenv.config();
-
-import { AutonomousController } from './core/autonomousController';
-import { EnterpriseSystemController } from './core/enterpriseSystemController';
-import { getBrowser } from './utils/browser';
-import { logPlaywrightProbe } from './utils/browserProbe';
-import { TwitterSessionManager } from './utils/twitterSessionManager';
-
-async function main(): Promise<void> {
+async function main() {
+  console.log('🚀 Starting xBOT with enhanced quality and stability system');
+  console.log(`📅 Started at: ${new Date().toISOString()}`);
+  
   try {
-    console.log('🚀 === ENTERPRISE AUTONOMOUS TWITTER BOT STARTING ===');
-    console.log(`🌟 Node.js version: ${process.version}`);
-    console.log(`📦 Memory at startup: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`);
-    console.log('='.repeat(70));
+    // Validate environment
+    console.log('🔍 Validating environment configuration...');
+    const envValidation = validateEnvironment();
     
-    // Browser probe before launching
-    await logPlaywrightProbe();
-    
-    // Check Twitter session
-    const sessionInfo = TwitterSessionManager.getSessionInfo();
-    console.log(`🐦 Twitter Session: ${sessionInfo.message}`);
-    
-    if (!sessionInfo.hasSession) {
-      console.log('⚠️ WARNING: No valid Twitter session found');
-      console.log('📝 Bot will run in read-only mode until session is configured');
-      console.log('💡 To fix: Save Twitter cookies to data/twitter_session.json');
+    if (!envValidation.valid) {
+      console.error('❌ Environment validation failed:');
+      envValidation.errors.forEach(error => console.error(`   - ${error}`));
+      process.exit(1);
     }
     
-    // CRITICAL: Start health server IMMEDIATELY for Railway health checks
-    console.log('🏥 Starting health server for Railway...');
-    try {
-      const { startHealthServer } = await import('./healthServer');
-      await startHealthServer();
-      console.log('✅ Health server started successfully - Railway checks will pass');
-    } catch (error: any) {
-      console.warn('⚠️ Health server failed to start, continuing without it:', error.message);
-      // Don't crash the main process - bot can continue without health server
-    }
+    console.log('✅ Environment validation passed');
+
+    // Start health server
+    console.log('🏥 Starting health monitoring server...');
+    await startHealthServer();
     
-    // Initialize Enterprise Database Systems in background (non-blocking)
-    console.log('🏢 Initializing Enterprise Database Systems...');
-    const enterpriseController = EnterpriseSystemController.getInstance();
-    
-    // Set up enterprise system event listeners
-    enterpriseController.on('systemInitialized', (status) => {
-      console.log(`✅ Enterprise systems ready: ${status.health.overall}`);
-    });
-    
-    enterpriseController.on('criticalAlert', (alert) => {
-      console.error(`🚨 CRITICAL SYSTEM ALERT: ${alert.service}`);
-    });
-    
-    enterpriseController.on('systemStatus', (status) => {
-      // Log system status periodically (only if degraded)
-      if (status.health.overall !== 'healthy') {
-        console.warn(`⚠️ System health: ${status.health.overall}`);
-      }
-    });
-    
-    // Initialize enterprise systems with graceful error handling
-    try {
-      await enterpriseController.initializeEnterpriseSystems();
-      console.log('✅ Enterprise systems fully operational');
-    
-    // Initialize Playwright factory
-    try {
-      await getBrowser();
-      console.log('🎭 PLAYWRIGHT_FACTORY_READY');
-    } catch (error: any) {
-      console.warn('⚠️ Playwright factory initialization failed:', error.message);
-    }
-    } catch (error: any) {
-      console.warn('⚠️ Enterprise systems partially failed, continuing with degraded mode:', error.message);
-      console.log('🔄 Bot will operate with available systems only');
-    }
-    
-    console.log('='.repeat(70));
-    console.log('🤖 Initializing Bot Controller...');
-    
-    // Initialize the autonomous controller with error handling
-    let controller;
-    try {
-      controller = AutonomousController.getInstance();
-      // Initialize just the bot components (no health server conflict)
-      controller.initializeComponents().catch((error: any) => {
-        console.warn('⚠️ Background bot initialization failed:', error.message);
+    // Test basic functionality
+    if (process.argv.includes('--test-post')) {
+      console.log('🧪 Running test post...');
+      const result = await executePost({ 
+        topic: 'system health check test',
+        format: 'single'
       });
-      console.log('✅ Autonomous Controller created and initializing...');
-    } catch (error: any) {
-      console.warn('⚠️ Autonomous Controller creation failed:', error.message);
-      console.log('🔄 Bot will continue with health server only');
-      // Don't throw - keep health server running
-    }
-    
-    console.log('='.repeat(70));
-    console.log('🎉 === ENTERPRISE AUTONOMOUS TWITTER BOT FULLY OPERATIONAL ===');
-    console.log('🧠 Intelligent adaptive posting system activated');
-    console.log('🎯 Posting frequency: Dynamic 5min-6hrs based on opportunities');
-    console.log('📊 Intelligence: trending topics, engagement windows, audience activity');
-    console.log('🌐 Health server running for Railway health checks');
-    console.log('🏢 Enterprise database systems active with monitoring');
-    console.log('='.repeat(70));
-    
-    // Enhanced graceful shutdown handling
-    const gracefulShutdown = async (signal: string) => {
-      console.log(`\n🛑 ${signal} received, shutting down gracefully...`);
-      console.log('🔄 Shutting down enterprise systems...');
-      await enterpriseController.shutdown();
-      console.log('✅ Graceful shutdown complete');
-      process.exit(0);
-    };
-    
-    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-    
-    process.on('uncaughtException', (error) => {
-      console.error('💥 Uncaught Exception:', error);
-      process.exit(1);
-    });
-    
-    process.on('unhandledRejection', (reason, promise) => {
-      console.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
       
-      // Don't exit for Twitter session errors - let the bot continue in read-only mode
-      const reasonStr = String(reason);
-      if (reasonStr.includes('POST_SKIPPED_NO_SESSION') || 
-          reasonStr.includes('POST_SKIPPED_PLAYWRIGHT') ||
-          reasonStr.includes('Not logged in to Twitter')) {
-        console.log('⚠️ Non-fatal error: Bot will continue in read-only mode');
-        return;
+      if (result.success) {
+        console.log('✅ Test post successful:', result.rootTweetId);
+      } else {
+        console.log('❌ Test post failed:', result.error);
       }
       
-      process.exit(1);
-    });
+      return;
+    }
+
+    // Set up graceful shutdown
+    setupGracefulShutdown();
+
+    console.log('✅ xBOT system initialization complete');
+    console.log('🌐 Health server running - check /status endpoint for system status');
+    console.log('📊 Use the PostingOrchestrator.executePost() to trigger posts with full pipeline');
     
-    // Keep the process alive
-    setInterval(() => {
-      const memory = process.memoryUsage();
-      const memoryMB = Math.round(memory.heapUsed / 1024 / 1024);
-      console.log(`💓 Bot heartbeat: ${memoryMB}MB memory, ${Math.round(process.uptime())}s uptime`);
-    }, 5 * 60 * 1000); // Every 5 minutes
+    // Keep process alive
+    process.stdin.resume();
     
-  } catch (error: any) {
-    console.error('💥 Bot startup failed:', error.message);
-    console.error('💥 Stack trace:', error.stack);
+  } catch (error) {
+    console.error('❌ Failed to start xBOT system:', error);
     process.exit(1);
   }
 }
 
-// Start the bot
-main().catch((error) => {
-  console.error('💥 Critical error in main():', error);
-  process.exit(1);
-});
+/**
+ * Set up graceful shutdown handlers
+ */
+function setupGracefulShutdown() {
+  const shutdown = async (signal: string) => {
+    console.log(`\n🛑 Received ${signal}, initiating graceful shutdown...`);
+    
+    try {
+      // Close connections in order
+      console.log('🌐 Closing browser...');
+      await closeBrowser();
+      
+      console.log('🗄️ Closing database connections...');
+      await closeDatabaseConnections();
+      
+      console.log('🔐 Closing cadence guard...');
+      await closeCadenceGuard();
+      
+      console.log('✅ Graceful shutdown complete');
+      process.exit(0);
+    } catch (error) {
+      console.error('❌ Error during shutdown:', error);
+      process.exit(1);
+    }
+  };
+
+  // Handle different termination signals
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGUSR2', () => shutdown('SIGUSR2')); // nodemon restart
+  
+  // Handle uncaught exceptions
+  process.on('uncaughtException', (error) => {
+    console.error('💥 Uncaught Exception:', error);
+    shutdown('uncaughtException');
+  });
+  
+  process.on('unhandledRejection', (reason, promise) => {
+    console.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
+    shutdown('unhandledRejection');
+  });
+}
+
+// Start the application
+if (require.main === module) {
+  main().catch(error => {
+    console.error('💥 Fatal error in main:', error);
+    process.exit(1);
+  });
+}
+
+export { main };
