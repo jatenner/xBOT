@@ -864,7 +864,7 @@ export class AutonomousTwitterPoster {
           hook_type: arm.hook_type,
           cta_type: arm.cta_type,
           thread_len: threadData.tweets.length,
-          sources_json: threadData.source_urls,
+          sources_json: threadData.engagement_hooks || [],
           model_version: 'gpt-4o-mini'
         });
 

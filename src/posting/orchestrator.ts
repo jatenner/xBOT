@@ -126,7 +126,7 @@ export class PostingOrchestrator {
         
         // Determine topic and format
         const topic = request.topic || await this.generateRandomTopic();
-        const format = request.format || (Math.random() > 0.3 ? 'thread' : 'single');
+        const format = request.format || (Math.random() > 0.7 ? 'thread' : 'single');
         
         console.log(`🎯 Topic: "${topic}", Format: ${format}`);
 

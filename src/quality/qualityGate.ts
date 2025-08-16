@@ -83,38 +83,19 @@ export function normalizeSingle(content: any): any {
  * Banned phrases that indicate low-quality content
  */
 const BANNED_PHRASES = [
-  // Generic intros
-  /let'?s dive in/i,
-  /let'?s explore/i,
-  /dive deep/i,
-  
-  // Thread teasers
-  /thread below/i,
-  /more in thread/i,
-  /see thread/i,
-  /👇/,
-  
-  // Vague promises
-  /stay tuned/i,
-  /more soon/i,
-  /coming up/i,
-  /this will change/i,
+  // Only truly spammy/low-quality phrases - removed legitimate thread language
   /you won't believe/i,
+  /this will change your life/i,
+  /doctors hate this/i,
+  /click here/i,
+  /follow for more/i,
+  /dm me/i,
   
-  // Incomplete endings
-  /\.{2,}$/,  // Multiple dots at end
-  /\.\.\.\s*$/,  // Ellipsis at end
+  // Excessive repetition patterns
+  /(.)\1{4,}/,  // Same character repeated 5+ times
   
-  // Generic hooks
-  /here'?s why(?!\s+[a-z])/i,  // "Here's why" without specifics
-  /you need to know this/i,
-  /this is important/i,
-  
-  // Academic/clinical jargon starters
-  /furthermore/i,
-  /moreover/i,
-  /in conclusion/i,
-  /studies show/i,  // Unless followed by specific study
+  // Incomplete/lazy endings (but allow normal ellipsis)
+  /\.{4,}$/,  // Only block 4+ dots at end
 ];
 
 /**
