@@ -46,7 +46,7 @@ const contentSchema = {
   }
 };
 
-const validateContent = ajv.compile(contentSchema);
+const validateContentSchema = ajv.compile(contentSchema);
 
 /**
  * Banned phrases that indicate low-quality content
@@ -130,8 +130,8 @@ export class QualityGate {
     const improvements: string[] = [];
     
     // 1. JSON Schema validation
-    if (!validateContent(content)) {
-      const schemaErrors = validateContent.errors?.map(err => 
+    if (!validateContentSchema(content)) {
+      const schemaErrors = validateContentSchema.errors?.map(err => 
         `${err.instancePath} ${err.message}`
       ) || ['Schema validation failed'];
       errors.push(...schemaErrors);

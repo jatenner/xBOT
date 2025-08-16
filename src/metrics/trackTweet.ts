@@ -149,7 +149,7 @@ export class TweetMetricsTracker {
         const getMetricValue = (selectorList: string[]): number => {
           for (const selector of selectorList) {
             const elements = document.querySelectorAll(selector);
-            for (const element of elements) {
+            for (const element of Array.from(elements)) {
               const text = element.textContent?.trim();
               if (text && /\d/.test(text)) {
                 return extractNumber(text);
@@ -162,7 +162,7 @@ export class TweetMetricsTracker {
         // Extract analytics button for impressions (if available)
         let impressions = 0;
         const analyticsElements = document.querySelectorAll('[aria-label*="view"], [aria-label*="impression"]');
-        for (const element of analyticsElements) {
+        for (const element of Array.from(analyticsElements)) {
           const text = element.textContent?.trim();
           if (text && /\d/.test(text)) {
             impressions = extractNumber(text);
