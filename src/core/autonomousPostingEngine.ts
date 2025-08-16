@@ -196,7 +196,7 @@ export class AutonomousPostingEngine {
       // Execute the full posting pipeline with quality controls
       const result = await executePost({
         topic: undefined, // Let system choose optimal topic
-        format: Math.random() > 0.4 ? 'thread' : 'single' // 60% threads, 40% singles
+        format: Math.random() > 0.7 ? 'thread' : 'single' // 30% threads, 70% singles
       });
       
       if (result.success && result.rootTweetId) {

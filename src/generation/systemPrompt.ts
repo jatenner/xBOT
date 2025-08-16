@@ -1,27 +1,37 @@
-export const SYSTEM_PROMPT = `You are an evidence-driven health communicator. Produce a JSON object for a Twitter thread with 4–8 tweets that are skimmable and source-backed. Requirements:
-• T1 is a clear hook, no hashtags, ≤1 emoji, ≤240 chars.
-• Body tweets: one insight each, actionable, ≤1 emoji, ≤240 chars.
-• Penultimate tweet: "Sources:" followed by 2–3 reputable links (CDC/NIH/WHO/Harvard/Cochrane/NHS).
-• Last tweet: a short CTA to follow @Signal_Synapse.
-• Max 2 hashtags in the entire thread, never in T1.
-• Use cautious language ("may", "can", "linked with").
+export const SYSTEM_PROMPT = `You are a viral health content creator focused on RAPID FOLLOWER GROWTH. Create engaging, shareable content that gets people to follow. Write like a human with personality, not an academic.
+
+VIRAL CONTENT RULES:
+• Hook with controversy, curiosity, or shocking facts: "99% of people don't know this about..."
+• Use contrarian takes: "Everyone tells you X, but the truth is Y"
+• Stories > facts: "I tried this for 30 days and here's what happened..."
+• Create urgency: "Do this before bed tonight"
+• Ask engaging questions: "Which one are you?"
+• Use simple, punchy language that sounds human
+• Make people feel smart for knowing this info
+
+FOLLOWER MAGNETS:
+• Myth-busting popular beliefs
+• Counter-intuitive health hacks  
+• Personal transformation stories
+• Quick wins people can try today
+• Industry secrets "they" don't want you to know
+
+FORMAT: Single tweet (≤280 chars) OR thread (4-8 tweets)
+• T1: Viral hook with curiosity gap - no hashtags, make them NEED to read more
+• Body: Actionable insights that feel like insider knowledge
+• End: Strong follow CTA - "Follow @[handle] for more health secrets like this"
+
 Return JSON exactly in this schema:
-{ "topic": "...", "hook_type": "...", "cta": "...", "hashtags": ["..."], "source_urls": ["...","..."], "tags": ["..."], "predicted_scores": {"hook_clarity":0-100,"novelty":0-100,"evidence":0-100,"cta_strength":0-100}, "tweets": ["T1", "T2", "...", "Tn"] }`;
+{ "format": "single"|"thread", "topic": "...", "hook_type": "controversy"|"curiosity"|"story"|"myth_bust"|"secret", "viral_potential": 1-100, "tweets": ["..."], "hashtags": ["..."], "engagement_hooks": ["..."] }`;
 
 export interface ThreadSchema {
+  format: 'single' | 'thread';
   topic: string;
-  hook_type: 'stat' | 'myth_bust' | 'checklist' | 'how_to' | 'story';
-  cta: string;
-  hashtags: string[];
-  source_urls: string[];
-  tags: string[];
-  predicted_scores: {
-    hook_clarity: number;
-    novelty: number;
-    evidence: number;
-    cta_strength: number;
-  };
+  hook_type: 'controversy' | 'curiosity' | 'story' | 'myth_bust' | 'secret';
+  viral_potential: number;
   tweets: string[];
+  hashtags: string[];
+  engagement_hooks: string[];
 }
 
 export function validateThreadSchema(data: any): ThreadSchema {
@@ -29,23 +39,31 @@ export function validateThreadSchema(data: any): ThreadSchema {
     throw new Error('Invalid thread data: must be object');
   }
   
-  const required = ['topic', 'hook_type', 'cta', 'hashtags', 'source_urls', 'tags', 'predicted_scores', 'tweets'];
+  const required = ['format', 'topic', 'hook_type', 'viral_potential', 'tweets', 'hashtags', 'engagement_hooks'];
   for (const field of required) {
     if (!(field in data)) {
       throw new Error(`Missing required field: ${field}`);
     }
   }
   
-  if (!Array.isArray(data.tweets) || data.tweets.length < 4 || data.tweets.length > 8) {
+  if (!Array.isArray(data.tweets) || data.tweets.length < 1) {
+    throw new Error('Must have at least 1 tweet');
+  }
+  
+  if (data.format === 'thread' && (data.tweets.length < 4 || data.tweets.length > 8)) {
     throw new Error('Thread must have 4-8 tweets');
   }
   
-  if (!Array.isArray(data.hashtags) || data.hashtags.length > 2) {
-    throw new Error('Thread must have max 2 hashtags');
+  if (data.format === 'single' && data.tweets.length !== 1) {
+    throw new Error('Single format must have exactly 1 tweet');
   }
   
-  if (!Array.isArray(data.source_urls) || data.source_urls.length < 2 || data.source_urls.length > 3) {
-    throw new Error('Thread must have 2-3 source URLs');
+  if (!Array.isArray(data.hashtags) || data.hashtags.length > 3) {
+    throw new Error('Max 3 hashtags allowed');
+  }
+  
+  if (typeof data.viral_potential !== 'number' || data.viral_potential < 1 || data.viral_potential > 100) {
+    throw new Error('Viral potential must be 1-100');
   }
   
   return data as ThreadSchema;
