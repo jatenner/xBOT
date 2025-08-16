@@ -4,6 +4,7 @@ import { executePost } from './posting/orchestrator';
 import { closeBrowser } from './playwright/browserFactory';
 import { closeDatabaseConnections } from './db/index';
 import { closeCadenceGuard } from './posting/cadenceGuard';
+import { AutonomousPostingEngine } from './core/autonomousPostingEngine';
 
 /**
  * Main application entry point with proper error handling and graceful shutdown
@@ -46,12 +47,21 @@ async function main() {
       return;
     }
 
+    // Start autonomous posting engine for follower growth
+    console.log('🤖 Starting autonomous posting engine...');
+    const autonomousEngine = AutonomousPostingEngine.getInstance();
+    await autonomousEngine.initialize();
+    console.log('✅ Autonomous posting engine started - analyzing opportunities every 5 minutes');
+    console.log('🎯 Goal: Generate followers and engagement through high-quality content');
+    console.log('📊 Learning from engagement data to optimize future posts');
+
     // Set up graceful shutdown
     setupGracefulShutdown();
 
     console.log('✅ xBOT system initialization complete');
     console.log('🌐 Health server running - check /status endpoint for system status');
-    console.log('📊 Use the PostingOrchestrator.executePost() to trigger posts with full pipeline');
+    console.log('🤖 Autonomous posting active - will post when opportunities are detected');
+    console.log('📈 Focus: Building audience, generating followers, learning from engagement');
     
     // Keep process alive
     process.stdin.resume();
