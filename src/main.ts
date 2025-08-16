@@ -90,6 +90,14 @@ function setupGracefulShutdown() {
       console.log('🔐 Closing cadence guard...');
       await closeCadenceGuard();
       
+      console.log('🔓 Releasing PostLock and closing Redis...');
+      try {
+        const { closePostLockRedis } = await import('./infra/postLockInstance');
+        await closePostLockRedis();
+      } catch (error) {
+        console.warn('⚠️ Error closing PostLock Redis:', error);
+      }
+      
       console.log('✅ Graceful shutdown complete');
       process.exit(0);
     } catch (error) {

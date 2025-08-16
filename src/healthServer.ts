@@ -48,9 +48,30 @@ export function startHealthServer(): Promise<void> {
     app.get('/status', async (_req, res) => {
       try {
         const uptime = Date.now() - healthServerStatus.startTime.getTime();
+        
+        // Get PostLock status
+        let postingLock: any = null;
+        try {
+          const { getPostLock } = await import('./infra/postLockInstance');
+          postingLock = await getPostLock().status();
+        } catch (error) {
+          postingLock = { error: 'PostLock unavailable' };
+        }
+        
+        // Get Browser status
+        let browser: any = null;
+        try {
+          const { browserManager } = await import('./posting/BrowserManager');
+          browser = browserManager.getStatus();
+        } catch (error) {
+          browser = { error: 'BrowserManager unavailable' };
+        }
+        
         res.json({
           status: healthServerStatus.botStatus,
           playwright: healthServerStatus.playwrightStatus,
+          postingLock,
+          browser,
           timestamp: new Date().toISOString(),
           uptime: Math.floor(uptime / 1000),
           uptime_human: `${Math.floor(uptime / 60000)}m ${Math.floor((uptime % 60000) / 1000)}s`,
@@ -517,6 +538,35 @@ app.post('/test-intelligent-post', async (req, res) => {
 });
 
 console.log('🧠 AI endpoints mounted: /generate-content, /ai-post, /ai-analytics, /test-intelligent-post');
+
+// PostLock management endpoint (admin only)
+app.post('/unlock-posting', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    const expectedToken = process.env.ADMIN_TOKEN;
+    
+    if (!authHeader || !expectedToken || authHeader !== `Bearer ${expectedToken}`) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    
+    const { getPostLock } = await import('./infra/postLockInstance');
+    const postLock = getPostLock();
+    
+    const unlocked = await postLock.forceUnlock();
+    
+    console.log('🔓 ADMIN: Force unlock posting lock requested');
+    res.json({ 
+      success: true, 
+      unlocked,
+      message: unlocked ? 'Lock released' : 'No lock to release'
+    });
+  } catch (error: any) {
+    console.error('❌ Failed to unlock posting:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+console.log('🔧 Admin endpoints mounted: /unlock-posting');
 
 // Force thread posting endpoint
 app.get('/force-thread', async (req, res) => {
