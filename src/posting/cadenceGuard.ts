@@ -9,7 +9,7 @@ function getRedisClient(): Redis {
       retryDelayOnFailover: 100,
       maxRetriesPerRequest: 3,
       lazyConnect: true
-    });
+    } as any);
   }
   return redis as Redis;
 }
@@ -200,9 +200,9 @@ export class CadenceGuard {
       const result = await client.set(
         this.LOCK_KEY,
         '1',
-        'NX', // Only set if not exists
         'EX', // Set expiry
-        this.LOCK_TTL_SECONDS
+        this.LOCK_TTL_SECONDS,
+        'NX'  // Only set if not exists
       );
 
       return result === 'OK';

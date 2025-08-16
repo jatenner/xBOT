@@ -14,9 +14,6 @@ export function getSupabaseClient() {
       auth: {
         autoRefreshToken: false,
         persistSession: false
-      },
-      db: {
-        schema: 'public'
       }
     });
   }

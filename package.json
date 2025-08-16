@@ -102,7 +102,7 @@
   "author": "Snap2Health",
   "license": "MIT",
   "engines": {
-    "node": ">=20 <21"
+    "node": ">=18.0.0"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.1",

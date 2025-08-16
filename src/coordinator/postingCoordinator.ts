@@ -6,7 +6,7 @@ import OpenAI from 'openai';
 import { Page } from 'playwright';
 import { config } from '../config/environment';
 import { generateThread, regenerateWithFeedback } from '../ai/threadGenerator';
-import { scoreThread, formatQualityReport } from '../quality/qualityGate';
+import { validateContent } from '../quality/qualityGate';
 import { isDuplicateThread, storeTweetSignatures, storeThreadRecord } from '../utils/dedupe';
 import { postThread, deletePartialThread } from '../posting/playwrightPoster';
 import { ContentSelector } from '../utils/content/selector';
@@ -141,7 +141,7 @@ export class PostingCoordinator {
             dims: thread.quality.rubric,
             passed: thread.quality.score >= 90
           };
-          console.log(formatQualityReport(qualityReport));
+          console.log(`📊 Quality score: ${qualityReport.score}/100, Passed: ${qualityReport.passed}`);
 
           if (qualityReport.passed) {
             break; // Quality gate passed
