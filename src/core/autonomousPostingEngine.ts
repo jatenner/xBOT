@@ -190,34 +190,23 @@ export class AutonomousPostingEngine {
       console.log(`🧠 Executing VIRAL intelligent post (Score: ${Math.round(opportunity.score)}/100)`);
       console.log(`🎯 Context: ${opportunity.reason}`);
 
-      // Use the new posting coordinator for viral content generation
-      const { PostingCoordinator } = await import('../coordinator/postingCoordinator');
-      const coordinator = new PostingCoordinator();
+      // Use the new posting orchestrator for high-quality content generation
+      const { executePost } = await import('../posting/orchestrator');
 
-      // Ensure browser poster is available
-      if (!this.browserPoster) {
-        console.log('🔄 Initializing browser poster...');
-        const { AutonomousTwitterPoster } = await import('../agents/autonomousTwitterPoster');
-        this.browserPoster = AutonomousTwitterPoster.getInstance();
-        await this.browserPoster.initialize();
-      }
-
-      // Get the page from browser poster
-      const page = await this.browserPoster.getPage();
-      if (!page) {
-        return { success: false, error: 'Failed to get browser page' };
-      }
-
-      // Execute the full viral posting pipeline
-      const result = await coordinator.executePost(page);
+      // Execute the full posting pipeline with quality controls
+      const result = await executePost({
+        topic: undefined, // Let system choose optimal topic
+        format: Math.random() > 0.4 ? 'thread' : 'single' // 60% threads, 40% singles
+      });
       
-      if (result.success && result.threadData) {
-        console.log(`✅ Posted viral thread successfully: ${result.threadData.rootId}`);
-        console.log(`📊 Quality score: ${result.threadData.qualityScore}/100`);
+      if (result.success && result.rootTweetId) {
+        console.log(`✅ Posted successfully: ${result.rootTweetId}`);
+        console.log(`📊 Quality score: ${result.qualityScore}/100`);
         console.log(`📊 Opportunity utilized: ${opportunity.urgency} urgency`);
+        console.log(`📈 Tweet IDs: ${result.tweetIds?.join(', ') || result.rootTweetId}`);
 
-        const tweetId = result.threadData.rootId;
-        const contentForStorage = `${result.threadData.topic} (viral thread)`;
+        const tweetId = result.rootTweetId;
+        const contentForStorage = `High-quality ${result.tweetIds?.length > 1 ? 'thread' : 'tweet'} for follower growth`;
       
         // Store performance data for learning
         await this.storeInDatabase(contentForStorage, tweetId);
