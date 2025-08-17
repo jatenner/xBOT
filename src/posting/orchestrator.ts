@@ -255,13 +255,17 @@ export class PostingOrchestrator {
                     const rootTweetId = postResult.tweetId;
                     console.log(`FALLBACK_SINGLE_POSTED ${JSON.stringify({ tweet_id: rootTweetId })}`);
                     
-                    // Store metrics with new system
-                    const { storeNewPostMetrics } = await import('./metrics');
-                    await storeNewPostMetrics({
-                      tweet_id: rootTweetId,
-                      format: 'single',
-                      content: sanitizedTweets[0]
-                    });
+                    // Store metrics with new system (non-fatal)
+                    try {
+                      const { storeNewPostMetrics } = await import('./metrics');
+                      await storeNewPostMetrics({
+                        tweet_id: rootTweetId,
+                        format: 'single',
+                        content: sanitizedTweets[0]
+                      });
+                    } catch (error: any) {
+                      console.warn(`METRICS_UPSERT_SOFTFAIL tweet_id=${rootTweetId} reason=${error.message} action=skipped (post succeeded)`);
+                    }
                     
                     await this.storePostData(normalizedContent, rootTweetId, singleQuality.score);
                     await CadenceGuard.markPostSuccess();
@@ -359,13 +363,17 @@ export class PostingOrchestrator {
         currentPhase = PostingPhase.STORE;
         console.log(`📍 ${currentPhase}: Storing post data and scheduling metrics`);
         
-        // Store metrics with new system
-        const { storeNewPostMetrics } = await import('./metrics');
-        await storeNewPostMetrics({
-          tweet_id: rootTweetId!,
-          format,
-          content: normalizedContent.tweets.join(' ')
-        });
+        // Store metrics with new system (non-fatal)
+        try {
+          const { storeNewPostMetrics } = await import('./metrics');
+          await storeNewPostMetrics({
+            tweet_id: rootTweetId!,
+            format,
+            content: normalizedContent.tweets.join(' ')
+          });
+        } catch (error: any) {
+          console.warn(`METRICS_UPSERT_SOFTFAIL tweet_id=${rootTweetId} reason=${error.message} action=skipped (post succeeded)`);
+        }
         
         // Store learning data (legacy system)
         await this.storePostData(

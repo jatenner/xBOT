@@ -1,7 +1,10 @@
 /**
- * Enhanced Metrics Module with Success Logging
+ * Enhanced Metrics Module with Success Logging and Self-Healing
  * Handles upserts to tweet_metrics and learning_posts with comprehensive logging
  */
+
+// Process-lifetime self-heal tracking
+let hasTriggeredSelfHeal = false;
 
 // Get supabase client dynamically to avoid circular dependencies
 async function getSupabase() {
@@ -72,14 +75,48 @@ export async function upsertTweetMetrics(metrics: TweetMetrics): Promise<{ ok: b
     if (error) {
       const errorMsg = error.message;
       const isSchemaError = errorMsg.includes('schema cache') || 
-                           errorMsg.includes('column') && errorMsg.includes('does not exist') ||
-                           errorMsg.includes('relation') && errorMsg.includes('does not exist');
+                           (errorMsg.includes('column') && errorMsg.includes('does not exist')) ||
+                           (errorMsg.includes('relation') && errorMsg.includes('does not exist'));
       
       console.error(`❌ METRICS_UPSERT_FAILED tweet_id=${metrics.tweet_id} error=${errorMsg} payload_keys=[${Object.keys(row).join(',')}] retryable=${isSchemaError}`);
       
-      if (isSchemaError) {
-        // Non-fatal schema error - schedule retry
-        return { ok: false, retryable: true };
+      if (isSchemaError && !hasTriggeredSelfHeal) {
+        // First-time schema error - trigger self-heal and retry once
+        hasTriggeredSelfHeal = true;
+        console.log(`SCHEMA_SELF_HEAL: detected missing column; ensuring core schema + reload`);
+        
+        try {
+          const { ensureSchema } = await import('../infra/db/SchemaGuard');
+          await ensureSchema();
+          
+          // Retry the upsert once after schema healing
+          const { error: retryError } = await supabase
+            .from('tweet_metrics')
+            .upsert([row], { 
+              onConflict: 'tweet_id,collected_at',
+              ignoreDuplicates: false 
+            });
+          
+          if (!retryError) {
+            console.log(`METRICS_UPSERT_OK ${JSON.stringify({
+              tweet_id: metrics.tweet_id,
+              collected_at
+            })}`);
+            return { ok: true, retryable: false };
+          } else {
+            // Self-heal didn't work - soft fail
+            console.warn(`METRICS_UPSERT_SOFTFAIL tweet_id=${metrics.tweet_id} reason=${retryError.message} action=skipped (post succeeded)`);
+            return { ok: false, retryable: false };
+          }
+        } catch (healError: any) {
+          console.warn(`SCHEMA_SELF_HEAL_FAILED: ${healError.message}`);
+          console.warn(`METRICS_UPSERT_SOFTFAIL tweet_id=${metrics.tweet_id} reason=${errorMsg} action=skipped (post succeeded)`);
+          return { ok: false, retryable: false };
+        }
+      } else if (isSchemaError) {
+        // Already tried self-heal - soft fail
+        console.warn(`METRICS_UPSERT_SOFTFAIL tweet_id=${metrics.tweet_id} reason=${errorMsg} action=skipped (post succeeded)`);
+        return { ok: false, retryable: false };
       } else {
         // Programming error - throw to fail fast
         throw new Error(`tweet_metrics upsert failed: ${errorMsg}`);
@@ -96,13 +133,31 @@ export async function upsertTweetMetrics(metrics: TweetMetrics): Promise<{ ok: b
   } catch (error: any) {
     const errorMsg = error.message;
     const isSchemaError = errorMsg.includes('schema cache') || 
-                         errorMsg.includes('column') && errorMsg.includes('does not exist') ||
-                         errorMsg.includes('relation') && errorMsg.includes('does not exist');
+                         (errorMsg.includes('column') && errorMsg.includes('does not exist')) ||
+                         (errorMsg.includes('relation') && errorMsg.includes('does not exist'));
     
     console.error(`❌ METRICS_UPSERT_FAILED tweet_id=${metrics.tweet_id} error=${errorMsg} payload_keys=[${Object.keys(metrics).join(',')}] retryable=${isSchemaError}`);
     
-    if (isSchemaError) {
-      return { ok: false, retryable: true };
+    if (isSchemaError && !hasTriggeredSelfHeal) {
+      // First-time schema error - trigger self-heal and retry
+      hasTriggeredSelfHeal = true;
+      console.log(`SCHEMA_SELF_HEAL: detected missing column; ensuring core schema + reload`);
+      
+      try {
+        const { ensureSchema } = await import('../infra/db/SchemaGuard');
+        await ensureSchema();
+        
+        // Retry the upsert once after schema healing 
+        return await upsertTweetMetrics(metrics);
+      } catch (healError: any) {
+        console.warn(`SCHEMA_SELF_HEAL_FAILED: ${healError.message}`);
+        console.warn(`METRICS_UPSERT_SOFTFAIL tweet_id=${metrics.tweet_id} reason=${errorMsg} action=skipped (post succeeded)`);
+        return { ok: false, retryable: false };
+      }
+    } else if (isSchemaError) {
+      // Already tried self-heal - soft fail
+      console.warn(`METRICS_UPSERT_SOFTFAIL tweet_id=${metrics.tweet_id} reason=${errorMsg} action=skipped (post succeeded)`);
+      return { ok: false, retryable: false };
     } else {
       throw error; // Re-throw programming errors
     }
@@ -148,14 +203,49 @@ export async function upsertLearningPost(post: LearningPost): Promise<{ ok: bool
     if (error) {
       const errorMsg = error.message;
       const isSchemaError = errorMsg.includes('schema cache') || 
-                           errorMsg.includes('column') && errorMsg.includes('does not exist') ||
-                           errorMsg.includes('relation') && errorMsg.includes('does not exist');
+                           (errorMsg.includes('column') && errorMsg.includes('does not exist')) ||
+                           (errorMsg.includes('relation') && errorMsg.includes('does not exist'));
       
       console.error(`❌ LEARNING_UPSERT_FAILED tweet_id=${post.tweet_id} error=${errorMsg} payload_keys=[${Object.keys(row).join(',')}] retryable=${isSchemaError}`);
       
-      if (isSchemaError) {
-        return { ok: false, retryable: true };
+      if (isSchemaError && !hasTriggeredSelfHeal) {
+        // First-time schema error - trigger self-heal and retry once
+        hasTriggeredSelfHeal = true;
+        console.log(`SCHEMA_SELF_HEAL: detected missing column; ensuring core schema + reload`);
+        
+        try {
+          const { ensureSchema } = await import('../infra/db/SchemaGuard');
+          await ensureSchema();
+          
+          // Retry the upsert once after schema healing
+          const { error: retryError } = await supabase
+            .from('learning_posts')
+            .upsert([row], { 
+              onConflict: 'tweet_id',
+              ignoreDuplicates: false 
+            });
+          
+          if (!retryError) {
+            console.log(`LEARNING_UPSERT_OK ${JSON.stringify({
+              tweet_id: post.tweet_id
+            })}`);
+            return { ok: true, retryable: false };
+          } else {
+            // Self-heal didn't work - soft fail
+            console.warn(`LEARNING_UPSERT_SOFTFAIL tweet_id=${post.tweet_id} reason=${retryError.message} action=skipped (post succeeded)`);
+            return { ok: false, retryable: false };
+          }
+        } catch (healError: any) {
+          console.warn(`SCHEMA_SELF_HEAL_FAILED: ${healError.message}`);
+          console.warn(`LEARNING_UPSERT_SOFTFAIL tweet_id=${post.tweet_id} reason=${errorMsg} action=skipped (post succeeded)`);
+          return { ok: false, retryable: false };
+        }
+      } else if (isSchemaError) {
+        // Already tried self-heal - soft fail
+        console.warn(`LEARNING_UPSERT_SOFTFAIL tweet_id=${post.tweet_id} reason=${errorMsg} action=skipped (post succeeded)`);
+        return { ok: false, retryable: false };
       } else {
+        // Programming error - throw to fail fast
         throw new Error(`learning_posts upsert failed: ${errorMsg}`);
       }
     }
@@ -169,13 +259,31 @@ export async function upsertLearningPost(post: LearningPost): Promise<{ ok: bool
   } catch (error: any) {
     const errorMsg = error.message;
     const isSchemaError = errorMsg.includes('schema cache') || 
-                         errorMsg.includes('column') && errorMsg.includes('does not exist') ||
-                         errorMsg.includes('relation') && errorMsg.includes('does not exist');
+                         (errorMsg.includes('column') && errorMsg.includes('does not exist')) ||
+                         (errorMsg.includes('relation') && errorMsg.includes('does not exist'));
     
     console.error(`❌ LEARNING_UPSERT_FAILED tweet_id=${post.tweet_id} error=${errorMsg} payload_keys=[${Object.keys(post).join(',')}] retryable=${isSchemaError}`);
     
-    if (isSchemaError) {
-      return { ok: false, retryable: true };
+    if (isSchemaError && !hasTriggeredSelfHeal) {
+      // First-time schema error - trigger self-heal and retry
+      hasTriggeredSelfHeal = true;
+      console.log(`SCHEMA_SELF_HEAL: detected missing column; ensuring core schema + reload`);
+      
+      try {
+        const { ensureSchema } = await import('../infra/db/SchemaGuard');
+        await ensureSchema();
+        
+        // Retry the upsert once after schema healing 
+        return await upsertLearningPost(post);
+      } catch (healError: any) {
+        console.warn(`SCHEMA_SELF_HEAL_FAILED: ${healError.message}`);
+        console.warn(`LEARNING_UPSERT_SOFTFAIL tweet_id=${post.tweet_id} reason=${errorMsg} action=skipped (post succeeded)`);
+        return { ok: false, retryable: false };
+      }
+    } else if (isSchemaError) {
+      // Already tried self-heal - soft fail
+      console.warn(`LEARNING_UPSERT_SOFTFAIL tweet_id=${post.tweet_id} reason=${errorMsg} action=skipped (post succeeded)`);
+      return { ok: false, retryable: false };
     } else {
       throw error; // Re-throw programming errors
     }

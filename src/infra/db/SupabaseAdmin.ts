@@ -26,7 +26,7 @@ export class SupabaseAdmin {
     return !!(this.url && this.key);
   }
 
-  private async resolveEndpoint(): Promise<string> {
+  async resolveEndpoint(): Promise<string> {
     // Return cached result
     if (this.endpointResolved) {
       if (!this.resolvedEndpoint) {
