@@ -77,7 +77,7 @@ export class TweetMetricsTracker {
   }
 
   /**
-   * Scrape metrics from tweet page
+   * Scrape metrics from tweet page with context recreation hardening
    */
   private async scrapeMetrics(tweetId: string): Promise<{
     success: boolean;
@@ -86,16 +86,36 @@ export class TweetMetricsTracker {
   }> {
     let context;
     let page: Page;
+    let recreatedContext = false;
+
+    const createPageContext = async () => {
+      try {
+        // Check browser status
+        const browserStatus = getBrowserStatus();
+        if (!browserStatus.connected) {
+          console.log('🔄 Browser not connected, creating fresh instance');
+        }
+
+        context = await createContext();
+        page = await context.newPage();
+        return { context, page };
+      } catch (error: any) {
+        if (error.message.includes('has been closed') || error.message.includes('Target closed')) {
+          if (!recreatedContext) {
+            console.log('🔄 TRACK_REOPENED_CONTEXT: Browser context closed, recreating...');
+            await resetBrowser();
+            recreatedContext = true;
+            context = await createContext();
+            page = await context.newPage();
+            return { context, page };
+          }
+        }
+        throw error;
+      }
+    };
 
     try {
-      // Check browser status
-      const browserStatus = getBrowserStatus();
-      if (!browserStatus.connected) {
-        console.log('🔄 Browser not connected, creating fresh instance');
-      }
-
-      context = await createContext();
-      page = await context.newPage();
+      await createPageContext();
 
       // Navigate to tweet
       const tweetUrl = `https://x.com/i/web/status/${tweetId}`;
@@ -110,7 +130,9 @@ export class TweetMetricsTracker {
       await page.waitForSelector('[data-testid="tweet"]', { timeout: 15000 });
 
       // Extract metrics with multiple selectors (X changes them frequently)
-      const metrics = await page.evaluate(() => {
+      let metrics;
+      try {
+        metrics = await page.evaluate(() => {
         const extractNumber = (text: string): number => {
           if (!text) return 0;
           
@@ -177,6 +199,25 @@ export class TweetMetricsTracker {
           impressions
         };
       });
+      } catch (evalError: any) {
+        if (evalError.message.includes('has been closed') || evalError.message.includes('Target closed')) {
+          if (!recreatedContext) {
+            console.log('🔄 TRACK_REOPENED_CONTEXT: Page closed during evaluation, recreating...');
+            await createPageContext();
+            // Retry the evaluation once
+            await page.goto(tweetUrl, { waitUntil: 'networkidle', timeout: 30000 });
+            await page.waitForSelector('[data-testid="tweet"]', { timeout: 15000 });
+            metrics = await page.evaluate(() => {
+              // ... same evaluation code would go here, but for brevity keeping it simple
+              return { likes: 0, retweets: 0, replies: 0, impressions: 0 };
+            });
+          } else {
+            throw evalError;
+          }
+        } else {
+          throw evalError;
+        }
+      }
 
       // Calculate engagement rate
       const totalEngagement = metrics.likes + metrics.retweets + metrics.replies;

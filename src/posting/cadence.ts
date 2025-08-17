@@ -23,15 +23,30 @@ export interface CadenceResult {
 export function checkCadence(params: CadenceParams): CadenceResult {
   const minSingle = parseInt(process.env.POST_MIN_GAP_MINUTES_SINGLE || '60', 10);
   const minThread = parseInt(process.env.POST_MIN_GAP_MINUTES_THREAD || '180', 10);
-  const bootstrapMin = parseInt(process.env.BOOTSTRAP_MIN_POSTS || '3', 10);
+  const bootstrapMin = parseInt(process.env.BOOTSTRAP_MIN_POSTS || '5', 10);
+  const bootstrapGap = parseInt(process.env.BOOTSTRAP_MIN_GAP_MINUTES || '10', 10);
 
-  // Bootstrap bypass: if we have fewer than minimum posts, allow immediate posting
+  // Bootstrap mode: if we have fewer than minimum posts, use faster cadence
   if (params.totalPosts < bootstrapMin) {
+    if (!params.lastPostAt) {
+      return { 
+        allowed: true, 
+        bootstrapBypass: true, 
+        waitMin: 0,
+        reason: `bootstrap mode - no previous post (${params.totalPosts}/${bootstrapMin} posts)`
+      };
+    }
+    
+    const diffMs = params.now.getTime() - params.lastPostAt.getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    const allowed = diffMin >= bootstrapGap;
+    const waitMin = Math.max(0, bootstrapGap - diffMin);
+    
     return { 
-      allowed: true, 
+      allowed, 
       bootstrapBypass: true, 
-      waitMin: 0,
-      reason: `bootstrap mode (${params.totalPosts}/${bootstrapMin} posts)`
+      waitMin,
+      reason: `bootstrap mode - ${allowed ? 'gap sufficient' : 'gap insufficient'} (${diffMin}min/${bootstrapGap}min, ${params.totalPosts}/${bootstrapMin} posts)`
     };
   }
 
@@ -68,9 +83,12 @@ export function checkCadence(params: CadenceParams): CadenceResult {
 export function logCadenceCheck(params: CadenceParams, result: CadenceResult): void {
   if (result.bootstrapBypass) {
     console.log(`CADENCE_BOOTSTRAP ${JSON.stringify({
-      bypass: true,
+      allowed: result.allowed,
+      wait_min: result.waitMin,
       total_posts: params.totalPosts,
-      bootstrap_min: parseInt(process.env.BOOTSTRAP_MIN_POSTS || '3', 10)
+      bootstrap_min: parseInt(process.env.BOOTSTRAP_MIN_POSTS || '5', 10),
+      bootstrap_gap: parseInt(process.env.BOOTSTRAP_MIN_GAP_MINUTES || '10', 10),
+      reason: result.reason
     })}`);
   } else {
     console.log(`CADENCE_CHECK ${JSON.stringify({

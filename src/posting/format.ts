@@ -182,7 +182,7 @@ export async function makeFormatDecision(topic: string): Promise<FormatDecision>
       ? new Date(Date.now() - (2 * 60 * 60 * 1000)) // Estimate last post 2h ago
       : undefined;
     
-    const decision = decidePostFormat({
+    let decision = decidePostFormat({
       topic,
       lastPostAt,
       lastThreadAt,
@@ -191,14 +191,33 @@ export async function makeFormatDecision(topic: string): Promise<FormatDecision>
       avg24h: avgStats
     });
     
-    // Log the decision
-    console.log(`FORMAT_DECISION ${JSON.stringify({
-      format: decision.format,
-      confidence: decision.confidence,
-      reason: decision.reason,
-      topic_preview: topic.substring(0, 30),
-      diversity_check: `${recentFormats.slice(-9).filter(f => f === 'thread').length}/3 threads in last 9`
-    })}`);
+    // ENFORCE diversity + cooldown after initial decision
+    if (decision.format === 'thread') {
+      const last9 = recentFormats.slice(-9);
+      const threadsInLast9 = last9.filter(f => f === 'thread').length;
+      const diversityOk = threadsInLast9 < 3;
+      
+      const threadCooldownOk = !lastThreadAt || (Date.now() - lastThreadAt.getTime()) / 3600000 >= 6;
+      
+      if (!diversityOk || !threadCooldownOk) {
+        const blockReason = !diversityOk ? `diversity limit (${threadsInLast9}/3 threads in last 9)` : 'cooldown active (< 6h since last thread)';
+        
+        console.log(`FORMAT_OVERRIDDEN_TO_SINGLE ${JSON.stringify({
+          reason: 'diversity/cooldown',
+          details: blockReason,
+          original_format: 'thread',
+          threads_in_last_9: threadsInLast9,
+          cooldown_ok: threadCooldownOk
+        })}`);
+        
+        // Override to single
+        decision = {
+          format: 'single',
+          reason: `overridden: ${blockReason}`,
+          confidence: 0.8
+        };
+      }
+    }
     
     return decision;
   } catch (error) {

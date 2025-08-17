@@ -133,6 +133,14 @@ export class PostingOrchestrator {
           const { makeFormatDecision } = await import('./format');
           const decision = await makeFormatDecision(topic);
           format = decision.format;
+          
+          // Log the format decision prominently
+          console.log(`FORMAT_DECISION ${JSON.stringify({
+            format: decision.format,
+            confidence: decision.confidence,
+            reason: decision.reason,
+            topic_preview: topic.substring(0, 30)
+          })}`);
         }
         
         // Check cadence before proceeding
