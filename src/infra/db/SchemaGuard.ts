@@ -1,5 +1,5 @@
 import { Pool } from 'pg';
-import { createClient } from '@supabase/supabase-js';
+import { SupabaseAdmin } from './SupabaseAdmin';
 
 type ProbeResult = {
   ok: boolean;
@@ -28,22 +28,6 @@ function buildUrlFromParts(): string | undefined {
 
 function hasSupabaseService(): boolean {
   return !!(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
-}
-
-async function rpcReloadViaSupabase(): Promise<void> {
-  if (!hasSupabaseService()) return;
-  const supabase = createClient(
-    process.env.SUPABASE_URL as string,
-    process.env.SUPABASE_SERVICE_ROLE_KEY as string,
-    { auth: { persistSession: false } }
-  );
-  // call the function added in our migration below
-  const { error } = await supabase.rpc('pgrst_schema_reload');
-  if (error) {
-    console.warn('SCHEMA_GUARD: RPC reload failed', error);
-  } else {
-    console.info('SCHEMA_GUARD: PostgREST reload via RPC OK');
-  }
 }
 
 const EXPLICIT_URL =
@@ -81,6 +65,7 @@ const REQUIRED: Record<string, string[]> = {
 
 export class SchemaGuard {
   private pool?: Pool;
+  private admin?: SupabaseAdmin;
 
   constructor() {
     if (DB_URL) {
@@ -89,6 +74,9 @@ export class SchemaGuard {
         max: 1,
         idleTimeoutMillis: 10_000,
       });
+    }
+    if (hasSupabaseService()) {
+      this.admin = new SupabaseAdmin();
     }
   }
 
@@ -137,17 +125,27 @@ export class SchemaGuard {
   }
 
   async ensureSchema(): Promise<void> {
-    if (!this.pool && !hasSupabaseService()) {
-      console.info('SCHEMA_GUARD_SKIPPED_NO_DB: no DATABASE_URL/PG* or Supabase service key; skipping probe.');
+    // Case 1: No direct DB and no Supabase admin — skip once.
+    if (!this.pool && !this.admin?.available()) {
+      console.info('SCHEMA_GUARD_SKIPPED_NO_DB: no DATABASE_URL/PG* and no SUPABASE_SERVICE_ROLE_KEY; skipping.');
       return;
     }
 
-    if (!this.pool && hasSupabaseService()) {
-      console.info('SCHEMA_GUARD: no direct DB, attempting RPC reload via Supabase…');
-      await rpcReloadViaSupabase();
+    // Case 2: No direct DB, but we DO have Supabase admin.
+    if (!this.pool && this.admin?.available()) {
+      console.info('SCHEMA_GUARD: no direct DB; using Supabase Meta to bootstrap & reload…');
+      // 2a) Ensure core schema idempotently
+      await this.ensureCoreSchemaViaSupabaseMeta();
+      // 2b) Reload PostgREST so new columns are visible to REST
+      await this.admin.reloadPostgrest().then(() => {
+        console.info('SCHEMA_GUARD: PostgREST reload via SQL OK');
+      }).catch((e) => {
+        console.warn('SCHEMA_GUARD: PostgREST reload via SQL failed', e);
+      });
       return;
     }
 
+    // Case 3: We have a DB pool — do the normal probe/reload path (unchanged)
     console.info('🔍 SCHEMA_GUARD: Probing database schema...');
     const probe1 = await this.probeSchema().catch((e) => {
       console.error('SCHEMA_GUARD_PROBE_FAILED:', e.message);
@@ -175,6 +173,90 @@ export class SchemaGuard {
       }
     } else {
       console.info('DB_SCHEMA_OK', probe1.found);
+    }
+  }
+
+  private async ensureCoreSchemaViaSupabaseMeta(): Promise<void> {
+    if (!this.admin?.available()) return;
+    const sql = `
+    -- Tables (idempotent)
+    create table if not exists public.tweet_metrics (
+      tweet_id text primary key,
+      collected_at timestamptz not null default now(),
+      likes_count int not null default 0,
+      retweets_count int not null default 0,
+      replies_count int not null default 0,
+      bookmarks_count int not null default 0,
+      impressions_count bigint not null default 0,
+      content text
+    );
+
+    create table if not exists public.learning_posts (
+      tweet_id text primary key,
+      created_at timestamptz not null default now(),
+      format text not null,
+      likes_count int not null default 0,
+      retweets_count int not null default 0,
+      replies_count int not null default 0,
+      bookmarks_count int not null default 0,
+      impressions_count bigint not null default 0,
+      viral_potential_score int not null default 0,
+      content text
+    );
+
+    -- Columns (idempotent)
+    do $$
+    begin
+      -- tweet_metrics columns
+      if not exists (select 1 from information_schema.columns
+        where table_schema='public' and table_name='tweet_metrics' and column_name='bookmarks_count') then
+        alter table public.tweet_metrics add column if not exists bookmarks_count int not null default 0;
+      end if;
+      if not exists (select 1 from information_schema.columns
+        where table_schema='public' and table_name='tweet_metrics' and column_name='impressions_count') then
+        alter table public.tweet_metrics add column if not exists impressions_count bigint not null default 0;
+      end if;
+      if not exists (select 1 from information_schema.columns
+        where table_schema='public' and table_name='tweet_metrics' and column_name='content') then
+        alter table public.tweet_metrics add column if not exists content text;
+      end if;
+
+      -- learning_posts columns
+      if not exists (select 1 from information_schema.columns
+        where table_schema='public' and table_name='learning_posts' and column_name='likes_count') then
+        alter table public.learning_posts add column if not exists likes_count int not null default 0;
+      end if;
+      if not exists (select 1 from information_schema.columns
+        where table_schema='public' and table_name='learning_posts' and column_name='retweets_count') then
+        alter table public.learning_posts add column if not exists retweets_count int not null default 0;
+      end if;
+      if not exists (select 1 from information_schema.columns
+        where table_schema='public' and table_name='learning_posts' and column_name='replies_count') then
+        alter table public.learning_posts add column if not exists replies_count int not null default 0;
+      end if;
+      if not exists (select 1 from information_schema.columns
+        where table_schema='public' and table_name='learning_posts' and column_name='bookmarks_count') then
+        alter table public.learning_posts add column if not exists bookmarks_count int not null default 0;
+      end if;
+      if not exists (select 1 from information_schema.columns
+        where table_schema='public' and table_name='learning_posts' and column_name='impressions_count') then
+        alter table public.learning_posts add column if not exists impressions_count bigint not null default 0;
+      end if;
+      if not exists (select 1 from information_schema.columns
+        where table_schema='public' and table_name='learning_posts' and column_name='viral_potential_score') then
+        alter table public.learning_posts add column if not exists viral_potential_score int not null default 0;
+      end if;
+      if not exists (select 1 from information_schema.columns
+        where table_schema='public' and table_name='learning_posts' and column_name='content') then
+        alter table public.learning_posts add column if not exists content text;
+      end if;
+    end$$;
+    `;
+    try {
+      await this.admin.execSql(sql);
+      console.info('SCHEMA_GUARD: core schema ensured via Supabase Meta');
+    } catch (e) {
+      console.warn('SCHEMA_GUARD: core schema ensure failed', e);
     }
   }
 
