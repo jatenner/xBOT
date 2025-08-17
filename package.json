@@ -4,6 +4,8 @@
   "description": "Autonomous X (Twitter) bot for Snap2Health with AI-powered content generation",
   "main": "dist/main.js",
   "scripts": {
+    "prestart": "node scripts/migrate.js",
+    "start": "node dist/main.js",
     "postinstall": "echo 'Installation complete'",
     "build": "tsc -p .",
     "build-clean": "rm -rf dist && npm run build",

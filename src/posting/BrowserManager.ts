@@ -13,6 +13,11 @@ class BrowserManager {
   private browser: Browser | null = null;
   private launching = false;
   private contextCounts = { posting: 0, metrics: 0 };
+  
+  // Shared contexts for resilient scraping
+  private sharedContext: BrowserContext | null = null;
+  private sharedPage: any = null;
+  private metricsCircuitBreakerUntil: number = 0;
 
   constructor() {
     // Track context cleanup
@@ -240,6 +245,84 @@ class BrowserManager {
         this.contextCounts = { posting: 0, metrics: 0 };
       }
     }
+  }
+
+  /**
+   * Shared context helper with resilient retry logic for metrics scraping
+   */
+  async withSharedContext<T>(fn: (ctx: { page: any; recreate: () => Promise<void> }) => Promise<T>): Promise<T> {
+    if (Date.now() < this.metricsCircuitBreakerUntil) {
+      throw new Error('Metrics circuit breaker active - scraping temporarily disabled');
+    }
+
+    const ensureSharedContext = async () => {
+      const browser = await this.ensureBrowser();
+      if (!this.sharedContext || !this.sharedPage) {
+        try {
+          const sessionState = await loadSessionState();
+          this.sharedContext = await browser.newContext({ storageState: sessionState });
+          this.sharedPage = await this.sharedContext.newPage();
+        } catch (error: any) {
+          console.error(`❌ Failed to create shared context: ${error.message}`);
+          throw error;
+        }
+      }
+    };
+
+    const recreateSharedContext = async () => {
+      try {
+        await this.sharedPage?.close().catch(() => {});
+        await this.sharedContext?.close().catch(() => {});
+      } catch {}
+      
+      const browser = await this.ensureBrowser();
+      const sessionState = await loadSessionState();
+      this.sharedContext = await browser.newContext({ storageState: sessionState });
+      this.sharedPage = await this.sharedContext.newPage();
+      
+      console.log('🔄 SCRAPER_RETRY: recreated=true');
+    };
+
+    await ensureSharedContext();
+
+    try {
+      return await fn({ 
+        page: this.sharedPage, 
+        recreate: recreateSharedContext 
+      });
+    } catch (error: any) {
+      const errorStr = String(error);
+      
+      if (errorStr.includes('has been closed') || errorStr.includes('Target closed')) {
+        console.warn('⚠️ Shared context closed, attempting recreation...');
+        try {
+          await recreateSharedContext();
+          return await fn({ 
+            page: this.sharedPage, 
+            recreate: recreateSharedContext 
+          });
+        } catch (retryError: any) {
+          console.error('❌ Shared context retry failed, activating circuit breaker');
+          this.metricsCircuitBreakerUntil = Date.now() + 10 * 60 * 1000; // 10 minute breaker
+          throw retryError;
+        }
+      }
+      
+      throw error;
+    }
+  }
+
+  /**
+   * Get metrics circuit breaker status
+   */
+  getMetricsStatus(): { available: boolean; resumesIn?: number } {
+    if (Date.now() < this.metricsCircuitBreakerUntil) {
+      return {
+        available: false,
+        resumesIn: Math.round((this.metricsCircuitBreakerUntil - Date.now()) / 1000 / 60)
+      };
+    }
+    return { available: true };
   }
 }
 

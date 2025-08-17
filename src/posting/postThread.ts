@@ -1,6 +1,6 @@
 import { Page, BrowserContext } from 'playwright';
 import { browserManager } from './BrowserManager';
-import { storeTweetMetrics } from '../db/index';
+import { upsertTweetMetrics, upsertLearningPost } from '../learning/metricsWriter';
 import { throttledError } from '../utils/throttledWarn';
 import { TwitterComposer, PostResult as ComposerResult } from './TwitterComposer';
 import { throttleWarn, throttleError } from '../utils/log';
@@ -100,7 +100,20 @@ export class TwitterPoster {
           const tweetId = capturedId || result.tweetId || 'unknown';
           
           console.log(`✅ Posted single tweet: ${tweetId}`);
-          await storeTweetMetrics({ tweet_id: tweetId, content, topic });
+          await upsertTweetMetrics({ 
+            tweet_id: tweetId, 
+            likes: 0, 
+            retweets: 0, 
+            replies: 0, 
+            content 
+          });
+          await upsertLearningPost({ 
+            tweet_id: tweetId, 
+            likes: 0, 
+            retweets: 0, 
+            replies: 0, 
+            content 
+          });
           return { success: true, tweetId };
         } else {
           throttleError('composer-single-fail', `Single tweet post failed: ${result.error}`);
