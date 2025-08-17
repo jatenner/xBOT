@@ -26,11 +26,18 @@ async function main() {
     
     console.log('✅ Environment validation passed');
 
-    // Bootstrap database schema check
+    // Bootstrap database schema check with SchemaGuard
     console.log('🗄️ Checking database schema...');
     try {
-      const { bootstrapSchemaCheck } = await import('./learning/metricsWriter');
-      await bootstrapSchemaCheck();
+      const { DatabaseManager } = await import('./lib/db');
+      const { ensureSchema } = await import('./infra/db/SchemaGuard');
+      
+      // Wait for database to be ready
+      const dbManager = DatabaseManager.getInstance();
+      await new Promise(resolve => setTimeout(resolve, 1000)); // Allow DB init
+      
+      // @ts-ignore - accessing pool for schema operations
+      await ensureSchema(dbManager.pool);
     } catch (schemaError: any) {
       console.warn(`⚠️ Schema check failed: ${schemaError.message}`);
       // Don't fail startup, but warn
@@ -106,6 +113,15 @@ function setupGracefulShutdown() {
         await closePostLockRedis();
       } catch (error) {
         console.warn('⚠️ Error closing PostLock Redis:', error);
+      }
+      
+      console.log('📊 Stopping metrics retry queue...');
+      try {
+        const { MetricsRetryQueue } = await import('./infra/MetricsRetryQueue');
+        const retryQueue = MetricsRetryQueue.getInstance();
+        retryQueue.stop();
+      } catch (error) {
+        console.warn('⚠️ Error stopping metrics queue:', error);
       }
       
       console.log('✅ Graceful shutdown complete');

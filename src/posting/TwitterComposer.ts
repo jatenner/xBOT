@@ -29,6 +29,48 @@ export interface PostResult {
 }
 
 /**
+ * Capture numeric tweet ID from timeline after posting
+ */
+async function captureTweetId(page: Page, attempts: number = 3): Promise<string> {
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      console.log(`🔍 TWEET_ID_CAPTURE attempt ${attempt}/${attempts}`);
+      
+      // Wait for timeline redirect and find status links
+      const anchor = await page.waitForSelector('a[href*="/status/"]:has(time)', { 
+        timeout: 15000 
+      });
+      
+      const href = await anchor.getAttribute('href');
+      if (!href) {
+        throw new Error('No href found on status link');
+      }
+      
+      // Extract numeric ID from URL like "/username/status/1956900962406199599"
+      const match = href.match(/status\/(\d+)/);
+      if (!match || !match[1]) {
+        throw new Error(`Invalid status URL format: ${href}`);
+      }
+      
+      const tweetId = match[1];
+      console.log(`✅ CAPTURED_TWEET_ID ${JSON.stringify({ tweetId, url: href })}`);
+      return tweetId;
+      
+    } catch (error) {
+      console.warn(`⚠️ TWEET_ID_CAPTURE_ATTEMPT_${attempt}_FAILED: ${error}`);
+      
+      if (attempt < attempts) {
+        // Scroll a bit and try again
+        await page.keyboard.press('ArrowDown');
+        await page.waitForTimeout(1000);
+      }
+    }
+  }
+  
+  throw new Error('TWEET_ID_CAPTURE_FAILED after all attempts');
+}
+
+/**
  * Helper to wait for element to be truly enabled
  */
 export async function waitEnabled(locator: Locator, timeout = 15000): Promise<boolean> {
@@ -208,7 +250,18 @@ export class TwitterComposer {
       ]);
       
       console.log('✅ Tweet posted successfully!');
-      return { success: true, tweetId: 'posted_success' };
+      
+      // Capture real tweet ID after posting
+      let tweetId = 'posted_success';
+      try {
+        tweetId = await captureTweetId(this.page);
+      } catch (idError) {
+        console.warn(`⚠️ Failed to capture tweet ID: ${idError}`);
+        // Schedule find-later job (basic implementation for now)
+        console.log(`📅 SCHEDULE_FIND_LATER_JOB tweet_content="${tweetText.substring(0, 30)}..."`);
+      }
+      
+      return { success: true, tweetId };
       
     } catch (error: any) {
       console.error('❌ TwitterComposer: Single tweet failed:', error.message);
@@ -231,78 +284,83 @@ export class TwitterComposer {
    * Post a reply to a specific tweet
    */
   async postReply(replyText: string, targetTweetId: string): Promise<PostResult> {
-    try {
-      console.log(`🐦 TwitterComposer: Posting reply to ${targetTweetId} (${replyText.length} chars)`);
+    let attempt = 0;
+    const maxAttempts = 2;
+    
+    while (attempt < maxAttempts) {
+      attempt++;
       
-      // Navigate to the target tweet
-      await this.page.goto(`https://x.com/i/web/status/${targetTweetId}`, { 
-        waitUntil: 'domcontentloaded' 
-      });
-      
-      // Click reply button
-      const replyButton = this.page.locator(SELECTORS.replyBtn.join(',')).first();
-      await replyButton.waitFor({ state: 'visible', timeout: 10000 });
-      await guardedClick(replyButton);
-      
-      // Wait for reply composer
-      const composer = this.page.locator(SELECTORS.composer.join(',')).first();
-      await composer.waitFor({ state: 'visible', timeout: 10000 });
-      
-      // Type reply text
-      await composer.click({ delay: 50 });
-      await composer.pressSequentially(replyText, { delay: 8 });
-      
-      // Confirm text landed
-      const actualText = await composer.innerText().catch(() => '');
-      const minExpectedLength = Math.min(8, replyText.trim().length);
-      if (!actualText || actualText.trim().length < minExpectedLength) {
-        throw new Error('Reply composer did not accept text');
-      }
-      
-      // Find and click post button
-      const postButton = this.page.locator(SELECTORS.postBtn.join(',')).first();
-      await postButton.waitFor({ state: 'visible', timeout: 10000 });
-      
-      const isEnabled = await waitEnabled(postButton);
-      
-      if (!isEnabled) {
-        console.log('📋 Reply post button disabled, trying hotkey fallback');
-        const hotkey = process.platform === 'darwin' ? 'Meta+Enter' : 'Control+Enter';
-        await this.page.keyboard.press(hotkey);
-        await this.page.waitForTimeout(1500);
-      } else {
-        await guardedClick(postButton);
-      }
-      
-      // Wait for confirmation
-      await Promise.race([
-        this.page.locator('[role="alert"]:has-text("sent")').first().waitFor({ timeout: 10000 }).catch(() => {}),
-        this.page.locator('[role="alert"]:has-text("posted")').first().waitFor({ timeout: 10000 }).catch(() => {}),
-        this.page.waitForResponse(r => 
-          r.url().includes('/TweetCreate') && r.ok(), 
-          { timeout: 10000 }
-        ).catch(() => {}),
-        this.page.waitForTimeout(10000)
-      ]);
-      
-      console.log('✅ Reply posted successfully');
-      return { success: true, tweetId: 'posted' };
-      
-    } catch (error: any) {
-      console.error('❌ TwitterComposer: Reply failed:', error.message);
-      
-      // Save evidence on failure
       try {
-        const timestamp = Date.now();
-        await this.page.screenshot({ 
-          path: `/app/data/reply_fail_${timestamp}.png`, 
-          fullPage: false 
-        });
-      } catch (screenshotError) {
-        // Silent fail for screenshot
+        console.log(`🐦 TwitterComposer: Posting reply to ${targetTweetId} (${replyText.length} chars) attempt ${attempt}/${maxAttempts}`);
+        
+        // Dismiss overlay first
+        try {
+          const overlay = this.page.locator('button[aria-label^="New posts are available"]');
+          if (await overlay.first().isVisible({ timeout: 2000 }).catch(() => false)) {
+            console.log('🚨 COMPOSER_GUARD: "New posts available" overlay detected, dismissing...');
+            await this.page.keyboard.press('.');
+            await overlay.first().waitFor({ state: 'detached', timeout: 3000 }).catch(() => {});
+            console.log('✅ COMPOSER_GUARD: overlay_dismissed=true');
+          }
+        } catch {}
+        
+        // Navigate to the target tweet explicitly
+        const tweetUrl = `https://x.com/i/status/${targetTweetId}`;
+        await this.page.goto(tweetUrl, { waitUntil: 'networkidle', timeout: 30000 });
+        await this.page.waitForTimeout(2000);
+        
+        // Wait for article and click reply with resilient selector
+        await this.page.waitForSelector('article div[data-testid="reply"]', { timeout: 15000 });
+        await this.page.click('article div[data-testid="reply"]');
+        
+        // Wait for dialog modal to appear
+        await this.page.waitForSelector('div[role="dialog"] div[contenteditable="true"]', { timeout: 15000 });
+        
+        // Fill in the reply text
+        await this.page.fill('div[role="dialog"] div[contenteditable="true"]', replyText);
+        await this.page.waitForTimeout(500);
+        
+        // Try keyboard submit first
+        await this.page.keyboard.down(process.platform === 'darwin' ? 'Meta' : 'Control');
+        await this.page.keyboard.press('Enter');
+        await this.page.keyboard.up(process.platform === 'darwin' ? 'Meta' : 'Control');
+        await this.page.waitForTimeout(1000);
+        
+        // Fallback button click
+        const btn = await this.page.$('div[role="dialog"] div[data-testid="tweetButton"], div[data-testid="tweetButton"]');
+        if (btn) {
+          await btn.click();
+        }
+        
+        // Wait for dialog to close (success indicator)
+        await this.page.waitForSelector('div[role="dialog"]', { state: 'detached', timeout: 15000 });
+        
+        console.log('✅ Reply posted successfully!');
+        
+        // Try to capture reply ID
+        let replyId = `reply_to_${targetTweetId}`;
+        try {
+          replyId = await captureTweetId(this.page);
+        } catch (idError) {
+          console.warn(`⚠️ Failed to capture reply ID: ${idError}`);
+        }
+        
+        return { success: true, tweetId: replyId };
+        
+      } catch (error: any) {
+        console.warn(`⚠️ Reply attempt ${attempt} failed: ${error.message}`);
+        
+        if (attempt < maxAttempts) {
+          console.log('🔄 THREAD_REPLY_RETRY: Reloading page and trying again...');
+          await this.page.reload({ waitUntil: 'networkidle', timeout: 30000 });
+          await this.page.waitForTimeout(2000);
+        } else {
+          console.log('❌ THREAD_REPLY_GAVE_UP: All attempts failed, continuing to next reply');
+          return { success: false, error: error.message };
+        }
       }
-      
-      return { success: false, error: error.message };
     }
+    
+    return { success: false, error: 'All retry attempts failed' };
   }
 }
