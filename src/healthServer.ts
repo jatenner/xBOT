@@ -79,15 +79,15 @@ export function startHealthServer(): Promise<void> {
         };
         
         try {
-          // Check schema status
+          // Check schema status with standalone SchemaGuard
           const { SchemaGuard } = await import('./infra/db/SchemaGuard');
-          const { DatabaseManager } = await import('./lib/db');
-          const dbManager = DatabaseManager.getInstance();
-          // @ts-ignore - accessing pool for schema check
-          const schemaGuard = new SchemaGuard(dbManager.pool);
+          const schemaGuard = new SchemaGuard();
           
-          runtimePanel.dbSchemaOk = await schemaGuard.validateSchema();
-          runtimePanel.lastSchemaCheckAt = schemaGuard.getLastSchemaCheckAt()?.toISOString();
+          const probeResult = await schemaGuard.probeSchema();
+          runtimePanel.dbSchemaOk = probeResult.ok;
+          runtimePanel.lastSchemaCheckAt = new Date().toISOString();
+          
+          await schemaGuard.close();
           
           // Get metrics queue depth
           const { MetricsRetryQueue } = await import('./infra/MetricsRetryQueue');
