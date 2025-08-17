@@ -70,17 +70,17 @@ export async function upsertTweetMetrics(metrics: TweetMetrics): Promise<void> {
       });
 
     if (error) {
+      console.error(`❌ METRICS_UPSERT_FAILED tweet_id=${metrics.tweet_id} error=${error.message} payload_keys=[${Object.keys(row).join(',')}]`);
       throw new Error(`tweet_metrics upsert failed: ${error.message}`);
     }
 
     console.log(`METRICS_UPSERT_OK ${JSON.stringify({
       tweet_id: metrics.tweet_id,
-      collected_at,
-      engagement: metrics.likes_count + metrics.retweets_count + metrics.replies_count
+      collected_at
     })}`);
 
   } catch (error: any) {
-    console.error(`❌ METRICS_UPSERT_FAILED tweet_id=${metrics.tweet_id} error=${error.message}`);
+    console.error(`❌ METRICS_UPSERT_FAILED tweet_id=${metrics.tweet_id} error=${error.message} payload_keys=[${Object.keys(metrics).join(',')}]`);
     throw error;
   }
 }
@@ -122,18 +122,16 @@ export async function upsertLearningPost(post: LearningPost): Promise<void> {
       });
 
     if (error) {
+      console.error(`❌ LEARNING_UPSERT_FAILED tweet_id=${post.tweet_id} error=${error.message} payload_keys=[${Object.keys(row).join(',')}]`);
       throw new Error(`learning_posts upsert failed: ${error.message}`);
     }
 
     console.log(`LEARNING_UPSERT_OK ${JSON.stringify({
-      tweet_id: post.tweet_id,
-      format: post.format,
-      viral_score: viralScore,
-      engagement: post.likes_count + post.retweets_count + post.replies_count
+      tweet_id: post.tweet_id
     })}`);
 
   } catch (error: any) {
-    console.error(`❌ LEARNING_UPSERT_FAILED tweet_id=${post.tweet_id} error=${error.message}`);
+    console.error(`❌ LEARNING_UPSERT_FAILED tweet_id=${post.tweet_id} error=${error.message} payload_keys=[${Object.keys(post).join(',')}]`);
     throw error;
   }
 }

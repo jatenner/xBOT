@@ -67,11 +67,52 @@ export function startHealthServer(): Promise<void> {
           browser = { error: 'BrowserManager unavailable' };
         }
         
+        // Get runtime panel data
+        let runtimePanel: any = {
+          dbSchemaOk: true,
+          postsToday: 0,
+          lastDecision: null,
+          lastPostAt: null,
+          lastThreadAt: null
+        };
+        
+        try {
+          const { getRecentPosts } = await import('./learning/metricsWriter');
+          const recentPosts = await getRecentPosts(50);
+          
+          // Posts today
+          const todayStart = new Date();
+          todayStart.setHours(0, 0, 0, 0);
+          runtimePanel.postsToday = recentPosts.filter(p => 
+            new Date(p.createdAt).getTime() >= todayStart.getTime()
+          ).length;
+          
+          // Last post and thread timing
+          if (recentPosts.length > 0) {
+            runtimePanel.lastPostAt = recentPosts[0].createdAt;
+            const lastThread = recentPosts.find(p => p.format === 'thread');
+            if (lastThread) {
+              runtimePanel.lastThreadAt = lastThread.createdAt;
+            }
+          }
+          
+          // Store mock decision for now (would be populated by orchestrator)
+          runtimePanel.lastDecision = {
+            format: 'single',
+            reason: 'default preference',
+            confidence: 0.7
+          };
+        } catch (error) {
+          console.warn('⚠️ Failed to get runtime panel data:', error);
+          runtimePanel.dbSchemaOk = false;
+        }
+
         res.json({
           status: healthServerStatus.botStatus,
           playwright: healthServerStatus.playwrightStatus,
           postingLock,
           browser,
+          runtime: runtimePanel,
           timestamp: new Date().toISOString(),
           uptime: Math.floor(uptime / 1000),
           uptime_human: `${Math.floor(uptime / 60000)}m ${Math.floor((uptime % 60000) / 1000)}s`,
