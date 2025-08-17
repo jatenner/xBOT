@@ -196,6 +196,13 @@ export class DatabaseManager {
   }
 
   // Health checks
+  public getSupabaseClient() {
+    if (!this.supabase) {
+      throw new Error('Supabase client not initialized');
+    }
+    return this.supabase;
+  }
+
   public async checkHealth(): Promise<{
     supabase: boolean;
     redis: boolean;

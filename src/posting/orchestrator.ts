@@ -124,9 +124,38 @@ export class PostingOrchestrator {
         const generationStart = Date.now();
         const generator = getContentGenerator();
         
-        // Determine topic and format
+        // Determine topic and format using intelligent decision engine
         const topic = request.topic || await this.generateRandomTopic();
-        const format = request.format || (Math.random() > 0.7 ? 'thread' : 'single');
+        let format: 'single' | 'thread' = request.format;
+        
+        if (!format) {
+          // Use enhanced format decision engine
+          const { makeFormatDecision } = await import('./format');
+          const decision = await makeFormatDecision(topic);
+          format = decision.format;
+        }
+        
+        // Check cadence before proceeding
+        const { checkCadenceWithLogging } = await import('./cadence');
+        const { getRecentPosts } = await import('../learning/metricsWriter').catch(() => ({ getRecentPosts: null }));
+        
+        const recentPosts = getRecentPosts ? await getRecentPosts(10) : [];
+        const lastPostAt = recentPosts.length > 0 ? new Date(recentPosts[0].createdAt) : undefined;
+        
+        const cadenceCheck = checkCadenceWithLogging({
+          now: new Date(),
+          lastPostAt,
+          format,
+          totalPosts: recentPosts.length
+        });
+        
+        if (!cadenceCheck.allowed) {
+          return {
+            success: false,
+            phase: PostingPhase.FAILED,
+            error: `Cadence limit: wait ${cadenceCheck.waitMin} minutes`
+          };
+        }
         
         console.log(`🎯 Topic: "${topic}", Format: ${format}`);
 
@@ -167,6 +196,80 @@ export class PostingOrchestrator {
         if (!qualityResult.passed) {
           console.log(`❌ ${currentPhase}: Quality gate failed (${qualityResult.score}/100)`);
           console.log(`   Errors: ${qualityResult.errors.join(', ')}`);
+          
+          // THREAD FALLBACK LOGIC: If thread fails quality gate, try single
+          if (format === 'thread') {
+            console.log(`THREAD_FAILED_GATE ${JSON.stringify({ reason: qualityResult.errors[0] })}`);
+            console.log('FALLING_BACK_TO_SINGLE');
+            
+            try {
+              // Generate single tweet version
+              const singleResult = await generator.generateContent({ topic, format: 'single' });
+              
+              if (singleResult.success && singleResult.content) {
+                const singleQuality = validateContent(singleResult.content);
+                
+                if (singleQuality.passed) {
+                  console.log(`✅ FALLBACK_SINGLE_PASSED quality_score=${singleQuality.score}/100`);
+                  
+                  // Update format and content for successful single fallback
+                  format = 'single';
+                  normalizedContent = singleResult.content;
+                  
+                  // Continue with single post execution
+                  console.log(`📍 POST: Sanitizing fallback single content and posting to X`);
+                  
+                  const sanitizedTweets = normalizedContent.tweets.map(tweet => 
+                    sanitizeForPosting(tweet)
+                  );
+                  
+                  console.log(`📝 Posting ${sanitizedTweets.length} tweets`);
+                  sanitizedTweets.forEach((tweet, i) => 
+                    console.log(`   ${i + 1}. "${tweet.substring(0, 50)}..." (${tweet.length} chars)`)
+                  );
+                  
+                  const poster = new TwitterPoster();
+                  const postResult = await poster.postSingleTweet(sanitizedTweets[0], topic);
+                  
+                  if (postResult.success) {
+                    const rootTweetId = postResult.tweetId;
+                    console.log(`FALLBACK_SINGLE_POSTED ${JSON.stringify({ tweet_id: rootTweetId })}`);
+                    
+                    // Store metrics with new system
+                    const { storeNewPostMetrics } = await import('./metrics');
+                    await storeNewPostMetrics({
+                      tweet_id: rootTweetId,
+                      format: 'single',
+                      content: sanitizedTweets[0]
+                    });
+                    
+                    await this.storePostData(normalizedContent, rootTweetId, singleQuality.score);
+                    await CadenceGuard.markPostSuccess();
+                    
+                    return {
+                      success: true,
+                      phase: PostingPhase.DONE,
+                      rootTweetId,
+                      qualityScore: singleQuality.score,
+                      metrics: {
+                        generationTimeMs: generationTime,
+                        validationTimeMs: validationTime,
+                        postingTimeMs: Date.now() - startTime,
+                        totalTimeMs: Date.now() - startTime
+                      }
+                    };
+                  } else {
+                    throw new Error(`Fallback single post failed: ${postResult.error}`);
+                  }
+                } else {
+                  console.log(`❌ FALLBACK_SINGLE_FAILED quality_score=${singleQuality.score}/100 errors=${singleQuality.errors.join(', ')}`);
+                }
+              }
+            } catch (fallbackError: any) {
+              console.log(`❌ FALLBACK_SINGLE_ERROR: ${fallbackError.message}`);
+            }
+          }
+          
           await CadenceGuard.markPostFailure(`Quality gate failed: ${qualityResult.errors[0]}`);
           return {
             success: false,
@@ -236,7 +339,15 @@ export class PostingOrchestrator {
         currentPhase = PostingPhase.STORE;
         console.log(`📍 ${currentPhase}: Storing post data and scheduling metrics`);
         
-        // Store learning data
+        // Store metrics with new system
+        const { storeNewPostMetrics } = await import('./metrics');
+        await storeNewPostMetrics({
+          tweet_id: rootTweetId!,
+          format,
+          content: normalizedContent.tweets.join(' ')
+        });
+        
+        // Store learning data (legacy system)
         await this.storePostData(
           normalizedContent,
           rootTweetId!,

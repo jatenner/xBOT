@@ -26,6 +26,16 @@ async function main() {
     
     console.log('✅ Environment validation passed');
 
+    // Bootstrap database schema check
+    console.log('🗄️ Checking database schema...');
+    try {
+      const { bootstrapSchemaCheck } = await import('./learning/metricsWriter');
+      await bootstrapSchemaCheck();
+    } catch (schemaError: any) {
+      console.warn(`⚠️ Schema check failed: ${schemaError.message}`);
+      // Don't fail startup, but warn
+    }
+
     // Start health server
     console.log('🏥 Starting health monitoring server...');
     await startHealthServer();
@@ -112,13 +122,13 @@ function setupGracefulShutdown() {
   process.on('SIGUSR2', () => shutdown('SIGUSR2')); // nodemon restart
   
   // Handle uncaught exceptions
-  process.on('uncaughtException', (error) => {
-    console.error('💥 Uncaught Exception:', error);
+    process.on('uncaughtException', (error) => {
+      console.error('💥 Uncaught Exception:', error);
     shutdown('uncaughtException');
-  });
-  
-  process.on('unhandledRejection', (reason, promise) => {
-    console.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
+    });
+    
+    process.on('unhandledRejection', (reason, promise) => {
+      console.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
     shutdown('unhandledRejection');
   });
 }

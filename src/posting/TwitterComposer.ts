@@ -104,11 +104,28 @@ export class TwitterComposer {
       } catch {}
       
       // Find composer with more specific selectors
+      // COMPOSER GUARD: Dismiss "New posts are available..." overlay first
+      try {
+        const overlay = this.page.locator('button[aria-label^="New posts are available"]');
+        if (await overlay.first().isVisible({ timeout: 2000 }).catch(() => false)) {
+          console.log('🚨 COMPOSER_GUARD: "New posts available" overlay detected, dismissing...');
+          await this.page.keyboard.press('.');
+          await overlay.first().waitFor({ state: 'detached', timeout: 3000 }).catch(() => {});
+          console.log('✅ COMPOSER_GUARD: overlay_dismissed=true');
+        }
+      } catch (e) {
+        // Overlay check is optional
+      }
+      
+      // Find composer textarea and focus
       const composer = this.page.locator('div[data-testid="tweetTextarea_0"]').first();
       await composer.waitFor({ state: 'visible', timeout: 15000 });
       
+      // Focus composer to ensure it's active
+      await composer.click();
+      await this.page.waitForTimeout(300);
+      
       // Clear and type content
-      await composer.focus();
       await composer.fill(''); // Clear first
       await this.page.waitForTimeout(500);
       await composer.pressSequentially(tweetText, { delay: 10 });
@@ -139,14 +156,23 @@ export class TwitterComposer {
         await this.page.waitForTimeout(500);
       }
       
-      if (!buttonReady) {
-        console.log('📋 Post button not ready, trying keyboard shortcut');
-        await this.page.keyboard.press('Meta+Enter'); // Try hotkey
-        await this.page.waitForTimeout(2000);
-      } else {
-        console.log('🎯 Post button ready, clicking');
-        await postButton.click();
-        await this.page.waitForTimeout(2000);
+      // ENHANCED POSTING: Try keyboard shortcut first (more reliable)
+      console.log('⌨️ Trying keyboard submit first (Cmd/Ctrl+Enter)');
+      const combo = process.platform === 'darwin' ? 'Meta+Enter' : 'Control+Enter';
+      await this.page.keyboard.press(combo);
+      await this.page.waitForTimeout(2000);
+      
+      // Fallback: click button if keyboard didn't work and button is ready
+      if (buttonReady) {
+        try {
+          const postBtn = this.page.locator('[data-testid="tweetButtonInline"], [data-testid="tweetButton"]').first();
+          if (await postBtn.isVisible({ timeout: 1500 }) && await postBtn.isEnabled()) {
+            console.log('🎯 Fallback: clicking post button');
+            await postBtn.click({ trial: false }).catch(() => {});
+          }
+        } catch (e) {
+          console.log('⚠️ Button click fallback failed, relying on keyboard submit');
+        }
       }
       
       // Enhanced success detection - check multiple indicators
