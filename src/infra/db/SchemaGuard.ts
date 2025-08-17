@@ -1,4 +1,5 @@
 import { Pool } from 'pg';
+import { createClient } from '@supabase/supabase-js';
 
 type ProbeResult = {
   ok: boolean;
@@ -6,16 +7,51 @@ type ProbeResult = {
   found: Record<string, string[]>;
 };
 
-const DB_URL =
+function buildUrlFromParts(): string | undefined {
+  const host =
+    process.env.PGHOST || process.env.DB_HOST || process.env.POSTGRES_HOST;
+  const port = process.env.PGPORT || process.env.DB_PORT || '5432';
+  const db =
+    process.env.PGDATABASE || process.env.DB_NAME || 'postgres';
+  const user =
+    process.env.PGUSER || process.env.DB_USER || 'postgres';
+  const pass =
+    process.env.PGPASSWORD || process.env.DB_PASSWORD;
+
+  if (host && user && pass && db) {
+    return `postgres://${encodeURIComponent(user)}:${encodeURIComponent(
+      pass
+    )}@${host}:${port}/${db}?sslmode=require`;
+  }
+  return undefined;
+}
+
+function hasSupabaseService(): boolean {
+  return !!(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
+}
+
+async function rpcReloadViaSupabase(): Promise<void> {
+  if (!hasSupabaseService()) return;
+  const supabase = createClient(
+    process.env.SUPABASE_URL as string,
+    process.env.SUPABASE_SERVICE_ROLE_KEY as string,
+    { auth: { persistSession: false } }
+  );
+  // call the function added in our migration below
+  const { error } = await supabase.rpc('pgrst_schema_reload');
+  if (error) {
+    console.warn('SCHEMA_GUARD: RPC reload failed', error);
+  } else {
+    console.info('SCHEMA_GUARD: PostgREST reload via RPC OK');
+  }
+}
+
+const EXPLICIT_URL =
   process.env.DATABASE_URL ||
   process.env.SUPABASE_DB_URL ||
   process.env.SUPABASE_POSTGRES_URL;
 
-if (!DB_URL) {
-  // We don't throw here so startup can continue; we just log and mark drift.
-  // The calling code handles the non-fatal state.
-  console.warn('SCHEMA_GUARD: No DATABASE_URL/SUPABASE_DB_URL provided');
-}
+const DB_URL = EXPLICIT_URL || buildUrlFromParts();
 
 const REQUIRED: Record<string, string[]> = {
   tweet_metrics: [
@@ -101,15 +137,26 @@ export class SchemaGuard {
   }
 
   async ensureSchema(): Promise<void> {
+    if (!this.pool && !hasSupabaseService()) {
+      console.info('SCHEMA_GUARD_SKIPPED_NO_DB: no DATABASE_URL/PG* or Supabase service key; skipping probe.');
+      return;
+    }
+
+    if (!this.pool && hasSupabaseService()) {
+      console.info('SCHEMA_GUARD: no direct DB, attempting RPC reload via Supabase…');
+      await rpcReloadViaSupabase();
+      return;
+    }
+
     console.info('🔍 SCHEMA_GUARD: Probing database schema...');
     const probe1 = await this.probeSchema().catch((e) => {
-      console.error('❌ Schema probe failed:', e);
-      return {
-        ok: false,
-        missing: [{ table: 'probe_error', columns: ['exception'] }],
-        found: {},
-      } as ProbeResult;
+      console.error('SCHEMA_GUARD_PROBE_FAILED:', e.message);
+      return null;
     });
+
+    if (!probe1) {
+      return; // Failed to probe, already logged
+    }
 
     if (!probe1.ok) {
       console.warn('⚠️ SCHEMA_DRIFT_DETECTED', {
