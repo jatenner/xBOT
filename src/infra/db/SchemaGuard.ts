@@ -140,122 +140,217 @@ export class SchemaGuard {
     // Case 2: No direct DB, but we DO have Supabase admin.
     if (!this.pool && this.admin?.available()) {
       console.info('SCHEMA_GUARD: no direct DB; using Supabase Meta to bootstrap & reload…');
-      // Schema bootstrap includes PostgREST reload
       await this.ensureCoreSchemaViaSupabaseMeta();
       return;
     }
 
-    // Case 3: We have a DB pool — do the normal probe/reload path (unchanged)
-    console.info('🔍 SCHEMA_GUARD: Probing database schema...');
-    const probe1 = await this.probeSchema().catch((e) => {
-      console.error('SCHEMA_GUARD_PROBE_FAILED:', e.message);
-      return null;
-    });
-
-    if (!probe1) {
-      return; // Failed to probe, already logged
-    }
-
-    if (!probe1.ok) {
-      console.warn('⚠️ SCHEMA_DRIFT_DETECTED', {
-        missingColumns: probe1.missing,
-        tablesFound: Object.keys(probe1.found),
-      });
-      await this.reloadPostgRESTCache();
-      const probe2 = await this.probeSchema().catch(() => probe1);
-      if (!probe2.ok) {
-        console.error('❌ SCHEMA_VALIDATION_FAILED', {
-          missingColumns: probe2.missing,
-          suggestion: 'Run migrations or check database connectivity',
-        });
-      } else {
-        console.info('DB_SCHEMA_OK', probe2.found);
-      }
-    } else {
-      console.info('DB_SCHEMA_OK', probe1.found);
+    // Case 3: We have a DB pool — run idempotent schema + reload
+    if (this.pool) {
+      console.info('🔍 SCHEMA_GUARD: Using direct DB pool for schema bootstrap...');
+      await this.ensureCoreSchemaViaPool();
+      return;
     }
   }
 
   private async ensureCoreSchemaViaSupabaseMeta(): Promise<void> {
     if (!this.admin?.available()) return;
     
-    const sql = `-- Tables
+    const sql = `-- Idempotent core schema bootstrap
 create table if not exists public.tweet_metrics (
   tweet_id text primary key,
-  collected_at timestamptz not null default now(),
-  likes_count int not null default 0,
-  retweets_count int not null default 0,
-  replies_count int not null default 0,
-  bookmarks_count int not null default 0,
-  impressions_count bigint not null default 0,
+  collected_at timestamptz default now() not null,
+  likes_count int default 0 not null,
+  retweets_count int default 0 not null,
+  replies_count int default 0 not null,
+  bookmarks_count int default 0 not null,
+  impressions_count bigint default 0 not null,
   content text
 );
 
 create table if not exists public.learning_posts (
   tweet_id text primary key,
-  created_at timestamptz not null default now(),
+  created_at timestamptz default now() not null,
   format text not null,
-  likes_count int not null default 0,
-  retweets_count int not null default 0,
-  replies_count int not null default 0,
-  bookmarks_count int not null default 0,
-  impressions_count bigint not null default 0,
-  viral_potential_score int not null default 0,
+  likes_count int default 0 not null,
+  retweets_count int default 0 not null,
+  replies_count int default 0 not null,
+  bookmarks_count int default 0 not null,
+  impressions_count bigint default 0 not null,
+  viral_potential_score int default 0 not null,
   content text
 );
 
--- Columns
+-- Add missing columns if they don't exist
 do $$
 begin
-  -- tweet_metrics
+  -- tweet_metrics columns
+  if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='tweet_metrics' and column_name='collected_at') then
+    alter table public.tweet_metrics add column if not exists collected_at timestamptz default now() not null;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='tweet_metrics' and column_name='likes_count') then
+    alter table public.tweet_metrics add column if not exists likes_count int default 0 not null;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='tweet_metrics' and column_name='retweets_count') then
+    alter table public.tweet_metrics add column if not exists retweets_count int default 0 not null;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='tweet_metrics' and column_name='replies_count') then
+    alter table public.tweet_metrics add column if not exists replies_count int default 0 not null;
+  end if;
   if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='tweet_metrics' and column_name='bookmarks_count') then
-    alter table public.tweet_metrics add column bookmarks_count int not null default 0;
+    alter table public.tweet_metrics add column if not exists bookmarks_count int default 0 not null;
   end if;
   if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='tweet_metrics' and column_name='impressions_count') then
-    alter table public.tweet_metrics add column impressions_count bigint not null default 0;
+    alter table public.tweet_metrics add column if not exists impressions_count bigint default 0 not null;
   end if;
   if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='tweet_metrics' and column_name='content') then
-    alter table public.tweet_metrics add column content text;
+    alter table public.tweet_metrics add column if not exists content text;
   end if;
 
-  -- learning_posts
+  -- learning_posts columns  
+  if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='learning_posts' and column_name='created_at') then
+    alter table public.learning_posts add column if not exists created_at timestamptz default now() not null;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='learning_posts' and column_name='format') then
+    alter table public.learning_posts add column if not exists format text not null;
+  end if;
   if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='learning_posts' and column_name='likes_count') then
-    alter table public.learning_posts add column likes_count int not null default 0;
+    alter table public.learning_posts add column if not exists likes_count int default 0 not null;
   end if;
   if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='learning_posts' and column_name='retweets_count') then
-    alter table public.learning_posts add column retweets_count int not null default 0;
+    alter table public.learning_posts add column if not exists retweets_count int default 0 not null;
   end if;
   if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='learning_posts' and column_name='replies_count') then
-    alter table public.learning_posts add column replies_count int not null default 0;
+    alter table public.learning_posts add column if not exists replies_count int default 0 not null;
   end if;
   if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='learning_posts' and column_name='bookmarks_count') then
-    alter table public.learning_posts add column bookmarks_count int not null default 0;
+    alter table public.learning_posts add column if not exists bookmarks_count int default 0 not null;
   end if;
   if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='learning_posts' and column_name='impressions_count') then
-    alter table public.learning_posts add column impressions_count bigint not null default 0;
+    alter table public.learning_posts add column if not exists impressions_count bigint default 0 not null;
   end if;
   if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='learning_posts' and column_name='viral_potential_score') then
-    alter table public.learning_posts add column viral_potential_score int not null default 0;
+    alter table public.learning_posts add column if not exists viral_potential_score int default 0 not null;
   end if;
   if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='learning_posts' and column_name='content') then
-    alter table public.learning_posts add column content text;
+    alter table public.learning_posts add column if not exists content text;
   end if;
-end$$;
-
--- PostgREST reload
-select pg_notify('pgrst','reload schema');`;
+end$$;`;
 
     try {
       await this.admin.execSql(sql);
       console.info('SCHEMA_GUARD: core schema ensured via Supabase Meta');
-      
-      // Quick smoke test to verify tables exist
-      await this.admin.execSql('select 1');
-      await this.admin.execSql("select to_regclass('public.tweet_metrics'), to_regclass('public.learning_posts')");
-      
-      console.info('SCHEMA_GUARD: schema verification passed');
     } catch (e: any) {
       console.warn('SCHEMA_GUARD: core schema ensure failed:', e.message);
+      return;
+    }
+
+    // PostgREST reload in separate call for better error isolation
+    try {
+      await this.admin.reloadPostgrest();
+      console.info('SCHEMA_GUARD: PostgREST reload via SQL OK');
+    } catch (e: any) {
+      console.warn('SCHEMA_GUARD: PostgREST reload via SQL failed:', e.message);
+    }
+  }
+
+  private async ensureCoreSchemaViaPool(): Promise<void> {
+    if (!this.pool) return;
+
+    const sql = `-- Idempotent core schema bootstrap via pool
+create table if not exists public.tweet_metrics (
+  tweet_id text primary key,
+  collected_at timestamptz default now() not null,
+  likes_count int default 0 not null,
+  retweets_count int default 0 not null,
+  replies_count int default 0 not null,
+  bookmarks_count int default 0 not null,
+  impressions_count bigint default 0 not null,
+  content text
+);
+
+create table if not exists public.learning_posts (
+  tweet_id text primary key,
+  created_at timestamptz default now() not null,
+  format text not null,
+  likes_count int default 0 not null,
+  retweets_count int default 0 not null,
+  replies_count int default 0 not null,
+  bookmarks_count int default 0 not null,
+  impressions_count bigint default 0 not null,
+  viral_potential_score int default 0 not null,
+  content text
+);
+
+-- Add missing columns if they don't exist
+do $$
+begin
+  -- tweet_metrics columns
+  if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='tweet_metrics' and column_name='collected_at') then
+    alter table public.tweet_metrics add column if not exists collected_at timestamptz default now() not null;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='tweet_metrics' and column_name='likes_count') then
+    alter table public.tweet_metrics add column if not exists likes_count int default 0 not null;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='tweet_metrics' and column_name='retweets_count') then
+    alter table public.tweet_metrics add column if not exists retweets_count int default 0 not null;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='tweet_metrics' and column_name='replies_count') then
+    alter table public.tweet_metrics add column if not exists replies_count int default 0 not null;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='tweet_metrics' and column_name='bookmarks_count') then
+    alter table public.tweet_metrics add column if not exists bookmarks_count int default 0 not null;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='tweet_metrics' and column_name='impressions_count') then
+    alter table public.tweet_metrics add column if not exists impressions_count bigint default 0 not null;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='tweet_metrics' and column_name='content') then
+    alter table public.tweet_metrics add column if not exists content text;
+  end if;
+
+  -- learning_posts columns  
+  if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='learning_posts' and column_name='created_at') then
+    alter table public.learning_posts add column if not exists created_at timestamptz default now() not null;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='learning_posts' and column_name='format') then
+    alter table public.learning_posts add column if not exists format text not null;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='learning_posts' and column_name='likes_count') then
+    alter table public.learning_posts add column if not exists likes_count int default 0 not null;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='learning_posts' and column_name='retweets_count') then
+    alter table public.learning_posts add column if not exists retweets_count int default 0 not null;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='learning_posts' and column_name='replies_count') then
+    alter table public.learning_posts add column if not exists replies_count int default 0 not null;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='learning_posts' and column_name='bookmarks_count') then
+    alter table public.learning_posts add column if not exists bookmarks_count int default 0 not null;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='learning_posts' and column_name='impressions_count') then
+    alter table public.learning_posts add column if not exists impressions_count bigint default 0 not null;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='learning_posts' and column_name='viral_potential_score') then
+    alter table public.learning_posts add column if not exists viral_potential_score int default 0 not null;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='learning_posts' and column_name='content') then
+    alter table public.learning_posts add column if not exists content text;
+  end if;
+end$$;`;
+
+    try {
+      await this.pool.query(sql);
+      console.info('SCHEMA_GUARD: core schema ensured via pool');
+    } catch (e: any) {
+      console.warn('SCHEMA_GUARD: core schema ensure failed via pool:', e.message);
+      return;
+    }
+
+    // PostgREST reload via pool
+    try {
+      await this.pool.query("select pg_notify('pgrst','reload schema');");
+      console.info('SCHEMA_GUARD: PostgREST reload via pool OK');
+    } catch (e: any) {
+      console.warn('SCHEMA_GUARD: PostgREST reload via pool failed:', e.message);
     }
   }
 
