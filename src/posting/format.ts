@@ -207,7 +207,11 @@ export async function makeFormatDecision(topic: string): Promise<FormatDecision>
           details: blockReason,
           original_format: 'thread',
           threads_in_last_9: threadsInLast9,
-          cooldown_ok: threadCooldownOk
+          cooldown_ok: threadCooldownOk,
+          diversity_cooldown: {
+            lastThreadAt: lastThreadAt?.toISOString(),
+            threadsInLast9
+          }
         })}`);
         
         // Override to single

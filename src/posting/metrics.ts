@@ -44,9 +44,9 @@ export interface LearningPost {
 }
 
 /**
- * Upsert tweet metrics with success logging
+ * Upsert tweet metrics with non-fatal error handling
  */
-export async function upsertTweetMetrics(metrics: TweetMetrics): Promise<void> {
+export async function upsertTweetMetrics(metrics: TweetMetrics): Promise<{ ok: boolean; retryable: boolean }> {
   try {
     const supabase = await getSupabase();
     const collected_at = metrics.collected_at || new Date().toISOString();
@@ -70,8 +70,20 @@ export async function upsertTweetMetrics(metrics: TweetMetrics): Promise<void> {
       });
 
     if (error) {
-      console.error(`❌ METRICS_UPSERT_FAILED tweet_id=${metrics.tweet_id} error=${error.message} payload_keys=[${Object.keys(row).join(',')}]`);
-      throw new Error(`tweet_metrics upsert failed: ${error.message}`);
+      const errorMsg = error.message;
+      const isSchemaError = errorMsg.includes('schema cache') || 
+                           errorMsg.includes('column') && errorMsg.includes('does not exist') ||
+                           errorMsg.includes('relation') && errorMsg.includes('does not exist');
+      
+      console.error(`❌ METRICS_UPSERT_FAILED tweet_id=${metrics.tweet_id} error=${errorMsg} payload_keys=[${Object.keys(row).join(',')}] retryable=${isSchemaError}`);
+      
+      if (isSchemaError) {
+        // Non-fatal schema error - schedule retry
+        return { ok: false, retryable: true };
+      } else {
+        // Programming error - throw to fail fast
+        throw new Error(`tweet_metrics upsert failed: ${errorMsg}`);
+      }
     }
 
     console.log(`METRICS_UPSERT_OK ${JSON.stringify({
@@ -79,16 +91,28 @@ export async function upsertTweetMetrics(metrics: TweetMetrics): Promise<void> {
       collected_at
     })}`);
 
+    return { ok: true, retryable: false };
+
   } catch (error: any) {
-    console.error(`❌ METRICS_UPSERT_FAILED tweet_id=${metrics.tweet_id} error=${error.message} payload_keys=[${Object.keys(metrics).join(',')}]`);
-    throw error;
+    const errorMsg = error.message;
+    const isSchemaError = errorMsg.includes('schema cache') || 
+                         errorMsg.includes('column') && errorMsg.includes('does not exist') ||
+                         errorMsg.includes('relation') && errorMsg.includes('does not exist');
+    
+    console.error(`❌ METRICS_UPSERT_FAILED tweet_id=${metrics.tweet_id} error=${errorMsg} payload_keys=[${Object.keys(metrics).join(',')}] retryable=${isSchemaError}`);
+    
+    if (isSchemaError) {
+      return { ok: false, retryable: true };
+    } else {
+      throw error; // Re-throw programming errors
+    }
   }
 }
 
 /**
  * Upsert learning post with success logging
  */
-export async function upsertLearningPost(post: LearningPost): Promise<void> {
+export async function upsertLearningPost(post: LearningPost): Promise<{ ok: boolean; retryable: boolean }> {
   try {
     const supabase = await getSupabase();
     const created_at = post.created_at || new Date().toISOString();
@@ -122,17 +146,39 @@ export async function upsertLearningPost(post: LearningPost): Promise<void> {
       });
 
     if (error) {
-      console.error(`❌ LEARNING_UPSERT_FAILED tweet_id=${post.tweet_id} error=${error.message} payload_keys=[${Object.keys(row).join(',')}]`);
-      throw new Error(`learning_posts upsert failed: ${error.message}`);
+      const errorMsg = error.message;
+      const isSchemaError = errorMsg.includes('schema cache') || 
+                           errorMsg.includes('column') && errorMsg.includes('does not exist') ||
+                           errorMsg.includes('relation') && errorMsg.includes('does not exist');
+      
+      console.error(`❌ LEARNING_UPSERT_FAILED tweet_id=${post.tweet_id} error=${errorMsg} payload_keys=[${Object.keys(row).join(',')}] retryable=${isSchemaError}`);
+      
+      if (isSchemaError) {
+        return { ok: false, retryable: true };
+      } else {
+        throw new Error(`learning_posts upsert failed: ${errorMsg}`);
+      }
     }
 
     console.log(`LEARNING_UPSERT_OK ${JSON.stringify({
       tweet_id: post.tweet_id
     })}`);
 
+    return { ok: true, retryable: false };
+
   } catch (error: any) {
-    console.error(`❌ LEARNING_UPSERT_FAILED tweet_id=${post.tweet_id} error=${error.message} payload_keys=[${Object.keys(post).join(',')}]`);
-    throw error;
+    const errorMsg = error.message;
+    const isSchemaError = errorMsg.includes('schema cache') || 
+                         errorMsg.includes('column') && errorMsg.includes('does not exist') ||
+                         errorMsg.includes('relation') && errorMsg.includes('does not exist');
+    
+    console.error(`❌ LEARNING_UPSERT_FAILED tweet_id=${post.tweet_id} error=${errorMsg} payload_keys=[${Object.keys(post).join(',')}] retryable=${isSchemaError}`);
+    
+    if (isSchemaError) {
+      return { ok: false, retryable: true };
+    } else {
+      throw error; // Re-throw programming errors
+    }
   }
 }
 
@@ -161,7 +207,7 @@ function calculateViralPotentialScore(metrics: {
 }
 
 /**
- * Combined metrics storage for new posts
+ * Combined metrics storage for new posts (non-fatal)
  */
 export async function storeNewPostMetrics(params: {
   tweet_id: string;
@@ -171,8 +217,7 @@ export async function storeNewPostMetrics(params: {
 }): Promise<void> {
   const { tweet_id, format, content, initial_metrics = {} } = params;
   
-  // Store initial metrics (typically zeros for new posts)
-  await upsertTweetMetrics({
+  const metrics: TweetMetrics = {
     tweet_id,
     likes_count: initial_metrics.likes_count || 0,
     retweets_count: initial_metrics.retweets_count || 0,
@@ -181,10 +226,9 @@ export async function storeNewPostMetrics(params: {
     impressions_count: initial_metrics.impressions_count || 0,
     content,
     ...initial_metrics
-  });
-  
-  // Store in learning posts
-  await upsertLearningPost({
+  };
+
+  const learningPost: LearningPost = {
     tweet_id,
     format,
     likes_count: initial_metrics.likes_count || 0,
@@ -193,7 +237,40 @@ export async function storeNewPostMetrics(params: {
     bookmarks_count: initial_metrics.bookmarks_count || 0,
     impressions_count: initial_metrics.impressions_count || 0,
     content
-  });
+  };
+
+  // Import retry queue for handling failures
+  const { MetricsRetryQueue } = await import('../infra/MetricsRetryQueue');
+  const retryQueue = MetricsRetryQueue.getInstance();
+
+  // Try to store in both tables, schedule retries for schema failures
+  let anyFailures = false;
+
+  try {
+    const metricsResult = await upsertTweetMetrics(metrics);
+    if (!metricsResult.ok && metricsResult.retryable) {
+      retryQueue.scheduleRetry(tweet_id, metrics, 'tweet_metrics schema error');
+      anyFailures = true;
+    }
+  } catch (error: any) {
+    console.error(`❌ Critical error in tweet metrics upsert: ${error.message}`);
+    throw error; // Re-throw programming errors
+  }
+
+  try {
+    const learningResult = await upsertLearningPost(learningPost);
+    if (!learningResult.ok && learningResult.retryable) {
+      retryQueue.scheduleRetry(tweet_id, learningPost, 'learning_posts schema error');
+      anyFailures = true;
+    }
+  } catch (error: any) {
+    console.error(`❌ Critical error in learning post upsert: ${error.message}`);
+    throw error; // Re-throw programming errors
+  }
+
+  if (anyFailures) {
+    console.log(`📅 POST_REPORTED_OK_WITH_PENDING_METRICS tweet_id=${tweet_id} queue_depth=${retryQueue.getQueueDepth()}`);
+  }
 }
 
 /**

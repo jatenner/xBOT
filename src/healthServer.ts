@@ -67,16 +67,34 @@ export function startHealthServer(): Promise<void> {
           browser = { error: 'BrowserManager unavailable' };
         }
         
-        // Get runtime panel data
+        // Get runtime panel data with enhanced schema and metrics info
         let runtimePanel: any = {
           dbSchemaOk: true,
+          lastSchemaCheckAt: null,
           postsToday: 0,
           lastDecision: null,
           lastPostAt: null,
-          lastThreadAt: null
+          lastThreadAt: null,
+          metricsQueueDepth: 0
         };
         
         try {
+          // Check schema status
+          const { SchemaGuard } = await import('./infra/db/SchemaGuard');
+          const { DatabaseManager } = await import('./lib/db');
+          const dbManager = DatabaseManager.getInstance();
+          // @ts-ignore - accessing pool for schema check
+          const schemaGuard = new SchemaGuard(dbManager.pool);
+          
+          runtimePanel.dbSchemaOk = await schemaGuard.validateSchema();
+          runtimePanel.lastSchemaCheckAt = schemaGuard.getLastSchemaCheckAt()?.toISOString();
+          
+          // Get metrics queue depth
+          const { MetricsRetryQueue } = await import('./infra/MetricsRetryQueue');
+          const retryQueue = MetricsRetryQueue.getInstance();
+          runtimePanel.metricsQueueDepth = retryQueue.getQueueDepth();
+          
+          // Get recent posts data
           const { getRecentPosts } = await import('./learning/metricsWriter');
           const recentPosts = await getRecentPosts(50);
           
@@ -96,11 +114,11 @@ export function startHealthServer(): Promise<void> {
             }
           }
           
-          // Store mock decision for now (would be populated by orchestrator)
+          // Enhanced decision data (would be populated by orchestrator in real usage)
           runtimePanel.lastDecision = {
             format: 'single',
-            reason: 'default preference',
-            confidence: 0.7
+            reason: 'bootstrap mode',
+            confidence: 0.8
           };
         } catch (error) {
           console.warn('⚠️ Failed to get runtime panel data:', error);

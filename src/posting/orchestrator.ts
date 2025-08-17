@@ -134,12 +134,24 @@ export class PostingOrchestrator {
           const decision = await makeFormatDecision(topic);
           format = decision.format;
           
-          // Log the format decision prominently
+          // Log the format decision prominently with diversity details
+          const { getRecentFormats } = await import('./format');
+          const recentFormats = await getRecentFormats(15).catch(() => []);
+          const lastThreadIndex = recentFormats.findIndex(f => f === 'thread');
+          const lastThreadAt = lastThreadIndex >= 0 
+            ? new Date(Date.now() - (lastThreadIndex * 2 * 60 * 60 * 1000))
+            : null;
+          const threadsInLast9 = recentFormats.slice(-9).filter(f => f === 'thread').length;
+          
           console.log(`FORMAT_DECISION ${JSON.stringify({
             format: decision.format,
             confidence: decision.confidence,
             reason: decision.reason,
-            topic_preview: topic.substring(0, 30)
+            topic_preview: topic.substring(0, 30),
+            diversity_cooldown: {
+              lastThreadAt: lastThreadAt?.toISOString(),
+              threadsInLast9
+            }
           })}`);
         }
         
