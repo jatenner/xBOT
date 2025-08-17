@@ -108,14 +108,10 @@ export class MetricsRetryQueue {
   private async retryJob(job: MetricsRetryJob): Promise<void> {
     console.log(`🔄 METRICS_RETRY_ATTEMPTING tweet_id=${job.tweetId} attempt=${job.attempt}`);
     
-    // First ensure schema is up to date
+    // First ensure schema is up to date with standalone SchemaGuard
     try {
       const { ensureSchema } = await import('./db/SchemaGuard');
-      const { DatabaseManager } = await import('../lib/db');
-      
-      const dbManager = DatabaseManager.getInstance();
-      // @ts-ignore - accessing private pool for schema operations
-      await ensureSchema(dbManager.pool);
+      await ensureSchema(); // triggers NOTIFY and re-probe
     } catch (error) {
       console.warn('⚠️ Schema check failed during retry, continuing anyway:', error);
     }

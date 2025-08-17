@@ -29,6 +29,46 @@ export interface PostResult {
 }
 
 /**
+ * Open reply composer using keyboard shortcut with fallbacks
+ */
+async function openReplyComposer(page: Page, rootUrl: string): Promise<void> {
+  await page.goto(rootUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+
+  // Dismiss overlay if present
+  const overlay = await page.$('div[aria-live="polite"]:has-text("New posts available"), button[aria-label^="New posts are available"]');
+  if (overlay) {
+    console.log('🚨 COMPOSER_GUARD: "New posts available" overlay detected, dismissing...');
+    await page.keyboard.press('.');
+    await page.waitForTimeout(1000);
+    console.log('✅ COMPOSER_GUARD: overlay_dismissed=true');
+  }
+
+  // Ensure the tweet article is present
+  await page.waitForSelector('article', { timeout: 15000 });
+
+  // Try keyboard shortcut first (most reliable on X)
+  await page.keyboard.press('r');
+  // Wait for composer to appear
+  const composer = await page.waitForSelector(
+    'div[role="dialog"] div[contenteditable="true"][data-testid^="tweetTextarea_"], div[contenteditable="true"][data-testid="tweetTextarea_0"], div[role="textbox"][contenteditable="true"]',
+    { timeout: 15000 }
+  ).catch(() => null);
+
+  if (!composer) {
+    // Fallback: click reply button under the root tweet
+    const replyBtn =
+      (await page.$('article [data-testid="reply"]')) ||
+      (await page.$('button[aria-label^="Reply"], div[aria-label^="Reply"]'));
+    if (!replyBtn) throw new Error('REPLY_BUTTON_NOT_FOUND');
+    await replyBtn.click();
+    await page.waitForSelector(
+      'div[role="dialog"] div[contenteditable="true"][data-testid^="tweetTextarea_"]',
+      { timeout: 15000 }
+    );
+  }
+}
+
+/**
  * Capture numeric tweet ID from timeline after posting
  */
 async function captureTweetId(page: Page, attempts: number = 3): Promise<string> {
@@ -284,58 +324,29 @@ export class TwitterComposer {
    * Post a reply to a specific tweet
    */
   async postReply(replyText: string, targetTweetId: string): Promise<PostResult> {
-    let attempt = 0;
     const maxAttempts = 2;
     
-    while (attempt < maxAttempts) {
-      attempt++;
-      
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         console.log(`🐦 TwitterComposer: Posting reply to ${targetTweetId} (${replyText.length} chars) attempt ${attempt}/${maxAttempts}`);
         
-        // Dismiss overlay first
-        try {
-          const overlay = this.page.locator('button[aria-label^="New posts are available"]');
-          if (await overlay.first().isVisible({ timeout: 2000 }).catch(() => false)) {
-            console.log('🚨 COMPOSER_GUARD: "New posts available" overlay detected, dismissing...');
-            await this.page.keyboard.press('.');
-            await overlay.first().waitFor({ state: 'detached', timeout: 3000 }).catch(() => {});
-            console.log('✅ COMPOSER_GUARD: overlay_dismissed=true');
-          }
-        } catch {}
-        
-        // Navigate to the target tweet explicitly
-        const tweetUrl = `https://x.com/i/status/${targetTweetId}`;
-        await this.page.goto(tweetUrl, { waitUntil: 'networkidle', timeout: 30000 });
-        await this.page.waitForTimeout(2000);
-        
-        // Wait for article and click reply with resilient selector
-        await this.page.waitForSelector('article div[data-testid="reply"]', { timeout: 15000 });
-        await this.page.click('article div[data-testid="reply"]');
-        
-        // Wait for dialog modal to appear
-        await this.page.waitForSelector('div[role="dialog"] div[contenteditable="true"]', { timeout: 15000 });
+        const rootUrl = `https://x.com/i/status/${targetTweetId}`;
+        await openReplyComposer(this.page, rootUrl);
         
         // Fill in the reply text
         await this.page.fill('div[role="dialog"] div[contenteditable="true"]', replyText);
         await this.page.waitForTimeout(500);
         
-        // Try keyboard submit first
+        // Submit: keyboard then button fallback
         await this.page.keyboard.down(process.platform === 'darwin' ? 'Meta' : 'Control');
         await this.page.keyboard.press('Enter');
         await this.page.keyboard.up(process.platform === 'darwin' ? 'Meta' : 'Control');
-        await this.page.waitForTimeout(1000);
         
-        // Fallback button click
-        const btn = await this.page.$('div[role="dialog"] div[data-testid="tweetButton"], div[data-testid="tweetButton"]');
-        if (btn) {
-          await btn.click();
-        }
+        const btn = await this.page.$('div[role="dialog"] [data-testid="tweetButtonInline"], div[role="dialog"] [data-testid="tweetButton"]');
+        if (btn) await btn.click();
         
-        // Wait for dialog to close (success indicator)
         await this.page.waitForSelector('div[role="dialog"]', { state: 'detached', timeout: 15000 });
-        
-        console.log('✅ Reply posted successfully!');
+        console.log(`✅ THREAD_REPLY_OK index=${attempt} chars=${replyText.length}`);
         
         // Try to capture reply ID
         let replyId = `reply_to_${targetTweetId}`;
@@ -348,16 +359,13 @@ export class TwitterComposer {
         return { success: true, tweetId: replyId };
         
       } catch (error: any) {
-        console.warn(`⚠️ Reply attempt ${attempt} failed: ${error.message}`);
+        const logType = attempt === 1 ? 'THREAD_REPLY_RETRY' : 'THREAD_REPLY_GAVE_UP';
+        console.warn(`${logType} index=${attempt} err=${String(error)}`);
         
-        if (attempt < maxAttempts) {
-          console.log('🔄 THREAD_REPLY_RETRY: Reloading page and trying again...');
-          await this.page.reload({ waitUntil: 'networkidle', timeout: 30000 });
-          await this.page.waitForTimeout(2000);
-        } else {
-          console.log('❌ THREAD_REPLY_GAVE_UP: All attempts failed, continuing to next reply');
-          return { success: false, error: error.message };
-        }
+        if (attempt === maxAttempts) break;
+        
+        await this.page.waitForTimeout(1200);
+        await this.page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
       }
     }
     
