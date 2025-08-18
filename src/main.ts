@@ -5,6 +5,7 @@ import { closeBrowser } from './playwright/browserFactory';
 import { closeDatabaseConnections } from './db/index';
 import { closeCadenceGuard } from './posting/cadenceGuard';
 import { AutonomousPostingEngine } from './core/autonomousPostingEngine';
+import { ensureSchemaAtBoot } from './services/SchemaGuard';
 
 /**
  * Main application entry point with proper error handling and graceful shutdown
@@ -29,11 +30,10 @@ async function main() {
     // Bootstrap database schema check with standalone SchemaGuard
     console.log('🗄️ Checking database schema...');
     try {
-      const { ensureSchema } = await import('./infra/db/SchemaGuard');
-      await ensureSchema();
-    } catch (schemaError: any) {
-      console.warn(`⚠️ Schema check failed: ${schemaError.message}`);
-      // Don't fail startup, but warn
+      await ensureSchemaAtBoot();
+    } catch (error: any) {
+      console.error('🚨 SCHEMA_GUARD: Failed to ensure schema at boot:', error.message);
+      console.error('🚨 Continuing in degraded mode - metrics storage may fail');
     }
 
     // Start health server

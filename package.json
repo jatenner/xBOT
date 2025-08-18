@@ -49,6 +49,8 @@
     "start-original": "npm run migrate && node dist/main.js",
     "logs": "node bulletproof_railway_monitor.js",
     "dry:thread": "tsx tools/dryRunThread.ts",
+    "migrate:meta": "tsx scripts/run-meta-migration.ts",
+    "verify:schema": "tsx scripts/verify-schema.ts",
     "post:thread": "tsx tools/forceThread.ts",
     "test:growth-engine": "tsx tools/testGrowthEngine.ts",
     "test:production": "tsx tools/testProductionIntegration.ts",

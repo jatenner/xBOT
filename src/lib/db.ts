@@ -1,11 +1,14 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import Redis from 'ioredis';
 import { AutoMigrationRunner } from './migrationRunner';
+import { Pool } from 'pg';
+import dns from 'node:dns';
 
 export class DatabaseManager {
   private static instance: DatabaseManager;
   private supabase: SupabaseClient | null = null;
   private redis: Redis | null = null;
+  private pgPool: Pool | null = null;
   private isSupabaseConnected = false;
   private isRedisConnected = false;
 
@@ -23,6 +26,7 @@ export class DatabaseManager {
       console.log('🗄️ Initializing Database Manager...');
       
       await this.initializeSupabase();
+      await this.initializeDirectDb();
       
       // Run automatic migrations if Supabase is connected
       if (this.isSupabaseConnected) {
@@ -37,6 +41,42 @@ export class DatabaseManager {
     } catch (error: any) {
       console.error('❌ Database Manager initialization failed:', error.message);
       throw error;
+    }
+  }
+
+  private async initializeDirectDb(): Promise<void> {
+    const directDbUrl = process.env.DIRECT_DB_URL;
+    
+    if (!directDbUrl) {
+      console.log('📍 No DIRECT_DB_URL provided, skipping direct PostgreSQL connection');
+      return;
+    }
+
+    try {
+      console.log('🔗 Initializing direct PostgreSQL connection with IPv4 preference...');
+      
+      // IPv4 lookup function to avoid ENETUNREACH on IPv6
+      const lookupIPv4: any = (host: string, _opts: any, cb: any) => {
+        dns.lookup(host, { family: 4 }, cb);
+      };
+
+      this.pgPool = new Pool({
+        connectionString: directDbUrl,
+        ssl: { rejectUnauthorized: false },
+        lookup: lookupIPv4,
+        max: 5,
+        idleTimeoutMillis: 10000
+      });
+
+      // Test connection
+      const client = await this.pgPool.connect();
+      await client.query('SELECT 1');
+      client.release();
+      
+      console.log('✅ Direct PostgreSQL connection established');
+    } catch (error: any) {
+      console.warn('⚠️ Direct PostgreSQL connection failed:', error.message);
+      this.pgPool = null;
     }
   }
 
