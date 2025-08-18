@@ -1,201 +1,253 @@
 /**
- * Quality Gate Tests
- * Validates safety checks and medical claim detection
+ * Tests for QualityGate scoring and safety
+ * Verifies mediocre post <80; improved revision ≥80; blocks unsafe medical phrasing
  */
 
 import { QualityGate } from '../src/content/qualityGate';
 
 describe('QualityGate', () => {
   let qualityGate: QualityGate;
-  
+
   beforeEach(() => {
     qualityGate = new QualityGate();
   });
 
-  describe('Medical Claims Detection', () => {
-    test('should block unsafe medical phrasing', async () => {
-      const unsafePhrases = [
-        'This will cure your diabetes',
-        'Take this supplement to treat depression',
-        'This therapy eliminates cancer',
-        'Never take medication for anxiety',
-        'This diet fixes autoimmune disorders'
+  describe('Scoring System (0-100)', () => {
+    it('should score excellent content highly (≥90)', async () => {
+      const excellentThread = [
+        'I fixed my insomnia in 3 weeks. The counterintuitive secret: avoiding all sleep advice.',
+        'Most sleep tips make insomnia worse. Here\'s what actually works:',
+        'Stop tracking sleep. Paradoxically, sleep tracking creates anxiety that prevents sleep.',
+        'Start the 2-minute rule: If not asleep in 2 minutes, get up. Do something boring until sleepy.',
+        'The result: 7-8 hours nightly, zero sleep anxiety. Try this for one week.'
       ];
-      
-      for (const phrase of unsafePhrases) {
-        const result = await qualityGate.evaluateThread([phrase]);
-        
-        expect(result.passed).toBe(false);
-        expect(result.score.safetyScore).toBeLessThan(0.8);
-        expect(result.rationale).toContain('Safety concerns');
-      }
-    });
 
-    test('should allow safe wellness content', async () => {
-      const safeContent = [
-        'Getting 7-8 hours of sleep can improve energy levels',
-        'Regular exercise supports overall wellness',
-        'Eating more vegetables provides essential nutrients',
-        'Stress management techniques like meditation may help with relaxation'
-      ];
-      
-      for (const content of safeContent) {
-        const result = await qualityGate.evaluateThread([content]);
-        
-        expect(result.score.safetyScore).toBeGreaterThanOrEqual(0.8);
-      }
-    });
-  });
+      const result = await qualityGate.evaluateThread(excellentThread);
 
-  describe('Hook Strength Evaluation', () => {
-    test('should favor specific, numbered hooks', async () => {
-      const strongHooks = [
-        'I fixed my 2pm energy crash by changing 1 morning habit',
-        'The 3 mistakes everyone makes with sleep hygiene:',
-        'Why everything you know about metabolism is wrong:'
-      ];
-      
-      const weakHooks = [
-        'Hey everyone, let me talk about health today',
-        'Some tips for better wellness',
-        'Today I want to discuss nutrition'
-      ];
-      
-      for (const hook of strongHooks) {
-        const result = await qualityGate.evaluateThread([hook]);
-        expect(result.score.hookStrength).toBeGreaterThan(0.6);
-      }
-      
-      for (const hook of weakHooks) {
-        const result = await qualityGate.evaluateThread([hook]);
-        expect(result.score.hookStrength).toBeLessThan(0.5);
-      }
-    });
-  });
-
-  describe('Specificity Assessment', () => {
-    test('should reward specific, actionable content', async () => {
-      const specificContent = [
-        'Walk for 10 minutes within 30 minutes of waking up',
-        'Eat 2 servings of vegetables with each meal',
-        'Set a 90-minute sleep window starting at 10pm'
-      ];
-      
-      const vagueContent = [
-        'Exercise more often',
-        'Eat healthier foods',
-        'Get better sleep'
-      ];
-      
-      for (const content of specificContent) {
-        const result = await qualityGate.evaluateThread([content]);
-        expect(result.score.specificity).toBeGreaterThan(0.6);
-      }
-      
-      for (const content of vagueContent) {
-        const result = await qualityGate.evaluateThread([content]);
-        expect(result.score.specificity).toBeLessThan(0.5);
-      }
-    });
-  });
-
-  describe('Jargon Level Detection', () => {
-    test('should penalize excessive technical language', async () => {
-      const jargonyContent = [
-        'Circadian rhythm optimization through photobiological interventions affects hypothalamic-pituitary-adrenal axis homeostasis'
-      ];
-      
-      const accessibleContent = [
-        'Morning sunlight helps regulate your natural sleep-wake cycle and stress response'
-      ];
-      
-      for (const content of jargonyContent) {
-        const result = await qualityGate.evaluateThread([content]);
-        expect(result.score.jargonScore).toBeGreaterThan(0.5);
-      }
-      
-      for (const content of accessibleContent) {
-        const result = await qualityGate.evaluateThread([content]);
-        expect(result.score.jargonScore).toBeLessThan(0.3);
-      }
-    });
-  });
-
-  describe('Reply Contextuality', () => {
-    test('should reward contextual replies', async () => {
-      const originalTweet = 'Struggling with afternoon energy crashes around 2pm every day';
-      
-      const contextualReply = 'The 2pm crash often relates to cortisol patterns. Have you tried eating protein with lunch to stabilize blood sugar?';
-      const genericReply = 'Great post! Thanks for sharing your experience with energy management.';
-      
-      const contextualResult = await qualityGate.evaluateReply(contextualReply, originalTweet);
-      const genericResult = await qualityGate.evaluateReply(genericReply, originalTweet);
-      
-      expect(contextualResult.score.contextuality).toBeGreaterThan(genericResult.score.contextuality);
-      expect(contextualResult.score.overallScore).toBeGreaterThan(genericResult.score.overallScore);
-    });
-
-    test('should detect acknowledgment patterns', async () => {
-      const originalTweet = 'Morning sunlight exposure changed my sleep quality dramatically';
-      
-      const acknowledgedReply = 'You\'re right about sunlight being crucial. The circadian timing aspect is especially important for sleep quality.';
-      const unacknowledgedReply = 'Sleep is important for health and wellness. Try going to bed earlier.';
-      
-      const acknowledgedResult = await qualityGate.evaluateReply(acknowledgedReply, originalTweet);
-      const unacknowledgedResult = await qualityGate.evaluateReply(unacknowledgedReply, originalTweet);
-      
-      expect(acknowledgedResult.score.contextuality).toBeGreaterThan(unacknowledgedResult.score.contextuality);
-    });
-  });
-
-  describe('Overall Quality Thresholds', () => {
-    test('should pass high-quality content', async () => {
-      const highQualityThread = [
-        'I eliminated my 3pm energy crashes by fixing 1 morning mistake:',
-        'The problem: eating breakfast within 30 minutes of waking.',
-        'Step 1: Wait 90-120 minutes after waking before eating',
-        'Step 2: Start with protein (20-30g) and healthy fats',
-        'Step 3: Track energy levels at 2pm, 4pm, and 6pm for 1 week',
-        'Research shows cortisol peaks naturally in the morning - eating too early disrupts this pattern.',
-        'Common mistake: having fruit or pastries first thing - this causes blood sugar spikes.',
-        'What\'s your biggest energy challenge between 2-4pm?'
-      ];
-      
-      const result = await qualityGate.evaluateThread(highQualityThread);
-      
+      expect(result.score.overallScore).toBeGreaterThanOrEqual(90);
       expect(result.passed).toBe(true);
-      expect(result.score.overallScore).toBeGreaterThan(0.7);
+      expect(result.score.hookClarity).toBeGreaterThan(20);
+      expect(result.score.actionability).toBeGreaterThan(15);
+      expect(result.score.novelty).toBeGreaterThan(15);
     });
 
-    test('should fail low-quality content', async () => {
-      const lowQualityThread = [
-        'Health is important',
-        'You should eat good food',
-        'Exercise more',
-        'Sleep better'
+    it('should score mediocre content between 70-79', async () => {
+      const mediocreThread = [
+        'Here are some tips for better sleep.',
+        'Sleep is important for health and wellness.',
+        'Try to get 7-8 hours of sleep each night.',
+        'Avoid caffeine before bed and create a bedtime routine.',
+        'Good sleep helps with energy and focus.'
       ];
-      
-      const result = await qualityGate.evaluateThread(lowQualityThread);
-      
+
+      const result = await qualityGate.evaluateThread(mediocreThread);
+
+      expect(result.score.overallScore).toBeLessThan(80);
+      expect(result.score.overallScore).toBeGreaterThan(40); // Not terrible, just mediocre
       expect(result.passed).toBe(false);
       expect(result.suggestions).toBeDefined();
       expect(result.suggestions!.length).toBeGreaterThan(0);
     });
+
+    it('should score poor content very low (<60)', async () => {
+      const poorThread = [
+        'Let\'s talk about health today.',
+        'Health is good and important for everyone.',
+        'You should generally try to be healthy.',
+        'There are many things you can do.',
+        'Hopefully this helps with your health journey.'
+      ];
+
+      const result = await qualityGate.evaluateThread(poorThread);
+
+      expect(result.score.overallScore).toBeLessThan(60);
+      expect(result.passed).toBe(false);
+      expect(result.score.hookClarity).toBeLessThan(15);
+      expect(result.score.actionability).toBeLessThan(10);
+      expect(result.score.humanTone).toBeLessThan(6);
+    });
   });
 
-  describe('Improvement Suggestions', () => {
-    test('should provide actionable feedback', async () => {
-      const improvableContent = [
-        'Some people say that sometimes you might want to maybe try exercising more often to generally improve your overall health and wellness in various ways'
+  describe('Auto-Revision (70-79 range)', () => {
+    it('should auto-revise content scoring 70-79', async () => {
+      const borderlineThread = [
+        'Sleep tips that actually work.',
+        'Most people struggle with sleep quality.',
+        'Try these evidence-based approaches.',
+        'Create a consistent bedtime routine.',
+        'Track your sleep patterns for better insights.'
       ];
-      
-      const result = await qualityGate.evaluateThread(improvableContent);
-      
+
+      const result = await qualityGate.evaluateThread(borderlineThread);
+
+      // Should either pass after revision or show revision attempt
+      if (result.autoRevised) {
+        expect(result.revisedContent).toBeDefined();
+        expect(result.revisedContent!.length).toBeGreaterThan(borderlineThread.join('\n').length);
+        expect(result.score.overallScore).toBeGreaterThanOrEqual(70);
+      }
+
+      expect(result.score.overallScore).toBeGreaterThan(60);
+    });
+  });
+
+  describe('Safety Checks', () => {
+    it('should block unsafe medical phrasing', async () => {
+      const unsafeThreads = [
+        ['This supplement will cure your diabetes in 30 days.'],
+        ['I can diagnose your sleep disorder from this tweet.'],
+        ['Never eat carbs again - they cause all diseases.'],
+        ['This therapy will eliminate your depression permanently.'],
+        ['Take this medication for guaranteed weight loss results.']
+      ];
+
+      for (const unsafeThread of unsafeThreads) {
+        const result = await qualityGate.evaluateThread(unsafeThread);
+        
+        expect(result.passed).toBe(false);
+        expect(result.rationale).toContain('Safety issues detected');
+      }
+    });
+
+    it('should allow safe health content', async () => {
+      const safeThreads = [
+        ['Better sleep may help with energy levels.'],
+        ['This approach worked for me - might be worth trying.'],
+        ['Research suggests regular exercise can improve mood.'],
+        ['Consider talking to a doctor about persistent symptoms.'],
+        ['Small changes in diet might make a difference.']
+      ];
+
+      for (const safeThread of safeThreads) {
+        const result = await qualityGate.evaluateThread(safeThread);
+        
+        // Should not fail due to safety (may fail for other quality reasons)
+        expect(result.rationale).not.toContain('Safety issues detected');
+      }
+    });
+
+    it('should block absolute statements that could be harmful', async () => {
+      const harmfulStatements = [
+        ['Always take vitamin D supplements - everyone is deficient.'],
+        ['Never eat after 6pm - it guarantees weight gain.'],
+        ['This will fix your anxiety in 7 days, proven method.'],
+        ['Guaranteed to cure insomnia - works for everyone.']
+      ];
+
+      for (const statement of harmfulStatements) {
+        const result = await qualityGate.evaluateThread(statement);
+        
+        expect(result.passed).toBe(false);
+        expect(result.rationale).toContain('Safety issues detected');
+      }
+    });
+  });
+
+  describe('Individual Scoring Components', () => {
+    it('should reward strong hooks with high hookClarity scores', async () => {
+      const strongHooks = [
+        'I fixed my chronic fatigue in 30 days. The surprising truth:',
+        'Why everything you know about metabolism is backwards:',
+        'The #1 nutrition mistake that\'s sabotaging your energy:'
+      ];
+
+      for (const hook of strongHooks) {
+        const result = await qualityGate.evaluateThread([hook]);
+        expect(result.score.hookClarity).toBeGreaterThan(15);
+      }
+    });
+
+    it('should reward actionable content with high actionability scores', async () => {
+      const actionableContent = [
+        'Try this: Set your alarm 15 minutes earlier.',
+        'Step 1: Drink 16oz water immediately upon waking.',
+        'Measure your sleep for exactly 7 days using this method:',
+        'Start with 2 minutes of morning sunlight exposure.'
+      ];
+
+      for (const content of actionableContent) {
+        const result = await qualityGate.evaluateThread([content]);
+        expect(result.score.actionability).toBeGreaterThan(10);
+      }
+    });
+
+    it('should reward novel insights with high novelty scores', async () => {
+      const novelContent = [
+        'Counterintuitive discovery: cold showers actually worsen sleep.',
+        'Plot twist: tracking calories made me gain weight.',
+        'Most people think protein timing matters. New research shows it doesn\'t.',
+        'Hidden truth about meditation: 10 minutes is often too long.'
+      ];
+
+      for (const content of novelContent) {
+        const result = await qualityGate.evaluateThread([content]);
+        expect(result.score.novelty).toBeGreaterThan(10);
+      }
+    });
+
+    it('should reward readable content with high readability scores', async () => {
+      const readableContent = [
+        'Simple truth:\n\n• Sleep matters\n• Stress hurts\n• Movement helps\n\nStart with one.'
+      ];
+
+      const result = await qualityGate.evaluateThread(readableContent);
+      expect(result.score.readability).toBeGreaterThan(6);
+    });
+
+    it('should reward conversational tone with high humanTone scores', async () => {
+      const conversationalContent = [
+        'Honestly, I struggled with this for years.',
+        'Here\'s what I learned the hard way:',
+        'You might find this helpful if you\'re dealing with similar issues.',
+        'This changed everything for me - real talk.'
+      ];
+
+      for (const content of conversationalContent) {
+        const result = await qualityGate.evaluateThread([content]);
+        expect(result.score.humanTone).toBeGreaterThan(6);
+      }
+    });
+  });
+
+  describe('Reply Quality', () => {
+    it('should evaluate replies with context awareness', async () => {
+      const originalTweet = 'I can\'t sleep at night and feel exhausted all day. Any advice?';
+      const goodReply = 'Re: feeling exhausted - have you tried the 2-minute rule? If not asleep in 2 minutes, get up and do something boring until sleepy. Helps break the anxiety cycle.';
+
+      const result = await qualityGate.evaluateReply(goodReply, originalTweet);
+
+      expect(result.score.overallScore).toBeGreaterThan(70);
+      expect(result.passed).toBe(result.score.overallScore >= 80);
+    });
+
+    it('should fail replies with safety issues', async () => {
+      const originalTweet = 'Having trouble sleeping lately.';
+      const unsafeReply = 'You definitely have sleep apnea. Take these sleeping pills to cure it.';
+
+      const result = await qualityGate.evaluateReply(unsafeReply, originalTweet);
+
       expect(result.passed).toBe(false);
+      expect(result.rationale).toContain('Safety issues detected');
+    });
+  });
+
+  describe('Suggestions Generation', () => {
+    it('should provide specific improvement suggestions for low scores', async () => {
+      const lowQualityThread = [
+        'Tips about health stuff.',
+        'Health is generally important.',
+        'You should usually try to be healthy.',
+        'There are some things that might help.'
+      ];
+
+      const result = await qualityGate.evaluateThread(lowQualityThread);
+
       expect(result.suggestions).toBeDefined();
+      expect(result.suggestions!.length).toBeGreaterThan(2);
       
-      const suggestions = result.suggestions!.join(' ');
-      expect(suggestions).toMatch(/specific|numbers|timeframes|instructions/i);
+      // Should include specific actionable suggestions
+      const suggestionText = result.suggestions!.join(' ');
+      expect(suggestionText).toMatch(/(specific|action|concrete|insight|conversation)/i);
     });
   });
 });

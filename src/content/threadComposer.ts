@@ -1,287 +1,225 @@
 /**
- * Thread Composer v2 - Narrative + utility focused thread generation
- * Creates coachy, evidence-aware threads with specific structure
+ * Thread Generator v2 - Structured templates with hook variety
+ * Coachy, evidence-aware, practical style for health content
  */
 
-interface ThreadTemplate {
-  hook: string;
-  context: string;
-  steps: string[];
-  proof: string;
-  pitfall: string;
-  cta: string;
+export interface ThreadTemplate {
+  type: 'mini' | 'deep' | 'checklist';
+  targetTweets: number;
+  hookPattern: string;
+  structure: string[];
+  description: string;
 }
 
-interface ThreadOptions {
-  topic: string;
-  targetLength: number;
-  avoidMedicalClaims: boolean;
+export interface ThreadResult {
+  tweets: string[];
+  template: ThreadTemplate;
+  qualityScore?: number;
 }
 
 export class ThreadComposer {
-  private readonly maxTweetLength = 260;
-  private readonly recentThreads: string[] = [];
-  private readonly maxRecentThreads = 10;
+  private readonly templates: ThreadTemplate[] = [
+    {
+      type: 'mini',
+      targetTweets: 4,
+      hookPattern: 'counterintuitive',
+      structure: [
+        'Hook: Counterintuitive insight about topic',
+        'Context: Why this matters for health',  
+        'Evidence: Research or personal experience',
+        'Action: One specific step to try'
+      ],
+      description: 'Quick insight thread with surprising angle'
+    },
+    {
+      type: 'mini',
+      targetTweets: 3,
+      hookPattern: 'before_after',
+      structure: [
+        'Hook: Before/after transformation',
+        'Method: What changed (specific)',
+        'How: Practical steps to replicate'
+      ],
+      description: 'Personal transformation story'
+    },
+    {
+      type: 'deep',
+      targetTweets: 8,
+      hookPattern: 'myth_vs_fact',
+      structure: [
+        'Hook: Common myth everyone believes',
+        'Problem: Why this myth is harmful',
+        'Truth: What research actually shows',
+        'Evidence: 2-3 specific studies/examples',
+        'Method: How to apply the truth',
+        'Steps: Specific implementation',
+        'Common mistake: What people get wrong',
+        'CTA: Challenge or experiment to try'
+      ],
+      description: 'Myth-busting deep dive with evidence'
+    },
+    {
+      type: 'deep',
+      targetTweets: 7,
+      hookPattern: 'framework',
+      structure: [
+        'Hook: Simple framework for complex problem',
+        'Context: Why existing approaches fail',
+        'Framework: 3-part system overview',
+        'Part 1: First principle with example',
+        'Part 2: Second principle with example', 
+        'Part 3: Third principle with example',
+        'Implementation: How to start today'
+      ],
+      description: 'Systematic framework breakdown'
+    },
+    {
+      type: 'checklist',
+      targetTweets: 6,
+      hookPattern: 'checklist',
+      structure: [
+        'Hook: 80/20 checklist for outcome',
+        'Context: Why most people overcomplicate this',
+        'Item 1: Most important factor (20% → 50% results)',
+        'Item 2: Second priority (easy win)',
+        'Item 3: Advanced optimization (for perfectionists)',
+        'Implementation: Start with item 1 only'
+      ],
+      description: 'Prioritized action checklist'
+    }
+  ];
+
+  private hookPatterns = {
+    counterintuitive: [
+      'The #1 {topic} advice is backwards',
+      'Everyone thinks {topic} works like X. It actually works like Y.',
+      'Counterintuitive truth about {topic}:',
+      'The {topic} industry doesn\'t want you to know this:',
+      'I thought {topic} was about X. Turns out it\'s about Y.'
+    ],
+    before_after: [
+      'Before: {negative state}. After: {positive state}. Here\'s what changed:',
+      'I fixed my {problem} in {timeframe}. The solution was surprisingly simple:',
+      '6 months ago I struggled with {issue}. Today it\'s solved. Here\'s how:',
+      'From {bad state} to {good state} in {timeframe}:'
+    ],
+    myth_vs_fact: [
+      'Myth: {common belief about topic}. Fact: {actual truth}.',
+      'The biggest {topic} myth (that everyone believes):',
+      'Stop believing this {topic} myth:',
+      '{topic} myth that\'s literally backwards:'
+    ],
+    framework: [
+      'Simple 3-step framework for {outcome}:',
+      'The {topic} framework that changed everything:',
+      'I use this {topic} system for {benefit}:',
+      'My 3-part {topic} method:'
+    ],
+    checklist: [
+      '80/20 {topic} checklist (3 things that matter most):',
+      'If you only do 3 things for {topic}, do these:',
+      'Essential {topic} checklist (ignore everything else):',
+      'The only {topic} checklist you need:'
+    ]
+  };
 
   /**
-   * Generate a narrative-driven thread with practical value
+   * Generate thread using specified template and topic
    */
-  async composeThread(options: ThreadOptions): Promise<string[]> {
-    const template = await this.buildThreadTemplate(options);
-    const tweets = this.formatThreadTweets(template);
+  async generateThread(topic: string, templateType?: 'mini' | 'deep' | 'checklist'): Promise<ThreadResult> {
+    // Select template (rotate to ensure variety)
+    const availableTemplates = templateType 
+      ? this.templates.filter(t => t.type === templateType)
+      : this.templates;
     
-    // Check originality against recent threads
-    if (this.isOriginal(tweets.join(' '))) {
-      this.storeRecentThread(tweets.join(' '));
-      return tweets;
+    const template = this.selectTemplate(availableTemplates);
+    const hookPattern = this.getHookPattern(template.hookPattern, topic);
+    
+    // Generate structured content
+    const tweets = await this.generateStructuredContent(template, topic, hookPattern);
+    
+    // Run originality check
+    const passesOriginality = await this.checkOriginality(tweets[0]);
+    
+    if (!passesOriginality) {
+      // Retry with different hook pattern
+      const altHookPattern = this.getAlternativeHook(template.hookPattern, topic);
+      const altTweets = await this.generateStructuredContent(template, topic, altHookPattern);
+      return { tweets: altTweets, template };
     }
     
-    // Retry once with variation
-    const alternateTemplate = await this.buildThreadTemplate({ 
-      ...options, 
-      topic: `alternative approach to ${options.topic}` 
-    });
-    const alternateTweets = this.formatThreadTweets(alternateTemplate);
-    
-    this.storeRecentThread(alternateTweets.join(' '));
-    return alternateTweets;
+    return { tweets, template };
   }
 
   /**
-   * Build structured thread template
+   * Select template with variety rotation
    */
-  private async buildThreadTemplate(options: ThreadOptions): Promise<ThreadTemplate> {
-    const hooks = this.generateHookVariations(options.topic);
-    const contextFrames = this.generateContextFrames(options.topic);
-    const ctaVariations = this.generateCTAVariations(options.topic);
-
-    return {
-      hook: this.selectRandom(hooks),
-      context: this.selectRandom(contextFrames),
-      steps: await this.generateActionableSteps(options.topic),
-      proof: this.generateProofStatement(options.topic),
-      pitfall: this.generatePitfallStatement(options.topic),
-      cta: this.selectRandom(ctaVariations)
-    };
+  private selectTemplate(templates: ThreadTemplate[]): ThreadTemplate {
+    // For now, random selection. Could add smart rotation based on recent usage
+    return templates[Math.floor(Math.random() * templates.length)];
   }
 
   /**
-   * Generate counter-intuitive or specific hooks
+   * Get hook pattern for template and topic
    */
-  private generateHookVariations(topic: string): string[] {
-    const patterns = [
-      `I fixed my [problem] by changing one [timeframe] habit.`,
-      `The [number] mistake everyone makes with [topic]:`,
-      `Why [conventional wisdom] about [topic] is backwards:`,
-      `[Number] things I wish I knew about [topic] 5 years ago:`,
-      `The [surprising thing] that transformed my [outcome]:`
-    ];
-
-    return patterns.map(pattern => 
-      this.customizePattern(pattern, topic)
-    ).slice(0, 3);
+  private getHookPattern(patternType: string, topic: string): string {
+    const patterns = this.hookPatterns[patternType as keyof typeof this.hookPatterns] || this.hookPatterns.counterintuitive;
+    const pattern = patterns[Math.floor(Math.random() * patterns.length)];
+    return pattern.replace(/{topic}/g, topic);
   }
 
   /**
-   * Generate outcome-focused context statements
+   * Get alternative hook pattern for retry
    */
-  private generateContextFrames(topic: string): string[] {
-    return [
-      `This matters because your energy and focus depend on getting this right.`,
-      `The difference between feeling drained vs energized often comes down to this.`,
-      `Small changes here compound into massive improvements over time.`,
-      `Most people overlook this, but it's the foundation of sustainable energy.`
-    ];
+  private getAlternativeHook(patternType: string, topic: string): string {
+    const allPatterns = Object.values(this.hookPatterns).flat();
+    const pattern = allPatterns[Math.floor(Math.random() * allPatterns.length)];
+    return pattern.replace(/{topic}/g, topic);
   }
 
   /**
-   * Generate 3-4 actionable steps with "how to do it today" bullets
+   * Generate structured content following template
    */
-  private async generateActionableSteps(topic: string): Promise<string[]> {
-    // This would integrate with your OpenAI client for dynamic generation
-    // For now, providing template structure:
-    
-    const stepTemplates = [
-      `Step 1: [Specific action] - do this [when/how] to [immediate benefit].`,
-      `Step 2: [Measurement/tracking] - track [specific metric] for [timeframe].`,
-      `Step 3: [Optimization] - adjust [specific variable] based on [signal/feedback].`,
-      `Step 4: [Consistency habit] - link this to [existing habit] for sustainability.`
-    ];
-
-    return stepTemplates.map(template => 
-      this.customizePattern(template, topic)
-    ).slice(0, 4);
-  }
-
-  /**
-   * Generate study reference or mini-result
-   */
-  private generateProofStatement(topic: string): string {
-    const proofPatterns = [
-      `Research from [Institution] shows [specific finding] in [timeframe].`,
-      `A [duration] study found [percentage] improvement in [outcome metric].`,
-      `Clinical data suggests [mechanism] leads to [measurable benefit].`,
-      `Personal result: [specific improvement] in [timeframe] using this approach.`
-    ];
-
-    return this.customizePattern(this.selectRandom(proofPatterns), topic);
-  }
-
-  /**
-   * Generate common mistake warning
-   */
-  private generatePitfallStatement(topic: string): string {
-    const pitfallPatterns = [
-      `Common mistake: [specific wrong approach] - this actually [negative outcome].`,
-      `Avoid [specific behavior] because it [mechanism of harm].`,
-      `Don't [common action] until you've [prerequisite step].`,
-      `The biggest trap: [specific mistake] that sabotages [desired outcome].`
-    ];
-
-    return this.customizePattern(this.selectRandom(pitfallPatterns), topic);
-  }
-
-  /**
-   * Generate specific CTAs that invite replies
-   */
-  private generateCTAVariations(topic: string): string[] {
-    return [
-      `What's your biggest challenge with [topic aspect]?`,
-      `Want a 7-day protocol for this?`,
-      `Which step are you going to try first?`,
-      `What questions do you have about [specific step]?`,
-      `Have you noticed [specific pattern] in your experience?`
-    ].map(cta => this.customizePattern(cta, topic));
-  }
-
-  /**
-   * Format template into tweet-sized chunks
-   */
-  private formatThreadTweets(template: ThreadTemplate): string[] {
+  private async generateStructuredContent(template: ThreadTemplate, topic: string, hookPattern: string): Promise<string[]> {
     const tweets: string[] = [];
     
-    // Tweet 1: Hook
-    tweets.push(this.truncateToLimit(template.hook));
+    // For now, return placeholder content. In real implementation, this would:
+    // 1. Send structured prompt to OpenAI based on template.structure
+    // 2. Include the hookPattern as the opening
+    // 3. Follow the evidence-aware, practical style guidelines
+    // 4. Ensure each tweet fits character limits
     
-    // Tweet 2: Context
-    tweets.push(this.truncateToLimit(template.context));
+    // Placeholder implementation:
+    tweets.push(hookPattern);
     
-    // Tweets 3-6: Steps
-    template.steps.forEach(step => {
-      tweets.push(this.truncateToLimit(step));
-    });
-    
-    // Tweet 7: Proof
-    tweets.push(this.truncateToLimit(template.proof));
-    
-    // Tweet 8: Pitfall
-    tweets.push(this.truncateToLimit(template.pitfall));
-    
-    // Tweet 9: CTA
-    tweets.push(this.truncateToLimit(template.cta));
-    
-    return tweets.filter(tweet => tweet.length > 0);
-  }
-
-  /**
-   * Check originality against recent threads using simple n-gram overlap
-   */
-  private isOriginal(content: string): boolean {
-    if (this.recentThreads.length === 0) return true;
-    
-    const newNgrams = this.extractNgrams(content, 3);
-    
-    for (const recentThread of this.recentThreads) {
-      const recentNgrams = this.extractNgrams(recentThread, 3);
-      const overlap = this.calculateOverlap(newNgrams, recentNgrams);
-      
-      if (overlap > 0.3) { // 30% overlap threshold
-        return false;
-      }
+    for (let i = 1; i < template.targetTweets; i++) {
+      const structureGuide = template.structure[i] || `Tweet ${i + 1} content`;
+      tweets.push(`${structureGuide} (placeholder for ${topic})`);
     }
     
-    return true;
+    return tweets;
   }
 
   /**
-   * Extract n-grams from text for similarity comparison
+   * Lightweight originality checker
    */
-  private extractNgrams(text: string, n: number): Set<string> {
-    const words = text.toLowerCase().split(/\s+/);
-    const ngrams = new Set<string>();
+  private async checkOriginality(hookTweet: string): Promise<boolean> {
+    // Simple check against common patterns that indicate low originality
+    const lowOriginalityPatterns = [
+      /here are \d+ tips/i,
+      /\d+ things you should know/i,
+      /let's talk about/i,
+      /today I want to share/i,
+      /thread about/i
+    ];
     
-    for (let i = 0; i <= words.length - n; i++) {
-      ngrams.add(words.slice(i, i + n).join(' '));
-    }
-    
-    return ngrams;
+    return !lowOriginalityPatterns.some(pattern => pattern.test(hookTweet));
   }
 
   /**
-   * Calculate overlap between two n-gram sets
+   * Get all available templates
    */
-  private calculateOverlap(set1: Set<string>, set2: Set<string>): number {
-    const intersection = new Set([...set1].filter(x => set2.has(x)));
-    const union = new Set([...set1, ...set2]);
-    return intersection.size / union.size;
-  }
-
-  /**
-   * Store recent thread for originality checking
-   */
-  private storeRecentThread(content: string): void {
-    this.recentThreads.push(content);
-    if (this.recentThreads.length > this.maxRecentThreads) {
-      this.recentThreads.shift();
-    }
-  }
-
-  /**
-   * Customize pattern with topic-specific content
-   */
-  private customizePattern(pattern: string, topic: string): string {
-    // Simple placeholder replacement - in production this would use LLM
-    return pattern
-      .replace(/\[topic\]/g, topic)
-      .replace(/\[timeframe\]/g, 'morning')
-      .replace(/\[number\]/g, '3')
-      .replace(/\[outcome\]/g, 'energy')
-      .replace(/\[problem\]/g, '2pm crash');
-  }
-
-  /**
-   * Truncate tweet to character limit while preserving readability
-   */
-  private truncateToLimit(text: string): string {
-    if (text.length <= this.maxTweetLength) {
-      return text;
-    }
-    
-    // Try to truncate at a sentence boundary
-    const sentences = text.split(/[.!?]+/);
-    let result = '';
-    
-    for (const sentence of sentences) {
-      const candidate = result + sentence + '.';
-      if (candidate.length <= this.maxTweetLength) {
-        result = candidate;
-      } else {
-        break;
-      }
-    }
-    
-    // If no good sentence break, truncate with ellipsis
-    if (result.length === 0) {
-      result = text.substring(0, this.maxTweetLength - 3) + '...';
-    }
-    
-    return result.trim();
-  }
-
-  /**
-   * Select random item from array
-   */
-  private selectRandom<T>(items: T[]): T {
-    return items[Math.floor(Math.random() * items.length)];
+  getAvailableTemplates(): ThreadTemplate[] {
+    return [...this.templates];
   }
 }
