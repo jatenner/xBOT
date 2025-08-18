@@ -63,7 +63,6 @@ export class DatabaseManager {
       this.pgPool = new Pool({
         connectionString: directDbUrl,
         ssl: { rejectUnauthorized: false },
-        lookup: lookupIPv4,
         max: 5,
         idleTimeoutMillis: 10000
       });
