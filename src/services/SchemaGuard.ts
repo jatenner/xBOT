@@ -134,7 +134,6 @@ export class SchemaGuard {
         this.directPool = new Pool({
           connectionString: directDbUrl,
           ssl: { rejectUnauthorized: false },
-          lookup: lookupIPv4,
           max: 2,
           idleTimeoutMillis: 5000
         });
