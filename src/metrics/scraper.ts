@@ -246,26 +246,45 @@ export class MetricsScraper {
   }
 
   private async scheduleSnapshot(post: any, intervalName: string): Promise<void> {
-    // This would typically be handled by a job queue, but for simplicity
-    // we'll execute immediately with some jitter
+    // Use jitter to distribute load
     const delay = Math.random() * 5000; // 0-5 second jitter
     
     setTimeout(async () => {
       try {
-        const { createContextWithSession } = await import('../utils/session');
-        const { chromium } = await import('playwright');
+        const { getBrowserManager } = await import('../lib/browser');
+        const browserManager = getBrowserManager();
         
-        const browser = await chromium.launch({ headless: true });
-        const context = await createContextWithSession(browser);
+        // Use shared browser context for metrics
+        const metrics = await browserManager.withSharedContext(
+          `metrics_${intervalName}`,
+          async (context: any) => {
+            return await this.scrapePostMetrics(post.id, post.permalink, context);
+          },
+          {
+            // Load Twitter session state
+            storageState: await this.getSessionState()
+          }
+        );
         
-        const metrics = await this.scrapePostMetrics(post.id, post.permalink, context);
-        await this.storeMetrics(metrics);
-        
-        await browser.close();
+        if (metrics) {
+          await this.storeMetrics(metrics);
+        } else {
+          console.warn(`⚠️ Metrics scraping failed for ${post.tweet_id} (${intervalName}) - circuit breaker may be open`);
+        }
         
       } catch (error: any) {
-        console.error(`Failed to scrape metrics for ${post.tweet_id}:`, error.message);
+        console.error(`❌ Failed to scrape metrics for ${post.tweet_id}:`, error.message);
       }
     }, delay);
+  }
+
+  private async getSessionState(): Promise<any> {
+    try {
+      const { loadSessionState } = await import('../utils/session');
+      return await loadSessionState();
+    } catch (error) {
+      console.warn('⚠️ Failed to load session state for metrics:', error);
+      return undefined;
+    }
   }
 }
