@@ -6,19 +6,14 @@
 // Process-lifetime self-heal tracking
 let hasTriggeredSelfHeal = false;
 
-// Get supabase client dynamically to avoid circular dependencies
+// Get admin supabase client for all database writes
 async function getSupabase() {
   try {
-    const { DatabaseManager } = await import('../lib/db');
-    const dbManager = DatabaseManager.getInstance();
-    return dbManager.getSupabaseClient();
+    const { getAdminClient } = await import('../lib/supabaseClients');
+    return await getAdminClient();
   } catch (error) {
-    // Fallback: create direct connection
-    const { createClient } = await import('@supabase/supabase-js');
-    const url = process.env.SUPABASE_URL;
-    const key = process.env.SUPABASE_ANON_KEY;
-    if (!url || !key) throw new Error('Missing Supabase credentials');
-    return createClient(url, key);
+    console.error('Failed to get admin Supabase client:', (error as Error).message);
+    throw new Error('Admin client unavailable for metrics storage');
   }
 }
 
@@ -86,8 +81,8 @@ export async function upsertTweetMetrics(metrics: TweetMetrics): Promise<{ ok: b
         console.log(`SCHEMA_SELF_HEAL: detected missing column; ensuring core schema + reload`);
         
         try {
-          const { ensureSchema } = await import('../infra/db/SchemaGuard');
-          await ensureSchema();
+          const { ensureSchemaAtBoot } = await import('../services/SchemaGuard');
+          await ensureSchemaAtBoot();
           
           // Retry the upsert once after schema healing
           const { error: retryError } = await supabase
@@ -214,8 +209,8 @@ export async function upsertLearningPost(post: LearningPost): Promise<{ ok: bool
         console.log(`SCHEMA_SELF_HEAL: detected missing column; ensuring core schema + reload`);
         
         try {
-          const { ensureSchema } = await import('../infra/db/SchemaGuard');
-          await ensureSchema();
+          const { ensureSchemaAtBoot } = await import('../services/SchemaGuard');
+          await ensureSchemaAtBoot();
           
           // Retry the upsert once after schema healing
           const { error: retryError } = await supabase

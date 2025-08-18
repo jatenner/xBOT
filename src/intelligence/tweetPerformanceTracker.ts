@@ -1,4 +1,5 @@
-import { Browser, Page } from 'playwright';
+import { Page } from 'playwright';
+import BrowserManager from '../core/BrowserManager';
 
 export interface TweetMetrics {
   tweetId: string;
@@ -26,7 +27,8 @@ export interface FollowerGrowthData {
  */
 export class TweetPerformanceTracker {
   private static instance: TweetPerformanceTracker;
-  private browser: Browser | null = null;
+  private consecutiveFailures = 0;
+  private pausedUntil: Date | null = null;
 
   private constructor() {}
 
@@ -41,10 +43,17 @@ export class TweetPerformanceTracker {
    * Track tweet performance via browser automation
    */
   public async trackTweetPerformance(tweetUrl: string): Promise<TweetMetrics> {
+    // Check if paused due to consecutive failures
+    if (this.pausedUntil && new Date() < this.pausedUntil) {
+      const remainingMs = this.pausedUntil.getTime() - Date.now();
+      throw new Error(`Tweet tracking paused for ${Math.ceil(remainingMs / 60000)} more minutes due to consecutive failures`);
+    }
+    
     console.log('📊 Tracking tweet performance via browser automation...');
     
     try {
-      const page = await this.getBrowserPage();
+      return await BrowserManager.withContext(async (context) => {
+        const page = await context.newPage();
       
       // Navigate to the tweet
       await page.goto(tweetUrl);
@@ -120,17 +129,35 @@ export class TweetPerformanceTracker {
     // Get view count from analytics if available
     const views = await this.getTweetViews(page);
     
-    return {
-      tweetId,
-      likes,
-      retweets, 
-      replies,
-      bookmarks,
-      views,
-      profileClicks: 0, // Would need Twitter Analytics API
-      newFollowers: 0,  // Will be calculated separately
-      timestamp: new Date()
-    };
+        return {
+          tweetId,
+          likes,
+          retweets, 
+          replies,
+          bookmarks,
+          views,
+          profileClicks: 0, // Would need Twitter Analytics API
+          newFollowers: 0,  // Will be calculated separately
+          timestamp: new Date()
+        };
+      });
+      
+      // Reset failure count on success
+      this.consecutiveFailures = 0;
+      this.pausedUntil = null;
+      
+    } catch (error: any) {
+      this.consecutiveFailures++;
+      
+      if (this.consecutiveFailures >= 3) {
+        // Pause for 10 minutes after 3 consecutive failures
+        this.pausedUntil = new Date(Date.now() + 10 * 60 * 1000);
+        console.warn(`📊 Tweet tracking paused for 10 minutes after ${this.consecutiveFailures} consecutive failures`);
+      }
+      
+      console.error('📊 Tweet performance tracking failed:', error.message);
+      throw error;
+    }
   }
 
   /**
@@ -233,8 +260,10 @@ export class TweetPerformanceTracker {
    */
   public async getCurrentFollowerCount(): Promise<number> {
     try {
-      const page = await this.getBrowserPage();
-      return await this.getFollowerCount(page);
+      return await BrowserManager.withContext(async (context) => {
+        const page = await context.newPage();
+        return await this.getFollowerCount(page);
+      });
     } catch (error) {
       console.warn('Failed to get current follower count');
       return 0;
@@ -279,21 +308,7 @@ export class TweetPerformanceTracker {
     }
   }
 
-  /**
-   * Get or create browser page
-   */
-  private async getBrowserPage(): Promise<Page> {
-    if (!this.browser) {
-      const playwright = await import('playwright');
-      this.browser = await playwright.chromium.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
-      });
-    }
 
-    const context = await this.browser.newContext();
-    return await context.newPage();
-  }
 
   /**
    * Extract tweet ID from URL
