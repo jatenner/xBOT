@@ -6,16 +6,8 @@
 // Process-lifetime self-heal tracking
 let hasTriggeredSelfHeal = false;
 
-// Get admin supabase client for all database writes
-async function getSupabase() {
-  try {
-    const { getAdminClient } = await import('../lib/supabaseClients');
-    return await getAdminClient();
-  } catch (error) {
-    console.error('Failed to get admin Supabase client:', (error as Error).message);
-    throw new Error('Admin client unavailable for metrics storage');
-  }
-}
+// Import admin supabase client for all database writes
+import { admin } from '../lib/supabaseClients';
 
 export interface TweetMetrics {
   tweet_id: string;
@@ -46,7 +38,7 @@ export interface LearningPost {
  */
 export async function upsertTweetMetrics(metrics: TweetMetrics): Promise<{ ok: boolean; retryable: boolean }> {
   try {
-    const supabase = await getSupabase();
+    const supabase = admin;
     const collected_at = metrics.collected_at || new Date().toISOString();
     
     const row = {
@@ -63,7 +55,7 @@ export async function upsertTweetMetrics(metrics: TweetMetrics): Promise<{ ok: b
     const { error } = await supabase
       .from('tweet_metrics')
       .upsert([row], { 
-        onConflict: 'tweet_id,collected_at',
+        onConflict: 'tweet_id',
         ignoreDuplicates: false 
       });
 
@@ -88,7 +80,7 @@ export async function upsertTweetMetrics(metrics: TweetMetrics): Promise<{ ok: b
           const { error: retryError } = await supabase
             .from('tweet_metrics')
             .upsert([row], { 
-              onConflict: 'tweet_id,collected_at',
+              onConflict: 'tweet_id',
               ignoreDuplicates: false 
             });
           
@@ -164,7 +156,7 @@ export async function upsertTweetMetrics(metrics: TweetMetrics): Promise<{ ok: b
  */
 export async function upsertLearningPost(post: LearningPost): Promise<{ ok: boolean; retryable: boolean }> {
   try {
-    const supabase = await getSupabase();
+    const supabase = admin;
     const created_at = post.created_at || new Date().toISOString();
     
     // Calculate viral potential score if not provided
@@ -397,7 +389,7 @@ export async function updatePostMetrics(params: {
   
   // Update learning_posts (latest data)
   try {
-    const supabase = await getSupabase();
+    const supabase = admin;
     
     const { error } = await supabase
       .from('learning_posts')

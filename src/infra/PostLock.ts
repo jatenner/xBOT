@@ -4,7 +4,8 @@ import os from 'os';
 
 const TTL = parseInt(process.env.POST_LOCK_TTL_MS || '480000', 10); // 8 minutes
 const HEARTBEAT_MS = 30_000; // 30 seconds
-const KEY = 'xbot:lock:posting';
+const KEY_PREFIX = process.env.REDIS_PREFIX || 'prod:';
+const KEY = `${KEY_PREFIX}xbot:lock:posting`;
 
 interface LockInfo {
   owner: string;
