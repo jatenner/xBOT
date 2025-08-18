@@ -52,6 +52,7 @@
     "migrate:meta": "tsx scripts/run-meta-migration.ts",
     "verify:schema": "tsx scripts/verify-schema.ts",
     "migrate:apply": "tsx scripts/apply-migration.ts",
+    "migrate:prod": "./scripts/migrate-production.sh",
     "test:cadence": "jest tests/cadence.test.ts",
     "test:reply": "jest tests/reply.test.ts",
     "test:quality": "jest tests/quality.test.ts",
