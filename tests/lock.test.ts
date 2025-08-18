@@ -5,6 +5,7 @@
 
 import Redis from 'ioredis';
 import { PostLock } from '../src/infra/PostLock';
+import { skipIfMissingEnv } from './setup';
 
 describe('PostLock', () => {
   let redis: Redis;
@@ -12,11 +13,26 @@ describe('PostLock', () => {
   let lock2: PostLock;
 
   beforeAll(async () => {
-    // Use test Redis database or mock
-    const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
-    redis = new Redis(redisUrl, { db: 15 }); // Use test db
-    lock1 = new PostLock(redis);
-    lock2 = new PostLock(redis);
+    if (skipIfMissingEnv(['REDIS_URL'], 'PostLock tests')) {
+      return;
+    }
+
+    // Use test Redis database
+    const redisUrl = process.env.REDIS_URL;
+    redis = new Redis(redisUrl, { 
+      db: 15, // Use test db
+      connectTimeout: 5000,
+      lazyConnect: true
+    });
+    
+    try {
+      await redis.ping();
+      lock1 = new PostLock(redis);
+      lock2 = new PostLock(redis);
+    } catch (error) {
+      console.warn('Redis connection failed, skipping PostLock tests');
+      return;
+    }
   });
 
   afterAll(async () => {
@@ -29,6 +45,12 @@ describe('PostLock', () => {
   });
 
   describe('Basic Lock Operations', () => {
+    beforeEach(() => {
+      if (!redis) {
+        pending('Redis not available - skipping test');
+      }
+    });
+
     it('should acquire lock when available', async () => {
       const acquired = await lock1.acquire('test operation');
       expect(acquired).toBe(true);
