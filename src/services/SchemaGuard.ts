@@ -147,6 +147,15 @@ export class SchemaGuard {
    * Ensure schema via preferred method: pg-meta -> direct DB -> degraded mode
    */
   async ensureSchema(): Promise<void> {
+    // First, check if schema is already working by testing PostgREST columns
+    try {
+      await this.verifyPostgrestColumns();
+      console.info('SCHEMA_GUARD: schema already working, skipping migration');
+      return;
+    } catch (verifyError) {
+      console.info('SCHEMA_GUARD: schema verification failed, applying migration');
+    }
+
     // Method 1: Try pg-meta first (preferred)
     if (this.metaRunner) {
       console.info('SCHEMA_GUARD: using Supabase Meta ' + (process.env.SUPABASE_PG_META_PATH || '/pg/sql'));
@@ -175,11 +184,18 @@ export class SchemaGuard {
       }
     }
 
-    // Method 3: Degraded mode - log once and continue
-    if (!hasLoggedSchemaError) {
-      console.error('🚨 SCHEMA_GUARD: DEGRADED MODE - No pg-meta or direct DB available');
-      console.error('🚨 Metrics storage may fail until schema is manually applied');
-      hasLoggedSchemaError = true;
+    // Method 3: Check if schema is working despite migration failures
+    try {
+      await this.verifyPostgrestColumns();
+      console.info('SCHEMA_GUARD: schema working despite migration issues - continuing');
+      return;
+    } catch (finalVerifyError) {
+      // Method 4: True degraded mode - log once and continue
+      if (!hasLoggedSchemaError) {
+        console.error('🚨 SCHEMA_GUARD: DEGRADED MODE - Schema migration and verification failed');
+        console.error('🚨 Metrics storage may fail until schema is manually applied');
+        hasLoggedSchemaError = true;
+      }
     }
   }
 
