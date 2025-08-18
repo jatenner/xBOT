@@ -6,6 +6,7 @@
 
 import express from 'express';
 import { SessionLoader } from './utils/sessionLoader';
+import { systemMetrics } from './monitoring/SystemMetrics';
 
 export interface HealthServerStatus {
   server?: any;
@@ -190,6 +191,114 @@ export function startHealthServer(): Promise<void> {
           playwright: healthServerStatus.playwrightStatus,
           twitter_config: 'check_failed',
           message: 'Environment check error but server is alive'
+        });
+      }
+    });
+
+    // =====================================
+    // 📊 METRICS & TELEMETRY ENDPOINTS
+    // =====================================
+
+    // System metrics endpoint
+    app.get('/metrics', (_req, res) => {
+      try {
+        const stats = systemMetrics.getStats();
+        const health = systemMetrics.getHealthStatus();
+        
+        res.json({
+          timestamp: new Date().toISOString(),
+          uptime: Date.now() - healthServerStatus.startTime.getTime(),
+          stats,
+          health,
+          summary: {
+            totalPosts: stats.posts.total,
+            successRate: `${(stats.posts.successRate * 100).toFixed(1)}%`,
+            avgQuality: stats.posts.averageQualityScore.toFixed(1),
+            lockContentions: stats.locks.contentions,
+            browserCrashes: stats.browser.crashes,
+            lastError: stats.errors
+          }
+        });
+      } catch (error) {
+        res.status(500).json({ 
+          error: 'Failed to get metrics', 
+          details: error instanceof Error ? error.message : String(error) 
+        });
+      }
+    });
+
+    // Prometheus metrics endpoint  
+    app.get('/metrics/prometheus', (_req, res) => {
+      try {
+        res.set('Content-Type', 'text/plain');
+        res.send(systemMetrics.exportPrometheus());
+      } catch (error) {
+        res.status(500).send(`# Error generating metrics: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    });
+
+    // Recent events endpoint
+    app.get('/metrics/events', (req, res) => {
+      try {
+        const limit = parseInt(req.query.limit as string) || 100;
+        const type = req.query.type as string;
+        
+        const events = type 
+          ? systemMetrics.getMetricsByType(type, limit)
+          : systemMetrics.getRecentMetrics(limit);
+        
+        res.json({
+          events,
+          count: events.length,
+          types: [...new Set(systemMetrics.getRecentMetrics(1000).map(e => e.type))]
+        });
+      } catch (error) {
+        res.status(500).json({ 
+          error: 'Failed to get events', 
+          details: error instanceof Error ? error.message : String(error) 
+        });
+      }
+    });
+
+    // Performance dashboard data
+    app.get('/metrics/dashboard', (_req, res) => {
+      try {
+        const stats = systemMetrics.getStats();
+        const recentEvents = systemMetrics.getRecentMetrics(1000);
+        const last24h = systemMetrics.getMetricsInWindow(Date.now() - 24*60*60*1000, Date.now());
+        
+        // Calculate hourly breakdown
+        const hourlyBreakdown: Record<string, number> = {};
+        for (let i = 0; i < 24; i++) {
+          const hour = new Date(Date.now() - i*60*60*1000).getHours();
+          hourlyBreakdown[hour] = last24h.filter(e => 
+            new Date(e.timestamp).getHours() === hour && e.type === 'post.success'
+          ).length;
+        }
+
+        res.json({
+          overview: {
+            totalPosts: stats.posts.total,
+            successRate: stats.posts.successRate,
+            avgQuality: stats.posts.averageQualityScore,
+            health: systemMetrics.getHealthStatus().status
+          },
+          breakdown: {
+            posts: stats.posts.formatBreakdown,
+            quality: stats.quality.scoreDistribution,
+            errors: stats.errors,
+            hourly: hourlyBreakdown
+          },
+          trends: {
+            recentSuccess: recentEvents.filter(e => e.type === 'post.success').length,
+            recentFailures: recentEvents.filter(e => e.type === 'post.failure').length,
+            qualityTrend: recentEvents.filter(e => e.type === 'quality.score').map(e => e.value)
+          }
+        });
+      } catch (error) {
+        res.status(500).json({ 
+          error: 'Failed to get dashboard data', 
+          details: error instanceof Error ? error.message : String(error) 
         });
       }
     });

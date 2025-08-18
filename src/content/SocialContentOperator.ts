@@ -8,6 +8,7 @@
 import { QualityGate } from './qualityGate';
 import { ThreadComposer } from './threadComposer';
 import { ReplyEngine } from '../reply/replyEngine';
+import { banditOptimizer } from '../intelligence/BanditOptimizer';
 
 interface BrandProfile {
   identity: {

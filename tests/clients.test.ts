@@ -3,10 +3,25 @@
  * Verifies anon client fails writes, admin client succeeds
  */
 
-import { admin, anon } from '../src/lib/supabaseClients';
+import { skipIfMissingEnv } from './setup';
+
+// Only import Supabase clients if environment is available
+let admin: any, anon: any;
+
+if (!skipIfMissingEnv(['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_ANON_KEY'], 'Supabase client tests')) {
+  const clients = require('../src/lib/supabaseClients');
+  admin = clients.admin;
+  anon = clients.anon;
+}
 
 describe('Supabase Clients', () => {
   const testTweetId = `test_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+  beforeEach(() => {
+    if (!admin || !anon) {
+      pending('Supabase environment not available - skipping test');
+    }
+  });
 
   afterAll(async () => {
     // Cleanup any test data

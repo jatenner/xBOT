@@ -7,6 +7,8 @@ import { storeLearningPost } from '../db/index';
 import { getPostLock } from '../infra/postLockInstance';
 import { throttledWarn } from '../utils/throttledWarn';
 import { browserManager } from './BrowserManager';
+import { systemMetrics } from '../monitoring/SystemMetrics';
+import { formatDecisioner } from './FormatDecisioner';
 
 /**
  * Posting phases for clear logging
@@ -95,10 +97,29 @@ export class PostingOrchestrator {
     corrId: string
   ): Promise<PostingResult> {
     let currentPhase = PostingPhase.CADENCE_CHECK;
+    let chosenFormat: 'single' | 'thread' | 'reply' = 'single';
+    let qualityScore = 0;
 
     try {
       console.log('🚀 POST_ORCHESTRATOR: Starting posting workflow');
       console.log(`📝 Request: ${JSON.stringify(request)}`);
+
+      // Decide format using FormatDecisioner if not specified
+      if (!request.format) {
+        const decision = await formatDecisioner.decidePostFormat({
+          topic: request.topic,
+          urgency: 'normal',
+          targetEngagement: 'educational'
+        });
+        chosenFormat = decision.format === 'reply' ? 'single' : decision.format; // Convert reply to single for now
+        console.log(`🎯 FORMAT_DECISION: ${decision.format} (${decision.confidence.toFixed(2)} confidence) - ${decision.reasoning}`);
+        systemMetrics.record('format.decision', decision.confidence, { 
+          format: decision.format, 
+          reasoning: decision.reasoning.substring(0, 100) 
+        });
+      } else {
+        chosenFormat = request.format;
+      }
 
       // Phase 1: Cadence Check
       currentPhase = PostingPhase.CADENCE_CHECK;
@@ -270,6 +291,11 @@ export class PostingOrchestrator {
                     await this.storePostData(normalizedContent, rootTweetId, singleQuality.score);
                     await CadenceGuard.markPostSuccess();
                     
+                    // Record success metrics
+                    systemMetrics.record('post.success', 1, { format: 'single' });
+                    systemMetrics.record('quality.score', singleQuality.score, { format: 'single', revised: 'false' });
+                    formatDecisioner.updatePerformance('single', true, singleQuality.score);
+                    
                     return {
                       success: true,
                       phase: PostingPhase.DONE,
@@ -396,6 +422,11 @@ export class PostingOrchestrator {
         
         console.log(`✅ ${currentPhase}: Posting workflow completed successfully in ${totalTime}ms`);
 
+        // Record success metrics for thread
+        systemMetrics.record('post.success', 1, { format: 'thread' });
+        systemMetrics.record('quality.score', qualityScore, { format: 'thread', revised: 'false' });
+        formatDecisioner.updatePerformance('thread', true, qualityScore);
+
         return {
           success: true,
           phase: currentPhase,
@@ -421,6 +452,28 @@ export class PostingOrchestrator {
 
     } catch (error) {
       console.error(`❌ ${currentPhase}: Posting workflow failed:`, error);
+      
+      // Record failure metrics
+      systemMetrics.record('post.failure', 1, { 
+        format: chosenFormat, 
+        phase: currentPhase,
+        error: error instanceof Error ? error.message.substring(0, 100) : 'unknown'
+      });
+      formatDecisioner.updatePerformance(chosenFormat, false, qualityScore || 0);
+      
+      // Categorize error type
+      if (error instanceof Error) {
+        if (error.message.includes('playwright') || error.message.includes('browser')) {
+          systemMetrics.record('error.playwright', 1);
+        } else if (error.message.includes('database') || error.message.includes('supabase')) {
+          systemMetrics.record('error.database', 1);
+        } else if (error.message.includes('content') || error.message.includes('quality')) {
+          systemMetrics.record('error.content', 1);
+        } else if (error.message.includes('network') || error.message.includes('fetch')) {
+          systemMetrics.record('error.network', 1);
+        }
+      }
+      
       return {
         success: false,
         phase: PostingPhase.FAILED,

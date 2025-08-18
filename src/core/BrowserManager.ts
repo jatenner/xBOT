@@ -4,6 +4,7 @@
  */
 
 import { Browser, BrowserContext, chromium, Page } from 'playwright';
+import { systemMetrics } from '../monitoring/SystemMetrics';
 
 interface BrowserOptions {
   slowMo?: number;
@@ -52,6 +53,8 @@ class BrowserManager {
       // Check for common "closed" errors
       if (this.isClosedError(errorMsg)) {
         console.warn('BROWSER: Context closed during operation, recreating and retrying once');
+        systemMetrics.record('browser.context.recreate', 1, { error: errorMsg.substring(0, 50) });
+        systemMetrics.record('browser.crash', 1);
         
         // Recreate context and retry exactly once
         await this.createContext();
@@ -94,6 +97,7 @@ class BrowserManager {
     for (let attempt = 0; attempt < this.maxRetries; attempt++) {
       try {
         console.info(`BROWSER: Launching (attempt ${attempt + 1}/${this.maxRetries})`);
+        systemMetrics.record('browser.launch', 1, { attempt: (attempt + 1).toString() });
         
         this.browser = await chromium.launch({
           headless: this.options.headless,
