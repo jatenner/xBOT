@@ -26,10 +26,6 @@ function buildUrlFromParts(): string | undefined {
   return undefined;
 }
 
-function hasSupabaseService(): boolean {
-  return !!(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
-}
-
 // One-time logging to prevent spam
 let hasLoggedSkip = false;
 
@@ -84,8 +80,10 @@ export class SchemaGuard {
         idleTimeoutMillis: 10_000,
       });
     }
-    if (hasSupabaseService()) {
-      this.admin = new SupabaseAdmin();
+    // Initialize SupabaseAdmin if it has credentials
+    this.admin = new SupabaseAdmin();
+    if (!this.admin.available()) {
+      this.admin = undefined;
     }
   }
 
