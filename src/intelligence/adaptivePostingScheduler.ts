@@ -61,7 +61,9 @@ export class AdaptivePostingScheduler {
     const currentHour = new Date().getHours();
     const currentMinute = new Date().getMinutes();
     
-    console.log('🧠 Analyzing optimal posting opportunity...');
+    // Use intelligent logging to prevent spam
+    const { logInfo } = await import('../utils/intelligentLogging');
+    logInfo('🧠 Analyzing optimal posting opportunity...');
 
     // Parallel analysis of multiple factors
     const [

@@ -21,7 +21,7 @@ class BrowserManager {
   
   // Resource management
   private activeContexts = 0;
-  private readonly maxConcurrentContexts = 3;
+  private readonly maxConcurrentContexts = 1; // Emergency: Reduced to 1 to prevent context leak
   private lastLaunchAttempt = 0;
   private readonly minLaunchInterval = 5000; // 5 seconds between launches
   private resourceExhausted = false;
@@ -54,8 +54,26 @@ class BrowserManager {
 
     // Check concurrent context limit
     if (this.activeContexts >= this.maxConcurrentContexts) {
-      console.warn(`BROWSER: Max concurrent contexts reached (${this.activeContexts}/${this.maxConcurrentContexts})`);
-      await this.sleep(2000); // Brief wait for contexts to clean up
+      console.log(`🚨 BROWSER: Emergency context cleanup - force closing all contexts (${this.activeContexts}/${this.maxConcurrentContexts})`);
+      
+      // Force cleanup all contexts
+      if (this.browser) {
+        try {
+          const contexts = this.browser.contexts();
+          for (const ctx of contexts) {
+            if (ctx) {
+              await ctx.close().catch(() => {}); // Ignore errors
+            }
+          }
+          this.activeContexts = 0;
+          console.log(`✅ BROWSER: Emergency cleanup completed, contexts reset to 0`);
+        } catch (error) {
+          console.error(`❌ BROWSER: Emergency cleanup failed:`, error);
+          this.activeContexts = 0; // Reset anyway
+        }
+      }
+      
+      await this.sleep(5000); // Longer wait after emergency cleanup
     }
 
     if (this.isContextValid()) {

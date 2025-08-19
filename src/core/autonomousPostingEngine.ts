@@ -3,12 +3,15 @@ import { AdaptivePostingScheduler } from '../intelligence/adaptivePostingSchedul
 import { TweetPerformanceTracker } from '../intelligence/tweetPerformanceTracker';
 import { IntelligentLearningEngine } from '../intelligence/intelligentLearningEngine';
 import { FollowerGrowthOptimizer } from '../intelligence/followerGrowthOptimizer';
+import { logInfo, logWarn } from '../utils/intelligentLogging';
 
 export class AutonomousPostingEngine {
   private static instance: AutonomousPostingEngine;
   private isRunning = false;
   private scheduler: AdaptivePostingScheduler;
   private intelligentTimerInterval: NodeJS.Timeout | null = null;
+  private lastPostAttempt = 0;
+  private isPosting = false;
   private browserPoster: any = null;
   private performanceTracker: TweetPerformanceTracker;
   private learningEngine: IntelligentLearningEngine;
@@ -91,14 +94,34 @@ export class AutonomousPostingEngine {
         const dynamicThreshold = await this.calculateDynamicThreshold();
         
         if (opportunity.score > dynamicThreshold) {
+          // EMERGENCY Rate limiting: minimum 5 minutes between post attempts
+          const timeSinceLastAttempt = Date.now() - this.lastPostAttempt;
+          if (timeSinceLastAttempt < 300000) { // 5 minutes instead of 2
+            logInfo(`⏳ EMERGENCY Rate limiting: Last attempt ${Math.round(timeSinceLastAttempt/1000)}s ago, waiting ${Math.round((300000-timeSinceLastAttempt)/1000)}s more...`);
+            return;
+          }
+
+          // Concurrency check: don't start new post if one is in progress
+          if (this.isPosting) {
+            console.log(`⚠️ Post already in progress, skipping this opportunity`);
+            return;
+          }
+
           console.log(`🎯 Posting opportunity detected! Score: ${Math.round(opportunity.score)}/100 (threshold: ${dynamicThreshold})`);
           console.log(`📝 Reason: ${opportunity.reason}`);
           console.log(`⚡ Urgency: ${opportunity.urgency}`);
           
-          // Execute intelligent post
-          this.executeIntelligentPost(opportunity).catch(console.error);
+          // Execute intelligent post with concurrency control
+          this.lastPostAttempt = Date.now();
+          this.isPosting = true;
+          
+          this.executeIntelligentPost(opportunity)
+            .catch(console.error)
+            .finally(() => {
+              this.isPosting = false;
+            });
         } else {
-          console.log(`⏳ Waiting for better opportunity. Current score: ${Math.round(opportunity.score)}/100 (need: ${dynamicThreshold}) - ${opportunity.reason}`);
+          logInfo(`⏳ Waiting for better opportunity. Current score: ${Math.round(opportunity.score)}/100 (need: ${dynamicThreshold}) - ${opportunity.reason}`);
             }
           } catch (error) {
         console.error('❌ Error in intelligent posting analysis:', error);
@@ -344,8 +367,8 @@ Example format: "Did you know [surprising fact]? Here's why: [science]. Try this
     try {
       const recentMetrics = await this.getRecentPerformanceMetrics();
       
-      // Base threshold starts at 40 (between old 35 and 50)
-      let threshold = 40;
+      // EMERGENCY: Base threshold starts at 70 to prevent spam loop
+      let threshold = 70;
       
       // ADJUST BASED ON RECENT PERFORMANCE
       if (recentMetrics.avgEngagement > 5) {

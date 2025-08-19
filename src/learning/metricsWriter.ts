@@ -179,9 +179,10 @@ export async function getRecentPosts(limit: number = 30): Promise<Array<{
   engagement: number;
 }>> {
   try {
-    const supabase = await getSupabase();
+    // Use admin client for database operations
+    const { admin } = await import('../lib/supabaseClients');
     
-    const { data, error } = await supabase
+    const { data, error } = await admin
       .from('learning_posts')
       .select('tweet_id, created_at, likes_count, retweets_count, replies_count, content')
       .order('created_at', { ascending: false })
