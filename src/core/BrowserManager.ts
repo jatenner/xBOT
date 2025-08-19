@@ -18,6 +18,14 @@ class BrowserManager {
   private retryCount = 0;
   private readonly maxRetries = 5;
   private readonly baseBackoffMs = 1000;
+  
+  // Resource management
+  private activeContexts = 0;
+  private readonly maxConcurrentContexts = 3;
+  private lastLaunchAttempt = 0;
+  private readonly minLaunchInterval = 5000; // 5 seconds between launches
+  private resourceExhausted = false;
+  private lastResourceCheck = 0;
 
   private get options(): BrowserOptions {
     return {
@@ -28,9 +36,28 @@ class BrowserManager {
   }
 
   /**
-   * Ensure we have a working browser context
+   * Ensure we have a working browser context with resource management
    */
   async ensureContext(): Promise<BrowserContext> {
+    // Check for resource exhaustion
+    if (this.resourceExhausted && Date.now() - this.lastResourceCheck < 30000) {
+      throw new Error('Browser resources exhausted, waiting for recovery');
+    }
+
+    // Rate limit launch attempts
+    const timeSinceLastLaunch = Date.now() - this.lastLaunchAttempt;
+    if (timeSinceLastLaunch < this.minLaunchInterval) {
+      const waitTime = this.minLaunchInterval - timeSinceLastLaunch;
+      console.log(`BROWSER: Rate limiting launch, waiting ${waitTime}ms`);
+      await this.sleep(waitTime);
+    }
+
+    // Check concurrent context limit
+    if (this.activeContexts >= this.maxConcurrentContexts) {
+      console.warn(`BROWSER: Max concurrent contexts reached (${this.activeContexts}/${this.maxConcurrentContexts})`);
+      await this.sleep(2000); // Brief wait for contexts to clean up
+    }
+
     if (this.isContextValid()) {
       return this.context!;
     }
@@ -44,11 +71,21 @@ class BrowserManager {
    */
   async withContext<T>(fn: (context: BrowserContext) => Promise<T>): Promise<T> {
     const context = await this.ensureContext();
+    this.activeContexts++;
     
     try {
       return await fn(context);
     } catch (error) {
       const errorMsg = (error as Error).message;
+      
+      // Check for resource exhaustion
+      if (errorMsg.includes('EAGAIN') || errorMsg.includes('spawn') || errorMsg.includes('ENOMEM')) {
+        this.resourceExhausted = true;
+        this.lastResourceCheck = Date.now();
+        systemMetrics.record('browser.resource.exhaustion', 1);
+        console.error('BROWSER: Resource exhaustion detected, entering recovery mode');
+        throw new Error('Browser resource exhaustion - system in recovery mode');
+      }
       
       // Check for common "closed" errors
       if (this.isClosedError(errorMsg)) {
@@ -63,7 +100,16 @@ class BrowserManager {
       }
       
       throw error;
+    } finally {
+      this.activeContexts = Math.max(0, this.activeContexts - 1);
     }
+  }
+
+  /**
+   * Sleep utility for rate limiting
+   */
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   /**
@@ -94,10 +140,17 @@ class BrowserManager {
   private async createContext(): Promise<void> {
     await this.cleanup();
 
+    this.lastLaunchAttempt = Date.now();
+    
     for (let attempt = 0; attempt < this.maxRetries; attempt++) {
       try {
         console.info(`BROWSER: Launching (attempt ${attempt + 1}/${this.maxRetries})`);
         systemMetrics.record('browser.launch', 1, { attempt: (attempt + 1).toString() });
+        
+        // Reset resource exhaustion flag on successful launch attempt
+        if (attempt === 0) {
+          this.resourceExhausted = false;
+        }
         
         this.browser = await chromium.launch({
           headless: this.options.headless,

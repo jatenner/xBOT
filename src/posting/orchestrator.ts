@@ -9,6 +9,8 @@ import { throttledWarn } from '../utils/throttledWarn';
 import { browserManager } from './BrowserManager';
 import { systemMetrics } from '../monitoring/SystemMetrics';
 import { formatDecisioner } from './FormatDecisioner';
+import { logInfo, logWarn, logError } from '../utils/intelligentLogging';
+import { withRecovery } from '../utils/errorRecovery';
 
 /**
  * Posting phases for clear logging
@@ -101,8 +103,8 @@ export class PostingOrchestrator {
     let qualityScore = 0;
 
     try {
-      console.log('🚀 POST_ORCHESTRATOR: Starting posting workflow');
-      console.log(`📝 Request: ${JSON.stringify(request)}`);
+      logInfo('🚀 POST_ORCHESTRATOR: Starting posting workflow');
+      logInfo(`📝 Request: ${JSON.stringify(request)}`);
 
       // Decide format using FormatDecisioner if not specified
       if (!request.format) {
