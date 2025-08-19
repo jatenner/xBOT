@@ -23,9 +23,9 @@ class IntelligentLogger {
   private readonly cleanupInterval = 60000; // 1 minute
   
   private config: LogThrottleConfig = {
-    windowMs: parseInt(process.env.LOG_THROTTLE_WINDOW_MS || '60000', 10), // 1 minute
-    maxLogs: parseInt(process.env.LOG_THROTTLE_MAX_LOGS || '10', 10),
-    burstAllowed: parseInt(process.env.LOG_THROTTLE_BURST || '3', 10)
+    windowMs: parseInt(process.env.LOG_THROTTLE_WINDOW_MS || '300000', 10), // 5 minutes - more aggressive
+    maxLogs: parseInt(process.env.LOG_THROTTLE_MAX_LOGS || '5', 10), // Reduced from 10 to 5
+    burstAllowed: parseInt(process.env.LOG_THROTTLE_BURST || '2', 10) // Reduced from 3 to 2
   };
 
   /**
