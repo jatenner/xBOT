@@ -30,15 +30,36 @@ export class PostLock {
   private hbTimer: NodeJS.Timeout | null = null;
   private corrId: string | null = null;
   private readonly owner: string;
+  
+  // Circuit breaker state
+  private failureCount = 0;
+  private lastFailureTime = 0;
+  private readonly maxFailures = 3;
+  private readonly resetTimeout = 60000; // 1 minute
+  private circuitOpen = false;
 
   constructor(private redis: Redis) {
     this.owner = `${os.hostname()}-${process.pid}`;
   }
 
   /**
-   * Attempt to acquire the posting lock
+   * Attempt to acquire the posting lock with circuit breaker
    */
   async acquire(reason: string): Promise<boolean> {
+    // Check circuit breaker
+    if (this.circuitOpen) {
+      const timeSinceFailure = Date.now() - this.lastFailureTime;
+      if (timeSinceFailure < this.resetTimeout) {
+        console.log(`POST_LOCK: Circuit breaker open, ${Math.ceil((this.resetTimeout - timeSinceFailure) / 1000)}s remaining`);
+        return false;
+      } else {
+        // Try to reset circuit breaker
+        console.log('POST_LOCK: Attempting to reset circuit breaker');
+        this.circuitOpen = false;
+        this.failureCount = 0;
+      }
+    }
+
     this.corrId = this.corrId || randomUUID();
     
     const lockInfo: LockInfo = {
@@ -51,9 +72,21 @@ export class PostLock {
 
     try {
       const result = await this.redis.set(KEY, JSON.stringify(lockInfo), 'PX', TTL, 'NX');
-      return result === 'OK';
+      const success = result === 'OK';
+      
+      if (success) {
+        // Reset failure count on success
+        this.failureCount = 0;
+        this.circuitOpen = false;
+      } else {
+        // Increment failure count
+        this.recordFailure();
+      }
+      
+      return success;
     } catch (error) {
       console.error('POST_LOCK: Failed to acquire lock:', error);
+      this.recordFailure();
       return false;
     }
   }
@@ -215,5 +248,25 @@ export class PostLock {
       console.error('POST_LOCK: Failed to force unlock:', error);
       return false;
     }
+  }
+
+  /**
+   * Record a failure and check circuit breaker
+   */
+  private recordFailure() {
+    this.failureCount++;
+    this.lastFailureTime = Date.now();
+    
+    if (this.failureCount >= this.maxFailures) {
+      this.circuitOpen = true;
+      console.warn(`POST_LOCK: Circuit breaker opened after ${this.failureCount} failures`);
+    }
+  }
+
+  /**
+   * Get the unique ID for this lock instance
+   */
+  get lockId(): string {
+    return this.owner;
   }
 }

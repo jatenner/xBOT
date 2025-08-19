@@ -55,7 +55,7 @@ export async function upsertTweetMetrics(metrics: TweetMetrics): Promise<{ ok: b
     const { error } = await supabase
       .from('tweet_metrics')
       .upsert([row], { 
-        onConflict: 'tweet_id',
+        onConflict: 'tweet_id,collected_at', // Match the composite primary key
         ignoreDuplicates: false 
       });
 
@@ -80,7 +80,7 @@ export async function upsertTweetMetrics(metrics: TweetMetrics): Promise<{ ok: b
           const { error: retryError } = await supabase
             .from('tweet_metrics')
             .upsert([row], { 
-              onConflict: 'tweet_id',
+              onConflict: 'tweet_id,collected_at', // Match the composite primary key
               ignoreDuplicates: false 
             });
           
