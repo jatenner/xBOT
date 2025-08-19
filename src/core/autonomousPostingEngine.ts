@@ -12,6 +12,8 @@ export class AutonomousPostingEngine {
   private intelligentTimerInterval: NodeJS.Timeout | null = null;
   private lastPostAttempt = 0;
   private isPosting = false;
+  private emergencyStopUntil = 0;
+  private consecutiveFailures = 0;
   private browserPoster: any = null;
   private performanceTracker: TweetPerformanceTracker;
   private learningEngine: IntelligentLearningEngine;
@@ -86,14 +88,28 @@ export class AutonomousPostingEngine {
 
     console.log('🧠 Starting intelligent adaptive posting schedule...');
     
-    // INTELLIGENT POSTING: Check every 5 minutes for optimal opportunities
+    // EMERGENCY: Check every 30 minutes instead of 5 to reduce spam
     this.intelligentTimerInterval = setInterval(async () => {
       try {
+        // Check for emergency stop flags in Redis
+        const emergencyCheck = await this.checkEmergencyFlags();
+        if (emergencyCheck.stopped) {
+          console.log(`🚨 EMERGENCY STOP ACTIVE: ${emergencyCheck.reason}`);
+          return;
+        }
+
         const opportunity = await this.scheduler.shouldPostNow();
         
         const dynamicThreshold = await this.calculateDynamicThreshold();
         
         if (opportunity.score > dynamicThreshold) {
+          // EMERGENCY STOP: If we're in emergency stop mode
+          if (Date.now() < this.emergencyStopUntil) {
+            const remainingMinutes = Math.round((this.emergencyStopUntil - Date.now()) / 60000);
+            logInfo(`🚨 EMERGENCY STOP: System paused for ${remainingMinutes} more minutes due to failures`);
+            return;
+          }
+
           // EMERGENCY Rate limiting: minimum 5 minutes between post attempts
           const timeSinceLastAttempt = Date.now() - this.lastPostAttempt;
           if (timeSinceLastAttempt < 300000) { // 5 minutes instead of 2
@@ -116,7 +132,17 @@ export class AutonomousPostingEngine {
           this.isPosting = true;
           
           this.executeIntelligentPost(opportunity)
-            .catch(console.error)
+            .then((result) => {
+              if (result.success) {
+                this.consecutiveFailures = 0; // Reset failure count on success
+              } else {
+                this.handlePostFailure();
+              }
+            })
+            .catch((error) => {
+              console.error('❌ Intelligent post error:', error);
+              this.handlePostFailure();
+            })
             .finally(() => {
               this.isPosting = false;
             });
@@ -126,7 +152,7 @@ export class AutonomousPostingEngine {
           } catch (error) {
         console.error('❌ Error in intelligent posting analysis:', error);
       }
-    }, 5 * 60 * 1000); // Check every 5 minutes
+    }, 30 * 60 * 1000); // EMERGENCY: Check every 30 minutes instead of 5
 
     // FALLBACK: Still maintain basic schedule as safety net
     cron.schedule('0 */6 * * *', async () => {
@@ -149,8 +175,70 @@ export class AutonomousPostingEngine {
 
     this.isRunning = true;
     console.log('✅ Intelligent adaptive posting system activated');
-    console.log('🎯 Will analyze posting opportunities every 5 minutes');
-    console.log('📊 Factors: trending topics, audience activity, engagement windows, breaking news');
+    console.log('🎯 Will analyze posting opportunities every 30 minutes');
+  }
+
+  /**
+   * Check Redis for emergency stop flags
+   */
+  private async checkEmergencyFlags(): Promise<{ stopped: boolean; reason: string }> {
+    try {
+      const Redis = require('ioredis');
+      const redisUrl = process.env.REDIS_URL || process.env.KV_URL;
+      
+      if (!redisUrl) {
+        return { stopped: false, reason: 'No Redis connection' };
+      }
+      
+      const redis = new Redis(redisUrl, {
+        retryDelayOnFailover: 100,
+        maxRetriesPerRequest: 1,
+      });
+      
+      const [emergencyStop, postingDisabled, viralDisabled] = await Promise.all([
+        redis.get('xbot:emergency_stop'),
+        redis.get('xbot:posting_disabled'),
+        redis.get('xbot:viral_engine_disabled')
+      ]);
+      
+      redis.disconnect();
+      
+      if (emergencyStop) {
+        const stopUntil = parseInt(emergencyStop);
+        if (Date.now() < stopUntil) {
+          const remainingHours = Math.round((stopUntil - Date.now()) / (60 * 60 * 1000));
+          return { stopped: true, reason: `Nuclear stop active for ${remainingHours} more hours` };
+        }
+      }
+      
+      if (postingDisabled === 'true') {
+        return { stopped: true, reason: 'Posting manually disabled' };
+      }
+      
+      if (viralDisabled === 'true') {
+        return { stopped: true, reason: 'Viral engine manually disabled' };
+      }
+      
+      return { stopped: false, reason: 'All systems go' };
+      
+    } catch (error) {
+      console.warn('⚠️ Could not check emergency flags:', error.message);
+      return { stopped: false, reason: 'Redis check failed' };
+    }
+  }
+
+  /**
+   * Handle post failure and implement emergency circuit breaker
+   */
+  private handlePostFailure(): void {
+    this.consecutiveFailures++;
+    console.warn(`⚠️ Post failure #${this.consecutiveFailures}`);
+    
+    if (this.consecutiveFailures >= 3) {
+      // Trigger emergency stop for 30 minutes
+      this.emergencyStopUntil = Date.now() + (30 * 60 * 1000);
+      console.error(`🚨 EMERGENCY STOP: Too many failures (${this.consecutiveFailures}). Pausing for 30 minutes.`);
+    }
   }
 
   public async executePost(): Promise<{ success: boolean; content?: string; error?: string }> {
