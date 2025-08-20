@@ -304,6 +304,15 @@ export class AutonomousPostingEngine {
       // Use the new Social Content Operator for diverse, high-quality content
       console.log('🎯 SOCIAL_OPERATOR: Generating intelligent content');
       
+      // Check engagement optimization before posting
+      console.log('📊 ENGAGEMENT_MONITOR: Checking performance data and optimization strategies');
+      const { getEngagementMonitor } = await import('../intelligence/engagementMonitor');
+      const monitor = getEngagementMonitor();
+      
+      // Get optimization recommendations
+      const optimization = await monitor.optimizeNextPost();
+      console.log(`🎯 OPTIMIZATION: ${optimization.recommended_format} format, ${optimization.expected_improvement}% improvement expected`);
+
       // Generate content using our new Social Content Operator
       const content = await this.generateContent();
       
@@ -313,19 +322,33 @@ export class AutonomousPostingEngine {
       // Use direct browser posting to post our content
       const postResult = await this.postContentDirectly(content);
       
-      if (postResult.success && postResult.tweetId) {
-        // Store in database for learning
-        await this.storeInDatabase(content, postResult.tweetId);
-        
-        // Create result object matching expected interface
-        const result = {
-          success: true,
-          rootTweetId: postResult.tweetId,
-          tweetIds: [postResult.tweetId],
-          qualityScore: 85 // Default since we generated with Social Content Operator
-        };
-        
-        return result;
+                  if (postResult.success && postResult.tweetId) {
+              // Store in database for learning
+              await this.storeInDatabase(content, postResult.tweetId);
+
+              // Check for engagement alerts after posting
+              try {
+                const alerts = await monitor.checkEngagementAlerts();
+                if (alerts.length > 0) {
+                  console.log(`🚨 ENGAGEMENT_ALERTS: ${alerts.length} alerts detected`);
+                  alerts.forEach(alert => {
+                    console.log(`⚠️ ${alert.type.toUpperCase()}: ${alert.message} (${alert.severity})`);
+                    console.log(`💡 ACTION: ${alert.recommended_action}`);
+                  });
+                }
+              } catch (error: any) {
+                console.warn('Engagement alert check failed:', error.message);
+              }
+
+              // Create result object matching expected interface
+              const result = {
+                success: true,
+                rootTweetId: postResult.tweetId,
+                tweetIds: [postResult.tweetId],
+                qualityScore: 85 // Default since we generated with Social Content Operator
+              };
+
+              return result;
       } else {
         return { success: false, error: postResult.error || 'Posting failed' };
       }

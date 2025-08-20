@@ -25,6 +25,8 @@
     "src/core/autonomousPostingEngine.ts", 
     "src/ai/socialContentOperator.ts",
     "src/ai/engagementManager.ts",
+    "src/intelligence/engagementOptimizer.ts",
+    "src/intelligence/engagementMonitor.ts",
     "src/ai/viralGenerator.ts",
     "src/ai/viralPrompts.ts",
     "src/ai/generate.ts",

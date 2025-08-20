@@ -178,7 +178,13 @@ export class SocialContentOperator {
 
         let content = response.choices[0]?.message?.content?.trim() || '';
         
-        // Quality check
+        // Optimize content for engagement using advanced algorithms
+        const optimizedResult = await this.optimizeForEngagement(content);
+        content = optimizedResult.optimized_content;
+        
+        console.log(`⚡ ENGAGEMENT_OPTIMIZER: Applied ${optimizedResult.changes_made.length} optimizations (${optimizedResult.expected_improvement}% improvement expected)`);
+        
+        // Quality check on optimized content
         const qualityScore = await this.evaluateContentQuality(content, format);
         
         if (qualityScore >= 80) {
@@ -392,6 +398,34 @@ IMPROVED VERSION:`;
     }
     
     return unusedTopics[Math.floor(Math.random() * unusedTopics.length)];
+  }
+
+  /**
+   * Optimize content for maximum engagement using advanced algorithms
+   */
+  private async optimizeForEngagement(content: string): Promise<{
+    optimized_content: string;
+    changes_made: string[];
+    expected_improvement: number;
+    optimization_score: number;
+  }> {
+    try {
+      const { getEngagementOptimizer } = await import('../intelligence/engagementOptimizer');
+      const optimizer = getEngagementOptimizer();
+      
+      // Use engagement optimizer to improve content
+      const result = await optimizer.optimizeContentForEngagement(content);
+      
+      return result;
+    } catch (error) {
+      console.warn('Engagement optimization failed:', error);
+      return {
+        optimized_content: content,
+        changes_made: [],
+        expected_improvement: 0,
+        optimization_score: 50
+      };
+    }
   }
 
   /**
