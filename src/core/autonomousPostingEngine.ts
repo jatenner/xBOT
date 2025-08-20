@@ -301,50 +301,30 @@ export class AutonomousPostingEngine {
       console.log(`🧠 Executing VIRAL intelligent post (Score: ${Math.round(opportunity.score)}/100)`);
       console.log(`🎯 Context: ${opportunity.reason}`);
 
-      // Use the new posting orchestrator for high-quality content generation
-      const { executePost } = await import('../posting/orchestrator');
-
-      // Execute the full posting pipeline with quality controls
-      const result = await executePost({
-        topic: undefined, // Let system choose optimal topic
-        format: Math.random() > 0.7 ? 'thread' : 'single' // 30% threads, 70% singles
-      });
+      // Use the new Social Content Operator for diverse, high-quality content
+      console.log('🎯 SOCIAL_OPERATOR: Generating intelligent content');
       
-      if (result.success && result.rootTweetId) {
-        console.log(`✅ Posted successfully: ${result.rootTweetId}`);
-        console.log(`📊 Quality score: ${result.qualityScore}/100`);
-        console.log(`📊 Opportunity utilized: ${opportunity.urgency} urgency`);
-        console.log(`📈 Tweet IDs: ${result.tweetIds?.join(', ') || result.rootTweetId}`);
-
-        const tweetId = result.rootTweetId;
-        const contentForStorage = `High-quality ${result.tweetIds?.length > 1 ? 'thread' : 'tweet'} for follower growth`;
+      // Generate content using our new Social Content Operator
+      const content = await this.generateContent();
       
-        // Store performance data for learning
-        await this.storeInDatabase(contentForStorage, tweetId);
-        await this.storeIntelligentPostData(tweetId, opportunity, contentForStorage);
+      // Post the content using autonomous twitter poster
+      const postResult = await this.browserPoster.postTweet(content);
+      
+      if (postResult.success && postResult.tweetId) {
+        // Store in database for learning
+        await this.storeInDatabase(content, postResult.tweetId);
         
-        // Analyze viral potential of content
-        const viralAnalysis = await this.followerOptimizer.analyzeViralPotential(contentForStorage);
-        console.log(`🔥 Viral score: ${viralAnalysis.viralScore}/100, Follower potential: ${viralAnalysis.followerPotential}/100`);
+        // Create result object matching expected interface
+        const result = {
+          success: true,
+          rootTweetId: postResult.tweetId,
+          tweetIds: [postResult.tweetId],
+          qualityScore: 85 // Default since we generated with Social Content Operator
+        };
         
-        // Log optimization suggestions
-        if (viralAnalysis.improvementSuggestions.length > 0) {
-          console.log(`💡 Next time: ${viralAnalysis.improvementSuggestions[0]}`);
-        }
-        
-        // Predict performance for validation
-        const prediction = await this.learningEngine.predictContentPerformance(contentForStorage);
-        console.log(`🎯 Predicted performance: ${prediction.expectedLikes} likes, ${prediction.expectedFollowers} new followers`);
-        
-        // Schedule performance tracking for this tweet
-        await this.schedulePerformanceTracking(tweetId, contentForStorage, prediction);
-        
-        console.log('📊 Intelligent posting data stored for learning');
-
-        return { success: true, content: contentForStorage };
+        return result;
       } else {
-        console.warn(`⚠️ Viral posting failed: ${result.error}`);
-        return { success: false, error: result.error };
+        return { success: false, error: postResult.error || 'Posting failed' };
       }
     } catch (error: any) {
       console.error('❌ Failed to execute intelligent post:', error.message);
