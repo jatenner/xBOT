@@ -1,289 +1,548 @@
+#!/usr/bin/env node
+
+/**
+ * 🚀 COMPREHENSIVE SYSTEM CLEANUP - ENTERPRISE GRADE
+ * 
+ * PURPOSE: Complete cleanup of redundant systems and files
+ * - Remove 150+ emergency fix files
+ * - Consolidate duplicate agents
+ * - Clean up conflicting configurations
+ * - Organize codebase structure
+ * - Restore operational state
+ */
+
 const fs = require('fs');
 const path = require('path');
 
-console.log('🧹 COMPREHENSIVE SYSTEM CLEANUP');
-console.log('=====================================');
-console.log('');
-console.log('🎯 GOAL: Remove duplicate systems and bloat');
-console.log('🎯 RESULT: Single, efficient system that works');
+console.log('🚀 ===== COMPREHENSIVE SYSTEM CLEANUP STARTING =====');
+console.log('🎯 Target: Remove redundant systems and restore operational state');
+console.log('📊 Scope: 150+ emergency files, duplicate agents, conflicting configs');
 console.log('');
 
 // ============================================================================
-// 1. IDENTIFY DUPLICATE SYSTEMS TO REMOVE
+// 1. IDENTIFY FILES AND SYSTEMS TO REMOVE
 // ============================================================================
 
-const systemsToRemove = {
-  // POSTING AGENTS - Keep only 1
-  duplicatePostingAgents: [
-    'src/agents/streamlinedPostAgent.ts',      // REMOVE - Duplicate of postTweet.ts
-    'src/agents/quickPostModeAgent.ts',       // REMOVE - Unnecessary
-    'src/agents/autonomousContentOrchestrator.ts', // REMOVE - Duplicate functionality
-    'src/agents/supremeAIOrchestrator.ts',    // REMOVE - Over-engineered
-    'src/agents/superStrategist.ts',          // REMOVE - Duplicate of strategist.ts
-    'src/agents/strategist.ts',               // REMOVE - Keep strategistAgent.ts
-  ],
+const filesToRemove = [
+  // Emergency fix files (move to archive)
+  'emergency_*.js',
+  'emergency_*.sql',
+  'emergency_*.md',
+  'EMERGENCY_*.js',
+  'EMERGENCY_*.sql', 
+  'EMERGENCY_*.md',
+  'EMERGENCY_*.ts',
   
-  // CONTENT GENERATION - Keep only 2 best ones
-  duplicateContentAgents: [
-    'src/agents/viralContentAgent.ts',        // REMOVE - Keep ultraViralGenerator.ts
-    'src/agents/creativeContentAgent.ts',     // REMOVE - Duplicate features
-    'src/agents/comprehensiveContentAgent.ts', // REMOVE - Too complex
-    'src/agents/diversePerspectiveEngine.ts', // REMOVE - Unnecessary complexity
-    'src/agents/humanExpertPersonality.ts',   // REMOVE - Keep but simplify
-    'src/agents/contentGenerationHub.ts',     // REMOVE - Coordination overhead
-  ],
+  // Duplicate posting agents
+  'activate_*.js',
+  'apply_*.js',
+  'bulletproof_*.js',
+  'comprehensive_*.js',
+  'deploy_*.js',
+  'diagnose_*.js',
+  'direct_*.js',
   
-  // VIRAL SYSTEMS - Keep only 1
-  duplicateViralSystems: [
-    'src/agents/viralThemeEngine.ts',         // REMOVE - Duplicate
-    'src/agents/viralHealthThemeAgent.ts',    // REMOVE - Duplicate 
-    'src/agents/addictionViralEngine.ts',     // REMOVE - Specific use case
-    'src/agents/addictionIntegrationAgent.ts', // REMOVE - Specific use case
-  ],
+  // Temporary and test files
+  'temp_*.js',
+  'test_*.js',
+  'corrected_*.js',
+  'fixed_*.js',
   
-  // LEARNING SYSTEMS - Keep only 2
-  duplicateLearningAgents: [
-    'src/agents/adaptiveContentLearner.ts',   // REMOVE - Keep autonomousLearningAgent.ts
-    'src/agents/learningAgent.ts',            // REMOVE - Basic version
-    'src/agents/learnAgent.ts',               // REMOVE - Duplicate
-    'src/agents/competitiveIntelligenceLearner.ts', // REMOVE - Too specific
-    'src/agents/crossIndustryLearningAgent.ts', // REMOVE - Too complex
-    'src/agents/nuclearLearningEnhancer.ts',  // REMOVE - Over-engineered
-    'src/agents/strategyLearner.ts',          // REMOVE - Duplicate
-    'src/agents/engagementFeedbackAgent.ts',  // REMOVE - Too specific
-  ],
+  // Duplicate SQL files
+  'add_*.sql',
+  'create_*.sql',
+  'check_*.sql',
+  'fix_*.sql',
+  'setup_*.sql',
+  'bulletproof_*.sql',
+  'complete_*.sql',
   
-  // ENGAGEMENT SYSTEMS - Keep only 1
-  duplicateEngagementAgents: [
-    'src/agents/aggressiveEngagementAgent.ts', // REMOVE - Keep realEngagementAgent.ts
-    'src/agents/rateLimitedEngagementAgent.ts', // REMOVE - Duplicate
-    'src/agents/engagementMaximizerAgent.ts',  // REMOVE - Too complex
-    'src/agents/engagementOptimizer.ts',       // REMOVE - Duplicate
-  ],
+  // Configuration conflicts
+  'bot_status_*.md',
+  'system_*.md',
+  'deployment_*.md',
+  'autonomous_*.json',
+  'master_*.json'
+];
+
+const agentsToConsolidate = {
+  // Keep only the best posting agent
+  posting: {
+    keep: ['src/agents/autonomousTwitterPoster.ts'],
+    remove: [
+      'src/agents/streamlinedPostAgent.ts',
+      'src/agents/quickPostModeAgent.ts',
+      'src/agents/supremeAIOrchestrator.ts',
+      'src/agents/strategist.ts',
+      'src/agents/superStrategist.ts'
+    ]
+  },
   
-  // SCHEDULING SYSTEMS - Keep only 1
-  duplicateSchedulers: [
-    'src/agents/intelligentSchedulingAgent.ts', // REMOVE - Keep scheduler.ts
-    'src/agents/smartPostingScheduler.ts',     // REMOVE - Duplicate
-    'src/agents/timingOptimizationAgent.ts',   // REMOVE - Over-engineered
-    'src/agents/strategicOpportunityScheduler.ts', // REMOVE - Too complex
-    'src/agents/intelligentPostingDecisionAgent.ts', // REMOVE - Too complex
-    'src/agents/intelligentPostingOptimizerAgent.ts', // REMOVE - Duplicate
-  ],
+  // Keep only the best content generators
+  content: {
+    keep: ['src/agents/intelligentContentGenerator.ts', 'src/agents/viralThreadGenerator.ts'],
+    remove: [
+      'src/agents/viralContentAgent.ts',
+      'src/agents/creativeContentAgent.ts',
+      'src/agents/comprehensiveContentAgent.ts',
+      'src/agents/diversePerspectiveEngine.ts',
+      'src/agents/contentGenerationHub.ts'
+    ]
+  },
   
-  // SPECIALIZED AGENTS - Remove most
-  overSpecializedAgents: [
-    'src/agents/pollAgent.ts',                // REMOVE - Rare use case
-    'src/agents/quoteAgent.ts',               // REMOVE - Rare use case  
-    'src/agents/threadAgent.ts',              // REMOVE - Rare use case
-    'src/agents/imageAgent.ts',               // KEEP - Actually useful
-    'src/agents/replyAgent.ts',               // KEEP - Core functionality
-    'src/agents/newsAPIAgent.ts',             // KEEP - Content source
-    'src/agents/pubmedFetcher.ts',            // REMOVE - Too specific
-    'src/agents/realResearchFetcher.ts',      // KEEP - Better than pubmed
-    'src/agents/followGrowthAgent.ts',        // KEEP - Core growth
-    'src/agents/nightlyOptimizer.ts',         // REMOVE - Unnecessary
-  ]
+  // Keep only the best viral system
+  viral: {
+    keep: ['src/agents/viralThreadGenerator.ts'],
+    remove: [
+      'src/agents/viralThemeEngine.ts',
+      'src/agents/viralHealthThemeAgent.ts',
+      'src/agents/addictionViralEngine.ts',
+      'src/agents/addictionIntegrationAgent.ts'
+    ]
+  },
+  
+  // Keep only essential learning agents
+  learning: {
+    keep: ['src/intelligence/followerGrowthOptimizer.ts'],
+    remove: [
+      'src/agents/adaptiveContentLearner.ts',
+      'src/agents/learningAgent.ts',
+      'src/agents/learnAgent.ts',
+      'src/agents/competitiveIntelligenceLearner.ts',
+      'src/agents/crossIndustryLearningAgent.ts',
+      'src/agents/nuclearLearningEnhancer.ts',
+      'src/agents/strategyLearner.ts',
+      'src/agents/engagementFeedbackAgent.ts'
+    ]
+  },
+  
+  // Keep only essential engagement system
+  engagement: {
+    keep: ['src/intelligence/engagementAnalyzer.ts'],
+    remove: [
+      'src/agents/aggressiveEngagementAgent.ts',
+      'src/agents/rateLimitedEngagementAgent.ts',
+      'src/agents/engagementMaximizerAgent.ts',
+      'src/agents/engagementOptimizer.ts'
+    ]
+  },
+  
+  // Keep only essential scheduler
+  scheduling: {
+    keep: ['src/intelligence/adaptivePostingScheduler.ts'],
+    remove: [
+      'src/agents/intelligentSchedulingAgent.ts',
+      'src/agents/smartPostingScheduler.ts',
+      'src/agents/timingOptimizationAgent.ts',
+      'src/agents/strategicOpportunityScheduler.ts',
+      'src/agents/intelligentPostingDecisionAgent.ts',
+      'src/agents/intelligentPostingOptimizerAgent.ts'
+    ]
+  }
 };
 
 // ============================================================================
-// 2. RATE LIMITING CLEANUP - Remove all fake systems
+// 2. CREATE ARCHIVE DIRECTORY
 // ============================================================================
 
-const rateLimitingToRemove = [
-  'src/utils/twitterRateLimits.ts',          // REMOVE - Fake limits
-  'src/utils/intelligentRateLimitManager.ts', // REMOVE - Too complex
-  'src/utils/rateLimitDatabase.ts',          // REMOVE - Unnecessary DB tracking
-  'src/utils/smartBudgetOptimizer.ts',       // REMOVE - Budget confusion
-  'src/utils/dailyPostingManager.ts',        // REMOVE - Caused burst posting
-  'src/utils/monthlyPlanner.ts',             // REMOVE - Artificial limits
-  'src/utils/apiOptimizer.ts',               // REMOVE - Fake optimization
-];
+function createArchiveDirectory() {
+  console.log('📁 Creating archive directory for removed files...');
+  
+  const archiveDir = path.join(process.cwd(), 'archive_removed_files');
+  
+  if (!fs.existsSync(archiveDir)) {
+    fs.mkdirSync(archiveDir, { recursive: true });
+    console.log(`✅ Created archive directory: ${archiveDir}`);
+  } else {
+    console.log(`📁 Archive directory already exists: ${archiveDir}`);
+  }
+  
+  return archiveDir;
+}
 
 // ============================================================================
-// 3. CONTENT UTILITIES CLEANUP
+// 3. MOVE FILES TO ARCHIVE
 // ============================================================================
 
-const contentUtilsToRemove = [
-  'src/utils/contentQualityEngine.ts',       // REMOVE - Over-engineered
-  'src/utils/smartContentEngine.ts',         // REMOVE - Duplicate
-  'src/utils/audienceEngagementEngine.ts',   // REMOVE - Too complex
-  'src/utils/followerGrowthLearner.ts',      // REMOVE - Keep in agents
-  'src/utils/contentCache.ts',               // REMOVE - Adds complexity
-  'src/utils/intelligenceCache.ts',          // REMOVE - Unnecessary
-  'src/utils/embeddingFilter.ts',            // REMOVE - Resource intensive
-];
+function moveFilesToArchive(patterns, archiveDir) {
+  console.log('📦 Moving redundant files to archive...');
+  
+  let movedCount = 0;
+  const allFiles = getAllFilesRecursively(process.cwd());
+  
+  patterns.forEach(pattern => {
+    const regex = new RegExp(pattern.replace('*', '.*'));
+    
+    allFiles.forEach(filePath => {
+      const fileName = path.basename(filePath);
+      const relativePath = path.relative(process.cwd(), filePath);
+      
+      // Skip files in node_modules, .git, and already archived files
+      if (relativePath.includes('node_modules') || 
+          relativePath.includes('.git') || 
+          relativePath.includes('archive_')) {
+        return;
+      }
+      
+      if (regex.test(fileName)) {
+        try {
+          const archivePath = path.join(archiveDir, relativePath);
+          const archiveFileDir = path.dirname(archivePath);
+          
+          // Create directory structure in archive
+          if (!fs.existsSync(archiveFileDir)) {
+            fs.mkdirSync(archiveFileDir, { recursive: true });
+          }
+          
+          // Move file to archive
+          fs.renameSync(filePath, archivePath);
+          console.log(`📦 Archived: ${relativePath}`);
+          movedCount++;
+          
+        } catch (error) {
+          console.warn(`⚠️ Could not archive ${relativePath}: ${error.message}`);
+        }
+      }
+    });
+  });
+  
+  console.log(`✅ Archived ${movedCount} redundant files`);
+  return movedCount;
+}
 
 // ============================================================================
-// 4. EMERGENCY SCRIPT CLEANUP - Remove 100+ files
+// 4. CONSOLIDATE DUPLICATE AGENTS
 // ============================================================================
 
-const emergencyScriptsPattern = [
-  'fix_*.js',
-  'test_*.js', 
-  'force_*.js',
-  'emergency_*.js',
-  'achieve_*.js',
-  'comprehensive_*.js',
-  'final_*.js',
-  'complete_*.js',
-  'apply_*.js',
-  'verify_*.js',
-  '*.md', // Remove most markdown files except core docs
-];
+function consolidateAgents(agentConfig, archiveDir) {
+  console.log('🤖 Consolidating duplicate agents...');
+  
+  let consolidatedCount = 0;
+  
+  Object.entries(agentConfig).forEach(([category, config]) => {
+    console.log(`📂 Processing ${category} agents...`);
+    
+    // Keep track of what we're keeping
+    config.keep.forEach(keepFile => {
+      if (fs.existsSync(keepFile)) {
+        console.log(`✅ Keeping: ${keepFile}`);
+      } else {
+        console.warn(`⚠️ Keep file not found: ${keepFile}`);
+      }
+    });
+    
+    // Remove duplicate agents
+    config.remove.forEach(removeFile => {
+      if (fs.existsSync(removeFile)) {
+        try {
+          const archivePath = path.join(archiveDir, 'duplicate_agents', removeFile);
+          const archiveFileDir = path.dirname(archivePath);
+          
+          if (!fs.existsSync(archiveFileDir)) {
+            fs.mkdirSync(archiveFileDir, { recursive: true });
+          }
+          
+          fs.renameSync(removeFile, archivePath);
+          console.log(`🗑️ Removed duplicate: ${removeFile}`);
+          consolidatedCount++;
+          
+        } catch (error) {
+          console.warn(`⚠️ Could not remove ${removeFile}: ${error.message}`);
+        }
+      }
+    });
+  });
+  
+  console.log(`✅ Consolidated ${consolidatedCount} duplicate agents`);
+  return consolidatedCount;
+}
 
 // ============================================================================
-// 5. DATABASE CLEANUP - Remove duplicate tables
+// 5. CLEAN UP CONFLICTING CONFIGURATIONS
 // ============================================================================
 
-const databaseCleanupSQL = `
--- Remove duplicate and unnecessary tables
-DROP TABLE IF EXISTS twitter_rate_limits;
-DROP TABLE IF EXISTS real_twitter_rate_limits; 
-DROP TABLE IF EXISTS monthly_api_usage;
-DROP TABLE IF EXISTS api_usage;
-DROP TABLE IF EXISTS budget_transactions;
-DROP TABLE IF EXISTS daily_budget_accounting;
-DROP TABLE IF EXISTS content_quality_cache;
-DROP TABLE IF EXISTS intelligence_cache;
-DROP TABLE IF EXISTS follower_growth_patterns;
-DROP TABLE IF EXISTS competitive_intelligence;
-DROP TABLE IF EXISTS learning_patterns;
-DROP TABLE IF EXISTS content_embeddings;
-DROP TABLE IF EXISTS viral_content_patterns;
-DROP TABLE IF EXISTS engagement_optimization;
+function cleanupConfigurations() {
+  console.log('⚙️ Cleaning up conflicting configurations...');
+  
+  const configsToRemove = [
+    'autonomous_database_config.json',
+    'bulletproof_database_config.json',
+    'emergency_deployment_memory.json',
+    'deployment_health_check.json'
+  ];
+  
+  let cleanedCount = 0;
+  
+  configsToRemove.forEach(configFile => {
+    if (fs.existsSync(configFile)) {
+      try {
+        fs.unlinkSync(configFile);
+        console.log(`🗑️ Removed conflicting config: ${configFile}`);
+        cleanedCount++;
+      } catch (error) {
+        console.warn(`⚠️ Could not remove ${configFile}: ${error.message}`);
+      }
+    }
+  });
+  
+  console.log(`✅ Cleaned ${cleanedCount} conflicting configurations`);
+  return cleanedCount;
+}
 
--- Keep only essential tables:
--- tweets (core)
--- tweet_performance (analytics)  
--- bot_config (settings)
--- system_logs (debugging)
+// ============================================================================
+// 6. UPDATE PACKAGE.JSON AND REMOVE UNUSED DEPENDENCIES
+// ============================================================================
+
+function cleanupPackageJson() {
+  console.log('📦 Cleaning up package.json...');
+  
+  try {
+    const packagePath = path.join(process.cwd(), 'package.json');
+    if (!fs.existsSync(packagePath)) {
+      console.warn('⚠️ package.json not found');
+      return;
+    }
+    
+    const packageJson = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
+    
+    // Remove emergency scripts
+    const scriptsToRemove = [
+      'emergency-post',
+      'emergency-fix',
+      'emergency-reset',
+      'emergency-mode',
+      'bulletproof-start',
+      'deploy-emergency'
+    ];
+    
+    let removedScripts = 0;
+    scriptsToRemove.forEach(script => {
+      if (packageJson.scripts && packageJson.scripts[script]) {
+        delete packageJson.scripts[script];
+        removedScripts++;
+        console.log(`🗑️ Removed emergency script: ${script}`);
+      }
+    });
+    
+    // Add essential scripts if missing
+    const essentialScripts = {
+      'start': 'node src/main.ts',
+      'dev': 'nodemon src/main.ts',
+      'build': 'tsc',
+      'test': 'jest',
+      'post-now': 'node src/emergencyMain.ts'
+    };
+    
+    if (!packageJson.scripts) {
+      packageJson.scripts = {};
+    }
+    
+    Object.entries(essentialScripts).forEach(([name, command]) => {
+      if (!packageJson.scripts[name]) {
+        packageJson.scripts[name] = command;
+        console.log(`✅ Added essential script: ${name}`);
+      }
+    });
+    
+    // Write updated package.json
+    fs.writeFileSync(packagePath, JSON.stringify(packageJson, null, 2));
+    console.log(`✅ Updated package.json (removed ${removedScripts} emergency scripts)`);
+    
+  } catch (error) {
+    console.error(`❌ Failed to update package.json: ${error.message}`);
+  }
+}
+
+// ============================================================================
+// 7. CREATE CLEAN ENVIRONMENT CONFIG
+// ============================================================================
+
+function createCleanEnvironmentConfig() {
+  console.log('🔧 Creating clean environment configuration...');
+  
+  const cleanEnvExample = `# 🚀 XBOT TWITTER BOT - CLEAN CONFIGURATION
+# =====================================================
+
+# Required Twitter API Credentials
+TWITTER_API_KEY=your_api_key_here
+TWITTER_API_SECRET=your_api_secret_here
+TWITTER_ACCESS_TOKEN=your_access_token_here
+TWITTER_ACCESS_TOKEN_SECRET=your_access_token_secret_here
+TWITTER_BEARER_TOKEN=your_bearer_token_here
+TWITTER_USER_ID=your_numeric_user_id
+
+# Database Configuration
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
+
+# AI Configuration
+OPENAI_API_KEY=sk-your_openai_api_key_here
+
+# Bot Settings
+NODE_ENV=production
+DAILY_TWEET_LIMIT=17
+DAILY_AI_BUDGET_LIMIT=7.50
+
+# System Settings
+USE_SUPABASE_ONLY=false
+EMERGENCY_MODE=false
+DEBUG_MODE=false
 `;
 
-// ============================================================================
-// 6. EXECUTE CLEANUP
-// ============================================================================
-
-console.log('🗑️  STARTING COMPREHENSIVE CLEANUP...');
-console.log('');
-
-let removedFiles = 0;
-let keptFiles = 0;
-
-// Function to safely remove file
-function removeFileIfExists(filePath) {
-  if (fs.existsSync(filePath)) {
-    try {
-      fs.unlinkSync(filePath);
-      removedFiles++;
-      console.log(`✅ Removed: ${filePath}`);
-      return true;
-    } catch (error) {
-      console.warn(`⚠️  Could not remove ${filePath}: ${error.message}`);
-      return false;
-    }
-  }
-  return false;
-}
-
-// Function to list files that will be kept
-function markFileAsKept(filePath) {
-  if (fs.existsSync(filePath)) {
-    keptFiles++;
-    console.log(`📁 Keeping: ${filePath}`);
+  try {
+    fs.writeFileSync('.env.clean', cleanEnvExample);
+    console.log('✅ Created clean environment template: .env.clean');
+    console.log('📋 Copy this to .env and add your actual credentials');
+  } catch (error) {
+    console.error(`❌ Failed to create clean environment config: ${error.message}`);
   }
 }
 
-// Remove duplicate agents
-console.log('🤖 REMOVING DUPLICATE AGENTS...');
-Object.values(systemsToRemove).flat().forEach(removeFileIfExists);
+// ============================================================================
+// 8. GENERATE CLEANUP REPORT
+// ============================================================================
 
-// Remove rate limiting files
-console.log('⏱️  REMOVING FAKE RATE LIMITING...');
-rateLimitingToRemove.forEach(removeFileIfExists);
-
-// Remove content utilities
-console.log('📝 REMOVING CONTENT UTIL BLOAT...');
-contentUtilsToRemove.forEach(removeFileIfExists);
-
-// Remove emergency scripts (only keep this one)
-console.log('🧹 REMOVING EMERGENCY SCRIPT BLOAT...');
-const rootFiles = fs.readdirSync('.');
-rootFiles.forEach(file => {
-  if (file.endsWith('.js') && file !== 'comprehensive_system_cleanup.js') {
-    if (file.includes('fix_') || file.includes('test_') || file.includes('force_') || 
-        file.includes('emergency_') || file.includes('achieve_') || file.includes('comprehensive_') ||
-        file.includes('final_') || file.includes('complete_') || file.includes('apply_') ||
-        file.includes('verify_') || file.includes('demonstrate_') || file.includes('check_')) {
-      removeFileIfExists(file);
+function generateCleanupReport(stats) {
+  console.log('📊 Generating cleanup report...');
+  
+  const report = {
+    timestamp: new Date().toISOString(),
+    summary: {
+      filesArchived: stats.filesArchived,
+      agentsConsolidated: stats.agentsConsolidated,
+      configsCleaned: stats.configsCleaned
+    },
+    actions: [
+      '✅ Archived redundant emergency files',
+      '✅ Consolidated duplicate agents',
+      '✅ Cleaned conflicting configurations',
+      '✅ Updated package.json scripts',
+      '✅ Created clean environment template'
+    ],
+    nextSteps: [
+      '1. Run the Supabase database schema fix',
+      '2. Update environment variables with Twitter credentials',
+      '3. Test Twitter authentication',
+      '4. Deploy bot with clean configuration',
+      '5. Monitor system health'
+    ],
+    keptSystems: {
+      posting: 'src/agents/autonomousTwitterPoster.ts',
+      content: ['src/agents/intelligentContentGenerator.ts', 'src/agents/viralThreadGenerator.ts'],
+      engagement: 'src/intelligence/engagementAnalyzer.ts',
+      learning: 'src/intelligence/followerGrowthOptimizer.ts',
+      scheduling: 'src/intelligence/adaptivePostingScheduler.ts'
     }
+  };
+  
+  fs.writeFileSync('SYSTEM_CLEANUP_REPORT.json', JSON.stringify(report, null, 2));
+  console.log('✅ Generated cleanup report: SYSTEM_CLEANUP_REPORT.json');
+  
+  return report;
+}
+
+// ============================================================================
+// 9. UTILITY FUNCTIONS
+// ============================================================================
+
+function getAllFilesRecursively(dir) {
+  let files = [];
+  
+  try {
+    const items = fs.readdirSync(dir);
+    
+    items.forEach(item => {
+      const fullPath = path.join(dir, item);
+      const stat = fs.statSync(fullPath);
+      
+      if (stat.isDirectory()) {
+        // Skip certain directories
+        if (!['node_modules', '.git', '.next', 'dist', 'build'].includes(item)) {
+          files = files.concat(getAllFilesRecursively(fullPath));
+        }
+      } else {
+        files.push(fullPath);
+      }
+    });
+  } catch (error) {
+    console.warn(`Warning: Could not read directory ${dir}: ${error.message}`);
   }
-});
-
-// Create database cleanup SQL
-fs.writeFileSync('database_cleanup.sql', databaseCleanupSQL);
-console.log('✅ Created database_cleanup.sql');
-
-console.log('');
-console.log('📋 ESSENTIAL FILES TO KEEP:');
-console.log('============================');
-
-// Mark essential files as kept
-const essentialFiles = [
-  // Core agents (only the best ones)
-  'src/agents/postTweet.ts',                 // Main posting agent
-  'src/agents/strategistAgent.ts',           // Main decision maker  
-  'src/agents/scheduler.ts',                 // Scheduling system
-  'src/agents/autonomousTwitterGrowthMaster.ts', // Growth intelligence
-  'src/agents/ultraViralGenerator.ts',       // Best viral content
-  'src/agents/autonomousLearningAgent.ts',   // Learning system
-  'src/agents/realTimeEngagementTracker.ts', // Engagement tracking
-  'src/agents/realEngagementAgent.ts',       // Engagement actions
-  'src/agents/imageAgent.ts',                // Image handling
-  'src/agents/replyAgent.ts',                // Reply functionality
-  'src/agents/newsAPIAgent.ts',              // News content
-  'src/agents/realResearchFetcher.ts',       // Research content
-  'src/agents/followGrowthAgent.ts',         // Follow growth
-  'src/agents/viralFollowerGrowthAgent.ts',  // Viral growth
   
-  // Core utilities
-  'src/utils/xClient.ts',                    // Twitter API
-  'src/utils/openaiClient.ts',               // OpenAI API
-  'src/utils/supabaseClient.ts',             // Database
-  'src/utils/formatTweet.ts',                // Content formatting
-  'src/utils/emergencyBudgetLockdown.ts',    // Budget protection
-  'src/utils/unifiedBudgetManager.ts',       // Budget management
-  
-  // Config
-  'src/config/liveMode.ts',                  // Live posting config
-  'src/config/humanContentConfig.ts',        // Human voice
-  
-  // Core system
-  'src/main.ts',                             // Main entry point
-  'src/index.ts',                            // Index
-];
+  return files;
+}
 
-essentialFiles.forEach(markFileAsKept);
+// ============================================================================
+// 10. MAIN EXECUTION
+// ============================================================================
 
-console.log('');
-console.log('🎉 CLEANUP COMPLETE!');
-console.log('====================');
-console.log(`🗑️  Files removed: ${removedFiles}`);
-console.log(`📁 Essential files kept: ${keptFiles}`);
-console.log('');
-console.log('📊 SYSTEM IMPROVEMENTS:');
-console.log('✅ Removed 50+ duplicate agents');
-console.log('✅ Removed fake rate limiting systems');  
-console.log('✅ Removed 100+ emergency scripts');
-console.log('✅ Consolidated content generation');
-console.log('✅ Unified posting system');
-console.log('✅ Simplified learning system');
-console.log('✅ Clean database schema');
-console.log('');
-console.log('🚀 NEXT STEPS:');
-console.log('1. Run: npm run build (to check for errors)');
-console.log('2. Test: node force_actual_twitter_post.js'); 
-console.log('3. Deploy: git add . && git commit && git push');
-console.log('4. Database: Run database_cleanup.sql in Supabase');
-console.log('');
-console.log('💡 Your system is now clean, focused, and efficient!'); 
+async function runComprehensiveCleanup() {
+  try {
+    console.log('🚀 Starting comprehensive system cleanup...');
+    console.log('');
+    
+    // Create archive directory
+    const archiveDir = createArchiveDirectory();
+    
+    // Move redundant files to archive
+    const filesArchived = moveFilesToArchive(filesToRemove, archiveDir);
+    
+    // Consolidate duplicate agents
+    const agentsConsolidated = consolidateAgents(agentsToConsolidate, archiveDir);
+    
+    // Clean up configurations
+    const configsCleaned = cleanupConfigurations();
+    
+    // Update package.json
+    cleanupPackageJson();
+    
+    // Create clean environment config
+    createCleanEnvironmentConfig();
+    
+    // Generate report
+    const stats = { filesArchived, agentsConsolidated, configsCleaned };
+    const report = generateCleanupReport(stats);
+    
+    console.log('');
+    console.log('🎉 ===== COMPREHENSIVE SYSTEM CLEANUP COMPLETED =====');
+    console.log('');
+    console.log('📊 CLEANUP STATISTICS:');
+    console.log(`   📦 Files archived: ${stats.filesArchived}`);
+    console.log(`   🤖 Agents consolidated: ${stats.agentsConsolidated}`);
+    console.log(`   ⚙️ Configs cleaned: ${stats.configsCleaned}`);
+    console.log('');
+    console.log('✅ SYSTEMS RETAINED:');
+    console.log('   🤖 Autonomous Twitter Poster (main agent)');
+    console.log('   🧠 Intelligent Content Generator');
+    console.log('   🔥 Viral Thread Generator');
+    console.log('   📊 Engagement Analyzer');
+    console.log('   🎯 Follower Growth Optimizer');
+    console.log('   📅 Adaptive Posting Scheduler');
+    console.log('');
+    console.log('🎯 NEXT STEPS:');
+    console.log('   1. 🗄️ Run SUPABASE_COMPATIBLE_DATABASE_SCHEMA_FIX.sql');
+    console.log('   2. 🔐 Update environment variables with Twitter credentials');
+    console.log('   3. 🐦 Test Twitter authentication');
+    console.log('   4. 🚀 Deploy bot with clean configuration');
+    console.log('   5. 📊 Monitor system health');
+    console.log('');
+    console.log('🚀 Your bot is now cleaned up and ready for operation!');
+    console.log('');
+    
+  } catch (error) {
+    console.error('❌ Cleanup failed:', error);
+    process.exit(1);
+  }
+}
+
+// Run the cleanup
+if (require.main === module) {
+  runComprehensiveCleanup();
+}
+
+module.exports = {
+  runComprehensiveCleanup,
+  createArchiveDirectory,
+  moveFilesToArchive,
+  consolidateAgents,
+  cleanupConfigurations
+};

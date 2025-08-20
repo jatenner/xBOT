@@ -354,98 +354,101 @@ export class AutonomousPostingEngine {
 
   private async generateContent(): Promise<string> {
     try {
-      // Import OpenAI dynamically to avoid issues
-      const { OpenAI } = await import('openai');
+      // Use the new Social Content Operator for diverse, high-quality content
+      const { getSocialContentOperator } = await import('../ai/socialContentOperator');
+      const operator = getSocialContentOperator();
       
-      const openai = new OpenAI({
-        apiKey: process.env.OPENAI_API_KEY,
-      });
-
-      const healthTopics = [
-        'hydration science and health benefits',
-        'sleep quality optimization tips',
-        'stress management techniques that work',
-        'nutrition myths debunked by science',
-        'exercise efficiency and recovery',
-        'mental health awareness insights',
-        'preventive healthcare strategies',
-        'immune system strengthening habits',
-        'mindfulness and cognitive health',
-        'workplace wellness best practices',
-        'healthy aging science breakthroughs',
-        'gut health and microbiome research',
-        'cardiovascular health optimization',
-        'brain health and memory enhancement',
-        'hormonal health and balance'
+      // Get recent posts to avoid repetition
+      const recentPosts = await this.getRecentPostsForDiversity();
+      
+      // Brand notes for consistency
+      const brandNotes = "Health & performance coach. Friendly, evidence-based, challenges conventional wisdom. Makes complex health topics accessible.";
+      
+      // Topic seeds (can be enhanced to pull from trending topics)
+      const seeds = [
+        "sleep optimization",
+        "nutrition myths",
+        "exercise efficiency",
+        "stress management",
+        "recovery tactics"
       ];
-
-      const randomTopic = healthTopics[Math.floor(Math.random() * healthTopics.length)];
-
-      const highQualityPrompt = `Create a complete, engaging health tweet about ${randomTopic}.
-
-Requirements:
-- Start with an attention-grabbing hook or surprising fact
-- Provide 2-3 specific, actionable insights
-- Include the science/reasoning why it works
-- End with a clear takeaway or call-to-action
-- Sound human and conversational, not corporate
-- Be complete and informative (not just a teaser)
-- Target length: 200-240 characters
-- No hashtags
-
-Example format: "Did you know [surprising fact]? Here's why: [science]. Try this: [actionable tip]. The result: [benefit]."`;
-
-      const response = await openai.chat.completions.create({
-        model: 'gpt-4o-mini', // Better model
-        messages: [
-          { 
-            role: 'system', 
-            content: 'You are a health communication expert who creates engaging, evidence-based content that helps people improve their wellbeing.' 
-          },
-          { 
-            role: 'user', 
-            content: highQualityPrompt 
-          }
-        ],
-        max_tokens: 300, // Increased from 100
-        temperature: 0.7, // Balanced creativity
-      });
-
-      const content = response.choices[0]?.message?.content?.trim();
       
-      if (!content) {
-        throw new Error('No content generated from OpenAI');
+      // Generate diverse content pack
+      const contentPack = await operator.generateContentPack(brandNotes, seeds, recentPosts);
+      
+      if (contentPack.singles && contentPack.singles.length > 0) {
+        // Select best single from the pack
+        const selectedContent = contentPack.singles[0];
+        
+        console.log(`🎯 Generated diverse content (quality: ${contentPack.metadata.qualityScores?.[0] || 'unknown'}, diversity: ${contentPack.metadata.diversityScore})`);
+        console.log(`📊 Format mix: ${contentPack.metadata.formatMix?.join(', ')}`);
+        
+        return selectedContent;
       }
-
-      // Quality validation
-      if (content.length < 50) {
-        throw new Error('Generated content too short');
-      }
-
-      if (content.includes('...') && content.length < 150) {
-        throw new Error('Content appears incomplete (contains ellipsis and too short)');
-      }
-
-      console.log(`✅ Generated high-quality content: ${content.length} chars`);
-      return content;
-
+      
+      console.warn('⚠️ Social Content Operator failed, falling back to emergency content');
+      return this.getEmergencyDiverseContent();
+      
     } catch (error: any) {
-      console.error('❌ AI content generation failed:', error.message);
-      
-      // Fallback to high-quality health content
-      const fallbackContent = [
-        'Your body loses 2-3 liters of water daily through breathing and skin. That "8 glasses" rule? It\'s actually closer to 10-12 for optimal brain function and energy levels.',
-        'Sleep debt is real debt - you can\'t just "catch up" on weekends. Missing 1 hour of sleep reduces your immune function by 70% the next day. Consistency beats duration.',
-        'Walking after meals drops blood sugar by 30% compared to sitting. Even a 2-minute walk helps. Your pancreas will thank you, and your energy won\'t crash.',
-        'Chronic stress shrinks your prefrontal cortex (decision-making) while growing your amygdala (fear center). Deep breathing for 60 seconds can reverse this in real-time.',
-        'Your gut produces 90% of your serotonin. That "gut feeling" is literally your microbiome talking to your brain. Fiber feeds good bacteria = better mood.',
-        'Cold exposure for 30 seconds boosts norepinephrine by 530%. This neurotransmitter improves focus, mood, and fat burning. Start with cold shower endings.',
-        'Sitting for 6+ hours daily increases death risk by 40%. Standing desks help, but movement every 30 minutes is the key. Set reminders to save your spine.',
-        'Your circadian rhythm controls 80% of your hormones. Blue light after sunset confuses your body clock. Use night mode or glasses after 8 PM for better sleep.'
-      ];
-      
-      return fallbackContent[Math.floor(Math.random() * fallbackContent.length)];
+      console.error('❌ Social Content Operator failed:', error.message);
+      return this.getEmergencyDiverseContent();
     }
+  }
+
+  /**
+   * Get recent posts to prevent repetition
+   */
+  private async getRecentPostsForDiversity(): Promise<string[]> {
+    try {
+      // Try to get recent posts from database for diversity checking
+      const { admin } = await import('../lib/supabaseClients');
+      const { data, error } = await admin
+        .from('learning_posts')
+        .select('content')
+        .order('created_at', { ascending: false })
+        .limit(10);
+      
+      if (!error && data) {
+        return data.map(post => post.content).filter(Boolean);
+      }
+    } catch (error) {
+      console.warn('Could not fetch recent posts for diversity:', error);
+    }
+    
+    return []; // Return empty array if can't fetch
+  }
+
+  /**
+   * Emergency diverse content that still follows quality principles
+   */
+  private getEmergencyDiverseContent(): string {
+    const emergencyContent = [
+      // Controversial takes
+      "Unpopular opinion: Most health advice is designed to sell you something, not help you.",
+      
+      // Personal stories
+      "I tracked my energy for 30 days. Biggest insight? My afternoon crash came from morning coffee timing, not lunch.",
+      
+      // Questions for engagement
+      "What's one health habit you know works but still don't do consistently?",
+      
+      // Myth busters
+      "Breaking: '8 glasses of water' was never based on science. It came from a 1945 recommendation that included water from food.",
+      
+      // Shocking stats
+      "70% of your immune system lives in your gut. That 'gut feeling' about food choices? Your microbiome talking.",
+      
+      // Analogies
+      "Your metabolism is like a campfire. Protein is dry wood (burns hot), carbs are kindling (quick flame), fat is the log (steady burn).",
+      
+      // Quick tips
+      "Cold shower hack: Start warm, end with 30 seconds cold. Boosts dopamine 250% and burns calories for hours.",
+      
+      // Industry insights
+      "Most 'superfood' studies are funded by companies selling that exact superfood. Read the fine print."
+    ];
+    
+    return emergencyContent[Math.floor(Math.random() * emergencyContent.length)];
   }
 
   /**

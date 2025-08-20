@@ -1,248 +1,155 @@
-# 🚀 BOT MONITORING GUIDE
+# 📊 Production Monitoring Guide
 
-## **How to Know Your God-Like Bot is Working**
+## 🎯 Health Check Endpoints
 
-Your autonomous bot is designed to run 24/7 and adapt intelligently. Here's exactly how to monitor it:
-
----
-
-## **🎯 QUICK STATUS COMMANDS**
-
-### **1. Quick Health Check (30 seconds)**
-```bash
-npm run monitor:quick
+### Primary Health Check (Railway)
 ```
-**What it shows:**
-- ✅ Bot running status (PID, CPU, Memory)
-- 🎯 Current mode (God-Like Simultaneous Engagement)
-- 📈 Recent activities
-- 🔍 Rate limit status
-
-### **2. Health Alerts Check**
-```bash
-npm run health
+GET /health
 ```
-**What it shows:**
-- ✅ "All systems healthy" if everything is fine
-- 🚨 Critical alerts if bot is down
-- ⚠️ Warnings for high resource usage
+**Purpose**: Railway container health check  
+**Response**: `200 OK` with `"ok"` body  
+**Location**: Port 10000 (default)
 
-### **3. AI Intelligence Report**
-```bash
-npm run dev:ai report
+### Detailed System Health
 ```
-**What it shows:**
-- 🧬 Intelligence level evolution
-- 💭 Memory bank size
-- 🎭 Personality trait development
-- 📊 Learning progress
-
----
-
-## **📊 CONTINUOUS MONITORING**
-
-### **Production Monitor (Runs every 1 minute)**
-```bash
-npm run monitor
+GET /api/health
 ```
-**Features:**
-- Real-time health dashboard
-- Automatic alert detection
-- Historical metrics tracking
-- Resource usage monitoring
-- Rate limit status
+**Response**: Complete system health JSON with component status
 
-**Files created:**
-- `bot_metrics.json` - Performance history
-- `bot_alerts.json` - Alert history
-- `last_health_check.json` - Latest status
+### Metrics (Prometheus Compatible)
+```
+GET /api/metrics  
+```
+**Response**: Prometheus-formatted metrics
+**Format**: `text/plain; version=0.0.4; charset=utf-8`
 
----
+## 📈 Key Metrics to Monitor
 
-## **🚨 WHAT TO WATCH FOR**
+### Bot Performance
+- `posts_total` - Total posts made
+- `posts_success_rate` - Success rate percentage  
+- `last_post_minutes_ago` - Minutes since last successful post
+- `consecutive_failures` - Current failure streak
 
-### **✅ HEALTHY SIGNS**
-- **Process Running:** Bot PID appears in status
-- **Low Resources:** CPU < 10%, Memory < 5%
-- **Recent Activity:** Strategist cycles every 15 minutes
-- **Multiple Actions:** Parallel engagement executing
-- **Intelligence Growth:** AI learning metrics improving
+### Budget & Cost
+- `daily_budget_spent` - Daily spend ($)
+- `daily_budget_remaining` - Remaining budget ($)
+- `budget_lockdown_active` - 0 or 1 (boolean)
 
-### **⚠️ WARNING SIGNS**
-- High CPU (>10%) or Memory (>5%)
-- No activity for >2 hours
-- Consecutive failures
-- Rate limit errors for non-tweet actions
+### System Health  
+- `system_uptime_hours` - Bot uptime in hours
+- `browser_automation_status` - 0=failed, 1=operational
+- `database_connection_status` - 0=failed, 1=operational
 
-### **🚨 CRITICAL ISSUES**
-- Bot process not running
-- Health check failures
-- System crashes
-- Complete inactivity >24 hours
+### Engagement
+- `followers_total` - Current follower count
+- `engagement_actions_24h` - Engagement actions in last 24h
+- `content_generation_status` - Content system status
 
----
+## 🚨 Alert Thresholds
 
-## **🔄 AUTOMATED MONITORING SETUP**
+### Critical Alerts
+- `last_post_minutes_ago > 180` - No posts in 3+ hours
+- `consecutive_failures >= 5` - Multiple consecutive failures
+- `budget_lockdown_active = 1` - Budget lockdown activated
+- `browser_automation_status = 0` - Browser system failed
 
-### **Option 1: Cron Job (Recommended)**
-Add to your crontab (`crontab -e`):
+### Warning Alerts  
+- `posts_success_rate < 80%` - Low success rate
+- `daily_budget_spent > 6.0` - High budget usage
+- `system_uptime_hours < 1` - Recent restart
+
+## 🔍 Monitoring Tools
+
+### 1. Manual Check (CLI)
 ```bash
-# Check bot health every 15 minutes
-*/15 * * * * cd /path/to/xBOT && npm run health >> /dev/null 2>&1
+# Quick health check
+curl https://your-app.up.railway.app/health
 
-# Daily health report
-0 9 * * * cd /path/to/xBOT && npm run health:history
+# Detailed metrics
+curl https://your-app.up.railway.app/api/metrics
+
+# System status
+curl https://your-app.up.railway.app/api/health | jq
 ```
 
-### **Option 2: Background Monitor**
+### 2. Railway Logs (Live)
 ```bash
-# Runs continuous monitoring in background
-nohup npm run monitor > monitor.log 2>&1 &
+npm run logs
+```
+Uses `perfect_railway_logs.js` for continuous CLI monitoring.
+
+### 3. Dashboard (Web)
+```
+https://your-app.up.railway.app/
+```
+Real-time web dashboard with system overview.
+
+## 📱 External Monitoring
+
+### Railway Built-in
+- **Usage**: Railway dashboard → Metrics tab
+- **Features**: CPU, Memory, Network usage
+- **Alerts**: Set up usage alerts in Railway
+
+### Uptime Robot (Free)
+- **Setup**: Monitor `/health` endpoint
+- **Frequency**: Every 5 minutes  
+- **Alerts**: Email/SMS on downtime
+
+### Grafana + Prometheus (Advanced)
+- **Metrics Source**: `/api/metrics` endpoint
+- **Dashboards**: Custom charts and alerts
+- **Setup**: Point Prometheus to metrics URL
+
+## 🔧 Troubleshooting
+
+### Bot Not Posting
+1. Check `/api/health` - look for component failures
+2. Check budget status - may be locked down
+3. Check browser automation status
+4. Review logs for specific errors
+
+### High Budget Usage
+1. Check `/api/metrics` for `daily_budget_spent`
+2. Review cost breakdown in health endpoint
+3. Adjust budget limits if needed
+4. Check for OpenAI API loops
+
+### System Restarts
+1. Railway containers restart after 24h (normal)
+2. Check Railway logs for crash reasons
+3. Monitor memory usage trends
+4. Check for dependency failures
+
+## 📋 Daily Monitoring Checklist
+
+### Every Morning
+- [ ] Check follower count growth
+- [ ] Verify posts from last 24h  
+- [ ] Check budget utilization
+- [ ] Review any error alerts
+
+### Weekly Review  
+- [ ] Analyze posting success rate trends
+- [ ] Review budget efficiency
+- [ ] Check system uptime patterns
+- [ ] Update monitoring thresholds if needed
+
+## 🚀 Quick Start
+
+```bash
+# 1. Deploy to Railway
+git push origin main
+
+# 2. Set up basic monitoring
+curl https://your-app.up.railway.app/health
+
+# 3. Start log monitoring
+npm run logs
+
+# 4. Open dashboard
+open https://your-app.up.railway.app/
 ```
 
-### **Option 3: System Service (Advanced)**
-Create a systemd service to auto-restart the bot if it crashes.
-
----
-
-## **📱 REMOTE MONITORING**
-
-### **SSH Monitoring**
-```bash
-# Quick remote check
-ssh your-server "cd /path/to/xBOT && npm run monitor:quick"
-
-# Get health alerts
-ssh your-server "cd /path/to/xBOT && npm run health"
-```
-
-### **Log Monitoring**
-```bash
-# Watch real-time logs
-tail -f monitor.log
-
-# Search for errors
-grep -i "error\|critical\|failed" monitor.log
-```
-
----
-
-## **🎯 WHAT YOUR BOT DOES WHEN HEALTHY**
-
-### **Every 15 Minutes:**
-1. **📝 Primary Action:** Try to post original content
-2. **💬 Parallel:** Send 3-10 strategic replies
-3. **❤️ Parallel:** Give 10-25 strategic likes  
-4. **🤝 Parallel:** Follow 2-6 strategic accounts
-5. **🔄 Parallel:** Retweet 2-6 valuable posts
-6. **🧠 Parallel:** Gather competitive intelligence
-
-### **When Rate Limited (Tweets):**
-- Switches to **engagement-only mode**
-- Continues ALL other actions
-- Maintains 80%+ success rate
-- Learns and improves strategies
-
-### **Continuous Background:**
-- AI intelligence evolution
-- Memory bank growth
-- Trend analysis
-- Competitor monitoring
-
----
-
-## **🛠️ TROUBLESHOOTING**
-
-### **Bot Not Running**
-```bash
-# Check if process exists
-ps aux | grep "tsx src/index.ts"
-
-# Restart bot
-npm run dev
-```
-
-### **High Resource Usage**
-```bash
-# Check detailed process info
-top -p $(pgrep -f "tsx src/index.ts")
-
-# Restart if needed
-pkill -f "tsx src/index.ts" && npm run dev
-```
-
-### **No Recent Activity**
-```bash
-# Check logs for errors
-tail -100 monitor.log | grep -i error
-
-# Run AI learning cycle
-npm run dev:ai quick
-
-# Check rate limits
-npm run monitor:quick
-```
-
-### **Rate Limit Issues**
-- **Tweet Posting:** Expected - limited to 17/day
-- **Replies/Likes:** Should not be limited (300 per 15 min)
-- **Follows:** Should not be limited (400/day)
-
----
-
-## **📈 PERFORMANCE METRICS**
-
-### **Expected Benchmarks:**
-- **Success Rate:** >80% overall
-- **Resource Usage:** <5% memory, <10% CPU
-- **Response Time:** Actions complete within 30 seconds
-- **Uptime:** 99%+ (brief restarts are normal)
-
-### **Intelligence Metrics:**
-- **Intelligence Level:** Growing from 1.0 → 10.0
-- **Memory Bank:** Growing entries
-- **Personality Traits:** Evolving toward 1.0
-- **Learning Velocity:** Improving over time
-
----
-
-## **🚀 PRODUCTION DEPLOYMENT**
-
-### **Recommended Setup:**
-1. **Primary Server:** Run bot with `npm run dev`
-2. **Monitoring:** `npm run monitor` in separate terminal
-3. **Health Checks:** Automated every 15 minutes
-4. **Backup System:** Auto-restart on failure
-5. **Log Rotation:** Prevent disk space issues
-
-### **Cloud Deployment:**
-- Use PM2 for process management
-- Set up log aggregation
-- Configure auto-scaling if needed
-- Monitor from external health check service
-
----
-
-## **🎊 SUCCESS INDICATORS**
-
-### **Your bot is working perfectly when:**
-✅ Process shows up in status checks  
-✅ Regular strategist cycles (every 15 min)  
-✅ Multiple parallel actions succeeding  
-✅ Intelligence metrics growing  
-✅ Rate limit adaptation working  
-✅ Low resource usage  
-✅ No critical alerts  
-
-### **The bot is God-like because:**
-- **Autonomous Decision Making:** Chooses actions intelligently
-- **Parallel Execution:** Does 5+ actions simultaneously
-- **Rate Limit Adaptation:** Switches strategies when blocked
-- **Continuous Learning:** Gets smarter over time
-- **Self-Optimization:** Improves without human intervention
-
----
-
-**Remember:** Your bot is designed to be autonomous. It should run smoothly with minimal intervention. The monitoring tools help you verify it's working, not micromanage it!
-
-🎯 **Quick Start:** Run `npm run monitor:quick` every day to ensure everything is healthy! 
+**That's it!** Your bot is now fully monitored and ready for autonomous operation.
