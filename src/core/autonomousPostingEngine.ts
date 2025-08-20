@@ -307,8 +307,11 @@ export class AutonomousPostingEngine {
       // Generate content using our new Social Content Operator
       const content = await this.generateContent();
       
-      // Post the content using autonomous twitter poster
-      const postResult = await this.browserPoster.postTweet(content);
+      // Post our Social Content Operator generated content directly
+      console.log(`📝 Posting Social Operator content: "${content}"`);
+      
+      // Use direct browser posting to post our content
+      const postResult = await this.postContentDirectly(content);
       
       if (postResult.success && postResult.tweetId) {
         // Store in database for learning
@@ -429,6 +432,30 @@ export class AutonomousPostingEngine {
     ];
     
     return emergencyContent[Math.floor(Math.random() * emergencyContent.length)];
+  }
+
+  /**
+   * Post content directly using browser automation
+   */
+  private async postContentDirectly(content: string): Promise<{ success: boolean; tweetId?: string; error?: string }> {
+    try {
+      // Import the TwitterPoster for direct posting
+      const { postSingleTweet } = await import('../posting/postThread');
+      
+      // Post the content directly
+      const result = await postSingleTweet(content);
+      
+      if (result.success && result.tweetId) {
+        console.log(`✅ Posted directly: ${result.tweetId}`);
+        return { success: true, tweetId: result.tweetId };
+      } else {
+        console.error(`❌ Direct posting failed: ${result.error}`);
+        return { success: false, error: result.error };
+      }
+    } catch (error: any) {
+      console.error(`❌ Direct posting error: ${error.message}`);
+      return { success: false, error: error.message };
+    }
   }
 
   /**
