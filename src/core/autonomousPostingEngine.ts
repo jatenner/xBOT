@@ -692,38 +692,26 @@ Create a high-quality health/wellness post that passes these requirements.`;
       
       await dbManager.initialize();
       
-      // Execute with advanced query optimization and monitoring
-      const success = await dbManager.executeQuery(
-        'insert_tweet',
-        async (client) => {
-          const { error } = await client.from('tweets').insert({
-        content,
+      // Store in proper learning and metrics tables for Social Content Operator
+      console.log(`📊 DB_WRITE: Storing tweet data for learning system`);
+      
+      const { storeNewPostMetrics } = await import('../posting/metrics');
+      
+      // Store the post data in the learning system for analytics and improvement
+      await storeNewPostMetrics({
         tweet_id: tweetId,
-            posted_at: new Date().toISOString(),
-            platform: 'twitter',
-            status: 'posted',
-        engagement_score: 0,
-        likes: 0,
-        retweets: 0,
-            replies: 0
-          });
-          
-          if (error) throw error;
-          return true;
-        },
-        `tweet_insert_${tweetId}`, // Cache key
-        300000 // 5 minute cache
-      );
+        content: content,
+        format: content.includes('\n\n') ? 'thread' : 'single', // Simple format detection
+        initial_metrics: {
+          likes_count: 0,
+          retweets_count: 0,
+          replies_count: 0,
+          bookmarks_count: 0,
+          impressions_count: 0
+        }
+      });
 
-      // Cache tweet data in Redis for quick access
-      await dbManager.cacheSet(`tweet:${tweetId}`, {
-        content,
-        posted_at: new Date().toISOString(),
-        platform: 'twitter',
-        status: 'posted'
-      }, 3600); // 1 hour cache
-
-      console.log('🏢 Stored tweet in enterprise database system with caching');
+      console.log(`✅ DB_WRITE: Successfully stored tweet ${tweetId} in learning_posts and tweet_metrics`);
       
       // Emit success event for monitoring
       dbManager.emit('tweetStored', { tweetId, content: content.substring(0, 100) });

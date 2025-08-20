@@ -180,12 +180,30 @@ export async function upsertLearningPost(post: LearningPost): Promise<{ ok: bool
       content: post.content || null
     };
 
-    const { error } = await supabase
+    // Check if record exists first, then insert or update accordingly
+    const { data: existingRecord, error: checkError } = await supabase
       .from('learning_posts')
-      .upsert([row], { 
-        onConflict: 'tweet_id',
-        ignoreDuplicates: false 
-      });
+      .select('id')
+      .eq('tweet_id', post.tweet_id)
+      .single();
+
+    let error;
+    if (checkError && checkError.code !== 'PGRST116') { // PGRST116 = no rows returned
+      error = checkError;
+    } else if (existingRecord) {
+      // Update existing record
+      const { error: updateError } = await supabase
+        .from('learning_posts')
+        .update(row)
+        .eq('tweet_id', post.tweet_id);
+      error = updateError;
+    } else {
+      // Insert new record
+      const { error: insertError } = await supabase
+        .from('learning_posts')
+        .insert([row]);
+      error = insertError;
+    }
 
     if (error) {
       const errorMsg = error.message;
@@ -204,13 +222,10 @@ export async function upsertLearningPost(post: LearningPost): Promise<{ ok: bool
           const { ensureSchemaAtBoot } = await import('../services/SchemaGuard');
           await ensureSchemaAtBoot();
           
-          // Retry the upsert once after schema healing
+          // Retry the insert once after schema healing
           const { error: retryError } = await supabase
             .from('learning_posts')
-            .upsert([row], { 
-              onConflict: 'tweet_id',
-              ignoreDuplicates: false 
-            });
+            .insert([row]);
           
           if (!retryError) {
             console.log(`LEARNING_UPSERT_OK ${JSON.stringify({

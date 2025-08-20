@@ -104,19 +104,23 @@ export class SocialContentOperator {
   }
 
   /**
-   * Generate a complete content pack with diversity controls
+   * Generate a complete content pack with diversity controls and learning integration
    */
   async generateContentPack(brandNotes: string, seeds: string[], recentPosts: string[]): Promise<ContentPack> {
-    console.log('🎯 SOCIAL_OPERATOR: Generating diverse content pack');
+    console.log('🎯 SOCIAL_OPERATOR: Generating diverse content pack with learning integration');
     
     // Analyze recent posts to avoid repetition
     this.updateContentHistory(recentPosts);
     
-    // Generate 3 singles with different formats
-    const singles = await this.generateDiverseSingles(brandNotes, seeds);
+    // Get learning insights to improve content generation
+    const learningInsights = await this.getLearningInsights();
+    console.log(`🧠 LEARNING: Applied ${learningInsights.length} insights to content generation`);
     
-    // Generate 2 threads with different styles
-    const threads = await this.generateDiverseThreads(brandNotes, seeds);
+    // Generate 3 singles with different formats using learning insights
+    const singles = await this.generateDiverseSingles(brandNotes, seeds, learningInsights);
+    
+    // Generate 2 threads with different styles using learning insights
+    const threads = await this.generateDiverseThreads(brandNotes, seeds, learningInsights);
     
     // Calculate diversity metrics
     const metadata = this.calculateDiversityMetrics(singles, threads);
@@ -129,9 +133,31 @@ export class SocialContentOperator {
   }
 
   /**
-   * Generate 3 diverse single tweets
+   * Get learning insights from the intelligent learning engine
    */
-  private async generateDiverseSingles(brandNotes: string, seeds: string[]): Promise<string[]> {
+  private async getLearningInsights(): Promise<any[]> {
+    try {
+      const { IntelligentLearningEngine } = await import('../intelligence/intelligentLearningEngine');
+      const learningEngine = IntelligentLearningEngine.getInstance();
+      
+      // Get actionable insights for content improvement
+      const insights = await learningEngine.learnFromPerformanceData();
+      
+      return insights.filter(insight => 
+        insight.type === 'content_style' || 
+        insight.type === 'engagement_hook' ||
+        insight.type === 'optimal_length'
+      );
+    } catch (error) {
+      console.warn('Could not fetch learning insights:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Generate 3 diverse single tweets with learning insights
+   */
+  private async generateDiverseSingles(brandNotes: string, seeds: string[], learningInsights: any[] = []): Promise<string[]> {
     const singles: string[] = [];
     const targetFormats = ['controversial-take', 'story-personal', 'question-engagement'];
     
@@ -140,7 +166,7 @@ export class SocialContentOperator {
       const topic = this.selectUnusedTopic();
       const seed = seeds[i] || topic;
       
-      const prompt = this.buildSinglePrompt(brandNotes, seed, format, this.contentHistory);
+      const prompt = this.buildSinglePrompt(brandNotes, seed, format, this.contentHistory, learningInsights);
       
       try {
         const response = await this.openai.chat.completions.create({
@@ -176,9 +202,9 @@ export class SocialContentOperator {
   }
 
   /**
-   * Generate 2 diverse threads
+   * Generate 2 diverse threads with learning insights
    */
-  private async generateDiverseThreads(brandNotes: string, seeds: string[]): Promise<ThreadContent[]> {
+  private async generateDiverseThreads(brandNotes: string, seeds: string[], learningInsights: any[] = []): Promise<ThreadContent[]> {
     const threads: ThreadContent[] = [];
     const threadFormats = ['educational-series', 'myth-busting-thread'];
     
@@ -219,11 +245,16 @@ export class SocialContentOperator {
   }
 
   /**
-   * Build single tweet prompt with format and diversity controls
+   * Build single tweet prompt with format, diversity controls, and learning insights
    */
-  private buildSinglePrompt(brandNotes: string, seed: string, format: string, recentContent: string[]): string {
+  private buildSinglePrompt(brandNotes: string, seed: string, format: string, recentContent: string[], learningInsights: any[] = []): string {
     const formatInfo = this.CONTENT_FORMATS[format];
     const avoidContent = recentContent.join('\n- ');
+    
+    // Extract actionable learning insights
+    const insightText = learningInsights.length > 0 
+      ? `\n\nLEARNING INSIGHTS (apply these patterns that work):\n${learningInsights.map(insight => `- ${insight.recommendation}`).join('\n')}`
+      : '';
     
     return `You are a Social Content Operator creating a ${format} tweet for a health & performance profile.
 
@@ -241,13 +272,14 @@ STRICT RULES:
 AVOID REPEATING THESE RECENT TOPICS/PHRASES:
 - ${avoidContent}
 
-FORMAT EXAMPLE: ${formatInfo.examples[0]}
+FORMAT EXAMPLE: ${formatInfo.examples[0]}${insightText}
 
 Generate ONE tweet that:
 1. Follows the ${format} format perfectly
 2. Is completely different from recent content
 3. Creates engagement and connection
-4. Scores 80+ on quality (engaging, valuable, human)
+4. Applies successful patterns from learning insights
+5. Scores 80+ on quality (engaging, valuable, human)
 
 Tweet:`;
   }
