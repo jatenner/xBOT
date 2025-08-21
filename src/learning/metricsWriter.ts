@@ -95,7 +95,7 @@ export async function upsertLearningPost(p: {
       impressions_count: p.impressions ?? 0,
       viral_potential_score: p.viral_potential_score ?? calculateViralScore(p),
       content: p.content ?? null,
-      likes: p.likes, // back-compat with existing code
+      format: 'single', // Add format column requirement
     };
 
     const { error } = await supabase
