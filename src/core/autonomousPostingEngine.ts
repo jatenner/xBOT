@@ -323,8 +323,14 @@ export class AutonomousPostingEngine {
       const postResult = await this.postContentDirectly(content);
       
                   if (postResult.success && postResult.tweetId) {
-              // Store in database for learning
-              await this.storeInDatabase(content, postResult.tweetId);
+              // Store in database for learning (non-blocking)
+              try {
+                await this.storeInDatabase(content, postResult.tweetId);
+                console.log(`✅ DB_WRITE: Successfully stored tweet ${postResult.tweetId}`);
+              } catch (dbError: any) {
+                console.warn(`⚠️ DB_WRITE: Failed to store metrics (tweet still posted): ${dbError.message}`);
+                // Post succeeded even if database storage failed - this is OK
+              }
 
               // Check for engagement alerts after posting
               try {
@@ -472,8 +478,15 @@ export class AutonomousPostingEngine {
         console.log(`✅ Posted directly: ${result.tweetId}`);
         return { success: true, tweetId: result.tweetId };
       } else {
-        console.error(`❌ Direct posting failed: ${result.error}`);
-        return { success: false, error: result.error };
+        // Check if this is a database error vs actual posting error
+        if (result.error && result.error.includes('permission denied for table')) {
+          console.warn(`⚠️ Database storage failed but post may have succeeded: ${result.error}`);
+          // Post likely succeeded, just metrics storage failed
+          return { success: false, error: 'Database permission issue - post may need retry' };
+        } else {
+          console.error(`❌ Direct posting failed: ${result.error}`);
+          return { success: false, error: result.error };
+        }
       }
     } catch (error: any) {
       console.error(`❌ Direct posting error: ${error.message}`);
