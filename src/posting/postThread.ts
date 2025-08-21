@@ -100,20 +100,35 @@ export class TwitterPoster {
           const tweetId = capturedId || result.tweetId || 'unknown';
           
           console.log(`✅ Posted single tweet: ${tweetId}`);
-          await upsertTweetMetrics({ 
-            tweet_id: tweetId, 
-            likes: 0, 
-            retweets: 0, 
-            replies: 0, 
-            content 
-          });
-          await upsertLearningPost({ 
-            tweet_id: tweetId, 
-            likes: 0, 
-            retweets: 0, 
-            replies: 0, 
-            content 
-          });
+          
+          // Store metrics in database (non-blocking)
+          try {
+            await upsertTweetMetrics({ 
+              tweet_id: tweetId, 
+              likes: 0, 
+              retweets: 0, 
+              replies: 0, 
+              content 
+            });
+            console.log(`✅ DB_WRITE: Metrics stored for tweet ${tweetId}`);
+          } catch (dbError: any) {
+            console.warn(`⚠️ DB_WRITE: Failed to store metrics (tweet still succeeded): ${dbError.message}`);
+          }
+          
+          // Store learning data (non-blocking)
+          try {
+            await upsertLearningPost({ 
+              tweet_id: tweetId, 
+              likes: 0, 
+              retweets: 0, 
+              replies: 0, 
+              content 
+            });
+            console.log(`✅ DB_WRITE: Learning data stored for tweet ${tweetId}`);
+          } catch (dbError: any) {
+            console.warn(`⚠️ DB_WRITE: Failed to store learning data (tweet still succeeded): ${dbError.message}`);
+          }
+          
           return { success: true, tweetId };
         } else {
           throttleError('composer-single-fail', `Single tweet post failed: ${result.error}`);
