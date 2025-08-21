@@ -135,7 +135,9 @@ export class AutonomousPostingEngine {
             .then((result) => {
               if (result.success) {
                 this.consecutiveFailures = 0; // Reset failure count on success
+                console.log(`✅ POST_SUCCESS: Resetting failure counter (was ${this.consecutiveFailures})`);
               } else {
+                console.warn(`❌ POST_FAILURE: Incrementing failure counter`);
                 this.handlePostFailure();
               }
             })
@@ -234,10 +236,11 @@ export class AutonomousPostingEngine {
     this.consecutiveFailures++;
     console.warn(`⚠️ Post failure #${this.consecutiveFailures}`);
     
-    if (this.consecutiveFailures >= 3) {
+    if (this.consecutiveFailures >= 10) { // Increased threshold to avoid false emergency stops
       // Trigger emergency stop for 30 minutes
       this.emergencyStopUntil = Date.now() + (30 * 60 * 1000);
       console.error(`🚨 EMERGENCY STOP: Too many failures (${this.consecutiveFailures}). Pausing for 30 minutes.`);
+      console.error(`🔍 EMERGENCY_REASON: Check for actual posting failures vs database permission issues`);
     }
   }
 
@@ -481,7 +484,12 @@ export class AutonomousPostingEngine {
         // Check if this is a database error vs actual posting error
         if (result.error && result.error.includes('permission denied for table')) {
           console.warn(`⚠️ Database storage failed but post may have succeeded: ${result.error}`);
-          // Post likely succeeded, just metrics storage failed
+          // CRITICAL FIX: If we got a tweet ID, the post succeeded even with DB errors
+          if (result.tweetId) {
+            console.log(`✅ Post succeeded despite database error: ${result.tweetId}`);
+            return { success: true, tweetId: result.tweetId };
+          }
+          // No tweet ID means actual posting failed
           return { success: false, error: 'Database permission issue - post may need retry' };
         } else {
           console.error(`❌ Direct posting failed: ${result.error}`);
