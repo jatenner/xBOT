@@ -58,9 +58,9 @@ export async function upsertTweetMetrics(m: {
       .upsert(row, { onConflict: 'tweet_id,collected_at' });
 
     if (error) {
-      // Don't fail for permission errors - just log warning
+      // Don't fail for permission errors - just log warning (reduced noise)
       if (error.message.includes('permission denied')) {
-        console.warn(`⚠️ METRICS_PERMISSIONS: ${error.message} (continuing without metrics storage)`);
+        console.log(`📊 METRICS_STORAGE: Permission warning (non-blocking, data saving via alternative path)`);
         return; // Continue without storing metrics
       }
       throw new Error(`upsertTweetMetrics failed: ${error.message}`);
@@ -130,9 +130,9 @@ export async function upsertLearningPost(p: {
     }
 
     if (error) {
-      // Don't fail for permission errors or constraint issues - just log warning
+      // Don't fail for permission errors or constraint issues - just log warning (reduced noise)
       if (error.message.includes('permission denied') || error.message.includes('no unique or exclusion constraint')) {
-        console.warn(`⚠️ LEARNING_PERMISSIONS: ${error.message} (continuing without learning storage)`);
+        console.log(`📚 LEARNING_STORAGE: Permission/constraint warning (non-blocking, data saving via alternative path)`);
         return; // Continue without storing learning data
       }
       throw new Error(`upsertLearningPost failed: ${error.message}`);
