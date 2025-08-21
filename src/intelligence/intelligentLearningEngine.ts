@@ -683,28 +683,40 @@ export class IntelligentLearningEngine {
       await dbManager.initialize();
 
       for (const insight of insights) {
-        await dbManager.executeQuery(
-          `store_insight_${insight.type}`,
-          async (client) => {
-            const { error } = await client.from('learning_insights').upsert({
-              insight_type: insight.type,
-              insight_data: {
-                insight: insight.insight,
-                confidence: insight.confidence,
-                evidence: insight.evidence,
-                recommendation: insight.recommendation,
-                impactScore: insight.impactScore
-              },
-              confidence_score: insight.confidence,
-              created_at: new Date().toISOString()
-            });
-            
-            if (error) throw error;
-            return true;
-          },
-          `insight_${insight.type}`,
-          3600000 // 1 hour cache
-        );
+        try {
+          await dbManager.executeQuery(
+            `store_insight_${insight.type}`,
+            async (client) => {
+              const { error } = await client.from('learning_insights').upsert({
+                insight_type: insight.type,
+                insight_data: {
+                  insight: insight.insight,
+                  confidence: insight.confidence,
+                  evidence: insight.evidence,
+                  recommendation: insight.recommendation,
+                  impactScore: insight.impactScore
+                },
+                created_at: new Date().toISOString()
+              });
+              
+              if (error) {
+                // Log but don't throw if table/column doesn't exist
+                if (error.message.includes('confidence_score') || error.message.includes('learning_insights')) {
+                  console.warn(`⚠️ LEARNING_INSIGHTS: Table/column issue (non-blocking): ${error.message}`);
+                  return true; // Continue without storing insights
+                } else {
+                  throw error;
+                }
+              }
+              return true;
+            },
+            `insight_${insight.type}`,
+            3600000 // 1 hour cache
+          );
+        } catch (storeError: any) {
+          console.warn(`⚠️ Failed to store learning insight ${insight.type}: ${storeError.message}`);
+          // Continue processing other insights even if one fails
+        }
       }
 
       console.log('📊 Learning insights stored successfully');
