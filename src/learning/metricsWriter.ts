@@ -58,6 +58,11 @@ export async function upsertTweetMetrics(m: {
       .upsert(row, { onConflict: 'tweet_id,collected_at' });
 
     if (error) {
+      // Don't fail for permission errors - just log warning
+      if (error.message.includes('permission denied')) {
+        console.warn(`⚠️ METRICS_PERMISSIONS: ${error.message} (continuing without metrics storage)`);
+        return; // Continue without storing metrics
+      }
       throw new Error(`upsertTweetMetrics failed: ${error.message}`);
     }
 
@@ -98,11 +103,38 @@ export async function upsertLearningPost(p: {
       format: 'single', // Add format column requirement
     };
 
-    const { error } = await supabase
+    // Try upsert first, fall back to insert if constraint issues
+    let { error } = await supabase
       .from('learning_posts')
       .upsert(row, { onConflict: 'tweet_id' });
+    
+    // If onConflict fails, try simple upsert or insert
+    if (error && error.message.includes('no unique or exclusion constraint')) {
+      console.log('📝 LEARNING_POSTS: Falling back to insert/update pattern');
+      
+      // First try to update existing record
+      const { error: updateError } = await supabase
+        .from('learning_posts')
+        .update(row)
+        .eq('tweet_id', row.tweet_id);
+      
+      // If no rows updated, insert new record
+      if (updateError || updateError?.details?.includes('0 rows')) {
+        const { error: insertError } = await supabase
+          .from('learning_posts')
+          .insert(row);
+        error = insertError;
+      } else {
+        error = updateError;
+      }
+    }
 
     if (error) {
+      // Don't fail for permission errors or constraint issues - just log warning
+      if (error.message.includes('permission denied') || error.message.includes('no unique or exclusion constraint')) {
+        console.warn(`⚠️ LEARNING_PERMISSIONS: ${error.message} (continuing without learning storage)`);
+        return; // Continue without storing learning data
+      }
       throw new Error(`upsertLearningPost failed: ${error.message}`);
     }
 
