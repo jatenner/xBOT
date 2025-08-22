@@ -189,25 +189,36 @@ export class SocialContentOperator {
 
         let content = response.choices[0]?.message?.content?.trim() || '';
         
-        // Optimize content for engagement using advanced algorithms
-        const optimizedResult = await this.optimizeForEngagement(content);
-        content = optimizedResult.optimized_content;
+              // EMERGENCY: Disable broken engagement optimizer that creates word salad
+      // const optimizedResult = await this.optimizeForEngagement(content);
+      // content = optimizedResult.optimized_content;
+      
+      console.log(`🔧 EMERGENCY_MODE: Engagement optimizer disabled to prevent content corruption`);
+      
+      // EMERGENCY: Critical content validation before posting
+      const isValidContent = this.validateContentQuality(content);
+      
+      if (!isValidContent.isValid) {
+        console.log(`🚨 CONTENT_REJECTED: ${isValidContent.reason}`);
+        console.log(`🔧 EMERGENCY_FALLBACK: Using safe content instead`);
+        content = this.generateEmergencyContent(seed);
+      }
+      
+      // Quality check on validated content
+      const qualityScore = await this.evaluateContentQuality(content, format);
         
-        console.log(`⚡ ENGAGEMENT_OPTIMIZER: Applied ${optimizedResult.changes_made.length} optimizations (${optimizedResult.expected_improvement}% improvement expected)`);
-        
-        // Quality check on optimized content
-        const qualityScore = await this.evaluateContentQuality(content, format);
-        
-        if (qualityScore >= 80) {
-          singles.push(content);
-          this.contentHistory.push(content);
-          this.formatHistory.push(format);
-          this.topicHistory.push(topic);
-        } else {
-          // Regenerate with feedback
-          content = await this.regenerateWithQualityFeedback(content, format, qualityScore);
-          singles.push(content);
-        }
+      if (qualityScore >= 70) { // Lowered threshold for emergency mode
+        singles.push(content);
+        this.contentHistory.push(content);
+        this.formatHistory.push(format);
+        this.topicHistory.push(topic);
+        console.log(`✅ CONTENT_ACCEPTED: Quality ${qualityScore}/100`);
+      } else {
+        // Emergency fallback - don't try to regenerate, just use safe content
+        console.log(`⚠️ LOW_QUALITY: ${qualityScore}/100, using emergency content`);
+        content = this.generateEmergencyContent(seed);
+        singles.push(content);
+      }
         
       } catch (error) {
         console.error(`Failed to generate single ${i + 1}:`, error);
@@ -279,23 +290,22 @@ BRAND: ${brandNotes}
 SEED TOPIC: ${seed}
 FORMAT: ${formatInfo.template}
 
-VIRAL CONTENT RULES:
-- NEVER start with "Unpopular opinion" (overused and boring)
-- Use shocking personal confessions with money/time stakes
-- Challenge sacred health beliefs aggressively 
-- Include specific numbers and failure stories
-- Call out industries, experts, or popular beliefs
-- Make people angry enough to comment and argue
-- End with confrontational engagement triggers
+STRICT CONTENT RULES:
+- BANNED PHRASE: "Unpopular opinion" (overused, auto-reject any content with this)
+- BANNED PHRASE: "Plot twist" (creates broken stacking)
+- BANNED PHRASE: "Uncomfortable truth" (causes optimization conflicts)
+- Use ONE hook only - never stack multiple hooks
+- Write like a human health expert, not an AI
+- Include specific numbers and personal experience
+- End with ONE simple engagement question
 
-PROVEN VIRAL HOOKS (rotate these, avoid repetition):
-- "I spent $[amount] learning [topic] is complete bullshit"
-- "Former [industry] insider: They don't want you to know..."
-- "I tried [popular thing] for [time]. It nearly killed me"
-- "Every [expert] tells you [advice]. They're dead wrong. Here's why:"
-- "Plot twist: The [industry] has been lying about [topic] for decades"
-- "Rich people know [secret]. Poor people get told [lie]"
-- "Uncomfortable truth: [popular belief] is keeping you [negative outcome]"
+SINGLE VIRAL HOOKS (use ONE per post):
+- "I spent $[amount] learning [topic] advice is wrong"
+- "Former [industry] insider here: [revelation]"
+- "I tried [popular thing] for [time]. Here's what happened:"
+- "Every [expert] tells you [advice]. They're wrong:"
+- "[Industry] doesn't want you to know this about [topic]:"
+- "Rich people do [X]. Poor people get told to do [Y]"
 
 ENGAGEMENT TRIGGERS (use one):
 - "Fight me in the comments"
@@ -309,13 +319,16 @@ AVOID REPEATING THESE RECENT TOPICS/PHRASES:
 
 FORMAT EXAMPLE: ${formatInfo.examples[0]}${insightText}
 
-Generate ONE provocative tweet that:
-1. Uses a shocking viral hook (NOT "Unpopular opinion")
-2. Challenges ${seed} orthodoxy with personal credibility 
-3. Includes specific contrarian advice with numbers
-4. Ends with confrontational engagement trigger
-5. Will make people angry enough to argue in comments
+CRITICAL REQUIREMENTS:
+1. Use ONLY ONE viral hook from the list above
+2. Write clear, readable sentences (no AI gibberish)
+3. Include specific numbers and personal experience
+4. Challenge ${seed} with evidence-based contrarian view
+5. End with ONE simple engagement question
 6. ≤260 characters total
+7. BANNED: "Unpopular opinion", "Plot twist", "Uncomfortable truth"
+
+Generate ONE clear, readable tweet:
 
 Tweet:`;
   }
@@ -410,6 +423,76 @@ IMPROVED VERSION:`;
     } catch (error) {
       return content; // Return original if regeneration fails
     }
+  }
+
+  /**
+   * EMERGENCY: Validate content quality to prevent posting broken content
+   */
+  private validateContentQuality(content: string): { isValid: boolean; reason?: string } {
+    // Check for banned phrases that create broken content
+    const bannedPhrases = ['Unpopular opinion', 'Plot twist:', 'Uncomfortable truth:', 'I this scared'];
+    
+    for (const phrase of bannedPhrases) {
+      if (content.toLowerCase().includes(phrase.toLowerCase())) {
+        return { isValid: false, reason: `Contains banned phrase: "${phrase}"` };
+      }
+    }
+    
+    // Check for stacked hooks (multiple hooks in one post)
+    const hookCount = [
+      'I spent $',
+      'Former',
+      'I tried',
+      'Every expert',
+      'doesn\'t want you to know',
+      'Rich people'
+    ].filter(hook => content.toLowerCase().includes(hook.toLowerCase())).length;
+    
+    if (hookCount > 1) {
+      return { isValid: false, reason: `Multiple hooks detected (${hookCount}) - creates word salad` };
+    }
+    
+    // Check for broken grammar patterns
+    const brokenPatterns = [
+      /"[A-Z][^"]*"[^.!?]*"/, // Multiple quotes without proper closing
+      /:\s*"/,                // Colon followed by quote (broken optimization)
+      /\s{3,}/,              // Multiple spaces
+      /[.!?]{2,}/            // Multiple punctuation
+    ];
+    
+    for (const pattern of brokenPatterns) {
+      if (pattern.test(content)) {
+        return { isValid: false, reason: 'Contains broken grammar patterns from optimization' };
+      }
+    }
+    
+    // Check minimum coherence
+    if (content.length < 50) {
+      return { isValid: false, reason: 'Content too short to be meaningful' };
+    }
+    
+    if (content.length > 280) {
+      return { isValid: false, reason: 'Content exceeds Twitter character limit' };
+    }
+    
+    return { isValid: true };
+  }
+
+  /**
+   * EMERGENCY: Generate safe, readable content when AI fails
+   */
+  private generateEmergencyContent(topic: string): string {
+    const emergencyTemplates = [
+      `I spent 6 months testing ${topic} methods. The biggest surprise? The simplest approach worked best. What's been your experience?`,
+      `Former health coach here: Most ${topic} advice online is outdated. Here's what actually works in 2024...`,
+      `I tried every ${topic} hack for 30 days. Only 2 things made a real difference. Thread coming soon.`,
+      `${topic} industry doesn't want you to know: You can get 80% of results with 20% of the effort. Here's how:`,
+      `Rich people hire experts for ${topic}. Poor people follow influencers. The difference? Evidence vs entertainment.`,
+      `Every doctor says ${topic} is complicated. I tested this for a year. It's actually simple. Change my mind.`
+    ];
+    
+    const template = emergencyTemplates[Math.floor(Math.random() * emergencyTemplates.length)];
+    return template.replace(/\$\{topic\}/g, topic);
   }
 
   /**
