@@ -80,8 +80,14 @@ export class EngagementOptimizer {
     try {
       // Get recent post performance data
       const recentPosts = await this.getRecentPostPerformance();
-      const viralBenchmarks = await this.getViralBenchmarks();
       
+      // If no posts or all posts have zero engagement, provide basic optimization insights
+      if (recentPosts.length === 0 || recentPosts.every(p => p.likes_count === 0 && p.retweets_count === 0)) {
+        console.log('🚨 ZERO_ENGAGEMENT_DETECTED: Providing fundamental optimization insights');
+        return this.getZeroEngagementInsights();
+      }
+      
+      const viralBenchmarks = await this.getViralBenchmarks();
       const insights: OptimizationInsight[] = [];
 
       // Analyze follower conversion rate
@@ -110,6 +116,62 @@ export class EngagementOptimizer {
       console.error('❌ ENGAGEMENT_OPTIMIZER: Analysis failed:', error.message);
       return [];
     }
+  }
+
+  /**
+   * Get fundamental optimization insights when posts have zero engagement
+   */
+  private getZeroEngagementInsights(): OptimizationInsight[] {
+    return [
+      {
+        problem: "Content hooks are not provocative enough to stop the scroll",
+        solution: "Use shocking personal confessions, money stories, or contrarian takes",
+        impact_score: 10,
+        evidence: ["Zero engagement indicates content is being ignored", "Boring hooks = invisible content"],
+        recommended_action: "Start every post with: 'I spent $X learning...', 'Former insider:', or 'Plot twist:'",
+        success_probability: 0.8
+      },
+      {
+        problem: "Content is too safe and doesn't create controversy",
+        solution: "Challenge sacred health beliefs aggressively and call out industries",
+        impact_score: 9,
+        evidence: ["No comments means no debate", "Safe content doesn't spread"],
+        recommended_action: "Attack popular health advice: 'Every doctor tells you X. They're wrong.'",
+        success_probability: 0.7
+      },
+      {
+        problem: "Missing emotional triggers and personal stakes",
+        solution: "Add personal pain stories, money lost, and industry insider knowledge",
+        impact_score: 9,
+        evidence: ["Emotional content gets 3x more engagement", "Personal stories create connection"],
+        recommended_action: "Include: failed experiments, wasted money, health disasters, insider secrets",
+        success_probability: 0.75
+      },
+      {
+        problem: "Weak call-to-actions that don't drive engagement",
+        solution: "Use confrontational CTAs that demand responses",
+        impact_score: 8,
+        evidence: ["Generic CTAs get ignored", "Confrontational CTAs drive comments"],
+        recommended_action: "End with: 'Fight me in the comments', 'Change my mind', 'Tell me I'm wrong'",
+        success_probability: 0.7
+      },
+      {
+        problem: "Content formula is too predictable and repetitive",
+        solution: "Vary hook types and break established patterns",
+        impact_score: 8,
+        evidence: ["Algorithm punishes repetitive content", "Audience gets bored with patterns"],
+        recommended_action: "Rotate between: money confessions, industry secrets, failure stories, class warfare",
+        success_probability: 0.6
+      },
+      {
+        problem: "Missing viral content elements: urgency, exclusivity, social proof",
+        solution: "Add time pressure, insider knowledge, and authority destruction",
+        impact_score: 7,
+        evidence: ["Viral content has specific triggers", "Authority challenges spread faster"],
+        recommended_action: "Use: 'Rich people know X, poor people get told Y', 'Industry doesn't want you to know'",
+        success_probability: 0.65
+      }
+    ];
   }
 
   /**
@@ -170,7 +232,21 @@ export class EngagementOptimizer {
       const changesMade: string[] = [];
       let improvementScore = 0;
 
-      // Apply hook optimization
+      console.log(`📊 Found ${insights.length} optimization insights`);
+
+      // Apply high-impact insights
+      for (const insight of insights.slice(0, 3)) { // Apply top 3 insights
+        if (insight.impact_score >= 7) {
+          const { optimized, applied } = this.applyOptimizationInsight(optimizedContent, insight);
+          if (applied) {
+            optimizedContent = optimized;
+            changesMade.push(insight.solution);
+            improvementScore += insight.impact_score;
+          }
+        }
+      }
+
+      // Apply hook optimization if still weak
       if (analysis.hook_strength < 7) {
         const { optimized, improvement } = this.optimizeHook(optimizedContent);
         optimizedContent = optimized;
@@ -469,6 +545,87 @@ export class EngagementOptimizer {
     }
 
     return suggestions;
+  }
+
+  /**
+   * Apply specific optimization insight to content
+   */
+  private applyOptimizationInsight(content: string, insight: OptimizationInsight): { optimized: string; applied: boolean } {
+    let optimized = content;
+    let applied = false;
+
+    try {
+      // Apply different optimizations based on the insight type
+      if (insight.problem.includes('hooks') || insight.problem.includes('provocative')) {
+        // Add provocative hooks
+        const viralHooks = [
+          "I spent $2,000 learning",
+          "Former industry insider:",
+          "Plot twist:",
+          "Uncomfortable truth:",
+          "Every expert tells you X. They're wrong:"
+        ];
+        
+        if (!viralHooks.some(hook => optimized.toLowerCase().includes(hook.toLowerCase()))) {
+          const hook = viralHooks[Math.floor(Math.random() * viralHooks.length)];
+          optimized = `${hook} ${optimized}`;
+          applied = true;
+        }
+      }
+
+      if (insight.problem.includes('controversy') || insight.problem.includes('safe')) {
+        // Add controversial elements
+        const controversialPhrases = [
+          "They don't want you to know",
+          "The industry is lying",
+          "This will piss people off",
+          "Complete bullshit"
+        ];
+        
+        if (!controversialPhrases.some(phrase => optimized.toLowerCase().includes(phrase.toLowerCase()))) {
+          const phrase = controversialPhrases[Math.floor(Math.random() * controversialPhrases.length)];
+          optimized = optimized.replace(/\. /, `. ${phrase}: `);
+          applied = true;
+        }
+      }
+
+      if (insight.problem.includes('emotional') || insight.problem.includes('personal')) {
+        // Add emotional triggers
+        const emotionalTriggers = [
+          "This scared the hell out of me",
+          "I was furious when I discovered",
+          "Almost destroyed my health",
+          "Wasted thousands of dollars"
+        ];
+        
+        if (!emotionalTriggers.some(trigger => optimized.toLowerCase().includes(trigger.toLowerCase()))) {
+          const trigger = emotionalTriggers[Math.floor(Math.random() * emotionalTriggers.length)];
+          optimized = optimized.replace(/I /, `I ${trigger.toLowerCase()} - `);
+          applied = true;
+        }
+      }
+
+      if (insight.problem.includes('call-to-action') || insight.problem.includes('engagement')) {
+        // Add confrontational CTAs
+        const ctaOptions = [
+          "Fight me in the comments.",
+          "Change my mind.",
+          "Tell me I'm wrong.",
+          "This will trigger people."
+        ];
+        
+        // Replace weak CTAs with strong ones
+        optimized = optimized.replace(/Let's discuss!?|What's your take\?|Thoughts\?/gi, '');
+        const cta = ctaOptions[Math.floor(Math.random() * ctaOptions.length)];
+        optimized = `${optimized.trim()} ${cta}`;
+        applied = true;
+      }
+
+      return { optimized: optimized.trim(), applied };
+    } catch (error) {
+      console.warn('Failed to apply optimization insight:', error);
+      return { optimized: content, applied: false };
+    }
   }
 
   // Optimization methods
