@@ -112,8 +112,8 @@ export class AutonomousPostingEngine {
 
           // EMERGENCY Rate limiting: minimum 5 minutes between post attempts
           const timeSinceLastAttempt = Date.now() - this.lastPostAttempt;
-          if (timeSinceLastAttempt < 300000) { // 5 minutes instead of 2
-            logInfo(`⏳ EMERGENCY Rate limiting: Last attempt ${Math.round(timeSinceLastAttempt/1000)}s ago, waiting ${Math.round((300000-timeSinceLastAttempt)/1000)}s more...`);
+          if (timeSinceLastAttempt < 4 * 60 * 60 * 1000) { // FIXED: 4 hours minimum between posts (was 5 minutes)
+            logInfo(`⏳ ANTI-SPAM: Last post ${Math.round(timeSinceLastAttempt/(60*60*1000))}h ago, waiting ${Math.round((4*60*60*1000-timeSinceLastAttempt)/(60*60*1000))}h more...`);
             return;
           }
 
@@ -154,7 +154,7 @@ export class AutonomousPostingEngine {
           } catch (error) {
         console.error('❌ Error in intelligent posting analysis:', error);
       }
-    }, 30 * 60 * 1000); // EMERGENCY: Check every 30 minutes instead of 5
+    }, 4 * 60 * 60 * 1000); // FIXED: Check every 4 hours to prevent spam posting (was 30 minutes)
 
     // FALLBACK: Still maintain basic schedule as safety net
     cron.schedule('0 */6 * * *', async () => {
@@ -377,7 +377,7 @@ export class AutonomousPostingEngine {
       const recentPosts = await this.getRecentPostsForDiversity();
       
       // Brand notes for consistency
-      const brandNotes = "Health & performance coach (@SignalAndSynapse). Friendly, evidence-based, challenges conventional wisdom. Makes complex health topics accessible to busy professionals.";
+      const brandNotes = "Evidence-based health optimization specialist (@SignalAndSynapse). Certified in sports nutrition & exercise physiology. Translates complex research into actionable strategies for high-performers. 10+ years optimizing health protocols for athletes, executives, and health-conscious individuals. Focus: sleep optimization, metabolic health, stress management, and sustainable performance.";
       
       // DIVERSE topic seeds - rotate between different health areas
       const diverseSeeds = this.getRotatingTopicSeeds();
@@ -422,22 +422,18 @@ export class AutonomousPostingEngine {
    */
   private getRotatingTopicSeeds(): string[] {
     const topicRotations = [
-      // Nutrition & Diet
-      ["intermittent fasting myths", "micronutrient deficiencies", "meal timing research", "hydration science", "gut health optimization"],
-      // Exercise & Movement
-      ["resistance training efficiency", "cardio misconceptions", "recovery protocols", "movement quality", "exercise snacking"],
-      // Mental Performance
-      ["cognitive load management", "focus techniques", "stress resilience", "decision fatigue", "mental recovery"],
-      // Sleep & Circadian
-      ["circadian rhythm hacking", "sleep architecture", "nap strategies", "bedroom optimization", "sleep debt myths"],
-      // Productivity & Energy
-      ["energy management systems", "ultradian rhythms", "attention restoration", "flow state triggers", "cognitive breaks"],
-      // Longevity & Prevention
-      ["metabolic health markers", "inflammation reduction", "cellular health", "aging biomarkers", "preventive strategies"],
-      // Technology & Health
-      ["blue light effects", "screen time optimization", "digital wellness", "tech-life balance", "biometric tracking"],
-      // Social & Environmental
-      ["social connections impact", "nature therapy", "community health", "environmental toxins", "seasonal wellness"]
+      // Sleep Optimization (Core Expertise #1)
+      ["sleep architecture optimization", "circadian rhythm synchronization", "sleep hygiene protocols", "sleep-performance correlation", "recovery sleep strategies"],
+      // Metabolic Health (Core Expertise #2)  
+      ["metabolic flexibility training", "glucose regulation strategies", "insulin sensitivity optimization", "metabolic health biomarkers", "energy system efficiency"],
+      // Stress Management (Core Expertise #3)
+      ["HRV-based stress monitoring", "stress adaptation protocols", "cortisol optimization", "autonomic balance", "stress resilience training"],
+      // Performance Nutrition (Specialized Area #1)
+      ["nutrient timing for athletes", "micronutrient optimization", "hydration strategies", "supplement protocols", "performance nutrition myths"],
+      // Recovery & Regeneration (Specialized Area #2)
+      ["active recovery methods", "tissue repair optimization", "inflammation management", "recovery monitoring", "periodization for recovery"],
+      // Executive Health (Target Audience Focus)
+      ["high-performer health hacks", "travel health strategies", "desk-based health optimization", "executive energy management", "leadership and health"]
     ];
     
     // Rotate based on current hour to ensure variety throughout the day
@@ -552,39 +548,43 @@ export class AutonomousPostingEngine {
     try {
       const recentMetrics = await this.getRecentPerformanceMetrics();
       
-      // EMERGENCY: Base threshold starts at 70 to prevent spam loop
-      let threshold = 70;
+      // QUALITY-FOCUSED: Higher base threshold for better content standards
+      let threshold = 80;
       
-      // ADJUST BASED ON RECENT PERFORMANCE
-      if (recentMetrics.avgEngagement > 5) {
-        // Good engagement - can be more selective
-        threshold += 10;
-        console.log(`📈 Good engagement (${recentMetrics.avgEngagement}) - raising threshold +10`);
-      } else if (recentMetrics.avgEngagement < 2) {
-        // Poor engagement - be less selective
-        threshold -= 10;
-        console.log(`📉 Poor engagement (${recentMetrics.avgEngagement}) - lowering threshold -10`);
-      }
+      // QUALITY OVER QUANTITY APPROACH
+      // Only post when content is genuinely valuable
       
-      // ADJUST BASED ON POSTING FREQUENCY
+      // Time-based posting: Focus on optimal engagement windows
       const timeSinceLastPost = await this.getTimeSinceLastPost();
-      if (timeSinceLastPost > 480) { // 8+ hours
-        threshold -= 15; // Post even with lower scores
-        console.log(`⏰ Long gap (${Math.round(timeSinceLastPost/60)}h) - lowering threshold -15`);
-      } else if (timeSinceLastPost < 120) { // Less than 2 hours
-        threshold += 20; // Require much higher scores
-        console.log(`🚫 Recent post (${Math.round(timeSinceLastPost)}m) - raising threshold +20`);
+      if (timeSinceLastPost > 480) { // 8+ hours - reasonable gap
+        threshold -= 20; // Allow quality content to post
+        console.log(`⏰ Good gap (${Math.round(timeSinceLastPost/60)}h) - lowering threshold -20`);
+      } else if (timeSinceLastPost < 240) { // Less than 4 hours - too soon
+        threshold += 30; // Require exceptional content
+        console.log(`🚫 Too soon (${Math.round(timeSinceLastPost/60)}h) - raising threshold +30`);
       }
       
-      // ADJUST BASED ON FOLLOWER GROWTH GOAL
+      // Engagement quality focus (not quantity)
+      if (recentMetrics.avgEngagement > 2) {
+        // Building engagement - maintain quality
+        threshold += 5;
+        console.log(`📈 Building engagement (${recentMetrics.avgEngagement}) - maintaining high standards +5`);
+      } else if (recentMetrics.avgEngagement === 0) {
+        // Zero engagement - focus on value, not frequency
+        threshold -= 10;
+        console.log(`📉 Zero engagement - focus on value, not frequency -10`);
+      }
+      
+      // Growth strategy: Build audience with quality, not volume
       const followerGrowth = await this.getRecentFollowerGrowth();
-      if (followerGrowth < 1) { // Growing slowly
-        threshold -= 5; // Post more to increase visibility
-        console.log(`👥 Slow growth (${followerGrowth}/day) - lowering threshold -5`);
+      if (followerGrowth >= 1) {
+        // Growing - maintain quality
+        threshold += 5;
+        console.log(`👥 Positive growth (${followerGrowth}/day) - maintaining standards +5`);
       }
       
-      // ENSURE REASONABLE BOUNDS
-      threshold = Math.max(25, Math.min(70, threshold));
+      // QUALITY BOUNDS: Never go below 60 (ensures high content standards)
+      threshold = Math.max(60, Math.min(100, threshold));
       
       return threshold;
       

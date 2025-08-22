@@ -54,39 +54,39 @@ export class SocialContentOperator {
   private formatHistory: string[] = [];
   private topicHistory: string[] = [];
   
-  // Content format templates
+  // Value-focused content formats for high-performers
   private readonly CONTENT_FORMATS = {
-    '1-liner': {
-      template: 'One surprising fact or counterintuitive insight',
-      examples: ['Cold showers boost dopamine 250%. Better than coffee.']
+    'research-insight': {
+      template: 'Latest research finding with practical application for busy professionals',
+      examples: ['New Stanford study: 10-minute morning sunlight exposure improves focus 40% more than coffee. Takes 2 weeks to see full effects.']
     },
-    'tip-2-3-sentence': {
-      template: 'Quick actionable tip with brief explanation',
-      examples: ['Walk after eating. Even 2 minutes drops blood sugar 20%. Your pancreas will thank you.']
+    'actionable-tip': {
+      template: 'Specific, measurable action with clear benefit for executives/athletes',
+      examples: ['Pre-meeting protocol: 4-7-8 breathing for 30 seconds. Reduces cortisol 23% and improves decision quality. Executive teams using this report better outcomes.']
     },
-    'story-personal': {
-      template: 'Personal experience or investment story',
-      examples: ['I spent $2K on sleep tracking. Learned my bedroom was 4 degrees too warm. Fixed it, gained 90 min deep sleep.']
+    'myth-correction': {
+      template: 'Common health misconception corrected with evidence',
+      examples: ['Myth: More sleep = better performance. Reality: Sleep consistency matters more than duration. ±30 minutes same bedtime optimizes cognitive function.']
     },
-    'myth-buster': {
-      template: 'Challenge common belief with evidence',
-      examples: ['8 glasses of water is a myth. You need half your weight in ounces. Most people are actually overhydrating.']
+    'optimization-strategy': {
+      template: 'Specific protocol for health/performance optimization',
+      examples: ['Travel recovery protocol: Land, 15min sunlight, protein within 2 hours, no caffeine after 2pm. Eliminates jet lag 60% faster than standard advice.']
     },
-    'question-engagement': {
-      template: 'Thought-provoking question to spark discussion',
-      examples: ['Which would you rather: perfect sleep for life OR never need sleep again?']
+    'problem-solution': {
+      template: 'Common high-performer health challenge with practical solution',
+      examples: ['Afternoon energy crash solution: 10-minute walk + 20g protein at 3pm. Stabilizes blood sugar through evening meetings. Game-changer for executives.']
     },
-    'analogy': {
-      template: 'Complex concept explained through simple comparison',
-      examples: ['Your metabolism is like a campfire. Protein is dry wood (burns hot), carbs are kindling (quick flame), fat is the log (steady burn).']
+    'data-driven': {
+      template: 'Interesting health metric or biomarker insight with application',
+      examples: ['HRV below 30? Your nervous system is overstressed. Simple fix: 5-minute breathing exercise daily improves HRV by 15-25% in 4 weeks.']
     },
-    'controversial-take': {
-      template: 'Defensible but provocative opinion',
-      examples: ['Unpopular opinion: Supplements are mostly expensive urine. Fix your basics first.']
+    'comparison': {
+      template: 'Popular vs evidence-based approach comparison',
+      examples: ['Popular: 8 glasses water daily. Evidence-based: Half your weight in ounces, adjusted for activity. Most athletes are chronically under-hydrated.']
     },
-    'stat-shocking': {
-      template: 'Surprising statistic with context',
-      examples: ['90% of serotonin is made in your gut, not your brain. That gut feeling is literally your microbiome talking.']
+    'tool-technique': {
+      template: 'Specific tool or technique for health optimization',
+      examples: ['Underrated recovery tool: Red light therapy 10min post-workout. Increases muscle repair 31% and reduces soreness. $200 device vs $2000 clinics.']
     }
   };
 
@@ -160,10 +160,10 @@ export class SocialContentOperator {
   private async generateDiverseSingles(brandNotes: string, seeds: string[], learningInsights: any[] = []): Promise<string[]> {
     const singles: string[] = [];
     
-    // DIVERSE format rotation - no repeated hooks
+    // VALUE-FOCUSED format rotation - prioritize helpful, actionable content
     const formatPool = [
-      'controversial-take', 'story-personal', 'question-engagement', 
-      'myth-buster', 'stat-shocking', 'analogy', '1-liner', 'tip-2-3-sentence'
+      'actionable-tip', 'research-insight', 'optimization-strategy', 
+      'problem-solution', 'data-driven', 'myth-correction', 'comparison', 'tool-technique'
     ];
     
     // Shuffle and select 3 different formats
@@ -284,51 +284,70 @@ export class SocialContentOperator {
       ? `\n\nLEARNING INSIGHTS (apply these patterns that work):\n${learningInsights.map(insight => `- ${insight.recommendation}`).join('\n')}`
       : '';
     
-    return `You are a provocative health content creator for @SignalAndSynapse. MISSION: CREATE CONTROVERSY & EARN FOLLOWS.
+    return `You are an evidence-based health expert sharing valuable insights for @SignalAndSynapse. MISSION: PROVIDE GENUINE VALUE & BUILD TRUST.
 
 BRAND: ${brandNotes}
-SEED TOPIC: ${seed}
+TOPIC: ${seed}
 FORMAT: ${formatInfo.template}
 
-STRICT CONTENT RULES:
-- BANNED PHRASE: "Unpopular opinion" (overused, auto-reject any content with this)
-- BANNED PHRASE: "Plot twist" (creates broken stacking)
-- BANNED PHRASE: "Uncomfortable truth" (causes optimization conflicts)
-- Use ONE hook only - never stack multiple hooks
-- Write like a human health expert, not an AI
-- Include specific numbers and personal experience
-- End with ONE simple engagement question
+CONTENT STRATEGY:
+Your goal is to establish expertise and provide actionable value, not just create controversy. You are building a community of people who want to optimize their health based on science.
 
-SINGLE VIRAL HOOKS (use ONE per post):
-- "I spent $[amount] learning [topic] advice is wrong"
-- "Former [industry] insider here: [revelation]"
-- "I tried [popular thing] for [time]. Here's what happened:"
-- "Every [expert] tells you [advice]. They're wrong:"
-- "[Industry] doesn't want you to know this about [topic]:"
-- "Rich people do [X]. Poor people get told to do [Y]"
+DIVERSE CONTENT PATTERNS (rotate between these, never repeat the same pattern twice in a row):
 
-ENGAGEMENT TRIGGERS (use one):
+1. RESEARCH INSIGHT: "New study from [institution] shows [finding]. What this means for you: [practical application]"
+
+2. MYTH CORRECTION: "Common belief: [myth]. What science actually shows: [fact]. Why this matters: [implication]"
+
+3. PRACTICAL TIP: "Simple [topic] optimization: [actionable step]. Results you can expect: [outcome]. Takes [time commitment]"
+
+4. PERSONAL EXPERIENCE: "After [time period] optimizing [area], here's what worked: [specific strategy]. Measurable result: [outcome]"
+
+5. COMPARISON: "[Popular approach] vs [evidence-based approach]. The data favors [choice] because [reason]"
+
+6. COUNTER-INTUITIVE FACT: "Most people think [common belief]. Research suggests [different approach]. Key studies: [evidence]"
+
+7. EXPERT INSIGHT: "Top [profession]s know this about [topic]: [insight]. How you can apply it: [action]"
+
+8. TOOL/TECHNIQUE: "Underrated [tool/technique] for [goal]: [description]. Why it works: [mechanism]. How to start: [steps]"
+
+BANNED REPETITIVE PHRASES:
+- "I spent $X on..."
+- "Total bullshit!"
+- "They're wrong:"
+- "Former [anything] insider here"
 - "Fight me in the comments"
-- "Change my mind" 
-- "Tell me I'm wrong"
-- "This will piss off a lot of people"
-- "Am I crazy or is this obvious?"
 
-AVOID REPEATING THESE RECENT TOPICS/PHRASES:
-- ${avoidContent}
+AVOID THESE RECENT PATTERNS:
+${avoidContent}
 
-FORMAT EXAMPLE: ${formatInfo.examples[0]}${insightText}
+AUTHENTIC VOICE & ENGAGEMENT:
+Write as a certified health professional who:
+- Has worked with 500+ high-performers over 10 years
+- Combines clinical experience with personal optimization
+- References specific studies and protocols
+- Admits when something is individual/requires personalization
+- Shares both successes and learning experiences
 
-CRITICAL REQUIREMENTS:
-1. Use ONLY ONE viral hook from the list above
-2. Write clear, readable sentences (no AI gibberish)
-3. Include specific numbers and personal experience
-4. Challenge ${seed} with evidence-based contrarian view
-5. End with ONE simple engagement question
+Create engagement through:
+- "What's your experience with [protocol]?"
+- "Anyone else notice [pattern] when trying [strategy]?"
+- "This worked for 80% of my clients, but [variation] was needed for others"
+- "Worth trying for [specific type of person]?"
+- "Game-changer for [profession/athlete type] but requires [context]"
+
+CONTENT REQUIREMENTS:
+1. Lead with value, not controversy
+2. Include specific, actionable information
+3. Reference credible sources when possible
+4. Write conversationally but expertly
+5. End with a question that invites genuine discussion
 6. ≤260 characters total
-7. BANNED: "Unpopular opinion", "Plot twist", "Uncomfortable truth"
+7. No formulaic hooks or repetitive patterns
 
-Generate ONE clear, readable tweet:
+${insightText}
+
+Generate ONE valuable, actionable tweet:
 
 Tweet:`;
   }
@@ -429,12 +448,23 @@ IMPROVED VERSION:`;
    * EMERGENCY: Validate content quality to prevent posting broken content
    */
   private validateContentQuality(content: string): { isValid: boolean; reason?: string } {
-    // Check for banned phrases that create broken content
-    const bannedPhrases = ['Unpopular opinion', 'Plot twist:', 'Uncomfortable truth:', 'I this scared'];
+    // Check for banned phrases that create repetitive content
+    const bannedPhrases = [
+      'Unpopular opinion', 
+      'Plot twist:', 
+      'Uncomfortable truth:', 
+      'I this scared',
+      'I spent $', // FIXED: Ban the repetitive money formula
+      'Total bullshit!',
+      'They\'re wrong:',
+      'Former',
+      'Fight me in the comments',
+      'insider here:'
+    ];
     
     for (const phrase of bannedPhrases) {
       if (content.toLowerCase().includes(phrase.toLowerCase())) {
-        return { isValid: false, reason: `Contains banned phrase: "${phrase}"` };
+        return { isValid: false, reason: `Contains banned repetitive phrase: "${phrase}"` };
       }
     }
     
@@ -483,12 +513,12 @@ IMPROVED VERSION:`;
    */
   private generateEmergencyContent(topic: string): string {
     const emergencyTemplates = [
-      `I spent 6 months testing ${topic} methods. The biggest surprise? The simplest approach worked best. What's been your experience?`,
-      `Former health coach here: Most ${topic} advice online is outdated. Here's what actually works in 2024...`,
-      `I tried every ${topic} hack for 30 days. Only 2 things made a real difference. Thread coming soon.`,
-      `${topic} industry doesn't want you to know: You can get 80% of results with 20% of the effort. Here's how:`,
-      `Rich people hire experts for ${topic}. Poor people follow influencers. The difference? Evidence vs entertainment.`,
-      `Every doctor says ${topic} is complicated. I tested this for a year. It's actually simple. Change my mind.`
+      `New research on ${topic} challenges what we thought we knew. Key finding: [specific insight]. What this means for your health:`,
+      `Quick ${topic} optimization tip: [specific action] can improve [outcome] by up to [percentage]. Takes less than 5 minutes daily.`,
+      `Common ${topic} mistake I see everywhere: [problem]. Better approach: [solution]. Results speak for themselves.`,
+      `Interesting ${topic} data: [statistic] from recent studies. Practical takeaway: [actionable advice]. Worth trying?`,
+      `${topic} myth vs reality: Most people believe [myth], but evidence shows [fact]. Simple way to apply this:`,
+      `Underrated ${topic} strategy: [technique]. Why it works: [mechanism]. How to start: [first step]. Anyone tried this?`
     ];
     
     const template = emergencyTemplates[Math.floor(Math.random() * emergencyTemplates.length)];
