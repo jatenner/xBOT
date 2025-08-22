@@ -159,7 +159,18 @@ export class SocialContentOperator {
    */
   private async generateDiverseSingles(brandNotes: string, seeds: string[], learningInsights: any[] = []): Promise<string[]> {
     const singles: string[] = [];
-    const targetFormats = ['controversial-take', 'story-personal', 'question-engagement'];
+    
+    // DIVERSE format rotation - no repeated hooks
+    const formatPool = [
+      'controversial-take', 'story-personal', 'question-engagement', 
+      'myth-buster', 'stat-shocking', 'analogy', '1-liner', 'tip-2-3-sentence'
+    ];
+    
+    // Shuffle and select 3 different formats
+    const shuffledFormats = [...formatPool].sort(() => Math.random() - 0.5);
+    const targetFormats = shuffledFormats.slice(0, 3);
+    
+    console.log(`🎭 HOOK_DIVERSITY: Using formats [${targetFormats.join(', ')}]`);
     
     for (let i = 0; i < 3; i++) {
       const format = targetFormats[i];
@@ -262,18 +273,30 @@ export class SocialContentOperator {
       ? `\n\nLEARNING INSIGHTS (apply these patterns that work):\n${learningInsights.map(insight => `- ${insight.recommendation}`).join('\n')}`
       : '';
     
-    return `You are a Social Content Operator creating a ${format} tweet for a health & performance profile.
+    return `You are a growth-focused social writer for @SignalAndSynapse health & performance brand. Your ONLY job is earning FOLLOWS - not just likes.
+
+AUDIENCE: Busy, health-curious professionals who follow accounts that challenge conventional wisdom
+VOICE: Warm, direct, evidence-aware, never preachy, never clickbait
 
 BRAND: ${brandNotes}
 SEED TOPIC: ${seed}
 FORMAT: ${formatInfo.template}
 
-STRICT RULES:
-- Quality threshold: 80/100 minimum
-- Must be conversational, not announcements
-- No hashtags, max 1 emoji if it really fits
-- Sound human, friendly coach tone
-- Create engagement (questions, debate, curiosity)
+VIRAL ENGAGEMENT RULES:
+- Hook must grab attention in first 5 words
+- Challenge popular beliefs with evidence
+- Use contrarian angles: "Most people think X, but Y"
+- Include personal credibility: "I tracked/tested/tried..."
+- Create immediate value: specific numbers, timelines, methods
+- End with engagement trigger: question or controversial statement
+- NO medical advice, light disclaimers when needed
+
+FOLLOWER MAGNETS (use these patterns):
+- "Unpopular opinion: [controversial health take]"
+- "I tracked X for 30 days. Results: [shocking outcome]"
+- "Your doctor won't tell you this about X: [insider knowledge]"
+- "Everything you know about X is wrong. Here's why: [myth-busting]"
+- "How [elite group] really optimize X: [secret method]"
 
 AVOID REPEATING THESE RECENT TOPICS/PHRASES:
 - ${avoidContent}
@@ -281,11 +304,12 @@ AVOID REPEATING THESE RECENT TOPICS/PHRASES:
 FORMAT EXAMPLE: ${formatInfo.examples[0]}${insightText}
 
 Generate ONE tweet that:
-1. Follows the ${format} format perfectly
-2. Is completely different from recent content
-3. Creates engagement and connection
-4. Applies successful patterns from learning insights
-5. Scores 80+ on quality (engaging, valuable, human)
+1. Uses a follower-magnet hook pattern
+2. Challenges conventional wisdom about ${seed}
+3. Includes specific evidence/numbers/personal experience
+4. Creates debate and discussion
+5. Makes people want to follow for more insights
+6. ≤260 characters total
 
 Tweet:`;
   }

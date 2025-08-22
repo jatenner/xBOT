@@ -377,26 +377,33 @@ export class AutonomousPostingEngine {
       const recentPosts = await this.getRecentPostsForDiversity();
       
       // Brand notes for consistency
-      const brandNotes = "Health & performance coach. Friendly, evidence-based, challenges conventional wisdom. Makes complex health topics accessible.";
+      const brandNotes = "Health & performance coach (@SignalAndSynapse). Friendly, evidence-based, challenges conventional wisdom. Makes complex health topics accessible to busy professionals.";
       
-      // Topic seeds (can be enhanced to pull from trending topics)
-      const seeds = [
-        "sleep optimization",
-        "nutrition myths",
-        "exercise efficiency",
-        "stress management",
-        "recovery tactics"
-      ];
+      // DIVERSE topic seeds - rotate between different health areas
+      const diverseSeeds = this.getRotatingTopicSeeds();
       
       // Generate diverse content pack
-      const contentPack = await operator.generateContentPack(brandNotes, seeds, recentPosts);
+      const contentPack = await operator.generateContentPack(brandNotes, diverseSeeds, recentPosts);
       
-      if (contentPack.singles && contentPack.singles.length > 0) {
-        // Select best single from the pack
-        const selectedContent = contentPack.singles[0];
+      // Decide format: 70% singles, 20% threads, 10% special formats
+      const formatDecision = Math.random();
+      
+      if (formatDecision < 0.2 && contentPack.threads && contentPack.threads.length > 0) {
+        // Post a thread (20% chance)
+        const selectedThread = contentPack.threads[Math.floor(Math.random() * contentPack.threads.length)];
+        console.log(`🧵 THREAD_MODE: Selected thread on "${selectedThread.topic}" (${selectedThread.tweets.length} tweets)`);
         
-        console.log(`🎯 Generated diverse content (quality: ${contentPack.metadata.qualityScores?.[0] || 'unknown'}, diversity: ${contentPack.metadata.diversityScore})`);
+        // For now, post the first tweet of the thread (will implement full thread posting later)
+        return selectedThread.tweets[0] + `\n\n🧵 Thread (${selectedThread.tweets.length} parts) →`;
+        
+      } else if (contentPack.singles && contentPack.singles.length > 0) {
+        // Post a single (80% chance)
+        const randomIndex = Math.floor(Math.random() * contentPack.singles.length);
+        const selectedContent = contentPack.singles[randomIndex];
+        
+        console.log(`🎯 Generated diverse content (quality: ${contentPack.metadata.qualityScores?.[randomIndex] || 'unknown'}, diversity: ${contentPack.metadata.diversityScore})`);
         console.log(`📊 Format mix: ${contentPack.metadata.formatMix?.join(', ')}`);
+        console.log(`🔄 Topic rotation: ${diverseSeeds.slice(0, 3).join(', ')}`);
         
         return selectedContent;
       }
@@ -408,6 +415,42 @@ export class AutonomousPostingEngine {
       console.error('❌ Social Content Operator failed:', error.message);
       return this.getEmergencyDiverseContent();
     }
+  }
+
+  /**
+   * Get rotating topic seeds to ensure content diversity
+   */
+  private getRotatingTopicSeeds(): string[] {
+    const topicRotations = [
+      // Nutrition & Diet
+      ["intermittent fasting myths", "micronutrient deficiencies", "meal timing research", "hydration science", "gut health optimization"],
+      // Exercise & Movement
+      ["resistance training efficiency", "cardio misconceptions", "recovery protocols", "movement quality", "exercise snacking"],
+      // Mental Performance
+      ["cognitive load management", "focus techniques", "stress resilience", "decision fatigue", "mental recovery"],
+      // Sleep & Circadian
+      ["circadian rhythm hacking", "sleep architecture", "nap strategies", "bedroom optimization", "sleep debt myths"],
+      // Productivity & Energy
+      ["energy management systems", "ultradian rhythms", "attention restoration", "flow state triggers", "cognitive breaks"],
+      // Longevity & Prevention
+      ["metabolic health markers", "inflammation reduction", "cellular health", "aging biomarkers", "preventive strategies"],
+      // Technology & Health
+      ["blue light effects", "screen time optimization", "digital wellness", "tech-life balance", "biometric tracking"],
+      // Social & Environmental
+      ["social connections impact", "nature therapy", "community health", "environmental toxins", "seasonal wellness"]
+    ];
+    
+    // Rotate based on current hour to ensure variety throughout the day
+    const hour = new Date().getHours();
+    const rotationIndex = hour % topicRotations.length;
+    
+    // Add some randomness within the selected category
+    const selectedRotation = topicRotations[rotationIndex];
+    const shuffled = [...selectedRotation].sort(() => Math.random() - 0.5);
+    
+    console.log(`🔄 TOPIC_ROTATION: Selected category ${rotationIndex + 1}/${topicRotations.length} (hour-based rotation)`);
+    
+    return shuffled;
   }
 
   /**
