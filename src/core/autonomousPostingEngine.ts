@@ -110,7 +110,7 @@ export class AutonomousPostingEngine {
             return;
           }
 
-          // EMERGENCY Rate limiting: minimum 5 minutes between post attempts
+          // QUALITY CONTROL: minimum 4 hours between post attempts
           const timeSinceLastAttempt = Date.now() - this.lastPostAttempt;
           if (timeSinceLastAttempt < 4 * 60 * 60 * 1000) { // FIXED: 4 hours minimum between posts (was 5 minutes)
             logInfo(`⏳ ANTI-SPAM: Last post ${Math.round(timeSinceLastAttempt/(60*60*1000))}h ago, waiting ${Math.round((4*60*60*1000-timeSinceLastAttempt)/(60*60*1000))}h more...`);
@@ -177,7 +177,7 @@ export class AutonomousPostingEngine {
 
     this.isRunning = true;
     console.log('✅ Intelligent adaptive posting system activated');
-    console.log('🎯 Will analyze posting opportunities every 30 minutes');
+    console.log('🎯 Will analyze posting opportunities every 4 hours (quality-focused approach)');
   }
 
   /**
@@ -393,8 +393,8 @@ export class AutonomousPostingEngine {
         const selectedThread = contentPack.threads[Math.floor(Math.random() * contentPack.threads.length)];
         console.log(`🧵 THREAD_MODE: Selected thread on "${selectedThread.topic}" (${selectedThread.tweets.length} tweets)`);
         
-        // For now, post the first tweet of the thread (will implement full thread posting later)
-        return selectedThread.tweets[0] + `\n\n🧵 Thread (${selectedThread.tweets.length} parts) →`;
+        // FIXED: Actually post the full thread, not just the first tweet
+        return await this.postFullThread(selectedThread.tweets, selectedThread.topic);
         
       } else if (contentPack.singles && contentPack.singles.length > 0) {
         // Post a single (80% chance)
@@ -1183,6 +1183,56 @@ CRITICAL QUALITY REQUIREMENTS:
       
     } catch (error: any) {
       console.error('⚠️ Failed to store performance data:', error.message);
+    }
+  }
+
+  /**
+   * Post a full thread (not just the first tweet)
+   */
+  private async postFullThread(tweets: string[], topic: string): Promise<string> {
+    try {
+      console.log(`🧵 POSTING_FULL_THREAD: ${tweets.length} tweets on "${topic}"`);
+      
+      // Import the thread posting function
+      const { postThread } = await import('../posting/postThread');
+      
+      // Post the complete thread
+      const result = await postThread(tweets, topic);
+      
+      if (result.success && result.rootTweetId) {
+        console.log(`✅ THREAD_POSTED: Root tweet ${result.rootTweetId} with ${result.replyIds?.length || 0} replies`);
+        
+        // Store metrics for the root tweet
+        try {
+          const { storeNewPostMetrics } = await import('../posting/metrics');
+          await storeNewPostMetrics({
+            tweet_id: result.rootTweetId,
+            format: 'thread',
+            content: tweets[0], // Store first tweet as content
+            initial_metrics: {
+              likes_count: 0,
+              retweets_count: 0,
+              replies_count: 0,
+              impressions_count: 0
+            }
+          });
+          console.log(`📊 DB_WRITE: Thread metrics stored for ${result.rootTweetId}`);
+        } catch (dbError) {
+          console.log(`📚 THREAD_STORAGE: Non-blocking storage issue (thread posted successfully)`);
+        }
+        
+        return `Thread posted successfully: ${tweets.length} tweets on ${topic}`;
+      } else {
+        console.error(`❌ THREAD_FAILED: ${result.error}`);
+        // Fallback to single tweet if thread fails
+        return tweets[0];
+      }
+      
+    } catch (error: any) {
+      console.error(`❌ THREAD_ERROR: ${error.message}`);
+      // Fallback to single tweet if thread posting fails
+      console.log(`🔄 THREAD_FALLBACK: Posting first tweet only`);
+      return tweets[0];
     }
   }
 }
