@@ -4,7 +4,8 @@ import { executePost } from './posting/orchestrator';
 import { closeBrowser } from './playwright/browserFactory';
 import { closeDatabaseConnections } from './db/index';
 import { closeCadenceGuard } from './posting/cadenceGuard';
-import { AutonomousPostingEngine } from './core/autonomousPostingEngine';
+import { SimplifiedPostingEngine } from './core/simplifiedPostingEngine';
+import { RealEngagementTracker } from './metrics/realEngagementTracker';
 import { ensureSchemaAtBoot } from './services/SchemaGuard';
 
 /**
@@ -57,21 +58,38 @@ async function main() {
       return;
     }
 
-    // Start autonomous posting engine for follower growth
-    console.log('🤖 Starting autonomous posting engine...');
-    const autonomousEngine = AutonomousPostingEngine.getInstance();
-    await autonomousEngine.initialize();
-    console.log('✅ Autonomous posting engine started - analyzing opportunities every 5 minutes');
-    console.log('🎯 Goal: Generate followers and engagement through high-quality content');
-    console.log('📊 Learning from engagement data to optimize future posts');
+    // Start simplified posting engine for reliable engagement
+    console.log('🤖 Starting simplified posting engine...');
+    const postingEngine = SimplifiedPostingEngine.getInstance();
+    
+    // Start real engagement tracking
+    console.log('📊 Starting real engagement tracker...');
+    const engagementTracker = RealEngagementTracker.getInstance();
+    await engagementTracker.initialize();
+    
+    console.log('✅ Simplified posting engine ready - focused on real engagement');
+    console.log('🎯 Goal: Generate actual likes, retweets, and followers');
+    console.log('📊 Tracking real Twitter metrics, not internal estimates');
 
     // Set up graceful shutdown
     setupGracefulShutdown();
 
     console.log('✅ xBOT system initialization complete');
     console.log('🌐 Health server running - check /status endpoint for system status');
-    console.log('🤖 Autonomous posting active - will post when opportunities are detected');
-    console.log('📈 Focus: Building audience, generating followers, learning from engagement');
+    console.log('🤖 Simplified posting ready - call postingEngine.createEngagingPost() to post');
+    console.log('📈 Focus: Real engagement metrics, actual follower growth');
+    
+    // Create a test post to verify everything works
+    if (process.argv.includes('--create-post')) {
+      console.log('🧪 Creating test post...');
+      const result = await postingEngine.createEngagingPost('health breakthrough');
+      if (result.success) {
+        console.log(`✅ Test post created: ${result.tweetId}`);
+        console.log(`📊 Engagement prediction: ${result.engagementPrediction}%`);
+      } else {
+        console.log(`❌ Test post failed: ${result.error}`);
+      }
+    }
     
     // Keep process alive
     process.stdin.resume();
