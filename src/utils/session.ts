@@ -1,8 +1,10 @@
-import fs from 'fs';
-import path from 'path';
+import * as fs from 'fs';
+import * as path from 'path';
 import type { BrowserContext } from 'playwright';
 
-const SESSION_FILE = '/app/data/twitter_session.json';
+const SESSION_FILE = process.env.NODE_ENV === 'production' 
+  ? '/app/data/twitter_session.json' 
+  : path.join(process.cwd(), 'data', 'twitter_session.json');
 
 export interface StorageState {
   cookies: Array<{
@@ -25,7 +27,7 @@ export function ensureSessionFromEnv(): string | null {
   const b64 = process.env.TWITTER_SESSION_B64;
   
   if (b64 && b64.trim().length > 0) {
-    console.log('SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json');
+    console.log(`SESSION_LOADER: TWITTER_SESSION_B64 detected; writing ${SESSION_FILE}`);
     
     // Ensure directory exists
     fs.mkdirSync(path.dirname(SESSION_FILE), { recursive: true });
@@ -65,7 +67,7 @@ export function createContextWithSession(browser: any): Promise<BrowserContext> 
   
   if (state) {
     const cookieCount = state.cookies?.length ?? 0;
-    console.log(`PLAYWRIGHT_STORAGE: loaded ${cookieCount} cookies (path: /app/data/twitter_session.json)`);
+    console.log(`PLAYWRIGHT_STORAGE: loaded ${cookieCount} cookies (path: ${SESSION_FILE})`);
   }
   
   return browser.newContext({
