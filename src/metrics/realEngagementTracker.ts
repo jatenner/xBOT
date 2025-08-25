@@ -36,28 +36,20 @@ export class RealEngagementTracker {
   }
 
   /**
-   * Initialize with Twitter API credentials
+   * Initialize engagement tracker - browser-based, no Twitter API needed
    */
   public async initialize(): Promise<void> {
     try {
-      // Initialize Twitter client
-      this.twitterClient = new TwitterApi({
-        appKey: process.env.TWITTER_API_KEY!,
-        appSecret: process.env.TWITTER_API_SECRET!,
-        accessToken: process.env.TWITTER_ACCESS_TOKEN!,
-        accessSecret: process.env.TWITTER_ACCESS_TOKEN_SECRET!,
-      });
-
-      // Test the connection
-      const me = await this.twitterClient.v2.me();
-      logInfo('ENGAGEMENT_TRACKER', `✅ Connected to Twitter API as @${me.data.username}`);
-
-      // Start tracking recent tweets
+      console.log('📊 ENGAGEMENT_TRACKER: Initializing browser-based tracking...');
+      
+      // No Twitter API initialization needed - we use browser scraping
+      // Just set up the tracking interval
       this.startTracking();
-
+      
+      console.log('✅ ENGAGEMENT_TRACKER: Initialized successfully (browser mode)');
     } catch (error: any) {
-      logError('ENGAGEMENT_TRACKER', `❌ Failed to initialize: ${error.message}`);
-      throw error;
+      console.warn('⚠️ ENGAGEMENT_TRACKER: Failed to initialize (continuing without tracking):', error.message);
+      // Don't throw - continue without engagement tracking
     }
   }
 

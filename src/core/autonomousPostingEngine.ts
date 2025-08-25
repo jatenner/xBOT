@@ -91,6 +91,8 @@ export class AutonomousPostingEngine {
     // EMERGENCY: Check every 30 minutes instead of 5 to reduce spam
     this.intelligentTimerInterval = setInterval(async () => {
       try {
+        // 🛡️ CRASH_PREVENTION: Wrap all posting logic in try-catch
+      try {
         // Check for emergency stop flags in Redis
         const emergencyCheck = await this.checkEmergencyFlags();
         if (emergencyCheck.stopped) {
@@ -152,9 +154,13 @@ export class AutonomousPostingEngine {
           logInfo(`⏳ Waiting for better opportunity. Current score: ${Math.round(opportunity.score)}/100 (need: ${dynamicThreshold}) - ${opportunity.reason}`);
             }
           } catch (error) {
-        console.error('❌ Error in intelligent posting analysis:', error);
-      }
-    }, 4 * 60 * 60 * 1000); // FIXED: Check every 4 hours to prevent spam posting (was 30 minutes)
+            console.error('❌ Error in intelligent posting analysis:', error);
+          }
+        } catch (error: any) {
+          console.error('🛡️ CRASH_PREVENTION: Posting loop error (continuing):', error.message);
+          // Continue running instead of crashing
+        }
+      }, 4 * 60 * 60 * 1000); // FIXED: Check every 4 hours to prevent spam posting (was 30 minutes)
 
     // FALLBACK: Still maintain basic schedule as safety net
     cron.schedule('0 */6 * * *', async () => {
