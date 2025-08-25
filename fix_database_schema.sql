@@ -1,79 +1,121 @@
--- Quick fix for database schema issues
--- Run this in Supabase SQL Editor
+-- EMERGENCY DATABASE SCHEMA FIX
+-- This ensures the tweet_analytics table has all required columns for real engagement tracking
 
--- Drop existing tables if they exist (in reverse dependency order)
-DROP VIEW IF EXISTS image_usage_analytics;
-DROP VIEW IF EXISTS api_usage_status;
-DROP FUNCTION IF EXISTS increment_api_usage(VARCHAR, BOOLEAN, TEXT);
-DROP FUNCTION IF EXISTS reset_daily_api_usage();
-DROP FUNCTION IF EXISTS get_least_used_images(VARCHAR, INTEGER);
-DROP FUNCTION IF EXISTS update_image_usage(VARCHAR, TEXT, VARCHAR, TEXT[], VARCHAR);
-DROP TABLE IF EXISTS image_usage_history;
-DROP TABLE IF EXISTS news_source_health;
-
--- Create image usage tracking table with proper constraints
-CREATE TABLE image_usage_history (
-    id SERIAL PRIMARY KEY,
-    image_id VARCHAR(255) NOT NULL UNIQUE,
-    image_url TEXT NOT NULL,
-    source VARCHAR(50) NOT NULL,
-    usage_count INTEGER DEFAULT 1,
-    last_used_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    first_used_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    search_terms TEXT[],
-    tweet_id VARCHAR(255),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+-- First, ensure the table exists with proper structure
+CREATE TABLE IF NOT EXISTS tweet_analytics (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  tweet_id VARCHAR(255) NOT NULL,
+  
+  -- Core engagement metrics (what we actually care about)
+  likes INTEGER DEFAULT 0,
+  retweets INTEGER DEFAULT 0,
+  replies INTEGER DEFAULT 0,
+  views INTEGER DEFAULT 0,
+  
+  -- Calculated metrics
+  engagement_rate DECIMAL(8,4) DEFAULT 0,
+  viral_score INTEGER DEFAULT 0,
+  
+  -- Content for analysis
+  content TEXT,
+  
+  -- Tracking metadata
+  snapshot_time TIMESTAMPTZ DEFAULT NOW(),
+  collected_via VARCHAR(50) DEFAULT 'api',
+  
+  -- Timestamps
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Create indexes
-CREATE INDEX idx_image_usage_last_used ON image_usage_history(last_used_at);
-CREATE INDEX idx_image_usage_source ON image_usage_history(source);
-CREATE INDEX idx_image_usage_count ON image_usage_history(usage_count);
-
--- Create news sources health table  
-CREATE TABLE news_source_health (
-    id SERIAL PRIMARY KEY,
-    api_name VARCHAR(50) NOT NULL UNIQUE,
-    daily_usage_count INTEGER DEFAULT 0,
-    daily_limit INTEGER NOT NULL,
-    last_reset_date DATE DEFAULT CURRENT_DATE,
-    last_successful_call TIMESTAMP WITH TIME ZONE,
-    last_error_message TEXT,
-    is_active BOOLEAN DEFAULT true,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- Insert initial API configurations
-INSERT INTO news_source_health (api_name, daily_limit) VALUES 
-    ('newsapi', 90),
-    ('guardian', 1000),
-    ('mediastack', 900),
-    ('newsdata', 180);
-
--- Create functions
-CREATE OR REPLACE FUNCTION update_image_usage(
-    p_image_id VARCHAR(255),
-    p_image_url TEXT,
-    p_source VARCHAR(50),
-    p_search_terms TEXT[] DEFAULT NULL,
-    p_tweet_id VARCHAR(255) DEFAULT NULL
-) RETURNS VOID AS $$
+-- Add missing columns if they don't exist
+DO $$ 
 BEGIN
-    INSERT INTO image_usage_history (
-        image_id, image_url, source, usage_count, search_terms, tweet_id, last_used_at, first_used_at
-    ) VALUES (
-        p_image_id, p_image_url, p_source, 1, p_search_terms, p_tweet_id, NOW(), NOW()
-    )
-    ON CONFLICT (image_id) DO UPDATE SET
-        usage_count = image_usage_history.usage_count + 1,
-        last_used_at = NOW(),
-        search_terms = COALESCE(p_search_terms, image_usage_history.search_terms),
-        tweet_id = COALESCE(p_tweet_id, image_usage_history.tweet_id),
-        updated_at = NOW();
-END;
-$$ LANGUAGE plpgsql;
+  -- Add likes column if missing
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tweet_analytics' AND column_name = 'likes') THEN
+    ALTER TABLE tweet_analytics ADD COLUMN likes INTEGER DEFAULT 0;
+  END IF;
+  
+  -- Add retweets column if missing
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tweet_analytics' AND column_name = 'retweets') THEN
+    ALTER TABLE tweet_analytics ADD COLUMN retweets INTEGER DEFAULT 0;
+  END IF;
+  
+  -- Add replies column if missing
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tweet_analytics' AND column_name = 'replies') THEN
+    ALTER TABLE tweet_analytics ADD COLUMN replies INTEGER DEFAULT 0;
+  END IF;
+  
+  -- Add views column if missing
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tweet_analytics' AND column_name = 'views') THEN
+    ALTER TABLE tweet_analytics ADD COLUMN views INTEGER DEFAULT 0;
+  END IF;
+  
+  -- Add engagement_rate column if missing
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tweet_analytics' AND column_name = 'engagement_rate') THEN
+    ALTER TABLE tweet_analytics ADD COLUMN engagement_rate DECIMAL(8,4) DEFAULT 0;
+  END IF;
+  
+  -- Add viral_score column if missing
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tweet_analytics' AND column_name = 'viral_score') THEN
+    ALTER TABLE tweet_analytics ADD COLUMN viral_score INTEGER DEFAULT 0;
+  END IF;
+  
+  -- Add content column if missing
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tweet_analytics' AND column_name = 'content') THEN
+    ALTER TABLE tweet_analytics ADD COLUMN content TEXT;
+  END IF;
+  
+  -- Add snapshot_time column if missing
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tweet_analytics' AND column_name = 'snapshot_time') THEN
+    ALTER TABLE tweet_analytics ADD COLUMN snapshot_time TIMESTAMPTZ DEFAULT NOW();
+  END IF;
+  
+  -- Add collected_via column if missing
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tweet_analytics' AND column_name = 'collected_via') THEN
+    ALTER TABLE tweet_analytics ADD COLUMN collected_via VARCHAR(50) DEFAULT 'api';
+  END IF;
+  
+  -- Add updated_at column if missing
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tweet_analytics' AND column_name = 'updated_at') THEN
+    ALTER TABLE tweet_analytics ADD COLUMN updated_at TIMESTAMPTZ DEFAULT NOW();
+  END IF;
+END $$;
 
--- Success message
-SELECT 'Database schema fixed successfully!' as status; 
+-- Create indexes for performance
+CREATE INDEX IF NOT EXISTS idx_tweet_analytics_tweet_id ON tweet_analytics(tweet_id);
+CREATE INDEX IF NOT EXISTS idx_tweet_analytics_snapshot_time ON tweet_analytics(snapshot_time);
+CREATE INDEX IF NOT EXISTS idx_tweet_analytics_engagement_rate ON tweet_analytics(engagement_rate DESC);
+CREATE INDEX IF NOT EXISTS idx_tweet_analytics_viral_score ON tweet_analytics(viral_score DESC);
+
+-- Create unique constraint to prevent duplicates (allow updates)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tweet_analytics_unique_tweet 
+ON tweet_analytics(tweet_id);
+
+-- Ensure learning_posts table exists for the simplified system
+CREATE TABLE IF NOT EXISTS learning_posts (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  tweet_id VARCHAR(255),
+  content TEXT NOT NULL,
+  quality_score INTEGER DEFAULT 0,
+  format_type VARCHAR(50) DEFAULT 'single',
+  engagement_prediction INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Create index on learning_posts
+CREATE INDEX IF NOT EXISTS idx_learning_posts_tweet_id ON learning_posts(tweet_id);
+CREATE INDEX IF NOT EXISTS idx_learning_posts_quality_score ON learning_posts(quality_score DESC);
+
+-- Clean up any NULL content entries that might be causing issues
+UPDATE tweet_analytics SET content = 'Content not available' WHERE content IS NULL;
+
+-- Show current schema for verification
+SELECT 
+  column_name, 
+  data_type, 
+  is_nullable,
+  column_default
+FROM information_schema.columns 
+WHERE table_name = 'tweet_analytics' 
+ORDER BY ordinal_position;

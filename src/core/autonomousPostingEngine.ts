@@ -548,11 +548,11 @@ export class AutonomousPostingEngine {
     try {
       const recentMetrics = await this.getRecentPerformanceMetrics();
       
-      // QUALITY-FOCUSED: Higher base threshold for better content standards
-      let threshold = 80;
+      // BALANCED: Lower base threshold for more frequent posting with quality content
+      let threshold = 50;
       
-      // QUALITY OVER QUANTITY APPROACH
-      // Only post when content is genuinely valuable
+      // BALANCED APPROACH
+      // Post quality content more frequently to build engagement
       
       // Time-based posting: Focus on optimal engagement windows
       const timeSinceLastPost = await this.getTimeSinceLastPost();
@@ -583,8 +583,8 @@ export class AutonomousPostingEngine {
         console.log(`👥 Positive growth (${followerGrowth}/day) - maintaining standards +5`);
       }
       
-      // QUALITY BOUNDS: Never go below 60 (ensures high content standards)
-      threshold = Math.max(60, Math.min(100, threshold));
+      // BALANCED BOUNDS: Lower minimum threshold for more frequent quality posting
+      threshold = Math.max(35, Math.min(100, threshold));
       
       return threshold;
       
