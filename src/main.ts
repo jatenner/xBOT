@@ -15,6 +15,10 @@ async function main() {
   console.log('🚀 Starting xBOT with enhanced quality and stability system');
   console.log(`📅 Started at: ${new Date().toISOString()}`);
   
+  // Startup delay to prevent immediate API rate limiting
+  console.log('⏳ Adding startup delay to respect API rate limits...');
+  await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second delay
+  
   try {
     // Validate environment
     console.log('🔍 Validating environment configuration...');
@@ -83,6 +87,17 @@ async function main() {
     console.log('🌐 Health server running - check /status endpoint for system status');
     console.log('🤖 Autonomous posting active - will post when opportunities are detected');
     console.log('📈 Focus: Building audience, generating followers, learning from engagement');
+    
+    // 🛡️ GLOBAL_CRASH_PREVENTION: Handle all uncaught errors
+    process.on('uncaughtException', (error) => {
+      console.error('🛡️ Uncaught Exception (continuing):', error.message);
+      // Don't exit - keep running
+    });
+    
+    process.on('unhandledRejection', (reason, promise) => {
+      console.error('🛡️ Unhandled Rejection (continuing):', reason);
+      // Don't exit - keep running  
+    });
     
     // Keep process alive
     process.stdin.resume();
