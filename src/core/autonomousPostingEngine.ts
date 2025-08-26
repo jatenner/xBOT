@@ -399,13 +399,28 @@ export class AutonomousPostingEngine {
       // Generate diverse content pack
       const contentPack = await operator.generateContentPack(brandNotes, diverseSeeds, recentPosts);
       
-      // Decide format: 70% singles, 20% threads, 10% special formats
+      // IMPROVED DECISION LOGIC: More threads for better engagement
       const formatDecision = Math.random();
       
-      if (formatDecision < 0.2 && contentPack.threads && contentPack.threads.length > 0) {
-        // Post a thread (20% chance)
+      // Check if any single mentions "deep dive", "explore", "thread", etc. - if so, force thread mode
+      const needsThreadContent = contentPack.singles.some(single => 
+        single.toLowerCase().includes('deep') ||
+        single.toLowerCase().includes('explore') ||
+        single.toLowerCase().includes('dive') ||
+        single.toLowerCase().includes('thread') ||
+        single.toLowerCase().includes('more on this') ||
+        single.toLowerCase().includes('here\'s what') ||
+        single.length > 200 // Long content should be threads
+      );
+      
+      if ((formatDecision < 0.4 || needsThreadContent) && contentPack.threads && contentPack.threads.length > 0) {
+        // Post a thread (40% chance OR if content suggests thread needed)
         const selectedThread = contentPack.threads[Math.floor(Math.random() * contentPack.threads.length)];
         console.log(`🧵 THREAD_MODE: Selected thread on "${selectedThread.topic}" (${selectedThread.tweets.length} tweets)`);
+        
+        if (needsThreadContent) {
+          console.log(`🧵 THREAD_FORCED: Single content mentioned deep content - posting thread instead`);
+        }
         
         // FIXED: Actually post the full thread, not just the first tweet
         return await this.postFullThread(selectedThread.tweets, selectedThread.topic);
