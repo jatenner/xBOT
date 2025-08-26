@@ -76,19 +76,35 @@ export class AggressiveGrowthEngine {
 
     console.log(`📊 GROWTH_ANALYSIS: ${timeSinceLastPost}min since last post, growth rate: ${currentGrowthMetrics.followers_gained_24h}/day`);
 
-    // 🚨 AGGRESSIVE POSTING RULES (Much more aggressive than standard)
+    // 📊 QUANTITY OPTIMIZATION: Learn optimal posting frequency from data
+    let optimalFrequencyMinutes = 90; // Default
+    try {
+      const { QuantityOptimizer } = await import('../intelligence/quantityOptimizer');
+      const quantityOptimizer = QuantityOptimizer.getInstance();
+      const quantityAnalysis = await quantityOptimizer.getOptimalQuantity();
+      
+      optimalFrequencyMinutes = quantityAnalysis.frequency_minutes;
+      
+      console.log(`📊 QUANTITY_LEARNING: ${quantityAnalysis.reason}`);
+      console.log(`⏱️ Optimal frequency: Every ${optimalFrequencyMinutes} minutes`);
+      console.log(`🎯 Posts remaining today: ${quantityAnalysis.posts_remaining_today}`);
+    } catch (quantityError) {
+      console.warn('⚠️ Quantity optimization failed, using default frequency:', quantityError);
+    }
+
+    // 🚨 AGGRESSIVE POSTING RULES (Data-driven frequency)
     
-    // 1. POST IMMEDIATELY if it's been 90+ minutes (was 3+ hours)
-    if (timeSinceLastPost >= 90) {
+    // 1. POST IMMEDIATELY if it's been longer than optimal frequency
+    if (timeSinceLastPost >= optimalFrequencyMinutes) {
       decision.shouldPost = true;
       decision.urgency = 'immediate';
-      decision.reason = `🚨 IMMEDIATE: ${timeSinceLastPost}min gap (90min threshold for growth)`;
+      decision.reason = `🚨 IMMEDIATE: ${timeSinceLastPost}min gap (${optimalFrequencyMinutes}min threshold for growth)`;
       decision.nextCheckMinutes = 5;
       decision.qualityAdjustments.push('Use high-engagement format from recent successes');
     }
     
-    // 2. POST AGGRESSIVELY if it's been 60+ minutes AND we have good engagement opportunity
-    else if (timeSinceLastPost >= 60 && engagementOpportunity > 0.4) {
+    // 2. POST AGGRESSIVELY if it's been 75% of optimal frequency AND we have good engagement opportunity
+    else if (timeSinceLastPost >= (optimalFrequencyMinutes * 0.75) && engagementOpportunity > 0.4) {
       decision.shouldPost = true;
       decision.urgency = 'high';
       decision.reason = `⚡ HIGH_OPPORTUNITY: ${timeSinceLastPost}min + engagement window (${(engagementOpportunity * 100).toFixed(0)}%)`;
@@ -96,8 +112,8 @@ export class AggressiveGrowthEngine {
       decision.qualityAdjustments.push('Capitalize on current engagement window');
     }
     
-    // 3. POST if growth rate is below target AND it's been 45+ minutes
-    else if (currentGrowthMetrics.followers_gained_24h < this.targetGrowthRate && timeSinceLastPost >= 45) {
+    // 3. POST if growth rate is below target AND it's been 50% of optimal frequency
+    else if (currentGrowthMetrics.followers_gained_24h < this.targetGrowthRate && timeSinceLastPost >= (optimalFrequencyMinutes * 0.5)) {
       decision.shouldPost = true;
       decision.urgency = 'high';
       decision.reason = `📈 GROWTH_ACCELERATION: Only ${currentGrowthMetrics.followers_gained_24h} followers today (target: ${this.targetGrowthRate})`;
@@ -106,7 +122,7 @@ export class AggressiveGrowthEngine {
     }
     
     // 4. QUALITY OVERRIDE: Post if we have a high-quality content opportunity
-    else if (contentQualityScore > 0.8 && timeSinceLastPost >= 30) {
+    else if (contentQualityScore > 0.8 && timeSinceLastPost >= (optimalFrequencyMinutes * 0.33)) {
       decision.shouldPost = true;
       decision.urgency = 'medium';
       decision.reason = `💎 QUALITY_OPPORTUNITY: High content quality score (${(contentQualityScore * 100).toFixed(0)}%)`;
@@ -273,30 +289,48 @@ export class AggressiveGrowthEngine {
   }
 
   /**
-   * ⚡ Analyze current engagement opportunity (time-based)
+   * ⚡ Analyze current engagement opportunity using DATABASE-DRIVEN timing
    */
   private async analyzeCurrentEngagementOpportunity(): Promise<number> {
-    const hour = new Date().getHours();
-    const dayOfWeek = new Date().getDay();
+    try {
+      // Use dynamic timing optimizer that learns from actual engagement data
+      const { DynamicTimingOptimizer } = await import('../intelligence/dynamicTimingOptimizer');
+      const timingOptimizer = DynamicTimingOptimizer.getInstance();
+      
+      const timingAnalysis = await timingOptimizer.getOptimalPostingTime();
+      
+      console.log(`🕐 DATABASE_TIMING: ${timingAnalysis.reason}`);
+      console.log(`📊 Current window score: ${(timingAnalysis.current_window_score * 100).toFixed(0)}%`);
+      
+      // If 7pm always gets comments, this will show high score at 7pm
+      return timingAnalysis.current_window_score;
+      
+    } catch (error) {
+      console.warn('⚠️ Dynamic timing failed, using fallback:', error);
+      
+      // Fallback to basic logic if dynamic timing fails
+      const hour = new Date().getHours();
+      const dayOfWeek = new Date().getDay();
 
-    // Peak engagement times for health content (based on research)
-    const peakHours = [7, 8, 9, 12, 13, 18, 19, 20]; // Morning, lunch, evening
-    const moderateHours = [10, 11, 14, 15, 16, 17, 21, 22];
-    const lowHours = [0, 1, 2, 3, 4, 5, 6, 23];
+      // Peak engagement times for health content (based on research)
+      const peakHours = [7, 8, 9, 12, 13, 18, 19, 20]; // Morning, lunch, evening
+      const moderateHours = [10, 11, 14, 15, 16, 17, 21, 22];
+      const lowHours = [0, 1, 2, 3, 4, 5, 6, 23];
 
-    let baseScore = 0.2; // Base opportunity
-    
-    if (peakHours.includes(hour)) baseScore = 0.8;
-    else if (moderateHours.includes(hour)) baseScore = 0.5;
-    else if (lowHours.includes(hour)) baseScore = 0.2;
+      let baseScore = 0.2; // Base opportunity
+      
+      if (peakHours.includes(hour)) baseScore = 0.8;
+      else if (moderateHours.includes(hour)) baseScore = 0.5;
+      else if (lowHours.includes(hour)) baseScore = 0.2;
 
-    // Weekend boost (people have more time to read health content)
-    if (dayOfWeek === 0 || dayOfWeek === 6) baseScore += 0.1;
+      // Weekend boost (people have more time to read health content)
+      if (dayOfWeek === 0 || dayOfWeek === 6) baseScore += 0.1;
 
-    // Weekday evening boost (after work health focus)
-    if (dayOfWeek >= 1 && dayOfWeek <= 5 && hour >= 18 && hour <= 20) baseScore += 0.2;
+      // Weekday evening boost (after work health focus)
+      if (dayOfWeek >= 1 && dayOfWeek <= 5 && hour >= 18 && hour <= 20) baseScore += 0.2;
 
-    return Math.min(1.0, baseScore);
+      return Math.min(1.0, baseScore);
+    }
   }
 
   /**
