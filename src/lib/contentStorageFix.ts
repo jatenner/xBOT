@@ -25,7 +25,7 @@ export async function storeActualPostedContent(data: RealContentStorage): Promis
     console.log(`📝 Content preview: "${data.actual_content.substring(0, 100)}..."`);
     console.log(`📏 Character count: ${data.character_count}`);
     
-    // First, store in tweets table with REAL content
+    // First, store in tweets table with REAL content and fixed constraints
     const { error: tweetsError } = await admin
       .from('tweets')
       .upsert([{
@@ -56,29 +56,70 @@ export async function storeActualPostedContent(data: RealContentStorage): Promis
       console.log(`✅ CONTENT_STORED: tweets table updated with real content`);
     }
 
-    // Also store in learning_posts with REAL content
-    const { error: learningError } = await admin
-      .from('learning_posts')
-      .upsert([{
-        tweet_id: data.tweet_id,
-        content: data.actual_content, // THIS IS THE FIX - store actual content
-        format: data.content_type,
-        likes_count: 0,
-        retweets_count: 0,
-        replies_count: 0,
-        bookmarks_count: 0,
-        impressions_count: 0,
-        viral_potential_score: data.quality_score || 0,
-        created_at: data.posted_at
-      }], {
-        onConflict: 'tweet_id',
-        ignoreDuplicates: false
-      });
+    // Store in learning_posts with improved conflict handling
+    try {
+      const { error: learningError } = await admin
+        .from('learning_posts')
+        .upsert([{
+          tweet_id: data.tweet_id,
+          content: data.actual_content, // THIS IS THE FIX - store actual content
+          format: data.content_type,
+          likes_count: 0,
+          retweets_count: 0,
+          replies_count: 0,
+          bookmarks_count: 0,
+          impressions_count: 0,
+          viral_potential_score: data.quality_score || 0,
+          created_at: data.posted_at
+        }], {
+          onConflict: 'tweet_id',
+          ignoreDuplicates: false
+        });
 
-    if (learningError) {
-      console.error(`❌ CONTENT_STORAGE_ERROR: learning_posts table - ${learningError.message}`);
-    } else {
-      console.log(`✅ CONTENT_STORED: learning_posts table updated with real content`);
+      if (learningError) {
+        // Try insert/update pattern as fallback
+        console.warn(`⚠️ UPSERT failed, trying insert/update pattern: ${learningError.message}`);
+        
+        // Try update first
+        const { error: updateError } = await admin
+          .from('learning_posts')
+          .update({
+            content: data.actual_content,
+            format: data.content_type,
+            viral_potential_score: data.quality_score || 0
+          })
+          .eq('tweet_id', data.tweet_id);
+
+        if (updateError) {
+          // If update fails, try insert
+          const { error: insertError } = await admin
+            .from('learning_posts')
+            .insert([{
+              tweet_id: data.tweet_id,
+              content: data.actual_content,
+              format: data.content_type,
+              likes_count: 0,
+              retweets_count: 0,
+              replies_count: 0,
+              bookmarks_count: 0,
+              impressions_count: 0,
+              viral_potential_score: data.quality_score || 0,
+              created_at: data.posted_at
+            }]);
+
+          if (insertError) {
+            console.warn(`⚠️ Insert also failed: ${insertError.message}`);
+          } else {
+            console.log(`✅ CONTENT_STORED: learning_posts via insert fallback`);
+          }
+        } else {
+          console.log(`✅ CONTENT_STORED: learning_posts via update fallback`);
+        }
+      } else {
+        console.log(`✅ CONTENT_STORED: learning_posts table updated with real content`);
+      }
+    } catch (fallbackError: any) {
+      console.warn(`⚠️ Learning posts storage failed (non-critical): ${fallbackError.message}`);
     }
 
     // Log successful storage

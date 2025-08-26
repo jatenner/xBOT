@@ -913,6 +913,9 @@ Create a high-quality health/wellness post that passes these requirements.`;
       
       const recommendations = await this.learningEngine.getContentRecommendations();
       
+      // Import smart content management tools
+      const { smartContentManager } = await import('../lib/smartContentManager');
+      
       // Build viral content prompt based on growth strategy and learned patterns
       let contextPrompt = `You are a viral content creator with millions of followers. Create a ${growthStrategy.strategy} post that will gain maximum followers. `;
       
@@ -1004,10 +1007,23 @@ CRITICAL QUALITY REQUIREMENTS:
 
       let content = response.choices[0]?.message?.content || 'Your body loses 2-3 liters of water daily through breathing alone. That tired feeling at 3 PM? Often dehydration, not caffeine withdrawal. Try 16oz of water before reaching for coffee.';
       
-      // Ensure it's within Twitter's limit (regenerate if too long)
-      if (content.length > 280) {
-        console.log(`❌ Generated content too long (${content.length} chars), falling back to quality content`);
-        content = 'Your brain uses 20% of your body\'s energy. That foggy feeling after lunch? Low blood sugar affecting cognition. Try protein + complex carbs for steady mental performance throughout the day.';
+      // Use smart content management instead of hard length limits
+      const truncationResult = smartContentManager.smartTruncate(content);
+      if (truncationResult.wasTruncated) {
+        console.log(`🔧 SMART_TRUNCATION: ${truncationResult.originalLength} → ${truncationResult.finalLength} chars (${truncationResult.truncationMethod})`);
+        content = truncationResult.content;
+      }
+      
+      // Validate content quality
+      const validation = smartContentManager.validateContent(content);
+      if (!validation.isValid) {
+        console.warn(`⚠️ Content quality issues: ${validation.issues.join(', ')}`);
+        console.log(`💡 Suggestions: ${validation.suggestions.join(', ')}`);
+        
+        // Use fallback content if validation fails
+        if (content.length < 80) {
+          content = 'Your brain uses 20% of your body\'s energy. That foggy feeling after lunch? Low blood sugar affecting cognition. Try protein + complex carbs for steady mental performance throughout the day.';
+        }
       }
 
       return content;
@@ -1232,7 +1248,7 @@ CRITICAL QUALITY REQUIREMENTS:
   }
 
   /**
-   * Post a full thread (not just the first tweet)
+   * Post a full thread (not just the first tweet) - FIXED TO STORE ACTUAL CONTENT
    */
   private async postFullThread(tweets: string[], topic: string): Promise<string> {
     try {
@@ -1247,13 +1263,27 @@ CRITICAL QUALITY REQUIREMENTS:
       if (result.success && result.rootTweetId) {
         console.log(`✅ THREAD_POSTED: Root tweet ${result.rootTweetId} with ${result.replyIds?.length || 0} replies`);
         
-        // Store metrics for the root tweet
+        // Store the ACTUAL thread content, not just a summary
+        const fullThreadContent = tweets.join('\n\n'); // Join all tweets with double newlines
+        
         try {
+          // Store using our fixed content storage system
+          const { storeActualPostedContent } = await import('../lib/contentStorageFix');
+          await storeActualPostedContent({
+            tweet_id: result.rootTweetId,
+            actual_content: fullThreadContent, // STORE THE REAL THREAD CONTENT
+            content_type: 'thread',
+            posted_at: new Date().toISOString(),
+            character_count: fullThreadContent.length,
+            quality_score: this.calculateContentQualityScore(fullThreadContent)
+          });
+          
+          // Also store metrics with proper thread content
           const { storeNewPostMetrics } = await import('../posting/metrics');
           await storeNewPostMetrics({
             tweet_id: result.rootTweetId,
             format: 'thread',
-            content: tweets[0], // Store first tweet as content
+            content: fullThreadContent, // Store FULL thread content, not just first tweet
             initial_metrics: {
               likes_count: 0,
               retweets_count: 0,
@@ -1261,12 +1291,13 @@ CRITICAL QUALITY REQUIREMENTS:
               impressions_count: 0
             }
           });
-          console.log(`📊 DB_WRITE: Thread metrics stored for ${result.rootTweetId}`);
+          console.log(`📊 DB_WRITE: Thread content stored (${fullThreadContent.length} chars)`);
         } catch (dbError) {
           console.log(`📚 THREAD_STORAGE: Non-blocking storage issue (thread posted successfully)`);
         }
         
-        return `Thread posted successfully: ${tweets.length} tweets on ${topic}`;
+        // Return the actual first tweet content, not a summary
+        return tweets[0];
       } else {
         console.error(`❌ THREAD_FAILED: ${result.error}`);
         // Fallback to single tweet if thread fails
