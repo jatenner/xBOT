@@ -86,9 +86,10 @@ export class AutonomousPostingEngine {
       return;
     }
 
-    console.log('🧠 Starting intelligent adaptive posting schedule...');
+    console.log('🚀 Starting AGGRESSIVE GROWTH posting schedule...');
+    console.log('🎯 TARGET: Post every 60-90 minutes for maximum engagement');
     
-    // EMERGENCY: Check every 30 minutes instead of 5 to reduce spam
+    // AGGRESSIVE: Check every 15 minutes for growth opportunities
     this.intelligentTimerInterval = setInterval(async () => {
       try {
         // 🛡️ CRASH_PREVENTION: Wrap all posting logic in try-catch
@@ -100,11 +101,14 @@ export class AutonomousPostingEngine {
           return;
         }
 
-        const opportunity = await this.scheduler.shouldPostNow();
+        // Use aggressive growth engine instead of conservative scheduler
+        const { AggressiveGrowthEngine } = await import('./aggressiveGrowthEngine');
+        const growthEngine = AggressiveGrowthEngine.getInstance();
+        const aggressiveDecision = await growthEngine.shouldPostAggressive();
         
-        const dynamicThreshold = await this.calculateDynamicThreshold();
+        console.log(`🚀 AGGRESSIVE_CHECK: ${aggressiveDecision.shouldPost ? '✅ POST' : '⏳ WAIT'} - ${aggressiveDecision.reason}`);
         
-        if (opportunity.score > dynamicThreshold) {
+        if (aggressiveDecision.shouldPost) {
           // EMERGENCY STOP: If we're in emergency stop mode
           if (Date.now() < this.emergencyStopUntil) {
             const remainingMinutes = Math.round((this.emergencyStopUntil - Date.now()) / 60000);
@@ -125,15 +129,15 @@ export class AutonomousPostingEngine {
             return;
           }
 
-          console.log(`🎯 Posting opportunity detected! Score: ${Math.round(opportunity.score)}/100 (threshold: ${dynamicThreshold})`);
-          console.log(`📝 Reason: ${opportunity.reason}`);
-          console.log(`⚡ Urgency: ${opportunity.urgency}`);
+          console.log(`🎯 AGGRESSIVE POSTING TRIGGERED: ${aggressiveDecision.reason}`);
+          console.log(`⚡ Urgency: ${aggressiveDecision.urgency}`);
+          console.log(`⏰ Next check: ${aggressiveDecision.nextCheckMinutes} minutes`);
           
           // Execute intelligent post with concurrency control
           this.lastPostAttempt = Date.now();
           this.isPosting = true;
           
-          this.executeIntelligentPost(opportunity)
+          this.executePost()
             .then((result) => {
               if (result.success) {
                 this.consecutiveFailures = 0; // Reset failure count on success
@@ -151,7 +155,7 @@ export class AutonomousPostingEngine {
               this.isPosting = false;
             });
         } else {
-          logInfo(`⏳ Waiting for better opportunity. Current score: ${Math.round(opportunity.score)}/100 (need: ${dynamicThreshold}) - ${opportunity.reason}`);
+          console.log(`⏳ AGGRESSIVE_WAITING: ${aggressiveDecision.reason} - next check in ${aggressiveDecision.nextCheckMinutes}min`);
             }
           } catch (error) {
             console.error('❌ Error in intelligent posting analysis:', error);
@@ -160,7 +164,7 @@ export class AutonomousPostingEngine {
           console.error('🛡️ CRASH_PREVENTION: Posting loop error (continuing):', error.message);
           // Continue running instead of crashing
         }
-      }, 4 * 60 * 60 * 1000); // FIXED: Check every 4 hours to prevent spam posting (was 30 minutes)
+      }, 15 * 60 * 1000); // AGGRESSIVE: Check every 15 minutes for growth opportunities
 
     // FALLBACK: Still maintain basic schedule as safety net
     cron.schedule('0 */6 * * *', async () => {
@@ -182,8 +186,9 @@ export class AutonomousPostingEngine {
     }, 2 * 60 * 1000);
 
     this.isRunning = true;
-    console.log('✅ Intelligent adaptive posting system activated');
-    console.log('🎯 Will analyze posting opportunities every 4 hours (quality-focused approach)');
+    console.log('✅ AGGRESSIVE GROWTH posting system activated');
+    console.log('🎯 Will analyze posting opportunities every 15 minutes for maximum engagement');
+    console.log('🚀 TARGET: Post every 60-90 minutes when opportunity score is high');
   }
 
   /**
@@ -373,6 +378,9 @@ export class AutonomousPostingEngine {
     }
   }
 
+  /**
+   * Generate high-quality content using AGGRESSIVE LEARNING optimization
+   */
   private async generateContent(): Promise<string> {
     try {
       // Use the new Social Content Operator for diverse, high-quality content
@@ -411,7 +419,26 @@ export class AutonomousPostingEngine {
         console.log(`📊 Format mix: ${contentPack.metadata.formatMix?.join(', ')}`);
         console.log(`🔄 Topic rotation: ${diverseSeeds.slice(0, 3).join(', ')}`);
         
-        return selectedContent;
+        // 🚀 AGGRESSIVE LEARNING: Optimize content based on recent engagement patterns
+        try {
+          const { AggressiveLearningEngine } = await import('../intelligence/aggressiveLearningEngine');
+          const learningEngine = AggressiveLearningEngine.getInstance();
+          
+          console.log('🧠 APPLYING_AGGRESSIVE_LEARNING: Optimizing content for maximum engagement');
+          
+          const optimization = await learningEngine.optimizeContentForMaxEngagement(selectedContent);
+          
+          if (optimization.predicted_engagement_boost > 0.1) {
+            console.log(`🚀 CONTENT_OPTIMIZED: ${optimization.improvements_applied.join(', ')} (+${(optimization.predicted_engagement_boost * 100).toFixed(0)}% predicted boost)`);
+            return optimization.optimized_content;
+          } else {
+            console.log('📝 CONTENT_UNCHANGED: Original content already optimal');
+            return selectedContent;
+          }
+        } catch (learningError) {
+          console.warn('⚠️ Learning optimization failed, using original content:', learningError);
+          return selectedContent;
+        }
       }
       
       console.warn('⚠️ Social Content Operator failed, falling back to emergency content');
@@ -839,6 +866,33 @@ Create a high-quality health/wellness post that passes these requirements.`;
 
       console.log(`✅ DB_WRITE: Successfully stored REAL tweet content ${tweetId}`);
       console.log(`📏 Stored ${content.length} characters of actual content`);
+      
+      // 🧠 AGGRESSIVE LEARNING: Set up performance tracking for this post
+      try {
+        const { AggressiveLearningEngine } = await import('../intelligence/aggressiveLearningEngine');
+        const learningEngine = AggressiveLearningEngine.getInstance();
+        
+        // Schedule learning check for this post in 30 minutes
+        setTimeout(async () => {
+          try {
+            console.log(`📊 PERFORMANCE_LEARNING: Analyzing results for ${tweetId}`);
+            
+            // Get latest metrics for this post
+            const metrics = await realisticTracker.getCurrentMetrics(tweetId);
+            
+            // Learn from the performance
+            await learningEngine.learnFromPostPerformance(tweetId, metrics);
+            
+            console.log(`✅ LEARNING_COMPLETE: Performance analysis done for ${tweetId}`);
+          } catch (learningError) {
+            console.warn('⚠️ Performance learning failed:', learningError);
+          }
+        }, 30 * 60 * 1000); // Learn after 30 minutes
+        
+        console.log(`🧠 LEARNING_SCHEDULED: Performance tracking set for ${tweetId} in 30min`);
+      } catch (learningSetupError) {
+        console.warn('⚠️ Could not set up learning tracking:', learningSetupError);
+      }
       
       // Also use the original metrics system for compatibility
       try {
