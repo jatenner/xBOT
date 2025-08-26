@@ -157,11 +157,7 @@ export function startHealthServer(): Promise<void> {
       try {
         const requiredVars = [
           'OPENAI_API_KEY',
-          'TWITTER_API_KEY', 
-          'TWITTER_API_SECRET',
-          'TWITTER_ACCESS_TOKEN',
-          'TWITTER_ACCESS_TOKEN_SECRET',
-          'TWITTER_USERNAME',
+          // Note: Using Playwright browser automation, not Twitter API keys
           'TWITTER_SCREEN_NAME',
           'TWITTER_USER_ID',
           'SUPABASE_URL',

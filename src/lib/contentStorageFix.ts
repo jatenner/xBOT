@@ -69,7 +69,7 @@ export async function storeActualPostedContent(data: RealContentStorage): Promis
           replies_count: 0,
           bookmarks_count: 0,
           impressions_count: 0,
-          viral_potential_score: data.quality_score || 0,
+          viral_potential_score: calculateViralPotential(data.actual_content),
           created_at: data.posted_at
         }], {
           onConflict: 'tweet_id',
@@ -103,7 +103,7 @@ export async function storeActualPostedContent(data: RealContentStorage): Promis
               replies_count: 0,
               bookmarks_count: 0,
               impressions_count: 0,
-              viral_potential_score: data.quality_score || 0,
+              viral_potential_score: calculateViralPotential(data.actual_content),
               created_at: data.posted_at
             }]);
 
@@ -132,6 +132,49 @@ export async function storeActualPostedContent(data: RealContentStorage): Promis
     
     // Don't throw - this is storage only, shouldn't break posting
   }
+}
+
+/**
+ * Calculate viral potential score for learning system
+ */
+function calculateViralPotential(content: string): number {
+  let score = 50; // Base score
+  
+  // Length optimization (Twitter sweet spot)
+  if (content.length >= 100 && content.length <= 250) score += 15;
+  if (content.length < 80) score -= 10;
+  
+  // Engagement hooks
+  if (/\d+/.test(content)) score += 10; // Contains numbers/stats
+  if (content.includes('?')) score += 8; // Questions engage
+  if (content.includes('!')) score += 5; // Excitement
+  
+  // Health/science keywords (our niche)
+  const healthKeywords = ['study', 'research', 'scientists', 'brain', 'health', 'body', 'metabolism', 'energy'];
+  const keywordMatches = healthKeywords.filter(keyword => 
+    content.toLowerCase().includes(keyword)).length;
+  score += keywordMatches * 8;
+  
+  // Actionable content
+  if (content.includes('Try') || content.includes('Start') || content.includes('Stop')) score += 12;
+  
+  // Curiosity gaps
+  if (content.includes('That') && content.includes('actually')) score += 10;
+  if (content.includes('What') || content.includes('Why') || content.includes('How')) score += 8;
+  
+  // Avoid generic phrases (penalty)
+  const genericPhrases = ['amazing', 'incredible', 'game changer', 'life hack'];
+  const genericCount = genericPhrases.filter(phrase => 
+    content.toLowerCase().includes(phrase.toLowerCase())).length;
+  score -= genericCount * 5;
+  
+  // Specificity bonus
+  const specificityIndicators = ['%', 'minutes', 'hours', 'days', 'pounds', 'calories'];
+  const specificityCount = specificityIndicators.filter(indicator => 
+    content.includes(indicator)).length;
+  score += specificityCount * 6;
+  
+  return Math.max(0, Math.min(100, score));
 }
 
 /**
