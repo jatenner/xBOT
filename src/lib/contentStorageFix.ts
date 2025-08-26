@@ -137,7 +137,7 @@ export async function storeActualPostedContent(data: RealContentStorage): Promis
 /**
  * Calculate viral potential score for learning system
  */
-function calculateViralPotential(content: string): number {
+export function calculateViralPotential(content: string): number {
   let score = 50; // Base score
   
   // Length optimization (Twitter sweet spot)
