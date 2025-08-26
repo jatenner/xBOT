@@ -882,6 +882,19 @@ Create a high-quality health/wellness post that passes these requirements.`;
       console.log(`✅ DB_WRITE: Successfully stored REAL tweet content ${tweetId}`);
       console.log(`📏 Stored ${content.length} characters of actual content`);
       
+      // 📊 CONTINUOUS ENGAGEMENT MONITORING: Start tracking this post over time
+      try {
+        const { ContinuousEngagementMonitor } = await import('../metrics/continuousEngagementMonitor');
+        const monitor = ContinuousEngagementMonitor.getInstance();
+        
+        // Start tracking this post at intervals: 1hr, 4hr, 12hr, 24hr, 48hr
+        await monitor.startTrackingPost(tweetId, new Date());
+        
+        console.log(`📊 CONTINUOUS_TRACKING: Started monitoring ${tweetId} at 5 intervals`);
+      } catch (monitorError) {
+        console.warn('⚠️ Could not start continuous monitoring:', monitorError);
+      }
+      
       // 🧠 AGGRESSIVE LEARNING: Set up performance tracking for this post
       try {
         const { AggressiveLearningEngine } = await import('../intelligence/aggressiveLearningEngine');
@@ -1377,6 +1390,19 @@ CRITICAL QUALITY REQUIREMENTS:
             }
           });
           console.log(`📊 DB_WRITE: Thread content stored (${fullThreadContent.length} chars)`);
+          
+          // 📊 CONTINUOUS ENGAGEMENT MONITORING: Start tracking this thread over time
+          try {
+            const { ContinuousEngagementMonitor } = await import('../metrics/continuousEngagementMonitor');
+            const monitor = ContinuousEngagementMonitor.getInstance();
+            
+            // Start tracking this thread at intervals: 1hr, 4hr, 12hr, 24hr, 48hr
+            await monitor.startTrackingPost(result.rootTweetId, new Date());
+            
+            console.log(`📊 THREAD_TRACKING: Started monitoring thread ${result.rootTweetId} at 5 intervals`);
+          } catch (monitorError) {
+            console.warn('⚠️ Could not start thread monitoring:', monitorError);
+          }
         } catch (dbError) {
           console.log(`📚 THREAD_STORAGE: Non-blocking storage issue (thread posted successfully)`);
         }
