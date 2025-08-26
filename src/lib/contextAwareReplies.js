@@ -221,23 +221,7 @@ Generate only the reply text, no quotes or extra formatting:`;
     // Ensure it's within character limits
     enhanced = this.truncateToTwitterLimit(enhanced);
 
-    // Add health-focused hashtag if space allows
-    if (enhanced.length < 220) {
-      const hashtags = {
-        nutrition: '#HealthyEating',
-        fitness: '#FitnessScience',
-        sleep: '#SleepHealth',
-        stress: '#StressManagement',
-        mental: '#MentalWellness',
-        gut: '#GutHealth',
-        general: '#WellnessTips'
-      };
-      
-      const hashtag = hashtags[healthTopic] || hashtags.general;
-      if (enhanced.length + hashtag.length + 1 <= 240) {
-        enhanced += ` ${hashtag}`;
-      }
-    }
+    // NEVER ADD HASHTAGS - Brand guideline: No hashtags allowed
 
     return enhanced;
   }
