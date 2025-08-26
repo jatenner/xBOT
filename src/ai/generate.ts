@@ -15,6 +15,7 @@ import {
   getRegenerationPrompt,
   getTopicExtractionPrompt 
 } from './prompts';
+import { validateTweetCharacters, getCharacterAnalysis } from '../utils/characterValidation';
 
 export class ContentGenerator {
   private openai: OpenAI;
@@ -147,13 +148,41 @@ export class ContentGenerator {
         return { success: false, error: 'Invalid content structure' };
       }
 
-      // Validate tweet lengths
-      const invalidTweets = content.tweets.filter(tweet => 
-        typeof tweet !== 'string' || tweet.length < 40 || tweet.length > 279
-      );
+      // Validate tweet lengths using bulletproof character validation
+      const invalidTweets: Array<{tweet: string; validation: any}> = [];
+      
+      content.tweets.forEach((tweet, index) => {
+        if (typeof tweet !== 'string') {
+          invalidTweets.push({ tweet, validation: { reason: 'Tweet is not a string' } });
+          return;
+        }
+        
+        const validation = validateTweetCharacters(tweet);
+        if (!validation.isValid && validation.length > 260) {
+          // AUTO-FIX: Try to truncate instead of rejecting
+          const { truncateToLimit } = require('../utils/characterValidation');
+          const truncated = truncateToLimit(tweet, 250); // Extra safety margin
+          const truncatedValidation = validateTweetCharacters(truncated);
+          
+          if (truncatedValidation.isValid) {
+            console.log(`🔧 AUTO-TRUNCATED: Tweet ${index + 1} from ${validation.length} to ${truncatedValidation.length} chars`);
+            content.tweets[index] = truncated; // Fix the tweet
+          } else {
+            console.log(`🚨 CHAR_VALIDATION: Tweet ${index + 1} FAILED: ${validation.reason}`);
+            console.log(`📊 CHAR_ANALYSIS: ${getCharacterAnalysis(tweet).message}`);
+            invalidTweets.push({ tweet, validation });
+          }
+        } else if (!validation.isValid) {
+          console.log(`🚨 CHAR_VALIDATION: Tweet ${index + 1} FAILED: ${validation.reason}`);
+          console.log(`📊 CHAR_ANALYSIS: ${getCharacterAnalysis(tweet).message}`);
+          invalidTweets.push({ tweet, validation });
+        } else {
+          console.log(`✅ CHAR_VALIDATION: Tweet ${index + 1} PASSED: ${getCharacterAnalysis(tweet).message}`);
+        }
+      });
 
       if (invalidTweets.length > 0) {
-        return { success: false, error: `Invalid tweet lengths found: ${invalidTweets.length} tweets` };
+        return { success: false, error: `Character validation failed: ${invalidTweets.length} tweets exceed limits` };
       }
 
       return { success: true, content };

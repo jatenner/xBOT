@@ -134,9 +134,9 @@ export class ViralContentGenerator {
         return { success: false, error: 'Invalid viral content structure' };
       }
 
-      // Validate tweet lengths (allow longer for viral content)
+      // Validate tweet lengths - STRICT limits to prevent Twitter rejection
       const invalidTweets = content.tweets.filter(tweet => 
-        typeof tweet !== 'string' || tweet.length < 50 || tweet.length > 280
+        typeof tweet !== 'string' || tweet.length < 50 || tweet.length > 260
       );
 
       if (invalidTweets.length > 0) {

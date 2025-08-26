@@ -200,8 +200,24 @@ export class SocialContentOperator {
       
       if (!isValidContent.isValid) {
         console.log(`🚨 CONTENT_REJECTED: ${isValidContent.reason}`);
-        console.log(`🔧 EMERGENCY_FALLBACK: Using safe content instead`);
-        content = this.generateEmergencyContent(seed);
+        
+        // AUTO-FIX: Try to truncate if it's just too long
+        if (isValidContent.reason?.includes('character limit') && content.length > 260) {
+          const { truncateToLimit } = require('../utils/characterValidation');
+          const truncated = truncateToLimit(content, 250);
+          const truncatedValidation = this.validateContentQuality(truncated);
+          
+          if (truncatedValidation.isValid) {
+            console.log(`🔧 AUTO-TRUNCATED: Content from ${content.length} to ${truncated.length} chars`);
+            content = truncated;
+          } else {
+            console.log(`🔧 EMERGENCY_FALLBACK: Auto-truncation failed, using safe content instead`);
+            content = this.generateEmergencyContent(seed);
+          }
+        } else {
+          console.log(`🔧 EMERGENCY_FALLBACK: Using safe content instead`);
+          content = this.generateEmergencyContent(seed);
+        }
       }
       
       // Quality check on validated content
@@ -501,7 +517,8 @@ IMPROVED VERSION:`;
       return { isValid: false, reason: 'Content too short to be meaningful' };
     }
     
-    if (content.length > 280) {
+    if (content.length > 260) {
+      console.log(`🚨 CONTENT_TOO_LONG: ${content.length}/260 chars - attempting auto-truncation`);
       return { isValid: false, reason: 'Content exceeds Twitter character limit' };
     }
     
