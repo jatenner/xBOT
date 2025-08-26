@@ -53,13 +53,16 @@ VIRAL CONTENT RULES:
 5. POLARIZING STATEMENT: "Hot take: [controversial opinion most disagree with]"
 
 ${format === 'single' ? `
-SINGLE TWEET REQUIREMENTS:
-- CRITICAL: 100-270 characters MAX (Twitter rejects over 280)
+SINGLE TWEET REQUIREMENTS - CRITICAL CHARACTER LIMITS:
+- MAXIMUM 250 characters (we validate at 260, Twitter rejects at 280)
+- MINIMUM 100 characters (for meaningful viral content)
+- Count EXACT characters including spaces, punctuation, everything  
+- If your content approaches 250 chars, CUT words aggressively
+- Better to be 200 chars and viral than 270 chars and rejected
 - Must have a HOOK that stops scrolling
 - Include controversy/surprise/story
 - End with implicit question or debate starter
 - No generic health tips - make it SPICY
-- Count characters carefully - shorter = better engagement
 
 EXAMPLES OF VIRAL SINGLE TWEETS:
 "Unpopular opinion: Breakfast is a scam invented by cereal companies. I've skipped it for 2 years and have more energy than ever. Your 'most important meal' is keeping you tired."
@@ -73,11 +76,15 @@ THREAD REQUIREMENTS (5-8 tweets):
 2-7. Supporting points with specific examples/numbers
 8. Call to action or question for engagement
 
-CRITICAL: Each tweet 100-270 characters MAX (Twitter rejects over 280)
-No numbering (1/7, 2/7) - let it flow naturally
-Each tweet must be valuable alone
-Build controversy throughout the thread
-Count characters carefully - shorter = better engagement
+CRITICAL CHARACTER LIMITS PER TWEET:
+- MAXIMUM 250 characters (we validate at 260, Twitter rejects at 280)
+- MINIMUM 100 characters (for meaningful viral content)
+- Count EXACT characters including spaces, punctuation, everything
+- If any tweet approaches 250 chars, CUT words aggressively
+- Better to be 200 chars and viral than 270 chars and rejected
+- No numbering (1/7, 2/7) - let it flow naturally
+- Each tweet must be valuable alone
+- Build controversy throughout the thread
 
 THREAD HOOK EXAMPLES:
 "Everyone's wrong about protein. I tracked 500+ people's diets for 2 years. What I found will piss off every fitness influencer:"

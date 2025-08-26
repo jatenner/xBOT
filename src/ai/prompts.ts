@@ -66,18 +66,24 @@ THREAD STRUCTURE (5-9 tweets):
 2-7. Core content: Each tweet = one complete tip/insight
 8-9. Summary or call-to-action (optional)
 
-THREAD REQUIREMENTS:
-- CRITICAL: Each tweet 100-270 characters MAX (shorter = better)
+THREAD REQUIREMENTS - CRITICAL CHARACTER LIMITS:
+- MAXIMUM 250 characters per tweet (we validate at 260, Twitter rejects at 280)
+- MINIMUM 100 characters per tweet (for meaningful content)
+- Count EXACT characters including spaces, punctuation, everything
+- If any tweet approaches 250 chars, CUT words aggressively
+- Better to be 200 chars and valuable than 270 chars and rejected
 - No numbering (1/8, 2/8) - let content flow naturally
 - Each tweet valuable on its own if seen in isolation
 - Build toward a complete framework or system
-- Count characters carefully - Twitter rejects tweets over 280
 ` : `
-SINGLE TWEET REQUIREMENTS:
-- CRITICAL: 100-270 characters MAX (shorter = better for engagement)
+SINGLE TWEET REQUIREMENTS - CRITICAL CHARACTER LIMITS:
+- MAXIMUM 250 characters (we validate at 260, Twitter rejects at 280)
+- MINIMUM 100 characters (for meaningful content)
+- Count EXACT characters including spaces, punctuation, everything
+- If your content approaches 250 chars, CUT words aggressively
+- Better to be 200 chars and valuable than 270 chars and rejected
 - Complete thought with actionable advice
 - Include brief evidence/mechanism if making a claim
-- Count characters carefully - Twitter rejects posts over 280
 `}
 
 OUTPUT FORMAT (JSON only):
