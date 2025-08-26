@@ -67,15 +67,17 @@ THREAD STRUCTURE (5-9 tweets):
 8-9. Summary or call-to-action (optional)
 
 THREAD REQUIREMENTS:
-- Each tweet 120-279 characters
+- CRITICAL: Each tweet 100-270 characters MAX (shorter = better)
 - No numbering (1/8, 2/8) - let content flow naturally
 - Each tweet valuable on its own if seen in isolation
 - Build toward a complete framework or system
+- Count characters carefully - Twitter rejects tweets over 280
 ` : `
 SINGLE TWEET REQUIREMENTS:
-- 120-279 characters
+- CRITICAL: 100-270 characters MAX (shorter = better for engagement)
 - Complete thought with actionable advice
 - Include brief evidence/mechanism if making a claim
+- Count characters carefully - Twitter rejects posts over 280
 `}
 
 OUTPUT FORMAT (JSON only):
