@@ -784,6 +784,29 @@ Create a high-quality health/wellness post that passes these requirements.`;
     }
   }
 
+  /**
+   * Calculate basic content quality score
+   */
+  private calculateContentQualityScore(content: string): number {
+    let score = 50; // Base score
+    
+    // Length scoring
+    if (content.length >= 100 && content.length <= 250) score += 20;
+    if (content.length > 250) score -= 10;
+    
+    // Content quality indicators
+    if (content.includes('study') || content.includes('research')) score += 15;
+    if (content.includes('tips') || content.includes('how to')) score += 10;
+    if (/\d+/.test(content)) score += 10; // Contains numbers
+    if (content.split('.').length > 2) score += 5; // Multiple sentences
+    
+    // Penalty for generic content
+    if (content.toLowerCase().includes('breakthrough')) score -= 20;
+    if (content.toLowerCase().includes('game changer')) score -= 20;
+    
+    return Math.max(0, Math.min(100, score));
+  }
+
   private async storeInDatabase(content: string, tweetId: string): Promise<void> {
     try {
       // Import the FIXED content storage system
@@ -806,7 +829,7 @@ Create a high-quality health/wellness post that passes these requirements.`;
         content_type: content.includes('\n\n') ? 'thread' : 'single',
         posted_at: new Date().toISOString(),
         character_count: content.length,
-        quality_score: this.calculateContentQuality(content)
+        quality_score: this.calculateContentQualityScore(content)
       });
 
       console.log(`✅ DB_WRITE: Successfully stored REAL tweet content ${tweetId}`);
