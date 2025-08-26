@@ -190,9 +190,11 @@ export class SocialContentOperator {
         try {
           const diversityRequirements = await diversityEngine.getOptimalStructure(topic);
           structuralInstructions = diversityRequirements.variety_instructions;
-          console.log(`🎨 STRUCTURE_${i + 1}: ${diversityRequirements.structure.hook_type} + ${diversityRequirements.structure.sentence_pattern}`);
+          console.log(`🎨 DATABASE_STRUCTURE_${i + 1}: ${diversityRequirements.structure.hook_type} + ${diversityRequirements.structure.sentence_pattern}`);
+          console.log(`📊 ANALYSIS_DEPTH: ${diversityRequirements.total_posts_analyzed} posts analyzed`);
+          console.log(`🎯 ENGAGEMENT_INSIGHTS: ${diversityRequirements.engagement_insights.slice(0, 2).join(', ')}`);
         } catch (error) {
-          console.warn('⚠️ Structural diversity failed, using default');
+          console.warn('⚠️ Database structural diversity failed, using fallback:', error);
         }
       }
       
