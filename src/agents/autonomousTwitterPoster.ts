@@ -390,7 +390,7 @@ export class AutonomousTwitterPoster {
   }
 
   /**
-   * Post a validated thread with proper reply chains
+   * Post a validated thread with proper reply chains - FIXED FOR REAL THREADING
    */
   private async postValidatedThread(page: any, sanitizedTweets: string[]): Promise<{rootTweetId: string; permalink: string; replyIds: string[]}> {
       
@@ -401,9 +401,10 @@ export class AutonomousTwitterPoster {
       }
       
       console.log('✅ LOGIN_CHECK: Confirmed logged in to X');
+      console.log(`🧵 THREAD_POSTING: Starting ${sanitizedTweets.length}-tweet thread`);
       
-      // Step 1: Post T1
-      console.log(`THREAD_CHAIN: k=1/${sanitizedTweets.length}, in_reply_to=none`);
+      // Step 1: Post first tweet (T1)
+      console.log(`🧵 THREAD_CHAIN: k=1/${sanitizedTweets.length}, in_reply_to=none`);
       await page.goto('https://x.com/compose/tweet', { waitUntil: 'domcontentloaded' });
       await page.waitForTimeout(2000);
       
