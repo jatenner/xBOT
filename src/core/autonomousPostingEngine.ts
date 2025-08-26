@@ -809,14 +809,19 @@ Create a high-quality health/wellness post that passes these requirements.`;
 
   private async storeInDatabase(content: string, tweetId: string): Promise<void> {
     try {
-      // Import the FIXED content storage system
+      // Import the ENHANCED content storage system with ULTRA-STRICT validation
       const { storeActualPostedContent, validateRealContent } = await import('../lib/contentStorageFix');
+      const { realisticTracker } = await import('../lib/realisticEngagementTracker');
       
-      // Validate that we're storing real content, not placeholder
+      console.log(`🔍 STORAGE_VALIDATION: Checking content quality for ${tweetId}`);
+      
+      // ULTRA-STRICT validation - ZERO TOLERANCE for placeholder content
       if (!validateRealContent(content)) {
-        console.error(`🚨 PLACEHOLDER_CONTENT_DETECTED: "${content.substring(0, 50)}..."`);
-        console.error(`🚨 This is the bug! Not storing placeholder content.`);
-        return; // Don't store placeholder content
+        console.error(`🚨 CONTENT_REJECTED: Placeholder/low-quality content blocked from storage`);
+        console.error(`🚨 Content: "${content.substring(0, 100)}..."`);
+        console.error(`🚨 LEARNING_PROTECTION: Not storing to preserve learning system integrity`);
+        console.error(`📊 REJECTION_STATS: TweetID=${tweetId}, Length=${content.length}, Quality=FAILED`);
+        return; // BLOCK storage to protect learning algorithms
       }
       
       console.log(`📊 DB_WRITE: Storing REAL content for learning system`);
@@ -1263,15 +1268,26 @@ CRITICAL QUALITY REQUIREMENTS:
       if (result.success && result.rootTweetId) {
         console.log(`✅ THREAD_POSTED: Root tweet ${result.rootTweetId} with ${result.replyIds?.length || 0} replies`);
         
-        // Store the ACTUAL thread content, not just a summary
+        // Store the ACTUAL thread content - NEVER summaries or placeholders
         const fullThreadContent = tweets.join('\n\n'); // Join all tweets with double newlines
         
+        console.log(`🧵 THREAD_STORAGE: Storing complete thread content (${fullThreadContent.length} chars)`);
+        console.log(`📝 Thread preview: "${fullThreadContent.substring(0, 100)}..."`);
+        
         try {
-          // Store using our fixed content storage system
-          const { storeActualPostedContent } = await import('../lib/contentStorageFix');
+          // Use ULTRA-STRICT storage system - validates before storing
+          const { storeActualPostedContent, validateRealContent } = await import('../lib/contentStorageFix');
+          
+          // DOUBLE VALIDATION for threads (they're critical for learning)
+          if (!validateRealContent(fullThreadContent)) {
+            console.error(`🚨 THREAD_REJECTED: Thread content failed validation`);
+            console.error(`🚨 LEARNING_PROTECTION: Thread not stored due to quality issues`);
+            return tweets[0]; // Return first tweet but don't corrupt database
+          }
+          
           await storeActualPostedContent({
             tweet_id: result.rootTweetId,
-            actual_content: fullThreadContent, // STORE THE REAL THREAD CONTENT
+            actual_content: fullThreadContent, // STORE THE COMPLETE REAL THREAD
             content_type: 'thread',
             posted_at: new Date().toISOString(),
             character_count: fullThreadContent.length,
