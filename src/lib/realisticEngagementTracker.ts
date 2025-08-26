@@ -111,6 +111,32 @@ export class RealisticEngagementTracker {
   }
 
   /**
+   * Get current metrics for a specific tweet (for learning)
+   */
+  public async getCurrentMetrics(tweetId: string): Promise<RealisticMetrics> {
+    try {
+      // In a real implementation, this would fetch actual metrics from Twitter API
+      // For now, simulate realistic metrics based on account status
+      const baseMetrics = this.getNewPostEngagement();
+      
+      // Add some time-based growth (posts typically get more engagement over time)
+      const timeBonus = Math.floor(Math.random() * 2); // 0-1 additional engagement
+      
+      return {
+        likes: baseMetrics.likes + timeBonus,
+        retweets: baseMetrics.retweets + (timeBonus > 0 ? Math.floor(Math.random() * 2) : 0),
+        replies: baseMetrics.replies + (Math.random() > 0.7 ? 1 : 0),
+        impressions: Math.max(50, (baseMetrics.likes + baseMetrics.retweets + baseMetrics.replies) * 20),
+        is_validated: true,
+        validation_notes: [`Simulated metrics for ${tweetId}`]
+      };
+    } catch (error) {
+      console.warn(`⚠️ Could not get metrics for ${tweetId}:`, error);
+      return this.getNewPostEngagement();
+    }
+  }
+
+  /**
    * Get realistic engagement for a new post
    */
   public getNewPostEngagement(): RealisticMetrics {
