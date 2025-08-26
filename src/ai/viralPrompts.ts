@@ -54,11 +54,12 @@ VIRAL CONTENT RULES:
 
 ${format === 'single' ? `
 SINGLE TWEET REQUIREMENTS:
-- 150-270 characters (longer for more detail)
+- CRITICAL: 100-270 characters MAX (Twitter rejects over 280)
 - Must have a HOOK that stops scrolling
 - Include controversy/surprise/story
 - End with implicit question or debate starter
 - No generic health tips - make it SPICY
+- Count characters carefully - shorter = better engagement
 
 EXAMPLES OF VIRAL SINGLE TWEETS:
 "Unpopular opinion: Breakfast is a scam invented by cereal companies. I've skipped it for 2 years and have more energy than ever. Your 'most important meal' is keeping you tired."
@@ -72,10 +73,11 @@ THREAD REQUIREMENTS (5-8 tweets):
 2-7. Supporting points with specific examples/numbers
 8. Call to action or question for engagement
 
-Each tweet: 120-270 characters
+CRITICAL: Each tweet 100-270 characters MAX (Twitter rejects over 280)
 No numbering (1/7, 2/7) - let it flow naturally
 Each tweet must be valuable alone
 Build controversy throughout the thread
+Count characters carefully - shorter = better engagement
 
 THREAD HOOK EXAMPLES:
 "Everyone's wrong about protein. I tracked 500+ people's diets for 2 years. What I found will piss off every fitness influencer:"
