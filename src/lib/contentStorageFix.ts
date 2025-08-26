@@ -214,25 +214,96 @@ export async function cleanupPlaceholderContent(): Promise<void> {
 }
 
 /**
- * Validate that content is real, not placeholder
+ * ULTRA-STRICT content validation - ZERO TOLERANCE for placeholder content
+ * This ensures ONLY real health content gets stored for proper learning
  */
 export function validateRealContent(content: string): boolean {
+  console.log(`🔍 VALIDATING_CONTENT: "${content.substring(0, 60)}..." (${content.length} chars)`);
+  
+  // COMPREHENSIVE placeholder detection (any of these = REJECT)
   const placeholderPatterns = [
     'High-quality tweet for follower growth',
     'High-quality tweet',
     'Quality content placeholder',
     'Generated content',
-    'Placeholder content'
+    'Placeholder content',
+    'Thread posted successfully',
+    'Posted successfully',
+    'Content generated',
+    'Tweet generated',
+    'Test content',
+    'Sample content',
+    'Quality content',
+    'Viral content',
+    'Follower growth',
+    'Content for'
   ];
 
-  const isPlaceholder = placeholderPatterns.some(pattern => 
-    content.toLowerCase().includes(pattern.toLowerCase())
+  // Check for ANY placeholder patterns
+  const lowerContent = content.toLowerCase();
+  for (const pattern of placeholderPatterns) {
+    if (lowerContent.includes(pattern.toLowerCase())) {
+      console.error(`🚨 PLACEHOLDER_REJECTED: Contains "${pattern}"`);
+      return false;
+    }
+  }
+
+  // STRICT length requirement (must be substantial)
+  if (content.length < 80) {
+    console.error(`🚨 TOO_SHORT: ${content.length} chars (minimum: 80)`);
+    return false;
+  }
+
+  // Must contain health/science content (our niche)
+  const healthKeywords = [
+    'health', 'brain', 'body', 'study', 'research', 'scientists', 
+    'metabolic', 'energy', 'calories', 'minutes', 'hours', 'sleep',
+    'exercise', 'nutrition', 'protein', 'water', 'blood', 'heart',
+    'muscle', 'fat', 'vitamin', 'mineral', 'fiber', 'sugar'
+  ];
+  
+  const hasHealthContent = healthKeywords.some(keyword => 
+    lowerContent.includes(keyword.toLowerCase())
   );
+  
+  if (!hasHealthContent) {
+    console.error(`🚨 NO_HEALTH_CONTENT: Must contain health/science keywords`);
+    return false;
+  }
 
-  const isTooShort = content.length < 50;
-  const isGeneric = content.toLowerCase().includes('lorem ipsum');
+  // Check for meaningful content structure
+  const hasPunctuation = /[.!?]/.test(content);
+  const hasNumbers = /\d+/.test(content);
+  const wordCount = content.split(' ').length;
+  
+  if (!hasPunctuation) {
+    console.error(`🚨 NO_PUNCTUATION: Content lacks proper sentence structure`);
+    return false;
+  }
+  
+  if (wordCount < 15) {
+    console.error(`🚨 TOO_FEW_WORDS: ${wordCount} words (minimum: 15)`);
+    return false;
+  }
 
-  return !isPlaceholder && !isTooShort && !isGeneric;
+  // Bonus validation: check for specific quality indicators
+  const qualityIndicators = [
+    hasNumbers, // Contains statistics/data
+    content.includes('%'), // Contains percentages
+    content.includes('study') || content.includes('research'), // Scientific backing
+    content.includes('?'), // Engagement hooks
+    lowerContent.includes('try') || lowerContent.includes('start') // Actionable content
+  ];
+  
+  const qualityScore = qualityIndicators.filter(Boolean).length;
+  
+  if (qualityScore < 2) {
+    console.error(`🚨 LOW_QUALITY: Quality score ${qualityScore}/5 (minimum: 2)`);
+    return false;
+  }
+
+  console.log(`✅ CONTENT_APPROVED: Real health content validated (${content.length} chars, quality: ${qualityScore}/5)`);
+  return true;
 }
 
 /**

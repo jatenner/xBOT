@@ -151,19 +151,43 @@ export class RealisticEngagementTracker {
   }
 
   /**
-   * Log validation results for monitoring
+   * Log validation results for monitoring and learning improvement
    */
   public logValidation(tweetId: string, originalMetrics: any, validatedMetrics: RealisticMetrics): void {
     if (!validatedMetrics.is_validated) {
       console.warn(`🚨 FAKE_METRICS_CORRECTED for ${tweetId}:`);
-      console.warn(`   Original: ${originalMetrics.likes} likes, ${originalMetrics.retweets} retweets`);
-      console.warn(`   Corrected: ${validatedMetrics.likes} likes, ${validatedMetrics.retweets} retweets`);
+      console.warn(`   Original: ${originalMetrics.likes}L, ${originalMetrics.retweets}RT (IMPOSSIBLE)`);
+      console.warn(`   Corrected: ${validatedMetrics.likes}L, ${validatedMetrics.retweets}RT (REALISTIC)`);
+      console.warn(`   🧠 LEARNING_IMPACT: Fake metrics would corrupt algorithm training`);
       validatedMetrics.validation_notes.forEach(note => {
         console.warn(`   • ${note}`);
       });
     } else {
       console.log(`✅ REALISTIC_METRICS_VALIDATED for ${tweetId}: ${validatedMetrics.likes}L, ${validatedMetrics.retweets}RT`);
+      console.log(`   🧠 LEARNING_READY: Accurate data for algorithm improvement`);
     }
+  }
+
+  /**
+   * Enhanced method to track engagement patterns for learning
+   */
+  public analyzeEngagementPattern(metrics: RealisticMetrics, contentLength: number, hasHealthKeywords: boolean): any {
+    const pattern = {
+      engagement_rate: (metrics.likes + metrics.retweets + metrics.replies) / Math.max(this.accountFollowers, 1),
+      content_performance: {
+        length_factor: contentLength >= 100 && contentLength <= 250 ? 'optimal' : 'suboptimal',
+        health_relevance: hasHealthKeywords ? 'high' : 'low',
+        engagement_per_char: (metrics.likes + metrics.retweets) / contentLength
+      },
+      learning_signals: {
+        should_repeat_style: metrics.likes > 1 || metrics.retweets > 0,
+        content_length_effective: contentLength >= 120 && metrics.likes > 0,
+        health_content_performs: hasHealthKeywords && metrics.likes > 0
+      }
+    };
+
+    console.log(`🧠 ENGAGEMENT_PATTERN for learning:`, pattern);
+    return pattern;
   }
 }
 
