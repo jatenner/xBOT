@@ -112,15 +112,22 @@ export class SocialContentOperator {
     // Analyze recent posts to avoid repetition
     this.updateContentHistory(recentPosts);
     
+    // Get structural diversity requirements
+    const { StructuralDiversityEngine } = await import('../content/structuralDiversityEngine');
+    const diversityEngine = StructuralDiversityEngine.getInstance();
+    
+    // Update diversity engine with recent posts
+    recentPosts.forEach(post => diversityEngine.storeContentStructure(post));
+    
     // Get learning insights to improve content generation
     const learningInsights = await this.getLearningInsights();
     console.log(`🧠 LEARNING: Applied ${learningInsights.length} insights to content generation`);
     
-    // Generate 3 singles with different formats using learning insights
-    const singles = await this.generateDiverseSingles(brandNotes, seeds, learningInsights);
+    // Generate 3 singles with different formats using learning insights and structural diversity
+    const singles = await this.generateDiverseSingles(brandNotes, seeds, learningInsights, diversityEngine);
     
-    // Generate 2 threads with different styles using learning insights
-    const threads = await this.generateDiverseThreads(brandNotes, seeds, learningInsights);
+    // Generate 2 threads with different styles using learning insights and structural diversity
+    const threads = await this.generateDiverseThreads(brandNotes, seeds, learningInsights, diversityEngine);
     
     // Calculate diversity metrics
     const metadata = this.calculateDiversityMetrics(singles, threads);
@@ -157,7 +164,7 @@ export class SocialContentOperator {
   /**
    * Generate 3 diverse single tweets with learning insights
    */
-  private async generateDiverseSingles(brandNotes: string, seeds: string[], learningInsights: any[] = []): Promise<string[]> {
+  private async generateDiverseSingles(brandNotes: string, seeds: string[], learningInsights: any[] = [], diversityEngine?: any): Promise<string[]> {
     const singles: string[] = [];
     
     // VALUE-FOCUSED format rotation - prioritize helpful, actionable content
@@ -177,7 +184,19 @@ export class SocialContentOperator {
       const topic = this.selectUnusedTopic();
       const seed = seeds[i] || topic;
       
-      const prompt = this.buildSinglePrompt(brandNotes, seed, format, this.contentHistory, learningInsights);
+      // Get structural diversity requirements for this post
+      let structuralInstructions = '';
+      if (diversityEngine) {
+        try {
+          const diversityRequirements = await diversityEngine.getOptimalStructure(topic);
+          structuralInstructions = diversityRequirements.variety_instructions;
+          console.log(`🎨 STRUCTURE_${i + 1}: ${diversityRequirements.structure.hook_type} + ${diversityRequirements.structure.sentence_pattern}`);
+        } catch (error) {
+          console.warn('⚠️ Structural diversity failed, using default');
+        }
+      }
+      
+      const prompt = this.buildSinglePrompt(brandNotes, seed, format, this.contentHistory, learningInsights, structuralInstructions);
       
       try {
         const response = await this.openai.chat.completions.create({
@@ -224,8 +243,16 @@ export class SocialContentOperator {
       const qualityScore = await this.evaluateContentQuality(content, format);
         
       if (qualityScore >= 70) { // Lowered threshold for emergency mode
-        singles.push(content);
-        this.contentHistory.push(content);
+        // CRITICAL: Remove any hashtags that might have been generated
+        const cleanContent = this.removeHashtags(content);
+        
+        // Store structure for future diversity analysis
+        if (diversityEngine) {
+          diversityEngine.storeContentStructure(cleanContent);
+        }
+        
+        singles.push(cleanContent);
+        this.contentHistory.push(cleanContent);
         this.formatHistory.push(format);
         this.topicHistory.push(topic);
         console.log(`✅ CONTENT_ACCEPTED: Quality ${qualityScore}/100`);
@@ -233,7 +260,8 @@ export class SocialContentOperator {
         // Emergency fallback - don't try to regenerate, just use safe content
         console.log(`⚠️ LOW_QUALITY: ${qualityScore}/100, using emergency content`);
         content = this.generateEmergencyContent(seed);
-        singles.push(content);
+        const cleanContent = this.removeHashtags(content);
+        singles.push(cleanContent);
       }
         
       } catch (error) {
@@ -248,7 +276,7 @@ export class SocialContentOperator {
   /**
    * Generate 2 diverse threads with learning insights
    */
-  private async generateDiverseThreads(brandNotes: string, seeds: string[], learningInsights: any[] = []): Promise<ThreadContent[]> {
+  private async generateDiverseThreads(brandNotes: string, seeds: string[], learningInsights: any[] = [], diversityEngine?: any): Promise<ThreadContent[]> {
     const threads: ThreadContent[] = [];
     const threadFormats = ['educational-series', 'myth-busting-thread'];
     
@@ -271,8 +299,16 @@ export class SocialContentOperator {
         const threadData = JSON.parse(response.choices[0]?.message?.content || '{}');
         
         if (threadData.tweets && Array.isArray(threadData.tweets)) {
+          // CRITICAL: Remove hashtags from all thread tweets
+          const cleanTweets = threadData.tweets.map((tweet: string) => this.removeHashtags(tweet));
+          
+          // Store structure for diversity analysis
+          if (diversityEngine) {
+            cleanTweets.forEach((tweet: string) => diversityEngine.storeContentStructure(tweet));
+          }
+          
           threads.push({
-            tweets: threadData.tweets,
+            tweets: cleanTweets,
             topic: threadData.topic || topic,
             format,
             engagementHooks: threadData.engagementHooks || []
@@ -291,7 +327,7 @@ export class SocialContentOperator {
   /**
    * Build single tweet prompt with format, diversity controls, and learning insights
    */
-  private buildSinglePrompt(brandNotes: string, seed: string, format: string, recentContent: string[], learningInsights: any[] = []): string {
+  private buildSinglePrompt(brandNotes: string, seed: string, format: string, recentContent: string[], learningInsights: any[] = [], structuralInstructions: string = ''): string {
     const formatInfo = this.CONTENT_FORMATS[format];
     const avoidContent = recentContent.join('\n- ');
     
@@ -305,6 +341,8 @@ export class SocialContentOperator {
 BRAND: ${brandNotes}
 TOPIC: ${seed}
 FORMAT: ${formatInfo.template}
+
+${structuralInstructions ? `STRUCTURAL DIVERSITY REQUIREMENTS:\n${structuralInstructions}\n` : ''}
 
 CONTENT STRATEGY:
 Your goal is to establish expertise and provide actionable value, not just create controversy. You are building a community of people who want to optimize their health based on science.
@@ -685,6 +723,17 @@ Try skipping breakfast for 1 week.`
    */
   private updateContentHistory(recentPosts: string[]): void {
     this.contentHistory = [...this.contentHistory, ...recentPosts].slice(-20); // Keep last 20
+  }
+
+  /**
+   * Remove hashtags from content - CRITICAL brand requirement
+   */
+  private removeHashtags(content: string): string {
+    // Remove all hashtags (# followed by word characters)
+    const cleanContent = content.replace(/#\w+/g, '').trim();
+    
+    // Clean up any double spaces left by hashtag removal
+    return cleanContent.replace(/\s+/g, ' ').trim();
   }
 
   /**

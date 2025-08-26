@@ -52,6 +52,8 @@ STRICT CONTENT RULES:
 - Ellipsis endings "..." (creates incomplete feeling)
 - Vague promises "This will change everything"
 - Academic jargon or overly clinical language
+- ANY hashtags (#hashtag) - NEVER use hashtags in any content
+- Repetitive sentence structures - vary your patterns
 
 ✅ REQUIRED ELEMENTS:
 - At least 2 concrete, actionable tips per thread
