@@ -786,35 +786,51 @@ Create a high-quality health/wellness post that passes these requirements.`;
 
   private async storeInDatabase(content: string, tweetId: string): Promise<void> {
     try {
-      // Use the enterprise-grade Advanced Database Manager
-      const { AdvancedDatabaseManager } = await import('../lib/advancedDatabaseManager');
-      const dbManager = AdvancedDatabaseManager.getInstance();
+      // Import the FIXED content storage system
+      const { storeActualPostedContent, validateRealContent } = await import('../lib/contentStorageFix');
       
-      await dbManager.initialize();
+      // Validate that we're storing real content, not placeholder
+      if (!validateRealContent(content)) {
+        console.error(`🚨 PLACEHOLDER_CONTENT_DETECTED: "${content.substring(0, 50)}..."`);
+        console.error(`🚨 This is the bug! Not storing placeholder content.`);
+        return; // Don't store placeholder content
+      }
       
-      // Store in proper learning and metrics tables for Social Content Operator
-      console.log(`📊 DB_WRITE: Storing tweet data for learning system`);
+      console.log(`📊 DB_WRITE: Storing REAL content for learning system`);
+      console.log(`📝 Content preview: "${content.substring(0, 80)}..."`);
       
-      const { storeNewPostMetrics } = await import('../posting/metrics');
-      
-      // Store the post data in the learning system for analytics and improvement
-      await storeNewPostMetrics({
+      // Store the ACTUAL posted content using fixed storage system
+      await storeActualPostedContent({
         tweet_id: tweetId,
-        content: content,
-        format: content.includes('\n\n') ? 'thread' : 'single', // Simple format detection
-        initial_metrics: {
-          likes_count: 0,
-          retweets_count: 0,
-          replies_count: 0,
-          bookmarks_count: 0,
-          impressions_count: 0
-        }
+        actual_content: content, // Store the REAL content that was posted
+        content_type: content.includes('\n\n') ? 'thread' : 'single',
+        posted_at: new Date().toISOString(),
+        character_count: content.length,
+        quality_score: this.calculateContentQuality(content)
       });
 
-      console.log(`✅ DB_WRITE: Successfully stored tweet ${tweetId} in learning_posts and tweet_metrics`);
+      console.log(`✅ DB_WRITE: Successfully stored REAL tweet content ${tweetId}`);
+      console.log(`📏 Stored ${content.length} characters of actual content`);
       
-      // Emit success event for monitoring
-      dbManager.emit('tweetStored', { tweetId, content: content.substring(0, 100) });
+      // Also use the original metrics system for compatibility
+      try {
+        const { storeNewPostMetrics } = await import('../posting/metrics');
+        await storeNewPostMetrics({
+          tweet_id: tweetId,
+          content: content, // Make sure this gets the real content too
+          format: content.includes('\n\n') ? 'thread' : 'single',
+          initial_metrics: {
+            likes_count: 0,
+            retweets_count: 0,
+            replies_count: 0,
+            bookmarks_count: 0,
+            impressions_count: 0
+          }
+        });
+      } catch (metricsError: any) {
+        console.warn(`⚠️ Legacy metrics storage failed: ${metricsError.message}`);
+        // Continue - we have the fixed storage above
+      }
       
     } catch (error: any) {
       console.error('⚠️ Enterprise database storage failed:', error.message);
