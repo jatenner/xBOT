@@ -5,6 +5,11 @@ import { IntelligentLearningEngine } from '../intelligence/intelligentLearningEn
 import { FollowerGrowthOptimizer } from '../intelligence/followerGrowthOptimizer';
 import { logInfo, logWarn } from '../utils/intelligentLogging';
 
+// NEW MODULAR ARCHITECTURE - IMMEDIATE INTEGRATION
+import { ContentGenerator } from './modules/contentGenerator';
+import { PerformanceOptimizer } from './modules/performanceOptimizer';
+import { PostingManager } from './modules/postingManager';
+
 export class AutonomousPostingEngine {
   private static instance: AutonomousPostingEngine;
   private isRunning = false;
@@ -19,12 +24,24 @@ export class AutonomousPostingEngine {
   private learningEngine: IntelligentLearningEngine;
   private followerOptimizer: FollowerGrowthOptimizer;
   private currentFollowerCount: number = 0;
+  
+  // NEW MODULAR COMPONENTS - LIVE NOW
+  private contentGenerator: ContentGenerator;
+  private performanceOptimizer: PerformanceOptimizer;
+  private postingManager: PostingManager;
 
   private constructor() {
     this.scheduler = AdaptivePostingScheduler.getInstance();
     this.performanceTracker = TweetPerformanceTracker.getInstance();
     this.learningEngine = IntelligentLearningEngine.getInstance();
     this.followerOptimizer = FollowerGrowthOptimizer.getInstance();
+    
+    // INITIALIZE NEW MODULAR COMPONENTS - IMMEDIATE POWER UP
+    this.contentGenerator = ContentGenerator.getInstance();
+    this.performanceOptimizer = PerformanceOptimizer.getInstance();
+    this.postingManager = PostingManager.getInstance();
+    
+    console.log('⚡ MODULAR_ARCHITECTURE: All performance modules loaded and ready');
   }
 
   public static getInstance(): AutonomousPostingEngine {
@@ -311,6 +328,20 @@ export class AutonomousPostingEngine {
    * Execute intelligent post with context-aware content
    */
   public async executeIntelligentPost(opportunity: any): Promise<{ success: boolean; content?: string; error?: string }> {
+    // IMMEDIATE PERFORMANCE UPGRADE - Use new PostingManager
+    console.log('🚀 USING_NEW_POSTING_MANAGER: High-performance modular system activated');
+    
+    const result = await this.postingManager.executeIntelligentPost({ opportunity });
+    
+    return {
+      success: result.success,
+      content: result.content,
+      error: result.error
+    };
+  }
+
+  // LEGACY METHOD - KEEPING FOR COMPATIBILITY BUT USING NEW SYSTEM
+  private async executeLegacyIntelligentPost(opportunity: any): Promise<{ success: boolean; content?: string; error?: string }> {
     try {
       console.log(`🧠 Executing VIRAL intelligent post (Score: ${Math.round(opportunity.score)}/100)`);
       console.log(`🎯 Context: ${opportunity.reason}`);

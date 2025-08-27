@@ -199,26 +199,26 @@ export class PostingManager {
   }
 
   /**
-   * 📝 Post single tweet
+   * 📝 Post single tweet using simplified approach
    */
   private async postSingle(contentResult: any): Promise<{ tweetId: string }> {
     try {
-      // Import and use social content operator for direct posting
-      const { SocialContentOperator } = await import('../../ai/socialContentOperator');
-      const operator = SocialContentOperator.getInstance();
+      console.log('📝 Posting content via simplified posting:', `"${contentResult.content.substring(0, 100)}..."`);
       
-      console.log('📝 Posting Social Operator content:', `"${contentResult.content.substring(0, 100)}..."`);
-      const tweetId = await operator.postDirectContent(contentResult.content);
+      // Use the postSingleTweet function from postThread module
+      const { postSingleTweet } = await import('../../posting/postThread');
       
-      if (tweetId) {
-        console.log(`✅ Posted directly: ${tweetId}`);
-        return { tweetId };
+      const result = await postSingleTweet(contentResult.content);
+      
+      if (result.success && result.tweetId) {
+        console.log(`✅ Posted successfully: ${result.tweetId}`);
+        return { tweetId: result.tweetId };
       } else {
-        throw new Error('Failed to get tweet ID from direct posting');
+        throw new Error(`Posting failed: ${result.error}`);
       }
       
     } catch (error: any) {
-      console.error('❌ Direct posting failed:', error.message);
+      console.error('❌ Posting failed:', error.message);
       throw new Error(`Single tweet posting failed: ${error.message}`);
     }
   }
@@ -246,20 +246,16 @@ export class PostingManager {
       console.log('💾 POSTING_MANAGER: Storing posting results');
       
       // Import content storage fix
-      const { storeActualContent } = await import('../../lib/contentStorageFix');
+      const { storeActualPostedContent } = await import('../../lib/contentStorageFix');
       
       // Store the actual content with comprehensive data
-      await storeActualContent({
+      await storeActualPostedContent({
         tweet_id: postResult.tweetId,
         actual_content: contentResult.content,
         content_type: contentResult.type,
         character_count: contentResult.content.length,
         posted_at: new Date().toISOString(),
-        quality_indicators: {
-          optimized: contentResult.metadata?.optimized || false,
-          quality_score: contentResult.metadata?.qualityScore || 75,
-          thread_length: contentResult.metadata?.threadLength
-        }
+        quality_score: contentResult.metadata?.qualityScore || 75
       });
 
       console.log('✅ POSTING_MANAGER: Results stored successfully');

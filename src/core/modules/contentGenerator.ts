@@ -44,8 +44,8 @@ export class ContentGenerator {
       console.log('🎨 CONTENT_GENERATOR: Starting intelligent content generation');
       
       // Import social content operator
-      const { SocialContentOperator } = await import('../../ai/socialContentOperator');
-      const operator = SocialContentOperator.getInstance();
+      const { getSocialContentOperator } = await import('../../ai/socialContentOperator');
+      const operator = getSocialContentOperator();
       
       // Prepare generation parameters
       const brandNotes = options.brandNotes || "";
