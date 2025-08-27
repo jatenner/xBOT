@@ -641,90 +641,55 @@ NEVER USE HASHTAGS - Hashtags are banned in all content.
   /**
    * 🗄️ DATABASE CONNECTION FUNCTIONS
    */
-  private async fetchAllDatabasePosts(): Promise<DatabasePost[]> {
+  private async fetchAllDatabasePosts(): Promise<any[]> {
     try {
-      // Import Supabase client
-      const { createClient } = await import('@supabase/supabase-js');
-      const supabaseUrl = process.env.SUPABASE_URL;
-      const supabaseKey = process.env.SUPABASE_ANON_KEY;
+      // Import admin client for database access
+      const { admin } = await import('../lib/supabaseClients');
       
-      if (!supabaseUrl || !supabaseKey) {
-        throw new Error('Missing Supabase credentials');
+      const allPosts: any[] = [];
+      
+      // Fetch from learning_posts table
+      try {
+        const { data: learningPosts, error: learningError } = await admin
+          .from('learning_posts')
+          .select('content, created_at, likes, retweets, replies, engagement_score')
+          .order('created_at', { ascending: false });
+          
+        if (learningError) {
+          console.warn('⚠️ Learning posts fetch failed:', learningError);
+        } else if (learningPosts) {
+          allPosts.push(...learningPosts);
+          console.log(`📊 DATABASE_LOADED: ${learningPosts.length} unique posts from learning_posts`);
+        }
+      } catch (error) {
+        console.warn('⚠️ Learning posts fetch failed:', error);
       }
-
-      const supabase = createClient(supabaseUrl, supabaseKey);
-
-      // Fetch from learning_posts table (primary source with engagement data)
-      const { data: learningPosts, error: learningError } = await supabase
-        .from('learning_posts')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (learningError) {
-        console.warn('⚠️ Learning posts fetch failed:', learningError);
+      
+      // Fetch from tweets table
+      try {
+        const { data: tweets, error: tweetsError } = await admin
+          .from('tweets')
+          .select('content, created_at, likes, retweets, replies, engagement_score')
+          .order('created_at', { ascending: false });
+          
+        if (tweetsError) {
+          console.warn('⚠️ Tweets fetch failed:', tweetsError);
+        } else if (tweets) {
+          // Deduplicate by content
+          const existingContent = new Set(allPosts.map(p => p.content));
+          const newTweets = tweets.filter(t => !existingContent.has(t.content));
+          allPosts.push(...newTweets);
+          console.log(`📊 DATABASE_LOADED: ${tweets.length} posts from tweets (${newTweets.length} unique)`);
+        }
+      } catch (error) {
+        console.warn('⚠️ Tweets fetch failed:', error);
       }
-
-      // Fetch from tweets table (backup source)
-      const { data: tweets, error: tweetsError } = await supabase
-        .from('tweets')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (tweetsError) {
-        console.warn('⚠️ Tweets fetch failed:', tweetsError);
-      }
-
-      // Combine and deduplicate posts
-      const allPosts: DatabasePost[] = [];
-      const seenContent = new Set<string>();
-
-      // Process learning posts first (higher priority)
-      if (learningPosts) {
-        learningPosts.forEach((post: any) => {
-          if (post.content && !seenContent.has(post.content)) {
-            seenContent.add(post.content);
-            allPosts.push({
-              id: post.id || post.tweet_id,
-              content: post.content,
-              created_at: post.created_at,
-              viral_potential_score: post.viral_potential_score,
-              engagement_metrics: {
-                likes: post.likes || 0,
-                retweets: post.retweets || 0,
-                replies: post.replies || 0,
-                impressions: post.impressions || 0
-              }
-            });
-          }
-        });
-      }
-
-      // Add tweets that aren't already included
-      if (tweets) {
-        tweets.forEach((tweet: any) => {
-          if (tweet.content && !seenContent.has(tweet.content)) {
-            seenContent.add(tweet.content);
-            allPosts.push({
-              id: tweet.id || tweet.tweet_id,
-              content: tweet.content,
-              created_at: tweet.created_at,
-              viral_potential_score: tweet.quality_score || 0,
-              engagement_metrics: {
-                likes: 0,
-                retweets: 0,
-                replies: 0,
-                impressions: 0
-              }
-            });
-          }
-        });
-      }
-
+      
       console.log(`📊 DATABASE_LOADED: ${allPosts.length} unique posts from database`);
       return allPosts;
-
+      
     } catch (error) {
-      console.error('❌ Database fetch failed:', error);
+      console.error('❌ DATABASE_FETCH_FAILED:', error);
       return [];
     }
   }
@@ -997,4 +962,5 @@ NEVER USE HASHTAGS - Hashtags are banned in all content.
       };
     }
   }
+
 }
