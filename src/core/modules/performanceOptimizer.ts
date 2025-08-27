@@ -229,13 +229,19 @@ export class PerformanceOptimizer {
   public cleanup(): void {
     // Clean expired cache entries
     const now = Date.now();
+    let removedCount = 0;
+    
     for (const [key, entry] of this.cache.entries()) {
       if (now > entry.timestamp + entry.ttl) {
         this.cache.delete(key);
+        removedCount++;
       }
     }
     
-    console.log(`🧹 PERFORMANCE_CLEANUP: Removed ${this.cache.size} expired cache entries`);
+    // Only log if there's something to report
+    if (removedCount > 0) {
+      console.log(`🧹 PERFORMANCE_CLEANUP: Removed ${removedCount} expired cache entries`);
+    }
   }
 
   /**
@@ -356,12 +362,12 @@ ${recommendations.map(rec => `   ${rec}`).join('\n')}
   }
 
   private startMetricsCollection(): void {
-    // Update memory usage every 30 seconds
+    // Update memory usage every 5 minutes (reduced spam)
     setInterval(() => {
       this.metrics.memoryUsage = process.memoryUsage();
       
       // Cleanup expired cache entries
       this.cleanup();
-    }, 30000);
+    }, 5 * 60 * 1000); // 5 minutes
   }
 }
