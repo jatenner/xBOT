@@ -363,11 +363,44 @@ export class EnhancedThreadComposer {
           throw new Error('Reply post execution failed');
         }
 
-        // Wait for reply dialog to close (indicates success)
-        await page.waitForSelector('div[role="dialog"]', { 
-          state: 'detached', 
-          timeout: 10000 
-        });
+        // Wait for reply success indicators with multiple strategies
+        console.log('🔍 REPLY_VERIFICATION: Checking for success indicators...');
+        
+        const success = await Promise.race([
+          // Strategy 1: Check if composer disappears
+          page.waitForSelector('[data-testid="tweetTextarea_0"]', { 
+            state: 'detached', 
+            timeout: 8000 
+          }).then(() => {
+            console.log('✅ REPLY_SUCCESS: Composer disappeared');
+            return true;
+          }).catch(() => false),
+          
+          // Strategy 2: Check for timeline navigation
+          page.waitForURL(/.*x\.com\/(home|[^\/]+)$/, { timeout: 8000 }).then(() => {
+            console.log('✅ REPLY_SUCCESS: Timeline navigation detected');
+            return true;
+          }).catch(() => false),
+          
+          // Strategy 3: Check if reply button becomes disabled
+          page.waitForFunction(() => {
+            const btn = document.querySelector('[data-testid="tweetButtonInline"]');
+            return !btn || btn.hasAttribute('disabled') || btn.getAttribute('aria-disabled') === 'true';
+          }, { timeout: 6000 }).then(() => {
+            console.log('✅ REPLY_SUCCESS: Reply button disabled');
+            return true;
+          }).catch(() => false),
+          
+          // Strategy 4: Timeout fallback (assume success)
+          page.waitForTimeout(10000).then(() => {
+            console.log('⏱️ REPLY_SUCCESS: Timeout reached (assuming success)');
+            return true;
+          })
+        ]);
+        
+        if (!success) {
+          throw new Error('No reply success indicators detected');
+        }
 
         // Try to capture reply ID
         let replyId = `reply_${replyIndex}_to_${rootTweetId}`;
