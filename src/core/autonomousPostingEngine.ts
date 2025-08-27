@@ -413,8 +413,9 @@ export class AutonomousPostingEngine {
         single.length > 200 // Long content should be threads
       );
       
-      if ((formatDecision < 0.4 || needsThreadContent) && contentPack.threads && contentPack.threads.length > 0) {
-        // Post a thread (40% chance OR if content suggests thread needed)
+      // IMPROVED THREAD LOGIC: Post threads more frequently and when content warrants it
+      if ((formatDecision < 0.6 || needsThreadContent) && contentPack.threads && contentPack.threads.length > 0) {
+        // Post a thread (60% chance OR if content suggests thread needed) - INCREASED from 40%
         const selectedThread = contentPack.threads[Math.floor(Math.random() * contentPack.threads.length)];
         console.log(`🧵 THREAD_MODE: Selected thread on "${selectedThread.topic}" (${selectedThread.tweets.length} tweets)`);
         
@@ -426,13 +427,20 @@ export class AutonomousPostingEngine {
         return await this.postFullThread(selectedThread.tweets, selectedThread.topic);
         
       } else if (contentPack.singles && contentPack.singles.length > 0) {
-        // Post a single (80% chance)
+        // Post a single (40% chance) - REDUCED from 60% to favor threads
         const randomIndex = Math.floor(Math.random() * contentPack.singles.length);
-        const selectedContent = contentPack.singles[randomIndex];
+        let selectedContent = contentPack.singles[randomIndex];
         
         console.log(`🎯 Generated diverse content (quality: ${contentPack.metadata.qualityScores?.[randomIndex] || 'unknown'}, diversity: ${contentPack.metadata.diversityScore})`);
         console.log(`📊 Format mix: ${contentPack.metadata.formatMix?.join(', ')}`);
         console.log(`🔄 Topic rotation: ${diverseSeeds.slice(0, 3).join(', ')}`);
+        
+        // CRITICAL FIX: Remove thread emojis from single tweets
+        selectedContent = selectedContent.replace(/🧵\s*/g, '').trim();
+        if (selectedContent.endsWith('.')) {
+          selectedContent = selectedContent.slice(0, -1).trim() + '.';
+        }
+        console.log(`🧹 SINGLE_CLEANUP: Removed thread indicators for single posting`);
         
         // 🚀 AGGRESSIVE LEARNING: Optimize content based on recent engagement patterns
         try {
@@ -445,7 +453,9 @@ export class AutonomousPostingEngine {
           
           if (optimization.predicted_engagement_boost > 0.1) {
             console.log(`🚀 CONTENT_OPTIMIZED: ${optimization.improvements_applied.join(', ')} (+${(optimization.predicted_engagement_boost * 100).toFixed(0)}% predicted boost)`);
-            return optimization.optimized_content;
+            // Also clean optimized content
+            let optimizedContent = optimization.optimized_content.replace(/🧵\s*/g, '').trim();
+            return optimizedContent;
           } else {
             console.log('📝 CONTENT_UNCHANGED: Original content already optimal');
             return selectedContent;
