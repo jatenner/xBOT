@@ -231,6 +231,17 @@ export class PostingManager {
       console.log('🧵 POSTING_MANAGER: Posting thread with enhanced composer');
       console.log(`📝 Thread content: ${contentResult.content?.length || 0} tweets`);
       
+      // CRITICAL DEBUG: Log the actual data being received
+      console.log('🔍 DEBUG_THREAD_DATA:', {
+        contentType: typeof contentResult.content,
+        isArray: Array.isArray(contentResult.content),
+        contentLength: contentResult.content?.length,
+        hasContentTweets: !!contentResult.tweets,
+        tweetsLength: contentResult.tweets?.length,
+        contentFirstFew: contentResult.content?.slice ? contentResult.content.slice(0, 2) : contentResult.content,
+        fullStructure: Object.keys(contentResult)
+      });
+      
       // Import and use the enhanced thread composer
       const { EnhancedThreadComposer } = await import('../../posting/enhancedThreadComposer');
       const composer = EnhancedThreadComposer.getInstance();
@@ -241,9 +252,18 @@ export class PostingManager {
       
       if (Array.isArray(contentResult.content)) {
         tweets = contentResult.content;
+        console.log(`✅ THREAD_EXTRACTED: Using contentResult.content array (${tweets.length} tweets)`);
       } else if (contentResult.tweets) {
         tweets = contentResult.tweets;
+        console.log(`✅ THREAD_EXTRACTED: Using contentResult.tweets array (${tweets.length} tweets)`);
       } else {
+        // CRITICAL ERROR: This should not happen for threads
+        console.error('🚨 THREAD_CRITICAL_ERROR: No tweet array found!');
+        console.error('🚨 contentResult.content:', contentResult.content);
+        console.error('🚨 contentResult.tweets:', contentResult.tweets);
+        console.error('🚨 contentResult type:', contentResult.type);
+        console.error('🚨 Full contentResult:', JSON.stringify(contentResult, null, 2));
+        
         // Fallback: treat as single tweet for now, but this shouldn't happen
         console.warn('⚠️ THREAD_WARNING: Expected array of tweets but got single content');
         tweets = [contentResult.content];
@@ -253,7 +273,15 @@ export class PostingManager {
         topic = contentResult.topic;
       }
       
-      console.log(`🧵 Posting ${tweets.length} tweet thread on topic: ${topic}`);
+      console.log(`🧵 CRITICAL_CHECK: About to post ${tweets.length} tweet thread on topic: ${topic}`);
+      console.log(`🧵 TWEETS_PREVIEW:`, tweets.map((t, i) => `${i+1}: "${t.substring(0, 50)}..."`));
+      
+      // CRITICAL: Ensure we have multiple tweets
+      if (tweets.length === 1) {
+        console.error('🚨 THREAD_ABORT: Only 1 tweet detected - this will be posted as single, not thread!');
+        console.error('🚨 Something corrupted the thread array between generation and posting');
+        throw new Error('Thread corrupted: Expected multiple tweets but got single tweet');
+      }
       
       // Post the organized thread
       const result = await composer.postOrganizedThread(tweets, topic);
