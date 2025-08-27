@@ -263,8 +263,8 @@ export class EnhancedThreadComposer {
       await composer.fill('');
       await page.waitForTimeout(300);
       
-      // Type content naturally
-      await page.type('[data-testid="tweetTextarea_0"]', tweetFormat.formattedContent, { delay: 15 });
+      // Type content naturally with realistic human-like delays
+      await page.type('[data-testid="tweetTextarea_0"]', tweetFormat.formattedContent, { delay: Math.random() * 30 + 10 });
 
       // Verify content was entered correctly
       const enteredText = await composer.innerText();

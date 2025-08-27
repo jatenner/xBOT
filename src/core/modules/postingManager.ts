@@ -151,15 +151,19 @@ export class PostingManager {
       };
     }
 
-    // Check minimum interval between posts (prevent spam)
+    // PROFESSIONAL TIMING: Variable intervals like a real influencer
     const timeSinceLastPost = Date.now() - this.lastPostAttempt;
-    const minimumInterval = 5 * 60 * 1000; // 5 minutes minimum
+    
+    // Smart interval calculation (3-8 minutes, weighted toward 5-6 minutes)
+    const baseInterval = 5 * 60 * 1000; // 5 minutes base
+    const randomVariation = (Math.random() * 3 - 1.5) * 60 * 1000; // ±1.5 minutes
+    const minimumInterval = Math.max(3 * 60 * 1000, baseInterval + randomVariation); // 3-8 minutes
 
     if (timeSinceLastPost < minimumInterval) {
       const remainingSeconds = Math.ceil((minimumInterval - timeSinceLastPost) / 1000);
       return { 
         allowed: false, 
-        reason: `Minimum interval not met (${remainingSeconds}s remaining)` 
+        reason: `Professional posting interval: ${remainingSeconds}s remaining (natural pacing)` 
       };
     }
 

@@ -105,20 +105,58 @@ export class ContentGenerator {
     if (!contentPack.threads || contentPack.threads.length === 0) {
       console.log('🚨 THREAD_EMERGENCY: No threads in contentPack! Generating emergency thread...');
       
-      // Create emergency thread if none exist
-      contentPack.threads = [{
-        tweets: [
-          'Most health advice completely misses the point.',
-          'It focuses on extreme changes instead of fundamentals.',
-          'Better approach: Master the basics first.',
-          '90% of results come from: sleep, movement, nutrition timing.',
-          'Perfect these before chasing biohacks.',
-          'Consistency with basics beats perfection with advanced methods.'
-        ],
-        topic: 'health fundamentals',
-        format: 'deep-dive',
-        engagementHooks: ['myth-correction', 'practical-advice']
-      }];
+      // Create emergency thread if none exist - STAR QUALITY CONTENT
+      const emergencyThreads = [
+        {
+          tweets: [
+            'Most people approach health optimization completely wrong.',
+            'They chase complex biohacks while ignoring fundamentals.',
+            'Reality: 90% of results come from mastering 4 basics.',
+            'Sleep consistency (same bedtime ±30 minutes)',
+            'Movement patterns (walk + resistance training)',
+            'Nutrition timing (protein every 4-6 hours)',
+            'Stress recovery (5-10 minutes daily breathing practice)',
+            'Master these first. Everything else is just noise.'
+          ],
+          topic: 'health fundamentals mastery',
+          format: 'deep-dive-protocol',
+          engagementHooks: ['myth-correction', 'actionable-protocol']
+        },
+        {
+          tweets: [
+            'Your morning routine determines your entire day.',
+            'Most people start reactive. Checking emails, rushing, cortisol spiking.',
+            'High performers start proactive. Here\'s the science-backed morning protocol:',
+            '1. 10 minutes sunlight (circadian reset + vitamin D)',
+            '2. 2 minutes breathing practice (parasympathetic activation)', 
+            '3. 20g protein within 1 hour (stable blood sugar)',
+            '4. No phone for first 60 minutes (dopamine regulation)',
+            'This simple sequence optimizes hormones, energy, and focus for 12+ hours.'
+          ],
+          topic: 'morning optimization protocol',
+          format: 'step-by-step-guide',
+          engagementHooks: ['science-backed', 'immediate-results']
+        },
+        {
+          tweets: [
+            'The supplement industry sold you a lie.',
+            '"Just take this pill and transform your health."',
+            'Reality: 95% of supplements are marketing, not medicine.',
+            'Only 4 supplements have compelling research:',
+            'Vitamin D3 (if deficient) - immune + bone health',
+            'Magnesium glycinate - sleep + muscle recovery', 
+            'Omega-3 (EPA/DHA) - brain + heart health',
+            'Creatine - energy + cognitive function',
+            'Everything else? Expensive urine. Focus on food first.'
+          ],
+          topic: 'supplement truth',
+          format: 'myth-busting-expose',
+          engagementHooks: ['industry-secrets', 'money-saving']
+        }
+      ];
+      
+      // Randomly select one emergency thread for variety
+      contentPack.threads = [emergencyThreads[Math.floor(Math.random() * emergencyThreads.length)]];
       
       console.log('✅ THREAD_EMERGENCY: Created emergency thread with 6 tweets');
     }
