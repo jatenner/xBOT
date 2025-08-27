@@ -15,8 +15,10 @@ export interface ContentGenerationOptions {
 }
 
 export interface ContentGenerationResult {
-  content: string;
+  content: string | string[];  // string for singles, string[] for threads
   type: 'single' | 'thread';
+  tweets?: string[];  // For threads: backup reference to tweet array
+  topic?: string;     // For threads: topic information
   metadata?: {
     qualityScore?: number;
     optimized?: boolean;
@@ -121,11 +123,13 @@ export class ContentGenerator {
       console.log('🧵 THREAD_FORCED: Single content mentioned deep content - posting thread instead');
     }
     
-    // Post the complete thread using enhanced composer
-    const threadContent = await this.postFullThread(selectedThread.tweets, selectedThread.topic);
+    // Return thread data for PostingManager to handle
+    console.log(`🧵 THREAD_PREPARED: ${selectedThread.tweets.length} tweets ready for posting`);
     
     return {
-      content: threadContent,
+      content: selectedThread.tweets,  // Array of tweets for thread
+      tweets: selectedThread.tweets,   // Backup reference
+      topic: selectedThread.topic,     // Topic for thread
       type: 'thread',
       metadata: {
         qualityScore: 85,

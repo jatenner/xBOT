@@ -224,16 +224,49 @@ export class PostingManager {
   }
 
   /**
-   * 🧵 Post thread content
+   * 🧵 Post thread content using EnhancedThreadComposer
    */
   private async postThread(contentResult: any): Promise<{ tweetId: string }> {
     try {
-      // This should return the root tweet ID from the content result
-      // The actual thread posting is handled in the ContentGenerator
-      return { tweetId: contentResult.content }; // Content contains root tweet ID for threads
+      console.log('🧵 POSTING_MANAGER: Posting thread with enhanced composer');
+      console.log(`📝 Thread content: ${contentResult.content?.length || 0} tweets`);
+      
+      // Import and use the enhanced thread composer
+      const { EnhancedThreadComposer } = await import('../../posting/enhancedThreadComposer');
+      const composer = EnhancedThreadComposer.getInstance();
+      
+      // Extract thread data from content result
+      let tweets = [];
+      let topic = 'Health & Science Thread';
+      
+      if (Array.isArray(contentResult.content)) {
+        tweets = contentResult.content;
+      } else if (contentResult.tweets) {
+        tweets = contentResult.tweets;
+      } else {
+        // Fallback: treat as single tweet for now, but this shouldn't happen
+        console.warn('⚠️ THREAD_WARNING: Expected array of tweets but got single content');
+        tweets = [contentResult.content];
+      }
+      
+      if (contentResult.topic) {
+        topic = contentResult.topic;
+      }
+      
+      console.log(`🧵 Posting ${tweets.length} tweet thread on topic: ${topic}`);
+      
+      // Post the organized thread
+      const result = await composer.postOrganizedThread(tweets, topic);
+      
+      if (result.success && result.rootTweetId) {
+        console.log(`✅ THREAD_SUCCESS: Root tweet ${result.rootTweetId} with ${result.replyIds?.length || 0} replies`);
+        return { tweetId: result.rootTweetId };
+      } else {
+        throw new Error(`Thread posting failed: ${result.error}`);
+      }
       
     } catch (error: any) {
-      console.error('❌ Thread posting failed:', error.message);
+      console.error('❌ THREAD_POSTING_FAILED:', error.message);
       throw new Error(`Thread posting failed: ${error.message}`);
     }
   }
