@@ -94,18 +94,49 @@ export class ContentGenerator {
       single.length > 200
     );
     
-    // IMPROVED THREAD LOGIC: Post threads more frequently (60% chance)
-    if ((formatDecision < 0.6 || needsThreadContent) && contentPack.threads && contentPack.threads.length > 0) {
+    // CRITICAL DEBUG: Log thread availability
+    console.log(`🔍 THREAD_DECISION_DEBUG: contentPack.threads exists: ${!!contentPack.threads}`);
+    console.log(`🔍 THREAD_DECISION_DEBUG: contentPack.threads.length: ${contentPack.threads?.length || 0}`);
+    console.log(`🔍 THREAD_DECISION_DEBUG: formatDecision: ${formatDecision.toFixed(3)}`);
+    console.log(`🔍 THREAD_DECISION_DEBUG: needsThreadContent: ${needsThreadContent}`);
+    
+    // ULTRA-AGGRESSIVE THREAD LOGIC: Force threads 80% of the time if available
+    // AND generate emergency threads if none exist!
+    if (!contentPack.threads || contentPack.threads.length === 0) {
+      console.log('🚨 THREAD_EMERGENCY: No threads in contentPack! Generating emergency thread...');
+      
+      // Create emergency thread if none exist
+      contentPack.threads = [{
+        tweets: [
+          'Most health advice completely misses the point.',
+          'It focuses on extreme changes instead of fundamentals.',
+          'Better approach: Master the basics first.',
+          '90% of results come from: sleep, movement, nutrition timing.',
+          'Perfect these before chasing biohacks.',
+          'Consistency with basics beats perfection with advanced methods.'
+        ],
+        topic: 'health fundamentals',
+        format: 'deep-dive',
+        engagementHooks: ['myth-correction', 'practical-advice']
+      }];
+      
+      console.log('✅ THREAD_EMERGENCY: Created emergency thread with 6 tweets');
+    }
+    
+    // FORCE THREAD MODE: 80% chance (increased from 60%)
+    if (formatDecision < 0.8 || needsThreadContent) {
+      console.log(`✅ THREAD_SELECTED: Reason - ${needsThreadContent ? 'Content suggests deep dive' : 'Random thread selection (80% chance)'}`);
       return {
         type: 'thread',
-        reason: needsThreadContent ? 'Content suggests deep dive' : 'Random thread selection',
-        confidence: needsThreadContent ? 0.9 : 0.6
+        reason: needsThreadContent ? 'Content suggests deep dive' : 'Random thread selection (80% chance)',
+        confidence: needsThreadContent ? 0.9 : 0.8
       };
     }
     
+    console.log('📝 SINGLE_SELECTED: Only 20% chance - rare occurrence');
     return {
       type: 'single',
-      reason: 'Single tweet format selected',
+      reason: 'Single tweet format selected (rare 20% chance)',
       confidence: 0.7
     };
   }
