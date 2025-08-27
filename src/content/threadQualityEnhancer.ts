@@ -44,9 +44,10 @@ export class ThreadQualityEnhancer {
 
   /**
    * 🎯 Main function: Enhance thread quality and organization
+   * NOTE: Only adds thread emojis if actually posting as thread (tweets.length > 1)
    */
   public enhanceThreadQuality(tweets: string[], topic?: string): ThreadQualityResult {
-    console.log(`🧵 QUALITY_ENHANCER: Processing ${tweets.length} tweets`);
+    console.log(`🧵 QUALITY_ENHANCER: Processing ${tweets.length} tweets${tweets.length === 1 ? ' (SINGLE - no thread emojis)' : ' (THREAD - will add indicators)'}`);
 
     if (tweets.length === 0) {
       return this.getEmptyResult();
@@ -155,7 +156,7 @@ export class ThreadQualityEnhancer {
   private enhanceRootTweet(tweet: string, topic?: string, totalTweets?: number): string {
     let enhanced = tweet;
 
-    // Add thread indicator for multi-tweet threads
+    // CRITICAL FIX: Only add thread indicator for ACTUAL multi-tweet threads
     if (totalTweets && totalTweets > 1) {
       const hasThreadIndicator = enhanced.includes('🧵') || 
                                  enhanced.toLowerCase().includes('thread') ||
@@ -168,7 +169,12 @@ export class ThreadQualityEnhancer {
         } else {
           enhanced = enhanced + '. 🧵';
         }
+        console.log(`✅ THREAD_EMOJI_ADDED: Added indicator for ${totalTweets}-tweet thread`);
       }
+    } else if (totalTweets === 1) {
+      // CRITICAL: Remove any thread emojis from single tweets
+      enhanced = enhanced.replace(/🧵\s*/g, '').trim();
+      console.log(`🧹 SINGLE_CLEANUP: Removed thread indicators for single tweet`);
     }
 
     // Ensure strong opening
