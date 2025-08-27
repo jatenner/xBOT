@@ -1339,13 +1339,14 @@ CRITICAL QUALITY REQUIREMENTS:
    */
   private async postFullThread(tweets: string[], topic: string): Promise<string> {
     try {
-      console.log(`🧵 POSTING_FULL_THREAD: ${tweets.length} tweets on "${topic}"`);
+      console.log(`🧵 POSTING_ORGANIZED_THREAD: ${tweets.length} tweets on "${topic}"`);
       
-      // Import the thread posting function
-      const { postThread } = await import('../posting/postThread');
+      // Use enhanced thread composer for better organization and quality
+      const { EnhancedThreadComposer } = await import('../posting/enhancedThreadComposer');
+      const composer = EnhancedThreadComposer.getInstance();
       
-      // Post the complete thread
-      const result = await postThread(tweets, topic);
+      // Post the complete thread with enhanced organization
+      const result = await composer.postOrganizedThread(tweets, topic);
       
       if (result.success && result.rootTweetId) {
         console.log(`✅ THREAD_POSTED: Root tweet ${result.rootTweetId} with ${result.replyIds?.length || 0} replies`);
