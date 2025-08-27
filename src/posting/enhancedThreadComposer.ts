@@ -274,10 +274,28 @@ export class EnhancedThreadComposer {
 
       console.log(`✅ ROOT_CONTENT: "${enteredText.substring(0, 60)}..."`);
 
-      // Enhanced posting with multiple strategies
+      // Enhanced posting with multiple strategies and detailed error tracking
+      console.log(`🚀 ROOT_POSTING: Attempting post execution...`);
       const posted = await this.executePost(page);
       if (!posted) {
-        throw new Error('Post execution failed');
+        console.error('❌ ROOT_POST_EXECUTION: Primary post execution failed, trying fallback...');
+        
+        // FALLBACK: Try direct TwitterComposer as backup
+        try {
+          const { TwitterComposer } = await import('./TwitterComposer');
+          const fallbackComposer = new TwitterComposer(page);
+          const fallbackResult = await fallbackComposer.postSingleTweet(tweetFormat.formattedContent);
+          
+          if (fallbackResult.success) {
+            console.log(`✅ ROOT_FALLBACK_SUCCESS: Used TwitterComposer fallback`);
+            return { success: true, tweetId: fallbackResult.tweetId };
+          } else {
+            throw new Error(`Fallback also failed: ${fallbackResult.error}`);
+          }
+        } catch (fallbackError) {
+          console.error(`❌ ROOT_FALLBACK_FAILED: ${fallbackError}`);
+          throw new Error(`Both primary and fallback post execution failed: ${fallbackError}`);
+        }
       }
 
       // Capture tweet ID with enhanced detection
@@ -403,38 +421,83 @@ export class EnhancedThreadComposer {
   }
 
   /**
-   * 🚀 Execute post with multiple strategies
+   * 🚀 Execute post with multiple strategies and enhanced error handling
    */
   private async executePost(page: Page): Promise<boolean> {
     try {
+      console.log('🚀 POST_EXECUTION: Starting multi-strategy posting...');
+      
+      // Check if post button is available and enabled first
+      const postButton = page.locator('[data-testid="tweetButtonInline"]:not([aria-disabled="true"]):not([aria-hidden="true"])');
+      const buttonVisible = await postButton.isVisible({ timeout: 3000 });
+      const buttonEnabled = buttonVisible ? await postButton.isEnabled() : false;
+      
+      console.log(`📋 POST_BUTTON_STATUS: Visible=${buttonVisible}, Enabled=${buttonEnabled}`);
+
       // Strategy 1: Keyboard shortcut (most reliable)
+      console.log('⌨️ STRATEGY_1: Trying keyboard shortcut...');
       const shortcut = process.platform === 'darwin' ? 'Meta+Enter' : 'Control+Enter';
       await page.keyboard.press(shortcut);
       await page.waitForTimeout(2000);
 
-      // Strategy 2: Click post button if available
-      const postButton = page.locator('[data-testid="tweetButtonInline"]:not([aria-disabled="true"])');
-      if (await postButton.isVisible({ timeout: 2000 })) {
-        await postButton.click();
+      // Strategy 2: Click post button if available and enabled
+      if (buttonVisible && buttonEnabled) {
+        console.log('🖱️ STRATEGY_2: Clicking post button...');
+        try {
+          await postButton.click({ timeout: 3000 });
+          console.log('✅ POST_BUTTON: Successfully clicked');
+        } catch (clickError) {
+          console.warn('⚠️ POST_BUTTON: Click failed:', clickError);
+        }
+      } else {
+        console.warn('⚠️ POST_BUTTON: Not available for clicking');
       }
 
-      // Wait for success indicators
+      // Wait for success indicators with better error handling
+      console.log('🔍 POST_VERIFICATION: Checking for success indicators...');
+      
       const success = await Promise.race([
         // URL change back to timeline
-        page.waitForURL(/.*x\.com\/(home|[^\/]+)$/, { timeout: 10000 }).then(() => true),
+        page.waitForURL(/.*x\.com\/(home|[^\/]+)$/, { timeout: 10000 }).then(() => {
+          console.log('✅ SUCCESS_INDICATOR: URL changed to timeline');
+          return true;
+        }).catch(() => false),
+        
         // Composer disappears
         page.locator('[data-testid="tweetTextarea_0"]').waitFor({ 
           state: 'detached', 
           timeout: 8000 
-        }).then(() => true),
+        }).then(() => {
+          console.log('✅ SUCCESS_INDICATOR: Composer disappeared');
+          return true;
+        }).catch(() => false),
+        
+        // Post button becomes disabled (posting in progress)
+        page.waitForFunction(() => {
+          const btn = document.querySelector('[data-testid="tweetButtonInline"]');
+          return !btn || btn.hasAttribute('disabled') || btn.getAttribute('aria-disabled') === 'true';
+        }, { timeout: 6000 }).then(() => {
+          console.log('✅ SUCCESS_INDICATOR: Post button disabled');
+          return true;
+        }).catch(() => false),
+        
         // Timeout fallback
-        page.waitForTimeout(12000).then(() => true)
+        page.waitForTimeout(12000).then(() => {
+          console.log('⏱️ SUCCESS_INDICATOR: Timeout reached (assuming success)');
+          return true;
+        })
       ]);
 
-      return true;
+      if (success) {
+        console.log('✅ POST_EXECUTION: Posting completed successfully');
+        return true;
+      } else {
+        console.error('❌ POST_EXECUTION: No success indicators detected');
+        return false;
+      }
 
     } catch (error) {
-      console.warn('⚠️ POST_EXECUTION failed:', error);
+      console.error('❌ POST_EXECUTION: Critical error:', error);
       return false;
     }
   }
