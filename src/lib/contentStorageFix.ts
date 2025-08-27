@@ -254,22 +254,32 @@ export function validateRealContent(content: string): boolean {
     return false;
   }
 
-  // Must contain health/science content (our niche)
+  // Must contain health/science content (our niche) - EXPANDED for psychology/stress
   const healthKeywords = [
     'health', 'brain', 'body', 'study', 'research', 'scientists', 
     'metabolic', 'energy', 'calories', 'minutes', 'hours', 'sleep',
     'exercise', 'nutrition', 'protein', 'water', 'blood', 'heart',
-    'muscle', 'fat', 'vitamin', 'mineral', 'fiber', 'sugar'
+    'muscle', 'fat', 'vitamin', 'mineral', 'fiber', 'sugar',
+    // PSYCHOLOGY & MENTAL HEALTH (fixing stress content rejection)
+    'stress', 'anxiety', 'mental', 'psychology', 'cognitive', 'mindfulness',
+    'resilience', 'adaptation', 'performance', 'wellbeing', 'well-being',
+    'mindset', 'behavior', 'behaviour', 'habit', 'motivation', 'focus',
+    'productivity', 'lifestyle', 'balance', 'cope', 'coping', 'manage',
+    'emotional', 'mood', 'depression', 'burnout', 'overwhelm', 'calm',
+    'adapt', 'protocol', 'training', 'optimize', 'recovery', 'improve'
   ];
   
-  const hasHealthContent = healthKeywords.some(keyword => 
+  const matchedKeywords = healthKeywords.filter(keyword => 
     lowerContent.includes(keyword.toLowerCase())
   );
   
-  if (!hasHealthContent) {
+  if (matchedKeywords.length === 0) {
     console.error(`🚨 NO_HEALTH_CONTENT: Must contain health/science keywords`);
+    console.error(`📝 Content preview: "${content.substring(0, 100)}..."`);
     return false;
   }
+  
+  console.log(`✅ HEALTH_CONTENT_DETECTED: Found keywords: ${matchedKeywords.slice(0, 3).join(', ')}`);
 
   // Check for meaningful content structure
   const hasPunctuation = /[.!?]/.test(content);
