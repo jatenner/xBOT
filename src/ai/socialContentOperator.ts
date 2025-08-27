@@ -108,6 +108,7 @@ export class SocialContentOperator {
    */
   async generateContentPack(brandNotes: string, seeds: string[], recentPosts: string[]): Promise<ContentPack> {
     console.log('🎯 SOCIAL_OPERATOR: Generating diverse content pack with learning integration');
+    console.log('🔍 THREAD_DEBUG: Starting content pack generation for threads and singles');
     
     // Analyze recent posts to avoid repetition
     this.updateContentHistory(recentPosts);
@@ -125,9 +126,17 @@ export class SocialContentOperator {
     
     // Generate 3 singles with different formats using learning insights and structural diversity
     const singles = await this.generateDiverseSingles(brandNotes, seeds, learningInsights, diversityEngine);
+    console.log(`🔍 THREAD_DEBUG: Singles generated: ${singles.length}`);
     
     // Generate 2 threads with different styles using learning insights and structural diversity
     const threads = await this.generateDiverseThreads(brandNotes, seeds, learningInsights, diversityEngine);
+    console.log(`🔍 THREAD_DEBUG: Threads generated: ${threads.length}`);
+    
+    // CRITICAL DEBUG: Log actual thread content
+    threads.forEach((thread, index) => {
+      console.log(`🔍 THREAD_DEBUG_${index}: Topic "${thread.topic}", ${thread.tweets.length} tweets`);
+      console.log(`🔍 THREAD_PREVIEW_${index}: "${thread.tweets[0]?.substring(0, 50)}..."`);
+    });
     
     // Calculate diversity metrics
     const metadata = this.calculateDiversityMetrics(singles, threads);
@@ -794,6 +803,8 @@ Try skipping breakfast for 1 week.`
       engagementHooks: ['myth-busting', 'practical advice']
     };
   }
+
+
 }
 
 /**
