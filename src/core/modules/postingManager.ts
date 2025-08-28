@@ -23,6 +23,7 @@ export interface PostingResult {
     processingTime: number;
     optimizationApplied: boolean;
     qualityScore?: number;
+    strategy?: any;
   };
 }
 
@@ -33,9 +34,26 @@ export class PostingManager {
   private consecutiveFailures = 0;
   private emergencyStopUntil = 0;
   private performanceOptimizer: PerformanceOptimizer;
+  
+  // 🧠 ADAPTIVE GROWTH ENGINE: Real follower optimization
+  private adaptiveGrowthEngine: any = null;
 
   private constructor() {
     this.performanceOptimizer = PerformanceOptimizer.getInstance();
+    this.initializeAdaptiveGrowth();
+  }
+
+  /**
+   * 🧠 Initialize adaptive growth learning
+   */
+  private async initializeAdaptiveGrowth(): Promise<void> {
+    try {
+      const { AdaptiveGrowthEngine } = await import('../../intelligence/adaptiveGrowthEngine');
+      this.adaptiveGrowthEngine = AdaptiveGrowthEngine.getInstance();
+      console.log('🧠 ADAPTIVE_GROWTH: Engine initialized for follower optimization');
+    } catch (error: any) {
+      console.warn('⚠️ ADAPTIVE_GROWTH: Failed to initialize:', error.message);
+    }
   }
 
   public static getInstance(): PostingManager {
@@ -52,15 +70,16 @@ export class PostingManager {
     const startTime = Date.now();
     
     try {
-      // Check if we can post
-      const canPost = this.canAttemptPost();
+      // Check if we can post using intelligent growth engine
+      const canPost = await this.canAttemptPost();
       if (!canPost.allowed) {
         return {
           success: false,
           error: canPost.reason,
           metadata: {
             processingTime: Date.now() - startTime,
-            optimizationApplied: false
+            optimizationApplied: false,
+            strategy: canPost.strategy
           }
         };
       }
@@ -224,9 +243,9 @@ export class PostingManager {
   }
 
   /**
-   * 🔍 Check if posting is allowed
+   * 🧠 INTELLIGENT POSTING DECISION: Based on follower growth learning
    */
-  private canAttemptPost(): { allowed: boolean; reason?: string } {
+  private async canAttemptPost(): Promise<{ allowed: boolean; reason?: string; strategy?: any }> {
     // Check if already posting
     if (this.isPosting) {
       return { allowed: false, reason: 'Already posting' };
@@ -241,23 +260,46 @@ export class PostingManager {
       };
     }
 
-    // PROFESSIONAL TIMING: Variable intervals like a real influencer
-    const timeSinceLastPost = Date.now() - this.lastPostAttempt;
-    
-    // Smart interval calculation (3-8 minutes, weighted toward 5-6 minutes)
-    const baseInterval = 5 * 60 * 1000; // 5 minutes base
-    const randomVariation = (Math.random() * 3 - 1.5) * 60 * 1000; // ±1.5 minutes
-    const minimumInterval = Math.max(3 * 60 * 1000, baseInterval + randomVariation); // 3-8 minutes
+    // 🧠 USE ADAPTIVE GROWTH ENGINE for intelligent decisions
+    if (this.adaptiveGrowthEngine) {
+      try {
+        const decision = await this.adaptiveGrowthEngine.getOptimalPostingDecision();
+        
+        console.log(`🧠 GROWTH_DECISION: Post=${decision.shouldPost}, Reply=${decision.shouldReply}, Urgency=${decision.urgency}`);
+        console.log(`📊 STRATEGY: ${decision.currentStrategy.optimalPostsPerDay} posts/day, ${decision.currentStrategy.optimalRepliesPerDay} replies/day`);
+        console.log(`🎯 EXPECTED: +${decision.currentStrategy.expectedDailyFollowerGain} followers/day`);
+        
+        if (!decision.shouldPost) {
+          return { 
+            allowed: false, 
+            reason: `Growth engine: ${decision.reason}`,
+            strategy: decision.currentStrategy
+          };
+        }
 
+        return { 
+          allowed: true,
+          reason: `Growth optimized: ${decision.reason}`,
+          strategy: decision.currentStrategy
+        };
+      } catch (error: any) {
+        console.warn('⚠️ ADAPTIVE_GROWTH: Decision failed, using fallback:', error.message);
+      }
+    }
+
+    // FALLBACK: Smart interval calculation if adaptive engine fails
+    const timeSinceLastPost = Date.now() - this.lastPostAttempt;
+    const minimumInterval = 5 * 60 * 1000; // 5 minutes (more conservative)
+    
     if (timeSinceLastPost < minimumInterval) {
       const remainingSeconds = Math.ceil((minimumInterval - timeSinceLastPost) / 1000);
       return { 
         allowed: false, 
-        reason: `Professional posting interval: ${remainingSeconds}s remaining (natural pacing)` 
+        reason: `Fallback timing: ${remainingSeconds}s remaining (learning system offline)` 
       };
     }
 
-    return { allowed: true };
+    return { allowed: true, reason: 'Fallback timing allows posting' };
   }
 
   /**
@@ -423,23 +465,25 @@ export class PostingManager {
   }
 
   /**
-   * 📊 Get posting statistics
+   * 📊 Get posting statistics with growth strategy
    */
-  public getStatistics(): {
+  public async getStatistics(): Promise<{
     isPosting: boolean;
     lastPostAttempt: number;
     consecutiveFailures: number;
     emergencyStopUntil: number;
     canPost: boolean;
-  } {
-    const canPost = this.canAttemptPost();
+    currentStrategy?: any;
+  }> {
+    const canPost = await this.canAttemptPost();
     
     return {
       isPosting: this.isPosting,
       lastPostAttempt: this.lastPostAttempt,
       consecutiveFailures: this.consecutiveFailures,
       emergencyStopUntil: this.emergencyStopUntil,
-      canPost: canPost.allowed
+      canPost: canPost.allowed,
+      currentStrategy: canPost.strategy
     };
   }
 
