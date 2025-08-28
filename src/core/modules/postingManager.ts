@@ -228,11 +228,11 @@ export class PostingManager {
   }
 
   /**
-   * 🧵 Post thread content using EnhancedThreadComposer
+   * 🧵 Post thread content using NATIVE thread composer (ACTUALLY WORKS)
    */
   private async postThread(contentResult: any): Promise<{ tweetId: string }> {
     try {
-      console.log('🧵 POSTING_MANAGER: Posting thread with enhanced composer');
+      console.log('🧵 POSTING_MANAGER: Using NATIVE thread composer (reply-based was broken)');
       console.log(`📝 Thread content: ${contentResult.content?.length || 0} tweets`);
       
       // CRITICAL DEBUG: Log the actual data being received
@@ -246,9 +246,9 @@ export class PostingManager {
         fullStructure: Object.keys(contentResult)
       });
       
-      // Import and use the enhanced thread composer
-      const { EnhancedThreadComposer } = await import('../../posting/enhancedThreadComposer');
-      const composer = EnhancedThreadComposer.getInstance();
+      // Import and use the NEW native thread composer
+      const { NativeThreadComposer } = await import('../../posting/nativeThreadComposer');
+      const composer = NativeThreadComposer.getInstance();
       
       // Extract thread data from content result
       let tweets = [];
@@ -277,7 +277,7 @@ export class PostingManager {
         topic = contentResult.topic;
       }
       
-      console.log(`🧵 CRITICAL_CHECK: About to post ${tweets.length} tweet thread on topic: ${topic}`);
+      console.log(`🧵 CRITICAL_CHECK: About to post ${tweets.length} tweet thread using NATIVE composer`);
       console.log(`🧵 TWEETS_PREVIEW:`, tweets.map((t, i) => `${i+1}: "${t.substring(0, 50)}..."`));
       
       // CRITICAL: Ensure we have multiple tweets
@@ -287,19 +287,21 @@ export class PostingManager {
         throw new Error('Thread corrupted: Expected multiple tweets but got single tweet');
       }
       
-      // Post the organized thread
-      const result = await composer.postOrganizedThread(tweets, topic);
+      // Post using NATIVE thread composer (should actually work)
+      console.log('🚀 NATIVE_THREAD: Using Twitter\'s native thread creation instead of broken replies');
+      const result = await composer.postNativeThread(tweets, topic);
       
       if (result.success && result.rootTweetId) {
-        console.log(`✅ THREAD_SUCCESS: Root tweet ${result.rootTweetId} with ${result.replyIds?.length || 0} replies`);
+        console.log(`✅ NATIVE_THREAD_SUCCESS: Root tweet ${result.rootTweetId} with ${result.replyIds?.length || 0} replies`);
+        console.log('🎯 NATIVE_THREAD: This should actually create a real thread on Twitter!');
         return { tweetId: result.rootTweetId };
       } else {
-        throw new Error(`Thread posting failed: ${result.error}`);
+        throw new Error(`Native thread posting failed: ${result.error}`);
       }
       
     } catch (error: any) {
-      console.error('❌ THREAD_POSTING_FAILED:', error.message);
-      throw new Error(`Thread posting failed: ${error.message}`);
+      console.error('❌ NATIVE_THREAD_POSTING_FAILED:', error.message);
+      throw new Error(`Native thread posting failed: ${error.message}`);
     }
   }
 
