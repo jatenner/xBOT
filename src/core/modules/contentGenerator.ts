@@ -161,13 +161,13 @@ export class ContentGenerator {
       console.log('✅ THREAD_EMERGENCY: Created emergency thread with 6 tweets');
     }
     
-    // FORCE THREAD MODE: 80% chance (increased from 60%)
-    if (formatDecision < 0.8 || needsThreadContent) {
-      console.log(`✅ THREAD_SELECTED: Reason - ${needsThreadContent ? 'Content suggests deep dive' : 'Random thread selection (80% chance)'}`);
+    // FORCE THREAD MODE: 95% chance for health content (massively increased!)
+    if (formatDecision < 0.95 || needsThreadContent) {
+      console.log(`✅ THREAD_SELECTED: Reason - ${needsThreadContent ? 'Content suggests deep dive' : 'Ultra-aggressive thread selection (95% chance for health)'}`);
       return {
         type: 'thread',
-        reason: needsThreadContent ? 'Content suggests deep dive' : 'Random thread selection (80% chance)',
-        confidence: needsThreadContent ? 0.9 : 0.8
+        reason: needsThreadContent ? 'Content suggests deep dive' : 'Ultra-aggressive thread selection (95% chance for health)',
+        confidence: needsThreadContent ? 0.95 : 0.90
       };
     }
     
