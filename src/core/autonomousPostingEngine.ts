@@ -1382,12 +1382,12 @@ CRITICAL QUALITY REQUIREMENTS:
     try {
       console.log(`🧵 POSTING_ORGANIZED_THREAD: ${tweets.length} tweets on "${topic}"`);
       
-      // Use enhanced thread composer for better organization and quality
-      const { EnhancedThreadComposer } = await import('../posting/enhancedThreadComposer');
-      const composer = EnhancedThreadComposer.getInstance();
+      // Use NATIVE thread composer for ACTUAL working threads
+      const { NativeThreadComposer } = await import('../posting/nativeThreadComposer');
+      const composer = NativeThreadComposer.getInstance();
       
-      // Post the complete thread with enhanced organization
-      const result = await composer.postOrganizedThread(tweets, topic);
+      // Post the complete thread with NATIVE thread creation
+      const result = await composer.postNativeThread(tweets, topic);
       
       if (result.success && result.rootTweetId) {
         console.log(`✅ THREAD_POSTED: Root tweet ${result.rootTweetId} with ${result.replyIds?.length || 0} replies`);
