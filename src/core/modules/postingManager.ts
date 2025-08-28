@@ -116,6 +116,21 @@ export class PostingManager {
         );
       }
 
+      // 🧠 LEARNING: Get content recommendations before posting
+      console.log('🧠 LEARNING: Analyzing content for viral potential...');
+      const { IntelligentLearningEngine } = await import('../../intelligence/intelligentLearningEngine');
+      const learningEngine = IntelligentLearningEngine.getInstance();
+      
+      const contentText = Array.isArray(contentResult.content) 
+        ? contentResult.content.join(' ') 
+        : contentResult.content;
+      
+      const prediction = await learningEngine.predictContentPerformance(contentText);
+      console.log(`🎯 PREDICTION: ${prediction.expectedLikes} likes, ${prediction.expectedFollowers} followers (${Math.round(prediction.confidenceScore * 100)}% confidence)`);
+      
+      // Store prediction for use after posting
+      const postPrediction = prediction;
+
       // Execute the actual posting
       const postResult = await this.performanceOptimizer.optimizeBrowserOperation(
         'Tweet Posting',
@@ -138,6 +153,31 @@ export class PostingManager {
         console.log('✅ DB_WRITE: Stored content hash for dedupe');
       } catch (e: any) {
         console.warn('⚠️ DEDUPE_STORE_SKIP:', e.message);
+      }
+
+      // 🧠 LEARNING: Store performance baseline for future learning
+      try {
+        console.log('🧠 LEARNING: Storing performance baseline...');
+        const { FollowerGrowthOptimizer } = await import('../../intelligence/followerGrowthOptimizer');
+        const growthOptimizer = FollowerGrowthOptimizer.getInstance();
+        
+        const learningTextStored = Array.isArray(contentResult.content)
+          ? contentResult.content.join('\n\n')
+          : contentResult.content;
+        
+        await growthOptimizer.recordPostBaseline({
+          tweetId: postResult.tweetId,
+          content: learningTextStored,
+          contentType: contentResult.type || 'single',
+          predictedLikes: postPrediction.expectedLikes,
+          predictedFollowers: postPrediction.expectedFollowers,
+          confidenceScore: postPrediction.confidenceScore,
+          postedAt: new Date().toISOString()
+        });
+        
+        console.log('✅ LEARNING: Performance baseline recorded');
+      } catch (learningError: any) {
+        console.warn('⚠️ LEARNING_SKIP:', learningError.message);
       }
 
       // Reset failure counter on success
