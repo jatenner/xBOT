@@ -119,9 +119,9 @@ export class AutonomousPostingEngine {
         }
 
         // Use aggressive growth engine instead of conservative scheduler
-        const { AggressiveGrowthEngine } = await import('./aggressiveGrowthEngine');
-        const growthEngine = AggressiveGrowthEngine.getInstance();
-        const aggressiveDecision = await growthEngine.shouldPostAggressive();
+        const { getAggressiveGrowthEngine } = await import('./aggressiveGrowthEngine');
+        const growthEngine = getAggressiveGrowthEngine();
+        const aggressiveDecision = await growthEngine.getNextPostingDecision();
         
         console.log(`🚀 AGGRESSIVE_CHECK: ${aggressiveDecision.shouldPost ? '✅ POST' : '⏳ WAIT'} - ${aggressiveDecision.reason}`);
         
@@ -147,8 +147,8 @@ export class AutonomousPostingEngine {
           }
 
           console.log(`🎯 AGGRESSIVE POSTING TRIGGERED: ${aggressiveDecision.reason}`);
-          console.log(`⚡ Urgency: ${aggressiveDecision.urgency}`);
-          console.log(`⏰ Next check: ${aggressiveDecision.nextCheckMinutes} minutes`);
+          console.log(`⚡ Strategy: ${aggressiveDecision.strategy}`);
+          console.log(`📈 Expected Growth: ${aggressiveDecision.expectedGrowth} followers`);
           
           // Execute intelligent post with concurrency control
           this.lastPostAttempt = Date.now();
@@ -172,7 +172,7 @@ export class AutonomousPostingEngine {
               this.isPosting = false;
             });
         } else {
-          console.log(`⏳ AGGRESSIVE_WAITING: ${aggressiveDecision.reason} - next check in ${aggressiveDecision.nextCheckMinutes}min`);
+          console.log(`⏳ AGGRESSIVE_WAITING: ${aggressiveDecision.reason} - wait ${aggressiveDecision.timeToWait}min`);
             }
           } catch (error) {
             console.error('❌ Error in intelligent posting analysis:', error);
