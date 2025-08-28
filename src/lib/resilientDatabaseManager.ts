@@ -121,8 +121,8 @@ export class ResilientDatabaseManager {
 
     try {
       const testPromise = this.supabase
-        .from('bot_config')
-        .select('key')
+        .from('tweets')
+        .select('count')
         .limit(1);
         
       const timeoutPromise = new Promise<never>((_, reject) => 
