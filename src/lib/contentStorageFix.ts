@@ -22,8 +22,22 @@ export interface RealContentStorage {
 export async function storeActualPostedContent(data: RealContentStorage): Promise<void> {
   try {
     console.log(`📊 CONTENT_STORAGE_FIX: Storing actual content for ${data.tweet_id}`);
-    console.log(`📝 Content preview: "${data.actual_content.substring(0, 100)}..."`);
+    
+    // Handle both strings (singles) and arrays (threads)
+    const contentForDisplay = Array.isArray(data.actual_content) 
+      ? data.actual_content.join(' ').substring(0, 100)
+      : data.actual_content.substring(0, 100);
+    
+    const contentForStorage = Array.isArray(data.actual_content)
+      ? data.actual_content.join('\n\n') // Join thread tweets with double newlines
+      : data.actual_content;
+    
+    console.log(`📝 Content preview: "${contentForDisplay}..."`);
     console.log(`📏 Character count: ${data.character_count}`);
+    console.log(`🔍 Content type: ${Array.isArray(data.actual_content) ? 'thread' : 'single'}`);
+    
+    // Update data.actual_content to properly formatted string for storage
+    data.actual_content = contentForStorage;
     
     // First, store in tweets table with REAL content and fixed constraints
     const { error: tweetsError } = await admin
