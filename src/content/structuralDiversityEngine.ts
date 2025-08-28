@@ -652,7 +652,7 @@ NEVER USE HASHTAGS - Hashtags are banned in all content.
       try {
         const { data: learningPosts, error: learningError } = await admin
           .from('learning_posts')
-          .select('content, created_at, likes, retweets, replies, engagement_score')
+          .select('content, created_at, likes_count, retweets_count, replies_count, engagement_score')
           .order('created_at', { ascending: false });
           
         if (learningError) {
@@ -669,7 +669,7 @@ NEVER USE HASHTAGS - Hashtags are banned in all content.
       try {
         const { data: tweets, error: tweetsError } = await admin
           .from('tweets')
-          .select('content, created_at, likes, retweets, replies, engagement_score')
+          .select('content, created_at, likes_count, retweets_count, replies_count, engagement_score')
           .order('created_at', { ascending: false });
           
         if (tweetsError) {

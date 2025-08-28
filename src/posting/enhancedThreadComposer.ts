@@ -402,10 +402,10 @@ export class EnhancedThreadComposer {
           throw new Error('No reply success indicators detected');
         }
 
-        // Try to capture reply ID
+        // Try to capture reply ID - look for NEW status links after posting
         let replyId = `reply_${replyIndex}_to_${rootTweetId}`;
         try {
-          replyId = await this.captureTweetIdEnhanced(page);
+          replyId = await this.captureReplyTweetId(page, rootTweetId, replyIndex);
         } catch (idError) {
           console.warn(`⚠️ REPLY_ID_CAPTURE failed for reply ${replyIndex}: ${idError}`);
         }
@@ -632,6 +632,53 @@ export class EnhancedThreadComposer {
     } catch (error) {
       console.warn('⚠️ ID_CAPTURE failed:', error);
       return `posted_${Date.now()}`;
+    }
+  }
+
+  /**
+   * 🎯 REPLY-SPECIFIC ID CAPTURE: Find the NEW reply tweet, not the root
+   */
+  private async captureReplyTweetId(page: Page, rootTweetId: string, replyIndex: number): Promise<string> {
+    try {
+      // Wait for new content to load
+      await page.waitForTimeout(3000);
+
+      // Get all status links on the page
+      const statusLinks = await page.$$('a[href*="/status/"]');
+      const tweetIds = new Set<string>();
+
+      for (const link of statusLinks) {
+        const href = await link.getAttribute('href');
+        if (href) {
+          const match = href.match(/status\/(\d+)/);
+          if (match && match[1]) {
+            tweetIds.add(match[1]);
+          }
+        }
+      }
+
+      // Remove the root tweet ID from consideration
+      tweetIds.delete(rootTweetId);
+
+      // Convert to array and get the most recent (highest ID number)
+      const candidateIds = Array.from(tweetIds).sort((a, b) => 
+        parseInt(b) - parseInt(a) // Descending order - newest first
+      );
+
+      if (candidateIds.length > 0) {
+        const replyId = candidateIds[0]; // Most recent tweet ID
+        console.log(`🎯 CAPTURED_REPLY_ID: ${replyId} (reply ${replyIndex} to ${rootTweetId})`);
+        return replyId;
+      }
+
+      // Fallback: Generate unique ID
+      const fallbackId = `reply_${Date.now()}_${replyIndex}`;
+      console.warn(`⚠️ No new tweet ID found, using fallback: ${fallbackId}`);
+      return fallbackId;
+
+    } catch (error) {
+      console.warn(`⚠️ REPLY_ID_CAPTURE failed for reply ${replyIndex}:`, error);
+      return `reply_fallback_${Date.now()}_${replyIndex}`;
     }
   }
 

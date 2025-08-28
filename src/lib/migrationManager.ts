@@ -264,22 +264,18 @@ class MigrationManager {
    */
   private async loadBaseline(): Promise<void> {
     try {
-      const { data: config } = await this.supabase
-        .from('bot_config')
-        .select('value, metadata')
-        .eq('key', 'schema_baseline')
-        .single();
-
-      if (config) {
-        this.baseline = {
-          version: config.value.version,
-          coreTables: config.value.core_tables,
-          createdAt: new Date(config.value.created_at),
-          author: config.value.author,
-          description: config.value.description,
-          environment: config.metadata?.environment || 'production'
-        };
-      }
+      // Skip bot_config baseline loading for now - table doesn't exist
+      console.log('⚠️ Skipping baseline configuration (bot_config table not available)');
+      
+      // Set default baseline
+      this.baseline = {
+        version: 'default',
+        coreTables: ['tweets', 'learning_posts', 'tweet_metrics'],
+        createdAt: new Date(),
+        author: 'system',
+        description: 'Default baseline configuration',
+        environment: 'production'
+      };
 
     } catch (error: any) {
       console.warn('⚠️ No baseline configuration found');
