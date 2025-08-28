@@ -287,10 +287,10 @@ export class ContentGenerator {
     try {
       console.log(`🧵 POSTING_ORGANIZED_THREAD: ${tweets.length} tweets on "${topic}"`);
       
-      const { EnhancedThreadComposer } = await import('../../posting/enhancedThreadComposer');
-      const composer = EnhancedThreadComposer.getInstance();
+      const { NativeThreadComposer } = await import('../../posting/nativeThreadComposer');
+      const composer = NativeThreadComposer.getInstance();
       
-      const result = await composer.postOrganizedThread(tweets, topic);
+      const result = await composer.postNativeThread(tweets, topic);
       
       if (result.success && result.rootTweetId) {
         console.log(`✅ THREAD_POSTED: Root tweet ${result.rootTweetId} with ${result.replyIds?.length || 0} replies`);
