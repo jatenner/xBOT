@@ -190,28 +190,16 @@ export class EngagementMonitor {
 
   private async getPostsInPeriod(period: string): Promise<any[]> {
     try {
-      const { AdvancedDatabaseManager } = await import('../lib/advancedDatabaseManager');
-      const dbManager = AdvancedDatabaseManager.getInstance();
-      await dbManager.initialize();
-
+      const { getQueryOptimizer } = await import('../lib/queryOptimizer');
+      const { admin } = await import('../lib/supabaseClients');
+      
+      const optimizer = getQueryOptimizer();
       const hoursBack = period === '24h' ? 24 : period === '7d' ? 168 : 720; // 30 days
 
-      const data = await dbManager.executeQuery(
-        'get_recent_posts_with_metrics',
-        async (client) => {
-          const { data, error } = await client
-            .from('learning_posts')
-            .select('*')
-            .gte('created_at', new Date(Date.now() - hoursBack * 60 * 60 * 1000).toISOString())
-            .order('created_at', { ascending: false });
-          
-          if (error) throw error;
-          return data || [];
-        },
-        `recent_posts_${period}`,
-        300000 // 5 minute cache
-      );
+      // Use optimized query with smart caching
+      const data = await optimizer.getMLTrainingData(admin, hoursBack, 200);
 
+      console.log(`✅ ENGAGEMENT_MONITOR: Retrieved ${data.length} optimized posts for ${period}`);
       return data;
     } catch (error: any) {
       console.error('Failed to get posts:', error.message);
