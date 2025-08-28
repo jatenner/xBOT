@@ -55,20 +55,16 @@ export class NativeThreadComposer {
         await page.waitForLoadState('domcontentloaded');
         await page.waitForTimeout(2000); // Extra stability wait
         
-        // Try multiple selector strategies to avoid conflicts
-        let composer;
-        try {
-          // Strategy 1: Most specific selector possible
-          composer = page.locator('div[data-testid="tweetTextarea_0"]:visible').first();
-          await composer.waitFor({ timeout: 5000 });
-          console.log('✅ NATIVE_THREAD: Found composer with Strategy 1');
-        } catch (e) {
-          // Strategy 2: Fallback to tweet button area + textarea
-          console.log('🔄 NATIVE_THREAD: Trying Strategy 2...');
-          composer = page.locator('[role="textbox"][data-testid*="tweetTextarea"]').first();
-          await composer.waitFor({ timeout: 5000 });
-          console.log('✅ NATIVE_THREAD: Found composer with Strategy 2');
-        }
+        // Wait for a clean page state before selecting elements
+        await page.waitForFunction(() => {
+          const textareas = document.querySelectorAll('[data-testid="tweetTextarea_0"]');
+          return textareas.length === 1; // Wait until there's exactly 1 element
+        }, { timeout: 10000 });
+
+        // Now safely select the single element
+        const composer = page.locator('[data-testid="tweetTextarea_0"]');
+        await composer.waitFor({ timeout: 5000 });
+        console.log('✅ NATIVE_THREAD: Found single composer element');
 
         // Clear and focus
         await composer.click();
@@ -86,23 +82,23 @@ export class NativeThreadComposer {
         for (let i = 1; i < tweets.length; i++) {
           console.log(`➕ NATIVE_THREAD: Adding tweet ${i + 1}/${tweets.length}`);
           
-          // Click the "+" button to add next tweet
-          try {
-            const addButton = page.locator('[data-testid="attachments"] button, [aria-label*="Add another Tweet"] button, [data-testid="addButton"]');
-            await addButton.click({ timeout: 5000 });
-          } catch (error) {
-            // Fallback: try keyboard shortcut
-            await page.keyboard.press('Control+Enter');
-            await page.waitForTimeout(500);
-          }
+          // Wait for the correct add button and click it
+          await page.waitForFunction(() => {
+            const addBtn = document.querySelector('[data-testid="addTweetButton"]') as HTMLElement;
+            return addBtn && addBtn.offsetParent !== null; // visible check
+          }, { timeout: 10000 });
           
-          // Wait for new composer to appear
-          await page.waitForTimeout(1000);
+          const addButton = page.locator('[data-testid="addTweetButton"]');
+          await addButton.click();
           
-          // Find the new textarea (should be the last one)
-          const textareas = page.locator('[data-testid^="tweetTextarea"]');
-          const count = await textareas.count();
-          const newTextarea = textareas.nth(count - 1);
+          // Wait for the new textarea to appear with correct index
+          await page.waitForFunction((expectedIndex) => {
+            const textarea = document.querySelector(`[data-testid="tweetTextarea_${expectedIndex}"]`) as HTMLElement;
+            return textarea && textarea.offsetParent !== null;
+          }, i, { timeout: 10000 });
+          
+          // Select the specific new textarea
+          const newTextarea = page.locator(`[data-testid="tweetTextarea_${i}"]`);
           
           // Type the content
           await newTextarea.click();
