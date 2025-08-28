@@ -11,7 +11,7 @@
  * - OpenAI integration for intelligent decision making
  */
 
-import OpenAI from 'openai';
+import { getOpenAIService } from '../services/openAIService';
 import { getUnifiedDataManager } from '../lib/unifiedDataManager';
 
 interface PostingIntelligence {
@@ -52,14 +52,12 @@ interface PostingData {
 
 export class AIDrivenPostingIntelligence {
   private static instance: AIDrivenPostingIntelligence;
-  private openai: OpenAI;
+  private openaiService = getOpenAIService();
   private unifiedDataManager = getUnifiedDataManager();
   private currentIntelligence: PostingIntelligence | null = null;
 
   private constructor() {
-    this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY
-    });
+    // Use budget-enforced OpenAI service instead of direct client
   }
 
   public static getInstance(): AIDrivenPostingIntelligence {
@@ -260,20 +258,21 @@ Respond with JSON format:
 Focus on data-driven decisions that maximize follower acquisition in health/wellness niche.`;
 
     try {
-      const response = await this.openai.chat.completions.create({
-        model: 'gpt-4',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are an expert Twitter growth strategist specializing in health and wellness accounts. You make data-driven decisions to maximize follower growth.'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
+      const response = await this.openaiService.chatCompletion([
+        {
+          role: 'system',
+          content: 'You are an expert Twitter growth strategist specializing in health and wellness accounts. You make data-driven decisions to maximize follower growth.'
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ], {
+        model: 'gpt-4o-mini', // Use cost-effective model
         temperature: 0.3,
-        max_tokens: 1000
+        maxTokens: 1000,
+        requestType: 'ai_posting_strategy',
+        priority: 'high' // High priority for core posting decisions
       });
 
       const aiResponse = response.choices[0]?.message?.content;
@@ -521,7 +520,7 @@ Focus on data-driven decisions that maximize follower acquisition in health/well
     return {
       dataPoints: dataStatus.totalPosts,
       learningConfidence: dataStatus.dataQuality,
-      lastUpdate: dataStatus.lastUpdate,
+      lastUpdate: new Date(),
       currentStrategy: this.currentIntelligence?.strategy || 'learning_mode'
     };
   }

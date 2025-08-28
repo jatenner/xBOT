@@ -24,6 +24,9 @@ export const anon = createClient(
   }
 );
 
+// Default export for backward compatibility
+export const supabase = admin;
+
 /**
  * Helper that ensures write operations succeed by retrying with admin on 401/403
  */
