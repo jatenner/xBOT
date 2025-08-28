@@ -2,6 +2,10 @@ import { IntelligentLearningEngine } from './intelligentLearningEngine';
 import { EngagementOptimizer } from './engagementOptimizer';
 import { FollowerGrowthOptimizer } from './followerGrowthOptimizer';
 import { EngagementMonitor } from './engagementMonitor';
+import { DatasetExpansionEngine } from './datasetExpansionEngine';
+import { AdvancedMLEngine } from './advancedMLEngine';
+import { CompetitorIntelligenceEngine } from './competitorIntelligenceEngine';
+import { DynamicABTestingEngine } from './dynamicABTestingEngine';
 
 interface LearningDecision {
   contentStrategy: string;
@@ -39,6 +43,12 @@ export class UnifiedLearningCoordinator {
   private followerOptimizer: FollowerGrowthOptimizer;
   private engagementMonitor: EngagementMonitor;
   
+  // Advanced ML Systems
+  private datasetEngine: DatasetExpansionEngine;
+  private mlEngine: AdvancedMLEngine;
+  private competitorEngine: CompetitorIntelligenceEngine;
+  private abTestingEngine: DynamicABTestingEngine;
+  
   private lastAnalysis: Date | null = null;
   private cachedDecision: LearningDecision | null = null;
   private systemPerformance: SystemPerformance | null = null;
@@ -48,6 +58,12 @@ export class UnifiedLearningCoordinator {
     this.engagementOptimizer = EngagementOptimizer.getInstance();
     this.followerOptimizer = FollowerGrowthOptimizer.getInstance();
     this.engagementMonitor = EngagementMonitor.getInstance();
+    
+    // Initialize advanced ML systems
+    this.datasetEngine = DatasetExpansionEngine.getInstance();
+    this.mlEngine = AdvancedMLEngine.getInstance();
+    this.competitorEngine = CompetitorIntelligenceEngine.getInstance();
+    this.abTestingEngine = DynamicABTestingEngine.getInstance();
   }
 
   public static getInstance(): UnifiedLearningCoordinator {
@@ -71,28 +87,48 @@ export class UnifiedLearningCoordinator {
         return this.cachedDecision;
       }
 
-      // Parallel learning analysis from all engines
+      // 🚀 ADVANCED ML ANALYSIS: Parallel processing across all systems
+      console.log('🧠 Running advanced ML analysis across all systems...');
+      
       const [
         learningInsights,
         optimizationGaps,
-        engagementOptimization
+        engagementOptimization,
+        mlPrediction,
+        competitorAnalysis,
+        abTestVariant
       ] = await Promise.all([
         this.learningEngine.learnFromPerformanceData(),
         this.engagementOptimizer.analyzeEngagementGaps(),
-        this.engagementMonitor.optimizeNextPost()
+        this.engagementMonitor.optimizeNextPost(),
+        this.mlEngine.predictContentPerformance(topic || 'health optimization'),
+        this.competitorEngine.analyzeCompetitorLandscape(),
+        this.abTestingEngine.selectVariantForPosting().catch(() => null)
       ]);
       
-      // Get follower analysis separately (simpler interface)
-      const followerAnalysis = { growth_rate: 0.15, engagement_rate: 0.04 };
+      // Enhanced follower analysis with real data
+      const followerAnalysis = {
+        growth_rate: mlPrediction.follower_potential,
+        engagement_rate: mlPrediction.engagement_score / 100,
+        competitor_benchmark: competitorAnalysis.viral_opportunities.length > 0 
+          ? competitorAnalysis.viral_opportunities[0].performance_metrics.viral_score / 100 
+          : 0.5
+      };
 
-      console.log(`📊 UNIFIED_LEARNING: Analyzed ${learningInsights.length} insights, ${optimizationGaps.length} gaps`);
+      console.log(`📊 ADVANCED_ML_ANALYSIS: Processed ${learningInsights.length} insights, ${optimizationGaps.length} gaps`);
+      console.log(`🎯 ML_PREDICTION: ${(mlPrediction.viral_probability * 100).toFixed(1)}% viral probability`);
+      console.log(`🕵️ COMPETITOR_INTEL: ${competitorAnalysis.viral_opportunities.length} opportunities identified`);
+      console.log(`🧪 AB_TESTING: ${abTestVariant ? `Using variant: ${abTestVariant.selected_variant.name}` : 'No active tests'}`);
 
-      // Synthesize unified decision
-      const decision = await this.synthesizeDecision(
+      // Synthesize unified decision with advanced ML insights
+      const decision = await this.synthesizeAdvancedDecision(
         learningInsights,
         optimizationGaps,
         followerAnalysis,
         engagementOptimization,
+        mlPrediction,
+        competitorAnalysis,
+        abTestVariant,
         topic
       );
 
@@ -119,7 +155,88 @@ export class UnifiedLearningCoordinator {
   }
 
   /**
-   * 🎯 Synthesize decision from all learning engines
+   * 🚀 ADVANCED DECISION SYNTHESIS: Combine all ML systems for optimal decisions
+   */
+  private async synthesizeAdvancedDecision(
+    insights: any[],
+    gaps: any[],
+    followerAnalysis: any,
+    engagementOpt: any,
+    mlPrediction: any,
+    competitorAnalysis: any,
+    abTestVariant: any,
+    topic?: string
+  ): Promise<LearningDecision> {
+    console.log('🚀 SYNTHESIZING_DECISION: Combining all ML systems...');
+    
+    // Start with ML prediction as base
+    let contentStrategy = this.translateMLStrategyToAction(mlPrediction);
+    let confidence = mlPrediction.confidence_interval[1] * 100;
+    
+    // Enhance with competitor intelligence
+    if (competitorAnalysis.viral_opportunities.length > 0) {
+      const topOpportunity = competitorAnalysis.viral_opportunities[0];
+      if (topOpportunity.strategic_value > 80) {
+        contentStrategy = 'competitor_inspired_viral';
+        confidence += 10;
+      }
+    }
+    
+    // Incorporate A/B testing insights
+    if (abTestVariant) {
+      const testBonus = abTestVariant.confidence * 15;
+      confidence += testBonus;
+      contentStrategy = `${contentStrategy}_${abTestVariant.selected_variant.id}`;
+    }
+    
+    // Apply engagement gaps analysis
+    if (gaps.length > 3) {
+      contentStrategy = this.adjustForEngagementGaps(contentStrategy, gaps);
+      confidence -= 5;
+    }
+    
+    // Calculate viral probability using ML + competitor data
+    const viralProbability = Math.min(95, 
+      mlPrediction.viral_probability * 100 + 
+      (competitorAnalysis.viral_opportunities.length * 2)
+    );
+    
+    // Enhanced engagement prediction
+    const expectedEngagement = this.predictAdvancedEngagement(
+      mlPrediction, 
+      competitorAnalysis, 
+      followerAnalysis
+    );
+    
+    // Compile comprehensive optimizations
+    const optimizations = this.compileAdvancedOptimizations(
+      insights, 
+      gaps, 
+      engagementOpt,
+      mlPrediction.recommendations,
+      competitorAnalysis.strategic_insights
+    );
+    
+    // Generate reasoning with ML insights
+    const reasoning = this.generateAdvancedReasoning(
+      contentStrategy, 
+      mlPrediction, 
+      competitorAnalysis, 
+      abTestVariant
+    );
+
+    return {
+      contentStrategy,
+      viralProbability,
+      expectedEngagement,
+      optimizations,
+      confidence: Math.min(95, Math.max(50, confidence)),
+      reasoning
+    };
+  }
+
+  /**
+   * 🎯 Legacy decision synthesis (keeping for fallback)
    */
   private async synthesizeDecision(
     insights: any[],
@@ -370,6 +487,170 @@ export class UnifiedLearningCoordinator {
 
     } catch (error: any) {
       console.error('❌ UNIFIED_LEARNING: Performance recording failed:', error.message);
+    }
+  }
+
+  /**
+   * 🚀 ADVANCED ML HELPER METHODS
+   */
+  private translateMLStrategyToAction(mlPrediction: any): string {
+    if (mlPrediction.viral_probability > 0.8) return 'viral_aggressive';
+    if (mlPrediction.engagement_score > 80) return 'engagement_optimized';
+    if (mlPrediction.follower_potential > 0.7) return 'follower_conversion';
+    return 'balanced_growth';
+  }
+
+  private adjustForEngagementGaps(strategy: string, gaps: any[]): string {
+    const primaryGap = gaps[0];
+    if (primaryGap?.impact_score > 8) {
+      return `${strategy}_gap_fix`;
+    }
+    return strategy;
+  }
+
+  private predictAdvancedEngagement(mlPrediction: any, competitorAnalysis: any, followerAnalysis: any): {
+    likes: number; retweets: number; replies: number; followers: number;
+  } {
+    const base = {
+      likes: Math.round(mlPrediction.engagement_score * 0.6),
+      retweets: Math.round(mlPrediction.engagement_score * 0.15),
+      replies: Math.round(mlPrediction.engagement_score * 0.1),
+      followers: Math.round(mlPrediction.follower_potential * 5)
+    };
+
+    // Boost based on competitor opportunities
+    if (competitorAnalysis.viral_opportunities.length > 0) {
+      const boost = 1.2;
+      base.likes = Math.round(base.likes * boost);
+      base.retweets = Math.round(base.retweets * boost);
+      base.followers = Math.round(base.followers * boost);
+    }
+
+    return base;
+  }
+
+  private compileAdvancedOptimizations(
+    insights: any[], 
+    gaps: any[], 
+    engagementOpt: any,
+    mlRecommendations: string[],
+    competitorInsights: any[]
+  ): string[] {
+    const optimizations: string[] = [];
+
+    // ML recommendations (highest priority)
+    mlRecommendations.slice(0, 2).forEach(rec => optimizations.push(`ML: ${rec}`));
+
+    // Competitor insights
+    competitorInsights.slice(0, 1).forEach(insight => {
+      if (insight.potential_impact === 'high') {
+        optimizations.push(`Competitor: ${insight.actionable_recommendation}`);
+      }
+    });
+
+    // Traditional insights (lower priority)
+    insights.slice(0, 1).forEach(insight => {
+      if (insight.recommended_action) {
+        optimizations.push(`Historical: ${insight.recommended_action}`);
+      }
+    });
+
+    return [...new Set(optimizations)].slice(0, 5);
+  }
+
+  private generateAdvancedReasoning(
+    strategy: string, 
+    mlPrediction: any, 
+    competitorAnalysis: any, 
+    abTestVariant: any
+  ): string {
+    const reasonParts = [];
+
+    reasonParts.push(`Strategy: ${strategy.replace(/_/g, ' ')}`);
+    reasonParts.push(`ML confidence: ${(mlPrediction.confidence_interval[1] * 100).toFixed(0)}%`);
+    
+    if (competitorAnalysis.viral_opportunities.length > 0) {
+      reasonParts.push(`${competitorAnalysis.viral_opportunities.length} competitor opportunities`);
+    }
+
+    if (abTestVariant) {
+      reasonParts.push(`A/B testing: ${abTestVariant.selected_variant.name}`);
+    }
+
+    reasonParts.push(`Expected viral probability: ${(mlPrediction.viral_probability * 100).toFixed(0)}%`);
+
+    return reasonParts.join('; ');
+  }
+
+  /**
+   * 🗄️ DATASET EXPANSION: Trigger massive data expansion
+   */
+  public async expandTrainingDataset(): Promise<{
+    success: boolean;
+    dataPoints: number;
+    qualityScore: number;
+    expansionTime: number;
+  }> {
+    console.log('🗄️ UNIFIED_LEARNING: Triggering dataset expansion...');
+
+    try {
+      const startTime = Date.now();
+      const expansion = await this.datasetEngine.expandDatasetMassively();
+      const expansionTime = Date.now() - startTime;
+
+      console.log(`✅ DATASET_EXPANDED: ${expansion.totalExpanded} data points in ${expansionTime}ms`);
+
+      return {
+        success: true,
+        dataPoints: expansion.totalExpanded,
+        qualityScore: expansion.qualityScore,
+        expansionTime
+      };
+
+    } catch (error: any) {
+      console.error('❌ DATASET_EXPANSION failed:', error.message);
+      return {
+        success: false,
+        dataPoints: 0,
+        qualityScore: 0,
+        expansionTime: 0
+      };
+    }
+  }
+
+  /**
+   * 🧪 A/B TESTING: Create intelligent tests based on performance gaps
+   */
+  public async createIntelligentABTest(topic?: string): Promise<{
+    testCreated: boolean;
+    testId?: string;
+    variants: number;
+    expectedDuration: number;
+  }> {
+    console.log('🧪 UNIFIED_LEARNING: Creating intelligent A/B test...');
+
+    try {
+      const testResult = await this.abTestingEngine.createIntelligentTest({
+        topic,
+        auto_optimize: true
+      });
+
+      console.log(`✅ AB_TEST_CREATED: ${testResult.variants_generated} variants, ${testResult.expected_duration} days`);
+
+      return {
+        testCreated: true,
+        testId: testResult.test_created.id,
+        variants: testResult.variants_generated,
+        expectedDuration: testResult.expected_duration
+      };
+
+    } catch (error: any) {
+      console.error('❌ AB_TEST_CREATION failed:', error.message);
+      return {
+        testCreated: false,
+        variants: 0,
+        expectedDuration: 0
+      };
     }
   }
 
