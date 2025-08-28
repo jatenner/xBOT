@@ -540,21 +540,64 @@ export class EnhancedThreadComposer {
    */
   private async executeReplyPost(page: Page): Promise<boolean> {
     try {
-      // Try keyboard shortcut first
-      const shortcut = process.platform === 'darwin' ? 'Meta+Enter' : 'Control+Enter';
-      await page.keyboard.press(shortcut);
-      await page.waitForTimeout(1500);
-
-      // Fallback to button click
-      const replyButton = page.locator('div[role="dialog"] [data-testid="tweetButtonInline"]');
-      if (await replyButton.isVisible({ timeout: 2000 })) {
-        await replyButton.click();
+      console.log('🔄 REPLY_POST: Attempting to post reply...');
+      
+      // Multiple strategies for reply posting
+      let posted = false;
+      
+      // Strategy 1: Keyboard shortcut (most reliable)
+      try {
+        const shortcut = process.platform === 'darwin' ? 'Meta+Enter' : 'Control+Enter';
+        console.log(`⌨️ REPLY_POST: Trying keyboard shortcut ${shortcut}`);
+        await page.keyboard.press(shortcut);
+        await page.waitForTimeout(2000);
+        posted = true;
+        console.log('✅ REPLY_POST: Keyboard shortcut executed');
+      } catch (error) {
+        console.warn('⚠️ REPLY_POST: Keyboard shortcut failed');
       }
-
+      
+      // Strategy 2: Reply button click (correct selector for reply dialogs)
+      if (!posted) {
+        try {
+          // Try multiple possible reply button selectors
+          const selectors = [
+            '[data-testid="tweetButton"]', // Primary reply button
+            '[data-testid="tweetButtonInline"]', // Inline reply button
+            'div[role="dialog"] [role="button"]:has-text("Reply")', // Text-based selector
+            'div[role="dialog"] [data-testid="tweetButton"]', // Dialog-specific
+            'div[role="dialog"] button[type="submit"]' // Generic submit button
+          ];
+          
+          for (const selector of selectors) {
+            try {
+              console.log(`🔍 REPLY_POST: Trying selector ${selector}`);
+              const button = page.locator(selector);
+              if (await button.isVisible({ timeout: 1000 })) {
+                await button.click();
+                console.log(`✅ REPLY_POST: Clicked button with selector ${selector}`);
+                posted = true;
+                break;
+              }
+            } catch (error) {
+              console.log(`⚠️ REPLY_POST: Selector ${selector} failed`);
+            }
+          }
+        } catch (error) {
+          console.warn('⚠️ REPLY_POST: All button selectors failed');
+        }
+      }
+      
+      if (!posted) {
+        console.error('❌ REPLY_POST: All posting strategies failed');
+        return false;
+      }
+      
+      console.log('✅ REPLY_POST: Post attempt completed');
       return true;
 
-    } catch (error) {
-      console.warn('⚠️ REPLY_POST_EXECUTION failed:', error);
+    } catch (error: any) {
+      console.error('❌ REPLY_POST_EXECUTION failed:', error.message);
       return false;
     }
   }
