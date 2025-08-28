@@ -53,18 +53,12 @@ export class NativeThreadComposer {
 
         // Wait for page to stabilize and composer to load
         await page.waitForLoadState('domcontentloaded');
-        await page.waitForTimeout(2000); // Extra stability wait
+        await page.waitForTimeout(3000); // Extra stability wait
         
-        // Wait for a clean page state before selecting elements
-        await page.waitForFunction(() => {
-          const textareas = document.querySelectorAll('[data-testid="tweetTextarea_0"]');
-          return textareas.length === 1; // Wait until there's exactly 1 element
-        }, { timeout: 10000 });
-
-        // Now safely select the single element
-        const composer = page.locator('[data-testid="tweetTextarea_0"]');
-        await composer.waitFor({ timeout: 5000 });
-        console.log('✅ NATIVE_THREAD: Found single composer element');
+        // Use CSP-safe locator waits instead of waitForFunction
+        const composer = page.locator('[data-testid="tweetTextarea_0"]').first();
+        await composer.waitFor({ state: 'visible', timeout: 10000 });
+        console.log('✅ NATIVE_THREAD: Found composer element');
 
         // Clear and focus
         await composer.click();
@@ -82,28 +76,21 @@ export class NativeThreadComposer {
         for (let i = 1; i < tweets.length; i++) {
           console.log(`➕ NATIVE_THREAD: Adding tweet ${i + 1}/${tweets.length}`);
           
-          // Wait for the correct add button and click it
-          await page.waitForFunction(() => {
-            const addBtn = document.querySelector('[data-testid="addTweetButton"]') as HTMLElement;
-            return addBtn && addBtn.offsetParent !== null; // visible check
-          }, { timeout: 10000 });
-          
+          // Wait for and click the add button using CSP-safe locator waits
           const addButton = page.locator('[data-testid="addTweetButton"]');
+          await addButton.waitFor({ state: 'visible', timeout: 10000 });
           await addButton.click();
+          await page.waitForTimeout(1000); // Wait for new textarea to appear
           
-          // Wait for the new textarea to appear with correct index
-          await page.waitForFunction((expectedIndex) => {
-            const textarea = document.querySelector(`[data-testid="tweetTextarea_${expectedIndex}"]`) as HTMLElement;
-            return textarea && textarea.offsetParent !== null;
-          }, i, { timeout: 10000 });
-          
-          // Select the specific new textarea
+          // Wait for the new textarea to appear
           const newTextarea = page.locator(`[data-testid="tweetTextarea_${i}"]`);
+          await newTextarea.waitFor({ state: 'visible', timeout: 10000 });
           
           // Type the content
           await newTextarea.click();
           await page.waitForTimeout(300);
           await newTextarea.fill(tweets[i]);
+          await page.waitForTimeout(500); // Ensure content is fully entered
           
           console.log(`✅ NATIVE_THREAD: Added tweet ${i + 1}: "${tweets[i].substring(0, 50)}..."`);
         }
@@ -111,26 +98,52 @@ export class NativeThreadComposer {
         // Post the entire thread
         console.log('🚀 NATIVE_THREAD: Posting complete thread...');
         const postButton = page.locator('[data-testid="tweetButton"]');
+        await postButton.waitFor({ state: 'visible', timeout: 5000 });
         await postButton.click();
 
-        // Wait for posting success
+        // Wait for posting to complete - look for navigation or success indicators
+        console.log('⏳ NATIVE_THREAD: Waiting for posting success...');
         await page.waitForTimeout(3000);
 
-        // Try to capture the tweet ID
+        // Try to capture the tweet ID from URL
         let rootTweetId = `native_thread_${Date.now()}`;
         try {
-          await page.waitForURL(/.*x\.com\/.+\/status\/(\d+)/, { timeout: 10000 });
+          // Wait for navigation to the posted tweet
+          await page.waitForURL(/.*x\.com\/.*\/status\/(\d+)/, { timeout: 15000 });
           const url = page.url();
           const match = url.match(/\/status\/(\d+)/);
           if (match) {
             rootTweetId = match[1];
-            console.log(`✅ NATIVE_THREAD: Captured tweet ID ${rootTweetId}`);
+            console.log(`✅ NATIVE_THREAD: Captured root tweet ID ${rootTweetId}`);
           }
         } catch (error) {
-          console.warn('⚠️ NATIVE_THREAD: Could not capture tweet ID, using generated ID');
+          console.warn('⚠️ NATIVE_THREAD: Could not capture tweet ID from URL');
+          
+          // Try alternative method - look for status links on current page
+          try {
+            const statusLinks = await page.locator('a[href*="/status/"]').all();
+            if (statusLinks.length > 0) {
+              const href = await statusLinks[0].getAttribute('href');
+              const match = href?.match(/\/status\/(\d+)/);
+              if (match) {
+                rootTweetId = match[1];
+                console.log(`✅ NATIVE_THREAD: Captured tweet ID from link ${rootTweetId}`);
+              }
+            }
+          } catch (linkError) {
+            console.warn('⚠️ NATIVE_THREAD: Link capture also failed, using generated ID');
+          }
         }
 
-        console.log(`✅ NATIVE_THREAD: Successfully posted ${tweets.length}-tweet thread`);
+        // 🎯 CRITICAL: Verify the thread actually exists
+        console.log(`🔍 NATIVE_THREAD: Verifying thread exists for ${rootTweetId}...`);
+        const threadVerified = await this.verifyThreadExists(page, rootTweetId, tweets.length);
+        
+        if (!threadVerified) {
+          throw new Error(`Thread verification failed: Expected ${tweets.length} tweets but thread not found`);
+        }
+
+        console.log(`✅ NATIVE_THREAD: Successfully posted and verified ${tweets.length}-tweet thread`);
 
         return {
           success: true,
@@ -142,32 +155,73 @@ export class NativeThreadComposer {
     } catch (error: any) {
       console.error('❌ NATIVE_THREAD: Failed to post thread:', error.message);
       
-      // 🔄 BULLETPROOF FALLBACK: Try Enhanced Thread Composer as backup
-      if (tweets.length > 1) {
-        console.log('🔄 NATIVE_THREAD: Attempting fallback to Enhanced Thread Composer...');
-        try {
-          const { EnhancedThreadComposer } = await import('./enhancedThreadComposer');
-          const enhancedComposer = EnhancedThreadComposer.getInstance();
-          const fallbackResult = await enhancedComposer.postOrganizedThread(tweets, topic);
-          
-          if (fallbackResult.success) {
-            console.log('✅ NATIVE_THREAD: Enhanced fallback succeeded!');
-            return {
-              success: true,
-              rootTweetId: fallbackResult.rootTweetId,
-              replyIds: fallbackResult.replyIds,
-              error: 'Used Enhanced fallback'
-            };
-          }
-        } catch (fallbackError: any) {
-          console.error('❌ NATIVE_THREAD: Enhanced fallback also failed:', fallbackError.message);
-        }
-      }
+      // 🚫 FALLBACK DISABLED: Force native composer to work properly
+      console.log('🚫 NATIVE_THREAD: Fallback disabled - native composer must succeed');
+      console.log('💡 NATIVE_THREAD: This forces us to fix the root cause instead of masking it');
       
       return {
         success: false,
         error: `Native thread failed: ${error.message}`
       };
+    }
+  }
+
+  /**
+   * 🔍 Verify that a real thread was created (not just a single tweet)
+   */
+  private async verifyThreadExists(page: Page, tweetId: string, expectedTweets: number): Promise<boolean> {
+    try {
+      // Navigate to the tweet to check if it's a thread
+      console.log(`🔍 THREAD_VERIFY: Checking ${tweetId} for ${expectedTweets} tweets...`);
+      await page.goto(`https://x.com/i/web/status/${tweetId}`, {
+        waitUntil: 'domcontentloaded',
+        timeout: 10000
+      });
+      
+      await page.waitForTimeout(3000); // Wait for content to load
+      
+      // Look for thread indicators
+      const threadIndicators = [
+        // "Show this thread" link
+        'a[href*="/status/"][aria-label*="thread"]',
+        // Multiple tweet articles in the thread
+        'article[data-testid="tweet"]',
+        // Thread continuation indicators
+        '[data-testid="ThreadButton"]',
+        // Multiple status links (indicating replies in thread)
+        'a[href*="/status/"]:not([href*="' + tweetId + '"])'
+      ];
+      
+      let foundTweets = 0;
+      for (const selector of threadIndicators) {
+        try {
+          const elements = await page.locator(selector).count();
+          if (elements > 0) {
+            foundTweets = Math.max(foundTweets, elements);
+            console.log(`✅ THREAD_VERIFY: Found ${elements} elements for ${selector}`);
+          }
+        } catch (error) {
+          // Selector might not exist, that's okay
+        }
+      }
+      
+      // Also check for reply count or thread structure
+      try {
+        const articles = await page.locator('article[data-testid="tweet"]').count();
+        foundTweets = Math.max(foundTweets, articles);
+        console.log(`📊 THREAD_VERIFY: Found ${articles} tweet articles`);
+      } catch (error) {
+        console.warn('⚠️ Could not count tweet articles');
+      }
+      
+      const verified = foundTweets >= expectedTweets;
+      console.log(`🎯 THREAD_VERIFY: Expected ${expectedTweets}, found ${foundTweets} → ${verified ? 'VERIFIED' : 'FAILED'}`);
+      
+      return verified;
+      
+    } catch (error: any) {
+      console.error('❌ THREAD_VERIFY: Verification failed:', error.message);
+      return false;
     }
   }
 
