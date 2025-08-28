@@ -124,6 +124,7 @@ export class AutonomousPostingEngine {
         const aggressiveDecision = await growthEngine.getNextPostingDecision();
         
         console.log(`🚀 AGGRESSIVE_CHECK: ${aggressiveDecision.shouldPost ? '✅ POST' : '⏳ WAIT'} - ${aggressiveDecision.reason}`);
+        console.log(`📊 DECISION_ID: ${aggressiveDecision.decisionId} for outcome tracking`);
         
         if (aggressiveDecision.shouldPost) {
           // EMERGENCY STOP: If we're in emergency stop mode

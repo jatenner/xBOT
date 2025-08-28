@@ -458,6 +458,10 @@ export class PostingManager {
       
       if (result.success) {
         console.log(`✅ UNIFIED_POSTING: Posted successfully via ${result.method} method: ${result.tweetId}`);
+        
+        // Store in unified data manager
+        await this.storePostInUnifiedData(result.tweetId, contentResult);
+        
         return { tweetId: result.tweetId || 'unified_post_success' };
       } else {
         throw new Error(`Unified posting failed: ${result.error}`);
@@ -670,6 +674,94 @@ export class PostingManager {
           optimizationApplied: false
         }
       };
+    }
+  }
+
+  /**
+   * 💾 STORE POST IN UNIFIED DATA MANAGER
+   */
+  private async storePostInUnifiedData(postId: string, contentResult: any): Promise<void> {
+    try {
+      console.log(`💾 POSTING_MANAGER: Storing post ${postId} in unified data`);
+      
+      const { getUnifiedDataManager } = await import('../../lib/unifiedDataManager');
+      const dataManager = getUnifiedDataManager();
+      
+      if (contentResult.type === 'thread') {
+        // Store thread posts
+        const threadContent = Array.isArray(contentResult.content) ? contentResult.content : [contentResult.content];
+        
+        for (let i = 0; i < threadContent.length; i++) {
+          await dataManager.storePost({
+            postId: i === 0 ? postId : `${postId}_${i}`,
+            threadId: postId,
+            postIndex: i,
+            content: threadContent[i],
+            postType: i === 0 ? 'thread_root' : 'thread_reply',
+            contentLength: threadContent[i].length,
+            formatType: 'educational',
+            postedAt: new Date(),
+            hourPosted: new Date().getHours(),
+            minutePosted: new Date().getMinutes(),
+            dayOfWeek: new Date().getDay(),
+            likes: 0,
+            retweets: 0,
+            replies: 0,
+            impressions: 0,
+            profileClicks: 0,
+            linkClicks: 0,
+            bookmarks: 0,
+            shares: 0,
+            followersBefore: await this.getCurrentFollowerCount(),
+            followersAttributed: 0,
+            aiGenerated: true,
+            aiStrategy: contentResult.strategy || 'unified_thread_posting',
+            aiConfidence: contentResult.confidence || 0.8
+          });
+        }
+      } else {
+        // Store single post
+        await dataManager.storePost({
+          postId,
+          content: contentResult.content,
+          postType: 'single',
+          contentLength: contentResult.content.length,
+          formatType: 'educational',
+          postedAt: new Date(),
+          hourPosted: new Date().getHours(),
+          minutePosted: new Date().getMinutes(),
+          dayOfWeek: new Date().getDay(),
+          likes: 0,
+          retweets: 0,
+          replies: 0,
+          impressions: 0,
+          profileClicks: 0,
+          linkClicks: 0,
+          bookmarks: 0,
+          shares: 0,
+          followersBefore: await this.getCurrentFollowerCount(),
+          followersAttributed: 0,
+          aiGenerated: true,
+          aiStrategy: contentResult.strategy || 'unified_single_posting',
+          aiConfidence: contentResult.confidence || 0.8
+        });
+      }
+      
+      console.log(`✅ UNIFIED_DATA: Post ${postId} stored successfully`);
+      
+    } catch (error: any) {
+      console.error('❌ UNIFIED_DATA: Failed to store post:', error.message);
+    }
+  }
+
+  /**
+   * 👥 GET CURRENT FOLLOWER COUNT
+   */
+  private async getCurrentFollowerCount(): Promise<number> {
+    try {
+      return 23; // Placeholder - will be replaced with real scraper
+    } catch (error) {
+      return 23;
     }
   }
 }

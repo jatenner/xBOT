@@ -38,7 +38,7 @@ export class AggressiveGrowthEngine {
   }
 
   /**
-   * 🤖 AI-DRIVEN POSTING DECISION (NO HARDCODED RULES)
+   * 🤖 AI-DRIVEN POSTING DECISION WITH FULL LOGGING
    */
   public async getNextPostingDecision(): Promise<{
     shouldPost: boolean;
@@ -46,37 +46,87 @@ export class AggressiveGrowthEngine {
     timeToWait: number;
     reason: string;
     expectedGrowth: number;
+    decisionId?: number;
   }> {
-    console.log('🤖 AI_GROWTH_ENGINE: Using AI-driven posting intelligence...');
+    console.log('🤖 AI_GROWTH_ENGINE: Using AI-driven posting intelligence with decision logging...');
 
     try {
       // Use AI-driven posting intelligence instead of hardcoded rules
       const { getAIDrivenPostingIntelligence } = await import('../intelligence/aiDrivenPostingIntelligence');
+      const { getUnifiedDataManager } = await import('../lib/unifiedDataManager');
+      
       const aiIntelligence = getAIDrivenPostingIntelligence();
+      const dataManager = getUnifiedDataManager();
       
       const aiDecision = await aiIntelligence.getAIPostingDecision();
       
       console.log(`🧠 AI_DECISION: ${aiDecision.frequency} posts/day recommended (confidence: ${(aiDecision.dataConfidence * 100).toFixed(1)}%)`);
       console.log(`🎯 AI_REASONING: ${aiDecision.reasoning}`);
       
+      // LOG THE AI DECISION FOR LEARNING
+      const decisionId = await dataManager.storeAIDecision({
+        decisionTimestamp: new Date(),
+        decisionType: 'posting_frequency',
+        recommendation: {
+          shouldPost: aiDecision.shouldPost,
+          frequency: aiDecision.frequency,
+          timing: aiDecision.timing,
+          strategy: aiDecision.strategy
+        },
+        confidence: aiDecision.dataConfidence,
+        reasoning: aiDecision.reasoning,
+        dataPointsUsed: await this.getDataPointsCount(),
+        contextData: {
+          currentTime: new Date().toISOString(),
+          minutesSinceLastPost: await this.getMinutesSinceLastPost(),
+          postsToday: await this.getPostsToday()
+        }
+      });
+      
+      console.log(`📊 AI_DECISION_LOGGED: Decision ID ${decisionId} stored for outcome tracking`);
+      
       // Convert AI decision to expected format
       return {
         shouldPost: aiDecision.shouldPost,
         strategy: aiDecision.strategy,
-        timeToWait: aiDecision.shouldPost ? 0 : 60, // If not posting, check again in 1 hour
+        timeToWait: aiDecision.shouldPost ? 0 : 60,
         reason: aiDecision.reasoning,
-        expectedGrowth: Math.round(aiDecision.frequency / 2) // Estimate followers based on frequency
+        expectedGrowth: Math.round(aiDecision.frequency / 2),
+        decisionId // Include for outcome tracking
       };
 
     } catch (error: any) {
       console.error('❌ AI_INTELLIGENCE failed, using data-driven fallback:', error.message);
       
-      // Data-driven fallback (not hardcoded rules)
+      // Data-driven fallback with logging
+      const { getUnifiedDataManager } = await import('../lib/unifiedDataManager');
+      const dataManager = getUnifiedDataManager();
+      
       const minutesSinceLastPost = await this.getMinutesSinceLastPost();
       const postsToday = await this.getPostsToday();
-      
-      // Use data to determine if we should post
       const shouldPost = this.makeDataDrivenDecision(minutesSinceLastPost, postsToday);
+      
+      // Log fallback decision
+      const decisionId = await dataManager.storeAIDecision({
+        decisionTimestamp: new Date(),
+        decisionType: 'posting_frequency',
+        recommendation: {
+          shouldPost,
+          frequency: 6, // Conservative fallback
+          strategy: 'data_driven_fallback'
+        },
+        confidence: 0.5, // Low confidence for fallback
+        reasoning: shouldPost 
+          ? `Fallback decision: ${minutesSinceLastPost}min gap, ${postsToday} posts today`
+          : `Fallback suggests waiting: recent activity levels`,
+        dataPointsUsed: 0,
+        contextData: {
+          error: error.message,
+          minutesSinceLastPost,
+          postsToday,
+          fallbackMode: true
+        }
+      });
       
       return {
         shouldPost,
@@ -85,8 +135,23 @@ export class AggressiveGrowthEngine {
         reason: shouldPost 
           ? `Data-driven decision: ${minutesSinceLastPost}min gap, ${postsToday} posts today`
           : `Data suggests waiting: recent activity levels`,
-        expectedGrowth: shouldPost ? 2 : 0
+        expectedGrowth: shouldPost ? 2 : 0,
+        decisionId
       };
+    }
+  }
+
+  /**
+   * 📊 GET DATA POINTS COUNT FOR DECISION CONTEXT
+   */
+  private async getDataPointsCount(): Promise<number> {
+    try {
+      const { getUnifiedDataManager } = await import('../lib/unifiedDataManager');
+      const dataManager = getUnifiedDataManager();
+      const status = await dataManager.getDataStatus();
+      return status.totalPosts;
+    } catch (error) {
+      return 0;
     }
   }
 
