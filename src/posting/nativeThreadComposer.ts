@@ -55,8 +55,8 @@ export class NativeThreadComposer {
         await page.waitForSelector('[data-testid="tweetTextarea_0"]', { timeout: 10000 });
         console.log('✅ NATIVE_THREAD: Composer loaded');
 
-        // Clear any existing content
-        const composer = page.locator('[data-testid="tweetTextarea_0"]');
+        // Use more specific selector to avoid multiple elements
+        const composer = page.locator('[data-testid="tweetTextarea_0"]').first();
         await composer.click();
         await page.keyboard.press('Control+a');
         await page.keyboard.press('Delete');
@@ -64,7 +64,7 @@ export class NativeThreadComposer {
 
         // Type the first tweet
         console.log(`📝 NATIVE_THREAD: Typing tweet 1/${tweets.length}`);
-        await page.type('[data-testid="tweetTextarea_0"]', tweets[0], { delay: 20 });
+        await composer.fill(tweets[0]);
 
         // Add remaining tweets using the "+" button
         for (let i = 1; i < tweets.length; i++) {
@@ -91,9 +91,7 @@ export class NativeThreadComposer {
           // Type the content
           await newTextarea.click();
           await page.waitForTimeout(300);
-          await newTextarea.fill('');
-          await page.waitForTimeout(200);
-          await page.type(`[data-testid="tweetTextarea_${i}"]`, tweets[i], { delay: 20 });
+          await newTextarea.fill(tweets[i]);
           
           console.log(`✅ NATIVE_THREAD: Added tweet ${i + 1}: "${tweets[i].substring(0, 50)}..."`);
         }

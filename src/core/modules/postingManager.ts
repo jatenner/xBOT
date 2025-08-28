@@ -72,11 +72,49 @@ export class PostingManager {
       console.log('🚀 POSTING_MANAGER: Starting intelligent post execution');
 
       // Generate content with performance monitoring
-      const contentResult = await this.performanceOptimizer.measureExecution(
+      let contentResult = await this.performanceOptimizer.measureExecution(
         () => this.generateOptimizedContent(options),
         'openai',
         'Content Generation'
       );
+
+      // 🚨 DUPLICATE DETECTION: Check for duplicates before posting
+      console.log('🔍 DEDUP_CHECK: Checking content for duplicates...');
+      const { DualStoreManager } = await import('../../lib/dualStoreManager');
+      const store = DualStoreManager.getInstance();
+
+      const textForDedupe = Array.isArray(contentResult.content)
+        ? contentResult.content.join(' ')
+        : contentResult.content;
+
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        const dup = await store.checkContentDuplicate(textForDedupe);
+        if (!dup.exists) {
+          console.log(`✅ DEDUP_CHECK: Content is unique (attempt ${attempt})`);
+          break;
+        }
+
+        console.warn(`⚠️ DEDUP_BLOCKED: Duplicate detected (attempt ${attempt}): ${dup.hash?.substring(0, 8)}`);
+        if (attempt === 3) {
+          console.error('❌ DEDUP_SKIP: Max regeneration attempts reached, skipping post');
+          return { 
+            success: false, 
+            error: 'Content too similar to recent posts',
+            metadata: {
+              processingTime: Date.now() - startTime,
+              optimizationApplied: false
+            }
+          };
+        }
+
+        // Regenerate content with fresh angle
+        console.log(`🔄 DEDUP_REGEN: Regenerating content (attempt ${attempt + 1})`);
+        contentResult = await this.performanceOptimizer.measureExecution(
+          () => this.generateOptimizedContent(options),
+          'openai',
+          `Content Regeneration ${attempt + 1}`
+        );
+      }
 
       // Execute the actual posting
       const postResult = await this.performanceOptimizer.optimizeBrowserOperation(
@@ -89,6 +127,18 @@ export class PostingManager {
         'Store Tweet Content',
         () => this.storePostingResults(postResult, contentResult)
       );
+
+      // 🚨 POST-POST HASH STORAGE: Store content hash for future deduplication
+      try {
+        const textStored = Array.isArray(contentResult.content)
+          ? contentResult.content.join('\n\n')
+          : contentResult.content;
+
+        await store.checkContentDuplicate(textStored, postResult.tweetId); // stores hash with TTL when tweetId provided
+        console.log('✅ DB_WRITE: Stored content hash for dedupe');
+      } catch (e: any) {
+        console.warn('⚠️ DEDUPE_STORE_SKIP:', e.message);
+      }
 
       // Reset failure counter on success
       this.consecutiveFailures = 0;

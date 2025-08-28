@@ -483,30 +483,81 @@ class DualStoreManager {
   }
 
   /**
-   * Supabase-based content deduplication fallback
+   * Supabase-based content deduplication fallback - Enhanced with hash comparison
    */
   private async checkContentDuplicateSupabase(content: string, tweetId?: string): Promise<ContentHash> {
-    // Simple content matching (can be enhanced)
-    const { data, error } = await this.supabase
-      .from('tweets')
-      .select('tweet_id, posted_at')
-      .eq('content', content)
-      .order('posted_at', { ascending: false })
-      .limit(1);
+    const hash = require('crypto').createHash('sha256').update(content.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim()).digest('hex');
 
-    if (error) {
-      throw new Error(`Supabase duplicate check failed: ${error.message}`);
+    try {
+      // Check both tweets and learning_posts tables
+      const { data: tweets, error: tweetsError } = await this.supabase
+        .from('tweets')
+        .select('tweet_id, content, created_at')
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      const { data: learning, error: learningError } = await this.supabase
+        .from('learning_posts')
+        .select('tweet_id, content, created_at')
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (tweetsError && learningError) {
+        throw new Error(`Both table checks failed: ${tweetsError.message}, ${learningError.message}`);
+      }
+
+      const allPosts = [...(tweets || []), ...(learning || [])];
+      
+      // Check for exact content match or similar hash
+      for (const post of allPosts) {
+        if (post.content === content) {
+          return {
+            hash,
+            exists: true,
+            tweetId: post.tweet_id,
+            createdAt: new Date(post.created_at)
+          };
+        }
+        
+        // Also check hash similarity
+        const postHash = require('crypto').createHash('sha256').update(post.content.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim()).digest('hex');
+        if (postHash === hash) {
+          return {
+            hash,
+            exists: true,
+            tweetId: post.tweet_id,
+            createdAt: new Date(post.created_at)
+          };
+        }
+      }
+
+      // Store hash if tweetId provided (for future checks)
+      if (tweetId) {
+        try {
+          await this.supabase
+            .from('tweets')
+            .upsert({
+              tweet_id: tweetId,
+              content: content,
+              created_at: new Date().toISOString()
+            }, { 
+              onConflict: 'tweet_id',
+              ignoreDuplicates: true
+            });
+        } catch (storeError: any) {
+          console.warn('⚠️ Could not store content in Supabase:', storeError.message);
+        }
+      }
+
+      return {
+        hash,
+        exists: false
+      };
+
+    } catch (error: any) {
+      console.error('❌ Enhanced Supabase duplicate check failed:', error.message);
+      throw error;
     }
-
-    const exists = data && data.length > 0;
-    const hash = require('crypto').createHash('sha256').update(content).digest('hex');
-
-    return {
-      hash,
-      exists,
-      tweetId: exists ? data[0].tweet_id : undefined,
-      createdAt: exists ? new Date(data[0].posted_at) : undefined
-    };
   }
 
   // =====================================================================================
@@ -667,7 +718,7 @@ class DualStoreManager {
           if (item.retryCount < 3) {
             await this.redis.addToQueue('sync_to_supabase', {
               ...item,
-              retryCount: item.retryCount
+              // retryCount will be added by queue system
             });
           } else {
             console.error(`❌ Sync item exceeded retry limit, removing from queue`);

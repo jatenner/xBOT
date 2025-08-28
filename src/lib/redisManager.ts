@@ -94,7 +94,6 @@ class RedisManager {
 
       this.client = new Redis(config.url, {
         maxRetriesPerRequest: config.maxRetriesPerRequest,
-        retryDelayOnFailover: config.retryDelayOnFailover,
         connectTimeout: config.connectTimeout,
         commandTimeout: config.commandTimeout,
         lazyConnect: true,
