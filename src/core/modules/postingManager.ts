@@ -45,12 +45,20 @@ export class PostingManager {
   }
 
   /**
-   * 🧠 MASTER AI INTEGRATION: Ultimate intelligent content creation
+   * 🧠 UNIFIED AI SYSTEM: Elite intelligent content creation
    */
   public async generateUltimateAiContent(topic?: string): Promise<{ content: string; metadata: any; isThread: boolean }> {
     try {
-      console.log('🧠 POSTING_MANAGER: Activating Master AI systems...');
+      console.log('🧠 POSTING_MANAGER: Activating Unified AI systems...');
       
+      // Use unified learning coordinator for intelligent decisions
+      const { getUnifiedLearningCoordinator } = await import('../../intelligence/unifiedLearningCoordinator');
+      const learningCoordinator = getUnifiedLearningCoordinator();
+      
+      // Get intelligent decision
+      const learningDecision = await learningCoordinator.makeIntelligentDecision(topic);
+      
+      // Use Master AI with learning insights
       const { getMasterAi } = await import('../../ai/masterAiOrchestrator');
       const masterAi = getMasterAi();
       
@@ -71,10 +79,12 @@ export class PostingManager {
           predicted_performance: aiDecision.predicted_performance,
           ai_reasoning: aiDecision.ai_reasoning,
           optimization_applied: aiDecision.optimization_applied,
+          learning_decision: learningDecision,
           processingTime: Date.now(),
           optimizationApplied: true,
           qualityScore: Math.round(aiDecision.predicted_performance.confidence_score * 100),
-          masterAiUsed: true
+          masterAiUsed: true,
+          unifiedSystemUsed: true
         }
       };
 
@@ -429,15 +439,39 @@ export class PostingManager {
   }
 
   /**
-   * 📤 Execute actual posting operation
+   * 📤 Execute actual posting operation with unified posting manager
    */
   private async executeActualPosting(contentResult: any): Promise<{ tweetId: string }> {
-    console.log(`📤 POSTING_MANAGER: Executing ${contentResult.type} posting`);
+    console.log(`📤 POSTING_MANAGER: Executing ${contentResult.type} posting with unified system`);
     
-    if (contentResult.type === 'thread') {
-      return await this.postThread(contentResult);
-    } else {
-      return await this.postSingle(contentResult);
+    try {
+      // Use unified posting manager for all operations
+      const { getUnifiedPostingManager } = await import('../../posting/unifiedPostingManager');
+      const unifiedPoster = getUnifiedPostingManager();
+      
+      const content = contentResult.type === 'thread' ? contentResult.content : contentResult.content;
+      const result = await unifiedPoster.post(content, {
+        topic: contentResult.topic,
+        verificationRequired: true,
+        retryAttempts: 3
+      });
+      
+      if (result.success) {
+        console.log(`✅ UNIFIED_POSTING: Posted successfully via ${result.method} method: ${result.tweetId}`);
+        return { tweetId: result.tweetId || 'unified_post_success' };
+      } else {
+        throw new Error(`Unified posting failed: ${result.error}`);
+      }
+      
+    } catch (error: any) {
+      console.error('❌ Unified posting failed, using legacy fallback:', error.message);
+      
+      // Legacy fallback
+      if (contentResult.type === 'thread') {
+        return await this.postThread(contentResult);
+      } else {
+        return await this.postSingle(contentResult);
+      }
     }
   }
 

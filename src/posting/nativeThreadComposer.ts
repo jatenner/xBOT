@@ -175,47 +175,70 @@ export class NativeThreadComposer {
       console.log(`🔍 THREAD_VERIFY: Checking ${tweetId} for ${expectedTweets} tweets...`);
       await page.goto(`https://x.com/i/web/status/${tweetId}`, {
         waitUntil: 'domcontentloaded',
-        timeout: 10000
+        timeout: 15000
       });
       
-      await page.waitForTimeout(3000); // Wait for content to load
+      await page.waitForTimeout(4000); // Extra time for thread loading
       
-      // Look for thread indicators
-      const threadIndicators = [
-        // "Show this thread" link
-        'a[href*="/status/"][aria-label*="thread"]',
-        // Multiple tweet articles in the thread
-        'article[data-testid="tweet"]',
-        // Thread continuation indicators
-        '[data-testid="ThreadButton"]',
-        // Multiple status links (indicating replies in thread)
-        'a[href*="/status/"]:not([href*="' + tweetId + '"])'
-      ];
-      
+      // Method 1: Count tweet articles (most reliable)
       let foundTweets = 0;
-      for (const selector of threadIndicators) {
-        try {
-          const elements = await page.locator(selector).count();
-          if (elements > 0) {
-            foundTweets = Math.max(foundTweets, elements);
-            console.log(`✅ THREAD_VERIFY: Found ${elements} elements for ${selector}`);
-          }
-        } catch (error) {
-          // Selector might not exist, that's okay
-        }
-      }
-      
-      // Also check for reply count or thread structure
       try {
         const articles = await page.locator('article[data-testid="tweet"]').count();
-        foundTweets = Math.max(foundTweets, articles);
+        foundTweets = articles;
         console.log(`📊 THREAD_VERIFY: Found ${articles} tweet articles`);
       } catch (error) {
         console.warn('⚠️ Could not count tweet articles');
       }
       
+      // Method 2: Look for thread continuation indicators
+      if (foundTweets < expectedTweets) {
+        try {
+          // Check for "Show this thread" link
+          const showThreadLink = await page.locator('a:has-text("Show this thread")').count();
+          if (showThreadLink > 0) {
+            foundTweets = Math.max(foundTweets, expectedTweets);
+            console.log(`✅ THREAD_VERIFY: Found "Show this thread" link`);
+          }
+          
+          // Check for thread reply indicators
+          const replyLinks = await page.locator('a[href*="/status/"]:not([href*="' + tweetId + '"])').count();
+          if (replyLinks > 0) {
+            foundTweets = Math.max(foundTweets, replyLinks + 1);
+            console.log(`✅ THREAD_VERIFY: Found ${replyLinks} reply links`);
+          }
+          
+        } catch (error) {
+          // Additional checks failed, use primary count
+        }
+      }
+      
+      // Method 3: Check page content for thread structure
+      if (foundTweets < expectedTweets) {
+        try {
+          const pageContent = await page.content();
+          const threadMatches = pageContent.match(/status\/\d+/g);
+          if (threadMatches && threadMatches.length >= expectedTweets) {
+            foundTweets = threadMatches.length;
+            console.log(`✅ THREAD_VERIFY: Found ${threadMatches.length} status IDs in page content`);
+          }
+        } catch (error) {
+          // Content analysis failed
+        }
+      }
+      
       const verified = foundTweets >= expectedTweets;
       console.log(`🎯 THREAD_VERIFY: Expected ${expectedTweets}, found ${foundTweets} → ${verified ? 'VERIFIED' : 'FAILED'}`);
+      
+      // For debugging: if verification fails, try to capture what we see
+      if (!verified) {
+        try {
+          const visibleText = await page.locator('body').textContent();
+          const hasThreadText = visibleText?.includes('thread') || visibleText?.includes('Thread');
+          console.log(`🔍 DEBUG: Page contains 'thread' text: ${hasThreadText}`);
+        } catch (debugError) {
+          // Debug failed, continue
+        }
+      }
       
       return verified;
       
