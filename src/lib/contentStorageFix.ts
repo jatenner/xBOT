@@ -9,7 +9,7 @@ import { admin } from './supabaseClients';
 
 export interface RealContentStorage {
   tweet_id: string;
-  actual_content: string;
+  actual_content: string | string[]; // Support both single content and thread arrays
   content_type: 'single' | 'thread';
   posted_at: string;
   character_count: number;

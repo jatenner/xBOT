@@ -98,6 +98,49 @@ export class FollowerGrowthOptimizer {
   }
 
   /**
+   * Record performance baseline for learning
+   */
+  public async recordPostBaseline(data: {
+    tweetId: string;
+    content: string;
+    contentType: string;
+    predictedLikes: number;
+    predictedFollowers: number;
+    confidenceScore: number;
+    postedAt: string;
+  }): Promise<void> {
+    try {
+      console.log(`📊 GROWTH_OPTIMIZER: Recording baseline for ${data.tweetId}`);
+      
+      // Store in learning database for future analysis
+      const { admin } = await import('../lib/supabaseClients');
+      const supabase = admin;
+      
+      const { error } = await supabase
+        .from('learning_posts')
+        .upsert([{
+          tweet_id: data.tweetId,
+          content: data.content,
+          content_type: data.contentType,
+          predicted_likes: data.predictedLikes,
+          predicted_followers: data.predictedFollowers,
+          confidence_score: data.confidenceScore,
+          posted_at: data.postedAt,
+          baseline_recorded: true
+        }], { onConflict: 'tweet_id' });
+
+      if (error) {
+        console.warn('⚠️ GROWTH_OPTIMIZER: Baseline storage failed:', error.message);
+      } else {
+        console.log('✅ GROWTH_OPTIMIZER: Baseline stored successfully');
+      }
+      
+    } catch (error: any) {
+      console.error('❌ GROWTH_OPTIMIZER: recordPostBaseline failed:', error.message);
+    }
+  }
+
+  /**
    * Analyze content for viral potential and follower conversion
    */
   public async analyzeViralPotential(content: string): Promise<{

@@ -51,20 +51,36 @@ export class NativeThreadComposer {
           timeout: 15000 
         });
 
-        // Wait for composer to load
-        await page.waitForSelector('[data-testid="tweetTextarea_0"]', { timeout: 10000 });
-        console.log('✅ NATIVE_THREAD: Composer loaded');
+        // Wait for page to stabilize and composer to load
+        await page.waitForLoadState('domcontentloaded');
+        await page.waitForTimeout(2000); // Extra stability wait
+        
+        // Try multiple selector strategies to avoid conflicts
+        let composer;
+        try {
+          // Strategy 1: Most specific selector possible
+          composer = page.locator('div[data-testid="tweetTextarea_0"]:visible').first();
+          await composer.waitFor({ timeout: 5000 });
+          console.log('✅ NATIVE_THREAD: Found composer with Strategy 1');
+        } catch (e) {
+          // Strategy 2: Fallback to tweet button area + textarea
+          console.log('🔄 NATIVE_THREAD: Trying Strategy 2...');
+          composer = page.locator('[role="textbox"][data-testid*="tweetTextarea"]').first();
+          await composer.waitFor({ timeout: 5000 });
+          console.log('✅ NATIVE_THREAD: Found composer with Strategy 2');
+        }
 
-        // Use more specific selector to avoid multiple elements
-        const composer = page.locator('[data-testid="tweetTextarea_0"]').first();
+        // Clear and focus
         await composer.click();
-        await page.keyboard.press('Control+a');
+        await page.waitForTimeout(300);
+        await composer.selectText();
         await page.keyboard.press('Delete');
-        await page.waitForTimeout(500);
+        await page.waitForTimeout(300);
 
         // Type the first tweet
-        console.log(`📝 NATIVE_THREAD: Typing tweet 1/${tweets.length}`);
+        console.log(`📝 NATIVE_THREAD: Typing tweet 1/${tweets.length} (${tweets[0].length} chars)`);
         await composer.fill(tweets[0]);
+        await page.waitForTimeout(500);
 
         // Add remaining tweets using the "+" button
         for (let i = 1; i < tweets.length; i++) {
@@ -129,9 +145,32 @@ export class NativeThreadComposer {
 
     } catch (error: any) {
       console.error('❌ NATIVE_THREAD: Failed to post thread:', error.message);
+      
+      // 🔄 BULLETPROOF FALLBACK: Try Enhanced Thread Composer as backup
+      if (tweets.length > 1) {
+        console.log('🔄 NATIVE_THREAD: Attempting fallback to Enhanced Thread Composer...');
+        try {
+          const { EnhancedThreadComposer } = await import('./enhancedThreadComposer');
+          const enhancedComposer = EnhancedThreadComposer.getInstance();
+          const fallbackResult = await enhancedComposer.postOrganizedThread(tweets, topic);
+          
+          if (fallbackResult.success) {
+            console.log('✅ NATIVE_THREAD: Enhanced fallback succeeded!');
+            return {
+              success: true,
+              rootTweetId: fallbackResult.rootTweetId,
+              replyIds: fallbackResult.replyIds,
+              error: 'Used Enhanced fallback'
+            };
+          }
+        } catch (fallbackError: any) {
+          console.error('❌ NATIVE_THREAD: Enhanced fallback also failed:', fallbackError.message);
+        }
+      }
+      
       return {
         success: false,
-        error: error.message
+        error: `Native thread failed: ${error.message}`
       };
     }
   }
