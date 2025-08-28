@@ -5,12 +5,12 @@
 
 export type Format = 'single' | 'thread';
 
-// Configurable mix targets and limits
-const MIX_TARGET = { single: 0.7, thread: 0.3 }; // 70% single, 30% thread
+// Configurable mix targets and limits - OPTIMIZED FOR HEALTH CONTENT
+const MIX_TARGET = { single: 0.4, thread: 0.6 }; // 40% single, 60% thread (health content performs better as threads)
 const LIMITS = {
-  minGapMinutes: { single: 10, thread: 120 }, // Min gap between same format
-  maxThreadsPerDay: 3, // Daily thread limit
-  maxConsecutiveSingle: 5 // Prevent too many singles in a row
+  minGapMinutes: { single: 15, thread: 60 }, // Reduced thread gap for more frequent threads
+  maxThreadsPerDay: 8, // Increased daily thread limit for better engagement
+  maxConsecutiveSingle: 3 // Prevent too many singles in a row (reduced)
 };
 
 export interface FormatDecisionContext {
