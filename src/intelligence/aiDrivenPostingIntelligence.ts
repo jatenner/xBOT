@@ -12,7 +12,7 @@
  */
 
 import OpenAI from 'openai';
-import { getOptimizationIntegrator } from '../lib/optimizationIntegrator';
+import { getUnifiedDataManager } from '../lib/unifiedDataManager';
 
 interface PostingIntelligence {
   recommendedFrequency: number; // 0-100 posts per day
@@ -53,8 +53,7 @@ interface PostingData {
 export class AIDrivenPostingIntelligence {
   private static instance: AIDrivenPostingIntelligence;
   private openai: OpenAI;
-  private optimizationIntegrator = getOptimizationIntegrator();
-  private postingHistory: PostingData[] = [];
+  private unifiedDataManager = getUnifiedDataManager();
   private currentIntelligence: PostingIntelligence | null = null;
 
   private constructor() {
@@ -88,17 +87,17 @@ export class AIDrivenPostingIntelligence {
       // 1. Gather current data context
       const currentContext = await this.getCurrentContext();
       
-      // 2. Analyze historical performance patterns
-      const performancePatterns = await this.analyzePerformancePatterns();
+      // 2. Get optimal posting frequency from unified data
+      const optimalFrequency = await this.unifiedDataManager.getOptimalPostingFrequency();
       
-      // 3. Get real-time market intelligence
-      const marketIntelligence = await this.getMarketIntelligence();
+      // 3. Get optimal timing from unified data
+      const optimalTimes = await this.unifiedDataManager.getOptimalPostingTimes();
       
       // 4. Use AI to synthesize optimal strategy
       const aiDecision = await this.getOpenAIPostingStrategy(
         currentContext,
-        performancePatterns,
-        marketIntelligence
+        optimalFrequency,
+        optimalTimes
       );
 
       console.log(`🎯 AI_DECISION: ${aiDecision.frequency} posts recommended, confidence: ${(aiDecision.dataConfidence * 100).toFixed(1)}%`);
@@ -216,8 +215,8 @@ export class AIDrivenPostingIntelligence {
    */
   private async getOpenAIPostingStrategy(
     context: any,
-    patterns: any,
-    market: any
+    optimalFrequency: any,
+    optimalTimes: any[]
   ): Promise<{
     shouldPost: boolean;
     frequency: number;
@@ -236,16 +235,15 @@ CURRENT CONTEXT:
 - Recent posts: ${context.recentPosts}
 - Follower count: ${context.currentFollowers}
 
-PERFORMANCE PATTERNS:
-- Best frequencies: ${JSON.stringify(patterns.optimalFrequencies)}
-- Best timings: ${JSON.stringify(patterns.bestTimings)}
-- Successful content patterns: ${JSON.stringify(patterns.contentPatterns)}
+AI-DRIVEN INSIGHTS:
+- Recommended frequency: ${optimalFrequency.optimalFrequency} posts/day
+- Strategy: ${optimalFrequency.strategy}
+- Confidence: ${(optimalFrequency.confidence * 100).toFixed(1)}%
+- Reasoning: ${optimalFrequency.reasoning}
 
-MARKET INTELLIGENCE:
-- Trending topics: ${market.trendingHealthTopics.join(', ')}
-- Competitor activity: ${market.competitorActivity}
-- Holiday impact: ${market.holidayImpact}
-- Optimal windows: ${JSON.stringify(market.optimalEngagementWindows)}
+OPTIMAL TIMING DATA:
+- Best times: ${JSON.stringify(optimalTimes.slice(0, 5))}
+- Data quality: ${optimalTimes.length >= 5 ? 'High' : optimalTimes.length >= 2 ? 'Medium' : 'Low'}
 
 TASK: Determine optimal posting strategy for maximum follower growth.
 
@@ -306,21 +304,28 @@ Focus on data-driven decisions that maximize follower acquisition in health/well
     console.log('📈 Recording post performance for continuous learning...');
 
     try {
-      // Add to history
-      this.postingHistory.push(postData);
-      
-      // Limit history to last 1000 posts for performance
-      if (this.postingHistory.length > 1000) {
-        this.postingHistory = this.postingHistory.slice(-500);
-      }
-
-      // Store in database for persistence
-      await this.storePostingData(postData);
-      
-      // Trigger learning update if we have enough new data
-      if (this.postingHistory.length % 10 === 0) {
-        this.updateIntelligence();
-      }
+      // Store in unified data manager
+      await this.unifiedDataManager.storePost({
+        postId: postData.timestamp.getTime().toString(),
+        content: postData.content,
+        postType: 'single',
+        contentLength: postData.content.length,
+        postedAt: postData.timestamp,
+        hourPosted: postData.timestamp.getHours(),
+        minutePosted: postData.timestamp.getMinutes(),
+        dayOfWeek: postData.timestamp.getDay(),
+        likes: postData.engagement.likes,
+        retweets: postData.engagement.retweets,
+        replies: postData.engagement.replies,
+        impressions: postData.engagement.impressions,
+        profileClicks: postData.engagement.profileClicks,
+        linkClicks: 0,
+        bookmarks: 0,
+        shares: 0,
+        followersBefore: postData.engagement.followers_gained, // Approximate
+        followersAttributed: postData.engagement.followers_gained,
+        aiGenerated: true
+      });
 
       console.log(`✅ Post performance recorded: ${postData.engagement.followers_gained} followers gained`);
 
@@ -361,18 +366,16 @@ Focus on data-driven decisions that maximize follower acquisition in health/well
   }> {
     const now = new Date();
     
-    // Get recent posting data
-    const last24Hours = this.postingHistory.filter(
-      post => (now.getTime() - post.timestamp.getTime()) < 24 * 60 * 60 * 1000
-    );
-
-    const recentEngagement = last24Hours.length > 0
-      ? last24Hours.reduce((sum, post) => sum + post.engagement.likes + post.engagement.retweets, 0) / last24Hours.length
+    // Get recent posting data from unified data manager
+    const recentPosts = await this.unifiedDataManager.getPostPerformance(1); // Last 1 day
+    
+    const recentEngagement = recentPosts.length > 0
+      ? recentPosts.reduce((sum, post) => sum + post.likes + post.retweets, 0) / recentPosts.length
       : 0;
 
     return {
       currentTime: now,
-      recentPosts: last24Hours.length,
+      recentPosts: recentPosts.length,
       currentFollowers: await this.getCurrentFollowerCount(),
       recentEngagement,
       trendsScore: await this.calculateTrendsScore()
@@ -381,8 +384,9 @@ Focus on data-driven decisions that maximize follower acquisition in health/well
 
   // Helper methods (implement with real data sources)
   private async loadHistoricalData(): Promise<PostingData[]> {
-    // TODO: Load from database
-    return this.postingHistory;
+    // Get from unified data manager
+    const posts = await this.unifiedDataManager.getPostPerformance(30);
+    return []; // Return empty array since we're using unified data manager directly
   }
 
   private async getCurrentFollowerCount(): Promise<number> {
@@ -506,16 +510,18 @@ Focus on data-driven decisions that maximize follower acquisition in health/well
   /**
    * 📊 GET CURRENT AI INTELLIGENCE STATUS
    */
-  public getIntelligenceStatus(): {
+  public async getIntelligenceStatus(): Promise<{
     dataPoints: number;
     learningConfidence: number;
     lastUpdate: Date;
     currentStrategy: string;
-  } {
+  }> {
+    const dataStatus = await this.unifiedDataManager.getDataStatus();
+    
     return {
-      dataPoints: this.postingHistory.length,
-      learningConfidence: this.currentIntelligence?.learningConfidence || 0.5,
-      lastUpdate: new Date(),
+      dataPoints: dataStatus.totalPosts,
+      learningConfidence: dataStatus.dataQuality,
+      lastUpdate: dataStatus.lastUpdate,
       currentStrategy: this.currentIntelligence?.strategy || 'learning_mode'
     };
   }
