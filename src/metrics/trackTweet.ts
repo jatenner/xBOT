@@ -84,6 +84,15 @@ export class TweetMetricsTracker {
     data?: TweetMetrics;
     error?: string;
   }> {
+    // Validate tweet ID format first
+    if (!this.isValidTweetId(tweetId)) {
+      console.warn(`⚠️ Invalid tweet ID format: ${tweetId}`);
+      return {
+        success: false,
+        error: `Invalid tweet ID format: ${tweetId}. Expected 15-19 digit number.`
+      };
+    }
+    
     let context;
     let page: Page;
     let recreatedContext = false;
@@ -126,8 +135,42 @@ export class TweetMetricsTracker {
         timeout: 30000 
       });
 
-      // Wait for tweet to load
-      await page.waitForSelector('[data-testid="tweet"]', { timeout: 15000 });
+      // Wait for tweet to load with better error handling
+      try {
+        await page.waitForSelector('[data-testid="tweet"]', { timeout: 15000 });
+        console.log('✅ Tweet element found on page');
+      } catch (selectorError) {
+        // Check if page loaded but tweet doesn't exist
+        const pageTitle = await page.title();
+        const currentUrl = page.url();
+        
+        if (pageTitle.includes('Post not found') || currentUrl.includes('error') || pageTitle.includes('Something went wrong')) {
+          console.warn(`⚠️ Tweet ${tweetId} not found or deleted`);
+          return {
+            success: false,
+            error: `Tweet ${tweetId} not found or may have been deleted`
+          };
+        }
+        
+        // Try alternative selectors
+        const altSelectors = ['article[data-testid="tweet"]', 'article', 'div[data-testid="tweetText"]'];
+        let found = false;
+        
+        for (const selector of altSelectors) {
+          try {
+            await page.waitForSelector(selector, { timeout: 5000 });
+            console.log(`✅ Found tweet using alternative selector: ${selector}`);
+            found = true;
+            break;
+          } catch {
+            continue;
+          }
+        }
+        
+        if (!found) {
+          throw selectorError;
+        }
+      }
 
       // Extract metrics with multiple selectors (X changes them frequently)
       let metrics;
@@ -350,6 +393,15 @@ export class TweetMetricsTracker {
         lastError: error instanceof Error ? error.message : 'Unknown error' 
       };
     }
+  }
+
+  /**
+   * Validate tweet ID format
+   */
+  private isValidTweetId(tweetId: string): boolean {
+    // Twitter IDs are typically 15-19 digit numbers
+    const tweetIdPattern = /^\d{15,19}$/;
+    return tweetIdPattern.test(tweetId);
   }
 }
 
