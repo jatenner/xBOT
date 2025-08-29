@@ -10,6 +10,8 @@ import { getUnifiedDataManager } from '../lib/unifiedDataManager';
 import { getContentQualityEnhancer } from '../ai/qualityEnhancer';
 import { getGrowthAccelerationEngine } from '../ai/growthAccelerationEngine';
 import { getOutcomeLearningEngine } from '../intelligence/outcomeLearningEngine';
+import { getEnhancedMetricsCollector } from '../intelligence/enhancedMetricsCollector';
+import { getPerformancePredictionEngine } from '../intelligence/performancePredictionEngine';
 
 interface ElitePostRequest {
   topic?: string;
@@ -34,6 +36,8 @@ export class EnhancedPostingOrchestrator {
   private dataManager = getUnifiedDataManager();
   private qualityEnhancer = getContentQualityEnhancer();
   private learningEngine = getOutcomeLearningEngine();
+  private metricsCollector = getEnhancedMetricsCollector();
+  private predictionEngine = getPerformancePredictionEngine();
 
   private constructor() {}
 
@@ -314,7 +318,7 @@ Return JSON:
 
   /**
    * 🔮 PREDICT PERFORMANCE
-   * Use AI to predict tweet performance
+   * Use enhanced prediction engine with real data patterns
    */
   private async predictPerformance(content: string, learningContext: any): Promise<{
     engagement: number;
@@ -322,78 +326,30 @@ Return JSON:
     follower_potential: number;
     confidence: number;
   }> {
-    console.log('🔮 ENHANCED_ORCHESTRATOR: Predicting performance with AI...');
-
-    const predictionPrompt = `Predict the performance of this health optimization tweet:
-
-CONTENT: "${content}"
-
-HISTORICAL CONTEXT:
-- Account has ${learningContext.total_data_points} recent posts for comparison
-- Top performers got: ${learningContext.top_performing?.map(p => p.likes + p.retweets).join(', ')} total engagement
-- Average follower gain: ${learningContext.top_performing?.map(p => p.followersAttributed).join(', ')}
-
-ANALYSIS FACTORS:
-1. Hook effectiveness (attention-grabbing)
-2. Authority/credibility signals
-3. Value proposition (actionable insights)
-4. Engagement potential (questions, CTAs)
-5. Shareability (viral elements)
-6. Target audience match (health enthusiasts)
-7. Content length optimization
-8. Timing relevance
-
-Predict performance on 0-1 scale:
-{
-  "engagement": 0.8,
-  "viral_probability": 0.6,
-  "follower_potential": 0.7,
-  "confidence": 0.85,
-  "reasoning": "detailed explanation",
-  "improvement_suggestions": ["suggestion1", "suggestion2"]
-}`;
+    console.log('🔮 ENHANCED_ORCHESTRATOR: Predicting performance with enhanced AI...');
 
     try {
-      const response = await this.openaiService.chatCompletion([
-        {
-          role: 'system',
-          content: 'You are a Twitter performance prediction expert. Analyze content and predict engagement based on historical patterns and content quality factors.'
-        },
-        {
-          role: 'user',
-          content: predictionPrompt
-        }
-      ], {
-        model: 'gpt-4o',
-        temperature: 0.3,
-        maxTokens: 1000,
-        requestType: 'performance_prediction',
-        priority: 'medium'
-      });
-
-      let rawContent = response.choices[0]?.message?.content || '{}';
+      // Use new performance prediction engine
+      const predictionEngine = getPerformancePredictionEngine();
+      const prediction = await predictionEngine.predictPerformance(content);
       
-      // Clean up markdown code blocks if present
-      if (rawContent.includes('```json')) {
-        rawContent = rawContent.replace(/```json\s*/g, '').replace(/```\s*$/g, '');
-      }
-      
-      const prediction = JSON.parse(rawContent);
-      console.log('✅ PERFORMANCE_PREDICTION: Confidence:', prediction.confidence);
+      console.log(`🎯 PREDICTION: ${prediction.predictedLikes} likes, ${(prediction.viralProbability * 100).toFixed(1)}% viral probability`);
+      console.log(`💡 SUGGESTIONS: ${prediction.optimizationSuggestions.join(', ')}`);
       
       return {
-        engagement: prediction.engagement || 0.5,
-        viral_probability: prediction.viral_probability || 0.3,
-        follower_potential: prediction.follower_potential || 0.4,
-        confidence: prediction.confidence || 0.5
+        engagement: prediction.predictedLikes + prediction.predictedReplies + prediction.predictedRetweets,
+        viral_probability: prediction.viralProbability,
+        follower_potential: prediction.predictedFollowerGrowth,
+        confidence: prediction.confidence
       };
-
     } catch (error: any) {
-      console.error('❌ Performance prediction failed:', error.message);
+      console.warn('⚠️ Enhanced prediction failed, using fallback:', error.message);
+
+      // Fallback to basic prediction
       return {
-        engagement: 0.5,
-        viral_probability: 0.3,
-        follower_potential: 0.4,
+        engagement: 1.0,
+        viral_probability: 0.1,
+        follower_potential: 0.3,
         confidence: 0.3
       };
     }
@@ -578,6 +534,73 @@ Return JSON:
         reply: 'Interesting perspective! Health optimization requires this kind of thinking.',
         strategy: 'fallback',
         reasoning: 'Fallback reply due to AI error'
+      };
+    }
+  }
+
+  /**
+   * 📊 COLLECT ENHANCED METRICS
+   * Collect detailed performance data for learning
+   */
+  public async collectEnhancedMetrics(postId: string, content: string, initialMetrics: any): Promise<void> {
+    console.log(`📊 ENHANCED_ORCHESTRATOR: Collecting enhanced metrics for ${postId}...`);
+
+    try {
+      // Collect detailed metrics using the enhanced collector
+      const detailedMetrics = await this.metricsCollector.collectDetailedMetrics(postId, content, initialMetrics);
+      
+      // Get optimization recommendations for future posts
+      const recommendations = await this.metricsCollector.getOptimizationRecommendations(content);
+      
+      console.log(`✅ ENHANCED_METRICS: Collected ${Object.keys(detailedMetrics).length} data points`);
+      console.log(`💡 RECOMMENDATIONS: ${recommendations.recommendations.join(', ')}`);
+      
+      // Store insights for future content generation
+      // Note: OutcomeLearningEngine processes automatically, we just trigger learning cycle
+      await this.learningEngine.completeLearningCycle();
+      
+    } catch (error: any) {
+      console.error('❌ Enhanced metrics collection failed:', error.message);
+    }
+  }
+
+  /**
+   * 🎯 GET CONTENT OPTIMIZATION PREVIEW
+   * Preview optimization suggestions before posting
+   */
+  public async getContentOptimizationPreview(content: string): Promise<{
+    predictions: any;
+    suggestions: string[];
+    confidence: number;
+  }> {
+    console.log('🎯 ENHANCED_ORCHESTRATOR: Generating optimization preview...');
+
+    try {
+      // Get performance prediction
+      const prediction = await this.predictionEngine.predictPerformance(content);
+      
+      // Get optimization recommendations
+      const recommendations = await this.metricsCollector.getOptimizationRecommendations(content);
+      
+      console.log(`🔮 PREVIEW: ${prediction.predictedLikes} likes predicted, ${recommendations.recommendations.length} suggestions`);
+      
+      return {
+        predictions: {
+          likes: prediction.predictedLikes,
+          replies: prediction.predictedReplies,
+          retweets: prediction.predictedRetweets,
+          viralProbability: prediction.viralProbability,
+          followerGrowth: prediction.predictedFollowerGrowth
+        },
+        suggestions: recommendations.recommendations,
+        confidence: prediction.confidence
+      };
+    } catch (error: any) {
+      console.error('❌ Optimization preview failed:', error.message);
+      return {
+        predictions: { likes: 1, replies: 0, retweets: 0, viralProbability: 0.1, followerGrowth: 0 },
+        suggestions: ['Add personal story', 'Include specific metrics'],
+        confidence: 0.3
       };
     }
   }
