@@ -560,8 +560,56 @@ export class DataCollectionEngine {
     }
   }
 
+  /**
+   * Validate if a post ID represents a real Twitter post
+   */
+  private isValidTwitterPostId(postId: string): boolean {
+    // Real Twitter IDs are 15-19 digit numbers
+    const twitterIdPattern = /^\d{15,19}$/;
+    
+    // Common fake ID patterns to reject
+    const fakePatterns = [
+      /^browser_/,      // browser_1756445341415
+      /^posted_/,       // posted_1234567890
+      /^auto_/,         // auto_1234567890_abc
+      /^twitter_/,      // twitter_1234567890_1
+      /^tweet_/         // tweet_1234567890
+    ];
+    
+    // Check if it matches fake patterns
+    for (const pattern of fakePatterns) {
+      if (pattern.test(postId)) {
+        console.warn(`🚨 FAKE_POST_ID_DETECTED: ${postId} - skipping metrics collection`);
+        return false;
+      }
+    }
+    
+    // Check if it's a real Twitter ID format
+    return twitterIdPattern.test(postId);
+  }
+
   private async getCurrentPostMetrics(postId: string): Promise<any> {
+    // First validate if this is a real Twitter post ID
+    if (!this.isValidTwitterPostId(postId)) {
+      console.warn(`⚠️ Skipping metrics collection for invalid post ID: ${postId}`);
+      return {
+        likes: 0,
+        retweets: 0,
+        replies: 0,
+        impressions: 0,
+        profileClicks: 0,
+        linkClicks: 0,
+        bookmarks: 0,
+        shares: 0,
+        _dataSource: 'rejected_fake_id',
+        _verified: false
+      };
+    }
+    
     // Get REAL metrics from Twitter using our performance tracker
+    let metrics: any = null;
+    let dataSource = 'fallback';
+    
     try {
       const { TweetPerformanceTracker } = await import('./tweetPerformanceTracker');
       const tracker = TweetPerformanceTracker.getInstance();
@@ -571,7 +619,8 @@ export class DataCollectionEngine {
       
       if (realMetrics.success && realMetrics.metrics) {
         console.log(`📊 REAL_METRICS: ${postId} - ${realMetrics.metrics.likes} likes, ${realMetrics.metrics.retweets} retweets`);
-        return {
+        dataSource = 'scraped';
+        metrics = {
           likes: realMetrics.metrics.likes,
           retweets: realMetrics.metrics.retweets,
           replies: realMetrics.metrics.replies,
@@ -586,17 +635,46 @@ export class DataCollectionEngine {
       console.warn(`⚠️ Failed to get real metrics for ${postId}, using minimal baseline:`, error);
     }
     
-    // Fallback to realistic low engagement (matching your real experience)
-    return {
-      likes: Math.random() < 0.5 ? 1 : 0,  // 50% chance of 1 like, 50% chance of 0
-      retweets: Math.random() < 0.1 ? 1 : 0,  // 10% chance of 1 retweet
-      replies: 0,  // Very rare
-      impressions: Math.floor(Math.random() * 50) + 10,  // 10-60 impressions (realistic)
-      profileClicks: Math.random() < 0.2 ? 1 : 0,  // 20% chance of 1 profile click
-      linkClicks: 0,
-      bookmarks: Math.random() < 0.1 ? 1 : 0,  // 10% chance of 1 bookmark
-      shares: 0  // Very rare
-    };
+    // If no real metrics, use realistic fallback
+    if (!metrics) {
+      metrics = {
+        likes: Math.random() < 0.5 ? 1 : 0,  // 50% chance of 1 like, 50% chance of 0
+        retweets: Math.random() < 0.1 ? 1 : 0,  // 10% chance of 1 retweet
+        replies: 0,  // Very rare
+        impressions: Math.floor(Math.random() * 50) + 10,  // 10-60 impressions (realistic)
+        profileClicks: Math.random() < 0.2 ? 1 : 0,  // 20% chance of 1 profile click
+        linkClicks: 0,
+        bookmarks: Math.random() < 0.1 ? 1 : 0,  // 10% chance of 1 bookmark
+        shares: 0  // Very rare
+      };
+    }
+    
+    // Add metadata for verification
+    metrics._dataSource = dataSource;
+    metrics._verified = dataSource === 'scraped';
+    metrics._timestamp = new Date().toISOString();
+    
+    // Verify data authenticity
+    try {
+      const { DataAuthenticityGuard } = await import('./dataAuthenticityGuard');
+      const guard = DataAuthenticityGuard.getInstance();
+      const followerCount = await this.getCurrentFollowerCount();
+      
+      const report = await guard.validatePostMetrics(postId, metrics, followerCount, dataSource);
+      
+      if (!report.isAuthentic) {
+        console.warn(`🚨 AUTHENTICITY_FAILED: ${postId} failed validation:`, report.flags.slice(0, 2));
+        metrics._authenticityFlags = report.flags;
+        metrics._confidence = report.confidence;
+      } else {
+        console.log(`✅ AUTHENTICITY_VERIFIED: ${postId} passed validation (${report.confidence.toFixed(3)})`);
+        metrics._confidence = report.confidence;
+      }
+    } catch (authError) {
+      console.warn('⚠️ Authenticity check failed:', authError);
+    }
+    
+    return metrics;
   }
 
   private calculateAttributedFollowerGain(dataPoint: ComprehensiveDataPoint, timepoint: string): number {
