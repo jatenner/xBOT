@@ -14,6 +14,8 @@ import { getEnhancedMetricsCollector } from '../intelligence/enhancedMetricsColl
 import { getPerformancePredictionEngine } from '../intelligence/performancePredictionEngine';
 import { getAdvancedAIOrchestrator } from '../ai/advancedAIOrchestrator';
 import { getViralTrendMonitor } from '../intelligence/viralTrendMonitor';
+import { getAIContentDecisionEngine } from '../ai/aiContentDecisionEngine';
+import { getPerformanceFeedbackPipeline } from '../intelligence/performanceFeedbackPipeline';
 
 interface ElitePostRequest {
   topic?: string;
@@ -42,6 +44,8 @@ export class EnhancedPostingOrchestrator {
   private predictionEngine = getPerformancePredictionEngine();
   private advancedAI = getAdvancedAIOrchestrator();
   private trendMonitor = getViralTrendMonitor();
+  private aiDecisionEngine = getAIContentDecisionEngine();
+  private feedbackPipeline = getPerformanceFeedbackPipeline();
 
   private constructor() {}
 
@@ -673,6 +677,236 @@ Return JSON:
    */
   public getViralMonitoringStatus(): any {
     return this.trendMonitor.getStatus();
+  }
+
+  /**
+   * 🤖 CREATE FULLY AI-DRIVEN CONTENT
+   * Maximum OpenAI utilization - AI makes EVERY decision
+   */
+  public async createFullyAIDrivenContent(
+    initialTopic?: string,
+    urgency: 'immediate' | 'high' | 'medium' = 'high'
+  ): Promise<{
+    content: string;
+    ai_decisions_made: number;
+    decision_breakdown: any;
+    performance_prediction: any;
+    feedback_applied: string[];
+    confidence: number;
+  }> {
+    console.log('🤖 ENHANCED_ORCHESTRATOR: Creating fully AI-driven content with maximum OpenAI utilization...');
+
+    try {
+      // Step 1: Get performance feedback to guide AI decisions
+      const feedbackReport = await this.feedbackPipeline.generateComprehensiveFeedbackReport(14);
+      console.log(`📊 FEEDBACK: Applied insights from ${feedbackReport.successful_patterns.length} successful patterns`);
+
+      // Step 2: AI makes ALL content decisions (8-12 OpenAI calls)
+      const contentPlan = await this.aiDecisionEngine.createComprehensiveContentPlan(
+        initialTopic,
+        {
+          feedback_insights: feedbackReport,
+          recent_performance: feedbackReport.overall_performance,
+          audience_preferences: feedbackReport.audience_insights
+        }
+      );
+
+      console.log(`🧠 AI_DECISIONS: Made ${contentPlan.total_ai_calls} AI decisions with ${contentPlan.decision_confidence}% confidence`);
+
+      // Step 3: Generate content using AI plan + advanced orchestrator
+      const aiContent = await this.advancedAI.createEliteContent(
+        contentPlan.topic,
+        {
+          ai_content_plan: contentPlan,
+          voice_adaptation: contentPlan.voice_adaptation,
+          formatting_requirements: contentPlan.formatting_style,
+          target_length: contentPlan.target_length,
+          controversy_level: contentPlan.controversy_level
+        },
+        {
+          urgency,
+          viral_threshold: 0.7,
+          hook_type: contentPlan.hook_type,
+          format: contentPlan.content_format
+        }
+      );
+
+      // Step 4: Apply AI-driven formatting based on decisions
+      const formattedContent = await this.applyAIFormattingDecisions(
+        aiContent.content,
+        contentPlan.formatting_style
+      );
+
+      // Step 5: Final AI optimization based on predictions
+      const finalContent = contentPlan.expected_performance.viral_probability < 0.6
+        ? await this.aiOptimizeUnderperformingContent(formattedContent, contentPlan)
+        : formattedContent;
+
+      console.log(`✅ FULLY_AI_DRIVEN: Content created with ${contentPlan.total_ai_calls + 4} total AI decisions`);
+      console.log(`🎯 PREDICTED_VIRAL: ${(contentPlan.expected_performance.viral_probability * 100).toFixed(1)}%`);
+      console.log(`📈 APPLIED_INSIGHTS: ${feedbackReport.content_recommendations.length} feedback insights`);
+
+      return {
+        content: finalContent,
+        ai_decisions_made: contentPlan.total_ai_calls + 4,
+        decision_breakdown: {
+          topic_decision: contentPlan.topic_reasoning,
+          hook_decision: contentPlan.hook_decision,
+          format_decision: contentPlan.format_decision,
+          controversy_decision: contentPlan.controversy_decision,
+          length_decision: contentPlan.length_decision,
+          formatting_decision: contentPlan.formatting_decision,
+          timing_decision: contentPlan.timing_decision,
+          voice_decision: contentPlan.voice_decision
+        },
+        performance_prediction: contentPlan.expected_performance,
+        feedback_applied: feedbackReport.content_recommendations.slice(0, 3),
+        confidence: contentPlan.decision_confidence / 100
+      };
+
+    } catch (error: any) {
+      console.error('❌ Fully AI-driven content creation failed:', error.message);
+      
+      // Fallback to advanced AI without full decision engine
+      const fallbackContent = await this.createViralContent(initialTopic || 'health optimization', urgency);
+      
+      return {
+        content: fallbackContent.content,
+        ai_decisions_made: 3,
+        decision_breakdown: { fallback: 'Used advanced AI fallback' },
+        performance_prediction: {
+          viral_probability: fallbackContent.viral_probability,
+          engagement_score: 0.6,
+          follower_potential: 0.5
+        },
+        feedback_applied: ['Fallback mode - limited feedback applied'],
+        confidence: fallbackContent.confidence
+      };
+    }
+  }
+
+  /**
+   * 🎨 APPLY AI FORMATTING DECISIONS
+   * Use AI formatting decisions to optimize presentation
+   */
+  private async applyAIFormattingDecisions(content: string, formattingStyle: any): Promise<string> {
+    console.log('🎨 ENHANCED_ORCHESTRATOR: Applying AI formatting decisions...');
+
+    const prompt = `Apply these AI-decided formatting rules to this content:
+
+Original Content: "${content}"
+
+Formatting Decisions:
+- Line breaks: ${formattingStyle.line_breaks}
+- Emphasis: ${formattingStyle.emphasis_type}
+- Structure: ${formattingStyle.structure}
+
+Apply formatting for maximum readability and engagement on Twitter.
+Return only the formatted content.`;
+
+    try {
+      const response = await this.openaiService.chatCompletion([
+        {
+          role: 'system',
+          content: 'You apply specific formatting decisions to optimize Twitter content presentation.'
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ], {
+        model: 'gpt-4o-mini',
+        temperature: 0.3,
+        maxTokens: 400,
+        requestType: 'ai_formatting_application',
+        priority: 'medium'
+      });
+
+      const formattedContent = response.choices[0]?.message?.content || content;
+      console.log('✅ AI_FORMATTING: Applied AI formatting decisions');
+      
+      return formattedContent;
+    } catch (error) {
+      console.warn('⚠️ AI formatting application failed, using original content');
+      return content;
+    }
+  }
+
+  /**
+   * ⚡ AI OPTIMIZE UNDERPERFORMING CONTENT
+   * AI fixes content with low viral probability
+   */
+  private async aiOptimizeUnderperformingContent(content: string, plan: any): Promise<string> {
+    console.log('⚡ ENHANCED_ORCHESTRATOR: AI optimizing underperforming content...');
+
+    const prompt = `This content has low viral probability (${(plan.expected_performance.viral_probability * 100).toFixed(1)}%). Optimize it:
+
+Content: "${content}"
+
+AI Plan Context:
+- Topic: ${plan.topic}
+- Hook Type: ${plan.hook_type}
+- Target Viral: 70%+
+
+Optimization Tasks:
+1. Strengthen the hook for immediate attention
+2. Add emotional triggers or controversy
+3. Include a compelling call-to-action
+4. Optimize for shareability
+
+Return only the optimized content that will achieve 70%+ viral probability.`;
+
+    try {
+      const response = await this.openaiService.chatCompletion([
+        {
+          role: 'system',
+          content: 'You optimize low-performing content to achieve viral potential using proven engagement tactics.'
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ], {
+        model: 'gpt-4o',
+        temperature: 0.7,
+        maxTokens: 400,
+        requestType: 'ai_viral_optimization',
+        priority: 'high'
+      });
+
+      const optimizedContent = response.choices[0]?.message?.content || content;
+      console.log('✅ AI_OPTIMIZATION: Boosted viral potential through AI optimization');
+      
+      return optimizedContent;
+    } catch (error) {
+      console.warn('⚠️ AI viral optimization failed, using original content');
+      return content;
+    }
+  }
+
+  /**
+   * 📊 COLLECT PERFORMANCE FEEDBACK
+   * Automatically collect and analyze performance for continuous improvement
+   */
+  public async collectPerformanceFeedback(postId: string, content: string, metrics: any): Promise<void> {
+    console.log(`📊 ENHANCED_ORCHESTRATOR: Collecting performance feedback for ${postId}...`);
+
+    try {
+      // Collect enhanced metrics as before
+      await this.collectEnhancedMetrics(postId, content, metrics);
+
+      // Generate feedback report for continuous learning
+      const feedbackReport = await this.feedbackPipeline.generateComprehensiveFeedbackReport(7);
+      
+      // Apply feedback to improve future content
+      const appliedFeedback = await this.feedbackPipeline.applyFeedbackToContentGeneration(feedbackReport);
+      
+      console.log(`✅ FEEDBACK_COLLECTED: Applied ${appliedFeedback.optimization_applied.length} optimizations`);
+      console.log(`📈 EXPECTED_IMPROVEMENT: ${(appliedFeedback.expected_improvement * 100).toFixed(1)}%`);
+      
+    } catch (error: any) {
+      console.error('❌ Performance feedback collection failed:', error.message);
+    }
   }
 
   /**
