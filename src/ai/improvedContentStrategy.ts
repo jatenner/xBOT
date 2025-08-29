@@ -13,18 +13,18 @@ export interface ContentImprovements {
 }
 
 export const IMPROVED_CONTENT_STRATEGY: ContentImprovements = {
-  // Instead of always "🚨 BREAKING"
+  // ENGAGEMENT-TESTED HOOKS (no more "BREAKING")
   hookVariations: [
-    "New study reveals:",
-    "Counterintuitive finding:",
-    "What 10,000 people taught us:",
-    "Stanford researchers discovered:",
-    "The data doesn't lie:",
-    "Unpopular opinion backed by science:",
-    "Plot twist in health research:",
-    "This changes everything:",
-    "Warning signs your body sends:",
-    "The #1 mistake I see people make:",
+    "I used to think [belief], but this changed my mind:",
+    "This one habit transformed my [outcome]:",
+    "Why [common practice] might be sabotaging you:",
+    "The simplest way to [benefit] (takes 2 minutes):",
+    "Most people get [topic] wrong. Here's the truth:",
+    "I tried [specific thing] for 30 days. Results:",
+    "My doctor never told me this about [topic]:",
+    "This [simple change] fixed my [specific problem]:",
+    "The mistake I made for years with [topic]:",
+    "What happens when you [specific action] for [timeframe]:",
   ],
 
   // Build authority with specific sources
@@ -39,28 +39,28 @@ export const IMPROVED_CONTENT_STRATEGY: ContentImprovements = {
     "Data from the world's largest nutrition database:",
   ],
 
-  // Better engagement tactics
+  // PERSONAL ENGAGEMENT (builds relationships)
   engagementTactics: [
-    "Which of these surprised you most? (Comment below)",
-    "Try this for 7 days and report back:",
-    "Share this with someone who needs to see it:",
-    "What's your experience with this? Thread below:",
-    "Rate your current level 1-10 in the comments:",
-    "Retweet if this changed your perspective:",
-    "Tag someone who would benefit from this:",
-    "What would you add to this list?",
+    "Have you tried this? What was your experience?",
+    "What's the biggest challenge you face with [topic]?",
+    "How long did it take you to notice results?",
+    "What's your go-to [habit/method] for [outcome]?",
+    "Which one are you going to try first?",
+    "Am I missing anything important here?",
+    "What worked better for you: [option A] or [option B]?",
+    "What's one thing you wish you'd known sooner?",
   ],
 
-  // Add personality and unique voice
+  // AUTHENTIC VOICE (builds trust through vulnerability)
   voiceElements: [
-    "Here's what most doctors won't tell you:",
-    "I've been tracking this for 3 years, and here's what I learned:",
-    "This contradicts everything I thought I knew:",
-    "My biggest mistake was believing that...",
-    "If I had to start over, I'd focus on these 3 things:",
-    "The uncomfortable truth about...",
-    "Why I changed my mind about...",
-    "What I wish I knew 10 years ago:",
+    "I wasted 3 years doing [wrong approach] before I learned:",
+    "My biggest breakthrough came when I stopped [common thing]:",
+    "This sounds weird, but [unconventional approach] actually works:",
+    "I tested this on myself for [timeframe]. Here's what happened:",
+    "The mistake that cost me [specific outcome]:",
+    "What finally worked after trying everything:",
+    "I was skeptical too, until I saw the results:",
+    "This simple change had an unexpected benefit:",
   ]
 };
 
@@ -94,26 +94,26 @@ export const CONTENT_QUALITY_GUIDELINES = {
 };
 
 export const VIRAL_HEALTH_FORMULAS = {
-  // High-performing content patterns
+  // PROVEN ENGAGEMENT PATTERNS (tested on small accounts)
   patterns: {
-    contrarian: "Everyone believes X, but new research shows Y",
-    personal: "I tried X for Y weeks, here's what happened",
-    listicle: "N things that changed my perspective on X",
-    mistake: "The biggest mistake people make with X",
-    timeline: "What happens to your body when you do X",
-    comparison: "X vs Y: which is actually better?",
-    myth_bust: "Why everything you know about X is wrong",
-    insider: "What doctors/researchers actually do for X"
+    personal_test: "I tried [specific thing] for [timeframe]. [Specific measurable result].",
+    myth_buster: "Everyone says [belief]. But [evidence]. Try [alternative] instead.",
+    quick_win: "[Simple action] for [benefit]. Takes [time]. Here's how: [steps]",
+    comparison: "Most people: [common approach]. Better: [improved approach]. Difference: [outcome]",
+    mistake_story: "I made this [topic] mistake for [years]. Cost me [specific outcome].",
+    simple_hack: "This [time] [action] [solved my problem]. No equipment needed.",
+    before_after: "[timeframe] ago I [old state]. Today I [new state]. What changed: [specific thing]",
+    counter_intuitive: "Sounds wrong but works: [unconventional approach] for [common problem]"
   },
 
-  // Engagement multipliers
+  // ENGAGEMENT MULTIPLIERS (small account focused)
   multipliers: {
-    controversy: "Respectfully challenge common beliefs",
-    specificity: "Give exact numbers, timeframes, protocols",
-    storytelling: "Share personal transformation stories",
-    community: "Create us-vs-them dynamics (healthy vs unhealthy habits)",
-    urgency: "Time-sensitive health insights",
-    social_proof: "What successful/healthy people actually do"
+    vulnerability: "Admit mistakes, share failures before successes",
+    specificity: "Exact numbers: '16oz water', '2 minutes', '7 days', '40% improvement'",
+    actionability: "Reader can try it TODAY with items they already have",
+    relatability: "Address problems beginners actually face, not expert concerns",
+    curiosity: "Tease the 'why' but deliver the 'how' immediately",
+    conversation: "Ask about THEIR experience, not just 'thoughts?'"
   }
 };
 
