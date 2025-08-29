@@ -102,6 +102,12 @@ class RedisManager {
         
         // Connection event handlers
         retryStrategy: (times: number) => {
+          // Stop retrying after 10 attempts to prevent infinite loop
+          if (times > 10) {
+            console.log('❌ Redis max retries exceeded, enabling fallback mode');
+            this.enableFallbackMode();
+            return null;
+          }
           const delay = Math.min(times * 50, 2000);
           console.log(`🔄 Redis retry attempt ${times}, delay: ${delay}ms`);
           return delay;
@@ -206,6 +212,11 @@ class RedisManager {
   private enableFallbackMode(): void {
     this.fallbackMode = true;
     this.isConnected = false;
+    // Disconnect the client to stop retry attempts
+    if (this.client) {
+      this.client.disconnect(false);
+      this.client = null;
+    }
     console.warn('⚠️ Enabling Redis fallback mode - operations will use Supabase');
   }
 
