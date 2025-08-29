@@ -71,6 +71,11 @@ export class PostingManager {
       console.log(`🎯 STRATEGY: ${aiDecision.strategy}`);
       console.log(`🧬 EVOLUTION: ${aiDecision.ai_reasoning.evolutionary_advantages.join(', ')}`);
       
+      // Apply quality enhancements
+      const enhancedContent = await this.applyQualityEnhancements(aiDecision.content, aiDecision.strategy);
+      aiDecision.content = enhancedContent.enhancedContent;
+      console.log(`🎯 QUALITY_ENHANCED: Applied ${enhancedContent.improvements.length} improvements (Score: ${enhancedContent.qualityScore.overallQuality.toFixed(2)})`);
+      
       return {
         content: aiDecision.content,
         isThread,
@@ -762,6 +767,30 @@ export class PostingManager {
       return 23; // Placeholder - will be replaced with real scraper
     } catch (error) {
       return 23;
+    }
+  }
+
+  /**
+   * 🎯 APPLY QUALITY ENHANCEMENTS
+   */
+  private async applyQualityEnhancements(content: string, strategy: string): Promise<{
+    enhancedContent: string;
+    qualityScore: any;
+    improvements: string[];
+  }> {
+    try {
+      const { getContentQualityEnhancer } = await import('../../ai/qualityEnhancer');
+      const qualityEnhancer = getContentQualityEnhancer();
+      
+      return await qualityEnhancer.enhanceContent(content, strategy);
+      
+    } catch (error: any) {
+      console.error('❌ Quality enhancement failed:', error.message);
+      return {
+        enhancedContent: content,
+        qualityScore: { overallQuality: 0.5 },
+        improvements: []
+      };
     }
   }
 }
