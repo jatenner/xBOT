@@ -280,8 +280,15 @@ Focus on data-driven decisions that maximize follower acquisition in health/well
         throw new Error('No response from OpenAI');
       }
 
-      // Parse AI response
-      const strategy = JSON.parse(aiResponse);
+      // Parse AI response with markdown cleanup
+      let cleanResponse = aiResponse;
+      
+      // Clean up markdown code blocks if present
+      if (cleanResponse.includes('```json')) {
+        cleanResponse = cleanResponse.replace(/```json\s*/g, '').replace(/```\s*$/g, '');
+      }
+      
+      const strategy = JSON.parse(cleanResponse);
       
       console.log(`🎯 AI_STRATEGY: ${strategy.frequency} posts/day, timing: ${strategy.timing.hour}:${strategy.timing.minute}`);
       console.log(`📊 AI_REASONING: ${strategy.reasoning}`);
