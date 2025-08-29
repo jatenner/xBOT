@@ -179,7 +179,14 @@ Return JSON with specific, actionable insights:
         priority: 'high'
       });
 
-      const analysis = JSON.parse(response.choices[0]?.message?.content || '{}');
+      let rawContent = response.choices[0]?.message?.content || '{}';
+      
+      // Clean up markdown code blocks if present
+      if (rawContent.includes('```json')) {
+        rawContent = rawContent.replace(/```json\s*/g, '').replace(/```\s*$/g, '');
+      }
+      
+      const analysis = JSON.parse(rawContent);
       console.log('✅ PERFORMANCE_ANALYSIS: Generated insights from', recentPosts.length, 'posts');
       
       return analysis;
@@ -264,7 +271,14 @@ Return JSON:
         priority: 'high'
       });
 
-      const result = JSON.parse(response.choices[0]?.message?.content || '{}');
+      let rawContent = response.choices[0]?.message?.content || '{}';
+      
+      // Clean up markdown code blocks if present
+      if (rawContent.includes('```json')) {
+        rawContent = rawContent.replace(/```json\s*/g, '').replace(/```\s*$/g, '');
+      }
+      
+      const result = JSON.parse(rawContent);
       console.log('✅ ELITE_CONTENT: Generated with strategy:', result.strategy);
       
       return {
@@ -338,7 +352,14 @@ Predict performance on 0-1 scale:
         priority: 'medium'
       });
 
-      const prediction = JSON.parse(response.choices[0]?.message?.content || '{}');
+      let rawContent = response.choices[0]?.message?.content || '{}';
+      
+      // Clean up markdown code blocks if present
+      if (rawContent.includes('```json')) {
+        rawContent = rawContent.replace(/```json\s*/g, '').replace(/```\s*$/g, '');
+      }
+      
+      const prediction = JSON.parse(rawContent);
       console.log('✅ PERFORMANCE_PREDICTION: Confidence:', prediction.confidence);
       
       return {
@@ -422,7 +443,14 @@ Return optimized version:
           priority: 'high'
         });
 
-        const optimization = JSON.parse(response.choices[0]?.message?.content || '{}');
+        let rawContent = response.choices[0]?.message?.content || '{}';
+        
+        // Clean up markdown code blocks if present
+        if (rawContent.includes('```json')) {
+          rawContent = rawContent.replace(/```json\s*/g, '').replace(/```\s*$/g, '');
+        }
+        
+        const optimization = JSON.parse(rawContent);
         console.log('✅ FINAL_OPTIMIZATION: Applied', optimization.improvements_made?.length || 0, 'improvements');
         
         return {
@@ -509,7 +537,14 @@ Return JSON:
         priority: 'medium'
       });
 
-      const result = JSON.parse(response.choices[0]?.message?.content || '{}');
+      let rawContent = response.choices[0]?.message?.content || '{}';
+      
+      // Clean up markdown code blocks if present
+      if (rawContent.includes('```json')) {
+        rawContent = rawContent.replace(/```json\s*/g, '').replace(/```\s*$/g, '');
+      }
+      
+      const result = JSON.parse(rawContent);
       console.log('✅ SMART_REPLY: Generated with strategy:', result.strategy);
       
       return {

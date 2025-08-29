@@ -46,7 +46,7 @@ interface UnifiedPost {
 interface AIDecision {
   id?: number;
   decisionTimestamp: Date;
-  decisionType: 'posting_frequency' | 'timing' | 'content_type' | 'strategy' | 'competitive' | 'api_usage' | 'learning_update' | 'intelligence_update' | 'outcome_update' | 'system_update';
+  decisionType: 'posting_frequency' | 'timing' | 'content_type' | 'strategy' | 'competitive' | 'api_usage' | 'learning_update' | 'intelligence_update' | 'outcome_update' | 'system_update' | 'content_generation' | 'integration_test' | 'system_consolidation';
   recommendation: any;
   confidence: number;
   reasoning: string;
