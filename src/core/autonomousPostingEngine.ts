@@ -411,99 +411,64 @@ export class AutonomousPostingEngine {
   }
 
   /**
-   * Generate high-quality content using AGGRESSIVE LEARNING optimization
+   * Generate high-quality content using ENHANCED AI ORCHESTRATOR with maximum learning
    */
   private async generateContent(): Promise<string> {
     try {
-      // Use the new Social Content Operator for diverse, high-quality content
-      const { getSocialContentOperator } = await import('../ai/socialContentOperator');
-      const operator = getSocialContentOperator();
+      console.log('🎯 ENHANCED_AI: Using Enhanced Posting Orchestrator for maximum AI utilization...');
       
-      // Get recent posts to avoid repetition
-      const recentPosts = await this.getRecentPostsForDiversity();
+      // Use Enhanced Posting Orchestrator for elite content generation
+      const { getEnhancedPostingOrchestrator } = await import('./enhancedPostingOrchestrator');
+      const enhancedOrchestrator = getEnhancedPostingOrchestrator();
       
-      // Brand notes for consistency
-      const brandNotes = "Evidence-based health optimization specialist (@SignalAndSynapse). Certified in sports nutrition & exercise physiology. Translates complex research into actionable strategies for high-performers. 10+ years optimizing health protocols for athletes, executives, and health-conscious individuals. Focus: sleep optimization, metabolic health, stress management, and sustainable performance.";
+      // Get current opportunity context
+      const opportunity = await this.scheduler.shouldPostNow();
       
-      // DIVERSE topic seeds - rotate between different health areas
-      const diverseSeeds = this.getRotatingTopicSeeds();
+      // Create elite tweet with full AI power and learning integration
+      const eliteResult = await enhancedOrchestrator.createEliteTweet({
+        urgency: opportunity.urgency === 'high' ? 'high' : 'medium',
+        audience_analysis: {
+          engagement_window: opportunity.score,
+          trending_topics: opportunity.contentHints,
+          market_opportunity: opportunity.urgency
+        },
+        recent_performance: await this.getRecentPostsForDiversity(),
+        learning_insights: [] // Will be enhanced once learning engine API is updated
+      });
       
-      // Generate diverse content pack
-      const contentPack = await operator.generateContentPack(brandNotes, diverseSeeds, recentPosts);
+      console.log(`✅ ENHANCED_AI: Generated elite content (Quality: ${eliteResult.quality_score.toFixed(2)}, Viral: ${(eliteResult.viral_probability * 100).toFixed(1)}%)`);
+      console.log(`🧠 LEARNING_APPLIED: ${eliteResult.learning_applied.join(', ')}`);
+      console.log(`🎯 AI_REASONING: ${eliteResult.openai_reasoning}`);
       
-      // IMPROVED DECISION LOGIC: More threads for better engagement
-      const formatDecision = Math.random();
+      // Store the AI decision for outcome tracking
+      const { getUnifiedDataManager } = await import('../lib/unifiedDataManager');
+      const dataManager = getUnifiedDataManager();
       
-      // Check if any single mentions "deep dive", "explore", "thread", etc. - if so, force thread mode
-      const needsThreadContent = contentPack.singles.some(single => 
-        single.toLowerCase().includes('deep') ||
-        single.toLowerCase().includes('explore') ||
-        single.toLowerCase().includes('dive') ||
-        single.toLowerCase().includes('thread') ||
-        single.toLowerCase().includes('more on this') ||
-        single.toLowerCase().includes('here\'s what') ||
-        single.length > 200 // Long content should be threads
-      );
-      
-      // IMPROVED THREAD LOGIC: Post threads more frequently and when content warrants it
-      if ((formatDecision < 0.6 || needsThreadContent) && contentPack.threads && contentPack.threads.length > 0) {
-        // Post a thread (60% chance OR if content suggests thread needed) - INCREASED from 40%
-        const selectedThread = contentPack.threads[Math.floor(Math.random() * contentPack.threads.length)];
-        console.log(`🧵 THREAD_MODE: Selected thread on "${selectedThread.topic}" (${selectedThread.tweets.length} tweets)`);
-        
-        if (needsThreadContent) {
-          console.log(`🧵 THREAD_FORCED: Single content mentioned deep content - posting thread instead`);
+      await dataManager.storeAIDecision({
+        decisionTimestamp: new Date(),
+        decisionType: 'content_generation',
+        recommendation: {
+          content: eliteResult.content,
+          strategy: 'enhanced_orchestrator',
+          quality_score: eliteResult.quality_score,
+          viral_probability: eliteResult.viral_probability
+        },
+        confidence: eliteResult.quality_score,
+        reasoning: eliteResult.openai_reasoning,
+        dataPointsUsed: eliteResult.learning_applied.length,
+        contextData: {
+          urgency: opportunity.urgency,
+          opportunity_score: opportunity.score,
+          learning_applied: eliteResult.learning_applied
         }
-        
-        // FIXED: Actually post the full thread, not just the first tweet
-        return await this.postFullThread(selectedThread.tweets, selectedThread.topic);
-        
-      } else if (contentPack.singles && contentPack.singles.length > 0) {
-        // Post a single (40% chance) - REDUCED from 60% to favor threads
-        const randomIndex = Math.floor(Math.random() * contentPack.singles.length);
-        let selectedContent = contentPack.singles[randomIndex];
-        
-        console.log(`🎯 Generated diverse content (quality: ${contentPack.metadata.qualityScores?.[randomIndex] || 'unknown'}, diversity: ${contentPack.metadata.diversityScore})`);
-        console.log(`📊 Format mix: ${contentPack.metadata.formatMix?.join(', ')}`);
-        console.log(`🔄 Topic rotation: ${diverseSeeds.slice(0, 3).join(', ')}`);
-        
-        // CRITICAL FIX: Remove thread emojis from single tweets
-        selectedContent = selectedContent.replace(/🧵\s*/g, '').trim();
-        if (selectedContent.endsWith('.')) {
-          selectedContent = selectedContent.slice(0, -1).trim() + '.';
-        }
-        console.log(`🧹 SINGLE_CLEANUP: Removed thread indicators for single posting`);
-        
-        // 🚀 AGGRESSIVE LEARNING: Optimize content based on recent engagement patterns
-        try {
-          const { AggressiveLearningEngine } = await import('../intelligence/aggressiveLearningEngine');
-          const learningEngine = AggressiveLearningEngine.getInstance();
-          
-          console.log('🧠 APPLYING_AGGRESSIVE_LEARNING: Optimizing content for maximum engagement');
-          
-          const optimization = await learningEngine.optimizeContentForMaxEngagement(selectedContent);
-          
-          if (optimization.predicted_engagement_boost > 0.1) {
-            console.log(`🚀 CONTENT_OPTIMIZED: ${optimization.improvements_applied.join(', ')} (+${(optimization.predicted_engagement_boost * 100).toFixed(0)}% predicted boost)`);
-            // Also clean optimized content
-            let optimizedContent = optimization.optimized_content.replace(/🧵\s*/g, '').trim();
-            return optimizedContent;
-          } else {
-            console.log('📝 CONTENT_UNCHANGED: Original content already optimal');
-            return selectedContent;
-          }
-        } catch (learningError) {
-          console.warn('⚠️ Learning optimization failed, using original content:', learningError);
-          return selectedContent;
-        }
-      }
+      });
       
-      console.warn('⚠️ Social Content Operator failed, falling back to emergency content');
-      return this.getEmergencyDiverseContent();
-      
+      return eliteResult.content;
     } catch (error: any) {
-      console.error('❌ Social Content Operator failed:', error.message);
-      return this.getEmergencyDiverseContent();
+      console.error('❌ ENHANCED_AI: Elite content generation failed, using fallback:', error.message);
+      
+      // Fallback to simple content generation
+      return `New health optimization insight: ${error.message.includes('budget') ? 'Budget exceeded - posting simple insight' : 'AI system temporarily unavailable'}.`;
     }
   }
 
