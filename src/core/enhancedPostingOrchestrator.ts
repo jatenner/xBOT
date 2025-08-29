@@ -8,6 +8,7 @@
 import { getOpenAIService } from '../services/openAIService';
 import { getUnifiedDataManager } from '../lib/unifiedDataManager';
 import { getContentQualityEnhancer } from '../ai/qualityEnhancer';
+import { getGrowthAccelerationEngine } from '../ai/growthAccelerationEngine';
 import { getOutcomeLearningEngine } from '../intelligence/outcomeLearningEngine';
 
 interface ElitePostRequest {
@@ -199,7 +200,7 @@ Return JSON with specific, actionable insights:
 
   /**
    * 🎨 GENERATE ELITE CONTENT
-   * Maximum OpenAI utilization for content creation
+   * Maximum OpenAI utilization for content creation with growth acceleration
    */
   private async generateEliteContent(
     request: ElitePostRequest,
@@ -207,6 +208,24 @@ Return JSON with specific, actionable insights:
     performanceAnalysis: any
   ): Promise<{ content: string; strategy: string; reasoning: string }> {
     console.log('🎨 ENHANCED_ORCHESTRATOR: Generating elite content with full AI power...');
+
+    // 🚀 GROWTH ACCELERATION: Check if we should use advanced tactics
+    const growthEngine = getGrowthAccelerationEngine();
+    const nextAction = await growthEngine.getNextGrowthAction();
+    
+    console.log(`🚀 GROWTH_ACTION: ${nextAction.action} (${nextAction.priority} priority)`);
+    
+    // Apply growth acceleration based on current phase
+    if (nextAction.action === 'Generate contrarian content' && nextAction.priority === 'high') {
+      console.log('🔥 ENHANCED_ORCHESTRATOR: Applying contrarian content strategy...');
+      const contrarianContent = await growthEngine.generateContrarianContent('health optimization');
+      
+      // Use contrarian approach in content generation
+      if (contrarianContent.controversyLevel >= 6) {
+        request.urgency = 'viral';
+        console.log(`💥 CONTROVERSY_BOOST: Level ${contrarianContent.controversyLevel}/10 - upgrading to viral urgency`);
+      }
+    }
 
     const elitePrompt = `Create an elite Twitter post for health optimization account @SignalAndSynapse.
 
