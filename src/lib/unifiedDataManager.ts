@@ -10,6 +10,7 @@
 
 import { supabase } from './supabaseClients';
 import { getSmartCacheManager } from './smartCacheManager';
+import { emergencyDuplicateCheck, emergencyCache } from './emergencyFallbacks';
 
 interface UnifiedPost {
   id?: number;
@@ -74,9 +75,18 @@ interface UnifiedMetrics {
 
 export class UnifiedDataManager {
   private static instance: UnifiedDataManager;
-  private cacheManager = getSmartCacheManager();
+  private cacheManager: any;
+  private useEmergencyMode = false;
 
-  private constructor() {}
+  private constructor() {
+    try {
+      this.cacheManager = getSmartCacheManager();
+    } catch (error) {
+      console.warn('⚠️ Smart cache manager failed, using emergency fallback');
+      this.cacheManager = emergencyCache;
+      this.useEmergencyMode = true;
+    }
+  }
 
   public static getInstance(): UnifiedDataManager {
     if (!UnifiedDataManager.instance) {
@@ -111,8 +121,8 @@ export class UnifiedDataManager {
         lastUpdated: now
       };
 
-      // Store in Supabase
-      const { error } = await supabase.from('unified_posts').upsert({
+      // Store in Supabase (with fallback to legacy tables)
+      let { error } = await supabase.from('unified_posts').upsert({
         post_id: enrichedData.postId,
         thread_id: enrichedData.threadId,
         post_index: enrichedData.postIndex,
@@ -142,7 +152,27 @@ export class UnifiedDataManager {
         last_updated: enrichedData.lastUpdated?.toISOString()
       });
 
-      if (error) throw error;
+      if (error) {
+        console.warn('⚠️ Unified table not available, using legacy storage:', error.message);
+        
+        // Fallback to legacy tweets table
+        const { error: legacyError } = await supabase.from('tweets').upsert({
+          tweet_id: enrichedData.postId,
+          content: enrichedData.content,
+          posted_at: enrichedData.postedAt.toISOString(),
+          likes: enrichedData.likes,
+          retweets: enrichedData.retweets,
+          replies: enrichedData.replies,
+          created_at: enrichedData.createdAt?.toISOString()
+        });
+        
+        if (legacyError) {
+          console.error('❌ Legacy storage also failed:', legacyError.message);
+          // Don't throw - allow system to continue
+        } else {
+          console.log('✅ Stored in legacy tweets table');
+        }
+      }
 
       // Cache the post
       await this.cacheManager.set(`post:${postData.postId}`, enrichedData, 'recent_tweets'); // 1 hour cache
@@ -381,8 +411,8 @@ export class UnifiedDataManager {
       });
 
       if (error) {
-        console.error('❌ Duplicate check failed:', error.message);
-        return { isDuplicate: false };
+        console.warn('⚠️ Duplicate check function not available, using emergency fallback');
+        return await emergencyDuplicateCheck(content);
       }
 
       const result = data?.[0];
@@ -398,8 +428,8 @@ export class UnifiedDataManager {
       return { isDuplicate: false };
 
     } catch (error: any) {
-      console.error('❌ Duplicate check error:', error.message);
-      return { isDuplicate: false }; // Fail open to avoid blocking posts
+      console.warn('❌ Duplicate check error, using emergency fallback:', error.message);
+      return await emergencyDuplicateCheck(content);
     }
   }
 
