@@ -12,6 +12,8 @@ import { getGrowthAccelerationEngine } from '../ai/growthAccelerationEngine';
 import { getOutcomeLearningEngine } from '../intelligence/outcomeLearningEngine';
 import { getEnhancedMetricsCollector } from '../intelligence/enhancedMetricsCollector';
 import { getPerformancePredictionEngine } from '../intelligence/performancePredictionEngine';
+import { getAdvancedAIOrchestrator } from '../ai/advancedAIOrchestrator';
+import { getViralTrendMonitor } from '../intelligence/viralTrendMonitor';
 
 interface ElitePostRequest {
   topic?: string;
@@ -38,6 +40,8 @@ export class EnhancedPostingOrchestrator {
   private learningEngine = getOutcomeLearningEngine();
   private metricsCollector = getEnhancedMetricsCollector();
   private predictionEngine = getPerformancePredictionEngine();
+  private advancedAI = getAdvancedAIOrchestrator();
+  private trendMonitor = getViralTrendMonitor();
 
   private constructor() {}
 
@@ -562,6 +566,113 @@ Return JSON:
     } catch (error: any) {
       console.error('❌ Enhanced metrics collection failed:', error.message);
     }
+  }
+
+  /**
+   * 🤖 CREATE VIRAL CONTENT WITH ADVANCED AI
+   * Use multi-model AI orchestration for elite content
+   */
+  public async createViralContent(
+    topic: string,
+    urgency: 'immediate' | 'high' | 'medium' = 'high'
+  ): Promise<{
+    content: string;
+    viral_probability: number;
+    confidence: number;
+    emotional_triggers: string[];
+    model_contributions: string[];
+    optimization_applied: string[];
+  }> {
+    console.log(`🤖 ENHANCED_ORCHESTRATOR: Creating viral content with advanced AI for ${topic}...`);
+
+    try {
+      // Gather context for AI orchestration
+      const learningContext = await this.gatherLearningContext();
+      const performanceAnalysis = await this.analyzeCurrentPerformance();
+      
+      // Use advanced AI orchestrator for multi-model content creation
+      const advancedContent = await this.advancedAI.createEliteContent(
+        topic,
+        {
+          audience_size: 25,
+          recent_performance: performanceAnalysis,
+          learning_insights: learningContext,
+          account_voice: 'health optimization expert',
+          target_demographic: 'health enthusiasts, biohackers, optimization seekers'
+        },
+        {
+          urgency,
+          viral_threshold: 0.7, // 70% viral probability minimum
+          engagement_target: 'maximize',
+          follower_growth: 'prioritize'
+        }
+      );
+
+      console.log(`🚀 VIRAL_CONTENT: Generated with ${(advancedContent.viral_probability * 100).toFixed(1)}% viral probability`);
+      console.log(`💝 EMOTIONAL_TRIGGERS: ${advancedContent.emotional_triggers.join(', ')}`);
+      console.log(`🤖 MODEL_CONTRIBUTIONS: ${advancedContent.model_contributions.join(', ')}`);
+
+      return {
+        content: advancedContent.content,
+        viral_probability: advancedContent.viral_probability,
+        confidence: advancedContent.confidence,
+        emotional_triggers: advancedContent.emotional_triggers,
+        model_contributions: advancedContent.model_contributions,
+        optimization_applied: [advancedContent.reasoning]
+      };
+    } catch (error: any) {
+      console.error('❌ Advanced viral content creation failed:', error.message);
+      
+      // Fallback to standard elite content
+      const fallbackRequest: ElitePostRequest = {
+        topic,
+        urgency: urgency === 'immediate' ? 'viral' : 'high',
+        audience_analysis: {},
+        recent_performance: {},
+        learning_insights: {}
+      };
+      
+      const fallbackContent = await this.createEliteTweet(fallbackRequest);
+      
+      return {
+        content: fallbackContent.content,
+        viral_probability: fallbackContent.viral_probability,
+        confidence: fallbackContent.quality_score,
+        emotional_triggers: ['curiosity'],
+        model_contributions: ['Fallback Generator'],
+        optimization_applied: ['Fallback due to advanced AI failure']
+      };
+    }
+  }
+
+  /**
+   * 📈 START VIRAL TREND MONITORING
+   * Begin real-time monitoring for viral opportunities
+   */
+  public async startViralMonitoring(): Promise<void> {
+    console.log('📈 ENHANCED_ORCHESTRATOR: Starting viral trend monitoring...');
+    
+    try {
+      await this.trendMonitor.startMonitoring();
+      console.log('✅ VIRAL_MONITORING: Real-time trend monitoring active');
+    } catch (error: any) {
+      console.error('❌ Viral monitoring failed to start:', error.message);
+    }
+  }
+
+  /**
+   * 🛑 STOP VIRAL TREND MONITORING
+   */
+  public stopViralMonitoring(): void {
+    console.log('🛑 ENHANCED_ORCHESTRATOR: Stopping viral trend monitoring...');
+    this.trendMonitor.stopMonitoring();
+  }
+
+  /**
+   * 📊 GET VIRAL MONITORING STATUS
+   */
+  public getViralMonitoringStatus(): any {
+    return this.trendMonitor.getStatus();
   }
 
   /**
