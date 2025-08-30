@@ -130,7 +130,7 @@ export class OptimizedPostingEngine {
       const timeSinceLastPost = Date.now() - this.metrics.lastPostTime.getTime();
       const hoursSinceLastPost = timeSinceLastPost / (1000 * 60 * 60);
       
-      if (hoursSinceLastPost < 3) {
+      if (hoursSinceLastPost < 1.5) { // Reduced from 3h to 1.5h
         return {
           shouldPost: false,
           reason: `Too soon (${hoursSinceLastPost.toFixed(1)}h ago)`,
@@ -138,8 +138,8 @@ export class OptimizedPostingEngine {
         };
       }
       
-      // 2. Check daily limits
-      if (this.metrics.postsToday >= 8) {
+      // 2. Check daily limits - increased for growth
+      if (this.metrics.postsToday >= 16) { // Increased from 8 to 16
         return {
           shouldPost: false,
           reason: 'Daily post limit reached',

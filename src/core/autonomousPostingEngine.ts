@@ -134,10 +134,12 @@ export class AutonomousPostingEngine {
             return;
           }
 
-          // QUALITY CONTROL: minimum 4 hours between post attempts
+          // GROWTH OPTIMIZED: minimum 90 minutes between posts for small accounts
           const timeSinceLastAttempt = Date.now() - this.lastPostAttempt;
-          if (timeSinceLastAttempt < 4 * 60 * 60 * 1000) { // FIXED: 4 hours minimum between posts (was 5 minutes)
-            logInfo(`⏳ ANTI-SPAM: Last post ${Math.round(timeSinceLastAttempt/(60*60*1000))}h ago, waiting ${Math.round((4*60*60*1000-timeSinceLastAttempt)/(60*60*1000))}h more...`);
+          const minInterval = 90 * 60 * 1000; // 90 minutes for growth
+          if (timeSinceLastAttempt < minInterval) {
+            const waitMinutes = Math.round((minInterval - timeSinceLastAttempt) / (60 * 1000));
+            logInfo(`⏳ GROWTH_SPACING: Last post ${Math.round(timeSinceLastAttempt/(60*1000))}min ago, waiting ${waitMinutes}min more for optimal growth...`);
             return;
           }
 
