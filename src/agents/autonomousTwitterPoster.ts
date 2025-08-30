@@ -306,10 +306,83 @@ export class AutonomousTwitterPoster {
       
       await page.waitForTimeout(3000);
 
-      // Extract tweet ID from URL (simplified)
-      const currentUrl = page.url();
-      const tweetIdMatch = currentUrl.match(/status\/(\d+)/);
-      const tweetId = tweetIdMatch ? tweetIdMatch[1] : `browser_${Date.now()}`;
+      // Enhanced tweet ID extraction with multiple strategies
+      let tweetId = `browser_${Date.now()}`; // fallback
+      
+      try {
+        console.log('🔍 ENHANCED_TWEET_ID_EXTRACTION: Starting multi-strategy capture...');
+        
+        // Strategy 1: Check current URL first
+        const currentUrl = page.url();
+        console.log(`📍 Current URL: ${currentUrl}`);
+        
+        if (currentUrl.includes('/status/')) {
+          const urlMatch = currentUrl.match(/status\/(\d+)/);
+          if (urlMatch && urlMatch[1]) {
+            tweetId = urlMatch[1];
+            console.log(`✅ CAPTURED_FROM_URL: ${tweetId}`);
+          }
+        } else {
+          // Strategy 2: Look for status links on page
+          const selectors = [
+            'a[href*="/status/"]',
+            'article a[href*="/status/"]',
+            'div[data-testid="tweet"] a[href*="/status/"]',
+            'time[datetime] ~ a[href*="/status/"]'
+          ];
+          
+          for (const selector of selectors) {
+            try {
+              const anchor = await page.waitForSelector(selector, { timeout: 5000 });
+              if (anchor) {
+                const href = await anchor.getAttribute('href');
+                if (href) {
+                  const match = href.match(/status\/(\d+)/);
+                  if (match && match[1]) {
+                    tweetId = match[1];
+                    console.log(`✅ CAPTURED_FROM_SELECTOR: ${tweetId}`);
+                    break;
+                  }
+                }
+              }
+            } catch {
+              continue; // Try next selector
+            }
+          }
+          
+          // Strategy 3: Navigate to home and look for our tweet
+          if (tweetId.startsWith('browser_')) {
+            console.log('🔄 Navigating to home to find tweet...');
+            await page.goto('https://x.com/home', { waitUntil: 'domcontentloaded' });
+            await page.waitForTimeout(3000);
+            
+            // Look for status links
+            const allLinks = await page.$$eval('a[href*="/status/"]', links => 
+              links.map(link => link.getAttribute('href')).filter(Boolean)
+            ).catch(() => []);
+            
+            if (allLinks.length > 0) {
+              // Get the most recent tweet ID (highest number)
+              const tweetIds = allLinks
+                .map(href => href?.match(/status\/(\d+)/)?.[1])
+                .filter(Boolean)
+                .filter(id => id && id.length >= 15 && id.length <= 19);
+              
+              if (tweetIds.length > 0) {
+                const latestId = tweetIds.sort().pop();
+                if (latestId) {
+                  tweetId = latestId;
+                  console.log(`✅ CAPTURED_FROM_HOME: ${tweetId}`);
+                }
+              }
+            }
+          }
+        }
+        
+      } catch (extractError) {
+        console.warn(`⚠️ Enhanced tweet ID extraction failed: ${extractError}`);
+        console.log(`🔄 Using fallback ID: ${tweetId}`);
+      }
 
       console.log(`POST_DONE: id=${tweetId}`);
       
