@@ -69,45 +69,118 @@ async function openReplyComposer(page: Page, rootUrl: string): Promise<void> {
 }
 
 /**
- * Capture numeric tweet ID from timeline after posting
+ * Capture numeric tweet ID from timeline after posting - ENHANCED VERSION
  */
-async function captureTweetId(page: Page, attempts: number = 3): Promise<string> {
+async function captureTweetId(page: Page, attempts: number = 5): Promise<string> {
+  console.log('🔍 ENHANCED_TWEET_ID_CAPTURE: Starting with multiple strategies');
+  
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
       console.log(`🔍 TWEET_ID_CAPTURE attempt ${attempt}/${attempts}`);
       
-      // Wait for timeline redirect and find status links
-      const anchor = await page.waitForSelector('a[href*="/status/"]:has(time)', { 
-        timeout: 15000 
-      });
+      // Strategy 1: Check current URL for status pattern
+      const currentUrl = page.url();
+      console.log(`📍 Current URL: ${currentUrl}`);
       
-      const href = await anchor.getAttribute('href');
-      if (!href) {
-        throw new Error('No href found on status link');
+      if (currentUrl.includes('/status/')) {
+        const urlMatch = currentUrl.match(/status\/(\d+)/);
+        if (urlMatch && urlMatch[1]) {
+          const tweetId = urlMatch[1];
+          console.log(`✅ CAPTURED_FROM_URL: ${tweetId}`);
+          return tweetId;
+        }
       }
       
-      // Extract numeric ID from URL like "/username/status/1956900962406199599"
-      const match = href.match(/status\/(\d+)/);
-      if (!match || !match[1]) {
-        throw new Error(`Invalid status URL format: ${href}`);
+      // Strategy 2: Look for status links with multiple selectors
+      const selectors = [
+        'a[href*="/status/"]:has(time)',
+        'a[href*="/status/"]',
+        'article a[href*="/status/"]',
+        'div[data-testid="tweet"] a[href*="/status/"]',
+        'time[datetime] ~ a[href*="/status/"], time[datetime] + a[href*="/status/"]',
+        '[data-testid="User-Name"] a[href*="/status/"]'
+      ];
+      
+      for (const selector of selectors) {
+        try {
+          console.log(`🎯 Trying selector: ${selector}`);
+          const anchor = await page.waitForSelector(selector, { timeout: 8000 });
+          
+          if (anchor) {
+            const href = await anchor.getAttribute('href');
+            if (href) {
+              const match = href.match(/status\/(\d+)/);
+              if (match && match[1]) {
+                const tweetId = match[1];
+                console.log(`✅ CAPTURED_FROM_SELECTOR: ${tweetId} (${selector})`);
+                return tweetId;
+              }
+            }
+          }
+        } catch (selectorError) {
+          console.log(`⚠️ Selector failed: ${selector}`);
+        }
       }
       
-      const tweetId = match[1];
-      console.log(`✅ CAPTURED_TWEET_ID ${JSON.stringify({ tweetId, url: href })}`);
-      return tweetId;
+      // Strategy 3: Check page navigation history
+      try {
+        // Wait a bit for potential navigation
+        await page.waitForTimeout(2000);
+        
+        // Get all links that might contain our tweet
+        const allLinks = await page.$$eval('a[href*="/status/"]', links => 
+          links.map(link => link.getAttribute('href')).filter(Boolean)
+        );
+        
+        console.log(`🔗 Found ${allLinks.length} status links`);
+        
+        // Look for the most recent one (usually ours)
+        const validIds = allLinks
+          .map(href => href?.match(/status\/(\d+)/)?.[1])
+          .filter(Boolean)
+          .filter(id => id && id.length >= 15 && id.length <= 19);
+        
+        if (validIds.length > 0) {
+          // Get the highest ID (most recent)
+          const latestId = validIds.sort().pop();
+          if (latestId) {
+            console.log(`✅ CAPTURED_FROM_LINKS: ${latestId}`);
+            return latestId;
+          }
+        }
+      } catch (linkError) {
+        console.warn(`⚠️ Link strategy failed: ${linkError}`);
+      }
+      
+      // Strategy 4: Try to trigger a page refresh to get to timeline
+      if (attempt <= 3) {
+        console.log('🔄 Refreshing page to trigger timeline redirect...');
+        await page.keyboard.press('F5');
+        await page.waitForLoadState('domcontentloaded');
+        await page.waitForTimeout(3000);
+      }
       
     } catch (error) {
       console.warn(`⚠️ TWEET_ID_CAPTURE_ATTEMPT_${attempt}_FAILED: ${error}`);
       
       if (attempt < attempts) {
-        // Scroll a bit and try again
-        await page.keyboard.press('ArrowDown');
-        await page.waitForTimeout(1000);
+        // Try different navigation approaches
+        if (attempt === 2) {
+          await page.goBack().catch(() => {});
+          await page.waitForTimeout(2000);
+        } else if (attempt === 3) {
+          await page.goto('https://x.com/home', { waitUntil: 'domcontentloaded' });
+          await page.waitForTimeout(3000);
+        } else {
+          await page.keyboard.press('ArrowDown');
+          await page.waitForTimeout(1500);
+        }
       }
     }
   }
   
-  throw new Error('TWEET_ID_CAPTURE_FAILED after all attempts');
+  console.error('❌ All tweet ID capture strategies failed');
+  throw new Error('ENHANCED_TWEET_ID_CAPTURE_FAILED after all strategies');
 }
 
 /**
