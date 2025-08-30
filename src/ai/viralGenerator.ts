@@ -124,9 +124,10 @@ export class ViralContentGenerator {
 
       let content: ViralContentResult;
       try {
-        content = JSON.parse(rawContent);
+        const { safeJsonParse } = await import('../utils/jsonCleaner');
+        content = safeJsonParse(rawContent);
       } catch (error) {
-        return { success: false, error: 'Invalid JSON response from viral generator' };
+        return { success: false, error: `Invalid JSON response from viral generator: ${error instanceof Error ? error.message : 'Unknown error'}` };
       }
 
       // Validate viral content structure

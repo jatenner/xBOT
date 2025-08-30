@@ -24,8 +24,8 @@ export class SimplifiedPostingEngine {
   private static instance: SimplifiedPostingEngine;
   private isPosting = false;
   private lastPostTime = 0;
-  private readonly MIN_POST_INTERVAL = 45 * 60 * 1000; // 45 minutes
-  private readonly MAX_DAILY_POSTS = 12; // Conservative limit
+  private readonly MIN_POST_INTERVAL = 60 * 60 * 1000; // 60 minutes for growth
+  private readonly MAX_DAILY_POSTS = 20; // Increased for small account growth
   private dailyPostCount = 0;
   private lastResetDate = new Date().toDateString();
 

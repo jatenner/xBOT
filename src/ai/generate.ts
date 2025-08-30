@@ -135,12 +135,13 @@ export class ContentGenerator {
         return { success: false, error: 'No content returned from OpenAI' };
       }
 
-      // Parse and validate JSON
+      // Parse and validate JSON with robust cleaning
       let content: ContentResult;
       try {
-        content = JSON.parse(rawContent);
+        const { safeJsonParse } = await import('../utils/jsonCleaner');
+        content = safeJsonParse(rawContent);
       } catch (error) {
-        return { success: false, error: 'Invalid JSON response from OpenAI' };
+        return { success: false, error: `Invalid JSON response from OpenAI: ${error instanceof Error ? error.message : 'Unknown error'}` };
       }
 
       // Basic validation

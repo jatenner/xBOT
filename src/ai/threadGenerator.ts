@@ -138,7 +138,8 @@ Return JSON matching the exact schema in system prompt.
   
   let parsed;
   try {
-    parsed = JSON.parse(raw);
+    const { safeJsonParse } = await import('../utils/jsonCleaner');
+    parsed = safeJsonParse(raw);
   } catch (error) {
     throw new Error(`Invalid JSON from LLM: ${error}`);
   }
@@ -215,7 +216,8 @@ Return JSON matching the exact format specified in system prompt.
   });
 
   const raw = response.choices?.[0]?.message?.content ?? '{}';
-  const parsed = JSON.parse(raw);
+  const { safeJsonParse } = await import('../utils/jsonCleaner');
+  const parsed = safeJsonParse(raw);
   const schemaResult = ThreadSchema.safeParse(parsed);
   
   if (!schemaResult.success) {
