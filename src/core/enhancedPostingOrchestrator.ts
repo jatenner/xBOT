@@ -199,7 +199,8 @@ Return JSON with specific, actionable insights:
         rawContent = rawContent.replace(/```json\s*/g, '').replace(/```\s*$/g, '');
       }
       
-      const analysis = JSON.parse(rawContent);
+      const { safeJsonParse } = await import('../utils/jsonCleaner');
+      const analysis = safeJsonParse(rawContent);
       console.log('✅ PERFORMANCE_ANALYSIS: Generated insights from', recentPosts.length, 'posts');
       
       return analysis;
@@ -309,7 +310,8 @@ Return JSON:
         rawContent = rawContent.replace(/```json\s*/g, '').replace(/```\s*$/g, '');
       }
       
-      const result = JSON.parse(rawContent);
+      const { safeJsonParse } = await import('../utils/jsonCleaner');
+      const result = safeJsonParse(rawContent);
       console.log('✅ ELITE_CONTENT: Generated with strategy:', result.strategy);
       
       return {

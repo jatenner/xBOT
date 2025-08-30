@@ -98,7 +98,8 @@ Return JSON with: commonBelief, personalExperience, evidence, callToAction, cont
         priority: 'high'
       });
 
-      const content = JSON.parse(response.choices[0]?.message?.content || '{}');
+      const { safeJsonParse } = await import('../utils/jsonCleaner');
+      const content = safeJsonParse(response.choices[0]?.message?.content || '{}');
       
       console.log(`✅ CONTRARIAN_CONTENT: Generated controversy level ${content.controversyLevel}/10`);
       
