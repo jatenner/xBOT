@@ -103,8 +103,8 @@ export class AutonomousPostingEngine {
       return;
     }
 
-    console.log('🚀 Starting AGGRESSIVE GROWTH posting schedule...');
-    console.log('🎯 TARGET: Post every 60-90 minutes for maximum engagement');
+    console.log('🚀 Starting AI-DRIVEN posting schedule...');
+    console.log('🧠 INTELLIGENT: AI determines optimal posting times based on data and follower patterns');
     
     // AGGRESSIVE: Check every 15 minutes for growth opportunities
     this.intelligentTimerInterval = setInterval(async () => {
@@ -134,14 +134,18 @@ export class AutonomousPostingEngine {
             return;
           }
 
-          // GROWTH OPTIMIZED: minimum 90 minutes between posts for small accounts
-          const timeSinceLastAttempt = Date.now() - this.lastPostAttempt;
-          const minInterval = 90 * 60 * 1000; // 90 minutes for growth
-          if (timeSinceLastAttempt < minInterval) {
-            const waitMinutes = Math.round((minInterval - timeSinceLastAttempt) / (60 * 1000));
-            logInfo(`⏳ GROWTH_SPACING: Last post ${Math.round(timeSinceLastAttempt/(60*1000))}min ago, waiting ${waitMinutes}min more for optimal growth...`);
+          // AI-DRIVEN TIMING: Let AdaptivePostingScheduler determine optimal timing
+          const opportunity = await this.scheduler.shouldPostNow();
+          
+          // Respect AI-driven timing decisions
+          if (opportunity.score < 50 && opportunity.urgency !== 'high') {
+            const waitMinutes = opportunity.suggestedDelay;
+            logInfo(`🧠 AI_TIMING: Waiting ${waitMinutes}min for better opportunity (score: ${Math.round(opportunity.score)}/100)`);
+            logInfo(`🎯 AI_REASON: ${opportunity.reason}`);
             return;
           }
+          
+          logInfo(`🚀 AI_OPPORTUNITY: Score ${Math.round(opportunity.score)}/100 - ${opportunity.reason}`);
 
           // Concurrency check: don't start new post if one is in progress
           if (this.isPosting) {
@@ -206,9 +210,9 @@ export class AutonomousPostingEngine {
     }, 2 * 60 * 1000);
 
     this.isRunning = true;
-    console.log('✅ AGGRESSIVE GROWTH posting system activated');
-    console.log('🎯 Will analyze posting opportunities every 15 minutes for maximum engagement');
-    console.log('🚀 TARGET: Post every 60-90 minutes when opportunity score is high');
+    console.log('✅ AI-DRIVEN posting system activated');
+    console.log('🧠 Will analyze posting opportunities every 15 minutes using intelligent data');
+    console.log('🎯 DYNAMIC: Posts when AI determines optimal conditions (trending topics, engagement windows, audience activity)');
   }
 
   /**
