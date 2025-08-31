@@ -77,11 +77,19 @@ export class SimplifiedPostingEngine {
     try {
       logInfo('SIMPLE_POST', `Creating engaging post ${this.dailyPostCount + 1}/${this.MAX_DAILY_POSTS}`);
 
-      // Generate high-engagement content
+      // Generate high-engagement content with AI format decision
       const contentGenerator = await getContentGenerator();
+      
+      // Let AI decide between single tweet vs thread based on topic and content needs
+      const { getAIContentDecisionEngine } = await import('../ai/aiContentDecisionEngine');
+      const aiDecisionEngine = getAIContentDecisionEngine();
+      const formatDecision = await aiDecisionEngine.makeFormatDecision(topic || 'health breakthrough', 'personal');
+      
+      console.log(`🧠 AI_FORMAT_DECISION: ${formatDecision.content_format} - ${formatDecision.decision.ai_reasoning}`);
+      
       const generationParams = {
         topic: topic || 'health breakthrough',
-        format: 'single' as const,
+        format: formatDecision.content_format, // AI decides: 'single' or 'thread'
         urgency: 'high' as const
       };
       
@@ -91,24 +99,49 @@ export class SimplifiedPostingEngine {
         throw new Error('Failed to generate content');
       }
 
-      // Get the first tweet from the generated content
-      const tweetContent = generationResult.content.tweets[0];
-      if (!tweetContent) {
-        throw new Error('No tweet content generated');
-      }
-
+      // Handle both single tweets and threads
+      const isThread = generationResult.content.tweets.length > 1;
+      
       // Validate for engagement potential
       const validation = await validateContent(generationResult.content);
       if (!validation.passed) {
         throw new Error(`Content validation failed: ${validation.errors?.join(', ') || 'Unknown validation error'}`);
       }
 
-      // Optimize for engagement
-      const optimizedContent = this.optimizeForEngagement(tweetContent);
-      
-      // Post to Twitter using the postSingleTweet method
-      const poster = new TwitterPoster();
-      const postResult = await poster.postSingleTweet(optimizedContent);
+      let postResult;
+      if (isThread) {
+        console.log(`🧵 SIMPLE_POST: Posting ${generationResult.content.tweets.length}-tweet thread`);
+        
+        // Use UnifiedPostingManager for thread posting
+        const { UnifiedPostingManager } = await import('../posting/unifiedPostingManager');
+        const unifiedPoster = UnifiedPostingManager.getInstance();
+        
+        // Optimize all tweets in the thread
+        const optimizedTweets = generationResult.content.tweets.map(tweet => 
+          this.optimizeForEngagement(tweet)
+        );
+        
+        postResult = await unifiedPoster.post(optimizedTweets, {
+          topic: generationParams.topic,
+          retryAttempts: 2
+        });
+        
+      } else {
+        console.log('📝 SIMPLE_POST: Posting single tweet');
+        
+        // Get the single tweet content
+        const tweetContent = generationResult.content.tweets[0];
+        if (!tweetContent) {
+          throw new Error('No tweet content generated');
+        }
+        
+        // Optimize for engagement
+        const optimizedContent = this.optimizeForEngagement(tweetContent);
+        
+        // Post to Twitter using the postSingleTweet method  
+        const poster = new TwitterPoster();
+        postResult = await poster.postSingleTweet(optimizedContent);
+      }
       
       if (!postResult.success || !postResult.tweetId) {
         throw new Error(postResult.error || 'Failed to post to Twitter');
@@ -117,9 +150,13 @@ export class SimplifiedPostingEngine {
       // Track metrics immediately
       await scheduleMetricsTracking(postResult.tweetId);
       
-      // Store for learning
+      // Store for learning with correct format tracking
+      const contentForStorage = isThread ? 
+        (postResult as any).allTweets?.join('\n\n') || generationResult.content.tweets.join('\n\n') :
+        (postResult as any).content || generationResult.content.tweets[0];
+        
       await storeLearningPost({
-        content: optimizedContent,
+        content: contentForStorage,
         tweet_id: postResult.tweetId,
         quality_score: validation.score || 0
       });
@@ -128,13 +165,13 @@ export class SimplifiedPostingEngine {
       this.lastPostTime = now;
       this.dailyPostCount++;
 
-      logInfo('SIMPLE_POST', `✅ Posted successfully: ${postResult.tweetId}`);
+      logInfo('SIMPLE_POST', `✅ Posted ${isThread ? 'thread' : 'single tweet'} successfully: ${postResult.tweetId}`);
       logInfo('SIMPLE_POST', `📊 Daily posts: ${this.dailyPostCount}/${this.MAX_DAILY_POSTS}`);
 
       return {
         success: true,
         tweetId: postResult.tweetId,
-        content: optimizedContent,
+        content: contentForStorage,
         engagementPrediction: this.predictEngagement(optimizedContent)
       };
 
