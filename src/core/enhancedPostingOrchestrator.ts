@@ -71,16 +71,34 @@ export class EnhancedPostingOrchestrator {
       const performanceAnalysis = await this.analyzeCurrentPerformance();
       
       // Step 3: Generate elite content with OpenAI
+      // Use controversial topics for higher engagement if no topic specified
+      if (!request.topic) {
+        const { getRandomControversialTopic } = await import('../content/controversialHealthTopics');
+        const controversialTopic = getRandomControversialTopic();
+        request.topic = controversialTopic.topic;
+        console.log(`🔥 CONTROVERSIAL_TOPIC: Using ${request.topic} (viral potential: ${(controversialTopic.viral_potential * 100).toFixed(0)}%)`);
+      }
+      
       const eliteContent = await this.generateEliteContent(request, learningContext, performanceAnalysis);
       
-      // Step 4: Apply quality enhancements
+      // Step 4: Apply quality enhancements and content cleaning
       const qualityEnhanced = await this.qualityEnhancer.enhanceContent(eliteContent.content, eliteContent.strategy);
       
+      // Step 4.5: Clean content for viral quality (remove hashtags, emojis, banned phrases)
+      const { cleanContentForViral, isViralWorthy, addViralElements } = await import('../utils/contentCleaner');
+      let cleanedContent = cleanContentForViral(qualityEnhanced.content);
+      
+      // If content isn't viral-worthy, enhance it
+      if (!isViralWorthy(cleanedContent)) {
+        cleanedContent = addViralElements(cleanedContent, request.topic || 'health');
+        console.log('🔥 VIRAL_ENHANCER: Added viral elements to content');
+      }
+      
       // Step 5: Predict performance with OpenAI
-      const performancePrediction = await this.predictPerformance(qualityEnhanced.enhancedContent, learningContext);
+      const performancePrediction = await this.predictPerformance(cleanedContent, learningContext);
       
       // Step 6: Final optimization pass
-      const finalOptimized = await this.finalOptimizationPass(qualityEnhanced.enhancedContent, performancePrediction);
+      const finalOptimized = await this.finalOptimizationPass(cleanedContent, performancePrediction);
 
       return {
         content: finalOptimized.content,
@@ -740,7 +758,7 @@ Return JSON:
       );
 
       // Step 5: Final AI optimization based on predictions
-      const finalContent = contentPlan.expected_performance.viral_probability < 0.6
+      const finalContent = contentPlan.expected_performance.viral_probability < 0.7
         ? await this.aiOptimizeUnderperformingContent(formattedContent, contentPlan)
         : formattedContent;
 

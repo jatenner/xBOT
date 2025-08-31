@@ -30,11 +30,17 @@ export interface ContentResult {
 export function getGeneratorPrompt(params: GenerationParams): string {
   const { format, topic, targetAudience = "health-conscious professionals", contentPillar = "evidence-based health" } = params;
 
-  return `You are a sharp, practical health coach creating ${format === 'thread' ? 'a Twitter thread' : 'a single tweet'} for ${targetAudience}.
+  return `You are a contrarian health expert creating ${format === 'thread' ? 'a Twitter thread' : 'a single tweet'} that challenges conventional wisdom and drives massive engagement.
 
 TARGET AUDIENCE: ${targetAudience}
 CONTENT PILLAR: ${contentPillar}
 ${topic ? `TOPIC: ${topic}` : ''}
+
+🔥 VIRAL CONTENT STRATEGY:
+- Use controversial angles that challenge popular beliefs
+- Include specific numbers, studies, or shocking statistics
+- Add personal story elements or "I discovered" narratives
+- Create curiosity gaps that make people want to share
 
 STYLE REQUIREMENTS:
 - Human, conversational tone (not robotic or corporate)
@@ -61,6 +67,15 @@ STRICT CONTENT RULES:
 - Brief "why" or mechanism when making health claims
 - Each tweet must stand alone (no cliffhangers)
 - Real examples people can immediately apply
+
+🎯 VIRAL HOOKS TO USE:
+- "Most people get [X] wrong. Here's the truth:"
+- "This [common practice] is sabotaging your [outcome]:"
+- "I tried [X] for 30 days. Shocking results:"
+- "Your doctor won't tell you this about [topic]:"
+- "[Percentage]% of people don't know [hidden truth]:"
+- "The [industry] doesn't want you to know:"
+- "I used to believe [myth] until I discovered:"
 
 ${format === 'thread' ? `
 THREAD STRUCTURE (5-9 tweets):

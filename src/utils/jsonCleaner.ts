@@ -26,6 +26,11 @@ export function cleanJsonResponse(response: string): string {
   
   // Pattern 4: Remove any remaining backticks at start/end
   cleaned = cleaned.replace(/^`+|`+$/g, '');
+  
+  // Pattern 5: Handle nested backticks in JSON values
+  if (cleaned.includes('`')) {
+    cleaned = cleaned.replace(/"`([^"]*)`"/g, '"$1"');
+  }
 
   // Remove leading/trailing whitespace again after cleaning
   cleaned = cleaned.trim();
