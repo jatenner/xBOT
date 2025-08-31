@@ -118,6 +118,7 @@ class ConnectionPool {
   private connections: any[] = [];
   private available: any[] = [];
   private busy: Set<any> = new Set();
+  private isInitialized: boolean = false;
   
   constructor(
     private config: DatabaseConfig['supabase'],
@@ -135,6 +136,7 @@ class ConnectionPool {
     }
     
     console.log(`✅ Connection pool initialized with ${this.connections.length} connections`);
+    this.isInitialized = true;
   }
 
   async acquire(): Promise<any> {
