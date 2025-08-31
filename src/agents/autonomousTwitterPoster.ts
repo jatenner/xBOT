@@ -122,7 +122,7 @@ export class AutonomousTwitterPoster {
                   generatedContent.content.substring(0, 100) + '...');
 
       // Quality check
-      if (generatedContent.contentScore < 60 && !options.forcePost) {
+      if (generatedContent.contentScore < 45 && !options.forcePost) {
         console.log('⚠️ Content quality too low, regenerating...');
         return await this.createAndPostContent(request, options);
       }
