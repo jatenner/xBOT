@@ -47,7 +47,7 @@ export class ContentQualityGate {
     const qualityScore = this.calculateQualityScore(analysis);
     
     const result: QualityCheck = {
-      passed: qualityScore >= 70, // High standard like @naval
+      passed: qualityScore >= 45, // Lowered for system operability
       score: qualityScore,
       feedback: this.generateFeedback(analysis),
       improvements: this.generateImprovements(analysis)

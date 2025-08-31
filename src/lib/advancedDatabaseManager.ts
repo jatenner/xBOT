@@ -138,17 +138,24 @@ class ConnectionPool {
   }
 
   async acquire(): Promise<any> {
-    if (this.available.length === 0) {
-      // Wait for connection to become available
-      await new Promise(resolve => setTimeout(resolve, 100));
-      if (this.available.length === 0) {
-        throw new Error('No database connections available in pool');
-      }
+    if (!this.isInitialized || this.available.length === 0) {
+      // Fallback to direct Supabase client if pool not available
+      console.warn('⚠️ Pool not available, using direct Supabase client');
+      return this.createDirectConnection();
     }
 
     const connection = this.available.pop()!;
     this.busy.add(connection);
     return connection;
+  }
+
+  private createDirectConnection(): any {
+    // Return direct Supabase client as fallback
+    const { createClient } = require('@supabase/supabase-js');
+    return createClient(
+      process.env.SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
   }
 
   release(connection: any): void {
@@ -159,6 +166,9 @@ class ConnectionPool {
   }
 
   getStats() {
+    if (!this.isInitialized) {
+      return { total: 0, available: 0, busy: 0, status: 'not_initialized' };
+    }
     return {
       total: this.connections.length,
       available: this.available.length,
@@ -596,7 +606,7 @@ export class AdvancedDatabaseManager extends EventEmitter {
         latency: Date.now() - start,
         errorRate: 0,
         uptime: Date.now() - (this.healthStats.get('supabase')?.uptime || Date.now()),
-        connections: this.supabasePool.getStats()
+        connections: this.supabasePool?.getStats() || { total: 0, available: 0, busy: 0 }
       };
     } catch (error: any) {
       health.supabase = {
@@ -604,7 +614,7 @@ export class AdvancedDatabaseManager extends EventEmitter {
         latency: -1,
         errorRate: 100,
         lastError: error.message,
-        connections: this.supabasePool.getStats()
+        connections: this.supabasePool?.getStats() || { total: 0, available: 0, busy: 0 }
       };
     }
 
@@ -651,15 +661,15 @@ export class AdvancedDatabaseManager extends EventEmitter {
       averageLatency: recentMetrics.reduce((sum, m) => sum + m.duration, 0) / recentMetrics.length,
       cacheHitRate: recentMetrics.filter(m => m.cached).length / recentMetrics.length * 100,
       circuitBreakerState: this.circuitBreaker.getState(),
-      cacheStats: this.queryCache.getStats(),
-      connectionPoolStats: this.supabasePool.getStats()
+      cacheStats: this.queryCache?.getStats() || { size: 0, keys: [] },
+      connectionPoolStats: this.supabasePool?.getStats() || { total: 0, available: 0, busy: 0 }
     };
   }
 
   getSystemStatus() {
     return {
       initialized: this.isInitialized,
-      supabase: this.supabasePool.getStats(),
+      supabase: this.supabasePool?.getStats() || { total: 0, available: 0, busy: 0 },
       redis: !!(this.redis || this.redisCluster),
       transactions: this.transactions.size,
       metrics: this.metrics.length,

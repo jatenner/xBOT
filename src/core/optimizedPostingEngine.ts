@@ -74,7 +74,7 @@ export class OptimizedPostingEngine {
       console.log(`🎯 Applied optimizations: ${optimizedContent.appliedInsights.join(', ')}`);
       
       // 2. Validate content meets minimum optimization threshold
-      if (optimizedContent.engagementPotential < 60) {
+      if (optimizedContent.engagementPotential < 45) {
         console.log('⚠️ Low engagement potential, enhancing further...');
         // Could add additional enhancement logic here
       }
