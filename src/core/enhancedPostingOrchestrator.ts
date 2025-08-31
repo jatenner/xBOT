@@ -86,7 +86,7 @@ export class EnhancedPostingOrchestrator {
       
       // Step 4.5: Clean content for viral quality (remove hashtags, emojis, banned phrases)
       const { cleanContentForViral, isViralWorthy, addViralElements } = await import('../utils/contentCleaner');
-      let cleanedContent = cleanContentForViral(qualityEnhanced.content);
+      let cleanedContent = cleanContentForViral(qualityEnhanced.enhancedContent);
       
       // If content isn't viral-worthy, enhance it
       if (!isViralWorthy(cleanedContent)) {
