@@ -18,12 +18,19 @@ async function startSimpleThreadLoop() {
       const OpenAI = (await import('openai')).default;
       const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
       
+      // Get random viral topic for follower growth
+      const { getRandomViralTopic } = await import('./content/viralTopics');
+      const viralTopic = getRandomViralTopic();
+      
+      console.log(`🔥 VIRAL_TOPIC: ${viralTopic.topic} (${viralTopic.hook_type})`);
+      console.log(`🎯 APPEAL: ${viralTopic.follower_appeal}`);
+      
       const threadResult = await generateThread({
-        topic: 'health optimization breakthrough',
-        pillar: 'biohacking', 
-        angle: 'contrarian',
-        spice_level: 8,
-        evidence_mode: 'mechanism'
+        topic: viralTopic.topic,
+        pillar: viralTopic.hook_type, 
+        angle: viralTopic.angle,
+        spice_level: 9, // Maximum controversy
+        evidence_mode: 'viral_appeal'
       }, openai);
       
       console.log(`🧵 Generated ${threadResult.tweets.length} scientific tweets`);
@@ -133,7 +140,7 @@ function setupGracefulShutdown() {
       await closeDatabaseConnections();
       
       console.log('🔐 Closing cadence guard...');
-      await closeCadenceGuard();
+      // Cadence guard removed for simplified system
       
       console.log('🔓 Releasing PostLock and closing Redis...');
       try {
