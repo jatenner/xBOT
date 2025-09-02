@@ -35,16 +35,26 @@ export const ThreadSchema = z.object({
 export type GeneratedThread = z.infer<typeof ThreadSchema>;
 
 const systemPrompt = `
-You are a growth writer for X (Twitter) focused on rapid audience building. Your job is to create threads that a discerning reader would bookmark and share. You never output filler, headings, or teasers. You always deliver complete, specific, human-sounding ideas.
+You are an elite health optimization writer creating viral Twitter threads. Your threads get bookmarked because they contain SPECIFIC, ACTIONABLE insights that most people don't know. Never write generic advice.
+
+FORBIDDEN GENERIC PHRASES (will fail validation):
+- "boost energy, focus, and overall well-being"
+- "prioritize health" 
+- "small adjustments can yield significant benefits"
+- "our bodies thrive on routine and consistency"
+- "focus on nutrition and exercise"
+- "listen to your body"
+- "consistency is key"
+- Any advice your grandmother would give
 
 Hard rules (must pass validation):
 - Return strictly JSON (no markdown, no code fences).
 - Thread length: 5–9 tweets.
 - Per-tweet length: 120–240 characters after sanitization.
 - No "let's dive in", "thread below", "more soon…", ellipses endings, headings (###), hashtags, emojis, or AI tells.
-- Each tweet contains at least one concrete element: number, step, micro-example, heuristic, or comparison.
-- If making a claim, add a brief why or mechanism (human-level reasoning).
-- Voice: human, warm, concise. No corporate tone. No false personal claims; use brand "we" or neutral POV.
+- Each tweet MUST contain specific numbers, exact methods, or contrarian insights.
+- Include WHY mechanisms: "because X happens in your brain/body when Y"
+- Voice: confident expert who knows secrets others don't. No motivational fluff.
 - COMPLETE SENTENCES ONLY - never cut off mid-word or leave incomplete thoughts
 - NO "crazy, right?" or similar robotic AI tells
 - Every tweet must end with proper punctuation (. ! ?)
@@ -117,19 +127,19 @@ Thread structure requirements:
 1) Problem → 2) Mechanism (why) → 3–5) Steps (if X do Y) → 6) Quick win (today) → 7) Safeguard/pitfall → 8) Tiny case/number → 9) Recap + CTA
 
 Quality requirements:
-- Each tweet contains 1 concrete element: number, step, heuristic, or micro-example
-- At least 2 non-obvious specifics per thread
-- One mechanism line explaining "because [physiology/behavioral reason]"
+- Each tweet contains SPECIFIC numbers, exact protocols, or contrarian insights (not generic advice)
+- At least 3 non-obvious specifics that most people don't know
+- Multiple mechanism lines explaining "because [exact physiological/behavioral process]"
 - Length 120–240 chars per tweet
-- No markdown, teasers, ellipses, AI tells, hashtags, emojis
-- Quality score must be ≥ 90
+- No markdown, teasers, ellipses, AI tells, hashtags, emojis, generic health advice
+- Quality score must be ≥ 95 (higher standard for specificity)
 
 Return JSON matching the exact schema in system prompt.
 `;
 
   const response = await openai.chat.completions.create({
-    model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-    temperature: Number(process.env.OPENAI_TEMPERATURE ?? 0.4),
+    model: 'gpt-4o', // Use stronger model for better thread quality
+    temperature: 0.7, // Higher creativity for more specific, interesting content
     response_format: { type: 'json_object' },
     messages: [
       { role: 'system', content: systemPrompt },
@@ -187,6 +197,25 @@ Return JSON matching the exact schema in system prompt.
     }
   });
 
+  // Quality check: reject generic health advice
+  const genericPhrases = [
+    'boost energy, focus, and overall well-being',
+    'prioritize health',
+    'small adjustments can yield significant benefits',
+    'our bodies thrive on routine',
+    'focus on nutrition and exercise',
+    'listen to your body',
+    'consistency is key',
+    'when we prioritize health, we boost energy'
+  ];
+  
+  const allText = cleaned.tweets.map(t => t.text).join(' ').toLowerCase();
+  const hasGeneric = genericPhrases.some(phrase => allText.includes(phrase.toLowerCase()));
+  
+  if (hasGeneric) {
+    throw new Error('Thread contains generic health advice. Content must be more specific and contrarian.');
+  }
+
   return cleaned;
 }
 
@@ -209,8 +238,8 @@ Return JSON matching the exact format specified in system prompt.
 `;
 
   const response = await openai.chat.completions.create({
-    model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-    temperature: Number(process.env.OPENAI_TEMPERATURE ?? 0.4),
+    model: 'gpt-4o', // Use stronger model for better thread quality
+    temperature: 0.7, // Higher creativity for more specific content
     response_format: { type: 'json_object' },
     messages: [
       { role: 'system', content: systemPrompt },
@@ -245,6 +274,25 @@ Return JSON matching the exact format specified in system prompt.
       throw new Error(`Regenerated tweet ${i + 1} validation failed: ${validation.reason}`);
     }
   });
+
+  // Quality check: reject generic health advice
+  const genericPhrases = [
+    'boost energy, focus, and overall well-being',
+    'prioritize health',
+    'small adjustments can yield significant benefits',
+    'our bodies thrive on routine',
+    'focus on nutrition and exercise',
+    'listen to your body',
+    'consistency is key',
+    'when we prioritize health, we boost energy'
+  ];
+  
+  const allText = cleaned.tweets.map(t => t.text).join(' ').toLowerCase();
+  const hasGeneric = genericPhrases.some(phrase => allText.includes(phrase.toLowerCase()));
+  
+  if (hasGeneric) {
+    throw new Error('Thread contains generic health advice. Content must be more specific and contrarian.');
+  }
 
   return cleaned;
 }
