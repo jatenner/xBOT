@@ -3,7 +3,7 @@ import OpenAI from 'openai';
 import { stripFormatting, validateTweetText } from '../utils/text/sanitize';
 
 const TweetSchema = z.object({
-  text: z.string().min(120).max(240)
+  text: z.string().min(100).max(240) // Relaxed minimum for complex scientific content
 });
 
 export const ThreadSchema = z.object({
@@ -54,7 +54,7 @@ FORBIDDEN GENERIC PHRASES (INSTANT FAILURE):
 Hard rules (must pass validation):
 - Return strictly JSON (no markdown, no code fences).
 - Thread length: 5–9 tweets.
-- Per-tweet length: 120–240 characters after sanitization.
+- Per-tweet length: 100–240 characters after sanitization.
 - No "let's dive in", "thread below", "more soon…", ellipses endings, headings (###), hashtags, emojis, or AI tells.
 - Each tweet MUST contain SHOCKING revelations, exact protocols with numbers, or contrarian insights.
 - Include WHY mechanisms: "because X happens in your brain/body when Y" 
@@ -155,7 +155,7 @@ Quality requirements:
 - Each tweet contains SPECIFIC numbers, exact protocols, or contrarian insights (not generic advice)
 - At least 3 non-obvious specifics that most people don't know
 - Multiple mechanism lines explaining "because [exact physiological/behavioral process]"
-- Length 120–240 chars per tweet
+- Length 100–240 chars per tweet
 - No markdown, teasers, ellipses, AI tells, hashtags, emojis, generic health advice
 - Quality score must be ≥ 95 (higher standard for specificity)
 
