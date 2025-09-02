@@ -124,8 +124,8 @@ async function startIntelligentPosting() {
     }
   }
   
-  // Check every 15 minutes for posting opportunities
-  setInterval(checkPostingOpportunity, 15 * 60 * 1000);
+  // Check for posting opportunities every 5 minutes - ULTRA AGGRESSIVE LEARNING
+  setInterval(checkPostingOpportunity, 5 * 60 * 1000);
   
   // Check immediately
   setTimeout(checkPostingOpportunity, 5000);
