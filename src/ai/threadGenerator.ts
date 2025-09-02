@@ -8,8 +8,8 @@ const TweetSchema = z.object({
 
 export const ThreadSchema = z.object({
   topic: z.string(),
-  hook_A: z.string().min(120).max(200),
-  hook_B: z.string().min(120).max(200),
+  hook_A: z.string().min(100).max(200), // Relaxed for scientific content
+  hook_B: z.string().min(100).max(200), // Relaxed for scientific content
   tweets: z.array(TweetSchema).min(5).max(9),
   cta: z.string(),
   metadata: z.object({
@@ -75,9 +75,9 @@ Quality rubric (must score ≥ 90):
 OUTPUT JSON SCHEMA:
 {
   "topic": "string",
-  "hook_A": "string (120–200 chars, bold curiosity + payoff)",
+  "hook_A": "string (100–200 chars, bold curiosity + payoff)",
   "hook_B": "string (alternative hook for A/B test)",
-  "tweets": [{"text": "string (120–240 chars each)"}],
+  "tweets": [{"text": "string (100–240 chars each)"}],
   "cta": "string (1 line, soft, no hashtags/emojis)",
   "metadata": {
     "angle": "string",
