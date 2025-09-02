@@ -116,7 +116,8 @@ async function startIntelligentPosting() {
         await postSimpleContent(opportunity.type);
       }
       
-      postingManager.recordPost(opportunity.type);
+      // Record post for learning (pass actual post ID and content when available)
+      await postingManager.recordPost(opportunity.type, 'mock_post_id', 'mock_content');
       
     } catch (error: any) {
       console.error('❌ INTELLIGENT_POSTING_ERROR:', error.message);
