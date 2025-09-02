@@ -276,21 +276,40 @@ export class SimplifiedPostingEngine {
 
       let postResult;
       if (isThread) {
-        console.log(`🧵 SIMPLE_POST: Posting ${generationResult.content.tweets.length}-tweet thread`);
+        console.log(`🧵 SIMPLE_POST: Posting ${generationResult.content.tweets.length}-tweet thread using SIMPLE THREAD POSTER`);
         
-        // Use UnifiedPostingManager for thread posting
-        const { UnifiedPostingManager } = await import('../posting/unifiedPostingManager');
-        const unifiedPoster = UnifiedPostingManager.getInstance();
+        // Use SimpleThreadPoster for reliable thread posting
+        const { SimpleThreadPoster } = await import('../posting/simpleThreadPoster');
+        const threadPoster = SimpleThreadPoster.getInstance();
+        
+        // Validate tweets first
+        const validation = threadPoster.validateTweets(generationResult.content.tweets);
+        if (!validation.valid) {
+          console.error('❌ THREAD_VALIDATION: Thread validation failed:', validation.issues.join(', '));
+          throw new Error(`Thread validation failed: ${validation.issues.join(', ')}`);
+        }
         
         // Optimize all tweets in the thread
         const optimizedTweets = generationResult.content.tweets.map(tweet => 
           this.optimizeForEngagement(tweet)
         );
         
-        postResult = await unifiedPoster.post(optimizedTweets, {
-          topic: topic || 'health optimization',
-          retryAttempts: 2
-        });
+        console.log('🚀 THREAD_POSTING: Using SimpleThreadPoster for real reply chain...');
+        const threadResult = await threadPoster.postRealThread(optimizedTweets);
+        
+        // Convert to expected format
+        postResult = {
+          success: threadResult.success,
+          tweetId: threadResult.rootTweetId,
+          replyIds: threadResult.replyIds,
+          error: threadResult.error,
+          method: 'simple_thread'
+        };
+        
+        if (threadResult.success) {
+          console.log(`✅ THREAD_SUCCESS: Posted ${threadResult.totalTweets}-tweet thread!`);
+          console.log(`🔗 Root: ${threadResult.rootTweetId}, Replies: ${threadResult.replyIds?.length || 0}`);
+        }
         
       } else {
         console.log('📝 SIMPLE_POST: Posting single tweet');
