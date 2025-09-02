@@ -125,16 +125,31 @@ Content parameters:
 - Angle: "${selection.angle}"
 - Evidence mode: "${selection.evidence_mode}"
 
-Create a VIRAL thread that challenges mainstream beliefs and reveals a SECRET most people don't know. Start with a SHOCKING hook that makes people stop scrolling. Include 5–9 tweets with SPECIFIC protocols, exact numbers, and contrarian insights that feel like insider secrets.
+Create a COMPLEX, SCIENTIFIC thread that reveals hidden connections most people don't know. Use this EXACT structure:
 
-VIRAL Thread structure requirements:
-1) SHOCKING HOOK: "99% of people are wrong about [topic]"
-2) PROBLEM: What everyone gets wrong + consequences  
-3) SECRET: The hidden truth with mechanism
-4-6) PROTOCOL: Exact steps with specific numbers/timings
-7) PROOF: Study reference or personal result
-8) WARNING: What to avoid or common mistake
-9) CTA: Challenge or call to action with FOMO
+EXAMPLE FORMAT (MANDATORY):
+"[Topic] is crucial for [unexpected benefit] due to [specific physiological mechanism]. [Number] ways to optimize [topic]:"
+
+REAL EXAMPLE: "Sleep is crucial for digestion due to blood glucose being lowered during REM sleep. 5 ways to get better sleep:"
+
+Your thread MUST follow this structure with:
+- Specific physiological mechanism (like "blood glucose being lowered during REM sleep")
+- Unexpected connection between two health areas  
+- Exact number of actionable tips (3-7 ways)
+- Scientific terminology that sounds smart but accessible
+
+COMPLEX THREAD STRUCTURE (MANDATORY):
+1) SCIENTIFIC HOOK: "[Topic] is crucial for [unexpected benefit] due to [physiological mechanism]. [Number] ways to optimize:"
+2-7) SPECIFIC METHODS: Each tweet = one detailed method with exact protocols
+8) MECHANISM EXPLANATION: Why this works at the cellular/hormonal level
+9) ADVANCED TIP: Lesser-known optimization technique
+
+EXAMPLE THREAD BREAKDOWN:
+Tweet 1: "Sleep is crucial for digestion due to blood glucose being lowered during REM sleep. 5 ways to get better sleep:"
+Tweet 2: "1. Cool your room to 65-68°F. This triggers brown fat activation and deeper REM cycles."
+Tweet 3: "2. No blue light 2 hours before bed. Blue light suppresses melatonin by 85% in 15 minutes."
+Tweet 4: "3. Magnesium glycinate 400mg 1 hour before sleep. Activates GABA receptors for REM enhancement."
+etc.
 
 Quality requirements:
 - Each tweet contains SPECIFIC numbers, exact protocols, or contrarian insights (not generic advice)
