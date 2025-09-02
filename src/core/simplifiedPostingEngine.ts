@@ -179,8 +179,40 @@ export class SimplifiedPostingEngine {
       // 🔬 SCIENTIFIC_VALIDATION: Ensure complex content structure
       const hasScientificStructure = this.validateScientificStructure(ultimateContent.content);
       if (!hasScientificStructure) {
-        logInfo('SIMPLE_POST', '⚠️ CONTENT_REJECTED: Not scientifically complex enough, will regenerate later');
-        return { success: false, error: 'Content lacks scientific complexity, regenerating...' };
+        logInfo('SIMPLE_POST', '⚠️ CONTENT_REJECTED: Not scientifically complex enough, retrying with thread format...');
+        
+        // IMMEDIATE RETRY: Force thread generation for scientific complexity
+        console.log('🔄 RETRY_STRATEGY: Forcing thread generation for complex scientific content...');
+        const { generateThread } = await import('../ai/threadGenerator');
+        const openai = new (await import('openai')).default({ apiKey: process.env.OPENAI_API_KEY! });
+        
+        try {
+          const threadResult = await generateThread({
+            topic: topic || 'health optimization breakthrough',
+            pillar: 'biohacking',
+            angle: 'contrarian',
+            spice_level: 8,
+            evidence_mode: 'mechanism'
+          }, openai);
+          
+          // Use the thread tweets as content
+          ultimateContent = {
+            content: threadResult.tweets.map(t => t.text),
+            metadata: { 
+              viral_probability: threadResult.quality.score,
+              authenticity_score: 100,
+              quality_score: threadResult.quality.score
+            },
+            predictions: { likes: 15, followers_gained: 8 },
+            strategy: { posting_time: 'Scientific thread retry' }
+          };
+          
+          console.log(`🧵 RETRY_SUCCESS: Generated ${threadResult.tweets.length}-tweet scientific thread`);
+          
+        } catch (retryError: any) {
+          logInfo('SIMPLE_POST', `❌ RETRY_FAILED: ${retryError.message}`);
+          return { success: false, error: 'Failed to generate scientific content after retry' };
+        }
       }
       
       // 🔧 IMPROVED THREAD PARSING: Handle both array and string formats
