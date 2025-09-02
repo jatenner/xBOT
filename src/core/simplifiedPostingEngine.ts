@@ -176,6 +176,13 @@ export class SimplifiedPostingEngine {
       console.log(`📊 PREDICTIONS: ${ultimateContent.predictions.likes} likes, ${ultimateContent.predictions.followers_gained} followers`);
       console.log(`⏰ STRATEGY: ${ultimateContent.strategy.posting_time}`);
 
+      // 🔬 SCIENTIFIC_VALIDATION: Ensure complex content structure
+      const hasScientificStructure = this.validateScientificStructure(ultimateContent.content);
+      if (!hasScientificStructure) {
+        logInfo('SIMPLE_POST', '⚠️ CONTENT_REJECTED: Not scientifically complex enough, will regenerate later');
+        return { success: false, error: 'Content lacks scientific complexity, regenerating...' };
+      }
+      
       // 🔧 IMPROVED THREAD PARSING: Handle both array and string formats
       console.log('🔧 THREAD_PARSER: Analyzing content format...');
       
@@ -549,5 +556,28 @@ Create content that makes people stop scrolling and engage.`;
                   (Date.now() - this.lastPostTime) >= this.MIN_POST_INTERVAL &&
                   this.dailyPostCount < this.MAX_DAILY_POSTS
     };
+  }
+
+  /**
+   * Validate that content has complex scientific structure
+   */
+  private validateScientificStructure(content: any): boolean {
+    const text = Array.isArray(content) ? content.join(' ') : content;
+    if (!text || typeof text !== 'string') return false;
+    
+    // Check for complex scientific elements from user's example
+    const scientificIndicators = [
+      /\d+\s*(°F|°C|mg|hours?|minutes?|%)/i, // Specific numbers with units
+      /(due to|because|activates?|triggers?|suppresses?)/i, // Causal mechanisms  
+      /(REM|GABA|melatonin|cortisol|dopamine|serotonin)/i, // Scientific terms
+      /\d+\s*ways? to/i, // Structured format "X ways to"
+      /(crucial|essential) for .* due to/i, // Causal connections
+    ];
+    
+    const matches = scientificIndicators.filter(pattern => pattern.test(text)).length;
+    const hasComplexStructure = matches >= 3; // Need at least 3 scientific elements
+    
+    console.log(`🔬 SCIENTIFIC_VALIDATION: Found ${matches}/5 scientific indicators`);
+    return hasComplexStructure;
   }
 }

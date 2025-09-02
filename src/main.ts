@@ -14,7 +14,7 @@ import { ensureSchemaAtBoot } from './services/SchemaGuard';
 function startUltimateContentLoop(postingEngine: any) {
   console.log('🚀 ULTIMATE_LOOP: Starting intelligent posting cycle...');
   
-  // Post every 2-4 hours with intelligent timing
+  // Post every 1-1.5 hours for aggressive growth
   const postingInterval = setInterval(async () => {
     try {
       console.log('🎯 ULTIMATE_CYCLE: Attempting to create engaging post...');
@@ -29,7 +29,7 @@ function startUltimateContentLoop(postingEngine: any) {
     } catch (error: any) {
       console.error('❌ ULTIMATE_ERROR:', error.message);
     }
-  }, 2 * 60 * 60 * 1000); // 2 hours
+  }, 75 * 60 * 1000); // 75 minutes (1.25 hours) for aggressive growth
 
   // Also try posting immediately after a short delay
   setTimeout(async () => {
