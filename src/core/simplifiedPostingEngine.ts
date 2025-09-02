@@ -77,26 +77,38 @@ export class SimplifiedPostingEngine {
     try {
       logInfo('SIMPLE_POST', `Creating engaging post ${this.dailyPostCount + 1}/${this.MAX_DAILY_POSTS}`);
 
-      // Generate high-engagement content with AI format decision
-      const contentGenerator = await getContentGenerator();
+      // 🔥 NEW: Use Anti-Spam Content Generator for authentic posts
+      const { AntiSpamContentGenerator } = await import('../ai/antiSpamContentGenerator');
+      const antiSpamGenerator = AntiSpamContentGenerator.getInstance();
       
-      // Let AI decide between single tweet vs thread based on topic and content needs
-      const { getAIContentDecisionEngine } = await import('../ai/aiContentDecisionEngine');
-      const aiDecisionEngine = getAIContentDecisionEngine();
-      const formatDecision = await aiDecisionEngine.makeFormatDecision(topic || 'health breakthrough', 'personal');
+      console.log('🚀 ANTI_SPAM: Generating authentic, engaging content...');
+      const authenticContent = await antiSpamGenerator.generateAuthenticContent(topic);
       
-      console.log(`🧠 AI_FORMAT_DECISION: ${formatDecision.content_format} - ${formatDecision.decision.ai_reasoning}`);
+      console.log(`📊 AUTHENTICITY: ${authenticContent.authenticity_score}/100`);
+      console.log(`📈 ENGAGEMENT_PREDICTION: ${authenticContent.engagement_prediction}/100`);
+      console.log(`💭 REASONING: ${authenticContent.reasoning}`);
       
-      const generationParams = {
-        topic: topic || 'health breakthrough',
-        format: formatDecision.content_format, // AI decides: 'single' or 'thread'
-        urgency: 'high' as const
+      // Skip if content is still spammy
+      if (antiSpamGenerator.isSpammy(authenticContent.content)) {
+        console.log('❌ Content flagged as spammy, regenerating...');
+        const retry = await antiSpamGenerator.generateAuthenticContent(topic);
+        if (antiSpamGenerator.isSpammy(retry.content)) {
+          throw new Error('Unable to generate non-spammy content');
+        }
+        authenticContent.content = retry.content;
+      }
+      
+      // Use the authentic content directly (it's already formatted as a single tweet)
+      const generationResult = {
+        content: {
+          tweets: [authenticContent.content]
+        }
       };
+
+      console.log('🎯 SIMPLE_POST: Using authentic anti-spam content...');
       
-      const generationResult = await contentGenerator.generateContent(generationParams);
-      
-      if (!generationResult.success || !generationResult.content) {
-        throw new Error('Failed to generate content');
+      if (!generationResult?.content?.tweets?.length) {
+        throw new Error('No content generated');
       }
 
       // Handle both single tweets and threads
@@ -168,12 +180,12 @@ export class SimplifiedPostingEngine {
       logInfo('SIMPLE_POST', `✅ Posted ${isThread ? 'thread' : 'single tweet'} successfully: ${postResult.tweetId}`);
       logInfo('SIMPLE_POST', `📊 Daily posts: ${this.dailyPostCount}/${this.MAX_DAILY_POSTS}`);
 
-      return {
-        success: true,
-        tweetId: postResult.tweetId,
-        content: contentForStorage,
-        engagementPrediction: this.predictEngagement(optimizedContent)
-      };
+              return {
+          success: true,
+          tweetId: postResult.tweetId,
+          content: contentForStorage,
+          engagementPrediction: authenticContent.engagement_prediction
+        };
 
     } catch (error: any) {
       logError('SIMPLE_POST', `❌ Failed to create post: ${error.message}`);
