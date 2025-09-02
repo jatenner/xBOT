@@ -53,11 +53,8 @@ async function startSimpleThreadLoop() {
     }
   }
   
-  // Post immediately
-  setTimeout(postScientificThread, 10000); // 10 seconds
-  
-  // Post every 2 hours
-  setInterval(postScientificThread, 2 * 60 * 60 * 1000);
+  // Start intelligent posting schedule
+  setTimeout(() => startIntelligentPosting(), 10000); // 10 seconds
 }
 
 /**
@@ -89,11 +86,160 @@ async function startEngagementLoop() {
     }
   }
   
-  // Start engagement immediately
-  setTimeout(runEngagementCycle, 30000); // 30 seconds
+  // Start intelligent engagement schedule
+  setTimeout(() => startIntelligentEngagement(), 30000); // 30 seconds
+}
+
+/**
+ * INTELLIGENT POSTING - Data-driven content decisions
+ */
+async function startIntelligentPosting() {
+  console.log('🧠 INTELLIGENT_POSTING: Starting adaptive posting system...');
   
-  // Run engagement every 15 minutes
-  setInterval(runEngagementCycle, 15 * 60 * 1000);
+  const { AdaptivePostingManager } = await import('./intelligence/adaptivePostingManager');
+  const postingManager = AdaptivePostingManager.getInstance();
+  
+  async function checkPostingOpportunity() {
+    try {
+      const opportunity = await postingManager.getNextPostingOpportunity();
+      
+      if (!opportunity) {
+        console.log('⏰ WAITING: No posting opportunity, checking again in 15 minutes');
+        return;
+      }
+      
+      console.log(`🎯 OPPORTUNITY: ${opportunity.type} (urgency: ${opportunity.urgency}/10) - ${opportunity.reason}`);
+      
+      if (opportunity.type === 'thread') {
+        await postScientificThread();
+      } else {
+        await postSimpleContent(opportunity.type);
+      }
+      
+      postingManager.recordPost(opportunity.type);
+      
+    } catch (error: any) {
+      console.error('❌ INTELLIGENT_POSTING_ERROR:', error.message);
+    }
+  }
+  
+  // Check every 15 minutes for posting opportunities
+  setInterval(checkPostingOpportunity, 15 * 60 * 1000);
+  
+  // Check immediately
+  setTimeout(checkPostingOpportunity, 5000);
+}
+
+/**
+ * INTELLIGENT ENGAGEMENT - Data-driven engagement decisions  
+ */
+async function startIntelligentEngagement() {
+  console.log('🤝 INTELLIGENT_ENGAGEMENT: Starting adaptive engagement system...');
+  
+  async function checkEngagementOpportunity() {
+    try {
+      const hour = new Date().getHours();
+      const isActiveHour = hour >= 7 && hour <= 22; // 7 AM to 10 PM
+      
+      if (!isActiveHour) {
+        console.log('😴 QUIET_HOURS: Reduced engagement during off-hours');
+        return;
+      }
+      
+      // Randomize engagement activities to seem natural
+      const activities = [];
+      
+      if (Math.random() > 0.3) activities.push('likes'); // 70% chance
+      if (Math.random() > 0.6) activities.push('replies'); // 40% chance  
+      if (Math.random() > 0.8) activities.push('follows'); // 20% chance
+      
+      for (const activity of activities) {
+        try {
+          switch (activity) {
+            case 'likes':
+              const { executeStrategicLikes } = await import('./engagement/strategicLikes');
+              await executeStrategicLikes();
+              break;
+            case 'replies':
+              const { executeStrategicReplies } = await import('./engagement/strategicReplies');
+              await executeStrategicReplies();
+              break;
+            case 'follows':
+              const { executeStrategicFollows } = await import('./engagement/strategicFollows');
+              await executeStrategicFollows();
+              break;
+          }
+        } catch (activityError: any) {
+          console.error(`❌ ${activity.toUpperCase()}_ERROR:`, activityError.message);
+        }
+      }
+      
+    } catch (error: any) {
+      console.error('❌ INTELLIGENT_ENGAGEMENT_ERROR:', error.message);
+    }
+  }
+  
+  // Variable engagement timing (10-30 minutes)
+  function scheduleNextEngagement() {
+    const minutes = 10 + Math.random() * 20; // 10-30 minutes
+    setTimeout(() => {
+      checkEngagementOpportunity();
+      scheduleNextEngagement();
+    }, minutes * 60 * 1000);
+  }
+  
+  // Start engagement cycle
+  setTimeout(checkEngagementOpportunity, 5000);
+  scheduleNextEngagement();
+}
+
+/**
+ * Post simple facts/advice content
+ */
+async function postSimpleContent(type: 'simple_fact' | 'advice') {
+  console.log(`📝 SIMPLE_CONTENT: Posting ${type}...`);
+  
+  // Simple content topics  
+  const simpleTopics = [
+    'morning hydration protocol',
+    'sleep temperature optimization', 
+    'magnesium timing for better sleep',
+    'cold exposure for metabolism',
+    'intermittent fasting timing',
+    'blue light blocking strategy',
+    'breathing technique for stress',
+    'supplement timing optimization'
+  ];
+  
+  const topic = simpleTopics[Math.floor(Math.random() * simpleTopics.length)];
+  
+  try {
+    // Generate simple single tweet
+    const OpenAI = (await import('openai')).default;
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+    
+    const prompt = type === 'simple_fact' 
+      ? `Create a viral health fact about ${topic}. Format: "Most people don't know that [shocking fact]. Here's why: [mechanism]" Keep under 240 chars.`
+      : `Create actionable health advice about ${topic}. Format: "Try this: [specific protocol]. Result: [benefit] because [mechanism]" Keep under 240 chars.`;
+    
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      temperature: 0.8,
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 100
+    });
+    
+    const content = response.choices?.[0]?.message?.content?.trim() || '';
+    
+    if (content) {
+      console.log(`📝 GENERATED: "${content}" (${content.length} chars)`);
+      // TODO: Integrate with actual posting mechanism
+      console.log('✅ SIMPLE_POST: Posted successfully (placeholder)');
+    }
+    
+  } catch (error: any) {
+    console.error('❌ SIMPLE_CONTENT_ERROR:', error.message);
+  }
 }
 
 /**
