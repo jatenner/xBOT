@@ -61,6 +61,42 @@ async function startSimpleThreadLoop() {
 }
 
 /**
+ * AGGRESSIVE ENGAGEMENT LOOP - Build followers through strategic engagement
+ */
+async function startEngagementLoop() {
+  console.log('🚀 ENGAGEMENT_LOOP: Starting aggressive follower acquisition...');
+  
+  async function runEngagementCycle() {
+    try {
+      console.log('🤝 ENGAGEMENT_CYCLE: Running strategic engagement...');
+      
+      // Strategic replies to health influencers (every 30 min)
+      const { executeStrategicReplies } = await import('./engagement/strategicReplies');
+      await executeStrategicReplies();
+      
+      // Strategic follows (every hour)  
+      const { executeStrategicFollows } = await import('./engagement/strategicFollows');
+      await executeStrategicFollows();
+      
+      // Strategic likes (every 15 min)
+      const { executeStrategicLikes } = await import('./engagement/strategicLikes');
+      await executeStrategicLikes();
+      
+      console.log('✅ ENGAGEMENT_CYCLE: Completed strategic engagement cycle');
+      
+    } catch (error: any) {
+      console.error('❌ ENGAGEMENT_ERROR:', error.message);
+    }
+  }
+  
+  // Start engagement immediately
+  setTimeout(runEngagementCycle, 30000); // 30 seconds
+  
+  // Run engagement every 15 minutes
+  setInterval(runEngagementCycle, 15 * 60 * 1000);
+}
+
+/**
  * Main application entry point with proper error handling and graceful shutdown
  */
 async function main() {
@@ -92,9 +128,13 @@ async function main() {
     console.log('🧵 Starting SIMPLE THREAD SYSTEM...');
     await startSimpleThreadLoop();
     
-    console.log('✅ SIMPLE THREAD SYSTEM ready and running');
-    console.log('🎯 Goal: Post scientific threads that gain followers');
-    console.log('🧬 Focus: Complex scientific content, real threads, growth');
+    // Start aggressive engagement system for follower growth
+    console.log('🤝 Starting ENGAGEMENT SYSTEM for follower acquisition...');
+    await startEngagementLoop();
+    
+    console.log('✅ COMPLETE GROWTH SYSTEM ready and running');
+    console.log('🎯 Goal: Post viral threads + aggressive engagement');
+    console.log('🧬 Strategy: Content + replies + follows + likes = FOLLOWERS');
 
     // Set up graceful shutdown
     setupGracefulShutdown();
