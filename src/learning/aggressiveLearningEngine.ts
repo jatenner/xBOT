@@ -73,7 +73,7 @@ export class AggressiveLearningEngine {
   private postHistory: PostPerformanceData[] = [];
   private learningPhase: 'aggressive' | 'optimization' | 'refinement' = 'aggressive';
   private totalPosts = 0;
-  private dailyPostTarget = 40; // Start aggressive
+  private dailyPostTarget = 60; // ULTRA AGGRESSIVE - 60 posts/day for rapid learning
   private currentInsights: LearningInsights | null = null;
 
   public static getInstance(): AggressiveLearningEngine {
@@ -105,7 +105,7 @@ export class AggressiveLearningEngine {
     
     console.log(`📊 LEARNING_STATUS: Phase: ${this.learningPhase}, Posts today: ${postsToday}/${this.dailyPostTarget}`);
     
-    // AGGRESSIVE PHASE: Post frequently to gather data
+    // AGGRESSIVE PHASE: Post ULTRA frequently to gather data FAST
     if (this.learningPhase === 'aggressive') {
       return this.getAggressiveStrategy(hour, postsToday);
     }
@@ -148,11 +148,11 @@ export class AggressiveLearningEngine {
   }
 
   /**
-   * Update learning insights from accumulated data
+   * Update learning insights from accumulated data - FAST LEARNING
    */
   private async updateLearningInsights(): Promise<void> {
-    if (this.postHistory.length < 10) {
-      console.log('⏳ LEARNING: Insufficient data for insights (need 10+ posts)');
+    if (this.postHistory.length < 3) {
+      console.log('⏳ LEARNING: Insufficient data for insights (need 3+ posts for rapid learning)');
       return;
     }
     
@@ -198,8 +198,8 @@ export class AggressiveLearningEngine {
   private getAggressiveStrategy(hour: number, postsToday: number): ReturnType<AggressiveLearningEngine['getCurrentPostingStrategy']> {
     console.log('🚀 AGGRESSIVE_PHASE: Gathering data through high-frequency posting');
     
-    // Post every 30-60 minutes during active hours (6 AM - 11 PM)
-    const isActiveHour = hour >= 6 && hour <= 23;
+    // Post every 15-20 minutes during active hours (5 AM - 12 AM) - ULTRA AGGRESSIVE
+    const isActiveHour = hour >= 5 && hour <= 24;
     const underTarget = postsToday < this.dailyPostTarget;
     
     if (!isActiveHour) {
@@ -207,7 +207,7 @@ export class AggressiveLearningEngine {
         should_post_now: false,
         recommended_type: 'simple',
         confidence: 0.3,
-        reasoning: 'Outside active hours (6 AM - 11 PM)',
+        reasoning: 'Outside active hours (5 AM - 12 AM)',
         target_daily_posts: this.dailyPostTarget
       };
     }
@@ -399,14 +399,15 @@ export class AggressiveLearningEngine {
   }
 
   private checkPhaseAdvancement(): void {
-    if (this.learningPhase === 'aggressive' && this.totalPosts >= 200) {
+    // ULTRA FAST PROGRESSION - Hours not weeks!
+    if (this.learningPhase === 'aggressive' && this.totalPosts >= 20) {
       this.learningPhase = 'optimization';
-      this.dailyPostTarget = 25; // Reduce frequency
-      console.log('🎯 PHASE_ADVANCE: Moving to optimization phase');
-    } else if (this.learningPhase === 'optimization' && this.totalPosts >= 500) {
+      this.dailyPostTarget = 35; // Still aggressive but optimized
+      console.log('🎯 PHASE_ADVANCE: Moving to optimization phase after 20 posts!');
+    } else if (this.learningPhase === 'optimization' && this.totalPosts >= 50) {
       this.learningPhase = 'refinement';
-      this.dailyPostTarget = 15; // Further optimize
-      console.log('💎 PHASE_ADVANCE: Moving to refinement phase');
+      this.dailyPostTarget = 25; // Refined strategy
+      console.log('💎 PHASE_ADVANCE: Moving to refinement phase after 50 posts!');
     }
   }
 

@@ -91,21 +91,21 @@ export class AdaptivePostingManager {
     
     console.log(`📊 DEFAULT_LOGIC: Simple: ${minutesSinceSimple.toFixed(0)}min ago, Thread: ${minutesSinceThread.toFixed(0)}min ago`);
     
-    // Aggressive posting during learning phase
-    if (minutesSinceSimple >= 30 && this.simplePostsToday < 40) {
+    // ULTRA AGGRESSIVE posting during learning phase - post every 15-20 minutes!
+    if (minutesSinceSimple >= 15 && this.simplePostsToday < 60) {
       return {
         type: Math.random() > 0.5 ? 'simple_fact' : 'advice',
-        urgency: 7,
-        reason: 'Aggressive learning phase - high frequency posting',
+        urgency: 9,
+        reason: 'ULTRA AGGRESSIVE learning phase - rapid data collection',
         optimal_timing: 0
       };
     }
     
-    if (minutesSinceThread >= 180 && this.threadsToday < 5) {
+    if (minutesSinceThread >= 120 && this.threadsToday < 8) {
       return {
         type: 'thread',
-        urgency: 8,
-        reason: 'Thread for learning data collection',
+        urgency: 9,
+        reason: 'Thread for rapid learning data collection',
         optimal_timing: 0
       };
     }
