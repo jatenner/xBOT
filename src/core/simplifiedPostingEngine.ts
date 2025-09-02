@@ -77,35 +77,40 @@ export class SimplifiedPostingEngine {
     try {
       logInfo('SIMPLE_POST', `Creating engaging post ${this.dailyPostCount + 1}/${this.MAX_DAILY_POSTS}`);
 
-      // 🔥 NEW: Use Anti-Spam Content Generator for authentic posts
-      const { AntiSpamContentGenerator } = await import('../ai/antiSpamContentGenerator');
-      const antiSpamGenerator = AntiSpamContentGenerator.getInstance();
+            // 🚀 ULTIMATE CONTENT SYSTEM: Use comprehensive orchestrator
+      const { UnifiedContentOrchestrator } = await import('../content/unifiedContentOrchestrator');
+      const orchestrator = UnifiedContentOrchestrator.getInstance();
       
-      console.log('🚀 ANTI_SPAM: Generating authentic, engaging content...');
-      const authenticContent = await antiSpamGenerator.generateAuthenticContent(topic);
+      console.log('🎯 ULTIMATE_SYSTEM: Generating comprehensive optimized content...');
+      const ultimateContent = await orchestrator.generateUltimateContent({
+        topic: topic,
+        urgency: 'medium',
+        target_metric: 'followers', // Focus on follower growth
+        content_type: 'auto', // Let AI decide format
+        learning_priority: true // Use for learning
+      });
       
-      console.log(`📊 AUTHENTICITY: ${authenticContent.authenticity_score}/100`);
-      console.log(`📈 ENGAGEMENT_PREDICTION: ${authenticContent.engagement_prediction}/100`);
-      console.log(`💭 REASONING: ${authenticContent.reasoning}`);
-      
-      // Skip if content is still spammy
-      if (antiSpamGenerator.isSpammy(authenticContent.content)) {
-        console.log('❌ Content flagged as spammy, regenerating...');
-        const retry = await antiSpamGenerator.generateAuthenticContent(topic);
-        if (antiSpamGenerator.isSpammy(retry.content)) {
-          throw new Error('Unable to generate non-spammy content');
-        }
-        authenticContent.content = retry.content;
-      }
-      
-      // Use the authentic content directly (it's already formatted as a single tweet)
+      console.log(`🎖️ ULTIMATE_QUALITY: ${ultimateContent.metadata.generation_quality}/100`);
+      console.log(`📈 GROWTH_SCORE: ${ultimateContent.metadata.growth_score}/100`);
+      console.log(`🔥 VIRAL_PROBABILITY: ${ultimateContent.metadata.viral_probability}/100`);
+      console.log(`🧠 AUTHENTICITY: ${ultimateContent.metadata.authenticity_score}/100`);
+      console.log(`📊 PREDICTIONS: ${ultimateContent.predictions.likes} likes, ${ultimateContent.predictions.followers_gained} followers`);
+      console.log(`⏰ STRATEGY: ${ultimateContent.strategy.posting_time}`);
+
+      // Use the ultimate content (detect if thread or single)
+      const isThreadContent = ultimateContent.content.includes('/') || ultimateContent.content.split('\n\n').length > 1;
+      const tweets = isThreadContent 
+        ? ultimateContent.content.split('\n\n').filter(t => t.trim()) 
+        : [ultimateContent.content];
+
       const generationResult = {
         content: {
-          tweets: [authenticContent.content]
-        }
+          tweets: tweets
+        },
+        ultimateResult: ultimateContent // Store for learning
       };
 
-      console.log('🎯 SIMPLE_POST: Using authentic anti-spam content...');
+      console.log(`🎯 ULTIMATE_POST: Generated ${isThreadContent ? 'thread' : 'single'} with ${tweets.length} tweet(s)`);
       
       if (!generationResult?.content?.tweets?.length) {
         throw new Error('No content generated');
@@ -180,11 +185,23 @@ export class SimplifiedPostingEngine {
       logInfo('SIMPLE_POST', `✅ Posted ${isThread ? 'thread' : 'single tweet'} successfully: ${postResult.tweetId}`);
       logInfo('SIMPLE_POST', `📊 Daily posts: ${this.dailyPostCount}/${this.MAX_DAILY_POSTS}`);
 
-              return {
+              // Store ultimate content result for learning
+        const ultimateResult = (generationResult as any).ultimateResult;
+        if (ultimateResult) {
+          try {
+            // Store the ultimate content data for future learning
+            await this.storeUltimateContentData(postResult.tweetId, ultimateResult);
+          } catch (error) {
+            console.warn('⚠️ Failed to store ultimate content data:', error);
+          }
+        }
+
+        return {
           success: true,
           tweetId: postResult.tweetId,
           content: contentForStorage,
-          engagementPrediction: authenticContent.engagement_prediction
+          engagementPrediction: ultimateResult?.predictions?.likes || 5,
+          ultimateMetadata: ultimateResult?.metadata
         };
 
     } catch (error: any) {
@@ -254,6 +271,23 @@ Create content that makes people stop scrolling and engage.`;
     }
 
     return optimized;
+  }
+
+  /**
+   * Store ultimate content data for future learning
+   */
+  private async storeUltimateContentData(tweetId: string, ultimateResult: any): Promise<void> {
+    try {
+      // Store in a dedicated table or enhance existing storage
+      console.log(`📚 STORING_ULTIMATE_DATA: ${tweetId} with ${ultimateResult.metadata.generation_quality}/100 quality`);
+      
+      // You could store this in a dedicated database table for advanced analytics
+      // For now, we'll log the key metrics
+      console.log(`🎯 STORED_METRICS: Growth ${ultimateResult.metadata.growth_score}/100, Viral ${ultimateResult.metadata.viral_probability}/100`);
+      
+    } catch (error) {
+      console.error('❌ Failed to store ultimate content data:', error);
+    }
   }
 
   /**
