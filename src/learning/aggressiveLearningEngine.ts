@@ -32,6 +32,14 @@ interface PostPerformanceData {
   viral_score: number;
 }
 
+interface PostingStrategy {
+  should_post_now: boolean;
+  recommended_type: 'simple' | 'thread' | 'reply';
+  confidence: number;
+  reasoning: string;
+  target_daily_posts: number;
+}
+
 interface LearningInsights {
   optimal_posting_frequency: {
     total_daily_posts: number;
@@ -86,13 +94,7 @@ export class AggressiveLearningEngine {
   /**
    * Get current posting strategy based on learning
    */
-  async getCurrentPostingStrategy(): Promise<{
-    should_post_now: boolean;
-    recommended_type: 'simple' | 'thread' | 'reply';
-    confidence: number;
-    reasoning: string;
-    target_daily_posts: number;
-  }> {
+  async getCurrentPostingStrategy(): Promise<PostingStrategy> {
     console.log('🧠 LEARNING_ENGINE: Analyzing current posting strategy...');
     
     // Update learning insights
@@ -195,7 +197,7 @@ export class AggressiveLearningEngine {
   /**
    * AGGRESSIVE PHASE: High-frequency posting to gather data
    */
-  private getAggressiveStrategy(hour: number, postsToday: number): ReturnType<AggressiveLearningEngine['getCurrentPostingStrategy']> {
+  private getAggressiveStrategy(hour: number, postsToday: number): PostingStrategy {
     console.log('🚀 AGGRESSIVE_PHASE: Gathering data through high-frequency posting');
     
     // Post every 15-20 minutes during active hours (5 AM - 12 AM) - ULTRA AGGRESSIVE
@@ -238,7 +240,7 @@ export class AggressiveLearningEngine {
   /**
    * OPTIMIZATION PHASE: Use learned patterns
    */
-  private getOptimizedStrategy(hour: number, dayOfWeek: number, postsToday: number): ReturnType<AggressiveLearningEngine['getCurrentPostingStrategy']> {
+  private getOptimizedStrategy(hour: number, dayOfWeek: number, postsToday: number): PostingStrategy {
     console.log('🎯 OPTIMIZATION_PHASE: Using learned patterns for posting decisions');
     
     if (!this.currentInsights) {
@@ -299,7 +301,7 @@ export class AggressiveLearningEngine {
   /**
    * REFINEMENT PHASE: Fine-tuned strategy
    */
-  private getRefinedStrategy(hour: number, dayOfWeek: number, postsToday: number): ReturnType<AggressiveLearningEngine['getCurrentPostingStrategy']> {
+  private getRefinedStrategy(hour: number, dayOfWeek: number, postsToday: number): PostingStrategy {
     console.log('💎 REFINEMENT_PHASE: Using refined learned strategy');
     
     // Similar to optimization but with higher confidence and more nuanced decisions
