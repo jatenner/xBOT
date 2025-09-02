@@ -3,7 +3,7 @@
  * Unified orchestrator for all content operations: generation, strategy, growth, learning
  */
 
-import { OpenAI } from 'openai';
+// Using existing OpenAI service instead of direct import
 
 export interface ContentSystemConfig {
   account_goals: {
@@ -74,14 +74,13 @@ export interface LearningData {
 
 export class MasterContentSystem {
   private static instance: MasterContentSystem;
-  private openai: OpenAI;
+  private openaiService: any;
   private config: ContentSystemConfig;
   private learningHistory: LearningData[] = [];
 
   private constructor() {
-    this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY
-    });
+    // Initialize OpenAI service lazily
+    this.openaiService = null;
     
     this.config = {
       account_goals: {
@@ -193,20 +192,26 @@ export class MasterContentSystem {
     const prompt = this.buildAdvancedPrompt(plan, strategy);
     
     try {
-      const response = await this.openai.chat.completions.create({
-        model: 'gpt-4o', // Use best model for content generation
-        messages: [
-          {
-            role: 'system',
-            content: this.getSystemPrompt(strategy)
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
+      if (!this.openaiService) {
+        const { getOpenAIService } = await import('../services/openAIService');
+        this.openaiService = getOpenAIService();
+      }
+
+      const response = await this.openaiService.chatCompletion([
+        {
+          role: 'system',
+          content: this.getSystemPrompt(strategy)
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ], {
+        model: 'gpt-4o',
         temperature: 0.7,
-        max_tokens: 800
+        maxTokens: 800,
+        requestType: 'content_generation',
+        priority: 'high'
       });
 
       return response.choices[0]?.message?.content || '';
@@ -299,11 +304,19 @@ Analyze what worked, what failed, and provide specific recommendations for futur
 Return JSON with: {"what_worked": [], "what_failed": [], "insights": [], "recommendations": []}`;
 
     try {
-      const response = await this.openai.chat.completions.create({
-        model: 'gpt-4o-mini', // Use smaller model for analysis
-        messages: [{ role: 'user', content: prompt }],
-        response_format: { type: 'json_object' },
-        temperature: 0.3
+      if (!this.openaiService) {
+        const { getOpenAIService } = await import('../services/openAIService');
+        this.openaiService = getOpenAIService();
+      }
+
+      const response = await this.openaiService.chatCompletion([
+        { role: 'user', content: prompt }
+      ], {
+        model: 'gpt-4o-mini',
+        temperature: 0.3,
+        maxTokens: 500,
+        requestType: 'content_analysis',
+        priority: 'medium'
       });
 
       const analysis = JSON.parse(response.choices[0]?.message?.content || '{}');

@@ -21,6 +21,7 @@
     "noEmitOnError": false
   },
   "include": [
+    "src/**/*.ts",
     "src/main.ts",
     "src/core/autonomousPostingEngine.ts", 
     "src/ai/socialContentOperator.ts",

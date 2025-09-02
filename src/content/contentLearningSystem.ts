@@ -3,7 +3,7 @@
  * Continuously learns from all posted content and performance data to improve future content
  */
 
-import { OpenAI } from 'openai';
+// Using existing OpenAI service instead of direct import
 
 export interface ContentPattern {
   pattern_type: 'hook' | 'structure' | 'topic' | 'timing' | 'format';
@@ -68,15 +68,14 @@ export interface PostAnalysis {
 
 export class ContentLearningSystem {
   private static instance: ContentLearningSystem;
-  private openai: OpenAI;
+  private openaiService: any;
   private postHistory: PostAnalysis[] = [];
   private patterns: ContentPattern[] = [];
   private insights: LearningInsight[] = [];
 
   private constructor() {
-    this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY
-    });
+    // Initialize OpenAI service lazily
+    this.openaiService = null;
   }
 
   public static getInstance(): ContentLearningSystem {
@@ -130,7 +129,7 @@ export class ContentLearningSystem {
       posted_at: metadata.posted_at || new Date(),
       topic: metadata.topic || await this.extractTopic(content),
       format: metadata.format || (content.includes('/') ? 'thread' : 'single'),
-      hook_type: metadata.hook_type || await this.classifyHook(content),
+      hook_type: metadata.hook_type || this.classifyHookSync(content),
       word_count: content.split(' ').length
     };
 
@@ -419,17 +418,7 @@ export class ContentLearningSystem {
     return 'general health';
   }
 
-  private async classifyHook(content: string): Promise<string> {
-    const firstSentence = content.split('.')[0].toLowerCase();
-    
-    if (firstSentence.includes('i noticed')) return 'personal observation';
-    if (firstSentence.includes('anyone else')) return 'community question';
-    if (firstSentence.includes('i tried')) return 'personal experiment';
-    if (firstSentence.includes('most people')) return 'contrarian insight';
-    if (firstSentence.includes('?')) return 'question hook';
-    
-    return 'direct statement';
-  }
+
 
   private extractHookPattern(content: string): string {
     const firstSentence = content.split('.')[0];
@@ -442,7 +431,19 @@ export class ContentLearningSystem {
   }
 
   private extractHookType(content: string): string {
-    return this.classifyHook(content);
+    return this.classifyHookSync(content);
+  }
+
+  private classifyHookSync(content: string): string {
+    const firstSentence = content.split('.')[0].toLowerCase();
+    
+    if (firstSentence.includes('i noticed')) return 'personal observation';
+    if (firstSentence.includes('anyone else')) return 'community question';
+    if (firstSentence.includes('i tried')) return 'personal experiment';
+    if (firstSentence.includes('most people')) return 'contrarian insight';
+    if (firstSentence.includes('?')) return 'question hook';
+    
+    return 'direct statement';
   }
 
   private getMostFrequent<T>(items: T[]): T {

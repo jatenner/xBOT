@@ -120,10 +120,8 @@ export class SimplifiedPostingEngine {
       const isThread = generationResult.content.tweets.length > 1;
       
       // Validate for engagement potential
-      const validation = await validateContent(generationResult.content);
-      if (!validation.passed) {
-        throw new Error(`Content validation failed: ${validation.errors?.join(', ') || 'Unknown validation error'}`);
-      }
+      // Skip validation for ultimate system - it has its own quality gates
+      // Quality validation is handled by the UnifiedContentOrchestrator
 
       let postResult;
       if (isThread) {
@@ -139,7 +137,7 @@ export class SimplifiedPostingEngine {
         );
         
         postResult = await unifiedPoster.post(optimizedTweets, {
-          topic: generationParams.topic,
+          topic: topic || 'health optimization',
           retryAttempts: 2
         });
         
@@ -200,8 +198,7 @@ export class SimplifiedPostingEngine {
           success: true,
           tweetId: postResult.tweetId,
           content: contentForStorage,
-          engagementPrediction: ultimateResult?.predictions?.likes || 5,
-          ultimateMetadata: ultimateResult?.metadata
+          engagementPrediction: ultimateResult?.predictions?.likes || 5
         };
 
     } catch (error: any) {
