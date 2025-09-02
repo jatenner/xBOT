@@ -6,6 +6,7 @@
 
 import { TwitterPoster } from './postThread';
 import { TwitterComposer } from './TwitterComposer';
+import { browserManager } from './BrowserManager';
 
 export interface ThreadResult {
   success: boolean;
@@ -18,11 +19,9 @@ export interface ThreadResult {
 export class SimpleThreadPoster {
   private static instance: SimpleThreadPoster;
   private poster: TwitterPoster;
-  private composer: TwitterComposer;
 
   private constructor() {
     this.poster = new TwitterPoster();
-    this.composer = new TwitterComposer();
   }
 
   public static getInstance(): SimpleThreadPoster {
@@ -86,8 +85,17 @@ export class SimpleThreadPoster {
           await new Promise(resolve => setTimeout(resolve, 2000));
         }
 
-        // Post reply to the current tweet
-        const replyResult = await this.composer.postReply(tweets[i], currentTweetId);
+        // Post reply to the current tweet using browser context
+        const replyResult = await browserManager.withContext('posting', async (context) => {
+          const page = await context.newPage();
+          const composer = new TwitterComposer(page);
+          
+          try {
+            return await composer.postReply(tweets[i], currentTweetId);
+          } finally {
+            await page.close();
+          }
+        });
 
         if (!replyResult.success || !replyResult.tweetId) {
           console.warn(`⚠️ THREAD_PARTIAL: Reply ${i + 1} failed: ${replyResult.error}`);
