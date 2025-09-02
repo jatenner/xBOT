@@ -102,13 +102,19 @@ export class SimplifiedPostingEngine {
       const orchestrator = UnifiedContentOrchestrator.getInstance();
       
       console.log('🎯 ULTIMATE_SYSTEM: Generating comprehensive optimized content with learning insights...');
+      
+      // 🔧 FORCE THREAD GENERATION: Override to create proper threads
+      const shouldForceThread = topic && topic.includes('thread') || Math.random() < 0.4; // 40% chance for threads
+      
       const ultimateContent = await orchestrator.generateUltimateContent({
         topic: topic,
         urgency: 'medium',
         target_metric: 'followers', // Focus on follower growth
-        content_type: 'auto', // Let AI decide format
+        content_type: shouldForceThread ? 'thread' : 'auto', // Force threads sometimes
         learning_priority: true // Use for learning
       });
+      
+      console.log(`🎯 CONTENT_TYPE_DECISION: Requested ${shouldForceThread ? 'THREAD' : 'AUTO'} format`);
       
       console.log(`🎖️ ULTIMATE_QUALITY: ${ultimateContent.metadata.generation_quality}/100`);
       console.log(`📈 GROWTH_SCORE: ${ultimateContent.metadata.growth_score}/100`);
@@ -117,11 +123,50 @@ export class SimplifiedPostingEngine {
       console.log(`📊 PREDICTIONS: ${ultimateContent.predictions.likes} likes, ${ultimateContent.predictions.followers_gained} followers`);
       console.log(`⏰ STRATEGY: ${ultimateContent.strategy.posting_time}`);
 
-      // Use the ultimate content (detect if thread or single)
-      const isThreadContent = ultimateContent.content.includes('/') || ultimateContent.content.split('\n\n').length > 1;
-      const tweets = isThreadContent 
-        ? ultimateContent.content.split('\n\n').filter(t => t.trim()) 
-        : [ultimateContent.content];
+      // 🔧 FIXED THREAD DETECTION: Proper thread parsing and format forcing
+      console.log('🔧 THREAD_PARSER: Analyzing content format...');
+      
+      let tweets: string[] = [];
+      let isThreadContent = false;
+      
+      // Check if content is already formatted as array (from some generators)
+      if (Array.isArray(ultimateContent.content)) {
+        tweets = ultimateContent.content.filter(t => t.trim());
+        isThreadContent = tweets.length > 1;
+      } 
+      // Check for thread indicators in string content
+      else if (typeof ultimateContent.content === 'string') {
+        const content = ultimateContent.content.trim();
+        
+        // Method 1: Split by numbered indicators (1/, 2/, 3/, etc.)
+        const numberedSplit = content.split(/\n*\d+\//).filter(t => t.trim());
+        if (numberedSplit.length > 1) {
+          tweets = numberedSplit.map(t => t.trim());
+          isThreadContent = true;
+          console.log('🧵 DETECTED: Numbered thread format');
+        }
+        // Method 2: Split by double newlines
+        else if (content.includes('\n\n')) {
+          const paragraphSplit = content.split('\n\n').filter(t => t.trim());
+          if (paragraphSplit.length > 1 && paragraphSplit.every(p => p.length < 280)) {
+            tweets = paragraphSplit;
+            isThreadContent = true;
+            console.log('🧵 DETECTED: Paragraph-based thread');
+          }
+        }
+        
+        // If no thread detected but content is long, force thread creation
+        if (!isThreadContent && content.length > 250) {
+          console.log('🔄 FORCING: Long content converted to thread');
+          tweets = this.splitIntoThreadTweets(content);
+          isThreadContent = tweets.length > 1;
+        }
+        
+        // Default: single tweet
+        if (!isThreadContent) {
+          tweets = [content];
+        }
+      }
 
       const generationResult = {
         content: {
@@ -131,6 +176,10 @@ export class SimplifiedPostingEngine {
       };
 
       console.log(`🎯 ULTIMATE_POST: Generated ${isThreadContent ? 'thread' : 'single'} with ${tweets.length} tweet(s)`);
+      console.log(`📝 CONTENT_PREVIEW: "${tweets[0].substring(0, 100)}${tweets[0].length > 100 ? '...' : ''}"`);
+      if (isThreadContent && tweets.length > 1) {
+        console.log(`🧵 THREAD_PREVIEW: Tweet 2 starts with "${tweets[1].substring(0, 50)}..."`);
+      }
       
       if (!generationResult?.content?.tweets?.length) {
         throw new Error('No content generated');
@@ -284,6 +333,67 @@ EXAMPLES OF HIGH-ENGAGEMENT PATTERNS:
 Create content that makes people stop scrolling and engage.`;
 
     return basePrompt;
+  }
+
+  /**
+   * 🔧 SPLIT LONG CONTENT INTO THREAD TWEETS
+   */
+  private splitIntoThreadTweets(content: string): string[] {
+    const maxTweetLength = 250; // Safe limit
+    const tweets: string[] = [];
+    
+    // Split by sentences first
+    const sentences = content.split(/(?<=[.!?])\s+/);
+    let currentTweet = '';
+    
+    for (const sentence of sentences) {
+      // If adding this sentence would exceed limit, start new tweet
+      if (currentTweet && (currentTweet + ' ' + sentence).length > maxTweetLength) {
+        if (currentTweet.trim()) {
+          tweets.push(currentTweet.trim());
+          currentTweet = sentence;
+        }
+      } else {
+        currentTweet = currentTweet ? currentTweet + ' ' + sentence : sentence;
+      }
+    }
+    
+    // Add the last tweet
+    if (currentTweet.trim()) {
+      tweets.push(currentTweet.trim());
+    }
+    
+    // If we only got one tweet and it's still too long, split by words
+    if (tweets.length === 1 && tweets[0].length > maxTweetLength) {
+      return this.splitByWords(tweets[0], maxTweetLength);
+    }
+    
+    console.log(`📝 SPLIT_RESULT: ${content.length} chars → ${tweets.length} tweets`);
+    return tweets;
+  }
+
+  /**
+   * 🔧 EMERGENCY WORD SPLITTING for very long content
+   */
+  private splitByWords(content: string, maxLength: number): string[] {
+    const words = content.split(' ');
+    const tweets: string[] = [];
+    let currentTweet = '';
+    
+    for (const word of words) {
+      if (currentTweet && (currentTweet + ' ' + word).length > maxLength) {
+        tweets.push(currentTweet.trim());
+        currentTweet = word;
+      } else {
+        currentTweet = currentTweet ? currentTweet + ' ' + word : word;
+      }
+    }
+    
+    if (currentTweet.trim()) {
+      tweets.push(currentTweet.trim());
+    }
+    
+    return tweets;
   }
 
   /**
