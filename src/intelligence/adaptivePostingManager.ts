@@ -33,66 +33,83 @@ export class AdaptivePostingManager {
   }
 
   /**
-   * Determine what to post based on real-time data
+   * Determine what to post based on LEARNING ENGINE data
    */
   async getNextPostingOpportunity(): Promise<PostingOpportunity | null> {
-    console.log('🧠 ADAPTIVE_POSTING: Analyzing posting opportunity...');
+    console.log('🧠 LEARNING_DRIVEN_POSTING: Using aggressive learning engine...');
     
+    try {
+      // Get learning-based strategy
+      const { AggressiveLearningEngine } = await import('../learning/aggressiveLearningEngine');
+      const learningEngine = AggressiveLearningEngine.getInstance();
+      
+      const strategy = await learningEngine.getCurrentPostingStrategy();
+      const status = learningEngine.getLearningStatus();
+      
+      console.log(`🎓 LEARNING_STATUS: Phase: ${status.phase}, Progress: ${status.progress.toFixed(0)}%`);
+      console.log(`📊 LEARNING_TARGET: ${status.dailyTarget} posts/day (${status.totalPosts} total posts)`);
+      console.log(`🤖 STRATEGY: ${strategy.should_post_now ? 'POST' : 'WAIT'} - ${strategy.reasoning}`);
+      
+      if (!strategy.should_post_now) {
+        return null;
+      }
+      
+      // Map learning engine recommendations to our format
+      let postType: 'simple_fact' | 'advice' | 'thread';
+      if (strategy.recommended_type === 'thread') {
+        postType = 'thread';
+      } else if (strategy.recommended_type === 'reply') {
+        postType = 'advice'; // Treat replies as advice posts for now
+      } else {
+        postType = Math.random() > 0.5 ? 'simple_fact' : 'advice';
+      }
+      
+      return {
+        type: postType,
+        urgency: Math.round(strategy.confidence * 10),
+        reason: `LEARNING: ${strategy.reasoning} (confidence: ${(strategy.confidence * 100).toFixed(0)}%)`,
+        optimal_timing: 0
+      };
+      
+    } catch (error: any) {
+      console.error('❌ LEARNING_ENGINE_ERROR:', error.message);
+      console.log('🔄 FALLBACK: Using default posting logic');
+      return this.getDefaultPostingOpportunity();
+    }
+  }
+
+  /**
+   * Fallback posting logic if learning engine fails
+   */
+  private getDefaultPostingOpportunity(): PostingOpportunity | null {
     // Reset daily counters
     this.resetDailyCounters();
-    
-    // Analyze current engagement window
-    const engagementWindow = await this.analyzeEngagementWindow();
     
     // Get time since last posts
     const minutesSinceSimple = (Date.now() - this.lastSimplePost) / (1000 * 60);
     const minutesSinceThread = (Date.now() - this.lastThreadPost) / (1000 * 60);
     
-    console.log(`📊 TIMING_DATA: Simple: ${minutesSinceSimple.toFixed(0)}min ago, Thread: ${minutesSinceThread.toFixed(0)}min ago`);
-    console.log(`📊 DAILY_COUNT: Threads: ${this.threadsToday}/3, Simple: ${this.simplePostsToday}/15`);
+    console.log(`📊 DEFAULT_LOGIC: Simple: ${minutesSinceSimple.toFixed(0)}min ago, Thread: ${minutesSinceThread.toFixed(0)}min ago`);
     
-    // PRIORITY 1: Thread if it's been 6+ hours and we haven't hit daily limit
-    if (minutesSinceThread >= 360 && this.threadsToday < 3) {
-      return {
-        type: 'thread',
-        urgency: 9,
-        reason: 'Thread overdue (6+ hours)',
-        optimal_timing: 0
-      };
-    }
-    
-    // PRIORITY 2: Simple post if engagement window is optimal
-    if (engagementWindow.isOptimal && minutesSinceSimple >= 45 && this.simplePostsToday < 15) {
+    // Aggressive posting during learning phase
+    if (minutesSinceSimple >= 30 && this.simplePostsToday < 40) {
       return {
         type: Math.random() > 0.5 ? 'simple_fact' : 'advice',
-        urgency: 8,
-        reason: `Optimal engagement window (${engagementWindow.multiplier}x)`,
-        optimal_timing: 0
-      };
-    }
-    
-    // PRIORITY 3: Simple post if it's been 90+ minutes
-    if (minutesSinceSimple >= 90 && this.simplePostsToday < 15) {
-      return {
-        type: Math.random() > 0.5 ? 'simple_fact' : 'advice',
-        urgency: 6,
-        reason: 'Simple post overdue (90+ minutes)',
-        optimal_timing: 0
-      };
-    }
-    
-    // PRIORITY 4: Thread if it's been 4+ hours (even if not optimal)
-    if (minutesSinceThread >= 240 && this.threadsToday < 3) {
-      return {
-        type: 'thread',
         urgency: 7,
-        reason: 'Thread needed (4+ hours)',
-        optimal_timing: engagementWindow.isOptimal ? 0 : 30
+        reason: 'Aggressive learning phase - high frequency posting',
+        optimal_timing: 0
       };
     }
     
-    // PRIORITY 5: Wait for better opportunity
-    console.log('⏰ ADAPTIVE_POSTING: No urgent posting opportunity, waiting...');
+    if (minutesSinceThread >= 180 && this.threadsToday < 5) {
+      return {
+        type: 'thread',
+        urgency: 8,
+        reason: 'Thread for learning data collection',
+        optimal_timing: 0
+      };
+    }
+    
     return null;
   }
 
@@ -168,19 +185,56 @@ export class AdaptivePostingManager {
   }
 
   /**
-   * Record that we posted something
+   * Record that we posted something AND feed data to learning engine
    */
-  recordPost(type: 'simple_fact' | 'advice' | 'thread'): void {
+  async recordPost(type: 'simple_fact' | 'advice' | 'thread', postId?: string, content?: string): Promise<void> {
     const now = Date.now();
     
     if (type === 'thread') {
       this.lastThreadPost = now;
       this.threadsToday++;
-      console.log(`📊 RECORDED: Thread posted (${this.threadsToday}/3 today)`);
+      console.log(`📊 RECORDED: Thread posted (${this.threadsToday} today)`);
     } else {
       this.lastSimplePost = now;
       this.simplePostsToday++;
-      console.log(`📊 RECORDED: ${type} posted (${this.simplePostsToday}/15 today)`);
+      console.log(`📊 RECORDED: ${type} posted (${this.simplePostsToday} today)`);
+    }
+    
+    // Feed data to learning engine
+    if (postId) {
+      try {
+        const { AggressiveLearningEngine } = await import('../learning/aggressiveLearningEngine');
+        const learningEngine = AggressiveLearningEngine.getInstance();
+        
+        // Record initial post data (engagement will be tracked later)
+        await learningEngine.recordPostPerformance({
+          post_id: postId,
+          content_type: type === 'thread' ? 'thread' : 'simple',
+          posted_at: new Date(),
+          hour: new Date().getHours(),
+          day_of_week: new Date().getDay(),
+          content_length: content?.length || 0,
+          topic: 'general', // TODO: Extract topic from content
+          format: type,
+          
+          // Initial metrics (will be updated later)
+          likes: 0,
+          retweets: 0,
+          replies: 0,
+          followers_gained: 0,
+          impressions: 0,
+          
+          used_trending_topic: false, // TODO: Track this
+          competitor_activity_level: 'medium', // TODO: Get from analytics
+          engagement_prediction: 0, // TODO: Get from prediction
+          actual_engagement: 0 // Will be updated later
+        });
+        
+        console.log(`🎓 LEARNING: Post data recorded for learning engine`);
+        
+      } catch (error: any) {
+        console.error('❌ LEARNING_RECORD_ERROR:', error.message);
+      }
     }
   }
 
