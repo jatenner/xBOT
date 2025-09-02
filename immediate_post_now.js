@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { AutonomousPostingEngine } = require('./dist/core/autonomousPostingEngine.js');
+const { SimplifiedPostingEngine } = require('./dist/core/simplifiedPostingEngine.js');
 
 /**
  * 🚀 IMMEDIATE POSTING SCRIPT
@@ -13,9 +13,9 @@ async function immediatePostNow() {
   console.log('');
 
   try {
-    // Create posting engine instance
-    const postingEngine = new AutonomousPostingEngine();
-    console.log('✅ AutonomousPostingEngine initialized');
+    // Create posting engine instance with thread support
+    const postingEngine = SimplifiedPostingEngine.getInstance();
+    console.log('✅ SimplifiedPostingEngine initialized (with thread support)');
     console.log('');
 
     // 3. Immediate posting attempt
@@ -24,7 +24,8 @@ async function immediatePostNow() {
     console.log('');
 
     console.log('📝 EXECUTING POSTING PIPELINE...');
-    const result = await postingEngine.executePost();
+    // Use topic with "thread" to trigger thread generation
+    const result = await postingEngine.createEngagingPost('thread about health optimization breakthrough');
 
     if (result.success) {
       console.log('🎉 === POST SUCCESSFUL! ===');
