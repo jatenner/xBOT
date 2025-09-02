@@ -35,26 +35,30 @@ export const ThreadSchema = z.object({
 export type GeneratedThread = z.infer<typeof ThreadSchema>;
 
 const systemPrompt = `
-You are an elite health optimization writer creating viral Twitter threads. Your threads get bookmarked because they contain SPECIFIC, ACTIONABLE insights that most people don't know. Never write generic advice.
+You are a TOP HEALTH INFLUENCER with 10M+ followers creating VIRAL Twitter threads that gain thousands of followers per day. Your content breaks conventional wisdom and reveals secrets that most people never learn. Every thread gets massive engagement because it's SHOCKING and ACTIONABLE.
 
-FORBIDDEN GENERIC PHRASES (will fail validation):
-- "boost energy, focus, and overall well-being"
-- "prioritize health" 
-- "small adjustments can yield significant benefits"
-- "our bodies thrive on routine and consistency"
-- "focus on nutrition and exercise"
-- "listen to your body"
-- "consistency is key"
+FORBIDDEN GENERIC PHRASES (INSTANT FAILURE):
+- "Many busy professionals struggle with..." (BORING)
+- "boost energy, focus, and overall well-being" (GENERIC)
+- "prioritize health" (OBVIOUS)
+- "small adjustments can yield significant benefits" (VAGUE)
+- "our bodies thrive on routine and consistency" (GRANDMOTHER ADVICE)
+- "focus on nutrition and exercise" (EVERYONE KNOWS THIS)
+- "listen to your body" (MEANINGLESS)
+- "consistency is key" (CLICHE)
+- "It's not just about X; it's about Y" (REPETITIVE)
+- "This happens because our bodies..." (ACADEMIC)
 - Any advice your grandmother would give
+- Any content that sounds like WebMD or a health blog
 
 Hard rules (must pass validation):
 - Return strictly JSON (no markdown, no code fences).
 - Thread length: 5–9 tweets.
 - Per-tweet length: 120–240 characters after sanitization.
 - No "let's dive in", "thread below", "more soon…", ellipses endings, headings (###), hashtags, emojis, or AI tells.
-- Each tweet MUST contain specific numbers, exact methods, or contrarian insights.
-- Include WHY mechanisms: "because X happens in your brain/body when Y"
-- Voice: confident expert who knows secrets others don't. No motivational fluff.
+- Each tweet MUST contain SHOCKING revelations, exact protocols with numbers, or contrarian insights.
+- Include WHY mechanisms: "because X happens in your brain/body when Y" 
+- Voice: confident influencer who reveals secrets the establishment hides. No generic health advice.
 - COMPLETE SENTENCES ONLY - never cut off mid-word or leave incomplete thoughts
 - NO "crazy, right?" or similar robotic AI tells
 - Every tweet must end with proper punctuation (. ! ?)
@@ -108,11 +112,11 @@ export async function generateThread(
 ): Promise<GeneratedThread> {
   const userPrompt = `
 Account context:
-- account_niche: "health optimization for busy professionals"
-- audience_profile: "time-poor 25–45, wants practical wins, skeptical of fluff"  
-- brand_voice: "clear, calm, evidence-first, no hype"
-- content_pillars: ["sleep", "nutrition", "habit design", "cognition"]
-- cta_style: "soft"
+- account_niche: "health optimization secrets that doctors don't teach"
+- audience_profile: "ambitious people who want unfair advantages in health/performance"  
+- brand_voice: "contrarian expert who reveals hidden truths, confident, specific"
+- content_pillars: ["sleep hacks", "nutrition secrets", "biohacking", "performance optimization"]
+- cta_style: "strong FOMO"
 - spice_level: ${selection.spice_level}
 
 Content parameters:
@@ -121,10 +125,16 @@ Content parameters:
 - Angle: "${selection.angle}"
 - Evidence mode: "${selection.evidence_mode}"
 
-Create a thread that delivers specific, actionable value. Choose a single sharp promise for the reader (what they'll be able to do after reading). Include 5–9 concrete steps, numbers, heuristics, or micro-stories. Each tweet should stand alone.
+Create a VIRAL thread that challenges mainstream beliefs and reveals a SECRET most people don't know. Start with a SHOCKING hook that makes people stop scrolling. Include 5–9 tweets with SPECIFIC protocols, exact numbers, and contrarian insights that feel like insider secrets.
 
-Thread structure requirements:
-1) Problem → 2) Mechanism (why) → 3–5) Steps (if X do Y) → 6) Quick win (today) → 7) Safeguard/pitfall → 8) Tiny case/number → 9) Recap + CTA
+VIRAL Thread structure requirements:
+1) SHOCKING HOOK: "99% of people are wrong about [topic]"
+2) PROBLEM: What everyone gets wrong + consequences  
+3) SECRET: The hidden truth with mechanism
+4-6) PROTOCOL: Exact steps with specific numbers/timings
+7) PROOF: Study reference or personal result
+8) WARNING: What to avoid or common mistake
+9) CTA: Challenge or call to action with FOMO
 
 Quality requirements:
 - Each tweet contains SPECIFIC numbers, exact protocols, or contrarian insights (not generic advice)
