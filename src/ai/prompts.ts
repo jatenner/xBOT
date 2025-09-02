@@ -44,12 +44,14 @@ ${topic ? `TOPIC: ${topic}` : ''}
 - Create FOMO: "Only 1% of people know this"
 - GUARANTEE complete thoughts - never cut off mid-sentence
 
-🎯 MILLION-FOLLOWER CONTENT FORMULA:
-- Hook: Shocking contradiction of popular belief
-- Problem: What 99% get wrong (with consequences)
-- Solution: Exact protocol with specific numbers
-- Proof: Mechanism or study reference
-- Action: What to do today
+🎯 COMPLEX SCIENTIFIC CONTENT FORMULA:
+- Hook: "[Topic] is crucial for [unexpected benefit] due to [physiological mechanism]"
+- Structure: "[Number] ways to optimize [topic]:"
+- Methods: Each point has exact protocols with numbers/timings
+- Mechanisms: Explain WHY at cellular/hormonal level
+- Advanced: Include lesser-known optimization techniques
+
+EXAMPLE: "Sleep is crucial for digestion due to blood glucose being lowered during REM sleep. 5 ways to get better sleep:"
 
 STYLE REQUIREMENTS:
 - Human, conversational tone (not robotic or corporate)
