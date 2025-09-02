@@ -1,50 +1,56 @@
 import { validateEnvironment } from './config/env';
 import { startHealthServer } from './server';
-import { executePost } from './posting/orchestrator';
 import { closeBrowser } from './playwright/browserFactory';
 import { closeDatabaseConnections } from './db/index';
-import { closeCadenceGuard } from './posting/cadenceGuard';
-import { SimplifiedPostingEngine } from './core/simplifiedPostingEngine';
-import { RealEngagementTracker } from './metrics/realEngagementTracker';
-import { ensureSchemaAtBoot } from './services/SchemaGuard';
 
 /**
- * Start the Ultimate Content System posting loop
+ * SIMPLE THREAD POSTING LOOP - No bloat, just threads
  */
-function startUltimateContentLoop(postingEngine: any) {
-  console.log('🚀 ULTIMATE_LOOP: Starting intelligent posting cycle...');
+async function startSimpleThreadLoop() {
+  console.log('🧵 SIMPLE_THREAD_LOOP: Starting basic thread posting...');
   
-  // Post every 1-1.5 hours for aggressive growth
-  const postingInterval = setInterval(async () => {
+  async function postScientificThread() {
     try {
-      console.log('🎯 ULTIMATE_CYCLE: Attempting to create engaging post...');
-      const result = await postingEngine.createEngagingPost();
+      console.log('🔬 Creating scientific thread...');
+      
+      // Generate scientific thread
+      const { generateThread } = await import('./ai/threadGenerator');
+      const OpenAI = (await import('openai')).default;
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+      
+      const threadResult = await generateThread({
+        topic: 'health optimization breakthrough',
+        pillar: 'biohacking', 
+        angle: 'contrarian',
+        spice_level: 8,
+        evidence_mode: 'mechanism'
+      }, openai);
+      
+      console.log(`🧵 Generated ${threadResult.tweets.length} scientific tweets`);
+      
+      // Post the thread
+      const { SimpleThreadPoster } = await import('./posting/simpleThreadPoster');
+      const poster = SimpleThreadPoster.getInstance();
+      
+      const tweetTexts = threadResult.tweets.map(t => t.text);
+      const result = await poster.postRealThread(tweetTexts);
       
       if (result.success) {
-        console.log(`✅ ULTIMATE_SUCCESS: Posted content (ID: ${result.tweetId})`);
-        console.log(`📊 ULTIMATE_PREDICTION: ${result.engagementPrediction} engagement expected`);
+        console.log(`✅ THREAD_SUCCESS: Posted ${result.totalTweets} tweets (Root: ${result.rootTweetId})`);
       } else {
-        console.log(`⚠️ ULTIMATE_SKIP: ${result.error || 'Post not created'}`);
+        console.log(`❌ THREAD_FAILED: ${result.error}`);
       }
+      
     } catch (error: any) {
-      console.error('❌ ULTIMATE_ERROR:', error.message);
+      console.error('❌ THREAD_ERROR:', error.message);
     }
-  }, 75 * 60 * 1000); // 75 minutes (1.25 hours) for aggressive growth
-
-  // Also try posting immediately after a short delay
-  setTimeout(async () => {
-    try {
-      console.log('🎯 ULTIMATE_INITIAL: Creating first high-quality post...');
-      const result = await postingEngine.createEngagingPost();
-      if (result.success) {
-        console.log(`✅ ULTIMATE_FIRST_POST: Successfully posted (ID: ${result.tweetId})`);
-      }
-    } catch (error: any) {
-      console.error('❌ ULTIMATE_INITIAL_ERROR:', error.message);
-    }
-  }, 30000); // 30 seconds
-
-  return postingInterval;
+  }
+  
+  // Post immediately
+  setTimeout(postScientificThread, 10000); // 10 seconds
+  
+  // Post every 2 hours
+  setInterval(postScientificThread, 2 * 60 * 60 * 1000);
 }
 
 /**
@@ -71,55 +77,17 @@ async function main() {
     
     console.log('✅ Environment validation passed');
 
-    // Bootstrap database schema check with standalone SchemaGuard
-    console.log('🗄️ Checking database schema...');
-    try {
-      await ensureSchemaAtBoot();
-    } catch (error: any) {
-      console.error('🚨 SCHEMA_GUARD: Failed to ensure schema at boot:', error.message);
-      console.error('🚨 Continuing in degraded mode - metrics storage may fail');
-    }
-
     // Start health server
     console.log('🏥 Starting health monitoring server...');
     await startHealthServer();
     
-    // Test basic functionality
-    if (process.argv.includes('--test-post')) {
-      console.log('🧪 Running test post...');
-      const result = await executePost({ 
-        topic: 'system health check test',
-        format: 'single'
-      });
-      
-      if (result.success) {
-        console.log('✅ Test post successful:', result.rootTweetId);
-      } else {
-        console.log('❌ Test post failed:', result.error);
-      }
-      
-      return;
-    }
-
-    // Start Ultimate Content System posting engine
-    console.log('🚀 Starting ULTIMATE CONTENT SYSTEM posting engine...');
-    const postingEngine = SimplifiedPostingEngine.getInstance();
+    // Start simple thread posting system
+    console.log('🧵 Starting SIMPLE THREAD SYSTEM...');
+    await startSimpleThreadLoop();
     
-    // Start real engagement tracking
-    console.log('📊 Starting real engagement tracker...');
-    const engagementTracker = RealEngagementTracker.getInstance();
-    await engagementTracker.initialize();
-    
-    // Initialize Ultimate Content System
-    console.log('🎯 Initializing ULTIMATE CONTENT SYSTEM...');
-    
-    // Start the posting loop using Ultimate Content System
-    startUltimateContentLoop(postingEngine);
-    
-    console.log('✅ ULTIMATE CONTENT SYSTEM ready and running');
-    console.log('🎯 Goal: Generate HIGH-QUALITY content that drives engagement');
-    console.log('📊 Using AI-driven content optimization and learning');
-    console.log('🔄 Authentic, non-spam content with viral prediction');
+    console.log('✅ SIMPLE THREAD SYSTEM ready and running');
+    console.log('🎯 Goal: Post scientific threads that gain followers');
+    console.log('🧬 Focus: Complex scientific content, real threads, growth');
 
     // Set up graceful shutdown
     setupGracefulShutdown();
