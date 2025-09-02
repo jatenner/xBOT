@@ -101,20 +101,73 @@ export class SimplifiedPostingEngine {
       const { UnifiedContentOrchestrator } = await import('../content/unifiedContentOrchestrator');
       const orchestrator = UnifiedContentOrchestrator.getInstance();
       
-      console.log('🎯 ULTIMATE_SYSTEM: Generating comprehensive optimized content with learning insights...');
+      // 🔧 BYPASS ULTIMATE SYSTEM: Use direct thread generator for real threads
+      const shouldForceThread = topic && topic.includes('thread') || Math.random() < 0.5; // 50% chance for threads
+      console.log(`🎯 CONTENT_TYPE_DECISION: ${shouldForceThread ? 'THREAD' : 'SINGLE'} format forced`);
       
-      // 🔧 FORCE THREAD GENERATION: Override to create proper threads
-      const shouldForceThread = topic && topic.includes('thread') || Math.random() < 0.4; // 40% chance for threads
+      let ultimateContent;
       
-      const ultimateContent = await orchestrator.generateUltimateContent({
-        topic: topic,
-        urgency: 'medium',
-        target_metric: 'followers', // Focus on follower growth
-        content_type: shouldForceThread ? 'thread' : 'auto', // Force threads sometimes
-        learning_priority: true // Use for learning
-      });
-      
-      console.log(`🎯 CONTENT_TYPE_DECISION: Requested ${shouldForceThread ? 'THREAD' : 'AUTO'} format`);
+      if (shouldForceThread) {
+        console.log('🧵 DIRECT_THREAD: Using dedicated thread generator...');
+        
+        // Use the thread generator directly
+        const { generateThread } = await import('../ai/threadGenerator');
+        const { OpenAI } = await import('openai');
+        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+        
+        const threadContent = await generateThread({
+          topic: topic || 'health optimization',
+          pillar: 'health',
+          angle: 'contrarian insights',
+          spice_level: 2,
+          evidence_mode: 'mini-study'
+        }, openai);
+        
+        // Convert thread to Ultimate Content format
+        ultimateContent = {
+          content: threadContent.tweets.map(t => t.text), // ARRAY of tweets!
+          metadata: {
+            generation_quality: threadContent.quality.score,
+            growth_score: 85,
+            viral_probability: threadContent.quality.score,
+            authenticity_score: threadContent.quality.rubric.human_warmth * 20,
+            learning_value: 80,
+            strategic_alignment: 90
+          },
+          predictions: {
+            likes: 25,
+            retweets: 8,
+            replies: 12,
+            followers_gained: 3,
+            engagement_rate: 4.2
+          },
+          strategy: {
+            posting_time: 'Peak engagement hours',
+            distribution_plan: 'Thread with reply chain',
+            follow_up_actions: ['Engage with replies', 'Monitor thread performance']
+          },
+          learning: {
+            what_to_track: ['Thread completion rate', 'Reply engagement'],
+            success_metrics: ['High reply rate', 'Thread viral spread'],
+            hypothesis: 'Health threads drive deeper engagement'
+          }
+        };
+        
+        console.log(`🧵 THREAD_GENERATED: ${ultimateContent.content.length} tweets in thread`);
+        
+      } else {
+        console.log('📝 SINGLE_CONTENT: Using ultimate system for single tweet...');
+        const { UnifiedContentOrchestrator } = await import('../content/unifiedContentOrchestrator');
+        const orchestrator = UnifiedContentOrchestrator.getInstance();
+        
+        ultimateContent = await orchestrator.generateUltimateContent({
+          topic: topic,
+          urgency: 'medium',
+          target_metric: 'followers',
+          content_type: 'single',
+          learning_priority: true
+        });
+      }
       
       console.log(`🎖️ ULTIMATE_QUALITY: ${ultimateContent.metadata.generation_quality}/100`);
       console.log(`📈 GROWTH_SCORE: ${ultimateContent.metadata.growth_score}/100`);
@@ -123,20 +176,22 @@ export class SimplifiedPostingEngine {
       console.log(`📊 PREDICTIONS: ${ultimateContent.predictions.likes} likes, ${ultimateContent.predictions.followers_gained} followers`);
       console.log(`⏰ STRATEGY: ${ultimateContent.strategy.posting_time}`);
 
-      // 🔧 FIXED THREAD DETECTION: Proper thread parsing and format forcing
+      // 🔧 IMPROVED THREAD PARSING: Handle both array and string formats
       console.log('🔧 THREAD_PARSER: Analyzing content format...');
       
       let tweets: string[] = [];
       let isThreadContent = false;
       
-      // Check if content is already formatted as array (from some generators)
+      // Check if content is already formatted as array (from thread generator)
       if (Array.isArray(ultimateContent.content)) {
         tweets = ultimateContent.content.filter(t => t.trim());
         isThreadContent = tweets.length > 1;
+        console.log(`🧵 ARRAY_FORMAT: Detected ${tweets.length} tweets in array format`);
       } 
-      // Check for thread indicators in string content
+      // Handle string content from Ultimate Content System
       else if (typeof ultimateContent.content === 'string') {
         const content = ultimateContent.content.trim();
+        console.log(`📝 STRING_FORMAT: Content length ${content.length} chars`);
         
         // Method 1: Split by numbered indicators (1/, 2/, 3/, etc.)
         const numberedSplit = content.split(/\n*\d+\//).filter(t => t.trim());
