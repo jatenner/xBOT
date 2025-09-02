@@ -45,6 +45,10 @@ Hard rules (must pass validation):
 - Each tweet contains at least one concrete element: number, step, micro-example, heuristic, or comparison.
 - If making a claim, add a brief why or mechanism (human-level reasoning).
 - Voice: human, warm, concise. No corporate tone. No false personal claims; use brand "we" or neutral POV.
+- COMPLETE SENTENCES ONLY - never cut off mid-word or leave incomplete thoughts
+- NO "crazy, right?" or similar robotic AI tells
+- Every tweet must end with proper punctuation (. ! ?)
+- If approaching character limit, remove whole sentences, not partial words
 
 Quality rubric (must score ≥ 90):
 - Completeness (40): Each tweet stands alone; no teasers.
