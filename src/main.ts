@@ -243,6 +243,44 @@ async function postSimpleContent(type: 'simple_fact' | 'advice') {
 }
 
 /**
+ * TWITTER ANALYTICS ENGINE - Continuous Twitter landscape analysis
+ */
+async function startTwitterAnalytics() {
+  console.log('📊 TWITTER_ANALYTICS: Starting continuous analysis...');
+  
+  const { TwitterAnalyticsEngine } = await import('./analytics/twitterAnalyticsEngine');
+  const analytics = TwitterAnalyticsEngine.getInstance();
+  
+  async function runAnalyticsCycle() {
+    try {
+      console.log('🔍 ANALYTICS_CYCLE: Analyzing Twitter landscape...');
+      
+      // Deep Twitter analysis
+      const metrics = await analytics.analyzeTwitterLandscape();
+      
+      // Generate engagement forecast
+      const forecast = await analytics.generateEngagementForecast();
+      
+      console.log('📊 ANALYTICS_SUMMARY:');
+      console.log(`🔥 TRENDING: ${metrics.trending_topics.slice(0, 3).join(', ')}`);
+      console.log(`⏰ PEAK_HOURS: ${metrics.peak_engagement_hours.join(', ')}`);
+      console.log(`🏆 COMPETITORS: ${metrics.competitor_activity.length} analyzed`);
+      console.log(`🚀 OPPORTUNITIES: ${forecast.trending_opportunities.length} trending topics`);
+      console.log(`⚡ GAPS: ${forecast.competitor_gaps.length} competitor gaps`);
+      
+    } catch (error: any) {
+      console.error('❌ ANALYTICS_CYCLE_ERROR:', error.message);
+    }
+  }
+  
+  // Run analytics every 30 minutes
+  setInterval(runAnalyticsCycle, 30 * 60 * 1000);
+  
+  // Run initial analysis after 1 minute
+  setTimeout(runAnalyticsCycle, 60 * 1000);
+}
+
+/**
  * Main application entry point with proper error handling and graceful shutdown
  */
 async function main() {
@@ -278,9 +316,13 @@ async function main() {
     console.log('🤝 Starting ENGAGEMENT SYSTEM for follower acquisition...');
     await startEngagementLoop();
     
-    console.log('✅ COMPLETE GROWTH SYSTEM ready and running');
-    console.log('🎯 Goal: Post viral threads + aggressive engagement');
-    console.log('🧬 Strategy: Content + replies + follows + likes = FOLLOWERS');
+    // Start Twitter analytics engine
+    console.log('📊 Starting TWITTER ANALYTICS ENGINE...');
+    await startTwitterAnalytics();
+    
+    console.log('✅ COMPLETE AI-DRIVEN GROWTH SYSTEM ready and running');
+    console.log('🎯 Goal: Data-driven viral content + strategic engagement');
+    console.log('🧬 Strategy: Twitter Analytics → Optimal Timing → Viral Content → Followers');
 
     // Set up graceful shutdown
     setupGracefulShutdown();

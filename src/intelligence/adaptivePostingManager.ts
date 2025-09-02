@@ -97,45 +97,74 @@ export class AdaptivePostingManager {
   }
 
   /**
-   * Analyze current engagement conditions
+   * Analyze current engagement conditions using REAL Twitter data
    */
   private async analyzeEngagementWindow(): Promise<EngagementWindow> {
     try {
-      const hour = new Date().getHours();
-      const dayOfWeek = new Date().getDay();
+      console.log('📊 ENGAGEMENT_ANALYSIS: Using real Twitter analytics...');
       
-      // Peak hours: 7-9 AM, 12-2 PM, 6-8 PM EST
-      const peakHours = [7, 8, 12, 13, 18, 19];
-      const isOptimal = peakHours.includes(hour) && dayOfWeek >= 1 && dayOfWeek <= 5;
+      const { TwitterAnalyticsEngine } = await import('../analytics/twitterAnalyticsEngine');
+      const analytics = TwitterAnalyticsEngine.getInstance();
       
-      // Weekend multiplier (lower engagement typically)
-      const weekendPenalty = (dayOfWeek === 0 || dayOfWeek === 6) ? 0.7 : 1.0;
+      // Get real-time engagement forecast
+      const forecast = await analytics.generateEngagementForecast();
+      const currentHour = new Date().getHours();
       
-      // Time-based multiplier
-      let timeMultiplier = 1.0;
-      if (peakHours.includes(hour)) timeMultiplier = 1.5;
-      if (hour >= 22 || hour <= 5) timeMultiplier = 0.6; // Late night/early morning
+      // Find prediction for current hour
+      const currentPrediction = forecast.next_6_hours.find(p => p.hour === currentHour);
       
-      const finalMultiplier = timeMultiplier * weekendPenalty;
+      if (!currentPrediction) {
+        console.log('⚠️ NO_PREDICTION: Using default engagement analysis');
+        return this.getDefaultEngagementWindow();
+      }
       
-      console.log(`📊 ENGAGEMENT_WINDOW: ${isOptimal ? 'OPTIMAL' : 'NORMAL'} (${finalMultiplier.toFixed(1)}x multiplier)`);
+      // Determine if this is an optimal window
+      const isOptimal = currentPrediction.predicted_engagement > 70 && currentPrediction.confidence > 0.7;
+      
+      // Calculate engagement multiplier based on prediction
+      const baseMultiplier = currentPrediction.predicted_engagement / 100;
+      const confidenceBonus = currentPrediction.confidence * 0.5;
+      const finalMultiplier = Math.max(0.3, Math.min(3.0, baseMultiplier + confidenceBonus));
+      
+      // Get trending topics
+      const trendingTopics = forecast.trending_opportunities.map(t => t.topic);
+      
+      // Assess competitor activity
+      const competitorGaps = forecast.competitor_gaps.filter(g => g.time_slot === currentHour);
+      const competitorActivity = competitorGaps.length > 0 ? 'low' : 'medium';
+      
+      console.log(`📊 REAL_ANALYTICS: ${isOptimal ? 'OPTIMAL' : 'NORMAL'} window`);
+      console.log(`📈 PREDICTED_ENGAGEMENT: ${currentPrediction.predicted_engagement.toFixed(0)}% (${finalMultiplier.toFixed(1)}x)`);
+      console.log(`🔥 TRENDING: ${trendingTopics.slice(0, 2).join(', ')}`);
+      console.log(`🏆 COMPETITOR_ACTIVITY: ${competitorActivity}`);
       
       return {
         isOptimal,
         multiplier: finalMultiplier,
-        trending_topics: [], // TODO: Implement trending topic detection
-        competitor_activity: 'medium' // TODO: Implement competitor activity tracking
+        trending_topics: trendingTopics,
+        competitor_activity: competitorActivity as 'low' | 'medium' | 'high'
       };
       
     } catch (error) {
-      console.error('❌ ENGAGEMENT_WINDOW_ERROR:', error);
-      return {
-        isOptimal: false,
-        multiplier: 1.0,
-        trending_topics: [],
-        competitor_activity: 'medium'
-      };
+      console.error('❌ ANALYTICS_ERROR:', error);
+      return this.getDefaultEngagementWindow();
     }
+  }
+
+  /**
+   * Fallback engagement window if analytics fail
+   */
+  private getDefaultEngagementWindow(): EngagementWindow {
+    const hour = new Date().getHours();
+    const peakHours = [7, 8, 12, 13, 18, 19];
+    const isOptimal = peakHours.includes(hour);
+    
+    return {
+      isOptimal,
+      multiplier: isOptimal ? 1.5 : 1.0,
+      trending_topics: ['biohacking', 'longevity'],
+      competitor_activity: 'medium'
+    };
   }
 
   /**
