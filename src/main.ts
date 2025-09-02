@@ -4,9 +4,48 @@ import { executePost } from './posting/orchestrator';
 import { closeBrowser } from './playwright/browserFactory';
 import { closeDatabaseConnections } from './db/index';
 import { closeCadenceGuard } from './posting/cadenceGuard';
-import { AutonomousPostingEngine } from './core/autonomousPostingEngine';
+import { SimplifiedPostingEngine } from './core/simplifiedPostingEngine';
 import { RealEngagementTracker } from './metrics/realEngagementTracker';
 import { ensureSchemaAtBoot } from './services/SchemaGuard';
+
+/**
+ * Start the Ultimate Content System posting loop
+ */
+function startUltimateContentLoop(postingEngine: any) {
+  console.log('🚀 ULTIMATE_LOOP: Starting intelligent posting cycle...');
+  
+  // Post every 2-4 hours with intelligent timing
+  const postingInterval = setInterval(async () => {
+    try {
+      console.log('🎯 ULTIMATE_CYCLE: Attempting to create engaging post...');
+      const result = await postingEngine.createEngagingPost();
+      
+      if (result.success) {
+        console.log(`✅ ULTIMATE_SUCCESS: Posted content (ID: ${result.tweetId})`);
+        console.log(`📊 ULTIMATE_PREDICTION: ${result.engagementPrediction} engagement expected`);
+      } else {
+        console.log(`⚠️ ULTIMATE_SKIP: ${result.error || 'Post not created'}`);
+      }
+    } catch (error: any) {
+      console.error('❌ ULTIMATE_ERROR:', error.message);
+    }
+  }, 2 * 60 * 60 * 1000); // 2 hours
+
+  // Also try posting immediately after a short delay
+  setTimeout(async () => {
+    try {
+      console.log('🎯 ULTIMATE_INITIAL: Creating first high-quality post...');
+      const result = await postingEngine.createEngagingPost();
+      if (result.success) {
+        console.log(`✅ ULTIMATE_FIRST_POST: Successfully posted (ID: ${result.tweetId})`);
+      }
+    } catch (error: any) {
+      console.error('❌ ULTIMATE_INITIAL_ERROR:', error.message);
+    }
+  }, 30000); // 30 seconds
+
+  return postingInterval;
+}
 
 /**
  * Main application entry point with proper error handling and graceful shutdown
@@ -62,31 +101,33 @@ async function main() {
       return;
     }
 
-    // Start autonomous posting engine
-    console.log('🤖 Starting autonomous posting engine...');
-    const postingEngine = AutonomousPostingEngine.getInstance();
+    // Start Ultimate Content System posting engine
+    console.log('🚀 Starting ULTIMATE CONTENT SYSTEM posting engine...');
+    const postingEngine = SimplifiedPostingEngine.getInstance();
     
     // Start real engagement tracking
     console.log('📊 Starting real engagement tracker...');
     const engagementTracker = RealEngagementTracker.getInstance();
     await engagementTracker.initialize();
     
-    // Initialize autonomous posting
-    console.log('🎯 Initializing autonomous posting system...');
-    await postingEngine.initialize();
+    // Initialize Ultimate Content System
+    console.log('🎯 Initializing ULTIMATE CONTENT SYSTEM...');
     
-    console.log('✅ Autonomous posting engine ready and running');
-    console.log('🎯 Goal: Generate actual likes, retweets, and followers');
-    console.log('📊 Tracking real Twitter metrics, not internal estimates');
-    console.log('🔄 Bot will post automatically based on optimal timing');
+    // Start the posting loop using Ultimate Content System
+    startUltimateContentLoop(postingEngine);
+    
+    console.log('✅ ULTIMATE CONTENT SYSTEM ready and running');
+    console.log('🎯 Goal: Generate HIGH-QUALITY content that drives engagement');
+    console.log('📊 Using AI-driven content optimization and learning');
+    console.log('🔄 Authentic, non-spam content with viral prediction');
 
     // Set up graceful shutdown
     setupGracefulShutdown();
 
     console.log('✅ xBOT system initialization complete');
     console.log('🌐 Health server running - check /status endpoint for system status');
-    console.log('🤖 Autonomous posting active - will post when opportunities are detected');
-    console.log('📈 Focus: Building audience, generating followers, learning from engagement');
+    console.log('🚀 ULTIMATE CONTENT SYSTEM active - generating premium content');
+    console.log('📈 Focus: Quality-driven growth, authentic engagement, follower acquisition');
     
     // 🛡️ GLOBAL_CRASH_PREVENTION: Handle all uncaught errors
     process.on('uncaughtException', (error) => {
