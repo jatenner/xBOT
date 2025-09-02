@@ -11,6 +11,8 @@ import { validateContent } from '../quality/qualityGate';
 import { scheduleMetricsTracking } from '../metrics/trackTweet';
 import { storeLearningPost } from '../db/index';
 import { logInfo, logError } from '../utils/intelligentLogging';
+import { ContentQualityController } from '../quality/contentQualityController';
+import { ContentPerformanceLearner } from '../learning/contentPerformanceLearner';
 
 export interface SimplePostResult {
   success: boolean;
@@ -28,8 +30,13 @@ export class SimplifiedPostingEngine {
   private readonly MAX_DAILY_POSTS = 20; // Increased for small account growth
   private dailyPostCount = 0;
   private lastResetDate = new Date().toDateString();
+  private qualityController: ContentQualityController;
+  private learner: ContentPerformanceLearner;
 
-  private constructor() {}
+  private constructor() {
+    this.qualityController = new ContentQualityController(process.env.OPENAI_API_KEY!);
+    this.learner = ContentPerformanceLearner.getInstance();
+  }
 
   public static getInstance(): SimplifiedPostingEngine {
     if (!SimplifiedPostingEngine.instance) {
@@ -77,11 +84,24 @@ export class SimplifiedPostingEngine {
     try {
       logInfo('SIMPLE_POST', `Creating engaging post ${this.dailyPostCount + 1}/${this.MAX_DAILY_POSTS}`);
 
+      // 🧠 LEARNING_OPTIMIZATION: Apply learned patterns to improve content
+      console.log('🧠 LEARNING_ENGINE: Applying performance insights...');
+      const learningInsights = await this.learner.analyzeContentPerformance();
+      
+      console.log(`📊 LEARNING_DATA: ${learningInsights.successful_patterns.length} successful patterns found`);
+      console.log(`⚠️ AVOIDING: ${learningInsights.failing_patterns.length} failing patterns`);
+      console.log(`💡 RECOMMENDATIONS: ${learningInsights.recommendations.slice(0, 2).join(', ')}`);
+
+      // Get content type recommendation based on learning
+      const contentTypeHint = await this.learner.getImprovementSuggestions('single');
+      console.log(`🎯 OPTIMAL_LENGTH: ${contentTypeHint.optimal_length} characters`);
+      console.log(`🚀 TOP_HOOKS: ${contentTypeHint.hooks.slice(0, 2).join(', ')}`);
+
             // 🚀 ULTIMATE CONTENT SYSTEM: Use comprehensive orchestrator
       const { UnifiedContentOrchestrator } = await import('../content/unifiedContentOrchestrator');
       const orchestrator = UnifiedContentOrchestrator.getInstance();
       
-      console.log('🎯 ULTIMATE_SYSTEM: Generating comprehensive optimized content...');
+      console.log('🎯 ULTIMATE_SYSTEM: Generating comprehensive optimized content with learning insights...');
       const ultimateContent = await orchestrator.generateUltimateContent({
         topic: topic,
         urgency: 'medium',
@@ -116,12 +136,39 @@ export class SimplifiedPostingEngine {
         throw new Error('No content generated');
       }
 
+      // 🔍 QUALITY_VALIDATION: Comprehensive content quality check
+      console.log('🔍 QUALITY_CONTROLLER: Validating content quality...');
+      
+      // For threads, validate the first tweet (most critical for engagement)
+      const contentToValidate = tweets[0];
+      const qualityScore = await this.qualityController.validateContentQuality(contentToValidate);
+      
+      console.log(`📊 QUALITY_SCORE: ${qualityScore.overall}/100 (Completeness: ${qualityScore.completeness}/100)`);
+      
+      if (!qualityScore.shouldPost) {
+        console.log('🚫 QUALITY_GATE: Content REJECTED - attempting to improve...');
+        console.log('❌ Quality Issues:', qualityScore.issues.join(', '));
+        
+        // Attempt to improve the content
+        const improvement = await this.qualityController.improveContent(contentToValidate, qualityScore);
+        
+        if (improvement.qualityIncrease > 0) {
+          console.log(`✅ CONTENT_IMPROVED: Quality increased by ${improvement.qualityIncrease} points`);
+          tweets[0] = improvement.improvedContent;
+          generationResult.content.tweets = tweets;
+        } else {
+          // Content couldn't be improved enough - skip posting
+          return {
+            success: false,
+            error: `Content quality too low (${qualityScore.overall}/100): ${qualityScore.issues.join(', ')}`,
+          };
+        }
+      } else {
+        console.log('✅ QUALITY_GATE: Content approved for posting');
+      }
+
       // Handle both single tweets and threads
       const isThread = generationResult.content.tweets.length > 1;
-      
-      // Validate for engagement potential
-      // Skip validation for ultimate system - it has its own quality gates
-      // Quality validation is handled by the UnifiedContentOrchestrator
 
       let postResult;
       if (isThread) {

@@ -38,9 +38,10 @@ ${topic ? `TOPIC: ${topic}` : ''}
 
 🔥 VIRAL CONTENT STRATEGY:
 - Use controversial angles that challenge popular beliefs
-- Include specific numbers, studies, or shocking statistics
+- Include specific numbers, studies, or shocking statistics  
 - Add personal story elements or "I discovered" narratives
 - Create curiosity gaps that make people want to share
+- ENSURE COMPLETE THOUGHTS - never cut off mid-sentence
 
 STYLE REQUIREMENTS:
 - Human, conversational tone (not robotic or corporate)
@@ -48,6 +49,7 @@ STYLE REQUIREMENTS:
 - Concise and punchy - every word earns its place
 - Specific and actionable - people should know exactly what to do
 - Evidence-backed when making claims (cite mechanism or source)
+- COMPLETE SENTENCES ONLY - no ellipses, cut-offs, or incomplete thoughts
 
 STRICT CONTENT RULES:
 ❌ BANNED PHRASES (never use these):
@@ -60,6 +62,16 @@ STRICT CONTENT RULES:
 - Academic jargon or overly clinical language
 - ANY hashtags (#hashtag) - NEVER use hashtags in any content
 - Repetitive sentence structures - vary your patterns
+- "crazy, right?" or similar AI tells
+- Cut-off words like "each nigh" or incomplete sentences
+- Word salad or incoherent fragments
+
+🚫 CRITICAL COMPLETENESS RULES:
+- NEVER end with "..." or incomplete thoughts
+- NEVER cut off mid-word (like "each nigh" instead of "each night")
+- EVERY sentence must be grammatically complete
+- NO hanging thoughts or unfinished ideas
+- If approaching character limit, cut whole sentences, not partial words
 
 ✅ REQUIRED ELEMENTS:
 - At least 2 concrete, actionable tips per thread
