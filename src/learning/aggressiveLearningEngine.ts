@@ -200,8 +200,8 @@ export class AggressiveLearningEngine {
   private getAggressiveStrategy(hour: number, postsToday: number): PostingStrategy {
     console.log('🚀 AGGRESSIVE_PHASE: Gathering data through high-frequency posting');
     
-    // Post every 15-20 minutes during active hours (5 AM - 12 AM) - ULTRA AGGRESSIVE
-    const isActiveHour = hour >= 5 && hour <= 24;
+    // Post every 15-20 minutes during active hours (5 AM - 11:59 PM) - ULTRA AGGRESSIVE
+    const isActiveHour = hour >= 5 && hour <= 23;
     const underTarget = postsToday < this.dailyPostTarget;
     
     if (!isActiveHour) {
@@ -209,7 +209,7 @@ export class AggressiveLearningEngine {
         should_post_now: false,
         recommended_type: 'simple',
         confidence: 0.3,
-        reasoning: 'Outside active hours (5 AM - 12 AM)',
+        reasoning: 'Outside active hours (5 AM - 11:59 PM)',
         target_daily_posts: this.dailyPostTarget
       };
     }
