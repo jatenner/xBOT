@@ -37,6 +37,16 @@ interface PostPerformanceData {
   bandit_confidence?: number;
   variant_score?: number;
   novelty_score?: number;
+  
+  // 📊 FORMAT VARIATION TRACKING
+  thread_length?: number;
+  thread_structure?: string;
+  hook_type?: string;
+  spice_level?: number;
+  evidence_mode?: string;
+  content_style?: string;
+  length_target?: string;
+  intensity_level?: string;
 }
 
 interface PostingStrategy {
