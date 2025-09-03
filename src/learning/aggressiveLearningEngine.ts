@@ -152,7 +152,7 @@ export class AggressiveLearningEngine {
   /**
    * Update learning insights from accumulated data - FAST LEARNING
    */
-  private async updateLearningInsights(): Promise<void> {
+  public async updateLearningInsights(): Promise<void> {
     if (this.postHistory.length < 3) {
       console.log('⏳ LEARNING: Insufficient data for insights (need 3+ posts for rapid learning)');
       return;
