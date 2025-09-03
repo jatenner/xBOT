@@ -39,17 +39,7 @@ async function postScientificThread() {
   }
 }
 
-async function postSimpleContent(type: string) {
-  try {
-    console.log(`📝 POSTING: Creating ${type} content...`);
-    const { SimplifiedPostingEngine } = await import('./core/simplifiedPostingEngine');
-    const engine = SimplifiedPostingEngine.getInstance();
-    const result = await engine.createEngagingPost(`${type} about health tips`);
-    console.log(`✅ SIMPLE_POSTED: ${result.success ? 'Success' : 'Failed'}`);
-  } catch (error: any) {
-    console.error('❌ SIMPLE_POST_ERROR:', error.message);
-  }
-}
+
 
 async function startIntelligentPosting() {
   console.log('🧠 INTELLIGENT_POSTING: Starting adaptive posting system...');
