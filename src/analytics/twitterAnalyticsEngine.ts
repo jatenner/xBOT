@@ -136,7 +136,8 @@ export class TwitterAnalyticsEngine {
       // 🚀 REAL TWITTER SCRAPING: Use Playwright to scrape trending topics
       const { browserManager } = await import('../posting/BrowserManager');
       
-      return await browserManager.withContext('analytics', async (context) => {
+      const context = await browserManager.newPostingContext();
+      try {
         const page = await context.newPage();
         
         try {
@@ -206,7 +207,9 @@ export class TwitterAnalyticsEngine {
         } finally {
           await page.close();
         }
-      });
+      } finally {
+        await context.close();
+      }
       
     } catch (error) {
       console.error('❌ TRENDING_ANALYSIS_ERROR:', error);
@@ -233,7 +236,8 @@ export class TwitterAnalyticsEngine {
     // 🚀 REAL COMPETITOR ANALYSIS: Use Playwright to scrape competitor profiles
     const { browserManager } = await import('../posting/BrowserManager');
     
-    return await browserManager.withContext('competitor-analysis', async (context) => {
+    const context = await browserManager.newPostingContext();
+    try {
       const page = await context.newPage();
       
       for (const username of competitors.slice(0, 3)) { // Analyze top 3 to avoid rate limits
@@ -329,7 +333,9 @@ export class TwitterAnalyticsEngine {
       
       console.log(`📊 COMPETITOR_DATA: Analyzed ${competitorData.length} competitors`);
       return competitorData;
-    });
+    } finally {
+      await context.close();
+    }
   }
 
   /**

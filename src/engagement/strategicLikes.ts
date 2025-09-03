@@ -22,7 +22,8 @@ export async function executeStrategicLikes(): Promise<void> {
     // 🚀 REAL STRATEGIC LIKES: Use Playwright to actually like tweets
     const { browserManager } = await import('../posting/BrowserManager');
     
-    await browserManager.withContext('strategic-likes', async (context) => {
+    const context = await browserManager.newPostingContext();
+    try {
       const page = await context.newPage();
       
       try {
@@ -83,7 +84,9 @@ export async function executeStrategicLikes(): Promise<void> {
       } finally {
         await page.close();
       }
-    });
+    } finally {
+      await context.close();
+    }
     
   } catch (error: any) {
     console.error('❌ STRATEGIC_LIKES_ERROR:', error.message);

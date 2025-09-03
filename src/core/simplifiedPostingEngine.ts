@@ -354,16 +354,16 @@ export class SimplifiedPostingEngine {
         console.log('📝 SIMPLE_POST: Posting single tweet');
         
         // Get the single tweet content
-        const tweetContent = generationResult.content.tweets[0];
-        if (!tweetContent) {
-          throw new Error('No tweet content generated');
-        }
-        
-        // Optimize for engagement
-        const optimizedContent = this.optimizeForEngagement(tweetContent);
-        
-        // Post to Twitter using the postSingleTweet method  
-        const poster = new TwitterPoster();
+      const tweetContent = generationResult.content.tweets[0];
+      if (!tweetContent) {
+        throw new Error('No tweet content generated');
+      }
+
+      // Optimize for engagement
+      const optimizedContent = this.optimizeForEngagement(tweetContent);
+      
+      // Post to Twitter using the postSingleTweet method
+      const poster = new TwitterPoster();
         postResult = await poster.postSingleTweet(optimizedContent);
       }
       
@@ -403,12 +403,12 @@ export class SimplifiedPostingEngine {
           }
         }
 
-        return {
-          success: true,
-          tweetId: postResult.tweetId,
+      return {
+        success: true,
+        tweetId: postResult.tweetId,
           content: contentForStorage,
           engagementPrediction: ultimateResult?.predictions?.likes || 5
-        };
+      };
 
     } catch (error: any) {
       logError('SIMPLE_POST', `❌ Failed to create post: ${error.message}`);
