@@ -334,13 +334,13 @@ async function main() {
     console.log('🏥 Starting health monitoring server...');
     await startHealthServer();
     
-    // Start simple thread posting system
-    console.log('🧵 Starting SIMPLE THREAD SYSTEM...');
-    await startSimpleThreadLoop();
+    // Start AGGRESSIVE LEARNING ENGINE posting system
+    console.log('🧠 Starting AGGRESSIVE LEARNING ENGINE...');
+    await startIntelligentPosting();
     
-    // Start aggressive engagement system for follower growth
-    console.log('🤝 Starting ENGAGEMENT SYSTEM for follower acquisition...');
-    await startEngagementLoop();
+    // Start intelligent engagement system for follower growth
+    console.log('🤝 Starting INTELLIGENT ENGAGEMENT SYSTEM...');
+    await startIntelligentEngagement();
     
     // Start Twitter analytics engine
     console.log('📊 Starting TWITTER ANALYTICS ENGINE...');
