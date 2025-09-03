@@ -9,52 +9,8 @@ import { closeDatabaseConnections } from './db/index';
 async function startSimpleThreadLoop() {
   console.log('🧵 SIMPLE_THREAD_LOOP: Starting basic thread posting...');
   
-  async function postScientificThread() {
-    try {
-      console.log('🔬 Creating scientific thread...');
-      
-      // Generate scientific thread
-      const { generateThread } = await import('./ai/threadGenerator');
-      const OpenAI = (await import('openai')).default;
-      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
-      
-      // Get random viral topic for follower growth
-      const { getRandomViralTopic } = await import('./content/viralTopics');
-      const viralTopic = getRandomViralTopic();
-      
-      console.log(`🔥 VIRAL_TOPIC: ${viralTopic.topic} (${viralTopic.hook_type})`);
-      console.log(`🎯 APPEAL: ${viralTopic.follower_appeal}`);
-      
-      const threadResult = await generateThread({
-        topic: viralTopic.topic,
-        pillar: viralTopic.hook_type, 
-        angle: viralTopic.angle,
-        spice_level: 9, // Maximum controversy
-        evidence_mode: 'viral_appeal'
-      }, openai);
-      
-      console.log(`🧵 Generated ${threadResult.tweets.length} scientific tweets`);
-      
-      // Post the thread
-      const { SimpleThreadPoster } = await import('./posting/simpleThreadPoster');
-      const poster = SimpleThreadPoster.getInstance();
-      
-      const tweetTexts = threadResult.tweets.map(t => t.text);
-      const result = await poster.postRealThread(tweetTexts);
-      
-      if (result.success) {
-        console.log(`✅ THREAD_SUCCESS: Posted ${result.totalTweets} tweets (Root: ${result.rootTweetId})`);
-      } else {
-        console.log(`❌ THREAD_FAILED: ${result.error}`);
-      }
-      
-    } catch (error: any) {
-      console.error('❌ THREAD_ERROR:', error.message);
-    }
-  }
-  
-  // Start intelligent posting schedule
-  setTimeout(() => startIntelligentPosting(), 10000); // 10 seconds
+  // This function is now unused - replaced by intelligent posting
+  console.log('⚠️ OLD_SYSTEM: This loop is deprecated, using intelligent posting instead');
 }
 
 /**
@@ -63,31 +19,8 @@ async function startSimpleThreadLoop() {
 async function startEngagementLoop() {
   console.log('🚀 ENGAGEMENT_LOOP: Starting aggressive follower acquisition...');
   
-  async function runEngagementCycle() {
-    try {
-      console.log('🤝 ENGAGEMENT_CYCLE: Running strategic engagement...');
-      
-      // Strategic replies to health influencers (every 30 min)
-      const { executeStrategicReplies } = await import('./engagement/strategicReplies');
-      await executeStrategicReplies();
-      
-      // Strategic follows (every hour)  
-      const { executeStrategicFollows } = await import('./engagement/strategicFollows');
-      await executeStrategicFollows();
-      
-      // Strategic likes (every 15 min)
-      const { executeStrategicLikes } = await import('./engagement/strategicLikes');
-      await executeStrategicLikes();
-      
-      console.log('✅ ENGAGEMENT_CYCLE: Completed strategic engagement cycle');
-      
-    } catch (error: any) {
-      console.error('❌ ENGAGEMENT_ERROR:', error.message);
-    }
-  }
-  
-  // Start intelligent engagement schedule
-  setTimeout(() => startIntelligentEngagement(), 30000); // 30 seconds
+  // This function is now unused - replaced by intelligent engagement
+  console.log('⚠️ OLD_SYSTEM: This loop is deprecated, using intelligent engagement instead');
 }
 
 /**
