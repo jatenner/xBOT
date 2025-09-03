@@ -111,24 +111,50 @@ export class SimplifiedPostingEngine {
         const { OpenAI } = await import('openai');
         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
         
+        // 🎲 MASSIVE FORMAT VARIATION FOR LEARNING DATA
+        const variations = {
+          lengths: [3, 4, 5, 6, 7, 8, 10, 12], // Different thread lengths to test
+          structures: ['research_deep_dive', 'protocol_walkthrough', 'myth_busting', 'personal_experiment', 'mechanism_breakdown', 'before_after', 'contrarian_take'],
+          hook_types: ['shocking_stat', 'personal_story', 'contrarian_claim', 'question_based', 'direct_statement', 'research_finding'],
+          spice_levels: [1, 2, 3, 4], // Intensity levels
+          evidence_modes: ['research_heavy', 'anecdotal', 'mini_study', 'expert_opinion', 'data_driven']
+        };
+        
+        // Randomly select variations for A/B testing through learning
+        const targetLength = variations.lengths[Math.floor(Math.random() * variations.lengths.length)];
+        const structure = variations.structures[Math.floor(Math.random() * variations.structures.length)];
+        const hookType = variations.hook_types[Math.floor(Math.random() * variations.hook_types.length)];
+        const spiceLevel = variations.spice_levels[Math.floor(Math.random() * variations.spice_levels.length)];
+        const evidenceMode = variations.evidence_modes[Math.floor(Math.random() * variations.evidence_modes.length)];
+        
+        console.log(`🎯 THREAD_VARIATION_TEST: ${targetLength} tweets, ${structure}, ${hookType} hook, spice=${spiceLevel}, evidence=${evidenceMode}`);
+        
         const threadContent = await generateThread({
           topic: topic || 'health optimization',
           pillar: 'health',
-          angle: 'contrarian insights',
-          spice_level: 2,
-          evidence_mode: 'mini-study'
+          angle: structure,
+          spice_level: spiceLevel,
+          evidence_mode: evidenceMode
         }, openai);
         
         // Convert thread to Ultimate Content format
         ultimateContent = {
           content: threadContent.tweets.map(t => t.text), // ARRAY of tweets!
           metadata: {
+            type: 'thread' as const,
             generation_quality: threadContent.quality.score,
             growth_score: 85,
             viral_probability: threadContent.quality.score,
             authenticity_score: threadContent.quality.rubric.human_warmth * 20,
             learning_value: 80,
-            strategic_alignment: 90
+            strategic_alignment: 90,
+            // 📊 VARIATION TRACKING FOR LEARNING
+            thread_length: targetLength,
+            thread_structure: structure,
+            hook_type: hookType,
+            spice_level: spiceLevel,
+            evidence_mode: evidenceMode,
+            actual_tweets: threadContent.tweets.length
           },
           predictions: {
             likes: 25,
@@ -166,14 +192,18 @@ export class SimplifiedPostingEngine {
         
         const variantGen = VariantGenerator.getInstance();
         
-        // Intelligent style and topic selection (simplified version without bandit for now)
-        const styles = ['hooked_tip', 'direct_fact', 'question_based', 'story_snippet', 'myth_busting', 'simple_statement'];
-        const topics = ['sleep_optimization', 'intermittent_fasting', 'protein_timing', 'magnesium_benefits', 'cold_exposure', 'stress_management'];
+        // 🎲 MASSIVE SIMPLE TWEET VARIATION FOR LEARNING
+        const styles = ['hooked_tip', 'direct_fact', 'question_based', 'story_snippet', 'myth_busting', 'simple_statement', 'contrarian_take', 'personal_insight'];
+        const topics = ['sleep_optimization', 'intermittent_fasting', 'protein_timing', 'magnesium_benefits', 'cold_exposure', 'stress_management', 'circadian_rhythms', 'gut_health', 'cognitive_enhancement', 'inflammation', 'metabolic_health'];
+        const lengths = ['ultra_short', 'short', 'medium', 'long']; // Different character targets
+        const intensities = ['mild', 'moderate', 'strong', 'extreme']; // Content intensity
         
         const selectedStyle = styles[Math.floor(Math.random() * styles.length)];
         const selectedTopic = topics[Math.floor(Math.random() * topics.length)];
+        const selectedLength = lengths[Math.floor(Math.random() * lengths.length)];
+        const selectedIntensity = intensities[Math.floor(Math.random() * intensities.length)];
         
-        console.log(`🎯 AI_SELECTION: ${selectedStyle} + ${selectedTopic}`);
+        console.log(`🎯 SIMPLE_VARIATION_TEST: ${selectedStyle} + ${selectedTopic} (${selectedLength}, ${selectedIntensity})`);
         
         // 🎲 GENERATE MULTIPLE VARIANTS AND SELECT THE BEST
         let bestVariant;
@@ -224,7 +254,13 @@ export class SimplifiedPostingEngine {
             strategic_alignment: 85,
             generation_quality: bestVariant.total_score || 85,
             growth_score: 80,
-            viral_probability: bestVariant.predicted_engagement || 70
+            viral_probability: bestVariant.predicted_engagement || 70,
+            // 📊 SIMPLE TWEET VARIATION TRACKING
+            content_style: selectedStyle,
+            content_topic: selectedTopic,
+            length_target: selectedLength,
+            intensity_level: selectedIntensity,
+            variant_score: bestVariant.total_score || 0
           },
           predictions: {
             likes: Math.round((bestVariant.predicted_engagement || 70) / 5),
@@ -456,7 +492,7 @@ export class SimplifiedPostingEngine {
       } catch (noveltyError: any) {
         console.warn('⚠️ NOVELTY_CHECK_FAILED:', noveltyError.message);
       }
-      
+
       // Optimize for engagement
       const optimizedContent = this.optimizeForEngagement(tweetContent);
       
