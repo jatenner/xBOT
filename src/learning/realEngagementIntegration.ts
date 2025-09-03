@@ -160,6 +160,11 @@ export class RealEngagementIntegration {
         console.log(`   📊 Engagement: ${update.likes}❤️ ${update.retweets}🔄 ${update.replies}💬`);
         console.log(`   📈 Rate: ${(engagementRate * 100).toFixed(2)}% | Followers: +${update.followers_gained}`);
         
+        // 🎯 AI LEARNING INTEGRATION: Future bandit integration point
+        console.log(`🤖 AI_LEARNING: Post performance data ready for ML optimization`);
+        console.log(`   📈 Engagement rate: ${(engagementRate * 100).toFixed(2)}%`);
+        console.log(`   👥 Follower conversion: ${(followerConversionRate * 100).toFixed(3)}%`);
+        
         // Trigger insights update with real data
         this.learningEngine.updateLearningInsights();
         
