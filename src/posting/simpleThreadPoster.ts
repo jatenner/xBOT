@@ -61,9 +61,12 @@ export class SimpleThreadPoster {
     try {
       // Step 1: Post the root tweet
       console.log('🚀 THREAD_STEP_1: Posting root tweet...');
+      console.log(`📝 ROOT_CONTENT: "${tweets[0].substring(0, 80)}..."`);
+      
       const rootResult = await this.poster.postSingleTweet(tweets[0]);
 
       if (!rootResult.success || !rootResult.tweetId) {
+        console.error(`❌ ROOT_TWEET_FAILED: ${rootResult.error}`);
         return {
           success: false,
           error: `Root tweet failed: ${rootResult.error}`,
@@ -73,6 +76,7 @@ export class SimpleThreadPoster {
 
       currentTweetId = rootResult.tweetId;
       console.log(`✅ THREAD_ROOT: Posted tweet 1/${tweets.length} (ID: ${currentTweetId})`);
+      console.log(`🔗 THREAD_CHAIN: Ready to post ${tweets.length - 1} replies to root tweet`);
 
       // Step 2: Post each reply in sequence
       for (let i = 1; i < tweets.length; i++) {
@@ -86,16 +90,31 @@ export class SimpleThreadPoster {
         }
 
         // Post reply to the current tweet using browser context
-        const replyResult = await browserManager.withContext('posting', async (context) => {
-          const page = await context.newPage();
-          const composer = new TwitterComposer(page);
-          
-          try {
-            return await composer.postReply(tweets[i], currentTweetId);
-          } finally {
-            await page.close();
-          }
-        });
+        console.log(`🔗 THREAD_REPLY: Attempting reply ${i + 1} to tweet ${currentTweetId}`);
+        
+        let replyResult;
+        try {
+          replyResult = await browserManager.withContext('posting', async (context) => {
+            console.log(`🌐 BROWSER_CONTEXT: Creating new page for reply ${i + 1}`);
+            const page = await context.newPage();
+            const composer = new TwitterComposer(page);
+            
+            try {
+              console.log(`🐦 COMPOSER: Posting reply "${tweets[i].substring(0, 50)}..." to ${currentTweetId}`);
+              const result = await composer.postReply(tweets[i], currentTweetId);
+              console.log(`📊 REPLY_RESULT: ${result.success ? 'SUCCESS' : 'FAILED'} - ${result.error || result.tweetId}`);
+              return result;
+            } finally {
+              await page.close();
+            }
+          });
+        } catch (contextError: any) {
+          console.error(`❌ BROWSER_CONTEXT_ERROR: Failed to create context for reply ${i + 1}:`, contextError.message);
+          replyResult = {
+            success: false,
+            error: `Browser context error: ${contextError.message}`
+          };
+        }
 
         if (!replyResult.success || !replyResult.tweetId) {
           console.warn(`⚠️ THREAD_PARTIAL: Reply ${i + 1} failed: ${replyResult.error}`);
