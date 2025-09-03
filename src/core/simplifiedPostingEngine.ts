@@ -97,9 +97,9 @@ export class SimplifiedPostingEngine {
       console.log(`🎯 OPTIMAL_LENGTH: ${contentTypeHint.optimal_length} characters`);
       console.log(`🚀 TOP_HOOKS: ${contentTypeHint.hooks.slice(0, 2).join(', ')}`);
 
-            // 🎯 DIRECT CONTENT GENERATION: Bypass broken orchestrator for variety
-      const shouldForceThread = topic && topic.includes('thread') || Math.random() < 0.4; // 40% chance for threads
-      console.log(`🎯 CONTENT_TYPE_DECISION: ${shouldForceThread ? 'THREAD' : 'SIMPLE'} format forced`);
+            // 🎯 DIRECT CONTENT GENERATION: Bypass broken orchestrator for variety  
+      const shouldForceThread = (topic && topic.includes('thread')) || Math.random() < 0.6; // 60% chance for threads (increased)
+      console.log(`🎯 CONTENT_TYPE_DECISION: ${shouldForceThread ? 'THREAD' : 'SIMPLE'} format forced (thread chance: 60%)`);
       
       let ultimateContent;
       

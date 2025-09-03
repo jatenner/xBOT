@@ -231,8 +231,8 @@ export class AggressiveLearningEngine {
       };
     }
     
-    // Randomize content type for data diversity - INCREASED THREAD FREQUENCY
-    const types: Array<'simple' | 'thread' | 'reply'> = ['simple', 'thread', 'simple', 'thread', 'reply']; // Weighted 40% threads
+    // Randomize content type for data diversity - MUCH MORE THREADS  
+    const types: Array<'simple' | 'thread' | 'reply'> = ['thread', 'thread', 'simple', 'thread', 'thread']; // Weighted 80% threads for testing
     const recommendedType = types[Math.floor(Math.random() * types.length)];
     
     return {
