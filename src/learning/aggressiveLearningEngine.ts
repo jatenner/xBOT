@@ -30,6 +30,13 @@ interface PostPerformanceData {
   engagement_rate: number;
   follower_conversion_rate: number;
   viral_score: number;
+  
+  // 🎯 AI-driven optimization fields
+  bandit_style?: string;
+  bandit_topic?: string;
+  bandit_confidence?: number;
+  variant_score?: number;
+  novelty_score?: number;
 }
 
 interface PostingStrategy {

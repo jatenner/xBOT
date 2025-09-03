@@ -161,93 +161,90 @@ export class SimplifiedPostingEngine {
         const hookEngine = HookDiversificationEngine.getInstance();
         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
         
-        // 🎲 REAL VARIETY: Mix of different content styles (some with hooks, some without)
-        const contentStyles = [
-          'hooked_tip',      // 25% - Uses diversified hooks
-          'direct_fact',     // 25% - Direct statement, no hook
-          'question_based',  // 20% - Starts with question
-          'story_snippet',   // 15% - Mini story format
-          'simple_statement', // 15% - Just a clean fact
-        ];
+        // 🎯 AI-DRIVEN CONTENT OPTIMIZATION: Enhanced variety and quality
+        const { VariantGenerator } = await import('../content/variantGenerator');
         
-        const selectedStyle = contentStyles[Math.floor(Math.random() * contentStyles.length)];
-        console.log(`📋 CONTENT_STYLE: Using ${selectedStyle} format`);
+        const variantGen = VariantGenerator.getInstance();
         
-        let structurePrompt = '';
+        // Intelligent style and topic selection (simplified version without bandit for now)
+        const styles = ['hooked_tip', 'direct_fact', 'question_based', 'story_snippet', 'myth_busting', 'simple_statement'];
+        const topics = ['sleep_optimization', 'intermittent_fasting', 'protein_timing', 'magnesium_benefits', 'cold_exposure', 'stress_management'];
         
-        if (selectedStyle === 'hooked_tip') {
-          // Only use hooks 25% of the time
-          const diverseHook = hookEngine.getDiverseHook(topic || 'health', 'simple');
-          console.log(`🎯 HOOK_USED: "${diverseHook.substring(0, 40)}..."`);
-          structurePrompt = `Create actionable health advice. Use this hook: "${diverseHook}" Follow with specific method + expected results. Keep under 240 chars.`;
-        } else {
-          console.log(`🚫 NO_HOOK: Using ${selectedStyle} style`);
-          switch (selectedStyle) {
-            case 'direct_fact':
-              structurePrompt = `State a surprising health fact directly. Format: "[Surprising fact]. [Why it matters]. [What to do about it]." Be specific and shocking. Under 240 chars.`;
-              break;
-            case 'question_based':
-              structurePrompt = `Start with an intriguing health question. Format: "Why do [thing]? [Answer with mechanism]. [Practical application]." Under 240 chars.`;
-              break;
-            case 'story_snippet':
-              structurePrompt = `Share a mini health story. Format: "Last month/week [brief scenario]. Result: [specific outcome]. The reason: [mechanism]." Under 240 chars.`;
-              break;
-            case 'simple_statement':
-              structurePrompt = `Make a clean, direct health statement. Format: "[Health fact]. [Scientific reason]. [Simple action step]." No hooks, just clear info. Under 240 chars.`;
-              break;
-          }
+        const selectedStyle = styles[Math.floor(Math.random() * styles.length)];
+        const selectedTopic = topics[Math.floor(Math.random() * topics.length)];
+        
+        console.log(`🎯 AI_SELECTION: ${selectedStyle} + ${selectedTopic}`);
+        
+        // 🎲 GENERATE MULTIPLE VARIANTS AND SELECT THE BEST
+        let bestVariant;
+        
+        try {
+          bestVariant = await variantGen.generateBestVariant({
+            topic: selectedTopic,
+            style: selectedStyle,
+            temperature: 0.9,
+            variant_count: 3
+          });
+          
+          console.log(`🏆 BEST_VARIANT_SELECTED: Score=${bestVariant.total_score.toFixed(2)}, Style=${bestVariant.style}`);
+          console.log(`📊 VARIANT_BREAKDOWN: Quality=${bestVariant.quality_score}, Novelty=${bestVariant.novelty_score}, Engagement=${bestVariant.predicted_engagement}`);
+          
+        } catch (error: any) {
+          console.error('❌ VARIANT_GENERATION_FAILED:', error.message);
+          
+          // Fallback to simple generation
+          console.log('🔄 FALLBACK: Using simple content generation...');
+          const diverseHook = hookEngine.getDiverseHook(selectedTopic, 'simple');
+          const fallbackPrompt = `Create engaging health content about ${selectedTopic} in ${selectedStyle} style. Be specific, include mechanisms, avoid generic advice. Under 240 chars.`;
+          
+          const response = await openai.chat.completions.create({
+            model: 'gpt-4o',
+            messages: [{ role: 'user', content: fallbackPrompt }],
+            temperature: 0.8
+          });
+          
+          bestVariant = {
+            content: response.choices[0].message.content?.trim() || '',
+            style: selectedStyle,
+            total_score: 50
+          };
         }
         
-        const response = await openai.chat.completions.create({
-          model: 'gpt-4o',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a viral health influencer. Create engaging, specific content that makes people want to follow. Avoid generic advice. Be specific about mechanisms and outcomes.'
-            },
-            {
-              role: 'user', 
-              content: structurePrompt
-            }
-          ],
-          temperature: 0.8
-        });
-        
-        const simpleContent = response.choices[0].message.content?.trim() || '';
+        const simpleContent = bestVariant.content;
         
         ultimateContent = {
           content: simpleContent,
           metadata: {
             type: 'single' as const,
-            topic: topic || 'health',
+            topic: selectedTopic,
             angle: selectedStyle,
-            quality_score: 85,
-            viral_prediction: 70,
+            quality_score: bestVariant.quality_score || 85,
+            viral_prediction: bestVariant.predicted_engagement || 70,
             authenticity_score: 90,
             strategic_alignment: 85,
-            generation_quality: 85,
+            generation_quality: bestVariant.total_score || 85,
             growth_score: 80,
-            viral_probability: 70
+            viral_probability: bestVariant.predicted_engagement || 70
           },
           predictions: {
-            likes: 15,
-            retweets: 5,
-            replies: 3,
-            followers_gained: 2
+            likes: Math.round((bestVariant.predicted_engagement || 70) / 5),
+            retweets: Math.round((bestVariant.predicted_engagement || 70) / 15),
+            replies: Math.round((bestVariant.predicted_engagement || 70) / 20),
+            followers_gained: Math.round((bestVariant.predicted_engagement || 70) / 25)
           },
           strategy: {
-            posting_time: 'Optimal engagement window',
-            distribution_plan: 'Single viral tweet',
-            follow_up_actions: ['Monitor engagement', 'Reply to comments']
+            posting_time: 'AI-optimized window',
+            distribution_plan: 'Variant-selected content',
+            follow_up_actions: ['Track engagement patterns', 'Update variant scoring']
           },
           learning: {
-            what_to_track: ['Content style effectiveness', 'Variety impact'],
-            success_metrics: ['High engagement rate', 'Follower conversion'],
-            hypothesis: 'Natural variety without forced hooks drives engagement'
+            what_to_track: ['Variant selection accuracy', 'Quality score correlation'],
+            success_metrics: ['Engagement vs prediction accuracy', 'Content variety'],
+            hypothesis: 'AI-driven variant testing with novelty checks maximizes engagement'
           }
         };
         
-        console.log(`✅ NATURAL_VARIETY: Generated ${selectedStyle} content`);
+        console.log(`🤖 AI_OPTIMIZED_CONTENT: ${selectedStyle} content for ${selectedTopic}`);
       }
       
       console.log(`🎖️ ULTIMATE_QUALITY: ${ultimateContent.metadata.generation_quality}/100`);
@@ -440,6 +437,26 @@ export class SimplifiedPostingEngine {
         throw new Error('No tweet content generated');
       }
 
+      // 🔍 FINAL NOVELTY CHECK FOR AI-OPTIMIZED CONTENT
+      console.log('🎯 AI_CONTENT: Checking novelty for variant-optimized content...');
+      try {
+        const { NoveltyGuard } = await import('../content/noveltyGuard');
+        const noveltyGuard = NoveltyGuard.getInstance();
+        
+        const noveltyCheck = await noveltyGuard.checkNovelty(tweetContent);
+        
+        if (!noveltyCheck.is_novel) {
+          console.log(`❌ NOVELTY_REJECTED: ${noveltyCheck.rejection_reason}`);
+          console.log(`📊 Similarity scores: Jaccard=${noveltyCheck.jaccard_similarity?.toFixed(3)}, Levenshtein=${noveltyCheck.levenshtein_similarity?.toFixed(3)}`);
+          // Don't throw error, just warn for now
+          console.warn('⚠️ Content may be similar to previous posts but proceeding...');
+        } else {
+          console.log('✅ NOVELTY_APPROVED: Content is unique');
+        }
+      } catch (noveltyError: any) {
+        console.warn('⚠️ NOVELTY_CHECK_FAILED:', noveltyError.message);
+      }
+      
       // Optimize for engagement
       const optimizedContent = this.optimizeForEngagement(tweetContent);
       
@@ -479,6 +496,21 @@ export class SimplifiedPostingEngine {
           try {
             // Store the ultimate content data for future learning
             await this.storeUltimateContentData(postResult.tweetId, ultimateResult);
+            
+            // 🤖 AI SYSTEM INTEGRATION: Register with novelty guard
+            console.log('🎯 POST_SUCCESS_INTEGRATION: Setting up AI learning systems...');
+            
+            try {
+              // Register content with novelty guard
+              const { NoveltyGuard } = await import('../content/noveltyGuard');
+              const noveltyGuard = NoveltyGuard.getInstance();
+              await noveltyGuard.registerContent(postResult.tweetId, contentForStorage);
+              
+              console.log(`📊 NOVELTY_REGISTERED: Content fingerprint stored for ${postResult.tweetId}`);
+            } catch (noveltyError: any) {
+              console.warn('⚠️ NOVELTY_REGISTRATION_FAILED:', noveltyError.message);
+            }
+            
           } catch (error) {
             console.warn('⚠️ Failed to store ultimate content data:', error);
           }
