@@ -173,13 +173,21 @@ async function postSimpleContent(type: 'simple_fact' | 'advice') {
   const topic = simpleTopics[Math.floor(Math.random() * simpleTopics.length)];
   
   try {
-    // Generate simple single tweet
+    // 🎯 GENERATE DIVERSE SIMPLE TWEET WITH HOOK DIVERSIFICATION
     const OpenAI = (await import('openai')).default;
+    const { HookDiversificationEngine } = await import('./ai/hookDiversificationEngine');
+    
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+    const hookEngine = HookDiversificationEngine.getInstance();
+    
+    // Get diverse hook instead of hardcoded "Most people don't know"
+    const diverseHook = hookEngine.getDiverseHook(topic, 'simple');
     
     const prompt = type === 'simple_fact' 
-      ? `Create a viral health fact about ${topic}. Format: "Most people don't know that [shocking fact]. Here's why: [mechanism]" Keep under 240 chars.`
-      : `Create actionable health advice about ${topic}. Format: "Try this: [specific protocol]. Result: [benefit] because [mechanism]" Keep under 240 chars.`;
+      ? `Create a viral health fact about ${topic}. Use this EXACT hook format: "${diverseHook}" Make it shocking and specific. Include the mechanism/reason why. Keep under 240 chars.`
+      : `Create actionable health advice about ${topic}. Use this EXACT hook format: "${diverseHook}" Make it specific and actionable. Include expected results. Keep under 240 chars.`;
+    
+    console.log(`🎯 HOOK_DIVERSIFICATION: Using "${diverseHook.substring(0, 50)}..." for ${type}`);
     
     const response = await openai.chat.completions.create({
       model: 'gpt-4o',
