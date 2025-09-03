@@ -51,7 +51,7 @@ export class ContentPerformanceLearner {
           impressions,
           followers_gained,
           created_at,
-          tweet_metrics (
+          post_metrics (
             likes,
             retweets,
             replies,
