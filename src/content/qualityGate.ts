@@ -359,10 +359,9 @@ export class QualityGate {
     
     // Add micro-actions if actionability is low
     if (metrics.actionability < 10) {
-      // Add "Try this:" or similar actionable phrases
-      if (!revised.includes('try this') && !revised.includes('do this')) {
-        revised = revised.replace(/\.\s*$/, '.\n\nTry this: ');
-      }
+      // 🚫 REMOVED AUTOMATIC "Try this:" INJECTION
+      // This was causing repetitive content patterns
+      // Hook diversity should be handled by HookDiversificationEngine instead
     }
     
     // Only return if we made meaningful changes
