@@ -43,6 +43,9 @@ export class AdaptivePostingManager {
       const { AggressiveLearningEngine } = await import('../learning/aggressiveLearningEngine');
       const learningEngine = AggressiveLearningEngine.getInstance();
       
+      // Check if optimization phase is healthy, reset if failing
+      learningEngine.checkOptimizationHealth();
+      
       const strategy = await learningEngine.getCurrentPostingStrategy();
       const status = learningEngine.getLearningStatus();
       
@@ -200,13 +203,16 @@ export class AdaptivePostingManager {
       console.log(`📊 RECORDED: ${type} posted (${this.simplePostsToday} today)`);
     }
     
-    // Feed data to learning engine
+    // Feed data to learning engine AND start real engagement tracking
     if (postId) {
       try {
         const { AggressiveLearningEngine } = await import('../learning/aggressiveLearningEngine');
-        const learningEngine = AggressiveLearningEngine.getInstance();
+        const { RealEngagementIntegration } = await import('../learning/realEngagementIntegration');
         
-        // Record initial post data (engagement will be tracked later)
+        const learningEngine = AggressiveLearningEngine.getInstance();
+        const engagementTracker = RealEngagementIntegration.getInstance();
+        
+        // Record initial post data (will be updated with real engagement)
         await learningEngine.recordPostPerformance({
           post_id: postId,
           content_type: type === 'thread' ? 'thread' : 'simple',
@@ -231,6 +237,10 @@ export class AdaptivePostingManager {
         });
         
         console.log(`🎓 LEARNING: Post data recorded for learning engine`);
+        
+        // 🚀 START REAL ENGAGEMENT TRACKING
+        await engagementTracker.startTracking(postId);
+        console.log(`📊 ENGAGEMENT_TRACKING: Started real engagement tracking for ${postId}`);
         
       } catch (error: any) {
         console.error('❌ LEARNING_RECORD_ERROR:', error.message);

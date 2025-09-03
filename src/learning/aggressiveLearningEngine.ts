@@ -224,8 +224,8 @@ export class AggressiveLearningEngine {
       };
     }
     
-    // Randomize content type for data diversity
-    const types: Array<'simple' | 'thread' | 'reply'> = ['simple', 'simple', 'simple', 'thread', 'reply']; // Weighted
+    // Randomize content type for data diversity - INCREASED THREAD FREQUENCY
+    const types: Array<'simple' | 'thread' | 'reply'> = ['simple', 'thread', 'simple', 'thread', 'reply']; // Weighted 40% threads
     const recommendedType = types[Math.floor(Math.random() * types.length)];
     
     return {
@@ -459,5 +459,46 @@ export class AggressiveLearningEngine {
       totalPosts: this.totalPosts,
       dailyTarget: this.dailyPostTarget
     };
+  }
+
+  /**
+   * Get post history for external access (needed for engagement integration)
+   */
+  public getPostHistory(): PostPerformanceData[] {
+    return [...this.postHistory]; // Return copy to prevent external modification
+  }
+
+  /**
+   * Reset learning phase to aggressive if optimization is failing
+   */
+  public resetToAggressivePhase(reason: string = 'Manual reset'): void {
+    console.log(`🔄 LEARNING_RESET: Resetting to aggressive phase - ${reason}`);
+    
+    this.learningPhase = 'aggressive';
+    this.dailyPostTarget = 60; // Reset to ultra-aggressive mode
+    this.currentInsights = null; // Clear bad insights
+    
+    // Keep post history but mark it as unreliable
+    console.log(`📊 RESET_STATUS: Now in aggressive phase with ${this.postHistory.length} posts in history`);
+    console.log(`🎯 NEW_TARGET: ${this.dailyPostTarget} posts/day for rapid learning`);
+  }
+
+  /**
+   * Check if optimization phase is failing and auto-reset if needed
+   */
+  public checkOptimizationHealth(): boolean {
+    if (this.learningPhase !== 'optimization') return true;
+    
+    // Check if we have enough engagement data
+    const recentPosts = this.postHistory.slice(-10);
+    const avgEngagement = recentPosts.reduce((sum, post) => sum + (post.likes + post.retweets + post.replies), 0) / recentPosts.length;
+    
+    // If optimization phase but very low engagement, reset
+    if (avgEngagement < 1 && recentPosts.length > 5) {
+      this.resetToAggressivePhase('Low engagement in optimization phase');
+      return false;
+    }
+    
+    return true;
   }
 }

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import OpenAI from 'openai';
 import { stripFormatting, validateTweetText } from '../utils/text/sanitize';
+import { HookDiversificationEngine } from './hookDiversificationEngine';
 
 const TweetSchema = z.object({
   text: z.string().min(100).max(240) // Relaxed minimum for complex scientific content
@@ -117,6 +118,10 @@ export async function generateThread(
   },
   openai: OpenAI
 ): Promise<GeneratedThread> {
+  // Get diverse hook for this thread
+  const hookEngine = HookDiversificationEngine.getInstance();
+  const diverseHook = hookEngine.getDiverseHook(selection.topic, 'thread');
+  
   const userPrompt = `
 Account context:
 - account_niche: "viral health secrets that make people unfollow mainstream health advice"
@@ -132,8 +137,12 @@ Content parameters:
 - Angle: "${selection.angle}"
 - Evidence mode: "${selection.evidence_mode}"
 
-Create a VIRAL thread that makes people think "Holy shit, I need to follow this account!" Use these FOLLOWER-MAGNET formats:
+Create a VIRAL thread that makes people think "Holy shit, I need to follow this account!" 
 
+🎯 DIVERSIFIED HOOK (use this specific hook pattern for variety):
+"${diverseHook}"
+
+Alternative viral formats you can adapt:
 FORMAT 1 - SHOCKING CONTRADICTION:
 "Everyone thinks [common belief] but the truth is [shocking opposite]. Here's what actually works:"
 
