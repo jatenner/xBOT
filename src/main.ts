@@ -27,15 +27,19 @@ async function startEngagementLoop() {
  * INTELLIGENT POSTING - Data-driven content decisions
  */
 // Quick posting functions for learning system
-async function postScientificThread() {
+async function postScientificThread(): Promise<{ rootTweetId: string | null } | null> {
   try {
     console.log('🧵 POSTING: Creating scientific thread...');
     const { SimplifiedPostingEngine } = await import('./core/simplifiedPostingEngine');
     const engine = SimplifiedPostingEngine.getInstance();
     const result = await engine.createEngagingPost('thread about health optimization breakthrough');
     console.log(`✅ THREAD_POSTED: ${result.success ? 'Success' : 'Failed'}`);
+    
+    // Return thread result for learning data
+    return result.success ? { rootTweetId: result.tweetId || null } : null;
   } catch (error: any) {
     console.error('❌ THREAD_POST_ERROR:', error.message);
+    return null;
   }
 }
 
@@ -58,14 +62,20 @@ async function startIntelligentPosting() {
       
       console.log(`🎯 OPPORTUNITY: ${opportunity.type} (urgency: ${opportunity.urgency}/10) - ${opportunity.reason}`);
       
+      let tweetId: string | null = null;
+      let content: string = '';
+      
       if (opportunity.type === 'thread') {
-        await postScientificThread();
+        const threadResult = await postScientificThread();
+        tweetId = threadResult?.rootTweetId || null;
+        content = 'scientific_thread';
       } else {
-        await postSimpleContent(opportunity.type);
+        tweetId = await postSimpleContent(opportunity.type);
+        content = opportunity.type;
       }
       
-      // Record post for learning (pass actual post ID and content when available)
-      await postingManager.recordPost(opportunity.type, 'mock_post_id', 'mock_content');
+      // Record post for learning with REAL tweet ID
+      await postingManager.recordPost(opportunity.type, tweetId || 'failed_post', content);
       
     } catch (error: any) {
       console.error('❌ INTELLIGENT_POSTING_ERROR:', error.message);
@@ -182,9 +192,22 @@ async function postSimpleContent(type: 'simple_fact' | 'advice') {
     
     if (content) {
       console.log(`📝 GENERATED: "${content}" (${content.length} chars)`);
-      // TODO: Integrate with actual posting mechanism
-      console.log('✅ SIMPLE_POST: Posted successfully (placeholder)');
+      
+      // 🚀 REAL POSTING: Use actual TwitterPoster
+      const { TwitterPoster } = await import('./posting/postThread');
+      const poster = new TwitterPoster();
+      const result = await poster.postSingleTweet(content, topic);
+      
+      if (result.success) {
+        console.log(`✅ SIMPLE_POST: Posted successfully! Tweet ID: ${result.tweetId}`);
+        return result.tweetId;
+      } else {
+        console.error(`❌ SIMPLE_POST_FAILED: ${result.error}`);
+        return null;
+      }
     }
+    
+    return null;
     
   } catch (error: any) {
     console.error('❌ SIMPLE_CONTENT_ERROR:', error.message);
