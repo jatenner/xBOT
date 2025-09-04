@@ -253,17 +253,23 @@ Generate content that people will want to save, share, and follow you for more i
 
     const rawContent = response.choices[0]?.message?.content || '';
     
+    // Pre-clean all content before processing
+    const preCleanedContent = rawContent
+      .replace(/^["'\u201c\u201d\u2018\u2019]+|["'\u201c\u201d\u2018\u2019]+$/g, '') // Remove surrounding quotes
+      .replace(/["'\u201c\u201d\u2018\u2019]/g, '') // Remove all quote types
+      .trim();
+    
     if (format === 'thread') {
-      // Parse thread parts
-      const threadParts = this.parseThreadContent(rawContent);
+      // Parse thread parts with pre-cleaned content
+      const threadParts = this.parseThreadContent(preCleanedContent);
       return {
-        content: rawContent,
+        content: preCleanedContent,
         threadParts
       };
     }
 
     return {
-      content: rawContent.substring(0, 280)
+      content: this.cleanTweetText(preCleanedContent)
     };
   }
 
@@ -418,13 +424,15 @@ Focus on making it more attention-grabbing, specific, and valuable.
    */
   private cleanTweetText(text: string): string {
     return text
-      .replace(/["']/g, '') // Remove ALL quotes throughout the text
+      .replace(/^["']+|["']+$/g, '') // Remove quotes at start/end first
+      .replace(/["'\u201c\u201d\u2018\u2019]/g, '') // Remove ALL types of quotes (straight and curly)
       .replace(/#\w+/g, '') // Remove ALL hashtags
       .replace(/\s+/g, ' ') // Normalize whitespace
       .replace(/💪|🔥|✨|🎯|🚀/g, '') // Remove overused emojis
       .replace(/before 2024 hits|in 2024|this year/gi, '') // Remove dated references
       .replace(/Try this shift|Give this a try|Here's the thing/gi, '') // Remove generic openers
       .replace(/\.\.\./g, '.') // Replace ... with single period
+      .replace(/^\s*["']|["']\s*$/g, '') // Final quote cleanup
       .trim()
       .substring(0, 280);
   }

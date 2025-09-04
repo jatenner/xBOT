@@ -73,12 +73,20 @@ async function startIntelligentPosting() {
       let tweetId: string | null = null;
       let content: string = '';
       
-      if (opportunity.type === 'thread') {
-        const threadResult = await postScientificThread();
-        tweetId = threadResult?.rootTweetId || null;
-        content = 'scientific_thread';
+      // Use the new AI-driven posting system for all content
+      const { AIDrivenPostingSystem } = await import('./core/aiDrivenPostingSystem');
+      const aiPostingSystem = AIDrivenPostingSystem.getInstance();
+      
+      console.log(`🤖 AI_POSTING: Using enhanced AI system for ${opportunity.type}`);
+      const result = await aiPostingSystem.createViralPost();
+      
+      if (result.success) {
+        tweetId = result.tweetId;
+        content = result.content || opportunity.type;
+        console.log(`✅ AI_POST_SUCCESS: ${result.type} posted - ${tweetId}`);
       } else {
-        tweetId = await postSimpleContent(opportunity.type);
+        console.error(`❌ AI_POST_FAILED: ${result.error}`);
+        tweetId = null;
         content = opportunity.type;
       }
       
