@@ -99,15 +99,17 @@ export class SimplifiedPostingEngine {
       console.log(`🚀 TOP_HOOKS: ${contentTypeHint.hooks.slice(0, 2).join(', ')}`);
 
             // 🎯 DIRECT CONTENT GENERATION: Bypass broken orchestrator for variety  
-      const shouldForceThread = (topic && topic.includes('thread')) || Math.random() < 0.6; // 60% chance for threads (increased)
-      console.log(`🎯 CONTENT_TYPE_DECISION: ${shouldForceThread ? 'THREAD' : 'SIMPLE'} format forced (thread chance: 60%)`);
+      const shouldForceThread = (topic && topic.includes('thread')) || Math.random() < 0.8; // 80% chance for threads (testing)
+      console.log(`🎯 CONTENT_TYPE_DECISION: ${shouldForceThread ? 'THREAD' : 'SIMPLE'} format forced (thread chance: 80%)`);
       
       // 🚨 FAIL-FAST: Check if we're experiencing posting issues
       const recentFailureCount = await this.getRecentFailureCount();
       let finalThreadDecision = shouldForceThread;
-      if (shouldForceThread && recentFailureCount > 3) {
+      if (shouldForceThread && recentFailureCount > 10) {
         console.warn(`⚠️ THREAD_CIRCUIT_BREAKER: ${recentFailureCount} recent failures, forcing SIMPLE tweet instead`);
         finalThreadDecision = false;
+      } else if (shouldForceThread && recentFailureCount > 0) {
+        console.log(`🔧 THREAD_TESTING: ${recentFailureCount} recent failures, but testing thread fix...`);
       }
       
       let ultimateContent;
