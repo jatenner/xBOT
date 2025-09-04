@@ -190,16 +190,32 @@ Share the most obscure health secrets that less than 1% of people know. Include 
   }
 
   private static getUniquenessInstructions(avoidTopics: string[], recentContent: string[]): string {
-    let instructions = `UNIQUENESS REQUIREMENTS:
-- Generate content completely different from typical health advice
-- Avoid basic wellness topics everyone knows
+    let instructions = `🚨 CRITICAL ANTI-REPETITION RULES:
+- NEVER use "99% of people" or "95% of people" hooks (SEVERELY OVERUSED)
+- NEVER mention magnesium (POSTED TOO MUCH ALREADY)
+- AVOID: "take [supplement] at night for better sleep" (REPETITIVE PATTERN)
+- AVOID: "supplement timing" topics (OVERDONE)
+- NO quotation marks in content (looks like quoting someone else)
+- Each post must be completely different topic AND approach
+- Generate content so unique it couldn't be confused with any other health post
+
+BANNED REPETITIVE PHRASES (INSTANT REJECTION):
+- "99% of people are doing [X] wrong"
+- "Here's what actually works" 
+- "Take magnesium"
+- "for better sleep"
+- "supplement timing"
+- "Here's why"
+
+UNIQUENESS REQUIREMENTS:
 - Focus on specific, actionable protocols with exact numbers
 - Include surprising or counterintuitive elements
+- Use completely different health topics each time
 
 `;
 
     if (avoidTopics.length > 0) {
-      instructions += `AVOID THESE RECENTLY COVERED TOPICS: ${avoidTopics.join(', ')}
+      instructions += `RECENTLY COVERED TOPICS TO AVOID: ${avoidTopics.join(', ')}
 
 `;
     }

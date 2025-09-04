@@ -191,7 +191,21 @@ export class SmartNoveltyEngine {
   }
 
   private trackTopic(topic: string): void {
+    // Add to recent topics
     this.recentTopics.push(topic);
+    
+    // Also track specific overused topics with higher penalty
+    const overusedTopics = ['magnesium', 'supplement timing', '99% of people'];
+    const topicLower = topic.toLowerCase();
+    
+    for (const overused of overusedTopics) {
+      if (topicLower.includes(overused)) {
+        // Add multiple times to prevent re-use
+        this.recentTopics.push(overused);
+        this.recentTopics.push(overused);
+        console.log(`🚨 OVERUSED_TOPIC_PENALTY: "${overused}" added with extra weight to prevent reuse`);
+      }
+    }
     
     if (this.recentTopics.length > this.maxRecentTopics) {
       this.recentTopics.shift();
@@ -236,7 +250,7 @@ export class SmartNoveltyEngine {
   }
 
   private calculateConceptSimilarity(text1: string, text2: string): number {
-    // Check for similar health concepts/topics
+    // Enhanced similarity detection including hooks and patterns
     const healthConcepts = [
       'sleep', 'magnesium', 'cortisol', 'serotonin', 'dopamine', 'vitamin',
       'protein', 'fasting', 'metabolism', 'inflammation', 'gut', 'microbiome',
@@ -244,13 +258,33 @@ export class SmartNoveltyEngine {
       'brain', 'liver', 'heart', 'blood', 'immune', 'cold', 'heat', 'breathing'
     ];
     
-    const concepts1 = healthConcepts.filter(concept => text1.toLowerCase().includes(concept));
-    const concepts2 = healthConcepts.filter(concept => text2.toLowerCase().includes(concept));
+    // Check for repetitive hooks/openings
+    const commonHooks = [
+      '99% of people', '95% of people', 'most people are doing', 'here\'s why',
+      'take magnesium', 'supplement timing', 'better sleep', 'for better'
+    ];
     
-    if (concepts1.length === 0 || concepts2.length === 0) return 0;
+    const text1Lower = text1.toLowerCase();
+    const text2Lower = text2.toLowerCase();
+    
+    // Check for hook similarity (higher weight)
+    let hookSimilarity = 0;
+    for (const hook of commonHooks) {
+      if (text1Lower.includes(hook) && text2Lower.includes(hook)) {
+        hookSimilarity += 0.8; // High penalty for same hooks
+      }
+    }
+    
+    // Check for concept similarity
+    const concepts1 = healthConcepts.filter(concept => text1Lower.includes(concept));
+    const concepts2 = healthConcepts.filter(concept => text2Lower.includes(concept));
+    
+    if (concepts1.length === 0 || concepts2.length === 0) return hookSimilarity;
     
     const commonConcepts = concepts1.filter(concept => concepts2.includes(concept));
-    return commonConcepts.length / Math.max(concepts1.length, concepts2.length);
+    const conceptSimilarity = commonConcepts.length / Math.max(concepts1.length, concepts2.length);
+    
+    return Math.max(hookSimilarity, conceptSimilarity);
   }
 
   private getFallbackContent(): string {
