@@ -4,6 +4,7 @@
  */
 
 import OpenAI from 'openai';
+import AdvancedPromptEngine from '../ai/advancedPrompts';
 
 export class SmartNoveltyEngine {
   private static instance: SmartNoveltyEngine;
@@ -18,56 +19,38 @@ export class SmartNoveltyEngine {
   }
 
   /**
-   * Generate unique health content using OpenAI's vast knowledge
+   * Generate unique health content using ADVANCED PROMPTING SYSTEM
    */
   async generateUniqueHealthContent(openai: OpenAI, style: 'breaking' | 'investigative' | 'underground' | 'research' = 'underground'): Promise<string> {
-    // Build prompt to avoid recent topics
-    const avoidTopics = this.recentTopics.length > 0 ? 
-      `AVOID these recently covered topics: ${this.recentTopics.join(', ')}` : '';
+    console.log(`🚀 ADVANCED_PROMPTING: Generating ${style} content with enhanced prompts`);
 
-    const stylePrompts = {
-      breaking: "Create breaking health news with shocking statistics",
-      investigative: "Expose a health secret most doctors don't know", 
-      underground: "Share underground biohacking knowledge from elite performers",
-      research: "Reveal cutting-edge research findings most people haven't heard"
+    // Map simple styles to advanced prompt styles
+    const styleMap = {
+      breaking: 'viral_breaking' as const,
+      investigative: 'investigative_expose' as const,
+      underground: 'underground_secret' as const,
+      research: 'scientific_discovery' as const
     };
 
-    const prompt = `You are a health influencer sharing OBSCURE, LESSER-KNOWN health knowledge that 99% of people have never heard before.
-
-${stylePrompts[style]}
-
-CRITICAL REQUIREMENTS:
-- Share truly OBSCURE health facts/tips 99% of people have NEVER heard
-- Include specific numbers, percentages, or exact timeframes
-- Focus on actionable advice people can try immediately  
-- AVOID common knowledge (sleep, exercise, diet basics)
-- Be specific about biological mechanisms (how/why it works)
-- Include surprising/counterintuitive elements that shock readers
-- MUST be completely different from typical health advice
-- NO generic wellness tips - only cutting-edge, lesser-known secrets
-
-${avoidTopics}
-
-ANTI-REPETITION MANDATE:
-- Generate content so unique it couldn't be confused with any other health post
-- Use specific research, ancient practices, or biohacking techniques
-- Include exact protocols, dosages, or timing that most people don't know
-
-EXAMPLES OF GOOD OBSCURE CONTENT:
-"Your liver processes alcohol 50% faster when you eat pears beforehand due to specific enzymes"
-"Humming for 30 seconds activates your vagus nerve and lowers cortisol by 23%"
-"Cold water on wrists triggers mammalian dive reflex, slowing heart rate by 25%"
-
-Generate ONE unique health fact/tip that people would think "I had no idea!" when reading it.
-
-Response format: Just the content, no extra text.`;
+    // Generate advanced prompt
+    const prompt = AdvancedPromptEngine.generateOptimizedPrompt({
+      style: styleMap[style],
+      obscurity_level: 4, // High obscurity for unique content
+      audience_sophistication: 'health_conscious',
+      content_type: 'single_tweet',
+      avoid_topics: this.recentTopics,
+      recent_content: [] // Could add recent content if available
+    });
 
     try {
       const response = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: 'gpt-4o', // Use more powerful model for better prompts
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: 200,
-        temperature: 0.9 // High creativity for unique content
+        max_tokens: 250,
+        temperature: 0.8, // Balanced creativity and coherence
+        top_p: 0.9,
+        frequency_penalty: 0.3, // Reduce repetition
+        presence_penalty: 0.2 // Encourage novel topics
       });
 
       const content = response.choices?.[0]?.message?.content?.trim() || '';
@@ -77,14 +60,15 @@ Response format: Just the content, no extra text.`;
         const topic = this.extractMainTopic(content);
         this.trackTopic(topic);
         
-        console.log(`🧠 NOVEL_CONTENT: Generated unique ${style} content about: ${topic}`);
+        console.log(`🎯 ADVANCED_CONTENT: Generated ${style} content about: ${topic}`);
+        console.log(`📝 CONTENT_PREVIEW: "${content.substring(0, 80)}..."`);
         return content;
       }
 
       throw new Error('Empty response from OpenAI');
       
     } catch (error: any) {
-      console.error('❌ NOVELTY_GENERATION_FAILED:', error.message);
+      console.error('❌ ADVANCED_GENERATION_FAILED:', error.message);
       return this.getFallbackContent();
     }
   }
@@ -124,6 +108,41 @@ Response format: Just the content, no extra text.`;
     if (reason) console.log(`⚠️ SIMILARITY_REASON: ${reason}`);
     
     return { isUnique, similarity: maxSimilarity, reason };
+  }
+
+  /**
+   * Generate specialized content (replies, threads, etc.)
+   */
+  async generateSpecializedContent(openai: OpenAI, type: 'reply_to_post' | 'unique_health_fact' | 'viral_thread', context?: any): Promise<string> {
+    console.log(`🎯 SPECIALIZED_CONTENT: Generating ${type} with advanced prompts`);
+
+    const prompt = AdvancedPromptEngine.getSpecializedPrompt(type, context);
+
+    try {
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: type === 'viral_thread' ? 300 : 200,
+        temperature: 0.8,
+        top_p: 0.9,
+        frequency_penalty: 0.4, // Higher for specialized content
+        presence_penalty: 0.3
+      });
+
+      const content = response.choices?.[0]?.message?.content?.trim() || '';
+      
+      if (content) {
+        console.log(`✅ SPECIALIZED_SUCCESS: Generated ${type}`);
+        console.log(`📝 CONTENT_PREVIEW: "${content.substring(0, 80)}..."`);
+        return content;
+      }
+
+      throw new Error('Empty specialized content response');
+      
+    } catch (error: any) {
+      console.error(`❌ SPECIALIZED_GENERATION_FAILED (${type}):`, error.message);
+      return this.getFallbackContent();
+    }
   }
 
   /**
