@@ -210,33 +210,36 @@ SINGLE TWEET FORMAT:
 `}
 
 BANNED GENERIC PATTERNS & FORMATTING:
-- "Take magnesium for sleep"
-- "Exercise is good for you"  
-- "Eat healthy foods"
-- "99% of people are doing X wrong" (overused)
+- Take magnesium for sleep
+- Exercise is good for you  
+- Eat healthy foods
+- 99% of people are doing X wrong (overused)
 - Basic advice everyone knows
 - ANY HASHTAGS (#FitnessTruth, #HIIT, etc.) - NEVER USE HASHTAGS
+- ANY QUOTATION MARKS - write directly without quotes
 - Robotic/corporate language
 - Overly enthusiastic emoji usage
 - Generic health advice everyone posts
-- "Try this shift before 2024 hits" - sounds silly and dated
+- Try this shift before 2024 hits - sounds silly and dated
 
 EXAMPLES OF SOPHISTICATED VIRAL CONTENT:
-- "I spent $300 testing every sleep supplement on Amazon. Only 1 worked. Here's the shocking winner..."
-- "My doctor said my cholesterol was 'impossible.' Here's how I dropped it 47 points in 6 weeks..."
-- "Why eating 'healthy' salads was actually making me gain weight (the dressing conspiracy)..."
-- "I ditched my $150/month gym membership for a $20 jump rope. My gains skyrocketed."
-- "This breathing technique from Navy SEALs rewires your nervous system in 30 seconds."
-- "I tracked my glucose for 30 days. These 'healthy' foods spiked it worse than candy."
-- "Why your morning routine is backwards (and how to fix it based on circadian science)."
+- I spent $300 testing every sleep supplement on Amazon. Only 1 worked. Here's the shocking winner...
+- My doctor said my cholesterol was impossible. Here's how I dropped it 47 points in 6 weeks...
+- Why eating healthy salads was actually making me gain weight (the dressing conspiracy)...
+- I ditched my $150/month gym membership for a $20 jump rope. My gains skyrocketed.
+- This breathing technique from Navy SEALs rewires your nervous system in 30 seconds.
+- I tracked my glucose for 30 days. These healthy foods spiked it worse than candy.
+- Why your morning routine is backwards (and how to fix it based on circadian science).
 
 CRITICAL FORMATTING RULES:
 - NO HASHTAGS EVER - they look spammy and reduce engagement
+- NO QUOTATION MARKS - write directly without quotes around content
 - NO EMOJIS in the middle of text - only minimal use if needed
 - Write like a HUMAN, not a social media manager
 - Sound intelligent and credible, not silly or robotic
-- Avoid dated references like "2024 hits" or trendy phrases
+- Avoid dated references like 2024 hits or trendy phrases
 - Write like you're talking to a smart friend, not selling something
+- Never put quotes around the entire tweet or parts of it
 
 Generate content that people will want to save, share, and follow you for more insights.
 `;
@@ -415,12 +418,13 @@ Focus on making it more attention-grabbing, specific, and valuable.
    */
   private cleanTweetText(text: string): string {
     return text
-      .replace(/^["']|["']$/g, '') // Remove surrounding quotes
+      .replace(/["']/g, '') // Remove ALL quotes throughout the text
       .replace(/#\w+/g, '') // Remove ALL hashtags
       .replace(/\s+/g, ' ') // Normalize whitespace
       .replace(/💪|🔥|✨|🎯|🚀/g, '') // Remove overused emojis
       .replace(/before 2024 hits|in 2024|this year/gi, '') // Remove dated references
       .replace(/Try this shift|Give this a try|Here's the thing/gi, '') // Remove generic openers
+      .replace(/\.\.\./g, '.') // Replace ... with single period
       .trim()
       .substring(0, 280);
   }
