@@ -129,9 +129,10 @@ async function startIntelligentEngagement() {
       // Randomize engagement activities to seem natural
       const activities = [];
       
-      if (Math.random() > 0.2) activities.push('likes'); // 80% chance
-      if (Math.random() > 0.1) activities.push('replies'); // 90% chance - PRIORITIZE REPLIES
-      if (Math.random() > 0.7) activities.push('follows'); // 30% chance
+      // REPLIES GET BETTER ENGAGEMENT - PRIORITIZE HEAVILY
+      if (Math.random() > 0.05) activities.push('replies'); // 95% chance - MAXIMUM REPLY PRIORITY
+      if (Math.random() > 0.3) activities.push('likes'); // 70% chance
+      if (Math.random() > 0.8) activities.push('follows'); // 20% chance
       
       for (const activity of activities) {
         try {
@@ -168,9 +169,34 @@ async function startIntelligentEngagement() {
     }, minutes * 60 * 1000);
   }
   
-  // Start engagement cycle
+  // Start regular engagement cycle
   setTimeout(checkEngagementOpportunity, 5000);
   scheduleNextEngagement();
+  
+  // DEDICATED HIGH-FREQUENCY REPLY SYSTEM (since replies get better engagement)
+  async function dedicatedReplySystem() {
+    try {
+      console.log('💬 DEDICATED_REPLY_SYSTEM: Scanning for high-value reply opportunities...');
+      const { executeStrategicReplies } = await import('./engagement/strategicReplies');
+      await executeStrategicReplies();
+    } catch (error: any) {
+      console.error('❌ DEDICATED_REPLY_ERROR:', error.message);
+    }
+  }
+  
+  // Run dedicated reply system every 3-5 minutes (more frequent than general engagement)
+  function scheduleNextDedicatedReply() {
+    const minutes = 3 + Math.random() * 2; // 3-5 minutes for replies only
+    setTimeout(() => {
+      dedicatedReplySystem();
+      scheduleNextDedicatedReply();
+    }, minutes * 60 * 1000);
+  }
+  
+  // Start dedicated reply system
+  console.log('🔥 STARTING DEDICATED REPLY SYSTEM: High-frequency replies for better engagement');
+  setTimeout(dedicatedReplySystem, 10000); // Start after 10 seconds
+  scheduleNextDedicatedReply();
 }
 
 /**
