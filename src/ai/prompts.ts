@@ -36,13 +36,21 @@ TARGET AUDIENCE: ${targetAudience}
 CONTENT PILLAR: ${contentPillar}
 ${topic ? `TOPIC: ${topic}` : ''}
 
-🚀 VIRAL GROWTH STRATEGY (MANDATORY):
-- Start with SHOCKING statements that make people stop scrolling
-- Use CONTRARIAN angles that challenge what 99% believe
-- Include SPECIFIC protocols with exact numbers/timings
-- Add "I discovered this secret" or "doctors hate this" angles
-- Create FOMO: "Only 1% of people know this"
+🚀 UNDERGROUND HEALTH SECRETS (MANDATORY):
+- Share HIDDEN research most people have never heard of
+- Reveal COUNTERINTUITIVE body mechanisms that shock people  
+- Expose LESSER-KNOWN connections between habits and health outcomes
+- Uncover ANCIENT practices that modern science validates
+- Share OBSCURE biohacking techniques from elite performers
+- Include SPECIFIC protocols with exact numbers/timings from cutting-edge studies
 - GUARANTEE complete thoughts - never cut off mid-sentence
+
+FORBIDDEN KNOWLEDGE EXAMPLES:
+"Your appendix produces 70% of your body's serotonin"
+"Chewing on one side creates facial asymmetry over 10 years"
+"Your liver can taste sweetness and craves sugar at 3 AM"
+"Certain eye movements eliminate motion sickness in 30 seconds"
+"Your gut bacteria changes personality within 4 days of diet shifts"
 
 🎯 COMPLEX SCIENTIFIC CONTENT FORMULA:
 - Hook: "[Topic] is crucial for [unexpected benefit] due to [physiological mechanism]"
