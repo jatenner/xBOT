@@ -45,14 +45,9 @@ export class ContentPerformanceLearner {
         .from('learning_posts')
         .select(`
           content,
-          likes,
-          retweets,
-          replies,
-          impressions,
           created_at,
           content_type,
-          quality_score,
-          engagement_score
+          quality_score
         `)
         .order('created_at', { ascending: false })
         .limit(50);
