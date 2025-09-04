@@ -194,16 +194,11 @@ export class TwitterAnalyticsEngine {
           return curatedTrends.slice(0, 5);
           
         } catch (scrapingError) {
-          console.warn('⚠️ Twitter scraping failed, using fallback trends:', scrapingError);
+          console.error('❌ REAL_DATA_REQUIRED: Twitter scraping failed, cannot use fallback trends for learning system');
+          console.error('🚨 LEARNING_INTEGRITY: Using mock data will corrupt AI learning - requiring real data');
           
-          // Intelligent fallback based on current health trends
-          const fallbackTrends = [
-            'ozempic weight loss', 'red light therapy benefits', 'cold plunge therapy',
-            'seed oil inflammation', 'glucose monitoring hacks', 'NAD+ supplements',
-            'peptide therapy results', 'circadian rhythm optimization', 'microplastic detox'
-          ];
-          
-          return fallbackTrends.slice(0, 5);
+          // Return empty array to force system to use curated real trends or skip
+          return [];
         } finally {
           await page.close();
         }
@@ -304,17 +299,11 @@ export class TwitterAnalyticsEngine {
           await page.waitForTimeout(2000 + Math.random() * 3000);
           
         } catch (error) {
-          console.warn(`⚠️ Failed to analyze @${username}, using estimated data:`, error);
+          console.error(`❌ COMPETITOR_ANALYSIS_FAILED: Cannot analyze @${username} - requiring real data`);
+          console.error('🚨 LEARNING_INTEGRITY: Skipping mock competitor data to preserve AI learning quality');
           
-          // Fallback to estimated data
-          const activity = {
-            username,
-            post_frequency: 2 + Math.random() * 4,
-            avg_engagement: 1000 + Math.random() * 5000,
-            peak_hours: this.generateRandomPeakHours()
-          };
-          
-          competitorData.push(activity);
+          // Skip this competitor rather than use fake data
+          continue;
         }
       }
       
