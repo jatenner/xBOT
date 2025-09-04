@@ -429,13 +429,41 @@ export class TwitterComposer {
         // Try to capture reply ID with better fallback
         let replyId = null;
         try {
-          await this.page.waitForTimeout(2000); // Wait for DOM update
-          replyId = await captureTweetId(this.page);
-          console.log(`📊 THREAD_REPLY_ID_CAPTURED: ${replyId}`);
+          await this.page.waitForTimeout(3000); // Longer wait for DOM update
+          
+          // CRITICAL FIX: Look for NEW tweet, not the target tweet
+          const newTweetSelectors = [
+            'article[data-testid="tweet"]:first-child a[href*="/status/"]:not([href*="' + targetTweetId + '"])',
+            'div[data-testid="cellInnerDiv"]:first-child a[href*="/status/"]:not([href*="' + targetTweetId + '"])',
+            'a[href*="/status/"]:not([href*="' + targetTweetId + '"]):first'
+          ];
+          
+          for (const selector of newTweetSelectors) {
+            try {
+              const element = await this.page.locator(selector).first();
+              if (await element.isVisible({ timeout: 2000 })) {
+                const href = await element.getAttribute('href');
+                if (href) {
+                  const match = href.match(/\/status\/(\d+)/);
+                  if (match && match[1] !== targetTweetId) {
+                    replyId = match[1];
+                    console.log(`✅ THREAD_NEW_REPLY_ID: ${replyId} (not ${targetTweetId})`);
+                    break;
+                  }
+                }
+              }
+            } catch (e) {
+              continue;
+            }
+          }
+          
+          if (!replyId) {
+            throw new Error('Could not find new reply ID');
+          }
         } catch (idError) {
-          console.warn(`⚠️ Failed to capture reply ID: ${idError}`);
-          // Generate a fallback ID that follows expected format
-          replyId = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
+          console.warn(`⚠️ Failed to capture unique reply ID: ${idError}`);
+          // Generate a unique fallback ID
+          replyId = `${Date.now()}${Math.floor(Math.random() * 10000)}`;
           console.log(`🔄 THREAD_FALLBACK_ID: ${replyId}`);
         }
         
