@@ -62,7 +62,20 @@ async function findReplyableTweet(influencer: any): Promise<TweetToReplyTo | nul
     await page.goto(profileUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
     
     // Find recent tweets with low reply counts
-    const tweets = await page.evaluate((focus) => {
+    const tweets = await page.evaluate((focusData) => {
+      const { focus, healthKeywords } = focusData;
+      
+      // Helper function inside evaluate context
+      function isRelevantHealthContent(content, focusArea) {
+        const keywords = healthKeywords[focusArea] || [];
+        const generalHealth = ['health', 'wellness', 'fitness', 'diet', 'weight', 'energy'];
+        const allKeywords = [...keywords, ...generalHealth];
+        const contentLower = content.toLowerCase();
+        
+        const matchCount = allKeywords.filter(keyword => contentLower.includes(keyword)).length;
+        return matchCount >= 2;
+      }
+      
       const tweetElements = document.querySelectorAll('article[data-testid="tweet"]');
       const results = [];
       
@@ -80,8 +93,12 @@ async function findReplyableTweet(influencer: any): Promise<TweetToReplyTo | nul
           const replyText = replyEl?.textContent || '0';
           const replyCount = parseInt(replyText.replace(/[^\d]/g, '')) || 0;
           
-          // Look for tweets related to the influencer's focus area with <30 replies
-          if (content.length > 50 && replyCount < 30 && content.toLowerCase().includes(focus)) {
+          // INTELLIGENT FILTERING: Only reply to content we can add value to
+          const isHealthRelated = isRelevantHealthContent(content, focus);
+          const hasReplyOpportunity = replyCount < 30 && content.length > 50;
+          const isNotQuestion = !content.includes('?') || content.split('?').length <= 2;
+          
+          if (hasReplyOpportunity && isHealthRelated && isNotQuestion) {
             const match = href.match(/\/status\/(\d+)/);
             if (match) {
               results.push({
@@ -97,7 +114,16 @@ async function findReplyableTweet(influencer: any): Promise<TweetToReplyTo | nul
         }
       }
       return results;
-    }, influencer.focus);
+    }, {
+      focus: influencer.focus,
+      healthKeywords: {
+        neuroscience: ['brain', 'dopamine', 'serotonin', 'sleep', 'focus', 'cognitive', 'memory', 'stress'],
+        longevity: ['aging', 'lifespan', 'exercise', 'nutrition', 'metabolic', 'heart', 'cardiovascular'],
+        research: ['study', 'research', 'data', 'science', 'evidence', 'vitamin', 'supplement'],
+        'functional medicine': ['gut', 'inflammation', 'immune', 'detox', 'hormone', 'thyroid'],
+        biohacking: ['optimize', 'performance', 'protocol', 'hack', 'tracking', 'quantified']
+      }
+    });
     
       return tweets[0] || null;
     });
@@ -105,6 +131,27 @@ async function findReplyableTweet(influencer: any): Promise<TweetToReplyTo | nul
     console.error('Failed to find replyable tweet:', error);
     return null;
   }
+}
+
+// Helper function to intelligently filter relevant health content
+function isRelevantHealthContent(content: string, focus: string): boolean {
+  const healthKeywords = {
+    neuroscience: ['brain', 'dopamine', 'serotonin', 'sleep', 'focus', 'cognitive', 'memory', 'stress'],
+    longevity: ['aging', 'lifespan', 'exercise', 'nutrition', 'metabolic', 'heart', 'cardiovascular'],
+    research: ['study', 'research', 'data', 'science', 'evidence', 'vitamin', 'supplement'],
+    'functional medicine': ['gut', 'inflammation', 'immune', 'detox', 'hormone', 'thyroid'],
+    biohacking: ['optimize', 'performance', 'protocol', 'hack', 'tracking', 'quantified']
+  };
+  
+  const focusKeywords = healthKeywords[focus as keyof typeof healthKeywords] || [];
+  const generalHealth = ['health', 'wellness', 'fitness', 'diet', 'weight', 'energy'];
+  
+  const allKeywords = [...focusKeywords, ...generalHealth];
+  const contentLower = content.toLowerCase();
+  
+  // Must contain at least 2 relevant keywords to ensure we understand the topic
+  const matchCount = allKeywords.filter(keyword => contentLower.includes(keyword)).length;
+  return matchCount >= 2;
 }
 
 async function generateContextAwareReply(tweet: TweetToReplyTo, influencer: any): Promise<string | null> {
@@ -169,6 +216,9 @@ async function postStrategicReply(tweetUrl: string, replyContent: string): Promi
       
       if (result.success) {
         console.log(`✅ STRATEGIC_REPLY_POSTED: Reply ID ${result.tweetId}`);
+        
+        // 📊 STORE REPLY DATA FOR LEARNING
+        await storeReplyForLearning(result.tweetId!, replyContent, tweetUrl);
       } else {
         console.error(`❌ STRATEGIC_REPLY_FAILED: ${result.error}`);
       }
@@ -176,5 +226,51 @@ async function postStrategicReply(tweetUrl: string, replyContent: string): Promi
     
   } catch (error) {
     console.error('Failed to post strategic reply:', error);
+  }
+}
+
+async function storeReplyForLearning(replyId: string, replyContent: string, originalTweetUrl: string): Promise<void> {
+  try {
+    console.log('📊 STORING_REPLY_DATA: Saving reply for learning analysis');
+    
+    const { admin } = await import('../lib/supabaseClients');
+    const supabase = admin;
+    
+    // Store in learning_posts table as reply type
+    const { error } = await supabase
+      .from('learning_posts')
+      .insert([{
+        tweet_id: replyId,
+        content: replyContent,
+        content_type: 'reply',
+        is_thread: false,
+        replied_to_url: originalTweetUrl,
+        posted_at: new Date().toISOString(),
+        likes: 0,
+        retweets: 0,
+        replies: 0,
+        impressions: 0,
+        engagement_score: 0,
+        learning_metadata: {
+          type: 'strategic_reply',
+          context_aware: true,
+          original_tweet_url: originalTweetUrl,
+          generated_at: new Date().toISOString()
+        }
+      }]);
+
+    if (error) {
+      console.warn('⚠️ REPLY_STORAGE_WARNING:', error.message);
+    } else {
+      console.log('✅ REPLY_DATA_STORED: Reply data saved for learning');
+    }
+    
+    // Start engagement tracking for this reply
+    const { RealEngagementIntegration } = await import('../learning/realEngagementIntegration');
+    const engagementTracker = RealEngagementIntegration.getInstance();
+    await engagementTracker.startTracking(replyId);
+    
+  } catch (error) {
+    console.error('❌ REPLY_STORAGE_FAILED:', error);
   }
 }
