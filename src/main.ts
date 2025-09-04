@@ -33,12 +33,17 @@ async function postScientificThread(): Promise<{ rootTweetId: string | null } | 
     const { SimplifiedPostingEngine } = await import('./core/simplifiedPostingEngine');
     const engine = SimplifiedPostingEngine.getInstance();
     const result = await engine.createEngagingPost('thread about health optimization breakthrough');
-    console.log(`✅ THREAD_POSTED: ${result.success ? 'Success' : 'Failed'}`);
-    
-    // Return thread result for learning data
-    return result.success ? { rootTweetId: result.tweetId || null } : null;
+    if (result.success && result.tweetId) {
+      console.log(`✅ THREAD_POSTED: Success! Root ID: ${result.tweetId}`);
+      return { rootTweetId: result.tweetId };
+    } else {
+      console.error(`❌ THREAD_FAILED: ${result.error || 'Unknown error'}`);
+      console.error(`📊 THREAD_DEBUG: Success=${result.success}, TweetID=${result.tweetId}, Content=${result.content?.substring(0, 100)}`);
+      return null;
+    }
   } catch (error: any) {
-    console.error('❌ THREAD_POST_ERROR:', error.message);
+    console.error(`💥 THREAD_CRASHED: ${error.message}`);
+    console.error(`📊 THREAD_STACK: ${error.stack?.substring(0, 200)}`);
     return null;
   }
 }
@@ -74,8 +79,13 @@ async function startIntelligentPosting() {
         content = opportunity.type;
       }
       
-      // Record post for learning with REAL tweet ID
-      await postingManager.recordPost(opportunity.type, tweetId || 'failed_post', content);
+      // Record post for learning - only if successful
+      if (tweetId) {
+        await postingManager.recordPost(opportunity.type, tweetId, content);
+        console.log(`📊 LEARNING_RECORDED: ${opportunity.type} post ${tweetId} recorded for learning`);
+      } else {
+        console.warn(`⚠️ POST_FAILED: ${opportunity.type} post failed, not recording for learning`);
+      }
       
     } catch (error: any) {
       console.error('❌ INTELLIGENT_POSTING_ERROR:', error.message);
