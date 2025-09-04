@@ -79,7 +79,7 @@ async function findReplyableTweet(influencer: any): Promise<TweetToReplyTo | nul
       const tweetElements = document.querySelectorAll('article[data-testid="tweet"]');
       const results = [];
       
-      for (let i = 0; i < Math.min(tweetElements.length, 15); i++) {
+      for (let i = 0; i < Math.min(tweetElements.length, 25); i++) {
         const tweet = tweetElements[i];
         const contentEl = tweet.querySelector('[data-testid="tweetText"]');
         const authorEl = tweet.querySelector('[data-testid="User-Name"]');
@@ -93,14 +93,23 @@ async function findReplyableTweet(influencer: any): Promise<TweetToReplyTo | nul
           const replyText = replyEl?.textContent || '0';
           const replyCount = parseInt(replyText.replace(/[^\d]/g, '')) || 0;
           
-          // AGGRESSIVE FILTERING: Maximum engagement opportunities
-          const hasContent = content.length > 15;
-          const hasReplyOpportunity = replyCount < 100; // Increased from 50
+          // ULTRA-AGGRESSIVE FILTERING: Maximize reply opportunities since they get better engagement
+          const hasContent = content.length > 10; // Lowered threshold
+          const hasReplyOpportunity = replyCount < 150; // Increased for more opportunities
           const isEngageable = !content.includes('http') && !content.includes('RT @');
-          const isHealthRelated = /health|fitness|nutrition|supplement|sleep|exercise|diet|wellness|biohack|longevity|gut|brain|energy|stress|anxiety|depression|weight|muscle|cardio|strength|recovery|immune|inflammation|hormone/i.test(content);
-          const isPopular = replyCount > 2; // Some engagement shows interest
+          const isHealthRelated = /health|fitness|nutrition|supplement|sleep|exercise|diet|wellness|biohack|longevity|gut|brain|energy|stress|anxiety|depression|weight|muscle|cardio|strength|recovery|immune|inflammation|hormone|vitamin|mineral|protein|fasting|keto|paleo|metabolism|cortisol|insulin|dopamine|serotonin|testosterone|estrogen|thyroid|adrenal|mitochondria|autophagy|glycogen|ketosis|microbiome|probiotics|prebiotics|fiber|antioxidant|polyphenol/i.test(content);
+          const isEngaging = replyCount >= 1; // Any engagement is good
+          const isFromInfluencer = /verified|\u2713/.test(tweet.innerHTML); // Target verified accounts more
+          const hasSpecificTopics = /mg|gram|study|research|protocol|method|technique|strategy|hack|tip|secret|truth|fact|science|data|result|benefit|effect|mechanism|pathway|receptor|enzyme/i.test(content);
           
-          if (hasContent && hasReplyOpportunity && isEngageable && (isHealthRelated || isPopular)) {
+          // Enhanced filtering logic - replies get better engagement so be more aggressive
+          const shouldReply = hasContent && hasReplyOpportunity && isEngageable && (
+            (isHealthRelated && isEngaging) || 
+            (isFromInfluencer && hasSpecificTopics) ||
+            (isHealthRelated && hasSpecificTopics)
+          );
+          
+          if (shouldReply) {
             const match = href.match(/\/status\/(\d+)/);
             if (match) {
               results.push({
@@ -156,36 +165,110 @@ function isRelevantHealthContent(content: string, focus: string): boolean {
   return matchCount >= 2;
 }
 
+/**
+ * Extract specific health topics from tweet content
+ */
+function extractHealthTopics(content: string): string[] {
+  const healthKeywords = {
+    'supplements': ['magnesium', 'vitamin', 'omega', 'protein', 'creatine', 'zinc', 'b12', 'iron', 'calcium'],
+    'exercise': ['workout', 'training', 'cardio', 'strength', 'hiit', 'running', 'lifting', 'yoga'],
+    'nutrition': ['diet', 'fasting', 'keto', 'carbs', 'protein', 'fat', 'calories', 'meal'],
+    'sleep': ['sleep', 'melatonin', 'circadian', 'insomnia', 'rem', 'deep sleep', 'wake'],
+    'mental_health': ['anxiety', 'depression', 'stress', 'meditation', 'mindfulness', 'dopamine', 'serotonin'],
+    'longevity': ['aging', 'longevity', 'lifespan', 'anti-aging', 'cellular', 'mitochondria', 'autophagy'],
+    'gut_health': ['gut', 'microbiome', 'probiotics', 'digestion', 'fiber', 'inflammation', 'leaky gut']
+  };
+  
+  const contentLower = content.toLowerCase();
+  const topics: string[] = [];
+  
+  for (const [category, keywords] of Object.entries(healthKeywords)) {
+    if (keywords.some(keyword => contentLower.includes(keyword))) {
+      topics.push(category);
+    }
+  }
+  
+  return topics;
+}
+
+/**
+ * Identify key biological mechanisms mentioned
+ */
+function identifyKeyMechanisms(content: string): string[] {
+  const mechanisms = [
+    'mtor', 'ampk', 'autophagy', 'mitochondria', 'insulin', 'glucose', 'cortisol',
+    'inflammation', 'oxidative stress', 'glycogen', 'ketosis', 'metabolism',
+    'neurotransmitter', 'hormone', 'enzyme', 'pathway', 'receptor', 'protein synthesis'
+  ];
+  
+  const contentLower = content.toLowerCase();
+  return mechanisms.filter(mechanism => contentLower.includes(mechanism));
+}
+
 async function generateContextAwareReply(tweet: TweetToReplyTo, influencer: any): Promise<string | null> {
   try {
     const { OpenAI } = await import('openai');
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     
-    const contextPrompt = `You are a health expert replying to a tweet. Generate a HIGHLY VALUABLE, CONTEXT-AWARE reply that adds genuine insight:
+    // Analyze the tweet content for specific health topics
+    const healthTopics = extractHealthTopics(tweet.content);
+    const keyMechanisms = identifyKeyMechanisms(tweet.content);
+    
+    // Select reply strategy for variety and maximum engagement
+    const strategies = [
+      'mechanism_expert', 'study_data', 'protocol_enhancement', 
+      'unexpected_connection', 'actionable_insight', 'brand_specific'
+    ];
+    const strategy = strategies[Math.floor(Math.random() * strategies.length)];
+    
+    const strategyPrompts = {
+      mechanism_expert: 'Focus on explaining the biological mechanism or pathway behind their point',
+      study_data: 'Include specific recent research data and percentage improvements',
+      protocol_enhancement: 'Suggest a specific enhancement or optimization to their approach',
+      unexpected_connection: 'Connect their point to an unexpected but related health factor',
+      actionable_insight: 'Provide immediate, specific actionable steps they can take',
+      brand_specific: 'Mention specific brands, dosages, or products that optimize their approach'
+    };
+    
+    console.log(`🎯 REPLY_STRATEGY: Using ${strategy} approach for maximum engagement`);
+    
+    const contextPrompt = `You are a leading health expert and researcher replying to a tweet. Generate an EXTRAORDINARILY VALUABLE reply that makes people think "this person knows their stuff":
 
 TWEET TO REPLY TO:
 "${tweet.content}"
 BY: ${tweet.author}
 TOPIC: ${tweet.topic}
 INFLUENCER EXPERTISE: ${influencer.expertise}
+DETECTED HEALTH TOPICS: ${healthTopics.join(', ')}
+KEY MECHANISMS: ${keyMechanisms.join(', ')}
+REPLY STRATEGY: ${strategy.toUpperCase()}
+STRATEGY FOCUS: ${strategyPrompts[strategy]}
 
-REPLY REQUIREMENTS:
-- Add SPECIFIC, ACTIONABLE value related to the exact topic mentioned
-- Share a LESSER-KNOWN fact, mechanism, or protocol that complements their point
-- Include specific numbers, studies, or brands when relevant
-- Keep it under 240 characters
-- Sound like a knowledgeable peer adding valuable context
-- Include actionable insight or protocol if possible
-- NO generic phrases like "great point", "thanks for sharing", or "love this"
-- NO quotes around the reply content
-- Make it so valuable people will want to follow for more insights
+CREATE A REPLY THAT:
 
-EXAMPLES OF GOOD REPLIES:
-"The mechanism behind this is fascinating - it actually works through upregulating AMPK, which is why timing matters. Best results happen when combined with 16:8 fasting."
+🎯 CONTENT STRATEGY:
+- Add a SPECIFIC mechanism, pathway, or biological process that explains WHY their point works
+- Include EXACT numbers from recent studies (2022-2024 preferred)
+- Mention specific brands, dosages, or protocols when relevant
+- Connect to a related but unexpected factor most people don't know
+- Make it immediately actionable with clear next steps
 
-"There's also the lesser-known connection to vagal tone. A 2023 study showed this protocol increases HRV by 23% when done consistently for 3 weeks."
+📊 FORMATTING REQUIREMENTS:
+- 200-240 characters (use every character for value)
+- NO quotes around the content
+- NO generic acknowledgments ("great point", "love this", "thanks")
+- NO emoji or hashtags
+- Sound like a peer researcher, not a fan
+- Include specific timeframes when mentioning results
 
-Generate ONE strategic reply:`;
+🧬 EXAMPLES OF PERFECT REPLIES:
+"The key is glutathione recycling - that's why NAC works better with glycine (2:1 ratio). A 2023 study showed 47% better absorption when taken with 500mg vitamin C on empty stomach."
+
+"Interesting connection to circadian biology here. The same pathway upregulates CLOCK genes, which is why this protocol works 3x better when done 2-3 hours before your usual bedtime."
+
+"This activates the mTOR pathway differently than expected. Japanese research from 2024 found combining it with 15-minute cold exposure increased biomarkers by 89% in 28 days."
+
+💡 GENERATE ONE STRATEGIC REPLY THAT DEMONSTRATES DEEP EXPERTISE:`;
 
     const response = await openai.chat.completions.create({
       model: 'gpt-4o',
