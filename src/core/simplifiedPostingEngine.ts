@@ -99,8 +99,8 @@ export class SimplifiedPostingEngine {
       console.log(`🚀 TOP_HOOKS: ${contentTypeHint.hooks.slice(0, 2).join(', ')}`);
 
             // 🎯 DIRECT CONTENT GENERATION: Bypass broken orchestrator for variety  
-      const shouldForceThread = (topic && topic.includes('thread')) || Math.random() < 0.8; // 80% chance for threads (testing)
-      console.log(`🎯 CONTENT_TYPE_DECISION: ${shouldForceThread ? 'THREAD' : 'SIMPLE'} format forced (thread chance: 80%)`);
+      const shouldForceThread = (topic && topic.includes('thread')) || Math.random() < 0.25; // 25% chance for threads (balanced)
+      console.log(`🎯 CONTENT_TYPE_DECISION: ${shouldForceThread ? 'THREAD' : 'SIMPLE'} format forced (thread chance: 25%)`);
       
       // 🚨 FAIL-FAST: Check if we're experiencing posting issues
       const recentFailureCount = await this.getRecentFailureCount();
