@@ -218,7 +218,11 @@ export class AggressiveLearningEngine {
     console.log('🚀 AGGRESSIVE_PHASE: Gathering data through high-frequency posting');
     
     // Post every 15-20 minutes during active hours (5 AM - 11:59 PM) - ULTRA AGGRESSIVE
-    const isActiveHour = hour >= 5 && hour <= 23;
+    // Convert UTC to local time for proper active hour detection
+    const localHour = new Date().getHours(); // Get local hour instead of UTC
+    const isActiveHour = localHour >= 5 && localHour <= 23;
+    
+    console.log(`🕐 TIME_CHECK: UTC=${hour}, Local=${localHour}, Active=${isActiveHour}`);
     const underTarget = postsToday < this.dailyPostTarget;
     
     if (!isActiveHour) {
