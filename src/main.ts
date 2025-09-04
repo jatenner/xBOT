@@ -118,9 +118,9 @@ async function startIntelligentEngagement() {
       // Randomize engagement activities to seem natural
       const activities = [];
       
-      if (Math.random() > 0.3) activities.push('likes'); // 70% chance
-      if (Math.random() > 0.6) activities.push('replies'); // 40% chance  
-      if (Math.random() > 0.8) activities.push('follows'); // 20% chance
+      if (Math.random() > 0.2) activities.push('likes'); // 80% chance
+      if (Math.random() > 0.1) activities.push('replies'); // 90% chance - PRIORITIZE REPLIES
+      if (Math.random() > 0.7) activities.push('follows'); // 30% chance
       
       for (const activity of activities) {
         try {
@@ -150,7 +150,7 @@ async function startIntelligentEngagement() {
   
   // Variable engagement timing (10-30 minutes)
   function scheduleNextEngagement() {
-    const minutes = 10 + Math.random() * 20; // 10-30 minutes
+    const minutes = 2 + Math.random() * 6; // 2-8 minutes - AGGRESSIVE ENGAGEMENT
     setTimeout(() => {
       checkEngagementOpportunity();
       scheduleNextEngagement();
