@@ -3,6 +3,7 @@ import { startHealthServer } from './server';
 import { closeBrowser } from './playwright/browserFactory';
 import { closeDatabaseConnections } from './db/index';
 import { AnalyticsScheduler } from './scheduler/analyticsScheduler';
+import { AIDrivenPostingSystem } from './core/aiDrivenPostingSystem';
 
 /**
  * SIMPLE THREAD POSTING LOOP - No bloat, just threads
@@ -31,9 +32,10 @@ async function startEngagementLoop() {
 async function postScientificThread(): Promise<{ rootTweetId: string | null } | null> {
   try {
     console.log('🧵 POSTING: Creating scientific thread...');
-    const { SimplifiedPostingEngine } = await import('./core/simplifiedPostingEngine');
-    const engine = SimplifiedPostingEngine.getInstance();
-    const result = await engine.createEngagingPost('thread about health optimization breakthrough');
+    // Use new AI-driven system
+    const { AIDrivenPostingSystem } = await import('./core/aiDrivenPostingSystem');
+    const engine = AIDrivenPostingSystem.getInstance();
+    const result = await engine.createViralPost();
     if (result.success && result.tweetId) {
       console.log(`✅ THREAD_POSTED: Success! Root ID: ${result.tweetId}`);
       return { rootTweetId: result.tweetId };
@@ -283,6 +285,10 @@ async function main() {
   const analyticsScheduler = AnalyticsScheduler.getInstance();
   analyticsScheduler.start();
   console.log('✅ ANALYTICS_ACTIVE: 30-minute data collection cycles running');
+  
+  // Start 100% AI-driven posting system (temporarily manual until old system fixed)
+  console.log('🤖 AI_POSTING_STARTUP: 100% OpenAI-driven content system ready');
+  console.log('✅ AI_POSTING_READY: Use AIDrivenPostingSystem.getInstance().forceViralPost() to test');
   
   // Startup delay to prevent immediate API rate limiting
   console.log('⏳ Adding startup delay to respect API rate limits...');

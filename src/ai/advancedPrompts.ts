@@ -190,22 +190,28 @@ Share the most obscure health secrets that less than 1% of people know. Include 
   }
 
   private static getUniquenessInstructions(avoidTopics: string[], recentContent: string[]): string {
-    let instructions = `🚨 CRITICAL ANTI-REPETITION RULES:
+    let instructions = `🚨 CRITICAL CONTENT DIVERSITY RULES:
 - NEVER use "99% of people" or "95% of people" hooks (SEVERELY OVERUSED)
-- NEVER mention magnesium (POSTED TOO MUCH ALREADY)
-- AVOID: "take [supplement] at night for better sleep" (REPETITIVE PATTERN)
-- AVOID: "supplement timing" topics (OVERDONE)
+- EXPLORE VAST HEALTH TOPICS: Don't get stuck on same supplements repeatedly
+- ROTATE THROUGH DIVERSE AREAS: metabolism, hormones, gut health, circadian biology, exercise science, nutrition timing, stress management, biohacking tools, etc.
 - NO quotation marks in content (looks like quoting someone else)
-- Each post must be completely different topic AND approach
+- Each post must be completely different topic AND approach from recent posts
 - Generate content so unique it couldn't be confused with any other health post
 
 BANNED REPETITIVE PHRASES (INSTANT REJECTION):
 - "99% of people are doing [X] wrong"
 - "Here's what actually works" 
-- "Take magnesium"
-- "for better sleep"
-- "supplement timing"
-- "Here's why"
+- Repeating same supplement advice multiple times
+- Generic "for better sleep" without specifics
+- "supplement timing" as main focus repeatedly
+- "Here's why" as default opener
+
+🎯 CONTENT DIVERSITY MANDATE:
+- If recent posts covered supplements → Focus on exercise/movement
+- If recent posts covered sleep → Focus on metabolism/energy  
+- If recent posts covered nutrition → Focus on stress/hormones
+- ALWAYS rotate through different health domains
+- Prioritize lesser-known, cutting-edge health insights
 
 UNIQUENESS REQUIREMENTS:
 - Focus on specific, actionable protocols with exact numbers
