@@ -14,6 +14,7 @@ import { logInfo, logError } from '../utils/intelligentLogging';
 import { ContentQualityController } from '../quality/contentQualityController';
 import { ContentPerformanceLearner } from '../learning/contentPerformanceLearner';
 import { TwitterAnalyticsScraper } from '../analytics/twitterAnalyticsScraper';
+import { DeepContentGenerator } from '../ai/deepContentGenerator';
 
 export interface SimplePostResult {
   success: boolean;
@@ -35,11 +36,13 @@ export class SimplifiedPostingEngine {
   private qualityController: ContentQualityController;
   private learner: ContentPerformanceLearner;
   private analyticsScraper: TwitterAnalyticsScraper;
+  private deepGenerator: DeepContentGenerator;
 
   private constructor() {
     this.qualityController = new ContentQualityController(process.env.OPENAI_API_KEY!);
     this.learner = ContentPerformanceLearner.getInstance();
     this.analyticsScraper = new TwitterAnalyticsScraper();
+    this.deepGenerator = new DeepContentGenerator(process.env.OPENAI_API_KEY!);
   }
 
   public static getInstance(): SimplifiedPostingEngine {
@@ -184,8 +187,10 @@ export class SimplifiedPostingEngine {
       console.log(`🚀 TOP_HOOKS: ${contentTypeHint.hooks.slice(0, 2).join(', ')}`);
 
             // 🎯 DIRECT CONTENT GENERATION: Bypass broken orchestrator for variety  
-      const shouldForceThread = false; // DISABLED - Fix reply mechanism first
-      console.log(`🎯 CONTENT_TYPE_DECISION: ${shouldForceThread ? 'THREAD' : 'SIMPLE'} format forced (thread chance: 25%)`);
+      // 🧠 DEEP_CONTENT_DECISION: Generate detailed content with specifics  
+      const shouldCreateThread = Math.random() < 0.4; // 40% chance for threads
+      const contentFormat = shouldCreateThread ? 'thread' : 'single';
+      console.log(`🧠 DEEP_CONTENT_MODE: ${contentFormat.toUpperCase()} format - generating specific, actionable content`);
       
       // 🚨 FAIL-FAST: Check if we're experiencing posting issues
       const recentFailureCount = await this.getRecentFailureCount();
@@ -288,26 +293,123 @@ export class SimplifiedPostingEngine {
         
         const variantGen = VariantGenerator.getInstance();
         
-        // 🎲 AI-GENERATED VARIETY (NO HARDCODED TOPICS)
-        const styles = ['breaking_news', 'investigative', 'underground', 'research_backed', 'myth_busting', 'contrarian_take'];
-        const selectedStyle = styles[Math.floor(Math.random() * styles.length)];
+              // 🧠 DEEP_CONTENT_GENERATION: Create specific, actionable content
+      const healthCategories = ['sleep', 'metabolism', 'stress', 'energy', 'supplements', 'routines'];
+      const selectedCategory = healthCategories[Math.floor(Math.random() * healthCategories.length)];
+      
+      console.log(`🧠 DEEP_CATEGORY: ${selectedCategory} with specific products/protocols`);
         
-        console.log(`🎯 SIMPLE_VARIATION_TEST: ${selectedStyle} style (AI-generated topic)`);
-        
-        // 🎲 GENERATE MULTIPLE VARIANTS AND SELECT THE BEST
-        let bestVariant;
+        // 🧠 GENERATE DEEP CONTENT WITH SPECIFIC DETAILS
+        let deepContent;
         
         try {
-          bestVariant = await variantGen.generateBestVariant({
+          if (contentFormat === 'thread') {
+            console.log(`🧵 GENERATING_DEEP_THREAD: ${selectedCategory} with specific products/routines`);
+            deepContent = await this.deepGenerator.generateDeepContent(selectedCategory, 'thread');
+            
+            if (!deepContent.hasSpecificDetails) {
+              console.log('⚠️ THREAD_LACKS_DEPTH: Regenerating with more specific requirements');
+              deepContent = await this.deepGenerator.generateNighttimeRoutineThread();
+            }
+          } else {
+            console.log(`📝 GENERATING_DEEP_SINGLE: ${selectedCategory} with specific products/protocols`);
+            deepContent = await this.deepGenerator.generateProductFocusedContent(selectedCategory);
+            
+            if (!deepContent.hasSpecificDetails) {
+              console.log('⚠️ CONTENT_LACKS_DEPTH: Regenerating with product focus');
+              deepContent = await this.deepGenerator.generateProductFocusedContent('specific_brands');
+            }
+          }
+          
+          // Validate content depth
+          const depthValidation = this.deepGenerator.validateContentDepth(deepContent.content);
+          console.log(`📊 CONTENT_DEPTH_SCORE: ${depthValidation.score}/6 - ${depthValidation.isDeepEnough ? 'APPROVED' : 'NEEDS_IMPROVEMENT'}`);
+          
+          if (!depthValidation.isDeepEnough) {
+            console.log(`❌ INSUFFICIENT_DEPTH: Missing ${depthValidation.missingElements.join(', ')}`);
+            // Regenerate with stricter requirements
+            deepContent = await this.deepGenerator.generateDeepContent(`${selectedCategory} with specific brands and protocols`, contentFormat);
+          }
+          
+          console.log(`✅ DEEP_CONTENT_GENERATED: ${deepContent.productMentions.length} products, ${deepContent.actionableSteps.length} actionable steps`);
+          
+        } catch (error: any) {
+          console.error('❌ DEEP_CONTENT_ERROR:', error.message);
+          // Fallback to basic deep content
+          deepContent = await this.deepGenerator.generateProductFocusedContent('health_supplements');
+        }
+        
+        // 📝 PREPARE CONTENT FOR POSTING
+        if (contentFormat === 'thread' && deepContent.threadParts && deepContent.threadParts.length > 1) {
+          console.log(`🧵 POSTING_DEEP_THREAD: ${deepContent.threadParts.length} parts with ${deepContent.productMentions.length} specific products`);
+          
+          // Post as thread
+          const { SimpleThreadPoster } = await import('../posting/simpleThreadPoster');
+          const threadPoster = new SimpleThreadPoster();
+          
+          const threadResult = await threadPoster.postRealThread(deepContent.threadParts);
+          
+          if (threadResult.success) {
+            this.dailyPostCount++;
+            this.lastPostTime = Date.now();
+            
+            console.log(`✅ DEEP_THREAD_SUCCESS: ${threadResult.tweetId} - ${deepContent.threadParts.length} tweets posted`);
+            return {
+              success: true,
+              tweetId: threadResult.tweetId,
+              content: deepContent.content,
+              type: 'thread'
+            };
+          } else {
+            console.error('❌ THREAD_FAILED: Falling back to single deep post');
+            // Continue to single post fallback
+          }
+        }
+        
+        // 📝 POST SINGLE DEEP CONTENT
+        console.log(`📝 POSTING_DEEP_SINGLE: ${deepContent.productMentions.length} products mentioned`);
+        const singleContent = deepContent.content.substring(0, 280);
+        
+        const result = await this.postTweet(singleContent);
+        
+        if (result.success) {
+          this.dailyPostCount++;
+          this.lastPostTime = Date.now();
+          
+          console.log(`✅ DEEP_CONTENT_SUCCESS: ${result.tweetId} - Specific products: ${deepContent.productMentions.join(', ')}`);
+          return {
+            success: true,
+            tweetId: result.tweetId,
+            content: singleContent,
+            type: 'single'
+          };
+        } else {
+          console.error('❌ DEEP_CONTENT_FAILED: All posting attempts failed');
+          
+          // Fallback to original variant generation
+          const bestVariant = await variantGen.generateBestVariant({
             topic: 'health',
-            style: selectedStyle,
+            style: selectedCategory,
             temperature: 0.9,
             variant_count: 3
           });
           
-          console.log(`🏆 BEST_VARIANT_SELECTED: Score=${bestVariant.total_score.toFixed(2)}, Style=${bestVariant.style}`);
-          console.log(`📊 VARIANT_BREAKDOWN: Quality=${bestVariant.quality_score}, Novelty=${bestVariant.novelty_score}, Engagement=${bestVariant.predicted_engagement}`);
+          console.log(`🏆 FALLBACK_VARIANT: Score=${bestVariant.total_score.toFixed(2)}, Style=${bestVariant.style}`);
           
+          const result = await this.postTweet(bestVariant.content);
+          
+          if (result.success) {
+            this.dailyPostCount++;
+            this.lastPostTime = Date.now();
+            return {
+              success: true,
+              tweetId: result.tweetId,
+              content: bestVariant.content,
+              type: 'single'
+            };
+          }
+        }
+        
         } catch (error: any) {
           console.error('❌ VARIANT_GENERATION_FAILED:', error.message);
           
