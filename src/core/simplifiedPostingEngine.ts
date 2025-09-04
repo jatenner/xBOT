@@ -28,6 +28,7 @@ export class SimplifiedPostingEngine {
   private lastPostTime = 0;
   private readonly MIN_POST_INTERVAL = 60 * 60 * 1000; // 60 minutes for growth
   private readonly MAX_DAILY_POSTS = 20; // Increased for small account growth
+  private recentFailures: number[] = []; // Track failure timestamps for circuit breaker
   private dailyPostCount = 0;
   private lastResetDate = new Date().toDateString();
   private qualityController: ContentQualityController;
@@ -101,9 +102,17 @@ export class SimplifiedPostingEngine {
       const shouldForceThread = (topic && topic.includes('thread')) || Math.random() < 0.6; // 60% chance for threads (increased)
       console.log(`🎯 CONTENT_TYPE_DECISION: ${shouldForceThread ? 'THREAD' : 'SIMPLE'} format forced (thread chance: 60%)`);
       
+      // 🚨 FAIL-FAST: Check if we're experiencing posting issues
+      const recentFailureCount = await this.getRecentFailureCount();
+      let finalThreadDecision = shouldForceThread;
+      if (shouldForceThread && recentFailureCount > 3) {
+        console.warn(`⚠️ THREAD_CIRCUIT_BREAKER: ${recentFailureCount} recent failures, forcing SIMPLE tweet instead`);
+        finalThreadDecision = false;
+      }
+      
       let ultimateContent;
       
-      if (shouldForceThread) {
+      if (finalThreadDecision) {
         console.log('🧵 DIRECT_THREAD: Using dedicated thread generator...');
         
         // Use the thread generator directly
@@ -462,6 +471,9 @@ export class SimplifiedPostingEngine {
         if (threadResult.success) {
           console.log(`✅ THREAD_SUCCESS: Posted ${threadResult.totalTweets}-tweet thread!`);
           console.log(`🔗 Root: ${threadResult.rootTweetId}, Replies: ${threadResult.replyIds?.length || 0}`);
+        } else {
+          this.recordFailure(); // Track failure for circuit breaker
+          console.error(`❌ THREAD_FAILURE: ${threadResult.error}`);
         }
         
       } else {
@@ -760,5 +772,23 @@ Create content that makes people stop scrolling and engage.`;
     
     console.log(`🔬 SCIENTIFIC_VALIDATION: Found ${matches}/5 scientific indicators`);
     return hasComplexStructure;
+  }
+
+  /**
+   * Track recent failures for circuit breaker logic
+   */
+  private async getRecentFailureCount(): Promise<number> {
+    const oneHourAgo = Date.now() - (60 * 60 * 1000);
+    // Remove old failures
+    this.recentFailures = this.recentFailures.filter(timestamp => timestamp > oneHourAgo);
+    return this.recentFailures.length;
+  }
+
+  /**
+   * Record a posting failure for circuit breaker
+   */
+  private recordFailure(): void {
+    this.recentFailures.push(Date.now());
+    console.log(`⚠️ FAILURE_RECORDED: ${this.recentFailures.length} failures in last hour`);
   }
 }
