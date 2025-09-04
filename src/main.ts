@@ -2,6 +2,7 @@ import { validateEnvironment } from './config/env';
 import { startHealthServer } from './server';
 import { closeBrowser } from './playwright/browserFactory';
 import { closeDatabaseConnections } from './db/index';
+import { AnalyticsScheduler } from './scheduler/analyticsScheduler';
 
 /**
  * SIMPLE THREAD POSTING LOOP - No bloat, just threads
@@ -274,8 +275,14 @@ async function startTwitterAnalytics() {
  * Main application entry point with proper error handling and graceful shutdown
  */
 async function main() {
-  console.log('🚀 Starting xBOT with enhanced quality and stability system');
+  console.log('🚀 Starting xBOT with REAL-TIME ANALYTICS & DATA-DRIVEN AI');
   console.log(`📅 Started at: ${new Date().toISOString()}`);
+  
+  // Start automated analytics collection immediately
+  console.log('📊 ANALYTICS_STARTUP: Initializing real-time data collection...');
+  const analyticsScheduler = AnalyticsScheduler.getInstance();
+  analyticsScheduler.start();
+  console.log('✅ ANALYTICS_ACTIVE: 30-minute data collection cycles running');
   
   // Startup delay to prevent immediate API rate limiting
   console.log('⏳ Adding startup delay to respect API rate limits...');
