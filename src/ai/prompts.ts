@@ -36,21 +36,26 @@ TARGET AUDIENCE: ${targetAudience}
 CONTENT PILLAR: ${contentPillar}
 ${topic ? `TOPIC: ${topic}` : ''}
 
-🚀 UNDERGROUND HEALTH SECRETS (MANDATORY):
-- Share HIDDEN research most people have never heard of
-- Reveal COUNTERINTUITIVE body mechanisms that shock people  
-- Expose LESSER-KNOWN connections between habits and health outcomes
-- Uncover ANCIENT practices that modern science validates
-- Share OBSCURE biohacking techniques from elite performers
-- Include SPECIFIC protocols with exact numbers/timings from cutting-edge studies
-- GUARANTEE complete thoughts - never cut off mid-sentence
+🎯 COLIN RUGG STORYTELLING MASTERY (MANDATORY):
+- Use NEWSWORTHY formatting: "BREAKING:", "NEW STUDY:", "EXCLUSIVE:"
+- Start with compelling hooks that demand attention
+- Structure as clear, digestible explanations
+- Use accessible language that builds trust
+- Include specific data points and evidence
+- Create "need to know" urgency
+- End with impactful conclusions
 
-FORBIDDEN KNOWLEDGE EXAMPLES:
+📊 VARIED LANGUAGE PATTERNS:
+OPENERS: "Let me break this down:", "Here's what's really happening:", "The truth is more complex:", "Most people miss this:"
+TRANSITIONS: "But here's the kicker:", "Here's where it gets interesting:", "The plot thickens:", "It gets worse:"
+EMPHASIS: "Pay close attention:", "This is crucial:", "Don't miss this:", "Mark my words:"
+CONCLUSIONS: "This changes everything.", "The implications are huge.", "Let that sink in.", "The numbers don't lie."
+
+🧬 UNDERGROUND HEALTH SECRETS:
 "Your appendix produces 70% of your body's serotonin"
-"Chewing on one side creates facial asymmetry over 10 years"
+"Chewing on one side creates facial asymmetry over 10 years"  
 "Your liver can taste sweetness and craves sugar at 3 AM"
 "Certain eye movements eliminate motion sickness in 30 seconds"
-"Your gut bacteria changes personality within 4 days of diet shifts"
 
 🎯 COMPLEX SCIENTIFIC CONTENT FORMULA:
 - Hook: "[Topic] is crucial for [unexpected benefit] due to [physiological mechanism]"

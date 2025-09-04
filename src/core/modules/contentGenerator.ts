@@ -6,6 +6,8 @@
  */
 
 import { logInfo, logWarn } from '../../utils/intelligentLogging';
+import LanguageVarietyEngine from '../../content/languageVariety';
+import CollinRuggStyleGenerator from '../../ai/collinRuggStyle';
 
 export interface ContentGenerationOptions {
   brandNotes?: string;
@@ -209,17 +211,26 @@ export class ContentGenerator {
   }
 
   /**
-   * 📝 Generate single content
+   * 📝 Generate single content with Colin Rugg style variety
    */
   private async generateSingleContent(contentPack: any, decision: any): Promise<ContentGenerationResult> {
-    console.log('📝 SINGLE_MODE: Generating single tweet content');
+    console.log('📝 SINGLE_MODE: Generating single tweet with language variety');
     
     if (!contentPack.singles || contentPack.singles.length === 0) {
       return this.getEmergencyContent();
     }
     
+    // Get language variety engine for diverse formatting
+    const varietyEngine = LanguageVarietyEngine.getInstance();
+    
     const randomIndex = Math.floor(Math.random() * contentPack.singles.length);
     let selectedContent = contentPack.singles[randomIndex];
+    
+    // 30% chance to apply Colin Rugg style formatting
+    if (Math.random() < 0.3) {
+      console.log('🎯 RUGG_STYLE: Applying Colin Rugg formatting techniques');
+      selectedContent = this.applyRuggStyleFormatting(selectedContent, varietyEngine);
+    }
     
     console.log(`🎯 Generated diverse content (quality: ${contentPack.metadata.qualityScores?.[randomIndex] || 'unknown'})`);
     console.log(`📊 Format mix: ${contentPack.metadata.formatMix?.join(', ')}`);
@@ -333,6 +344,45 @@ export class ContentGenerator {
     const groupIndex = Math.floor(currentHour / 6) % Math.floor(allSeeds.length / seedsPerGroup);
     
     return allSeeds.slice(groupIndex * seedsPerGroup, (groupIndex + 1) * seedsPerGroup);
+  }
+
+  /**
+   * 🎯 Apply Colin Rugg style formatting to content
+   */
+  private applyRuggStyleFormatting(content: string, varietyEngine: LanguageVarietyEngine): string {
+    const patterns = [
+      'breaking_news',
+      'explainer', 
+      'data_story',
+      'investigative'
+    ];
+    
+    const pattern = patterns[Math.floor(Math.random() * patterns.length)];
+    
+    switch (pattern) {
+      case 'breaking_news':
+        const newsOpeners = ["BREAKING:", "NEW STUDY:", "MAJOR DISCOVERY:", "EXCLUSIVE:"];
+        const opener = newsOpeners[Math.floor(Math.random() * newsOpeners.length)];
+        return `${opener} ${content}`;
+        
+      case 'explainer':
+        const explainers = ["Let me break this down:", "Here's what's really happening:", "The truth:"];
+        const explainer = explainers[Math.floor(Math.random() * explainers.length)];
+        return `${explainer}\n\n${content}`;
+        
+      case 'data_story':
+        const dataOpeners = ["The numbers are staggering:", "New data reveals:", "Research shows:"];
+        const dataOpener = dataOpeners[Math.floor(Math.random() * dataOpeners.length)];
+        return `${dataOpener}\n\n${content}`;
+        
+      case 'investigative':
+        const investigations = ["I investigated this. What I found:", "After digging deeper:", "Nobody talks about this:"];
+        const investigation = investigations[Math.floor(Math.random() * investigations.length)];
+        return `${investigation}\n\n${content}`;
+        
+      default:
+        return content;
+    }
   }
 
   /**
