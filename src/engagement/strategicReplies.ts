@@ -93,12 +93,12 @@ async function findReplyableTweet(influencer: any): Promise<TweetToReplyTo | nul
           const replyText = replyEl?.textContent || '0';
           const replyCount = parseInt(replyText.replace(/[^\d]/g, '')) || 0;
           
-          // INTELLIGENT FILTERING: Only reply to content we can add value to
-          const isHealthRelated = isRelevantHealthContent(content, focus);
-          const hasReplyOpportunity = replyCount < 30 && content.length > 50;
-          const isNotQuestion = !content.includes('?') || content.split('?').length <= 2;
+          // SIMPLIFIED FILTERING: Focus on engagement opportunity
+          const hasContent = content.length > 20;
+          const hasReplyOpportunity = replyCount < 50;
+          const isEngageable = !content.includes('http') && !content.includes('RT @');
           
-          if (hasReplyOpportunity && isHealthRelated && isNotQuestion) {
+          if (hasContent && hasReplyOpportunity && isEngageable) {
             const match = href.match(/\/status\/(\d+)/);
             if (match) {
               results.push({

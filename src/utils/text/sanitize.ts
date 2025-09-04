@@ -28,8 +28,8 @@ export function normalizeForComparison(text: string): string {
 export function validateTweetText(text: string): { valid: boolean; reason?: string } {
   const stripped = stripFormatting(text);
   
-  if (stripped.length < 100) {
-    return { valid: false, reason: `Too short: ${stripped.length} chars (min 100)` };
+  if (stripped.length < 50) {
+    return { valid: false, reason: `Too short: ${stripped.length} chars (min 50)` };
   }
   
   if (stripped.length > 240) {
