@@ -13,6 +13,7 @@ import { storeLearningPost } from '../db/index';
 import { logInfo, logError } from '../utils/intelligentLogging';
 import { ContentQualityController } from '../quality/contentQualityController';
 import { ContentPerformanceLearner } from '../learning/contentPerformanceLearner';
+import { TwitterAnalyticsScraper } from '../analytics/twitterAnalyticsScraper';
 
 export interface SimplePostResult {
   success: boolean;
@@ -33,10 +34,12 @@ export class SimplifiedPostingEngine {
   private lastResetDate = new Date().toDateString();
   private qualityController: ContentQualityController;
   private learner: ContentPerformanceLearner;
+  private analyticsScraper: TwitterAnalyticsScraper;
 
   private constructor() {
     this.qualityController = new ContentQualityController(process.env.OPENAI_API_KEY!);
     this.learner = ContentPerformanceLearner.getInstance();
+    this.analyticsScraper = new TwitterAnalyticsScraper();
   }
 
   public static getInstance(): SimplifiedPostingEngine {
@@ -49,6 +52,82 @@ export class SimplifiedPostingEngine {
   /**
    * Simple, reliable posting with engagement optimization
    */
+  /**
+   * REAL-TIME DATA DRIVEN DECISIONS: Use analytics to inform content strategy
+   */
+  async getDataDrivenContentStrategy(): Promise<{
+    shouldPost: boolean;
+    contentHints: string[];
+    engagementTarget: number;
+    topPerformingPatterns: string[];
+  }> {
+    try {
+      console.log('📊 DATA_DRIVEN_STRATEGY: Analyzing real Twitter data...');
+
+      // Get fresh analytics insights
+      const insights = await this.analyticsScraper.getAnalyticsInsights();
+      
+      // Get recent performance data  
+      const recentAnalytics = await this.analyticsScraper.scrapeAllAnalytics();
+      
+      const contentHints: string[] = [];
+      const topPerformingPatterns: string[] = [];
+
+      // Analyze top performing content patterns
+      if (insights.topPerformingContent.length > 0) {
+        const topTweet = insights.topPerformingContent[0];
+        console.log(`🎯 TOP_PERFORMER: ${topTweet.engagementRate.toFixed(2)}% engagement - "${topTweet.content.substring(0, 50)}..."`);
+        
+        // Extract patterns from top performers
+        insights.topPerformingContent.forEach(tweet => {
+          const words = tweet.content.toLowerCase().split(' ');
+          words.forEach(word => {
+            if (word.length > 5 && tweet.engagementRate > insights.averageEngagement) {
+              topPerformingPatterns.push(word);
+            }
+          });
+        });
+
+        contentHints.push(`Emulate successful patterns from top posts (${insights.averageEngagement.toFixed(1)}% avg engagement)`);
+        contentHints.push(`Focus on topics similar to: "${topTweet.content.substring(0, 60)}..."`);
+      }
+
+      // Check follower growth trends
+      if (recentAnalytics.profile.followers > 0) {
+        contentHints.push(`Current followers: ${recentAnalytics.profile.followers} - create content for growth`);
+      }
+
+      // Set engagement targets based on recent performance
+      const engagementTarget = Math.max(insights.averageEngagement * 1.2, 2.0); // Aim 20% above average, minimum 2%
+
+      console.log(`📈 STRATEGY_GENERATED: Target ${engagementTarget.toFixed(1)}% engagement with ${contentHints.length} insights`);
+
+      return {
+        shouldPost: true, // Post if we have data insights
+        contentHints,
+        engagementTarget,
+        topPerformingPatterns: [...new Set(topPerformingPatterns)].slice(0, 5)
+      };
+
+    } catch (error: any) {
+      console.error('❌ DATA_STRATEGY_ERROR:', error.message);
+      return {
+        shouldPost: true,
+        contentHints: ['Generate engaging health content with specific, actionable advice'],
+        engagementTarget: 2.0,
+        topPerformingPatterns: []
+      };
+    }
+  }
+
+  /**
+   * Schedule automated analytics collection every 30 minutes
+   */
+  startDataCollection(): void {
+    console.log('🤖 AUTOMATED_ANALYTICS: Starting real-time data collection...');
+    this.analyticsScraper.startAutomatedCollection();
+  }
+
   public async createEngagingPost(topic?: string): Promise<SimplePostResult> {
     if (this.isPosting) {
       return { success: false, error: 'Already posting' };
@@ -83,7 +162,13 @@ export class SimplifiedPostingEngine {
     this.isPosting = true;
     
     try {
-      logInfo('SIMPLE_POST', `Creating engaging post ${this.dailyPostCount + 1}/${this.MAX_DAILY_POSTS}`);
+      console.log('🚀 DATA_DRIVEN_POSTING: Starting analytics-informed content creation...');
+      
+      // Get real-time analytics strategy
+      const strategy = await this.getDataDrivenContentStrategy();
+      console.log(`📊 STRATEGY_APPLIED: Target ${strategy.engagementTarget}% engagement, ${strategy.contentHints.length} insights`);
+      
+      logInfo('SIMPLE_POST', `Creating engaging post ${this.dailyPostCount + 1}/${this.MAX_DAILY_POSTS} with data insights`);
 
       // 🧠 LEARNING_OPTIMIZATION: Apply learned patterns to improve content
       console.log('🧠 LEARNING_ENGINE: Applying performance insights...');
