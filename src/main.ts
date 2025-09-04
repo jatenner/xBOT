@@ -307,6 +307,10 @@ async function main() {
     
     console.log('✅ Environment validation passed');
 
+    // Start aggressive monitoring system
+    console.log('📊 AGGRESSIVE_MONITORING: Starting comprehensive system monitoring...');
+    startAggressiveMonitoring();
+
     // Start health server
     console.log('🏥 Starting health monitoring server...');
     await startHealthServer();
@@ -413,6 +417,83 @@ function setupGracefulShutdown() {
       console.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
     shutdown('unhandledRejection');
   });
+}
+
+/**
+ * AGGRESSIVE MONITORING SYSTEM
+ * Tracks posting, replies, engagement, and system performance
+ */
+function startAggressiveMonitoring() {
+  console.log('🔍 AGGRESSIVE_MONITORING: Initializing comprehensive tracking...');
+  
+  let stats = {
+    posts: 0,
+    replies: 0,
+    threads: 0,
+    errors: 0,
+    lastActivity: new Date(),
+    systemStartTime: new Date()
+  };
+  
+  // Monitor posting activity
+  const originalConsoleLog = console.log;
+  console.log = (...args) => {
+    const message = args.join(' ');
+    
+    // Track different activities
+    if (message.includes('POST_SUCCESS') || message.includes('AI_POST_SUCCESS')) {
+      stats.posts++;
+      stats.lastActivity = new Date();
+    }
+    if (message.includes('REPLY_SUCCESS') || message.includes('STRATEGIC_REPLY_SUCCESS')) {
+      stats.replies++;
+      stats.lastActivity = new Date();
+    }
+    if (message.includes('THREAD_POSTED') || message.includes('COMPLETE_THREAD_POSTED')) {
+      stats.threads++;
+      stats.lastActivity = new Date();
+    }
+    if (message.includes('ERROR') || message.includes('FAILED')) {
+      stats.errors++;
+    }
+    
+    originalConsoleLog(...args);
+  };
+  
+  // Report stats every 10 minutes
+  setInterval(() => {
+    const uptime = Math.floor((new Date().getTime() - stats.systemStartTime.getTime()) / 1000 / 60);
+    const lastActivityMinutes = Math.floor((new Date().getTime() - stats.lastActivity.getTime()) / 1000 / 60);
+    
+    console.log('📊 === AGGRESSIVE MONITORING REPORT ===');
+    console.log(`🕰️  UPTIME: ${uptime} minutes`);
+    console.log(`📝  POSTS: ${stats.posts} | REPLIES: ${stats.replies} | THREADS: ${stats.threads}`);
+    console.log(`❌  ERRORS: ${stats.errors}`);
+    console.log(`⏰  LAST_ACTIVITY: ${lastActivityMinutes} minutes ago`);
+    console.log(`🎯  POSTS_PER_HOUR: ${Math.round((stats.posts / uptime) * 60)}`);
+    console.log(`💬  REPLIES_PER_HOUR: ${Math.round((stats.replies / uptime) * 60)}`);
+    
+    // Alert if system is inactive
+    if (lastActivityMinutes > 30) {
+      console.log('🚨 ALERT: No activity for 30+ minutes! System may need attention.');
+    }
+    
+    // Alert if error rate is high
+    const errorRate = stats.errors / (stats.posts + stats.replies + 1);
+    if (errorRate > 0.3) {
+      console.log(`🚨 ALERT: High error rate (${Math.round(errorRate * 100)}%)! System needs debugging.`);
+    }
+    
+    console.log('====================================\n');
+  }, 10 * 60 * 1000); // Every 10 minutes
+  
+  // Quick status every 5 minutes
+  setInterval(() => {
+    const uptime = Math.floor((new Date().getTime() - stats.systemStartTime.getTime()) / 1000 / 60);
+    console.log(`📊 QUICK_STATUS: ${uptime}m uptime | ${stats.posts} posts | ${stats.replies} replies | ${stats.threads} threads | ${stats.errors} errors`);
+  }, 5 * 60 * 1000); // Every 5 minutes
+  
+  console.log('✅ AGGRESSIVE_MONITORING: Active - reporting every 5-10 minutes');
 }
 
 // Start the application

@@ -79,7 +79,7 @@ async function findReplyableTweet(influencer: any): Promise<TweetToReplyTo | nul
       const tweetElements = document.querySelectorAll('article[data-testid="tweet"]');
       const results = [];
       
-      for (let i = 0; i < Math.min(tweetElements.length, 5); i++) {
+      for (let i = 0; i < Math.min(tweetElements.length, 15); i++) {
         const tweet = tweetElements[i];
         const contentEl = tweet.querySelector('[data-testid="tweetText"]');
         const authorEl = tweet.querySelector('[data-testid="User-Name"]');
@@ -93,12 +93,14 @@ async function findReplyableTweet(influencer: any): Promise<TweetToReplyTo | nul
           const replyText = replyEl?.textContent || '0';
           const replyCount = parseInt(replyText.replace(/[^\d]/g, '')) || 0;
           
-          // SIMPLIFIED FILTERING: Focus on engagement opportunity
-          const hasContent = content.length > 20;
-          const hasReplyOpportunity = replyCount < 50;
+          // AGGRESSIVE FILTERING: Maximum engagement opportunities
+          const hasContent = content.length > 15;
+          const hasReplyOpportunity = replyCount < 100; // Increased from 50
           const isEngageable = !content.includes('http') && !content.includes('RT @');
+          const isHealthRelated = /health|fitness|nutrition|supplement|sleep|exercise|diet|wellness|biohack|longevity|gut|brain|energy|stress|anxiety|depression|weight|muscle|cardio|strength|recovery|immune|inflammation|hormone/i.test(content);
+          const isPopular = replyCount > 2; // Some engagement shows interest
           
-          if (hasContent && hasReplyOpportunity && isEngageable) {
+          if (hasContent && hasReplyOpportunity && isEngageable && (isHealthRelated || isPopular)) {
             const match = href.match(/\/status\/(\d+)/);
             if (match) {
               results.push({
@@ -159,7 +161,7 @@ async function generateContextAwareReply(tweet: TweetToReplyTo, influencer: any)
     const { OpenAI } = await import('openai');
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     
-    const contextPrompt = `You are a health expert replying to a tweet. Generate a VALUABLE, CONTEXT-AWARE reply that:
+    const contextPrompt = `You are a health expert replying to a tweet. Generate a HIGHLY VALUABLE, CONTEXT-AWARE reply that adds genuine insight:
 
 TWEET TO REPLY TO:
 "${tweet.content}"
@@ -168,12 +170,15 @@ TOPIC: ${tweet.topic}
 INFLUENCER EXPERTISE: ${influencer.expertise}
 
 REPLY REQUIREMENTS:
-- Add SPECIFIC value related to the exact topic mentioned
-- Share a LESSER-KNOWN fact that complements their point
+- Add SPECIFIC, ACTIONABLE value related to the exact topic mentioned
+- Share a LESSER-KNOWN fact, mechanism, or protocol that complements their point
+- Include specific numbers, studies, or brands when relevant
 - Keep it under 240 characters
-- Sound like a knowledgeable peer, not a fan
-- Include actionable insight if possible
-- NO generic phrases like "great point" or "thanks for sharing"
+- Sound like a knowledgeable peer adding valuable context
+- Include actionable insight or protocol if possible
+- NO generic phrases like "great point", "thanks for sharing", or "love this"
+- NO quotes around the reply content
+- Make it so valuable people will want to follow for more insights
 
 EXAMPLES OF GOOD REPLIES:
 "The mechanism behind this is fascinating - it actually works through upregulating AMPK, which is why timing matters. Best results happen when combined with 16:8 fasting."
