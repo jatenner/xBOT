@@ -14,6 +14,7 @@ import { ContentDiversityTracker } from '../content/diversityTracker';
 export class AIDrivenPostingSystem {
   private static instance: AIDrivenPostingSystem;
   private viralOrchestrator: ViralContentOrchestrator;
+  private threadPoster: SimpleThreadPoster;
   private analyticsScraper: TwitterAnalyticsScraper;
   private diversityTracker: ContentDiversityTracker;
   
@@ -25,6 +26,7 @@ export class AIDrivenPostingSystem {
 
   private constructor() {
     this.viralOrchestrator = new ViralContentOrchestrator(process.env.OPENAI_API_KEY!);
+    this.threadPoster = SimpleThreadPoster.getInstance();
     this.analyticsScraper = new TwitterAnalyticsScraper();
     this.diversityTracker = ContentDiversityTracker.getInstance();
   }
@@ -75,9 +77,27 @@ export class AIDrivenPostingSystem {
       // Step 3: Post content based on format
       let result;
       if (contentFormat === 'thread' && viralContent.threadParts && viralContent.threadParts.length > 1) {
-        console.log(`🧵 POSTING_AI_THREAD: ${viralContent.threadParts.length} tweets`);
-        // For now, post first tweet only - thread functionality needs fixing
-        result = await postSingleTweet(viralContent.threadParts[0]);
+        console.log(`🧵 POSTING_COMPLETE_THREAD: ${viralContent.threadParts.length} tweets`);
+        
+        // Validate thread parts before posting
+        const threadValidation = this.threadPoster.validateTweets(viralContent.threadParts);
+        if (!threadValidation.valid) {
+          console.error(`❌ THREAD_VALIDATION_FAILED: ${threadValidation.issues.join(', ')}`);
+          return {
+            success: false,
+            error: `Thread validation failed: ${threadValidation.issues[0]}`,
+            type: contentFormat
+          };
+        }
+        
+        // Post complete thread using SimpleThreadPoster
+        result = await this.threadPoster.postRealThread(viralContent.threadParts);
+        
+        if (result.success) {
+          console.log(`✅ COMPLETE_THREAD_POSTED: ${result.totalTweets}/${viralContent.threadParts.length} tweets posted`);
+          console.log(`🔗 Thread: Root=${result.rootTweetId}, Replies=[${result.replyIds?.join(', ')}]`);
+        }
+        
       } else {
         console.log(`📝 POSTING_AI_SINGLE: "${viralContent.content.substring(0, 50)}..."`);
         result = await postSingleTweet(viralContent.content);
@@ -87,14 +107,17 @@ export class AIDrivenPostingSystem {
         this.dailyPostCount++;
         this.lastPostTime = Date.now();
 
+        // Get the main tweet ID (works for both single tweets and threads)
+        const mainTweetId = result.tweetId || result.rootTweetId;
+        
         // Store performance data for AI learning
-        await this.storePostPerformance(result.tweetId!, viralContent);
+        await this.storeCompletePostPerformance(result, viralContent, contentFormat);
 
-        console.log(`✅ AI_POST_SUCCESS: ${result.tweetId} - Viral score: ${viralContent.metadata.viralScore}`);
+        console.log(`✅ AI_POST_SUCCESS: ${mainTweetId} - Viral score: ${viralContent.metadata.viralScore}`);
 
         return {
           success: true,
-          tweetId: result.tweetId,
+          tweetId: mainTweetId,
           content: viralContent.content,
           type: contentFormat,
           viralScore: viralContent.metadata.viralScore
@@ -211,6 +234,45 @@ Consider:
 
     } catch (error: any) {
       console.error('❌ STORAGE_ERROR:', error.message);
+    }
+  }
+
+  /**
+   * Store complete post performance data (enhanced for threads)
+   */
+  private async storeCompletePostPerformance(result: any, viralContent: any, format: 'single' | 'thread'): Promise<void> {
+    try {
+      const { admin: supabase } = require('../lib/supabaseClients');
+
+      const performanceData = {
+        tweet_id: result.tweetId || result.rootTweetId,
+        content: viralContent.content,
+        content_type: format,
+        thread_parts: format === 'thread' ? viralContent.threadParts : null,
+        predicted_viral_score: viralContent.metadata.viralScore,
+        predicted_engagement: viralContent.metadata.engagementPrediction,
+        completeness_score: viralContent.metadata.completenessScore || 100,
+        coherence_score: viralContent.metadata.coherenceScore || 100,
+        topic_domain: viralContent.metadata.topicDomain,
+        uniqueness_score: viralContent.metadata.uniquenessScore,
+        generation_method: 'enhanced_ai_viral_orchestrator',
+        total_thread_tweets: format === 'thread' ? result.totalTweets : 1,
+        successful_thread_parts: format === 'thread' ? (result.replyIds?.length || 0) + 1 : 1,
+        created_at: new Date().toISOString()
+      };
+
+      const { error } = await supabase
+        .from('learning_posts')
+        .insert([performanceData]);
+
+      if (error) {
+        console.error('❌ ENHANCED_PERFORMANCE_STORAGE_ERROR:', error.message);
+      } else {
+        console.log('📊 ENHANCED_PERFORMANCE_STORED: Complete data saved for AI learning');
+      }
+
+    } catch (error: any) {
+      console.error('❌ ENHANCED_STORAGE_ERROR:', error.message);
     }
   }
 

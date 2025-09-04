@@ -28,6 +28,8 @@ export class ViralContentOrchestrator {
       engagementPrediction: number;
       uniquenessScore: number;
       topicDomain: string;
+      completenessScore: number;
+      coherenceScore: number;
     };
   }> {
     console.log(`🚀 VIRAL_ORCHESTRATOR: Generating 100% AI-driven ${format} content...`);
@@ -183,14 +185,22 @@ VIRAL CONTENT REQUIREMENTS:
 6. URGENCY: Make it feel like they need to know this NOW
 
 ${format === 'thread' ? `
-THREAD FORMAT:
-Tweet 1 (Hook): Controversial opening that demands attention
-Tweet 2 (Setup): Background/problem that everyone faces  
-Tweet 3 (Revelation): The surprising truth or solution
-Tweet 4 (Proof): Specific data, brands, or results
-Tweet 5 (Action): Exact steps to implement
+MANDATORY 5-PART THREAD STRUCTURE:
+Tweet 1 (Hook): Controversial/surprising opening with specific claim or data
+Tweet 2 (Mechanism): HOW/WHY it works - the science or explanation behind it  
+Tweet 3 (Products/Brands): Specific products, brands, costs, where to buy
+Tweet 4 (Protocol): Exact steps, dosages, timing, implementation details
+Tweet 5 (Results): What to expect, timeline, next steps or follow-up
 
-Each tweet should be 200-280 characters and flow naturally.
+THREAD COHERENCE REQUIREMENTS:
+- ALL tweets must be about the SAME specific topic/product/protocol
+- Each tweet builds on the previous one logically
+- Include specific numbers, brands, costs in at least 3 tweets
+- Use consistent terminology throughout
+- Each tweet 180-240 characters (enforced strictly)
+- NO hashtags, emojis, or quotes anywhere in thread
+- NO incomplete sentences ending with "..." or unfinished thoughts
+- Every tweet must be complete, actionable, and valuable
 ` : `
 SINGLE TWEET FORMAT:
 - 200-280 characters
@@ -265,6 +275,8 @@ Generate content that people will want to save, share, and follow you for more i
       engagementPrediction: number;
       uniquenessScore: number;
       topicDomain: string;
+      completenessScore: number;
+      coherenceScore: number;
     };
   }> {
     const evaluationPrompt = `
@@ -276,13 +288,17 @@ Rate from 1-100:
 1. VIRAL_SCORE: How likely is this to go viral? (hook strength, controversy, shareability)
 2. ENGAGEMENT_PREDICTION: Expected likes/reposts percentage 
 3. UNIQUENESS_SCORE: How unique/fresh is this content?
-4. TOPIC_DOMAIN: What health domain does this cover?
+4. COMPLETENESS_SCORE: How complete is the content? (no "..." or incomplete thoughts)
+5. COHERENCE_SCORE: How coherent is the content? (threads: same topic throughout)
+6. TOPIC_DOMAIN: What health domain does this cover?
 
 Provide JSON response:
 {
   "viralScore": number,
   "engagementPrediction": number,
   "uniquenessScore": number,
+  "completenessScore": number,
+  "coherenceScore": number,
   "topicDomain": "string",
   "improvementSuggestions": ["suggestion1", "suggestion2"],
   "optimizedContent": "improved version if needed"
@@ -319,6 +335,8 @@ Focus on making it more attention-grabbing, specific, and valuable.
           viralScore: evaluation.viralScore || 75,
           engagementPrediction: evaluation.engagementPrediction || 3,
           uniquenessScore: evaluation.uniquenessScore || 80,
+          completenessScore: evaluation.completenessScore || 100,
+          coherenceScore: evaluation.coherenceScore || 100,
           topicDomain: evaluation.topicDomain || 'health'
         }
       };
@@ -332,6 +350,8 @@ Focus on making it more attention-grabbing, specific, and valuable.
           viralScore: 75,
           engagementPrediction: 3,
           uniquenessScore: 80,
+          completenessScore: 100,
+          coherenceScore: 100,
           topicDomain: 'health'
         }
       };
@@ -440,13 +460,13 @@ Make it controversial, specific, and valuable. No generic advice!
       return {
         content,
         threadParts: this.parseThreadContent(content),
-        metadata: { viralScore: 70, engagementPrediction: 3, uniquenessScore: 75, topicDomain: 'health' }
+        metadata: { viralScore: 70, engagementPrediction: 3, uniquenessScore: 75, completenessScore: 90, coherenceScore: 90, topicDomain: 'health' }
       };
     }
 
     return {
       content: content.substring(0, 280),
-      metadata: { viralScore: 70, engagementPrediction: 3, uniquenessScore: 75, topicDomain: 'health' }
+      metadata: { viralScore: 70, engagementPrediction: 3, uniquenessScore: 75, completenessScore: 90, coherenceScore: 90, topicDomain: 'health' }
     };
   }
 }
