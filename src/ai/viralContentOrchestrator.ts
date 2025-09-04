@@ -176,21 +176,22 @@ Audience: ${strategy.targetAudience}
 
 ${format === 'thread' ? 'CREATE A TWITTER THREAD (3-5 tweets)' : 'CREATE A SINGLE VIRAL TWEET'}
 
-VIRAL CONTENT REQUIREMENTS:
-1. HOOK: Start with something that makes people stop scrolling
-2. SPECIFICS: Include actual brands, products, costs, or data
-3. STORY: Personal experience or case study element
-4. CONTROVERSY: Challenge popular beliefs or reveal secrets
-5. ACTION: Give specific next steps or protocols
-6. URGENCY: Make it feel like they need to know this NOW
+PROFESSIONAL HEALTH CONTENT REQUIREMENTS:
+1. FACTUAL HOOK: Start with current research, industry news, or health trends
+2. SPECIFIC DATA: Include actual companies, studies, FDA approvals, clinical trial results
+3. CURRENT EVENTS: Reference recent health news, outbreaks, innovations, or discoveries
+4. INDUSTRY INSIGHTS: Mention biotech companies, research institutions, regulatory updates
+5. ACTIONABLE ADVICE: Provide specific, evidence-based recommendations
+6. RELEVANCE: Make it timely and important for health-conscious audiences
+7. NO PERSONAL STORIES: Focus on facts, trends, and professional analysis
 
 ${format === 'thread' ? `
-MANDATORY 5-PART THREAD STRUCTURE:
-Tweet 1 (Hook): Controversial/surprising opening with specific claim or data
-Tweet 2 (Mechanism): HOW/WHY it works - the science or explanation behind it  
-Tweet 3 (Products/Brands): Specific products, brands, costs, where to buy
-Tweet 4 (Protocol): Exact steps, dosages, timing, implementation details
-Tweet 5 (Results): What to expect, timeline, next steps or follow-up
+PROFESSIONAL 5-PART THREAD STRUCTURE:
+Tweet 1 (News/Trend): Current health industry development, research, or innovation
+Tweet 2 (Analysis): Scientific explanation, mechanism, or professional insight
+Tweet 3 (Companies/Data): Specific companies, studies, clinical trial results, market impact
+Tweet 4 (Implementation): Evidence-based protocols, guidelines, or recommendations
+Tweet 5 (Implications): Future outlook, what this means for consumers/industry
 
 THREAD COHERENCE REQUIREMENTS:
 - ALL tweets must be about the SAME specific topic/product/protocol
@@ -209,37 +210,39 @@ SINGLE TWEET FORMAT:
 - Create desire to learn more or take action
 `}
 
-BANNED GENERIC PATTERNS & FORMATTING:
-- Take magnesium for sleep
-- Exercise is good for you  
-- Eat healthy foods
-- 99% of people are doing X wrong (overused)
-- Basic advice everyone knows
+BANNED CONTENT PATTERNS & FORMATTING:
+- ANY PERSONAL STORIES (I spent, I tried, I discovered, My doctor said)
+- FAKE PERSONAL EXPERIENCES (testing products, personal results)
+- Generic advice everyone knows (exercise is good, eat healthy)
+- 99% of people are doing X wrong (overused hook)
+- Personal anecdotes or testimonials
 - ANY HASHTAGS (#FitnessTruth, #HIIT, etc.) - NEVER USE HASHTAGS
 - ANY QUOTATION MARKS - write directly without quotes
-- Robotic/corporate language
-- Overly enthusiastic emoji usage
-- Generic health advice everyone posts
+- Robotic/corporate language or overly enthusiastic emoji usage
 - Try this shift before 2024 hits - sounds silly and dated
+- Personal pronouns in first person (I, my, me) for fake experiences
 
-EXAMPLES OF SOPHISTICATED VIRAL CONTENT:
-- I spent $300 testing every sleep supplement on Amazon. Only 1 worked. Here's the shocking winner...
-- My doctor said my cholesterol was impossible. Here's how I dropped it 47 points in 6 weeks...
-- Why eating healthy salads was actually making me gain weight (the dressing conspiracy)...
-- I ditched my $150/month gym membership for a $20 jump rope. My gains skyrocketed.
-- This breathing technique from Navy SEALs rewires your nervous system in 30 seconds.
-- I tracked my glucose for 30 days. These healthy foods spiked it worse than candy.
-- Why your morning routine is backwards (and how to fix it based on circadian science).
+EXAMPLES OF PROFESSIONAL HEALTH CONTENT:
+- New Stanford research reveals why most sleep supplements fail. Magnesium glycinate shows 89% better absorption than oxide forms in 2024 studies.
+- Ozempic shortage drives innovation: 3 biotech companies just announced GLP-1 alternatives entering trials this month. Here's what makes them different.
+- Apple's new health sensors can detect blood glucose non-invasively. Game-changing for 37 million diabetics, but accuracy concerns remain.
+- Why Navy SEAL breathing protocols are being adopted by Fortune 500 companies. The 4-7-8 technique reduces cortisol by 23% in clinical trials.
+- Current salmonella outbreak affects 15 states. CDC reports contaminated cantaloupe from Eagle Produce. Here's how to identify affected batches.
+- Morning light exposure timing affects metabolism differently than previously understood. New circadian research from Harvard changes optimal protocols.
+- Novo Nordisk's next-gen obesity drug shows 25% weight loss in Phase 3 trials. FDA review expected Q2 2024.
 
-CRITICAL FORMATTING RULES:
+CRITICAL CONTENT RULES:
+- NO PERSONAL STORIES OR FAKE EXPERIENCES EVER
+- Focus on FACTS, RESEARCH, TRENDS, INNOVATION, CURRENT EVENTS
 - NO HASHTAGS EVER - they look spammy and reduce engagement
-- NO QUOTATION MARKS - write directly without quotes around content
+- NO QUOTATION MARKS - write directly without quotes
 - NO EMOJIS in the middle of text - only minimal use if needed
-- Write like a HUMAN, not a social media manager
-- Sound intelligent and credible, not silly or robotic
-- Avoid dated references like 2024 hits or trendy phrases
-- Write like you're talking to a smart friend, not selling something
-- Never put quotes around the entire tweet or parts of it
+- Write like a HEALTH INDUSTRY ANALYST, not a personal blogger
+- Sound intelligent and credible with specific data and sources
+- Include company names, research institutions, specific studies
+- Reference current events, FDA approvals, clinical trials, outbreaks
+- Write about WHAT'S HAPPENING NOW in health/biotech/wellness
+- Never use first person for fake personal experiences
 
 Generate content that people will want to save, share, and follow you for more insights.
 `;
