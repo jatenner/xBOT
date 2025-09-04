@@ -4,13 +4,13 @@ import { stripFormatting, validateTweetText } from '../utils/text/sanitize';
 import { HookDiversificationEngine } from './hookDiversificationEngine';
 
 const TweetSchema = z.object({
-  text: z.string().min(100).max(240) // Relaxed minimum for complex scientific content
+  text: z.string().min(50).max(240) // Further relaxed for content variety
 });
 
 export const ThreadSchema = z.object({
   topic: z.string(),
-  hook_A: z.string().min(100).max(200), // Relaxed for scientific content
-  hook_B: z.string().min(100).max(200), // Relaxed for scientific content
+  hook_A: z.string().min(50).max(200), // Further relaxed for variety
+  hook_B: z.string().min(50).max(200), // Further relaxed for variety
   tweets: z.array(TweetSchema).min(5).max(9),
   cta: z.string(),
   metadata: z.object({

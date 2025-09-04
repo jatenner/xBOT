@@ -42,23 +42,17 @@ export class ContentPerformanceLearner {
     try {
       // Get recent posts with engagement data
       const { data: posts, error } = await admin
-        .from('posts')
+        .from('learning_posts')
         .select(`
           content,
           likes,
           retweets,
           replies,
           impressions,
-          followers_gained,
           created_at,
-          post_metrics (
-            likes,
-            retweets,
-            replies,
-            impressions,
-            followers_before,
-            followers_after
-          )
+          content_type,
+          quality_score,
+          engagement_score
         `)
         .order('created_at', { ascending: false })
         .limit(50);
