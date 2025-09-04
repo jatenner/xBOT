@@ -8,6 +8,7 @@
 import { logInfo, logWarn } from '../../utils/intelligentLogging';
 import LanguageVarietyEngine from '../../content/languageVariety';
 import CollinRuggStyleGenerator from '../../ai/collinRuggStyle';
+import SmartNoveltyEngine from '../../content/smartNoveltyEngine';
 
 export interface ContentGenerationOptions {
   brandNotes?: string;
@@ -220,7 +221,7 @@ export class ContentGenerator {
       return this.getEmergencyContent();
     }
     
-    // Get language variety engine for diverse formatting
+    // Get novelty and variety engines for unique content
     const varietyEngine = LanguageVarietyEngine.getInstance();
     
     const randomIndex = Math.floor(Math.random() * contentPack.singles.length);
@@ -386,20 +387,50 @@ export class ContentGenerator {
   }
 
   /**
-   * 🚨 Emergency content fallback
+   * 🤖 Generate emergency content via OpenAI (NO HARDCODED CONTENT)
    */
-  private getEmergencyContent(): ContentGenerationResult {
-    const emergencyContent = 'Health optimization starts with understanding your body\'s unique needs. Small, consistent changes compound into significant improvements over time.';
+  private async getEmergencyContent(): Promise<ContentGenerationResult> {
+    console.log('🚨 EMERGENCY: Generating content via OpenAI...');
     
-    console.log('🚨 Using emergency content generation');
-    
-    return {
-      content: emergencyContent,
-      type: 'single',
-      metadata: {
-        qualityScore: 60,
-        optimized: false
-      }
-    };
+    try {
+      const { OpenAI } = await import('openai');
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [{
+          role: 'user',
+          content: 'Generate a unique health tip that most people don\'t know. Be specific, include numbers/mechanisms, under 240 characters. No generic advice.'
+        }],
+        max_tokens: 100,
+        temperature: 0.8
+      });
+
+      const content = response.choices?.[0]?.message?.content?.trim() || 
+        'Unable to generate content at this time.';
+      
+      console.log('✅ EMERGENCY: Generated via OpenAI');
+      
+      return {
+        content,
+        type: 'single',
+        metadata: {
+          qualityScore: 70,
+          optimized: true
+        }
+      };
+    } catch (error: any) {
+      console.error('❌ EMERGENCY_OPENAI_FAILED:', error.message);
+      
+      // Last resort: ask user to check API key
+      return {
+        content: 'System temporarily unavailable. Please check OpenAI API configuration.',
+        type: 'single',
+        metadata: {
+          qualityScore: 30,
+          optimized: false
+        }
+      };
+    }
   }
 }
