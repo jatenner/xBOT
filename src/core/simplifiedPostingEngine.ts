@@ -203,25 +203,18 @@ export class SimplifiedPostingEngine {
         
         const variantGen = VariantGenerator.getInstance();
         
-        // 🎲 MASSIVE SIMPLE TWEET VARIATION FOR LEARNING
-        const styles = ['hooked_tip', 'direct_fact', 'question_based', 'story_snippet', 'myth_busting', 'simple_statement', 'contrarian_take', 'personal_insight'];
-        const topics = ['sleep_optimization', 'intermittent_fasting', 'protein_timing', 'magnesium_benefits', 'cold_exposure', 'stress_management', 'circadian_rhythms', 'gut_health', 'cognitive_enhancement', 'inflammation', 'metabolic_health'];
-        const lengths = ['ultra_short', 'short', 'medium', 'long']; // Different character targets
-        const intensities = ['mild', 'moderate', 'strong', 'extreme']; // Content intensity
-        
+        // 🎲 AI-GENERATED VARIETY (NO HARDCODED TOPICS)
+        const styles = ['breaking_news', 'investigative', 'underground', 'research_backed', 'myth_busting', 'contrarian_take'];
         const selectedStyle = styles[Math.floor(Math.random() * styles.length)];
-        const selectedTopic = topics[Math.floor(Math.random() * topics.length)];
-        const selectedLength = lengths[Math.floor(Math.random() * lengths.length)];
-        const selectedIntensity = intensities[Math.floor(Math.random() * intensities.length)];
         
-        console.log(`🎯 SIMPLE_VARIATION_TEST: ${selectedStyle} + ${selectedTopic} (${selectedLength}, ${selectedIntensity})`);
+        console.log(`🎯 SIMPLE_VARIATION_TEST: ${selectedStyle} style (AI-generated topic)`);
         
         // 🎲 GENERATE MULTIPLE VARIANTS AND SELECT THE BEST
         let bestVariant;
         
         try {
           bestVariant = await variantGen.generateBestVariant({
-            topic: selectedTopic,
+            topic: 'health',
             style: selectedStyle,
             temperature: 0.9,
             variant_count: 3
@@ -235,8 +228,8 @@ export class SimplifiedPostingEngine {
           
           // Fallback to simple generation
           console.log('🔄 FALLBACK: Using simple content generation...');
-          const diverseHook = hookEngine.getDiverseHook(selectedTopic, 'simple');
-          const fallbackPrompt = `Create engaging health content about ${selectedTopic} in ${selectedStyle} style. Be specific, include mechanisms, avoid generic advice. Under 240 chars.`;
+          const diverseHook = hookEngine.getDiverseHook('health', 'simple');
+          const fallbackPrompt = `Create unique ${selectedStyle} health content that most people don't know. Include specific mechanisms, numbers, or protocols. Avoid generic advice. Under 240 chars.`;
           
           const response = await openai.chat.completions.create({
             model: 'gpt-4o',
@@ -257,7 +250,7 @@ export class SimplifiedPostingEngine {
           content: simpleContent,
           metadata: {
             type: 'single' as const,
-            topic: selectedTopic,
+            topic: 'health',
             angle: selectedStyle,
             quality_score: bestVariant.quality_score || 85,
             viral_prediction: bestVariant.predicted_engagement || 70,
@@ -268,9 +261,9 @@ export class SimplifiedPostingEngine {
             viral_probability: bestVariant.predicted_engagement || 70,
             // 📊 SIMPLE TWEET VARIATION TRACKING
             content_style: selectedStyle,
-            content_topic: selectedTopic,
-            length_target: selectedLength,
-            intensity_level: selectedIntensity,
+            content_topic: 'health',
+            length_target: 'medium',
+            intensity_level: 'moderate',
             variant_score: bestVariant.total_score || 0
           },
           predictions: {
@@ -291,7 +284,7 @@ export class SimplifiedPostingEngine {
           }
         };
         
-        console.log(`🤖 AI_OPTIMIZED_CONTENT: ${selectedStyle} content for ${selectedTopic}`);
+        console.log(`🤖 AI_OPTIMIZED_CONTENT: ${selectedStyle} health content generated via OpenAI`);
       }
       
       console.log(`🎖️ ULTIMATE_QUALITY: ${ultimateContent.metadata.generation_quality}/100`);
