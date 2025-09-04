@@ -36,15 +36,22 @@ export class SmartNoveltyEngine {
 
 ${stylePrompts[style]}
 
-REQUIREMENTS:
-- Share truly OBSCURE health facts/tips most people don't know
-- Include specific numbers, percentages, or timeframes
+CRITICAL REQUIREMENTS:
+- Share truly OBSCURE health facts/tips 99% of people have NEVER heard
+- Include specific numbers, percentages, or exact timeframes
 - Focus on actionable advice people can try immediately  
-- Avoid common knowledge (everyone knows exercise/sleep is good)
-- Be specific about mechanisms (how/why it works)
-- Include surprising/counterintuitive elements
+- AVOID common knowledge (sleep, exercise, diet basics)
+- Be specific about biological mechanisms (how/why it works)
+- Include surprising/counterintuitive elements that shock readers
+- MUST be completely different from typical health advice
+- NO generic wellness tips - only cutting-edge, lesser-known secrets
 
 ${avoidTopics}
+
+ANTI-REPETITION MANDATE:
+- Generate content so unique it couldn't be confused with any other health post
+- Use specific research, ancient practices, or biohacking techniques
+- Include exact protocols, dosages, or timing that most people don't know
 
 EXAMPLES OF GOOD OBSCURE CONTENT:
 "Your liver processes alcohol 50% faster when you eat pears beforehand due to specific enzymes"
@@ -83,25 +90,40 @@ Response format: Just the content, no extra text.`;
   }
 
   /**
-   * Check if content is unique compared to recent posts
+   * Check if content is unique compared to recent posts - ENHANCED for better detection
    */
-  isContentUnique(newContent: string, recentPosts: string[]): { isUnique: boolean; similarity: number } {
+  isContentUnique(newContent: string, recentPosts: string[]): { isUnique: boolean; similarity: number; reason?: string } {
     if (recentPosts.length === 0) return { isUnique: true, similarity: 0 };
 
     let maxSimilarity = 0;
+    let similarPost = '';
     const newWords = this.getContentWords(newContent);
+    const newLower = newContent.toLowerCase();
 
-    for (const recentPost of recentPosts.slice(-10)) { // Check last 10 posts
+    for (const recentPost of recentPosts.slice(-15)) { // Check last 15 posts
       const recentWords = this.getContentWords(recentPost);
-      const similarity = this.calculateSimilarity(newWords, recentWords);
-      maxSimilarity = Math.max(maxSimilarity, similarity);
+      const recentLower = recentPost.toLowerCase();
+      
+      // Multiple similarity checks
+      const wordSimilarity = this.calculateSimilarity(newWords, recentWords);
+      const phraseSimilarity = this.calculatePhraseSimilarity(newLower, recentLower);
+      const conceptSimilarity = this.calculateConceptSimilarity(newContent, recentPost);
+      
+      const overallSimilarity = Math.max(wordSimilarity, phraseSimilarity, conceptSimilarity);
+      
+      if (overallSimilarity > maxSimilarity) {
+        maxSimilarity = overallSimilarity;
+        similarPost = recentPost.substring(0, 50) + '...';
+      }
     }
 
-    const isUnique = maxSimilarity < 0.6; // 60% similarity threshold
+    const isUnique = maxSimilarity < 0.5; // Stricter 50% threshold
+    const reason = !isUnique ? `Too similar to: "${similarPost}"` : undefined;
     
-    console.log(`🔍 UNIQUENESS_CHECK: ${Math.round(maxSimilarity * 100)}% similar to recent content`);
+    console.log(`🔍 ENHANCED_UNIQUENESS_CHECK: ${Math.round(maxSimilarity * 100)}% similar to recent content`);
+    if (reason) console.log(`⚠️ SIMILARITY_REASON: ${reason}`);
     
-    return { isUnique, similarity: maxSimilarity };
+    return { isUnique, similarity: maxSimilarity, reason };
   }
 
   /**
@@ -173,6 +195,43 @@ Response format: Just the content, no extra text.`;
     const union = new Set([...words1, ...words2]);
     
     return intersection.size / union.size; // Jaccard similarity
+  }
+
+  private calculatePhraseSimilarity(text1: string, text2: string): number {
+    // Check for similar phrases and sentence structures
+    const phrases1 = text1.split(/[.!?]+/).map(p => p.trim()).filter(p => p.length > 10);
+    const phrases2 = text2.split(/[.!?]+/).map(p => p.trim()).filter(p => p.length > 10);
+    
+    let maxPhraseSimilarity = 0;
+    
+    for (const phrase1 of phrases1) {
+      for (const phrase2 of phrases2) {
+        const words1 = new Set(phrase1.split(/\s+/));
+        const words2 = new Set(phrase2.split(/\s+/));
+        const similarity = this.calculateSimilarity(words1, words2);
+        maxPhraseSimilarity = Math.max(maxPhraseSimilarity, similarity);
+      }
+    }
+    
+    return maxPhraseSimilarity;
+  }
+
+  private calculateConceptSimilarity(text1: string, text2: string): number {
+    // Check for similar health concepts/topics
+    const healthConcepts = [
+      'sleep', 'magnesium', 'cortisol', 'serotonin', 'dopamine', 'vitamin',
+      'protein', 'fasting', 'metabolism', 'inflammation', 'gut', 'microbiome',
+      'circadian', 'hormone', 'stress', 'anxiety', 'depression', 'energy',
+      'brain', 'liver', 'heart', 'blood', 'immune', 'cold', 'heat', 'breathing'
+    ];
+    
+    const concepts1 = healthConcepts.filter(concept => text1.toLowerCase().includes(concept));
+    const concepts2 = healthConcepts.filter(concept => text2.toLowerCase().includes(concept));
+    
+    if (concepts1.length === 0 || concepts2.length === 0) return 0;
+    
+    const commonConcepts = concepts1.filter(concept => concepts2.includes(concept));
+    return commonConcepts.length / Math.max(concepts1.length, concepts2.length);
   }
 
   private getFallbackContent(): string {
