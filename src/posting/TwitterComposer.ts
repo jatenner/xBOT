@@ -5,7 +5,12 @@ export const SELECTORS = {
     '[data-testid="tweetTextarea_0"]',
     'div[role="textbox"][data-testid="tweetTextarea_0"]',
     'div[role="textbox"][contenteditable="true"]',
-    'div[contenteditable="true"][role="textbox"]'
+    'div[contenteditable="true"][role="textbox"]',
+    'div[contenteditable="true"]',
+    '[data-testid="toolBar"] + div div[contenteditable="true"]',
+    'div[aria-label*="Post text"]',
+    'div[aria-label*="Tweet text"]',
+    'div[data-text="true"]'
   ],
   postBtn: [
     '[data-testid="tweetButtonInline"]:not([aria-hidden="true"])',
@@ -240,11 +245,29 @@ export class TwitterComposer {
     try {
       console.log(`🐦 TwitterComposer: Posting tweet (${tweetText.length} chars)`);
       
-      // STRATEGY: Go directly to compose page instead of trying from home
-      await this.page.goto('https://x.com/compose/tweet', { waitUntil: 'domcontentloaded' });
-      
-      // Wait a moment for page to fully load
-      await this.page.waitForTimeout(2000);
+      // STRATEGY 1: Try compose page first
+      console.log('🌐 NAVIGATION: Trying compose page...');
+      try {
+        await this.page.goto('https://x.com/compose/tweet', { waitUntil: 'domcontentloaded', timeout: 10000 });
+        await this.page.waitForTimeout(2000);
+      } catch (e) {
+        // STRATEGY 2: Fallback to home page with compose button
+        console.log('🌐 NAVIGATION: Compose page failed, trying home page...');
+        await this.page.goto('https://x.com/home', { waitUntil: 'domcontentloaded', timeout: 10000 });
+        await this.page.waitForTimeout(2000);
+        
+        // Try to click compose button
+        try {
+          const composeBtn = this.page.locator('[data-testid="SideNav_NewTweet_Button"]');
+          await composeBtn.waitFor({ state: 'visible', timeout: 5000 });
+          await composeBtn.click();
+          await this.page.waitForTimeout(2000);
+        } catch (e2) {
+          console.log('🌐 NAVIGATION: Compose button failed, using keyboard shortcut...');
+          await this.page.keyboard.press('n'); // Twitter shortcut for new tweet
+          await this.page.waitForTimeout(2000);
+        }
+      }
       
       // Clear any existing notifications/overlays
       try {
@@ -272,9 +295,27 @@ export class TwitterComposer {
         // Overlay check is optional
       }
       
-      // Find composer textarea and focus
-      const composer = this.page.locator('div[data-testid="tweetTextarea_0"]').first();
-      await composer.waitFor({ state: 'visible', timeout: 15000 });
+      // Find composer textarea with multiple strategies
+      let composer;
+      console.log('🔍 COMPOSER_SEARCH: Trying multiple selectors...');
+      
+      // Try all composer selectors until one works
+      for (const selector of SELECTORS.composer) {
+        try {
+          console.log(`🔍 COMPOSER_SEARCH: Trying "${selector}"`);
+          composer = this.page.locator(selector).first();
+          await composer.waitFor({ state: 'visible', timeout: 3000 });
+          console.log(`✅ COMPOSER_FOUND: "${selector}" works!`);
+          break;
+        } catch (e) {
+          console.log(`❌ COMPOSER_SEARCH: "${selector}" failed`);
+          continue;
+        }
+      }
+      
+      if (!composer) {
+        throw new Error('No valid composer selector found');
+      }
       
       // Focus composer to ensure it's active
       await composer.click();
