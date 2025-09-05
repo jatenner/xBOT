@@ -6,6 +6,7 @@
   "scripts": {
     "prestart": "node scripts/migrate.js",
     "start": "node dist/main.js",
+    "start:bulletproof": "node dist/main-bulletproof.js",
     "postinstall": "echo 'Installation complete'",
     "build": "tsc -p .",
     "build-clean": "rm -rf dist && npm run build",
