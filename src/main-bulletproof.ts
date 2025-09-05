@@ -12,6 +12,9 @@ import { EnhancedStrategicReplies } from './engagement/enhancedStrategicReplies'
 import { PromptEvolutionEngine } from './ai/promptEvolutionEngine';
 import { TwitterAnalyticsScraper } from './analytics/twitterAnalyticsScraper';
 import { AdvancedDatabaseManager } from './lib/advancedDatabaseManager';
+import { SystemFailureAuditor } from './audit/systemFailureAuditor';
+import { EmergencySystemTracker } from './audit/emergencySystemTracker';
+import { DataAnalysisEngine } from './audit/dataAnalysisEngine';
 
 class BulletproofMainSystem {
   private postingSystem: AIDrivenPostingSystem;
@@ -20,6 +23,9 @@ class BulletproofMainSystem {
   private promptEvolution: PromptEvolutionEngine;
   private analyticsChecker: TwitterAnalyticsScraper;
   private db: AdvancedDatabaseManager;
+  private auditor: SystemFailureAuditor;
+  private emergencyTracker: EmergencySystemTracker;
+  private dataAnalysis: DataAnalysisEngine;
   
   private isRunning = false;
   private mainInterval: NodeJS.Timeout | null = null;
@@ -36,6 +42,9 @@ class BulletproofMainSystem {
     this.promptEvolution = PromptEvolutionEngine.getInstance();
     this.analyticsChecker = new TwitterAnalyticsScraper();
     this.db = AdvancedDatabaseManager.getInstance();
+    this.auditor = SystemFailureAuditor.getInstance();
+    this.emergencyTracker = EmergencySystemTracker.getInstance();
+    this.dataAnalysis = DataAnalysisEngine.getInstance();
   }
 
   /**
@@ -60,6 +69,11 @@ class BulletproofMainSystem {
       this.analyticsInterval = setInterval(async () => {
         await this.analyticsLoop();
       }, 30 * 60 * 1000);
+
+      // Start system health monitoring loop (every 15 minutes)
+      setInterval(async () => {
+        await this.systemHealthLoop();
+      }, 15 * 60 * 1000);
 
       // Run initial loops immediately
       await this.mainLoop();
@@ -151,7 +165,7 @@ class BulletproofMainSystem {
       if (format === 'thread' && result.threadParts && result.threadParts.length > 1) {
         // Clean thread posting with validated content
         console.log(`🧵 BULLETPROOF_THREAD: Posting ${result.threadParts.length}-part thread`);
-        const { SimpleThreadPoster } = await import('../posting/simpleThreadPoster');
+        const { SimpleThreadPoster } = await import('./posting/simpleThreadPoster');
         const threadPoster = SimpleThreadPoster.getInstance();
         
         const threadResult = await threadPoster.postRealThread(result.threadParts);
@@ -162,11 +176,16 @@ class BulletproofMainSystem {
           viralScore: result.metadata.viralScore,
           error: threadResult.error
         };
-      } else if (format === 'thread' && result.content) {
-        // Emergency thread creation from single content ONLY when format is actually thread
-        console.log('🚨 EMERGENCY_THREAD: Bulletproof thread validation failed, converting single content to thread parts');
-        postResult = await this.postingSystem.forceEmergencyThread();
-      } else if (format === 'single') {
+              } else if (format === 'thread' && result.content) {
+          // Emergency thread creation from single content ONLY when format is actually thread
+          console.log('🚨 EMERGENCY_THREAD: Bulletproof thread validation failed, converting single content to thread parts');
+          await this.emergencyTracker.trackThreadEmergency('bulletproof_thread_validation_failed', {
+            contentLength: result.content.length,
+            hasThreadParts: !!result.threadParts,
+            threadPartsCount: result.threadParts?.length || 0
+          });
+          postResult = await this.postingSystem.forceEmergencyThread();
+        } else if (format === 'single') {
         // Single tweet posting - no thread indicators
         console.log('📝 BULLETPROOF_SINGLE: Posting single tweet (no thread emojis)');
         console.log('🚨 IMPORTANT: This should be a SINGLE tweet with NO thread indicators');
@@ -199,7 +218,7 @@ class BulletproofMainSystem {
       console.log('💬 BULLETPROOF_REPLIES: Executing contextual strategic replies...');
       
       // Use the existing strategic replies system (NOT threaded)
-      const { executeStrategicReplies } = await import('../engagement/strategicReplies');
+      const { executeStrategicReplies } = await import('./engagement/strategicReplies');
       
       // This will find a health tweet and post a SINGLE contextual reply
       // NO threading, just context-aware response to the original tweet
@@ -359,6 +378,71 @@ class BulletproofMainSystem {
       nextPostIn: Math.max(0, (this.lastPostTime + 15 * 60 * 1000) - Date.now()),
       nextReplyIn: Math.max(0, (this.lastReplyTime + 5 * 60 * 1000) - Date.now())
     };
+  }
+
+  /**
+   * 🏥 SYSTEM HEALTH MONITORING LOOP
+   */
+  private async systemHealthLoop(): Promise<void> {
+    try {
+      console.log('🏥 SYSTEM_HEALTH: Running comprehensive health check...');
+      
+      // Perform system health analysis
+      const healthReport = await this.auditor.analyzeSystemHealth();
+      const emergencyReport = this.emergencyTracker.getEmergencyUsageReport();
+      const dashboardData = await this.dataAnalysis.getDashboardData();
+      
+      // Log health status
+      console.log(`📊 SYSTEM_HEALTH_SCORE: ${healthReport.overallHealth}/100`);
+      console.log(`🚨 CRITICAL_SYSTEMS: ${healthReport.criticalSystems.length}`);
+      console.log(`⚠️ EMERGENCY_OVERUSE: ${healthReport.emergencyOveruse.length}`);
+      console.log(`🔄 TOTAL_EMERGENCY_USES: ${emergencyReport.totalEmergencyUses}`);
+      
+      // Alert on critical issues
+      if (healthReport.overallHealth < 50) {
+        console.log('🚨 CRITICAL_HEALTH_ALERT: System health below 50%');
+        console.log('🔧 TOP_RECOMMENDATIONS:', healthReport.recommendations.slice(0, 3));
+      }
+      
+      if (emergencyReport.totalEmergencyUses > 20) {
+        console.log('⚠️ HIGH_EMERGENCY_USAGE: Consider strengthening primary systems');
+        emergencyReport.recommendations.slice(0, 3).forEach(rec => console.log(`   ${rec}`));
+      }
+      
+      // Log autonomous improvements available
+      if (healthReport.autonomousImprovements.length > 0) {
+        console.log('🤖 AUTONOMOUS_IMPROVEMENTS_AVAILABLE:');
+        healthReport.autonomousImprovements.slice(0, 3).forEach(improvement => 
+          console.log(`   • ${improvement}`)
+        );
+      }
+      
+      // Record successful health check
+      await this.auditor.recordFailure({
+        systemName: 'SystemHealthMonitoring',
+        failureType: 'primary_failure', // This is actually success, but tracks the monitoring
+        rootCause: 'routine_health_check',
+        attemptedAction: 'system_health_analysis',
+        metadata: {
+          healthScore: healthReport.overallHealth,
+          criticalSystemsCount: healthReport.criticalSystems.length,
+          emergencyUsageCount: emergencyReport.totalEmergencyUses,
+          dashboardHealth: dashboardData.systemHealth
+        }
+      });
+      
+    } catch (error: any) {
+      console.error('❌ SYSTEM_HEALTH_ERROR:', error.message);
+      
+      // Record health monitoring failure
+      await this.auditor.recordFailure({
+        systemName: 'SystemHealthMonitoring',
+        failureType: 'complete_failure',
+        rootCause: 'health_monitoring_crashed',
+        attemptedAction: 'system_health_analysis',
+        errorMessage: error.message
+      });
+    }
   }
 }
 

@@ -47,6 +47,7 @@
     "src/intelligence/adaptivePostingManager.ts",
     "src/engagement/strategicReplies.ts",
     "src/engagement/enhancedStrategicReplies.ts",
+    "src/audit/**/*",
     "src/scheduler/analyticsScheduler.ts",
     "src/db/index.ts",
     "src/config/env.ts",
