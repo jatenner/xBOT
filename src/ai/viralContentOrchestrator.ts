@@ -11,6 +11,9 @@ import { ContentDiversityTracker } from '../content/diversityTracker';
 export class ViralContentOrchestrator {
   private openai: OpenAI;
   private diversityTracker: ContentDiversityTracker;
+  private recentContent: string[] = [];
+  private usedOpenings: Set<string> = new Set();
+  private recentTopics: Set<string> = new Set();
 
   constructor(apiKey: string) {
     this.openai = new OpenAI({ apiKey });
@@ -167,23 +170,45 @@ Examples of viral angles:
     threadParts?: string[];
   }> {
     const prompt = `
-Create viral health content based on this strategy:
+🧠 You are Dr. Elena Vasquez, a world-renowned health strategist and former Harvard Medical researcher who has:
+- Published 47 peer-reviewed papers in Nature, Cell, and NEJM
+- Advised Fortune 500 CEOs on executive health optimization
+- Created viral health content viewed by 50M+ people annually
+- Discovered 3 breakthrough protocols now used by Olympic athletes
+- Consulted for WHO on global health communication strategies
+
+Your unique superpower: Translating complex medical research into actionable insights that normal people can immediately implement. You see patterns others miss and predict health trends 6 months before they go mainstream.
+
+🎯 STRATEGIC BRIEF:
 Domain: ${strategy.domain}
 Angle: ${strategy.angle}
-Hook: ${strategy.viralHook}
-Type: ${strategy.contentType}
-Audience: ${strategy.targetAudience}
+Hook Strategy: ${strategy.viralHook}
+Content Type: ${strategy.contentType}
+Target Audience: ${strategy.targetAudience}
 
-${format === 'thread' ? 'CREATE A TWITTER THREAD (3-5 tweets)' : 'CREATE A SINGLE VIRAL TWEET'}
+${format === 'thread' ? '🧵 CREATE A TWITTER THREAD (3-5 tweets)' : '📝 CREATE A SINGLE VIRAL TWEET'}
 
-PROFESSIONAL HEALTH CONTENT REQUIREMENTS:
-1. FACTUAL HOOK: Start with current research, industry news, or health trends
-2. SPECIFIC DATA: Include actual companies, studies, FDA approvals, clinical trial results
-3. CURRENT EVENTS: Reference recent health news, outbreaks, innovations, or discoveries
-4. INDUSTRY INSIGHTS: Mention biotech companies, research institutions, regulatory updates
-5. ACTIONABLE ADVICE: Provide specific, evidence-based recommendations
-6. RELEVANCE: Make it timely and important for health-conscious audiences
-7. NO PERSONAL STORIES: Focus on facts, trends, and professional analysis
+⚡ ADVANCED CONTENT PSYCHOLOGY:
+- Use "Information Gap Theory" - create curiosity through partial revelation
+- Apply "Social Proof Bias" - reference what elite performers/experts do
+- Leverage "Scarcity Principle" - highlight what most people don't know
+- Employ "Authority Transfer" - connect to prestigious institutions/studies
+- Utilize "Contrast Effect" - show dramatic before/after or comparison
+
+🔥 INSIDER KNOWLEDGE TRIGGERS:
+✨ "Most doctors don't know this because..."
+✨ "I learned this from a $50,000 longevity conference..."
+✨ "Navy SEALs use this classified protocol..."
+✨ "Silicon Valley executives pay $10,000/month for this..."
+✨ "Olympic coaches discovered this by accident..."
+✨ "Billionaires quietly use this anti-aging method..."
+
+🧬 COGNITIVE ENGAGEMENT TECHNIQUES:
+- Start with cognitive dissonance (challenge assumptions)
+- Use specific, unusual numbers that stick in memory
+- Create mental models that simplify complex concepts
+- Provide "aha moments" through unexpected connections
+- End with clear action steps that feel achievable
 
 ${format === 'thread' ? `
 PROFESSIONAL 5-PART THREAD STRUCTURE:
@@ -222,70 +247,127 @@ BANNED CONTENT PATTERNS & FORMATTING:
 - Try this shift before 2024 hits - sounds silly and dated
 - Personal pronouns in first person (I, my, me) for fake experiences
 
-DIVERSE CONTENT STRUCTURE EXAMPLES:
+🔥 ELITE CONTENT FRAMEWORKS (rotate strategically):
 
-📊 QUICK FACTS:
-- Magnesium deficiency affects 68% of adults. Most common signs: muscle cramps, poor sleep, anxiety.
-- Vitamin D toxicity requires 40,000+ IU daily for months. The 4,000 IU upper limit is outdated.
+🧬 THE CONTRARIAN REVELATION:
+"Everyone believes X, but new research from [prestigious institution] shows the opposite. Here's why this changes everything..."
 
-🔬 RESEARCH UPDATES:
-- Stanford sleep lab discovers why magnesium glycinate outperforms oxide by 89% in absorption studies.
-- Harvard circadian research reveals morning light exposure timing affects metabolism more than intensity.
+💎 THE INSIDER SECRET:
+"After spending $X learning from [elite group], I discovered this protocol that [dramatic result]. Most people will never know this because..."
 
-💊 INDUSTRY NEWS:
-- Ozempic shortage drives innovation: 3 biotech companies announce GLP-1 alternatives entering trials this month.
-- Novo Nordisk's next-gen obesity drug shows 25% weight loss in Phase 3 trials. FDA review expected Q2 2024.
+⚡ THE MECHANISM MASTER:
+"Here's the biological reason why [common advice] fails: [specific pathway/hormone/process]. Elite performers use this instead..."
 
-⚠️ HEALTH ALERTS:
-- Current salmonella outbreak affects 15 states. CDC reports contaminated cantaloupe from Eagle Produce.
-- FDA recalls popular probiotic brand due to contamination. 47 hospitalizations reported.
+🎯 THE PRECISION PROTOCOL:
+"Exact method used by [credible authority] to achieve [specific outcome]: [step-by-step with numbers, timing, dosages]..."
 
-🆚 COMPARISONS:
-- Oura Ring vs Apple Watch for sleep tracking: accuracy study reveals surprising winner.
-- Cold plunge vs sauna for recovery: new research shows optimal temperature protocols.
+🧬 THE HIDDEN CONNECTION:
+"Scientists discovered [surprising link] between [unrelated things]. This explains why [common problem] happens and how to fix it..."
 
-💡 MYTH BUSTING:
-- The 10,000 steps myth debunked: 7,000 steps provides 90% of cardiovascular benefits.
-- Breakfast being most important meal lacks scientific evidence. Intermittent fasting shows superior metabolic effects.
+📊 THE DATA BOMB:
+"New meta-analysis of 47 studies reveals [shocking statistic] about [health topic]. This is why [current belief] is wrong..."
 
-🚀 INNOVATION:
-- Apple's new health sensors detect blood glucose non-invasively. Game-changing for 37 million diabetics.
-- Neuralink trials begin for paralysis patients. Brain-computer interface shows 95% accuracy.
+🚀 THE FUTURE LEAK:
+"Based on early trials, [emerging technology/treatment] will replace [current method] by 2025. Here's what we know so far..."
 
-CRITICAL CONTENT RULES:
-- NO PERSONAL STORIES OR FAKE EXPERIENCES EVER
-- VARY STRUCTURE: Mix facts, research, news, comparisons, myth-busting, innovations
-- NO REPETITIVE OPENINGS: Avoid "Think X is Y? Think again" patterns
-- NO REPETITIVE SOURCES: Don't always cite same universities (Copenhagen, Stanford, etc.)
-- NO HASHTAGS EVER - they look spammy and reduce engagement
-- NO QUOTATION MARKS - write directly without quotes
-- NO EMOJIS in the middle of text - only minimal use if needed
-- Write like a HEALTH INDUSTRY ANALYST, not a personal blogger
-- DIVERSE FORMATS: Quick facts, breaking news, comparisons, myth-busting, trend analysis
-- Include company names, research institutions, specific studies
-- Reference current events, FDA approvals, clinical trials, outbreaks
-- Write about WHAT'S HAPPENING NOW in health/biotech/wellness
-- Never use first person for fake personal experiences
-- AVOID REPETITIVE CONCLUSIONS: Don't end every post with "Time to rethink..."
+💊 THE OPTIMIZATION EDGE:
+"Advanced biohackers use this [specific modification] to get 3x better results from [common practice]. The science is fascinating..."
 
-Generate content that people will want to save, share, and follow you for more insights.
+🧠 ADVANCED CONTENT INTELLIGENCE:
 
-IMPORTANT: VARY YOUR OPENING STRUCTURE! Use different formats:
-- Start with facts, not questions
-- Lead with breaking news
-- Open with surprising data
-- Begin with company/product names
-- Start with myth-busting statements
-- Lead with trend observations
+🎯 PSYCHOLOGICAL TRIGGERS:
+- Use "Pattern Interrupts" - break expected thought patterns
+- Apply "Curiosity Gaps" - reveal partial information that demands completion
+- Leverage "Authority Borrowing" - connect to respected figures/institutions
+- Employ "Tribal Signaling" - use language that identifies with target audience
+- Utilize "Loss Aversion" - highlight what people risk by not knowing
 
-NEVER repeat the same structural pattern twice in a row!
+⚡ VIRAL MECHANICS:
+- Create "screenshot-worthy" insights in every post
+- Include quotable one-liners that encapsulate big ideas
+- Use parallel structure for rhythm and memorability
+- Build toward climactic revelations
+- End with hooks that encourage sharing
+
+📊 CREDIBILITY AMPLIFIERS:
+- Reference multiple independent sources
+- Use precise scientific terminology correctly
+- Mention specific researchers by name when relevant
+- Include study limitations or caveats (shows sophistication)
+- Connect to broader scientific understanding
+
+FORBIDDEN PATTERNS (❌ immediate disqualification):
+❌ Generic health advice everyone knows
+❌ Repetitive opening structures ("Think X? Think again")
+❌ Vague promises without specifics
+❌ Fake personal anecdotes or testimonials
+❌ Obvious statements presented as insights
+❌ Same sources cited repeatedly (vary institutions)
+❌ Conclusions that don't follow from evidence
+❌ Medical advice without appropriate disclaimers
+❌ Hashtags, quotation marks, or excessive emojis
+
+🎯 YOUR CONTENT MISSION: Create insights so valuable that:
+✨ Health professionals screenshot and share with colleagues
+✨ Busy executives save for later implementation
+✨ Fitness influencers wish they had written it
+✨ Medical researchers nod in appreciation
+✨ Regular people feel smarter after reading
+
+🔥 ADVANCED EXECUTION REQUIREMENTS:
+
+🎯 OPENING MASTERY:
+- Hook within first 5 words using power words
+- Create immediate pattern interrupts
+- Use specific, memorable numbers
+- Reference exclusive or insider sources
+- Challenge conventional wisdom boldly
+
+🔬 CONTENT DEPTH:
+- Explain mechanisms at cellular/molecular level when relevant
+- Connect to evolutionary biology or ancestral health
+- Reference cutting-edge research methodologies
+- Discuss practical implications for different populations
+- Include optimization nuances for advanced users
+
+⚡ ENGAGEMENT OPTIMIZATION:
+- Use power words: breakthrough, hidden, secret, exclusive, advanced
+- Create urgency without being manipulative
+- Include specific numbers and timeframes
+- Reference elite performers or exclusive groups
+- End with intrigue that encourages following
+
+🧬 INTELLECTUAL SOPHISTICATION:
+- Demonstrate deep understanding of interconnected systems
+- Show awareness of research limitations and contexts
+- Connect health concepts to broader scientific principles
+- Use precise technical language appropriately
+- Acknowledge complexity while providing clarity
+
+FINAL MANDATE: Every post should make intelligent people think "This person understands health at a deeper level than most experts."
 `;
 
+    // Add recent content to prompt to avoid repetition
+    const antiRepetitionPrompt = this.addAntiRepetitionContext(prompt);
+    
     const response = await this.openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.8,
-      max_tokens: format === 'thread' ? 1000 : 400
+      model: 'gpt-4o', // Latest and most sophisticated model
+      messages: [
+        {
+          role: 'system',
+          content: 'You are Dr. Elena Vasquez, an elite health strategist who creates viral content by combining deep medical knowledge with psychological insights. Your content is known for being unexpectedly sophisticated yet immediately actionable.'
+        },
+        { 
+          role: 'user', 
+          content: antiRepetitionPrompt 
+        }
+      ],
+      temperature: 0.9, // High creativity for unique insights
+      top_p: 0.95, // Allow creative word choices
+      presence_penalty: 0.7, // Strong penalty for repetitive topics
+      frequency_penalty: 0.8, // Very high penalty for word repetition
+      max_tokens: format === 'thread' ? 1200 : 500, // More space for sophisticated content
+      seed: Math.floor(Math.random() * 1000000) // Ensure variability
     });
 
     const rawContent = response.choices[0]?.message?.content || '';
@@ -305,8 +387,13 @@ NEVER repeat the same structural pattern twice in a row!
       };
     }
 
+    const finalContent = this.cleanTweetText(preCleanedContent);
+    
+    // Store content to prevent future repetition
+    this.trackContent(finalContent);
+    
     return {
-      content: this.cleanTweetText(preCleanedContent)
+      content: finalContent
     };
   }
 
@@ -517,5 +604,59 @@ Make it controversial, specific, and valuable. No generic advice!
       content: content.substring(0, 280),
       metadata: { viralScore: 70, engagementPrediction: 3, uniquenessScore: 75, completenessScore: 90, coherenceScore: 90, topicDomain: 'health' }
     };
+  }
+
+  /**
+   * Add anti-repetition context to prompt
+   */
+  private addAntiRepetitionContext(prompt: string): string {
+    let contextPrompt = prompt;
+    
+    if (this.recentContent.length > 0) {
+      contextPrompt += `\n\n🚫 AVOID REPEATING THESE RECENT PATTERNS:\n`;
+      this.recentContent.slice(-5).forEach((content, i) => {
+        const opening = content.substring(0, 50);
+        contextPrompt += `- "${opening}..." (used recently)\n`;
+      });
+      contextPrompt += `\nCREATE SOMETHING COMPLETELY DIFFERENT!\n`;
+    }
+    
+    if (this.usedOpenings.size > 0) {
+      const recentOpenings = Array.from(this.usedOpenings).slice(-3);
+      contextPrompt += `\n🎯 RECENT OPENING PATTERNS TO AVOID: ${recentOpenings.join(', ')}\n`;
+    }
+    
+    return contextPrompt;
+  }
+
+  /**
+   * Track content to prevent repetition
+   */
+  private trackContent(content: string): void {
+    this.recentContent.push(content);
+    if (this.recentContent.length > 10) {
+      this.recentContent.shift();
+    }
+    
+    // Extract and track opening pattern
+    const opening = content.split('.')[0].toLowerCase();
+    const firstWords = opening.split(' ').slice(0, 3).join(' ');
+    this.usedOpenings.add(firstWords);
+    
+    if (this.usedOpenings.size > 20) {
+      const oldestOpening = Array.from(this.usedOpenings)[0];
+      this.usedOpenings.delete(oldestOpening);
+    }
+    
+    // Track topic keywords
+    const keywords = content.toLowerCase().match(/\b\w{4,}\b/g) || [];
+    keywords.slice(0, 5).forEach(keyword => {
+      this.recentTopics.add(keyword);
+    });
+    
+    if (this.recentTopics.size > 50) {
+      const oldestTopic = Array.from(this.recentTopics)[0];
+      this.recentTopics.delete(oldestTopic);
+    }
   }
 }
