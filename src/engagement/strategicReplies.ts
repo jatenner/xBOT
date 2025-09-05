@@ -23,7 +23,7 @@ interface TweetToReplyTo {
 }
 
 export async function executeStrategicReplies(): Promise<void> {
-  console.log('💬 STRATEGIC_REPLIES: Finding high-value conversations...');
+  console.log('💬 CONTEXTUAL_REPLIES: Finding health tweets for single contextual responses...');
   
   try {
     const targetInfluencer = HEALTH_INFLUENCERS[Math.floor(Math.random() * HEALTH_INFLUENCERS.length)];
@@ -31,7 +31,7 @@ export async function executeStrategicReplies(): Promise<void> {
     
     const tweet = await findReplyableTweet(targetInfluencer);
     if (!tweet) {
-      console.log('⚠️ No suitable tweets found for strategic replies');
+      console.log('⚠️ No suitable tweets found for contextual replies');
       return;
     }
     
@@ -41,14 +41,15 @@ export async function executeStrategicReplies(): Promise<void> {
       return;
     }
     
-    console.log(`📝 CONTEXT_REPLY: "${contextAwareReply.substring(0, 80)}..."`);
+    console.log(`📝 CONTEXTUAL_REPLY: "${contextAwareReply.substring(0, 80)}..."`);
     console.log(`🎯 REPLYING_TO: "${tweet.content.substring(0, 50)}..." by ${tweet.author}`);
+    console.log(`🚨 REPLY_TYPE: SINGLE contextual response (NOT a thread)`);
     
-    // Post the reply using our posting system
+    // Post the SINGLE contextual reply (not a thread)
     await postStrategicReply(tweet.url, contextAwareReply);
     
   } catch (error: any) {
-    console.error('❌ STRATEGIC_REPLIES_ERROR:', error.message);
+    console.error('❌ CONTEXTUAL_REPLIES_ERROR:', error.message);
   }
 }
 
@@ -286,7 +287,7 @@ CREATE A REPLY THAT:
 }
 
 async function postStrategicReply(tweetUrl: string, replyContent: string): Promise<void> {
-  console.log('🚀 POSTING_STRATEGIC_REPLY: Posting context-aware reply...');
+  console.log('🚀 POSTING_CONTEXTUAL_REPLY: Posting SINGLE context-aware reply (not thread)...');
   
   try {
     const { TwitterComposer } = await import('../posting/TwitterComposer');
@@ -300,20 +301,25 @@ async function postStrategicReply(tweetUrl: string, replyContent: string): Promi
       if (!match) throw new Error('Invalid tweet URL');
       
       const tweetId = match[1];
+      
+      console.log(`📝 CONTEXTUAL_REPLY: Posting single reply to tweet ${tweetId}`);
+      console.log(`🚨 IMPORTANT: This is a SINGLE contextual reply, NOT a thread`);
+      
+      // Post single contextual reply (composer.postReply = single tweet response)
       const result = await composer.postReply(replyContent, tweetId);
       
       if (result.success) {
-        console.log(`✅ STRATEGIC_REPLY_POSTED: Reply ID ${result.tweetId}`);
+        console.log(`✅ CONTEXTUAL_REPLY_POSTED: Single reply ID ${result.tweetId} (NOT a thread)`);
         
         // 📊 STORE REPLY DATA FOR LEARNING
         await storeReplyForLearning(result.tweetId!, replyContent, tweetUrl);
       } else {
-        console.error(`❌ STRATEGIC_REPLY_FAILED: ${result.error}`);
+        console.error(`❌ CONTEXTUAL_REPLY_FAILED: ${result.error}`);
       }
     });
     
   } catch (error) {
-    console.error('Failed to post strategic reply:', error);
+    console.error('Failed to post contextual reply:', error);
   }
 }
 

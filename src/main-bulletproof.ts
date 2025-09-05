@@ -142,13 +142,29 @@ class BulletproofMainSystem {
       console.log(`📝 GENERATED_CONTENT: ${format} with ${result.metadata.viralScore}/100 viral score`);
       console.log(`🎭 CONTENT_METADATA: ${result.metadata.persona} | ${result.metadata.emotion} | ${result.metadata.framework}`);
 
-      // Post using existing posting system
+      // Post using existing posting system with proper content passing
       let postResult;
-      if (format === 'thread' && result.threadParts) {
-        // Force thread posting
+      if (format === 'thread' && result.threadParts && result.threadParts.length > 1) {
+        // Clean thread posting with validated content
+        console.log(`🧵 BULLETPROOF_THREAD: Posting ${result.threadParts.length}-part thread`);
+        const { SimpleThreadPoster } = await import('../posting/simpleThreadPoster');
+        const threadPoster = SimpleThreadPoster.getInstance();
+        
+        const threadResult = await threadPoster.postRealThread(result.threadParts);
+        postResult = {
+          success: threadResult.success,
+          tweetId: threadResult.rootTweetId,
+          type: 'thread' as const,
+          viralScore: result.metadata.viralScore,
+          error: threadResult.error
+        };
+      } else if (format === 'thread' && result.content) {
+        // Emergency thread creation from single content
+        console.log('🚨 EMERGENCY_THREAD: Converting single content to thread parts');
         postResult = await this.postingSystem.forceEmergencyThread();
       } else {
         // Single tweet posting
+        console.log('📝 BULLETPROOF_SINGLE: Posting single tweet');
         postResult = await this.postingSystem.createViralPost();
       }
 
@@ -167,31 +183,20 @@ class BulletproofMainSystem {
   }
 
   /**
-   * 💬 EXECUTE ENHANCED STRATEGIC REPLIES
+   * 💬 EXECUTE ENHANCED STRATEGIC REPLIES (CONTEXTUAL ONLY)
    */
   private async executeEnhancedReplies(): Promise<void> {
     try {
-      // Find health-related tweets to reply to
-      const replyTargets = await this.findHealthReplyTargets();
+      console.log('💬 BULLETPROOF_REPLIES: Executing contextual strategic replies...');
       
-      if (replyTargets.length === 0) {
-        console.log('📭 NO_REPLY_TARGETS: No suitable health tweets found');
-        return;
-      }
-
-      console.log(`🎯 REPLY_TARGETS: Found ${replyTargets.length} potential targets`);
-
-      // Generate replies for top 3 targets
-      const topTargets = replyTargets.slice(0, 3);
-      const replies = await this.strategicReplies.generateBatchReplies(topTargets);
-
-      console.log(`💬 REPLIES_GENERATED: ${replies.length} strategic replies created`);
-
-      // Post replies (implement actual posting logic here)
-      for (const reply of replies) {
-        console.log(`📤 STRATEGIC_REPLY: ${reply.strategy} - "${reply.reply.substring(0, 50)}..."`);
-        // TODO: Integrate with actual Twitter reply posting
-      }
+      // Use the existing strategic replies system (NOT threaded)
+      const { executeStrategicReplies } = await import('../engagement/strategicReplies');
+      
+      // This will find a health tweet and post a SINGLE contextual reply
+      // NO threading, just context-aware response to the original tweet
+      await executeStrategicReplies();
+      
+      console.log('✅ BULLETPROOF_REPLIES: Contextual reply posted (single tweet, not thread)');
 
     } catch (error: any) {
       console.error('❌ ENHANCED_REPLIES_CRASHED:', error.message);
@@ -282,28 +287,9 @@ class BulletproofMainSystem {
   }
 
   /**
-   * 🎯 FIND HEALTH REPLY TARGETS (mock implementation)
+   * Note: Reply targeting is now handled by the existing strategic replies system
+   * which finds and analyzes real health influencer tweets automatically
    */
-  private async findHealthReplyTargets(): Promise<any[]> {
-    // TODO: Implement actual Twitter search for health-related tweets
-    // For now, return mock data
-    return [
-      {
-        parentTweet: "Just started taking vitamin D supplements. Hope they help with my energy levels!",
-        parentAuthor: "health_seeker",
-        topic: "vitamin D",
-        sentiment: "positive" as const,
-        healthRelevance: 85
-      },
-      {
-        parentTweet: "Does anyone know if cold showers actually boost metabolism?",
-        parentAuthor: "fitness_curious", 
-        topic: "cold exposure",
-        sentiment: "neutral" as const,
-        healthRelevance: 90
-      }
-    ];
-  }
 
   /**
    * 📊 GET RECENT POSTS (mock implementation)
