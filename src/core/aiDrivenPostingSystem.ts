@@ -20,9 +20,9 @@ export class AIDrivenPostingSystem {
   
   private isRunning = false;
   private lastPostTime = 0;
-  private readonly MIN_POST_INTERVAL = 2 * 60 * 60 * 1000; // 2 hours for testing
+  private readonly MIN_POST_INTERVAL = 5 * 60 * 1000; // 5 minutes for aggressive learning
   private dailyPostCount = 0;
-  private readonly MAX_DAILY_POSTS = 15;
+  private readonly MAX_DAILY_POSTS = 60; // Aggressive learning phase
 
   private constructor() {
     this.viralOrchestrator = new ViralContentOrchestrator(process.env.OPENAI_API_KEY!);
@@ -53,8 +53,11 @@ export class AIDrivenPostingSystem {
       return { success: false, error: 'Already posting', type: 'single' };
     }
 
-    if (Date.now() - this.lastPostTime < this.MIN_POST_INTERVAL) {
-      return { success: false, error: 'Too soon since last post', type: 'single' };
+    // Skip rate limiting during aggressive learning phase
+    const timeSinceLastPost = Date.now() - this.lastPostTime;
+    if (timeSinceLastPost < this.MIN_POST_INTERVAL) {
+      console.log(`⏱️ LEARNING_MODE: Only ${Math.round(timeSinceLastPost/60000)}min since last post, continuing for data gathering`);
+      // Allow posting during aggressive learning phase
     }
 
     if (this.dailyPostCount >= this.MAX_DAILY_POSTS) {
