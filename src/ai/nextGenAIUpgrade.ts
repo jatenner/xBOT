@@ -13,7 +13,7 @@ export class NextGenAIUpgrade {
 
   constructor() {
     this.hyperOrchestrator = HyperIntelligentOrchestrator.getInstance();
-    this.originalOrchestrator = new ViralContentOrchestrator();
+    this.originalOrchestrator = new ViralContentOrchestrator(process.env.OPENAI_API_KEY!);
   }
 
   public static getInstance(): NextGenAIUpgrade {
@@ -54,7 +54,7 @@ export class NextGenAIUpgrade {
       };
     } else {
       console.log('⚡ USING_STANDARD_AI: Using enhanced viral orchestrator');
-      const result = await this.originalOrchestrator.generateEnhancedContent(format);
+      const result = await this.originalOrchestrator.generateViralContent(format);
       
       return {
         content: result.content,
