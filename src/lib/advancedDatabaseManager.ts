@@ -278,6 +278,12 @@ export class AdvancedDatabaseManager extends EventEmitter {
   public static getInstance(): AdvancedDatabaseManager {
     if (!AdvancedDatabaseManager.instance) {
       AdvancedDatabaseManager.instance = new AdvancedDatabaseManager();
+      // Auto-initialize on first access
+      setImmediate(() => {
+        AdvancedDatabaseManager.instance.initialize().catch(error => {
+          console.error('❌ AUTO_INIT_ERROR:', error.message);
+        });
+      });
     }
     return AdvancedDatabaseManager.instance;
   }
@@ -428,6 +434,12 @@ export class AdvancedDatabaseManager extends EventEmitter {
     cacheKey?: string,
     cacheTtl?: number
   ): Promise<T> {
+    // Ensure database is initialized before executing queries
+    if (!this.isInitialized) {
+      console.log('⚡ DB_INIT: Auto-initializing database on query execution...');
+      await this.initialize();
+    }
+    
     const startTime = Date.now();
     let cached = false;
     let retries = 0;
@@ -449,7 +461,15 @@ export class AdvancedDatabaseManager extends EventEmitter {
     }
 
     return await this.circuitBreaker.execute(async () => {
-      const connection = await this.supabasePool.acquire();
+      let connection;
+      
+      // Try to acquire from pool, fallback to direct connection if needed
+      try {
+        connection = await this.supabasePool.acquire();
+      } catch (error) {
+        console.warn('⚠️ Pool acquire failed, using direct connection:', error.message);
+        connection = createClient(this.config.supabase.url, this.config.supabase.serviceRoleKey);
+      }
       
       try {
         const result = await Promise.race([
@@ -490,7 +510,15 @@ export class AdvancedDatabaseManager extends EventEmitter {
         
         throw error;
       } finally {
-        this.supabasePool.release(connection);
+        // Only release back to pool if it came from the pool
+        if (this.supabasePool && connection && this.supabasePool.release) {
+          try {
+            this.supabasePool.release(connection);
+          } catch (error) {
+            // Direct connection - no need to release to pool
+            console.log('📋 Direct connection used, no pool release needed');
+          }
+        }
       }
     });
   }

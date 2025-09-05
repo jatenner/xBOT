@@ -10,7 +10,7 @@
  * 5. Provides actionable insights for system enhancement
  */
 
-import { AdvancedDatabaseManager } from '../lib/advancedDatabaseManager';
+import { SimpleDatabaseManager } from '../lib/simpleDatabaseManager';
 import { SystemFailureAuditor } from './systemFailureAuditor';
 
 export interface DataInsight {
@@ -47,11 +47,11 @@ export interface PredictiveAlert {
 
 export class DataAnalysisEngine {
   private static instance: DataAnalysisEngine;
-  private db: AdvancedDatabaseManager;
+  private db: SimpleDatabaseManager;
   private auditor: SystemFailureAuditor;
 
   constructor() {
-    this.db = AdvancedDatabaseManager.getInstance();
+    this.db = SimpleDatabaseManager.getInstance();
     this.auditor = SystemFailureAuditor.getInstance();
   }
 
