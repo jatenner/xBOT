@@ -206,16 +206,78 @@ function identifyKeyMechanisms(content: string): string[] {
   return mechanisms.filter(mechanism => contentLower.includes(mechanism));
 }
 
+/**
+ * Analyze the original tweet deeply to understand what it's actually saying
+ */
+async function analyzeDeepTweetContext(originalTweet: string): Promise<{
+  mainClaim: string;
+  isQuestion: boolean;
+  isAdvice: boolean;
+  isPersonalExperience: boolean;
+  keySubjects: string[];
+  sentiment: 'positive' | 'negative' | 'neutral' | 'questioning';
+  replyOpportunity: 'agree_enhance' | 'disagree_correct' | 'add_context' | 'answer_question';
+}> {
+  
+  const isQuestion = /\?/.test(originalTweet);
+  const isAdvice = /should|try|recommend|suggest|avoid|don't|do this/i.test(originalTweet);
+  const isPersonalExperience = /I\s+(tried|found|discovered|use|take)/i.test(originalTweet);
+  
+  // Extract key subjects (what the tweet is primarily about)
+  const healthSubjects = ['sleep', 'exercise', 'diet', 'supplements', 'stress', 'weight', 'energy', 'fitness', 'nutrition'];
+  const keySubjects = healthSubjects.filter(subject => 
+    originalTweet.toLowerCase().includes(subject)
+  );
+  
+  // Determine sentiment and reply opportunity
+  let sentiment: 'positive' | 'negative' | 'neutral' | 'questioning' = 'neutral';
+  let replyOpportunity: 'agree_enhance' | 'disagree_correct' | 'add_context' | 'answer_question' = 'add_context';
+  
+  if (isQuestion) {
+    sentiment = 'questioning';
+    replyOpportunity = 'answer_question';
+  } else if (/great|amazing|love|best|perfect|incredible/i.test(originalTweet)) {
+    sentiment = 'positive';
+    replyOpportunity = 'agree_enhance';
+  } else if (/wrong|bad|terrible|hate|worst|avoid|don't/i.test(originalTweet)) {
+    sentiment = 'negative';
+    replyOpportunity = 'disagree_correct';
+  }
+  
+  // Extract main claim (first sentence or key statement)
+  const sentences = originalTweet.split(/[.!?]+/);
+  const mainClaim = sentences[0]?.trim() || originalTweet.substring(0, 100);
+  
+  return {
+    mainClaim,
+    isQuestion,
+    isAdvice,
+    isPersonalExperience,
+    keySubjects,
+    sentiment,
+    replyOpportunity
+  };
+}
+
 async function generateContextAwareReply(tweet: TweetToReplyTo, influencer: any): Promise<string | null> {
   try {
     const { OpenAI } = await import('openai');
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     
+    // ENHANCED CONTEXT ANALYSIS: Store and analyze the original tweet deeply
+    console.log(`📊 CONTEXT_ANALYSIS: Analyzing tweet content for directed reply`);
+    console.log(`📝 ORIGINAL_TWEET: "${tweet.content}"`);
+    console.log(`👤 BY_AUTHOR: ${tweet.author}`);
+    console.log(`🎯 TOPIC_DETECTED: ${tweet.topic}`);
+    
     // Analyze the tweet content for specific health topics
     const healthTopics = extractHealthTopics(tweet.content);
     const keyMechanisms = identifyKeyMechanisms(tweet.content);
     
-    // Select reply strategy for variety and maximum engagement
+    // Extract key claims, questions, or statements from the original tweet
+    const tweetContext = await analyzeDeepTweetContext(tweet.content);
+    
+    // Select reply strategy based on what the original tweet is actually saying
     const strategies = [
       'mechanism_expert', 'study_data', 'protocol_enhancement', 
       'unexpected_connection', 'actionable_insight', 'brand_specific'
@@ -233,22 +295,30 @@ async function generateContextAwareReply(tweet: TweetToReplyTo, influencer: any)
     
     console.log(`🎯 REPLY_STRATEGY: Using ${strategy} approach for maximum engagement`);
     
-    const contextPrompt = `You are a leading health expert and researcher replying to a tweet. Generate an EXTRAORDINARILY VALUABLE reply that makes people think "this person knows their stuff":
+    const contextPrompt = `You are a leading health expert and researcher replying to a tweet. Generate a DIRECTED, CONTEXTUAL reply that directly addresses what the original author said:
 
-TWEET TO REPLY TO:
+ORIGINAL TWEET ANALYSIS:
 "${tweet.content}"
 BY: ${tweet.author}
-TOPIC: ${tweet.topic}
-INFLUENCER EXPERTISE: ${influencer.expertise}
+MAIN CLAIM: ${tweetContext.mainClaim}
+TWEET TYPE: ${tweetContext.isQuestion ? 'Question' : tweetContext.isAdvice ? 'Advice' : tweetContext.isPersonalExperience ? 'Personal Experience' : 'Statement'}
+SENTIMENT: ${tweetContext.sentiment}
+KEY SUBJECTS: ${tweetContext.keySubjects.join(', ')}
+REPLY OPPORTUNITY: ${tweetContext.replyOpportunity}
+
 DETECTED HEALTH TOPICS: ${healthTopics.join(', ')}
 KEY MECHANISMS: ${keyMechanisms.join(', ')}
 REPLY STRATEGY: ${strategy.toUpperCase()}
 STRATEGY FOCUS: ${strategyPrompts[strategy]}
 
-CREATE A REPLY THAT:
+CREATE A DIRECTED REPLY BASED ON WHAT THEY ACTUALLY SAID:
 
-🎯 CONTENT STRATEGY:
-- Add a SPECIFIC mechanism, pathway, or biological process that explains WHY their point works
+🎯 CONTEXTUAL CONTENT STRATEGY:
+${tweetContext.replyOpportunity === 'answer_question' ? '- ANSWER their specific question with evidence and mechanisms' : 
+  tweetContext.replyOpportunity === 'agree_enhance' ? '- AGREE with their point and ADD valuable enhancement or optimization' :
+  tweetContext.replyOpportunity === 'disagree_correct' ? '- RESPECTFULLY correct with better evidence or alternative approach' :
+  '- ADD valuable context that builds on what they said'}
+- Reference THEIR specific claim: "${tweetContext.mainClaim}"
 - Include EXACT numbers from recent studies (2022-2024 preferred)
 - Mention specific brands, dosages, or protocols when relevant
 - Connect to a related but unexpected factor most people don't know
