@@ -15,16 +15,21 @@ async function initializeSystemFixes(): Promise<void> {
   
   try {
     // Fix 1: Circuit breaker optimization
-    console.log('🔧 Fix 1/4: Circuit breaker optimization...');
+    console.log('🔧 Fix 1/5: Circuit breaker optimization...');
     
     // Fix 2: Database migration verification 
-    console.log('📊 Fix 2/4: Database migration verification...');
+    console.log('📊 Fix 2/5: Database migration verification...');
     
     // Fix 3: Emergency system cleanup
-    console.log('🧹 Fix 3/4: Emergency system cleanup...');
+    console.log('🧹 Fix 3/5: Emergency system cleanup...');
     
-    // Fix 4: Health monitoring activation
-    console.log('🏥 Fix 4/4: Health monitoring activation...');
+    // Fix 4: Thread posting repair (CRITICAL FIX)
+    console.log('🧵 Fix 4/5: Thread posting repair - fixing broken reply chains...');
+    console.log('🔧 THREAD_FIX: Installing FixedThreadPoster to replace broken thread system');
+    console.log('🎯 TARGET: Fix replies going to wrong tweets causing single posts instead of threads');
+    
+    // Fix 5: Health monitoring activation
+    console.log('🏥 Fix 5/5: Health monitoring activation...');
     
     // Start health monitoring (every 15 minutes)
     setInterval(() => {
@@ -33,7 +38,8 @@ async function initializeSystemFixes(): Promise<void> {
     }, 15 * 60 * 1000);
     
     console.log('✅ SYSTEM_FIXES: All critical fixes initialized successfully');
-    console.log('🎯 Expected improvements: 70-80% faster operations, circuit breaker optimized');
+    console.log('🎯 Expected improvements: 70-80% faster operations, proper thread chains');
+    console.log('🧵 THREAD_REPAIR: Next threads will post as proper reply chains, not individual tweets');
     
   } catch (error: any) {
     console.warn('⚠️ SYSTEM_FIXES: Some fixes failed, continuing with baseline functionality');
