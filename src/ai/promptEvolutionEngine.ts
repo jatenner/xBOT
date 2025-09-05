@@ -255,24 +255,31 @@ export class PromptEvolutionEngine {
     console.log(`📝 RECORDING_PERFORMANCE: ${metrics.postId} with ${metrics.engagementRate.toFixed(3)} engagement`);
 
     try {
-      // Store in database
+      // Ensure post_id is valid before database write
+      const postId = metrics.postId || `fallback_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      if (!metrics.postId) {
+        console.warn(`⚠️ POST_ID_FALLBACK: Using generated ID ${postId} for analytics`);
+      }
+
+      // Store in database with validated post_id
       await this.db.executeQuery(
         'record_prompt_performance',
         async (client) => {
           const { data, error } = await client.from('prompt_performance').insert({
-            post_id: metrics.postId,
-            prompt_version: metrics.promptVersion,
-            persona: metrics.persona,
-            emotion: metrics.emotion,
-            framework: metrics.framework,
-            likes: metrics.likes,
-            retweets: metrics.retweets,
-            replies: metrics.replies,
-            impressions: metrics.impressions,
-            follows: metrics.follows,
-            engagement_rate: metrics.engagementRate,
-            viral_score: metrics.viralScore,
-            hours_after_post: metrics.hoursAfterPost
+            post_id: postId,
+            prompt_version: metrics.promptVersion || 'unknown',
+            persona: metrics.persona || 'unknown',
+            emotion: metrics.emotion || 'unknown', 
+            framework: metrics.framework || 'unknown',
+            likes: metrics.likes || 0,
+            retweets: metrics.retweets || 0,
+            replies: metrics.replies || 0,
+            impressions: metrics.impressions || 0,
+            follows: metrics.follows || 0,
+            engagement_rate: metrics.engagementRate || 0,
+            viral_score: metrics.viralScore || 0,
+            hours_after_post: metrics.hoursAfterPost || 0
           });
           
           if (error) throw error;
@@ -286,8 +293,21 @@ export class PromptEvolutionEngine {
       this.updateArmReward('framework', metrics.framework, metrics.engagementRate);
 
       console.log(`✅ PERFORMANCE_RECORDED: Updated bandits for ${metrics.persona}/${metrics.emotion}/${metrics.framework}`);
-    } catch (error) {
-      console.error('❌ RECORD_PERFORMANCE_FAILED:', error);
+    } catch (error: any) {
+      // Check if it's a circuit breaker error
+      if (error.message && error.message.includes('Circuit breaker is OPEN')) {
+        console.warn('⚠️ CIRCUIT_BREAKER_OPEN: Analytics temporarily unavailable, continuing operation');
+        console.log(`📊 TRACKED_PERFORMANCE: ${metrics.postId || 'unknown'} - ${(metrics.engagementRate * 100).toFixed(2)}% engagement`);
+        
+        // Still update bandit arms in memory even if DB fails
+        this.updateArmReward('persona', metrics.persona, metrics.engagementRate);
+        this.updateArmReward('emotion', metrics.emotion, metrics.engagementRate);
+        this.updateArmReward('framework', metrics.framework, metrics.engagementRate);
+        
+      } else {
+        console.error('❌ RECORD_PERFORMANCE_FAILED:', error);
+        console.log(`📊 TRACKED_PERFORMANCE: ${metrics.postId || 'unknown'} - ${(metrics.engagementRate * 100).toFixed(2)}% engagement`);
+      }
     }
   }
 
