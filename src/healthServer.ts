@@ -789,56 +789,56 @@ app.get('/force-thread', async (req, res) => {
   }
 });
 
-    // 📊 ANALYTICS DASHBOARD ENDPOINTS
-    app.get('/dashboard', async (req, res) => {
-      try {
-        console.log('📊 DASHBOARD_REQUEST: Serving analytics dashboard...');
-        
-        const { performanceAnalyticsDashboard } = await import('./dashboard/performanceAnalyticsDashboard');
-        const dashboardHTML = await performanceAnalyticsDashboard.generateDashboardHTML();
-        
-        res.setHeader('Content-Type', 'text/html');
-        res.send(dashboardHTML);
-        
-        console.log('✅ DASHBOARD_SERVED: Analytics dashboard delivered');
-      } catch (error: any) {
-        console.error('❌ DASHBOARD_ERROR:', error.message);
-        res.status(500).send(`
-          <html>
-            <body style="font-family: Arial; text-align: center; padding: 50px;">
-              <h1>🚨 Dashboard Temporarily Unavailable</h1>
-              <p>Error: ${error.message}</p>
-              <p><a href="/dashboard">🔄 Try Again</a></p>
-            </body>
-          </html>
-        `);
-      }
-    });
+// 📊 ANALYTICS DASHBOARD ENDPOINTS
+app.get('/dashboard', async (req, res) => {
+  try {
+    console.log('📊 DASHBOARD_REQUEST: Serving analytics dashboard...');
+    
+    const { performanceAnalyticsDashboard } = await import('./dashboard/performanceAnalyticsDashboard');
+    const dashboardHTML = await performanceAnalyticsDashboard.generateDashboardHTML();
+    
+    res.setHeader('Content-Type', 'text/html');
+    res.send(dashboardHTML);
+    
+    console.log('✅ DASHBOARD_SERVED: Analytics dashboard delivered');
+  } catch (error: any) {
+    console.error('❌ DASHBOARD_ERROR:', error.message);
+    res.status(500).send(`
+      <html>
+        <body style="font-family: Arial; text-align: center; padding: 50px;">
+          <h1>🚨 Dashboard Temporarily Unavailable</h1>
+          <p>Error: ${error.message}</p>
+          <p><a href="/dashboard">🔄 Try Again</a></p>
+        </body>
+      </html>
+    `);
+  }
+});
 
-    // 📈 METRICS API ENDPOINT
-    app.get('/api/metrics', async (req, res) => {
-      try {
-        console.log('📊 API_REQUEST: Getting dashboard metrics...');
-        
-        const { performanceAnalyticsDashboard } = await import('./dashboard/performanceAnalyticsDashboard');
-        const metrics = await performanceAnalyticsDashboard.getDashboardMetrics();
-        
-        res.json({
-          success: true,
-          data: metrics,
-          timestamp: new Date().toISOString()
-        });
-        
-        console.log('✅ API_SERVED: Metrics data delivered');
-      } catch (error: any) {
-        console.error('❌ API_ERROR:', error.message);
-        res.status(500).json({
-          success: false,
-          error: error.message,
-          timestamp: new Date().toISOString()
-        });
-      }
+// 📈 METRICS API ENDPOINT
+app.get('/api/metrics', async (req, res) => {
+  try {
+    console.log('📊 API_REQUEST: Getting dashboard metrics...');
+    
+    const { performanceAnalyticsDashboard } = await import('./dashboard/performanceAnalyticsDashboard');
+    const metrics = await performanceAnalyticsDashboard.getDashboardMetrics();
+    
+    res.json({
+      success: true,
+      data: metrics,
+      timestamp: new Date().toISOString()
     });
+    
+    console.log('✅ API_SERVED: Metrics data delivered');
+  } catch (error: any) {
+    console.error('❌ API_ERROR:', error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
 
     // Start server with maximum resilience
     healthServerStatus.server = app.listen(healthServerStatus.port, healthServerStatus.host, () => {
