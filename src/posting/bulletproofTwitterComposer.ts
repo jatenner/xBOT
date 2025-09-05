@@ -413,29 +413,141 @@ export class BulletproofTwitterComposer {
   }
 
   /**
-   * 🆔 Extract tweet ID from URL or response
+   * 🆔 Extract tweet ID from URL or response with enhanced detection
    */
   private async extractTweetId(): Promise<string | null> {
     try {
-      // Wait for URL change indicating successful post
-      await this.page.waitForFunction(
-        () => window.location.href.includes('/status/') || 
-              window.location.href.includes('/home'),
-        { timeout: 10000 }
-      );
+      console.log('🆔 ID_EXTRACTION: Starting enhanced tweet ID capture...');
       
-      const url = this.page.url();
-      const match = url.match(/\/status\/(\d+)/);
+      // Strategy 1: Wait for URL change indicating successful post
+      try {
+        await this.page.waitForFunction(
+          () => window.location.href.includes('/status/') || 
+                window.location.href.includes('/home'),
+          { timeout: 8000 }
+        );
+        
+        const url = this.page.url();
+        console.log(`🔍 ID_EXTRACTION: Current URL: ${url}`);
+        
+        const match = url.match(/\/status\/(\d+)/);
+        if (match) {
+          console.log(`✅ ID_EXTRACTION: Found tweet ID in URL: ${match[1]}`);
+          return match[1];
+        }
+      } catch (e) {
+        console.log('⚠️ ID_EXTRACTION: URL-based extraction failed, trying alternatives...');
+      }
       
-      if (match) {
-        return match[1];
+      // Strategy 2: Look for tweet ID in DOM elements
+      try {
+        const tweetSelectors = [
+          'article[data-testid="tweet"]',
+          '[data-testid="tweet"]',
+          'article[role="article"]',
+          'div[data-tweet-id]'
+        ];
+        
+        for (const selector of tweetSelectors) {
+          const elements = await this.page.locator(selector).all();
+          for (const element of elements) {
+            // Check for data attributes that might contain tweet ID
+            const tweetId = await element.getAttribute('data-tweet-id').catch(() => null);
+            if (tweetId && /^\d+$/.test(tweetId)) {
+              console.log(`✅ ID_EXTRACTION: Found tweet ID in DOM: ${tweetId}`);
+              return tweetId;
+            }
+            
+            // Check for ID patterns in href attributes
+            const links = await element.locator('a[href*="/status/"]').all();
+            for (const link of links) {
+              const href = await link.getAttribute('href').catch(() => null);
+              if (href) {
+                const match = href.match(/\/status\/(\d+)/);
+                if (match) {
+                  console.log(`✅ ID_EXTRACTION: Found tweet ID in link: ${match[1]}`);
+                  return match[1];
+                }
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.log('⚠️ ID_EXTRACTION: DOM-based extraction failed');
+      }
+      
+      // Strategy 3: Network response monitoring
+      try {
+        // Set up response listener for POST requests
+        let capturedId: string | null = null;
+        
+        const responseHandler = (response: any) => {
+          if (response.url().includes('CreateTweet') || 
+              response.url().includes('api/2/tweets') ||
+              response.url().includes('tweet/create')) {
+            response.json().then((data: any) => {
+              if (data?.data?.create_tweet?.tweet_results?.result?.rest_id) {
+                capturedId = data.data.create_tweet.tweet_results.result.rest_id;
+                console.log(`✅ ID_EXTRACTION: Captured from API: ${capturedId}`);
+              }
+            }).catch(() => {});
+          }
+        };
+        
+        this.page.on('response', responseHandler);
+        
+        // Wait a bit for network capture
+        await this.page.waitForTimeout(3000);
+        
+        this.page.off('response', responseHandler);
+        
+        if (capturedId) {
+          return capturedId;
+        }
+      } catch (e) {
+        console.log('⚠️ ID_EXTRACTION: Network-based extraction failed');
+      }
+      
+      // Strategy 4: Timeline change detection
+      try {
+        console.log('🔍 ID_EXTRACTION: Checking timeline for new tweets...');
+        
+        // Navigate to home to see if tweet appears
+        await this.page.goto('https://x.com/home', { timeout: 10000 });
+        await this.page.waitForTimeout(2000);
+        
+        // Look for the most recent tweet
+        const recentTweet = this.page.locator('article[data-testid="tweet"]').first();
+        await recentTweet.waitFor({ state: 'visible', timeout: 5000 });
+        
+        const timeElement = recentTweet.locator('time').first();
+        const timeText = await timeElement.innerText().catch(() => '');
+        
+        // If posted within last minute, it's likely our tweet
+        if (timeText.includes('now') || timeText.includes('1m') || timeText.includes('s')) {
+          const tweetLink = recentTweet.locator('a[href*="/status/"]').first();
+          const href = await tweetLink.getAttribute('href').catch(() => null);
+          
+          if (href) {
+            const match = href.match(/\/status\/(\d+)/);
+            if (match) {
+              console.log(`✅ ID_EXTRACTION: Found recent tweet ID: ${match[1]}`);
+              return match[1];
+            }
+          }
+        }
+      } catch (e) {
+        console.log('⚠️ ID_EXTRACTION: Timeline-based extraction failed');
       }
       
       // Fallback: generate timestamp-based ID
-      return `bulletproof_${Date.now()}`;
+      const fallbackId = `bulletproof_${Date.now()}`;
+      console.log(`🔄 ID_EXTRACTION: Using fallback ID: ${fallbackId}`);
+      return fallbackId;
       
     } catch (e) {
-      return null;
+      console.log(`❌ ID_EXTRACTION: All methods failed: ${(e as Error).message}`);
+      return `fallback_${Date.now()}`;
     }
   }
 
@@ -451,72 +563,154 @@ export class BulletproofTwitterComposer {
         waitUntil: 'domcontentloaded',
         timeout: 15000 
       });
-      await this.page.waitForTimeout(2000);
+      await this.page.waitForTimeout(3000); // Increased wait time
       
-      // Click reply button with comprehensive selectors
+      // Wait for the main article (tweet) to load
+      await this.page.waitForSelector('article', { timeout: 10000 });
+      console.log('✅ TWEET_PAGE: Article loaded successfully');
+      
+      // Enhanced reply button selectors with latest Twitter patterns
       const replySelectors = [
+        // Modern Twitter X.com selectors (2024+)
         '[data-testid="reply"]',
-        'div[data-testid="reply"]',
+        'div[data-testid="reply"]', 
+        'button[data-testid="reply"]',
+        '[data-testid="reply"] button',
+        '[data-testid="reply"] div[role="button"]',
+        
+        // Aria label patterns (most reliable)
         'button[aria-label*="Reply"]',
-        '[aria-label*="Reply"]',
-        'div[aria-label*="Reply"]',
-        'button[role="button"][aria-label*="Reply"]',
-        'div[role="button"][aria-label*="Reply"]',
-        // Generic reply patterns
+        '[aria-label*="Reply"][role="button"]',
+        'div[aria-label*="Reply"][role="button"]',
+        'button[aria-label*="reply"]',
+        '[aria-label*="reply"][role="button"]',
+        
+        // SVG-based detection (Twitter often uses SVG icons)
+        'button:has(svg)',
+        'div[role="button"]:has(svg)',
+        'button:has([d*="M1.751"])', // Reply icon path
+        'div[role="button"]:has([d*="M1.751"])',
+        
+        // Position-based selectors (reply is first action button)
+        'article div[role="group"] button:first-child',
+        'article div[role="group"] div[role="button"]:first-child',
+        'article [role="group"] > div:first-child button',
+        'article [role="group"] > div:first-child [role="button"]',
+        
+        // Container-based selectors
+        'article button[role="button"]',
+        'article div[role="button"]',
+        
+        // Generic patterns
         'button:has-text("Reply")',
-        'div:has-text("Reply")',
-        // Icon-based selectors
-        'svg[aria-label*="Reply"]',
-        'button:has(svg[aria-label*="Reply"])',
-        'div:has(svg[aria-label*="Reply"])',
-        // Position-based selectors (reply is usually first action)
-        'article div[role="group"] > div:first-child button',
-        'article div[role="group"] > div:first-child div[role="button"]',
-        // Class-based fallbacks
-        'button[class*="reply"]',
-        'div[class*="reply"][role="button"]'
+        'div:has-text("Reply")[role="button"]',
+        '[title*="Reply"]',
+        '[aria-label*="回复"]', // Chinese
+        '[aria-label*="返信"]', // Japanese
+        
+        // Fallback broad selectors
+        'article button',
+        'div[role="button"][tabindex="0"]'
       ];
       
       let replyClicked = false;
       console.log('🔍 REPLY_SEARCH: Searching for reply button with enhanced selectors...');
       
-      for (const selector of replySelectors) {
-        try {
-          console.log(`🔍 REPLY_SEARCH: Trying "${selector}"`);
-          const replyBtn = this.page.locator(selector).first();
-          await replyBtn.waitFor({ state: 'visible', timeout: 2000 });
-          
-          // Additional checks for reply button validity
-          const isVisible = await replyBtn.isVisible();
-          const isEnabled = await replyBtn.isEnabled();
-          
-          console.log(`🔍 REPLY_BUTTON: "${selector}" - visible:${isVisible}, enabled:${isEnabled}`);
-          
-          if (isVisible && isEnabled) {
-            console.log(`🚀 REPLY_BUTTON: Clicking "${selector}"`);
-            await replyBtn.click();
-            await this.page.waitForTimeout(2000);
-            replyClicked = true;
-            console.log(`✅ REPLY_SUCCESS: Reply button clicked successfully`);
-            break;
+      // First, try keyboard shortcut (most reliable)
+      try {
+        console.log('⌨️ REPLY_SHORTCUT: Trying keyboard shortcut "r"...');
+        await this.page.keyboard.press('r');
+        await this.page.waitForTimeout(2000);
+        
+        // Check if reply composer opened
+        const composerVisible = await this.checkForComposer();
+        if (composerVisible) {
+          console.log('✅ REPLY_SHORTCUT: Keyboard shortcut worked!');
+          replyClicked = true;
+        }
+      } catch (e) {
+        console.log('⚠️ REPLY_SHORTCUT: Keyboard shortcut failed');
+      }
+      
+      // If shortcut didn't work, try button selectors
+      if (!replyClicked) {
+        for (const selector of replySelectors) {
+          try {
+            console.log(`🔍 REPLY_SEARCH: Trying "${selector}"`);
+            const replyBtn = this.page.locator(selector).first();
+            
+            // Use shorter timeout for faster iteration
+            await replyBtn.waitFor({ state: 'visible', timeout: 1500 });
+            
+            // Additional checks for reply button validity
+            const isVisible = await replyBtn.isVisible();
+            const isEnabled = await replyBtn.isEnabled();
+            
+            console.log(`🔍 REPLY_BUTTON: "${selector}" - visible:${isVisible}, enabled:${isEnabled}`);
+            
+            if (isVisible && isEnabled) {
+              console.log(`🚀 REPLY_BUTTON: Clicking "${selector}"`);
+              await replyBtn.click();
+              await this.page.waitForTimeout(2000);
+              
+              // Verify reply composer opened
+              const composerOpened = await this.checkForComposer();
+              if (composerOpened) {
+                replyClicked = true;
+                console.log(`✅ REPLY_SUCCESS: Reply button clicked and composer opened`);
+                break;
+              } else {
+                console.log(`⚠️ REPLY_BUTTON: Button clicked but composer didn't open`);
+              }
+            }
+          } catch (e) {
+            console.log(`❌ REPLY_SEARCH: "${selector}" failed - ${(e as Error).message.substring(0, 50)}`);
+            continue;
           }
-        } catch (e) {
-          console.log(`❌ REPLY_SEARCH: "${selector}" failed - ${(e as Error).message.substring(0, 50)}`);
-          continue;
         }
       }
       
       if (!replyClicked) {
+        // Last resort: try clicking anywhere on the tweet area
+        console.log('🔄 REPLY_FALLBACK: Trying tweet area click + keyboard shortcut...');
+        try {
+          await this.page.locator('article').first().click();
+          await this.page.waitForTimeout(1000);
+          await this.page.keyboard.press('r');
+          await this.page.waitForTimeout(2000);
+          
+          const composerOpened = await this.checkForComposer();
+          if (composerOpened) {
+            console.log('✅ REPLY_FALLBACK: Fallback method worked!');
+            replyClicked = true;
+          }
+        } catch (e) {
+          console.log('❌ REPLY_FALLBACK: Fallback method failed');
+        }
+      }
+      
+      if (!replyClicked) {
+        // Take screenshot for debugging
+        try {
+          await this.page.screenshot({ 
+            path: `/app/data/reply_fail_${Date.now()}.png`,
+            fullPage: false 
+          });
+          console.log('📸 DEBUG: Reply failure screenshot saved');
+        } catch (e) {}
+        
         return {
           success: false,
-          error: 'Could not find or click reply button'
+          error: 'Could not find or click reply button with any method'
         };
       }
       
       // Now use the standard posting logic
+      console.log('📝 REPLY_POSTING: Reply composer opened, posting content...');
       return await this.findAndPost(content);
       
     } catch (error: any) {
+      console.log(`❌ REPLY_ERROR: ${error.message}`);
       return {
         success: false,
         error: `Reply failed: ${error.message}`
