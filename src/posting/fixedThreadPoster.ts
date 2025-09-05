@@ -14,6 +14,7 @@ export interface FixedThreadResult {
   replyIds?: string[];
   error?: string;
   totalTweetsPosted: number;
+  totalTweets?: number; // Legacy compatibility
 }
 
 export class FixedThreadPoster {

@@ -467,7 +467,7 @@ export class AdvancedDatabaseManager extends EventEmitter {
       try {
         connection = await this.supabasePool.acquire();
       } catch (error) {
-        console.warn('⚠️ Pool acquire failed, using direct connection:', error.message);
+        console.warn('⚠️ Pool acquire failed, using direct connection:', (error as Error).message);
         connection = createClient(this.config.supabase.url, this.config.supabase.serviceRoleKey);
       }
       
