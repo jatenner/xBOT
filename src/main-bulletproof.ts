@@ -201,6 +201,23 @@ class BulletproofMainSystem {
         
         // Store for performance tracking
         await this.storePostForTracking(postResult.tweetId!, result.metadata, optimalConfig);
+        
+        // 🚨 START REAL METRICS COLLECTION FOR NEW POSTS
+        const { realMetricsCollector } = await import('./metrics/realTwitterMetricsCollector');
+        
+        realMetricsCollector.trackTweet({
+          tweetId: postResult.tweetId,
+          postedAt: new Date(),
+          content: typeof result.content === 'string' ? result.content : 
+                   Array.isArray(result.threadParts) ? result.threadParts.join(' ') : result.content,
+          contentLength: typeof result.content === 'string' ? result.content.length : 
+                        Array.isArray(result.threadParts) ? result.threadParts.join(' ').length : 0,
+          persona: result.metadata.persona,
+          emotion: result.metadata.emotion,
+          framework: result.metadata.framework
+        });
+        
+        console.log(`📊 REAL_METRICS_STARTED: ${postResult.tweetId} queued for real engagement tracking`);
       } else {
         console.error(`❌ ENHANCED_POST_FAILED: ${postResult.error}`);
       }
@@ -242,39 +259,29 @@ class BulletproofMainSystem {
       const recentPosts = await this.getRecentPosts(20);
       
       for (const post of recentPosts) {
-        // Fetch latest analytics for each post (mock for now)
-        const analytics = {
-          likes: Math.floor(Math.random() * 50),
-          retweets: Math.floor(Math.random() * 20),
-          replies: Math.floor(Math.random() * 15),
-          impressions: Math.floor(Math.random() * 1000) + 100,
-          follows: Math.floor(Math.random() * 5)
-        };
+        // 🚨 REPLACED FAKE DATA WITH REAL METRICS COLLECTION
+        // Start real metrics tracking for this tweet (no more fake data!)
+        const { realMetricsCollector } = await import('./metrics/realTwitterMetricsCollector');
         
-        if (analytics) {
-          // Calculate engagement rate
-          const engagementRate = analytics.impressions > 0 ? 
-            (analytics.likes + analytics.retweets + analytics.replies) / analytics.impressions : 0;
-
-          // Record performance for prompt evolution
-          await this.promptEvolution.recordPromptPerformance({
-            postId: post.tweetId,
-            promptVersion: post.promptVersion || 'unknown',
-            persona: post.persona || 'unknown',
-            emotion: post.emotion || 'unknown',
-            framework: post.framework || 'unknown',
-            likes: analytics.likes,
-            retweets: analytics.retweets,
-            replies: analytics.replies,
-            impressions: analytics.impressions,
-            follows: analytics.follows || 0,
-            engagementRate,
-            viralScore: post.viralScore || 0,
-            hoursAfterPost: Math.round((Date.now() - new Date(post.createdAt).getTime()) / (1000 * 60 * 60))
-          });
-
-          console.log(`📊 TRACKED_PERFORMANCE: ${post.tweetId} - ${(engagementRate * 100).toFixed(2)}% engagement`);
-        }
+        realMetricsCollector.trackTweet({
+          tweetId: post.tweetId,
+          postedAt: new Date(post.createdAt),
+          content: post.content,
+          contentLength: post.content.length,
+          persona: post.persona,
+          emotion: post.emotion,
+          framework: post.framework
+        });
+        
+        console.log(`📊 REAL_TRACKING: Started real metrics collection for ${post.tweetId}`);
+        
+        // ❌ NO MORE FAKE ANALYTICS - Real data will be collected via browser automation
+        const analytics = null; // Disable fake data generation completely
+        
+        // ✅ REAL DATA PROCESSING ONLY
+        // Real metrics will be processed automatically by realMetricsCollector
+        // and fed to AI learning systems when collected from Twitter
+        console.log(`✅ REAL_METRICS_QUEUED: ${post.tweetId} scheduled for authentic data collection`);
       }
 
       // Log bandit performance
