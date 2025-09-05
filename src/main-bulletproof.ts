@@ -244,6 +244,19 @@ class BulletproofMainSystem {
         });
         
         console.log(`📊 REAL_METRICS_STARTED: ${postResult.tweetId} queued for real engagement tracking`);
+        
+        // 🚨 SYNCHRONIZED CONTENT STORAGE: Store across all diversity tracking systems
+        try {
+          const { emergencyDiversityFix } = await import('./content/emergencyContentDiversityFix');
+          const contentToStore = typeof result.content === 'string' ? result.content : 
+                                Array.isArray(result.threadParts) ? result.threadParts.join('\n\n') : result.content;
+          
+          await emergencyDiversityFix.storeSynchronizedContent(contentToStore, postResult.tweetId!);
+          console.log('✅ SYNCHRONIZED_STORAGE: Content stored across all diversity systems');
+        } catch (syncError: any) {
+          console.warn('⚠️ SYNC_STORAGE_FAILED:', syncError.message);
+        }
+        
       } else {
         console.error(`❌ ENHANCED_POST_FAILED: ${postResult.error}`);
       }

@@ -55,6 +55,18 @@ export class EnhancedViralOrchestrator {
     console.log(`🚀 ENHANCED_VIRAL: Generating bulletproof ${format} content...`);
 
     try {
+      // 🚨 EMERGENCY DIVERSITY CHECK FIRST
+      const { emergencyDiversityFix } = await import('../content/emergencyContentDiversityFix');
+      
+      // For now, do a preliminary check with empty content to get alternative topics
+      const preliminaryCheck = await emergencyDiversityFix.emergencyDiversityCheck('');
+      
+      // If topic is provided and it's been overused, switch to alternative
+      if (topic && preliminaryCheck.alternativeTopic && preliminaryCheck.diversityScore < 30) {
+        console.log(`🔄 DIVERSITY_OVERRIDE: Switching from "${topic}" to "${preliminaryCheck.alternativeTopic}" for variety`);
+        topic = preliminaryCheck.alternativeTopic;
+      }
+
       // Step 1: Get anti-repetition context
       const recentContent = await this.getAntiRepetitionContext();
       
@@ -97,10 +109,30 @@ export class EnhancedViralOrchestrator {
       // Step 7: Process and validate result
       const processedResult = this.processGenerationResult(result, format, persona, emotion);
       
-      // Step 8: Store for anti-repetition
+      // 🚨 EMERGENCY FINAL DIVERSITY CHECK
+      const finalContent = typeof processedResult.content === 'string' ? 
+        processedResult.content : 
+        (processedResult.threadParts?.join(' ') || processedResult.content);
+      
+      const finalDiversityCheck = await emergencyDiversityFix.emergencyDiversityCheck(finalContent);
+      
+      if (finalDiversityCheck.shouldBlock) {
+        console.error(`🚨 CONTENT_BLOCKED: ${finalDiversityCheck.reason}`);
+        console.log(`🔄 REGENERATING: Using alternative topic "${finalDiversityCheck.alternativeTopic}"`);
+        
+        // Regenerate with alternative topic
+        return await this.generateBulletproofContent(format, finalDiversityCheck.alternativeTopic);
+      }
+      
+      // Step 8: Store for anti-repetition across ALL systems
       await this.storeContentForAntiRepetition(processedResult);
+      
+      // Store in synchronized system for future diversity checks
+      const tweetId = `generated_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      await emergencyDiversityFix.storeSynchronizedContent(finalContent, tweetId);
 
       console.log(`✅ ENHANCED_VIRAL_SUCCESS: ${format} generated with ${processedResult.metadata.viralScore}/100 viral score`);
+      console.log(`📊 DIVERSITY_SCORE: ${finalDiversityCheck.diversityScore}/100`);
       return processedResult;
 
     } catch (error: any) {
