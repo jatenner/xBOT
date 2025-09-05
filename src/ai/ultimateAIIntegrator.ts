@@ -20,7 +20,7 @@ export interface UltimateAIResponse {
   content: string;
   threadParts?: string[];
   metadata: {
-    aiSystemsUsed: string[];
+    aiSystemsUsed: any[];
     sophisticationScore: number;
     viralProbability: number;
     emotionalImpact: number;
@@ -48,7 +48,7 @@ export class UltimateAIIntegrator {
   constructor() {
     this.hyperAI = HyperIntelligentOrchestrator.getInstance();
     this.nextGenAI = NextGenAIUpgrade.getInstance();
-    this.viralAI = new ViralContentOrchestrator();
+    this.viralAI = new ViralContentOrchestrator(process.env.OPENAI_API_KEY!);
     console.log('🚀 ULTIMATE_AI_INTEGRATOR: All systems initialized and ready');
   }
 
@@ -91,7 +91,7 @@ export class UltimateAIIntegrator {
           request.topic,
           request.format
         );
-        aiSystemsUsed.push(`NextGen-${result.aiLevel}`);
+        aiSystemsUsed.push('NextGen-' + result.aiLevel as any);
       } else {
         // Fallback to enhanced viral orchestrator
         const viralResult = await this.viralAI.generateViralContent(request.format || 'single');
@@ -100,15 +100,15 @@ export class UltimateAIIntegrator {
           threadParts: viralResult.threadParts,
           metadata: {
             ...viralResult.metadata,
-            aiSystemsUsed: ['ViralOrchestrator-Enhanced']
+            aiSystemsUsed: ['ViralOrchestrator']
           }
         };
-        aiSystemsUsed.push('ViralOrchestrator-Enhanced');
+        aiSystemsUsed.push('ViralOrchestrator' as any);
       }
 
       // 🧠 Step 3: Quality Enhancement & Validation
       const enhancedResult = await this.applyQualityEnhancements(result, request);
-      aiSystemsUsed.push('QualityEnhancer');
+      aiSystemsUsed.push('QualityEnhancer' as any);
 
       // 📊 Step 4: Performance Prediction & Learning Data
       const performanceData = await this.generatePerformanceMetrics(enhancedResult, request);
