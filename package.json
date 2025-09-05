@@ -5,7 +5,7 @@
   "main": "dist/main.js",
   "scripts": {
     "prestart": "node scripts/migrate.js",
-    "start": "node dist/main.js",
+    "start": "node dist/main-bulletproof.js",
     "start:bulletproof": "node dist/main-bulletproof.js",
     "postinstall": "echo 'Installation complete'",
     "build": "tsc -p .",
