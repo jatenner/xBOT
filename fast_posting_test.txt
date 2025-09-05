@@ -243,3 +243,96 @@ SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /Users/jonahtenner/xBOT/da
 Call log:
   [2m- waiting for locator('article[data-testid="tweet"]') to be visible[22m
 
+🔄 BULLETPROOF_MAIN_LOOP: Starting cycle...
+📝 BULLETPROOF_POSTING: Generating ORIGINAL content (threads/singles)...
+🎯 IMPORTANT: This is an ORIGINAL post, NOT a reply to someone
+🎰 BANDIT_SELECTION: Choosing optimal config for thread...
+📊 BANDIT_UPDATE: Updated with 100 recent posts
+🎯 EXPLOITATION: Selected Dr. Sarah Kim (avg reward: 0.096)
+🎯 EXPLOITATION: Selected Surprise (avg reward: 0.047)
+🎯 EXPLOITATION: Selected Contrarian Revelation (avg reward: 0.124)
+🔍 EXPLORATION: Random selection for temperature
+🎯 BANDIT_SELECTED: Dr. Sarah Kim + Surprise + Contrarian Revelation (temp: 0.6)
+📊 CONFIDENCE: 38.1%
+🎯 OPTIMAL_CONFIG: Dr. Sarah Kim + Surprise + Contrarian Revelation
+🎯 POSTING_STRATEGY: Selected thread format for original post (not reply)
+🚀 ENHANCED_VIRAL: Generating bulletproof thread content...
+🔍 DIVERSITY_ANALYSIS: Analyzing last 7 days of content...
+📊 DIVERSITY_SCORE: 0/100
+🔁 OVERUSED_TOPICS: protein, studies, reveal, this, cognitive, optimize, microbiome, trend;, health, researchers
+🎯 RECOMMENDED_FOCUS: exercise_science, circadian_biology, gut_microbiome
+🔍 DIVERSITY_ANALYSIS: Analyzing last 7 days of content...
+📊 DIVERSITY_SCORE: 0/100
+🔁 OVERUSED_TOPICS: protein, studies, reveal, this, cognitive, optimize, microbiome, trend;, health, researchers
+🎯 RECOMMENDED_FOCUS: exercise_science, circadian_biology, gut_microbiome
+🎭 PERSONA_ROTATION: Now using Dr. Sarah Kim
+🎭 PERSONA_SELECTED: Dr. Sarah Kim
+🧠 EMOTION_SELECTED: Curiosity
+🛡️ BULLETPROOF_GENERATION: thread with strict validation
+🎯 Generating with bulletproof prompts...
+⚠️ VALIDATION_FAILED: Tweet 1 contains banned chars (hashtags/quotes) | Tweet 4 contains banned chars (hashtags/quotes)
+🔄 Attempting repair generation...
+❌ BULLETPROOF_FAILED: Tweet 3 contains banned chars (hashtags/quotes) | Tweet 5 contains banned chars (hashtags/quotes)
+📝 LOGGED_CONTENT: topic="longevity", brands=[]
+✅ ENHANCED_VIRAL_SUCCESS: thread generated with 95/100 viral score
+📝 GENERATED_CONTENT: thread with 95/100 viral score
+🎭 CONTENT_METADATA: Dr. Sarah Kim | Curiosity | future-focused insights
+⚡ FAST_THREAD: Posting 5-part thread with ultra-fast system
+⚡ FAST_THREAD: Starting ultra-fast thread (5 tweets)
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /Users/jonahtenner/xBOT/data/twitter_session.json
+🧵 FAST_THREAD: Using native thread creation
+⚠️ FAST_THREAD: Failed to add tweet 2, continuing...
+🚀 FAST_THREAD: Posting thread...
+✅ FAST_THREAD: Thread posted successfully
+✅ ENHANCED_POST_SUCCESS: thread posted with ID thread_1757108723367_jnsnqoclj
+💾 STORED_FOR_TRACKING: thread_1757108723367_jnsnqoclj with Dr. Sarah Kim/Surprise/Contrarian Revelation
+📊 REAL_METRICS: Starting real tracking for thread_1757108723367_jnsnqoclj
+✅ REAL_TRACKING: Scheduled 5 real metric collections for thread_1757108723367_jnsnqoclj
+📊 REAL_METRICS_STARTED: thread_1757108723367_jnsnqoclj queued for real engagement tracking
+💬 BULLETPROOF_REPLIES: Executing strategic engagement...
+🎯 IMPORTANT: These are REPLIES to other people, NOT original posts
+💬 BULLETPROOF_REPLIES: Executing contextual strategic replies...
+💬 CONTEXTUAL_REPLIES: Finding health tweets for single contextual responses...
+🎯 TARGET: Analyzing @drmarkhyman (functional medicine)
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /Users/jonahtenner/xBOT/data/twitter_session.json
+⚠️ No suitable tweets found for contextual replies
+✅ BULLETPROOF_REPLIES: Contextual reply posted (single tweet, not thread)
+📊 BULLETPROOF_STATUS: Cycle completed successfully
+🏥 SYSTEM_HEALTH: Running comprehensive health check...
+🔍 SYSTEM_HEALTH_ANALYSIS: Analyzing failure patterns...
+📊 DB_QUERY: Executing get_recent_failures
+✅ DB_SUCCESS: get_recent_failures completed in 168ms
+📊 SYSTEM_HEALTH: 20% overall health
+🚨 CRITICAL_SYSTEMS: ViralContentOrchestrator, BulletproofThreadGeneration
+⚠️ EMERGENCY_OVERUSE: ViralContentOrchestrator, BulletproofThreadGeneration
+🔍 DATA_ANALYSIS: Starting comprehensive system analysis...
+📊 DB_QUERY: Executing extract_system_metrics
+📊 DB_QUERY: Executing extract_engagement_data
+📊 DB_QUERY: Executing extract_failure_patterns
+📊 DB_QUERY: Executing extract_performance_data
+✅ DB_SUCCESS: extract_engagement_data completed in 87ms
+✅ DB_SUCCESS: extract_performance_data completed in 158ms
+✅ DB_SUCCESS: extract_failure_patterns completed in 208ms
+✅ DB_SUCCESS: extract_system_metrics completed in 238ms
+📊 ANALYSIS_COMPLETE: 0 insights, 0 predictions
+🎯 HEALTH_SCORE: 50/100
+📊 DB_QUERY: Executing extract_system_metrics
+✅ DB_SUCCESS: extract_system_metrics completed in 127ms
+📊 SYSTEM_HEALTH_SCORE: 20/100
+🚨 CRITICAL_SYSTEMS: 2
+⚠️ EMERGENCY_OVERUSE: 2
+🔄 TOTAL_EMERGENCY_USES: 0
+🚨 CRITICAL_HEALTH_ALERT: System health below 50%
+🔧 TOP_RECOMMENDATIONS: [
+  '🚨 IMMEDIATE: Fix 2 critical systems: ViralContentOrchestrator, BulletproofThreadGeneration',
+  "🔧 SYSTEMATIC FIX: Address 'verification_test' affecting 2 systems",
+  "🔧 SYSTEMATIC FIX: Address 'test_fix_verification' affecting 1 systems"
+]
+📊 DB_QUERY: Executing record_system_failure
+✅ DB_SUCCESS: record_system_failure completed in 78ms
+🔍 FAILURE_RECORDED: SystemHealthMonitoring - primary_failure
+📊 REAL_COLLECTION: Collecting collection_1 metrics for thread_1757108723367_jnsnqoclj
+❌ REAL_METRICS_ERROR: thread_1757108723367_jnsnqoclj (collection_1): page.waitForSelector: Timeout 15000ms exceeded.
+Call log:
+  [2m- waiting for locator('article[data-testid="tweet"]') to be visible[22m
+
