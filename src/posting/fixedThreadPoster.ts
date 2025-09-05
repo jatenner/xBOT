@@ -7,6 +7,7 @@
 
 import { BrowserManager } from './BrowserManager';
 import { TwitterComposer } from './TwitterComposer';
+import { BulletproofTwitterComposer } from './bulletproofTwitterComposer';
 
 export interface FixedThreadResult {
   success: boolean;
@@ -73,13 +74,13 @@ export class FixedThreadPoster {
 
     try {
       return await BrowserManager.withPage(async (page) => {
-        const composer = new TwitterComposer(page);
+        const bulletproofComposer = new BulletproofTwitterComposer(page);
         
-        // Step 1: Post root tweet
-        console.log('🚀 STEP_1: Posting root tweet...');
+        // Step 1: Post root tweet with bulletproof composer
+        console.log('🚀 STEP_1: Posting root tweet with bulletproof composer...');
         console.log(`📝 ROOT: "${tweets[0].substring(0, 80)}..."`);
         
-        const rootResult = await composer.postSingleTweet(tweets[0]);
+        const rootResult = await bulletproofComposer.postTweet(tweets[0]);
         
         if (!rootResult.success || !rootResult.tweetId) {
           console.error(`❌ ROOT_FAILED: ${rootResult.error}`);
@@ -113,7 +114,7 @@ export class FixedThreadPoster {
           
           console.log(`🔗 REPLY_TARGET: Replying to ${replyToTweetId} (previous in chain)`);
           
-          const replyResult = await composer.postReply(tweets[i], replyToTweetId);
+          const replyResult = await bulletproofComposer.postReply(tweets[i], replyToTweetId);
           
           if (replyResult.success && replyResult.tweetId) {
             // 🔧 CRITICAL: Update currentTweetId to the new reply for next iteration
@@ -158,8 +159,8 @@ export class FixedThreadPoster {
   private async postSingleTweet(content: string): Promise<FixedThreadResult> {
     try {
       return await BrowserManager.withPage(async (page) => {
-        const composer = new TwitterComposer(page);
-        const result = await composer.postSingleTweet(content);
+        const bulletproofComposer = new BulletproofTwitterComposer(page);
+        const result = await bulletproofComposer.postTweet(content);
         
         return {
           success: result.success,
