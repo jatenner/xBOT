@@ -5,8 +5,8 @@
  * The issue: reply chains are broken, causing individual tweets instead of threads.
  */
 
-import { BrowserManager } from '../browser/browserManager';
-import { TwitterComposer } from './twitterComposer';
+import { BrowserManager } from './BrowserManager';
+import { TwitterComposer } from './TwitterComposer';
 
 export interface FixedThreadResult {
   success: boolean;
@@ -18,6 +18,9 @@ export interface FixedThreadResult {
 
 export class FixedThreadPoster {
   private static instance: FixedThreadPoster;
+
+  // Add missing validateTweets property that other systems expect
+  public validateTweets: boolean = true;
 
   public static getInstance(): FixedThreadPoster {
     if (!FixedThreadPoster.instance) {
