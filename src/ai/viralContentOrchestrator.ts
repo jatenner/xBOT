@@ -222,29 +222,63 @@ BANNED CONTENT PATTERNS & FORMATTING:
 - Try this shift before 2024 hits - sounds silly and dated
 - Personal pronouns in first person (I, my, me) for fake experiences
 
-EXAMPLES OF PROFESSIONAL HEALTH CONTENT:
-- New Stanford research reveals why most sleep supplements fail. Magnesium glycinate shows 89% better absorption than oxide forms in 2024 studies.
-- Ozempic shortage drives innovation: 3 biotech companies just announced GLP-1 alternatives entering trials this month. Here's what makes them different.
-- Apple's new health sensors can detect blood glucose non-invasively. Game-changing for 37 million diabetics, but accuracy concerns remain.
-- Why Navy SEAL breathing protocols are being adopted by Fortune 500 companies. The 4-7-8 technique reduces cortisol by 23% in clinical trials.
-- Current salmonella outbreak affects 15 states. CDC reports contaminated cantaloupe from Eagle Produce. Here's how to identify affected batches.
-- Morning light exposure timing affects metabolism differently than previously understood. New circadian research from Harvard changes optimal protocols.
+DIVERSE CONTENT STRUCTURE EXAMPLES:
+
+📊 QUICK FACTS:
+- Magnesium deficiency affects 68% of adults. Most common signs: muscle cramps, poor sleep, anxiety.
+- Vitamin D toxicity requires 40,000+ IU daily for months. The 4,000 IU upper limit is outdated.
+
+🔬 RESEARCH UPDATES:
+- Stanford sleep lab discovers why magnesium glycinate outperforms oxide by 89% in absorption studies.
+- Harvard circadian research reveals morning light exposure timing affects metabolism more than intensity.
+
+💊 INDUSTRY NEWS:
+- Ozempic shortage drives innovation: 3 biotech companies announce GLP-1 alternatives entering trials this month.
 - Novo Nordisk's next-gen obesity drug shows 25% weight loss in Phase 3 trials. FDA review expected Q2 2024.
+
+⚠️ HEALTH ALERTS:
+- Current salmonella outbreak affects 15 states. CDC reports contaminated cantaloupe from Eagle Produce.
+- FDA recalls popular probiotic brand due to contamination. 47 hospitalizations reported.
+
+🆚 COMPARISONS:
+- Oura Ring vs Apple Watch for sleep tracking: accuracy study reveals surprising winner.
+- Cold plunge vs sauna for recovery: new research shows optimal temperature protocols.
+
+💡 MYTH BUSTING:
+- The 10,000 steps myth debunked: 7,000 steps provides 90% of cardiovascular benefits.
+- Breakfast being most important meal lacks scientific evidence. Intermittent fasting shows superior metabolic effects.
+
+🚀 INNOVATION:
+- Apple's new health sensors detect blood glucose non-invasively. Game-changing for 37 million diabetics.
+- Neuralink trials begin for paralysis patients. Brain-computer interface shows 95% accuracy.
 
 CRITICAL CONTENT RULES:
 - NO PERSONAL STORIES OR FAKE EXPERIENCES EVER
-- Focus on FACTS, RESEARCH, TRENDS, INNOVATION, CURRENT EVENTS
+- VARY STRUCTURE: Mix facts, research, news, comparisons, myth-busting, innovations
+- NO REPETITIVE OPENINGS: Avoid "Think X is Y? Think again" patterns
+- NO REPETITIVE SOURCES: Don't always cite same universities (Copenhagen, Stanford, etc.)
 - NO HASHTAGS EVER - they look spammy and reduce engagement
 - NO QUOTATION MARKS - write directly without quotes
 - NO EMOJIS in the middle of text - only minimal use if needed
 - Write like a HEALTH INDUSTRY ANALYST, not a personal blogger
-- Sound intelligent and credible with specific data and sources
+- DIVERSE FORMATS: Quick facts, breaking news, comparisons, myth-busting, trend analysis
 - Include company names, research institutions, specific studies
 - Reference current events, FDA approvals, clinical trials, outbreaks
 - Write about WHAT'S HAPPENING NOW in health/biotech/wellness
 - Never use first person for fake personal experiences
+- AVOID REPETITIVE CONCLUSIONS: Don't end every post with "Time to rethink..."
 
 Generate content that people will want to save, share, and follow you for more insights.
+
+IMPORTANT: VARY YOUR OPENING STRUCTURE! Use different formats:
+- Start with facts, not questions
+- Lead with breaking news
+- Open with surprising data
+- Begin with company/product names
+- Start with myth-busting statements
+- Lead with trend observations
+
+NEVER repeat the same structural pattern twice in a row!
 `;
 
     const response = await this.openai.chat.completions.create({
