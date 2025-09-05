@@ -86,12 +86,13 @@ class BulletproofMainSystem {
       const timeSinceLastPost = now - this.lastPostTime;
       const timeSinceLastReply = now - this.lastReplyTime;
 
-      // POSTING (every 15-45 minutes during aggressive learning)
-      const minPostInterval = 15 * 60 * 1000; // 15 minutes
-      const maxPostInterval = 45 * 60 * 1000; // 45 minutes
+      // ORIGINAL POSTS (every 20-40 minutes - higher quality, more engagement focused)
+      const minPostInterval = 20 * 60 * 1000; // 20 minutes
+      const maxPostInterval = 40 * 60 * 1000; // 40 minutes
       
       if (timeSinceLastPost > minPostInterval) {
-        console.log('📝 BULLETPROOF_POSTING: Generating content...');
+        console.log('📝 BULLETPROOF_POSTING: Generating ORIGINAL content (threads/singles)...');
+        console.log('🎯 IMPORTANT: This is an ORIGINAL post, NOT a reply to someone');
         await this.executeEnhancedPosting();
         this.lastPostTime = now;
       } else {
@@ -99,11 +100,12 @@ class BulletproofMainSystem {
         console.log(`⏳ POSTING_COOLDOWN: ${waitMinutes} minutes remaining`);
       }
 
-      // STRATEGIC REPLIES (every 5-10 minutes)
-      const minReplyInterval = 5 * 60 * 1000; // 5 minutes
+      // STRATEGIC REPLIES (every 8-12 minutes - balanced with original posts)
+      const minReplyInterval = 8 * 60 * 1000; // 8 minutes
       
       if (timeSinceLastReply > minReplyInterval) {
         console.log('💬 BULLETPROOF_REPLIES: Executing strategic engagement...');
+        console.log('🎯 IMPORTANT: These are REPLIES to other people, NOT original posts');
         await this.executeEnhancedReplies();
         this.lastReplyTime = now;
       } else {
@@ -128,8 +130,10 @@ class BulletproofMainSystem {
       const optimalConfig = await this.promptEvolution.selectOptimalConfig('thread');
       console.log(`🎯 OPTIMAL_CONFIG: ${optimalConfig.persona} + ${optimalConfig.emotion} + ${optimalConfig.framework}`);
 
-      // Decide format (80% threads, 20% single tweets during aggressive learning)
-      const format = Math.random() < 0.8 ? 'thread' : 'single';
+      // Decide format (60% threads, 40% single tweets for balanced engagement)
+      // Threads for education, singles for viral reach
+      const format = Math.random() < 0.6 ? 'thread' : 'single';
+      console.log(`🎯 POSTING_STRATEGY: Selected ${format} format for original post (not reply)`);
       
       // Generate bulletproof content
       const result = await this.viralOrchestrator.generateBulletproofContent(format);
