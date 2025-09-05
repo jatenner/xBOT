@@ -330,8 +330,20 @@ class BrowserManager {
    */
   static async withPage<T>(callback: (page: any) => Promise<T>): Promise<T> {
     const instance = browserManager;
-    const page = await instance.getSharedPage();
-    return await callback(page);
+    await instance.ensureBrowser();
+    
+    if (!instance.browser) {
+      throw new Error('Failed to ensure browser availability');
+    }
+    
+    const context = await instance.browser.newContext();
+    const page = await context.newPage();
+    
+    try {
+      return await callback(page);
+    } finally {
+      await context.close();
+    }
   }
 }
 
