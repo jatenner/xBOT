@@ -535,6 +535,8 @@ export function startHealthServer(): Promise<void> {
         uptime_seconds: Math.floor(uptime / 1000),
         timestamp: new Date().toISOString(),
         endpoints: {
+          dashboard: '/dashboard - 📊 Analytics Dashboard (WEB UI)',
+          metrics: '/api/metrics - 📈 Metrics API (JSON)',
           health: '/health - Railway health checks',
           status: '/status - Detailed bot status',
           environment: '/env - Environment variables check',
