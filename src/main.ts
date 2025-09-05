@@ -5,6 +5,7 @@ import { closeDatabaseConnections } from './db/index';
 import { AnalyticsScheduler } from './scheduler/analyticsScheduler';
 import { AIDrivenPostingSystem } from './core/aiDrivenPostingSystem';
 import { BulletproofMainSystem } from './main-bulletproof';
+import { SystemFixes } from './core/systemFixes';
 
 /**
  * SIMPLE THREAD POSTING LOOP - No bloat, just threads
@@ -327,7 +328,18 @@ async function main() {
   await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second delay
   
   try {
-    // Validate environment
+    // STEP 1: Initialize system fixes (circuit breaker, database migration, health monitoring)
+    console.log('🔧 SYSTEM_FIXES: Initializing comprehensive system repairs...');
+    const systemFixesResult = await SystemFixes.initializeAllFixes();
+    
+    if (!systemFixesResult.success) {
+      console.error('❌ System fixes failed:', systemFixesResult.message);
+      console.error('⚠️ Continuing with degraded functionality...');
+    } else {
+      console.log(`✅ System fixes complete - Health: ${systemFixesResult.healthScore}/100`);
+    }
+
+    // STEP 2: Validate environment
     console.log('🔍 Validating environment configuration...');
     const envValidation = validateEnvironment();
     

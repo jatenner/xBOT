@@ -9,7 +9,7 @@
  * 5. Enable autonomous system optimization
  */
 
-import { AdvancedDatabaseManager } from '../lib/advancedDatabaseManager';
+import { SimpleDatabaseManager } from '../lib/simpleDatabaseManager';
 
 export interface SystemFailureEvent {
   timestamp: Date;
@@ -44,11 +44,11 @@ export interface SystemHealthReport {
 
 export class SystemFailureAuditor {
   private static instance: SystemFailureAuditor;
-  private db: AdvancedDatabaseManager;
+  private db: SimpleDatabaseManager;
   private failureEvents: SystemFailureEvent[] = [];
 
   constructor() {
-    this.db = AdvancedDatabaseManager.getInstance();
+    this.db = SimpleDatabaseManager.getInstance();
   }
 
   public static getInstance(): SystemFailureAuditor {
