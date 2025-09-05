@@ -100,31 +100,81 @@ class BulletproofMainSystem {
       const timeSinceLastPost = now - this.lastPostTime;
       const timeSinceLastReply = now - this.lastReplyTime;
 
-      // ORIGINAL POSTS (every 20-40 minutes - higher quality, more engagement focused)
-      const minPostInterval = 20 * 60 * 1000; // 20 minutes
-      const maxPostInterval = 40 * 60 * 1000; // 40 minutes
+      // 🚀 INTELLIGENT FREQUENCY OPTIMIZATION: AI-driven timing for maximum engagement
+      const { intelligentFrequencyOptimizer } = await import('./intelligence/intelligentFrequencyOptimizer');
+      const timingStrategy = await intelligentFrequencyOptimizer.getOptimalTimingStrategy();
       
-      if (timeSinceLastPost > minPostInterval) {
+      const minPostInterval = 20 * 60 * 1000; // 20 minutes minimum
+      const timeUntilOptimal = timingStrategy.next_post_time.getTime() - now;
+      
+      // Post if we're in optimal window OR it's been too long since last post
+      const inOptimalWindow = timeUntilOptimal <= 10 * 60 * 1000; // Within 10 minutes of optimal
+      const shouldPostNow = (timeSinceLastPost > minPostInterval) && 
+                            (inOptimalWindow || timeSinceLastPost > 120 * 60 * 1000); // Force post after 2 hours
+      
+      if (shouldPostNow) {
         console.log('📝 BULLETPROOF_POSTING: Generating ORIGINAL content (threads/singles)...');
         console.log('🎯 IMPORTANT: This is an ORIGINAL post, NOT a reply to someone');
+        console.log(`⏰ OPTIMAL_TIMING: ${timingStrategy.confidence_score}% confidence - ${timingStrategy.reasoning.substring(0, 80)}...`);
+        console.log(`📊 PREDICTION: ${timingStrategy.performance_prediction.expected_likes} likes, ${(timingStrategy.performance_prediction.expected_engagement_rate * 100).toFixed(1)}% engagement`);
+        console.log(`🎯 FREQUENCY_ACTION: ${timingStrategy.frequency_adjustment.toUpperCase()} posting frequency`);
+        
         await this.executeEnhancedPosting();
         this.lastPostTime = now;
       } else {
-        const waitMinutes = Math.round((minPostInterval - timeSinceLastPost) / 60000);
-        console.log(`⏳ POSTING_COOLDOWN: ${waitMinutes} minutes remaining`);
+        const waitMinutes = Math.round(Math.max(minPostInterval - timeSinceLastPost, timeUntilOptimal) / 60000);
+        console.log(`⏰ INTELLIGENT_TIMING: Waiting ${waitMinutes} minutes for optimal posting window`);
+        console.log(`🎯 NEXT_OPTIMAL: ${timingStrategy.next_post_time.toLocaleTimeString()} (confidence: ${timingStrategy.confidence_score}%)`);
       }
 
       // STRATEGIC REPLIES (every 8-12 minutes - balanced with original posts)
       const minReplyInterval = 8 * 60 * 1000; // 8 minutes
       
       if (timeSinceLastReply > minReplyInterval) {
-        console.log('💬 BULLETPROOF_REPLIES: Executing strategic engagement...');
-        console.log('🎯 IMPORTANT: These are REPLIES to other people, NOT original posts');
-        await this.executeEnhancedReplies();
+        console.log('💬 STRATEGIC_ENGAGEMENT: Executing AI-driven follower growth engagement...');
+        console.log('🎯 IMPORTANT: These are strategic replies to health influencers for follower growth');
+        
+        // 🚀 NEW: Strategic engagement for follower growth
+        const { strategicEngagementEngine } = await import('./engagement/strategicEngagementEngine');
+        const engagementResults = await strategicEngagementEngine.executeStrategicEngagement();
+        
+        console.log(`📊 ENGAGEMENT_RESULTS: ${engagementResults.filter(r => r.success).length}/${engagementResults.length} successful strategic engagements`);
+        
+        if (engagementResults.length > 0) {
+          const avgImpact = engagementResults.reduce((sum, r) => sum + r.action.expected_follower_impact, 0) / engagementResults.length;
+          console.log(`📈 FOLLOWER_IMPACT: ${(avgImpact * 100).toFixed(1)}% average follower conversion probability`);
+        }
+        
+        // Fallback to traditional replies if no strategic engagements
+        if (engagementResults.length === 0) {
+          await this.executeEnhancedReplies();
+        }
+        
         this.lastReplyTime = now;
       } else {
         const waitMinutes = Math.round((minReplyInterval - timeSinceLastReply) / 60000);
-        console.log(`⏳ REPLY_COOLDOWN: ${waitMinutes} minutes remaining`);
+        console.log(`⏳ ENGAGEMENT_COOLDOWN: ${waitMinutes} minutes remaining before next strategic engagement`);
+      }
+
+      // 🔍 COMPETITOR INTELLIGENCE: Get strategic insights every few cycles
+      if (Math.random() < 0.3) { // 30% chance per cycle to avoid overloading
+        try {
+          const { competitorIntelligenceMonitor } = await import('./intelligence/competitorIntelligenceMonitor');
+          const recommendations = await competitorIntelligenceMonitor.getActionableRecommendations();
+          
+          if (recommendations.urgent_opportunities.length > 0) {
+            console.log('🚨 URGENT_OPPORTUNITIES:');
+            recommendations.urgent_opportunities.forEach(opp => console.log(opp));
+          }
+          
+          if (recommendations.content_suggestions.length > 0) {
+            console.log('💡 CONTENT_GAPS:');
+            recommendations.content_suggestions.forEach(gap => console.log(gap));
+          }
+          
+        } catch (compError: any) {
+          console.warn('⚠️ COMPETITOR_INTELLIGENCE_FAILED:', compError.message);
+        }
       }
 
       // SYSTEM STATUS
@@ -255,6 +305,30 @@ class BulletproofMainSystem {
           console.log('✅ SYNCHRONIZED_STORAGE: Content stored across all diversity systems');
         } catch (syncError: any) {
           console.warn('⚠️ SYNC_STORAGE_FAILED:', syncError.message);
+        }
+        
+        // 📈 FOLLOWER ATTRIBUTION: Track this content for follower growth correlation
+        try {
+          const { followerAttributionTracker } = await import('./analytics/followerAttributionTracker');
+          const contentType = format === 'thread' ? 'thread' : 'tweet';
+          const contentForTracking = typeof result.content === 'string' ? result.content : 
+                                   Array.isArray(result.threadParts) ? result.threadParts.join(' ') : result.content;
+          
+          await followerAttributionTracker.trackPostToFollowerAttribution(
+            postResult.tweetId!,
+            contentType,
+            contentForTracking,
+            {
+              likes: 0, // Will be updated by real metrics collection
+              retweets: 0,
+              replies: 0,
+              impressions: 0
+            }
+          );
+          
+          console.log('📈 ATTRIBUTION_TRACKING: Post queued for follower growth analysis');
+        } catch (attributionError: any) {
+          console.warn('⚠️ ATTRIBUTION_TRACKING_FAILED:', attributionError.message);
         }
         
       } else {
