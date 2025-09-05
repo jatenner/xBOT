@@ -4,16 +4,16 @@
  * This module fixes the thread posting issue by ensuring threads are completed properly
  */
 
-import { SimpleThreadPoster } from '../posting/fixedThreadPoster';
+import { FixedThreadPoster } from '../posting/fixedThreadPoster';
 import { ViralContentOrchestrator } from '../ai/viralContentOrchestrator';
 
 export class EmergencyThreadFixer {
   private static instance: EmergencyThreadFixer;
-  private threadPoster: SimpleThreadPoster;
+  private threadPoster: FixedThreadPoster;
   private viralOrchestrator: ViralContentOrchestrator;
 
   private constructor() {
-    this.threadPoster = SimpleThreadPoster.getInstance();
+    this.threadPoster = FixedThreadPoster.getInstance();
     this.viralOrchestrator = new ViralContentOrchestrator(process.env.OPENAI_API_KEY!);
   }
 

@@ -324,6 +324,15 @@ class BrowserManager {
     }
     return { available: true };
   }
+
+  /**
+   * Static method to execute a function with a managed page
+   */
+  static async withPage<T>(callback: (page: any) => Promise<T>): Promise<T> {
+    const instance = browserManager;
+    const page = await instance.getSharedPage();
+    return await callback(page);
+  }
 }
 
 // Export both class and singleton instance
