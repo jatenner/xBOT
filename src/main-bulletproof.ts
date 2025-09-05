@@ -159,12 +159,17 @@ class BulletproofMainSystem {
           error: threadResult.error
         };
       } else if (format === 'thread' && result.content) {
-        // Emergency thread creation from single content
-        console.log('🚨 EMERGENCY_THREAD: Converting single content to thread parts');
+        // Emergency thread creation from single content ONLY when format is actually thread
+        console.log('🚨 EMERGENCY_THREAD: Bulletproof thread validation failed, converting single content to thread parts');
         postResult = await this.postingSystem.forceEmergencyThread();
+      } else if (format === 'single') {
+        // Single tweet posting - no thread indicators
+        console.log('📝 BULLETPROOF_SINGLE: Posting single tweet (no thread emojis)');
+        console.log('🚨 IMPORTANT: This should be a SINGLE tweet with NO thread indicators');
+        postResult = await this.postingSystem.createViralPost();
       } else {
-        // Single tweet posting
-        console.log('📝 BULLETPROOF_SINGLE: Posting single tweet');
+        // Fallback for any other case
+        console.log('⚠️ FALLBACK_SINGLE: Unknown format, posting as single tweet');
         postResult = await this.postingSystem.createViralPost();
       }
 

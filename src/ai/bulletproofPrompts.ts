@@ -72,13 +72,23 @@ REQUIRED ELEMENTS:
     if (intent === 'thread') {
       return `${baseRules}
 
-THREAD RULES (CRITICAL):
-- EXACTLY 5-9 tweets, each 180-240 characters
-- NO numbering (1/8, 2/8), NO emojis, NO hashtags, NO quotes
+THREAD RULES (STRICT VALIDATION - FAILURE = REJECTION):
+- FLEXIBLE length: 3-7 tweets (can be short or long based on topic)
+- Each tweet PRECISELY 180-240 characters (count spaces!)
+- ZERO hashtags (#), ZERO quotes (" or '), ZERO apostrophes in contractions
+- Write "do not" instead of "don't", "cannot" instead of "can't"
+- Every tweet ends with punctuation (. ! ?) - NO ellipses (...)
+- NO numbering (1/8, 2/8), NO emojis, NO markdown
 - Full coherence: ALL tweets about the SAME specific topic
 - Each tweet complete and valuable if seen in isolation
 - Build toward complete framework or system
 - First tweet must hook, subsequent tweets deliver value
+- CRITICAL: If posting a thread, ALWAYS post the full thread - never mention threads without posting them
+
+CHARACTER COUNT EXAMPLES:
+✅ VALID (190 chars): "Elite athletes avoid heavy cardio during peak training phases. Stanford research shows excessive cardio elevates cortisol by 300% and reduces testosterone for 48 hours after each session."
+❌ INVALID (170 chars): "Athletes avoid cardio. Bad for performance." (TOO SHORT)
+❌ INVALID (250 chars): "Elite professional athletes completely avoid heavy cardiovascular training during their peak performance training phases because extensive research shows it significantly impacts recovery." (TOO LONG)
 
 SCHEMA (return ONLY this JSON):
 {
@@ -240,8 +250,8 @@ Fix these issues and return valid JSON only.`;
         issues.push('Missing topic or tweets array');
       }
       
-      if (parsed.tweets?.length < 5 || parsed.tweets?.length > 9) {
-        issues.push(`Thread length ${parsed.tweets?.length || 0} not in range 5-9`);
+      if (parsed.tweets?.length < 3 || parsed.tweets?.length > 7) {
+        issues.push(`Thread length ${parsed.tweets?.length || 0} not in range 3-7`);
       }
 
       parsed.tweets?.forEach((tweet: any, idx: number) => {
