@@ -60,28 +60,31 @@ class BulletproofMainSystem {
     this.isRunning = true;
 
     try {
-      // Start main posting and engagement loop (every 10 minutes)
+      // 🚀 AGGRESSIVE GROWTH: Much more frequent posting and engagement checks
       this.mainInterval = setInterval(async () => {
         await this.mainLoop();
-      }, 10 * 60 * 1000);
+      }, 6 * 60 * 1000); // Every 6 minutes (was 10) for maximum opportunities
 
-      // Start analytics collection loop (every 30 minutes)
+      // Enhanced analytics collection for better optimization
       this.analyticsInterval = setInterval(async () => {
         await this.analyticsLoop();
-      }, 30 * 60 * 1000);
+      }, 20 * 60 * 1000); // Every 20 minutes (was 30) for better tracking
 
-      // Start system health monitoring loop (every 15 minutes)
+      // More frequent system health monitoring for stability
       setInterval(async () => {
         await this.systemHealthLoop();
-      }, 15 * 60 * 1000);
+      }, 10 * 60 * 1000); // Every 10 minutes (was 15) for better reliability
 
       // Run initial loops immediately
       await this.mainLoop();
       setTimeout(() => this.analyticsLoop(), 5000); // Delay analytics by 5 seconds
 
-      console.log('✅ BULLETPROOF_SYSTEM: Started successfully');
-      console.log('📊 MAIN_LOOP: Every 10 minutes');
-      console.log('📈 ANALYTICS_LOOP: Every 30 minutes');
+      console.log('✅ BULLETPROOF_SYSTEM: Started successfully with AGGRESSIVE GROWTH configuration');
+      console.log('📊 MAIN_LOOP: Every 6 minutes (OPTIMIZED for maximum opportunities)');
+      console.log('📈 ANALYTICS_LOOP: Every 20 minutes (ENHANCED tracking)');
+      console.log('🔍 HEALTH_MONITORING: Every 10 minutes (IMPROVED reliability)');
+      console.log('🎯 GROWTH_TARGET: 15-25 posts/day + 25-40 strategic engagements/day');
+      console.log('⚡ POSTING_INTERVALS: 15-75 minutes between posts, 20-45 minutes between replies');
 
     } catch (error: any) {
       console.error('❌ BULLETPROOF_SYSTEM_START_FAILED:', error.message);
@@ -104,13 +107,15 @@ class BulletproofMainSystem {
       const { intelligentFrequencyOptimizer } = await import('./intelligence/intelligentFrequencyOptimizer');
       const timingStrategy = await intelligentFrequencyOptimizer.getOptimalTimingStrategy();
       
-      const minPostInterval = 20 * 60 * 1000; // 20 minutes minimum
+      // 🚀 AGGRESSIVE POSTING OPTIMIZATION: Much more frequent posting for growth
+      const minPostInterval = 15 * 60 * 1000; // 15 minutes minimum (reduced from 20)
+      const maxPostInterval = 75 * 60 * 1000; // 75 minutes maximum (reduced from 120)
       const timeUntilOptimal = timingStrategy.next_post_time.getTime() - now;
       
-      // Post if we're in optimal window OR it's been too long since last post
-      const inOptimalWindow = timeUntilOptimal <= 10 * 60 * 1000; // Within 10 minutes of optimal
+      // More aggressive posting logic for follower growth
+      const inOptimalWindow = timeUntilOptimal <= 15 * 60 * 1000; // Extended optimal window to 15 minutes
       const shouldPostNow = (timeSinceLastPost > minPostInterval) && 
-                            (inOptimalWindow || timeSinceLastPost > 120 * 60 * 1000); // Force post after 2 hours
+                            (inOptimalWindow || timeSinceLastPost > maxPostInterval); // Force post after 75 minutes
       
       if (shouldPostNow) {
         console.log('📝 BULLETPROOF_POSTING: Generating ORIGINAL content (threads/singles)...');
@@ -156,7 +161,25 @@ class BulletproofMainSystem {
         console.log(`⏳ ENGAGEMENT_COOLDOWN: ${waitMinutes} minutes remaining before next strategic engagement`);
       }
 
-      // 🔍 COMPETITOR INTELLIGENCE: Get strategic insights every few cycles
+      // 🚀 COMPREHENSIVE GROWTH ACCELERATION: Execute growth strategies every cycle
+      try {
+        console.log('🚀 GROWTH_ACCELERATION: Executing comprehensive follower growth strategies...');
+        const { comprehensiveGrowthAccelerator } = await import('./growth/comprehensiveGrowthAccelerator');
+        const growthResults = await comprehensiveGrowthAccelerator.executeGrowthAcceleration();
+        
+        console.log(`📊 GROWTH_EXECUTED: ${growthResults.strategiesExecuted} strategies, impact score: ${growthResults.totalImpactScore}`);
+        console.log(`📈 FOLLOWER_PROJECTION: +${growthResults.estimatedFollowerGain} followers expected from this cycle`);
+        
+        if (growthResults.nextRecommendations.length > 0) {
+          console.log('💡 GROWTH_RECOMMENDATIONS:');
+          growthResults.nextRecommendations.slice(0, 3).forEach(rec => console.log(`   • ${rec}`));
+        }
+        
+      } catch (growthError: any) {
+        console.warn('⚠️ GROWTH_ACCELERATION_FAILED:', growthError.message);
+      }
+
+      // 🔍 COMPETITOR INTELLIGENCE: Get strategic insights every few cycles  
       if (Math.random() < 0.3) { // 30% chance per cycle to avoid overloading
         try {
           const { competitorIntelligenceMonitor } = await import('./intelligence/competitorIntelligenceMonitor');
