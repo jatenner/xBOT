@@ -160,18 +160,17 @@ class BulletproofMainSystem {
       console.log(`📝 GENERATED_CONTENT: ${format} with ${result.metadata.viralScore}/100 viral score`);
       console.log(`🎭 CONTENT_METADATA: ${result.metadata.persona} | ${result.metadata.emotion} | ${result.metadata.framework}`);
 
-      // Post using existing posting system with proper content passing
+      // 🚀 FAST POSTING: Use ultra-fast poster to avoid Railway timeouts
       let postResult;
       if (format === 'thread' && result.threadParts && result.threadParts.length > 1) {
-        // Clean thread posting with validated content
-        console.log(`🧵 BULLETPROOF_THREAD: Posting ${result.threadParts.length}-part thread`);
-        const { FixedThreadPoster } = await import('./posting/fixedThreadPoster');
-        const threadPoster = FixedThreadPoster.getInstance();
+        // Ultra-fast thread posting with timeout protection
+        console.log(`⚡ FAST_THREAD: Posting ${result.threadParts.length}-part thread with ultra-fast system`);
+        const { fastTwitterPoster } = await import('./posting/fastTwitterPoster');
         
-        const threadResult = await threadPoster.postProperThread(result.threadParts);
+        const threadResult = await fastTwitterPoster.postThread(result.threadParts);
         postResult = {
           success: threadResult.success,
-          tweetId: threadResult.rootTweetId,
+          tweetId: threadResult.tweetId,
           type: 'thread' as const,
           viralScore: result.metadata.viralScore,
           error: threadResult.error
@@ -186,14 +185,41 @@ class BulletproofMainSystem {
           });
           postResult = await this.postingSystem.forceEmergencyThread();
         } else if (format === 'single') {
-        // Single tweet posting - no thread indicators
-        console.log('📝 BULLETPROOF_SINGLE: Posting single tweet (no thread emojis)');
-        console.log('🚨 IMPORTANT: This should be a SINGLE tweet with NO thread indicators');
-        postResult = await this.postingSystem.createViralPost();
+        // Single tweet - ultra-fast posting
+        console.log('⚡ FAST_SINGLE: Posting single tweet with ultra-fast system');
+        const { fastTwitterPoster } = await import('./posting/fastTwitterPoster');
+        
+        const singleResult = await fastTwitterPoster.postSingleTweet(
+          typeof result.content === 'string' ? result.content : 
+          Array.isArray(result.threadParts) ? result.threadParts[0] : 
+          'Health content generated'
+        );
+        
+        postResult = {
+          success: singleResult.success,
+          tweetId: singleResult.tweetId,
+          type: 'single' as const,
+          viralScore: result.metadata.viralScore,
+          error: singleResult.error
+        };
       } else {
-        // Fallback for any other case
-        console.log('⚠️ FALLBACK_SINGLE: Unknown format, posting as single tweet');
-        postResult = await this.postingSystem.createViralPost();
+        // Fallback - ultra-fast single tweet
+        console.log('⚡ FAST_FALLBACK: Unknown format, using ultra-fast single tweet');
+        const { fastTwitterPoster } = await import('./posting/fastTwitterPoster');
+        
+        const fallbackResult = await fastTwitterPoster.postSingleTweet(
+          typeof result.content === 'string' ? result.content : 
+          Array.isArray(result.threadParts) ? result.threadParts[0] : 
+          'Health content generated'
+        );
+        
+        postResult = {
+          success: fallbackResult.success,
+          tweetId: fallbackResult.tweetId,
+          type: 'single' as const,
+          viralScore: result.metadata.viralScore,
+          error: fallbackResult.error
+        };
       }
 
       if (postResult.success) {
