@@ -50,7 +50,7 @@
     "dry:thread": "tsx tools/dryRunThread.ts",
     "migrate:meta": "tsx scripts/run-meta-migration.ts",
     "verify:schema": "tsx scripts/verify-schema.ts",
-    "verify": "tsc -p . && npm run verify:schema && npm test",
+    "verify": "node verify_railway_deployment.js",
     "dryrun:post": "tsx scripts/dryrun-post.ts",
     "migrate:apply": "tsx scripts/apply-migration.ts",
     "test:cadence": "jest tests/cadence.test.ts",
@@ -92,7 +92,6 @@
     "test:enhanced": "node test_bandit_system.js",
     "monitor": "node monitor_enhanced_system.js",
     "fix-quality": "node fix_content_quality_issues.js",
-    "verify": "node verify_railway_deployment.js",
     "railway-start": "node dist/main.js",
     "post-now": "SKIP_PLAYWRIGHT=true npm run build && node immediate_post_now.js",
     "force-post": "node force_post_railway.js",
@@ -128,6 +127,7 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
+    "@solana/wallet-standard-features": "^1.3.0",
     "@supabase/supabase-js": "^2.45.1",
     "ajv": "^8.12.0",
     "axios": "^1.6.0",
