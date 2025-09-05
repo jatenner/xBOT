@@ -19,8 +19,28 @@ export interface FixedThreadResult {
 export class FixedThreadPoster {
   private static instance: FixedThreadPoster;
 
-  // Add missing validateTweets property that other systems expect
-  public validateTweets: boolean = true;
+  // Add missing validateTweets method that other systems expect
+  public validateTweets(tweets: string[]): { valid: boolean; issues: string[] } {
+    const issues: string[] = [];
+    
+    if (!tweets || tweets.length === 0) {
+      issues.push('No tweets provided');
+    }
+    
+    tweets.forEach((tweet, index) => {
+      if (!tweet || tweet.trim().length === 0) {
+        issues.push(`Tweet ${index + 1} is empty`);
+      }
+      if (tweet.length > 280) {
+        issues.push(`Tweet ${index + 1} exceeds 280 characters`);
+      }
+    });
+    
+    return {
+      valid: issues.length === 0,
+      issues
+    };
+  }
 
   public static getInstance(): FixedThreadPoster {
     if (!FixedThreadPoster.instance) {

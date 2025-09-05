@@ -326,5 +326,6 @@ class BrowserManager {
   }
 }
 
-// Export singleton instance
+// Export both class and singleton instance
+export { BrowserManager };
 export const browserManager = new BrowserManager();
