@@ -3,6 +3,7 @@ import { SimpleThreadPoster } from '../posting/simpleThreadPoster';
 import { postSingleTweet } from '../posting/postThread';
 import { TwitterAnalyticsScraper } from '../analytics/twitterAnalyticsScraper';
 import { ContentDiversityTracker } from '../content/diversityTracker';
+import { EmergencyThreadFixer } from '../emergency/threadFixer';
 
 /**
  * AI-DRIVEN POSTING SYSTEM
@@ -36,6 +37,53 @@ export class AIDrivenPostingSystem {
       AIDrivenPostingSystem.instance = new AIDrivenPostingSystem();
     }
     return AIDrivenPostingSystem.instance;
+  }
+
+  /**
+   * 🚨 FORCE EMERGENCY THREAD POSTING
+   * Use this to immediately post a thread when the normal system fails
+   */
+  async forceEmergencyThread(): Promise<{
+    success: boolean;
+    tweetId?: string;
+    content?: string;
+    type: 'thread';
+    totalTweets?: number;
+    error?: string;
+  }> {
+    console.log('🚨 FORCE_EMERGENCY_THREAD: Bypassing all checks and posting thread...');
+    
+    try {
+      const emergencyFixer = EmergencyThreadFixer.getInstance();
+      const result = await emergencyFixer.forceCompleteThread();
+      
+      if (result.success) {
+        this.dailyPostCount++;
+        this.lastPostTime = Date.now();
+        console.log(`✅ EMERGENCY_THREAD_SUCCESS: ${result.totalTweets} tweets posted`);
+        return {
+          success: true,
+          tweetId: result.rootTweetId,
+          content: 'Emergency thread posted',
+          type: 'thread',
+          totalTweets: result.totalTweets
+        };
+      } else {
+        console.error(`❌ EMERGENCY_THREAD_FAILED: ${result.error}`);
+        return {
+          success: false,
+          error: result.error || 'Emergency thread failed',
+          type: 'thread'
+        };
+      }
+    } catch (error: any) {
+      console.error('💥 EMERGENCY_THREAD_CRASHED:', error.message);
+      return {
+        success: false,
+        error: `Emergency thread crashed: ${error.message}`,
+        type: 'thread'
+      };
+    }
   }
 
   /**
@@ -77,28 +125,42 @@ export class AIDrivenPostingSystem {
       const viralContent = await this.viralOrchestrator.generateViralContent(contentFormat);
       console.log(`✨ VIRAL_CONTENT_GENERATED: ${viralContent.metadata.viralScore}/100 viral score`);
 
-      // Step 3: Post content based on format
+      // Step 3: Post content based on format with EMERGENCY THREAD FIXER
       let result;
-      if (contentFormat === 'thread' && viralContent.threadParts && viralContent.threadParts.length > 1) {
-        console.log(`🧵 POSTING_COMPLETE_THREAD: ${viralContent.threadParts.length} tweets`);
+      if (contentFormat === 'thread') {
+        console.log(`🧵 THREAD_MODE_ACTIVATED: Ensuring complete thread posting...`);
         
-        // Validate thread parts before posting
-        const threadValidation = this.threadPoster.validateTweets(viralContent.threadParts);
-        if (!threadValidation.valid) {
-          console.error(`❌ THREAD_VALIDATION_FAILED: ${threadValidation.issues.join(', ')}`);
-          return {
-            success: false,
-            error: `Thread validation failed: ${threadValidation.issues[0]}`,
-            type: contentFormat
-          };
+        // Check if we have proper thread parts
+        if (viralContent.threadParts && viralContent.threadParts.length > 1) {
+          console.log(`✅ THREAD_PARTS_READY: ${viralContent.threadParts.length} tweets`);
+          
+          // Validate thread parts before posting
+          const threadValidation = this.threadPoster.validateTweets(viralContent.threadParts);
+          if (!threadValidation.valid) {
+            console.error(`❌ THREAD_VALIDATION_FAILED: ${threadValidation.issues.join(', ')}`);
+            console.log(`🚨 ACTIVATING_EMERGENCY_THREAD_FIXER...`);
+            
+            // Use emergency thread fixer
+            const emergencyFixer = EmergencyThreadFixer.getInstance();
+            result = await emergencyFixer.forceCompleteThread();
+          } else {
+            // Post complete thread using SimpleThreadPoster
+            result = await this.threadPoster.postRealThread(viralContent.threadParts);
+          }
+        } else {
+          console.warn(`⚠️ NO_THREAD_PARTS_GENERATED: Only got single content, using emergency fixer`);
+          console.log(`🚨 ACTIVATING_EMERGENCY_THREAD_FIXER for content: "${viralContent.content.substring(0, 80)}..."`);
+          
+          // Use emergency thread fixer to create and post thread
+          const emergencyFixer = EmergencyThreadFixer.getInstance();
+          result = await emergencyFixer.forceCompleteThread();
         }
         
-        // Post complete thread using SimpleThreadPoster
-        result = await this.threadPoster.postRealThread(viralContent.threadParts);
-        
         if (result.success) {
-          console.log(`✅ COMPLETE_THREAD_POSTED: ${result.totalTweets}/${viralContent.threadParts.length} tweets posted`);
+          console.log(`✅ COMPLETE_THREAD_POSTED: ${result.totalTweets} tweets posted`);
           console.log(`🔗 Thread: Root=${result.rootTweetId}, Replies=[${result.replyIds?.join(', ')}]`);
+        } else {
+          console.error(`❌ THREAD_POSTING_FAILED: ${result.error}`);
         }
         
       } else {
