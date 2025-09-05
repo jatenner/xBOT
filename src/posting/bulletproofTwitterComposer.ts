@@ -453,24 +453,55 @@ export class BulletproofTwitterComposer {
       });
       await this.page.waitForTimeout(2000);
       
-      // Click reply button
+      // Click reply button with comprehensive selectors
       const replySelectors = [
         '[data-testid="reply"]',
         'div[data-testid="reply"]',
         'button[aria-label*="Reply"]',
-        '[aria-label*="Reply"]'
+        '[aria-label*="Reply"]',
+        'div[aria-label*="Reply"]',
+        'button[role="button"][aria-label*="Reply"]',
+        'div[role="button"][aria-label*="Reply"]',
+        // Generic reply patterns
+        'button:has-text("Reply")',
+        'div:has-text("Reply")',
+        // Icon-based selectors
+        'svg[aria-label*="Reply"]',
+        'button:has(svg[aria-label*="Reply"])',
+        'div:has(svg[aria-label*="Reply"])',
+        // Position-based selectors (reply is usually first action)
+        'article div[role="group"] > div:first-child button',
+        'article div[role="group"] > div:first-child div[role="button"]',
+        // Class-based fallbacks
+        'button[class*="reply"]',
+        'div[class*="reply"][role="button"]'
       ];
       
       let replyClicked = false;
+      console.log('🔍 REPLY_SEARCH: Searching for reply button with enhanced selectors...');
+      
       for (const selector of replySelectors) {
         try {
+          console.log(`🔍 REPLY_SEARCH: Trying "${selector}"`);
           const replyBtn = this.page.locator(selector).first();
-          await replyBtn.waitFor({ state: 'visible', timeout: 3000 });
-          await replyBtn.click();
-          await this.page.waitForTimeout(2000);
-          replyClicked = true;
-          break;
+          await replyBtn.waitFor({ state: 'visible', timeout: 2000 });
+          
+          // Additional checks for reply button validity
+          const isVisible = await replyBtn.isVisible();
+          const isEnabled = await replyBtn.isEnabled();
+          
+          console.log(`🔍 REPLY_BUTTON: "${selector}" - visible:${isVisible}, enabled:${isEnabled}`);
+          
+          if (isVisible && isEnabled) {
+            console.log(`🚀 REPLY_BUTTON: Clicking "${selector}"`);
+            await replyBtn.click();
+            await this.page.waitForTimeout(2000);
+            replyClicked = true;
+            console.log(`✅ REPLY_SUCCESS: Reply button clicked successfully`);
+            break;
+          }
         } catch (e) {
+          console.log(`❌ REPLY_SEARCH: "${selector}" failed - ${(e as Error).message.substring(0, 50)}`);
           continue;
         }
       }
