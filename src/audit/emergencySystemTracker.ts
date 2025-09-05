@@ -191,7 +191,7 @@ export class EmergencySystemTracker {
   // For posting failures
   public async trackPostingEmergency(reason: string, context?: any): Promise<void> {
     await this.trackEmergencyUsage(
-      'SimpleThreadPoster',
+      'FixedThreadPoster',
       'FallbackPoster',
       reason,
       { action: 'post_submission', ...context }

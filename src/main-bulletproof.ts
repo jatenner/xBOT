@@ -165,10 +165,10 @@ class BulletproofMainSystem {
       if (format === 'thread' && result.threadParts && result.threadParts.length > 1) {
         // Clean thread posting with validated content
         console.log(`🧵 BULLETPROOF_THREAD: Posting ${result.threadParts.length}-part thread`);
-        const { SimpleThreadPoster } = await import('./posting/simpleThreadPoster');
-        const threadPoster = SimpleThreadPoster.getInstance();
+        const { FixedThreadPoster } = await import('./posting/fixedThreadPoster');
+        const threadPoster = FixedThreadPoster.getInstance();
         
-        const threadResult = await threadPoster.postRealThread(result.threadParts);
+        const threadResult = await threadPoster.postProperThread(result.threadParts);
         postResult = {
           success: threadResult.success,
           tweetId: threadResult.rootTweetId,

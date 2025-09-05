@@ -74,7 +74,7 @@ REQUIRED ELEMENTS:
 
 THREAD RULES (STRICT VALIDATION - FAILURE = REJECTION):
 - FLEXIBLE length: 3-7 tweets (can be short or long based on topic)
-- Each tweet PRECISELY 180-240 characters (count spaces!)
+- Each tweet PRECISELY 150-270 characters (count spaces!)
 - ZERO hashtags (#), ZERO quotes (" or '), ZERO apostrophes in contractions
 - Write "do not" instead of "don't", "cannot" instead of "can't"
 - Every tweet ends with punctuation (. ! ?) - NO ellipses (...)
@@ -93,7 +93,7 @@ CHARACTER COUNT EXAMPLES:
 SCHEMA (return ONLY this JSON):
 {
   "topic": "string",
-  "tweets": [{"text": "string (180-240 chars each)"}],
+  "tweets": [{"text": "string (150-270 chars each)"}],
   "metadata": {
     "persona": "string",
     "emotion": "string", 
@@ -114,7 +114,7 @@ REPLY RULES (CRITICAL):
 - Start with 1-line synthesis of parent point (no quotes)
 - Add mechanism or data point that advances conversation
 - Optional protocol enhancement with numbers/dosages/timing
-- 180-240 characters total
+- 150-270 characters total
 - No moralizing, quotes, hashtags, emojis
 
 REPLY STRATEGIES:
@@ -127,7 +127,7 @@ REPLY STRATEGIES:
 
 SCHEMA (return ONLY this JSON):
 {
-  "reply": "string (180-240 chars)",
+  "reply": "string (150-270 chars)",
   "metadata": {
     "strategy": "string",
     "evidence": "string", 
@@ -261,8 +261,8 @@ Fix these issues and return valid JSON only.`;
         }
         
         const len = tweet.text.length;
-        if (len < 180 || len > 240) {
-          issues.push(`Tweet ${idx + 1} length ${len} not in range 180-240`);
+        if (len < 150 || len > 270) {
+          issues.push(`Tweet ${idx + 1} length ${len} not in range 150-270`);
         }
         
         if (tweet.text.includes('#') || tweet.text.includes('"') || tweet.text.includes("'")) {
@@ -282,8 +282,8 @@ Fix these issues and return valid JSON only.`;
         issues.push('Missing reply string');
       } else {
         const len = parsed.reply.length;
-        if (len < 180 || len > 240) {
-          issues.push(`Reply length ${len} not in range 180-240`);
+        if (len < 150 || len > 270) {
+          issues.push(`Reply length ${len} not in range 150-270`);
         }
         
         if (parsed.reply.includes('#') || parsed.reply.includes('"') || parsed.reply.includes("'")) {

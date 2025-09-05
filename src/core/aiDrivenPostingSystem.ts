@@ -1,5 +1,5 @@
 import { ViralContentOrchestrator } from '../ai/viralContentOrchestrator';
-import { SimpleThreadPoster } from '../posting/simpleThreadPoster';
+import { FixedThreadPoster } from '../posting/fixedThreadPoster';
 import { postSingleTweet } from '../posting/postThread';
 import { TwitterAnalyticsScraper } from '../analytics/twitterAnalyticsScraper';
 import { ContentDiversityTracker } from '../content/diversityTracker';
@@ -15,7 +15,7 @@ import { EmergencyThreadFixer } from '../emergency/threadFixer';
 export class AIDrivenPostingSystem {
   private static instance: AIDrivenPostingSystem;
   private viralOrchestrator: ViralContentOrchestrator;
-  private threadPoster: SimpleThreadPoster;
+  private threadPoster: FixedThreadPoster;
   private analyticsScraper: TwitterAnalyticsScraper;
   private diversityTracker: ContentDiversityTracker;
   
@@ -27,7 +27,7 @@ export class AIDrivenPostingSystem {
 
   private constructor() {
     this.viralOrchestrator = new ViralContentOrchestrator(process.env.OPENAI_API_KEY!);
-    this.threadPoster = SimpleThreadPoster.getInstance();
+    this.threadPoster = FixedThreadPoster.getInstance();
     this.analyticsScraper = new TwitterAnalyticsScraper();
     this.diversityTracker = ContentDiversityTracker.getInstance();
   }
@@ -144,8 +144,8 @@ export class AIDrivenPostingSystem {
             const emergencyFixer = EmergencyThreadFixer.getInstance();
             result = await emergencyFixer.forceCompleteThread();
           } else {
-            // Post complete thread using SimpleThreadPoster
-            result = await this.threadPoster.postRealThread(viralContent.threadParts);
+            // Post complete thread using FixedThreadPoster
+            result = await this.threadPoster.postProperThread(viralContent.threadParts);
           }
         } else {
           console.warn(`⚠️ NO_THREAD_PARTS_GENERATED: Only got single content, using emergency fixer`);

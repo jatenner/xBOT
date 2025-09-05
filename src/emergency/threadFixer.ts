@@ -4,7 +4,7 @@
  * This module fixes the thread posting issue by ensuring threads are completed properly
  */
 
-import { SimpleThreadPoster } from '../posting/simpleThreadPoster';
+import { SimpleThreadPoster } from '../posting/fixedThreadPoster';
 import { ViralContentOrchestrator } from '../ai/viralContentOrchestrator';
 
 export class EmergencyThreadFixer {
@@ -58,7 +58,7 @@ export class EmergencyThreadFixer {
           const emergencyThread = this.createEmergencyThreadFromContent(threadContent.content);
           console.log(`🔄 EMERGENCY_THREAD_CREATED: ${emergencyThread.length} parts from content`);
           
-          const result = await this.threadPoster.postRealThread(emergencyThread);
+          const result = await this.threadPoster.postProperThread(emergencyThread);
           return {
             success: result.success,
             rootTweetId: result.rootTweetId,
@@ -105,7 +105,7 @@ export class EmergencyThreadFixer {
       // Step 4: Force thread posting
       console.log('🚀 FORCING_THREAD_POST: Using SimpleThreadPoster...');
       
-      const result = await this.threadPoster.postRealThread(validatedParts);
+      const result = await this.threadPoster.postProperThread(validatedParts);
       
       if (result.success) {
         console.log('✅ EMERGENCY_THREAD_SUCCESS!');
@@ -199,7 +199,7 @@ export class EmergencyThreadFixer {
       // Test thread poster
       console.log('🧵 Testing thread poster...');
       const posterMethods = Object.getOwnPropertyNames(Object.getPrototypeOf(this.threadPoster));
-      console.log(`✅ Thread Poster: ${posterMethods.includes('postRealThread') ? 'Ready' : 'Missing postRealThread'}`);
+      console.log(`✅ Thread Poster: ${posterMethods.includes('postProperThread') ? 'Ready' : 'Missing postProperThread'}`);
       
     } catch (error: any) {
       console.error('💥 DIAGNOSTIC_FAILED:', error.message);
