@@ -4,7 +4,7 @@
  */
 
 import { ViralContentOrchestrator } from '../ai/viralContentOrchestrator';
-import { SimpleThreadPoster } from '../posting/simpleThreadPoster';
+import { FixedThreadPoster } from '../posting/fixedThreadPoster';
 import { postSingleTweet } from '../posting/postThread';
 import { TwitterAnalyticsScraper } from '../analytics/twitterAnalyticsScraper';
 import { ContentDiversityTracker } from '../content/diversityTracker';
@@ -13,7 +13,7 @@ import { getUltimateAI } from '../ai/ultimateAIIntegrator';
 export class NextGenPostingSystem {
   private static instance: NextGenPostingSystem;
   private viralOrchestrator: ViralContentOrchestrator;
-  private threadPoster: SimpleThreadPoster;
+  private threadPoster: FixedThreadPoster;
   private analyticsScraper: TwitterAnalyticsScraper;
   private diversityTracker: ContentDiversityTracker;
   private ultimateAI = getUltimateAI();
@@ -26,7 +26,7 @@ export class NextGenPostingSystem {
 
   private constructor() {
     this.viralOrchestrator = new ViralContentOrchestrator(process.env.OPENAI_API_KEY!);
-    this.threadPoster = SimpleThreadPoster.getInstance();
+    this.threadPoster = FixedThreadPoster.getInstance();
     this.analyticsScraper = new TwitterAnalyticsScraper();
     this.diversityTracker = ContentDiversityTracker.getInstance();
     console.log('🚀 NEXT_GEN_POSTING: All advanced AI systems initialized');
@@ -110,7 +110,7 @@ export class NextGenPostingSystem {
           };
         }
         
-        result = await this.threadPoster.postRealThread(ultimateResult.threadParts);
+        result = await this.threadPoster.postProperThread(ultimateResult.threadParts);
         
         if (result.success) {
           console.log(`✅ NEXT_GEN_THREAD_POSTED: ${result.totalTweets} tweets`);

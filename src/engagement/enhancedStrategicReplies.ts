@@ -243,7 +243,7 @@ export class EnhancedStrategicReplies {
     let confidence = 60; // Base confidence
 
     // Length check
-    if (reply.length >= 180 && reply.length <= 240) confidence += 15;
+    if (reply.length >= 150 && reply.length <= 270) confidence += 15;
     
     // Contains numbers/data
     if (/\d+/.test(reply)) confidence += 10;

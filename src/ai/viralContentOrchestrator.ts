@@ -223,7 +223,7 @@ THREAD COHERENCE REQUIREMENTS:
 - Each tweet builds on the previous one logically
 - Include specific numbers, brands, costs in at least 3 tweets
 - Use consistent terminology throughout
-- Each tweet 180-240 characters (enforced strictly)
+- Each tweet 150-270 characters (enforced strictly)
 - NO hashtags, emojis, or quotes anywhere in thread
 - NO incomplete sentences ending with "..." or unfinished thoughts
 - Every tweet must be complete, actionable, and valuable
