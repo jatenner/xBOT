@@ -4,6 +4,7 @@ import { closeBrowser } from './playwright/browserFactory';
 import { closeDatabaseConnections } from './db/index';
 import { AnalyticsScheduler } from './scheduler/analyticsScheduler';
 import { AIDrivenPostingSystem } from './core/aiDrivenPostingSystem';
+import { BulletproofMainSystem } from './main-bulletproof';
 
 /**
  * SIMPLE THREAD POSTING LOOP - No bloat, just threads
@@ -311,18 +312,15 @@ async function startTwitterAnalytics() {
  * Main application entry point with proper error handling and graceful shutdown
  */
 async function main() {
-  console.log('🚀 Starting xBOT with REAL-TIME ANALYTICS & DATA-DRIVEN AI');
+  console.log('🛡️ BULLETPROOF_SYSTEM: Starting production-grade quality content generation');
   console.log(`📅 Started at: ${new Date().toISOString()}`);
   
-  // Start automated analytics collection immediately
-  console.log('📊 ANALYTICS_STARTUP: Initializing real-time data collection...');
-  const analyticsScheduler = AnalyticsScheduler.getInstance();
-  analyticsScheduler.start();
-  console.log('✅ ANALYTICS_ACTIVE: 30-minute data collection cycles running');
+  // Initialize and start the bulletproof system
+  console.log('🚀 BULLETPROOF_STARTUP: Initializing bulletproof prompt system...');
+  const bulletproofSystem = new BulletproofMainSystem();
   
-  // Start 100% AI-driven posting system (temporarily manual until old system fixed)
-  console.log('🤖 AI_POSTING_STARTUP: 100% OpenAI-driven content system ready');
-  console.log('✅ AI_POSTING_READY: Use AIDrivenPostingSystem.getInstance().forceViralPost() to test');
+  console.log('🎯 BULLETPROOF_FEATURES: Thompson Sampling, Anti-repetition, Persona rotation');
+  console.log('✅ BULLETPROOF_READY: Professional content generation with quality validation');
   
   // Startup delay to prevent immediate API rate limiting
   console.log('⏳ Adding startup delay to respect API rate limits...');
@@ -341,21 +339,16 @@ async function main() {
     
     console.log('✅ Environment validation passed');
 
-    // Start aggressive monitoring system
-    console.log('📊 AGGRESSIVE_MONITORING: Starting comprehensive system monitoring...');
-    startAggressiveMonitoring();
-
     // Start health server
     console.log('🏥 Starting health monitoring server...');
     await startHealthServer();
     
-    // Start AGGRESSIVE LEARNING ENGINE posting system
-    console.log('🧠 Starting AGGRESSIVE LEARNING ENGINE...');
-    await startIntelligentPosting();
+    // Start the bulletproof system
+    console.log('🛡️ BULLETPROOF_SYSTEM: Starting aggressive learning and posting...');
+    await bulletproofSystem.start();
     
-    // Start intelligent engagement system for follower growth
-    console.log('🤝 Starting INTELLIGENT ENGAGEMENT SYSTEM...');
-    await startIntelligentEngagement();
+    console.log('✅ BULLETPROOF_SYSTEM: Active - professional content generation running');
+    console.log('🎯 Expected: No hashtags, complete sentences, educational content');
     
     // Start Twitter analytics engine
     console.log('📊 Starting TWITTER ANALYTICS ENGINE...');
