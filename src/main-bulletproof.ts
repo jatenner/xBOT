@@ -266,15 +266,28 @@ class BulletproofMainSystem {
       // Decide format (60% threads, 40% single tweets for balanced engagement)
       const format = Math.random() < 0.6 ? 'thread' : 'single';
       
-      // 🚀 VIRAL CONTENT OPTIMIZER: Advanced AI system for maximum growth
+      // 🚀 VIRAL CONTENT OPTIMIZER: Advanced AI system with FORCED TOPIC DIVERSITY
       console.log('🌍 UNLIMITED_HEALTH_TOPICS: AI can now explore ANY aspect of health & wellness for viral content creation');
+      
+      // 🎯 FORCE TOPIC DIVERSITY: Rotate through different health domains
+      const healthDomains = [
+        'Advanced Nutrition Science', 'Exercise Physiology', 'Biohacking Technology', 
+        'Mental Health & Neuroscience', 'Longevity & Aging Science', 'Functional Medicine',
+        'Alternative Medicine', 'Environmental Health', 'Hormonal Optimization', 
+        'Microbiome Science', 'Sleep Science', 'Stress Physiology', 'Disease Prevention',
+        'Performance Enhancement', 'Counterintuitive Health Insights'
+      ];
+      
+      const randomDomain = healthDomains[Math.floor(Math.random() * healthDomains.length)];
+      console.log(`🎯 TOPIC_FOCUS: Generating content about ${randomDomain} to ensure diversity`);
       
       const { viralContentOptimizer } = await import('./ai/viralContentOptimizer');
       const viralResult = await viralContentOptimizer.generateViralContent({
         format: format === 'thread' ? 'thread' : 'single',
-        targetAudience: 'Health-conscious individuals seeking optimization, wellness, and peak performance',
+        targetAudience: `Health-conscious individuals interested in ${randomDomain}`,
+        currentTrends: [`Focus specifically on ${randomDomain} - avoid GLP-1 medications and weight loss drugs`],
         performanceData: {
-          recentTopPerformers: ['counterintuitive health insights', 'actionable wellness advice', 'surprising health facts']
+          recentTopPerformers: [`${randomDomain} insights`, 'counterintuitive health insights', 'actionable wellness advice']
         }
       });
 
