@@ -9324,3 +9324,169 @@ SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /Users/jonahtenner/xBOT/da
 ⚠️ No suitable tweets found for contextual replies
 ✅ BULLETPROOF_REPLIES: Contextual reply posted (single tweet, not thread)
 📊 BULLETPROOF_STATUS: Cycle completed successfully
+📊 REAL_COLLECTION: Collecting collection_4 metrics for thread_1757170928683_6xqz41418
+❌ REAL_METRICS_ERROR: thread_1757170928683_6xqz41418 (collection_4): page.waitForSelector: Timeout 15000ms exceeded.
+Call log:
+  [2m- waiting for locator('article[data-testid="tweet"]') to be visible[22m
+
+📊 REAL_COLLECTION: Collecting collection_5 metrics for thread_1757106219946_jbw86jjbs
+❌ REAL_METRICS_ERROR: thread_1757106219946_jbw86jjbs (collection_5): page.waitForSelector: Timeout 15000ms exceeded.
+Call log:
+  [2m- waiting for locator('article[data-testid="tweet"]') to be visible[22m
+
+🔄 BULLETPROOF_MAIN_LOOP: Starting cycle...
+⏳ POSTING_COOLDOWN: 0 minutes remaining
+💬 BULLETPROOF_REPLIES: Executing strategic engagement...
+🎯 IMPORTANT: These are REPLIES to other people, NOT original posts
+💬 BULLETPROOF_REPLIES: Executing contextual strategic replies...
+💬 CONTEXTUAL_REPLIES: Finding health tweets for single contextual responses...
+🎯 TARGET: Analyzing @bengreenfieldhq (biohacking)
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /Users/jonahtenner/xBOT/data/twitter_session.json
+⚠️ No suitable tweets found for contextual replies
+✅ BULLETPROOF_REPLIES: Contextual reply posted (single tweet, not thread)
+📊 BULLETPROOF_STATUS: Cycle completed successfully
+🏥 SYSTEM_HEALTH: Running comprehensive health check...
+🔍 SYSTEM_HEALTH_ANALYSIS: Analyzing failure patterns...
+📊 DB_QUERY: Executing get_recent_failures
+✅ DB_SUCCESS: get_recent_failures completed in 284ms
+📊 SYSTEM_HEALTH: 20% overall health
+🚨 CRITICAL_SYSTEMS: ViralContentOrchestrator, BulletproofThreadGeneration
+⚠️ EMERGENCY_OVERUSE: ViralContentOrchestrator, BulletproofThreadGeneration
+🔍 DATA_ANALYSIS: Starting comprehensive system analysis...
+📊 DB_QUERY: Executing extract_system_metrics
+📊 DB_QUERY: Executing extract_engagement_data
+📊 DB_QUERY: Executing extract_failure_patterns
+📊 DB_QUERY: Executing extract_performance_data
+✅ DB_SUCCESS: extract_engagement_data completed in 168ms
+✅ DB_SUCCESS: extract_failure_patterns completed in 295ms
+✅ DB_SUCCESS: extract_performance_data completed in 321ms
+✅ DB_SUCCESS: extract_system_metrics completed in 462ms
+📊 ANALYSIS_COMPLETE: 0 insights, 0 predictions
+🎯 HEALTH_SCORE: 50/100
+📊 DB_QUERY: Executing extract_system_metrics
+✅ DB_SUCCESS: extract_system_metrics completed in 362ms
+📊 SYSTEM_HEALTH_SCORE: 20/100
+🚨 CRITICAL_SYSTEMS: 2
+⚠️ EMERGENCY_OVERUSE: 2
+🔄 TOTAL_EMERGENCY_USES: 0
+🚨 CRITICAL_HEALTH_ALERT: System health below 50%
+🔧 TOP_RECOMMENDATIONS: [
+  '🚨 IMMEDIATE: Fix 2 critical systems: ViralContentOrchestrator, BulletproofThreadGeneration',
+  "🔧 SYSTEMATIC FIX: Address 'verification_test' affecting 2 systems",
+  "🔧 SYSTEMATIC FIX: Address 'test_fix_verification' affecting 1 systems"
+]
+📊 DB_QUERY: Executing record_system_failure
+✅ DB_SUCCESS: record_system_failure completed in 189ms
+🔍 FAILURE_RECORDED: SystemHealthMonitoring - primary_failure
+📈 BULLETPROOF_ANALYTICS: Collecting performance data...
+❌ ANALYTICS_LOOP_ERROR: Cannot read properties of undefined (reading 'length')
+📊 REAL_COLLECTION: Collecting collection_3 metrics for thread_1757186175782_yiadrthur
+📊 REAL_COLLECTION: Collecting collection_4 metrics for thread_1757171785603_621zloyx0
+❌ REAL_METRICS_ERROR: thread_1757186175782_yiadrthur (collection_3): page.waitForSelector: Timeout 15000ms exceeded.
+Call log:
+  [2m- waiting for locator('article[data-testid="tweet"]') to be visible[22m
+
+❌ REAL_METRICS_ERROR: thread_1757171785603_621zloyx0 (collection_4): page.waitForSelector: Timeout 15000ms exceeded.
+Call log:
+  [2m- waiting for locator('article[data-testid="tweet"]') to be visible[22m
+
+🔄 BULLETPROOF_MAIN_LOOP: Starting cycle...
+📝 BULLETPROOF_POSTING: Generating ORIGINAL content (threads/singles)...
+🎯 IMPORTANT: This is an ORIGINAL post, NOT a reply to someone
+🎰 BANDIT_SELECTION: Choosing optimal config for thread...
+📊 BANDIT_UPDATE: Updated with 100 recent posts
+🎯 EXPLOITATION: Selected Dr. Lisa Patel (avg reward: 0.123)
+🔍 EXPLORATION: Random selection for emotion
+🔍 EXPLORATION: Random selection for framework
+🔍 EXPLORATION: Random selection for temperature
+🎯 BANDIT_SELECTED: Dr. Lisa Patel + Curiosity + Data Bomb (temp: 0.8)
+📊 CONFIDENCE: 54.8%
+🎯 OPTIMAL_CONFIG: Dr. Lisa Patel + Curiosity + Data Bomb
+🎯 POSTING_STRATEGY: Selected single format for original post (not reply)
+🚀 ENHANCED_VIRAL: Generating bulletproof single content...
+🔍 DIVERSITY_ANALYSIS: Analyzing last 7 days of content...
+📊 DIVERSITY_SCORE: 0/100
+🔁 OVERUSED_TOPICS: everyone, longer, workouts, better, results., from, stanford, reveals, that, daily
+🎯 RECOMMENDED_FOCUS: exercise_science, circadian_biology, gut_microbiome
+🔍 DIVERSITY_ANALYSIS: Analyzing last 7 days of content...
+📊 DIVERSITY_SCORE: 0/100
+🔁 OVERUSED_TOPICS: everyone, longer, workouts, better, results., from, stanford, reveals, that, daily
+🎯 RECOMMENDED_FOCUS: exercise_science, circadian_biology, gut_microbiome
+🎭 PERSONA_ROTATION: Now using Dr. Elena Vasquez
+🎭 PERSONA_SELECTED: Dr. Elena Vasquez
+🧠 EMOTION_SELECTED: Curiosity
+🛡️ BULLETPROOF_GENERATION: single with strict validation
+🎯 Generating with bulletproof prompts...
+⚠️ VALIDATION_FAILED: Content contains banned chars (hashtags/quotes)
+🔄 Attempting repair generation...
+❌ BULLETPROOF_FAILED: Content contains banned chars (hashtags/quotes)
+📝 LOGGED_CONTENT: topic="health", brands=[Novo Nordisk, Ozempic, Wegovy]
+✅ ENHANCED_VIRAL_SUCCESS: single generated with 95/100 viral score
+📝 GENERATED_CONTENT: single with 95/100 viral score
+🎭 CONTENT_METADATA: Dr. Elena Vasquez | Curiosity | mechanism-first explanations
+⚡ FAST_SINGLE: Posting single tweet with ultra-fast system
+⚡ FAST_POST: Starting ultra-fast posting (247 chars)
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /Users/jonahtenner/xBOT/data/twitter_session.json
+🚀 FAST_EXECUTE: Using keyboard shortcut method
+⌨️ FAST_EXECUTE: Using keyboard shortcut "n"
+✅ FAST_EXECUTE: Composer found, typing content
+🚀 FAST_EXECUTE: Posting with keyboard shortcut
+✅ FAST_EXECUTE: Post completed successfully
+✅ ENHANCED_POST_SUCCESS: single posted with ID fast_1757193559224_4y350lcbx
+💾 STORED_FOR_TRACKING: fast_1757193559224_4y350lcbx with Dr. Lisa Patel/Curiosity/Data Bomb
+📊 REAL_METRICS: Starting real tracking for fast_1757193559224_4y350lcbx
+✅ REAL_TRACKING: Scheduled 5 real metric collections for fast_1757193559224_4y350lcbx
+📊 REAL_METRICS_STARTED: fast_1757193559224_4y350lcbx queued for real engagement tracking
+💬 BULLETPROOF_REPLIES: Executing strategic engagement...
+🎯 IMPORTANT: These are REPLIES to other people, NOT original posts
+💬 BULLETPROOF_REPLIES: Executing contextual strategic replies...
+💬 CONTEXTUAL_REPLIES: Finding health tweets for single contextual responses...
+🎯 TARGET: Analyzing @bengreenfieldhq (biohacking)
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /Users/jonahtenner/xBOT/data/twitter_session.json
+⚠️ No suitable tweets found for contextual replies
+✅ BULLETPROOF_REPLIES: Contextual reply posted (single tweet, not thread)
+📊 BULLETPROOF_STATUS: Cycle completed successfully
+📊 REAL_COLLECTION: Collecting collection_2 metrics for thread_1757191764815_4139w4d6p
+❌ REAL_METRICS_ERROR: thread_1757191764815_4139w4d6p (collection_2): page.waitForSelector: Timeout 15000ms exceeded.
+Call log:
+  [2m- waiting for locator('article[data-testid="tweet"]') to be visible[22m
+
+📊 REAL_COLLECTION: Collecting collection_5 metrics for fast_1757107391438_we4nmzxnq
+❌ REAL_METRICS_ERROR: fast_1757107391438_we4nmzxnq (collection_5): page.waitForSelector: Timeout 15000ms exceeded.
+Call log:
+  [2m- waiting for locator('article[data-testid="tweet"]') to be visible[22m
+
+🏥 SYSTEM_HEALTH: Running comprehensive health check...
+🔍 SYSTEM_HEALTH_ANALYSIS: Analyzing failure patterns...
+📊 DB_QUERY: Executing get_recent_failures
+✅ DB_SUCCESS: get_recent_failures completed in 297ms
+📊 SYSTEM_HEALTH: 20% overall health
+🚨 CRITICAL_SYSTEMS: ViralContentOrchestrator, BulletproofThreadGeneration
+⚠️ EMERGENCY_OVERUSE: ViralContentOrchestrator, BulletproofThreadGeneration
+🔍 DATA_ANALYSIS: Starting comprehensive system analysis...
+📊 DB_QUERY: Executing extract_system_metrics
+📊 DB_QUERY: Executing extract_engagement_data
+📊 DB_QUERY: Executing extract_failure_patterns
+📊 DB_QUERY: Executing extract_performance_data
+✅ DB_SUCCESS: extract_performance_data completed in 173ms
+✅ DB_SUCCESS: extract_system_metrics completed in 234ms
+✅ DB_SUCCESS: extract_engagement_data completed in 429ms
+✅ DB_SUCCESS: extract_failure_patterns completed in 482ms
+📊 ANALYSIS_COMPLETE: 0 insights, 0 predictions
+🎯 HEALTH_SCORE: 50/100
+📊 DB_QUERY: Executing extract_system_metrics
+✅ DB_SUCCESS: extract_system_metrics completed in 427ms
+📊 SYSTEM_HEALTH_SCORE: 20/100
+🚨 CRITICAL_SYSTEMS: 2
+⚠️ EMERGENCY_OVERUSE: 2
+🔄 TOTAL_EMERGENCY_USES: 0
+🚨 CRITICAL_HEALTH_ALERT: System health below 50%
+🔧 TOP_RECOMMENDATIONS: [
+  '🚨 IMMEDIATE: Fix 2 critical systems: ViralContentOrchestrator, BulletproofThreadGeneration',
+  "🔧 SYSTEMATIC FIX: Address 'verification_test' affecting 2 systems",
+  "🔧 SYSTEMATIC FIX: Address 'test_fix_verification' affecting 1 systems"
+]
+📊 DB_QUERY: Executing record_system_failure
+✅ DB_SUCCESS: record_system_failure completed in 173ms
+🔍 FAILURE_RECORDED: SystemHealthMonitoring - primary_failure
+📊 REAL_COLLECTION: Collecting collection_1 metrics for fast_1757193559224_4y350lcbx
