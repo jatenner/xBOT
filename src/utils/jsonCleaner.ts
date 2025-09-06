@@ -8,16 +8,18 @@ export function cleanJsonResponse(response: string): string {
   
   let cleaned = response.trim();
   
-  // Remove all markdown code block patterns
-  // Pattern 1: ```json ... ```
+  // Pattern 1: ```json ... ``` (most common)
   if (cleaned.includes('```json')) {
-    cleaned = cleaned.replace(/```json\s*/g, '').replace(/```\s*$/g, '');
+    cleaned = cleaned.replace(/```json\s*/gi, '').replace(/```\s*$/gm, '');
   }
   
-  // Pattern 2: ``` ... ``` (any language)
+  // Pattern 2: ``` ... ``` (any language or no language)
   if (cleaned.includes('```')) {
-    cleaned = cleaned.replace(/```[a-z]*\s*/gi, '').replace(/```\s*$/g, '');
+    cleaned = cleaned.replace(/```[a-z]*\s*/gi, '').replace(/```\s*$/gm, '');
   }
+  
+  // Pattern 3: Handle multiple consecutive backticks
+  cleaned = cleaned.replace(/`{3,}/g, '');
   
   // Pattern 3: `...` (single backticks)
   if (cleaned.startsWith('`') && cleaned.endsWith('`')) {
@@ -75,13 +77,26 @@ export function cleanJsonResponse(response: string): string {
 export function safeJsonParse(response: string): any {
   try {
     const cleaned = cleanJsonResponse(response);
+    console.log('🧹 JSON_CLEANER: Original length:', response.length, 'Cleaned length:', cleaned.length);
     return JSON.parse(cleaned);
   } catch (error) {
-    console.error('❌ JSON parsing failed for response:', response.substring(0, 200) + '...');
-    console.error('❌ Parse error:', error);
+    console.error('❌ JSON_PARSE_FAILED: Original response:', response.substring(0, 300) + '...');
+    console.error('❌ JSON_PARSE_FAILED: Cleaned response:', cleanJsonResponse(response).substring(0, 300) + '...');
+    console.error('❌ JSON_PARSE_ERROR:', error);
     
-    // Return fallback object instead of throwing
-    console.warn('⚠️ Using fallback empty object due to JSON parse failure');
-    return {};
+    // Try one more aggressive cleaning attempt
+    const aggressiveCleaned = response
+      .replace(/```[\s\S]*?```/g, '') // Remove entire code blocks
+      .replace(/`{1,}/g, '') // Remove all backticks
+      .trim();
+    
+    try {
+      console.log('🔄 JSON_RETRY: Attempting aggressive cleaning...');
+      return JSON.parse(aggressiveCleaned);
+    } catch (retryError) {
+      console.error('❌ JSON_RETRY_FAILED:', retryError);
+      console.warn('⚠️ Using fallback empty object due to JSON parse failure');
+      return {};
+    }
   }
 }
