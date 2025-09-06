@@ -189,32 +189,14 @@ class RedisManager {
     if (!this.client || !this.isConnected) return;
 
     try {
-      // Try to set memory policy (might not be allowed on managed Redis)
-      try {
-        await this.client.config('SET', 'maxmemory-policy', 'allkeys-lru');
-        console.log('✅ Redis memory policy configured');
-      } catch (memoryError: any) {
-        console.warn('⚠️ Cannot configure maxmemory-policy (managed Redis):', memoryError.message);
-      }
+      // Skip Redis configuration for managed services - they handle optimization
+      console.log('✅ REDIS_CONFIG: Skipping config for managed Redis service');
       
-      // Try to set save policy (might not be allowed on managed Redis)
-      try {
-        await this.client.config('SET', 'save', '');
-        console.log('✅ Redis save policy configured');
-      } catch (saveError: any) {
-        console.warn('⚠️ Cannot configure save policy (managed Redis):', saveError.message);
+      // Just verify connection works
+      const pong = await this.client.ping();
+      if (pong === 'PONG') {
+        console.log('✅ REDIS_READY: Connection verified and operational');
       }
-      
-      // Try to enable AOF (might not be allowed on managed Redis)
-      try {
-        await this.client.config('SET', 'appendonly', 'yes');
-        await this.client.config('SET', 'appendfsync', 'everysec');
-        console.log('✅ Redis AOF configured');
-      } catch (aofError: any) {
-        console.warn('⚠️ Cannot configure AOF (managed Redis):', aofError.message);
-      }
-      
-      console.log('⚙️ Redis configuration completed (some settings may be managed externally)');
       
     } catch (error: any) {
       console.warn('⚠️ Redis configuration failed:', error.message);
