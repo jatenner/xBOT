@@ -262,4 +262,4 @@ Track these in Supabase dashboard:
 
 ---
 
-Built with ❤️ for autonomous, high-quality health content that actually helps people.
+Built with ❤️ for autonomous, high-quality health content that actually helps people.# Force rebuild Sat Sep  6 16:52:55 EDT 2025
