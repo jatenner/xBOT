@@ -126,6 +126,15 @@ class BulletproofMainSystem {
         
         await this.executeEnhancedPosting();
         this.lastPostTime = now;
+        
+        // 🔧 FIX STATUS REPORTING: Update Redis cache for status endpoint
+        try {
+          const { CadenceGuard } = await import('./posting/cadenceGuard');
+          await CadenceGuard.markPostSuccess(); // This will update Redis with current time
+          console.log('✅ STATUS_SYNC: Updated Redis cache for status reporting');
+        } catch (statusError: any) {
+          console.warn('⚠️ STATUS_SYNC_FAILED:', statusError.message);
+        }
       } else {
         const waitMinutes = Math.round(Math.max(minPostInterval - timeSinceLastPost, timeUntilOptimal) / 60000);
         console.log(`⏰ INTELLIGENT_TIMING: Waiting ${waitMinutes} minutes for optimal posting window`);
