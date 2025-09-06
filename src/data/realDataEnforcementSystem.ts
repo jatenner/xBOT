@@ -44,11 +44,11 @@ export class RealDataEnforcementSystem {
   ];
 
   private readonly REALISTIC_METRICS_THRESHOLDS = {
-    maxLikes: 1000, // Small account realistic max
-    maxRetweets: 200,
-    maxReplies: 100,
-    maxEngagementRate: 0.15, // 15% is very high for small accounts
-    minEngagementRate: 0.001, // 0.1% minimum realistic
+    maxLikes: 2000, // Increased for viral posts (small accounts can get lucky)
+    maxRetweets: 500, // Increased for viral potential
+    maxReplies: 200, // Increased for engagement
+    maxEngagementRate: 0.25, // 25% for very viral content
+    minEngagementRate: 0.0001, // 0.01% minimum (very low engagement is normal)
   };
 
   private constructor() {}
@@ -89,9 +89,9 @@ export class RealDataEnforcementSystem {
         }
       }
 
-      // Check for realistic Twitter ID format (Twitter IDs are 18-19 digit numbers)
-      if (!/^\d{18,19}$/.test(data.tweetId)) {
-        issues.push('Tweet ID format is not realistic Twitter format');
+      // Check for realistic Twitter ID format (Twitter IDs are 15-19 digit numbers)
+      if (!/^\d{15,19}$/.test(data.tweetId)) {
+        issues.push('Tweet ID format is not realistic Twitter format (should be 15-19 digits)');
         confidence -= 30;
       }
     }
