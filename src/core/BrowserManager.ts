@@ -21,7 +21,7 @@ class BrowserManager {
   
   // Resource management
   private activeContexts = 0;
-  private readonly maxConcurrentContexts = 1; // Emergency: Reduced to 1 to prevent context leak
+  private readonly maxConcurrentContexts = 3; // Allow posting + metrics + buffer
   private lastLaunchAttempt = 0;
   private readonly minLaunchInterval = 5000; // 5 seconds between launches
   private resourceExhausted = false;
@@ -52,28 +52,22 @@ class BrowserManager {
       await this.sleep(waitTime);
     }
 
-    // Check concurrent context limit
-    if (this.activeContexts >= this.maxConcurrentContexts) {
-      console.log(`🚨 BROWSER: Emergency context cleanup - force closing all contexts (${this.activeContexts}/${this.maxConcurrentContexts})`);
+    // Check concurrent context limit - only cleanup if severely over limit
+    if (this.activeContexts >= this.maxConcurrentContexts + 2) {
+      console.log(`⚠️ BROWSER: Context limit exceeded (${this.activeContexts}/${this.maxConcurrentContexts}), waiting for cleanup`);
       
-      // Force cleanup all contexts
-      if (this.browser) {
-        try {
-          const contexts = this.browser.contexts();
-          for (const ctx of contexts) {
-            if (ctx) {
-              await ctx.close().catch(() => {}); // Ignore errors
-            }
-          }
-          this.activeContexts = 0;
-          console.log(`✅ BROWSER: Emergency cleanup completed, contexts reset to 0`);
-        } catch (error) {
-          console.error(`❌ BROWSER: Emergency cleanup failed:`, error);
-          this.activeContexts = 0; // Reset anyway
-        }
+      // Wait for natural cleanup instead of force closing
+      let waitTime = 0;
+      while (this.activeContexts >= this.maxConcurrentContexts && waitTime < 10000) {
+        await this.sleep(1000);
+        waitTime += 1000;
       }
       
-      await this.sleep(5000); // Longer wait after emergency cleanup
+      // Only force cleanup if still over limit after waiting
+      if (this.activeContexts >= this.maxConcurrentContexts) {
+        console.log(`🚨 BROWSER: Force cleanup after waiting - contexts still at ${this.activeContexts}`);
+        this.activeContexts = Math.max(0, this.activeContexts - 1); // Reduce count manually
+      }
     }
 
     if (this.isContextValid()) {
