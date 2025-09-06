@@ -269,6 +269,31 @@ class BulletproofMainSystem {
       // 🚀 VIRAL CONTENT OPTIMIZER: Advanced AI system with FORCED TOPIC DIVERSITY
       console.log('🌍 UNLIMITED_HEALTH_TOPICS: AI can now explore ANY aspect of health & wellness for viral content creation');
       
+      // 🔥 REAL TRENDING TOPICS + FORCED DIVERSITY: Combine real trends with domain rotation
+      let currentTrends = [];
+      let trendingContext = '';
+      
+      try {
+        console.log('🔥 REAL_TRENDS: Fetching live Twitter trending topics...');
+        const { TwitterAnalyticsEngine } = await import('./analytics/twitterAnalyticsEngine');
+        const analyticsEngine = TwitterAnalyticsEngine.getInstance();
+        
+        // Get real trending health topics (with 10-second timeout)
+        const trendingPromise = analyticsEngine.generateEngagementForecast();
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Trending timeout')), 10000)
+        );
+        
+        const forecast = await Promise.race([trendingPromise, timeoutPromise]) as any;
+        if (forecast.trendingTopics && forecast.trendingTopics.length > 0) {
+          currentTrends = forecast.trendingTopics.slice(0, 3);
+          trendingContext = `Live trending: ${currentTrends.join(', ')}`;
+          console.log(`✅ REAL_TRENDS: Using live trends: ${currentTrends.join(', ')}`);
+        }
+      } catch (trendError: any) {
+        console.warn('⚠️ REAL_TRENDS_FAILED:', trendError.message);
+      }
+      
       // 🎯 FORCE TOPIC DIVERSITY: Rotate through different health domains
       const healthDomains = [
         'Advanced Nutrition Science', 'Exercise Physiology', 'Biohacking Technology', 
@@ -280,14 +305,22 @@ class BulletproofMainSystem {
       
       const randomDomain = healthDomains[Math.floor(Math.random() * healthDomains.length)];
       console.log(`🎯 TOPIC_FOCUS: Generating content about ${randomDomain} to ensure diversity`);
+      console.log(`📈 TRENDING_CONTEXT: ${trendingContext || 'No live trends available'}`);
+      
+      // Combine real trends with forced diversity
+      const trendsToUse = currentTrends.length > 0 ? 
+        [`Incorporate trending: ${currentTrends[0]}`, `Focus on ${randomDomain}`, 'Avoid GLP-1 repetition'] :
+        [`Focus specifically on ${randomDomain}`, 'avoid GLP-1 medications and weight loss drugs'];
       
       const { viralContentOptimizer } = await import('./ai/viralContentOptimizer');
       const viralResult = await viralContentOptimizer.generateViralContent({
         format: format === 'thread' ? 'thread' : 'single',
-        targetAudience: `Health-conscious individuals interested in ${randomDomain}`,
-        currentTrends: [`Focus specifically on ${randomDomain} - avoid GLP-1 medications and weight loss drugs`],
+        targetAudience: `Health-conscious individuals interested in ${randomDomain}${currentTrends.length > 0 ? ` and trending topics like ${currentTrends[0]}` : ''}`,
+        currentTrends: trendsToUse,
         performanceData: {
-          recentTopPerformers: [`${randomDomain} insights`, 'counterintuitive health insights', 'actionable wellness advice']
+          recentTopPerformers: currentTrends.length > 0 ? 
+            [`${currentTrends[0]} insights`, `${randomDomain} insights`, 'trending health topics'] :
+            [`${randomDomain} insights`, 'counterintuitive health insights', 'actionable wellness advice']
         }
       });
 
