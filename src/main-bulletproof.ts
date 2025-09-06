@@ -194,7 +194,7 @@ class BulletproofMainSystem {
         
         // Fallback to traditional replies if no strategic engagements
         if (engagementResults.length === 0) {
-          await this.executeEnhancedReplies();
+        await this.executeEnhancedReplies();
         }
         
         this.lastReplyTime = now;
@@ -269,61 +269,71 @@ class BulletproofMainSystem {
       console.log('🤖 PURE_AI_GENERATION: Creating 100% AI-driven content with zero templates...');
       
       const { pureAIDrivenContentSystem } = await import('./content/pureAIDrivenContentSystem');
-      
+
       // Decide format (60% threads, 40% single tweets for balanced engagement)
       const format = Math.random() < 0.6 ? 'thread' : 'single';
       
-      // 🧠 ADVANCED UNIFIED SYSTEM: Use all our sophisticated AI systems together
-      console.log('🌍 ADVANCED_AI_ORCHESTRATION: Activating unified learning + content diversity + viral optimization...');
+      // 🚀 ULTIMATE FOLLOWER GROWTH MACHINE: AI-driven follower acquisition system
+      console.log('🎯 ULTIMATE_GROWTH_MACHINE: Activating data-driven follower acquisition AI...');
       
-      // 🚀 STEP 1: UNIFIED LEARNING COORDINATOR - Get AI-driven intelligent decisions
-      let learningDecision = null;
+      let growthStrategy = null;
+      let followerBaseline = 0;
+      
       try {
-        console.log('🧠 UNIFIED_LEARNING: Getting AI-driven content strategy...');
-        const { getUnifiedLearningCoordinator } = await import('./intelligence/unifiedLearningCoordinator');
-        const learningCoordinator = getUnifiedLearningCoordinator();
-        learningDecision = await learningCoordinator.makeIntelligentDecision();
-        console.log(`✅ LEARNING_DECISION: ${learningDecision.decision} (confidence: ${(learningDecision.confidence * 100).toFixed(1)}%)`);
-        console.log(`🎯 AI_REASONING: ${learningDecision.reasoning.substring(0, 100)}...`);
-      } catch (learningError: any) {
-        console.warn('⚠️ UNIFIED_LEARNING_FAILED:', learningError.message);
+        console.log('📈 FOLLOWER_GROWTH: Executing ultimate AI-driven growth strategy...');
+        const { getUltimateFollowerGrowthMachine } = await import('./ultimateFollowerGrowthMachine');
+        const growthMachine = getUltimateFollowerGrowthMachine();
+        
+        growthStrategy = await growthMachine.executeUltimateGrowthStrategy();
+        console.log(`🎯 GROWTH_STRATEGY: ${growthStrategy.contentStrategy}`);
+        console.log(`📊 EXPECTED_FOLLOWERS: +${growthStrategy.expectedFollowerGain} followers (${Math.round(growthStrategy.confidence * 100)}% confidence)`);
+        console.log(`🧪 EXPERIMENT: ${growthStrategy.experiment ? growthStrategy.experiment.hypothesis : 'No active experiment'}`);
+        
+        // Get current follower baseline for tracking growth
+        try {
+          const { admin } = await import('./lib/supabaseClients');
+          const { data: recentMetrics } = await admin
+            .from('real_tweet_metrics')
+            .select('followers_count')
+            .order('collected_at', { ascending: false })
+            .limit(1);
+          followerBaseline = recentMetrics?.[0]?.followers_count || 25;
+          console.log(`📊 FOLLOWER_BASELINE: ${followerBaseline} followers`);
+        } catch (baselineError: any) {
+          followerBaseline = 25; // Default baseline
+          console.warn('⚠️ BASELINE_ERROR:', baselineError.message);
+        }
+        
+      } catch (growthError: any) {
+        console.warn('⚠️ GROWTH_MACHINE_FAILED:', growthError.message);
+        // Fallback to basic strategy
+        growthStrategy = {
+          contentStrategy: 'High-value health optimization content for follower growth',
+          contentType: 'thread',
+          optimalTopic: 'Advanced health insights',
+          viralHooks: ['Counterintuitive research', 'Expert-level knowledge'],
+          expectedFollowerGain: 5,
+          confidence: 0.7
+        };
       }
       
-      // 🚨 EMERGENCY TOPIC DIVERSITY: Force non-GLP-1 topics immediately
-      console.log('🚨 EMERGENCY_DIVERSITY: Forcing non-GLP-1 content to break repetition cycle');
+      // 🎯 GROWTH-OPTIMIZED TOPIC SELECTION: Use AI-selected topics for maximum follower growth
+      console.log('🎯 GROWTH_OPTIMIZED_TOPICS: Using AI-selected topics for maximum follower conversion...');
       
-      const emergencyTopics = [
-        'Sleep Architecture and REM Optimization', 'Mitochondrial Biogenesis Protocols', 
-        'Circadian Light Therapy', 'Cold Thermogenesis Benefits', 'Breathwork for HRV',
-        'Gut Microbiome Diversity', 'NAD+ Precursor Timing', 'Autophagy Fasting Windows',
-        'Heat Shock Protein Activation', 'Telomere Length Optimization', 'Brown Fat Activation',
-        'Neurotransmitter Balance', 'Epigenetic Lifestyle Factors', 'Cognitive Enhancement Protocols',
-        'Hormonal Optimization', 'Exercise-Induced Adaptations', 'Stress Resilience Building'
-      ];
+      // Use the topic from growth strategy (AI-optimized for follower gain)
+      const specificTopic = growthStrategy?.optimalTopic || 'Advanced Health Optimization';
+      const contentFormat = growthStrategy?.contentType || format;
       
-      // FORCE random selection from emergency topics (not GLP-1 related)
-      const specificTopic = emergencyTopics[Math.floor(Math.random() * emergencyTopics.length)];
-      console.log(`🎯 FORCED_TOPIC: ${specificTopic} (avoiding GLP-1 repetition)`);
+      console.log(`🎯 AI_SELECTED_TOPIC: ${specificTopic} (optimized for +${growthStrategy?.expectedFollowerGain || 5} followers)`);
+      console.log(`📊 CONTENT_FORMAT: ${contentFormat} (${Math.round((growthStrategy?.confidence || 0.7) * 100)}% confidence)`);
       
       let diversityContext = {
-        diversityScore: 30, // Low score to force variety
-        overusedWords: ['GLP-1', 'medication', 'diabetes', 'weight loss'],
+        diversityScore: 40, // Moderate score to balance variety with growth optimization
+        overusedWords: ['GLP-1', 'medication', 'diabetes', 'weight loss'], // Still avoid GLP-1
         recommendedFocus: [specificTopic],
-        missingDomains: emergencyTopics.slice(0, 5)
+        viralHooks: growthStrategy?.viralHooks || ['Counterintuitive insights'],
+        contentStrategy: growthStrategy?.contentStrategy || 'Authority-building content'
       };
-      
-      // BACKUP: Also try content diversity tracker if available
-      try {
-        const { ContentDiversityTracker } = await import('./content/diversityTracker');
-        const diversityTracker = ContentDiversityTracker.getInstance();
-        const contentAnalysis = await diversityTracker.analyzeRecentContent(7);
-        console.log(`📊 BACKUP_DIVERSITY: Score ${contentAnalysis.diversityScore}/100`);
-        if (contentAnalysis.recommendedFocus.length > 0) {
-          diversityContext.recommendedFocus = contentAnalysis.recommendedFocus;
-        }
-      } catch (diversityError: any) {
-        console.warn('⚠️ BACKUP_DIVERSITY_FAILED:', diversityError.message);
-      }
       
       // 🔥 STEP 3: REAL TRENDING TOPICS + VIRAL ORCHESTRATION
       let currentTrends = [];
@@ -531,6 +541,42 @@ class BulletproofMainSystem {
         
         console.log(`📊 REAL_METRICS_STARTED: ${postResult.tweetId} queued for real engagement tracking`);
         
+        // 🚀 FOLLOWER GROWTH TRACKING: Track follower gains for learning
+        try {
+          const { getUltimateFollowerGrowthMachine } = await import('./ultimateFollowerGrowthMachine');
+          const growthMachine = getUltimateFollowerGrowthMachine();
+          
+          // Schedule follower growth measurement after 1 hour
+          setTimeout(async () => {
+            try {
+              const { admin } = await import('./lib/supabaseClients');
+              const { data: currentMetrics } = await admin
+                .from('real_tweet_metrics')
+                .select('followers_count')
+                .order('collected_at', { ascending: false })
+                .limit(1);
+              
+              const currentFollowers = currentMetrics?.[0]?.followers_count || followerBaseline;
+              
+              await growthMachine.recordFollowerGrowthResults(
+                growthStrategy?.contentStrategy || 'Growth-optimized content',
+                contentFormat,
+                followerBaseline,
+                currentFollowers,
+                growthStrategy?.experiment
+              );
+              
+              console.log(`📈 GROWTH_TRACKED: ${currentFollowers - followerBaseline} followers gained from ${postResult.tweetId}`);
+              
+            } catch (trackingError: any) {
+              console.warn('⚠️ GROWTH_TRACKING_ERROR:', trackingError.message);
+            }
+          }, 60 * 60 * 1000); // Track after 1 hour
+          
+        } catch (growthTrackingError: any) {
+          console.warn('⚠️ GROWTH_TRACKING_SETUP_ERROR:', growthTrackingError.message);
+        }
+        
         // 🚨 SYNCHRONIZED CONTENT STORAGE: Store across all diversity tracking systems
         try {
           const { emergencyDiversityFix } = await import('./content/emergencyContentDiversityFix');
@@ -643,11 +689,11 @@ class BulletproofMainSystem {
       // Using Supabase directly since db system was removed
       const { admin } = await import('./lib/supabaseClients');
       const { data, error } = await admin.from('posts_for_tracking').insert({
-        tweet_id: tweetId,
-        prompt_version: metadata.promptVersion,
-        persona: config.persona,
-        emotion: config.emotion,
-        framework: config.framework,
+            tweet_id: tweetId,
+            prompt_version: metadata.promptVersion,
+            persona: config.persona,
+            emotion: config.emotion,
+            framework: config.framework,
         created_at: new Date(),
         uniqueness_score: metadata.uniquenessScore || 0.85
       });
@@ -676,13 +722,13 @@ class BulletproofMainSystem {
     try {
       const { admin } = await import('./lib/supabaseClients');
       const { data, error } = await admin
-        .from('posts_for_tracking')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(limit);
-      
-      if (error) throw error;
-      return data || [];
+            .from('posts_for_tracking')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(limit);
+          
+          if (error) throw error;
+          return data || [];
     } catch (error) {
       console.warn('⚠️ Failed to get recent posts:', error);
       return [];
@@ -812,7 +858,7 @@ class BulletproofMainSystem {
       }
 
       console.log('🔧 SYSTEM_INTEGRATION_VALIDATION: Complete');
-
+      
     } catch (error: any) {
       console.error('❌ SYSTEM_INTEGRATION_VALIDATION_FAILED:', error.message);
     }
