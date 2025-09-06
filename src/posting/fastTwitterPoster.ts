@@ -198,21 +198,25 @@ export class FastTwitterPoster {
           })
         ]);
       } catch (verificationError) {
-        console.warn('⚠️ POST_VERIFICATION: Could not verify posting success, assuming posted');
-        postSuccess = true; // Assume success if we can't verify
+        console.error('❌ POST_VERIFICATION: Failed to verify posting success:', verificationError);
+        postSuccess = false; // CRITICAL: Don't assume success if we can't verify
       }
       
       if (postSuccess) {
         console.log('✅ FAST_EXECUTE: Post verified as successful');
+        return {
+          success: true,
+          tweetId: `fast_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          method: 'keyboard_shortcut'
+        };
       } else {
-        console.warn('⚠️ FAST_EXECUTE: Post success uncertain');
+        console.error('❌ FAST_EXECUTE: Post failed - could not verify submission');
+        return {
+          success: false,
+          error: 'Could not verify post submission - likely browser connection issue',
+          method: 'keyboard_shortcut'
+        };
       }
-      
-      return {
-        success: true,
-        tweetId: `fast_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        method: 'keyboard_shortcut'
-      };
       
     } catch (error: any) {
       console.error('❌ FAST_EXECUTE: Error:', error.message);
