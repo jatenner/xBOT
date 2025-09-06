@@ -8503,3 +8503,38 @@ SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /Users/jonahtenner/xBOT/da
 Call log:
   [2m- waiting for locator('article[data-testid="tweet"]') to be visible[22m
 
+📈 BULLETPROOF_ANALYTICS: Collecting performance data...
+❌ ANALYTICS_LOOP_ERROR: Cannot read properties of undefined (reading 'length')
+🏥 SYSTEM_HEALTH: Running comprehensive health check...
+🔍 SYSTEM_HEALTH_ANALYSIS: Analyzing failure patterns...
+📊 DB_QUERY: Executing get_recent_failures
+✅ DB_SUCCESS: get_recent_failures completed in 379ms
+📊 SYSTEM_HEALTH: 20% overall health
+🚨 CRITICAL_SYSTEMS: ViralContentOrchestrator, BulletproofThreadGeneration
+⚠️ EMERGENCY_OVERUSE: ViralContentOrchestrator, BulletproofThreadGeneration
+🔍 DATA_ANALYSIS: Starting comprehensive system analysis...
+📊 DB_QUERY: Executing extract_system_metrics
+📊 DB_QUERY: Executing extract_engagement_data
+📊 DB_QUERY: Executing extract_failure_patterns
+📊 DB_QUERY: Executing extract_performance_data
+✅ DB_SUCCESS: extract_failure_patterns completed in 181ms
+✅ DB_SUCCESS: extract_engagement_data completed in 195ms
+✅ DB_SUCCESS: extract_performance_data completed in 203ms
+✅ DB_SUCCESS: extract_system_metrics completed in 383ms
+📊 ANALYSIS_COMPLETE: 0 insights, 0 predictions
+🎯 HEALTH_SCORE: 50/100
+📊 DB_QUERY: Executing extract_system_metrics
+✅ DB_SUCCESS: extract_system_metrics completed in 314ms
+📊 SYSTEM_HEALTH_SCORE: 20/100
+🚨 CRITICAL_SYSTEMS: 2
+⚠️ EMERGENCY_OVERUSE: 2
+🔄 TOTAL_EMERGENCY_USES: 0
+🚨 CRITICAL_HEALTH_ALERT: System health below 50%
+🔧 TOP_RECOMMENDATIONS: [
+  '🚨 IMMEDIATE: Fix 2 critical systems: ViralContentOrchestrator, BulletproofThreadGeneration',
+  "🔧 SYSTEMATIC FIX: Address 'verification_test' affecting 2 systems",
+  "🔧 SYSTEMATIC FIX: Address 'test_fix_verification' affecting 1 systems"
+]
+📊 DB_QUERY: Executing record_system_failure
+✅ DB_SUCCESS: record_system_failure completed in 97ms
+🔍 FAILURE_RECORDED: SystemHealthMonitoring - primary_failure
