@@ -9270,3 +9270,46 @@ SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /Users/jonahtenner/xBOT/da
 ⚠️ No suitable tweets found for contextual replies
 ✅ BULLETPROOF_REPLIES: Contextual reply posted (single tweet, not thread)
 📊 BULLETPROOF_STATUS: Cycle completed successfully
+🏥 SYSTEM_HEALTH: Running comprehensive health check...
+🔍 SYSTEM_HEALTH_ANALYSIS: Analyzing failure patterns...
+📊 DB_QUERY: Executing get_recent_failures
+✅ DB_SUCCESS: get_recent_failures completed in 117ms
+📊 SYSTEM_HEALTH: 20% overall health
+🚨 CRITICAL_SYSTEMS: ViralContentOrchestrator, BulletproofThreadGeneration
+⚠️ EMERGENCY_OVERUSE: ViralContentOrchestrator, BulletproofThreadGeneration
+🔍 DATA_ANALYSIS: Starting comprehensive system analysis...
+📊 DB_QUERY: Executing extract_system_metrics
+📊 DB_QUERY: Executing extract_engagement_data
+📊 DB_QUERY: Executing extract_failure_patterns
+📊 DB_QUERY: Executing extract_performance_data
+✅ DB_SUCCESS: extract_engagement_data completed in 75ms
+✅ DB_SUCCESS: extract_failure_patterns completed in 181ms
+✅ DB_SUCCESS: extract_performance_data completed in 204ms
+✅ DB_SUCCESS: extract_system_metrics completed in 494ms
+📊 ANALYSIS_COMPLETE: 0 insights, 0 predictions
+🎯 HEALTH_SCORE: 50/100
+📊 DB_QUERY: Executing extract_system_metrics
+✅ DB_SUCCESS: extract_system_metrics completed in 144ms
+📊 SYSTEM_HEALTH_SCORE: 20/100
+🚨 CRITICAL_SYSTEMS: 2
+⚠️ EMERGENCY_OVERUSE: 2
+🔄 TOTAL_EMERGENCY_USES: 0
+🚨 CRITICAL_HEALTH_ALERT: System health below 50%
+🔧 TOP_RECOMMENDATIONS: [
+  '🚨 IMMEDIATE: Fix 2 critical systems: ViralContentOrchestrator, BulletproofThreadGeneration',
+  "🔧 SYSTEMATIC FIX: Address 'verification_test' affecting 2 systems",
+  "🔧 SYSTEMATIC FIX: Address 'test_fix_verification' affecting 1 systems"
+]
+📊 DB_QUERY: Executing record_system_failure
+✅ DB_SUCCESS: record_system_failure completed in 63ms
+🔍 FAILURE_RECORDED: SystemHealthMonitoring - primary_failure
+📊 REAL_COLLECTION: Collecting collection_1 metrics for thread_1757191764815_4139w4d6p
+❌ REAL_METRICS_ERROR: thread_1757191764815_4139w4d6p (collection_1): page.waitForSelector: Timeout 15000ms exceeded.
+Call log:
+  [2m- waiting for locator('article[data-testid="tweet"]') to be visible[22m
+
+📊 REAL_COLLECTION: Collecting collection_3 metrics for fast_1757184961277_tkfm4q6j7
+❌ REAL_METRICS_ERROR: fast_1757184961277_tkfm4q6j7 (collection_3): page.waitForSelector: Timeout 15000ms exceeded.
+Call log:
+  [2m- waiting for locator('article[data-testid="tweet"]') to be visible[22m
+
