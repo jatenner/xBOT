@@ -128,15 +128,19 @@ export class StrategicEngagementEngine {
       }));
 
       // Filter out recently engaged accounts (within 24 hours)
-      const supabase = getSupabaseClient();
-      const { data: recentEngagements } = await supabase
-        .from('engagement_tracking')
-        .select('target_username')
-        .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+      try {
+        const supabase = getSupabaseClient();
+        const { data: recentEngagements } = await supabase
+          .from('engagement_tracking')
+          .select('target_username')
+          .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
 
-      const recentUsernames = new Set(recentEngagements?.map(e => e.target_username) || []);
-      
-      return targets.filter(target => !recentUsernames.has(target.account_handle));
+        const recentUsernames = new Set(recentEngagements?.map(e => e.target_username) || []);
+        return targets.filter(target => !recentUsernames.has(target.account_handle));
+      } catch (supabaseError: any) {
+        console.warn('⚠️ SUPABASE_UNAVAILABLE: Using all targets without filtering recent engagements');
+        return targets; // Return all targets if database is unavailable
+      }
 
     } catch (error) {
       console.error('❌ TARGET_FINDING_ERROR:', error.message);

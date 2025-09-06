@@ -6328,3 +6328,16 @@ SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /Users/jonahtenner/xBOT/da
 📊 BULLETPROOF_STATUS: Cycle completed successfully
 📊 REAL_COLLECTION: Collecting collection_2 metrics for fast_1757167507282_33lav18qx
 📊 REAL_COLLECTION: Collecting collection_4 metrics for fast_1757147708049_m44ajxd2t
+📊 REAL_COLLECTION: Collecting collection_3 metrics for thread_1757162122147_7ji8vngth
+❌ REAL_METRICS_ERROR: fast_1757167507282_33lav18qx (collection_2): page.waitForSelector: Timeout 15000ms exceeded.
+Call log:
+  [2m- waiting for locator('article[data-testid="tweet"]') to be visible[22m
+
+❌ REAL_METRICS_ERROR: fast_1757147708049_m44ajxd2t (collection_4): page.waitForSelector: Timeout 15000ms exceeded.
+Call log:
+  [2m- waiting for locator('article[data-testid="tweet"]') to be visible[22m
+
+❌ REAL_METRICS_ERROR: thread_1757162122147_7ji8vngth (collection_3): page.waitForSelector: Timeout 15000ms exceeded.
+Call log:
+  [2m- waiting for locator('article[data-testid="tweet"]') to be visible[22m
+

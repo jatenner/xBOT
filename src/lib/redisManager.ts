@@ -189,20 +189,35 @@ class RedisManager {
     if (!this.client || !this.isConnected) return;
 
     try {
-      // Set memory policy
-      await this.client.config('SET', 'maxmemory-policy', 'allkeys-lru');
+      // Try to set memory policy (might not be allowed on managed Redis)
+      try {
+        await this.client.config('SET', 'maxmemory-policy', 'allkeys-lru');
+        console.log('✅ Redis memory policy configured');
+      } catch (memoryError: any) {
+        console.warn('⚠️ Cannot configure maxmemory-policy (managed Redis):', memoryError.message);
+      }
       
-      // Set save policy (disable auto-save, we'll use AOF)
-      await this.client.config('SET', 'save', '');
+      // Try to set save policy (might not be allowed on managed Redis)
+      try {
+        await this.client.config('SET', 'save', '');
+        console.log('✅ Redis save policy configured');
+      } catch (saveError: any) {
+        console.warn('⚠️ Cannot configure save policy (managed Redis):', saveError.message);
+      }
       
-      // Enable AOF for persistence
-      await this.client.config('SET', 'appendonly', 'yes');
-      await this.client.config('SET', 'appendfsync', 'everysec');
+      // Try to enable AOF (might not be allowed on managed Redis)
+      try {
+        await this.client.config('SET', 'appendonly', 'yes');
+        await this.client.config('SET', 'appendfsync', 'everysec');
+        console.log('✅ Redis AOF configured');
+      } catch (aofError: any) {
+        console.warn('⚠️ Cannot configure AOF (managed Redis):', aofError.message);
+      }
       
-      console.log('⚙️ Redis settings configured for optimal performance');
+      console.log('⚙️ Redis configuration completed (some settings may be managed externally)');
       
     } catch (error: any) {
-      console.warn('⚠️ Could not configure Redis settings:', error.message);
+      console.warn('⚠️ Redis configuration failed:', error.message);
     }
   }
 

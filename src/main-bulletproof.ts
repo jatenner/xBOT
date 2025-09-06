@@ -470,6 +470,13 @@ class BulletproofMainSystem {
       // Get recent posts for performance tracking
       const recentPosts = await this.getRecentPosts(20);
       
+      if (!recentPosts || !Array.isArray(recentPosts)) {
+        console.log('⚠️ ANALYTICS: No recent posts available for analysis');
+        return;
+      }
+      
+      console.log(`📊 ANALYTICS: Processing ${recentPosts.length} recent posts for insights`);
+      
       for (const post of recentPosts) {
         // 🛡️ REAL DATA ENFORCEMENT - Zero fake data allowed
         console.log('🛡️ REAL_DATA_ENFORCEMENT: Validating all metrics for authenticity...');
