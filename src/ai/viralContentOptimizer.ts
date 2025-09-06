@@ -63,7 +63,8 @@ export class ViralContentOptimizer {
         priority: 'high'
       });
 
-      const result = JSON.parse(response.choices[0].message.content || '{}');
+      const { safeJsonParse } = await import('../utils/jsonCleaner');
+      const result = safeJsonParse(response.choices[0].message.content || '{}');
       
       console.log(`🎯 VIRAL_SUCCESS: Generated ${request.format} content with ${result.viralScore}% viral potential`);
       console.log(`🌍 TOPIC_DOMAIN: ${result.topicDomain}`);

@@ -58,9 +58,36 @@ async function findReplyableTweet(influencer: any): Promise<TweetToReplyTo | nul
     return await browserManager.withContext('posting', async (context) => {
       const page = await context.newPage();
     
-    // Navigate to influencer's profile
+    // Navigate to influencer's profile with retry logic
     const profileUrl = `https://x.com/${influencer.handle.replace('@', '')}`;
-    await page.goto(profileUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+    
+    // Add retry logic for network issues
+    let navigationSuccess = false;
+    let lastError: Error | null = null;
+    
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        console.log(`🌐 NAVIGATION: Attempt ${attempt}/3 to ${profileUrl}`);
+        await page.goto(profileUrl, { 
+          waitUntil: 'domcontentloaded', 
+          timeout: 30000 
+        });
+        navigationSuccess = true;
+        break;
+      } catch (error: any) {
+        lastError = error;
+        console.warn(`⚠️ NAVIGATION_FAILED: Attempt ${attempt}/3 failed: ${error.message}`);
+        
+        if (attempt < 3) {
+          console.log(`⏳ RETRY: Waiting 3 seconds before retry...`);
+          await page.waitForTimeout(3000);
+        }
+      }
+    }
+    
+    if (!navigationSuccess) {
+      throw new Error(`Failed to navigate after 3 attempts: ${lastError?.message}`);
+    }
     
     // Find recent tweets with low reply counts
     const tweets = await page.evaluate((focusData) => {

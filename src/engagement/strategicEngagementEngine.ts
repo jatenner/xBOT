@@ -11,7 +11,7 @@
 import { Page } from 'playwright';
 import { browserManager } from '../posting/BrowserManager';
 import { getOpenAIService } from '../services/openAIService';
-import { getSupabaseClient } from '../db/index';
+import { admin } from '../lib/supabaseClients';
 
 export interface EngagementTarget {
   account_handle: string;
@@ -129,7 +129,7 @@ export class StrategicEngagementEngine {
 
       // Filter out recently engaged accounts (within 24 hours)
       try {
-        const supabase = getSupabaseClient();
+        const supabase = admin;
         const { data: recentEngagements } = await supabase
           .from('engagement_tracking')
           .select('target_username')
@@ -208,11 +208,14 @@ EXAMPLES OF GOOD REPLIES:
 
 Generate ONE strategic engagement action:`;
 
-      const response = await this.openaiService.chat.completions.create({
+      const response = await this.openaiService.chatCompletion([
+        { role: 'user', content: prompt }
+      ], {
         model: 'gpt-4o',
-        messages: [{ role: 'user', content: prompt }],
         temperature: 0.7,
-        max_tokens: 300
+        maxTokens: 300,
+        requestType: 'strategic_engagement',
+        priority: 'medium'
       });
 
       const aiResponse = response.choices[0]?.message?.content;
@@ -304,7 +307,7 @@ Generate ONE strategic engagement action:`;
    */
   private async trackEngagementForAttribution(results: EngagementResult[]): Promise<void> {
     try {
-      const supabase = getSupabaseClient();
+      const supabase = admin;
       
       const trackingData = results.map(result => ({
         engagement_id: result.engagement_id,
@@ -339,7 +342,7 @@ Generate ONE strategic engagement action:`;
     }>;
   }> {
     try {
-      const supabase = getSupabaseClient();
+      const supabase = admin;
       
       const { data: engagements } = await supabase
         .from('engagement_tracking')
