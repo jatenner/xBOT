@@ -9490,3 +9490,7 @@ Call log:
 ✅ DB_SUCCESS: record_system_failure completed in 173ms
 🔍 FAILURE_RECORDED: SystemHealthMonitoring - primary_failure
 📊 REAL_COLLECTION: Collecting collection_1 metrics for fast_1757193559224_4y350lcbx
+❌ REAL_METRICS_ERROR: fast_1757193559224_4y350lcbx (collection_1): page.waitForSelector: Timeout 15000ms exceeded.
+Call log:
+  [2m- waiting for locator('article[data-testid="tweet"]') to be visible[22m
+
