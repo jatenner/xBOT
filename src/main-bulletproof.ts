@@ -289,26 +289,40 @@ class BulletproofMainSystem {
         console.warn('⚠️ UNIFIED_LEARNING_FAILED:', learningError.message);
       }
       
-      // 🎯 STEP 2: CONTENT DIVERSITY TRACKER - Get 75+ specific topics based on analysis
-      let diversityContext = null;
-      let specificTopic = null;
+      // 🚨 EMERGENCY TOPIC DIVERSITY: Force non-GLP-1 topics immediately
+      console.log('🚨 EMERGENCY_DIVERSITY: Forcing non-GLP-1 content to break repetition cycle');
+      
+      const emergencyTopics = [
+        'Sleep Architecture and REM Optimization', 'Mitochondrial Biogenesis Protocols', 
+        'Circadian Light Therapy', 'Cold Thermogenesis Benefits', 'Breathwork for HRV',
+        'Gut Microbiome Diversity', 'NAD+ Precursor Timing', 'Autophagy Fasting Windows',
+        'Heat Shock Protein Activation', 'Telomere Length Optimization', 'Brown Fat Activation',
+        'Neurotransmitter Balance', 'Epigenetic Lifestyle Factors', 'Cognitive Enhancement Protocols',
+        'Hormonal Optimization', 'Exercise-Induced Adaptations', 'Stress Resilience Building'
+      ];
+      
+      // FORCE random selection from emergency topics (not GLP-1 related)
+      const specificTopic = emergencyTopics[Math.floor(Math.random() * emergencyTopics.length)];
+      console.log(`🎯 FORCED_TOPIC: ${specificTopic} (avoiding GLP-1 repetition)`);
+      
+      let diversityContext = {
+        diversityScore: 30, // Low score to force variety
+        overusedWords: ['GLP-1', 'medication', 'diabetes', 'weight loss'],
+        recommendedFocus: [specificTopic],
+        missingDomains: emergencyTopics.slice(0, 5)
+      };
+      
+      // BACKUP: Also try content diversity tracker if available
       try {
-        console.log('🎯 CONTENT_DIVERSITY: Analyzing recent content for advanced topic selection...');
         const { ContentDiversityTracker } = await import('./content/diversityTracker');
         const diversityTracker = ContentDiversityTracker.getInstance();
-        
-        // Get sophisticated content analysis (not just rotation)
         const contentAnalysis = await diversityTracker.analyzeRecentContent(7);
-        console.log(`📊 DIVERSITY_ANALYSIS: Score ${contentAnalysis.diversityScore}/100, ${contentAnalysis.missingDomains.length} underexplored domains`);
-        console.log(`🚫 OVERUSED: ${contentAnalysis.overusedWords.join(', ')}`);
-        console.log(`💡 RECOMMENDED: ${contentAnalysis.recommendedFocus.join(', ')}`);
-        
-        // Use AI-recommended focus areas instead of random selection
-        specificTopic = contentAnalysis.recommendedFocus[0] || 'Advanced Nutrition Science';
-        diversityContext = contentAnalysis;
+        console.log(`📊 BACKUP_DIVERSITY: Score ${contentAnalysis.diversityScore}/100`);
+        if (contentAnalysis.recommendedFocus.length > 0) {
+          diversityContext.recommendedFocus = contentAnalysis.recommendedFocus;
+        }
       } catch (diversityError: any) {
-        console.warn('⚠️ DIVERSITY_ANALYSIS_FAILED:', diversityError.message);
-        specificTopic = 'Advanced Nutrition Science'; // Fallback
+        console.warn('⚠️ BACKUP_DIVERSITY_FAILED:', diversityError.message);
       }
       
       // 🔥 STEP 3: REAL TRENDING TOPICS + VIRAL ORCHESTRATION
@@ -362,14 +376,20 @@ class BulletproofMainSystem {
         const { viralContentOptimizer } = await import('./ai/viralContentOptimizer');
         viralResult = await viralContentOptimizer.generateViralContent({
           format: format === 'thread' ? 'thread' : 'single',
-          targetAudience: `Health-conscious individuals interested in ${specificTopic}${currentTrends.length > 0 ? ` and trending topics like ${currentTrends[0]}` : ''}`,
-          currentTrends: currentTrends.length > 0 ? 
-            [`Incorporate trending: ${currentTrends[0]}`, `Focus on ${specificTopic}`, 'Use advanced insights'] :
-            [`Focus specifically on ${specificTopic}`, 'advanced health optimization insights'],
+          targetAudience: `Health optimization enthusiasts focused on ${specificTopic} (NOT diabetes medications)`,
+          currentTrends: [
+            `PRIMARY FOCUS: ${specificTopic}`,
+            'STRICTLY AVOID: GLP-1, diabetes medications, weight loss drugs', 
+            'EXPLORE: Advanced health optimization, biohacking, longevity',
+            ...(currentTrends.length > 0 ? [`Trending context: ${currentTrends[0]}`] : [])
+          ],
           performanceData: {
-            recentTopPerformers: currentTrends.length > 0 ? 
-              [`${currentTrends[0]} insights`, `${specificTopic} insights`, 'trending health topics'] :
-              [`${specificTopic} insights`, 'counterintuitive health insights', 'advanced optimization protocols']
+            recentTopPerformers: [
+              `${specificTopic} protocols`,
+              'cutting-edge health science',
+              'optimization techniques',
+              'biohacking strategies'
+            ]
           }
         });
       }
