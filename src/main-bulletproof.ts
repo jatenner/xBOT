@@ -329,7 +329,7 @@ class BulletproofMainSystem {
       
       let diversityContext = {
         diversityScore: 40, // Moderate score to balance variety with growth optimization
-        overusedWords: ['GLP-1', 'medication', 'diabetes', 'weight loss'], // Still avoid GLP-1
+        overusedWords: [], // Remove GLP-1 blocking - let AI choose naturally
         recommendedFocus: [specificTopic],
         viralHooks: growthStrategy?.viralHooks || ['Counterintuitive insights'],
         contentStrategy: growthStrategy?.contentStrategy || 'Authority-building content'
@@ -384,21 +384,33 @@ class BulletproofMainSystem {
       } else {
         console.log('🔄 FALLBACK_TO_OPTIMIZER: Using viral content optimizer with enhanced context');
         const { viralContentOptimizer } = await import('./ai/viralContentOptimizer');
+        // 🎲 TOPIC RANDOMIZATION: Force diverse topics to prevent repetition
+        const diverseTopics = [
+          'Sleep Architecture & REM Optimization', 'Mitochondrial Biogenesis', 'Circadian Light Therapy',
+          'Cold Thermogenesis', 'Breathwork & HRV', 'Gut Microbiome Diversity', 'NAD+ Precursors',
+          'Autophagy & Fasting', 'Heat Shock Proteins', 'Telomere Health', 'Brown Fat Activation',
+          'Neurotransmitter Balance', 'Epigenetic Factors', 'Cognitive Enhancement', 'Hormonal Balance',
+          'Exercise Adaptation', 'Stress Resilience', 'Environmental Toxins', 'Inflammation Control'
+        ];
+        
+        const randomTopicSeed = diverseTopics[Math.floor(Math.random() * diverseTopics.length)];
+        console.log(`🎲 TOPIC_RANDOMIZATION: Adding ${randomTopicSeed} as diversity seed`);
+        
         viralResult = await viralContentOptimizer.generateViralContent({
           format: format === 'thread' ? 'thread' : 'single',
-          targetAudience: `Health optimization enthusiasts focused on ${specificTopic} (NOT diabetes medications)`,
+          targetAudience: `Health optimization enthusiasts exploring ${randomTopicSeed} and related topics`,
           currentTrends: [
-            `PRIMARY FOCUS: ${specificTopic}`,
-            'STRICTLY AVOID: GLP-1, diabetes medications, weight loss drugs', 
-            'EXPLORE: Advanced health optimization, biohacking, longevity',
+            `TOPIC FOCUS: ${randomTopicSeed}`,
+            `SECONDARY FOCUS: ${specificTopic}`,
+            'REQUIREMENT: Choose unique, non-obvious health topics for content diversity',
             ...(currentTrends.length > 0 ? [`Trending context: ${currentTrends[0]}`] : [])
           ],
           performanceData: {
             recentTopPerformers: [
-              `${specificTopic} protocols`,
-              'cutting-edge health science',
-              'optimization techniques',
-              'biohacking strategies'
+              `${randomTopicSeed} research`,
+              `${specificTopic} insights`,
+              'novel health discoveries',
+              'cutting-edge protocols'
             ]
           }
         });
