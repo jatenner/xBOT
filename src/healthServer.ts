@@ -741,7 +741,59 @@ app.post('/force-post', async (req, res) => {
   }
 });
 
-console.log('🧠 AI endpoints mounted: /generate-content, /ai-post, /ai-analytics, /test-intelligent-post, /force-post');
+// Browser restart endpoint (for fixing connection issues)
+app.post('/restart-browser', async (req, res) => {
+  try {
+    console.log('🔄 RESTART_BROWSER: Force restarting browser connection...');
+    
+    // Try to restart the core browser manager
+    try {
+      const { browserManager } = await import('./core/BrowserManager');
+      await browserManager.cleanup();
+      console.log('✅ CORE_BROWSER: Cleaned up successfully');
+    } catch (coreError: any) {
+      console.warn('⚠️ CORE_BROWSER_CLEANUP:', coreError.message);
+    }
+    
+    // Try to restart the posting browser manager
+    try {
+      const { browserManager } = await import('./posting/BrowserManager');
+      await browserManager.cleanup();
+      console.log('✅ POSTING_BROWSER: Cleaned up successfully');
+    } catch (postingError: any) {
+      console.warn('⚠️ POSTING_BROWSER_CLEANUP:', postingError.message);
+    }
+    
+    // Wait a moment for cleanup
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Test new connection
+    try {
+      const { fastTwitterPoster } = await import('./posting/fastTwitterPoster');
+      const testResult = await fastTwitterPoster.postSingleTweet('Browser connection test - please ignore');
+      
+      res.json({
+        success: true,
+        message: 'Browser restart completed',
+        testPost: testResult.success,
+        timestamp: new Date().toISOString()
+      });
+    } catch (testError: any) {
+      res.json({
+        success: true,
+        message: 'Browser restart completed but test post failed',
+        error: testError.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+  } catch (error: any) {
+    console.error('❌ RESTART_BROWSER_ERROR:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+console.log('🧠 AI endpoints mounted: /generate-content, /ai-post, /ai-analytics, /test-intelligent-post, /force-post, /restart-browser');
 
 // PostLock management endpoint (admin only)
 app.post('/unlock-posting', async (req, res) => {
