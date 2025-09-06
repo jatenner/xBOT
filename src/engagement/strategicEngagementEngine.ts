@@ -291,29 +291,42 @@ Generate ONE strategic engagement action:`;
         console.log(`💬 REAL_ENGAGEMENT: Posting reply to @${action.target.username}`);
         console.log(`📝 CONTENT: "${action.response_content}"`);
         
-        // Use strategic replies system for real engagement
-        const { strategicReplies } = await import('./strategicReplies');
-        const replyResult = await strategicReplies.replyToInfluencer(
-          action.target.username,
-          action.response_content
-        );
+        // Use fast Twitter poster for real engagement
+        const { fastTwitterPoster } = await import('../posting/fastTwitterPoster');
         
-        if (replyResult.success) {
-          console.log(`✅ REAL_REPLY_SUCCESS: Posted to @${action.target.username}`);
-          return {
-            success: true,
-            action,
-            engagement_id: replyResult.tweetId || `eng_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            timestamp: new Date()
-          };
-        } else {
-          console.warn(`⚠️ REAL_REPLY_FAILED: ${replyResult.error}`);
+        try {
+          // Post the reply content as a regular tweet for now
+          // TODO: Implement actual reply functionality
+          const postResult = await fastTwitterPoster.postSingleTweet(
+            `@${action.target.username} ${action.response_content}`
+          );
+          
+          if (postResult.success) {
+            console.log(`✅ REAL_REPLY_SUCCESS: Posted engagement to @${action.target.username}`);
+            return {
+              success: true,
+              action,
+              engagement_id: postResult.tweetId || `eng_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              timestamp: new Date()
+            };
+          } else {
+            console.warn(`⚠️ REAL_REPLY_FAILED: ${postResult.error}`);
+            return {
+              success: false,
+              action,
+              engagement_id: `failed_${Date.now()}`,
+              timestamp: new Date(),
+              error: postResult.error
+            };
+          }
+        } catch (postError: any) {
+          console.error(`❌ ENGAGEMENT_POST_ERROR: ${postError.message}`);
           return {
             success: false,
             action,
-            engagement_id: `failed_${Date.now()}`,
+            engagement_id: `error_${Date.now()}`,
             timestamp: new Date(),
-            error: replyResult.error
+            error: postError.message
           };
         }
       }
