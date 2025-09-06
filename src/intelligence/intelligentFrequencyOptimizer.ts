@@ -9,7 +9,7 @@
  * - Engagement momentum
  */
 
-import { getSupabaseClient } from '../db/index';
+import { admin } from '../lib/supabaseClients';
 
 export interface OptimalTimingStrategy {
   next_post_time: Date;
@@ -92,7 +92,7 @@ export class IntelligentFrequencyOptimizer {
    */
   private async analyzeAudiencePattern(): Promise<FrequencyAnalysis['audience_activity_pattern']> {
     try {
-      const supabase = getSupabaseClient();
+      const supabase = admin;
       
       // Get recent engagement data grouped by hour
       const { data: recentMetrics } = await supabase
@@ -151,7 +151,7 @@ export class IntelligentFrequencyOptimizer {
     recent_engagement_trend: number;
   }> {
     try {
-      const supabase = getSupabaseClient();
+      const supabase = admin;
       
       const { data: recentPosts } = await supabase
         .from('unified_posts')
@@ -182,7 +182,7 @@ export class IntelligentFrequencyOptimizer {
         (p: any) => new Date(p.createdAt as string).getTime() > Date.now() - 24 * 60 * 60 * 1000
       ).length;
       
-      const saturationRisk = Math.min(postsLast24h / 12, 1.0); // Risk increases after 12 posts/day
+      const saturationRisk = Math.min(postsLast24h / 25, 1.0); // Risk increases after 25 posts/day (much more aggressive)
 
       return {
         trend: 'stable', // Will be enhanced with actual engagement correlation
@@ -274,10 +274,10 @@ export class IntelligentFrequencyOptimizer {
       nextPostTime.setDate(nextPostTime.getDate() + 1);
     }
 
-    // Adjust for saturation risk
-    const minGap = recentPerformance.saturation_risk > 0.7 ? 180 : // 3 hours if high saturation
-                   recentPerformance.saturation_risk > 0.4 ? 120 : // 2 hours if medium
-                   60; // 1 hour if low
+    // Adjust for saturation risk - MUCH MORE AGGRESSIVE FOR GROWTH
+    const minGap = recentPerformance.saturation_risk > 0.8 ? 45 : // 45 minutes even if high saturation
+                   recentPerformance.saturation_risk > 0.6 ? 30 : // 30 minutes if medium
+                   15; // 15 minutes if low - very aggressive for growth
 
     const timeSinceNow = nextPostTime.getTime() - now.getTime();
     if (timeSinceNow < minGap * 60 * 1000) {

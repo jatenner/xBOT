@@ -6499,3 +6499,1636 @@ SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /Users/jonahtenner/xBOT/da
 ⚠️ No suitable tweets found for contextual replies
 ✅ BULLETPROOF_REPLIES: Contextual reply posted (single tweet, not thread)
 📊 BULLETPROOF_STATUS: Cycle completed successfully
+📊 REAL_COLLECTION: Collecting collection_1 metrics for thread_1757170928683_6xqz41418
+❌ REAL_METRICS_ERROR: thread_1757170928683_6xqz41418 (collection_1): page.waitForSelector: Timeout 15000ms exceeded.
+Call log:
+  [2m- waiting for locator('article[data-testid="tweet"]') to be visible[22m
+
+🔄 BULLETPROOF_MAIN_LOOP: Starting cycle...
+📝 BULLETPROOF_POSTING: Generating ORIGINAL content (threads/singles)...
+🎯 IMPORTANT: This is an ORIGINAL post, NOT a reply to someone
+🎰 BANDIT_SELECTION: Choosing optimal config for thread...
+📊 BANDIT_UPDATE: Updated with 100 recent posts
+🔍 EXPLORATION: Random selection for persona
+🎯 EXPLOITATION: Selected Surprise (avg reward: 0.101)
+🎯 EXPLOITATION: Selected Contrarian Revelation (avg reward: 0.126)
+🔍 EXPLORATION: Random selection for temperature
+🎯 BANDIT_SELECTED: Marcus Chen + Surprise + Contrarian Revelation (temp: 0.6)
+📊 CONFIDENCE: 55.2%
+🎯 OPTIMAL_CONFIG: Marcus Chen + Surprise + Contrarian Revelation
+🎯 POSTING_STRATEGY: Selected thread format for original post (not reply)
+🚀 ENHANCED_VIRAL: Generating bulletproof thread content...
+🔍 DIVERSITY_ANALYSIS: Analyzing last 7 days of content...
+📊 DIVERSITY_SCORE: 0/100
+🔁 OVERUSED_TOPICS: your, morning, could, let's, brew, some, secret, found, that, coffee
+🎯 RECOMMENDED_FOCUS: supplements_advanced, exercise_science, circadian_biology
+🔍 DIVERSITY_ANALYSIS: Analyzing last 7 days of content...
+📊 DIVERSITY_SCORE: 0/100
+🔁 OVERUSED_TOPICS: your, morning, could, let's, brew, some, secret, found, that, coffee
+🎯 RECOMMENDED_FOCUS: supplements_advanced, exercise_science, circadian_biology
+🎭 PERSONA_ROTATION: Now using Marcus Chen
+🎭 PERSONA_SELECTED: Marcus Chen
+🧠 EMOTION_SELECTED: Curiosity
+🛡️ BULLETPROOF_GENERATION: thread with strict validation
+🎯 Generating with bulletproof prompts...
+⚠️ VALIDATION_FAILED: Tweet 1 contains banned chars (hashtags/quotes) | Tweet 2 contains banned chars (hashtags/quotes)
+🔄 Attempting repair generation...
+❌ BULLETPROOF_FAILED: Tweet 1 contains banned chars (hashtags/quotes) | Tweet 2 contains banned chars (hashtags/quotes)
+📝 LOGGED_CONTENT: topic="health", brands=[Novo Nordisk, Wegovy, Eli Lilly]
+✅ ENHANCED_VIRAL_SUCCESS: thread generated with 75/100 viral score
+📝 GENERATED_CONTENT: thread with 75/100 viral score
+🎭 CONTENT_METADATA: Marcus Chen | Curiosity | tactical protocols
+⚡ FAST_THREAD: Posting 5-part thread with ultra-fast system
+⚡ FAST_THREAD: Starting ultra-fast thread (5 tweets)
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /Users/jonahtenner/xBOT/data/twitter_session.json
+🧵 FAST_THREAD: Using native thread creation
+⚠️ FAST_THREAD: Failed to add tweet 2, continuing...
+🚀 FAST_THREAD: Posting thread...
+✅ FAST_THREAD: Thread posted successfully
+✅ ENHANCED_POST_SUCCESS: thread posted with ID thread_1757171785603_621zloyx0
+💾 STORED_FOR_TRACKING: thread_1757171785603_621zloyx0 with Marcus Chen/Surprise/Contrarian Revelation
+📊 REAL_METRICS: Starting real tracking for thread_1757171785603_621zloyx0
+✅ REAL_TRACKING: Scheduled 5 real metric collections for thread_1757171785603_621zloyx0
+📊 REAL_METRICS_STARTED: thread_1757171785603_621zloyx0 queued for real engagement tracking
+💬 BULLETPROOF_REPLIES: Executing strategic engagement...
+🎯 IMPORTANT: These are REPLIES to other people, NOT original posts
+💬 BULLETPROOF_REPLIES: Executing contextual strategic replies...
+💬 CONTEXTUAL_REPLIES: Finding health tweets for single contextual responses...
+🎯 TARGET: Analyzing @hubermanlab (neuroscience)
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /Users/jonahtenner/xBOT/data/twitter_session.json
+⚠️ No suitable tweets found for contextual replies
+✅ BULLETPROOF_REPLIES: Contextual reply posted (single tweet, not thread)
+📊 BULLETPROOF_STATUS: Cycle completed successfully
+🏥 SYSTEM_HEALTH: Running comprehensive health check...
+🔍 SYSTEM_HEALTH_ANALYSIS: Analyzing failure patterns...
+📊 DB_QUERY: Executing get_recent_failures
+📊 REAL_COLLECTION: Collecting collection_1 metrics for thread_1757171785603_621zloyx0
+📊 REAL_COLLECTION: Collecting collection_3 metrics for thread_1757165112099_xy6kq9j3k
+📊 REAL_COLLECTION: Collecting collection_4 metrics for thread_1757150720630_6xt7sl0z8
+🔄 BULLETPROOF_MAIN_LOOP: Starting cycle...
+⏳ POSTING_COOLDOWN: 1 minutes remaining
+💬 BULLETPROOF_REPLIES: Executing strategic engagement...
+🎯 IMPORTANT: These are REPLIES to other people, NOT original posts
+💬 BULLETPROOF_REPLIES: Executing contextual strategic replies...
+💬 CONTEXTUAL_REPLIES: Finding health tweets for single contextual responses...
+🎯 TARGET: Analyzing @hubermanlab (neuroscience)
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /Users/jonahtenner/xBOT/data/twitter_session.json
+📊 REAL_COLLECTION: Collecting collection_2 metrics for thread_1757170928683_6xqz41418
+❌ DB_ERROR: get_recent_failures failed - TypeError: fetch failed
+❌ GET_FAILURES_ERROR: TypeError: fetch failed
+📊 SYSTEM_HEALTH: 100% overall health
+🔍 DATA_ANALYSIS: Starting comprehensive system analysis...
+📊 DB_QUERY: Executing extract_system_metrics
+📊 DB_QUERY: Executing extract_engagement_data
+📊 DB_QUERY: Executing extract_failure_patterns
+📊 DB_QUERY: Executing extract_performance_data
+❌ DB_ERROR: extract_engagement_data failed - TypeError: fetch failed
+❌ EXTRACT_ENGAGEMENT_ERROR: TypeError: fetch failed
+❌ DB_ERROR: extract_failure_patterns failed - TypeError: fetch failed
+❌ EXTRACT_FAILURES_ERROR: TypeError: fetch failed
+❌ DB_ERROR: extract_performance_data failed - TypeError: fetch failed
+❌ EXTRACT_PERFORMANCE_ERROR: TypeError: fetch failed
+❌ DB_ERROR: extract_system_metrics failed - TypeError: fetch failed
+🚨 CIRCUIT_BREAKER: OPENING due to excessive failures
+❌ EXTRACT_METRICS_ERROR: TypeError: fetch failed
+📊 ANALYSIS_COMPLETE: 0 insights, 0 predictions
+🎯 HEALTH_SCORE: 50/100
+❌ EXTRACT_METRICS_ERROR: Circuit breaker is OPEN - database temporarily unavailable
+📊 SYSTEM_HEALTH_SCORE: 100/100
+🚨 CRITICAL_SYSTEMS: 0
+⚠️ EMERGENCY_OVERUSE: 0
+🔄 TOTAL_EMERGENCY_USES: 0
+❌ AUDITOR_STORAGE_ERROR: Circuit breaker is OPEN - database temporarily unavailable
+❌ REAL_METRICS_ERROR: thread_1757165112099_xy6kq9j3k (collection_3): page.goto: net::ERR_INTERNET_DISCONNECTED at https://x.com/i/status/thread_1757165112099_xy6kq9j3k
+Call log:
+  [2m- navigating to "https://x.com/i/status/thread_1757165112099_xy6kq9j3k", waiting until "domcontentloaded"[22m
+
+❌ REAL_METRICS_ERROR: thread_1757171785603_621zloyx0 (collection_1): page.goto: net::ERR_INTERNET_DISCONNECTED at https://x.com/i/status/thread_1757171785603_621zloyx0
+Call log:
+  [2m- navigating to "https://x.com/i/status/thread_1757171785603_621zloyx0", waiting until "domcontentloaded"[22m
+
+❌ REAL_METRICS_ERROR: thread_1757150720630_6xt7sl0z8 (collection_4): page.goto: net::ERR_INTERNET_DISCONNECTED at https://x.com/i/status/thread_1757150720630_6xt7sl0z8
+Call log:
+  [2m- navigating to "https://x.com/i/status/thread_1757150720630_6xt7sl0z8", waiting until "domcontentloaded"[22m
+
+❌ REAL_METRICS_ERROR: thread_1757170928683_6xqz41418 (collection_2): page.goto: net::ERR_INTERNET_DISCONNECTED at https://x.com/i/status/thread_1757170928683_6xqz41418
+Call log:
+  [2m- navigating to "https://x.com/i/status/thread_1757170928683_6xqz41418", waiting until "domcontentloaded"[22m
+
+Failed to find replyable tweet: page.goto: net::ERR_INTERNET_DISCONNECTED at https://x.com/hubermanlab
+Call log:
+  [2m- navigating to "https://x.com/hubermanlab", waiting until "domcontentloaded"[22m
+
+    at /Users/jonahtenner/xBOT/dist/engagement/strategicReplies.js:79:24
+    at async BrowserManager.withContext (/Users/jonahtenner/xBOT/dist/posting/BrowserManager.js:172:20)
+    at async findReplyableTweet (/Users/jonahtenner/xBOT/dist/engagement/strategicReplies.js:75:16)
+    at async executeStrategicReplies (/Users/jonahtenner/xBOT/dist/engagement/strategicReplies.js:53:23)
+    at async BulletproofMainSystem.executeEnhancedReplies (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:258:13)
+    at async BulletproofMainSystem.mainLoop (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:132:17)
+    at async Timeout._onTimeout (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:83:17) {
+  name: 'Error'
+}
+⚠️ No suitable tweets found for contextual replies
+✅ BULLETPROOF_REPLIES: Contextual reply posted (single tweet, not thread)
+📊 BULLETPROOF_STATUS: Cycle completed successfully
+📈 BULLETPROOF_ANALYTICS: Collecting performance data...
+⚠️ Failed to get recent posts: {
+  message: 'TypeError: fetch failed',
+  details: 'TypeError: fetch failed\n' +
+    '    at node:internal/deps/undici/undici:13502:13\n' +
+    '    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n' +
+    '    at async /Users/jonahtenner/xBOT/dist/main-bulletproof.js:336:41\n' +
+    '    at async /Users/jonahtenner/xBOT/dist/lib/advancedDatabaseManager.js:356:32\n' +
+    '    at async CircuitBreaker.execute (/Users/jonahtenner/xBOT/dist/lib/advancedDatabaseManager.js:39:28)\n' +
+    '    at async AdvancedDatabaseManager.executeQuery (/Users/jonahtenner/xBOT/dist/lib/advancedDatabaseManager.js:345:16)\n' +
+    '    at async BulletproofMainSystem.getRecentPosts (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:335:28)\n' +
+    '    at async BulletproofMainSystem.analyticsLoop (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:272:33)\n' +
+    '    at async Timeout._onTimeout (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:87:17)',
+  hint: '',
+  code: ''
+}
+🎰 BANDIT_REPORT: {
+  "persona": [
+    {
+      "name": "Dr. Elena Vasquez",
+      "pulls": 705,
+      "avgReward": "0.082",
+      "confidence": "54.1%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Marcus Chen",
+      "pulls": 1363,
+      "avgReward": "0.083",
+      "confidence": "54.2%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Dr. Sarah Kim",
+      "pulls": 1269,
+      "avgReward": "0.096",
+      "confidence": "54.8%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Dr. James Mitchell",
+      "pulls": 517,
+      "avgReward": "0.085",
+      "confidence": "54.2%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Dr. Lisa Patel",
+      "pulls": 846,
+      "avgReward": "0.123",
+      "confidence": "56.1%",
+      "lastUsed": "2025-09-06"
+    }
+  ],
+  "emotion": [
+    {
+      "name": "Curiosity",
+      "pulls": 1316,
+      "avgReward": "0.090",
+      "confidence": "54.5%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Surprise",
+      "pulls": 94,
+      "avgReward": "0.101",
+      "confidence": "55.0%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Fear/Urgency",
+      "pulls": 1598,
+      "avgReward": "0.098",
+      "confidence": "54.9%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Validation/Pride",
+      "pulls": 1081,
+      "avgReward": "0.115",
+      "confidence": "55.7%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Hope/Optimism",
+      "pulls": 611,
+      "avgReward": "0.058",
+      "confidence": "52.9%",
+      "lastUsed": "2025-09-06"
+    }
+  ],
+  "framework": [
+    {
+      "name": "Contrarian Revelation",
+      "pulls": 705,
+      "avgReward": "0.126",
+      "confidence": "56.3%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Insider Secret",
+      "pulls": 1739,
+      "avgReward": "0.101",
+      "confidence": "55.1%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Mechanism Master",
+      "pulls": 282,
+      "avgReward": "0.092",
+      "confidence": "54.6%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Precision Protocol",
+      "pulls": 1175,
+      "avgReward": "0.080",
+      "confidence": "54.0%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Data Bomb",
+      "pulls": 799,
+      "avgReward": "0.077",
+      "confidence": "53.8%",
+      "lastUsed": "2025-09-06"
+    }
+  ],
+  "temperature": [
+    {
+      "name": "Conservative",
+      "pulls": 0,
+      "avgReward": "0.000",
+      "confidence": "0.0%",
+      "lastUsed": "2025-09-05"
+    },
+    {
+      "name": "Balanced",
+      "pulls": 0,
+      "avgReward": "0.000",
+      "confidence": "0.0%",
+      "lastUsed": "2025-09-05"
+    },
+    {
+      "name": "Creative",
+      "pulls": 0,
+      "avgReward": "0.000",
+      "confidence": "0.0%",
+      "lastUsed": "2025-09-05"
+    }
+  ]
+}
+[ioredis] Unhandled error event: Error: read ETIMEDOUT
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+    at TCP.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+🔄 BULLETPROOF_MAIN_LOOP: Starting cycle...
+📝 BULLETPROOF_POSTING: Generating ORIGINAL content (threads/singles)...
+🎯 IMPORTANT: This is an ORIGINAL post, NOT a reply to someone
+🎰 BANDIT_SELECTION: Choosing optimal config for thread...
+📊 REAL_COLLECTION: Collecting collection_4 metrics for thread_1757151921881_rh3zapeww
+📊 REAL_COLLECTION: Collecting collection_3 metrics for thread_1757166327102_zsw6rcnzw
+📊 REAL_COLLECTION: Collecting collection_2 metrics for thread_1757171785603_621zloyx0
+🏥 SYSTEM_HEALTH: Running comprehensive health check...
+🔍 SYSTEM_HEALTH_ANALYSIS: Analyzing failure patterns...
+🔄 CIRCUIT_BREAKER: Attempting reset...
+📊 DB_QUERY: Executing get_recent_failures
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+⚠️ Failed to get recent performance data: {
+  message: 'TypeError: fetch failed',
+  details: 'TypeError: fetch failed\n' +
+    '    at node:internal/deps/undici/undici:13502:13\n' +
+    '    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n' +
+    '    at async /Users/jonahtenner/xBOT/dist/ai/promptEvolutionEngine.js:237:41\n' +
+    '    at async /Users/jonahtenner/xBOT/dist/lib/advancedDatabaseManager.js:356:32\n' +
+    '    at async CircuitBreaker.execute (/Users/jonahtenner/xBOT/dist/lib/advancedDatabaseManager.js:39:28)\n' +
+    '    at async AdvancedDatabaseManager.executeQuery (/Users/jonahtenner/xBOT/dist/lib/advancedDatabaseManager.js:345:16)\n' +
+    '    at async PromptEvolutionEngine.getRecentPerformanceData (/Users/jonahtenner/xBOT/dist/ai/promptEvolutionEngine.js:236:28)\n' +
+    '    at async PromptEvolutionEngine.updateBanditArms (/Users/jonahtenner/xBOT/dist/ai/promptEvolutionEngine.js:131:33)\n' +
+    '    at async PromptEvolutionEngine.selectOptimalConfig (/Users/jonahtenner/xBOT/dist/ai/promptEvolutionEngine.js:65:13)\n' +
+    '    at async BulletproofMainSystem.executeEnhancedPosting (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:152:35)',
+  hint: '',
+  code: ''
+}
+📊 BANDIT_UPDATE: Updated with 0 recent posts
+🎯 EXPLOITATION: Selected Dr. Lisa Patel (avg reward: 0.123)
+🔍 EXPLORATION: Random selection for emotion
+🎯 EXPLOITATION: Selected Contrarian Revelation (avg reward: 0.126)
+🔍 EXPLORATION: Random selection for temperature
+🎯 BANDIT_SELECTED: Dr. Lisa Patel + Hope/Optimism + Contrarian Revelation (temp: 0.6)
+📊 CONFIDENCE: 55.1%
+🎯 OPTIMAL_CONFIG: Dr. Lisa Patel + Hope/Optimism + Contrarian Revelation
+🎯 POSTING_STRATEGY: Selected thread format for original post (not reply)
+🚀 ENHANCED_VIRAL: Generating bulletproof thread content...
+🔍 DIVERSITY_ANALYSIS: Analyzing last 7 days of content...
+❌ DB_ERROR: get_recent_failures failed - TypeError: fetch failed
+❌ GET_FAILURES_ERROR: TypeError: fetch failed
+📊 SYSTEM_HEALTH: 100% overall health
+🔍 DATA_ANALYSIS: Starting comprehensive system analysis...
+📊 DB_QUERY: Executing extract_system_metrics
+📊 DB_QUERY: Executing extract_engagement_data
+📊 DB_QUERY: Executing extract_failure_patterns
+📊 DB_QUERY: Executing extract_performance_data
+📝 NO_RECENT_POSTS: No content to analyze, all domains available
+🔍 DIVERSITY_ANALYSIS: Analyzing last 7 days of content...
+❌ DB_ERROR: extract_engagement_data failed - TypeError: fetch failed
+❌ EXTRACT_ENGAGEMENT_ERROR: TypeError: fetch failed
+❌ DB_ERROR: extract_failure_patterns failed - TypeError: fetch failed
+❌ EXTRACT_FAILURES_ERROR: TypeError: fetch failed
+❌ DB_ERROR: extract_performance_data failed - TypeError: fetch failed
+❌ EXTRACT_PERFORMANCE_ERROR: TypeError: fetch failed
+❌ DB_ERROR: extract_system_metrics failed - TypeError: fetch failed
+🚨 CIRCUIT_BREAKER: OPENING due to excessive failures
+❌ EXTRACT_METRICS_ERROR: TypeError: fetch failed
+📊 ANALYSIS_COMPLETE: 0 insights, 0 predictions
+🎯 HEALTH_SCORE: 50/100
+❌ EXTRACT_METRICS_ERROR: Circuit breaker is OPEN - database temporarily unavailable
+📊 SYSTEM_HEALTH_SCORE: 100/100
+🚨 CRITICAL_SYSTEMS: 0
+⚠️ EMERGENCY_OVERUSE: 0
+🔄 TOTAL_EMERGENCY_USES: 0
+❌ AUDITOR_STORAGE_ERROR: Circuit breaker is OPEN - database temporarily unavailable
+📝 NO_RECENT_POSTS: No content to analyze, all domains available
+🎭 PERSONA_ROTATION: Now using Dr. Sarah Kim
+🎭 PERSONA_SELECTED: Dr. Sarah Kim
+🧠 EMOTION_SELECTED: Curiosity
+🛡️ BULLETPROOF_GENERATION: thread with strict validation
+🎯 Generating with bulletproof prompts...
+❌ REAL_METRICS_ERROR: thread_1757171785603_621zloyx0 (collection_2): page.goto: net::ERR_INTERNET_DISCONNECTED at https://x.com/i/status/thread_1757171785603_621zloyx0
+Call log:
+  [2m- navigating to "https://x.com/i/status/thread_1757171785603_621zloyx0", waiting until "domcontentloaded"[22m
+
+❌ REAL_METRICS_ERROR: thread_1757166327102_zsw6rcnzw (collection_3): page.goto: net::ERR_INTERNET_DISCONNECTED at https://x.com/i/status/thread_1757166327102_zsw6rcnzw
+Call log:
+  [2m- navigating to "https://x.com/i/status/thread_1757166327102_zsw6rcnzw", waiting until "domcontentloaded"[22m
+
+❌ REAL_METRICS_ERROR: thread_1757151921881_rh3zapeww (collection_4): page.goto: net::ERR_INTERNET_DISCONNECTED at https://x.com/i/status/thread_1757151921881_rh3zapeww
+Call log:
+  [2m- navigating to "https://x.com/i/status/thread_1757151921881_rh3zapeww", waiting until "domcontentloaded"[22m
+
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+💥 BULLETPROOF_CRASHED: Connection error.
+❌ ENHANCED_VIRAL_FAILED: Generation crashed: Connection error.
+🔄 CREATING_FALLBACK_CONTENT...
+📝 GENERATED_CONTENT: thread with 75/100 viral score
+🎭 CONTENT_METADATA: Dr. Sarah Kim | Curiosity | fallback-protocol
+⚡ FAST_THREAD: Posting 5-part thread with ultra-fast system
+⚡ FAST_THREAD: Starting ultra-fast thread (5 tweets)
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /Users/jonahtenner/xBOT/data/twitter_session.json
+🧵 FAST_THREAD: Using native thread creation
+❌ FAST_THREAD: Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://x.com/compose/tweet
+Call log:
+  [2m- navigating to "https://x.com/compose/tweet", waiting until "domcontentloaded"[22m
+
+🚨 FAST_THREAD: Native failed, emergency single tweet fallback
+🚀 FAST_EXECUTE: Using keyboard shortcut method
+❌ FAST_EXECUTE: Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://x.com/home
+Call log:
+  [2m- navigating to "https://x.com/home", waiting until "domcontentloaded"[22m
+
+❌ ENHANCED_POST_FAILED: page.goto: net::ERR_INTERNET_DISCONNECTED at https://x.com/home
+Call log:
+  [2m- navigating to "https://x.com/home", waiting until "domcontentloaded"[22m
+
+💬 BULLETPROOF_REPLIES: Executing strategic engagement...
+🎯 IMPORTANT: These are REPLIES to other people, NOT original posts
+💬 BULLETPROOF_REPLIES: Executing contextual strategic replies...
+💬 CONTEXTUAL_REPLIES: Finding health tweets for single contextual responses...
+🎯 TARGET: Analyzing @drmarkhyman (functional medicine)
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /Users/jonahtenner/xBOT/data/twitter_session.json
+Failed to find replyable tweet: page.goto: net::ERR_INTERNET_DISCONNECTED at https://x.com/drmarkhyman
+Call log:
+  [2m- navigating to "https://x.com/drmarkhyman", waiting until "domcontentloaded"[22m
+
+    at /Users/jonahtenner/xBOT/dist/engagement/strategicReplies.js:79:24
+    at async BrowserManager.withContext (/Users/jonahtenner/xBOT/dist/posting/BrowserManager.js:172:20)
+    at async findReplyableTweet (/Users/jonahtenner/xBOT/dist/engagement/strategicReplies.js:75:16)
+    at async executeStrategicReplies (/Users/jonahtenner/xBOT/dist/engagement/strategicReplies.js:53:23)
+    at async BulletproofMainSystem.executeEnhancedReplies (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:258:13)
+    at async BulletproofMainSystem.mainLoop (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:132:17)
+    at async Timeout._onTimeout (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:83:17) {
+  name: 'Error'
+}
+⚠️ No suitable tweets found for contextual replies
+✅ BULLETPROOF_REPLIES: Contextual reply posted (single tweet, not thread)
+📊 BULLETPROOF_STATUS: Cycle completed successfully
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+🔄 BULLETPROOF_MAIN_LOOP: Starting cycle...
+⏳ POSTING_COOLDOWN: 4 minutes remaining
+💬 BULLETPROOF_REPLIES: Executing strategic engagement...
+🎯 IMPORTANT: These are REPLIES to other people, NOT original posts
+💬 BULLETPROOF_REPLIES: Executing contextual strategic replies...
+💬 CONTEXTUAL_REPLIES: Finding health tweets for single contextual responses...
+🎯 TARGET: Analyzing @bengreenfieldhq (biohacking)
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /Users/jonahtenner/xBOT/data/twitter_session.json
+📈 BULLETPROOF_ANALYTICS: Collecting performance data...
+📊 REAL_COLLECTION: Collecting collection_3 metrics for fast_1757167507282_33lav18qx
+📊 REAL_COLLECTION: Collecting collection_4 metrics for fast_1757153109630_q1iplzzyt
+🏥 SYSTEM_HEALTH: Running comprehensive health check...
+🔍 SYSTEM_HEALTH_ANALYSIS: Analyzing failure patterns...
+🔄 CIRCUIT_BREAKER: Attempting reset...
+📊 DB_QUERY: Executing get_recent_failures
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+⚠️ Failed to get recent posts: {
+  message: 'TypeError: fetch failed',
+  details: 'TypeError: fetch failed\n' +
+    '    at node:internal/deps/undici/undici:13502:13\n' +
+    '    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n' +
+    '    at async /Users/jonahtenner/xBOT/dist/main-bulletproof.js:336:41\n' +
+    '    at async /Users/jonahtenner/xBOT/dist/lib/advancedDatabaseManager.js:356:32\n' +
+    '    at async CircuitBreaker.execute (/Users/jonahtenner/xBOT/dist/lib/advancedDatabaseManager.js:39:28)\n' +
+    '    at async AdvancedDatabaseManager.executeQuery (/Users/jonahtenner/xBOT/dist/lib/advancedDatabaseManager.js:345:16)\n' +
+    '    at async BulletproofMainSystem.getRecentPosts (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:335:28)\n' +
+    '    at async BulletproofMainSystem.analyticsLoop (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:272:33)\n' +
+    '    at async Timeout._onTimeout (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:87:17)',
+  hint: '',
+  code: ''
+}
+🎰 BANDIT_REPORT: {
+  "persona": [
+    {
+      "name": "Dr. Elena Vasquez",
+      "pulls": 705,
+      "avgReward": "0.082",
+      "confidence": "54.1%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Marcus Chen",
+      "pulls": 1363,
+      "avgReward": "0.083",
+      "confidence": "54.2%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Dr. Sarah Kim",
+      "pulls": 1269,
+      "avgReward": "0.096",
+      "confidence": "54.8%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Dr. James Mitchell",
+      "pulls": 517,
+      "avgReward": "0.085",
+      "confidence": "54.2%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Dr. Lisa Patel",
+      "pulls": 846,
+      "avgReward": "0.123",
+      "confidence": "56.1%",
+      "lastUsed": "2025-09-06"
+    }
+  ],
+  "emotion": [
+    {
+      "name": "Curiosity",
+      "pulls": 1316,
+      "avgReward": "0.090",
+      "confidence": "54.5%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Surprise",
+      "pulls": 94,
+      "avgReward": "0.101",
+      "confidence": "55.0%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Fear/Urgency",
+      "pulls": 1598,
+      "avgReward": "0.098",
+      "confidence": "54.9%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Validation/Pride",
+      "pulls": 1081,
+      "avgReward": "0.115",
+      "confidence": "55.7%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Hope/Optimism",
+      "pulls": 611,
+      "avgReward": "0.058",
+      "confidence": "52.9%",
+      "lastUsed": "2025-09-06"
+    }
+  ],
+  "framework": [
+    {
+      "name": "Contrarian Revelation",
+      "pulls": 705,
+      "avgReward": "0.126",
+      "confidence": "56.3%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Insider Secret",
+      "pulls": 1739,
+      "avgReward": "0.101",
+      "confidence": "55.1%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Mechanism Master",
+      "pulls": 282,
+      "avgReward": "0.092",
+      "confidence": "54.6%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Precision Protocol",
+      "pulls": 1175,
+      "avgReward": "0.080",
+      "confidence": "54.0%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Data Bomb",
+      "pulls": 799,
+      "avgReward": "0.077",
+      "confidence": "53.8%",
+      "lastUsed": "2025-09-06"
+    }
+  ],
+  "temperature": [
+    {
+      "name": "Conservative",
+      "pulls": 0,
+      "avgReward": "0.000",
+      "confidence": "0.0%",
+      "lastUsed": "2025-09-05"
+    },
+    {
+      "name": "Balanced",
+      "pulls": 0,
+      "avgReward": "0.000",
+      "confidence": "0.0%",
+      "lastUsed": "2025-09-05"
+    },
+    {
+      "name": "Creative",
+      "pulls": 0,
+      "avgReward": "0.000",
+      "confidence": "0.0%",
+      "lastUsed": "2025-09-05"
+    }
+  ]
+}
+❌ DB_ERROR: get_recent_failures failed - TypeError: fetch failed
+❌ GET_FAILURES_ERROR: TypeError: fetch failed
+📊 SYSTEM_HEALTH: 100% overall health
+🔍 DATA_ANALYSIS: Starting comprehensive system analysis...
+📊 DB_QUERY: Executing extract_system_metrics
+📊 DB_QUERY: Executing extract_engagement_data
+📊 DB_QUERY: Executing extract_failure_patterns
+📊 DB_QUERY: Executing extract_performance_data
+❌ DB_ERROR: extract_engagement_data failed - TypeError: fetch failed
+❌ EXTRACT_ENGAGEMENT_ERROR: TypeError: fetch failed
+❌ DB_ERROR: extract_failure_patterns failed - TypeError: fetch failed
+❌ EXTRACT_FAILURES_ERROR: TypeError: fetch failed
+❌ DB_ERROR: extract_performance_data failed - TypeError: fetch failed
+❌ EXTRACT_PERFORMANCE_ERROR: TypeError: fetch failed
+❌ DB_ERROR: extract_system_metrics failed - TypeError: fetch failed
+🚨 CIRCUIT_BREAKER: OPENING due to excessive failures
+❌ EXTRACT_METRICS_ERROR: TypeError: fetch failed
+📊 ANALYSIS_COMPLETE: 0 insights, 0 predictions
+🎯 HEALTH_SCORE: 50/100
+❌ EXTRACT_METRICS_ERROR: Circuit breaker is OPEN - database temporarily unavailable
+📊 SYSTEM_HEALTH_SCORE: 100/100
+🚨 CRITICAL_SYSTEMS: 0
+⚠️ EMERGENCY_OVERUSE: 0
+🔄 TOTAL_EMERGENCY_USES: 0
+❌ AUDITOR_STORAGE_ERROR: Circuit breaker is OPEN - database temporarily unavailable
+❌ REAL_METRICS_ERROR: fast_1757153109630_q1iplzzyt (collection_4): page.goto: net::ERR_INTERNET_DISCONNECTED at https://x.com/i/status/fast_1757153109630_q1iplzzyt
+Call log:
+  [2m- navigating to "https://x.com/i/status/fast_1757153109630_q1iplzzyt", waiting until "domcontentloaded"[22m
+
+❌ REAL_METRICS_ERROR: fast_1757167507282_33lav18qx (collection_3): page.goto: net::ERR_INTERNET_DISCONNECTED at https://x.com/i/status/fast_1757167507282_33lav18qx
+Call log:
+  [2m- navigating to "https://x.com/i/status/fast_1757167507282_33lav18qx", waiting until "domcontentloaded"[22m
+
+Failed to find replyable tweet: page.goto: net::ERR_INTERNET_DISCONNECTED at https://x.com/bengreenfieldhq
+Call log:
+  [2m- navigating to "https://x.com/bengreenfieldhq", waiting until "domcontentloaded"[22m
+
+    at /Users/jonahtenner/xBOT/dist/engagement/strategicReplies.js:79:24
+    at async BrowserManager.withContext (/Users/jonahtenner/xBOT/dist/posting/BrowserManager.js:172:20)
+    at async findReplyableTweet (/Users/jonahtenner/xBOT/dist/engagement/strategicReplies.js:75:16)
+    at async executeStrategicReplies (/Users/jonahtenner/xBOT/dist/engagement/strategicReplies.js:53:23)
+    at async BulletproofMainSystem.executeEnhancedReplies (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:258:13)
+    at async BulletproofMainSystem.mainLoop (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:132:17)
+    at async Timeout._onTimeout (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:83:17) {
+  name: 'Error'
+}
+⚠️ No suitable tweets found for contextual replies
+✅ BULLETPROOF_REPLIES: Contextual reply posted (single tweet, not thread)
+📊 BULLETPROOF_STATUS: Cycle completed successfully
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+🔄 BULLETPROOF_MAIN_LOOP: Starting cycle...
+📝 BULLETPROOF_POSTING: Generating ORIGINAL content (threads/singles)...
+🎯 IMPORTANT: This is an ORIGINAL post, NOT a reply to someone
+🎰 BANDIT_SELECTION: Choosing optimal config for thread...
+🏥 SYSTEM_HEALTH: Running comprehensive health check...
+🔍 SYSTEM_HEALTH_ANALYSIS: Analyzing failure patterns...
+🔄 CIRCUIT_BREAKER: Attempting reset...
+📊 DB_QUERY: Executing get_recent_failures
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+⚠️ Failed to get recent performance data: {
+  message: 'TypeError: fetch failed',
+  details: 'TypeError: fetch failed\n' +
+    '    at node:internal/deps/undici/undici:13502:13\n' +
+    '    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n' +
+    '    at async /Users/jonahtenner/xBOT/dist/ai/promptEvolutionEngine.js:237:41\n' +
+    '    at async /Users/jonahtenner/xBOT/dist/lib/advancedDatabaseManager.js:356:32\n' +
+    '    at async CircuitBreaker.execute (/Users/jonahtenner/xBOT/dist/lib/advancedDatabaseManager.js:39:28)\n' +
+    '    at async AdvancedDatabaseManager.executeQuery (/Users/jonahtenner/xBOT/dist/lib/advancedDatabaseManager.js:345:16)\n' +
+    '    at async PromptEvolutionEngine.getRecentPerformanceData (/Users/jonahtenner/xBOT/dist/ai/promptEvolutionEngine.js:236:28)\n' +
+    '    at async PromptEvolutionEngine.updateBanditArms (/Users/jonahtenner/xBOT/dist/ai/promptEvolutionEngine.js:131:33)\n' +
+    '    at async PromptEvolutionEngine.selectOptimalConfig (/Users/jonahtenner/xBOT/dist/ai/promptEvolutionEngine.js:65:13)\n' +
+    '    at async BulletproofMainSystem.executeEnhancedPosting (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:152:35)',
+  hint: '',
+  code: ''
+}
+📊 BANDIT_UPDATE: Updated with 0 recent posts
+🎯 EXPLOITATION: Selected Dr. Lisa Patel (avg reward: 0.123)
+🎯 EXPLOITATION: Selected Surprise (avg reward: 0.101)
+🎯 EXPLOITATION: Selected Contrarian Revelation (avg reward: 0.126)
+🔍 EXPLORATION: Random selection for temperature
+🎯 BANDIT_SELECTED: Dr. Lisa Patel + Surprise + Contrarian Revelation (temp: 0.6)
+📊 CONFIDENCE: 55.8%
+🎯 OPTIMAL_CONFIG: Dr. Lisa Patel + Surprise + Contrarian Revelation
+🎯 POSTING_STRATEGY: Selected single format for original post (not reply)
+🚀 ENHANCED_VIRAL: Generating bulletproof single content...
+🔍 DIVERSITY_ANALYSIS: Analyzing last 7 days of content...
+❌ DB_ERROR: get_recent_failures failed - TypeError: fetch failed
+❌ GET_FAILURES_ERROR: TypeError: fetch failed
+📊 SYSTEM_HEALTH: 100% overall health
+🔍 DATA_ANALYSIS: Starting comprehensive system analysis...
+📊 DB_QUERY: Executing extract_system_metrics
+📊 DB_QUERY: Executing extract_engagement_data
+📊 DB_QUERY: Executing extract_failure_patterns
+📊 DB_QUERY: Executing extract_performance_data
+📝 NO_RECENT_POSTS: No content to analyze, all domains available
+🔍 DIVERSITY_ANALYSIS: Analyzing last 7 days of content...
+❌ DB_ERROR: extract_engagement_data failed - TypeError: fetch failed
+❌ EXTRACT_ENGAGEMENT_ERROR: TypeError: fetch failed
+❌ DB_ERROR: extract_failure_patterns failed - TypeError: fetch failed
+❌ EXTRACT_FAILURES_ERROR: TypeError: fetch failed
+❌ DB_ERROR: extract_performance_data failed - TypeError: fetch failed
+❌ EXTRACT_PERFORMANCE_ERROR: TypeError: fetch failed
+❌ DB_ERROR: extract_system_metrics failed - TypeError: fetch failed
+🚨 CIRCUIT_BREAKER: OPENING due to excessive failures
+❌ EXTRACT_METRICS_ERROR: TypeError: fetch failed
+📊 ANALYSIS_COMPLETE: 0 insights, 0 predictions
+🎯 HEALTH_SCORE: 50/100
+❌ EXTRACT_METRICS_ERROR: Circuit breaker is OPEN - database temporarily unavailable
+📊 SYSTEM_HEALTH_SCORE: 100/100
+🚨 CRITICAL_SYSTEMS: 0
+⚠️ EMERGENCY_OVERUSE: 0
+🔄 TOTAL_EMERGENCY_USES: 0
+❌ AUDITOR_STORAGE_ERROR: Circuit breaker is OPEN - database temporarily unavailable
+📝 NO_RECENT_POSTS: No content to analyze, all domains available
+🎭 PERSONA_ROTATION: Now using Dr. James Mitchell
+🎭 PERSONA_SELECTED: Dr. James Mitchell
+🧠 EMOTION_SELECTED: Curiosity
+🛡️ BULLETPROOF_GENERATION: single with strict validation
+🎯 Generating with bulletproof prompts...
+💥 BULLETPROOF_CRASHED: Connection error.
+❌ ENHANCED_VIRAL_FAILED: Generation crashed: Connection error.
+🔄 CREATING_FALLBACK_CONTENT...
+📝 GENERATED_CONTENT: single with 70/100 viral score
+🎭 CONTENT_METADATA: Dr. James Mitchell | Curiosity | fallback-insight
+⚡ FAST_SINGLE: Posting single tweet with ultra-fast system
+⚡ FAST_POST: Starting ultra-fast posting (196 chars)
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /Users/jonahtenner/xBOT/data/twitter_session.json
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+🚀 FAST_EXECUTE: Using keyboard shortcut method
+❌ FAST_EXECUTE: Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://x.com/home
+Call log:
+  [2m- navigating to "https://x.com/home", waiting until "domcontentloaded"[22m
+
+❌ ENHANCED_POST_FAILED: page.goto: net::ERR_INTERNET_DISCONNECTED at https://x.com/home
+Call log:
+  [2m- navigating to "https://x.com/home", waiting until "domcontentloaded"[22m
+
+💬 BULLETPROOF_REPLIES: Executing strategic engagement...
+🎯 IMPORTANT: These are REPLIES to other people, NOT original posts
+💬 BULLETPROOF_REPLIES: Executing contextual strategic replies...
+💬 CONTEXTUAL_REPLIES: Finding health tweets for single contextual responses...
+🎯 TARGET: Analyzing @peterattia (longevity)
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /Users/jonahtenner/xBOT/data/twitter_session.json
+Failed to find replyable tweet: page.goto: net::ERR_INTERNET_DISCONNECTED at https://x.com/peterattia
+Call log:
+  [2m- navigating to "https://x.com/peterattia", waiting until "domcontentloaded"[22m
+
+    at /Users/jonahtenner/xBOT/dist/engagement/strategicReplies.js:79:24
+    at async BrowserManager.withContext (/Users/jonahtenner/xBOT/dist/posting/BrowserManager.js:172:20)
+    at async findReplyableTweet (/Users/jonahtenner/xBOT/dist/engagement/strategicReplies.js:75:16)
+    at async executeStrategicReplies (/Users/jonahtenner/xBOT/dist/engagement/strategicReplies.js:53:23)
+    at async BulletproofMainSystem.executeEnhancedReplies (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:258:13)
+    at async BulletproofMainSystem.mainLoop (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:132:17)
+    at async Timeout._onTimeout (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:83:17) {
+  name: 'Error'
+}
+⚠️ No suitable tweets found for contextual replies
+✅ BULLETPROOF_REPLIES: Contextual reply posted (single tweet, not thread)
+📊 BULLETPROOF_STATUS: Cycle completed successfully
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+📊 REAL_COLLECTION: Collecting collection_3 metrics for fast_1757168710417_l7fpb7341
+📊 REAL_COLLECTION: Collecting collection_4 metrics for fast_1757154311843_semv9tx10
+🔄 BULLETPROOF_MAIN_LOOP: Starting cycle...
+⏳ POSTING_COOLDOWN: 4 minutes remaining
+💬 BULLETPROOF_REPLIES: Executing strategic engagement...
+🎯 IMPORTANT: These are REPLIES to other people, NOT original posts
+💬 BULLETPROOF_REPLIES: Executing contextual strategic replies...
+💬 CONTEXTUAL_REPLIES: Finding health tweets for single contextual responses...
+🎯 TARGET: Analyzing @rhondapatrick (research)
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /Users/jonahtenner/xBOT/data/twitter_session.json
+📈 BULLETPROOF_ANALYTICS: Collecting performance data...
+🏥 SYSTEM_HEALTH: Running comprehensive health check...
+🔍 SYSTEM_HEALTH_ANALYSIS: Analyzing failure patterns...
+🔄 CIRCUIT_BREAKER: Attempting reset...
+📊 DB_QUERY: Executing get_recent_failures
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+⚠️ Failed to get recent posts: {
+  message: 'TypeError: fetch failed',
+  details: 'TypeError: fetch failed\n' +
+    '    at node:internal/deps/undici/undici:13502:13\n' +
+    '    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n' +
+    '    at async /Users/jonahtenner/xBOT/dist/main-bulletproof.js:336:41\n' +
+    '    at async /Users/jonahtenner/xBOT/dist/lib/advancedDatabaseManager.js:356:32\n' +
+    '    at async CircuitBreaker.execute (/Users/jonahtenner/xBOT/dist/lib/advancedDatabaseManager.js:39:28)\n' +
+    '    at async AdvancedDatabaseManager.executeQuery (/Users/jonahtenner/xBOT/dist/lib/advancedDatabaseManager.js:345:16)\n' +
+    '    at async BulletproofMainSystem.getRecentPosts (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:335:28)\n' +
+    '    at async BulletproofMainSystem.analyticsLoop (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:272:33)\n' +
+    '    at async Timeout._onTimeout (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:87:17)',
+  hint: '',
+  code: ''
+}
+🎰 BANDIT_REPORT: {
+  "persona": [
+    {
+      "name": "Dr. Elena Vasquez",
+      "pulls": 705,
+      "avgReward": "0.082",
+      "confidence": "54.1%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Marcus Chen",
+      "pulls": 1363,
+      "avgReward": "0.083",
+      "confidence": "54.2%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Dr. Sarah Kim",
+      "pulls": 1269,
+      "avgReward": "0.096",
+      "confidence": "54.8%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Dr. James Mitchell",
+      "pulls": 517,
+      "avgReward": "0.085",
+      "confidence": "54.2%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Dr. Lisa Patel",
+      "pulls": 846,
+      "avgReward": "0.123",
+      "confidence": "56.1%",
+      "lastUsed": "2025-09-06"
+    }
+  ],
+  "emotion": [
+    {
+      "name": "Curiosity",
+      "pulls": 1316,
+      "avgReward": "0.090",
+      "confidence": "54.5%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Surprise",
+      "pulls": 94,
+      "avgReward": "0.101",
+      "confidence": "55.0%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Fear/Urgency",
+      "pulls": 1598,
+      "avgReward": "0.098",
+      "confidence": "54.9%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Validation/Pride",
+      "pulls": 1081,
+      "avgReward": "0.115",
+      "confidence": "55.7%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Hope/Optimism",
+      "pulls": 611,
+      "avgReward": "0.058",
+      "confidence": "52.9%",
+      "lastUsed": "2025-09-06"
+    }
+  ],
+  "framework": [
+    {
+      "name": "Contrarian Revelation",
+      "pulls": 705,
+      "avgReward": "0.126",
+      "confidence": "56.3%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Insider Secret",
+      "pulls": 1739,
+      "avgReward": "0.101",
+      "confidence": "55.1%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Mechanism Master",
+      "pulls": 282,
+      "avgReward": "0.092",
+      "confidence": "54.6%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Precision Protocol",
+      "pulls": 1175,
+      "avgReward": "0.080",
+      "confidence": "54.0%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Data Bomb",
+      "pulls": 799,
+      "avgReward": "0.077",
+      "confidence": "53.8%",
+      "lastUsed": "2025-09-06"
+    }
+  ],
+  "temperature": [
+    {
+      "name": "Conservative",
+      "pulls": 0,
+      "avgReward": "0.000",
+      "confidence": "0.0%",
+      "lastUsed": "2025-09-05"
+    },
+    {
+      "name": "Balanced",
+      "pulls": 0,
+      "avgReward": "0.000",
+      "confidence": "0.0%",
+      "lastUsed": "2025-09-05"
+    },
+    {
+      "name": "Creative",
+      "pulls": 0,
+      "avgReward": "0.000",
+      "confidence": "0.0%",
+      "lastUsed": "2025-09-05"
+    }
+  ]
+}
+❌ DB_ERROR: get_recent_failures failed - TypeError: fetch failed
+❌ GET_FAILURES_ERROR: TypeError: fetch failed
+📊 SYSTEM_HEALTH: 100% overall health
+🔍 DATA_ANALYSIS: Starting comprehensive system analysis...
+📊 DB_QUERY: Executing extract_system_metrics
+📊 DB_QUERY: Executing extract_engagement_data
+📊 DB_QUERY: Executing extract_failure_patterns
+📊 DB_QUERY: Executing extract_performance_data
+❌ DB_ERROR: extract_engagement_data failed - TypeError: fetch failed
+❌ EXTRACT_ENGAGEMENT_ERROR: TypeError: fetch failed
+❌ DB_ERROR: extract_failure_patterns failed - TypeError: fetch failed
+❌ EXTRACT_FAILURES_ERROR: TypeError: fetch failed
+❌ DB_ERROR: extract_performance_data failed - TypeError: fetch failed
+❌ EXTRACT_PERFORMANCE_ERROR: TypeError: fetch failed
+❌ DB_ERROR: extract_system_metrics failed - TypeError: fetch failed
+🚨 CIRCUIT_BREAKER: OPENING due to excessive failures
+❌ EXTRACT_METRICS_ERROR: TypeError: fetch failed
+📊 ANALYSIS_COMPLETE: 0 insights, 0 predictions
+🎯 HEALTH_SCORE: 50/100
+❌ EXTRACT_METRICS_ERROR: Circuit breaker is OPEN - database temporarily unavailable
+📊 SYSTEM_HEALTH_SCORE: 100/100
+🚨 CRITICAL_SYSTEMS: 0
+⚠️ EMERGENCY_OVERUSE: 0
+🔄 TOTAL_EMERGENCY_USES: 0
+❌ AUDITOR_STORAGE_ERROR: Circuit breaker is OPEN - database temporarily unavailable
+❌ REAL_METRICS_ERROR: fast_1757154311843_semv9tx10 (collection_4): page.goto: net::ERR_INTERNET_DISCONNECTED at https://x.com/i/status/fast_1757154311843_semv9tx10
+Call log:
+  [2m- navigating to "https://x.com/i/status/fast_1757154311843_semv9tx10", waiting until "domcontentloaded"[22m
+
+❌ REAL_METRICS_ERROR: fast_1757168710417_l7fpb7341 (collection_3): page.goto: net::ERR_INTERNET_DISCONNECTED at https://x.com/i/status/fast_1757168710417_l7fpb7341
+Call log:
+  [2m- navigating to "https://x.com/i/status/fast_1757168710417_l7fpb7341", waiting until "domcontentloaded"[22m
+
+Failed to find replyable tweet: page.goto: net::ERR_INTERNET_DISCONNECTED at https://x.com/rhondapatrick
+Call log:
+  [2m- navigating to "https://x.com/rhondapatrick", waiting until "domcontentloaded"[22m
+
+    at /Users/jonahtenner/xBOT/dist/engagement/strategicReplies.js:79:24
+    at async BrowserManager.withContext (/Users/jonahtenner/xBOT/dist/posting/BrowserManager.js:172:20)
+    at async findReplyableTweet (/Users/jonahtenner/xBOT/dist/engagement/strategicReplies.js:75:16)
+    at async executeStrategicReplies (/Users/jonahtenner/xBOT/dist/engagement/strategicReplies.js:53:23)
+    at async BulletproofMainSystem.executeEnhancedReplies (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:258:13)
+    at async BulletproofMainSystem.mainLoop (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:132:17)
+    at async Timeout._onTimeout (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:83:17) {
+  name: 'Error'
+}
+⚠️ No suitable tweets found for contextual replies
+✅ BULLETPROOF_REPLIES: Contextual reply posted (single tweet, not thread)
+📊 BULLETPROOF_STATUS: Cycle completed successfully
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+🔄 BULLETPROOF_MAIN_LOOP: Starting cycle...
+📝 BULLETPROOF_POSTING: Generating ORIGINAL content (threads/singles)...
+🎯 IMPORTANT: This is an ORIGINAL post, NOT a reply to someone
+🎰 BANDIT_SELECTION: Choosing optimal config for thread...
+🏥 SYSTEM_HEALTH: Running comprehensive health check...
+🔍 SYSTEM_HEALTH_ANALYSIS: Analyzing failure patterns...
+🔄 CIRCUIT_BREAKER: Attempting reset...
+📊 DB_QUERY: Executing get_recent_failures
+📊 REAL_COLLECTION: Collecting collection_4 metrics for thread_1757156112386_wdg8wn1si
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+⚠️ Failed to get recent performance data: {
+  message: 'TypeError: fetch failed',
+  details: 'TypeError: fetch failed\n' +
+    '    at node:internal/deps/undici/undici:13502:13\n' +
+    '    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n' +
+    '    at async /Users/jonahtenner/xBOT/dist/ai/promptEvolutionEngine.js:237:41\n' +
+    '    at async /Users/jonahtenner/xBOT/dist/lib/advancedDatabaseManager.js:356:32\n' +
+    '    at async CircuitBreaker.execute (/Users/jonahtenner/xBOT/dist/lib/advancedDatabaseManager.js:39:28)\n' +
+    '    at async AdvancedDatabaseManager.executeQuery (/Users/jonahtenner/xBOT/dist/lib/advancedDatabaseManager.js:345:16)\n' +
+    '    at async PromptEvolutionEngine.getRecentPerformanceData (/Users/jonahtenner/xBOT/dist/ai/promptEvolutionEngine.js:236:28)\n' +
+    '    at async PromptEvolutionEngine.updateBanditArms (/Users/jonahtenner/xBOT/dist/ai/promptEvolutionEngine.js:131:33)\n' +
+    '    at async PromptEvolutionEngine.selectOptimalConfig (/Users/jonahtenner/xBOT/dist/ai/promptEvolutionEngine.js:65:13)\n' +
+    '    at async BulletproofMainSystem.executeEnhancedPosting (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:152:35)',
+  hint: '',
+  code: ''
+}
+📊 BANDIT_UPDATE: Updated with 0 recent posts
+🔍 EXPLORATION: Random selection for persona
+🔍 EXPLORATION: Random selection for emotion
+🎯 EXPLOITATION: Selected Contrarian Revelation (avg reward: 0.126)
+🔍 EXPLORATION: Random selection for temperature
+🎯 BANDIT_SELECTED: Marcus Chen + Surprise + Contrarian Revelation (temp: 0.6)
+📊 CONFIDENCE: 55.2%
+🎯 OPTIMAL_CONFIG: Marcus Chen + Surprise + Contrarian Revelation
+🎯 POSTING_STRATEGY: Selected single format for original post (not reply)
+🚀 ENHANCED_VIRAL: Generating bulletproof single content...
+🔍 DIVERSITY_ANALYSIS: Analyzing last 7 days of content...
+❌ DB_ERROR: get_recent_failures failed - TypeError: fetch failed
+❌ GET_FAILURES_ERROR: TypeError: fetch failed
+📊 SYSTEM_HEALTH: 100% overall health
+🔍 DATA_ANALYSIS: Starting comprehensive system analysis...
+📊 DB_QUERY: Executing extract_system_metrics
+📊 DB_QUERY: Executing extract_engagement_data
+📊 DB_QUERY: Executing extract_failure_patterns
+📊 DB_QUERY: Executing extract_performance_data
+📝 NO_RECENT_POSTS: No content to analyze, all domains available
+🔍 DIVERSITY_ANALYSIS: Analyzing last 7 days of content...
+❌ DB_ERROR: extract_engagement_data failed - TypeError: fetch failed
+❌ EXTRACT_ENGAGEMENT_ERROR: TypeError: fetch failed
+❌ DB_ERROR: extract_failure_patterns failed - TypeError: fetch failed
+❌ EXTRACT_FAILURES_ERROR: TypeError: fetch failed
+❌ DB_ERROR: extract_performance_data failed - TypeError: fetch failed
+❌ EXTRACT_PERFORMANCE_ERROR: TypeError: fetch failed
+❌ DB_ERROR: extract_system_metrics failed - TypeError: fetch failed
+🚨 CIRCUIT_BREAKER: OPENING due to excessive failures
+❌ EXTRACT_METRICS_ERROR: TypeError: fetch failed
+📊 ANALYSIS_COMPLETE: 0 insights, 0 predictions
+🎯 HEALTH_SCORE: 50/100
+❌ EXTRACT_METRICS_ERROR: Circuit breaker is OPEN - database temporarily unavailable
+📊 SYSTEM_HEALTH_SCORE: 100/100
+🚨 CRITICAL_SYSTEMS: 0
+⚠️ EMERGENCY_OVERUSE: 0
+🔄 TOTAL_EMERGENCY_USES: 0
+❌ AUDITOR_STORAGE_ERROR: Circuit breaker is OPEN - database temporarily unavailable
+📝 NO_RECENT_POSTS: No content to analyze, all domains available
+🎭 PERSONA_ROTATION: Now using Dr. Lisa Patel
+🎭 PERSONA_SELECTED: Dr. Lisa Patel
+🧠 EMOTION_SELECTED: Curiosity
+🛡️ BULLETPROOF_GENERATION: single with strict validation
+🎯 Generating with bulletproof prompts...
+❌ REAL_METRICS_ERROR: thread_1757156112386_wdg8wn1si (collection_4): page.goto: net::ERR_INTERNET_DISCONNECTED at https://x.com/i/status/thread_1757156112386_wdg8wn1si
+Call log:
+  [2m- navigating to "https://x.com/i/status/thread_1757156112386_wdg8wn1si", waiting until "domcontentloaded"[22m
+
+💥 BULLETPROOF_CRASHED: Connection error.
+❌ ENHANCED_VIRAL_FAILED: Generation crashed: Connection error.
+🔄 CREATING_FALLBACK_CONTENT...
+📝 GENERATED_CONTENT: single with 70/100 viral score
+🎭 CONTENT_METADATA: Dr. Lisa Patel | Curiosity | fallback-insight
+⚡ FAST_SINGLE: Posting single tweet with ultra-fast system
+⚡ FAST_POST: Starting ultra-fast posting (196 chars)
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /Users/jonahtenner/xBOT/data/twitter_session.json
+🚀 FAST_EXECUTE: Using keyboard shortcut method
+❌ FAST_EXECUTE: Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://x.com/home
+Call log:
+  [2m- navigating to "https://x.com/home", waiting until "domcontentloaded"[22m
+
+❌ ENHANCED_POST_FAILED: page.goto: net::ERR_INTERNET_DISCONNECTED at https://x.com/home
+Call log:
+  [2m- navigating to "https://x.com/home", waiting until "domcontentloaded"[22m
+
+💬 BULLETPROOF_REPLIES: Executing strategic engagement...
+🎯 IMPORTANT: These are REPLIES to other people, NOT original posts
+💬 BULLETPROOF_REPLIES: Executing contextual strategic replies...
+💬 CONTEXTUAL_REPLIES: Finding health tweets for single contextual responses...
+🎯 TARGET: Analyzing @bengreenfieldhq (biohacking)
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /Users/jonahtenner/xBOT/data/twitter_session.json
+Failed to find replyable tweet: page.goto: net::ERR_INTERNET_DISCONNECTED at https://x.com/bengreenfieldhq
+Call log:
+  [2m- navigating to "https://x.com/bengreenfieldhq", waiting until "domcontentloaded"[22m
+
+    at /Users/jonahtenner/xBOT/dist/engagement/strategicReplies.js:79:24
+    at async BrowserManager.withContext (/Users/jonahtenner/xBOT/dist/posting/BrowserManager.js:172:20)
+    at async findReplyableTweet (/Users/jonahtenner/xBOT/dist/engagement/strategicReplies.js:75:16)
+    at async executeStrategicReplies (/Users/jonahtenner/xBOT/dist/engagement/strategicReplies.js:53:23)
+    at async BulletproofMainSystem.executeEnhancedReplies (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:258:13)
+    at async BulletproofMainSystem.mainLoop (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:132:17)
+    at async Timeout._onTimeout (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:83:17) {
+  name: 'Error'
+}
+⚠️ No suitable tweets found for contextual replies
+✅ BULLETPROOF_REPLIES: Contextual reply posted (single tweet, not thread)
+📊 BULLETPROOF_STATUS: Cycle completed successfully
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+📊 REAL_COLLECTION: Collecting collection_3 metrics for thread_1757170928683_6xqz41418
+🔄 BULLETPROOF_MAIN_LOOP: Starting cycle...
+⏳ POSTING_COOLDOWN: 4 minutes remaining
+💬 BULLETPROOF_REPLIES: Executing strategic engagement...
+🎯 IMPORTANT: These are REPLIES to other people, NOT original posts
+💬 BULLETPROOF_REPLIES: Executing contextual strategic replies...
+💬 CONTEXTUAL_REPLIES: Finding health tweets for single contextual responses...
+🎯 TARGET: Analyzing @hubermanlab (neuroscience)
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /Users/jonahtenner/xBOT/data/twitter_session.json
+📈 BULLETPROOF_ANALYTICS: Collecting performance data...
+🏥 SYSTEM_HEALTH: Running comprehensive health check...
+🔍 SYSTEM_HEALTH_ANALYSIS: Analyzing failure patterns...
+🔄 CIRCUIT_BREAKER: Attempting reset...
+📊 DB_QUERY: Executing get_recent_failures
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+⚠️ Failed to get recent posts: {
+  message: 'TypeError: fetch failed',
+  details: 'TypeError: fetch failed\n' +
+    '    at node:internal/deps/undici/undici:13502:13\n' +
+    '    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n' +
+    '    at async /Users/jonahtenner/xBOT/dist/main-bulletproof.js:336:41\n' +
+    '    at async /Users/jonahtenner/xBOT/dist/lib/advancedDatabaseManager.js:356:32\n' +
+    '    at async CircuitBreaker.execute (/Users/jonahtenner/xBOT/dist/lib/advancedDatabaseManager.js:39:28)\n' +
+    '    at async AdvancedDatabaseManager.executeQuery (/Users/jonahtenner/xBOT/dist/lib/advancedDatabaseManager.js:345:16)\n' +
+    '    at async BulletproofMainSystem.getRecentPosts (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:335:28)\n' +
+    '    at async BulletproofMainSystem.analyticsLoop (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:272:33)\n' +
+    '    at async Timeout._onTimeout (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:87:17)',
+  hint: '',
+  code: ''
+}
+🎰 BANDIT_REPORT: {
+  "persona": [
+    {
+      "name": "Dr. Elena Vasquez",
+      "pulls": 705,
+      "avgReward": "0.082",
+      "confidence": "54.1%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Marcus Chen",
+      "pulls": 1363,
+      "avgReward": "0.083",
+      "confidence": "54.2%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Dr. Sarah Kim",
+      "pulls": 1269,
+      "avgReward": "0.096",
+      "confidence": "54.8%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Dr. James Mitchell",
+      "pulls": 517,
+      "avgReward": "0.085",
+      "confidence": "54.2%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Dr. Lisa Patel",
+      "pulls": 846,
+      "avgReward": "0.123",
+      "confidence": "56.1%",
+      "lastUsed": "2025-09-06"
+    }
+  ],
+  "emotion": [
+    {
+      "name": "Curiosity",
+      "pulls": 1316,
+      "avgReward": "0.090",
+      "confidence": "54.5%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Surprise",
+      "pulls": 94,
+      "avgReward": "0.101",
+      "confidence": "55.0%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Fear/Urgency",
+      "pulls": 1598,
+      "avgReward": "0.098",
+      "confidence": "54.9%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Validation/Pride",
+      "pulls": 1081,
+      "avgReward": "0.115",
+      "confidence": "55.7%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Hope/Optimism",
+      "pulls": 611,
+      "avgReward": "0.058",
+      "confidence": "52.9%",
+      "lastUsed": "2025-09-06"
+    }
+  ],
+  "framework": [
+    {
+      "name": "Contrarian Revelation",
+      "pulls": 705,
+      "avgReward": "0.126",
+      "confidence": "56.3%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Insider Secret",
+      "pulls": 1739,
+      "avgReward": "0.101",
+      "confidence": "55.1%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Mechanism Master",
+      "pulls": 282,
+      "avgReward": "0.092",
+      "confidence": "54.6%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Precision Protocol",
+      "pulls": 1175,
+      "avgReward": "0.080",
+      "confidence": "54.0%",
+      "lastUsed": "2025-09-06"
+    },
+    {
+      "name": "Data Bomb",
+      "pulls": 799,
+      "avgReward": "0.077",
+      "confidence": "53.8%",
+      "lastUsed": "2025-09-06"
+    }
+  ],
+  "temperature": [
+    {
+      "name": "Conservative",
+      "pulls": 0,
+      "avgReward": "0.000",
+      "confidence": "0.0%",
+      "lastUsed": "2025-09-05"
+    },
+    {
+      "name": "Balanced",
+      "pulls": 0,
+      "avgReward": "0.000",
+      "confidence": "0.0%",
+      "lastUsed": "2025-09-05"
+    },
+    {
+      "name": "Creative",
+      "pulls": 0,
+      "avgReward": "0.000",
+      "confidence": "0.0%",
+      "lastUsed": "2025-09-05"
+    }
+  ]
+}
+❌ DB_ERROR: get_recent_failures failed - TypeError: fetch failed
+❌ GET_FAILURES_ERROR: TypeError: fetch failed
+📊 SYSTEM_HEALTH: 100% overall health
+🔍 DATA_ANALYSIS: Starting comprehensive system analysis...
+📊 DB_QUERY: Executing extract_system_metrics
+📊 DB_QUERY: Executing extract_engagement_data
+📊 DB_QUERY: Executing extract_failure_patterns
+📊 DB_QUERY: Executing extract_performance_data
+❌ DB_ERROR: extract_engagement_data failed - TypeError: fetch failed
+❌ EXTRACT_ENGAGEMENT_ERROR: TypeError: fetch failed
+❌ DB_ERROR: extract_failure_patterns failed - TypeError: fetch failed
+❌ EXTRACT_FAILURES_ERROR: TypeError: fetch failed
+❌ DB_ERROR: extract_performance_data failed - TypeError: fetch failed
+❌ EXTRACT_PERFORMANCE_ERROR: TypeError: fetch failed
+❌ DB_ERROR: extract_system_metrics failed - TypeError: fetch failed
+🚨 CIRCUIT_BREAKER: OPENING due to excessive failures
+❌ EXTRACT_METRICS_ERROR: TypeError: fetch failed
+📊 ANALYSIS_COMPLETE: 0 insights, 0 predictions
+🎯 HEALTH_SCORE: 50/100
+❌ EXTRACT_METRICS_ERROR: Circuit breaker is OPEN - database temporarily unavailable
+📊 SYSTEM_HEALTH_SCORE: 100/100
+🚨 CRITICAL_SYSTEMS: 0
+⚠️ EMERGENCY_OVERUSE: 0
+🔄 TOTAL_EMERGENCY_USES: 0
+❌ AUDITOR_STORAGE_ERROR: Circuit breaker is OPEN - database temporarily unavailable
+❌ REAL_METRICS_ERROR: thread_1757170928683_6xqz41418 (collection_3): page.goto: net::ERR_INTERNET_DISCONNECTED at https://x.com/i/status/thread_1757170928683_6xqz41418
+Call log:
+  [2m- navigating to "https://x.com/i/status/thread_1757170928683_6xqz41418", waiting until "domcontentloaded"[22m
+
+Failed to find replyable tweet: page.goto: net::ERR_INTERNET_DISCONNECTED at https://x.com/hubermanlab
+Call log:
+  [2m- navigating to "https://x.com/hubermanlab", waiting until "domcontentloaded"[22m
+
+    at /Users/jonahtenner/xBOT/dist/engagement/strategicReplies.js:79:24
+    at async BrowserManager.withContext (/Users/jonahtenner/xBOT/dist/posting/BrowserManager.js:172:20)
+    at async findReplyableTweet (/Users/jonahtenner/xBOT/dist/engagement/strategicReplies.js:75:16)
+    at async executeStrategicReplies (/Users/jonahtenner/xBOT/dist/engagement/strategicReplies.js:53:23)
+    at async BulletproofMainSystem.executeEnhancedReplies (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:258:13)
+    at async BulletproofMainSystem.mainLoop (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:132:17)
+    at async Timeout._onTimeout (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:83:17) {
+  name: 'Error'
+}
+⚠️ No suitable tweets found for contextual replies
+✅ BULLETPROOF_REPLIES: Contextual reply posted (single tweet, not thread)
+📊 BULLETPROOF_STATUS: Cycle completed successfully
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+📊 REAL_COLLECTION: Collecting collection_3 metrics for thread_1757171785603_621zloyx0
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+❌ REAL_METRICS_ERROR: thread_1757171785603_621zloyx0 (collection_3): page.goto: net::ERR_INTERNET_DISCONNECTED at https://x.com/i/status/thread_1757171785603_621zloyx0
+Call log:
+  [2m- navigating to "https://x.com/i/status/thread_1757171785603_621zloyx0", waiting until "domcontentloaded"[22m
+
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+🔄 BULLETPROOF_MAIN_LOOP: Starting cycle...
+📝 BULLETPROOF_POSTING: Generating ORIGINAL content (threads/singles)...
+🎯 IMPORTANT: This is an ORIGINAL post, NOT a reply to someone
+🎰 BANDIT_SELECTION: Choosing optimal config for thread...
+📊 REAL_COLLECTION: Collecting collection_4 metrics for fast_1757157911330_fx6ifeb3h
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+⚠️ Failed to get recent performance data: {
+  message: 'TypeError: fetch failed',
+  details: 'TypeError: fetch failed\n' +
+    '    at node:internal/deps/undici/undici:13502:13\n' +
+    '    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n' +
+    '    at async /Users/jonahtenner/xBOT/dist/ai/promptEvolutionEngine.js:237:41\n' +
+    '    at async /Users/jonahtenner/xBOT/dist/lib/advancedDatabaseManager.js:356:32\n' +
+    '    at async CircuitBreaker.execute (/Users/jonahtenner/xBOT/dist/lib/advancedDatabaseManager.js:39:28)\n' +
+    '    at async AdvancedDatabaseManager.executeQuery (/Users/jonahtenner/xBOT/dist/lib/advancedDatabaseManager.js:345:16)\n' +
+    '    at async PromptEvolutionEngine.getRecentPerformanceData (/Users/jonahtenner/xBOT/dist/ai/promptEvolutionEngine.js:236:28)\n' +
+    '    at async PromptEvolutionEngine.updateBanditArms (/Users/jonahtenner/xBOT/dist/ai/promptEvolutionEngine.js:131:33)\n' +
+    '    at async PromptEvolutionEngine.selectOptimalConfig (/Users/jonahtenner/xBOT/dist/ai/promptEvolutionEngine.js:65:13)\n' +
+    '    at async BulletproofMainSystem.executeEnhancedPosting (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:152:35)',
+  hint: '',
+  code: ''
+}
+📊 BANDIT_UPDATE: Updated with 0 recent posts
+🎯 EXPLOITATION: Selected Dr. Lisa Patel (avg reward: 0.123)
+🎯 EXPLOITATION: Selected Validation/Pride (avg reward: 0.115)
+🎯 EXPLOITATION: Selected Contrarian Revelation (avg reward: 0.126)
+🔍 EXPLORATION: Random selection for temperature
+🎯 BANDIT_SELECTED: Dr. Lisa Patel + Validation/Pride + Contrarian Revelation (temp: 0.8)
+📊 CONFIDENCE: 56.1%
+🎯 OPTIMAL_CONFIG: Dr. Lisa Patel + Validation/Pride + Contrarian Revelation
+🎯 POSTING_STRATEGY: Selected thread format for original post (not reply)
+🚀 ENHANCED_VIRAL: Generating bulletproof thread content...
+🔍 DIVERSITY_ANALYSIS: Analyzing last 7 days of content...
+📝 NO_RECENT_POSTS: No content to analyze, all domains available
+🔍 DIVERSITY_ANALYSIS: Analyzing last 7 days of content...
+📝 NO_RECENT_POSTS: No content to analyze, all domains available
+🎭 PERSONA_ROTATION: Now using Dr. Elena Vasquez
+🎭 PERSONA_SELECTED: Dr. Elena Vasquez
+🧠 EMOTION_SELECTED: Curiosity
+🛡️ BULLETPROOF_GENERATION: thread with strict validation
+🎯 Generating with bulletproof prompts...
+❌ REAL_METRICS_ERROR: fast_1757157911330_fx6ifeb3h (collection_4): page.goto: net::ERR_INTERNET_DISCONNECTED at https://x.com/i/status/fast_1757157911330_fx6ifeb3h
+Call log:
+  [2m- navigating to "https://x.com/i/status/fast_1757157911330_fx6ifeb3h", waiting until "domcontentloaded"[22m
+
+💥 BULLETPROOF_CRASHED: Connection error.
+❌ ENHANCED_VIRAL_FAILED: Generation crashed: Connection error.
+🔄 CREATING_FALLBACK_CONTENT...
+📝 GENERATED_CONTENT: thread with 75/100 viral score
+🎭 CONTENT_METADATA: Dr. Elena Vasquez | Curiosity | fallback-protocol
+⚡ FAST_THREAD: Posting 5-part thread with ultra-fast system
+⚡ FAST_THREAD: Starting ultra-fast thread (5 tweets)
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /Users/jonahtenner/xBOT/data/twitter_session.json
+🧵 FAST_THREAD: Using native thread creation
+❌ FAST_THREAD: Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://x.com/compose/tweet
+Call log:
+  [2m- navigating to "https://x.com/compose/tweet", waiting until "domcontentloaded"[22m
+
+🚨 FAST_THREAD: Native failed, emergency single tweet fallback
+🚀 FAST_EXECUTE: Using keyboard shortcut method
+❌ FAST_EXECUTE: Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://x.com/home
+Call log:
+  [2m- navigating to "https://x.com/home", waiting until "domcontentloaded"[22m
+
+❌ ENHANCED_POST_FAILED: page.goto: net::ERR_INTERNET_DISCONNECTED at https://x.com/home
+Call log:
+  [2m- navigating to "https://x.com/home", waiting until "domcontentloaded"[22m
+
+💬 BULLETPROOF_REPLIES: Executing strategic engagement...
+🎯 IMPORTANT: These are REPLIES to other people, NOT original posts
+💬 BULLETPROOF_REPLIES: Executing contextual strategic replies...
+💬 CONTEXTUAL_REPLIES: Finding health tweets for single contextual responses...
+🎯 TARGET: Analyzing @drmarkhyman (functional medicine)
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /Users/jonahtenner/xBOT/data/twitter_session.json
+Failed to find replyable tweet: page.goto: net::ERR_INTERNET_DISCONNECTED at https://x.com/drmarkhyman
+Call log:
+  [2m- navigating to "https://x.com/drmarkhyman", waiting until "domcontentloaded"[22m
+
+    at /Users/jonahtenner/xBOT/dist/engagement/strategicReplies.js:79:24
+    at async BrowserManager.withContext (/Users/jonahtenner/xBOT/dist/posting/BrowserManager.js:172:20)
+    at async findReplyableTweet (/Users/jonahtenner/xBOT/dist/engagement/strategicReplies.js:75:16)
+    at async executeStrategicReplies (/Users/jonahtenner/xBOT/dist/engagement/strategicReplies.js:53:23)
+    at async BulletproofMainSystem.executeEnhancedReplies (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:258:13)
+    at async BulletproofMainSystem.mainLoop (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:132:17)
+    at async Timeout._onTimeout (/Users/jonahtenner/xBOT/dist/main-bulletproof.js:83:17) {
+  name: 'Error'
+}
+⚠️ No suitable tweets found for contextual replies
+✅ BULLETPROOF_REPLIES: Contextual reply posted (single tweet, not thread)
+📊 BULLETPROOF_STATUS: Cycle completed successfully
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+🏥 SYSTEM_HEALTH: Running comprehensive health check...
+🔍 SYSTEM_HEALTH_ANALYSIS: Analyzing failure patterns...
+🔄 CIRCUIT_BREAKER: Attempting reset...
+📊 DB_QUERY: Executing get_recent_failures
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+❌ DB_ERROR: get_recent_failures failed - TypeError: fetch failed
+❌ GET_FAILURES_ERROR: TypeError: fetch failed
+📊 SYSTEM_HEALTH: 100% overall health
+🔍 DATA_ANALYSIS: Starting comprehensive system analysis...
+📊 DB_QUERY: Executing extract_system_metrics
+📊 DB_QUERY: Executing extract_engagement_data
+📊 DB_QUERY: Executing extract_failure_patterns
+📊 DB_QUERY: Executing extract_performance_data
+❌ DB_ERROR: extract_engagement_data failed - TypeError: fetch failed
+❌ EXTRACT_ENGAGEMENT_ERROR: TypeError: fetch failed
+❌ DB_ERROR: extract_failure_patterns failed - TypeError: fetch failed
+❌ EXTRACT_FAILURES_ERROR: TypeError: fetch failed
+❌ DB_ERROR: extract_performance_data failed - TypeError: fetch failed
+❌ EXTRACT_PERFORMANCE_ERROR: TypeError: fetch failed
+❌ DB_ERROR: extract_system_metrics failed - TypeError: fetch failed
+🚨 CIRCUIT_BREAKER: OPENING due to excessive failures
+❌ EXTRACT_METRICS_ERROR: TypeError: fetch failed
+📊 ANALYSIS_COMPLETE: 0 insights, 0 predictions
+🎯 HEALTH_SCORE: 50/100
+❌ EXTRACT_METRICS_ERROR: Circuit breaker is OPEN - database temporarily unavailable
+📊 SYSTEM_HEALTH_SCORE: 100/100
+🚨 CRITICAL_SYSTEMS: 0
+⚠️ EMERGENCY_OVERUSE: 0
+🔄 TOTAL_EMERGENCY_USES: 0
+❌ AUDITOR_STORAGE_ERROR: Circuit breaker is OPEN - database temporarily unavailable
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+[ioredis] Unhandled error event: Error: getaddrinfo ENOTFOUND redis-17514.c92.us-east-1-3.ec2.redns.redis-cloud.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:109:26)
+    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)
+🔄 BULLETPROOF_MAIN_LOOP: Starting cycle...
+⏳ POSTING_COOLDOWN: 10 minutes remaining
+💬 BULLETPROOF_REPLIES: Executing strategic engagement...
+🎯 IMPORTANT: These are REPLIES to other people, NOT original posts
+💬 BULLETPROOF_REPLIES: Executing contextual strategic replies...
+💬 CONTEXTUAL_REPLIES: Finding health tweets for single contextual responses...
+🎯 TARGET: Analyzing @bengreenfieldhq (biohacking)
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /Users/jonahtenner/xBOT/data/twitter_session.json
+⚠️ No suitable tweets found for contextual replies
+✅ BULLETPROOF_REPLIES: Contextual reply posted (single tweet, not thread)
+📊 BULLETPROOF_STATUS: Cycle completed successfully

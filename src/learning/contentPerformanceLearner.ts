@@ -46,7 +46,7 @@ export class ContentPerformanceLearner {
         .select(`
           content,
           created_at,
-          quality_score
+          viral_potential_score
         `)
         .order('created_at', { ascending: false })
         .limit(50);
