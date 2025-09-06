@@ -222,6 +222,16 @@ class BulletproofMainSystem {
    */
   private async executeEnhancedPosting(): Promise<void> {
     try {
+      // 🔧 AUTO-FIX BROWSER CONNECTION: Ensure browser is ready for posting
+      try {
+        const { browserManager } = await import('./posting/BrowserManager');
+        const browser = await browserManager.ensureBrowser();
+        console.log('✅ BROWSER_READY: Browser connection established for posting');
+      } catch (browserError: any) {
+        console.error('❌ BROWSER_CONNECTION_FAILED:', browserError.message);
+        console.log('🔄 BROWSER_RECOVERY: Will attempt to reconnect during posting...');
+      }
+
       // 🤖 PURE AI CONTENT GENERATION - Zero hardcoded content
       console.log('🤖 PURE_AI_GENERATION: Creating 100% AI-driven content with zero templates...');
       
@@ -230,41 +240,38 @@ class BulletproofMainSystem {
       // Decide format (60% threads, 40% single tweets for balanced engagement)
       const format = Math.random() < 0.6 ? 'thread' : 'single';
       
-      // 🛡️ DIVERSITY ENFORCEMENT: Generate pure AI content with anti-fixation protection
-      let diversityAttempts = 0;
-      let pureAIResult: any;
+      // 🚀 VIRAL CONTENT OPTIMIZER: Advanced AI system for maximum growth
+      console.log('🌍 UNLIMITED_HEALTH_TOPICS: AI can now explore ANY aspect of health & wellness for viral content creation');
       
-      do {
-        pureAIResult = await pureAIDrivenContentSystem.generatePureAIContent({
-          contentType: format === 'thread' ? 'thread' : 'single_tweet',
-          constraints: {
-            targetEngagement: 'viral',
-            maxLength: format === 'thread' ? 1200 : 280,
-            mustAvoidTopics: diversityAttempts > 0 ? ['glp-1', 'ozempic', 'semaglutide', 'weight loss drugs'] : []
-          }
-        });
-        
-        // Check if content is about GLP-1/Ozempic (works for both string and array content)
-        const contentText = Array.isArray(pureAIResult.content) ? pureAIResult.content.join(' ') : pureAIResult.content;
-        const isGLPContent = contentText && typeof contentText === 'string' && 
-          (contentText.toLowerCase().includes('glp-1') || 
-           contentText.toLowerCase().includes('glp1') ||
-           contentText.toLowerCase().includes('ozempic') || 
-           contentText.toLowerCase().includes('semaglutide') ||
-           contentText.toLowerCase().includes('wegovy'));
-           
-        if (!isGLPContent) break;
-        
-        diversityAttempts++;
-        console.log(`⚠️ DIVERSITY_ENFORCEMENT: Regenerating content (attempt ${diversityAttempts}) - avoiding GLP-1 fixation`);
-        
-      } while (diversityAttempts < 3);
-      
-      if (diversityAttempts >= 3) {
-        console.log('🚨 DIVERSITY_OVERRIDE: Proceeding with content after 3 regeneration attempts');
-      } else if (diversityAttempts > 0) {
-        console.log('✅ DIVERSITY_SUCCESS: Generated non-GLP content after topic avoidance');
-      }
+      const { viralContentOptimizer } = await import('./ai/viralContentOptimizer');
+      const viralResult = await viralContentOptimizer.generateViralContent({
+        format: format === 'thread' ? 'thread' : 'single',
+        targetAudience: 'Health-conscious individuals seeking optimization, wellness, and peak performance',
+        performanceData: {
+          recentTopPerformers: ['counterintuitive health insights', 'actionable wellness advice', 'surprising health facts']
+        }
+      });
+
+      // Convert viral optimizer result to match expected format
+      const pureAIResult = {
+        content: viralResult.content,
+        contentType: format === 'thread' ? 'thread' : 'single_tweet',
+        uniquenessScore: viralResult.viralScore,
+        aiReasoning: viralResult.reasoning,
+        expectedPerformance: {
+          viralPotential: viralResult.growthPotential,
+          educationalValue: 85,
+          engagementLikelihood: viralResult.viralScore
+        },
+        metadata: {
+          topicDomain: viralResult.topicDomain,
+          engagementHooks: viralResult.engagementHooks,
+          shareabilityFactors: viralResult.shareabilityFactors,
+          persona: 'viral_content_creator',
+          emotion: 'curiosity_and_excitement',
+          framework: 'unlimited_knowledge_domains'
+        }
+      };
       
       console.log(`🎯 PURE_AI_SUCCESS: Generated ${pureAIResult.contentType} with ${pureAIResult.uniquenessScore}% uniqueness`);
       console.log(`🧠 AI_REASONING: ${pureAIResult.aiReasoning}`);

@@ -183,14 +183,25 @@ export class TwitterAnalyticsEngine {
             return healthRelatedTrends.slice(0, 5);
           }
           
-          // Fallback: manually curated health trends that are likely trending (RANDOMIZED to prevent fixation)
+          // Fallback: comprehensive health trends across all wellness domains (RANDOMIZED to prevent fixation)
           const baseTrends = [
-            'red light therapy', 'cold exposure', 'seed oil toxicity', 
-            'continuous glucose monitoring', 'NAD+ boosting', 'peptide therapy', 
-            'circadian rhythm', 'microplastic detox', 'breath work techniques',
-            'sleep optimization', 'stress management', 'longevity research',
-            'exercise science', 'nutrition timing', 'cognitive enhancement',
-            'biohacking tools', 'metabolic health', 'gut microbiome'
+            'red light therapy', 'cold exposure', 'heat shock proteins', 'sauna protocols',
+            'continuous glucose monitoring', 'metabolic flexibility', 'insulin sensitivity',
+            'NAD+ boosting', 'peptide therapy', 'longevity research', 'cellular senescence',
+            'circadian rhythm', 'sleep architecture', 'melatonin optimization',
+            'microplastic detox', 'environmental toxins', 'heavy metal detox',
+            'breath work techniques', 'Wim Hof method', 'breathwork patterns',
+            'stress management', 'HRV training', 'vagus nerve stimulation',
+            'exercise science', 'zone 2 cardio', 'strength training protocols',
+            'nutrition timing', 'meal timing', 'intermittent fasting', 'autophagy',
+            'cognitive enhancement', 'neuroplasticity', 'brain optimization',
+            'biohacking tools', 'wearable devices', 'biomarker tracking',
+            'gut microbiome', 'probiotics', 'fermented foods', 'gut-brain axis',
+            'hormonal optimization', 'testosterone', 'thyroid function', 'cortisol management',
+            'functional medicine', 'root cause analysis', 'personalized medicine',
+            'supplement science', 'nutrient timing', 'bioavailability',
+            'movement patterns', 'mobility work', 'posture optimization',
+            'recovery protocols', 'inflammation reduction', 'immune system support'
           ];
           
           // RANDOMIZE the order to prevent topic fixation
