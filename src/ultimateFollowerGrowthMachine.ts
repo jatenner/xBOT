@@ -324,7 +324,8 @@ Respond with JSON:
         maxTokens: 500
       });
 
-      const strategy = JSON.parse(response.choices[0]?.message?.content || '{}');
+      const { safeJsonParse } = await import('../utils/jsonCleaner');
+      const strategy = safeJsonParse(response.choices[0]?.message?.content || '{}');
       
       return {
         contentStrategy: strategy.contentStrategy || 'Authority-building health insights',
