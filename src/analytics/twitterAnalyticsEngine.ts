@@ -183,12 +183,18 @@ export class TwitterAnalyticsEngine {
             return healthRelatedTrends.slice(0, 5);
           }
           
-          // Fallback: manually curated health trends that are likely trending
-          const curatedTrends = [
-            'ozempic alternatives', 'red light therapy', 'cold exposure',
-            'seed oil toxicity', 'continuous glucose monitoring', 'NAD+ boosting',
-            'peptide therapy', 'circadian rhythm', 'microplastic detox'
+          // Fallback: manually curated health trends that are likely trending (RANDOMIZED to prevent fixation)
+          const baseTrends = [
+            'red light therapy', 'cold exposure', 'seed oil toxicity', 
+            'continuous glucose monitoring', 'NAD+ boosting', 'peptide therapy', 
+            'circadian rhythm', 'microplastic detox', 'breath work techniques',
+            'sleep optimization', 'stress management', 'longevity research',
+            'exercise science', 'nutrition timing', 'cognitive enhancement',
+            'biohacking tools', 'metabolic health', 'gut microbiome'
           ];
+          
+          // RANDOMIZE the order to prevent topic fixation
+          const curatedTrends = baseTrends.sort(() => Math.random() - 0.5);
           
           console.log(`📈 TRENDING_TOPICS: Using curated health trends (${curatedTrends.length})`);
           return curatedTrends.slice(0, 5);
