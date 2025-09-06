@@ -282,11 +282,28 @@ CURRENT PERFORMANCE DATA:
 GROWTH STRATEGY: ${optimalStrategy.strategy || 'Maximize viral potential'}
 CURRENT EXPERIMENT: ${experiment ? experiment.hypothesis : 'None'}
 
+TOPIC DIVERSITY REQUIREMENT:
+Choose from diverse health domains (avoid repetition):
+- Sleep Science & Circadian Biology
+- Mitochondrial Health & Energy
+- Gut Microbiome & Digestion  
+- Hormonal Optimization
+- Exercise Physiology & Performance
+- Mental Health & Neuroscience
+- Longevity & Anti-Aging
+- Nutrition Science & Metabolism
+- Stress Management & Recovery
+- Biohacking & Technology
+- Environmental Health
+- Alternative Medicine
+- Disease Prevention
+
 Create the optimal content strategy for MAXIMUM follower growth. Focus on:
 1. Content that makes people want to follow for more
 2. Topics that establish authority and expertise  
 3. Hooks that create curiosity and urgency
 4. Format that maximizes shareability
+5. DIVERSE topic selection (not just trending topics)
 
 Respond with JSON:
 {
