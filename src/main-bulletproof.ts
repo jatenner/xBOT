@@ -266,19 +266,54 @@ class BulletproofMainSystem {
       // Decide format (60% threads, 40% single tweets for balanced engagement)
       const format = Math.random() < 0.6 ? 'thread' : 'single';
       
-      // 🚀 VIRAL CONTENT OPTIMIZER: Advanced AI system with FORCED TOPIC DIVERSITY
-      console.log('🌍 UNLIMITED_HEALTH_TOPICS: AI can now explore ANY aspect of health & wellness for viral content creation');
+      // 🧠 ADVANCED UNIFIED SYSTEM: Use all our sophisticated AI systems together
+      console.log('🌍 ADVANCED_AI_ORCHESTRATION: Activating unified learning + content diversity + viral optimization...');
       
-      // 🔥 REAL TRENDING TOPICS + FORCED DIVERSITY: Combine real trends with domain rotation
+      // 🚀 STEP 1: UNIFIED LEARNING COORDINATOR - Get AI-driven intelligent decisions
+      let learningDecision = null;
+      try {
+        console.log('🧠 UNIFIED_LEARNING: Getting AI-driven content strategy...');
+        const { getUnifiedLearningCoordinator } = await import('./intelligence/unifiedLearningCoordinator');
+        const learningCoordinator = getUnifiedLearningCoordinator();
+        learningDecision = await learningCoordinator.makeIntelligentDecision();
+        console.log(`✅ LEARNING_DECISION: ${learningDecision.decision} (confidence: ${(learningDecision.confidence * 100).toFixed(1)}%)`);
+        console.log(`🎯 AI_REASONING: ${learningDecision.reasoning.substring(0, 100)}...`);
+      } catch (learningError: any) {
+        console.warn('⚠️ UNIFIED_LEARNING_FAILED:', learningError.message);
+      }
+      
+      // 🎯 STEP 2: CONTENT DIVERSITY TRACKER - Get 75+ specific topics based on analysis
+      let diversityContext = null;
+      let specificTopic = null;
+      try {
+        console.log('🎯 CONTENT_DIVERSITY: Analyzing recent content for advanced topic selection...');
+        const { ContentDiversityTracker } = await import('./content/diversityTracker');
+        const diversityTracker = ContentDiversityTracker.getInstance();
+        
+        // Get sophisticated content analysis (not just rotation)
+        const contentAnalysis = await diversityTracker.analyzeRecentContent(7);
+        console.log(`📊 DIVERSITY_ANALYSIS: Score ${contentAnalysis.diversityScore}/100, ${contentAnalysis.missingDomains.length} underexplored domains`);
+        console.log(`🚫 OVERUSED: ${contentAnalysis.overusedWords.join(', ')}`);
+        console.log(`💡 RECOMMENDED: ${contentAnalysis.recommendedFocus.join(', ')}`);
+        
+        // Use AI-recommended focus areas instead of random selection
+        specificTopic = contentAnalysis.recommendedFocus[0] || 'Advanced Nutrition Science';
+        diversityContext = contentAnalysis;
+      } catch (diversityError: any) {
+        console.warn('⚠️ DIVERSITY_ANALYSIS_FAILED:', diversityError.message);
+        specificTopic = 'Advanced Nutrition Science'; // Fallback
+      }
+      
+      // 🔥 STEP 3: REAL TRENDING TOPICS + VIRAL ORCHESTRATION
       let currentTrends = [];
-      let trendingContext = '';
+      let viralStrategy = null;
       
       try {
-        console.log('🔥 REAL_TRENDS: Fetching live Twitter trending topics...');
+        console.log('🔥 VIRAL_ORCHESTRATION: Combining real trends with advanced content strategy...');
+        
+        // Get real trending topics
         const { TwitterAnalyticsEngine } = await import('./analytics/twitterAnalyticsEngine');
         const analyticsEngine = TwitterAnalyticsEngine.getInstance();
-        
-        // Get real trending health topics (with 10-second timeout)
         const trendingPromise = analyticsEngine.generateEngagementForecast();
         const timeoutPromise = new Promise((_, reject) => 
           setTimeout(() => reject(new Error('Trending timeout')), 10000)
@@ -287,42 +322,50 @@ class BulletproofMainSystem {
         const forecast = await Promise.race([trendingPromise, timeoutPromise]) as any;
         if (forecast.trendingTopics && forecast.trendingTopics.length > 0) {
           currentTrends = forecast.trendingTopics.slice(0, 3);
-          trendingContext = `Live trending: ${currentTrends.join(', ')}`;
-          console.log(`✅ REAL_TRENDS: Using live trends: ${currentTrends.join(', ')}`);
+          console.log(`✅ REAL_TRENDS: ${currentTrends.join(', ')}`);
         }
-      } catch (trendError: any) {
-        console.warn('⚠️ REAL_TRENDS_FAILED:', trendError.message);
+        
+        // Generate viral content strategy using AI
+        const { ViralContentOrchestrator } = await import('./ai/viralContentOrchestrator');
+        const viralOrchestrator = new ViralContentOrchestrator(process.env.OPENAI_API_KEY!);
+        viralStrategy = await viralOrchestrator.generateViralContent(format === 'thread' ? 'thread' : 'single');
+        
+        console.log(`🚀 VIRAL_STRATEGY: ${viralStrategy.metadata?.topicDomain || 'Advanced health insights'}`);
+        console.log(`🎯 VIRAL_DOMAIN: ${viralStrategy.metadata?.topicDomain || specificTopic}`);
+        
+      } catch (viralError: any) {
+        console.warn('⚠️ VIRAL_ORCHESTRATION_FAILED:', viralError.message);
       }
       
-      // 🎯 FORCE TOPIC DIVERSITY: Rotate through different health domains
-      const healthDomains = [
-        'Advanced Nutrition Science', 'Exercise Physiology', 'Biohacking Technology', 
-        'Mental Health & Neuroscience', 'Longevity & Aging Science', 'Functional Medicine',
-        'Alternative Medicine', 'Environmental Health', 'Hormonal Optimization', 
-        'Microbiome Science', 'Sleep Science', 'Stress Physiology', 'Disease Prevention',
-        'Performance Enhancement', 'Counterintuitive Health Insights'
-      ];
-      
-      const randomDomain = healthDomains[Math.floor(Math.random() * healthDomains.length)];
-      console.log(`🎯 TOPIC_FOCUS: Generating content about ${randomDomain} to ensure diversity`);
-      console.log(`📈 TRENDING_CONTEXT: ${trendingContext || 'No live trends available'}`);
-      
-      // Combine real trends with forced diversity
-      const trendsToUse = currentTrends.length > 0 ? 
-        [`Incorporate trending: ${currentTrends[0]}`, `Focus on ${randomDomain}`, 'Avoid GLP-1 repetition'] :
-        [`Focus specifically on ${randomDomain}`, 'avoid GLP-1 medications and weight loss drugs'];
-      
-      const { viralContentOptimizer } = await import('./ai/viralContentOptimizer');
-      const viralResult = await viralContentOptimizer.generateViralContent({
-        format: format === 'thread' ? 'thread' : 'single',
-        targetAudience: `Health-conscious individuals interested in ${randomDomain}${currentTrends.length > 0 ? ` and trending topics like ${currentTrends[0]}` : ''}`,
-        currentTrends: trendsToUse,
-        performanceData: {
-          recentTopPerformers: currentTrends.length > 0 ? 
-            [`${currentTrends[0]} insights`, `${randomDomain} insights`, 'trending health topics'] :
-            [`${randomDomain} insights`, 'counterintuitive health insights', 'actionable wellness advice']
-        }
-      });
+      // 🤖 STEP 4: FINAL CONTENT GENERATION - Use viral result or fallback to optimizer
+      let viralResult;
+      if (viralStrategy && viralStrategy.content) {
+        console.log('✅ USING_VIRAL_ORCHESTRATOR: Advanced AI-generated viral content');
+        viralResult = {
+          content: viralStrategy.content,
+          viralScore: viralStrategy.metadata?.viralScore || 85,
+          growthPotential: viralStrategy.metadata?.engagementPrediction || 80,
+          reasoning: 'Advanced AI viral content strategy using unified learning systems',
+          topicDomain: viralStrategy.metadata?.topicDomain || specificTopic,
+          engagementHooks: ['Advanced health insights', 'AI-driven content strategy'],
+          shareabilityFactors: ['Unique perspective', 'Cutting-edge health knowledge']
+        };
+      } else {
+        console.log('🔄 FALLBACK_TO_OPTIMIZER: Using viral content optimizer with enhanced context');
+        const { viralContentOptimizer } = await import('./ai/viralContentOptimizer');
+        viralResult = await viralContentOptimizer.generateViralContent({
+          format: format === 'thread' ? 'thread' : 'single',
+          targetAudience: `Health-conscious individuals interested in ${specificTopic}${currentTrends.length > 0 ? ` and trending topics like ${currentTrends[0]}` : ''}`,
+          currentTrends: currentTrends.length > 0 ? 
+            [`Incorporate trending: ${currentTrends[0]}`, `Focus on ${specificTopic}`, 'Use advanced insights'] :
+            [`Focus specifically on ${specificTopic}`, 'advanced health optimization insights'],
+          performanceData: {
+            recentTopPerformers: currentTrends.length > 0 ? 
+              [`${currentTrends[0]} insights`, `${specificTopic} insights`, 'trending health topics'] :
+              [`${specificTopic} insights`, 'counterintuitive health insights', 'advanced optimization protocols']
+          }
+        });
+      }
 
       // Convert viral optimizer result to match expected format
       const pureAIResult = {
