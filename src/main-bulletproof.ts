@@ -92,24 +92,21 @@ class BulletproofMainSystem {
       const { intelligentFrequencyOptimizer } = await import('./intelligence/intelligentFrequencyOptimizer');
       const timingStrategy = await intelligentFrequencyOptimizer.getOptimalTimingStrategy();
       
-      // 🚀 AGGRESSIVE POSTING OPTIMIZATION: Much more frequent posting for growth
-      const minPostInterval = 15 * 60 * 1000; // 15 minutes minimum (reduced from 20)
-      const maxPostInterval = 75 * 60 * 1000; // 75 minutes maximum (reduced from 120)
+      // 🚀 ULTRA-AGGRESSIVE POSTING: Maximum growth focus
+      const minPostInterval = 5 * 60 * 1000; // 5 minutes minimum - VERY AGGRESSIVE
+      const maxPostInterval = 20 * 60 * 1000; // 20 minutes maximum - FORCE POST
       const timeUntilOptimal = timingStrategy.next_post_time.getTime() - now;
       
-      // 🧠 LEARNING-DRIVEN POSTING DECISION: Use existing analytics and learning insights
-      const inOptimalWindow = timeUntilOptimal <= 15 * 60 * 1000; // Extended optimal window to 15 minutes
-      const timingAllowsPost = (timeSinceLastPost > minPostInterval) && 
-                              (inOptimalWindow || timeSinceLastPost > maxPostInterval); // Force post after 75 minutes
+      // 🧠 AGGRESSIVE OVERRIDE: Post much more frequently regardless of timing strategy
+      const inOptimalWindow = true; // ALWAYS consider it optimal for aggressive growth
+      const timingAllowsPost = (timeSinceLastPost > minPostInterval); // Simple: just wait 5 minutes minimum
       
       // 🎯 EXISTING ANALYTICS: Use our analytics scraper insights
       const analyticsInsights = await this.analyticsChecker.getAnalyticsInsights();
       const hasGoodPerformance = analyticsInsights.averageEngagement > 0.02; // 2% engagement threshold
       
-      // 🎯 FINAL DECISION: Learning insights + timing + analytics performance
-      const shouldPostNow = timingAllowsPost && 
-                            (learningInsights.recommendations.length > 0 || hasGoodPerformance) &&
-                            (inOptimalWindow || timeSinceLastPost > maxPostInterval);
+      // 🎯 ULTRA-AGGRESSIVE DECISION: Post every 5-20 minutes for maximum growth
+      const shouldPostNow = timingAllowsPost; // Simple: post every 5+ minutes, no complex conditions
       
       if (shouldPostNow) {
         console.log('📝 BULLETPROOF_POSTING: Generating ORIGINAL content (threads/singles)...');
@@ -170,8 +167,8 @@ class BulletproofMainSystem {
         console.log(`🎯 NEXT_OPTIMAL: ${timingStrategy.next_post_time.toLocaleTimeString()} (confidence: ${timingStrategy.confidence_score}%)`);
       }
 
-      // STRATEGIC REPLIES (every 8-12 minutes - balanced with original posts)
-      const minReplyInterval = 8 * 60 * 1000; // 8 minutes
+      // ULTRA-AGGRESSIVE REPLIES (every 3-5 minutes for maximum engagement)
+      const minReplyInterval = 3 * 60 * 1000; // 3 minutes - VERY AGGRESSIVE
       
       if (timeSinceLastReply > minReplyInterval) {
         console.log('💬 STRATEGIC_ENGAGEMENT: Executing AI-driven follower growth engagement...');
