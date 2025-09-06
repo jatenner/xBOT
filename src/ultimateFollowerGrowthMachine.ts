@@ -13,6 +13,7 @@ import { FollowerGrowthOptimizer } from './intelligence/followerGrowthOptimizer'
 import { getFollowerGrowthAccelerator } from './intelligence/followerGrowthAccelerator';
 import { AdaptiveGrowthEngine } from './intelligence/adaptiveGrowthEngine';
 import { getUnifiedLearningCoordinator } from './intelligence/unifiedLearningCoordinator';
+import { safeJsonParse } from './utils/jsonCleaner';
 import { admin } from './lib/supabaseClients';
 import { getOpenAIService } from './services/openAIService';
 
@@ -324,7 +325,6 @@ Respond with JSON:
         maxTokens: 500
       });
 
-      const { safeJsonParse } = await import('../utils/jsonCleaner');
       const strategy = safeJsonParse(response.choices[0]?.message?.content || '{}');
       
       return {
