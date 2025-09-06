@@ -100,7 +100,7 @@ export async function upsertLearningPost(p: {
       impressions_count: p.impressions ?? 0,
       viral_potential_score: p.viral_potential_score ?? calculateViralScore(p),
       content: p.content ?? null,
-      format: 'single', // Add format column requirement
+      // format: 'single', // Removed - column doesn't exist
     };
 
     // Try upsert first, fall back to insert if constraint issues

@@ -703,7 +703,45 @@ app.post('/test-intelligent-post', async (req, res) => {
   }
 });
 
-console.log('🧠 AI endpoints mounted: /generate-content, /ai-post, /ai-analytics, /test-intelligent-post');
+// Force post endpoint (for testing)
+app.post('/force-post', async (req, res) => {
+  try {
+    console.log('🚀 FORCE_POST: Testing posting system...');
+    
+    // Use existing AI content generation
+    const { pureAIDrivenContentSystem } = await import('./content/pureAIDrivenContentSystem');
+    const contentResult = await pureAIDrivenContentSystem.generatePureAIContent({
+      format: 'single',
+      persona: 'educational',
+      emotion: 'informative', 
+      framework: 'simple'
+    });
+    
+    if (!contentResult.content) {
+      return res.status(500).json({ error: 'Content generation failed' });
+    }
+    
+    console.log('✅ CONTENT_GENERATED:', contentResult.content.substring(0, 100) + '...');
+    
+    // Try to post with browser
+    const { fastTwitterPoster } = await import('./posting/fastTwitterPoster');
+    const postResult = await fastTwitterPoster.postSingleTweet(contentResult.content);
+    
+    res.json({
+      success: postResult.success,
+      content: contentResult.content,
+      tweetId: postResult.tweetId || null,
+      error: postResult.error || null,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error: any) {
+    console.error('❌ FORCE_POST_ERROR:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+console.log('🧠 AI endpoints mounted: /generate-content, /ai-post, /ai-analytics, /test-intelligent-post, /force-post');
 
 // PostLock management endpoint (admin only)
 app.post('/unlock-posting', async (req, res) => {

@@ -478,6 +478,12 @@ class BulletproofMainSystem {
       console.log(`📊 ANALYTICS: Processing ${recentPosts.length} recent posts for insights`);
       
       for (const post of recentPosts) {
+        // Safety check for post data
+        if (!post || !post.tweetId || !post.content) {
+          console.warn('⚠️ ANALYTICS: Skipping invalid post data');
+          continue;
+        }
+        
         // 🛡️ REAL DATA ENFORCEMENT - Zero fake data allowed
         console.log('🛡️ REAL_DATA_ENFORCEMENT: Validating all metrics for authenticity...');
         
@@ -489,7 +495,7 @@ class BulletproofMainSystem {
         
         realMetricsCollector.trackTweet({
           tweetId: post.tweetId,
-          postedAt: new Date(post.createdAt),
+          postedAt: new Date(post.createdAt || post.created_at || Date.now()),
           content: post.content,
           contentLength: post.content.length,
           persona: post.persona,
