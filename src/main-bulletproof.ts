@@ -342,12 +342,12 @@ class BulletproofMainSystem {
       try {
         console.log('🔥 VIRAL_ORCHESTRATION: Combining real trends with advanced content strategy...');
         
-        // Get real trending topics
+        // Get real trending topics with extended timeout
         const { TwitterAnalyticsEngine } = await import('./analytics/twitterAnalyticsEngine');
         const analyticsEngine = TwitterAnalyticsEngine.getInstance();
         const trendingPromise = analyticsEngine.generateEngagementForecast();
         const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Trending timeout')), 10000)
+          setTimeout(() => reject(new Error('Trending timeout')), 30000) // Increased to 30 seconds
         );
         
         const forecast = await Promise.race([trendingPromise, timeoutPromise]) as any;
@@ -356,10 +356,15 @@ class BulletproofMainSystem {
           console.log(`✅ REAL_TRENDS: ${currentTrends.join(', ')}`);
         }
         
-        // Generate viral content strategy using AI
+        // Generate viral content strategy using AI with timeout
         const { ViralContentOrchestrator } = await import('./ai/viralContentOrchestrator');
         const viralOrchestrator = new ViralContentOrchestrator(process.env.OPENAI_API_KEY!);
-        viralStrategy = await viralOrchestrator.generateViralContent(format === 'thread' ? 'thread' : 'single');
+        const viralPromise = viralOrchestrator.generateViralContent(format === 'thread' ? 'thread' : 'single');
+        const viralTimeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Viral orchestrator timeout')), 20000) // 20 second timeout
+        );
+        
+        viralStrategy = await Promise.race([viralPromise, viralTimeoutPromise]) as any;
         
         console.log(`🚀 VIRAL_STRATEGY: ${viralStrategy.metadata?.topicDomain || 'Advanced health insights'}`);
         console.log(`🎯 VIRAL_DOMAIN: ${viralStrategy.metadata?.topicDomain || specificTopic}`);
@@ -706,8 +711,7 @@ class BulletproofMainSystem {
             persona: config.persona,
             emotion: config.emotion,
             framework: config.framework,
-        created_at: new Date(),
-        uniqueness_score: metadata.uniquenessScore || 0.85
+        created_at: new Date()
       });
 
       if (error) {

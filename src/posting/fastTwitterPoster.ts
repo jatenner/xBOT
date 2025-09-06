@@ -133,7 +133,7 @@ export class FastTwitterPoster {
       // Find composer with ONLY the most reliable selectors
       const composer = await page.waitForSelector(
         '[data-testid="tweetTextarea_0"], div[role="textbox"][contenteditable="true"]',
-        { timeout: 5000 }
+        { timeout: 15000 } // Increased timeout for reliability
       );
       
       if (!composer) {
@@ -206,7 +206,7 @@ export class FastTwitterPoster {
       await page.waitForTimeout(1500);
       
       // Find first composer
-      const composer = await page.waitForSelector('[data-testid="tweetTextarea_0"]', { timeout: 5000 });
+      const composer = await page.waitForSelector('[data-testid="tweetTextarea_0"]', { timeout: 15000 });
       
       // Type first tweet
       await composer.click();

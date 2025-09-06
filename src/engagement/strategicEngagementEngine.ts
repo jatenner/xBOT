@@ -283,23 +283,61 @@ Generate ONE strategic engagement action:`;
   }
 
   /**
-   * 💻 Execute individual engagement action
+   * 💻 Execute individual engagement action with REAL browser automation
    */
   private async executeIndividualAction(action: EngagementAction): Promise<EngagementResult> {
-    // For now, simulate successful engagement
-    // In production, this would use browser automation to actually engage
-    
-    console.log(`✅ SIMULATED_ENGAGEMENT: ${action.type} to @${action.target.username}`);
-    if (action.response_content) {
-      console.log(`📝 CONTENT: "${action.response_content}"`);
+    try {
+      if (action.type === 'reply' && action.response_content) {
+        console.log(`💬 REAL_ENGAGEMENT: Posting reply to @${action.target.username}`);
+        console.log(`📝 CONTENT: "${action.response_content}"`);
+        
+        // Use strategic replies system for real engagement
+        const { strategicReplies } = await import('./strategicReplies');
+        const replyResult = await strategicReplies.replyToInfluencer(
+          action.target.username,
+          action.response_content
+        );
+        
+        if (replyResult.success) {
+          console.log(`✅ REAL_REPLY_SUCCESS: Posted to @${action.target.username}`);
+          return {
+            success: true,
+            action,
+            engagement_id: replyResult.tweetId || `eng_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            timestamp: new Date()
+          };
+        } else {
+          console.warn(`⚠️ REAL_REPLY_FAILED: ${replyResult.error}`);
+          return {
+            success: false,
+            action,
+            engagement_id: `failed_${Date.now()}`,
+            timestamp: new Date(),
+            error: replyResult.error
+          };
+        }
+      }
+      
+      // For other action types, log but don't simulate
+      console.log(`⚠️ ENGAGEMENT_TYPE_NOT_IMPLEMENTED: ${action.type} to @${action.target.username}`);
+      return {
+        success: false,
+        action,
+        engagement_id: `not_implemented_${Date.now()}`,
+        timestamp: new Date(),
+        error: 'Action type not implemented'
+      };
+      
+    } catch (error: any) {
+      console.error(`❌ REAL_ENGAGEMENT_ERROR: ${error.message}`);
+      return {
+        success: false,
+        action,
+        engagement_id: `error_${Date.now()}`,
+        timestamp: new Date(),
+        error: error.message
+      };
     }
-
-    return {
-      success: true,
-      action,
-      engagement_id: `eng_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      timestamp: new Date()
-    };
   }
 
   /**
