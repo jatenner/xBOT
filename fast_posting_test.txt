@@ -8273,3 +8273,7 @@ SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /Users/jonahtenner/xBOT/da
 ✅ DB_SUCCESS: record_system_failure completed in 146ms
 🔍 FAILURE_RECORDED: SystemHealthMonitoring - primary_failure
 📊 REAL_COLLECTION: Collecting collection_1 metrics for thread_1757181368360_h188naa3q
+❌ REAL_METRICS_ERROR: thread_1757181368360_h188naa3q (collection_1): page.waitForSelector: Timeout 15000ms exceeded.
+Call log:
+  [2m- waiting for locator('article[data-testid="tweet"]') to be visible[22m
+
