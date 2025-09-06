@@ -46,7 +46,6 @@ export class ContentPerformanceLearner {
         .select(`
           content,
           created_at,
-          content_type,
           quality_score
         `)
         .order('created_at', { ascending: false })
