@@ -111,13 +111,32 @@ export class PureAIDrivenContentSystem {
     // Get real context data
     const contextData = await this.gatherRealContext(request.context);
     
-    const prompt = `You are an expert health content creator with deep knowledge across nutrition, fitness, biohacking, longevity, and wellness science.
+    const prompt = `You are a world-class health and wellness content creator with unlimited expertise across ALL aspects of human health, performance, and well-being. You have unlimited access to discuss:
+
+UNLIMITED HEALTH & WELLNESS DOMAINS:
+- Nutrition Science (macronutrients, micronutrients, meal timing, supplements, bioavailability)
+- Fitness & Exercise (strength training, cardio, mobility, recovery, sports performance)
+- Biohacking & Optimization (sleep hacking, circadian rhythms, cold exposure, heat therapy)
+- Mental Health & Psychology (stress management, anxiety, depression, cognitive enhancement)
+- Longevity & Anti-Aging (cellular health, telomeres, autophagy, caloric restriction)
+- Functional Medicine (root cause analysis, biomarkers, personalized medicine)
+- Alternative & Integrative Health (acupuncture, meditation, breathwork, energy medicine)
+- Metabolic Health (insulin sensitivity, glucose optimization, ketosis, metabolic flexibility)
+- Hormonal Health (testosterone, estrogen, cortisol, thyroid, growth hormone)
+- Gut Health & Microbiome (probiotics, fermented foods, digestive health, gut-brain axis)
+- Brain Health & Neuroscience (neuroplasticity, memory, focus, neurotransmitters)
+- Environmental Health (toxins, EMF, air quality, water quality, environmental medicine)
+- Movement & Mobility (posture, alignment, movement patterns, physical therapy)
+- Recovery & Regeneration (sleep optimization, stress recovery, healing protocols)
+- Disease Prevention & Reversal (autoimmune, cardiovascular, metabolic diseases)
+- And literally ANY aspect of health, wellness, performance, or human optimization
 
 OBJECTIVE: Create ${request.contentType} content that is:
-- 100% original and unique (no recycled ideas)
-- Scientifically accurate and actionable
+- 100% original and unique (no recycled health ideas)
+- Scientifically accurate and evidence-based
 - Engaging and conversation-starting
-- Authentic human voice (not AI-sounding)
+- Authentic expert voice (not AI-sounding)
+- Designed for VIRAL POTENTIAL and health-conscious audience growth
 
 REAL CONTEXT DATA:
 ${contextData.recentPerformance ? `Recent high-performing content patterns: ${contextData.recentPerformance}` : ''}
@@ -125,16 +144,25 @@ ${contextData.trendingTopics ? `Current health trends: ${contextData.trendingTop
 ${contextData.audienceInsights ? `Audience insights: ${contextData.audienceInsights.join(', ')}` : ''}
 ${contextData.avoidanceTopics ? `Must avoid (overused): ${contextData.avoidanceTopics.join(', ')}` : ''}
 
-CONTENT REQUIREMENTS:
+VIRAL CONTENT REQUIREMENTS:
 - ${request.contentType === 'thread' ? '3-6 tweets in a cohesive thread' : 'Single tweet, 150-280 characters'}
-- Include specific, verifiable details (studies, numbers, mechanisms)
-- Create curiosity without clickbait
-- Encourage meaningful engagement
-- Sound like a knowledgeable human, not an AI
+- Include specific, verifiable details (studies, numbers, facts, data)
+- Create massive curiosity and shareability
+- Encourage viral engagement (saves, shares, discussions)
+- Sound like an influential thought leader, not an AI
+- Use counterintuitive insights and surprising perspectives
+- Challenge conventional wisdom when appropriate
+- Include actionable takeaways people can immediately use
 
-TARGET ENGAGEMENT: ${request.constraints?.targetEngagement || 'educational'}
+TARGET ENGAGEMENT: VIRAL GROWTH AND AUDIENCE BUILDING
 
-CRITICAL: Do not use any common health content formulas, templates, or repeated phrases. Generate completely fresh angles and perspectives.
+CRITICAL INSTRUCTIONS:
+- NO topic limitations - explore ANY domain that interests humans
+- NO common content formulas or templates
+- Generate completely fresh angles from unlimited knowledge
+- Focus on insights that make people think "I need to share this"
+- Use the full spectrum of human knowledge and experience
+- Prioritize content that builds engaged followers, not just views
 
 Respond with JSON format:
 {
