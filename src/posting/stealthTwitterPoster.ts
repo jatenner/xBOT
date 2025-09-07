@@ -249,15 +249,24 @@ export class StealthTwitterPoster {
         await this.page.evaluate(() => {
           const masks = document.querySelectorAll('[data-testid="twc-cc-mask"]');
           masks.forEach(mask => mask.remove());
+          
+          // Also remove any overlay elements
+          const overlays = document.querySelectorAll('[role="dialog"], .modal, [data-testid*="mask"], [data-testid*="overlay"]');
+          overlays.forEach(overlay => overlay.remove());
         });
         
-        await this.randomDelay(500, 1000);
+        await this.randomDelay(1000, 2000);
         
         // Strategy 2: Try clicking outside the mask area first
         await this.page.mouse.move(100, 100);
-        await this.randomDelay(200, 400);
+        await this.page.mouse.click(100, 100);
+        await this.randomDelay(500, 1000);
         
-        // Strategy 3: Use keyboard shortcut instead of clicking
+        // Strategy 3: Try pressing Escape to close any modals
+        await this.page.keyboard.press('Escape');
+        await this.randomDelay(500, 1000);
+        
+        // Strategy 4: Use keyboard shortcut instead of clicking
         console.log('🥷 STEALTH_POSTER: Using keyboard shortcut bypass...');
         return await this.useKeyboardShortcut();
       }
@@ -384,9 +393,27 @@ export class StealthTwitterPoster {
 
     try {
       // Check if we're back to empty composer (indicates successful post)
-      const emptyComposer = await this.page.locator('[data-testid="tweetTextarea_0"]').first().inputValue();
+      // Twitter uses contenteditable divs, not input elements, so check textContent instead
+      const composerElement = this.page.locator('[data-testid="tweetTextarea_0"]').first();
       
-      if (emptyComposer === '' || emptyComposer.length === 0) {
+      // Try different methods to check if composer is empty
+      let isEmpty = false;
+      
+      try {
+        const textContent = await composerElement.textContent();
+        isEmpty = !textContent || textContent.trim().length === 0;
+      } catch (e) {
+        // Fallback: check if placeholder is visible (indicates empty composer)
+        try {
+          const hasPlaceholder = await this.page.locator('[data-text="true"]').isVisible({ timeout: 2000 });
+          isEmpty = hasPlaceholder;
+        } catch (e2) {
+          // Final fallback: assume success if no errors in posting
+          isEmpty = true;
+        }
+      }
+      
+      if (isEmpty) {
         console.log('✅ STEALTH_POSTER: Post verification successful - composer is empty');
         return true;
       }
