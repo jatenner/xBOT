@@ -53,7 +53,7 @@ export class AggressivePostingScheduler {
   /**
    * 🚀 START AGGRESSIVE POSTING CYCLE
    */
-  public startAggressivePosting(): void {
+  public async startAggressivePosting(): Promise<void> {
     if (this.isRunning) {
       console.log('🚀 AGGRESSIVE_SCHEDULER: Already running');
       return;
@@ -196,8 +196,8 @@ export class AggressivePostingScheduler {
       console.log(`🎯 AI_REASONING: ${contentDecision.reasoning}`);
       
       const contentRequest = {
-        format: Math.random() > 0.8 ? 'thread' : 'single', // 20% threads for variety
-        target_engagement: 'high',
+        format: (Math.random() > 0.8 ? 'thread' : 'single') as 'single' | 'thread', // 20% threads for variety
+        target_engagement: 'high' as 'high' | 'medium' | 'steady',
         avoid_recent_patterns: true,
         user_context: contentDecision.recommended_topic,
         preferred_content_type: contentDecision.recommended_content_type,
