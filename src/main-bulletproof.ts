@@ -484,9 +484,9 @@ class BulletproofMainSystem {
       if (format === 'thread' && result.threadParts && result.threadParts.length > 1) {
         // Ultra-fast thread posting with timeout protection
         console.log(`⚡ FAST_THREAD: Posting ${result.threadParts.length}-part thread with ultra-fast system`);
-        const { fastTwitterPoster } = await import('./posting/fastTwitterPoster');
+        const { railwayPoster } = await import('./posting/railwayCompatiblePoster');
         
-        const threadResult = await fastTwitterPoster.postThread(result.threadParts);
+        const threadResult = await railwayPoster.postThread(result.threadParts);
         postResult = {
           success: threadResult.success,
           tweetId: threadResult.tweetId,
@@ -499,16 +499,16 @@ class BulletproofMainSystem {
           console.log('🚨 EMERGENCY_THREAD: Bulletproof thread validation failed, converting single content to thread parts');
           console.log('🚨 EMERGENCY_THREAD: Thread validation failed, using simple fallback');
           // Simple fallback - just post as single tweet
-          const { fastTwitterPoster } = await import('./posting/fastTwitterPoster');
-          postResult = await fastTwitterPoster.postSingleTweet(
+          const { railwayPoster } = await import('./posting/railwayCompatiblePoster');
+          postResult = await railwayPoster.postTweet(
             typeof result.content === 'string' ? result.content : 'Health content generated'
           );
         } else if (format === 'single') {
         // Single tweet - ultra-fast posting
         console.log('⚡ FAST_SINGLE: Posting single tweet with ultra-fast system');
-        const { fastTwitterPoster } = await import('./posting/fastTwitterPoster');
+        const { railwayPoster } = await import('./posting/railwayCompatiblePoster');
         
-        const singleResult = await fastTwitterPoster.postSingleTweet(
+        const singleResult = await railwayPoster.postTweet(
           typeof result.content === 'string' ? result.content : 
           Array.isArray(result.threadParts) ? result.threadParts[0] : 
           'Health content generated'
@@ -524,11 +524,11 @@ class BulletproofMainSystem {
       } else {
         // Fallback - ultra-fast single tweet
         console.log('⚡ FAST_FALLBACK: Unknown format, using ultra-fast single tweet');
-        const { fastTwitterPoster } = await import('./posting/fastTwitterPoster');
+        const { railwayPoster } = await import('./posting/railwayCompatiblePoster');
         
-        const fallbackResult = await fastTwitterPoster.postSingleTweet(
+        const fallbackResult = await railwayPoster.postTweet(
           typeof result.content === 'string' ? result.content : 
-          Array.isArray(result.threadParts) ? result.threadParts[0] : 
+          Array.isArray(result.threadParts) ? result.threadParts[0] :
           'Health content generated'
         );
         
@@ -869,7 +869,7 @@ class BulletproofMainSystem {
 
       // 5. Test Posting System Integration
       try {
-        const { fastTwitterPoster } = await import('./posting/fastTwitterPoster');
+        const { railwayPoster } = await import('./posting/railwayCompatiblePoster');
         console.log('✅ POSTING_SYSTEM: FastTwitterPoster loaded successfully');
       } catch (error: any) {
         console.error('❌ POSTING_SYSTEM_FAILED:', error.message);

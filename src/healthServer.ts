@@ -430,11 +430,11 @@ export function startHealthServer(): Promise<void> {
     // Force post endpoint for testing
     app.post('/force-post', async (req, res) => {
       try {
-        const { FastTwitterPoster } = await import('./posting/fastTwitterPoster');
-        const poster = new FastTwitterPoster();
+        const { RailwayCompatiblePoster } = await import('./posting/railwayCompatiblePoster');
+        const poster = new RailwayCompatiblePoster();
         
         const testContent = "Testing system - this is a real post to verify our Twitter bot is working correctly! 🚀";
-        const result = await poster.postSingleTweet(testContent);
+        const result = await poster.postTweet(testContent);
         
         res.json({ 
           success: result.success, 
@@ -802,8 +802,8 @@ app.post('/force-post', async (req, res) => {
     console.log('✅ CONTENT_GENERATED:', contentResult.content.substring(0, 100) + '...');
     
     // Try to post with browser
-    const { fastTwitterPoster } = await import('./posting/fastTwitterPoster');
-    const postResult = await fastTwitterPoster.postSingleTweet(contentResult.content);
+    const { railwayPoster } = await import('./posting/railwayCompatiblePoster');
+    const postResult = await railwayPoster.postTweet(contentResult.content);
     
     res.json({
       success: postResult.success,
@@ -847,8 +847,8 @@ app.post('/restart-browser', async (req, res) => {
     
     // Test new connection
     try {
-      const { fastTwitterPoster } = await import('./posting/fastTwitterPoster');
-      const testResult = await fastTwitterPoster.postSingleTweet('Browser connection test - please ignore');
+      const { railwayPoster } = await import('./posting/railwayCompatiblePoster');
+      const testResult = await railwayPoster.postTweet('Browser connection test - please ignore');
       
       res.json({
         success: true,
