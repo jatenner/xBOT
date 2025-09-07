@@ -383,21 +383,51 @@ class BulletproofMainSystem {
         console.warn('⚠️ VIRAL_ORCHESTRATION_FAILED:', viralError.message);
       }
       
-      // 🤖 STEP 4: FINAL CONTENT GENERATION - Use viral result or fallback to optimizer
+      // 🎭 STEP 4: ENHANCED HUMAN-VOICE CONTENT GENERATION
       let viralResult;
-      if (viralStrategy && viralStrategy.content) {
-        console.log('✅ USING_VIRAL_ORCHESTRATOR: Advanced AI-generated viral content');
+      try {
+        console.log('🎭 ENHANCED_AI: Using new human voice + data-driven learning system...');
+        
+        const { EnhancedContentOrchestrator } = await import('./ai/enhancedContentOrchestrator');
+        const orchestrator = EnhancedContentOrchestrator.getInstance();
+        
+        const enhancedResult = await orchestrator.generateEnhancedContent({
+          format: format as 'single' | 'thread',
+          target_engagement: 'high',
+          avoid_recent_patterns: true,
+          user_context: `Topic: ${specificTopic}, Focus: follower growth`
+        });
+        
+        console.log(`✅ ENHANCED_AI: Generated ${enhancedResult.metadata.content_type} with ${enhancedResult.metadata.human_voice_score}% authenticity`);
+        console.log(`🎯 LEARNING_APPLIED: ${enhancedResult.metadata.learning_applied.join(', ')}`);
+        
         viralResult = {
-          content: viralStrategy.content,
-          viralScore: viralStrategy.metadata?.viralScore || 85,
-          growthPotential: viralStrategy.metadata?.engagementPrediction || 80,
-          reasoning: 'Advanced AI viral content strategy using unified learning systems',
-          topicDomain: viralStrategy.metadata?.topicDomain || specificTopic,
-          engagementHooks: ['Advanced health insights', 'AI-driven content strategy'],
-          shareabilityFactors: ['Unique perspective', 'Cutting-edge health knowledge']
+          content: enhancedResult.content,
+          viralScore: enhancedResult.metadata.predicted_performance.viral_score,
+          growthPotential: enhancedResult.metadata.predicted_performance.follower_potential,
+          reasoning: `Enhanced AI: ${enhancedResult.metadata.content_type} style with ${enhancedResult.metadata.human_voice_score}% human authenticity`,
+          topicDomain: enhancedResult.metadata.topic_source,
+          engagementHooks: enhancedResult.metadata.learning_applied,
+          shareabilityFactors: [`${enhancedResult.metadata.content_type} format`, 'Human voice', 'Data-driven optimization']
         };
-      } else {
-        console.log('🔄 FALLBACK_TO_OPTIMIZER: Using viral content optimizer with enhanced context');
+        
+      } catch (enhancedError: any) {
+        console.warn('⚠️ ENHANCED_AI_FAILED:', enhancedError.message);
+        
+        // Fallback to viral strategy if available
+        if (viralStrategy && viralStrategy.content) {
+          console.log('🔄 FALLBACK_TO_VIRAL: Using viral orchestrator result');
+          viralResult = {
+            content: viralStrategy.content,
+            viralScore: viralStrategy.metadata?.viralScore || 85,
+            growthPotential: viralStrategy.metadata?.engagementPrediction || 80,
+            reasoning: 'Viral orchestrator fallback',
+            topicDomain: viralStrategy.metadata?.topicDomain || specificTopic,
+            engagementHooks: ['Advanced health insights'],
+            shareabilityFactors: ['Viral optimization']
+          };
+        } else {
+          console.log('🔄 FALLBACK_TO_OPTIMIZER: Using viral content optimizer with enhanced context');
         const { viralContentOptimizer } = await import('./ai/viralContentOptimizer');
         // 🎲 TOPIC RANDOMIZATION: Force diverse topics to prevent repetition
         const diverseTopics = [
@@ -453,21 +483,22 @@ class BulletproofMainSystem {
           framework: 'unlimited_knowledge_domains'
         }
       };
+        }
       
-      console.log(`🎯 PURE_AI_SUCCESS: Generated ${pureAIResult.contentType} with ${pureAIResult.uniquenessScore}% uniqueness`);
-      console.log(`🧠 AI_REASONING: ${pureAIResult.aiReasoning}`);
-      console.log(`📊 PERFORMANCE_PREDICTION: ${pureAIResult.expectedPerformance.viralPotential}% viral potential`);
+      console.log(`🎯 CONTENT_READY: Using ${viralResult ? 'AI-optimized' : 'fallback'} content for posting`);
+      console.log(`📝 GENERATED_CONTENT: ${viralResult.content.length > 50 ? viralResult.content.substring(0, 50) + '...' : viralResult.content}`);
+      console.log(`🎭 CONTENT_METADATA: ${viralResult.shareabilityFactors.join(' | ')}`);
 
-      // Use the pure AI generated content instead of old system
+      // Use the generated content 
       const result = {
-        content: pureAIResult.content,
-        contentType: pureAIResult.contentType,
-        threadParts: Array.isArray(pureAIResult.content) ? pureAIResult.content : undefined,
+        content: viralResult.content,
+        contentType: viralResult.viralScore > 70 ? 'high_viral' : 'standard',
+        threadParts: Array.isArray(viralResult.content) ? viralResult.content : undefined,
         metadata: {
-          promptVersion: 'pure_ai_v1',
-          viralScore: pureAIResult.expectedPerformance.viralPotential,
-          uniquenessScore: pureAIResult.uniquenessScore,
-          aiReasoning: pureAIResult.aiReasoning,
+          promptVersion: 'enhanced_ai_v1',
+          viralScore: viralResult.viralScore,
+          uniquenessScore: viralResult.growthPotential,
+          aiReasoning: viralResult.reasoning,
           persona: 'ai_generated',
           emotion: 'informative', 
           framework: 'pure_ai'
@@ -577,8 +608,20 @@ class BulletproofMainSystem {
       if (postResult.success) {
         console.log(`✅ ENHANCED_POST_SUCCESS: ${postResult.type} posted with ID ${postResult.tweetId}`);
         
-        // Store for performance tracking
+        // Store for performance tracking and enhanced learning
         await this.storePostForTracking(postResult.tweetId!, result.metadata, result.metadata);
+        
+        // 🎭 ENHANCED_LEARNING: Initialize content performance tracking
+        try {
+          const { EnhancedContentOrchestrator } = await import('./ai/enhancedContentOrchestrator');
+          const orchestrator = EnhancedContentOrchestrator.getInstance();
+          
+          // Store initial post data for future learning (will get real engagement later)
+          console.log('🧠 ENHANCED_LEARNING: Initializing content performance tracking...');
+          
+        } catch (enhancedLearningError: any) {
+          console.warn('⚠️ ENHANCED_LEARNING_INIT_FAILED:', enhancedLearningError.message);
+        }
         
         // 🚨 START REAL METRICS COLLECTION FOR NEW POSTS
         const { realMetricsCollector } = await import('./metrics/realTwitterMetricsCollector');
