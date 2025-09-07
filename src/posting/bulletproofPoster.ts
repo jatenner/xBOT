@@ -295,6 +295,32 @@ export class BulletproofPoster {
               '[data-testid="toolBar"] [role="button"]'
             ];
             
+            // First, let's see what's actually on the page
+            try {
+              const pageContent = await page.content();
+              console.log('🔍 BULLETPROOF_POSTER: Page contains "Tweet" text:', pageContent.includes('Tweet'));
+              console.log('🔍 BULLETPROOF_POSTER: Page contains "Post" text:', pageContent.includes('Post'));
+              console.log('🔍 BULLETPROOF_POSTER: Page contains compose elements:', pageContent.includes('compose'));
+              
+              // Get all buttons on the page for debugging
+              const allButtons = await page.locator('button, a[role="button"], [role="button"]').all();
+              console.log(`🔍 BULLETPROOF_POSTER: Found ${allButtons.length} clickable elements on page`);
+              
+              // Check for any element with "tweet", "post", or "compose" text
+              for (let i = 0; i < Math.min(allButtons.length, 10); i++) {
+                try {
+                  const text = await allButtons[i].textContent();
+                  if (text && (text.toLowerCase().includes('tweet') || text.toLowerCase().includes('post') || text.toLowerCase().includes('compose'))) {
+                    console.log(`🔍 BULLETPROOF_POSTER: Found potential compose button with text: "${text}"`);
+                  }
+                } catch (e) {
+                  // Skip this button
+                }
+              }
+            } catch (e) {
+              console.log('🔍 BULLETPROOF_POSTER: Could not analyze page content');
+            }
+            
             for (const selector of composeSelectors) {
               try {
                 const button = page.locator(selector).first();
