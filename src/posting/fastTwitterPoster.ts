@@ -250,32 +250,104 @@ export class FastTwitterPoster {
       await composer.fill(tweets[0]);
       await page.waitForTimeout(300);
       
-      // Add additional tweets using "+" button
-      for (let i = 1; i < Math.min(tweets.length, 3); i++) { // Limit to 3 tweets for speed
-        try {
-          // Look for "+" button to add thread
-          const addButton = await page.waitForSelector(
-            '[data-testid="addButton"], button[aria-label*="Add"], [aria-label*="Add tweet"]',
-            { timeout: 3000 }
-          );
-          
-          await addButton.click();
-          await page.waitForTimeout(500);
-          
-          // Find new composer
-          const nextComposer = await page.waitForSelector(
-            `[data-testid="tweetTextarea_${i}"]`,
-            { timeout: 3000 }
-          );
-          
-          await nextComposer.fill(tweets[i]);
-          await page.waitForTimeout(300);
-          
-          console.log(`📝 FAST_THREAD: Added tweet ${i + 1}/${tweets.length}`);
-          
-        } catch (e) {
-          console.log(`⚠️ FAST_THREAD: Failed to add tweet ${i + 1}, continuing...`);
-          break;
+      // Add additional tweets using "+" button with robust error handling
+      for (let i = 1; i < tweets.length; i++) { // Post ALL tweets in thread
+        let tweetAdded = false;
+        
+        // Try multiple methods to add the next tweet
+        for (let attempt = 0; attempt < 3 && !tweetAdded; attempt++) {
+          try {
+            console.log(`🔄 FAST_THREAD: Attempt ${attempt + 1} to add tweet ${i + 1}/${tweets.length}`);
+            
+            // Method 1: Look for various "+" button selectors
+            const addButtonSelectors = [
+              '[data-testid="addButton"]',
+              'button[aria-label*="Add"]',
+              '[aria-label*="Add tweet"]',
+              '[data-testid="toolBar"] button[aria-label*="Add"]',
+              'div[role="button"][aria-label*="Add"]',
+              'button:has-text("+")',
+              '[data-testid="tweetButton"] + button'
+            ];
+            
+            let addButton = null;
+            for (const selector of addButtonSelectors) {
+              try {
+                addButton = await page.waitForSelector(selector, { timeout: 2000 });
+                if (addButton) {
+                  console.log(`✅ FAST_THREAD: Found add button with selector: ${selector}`);
+                  break;
+                }
+              } catch (e) {
+                continue;
+              }
+            }
+            
+            if (!addButton) {
+              console.log(`⚠️ FAST_THREAD: No add button found, trying keyboard shortcut`);
+              // Fallback: Try keyboard shortcut to add tweet
+              await page.keyboard.press('Control+Enter');
+              await page.waitForTimeout(1000);
+              await page.keyboard.press('Tab');
+              await page.waitForTimeout(500);
+            } else {
+              await addButton.click();
+              await page.waitForTimeout(800);
+            }
+            
+            // Method 2: Find new composer with multiple selectors
+            const composerSelectors = [
+              `[data-testid="tweetTextarea_${i}"]`,
+              '[data-testid="tweetTextarea_0"]:last-of-type',
+              'div[contenteditable="true"][data-text="What is happening?!"]:last-of-type',
+              'div[role="textbox"]:last-of-type',
+              '[data-testid="tweetTextarea_0"] ~ div [data-testid="tweetTextarea_0"]'
+            ];
+            
+            let nextComposer = null;
+            for (const selector of composerSelectors) {
+              try {
+                nextComposer = await page.waitForSelector(selector, { timeout: 2000 });
+                if (nextComposer) {
+                  console.log(`✅ FAST_THREAD: Found composer with selector: ${selector}`);
+                  break;
+                }
+              } catch (e) {
+                continue;
+              }
+            }
+            
+            if (!nextComposer) {
+              // Fallback: Find any new textbox that appeared
+              const allTextboxes = await page.$$('div[contenteditable="true"]');
+              if (allTextboxes.length > i) {
+                nextComposer = allTextboxes[allTextboxes.length - 1];
+                console.log(`✅ FAST_THREAD: Using fallback textbox (${allTextboxes.length} total)`);
+              }
+            }
+            
+            if (nextComposer) {
+              // Clear any existing content and add new tweet
+              await nextComposer.click();
+              await page.keyboard.press('Control+a');
+              await nextComposer.fill(tweets[i]);
+              await page.waitForTimeout(500);
+              
+              console.log(`✅ FAST_THREAD: Successfully added tweet ${i + 1}/${tweets.length}`);
+              tweetAdded = true;
+            } else {
+              throw new Error('Could not find composer for next tweet');
+            }
+            
+          } catch (e) {
+            console.log(`⚠️ FAST_THREAD: Attempt ${attempt + 1} failed for tweet ${i + 1}: ${e.message}`);
+            await page.waitForTimeout(1000); // Wait before retry
+          }
+        }
+        
+        if (!tweetAdded) {
+          console.log(`❌ FAST_THREAD: Failed to add tweet ${i + 1} after 3 attempts, continuing with remaining tweets`);
+          // Don't break - try to add remaining tweets
         }
       }
       
