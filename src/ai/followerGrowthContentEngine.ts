@@ -129,11 +129,25 @@ OUTPUT REQUIREMENTS:
       });
 
       const rawContent = response.content;
-      if (!rawContent) {
-        throw new Error('No content generated');
+      if (!rawContent || rawContent.trim() === '') {
+        console.error('❌ FOLLOWER_ENGINE: OpenAI returned empty response');
+        throw new Error('No content generated - empty OpenAI response');
       }
 
-      const generatedData = JSON.parse(rawContent);
+      let generatedData;
+      try {
+        generatedData = JSON.parse(rawContent);
+      } catch (parseError) {
+        console.error('❌ FOLLOWER_ENGINE: JSON parse failed:', parseError);
+        console.error('Raw content:', rawContent);
+        throw new Error('Failed to parse OpenAI response as JSON');
+      }
+
+      // Validate that we have actual content
+      if (!generatedData.content && !generatedData.tweets) {
+        console.error('❌ FOLLOWER_ENGINE: No content or tweets in response:', generatedData);
+        throw new Error('No content or tweets in parsed response');
+      }
       
       return {
         content: generatedData.content || generatedData.tweets,
@@ -141,7 +155,7 @@ OUTPUT REQUIREMENTS:
         viralPotential: generatedData.viral_score || 85,
         followPotential: selectedType.followPotential,
         engagementType: generatedData.engagement_type || 'shares',
-        audience: generatedData.audience || 'general',
+        audience: generatedData.audience || 'fitness',
         format: Array.isArray(generatedData.content || generatedData.tweets) ? 'thread' : 'single'
       };
 

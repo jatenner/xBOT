@@ -38,8 +38,6 @@ export class BulletproofBrowserManager {
         '--disable-renderer-backgrounding',
         '--disable-backgrounding-occluded-windows',
         '--disable-component-extensions-with-background-pages',
-        '--single-process',
-        '--no-zygote',
         '--memory-pressure-off',
         '--max_old_space_size=400',
         '--disable-gpu',
@@ -51,7 +49,8 @@ export class BulletproofBrowserManager {
         '--metrics-recording-only',
         '--mute-audio',
         '--no-first-run',
-        '--disable-software-rasterizer'
+        '--disable-software-rasterizer',
+        '--disable-blink-features=AutomationControlled'
       ],
       timeout: 45000,
       headless: true
@@ -62,10 +61,9 @@ export class BulletproofBrowserManager {
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
-        '--single-process',
-        '--no-zygote',
         '--disable-gpu',
-        '--memory-pressure-off'
+        '--memory-pressure-off',
+        '--disable-web-security'
       ],
       timeout: 30000,
       headless: true
