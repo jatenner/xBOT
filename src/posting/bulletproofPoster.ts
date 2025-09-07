@@ -94,6 +94,13 @@ export class BulletproofPoster {
         await page.context().addCookies(sessionData.cookies);
         console.log(`✅ BULLETPROOF_POSTER: Loaded ${sessionData.cookies.length} session cookies`);
         this.sessionLoaded = true;
+        
+        // Validate session by checking a simple page
+        console.log('🔍 BULLETPROOF_POSTER: Validating session...');
+        await page.goto('https://x.com/', { timeout: 15000 });
+        await page.waitForTimeout(2000);
+        
+        console.log('✅ BULLETPROOF_POSTER: Session validation complete');
       } else {
         throw new Error('Invalid session data format');
       }
@@ -111,19 +118,83 @@ export class BulletproofPoster {
     try {
       console.log('🌐 BULLETPROOF_POSTER: Navigating to compose...');
       
-      await page.goto('https://x.com/compose/tweet', {
+      // First, verify login by going to home page
+      console.log('🔍 BULLETPROOF_POSTER: Verifying login status...');
+      await page.goto('https://x.com/home', {
         waitUntil: 'domcontentloaded',
         timeout: 30000
       });
       
-      // Wait for page to be ready
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(3000); // Stability wait
+      await page.waitForTimeout(2000);
       
-      // Verify we're logged in and can compose
-      const composer = await page.waitForSelector('[data-testid="tweetTextarea_0"]', {
-        timeout: 20000
-      });
+      // Check if we're logged in (look for timeline or navigation)
+      const loggedIn = await page.locator('[data-testid="primaryNavigation"], [data-testid="sidebarColumn"], [aria-label="Timeline"]').first().isVisible({ timeout: 5000 }).catch(() => false);
+      
+      if (!loggedIn) {
+        console.error('❌ BULLETPROOF_POSTER: Not logged in to Twitter');
+        throw new Error('Not logged in to Twitter - session invalid');
+      }
+      
+      console.log('✅ BULLETPROOF_POSTER: Login verified, navigating to compose...');
+      
+      // Try multiple approaches to get to the composer
+      let composer = null;
+      const approaches = [
+        {
+          name: 'Direct compose URL',
+          action: async () => {
+            await page.goto('https://x.com/compose/tweet', {
+              waitUntil: 'domcontentloaded',
+              timeout: 20000
+            });
+            await page.waitForLoadState('domcontentloaded');
+            await page.waitForTimeout(2000);
+            return await page.waitForSelector('[data-testid="tweetTextarea_0"]', { timeout: 10000 });
+          }
+        },
+        {
+          name: 'Home page with compose button',
+          action: async () => {
+            await page.goto('https://x.com/home', {
+              waitUntil: 'domcontentloaded',
+              timeout: 20000
+            });
+            await page.waitForTimeout(2000);
+            
+            // Try to click compose button
+            const composeBtn = await page.locator('[data-testid="SideNav_NewTweet_Button"], [aria-label="Tweet"]').first().click({ timeout: 5000 }).catch(() => null);
+            await page.waitForTimeout(1000);
+            return await page.waitForSelector('[data-testid="tweetTextarea_0"]', { timeout: 10000 });
+          }
+        },
+        {
+          name: 'Alternative compose URL',
+          action: async () => {
+            await page.goto('https://twitter.com/compose/tweet', {
+              waitUntil: 'domcontentloaded',
+              timeout: 20000
+            });
+            await page.waitForLoadState('domcontentloaded');
+            await page.waitForTimeout(2000);
+            return await page.waitForSelector('[data-testid="tweetTextarea_0"]', { timeout: 10000 });
+          }
+        }
+      ];
+      
+      for (const approach of approaches) {
+        try {
+          console.log(`🔄 BULLETPROOF_POSTER: Trying ${approach.name}...`);
+          composer = await approach.action();
+          if (composer) {
+            console.log(`✅ BULLETPROOF_POSTER: Success with ${approach.name}`);
+            break;
+          }
+        } catch (error) {
+          console.log(`⚠️ BULLETPROOF_POSTER: ${approach.name} failed: ${error.message}`);
+          continue;
+        }
+      }
       
       if (!composer) {
         throw new Error('Composer not found - may not be logged in');
