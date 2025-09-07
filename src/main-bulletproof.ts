@@ -7,9 +7,14 @@ import { config } from 'dotenv';
 config();
 
 import { TwitterAnalyticsScraper } from './analytics/twitterAnalyticsScraper';
+import { systemMonitor } from './monitoring/systemPerformanceMonitor';
+import { aggressiveScheduler } from './posting/aggressivePostingScheduler';
+import { aggressiveEngager } from './engagement/aggressiveEngagementEngine';
+import { EnhancedContentOrchestrator } from './ai/enhancedContentOrchestrator';
 
 class BulletproofMainSystem {
   private analyticsChecker: TwitterAnalyticsScraper;
+  private contentOrchestrator: EnhancedContentOrchestrator;
   
   private isRunning = false;
   private mainInterval: NodeJS.Timeout | null = null;
@@ -21,6 +26,12 @@ class BulletproofMainSystem {
     console.log('🚀 BULLETPROOF_SYSTEM: Initializing...');
     
     this.analyticsChecker = new TwitterAnalyticsScraper();
+    this.contentOrchestrator = EnhancedContentOrchestrator.getInstance();
+    
+    // Initialize performance monitoring
+    console.log('🔍 SYSTEM_MONITOR: Performance monitoring activated');
+    console.log('🎯 AGGRESSIVE_ENGINE: Strategic engagement system ready');
+    console.log('🚀 AGGRESSIVE_SCHEDULER: High-frequency posting system ready');
   }
 
   /**
@@ -36,6 +47,15 @@ class BulletproofMainSystem {
     this.isRunning = true;
 
     try {
+      // 🚀 START AGGRESSIVE SYSTEMS
+      aggressiveScheduler.startAggressivePosting();
+      console.log('🚀 AGGRESSIVE_POSTING: High-frequency posting system started');
+      
+      // Store system metrics every 5 minutes
+      setInterval(() => {
+        systemMonitor.storeMetricsInDB();
+      }, 300000);
+      
       // 🚀 AGGRESSIVE GROWTH: Much more frequent posting and engagement checks
       this.mainInterval = setInterval(async () => {
         await this.mainLoop();
