@@ -249,7 +249,17 @@ Generate ONE strategic engagement action:`;
       if (!aiResponse) return null;
 
       try {
-        const strategy = JSON.parse(aiResponse);
+        // Clean the AI response to extract JSON
+        let cleanResponse = aiResponse.trim();
+        
+        // Remove markdown code blocks if present
+        if (cleanResponse.startsWith('```json')) {
+          cleanResponse = cleanResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+        } else if (cleanResponse.startsWith('```')) {
+          cleanResponse = cleanResponse.replace(/^```\s*/, '').replace(/\s*```$/, '');
+        }
+        
+        const strategy = JSON.parse(cleanResponse);
         
         return {
           type: strategy.action_type,
@@ -319,7 +329,14 @@ Generate ONE strategic engagement action:`;
         console.log(`📝 CONTENT: "${action.response_content}"`);
         
         // Use fast Twitter poster for real engagement
-        const { railwayPoster } = await import('../posting/railwayCompatiblePoster');
+        const { StealthTwitterPoster } = await import('../posting/stealthTwitterPoster');
+        const railwayPoster = new StealthTwitterPoster();
+        
+        // Initialize the stealth poster
+        const initialized = await railwayPoster.initialize();
+        if (!initialized) {
+          throw new Error('Failed to initialize stealth poster for engagement');
+        }
         
         try {
           // Post the reply content as a regular tweet for now
@@ -333,7 +350,7 @@ Generate ONE strategic engagement action:`;
             return {
               success: true,
               action,
-              engagement_id: postResult.tweetId || `eng_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              engagement_id: postResult.tweetIds ? postResult.tweetIds[0] : `eng_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
               timestamp: new Date()
             };
           } else {
