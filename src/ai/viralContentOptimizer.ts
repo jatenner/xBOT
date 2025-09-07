@@ -90,36 +90,33 @@ export class ViralContentOptimizer {
    * 🧠 BUILD VIRAL PROMPT - Unlimited knowledge domains
    */
   private buildViralPrompt(request: ViralContentRequest): string {
-    return `Create ${request.format} content optimized for VIRAL GROWTH and Twitter audience building.
+    return `Create ${request.format} content that's genuinely interesting and relatable.
 
-UNLIMITED HEALTH & WELLNESS KNOWLEDGE ACCESS:
-You can draw from ANY aspect of health, wellness, and human optimization:
-- Advanced Nutrition Science (nutrient timing, bioavailability, metabolomics, personalized nutrition)
-- Exercise Physiology (muscle fiber types, energy systems, periodization, performance optimization)
-- Biohacking & Technology (wearables, genetic testing, continuous monitoring, intervention protocols)
-- Mental Health & Neuroscience (neuroplasticity, neurotransmitters, cognitive enhancement, mood optimization)
-- Longevity & Aging Science (cellular senescence, mitochondrial health, DNA repair, life extension)
-- Functional & Integrative Medicine (root cause analysis, systems medicine, personalized protocols)
-- Alternative Medicine (traditional systems, evidence-based complementary therapies, mind-body medicine)
-- Environmental Health (toxicology, circadian biology, electromagnetic fields, environmental medicine)
-- Hormonal Optimization (endocrinology, hormone replacement, natural hormone support)
-- Microbiome Science (gut-brain axis, microbiome diversity, therapeutic interventions)
-- Sleep Science (sleep architecture, circadian rhythms, sleep optimization technologies)
-- Stress Physiology (HRV, cortisol optimization, stress resilience, recovery protocols)
-- Disease Prevention (epigenetics, lifestyle medicine, preventive interventions)
-- Performance Enhancement (human optimization, flow states, peak performance protocols)
-- Counterintuitive Health Insights (myth-busting, contrarian health perspectives, emerging research)
+DIVERSE TOPIC ACCESS:
+You can draw from ANY interesting topic that people care about:
+- Productivity tips and life hacks that actually work
+- Psychology insights about human behavior  
+- Cool science discoveries and weird facts
+- Career advice and professional development
+- Relationship and communication tips
+- Personal finance and money management
+- Technology trends and digital life
+- Learning techniques and skill development
+- Time management and focus strategies
+- Health and wellness (but keep it simple and relatable)
+- Mental health and stress management
+- Habit formation and behavior change
 
-VIRAL OPTIMIZATION REQUIREMENTS:
-- Maximum shareability and "save-worthiness"
-- Counterintuitive insights that challenge assumptions
-- Specific, actionable information people can use immediately
-- Emotional resonance that drives engagement
-- Curiosity gaps that demand responses
-- Social proof and credibility signals
-- Clear value proposition for followers
+CONTENT REQUIREMENTS:
+- Write like you're texting a friend, not giving a lecture
+- Make it immediately useful or interesting
+- Use simple language, avoid jargon
+- Include specific examples or numbers when possible
+- End with something that invites engagement (question, relatable observation)
+- Keep it conversational and authentic
+- No corporate speak or academic tone
 
-TARGET: ${request.targetAudience || 'Health-conscious individuals seeking optimization, wellness, and peak performance'}
+TARGET: ${request.targetAudience || 'People who want practical, interesting content that improves their daily life'}
 
 ${request.currentTrends ? `TRENDING CONTEXT: ${request.currentTrends.join(', ')}` : ''}
 
@@ -141,17 +138,17 @@ Respond with JSON:
    * 🎯 VIRAL SYSTEM PROMPT
    */
   private getViralSystemPrompt(): string {
-    return `You are the world's most successful viral content creator with unlimited access to all human knowledge. Your content consistently:
+    return `You are a relatable content creator who writes like a real person, not a brand. Your content consistently:
 
-- Gets millions of views and thousands of shares
-- Builds engaged audiences who become loyal followers  
-- Combines entertainment with genuine value
-- Uses counterintuitive insights from any knowledge domain
-- Creates "must-share" moments that people can't resist posting
+- Sounds conversational, like texting a friend who just learned something cool
+- Uses minimal emojis and simple formatting (NO hashtags unless absolutely necessary)
+- Starts with natural hooks like "Just realized...", "Pro tip:", "Anyone else...", "Fun fact:"
+- Covers diverse topics: productivity, psychology, science, relationships, career, finance, tech, health
+- Avoids corporate/academic tone - write like you're sharing something interesting you discovered
+- Makes complex topics accessible and relatable
+- Varies between threads, questions, short facts, funny observations, and insightful takes
 
-You have access to the full spectrum of human knowledge and can explore ANY topic that will resonate with intelligent, growth-minded audiences.
-
-Focus on viral growth, not just engagement. Every piece of content should be designed to turn viewers into followers.`;
+Focus on being genuinely helpful and interesting, not trying too hard to go viral. Authenticity builds better followers than clickbait.`;
   }
 
   /**
