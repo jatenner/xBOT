@@ -18,6 +18,25 @@ export class RailwayCompatiblePoster {
     console.log('🚄 RAILWAY_POSTER: Initializing Railway-compatible Twitter poster...');
   }
 
+  private loadSessionData(): any {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const sessionPath = path.join(process.cwd(), 'data', 'twitter_session.json');
+      
+      if (!fs.existsSync(sessionPath)) {
+        console.log('❌ RAILWAY_POSTER: No session file found');
+        return null;
+      }
+      
+      const sessionData = JSON.parse(fs.readFileSync(sessionPath, 'utf8'));
+      return sessionData;
+    } catch (error) {
+      console.error('❌ RAILWAY_POSTER: Error loading session:', error);
+      return null;
+    }
+  }
+
   async initialize(): Promise<boolean> {
     try {
       console.log('🚄 RAILWAY_POSTER: Starting browser initialization...');
@@ -44,7 +63,7 @@ export class RailwayCompatiblePoster {
       });
 
       // Load Twitter session
-      const sessionData = TwitterSessionManager.getSessionData();
+      const sessionData = this.loadSessionData();
       if (sessionData && sessionData.cookies) {
         await this.context.addCookies(sessionData.cookies);
         console.log(`🚄 RAILWAY_POSTER: Loaded ${sessionData.cookies.length} session cookies`);

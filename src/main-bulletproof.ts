@@ -489,7 +489,7 @@ class BulletproofMainSystem {
         const threadResult = await railwayPoster.postThread(result.threadParts);
         postResult = {
           success: threadResult.success,
-          tweetId: threadResult.tweetId,
+          tweetId: threadResult.tweetIds ? threadResult.tweetIds[0] : undefined,
           type: 'thread' as const,
           viralScore: result.metadata.viralScore,
           error: threadResult.error
