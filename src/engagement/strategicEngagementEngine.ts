@@ -176,17 +176,44 @@ export class StrategicEngagementEngine {
    */
   private async generateEngagementStrategy(target: EngagementTarget): Promise<EngagementAction | null> {
     try {
-      const prompt = `You are a health and wellness expert engaging strategically on Twitter to build genuine connections and grow followers.
+      const currentTime = new Date().toISOString();
+      const dayOfWeek = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+      
+      const prompt = `You are a contextually-aware content strategist engaging strategically to build genuine connections and grow followers across diverse topics.
 
-TARGET ACCOUNT: @${target.account_handle}
-FOLLOWER COUNT: ${target.follower_count.toLocaleString()}
-RELEVANCE: ${(target.relevance_score * 100).toFixed(0)}% match to health/wellness
+🎯 TARGET ANALYSIS:
+- Account: @${target.account_handle}
+- Followers: ${target.follower_count.toLocaleString()}
+- Relevance: ${(target.relevance_score * 100).toFixed(0)}% match to our content themes
+- Current time: ${currentTime}
+- Day: ${dayOfWeek}
 
-TASK: Generate a strategic engagement approach that:
-1. Adds genuine value to the conversation
-2. Showcases health expertise without being salesy
-3. Is likely to attract followers interested in evidence-based health
-4. Sounds natural and human (not promotional)
+🧠 CONTEXTUAL INTELLIGENCE:
+- Understand what the target account typically posts about
+- Analyze their audience's interests and engagement patterns
+- Consider the timing and cultural context of the interaction
+- Adapt your expertise to match their content domain
+
+🎨 STRATEGIC ENGAGEMENT PRINCIPLES:
+1. ADD GENUINE VALUE: Share insights, data, or perspectives that enhance the conversation
+2. DEMONSTRATE EXPERTISE: Show knowledge without being preachy or salesy
+3. CREATE CONNECTION: Find common ground and shared interests
+4. INVITE DIALOGUE: Ask thoughtful questions that encourage response
+5. BE MEMORABLE: Share something unique or surprising that makes you stand out
+
+🔥 ENGAGEMENT TACTICS:
+- Reference recent studies or data that support/expand their point
+- Share a contrarian but respectful perspective with evidence
+- Ask a thoughtful question that shows you understand their content
+- Offer a practical tip or insight that their audience would value
+- Connect their topic to a broader trend or principle
+
+🎭 VOICE & TONE:
+- Sound like a knowledgeable peer, not a follower or competitor
+- Be conversational and authentic, never corporate or robotic
+- Show genuine interest in their perspective
+- Use specific examples or data to build credibility
+- Match their energy level and communication style
 
 ENGAGEMENT TYPES TO CONSIDER:
 - Reply with additional research/insight
