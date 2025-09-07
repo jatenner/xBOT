@@ -194,7 +194,7 @@ export class DataDrivenLearner {
       
       // Define success thresholds
       const engagementThreshold = 0.03; // 3% engagement rate
-      const followerThreshold = 0.002; // 0.2% follower conversion
+      const followerThreshold = 0.01; // 1% follower conversion (realistic target)
 
       const isSuccess = engagementRate >= engagementThreshold && followerConversion >= followerThreshold;
       

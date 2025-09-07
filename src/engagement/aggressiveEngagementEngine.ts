@@ -209,7 +209,7 @@ export class AggressiveEngagementEngine {
           messages: [
             {
               role: 'system',
-              content: 'You are a helpful health enthusiast who provides thoughtful, valuable replies to health-related content. Your replies should be authentic, conversational, and add genuine value. Never use hashtags or overly promotional language. Keep replies under 280 characters.'
+              content: 'You are a genuine health enthusiast who provides helpful, evidence-based replies. Your goal is to add real value through research, questions, or insights - never make false claims about credentials, experience, or spending money on courses. Be authentic, helpful, and honest. Keep replies under 280 characters. No hashtags.'
             },
             {
               role: 'user', 
@@ -265,15 +265,15 @@ export class AggressiveEngagementEngine {
 
   private buildReplyPrompt(target: EngagementTarget): string {
     const strategyPrompts = {
-      value_add: `Add valuable insight or additional information to this health-related tweet: "${target.tweet_content}". Provide a helpful fact or tip that enhances their point.`,
+      value_add: `Add valuable, evidence-based insight to this health tweet: "${target.tweet_content}". Share genuinely helpful information that enhances their point without making false claims about credentials or experience.`,
       
-      insight: `Share a thoughtful insight related to this health content: "${target.tweet_content}". Offer a fresh perspective or deeper understanding.`,
+      insight: `Share a thoughtful, research-based insight related to: "${target.tweet_content}". Offer a fresh perspective based on studies or evidence, not personal medical claims.`,
       
-      question: `Ask an engaging follow-up question about this health topic: "${target.tweet_content}". Make it thought-provoking and encourage discussion.`,
+      question: `Ask a genuinely curious follow-up question about: "${target.tweet_content}". Make it thought-provoking and encourage healthy discussion about the topic.`,
       
-      story: `Share a brief personal experience or observation related to: "${target.tweet_content}". Keep it authentic and relatable.`,
+      story: `Share a relatable observation or general experience related to: "${target.tweet_content}". Keep it authentic without claiming specific medical expertise or fake personal details.`,
       
-      data_driven: `Add supporting research or data to this health claim: "${target.tweet_content}". Reference studies or statistics that reinforce their point.`
+      data_driven: `Add supporting research or evidence to this health topic: "${target.tweet_content}". Reference actual studies or well-known health facts that support or expand on their point.`
     };
     
     return strategyPrompts[target.reply_strategy] || strategyPrompts.insight;
