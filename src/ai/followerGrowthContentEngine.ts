@@ -89,15 +89,13 @@ export class FollowerGrowthContentEngine {
     
     console.log(`🎯 FOLLOWER_ENGINE: Generating ${selectedType.type} content (${selectedType.followPotential}% follow potential)`);
 
-    const openai = getOpenAIService();
+    const openaiService = getOpenAIService();
     
     try {
-      const response = await openai.chat.completions.create({
-        model: 'gpt-4o',
-        messages: [
-          {
-            role: 'system',
-            content: `You are a viral health influencer who gains 1000+ followers per post. Your content makes people think "Holy shit, I NEED to follow this account for more secrets like this!"
+      const response = await openaiService.chatCompletion([
+        {
+          role: 'system',
+          content: `You are a viral health influencer who gains 1000+ followers per post. Your content makes people think "Holy shit, I NEED to follow this account for more secrets like this!"
 
 FOLLOWER PSYCHOLOGY:
 - People follow accounts that share EXCLUSIVE knowledge they can't get elsewhere
@@ -119,18 +117,18 @@ OUTPUT REQUIREMENTS:
 - Include specific mechanisms, numbers, protocols
 - Sound like exclusive insider knowledge
 - No generic health advice or obvious tips`
-          },
-          {
-            role: 'user',
-            content: selectedType.prompt
-          }
-        ],
+        },
+        {
+          role: 'user',
+          content: selectedType.prompt
+        }
+      ], {
         temperature: 0.8,
-        max_tokens: 800,
-        response_format: { type: 'json_object' }
+        maxTokens: 800,
+        requestType: 'follower_growth_content'
       });
 
-      const rawContent = response.choices[0]?.message?.content;
+      const rawContent = response.content;
       if (!rawContent) {
         throw new Error('No content generated');
       }
@@ -353,7 +351,7 @@ Return JSON: {"content": ["tweet1", "tweet2", ...], "viral_score": 80, "engageme
       viralPotential: 80,
       followPotential: 85,
       engagementType: 'likes',
-      audience: 'general',
+      audience: 'fitness',
       format: 'single'
     };
   }
