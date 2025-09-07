@@ -279,19 +279,25 @@ export class AggressivePostingScheduler {
           });
       });
       
-      // TODO: Integrate with actual posting system
-      // const postSuccess = await stealthPoster.postTweet(contentResult.content);
+      // Use bulletproof poster for real posting
+      console.log('📤 POSTING: Sending content to Twitter...');
       
-      // For now, simulate success
-      const simulatedSuccess = Math.random() > 0.1; // 90% success rate
-      
-      if (simulatedSuccess) {
-        console.log('📤 POST_SUCCESS: Content posted to Twitter');
-      } else {
-        console.error('❌ POST_FAILED: Twitter posting failed');
+      try {
+        const { bulletproofPoster } = await import('./bulletproofPoster');
+        const postResult = await bulletproofPoster.postContent(contentResult.content);
+        
+        if (postResult.success) {
+          console.log('📤 POST_SUCCESS: Content posted to Twitter');
+          console.log(`🆔 TWEET_ID: ${postResult.tweetId}`);
+          return true;
+        } else {
+          console.error('❌ POST_FAILED: Twitter posting failed:', postResult.error);
+          return false;
+        }
+      } catch (error) {
+        console.error('❌ POST_FAILED: Bulletproof posting error:', error);
+        return false;
       }
-      
-      return simulatedSuccess;
       
     } catch (error) {
       console.error('❌ POST_CONTENT: Failed to post content:', error);
