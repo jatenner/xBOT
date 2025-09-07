@@ -71,10 +71,10 @@ class BulletproofMainSystem {
       //   await this.mainLoop();
       // }, 6 * 60 * 1000); // DISABLED - causes browser crashes
       
-      // 🛡️ BULLETPROOF POSTING: Simple working posting loop
+      // 🧠 AI-DRIVEN STRATEGIC POSTING: Use sophisticated timing
       setInterval(async () => {
-        await this.bulletproofPostingLoop();
-      }, 3 * 60 * 1000); // Every 3 minutes - guaranteed posting
+        await this.strategicAIPostingLoop();
+      }, 15 * 60 * 1000); // Every 15 minutes - check if optimal time to post
 
       // Enhanced analytics collection for better optimization
       this.analyticsInterval = setInterval(async () => {
@@ -1027,7 +1027,73 @@ class BulletproofMainSystem {
   }
 
   /**
-   * 🛡️ BULLETPROOF POSTING LOOP
+   * 🧠 STRATEGIC AI POSTING LOOP - Uses all sophisticated systems
+   */
+  private async strategicAIPostingLoop(): Promise<void> {
+    try {
+      console.log('🧠 STRATEGIC_AI: Analyzing optimal posting strategy...');
+      
+      // 1. Analyze current Twitter landscape
+      const analytics = realTimeAnalytics.getInstance();
+      const twitterData = await analytics.collectRealTimeData();
+      
+      // 2. Get AI-driven timing decision
+      const timingDecision = await intelligentDecision.makeTimingDecision();
+      
+      if (!timingDecision.should_post_now) {
+        console.log(`⏰ STRATEGIC_AI: Not optimal time to post - ${timingDecision.reasoning}`);
+        console.log(`⏰ NEXT_OPTIMAL: Wait ${timingDecision.optimal_wait_minutes} minutes`);
+        return;
+      }
+      
+      // 3. Get strategic content decision
+      const contentDecision = await intelligentDecision.makeContentDecision();
+      console.log(`🎯 STRATEGIC_AI: ${contentDecision.recommended_content_type} | ${contentDecision.recommended_voice_style}`);
+      
+      // 4. Generate sophisticated AI content
+      const contentResult = await this.contentOrchestrator.generateEnhancedContent({
+        format: contentDecision.recommended_content_type === 'thread' ? 'thread' : 'single',
+        target_engagement: 'high',
+        avoid_recent_patterns: true,
+        user_context: contentDecision.recommended_topic,
+        preferred_content_type: contentDecision.recommended_content_type,
+        preferred_voice_style: contentDecision.recommended_voice_style
+      });
+      
+      if (!contentResult || !contentResult.content) {
+        console.error('❌ STRATEGIC_AI: Content generation failed');
+        return;
+      }
+      
+      // 5. Extract content for posting
+      const contentToPost = Array.isArray(contentResult.content) 
+        ? contentResult.content[0] 
+        : contentResult.content;
+      
+      console.log(`📝 STRATEGIC_CONTENT: "${contentToPost.substring(0, 100)}..."`);
+      console.log(`🎯 PREDICTED: ${contentResult.metadata.predicted_performance.engagement_rate}% engagement`);
+      
+      // 6. Post using bulletproof system
+      const postResult = await bulletproofPoster.postContent(contentToPost);
+      
+      if (postResult.success) {
+        console.log('✅ STRATEGIC_AI: Strategic post successful!');
+        console.log(`🐦 POSTED: ${postResult.tweetId}`);
+        
+        // 7. Store comprehensive analytics for learning
+        await this.storeStrategicPostAnalytics(postResult, contentResult, contentDecision, timingDecision);
+        
+      } else {
+        console.error('❌ STRATEGIC_AI: Post failed:', postResult.error);
+      }
+      
+    } catch (error) {
+      console.error('❌ STRATEGIC_AI: Strategic posting failed:', error);
+    }
+  }
+
+  /**
+   * 🛡️ FALLBACK BULLETPROOF POSTING LOOP (Original)
    */
   private async bulletproofPostingLoop(): Promise<void> {
     try {
@@ -1083,6 +1149,41 @@ class BulletproofMainSystem {
       
     } catch (error) {
       console.error('❌ BULLETPROOF_LOOP: Loop failed:', error);
+    }
+  }
+
+  /**
+   * 📊 STORE STRATEGIC POST ANALYTICS
+   */
+  private async storeStrategicPostAnalytics(
+    postResult: any, 
+    contentResult: any, 
+    contentDecision: any, 
+    timingDecision: any
+  ): Promise<void> {
+    try {
+      // Store comprehensive analytics for AI learning
+      await intelligentDecision.storeTwitterAnalytics({
+        content_type: contentDecision.recommended_content_type,
+        voice_style: contentDecision.recommended_voice_style,
+        topic: contentDecision.recommended_topic,
+        timing_confidence: timingDecision.confidence_score,
+        predicted_engagement: contentResult.metadata.predicted_performance.engagement_rate,
+        predicted_followers: contentResult.metadata.predicted_performance.follower_potential,
+        post_time: new Date(),
+        likes: 0, // Will be updated by analytics collection
+        retweets: 0,
+        replies: 0,
+        impressions: 0,
+        followers_gained: 0,
+        engagement_rate: 0,
+        follower_conversion_rate: 0
+      });
+      
+      console.log('📊 STRATEGIC_AI: Analytics stored for learning optimization');
+      
+    } catch (error) {
+      console.error('❌ STRATEGIC_AI: Failed to store analytics:', error);
     }
   }
 }
