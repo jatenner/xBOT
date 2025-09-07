@@ -292,12 +292,12 @@ Generate ONE strategic engagement action:`;
         console.log(`📝 CONTENT: "${action.response_content}"`);
         
         // Use fast Twitter poster for real engagement
-        const { fastTwitterPoster } = await import('../posting/fastTwitterPoster');
+        const { railwayPoster } = await import('../posting/railwayCompatiblePoster');
         
         try {
           // Post the reply content as a regular tweet for now
           // TODO: Implement actual reply functionality
-          const postResult = await fastTwitterPoster.postSingleTweet(
+          const postResult = await railwayPoster.postTweet(
             `@${action.target.username} ${action.response_content}`
           );
           
