@@ -122,16 +122,23 @@ class BulletproofMainSystem {
         console.log(`📊 PREDICTION: ${timingStrategy.performance_prediction.expected_likes} likes, ${(timingStrategy.performance_prediction.expected_engagement_rate * 100).toFixed(1)}% engagement`);
         console.log(`🎯 FREQUENCY_ACTION: ${timingStrategy.frequency_adjustment.toUpperCase()} posting frequency`);
         
-        await this.executeEnhancedPosting();
-        this.lastPostTime = now;
+        const postSuccess = await this.executeEnhancedPosting();
+        if (postSuccess) {
+          this.lastPostTime = now;
+          console.log('✅ POST_SUCCESS: Updated lastPostTime after successful post');
+        } else {
+          console.log('❌ POST_FAILED: NOT updating lastPostTime due to posting failure');
+        }
         
-        // 🔧 FIX STATUS REPORTING: Update Redis cache for status endpoint
-        try {
-          const { CadenceGuard } = await import('./posting/cadenceGuard');
-          await CadenceGuard.markPostSuccess(); // This will update Redis with current time
-          console.log('✅ STATUS_SYNC: Updated Redis cache for status reporting');
-        } catch (statusError: any) {
-          console.warn('⚠️ STATUS_SYNC_FAILED:', statusError.message);
+        // 🔧 FIX STATUS REPORTING: Update Redis cache for status endpoint ONLY on success
+        if (postSuccess) {
+          try {
+            const { CadenceGuard } = await import('./posting/cadenceGuard');
+            await CadenceGuard.markPostSuccess(); // This will update Redis with current time
+            console.log('✅ STATUS_SYNC: Updated Redis cache for status reporting');
+          } catch (statusError: any) {
+            console.warn('⚠️ STATUS_SYNC_FAILED:', statusError.message);
+          }
         }
 
         // 📊 EXISTING LEARNING ENGINE: Feed data to our aggressive learning system
@@ -253,7 +260,7 @@ class BulletproofMainSystem {
   /**
    * 📝 EXECUTE ENHANCED POSTING with 100% AI-driven content (NO hardcoded templates)
    */
-  private async executeEnhancedPosting(): Promise<void> {
+  private async executeEnhancedPosting(): Promise<boolean> {
     try {
       // 🔧 AUTO-FIX BROWSER CONNECTION: Ensure browser is ready for posting
       try {
@@ -606,12 +613,15 @@ class BulletproofMainSystem {
         // 📈 FOLLOWER ATTRIBUTION: Set up for future implementation
         console.log('📊 ATTRIBUTION_READY: Follower attribution system available for tracking');
         
+        return true; // ✅ SUCCESS: Post was successful
       } else {
         console.error(`❌ ENHANCED_POST_FAILED: ${postResult.error}`);
+        return false; // ❌ FAILURE: Post failed
       }
 
     } catch (error: any) {
       console.error('❌ ENHANCED_POSTING_CRASHED:', error.message);
+      return false; // ❌ FAILURE: Exception occurred
     }
   }
 
