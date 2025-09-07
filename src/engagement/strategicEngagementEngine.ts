@@ -328,20 +328,19 @@ Generate ONE strategic engagement action:`;
         console.log(`💬 REAL_ENGAGEMENT: Posting reply to @${action.target.username}`);
         console.log(`📝 CONTENT: "${action.response_content}"`);
         
-        // Use fast Twitter poster for real engagement
-        const { StealthTwitterPoster } = await import('../posting/stealthTwitterPoster');
-        const railwayPoster = new StealthTwitterPoster();
+        // Use bulletproof poster for real engagement
+        const { bulletproofPoster } = await import('../posting/bulletproofPoster');
         
-        // Initialize the stealth poster
-        const initialized = await railwayPoster.initialize();
+        // Bulletproof poster doesn't need initialization
+        const initialized = true;
         if (!initialized) {
-          throw new Error('Failed to initialize stealth poster for engagement');
+          throw new Error('Failed to initialize bulletproof poster for engagement');
         }
         
         try {
           // Post the reply content as a regular tweet for now
           // TODO: Implement actual reply functionality
-          const postResult = await railwayPoster.postTweet(
+          const postResult = await bulletproofPoster.postContent(
             `@${action.target.username} ${action.response_content}`
           );
           
@@ -350,7 +349,7 @@ Generate ONE strategic engagement action:`;
             return {
               success: true,
               action,
-              engagement_id: postResult.tweetIds ? postResult.tweetIds[0] : `eng_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              engagement_id: postResult.tweetId || `eng_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
               timestamp: new Date()
             };
           } else {

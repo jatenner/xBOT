@@ -430,17 +430,17 @@ export function startHealthServer(): Promise<void> {
     // Force post endpoint for testing
     app.post('/force-post', async (req, res) => {
       try {
-        const { StealthTwitterPoster } = await import('./posting/stealthTwitterPoster');
-        const poster = new StealthTwitterPoster();
+        // Use bulletproof poster for force posting
+        const { bulletproofPoster } = await import('./posting/bulletproofPoster');
         
-        // Initialize the stealth poster
-        const initialized = await poster.initialize();
+        // Bulletproof poster doesn't need initialization
+        const initialized = true;
         if (!initialized) {
-          return res.status(500).json({ error: 'Failed to initialize stealth poster' });
+          return res.status(500).json({ error: 'Failed to initialize bulletproof poster' });
         }
         
         const testContent = "Testing system - this is a real post to verify our Twitter bot is working correctly! 🚀";
-        const result = await poster.postTweet(testContent);
+        const result = await bulletproofPoster.postContent(testContent);
         
         res.json({ 
           success: result.success, 
@@ -595,7 +595,7 @@ export function startHealthServer(): Promise<void> {
           });
         }
         
-        res.json({
+      res.json({
           status: 'ok',
           message: 'Test insert successful',
           timestamp: new Date().toISOString()
@@ -1009,10 +1009,10 @@ app.get('/api/metrics', async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message,
-      timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString()
+        });
+      }
     });
-  }
-});
 
     // Start server with maximum resilience
     healthServerStatus.server = app.listen(healthServerStatus.port, healthServerStatus.host, () => {
@@ -1025,7 +1025,7 @@ app.get('/api/metrics', async (req, res) => {
     console.log(`🚀 Force post: GET /force-thread?topic=<topic>&mode=<hook_type>`);
     console.log(`📊 Analytics Dashboard: GET /dashboard`);
     console.log(`📈 Metrics API: GET /api/metrics`);
-    console.log(`⚡ Server startup time: ${Date.now() - healthServerStatus.startTime.getTime()}ms`);
+      console.log(`⚡ Server startup time: ${Date.now() - healthServerStatus.startTime.getTime()}ms`);
       resolve();
     });
 
@@ -1058,7 +1058,7 @@ app.get('/api/metrics', async (req, res) => {
 
     process.on('SIGINT', gracefulShutdown);
     process.on('SIGTERM', gracefulShutdown);
-
+    
     // Handle uncaught exceptions without crashing health server
     process.on('uncaughtException', (error) => {
       console.error('❌ Uncaught Exception (health server continues):', error);
