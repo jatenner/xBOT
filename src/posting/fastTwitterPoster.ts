@@ -130,9 +130,9 @@ export class FastTwitterPoster {
       await page.keyboard.press('n');
       await page.waitForTimeout(1000);
       
-      // Find composer with ONLY the most reliable selectors
+      // Find composer with ONLY the most reliable selectors (prioritize working selector)
       const composer = await page.waitForSelector(
-        '[data-testid="tweetTextarea_0"], div[role="textbox"][contenteditable="true"]',
+        'div[role="textbox"][contenteditable="true"], [data-testid="tweetTextarea_0"], [aria-label*="Tweet text"]',
         { timeout: 15000 } // Increased timeout for reliability
       );
       

@@ -369,6 +369,17 @@ export function startHealthServer(): Promise<void> {
       }
     });
 
+    // Clear Redis cache endpoint
+    app.post('/clear-cache', async (req, res) => {
+      try {
+        const { CadenceGuard } = await import('./posting/cadenceGuard');
+        await CadenceGuard.clearCache();
+        res.json({ success: true, message: 'Cache cleared, new 5-minute intervals active' });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+
     // Session status endpoint
     app.get('/session', (_req, res) => {
       try {
