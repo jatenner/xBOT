@@ -380,6 +380,73 @@ export function startHealthServer(): Promise<void> {
       }
     });
 
+    // Debug Twitter page structure
+    app.get('/debug-twitter', async (req, res) => {
+      try {
+        const { BrowserManager } = await import('./core/BrowserManager');
+        const browserManager = BrowserManager.getInstance();
+        const context = await browserManager.getContext();
+        const page = await context.newPage();
+        
+        await page.goto('https://x.com/compose/tweet', { waitUntil: 'networkidle' });
+        await page.waitForTimeout(3000);
+        
+        // Find all possible composer elements
+        const elements = await page.evaluate(() => {
+          const selectors = [
+            'div[role="textbox"]',
+            '[contenteditable="true"]',
+            '[data-testid*="tweet"]',
+            '[placeholder*="What"]',
+            'textarea',
+            'div[aria-multiline="true"]'
+          ];
+          
+          const found = [];
+          selectors.forEach(selector => {
+            const els = document.querySelectorAll(selector);
+            els.forEach((el, i) => {
+              found.push({
+                selector,
+                index: i,
+                tagName: el.tagName,
+                attributes: Array.from(el.attributes).map(attr => `${attr.name}="${attr.value}"`),
+                textContent: el.textContent?.substring(0, 100),
+                visible: el.offsetParent !== null
+              });
+            });
+          });
+          
+          return found;
+        });
+        
+        await page.close();
+        res.json({ elements, timestamp: new Date().toISOString() });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // Force post endpoint for testing
+    app.post('/force-post', async (req, res) => {
+      try {
+        const { FastTwitterPoster } = await import('./posting/fastTwitterPoster');
+        const poster = new FastTwitterPoster();
+        
+        const testContent = "Testing system - this is a real post to verify our Twitter bot is working correctly! 🚀";
+        const result = await poster.postSingleTweet(testContent);
+        
+        res.json({ 
+          success: result.success, 
+          message: result.success ? 'Post successful!' : 'Post failed',
+          details: result,
+          timestamp: new Date().toISOString()
+        });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message, timestamp: new Date().toISOString() });
+      }
+    });
+
     // Session status endpoint
     app.get('/session', (_req, res) => {
       try {
