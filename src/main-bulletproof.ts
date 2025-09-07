@@ -66,15 +66,15 @@ class BulletproofMainSystem {
         systemMonitor.storeMetricsInDB();
       }, 300000);
       
-      // 🚀 AGGRESSIVE GROWTH: Much more frequent posting and engagement checks
-      this.mainInterval = setInterval(async () => {
-        await this.mainLoop();
-      }, 6 * 60 * 1000); // Every 6 minutes (was 10) for maximum opportunities
+      // 🚀 DISABLED LEGACY SYSTEM - Using bulletproof posting only
+      // this.mainInterval = setInterval(async () => {
+      //   await this.mainLoop();
+      // }, 6 * 60 * 1000); // DISABLED - causes browser crashes
       
       // 🛡️ BULLETPROOF POSTING: Simple working posting loop
       setInterval(async () => {
         await this.bulletproofPostingLoop();
-      }, 10 * 60 * 1000); // Every 10 minutes - guaranteed posting
+      }, 3 * 60 * 1000); // Every 3 minutes - guaranteed posting
 
       // Enhanced analytics collection for better optimization
       this.analyticsInterval = setInterval(async () => {
