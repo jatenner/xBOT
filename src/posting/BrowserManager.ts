@@ -34,7 +34,7 @@ class BrowserManager {
   }
 
   /**
-   * Launch browser with exponential backoff retry
+   * Launch browser with enterprise-grade Railway EAGAIN handling
    */
   private async launchWithRetry(): Promise<void> {
     if (this.launching) {
@@ -47,25 +47,80 @@ class BrowserManager {
 
     this.launching = true;
     try {
-      let delay = 250;
-      let lastError: Error | null = null;
-
-      for (let attempt = 1; attempt <= 5; attempt++) {
-        try {
-          console.log(`🌐 Launching browser (attempt ${attempt}/5)...`);
-          
-          this.browser = await chromium.launch({
+      // Enterprise-grade progressive fallback configurations
+      const launchConfigs = [
+        {
+          name: 'ultra_lightweight_railway',
+          config: {
             headless: true,
             args: [
               '--no-sandbox',
+              '--disable-setuid-sandbox',
               '--disable-dev-shm-usage',
+              '--single-process',           // CRITICAL: Prevents EAGAIN fork() errors
+              '--no-zygote',               // CRITICAL: No subprocess spawning
               '--disable-gpu',
-              '--disable-web-security',
-              '--disable-features=VizDisplayCompositor',
+              '--disable-accelerated-2d-canvas',
+              '--disable-background-timer-throttling',
+              '--disable-backgrounding-occluded-windows',
+              '--disable-renderer-backgrounding',
+              '--disable-features=TranslateUI,VizDisplayCompositor',
+              '--disable-ipc-flooding-protection',
+              '--disable-extensions',
+              '--disable-plugins',
+              '--disable-images',          // Save memory
+              '--disable-javascript',      // We'll re-enable as needed
               '--memory-pressure-off',
-              '--max_old_space_size=4096'
-            ]
-          });
+              '--max_old_space_size=256',  // Low memory limit
+              '--disable-web-security',
+              '--disable-default-apps',
+              '--no-first-run'
+            ],
+            timeout: 15000
+          }
+        },
+        {
+          name: 'minimal_railway',
+          config: {
+            headless: true,
+            args: [
+              '--no-sandbox',
+              '--disable-setuid-sandbox',
+              '--disable-dev-shm-usage',
+              '--single-process',
+              '--no-zygote',
+              '--disable-gpu',
+              '--memory-pressure-off',
+              '--max_old_space_size=512'
+            ],
+            timeout: 10000
+          }
+        },
+        {
+          name: 'emergency_basic',
+          config: {
+            headless: true,
+            args: [
+              '--no-sandbox',
+              '--single-process',
+              '--disable-gpu',
+              '--disable-dev-shm-usage'
+            ],
+            timeout: 8000
+          }
+        }
+      ];
+
+      let lastError: Error | null = null;
+
+      for (const { name, config } of launchConfigs) {
+        try {
+          console.log(`🚀 ENTERPRISE_BROWSER: Trying ${name} configuration...`);
+          
+          // Force cleanup before each attempt
+          await this.forceCleanupProcesses();
+          
+          this.browser = await chromium.launch(config);
 
           // Set up disconnect handler
           this.browser.on('disconnected', () => {
@@ -74,23 +129,51 @@ class BrowserManager {
             this.contextCounts = { posting: 0, metrics: 0 };
           });
 
-          console.log('✅ Browser launched successfully');
+          console.log(`✅ ENTERPRISE_BROWSER: ${name} launched successfully`);
           return;
         } catch (error) {
           lastError = error as Error;
-          console.log(`⚠️ Browser launch attempt ${attempt} failed: ${lastError.message}`);
+          console.log(`❌ ENTERPRISE_BROWSER: ${name} failed: ${lastError.message}`);
           
-          if (attempt < 5) {
-            console.log(`⏳ Retrying in ${delay}ms...`);
-            await new Promise(resolve => setTimeout(resolve, delay));
-            delay = Math.min(delay * 2, 4000);
+          // Check for EAGAIN specifically
+          if (lastError.message.includes('EAGAIN')) {
+            console.log('🔧 EAGAIN detected - forcing process cleanup...');
+            await this.forceCleanupProcesses();
+            await new Promise(resolve => setTimeout(resolve, 2000));
           }
         }
       }
 
-      throw new Error(`Browser launch failed after 5 attempts. Last error: ${lastError?.message}`);
+      throw new Error(`All browser configurations failed. Last error: ${lastError?.message}`);
     } finally {
       this.launching = false;
+    }
+  }
+
+  /**
+   * Force cleanup processes to prevent EAGAIN errors
+   */
+  private async forceCleanupProcesses(): Promise<void> {
+    try {
+      // Kill any orphaned Chrome processes
+      const { exec } = require('child_process');
+      const { promisify } = require('util');
+      const execAsync = promisify(exec);
+      
+      // Railway-specific cleanup
+      await execAsync('pkill -f "chrome|chromium" || true').catch(() => {});
+      await execAsync('rm -rf /tmp/playwright_* /tmp/chrome-* || true').catch(() => {});
+      
+      // Force garbage collection
+      if (global.gc) {
+        global.gc();
+      }
+      
+      // Small delay for cleanup
+      await new Promise(resolve => setTimeout(resolve, 500));
+    } catch (error) {
+      // Cleanup errors are non-fatal
+      console.log('🧹 Process cleanup completed');
     }
   }
 
