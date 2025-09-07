@@ -19,6 +19,8 @@ interface EnhancedContentRequest {
   target_engagement?: 'high' | 'medium' | 'steady';
   avoid_recent_patterns?: boolean;
   user_context?: string;
+  preferred_content_type?: string;
+  preferred_voice_style?: string;
 }
 
 interface EnhancedContentResult {
@@ -41,6 +43,11 @@ interface EnhancedContentResult {
     optimal_posting_time: number;
     follow_up_content_suggestions: string[];
     performance_predictions: string[];
+  };
+  ai_prediction?: {
+    expected_engagement: number;
+    expected_followers: number;
+    confidence_score: number;
   };
 }
 

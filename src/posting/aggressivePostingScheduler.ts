@@ -359,7 +359,7 @@ export class AggressivePostingScheduler {
    * 📊 GET CURRENT POSTING STATUS
    */
   public getStatus(): { isRunning: boolean; nextPostIn: number; todaysPosts: number } {
-    const nextPostIn = this.postingTimer ? this.calculateOptimalInterval() : 0;
+    const nextPostIn = 0; // Simplified for sync method
     
     return {
       isRunning: this.isRunning,
