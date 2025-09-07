@@ -3,7 +3,7 @@
  */
 
 // Core posting controls
-export const MIN_POST_INTERVAL_MINUTES = parseInt(process.env.MIN_POST_INTERVAL_MINUTES || '120', 10);
+export const MIN_POST_INTERVAL_MINUTES = parseInt(process.env.MIN_POST_INTERVAL_MINUTES || '5', 10);
 export const MAX_DAILY_POSTS = parseInt(process.env.MAX_DAILY_POSTS || '12', 10);
 export const FORCE_POST = process.env.FORCE_POST === 'true';
 

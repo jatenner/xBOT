@@ -280,17 +280,29 @@ export class FastTwitterPoster {
               }
             }
             
-            if (!addButton) {
-              console.log(`⚠️ FAST_THREAD: No add button found, trying keyboard shortcut`);
-              // Fallback: Try keyboard shortcut to add tweet
-              await page.keyboard.press('Control+Enter');
-              await page.waitForTimeout(1000);
-              await page.keyboard.press('Tab');
-              await page.waitForTimeout(500);
-            } else {
-              await addButton.click();
-              await page.waitForTimeout(800);
-            }
+              if (!addButton) {
+                console.log(`⚠️ FAST_THREAD: No add button found, trying keyboard shortcut`);
+                // Fallback: Try keyboard shortcut to add tweet
+                await page.keyboard.press('Control+Enter');
+                await page.waitForTimeout(1000);
+                await page.keyboard.press('Tab');
+                await page.waitForTimeout(500);
+              } else {
+                // Use multiple click methods to bypass UI blocking
+                console.log(`🔧 FAST_THREAD: Using multiple click methods to bypass UI blocking`);
+                try {
+                  // Method 1: JavaScript click
+                  await addButton.evaluate(element => element.click());
+                } catch (jsClickError) {
+                  console.log(`⚠️ FAST_THREAD: JavaScript click failed, trying force click`);
+                  // Method 2: Force click with coordinates
+                  const box = await addButton.boundingBox();
+                  if (box) {
+                    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2, { force: true } as any);
+                  }
+                }
+                await page.waitForTimeout(800);
+              }
             
             // Method 2: Find new composer with multiple selectors
             const composerSelectors = [
