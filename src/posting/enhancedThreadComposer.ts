@@ -391,10 +391,10 @@ export class EnhancedThreadComposer {
             return true;
           }).catch(() => false),
           
-          // Strategy 4: Timeout fallback (assume success)
+          // Strategy 4: Timeout fallback (FAILURE if no other indicators)
           page.waitForTimeout(10000).then(() => {
-            console.log('⏱️ REPLY_SUCCESS: Timeout reached (assuming success)');
-            return true;
+            console.log('❌ REPLY_TIMEOUT: No success indicators found within 10 seconds');
+            return false;
           })
         ]);
         

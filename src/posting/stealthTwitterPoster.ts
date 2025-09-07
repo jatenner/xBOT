@@ -12,6 +12,7 @@
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import * as fs from 'fs';
 import * as path from 'path';
+import { bulletproofBrowser } from './bulletproofBrowserManager';
 
 interface PostResult {
   success: boolean;
@@ -480,54 +481,84 @@ export class StealthTwitterPoster {
   }
 
   /**
-   * ✅ VERIFY POST SUCCESS
+   * ✅ VERIFY POST SUCCESS - REAL VERIFICATION
    */
   private async verifyPostSuccess(): Promise<boolean> {
     if (!this.page) return false;
 
     try {
-      // Check if we're back to empty composer (indicates successful post)
-      // Twitter uses contenteditable divs, not input elements, so check textContent instead
-      const composerElement = this.page.locator('[data-testid="tweetTextarea_0"]').first();
+      console.log('🔍 STEALTH_POSTER: Starting REAL post verification...');
       
-      // Try different methods to check if composer is empty
-      let isEmpty = false;
+      // STEP 1: Wait for potential navigation away from compose page
+      await this.randomDelay(2000, 3000);
       
-      try {
-        const textContent = await composerElement.textContent();
-        isEmpty = !textContent || textContent.trim().length === 0;
-      } catch (e) {
-        // Fallback: check if placeholder is visible (indicates empty composer)
-        try {
-          const hasPlaceholder = await this.page.locator('[data-text="true"]').isVisible({ timeout: 2000 });
-          isEmpty = hasPlaceholder;
-        } catch (e2) {
-          // Final fallback: assume success if no errors in posting
-          isEmpty = true;
+      // STEP 2: Check for REAL success indicators first
+      const realSuccessChecks = [
+        // Check if we navigated to home or timeline (strong indicator)
+        async () => {
+          const url = this.page.url();
+          const isOnTimeline = url.includes('/home') || url.match(/x\.com\/[^\/]+\/?$/);
+          if (isOnTimeline) {
+            console.log('✅ REAL_VERIFICATION: Navigated to timeline - strong success indicator');
+            return true;
+          }
+          return false;
+        },
+        
+        // Check if we navigated to a status URL (posted tweet)
+        async () => {
+          const url = this.page.url();
+          if (url.includes('/status/')) {
+            console.log('✅ REAL_VERIFICATION: On status page - tweet exists');
+            return true;
+          }
+          return false;
+        },
+        
+        // Check for composer being disabled/gone (weaker but still valid)
+        async () => {
+          try {
+            const composerElement = this.page.locator('[data-testid="tweetTextarea_0"]').first();
+            const textContent = await composerElement.textContent({ timeout: 3000 });
+            const isEmpty = !textContent || textContent.trim().length === 0;
+            
+            if (isEmpty) {
+              // Additional check: see if we're still on compose page
+              const url = this.page.url();
+              if (url.includes('/compose')) {
+                console.log('⚠️ REAL_VERIFICATION: Empty composer but still on compose page - likely failed');
+                return false;
+              }
+              console.log('✅ REAL_VERIFICATION: Empty composer and not on compose page - likely success');
+              return true;
+            }
+            return false;
+          } catch (e) {
+            // If composer element not found, we probably navigated away (good sign)
+            console.log('✅ REAL_VERIFICATION: Composer element not found - likely navigated away');
+            return true;
+          }
         }
-      }
-      
-      if (isEmpty) {
-        console.log('✅ STEALTH_POSTER: Post verification successful - composer is empty');
-        return true;
-      }
-      
-      // Alternative: Check for success indicators
-      const successIndicators = [
-        '[data-testid="toast"]', // Success toast
-        '[aria-label*="sent"]', // Sent notification
-        '[aria-label*="posted"]' // Posted notification
       ];
       
-      for (const indicator of successIndicators) {
-        const exists = await this.page.locator(indicator).isVisible({ timeout: 1000 });
-        if (exists) {
-          console.log('✅ STEALTH_POSTER: Post verification successful - success indicator found');
-          return true;
+      // Try each verification method
+      for (const check of realSuccessChecks) {
+        try {
+          const result = await check();
+          if (result) {
+            return true;
+          }
+        } catch (e) {
+          console.warn('⚠️ REAL_VERIFICATION: Check failed:', e);
         }
       }
       
+      // STEP 3: If no clear success indicators, this is likely a failure
+      console.log('❌ REAL_VERIFICATION: No clear success indicators found - treating as failure');
+      console.log(`📍 Current URL: ${this.page.url()}`);
+      
       return false;
+      
     } catch (error: any) {
       console.error('❌ STEALTH_POSTER: Post verification error:', error.message);
       return false;
