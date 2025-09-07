@@ -134,6 +134,19 @@ export class BulletproofPoster {
         }
         
         if (!isLoggedIn) {
+          console.error('🔍 DEBUG_SESSION: Current URL:', page.url());
+          console.error('🔍 DEBUG_SESSION: Page title:', await page.title().catch(() => 'Unable to get title'));
+          
+          // Check what's actually on the page
+          try {
+            const pageContent = await page.locator('body').textContent({ timeout: 3000 });
+            console.error('🔍 DEBUG_SESSION: Page has login elements:', pageContent?.includes('Sign in') || pageContent?.includes('Log in'));
+            console.error('🔍 DEBUG_SESSION: Page has Twitter branding:', pageContent?.includes('Twitter') || pageContent?.includes('X'));
+            console.error('🔍 DEBUG_SESSION: Page length:', pageContent?.length || 0);
+          } catch (e) {
+            console.error('🔍 DEBUG_SESSION: Could not analyze page content');
+          }
+          
           throw new Error('Session loaded but user not logged in - session expired or invalid');
         }
         
@@ -205,6 +218,19 @@ export class BulletproofPoster {
       
       if (!loggedIn) {
         console.error('❌ BULLETPROOF_POSTER: Not logged in to Twitter');
+        console.error('🔍 DEBUG: Current URL:', page.url());
+        console.error('🔍 DEBUG: Page title:', await page.title().catch(() => 'Unable to get title'));
+        
+        // Try to get page content for debugging
+        try {
+          const bodyText = await page.locator('body').textContent({ timeout: 3000 });
+          console.error('🔍 DEBUG: Page contains login form:', bodyText?.includes('Sign in') || bodyText?.includes('Log in'));
+          console.error('🔍 DEBUG: Page contains "Twitter":', bodyText?.includes('Twitter'));
+          console.error('🔍 DEBUG: Page contains "X":', bodyText?.includes('X'));
+        } catch (e) {
+          console.error('🔍 DEBUG: Could not get page content');
+        }
+        
         throw new Error('Not logged in to Twitter - session invalid');
       }
       
