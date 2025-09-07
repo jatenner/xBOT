@@ -281,6 +281,43 @@ export class BulletproofPoster {
       let composer = null;
       const approaches = [
         {
+          name: 'Compose button on current page (no navigation)',
+          action: async () => {
+            // Stay on current page and find compose button - avoid navigation that triggers bot detection
+            console.log('🔘 BULLETPROOF_POSTER: Looking for compose button on current page...');
+            
+            const composeSelectors = [
+              '[data-testid="SideNav_NewTweet_Button"]',
+              '[aria-label="Tweet"]',
+              '[data-testid="tweetButton"]',
+              'a[href="/compose/tweet"]',
+              'button[aria-label="Tweet"]',
+              '[data-testid="toolBar"] [role="button"]'
+            ];
+            
+            for (const selector of composeSelectors) {
+              try {
+                const button = page.locator(selector).first();
+                if (await button.isVisible({ timeout: 3000 })) {
+                  console.log(`🔘 BULLETPROOF_POSTER: Found compose button: ${selector}`);
+                  await button.click();
+                  await page.waitForTimeout(3000); // Wait for compose modal to open
+                  
+                  // Look for the textarea
+                  const textarea = await page.waitForSelector('[data-testid="tweetTextarea_0"]', { timeout: 8000 });
+                  if (textarea) {
+                    console.log('✅ BULLETPROOF_POSTER: Compose modal opened successfully');
+                    return textarea;
+                  }
+                }
+              } catch (e) {
+                console.log(`❌ BULLETPROOF_POSTER: Button ${selector} failed:`, e.message);
+              }
+            }
+            throw new Error('No working compose button found on current page');
+          }
+        },
+        {
           name: 'Direct compose URL',
           action: async () => {
             await page.goto('https://x.com/compose/tweet', {
