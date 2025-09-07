@@ -278,8 +278,8 @@ export class StealthTwitterPoster {
     try {
       console.log('⌨️ STEALTH_POSTER: Using keyboard shortcut to post...');
       
-      // Focus on the text area first
-      await this.page.locator('[data-testid="tweetTextarea_0"]').focus();
+      // Focus on the text area first (use .first() to handle multiple elements)
+      await this.page.locator('[data-testid="tweetTextarea_0"]').first().focus();
       await this.randomDelay(200, 400);
       
       // Use Ctrl+Enter (or Cmd+Enter on Mac) to post
@@ -361,7 +361,7 @@ export class StealthTwitterPoster {
 
     try {
       // Check if we're back to empty composer (indicates successful post)
-      const emptyComposer = await this.page.locator('[data-testid="tweetTextarea_0"]').inputValue();
+      const emptyComposer = await this.page.locator('[data-testid="tweetTextarea_0"]').first().inputValue();
       
       if (emptyComposer === '' || emptyComposer.length === 0) {
         console.log('✅ STEALTH_POSTER: Post verification successful - composer is empty');
@@ -424,8 +424,8 @@ export class StealthTwitterPoster {
       await composeButton.click();
       await this.randomDelay(1000, 2000);
 
-      // Type content with human-like typing
-      const textArea = this.page.locator('[data-testid="tweetTextarea_0"]');
+      // Type content with human-like typing (use .first() to handle multiple elements)
+      const textArea = this.page.locator('[data-testid="tweetTextarea_0"]').first();
       await textArea.click();
       await this.randomDelay(300, 600);
       
