@@ -15,6 +15,8 @@ import { intelligentDecision } from './ai/intelligentDecisionEngine';
 import { realTimeAnalytics } from './analytics/realTimeTwitterAnalytics';
 import { bulletproofPoster } from './posting/bulletproofPoster';
 import { followerGrowthEngine } from './ai/followerGrowthContentEngine';
+import { quickHealthCheck } from './utils/systemHealthCheck';
+import { testCompletePipeline } from './utils/pipelineTest';
 
 class BulletproofMainSystem {
   private analyticsChecker: TwitterAnalyticsScraper;
@@ -49,6 +51,12 @@ class BulletproofMainSystem {
 
     console.log('🚀 BULLETPROOF_SYSTEM: Starting AI-driven aggressive learning and posting...');
     this.isRunning = true;
+
+    // 🏥 RUN STARTUP HEALTH CHECK
+    await this.runStartupHealthCheck();
+
+    // 🧪 RUN PIPELINE TEST
+    await this.runPipelineTest();
 
     try {
       // 🧠 INITIALIZE AI DECISION ENGINE
@@ -1230,6 +1238,61 @@ class BulletproofMainSystem {
       
     } catch (error) {
       console.error('❌ STRATEGIC_AI: Failed to store analytics:', error);
+    }
+  }
+
+  /**
+   * 🏥 RUN STARTUP HEALTH CHECK
+   */
+  private async runStartupHealthCheck(): Promise<void> {
+    try {
+      console.log('🏥 HEALTH_CHECK: Running startup system audit...');
+      
+      const healthResult = await quickHealthCheck();
+      
+      if (healthResult.healthy) {
+        console.log('✅ HEALTH_CHECK: System is healthy and ready');
+        console.log(`📊 SESSION: ${healthResult.details.session?.cookieCount || 0} cookies loaded`);
+        console.log(`📊 DATABASE: Connected = ${healthResult.details.database?.connected || false}`);
+        console.log(`📊 POSTING: Ready = ${healthResult.details.posting?.ready || false}`);
+      } else {
+        console.error('❌ HEALTH_CHECK: System has issues');
+        console.error(`🚨 STATUS: ${healthResult.status}`);
+        console.error(`📊 DETAILS: ${JSON.stringify(healthResult.details, null, 2)}`);
+        
+        // Don't exit, but log warnings
+        console.warn('⚠️ CONTINUING WITH DEGRADED FUNCTIONALITY...');
+      }
+      
+    } catch (error) {
+      console.error('❌ HEALTH_CHECK: Health check failed:', error);
+      console.warn('⚠️ CONTINUING WITHOUT HEALTH VERIFICATION...');
+    }
+  }
+
+  /**
+   * 🧪 RUN PIPELINE TEST
+   */
+  private async runPipelineTest(): Promise<void> {
+    try {
+      console.log('🧪 PIPELINE_TEST: Testing complete posting pipeline...');
+      
+      const testResult = await testCompletePipeline();
+      
+      if (testResult.success && testResult.issues.length === 0) {
+        console.log('✅ PIPELINE_TEST: All tests passed - pipeline ready');
+      } else if (testResult.success) {
+        console.log(`⚠️ PIPELINE_TEST: Core pipeline works with ${testResult.issues.length} warnings`);
+        testResult.issues.forEach(issue => console.warn(`   - ${issue}`));
+      } else {
+        console.error('❌ PIPELINE_TEST: Critical pipeline issues detected');
+        testResult.issues.forEach(issue => console.error(`   - ${issue}`));
+        console.warn('⚠️ PIPELINE_TEST: Continuing with degraded functionality...');
+      }
+      
+    } catch (error) {
+      console.error('❌ PIPELINE_TEST: Test execution failed:', error);
+      console.warn('⚠️ PIPELINE_TEST: Continuing without pipeline verification...');
     }
   }
 }

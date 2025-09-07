@@ -111,7 +111,7 @@ export class BulletproofPoster {
     try {
       console.log('🌐 BULLETPROOF_POSTER: Navigating to compose...');
       
-      await page.goto('https://twitter.com/compose/tweet', {
+      await page.goto('https://x.com/compose/tweet', {
         waitUntil: 'domcontentloaded',
         timeout: 30000
       });
