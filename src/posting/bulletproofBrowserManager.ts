@@ -167,7 +167,7 @@ export class BulletproofBrowserManager {
       const browser = await this.ensureBrowser();
       
       // Use persistent context for stability
-      if (!this.persistentContext || !this.persistentContext) {
+      if (!this.persistentContext) {
         console.log('🔧 BULLETPROOF_BROWSER: Creating persistent context...');
         
         this.persistentContext = await browser.newContext({
@@ -283,7 +283,7 @@ export class BulletproofBrowserManager {
         if (attempt < maxRetries) {
           console.log(`🔄 BULLETPROOF_BROWSER: Retrying in ${attempt * 2} seconds...`);
           await new Promise(resolve => setTimeout(resolve, attempt * 2000));
-          await this.forceCleanup(); // Reset everything before retry
+          // Don't force cleanup - reuse existing stable browser/context
         }
       }
     }
