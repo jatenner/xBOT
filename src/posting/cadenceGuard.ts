@@ -235,6 +235,20 @@ export class CadenceGuard {
       return null;
     }
   }
+
+  static async clearCache(): Promise<void> {
+    try {
+      const client = getRedisClient();
+      if (client) {
+        await client.del(this.LAST_POST_KEY);
+        await client.del(this.LOCK_KEY);
+        console.log('✅ Cache cleared, new 5-minute intervals will take effect');
+      }
+    } catch (error) {
+      console.error('Failed to clear cache:', error);
+      throw error;
+    }
+  }
 }
 
 // Graceful shutdown
