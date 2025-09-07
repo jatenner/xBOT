@@ -398,11 +398,11 @@ class BulletproofMainSystem {
         const { viralContentOptimizer } = await import('./ai/viralContentOptimizer');
         // 🎲 TOPIC RANDOMIZATION: Force diverse topics to prevent repetition
         const diverseTopics = [
-          'Sleep Architecture & REM Optimization', 'Mitochondrial Biogenesis', 'Circadian Light Therapy',
-          'Cold Thermogenesis', 'Breathwork & HRV', 'Gut Microbiome Diversity', 'NAD+ Precursors',
-          'Autophagy & Fasting', 'Heat Shock Proteins', 'Telomere Health', 'Brown Fat Activation',
-          'Neurotransmitter Balance', 'Epigenetic Factors', 'Cognitive Enhancement', 'Hormonal Balance',
-          'Exercise Adaptation', 'Stress Resilience', 'Environmental Toxins', 'Inflammation Control'
+          'productivity hacks that actually work', 'weird science facts', 'life optimization tricks',
+          'psychology insights', 'tech discoveries', 'health myths debunked', 'career advice',
+          'relationship psychology', 'finance tips', 'brain hacks', 'sleep optimization',
+          'exercise science', 'nutrition facts', 'mental health', 'time management',
+          'learning techniques', 'habit formation', 'stress management', 'focus strategies'
         ];
         
         const randomTopicSeed = diverseTopics[Math.floor(Math.random() * diverseTopics.length)];
@@ -410,19 +410,21 @@ class BulletproofMainSystem {
         
         viralResult = await viralContentOptimizer.generateViralContent({
           format: format === 'thread' ? 'thread' : 'single',
-          targetAudience: `Health optimization enthusiasts exploring ${randomTopicSeed} and related topics`,
+          targetAudience: `People interested in ${randomTopicSeed} and practical life advice`,
           currentTrends: [
-            `TOPIC FOCUS: ${randomTopicSeed}`,
-            `SECONDARY FOCUS: ${specificTopic}`,
-            'REQUIREMENT: Choose unique, non-obvious health topics for content diversity',
-            ...(currentTrends.length > 0 ? [`Trending context: ${currentTrends[0]}`] : [])
+            `TOPIC: ${randomTopicSeed}`,
+            'STYLE: Conversational, like texting a friend',
+            'TONE: Human, relatable, not corporate or academic',
+            'FORMAT: No hashtags, minimal emojis, simple formatting',
+            'HOOKS: Use "Just realized...", "Pro tip:", "Anyone else...", "Fun fact:"',
+            ...(currentTrends.length > 0 ? [`Context: ${currentTrends[0]}`] : [])
           ],
           performanceData: {
             recentTopPerformers: [
-              `${randomTopicSeed} research`,
-              `${specificTopic} insights`,
-              'novel health discoveries',
-              'cutting-edge protocols'
+              'conversational insights',
+              'relatable observations',
+              'practical tips',
+              'interesting discoveries'
             ]
           }
         });
