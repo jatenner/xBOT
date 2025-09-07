@@ -83,7 +83,7 @@ class BulletproofMainSystem {
       // 🧠 AI-DRIVEN STRATEGIC POSTING: Use sophisticated timing
       setInterval(async () => {
         await this.strategicAIPostingLoop();
-      }, 15 * 60 * 1000); // Every 15 minutes - check if optimal time to post
+      }, 8 * 60 * 1000); // Every 8 minutes - AGGRESSIVE check for optimal posting opportunities
 
       // Enhanced analytics collection for better optimization
       this.analyticsInterval = setInterval(async () => {
@@ -99,8 +99,8 @@ class BulletproofMainSystem {
       await this.mainLoop();
       setTimeout(() => this.analyticsLoop(), 5000); // Delay analytics by 5 seconds
 
-      console.log('✅ BULLETPROOF_SYSTEM: Started successfully with AGGRESSIVE GROWTH configuration');
-      console.log('📊 MAIN_LOOP: Every 6 minutes (OPTIMIZED for maximum opportunities)');
+      console.log('✅ BULLETPROOF_SYSTEM: Started successfully with ULTRA-AGGRESSIVE GROWTH configuration');
+      console.log('🚀 STRATEGIC_AI_LOOP: Every 8 minutes (ULTRA-AGGRESSIVE opportunity detection)');
       console.log('📈 ANALYTICS_LOOP: Every 20 minutes (ENHANCED tracking)');
       console.log('🔍 HEALTH_MONITORING: Every 10 minutes (IMPROVED reliability)');
       console.log('🎯 GROWTH_TARGET: 15-25 posts/day + 25-40 strategic engagements/day');
