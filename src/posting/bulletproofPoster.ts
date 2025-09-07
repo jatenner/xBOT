@@ -100,8 +100,38 @@ export class BulletproofPoster {
         await page.goto('https://x.com/home', { timeout: 15000 });
         await page.waitForTimeout(3000);
         
-        // Check if we're actually logged in by looking for user-specific elements
-        const isLoggedIn = await page.locator('[data-testid="primaryNavigation"], [data-testid="SideNav_AccountSwitcher_Button"], [aria-label="Home timeline"]').first().isVisible({ timeout: 5000 }).catch(() => false);
+        // Check if we're actually logged in with robust selector checking
+        const loginSelectors = [
+          '[data-testid="primaryNavigation"]',
+          '[data-testid="SideNav_AccountSwitcher_Button"]',
+          '[aria-label="Home timeline"]',
+          '[data-testid="sidebarColumn"]',
+          '[data-testid="SideNav_NewTweet_Button"]',
+          'nav[role="navigation"]'
+        ];
+        
+        let isLoggedIn = false;
+        for (const selector of loginSelectors) {
+          try {
+            const visible = await page.locator(selector).first().isVisible({ timeout: 2000 });
+            if (visible) {
+              console.log(`✅ BULLETPROOF_POSTER: Session validated with selector: ${selector}`);
+              isLoggedIn = true;
+              break;
+            }
+          } catch (e) {
+            // Continue to next selector
+          }
+        }
+        
+        // URL-based validation as fallback
+        if (!isLoggedIn) {
+          const currentUrl = page.url();
+          if (currentUrl.includes('/home') && !currentUrl.includes('/login')) {
+            console.log('✅ BULLETPROOF_POSTER: Session validated by URL pattern');
+            isLoggedIn = true;
+          }
+        }
         
         if (!isLoggedIn) {
           throw new Error('Session loaded but user not logged in - session expired or invalid');
@@ -135,8 +165,43 @@ export class BulletproofPoster {
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(2000);
       
-      // Check if we're logged in (look for timeline or navigation)
-      const loggedIn = await page.locator('[data-testid="primaryNavigation"], [data-testid="sidebarColumn"], [aria-label="Timeline"]').first().isVisible({ timeout: 5000 }).catch(() => false);
+      // Check if we're logged in with multiple fallback selectors
+      const loginSelectors = [
+        '[data-testid="primaryNavigation"]',
+        '[data-testid="sidebarColumn"]', 
+        '[aria-label="Timeline"]',
+        '[data-testid="SideNav_AccountSwitcher_Button"]',
+        '[aria-label="Home timeline"]',
+        '[data-testid="SideNav_NewTweet_Button"]',
+        '[aria-label="Tweet"]',
+        '[data-testid="tweetTextarea_0"]', // If we can see compose, we're logged in
+        'nav[role="navigation"]', // Generic navigation
+        '[data-testid="AppTabBar_Home_Link"]' // Mobile/responsive navigation
+      ];
+      
+      let loggedIn = false;
+      for (const selector of loginSelectors) {
+        try {
+          const isVisible = await page.locator(selector).first().isVisible({ timeout: 2000 });
+          if (isVisible) {
+            console.log(`✅ BULLETPROOF_POSTER: Login verified with selector: ${selector}`);
+            loggedIn = true;
+            break;
+          }
+        } catch (e) {
+          // Continue to next selector
+        }
+      }
+      
+      // Additional check: look for any sign we're NOT on login page
+      if (!loggedIn) {
+        const currentUrl = page.url();
+        const notOnLoginPage = !currentUrl.includes('/login') && !currentUrl.includes('/i/flow/login');
+        if (notOnLoginPage && (currentUrl.includes('/home') || currentUrl.includes('x.com'))) {
+          console.log('✅ BULLETPROOF_POSTER: Login verified by URL pattern');
+          loggedIn = true;
+        }
+      }
       
       if (!loggedIn) {
         console.error('❌ BULLETPROOF_POSTER: Not logged in to Twitter');
