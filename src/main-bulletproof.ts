@@ -58,7 +58,7 @@ class BulletproofMainSystem {
       await this.testBulletproofPosting();
       
       // 🚀 START AGGRESSIVE SYSTEMS
-      aggressiveScheduler.startAggressivePosting();
+      await aggressiveScheduler.startAggressivePosting();
       console.log('🚀 AGGRESSIVE_POSTING: AI-driven posting system started');
       
       // Store system metrics every 5 minutes
