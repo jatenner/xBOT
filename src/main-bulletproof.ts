@@ -14,6 +14,7 @@ import { EnhancedContentOrchestrator } from './ai/enhancedContentOrchestrator';
 import { intelligentDecision } from './ai/intelligentDecisionEngine';
 import { realTimeAnalytics } from './analytics/realTimeTwitterAnalytics';
 import { bulletproofPoster } from './posting/bulletproofPoster';
+import { followerGrowthEngine } from './ai/followerGrowthContentEngine';
 
 class BulletproofMainSystem {
   private analyticsChecker: TwitterAnalyticsScraper;
@@ -1050,15 +1051,55 @@ class BulletproofMainSystem {
       const contentDecision = await intelligentDecision.makeContentDecision();
       console.log(`🎯 STRATEGIC_AI: ${contentDecision.recommended_content_type} | ${contentDecision.recommended_voice_style}`);
       
-      // 4. Generate sophisticated AI content
-      const contentResult = await this.contentOrchestrator.generateEnhancedContent({
-        format: contentDecision.recommended_content_type === 'thread' ? 'thread' : 'single',
-        target_engagement: 'high',
-        avoid_recent_patterns: true,
-        user_context: contentDecision.recommended_topic,
-        preferred_content_type: contentDecision.recommended_content_type,
-        preferred_voice_style: contentDecision.recommended_voice_style
-      });
+      // 4. Generate follower-optimized content (70% of time) or sophisticated content (30%)
+      let contentResult;
+      let isFollowerOptimized = false;
+      
+      if (Math.random() < 0.7) {
+        // Use follower growth engine for viral content
+        console.log('🚀 STRATEGIC_AI: Using follower growth engine for viral content...');
+        const followerContent = await followerGrowthEngine.generateFollowerMagnetContent({
+          trendingTopic: contentDecision.recommended_topic,
+          targetAudience: 'health_conscious',
+          contentGoal: 'viral'
+        });
+        
+        contentResult = {
+          content: followerContent.content,
+          metadata: {
+            content_type: followerContent.contentType,
+            voice_style: 'follower_magnet',
+            topic_source: 'ai_generated',
+            human_voice_score: 95,
+            diversity_score: 90,
+            learning_applied: [],
+            predicted_performance: {
+              engagement_rate: followerContent.viralPotential,
+              follower_potential: followerContent.followPotential,
+              viral_score: followerContent.viralPotential,
+              authenticity_score: 90
+            }
+          },
+          recommendations: {
+            optimal_posting_time: Date.now(),
+            follow_up_content_suggestions: [],
+            performance_predictions: []
+          }
+        };
+        isFollowerOptimized = true;
+        
+      } else {
+        // Use sophisticated content orchestrator
+        console.log('🧠 STRATEGIC_AI: Using sophisticated content orchestrator...');
+        contentResult = await this.contentOrchestrator.generateEnhancedContent({
+          format: contentDecision.recommended_content_type === 'thread' ? 'thread' : 'single',
+          target_engagement: 'high',
+          avoid_recent_patterns: true,
+          user_context: contentDecision.recommended_topic,
+          preferred_content_type: contentDecision.recommended_content_type,
+          preferred_voice_style: contentDecision.recommended_voice_style
+        });
+      }
       
       if (!contentResult || !contentResult.content) {
         console.error('❌ STRATEGIC_AI: Content generation failed');
@@ -1072,6 +1113,11 @@ class BulletproofMainSystem {
       
       console.log(`📝 STRATEGIC_CONTENT: "${contentToPost.substring(0, 100)}..."`);
       console.log(`🎯 PREDICTED: ${contentResult.metadata.predicted_performance.engagement_rate}% engagement`);
+      
+      if (isFollowerOptimized) {
+        console.log(`🚀 FOLLOWER_POTENTIAL: ${contentResult.metadata.predicted_performance.follower_potential}% follow conversion`);
+        console.log(`🔥 CONTENT_TYPE: ${contentResult.metadata.content_type}`);
+      }
       
       // 6. Post using bulletproof system
       const postResult = await bulletproofPoster.postContent(contentToPost);
