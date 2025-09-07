@@ -11,6 +11,8 @@ import { systemMonitor } from './monitoring/systemPerformanceMonitor';
 import { aggressiveScheduler } from './posting/aggressivePostingScheduler';
 import { aggressiveEngager } from './engagement/aggressiveEngagementEngine';
 import { EnhancedContentOrchestrator } from './ai/enhancedContentOrchestrator';
+import { intelligentDecision } from './ai/intelligentDecisionEngine';
+import { realTimeAnalytics } from './analytics/realTimeTwitterAnalytics';
 
 class BulletproofMainSystem {
   private analyticsChecker: TwitterAnalyticsScraper;
@@ -43,13 +45,16 @@ class BulletproofMainSystem {
       return;
     }
 
-    console.log('🚀 BULLETPROOF_SYSTEM: Starting aggressive learning and posting...');
+    console.log('🚀 BULLETPROOF_SYSTEM: Starting AI-driven aggressive learning and posting...');
     this.isRunning = true;
 
     try {
+      // 🧠 INITIALIZE AI DECISION ENGINE
+      console.log('🧠 AI_SYSTEM: Initializing intelligent decision engine...');
+      
       // 🚀 START AGGRESSIVE SYSTEMS
       aggressiveScheduler.startAggressivePosting();
-      console.log('🚀 AGGRESSIVE_POSTING: High-frequency posting system started');
+      console.log('🚀 AGGRESSIVE_POSTING: AI-driven posting system started');
       
       // Store system metrics every 5 minutes
       setInterval(() => {

@@ -6,6 +6,7 @@
 import { EnhancedContentOrchestrator } from '../ai/enhancedContentOrchestrator';
 import { systemMonitor } from '../monitoring/systemPerformanceMonitor';
 import { admin as supabase } from '../lib/supabaseClients';
+import { intelligentDecision } from '../ai/intelligentDecisionEngine';
 
 export interface PostingSchedule {
   base_interval_minutes: number;
@@ -31,11 +32,11 @@ export class AggressivePostingScheduler {
   
   // AGGRESSIVE SCHEDULE CONFIGURATION
   private schedule: PostingSchedule = {
-    base_interval_minutes: 8, // Post every 8 minutes (7.5 posts/hour)
-    peak_hour_intervals: [7, 8, 9, 12, 17, 18, 19, 20, 21], // EST peak hours
-    off_peak_multiplier: 1.5, // Slower during off-peak
-    max_posts_per_hour: 8, // Safety limit
-    min_interval_minutes: 5 // Absolute minimum between posts
+    base_interval_minutes: 0, // AI-driven - no fixed interval
+    peak_hour_intervals: [], // AI-driven - determined by data
+    off_peak_multiplier: 1.0, // AI-driven
+    max_posts_per_hour: 12, // Increased safety limit for AI optimization
+    min_interval_minutes: 3 // Minimum between posts for AI system
   };
 
   private constructor() {
@@ -62,7 +63,7 @@ export class AggressivePostingScheduler {
     console.log('🚀 AGGRESSIVE_SCHEDULER: Starting high-frequency posting cycle');
     console.log(`📊 SCHEDULE: ${this.schedule.base_interval_minutes}min base interval | Max ${this.schedule.max_posts_per_hour}/hour`);
 
-    this.scheduleNextPost();
+    await this.scheduleNextPost();
   }
 
   public stopAggressivePosting(): void {
@@ -76,48 +77,45 @@ export class AggressivePostingScheduler {
     console.log('🛑 AGGRESSIVE_SCHEDULER: Stopped posting cycle');
   }
 
-  private scheduleNextPost(): void {
+  private async scheduleNextPost(): Promise<void> {
     if (!this.isRunning) return;
 
-    const nextInterval = this.calculateOptimalInterval();
+    const nextInterval = await this.calculateOptimalInterval();
     
     console.log(`⏰ NEXT_POST: Scheduled in ${Math.round(nextInterval / 60000)} minutes`);
     
     this.postingTimer = setTimeout(async () => {
       await this.executePost();
-      this.scheduleNextPost(); // Schedule the next post
+      await this.scheduleNextPost(); // Schedule the next post
     }, nextInterval);
   }
 
-  private calculateOptimalInterval(): number {
-    const now = new Date();
-    const currentHour = now.getHours();
-    
-    let intervalMinutes = this.schedule.base_interval_minutes;
-    
-    // Adjust for peak hours
-    if (this.schedule.peak_hour_intervals.includes(currentHour)) {
-      // Post more frequently during peak hours
-      intervalMinutes = Math.max(
-        this.schedule.min_interval_minutes,
-        Math.round(intervalMinutes * 0.8) // 20% faster during peak
-      );
-      console.log(`⚡ PEAK_HOUR: Accelerated interval to ${intervalMinutes} minutes`);
-    } else {
-      // Slower during off-peak
-      intervalMinutes = Math.round(intervalMinutes * this.schedule.off_peak_multiplier);
-      console.log(`🌙 OFF_PEAK: Extended interval to ${intervalMinutes} minutes`);
+  private async calculateOptimalInterval(): Promise<number> {
+    try {
+      console.log('🧠 AI_TIMING: Requesting optimal posting interval...');
+      
+      // Get AI-driven timing decision
+      const timingDecision = await intelligentDecision.makeTimingDecision();
+      
+      if (!timingDecision.should_post_now) {
+        const waitTime = timingDecision.optimal_wait_minutes * 60 * 1000;
+        console.log(`🧠 AI_DECISION: Wait ${timingDecision.optimal_wait_minutes} minutes | Reason: ${timingDecision.reasoning}`);
+        return waitTime;
+      }
+      
+      // If AI says post now, use minimum interval for next check
+      const nextCheckInterval = this.schedule.min_interval_minutes * 60 * 1000;
+      console.log(`🧠 AI_DECISION: Post now! Next check in ${this.schedule.min_interval_minutes} minutes`);
+      return nextCheckInterval;
+      
+    } catch (error) {
+      console.error('❌ AI_TIMING: Failed to get AI timing decision:', error);
+      
+      // Fallback to simple logic
+      const fallbackInterval = (5 + Math.random() * 10) * 60 * 1000; // 5-15 minutes
+      console.log(`⚠️ FALLBACK_TIMING: Using ${Math.round(fallbackInterval / 60000)} minute interval`);
+      return fallbackInterval;
     }
-    
-    // Add some randomization to avoid patterns (+/- 20%)
-    const randomFactor = 0.8 + (Math.random() * 0.4); // 0.8 to 1.2
-    intervalMinutes = Math.round(intervalMinutes * randomFactor);
-    
-    // Enforce limits
-    intervalMinutes = Math.max(this.schedule.min_interval_minutes, intervalMinutes);
-    intervalMinutes = Math.min(60, intervalMinutes); // Max 1 hour
-    
-    return intervalMinutes * 60 * 1000; // Convert to milliseconds
   }
 
   /**
@@ -189,13 +187,21 @@ export class AggressivePostingScheduler {
     const startTime = Date.now();
     
     try {
-      console.log('🎨 CONTENT_GEN: Generating premium AI content...');
+      console.log('🎨 CONTENT_GEN: Getting AI-driven content strategy...');
+      
+      // Get AI-driven content decision
+      const contentDecision = await intelligentDecision.makeContentDecision();
+      
+      console.log(`🧠 AI_CONTENT_DECISION: ${contentDecision.recommended_content_type} | ${contentDecision.recommended_voice_style}`);
+      console.log(`🎯 AI_REASONING: ${contentDecision.reasoning}`);
       
       const contentRequest = {
-        format: Math.random() > 0.7 ? 'thread' : 'single', // 30% threads, 70% single posts
+        format: Math.random() > 0.8 ? 'thread' : 'single', // 20% threads for variety
         target_engagement: 'high',
         avoid_recent_patterns: true,
-        user_context: this.generateDynamicContext()
+        user_context: contentDecision.recommended_topic,
+        preferred_content_type: contentDecision.recommended_content_type,
+        preferred_voice_style: contentDecision.recommended_voice_style
       };
       
       const result = await this.contentOrchestrator.generateEnhancedContent(contentRequest);
@@ -204,6 +210,14 @@ export class AggressivePostingScheduler {
       systemMonitor.trackContentGeneration(generationTime);
       
       console.log(`🎨 CONTENT_SUCCESS: Generated ${contentRequest.format} | ${generationTime}ms | Quality: ${result.metadata.human_voice_score}%`);
+      console.log(`📊 AI_PREDICTIONS: ${contentDecision.expected_engagement}% engagement, ${contentDecision.expected_followers} followers`);
+      
+      // Store the AI prediction for later validation
+      result.ai_prediction = {
+        expected_engagement: contentDecision.expected_engagement,
+        expected_followers: contentDecision.expected_followers,
+        confidence_score: contentDecision.confidence_score
+      };
       
       return result;
       
