@@ -18,21 +18,31 @@ export class RailwayCompatiblePoster {
     console.log('🚄 RAILWAY_POSTER: Initializing Railway-compatible Twitter poster...');
   }
 
-  private loadSessionData(): any {
+  private async loadSessionData(): Promise<any> {
     try {
+      const { railwaySessionManager } = await import('../utils/railwaySessionManager');
+      
+      // Ensure we have a valid session
+      const hasValidSession = await railwaySessionManager.ensureValidSession();
+      if (!hasValidSession) {
+        console.error('❌ RAILWAY_POSTER: No valid session available');
+        return null;
+      }
+      
       const fs = require('fs');
       const path = require('path');
       const sessionPath = path.join(process.cwd(), 'data', 'twitter_session.json');
       
       if (!fs.existsSync(sessionPath)) {
-        console.log('❌ RAILWAY_POSTER: No session file found');
+        console.log('❌ RAILWAY_POSTER: No session file found after validation');
         return null;
       }
       
       const sessionData = JSON.parse(fs.readFileSync(sessionPath, 'utf8'));
+      console.log('✅ RAILWAY_POSTER: Valid session loaded successfully');
       return sessionData;
-    } catch (error) {
-      console.error('❌ RAILWAY_POSTER: Error loading session:', error);
+    } catch (error: any) {
+      console.error('❌ RAILWAY_POSTER: Error loading session:', error.message);
       return null;
     }
   }
@@ -63,10 +73,13 @@ export class RailwayCompatiblePoster {
       });
 
       // Load Twitter session
-      const sessionData = this.loadSessionData();
+      const sessionData = await this.loadSessionData();
       if (sessionData && sessionData.cookies) {
         await this.context.addCookies(sessionData.cookies);
         console.log(`🚄 RAILWAY_POSTER: Loaded ${sessionData.cookies.length} session cookies`);
+      } else {
+        console.error('❌ RAILWAY_POSTER: Failed to load valid session data');
+        return false;
       }
 
       this.page = await this.context.newPage();

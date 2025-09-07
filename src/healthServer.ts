@@ -430,8 +430,14 @@ export function startHealthServer(): Promise<void> {
     // Force post endpoint for testing
     app.post('/force-post', async (req, res) => {
       try {
-        const { RailwayCompatiblePoster } = await import('./posting/railwayCompatiblePoster');
-        const poster = new RailwayCompatiblePoster();
+        const { StealthTwitterPoster } = await import('./posting/stealthTwitterPoster');
+        const poster = new StealthTwitterPoster();
+        
+        // Initialize the stealth poster
+        const initialized = await poster.initialize();
+        if (!initialized) {
+          return res.status(500).json({ error: 'Failed to initialize stealth poster' });
+        }
         
         const testContent = "Testing system - this is a real post to verify our Twitter bot is working correctly! 🚀";
         const result = await poster.postTweet(testContent);

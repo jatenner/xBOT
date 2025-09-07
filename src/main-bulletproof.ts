@@ -489,7 +489,14 @@ class BulletproofMainSystem {
       if (format === 'thread' && result.threadParts && result.threadParts.length > 1) {
         // Ultra-fast thread posting with timeout protection
         console.log(`⚡ FAST_THREAD: Posting ${result.threadParts.length}-part thread with ultra-fast system`);
-        const { railwayPoster } = await import('./posting/railwayCompatiblePoster');
+        const { StealthTwitterPoster } = await import('./posting/stealthTwitterPoster');
+        const railwayPoster = new StealthTwitterPoster();
+        
+        // Initialize the stealth poster
+        const initialized = await railwayPoster.initialize();
+        if (!initialized) {
+          throw new Error('Failed to initialize stealth poster');
+        }
         
         const threadResult = await railwayPoster.postThread(result.threadParts);
         postResult = {
@@ -504,14 +511,28 @@ class BulletproofMainSystem {
           console.log('🚨 EMERGENCY_THREAD: Bulletproof thread validation failed, converting single content to thread parts');
           console.log('🚨 EMERGENCY_THREAD: Thread validation failed, using simple fallback');
           // Simple fallback - just post as single tweet
-          const { railwayPoster } = await import('./posting/railwayCompatiblePoster');
+          const { StealthTwitterPoster } = await import('./posting/stealthTwitterPoster');
+        const railwayPoster = new StealthTwitterPoster();
+        
+        // Initialize the stealth poster
+        const initialized = await railwayPoster.initialize();
+        if (!initialized) {
+          throw new Error('Failed to initialize stealth poster');
+        }
           postResult = await railwayPoster.postTweet(
             typeof result.content === 'string' ? result.content : 'Health content generated'
           );
         } else if (format === 'single') {
         // Single tweet - ultra-fast posting
         console.log('⚡ FAST_SINGLE: Posting single tweet with ultra-fast system');
-        const { railwayPoster } = await import('./posting/railwayCompatiblePoster');
+        const { StealthTwitterPoster } = await import('./posting/stealthTwitterPoster');
+        const railwayPoster = new StealthTwitterPoster();
+        
+        // Initialize the stealth poster
+        const initialized = await railwayPoster.initialize();
+        if (!initialized) {
+          throw new Error('Failed to initialize stealth poster');
+        }
         
         const singleResult = await railwayPoster.postTweet(
           typeof result.content === 'string' ? result.content : 
@@ -521,7 +542,7 @@ class BulletproofMainSystem {
         
         postResult = {
           success: singleResult.success,
-          tweetId: singleResult.tweetId,
+          tweetId: singleResult.tweetIds ? singleResult.tweetIds[0] : undefined,
           type: 'single' as const,
           viralScore: result.metadata.viralScore,
           error: singleResult.error
@@ -529,7 +550,14 @@ class BulletproofMainSystem {
       } else {
         // Fallback - ultra-fast single tweet
         console.log('⚡ FAST_FALLBACK: Unknown format, using ultra-fast single tweet');
-        const { railwayPoster } = await import('./posting/railwayCompatiblePoster');
+        const { StealthTwitterPoster } = await import('./posting/stealthTwitterPoster');
+        const railwayPoster = new StealthTwitterPoster();
+        
+        // Initialize the stealth poster
+        const initialized = await railwayPoster.initialize();
+        if (!initialized) {
+          throw new Error('Failed to initialize stealth poster');
+        }
         
         const fallbackResult = await railwayPoster.postTweet(
           typeof result.content === 'string' ? result.content : 
@@ -539,7 +567,7 @@ class BulletproofMainSystem {
         
         postResult = {
           success: fallbackResult.success,
-          tweetId: fallbackResult.tweetId,
+          tweetId: fallbackResult.tweetIds ? fallbackResult.tweetIds[0] : undefined,
           type: 'single' as const,
           viralScore: result.metadata.viralScore,
           error: fallbackResult.error
@@ -869,7 +897,14 @@ class BulletproofMainSystem {
 
       // 5. Test Posting System Integration
       try {
-        const { railwayPoster } = await import('./posting/railwayCompatiblePoster');
+        const { StealthTwitterPoster } = await import('./posting/stealthTwitterPoster');
+        const railwayPoster = new StealthTwitterPoster();
+        
+        // Initialize the stealth poster
+        const initialized = await railwayPoster.initialize();
+        if (!initialized) {
+          throw new Error('Failed to initialize stealth poster');
+        }
         console.log('✅ POSTING_SYSTEM: FastTwitterPoster loaded successfully');
       } catch (error: any) {
         console.error('❌ POSTING_SYSTEM_FAILED:', error.message);

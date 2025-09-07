@@ -1,147 +1,145 @@
-import { createClient } from '@supabase/supabase-js';
+import { AdvancedDatabaseManager } from '../lib/advancedDatabaseManager';
 
-export interface TwitterStorageState {
-  cookies: Array<{
-    name: string;
-    value: string;
-    domain: string;
-    path: string;
-    expires?: number;
-    httpOnly?: boolean;
-    secure?: boolean;
-    sameSite?: 'Strict' | 'Lax' | 'None';
-  }>;
-  origins?: Array<{
+export interface TwitterCookieData {
+  name: string;
+  value: string;
+  domain: string;
+  path: string;
+  expires?: number;
+  httpOnly?: boolean;
+  secure?: boolean;
+  sameSite?: 'Strict' | 'Lax' | 'None';
+}
+
+export interface StorageState {
+  cookies: TwitterCookieData[];
+  origins: Array<{
     origin: string;
     localStorage: Array<{ name: string; value: string }>;
   }>;
 }
 
 /**
- * Ensure critical cookies (auth_token, ct0) exist for both .x.com and .twitter.com domains
+ * Load Twitter cookies from Supabase for session persistence
  */
-function ensureCriticalCookiesDuplicated(cookies: any[]): any[] {
-  const criticalCookies = ['auth_token', 'ct0'];
-  const domains = ['.x.com', '.twitter.com'];
-  const result = [...cookies];
-  
-  for (const cookieName of criticalCookies) {
-    const existingCookies = cookies.filter(c => c.name === cookieName);
-    
-    for (const targetDomain of domains) {
-      const hasTargetDomain = existingCookies.some(c => c.domain === targetDomain);
-      
-      if (!hasTargetDomain) {
-        // Find a source cookie from the other domain
-        const sourceCookie = existingCookies.find(c => 
-          c.domain === (targetDomain === '.x.com' ? '.twitter.com' : '.x.com')
-        );
-        
-        if (sourceCookie) {
-          console.log(`[cookies] Duplicating ${cookieName} for ${targetDomain}`);
-          result.push({
-            ...sourceCookie,
-            domain: targetDomain
-          });
-        }
-      }
-    }
-  }
-  
-  return result;
-}
-
-/**
- * Load Twitter session cookies from Supabase
- */
-export async function loadTwitterCookiesFromSupabase(): Promise<TwitterStorageState | null> {
-  // Skip if disabled by environment variable
-  if (process.env.DISABLE_TWITTER_SESSION === 'true') {
-    console.log('[cookies] Twitter session loading disabled');
-    return null;
-  }
-
+export async function loadTwitterCookiesFromSupabase(): Promise<StorageState | null> {
   try {
-    const url = process.env.SUPABASE_URL;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const db = AdvancedDatabaseManager.getInstance();
     
-    if (!url || !key) {
-      console.warn('[cookies] Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+    const result = await db.executeQuery('load_twitter_cookies', async (client) => {
+      return await client
+        .from('browser_cookies')
+        .select('*')
+        .eq('domain', '.twitter.com')
+        .order('created_at', { ascending: false })
+        .limit(50);
+    });
+
+    if (!result.data || result.data.length === 0) {
+      console.log('[cookies] No stored Twitter cookies found');
       return null;
     }
 
-    const supabase = createClient(url, key, { auth: { persistSession: false } });
-    const { data, error } = await supabase
-      .from('browser_cookies')
-      .select('data')
-      .eq('id', 'twitter')
-      .single();
+    const cookies: TwitterCookieData[] = result.data.map((row: any) => ({
+      name: row.name,
+      value: row.value,
+      domain: row.domain,
+      path: row.path || '/',
+      expires: row.expires_timestamp ? new Date(row.expires_timestamp).getTime() / 1000 : undefined,
+      httpOnly: row.http_only || false,
+      secure: row.secure || true,
+      sameSite: row.same_site || 'Lax'
+    }));
 
-    if (error) {
-      console.warn('[cookies] Failed to load Twitter session from Supabase:', error.message);
-      return null;
-    }
+    console.log(`[cookies] Loaded ${cookies.length} Twitter cookies from Supabase`);
 
-    if (!data?.data || !Array.isArray(data.data)) {
-      console.warn('[cookies] No valid Twitter session found in Supabase');
-      return null;
-    }
-
-    const rawCookies = data.data;
-    const enhancedCookies = ensureCriticalCookiesDuplicated(rawCookies);
-    
-    console.log(`[cookies] Loaded twitter session from Supabase (cookies: ${enhancedCookies.length}, enhanced from ${rawCookies.length})`);
-    
-    // Convert the cookie array to Playwright storageState format
     return {
-      cookies: enhancedCookies,
-      origins: [] // We don't need localStorage for Twitter login
+      cookies,
+      origins: [{
+        origin: 'https://twitter.com',
+        localStorage: []
+      }]
     };
+
   } catch (error) {
-    console.warn('[cookies] Failed to load Twitter session:', (error as Error).message);
+    console.error('[cookies] Failed to load Twitter cookies:', error);
     return null;
   }
 }
 
 /**
- * Save Twitter session cookies to Supabase after successful login
+ * Save Twitter cookies to Supabase for session persistence
  */
-export async function saveTwitterCookiesToSupabase(cookies: any[]): Promise<boolean> {
+export async function saveTwitterCookiesToSupabase(cookies: TwitterCookieData[]): Promise<boolean> {
   try {
-    const url = process.env.SUPABASE_URL;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const db = AdvancedDatabaseManager.getInstance();
     
-    if (!url || !key) {
-      console.warn('[cookies] Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY for saving');
-      return false;
-    }
-
-    // Filter to Twitter/X related cookies only
-    const filtered = cookies.filter(c => 
-      c.domain.includes('x.com') || c.domain.includes('twitter.com')
+    // Filter for Twitter-related cookies only
+    const twitterCookies = cookies.filter(cookie => 
+      cookie.domain.includes('twitter.com') || 
+      cookie.domain.includes('x.com')
     );
 
-    // Ensure critical cookies are duplicated for both domains
-    const enhanced = ensureCriticalCookiesDuplicated(filtered);
-
-    const supabase = createClient(url, key, { auth: { persistSession: false } });
-    const { error } = await supabase
-      .from('browser_cookies')
-      .upsert({ 
-        id: 'twitter', 
-        data: enhanced, 
-        updated_at: new Date().toISOString() 
-      });
-
-    if (error) {
-      console.error('[cookies] Failed to save cookies to Supabase:', error.message);
-      return false;
+    if (twitterCookies.length === 0) {
+      console.log('[cookies] No Twitter cookies to save');
+      return true;
     }
 
-    console.log(`[cookies] Saved ${enhanced.length} cookies to Supabase`);
+    // Clear existing cookies first
+    await db.executeQuery('clear_twitter_cookies', async (client) => {
+      return await client
+        .from('browser_cookies')
+        .delete()
+        .in('domain', ['.twitter.com', 'twitter.com', '.x.com', 'x.com']);
+    });
+
+    // Insert new cookies
+    const cookieRecords = twitterCookies.map(cookie => ({
+      name: cookie.name,
+      value: cookie.value,
+      domain: cookie.domain,
+      path: cookie.path || '/',
+      expires_timestamp: cookie.expires ? new Date(cookie.expires * 1000).toISOString() : null,
+      http_only: cookie.httpOnly || false,
+      secure: cookie.secure || true,
+      same_site: cookie.sameSite || 'Lax',
+      created_at: new Date().toISOString()
+    }));
+
+    await db.executeQuery('save_twitter_cookies', async (client) => {
+      return await client
+        .from('browser_cookies')
+        .insert(cookieRecords);
+    });
+
+    console.log(`[cookies] Saved ${twitterCookies.length} Twitter cookies to Supabase`);
     return true;
+
   } catch (error) {
-    console.error('[cookies] Error saving cookies:', (error as Error).message);
+    console.error('[cookies] Failed to save Twitter cookies:', error);
+    return false;
+  }
+}
+
+/**
+ * Clear all stored Twitter cookies
+ */
+export async function clearTwitterCookiesFromSupabase(): Promise<boolean> {
+  try {
+    const db = AdvancedDatabaseManager.getInstance();
+    
+    await db.executeQuery('clear_all_twitter_cookies', async (client) => {
+      return await client
+        .from('browser_cookies')
+        .delete()
+        .in('domain', ['.twitter.com', 'twitter.com', '.x.com', 'x.com']);
+    });
+
+    console.log('[cookies] Cleared all Twitter cookies from Supabase');
+    return true;
+
+  } catch (error) {
+    console.error('[cookies] Failed to clear Twitter cookies:', error);
     return false;
   }
 }
