@@ -30,47 +30,141 @@ export class StealthTwitterPoster {
   }
 
   /**
-   * 🛡️ STEALTH BROWSER INITIALIZATION
+   * 🧹 Force cleanup processes to prevent EAGAIN errors
+   */
+  private async forceCleanupProcesses(): Promise<void> {
+    try {
+      // Kill any orphaned Chrome processes  
+      const { exec } = require('child_process');
+      const { promisify } = require('util');
+      const execAsync = promisify(exec);
+      
+      // Railway-specific cleanup
+      await execAsync('pkill -f "chrome|chromium" || true').catch(() => {});
+      await execAsync('rm -rf /tmp/playwright_* /tmp/chrome-* || true').catch(() => {});
+      
+      // Force garbage collection
+      if (global.gc) {
+        global.gc();
+      }
+      
+      // Small delay for cleanup
+      await new Promise(resolve => setTimeout(resolve, 500));
+    } catch (error) {
+      // Cleanup errors are non-fatal
+      console.log('🧹 STEALTH_POSTER: Process cleanup completed');
+    }
+  }
+
+  /**
+   * 🛡️ STEALTH BROWSER INITIALIZATION WITH RAILWAY EAGAIN HANDLING
    */
   async initialize(): Promise<boolean> {
     try {
       console.log('🥷 STEALTH_POSTER: Starting stealth browser initialization...');
       
-      // Advanced stealth browser configuration
-      this.browser = await chromium.launch({
-        headless: true,
-        args: [
-          // Basic stealth
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-gpu',
-          '--disable-dev-shm-usage',
-          '--single-process',
-          '--no-zygote',
+      // Enterprise-grade Railway EAGAIN fallback configurations
+      const railwayStealthConfigs = [
+        {
+          name: 'stealth_ultra_light',
+          config: {
+            headless: true,
+            args: [
+              // CRITICAL Railway fixes
+              '--no-sandbox',
+              '--disable-setuid-sandbox',
+              '--disable-dev-shm-usage',
+              '--single-process',              // CRITICAL: Prevents EAGAIN fork() errors
+              '--no-zygote',                  // CRITICAL: No subprocess spawning
+              
+              // Memory optimization
+              '--disable-gpu',
+              '--disable-accelerated-2d-canvas',
+              '--memory-pressure-off',
+              '--max_old_space_size=256',
+              
+              // Stealth features (essential only)
+              '--disable-blink-features=AutomationControlled',
+              '--disable-features=VizDisplayCompositor,TranslateUI',
+              '--disable-web-security',
+              '--disable-ipc-flooding-protection',
+              '--no-first-run',
+              '--no-default-browser-check',
+              '--disable-default-apps',
+              
+              // Performance
+              '--disable-background-timer-throttling',
+              '--disable-backgrounding-occluded-windows',
+              '--disable-renderer-backgrounding',
+              '--disable-background-networking',
+              '--disable-extensions',
+              '--disable-plugins',
+              
+              // Minimal viewport
+              '--window-size=1280,720'
+            ],
+            timeout: 15000
+          }
+        },
+        {
+          name: 'stealth_minimal',
+          config: {
+            headless: true,
+            args: [
+              '--no-sandbox',
+              '--disable-setuid-sandbox',
+              '--disable-dev-shm-usage',
+              '--single-process',
+              '--no-zygote',
+              '--disable-gpu',
+              '--disable-blink-features=AutomationControlled',
+              '--memory-pressure-off'
+            ],
+            timeout: 10000
+          }
+        },
+        {
+          name: 'stealth_emergency',
+          config: {
+            headless: true,
+            args: [
+              '--no-sandbox',
+              '--single-process',
+              '--disable-gpu'
+            ],
+            timeout: 8000
+          }
+        }
+      ];
+
+      let lastError: Error | null = null;
+
+      for (const { name, config } of railwayStealthConfigs) {
+        try {
+          console.log(`🚀 STEALTH_POSTER: Trying ${name} configuration...`);
           
-          // Advanced anti-detection
-          '--disable-blink-features=AutomationControlled',
-          '--disable-features=VizDisplayCompositor',
-          '--disable-web-security',
-          '--disable-features=TranslateUI',
-          '--disable-ipc-flooding-protection',
-          '--no-first-run',
-          '--no-default-browser-check',
-          '--disable-default-apps',
-          '--disable-popup-blocking',
-          '--disable-prompt-on-repost',
-          '--disable-hang-monitor',
-          '--disable-backgrounding-occluded-windows',
-          '--disable-renderer-backgrounding',
-          '--disable-background-networking',
-          '--disable-background-timer-throttling',
-          '--force-fieldtrials=*BackgroundTracing/default/',
+          // Force cleanup before each attempt
+          await this.forceCleanupProcesses();
           
-          // Human-like viewport
-          '--window-size=1366,768',
-          '--start-maximized'
-        ]
-      });
+          this.browser = await chromium.launch(config);
+          console.log(`✅ STEALTH_POSTER: ${name} launched successfully`);
+          break;
+        } catch (error) {
+          lastError = error as Error;
+          console.log(`❌ STEALTH_POSTER: ${name} failed: ${lastError.message}`);
+          
+          // Handle EAGAIN specifically
+          if (lastError.message.includes('EAGAIN')) {
+            console.log('🔧 STEALTH_POSTER: EAGAIN detected - forcing cleanup...');
+            await this.forceCleanupProcesses();
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        }
+      }
+
+      if (!this.browser) {
+        throw new Error(`STEALTH_POSTER: All browser configurations failed. Last error: ${lastError?.message}`);
+      }
 
       // Create stealth context with human-like fingerprint
       this.context = await this.browser.newContext({
