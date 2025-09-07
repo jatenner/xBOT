@@ -95,12 +95,19 @@ export class BulletproofPoster {
         console.log(`✅ BULLETPROOF_POSTER: Loaded ${sessionData.cookies.length} session cookies`);
         this.sessionLoaded = true;
         
-        // Validate session by checking a simple page
+        // Validate session by checking login status
         console.log('🔍 BULLETPROOF_POSTER: Validating session...');
-        await page.goto('https://x.com/', { timeout: 15000 });
-        await page.waitForTimeout(2000);
+        await page.goto('https://x.com/home', { timeout: 15000 });
+        await page.waitForTimeout(3000);
         
-        console.log('✅ BULLETPROOF_POSTER: Session validation complete');
+        // Check if we're actually logged in by looking for user-specific elements
+        const isLoggedIn = await page.locator('[data-testid="primaryNavigation"], [data-testid="SideNav_AccountSwitcher_Button"], [aria-label="Home timeline"]').first().isVisible({ timeout: 5000 }).catch(() => false);
+        
+        if (!isLoggedIn) {
+          throw new Error('Session loaded but user not logged in - session expired or invalid');
+        }
+        
+        console.log('✅ BULLETPROOF_POSTER: Session validation complete - user is logged in');
       } else {
         throw new Error('Invalid session data format');
       }
