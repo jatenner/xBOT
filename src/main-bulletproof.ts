@@ -13,6 +13,7 @@ import { aggressiveEngager } from './engagement/aggressiveEngagementEngine';
 import { EnhancedContentOrchestrator } from './ai/enhancedContentOrchestrator';
 import { intelligentDecision } from './ai/intelligentDecisionEngine';
 import { realTimeAnalytics } from './analytics/realTimeTwitterAnalytics';
+import { bulletproofPoster } from './posting/bulletproofPoster';
 
 class BulletproofMainSystem {
   private analyticsChecker: TwitterAnalyticsScraper;
@@ -52,6 +53,10 @@ class BulletproofMainSystem {
       // 🧠 INITIALIZE AI DECISION ENGINE
       console.log('🧠 AI_SYSTEM: Initializing intelligent decision engine...');
       
+      // 🛡️ TEST BULLETPROOF POSTING SYSTEM
+      console.log('🛡️ BULLETPROOF_TEST: Testing posting system...');
+      await this.testBulletproofPosting();
+      
       // 🚀 START AGGRESSIVE SYSTEMS
       aggressiveScheduler.startAggressivePosting();
       console.log('🚀 AGGRESSIVE_POSTING: AI-driven posting system started');
@@ -65,6 +70,11 @@ class BulletproofMainSystem {
       this.mainInterval = setInterval(async () => {
         await this.mainLoop();
       }, 6 * 60 * 1000); // Every 6 minutes (was 10) for maximum opportunities
+      
+      // 🛡️ BULLETPROOF POSTING: Simple working posting loop
+      setInterval(async () => {
+        await this.bulletproofPostingLoop();
+      }, 10 * 60 * 1000); // Every 10 minutes - guaranteed posting
 
       // Enhanced analytics collection for better optimization
       this.analyticsInterval = setInterval(async () => {
@@ -990,6 +1000,89 @@ class BulletproofMainSystem {
       
     } catch (error: any) {
       console.error('❌ SYSTEM_INTEGRATION_VALIDATION_FAILED:', error.message);
+    }
+  }
+
+  /**
+   * 🛡️ TEST BULLETPROOF POSTING SYSTEM
+   */
+  private async testBulletproofPosting(): Promise<void> {
+    try {
+      console.log('🧪 BULLETPROOF_TEST: Starting posting system test...');
+      
+      const testContent = "Been diving deep into sleep research and found something interesting about REM cycles that most people miss. The timing of deep sleep phases affects everything from memory consolidation to hormone production.";
+      
+      const result = await bulletproofPoster.postContent(testContent);
+      
+      if (result.success) {
+        console.log('✅ BULLETPROOF_TEST: Posting system working! Tweet posted successfully');
+        console.log(`🐦 TWEET_ID: ${result.tweetId}`);
+      } else {
+        console.error('❌ BULLETPROOF_TEST: Posting failed:', result.error);
+      }
+      
+    } catch (error) {
+      console.error('❌ BULLETPROOF_TEST: Test failed:', error);
+    }
+  }
+
+  /**
+   * 🛡️ BULLETPROOF POSTING LOOP
+   */
+  private async bulletproofPostingLoop(): Promise<void> {
+    try {
+      console.log('🛡️ BULLETPROOF_LOOP: Starting guaranteed posting cycle...');
+      
+      // Get AI-driven content decision
+      const contentDecision = await intelligentDecision.makeContentDecision();
+      console.log(`🧠 AI_CONTENT: ${contentDecision.recommended_content_type} | ${contentDecision.recommended_voice_style}`);
+      
+      // Generate content using enhanced orchestrator
+      const contentResult = await this.contentOrchestrator.generateEnhancedContent({
+        format: 'single',
+        target_engagement: 'high',
+        avoid_recent_patterns: true,
+        user_context: contentDecision.recommended_topic
+      });
+      
+      if (!contentResult || !contentResult.content) {
+        console.error('❌ BULLETPROOF_LOOP: Content generation failed');
+        return;
+      }
+      
+      // Extract content string
+      const contentToPost = Array.isArray(contentResult.content) 
+        ? contentResult.content[0] 
+        : contentResult.content;
+      
+      console.log(`📝 BULLETPROOF_CONTENT: "${contentToPost.substring(0, 100)}..."`);
+      
+      // Post using bulletproof system
+      const postResult = await bulletproofPoster.postContent(contentToPost);
+      
+      if (postResult.success) {
+        console.log('✅ BULLETPROOF_LOOP: Post successful!');
+        console.log(`🐦 POSTED: ${postResult.tweetId}`);
+        
+        // Store analytics for AI learning
+        await intelligentDecision.storeTwitterAnalytics({
+          content_type: contentDecision.recommended_content_type,
+          voice_style: contentDecision.recommended_voice_style,
+          likes: 0, // Will be updated later by analytics
+          retweets: 0,
+          replies: 0,
+          impressions: 0,
+          followers_gained: 0,
+          engagement_rate: 0,
+          follower_conversion_rate: 0
+        });
+        
+      } else {
+        console.error('❌ BULLETPROOF_LOOP: Post failed:', postResult.error);
+      }
+      
+    } catch (error) {
+      console.error('❌ BULLETPROOF_LOOP: Loop failed:', error);
     }
   }
 }
