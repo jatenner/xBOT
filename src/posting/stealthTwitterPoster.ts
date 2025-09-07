@@ -317,8 +317,31 @@ export class StealthTwitterPoster {
       // Wait for any overlays to disappear
       await this.randomDelay(2000, 3000);
       
-      // Try to find and click the post button with force
-      const postButton = this.page.locator('[data-testid="tweetButtonInline"]');
+      // Try multiple post button selectors
+      const postButtonSelectors = [
+        '[data-testid="tweetButtonInline"]',
+        '[data-testid="tweetButton"]', 
+        '[role="button"][aria-label*="Post"]',
+        '[role="button"]:has-text("Post")',
+        'button:has-text("Post")'
+      ];
+      
+      let postButton = null;
+      for (const selector of postButtonSelectors) {
+        try {
+          const button = this.page.locator(selector).first();
+          if (await button.isVisible({ timeout: 1000 })) {
+            postButton = button;
+            break;
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+      
+      if (!postButton) {
+        postButton = this.page.locator('[data-testid="tweetButtonInline"]').first();
+      }
       
       // Human-like approach to clicking
       const buttonBox = await postButton.boundingBox();
@@ -420,8 +443,33 @@ export class StealthTwitterPoster {
       await this.humanMouseMove(200, 300);
       await this.randomDelay(500, 1000);
       
-      const composeButton = this.page.locator('[data-testid="SideNav_NewTweet_Button"]');
-      await composeButton.click();
+      // Try multiple compose button selectors
+      const composeSelectors = [
+        '[data-testid="SideNav_NewTweet_Button"]',
+        '[data-testid="tweetButtonInline"]',
+        '[aria-label="Post"]',
+        '[href="/compose/tweet"]'
+      ];
+      
+      let composeClicked = false;
+      for (const selector of composeSelectors) {
+        try {
+          const button = this.page.locator(selector).first();
+          if (await button.isVisible({ timeout: 2000 })) {
+            await button.click();
+            composeClicked = true;
+            break;
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+      
+      if (!composeClicked) {
+        // Fallback: navigate directly to compose
+        await this.page.goto('https://x.com/compose/tweet');
+      }
+      
       await this.randomDelay(1000, 2000);
 
       // Type content with human-like typing (use .first() to handle multiple elements)
