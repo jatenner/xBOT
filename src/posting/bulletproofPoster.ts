@@ -134,20 +134,33 @@ export class BulletproofPoster {
         }
         
         if (!isLoggedIn) {
-          console.error('🔍 DEBUG_SESSION: Current URL:', page.url());
-          console.error('🔍 DEBUG_SESSION: Page title:', await page.title().catch(() => 'Unable to get title'));
+          const currentUrl = page.url();
+          const pageTitle = await page.title().catch(() => 'Unable to get title');
+          
+          console.error('🔍 DEBUG_SESSION: Current URL:', currentUrl);
+          console.error('🔍 DEBUG_SESSION: Page title:', pageTitle);
           
           // Check what's actually on the page
           try {
             const pageContent = await page.locator('body').textContent({ timeout: 3000 });
-            console.error('🔍 DEBUG_SESSION: Page has login elements:', pageContent?.includes('Sign in') || pageContent?.includes('Log in'));
-            console.error('🔍 DEBUG_SESSION: Page has Twitter branding:', pageContent?.includes('Twitter') || pageContent?.includes('X'));
+            const hasLoginForm = pageContent?.includes('Sign in') || pageContent?.includes('Log in');
+            const hasTwitterBranding = pageContent?.includes('Twitter') || pageContent?.includes('X');
+            
+            console.error('🔍 DEBUG_SESSION: Page has login elements:', hasLoginForm);
+            console.error('🔍 DEBUG_SESSION: Page has Twitter branding:', hasTwitterBranding);
             console.error('🔍 DEBUG_SESSION: Page length:', pageContent?.length || 0);
+            
+            if (currentUrl.includes('/login') || currentUrl.includes('/i/flow/login')) {
+              throw new Error('Session expired - Twitter redirected to login page. Need fresh authentication.');
+            } else if (hasLoginForm) {
+              throw new Error('Session invalid - Page shows login form. Authentication cookies may be expired.');
+            } else {
+              throw new Error('Session validation failed - Unable to detect logged-in state with current selectors.');
+            }
           } catch (e) {
             console.error('🔍 DEBUG_SESSION: Could not analyze page content');
+            throw new Error('Session validation failed - Unable to analyze page state.');
           }
-          
-          throw new Error('Session loaded but user not logged in - session expired or invalid');
         }
         
         console.log('✅ BULLETPROOF_POSTER: Session validation complete - user is logged in');
@@ -168,15 +181,43 @@ export class BulletproofPoster {
     try {
       console.log('🌐 BULLETPROOF_POSTER: Navigating to compose...');
       
-      // First, verify login by going to home page
+      // First, verify login by trying multiple home URLs
       console.log('🔍 BULLETPROOF_POSTER: Verifying login status...');
-      await page.goto('https://x.com/home', {
-        waitUntil: 'domcontentloaded',
-        timeout: 30000
-      });
       
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(2000);
+      const homeUrls = ['https://x.com/home', 'https://twitter.com/home', 'https://x.com'];
+      let sessionWorked = false;
+      
+      for (const homeUrl of homeUrls) {
+        try {
+          console.log(`🔄 BULLETPROOF_POSTER: Trying ${homeUrl}...`);
+          await page.goto(homeUrl, {
+            waitUntil: 'domcontentloaded',
+            timeout: 15000
+          });
+          
+          await page.waitForLoadState('domcontentloaded');
+          await page.waitForTimeout(3000); // Give more time for redirects
+          
+          // Check if we ended up on a login page
+          const currentUrl = page.url();
+          console.log(`🔍 BULLETPROOF_POSTER: After ${homeUrl}, current URL: ${currentUrl}`);
+          
+          if (!currentUrl.includes('/login') && !currentUrl.includes('/i/flow/login')) {
+            console.log(`✅ BULLETPROOF_POSTER: Successfully accessed ${homeUrl} without redirect`);
+            sessionWorked = true;
+            break;
+          } else {
+            console.log(`❌ BULLETPROOF_POSTER: ${homeUrl} redirected to login`);
+          }
+        } catch (error) {
+          console.log(`❌ BULLETPROOF_POSTER: Failed to load ${homeUrl}:`, error.message);
+        }
+      }
+      
+      if (!sessionWorked) {
+        console.error('❌ BULLETPROOF_POSTER: All URLs redirect to login - session expired');
+        throw new Error('Session expired - Twitter requires re-authentication');
+      }
       
       // Check if we're logged in with multiple fallback selectors
       const loginSelectors = [
