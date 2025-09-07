@@ -63,78 +63,78 @@ export class HumanVoiceEngine {
   private initializeHumanStyles(): void {
     this.contentStyles = [
       {
-        name: 'medical_authority',
-        description: 'High-credibility medical insider with expensive knowledge',
+        name: 'research_enthusiast',
+        description: 'Someone passionate about diving deep into health research',
         voice_patterns: [
-          'After 15 years in functional medicine, here\'s what I\'ve learned about {topic}',
-          'Your doctor will never tell you this about {topic}',
-          'Medical school never taught me this about {topic}',
-          'I\'ve tested this {topic} protocol on 500+ patients',
-          'What they don\'t teach doctors about {topic}',
-          'Clinical experience with {topic} taught me this',
-          'The medical industry suppresses this {topic} truth'
+          'Been diving deep into {topic} research and found something interesting',
+          'The latest studies on {topic} show something most people miss',
+          'Here\'s what the research actually says about {topic}',
+          'Found this fascinating study on {topic} that changes everything',
+          'The science behind {topic} is more complex than you think',
+          'New research on {topic} contradicts what we thought we knew',
+          'This {topic} study has implications nobody\'s talking about'
         ],
-        engagement_multiplier: 2.1,
+        engagement_multiplier: 1.8,
         frequency_weight: 0.25
       },
       {
-        name: 'expensive_insider',
-        description: 'Someone with access to elite, expensive health knowledge',
+        name: 'truth_seeker',
+        description: 'Someone who cuts through health myths and misinformation',
         voice_patterns: [
-          'Spent $20K learning this {topic} protocol from top biohackers',
-          'This {topic} secret costs $5000 to learn - sharing it free',
-          'Elite athletes pay me $1000/hour for this {topic} advice',
-          'Flew to Switzerland to learn this {topic} technique',
-          'Silicon Valley executives use this {topic} protocol',
-          'Navy SEALs taught me this {topic} method',
-          'Billionaire biohackers revealed this {topic} secret'
+          'Let\'s talk about the {topic} myths everyone believes',
+          'The truth about {topic} is different than what you\'ve heard',
+          'Here\'s what\'s really happening with {topic}',
+          'Most advice about {topic} misses this crucial point',
+          'The {topic} information you\'re getting is incomplete',
+          'What they don\'t tell you about {topic}',
+          'The reality of {topic} is more nuanced than people think'
         ],
-        engagement_multiplier: 2.3,
+        engagement_multiplier: 1.9,
         frequency_weight: 0.20
       },
       {
-        name: 'controversy_starter',
-        description: 'Challenges conventional wisdom with bold claims',
+        name: 'practical_optimizer',
+        description: 'Someone focused on actionable health improvements',
         voice_patterns: [
-          'Unpopular opinion: {topic} is completely backwards',
-          'Everyone does {topic} wrong - here\'s what actually works',
-          'Your {topic} routine is aging you faster than smoking',
-          'Big pharma buried this {topic} study for obvious reasons',
-          'Stop doing {topic} - it\'s destroying your health',
-          'The {topic} industry has been lying to you',
-          '{topic} is the biggest scam in health'
+          'Here\'s a simple {topic} change that made a real difference',
+          'This {topic} approach actually works - here\'s why',
+          'Tried this {topic} method and the results surprised me',
+          'Simple {topic} optimization that most people overlook',
+          'This {topic} strategy is easier than you think',
+          'Found a better way to approach {topic}',
+          'This {topic} insight changed how I think about health'
         ],
-        engagement_multiplier: 2.4,
-        frequency_weight: 0.15
-      },
-      {
-        name: 'results_driven_experimenter',
-        description: 'Shows dramatic personal transformation through testing',
-        voice_patterns: [
-          'Day 47 of this {topic} experiment: results shocked my doctor',
-          'This {topic} protocol changed my biomarkers completely',
-          'My testosterone went from 300 to 800 using this {topic} method',
-          'After testing 47 different {topic} approaches, this one wins',
-          'I was skeptical about {topic} until I saw my blood work',
-          'This {topic} hack gave me the energy of a 20-year-old',
-          'Spent 6 months optimizing {topic} - here are the results'
-        ],
-        engagement_multiplier: 2.0,
+        engagement_multiplier: 1.7,
         frequency_weight: 0.25
       },
       {
-        name: 'conspiracy_revealer',
-        description: 'Exposes industry cover-ups and hidden truths',
+        name: 'curious_investigator',
+        description: 'Someone who questions common health assumptions',
         voice_patterns: [
-          'The {topic} industry doesn\'t want you to know this',
-          'Why doctors never mention {topic}',
-          'This {topic} study was buried by big pharma',
-          'Food companies hide this {topic} truth',
-          'Government agencies suppress {topic} research',
-          'The real reason they don\'t teach {topic}',
-          'Follow the money: why {topic} stays hidden'
+          'Ever wonder why {topic} advice varies so much?',
+          'Something doesn\'t add up about {topic}',
+          'Been questioning the standard advice on {topic}',
+          'Why does everyone say different things about {topic}?',
+          'The {topic} advice you hear everywhere might be wrong',
+          'Started questioning everything I thought I knew about {topic}',
+          'What if we\'ve been thinking about {topic} all wrong?'
         ],
-        engagement_multiplier: 2.2,
+        engagement_multiplier: 1.6,
+        frequency_weight: 0.15
+      },
+      {
+        name: 'evidence_based_advocate',
+        description: 'Someone who focuses on evidence-based health information',
+        voice_patterns: [
+          'The evidence on {topic} tells a different story',
+          'When you look at the actual data on {topic}',
+          'The research on {topic} reveals something unexpected',
+          'Evidence-based {topic} approach that actually works',
+          'What the studies really show about {topic}',
+          'The data on {topic} doesn\'t support what most people believe',
+          'Here\'s what peer-reviewed research says about {topic}'
+        ],
+        engagement_multiplier: 1.8,
         frequency_weight: 0.15
       }
     ];
