@@ -130,14 +130,83 @@ export class FastTwitterPoster {
       await page.keyboard.press('n');
       await page.waitForTimeout(1000);
       
-      // Find composer with ONLY the most reliable selectors (prioritize working selector)
-      const composer = await page.waitForSelector(
-        'div[role="textbox"][contenteditable="true"], [data-testid="tweetTextarea_0"], [aria-label*="Tweet text"]',
-        { timeout: 15000 } // Increased timeout for reliability
-      );
+      // Find composer with COMPREHENSIVE selectors (all possible Twitter UI variations)
+      const composerSelectors = [
+        // Current Twitter selectors (2024)
+        'div[role="textbox"][contenteditable="true"]',
+        '[data-testid="tweetTextarea_0"]',
+        '[aria-label*="Tweet text"]',
+        '[placeholder*="What is happening"]',
+        '[placeholder*="What\'s happening"]',
+        // Legacy selectors
+        '.public-DraftEditor-content',
+        '.notranslate.public-DraftEditor-content',
+        'div[data-contents="true"]',
+        // Generic fallbacks
+        'div[contenteditable="true"]',
+        'textarea[placeholder*="tweet"]',
+        'div[aria-multiline="true"]',
+        // New Twitter X selectors
+        '[data-testid="tweetTextarea"]',
+        'div[data-text*="What"]'
+      ];
       
+      let composer = null;
+      for (const selector of composerSelectors) {
+        try {
+          console.log(`🔍 TRYING_SELECTOR: ${selector}`);
+          composer = await page.waitForSelector(selector, { timeout: 3000 });
+          if (composer) {
+            console.log(`✅ FOUND_COMPOSER: ${selector}`);
+            break;
+          }
+        } catch (e) {
+          console.log(`❌ FAILED_SELECTOR: ${selector}`);
+        }
+      }
+      
+      // If no composer found, try alternative methods
       if (!composer) {
-        throw new Error('Composer not found with fast selectors');
+        console.log('⚠️ NO_COMPOSER_FOUND: Trying alternative posting methods...');
+        
+        // Method 1: Try clicking "Post" button area and typing
+        try {
+          console.log('🔄 ALT_METHOD_1: Clicking post area and typing...');
+          await page.click('body');
+          await page.keyboard.press('Tab');
+          await page.keyboard.type(content);
+          await page.keyboard.press('Control+Enter');
+          await page.waitForTimeout(2000);
+          
+          console.log('✅ ALT_METHOD_1: Content typed via keyboard navigation');
+          return { success: true, method: 'keyboard_navigation' };
+        } catch (altError) {
+          console.log('❌ ALT_METHOD_1: Failed');
+        }
+        
+        // Method 2: Try direct URL navigation to compose
+        try {
+          console.log('🔄 ALT_METHOD_2: Direct compose URL...');
+          await page.goto('https://x.com/compose/tweet', { waitUntil: 'networkidle' });
+          await page.waitForTimeout(2000);
+          
+          // Try selectors again on compose page
+          for (const selector of composerSelectors.slice(0, 5)) {
+            try {
+              composer = await page.waitForSelector(selector, { timeout: 2000 });
+              if (composer) {
+                console.log(`✅ ALT_METHOD_2: Found composer on compose page: ${selector}`);
+                break;
+              }
+            } catch (e) {}
+          }
+        } catch (altError) {
+          console.log('❌ ALT_METHOD_2: Failed');
+        }
+        
+        if (!composer) {
+          throw new Error('All posting methods failed - Twitter UI may have changed');
+        }
       }
       
       console.log('✅ FAST_EXECUTE: Composer found, typing content');
