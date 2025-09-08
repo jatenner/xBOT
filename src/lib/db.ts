@@ -1,292 +1,420 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import Redis from 'ioredis';
-import { AutoMigrationRunner } from './migrationRunner';
-import { Pool } from 'pg';
-import dns from 'node:dns';
+/**
+ * Safe Supabase Database Operations for xBOT
+ * Structured error handling and RLS validation
+ */
 
-export class DatabaseManager {
-  private static instance: DatabaseManager;
-  private supabase: SupabaseClient | null = null;
-  private redis: Redis | null = null;
-  private pgPool: Pool | null = null;
-  private isSupabaseConnected = false;
-  private isRedisConnected = false;
+import { createClient } from '@supabase/supabase-js';
 
-  private constructor() {}
+export interface SafeInsertResult<T = any> {
+  data: T[] | null;
+  error: Error | null;
+  success: boolean;
+}
 
-  public static getInstance(): DatabaseManager {
-    if (!DatabaseManager.instance) {
-      DatabaseManager.instance = new DatabaseManager();
+export interface DbConfig {
+  supabaseUrl: string;
+  supabaseKey: string;
+  tables: {
+    posts: string;
+    metrics: string;
+    rejected_posts: string;
+    patterns: string;
+    topics: string;
+  };
+}
+
+export class SafeDatabase {
+  private client: any;
+  private config: DbConfig;
+
+  constructor(config?: Partial<DbConfig>) {
+    this.config = {
+      supabaseUrl: process.env.SUPABASE_URL!,
+      supabaseKey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      tables: {
+        posts: 'posts',
+        metrics: 'metrics', 
+        rejected_posts: 'rejected_posts',
+        patterns: 'patterns',
+        topics: 'topics'
+      },
+      ...config
+    };
+
+    if (!this.config.supabaseUrl || !this.config.supabaseKey) {
+      throw new Error('Missing Supabase configuration: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
     }
-    return DatabaseManager.instance;
-  }
 
-  public async initialize(): Promise<void> {
-    try {
-      console.log('🗄️ Initializing Database Manager...');
-      
-      await this.initializeSupabase();
-      await this.initializeDirectDb();
-      
-      // Run automatic migrations if Supabase is connected
-      if (this.isSupabaseConnected) {
-        console.log('🔄 Running automatic migrations...');
-        const migrationRunner = new AutoMigrationRunner();
-        await migrationRunner.runPendingMigrations();
+    // Verify we're using service role key (should start with 'eyJ' when base64 decoded)
+    if (!this.config.supabaseKey.startsWith('eyJ')) {
+      console.warn('⚠️ DB_SAFE: Key may not be service role - server operations may fail');
+    }
+
+    this.client = createClient(this.config.supabaseUrl, this.config.supabaseKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
       }
-      
-      await this.initializeRedis();
-      
-      console.log('✅ Database Manager initialized');
-    } catch (error: any) {
-      console.error('❌ Database Manager initialization failed:', error.message);
-      throw error;
-    }
+    });
+
+    console.log('✅ DB_SAFE: Database client initialized with service role');
   }
 
-  private async initializeDirectDb(): Promise<void> {
-    const directDbUrl = process.env.DIRECT_DB_URL;
-    
-    if (!directDbUrl) {
-      console.log('📍 No DIRECT_DB_URL provided, skipping direct PostgreSQL connection');
-      return;
-    }
-
+  /**
+   * Safe insert with comprehensive error handling
+   */
+  async safeInsert<T = any>(table: string, payload: any): Promise<SafeInsertResult<T>> {
     try {
-      console.log('🔗 Initializing direct PostgreSQL connection with IPv4 preference...');
+      console.log(`📝 DB_SAFE: Inserting into ${table}...`);
       
-      // IPv4 lookup function to avoid ENETUNREACH on IPv6
-      const lookupIPv4: any = (host: string, _opts: any, cb: any) => {
-        dns.lookup(host, { family: 4 }, cb);
+      // Log payload structure (without sensitive data)
+      const payloadKeys = Object.keys(payload);
+      console.log(`📋 DB_SAFE: Payload keys: ${payloadKeys.join(', ')}`);
+
+      const { data, error } = await this.client
+        .from(table)
+        .insert(payload)
+        .select();
+
+      if (error) {
+        console.error(`❌ DB_SAFE: Insert failed for table ${table}`);
+        console.error(`📋 Payload keys: ${payloadKeys.join(', ')}`);
+        console.error(`💥 Error message: ${error.message}`);
+        console.error(`🔍 Error details: ${JSON.stringify(error, null, 2)}`);
+
+        // Check for common issues
+        if (error.message.includes('permission denied')) {
+          console.error('🔒 RLS_ERROR: Permission denied - check RLS policies or use service role key');
+        }
+        
+        if (error.message.includes('violates not-null constraint')) {
+          console.error('📝 SCHEMA_ERROR: Missing required fields in payload');
+        }
+        
+        if (error.message.includes('duplicate key')) {
+          console.error('🔑 DUPLICATE_ERROR: Primary key or unique constraint violation');
+        }
+
+        throw new Error(`Database insert failed for ${table}: ${error.message}`);
+      }
+
+      console.log(`✅ DB_SAFE: Successfully inserted ${data?.length || 0} row(s) into ${table}`);
+      
+      return {
+        data,
+        error: null,
+        success: true
       };
 
-      this.pgPool = new Pool({
-        connectionString: directDbUrl,
-        ssl: { rejectUnauthorized: false },
-        max: 5,
-        idleTimeoutMillis: 10000
-      });
-
-      // Test connection
-      const client = await this.pgPool.connect();
-      await client.query('SELECT 1');
-      client.release();
+    } catch (error) {
+      const dbError = error instanceof Error ? error : new Error(String(error));
       
-      console.log('✅ Direct PostgreSQL connection established');
-    } catch (error: any) {
-      console.warn('⚠️ Direct PostgreSQL connection failed:', error.message);
-      this.pgPool = null;
+      console.error(`💥 DB_SAFE: Exception during insert to ${table}: ${dbError.message}`);
+      
+      return {
+        data: null,
+        error: dbError,
+        success: false
+      };
     }
   }
 
-  private async initializeSupabase(): Promise<void> {
+  /**
+   * Safe select with error handling
+   */
+  async safeSelect<T = any>(
+    table: string, 
+    columns = '*', 
+    filters?: Record<string, any>,
+    options?: { limit?: number; orderBy?: string; ascending?: boolean }
+  ): Promise<SafeInsertResult<T>> {
     try {
-      const supabaseUrl = process.env.SUPABASE_URL;
-      const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      let query = this.client.from(table).select(columns);
 
-      if (!supabaseUrl || !supabaseKey) {
-        throw new Error('Missing Supabase credentials');
+      // Apply filters
+      if (filters) {
+        Object.entries(filters).forEach(([key, value]) => {
+          query = query.eq(key, value);
+        });
       }
 
-      this.supabase = createClient(supabaseUrl, supabaseKey);
-      
-      // Test connection with timeout
-      const testPromise = this.supabase.from('tweets').select('count').limit(1);
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Supabase connection timeout')), 10000)
-      );
-      
-      const { error } = await Promise.race([testPromise, timeoutPromise]) as any;
-      
-      if (error) {
-        console.warn('⚠️ Supabase connection test failed:', error.message);
-        this.isSupabaseConnected = false;
-      } else {
-        this.isSupabaseConnected = true;
-        console.log('✅ Supabase connected');
-      }
-    } catch (error: any) {
-      console.error('❌ Supabase initialization failed:', error.message);
-      this.isSupabaseConnected = false;
-    }
-  }
-
-  private async initializeRedis(): Promise<void> {
-    try {
-      const redisUrl = process.env.REDIS_URL;
-      
-      if (!redisUrl) {
-        console.log('📝 No Redis URL provided, operating in Supabase-only mode');
-        this.isRedisConnected = false;
-        return;
-      }
-
-      console.log('🔗 Attempting Redis connection...');
-      this.redis = new Redis(redisUrl, {
-        maxRetriesPerRequest: 1, // Reduced retries for faster failover
-        connectTimeout: 5000,    // Reduced timeout
-        lazyConnect: true,       // Don't connect immediately
-        tls: redisUrl.includes('rediss://') ? {} : undefined,
-      });
-
-      // Test connection with short timeout
-      const pingPromise = this.redis.ping();
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Redis ping timeout')), 3000)
-      );
-      
-      await Promise.race([pingPromise, timeoutPromise]);
-      this.isRedisConnected = true;
-      console.log('✅ Redis connected successfully');
-
-    } catch (error: any) {
-      console.warn('⚠️ Redis unavailable, continuing with Supabase-only mode:', error.message);
-      this.isRedisConnected = false;
-      this.redis = null;
-      // Don't throw - bot should work without Redis
-    }
-  }
-
-  // Supabase operations
-  public async insertTweet(data: {
-    content: string;
-    tweet_id: string;
-    posted_at: string;
-    platform: string;
-    status: string;
-  }): Promise<boolean> {
-    if (!this.supabase || !this.isSupabaseConnected) {
-      console.warn('⚠️ Supabase not available for tweet insert');
-      return false;
-    }
-
-    try {
-      const { error } = await this.supabase.from('tweets').insert(data);
-      
-      if (error) {
-        console.error('❌ Failed to insert tweet:', error.message);
-        return false;
+      // Apply options
+      if (options?.orderBy) {
+        query = query.order(options.orderBy, { ascending: options.ascending ?? false });
       }
       
-      return true;
-    } catch (error: any) {
-      console.error('❌ Tweet insert error:', error.message);
-      return false;
-    }
-  }
+      if (options?.limit) {
+        query = query.limit(options.limit);
+      }
 
-  public async getRecentTweets(limit = 10): Promise<any[]> {
-    if (!this.supabase || !this.isSupabaseConnected) {
-      console.warn('⚠️ Supabase not available for recent tweets');
-      return [];
-    }
-
-    try {
-      const { data, error } = await this.supabase
-        .from('tweets')
-        .select('*')
-        .order('posted_at', { ascending: false })
-        .limit(limit);
+      const { data, error } = await query;
 
       if (error) {
-        console.error('❌ Failed to get recent tweets:', error.message);
-        return [];
+        console.error(`❌ DB_SAFE: Select failed for table ${table}: ${error.message}`);
+        throw new Error(`Database select failed for ${table}: ${error.message}`);
       }
 
-      return data || [];
-    } catch (error: any) {
-      console.error('❌ Get recent tweets error:', error.message);
-      return [];
-    }
-  }
+      return {
+        data,
+        error: null,
+        success: true
+      };
 
-  // Redis operations
-  public async cacheSet(key: string, value: any, ttlSeconds = 3600): Promise<boolean> {
-    if (!this.redis || !this.isRedisConnected) {
-      console.warn('⚠️ Redis not available for cache set');
-      return false;
-    }
-
-    try {
-      const serialized = JSON.stringify(value);
-      await this.redis.setex(key, ttlSeconds, serialized);
-      return true;
-    } catch (error: any) {
-      console.error('❌ Redis cache set error:', error.message);
-      return false;
-    }
-  }
-
-  public async cacheGet(key: string): Promise<any | null> {
-    if (!this.redis || !this.isRedisConnected) {
-      console.warn('⚠️ Redis not available for cache get');
-      return null;
-    }
-
-    try {
-      const value = await this.redis.get(key);
-      if (!value) return null;
+    } catch (error) {
+      const dbError = error instanceof Error ? error : new Error(String(error));
       
-      return JSON.parse(value);
-    } catch (error: any) {
-      console.error('❌ Redis cache get error:', error.message);
-      return null;
+      return {
+        data: null,
+        error: dbError,
+        success: false
+      };
     }
   }
 
-  // Health checks
-  public getSupabaseClient() {
-    if (!this.supabase) {
-      throw new Error('Supabase client not initialized');
-    }
-    return this.supabase;
-  }
-
-  public async checkHealth(): Promise<{
-    supabase: boolean;
-    redis: boolean;
-    overall: boolean;
+  /**
+   * Check RLS and permissions
+   */
+  async checkPermissions(): Promise<{
+    canInsertPosts: boolean;
+    canInsertMetrics: boolean;
+    canInsertRejected: boolean;
+    issues: string[];
   }> {
-    let supabaseHealth = false;
-    let redisHealth = false;
+    const issues: string[] = [];
+    let canInsertPosts = false;
+    let canInsertMetrics = false;
+    let canInsertRejected = false;
 
-    // Check Supabase
-    if (this.supabase) {
-      try {
-        const { error } = await this.supabase.from('tweets').select('count').limit(1);
-        supabaseHealth = !error;
-      } catch {
-        supabaseHealth = false;
+    console.log('🔍 DB_SAFE: Checking table permissions...');
+
+    // Test posts table
+    try {
+      const testPost = {
+        content: 'test_post_permission_check',
+        format: 'single',
+        topic: 'test',
+        scores: { hookScore: 0, clarityScore: 0, noveltyScore: 0, structureScore: 0, overall: 0 },
+        created_at: new Date().toISOString()
+      };
+
+      const { error } = await this.client
+        .from(this.config.tables.posts)
+        .insert(testPost)
+        .select();
+
+      if (error) {
+        issues.push(`Posts table: ${error.message}`);
+      } else {
+        canInsertPosts = true;
+        
+        // Clean up test data
+        await this.client
+          .from(this.config.tables.posts)
+          .delete()
+          .eq('content', 'test_post_permission_check');
       }
+    } catch (error) {
+      issues.push(`Posts table exception: ${error instanceof Error ? error.message : error}`);
     }
 
-    // Check Redis
-    if (this.redis) {
-      try {
-        await this.redis.ping();
-        redisHealth = true;
-      } catch {
-        redisHealth = false;
+    // Test metrics table
+    try {
+      const testMetric = {
+        post_id: 'test_metric_check',
+        likes: 0,
+        reposts: 0,
+        replies: 0,
+        collected_at: new Date().toISOString()
+      };
+
+      const { error } = await this.client
+        .from(this.config.tables.metrics)
+        .insert(testMetric)
+        .select();
+
+      if (error) {
+        issues.push(`Metrics table: ${error.message}`);
+      } else {
+        canInsertMetrics = true;
+        
+        // Clean up test data
+        await this.client
+          .from(this.config.tables.metrics)
+          .delete()
+          .eq('post_id', 'test_metric_check');
       }
-    } else {
-      // If Redis is not configured, consider it "healthy" (optional)
-      redisHealth = true;
+    } catch (error) {
+      issues.push(`Metrics table exception: ${error instanceof Error ? error.message : error}`);
     }
 
-    return {
-      supabase: supabaseHealth,
-      redis: redisHealth,
-      overall: supabaseHealth && redisHealth
+    // Test rejected_posts table
+    try {
+      const testRejected = {
+        content: 'test_rejected_permission_check',
+        rejection_reasons: ['test'],
+        rejected_at: new Date().toISOString()
+      };
+
+      const { error } = await this.client
+        .from(this.config.tables.rejected_posts)
+        .insert(testRejected)
+        .select();
+
+      if (error) {
+        issues.push(`Rejected posts table: ${error.message}`);
+      } else {
+        canInsertRejected = true;
+        
+        // Clean up test data
+        await this.client
+          .from(this.config.tables.rejected_posts)
+          .delete()
+          .eq('content', 'test_rejected_permission_check');
+      }
+    } catch (error) {
+      issues.push(`Rejected posts table exception: ${error instanceof Error ? error.message : error}`);
+    }
+
+    const result = {
+      canInsertPosts,
+      canInsertMetrics, 
+      canInsertRejected,
+      issues
     };
+
+    if (issues.length > 0) {
+      console.warn('⚠️ DB_SAFE: Permission issues detected:');
+      issues.forEach(issue => console.warn(`   • ${issue}`));
+      console.warn('🔧 Fix: Enable service role bypass or relax RLS for these tables');
+    } else {
+      console.log('✅ DB_SAFE: All table permissions verified');
+    }
+
+    return result;
   }
 
-  public getConnectionStatus(): {
-    supabase: boolean;
-    redis: boolean;
-  } {
-    return {
-      supabase: this.isSupabaseConnected,
-      redis: this.isRedisConnected
-    };
+  /**
+   * Verify tables exist
+   */
+  async verifyTables(): Promise<{ exists: string[]; missing: string[] }> {
+    const requiredTables = Object.values(this.config.tables);
+    const exists: string[] = [];
+    const missing: string[] = [];
+
+    for (const table of requiredTables) {
+      try {
+        const { error } = await this.client
+          .from(table)
+          .select('*')
+          .limit(1);
+
+        if (error && error.message.includes('does not exist')) {
+          missing.push(table);
+        } else {
+          exists.push(table);
+        }
+      } catch (error) {
+        missing.push(table);
+      }
+    }
+
+    if (missing.length > 0) {
+      console.warn(`⚠️ DB_SAFE: Missing tables: ${missing.join(', ')}`);
+      console.warn('🔧 Fix: Run database migrations or create tables manually');
+    } else {
+      console.log('✅ DB_SAFE: All required tables exist');
+    }
+
+    return { exists, missing };
+  }
+
+  /**
+   * Health check for database
+   */
+  async healthCheck(): Promise<{
+    connected: boolean;
+    tablesExist: boolean;
+    permissionsOk: boolean;
+    details: any;
+  }> {
+    try {
+      // Test basic connection
+      const { data, error } = await this.client
+        .from('information_schema.tables')
+        .select('table_name')
+        .limit(1);
+
+      const connected = !error;
+      
+      if (!connected) {
+        return {
+          connected: false,
+          tablesExist: false,
+          permissionsOk: false,
+          details: { error: error?.message }
+        };
+      }
+
+      // Check tables
+      const tableCheck = await this.verifyTables();
+      const tablesExist = tableCheck.missing.length === 0;
+
+      // Check permissions
+      const permissionCheck = await this.checkPermissions();
+      const permissionsOk = permissionCheck.issues.length === 0;
+
+      return {
+        connected,
+        tablesExist,
+        permissionsOk,
+        details: {
+          tables: tableCheck,
+          permissions: permissionCheck
+        }
+      };
+
+    } catch (error) {
+      return {
+        connected: false,
+        tablesExist: false,
+        permissionsOk: false,
+        details: { 
+          error: error instanceof Error ? error.message : String(error)
+        }
+      };
+    }
+  }
+
+  /**
+   * Get table name by key
+   */
+  getTableName(key: keyof DbConfig['tables']): string {
+    return this.config.tables[key];
+  }
+
+  /**
+   * Get raw client for advanced operations
+   */
+  getClient() {
+    return this.client;
   }
 }
+
+// Singleton instance
+let safeDatabaseInstance: SafeDatabase | null = null;
+
+export function createSafeDatabase(config?: Partial<DbConfig>): SafeDatabase {
+  if (!safeDatabaseInstance) {
+    safeDatabaseInstance = new SafeDatabase(config);
+  }
+  return safeDatabaseInstance;
+}
+
+export function getSafeDatabase(): SafeDatabase {
+  if (!safeDatabaseInstance) {
+    safeDatabaseInstance = createSafeDatabase();
+  }
+  return safeDatabaseInstance;
+}
+
+export default createSafeDatabase;
