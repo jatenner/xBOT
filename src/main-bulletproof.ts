@@ -18,10 +18,12 @@ import { followerGrowthEngine } from './ai/followerGrowthContentEngine';
 import { quickHealthCheck } from './utils/systemHealthCheck';
 import { testCompletePipeline } from './utils/pipelineTest';
 import ViralAuthorityEngine from './content/viralAuthorityEngine';
+import ViralReplyOrchestrator from './engagement/viralReplyOrchestrator';
 
 class BulletproofMainSystem {
   private analyticsChecker: TwitterAnalyticsScraper;
   private authoritativeEngine: any; // Will be AuthoritativeContentEngine
+  private viralReplyOrchestrator: ViralReplyOrchestrator;
   
   private isRunning = false;
   private mainInterval: NodeJS.Timeout | null = null;
