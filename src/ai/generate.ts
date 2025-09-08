@@ -1,412 +1,343 @@
+/**
+ * Advanced Content Generation System for @SignalAndSynapse
+ * Produces contrarian, data-backed health content that drives engagement
+ */
+
 import OpenAI from 'openai';
-import { 
-  OPENAI_MODEL, 
-  OPENAI_TEMPERATURE, 
-  OPENAI_TOP_P, 
-  OPENAI_PRESENCE_PENALTY, 
-  OPENAI_FREQUENCY_PENALTY,
-  MAX_REGENERATION_ATTEMPTS 
-} from '../config/env';
-import { 
-  GenerationParams, 
-  ContentResult, 
-  getGeneratorPrompt, 
-  getCriticPrompt, 
-  getRegenerationPrompt,
-  getTopicExtractionPrompt 
-} from './prompts';
-import { validateTweetCharacters, getCharacterAnalysis } from '../utils/characterValidation';
+import { createClient } from '@supabase/supabase-js';
+import Redis from 'ioredis';
 
-export class ContentGenerator {
+interface GenerationRequest {
+  format: 'short' | 'medium' | 'thread';
+  topic?: string;
+  hook_type?: string;
+  avoid_patterns?: string[];
+  amplify_patterns?: string[];
+}
+
+interface ContentCandidate {
+  text: string;
+  format: 'short' | 'medium' | 'thread';
+  topic: string;
+  hook_type: string;
+  generation_params: any;
+  estimated_engagement_score: number;
+}
+
+export class AdvancedContentGenerator {
   private openai: OpenAI;
+  private supabase: any;
+  private redis: Redis;
 
-  constructor(apiKey: string) {
-    this.openai = new OpenAI({ apiKey });
+  constructor() {
+    this.openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY!
+    });
+    this.supabase = createClient(
+      process.env.SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE!
+    );
+    this.redis = new Redis(process.env.REDIS_URL!);
   }
 
   /**
-   * 🚀 REVOLUTIONARY: Generate data-driven content using the Revolutionary Content Engine
+   * Generate 3-5 content candidates for a given format/topic
    */
-  async generateContent(params: GenerationParams): Promise<{
-    success: boolean;
-    content?: ContentResult;
-    qualityScore?: number;
-    attempts?: number;
-    error?: string;
-  }> {
-    console.log('🚀 REVOLUTIONARY_GENERATION: Starting 100% data-driven content creation...');
+  async generateCandidates(request: GenerationRequest): Promise<ContentCandidate[]> {
+    const systemPrompt = await this.buildSystemPrompt(request);
+    const userPrompt = this.buildUserPrompt(request);
     
-    try {
-      // Import and use Revolutionary Content Engine
-      const { getRevolutionaryContentEngine } = await import('./revolutionaryContentEngine');
-      const revolutionaryEngine = getRevolutionaryContentEngine();
-      
-      // Generate data-driven content
-      const dataContent = await revolutionaryEngine.generateDataDrivenContent(
-        params.topic,
-        params.format
-      );
-      
-      console.log(`✅ REVOLUTIONARY_SUCCESS: Generated with ${dataContent.confidence}% confidence`);
-      console.log(`📊 DATA_SOURCE: ${dataContent.dataSource} | Strategy: ${dataContent.strategy}`);
-      console.log(`🚀 VIRAL_POTENTIAL: ${(dataContent.viralPotential * 100).toFixed(1)}%`);
-      
-      // Convert to ContentResult format
-      const contentResult: ContentResult = {
-        content: dataContent.content,
-        metadata: {
-          topic: dataContent.topic,
-          format: params.format,
-          model: 'Revolutionary-AI-Engine',
-          temperature: 0.7,
-          strategy: dataContent.strategy,
-          viralPotential: dataContent.viralPotential,
-          dataSource: dataContent.dataSource,
-          reasoning: dataContent.reasoning,
-          expectedEngagement: dataContent.expectedEngagement
-        },
-        quality: {
-          hasHook: dataContent.content[0]?.includes('most people') || dataContent.content[0]?.includes('?') || false,
-          hasNumbers: dataContent.content.some(c => /\d/.test(c)),
-          hasActionableAdvice: dataContent.content.some(c => 
-            c.toLowerCase().includes('tip') || 
-            c.toLowerCase().includes('method') || 
-            c.toLowerCase().includes('strategy')
-          ),
-          concreteExamples: dataContent.content.filter(c => 
-            c.includes('example') || c.includes('study') || c.includes('research')
-          ).length
-        }
-      };
-
-      return {
-        success: true,
-        content: contentResult,
-        qualityScore: Math.round(dataContent.confidence),
-        attempts: 1,
-      };
-
-    } catch (revolutionaryError: any) {
-      console.error('❌ REVOLUTIONARY_ENGINE_ERROR:', revolutionaryError.message);
-      console.log('🔄 FALLBACK: Using traditional generation as backup...');
-      
-      // Fallback to original logic
-      let attempts = 0;
-      const maxAttempts = MAX_REGENERATION_ATTEMPTS;
-
-      while (attempts < maxAttempts) {
-        attempts++;
-        console.log(`🔄 MODEL_CALL: Fallback generation attempt ${attempts}/${maxAttempts}`);
-
-        try {
-          // Generate content
-          const content = await this.generateRawContent(params);
-          if (!content.success) {
-            return { success: false, error: content.error, attempts };
-          }
-
-        console.log('🔍 QUALITY_GATE: Evaluating content quality');
-        
-        // Evaluate quality
-        const qualityCheck = await this.evaluateQuality(content.content!);
-        if (!qualityCheck.success) {
-          console.warn('⚠️ Quality evaluation failed, using content anyway');
-          return { 
-            success: true, 
-            content: content.content!, 
-            qualityScore: 50,
-            attempts 
-          };
-        }
-
-        const score = qualityCheck.score!;
-        console.log(`📊 Quality score: ${score}/100`);
-
-        // If quality is good enough, return content
-        if (qualityCheck.passes) {
-          console.log('✅ QUALITY_GATE: Content passed quality check');
-          return { 
-            success: true, 
-            content: content.content!, 
-            qualityScore: score,
-            attempts 
-          };
-        }
-
-        // If we have attempts left, regenerate with feedback
-        if (attempts < maxAttempts) {
-          console.log(`🔄 Quality insufficient (${score}/100), regenerating...`);
-          params = this.createRegenerationParams(params, qualityCheck.feedback);
-        } else {
-          console.warn(`⚠️ Max attempts reached. Using best content with score: ${score}/100`);
-          return { 
-            success: true, 
-            content: content.content!, 
-            qualityScore: score,
-            attempts 
-          };
-        }
-
-      } catch (error) {
-        console.error(`❌ Generation attempt ${attempts} failed:`, error);
-        if (attempts >= maxAttempts) {
-          return { 
-            success: false, 
-            error: error instanceof Error ? error.message : 'Unknown generation error',
-            attempts 
-          };
-        }
-      }
-    }
-
-    return { success: false, error: 'Max attempts reached without success', attempts };
-  }
-
-  /**
-   * Generate raw content using OpenAI
-   */
-  private async generateRawContent(params: GenerationParams): Promise<{
-    success: boolean;
-    content?: ContentResult;
-    error?: string;
-  }> {
-    try {
-      const prompt = getGeneratorPrompt(params);
-      const tokenLimit = params.format === 'thread' ? 1600 : 400;
-
-      const response = await this.openai.chat.completions.create({
-        model: OPENAI_MODEL,
-        messages: [{ role: 'user', content: prompt }],
-        temperature: OPENAI_TEMPERATURE,
-        top_p: OPENAI_TOP_P,
-        presence_penalty: OPENAI_PRESENCE_PENALTY,
-        frequency_penalty: OPENAI_FREQUENCY_PENALTY,
-        max_tokens: tokenLimit,
-        response_format: { type: 'json_object' }
-      });
-
-      const rawContent = response.choices[0]?.message?.content;
-      if (!rawContent) {
-        return { success: false, error: 'No content returned from OpenAI' };
-      }
-
-      // Parse and validate JSON with robust cleaning
-      let content: ContentResult;
+    const candidates: ContentCandidate[] = [];
+    
+    // Generate 5 candidates for diversity
+    for (let i = 0; i < 5; i++) {
       try {
-        const { safeJsonParse } = await import('../utils/jsonCleaner');
-        content = safeJsonParse(rawContent);
+        const response = await this.openai.chat.completions.create({
+          model: 'gpt-4',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt }
+          ],
+          temperature: 0.8 + (i * 0.1), // Increase temperature for diversity
+          max_tokens: request.format === 'thread' ? 2000 : 300,
+        });
+
+        const content = response.choices[0]?.message?.content;
+        if (content) {
+          const candidate = await this.parseAndEnrichCandidate(content, request, {
+            temperature: 0.8 + (i * 0.1),
+            attempt: i + 1
+          });
+          candidates.push(candidate);
+        }
       } catch (error) {
-        return { success: false, error: `Invalid JSON response from OpenAI: ${error instanceof Error ? error.message : 'Unknown error'}` };
+        console.error(`Failed to generate candidate ${i + 1}:`, error);
       }
+    }
 
-      // Basic validation
-      if (!content.tweets || !Array.isArray(content.tweets) || content.tweets.length === 0) {
-        return { success: false, error: 'Invalid content structure' };
-      }
+    return candidates;
+  }
 
-      // Validate tweet lengths using bulletproof character validation
-      const invalidTweets: Array<{tweet: string; validation: any}> = [];
+  /**
+   * Build dynamic system prompt based on learned patterns
+   */
+  private async buildSystemPrompt(request: GenerationRequest): Promise<string> {
+    // Get successful patterns from database
+    const { data: patterns } = await this.supabase
+      .from('patterns')
+      .select('*')
+      .eq('status', 'active')
+      .gte('confidence_score', 0.6)
+      .order('confidence_score', { ascending: false });
+
+    // Get recent recommendations
+    const { data: recommendations } = await this.supabase
+      .from('recommendations')
+      .select('*')
+      .order('generated_at', { ascending: false })
+      .limit(1);
+
+    const latestRec = recommendations?.[0];
+    const amplifyPatterns = request.amplify_patterns || latestRec?.amplify_patterns || [];
+    const avoidPatterns = request.avoid_patterns || latestRec?.avoid_patterns || [];
+
+    return `You are the AI content creator for @SignalAndSynapse, a top health Twitter account that has grown to thousands of followers by posting contrarian, evidence-based health content.
+
+## Your Voice & Style
+- **Contrarian**: Challenge common health wisdom with data
+- **Curiosity-driven**: Make people question what they think they know
+- **Evidence-based**: Reference studies, data, surprising statistics
+- **Twitter-native**: Write for social media, not academic journals
+- **No BS**: Skip generic tips, obvious advice, and feel-good platitudes
+
+## Content Rules
+- NEVER use hashtags
+- NEVER use emojis
+- NEVER sound like a corporate wellness blog
+- NEVER give obvious advice like "drink water" or "exercise more"
+- ALWAYS lead with something surprising or counterintuitive
+- ALWAYS be specific with numbers, studies, or examples
+
+## Successful Patterns to Amplify
+${amplifyPatterns.map((p: any) => `- ${p.pattern_name}: ${p.description || p.pattern_name}`).join('\n')}
+
+## Patterns to Avoid
+${avoidPatterns.map((p: any) => `- ${p.pattern_name}: ${p.reason || 'Low engagement'}`).join('\n')}
+
+## High-Performing Hooks
+${patterns?.filter((p: any) => p.pattern_type === 'hook').slice(0, 5).map((p: any) => 
+  `- ${p.pattern_name}: ${p.pattern_description}`
+).join('\n')}
+
+## Format Guidelines
+${request.format === 'short' ? `
+**Short Tweet (1 tweet)**: Single powerful statement. 150-200 characters.
+Examples:
+- "Most 'superfoods' are marketing scams. Blueberries aren't magic. A study of 50,000 people found regular berries work just as well for brain health."
+- "Your grandmother was right about one thing: going to bed angry is terrible for your health. Sleep quality drops 67% after unresolved conflict."
+` : request.format === 'medium' ? `
+**Medium Tweet (1 tweet)**: Expanded thought with context. 200-280 characters.
+Examples:
+- "The 8 glasses of water rule has zero scientific backing. Your kidneys are smarter than wellness influencers. A 2019 study found that forcing water intake can actually harm performance and increase injury risk in athletes."
+` : `
+**Thread (3-8 tweets)**: Deep dive into a counterintuitive topic.
+Structure:
+1. Hook: Surprising claim or statistic
+2-6. Evidence, examples, mechanisms
+7-8. Practical takeaway or reframe
+
+NO numbered lists like "1/8". Natural flow between tweets.
+Each tweet should be valuable standalone.
+`}
+
+Generate content that sounds like it could go viral among health-conscious, intelligent Twitter users who appreciate nuance and evidence.`;
+  }
+
+  /**
+   * Build user prompt with specific requirements
+   */
+  private buildUserPrompt(request: GenerationRequest): string {
+    const topicPrompt = request.topic 
+      ? `Focus on: ${request.topic}` 
+      : 'Choose any health topic that would surprise or educate people';
       
-      content.tweets.forEach((tweet, index) => {
-        if (typeof tweet !== 'string') {
-          invalidTweets.push({ tweet, validation: { reason: 'Tweet is not a string' } });
-          return;
-        }
-        
-        const validation = validateTweetCharacters(tweet);
-        if (!validation.isValid && validation.length > 260) {
-          // AUTO-FIX: Try to truncate instead of rejecting
-          const { truncateToLimit } = require('../utils/characterValidation');
-          const truncated = truncateToLimit(tweet, 250); // Extra safety margin
-          const truncatedValidation = validateTweetCharacters(truncated);
-          
-          if (truncatedValidation.isValid) {
-            console.log(`🔧 AUTO-TRUNCATED: Tweet ${index + 1} from ${validation.length} to ${truncatedValidation.length} chars`);
-            content.tweets[index] = truncated; // Fix the tweet
-          } else {
-            console.log(`🚨 CHAR_VALIDATION: Tweet ${index + 1} FAILED: ${validation.reason}`);
-            console.log(`📊 CHAR_ANALYSIS: ${getCharacterAnalysis(tweet).message}`);
-            invalidTweets.push({ tweet, validation });
-          }
-        } else if (!validation.isValid) {
-          console.log(`🚨 CHAR_VALIDATION: Tweet ${index + 1} FAILED: ${validation.reason}`);
-          console.log(`📊 CHAR_ANALYSIS: ${getCharacterAnalysis(tweet).message}`);
-          invalidTweets.push({ tweet, validation });
-        } else {
-          console.log(`✅ CHAR_VALIDATION: Tweet ${index + 1} PASSED: ${getCharacterAnalysis(tweet).message}`);
-        }
-      });
+    const hookPrompt = request.hook_type 
+      ? `Use a ${request.hook_type} style hook`
+      : 'Use your best judgment for the hook style';
 
-      if (invalidTweets.length > 0) {
-        return { success: false, error: `Character validation failed: ${invalidTweets.length} tweets exceed limits` };
-      }
+    return `${topicPrompt}
 
-      return { success: true, content };
+${hookPrompt}
 
-    } catch (error) {
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Unknown OpenAI error' 
-      };
-    }
+Format: ${request.format}
+
+Create content that challenges conventional wisdom and makes people think differently about health. Be specific, be surprising, be memorable.
+
+${request.format === 'thread' ? 'Write as individual tweets separated by line breaks. No thread numbering.' : 'Write as a single tweet.'}`;
   }
 
   /**
-   * Evaluate content quality using AI critic
+   * Parse AI response and enrich with metadata
    */
-  private async evaluateQuality(content: ContentResult): Promise<{
-    success: boolean;
-    passes?: boolean;
-    score?: number;
-    feedback?: any;
-    error?: string;
-  }> {
-    try {
-      const criticPrompt = getCriticPrompt(content);
-
-      const response = await this.openai.chat.completions.create({
-        model: OPENAI_MODEL,
-        messages: [{ role: 'user', content: criticPrompt }],
-        temperature: 0.1, // Low temperature for consistent evaluation
-        max_tokens: 800,
-        response_format: { type: 'json_object' }
-      });
-
-      const rawFeedback = response.choices[0]?.message?.content;
-      if (!rawFeedback) {
-        return { success: false, error: 'No critic feedback received' };
-      }
-
-      let feedback: any;
-      try {
-        feedback = JSON.parse(rawFeedback);
-      } catch (error) {
-        return { success: false, error: 'Invalid JSON response from critic' };
-      }
-
-      const score = feedback.overallScore || 0;
-      const passes = feedback.passes || score >= 75;
-
-      return { 
-        success: true, 
-        passes, 
-        score, 
-        feedback 
-      };
-
-    } catch (error) {
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Quality evaluation error' 
-      };
-    }
-  }
-
-  /**
-   * Create regeneration parameters with critic feedback
-   */
-  private createRegenerationParams(
-    originalParams: GenerationParams, 
-    criticFeedback: any
-  ): GenerationParams {
-    // For regeneration, we'll modify the topic to include improvement instructions
-    const improvements = criticFeedback?.improvements || [];
-    const modifiedTopic = originalParams.topic 
-      ? `${originalParams.topic} (Improve: ${improvements.slice(0, 2).join(', ')})`
-      : undefined;
+  private async parseAndEnrichCandidate(
+    content: string, 
+    request: GenerationRequest, 
+    generationParams: any
+  ): Promise<ContentCandidate> {
+    // Clean and parse content
+    const text = content.trim();
+    
+    // Extract topic using AI
+    const topic = await this.extractTopic(text);
+    
+    // Identify hook type
+    const hook_type = await this.identifyHookType(text);
+    
+    // Estimate engagement potential
+    const estimated_engagement_score = await this.estimateEngagement(text, request.format);
 
     return {
-      ...originalParams,
-      topic: modifiedTopic
+      text,
+      format: request.format,
+      topic,
+      hook_type,
+      generation_params: {
+        ...generationParams,
+        topic_requested: request.topic,
+        hook_requested: request.hook_type
+      },
+      estimated_engagement_score
     };
   }
 
   /**
-   * Extract topic from user input
+   * Extract main topic from content using AI
    */
-  async extractTopic(userInput: string): Promise<{
-    success: boolean;
-    topic?: string;
-    format?: 'thread' | 'single';
-    confidence?: number;
-    error?: string;
-  }> {
+  private async extractTopic(text: string): Promise<string> {
     try {
-      const prompt = getTopicExtractionPrompt(userInput);
-
       const response = await this.openai.chat.completions.create({
-        model: OPENAI_MODEL,
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.3,
-        max_tokens: 200,
-        response_format: { type: 'json_object' }
+        model: 'gpt-3.5-turbo',
+        messages: [{
+          role: 'user',
+          content: `Extract the main health topic from this content in 1-2 words: "${text}"`
+        }],
+        temperature: 0.1,
+        max_tokens: 10
       });
 
-      const rawResult = response.choices[0]?.message?.content;
-      if (!rawResult) {
-        return { success: false, error: 'No topic extraction result' };
-      }
-
-      const result = JSON.parse(rawResult);
-      return { 
-        success: true, 
-        topic: result.topic,
-        format: result.format,
-        confidence: result.confidence 
-      };
-
+      return response.choices[0]?.message?.content?.trim() || 'general_health';
     } catch (error) {
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Topic extraction error' 
-      };
+      console.error('Topic extraction failed:', error);
+      return 'general_health';
     }
   }
 
   /**
-   * Quick single tweet generation (simplified flow)
+   * Identify the hook type used
    */
-  async generateQuickTweet(topic: string): Promise<{
-    success: boolean;
-    tweet?: string;
-    error?: string;
-  }> {
-    try {
-      const result = await this.generateContent({
-        topic,
-        format: 'single'
-      });
+  private async identifyHookType(text: string): Promise<string> {
+    const hookPatterns = {
+      'contrarian_stat': /\d+%|\d+ study|\d+ people|research shows/i,
+      'myth_busting': /myth|wrong|actually|truth is|contrary to/i,
+      'question_provocative': /^\w+.*\?/,
+      'surprising_fact': /surprising|shocking|most people don't know/i,
+      'personal_story': /I used to|when I|my experience/i
+    };
 
-      if (!result.success || !result.content) {
-        return { success: false, error: result.error };
+    for (const [hookType, pattern] of Object.entries(hookPatterns)) {
+      if (pattern.test(text)) {
+        return hookType;
+      }
+    }
+
+    return 'general';
+  }
+
+  /**
+   * Estimate engagement potential based on learned patterns
+   */
+  private async estimateEngagement(text: string, format: string): Promise<number> {
+    try {
+      // Get embeddings for similarity comparison
+      const embedding = await this.getEmbedding(text);
+      
+      // Compare against high-performing posts
+      const { data: topPosts } = await this.supabase
+        .from('posts')
+        .select('embeddings, engagement_rate')
+        .eq('performance_tier', 'top')
+        .eq('format', format)
+        .limit(50);
+
+      if (!topPosts?.length) {
+        return 0.5; // Default score
       }
 
-      return { 
-        success: true, 
-        tweet: result.content.tweets[0] 
-      };
+      // Calculate similarity scores and weight by engagement
+      let weightedScore = 0;
+      let totalWeight = 0;
 
+      for (const post of topPosts) {
+        if (post.embeddings) {
+          const similarity = this.cosineSimilarity(embedding, post.embeddings);
+          const weight = post.engagement_rate || 0.01;
+          weightedScore += similarity * weight;
+          totalWeight += weight;
+        }
+      }
+
+      return totalWeight > 0 ? Math.min(weightedScore / totalWeight, 1) : 0.5;
     } catch (error) {
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Quick tweet generation error' 
-      };
+      console.error('Engagement estimation failed:', error);
+      return 0.5;
+    }
+  }
+
+  /**
+   * Get OpenAI embeddings for text
+   */
+  private async getEmbedding(text: string): Promise<number[]> {
+    const response = await this.openai.embeddings.create({
+      model: 'text-embedding-ada-002',
+      input: text
+    });
+    return response.data[0].embedding;
+  }
+
+  /**
+   * Calculate cosine similarity between embeddings
+   */
+  private cosineSimilarity(a: number[], b: number[]): number {
+    const dotProduct = a.reduce((sum, ai, i) => sum + ai * b[i], 0);
+    const magnitudeA = Math.sqrt(a.reduce((sum, ai) => sum + ai * ai, 0));
+    const magnitudeB = Math.sqrt(b.reduce((sum, bi) => sum + bi * bi, 0));
+    return dotProduct / (magnitudeA * magnitudeB);
+  }
+
+  /**
+   * Save candidates to database for vetting
+   */
+  async saveCandidates(candidates: ContentCandidate[]): Promise<void> {
+    for (const candidate of candidates) {
+      try {
+        const embeddings = await this.getEmbedding(candidate.text);
+        
+        await this.supabase
+          .from('content_candidates')
+          .insert({
+            text: candidate.text,
+            format: candidate.format,
+            topic: candidate.topic,
+            hook_type: candidate.hook_type,
+            generation_params: candidate.generation_params,
+            embeddings,
+            overall_score: candidate.estimated_engagement_score
+          });
+      } catch (error) {
+        console.error('Failed to save candidate:', error);
+      }
     }
   }
 }
 
-/**
- * Singleton instance for reuse
- */
-let generatorInstance: ContentGenerator | null = null;
-
-export function getContentGenerator(): ContentGenerator {
-  if (!generatorInstance) {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      throw new Error('OPENAI_API_KEY not configured');
-    }
-    generatorInstance = new ContentGenerator(apiKey);
-  }
-  return generatorInstance;
-}
+export default AdvancedContentGenerator;
