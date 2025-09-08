@@ -191,6 +191,36 @@ export class BulletproofPoster {
   }
 
   /**
+   * 💬 POST REPLY TO SPECIFIC TWEET (PUBLIC METHOD)
+   */
+  public async postReply(content: string, parentTweetId: string): Promise<{ success: boolean; tweetId?: string; error?: string }> {
+    if (process.env.DRY_RUN === '1') {
+      console.log(`🧪 DRY_RUN: Would reply to ${parentTweetId}:`);
+      console.log(`Reply: ${content}`);
+      console.log('─'.repeat(60));
+      
+      return { success: true, tweetId: `dry_run_reply_${Date.now()}` };
+    }
+
+    try {
+      await this.ensureBrowserReady();
+      const replyId = await this.postReplyToTweet(parentTweetId, content);
+      
+      return { 
+        success: true, 
+        tweetId: replyId 
+      };
+      
+    } catch (error) {
+      console.error('❌ REPLY_FAILED:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown reply error'
+      };
+    }
+  }
+
+  /**
    * Post a single tweet with robust composer handling
    */
   private async postSingleTweet(content: string): Promise<string> {

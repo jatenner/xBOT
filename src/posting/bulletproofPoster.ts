@@ -60,6 +60,37 @@ export class BulletproofPoster {
   }
 
   /**
+   * 💬 POST REAL REPLY AS ACTUAL COMMENT
+   */
+  public async postReply(replyContent: string, targetTweetId: string): Promise<PostResult> {
+    console.log('💬 BULLETPROOF_REPLY: Starting real reply post...');
+    console.log(`📝 REPLY: "${replyContent.substring(0, 80)}..."`);
+    console.log(`🎯 TARGET: Tweet ${targetTweetId}`);
+
+    try {
+      const result = await this.poster.postReply(replyContent, targetTweetId);
+      
+      return {
+        success: result.success,
+        content: replyContent,
+        tweetId: result.tweetId, // Reply tweet ID
+        error: result.error,
+        timestamp: new Date()
+      };
+      
+    } catch (error) {
+      console.error('❌ BULLETPROOF_REPLY_ERROR:', error);
+      
+      return {
+        success: false,
+        content: replyContent,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date()
+      };
+    }
+  }
+
+  /**
    * 🧵 POST THREAD WITH GUARANTEED SUCCESS
    */
   public async postThread(tweets: string[]): Promise<PostResult> {
