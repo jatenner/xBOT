@@ -5,6 +5,7 @@
  */
 
 import { BulletproofPoster as NewPoster } from './poster';
+import BulletproofComposer from './bulletproofComposer';
 
 export interface PostResult {
   success: boolean;
