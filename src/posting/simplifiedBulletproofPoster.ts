@@ -104,6 +104,38 @@ class SimplifiedBulletproofPoster {
     }
   }
 
+  async postThread(tweets: string[]): Promise<{ success: boolean; tweetIds?: string[]; error?: string }> {
+    try {
+      console.log(`🧵 POSTING_THREAD: ${tweets.length} tweets`);
+      const tweetIds: string[] = [];
+
+      for (let i = 0; i < tweets.length; i++) {
+        console.log(`📝 THREAD_POST_${i + 1}: "${tweets[i].substring(0, 50)}..."`);
+        
+        const result = await this.postContent(tweets[i]);
+        if (!result.success) {
+          throw new Error(`Thread post ${i + 1} failed: ${result.error}`);
+        }
+        
+        if (result.tweetId) {
+          tweetIds.push(result.tweetId);
+        }
+
+        // Wait between posts
+        if (i < tweets.length - 1) {
+          await this.page!.waitForTimeout(2000);
+        }
+      }
+
+      console.log(`✅ THREAD_SUCCESS: Posted ${tweets.length} tweets`);
+      return { success: true, tweetIds };
+
+    } catch (error) {
+      console.error('❌ THREAD_FAILED:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
+
   async cleanup(): Promise<void> {
     try {
       if (this.page) {
