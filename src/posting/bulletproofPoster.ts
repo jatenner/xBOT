@@ -19,6 +19,8 @@ export interface PostResult {
 export class BulletproofPoster {
   private static instance: BulletproofPoster;
   private sessionLoaded = false;
+  private sessionLoadTime: Date | null = null;
+  private readonly SESSION_REFRESH_INTERVAL = 30 * 60 * 1000; // 30 minutes
 
   private constructor() {}
 
@@ -159,13 +161,30 @@ export class BulletproofPoster {
    * 🔐 ENSURE TWITTER SESSION IS LOADED
    */
   private async ensureTwitterSession(page: Page): Promise<void> {
-    if (this.sessionLoaded) {
-      console.log('✅ BULLETPROOF_POSTER: Session already loaded');
+    // Check if session needs refresh (expired or never loaded)
+    const now = new Date();
+    const sessionExpired = this.sessionLoadTime && 
+      (now.getTime() - this.sessionLoadTime.getTime()) > this.SESSION_REFRESH_INTERVAL;
+    
+    if (this.sessionLoaded && !sessionExpired) {
+      console.log('✅ BULLETPROOF_POSTER: Session already loaded and valid');
       return;
+    }
+    
+    if (sessionExpired) {
+      console.log('🔄 BULLETPROOF_POSTER: Session expired, refreshing...');
+      this.sessionLoaded = false;
+      this.sessionLoadTime = null;
     }
 
     try {
       console.log('🔐 BULLETPROOF_POSTER: Loading Twitter session...');
+      
+      // Clear existing cookies if this is a refresh
+      if (sessionExpired) {
+        console.log('🧹 BULLETPROOF_POSTER: Clearing expired session cookies...');
+        await page.context().clearCookies();
+      }
       
       // Load session from environment variable
       const sessionB64 = process.env.TWITTER_SESSION_B64;
@@ -179,6 +198,7 @@ export class BulletproofPoster {
         await page.context().addCookies(sessionData.cookies);
         console.log(`✅ BULLETPROOF_POSTER: Loaded ${sessionData.cookies.length} session cookies`);
         this.sessionLoaded = true;
+        this.sessionLoadTime = new Date();
         
         // Validate session by checking login status
         console.log('🔍 BULLETPROOF_POSTER: Validating session...');
@@ -301,7 +321,22 @@ export class BulletproofPoster {
       
       if (!sessionWorked) {
         console.error('❌ BULLETPROOF_POSTER: All URLs redirect to login - session expired');
-        throw new Error('Session expired - Twitter requires re-authentication');
+        
+        // Force session refresh on expiration detection
+        console.log('🔄 BULLETPROOF_POSTER: Forcing session refresh due to login redirect...');
+        this.sessionLoaded = false;
+        this.sessionLoadTime = null;
+        
+        // Try to reload session one more time
+        try {
+          await this.ensureTwitterSession(page);
+          console.log('✅ BULLETPROOF_POSTER: Session refresh successful, retrying navigation...');
+          // Recursive call to try navigation again with fresh session
+          return await this.navigateToCompose(page);
+        } catch (refreshError) {
+          console.error('❌ BULLETPROOF_POSTER: Session refresh failed:', refreshError.message);
+          throw new Error('Session expired - Twitter requires re-authentication');
+        }
       }
       
       // Check if we're logged in with multiple fallback selectors
