@@ -155,6 +155,55 @@ class SimplifiedBulletproofPoster {
       console.warn('⚠️ CLEANUP: Browser cleanup warning:', error);
     }
   }
+
+  // Compatibility methods for legacy systems
+  async getStatus(): Promise<{ available: boolean; error?: string }> {
+    try {
+      if (this.browser && this.context && this.page) {
+        await this.page.evaluate(() => document.title);
+        return { available: true };
+      } else {
+        return { available: false, error: 'Browser not initialized' };
+      }
+    } catch (error) {
+      return { available: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
+
+  async healthCheck(): Promise<{ healthy: boolean; issues: string[] }> {
+    const issues: string[] = [];
+    
+    try {
+      if (!this.browser) {
+        issues.push('Browser not initialized');
+      }
+      
+      if (!this.context) {
+        issues.push('Browser context not available');
+      }
+      
+      if (!this.page) {
+        issues.push('Page not available');
+      }
+      
+      if (this.sessionLoaded === false) {
+        issues.push('Twitter session not loaded');
+      }
+      
+      return {
+        healthy: issues.length === 0,
+        issues
+      };
+    } catch (error) {
+      issues.push(`Health check error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      return { healthy: false, issues };
+    }
+  }
+
+  // Legacy compatibility method
+  async postSingle(content: string): Promise<{ success: boolean; tweetId?: string; error?: string }> {
+    return this.postContent(content);
+  }
 }
 
 export const simplifiedPoster = SimplifiedBulletproofPoster.getInstance();
