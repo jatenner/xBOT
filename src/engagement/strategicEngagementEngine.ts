@@ -100,12 +100,39 @@ export class StrategicEngagementEngine {
       // For now, use a curated list of health influencers and search terms
       // Will be enhanced with real Twitter search in future iterations
       
-      const healthInfluencers = [
-        { handle: 'hubermanlab', follower_count: 2000000, relevance: 0.95 },
-        { handle: 'drmarkhyman', follower_count: 500000, relevance: 0.9 },
-        { handle: 'drdavinagustafson', follower_count: 100000, relevance: 0.85 },
-        { handle: 'bengreenfield', follower_count: 300000, relevance: 0.9 },
-        { handle: 'drweils', follower_count: 400000, relevance: 0.8 }
+      // 🎯 DIVERSIFIED HIGH-POTENTIAL TARGETS
+      // Mix of health, wellness, productivity, tech, and lifestyle accounts
+      // Focus on ACTIVE accounts with engaged audiences (10k-500k sweet spot)
+      const diversifiedTargets = [
+        // Health & Wellness Core
+        { handle: 'hubermanlab', follower_count: 2000000, relevance: 0.95, category: 'health_science' },
+        { handle: 'peterattiamd', follower_count: 800000, relevance: 0.95, category: 'longevity' },
+        { handle: 'rhondapatrick', follower_count: 400000, relevance: 0.9, category: 'research' },
+        
+        // Emerging Health Voices (High Engagement)
+        { handle: 'drmarkhyman', follower_count: 500000, relevance: 0.9, category: 'functional_medicine' },
+        { handle: 'bengreenfieldhq', follower_count: 300000, relevance: 0.9, category: 'biohacking' },
+        { handle: 'drkevinmd', follower_count: 150000, relevance: 0.85, category: 'medical_insights' },
+        { handle: 'thefoodbabe', follower_count: 200000, relevance: 0.8, category: 'nutrition' },
+        
+        // Cross-Niche High-Potential (Tech + Health)
+        { handle: 'naval', follower_count: 1500000, relevance: 0.7, category: 'philosophy_wellness' },
+        { handle: 'sama', follower_count: 1200000, relevance: 0.6, category: 'tech_productivity' },
+        { handle: 'elonmusk', follower_count: 150000000, relevance: 0.5, category: 'innovation' },
+        
+        // Productivity & Performance (Health-Adjacent)
+        { handle: 'tferriss', follower_count: 1000000, relevance: 0.8, category: 'performance' },
+        { handle: 'jamesclear', follower_count: 800000, relevance: 0.8, category: 'habits' },
+        { handle: 'austinkleon', follower_count: 200000, relevance: 0.6, category: 'creativity' },
+        
+        // Business & Lifestyle (Wellness Overlap)
+        { handle: 'garyvee', follower_count: 3000000, relevance: 0.6, category: 'business_motivation' },
+        { handle: 'therock', follower_count: 15000000, relevance: 0.7, category: 'fitness_motivation' },
+        
+        // Emerging Accounts (10k-100k, High Growth)
+        { handle: 'biohackingceo', follower_count: 50000, relevance: 0.9, category: 'emerging_biohacking' },
+        { handle: 'modernhealthspan', follower_count: 25000, relevance: 0.9, category: 'emerging_longevity' },
+        { handle: 'metabolicmind', follower_count: 35000, relevance: 0.85, category: 'emerging_metabolic' }
       ];
 
       const trendingTopics = [
@@ -117,15 +144,23 @@ export class StrategicEngagementEngine {
         'nutrition science'
       ];
 
-      // Convert to engagement targets format
-      const targets: EngagementTarget[] = healthInfluencers.map(influencer => ({
-        account_handle: influencer.handle,
-        follower_count: influencer.follower_count,
-        engagement_rate: 0.05, // Estimate
-        relevance_score: influencer.relevance,
-        last_engaged: null,
-        target_type: 'influencer' as const
-      }));
+      // Convert to engagement targets format with smart weighting
+      const targets: EngagementTarget[] = diversifiedTargets.map(target => {
+        // Smart engagement rate estimation based on follower count
+        let estimatedEngagementRate = 0.05; // Default 5%
+        if (target.follower_count < 100000) estimatedEngagementRate = 0.08; // Smaller accounts, higher engagement
+        if (target.follower_count > 1000000) estimatedEngagementRate = 0.02; // Larger accounts, lower engagement
+        if (target.category.includes('emerging')) estimatedEngagementRate = 0.12; // Emerging accounts are gold mines
+        
+        return {
+          account_handle: target.handle,
+          follower_count: target.follower_count,
+          engagement_rate: estimatedEngagementRate,
+          relevance_score: target.relevance,
+          last_engaged: null,
+          target_type: target.category.includes('emerging') ? 'trending_post' as const : 'influencer' as const
+        };
+      });
 
       // Filter out recently engaged accounts (within 24 hours)
       try {
@@ -179,22 +214,25 @@ export class StrategicEngagementEngine {
       const currentTime = new Date().toISOString();
       const dayOfWeek = new Date().toLocaleDateString('en-US', { weekday: 'long' });
       
-      const prompt = `You are a contextually-aware content strategist engaging strategically to build genuine connections and grow followers across diverse topics.
+      const prompt = `You are a master conversationalist and growth strategist who builds genuine connections across ALL niches - health, tech, business, lifestyle, productivity, and beyond.
 
 🎯 TARGET ANALYSIS:
 - Account: @${target.account_handle}
 - Followers: ${target.follower_count.toLocaleString()}
-- Relevance: ${(target.relevance_score * 100).toFixed(0)}% match to our content themes
+- Engagement Rate: ${(target.engagement_rate * 100).toFixed(1)}%
+- Target Type: ${target.target_type}
 - Current time: ${currentTime}
 - Day: ${dayOfWeek}
 
-🧠 CONTEXTUAL INTELLIGENCE:
-- Understand what the target account typically posts about
-- Analyze their audience's interests and engagement patterns
-- Consider the timing and cultural context of the interaction
-- Adapt your expertise to match their content domain
+🧠 MULTI-NICHE INTELLIGENCE:
+Your expertise spans ALL domains:
+- Health/Wellness: Longevity, biohacking, mental health, nutrition, fitness
+- Technology: AI, productivity tools, emerging tech, digital wellness
+- Business: Entrepreneurship, personal branding, marketing, leadership
+- Lifestyle: Habits, creativity, relationships, personal development
+- Philosophy: Mindfulness, purpose, decision-making, life optimization
 
-🎨 STRATEGIC ENGAGEMENT PRINCIPLES:
+🎨 CROSS-NICHE ENGAGEMENT PRINCIPLES:
 1. ADD GENUINE VALUE: Share insights, data, or perspectives that enhance the conversation
 2. DEMONSTRATE EXPERTISE: Show knowledge without being preachy or salesy
 3. CREATE CONNECTION: Find common ground and shared interests
