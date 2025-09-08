@@ -197,7 +197,7 @@ class EnhancedContentOperator {
       const isTop = candidate.id === result.top_candidate.id;
       console.log(`\n${isTop ? '🏆' : '📝'} CANDIDATE ${index + 1}${isTop ? ' (TOP CHOICE)' : ''}`);
       console.log(`Format: ${candidate.format} | Hook: ${candidate.hook_type}`);
-      console.log(`Scores: Hook ${candidate.scores.hook_strength} | Novelty ${candidate.scores.novelty} | Clarity ${candidate.scores.clarity} | Share ${candidate.scores.shareability} | Overall: ${candidate.scores.overall}/100`);
+      console.log(`Scores: Authority ${candidate.scores.shareability} | Hook ${candidate.scores.hook_strength} | Evidence ${candidate.scores.novelty} | Action ${candidate.scores.clarity} | Overall: ${candidate.scores.overall}/100`);
       console.log(`Content: "${candidate.text.substring(0, 120)}${candidate.text.length > 120 ? '...' : ''}"`);
       console.log(`Critique: ${candidate.critique}`);
     });
@@ -423,20 +423,79 @@ Reply:`;
   private analyzeEngagementPatterns(posts: any[]): Array<{
     type: string;
     performance: number;
+    authority_correlation: number;
+    structure_insights: string;
   }> {
     const patterns = ['curiosity_gap', 'contrarian', 'practical_list', 'story', 'bold_statement'];
     
     return patterns.map(pattern => {
       const patternPosts = posts.filter(p => p.hook_type === pattern);
-      const avgEngagement = patternPosts.length > 0 
-        ? patternPosts.reduce((sum, p) => sum + ((p.likes || 0) + (p.replies || 0) + (p.reposts || 0)), 0) / patternPosts.length
-        : 0;
+      
+      if (patternPosts.length === 0) {
+        return {
+          type: pattern,
+          performance: 0,
+          authority_correlation: 0,
+          structure_insights: 'No data available'
+        };
+      }
+      
+      const totalEngagement = patternPosts.reduce((sum, p) => 
+        sum + ((p.likes || 0) + (p.replies || 0) + (p.reposts || 0)), 0
+      );
+      const avgEngagement = totalEngagement / patternPosts.length;
+      
+      // Calculate authority correlation - higher authority scores with higher engagement
+      const authorityCorrelation = patternPosts.reduce((sum, p) => {
+        const engagement = (p.likes || 0) + (p.replies || 0) + (p.reposts || 0);
+        const authorityScore = p.scores?.shareability || 50; // Authority mapped to shareability
+        return sum + (engagement * authorityScore / 100);
+      }, 0) / patternPosts.length;
+      
+      // Analyze what makes this pattern successful
+      const highPerformers = patternPosts
+        .filter(p => ((p.likes || 0) + (p.replies || 0) + (p.reposts || 0)) > avgEngagement)
+        .slice(0, 3);
+      
+      const structureInsights = this.extractStructureInsights(pattern, highPerformers);
       
       return {
         type: pattern,
-        performance: avgEngagement
+        performance: Math.round(avgEngagement),
+        authority_correlation: Math.round(authorityCorrelation),
+        structure_insights: structureInsights
       };
-    });
+    }).sort((a, b) => b.performance - a.performance);
+  }
+
+  /**
+   * Extract insights about what makes patterns successful
+   */
+  private extractStructureInsights(pattern: string, highPerformers: any[]): string {
+    if (highPerformers.length === 0) return 'Insufficient data for insights';
+    
+    const insights = {
+      'curiosity_gap': 'High performers use specific statistics and challenge mainstream beliefs',
+      'contrarian': 'Most effective when backed by research citations and specific numbers',
+      'practical_list': 'Lists with 3-5 actionable items perform best, especially with timeframes',
+      'story': 'Research-based case studies outperform personal anecdotes significantly',
+      'bold_statement': 'Bold claims with immediate evidence backing perform best'
+    };
+    
+    // Analyze common elements in high performers
+    const hasStats = highPerformers.some(p => /\d+%|\d+ studies|\d+ participants/i.test(p.content));
+    const hasResearch = highPerformers.some(p => /research shows|studies find|data reveals/i.test(p.content));
+    const hasNumbers = highPerformers.some(p => /\d+/.test(p.content));
+    
+    let insight = insights[pattern as keyof typeof insights] || 'Pattern shows promise';
+    
+    if (hasStats && hasResearch) {
+      insight += ' - Statistics + research citations = highest engagement';
+    } else if (hasNumbers) {
+      insight += ' - Numbers boost performance significantly';
+    }
+    
+    return insight;
   }
 
   /**
