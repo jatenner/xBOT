@@ -186,26 +186,58 @@ export class EnhancedContentGenerator {
   private async scoreCandidate(candidate: ContentCandidate): Promise<ContentCandidate> {
     try {
       const critiquePrompt = `
-You are an expert social media content critic. Analyze this ${candidate.format} content and provide scores:
+You are an expert health content auditor evaluating content for a professional health authority account. Analyze this ${candidate.format} content:
 
 CONTENT:
 ${candidate.text}
 
-Score each aspect 0-100:
-1. HOOK STRENGTH: How compelling is the opening? Does it create curiosity/controversy?
-2. NOVELTY: How unique/surprising is the insight? Avoid obvious or generic advice.
-3. CLARITY: How clear and readable is the content? Easy to understand?
-4. SHAREABILITY: How likely would someone share this? Viral potential?
+STRICT SCORING CRITERIA (0-100 each):
+
+1. AUTHORITY SCORE (0-100):
+   - 90-100: Research citations, specific statistics, expert-level insights
+   - 70-89: Evidence-backed claims with general research references
+   - 50-69: Some credible information but lacks research backing
+   - 30-49: Vague claims without evidence
+   - 0-29: Personal anecdotes, "I tried" language, diary-style content
+
+2. HOOK STRENGTH (0-100):
+   - 90-100: Challenges conventional wisdom with surprising contrarian claim
+   - 70-89: Strong curiosity gap or myth-busting angle
+   - 50-69: Moderately engaging but predictable
+   - 30-49: Weak hook, obvious information
+   - 0-29: No hook, generic opening
+
+3. EVIDENCE QUALITY (0-100):
+   - 90-100: Specific numbers, percentages, study references, measurable outcomes
+   - 70-89: General research backing with some specifics
+   - 50-69: Plausible claims but limited evidence
+   - 30-49: Vague or unsubstantiated claims
+   - 0-29: No evidence, personal experience only
+
+4. ACTIONABILITY (0-100):
+   - 90-100: Clear, specific, immediately implementable advice
+   - 70-89: Good practical guidance with some specifics
+   - 50-69: General advice that's somewhat actionable
+   - 30-49: Vague recommendations
+   - 0-29: No clear takeaway or action
+
+AUTOMATIC PENALTIES:
+- DEDUCT 50 points from ALL scores for ANY first-person language: "I", "my", "worked for me"
+- DEDUCT 30 points for vague phrases: "amazing results", "crazy difference", "who knew"
+- DEDUCT 20 points for obvious/generic advice everyone knows
+
+BONUSES:
+- ADD 10 points for specific statistics or percentages
+- ADD 15 points for research citations ("Studies show", "Research reveals")
+- ADD 10 points for contrarian angle that challenges mainstream beliefs
 
 Provide your response in this exact format:
+AUTHORITY: [score]
 HOOK_STRENGTH: [score]
-NOVELTY: [score] 
-CLARITY: [score]
-SHAREABILITY: [score]
-OVERALL: [average score]
-CRITIQUE: [2-3 sentences explaining strengths/weaknesses]
-
-Ban these filler phrases: "Who knew?", "Turns out", "Did you know?", "Here's the thing", "The truth is"
+EVIDENCE_QUALITY: [score] 
+ACTIONABILITY: [score]
+OVERALL: [weighted average: Authority 35% + Hook 25% + Evidence 25% + Action 15%]
+CRITIQUE: [2-3 sentences explaining why this does/doesn't meet professional health content standards]
 `;
 
       const response = await this.openai.chat.completions.create({
@@ -253,34 +285,56 @@ Ban these filler phrases: "Who knew?", "Turns out", "Did you know?", "Here's the
   ): string {
     
     const hookInstructions = {
-      curiosity_gap: "Start with a curiosity gap that makes people need to know more",
-      contrarian: "Challenge conventional wisdom about this topic", 
-      practical_list: "Create a numbered list of practical actions",
-      story: "Tell a compelling story or example that illustrates the point",
-      bold_statement: "Make a bold, attention-grabbing statement"
+      curiosity_gap: "Challenge a widely-held belief or reveal a counterintuitive truth that makes people question what they know",
+      contrarian: "Directly contradict conventional health wisdom with evidence-backed alternative approach", 
+      practical_list: "Present a numbered list of specific, actionable strategies with measurable outcomes",
+      story: "Reference a study, research finding, or documented case that illustrates a surprising health principle",
+      bold_statement: "Make a provocative, research-backed claim that challenges mainstream health advice"
     };
 
     const formatInstructions = format === 'thread' 
-      ? `Create a Twitter thread (3-5 tweets). Start each tweet with a number (1/5, 2/5, etc.). 
-         Tweet 1: Strong hook with curiosity gap
-         Tweets 2-4: Evidence, examples, or practical details  
-         Final tweet: Practical takeaway or call to action`
-      : `Create a single tweet (under 280 characters) that is complete and engaging on its own.`;
+      ? `Create a Twitter thread (3-5 tweets). Structure:
+         Tweet 1: HOOK - Contrarian statement or curiosity gap that challenges conventional wisdom
+         Tweet 2-3: EVIDENCE - Research findings, statistics, or mechanism explanation (cite studies generically: "Research shows...", "Studies find...", "Data reveals...")
+         Tweet 4: TAKEAWAY - Specific, actionable advice people can implement immediately
+         Final tweet: Clear benefit or expected outcome`
+      : `Create a single tweet (under 280 characters) with this structure:
+         HOOK: Challenge conventional wisdom
+         EVIDENCE: Brief research-backed explanation  
+         TAKEAWAY: One clear action or insight`;
 
     return `
 Topic: ${topic}
 Hook Type: ${hookInstructions[hook_type]}
 Format: ${formatInstructions}
-Voice: ${voice_style}, slightly contrarian, conversational, shareable
 
-REQUIREMENTS:
-- NO filler phrases: "Who knew?", "Turns out", "Did you know?", "Here's the thing"
-- NO generic health advice everyone knows
-- Include specific details, numbers, or examples when possible
-- Make it engaging enough that someone would want to share it
-- Keep it conversational but authoritative
+MANDATORY STRUCTURE - ALL CONTENT MUST FOLLOW:
+🎯 HOOK: Contrarian statement or curiosity gap that challenges what people believe
+📊 EVIDENCE: Research-backed explanation with numbers, percentages, or study references
+✅ TAKEAWAY: Clear, practical action or insight people can use immediately
 
-Generate the content now:
+STRICT CONTENT RULES:
+❌ ABSOLUTELY FORBIDDEN:
+- First-person language: "I tried", "my experience", "I found", "my results", "I discovered"
+- Anecdotal phrasing: "worked for me", "my journey", "personal experience"
+- Vague claims: "crazy difference", "amazing results", "who knew?", "turns out"
+- Generic advice: obvious tips everyone already knows
+
+✅ REQUIRED ELEMENTS:
+- Research references: "Studies show", "Research reveals", "Data indicates"
+- Specific numbers: percentages, timeframes, quantities
+- Contrarian angle: challenge mainstream health beliefs
+- Authoritative tone: expert-level knowledge presentation
+- Practical utility: actionable advice people can implement
+
+VOICE GUIDELINES:
+- Authoritative but accessible
+- Evidence-based and credible  
+- Slightly contrarian but professional
+- No personal anecdotes or diary-style content
+- Third-person perspective only
+
+Generate the content now following this exact structure:
 `;
   }
 
@@ -288,17 +342,33 @@ Generate the content now:
    * Get system prompt for voice style
    */
   private getSystemPrompt(voice_style: string): string {
-    return `You are an expert health content creator for Twitter. Your writing style is:
+    return `You are a leading health research expert creating authoritative Twitter content. Your expertise includes:
 
-- ${voice_style} and engaging
-- Slightly contrarian and thought-provoking  
-- Backed by evidence when possible
-- Avoids obvious advice everyone already knows
-- Uses specific examples and numbers
-- Creates curiosity and shareability
-- Bans these filler phrases: "Who knew?", "Turns out", "Did you know?", "Here's the thing", "The truth is"
+AUTHORITY MARKERS:
+- Reference research studies and clinical data (use generic citations: "Research shows", "Studies find", "Data reveals")
+- Include specific statistics, percentages, and measurable outcomes
+- Challenge conventional health wisdom with evidence-based alternatives
+- Present information from an expert third-person perspective
 
-You create content that makes people think differently about health topics.`;
+CONTENT STANDARDS:
+- NEVER use first-person language ("I", "my", personal experiences)
+- NEVER include anecdotal or diary-style content  
+- ALWAYS include research-backed explanations
+- ALWAYS provide specific, actionable takeaways
+- Challenge mainstream beliefs with contrarian but credible information
+
+FORBIDDEN PHRASES:
+- "I tried", "my experience", "worked for me", "my journey"
+- "Who knew?", "Turns out", "Did you know?", "Here's the thing", "The truth is"
+- "Amazing results", "crazy difference", "game-changer"
+
+REQUIRED ELEMENTS:
+- Hook that challenges conventional wisdom
+- Evidence with numbers or research references
+- Clear, practical takeaway
+- Professional, authoritative tone
+
+You create content that positions the account as a trusted health authority, not a personal blogger.`;
   }
 
   /**
@@ -341,20 +411,27 @@ You create content that makes people think differently about health topics.`;
       return match ? Math.min(100, Math.max(0, parseInt(match[1]) || 0)) : 60;
     };
 
+    const authority = extractScore(/AUTHORITY:\s*(\d+)/i);
     const hook_strength = extractScore(/HOOK_STRENGTH:\s*(\d+)/i);
-    const novelty = extractScore(/NOVELTY:\s*(\d+)/i);
-    const clarity = extractScore(/CLARITY:\s*(\d+)/i);
-    const shareability = extractScore(/SHAREABILITY:\s*(\d+)/i);
+    const evidence_quality = extractScore(/EVIDENCE_QUALITY:\s*(\d+)/i);
+    const actionability = extractScore(/ACTIONABILITY:\s*(\d+)/i);
     
-    // Calculate overall as weighted average
+    // Calculate overall as weighted average (Authority 35% + Hook 25% + Evidence 25% + Action 15%)
     const overall = Math.round(
-      hook_strength * 0.3 + 
-      novelty * 0.25 + 
-      clarity * 0.2 + 
-      shareability * 0.25
+      authority * 0.35 + 
+      hook_strength * 0.25 + 
+      evidence_quality * 0.25 + 
+      actionability * 0.15
     );
 
-    return { hook_strength, novelty, clarity, shareability, overall };
+    // Map new scoring to existing interface (backwards compatibility)
+    return { 
+      hook_strength, 
+      novelty: evidence_quality,  // Evidence quality maps to novelty
+      clarity: actionability,     // Actionability maps to clarity  
+      shareability: authority,    // Authority maps to shareability
+      overall 
+    };
   }
 
   /**
