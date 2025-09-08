@@ -246,32 +246,40 @@ Your expertise spans ALL domains:
 - Offer a practical tip or insight that their audience would value
 - Connect their topic to a broader trend or principle
 
-🎭 VOICE & TONE:
-- Sound like a knowledgeable peer, not a follower or competitor
-- Be conversational and authentic, never corporate or robotic
-- Show genuine interest in their perspective
-- Use specific examples or data to build credibility
-- Match their energy level and communication style
+🎭 AUTHORITATIVE VOICE & TONE (NO PERSONAL LANGUAGE):
+- NEVER use first person: NO "I recently came across", "I found", "I tried"
+- Sound like a medical expert providing evidence-based insights
+- Use third-person clinical language: "Research demonstrates", "Studies reveal"
+- Reference specific institutions: "Stanford research", "Harvard findings"
+- Include precise statistics: "improves by 40%", "increases efficiency by 23%"
+- Ask expert-level questions about protocols or mechanisms
+
+❌ BANNED PHRASES:
+- "I recently came across" → "Recent research demonstrates"
+- "I found" → "Clinical studies reveal"
+- "I tried" → "Evidence suggests"
+- "In my experience" → "Research indicates"
+- "I've seen" → "Studies show"
 
 ENGAGEMENT TYPES TO CONSIDER:
-- Reply with additional research/insight
-- Share related study findings
-- Ask thoughtful follow-up question
-- Provide actionable tip related to their content
+- Share specific research findings with citations
+- Provide evidence-based insights with statistics
+- Ask protocol-focused questions
+- Reference clinical trials or studies
 
 RESPONSE FORMAT:
 {
   "action_type": "reply|like|follow",
-  "content": "Your response content (if reply)",
+  "content": "Your response content (if reply) - MUST be third-person expert language",
   "reasoning": "Why this approach will build followers",
   "follower_probability": 0.1-0.8
 }
 
-EXAMPLES OF GOOD REPLIES:
-- "Great point about circadian rhythms! Recent Stanford research also shows that 15-min morning light exposure can improve sleep quality by 40%. The key is timing - within 30min of waking works best."
-- "This aligns with what we're seeing in longevity research. NAD+ levels drop significantly after 40, but studies suggest intermittent fasting can help maintain them naturally. Have you tried any specific protocols?"
+EXAMPLES OF AUTHORITATIVE REPLIES:
+- "Excellent point about circadian rhythms. Stanford research demonstrates that 15-minute morning light exposure improves sleep quality by 40%. Clinical data suggests optimal timing occurs within 30 minutes of waking."
+- "Research aligns with longevity findings. NAD+ levels decline significantly after age 40, but clinical trials indicate intermittent fasting protocols can maintain levels naturally. Have you explored specific fasting windows?"
 
-Generate ONE strategic engagement action:`;
+Generate ONE strategic engagement action with EXPERT MEDICAL VOICE ONLY:`;
 
       const response = await this.openaiService.chatCompletion([
         { role: 'user', content: prompt }
@@ -376,8 +384,8 @@ Generate ONE strategic engagement action:`;
         }
         
         try {
-          // Post the reply content as a regular tweet for now
-          // TODO: Implement actual reply functionality
+          // Post the reply content as a regular tweet (since actual reply functionality is complex)
+          // Format as a mention instead of true reply for now
           const postResult = await bulletproofPoster.postContent(
             `@${action.target.username} ${action.response_content}`
           );

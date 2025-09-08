@@ -1056,37 +1056,55 @@ class BulletproofMainSystem {
       let isFollowerOptimized = false;
       
       if (Math.random() < 0.7) {
-        // Use follower growth engine for viral content
-        console.log('🚀 STRATEGIC_AI: Using follower growth engine for viral content...');
-        const followerContent = await followerGrowthEngine.generateFollowerMagnetContent({
-          trendingTopic: contentDecision.recommended_topic,
-          targetAudience: 'health_conscious',
-          contentGoal: 'viral'
+        // Use AUTHORITATIVE engine for expert content - NO personal language  
+        console.log('🚀 STRATEGIC_AI: Using authoritative content engine for expert content...');
+        const authResult = await this.authoritativeEngine.generateAuthoritativeContent({
+          topic: contentDecision.recommended_topic || 'evidence-based health research',
+          format: contentDecision.recommended_content_type === 'thread' ? 'thread' : 'single',
+          useDataInsights: true
         });
         
-        contentResult = {
-          content: followerContent.content,
-          metadata: {
-            content_type: followerContent.contentType,
-            voice_style: 'follower_magnet',
-            topic_source: 'ai_generated',
-            human_voice_score: 95,
-            diversity_score: 90,
-            learning_applied: [],
-            predicted_performance: {
-              engagement_rate: followerContent.viralPotential,
-              follower_potential: followerContent.followPotential,
-              viral_score: followerContent.viralPotential,
-              authenticity_score: 90
+        if (authResult && authResult.approved) {
+          contentResult = {
+            content: Array.isArray(authResult.content) ? authResult.content.join('\n\n') : authResult.content,
+            metadata: {
+              content_type: authResult.format,
+              voice_style: 'medical_expert',
+              topic_source: 'authoritative_evidence',
+              human_voice_score: 0, // No human/personal voice
+              diversity_score: authResult.scores.overall,
+              learning_applied: ['expert_authority', 'clinical_evidence'],
+              predicted_performance: {
+                engagement_rate: authResult.scores.overall,
+                follower_potential: authResult.scores.evidenceScore,
+                viral_score: authResult.scores.overall,
+                authenticity_score: 100
+              }
             }
-          },
-          recommendations: {
-            optimal_posting_time: Date.now(),
-            follow_up_content_suggestions: [],
-            performance_predictions: []
-          }
-        };
-        isFollowerOptimized = true;
+          };
+          isFollowerOptimized = true;
+        } else {
+          console.error('❌ STRATEGIC_AI: Authoritative content rejected, using fallback');
+          // Use clinical fallback instead of personal content
+          contentResult = {
+            content: `Clinical research demonstrates significant advances in ${contentDecision.recommended_topic || 'health optimization'}. Evidence-based approaches show measurable improvements in patient outcomes through targeted interventions.`,
+            metadata: {
+              content_type: 'expert_fallback',
+              voice_style: 'clinical_authority',
+              topic_source: 'medical_fallback',
+              human_voice_score: 0,
+              diversity_score: 75,
+              learning_applied: ['clinical_expertise'],
+              predicted_performance: {
+                engagement_rate: 75,
+                follower_potential: 70,
+                viral_score: 75,
+                authenticity_score: 100
+              }
+            }
+          };
+          isFollowerOptimized = true;
+        }
         
       } else {
         // Use AUTHORITATIVE content engine - NO personal content
