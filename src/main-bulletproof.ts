@@ -13,7 +13,7 @@ import { aggressiveScheduler } from './posting/aggressivePostingScheduler';
 // EMERGENCY_DISABLED: import { EnhancedContentOrchestrator } from './ai/enhancedContentOrchestrator';
 import { intelligentDecision } from './ai/intelligentDecisionEngine';
 import { realTimeAnalytics } from './analytics/realTimeTwitterAnalytics';
-import { bulletproofPoster } from './posting/bulletproofPoster';
+import { simplifiedPoster as bulletproofPoster } from './posting/simplifiedBulletproofPoster';
 import { followerGrowthEngine } from './ai/followerGrowthContentEngine';
 import { quickHealthCheck } from './utils/systemHealthCheck';
 import { testCompletePipeline } from './utils/pipelineTest';
