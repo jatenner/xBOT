@@ -5,7 +5,7 @@
  */
 
 import { Page } from 'playwright';
-import { bulletproofBrowser } from './bulletproofBrowserManager';
+import { BulletproofBrowserManager } from './bulletproofBrowserManager';
 import { admin as supabase } from '../lib/supabaseClients';
 
 export interface PostResult {
