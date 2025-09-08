@@ -79,7 +79,7 @@
     "test-quote": "npm run build && node -e \"const {quoteAgent} = require('./dist/agents/quoteAgent.js'); quoteAgent.executeQuoteTweet().then(r => console.log(r))\"",
     "test-follower": "npm run build && node dist/jobs/updateFollowerCount.js",
     "candidates:refresh": "npm run build && node scripts/candidates-refresh.js",
-    "learning:test": "npm run build && node -e \"const {LearningIngestor} = require('./dist/learn/ingest'); new LearningIngestor().runLearningCycle().then(r => console.log('Learning test complete:', r))\"",
+    "learning:test": "tsx scripts/test-learning-system.ts",
     "health:check": "npm run build && node -e \"const {HealthMonitor} = require('./dist/ops/health'); new HealthMonitor().printHealthStatus()\"",
     "schedule:test": "npm run build && node -e \"const {SchedulingLoop} = require('./dist/schedule/loop'); new SchedulingLoop().runCycle().then(r => console.log('Scheduling test complete:', r))\"",
     "test-browser-post": "npm run build && node dist/utils/browserTweetPoster.js",
@@ -119,7 +119,14 @@
     "replies": "tsx src/main-bulletproof.ts --mode=replies",
     "learn": "tsx src/main-bulletproof.ts --mode=learn",
     "dry": "DRY_RUN=1 tsx src/main-bulletproof.ts --mode=post",
-    "health": "tsx scripts/healthServer.ts"
+    "health": "tsx scripts/healthServer.ts",
+    "learning:quick": "tsx scripts/test-learning-system.ts quick",
+    "learning:dry-run": "tsx scripts/test-learning-system.ts dry-run",
+    "learning:generate": "tsx -e \"import('./src/core/learningSystemOrchestrator.js').then(m => new m.default().generateVettedContent().then(c => console.log(JSON.stringify(c, null, 2))))\"",
+    "learning:batch": "tsx -e \"import('./src/core/learningSystemOrchestrator.js').then(m => new m.default().generateContentBatch(3))\"",
+    "learning:cycle": "tsx -e \"import('./src/core/learningSystemOrchestrator.js').then(m => new m.default().runCompleteLearningCycle())\"",
+    "learning:status": "tsx -e \"import('./src/core/learningSystemOrchestrator.js').then(m => new m.default().getSystemStatus().then(s => console.log(JSON.stringify(s, null, 2))))\"",
+    "migrate:learning": "npx supabase db push"
   },
   "keywords": [
     "twitter",
