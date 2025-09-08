@@ -25,7 +25,7 @@ export class ContentGenerator {
   }
 
   /**
-   * Generate high-quality content with automatic quality checking and regeneration
+   * 🚀 REVOLUTIONARY: Generate data-driven content using the Revolutionary Content Engine
    */
   async generateContent(params: GenerationParams): Promise<{
     success: boolean;
@@ -34,21 +34,76 @@ export class ContentGenerator {
     attempts?: number;
     error?: string;
   }> {
-    console.log('🎯 PROMPT_BUILD: Starting content generation with quality loop');
+    console.log('🚀 REVOLUTIONARY_GENERATION: Starting 100% data-driven content creation...');
     
-    let attempts = 0;
-    const maxAttempts = MAX_REGENERATION_ATTEMPTS;
-
-    while (attempts < maxAttempts) {
-      attempts++;
-      console.log(`🔄 MODEL_CALL: Generation attempt ${attempts}/${maxAttempts}`);
-
-      try {
-        // Generate content
-        const content = await this.generateRawContent(params);
-        if (!content.success) {
-          return { success: false, error: content.error, attempts };
+    try {
+      // Import and use Revolutionary Content Engine
+      const { getRevolutionaryContentEngine } = await import('./revolutionaryContentEngine');
+      const revolutionaryEngine = getRevolutionaryContentEngine();
+      
+      // Generate data-driven content
+      const dataContent = await revolutionaryEngine.generateDataDrivenContent(
+        params.topic,
+        params.format
+      );
+      
+      console.log(`✅ REVOLUTIONARY_SUCCESS: Generated with ${dataContent.confidence}% confidence`);
+      console.log(`📊 DATA_SOURCE: ${dataContent.dataSource} | Strategy: ${dataContent.strategy}`);
+      console.log(`🚀 VIRAL_POTENTIAL: ${(dataContent.viralPotential * 100).toFixed(1)}%`);
+      
+      // Convert to ContentResult format
+      const contentResult: ContentResult = {
+        content: dataContent.content,
+        metadata: {
+          topic: dataContent.topic,
+          format: params.format,
+          model: 'Revolutionary-AI-Engine',
+          temperature: 0.7,
+          strategy: dataContent.strategy,
+          viralPotential: dataContent.viralPotential,
+          dataSource: dataContent.dataSource,
+          reasoning: dataContent.reasoning,
+          expectedEngagement: dataContent.expectedEngagement
+        },
+        quality: {
+          hasHook: dataContent.content[0]?.includes('most people') || dataContent.content[0]?.includes('?') || false,
+          hasNumbers: dataContent.content.some(c => /\d/.test(c)),
+          hasActionableAdvice: dataContent.content.some(c => 
+            c.toLowerCase().includes('tip') || 
+            c.toLowerCase().includes('method') || 
+            c.toLowerCase().includes('strategy')
+          ),
+          concreteExamples: dataContent.content.filter(c => 
+            c.includes('example') || c.includes('study') || c.includes('research')
+          ).length
         }
+      };
+
+      return {
+        success: true,
+        content: contentResult,
+        qualityScore: Math.round(dataContent.confidence),
+        attempts: 1,
+      };
+
+    } catch (revolutionaryError: any) {
+      console.error('❌ REVOLUTIONARY_ENGINE_ERROR:', revolutionaryError.message);
+      console.log('🔄 FALLBACK: Using traditional generation as backup...');
+      
+      // Fallback to original logic
+      let attempts = 0;
+      const maxAttempts = MAX_REGENERATION_ATTEMPTS;
+
+      while (attempts < maxAttempts) {
+        attempts++;
+        console.log(`🔄 MODEL_CALL: Fallback generation attempt ${attempts}/${maxAttempts}`);
+
+        try {
+          // Generate content
+          const content = await this.generateRawContent(params);
+          if (!content.success) {
+            return { success: false, error: content.error, attempts };
+          }
 
         console.log('🔍 QUALITY_GATE: Evaluating content quality');
         

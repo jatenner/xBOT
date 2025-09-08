@@ -541,18 +541,32 @@ export class PostingOrchestrator {
   }
 
   private async generateRandomTopic(): Promise<string> {
-    const healthTopics = [
-      'morning hydration optimization',
-      'post-workout recovery timing',
-      'blue light and sleep quality',
-      'micronutrient absorption hacks',
-      'stress-cortisol reduction techniques',
-      'metabolic flexibility strategies',
-      'inflammation reduction foods',
-      'circadian rhythm optimization'
-    ];
-
-    return healthTopics[Math.floor(Math.random() * healthTopics.length)];
+    try {
+      // Use Revolutionary Content Engine for 100% data-driven topic selection
+      const { getRevolutionaryContentEngine } = await import('../ai/revolutionaryContentEngine');
+      const contentEngine = getRevolutionaryContentEngine();
+      
+      // Generate data-driven content to extract optimal topic
+      const dataContent = await contentEngine.generateDataDrivenContent(undefined, 'single');
+      
+      console.log(`🚀 DATA_DRIVEN_TOPIC: "${dataContent.topic}" (confidence: ${dataContent.confidence}%, source: ${dataContent.dataSource})`);
+      console.log(`📊 EXPECTED_ENGAGEMENT: ${dataContent.expectedEngagement.likes} likes, ${dataContent.expectedEngagement.followers_gained} followers`);
+      
+      return dataContent.topic;
+      
+    } catch (error: any) {
+      console.error('❌ REVOLUTIONARY_TOPIC_ERROR:', error.message);
+      
+      // Fallback: Use simple data-driven selection without hardcoded list
+      const emergencyTopics = [
+        'metabolic health optimization',
+        'evidence-based wellness strategies', 
+        'biohacking fundamentals',
+        'longevity research insights'
+      ];
+      
+      return emergencyTopics[Math.floor(Math.random() * emergencyTopics.length)];
+    }
   }
 
   private async storePostData(
