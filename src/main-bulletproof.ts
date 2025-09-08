@@ -17,6 +17,7 @@ import { bulletproofPoster } from './posting/bulletproofPoster';
 import { followerGrowthEngine } from './ai/followerGrowthContentEngine';
 import { quickHealthCheck } from './utils/systemHealthCheck';
 import { testCompletePipeline } from './utils/pipelineTest';
+import ViralAuthorityEngine from './content/viralAuthorityEngine';
 
 class BulletproofMainSystem {
   private analyticsChecker: TwitterAnalyticsScraper;
