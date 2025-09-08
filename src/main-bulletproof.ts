@@ -326,15 +326,8 @@ class BulletproofMainSystem {
    */
   private async executeEnhancedPosting(): Promise<boolean> {
     try {
-      // 🔧 AUTO-FIX BROWSER CONNECTION: Ensure browser is ready for posting
-      try {
-        const { browserManager } = await import('./posting/BrowserManager');
-        const browser = await browserManager.ensureBrowser();
-        console.log('✅ BROWSER_READY: Browser connection established for posting');
-      } catch (browserError: any) {
-        console.error('❌ BROWSER_CONNECTION_FAILED:', browserError.message);
-        console.log('🔄 BROWSER_RECOVERY: Will attempt to reconnect during posting...');
-      }
+      // 🔧 BROWSER_MANAGEMENT: Let bulletproofPoster handle its own browser connection
+      console.log('✅ BROWSER_READY: Browser connection will be managed by bulletproofPoster');
 
       // 🤖 AUTHORITATIVE CONTENT GENERATION - Zero personal language
       console.log('🤖 AUTHORITATIVE_GENERATION: Creating expert-level authoritative content...');
