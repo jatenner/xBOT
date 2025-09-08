@@ -11,10 +11,22 @@ async function runSmokeTest() {
   console.log('🧪 SMOKE_TEST: Testing content generation and scoring systems...');
   
   try {
-    // Import required modules (assuming they're compiled)
-    const { ContentStrategist } = require('../dist/ai/strategies/contentStrategist.js');
-    const { buildThread } = require('../dist/ai/content/threadBuilder.js');
-    const { scoreContent } = require('../dist/ai/content/scoring.js');
+    // Import required modules (try compiled first, fallback to direct)
+    let ContentStrategist, buildThread, scoreContent;
+    
+    try {
+      ContentStrategist = require('../dist/ai/strategies/contentStrategist.js').ContentStrategist;
+      buildThread = require('../dist/ai/content/threadBuilder.js').buildThread;
+      scoreContent = require('../dist/ai/content/scoring.js').scoreContent;
+    } catch (importError) {
+      console.log('⚠️ Compiled modules not found, trying direct TypeScript import...');
+      // Direct TypeScript import as fallback
+      process.env.TS_NODE_PROJECT = 'tsconfig.json';
+      require('ts-node/register');
+      ContentStrategist = require('../src/ai/strategies/contentStrategist.ts').ContentStrategist;
+      buildThread = require('../src/ai/content/threadBuilder.ts').buildThread;
+      scoreContent = require('../src/ai/content/scoring.ts').scoreContent;
+    }
     
     console.log('✅ IMPORTS: All modules loaded successfully');
     

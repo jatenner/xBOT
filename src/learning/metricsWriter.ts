@@ -11,9 +11,9 @@ let supabaseClient: SupabaseClient;
 async function getSupabase(): Promise<SupabaseClient> {
   if (!supabaseClient) {
     try {
-      const { DatabaseManager } = await import('../lib/db');
-      const dbManager = DatabaseManager.getInstance();
-      supabaseClient = dbManager.getSupabaseClient();
+      const { getSafeDatabase } = await import('../lib/db');
+      const db = getSafeDatabase();
+      supabaseClient = db.getClient();
     } catch (error) {
       // Fallback: create direct connection
       const { createClient } = await import('@supabase/supabase-js');

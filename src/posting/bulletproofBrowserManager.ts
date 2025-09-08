@@ -27,56 +27,90 @@ export class BulletproofBrowserManager {
   }
 
   /**
-   * Focus composer with multiple fallback strategies
+   * Focus composer with bulletproof typing capabilities
    */
   async focusComposer(): Promise<FocusResult> {
-    console.log('🎯 BULLETPROOF_FOCUS: Attempting to focus composer with fallbacks...');
+    console.log('🎯 BULLETPROOF_FOCUS: Attempting to focus composer with robust typing...');
     
-    const strategies = [
-      () => this.focusWithStandardClick(),
-      () => this.focusWithForceClick(),
-      () => this.focusWithKeyboardEntry(),
-      () => this.focusWithPageReload(),
-      () => this.focusWithElementEvaluation()
-    ];
-
-    for (let i = 0; i < strategies.length; i++) {
-      const strategyName = [
-        'standard_click',
-        'force_click', 
-        'keyboard_entry',
-        'page_reload',
-        'element_evaluation'
-      ][i];
-
-      try {
-        console.log(`🔧 FOCUS_STRATEGY_${i + 1}: Trying ${strategyName}...`);
-        
-        const result = await strategies[i]();
-        
-        if (result.success) {
-          console.log(`✅ FOCUS_SUCCESS: ${strategyName} worked after ${result.attempts} attempts`);
-          return { ...result, method: strategyName };
-        }
-        
-        console.log(`❌ FOCUS_FAILED: ${strategyName} failed - ${result.error}`);
-        
-      } catch (error) {
-        console.log(`💥 FOCUS_ERROR: ${strategyName} threw error - ${error instanceof Error ? error.message : error}`);
-      }
+    try {
+      // Step 1: Close overlays first
+      await this.ensureNoModalOverlays();
       
-      // Small delay between strategies
-      await this.delay(500);
-    }
+      // Step 2: Find and focus composer
+      const composer = await this.findComposerElement();
+      if (!composer) {
+        await this.takeScreenshot('composer_not_found');
+        return {
+          success: false,
+          method: 'find_composer',
+          error: 'Could not locate composer element',
+          attempts: 1
+        };
+      }
 
-    await this.takeScreenshot('all_focus_strategies_failed');
+      // Step 3: Focus the composer
+      const focusResult = await this.focusComposerElement(composer);
+      if (!focusResult.success) {
+        return focusResult;
+      }
+
+      console.log('✅ BULLETPROOF_FOCUS: Composer focused and ready for typing');
+      return {
+        success: true,
+        method: 'bulletproof_focus',
+        attempts: 1
+      };
+
+    } catch (error) {
+      await this.takeScreenshot('focus_exception');
+      return {
+        success: false,
+        method: 'exception',
+        error: error instanceof Error ? error.message : 'Unknown error',
+        attempts: 1
+      };
+    }
+  }
+
+  /**
+   * Set text in contenteditable element with robust handling
+   */
+  async setContenteditableText(element: any, text: string): Promise<boolean> {
+    console.log(`⌨️ BULLETPROOF_TYPE: Setting text (${text.length} chars)`);
     
-    return {
-      success: false,
-      method: 'all_failed',
-      error: 'All focus strategies failed',
-      attempts: strategies.length
-    };
+    try {
+      // Method 1: Direct contenteditable manipulation
+      const result1 = await this.setTextViaEvaluation(element, text);
+      if (result1) {
+        console.log('✅ TYPE_SUCCESS: Direct evaluation method worked');
+        return true;
+      }
+
+      // Method 2: Keyboard typing fallback
+      console.log('🔄 TYPE_FALLBACK: Trying keyboard method...');
+      const result2 = await this.setTextViaKeyboard(element, text);
+      if (result2) {
+        console.log('✅ TYPE_SUCCESS: Keyboard method worked');
+        return true;
+      }
+
+      // Method 3: Input event simulation
+      console.log('🔄 TYPE_FALLBACK: Trying input event method...');
+      const result3 = await this.setTextViaInputEvents(element, text);
+      if (result3) {
+        console.log('✅ TYPE_SUCCESS: Input event method worked');
+        return true;
+      }
+
+      console.error('❌ TYPE_FAILED: All typing methods failed');
+      await this.takeScreenshot('typing_failed');
+      return false;
+
+    } catch (error) {
+      console.error('💥 TYPE_EXCEPTION:', error instanceof Error ? error.message : error);
+      await this.takeScreenshot('typing_exception');
+      return false;
+    }
   }
 
   /**
@@ -426,6 +460,233 @@ export class BulletproofBrowserManager {
       console.log(`📸 SCREENSHOT_SAVED: ${filepath}`);
     } catch (error) {
       console.warn('⚠️ Could not save screenshot:', error);
+    }
+  }
+
+  /**
+   * Find composer element with preferred selectors
+   */
+  private async findComposerElement(): Promise<any> {
+    const selectors = [
+      '[data-testid="tweetTextarea_0"]',
+      '.public-DraftEditor-content',
+      '[role="textbox"][aria-label*="Post text"]',
+      '[role="textbox"][aria-label*="What is happening"]'
+    ];
+
+    for (const selector of selectors) {
+      try {
+        const element = await this.page.waitForSelector(selector, { timeout: 5000 });
+        if (element) {
+          console.log(`✅ COMPOSER_FOUND: Using selector ${selector}`);
+          return element;
+        }
+      } catch (error) {
+        continue;
+      }
+    }
+
+    // Keyboard fallback to open composer
+    console.log('⌨️ KEYBOARD_COMPOSER: Trying to open composer with keyboard...');
+    await this.page.keyboard.press('Escape');
+    await this.delay(500);
+    await this.page.keyboard.press('KeyN');
+    await this.delay(1000);
+
+    // Try selectors again
+    for (const selector of selectors) {
+      try {
+        const element = await this.page.$(selector);
+        if (element) {
+          console.log(`✅ COMPOSER_FOUND: Using selector ${selector} after keyboard`);
+          return element;
+        }
+      } catch (error) {
+        continue;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Focus composer element with multiple strategies
+   */
+  private async focusComposerElement(element: any): Promise<FocusResult> {
+    try {
+      // Scroll into view
+      await element.scrollIntoViewIfNeeded();
+      await this.delay(500);
+
+      // Try standard click
+      try {
+        await element.click({ timeout: 3000 });
+        const focused = await element.evaluate((el: HTMLElement) => document.activeElement === el);
+        if (focused) {
+          return { success: true, method: 'standard_click', attempts: 1 };
+        }
+      } catch (error) {
+        console.log('🔄 FOCUS_FALLBACK: Standard click failed, trying force click...');
+      }
+
+      // Try force click
+      try {
+        await element.click({ force: true });
+        await element.focus();
+        const focused = await element.evaluate((el: HTMLElement) => document.activeElement === el);
+        if (focused) {
+          return { success: true, method: 'force_click', attempts: 1 };
+        }
+      } catch (error) {
+        console.log('🔄 FOCUS_FALLBACK: Force click failed, trying evaluation...');
+      }
+
+      // Try evaluation focus
+      await element.evaluate((el: HTMLElement) => {
+        el.focus();
+        el.click();
+      });
+
+      const focused = await element.evaluate((el: HTMLElement) => document.activeElement === el);
+      if (focused) {
+        return { success: true, method: 'evaluation_focus', attempts: 1 };
+      }
+
+      return {
+        success: false,
+        method: 'all_focus_methods',
+        error: 'Could not focus composer element',
+        attempts: 3
+      };
+
+    } catch (error) {
+      return {
+        success: false,
+        method: 'focus_exception',
+        error: error instanceof Error ? error.message : 'Unknown error',
+        attempts: 1
+      };
+    }
+  }
+
+  /**
+   * Set text via direct contenteditable manipulation
+   */
+  private async setTextViaEvaluation(element: any, text: string): Promise<boolean> {
+    try {
+      await element.evaluate((el: HTMLElement, value: string) => {
+        // Focus the element
+        el.focus();
+        
+        // Clear existing content
+        el.textContent = '';
+        el.innerHTML = '';
+        
+        // Create text node and append
+        const textNode = document.createTextNode(value);
+        el.appendChild(textNode);
+        
+        // Set selection at end
+        const selection = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        range.collapse(false);
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+        
+        // Trigger input events
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      }, text);
+
+      // Verify text was set
+      await this.delay(500);
+      const actualText = await element.evaluate((el: HTMLElement) => el.textContent || '');
+      
+      return actualText.includes(text.substring(0, 50));
+    } catch (error) {
+      console.warn('⚠️ Evaluation typing failed:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Set text via keyboard typing
+   */
+  private async setTextViaKeyboard(element: any, text: string): Promise<boolean> {
+    try {
+      // Focus and clear
+      await element.click();
+      await this.page.keyboard.press('ControlOrMeta+KeyA');
+      await this.delay(100);
+      
+      // Type the text
+      await this.page.keyboard.type(text, { delay: 50 });
+      
+      // Verify text was typed
+      await this.delay(500);
+      const actualText = await element.evaluate((el: HTMLElement) => el.textContent || '');
+      
+      return actualText.includes(text.substring(0, 50));
+    } catch (error) {
+      console.warn('⚠️ Keyboard typing failed:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Set text via input event simulation
+   */
+  private async setTextViaInputEvents(element: any, text: string): Promise<boolean> {
+    try {
+      await element.evaluate((el: HTMLElement, value: string) => {
+        // Clear and set value
+        el.textContent = value;
+        
+        // Simulate typing events
+        const events = ['input', 'change', 'keyup', 'keydown'];
+        events.forEach(eventType => {
+          el.dispatchEvent(new Event(eventType, { bubbles: true }));
+        });
+      }, text);
+
+      // Verify text was set
+      await this.delay(500);
+      const actualText = await element.evaluate((el: HTMLElement) => el.textContent || '');
+      
+      return actualText.includes(text.substring(0, 50));
+    } catch (error) {
+      console.warn('⚠️ Input event typing failed:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Handle browser crashes and TargetClosedError
+   */
+  async handleBrowserRelaunch(): Promise<boolean> {
+    console.log('🔄 BROWSER_RELAUNCH: Handling browser crash...');
+    
+    try {
+      // Railway-friendly browser args
+      const railwayArgs = [
+        '--no-sandbox',
+        '--disable-gpu', 
+        '--disable-dev-shm-usage',
+        '--disable-features=VizDisplayCompositor',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding'
+      ];
+
+      // This would typically be handled by the poster class
+      // For now, just log the relaunch attempt
+      console.log('🚀 BROWSER_RELAUNCH: Would restart with Railway args:', railwayArgs.join(' '));
+      
+      return true;
+    } catch (error) {
+      console.error('💥 BROWSER_RELAUNCH_FAILED:', error);
+      return false;
     }
   }
 

@@ -117,31 +117,60 @@ async function checkSession() {
       errors.push(`Blocking overlays detected: ${overlaysFound.join(', ')}`);
     }
     
-    // Test clicking composer
+    // Test bulletproof composer typing
     try {
       await composer.click({ timeout: 3000 });
       console.log('✅ COMPOSER_CLICKABLE: Successfully clicked composer');
       
-      // Check if focused
-      const isFocused = await composer.evaluate(el => document.activeElement === el);
-      if (isFocused) {
-        console.log('✅ COMPOSER_FOCUSED: Composer is focused and ready');
+      // Test typing capability
+      const testText = 'Session check typing test';
+      
+      // Clear any existing content
+      await page.keyboard.press('ControlOrMeta+KeyA');
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Type test text
+      await page.keyboard.type(testText);
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Verify text was typed
+      const typedContent = await composer.evaluate(el => el.textContent || el.innerText || '');
+      
+      if (typedContent.includes(testText)) {
+        console.log('✅ COMPOSER_TYPING: Text input successful');
         success = true;
+        
+        // Clear test content
+        await page.keyboard.press('ControlOrMeta+KeyA');
+        await page.keyboard.press('Delete');
       } else {
-        errors.push('Composer clicked but not focused');
+        errors.push(`Typing test failed - expected "${testText}", got "${typedContent}"`);
+        
+        // Try contenteditable manipulation as fallback
+        const manualResult = await composer.evaluate((el, text) => {
+          try {
+            el.textContent = text;
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            return el.textContent || '';
+          } catch (e) {
+            return 'manual_failed';
+          }
+        }, testText);
+        
+        if (manualResult.includes(testText)) {
+          console.log('⚠️ COMPOSER_MANUAL_TYPE: Manual typing worked as fallback');
+          success = true;
+          errors.push('Keyboard typing failed but manual contenteditable worked');
+          
+          // Clear test content
+          await composer.evaluate(el => el.textContent = '');
+        } else {
+          errors.push('Both keyboard and manual typing failed');
+        }
       }
       
     } catch (error) {
-      errors.push(`Composer click failed: ${error.message}`);
-      
-      // Try force click as fallback test
-      try {
-        await composer.click({ force: true });
-        console.log('⚠️ COMPOSER_FORCE_CLICKABLE: Force click worked');
-        errors.push('Standard click failed but force click worked - may indicate overlay issues');
-      } catch (forceError) {
-        errors.push(`Both standard and force click failed: ${forceError.message}`);
-      }
+      errors.push(`Composer typing test failed: ${error.message}`);
     }
     
     await context.close();
