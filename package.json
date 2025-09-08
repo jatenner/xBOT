@@ -18,6 +18,8 @@
     "test:session": "node scripts/session_check.js",
     "verify": "tsc -p . && node scripts/smoke_test.js",
     "dry": "DRY_RUN=1 node dist/main.js",
+    "fix:content": "tsx scripts/fix-content-generation.ts",
+    "verify:data": "tsx scripts/verify-data-storage.ts",
     "seed:x-session": "ts-node -T tools/seedSession.ts",
     "lint:sample": "ts-node -T tools/tryLinter.ts",
     "print:b64-session": "ts-node tools/session-cli.ts print-b64",
