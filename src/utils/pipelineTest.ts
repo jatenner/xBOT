@@ -71,6 +71,10 @@ export async function testCompletePipeline(): Promise<{
         success = false;
         issues.push(`Database storage failed: ${insertError.message}`);
         results.databaseStorage = { success: false, error: insertError.message };
+      } else if (!insertData) {
+        success = false;
+        issues.push(`Database storage failed: No data returned from insert`);
+        results.databaseStorage = { success: false, error: 'No data returned from insert - table may not exist' };
       } else {
         results.databaseStorage = { 
           success: true, 

@@ -140,11 +140,22 @@ OUTPUT REQUIREMENTS:
 
       let generatedData;
       try {
-        generatedData = JSON.parse(rawContent);
+        // Clean up markdown code blocks if present
+        let cleanContent = rawContent.trim();
+        if (cleanContent.startsWith('```json')) {
+          cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+        } else if (cleanContent.startsWith('```')) {
+          cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
+        }
+        
+        generatedData = JSON.parse(cleanContent);
       } catch (parseError) {
         console.error('❌ FOLLOWER_ENGINE: JSON parse failed:', parseError);
         console.error('Raw content:', rawContent);
-        throw new Error('Failed to parse OpenAI response as JSON');
+        
+        // Try fallback content generation instead of throwing
+        console.log('🔄 FOLLOWER_ENGINE: Attempting fallback due to JSON parse failure...');
+        return this.generateFallbackContent(context?.trendingTopic || 'health optimization');
       }
 
       // Validate that we have actual content
