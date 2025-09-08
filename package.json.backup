@@ -15,7 +15,11 @@
     "seed:session": "tsx scripts/seed-session.ts",
     "auth:session": "node create_authenticated_session.js",
     "verify:session": "node verify_session.js",
-    "test:session": "tsx tests/sessionLoader.test.ts",
+    "test:session": "node scripts/session_check.js",
+    "verify": "tsc -p . && node scripts/smoke_test.js",
+    "dry": "DRY_RUN=1 node dist/main.js",
+    "fix:content": "tsx scripts/fix-content-generation.ts",
+    "verify:data": "tsx scripts/verify-data-storage.ts",
     "seed:x-session": "ts-node -T tools/seedSession.ts",
     "lint:sample": "ts-node -T tools/tryLinter.ts",
     "print:b64-session": "ts-node tools/session-cli.ts print-b64",
@@ -79,7 +83,7 @@
     "test-quote": "npm run build && node -e \"const {quoteAgent} = require('./dist/agents/quoteAgent.js'); quoteAgent.executeQuoteTweet().then(r => console.log(r))\"",
     "test-follower": "npm run build && node dist/jobs/updateFollowerCount.js",
     "candidates:refresh": "npm run build && node scripts/candidates-refresh.js",
-    "learning:test": "npm run build && node -e \"const {LearningIngestor} = require('./dist/learn/ingest'); new LearningIngestor().runLearningCycle().then(r => console.log('Learning test complete:', r))\"",
+    "learning:test": "tsx scripts/test-learning-system.ts",
     "health:check": "npm run build && node -e \"const {HealthMonitor} = require('./dist/ops/health'); new HealthMonitor().printHealthStatus()\"",
     "schedule:test": "npm run build && node -e \"const {SchedulingLoop} = require('./dist/schedule/loop'); new SchedulingLoop().runCycle().then(r => console.log('Scheduling test complete:', r))\"",
     "test-browser-post": "npm run build && node dist/utils/browserTweetPoster.js",
@@ -115,11 +119,19 @@
     "content:health": "tsx scripts/content-operator.ts --brand health",
     "content:productivity": "tsx scripts/content-operator.ts --brand productivity",
     "content:mindfulness": "tsx scripts/content-operator.ts --brand mindfulness",
-    "post": "tsx src/main-bulletproof.ts --mode=post",
-    "replies": "tsx src/main-bulletproof.ts --mode=replies",
-    "learn": "tsx src/main-bulletproof.ts --mode=learn",
+    "post": "tsx scripts/enhanced-content-operator.ts post",
+    "replies": "tsx scripts/enhanced-content-operator.ts replies", 
+    "learn": "tsx scripts/enhanced-content-operator.ts learn",
+    "content": "tsx scripts/enhanced-content-operator.ts",
     "dry": "DRY_RUN=1 tsx src/main-bulletproof.ts --mode=post",
-    "health": "tsx scripts/healthServer.ts"
+    "health": "tsx scripts/healthServer.ts",
+    "learning:quick": "tsx scripts/test-learning-system.ts quick",
+    "learning:dry-run": "tsx scripts/test-learning-system.ts dry-run",
+    "learning:generate": "tsx -e \"import('./src/core/learningSystemOrchestrator.js').then(m => new m.default().generateVettedContent().then(c => console.log(JSON.stringify(c, null, 2))))\"",
+    "learning:batch": "tsx -e \"import('./src/core/learningSystemOrchestrator.js').then(m => new m.default().generateContentBatch(3))\"",
+    "learning:cycle": "tsx -e \"import('./src/core/learningSystemOrchestrator.js').then(m => new m.default().runCompleteLearningCycle())\"",
+    "learning:status": "tsx -e \"import('./src/core/learningSystemOrchestrator.js').then(m => new m.default().getSystemStatus().then(s => console.log(JSON.stringify(s, null, 2))))\"",
+    "migrate:learning": "npx supabase db push"
   },
   "keywords": [
     "twitter",
@@ -174,5 +186,11 @@
     "ts-jest": "^29.4.0",
     "ts-node": "^10.9.2",
     "tsx": "^4.20.4"
+  }
+}    "autonomous": "node dist/autonomous/autonomousMain.js",
+    "autonomous:dry": "DRY_RUN=1 node dist/autonomous/autonomousMain.js",
+    "autonomous:status": "node scripts/autonomous-status.js",
+    "autonomous:test": "npm run build && npm run autonomous:dry",
+    "migrate:autonomous": "supabase migration new autonomous_system && echo 'Apply autonomous system migration'"
   }
 }
