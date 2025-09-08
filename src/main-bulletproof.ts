@@ -566,7 +566,7 @@ class BulletproofMainSystem {
         const threadResult = await bulletproofPoster.postThread(result.threadParts);
         postResult = {
           success: threadResult.success,
-          tweetId: threadResult.tweetId,
+          tweetId: threadResult.tweetIds?.[0] || 'thread_' + Date.now(),
           type: 'thread' as const,
           qualityScore: result.metadata.qualityScore,
           error: threadResult.error
