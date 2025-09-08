@@ -72,7 +72,6 @@ class CloudSafeRedis implements SafeRedisClient {
       console.log('🔌 REDIS_SAFE: Attempting connection...');
       
       this.client = new Redis(redisUrl, {
-        retryDelayOnFailover: 100,
         maxRetriesPerRequest: 2,
         connectTimeout: 10000,
         commandTimeout: 5000,
@@ -300,7 +299,8 @@ class CloudSafeRedis implements SafeRedisClient {
     }
 
     try {
-      return await this.client!.incrbyfloat(key, increment);
+      const result = await this.client!.incrbyfloat(key, increment);
+      return parseFloat(result);
     } catch (error) {
       console.warn(`⚠️ REDIS_SAFE: INCRBYFLOAT failed for ${key}, using fallback`);
       this.handleConnectionError();

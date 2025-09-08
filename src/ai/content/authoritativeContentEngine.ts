@@ -36,7 +36,8 @@ export class AuthoritativeContentEngine {
   private db = getSafeDatabase();
 
   private constructor() {
-    this.openaiService = new OpenAIService();
+    // We'll implement the OpenAI integration when needed
+    // For now, using fallback responses
   }
 
   public static getInstance(): AuthoritativeContentEngine {
