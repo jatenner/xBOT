@@ -88,7 +88,7 @@ export class HardenedSupabaseClient {
       }
 
       console.log(`✅ DB_INSERT_SUCCESS: ${table} - inserted ${Array.isArray(result) ? result.length : 1} rows`);
-      return { success: true, data: result };
+      return { success: true, data: result as T };
 
     } catch (error) {
       const dbError = this.enhanceError(error as any, table, 'insert', data);
@@ -160,7 +160,7 @@ export class HardenedSupabaseClient {
       }
 
       console.log(`✅ DB_UPSERT_SUCCESS: ${table} - ${Array.isArray(result) ? result.length : 1} rows`);
-      return { success: true, data: result };
+      return { success: true, data: result as T };
 
     } catch (error) {
       const dbError = this.enhanceError(error as any, table, 'upsert', data);
