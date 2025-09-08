@@ -10,7 +10,7 @@ import { TwitterAnalyticsScraper } from './analytics/twitterAnalyticsScraper';
 import { systemMonitor } from './monitoring/systemPerformanceMonitor';
 import { aggressiveScheduler } from './posting/aggressivePostingScheduler';
 import { aggressiveEngager } from './engagement/aggressiveEngagementEngine';
-import { EnhancedContentOrchestrator } from './ai/enhancedContentOrchestrator';
+// EMERGENCY_DISABLED: import { EnhancedContentOrchestrator } from './ai/enhancedContentOrchestrator';
 import { intelligentDecision } from './ai/intelligentDecisionEngine';
 import { realTimeAnalytics } from './analytics/realTimeTwitterAnalytics';
 import { bulletproofPoster } from './posting/bulletproofPoster';
@@ -652,8 +652,8 @@ class BulletproofMainSystem {
         
         // 🎭 ENHANCED_LEARNING: Initialize content performance tracking
         try {
-          // EMERGENCY_DISABLED: const { EnhancedContentOrchestrator } = await import('./ai/enhancedContentOrchestrator');
-          const orchestrator = EnhancedContentOrchestrator.getInstance();
+          // EMERGENCY_DISABLED: EnhancedContentOrchestrator generates personal content
+          // const orchestrator = EnhancedContentOrchestrator.getInstance();
           
           // Store initial post data for future learning (will get real engagement later)
           console.log('🧠 ENHANCED_LEARNING: Initializing content performance tracking...');
