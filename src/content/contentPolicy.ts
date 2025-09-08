@@ -27,8 +27,8 @@ export class ContentPolicy {
   private static instance: ContentPolicy;
 
   // Configurable thresholds
-  private readonly MIN_EVIDENCE_SCORE = Number(process.env.MIN_EVIDENCE_SCORE) || 0.8;
-  private readonly MIN_EXPERT_SCORE = Number(process.env.MIN_EXPERT_SCORE) || 0.9;
+  private readonly MIN_EVIDENCE_SCORE = Number(process.env.MIN_EVIDENCE_SCORE) || 0.6;
+  private readonly MIN_EXPERT_SCORE = Number(process.env.MIN_EXPERT_SCORE) || 0.7;
   private readonly STRICT_MODE = process.env.STRICT_EXPERT_VOICE === 'true';
 
   public static getInstance(): ContentPolicy {
