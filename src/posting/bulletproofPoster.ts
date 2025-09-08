@@ -287,11 +287,16 @@ export class BulletproofPoster {
             console.log('🔘 BULLETPROOF_POSTER: Looking for compose button on current page...');
             
             const composeSelectors = [
+              'a[href="/compose/post"]', // New X.com compose URL
+              'a[href="/compose/tweet"]', // Legacy Twitter compose URL
               '[data-testid="SideNav_NewTweet_Button"]',
-              '[aria-label="Tweet"]',
+              '[aria-label="Post"]', // New X.com button
+              '[aria-label="Tweet"]', // Legacy Twitter button
               '[data-testid="tweetButton"]',
-              'a[href="/compose/tweet"]',
-              'button[aria-label="Tweet"]',
+              'button[aria-label="Post"]', // New X.com button
+              'button[aria-label="Tweet"]', // Legacy Twitter button
+              'button:has-text("Post")', // Button containing "Post" text
+              'a:has-text("Post")', // Link containing "Post" text
               '[data-testid="toolBar"] [role="button"]'
             ];
             
