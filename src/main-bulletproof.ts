@@ -316,10 +316,10 @@ class BulletproofMainSystem {
         console.log('🔄 BROWSER_RECOVERY: Will attempt to reconnect during posting...');
       }
 
-      // 🤖 PURE AI CONTENT GENERATION - Zero hardcoded content
-      console.log('🤖 PURE_AI_GENERATION: Creating 100% AI-driven content with zero templates...');
+      // 🤖 AUTHORITATIVE CONTENT GENERATION - Zero personal language
+      console.log('🤖 AUTHORITATIVE_GENERATION: Creating expert-level authoritative content...');
       
-      const { viralContentOptimizer } = await import('./ai/viralContentOptimizer');
+      const { AuthoritativeContentEngine } = await import('./ai/content/authoritativeContentEngine');
 
       // Decide format (60% threads, 40% single tweets for balanced engagement)
       const format = Math.random() < 0.6 ? 'thread' : 'single';
@@ -407,18 +407,18 @@ class BulletproofMainSystem {
           console.log(`✅ REAL_TRENDS: ${currentTrends.join(', ')}`);
         }
         
-        // Generate viral content strategy using AI with timeout
-        const { viralContentOptimizer } = await import('./ai/viralContentOptimizer');
-        const viralPromise = viralContentOptimizer.generateViralContent({
+        // Generate authoritative content using expert medical voice
+        const authoritativeEngine = AuthoritativeContentEngine.getInstance();
+        const authPromise = authoritativeEngine.generateAuthoritativeContent({
+          topic: specificTopic || 'evidence-based health research',
           format: format === 'thread' ? 'thread' : 'single',
-          targetAudience: 'Health and wellness enthusiasts',
-          currentTrends: currentTrends
+          useDataInsights: true
         });
-        const viralTimeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Viral orchestrator timeout')), 20000) // 20 second timeout
+        const authTimeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Authoritative content timeout')), 20000) // 20 second timeout
         );
         
-        viralStrategy = await Promise.race([viralPromise, viralTimeoutPromise]) as any;
+        viralStrategy = await Promise.race([authPromise, authTimeoutPromise]) as any;
         
         console.log(`🚀 VIRAL_STRATEGY: ${viralStrategy.metadata?.topicDomain || 'Advanced health insights'}`);
         console.log(`🎯 VIRAL_DOMAIN: ${viralStrategy.metadata?.topicDomain || specificTopic}`);
@@ -485,64 +485,51 @@ class BulletproofMainSystem {
         const randomTopicSeed = diverseTopics[Math.floor(Math.random() * diverseTopics.length)];
         console.log(`🎲 TOPIC_RANDOMIZATION: Adding ${randomTopicSeed} as diversity seed`);
         
-        viralResult = await viralContentOptimizer.generateViralContent({
+        const authoritativeEngine = AuthoritativeContentEngine.getInstance();
+        viralResult = await authoritativeEngine.generateAuthoritativeContent({
+          topic: randomTopicSeed || 'evidence-based health optimization',
           format: format === 'thread' ? 'thread' : 'single',
-          targetAudience: `People interested in ${randomTopicSeed} and practical life advice`,
-          currentTrends: [
-            `TOPIC: ${randomTopicSeed}`,
-            'STYLE: Conversational, like texting a friend',
-            'TONE: Human, relatable, not corporate or academic',
-            'FORMAT: No hashtags, minimal emojis, simple formatting',
-            'HOOKS: Use "Just realized...", "Pro tip:", "Anyone else...", "Fun fact:"',
-            ...(currentTrends.length > 0 ? [`Context: ${currentTrends[0]}`] : [])
-          ],
-          performanceData: {
-            recentTopPerformers: [
-              'conversational insights',
-              'relatable observations',
-              'practical tips',
-              'interesting discoveries'
-            ]
-          }
+          useDataInsights: true
         });
       }
 
-      // Convert viral optimizer result to match expected format
+      // Convert authoritative content result to match expected format
       const pureAIResult = {
-        content: viralResult.content,
+        content: viralResult.content.join('\n\n'), // Join thread parts with double newlines
         contentType: format === 'thread' ? 'thread' : 'single_tweet',
-        uniquenessScore: viralResult.viralScore,
-        aiReasoning: viralResult.reasoning,
+        uniquenessScore: viralResult.scores.overall,
+        aiReasoning: `Authoritative content - Authority: ${viralResult.scores.authorityScore}/100, Evidence: ${viralResult.scores.evidenceScore}/100`,
         expectedPerformance: {
-          viralPotential: viralResult.growthPotential,
-          educationalValue: 85,
-          engagementLikelihood: viralResult.viralScore
+          viralPotential: viralResult.scores.overall,
+          educationalValue: viralResult.scores.evidenceScore,
+          engagementLikelihood: viralResult.scores.hookScore
         },
         metadata: {
-          topicDomain: viralResult.topicDomain,
-          engagementHooks: viralResult.engagementHooks,
-          shareabilityFactors: viralResult.shareabilityFactors,
-          persona: 'viral_content_creator',
-          emotion: 'curiosity_and_excitement',
-          framework: 'unlimited_knowledge_domains'
+          topicDomain: viralResult.topic,
+          engagementHooks: [`Authority score: ${viralResult.scores.authorityScore}`],
+          shareabilityFactors: [`Evidence quality: ${viralResult.scores.evidenceScore}`],
+          persona: 'medical_expert',
+          emotion: 'scientific_authority',
+          framework: 'evidence_based_health'
         }
       };
         }
       
-      console.log(`🎯 CONTENT_READY: Using ${viralResult ? 'AI-optimized' : 'fallback'} content for posting`);
-      console.log(`📝 GENERATED_CONTENT: ${viralResult.content.length > 50 ? viralResult.content.substring(0, 50) + '...' : viralResult.content}`);
-      console.log(`🎭 CONTENT_METADATA: ${viralResult.shareabilityFactors.join(' | ')}`);
+      console.log(`🎯 CONTENT_READY: Using ${viralResult ? 'Authoritative' : 'fallback'} content for posting`);
+      console.log(`📝 GENERATED_CONTENT: ${viralResult.content.join(' ').length > 50 ? viralResult.content.join(' ').substring(0, 50) + '...' : viralResult.content.join(' ')}`);
+      console.log(`🎭 CONTENT_METADATA: Authority ${viralResult.scores.authorityScore}/100 | Evidence ${viralResult.scores.evidenceScore}/100`);
 
       // Use the generated content 
       const result = {
-        content: viralResult.content,
-        contentType: viralResult.viralScore > 70 ? 'high_viral' : 'standard',
-        threadParts: Array.isArray(viralResult.content) ? viralResult.content : undefined,
+        content: viralResult.content.join('\n\n'),
+        contentType: viralResult.scores.overall > 70 ? 'high_quality' : 'standard',
+        threadParts: viralResult.format === 'thread' ? viralResult.content : undefined,
         metadata: {
-          promptVersion: 'enhanced_ai_v1',
-          viralScore: viralResult.viralScore,
-          uniquenessScore: viralResult.growthPotential,
-          aiReasoning: viralResult.reasoning,
+          promptVersion: 'authoritative_v1',
+          qualityScore: viralResult.scores.overall,
+          authorityScore: viralResult.scores.authorityScore,
+          evidenceScore: viralResult.scores.evidenceScore,
+          aiReasoning: `Expert content - ${viralResult.approved ? 'APPROVED' : 'REJECTED'}`,
           persona: 'ai_generated',
           emotion: 'informative', 
           framework: 'pure_ai'
@@ -556,7 +543,7 @@ class BulletproofMainSystem {
         return;
       }
 
-      console.log(`📝 GENERATED_CONTENT: ${format} with ${result.metadata.viralScore}/100 viral score`);
+      console.log(`📝 GENERATED_CONTENT: ${format} with ${result.metadata.qualityScore}/100 quality score`);
       console.log(`🎭 CONTENT_METADATA: ${result.metadata.persona} | ${result.metadata.emotion} | ${result.metadata.framework}`);
 
       // 🚀 FAST POSTING: Use ultra-fast poster to avoid Railway timeouts
@@ -576,7 +563,7 @@ class BulletproofMainSystem {
           success: threadResult.success,
           tweetId: threadResult.tweetId,
           type: 'thread' as const,
-          viralScore: result.metadata.viralScore,
+          qualityScore: result.metadata.qualityScore,
           error: threadResult.error
         };
               } else if (format === 'thread' && result.content) {
@@ -597,7 +584,7 @@ class BulletproofMainSystem {
             success: singleResult.success,
             tweetId: singleResult.tweetId,
             type: 'single' as const,
-            viralScore: result.metadata.viralScore,
+            qualityScore: result.metadata.qualityScore,
             error: singleResult.error
           };
         } else if (format === 'single') {
@@ -620,7 +607,7 @@ class BulletproofMainSystem {
           success: singleResult.success,
           tweetId: singleResult.tweetId,
           type: 'single' as const,
-          viralScore: result.metadata.viralScore,
+          qualityScore: result.metadata.qualityScore,
           error: singleResult.error
         };
       } else {
@@ -643,7 +630,7 @@ class BulletproofMainSystem {
           success: fallbackResult.success,
           tweetId: fallbackResult.tweetId,
           type: 'single' as const,
-          viralScore: result.metadata.viralScore,
+          qualityScore: result.metadata.qualityScore,
           error: fallbackResult.error
         };
       }
