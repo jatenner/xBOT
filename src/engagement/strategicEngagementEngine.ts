@@ -384,11 +384,11 @@ Generate ONE strategic engagement action with EXPERT MEDICAL VOICE ONLY:`;
         }
         
         try {
-          // Post the reply content as a regular tweet (since actual reply functionality is complex)
-          // Format as a mention instead of true reply for now
-          const postResult = await bulletproofPoster.postContent(
-            `@${action.target.username} ${action.response_content}`
-          );
+        // Post REAL reply as actual comment, not fake @username tweet
+        const postResult = await bulletproofPoster.postReply(
+          action.response_content,
+          action.target.tweet_id
+        );
           
           if (postResult.success) {
             console.log(`✅ REAL_REPLY_SUCCESS: Posted engagement to @${action.target.username}`);

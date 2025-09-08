@@ -9,7 +9,7 @@ config();
 import { TwitterAnalyticsScraper } from './analytics/twitterAnalyticsScraper';
 import { systemMonitor } from './monitoring/systemPerformanceMonitor';
 import { aggressiveScheduler } from './posting/aggressivePostingScheduler';
-import { aggressiveEngager } from './engagement/aggressiveEngagementEngine';
+// EMERGENCY_DISABLED: import { aggressiveEngager } from './engagement/aggressiveEngagementEngine';
 // EMERGENCY_DISABLED: import { EnhancedContentOrchestrator } from './ai/enhancedContentOrchestrator';
 import { intelligentDecision } from './ai/intelligentDecisionEngine';
 import { realTimeAnalytics } from './analytics/realTimeTwitterAnalytics';
