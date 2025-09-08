@@ -4,7 +4,7 @@
  */
 
 import { admin as supabase } from '../lib/supabaseClients';
-import { bulletproofPoster } from '../posting/bulletproofPoster';
+import { simplifiedPoster as bulletproofPoster } from '../posting/simplifiedBulletproofPoster';
 import { bulletproofBrowser } from '../posting/bulletproofBrowserManager';
 
 interface AuditResult {

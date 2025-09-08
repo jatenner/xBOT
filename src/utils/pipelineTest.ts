@@ -3,7 +3,7 @@
  * Test the complete posting -> analytics -> storage pipeline
  */
 
-import { bulletproofPoster } from '../posting/bulletproofPoster';
+import { simplifiedPoster as bulletproofPoster } from '../posting/simplifiedBulletproofPoster';
 import { followerGrowthEngine } from '../ai/followerGrowthContentEngine';
 import { admin as supabase } from '../lib/supabaseClients';
 
