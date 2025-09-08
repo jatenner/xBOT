@@ -128,10 +128,14 @@ OUTPUT REQUIREMENTS:
         requestType: 'follower_growth_content'
       });
 
-      const rawContent = response.content;
+      const rawContent = response.content || response.choices?.[0]?.message?.content;
       if (!rawContent || rawContent.trim() === '') {
         console.error('❌ FOLLOWER_ENGINE: OpenAI returned empty response');
-        throw new Error('No content generated - empty OpenAI response');
+        console.error('🔍 DEBUG: Full response:', JSON.stringify(response, null, 2));
+        
+        // Try fallback content generation
+        console.log('🔄 FOLLOWER_ENGINE: Attempting fallback content generation...');
+        return this.generateFallbackContent(context?.trendingTopic || 'health optimization');
       }
 
       let generatedData;
@@ -406,6 +410,31 @@ Return JSON: {"content": ["tweet1", "tweet2", ...], "viral_score": 80, "engageme
     } catch (error) {
       console.error('❌ FOLLOWER_ENGINE: Failed to store performance:', error);
     }
+  }
+
+  /**
+   * Generate fallback content when OpenAI fails
+   */
+  private generateFallbackContent(topic: string): any {
+    console.log('🚨 FOLLOWER_ENGINE: Using fallback content generation');
+    
+    const fallbackContent = [
+      `Most people get ${topic} completely wrong. Here's what actually works:`,
+      `The ${topic} industry doesn't want you to know this simple trick.`,
+      `I discovered this ${topic} secret after 10 years of research.`,
+      `This ${topic} method changed everything for my clients.`
+    ];
+    
+    const selectedContent = fallbackContent[Math.floor(Math.random() * fallbackContent.length)];
+    
+    return {
+      content: [selectedContent],
+      viralPotential: 6,
+      expectedFollowers: 10,
+      strategy: 'Fallback Content',
+      postingTime: 'immediate',
+      reasoning: 'Fallback due to OpenAI API failure'
+    };
   }
 }
 
