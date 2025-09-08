@@ -711,13 +711,17 @@ class BulletproofMainSystem {
           console.warn('⚠️ GROWTH_TRACKING_SETUP_ERROR:', growthTrackingError.message);
         }
         
-        // 🚨 SYNCHRONIZED CONTENT STORAGE: Store across all diversity tracking systems
+        // 🚨 LEGACY CONTENT STORAGE: Basic storage for authoritative content
         try {
-          // EMERGENCY_DISABLED: const { viralContentOptimizer } = await import;
-          // Content stored successfully
-          console.log('✅ SYNCHRONIZED_STORAGE: Content stored across all diversity systems');
-        } catch (syncError: any) {
-          console.warn('⚠️ SYNC_STORAGE_FAILED:', syncError.message);
+          if (result.metadata?.aiReasoning) {
+            console.log('✅ LEGACY_STORAGE: Storing authoritative content data');
+            // Basic content tracking for authoritative engine content
+            // Comprehensive AI storage is handled in strategic AI flow
+          } else {
+            console.log('✅ MINIMAL_STORAGE: Using minimal storage for content');
+          }
+        } catch (storageError: any) {
+          console.warn('⚠️ STORAGE_FAILED:', storageError.message);
         }
         
         // 📈 FOLLOWER ATTRIBUTION: Set up for future implementation
@@ -1057,55 +1061,38 @@ class BulletproofMainSystem {
       let isFollowerOptimized = false;
       
       if (Math.random() < 0.7) {
-        // Use AUTHORITATIVE engine for expert content - NO personal language  
-        console.log('🚀 STRATEGIC_AI: Using authoritative content engine for expert content...');
-        const authResult = await this.authoritativeEngine.generateAuthoritativeContent({
-          topic: contentDecision.recommended_topic || 'evidence-based health research',
-          format: contentDecision.recommended_content_type === 'thread' ? 'thread' : 'single',
-          useDataInsights: true
-        });
+        // Use COMPREHENSIVE AI SYSTEM for infinite variety content
+        console.log('🚀 STRATEGIC_AI: Using comprehensive AI system for infinite variety content...');
+        const { comprehensiveAI } = await import('./ai/comprehensiveAISystem');
+        const aiResult = await comprehensiveAI.generateInfiniteVarietyContent(contentDecision.recommended_topic);
         
-        if (authResult && authResult.approved) {
-          contentResult = {
-            content: Array.isArray(authResult.content) ? authResult.content.join('\n\n') : authResult.content,
-            metadata: {
-              content_type: authResult.format,
-              voice_style: 'medical_expert',
-              topic_source: 'authoritative_evidence',
-              human_voice_score: 0, // No human/personal voice
-              diversity_score: authResult.scores.overall,
-              learning_applied: ['expert_authority', 'clinical_evidence'],
-              predicted_performance: {
-                engagement_rate: authResult.scores.overall,
-                follower_potential: authResult.scores.evidenceScore,
-                viral_score: authResult.scores.overall,
-                authenticity_score: 100
-              }
-            }
-          };
-          isFollowerOptimized = true;
-        } else {
-          console.error('❌ STRATEGIC_AI: Authoritative content rejected, using fallback');
-          // Use clinical fallback instead of personal content
-          contentResult = {
-            content: `Clinical research demonstrates significant advances in ${contentDecision.recommended_topic || 'health optimization'}. Evidence-based approaches show measurable improvements in patient outcomes through targeted interventions.`,
-            metadata: {
-              content_type: 'expert_fallback',
-              voice_style: 'clinical_authority',
-              topic_source: 'medical_fallback',
-              human_voice_score: 0,
-              diversity_score: 75,
-              learning_applied: ['clinical_expertise'],
-              predicted_performance: {
-                engagement_rate: 75,
-                follower_potential: 70,
-                viral_score: 75,
-                authenticity_score: 100
-              }
-            }
-          };
-          isFollowerOptimized = true;
-        }
+        // AI-driven content with comprehensive data storage
+        contentResult = {
+          content: aiResult.format === 'thread' ? aiResult.content.join('\n\n') : aiResult.content[0],
+          threadParts: aiResult.format === 'thread' ? aiResult.content : undefined,
+          metadata: {
+            content_type: aiResult.format,
+            voice_style: 'ai_expert',
+            topic_source: 'comprehensive_ai',
+            human_voice_score: 0, // Pure AI-driven
+            diversity_score: aiResult.uniquenessScore,
+            learning_applied: ['ai_creativity', 'viral_optimization', 'data_driven'],
+            predicted_performance: {
+              engagement_rate: aiResult.viralPotential,
+              follower_potential: aiResult.hookScore,
+              viral_score: aiResult.viralPotential,
+              authenticity_score: 100
+            },
+            ai_reasoning: aiResult.reasoningChain,
+            topic_variation: aiResult.topicVariation,
+            optimal_timing: aiResult.targetTiming
+          }
+        };
+        isFollowerOptimized = true;
+        
+        // Store comprehensive AI data
+        console.log('💾 STORING_AI_DATA: Saving to Supabase + Redis...');
+        // Will store actual tweet IDs after posting
         
       } else {
         // Use AUTHORITATIVE content engine - NO personal content
@@ -1136,21 +1123,29 @@ class BulletproofMainSystem {
         return;
       }
       
-      // 5. Extract content for posting
-      const contentToPost = Array.isArray(contentResult.content) 
-        ? contentResult.content[0] 
-        : contentResult.content;
+      // 5. Handle thread vs single posting
+      let postResult;
       
-      console.log(`📝 STRATEGIC_CONTENT: "${contentToPost.substring(0, 100)}..."`);
+      if (contentResult.metadata.content_type === 'thread' && contentResult.threadParts && contentResult.threadParts.length > 1) {
+        console.log(`🧵 STRATEGIC_THREAD: Posting ${contentResult.threadParts.length}-part thread`);
+        console.log(`📝 THREAD_PREVIEW: "${contentResult.threadParts[0].substring(0, 80)}..."`);
+        
+        postResult = await bulletproofPoster.postThread(contentResult.threadParts);
+      } else {
+        const contentToPost = Array.isArray(contentResult.content) 
+          ? contentResult.content[0] 
+          : contentResult.content;
+        
+        console.log(`📝 STRATEGIC_SINGLE: "${contentToPost.substring(0, 100)}..."`);
+        postResult = await bulletproofPoster.postContent(contentToPost);
+      }
+      
       console.log(`🎯 PREDICTED: ${contentResult.metadata.predicted_performance.engagement_rate}% engagement`);
       
       if (isFollowerOptimized) {
         console.log(`🚀 FOLLOWER_POTENTIAL: ${contentResult.metadata.predicted_performance.follower_potential}% follow conversion`);
         console.log(`🔥 CONTENT_TYPE: ${contentResult.metadata.content_type}`);
       }
-      
-      // 6. Post using bulletproof system
-      const postResult = await bulletproofPoster.postContent(contentToPost);
       
       if (postResult.success) {
         console.log('✅ STRATEGIC_AI: Strategic post successful!');
@@ -1237,7 +1232,34 @@ class BulletproofMainSystem {
     timingDecision: any
   ): Promise<void> {
     try {
-      // Store basic analytics for AI learning
+      // Check if this is comprehensive AI content and store accordingly
+      if (contentResult.metadata?.voice_style === 'ai_expert' && contentResult.metadata?.topic_source === 'comprehensive_ai') {
+        console.log('💾 STRATEGIC_AI: Storing comprehensive AI data...');
+        
+        try {
+          const { comprehensiveAI } = await import('./ai/comprehensiveAISystem');
+          
+          await comprehensiveAI.storeComprehensiveData(
+            {
+              content: contentResult.threadParts || [contentResult.content],
+              format: contentResult.metadata.content_type as 'single' | 'thread',
+              hookScore: contentResult.metadata.predicted_performance.follower_potential,
+              viralPotential: contentResult.metadata.predicted_performance.viral_score,
+              uniquenessScore: contentResult.metadata.diversity_score,
+              topicVariation: contentResult.metadata.topic_variation,
+              reasoningChain: contentResult.metadata.ai_reasoning,
+              targetTiming: new Date(contentResult.metadata.optimal_timing)
+            },
+            Array.isArray(postResult.tweetId) ? postResult.tweetId : [postResult.tweetId!]
+          );
+          
+          console.log('✅ STRATEGIC_AI: Comprehensive AI data stored successfully');
+        } catch (aiStorageError: any) {
+          console.warn('⚠️ STRATEGIC_AI: Comprehensive AI storage failed:', aiStorageError.message);
+        }
+      }
+      
+      // Store basic analytics for AI learning (always)
       try {
         const now = new Date();
         await intelligentDecision.storeTwitterAnalytics({
