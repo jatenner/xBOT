@@ -113,8 +113,29 @@ export class BulletproofPoster {
    * Dismiss Twitter overlays that block clicks
    */
   private async dismissTwitterOverlays(page: Page): Promise<void> {
-    console.log('🔧 BULLETPROOF_POSTER: Checking for Twitter overlays...');
+    console.log('🔧 BULLETPROOF_POSTER: Checking for Twitter overlays and navigation blocking...');
     
+    // Step 1: Hide navigation elements that intercept clicks
+    try {
+      console.log('🚫 BULLETPROOF_POSTER: Hiding navigation elements that block clicks...');
+      await page.addStyleTag({
+        content: `
+          a[role="tab"][href="/home"],
+          a[role="tab"],
+          [data-testid="AppTabBar_Home_Link"],
+          [data-testid="primaryNavigation"] a {
+            pointer-events: none !important;
+            z-index: -1 !important;
+            opacity: 0.5 !important;
+          }
+        `
+      });
+      console.log('✅ BULLETPROOF_POSTER: Navigation blocking disabled');
+    } catch (error) {
+      console.log('⚠️ BULLETPROOF_POSTER: Could not disable navigation blocking:', error.message);
+    }
+    
+    // Step 2: Standard overlay dismissal
     const overlaySelectors = [
       '[data-testid="twc-cc-mask"]', // Cookie consent overlay
       '[data-testid="mask"]', // General overlay mask
@@ -457,9 +478,16 @@ export class BulletproofPoster {
                   if (text && (text.toLowerCase().includes('tweet') || text.toLowerCase().includes('post') || text.toLowerCase().includes('compose'))) {
                     console.log(`🎯 POTENTIAL COMPOSE: Button ${i} with text: "${text}"`);
                     
-                    // Try clicking this button
+                    // Try clicking this button (with force click fallback)
                     try {
-                      await allButtons[i].click();
+                      try {
+                        await allButtons[i].click();
+                        console.log(`✅ BULLETPROOF_POSTER: Normal click successful on button ${i}`);
+                      } catch (clickError) {
+                        console.log(`⚠️ BULLETPROOF_POSTER: Normal click failed on button ${i}, trying force click`);
+                        await allButtons[i].click({ force: true });
+                        console.log(`✅ BULLETPROOF_POSTER: Force click successful on button ${i}`);
+                      }
                       await page.waitForTimeout(3000);
                       
                       // Check if compose modal opened
@@ -485,7 +513,18 @@ export class BulletproofPoster {
                 const button = page.locator(selector).first();
                 if (await button.isVisible({ timeout: 3000 })) {
                   console.log(`🔘 BULLETPROOF_POSTER: Found compose button: ${selector}`);
-                  await button.click();
+                  
+                  // Try normal click first
+                  try {
+                    await button.click();
+                    console.log(`✅ BULLETPROOF_POSTER: Normal click successful: ${selector}`);
+                  } catch (clickError) {
+                    console.log(`⚠️ BULLETPROOF_POSTER: Normal click failed, trying force click: ${selector}`);
+                    // Force click to bypass intercepting elements
+                    await button.click({ force: true });
+                    console.log(`✅ BULLETPROOF_POSTER: Force click successful: ${selector}`);
+                  }
+                  
                   await page.waitForTimeout(3000); // Wait for compose modal to open
                   
                   // Look for the textarea
