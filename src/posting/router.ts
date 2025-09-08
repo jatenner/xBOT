@@ -3,7 +3,7 @@
  * Routes content to appropriate posting methods (single vs thread)
  */
 
-import { BulletproofPoster } from './poster';
+import { simplifiedPoster as BulletproofPoster } from './simplifiedBulletproofPoster';
 import { ContentScores } from '../ai/content/scoring';
 
 export interface PostingPayload {

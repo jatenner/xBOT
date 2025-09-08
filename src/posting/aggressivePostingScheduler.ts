@@ -283,7 +283,7 @@ export class AggressivePostingScheduler {
       console.log('📤 POSTING: Sending content to Twitter...');
       
       try {
-        const { bulletproofPoster } = await import('./bulletproofPoster');
+        const { simplifiedPoster: bulletproofPoster } = await import('./simplifiedBulletproofPoster');
         const postResult = await bulletproofPoster.postContent(contentResult.content);
         
         if (postResult.success) {
