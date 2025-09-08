@@ -300,6 +300,19 @@ export class BulletproofPoster {
               '[data-testid="toolBar"] [role="button"]'
             ];
             
+            // Wait for page to fully load and stabilize
+            console.log('⏳ BULLETPROOF_POSTER: Waiting for page to fully load...');
+            await page.waitForLoadState('networkidle', { timeout: 10000 });
+            await page.waitForTimeout(3000); // Additional wait for dynamic content
+            
+            // Wait for navigation elements to ensure we're fully logged in
+            try {
+              await page.waitForSelector('nav[role="navigation"], [data-testid="sidebarColumn"]', { timeout: 5000 });
+              console.log('✅ BULLETPROOF_POSTER: Navigation elements loaded');
+            } catch (e) {
+              console.log('⚠️ BULLETPROOF_POSTER: Navigation elements not found, continuing...');
+            }
+            
             // First, let's see what's actually on the page
             try {
               const pageContent = await page.content();
@@ -311,15 +324,36 @@ export class BulletproofPoster {
               const allButtons = await page.locator('button, a[role="button"], [role="button"]').all();
               console.log(`🔍 BULLETPROOF_POSTER: Found ${allButtons.length} clickable elements on page`);
               
-              // Check for any element with "tweet", "post", or "compose" text
-              for (let i = 0; i < Math.min(allButtons.length, 10); i++) {
+              // Check ALL buttons and their text content
+              console.log(`🔍 BULLETPROOF_POSTER: Analyzing all ${allButtons.length} clickable elements...`);
+              for (let i = 0; i < Math.min(allButtons.length, 20); i++) {
                 try {
                   const text = await allButtons[i].textContent();
+                  const ariaLabel = await allButtons[i].getAttribute('aria-label');
+                  const href = await allButtons[i].getAttribute('href');
+                  
+                  console.log(`🔍 BUTTON ${i}: text="${text}" aria-label="${ariaLabel}" href="${href}"`);
+                  
                   if (text && (text.toLowerCase().includes('tweet') || text.toLowerCase().includes('post') || text.toLowerCase().includes('compose'))) {
-                    console.log(`🔍 BULLETPROOF_POSTER: Found potential compose button with text: "${text}"`);
+                    console.log(`🎯 POTENTIAL COMPOSE: Button ${i} with text: "${text}"`);
+                    
+                    // Try clicking this button
+                    try {
+                      await allButtons[i].click();
+                      await page.waitForTimeout(3000);
+                      
+                      // Check if compose modal opened
+                      const textarea = await page.locator('[data-testid="tweetTextarea_0"]').first();
+                      if (await textarea.isVisible({ timeout: 5000 })) {
+                        console.log(`✅ SUCCESS: Button ${i} opened compose modal!`);
+                        return textarea;
+                      }
+                    } catch (e) {
+                      console.log(`❌ BUTTON ${i} click failed:`, e.message);
+                    }
                   }
                 } catch (e) {
-                  // Skip this button
+                  console.log(`❌ BUTTON ${i} analysis failed:`, e.message);
                 }
               }
             } catch (e) {
