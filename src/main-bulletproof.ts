@@ -20,7 +20,7 @@ import { testCompletePipeline } from './utils/pipelineTest';
 
 class BulletproofMainSystem {
   private analyticsChecker: TwitterAnalyticsScraper;
-  private contentOrchestrator: EnhancedContentOrchestrator;
+  private authoritativeEngine: any; // Will be AuthoritativeContentEngine
   
   private isRunning = false;
   private mainInterval: NodeJS.Timeout | null = null;
@@ -32,12 +32,26 @@ class BulletproofMainSystem {
     console.log('🚀 BULLETPROOF_SYSTEM: Initializing...');
     
     this.analyticsChecker = new TwitterAnalyticsScraper();
-    this.contentOrchestrator = EnhancedContentOrchestrator.getInstance();
+    // AuthoritativeContentEngine will be initialized in start() method
     
     // Initialize performance monitoring
     console.log('🔍 SYSTEM_MONITOR: Performance monitoring activated');
     console.log('🎯 AGGRESSIVE_ENGINE: Strategic engagement system ready');
     console.log('🚀 AGGRESSIVE_SCHEDULER: High-frequency posting system ready');
+  }
+
+  /**
+   * Initialize AuthoritativeContentEngine for expert content only
+   */
+  private async initializeAuthoritativeEngine(): Promise<void> {
+    try {
+      const { AuthoritativeContentEngine } = await import('./ai/content/authoritativeContentEngine');
+      this.authoritativeEngine = AuthoritativeContentEngine.getInstance();
+      console.log('✅ AUTHORITATIVE_ENGINE: Expert content system initialized');
+    } catch (error: any) {
+      console.error('❌ AUTHORITATIVE_ENGINE_INIT_FAILED:', error.message);
+      throw new Error('Failed to initialize authoritative content engine');
+    }
   }
 
   /**
@@ -59,6 +73,9 @@ class BulletproofMainSystem {
     await this.runPipelineTest();
 
     try {
+      // 🎯 INITIALIZE AUTHORITATIVE CONTENT ENGINE
+      await this.initializeAuthoritativeEngine();
+      
       // 🧠 INITIALIZE AI DECISION ENGINE
       console.log('🧠 AI_SYSTEM: Initializing intelligent decision engine...');
       
@@ -1072,16 +1089,27 @@ class BulletproofMainSystem {
         isFollowerOptimized = true;
         
       } else {
-        // Use sophisticated content orchestrator
-        console.log('🧠 STRATEGIC_AI: Using sophisticated content orchestrator...');
-        contentResult = await this.contentOrchestrator.generateEnhancedContent({
+        // Use AUTHORITATIVE content engine - NO personal content
+        console.log('🧠 STRATEGIC_AI: Using authoritative content engine...');
+        const authResult = await this.authoritativeEngine.generateAuthoritativeContent({
+          topic: contentDecision.recommended_topic || 'evidence-based health research',
           format: contentDecision.recommended_content_type === 'thread' ? 'thread' : 'single',
-          target_engagement: 'high',
-          avoid_recent_patterns: true,
-          user_context: contentDecision.recommended_topic,
-          preferred_content_type: contentDecision.recommended_content_type,
-          preferred_voice_style: contentDecision.recommended_voice_style
+          useDataInsights: true
         });
+        
+        if (authResult && authResult.approved) {
+          contentResult = {
+            content: Array.isArray(authResult.content) ? authResult.content.join('\n\n') : authResult.content,
+            metadata: {
+              content_type: authResult.format,
+              quality_score: authResult.scores.overall,
+              authority_score: authResult.scores.authorityScore
+            }
+          };
+        } else {
+          console.error('❌ STRATEGIC_AI: Authoritative content rejected');
+          return;
+        }
       }
       
       if (!contentResult || !contentResult.content) {
@@ -1132,22 +1160,21 @@ class BulletproofMainSystem {
       const contentDecision = await intelligentDecision.makeContentDecision();
       console.log(`🧠 AI_CONTENT: ${contentDecision.recommended_content_type} | ${contentDecision.recommended_voice_style}`);
       
-      // Generate content using enhanced orchestrator
-      const contentResult = await this.contentOrchestrator.generateEnhancedContent({
+      // Generate content using AUTHORITATIVE ENGINE ONLY - no personal content
+      const contentResult = await this.authoritativeEngine.generateAuthoritativeContent({
+        topic: contentDecision.recommended_topic || 'evidence-based health research',
         format: 'single',
-        target_engagement: 'high',
-        avoid_recent_patterns: true,
-        user_context: contentDecision.recommended_topic
+        useDataInsights: true
       });
       
-      if (!contentResult || !contentResult.content) {
-        console.error('❌ BULLETPROOF_LOOP: Content generation failed');
+      if (!contentResult || !contentResult.content || !contentResult.approved) {
+        console.error('❌ BULLETPROOF_LOOP: Authoritative content generation failed or rejected');
         return;
       }
       
-      // Extract content string
+      // Extract content string from authoritative engine format
       const contentToPost = Array.isArray(contentResult.content) 
-        ? contentResult.content[0] 
+        ? contentResult.content.join('\n\n') 
         : contentResult.content;
       
       console.log(`📝 BULLETPROOF_CONTENT: "${contentToPost.substring(0, 100)}..."`);
