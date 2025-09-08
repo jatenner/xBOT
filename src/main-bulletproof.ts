@@ -505,6 +505,7 @@ class BulletproofMainSystem {
       // Convert authoritative content result to match expected format
       const pureAIResult = {
         content: typeof viralResult.content === 'string' ? viralResult.content : viralResult.content.join('\n\n'),
+        threadParts: Array.isArray(viralResult.content) ? viralResult.content : [viralResult.content],
         contentType: format === 'thread' ? 'thread' : 'single_tweet',
         uniquenessScore: viralResult.viralScore || 80,
         aiReasoning: viralResult.reasoning || 'Expert authoritative content',
@@ -531,7 +532,7 @@ class BulletproofMainSystem {
       const result = {
         content: pureAIResult.content,
         contentType: pureAIResult.uniquenessScore > 70 ? 'high_quality' : 'standard',
-        threadParts: format === 'thread' ? pureAIResult.content.split('\n\n') : undefined,
+        threadParts: format === 'thread' ? pureAIResult.threadParts : undefined,
         metadata: {
           promptVersion: 'authoritative_v1',
           qualityScore: pureAIResult.uniquenessScore,
@@ -566,7 +567,7 @@ class BulletproofMainSystem {
           throw new Error('Failed to initialize bulletproof poster');
         }
         
-        const threadResult = await bulletproofPoster.postContent(result.threadParts.join('\n\n'));
+        const threadResult = await bulletproofPoster.postThread(result.threadParts);
         postResult = {
           success: threadResult.success,
           tweetId: threadResult.tweetId,
