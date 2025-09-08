@@ -57,6 +57,10 @@ export class BulletproofPoster {
         
         console.log('🤖 BULLETPROOF_POSTER: Added realistic browser headers to avoid bot detection');
         
+        // Set proper viewport for full desktop Twitter interface
+        await page.setViewportSize({ width: 1920, height: 1080 });
+        console.log('📱 BULLETPROOF_POSTER: Set desktop viewport (1920x1080) for full Twitter interface');
+        
         // Add human-like delay before starting
         const initialDelay = Math.random() * 2000 + 1000; // 1-3 seconds
         console.log(`⏰ BULLETPROOF_POSTER: Human-like delay: ${Math.round(initialDelay)}ms`);
