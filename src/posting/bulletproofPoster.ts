@@ -74,6 +74,9 @@ export class BulletproofPoster {
         // Add delay before posting
         await page.waitForTimeout(Math.random() * 1000 + 500); // 0.5-1.5 seconds
         
+        // Dismiss any Twitter overlays before posting
+        await this.dismissTwitterOverlays(page);
+        
         // Post the content
         const result = await this.executePost(page, content);
         
@@ -98,6 +101,54 @@ export class BulletproofPoster {
       await this.storeFailedPost(failureResult);
       return failureResult;
     }
+  }
+
+  /**
+   * Dismiss Twitter overlays that block clicks
+   */
+  private async dismissTwitterOverlays(page: Page): Promise<void> {
+    console.log('🔧 BULLETPROOF_POSTER: Checking for Twitter overlays...');
+    
+    const overlaySelectors = [
+      '[data-testid="twc-cc-mask"]', // Cookie consent overlay
+      '[data-testid="mask"]', // General overlay mask
+      '[aria-label="Close"]', // Close buttons
+      '[data-testid="confirmationSheetCancel"]', // Confirmation dialogs
+      '[data-testid="confirmationSheetConfirm"]', // Confirmation dialogs
+      '[role="dialog"] button[aria-label="Close"]', // Dialog close buttons
+      '.r-1p0dtai.r-1d2f490.r-1xcajam', // Twitter overlay classes
+    ];
+    
+    for (const selector of overlaySelectors) {
+      try {
+        const overlay = page.locator(selector).first();
+        if (await overlay.isVisible({ timeout: 1000 })) {
+          console.log(`🚫 BULLETPROOF_POSTER: Found blocking overlay: ${selector}`);
+          
+          // Try to click it away
+          try {
+            await overlay.click({ timeout: 3000 });
+            console.log(`✅ BULLETPROOF_POSTER: Dismissed overlay: ${selector}`);
+            await page.waitForTimeout(1000); // Wait for overlay to disappear
+          } catch (clickError) {
+            console.log(`⚠️ BULLETPROOF_POSTER: Could not click overlay: ${selector}`);
+            
+            // Try pressing Escape key
+            try {
+              await page.keyboard.press('Escape');
+              console.log(`✅ BULLETPROOF_POSTER: Dismissed overlay with Escape`);
+              await page.waitForTimeout(1000);
+            } catch (escapeError) {
+              console.log(`⚠️ BULLETPROOF_POSTER: Escape key failed for: ${selector}`);
+            }
+          }
+        }
+      } catch (e) {
+        // Overlay doesn't exist, continue
+      }
+    }
+    
+    console.log('✅ BULLETPROOF_POSTER: Overlay check complete');
   }
 
   /**
