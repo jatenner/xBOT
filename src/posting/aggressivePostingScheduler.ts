@@ -30,13 +30,13 @@ export class AggressivePostingScheduler {
   private isRunning = false;
   private postingTimer?: NodeJS.Timeout;
   
-  // AGGRESSIVE SCHEDULE CONFIGURATION
+  // COST-CONTROLLED SCHEDULE CONFIGURATION
   private schedule: PostingSchedule = {
-    base_interval_minutes: 0, // AI-driven - no fixed interval
+    base_interval_minutes: 60, // 1 hour base interval - COST CONTROLLED
     peak_hour_intervals: [], // AI-driven - determined by data
-    off_peak_multiplier: 1.0, // AI-driven
-    max_posts_per_hour: 12, // Increased safety limit for AI optimization
-    min_interval_minutes: 3 // Minimum between posts for AI system
+    off_peak_multiplier: 1.5, // Slower during off-peak - BUDGET FRIENDLY
+    max_posts_per_hour: 2, // Maximum 2 posts per hour - COST LIMIT
+    min_interval_minutes: 45 // Minimum 45 minutes between posts - COST CONTROL
   };
 
   private constructor() {

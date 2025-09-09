@@ -51,10 +51,10 @@ export class AutonomousPostingSystem {
   private isRunning = false;
   private currentLoopId: string | null = null;
   
-  // Configuration
-  private readonly MAX_DAILY_POSTS = 8;
-  private readonly MIN_POST_INTERVAL = 30; // minutes
-  private readonly MAX_POST_INTERVAL = 360; // minutes (6 hours)
+  // COST-CONTROLLED Configuration
+  private readonly MAX_DAILY_POSTS = 12; // Reasonable daily limit
+  private readonly MIN_POST_INTERVAL = 45; // 45 minutes minimum - BUDGET CONTROL
+  private readonly MAX_POST_INTERVAL = 180; // 3 hours maximum - BALANCED
   private readonly AUTONOMY_THRESHOLD = 0.7; // Minimum confidence for autonomous decisions
 
   public static getInstance(): AutonomousPostingSystem {

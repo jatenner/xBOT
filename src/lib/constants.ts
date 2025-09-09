@@ -3,7 +3,7 @@
  */
 
 // Default GPT model for text-based analysis - use GPT-4o for best results
-export const GPT_MODEL = 'gpt-4o';
+export const GPT_MODEL = 'gpt-4o-mini';
 
 // Fallback models in order of preference if GPT-4o is not available
 export const FALLBACK_MODELS = [

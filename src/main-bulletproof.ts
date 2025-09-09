@@ -163,21 +163,21 @@ class BulletproofMainSystem {
         performance_prediction: { expected_likes: 20, expected_engagement_rate: 0.05 }
       };
       
-      // 🚀 ULTRA-AGGRESSIVE POSTING: Maximum growth focus
-      const minPostInterval = 5 * 60 * 1000; // 5 minutes minimum - VERY AGGRESSIVE
-      const maxPostInterval = 20 * 60 * 1000; // 20 minutes maximum - FORCE POST
+      // 🎯 COST-CONTROLLED POSTING: Balanced growth with budget limits
+      const minPostInterval = 45 * 60 * 1000; // 45 minutes minimum - COST EFFECTIVE
+      const maxPostInterval = 180 * 60 * 1000; // 3 hours maximum - REASONABLE PACE
       const timeUntilOptimal = timingStrategy.next_post_time.getTime() - now;
       
-      // 🧠 AGGRESSIVE OVERRIDE: Post much more frequently regardless of timing strategy
-      const inOptimalWindow = true; // ALWAYS consider it optimal for aggressive growth
-      const timingAllowsPost = (timeSinceLastPost > minPostInterval); // Simple: just wait 5 minutes minimum
+      // 🧠 COST-CONTROLLED OVERRIDE: Respect timing strategy and budget limits
+      const inOptimalWindow = timeUntilOptimal < maxPostInterval; // Respect timing strategy
+      const timingAllowsPost = (timeSinceLastPost > minPostInterval); // Wait 45+ minutes minimum
       
       // 🎯 EXISTING ANALYTICS: Use our analytics scraper insights
       const analyticsInsights = await this.analyticsChecker.getAnalyticsInsights();
       const hasGoodPerformance = analyticsInsights.averageEngagement > 0.02; // 2% engagement threshold
       
-      // 🎯 ULTRA-AGGRESSIVE DECISION: Post every 5-20 minutes for maximum growth
-      const shouldPostNow = timingAllowsPost; // Simple: post every 5+ minutes, no complex conditions
+      // 🎯 COST-CONTROLLED DECISION: Post only when timing and budget allow
+      const shouldPostNow = timingAllowsPost && inOptimalWindow && hasGoodPerformance; // Multiple conditions for quality
       
       if (shouldPostNow) {
         console.log('📝 BULLETPROOF_POSTING: Generating ORIGINAL content (threads/singles)...');

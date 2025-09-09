@@ -63,7 +63,7 @@ export class ViralReplyEngine {
       const prompt = this.buildViralReplyPrompt(target, strategy);
       
       const response = await this.openai.chat.completions.create({
-        model: 'gpt-4o',
+        model: 'gpt-4o-mini',
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.7,
         max_tokens: 200 // Keep replies concise
