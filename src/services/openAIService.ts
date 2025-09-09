@@ -11,7 +11,7 @@
 
 import OpenAI from 'openai';
 import { getUnifiedDataManager } from '../lib/unifiedDataManager';
-import { openaiCostTracker } from '../analytics/openaiCostTracker';
+import { costTracker as newCostTracker } from './costTracker';
 
 interface BudgetConfig {
   dailyLimit: number; // USD per day
@@ -111,12 +111,7 @@ export class OpenAIService {
     console.log(`🤖 OPENAI_SERVICE: ${requestType} request (${model}, priority: ${priority})`);
 
     try {
-      // EMERGENCY: Check cost tracker budget first
-      const costTracker = await import('../analytics/openaiCostTracker').then(m => m.openaiCostTracker);
-      const isEmergencyStop = await costTracker.isEmergencyStop();
-      if (isEmergencyStop) {
-        throw new Error('🚨 EMERGENCY_STOP: Daily OpenAI budget exceeded - API calls blocked');
-      }
+      // Budget check is now handled by newCostTracker.wrapOpenAI below
 
       // Check budget before making request
       const budgetCheck = await this.checkBudgetLimits(requestType, priority);
@@ -130,20 +125,29 @@ export class OpenAIService {
       
       console.log(`💰 ESTIMATED_COST: $${estimatedCost.toFixed(4)} (${estimatedTokens.total} tokens)`);
 
-      // Make the OpenAI request
+      // Make the OpenAI request with hard budget enforcement
       const startTime = Date.now();
-      const response = await this.openai.chat.completions.create({
-        model,
-        messages,
-        temperature,
-        max_tokens: maxTokens
-      });
+      const response = await newCostTracker.wrapOpenAI(requestType, async () => {
+        return await this.openai.chat.completions.create({
+          model,
+          messages,
+          temperature,
+          max_tokens: maxTokens
+        });
+      }, { model, estimatedCost });
+
+      // Check if request was skipped due to budget
+      if (response && typeof response === 'object' && 'skipped' in response) {
+        console.warn(`⏭️ OPENAI_SKIPPED: ${requestType} - ${response.reason}`);
+        throw new Error(`Daily budget exceeded: ${response.reason}`);
+      }
 
       const endTime = Date.now();
       const duration = endTime - startTime;
 
-      // Record usage
-      const usage = response.usage;
+      // Record usage (response is guaranteed to be ChatCompletion here)
+      const actualResponse = response as any;
+      const usage = actualResponse.usage;
       const actualCost = this.calculateCost(
         model,
         usage?.prompt_tokens || 0,
@@ -164,13 +168,12 @@ export class OpenAIService {
       await this.recordUsage(usageRecord);
 
       // NEW: Track in comprehensive cost tracker (single call, correct signature)
-      await openaiCostTracker.trackOpenAIUsage(response, { 
-        intent: this.mapRequestTypeToOperation(requestType) 
-      });
+      // Cost tracking is now handled by newCostTracker.wrapOpenAI above
+      console.log(`💰 ACTUAL_COST: $${actualCost.toFixed(4)} (${usage?.total_tokens} tokens)`);
 
       console.log(`✅ OPENAI_SUCCESS: $${actualCost.toFixed(4)} (${duration}ms, ${usage?.total_tokens} tokens)`);
       
-      return response;
+      return actualResponse;
 
     } catch (error: any) {
       console.error(`❌ OPENAI_ERROR: ${error.message}`);
@@ -190,15 +193,8 @@ export class OpenAIService {
 
       await this.recordUsage(usageRecord);
 
-      // NEW: Track failed request in cost tracker (single call, correct signature)
-      await openaiCostTracker.trackOpenAIUsage({ 
-        model, 
-        error: { message: error.message } 
-      }, { 
-        intent: this.mapRequestTypeToOperation(requestType) 
-      }).catch(trackingError => {
-        console.warn('⚠️ COST_TRACKING_ERROR:', trackingError);
-      });
+      // Error tracking is handled by the budget system
+      console.log('💰 OPENAI_ERROR: Cost tracking skipped for failed request');
 
       throw error;
     }
