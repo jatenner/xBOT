@@ -26,16 +26,23 @@ export class MultiModelOrchestrator {
 
     // Generate content with different model configurations
     const models = [
-      { name: 'gpt-4o-creative', model: 'gpt-4o', temperature: 0.95, top_p: 0.9 },
-      { name: 'gpt-4o-balanced', model: 'gpt-4o', temperature: 0.8, top_p: 0.95 },
-      { name: 'gpt-4o-precise', model: 'gpt-4o', temperature: 0.6, top_p: 0.8 },
-      { name: 'gpt-4-turbo', model: 'gpt-4-turbo-preview', temperature: 0.85, top_p: 0.9 }
+      { name: 'gpt-4o-mini-creative', model: 'gpt-4o-mini', temperature: 0.95, top_p: 0.9 }, // COST_FIX
+      { name: 'gpt-4o-mini-balanced', model: 'gpt-4o-mini', temperature: 0.8, top_p: 0.95 }, // COST_FIX
+      { name: 'gpt-4o-mini-precise', model: 'gpt-4o-mini', temperature: 0.6, top_p: 0.8 }, // COST_FIX
+      { name: 'gpt-4o-mini-turbo', model: 'gpt-4o-mini', temperature: 0.85, top_p: 0.9 } // COST_FIX
     ];
 
     const variations = await Promise.all(
       models.map(async (config) => {
         try {
-          const response = await this.openai.chat.completions.create({
+          // EMERGENCY_COST_CHECK: Check daily budget before expensive API calls
+        const openAIService = OpenAIService.getInstance();
+        const budgetStatus = await openAIService.getCurrentBudgetStatus();
+        if (budgetStatus.isOverBudget) {
+          throw new Error('🚨 COST_LIMIT: Daily OpenAI budget exceeded - operation blocked');
+        }
+        
+        const response = await this.openai.chat.completions.create({
             model: config.model,
             messages: [{ role: 'user', content: prompt }],
             temperature: config.temperature,

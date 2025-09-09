@@ -358,7 +358,7 @@ export function convertVisionResultToAnalysisResult(
     },
     goalName: formatGoalName(healthGoal),
     modelInfo: {
-      model: "gpt-4o",
+      model: "gpt-4o-mini", // COST_FIX: Vision still works with mini
       usedFallback: false,
       ocrExtracted: false
     },
