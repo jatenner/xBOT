@@ -62,6 +62,9 @@ export class AggressivePostingScheduler {
    * 🚀 START AGGRESSIVE POSTING CYCLE
    */
   public async startAggressivePosting(): Promise<void> {
+    // 🐦 CANARY LOG: Detect if legacy scheduler is called
+    console.log('CANARY:LEGACY_AGGRESSIVE_SCHEDULER_CALLED', new Date().toISOString());
+    
     // 🚨 HARD DISABLE: Check feature flags first
     if (!AGGRESSIVE_SCHEDULER_ENABLED || THREAD_PIPELINE_ONLY) {
       console.log('🚨 AGGRESSIVE_SCHEDULER: DISABLED by feature flags');
@@ -273,6 +276,15 @@ export class AggressivePostingScheduler {
   }
 
   private async postContent(contentResult: any): Promise<boolean> {
+    // 🐦 CANARY LOG: Detect if legacy poster is called
+    console.log('CANARY:LEGACY_POSTER_CALLED', new Date().toISOString());
+    
+    // 🚨 THREAD PIPELINE GUARD: Block if thread pipeline only
+    if (process.env.THREAD_PIPELINE_ONLY === 'true') {
+      console.log('🚨 LEGACY_POSTER: DISABLED by THREAD_PIPELINE_ONLY');
+      return false;
+    }
+    
     try {
       // This should integrate with your existing StealthTwitterPoster
       // For now, we'll simulate the posting and store the content

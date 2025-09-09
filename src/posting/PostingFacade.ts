@@ -3,9 +3,9 @@
  * Routes to ThreadComposer for unified thread handling
  */
 
-import ThreadComposer from './threadComposer';
+import BulletproofThreadComposer from './BulletproofThreadComposer';
 import ThreadBuilder from '../utils/threadBuilder';
-import { POSTING_DISABLED, DRY_RUN } from '../config/flags';
+import { POSTING_DISABLED, DRY_RUN, SINGLE_POST_HARD_BLOCK_IF_SEGMENTS_GT1 } from '../config/flags';
 
 export interface Draft {
   id: string;
@@ -56,6 +56,25 @@ export class PostingFacade {
         console.log(`🧵 POSTING_FACADE: Built ${segments.length} segments, isThread=${isThread}`);
       }
 
+      // 🚨 HARD BLOCK: Prevent single posts when segments > 1
+      const isMultiSegment = segments.length > 1 || isThread;
+      if (isMultiSegment && SINGLE_POST_HARD_BLOCK_IF_SEGMENTS_GT1) {
+        console.log('🚨 HARD_BLOCK: Multi-segment content MUST be posted as thread');
+        console.log(`   segments=${segments.length}, isThread=${isThread}`);
+        console.log('   Routing to BulletproofThreadComposer...');
+        
+        // Force thread posting for multi-segment content
+        const threadResult = await BulletproofThreadComposer.post(segments);
+        return {
+          success: threadResult.success,
+          mode: threadResult.mode,
+          rootTweetUrl: threadResult.rootTweetUrl,
+          tweetIds: threadResult.tweetIds,
+          segments,
+          error: threadResult.error
+        };
+      }
+
       // Log the posting decision
       console.log(`🎯 POSTING_FACADE_DECISION: segments=${segments.length}, isThread=${isThread}`);
       
@@ -73,17 +92,10 @@ export class PostingFacade {
         };
       }
 
-      // Get browser page for ThreadComposer
-      const page = await PostingFacade.getBrowserPage();
-      const threadComposer = new ThreadComposer(page, {
-        dryRun: DRY_RUN
-      });
-
-      // Use ThreadComposer for ALL content (handles single vs thread automatically)
-      const contentString = segments.join('\n\n');
-      console.log(`🧵 POSTING_FACADE: Routing to ThreadComposer...`);
+      // Route through BulletproofThreadComposer for ALL content
+      console.log(`🧵 POSTING_FACADE: Routing to BulletproofThreadComposer...`);
       
-      const result = await threadComposer.postContent(contentString);
+      const result = await BulletproofThreadComposer.post(segments);
       
       console.log(`✅ POSTING_FACADE_RESULT: mode=${result.mode}, success=${result.success}`);
       
@@ -92,7 +104,7 @@ export class PostingFacade {
         mode: result.mode,
         rootTweetUrl: result.rootTweetUrl,
         tweetIds: result.tweetIds,
-        segments: result.segments,
+        segments: segments, // Use the segments we processed
         error: result.error
       };
       

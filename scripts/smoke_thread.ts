@@ -102,7 +102,16 @@ async function runSmokeTest() {
     };
     
     console.log('✅ Testing PostingFacade.post() with DRY_RUN...');
-    const postResult = await PostingFacade.post(draft);
+    
+    // Test with explicit segments to ensure thread detection
+    const threadDraft = {
+      id: 'smoke_test_thread_' + Date.now(),
+      content: TEST_CONTENT,
+      segments: threadResult.segments,
+      isThread: true
+    };
+    
+    const postResult = await PostingFacade.post(threadDraft);
     
     console.log(`✅ PostingFacade result: ${postResult.success ? 'SUCCESS' : 'FAILED'}`);
     console.log(`✅ Mode: ${postResult.mode}`);
@@ -141,7 +150,11 @@ process.env.THREAD_REPLY_DELAY_SEC = process.env.THREAD_REPLY_DELAY_SEC || '2';
 process.env.THREAD_RETRY_ATTEMPTS = process.env.THREAD_RETRY_ATTEMPTS || '3';
 process.env.PLAYWRIGHT_NAV_TIMEOUT_MS = process.env.PLAYWRIGHT_NAV_TIMEOUT_MS || '30000';
 process.env.FORCE_SINGLE_POST = process.env.FORCE_SINGLE_POST || 'false';
-process.env.DRY_RUN = 'true'; // Force dry run for smoke test
+process.env.THREAD_PIPELINE_ONLY = 'true';
+process.env.AGGRESSIVE_SCHEDULER_ENABLED = 'false';
+process.env.ENHANCED_ORCHESTRATOR_ENABLED = 'false';
+process.env.SINGLE_POST_HARD_BLOCK_IF_SEGMENTS_GT1 = 'true';
+process.env.DRY_RUN = '1'; // Force dry run for smoke test
 
 if (require.main === module) {
   runSmokeTest();
