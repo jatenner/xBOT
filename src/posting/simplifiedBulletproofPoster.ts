@@ -48,21 +48,30 @@ class SimplifiedBulletproofPoster {
       viewport: { width: 1280, height: 720 }
     });
 
-    // Load session if available
-    if (!this.sessionLoaded && process.env.TWITTER_SESSION_B64) {
+    // CRITICAL: Load Twitter session if available
+    if (process.env.TWITTER_SESSION_B64) {
       try {
-        const sessionData = JSON.parse(
-          Buffer.from(process.env.TWITTER_SESSION_B64, 'base64').toString()
-        );
-        if (sessionData.cookies) {
-          await this.context.addCookies(sessionData.cookies);
-          console.log(`📊 SESSION: ${sessionData.cookies.length} cookies loaded`);
-          this.sessionLoaded = true;
+        const sessionData = Buffer.from(process.env.TWITTER_SESSION_B64, 'base64').toString('utf-8');
+        const sessionJson = JSON.parse(sessionData);
+        
+        if (sessionJson.cookies && Array.isArray(sessionJson.cookies)) {
+          await this.context.addCookies(sessionJson.cookies);
+          console.log(`🍪 SESSION_LOADED: ${sessionJson.cookies.length} cookies from TWITTER_SESSION_B64`);
+        } else if (Array.isArray(sessionJson)) {
+          await this.context.addCookies(sessionJson);
+          console.log(`🍪 SESSION_LOADED: ${sessionJson.length} cookies from TWITTER_SESSION_B64`);
+        } else {
+          console.log('⚠️ SESSION_FORMAT: Unknown session format');
         }
-      } catch (error) {
-        console.warn('⚠️ SESSION: Failed to load session data');
+      } catch (sessionError) {
+        console.log('❌ SESSION_ERROR:', sessionError.message);
       }
+    } else {
+      console.log('⚠️ NO_SESSION: TWITTER_SESSION_B64 not found');
     }
+
+    // Mark session as loaded (handled above)
+    this.sessionLoaded = true;
 
     this.page = await this.context.newPage();
     console.log('✅ SIMPLIFIED_BROWSER: Ready for posting');
@@ -98,6 +107,17 @@ class SimplifiedBulletproofPoster {
       
       if (!navigated) {
         throw new Error('Failed to navigate to any Twitter URL');
+      }
+
+      // DIAGNOSTIC: Check what page we actually landed on
+      const pageTitle = await this.page!.title();
+      const pageUrl = this.page!.url();
+      console.log(`📄 PAGE_INFO: Title="${pageTitle}" URL="${pageUrl}"`);
+      
+      // Check if we're on a login page or blocked
+      const loginElements = await this.page!.locator('text=Log in, text=Sign up, text=suspended, text=challenge').count();
+      if (loginElements > 0) {
+        console.log('🚨 BLOCKED: Detected login/challenge page - session may be invalid or account suspended');
       }
 
       // Try multiple composer selectors with debug info
