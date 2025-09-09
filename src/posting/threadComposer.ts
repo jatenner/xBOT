@@ -390,6 +390,9 @@ export class ThreadComposer {
       
       for (const button of visibleCloseButtons) {
         try {
+          // 🛡️ BULLETPROOF: scrollIntoView + delay before click
+          await button.scrollIntoViewIfNeeded();
+          await this.page.waitForTimeout(150);
           await button.click({ timeout: 1000 });
           await this.page.waitForTimeout(300);
           console.log(`🚫 THREAD_COMPOSER: Closed overlay (attempt ${attempts + 1})`);
@@ -403,7 +406,7 @@ export class ThreadComposer {
   }
 
   /**
-   * 📝 GET textbox for specific segment
+   * 📝 GET textbox for specific segment with bulletproof verification
    */
   private async getTextboxForSegment(index: number) {
     const selectors = [
@@ -413,31 +416,44 @@ export class ThreadComposer {
     ];
 
     if (index === 0) {
-      // First textbox
+      // First textbox - try multiple selectors
       for (const selector of selectors) {
         try {
           const element = this.page.locator(selector).first();
+          
+          // 🛡️ BULLETPROOF: Ensure visibility before returning
           await element.waitFor({ state: 'visible', timeout: this.options.verificationTimeout });
+          await element.scrollIntoViewIfNeeded();
+          
+          console.log(`✅ THREAD_COMPOSER: Found textbox ${index} with selector: ${selector}`);
           return element;
         } catch {
           continue;
         }
       }
     } else {
-      // Nth textbox for thread
+      // Nth textbox for thread - prefer data-testid
       try {
         const element = this.page.locator('[data-testid^="tweetTextarea_"]').nth(index);
+        
+        // 🛡️ BULLETPROOF: Wait and verify
         await element.waitFor({ state: 'visible', timeout: this.options.verificationTimeout });
+        await element.scrollIntoViewIfNeeded();
+        
+        console.log(`✅ THREAD_COMPOSER: Found thread textbox ${index}`);
         return element;
       } catch {
         // Fallback to role-based selection
         const element = this.page.locator('[role="textbox"]').nth(index);
         await element.waitFor({ state: 'visible', timeout: this.options.verificationTimeout });
+        await element.scrollIntoViewIfNeeded();
+        
+        console.log(`✅ THREAD_COMPOSER: Found textbox ${index} via role fallback`);
         return element;
       }
     }
 
-    throw new Error(`Could not find textbox for segment ${index}`);
+    throw new Error(`Could not find textbox for segment ${index} after trying all selectors`);
   }
 
   /**

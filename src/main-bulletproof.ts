@@ -9,6 +9,7 @@ config();
 import { TwitterAnalyticsScraper } from './analytics/twitterAnalyticsScraper';
 import { systemMonitor } from './monitoring/systemPerformanceMonitor';
 import { aggressiveScheduler } from './posting/aggressivePostingScheduler';
+import { AGGRESSIVE_SCHEDULER_ENABLED, THREAD_PIPELINE_ONLY } from './config/flags';
 // EMERGENCY_DISABLED: import { aggressiveEngager } from './engagement/aggressiveEngagementEngine';
 // EMERGENCY_DISABLED: import { EnhancedContentOrchestrator } from './ai/enhancedContentOrchestrator';
 import { intelligentDecision } from './ai/intelligentDecisionEngine';
@@ -89,9 +90,13 @@ class BulletproofMainSystem {
       console.log('🛡️ BULLETPROOF_TEST: Testing posting system...');
       await this.testBulletproofPosting();
       
-      // 🚀 START AGGRESSIVE SYSTEMS
-      await aggressiveScheduler.startAggressivePosting();
-      console.log('🚀 AGGRESSIVE_POSTING: AI-driven posting system started');
+      // 🚀 CONDITIONAL: Start aggressive systems only if enabled
+      if (AGGRESSIVE_SCHEDULER_ENABLED && !THREAD_PIPELINE_ONLY) {
+        await aggressiveScheduler.startAggressivePosting();
+        console.log('🚀 AGGRESSIVE_POSTING: AI-driven posting system started');
+      } else {
+        console.log('🚨 AGGRESSIVE_POSTING: DISABLED - Using ThreadComposer pipeline only');
+      }
       
       // Store system metrics every 5 minutes
       setInterval(() => {
@@ -1163,33 +1168,30 @@ class BulletproofMainSystem {
       console.log(`✅ QUALITY_GATES: Banned phrases: ${megaContent.bannedPhraseCheck}, First person: ${megaContent.firstPersonCheck}`);
       console.log(`🎯 CONTENT_PREVIEW: ${Array.isArray(megaContent.content) ? megaContent.content[0].substring(0, 100) : megaContent.content.substring(0, 100)}...`);
 
-      // Post the mega content using NEW THREAD COMPOSER
+      // Post the mega content using POSTING FACADE (unified entry point)
       let postResult;
       
-      // Import the new ThreadComposer
-      const { default: ThreadComposer } = await import('./posting/threadComposer');
+      // Import the PostingFacade
+      const { default: PostingFacade } = await import('./posting/PostingFacade');
       
-      // Get browser page for thread composer
-      const page = await this.getBrowserPage();
-      const threadComposer = new ThreadComposer(page, {
-        dryRun: process.env.DRY_RUN === 'true'
-      });
-      
-      // Use thread composer for ALL content (handles single vs thread automatically)
-      const contentString = Array.isArray(megaContent.content) 
-        ? megaContent.content.join('\n\n') 
-        : megaContent.content;
+      // Create draft for PostingFacade
+      const draft = {
+        id: 'intelligent_post_' + Date.now(),
+        content: Array.isArray(megaContent.content) 
+          ? megaContent.content.join('\n\n') 
+          : megaContent.content
+      };
         
-      console.log(`🧵 THREAD_COMPOSER: Posting content via new robust thread system...`);
-      const threadResult = await threadComposer.postContent(contentString);
+      console.log(`🎯 POSTING_FACADE: Routing content via unified posting system...`);
+      const facadeResult = await PostingFacade.post(draft);
       
       postResult = {
-        success: threadResult.success,
-        tweetId: threadResult.rootTweetUrl ? this.extractTweetIdFromUrl(threadResult.rootTweetUrl) : 'thread_' + Date.now(),
-        error: threadResult.error
+        success: facadeResult.success,
+        tweetId: facadeResult.rootTweetUrl ? this.extractTweetIdFromUrl(facadeResult.rootTweetUrl) : 'thread_' + Date.now(),
+        error: facadeResult.error
       };
       
-      console.log(`🧵 THREAD_RESULT: mode=${threadResult.mode}, success=${threadResult.success}, segments=${threadResult.segments?.length || 1}`);
+      console.log(`🎯 FACADE_RESULT: mode=${facadeResult.mode}, success=${facadeResult.success}, segments=${facadeResult.segments?.length || 1}`);
       
       // Legacy compatibility check (disabled)
       if (false) {
