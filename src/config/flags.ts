@@ -10,6 +10,7 @@ export const ENHANCED_ORCHESTRATOR_ENABLED = process.env.ENHANCED_ORCHESTRATOR_E
 // Safety controls
 export const POSTING_DISABLED = process.env.POSTING_DISABLED === 'true';
 export const DRY_RUN = process.env.DRY_RUN === 'true';
+export const SINGLE_POST_HARD_BLOCK_IF_SEGMENTS_GT1 = process.env.SINGLE_POST_HARD_BLOCK_IF_SEGMENTS_GT1 === 'true';
 
 // Thread configuration
 export const THREAD_MAX_TWEETS = parseInt(process.env.THREAD_MAX_TWEETS || '9');

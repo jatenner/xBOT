@@ -78,6 +78,15 @@ class SimplifiedBulletproofPoster {
   }
 
   async postContent(content: string): Promise<{ success: boolean; tweetId?: string; error?: string }> {
+    // 🐦 CANARY LOG: Detect if legacy bulletproof poster is called
+    console.log('CANARY:LEGACY_BULLETPROOF_POSTER_CALLED', new Date().toISOString());
+    
+    // 🚨 THREAD PIPELINE GUARD: Block if thread pipeline only
+    if (process.env.THREAD_PIPELINE_ONLY === 'true') {
+      console.log('🚨 LEGACY_BULLETPROOF_POSTER: DISABLED by THREAD_PIPELINE_ONLY');
+      return { success: false, error: 'Disabled by THREAD_PIPELINE_ONLY flag' };
+    }
+    
     try {
       await this.ensureBrowser();
 
