@@ -75,14 +75,75 @@ class SimplifiedBulletproofPoster {
       console.log(`📝 POSTING_TWEET: "${content.substring(0, 50)}..."`);
       console.log('🏠 NAVIGATE_HOME: Going to Twitter home...');
       
-      await this.page!.goto('https://x.com/home', { 
-        waitUntil: 'networkidle',
-        timeout: 30000
-      });
+      // Try multiple URLs and navigation strategies
+      const urls = ['https://x.com/home', 'https://x.com/compose/tweet'];
+      let navigated = false;
+      
+      for (const url of urls) {
+        try {
+          console.log(`🔄 Trying: ${url}`);
+          await this.page!.goto(url, { 
+            waitUntil: 'domcontentloaded',
+            timeout: 20000
+          });
+          await this.page!.waitForTimeout(2000); // Let page settle
+          navigated = true;
+          console.log(`✅ Successfully navigated to: ${url}`);
+          break;
+        } catch (navError) {
+          console.log(`❌ Navigation failed for ${url}:`, navError);
+          continue;
+        }
+      }
+      
+      if (!navigated) {
+        throw new Error('Failed to navigate to any Twitter URL');
+      }
 
-      // Simple composer find and type
-      const composerSelector = '[data-testid="tweetTextarea_0"], [contenteditable="true"]';
-      await this.page!.waitForSelector(composerSelector, { timeout: 10000 });
+      // Try multiple composer selectors with debug info
+      const composerSelectors = [
+        '[data-testid="tweetTextarea_0"]',
+        '[contenteditable="true"][data-testid*="tweet"]',
+        '[contenteditable="true"]',
+        'div[contenteditable="true"]',
+        '.public-DraftEditor-content',
+        '[placeholder*="happening"]',
+        '[placeholder*="What"]'
+      ];
+      
+      let composerFound = false;
+      let workingSelector = '';
+      
+      for (const selector of composerSelectors) {
+        try {
+          console.log(`🔍 Testing selector: ${selector}`);
+          await this.page!.waitForSelector(selector, { timeout: 2000 });
+          
+          const element = this.page!.locator(selector).first();
+          if (await element.isVisible()) {
+            workingSelector = selector;
+            composerFound = true;
+            console.log(`✅ FOUND composer with: ${selector}`);
+            break;
+          }
+        } catch (error) {
+          console.log(`❌ Selector failed: ${selector}`);
+          continue;
+        }
+      }
+      
+      if (!composerFound) {
+        // Take screenshot for debugging
+        try {
+          await this.page!.screenshot({ path: '/tmp/twitter-debug.png', fullPage: true });
+          console.log('📸 Debug screenshot saved to /tmp/twitter-debug.png');
+        } catch (screenError) {
+          console.log('⚠️ Screenshot failed');
+        }
+        throw new Error(`No composer found. Tried ${composerSelectors.length} selectors.`);
+      }
+      
+      const composerSelector = workingSelector;
       
       const composer = await this.page!.locator(composerSelector).first();
       await composer.click();
