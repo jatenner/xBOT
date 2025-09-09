@@ -1163,20 +1163,39 @@ class BulletproofMainSystem {
       console.log(`✅ QUALITY_GATES: Banned phrases: ${megaContent.bannedPhraseCheck}, First person: ${megaContent.firstPersonCheck}`);
       console.log(`🎯 CONTENT_PREVIEW: ${Array.isArray(megaContent.content) ? megaContent.content[0].substring(0, 100) : megaContent.content.substring(0, 100)}...`);
 
-      // Post the mega content
+      // Post the mega content using NEW THREAD COMPOSER
       let postResult;
-      if (megaContent.format === 'thread' && Array.isArray(megaContent.content)) {
-        console.log(`🧵 POSTING_THREAD: ${megaContent.content.length} tweets`);
-        const threadResult = await bulletproofPoster.postThread(megaContent.content);
-        postResult = {
-          success: threadResult.success,
-          tweetId: threadResult.tweetIds?.[0] || 'thread_' + Date.now(),
-          error: threadResult.error
-        };
-      } else {
+      
+      // Import the new ThreadComposer
+      const { default: ThreadComposer } = await import('./posting/threadComposer');
+      
+      // Get browser page for thread composer
+      const page = await this.getBrowserPage();
+      const threadComposer = new ThreadComposer(page, {
+        dryRun: process.env.DRY_RUN === 'true'
+      });
+      
+      // Use thread composer for ALL content (handles single vs thread automatically)
+      const contentString = Array.isArray(megaContent.content) 
+        ? megaContent.content.join('\n\n') 
+        : megaContent.content;
+        
+      console.log(`🧵 THREAD_COMPOSER: Posting content via new robust thread system...`);
+      const threadResult = await threadComposer.postContent(contentString);
+      
+      postResult = {
+        success: threadResult.success,
+        tweetId: threadResult.rootTweetUrl ? this.extractTweetIdFromUrl(threadResult.rootTweetUrl) : 'thread_' + Date.now(),
+        error: threadResult.error
+      };
+      
+      console.log(`🧵 THREAD_RESULT: mode=${threadResult.mode}, success=${threadResult.success}, segments=${threadResult.segments?.length || 1}`);
+      
+      // Legacy compatibility check (disabled)
+      if (false) {
         const content = Array.isArray(megaContent.content) ? megaContent.content[0] : megaContent.content;
-        console.log(`📝 POSTING_SINGLE: "${content.substring(0, 50)}..."`);
-        const singleResult = await bulletproofPoster.postContent(content);
+        console.log(`📝 POSTING_SINGLE: "${String(content).substring(0, 50)}..."`);
+        const singleResult = await bulletproofPoster.postContent(String(content));
         postResult = {
           success: singleResult.success,
           tweetId: singleResult.tweetId,
@@ -1415,6 +1434,26 @@ class BulletproofMainSystem {
       console.error('❌ PIPELINE_TEST: Test execution failed:', error);
       console.warn('⚠️ PIPELINE_TEST: Continuing without pipeline verification...');
     }
+  }
+
+  /**
+   * 🌐 GET browser page for thread composer
+   */
+  private async getBrowserPage(): Promise<any> {
+    // Import browser manager 
+    const { default: browserManager } = await import('./core/BrowserManager');
+    
+    return await browserManager.withContext(async (context: any) => {
+      return await context.newPage();
+    });
+  }
+
+  /**
+   * 🔢 EXTRACT tweet ID from URL
+   */
+  private extractTweetIdFromUrl(url: string): string {
+    const match = url.match(/\/status\/(\d+)/);
+    return match ? match[1] : url.split('/').pop() || 'unknown';
   }
 }
 
