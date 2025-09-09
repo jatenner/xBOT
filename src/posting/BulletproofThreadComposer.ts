@@ -23,9 +23,26 @@ export class BulletproofThreadComposer {
   static async post(segments: string[]): Promise<ThreadPostResult> {
     console.log(`🧵 THREAD_DECISION mode=? segments=${segments.length}`);
     
+    // Ensure numbering at send time if not already present
+    const isThread = segments.length > 1;
+    let numberedSegments = segments;
+    
+    if (isThread) {
+      const n = segments.length;
+      const hasNumbering = segments[0]?.match(/^\d+\/\d+\s/);
+      
+      if (!hasNumbering) {
+        // Add numbering "i/n " at send time
+        numberedSegments = segments.map((s, i) => `${i+1}/${n} ${s}`);
+        console.log(`🧵 NUMBERING_ADDED: ${n} segments numbered at send time`);
+      } else {
+        console.log(`🧵 NUMBERING_DETECTED: Segments already numbered`);
+      }
+    }
+    
     if (process.env.DRY_RUN === '1' || process.env.DRY_RUN === 'true') {
       console.log('🧪 DRY_RUN: Thread posting simulation');
-      segments.forEach((segment, i) => {
+      numberedSegments.forEach((segment, i) => {
         console.log(`THREAD_SEG_VERIFIED idx=${i} len=${segment.length}`);
       });
       console.log('THREAD_PUBLISH_OK mode=dry_run');
@@ -43,7 +60,7 @@ export class BulletproofThreadComposer {
 
     try {
       // Try composer-first approach
-      await this.postViaComposer(segments);
+      await this.postViaComposer(numberedSegments);
       console.log('🧵 THREAD_PUBLISH_OK mode=composer');
       return {
         success: true,
@@ -56,7 +73,7 @@ export class BulletproofThreadComposer {
 
     try {
       // Fallback to reply chain
-      const rootUrl = await this.postViaReplies(segments);
+      const rootUrl = await this.postViaReplies(numberedSegments);
       console.log('🧵 THREAD_PUBLISH_OK mode=reply_chain');
       return {
         success: true,
