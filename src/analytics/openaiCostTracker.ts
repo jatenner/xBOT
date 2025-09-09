@@ -98,9 +98,9 @@ export class OpenAICostTracker {
 
   /**
    * 🎯 MAIN TRACKING METHOD - Call this for EVERY OpenAI request
-   * NULL-SAFE VERSION - Never crashes posting loop
+   * NULL-SAFE VERSION - Never crashes posting loop, guarantees non-empty payload
    */
-  async trackOpenAIUsage(resp: any, meta: { intent?: string } = {}): Promise<string | null> {
+  trackOpenAIUsage(resp: any, meta: { intent?: string } = {}) {
     try {
       const model = resp?.model ?? 'unknown';
       const usage = resp?.usage ?? {};
@@ -124,13 +124,14 @@ export class OpenAICostTracker {
         cost_usd: this.estimateCost({ model, promptTokens, completionTokens, totalTokens, costTier }),
         request_id: resp?.id ?? null,
         finish_reason: resp?.choices?.[0]?.finish_reason ?? null,
+        raw: resp ? { response: resp, meta } : { meta }
       };
 
       console.log(`💰 COST_TRACKER: ${payload.intent} - $${payload.cost_usd.toFixed(4)} (${model})`);
 
-      return await this.dbSafeInsert('openai_usage_log', payload);
+      return this.dbSafeInsert('openai_usage_log', payload);
     } catch (err) {
-      console.error('COST_TRACKER_ERROR_SAFE', { err });
+      console.error('COST_TRACKER_ERROR_SAFE', { message: err?.message ?? String(err ?? '') });
       return null;
     }
   }
@@ -282,27 +283,40 @@ export class OpenAICostTracker {
   }
 
   /**
-   * 🛡️ SAFE DATABASE INSERT - Never crashes
+   * 🛡️ SAFE DATABASE INSERT - Uses log_openai_usage function (never crashes)
    */
   async dbSafeInsert(table: string, payload: Record<string, any>): Promise<string | null> {
     try {
       if (!payload || Object.keys(payload).length === 0) {
-        console.warn('DB_SAFE: Empty payload, skipping', { table });
+        console.warn('COST_TRACKER: Empty payload, skipping', { table });
         return null;
       }
 
-      console.log(`📝 DB_SAFE: Inserting into ${table}...`);
-      console.log(`📋 DB_SAFE: Payload keys: ${Object.keys(payload).length}`);
+      console.log(`💰 COST_TRACKER: Logging to ${table} via safe function...`);
+      console.log(`📋 COST_TRACKER: Payload keys: ${Object.keys(payload).length}`);
 
-      const result = await this.db.safeInsert(table, [payload]);
-      if (!result.success) {
-        console.error('DB_SAFE: Insert error', { table, error: result.error, payloadKeys: Object.keys(payload) });
-        return null;
+      // Use the safe log_openai_usage function that never throws
+      const { data, error } = await this.db.getClient()
+        .rpc('log_openai_usage', {
+          p_model: payload.model,
+          p_cost_tier: payload.cost_tier,
+          p_intent: payload.intent,
+          p_prompt_tokens: payload.prompt_tokens,
+          p_completion_tokens: payload.completion_tokens,
+          p_total_tokens: payload.total_tokens,
+          p_cost_usd: payload.cost_usd,
+          p_request_id: payload.request_id,
+          p_finish_reason: payload.finish_reason,
+          p_raw: payload.raw || {}
+        });
+
+      if (error) {
+        console.warn('COST_TRACKER: Function warning (swallowed)', { error: error.message });
       }
 
-      return 'success';
+      return data ? 'success' : null;
     } catch (e) {
-      console.error('DB_SAFE: Exception during insert', { table, e });
+      console.error('COST_TRACKER: Exception during function call', { table, message: e?.message ?? String(e ?? '') });
       return null;
     }
   }

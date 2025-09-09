@@ -12,6 +12,11 @@ export interface Draft {
   content: string;
   segments?: string[];
   isThread?: boolean;
+  meta?: {
+    threadCount?: number;
+    threadSegments?: number;
+    format?: string;
+  };
 }
 
 export interface PostingResult {
@@ -43,7 +48,7 @@ export class PostingFacade {
     }
 
     try {
-      // Build thread segments if not provided
+      // Build thread segments if not provided - ENHANCED with metadata + 1/N parsing
       let segments: string[];
       let isThread: boolean;
       
@@ -51,11 +56,12 @@ export class PostingFacade {
         segments = draft.segments;
         isThread = draft.isThread || segments.length > 1;
       } else {
-        const threadResult = ThreadBuilder.buildThreadSegments(draft.content);
-        segments = threadResult.segments;
-        isThread = threadResult.isThread;
+        // Enhanced segment building with metadata support
+        const enforcedCount = draft.meta?.threadCount || draft.meta?.threadSegments;
+        segments = this.splitIntoSegments(draft.content, enforcedCount);
+        isThread = segments.length > 1;
         
-        console.log(`🧵 POSTING_FACADE: Built ${segments.length} segments, isThread=${isThread}`);
+        console.log(`🧵 POSTING_FACADE: Built ${segments.length} segments, isThread=${isThread}, enforced=${enforcedCount || 'none'}`);
       }
 
       // 🚨 HARD BLOCK: Prevent single posts when segments > 1
@@ -133,6 +139,49 @@ export class PostingFacade {
     return await browserManager.withContext(async (context: any) => {
       return await context.newPage();
     });
+  }
+
+  /**
+   * 🧵 ENHANCED SEGMENT BUILDER - trusts metadata + parses 1/N markers
+   */
+  private static splitIntoSegments(text: string, enforcedCount?: number): string[] {
+    // Prefer explicit numbered segments
+    const lines = text.split(/\n+/).map(s => s.trim()).filter(Boolean);
+    const numbered = [];
+    for (const ln of lines) {
+      const m = ln.match(/^(\d+)\/(\d+)\s+(.*)$/);
+      if (m) numbered.push(m[3].trim());
+    }
+    if (numbered.length > 1) {
+      console.log(`📊 SEGMENT_BUILDER: Found ${numbered.length} pre-numbered segments`);
+      return numbered;
+    }
+
+    // Fallback: hard-wrap <= 260 chars to leave room for "x/n " (up to 6 chars)
+    const out: string[] = [];
+    let i = 0;
+    const max = 260;
+    while (i < text.length) {
+      out.push(text.slice(i, i + max).trim());
+      i += max;
+    }
+    
+    if (enforcedCount && enforcedCount > 0 && out.length !== enforcedCount) {
+      // If MegaPrompt said N, rebalance slices to produce N chunks
+      console.log(`📊 SEGMENT_BUILDER: Rebalancing to ${enforcedCount} enforced segments`);
+      const N = enforcedCount;
+      const chunkSize = Math.ceil(text.length / N);
+      const forced: string[] = [];
+      let j = 0;
+      while (j < text.length) {
+        forced.push(text.slice(j, j + chunkSize).trim());
+        j += chunkSize;
+      }
+      return forced;
+    }
+    
+    console.log(`📊 SEGMENT_BUILDER: Generated ${out.length} segments via hard-wrap`);
+    return out.length ? out : [text.trim()];
   }
 
   /**

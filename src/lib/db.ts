@@ -61,61 +61,32 @@ export class SafeDatabase {
   }
 
   /**
-   * Safe insert with comprehensive error handling
+   * IRON-CLAD NULL-SAFE insert - never throws, never crashes
    */
-  async safeInsert<T = any>(table: string, payload: any): Promise<SafeInsertResult<T>> {
+  async safeInsert(table: string, payload: Record<string, any>) {
     try {
-      console.log(`📝 DB_SAFE: Inserting into ${table}...`);
-      
-      // Log payload structure (without sensitive data)
-      const payloadKeys = Object.keys(payload);
-      console.log(`📋 DB_SAFE: Payload keys: ${payloadKeys.join(', ')}`);
-
-      const { data, error } = await this.client
-        .from(table)
-        .insert(payload)
-        .select();
-
-      if (error) {
-        console.error(`❌ DB_SAFE: Insert failed for table ${table}`);
-        console.error(`📋 Payload keys: ${payloadKeys.join(', ')}`);
-        console.error(`💥 Error message: ${error.message}`);
-        console.error(`🔍 Error details: ${JSON.stringify(error, null, 2)}`);
-
-        // Check for common issues
-        if (error.message.includes('permission denied')) {
-          console.error('🔒 RLS_ERROR: Permission denied - check RLS policies or use service role key');
-        }
-        
-        if (error.message.includes('violates not-null constraint')) {
-          console.error('📝 SCHEMA_ERROR: Missing required fields in payload');
-        }
-        
-        if (error.message.includes('duplicate key')) {
-          console.error('🔑 DUPLICATE_ERROR: Primary key or unique constraint violation');
-        }
-
-        throw new Error(`Database insert failed for ${table}: ${error.message}`);
+      if (!table || typeof table !== 'string') {
+        console.warn('DB_SAFE: invalid table arg', { table });
+        return;
       }
-
-      console.log(`✅ DB_SAFE: Successfully inserted ${data?.length || 0} row(s) into ${table}`);
-      
-      return {
-        data,
-        error: null,
-        success: true
-      };
-
-    } catch (error) {
-      const dbError = error instanceof Error ? error : new Error(String(error));
-      
-      console.error(`💥 DB_SAFE: Exception during insert to ${table}: ${dbError.message}`);
-      
-      return {
-        data: null,
-        error: dbError,
-        success: false
-      };
+      if (!payload || Object.keys(payload).length === 0) {
+        console.warn('DB_SAFE: empty payload, skip', { table });
+        return;
+      }
+      const { data, error } = await this.client.from(table).insert(payload);
+      if (error) {
+        const msg = error?.message ?? String(error ?? '');
+        console.error('DB_SAFE: Insert error', {
+          table,
+          payloadKeys: Object.keys(payload),
+          message: msg
+        });
+      }
+      return data;
+    } catch (e: any) {
+      const msg = e?.message ?? String(e ?? '');
+      console.error('DB_SAFE: Exception during insert', { table, message: msg });
+      return;
     }
   }
 

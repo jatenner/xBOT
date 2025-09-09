@@ -163,16 +163,9 @@ export class OpenAIService {
 
       await this.recordUsage(usageRecord);
 
-      // NEW: Track in comprehensive cost tracker
-      await openaiCostTracker.trackOpenAIUsage({
-        operation_type: this.mapRequestTypeToOperation(requestType),
-        model,
-        prompt_tokens: usage?.prompt_tokens || 0,
-        completion_tokens: usage?.completion_tokens || 0,
-        total_tokens: usage?.total_tokens || 0,
-        request_type: requestType,
-        success: true,
-        content_preview: response.choices[0]?.message?.content?.substring(0, 100) || ''
+      // NEW: Track in comprehensive cost tracker (single call, correct signature)
+      await openaiCostTracker.trackOpenAIUsage(response, { 
+        intent: this.mapRequestTypeToOperation(requestType) 
       });
 
       console.log(`✅ OPENAI_SUCCESS: $${actualCost.toFixed(4)} (${duration}ms, ${usage?.total_tokens} tokens)`);
@@ -197,16 +190,12 @@ export class OpenAIService {
 
       await this.recordUsage(usageRecord);
 
-      // NEW: Track failed request in cost tracker
-      await openaiCostTracker.trackOpenAIUsage({
-        operation_type: this.mapRequestTypeToOperation(requestType),
-        model,
-        prompt_tokens: 0,
-        completion_tokens: 0,
-        total_tokens: 0,
-        request_type: requestType,
-        success: false,
-        error_message: error.message
+      // NEW: Track failed request in cost tracker (single call, correct signature)
+      await openaiCostTracker.trackOpenAIUsage({ 
+        model, 
+        error: { message: error.message } 
+      }, { 
+        intent: this.mapRequestTypeToOperation(requestType) 
       }).catch(trackingError => {
         console.warn('⚠️ COST_TRACKING_ERROR:', trackingError);
       });
