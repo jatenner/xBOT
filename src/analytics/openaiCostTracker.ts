@@ -98,35 +98,40 @@ export class OpenAICostTracker {
 
   /**
    * 🎯 MAIN TRACKING METHOD - Call this for EVERY OpenAI request
+   * NULL-SAFE VERSION - Never crashes posting loop
    */
-  async trackOpenAIUsage(usage: Omit<OpenAIUsageRecord, 'id' | 'timestamp' | 'estimated_cost'>): Promise<string> {
-    const record: OpenAIUsageRecord = {
-      ...usage,
-      timestamp: new Date(),
-      estimated_cost: this.calculateCost(usage.model, usage.prompt_tokens, usage.completion_tokens)
-    };
-
-    console.log(`💰 COST_TRACKER: ${usage.operation_type} - $${record.estimated_cost.toFixed(4)} (${usage.model})`);
-
+  async trackOpenAIUsage(resp: any, meta: { intent?: string } = {}): Promise<string | null> {
     try {
-      // Store in Supabase
-      const result = await this.db.safeInsert('openai_usage_log', [record]);
-      if (!result.success || !result.data) {
-        throw new Error(result.error?.message || 'Failed to insert usage record');
-      }
+      const model = resp?.model ?? 'unknown';
+      const usage = resp?.usage ?? {};
+      const promptTokens = usage?.prompt_tokens ?? usage?.input_tokens ?? 0;
+      const completionTokens = usage?.completion_tokens ?? usage?.output_tokens ?? 0;
+      const totalTokens = usage?.total_tokens ?? (promptTokens + completionTokens);
 
-      const recordId = result.data[0]?.id || 'unknown';
+      const costTier =
+        (typeof model === 'string' && model.includes?.('gpt-4o')) ? 'gpt-4o' :
+        (typeof model === 'string' && model.includes?.('gpt-4'))  ? 'gpt-4'  :
+        (typeof model === 'string' && model.includes?.('gpt-3.5'))? 'gpt-3.5': 'other';
 
-      // Update Redis counters for fast access
-      await this.updateRedisCounters(record);
+      const payload = {
+        created_at: new Date().toISOString(),
+        model,
+        cost_tier: costTier,
+        intent: meta?.intent ?? 'other',
+        prompt_tokens: promptTokens,
+        completion_tokens: completionTokens,
+        total_tokens: totalTokens,
+        cost_usd: this.estimateCost({ model, promptTokens, completionTokens, totalTokens, costTier }),
+        request_id: resp?.id ?? null,
+        finish_reason: resp?.choices?.[0]?.finish_reason ?? null,
+      };
 
-      // Check budget limits
-      await this.checkBudgetLimits();
+      console.log(`💰 COST_TRACKER: ${payload.intent} - $${payload.cost_usd.toFixed(4)} (${model})`);
 
-      return recordId;
-    } catch (error) {
-      console.error('❌ COST_TRACKER_ERROR:', error);
-      return 'error';
+      return await this.dbSafeInsert('openai_usage_log', payload);
+    } catch (err) {
+      console.error('COST_TRACKER_ERROR_SAFE', { err });
+      return null;
     }
   }
 
@@ -260,6 +265,46 @@ export class OpenAICostTracker {
     const outputCost = (completionTokens / 1000) * pricing.output;
     
     return inputCost + outputCost;
+  }
+
+  /**
+   * 🎯 NULL-SAFE COST ESTIMATION
+   */
+  private estimateCost(data: { model: string; promptTokens: number; completionTokens: number; totalTokens: number; costTier: string }): number {
+    try {
+      const pricing = this.TOKEN_PRICING[data.costTier as keyof typeof this.TOKEN_PRICING] || this.TOKEN_PRICING['gpt-3.5-turbo'];
+      const inputCost = (data.promptTokens / 1000) * pricing.input;
+      const outputCost = (data.completionTokens / 1000) * pricing.output;
+      return inputCost + outputCost;
+    } catch {
+      return 0.01; // Default safe cost
+    }
+  }
+
+  /**
+   * 🛡️ SAFE DATABASE INSERT - Never crashes
+   */
+  async dbSafeInsert(table: string, payload: Record<string, any>): Promise<string | null> {
+    try {
+      if (!payload || Object.keys(payload).length === 0) {
+        console.warn('DB_SAFE: Empty payload, skipping', { table });
+        return null;
+      }
+
+      console.log(`📝 DB_SAFE: Inserting into ${table}...`);
+      console.log(`📋 DB_SAFE: Payload keys: ${Object.keys(payload).length}`);
+
+      const { error } = await this.db.from(table).insert(payload);
+      if (error) {
+        console.error('DB_SAFE: Insert error', { table, error, payloadKeys: Object.keys(payload) });
+        return null;
+      }
+
+      return 'success';
+    } catch (e) {
+      console.error('DB_SAFE: Exception during insert', { table, e });
+      return null;
+    }
   }
 
   /**
