@@ -59,19 +59,20 @@ export class PostingFacade {
         // Enhanced segment building with metadata support
         const enforcedCount = draft.meta?.threadCount || draft.meta?.threadSegments;
         const force = process.env.THREAD_FORCE_SEGMENTS === 'true';
-        const numRe = new RegExp(process.env.THREAD_NUMBERING_REGEX ?? '^\\s*\\d+/\\d+\\b', 'm');
-        const looksNumbered = numRe.test(draft.content);
-        const tooLong = draft.content.length > 280;
+        const reNumber = new RegExp(process.env.THREAD_NUMBERING_REGEX ?? '^\\s*\\d+/\\d+\\b', 'm');
+        const looksNumbered = reNumber.test(draft.content);
+        const overLimit = draft.content.length > 280;
         
         segments = this.splitIntoSegments(draft.content, enforcedCount);
         isThread = segments.length > 1;
         
-        // THREAD_GUARD: multi-segment content must be split
-        if (!isThread && (looksNumbered || tooLong)) {
-          throw new Error('THREAD_GUARD: multi-segment content must be split');
+        // THREAD_GUARD: segmentation failed (multi-segment content must not post as single)
+        if ((looksNumbered || overLimit || force) && segments.length <= 1) {
+          throw new Error('THREAD_GUARD: segmentation failed (multi-segment content must not post as single)');
         }
         
-        console.log(`🧵 POSTING_FACADE: Built ${segments.length} segments, isThread=${isThread}, enforced=${enforcedCount || (force ? 'force' : looksNumbered ? 'numbering' : tooLong ? 'length' : 'none')}`);
+        // Always route threads through the composer facade:
+        console.log(`🧵 POSTING_FACADE: Built ${segments.length} segments, isThread=${isThread}, enforced=${looksNumbered ? 'numbering' : overLimit ? 'length' : (force ? 'force' : 'none')}`);
       }
 
       // 🚨 HARD BLOCK: Prevent single posts when segments > 1
@@ -152,35 +153,27 @@ export class PostingFacade {
   }
 
   /**
-   * 🧵 ENHANCED SEGMENT BUILDER - force segmentation + guard with env support
+   * 🧵 REAL SEGMENTATION - actually splits content by numbering/width; guards singles
    */
   private static splitIntoSegments(text: string, enforcedCount?: number): string[] {
     const force = process.env.THREAD_FORCE_SEGMENTS === 'true';
-    const delim = process.env.THREAD_SEGMENT_DELIMITER ?? '\n\n';
-    const numRe = new RegExp(process.env.THREAD_NUMBERING_REGEX ?? '^\\s*\\d+/\\d+\\b', 'm');
+    const delim = process.env.THREAD_SEGMENT_DELIMITER ?? '---';
+    const reNumber = new RegExp(process.env.THREAD_NUMBERING_REGEX ?? '^\\s*\\d+/\\d+\\b', 'm');
 
-    const looksNumbered = numRe.test(text);
-    const tooLong = text.length > 280;
+    const looksNumbered = reNumber.test(text);
+    const overLimit = text.length > 280;
 
-    // Detect and parse numbered segments first
-    if (looksNumbered) {
-      const lines = text.split(/\n+/).map(s => s.trim()).filter(Boolean);
-      const numbered = [];
-      for (const ln of lines) {
-        const m = ln.match(/^(\d+)\/(\d+)\s+(.*)$/);
-        if (m) numbered.push(m[3].trim());
+    // Real segmentation - must produce multiple segments
+    if (force || looksNumbered || overLimit) {
+      let segs = looksNumbered ? this.splitByNumbering(text) : this.splitByWidth(text, 270);
+      
+      // If delimiter is present, respect it as a secondary hint
+      if (segs.length === 1 && text.includes(delim)) {
+        segs = text.split(delim).map(x => x.trim()).filter(Boolean);
       }
-      if (numbered.length > 1) {
-        console.log(`📊 SEGMENT_BUILDER: Found ${numbered.length} pre-numbered segments`);
-        return numbered;
-      }
-    }
 
-    // Force split if conditions met
-    if (force || looksNumbered || tooLong) {
-      const segments = this.forceSplitIntoSegments(text, { delimiter: delim, hardMax: 270, numberingRegex: numRe });
-      console.log(`📊 SEGMENT_BUILDER: Generated ${segments.length} segments via ${force ? 'force' : looksNumbered ? 'numbering' : 'length'}`);
-      return segments;
+      console.log(`📊 SEGMENT_BUILDER: Generated ${segs.length} segments via ${looksNumbered ? 'numbering' : overLimit ? 'length' : 'force'}`);
+      return segs;
     }
 
     // Default single segment
@@ -188,26 +181,27 @@ export class PostingFacade {
   }
 
   /**
-   * 🔪 FORCE SPLIT content into segments
+   * 🔢 SPLIT BY NUMBERING MARKERS
    */
-  private static forceSplitIntoSegments(text: string, options: { delimiter: string; hardMax: number; numberingRegex: RegExp }): string[] {
-    // Try delimiter-based splitting first
-    if (text.includes(options.delimiter)) {
-      const parts = text.split(options.delimiter).map(s => s.trim()).filter(Boolean);
-      if (parts.length > 1 && parts.every(p => p.length <= options.hardMax)) {
-        return parts;
-      }
-    }
+  private static splitByNumbering(s: string): string[] {
+    const parts = s
+      .split(/\n(?=\s*\d+\/\d+\b)/g)   // split before "2/4", "3/4", etc.
+      .map(p => p.trim())
+      .filter(Boolean);
+    return parts.length > 1 ? parts : [s];
+  }
 
-    // Fallback: hard-wrap by character count
-    const out: string[] = [];
+  /**
+   * 📏 SPLIT BY CHARACTER WIDTH
+   */
+  private static splitByWidth(s: string, max = 270): string[] {
+    const chunks: string[] = [];
     let i = 0;
-    while (i < text.length) {
-      out.push(text.slice(i, i + options.hardMax).trim());
-      i += options.hardMax;
+    while (i < s.length) {
+      chunks.push(s.slice(i, i + max));
+      i += max;
     }
-    
-    return out.length ? out : [text.trim()];
+    return chunks;
   }
 
   /**
