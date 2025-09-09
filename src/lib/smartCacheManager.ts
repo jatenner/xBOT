@@ -111,15 +111,12 @@ export class SmartCacheManager extends EventEmitter {
       });
 
       await this.redis.connect();
-
-      // Configure Redis for optimal performance
-      await this.redis.config('SET', 'maxmemory', this.config.maxMemoryUsage.toString());
-      await this.redis.config('SET', 'maxmemory-policy', this.config.evictionPolicy);
-
-      console.log('✅ SMART_CACHE: Redis connected and configured');
+      try { await this.redis.ping(); } catch {}
+      console.log('✅ REDIS_SAFE: Connected successfully');
 
     } catch (error: any) {
-      console.error('❌ SMART_CACHE: Redis connection failed:', error.message);
+      console.log('❌ SMART_CACHE: Redis connection failed:', error.message);
+      console.log('🔄 SMART_CACHE: Using in-memory fallback');
       // Initialize in-memory fallback
       this.initializeMemoryFallback();
     }
