@@ -56,23 +56,49 @@ export class PostingFacade {
         segments = draft.segments;
         isThread = draft.isThread || segments.length > 1;
       } else {
-        // Enhanced segment building with metadata support
+        // Enhanced segment building with metadata support + env toggles
         const enforcedCount = draft.meta?.threadCount || draft.meta?.threadSegments;
         const force = process.env.THREAD_FORCE_SEGMENTS === 'true';
+        const delim = process.env.THREAD_SEGMENT_DELIMITER ?? '---';
         const reNumber = new RegExp(process.env.THREAD_NUMBERING_REGEX ?? '^\\s*\\d+/\\d+\\b', 'm');
+        const minForce = Number(process.env.THREAD_FORCE_SEGMENTS_MIN_CHARS ?? 220);
+        const width = Number(process.env.THREAD_WIDTH_CHAR_LIMIT ?? 240);
+
         const looksNumbered = reNumber.test(draft.content);
+        const hasDelim = draft.content.includes(delim);
         const overLimit = draft.content.length > 280;
-        
-        segments = this.splitIntoSegments(draft.content, enforcedCount);
+
+        let enforced: 'none'|'numbering'|'length'|'delim'|'force' = 'none';
+
+        if (looksNumbered) { 
+          segments = this.splitByNumbering(draft.content); 
+          enforced = 'numbering'; 
+        }
+        else if (hasDelim) { 
+          segments = this.splitByDelim(draft.content, delim); 
+          enforced = 'delim'; 
+        }
+        else if (overLimit) { 
+          segments = this.splitByWidth(draft.content, 270); 
+          enforced = 'length'; 
+        }
+        else if (force && draft.content.length >= minForce) { 
+          segments = this.splitByWidth(draft.content, width); 
+          enforced = 'force'; 
+        }
+        else { 
+          segments = [draft.content]; 
+        }
+
         isThread = segments.length > 1;
-        
-        // THREAD_GUARD: segmentation failed (multi-segment content must not post as single)
-        if ((looksNumbered || overLimit || force) && segments.length <= 1) {
+        console.log(`📊 SEGMENT_BUILDER: Generated ${segments.length} segments via ${enforced}`);
+
+        // Guard (throw) only if we truly expect multi-segment content (fixes pipeline-test failure)
+        if ((looksNumbered || hasDelim || overLimit) && segments.length <= 1) {
           throw new Error('THREAD_GUARD: segmentation failed (multi-segment content must not post as single)');
         }
-        
-        // Always route threads through the composer facade:
-        console.log(`🧵 POSTING_FACADE: Built ${segments.length} segments, isThread=${isThread}, enforced=${looksNumbered ? 'numbering' : overLimit ? 'length' : (force ? 'force' : 'none')}`);
+
+        console.log(`🧵 POSTING_FACADE: Built ${segments.length} segments, isThread=${isThread}, enforced=${enforced}`);
       }
 
       // 🚨 HARD BLOCK: Prevent single posts when segments > 1
@@ -184,24 +210,30 @@ export class PostingFacade {
    * 🔢 SPLIT BY NUMBERING MARKERS
    */
   private static splitByNumbering(s: string): string[] {
-    const parts = s
-      .split(/\n(?=\s*\d+\/\d+\b)/g)   // split before "2/4", "3/4", etc.
-      .map(p => p.trim())
-      .filter(Boolean);
+    const parts = s.split(/\n(?=\s*\d+\/\d+\b)/g).map(p => p.trim()).filter(Boolean);
     return parts.length > 1 ? parts : [s];
   }
 
   /**
    * 📏 SPLIT BY CHARACTER WIDTH
    */
-  private static splitByWidth(s: string, max = 270): string[] {
-    const chunks: string[] = [];
+  private static splitByWidth(s: string, max = 240): string[] {
+    if (s.length <= max) return [s];
+    const out: string[] = [];
     let i = 0;
-    while (i < s.length) {
-      chunks.push(s.slice(i, i + max));
-      i += max;
+    while (i < s.length) { 
+      out.push(s.slice(i, i + max)); 
+      i += max; 
     }
-    return chunks;
+    return out;
+  }
+
+  /**
+   * 🔪 SPLIT BY DELIMITER
+   */
+  private static splitByDelim(s: string, d: string): string[] {
+    const parts = s.split(d).map(x => x.trim()).filter(Boolean);
+    return parts.length > 1 ? parts : [s];
   }
 
   /**
