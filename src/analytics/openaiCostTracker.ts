@@ -294,9 +294,9 @@ export class OpenAICostTracker {
       console.log(`📝 DB_SAFE: Inserting into ${table}...`);
       console.log(`📋 DB_SAFE: Payload keys: ${Object.keys(payload).length}`);
 
-      const { error } = await this.db.from(table).insert(payload);
-      if (error) {
-        console.error('DB_SAFE: Insert error', { table, error, payloadKeys: Object.keys(payload) });
+      const result = await this.db.safeInsert(table, [payload]);
+      if (!result.success) {
+        console.error('DB_SAFE: Insert error', { table, error: result.error, payloadKeys: Object.keys(payload) });
         return null;
       }
 

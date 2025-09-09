@@ -612,7 +612,7 @@ class BulletproofMainSystem {
           const singleResult = await PostingFacade.post(singleDraft);
           postResult = {
             success: singleResult.success,
-            tweetId: singleResult.tweetId,
+            tweetId: singleResult.rootTweetUrl || singleResult.tweetId || 'unknown',
             type: 'single' as const,
             qualityScore: result.metadata.qualityScore,
             error: singleResult.error
@@ -640,7 +640,7 @@ class BulletproofMainSystem {
         
         postResult = {
           success: singleResult.success,
-          tweetId: singleResult.tweetId,
+          tweetId: singleResult.rootTweetUrl || singleResult.tweetId || 'unknown',
           type: 'single' as const,
           qualityScore: result.metadata.qualityScore,
           error: singleResult.error
@@ -668,7 +668,7 @@ class BulletproofMainSystem {
         
         postResult = {
           success: fallbackResult.success,
-          tweetId: fallbackResult.tweetId,
+          tweetId: fallbackResult.rootTweetUrl || fallbackResult.tweetId || 'unknown',
           type: 'single' as const,
           qualityScore: result.metadata.qualityScore,
           error: fallbackResult.error
@@ -1074,7 +1074,7 @@ class BulletproofMainSystem {
       
       if (result.success) {
         console.log('✅ BULLETPROOF_TEST: Posting system working! Tweet posted successfully');
-        console.log(`🐦 TWEET_ID: ${result.tweetId}`);
+        console.log(`🐦 TWEET_ID: ${result.rootTweetUrl || result.tweetId || 'unknown'}`);
       } else {
         console.error('❌ BULLETPROOF_TEST: Posting failed:', result.error);
       }
@@ -1268,7 +1268,7 @@ class BulletproofMainSystem {
         const singleResult = await PostingFacade.post(megaDraft);
         postResult = {
           success: singleResult.success,
-          tweetId: singleResult.tweetId,
+          tweetId: singleResult.rootTweetUrl || singleResult.tweetId || 'unknown',
           error: singleResult.error
         };
       }
@@ -1367,7 +1367,7 @@ class BulletproofMainSystem {
       
       if (postResult.success) {
         console.log('✅ BULLETPROOF_LOOP: Post successful!');
-        console.log(`🐦 POSTED: ${postResult.tweetId}`);
+        console.log(`🐦 POSTED: ${postResult.rootTweetUrl || postResult.tweetId || 'unknown'}`);
         
         // Store analytics for AI learning
         await intelligentDecision.storeTwitterAnalytics({

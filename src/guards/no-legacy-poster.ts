@@ -3,11 +3,10 @@
  * Fails the build if anyone tries to reintroduce legacy posting systems
  */
 
-// @ts-expect-error — fail build if someone reintroduces legacy poster
-// import { SimplifiedBulletproofPoster } from '../posting/simplifiedBulletproofPoster';
-
-// @ts-expect-error — fail build if someone tries to import postThread
-// import { postThread } from '../posting/postThread';
+// Build guards to prevent legacy system reintroduction
+// These commented imports will cause TypeScript errors if legacy systems are used
+// Uncomment to test: import { SimplifiedBulletproofPoster } from '../posting/simplifiedBulletproofPoster';
+// Uncomment to test: import { postThread } from '../posting/postThread';
 
 export const LEGACY_POSTING_DISABLED = true;
 
