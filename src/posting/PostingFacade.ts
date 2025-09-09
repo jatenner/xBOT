@@ -93,9 +93,15 @@ export class PostingFacade {
         isThread = segments.length > 1;
         console.log(`📊 SEGMENT_BUILDER: Generated ${segments.length} segments via ${enforced}`);
 
-        // Guard (throw) only if we truly expect multi-segment content (fixes pipeline-test failure)
-        if ((looksNumbered || hasDelim || overLimit) && segments.length <= 1) {
-          throw new Error('THREAD_GUARD: segmentation failed (multi-segment content must not post as single)');
+        // ENHANCED THREAD GUARD - Prevent incorrect single-segment posting
+        const shouldBeMultiSegment = looksNumbered || hasDelim || overLimit;
+        if (shouldBeMultiSegment && segments.length <= 1) {
+          const errorMsg = `THREAD_GUARD: Multi-segment content detected but segmentation failed. ` +
+            `Triggers: ${JSON.stringify({ looksNumbered, hasDelim, overLimit })}. ` +
+            `Content preview: "${draft.content.slice(0, 100)}..."`;
+          
+          console.error('🚨 THREAD_GUARD_FAILED:', errorMsg);
+          throw new Error(errorMsg);
         }
 
         console.log(`🧵 POSTING_FACADE: Built ${segments.length} segments, isThread=${isThread}, enforced=${enforced}`);

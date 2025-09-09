@@ -63,12 +63,16 @@ export interface DailyCostTarget {
   recommendations: string[];
 }
 
+// Cost logging configuration
+const COST_LOGGING_ENABLED = (process.env.COST_LOGGING_ENABLED ?? 'true') === 'true';
+const COST_LOGGING_MODE = process.env.COST_LOGGING_MODE ?? 'rpc';
+const COST_LOGGING_RPC = process.env.COST_LOGGING_RPC ?? 'log_openai_usage';
+const COST_LOGGING_TABLE = process.env.COST_LOGGING_TABLE ?? 'openai_usage_log';
+
 export class OpenAICostTracker {
   private static instance: OpenAICostTracker;
   private db = getSafeDatabase();
   private redis = getRedisSafeClient();
-  
-  private static readonly COST_LOGGING_ENABLED = (process.env.COST_LOGGING_ENABLED ?? 'true') === 'true';
 
   // Current OpenAI pricing (as of 2024)
   private readonly TOKEN_PRICING = {
@@ -102,13 +106,18 @@ export class OpenAICostTracker {
    * 🎯 MAIN TRACKING METHOD - Call this for EVERY OpenAI request
    * NULL-SAFE VERSION - Never crashes posting loop, guarantees non-empty payload
    */
-  trackOpenAIUsage(resp: any, meta: { intent?: string } = {}) {
-    if (!OpenAICostTracker.COST_LOGGING_ENABLED) { 
+  async trackOpenAIUsage(resp: any, meta: { intent?: string } = {}): Promise<void> {
+    if (!COST_LOGGING_ENABLED) {
       console.log('💰 COST_TRACKER: disabled by COST_LOGGING_ENABLED=false');
       return;
     }
 
     try {
+      // Robust payload validation
+      if (!resp || typeof resp !== 'object') {
+        console.warn('💰 COST_TRACKER: Invalid response object, skipping', { resp: typeof resp });
+        return;
+      }
       const model = resp?.model ?? 'unknown';
       const usage = resp?.usage ?? {};
       const promptTokens = usage?.prompt_tokens ?? usage?.input_tokens ?? 0;
@@ -136,10 +145,86 @@ export class OpenAICostTracker {
 
       console.log(`💰 COST_TRACKER: ${payload.intent} - $${payload.cost_usd.toFixed(4)} (${model})`);
 
-      return this.dbSafeInsert('openai_usage_log', payload);
-    } catch (err) {
-      console.error('COST_TRACKER_ERROR_SAFE', { message: err?.message ?? String(err ?? '') });
-      return null;
+      await this.robustCostInsert(payload);
+
+    } catch (err: any) {
+      console.error('💰 COST_TRACKER_ERROR_SAFE:', { message: err?.message ?? String(err ?? '') });
+      // Never throw - don't break posting pipeline
+    }
+  }
+
+  /**
+   * 🛡️ ROBUST COST INSERT - RPC-first with table fallback
+   */
+  private async robustCostInsert(payload: Record<string, any>): Promise<void> {
+    if (!payload || typeof payload !== 'object' || Object.keys(payload).length === 0) {
+      console.warn('💰 COST_TRACKER: Empty/invalid payload, skipping insert');
+      return;
+    }
+
+    const supabase = this.db.getClient();
+
+    try {
+      // RPC-first approach
+      if (COST_LOGGING_MODE === 'rpc') {
+        try {
+          const { data, error } = await supabase.rpc(COST_LOGGING_RPC, {
+            p_completion_tokens: payload.completion_tokens ?? 0,
+            p_cost_tier: payload.cost_tier ?? 'other',
+            p_cost_usd: payload.cost_usd ?? 0,
+            p_finish_reason: payload.finish_reason,
+            p_intent: payload.intent,
+            p_model: payload.model ?? 'unknown',
+            p_prompt_tokens: payload.prompt_tokens ?? 0,
+            p_raw: payload.raw ?? {},
+            p_request_id: payload.request_id,
+            p_total_tokens: payload.total_tokens ?? 0
+          });
+
+          if (error) throw error;
+          console.log('💰 RPC_SUCCESS: Cost logged via RPC');
+          return;
+
+        } catch (rpcError: any) {
+          const errorMsg = rpcError?.message ?? String(rpcError);
+          const isFunctionMissing = 
+            errorMsg.includes('Could not find the function') ||
+            errorMsg.includes('schema cache') ||
+            errorMsg.includes('does not exist');
+
+          if (isFunctionMissing) {
+            console.log('💰 RPC_FALLBACK: Function not found, trying direct table insert');
+          } else {
+            console.error('💰 RPC_ERROR:', { message: errorMsg, details: rpcError?.details });
+          }
+          // Continue to table fallback
+        }
+      }
+
+      // Table fallback approach
+      const { data, error } = await supabase
+        .from(COST_LOGGING_TABLE)
+        .insert([payload])
+        .select('id')
+        .single();
+
+      if (error) {
+        console.error('💰 TABLE_INSERT_FAILED:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint
+        });
+        throw error;
+      }
+
+      console.log('💰 TABLE_SUCCESS: Cost logged via direct insert, id:', data?.id);
+
+    } catch (err: any) {
+      console.error('💰 COST_INSERT_FAILED:', { 
+        message: err?.message ?? String(err),
+        payloadKeys: Object.keys(payload || {})
+      });
+      // Don't rethrow - logging failures shouldn't break app
     }
   }
 

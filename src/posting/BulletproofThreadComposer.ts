@@ -5,6 +5,7 @@
  */
 
 import { Page } from 'playwright';
+import { focusComposer } from './composerFocus';
 
 interface ThreadPostResult {
   success: boolean;
@@ -129,7 +130,10 @@ export class BulletproofThreadComposer {
     console.log('🎨 THREAD_COMPOSER: Attempting native composer mode...');
     
     // Focus composer with multiple strategies
-    await this.focusComposer(page);
+    const focusResult = await focusComposer(page, 'direct');
+    if (!focusResult.success) {
+      throw new Error(`COMPOSER_FOCUS_FAILED: ${focusResult.error}`);
+    }
     
     // Type first segment
     const tb0 = page.locator('[data-testid^="tweetTextarea_"]').first();
@@ -168,7 +172,10 @@ export class BulletproofThreadComposer {
     console.log('🔗 THREAD_REPLY_CHAIN: Starting reply chain fallback...');
     
     // Post root tweet
-    await this.focusComposer(page);
+    const rootFocusResult = await focusComposer(page, 'direct');
+    if (!rootFocusResult.success) {
+      throw new Error(`ROOT_COMPOSER_FOCUS_FAILED: ${rootFocusResult.error}`);
+    }
     const rootBox = page.locator('[data-testid^="tweetTextarea_"]').first();
     await rootBox.fill('');
     await rootBox.type(segments[0], { delay: 10 });
@@ -203,23 +210,14 @@ export class BulletproofThreadComposer {
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(300);
 
-      // Try to open reply via button OR keyboard shortcut
-      let replyBtn = await this.findFirst(page, this.replyButtonSelectors, 12000);
-      if (!replyBtn) {
-        await page.keyboard.press('r').catch(()=>{});
-        await page.waitForTimeout(400);
-        replyBtn = await this.findFirst(page, this.replyButtonSelectors, 3000); // optional second check
-      }
-      if (replyBtn) { 
-        await replyBtn.click({ delay: 50 }).catch(()=>{}); 
+      // Use resilient composer focus helper for reply
+      const replyFocusResult = await focusComposer(page, 'reply');
+      if (!replyFocusResult.success) {
+        throw new Error(`REPLY_COMPOSER_FOCUS_FAILED: ${replyFocusResult.error}`);
       }
 
-      const composer = await this.findFirst(page, this.composerSelectors, 12000);
-      if (!composer) throw new Error('COMPOSER_NOT_FOCUSED');
-
-      await composer.click({ delay: 30 });
-      await page.waitForTimeout(150);
-      await composer.fill(segments[i]);
+      // Use the focused element from the helper
+      await replyFocusResult.element.fill(segments[i]);
       await this.verifyTextBoxHas(page, 0, segments[i]);
       
       // Try post via common tweet buttons OR kb shortcut
@@ -262,47 +260,6 @@ export class BulletproofThreadComposer {
     return null;
   }
 
-  /**
-   * 🎯 Robust composer focus with page focus + multiple selectors + retries
-   */
-  private static async focusComposer(page: Page): Promise<void> {
-    console.log('🎯 THREAD_COMPOSER: Focusing composer...');
-    
-    // Before typing: page.bringToFront(); await page.bringToFront();
-    await page.bringToFront();
-    await page.bringToFront();
-    
-    // Focus robustly: wait for new X composer selector; try multiple selectors
-    const selectors = [
-      'div[role="textbox"][data-testid="tweetTextarea_0"]',
-      'div[role="textbox"][contenteditable="true"]',
-      'textarea[aria-label*="Post"]'
-    ];
-    
-    // Add explicit waits + retries (3 tries) with small delays
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      for (const sel of selectors) {
-        try {
-          const el = await page.$(sel);
-          if (el) { 
-            await el.click({ delay: 50 }); 
-            await page.waitForTimeout(120);
-            const isEditable = await page.evaluate(e => (e as HTMLElement).isContentEditable ?? true, el);
-            if (isEditable) {
-              console.log('✅ THREAD_COMPOSER: Composer focused');
-              return;
-            }
-          }
-        } catch {
-          // Continue to next selector
-        }
-      }
-      await page.keyboard.press('Escape').catch(()=>{});
-      await page.waitForTimeout(200);
-    }
-    
-    throw new Error('COMPOSER_NOT_FOCUSED');
-  }
 
   /**
    * 📝 Verify textbox contains expected content
