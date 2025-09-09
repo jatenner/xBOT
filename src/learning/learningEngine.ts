@@ -7,6 +7,7 @@
 
 import { supabaseClient } from '../db/supabaseClient';
 import { redisCache } from '../cache/redisCache';
+import { PostAttemptStatus } from '../types/posting';
 
 export interface LearningData {
   post_id: string;
@@ -164,6 +165,7 @@ export class LearningEngine {
     ];
 
     const { data: recentPosts } = await supabaseClient.safeSelect('posts', {
+      filter: { attempt_status: PostAttemptStatus.PUBLISHED }, // ONLY published posts
       order: { column: 'created_at', ascending: false },
       limit: 100
     });
@@ -223,8 +225,9 @@ export class LearningEngine {
   private async collectRealData(): Promise<LearningData[]> {
     console.log('📊 DATA_COLLECTION: Gathering real metrics...');
 
-    // Get posts with their metrics
+    // Get ONLY published posts with their metrics
     const { data: posts } = await supabaseClient.safeSelect('posts', {
+      filter: { attempt_status: PostAttemptStatus.PUBLISHED }, // Critical filter
       order: { column: 'posted_at', ascending: false },
       limit: 50
     });

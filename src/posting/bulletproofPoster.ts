@@ -47,7 +47,7 @@ export class BulletproofPoster {
         error: result.error,
         timestamp: new Date()
       };
-      
+
     } catch (error) {
       console.error('❌ BULLETPROOF_POSTER_ERROR:', error);
       
@@ -78,7 +78,7 @@ export class BulletproofPoster {
         error: result.error,
         timestamp: new Date()
       };
-      
+
     } catch (error) {
       console.error('❌ BULLETPROOF_REPLY_ERROR:', error);
       
@@ -108,7 +108,7 @@ export class BulletproofPoster {
         error: result.error,
         timestamp: new Date()
       };
-      
+
     } catch (error) {
       console.error('❌ BULLETPROOF_THREAD_ERROR:', error);
       
@@ -151,7 +151,7 @@ export class BulletproofPoster {
           details: testResult
         };
       }
-      
+
     } catch (error) {
       return {
         status: 'unhealthy',

@@ -5,7 +5,7 @@
  */
 
 import { Page } from 'playwright';
-import { focusComposer } from './composerFocus';
+import { ensureComposerFocused } from './composerFocus';
 
 interface ThreadPostResult {
   success: boolean;
@@ -130,7 +130,7 @@ export class BulletproofThreadComposer {
     console.log('🎨 THREAD_COMPOSER: Attempting native composer mode...');
     
     // Focus composer with multiple strategies
-    const focusResult = await focusComposer(page, 'direct');
+    const focusResult = await ensureComposerFocused(page, { mode: 'compose' });
     if (!focusResult.success) {
       throw new Error(`COMPOSER_FOCUS_FAILED: ${focusResult.error}`);
     }
@@ -172,7 +172,7 @@ export class BulletproofThreadComposer {
     console.log('🔗 THREAD_REPLY_CHAIN: Starting reply chain fallback...');
     
     // Post root tweet
-    const rootFocusResult = await focusComposer(page, 'direct');
+    const rootFocusResult = await ensureComposerFocused(page, { mode: 'compose' });
     if (!rootFocusResult.success) {
       throw new Error(`ROOT_COMPOSER_FOCUS_FAILED: ${rootFocusResult.error}`);
     }
@@ -211,13 +211,13 @@ export class BulletproofThreadComposer {
       await page.waitForTimeout(300);
 
       // Use resilient composer focus helper for reply
-      const replyFocusResult = await focusComposer(page, 'reply');
+      const replyFocusResult = await ensureComposerFocused(page, { mode: 'reply' });
       if (!replyFocusResult.success) {
         throw new Error(`REPLY_COMPOSER_FOCUS_FAILED: ${replyFocusResult.error}`);
       }
 
       // Use the focused element from the helper
-      await replyFocusResult.element.fill(segments[i]);
+      await replyFocusResult.element!.fill(segments[i]);
       await this.verifyTextBoxHas(page, 0, segments[i]);
       
       // Try post via common tweet buttons OR kb shortcut
