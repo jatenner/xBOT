@@ -6,12 +6,15 @@
 import BulletproofThreadComposer from './BulletproofThreadComposer';
 import ThreadBuilder from '../utils/threadBuilder';
 import { POSTING_DISABLED, DRY_RUN, SINGLE_POST_HARD_BLOCK_IF_SEGMENTS_GT1 } from '../config/flags';
+import { PostAttemptStatus } from '../types/posting';
+import { checkAndSanitizeContent } from '../content/contentSafety';
 
 export interface Draft {
   id: string;
   content: string;
   segments?: string[];
   isThread?: boolean;
+  attemptStatus?: PostAttemptStatus;
   meta?: {
     threadCount?: number;
     threadSegments?: number;
@@ -48,6 +51,25 @@ export class PostingFacade {
     }
 
     try {
+      // 🛡️ FACT-CHECK CONTENT SAFETY
+      console.log('🛡️ POSTING_FACADE: Running fact-check...');
+      const safetyResult = checkAndSanitizeContent(draft.content);
+      
+      if (!safetyResult.ok) {
+        console.log(`🚫 FACT_CHECK_BLOCKED: ${safetyResult.reasons.join(', ')}`);
+        draft.attemptStatus = PostAttemptStatus.BLOCKED_FACTCHECK;
+        return {
+          success: false,
+          mode: 'single',
+          tweetId: undefined,
+          error: `Content blocked by fact-check: ${safetyResult.reasons.join(', ')}`
+        };
+      }
+      
+      // Use sanitized content
+      draft.content = safetyResult.sanitized;
+      console.log(`✅ FACT_CHECK_PASSED: ${safetyResult.originalLength}→${safetyResult.sanitizedLength} chars`);
+
       // Build thread segments if not provided - ENHANCED with metadata + 1/N parsing
       let segments: string[];
       let isThread: boolean;
@@ -93,14 +115,15 @@ export class PostingFacade {
         isThread = segments.length > 1;
         console.log(`📊 SEGMENT_BUILDER: Generated ${segments.length} segments via ${enforced}`);
 
-        // ENHANCED THREAD GUARD - Prevent incorrect single-segment posting
+        // ENHANCED THREAD GUARD - Only guard when truly expected to be multi-segment
         const shouldBeMultiSegment = looksNumbered || hasDelim || overLimit;
         if (shouldBeMultiSegment && segments.length <= 1) {
           const errorMsg = `THREAD_GUARD: Multi-segment content detected but segmentation failed. ` +
-            `Triggers: ${JSON.stringify({ looksNumbered, hasDelim, overLimit })}. ` +
+            `Triggers: numbered=${looksNumbered}, delim=${hasDelim}, overLimit=${overLimit}. ` +
             `Content preview: "${draft.content.slice(0, 100)}..."`;
           
           console.error('🚨 THREAD_GUARD_FAILED:', errorMsg);
+          draft.attemptStatus = PostAttemptStatus.BLOCKED_FACTCHECK;
           throw new Error(errorMsg);
         }
 

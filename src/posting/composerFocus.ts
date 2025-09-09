@@ -1,91 +1,107 @@
 /**
- * 🎯 RESILIENT COMPOSER FOCUS HELPER
- * Handles X.com composer focus with multiple fallback strategies
+ * 🎯 HARDENED PLAYWRIGHT COMPOSER FOCUS
+ * Multiple strategies with retries to eliminate COMPOSER_NOT_FOCUSED errors
  */
 
 import { Page } from 'playwright';
 
-// Environment configuration
-const PLAYWRIGHT_NAV_TIMEOUT_MS = parseInt(process.env.PLAYWRIGHT_NAV_TIMEOUT_MS || '45000', 10);
-const PLAYWRIGHT_REPLY_TIMEOUT_MS = parseInt(process.env.PLAYWRIGHT_REPLY_TIMEOUT_MS || '20000', 10);
-const PLAYWRIGHT_CONTEXT_RETRY_BACKOFF_MS = parseInt(process.env.PLAYWRIGHT_CONTEXT_RETRY_BACKOFF_MS || '1200', 10);
-const PLAYWRIGHT_MAX_CONTEXT_RETRIES = parseInt(process.env.PLAYWRIGHT_MAX_CONTEXT_RETRIES || '5', 10);
+// Environment configuration with defaults
+const PLAYWRIGHT_FOCUS_RETRIES = parseInt(process.env.PLAYWRIGHT_FOCUS_RETRIES || '4', 10);
+const PLAYWRIGHT_FOCUS_TIMEOUT_MS = parseInt(process.env.PLAYWRIGHT_FOCUS_TIMEOUT_MS || '12000', 10);
+const PLAYWRIGHT_REPLY_TIMEOUT_MS = parseInt(process.env.PLAYWRIGHT_REPLY_TIMEOUT_MS || '12000', 10);
+const PLAYWRIGHT_COMPOSER_STRICT = (process.env.PLAYWRIGHT_COMPOSER_STRICT ?? 'true') === 'true';
 
-// Selector strategies for different composer states
+// Comprehensive selector sets
 const COMPOSER_SELECTORS = [
-  'div[role="textbox"][data-testid="tweetTextarea_0"]',
+  '[data-testid="tweetTextarea_0"]',
+  '[data-testid="tweetTextarea_1"]', 
+  '[aria-label="Post text"]',
   'div[role="textbox"][contenteditable="true"]',
-  'textarea[aria-label*="Post"]',
-  'div[aria-label="Post text"]',
-  '[data-testid="tweetTextarea_0"]'
+  '[data-testid="tweetTextEditor"]'
 ];
 
 const REPLY_SELECTORS = [
   '[data-testid="reply"]',
-  'div[role="button"][data-testid="reply"]',
-  'button[aria-label^="Reply"]',
-  'div[role="button"][aria-label^="Reply"]'
+  '[data-testid="tweetButtonInline"]', 
+  '[role="button"][data-testid*="reply"]'
 ];
+
+export interface ComposerFocusOptions {
+  timeoutMs?: number;
+  retries?: number;
+  mode?: 'compose' | 'reply';
+}
 
 export interface ComposerFocusResult {
   success: boolean;
   element?: any;
-  strategy?: 'direct' | 'reply_chain' | 'fallback';
+  selectorUsed?: string;
   error?: string;
   retryCount?: number;
 }
 
 /**
- * 🎯 RESILIENT COMPOSER FOCUS
- * Tries multiple strategies with retries and backoff
+ * 🎯 ENSURE COMPOSER FOCUSED - Main entry point
  */
-export async function focusComposer(page: Page, mode: 'direct' | 'reply' = 'direct'): Promise<ComposerFocusResult> {
-  let retryCount = 0;
+export async function ensureComposerFocused(
+  page: Page, 
+  options: ComposerFocusOptions = {}
+): Promise<ComposerFocusResult> {
+  const { 
+    timeoutMs = PLAYWRIGHT_FOCUS_TIMEOUT_MS, 
+    retries = PLAYWRIGHT_FOCUS_RETRIES,
+    mode = 'compose'
+  } = options;
+
+  let lastError = '';
   
-  while (retryCount < PLAYWRIGHT_MAX_CONTEXT_RETRIES) {
+  for (let attempt = 0; attempt < retries; attempt++) {
     try {
-      // Ensure page is ready
-      await page.bringToFront();
-      await page.waitForLoadState('domcontentloaded', { timeout: PLAYWRIGHT_NAV_TIMEOUT_MS });
+      console.log(`🎯 COMPOSER_FOCUS: Attempt ${attempt + 1}/${retries} (${mode} mode)`);
       
-      if (mode === 'direct') {
-        const result = await tryDirectComposer(page);
-        if (result.success) return { ...result, retryCount };
-      } else {
-        const result = await tryReplyComposer(page);
-        if (result.success) return { ...result, retryCount };
+      // Try primary strategy based on mode
+      if (mode === 'reply') {
+        const replyResult = await tryReplyFlow(page, timeoutMs);
+        if (replyResult.success) return { ...replyResult, retryCount: attempt };
       }
       
-      // Fallback strategy
-      const fallbackResult = await tryFallbackComposer(page);
-      if (fallbackResult.success) return { ...fallbackResult, retryCount };
+      const focusResult = await tryComposerSelectors(page, timeoutMs);
+      if (focusResult.success) return { ...focusResult, retryCount: attempt };
+      
+      // Fallback strategies
+      const keyboardResult = await tryKeyboardShortcut(page, timeoutMs);
+      if (keyboardResult.success) return { ...keyboardResult, retryCount: attempt };
+      
+      const resetResult = await tryPageReset(page, timeoutMs);
+      if (resetResult.success) return { ...resetResult, retryCount: attempt };
+      
+      lastError = focusResult.error || 'Unknown focus error';
       
     } catch (error: any) {
-      console.log(`🔄 COMPOSER_FOCUS_RETRY ${retryCount + 1}/${PLAYWRIGHT_MAX_CONTEXT_RETRIES}:`, error.message);
+      lastError = error.message;
+      console.log(`🔄 COMPOSER_FOCUS: Attempt ${attempt + 1} failed:`, error.message);
     }
     
-    retryCount++;
-    if (retryCount < PLAYWRIGHT_MAX_CONTEXT_RETRIES) {
-      await page.waitForTimeout(PLAYWRIGHT_CONTEXT_RETRY_BACKOFF_MS * retryCount);
+    // Wait between retries
+    if (attempt < retries - 1) {
+      await page.waitForTimeout(1000 * (attempt + 1));
     }
   }
   
-  return {
-    success: false,
-    error: `COMPOSER_NOT_FOCUSED after ${PLAYWRIGHT_MAX_CONTEXT_RETRIES} attempts`,
-    retryCount
-  };
+  const finalError = `COMPOSER_NOT_FOCUSED after ${retries} attempts: ${lastError}`;
+  
+  if (PLAYWRIGHT_COMPOSER_STRICT) {
+    throw new Error(finalError);
+  }
+  
+  return { success: false, error: finalError, retryCount: retries };
 }
 
-async function tryDirectComposer(page: Page): Promise<ComposerFocusResult> {
+async function tryComposerSelectors(page: Page, timeoutMs: number): Promise<ComposerFocusResult> {
   for (const selector of COMPOSER_SELECTORS) {
     try {
       const element = await page.locator(selector).first();
-      await element.waitFor({ state: 'visible', timeout: 5000 });
-      
-      // Scroll into view and focus
-      await element.scrollIntoViewIfNeeded();
-      await element.click({ delay: 50 });
+      await element.waitFor({ state: 'visible', timeout: timeoutMs / COMPOSER_SELECTORS.length });
       
       // Verify it's actually editable
       const isEditable = await element.evaluate((el: any) => 
@@ -93,18 +109,18 @@ async function tryDirectComposer(page: Page): Promise<ComposerFocusResult> {
       );
       
       if (isEditable) {
-        console.log('✅ COMPOSER_FOCUS: Direct composer ready');
-        return { success: true, element, strategy: 'direct' };
+        await element.click({ delay: 50 });
+        console.log(`✅ COMPOSER_FOCUS: Success with selector: ${selector}`);
+        return { success: true, element, selectorUsed: selector };
       }
     } catch {
       continue;
     }
   }
-  return { success: false, error: 'No direct composer found' };
+  return { success: false, error: 'No composer selectors matched' };
 }
 
-async function tryReplyComposer(page: Page): Promise<ComposerFocusResult> {
-  // First try to click reply button
+async function tryReplyFlow(page: Page, timeoutMs: number): Promise<ComposerFocusResult> {
   for (const selector of REPLY_SELECTORS) {
     try {
       const replyBtn = await page.locator(selector).first();
@@ -112,31 +128,46 @@ async function tryReplyComposer(page: Page): Promise<ComposerFocusResult> {
       await replyBtn.click({ delay: 50 });
       await page.waitForTimeout(500);
       
-      // Now try to find the composer
-      const composerResult = await tryDirectComposer(page);
+      // Now try to find the composer that opened
+      const composerResult = await tryComposerSelectors(page, timeoutMs);
       if (composerResult.success) {
-        return { ...composerResult, strategy: 'reply_chain' };
+        return { ...composerResult, selectorUsed: `reply->${composerResult.selectorUsed}` };
       }
     } catch {
       continue;
     }
   }
-  return { success: false, error: 'Reply composer strategy failed' };
+  return { success: false, error: 'Reply flow failed' };
 }
 
-async function tryFallbackComposer(page: Page): Promise<ComposerFocusResult> {
-  // Keyboard shortcut fallback
+async function tryKeyboardShortcut(page: Page, timeoutMs: number): Promise<ComposerFocusResult> {
   try {
     await page.keyboard.press('n'); // Twitter shortcut for new tweet
     await page.waitForTimeout(800);
     
-    const composerResult = await tryDirectComposer(page);
-    if (composerResult.success) {
-      return { ...composerResult, strategy: 'fallback' };
+    const result = await tryComposerSelectors(page, timeoutMs);
+    if (result.success) {
+      return { ...result, selectorUsed: `keyboard->${result.selectorUsed}` };
     }
   } catch {
-    // Silent fallback failure
+    // Silent failure
   }
-  
-  return { success: false, error: 'All composer strategies failed' };
+  return { success: false, error: 'Keyboard shortcut failed' };
+}
+
+async function tryPageReset(page: Page, timeoutMs: number): Promise<ComposerFocusResult> {
+  try {
+    await page.evaluate(() => document.body.click());
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.waitForLoadState('networkidle', { timeout: 5000 });
+    await page.waitForTimeout(500);
+    
+    const result = await tryComposerSelectors(page, timeoutMs);
+    if (result.success) {
+      return { ...result, selectorUsed: `reset->${result.selectorUsed}` };
+    }
+  } catch {
+    // Silent failure
+  }
+  return { success: false, error: 'Page reset failed' };
 }

@@ -147,7 +147,7 @@ export class SafeDatabase {
       }
 
       const { data, error } = await query;
-
+      
       if (error) {
         console.error(`❌ DB_SAFE: Select failed for table ${table}: ${error.message}`);
         throw new Error(`Database select failed for ${table}: ${error.message}`);
@@ -230,7 +230,7 @@ export class SafeDatabase {
         .from(this.config.tables.metrics)
         .insert(testMetric)
         .select();
-
+      
       if (error) {
         issues.push(`Metrics table: ${error.message}`);
       } else {

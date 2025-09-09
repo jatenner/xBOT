@@ -181,10 +181,10 @@ export class BulletproofBrowserManager {
             return { success: true, method: 'force_click', attempts: 1 };
           }
         }
-      } catch (error) {
-        continue;
+        } catch (error) {
+          continue;
+        }
       }
-    }
 
     return { success: false, method: 'force_click', error: 'Force click failed', attempts: selectors.length };
   }
@@ -252,7 +252,7 @@ export class BulletproofBrowserManager {
       
       // Try standard approach after reload
       return await this.focusWithStandardClick();
-      
+
     } catch (error) {
       return { 
         success: false, 
