@@ -19,6 +19,8 @@ import { quickHealthCheck } from './utils/systemHealthCheck';
 import { testCompletePipeline } from './utils/pipelineTest';
 import ViralAuthorityEngine from './content/viralAuthorityEngine';
 import ViralReplyOrchestrator from './engagement/viralReplyOrchestrator';
+import { smartContentDecisionEngine } from './ai/smartContentDecisionEngine';
+import { intelligentTimingSystem } from './ai/intelligentTimingSystem';
 
 class BulletproofMainSystem {
   private analyticsChecker: TwitterAnalyticsScraper;
@@ -176,17 +178,18 @@ class BulletproofMainSystem {
       const analyticsInsights = await this.analyticsChecker.getAnalyticsInsights();
       const hasGoodPerformance = analyticsInsights.averageEngagement > 0.02; // 2% engagement threshold
       
-      // 🎯 COST-CONTROLLED DECISION: Post only when timing and budget allow
-      const shouldPostNow = timingAllowsPost && inOptimalWindow && hasGoodPerformance; // Multiple conditions for quality
+      // 🧠 INTELLIGENT AI DECISION: Use smart timing and content analysis
+      const timingDecision = await intelligentTimingSystem.makeTimingDecision();
+      const shouldPostNow = timingDecision.shouldPost && timingDecision.confidence >= 65; // AI-driven decision
       
       if (shouldPostNow) {
-        console.log('📝 BULLETPROOF_POSTING: Generating ORIGINAL content (threads/singles)...');
+        console.log('🚀 INTELLIGENT_POSTING: Using AI-driven content and timing decisions...');
         console.log('🎯 IMPORTANT: This is an ORIGINAL post, NOT a reply to someone');
-        console.log(`⏰ OPTIMAL_TIMING: ${timingStrategy.confidence_score}% confidence - ${timingStrategy.reasoning.substring(0, 80)}...`);
-        console.log(`📊 PREDICTION: ${timingStrategy.performance_prediction.expected_likes} likes, ${(timingStrategy.performance_prediction.expected_engagement_rate * 100).toFixed(1)}% engagement`);
-        console.log(`🎯 FREQUENCY_ACTION: ${timingStrategy.frequency_adjustment.toUpperCase()} posting frequency`);
+        console.log(`🧠 AI_TIMING: ${timingDecision.confidence}% confidence - ${timingDecision.reasoning}`);
+        console.log(`📊 AI_PREDICTION: ${timingDecision.expectedEngagement}% engagement, ${timingDecision.contentType} recommended`);
+        console.log(`⚡ AI_URGENCY: ${timingDecision.urgency.toUpperCase()} posting priority`);
         
-        const postSuccess = await this.executeEnhancedPosting();
+        const postSuccess = await this.executeIntelligentPosting(timingDecision);
         if (postSuccess) {
           this.lastPostTime = now;
           console.log('✅ POST_SUCCESS: Updated lastPostTime after successful post');
@@ -1156,6 +1159,93 @@ class BulletproofMainSystem {
       
     } catch (error) {
       console.error('❌ STRATEGIC_AI: Strategic posting failed:', error);
+    }
+  }
+
+  /**
+   * 🧠 INTELLIGENT POSTING EXECUTION - AI-driven content and timing
+   */
+  private async executeIntelligentPosting(timingDecision: any): Promise<boolean> {
+    try {
+      console.log('🧠 INTELLIGENT_POSTING: Starting AI-driven content generation...');
+
+      // Use AI to decide what content to create
+      const contentDecision = await smartContentDecisionEngine.makeContentDecision();
+      console.log(`🎯 AI_CONTENT_DECISION: ${contentDecision.contentType} (${contentDecision.format})`);
+      console.log(`📊 AI_METRICS: ${contentDecision.confidence}% confidence, ${contentDecision.viralPotential}% viral potential`);
+
+      // Generate revolutionary content based on AI decision
+      const revolutionaryContent = await smartContentDecisionEngine.generateOptimalContent(contentDecision);
+      console.log(`🚀 CONTENT_GENERATED: ${revolutionaryContent.viralScore}/100 viral score`);
+      console.log(`🎯 CONTENT_PREVIEW: ${Array.isArray(revolutionaryContent.content) ? revolutionaryContent.content[0].substring(0, 100) : revolutionaryContent.content.substring(0, 100)}...`);
+
+      // Post the content
+      let postResult;
+      if (revolutionaryContent.format === 'thread' && Array.isArray(revolutionaryContent.content)) {
+        console.log(`🧵 POSTING_THREAD: ${revolutionaryContent.content.length} tweets`);
+        const threadResult = await bulletproofPoster.postThread(revolutionaryContent.content);
+        postResult = {
+          success: threadResult.success,
+          tweetId: threadResult.tweetIds?.[0] || 'thread_' + Date.now(),
+          error: threadResult.error
+        };
+      } else {
+        const content = Array.isArray(revolutionaryContent.content) ? revolutionaryContent.content[0] : revolutionaryContent.content;
+        console.log(`📝 POSTING_SINGLE: "${content.substring(0, 50)}..."`);
+        const singleResult = await bulletproofPoster.postContent(content);
+        postResult = {
+          success: singleResult.success,
+          tweetId: singleResult.tweetId,
+          error: singleResult.error
+        };
+      }
+
+      if (postResult.success) {
+        console.log(`✅ INTELLIGENT_SUCCESS: Posted ${postResult.tweetId}`);
+        
+        // Update timing system with success
+        await intelligentTimingSystem.updateLastPostTime();
+        
+        // Record analytics
+        await this.recordIntelligentPostAnalytics(contentDecision, revolutionaryContent, postResult, timingDecision);
+        
+        return true;
+      } else {
+        console.error(`❌ INTELLIGENT_FAILED: ${postResult.error}`);
+        return false;
+      }
+
+    } catch (error) {
+      console.error('❌ INTELLIGENT_POSTING_ERROR:', error);
+      return false;
+    }
+  }
+
+  /**
+   * 📊 RECORD INTELLIGENT POST ANALYTICS
+   */
+  private async recordIntelligentPostAnalytics(
+    contentDecision: any,
+    content: any,
+    postResult: any,
+    timingDecision: any
+  ): Promise<void> {
+    try {
+      console.log('📊 RECORDING: AI post analytics...');
+      
+      // Record timing data
+      await intelligentTimingSystem.recordEngagementData(
+        new Date().getUTCHours(),
+        new Date().getUTCDay(),
+        timingDecision.expectedEngagement,
+        contentDecision.contentType
+      );
+
+      // TODO: Store comprehensive analytics in database
+      console.log(`✅ ANALYTICS: Recorded ${contentDecision.contentType} post with ${timingDecision.expectedEngagement}% predicted engagement`);
+
+    } catch (error) {
+      console.warn('⚠️ ANALYTICS_WARNING:', error);
     }
   }
 
