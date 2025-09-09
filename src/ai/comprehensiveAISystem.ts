@@ -79,7 +79,7 @@ export class ComprehensiveAISystem {
     const prompt = this.buildEvolutionaryPrompt(uniqueAngle, learningData);
     
     const response = await this.openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-4o-mini',
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.9, // High creativity
       max_tokens: 800
@@ -333,7 +333,7 @@ Create a reply that:
 Max 280 characters. No @username prefix - this will be a direct reply.`;
 
     const response = await this.openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-4o-mini',
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.7,
       max_tokens: 100

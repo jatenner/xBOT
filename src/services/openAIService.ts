@@ -11,6 +11,7 @@
 
 import OpenAI from 'openai';
 import { getUnifiedDataManager } from '../lib/unifiedDataManager';
+import { openaiCostTracker } from '../analytics/openaiCostTracker';
 
 interface BudgetConfig {
   dailyLimit: number; // USD per day
@@ -51,10 +52,10 @@ export class OpenAIService {
 
   // Budget configuration (adjust based on your limits)
   private budgetConfig: BudgetConfig = {
-    dailyLimit: 10.00, // $10 per day
+    dailyLimit: 10.00, // $10 per day - STRICT LIMIT
     monthlyLimit: 200.00, // $200 per month
-    emergencyStopThreshold: 250.00, // $250 emergency stop
-    warningThreshold: 150.00 // $150 warning level
+    emergencyStopThreshold: 12.00, // $12 emergency stop - STRICT ENFORCEMENT
+    warningThreshold: 8.00 // $8 warning level - Early warning
   };
 
   // Pricing per 1K tokens (approximate, update with current OpenAI pricing)
@@ -110,6 +111,13 @@ export class OpenAIService {
     console.log(`🤖 OPENAI_SERVICE: ${requestType} request (${model}, priority: ${priority})`);
 
     try {
+      // EMERGENCY: Check cost tracker budget first
+      const costTracker = await import('../analytics/openaiCostTracker').then(m => m.openaiCostTracker);
+      const isEmergencyStop = await costTracker.isEmergencyStop();
+      if (isEmergencyStop) {
+        throw new Error('🚨 EMERGENCY_STOP: Daily OpenAI budget exceeded - API calls blocked');
+      }
+
       // Check budget before making request
       const budgetCheck = await this.checkBudgetLimits(requestType, priority);
       if (!budgetCheck.allowed) {
@@ -155,6 +163,18 @@ export class OpenAIService {
 
       await this.recordUsage(usageRecord);
 
+      // NEW: Track in comprehensive cost tracker
+      await openaiCostTracker.trackOpenAIUsage({
+        operation_type: this.mapRequestTypeToOperation(requestType),
+        model,
+        prompt_tokens: usage?.prompt_tokens || 0,
+        completion_tokens: usage?.completion_tokens || 0,
+        total_tokens: usage?.total_tokens || 0,
+        request_type: requestType,
+        success: true,
+        content_preview: response.choices[0]?.message?.content?.substring(0, 100) || ''
+      });
+
       console.log(`✅ OPENAI_SUCCESS: $${actualCost.toFixed(4)} (${duration}ms, ${usage?.total_tokens} tokens)`);
       
       return response;
@@ -176,8 +196,60 @@ export class OpenAIService {
       };
 
       await this.recordUsage(usageRecord);
+
+      // NEW: Track failed request in cost tracker
+      await openaiCostTracker.trackOpenAIUsage({
+        operation_type: this.mapRequestTypeToOperation(requestType),
+        model,
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        total_tokens: 0,
+        request_type: requestType,
+        success: false,
+        error_message: error.message
+      }).catch(trackingError => {
+        console.warn('⚠️ COST_TRACKING_ERROR:', trackingError);
+      });
+
       throw error;
     }
+  }
+
+  /**
+   * 🎯 MAP REQUEST TYPE TO OPERATION TYPE FOR COST TRACKING
+   */
+  private mapRequestTypeToOperation(requestType: string): 'post_generation' | 'reply_generation' | 'thread_generation' | 'content_scoring' | 'optimization' | 'learning' | 'other' {
+    const mappings: Record<string, 'post_generation' | 'reply_generation' | 'thread_generation' | 'content_scoring' | 'optimization' | 'learning' | 'other'> = {
+      'post_content': 'post_generation',
+      'post_generation': 'post_generation',
+      'viral_post': 'post_generation',
+      'authoritative_content': 'post_generation',
+      'content_generation': 'post_generation',
+      
+      'reply_generation': 'reply_generation',
+      'strategic_reply': 'reply_generation',
+      'context_reply': 'reply_generation',
+      'comment_generation': 'reply_generation',
+      
+      'thread_generation': 'thread_generation',
+      'thread_content': 'thread_generation',
+      'thread_planning': 'thread_generation',
+      
+      'content_scoring': 'content_scoring',
+      'quality_check': 'content_scoring',
+      'content_analysis': 'content_scoring',
+      
+      'optimization': 'optimization',
+      'prompt_optimization': 'optimization',
+      'strategy_optimization': 'optimization',
+      
+      'learning': 'learning',
+      'performance_analysis': 'learning',
+      'engagement_analysis': 'learning',
+      'pattern_analysis': 'learning'
+    };
+
+    return mappings[requestType.toLowerCase()] || 'other';
   }
 
   /**

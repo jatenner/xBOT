@@ -49,7 +49,7 @@ export class ViralAuthorityEngine {
       const prompt = this.buildViralAuthorityPrompt(topic || 'health optimization');
       
       const response = await this.openai.chat.completions.create({
-        model: 'gpt-4o',
+        model: 'gpt-4o-mini',
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.8, // Higher creativity for viral content
         max_tokens: 600
