@@ -120,10 +120,18 @@ class SimplifiedBulletproofPoster {
         console.log('🚨 BLOCKED: Detected login/challenge page - session may be invalid or account suspended');
       }
 
-      // Try multiple composer selectors with debug info
+      // Robust composer selectors with role-based fallbacks
       const composerSelectors = [
+        // Primary selectors
         '[data-testid="tweetTextarea_0"]',
         '[contenteditable="true"][data-testid*="tweet"]',
+        
+        // Role-based selectors (more robust)
+        'role=textbox[name="Post text"]',
+        'role=textbox[name*="What\'s happening"]',
+        'role=textbox[name*="Tweet text"]',
+        
+        // Fallback selectors
         '[contenteditable="true"]',
         'div[contenteditable="true"]',
         '.public-DraftEditor-content',
@@ -166,11 +174,68 @@ class SimplifiedBulletproofPoster {
       const composerSelector = workingSelector;
       
       const composer = await this.page!.locator(composerSelector).first();
+      
+      // Clear and focus composer
       await composer.click();
-      await composer.fill(content);
+      await composer.clear();
+      
+      // Fill content with keyboard fallback
+      try {
+        await composer.fill(content);
+      } catch (fillError) {
+        console.log('⚠️ Fill failed, trying keyboard input...');
+        await composer.focus();
+        await this.page!.keyboard.press('KeyN'); // Clear with Ctrl+A
+        await this.page!.keyboard.type(content);
+      }
+      
+      // CRITICAL: Assert composer text matches draft
+      await this.page!.waitForTimeout(500); // Let content settle
+      const actualText = await composer.textContent() || await composer.inputValue() || '';
+      const contentMatch = actualText.includes(content.substring(0, 50)); // Check first 50 chars
+      
+      if (!contentMatch) {
+        console.error(`❌ TEXT_ASSERTION_FAILED: Expected "${content.substring(0, 50)}...", got "${actualText.substring(0, 50)}..."`);
+        
+        // Try one more time with keyboard
+        await composer.clear();
+        await composer.focus();
+        await this.page!.keyboard.type(content);
+        
+        const retryText = await composer.textContent() || await composer.inputValue() || '';
+        if (!retryText.includes(content.substring(0, 50))) {
+          throw new Error(`Text assertion failed twice: content not properly entered`);
+        }
+      }
+      
+      console.log(`✅ TEXT_VERIFIED: Composer contains expected content`);
 
-      // Post button
-      const postButton = this.page!.locator('[data-testid="tweetButtonInline"], [data-testid="tweetButton"]').first();
+      // Post button with robust selector
+      const postButtonSelectors = [
+        '[data-testid="tweetButtonInline"]',
+        '[data-testid="tweetButton"]',
+        'role=button[name="Post"]',
+        'role=button[name*="Tweet"]',
+        '[data-testid*="post"]'
+      ];
+      
+      let postButton;
+      for (const selector of postButtonSelectors) {
+        try {
+          postButton = this.page!.locator(selector).first();
+          if (await postButton.isVisible() && await postButton.isEnabled()) {
+            console.log(`✅ POST_BUTTON: Found with ${selector}`);
+            break;
+          }
+        } catch (error) {
+          continue;
+        }
+      }
+      
+      if (!postButton) {
+        throw new Error('No post button found');
+      }
+      
       await postButton.click();
 
       // Wait for posting to complete
@@ -188,27 +253,59 @@ class SimplifiedBulletproofPoster {
   async postThread(tweets: string[]): Promise<{ success: boolean; tweetIds?: string[]; error?: string }> {
     try {
       console.log(`🧵 POSTING_THREAD: ${tweets.length} tweets`);
+      
+      // Verify thread format (1/n numbering)
+      const hasProperNumbering = tweets.every((tweet, index) => {
+        const expectedPrefix = `${index + 1}/${tweets.length}`;
+        const hasNumbering = tweet.startsWith(expectedPrefix);
+        if (!hasNumbering) {
+          console.warn(`⚠️ THREAD_FORMAT: Tweet ${index + 1} missing 1/n format: "${tweet.substring(0, 30)}..."`);
+        }
+        return hasNumbering;
+      });
+      
+      if (!hasProperNumbering) {
+        console.warn('⚠️ THREAD_WARNING: Some tweets missing 1/n format, continuing anyway...');
+      } else {
+        console.log(`✅ THREAD_FORMAT: All ${tweets.length} tweets have proper 1/n numbering`);
+      }
+      
       const tweetIds: string[] = [];
 
       for (let i = 0; i < tweets.length; i++) {
-        console.log(`📝 THREAD_POST_${i + 1}: "${tweets[i].substring(0, 50)}..."`);
+        console.log(`📝 THREAD_POST_${i + 1}/${tweets.length}: "${tweets[i].substring(0, 50)}..."`);
         
-        const result = await this.postContent(tweets[i]);
+        // Verify content before posting
+        const tweetContent = tweets[i];
+        if (tweetContent.length > 280) {
+          console.warn(`⚠️ THREAD_LENGTH: Tweet ${i + 1} is ${tweetContent.length} chars (max 280)`);
+        }
+        
+        const result = await this.postContent(tweetContent);
         if (!result.success) {
-          throw new Error(`Thread post ${i + 1} failed: ${result.error}`);
+          throw new Error(`Thread post ${i + 1}/${tweets.length} failed: ${result.error}`);
         }
         
         if (result.tweetId) {
           tweetIds.push(result.tweetId);
         }
 
-        // Wait between posts
+        // Progress logging
+        console.log(`✅ THREAD_PROGRESS: ${i + 1}/${tweets.length} tweets posted`);
+
+        // Wait between posts (longer for threads)
         if (i < tweets.length - 1) {
-          await this.page!.waitForTimeout(2000);
+          console.log(`⏳ THREAD_WAIT: Waiting 3s before next tweet...`);
+          await this.page!.waitForTimeout(3000);
         }
       }
 
-      console.log(`✅ THREAD_SUCCESS: Posted ${tweets.length} tweets`);
+      // Final verification
+      if (tweetIds.length !== tweets.length) {
+        console.warn(`⚠️ THREAD_INCOMPLETE: Posted ${tweetIds.length}/${tweets.length} tweets`);
+      }
+
+      console.log(`✅ THREAD_SUCCESS: Posted complete ${tweets.length}-tweet thread`);
       return { success: true, tweetIds };
 
     } catch (error) {
@@ -289,3 +386,4 @@ class SimplifiedBulletproofPoster {
 
 export const simplifiedPoster = SimplifiedBulletproofPoster.getInstance();
 export default simplifiedPoster;
+
