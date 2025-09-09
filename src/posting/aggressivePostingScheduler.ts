@@ -1,8 +1,10 @@
 /**
  * 🚀 AGGRESSIVE POSTING SCHEDULER
  * High-frequency posting with intelligent timing and content optimization
+ * 🚨 DISABLED BY THREAD_PIPELINE_ONLY FLAG
  */
 
+import { AGGRESSIVE_SCHEDULER_ENABLED, THREAD_PIPELINE_ONLY, ENHANCED_ORCHESTRATOR_ENABLED } from '../config/flags';
 import { EnhancedContentOrchestrator } from '../ai/enhancedContentOrchestrator';
 import { systemMonitor } from '../monitoring/systemPerformanceMonitor';
 import { admin as supabase } from '../lib/supabaseClients';
@@ -40,7 +42,13 @@ export class AggressivePostingScheduler {
   };
 
   private constructor() {
-    this.contentOrchestrator = EnhancedContentOrchestrator.getInstance();
+    // 🚨 CONDITIONAL: Only create if enabled
+    if (ENHANCED_ORCHESTRATOR_ENABLED && !THREAD_PIPELINE_ONLY) {
+      this.contentOrchestrator = EnhancedContentOrchestrator.getInstance();
+    } else {
+      console.log('🚨 ENHANCED_ORCHESTRATOR: DISABLED by feature flags');
+      this.contentOrchestrator = null as any; // Will never be used
+    }
   }
 
   public static getInstance(): AggressivePostingScheduler {
@@ -54,6 +62,14 @@ export class AggressivePostingScheduler {
    * 🚀 START AGGRESSIVE POSTING CYCLE
    */
   public async startAggressivePosting(): Promise<void> {
+    // 🚨 HARD DISABLE: Check feature flags first
+    if (!AGGRESSIVE_SCHEDULER_ENABLED || THREAD_PIPELINE_ONLY) {
+      console.log('🚨 AGGRESSIVE_SCHEDULER: DISABLED by feature flags');
+      console.log(`   AGGRESSIVE_SCHEDULER_ENABLED: ${AGGRESSIVE_SCHEDULER_ENABLED}`);
+      console.log(`   THREAD_PIPELINE_ONLY: ${THREAD_PIPELINE_ONLY}`);
+      return;
+    }
+
     if (this.isRunning) {
       console.log('🚀 AGGRESSIVE_SCHEDULER: Already running');
       return;
