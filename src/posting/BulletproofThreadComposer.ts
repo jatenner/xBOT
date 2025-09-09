@@ -21,7 +21,7 @@ export class BulletproofThreadComposer {
    * 🎯 MAIN METHOD: Post segments as connected thread
    */
   static async post(segments: string[]): Promise<ThreadPostResult> {
-    console.log(`🧵 THREAD_DECISION mode=? segments=${segments.length}`);
+    console.log(`THREAD_DECISION mode=composer segments=${segments.length}`);
     
     // Ensure numbering at send time if not already present
     const isThread = segments.length > 1;
@@ -61,7 +61,7 @@ export class BulletproofThreadComposer {
     try {
       // Try composer-first approach
       await this.postViaComposer(numberedSegments);
-      console.log('🧵 THREAD_PUBLISH_OK mode=composer');
+      console.log('THREAD_PUBLISH_OK mode=composer');
       return {
         success: true,
         mode: 'composer',
@@ -69,12 +69,13 @@ export class BulletproofThreadComposer {
       };
     } catch (composerError: any) {
       console.log(`🧵 THREAD_COMPOSER_FAILED -> falling back to reply chain: ${String(composerError).slice(0, 400)}`);
+      console.log(`THREAD_DECISION mode=reply_chain segments=${segments.length}`);
     }
 
     try {
       // Fallback to reply chain
       const rootUrl = await this.postViaReplies(numberedSegments);
-      console.log('🧵 THREAD_PUBLISH_OK mode=reply_chain');
+      console.log('THREAD_PUBLISH_OK mode=reply_chain');
       return {
         success: true,
         mode: 'reply_chain',
