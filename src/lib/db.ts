@@ -69,22 +69,37 @@ export class SafeDatabase {
         console.warn('DB_SAFE: invalid table arg', { table });
         return;
       }
-      if (!payload || Object.keys(payload).length === 0) {
+      // Robust payload validation - prevent undefined crashes
+      if (!payload || typeof payload !== 'object') {
+        console.warn('DB_SAFE: invalid payload type', { payloadType: typeof payload });
+        return;
+      }
+      
+      const payloadKeys = Object.keys(payload);
+      if (payloadKeys.length === 0) {
         console.warn('DB_SAFE: empty payload, skip', { table });
         return;
       }
+      
       const { data, error } = await this.client.from(table).insert(payload);
       if (error) {
-        const msg = error?.message || String(error);
+        // Safe error message extraction - handle undefined/null errors
+        const msg = (error && typeof error === 'object' && 'message' in error) 
+          ? String(error.message) 
+          : String(error || 'Unknown error');
+          
         console.error('DB_SAFE: Insert error', {
           table,
-          payloadKeys: Object.keys(payload),
+          payloadKeys,
           message: msg
         });
       }
       return data;
     } catch (e: any) {
-      const msg = e?.message || String(e);
+      // Safe exception handling
+      const msg = (e && typeof e === 'object' && 'message' in e) 
+        ? String(e.message) 
+        : String(e || 'Unknown exception');
       console.error('DB_SAFE: Exception during insert', { table, message: msg });
       return;
     }
