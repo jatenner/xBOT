@@ -36,9 +36,10 @@ export class MultiModelOrchestrator {
       models.map(async (config) => {
         try {
           // EMERGENCY_COST_CHECK: Check daily budget before expensive API calls
+        const { OpenAIService } = await import('../services/openAIService');
         const openAIService = OpenAIService.getInstance();
-        const budgetStatus = await openAIService.getCurrentBudgetStatus();
-        if (budgetStatus.isOverBudget) {
+        const budgetStatus = await openAIService.getBudgetStatus();
+        if (budgetStatus.isEmergencyStop) {
           throw new Error('🚨 COST_LIMIT: Daily OpenAI budget exceeded - operation blocked');
         }
         
