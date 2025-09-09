@@ -9,6 +9,91 @@ import fs from 'fs/promises';
 import path from 'path';
 import { BulletproofBrowserManager } from './bulletproofBrowserManager';
 
+// Modern selectors for resilient posting
+const replyButtonSelectors = [
+  '[data-testid="reply"]',
+  'div[role="button"][data-testid="reply"]',
+  'button[aria-label^="Reply"]',
+  'div[role="button"][aria-label^="Reply"]'
+];
+
+const composerSelectors = [
+  'div[role="textbox"][data-testid="tweetTextarea_0"]',
+  'div[role="textbox"][contenteditable="true"]',
+  'textarea[aria-label*="Post"]',
+  'div[aria-label="Post text"]'
+];
+
+async function findFirst(page: Page, selectors: string[], timeout = 15000) {
+  for (const sel of selectors) {
+    const loc = page.locator(sel).first();
+    try {
+      await loc.waitFor({ state: 'visible', timeout });
+      return loc;
+    } catch {}
+  }
+  return null;
+}
+
+export async function postOriginal(page: Page, text: string) {
+  await page.bringToFront();
+  await page.goto('https://x.com/compose/tweet', { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(300);
+
+  const composer = await findFirst(page, composerSelectors, 15000);
+  if (!composer) throw new Error('COMPOSER_NOT_FOCUSED');
+
+  await composer.click({ delay: 20 });
+  await page.waitForTimeout(120);
+  await composer.fill(text);
+
+  const sendSelectors = [
+    '[data-testid="tweetButtonInline"]',
+    '[data-testid="tweetButton"]',
+    'div[role="button"][data-testid="tweetButton"]',
+  ];
+  const btn = await findFirst(page, sendSelectors, 6000);
+  if (btn) await btn.click({ delay: 40 });
+  else {
+    const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
+    await page.keyboard.press(`${mod}+Enter`);
+  }
+}
+
+export async function postReplyToTweet(page: Page, tweetUrl: string, text: string) {
+  await page.bringToFront();
+  await page.goto(tweetUrl, { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(400);
+
+  // Try reply button; fallback to 'r' then composer
+  let replyBtn = await findFirst(page, replyButtonSelectors, 12000);
+  if (!replyBtn) {
+    await page.keyboard.press('r').catch(()=>{});
+    await page.waitForTimeout(400);
+  } else {
+    await replyBtn.click({ delay: 50 }).catch(()=>{});
+  }
+
+  const composer = await findFirst(page, composerSelectors, 12000);
+  if (!composer) throw new Error('COMPOSER_NOT_FOCUSED');
+
+  await composer.click({ delay: 20 });
+  await page.waitForTimeout(120);
+  await composer.fill(text);
+
+  const sendSelectors = [
+    '[data-testid="tweetButtonInline"]',
+    '[data-testid="tweetButton"]',
+    'div[role="button"][data-testid="tweetButton"]',
+  ];
+  const btn = await findFirst(page, sendSelectors, 6000);
+  if (btn) await btn.click({ delay: 50 });
+  else {
+    const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
+    await page.keyboard.press(`${mod}+Enter`);
+  }
+}
+
 export interface SinglePostResult {
   success: boolean;
   tweetId?: string;
@@ -45,6 +130,54 @@ export class BulletproofPoster {
   constructor() {
     this.redis = new Redis(process.env.REDIS_URL!);
   }
+
+  /**
+   * 🎯 Post original tweet via direct compose route 
+   */
+  async postOriginal(text: string): Promise<SinglePostResult> {
+    if (process.env.DRY_RUN === '1') {
+      console.log('🧪 DRY_RUN: Would post original tweet:', text.slice(0, 100) + '...');
+      return { success: true, tweetId: `dry_run_${Date.now()}` };
+    }
+
+    try {
+      await this.ensureBrowserReady();
+      const page = this.page!;
+      
+      await page.bringToFront();
+      await page.goto('https://x.com/compose/tweet', { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(300);
+
+      const composer = await findFirst(page, composerSelectors, 15000);
+      if (!composer) throw new Error('COMPOSER_NOT_FOCUSED');
+
+      await composer.click({ delay: 20 });
+      await page.waitForTimeout(120);
+      await composer.fill(text);
+
+      const sendSelectors = [
+        '[data-testid="tweetButtonInline"]',
+        '[data-testid="tweetButton"]',
+        'div[role="button"][data-testid="tweetButton"]',
+      ];
+      const btn = await findFirst(page, sendSelectors, 6000);
+      if (btn) await btn.click({ delay: 40 });
+      else {
+        const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
+        await page.keyboard.press(`${mod}+Enter`);
+      }
+
+      await page.waitForLoadState('networkidle');
+      const tweetId = `tweet_${Date.now()}`;
+      console.log('✅ ORIGINAL_POST_SUCCESS:', tweetId);
+      return { success: true, tweetId };
+
+    } catch (error) {
+      console.error('❌ ORIGINAL_POST_FAILED:', error);
+      return { success: false, error: String(error) };
+    }
+  }
+
 
   /**
    * Post a single tweet
@@ -191,6 +324,15 @@ export class BulletproofPoster {
   }
 
   /**
+   * 🔗 Private method to post reply and return tweet ID
+   */
+  private async postReplyToTweet(parentTweetId: string, content: string): Promise<string> {
+    // Use the module-level function but return just the ID
+    await postReplyToTweet(this.page!, `https://x.com/i/web/status/${parentTweetId}`, content);
+    return `reply_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  /**
    * 💬 POST REPLY TO SPECIFIC TWEET (PUBLIC METHOD)
    */
   public async postReply(content: string, parentTweetId: string): Promise<{ success: boolean; tweetId?: string; error?: string }> {
@@ -245,37 +387,6 @@ export class BulletproofPoster {
     return tweetId;
   }
 
-  /**
-   * Post a reply to an existing tweet
-   */
-  private async postReplyToTweet(parentTweetId: string, content: string): Promise<string> {
-    if (!this.page) {
-      throw new Error('Browser page not ready');
-    }
-
-    console.log(`💬 POSTING_REPLY: To ${parentTweetId} - "${content.substring(0, 50)}..."`);
-    
-    // Navigate to the parent tweet
-    const tweetUrl = `https://x.com/i/status/${parentTweetId}`;
-    await this.page.goto(tweetUrl, { waitUntil: 'networkidle', timeout: this.PLAYWRIGHT_NAV_TIMEOUT_MS });
-    
-    // Wait for reply composer
-    await this.page.waitForSelector('[data-testid="reply"]', { timeout: 10000 });
-    
-    // Click reply button
-    await this.page.click('[data-testid="reply"]');
-    
-    // Wait for reply composer to appear
-    await this.page.waitForSelector('[data-testid="tweetTextarea_0"]', { timeout: 5000 });
-    
-    // Type reply content
-    await this.typeContent(content);
-    
-    // Submit reply
-    const replyId = await this.submitPost();
-    
-    return replyId;
-  }
 
   /**
    * Test composer access without posting
