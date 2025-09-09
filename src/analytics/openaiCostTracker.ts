@@ -67,6 +67,8 @@ export class OpenAICostTracker {
   private static instance: OpenAICostTracker;
   private db = getSafeDatabase();
   private redis = getRedisSafeClient();
+  
+  private static readonly COST_LOGGING_ENABLED = (process.env.COST_LOGGING_ENABLED ?? 'true') === 'true';
 
   // Current OpenAI pricing (as of 2024)
   private readonly TOKEN_PRICING = {
@@ -101,6 +103,11 @@ export class OpenAICostTracker {
    * NULL-SAFE VERSION - Never crashes posting loop, guarantees non-empty payload
    */
   trackOpenAIUsage(resp: any, meta: { intent?: string } = {}) {
+    if (!OpenAICostTracker.COST_LOGGING_ENABLED) { 
+      console.log('💰 COST_TRACKER: disabled by COST_LOGGING_ENABLED=false');
+      return;
+    }
+
     try {
       const model = resp?.model ?? 'unknown';
       const usage = resp?.usage ?? {};
