@@ -18,6 +18,7 @@ export interface PostingResult {
   success: boolean;
   mode: 'single' | 'composer' | 'reply_chain';
   rootTweetUrl?: string;
+  tweetId?: string; // Legacy compatibility
   tweetIds?: string[];
   segments?: string[];
   error?: string;
@@ -36,6 +37,7 @@ export class PostingFacade {
       return {
         success: false,
         mode: 'single',
+        tweetId: undefined, // Legacy compatibility
         error: 'Posting disabled by global flag'
       };
     }
@@ -69,6 +71,7 @@ export class PostingFacade {
           success: threadResult.success,
           mode: threadResult.mode,
           rootTweetUrl: threadResult.rootTweetUrl,
+          tweetId: threadResult.rootTweetUrl, // Legacy compatibility
           tweetIds: threadResult.tweetIds,
           segments,
           error: threadResult.error
@@ -88,6 +91,7 @@ export class PostingFacade {
           success: true,
           mode: isThread ? 'composer' : 'single',
           rootTweetUrl: `https://x.com/dry_run/status/${Date.now()}`,
+          tweetId: `https://x.com/dry_run/status/${Date.now()}`, // Legacy compatibility
           segments
         };
       }
@@ -103,6 +107,7 @@ export class PostingFacade {
         success: result.success,
         mode: result.mode,
         rootTweetUrl: result.rootTweetUrl,
+        tweetId: result.rootTweetUrl, // Legacy compatibility
         tweetIds: result.tweetIds,
         segments: segments, // Use the segments we processed
         error: result.error
@@ -113,6 +118,7 @@ export class PostingFacade {
       return {
         success: false,
         mode: 'single',
+        tweetId: undefined, // Legacy compatibility
         error: error instanceof Error ? error.message : String(error)
       };
     }
