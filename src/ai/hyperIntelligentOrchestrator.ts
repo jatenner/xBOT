@@ -87,10 +87,11 @@ export class HyperIntelligentOrchestrator {
       aiSystemsUsed.push(`Ensemble-${ensembleResult.winningModel}`);
     } else {
       console.log('⚡ SINGLE_MODEL: Using GPT-4o with hyper-optimization');
-      // EMERGENCY_COST_CHECK: Check daily budget before expensive API calls
+        // EMERGENCY_COST_CHECK: Check daily budget before expensive API calls
+        const { OpenAIService } = await import('../services/openAIService');
         const openAIService = OpenAIService.getInstance();
-        const budgetStatus = await openAIService.getCurrentBudgetStatus();
-        if (budgetStatus.isOverBudget) {
+        const budgetStatus = await openAIService.getBudgetStatus();
+        if (budgetStatus.isEmergencyStop) {
           throw new Error('🚨 COST_LIMIT: Daily OpenAI budget exceeded - operation blocked');
         }
         
