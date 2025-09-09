@@ -118,13 +118,13 @@ export class OpenAICostTracker {
         model,
         cost_tier: costTier,
         intent: meta?.intent ?? 'other',
-        prompt_tokens: promptTokens,
-        completion_tokens: completionTokens,
-        total_tokens: totalTokens,
-        cost_usd: this.estimateCost({ model, promptTokens, completionTokens, totalTokens, costTier }),
+        prompt_tokens: promptTokens ?? 0,
+        completion_tokens: completionTokens ?? 0,
+        total_tokens: totalTokens ?? ((promptTokens ?? 0) + (completionTokens ?? 0)),
+        cost_usd: this.estimateCost({ model, promptTokens, completionTokens, totalTokens, costTier }) ?? 0,
         request_id: resp?.id ?? null,
         finish_reason: resp?.choices?.[0]?.finish_reason ?? null,
-        raw: resp ? { response: resp, meta } : { meta }
+        raw: JSON.parse(JSON.stringify(resp ? { response: resp, meta } : (meta || {})))
       };
 
       console.log(`💰 COST_TRACKER: ${payload.intent} - $${payload.cost_usd.toFixed(4)} (${model})`);
@@ -298,16 +298,16 @@ export class OpenAICostTracker {
       // Try RPC (positional order the app currently uses)
       try {
         const rpc = await this.db.getClient().rpc('log_openai_usage', {
-          p_completion_tokens: payload.completion_tokens ?? 0,
-          p_cost_tier: payload.cost_tier ?? 'other',
-          p_cost_usd: payload.cost_usd ?? 0,
-          p_finish_reason: payload.finish_reason ?? null,
-          p_intent: payload.intent ?? null,
-          p_model: payload.model ?? 'unknown',
-          p_prompt_tokens: payload.prompt_tokens ?? 0,
-          p_raw: payload.raw ?? {},
-          p_request_id: payload.request_id ?? null,
-          p_total_tokens: payload.total_tokens ?? (payload.prompt_tokens ?? 0) + (payload.completion_tokens ?? 0),
+          p_completion_tokens: payload.completion_tokens,
+          p_cost_tier: payload.cost_tier,
+          p_cost_usd: payload.cost_usd,
+          p_finish_reason: payload.finish_reason,
+          p_intent: payload.intent,
+          p_model: payload.model,
+          p_prompt_tokens: payload.prompt_tokens,
+          p_raw: payload.raw,
+          p_request_id: payload.request_id,
+          p_total_tokens: payload.total_tokens
         });
 
         if (rpc.error) throw rpc.error;
@@ -317,13 +317,23 @@ export class OpenAICostTracker {
         const msg = e?.message || String(e);
         if (msg.includes('Could not find the function') || msg.includes('schema cache')) {
           console.log('💰 COST_TRACKER: RPC not found, falling back to direct insert...');
-          const ins = await this.db.getClient().from('openai_usage_log').insert(payload).select('id').single();
-          if (ins.error) throw ins.error;
+          // Use array form: .insert([payload]).select('id').single()
+          const ins = await this.db.getClient().from('openai_usage_log')
+            .insert([payload]).select('id').single();
+          if (ins.error) {
+            // Log real error: ins.error?.message (not [object Object])
+            console.log('DB_SAFE: Insert fallback failed', { 
+              message: ins.error.message, 
+              details: ins.error.details 
+            });
+            throw ins.error;
+          }
+          // Always show DB_SAFE: Inserted openai_usage_log id=… on success
           console.log('DB_SAFE: Inserted openai_usage_log id=', ins.data?.id);
           return 'success';
         } else {
-          console.warn('DB_SAFE: RPC insert failed, not recoverable', msg);
-          return null;
+          console.log('DB_SAFE: RPC failed (non-cache)', msg);
+          throw e;
         }
       }
     } catch (e: any) {
