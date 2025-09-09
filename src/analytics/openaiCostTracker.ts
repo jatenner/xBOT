@@ -283,7 +283,7 @@ export class OpenAICostTracker {
   }
 
   /**
-   * 🛡️ SAFE DATABASE INSERT - Uses log_openai_usage function (never crashes)
+   * 🛡️ SAFE DATABASE INSERT - RPC with fallback insert and safe error handling
    */
   async dbSafeInsert(table: string, payload: Record<string, any>): Promise<string | null> {
     try {
@@ -292,31 +292,42 @@ export class OpenAICostTracker {
         return null;
       }
 
-      console.log(`💰 COST_TRACKER: Logging to ${table} via safe function...`);
-      console.log(`📋 COST_TRACKER: Payload keys: ${Object.keys(payload).length}`);
+      console.log('💰 COST_TRACKER: Logging to openai_usage_log via safe function...');
+      console.log('📋 COST_TRACKER: Payload keys:', Object.keys(payload).length);
 
-      // Use the safe log_openai_usage function that never throws
-      const { data, error } = await this.db.getClient()
-        .rpc('log_openai_usage', {
-          p_model: payload.model,
-          p_cost_tier: payload.cost_tier,
-          p_intent: payload.intent,
-          p_prompt_tokens: payload.prompt_tokens,
-          p_completion_tokens: payload.completion_tokens,
-          p_total_tokens: payload.total_tokens,
-          p_cost_usd: payload.cost_usd,
-          p_request_id: payload.request_id,
-          p_finish_reason: payload.finish_reason,
-          p_raw: payload.raw || {}
+      // Try RPC (positional order the app currently uses)
+      try {
+        const rpc = await this.db.getClient().rpc('log_openai_usage', {
+          p_completion_tokens: payload.completion_tokens ?? 0,
+          p_cost_tier: payload.cost_tier ?? 'other',
+          p_cost_usd: payload.cost_usd ?? 0,
+          p_finish_reason: payload.finish_reason ?? null,
+          p_intent: payload.intent ?? null,
+          p_model: payload.model ?? 'unknown',
+          p_prompt_tokens: payload.prompt_tokens ?? 0,
+          p_raw: payload.raw ?? {},
+          p_request_id: payload.request_id ?? null,
+          p_total_tokens: payload.total_tokens ?? (payload.prompt_tokens ?? 0) + (payload.completion_tokens ?? 0),
         });
 
-      if (error) {
-        console.warn('COST_TRACKER: Function warning (swallowed)', { error: error.message });
+        if (rpc.error) throw rpc.error;
+        console.log('RPC_OK id=', rpc.data);
+        return 'success';
+      } catch (e: any) {
+        const msg = e?.message || String(e);
+        if (msg.includes('Could not find the function') || msg.includes('schema cache')) {
+          console.log('💰 COST_TRACKER: RPC not found, falling back to direct insert...');
+          const ins = await this.db.getClient().from('openai_usage_log').insert(payload).select('id').single();
+          if (ins.error) throw ins.error;
+          console.log('DB_SAFE: Inserted openai_usage_log id=', ins.data?.id);
+          return 'success';
+        } else {
+          console.warn('DB_SAFE: RPC insert failed, not recoverable', msg);
+          return null;
+        }
       }
-
-      return data ? 'success' : null;
-    } catch (e) {
-      console.error('COST_TRACKER: Exception during function call', { table, message: e?.message ?? String(e ?? '') });
+    } catch (e: any) {
+      console.error('COST_TRACKER: Exception during insert', { table, message: e?.message || String(e) });
       return null;
     }
   }
