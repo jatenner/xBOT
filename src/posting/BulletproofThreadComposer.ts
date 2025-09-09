@@ -17,6 +17,21 @@ interface ThreadPostResult {
 export class BulletproofThreadComposer {
   private static browserPage: Page | null = null;
 
+  // Modern selectors for resilient reply flow
+  private static readonly replyButtonSelectors = [
+    '[data-testid="reply"]',
+    'div[role="button"][data-testid="reply"]',
+    'button[aria-label^="Reply"]',
+    'div[role="button"][aria-label^="Reply"]'
+  ];
+
+  private static readonly composerSelectors = [
+    'div[role="textbox"][data-testid="tweetTextarea_0"]',
+    'div[role="textbox"][contenteditable="true"]',
+    'textarea[aria-label*="Post"]',
+    'div[aria-label="Post text"]'
+  ];
+
   /**
    * 🎯 MAIN METHOD: Post segments as connected thread
    */
@@ -183,19 +198,44 @@ export class BulletproofThreadComposer {
       // Navigate to root tweet
       await page.goto(rootUrl, { waitUntil: 'networkidle' });
       
-      // Click reply
-      await page.locator('[data-testid="reply"]').first().click({ timeout: 6000 });
-      
-      // Type reply
-      const replyBox = page.locator('[data-testid^="tweetTextarea_"]').first();
-      await replyBox.type(segments[i], { delay: 10 });
+      // Resilient reply flow with multiple selectors + kb fallback
+      await page.bringToFront();
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(300);
+
+      // Try to open reply via button OR keyboard shortcut
+      let replyBtn = await this.findFirst(page, this.replyButtonSelectors, 12000);
+      if (!replyBtn) {
+        await page.keyboard.press('r').catch(()=>{});
+        await page.waitForTimeout(400);
+        replyBtn = await this.findFirst(page, this.replyButtonSelectors, 3000); // optional second check
+      }
+      if (replyBtn) { 
+        await replyBtn.click({ delay: 50 }).catch(()=>{}); 
+      }
+
+      const composer = await this.findFirst(page, this.composerSelectors, 12000);
+      if (!composer) throw new Error('COMPOSER_NOT_FOCUSED');
+
+      await composer.click({ delay: 30 });
+      await page.waitForTimeout(150);
+      await composer.fill(segments[i]);
       await this.verifyTextBoxHas(page, 0, segments[i]);
       
-      // Post reply
-      await page.getByRole('button', { name: /^reply$/i })
-        .or(page.locator('[data-testid="tweetButton"]'))
-        .first()
-        .click();
+      // Try post via common tweet buttons OR kb shortcut
+      const sendSelectors = [
+        '[data-testid="tweetButtonInline"]',
+        '[data-testid="tweetButton"]',
+        'div[role="button"][data-testid="tweetButton"]',
+      ];
+      let sendBtn = await this.findFirst(page, sendSelectors, 5000);
+      if (sendBtn) { 
+        await sendBtn.click({ delay: 50 }); 
+      }
+      else {
+        const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
+        await page.keyboard.press(`${mod}+Enter`);
+      }
       await page.waitForLoadState('networkidle');
       
       // Delay between replies
@@ -206,6 +246,20 @@ export class BulletproofThreadComposer {
     }
     
     return rootUrl;
+  }
+
+  /**
+   * 🔍 Find first visible element from selector array
+   */
+  private static async findFirst(page: Page, selectors: string[], timeout = 12000) {
+    for (const sel of selectors) {
+      const el = await page.locator(sel).first();
+      try {
+        await el.waitFor({ state: 'visible', timeout });
+        return el;
+      } catch {}
+    }
+    return null;
   }
 
   /**
