@@ -87,8 +87,15 @@ export class HyperIntelligentOrchestrator {
       aiSystemsUsed.push(`Ensemble-${ensembleResult.winningModel}`);
     } else {
       console.log('⚡ SINGLE_MODEL: Using GPT-4o with hyper-optimization');
-      const response = await this.openai.chat.completions.create({
-        model: 'gpt-4o',
+      // EMERGENCY_COST_CHECK: Check daily budget before expensive API calls
+        const openAIService = OpenAIService.getInstance();
+        const budgetStatus = await openAIService.getCurrentBudgetStatus();
+        if (budgetStatus.isOverBudget) {
+          throw new Error('🚨 COST_LIMIT: Daily OpenAI budget exceeded - operation blocked');
+        }
+        
+        const response = await this.openai.chat.completions.create({
+        model: 'gpt-4o-mini', // COST_FIX: $0.15 -> $0.0015 per 1K tokens
         messages: [
           {
             role: 'system',
@@ -103,7 +110,7 @@ export class HyperIntelligentOrchestrator {
         top_p: 0.9,
         presence_penalty: 0.9,
         frequency_penalty: 0.95,
-        max_tokens: format === 'thread' ? 1500 : 600
+        max_tokens: format === 'thread' ? 800 : 400 // COST_FIX: Reduced token limits
       });
       result = response.choices[0]?.message?.content || '';
       aiSystemsUsed.push('GPT-4o-Hyper');
