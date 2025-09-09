@@ -14,7 +14,10 @@ import { AGGRESSIVE_SCHEDULER_ENABLED, THREAD_PIPELINE_ONLY } from './config/fla
 // EMERGENCY_DISABLED: import { EnhancedContentOrchestrator } from './ai/enhancedContentOrchestrator';
 import { intelligentDecision } from './ai/intelligentDecisionEngine';
 import { realTimeAnalytics } from './analytics/realTimeTwitterAnalytics';
-import { simplifiedPoster as bulletproofPoster } from './posting/simplifiedBulletproofPoster';
+// REPLACED: Legacy bulletproof poster with new PostingFacade
+import PostingFacade from './posting/PostingFacade';
+// 🚨 ANTI-LEGACY BUILD GUARD: Prevent reintroduction of legacy systems
+import './guards/no-legacy-poster';
 // KILLED: import { followerGrowthEngine } from './ai/followerGrowthContentEngine';
 import { quickHealthCheck } from './utils/systemHealthCheck';
 import { testCompletePipeline } from './utils/pipelineTest';
@@ -572,10 +575,18 @@ class BulletproofMainSystem {
           throw new Error('Failed to initialize bulletproof poster');
         }
         
-        const threadResult = await bulletproofPoster.postThread(result.threadParts);
+        // 🧵 ROUTE THROUGH BULLETPROOF THREAD COMPOSER
+        const threadDraft = {
+          id: 'enhanced_thread_' + Date.now(),
+          content: result.threadParts.join('\n\n'),
+          segments: result.threadParts,
+          isThread: true
+        };
+        
+        const threadResult = await PostingFacade.post(threadDraft);
         postResult = {
           success: threadResult.success,
-          tweetId: threadResult.tweetIds?.[0] || 'thread_' + Date.now(),
+          tweetId: threadResult.rootTweetUrl || 'thread_' + Date.now(),
           type: 'thread' as const,
           qualityScore: result.metadata.qualityScore,
           error: threadResult.error
@@ -591,9 +602,14 @@ class BulletproofMainSystem {
         if (!initialized) {
           throw new Error('Failed to initialize bulletproof poster');
         }
-          const singleResult = await bulletproofPoster.postContent(
-            typeof result.content === 'string' ? result.content : 'Health content generated'
-          );
+          // 🧵 ROUTE SINGLE CONTENT THROUGH POSTING FACADE
+          const singleContent = typeof result.content === 'string' ? result.content : 'Health content generated';
+          const singleDraft = {
+            id: 'enhanced_single_' + Date.now(),
+            content: singleContent
+          };
+          
+          const singleResult = await PostingFacade.post(singleDraft);
           postResult = {
             success: singleResult.success,
             tweetId: singleResult.tweetId,
@@ -611,11 +627,16 @@ class BulletproofMainSystem {
           throw new Error('Failed to initialize bulletproof poster');
         }
         
-        const singleResult = await bulletproofPoster.postContent(
-          typeof result.content === 'string' ? result.content : 
+        // 🧵 ROUTE SINGLE CONTENT THROUGH POSTING FACADE
+        const singleContent = typeof result.content === 'string' ? result.content : 
           Array.isArray(result.threadParts) ? result.threadParts[0] : 
-          'Health content generated'
-        );
+          'Health content generated';
+        const singleDraft = {
+          id: 'enhanced_single_fallback_' + Date.now(),
+          content: singleContent
+        };
+        
+        const singleResult = await PostingFacade.post(singleDraft);
         
         postResult = {
           success: singleResult.success,
@@ -634,11 +655,16 @@ class BulletproofMainSystem {
           throw new Error('Failed to initialize bulletproof poster');
         }
         
-        const fallbackResult = await bulletproofPoster.postContent(
-          typeof result.content === 'string' ? result.content : 
+        // 🧵 ROUTE FALLBACK CONTENT THROUGH POSTING FACADE
+        const fallbackContent = typeof result.content === 'string' ? result.content : 
           Array.isArray(result.threadParts) ? result.threadParts[0] :
-          'Health content generated'
-        );
+          'Health content generated';
+        const fallbackDraft = {
+          id: 'enhanced_fallback_' + Date.now(),
+          content: fallbackContent
+        };
+        
+        const fallbackResult = await PostingFacade.post(fallbackDraft);
         
         postResult = {
           success: fallbackResult.success,
@@ -782,12 +808,21 @@ class BulletproofMainSystem {
       
       console.log(`📊 ANALYTICS: Processing ${recentPosts.length} recent posts for insights`);
       
+      let processedCount = 0;
+      let skippedCount = 0;
+      
       for (const post of recentPosts) {
-        // Safety check for post data
-        if (!post || !post.tweetId || !post.content) {
-          console.warn('⚠️ ANALYTICS: Skipping invalid post data');
-          continue;
+        // Relaxed safety check for post data
+        const id = post?.id ?? post?.tweet_id ?? post?.tweetId ?? null;
+        const created = post?.created_at ?? post?.createdAt ?? post?.timestamp ?? null;
+        const content = post?.content ?? post?.text ?? '';
+        
+        if (!id || !created) {
+          skippedCount++;
+          continue; // Skip invalid items silently
         }
+        
+        processedCount++;
         
         // 🛡️ REAL DATA ENFORCEMENT - Zero fake data allowed
         console.log('🛡️ REAL_DATA_ENFORCEMENT: Validating all metrics for authenticity...');
@@ -799,23 +834,30 @@ class BulletproofMainSystem {
         const { realMetricsCollector } = await import('./metrics/realTwitterMetricsCollector');
         
         realMetricsCollector.trackTweet({
-          tweetId: post.tweetId,
-          postedAt: new Date(post.createdAt || post.created_at || Date.now()),
-          content: post.content,
-          contentLength: post.content.length,
-          persona: post.persona,
-          emotion: post.emotion,
-          framework: post.framework
+          tweetId: id,
+          postedAt: new Date(created),
+          content: content,
+          contentLength: content.length,
+          persona: post.persona || 'unknown',
+          emotion: post.emotion || 'neutral',
+          framework: post.framework || 'default'
         });
         
-        console.log(`📊 REAL_TRACKING: Started authenticated metrics collection for ${post.tweetId}`);
+        console.log(`📊 REAL_TRACKING: Started authenticated metrics collection for ${id}`);
         
         // ❌ ABSOLUTELY NO FAKE ANALYTICS - All data must be real and validated
         const analytics = null; // Fake data generation permanently disabled
         
         // ✅ REAL DATA PROCESSING ONLY with validation
         // Real metrics will be validated before storage to ensure authenticity
-        console.log(`✅ REAL_METRICS_QUEUED: ${post.tweetId} scheduled for validated authentic data collection`);
+        console.log(`✅ REAL_METRICS_QUEUED: ${id} scheduled for validated authentic data collection`);
+      }
+
+      // Analytics summary (reduce log spam)
+      if (skippedCount > 0) {
+        console.warn(`⚠️ ANALYTICS_SUMMARY: Processed ${processedCount}, skipped ${skippedCount} invalid posts`);
+      } else {
+        console.log(`📊 ANALYTICS_SUMMARY: Processed ${processedCount} posts successfully`);
       }
 
       // Log bandit performance
@@ -1022,7 +1064,13 @@ class BulletproofMainSystem {
       
       const testContent = "Been diving deep into sleep research and found something interesting about REM cycles that most people miss. The timing of deep sleep phases affects everything from memory consolidation to hormone production.";
       
-      const result = await bulletproofPoster.postContent(testContent);
+      // 🧵 ROUTE TEST CONTENT THROUGH POSTING FACADE
+      const testDraft = {
+        id: 'health_test_' + Date.now(),
+        content: testContent
+      };
+      
+      const result = await PostingFacade.post(testDraft);
       
       if (result.success) {
         console.log('✅ BULLETPROOF_TEST: Posting system working! Tweet posted successfully');
@@ -1113,14 +1161,28 @@ class BulletproofMainSystem {
         console.log(`🧵 STRATEGIC_THREAD: Posting ${contentResult.threadParts.length}-part thread`);
         console.log(`📝 THREAD_PREVIEW: "${contentResult.threadParts[0].substring(0, 80)}..."`);
         
-        postResult = await bulletproofPoster.postThread(contentResult.threadParts);
+        // 🧵 ROUTE THREAD THROUGH BULLETPROOF THREAD COMPOSER
+        const threadDraft = {
+          id: 'strategic_thread_' + Date.now(),
+          content: contentResult.threadParts.join('\n\n'),
+          segments: contentResult.threadParts,
+          isThread: true
+        };
+        
+        postResult = await PostingFacade.post(threadDraft);
       } else {
         const contentToPost = Array.isArray(contentResult.content) 
           ? contentResult.content[0] 
           : contentResult.content;
         
         console.log(`📝 STRATEGIC_SINGLE: "${contentToPost.substring(0, 100)}..."`);
-        postResult = await bulletproofPoster.postContent(contentToPost);
+        // 🧵 ROUTE SINGLE CONTENT THROUGH POSTING FACADE
+        const singleDraft = {
+          id: 'strategic_single_' + Date.now(),
+          content: contentToPost
+        };
+        
+        postResult = await PostingFacade.post(singleDraft);
       }
       
       console.log(`🎯 PREDICTED: ${contentResult.metadata.predicted_performance.engagement_rate}% engagement`);
@@ -1197,7 +1259,13 @@ class BulletproofMainSystem {
       if (false) {
         const content = Array.isArray(megaContent.content) ? megaContent.content[0] : megaContent.content;
         console.log(`📝 POSTING_SINGLE: "${String(content).substring(0, 50)}..."`);
-        const singleResult = await bulletproofPoster.postContent(String(content));
+        // 🧵 ROUTE MEGA CONTENT THROUGH POSTING FACADE
+        const megaDraft = {
+          id: 'mega_single_' + Date.now(),
+          content: String(content)
+        };
+        
+        const singleResult = await PostingFacade.post(megaDraft);
         postResult = {
           success: singleResult.success,
           tweetId: singleResult.tweetId,
@@ -1289,7 +1357,13 @@ class BulletproofMainSystem {
       console.log(`📝 BULLETPROOF_CONTENT: "${contentToPost.substring(0, 100)}..."`);
       
       // Post using bulletproof system
-      const postResult = await bulletproofPoster.postContent(contentToPost);
+      // 🧵 ROUTE IMMEDIATE CONTENT THROUGH POSTING FACADE
+      const immediateDraft = {
+        id: 'immediate_post_' + Date.now(),
+        content: contentToPost
+      };
+      
+      const postResult = await PostingFacade.post(immediateDraft);
       
       if (postResult.success) {
         console.log('✅ BULLETPROOF_LOOP: Post successful!');
