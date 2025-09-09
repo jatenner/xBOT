@@ -309,32 +309,23 @@ export class OpenAICostTracker {
           p_request_id: payload.request_id,
           p_total_tokens: payload.total_tokens
         });
-
         if (rpc.error) throw rpc.error;
         console.log('RPC_OK id=', rpc.data);
         return 'success';
       } catch (e: any) {
-        const msg = e?.message || String(e);
-        if (msg.includes('Could not find the function') || msg.includes('schema cache')) {
-          console.log('💰 COST_TRACKER: RPC not found, falling back to direct insert...');
-          // Use array form: .insert([payload]).select('id').single()
-          const ins = await this.db.getClient().from('openai_usage_log')
-            .insert([payload]).select('id').single();
-          if (ins.error) {
-            // Log real error: ins.error?.message (not [object Object])
-            console.log('DB_SAFE: Insert fallback failed', { 
-              message: ins.error.message, 
-              details: ins.error.details 
-            });
-            throw ins.error;
-          }
-          // Always show DB_SAFE: Inserted openai_usage_log id=… on success
-          console.log('DB_SAFE: Inserted openai_usage_log id=', ins.data?.id);
-          return 'success';
-        } else {
-          console.log('DB_SAFE: RPC failed (non-cache)', msg);
-          throw e;
+        const msg = e?.message ?? String(e);
+        const looksMissing = typeof msg === 'string' && (msg.includes('Could not find the function') || msg.includes('schema cache'));
+        if (!looksMissing) {
+          console.log('DB_SAFE: RPC failed (non-missing)', { message: e?.message, details: e?.details });
+          // still try fallback insert, but surface any error
         }
+        const ins = await this.db.getClient().from('openai_usage_log').insert([payload]).select('id').single();
+        if (ins.error) {
+          console.log('DB_SAFE: Insert fallback failed', { message: ins.error.message, details: ins.error.details });
+          throw ins.error;
+        }
+        console.log('DB_SAFE: Inserted openai_usage_log id=', ins.data?.id);
+        return 'success';
       }
     } catch (e: any) {
       console.error('COST_TRACKER: Exception during insert', { table, message: e?.message || String(e) });
