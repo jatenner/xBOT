@@ -69,25 +69,26 @@ export class BulletproofThreadComposer {
       };
     } catch (composerError: any) {
       console.log(`🧵 THREAD_COMPOSER_FAILED -> falling back to reply chain: ${String(composerError).slice(0, 400)}`);
+      // On COMPOSER_NOT_FOCUSED, do one attempt to switch to reply-chain and actually call the self-reply API path
       console.log(`THREAD_DECISION mode=reply_chain segments=${segments.length}`);
-    }
-
-    try {
-      // Fallback to reply chain
-      const rootUrl = await this.postViaReplies(numberedSegments);
-      console.log('THREAD_PUBLISH_OK mode=reply_chain');
-      return {
-        success: true,
-        mode: 'reply_chain',
-        rootTweetUrl: rootUrl
-      };
-    } catch (replyError: any) {
-      console.error('❌ THREAD_BOTH_METHODS_FAILED:', replyError);
-      return {
-        success: false,
-        mode: 'reply_chain',
-        error: `Both composer and reply-chain failed: ${replyError.message}`
-      };
+      
+      try {
+        // Fallback: single-pass reply-chain fallback (not looping composer again)
+        const rootUrl = await this.postViaReplies(numberedSegments);
+        console.log('THREAD_PUBLISH_OK mode=reply_chain');
+        return {
+          success: true,
+          mode: 'reply_chain',
+          rootTweetUrl: rootUrl
+        };
+      } catch (replyError: any) {
+        console.error('❌ THREAD_BOTH_METHODS_FAILED:', replyError);
+        return {
+          success: false,
+          mode: 'reply_chain',
+          error: `Both composer and reply-chain failed: ${replyError.message}`
+        };
+      }
     }
   }
 
@@ -208,41 +209,42 @@ export class BulletproofThreadComposer {
   }
 
   /**
-   * 🎯 Focus composer with robust overlay handling
+   * 🎯 Robust composer focus with page focus + multiple selectors + retries
    */
   private static async focusComposer(page: Page): Promise<void> {
     console.log('🎯 THREAD_COMPOSER: Focusing composer...');
     
-    // Close overlays robustly
-    for (let i = 0; i < 4; i++) {
-      const overlays = await page.locator('[aria-label="Close"]').all();
-      for (const overlay of overlays) {
-        if (await overlay.isVisible().catch(() => false)) {
-          await overlay.click({ timeout: 1000 }).catch(() => {});
-        }
-      }
-    }
+    // Before typing: page.bringToFront(); await page.bringToFront();
+    await page.bringToFront();
+    await page.bringToFront();
     
-    // Try multiple focus strategies
-    const strategies = [
-      () => page.keyboard.press('n'),
-      () => page.getByRole('textbox', { name: /post text|what's happening/i }).click(),
-      () => page.locator('[data-testid^="tweetTextarea_"]').first().click(),
+    // Focus robustly: wait for new X composer selector; try multiple selectors
+    const selectors = [
+      'div[role="textbox"][data-testid="tweetTextarea_0"]',
+      'div[role="textbox"][contenteditable="true"]',
+      'textarea[aria-label*="Post"]'
     ];
     
-    for (const strategy of strategies) {
-      try {
-        await strategy();
-        await page.waitForTimeout(150);
-        
-        // Check if composer is now visible
-        if (await page.locator('[data-testid^="tweetTextarea_"]').first().isVisible()) {
-          console.log('✅ THREAD_COMPOSER: Composer focused');
-          return;
+    // Add explicit waits + retries (3 tries) with small delays
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      for (const sel of selectors) {
+        try {
+          const el = await page.$(sel);
+          if (el) { 
+            await el.click({ delay: 50 }); 
+            await page.waitForTimeout(120);
+            const isEditable = await page.evaluate(e => (e as HTMLElement).isContentEditable ?? true, el);
+            if (isEditable) {
+              console.log('✅ THREAD_COMPOSER: Composer focused');
+              return;
+            }
+          }
+        } catch {
+          // Continue to next selector
         }
-      } catch {
-        // Try next strategy
       }
+      await page.keyboard.press('Escape').catch(()=>{});
+      await page.waitForTimeout(200);
     }
     
     throw new Error('COMPOSER_NOT_FOCUSED');
