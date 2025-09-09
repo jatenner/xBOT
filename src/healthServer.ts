@@ -7,6 +7,7 @@
 import express from 'express';
 import { SessionLoader } from './utils/sessionLoader';
 import { systemMetrics } from './monitoring/SystemMetrics';
+import { costTracker as newCostTracker } from './services/costTracker';
 
 export interface HealthServerStatus {
   server?: any;
@@ -1014,6 +1015,25 @@ app.get('/api/metrics', async (req, res) => {
       }
     });
 
+    // 💰 BUDGET STATUS ENDPOINT - Real-time OpenAI cost tracking
+    app.get('/budget/status', async (_req, res) => {
+      try {
+        const status = await newCostTracker.getBudgetStatus();
+        res.json(status);
+      } catch (error: any) {
+        console.error('💰 BUDGET_ENDPOINT_ERROR:', error.message);
+        res.status(500).json({ 
+          error: 'Budget status check failed',
+          date_utc: new Date().toISOString().split('T')[0],
+          limit: parseFloat(process.env.DAILY_COST_LIMIT_USD ?? '5.00'),
+          today_spend: 0,
+          remaining: parseFloat(process.env.DAILY_COST_LIMIT_USD ?? '5.00'),
+          blocked: false,
+          source: 'fallback'
+        });
+      }
+    });
+
     // Start server with maximum resilience
     healthServerStatus.server = app.listen(healthServerStatus.port, healthServerStatus.host, () => {
       console.log(`✅ Health server READY on http://${healthServerStatus.host}:${healthServerStatus.port}`);
@@ -1021,6 +1041,7 @@ app.get('/api/metrics', async (req, res) => {
       console.log(`📊 Status endpoint: GET /status`);
       console.log(`🔍 Environment check: GET /env`);
       console.log(`🎭 Playwright status: GET /playwright`);
+      console.log(`💰 Budget status: GET /budget/status`);
           console.log(`🔐 Session diagnostics: GET /session`);
     console.log(`🚀 Force post: GET /force-thread?topic=<topic>&mode=<hook_type>`);
     console.log(`📊 Analytics Dashboard: GET /dashboard`);
