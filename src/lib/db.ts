@@ -61,7 +61,7 @@ export class SafeDatabase {
   }
 
   /**
-   * IRON-CLAD NULL-SAFE insert - never throws, never crashes
+   * IRON-CLAD NULL-SAFE insert - guards against error?.message?.includes(...) when error is undefined
    */
   async safeInsert(table: string, payload: Record<string, any>) {
     try {
@@ -75,7 +75,7 @@ export class SafeDatabase {
       }
       const { data, error } = await this.client.from(table).insert(payload);
       if (error) {
-        const msg = error?.message ?? String(error ?? '');
+        const msg = error?.message || String(error);
         console.error('DB_SAFE: Insert error', {
           table,
           payloadKeys: Object.keys(payload),
@@ -84,9 +84,22 @@ export class SafeDatabase {
       }
       return data;
     } catch (e: any) {
-      const msg = e?.message ?? String(e ?? '');
+      const msg = e?.message || String(e);
       console.error('DB_SAFE: Exception during insert', { table, message: msg });
       return;
+    }
+  }
+
+  /**
+   * Safe wrapper for async operations with error handling
+   */
+  static async safeInsert<T>(fn: () => Promise<T>): Promise<T | null> {
+    try {
+      return await fn();
+    } catch (e: any) {
+      const msg = e?.message || String(e);
+      console.warn('DB_SAFE: Insert error', { error: e, message: msg });
+      throw e;
     }
   }
 
