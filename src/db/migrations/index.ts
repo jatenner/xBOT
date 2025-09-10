@@ -58,21 +58,60 @@ export class MigrationRunner {
   private async initPgClient(): Promise<void> {
     let databaseUrl = process.env.DATABASE_URL;
     
-    if (!databaseUrl && process.env.SUPABASE_URL && process.env.SUPABASE_DB_PASSWORD) {
-      // Construct from Supabase env vars
-      const projectRef = process.env.SUPABASE_URL.match(/https:\/\/([^.]+)\.supabase\.co/)?.[1];
-      if (projectRef) {
-        databaseUrl = `postgresql://postgres:${process.env.SUPABASE_DB_PASSWORD}@db.${projectRef}.supabase.co:5432/postgres`;
-      }
+    // Smart DATABASE_URL resolver with APP_ENV support
+    if (!databaseUrl) {
+      databaseUrl = this.buildDatabaseUrl();
     }
     
     if (!databaseUrl) {
-      throw new Error('DATABASE_URL or SUPABASE_DB_PASSWORD required for migrations');
+      throw new Error('DATABASE_URL required for migrations. Ensure DATABASE_URL is set OR provide SUPABASE_DB_PASSWORD with either SUPABASE_URL or valid PROJECT_REF variables.');
     }
     
     this.pgClient = new Client({ connectionString: databaseUrl });
     await this.pgClient.connect();
     console.log('📊 MIGRATIONS: Connected to PostgreSQL for DDL operations');
+  }
+
+  private buildDatabaseUrl(): string | null {
+    const appEnv = process.env.APP_ENV || 'production';
+    const dbPassword = process.env.SUPABASE_DB_PASSWORD;
+    
+    if (!dbPassword) {
+      console.warn('⚠️ MIGRATION_URL_RESOLVER: No SUPABASE_DB_PASSWORD found');
+      return null;
+    }
+
+    // Try direct SUPABASE_URL first
+    if (process.env.SUPABASE_URL) {
+      const projectRef = process.env.SUPABASE_URL.match(/https:\/\/([^.]+)\.supabase\.co/)?.[1];
+      if (projectRef) {
+        const url = `postgresql://postgres:${dbPassword}@db.${projectRef}.supabase.co:5432/postgres`;
+        console.log(`✅ MIGRATION_URL_RESOLVER: Built from SUPABASE_URL (${projectRef})`);
+        return url;
+      }
+    }
+
+    // Try environment-specific PROJECT_REF
+    let projectRef = null;
+    if (appEnv === 'staging') {
+      projectRef = process.env.STAGING_PROJECT_REF;
+    } else if (appEnv === 'production') {
+      projectRef = process.env.PRODUCTION_PROJECT_REF || process.env.SUPABASE_PROJECT_REF;
+    }
+
+    // Fallback to generic PROJECT_REF
+    if (!projectRef) {
+      projectRef = process.env.PROJECT_REF;
+    }
+
+    if (projectRef) {
+      const url = `postgresql://postgres:${dbPassword}@db.${projectRef}.supabase.co:5432/postgres`;
+      console.log(`✅ MIGRATION_URL_RESOLVER: Built from ${appEnv.toUpperCase()}_PROJECT_REF (${projectRef})`);
+      return url;
+    }
+
+    console.error('❌ MIGRATION_URL_RESOLVER: No valid PROJECT_REF found. Checked: SUPABASE_URL, STAGING_PROJECT_REF, PRODUCTION_PROJECT_REF, SUPABASE_PROJECT_REF, PROJECT_REF');
+    return null;
   }
 
   private async ensureMigrationsTable(): Promise<void> {

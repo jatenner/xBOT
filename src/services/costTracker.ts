@@ -10,6 +10,7 @@ import Redis from 'ioredis';
 // Environment configuration
 const COST_TRACKER_ENABLED = (process.env.COST_TRACKER_ENABLED ?? 'true') === 'true';
 const DAILY_COST_LIMIT_USD = parseFloat(process.env.DAILY_COST_LIMIT_USD ?? '5.00');
+const COST_SOFT_BUDGET_USD = parseFloat(process.env.COST_SOFT_BUDGET_USD ?? '3.50'); // 70% of hard limit
 const COST_TRACKER_STRICT = (process.env.COST_TRACKER_STRICT ?? 'true') === 'true';
 const COST_TRACKER_ROLLOVER_TZ = process.env.COST_TRACKER_ROLLOVER_TZ ?? 'UTC';
 const REDIS_COST_KEY_PREFIX = process.env.REDIS_COST_KEY_PREFIX ?? 'openai_cost';
@@ -17,6 +18,20 @@ const REDIS_BUDGET_TTL_SECONDS = parseInt(process.env.REDIS_BUDGET_TTL_SECONDS ?
 const REDIS_BREAKER_ENABLED = (process.env.REDIS_BREAKER_ENABLED ?? 'true') === 'true';
 const COST_LOGGING_STORAGE = process.env.COST_LOGGING_STORAGE ?? 'supabase';
 const COST_LOGGING_TABLE = process.env.COST_LOGGING_TABLE ?? 'openai_usage_log';
+
+// Model fallback order for soft budget (cheapest first)
+const MODEL_FALLBACK_ORDER = ['gpt-4o-mini', 'gpt-3.5-turbo', 'gpt-4o', 'gpt-4'];
+
+// Per-intent throttling rules when over soft budget
+const INTENT_THROTTLE_RULES: Record<string, { maxPerHour: number; tokenCap: number }> = {
+  'analytics': { maxPerHour: 2, tokenCap: 50 },
+  'monitoring': { maxPerHour: 3, tokenCap: 100 },
+  'debugging': { maxPerHour: 1, tokenCap: 30 },
+  'content_generation': { maxPerHour: 10, tokenCap: 400 },
+  'strategic_engagement': { maxPerHour: 5, tokenCap: 150 },
+  'viral_content': { maxPerHour: 8, tokenCap: 300 },
+  'default': { maxPerHour: 5, tokenCap: 200 }
+};
 
 // Model pricing (per 1K tokens)
 const MODEL_PRICING: Record<string, { input: number; output: number }> = {
@@ -49,10 +64,20 @@ export interface UsageRecord {
 export interface BudgetStatus {
   date_utc: string;
   limit: number;
+  soft_limit: number;
   today_spend: number;
   remaining: number;
   blocked: boolean;
+  soft_budget_exceeded: boolean;
+  throttle_active: boolean;
   source: 'redis' | 'supabase' | 'fallback';
+}
+
+export interface SoftBudgetControls {
+  model_fallback: string;
+  token_cap: number;
+  throttle_maxPerHour: number;
+  skip_low_priority: boolean;
 }
 
 export class CostTracker {
@@ -83,15 +108,25 @@ export class CostTracker {
         );
       }
 
-      // Initialize Redis
+      // Initialize Redis (cloud-safe, no CONFIG commands)
       if (process.env.REDIS_URL && REDIS_BREAKER_ENABLED) {
         this.redis = new Redis(process.env.REDIS_URL!, {
           maxRetriesPerRequest: 2,
-          lazyConnect: true
+          lazyConnect: true,
+          // Cloud-safe: Never use CONFIG commands on managed Redis
+          enableAutoPipelining: true
         });
 
         this.redis.on('error', (error) => {
           console.warn('⚠️ COST_TRACKER: Redis connection issue:', error.message);
+          // Guard against CONFIG errors on managed Redis (Railway, AWS, etc.)
+          if (error.message.includes('CONFIG') || error.message.includes('maxmemory')) {
+            console.log('💡 COST_TRACKER: Managed Redis detected, CONFIG commands disabled');
+          }
+        });
+
+        this.redis.on('ready', () => {
+          console.log('✅ COST_TRACKER: Redis ready (cloud-safe mode)');
         });
       }
     } catch (error) {
@@ -151,34 +186,48 @@ export class CostTracker {
       console.log(`💰 COST_LOG: RPC success $${record.cost_usd.toFixed(4)} (${record.model})`);
 
     } catch (rpcError: any) {
-      // Fallback to direct insert
-      console.log('💰 COST_LOG: RPC failed, trying direct insert');
+      // Enhanced fallback handling
+      const isRpcNotFound = rpcError.message?.includes('function not found') || 
+                           rpcError.message?.includes('Function not found') ||
+                           rpcError.code === 'PGRST202';
+      
+      if (isRpcNotFound) {
+        console.warn('💰 RPC_FALLBACK: Function not found, trying direct table insert');
+      } else {
+        console.warn(`💰 RPC_FALLBACK: ${rpcError.message}, trying direct table insert`);
+      }
       
       try {
+        // Bulletproof insert with clean payload
+        const insertPayload = {
+          model: record.model || 'unknown',
+          cost_tier: record.cost_tier,
+          intent: record.intent || 'general',
+          prompt_tokens: Math.max(0, record.prompt_tokens || 0),
+          completion_tokens: Math.max(0, record.completion_tokens || 0),
+          total_tokens: Math.max(0, record.total_tokens || 0),
+          cost_usd: Math.max(0, record.cost_usd || 0),
+          request_id: record.request_id,
+          finish_reason: record.finish_reason,
+          raw: record.raw || {}
+        };
+
         const { error: insertError } = await this.supabase
           .from(COST_LOGGING_TABLE)
-          .insert([{
-            model: record.model,
-            cost_tier: record.cost_tier,
-            intent: record.intent,
-            prompt_tokens: record.prompt_tokens,
-            completion_tokens: record.completion_tokens,
-            total_tokens: record.total_tokens,
-            cost_usd: record.cost_usd,
-            request_id: record.request_id,
-            finish_reason: record.finish_reason,
-            raw: record.raw
-          }]);
+          .insert([insertPayload]);
 
         if (insertError) {
           throw insertError;
         }
 
-        console.log(`💰 COST_LOG: Direct insert success $${record.cost_usd.toFixed(4)} (${record.model})`);
+        console.log(`💰 COST_LOG_OK: Direct insert succeeded $${record.cost_usd.toFixed(4)} (${record.model})`);
 
       } catch (insertError: any) {
-        // Log and continue - don't break posting pipeline
-        console.error('💰 COST_LOG: Both RPC and insert failed:', insertError.message);
+        // Log but NEVER break posting pipeline
+        console.error('💰 COST_LOG_FAILED: Both RPC and table insert failed - continuing anyway');
+        console.error(`💰 RPC_ERROR: ${rpcError.message}`);
+        console.error(`💰 INSERT_ERROR: ${insertError.message}`);
+        // Critical: Don't throw - let posting continue
       }
     }
   }
@@ -293,14 +342,68 @@ export class CostTracker {
       }
     }
 
+    const softBudgetExceeded = todaySpend >= COST_SOFT_BUDGET_USD;
+    const throttleActive = softBudgetExceeded && todaySpend < DAILY_COST_LIMIT_USD;
+
     return {
       date_utc: today,
       limit: DAILY_COST_LIMIT_USD,
+      soft_limit: COST_SOFT_BUDGET_USD,
       today_spend: todaySpend,
       remaining: Math.max(0, DAILY_COST_LIMIT_USD - todaySpend),
       blocked,
+      soft_budget_exceeded: softBudgetExceeded,
+      throttle_active: throttleActive,
       source
     };
+  }
+
+  /**
+   * 🛡️ GET SOFT BUDGET CONTROLS for intent
+   */
+  getSoftBudgetControls(intent: string, currentSpend: number): SoftBudgetControls {
+    const throttleRule = INTENT_THROTTLE_RULES[intent] || INTENT_THROTTLE_RULES['default'];
+    const softBudgetExceeded = currentSpend >= COST_SOFT_BUDGET_USD;
+    
+    return {
+      model_fallback: softBudgetExceeded ? MODEL_FALLBACK_ORDER[0] : '', // Force cheapest model
+      token_cap: softBudgetExceeded ? throttleRule.tokenCap : 2000, // Strict token limits
+      throttle_maxPerHour: throttleRule.maxPerHour,
+      skip_low_priority: softBudgetExceeded && ['analytics', 'monitoring', 'debugging'].includes(intent)
+    };
+  }
+
+  /**
+   * ⏱️ CHECK INTENT THROTTLE (Redis-based)
+   */
+  async checkIntentThrottle(intent: string): Promise<{ allowed: boolean; remaining: number }> {
+    if (!this.redis || !REDIS_BREAKER_ENABLED) {
+      return { allowed: true, remaining: 999 };
+    }
+
+    try {
+      const hour = DateTime.now().setZone(COST_TRACKER_ROLLOVER_TZ).toFormat('yyyy-MM-dd-HH');
+      const throttleKey = `intent_throttle:${intent}:${hour}`;
+      
+      const currentCount = await this.redis.get(throttleKey);
+      const count = parseInt(currentCount || '0', 10);
+      
+      const throttleRule = INTENT_THROTTLE_RULES[intent] || INTENT_THROTTLE_RULES['default'];
+      const allowed = count < throttleRule.maxPerHour;
+      
+      if (allowed) {
+        await this.redis.incr(throttleKey);
+        await this.redis.expire(throttleKey, 3600); // 1 hour TTL
+      }
+      
+      return {
+        allowed,
+        remaining: Math.max(0, throttleRule.maxPerHour - count - (allowed ? 1 : 0))
+      };
+    } catch (error) {
+      console.warn('⚠️ THROTTLE_CHECK: Redis failed, allowing request');
+      return { allowed: true, remaining: 999 };
+    }
   }
 
   /**
