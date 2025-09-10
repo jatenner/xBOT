@@ -1027,6 +1027,44 @@ app.get('/api/metrics', async (req, res) => {
         // Get soft budget controls for sample intent
         const softControls = newCostTracker.getSoftBudgetControls('content_generation', status.today_spend);
         
+        // Get model mix from recent usage (last 24 hours)
+        let modelMix: Record<string, number> = {};
+        try {
+          const { data: recentUsage } = await (await import('./services/costTracker')).costTracker.supabase
+            ?.from('openai_usage_log')
+            .select('model, cost_usd')
+            .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()) || { data: [] };
+          
+          if (recentUsage?.length) {
+            const totalCost = recentUsage.reduce((sum, r) => sum + parseFloat(r.cost_usd || '0'), 0);
+            modelMix = recentUsage.reduce((mix, r) => {
+              const model = r.model || 'unknown';
+              const cost = parseFloat(r.cost_usd || '0');
+              mix[model] = (mix[model] || 0) + cost;
+              return mix;
+            }, {} as Record<string, number>);
+            
+            // Convert to percentages
+            Object.keys(modelMix).forEach(model => {
+              modelMix[model] = totalCost > 0 ? (modelMix[model] / totalCost) * 100 : 0;
+            });
+          }
+        } catch (modelMixError) {
+          console.warn('⚠️ MODEL_MIX: Could not fetch recent usage');
+        }
+        
+        // Get ROI optimizer state for key intents
+        const keyIntents = ['strategic_engagement', 'follower_growth_content', 'longform_thread', 'viral_content'];
+        const optimizerState: Record<string, number> = {};
+        
+        for (const intent of keyIntents) {
+          try {
+            optimizerState[intent] = await budgetOptimizer.getIntentROI(intent);
+          } catch (roiError) {
+            optimizerState[intent] = 1.0; // Default baseline
+          }
+        }
+        
         res.json({
           ...status,
           cost_controls: {
@@ -1048,11 +1086,15 @@ app.get('/api/metrics', async (req, res) => {
             budgetStatus: optimization.budgetStatus
           },
           soft_controls: softControls,
+          model_mix: modelMix,
+          optimizer_state: optimizerState,
           redis_breaker: {
             enabled: process.env.REDIS_BREAKER_ENABLED === 'true',
-            key_prefix: process.env.REDIS_COST_KEY_PREFIX || 'openai_cost',
+            prefix: process.env.REDIS_PREFIX || 'prod:',
             ttl_seconds: parseInt(process.env.REDIS_BUDGET_TTL_SECONDS ?? '172800', 10)
-          }
+          },
+          tz: process.env.COST_TRACKER_ROLLOVER_TZ || 'UTC',
+          percent_used: Math.round((status.today_spend / status.limit) * 100)
         });
       } catch (error: any) {
         console.error('💰 BUDGET_ENDPOINT_ERROR:', error.message);

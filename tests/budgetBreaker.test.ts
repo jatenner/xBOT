@@ -2,19 +2,24 @@
  * 🧪 BUDGET BREAKER TESTS
  */
 
-import { describe, test, expect, beforeEach, vi } from 'vitest';
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { CostTracker, DailyBudgetExceededError } from '../src/services/costTracker';
 
 describe('Budget Breaker', () => {
   let costTracker: CostTracker;
   let mockRedis: any;
+  let originalEnv: NodeJS.ProcessEnv;
 
   beforeEach(() => {
+    // Save original environment
+    originalEnv = { ...process.env };
+    
     // Reset environment
     process.env.COST_TRACKER_ENABLED = 'true';
     process.env.DAILY_COST_LIMIT_USD = '5.00';
     process.env.COST_SOFT_BUDGET_USD = '3.50';
     process.env.REDIS_BREAKER_ENABLED = 'true';
+    process.env.REDIS_PREFIX = 'test:';
     
     // Mock Redis client
     mockRedis = {
@@ -22,13 +27,24 @@ describe('Budget Breaker', () => {
       incrByFloat: vi.fn(),
       expire: vi.fn(),
       set: vi.fn(),
-      incr: vi.fn()
+      incr: vi.fn(),
+      setex: vi.fn(),
+      pipeline: vi.fn().mockReturnValue({
+        incrbyfloat: vi.fn(),
+        expire: vi.fn(),
+        exec: vi.fn().mockResolvedValue([[null, '2.50']])
+      })
     };
     
     costTracker = CostTracker.getInstance();
     (costTracker as any).redis = mockRedis;
     
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    // Restore original environment
+    process.env = originalEnv;
   });
 
   test('allows requests under hard budget limit', async () => {

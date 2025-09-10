@@ -2,7 +2,7 @@
  * 🧪 DATABASE URL RESOLVER TESTS
  */
 
-import { describe, test, expect, beforeEach, vi } from 'vitest';
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 
 describe('Database URL Resolver', () => {
   let originalEnv: NodeJS.ProcessEnv;
