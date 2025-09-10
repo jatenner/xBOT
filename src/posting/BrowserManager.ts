@@ -48,7 +48,23 @@ class BrowserManager {
     this.launching = true;
     try {
       // Enterprise-grade progressive fallback configurations
+      const browserProfile = process.env.BROWSER_PROFILE || 'standard_railway';
+      const browserConcurrency = parseInt(process.env.BROWSER_CONCURRENCY || '1', 10);
+      
       const launchConfigs = [
+        {
+          name: 'standard_railway',
+          config: {
+            headless: true,
+            args: [
+              '--no-sandbox',
+              '--disable-dev-shm-usage',
+              '--disable-gpu',
+              '--mute-audio'
+            ],
+            timeout: 30000
+          }
+        },
         {
           name: 'ultra_lightweight_railway',
           config: {
@@ -111,11 +127,19 @@ class BrowserManager {
         }
       ];
 
+      // Filter configurations based on BROWSER_PROFILE
+      const filteredConfigs = browserProfile === 'ultra_lightweight_railway' 
+        ? launchConfigs.filter(config => config.name === 'ultra_lightweight_railway')
+        : launchConfigs.filter(config => config.name === 'standard_railway');
+
       let lastError: Error | null = null;
 
-      for (const { name, config } of launchConfigs) {
+      console.log(`🚀 ENTERPRISE_BROWSER: Using profile ${browserProfile} (concurrency: ${browserConcurrency})`);
+
+      for (const { name, config } of filteredConfigs) {
         try {
           console.log(`🚀 ENTERPRISE_BROWSER: Trying ${name} configuration...`);
+          console.log(`🔧 CHROMIUM_ARGS: ${config.args?.join(' ') || 'default'}`);
           
           // Force cleanup before each attempt
           await this.forceCleanupProcesses();
@@ -135,11 +159,15 @@ class BrowserManager {
           lastError = error as Error;
           console.log(`❌ ENTERPRISE_BROWSER: ${name} failed: ${lastError.message}`);
           
-          // Check for EAGAIN specifically
+          // Enhanced error handling for common Railway issues
           if (lastError.message.includes('EAGAIN')) {
             console.log('🔧 EAGAIN detected - forcing process cleanup...');
             await this.forceCleanupProcesses();
             await new Promise(resolve => setTimeout(resolve, 2000));
+          } else if (lastError.message.includes('InSameStoragePartition')) {
+            console.log('🔧 Storage partition error - likely from single-process mode');
+          } else if (lastError.message.includes('Target page, context or browser has been closed')) {
+            console.log('🔧 Target closed error - will retry with context recovery');
           }
         }
       }
@@ -147,6 +175,75 @@ class BrowserManager {
       throw new Error(`All browser configurations failed. Last error: ${lastError?.message}`);
     } finally {
       this.launching = false;
+    }
+  }
+
+  /**
+   * Recover from "Target page/context closed" errors
+   */
+  async recoverFromTargetClosed(): Promise<boolean> {
+    try {
+      console.log('🔄 BROWSER_RECOVERY: Attempting context recovery...');
+      
+      // Close and recreate browser if needed
+      if (this.browser) {
+        await this.browser.close();
+        this.browser = null;
+      }
+      
+      // Reset context counts
+      this.contextCounts = { posting: 0, metrics: 0 };
+      
+      // Relaunch browser
+      await this.launchWithRetry();
+      
+      console.log('✅ BROWSER_RECOVERY: Context recovered successfully');
+      return true;
+    } catch (error) {
+      console.error('❌ BROWSER_RECOVERY: Failed to recover context:', (error as Error).message);
+      return false;
+    }
+  }
+
+  /**
+   * Page ready gate - ensure DOM + network idle + composer available
+   */
+  static async waitForPageReady(page: any, composerSelectors: string[] = []): Promise<boolean> {
+    try {
+      console.log('🚦 PAGE_READY: Waiting for DOM + network idle...');
+      
+      // Wait for DOM to be ready
+      await page.waitForLoadState('domcontentloaded', { timeout: 10000 });
+      
+      // Wait for network to be idle (no more requests for 500ms)
+      await page.waitForLoadState('networkidle', { timeout: 8000 });
+      
+      // If composer selectors provided, ensure composer is available
+      if (composerSelectors.length > 0) {
+        console.log('🚦 PAGE_READY: Checking composer availability...');
+        
+        let composerFound = false;
+        for (const selector of composerSelectors) {
+          try {
+            await page.waitForSelector(selector, { timeout: 5000 });
+            composerFound = true;
+            break;
+          } catch {
+            // Try next selector
+          }
+        }
+        
+        if (!composerFound) {
+          console.warn('⚠️ PAGE_READY: Composer not found but continuing...');
+        }
+      }
+      
+      console.log('✅ PAGE_READY: Page is ready for interaction');
+      return true;
+      
+    } catch (error) {
+      console.error('❌ PAGE_READY: Failed to achieve ready state:', (error as Error).message);
+      return false;
     }
   }
 
@@ -279,29 +376,53 @@ class BrowserManager {
   }
 
   /**
-   * Execute function with auto-managed context
+   * Execute function with auto-managed context and recovery
    */
   async withContext<T>(
     kind: 'posting' | 'metrics',
     fn: (context: BrowserContext) => Promise<T>
   ): Promise<T> {
-    let context: BrowserContext | null = null;
+    const maxContextRetries = 2;
+    let lastError: Error | null = null;
     
-    try {
-      context = kind === 'posting' 
-        ? await this.newPostingContext()
-        : await this.newMetricsContext();
+    for (let attempt = 0; attempt < maxContextRetries; attempt++) {
+      let context: BrowserContext | null = null;
       
-      return await fn(context);
-    } finally {
-      if (context) {
-        try {
-          await context.close();
-        } catch (error) {
-          console.warn(`⚠️ Failed to close ${kind} context:`, (error as Error).message);
+      try {
+        context = kind === 'posting' 
+          ? await this.newPostingContext()
+          : await this.newMetricsContext();
+        
+        return await fn(context);
+        
+      } catch (error) {
+        lastError = error as Error;
+        
+        // Check for Target closed errors and attempt recovery
+        if (lastError.message.includes('Target page, context or browser has been closed')) {
+          console.log(`🔄 CONTEXT_RECOVERY: Target closed error on attempt ${attempt + 1}/${maxContextRetries}`);
+          
+          if (attempt < maxContextRetries - 1) {
+            await this.recoverFromTargetClosed();
+            continue; // Retry with new context
+          }
+        }
+        
+        // For other errors or final attempt, don't retry
+        throw lastError;
+        
+      } finally {
+        if (context) {
+          try {
+            await context.close();
+          } catch (error) {
+            console.warn(`⚠️ Failed to close ${kind} context:`, (error as Error).message);
+          }
         }
       }
     }
+    
+    throw lastError || new Error(`Context creation failed after ${maxContextRetries} attempts`);
   }
 
   /**

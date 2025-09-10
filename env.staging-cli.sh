@@ -26,6 +26,12 @@ export DB_SSL_MODE="require"
 # export DB_SSL_ROOT_CERT_PATH="./ops/supabase-ca.crt"
 
 # ==========================================
+# 🎭 BROWSER CONFIGURATION
+# ==========================================
+export BROWSER_PROFILE="standard_railway"
+export BROWSER_CONCURRENCY="1"
+
+# ==========================================
 # 🚀 REDIS CACHE (STAGING)
 # ==========================================
 export REDIS_URL="your_staging_redis_url"
