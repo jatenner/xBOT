@@ -125,7 +125,27 @@ OUTPUT REQUIREMENTS:
       ], {
         temperature: 0.8,
         maxTokens: 800,
-        requestType: 'follower_growth_content'
+        requestType: 'follower_growth_content',
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "follower_growth_payload",
+            schema: {
+              type: "object",
+              additionalProperties: false,
+              required: ["content"],
+              properties: {
+                content: {
+                  type: "array",
+                  items: { type: "string", minLength: 3, maxLength: 400 },
+                  minItems: 3,
+                  maxItems: 8
+                }
+              }
+            },
+            strict: true
+          }
+        }
       });
 
       const rawContent = response.content || response.choices?.[0]?.message?.content;
@@ -394,6 +414,15 @@ Return JSON: {"content": ["tweet1", "tweet2", ...], "viral_score": 80, "engageme
   }
 
   /**
+   * Tiny JSON repair for trailing quotes
+   */
+  private tryRepairJSON(s: string): string {
+    // Close trailing quote/bracket very conservatively
+    if (s.trim().endsWith('"')) s += ']"}';
+    return s;
+  }
+
+  /**
    * Parse and validate JSON response
    */
   private parseAndValidateJSON(content: string): any {
@@ -409,28 +438,37 @@ Return JSON: {"content": ["tweet1", "tweet2", ...], "viral_score": 80, "engageme
       cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
     }
 
+    let parsed: any;
     try {
-      const parsed = JSON.parse(cleanContent);
-      
-      // Validate required fields
-      if (!parsed.content) {
-        throw new Error('Missing required "content" field');
+      parsed = JSON.parse(cleanContent);
+    } catch (firstError: any) {
+      console.warn('🔧 JSON_PARSE_REPAIR: First parse failed, trying repair...');
+      try {
+        const repairedContent = this.tryRepairJSON(cleanContent);
+        parsed = JSON.parse(repairedContent);
+        console.log('✅ JSON_PARSE_REPAIR: Repair successful');
+      } catch (repairError: any) {
+        console.error('🔍 JSON_PARSE_ERROR (original):', firstError.message);
+        console.error('🔍 JSON_REPAIR_ERROR:', repairError.message);
+        console.error('🔍 RAW_CONTENT:', cleanContent.substring(0, 500));
+        throw firstError; // Throw original error
       }
-      
-      if (!Array.isArray(parsed.content)) {
-        throw new Error('"content" must be an array');
-      }
-      
-      if (parsed.content.length === 0) {
-        throw new Error('"content" array cannot be empty');
-      }
-      
-      return parsed;
-    } catch (error: any) {
-      console.error('🔍 JSON_PARSE_ERROR:', error.message);
-      console.error('🔍 RAW_CONTENT:', cleanContent.substring(0, 500));
-      throw error;
     }
+    
+    // Validate required fields
+    if (!parsed.content) {
+      throw new Error('Missing required "content" field');
+    }
+    
+    if (!Array.isArray(parsed.content)) {
+      throw new Error('"content" must be an array');
+    }
+    
+    if (parsed.content.length === 0) {
+      throw new Error('"content" array cannot be empty');
+    }
+    
+    return parsed;
   }
 
   /**

@@ -148,41 +148,16 @@ export class BulletproofTwitterComposer {
    * 🔍 Find composer with comprehensive selector search
    */
   private async findAndPost(content: string): Promise<BulletproofPostResult> {
+    // Updated X/Twitter composer selectors as specified
     const composerSelectors = [
-      // Standard selectors
-      '[data-testid="tweetTextarea_0"]',
-      'div[data-testid="tweetTextarea_0"]',
-      
-      // Role-based selectors
       'div[role="textbox"][contenteditable="true"]',
-      'div[contenteditable="true"][role="textbox"]',
-      'textarea[role="textbox"]',
-      
-      // Content-editable variants
-      'div[contenteditable="true"]',
-      '[contenteditable="true"]',
-      
-      // Aria label variants
-      'div[aria-label*="Post text"]',
-      'div[aria-label*="Tweet text"]',
-      'div[aria-label*="What is happening"]',
-      'div[aria-label*="Share your thoughts"]',
-      'textarea[aria-label*="Post"]',
-      'textarea[placeholder*="What is happening"]',
-      
-      // Data attributes
-      'div[data-text="true"]',
-      '[data-text="true"]',
-      
-      // Class-based fallbacks (less reliable but comprehensive)
-      '.public-DraftEditor-content',
-      '.notranslate',
-      'div[dir="auto"][contenteditable="true"]',
-      
-      // Mobile selectors
-      'textarea[name="text"]',
-      'input[name="text"]',
-      'div[role="textbox"]'
+      'div[data-testid="tweetTextarea_0"] div[contenteditable="true"]',
+      '[data-testid="tweetTextarea_0"] [role="textbox"]'
+    ];
+
+    const tweetButtons = [
+      '[data-testid="tweetButtonInline"]',
+      '[data-testid="tweetButton"]'
     ];
 
     console.log('🔍 COMPOSER_SEARCH: Searching with comprehensive selectors...');
@@ -190,46 +165,44 @@ export class BulletproofTwitterComposer {
     let composer: Locator | null = null;
     let workingSelector = '';
 
-    for (const selector of composerSelectors) {
-      try {
-        console.log(`🔍 Trying: ${selector}`);
-        const element = this.page.locator(selector).first();
-        
-        // Check if element exists and is visible
-        await element.waitFor({ state: 'visible', timeout: 2000 });
-        
-        // Additional check: ensure it's actually editable
-        const isEditable = await element.evaluate((el: any) => {
-          return el.contentEditable === 'true' || 
-                 el.tagName === 'TEXTAREA' || 
-                 el.tagName === 'INPUT';
-        });
-        
-        if (isEditable) {
-          composer = element;
-          workingSelector = selector;
-          console.log(`✅ COMPOSER_FOUND: "${selector}" is editable!`);
-          break;
-        }
-      } catch (e) {
-        continue;
-      }
-    }
-
-    if (!composer) {
+    try {
+      // Use combined selector with waitForSelector as specified
+      const el = await this.page.waitForSelector(composerSelectors.join(', '), { timeout: 8000 });
+      console.log('✅ COMPOSER_FOUND: Element located successfully');
+      
+      // Click with delay as specified
+      await el.click({ delay: 20 });
+      await this.page.waitForTimeout(300);
+      
+      // Type content with delay as specified
+      await el.type(content, { delay: 15 });
+      await this.page.waitForTimeout(500);
+      
+      console.log(`✅ CONTENT_ENTERED: ${content.length} characters typed`);
+      
+      // Find and click tweet button
+      const btn = await this.page.waitForSelector(tweetButtons.join(', '), { timeout: 8000 });
+      console.log('🔍 POST_BUTTON: Found tweet button, clicking...');
+      
+      await btn.click();
+      await this.page.waitForTimeout(2000);
+      
+      console.log('✅ BULLETPROOF_SUCCESS: Post submitted successfully');
+      return { success: true };
+      
+    } catch (error: any) {
+      console.error(`❌ POSTING_ERROR: ${error.message}`);
+      
+      // Keep reply-chain fallback
       return {
         success: false,
-        error: 'No composer element found with any selector'
+        error: error.message
       };
     }
 
-    // Post the content
+    // Legacy fallback code (shouldn't reach here)
+    console.log(`📝 POSTING: Legacy fallback`);
     try {
-      console.log(`📝 POSTING: Using selector "${workingSelector}"`);
-      
-      // Focus and clear
-      await composer.click();
-      await this.page.waitForTimeout(500);
       
       // Try different input methods
       try {
