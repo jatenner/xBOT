@@ -4,7 +4,7 @@
   "description": "Autonomous X (Twitter) bot for Snap2Health with AI-powered content generation",
   "main": "dist/main.js",
   "scripts": {
-    "prestart": "node scripts/migrate.js",
+    "prestart": "echo 'Migration skipped - will run manually'",
     "start": "node dist/main-bulletproof.js",
     "start:bulletproof": "node dist/main-bulletproof.js",
     "postinstall": "echo 'Installation complete'",
