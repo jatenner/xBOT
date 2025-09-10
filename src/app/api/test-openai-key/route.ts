@@ -9,6 +9,17 @@ export async function GET(req: NextRequest) {
   console.log(`[${requestId}] 🔍 Testing OpenAI API key validity`);
   console.log(`[${requestId}] OpenAI Key present:`, !!process.env.OPENAI_API_KEY);
   
+  // PIPELINE TESTS GATE: Skip in production to prevent budget drain
+  if (process.env.PIPELINE_TESTS_ENABLED !== 'true') {
+    console.log(`[${requestId}] ⏭️ Pipeline tests disabled - skipping OpenAI test`);
+    return NextResponse.json({
+      skipped: true,
+      reason: 'pipeline_tests_disabled',
+      requestId,
+      message: 'OpenAI test skipped to preserve budget'
+    });
+  }
+  
   try {
     // Validate API key
     if (!process.env.OPENAI_API_KEY) {

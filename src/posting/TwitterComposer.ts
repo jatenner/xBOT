@@ -2,8 +2,12 @@ import { Page, Locator } from 'playwright';
 
 export const SELECTORS = {
   composer: [
-    'div[role="textbox"][data-testid="tweetTextarea_0"]',
+    // Prioritize the exact selectors specified for X/Twitter
     'div[role="textbox"][contenteditable="true"]',
+    'div[data-testid="tweetTextarea_0"] div[contenteditable="true"]',
+    '[data-testid="tweetTextarea_0"] [role="textbox"]',
+    // Fallback selectors
+    'div[role="textbox"][data-testid="tweetTextarea_0"]',
     '[data-testid="tweetTextarea_0-label"] ~ div[role="textbox"]',
     'div.DraftEditor-root div[contenteditable="true"]',
     '[data-testid="tweetTextarea_0"]',

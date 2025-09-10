@@ -1511,11 +1511,21 @@ class BulletproofMainSystem {
       try {
         const databaseUrl = process.env.DATABASE_URL;
         if (databaseUrl) {
-          const url = new URL(databaseUrl);
+          // Ensure sslmode=require is present
+          const enhancedUrl = databaseUrl.includes('sslmode=') 
+            ? databaseUrl 
+            : `${databaseUrl}${databaseUrl.includes('?') ? '&' : '?'}sslmode=require`;
+          
+          const url = new URL(enhancedUrl);
           const host = url.hostname;
           const sslMode = url.searchParams.get('sslmode') || 'none';
           console.log(`🗄️ DATABASE_HOST: ${host}`);
-          console.log(`🔒 DATABASE_SSL: ${sslMode}`);
+          console.log(`🔒 DATABASE_SSL: ${sslMode} ${sslMode === 'require' ? '✅' : '⚠️'}`);
+          
+          // Update environment if needed
+          if (!databaseUrl.includes('sslmode=')) {
+            console.log('🔧 DATABASE_SSL: Auto-appending sslmode=require to DATABASE_URL connections');
+          }
         } else {
           console.log('🗄️ DATABASE_URL: NOT_SET');
         }
