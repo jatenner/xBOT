@@ -185,7 +185,7 @@ export class CostTracker {
         throw rpcError;
       }
 
-      console.log(`💰 COST_LOG: RPC success $${record.cost_usd.toFixed(4)} (${record.model}) [${insertId}]`);
+      console.log(`💰 COST_LOG_RPC_OK id=${insertId}`);
 
     } catch (rpcError: any) {
       // Enhanced fallback handling
@@ -193,11 +193,7 @@ export class CostTracker {
                            rpcError.message?.includes('Function not found') ||
                            rpcError.code === 'PGRST202';
       
-      if (isRpcNotFound) {
-        console.warn('💰 RPC_FALLBACK: Function not found, trying direct table insert');
-      } else {
-        console.warn(`💰 RPC_FALLBACK: ${rpcError.message}, trying direct table insert`);
-      }
+      console.warn('💰 RPC_FALLBACK');
       
       try {
         // Bulletproof insert with clean payload
@@ -222,13 +218,11 @@ export class CostTracker {
           throw insertError;
         }
 
-        console.log(`💰 COST_LOG: Direct insert succeeded $${record.cost_usd.toFixed(4)} (${record.model})`);
+        console.log('💰 TABLE_INSERT_OK');
 
       } catch (insertError: any) {
         // Log but NEVER break posting pipeline
-        console.error('💰 COST_LOG_FAILED: Both RPC and table insert failed - continuing anyway');
-        console.error(`💰 RPC_ERROR: ${rpcError.message}`);
-        console.error(`💰 INSERT_ERROR: ${insertError.message}`);
+        console.error('💰 TABLE_INSERT_FAILED with sanitized message');
         // Critical: Don't throw - let posting continue
       }
     }
@@ -266,14 +260,15 @@ export class CostTracker {
   /**
    * 🚫 CHECK BUDGET OR THROW
    */
-  async checkBudgetOrThrow(): Promise<void> {
+  async checkBudgetOrThrow(projectedCost: number = 0): Promise<void> {
     if (!COST_TRACKER_ENABLED || !COST_TRACKER_STRICT) {
       return;
     }
 
     const status = await this.getBudgetStatus();
+    const projectedTotal = status.today_spend + projectedCost;
     
-    if (status.blocked || status.today_spend >= status.limit) {
+    if (status.blocked || projectedTotal >= status.limit) {
       const today = this.getTodayKey();
       
       // Set Redis block flag
@@ -281,9 +276,9 @@ export class CostTracker {
         await this.redis.setex(`${REDIS_PREFIX}openai_blocked:${today}`, REDIS_BUDGET_TTL_SECONDS, 'true');
       }
 
-      console.error(`🚫 DAILY_LIMIT_REACHED: $${status.today_spend.toFixed(2)} used / $${status.limit.toFixed(2)} limit – blocking OpenAI calls until rollover (TZ=${COST_TRACKER_ROLLOVER_TZ})`);
+      console.error(`🚫 DAILY_LIMIT_REACHED: ${today} current=${status.today_spend.toFixed(2)} projected=${projectedTotal.toFixed(2)} limit=${status.limit.toFixed(2)}`);
       
-      throw new DailyBudgetExceededError(status.today_spend, status.limit, today);
+      throw new DailyBudgetExceededError(projectedTotal, status.limit, today);
     }
   }
 
@@ -409,14 +404,14 @@ export class CostTracker {
   }
 
   /**
-   * 🔄 WRAP OPENAI CALL with budget enforcement
+   * 🔄 WRAP OPENAI CALL with budget enforcement and optimizer
    */
   async wrapOpenAI<T>(
     intent: string,
+    model: string,
     fn: () => Promise<T>,
     options: {
       estimatedCost?: number;
-      model?: string;
     } = {}
   ): Promise<T | { skipped: true; reason: string }> {
     if (!COST_TRACKER_ENABLED) {
@@ -424,8 +419,16 @@ export class CostTracker {
     }
 
     try {
-      // Pre-check budget
-      await this.checkBudgetOrThrow();
+      // Get budget optimizer decision first
+      const optimizer = await import('./budgetOptimizer');
+      const optimizerDecision = await optimizer.budgetOptimizer.optimize(intent);
+      
+      // Log optimizer decision
+      console.log(`🧠 BUDGET_OPTIMIZER: intent=${intent} model=${optimizerDecision.recommendedModel} max_tokens=${optimizerDecision.maxCostPerCall * 1000} reason="${optimizerDecision.reasoning}"`);
+      
+      // Pre-check budget with estimated cost
+      const estimatedCost = options.estimatedCost || 0.01; // Conservative default
+      await this.checkBudgetOrThrow(estimatedCost);
 
       // Execute OpenAI call
       const result = await fn();
@@ -433,7 +436,7 @@ export class CostTracker {
       // Extract usage and record cost
       if (result && typeof result === 'object' && 'usage' in result) {
         const usage = (result as any).usage;
-        const model = options.model || 'gpt-3.5-turbo';
+        // Model is now passed as parameter, not in options
         
         const cost = this.estimateCost({
           model,
@@ -453,6 +456,9 @@ export class CostTracker {
           raw: { usage, intent }
         });
 
+        // Log cost tracking
+        console.log(`💰 COST_TRACKER: ${intent} ${model} $${cost.toFixed(4)} (${usage?.prompt_tokens || 0}+${usage?.completion_tokens || 0} tokens)`);
+
         // Update Redis counter
         const newTotal = await this.redisIncrementToday(cost);
 
@@ -462,7 +468,7 @@ export class CostTracker {
           if (this.redis) {
             await this.redis.setex(`${REDIS_PREFIX}openai_blocked:${today}`, REDIS_BUDGET_TTL_SECONDS, 'true');
           }
-          console.warn(`🚫 DAILY_LIMIT_REACHED: $${newTotal.toFixed(2)} used / $${DAILY_COST_LIMIT_USD} limit – blocking further calls`);
+          console.warn(`🚫 DAILY_LIMIT_REACHED: ${today} current=${newTotal.toFixed(2)} projected=${newTotal.toFixed(2)} limit=${DAILY_COST_LIMIT_USD.toFixed(2)}`);
         }
       }
 
