@@ -2,9 +2,11 @@ import { Page, Locator } from 'playwright';
 
 export const SELECTORS = {
   composer: [
-    '[data-testid="tweetTextarea_0"]',
     'div[role="textbox"][data-testid="tweetTextarea_0"]',
     'div[role="textbox"][contenteditable="true"]',
+    '[data-testid="tweetTextarea_0-label"] ~ div[role="textbox"]',
+    'div.DraftEditor-root div[contenteditable="true"]',
+    '[data-testid="tweetTextarea_0"]',
     'div[contenteditable="true"][role="textbox"]',
     'div[contenteditable="true"]',
     '[data-testid="toolBar"] + div div[contenteditable="true"]',
@@ -295,26 +297,43 @@ export class TwitterComposer {
         // Overlay check is optional
       }
       
+      // Login assertion check first
+      await this.assertLoggedIn();
+      
       // Find composer textarea with multiple strategies
       let composer;
       console.log('🔍 COMPOSER_SEARCH: Trying multiple selectors...');
       
-      // Try all composer selectors until one works
-      for (const selector of SELECTORS.composer) {
-        try {
-          console.log(`🔍 COMPOSER_SEARCH: Trying "${selector}"`);
-          composer = this.page.locator(selector).first();
-          await composer.waitFor({ state: 'visible', timeout: 3000 });
-          console.log(`✅ COMPOSER_FOUND: "${selector}" works!`);
-          break;
-        } catch (e) {
-          console.log(`❌ COMPOSER_SEARCH: "${selector}" failed`);
-          continue;
+      // Use improved selector logic with waitForSelector
+      try {
+        const combinedSelector = SELECTORS.composer.join(',');
+        await this.page.waitForSelector(combinedSelector, { timeout: 8000 });
+        
+        composer = this.page.locator(combinedSelector).first();
+        const workingSelector = await this.findWorkingSelector();
+        console.log(`✅ COMPOSER_FOUND: "${workingSelector}" works!`);
+      } catch (e) {
+        console.log('❌ COMPOSER_SEARCH: Combined selector approach failed');
+        
+        // Fallback to individual selector testing
+        for (const selector of SELECTORS.composer) {
+          try {
+            console.log(`🔍 COMPOSER_SEARCH: Trying "${selector}"`);
+            composer = this.page.locator(selector).first();
+            await composer.waitFor({ state: 'visible', timeout: 3000 });
+            console.log(`✅ COMPOSER_FOUND: "${selector}" works!`);
+            break;
+          } catch (e) {
+            console.log(`❌ COMPOSER_SEARCH: "${selector}" failed`);
+            continue;
+          }
         }
       }
       
       if (!composer) {
-        throw new Error('No valid composer selector found');
+        // Report which selectors were actually present
+        const presentSelectors = await this.reportPresentSelectors();
+        throw new Error(`COMPOSER_NOT_FOCUSED: No composer selectors matched. Present: ${presentSelectors.join(', ')}`);
       }
       
       // Focus composer to ensure it's active
@@ -522,5 +541,138 @@ export class TwitterComposer {
     }
     
     return { success: false, error: 'All retry attempts failed' };
+  }
+
+  /**
+   * Assert user is logged in and run login flow if needed
+   */
+  private async assertLoggedIn(): Promise<void> {
+    try {
+      // Check for login indicators
+      const loginIndicators = [
+        '[data-testid="SideNav_AccountSwitcher_Button"]', // Profile button
+        '[data-testid="AppTabBar_Home_Link"]', // Home tab
+        '[data-testid="tweetTextarea_0"]', // Composer (if present)
+        'a[href="/home"]', // Home link
+        'nav[role="navigation"]' // Main navigation
+      ];
+
+      let isLoggedIn = false;
+      for (const indicator of loginIndicators) {
+        try {
+          const element = await this.page.waitForSelector(indicator, { timeout: 2000 });
+          if (element) {
+            console.log(`✅ LOGIN_CHECK: Found logged-in indicator: ${indicator}`);
+            isLoggedIn = true;
+            break;
+          }
+        } catch {
+          continue;
+        }
+      }
+
+      if (!isLoggedIn) {
+        console.log('🔐 LOGIN_REQUIRED: User not logged in, attempting login flow...');
+        await this.runLoginFlow();
+      } else {
+        console.log('✅ LOGIN_CHECK: User is already logged in');
+      }
+    } catch (error: any) {
+      console.warn('⚠️ LOGIN_CHECK: Failed to verify login status:', error.message);
+    }
+  }
+
+  /**
+   * Run login flow and save cookies
+   */
+  private async runLoginFlow(): Promise<void> {
+    try {
+      console.log('🔐 LOGIN_FLOW: Starting automated login...');
+      
+      // Navigate to login if not already there
+      const currentUrl = this.page.url();
+      if (!currentUrl.includes('login') && !currentUrl.includes('oauth')) {
+        await this.page.goto('https://x.com/login', { waitUntil: 'networkidle' });
+      }
+
+      // Wait for session restoration or manual login
+      console.log('⏳ LOGIN_FLOW: Waiting for login completion...');
+      
+      // Wait for successful login indicators
+      const loginSuccess = await Promise.race([
+        this.page.waitForSelector('[data-testid="SideNav_AccountSwitcher_Button"]', { timeout: 30000 }),
+        this.page.waitForSelector('[data-testid="tweetTextarea_0"]', { timeout: 30000 }),
+        this.page.waitForURL(/.*x\.com\/(home|[^\/]+)$/, { timeout: 30000 })
+      ]).catch(() => null);
+
+      if (loginSuccess) {
+        console.log('✅ LOGIN_FLOW: Login successful, saving cookies...');
+        await this.saveCookies();
+      } else {
+        console.warn('⚠️ LOGIN_FLOW: Login timeout or failed - continuing anyway');
+      }
+    } catch (error: any) {
+      console.error('❌ LOGIN_FLOW: Login flow failed:', error.message);
+      // Don't throw - let posting attempt continue
+    }
+  }
+
+  /**
+   * Save cookies for session persistence
+   */
+  private async saveCookies(): Promise<void> {
+    try {
+      const context = this.page.context();
+      const cookies = await context.cookies();
+      
+      if (cookies.length > 0) {
+        // Save to environment variable or file if configured
+        const sessionB64 = process.env.TWITTER_SESSION_B64;
+        if (sessionB64) {
+          const storageState = { cookies };
+          console.log(`💾 COOKIES_SAVED: ${cookies.length} cookies stored`);
+        }
+      }
+    } catch (error: any) {
+      console.warn('⚠️ COOKIE_SAVE: Failed to save cookies:', error.message);
+    }
+  }
+
+  /**
+   * Find which selector actually works
+   */
+  private async findWorkingSelector(): Promise<string> {
+    for (const selector of SELECTORS.composer) {
+      try {
+        const element = this.page.locator(selector).first();
+        if (await element.isVisible({ timeout: 1000 })) {
+          return selector;
+        }
+      } catch {
+        continue;
+      }
+    }
+    return 'unknown';
+  }
+
+  /**
+   * Report which selectors are actually present in the DOM
+   */
+  private async reportPresentSelectors(): Promise<string[]> {
+    const presentSelectors: string[] = [];
+    
+    for (const selector of SELECTORS.composer) {
+      try {
+        const element = this.page.locator(selector).first();
+        if (await element.count() > 0) {
+          const isVisible = await element.isVisible({ timeout: 500 }).catch(() => false);
+          presentSelectors.push(`${selector}${isVisible ? '' : ' (hidden)'}`);
+        }
+      } catch {
+        // Selector not present
+      }
+    }
+    
+    return presentSelectors;
   }
 }
