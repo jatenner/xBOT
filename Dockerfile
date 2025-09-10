@@ -18,6 +18,9 @@ COPY package*.json ./
 # Install dependencies
 RUN npm ci --only=production
 
+# Install Playwright browsers (Chromium)
+RUN npx playwright install --with-deps chromium
+
 # Copy application code
 COPY . .
 

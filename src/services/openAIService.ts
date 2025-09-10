@@ -168,7 +168,7 @@ export class OpenAIService {
 
       // ATOMIC BUDGET GATE: Check before every LLM call
       const { ensureBudget, commitCost } = await import('../budget/atomicBudgetGate');
-      await ensureBudget(estimatedCost, requestType);
+      await ensureBudget(requestType, estimatedCost);
 
       // Make the OpenAI request with hard budget enforcement
       const startTime = Date.now();
@@ -199,7 +199,7 @@ export class OpenAIService {
           response.usage?.prompt_tokens || 0, 
           response.usage?.completion_tokens || 0
         );
-        await commitCost(actualCost, requestType);
+        await commitCost(requestType, actualCost);
         
         // Log to Supabase for analytics with service role
         try {

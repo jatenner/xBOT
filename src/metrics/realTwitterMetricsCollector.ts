@@ -89,6 +89,13 @@ export class RealTwitterMetricsCollector {
       return null;
     }
 
+    // Check if browser is available
+    const { isBrowserEnabled } = await import('../lib/browser');
+    if (!isBrowserEnabled()) {
+      console.log(`🚫 REAL_METRICS: Disabled for ${tweetId} - browser unavailable`);
+      return null;
+    }
+
     console.log(`📊 REAL_COLLECTION: Collecting ${phase} metrics for ${tweetId}`);
 
     try {

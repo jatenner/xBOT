@@ -77,7 +77,11 @@ const { Client } = require('pg');
       await new Promise(resolve => setTimeout(resolve, 2000));
     }
     
-    console.log('DB_SCHEMA_OK');
+    if (appliedCount > 0) {
+      console.log(`✅ MIGRATIONS: completed successfully (${appliedCount} applied)`);
+    } else {
+      console.log(`✅ MIGRATIONS: no-op (already applied)`);
+    }
   } finally {
     await client.end();
   }
