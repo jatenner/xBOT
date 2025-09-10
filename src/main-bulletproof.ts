@@ -1490,6 +1490,17 @@ class BulletproofMainSystem {
     try {
       console.log('📊 SYSTEM_SANITY: Logging startup configuration...');
       
+      // Log feature flags
+      const { logFeatureFlags } = await import('./config/featureFlags');
+      logFeatureFlags();
+      
+      // Log atomic budget status
+      const { getBudgetStatus } = await import('./budget/atomicBudgetGate');
+      const budgetStatus = await getBudgetStatus();
+      console.log(`💰 BUDGET_KEY: ${budgetStatus.key}`);
+      console.log(`💰 BUDGET_STATUS: $${budgetStatus.current.toFixed(4)} / $${budgetStatus.limit.toFixed(4)} (${budgetStatus.remaining.toFixed(4)} remaining)`);
+      console.log(`🛡️ BUDGET_GATE: ENABLED`);
+      
       // 1. Redis key and current spend
       try {
         const { getTodayKey, getBudgetStatus } = await import('./budget/budgetGate');
@@ -1559,6 +1570,18 @@ class BulletproofMainSystem {
     try {
       console.log('🧪 DB_HEALTH: Testing pre-posting insert capability...');
       
+      // Use new service role client
+      const { testDatabaseConnection } = await import('./db/supabaseService');
+      const result = await testDatabaseConnection();
+      
+      if (result.success) {
+        console.log('✅ DB_HEALTH: Service role insert test successful');
+        return;
+      } else {
+        console.error('❌ DB_HEALTH: Service role test failed:', result.error);
+      }
+      
+      // Fallback to old test
       const { admin } = await import('./lib/supabaseClients');
       
       // Test insert into openai_usage_log table (the failing table)

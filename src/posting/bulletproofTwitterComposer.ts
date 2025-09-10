@@ -145,25 +145,10 @@ export class BulletproofTwitterComposer {
   }
 
   /**
-   * 🔍 Find composer with comprehensive selector search
+   * 🔍 Find composer with comprehensive selector search - BOUNDED RETRIES ONLY
    */
   private async findAndPost(content: string): Promise<BulletproofPostResult> {
-    // Updated X/Twitter composer selectors as specified
-    const composerSelectors = [
-      'div[role="textbox"][contenteditable="true"]',
-      'div[data-testid="tweetTextarea_0"] div[contenteditable="true"]',
-      '[data-testid="tweetTextarea_0"] [role="textbox"]'
-    ];
-
-    const tweetButtons = [
-      '[data-testid="tweetButtonInline"]',
-      '[data-testid="tweetButton"]'
-    ];
-
-    console.log('🔍 COMPOSER_SEARCH: Searching with comprehensive selectors...');
-    
-    let composer: Locator | null = null;
-    let workingSelector = '';
+    console.log('🔍 COMPOSER_SEARCH: Using bounded retries with current X/Twitter selectors...');
 
     // BOUNDED RETRIES: Maximum 2 attempts, no reply-chain fallback
     for (let attempt = 1; attempt <= 2; attempt++) {
@@ -232,57 +217,6 @@ export class BulletproofTwitterComposer {
       success: false,
       error: 'COMPOSER_NOT_AVAILABLE'
     };
-
-    // Legacy fallback code (shouldn't reach here)
-    console.log(`📝 POSTING: Legacy fallback`);
-    try {
-      
-      // Try different input methods
-      try {
-        await composer.fill('');
-        await composer.fill(content);
-      } catch (e) {
-        // Fallback to typing
-        await composer.click();
-        await this.page.keyboard.press('Control+a');
-        await this.page.keyboard.type(content);
-      }
-      
-      // Verify content
-      const enteredText = await composer.inputValue().catch(() => 
-        composer.innerText().catch(() => '')
-      );
-      
-      if (!enteredText || enteredText.length < content.length * 0.8) {
-        throw new Error(`Content verification failed. Expected: ${content.length}, Got: ${enteredText?.length || 0}`);
-      }
-      
-      console.log(`✅ CONTENT_VERIFIED: ${enteredText.length} characters entered`);
-      
-      // Find and click post button
-      const postResult = await this.findAndClickPostButton();
-      if (!postResult.success) {
-        return postResult;
-      }
-      
-      // Wait for posting success
-      await this.page.waitForTimeout(3000);
-      
-      // Try to extract tweet ID
-      const tweetId = await this.extractTweetId();
-      
-      return {
-        success: true,
-        tweetId: tweetId || `posted_${Date.now()}`,
-        strategy: workingSelector
-      };
-      
-    } catch (error: any) {
-      return {
-        success: false,
-        error: `Posting failed: ${error.message}`
-      };
-    }
   }
 
   /**
