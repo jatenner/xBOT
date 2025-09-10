@@ -1484,6 +1484,65 @@ class BulletproofMainSystem {
   }
 
   /**
+   * 📊 LOG SYSTEM SANITY AT STARTUP
+   */
+  private async logSystemSanity(): Promise<void> {
+    try {
+      console.log('📊 SYSTEM_SANITY: Logging startup configuration...');
+      
+      // 1. Redis key and current spend
+      try {
+        const { getTodayKey, getBudgetStatus } = await import('./budget/budgetGate');
+        const todayKey = await getTodayKey();
+        const budgetStatus = await getBudgetStatus();
+        
+        console.log(`💰 BUDGET_KEY: ${todayKey}`);
+        console.log(`💰 BUDGET_STATUS: $${budgetStatus.spent} / $${budgetStatus.limit} (${budgetStatus.remaining} remaining)`);
+        console.log(`🛡️ BUDGET_GATE: ${budgetStatus.hitLimit ? 'LOCKED' : 'ENABLED'}`);
+      } catch (budgetError: any) {
+        console.warn('⚠️ BUDGET_SANITY_FAILED:', budgetError.message);
+      }
+      
+      // 2. Service role key presence
+      const hasServiceRole = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+      console.log(`🔐 SERVICE_ROLE_KEY: ${hasServiceRole ? 'PRESENT' : 'MISSING'}`);
+      
+      // 3. Database URL and SSL mode
+      try {
+        const databaseUrl = process.env.DATABASE_URL;
+        if (databaseUrl) {
+          const url = new URL(databaseUrl);
+          const host = url.hostname;
+          const sslMode = url.searchParams.get('sslmode') || 'none';
+          console.log(`🗄️ DATABASE_HOST: ${host}`);
+          console.log(`🔒 DATABASE_SSL: ${sslMode}`);
+        } else {
+          console.log('🗄️ DATABASE_URL: NOT_SET');
+        }
+      } catch (dbError: any) {
+        console.warn('⚠️ DATABASE_SANITY_FAILED:', dbError.message);
+      }
+      
+      // 4. Migration runner SSL mode
+      try {
+        const { DatabaseUrlResolver } = await import('./db/databaseUrlResolver');
+        const dbConfig = DatabaseUrlResolver.buildDatabaseConfig();
+        console.log(`🔧 MIGRATION_SSL: ${dbConfig.sslMode} (Pooler: ${dbConfig.usingPoolerHost}, CA: ${dbConfig.usingRootCA})`);
+      } catch (migrationError: any) {
+        console.warn('⚠️ MIGRATION_SANITY_FAILED:', migrationError.message);
+      }
+      
+      // 5. Environment flags
+      console.log(`🚫 POSTING_DISABLED: ${process.env.POSTING_DISABLED || 'false'}`);
+      console.log(`💸 DISABLE_LLM_WHEN_BUDGET_HIT: ${process.env.DISABLE_LLM_WHEN_BUDGET_HIT || 'false'}`);
+      
+      console.log('✅ SYSTEM_SANITY: Configuration logged successfully');
+    } catch (error: any) {
+      console.error('❌ SYSTEM_SANITY_ERROR:', error.message);
+    }
+  }
+
+  /**
    * 🧪 TEST PRE-POSTING DB INSERT
    */
   private async testPrePostingDBInsert(): Promise<void> {
@@ -1549,6 +1608,17 @@ class BulletproofMainSystem {
   private async runStartupHealthCheck(): Promise<void> {
     try {
       console.log('🏥 HEALTH_CHECK: Running startup system audit...');
+      
+      // Add sanity logs first
+      await this.logSystemSanity();
+      
+      // Ensure API usage table exists
+      try {
+        const { ensureApiUsageTable } = await import('./lib/supabaseService');
+        await ensureApiUsageTable();
+      } catch (tableError: any) {
+        console.warn('⚠️ API_USAGE_TABLE_SETUP_FAILED:', tableError.message);
+      }
       
       const healthResult = await quickHealthCheck();
       

@@ -134,6 +134,24 @@ export class EnhancedContentGenerator {
     const prompt = this.buildGenerationPrompt(topic, format, hook_type, voice_style);
     
     try {
+      // BUDGET GATE: Check before every LLM call
+      if (process.env.DISABLE_LLM_WHEN_BUDGET_HIT === 'true') {
+        try { 
+          const { budgetCheckOrThrow } = await import('../budget/budgetGate');
+          await budgetCheckOrThrow(); 
+        } catch { 
+          return {
+            id: `budget_skip_${Date.now()}_${index}`,
+            text: this.getFallbackContent(topic, hook_type),
+            format,
+            hook_type,
+            scores: { hook_strength: 0, novelty: 0, clarity: 0, shareability: 0, overall: 0 },
+            critique: 'Skipped due to budget limit',
+            created_at: new Date()
+          };
+        }
+      }
+
       const response = await this.openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
@@ -149,6 +167,11 @@ export class EnhancedContentGenerator {
         temperature: 0.8,
         max_tokens: format === 'thread' ? 800 : 400
       });
+
+      // Add cost to budget
+      const { budgetAdd } = await import('../budget/budgetGate');
+      const cost = this.estimateCost(response.usage?.prompt_tokens || 0, response.usage?.completion_tokens || 0);
+      await budgetAdd(cost);
 
       const content = response.choices[0]?.message?.content || '';
       const { text, thread_parts } = this.parseContent(content, format);
@@ -489,6 +512,16 @@ You create content that positions the account as a trusted health authority, not
     const selectedTopic = fallbackTopics[Math.floor(Math.random() * fallbackTopics.length)];
     console.log(`🎯 TOPIC_SELECTION: Using fallback topic "${selectedTopic}"`);
     return selectedTopic;
+  }
+
+  /**
+   * Estimate cost for OpenAI usage
+   */
+  private estimateCost(promptTokens: number, completionTokens: number): number {
+    // gpt-4o-mini pricing: $0.00015/1K prompt, $0.0006/1K completion
+    const promptCost = (promptTokens / 1000) * 0.00015;
+    const completionCost = (completionTokens / 1000) * 0.0006;
+    return promptCost + completionCost;
   }
 
   /**

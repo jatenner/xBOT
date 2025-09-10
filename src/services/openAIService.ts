@@ -99,6 +99,7 @@ export class OpenAIService {
       maxTokens?: number;
       requestType?: string;
       priority?: 'high' | 'medium' | 'low';
+      response_format?: any;
     } = {}
   ): Promise<any> {
     let {
@@ -106,7 +107,8 @@ export class OpenAIService {
       temperature = 0.7,
       maxTokens = 2000,
       requestType = 'general',
-      priority = 'medium'
+      priority = 'medium',
+      response_format
     } = options;
 
     console.log(`🤖 OPENAI_SERVICE: ${requestType} request (${model}, priority: ${priority})`);
@@ -137,16 +139,52 @@ export class OpenAIService {
         throw new Error(`Request exceeds optimized cost limit: $${estimatedCost.toFixed(4)} > $${optimization.maxCostPerCall.toFixed(4)}`);
       }
 
+      // BUDGET GATE: Check before every LLM call
+      const { budgetCheckOrThrow, budgetAdd } = await import('../budget/budgetGate');
+      await budgetCheckOrThrow();
+
       // Make the OpenAI request with hard budget enforcement
       const startTime = Date.now();
       const response = await newCostTracker.wrapOpenAI(requestType, model, async () => {
-        return await this.openai.chat.completions.create({
+        const createParams: any = {
           model,
           messages,
           temperature,
           max_tokens: optimization.allowExpensive ? maxTokens : Math.min(maxTokens, 150)
-        });
+        };
+        
+        // Add response_format if provided
+        if (response_format) {
+          createParams.response_format = response_format;
+        }
+        
+        return await this.openai.chat.completions.create(createParams);
       }, { estimatedCost });
+
+      // Add actual cost to budget after successful call
+      if (response && !('skipped' in response)) {
+        const actualCost = this.calculateCost(model, 
+          response.usage?.prompt_tokens || 0, 
+          response.usage?.completion_tokens || 0
+        );
+        await budgetAdd(actualCost);
+        console.log(`💰 REDIS_BUDGET: $${actualCost.toFixed(4)} added (${requestType})`);
+        
+        // Log to Supabase for analytics
+        try {
+          const { insertApiUsage } = await import('../lib/supabaseService');
+          await insertApiUsage({
+            intent: requestType,
+            model,
+            tokens_prompt: response.usage?.prompt_tokens || 0,
+            tokens_completion: response.usage?.completion_tokens || 0,
+            usd: actualCost
+          });
+        } catch (logError: any) {
+          console.warn('⚠️ API_USAGE_LOG_FAILED:', logError.message);
+          // Don't throw - logging failure shouldn't break posting
+        }
+      }
 
       // Check if request was skipped due to budget
       if (response && typeof response === 'object' && 'skipped' in response) {
