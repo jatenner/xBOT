@@ -134,23 +134,9 @@ export class EnhancedContentGenerator {
     const prompt = this.buildGenerationPrompt(topic, format, hook_type, voice_style);
     
     try {
-      // BUDGET GATE: Check before every LLM call
-      if (process.env.DISABLE_LLM_WHEN_BUDGET_HIT === 'true') {
-        try { 
-          const { budgetCheckOrThrow } = await import('../budget/budgetGate');
-          await budgetCheckOrThrow(); 
-        } catch { 
-          return {
-            id: `budget_skip_${Date.now()}_${index}`,
-            text: this.getFallbackContent(topic, hook_type),
-            format,
-            hook_type,
-            scores: { hook_strength: 0, novelty: 0, clarity: 0, shareability: 0, overall: 0 },
-            critique: 'Skipped due to budget limit',
-            created_at: new Date()
-          };
-        }
-      }
+      // ATOMIC BUDGET GATE: Check before every LLM call
+      const { ensureBudget } = await import('../budget/atomicBudgetGate');
+      await ensureBudget('content_generation', this.estimateCost(200, 400));
 
       const response = await this.openai.chat.completions.create({
         model: 'gpt-4o-mini',
@@ -168,10 +154,10 @@ export class EnhancedContentGenerator {
         max_tokens: format === 'thread' ? 800 : 400
       });
 
-      // Add cost to budget
-      const { budgetAdd } = await import('../budget/budgetGate');
+      // Commit actual cost to budget
+      const { commitCost } = await import('../budget/atomicBudgetGate');
       const cost = this.estimateCost(response.usage?.prompt_tokens || 0, response.usage?.completion_tokens || 0);
-      await budgetAdd(cost);
+      await commitCost('content_generation', cost);
 
       const content = response.choices[0]?.message?.content || '';
       const { text, thread_parts } = this.parseContent(content, format);

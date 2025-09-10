@@ -1,148 +1,266 @@
 /**
- * 🔐 SUPABASE SERVICE ROLE CLIENT
- * Dedicated service role client for database writes that bypass RLS
+ * Supabase Service - Service role client for secure database operations
+ * Bypasses RLS and provides detailed error logging
  */
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-let supabaseService: SupabaseClient | null = null;
-let supabaseAnon: SupabaseClient | null = null;
-
-/**
- * Get service role client (bypasses RLS)
- */
-export function getSupabaseService(): SupabaseClient {
-  if (!supabaseService) {
-    const url = process.env.SUPABASE_URL;
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    
-    if (!url || !serviceKey) {
-      throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
-    }
-    
-    supabaseService = createClient(url, serviceKey, {
-      auth: { persistSession: false },
-      global: { fetch }
-    });
-    
-    console.log('✅ SUPABASE_SERVICE: Service role client initialized');
-  }
-  
-  return supabaseService;
-}
-
-/**
- * Get anon client (respects RLS)
- */
-export function getSupabaseAnon(): SupabaseClient {
-  if (!supabaseAnon) {
-    const url = process.env.SUPABASE_URL;
-    const anonKey = process.env.SUPABASE_ANON_KEY;
-    
-    if (!url || !anonKey) {
-      throw new Error('Missing SUPABASE_URL or SUPABASE_ANON_KEY');
-    }
-    
-    supabaseAnon = createClient(url, anonKey, {
-      auth: { persistSession: false },
-      global: { fetch }
-    });
-    
-    console.log('✅ SUPABASE_ANON: Anonymous client initialized');
-  }
-  
-  return supabaseAnon;
-}
-
-/**
- * Insert API usage record with detailed error logging
- */
-export async function insertApiUsage(record: {
+interface ApiUsageRecord {
   intent: string;
   model: string;
   prompt_tokens: number;
   completion_tokens: number;
   cost_usd: number;
   meta?: Record<string, any>;
-}): Promise<{ success: boolean; data?: any; error?: string }> {
-  try {
-    const service = getSupabaseService();
+}
+
+interface DatabaseResult<T = any> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  details?: {
+    code?: string;
+    message?: string;
+    details?: string;
+    hint?: string;
+  };
+}
+
+let supaService: SupabaseClient | null = null;
+
+/**
+ * Initialize service role client (bypasses RLS)
+ */
+function getServiceClient(): SupabaseClient {
+  if (!supaService) {
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     
-    const insertData = {
-      created_at: new Date().toISOString(),
-      intent: record.intent,
-      model: record.model,
-      prompt_tokens: record.prompt_tokens,
-      completion_tokens: record.completion_tokens,
-      total_tokens: record.prompt_tokens + record.completion_tokens,
-      cost_usd: record.cost_usd,
-      meta: record.meta || {}
+    if (!supabaseUrl || !serviceRoleKey) {
+      throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables');
+    }
+    
+    supaService = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { persistSession: false },
+      global: {
+        headers: {
+          'x-connection-source': 'service-role-client'
+        }
+      }
+    });
+    
+    console.log('✅ SUPABASE_SERVICE: Service role client initialized');
+  }
+  
+  return supaService;
+}
+
+/**
+ * Ensure api_usage table exists with proper schema
+ */
+export async function ensureApiUsageTable(): Promise<DatabaseResult> {
+  try {
+    const client = getServiceClient();
+    
+    // Test if table exists by attempting a simple query
+    const { error: testError } = await client
+      .from('api_usage')
+      .select('id')
+      .limit(1);
+    
+    if (testError && testError.code === 'PGRST116') {
+      // Table doesn't exist, create it
+      const createTableSQL = `
+        CREATE TABLE IF NOT EXISTS public.api_usage (
+          id BIGSERIAL PRIMARY KEY,
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          intent TEXT NOT NULL,
+          model TEXT NOT NULL,
+          prompt_tokens INTEGER DEFAULT 0,
+          completion_tokens INTEGER DEFAULT 0,
+          total_tokens INTEGER GENERATED ALWAYS AS (prompt_tokens + completion_tokens) STORED,
+          cost_usd DECIMAL(10,6) NOT NULL,
+          meta JSONB DEFAULT '{}'::jsonb
+        );
+        
+        -- Set table owner
+        ALTER TABLE public.api_usage OWNER TO postgres;
+        
+        -- Enable RLS
+        ALTER TABLE public.api_usage ENABLE ROW LEVEL SECURITY;
+        
+        -- Create permissive policy for authenticated users (service role bypasses this)
+        DROP POLICY IF EXISTS "insert_api_usage" ON public.api_usage;
+        CREATE POLICY "insert_api_usage" ON public.api_usage
+          FOR INSERT TO authenticated WITH CHECK (true);
+      `;
+      
+      const { error: createError } = await client.rpc('exec_sql', { 
+        sql: createTableSQL 
+      });
+      
+      if (createError) {
+        console.error('❌ TABLE_CREATE_FAILED:', createError);
+        return { 
+          success: false, 
+          error: 'Failed to create api_usage table',
+          details: createError
+        };
+      }
+      
+      console.log('✅ API_USAGE_TABLE: Created successfully');
+    }
+    
+    // Test insert to verify table works
+    const testRecord: ApiUsageRecord = {
+      intent: 'table_health_check',
+      model: 'test',
+      prompt_tokens: 0,
+      completion_tokens: 0,
+      cost_usd: 0,
+      meta: { test: true, timestamp: new Date().toISOString() }
     };
     
-    const { data, error } = await service
+    const { data, error: insertError } = await client
       .from('api_usage')
-      .insert([insertData])
+      .insert(testRecord)
       .select()
       .single();
     
-    if (error) {
-      console.error('API_USAGE_INSERT_FAILED', {
-        code: error.code,
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        insertData
+    if (insertError) {
+      console.error('❌ TABLE_TEST_INSERT_FAILED:', {
+        code: insertError.code,
+        message: insertError.message,
+        details: insertError.details,
+        hint: insertError.hint
       });
-      return { success: false, error: error.message };
+      return {
+        success: false,
+        error: 'Table test insert failed',
+        details: {
+          code: insertError.code,
+          message: insertError.message,
+          details: insertError.details,
+          hint: insertError.hint
+        }
+      };
     }
     
-    console.log(`💾 API_USAGE_LOGGED: ${record.intent} ${record.model} $${record.cost_usd.toFixed(6)} (id: ${data.id})`);
-    return { success: true, data };
+    // Clean up test record
+    await client
+      .from('api_usage')
+      .delete()
+      .eq('id', data.id);
+    
+    console.log('✅ API_USAGE_TABLE: Test insert successful');
+    return { success: true, data: 'Table ready' };
     
   } catch (error: any) {
-    console.error('API_USAGE_INSERT_ERROR:', {
-      message: error.message,
-      stack: error.stack?.substring(0, 200)
-    });
-    return { success: false, error: error.message };
+    console.error('❌ ENSURE_TABLE_ERROR:', error.message);
+    return {
+      success: false,
+      error: error.message,
+      details: { message: error.message }
+    };
   }
 }
 
 /**
- * Test database connectivity
+ * Insert API usage record with detailed error handling
  */
-export async function testDatabaseConnection(): Promise<{ success: boolean; error?: string }> {
+export async function insertApiUsage(record: ApiUsageRecord): Promise<DatabaseResult> {
   try {
-    const service = getSupabaseService();
+    const client = getServiceClient();
     
-    // Test insert
-    const testData = {
-      intent: 'test_connection',
-      model: 'test-model',
-      prompt_tokens: 1,
-      completion_tokens: 1,
-      cost_usd: 0.000001,
-      meta: { test: true }
-    };
-    
-    const { data, error } = await service
+    const { data, error } = await client
       .from('api_usage')
-      .insert([testData])
+      .insert(record)
       .select()
       .single();
     
     if (error) {
-      return { success: false, error: error.message };
+      console.error('❌ API_USAGE_INSERT_FAILED:', {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        record_intent: record.intent
+      });
+      
+      return {
+        success: false,
+        error: 'Database insert failed',
+        details: {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint
+        }
+      };
+    }
+    
+    console.log(`📊 API_USAGE_LOGGED: ${record.intent} $${record.cost_usd.toFixed(4)}`);
+    return { success: true, data };
+    
+  } catch (error: any) {
+    console.error('❌ INSERT_API_USAGE_ERROR:', error.message);
+    return {
+      success: false,
+      error: error.message,
+      details: { message: error.message }
+    };
+  }
+}
+
+/**
+ * Test database connection and table functionality
+ */
+export async function testDatabaseConnection(): Promise<DatabaseResult> {
+  try {
+    // First ensure table exists
+    const tableResult = await ensureApiUsageTable();
+    if (!tableResult.success) {
+      return tableResult;
+    }
+    
+    // Test actual insert/delete cycle
+    const testRecord: ApiUsageRecord = {
+      intent: 'connection_test',
+      model: 'test_model',
+      prompt_tokens: 10,
+      completion_tokens: 5,
+      cost_usd: 0.001,
+      meta: { 
+        test: true, 
+        timestamp: new Date().toISOString(),
+        connection_test: true
+      }
+    };
+    
+    const insertResult = await insertApiUsage(testRecord);
+    if (!insertResult.success) {
+      return insertResult;
     }
     
     // Clean up test record
-    await service.from('api_usage').delete().eq('id', data.id);
+    const client = getServiceClient();
+    await client
+      .from('api_usage')
+      .delete()
+      .eq('id', insertResult.data.id);
     
-    console.log('✅ DATABASE_TEST: Connection successful');
-    return { success: true };
+    return { 
+      success: true, 
+      data: 'Service role client and api_usage table working correctly' 
+    };
     
   } catch (error: any) {
-    console.error('❌ DATABASE_TEST: Connection failed:', error.message);
-    return { success: false, error: error.message };
+    return {
+      success: false,
+      error: error.message,
+      details: { message: error.message }
+    };
   }
 }
+
+export { supaService };

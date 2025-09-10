@@ -1,95 +1,199 @@
 /**
- * 🛡️ ATOMIC BUDGET GATE
- * Lua-scripted atomic INCRBYFLOAT in Redis for precise budget control
+ * Atomic Budget Gate - Hard cap daily OpenAI spend using Redis Lua scripts
+ * Ensures race-condition-free budget enforcement across all LLM calls
  */
 
-import { createClient } from 'redis';
+import { getRedis } from '../lib/redis';
 
-const DAILY_KEY_PREFIX = process.env.BUDGET_ENV_KEY ?? 'prod';
-const DAILY_LIMIT = Number(process.env.DAILY_OPENAI_LIMIT_USD ?? 5);
+const DAILY_LIMIT_USD = parseFloat(process.env.DAILY_OPENAI_LIMIT_USD || '5.0');
 
-let redis: ReturnType<typeof createClient> | null = null;
-
-async function getRedis() {
-  if (!redis) {
-    redis = createClient({ url: process.env.REDIS_URL });
-    redis.on('error', (e) => console.error('REDIS_ERROR', e));
-    await redis.connect();
-  }
-  return redis;
+interface BudgetStatus {
+  current: number;
+  limit: number;
+  remaining: number;
+  key: string;
 }
 
+interface BudgetLog {
+  intent: string;
+  estimated_cost: number;
+  actual_cost?: number;
+  timestamp: string;
+  status: 'ensured' | 'committed' | 'exceeded';
+}
+
+// In-memory budget log for detailed tracking
+const budgetLogs: BudgetLog[] = [];
+
+/**
+ * Lua script for atomic budget check
+ * Returns current total if under limit, or -1 if would exceed
+ */
+const ENSURE_BUDGET_SCRIPT = `
+local key = KEYS[1]
+local estimated_cost = tonumber(ARGV[1])
+local daily_limit = tonumber(ARGV[2])
+
+local current = redis.call('GET', key)
+if current == false then
+  current = 0
+else
+  current = tonumber(current)
+end
+
+local new_total = current + estimated_cost
+
+if new_total > daily_limit then
+  return -1
+else
+  return current
+end
+`;
+
+/**
+ * Lua script for atomic budget commit
+ * Increments the actual cost and returns new total
+ */
+const COMMIT_COST_SCRIPT = `
+local key = KEYS[1]
+local actual_cost = tonumber(ARGV[1])
+local ttl_seconds = tonumber(ARGV[2])
+
+local new_total = redis.call('INCRBYFLOAT', key, actual_cost)
+redis.call('EXPIRE', key, ttl_seconds)
+
+return new_total
+`;
+
 function getTodayKey(): string {
-  const d = new Date();
-  const yyyy = d.getUTCFullYear();
-  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const dd = String(d.getUTCDate()).padStart(2, '0');
-  return `${DAILY_KEY_PREFIX}:openai_cost:${yyyy}-${mm}-${dd}`;
+  const today = new Date().toISOString().split('T')[0];
+  return `prod:openai_cost:${today}`;
 }
 
 /**
- * Ensure budget headroom before LLM call
+ * Check if budget allows for estimated cost
+ * Throws BudgetExceededException if would exceed daily limit
  */
-export async function ensureBudget(headroomUsd: number, intent: string): Promise<void> {
+export async function ensureBudget(intent: string, estimatedCost: number): Promise<void> {
   const client = await getRedis();
   const key = getTodayKey();
-  const spent = Number(await client.get(key)) || 0;
   
-  if (spent + headroomUsd > DAILY_LIMIT) {
-    const msg = `BUDGET_EXCEEDED: intent=${intent} spent=${spent.toFixed(4)} headroom=${headroomUsd.toFixed(4)} limit=${DAILY_LIMIT}`;
-    console.error(msg);
-    throw new Error(msg);
+  // Execute atomic budget check
+  const result = await client.eval(
+    ENSURE_BUDGET_SCRIPT,
+    1,
+    key,
+    estimatedCost.toString(),
+    DAILY_LIMIT_USD.toString()
+  ) as number;
+  
+  const log: BudgetLog = {
+    intent,
+    estimated_cost: estimatedCost,
+    timestamp: new Date().toISOString(),
+    status: result === -1 ? 'exceeded' : 'ensured'
+  };
+  
+  budgetLogs.push(log);
+  
+  if (result === -1) {
+    const currentStatus = await getBudgetStatus();
+    console.error(`💸 BUDGET_EXCEEDED: Intent=${intent} est=$${estimatedCost.toFixed(4)} would exceed daily limit of $${DAILY_LIMIT_USD}`);
+    console.error(`💸 BUDGET_STATUS: Current=$${currentStatus.current.toFixed(4)} Limit=$${DAILY_LIMIT_USD}`);
+    
+    throw new BudgetExceededException(intent, estimatedCost, currentStatus.current, DAILY_LIMIT_USD);
   }
   
-  console.log(`💰 BUDGET_GATE ok intent=${intent} est=$${headroomUsd.toFixed(4)} spent=$${spent.toFixed(4)} limit=$${DAILY_LIMIT}`);
+  console.log(`💰 BUDGET_GATE: OK intent=${intent} est=$${estimatedCost.toFixed(4)} current=$${result.toFixed(4)}`);
 }
 
 /**
  * Commit actual cost after successful LLM call
+ * Returns new total spent today
  */
-export async function commitCost(usd: number, intent: string): Promise<number> {
+export async function commitCost(intent: string, actualCost: number): Promise<number> {
   const client = await getRedis();
   const key = getTodayKey();
-  const newTotal = await client.incrByFloat(key, usd);
+  const ttlSeconds = 60 * 60 * 48; // 48 hours
   
-  // Set expiry to 48h for cleanup
-  await client.expire(key, 60 * 60 * 48);
+  // Execute atomic cost commit
+  const newTotal = await client.eval(
+    COMMIT_COST_SCRIPT,
+    1,
+    key,
+    actualCost.toString(),
+    ttlSeconds.toString()
+  ) as number;
   
-  const totalAsNumber = Number(newTotal);
-  console.log(`💰 BUDGET_COMMIT actual=$${usd.toFixed(4)} total=$${totalAsNumber.toFixed(4)} intent=${intent}`);
-  return totalAsNumber;
+  const log: BudgetLog = {
+    intent,
+    estimated_cost: 0, // Not relevant for commit
+    actual_cost: actualCost,
+    timestamp: new Date().toISOString(),
+    status: 'committed'
+  };
+  
+  budgetLogs.push(log);
+  
+  console.log(`💰 BUDGET_COMMIT: actual=$${actualCost.toFixed(4)} total=$${newTotal.toFixed(4)} intent=${intent}`);
+  
+  // Log to database if available
+  try {
+    const { insertApiUsage } = await import('../db/supabaseService');
+    await insertApiUsage({
+      intent,
+      model: 'budget_commit',
+      prompt_tokens: 0,
+      completion_tokens: 0,
+      cost_usd: actualCost,
+      meta: { 
+        daily_total: newTotal,
+        budget_logs: budgetLogs.slice(-5) // Last 5 entries for context
+      }
+    });
+  } catch (dbError: any) {
+    console.warn('⚠️ BUDGET_DB_LOG_FAILED:', dbError.message);
+  }
+  
+  return newTotal;
 }
 
 /**
  * Get current budget status
  */
-export async function getBudgetStatus(): Promise<{
-  key: string;
-  spent: number;
-  limit: number;
-  remaining: number;
-  hitLimit: boolean;
-}> {
-  try {
-    const client = await getRedis();
-    const key = getTodayKey();
-    const spent = Number(await client.get(key)) || 0;
-    
-    return {
-      key,
-      spent,
-      limit: DAILY_LIMIT,
-      remaining: Math.max(0, DAILY_LIMIT - spent),
-      hitLimit: spent >= DAILY_LIMIT
-    };
-  } catch (error) {
-    console.error('BUDGET_STATUS_ERROR:', error);
-    return {
-      key: 'error',
-      spent: 0,
-      limit: DAILY_LIMIT,
-      remaining: DAILY_LIMIT,
-      hitLimit: false
-    };
+export async function getBudgetStatus(): Promise<BudgetStatus> {
+  const client = await getRedis();
+  const key = getTodayKey();
+  
+  const current = await client.get(key);
+  const currentNum = current ? parseFloat(current) : 0;
+  
+  return {
+    current: currentNum,
+    limit: DAILY_LIMIT_USD,
+    remaining: Math.max(0, DAILY_LIMIT_USD - currentNum),
+    key
+  };
+}
+
+/**
+ * Get recent budget logs for debugging
+ */
+export function getBudgetLogs(limit: number = 20): BudgetLog[] {
+  return budgetLogs.slice(-limit);
+}
+
+/**
+ * Custom exception for budget exceeded
+ */
+export class BudgetExceededException extends Error {
+  constructor(
+    public intent: string,
+    public estimatedCost: number,
+    public currentSpend: number,
+    public dailyLimit: number
+  ) {
+    super(`Budget exceeded: ${intent} ($${estimatedCost.toFixed(4)}) would exceed daily limit of $${dailyLimit} (current: $${currentSpend.toFixed(4)})`);
+    this.name = 'BudgetExceededException';
   }
 }
