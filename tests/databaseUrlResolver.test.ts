@@ -1,132 +1,207 @@
-/**
- * 🧪 DATABASE URL RESOLVER TESTS
- */
+const { DatabaseUrlResolver } = require('../src/db/databaseUrlResolver');
+const fs = require('fs');
 
-import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
+// Mock fs module
+jest.mock('fs');
 
-describe('Database URL Resolver', () => {
+describe('DatabaseUrlResolver', () => {
   let originalEnv: NodeJS.ProcessEnv;
 
   beforeEach(() => {
-    // Save original environment
     originalEnv = { ...process.env };
-    
-    // Clear relevant env vars
+    // Clear environment
     delete process.env.DATABASE_URL;
-    delete process.env.SUPABASE_URL;
+    delete process.env.DB_SSL_MODE;
+    delete process.env.DB_SSL_ROOT_CERT_PATH;
     delete process.env.SUPABASE_DB_PASSWORD;
-    delete process.env.APP_ENV;
-    delete process.env.STAGING_PROJECT_REF;
-    delete process.env.PRODUCTION_PROJECT_REF;
-    delete process.env.PROJECT_REF;
+    delete process.env.SUPABASE_URL;
+    
+    // Reset mocks
+    jest.clearAllMocks();
   });
 
   afterEach(() => {
-    // Restore original environment
     process.env = originalEnv;
   });
 
-  test('uses existing DATABASE_URL when provided', () => {
-    process.env.DATABASE_URL = 'postgresql://test:pass@host:5432/db';
-    
-    const { MigrationRunner } = require('../src/db/migrations');
-    const runner = new MigrationRunner();
-    
-    // Should not attempt to build URL when DATABASE_URL is present
-    expect(process.env.DATABASE_URL).toBe('postgresql://test:pass@host:5432/db');
+  describe('SSL Mode Configuration', () => {
+    it('should add sslmode=require when missing from DATABASE_URL', () => {
+      process.env.DATABASE_URL = 'postgresql://user:pass@host:5432/db';
+      
+      const config = DatabaseUrlResolver.buildDatabaseConfig();
+      
+      expect(config.connectionString).toBe('postgresql://user:pass@host:5432/db?sslmode=require');
+      expect(config.sslMode).toBe('require');
+      expect(config.ssl.rejectUnauthorized).toBe(true);
+    });
+
+    it('should not modify DATABASE_URL when sslmode already present', () => {
+      process.env.DATABASE_URL = 'postgresql://user:pass@host:5432/db?sslmode=disable';
+      
+      const config = DatabaseUrlResolver.buildDatabaseConfig();
+      
+      expect(config.connectionString).toBe('postgresql://user:pass@host:5432/db?sslmode=disable');
+    });
+
+    it('should honor DB_SSL_MODE=no-verify', () => {
+      process.env.DATABASE_URL = 'postgresql://user:pass@host:5432/db';
+      process.env.DB_SSL_MODE = 'no-verify';
+      
+      const config = DatabaseUrlResolver.buildDatabaseConfig();
+      
+      expect(config.connectionString).toBe('postgresql://user:pass@host:5432/db?sslmode=no-verify');
+      expect(config.sslMode).toBe('no-verify');
+      expect(config.ssl.rejectUnauthorized).toBe(false);
+    });
   });
 
-  test('builds URL from SUPABASE_URL and password', () => {
-    process.env.SUPABASE_URL = 'https://abc123.supabase.co';
-    process.env.SUPABASE_DB_PASSWORD = 'test_password';
-    
-    const { MigrationRunner } = require('../src/db/migrations');
-    const runner = new MigrationRunner();
-    
-    const result = runner.buildDatabaseUrl();
-    expect(result).toBe('postgresql://postgres:test_password@db.abc123.supabase.co:5432/postgres');
+  describe('Root CA Certificate Handling', () => {
+    it('should use root CA when DB_SSL_ROOT_CERT_PATH exists', () => {
+      process.env.DATABASE_URL = 'postgresql://user:pass@host:5432/db';
+      process.env.DB_SSL_ROOT_CERT_PATH = '/path/to/ca.crt';
+      
+      fs.existsSync.mockReturnValue(true);
+      fs.readFileSync.mockReturnValue('-----BEGIN CERTIFICATE-----\ntest-cert\n-----END CERTIFICATE-----');
+      
+      const config = DatabaseUrlResolver.buildDatabaseConfig();
+      
+      expect(config.ssl.ca).toBe('-----BEGIN CERTIFICATE-----\ntest-cert\n-----END CERTIFICATE-----');
+      expect(config.ssl.rejectUnauthorized).toBe(true);
+      expect(config.usingRootCA).toBe(true);
+    });
+
+    it('should fallback when root CA file does not exist', () => {
+      process.env.DATABASE_URL = 'postgresql://user:pass@host:5432/db';
+      process.env.DB_SSL_ROOT_CERT_PATH = '/nonexistent/ca.crt';
+      
+      fs.existsSync.mockReturnValue(false);
+      
+      const config = DatabaseUrlResolver.buildDatabaseConfig();
+      
+      expect(config.ssl.ca).toBeUndefined();
+      expect(config.ssl.rejectUnauthorized).toBe(true);
+      expect(config.usingRootCA).toBe(false);
+    });
+
+    it('should fallback when root CA file read fails', () => {
+      process.env.DATABASE_URL = 'postgresql://user:pass@host:5432/db';
+      process.env.DB_SSL_ROOT_CERT_PATH = '/path/to/ca.crt';
+      
+      fs.existsSync.mockReturnValue(true);
+      fs.readFileSync.mockImplementation(() => {
+        throw new Error('Permission denied');
+      });
+      
+      const config = DatabaseUrlResolver.buildDatabaseConfig();
+      
+      expect(config.ssl.ca).toBeUndefined();
+      expect(config.ssl.rejectUnauthorized).toBe(true);
+      expect(config.usingRootCA).toBe(false);
+    });
   });
 
-  test('uses staging project ref when APP_ENV=staging', () => {
-    process.env.APP_ENV = 'staging';
-    process.env.SUPABASE_DB_PASSWORD = 'test_password';
-    process.env.STAGING_PROJECT_REF = 'staging123';
-    
-    const { MigrationRunner } = require('../src/db/migrations');
-    const runner = new MigrationRunner();
-    
-    const result = runner.buildDatabaseUrl();
-    expect(result).toBe('postgresql://postgres:test_password@db.staging123.supabase.co:5432/postgres');
+  describe('Pooler Detection', () => {
+    it('should detect Supabase Session Pooler', () => {
+      process.env.DATABASE_URL = 'postgresql://postgres:pass@aws-0-us-east-1.pooler.supabase.com:5432/postgres';
+      
+      const config = DatabaseUrlResolver.buildDatabaseConfig();
+      
+      expect(config.usingPoolerHost).toBe(true);
+    });
+
+    it('should detect transaction pooler', () => {
+      process.env.DATABASE_URL = 'postgresql://postgres:pass@host.db.pooler.supabase.com:5432/postgres';
+      
+      const config = DatabaseUrlResolver.buildDatabaseConfig();
+      
+      expect(config.usingPoolerHost).toBe(true);
+    });
+
+    it('should not detect pooler for direct connection', () => {
+      process.env.DATABASE_URL = 'postgresql://postgres:pass@db.project.supabase.co:5432/postgres';
+      
+      const config = DatabaseUrlResolver.buildDatabaseConfig();
+      
+      expect(config.usingPoolerHost).toBe(false);
+    });
   });
 
-  test('uses production project ref when APP_ENV=production', () => {
-    process.env.APP_ENV = 'production';
-    process.env.SUPABASE_DB_PASSWORD = 'test_password';
-    process.env.PRODUCTION_PROJECT_REF = 'prod123';
-    
-    const { MigrationRunner } = require('../src/db/migrations');
-    const runner = new MigrationRunner();
-    
-    const result = runner.buildDatabaseUrl();
-    expect(result).toBe('postgresql://postgres:test_password@db.prod123.supabase.co:5432/postgres');
+  describe('Error Guidance', () => {
+    it('should provide TLS certificate guidance', () => {
+      const error = new Error('self-signed certificate in certificate chain');
+      
+      const guidance = DatabaseUrlResolver.getConnectionErrorGuidance(error);
+      
+      expect(guidance).toContain('TLS Certificate Error');
+      expect(guidance).toContain('DB_SSL_ROOT_CERT_PATH');
+      expect(guidance).toContain('DB_SSL_MODE=no-verify');
+    });
+
+    it('should provide network guidance for IPv6 errors', () => {
+      const error = new Error('ENETUNREACH');
+      
+      const guidance = DatabaseUrlResolver.getConnectionErrorGuidance(error);
+      
+      expect(guidance).toContain('Network Error');
+      expect(guidance).toContain('Session Pooler');
+      expect(guidance).toContain('pooler.supabase.com');
+    });
+
+    it('should provide auth guidance for password errors', () => {
+      const error = new Error('password authentication failed');
+      
+      const guidance = DatabaseUrlResolver.getConnectionErrorGuidance(error);
+      
+      expect(guidance).toContain('Auth Error');
+      expect(guidance).toContain('SUPABASE_DB_PASSWORD');
+    });
+
+    it('should provide timeout guidance for connection timeouts', () => {
+      const error = new Error('connection timeout');
+      
+      const guidance = DatabaseUrlResolver.getConnectionErrorGuidance(error);
+      
+      expect(guidance).toContain('Connection Timeout');
+      expect(guidance).toContain('Session Pooler');
+    });
   });
 
-  test('falls back to PROJECT_REF when env-specific ref not found', () => {
-    process.env.APP_ENV = 'development';
-    process.env.SUPABASE_DB_PASSWORD = 'test_password';
-    process.env.PROJECT_REF = 'fallback123';
-    
-    const { MigrationRunner } = require('../src/db/migrations');
-    const runner = new MigrationRunner();
-    
-    const result = runner.buildDatabaseUrl();
-    expect(result).toBe('postgresql://postgres:test_password@db.fallback123.supabase.co:5432/postgres');
-  });
+  describe('Legacy URL Building', () => {
+    it('should build URL from SUPABASE_URL and password', () => {
+      process.env.SUPABASE_URL = 'https://abc123.supabase.co';
+      process.env.SUPABASE_DB_PASSWORD = 'secret123';
+      
+      const config = DatabaseUrlResolver.buildDatabaseConfig();
+      
+      expect(config.connectionString).toContain('postgresql://postgres:secret123@aws-0-us-east-1.pooler.supabase.com:5432/postgres');
+      expect(config.usingPoolerHost).toBe(true);
+    });
 
-  test('returns null when no password provided', () => {
-    process.env.APP_ENV = 'production';
-    process.env.PRODUCTION_PROJECT_REF = 'prod123';
-    // No password
-    
-    const { MigrationRunner } = require('../src/db/migrations');
-    const runner = new MigrationRunner();
-    
-    const result = runner.buildDatabaseUrl();
-    expect(result).toBeNull();
-  });
+    it('should build URL from APP_ENV specific project ref', () => {
+      process.env.APP_ENV = 'staging';
+      process.env.STAGING_PROJECT_REF = 'staging-ref-123';
+      process.env.SUPABASE_DB_PASSWORD = 'secret123';
+      
+      const config = DatabaseUrlResolver.buildDatabaseConfig();
+      
+      expect(config.connectionString).toContain('postgresql://postgres:secret123@aws-0-us-east-1.pooler.supabase.com:5432/postgres');
+      expect(config.usingPoolerHost).toBe(true);
+    });
 
-  test('returns null when no project ref found', () => {
-    process.env.SUPABASE_DB_PASSWORD = 'test_password';
-    // No project refs
-    
-    const { MigrationRunner } = require('../src/db/migrations');
-    const runner = new MigrationRunner();
-    
-    const result = runner.buildDatabaseUrl();
-    expect(result).toBeNull();
-  });
+    it('should fallback to generic PROJECT_REF', () => {
+      process.env.PROJECT_REF = 'generic-ref-123';
+      process.env.SUPABASE_DB_PASSWORD = 'secret123';
+      
+      const config = DatabaseUrlResolver.buildDatabaseConfig();
+      
+      expect(config.connectionString).toContain('postgresql://postgres:secret123@aws-0-us-east-1.pooler.supabase.com:5432/postgres');
+      expect(config.usingPoolerHost).toBe(true);
+    });
 
-  test('prefers SUPABASE_URL over project refs', () => {
-    process.env.SUPABASE_URL = 'https://direct123.supabase.co';
-    process.env.SUPABASE_DB_PASSWORD = 'test_password';
-    process.env.PRODUCTION_PROJECT_REF = 'prod123'; // Should be ignored
-    
-    const { MigrationRunner } = require('../src/db/migrations');
-    const runner = new MigrationRunner();
-    
-    const result = runner.buildDatabaseUrl();
-    expect(result).toBe('postgresql://postgres:test_password@db.direct123.supabase.co:5432/postgres');
-  });
-
-  test('defaults APP_ENV to production', () => {
-    // No APP_ENV set
-    process.env.SUPABASE_DB_PASSWORD = 'test_password';
-    process.env.PRODUCTION_PROJECT_REF = 'prod123';
-    
-    const { MigrationRunner } = require('../src/db/migrations');
-    const runner = new MigrationRunner();
-    
-    const result = runner.buildDatabaseUrl();
-    expect(result).toBe('postgresql://postgres:test_password@db.prod123.supabase.co:5432/postgres');
+    it('should throw when no DATABASE_URL and missing password', () => {
+      delete process.env.SUPABASE_DB_PASSWORD;
+      
+      expect(() => DatabaseUrlResolver.buildDatabaseConfig()).toThrow('DATABASE_URL required');
+    });
   });
 });

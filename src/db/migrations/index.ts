@@ -7,6 +7,7 @@ import { createClient } from '@supabase/supabase-js';
 import { Client } from 'pg';
 import fs from 'fs';
 import path from 'path';
+import { DatabaseUrlResolver } from '../databaseUrlResolver';
 
 interface MigrationRecord {
   filename: string;
@@ -20,9 +21,19 @@ export class MigrationRunner {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
   private pgClient: Client | null = null;
+  private migrationHealth: {
+    lastRunAt: Date | null;
+    success: boolean;
+    error: string | null;
+  } = {
+    lastRunAt: null,
+    success: true,
+    error: null
+  };
 
   async run(): Promise<void> {
     console.log('📊 MIGRATIONS: Starting automatic migration runner...');
+    this.migrationHealth.lastRunAt = new Date();
 
     try {
       // Initialize PG client for DDL operations
@@ -58,40 +69,49 @@ export class MigrationRunner {
         console.log(`✅ MIGRATIONS: All ${skippedCount} migrations already applied`);
       }
       
+      this.migrationHealth.success = true;
+      this.migrationHealth.error = null;
+      
     } catch (error: any) {
-      console.error('❌ MIGRATIONS: Failed to run migrations:', error.message);
-      throw error;
+      const errorMessage = error.message;
+      this.migrationHealth.success = false;
+      this.migrationHealth.error = errorMessage;
+      
+      console.error('❌ MIGRATIONS: Failed to run migrations:', errorMessage);
+      
+      // In production, set degraded health but don't crash the process
+      if (process.env.APP_ENV === 'production') {
+        console.warn('🚨 MIGRATIONS: Continuing with degraded health - check /status endpoint');
+      } else {
+        throw error;
+      }
+      
     } finally {
       await this.cleanup();
     }
   }
 
   private async initPgClient(): Promise<void> {
-    let databaseUrl = process.env.DATABASE_URL;
-    
-    // Smart DATABASE_URL resolver with APP_ENV support
-    if (!databaseUrl) {
-      databaseUrl = this.buildDatabaseUrl();
+    try {
+      // Use enhanced database config with SSL support
+      const dbConfig = DatabaseUrlResolver.buildDatabaseConfig();
+      
+      this.pgClient = new Client({ 
+        connectionString: dbConfig.connectionString,
+        ssl: dbConfig.ssl
+      });
+      
+      await this.pgClient.connect();
+      
+      const poolerStatus = dbConfig.usingPoolerHost ? ' (Session Pooler)' : '';
+      const sslStatus = dbConfig.usingRootCA ? ' with Root CA' : ` (${dbConfig.sslMode})`;
+      console.log(`📊 MIGRATIONS: Connected to PostgreSQL${poolerStatus}${sslStatus}`);
+      
+    } catch (error) {
+      const guidance = DatabaseUrlResolver.getConnectionErrorGuidance(error as Error);
+      console.error(`❌ MIGRATIONS: Connection failed - ${guidance}`);
+      throw error;
     }
-    
-    if (!databaseUrl) {
-      throw new Error('DATABASE_URL required for migrations. Ensure DATABASE_URL is set OR provide SUPABASE_DB_PASSWORD with either SUPABASE_URL or valid PROJECT_REF variables.');
-    }
-
-    // Enhance URL for Session Pooler if needed
-    if (!databaseUrl.includes('sslmode=')) {
-      databaseUrl += databaseUrl.includes('?') ? '&sslmode=require' : '?sslmode=require';
-    }
-    
-    this.pgClient = new Client({ 
-      connectionString: databaseUrl,
-      ssl: {
-        rejectUnauthorized: false // Required for managed Postgres
-      }
-    });
-    
-    await this.pgClient.connect();
-    console.log('📊 MIGRATIONS: Connected to PostgreSQL Session Pooler');
   }
 
   private buildDatabaseUrl(): string | null {
@@ -231,6 +251,13 @@ export class MigrationRunner {
     if (this.pgClient) {
       await this.pgClient.end();
     }
+  }
+
+  /**
+   * Get migration health status for health endpoints
+   */
+  getMigrationHealth() {
+    return { ...this.migrationHealth };
   }
 }
 

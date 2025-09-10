@@ -55,3 +55,8 @@ browsers/
 
 # Session files (contain authentication cookies)
 data/twitter_session.json
+
+# SSL certificates (mount these via Railway or local file system)
+ops/supabase-ca.crt
+*.crt
+*.pem

@@ -9,6 +9,7 @@ import { SessionLoader } from './utils/sessionLoader';
 import { systemMetrics } from './monitoring/SystemMetrics';
 import { costTracker as newCostTracker } from './services/costTracker';
 import { budgetOptimizer } from './services/budgetOptimizer';
+import { DatabaseUrlResolver } from './db/databaseUrlResolver';
 
 export interface HealthServerStatus {
   server?: any;
@@ -128,12 +129,30 @@ export function startHealthServer(): Promise<void> {
           runtimePanel.dbSchemaOk = false;
         }
 
+        // Get migration health status
+        let migrations = { lastRunAt: null, success: true, error: null };
+        try {
+          const { migrationRunner } = await import('./db/migrations');
+          migrations = migrationRunner.getMigrationHealth();
+        } catch (error) {
+          migrations = { 
+            lastRunAt: null, 
+            success: false, 
+            error: 'MigrationRunner unavailable' 
+          };
+        }
+
         res.json({
           status: healthServerStatus.botStatus,
           playwright: healthServerStatus.playwrightStatus,
           postingLock,
           browser,
           runtime: runtimePanel,
+          migrations: {
+            lastRunAt: migrations.lastRunAt,
+            success: migrations.success,
+            error: migrations.error
+          },
           timestamp: new Date().toISOString(),
           uptime: Math.floor(uptime / 1000),
           uptime_human: `${Math.floor(uptime / 60000)}m ${Math.floor((uptime % 60000) / 1000)}s`,
@@ -173,6 +192,19 @@ export function startHealthServer(): Promise<void> {
         let twitterStatus = 'not_checked';
         let twitterInfo = {};
 
+        // Get database SSL configuration
+        let dbConfig;
+        try {
+          dbConfig = DatabaseUrlResolver.buildDatabaseConfig();
+        } catch (error) {
+          dbConfig = {
+            sslMode: 'unknown',
+            usingRootCA: false,
+            usingPoolerHost: false,
+            error: (error as Error).message
+          };
+        }
+
         res.json({
           valid,
           missing_required: missing,
@@ -180,6 +212,12 @@ export function startHealthServer(): Promise<void> {
           playwright: healthServerStatus.playwrightStatus,
           twitter_config: twitterStatus,
           twitter_info: twitterInfo,
+          db: {
+            sslMode: dbConfig.sslMode,
+            usingRootCA: dbConfig.usingRootCA,
+            usingPoolerHost: dbConfig.usingPoolerHost,
+            error: dbConfig.error || null
+          },
           message: valid ? 'Environment configured correctly' : `Missing ${missing.length} required variables`
         });
       } catch (error) {
