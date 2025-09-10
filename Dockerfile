@@ -21,6 +21,11 @@ RUN npm ci --only=production
 # Copy application code
 COPY . .
 
+# Ensure critical directories are present
+RUN mkdir -p supabase/migrations scripts
+COPY supabase/migrations/ ./supabase/migrations/
+COPY scripts/ ./scripts/
+
 # Build application
 RUN npm run build
 

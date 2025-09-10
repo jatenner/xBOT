@@ -40,7 +40,7 @@ const { Client } = require('pg');
       );
     `);
 
-    const dir = path.join(process.cwd(), 'migrations');
+    const dir = path.join(process.cwd(), 'supabase/migrations');
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }

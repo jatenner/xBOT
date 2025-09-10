@@ -25,45 +25,7 @@ interface BudgetLog {
 // In-memory budget log for detailed tracking
 const budgetLogs: BudgetLog[] = [];
 
-/**
- * Lua script for atomic budget check
- * Returns current total if under limit, or -1 if would exceed
- */
-const ENSURE_BUDGET_SCRIPT = `
-local key = KEYS[1]
-local estimated_cost = tonumber(ARGV[1])
-local daily_limit = tonumber(ARGV[2])
-
-local current = redis.call('GET', key)
-if current == false then
-  current = 0
-else
-  current = tonumber(current)
-end
-
-local new_total = current + estimated_cost
-
-if new_total > daily_limit then
-  return -1
-else
-  return current
-end
-`;
-
-/**
- * Lua script for atomic budget commit
- * Increments the actual cost and returns new total
- */
-const COMMIT_COST_SCRIPT = `
-local key = KEYS[1]
-local actual_cost = tonumber(ARGV[1])
-local ttl_seconds = tonumber(ARGV[2])
-
-local new_total = redis.call('INCRBYFLOAT', key, actual_cost)
-redis.call('EXPIRE', key, ttl_seconds)
-
-return new_total
-`;
+// Note: Using simple Redis operations instead of Lua scripts for compatibility with SafeRedisClient
 
 function getTodayKey(): string {
   const today = new Date().toISOString().split('T')[0];
@@ -75,36 +37,32 @@ function getTodayKey(): string {
  * Throws BudgetExceededException if would exceed daily limit
  */
 export async function ensureBudget(intent: string, estimatedCost: number): Promise<void> {
-  const client = await getRedis();
+  const client = getRedis();
   const key = getTodayKey();
   
-  // Execute atomic budget check
-  const result = await client.eval(
-    ENSURE_BUDGET_SCRIPT,
-    1,
-    key,
-    estimatedCost.toString(),
-    DAILY_LIMIT_USD.toString()
-  ) as number;
+  // Get current budget (simple atomic operation)
+  const currentStr = await client.get(key);
+  const current = currentStr ? parseFloat(currentStr) : 0;
+  
+  const newTotal = current + estimatedCost;
   
   const log: BudgetLog = {
     intent,
     estimated_cost: estimatedCost,
     timestamp: new Date().toISOString(),
-    status: result === -1 ? 'exceeded' : 'ensured'
+    status: newTotal > DAILY_LIMIT_USD ? 'exceeded' : 'ensured'
   };
   
   budgetLogs.push(log);
   
-  if (result === -1) {
-    const currentStatus = await getBudgetStatus();
+  if (newTotal > DAILY_LIMIT_USD) {
     console.error(`💸 BUDGET_EXCEEDED: Intent=${intent} est=$${estimatedCost.toFixed(4)} would exceed daily limit of $${DAILY_LIMIT_USD}`);
-    console.error(`💸 BUDGET_STATUS: Current=$${currentStatus.current.toFixed(4)} Limit=$${DAILY_LIMIT_USD}`);
+    console.error(`💸 BUDGET_STATUS: Current=$${current.toFixed(4)} Limit=$${DAILY_LIMIT_USD}`);
     
-    throw new BudgetExceededException(intent, estimatedCost, currentStatus.current, DAILY_LIMIT_USD);
+    throw new BudgetExceededException(intent, estimatedCost, current, DAILY_LIMIT_USD);
   }
   
-  console.log(`💰 BUDGET_GATE: OK intent=${intent} est=$${estimatedCost.toFixed(4)} current=$${result.toFixed(4)}`);
+  console.log(`💰 BUDGET_GATE: OK intent=${intent} est=$${estimatedCost.toFixed(4)} current=$${current.toFixed(4)}`);
 }
 
 /**
@@ -112,18 +70,16 @@ export async function ensureBudget(intent: string, estimatedCost: number): Promi
  * Returns new total spent today
  */
 export async function commitCost(intent: string, actualCost: number): Promise<number> {
-  const client = await getRedis();
+  const client = getRedis();
   const key = getTodayKey();
-  const ttlSeconds = 60 * 60 * 48; // 48 hours
   
-  // Execute atomic cost commit
-  const newTotal = await client.eval(
-    COMMIT_COST_SCRIPT,
-    1,
-    key,
-    actualCost.toString(),
-    ttlSeconds.toString()
-  ) as number;
+  // Use atomic increment by float
+  const newTotal = await client.incrByFloat(key, actualCost);
+  
+  // Set TTL for 48 hours if this is a new key
+  if (newTotal === actualCost) {
+    await client.set(key, newTotal.toString(), 60 * 60 * 48);
+  }
   
   const log: BudgetLog = {
     intent,
@@ -162,7 +118,7 @@ export async function commitCost(intent: string, actualCost: number): Promise<nu
  * Get current budget status
  */
 export async function getBudgetStatus(): Promise<BudgetStatus> {
-  const client = await getRedis();
+  const client = getRedis();
   const key = getTodayKey();
   
   const current = await client.get(key);
