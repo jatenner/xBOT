@@ -6,6 +6,9 @@
 import { config } from 'dotenv';
 config();
 
+// Run migrations on startup
+import './db/migrations';
+
 import { TwitterAnalyticsScraper } from './analytics/twitterAnalyticsScraper';
 import { systemMonitor } from './monitoring/systemPerformanceMonitor';
 import { aggressiveScheduler } from './posting/aggressivePostingScheduler';
@@ -26,6 +29,7 @@ import ViralReplyOrchestrator from './engagement/viralReplyOrchestrator';
 import { smartContentDecisionEngine } from './ai/smartContentDecisionEngine';
 import { intelligentTimingSystem } from './ai/intelligentTimingSystem';
 import { megaPromptSystem } from './ai/megaPromptSystem';
+import { budgetOptimizer } from './services/budgetOptimizer';
 
 class BulletproofMainSystem {
   private analyticsChecker: TwitterAnalyticsScraper;
@@ -37,6 +41,7 @@ class BulletproofMainSystem {
   private analyticsInterval: NodeJS.Timeout | null = null;
   private lastPostTime = 0;
   private lastReplyTime = 0;
+  private consecutiveFailures = 0;
 
   constructor() {
     console.log('🚀 BULLETPROOF_SYSTEM: Initializing...');
@@ -163,6 +168,13 @@ class BulletproofMainSystem {
       console.log(`📈 OPTIMAL_TIMES: ${learningInsights.optimal_posting_times.join(', ')}`);
       console.log(`🎯 VIRAL_TRAITS: ${learningInsights.viral_content_traits.slice(0, 3).join(', ')}`);
 
+      // 💰 BUDGET OPTIMIZATION CHECK
+      const optimization = await budgetOptimizer.optimize('main_content_generation');
+      if (optimization.postingFrequency === 'minimal') {
+        console.log(`💰 BUDGET_SKIP: ${optimization.reasoning}`);
+        return;
+      }
+
       // 🚀 ULTRA-AGGRESSIVE BYPASS: Skip failing frequency optimizer, force aggressive posting
       console.log('⚡ BYPASSING_OPTIMIZER: Forcing ultra-aggressive posting (frequency optimizer causing delays)');
       const timingStrategy = {
@@ -264,6 +276,13 @@ class BulletproofMainSystem {
         console.log('💬 STRATEGIC_ENGAGEMENT: Executing AI-driven follower growth engagement...');
         console.log('🎯 IMPORTANT: These are strategic replies to health influencers for follower growth');
         
+        // 💰 CHECK BUDGET BEFORE ENGAGEMENT
+        const engagementOptimization = await budgetOptimizer.optimize('strategic_engagement');
+        if (!engagementOptimization.allowExpensive) {
+          console.log(`💰 ENGAGEMENT_SKIP: ${engagementOptimization.reasoning}`);
+          return;
+        }
+        
         // 🚀 NEW: Strategic engagement for follower growth
         const { strategicEngagementEngine } = await import('./engagement/strategicEngagementEngine');
         const engagementResults = await strategicEngagementEngine.executeStrategicEngagement();
@@ -329,7 +348,14 @@ class BulletproofMainSystem {
       console.log('📊 BULLETPROOF_STATUS: Cycle completed successfully');
 
     } catch (error: any) {
-      console.error('❌ BULLETPROOF_MAIN_LOOP_ERROR:', error.message);
+      // Resilient error handling - don't crash the loop
+      console.error(`❌ BULLETPROOF_MAIN_LOOP_ERROR: ${error.message} (continuing...)`);
+      this.consecutiveFailures++;
+      
+      if (this.consecutiveFailures >= 3) {
+        console.error('💀 SYSTEM_CRITICAL: Too many consecutive failures, pausing for 5 minutes');
+        setTimeout(() => this.consecutiveFailures = 0, 5 * 60 * 1000);
+      }
     }
   }
 

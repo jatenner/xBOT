@@ -12,6 +12,7 @@
 import OpenAI from 'openai';
 import { getUnifiedDataManager } from '../lib/unifiedDataManager';
 import { costTracker as newCostTracker } from './costTracker';
+import { budgetOptimizer } from './budgetOptimizer';
 
 interface BudgetConfig {
   dailyLimit: number; // USD per day
@@ -100,7 +101,7 @@ export class OpenAIService {
       priority?: 'high' | 'medium' | 'low';
     } = {}
   ): Promise<any> {
-    const {
+    let {
       model = 'gpt-4o-mini',
       temperature = 0.7,
       maxTokens = 2000,
@@ -111,7 +112,12 @@ export class OpenAIService {
     console.log(`🤖 OPENAI_SERVICE: ${requestType} request (${model}, priority: ${priority})`);
 
     try {
-      // Budget check is now handled by newCostTracker.wrapOpenAI below
+      // Get optimization recommendation
+      const optimization = await budgetOptimizer.optimize(requestType);
+      if (model === 'gpt-4o' && optimization.recommendedModel === 'gpt-4o-mini') {
+        console.log(`💰 MODEL_OPTIMIZATION: Switching ${model} → ${optimization.recommendedModel} (${optimization.reasoning})`);
+        model = optimization.recommendedModel;
+      }
 
       // Check budget before making request
       const budgetCheck = await this.checkBudgetLimits(requestType, priority);
@@ -125,6 +131,12 @@ export class OpenAIService {
       
       console.log(`💰 ESTIMATED_COST: $${estimatedCost.toFixed(4)} (${estimatedTokens.total} tokens)`);
 
+      // Check optimization cost limit
+      if (estimatedCost > optimization.maxCostPerCall) {
+        console.warn(`💰 COST_LIMIT_EXCEEDED: $${estimatedCost.toFixed(4)} > $${optimization.maxCostPerCall.toFixed(4)} (${optimization.reasoning})`);
+        throw new Error(`Request exceeds optimized cost limit: $${estimatedCost.toFixed(4)} > $${optimization.maxCostPerCall.toFixed(4)}`);
+      }
+
       // Make the OpenAI request with hard budget enforcement
       const startTime = Date.now();
       const response = await newCostTracker.wrapOpenAI(requestType, async () => {
@@ -132,7 +144,7 @@ export class OpenAIService {
           model,
           messages,
           temperature,
-          max_tokens: maxTokens
+          max_tokens: optimization.allowExpensive ? maxTokens : Math.min(maxTokens, 150)
         });
       }, { model, estimatedCost });
 
