@@ -33,6 +33,17 @@ async function checkModelAvailability(
 export async function GET(request: NextRequest) {
   const requestId = crypto.randomUUID();
   
+  // PIPELINE TESTS GATE: Skip in production to prevent budget drain
+  if (process.env.PIPELINE_TESTS_ENABLED !== 'true') {
+    console.log(`[${requestId}] ⏭️ Pipeline tests disabled - skipping OpenAI test`);
+    return NextResponse.json({
+      skipped: true,
+      reason: 'pipeline_tests_disabled',
+      requestId,
+      message: 'OpenAI model test skipped to preserve budget'
+    });
+  }
+  
   try {
     // Check if OpenAI key is set
     const openAIApiKey = process.env.OPENAI_API_KEY;

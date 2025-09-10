@@ -124,8 +124,9 @@ OUTPUT REQUIREMENTS:
         }
       ], {
         temperature: 0.8,
-        maxTokens: 800,
+        maxTokens: 400, // Reduced for JSON efficiency
         requestType: 'follower_growth_content',
+        priority: 'high', // Ensure it doesn't get token-limited
         response_format: {
           type: "json_schema",
           json_schema: {
@@ -148,6 +149,8 @@ OUTPUT REQUIREMENTS:
         }
       });
 
+      console.log('🔧 FOLLOWER_GROWTH: Using strict JSON schema with max_tokens=400');
+
       const rawContent = response.content || response.choices?.[0]?.message?.content;
       if (!rawContent || rawContent.trim() === '') {
         console.error('❌ FOLLOWER_ENGINE: OpenAI returned empty response');
@@ -166,12 +169,13 @@ OUTPUT REQUIREMENTS:
         console.warn('❌ FOLLOWER_ENGINE: JSON parsing failed, attempting retry...');
         console.log('🔍 INVALID_JSON:', rawContent.substring(0, 200));
         
-        // Auto-retry once with strict JSON instruction
+        // Auto-retry once with SAME strict JSON schema
         try {
+          console.log('🔄 FOLLOWER_ENGINE: Retrying with strict JSON schema...');
           const retryResponse = await openaiService.chatCompletion([
             {
               role: 'system',
-              content: `Return valid JSON only. No markdown, no text outside JSON. Must have format: {"content": ["tweet1", "tweet2"], "viral_score": 85}`
+              content: `You are a viral content strategist. Return ONLY valid JSON with the exact schema specified.`
             },
             {
               role: 'user',
@@ -179,8 +183,29 @@ OUTPUT REQUIREMENTS:
             }
           ], {
             temperature: 0.5, // Lower temperature for more consistent formatting
-            maxTokens: 600,
-            requestType: 'follower_growth_content_retry'
+            maxTokens: 400,
+            requestType: 'follower_growth_content_retry',
+            priority: 'high',
+            response_format: {
+              type: "json_schema",
+              json_schema: {
+                name: "follower_growth_payload",
+                schema: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["content"],
+                  properties: {
+                    content: {
+                      type: "array",
+                      items: { type: "string", minLength: 3, maxLength: 400 },
+                      minItems: 3,
+                      maxItems: 8
+                    }
+                  }
+                },
+                strict: true
+              }
+            }
           });
           
           const retryContent = retryResponse.content || retryResponse.choices?.[0]?.message?.content;
