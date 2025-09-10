@@ -8,6 +8,7 @@ import express from 'express';
 import { SessionLoader } from './utils/sessionLoader';
 import { systemMetrics } from './monitoring/SystemMetrics';
 import { costTracker as newCostTracker } from './services/costTracker';
+import { budgetOptimizer } from './services/budgetOptimizer';
 
 export interface HealthServerStatus {
   server?: any;
@@ -1015,11 +1016,27 @@ app.get('/api/metrics', async (req, res) => {
       }
     });
 
-    // 💰 BUDGET STATUS ENDPOINT - Real-time OpenAI cost tracking
+    // 💰 BUDGET STATUS ENDPOINT - Real-time OpenAI cost tracking with optimizer
     app.get('/budget/status', async (_req, res) => {
       try {
-        const status = await newCostTracker.getBudgetStatus();
-        res.json(status);
+        const [status, optimization] = await Promise.all([
+          newCostTracker.getBudgetStatus(),
+          budgetOptimizer.optimize('health_check')
+        ]);
+        
+        res.json({
+          ...status,
+          optimizer: {
+            enabled: process.env.BUDGET_OPTIMIZER_ENABLED === 'true',
+            strategy: process.env.BUDGET_STRATEGY || 'adaptive',
+            recommendation: optimization.reasoning,
+            allowExpensive: optimization.allowExpensive,
+            recommendedModel: optimization.recommendedModel,
+            maxCostPerCall: optimization.maxCostPerCall,
+            postingFrequency: optimization.postingFrequency,
+            budgetStatus: optimization.budgetStatus
+          }
+        });
       } catch (error: any) {
         console.error('💰 BUDGET_ENDPOINT_ERROR:', error.message);
         res.status(500).json({ 
@@ -1029,7 +1046,11 @@ app.get('/api/metrics', async (req, res) => {
           today_spend: 0,
           remaining: parseFloat(process.env.DAILY_COST_LIMIT_USD ?? '5.00'),
           blocked: false,
-          source: 'fallback'
+          source: 'fallback',
+          optimizer: {
+            enabled: false,
+            error: error.message
+          }
         });
       }
     });
