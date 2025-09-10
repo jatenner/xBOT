@@ -251,26 +251,16 @@ export class MetricsScraper {
     
     setTimeout(async () => {
       try {
-        const { getBrowserManager } = await import('../lib/browser');
-        const browserManager = getBrowserManager();
-        
-        // Use shared browser context for metrics
-        const metrics = await browserManager.withSharedContext(
-          `metrics_${intervalName}`,
-          async (context: any) => {
-            return await this.scrapePostMetrics(post.id, post.permalink, context);
-          },
-          {
-            // Load Twitter session state
-            storageState: await this.getSessionState()
-          }
-        );
-        
-        if (metrics) {
-          await this.storeMetrics(metrics);
-        } else {
-          console.warn(`⚠️ Metrics scraping failed for ${post.tweet_id} (${intervalName}) - circuit breaker may be open`);
+        // Check if browser metrics are enabled
+        const { isBrowserEnabled } = await import('../lib/browser');
+        if (!isBrowserEnabled()) {
+          console.log(`🚫 METRICS_SCRAPER: Browser disabled, skipping ${intervalName}`);
+          return;
         }
+        
+        // TODO: Update to use browser guard when withSharedContext is available
+        console.log(`⏭️ METRICS_SCRAPER: Skipping ${intervalName} - awaiting browser integration`);
+        return;
         
       } catch (error: any) {
         console.error(`❌ Failed to scrape metrics for ${post.tweet_id}:`, error.message);

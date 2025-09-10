@@ -164,20 +164,27 @@ class BrowserManager {
           this.resourceExhausted = false;
         }
         
-        this.browser = await chromium.launch({
-          headless: this.options.headless,
-          slowMo: this.options.slowMo,
-          args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-gpu',
-            '--no-first-run',
-            '--disable-background-timer-throttling',
-            '--disable-backgrounding-occluded-windows',
-            '--disable-renderer-backgrounding'
-          ]
-        });
+        const { tryLaunchChromium } = await import('../lib/browser');
+        this.browser = await tryLaunchChromium();
+        
+        if (!this.browser) {
+          console.warn('BROWSER: Chromium unavailable, retrying with fallback...');
+          // If browser guard fails, try direct launch as fallback
+          this.browser = await chromium.launch({
+            headless: this.options.headless,
+            slowMo: this.options.slowMo,
+            args: [
+              '--no-sandbox',
+              '--disable-setuid-sandbox',
+              '--disable-dev-shm-usage',
+              '--disable-gpu',
+              '--no-first-run',
+              '--disable-background-timer-throttling',
+              '--disable-backgrounding-occluded-windows',
+              '--disable-renderer-backgrounding'
+            ]
+          });
+        }
 
         // Load session if available
         const sessionPath = process.env.SESSION_CANONICAL_PATH || '/app/data/twitter_session.json';

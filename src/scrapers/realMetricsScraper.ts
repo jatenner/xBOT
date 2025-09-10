@@ -61,18 +61,13 @@ export class RealMetricsScraper {
     try {
       console.log('🚀 REAL_METRICS_SCRAPER: Initializing Playwright browser...');
       
-      this.browser = await chromium.launch({
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
-          '--disable-gpu'
-        ]
-      });
+      const { tryLaunchChromium } = await import('../lib/browser');
+      this.browser = await tryLaunchChromium();
+      
+      if (!this.browser) {
+        console.log('🚫 REAL_METRICS_SCRAPER: Browser unavailable, skipping initialization');
+        return;
+      }
 
       this.page = await this.browser.newPage();
       
