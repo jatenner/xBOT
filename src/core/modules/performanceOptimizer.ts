@@ -114,6 +114,10 @@ export class PerformanceOptimizer {
     fn: () => Promise<T>,
     cacheKey?: string
   ): Promise<T> {
+    // BUDGET GATE: Check before any LLM optimization
+    const { ensureBudget } = await import('../../budget/atomicBudgetGate');
+    await ensureBudget(0.01, 'performance_optimizer'); // Small headroom check
+    
     const key = cacheKey || this.generateCacheKey(prompt);
     
     return await this.measureExecution(

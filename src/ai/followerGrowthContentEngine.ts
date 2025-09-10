@@ -212,7 +212,12 @@ OUTPUT REQUIREMENTS:
           generatedData = this.parseAndValidateJSON(retryContent);
           console.log('✅ FOLLOWER_ENGINE: Retry successful');
         } catch (retryError) {
-          console.error('❌ FOLLOWER_ENGINE: Retry also failed, using fallback');
+          console.error('❌ FOLLOWER_ENGINE: Retry also failed');
+          // Check ALLOW_FALLBACK_GENERATION flag
+          if (process.env.ALLOW_FALLBACK_GENERATION !== 'true') {
+            const { InvalidJsonError } = await import('../errors/InvalidJsonError');
+            throw new InvalidJsonError('follower_growth_content_retry', rawContent, 'All attempts failed, fallback disabled');
+          }
           return this.generateFallbackContent(context?.trendingTopic || 'health optimization');
         }
       }
@@ -439,23 +444,14 @@ Return JSON: {"content": ["tweet1", "tweet2", ...], "viral_score": 80, "engageme
   }
 
   /**
-   * Tiny JSON repair for trailing quotes
-   */
-  private tryRepairJSON(s: string): string {
-    // Close trailing quote/bracket very conservatively
-    if (s.trim().endsWith('"')) s += ']"}';
-    return s;
-  }
-
-  /**
-   * Parse and validate JSON response
+   * Parse and validate JSON response - STRICT: No repair attempts
    */
   private parseAndValidateJSON(content: string): any {
     if (!content || content.trim() === '') {
       throw new Error('Empty content');
     }
 
-    // Clean up markdown code blocks if present
+    // Clean up markdown code blocks only
     let cleanContent = content.trim();
     if (cleanContent.startsWith('```json')) {
       cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
@@ -463,21 +459,14 @@ Return JSON: {"content": ["tweet1", "tweet2", ...], "viral_score": 80, "engageme
       cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
     }
 
+    // STRICT PARSING: No repair attempts
     let parsed: any;
     try {
       parsed = JSON.parse(cleanContent);
-    } catch (firstError: any) {
-      console.warn('🔧 JSON_PARSE_REPAIR: First parse failed, trying repair...');
-      try {
-        const repairedContent = this.tryRepairJSON(cleanContent);
-        parsed = JSON.parse(repairedContent);
-        console.log('✅ JSON_PARSE_REPAIR: Repair successful');
-      } catch (repairError: any) {
-        console.error('🔍 JSON_PARSE_ERROR (original):', firstError.message);
-        console.error('🔍 JSON_REPAIR_ERROR:', repairError.message);
-        console.error('🔍 RAW_CONTENT:', cleanContent.substring(0, 500));
-        throw firstError; // Throw original error
-      }
+    } catch (parseError: any) {
+      console.error('🔍 JSON_PARSE_ERROR:', parseError.message);
+      console.error('🔍 RAW_CONTENT_SAFE:', cleanContent.substring(0, 120)); // Safe truncation
+      throw parseError; // Fail fast
     }
     
     // Validate required fields

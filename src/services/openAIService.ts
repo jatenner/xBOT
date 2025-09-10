@@ -111,6 +111,33 @@ export class OpenAIService {
       response_format
     } = options;
 
+    // STRICT JSON: Prevent truncation for content generation
+    if (requestType.includes('content') || requestType.includes('follower')) {
+      maxTokens = Math.max(maxTokens, 800); // Never allow truncation below 800 tokens
+      temperature = 0.7; // Consistent temperature
+      
+      // Force strict JSON schema for content generation
+      if (!response_format) {
+        response_format = {
+          type: "json_schema",
+          json_schema: {
+            name: "FollowerContent",
+            schema: {
+              type: "object",
+              additionalProperties: false,
+              required: ["content"],
+              properties: {
+                content: { 
+                  type: "array", 
+                  items: { type: "string", minLength: 1 } 
+                }
+              }
+            }
+          }
+        };
+      }
+    }
+
     console.log(`🤖 OPENAI_SERVICE: ${requestType} request (${model}, priority: ${priority})`);
 
     try {
@@ -139,9 +166,9 @@ export class OpenAIService {
         throw new Error(`Request exceeds optimized cost limit: $${estimatedCost.toFixed(4)} > $${optimization.maxCostPerCall.toFixed(4)}`);
       }
 
-      // BUDGET GATE: Check before every LLM call
-      const { budgetCheckOrThrow, budgetAdd } = await import('../budget/budgetGate');
-      await budgetCheckOrThrow();
+      // ATOMIC BUDGET GATE: Check before every LLM call
+      const { ensureBudget, commitCost } = await import('../budget/atomicBudgetGate');
+      await ensureBudget(estimatedCost, requestType);
 
       // Make the OpenAI request with hard budget enforcement
       const startTime = Date.now();
@@ -161,27 +188,36 @@ export class OpenAIService {
         return await this.openai.chat.completions.create(createParams);
       }, { estimatedCost });
 
+      // TRUNCATION GUARD: Check if response was truncated
+      if (response && !('skipped' in response) && response.usage && response.choices?.[0]?.finish_reason === 'length') {
+        throw new Error(`TRUNCATED_RESPONSE: Response truncated at ${response.usage.completion_tokens} tokens for ${requestType}`);
+      }
+
       // Add actual cost to budget after successful call
       if (response && !('skipped' in response)) {
         const actualCost = this.calculateCost(model, 
           response.usage?.prompt_tokens || 0, 
           response.usage?.completion_tokens || 0
         );
-        await budgetAdd(actualCost);
-        console.log(`💰 REDIS_BUDGET: $${actualCost.toFixed(4)} added (${requestType})`);
+        await commitCost(actualCost, requestType);
         
-        // Log to Supabase for analytics
+        // Log to Supabase for analytics with service role
         try {
-          const { insertApiUsage } = await import('../lib/supabaseService');
-          await insertApiUsage({
+          const { insertApiUsage } = await import('../db/supabaseService');
+          const result = await insertApiUsage({
             intent: requestType,
             model,
-            tokens_prompt: response.usage?.prompt_tokens || 0,
-            tokens_completion: response.usage?.completion_tokens || 0,
-            usd: actualCost
+            prompt_tokens: response.usage?.prompt_tokens || 0,
+            completion_tokens: response.usage?.completion_tokens || 0,
+            cost_usd: actualCost,
+            meta: { priority, estimatedCost, optimization: optimization.reasoning }
           });
+          
+          if (!result.success) {
+            console.error('⚠️ API_USAGE_LOG_FAILED:', result.error);
+          }
         } catch (logError: any) {
-          console.warn('⚠️ API_USAGE_LOG_FAILED:', logError.message);
+          console.warn('⚠️ API_USAGE_LOG_ERROR:', logError.message);
           // Don't throw - logging failure shouldn't break posting
         }
       }
