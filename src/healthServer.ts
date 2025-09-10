@@ -1024,17 +1024,34 @@ app.get('/api/metrics', async (req, res) => {
           budgetOptimizer.optimize('health_check')
         ]);
         
+        // Get soft budget controls for sample intent
+        const softControls = newCostTracker.getSoftBudgetControls('content_generation', status.today_spend);
+        
         res.json({
           ...status,
+          cost_controls: {
+            hard_limit: status.limit,
+            soft_limit: status.soft_limit,
+            soft_budget_exceeded: status.soft_budget_exceeded,
+            throttle_active: status.throttle_active,
+            emergency_mode: status.remaining <= parseFloat(process.env.BUDGET_MIN_RESERVE_USD ?? '0.50')
+          },
           optimizer: {
             enabled: process.env.BUDGET_OPTIMIZER_ENABLED === 'true',
             strategy: process.env.BUDGET_STRATEGY || 'adaptive',
+            peak_hours: process.env.BUDGET_PEAK_HOURS || '17-23',
             recommendation: optimization.reasoning,
             allowExpensive: optimization.allowExpensive,
             recommendedModel: optimization.recommendedModel,
             maxCostPerCall: optimization.maxCostPerCall,
             postingFrequency: optimization.postingFrequency,
             budgetStatus: optimization.budgetStatus
+          },
+          soft_controls: softControls,
+          redis_breaker: {
+            enabled: process.env.REDIS_BREAKER_ENABLED === 'true',
+            key_prefix: process.env.REDIS_COST_KEY_PREFIX || 'openai_cost',
+            ttl_seconds: parseInt(process.env.REDIS_BUDGET_TTL_SECONDS ?? '172800', 10)
           }
         });
       } catch (error: any) {
@@ -1043,10 +1060,18 @@ app.get('/api/metrics', async (req, res) => {
           error: 'Budget status check failed',
           date_utc: new Date().toISOString().split('T')[0],
           limit: parseFloat(process.env.DAILY_COST_LIMIT_USD ?? '5.00'),
+          soft_limit: parseFloat(process.env.COST_SOFT_BUDGET_USD ?? '3.50'),
           today_spend: 0,
           remaining: parseFloat(process.env.DAILY_COST_LIMIT_USD ?? '5.00'),
           blocked: false,
           source: 'fallback',
+          cost_controls: {
+            hard_limit: parseFloat(process.env.DAILY_COST_LIMIT_USD ?? '5.00'),
+            soft_limit: parseFloat(process.env.COST_SOFT_BUDGET_USD ?? '3.50'),
+            soft_budget_exceeded: false,
+            throttle_active: false,
+            emergency_mode: false
+          },
           optimizer: {
             enabled: false,
             error: error.message
