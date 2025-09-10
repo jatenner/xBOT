@@ -138,9 +138,42 @@ OUTPUT REQUIREMENTS:
         return this.generateFallbackContent(context?.trendingTopic || 'health optimization');
       }
 
+      // Validate and parse JSON with retry logic
       let generatedData;
       try {
-        // Clean up markdown code blocks if present
+        generatedData = this.parseAndValidateJSON(rawContent);
+      } catch (parseError) {
+        console.warn('❌ FOLLOWER_ENGINE: JSON parsing failed, attempting retry...');
+        console.log('🔍 INVALID_JSON:', rawContent.substring(0, 200));
+        
+        // Auto-retry once with strict JSON instruction
+        try {
+          const retryResponse = await openaiService.chatCompletion([
+            {
+              role: 'system',
+              content: `Return valid JSON only. No markdown, no text outside JSON. Must have format: {"content": ["tweet1", "tweet2"], "viral_score": 85}`
+            },
+            {
+              role: 'user',
+              content: selectedType.prompt
+            }
+          ], {
+            temperature: 0.5, // Lower temperature for more consistent formatting
+            maxTokens: 600,
+            requestType: 'follower_growth_content_retry'
+          });
+          
+          const retryContent = retryResponse.content || retryResponse.choices?.[0]?.message?.content;
+          generatedData = this.parseAndValidateJSON(retryContent);
+          console.log('✅ FOLLOWER_ENGINE: Retry successful');
+        } catch (retryError) {
+          console.error('❌ FOLLOWER_ENGINE: Retry also failed, using fallback');
+          return this.generateFallbackContent(context?.trendingTopic || 'health optimization');
+        }
+      }
+
+      try {
+        // Clean up markdown code blocks if present (fallback parsing)
         let cleanContent = rawContent.trim();
         if (cleanContent.startsWith('```json')) {
           cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
@@ -358,6 +391,46 @@ Return JSON: {"content": ["tweet1", "tweet2", ...], "viral_score": 80, "engageme
     }
     
     return contentTypes[0]; // Fallback
+  }
+
+  /**
+   * Parse and validate JSON response
+   */
+  private parseAndValidateJSON(content: string): any {
+    if (!content || content.trim() === '') {
+      throw new Error('Empty content');
+    }
+
+    // Clean up markdown code blocks if present
+    let cleanContent = content.trim();
+    if (cleanContent.startsWith('```json')) {
+      cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+    } else if (cleanContent.startsWith('```')) {
+      cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
+    }
+
+    try {
+      const parsed = JSON.parse(cleanContent);
+      
+      // Validate required fields
+      if (!parsed.content) {
+        throw new Error('Missing required "content" field');
+      }
+      
+      if (!Array.isArray(parsed.content)) {
+        throw new Error('"content" must be an array');
+      }
+      
+      if (parsed.content.length === 0) {
+        throw new Error('"content" array cannot be empty');
+      }
+      
+      return parsed;
+    } catch (error: any) {
+      console.error('🔍 JSON_PARSE_ERROR:', error.message);
+      console.error('🔍 RAW_CONTENT:', cleanContent.substring(0, 500));
+      throw error;
+    }
   }
 
   /**

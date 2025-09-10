@@ -1484,6 +1484,66 @@ class BulletproofMainSystem {
   }
 
   /**
+   * 🧪 TEST PRE-POSTING DB INSERT
+   */
+  private async testPrePostingDBInsert(): Promise<void> {
+    try {
+      console.log('🧪 DB_HEALTH: Testing pre-posting insert capability...');
+      
+      const { admin } = await import('./lib/supabaseClients');
+      
+      // Test insert into openai_usage_log table (the failing table)
+      const testPayload = {
+        model: 'health_check',
+        cost_tier: 'test',
+        intent: 'startup_test',
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        total_tokens: 0,
+        cost_usd: 0,
+        request_id: `health_check_${Date.now()}`,
+        finish_reason: 'stop',
+        raw: { test: true }
+      };
+      
+      const { data, error } = await admin
+        .from('openai_usage_log')
+        .insert([testPayload])
+        .select()
+        .single();
+      
+      if (error) {
+        console.error('❌ PRE_POST_DB_TEST: Insert failed:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
+        
+        // Try with service role if RLS is blocking
+        console.log('🔄 PRE_POST_DB_TEST: Retrying with explicit service role...');
+        const { data: retryData, error: retryError } = await admin
+          .from('openai_usage_log')
+          .insert([testPayload]);
+        
+        if (retryError) {
+          console.error('❌ PRE_POST_DB_RETRY: Service role insert also failed:', retryError.message);
+          console.warn('⚠️ PRE_POST_WARNING: Cost logging may fail during operation');
+        } else {
+          console.log('✅ PRE_POST_DB_RETRY: Service role insert succeeded');
+        }
+      } else {
+        console.log('✅ PRE_POST_DB_TEST: Pre-posting insert capability confirmed');
+        console.log(`📊 DB_INSERT_ID: ${data?.id}`);
+      }
+      
+    } catch (error: any) {
+      console.error('❌ PRE_POST_DB_ERROR:', error.message);
+      console.warn('⚠️ PRE_POST_WARNING: Database insert test failed - cost logging may not work');
+    }
+  }
+
+  /**
    * 🏥 RUN STARTUP HEALTH CHECK
    */
   private async runStartupHealthCheck(): Promise<void> {
@@ -1491,6 +1551,9 @@ class BulletproofMainSystem {
       console.log('🏥 HEALTH_CHECK: Running startup system audit...');
       
       const healthResult = await quickHealthCheck();
+      
+      // Add pre-posting DB insert health check
+      await this.testPrePostingDBInsert();
       
       if (healthResult.healthy) {
         console.log('✅ HEALTH_CHECK: System is healthy and ready');
