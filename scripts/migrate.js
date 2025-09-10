@@ -11,10 +11,10 @@ const { Client } = require('pg');
     process.exit(1);
   }
   
-  // Enhance connection string with SSL parameters
+  // Enhance connection string with SSL parameters for Railway
   const connectionString = conn.includes('sslmode=') 
     ? conn 
-    : `${conn}${conn.includes('?') ? '&' : '?'}sslmode=require`;
+    : `${conn}${conn.includes('?') ? '&' : '?'}sslmode=no-verify`;
   
   const client = new Client({ 
     connectionString, 
