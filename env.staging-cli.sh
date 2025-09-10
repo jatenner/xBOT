@@ -19,6 +19,7 @@ export SUPABASE_URL="https://your-staging-project.supabase.co"
 export SUPABASE_SERVICE_ROLE_KEY="your_staging_service_role_key"
 export SUPABASE_DB_PASSWORD="your_staging_db_password"
 export STAGING_PROJECT_REF="your_staging_ref"
+export DATABASE_URL="postgresql://postgres:<PASSWORD>@aws-0-us-east-1.pooler.supabase.com:5432/postgres?sslmode=require"
 
 # ==========================================
 # 🚀 REDIS CACHE (STAGING)

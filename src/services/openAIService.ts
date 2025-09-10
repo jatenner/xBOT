@@ -139,19 +139,20 @@ export class OpenAIService {
 
       // Make the OpenAI request with hard budget enforcement
       const startTime = Date.now();
-      const response = await newCostTracker.wrapOpenAI(requestType, async () => {
+      const response = await newCostTracker.wrapOpenAI(requestType, model, async () => {
         return await this.openai.chat.completions.create({
           model,
           messages,
           temperature,
           max_tokens: optimization.allowExpensive ? maxTokens : Math.min(maxTokens, 150)
         });
-      }, { model, estimatedCost });
+      }, { estimatedCost });
 
       // Check if request was skipped due to budget
       if (response && typeof response === 'object' && 'skipped' in response) {
-        console.warn(`⏭️ OPENAI_SKIPPED: ${requestType} - ${response.reason}`);
-        throw new Error(`Daily budget exceeded: ${response.reason}`);
+        const skippedResponse = response as { skipped: true; reason: string };
+        console.warn(`⏭️ OPENAI_SKIPPED: ${requestType} - ${skippedResponse.reason}`);
+        throw new Error(`Daily budget exceeded: ${skippedResponse.reason}`);
       }
 
       const endTime = Date.now();

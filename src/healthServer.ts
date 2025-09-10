@@ -1066,7 +1066,13 @@ app.get('/api/metrics', async (req, res) => {
         }
         
         res.json({
-          ...status,
+          date: status.date_utc,
+          limit: status.limit,
+          current_spend: status.today_spend,
+          remaining: status.remaining,
+          strictMode: process.env.COST_TRACKER_STRICT === 'true',
+          tz: process.env.COST_TRACKER_ROLLOVER_TZ || 'UTC',
+          percent_used: Math.round((status.today_spend / status.limit) * 100),
           cost_controls: {
             hard_limit: status.limit,
             soft_limit: status.soft_limit,
@@ -1083,18 +1089,15 @@ app.get('/api/metrics', async (req, res) => {
             recommendedModel: optimization.recommendedModel,
             maxCostPerCall: optimization.maxCostPerCall,
             postingFrequency: optimization.postingFrequency,
-            budgetStatus: optimization.budgetStatus
+            state: optimizerState
           },
-          soft_controls: softControls,
           model_mix: modelMix,
-          optimizer_state: optimizerState,
           redis_breaker: {
             enabled: process.env.REDIS_BREAKER_ENABLED === 'true',
             prefix: process.env.REDIS_PREFIX || 'prod:',
             ttl_seconds: parseInt(process.env.REDIS_BUDGET_TTL_SECONDS ?? '172800', 10)
           },
-          tz: process.env.COST_TRACKER_ROLLOVER_TZ || 'UTC',
-          percent_used: Math.round((status.today_spend / status.limit) * 100)
+          last_10_events: [] // TODO: Add memory log for cost events
         });
       } catch (error: any) {
         console.error('💰 BUDGET_ENDPOINT_ERROR:', error.message);

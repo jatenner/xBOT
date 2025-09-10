@@ -77,10 +77,21 @@ export class MigrationRunner {
     if (!databaseUrl) {
       throw new Error('DATABASE_URL required for migrations. Ensure DATABASE_URL is set OR provide SUPABASE_DB_PASSWORD with either SUPABASE_URL or valid PROJECT_REF variables.');
     }
+
+    // Enhance URL for Session Pooler if needed
+    if (!databaseUrl.includes('sslmode=')) {
+      databaseUrl += databaseUrl.includes('?') ? '&sslmode=require' : '?sslmode=require';
+    }
     
-    this.pgClient = new Client({ connectionString: databaseUrl });
+    this.pgClient = new Client({ 
+      connectionString: databaseUrl,
+      ssl: {
+        rejectUnauthorized: false // Required for managed Postgres
+      }
+    });
+    
     await this.pgClient.connect();
-    console.log('📊 MIGRATIONS: Connected to PostgreSQL for DDL operations');
+    console.log('📊 MIGRATIONS: Connected to PostgreSQL Session Pooler');
   }
 
   private buildDatabaseUrl(): string | null {
