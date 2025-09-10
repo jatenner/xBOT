@@ -11,13 +11,24 @@ const { Client } = require('pg');
     process.exit(1);
   }
   
+  // Enhance connection string with SSL parameters
+  const connectionString = conn.includes('sslmode=') 
+    ? conn 
+    : `${conn}${conn.includes('?') ? '&' : '?'}sslmode=require`;
+  
   const client = new Client({ 
-    connectionString: conn, 
+    connectionString, 
     application_name: 'xBOT-migrator',
     ssl: conn.includes('supabase.co') ? { rejectUnauthorized: false } : false
   });
   
-  await client.connect();
+  try {
+    await client.connect();
+  } catch (connError) {
+    console.warn('DB_MIGRATE_WARN: Connection failed, app will continue without migration:', connError.message);
+    console.warn('DB_MIGRATE_HINT: Manual migration may be required via Supabase dashboard');
+    process.exit(0); // Exit successfully to allow app to start
+  }
   
   try {
     // Create migrations tracking table
