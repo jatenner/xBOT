@@ -6,6 +6,7 @@
 import { costTracker } from './costTracker';
 import { createClient } from '@supabase/supabase-js';
 import { DateTime } from 'luxon';
+import Redis from 'ioredis';
 
 const BUDGET_OPTIMIZER_ENABLED = (process.env.BUDGET_OPTIMIZER_ENABLED ?? 'true') === 'true';
 const BUDGET_STRATEGY = process.env.BUDGET_STRATEGY ?? 'adaptive';
@@ -41,14 +42,36 @@ export class BudgetOptimizer {
     process.env.SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
+  private redis: Redis | null = null;
   private roiCache: ROIData[] = [];
   private roiCacheExpiry = 0;
+
+  constructor() {
+    this.initializeRedis();
+  }
 
   static getInstance(): BudgetOptimizer {
     if (!BudgetOptimizer.instance) {
       BudgetOptimizer.instance = new BudgetOptimizer();
     }
     return BudgetOptimizer.instance;
+  }
+
+  private async initializeRedis(): Promise<void> {
+    if (process.env.REDIS_URL) {
+      try {
+        this.redis = new Redis(process.env.REDIS_URL, {
+          maxRetriesPerRequest: 2,
+          lazyConnect: true
+        });
+        
+        this.redis.on('error', (error) => {
+          console.warn('⚠️ BUDGET_OPTIMIZER: Redis connection issue:', error.message);
+        });
+      } catch (error) {
+        console.warn('⚠️ BUDGET_OPTIMIZER: Redis initialization failed');
+      }
+    }
   }
 
   /**
@@ -59,33 +82,37 @@ export class BudgetOptimizer {
       return this.getDefaultDecision();
     }
 
-    try {
-      // Get current budget status
-      const budgetStatus = await costTracker.getBudgetStatus();
-      const now = DateTime.now().setZone('UTC');
-      const hoursLeft = 24 - now.hour;
-      const isPeakHour = this.isPeakHour(now.hour);
+      try {
+        // Get current budget status
+        const budgetStatus = await costTracker.getBudgetStatus();
+        const now = DateTime.now().setZone('UTC');
+        const hoursLeft = 24 - now.hour;
+        const isPeakHour = this.isPeakHour(now.hour);
 
-      // Get ROI data
-      const roiData = await this.getROIData();
-      
-      // Calculate optimization strategy
-      const decision = this.calculateOptimization({
-        spent: budgetStatus.today_spend,
-        remaining: budgetStatus.remaining,
-        hoursLeft,
-        isPeakHour,
-        intent,
-        roiData
-      });
+        // Get real-time ROI for this intent
+        const intentROI = await this.getIntentROI(intent);
+        
+        // Get ROI-optimized settings
+        const roiSettings = this.getROIOptimizedSettings(intent, intentROI, budgetStatus.remaining);
+        
+        // Calculate optimization strategy
+        const decision = this.calculateOptimization({
+          spent: budgetStatus.today_spend,
+          remaining: budgetStatus.remaining,
+          hoursLeft,
+          isPeakHour,
+          intent,
+          intentROI,
+          roiSettings
+        });
 
-      console.log(`🎯 BUDGET_OPTIMIZER: ${decision.reasoning}`);
-      return decision;
+        console.log(`🎯 BUDGET_OPTIMIZER: ${decision.reasoning} [ROI: ${intentROI.toFixed(3)}]`);
+        return decision;
 
-    } catch (error: any) {
-      console.warn('⚠️ BUDGET_OPTIMIZER: Optimization failed, using defaults:', error.message);
-      return this.getDefaultDecision();
-    }
+      } catch (error: any) {
+        console.warn('⚠️ BUDGET_OPTIMIZER: Optimization failed, using defaults:', error.message);
+        return this.getDefaultDecision();
+      }
   }
 
   /**
@@ -97,9 +124,10 @@ export class BudgetOptimizer {
     hoursLeft: number;
     isPeakHour: boolean;
     intent: string;
-    roiData: ROIData[];
+    intentROI: number;
+    roiSettings: { model: string; maxTokens: number; allowExpensive: boolean };
   }): OptimizationDecision {
-    const { spent, remaining, hoursLeft, isPeakHour, intent, roiData } = params;
+    const { spent, remaining, hoursLeft, isPeakHour, intent, intentROI, roiSettings } = params;
     
     // Calculate budget utilization rate
     const utilizationRate = spent / DAILY_COST_LIMIT_USD;
@@ -108,17 +136,12 @@ export class BudgetOptimizer {
     // Determine if we're ahead/behind budget
     const budgetPace = utilizationRate - timeProgress;
     
-    // Get current hour ROI
-    const currentHour = 24 - hoursLeft;
-    const currentROI = roiData.find(r => r.hour === currentHour);
-    const avgROI = roiData.reduce((sum, r) => sum + r.cost_per_follower, 0) / roiData.length || 0.01;
-    
     let decision: OptimizationDecision;
     
     if (BUDGET_STRATEGY === 'conservative') {
       decision = this.conservativeStrategy(remaining, hoursLeft, isPeakHour);
     } else {
-      decision = this.adaptiveStrategy(remaining, hoursLeft, isPeakHour, budgetPace, currentROI, avgROI);
+      decision = this.adaptiveROIStrategy(remaining, hoursLeft, isPeakHour, budgetPace, intentROI, roiSettings);
     }
     
     // Apply intent-specific adjustments
@@ -210,6 +233,64 @@ export class BudgetOptimizer {
       reasoning: `Adaptive: pace=${budgetPace.toFixed(2)}, ROI=${roiMultiplier.toFixed(2)}x, ${isPeakHour ? 'peak' : 'off-peak'}`,
       budgetStatus: {
         spent: 0,
+        remaining,
+        hoursLeft,
+        isPeakHour
+      }
+    };
+  }
+
+  /**
+   * 🎯 ADAPTIVE ROI STRATEGY - Uses real-time intent ROI
+   */
+  private adaptiveROIStrategy(
+    remaining: number, 
+    hoursLeft: number, 
+    isPeakHour: boolean, 
+    budgetPace: number,
+    intentROI: number,
+    roiSettings: { model: string; maxTokens: number; allowExpensive: boolean }
+  ): OptimizationDecision {
+    const hourlyBudget = remaining / Math.max(1, hoursLeft);
+    const baselineROI = 1.0;
+    const roiMultiplier = intentROI / baselineROI;
+    
+    // Start with ROI-optimized settings
+    let allowExpensive = roiSettings.allowExpensive;
+    let recommendedModel: 'gpt-4o-mini' | 'gpt-4o' = roiSettings.model as 'gpt-4o-mini' | 'gpt-4o';
+    let postingFrequency: 'normal' | 'reduced' | 'minimal' = 'normal';
+    
+    // Adjust based on budget pace and peak hours
+    if (budgetPace < -0.2) {
+      // Behind budget - be more conservative unless high ROI
+      if (roiMultiplier < 1.2) {
+        allowExpensive = false;
+        recommendedModel = 'gpt-4o-mini';
+      }
+      postingFrequency = roiMultiplier > 1.3 ? 'normal' : 'reduced';
+    } else if (budgetPace > 0.2) {
+      // Ahead of budget - can afford to spend on high ROI intents
+      if (roiMultiplier > 1.4 && isPeakHour) {
+        allowExpensive = true;
+        recommendedModel = 'gpt-4o';
+      }
+      postingFrequency = 'normal';
+    } else {
+      // On track - purely ROI-driven decisions
+      postingFrequency = roiMultiplier > 1.0 ? 'normal' : 'reduced';
+    }
+    
+    // Calculate cost limits based on ROI
+    const roiAdjustedBudget = hourlyBudget * Math.min(2.0, Math.max(0.3, roiMultiplier));
+    
+    return {
+      allowExpensive,
+      recommendedModel,
+      maxCostPerCall: Math.min(roiAdjustedBudget * 0.8, allowExpensive ? 0.25 : 0.10),
+      postingFrequency,
+      reasoning: `ROI-Adaptive: pace=${budgetPace.toFixed(2)}, intentROI=${roiMultiplier.toFixed(2)}x, model=${recommendedModel}`,
+      budgetStatus: {
+        spent: 0, // This will be filled by the calling optimize method
         remaining,
         hoursLeft,
         isPeakHour
@@ -310,28 +391,115 @@ export class BudgetOptimizer {
   }
 
   /**
-   * 📈 RECORD ROI DATA
+   * 📈 RECORD ROI DATA in both Supabase and Redis
    */
-  async recordROI(hour: number, engagement: number, followersGained: number, cost: number): Promise<void> {
+  async recordROI(intent: string, engagement: number, followersGained: number, cost: number): Promise<void> {
     try {
-      const costPerFollower = followersGained > 0 ? cost / followersGained : cost;
+      const roiScore = followersGained > 0 ? (engagement + followersGained * 10) / cost : engagement / cost;
+      const dateUtc = new Date().toISOString().split('T')[0];
       
+      // Store in Supabase for persistence
       await this.supabase
-        .from('engagement_roi')
+        .from('budget_roi_tracking')
         .upsert([{
-          hour,
+          intent,
+          date_utc: dateUtc,
+          cost_usd: cost,
           engagement_score: engagement,
           followers_gained: followersGained,
-          cost_usd: cost,
-          cost_per_follower: costPerFollower,
-          recorded_at: new Date().toISOString()
-        }], { onConflict: 'hour' });
+          roi_score: roiScore
+        }], { onConflict: 'intent,date_utc' });
+      
+      // Store in Redis for real-time optimization
+      const redisKey = `${process.env.REDIS_PREFIX || 'prod:'}budget:roi:${intent}`;
+      if (this.redis) {
+        // Store rolling 7-day average ROI
+        await this.redis.zadd(redisKey, Date.now(), roiScore);
+        await this.redis.expire(redisKey, 7 * 24 * 3600); // 7 day TTL
         
-      console.log(`📈 ROI_RECORDED: Hour ${hour}, ${followersGained} followers, $${costPerFollower.toFixed(4)}/follower`);
+        // Keep only last 30 scores per intent
+        await this.redis.zremrangebyrank(redisKey, 0, -31);
+      }
+        
+      console.log(`📈 ROI_RECORDED: ${intent} scored ${roiScore.toFixed(3)} (${followersGained} followers, ${engagement} engagement, $${cost.toFixed(4)})`);
       
     } catch (error: any) {
       console.warn('⚠️ ROI_RECORD_FAILED:', error.message);
     }
+  }
+
+  /**
+   * 🎯 GET INTENT ROI SCORE from Redis cache
+   */
+  async getIntentROI(intent: string): Promise<number> {
+    if (!this.redis) return 1.0; // Baseline ROI
+    
+    try {
+      const redisKey = `${process.env.REDIS_PREFIX || 'prod:'}budget:roi:${intent}`;
+      
+      // Get recent ROI scores (last 7 days)
+      const scores = await this.redis.zrange(redisKey, -10, -1); // Last 10 scores
+      
+      if (scores.length === 0) return 1.0; // Baseline for new intents
+      
+      // Calculate weighted average (more recent scores have higher weight)
+      let weightedSum = 0;
+      let totalWeight = 0;
+      
+      scores.forEach((score, index) => {
+        const roi = parseFloat(score);
+        const weight = index + 1; // Recent scores get higher weight
+        weightedSum += roi * weight;
+        totalWeight += weight;
+      });
+      
+      const avgROI = weightedSum / totalWeight;
+      console.log(`🧠 BUDGET_OPTIMIZER: ${intent} ROI = ${avgROI.toFixed(3)} (${scores.length} samples)`);
+      
+      return avgROI;
+      
+    } catch (error) {
+      console.warn(`⚠️ ROI_FETCH_FAILED: ${intent}`, error);
+      return 1.0;
+    }
+  }
+
+  /**
+   * 🎯 OPTIMIZE MODEL AND TOKENS based on ROI
+   */
+  getROIOptimizedSettings(intent: string, currentROI: number, remainingBudget: number): {
+    model: string;
+    maxTokens: number;
+    allowExpensive: boolean;
+  } {
+    const baselineROI = 1.0;
+    const roiMultiplier = currentROI / baselineROI;
+    const budgetPressure = remainingBudget / DAILY_COST_LIMIT_USD;
+    
+    // High ROI intent with good budget remaining
+    if (roiMultiplier > 1.3 && budgetPressure > 0.3) {
+      return {
+        model: 'gpt-4o',
+        maxTokens: 800,
+        allowExpensive: true
+      };
+    }
+    
+    // Good ROI but budget pressure
+    if (roiMultiplier > 1.1 && budgetPressure > 0.1) {
+      return {
+        model: 'gpt-4o-mini',
+        maxTokens: 600,
+        allowExpensive: false
+      };
+    }
+    
+    // Conservative for low ROI or tight budget
+    return {
+      model: 'gpt-4o-mini',
+      maxTokens: 400,
+      allowExpensive: false
+    };
   }
 }
 

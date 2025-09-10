@@ -69,43 +69,69 @@ export class BulletproofThreadComposer {
       };
     }
 
-    // Get browser page
-    if (!this.browserPage) {
-      await this.initializeBrowser();
-    }
+    // Get browser page with resilience
+    await this.ensureBrowserReady();
 
-    try {
-      // Try composer-first approach
-      await this.postViaComposer(numberedSegments);
-      console.log('THREAD_PUBLISH_OK mode=composer');
-      return {
-        success: true,
-        mode: 'composer',
-        rootTweetUrl: await this.captureRootUrl()
-      };
-    } catch (composerError: any) {
-      console.log(`🧵 THREAD_COMPOSER_FAILED -> falling back to reply chain: ${String(composerError).slice(0, 400)}`);
-      // On COMPOSER_NOT_FOCUSED, do one attempt to switch to reply-chain and actually call the self-reply API path
-      console.log(`THREAD_DECISION mode=reply_chain segments=${segments.length}`);
-      
+    // Try with exponential backoff
+    const maxRetries = parseInt(process.env.PLAYWRIGHT_MAX_CONTEXT_RETRIES || '3', 10);
+    const baseBackoffMs = parseInt(process.env.PLAYWRIGHT_CONTEXT_RETRY_BACKOFF_MS || '2000', 10);
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
-        // Fallback: single-pass reply-chain fallback (not looping composer again)
-        const rootUrl = await this.postViaReplies(numberedSegments);
-        console.log('THREAD_PUBLISH_OK mode=reply_chain');
+        console.log(`🧵 THREAD_ATTEMPT: ${attempt + 1}/${maxRetries}`);
+        
+        // Try composer-first approach
+        await this.postViaComposer(numberedSegments);
+        console.log('THREAD_PUBLISH_OK mode=composer');
         return {
           success: true,
-          mode: 'reply_chain',
-          rootTweetUrl: rootUrl
+          mode: 'composer',
+          rootTweetUrl: await this.captureRootUrl()
         };
-      } catch (replyError: any) {
-        console.error('❌ THREAD_BOTH_METHODS_FAILED:', replyError);
-        return {
-          success: false,
-          mode: 'reply_chain',
-          error: `Both composer and reply-chain failed: ${replyError.message}`
-        };
+        
+      } catch (composerError: any) {
+        console.log(`🧵 THREAD_COMPOSER_FAILED (attempt ${attempt + 1}): ${String(composerError).slice(0, 200)}`);
+        
+        // Try reply-chain fallback on this attempt
+        try {
+          console.log(`THREAD_DECISION mode=reply_chain segments=${segments.length}`);
+          const rootUrl = await this.postViaReplies(numberedSegments);
+          console.log('THREAD_PUBLISH_OK mode=reply_chain');
+          return {
+            success: true,
+            mode: 'reply_chain',
+            rootTweetUrl: rootUrl
+          };
+        } catch (replyError: any) {
+          console.warn(`🔄 THREAD_RETRY_FALLBACK: Reply chain failed on attempt ${attempt + 1}: ${replyError.message.slice(0, 200)}`);
+          
+          // If this is not the last attempt, wait with exponential backoff
+          if (attempt < maxRetries - 1) {
+            const backoffMs = baseBackoffMs * Math.pow(2, attempt);
+            console.log(`⏰ THREAD_BACKOFF: Waiting ${backoffMs}ms before retry ${attempt + 2}`);
+            await this.browserPage?.waitForTimeout(backoffMs);
+            
+            // Try to recover browser context
+            await this.recoverBrowserContext();
+          } else {
+            // Final failure - don't crash the loop, just log
+            console.error(`THREAD_POST_FAIL: All ${maxRetries} attempts exhausted - continuing system operation`);
+            return {
+              success: false,
+              mode: 'composer',
+              error: `Final attempt - Composer: ${composerError.message.slice(0, 150)} | Reply: ${replyError.message.slice(0, 150)}`
+            };
+          }
+        }
       }
     }
+    
+    // Safety fallback
+    return {
+      success: false,
+      mode: 'composer',
+      error: 'Unexpected error: All retry attempts completed without success or failure'
+    };
   }
 
   /**
@@ -325,6 +351,63 @@ export class BulletproofThreadComposer {
     }
     
     return `https://x.com/status/${Date.now()}`;
+  }
+
+  /**
+   * 🔄 Ensure browser is ready with retry mechanism
+   */
+  private static async ensureBrowserReady(): Promise<void> {
+    const maxBrowserRetries = 2;
+    
+    for (let i = 0; i < maxBrowserRetries; i++) {
+      try {
+        if (!this.browserPage) {
+          await this.initializeBrowser();
+        }
+        
+        // Test browser responsiveness
+        await this.browserPage?.evaluate(() => document.readyState);
+        return; // Browser is ready
+        
+      } catch (error: any) {
+        console.warn(`🔄 BROWSER_RECOVERY: Attempt ${i + 1}/${maxBrowserRetries} failed: ${error.message}`);
+        this.browserPage = null; // Force reinit on next attempt
+        
+        if (i < maxBrowserRetries - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+        }
+      }
+    }
+    
+    throw new Error('Browser initialization failed after retries');
+  }
+
+  /**
+   * 🚑 Recover browser context after failures
+   */
+  private static async recoverBrowserContext(): Promise<void> {
+    try {
+      if (this.browserPage) {
+        // Try soft recovery first
+        await this.browserPage.reload({ waitUntil: 'networkidle' });
+        await this.browserPage.waitForTimeout(1500);
+        
+        // Navigate to compose page if not there
+        const currentUrl = this.browserPage.url();
+        if (!currentUrl.includes('x.com') && !currentUrl.includes('twitter.com')) {
+          await this.browserPage.goto('https://x.com/compose/tweet', { waitUntil: 'networkidle' });
+        }
+        
+        console.log('✅ BROWSER_RECOVERY: Soft recovery completed');
+      } else {
+        // Hard recovery - reinitialize
+        console.log('🔄 BROWSER_RECOVERY: Hard recovery - reinitializing browser');
+        await this.ensureBrowserReady();
+      }
+    } catch (error: any) {
+      console.warn('⚠️ BROWSER_RECOVERY: Recovery failed:', error.message);
+      this.browserPage = null; // Force full reinit on next attempt
+    }
   }
 }
 

@@ -39,13 +39,24 @@ export class MigrationRunner {
       const migrationFiles = await this.getMigrationFiles();
       
       // Apply new migrations
+      let appliedCount = 0;
+      let skippedCount = 0;
+      
       for (const file of migrationFiles) {
         if (!appliedSet.has(file)) {
           await this.applyMigration(file);
+          appliedCount++;
+        } else {
+          console.log(`🧱 MIGRATION_SKIPPED: ${file} (already applied)`);
+          skippedCount++;
         }
       }
       
-      console.log(`✅ MIGRATIONS: All migrations applied successfully`);
+      if (appliedCount > 0) {
+        console.log(`✅ MIGRATIONS: Applied ${appliedCount} new migrations, skipped ${skippedCount}`);
+      } else {
+        console.log(`✅ MIGRATIONS: All ${skippedCount} migrations already applied`);
+      }
       
     } catch (error: any) {
       console.error('❌ MIGRATIONS: Failed to run migrations:', error.message);
@@ -141,10 +152,16 @@ export class MigrationRunner {
   }
 
   private async getMigrationFiles(): Promise<string[]> {
-    const migrationsDir = path.join(__dirname, '../../sql/migrations');
+    // Look in supabase/migrations first (preferred), then sql/migrations for compatibility
+    let migrationsDir = path.join(__dirname, '../../supabase/migrations');
     
     if (!fs.existsSync(migrationsDir)) {
-      console.log('📊 MIGRATIONS: No migrations directory found, creating...');
+      migrationsDir = path.join(__dirname, '../../sql/migrations');
+    }
+    
+    if (!fs.existsSync(migrationsDir)) {
+      console.log('📊 MIGRATIONS: No migrations directory found, creating supabase/migrations...');
+      migrationsDir = path.join(__dirname, '../../supabase/migrations');
       fs.mkdirSync(migrationsDir, { recursive: true });
       return [];
     }
@@ -153,36 +170,45 @@ export class MigrationRunner {
       .filter(f => f.endsWith('.sql'))
       .sort();
       
-    console.log(`📊 MIGRATIONS: Found ${files.length} migration files`);
+    console.log(`📊 MIGRATIONS: Found ${files.length} migration files in ${migrationsDir}`);
     return files;
   }
 
   private async applyMigration(filename: string): Promise<void> {
-    console.log(`📊 MIGRATION_APPLYING: ${filename}`);
-    
-    const filepath = path.join(__dirname, '../../sql/migrations', filename);
-    const sql = fs.readFileSync(filepath, 'utf8');
-    const checksum = this.calculateChecksum(sql);
-    
-    try {
-      // Execute the migration SQL
-      await this.pgClient!.query(sql);
+      console.log(`📊 MIGRATION_APPLYING: ${filename}`);
       
-      // Record successful application
-      await this.supabase
-        .from('schema_migrations')
-        .insert([{
-          filename,
-          applied_at: new Date().toISOString(),
-          checksum
-        }]);
+      // Try supabase/migrations first, then sql/migrations for backward compatibility
+      let filepath = path.join(__dirname, '../../supabase/migrations', filename);
+      if (!fs.existsSync(filepath)) {
+        filepath = path.join(__dirname, '../../sql/migrations', filename);
+      }
+      
+      if (!fs.existsSync(filepath)) {
+        throw new Error(`Migration file not found: ${filename}`);
+      }
+      
+      const sql = fs.readFileSync(filepath, 'utf8');
+      const checksum = this.calculateChecksum(sql);
+      
+      try {
+        // Execute the migration SQL
+        await this.pgClient!.query(sql);
         
-      console.log(`✅ MIGRATION_APPLIED: ${filename}`);
-      
-    } catch (error: any) {
-      console.error(`❌ MIGRATION_FAILED: ${filename} - ${error.message}`);
-      throw error;
-    }
+        // Record successful application
+        await this.supabase
+          .from('schema_migrations')
+          .insert([{
+            filename,
+            applied_at: new Date().toISOString(),
+            checksum
+          }]);
+          
+        console.log(`🧱 MIGRATION_APPLIED: ${filename}`);
+        
+      } catch (error: any) {
+        console.error(`❌ MIGRATION_FAILED: ${filename} - ${error.message}`);
+        throw error;
+      }
   }
 
   private calculateChecksum(content: string): string {
@@ -197,12 +223,18 @@ export class MigrationRunner {
   }
 }
 
-// Auto-run on import in production
+// Auto-run on import (checks DATABASE_URL first, then builds from env)
 if (process.env.NODE_ENV === 'production' || process.env.RUN_MIGRATIONS === 'true') {
   const runner = new MigrationRunner();
-  runner.run().catch(error => {
+  runner.run().then(() => {
+    console.log('✅ STARTUP_MIGRATIONS: All migrations completed successfully');
+  }).catch(error => {
     console.error('❌ STARTUP_MIGRATIONS_FAILED:', error.message);
-    process.exit(1);
+    console.error('💡 Check DATABASE_URL or SUPABASE_DB_PASSWORD + PROJECT_REF variables');
+    // Don't exit in development, but do in production
+    if (process.env.NODE_ENV === 'production') {
+      process.exit(1);
+    }
   });
 }
 

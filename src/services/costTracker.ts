@@ -13,7 +13,7 @@ const DAILY_COST_LIMIT_USD = parseFloat(process.env.DAILY_COST_LIMIT_USD ?? '5.0
 const COST_SOFT_BUDGET_USD = parseFloat(process.env.COST_SOFT_BUDGET_USD ?? '3.50'); // 70% of hard limit
 const COST_TRACKER_STRICT = (process.env.COST_TRACKER_STRICT ?? 'true') === 'true';
 const COST_TRACKER_ROLLOVER_TZ = process.env.COST_TRACKER_ROLLOVER_TZ ?? 'UTC';
-const REDIS_COST_KEY_PREFIX = process.env.REDIS_COST_KEY_PREFIX ?? 'openai_cost';
+const REDIS_PREFIX = process.env.REDIS_PREFIX ?? 'prod:';
 const REDIS_BUDGET_TTL_SECONDS = parseInt(process.env.REDIS_BUDGET_TTL_SECONDS ?? '172800', 10);
 const REDIS_BREAKER_ENABLED = (process.env.REDIS_BREAKER_ENABLED ?? 'true') === 'true';
 const COST_LOGGING_STORAGE = process.env.COST_LOGGING_STORAGE ?? 'supabase';
@@ -157,7 +157,7 @@ export class CostTracker {
   }
 
   /**
-   * 📊 RECORD USAGE to Supabase (RPC first, fallback to direct insert)
+   * 📊 RECORD USAGE to Supabase (RPC first with jsonb payload, fallback to direct insert)
    */
   async recordUsage(record: UsageRecord): Promise<void> {
     if (!COST_TRACKER_ENABLED || COST_LOGGING_STORAGE !== 'supabase' || !this.supabase) {
@@ -165,25 +165,27 @@ export class CostTracker {
     }
 
     try {
-      // Try RPC first
-      const { error: rpcError } = await this.supabase.rpc('log_openai_usage', {
-        p_completion_tokens: record.completion_tokens,
-        p_cost_tier: record.cost_tier,
-        p_cost_usd: record.cost_usd,
-        p_finish_reason: record.finish_reason,
-        p_intent: record.intent,
-        p_model: record.model,
-        p_prompt_tokens: record.prompt_tokens,
-        p_raw: record.raw,
-        p_request_id: record.request_id,
-        p_total_tokens: record.total_tokens
-      });
+      // Try new RPC with jsonb payload first
+      const payload = {
+        model: record.model || 'unknown',
+        cost_tier: record.cost_tier,
+        intent: record.intent || 'general',
+        prompt_tokens: record.prompt_tokens || 0,
+        completion_tokens: record.completion_tokens || 0,
+        total_tokens: record.total_tokens || 0,
+        cost_usd: record.cost_usd || 0,
+        request_id: record.request_id,
+        finish_reason: record.finish_reason,
+        raw: record.raw || {}
+      };
+
+      const { data: insertId, error: rpcError } = await this.supabase.rpc('log_openai_usage', payload);
 
       if (rpcError) {
         throw rpcError;
       }
 
-      console.log(`💰 COST_LOG: RPC success $${record.cost_usd.toFixed(4)} (${record.model})`);
+      console.log(`💰 COST_LOG: RPC success $${record.cost_usd.toFixed(4)} (${record.model}) [${insertId}]`);
 
     } catch (rpcError: any) {
       // Enhanced fallback handling
@@ -220,7 +222,7 @@ export class CostTracker {
           throw insertError;
         }
 
-        console.log(`💰 COST_LOG_OK: Direct insert succeeded $${record.cost_usd.toFixed(4)} (${record.model})`);
+        console.log(`💰 COST_LOG: Direct insert succeeded $${record.cost_usd.toFixed(4)} (${record.model})`);
 
       } catch (insertError: any) {
         // Log but NEVER break posting pipeline
@@ -241,7 +243,7 @@ export class CostTracker {
     }
 
     const today = this.getTodayKey();
-    const key = `${REDIS_COST_KEY_PREFIX}:${today}`;
+    const key = `${REDIS_PREFIX}openai_cost:${today}`;
 
     try {
       // Atomic increment and set TTL if new key
@@ -252,7 +254,7 @@ export class CostTracker {
       const results = await pipeline.exec();
       const newTotal = parseFloat(results?.[0]?.[1] as string || '0');
       
-      console.log(`💰 REDIS_BUDGET: $${newTotal.toFixed(4)} / $${DAILY_COST_LIMIT_USD} (${today})`);
+      console.log(`💰 REDIS_BUDGET: $${newTotal.toFixed(4)} / $${DAILY_COST_LIMIT_USD} (key: ${key})`);
       return newTotal;
 
     } catch (error: any) {
@@ -276,7 +278,7 @@ export class CostTracker {
       
       // Set Redis block flag
       if (this.redis) {
-        await this.redis.setex(`openai_blocked:${today}`, REDIS_BUDGET_TTL_SECONDS, 'true');
+        await this.redis.setex(`${REDIS_PREFIX}openai_blocked:${today}`, REDIS_BUDGET_TTL_SECONDS, 'true');
       }
 
       console.error(`🚫 DAILY_LIMIT_REACHED: $${status.today_spend.toFixed(2)} used / $${status.limit.toFixed(2)} limit – blocking OpenAI calls until rollover (TZ=${COST_TRACKER_ROLLOVER_TZ})`);
@@ -297,11 +299,11 @@ export class CostTracker {
     // Check Redis block flag first
     if (this.redis) {
       try {
-        const blockFlag = await this.redis.get(`openai_blocked:${today}`);
+        const blockFlag = await this.redis.get(`${REDIS_PREFIX}openai_blocked:${today}`);
         blocked = blockFlag === 'true';
 
         // Get Redis total
-        const redisTotal = await this.redis.get(`${REDIS_COST_KEY_PREFIX}:${today}`);
+        const redisTotal = await this.redis.get(`${REDIS_PREFIX}openai_cost:${today}`);
         if (redisTotal !== null) {
           todaySpend = parseFloat(redisTotal);
           source = 'redis';
@@ -458,7 +460,7 @@ export class CostTracker {
         if (COST_TRACKER_STRICT && newTotal >= DAILY_COST_LIMIT_USD) {
           const today = this.getTodayKey();
           if (this.redis) {
-            await this.redis.setex(`openai_blocked:${today}`, REDIS_BUDGET_TTL_SECONDS, 'true');
+            await this.redis.setex(`${REDIS_PREFIX}openai_blocked:${today}`, REDIS_BUDGET_TTL_SECONDS, 'true');
           }
           console.warn(`🚫 DAILY_LIMIT_REACHED: $${newTotal.toFixed(2)} used / $${DAILY_COST_LIMIT_USD} limit – blocking further calls`);
         }

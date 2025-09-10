@@ -6,7 +6,7 @@
 import { config } from 'dotenv';
 config();
 
-// Run migrations on startup
+// Run auto-migrations on startup (using DATABASE_URL or constructed URL)
 import './db/migrations';
 
 import { TwitterAnalyticsScraper } from './analytics/twitterAnalyticsScraper';
