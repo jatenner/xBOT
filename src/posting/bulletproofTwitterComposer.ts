@@ -165,40 +165,73 @@ export class BulletproofTwitterComposer {
     let composer: Locator | null = null;
     let workingSelector = '';
 
-    try {
-      // Use combined selector with waitForSelector as specified
-      const el = await this.page.waitForSelector(composerSelectors.join(', '), { timeout: 8000 });
-      console.log('✅ COMPOSER_FOUND: Element located successfully');
-      
-      // Click with delay as specified
-      await el.click({ delay: 20 });
-      await this.page.waitForTimeout(300);
-      
-      // Type content with delay as specified
-      await el.type(content, { delay: 15 });
-      await this.page.waitForTimeout(500);
-      
-      console.log(`✅ CONTENT_ENTERED: ${content.length} characters typed`);
-      
-      // Find and click tweet button
-      const btn = await this.page.waitForSelector(tweetButtons.join(', '), { timeout: 8000 });
-      console.log('🔍 POST_BUTTON: Found tweet button, clicking...');
-      
-      await btn.click();
-      await this.page.waitForTimeout(2000);
-      
-      console.log('✅ BULLETPROOF_SUCCESS: Post submitted successfully');
-      return { success: true };
-      
-    } catch (error: any) {
-      console.error(`❌ POSTING_ERROR: ${error.message}`);
-      
-      // Keep reply-chain fallback
-      return {
-        success: false,
-        error: error.message
-      };
+    // BOUNDED RETRIES: Maximum 2 attempts, no reply-chain fallback
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        console.log(`🎯 COMPOSER_ATTEMPT: ${attempt}/2`);
+        
+        // Navigate to compose page for reliability
+        if (attempt === 1) {
+          await this.page.goto('https://x.com/compose/tweet', { 
+            waitUntil: 'domcontentloaded',
+            timeout: 8000 
+          });
+          await this.page.waitForTimeout(1000);
+        }
+        
+        // Block analytics to reduce noise
+        await this.page.route('**/*analytics*', route => route.abort());
+        
+        // Use robust selectors for X/Twitter 2025-Q3
+        const textbox = this.page.locator([
+          'div[data-testid="tweetTextarea_0"] div[contenteditable="true"]',
+          'section[role="dialog"] div[contenteditable="true"]',
+          'div[contenteditable="true"]'
+        ].join(', ')).first();
+        
+        await textbox.waitFor({ state: 'visible', timeout: 6000 });
+        console.log('✅ COMPOSER_FOUND: Element located successfully');
+        
+        // Safe focus and type
+        await textbox.click({ trial: true }).catch(() => {});
+        await textbox.focus();
+        await this.page.keyboard.type(content, { delay: 15 });
+        await this.page.waitForTimeout(500);
+        
+        console.log(`✅ CONTENT_ENTERED: ${content.length} characters typed`);
+        
+        // Find and click post button
+        const postButton = this.page.locator([
+          'button[role="button"][data-testid="tweetButton"]',
+          'div[role="button"][data-testid="tweetButton"]'
+        ].join(', ')).first();
+        
+        await postButton.waitFor({ state: 'visible', timeout: 6000 });
+        await postButton.click();
+        await this.page.waitForTimeout(2000);
+        
+        console.log('✅ BULLETPROOF_SUCCESS: Post submitted successfully');
+        return { success: true };
+        
+      } catch (error: any) {
+        console.error(`❌ ATTEMPT_${attempt}_FAILED: ${error.message}`);
+        
+        if (attempt === 2) {
+          // Final attempt failed - abort without escalation
+          console.error('❌ COMPOSER_NOT_AVAILABLE: Max attempts reached, aborting');
+          throw new Error('COMPOSER_NOT_AVAILABLE');
+        }
+        
+        // Wait before retry
+        await this.page.waitForTimeout(1000);
+      }
     }
+    
+    // Should not reach here
+    return {
+      success: false,
+      error: 'COMPOSER_NOT_AVAILABLE'
+    };
 
     // Legacy fallback code (shouldn't reach here)
     console.log(`📝 POSTING: Legacy fallback`);

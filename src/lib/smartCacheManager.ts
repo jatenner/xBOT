@@ -247,6 +247,14 @@ export class SmartCacheManager extends EventEmitter {
    * 🔥 CACHE WARMING: Proactively load frequently accessed data
    */
   private startCacheWarming(): void {
+    // FEATURE FLAG: Skip cache warming if it hits LLM in production
+    const allowLLMCacheWarmup = process.env.ALLOW_LLM_CACHE_WARMUP === 'true';
+    
+    if (!allowLLMCacheWarmup) {
+      console.log('⏭️ SMART_CACHE: Cache warming disabled (ALLOW_LLM_CACHE_WARMUP=false)');
+      return;
+    }
+    
     console.log('🔥 SMART_CACHE: Starting intelligent cache warming...');
 
     this.warmingInterval = setInterval(async () => {

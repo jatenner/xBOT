@@ -1622,12 +1622,21 @@ class BulletproofMainSystem {
       // Add sanity logs first
       await this.logSystemSanity();
       
-      // Ensure API usage table exists
+      // Log feature flags
+      const { logFeatureFlags } = await import('./config/featureFlags');
+      logFeatureFlags();
+      
+      // Ensure API usage table exists and test connection
       try {
-        const { ensureApiUsageTable } = await import('./lib/supabaseService');
-        await ensureApiUsageTable();
+        const { testDatabaseConnection } = await import('./db/supabaseService');
+        const dbTest = await testDatabaseConnection();
+        if (dbTest.success) {
+          console.log('✅ DATABASE_CONNECTION: Service role client working');
+        } else {
+          console.error('❌ DATABASE_CONNECTION: Failed -', dbTest.error);
+        }
       } catch (tableError: any) {
-        console.warn('⚠️ API_USAGE_TABLE_SETUP_FAILED:', tableError.message);
+        console.warn('⚠️ DATABASE_TEST_FAILED:', tableError.message);
       }
       
       const healthResult = await quickHealthCheck();

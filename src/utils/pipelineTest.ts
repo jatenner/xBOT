@@ -12,6 +12,18 @@ export async function testCompletePipeline(): Promise<{
   testResults: Record<string, any>;
   issues: string[];
 }> {
+  // FEATURE FLAG: Skip pipeline tests in production
+  const { FEATURE_FLAGS } = await import('../config/featureFlags');
+  
+  if (!FEATURE_FLAGS.PIPELINE_TEST_ENABLED) {
+    console.log('⏭️ PIPELINE_TEST: Disabled in production (PIPELINE_TEST_ENABLED=false)');
+    return {
+      success: true,
+      testResults: { skipped: true, reason: 'pipeline_tests_disabled' },
+      issues: []
+    };
+  }
+  
   console.log('🧪 PIPELINE_TEST: Testing complete posting pipeline...');
   
   const results: Record<string, any> = {};
