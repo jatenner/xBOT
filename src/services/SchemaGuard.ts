@@ -131,9 +131,14 @@ export class SchemaGuard {
           dns.lookup(host, { family: 4 }, cb);
         };
 
+        // Ensure SSL mode is set for secure connections
+        const connectionString = directDbUrl.includes('sslmode=') 
+          ? directDbUrl 
+          : `${directDbUrl}${directDbUrl.includes('?') ? '&' : '?'}sslmode=require`;
+
         this.directPool = new Pool({
-          connectionString: directDbUrl,
-          ssl: { rejectUnauthorized: false },
+          connectionString,
+          ssl: connectionString.includes('localhost') ? false : { rejectUnauthorized: false },
           max: 2,
           idleTimeoutMillis: 5000
         });

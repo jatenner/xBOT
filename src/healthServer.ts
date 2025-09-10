@@ -1055,7 +1055,62 @@ app.get('/api/metrics', async (req, res) => {
     });
 
     // 💰 BUDGET STATUS ENDPOINT - Real-time OpenAI cost tracking with optimizer
-    app.get('/budget/status', async (_req, res) => {
+    // Add Playwright health check endpoint
+  app.get('/playwright', async (_req, res) => {
+    try {
+      console.log('🧪 PLAYWRIGHT_HEALTH: Testing browser functionality...');
+      
+      const { railwayBrowserManager } = await import('./core/RailwayBrowserManager');
+      const healthResult = await railwayBrowserManager.testBrowserHealth();
+      
+      if (healthResult.healthy) {
+        const stats = railwayBrowserManager.getStats();
+        console.log('✅ PLAYWRIGHT_HEALTH: Browser is healthy');
+        
+        res.status(200).json({
+          status: 'healthy',
+          browser: {
+            connected: stats.connected,
+            relaunchAttempts: stats.relaunchAttempts,
+            lastRelaunch: stats.lastRelaunch > 0 ? new Date(stats.lastRelaunch).toISOString() : null,
+            relaunchScheduled: stats.relaunchScheduled
+          },
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        console.error('❌ PLAYWRIGHT_HEALTH: Browser test failed, scheduling relaunch');
+        
+        // Schedule browser relaunch on failure
+        railwayBrowserManager.scheduleBrowserRelaunch({ backoffMs: 3000 });
+        
+        res.status(503).json({
+          status: 'unhealthy',
+          error: healthResult.error,
+          action: 'browser_relaunch_scheduled',
+          timestamp: new Date().toISOString()
+        });
+      }
+    } catch (error: any) {
+      console.error('❌ PLAYWRIGHT_HEALTH: Health check failed:', error.message);
+      
+      // Schedule relaunch on health check failure
+      try {
+        const { railwayBrowserManager } = await import('./core/RailwayBrowserManager');
+        railwayBrowserManager.scheduleBrowserRelaunch({ backoffMs: 5000 });
+      } catch (importError) {
+        console.error('❌ PLAYWRIGHT_HEALTH: Failed to import browser manager:', importError);
+      }
+      
+      res.status(503).json({
+        status: 'error',
+        error: error.message,
+        action: 'browser_relaunch_scheduled',
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  app.get('/budget/status', async (_req, res) => {
       try {
         const [status, optimization] = await Promise.all([
           newCostTracker.getBudgetStatus(),

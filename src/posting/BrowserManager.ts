@@ -60,7 +60,11 @@ class BrowserManager {
               '--no-sandbox',
               '--disable-dev-shm-usage',
               '--disable-gpu',
-              '--mute-audio'
+              '--mute-audio',
+              '--disable-extensions',
+              '--no-first-run',
+              '--disable-default-apps',
+              '--memory-pressure-off'
             ],
             timeout: 30000
           }
@@ -71,26 +75,12 @@ class BrowserManager {
             headless: true,
             args: [
               '--no-sandbox',
-              '--disable-setuid-sandbox',
               '--disable-dev-shm-usage',
-              '--single-process',           // CRITICAL: Prevents EAGAIN fork() errors
-              '--no-zygote',               // CRITICAL: No subprocess spawning
               '--disable-gpu',
-              '--disable-accelerated-2d-canvas',
-              '--disable-background-timer-throttling',
-              '--disable-backgrounding-occluded-windows',
-              '--disable-renderer-backgrounding',
-              '--disable-features=TranslateUI,VizDisplayCompositor',
-              '--disable-ipc-flooding-protection',
               '--disable-extensions',
-              '--disable-plugins',
-              '--disable-images',          // Save memory
-              '--disable-javascript',      // We'll re-enable as needed
-              '--memory-pressure-off',
-              '--max_old_space_size=256',  // Low memory limit
-              '--disable-web-security',
+              '--no-first-run',
               '--disable-default-apps',
-              '--no-first-run'
+              '--memory-pressure-off'
             ],
             timeout: 15000
           }
