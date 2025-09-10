@@ -21,6 +21,10 @@ export SUPABASE_DB_PASSWORD="your_production_db_password"
 export PRODUCTION_PROJECT_REF="your_production_ref"
 export DATABASE_URL="postgresql://postgres:<PASSWORD>@aws-0-us-east-1.pooler.supabase.com:5432/postgres?sslmode=require"
 
+# SSL Configuration
+export DB_SSL_MODE="require"
+# export DB_SSL_ROOT_CERT_PATH="./ops/supabase-ca.crt"
+
 # ==========================================
 # 🚀 REDIS CACHE (PRODUCTION)
 # ==========================================
