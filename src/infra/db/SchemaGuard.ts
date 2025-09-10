@@ -94,9 +94,15 @@ export class SchemaGuard {
 
   constructor() {
     if (DB_URL) {
-      console.info(`SCHEMA_GUARD: Using DB connection: ${DB_URL.replace(/:[^@]+@/, ':***@')}`);
+      // Ensure SSL mode is set for secure connections
+      const connectionString = DB_URL.includes('sslmode=') 
+        ? DB_URL 
+        : `${DB_URL}${DB_URL.includes('?') ? '&' : '?'}sslmode=require`;
+      
+      console.info(`SCHEMA_GUARD: Using DB connection: ${connectionString.replace(/:[^@]+@/, ':***@')}`);
       this.pool = new Pool({
-        connectionString: DB_URL,
+        connectionString,
+        ssl: connectionString.includes('localhost') ? false : { rejectUnauthorized: false },
         max: 1,
         idleTimeoutMillis: 10_000,
       });

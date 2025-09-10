@@ -65,6 +65,32 @@ async function main() {
   });
   
   process.on('unhandledRejection', (reason, promise) => {
+    const errorMessage = reason instanceof Error ? reason.message : String(reason);
+    
+    // Check for browser-related errors that should trigger relaunch instead of shutdown
+    const isBrowserError = errorMessage.includes('Target closed') ||
+                          errorMessage.includes('TargetClosedError') ||
+                          errorMessage.includes('_didDisconnect') ||
+                          errorMessage.includes('Browser closed') ||
+                          errorMessage.includes('Context closed') ||
+                          errorMessage.includes('Page closed') ||
+                          errorMessage.includes('Protocol error') ||
+                          errorMessage.includes('Connection closed');
+    
+    if (isBrowserError) {
+      console.warn('🔄 Browser error detected, scheduling relaunch instead of shutdown:', errorMessage);
+      
+      // Import and schedule browser relaunch
+      import('./core/RailwayBrowserManager').then(({ railwayBrowserManager }) => {
+        railwayBrowserManager.scheduleBrowserRelaunch({ backoffMs: 5000 });
+      }).catch((err) => {
+        console.error('❌ Failed to schedule browser relaunch:', err.message);
+      });
+      
+      return; // Don't shutdown for browser errors
+    }
+    
+    // For non-browser errors, continue with normal shutdown
     console.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
     shutdown('unhandledRejection');
   });
