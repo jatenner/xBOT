@@ -126,30 +126,19 @@ export class MigrationRunner {
         log('🔗 DB_POOLER: Detected Supabase Transaction Pooler');
       }
 
-      // SSL configuration - Railway/Supabase Transaction Pooler compatible
+      // SSL configuration - Verified SSL with system CA certificates
       let ssl: any;
       
       if (isPooler) {
-        log('🔒 DB_SSL: Using Supabase Transaction Pooler SSL strategy (Railway-compatible)');
-        
-        // For Railway deployment, we need to handle Supabase pooler certificates
-        // Set NODE_TLS_REJECT_UNAUTHORIZED=0 temporarily for pooler connections only
-        const originalRejectUnauthorized = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-        process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-        
-        // Restore original setting after connection
-        process.on('exit', () => {
-          if (originalRejectUnauthorized !== undefined) {
-            process.env.NODE_TLS_REJECT_UNAUTHORIZED = originalRejectUnauthorized;
-          } else {
-            delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-          }
-        });
-        
-        ssl = { 
-          rejectUnauthorized: false  // Required for Supabase pooler infrastructure
+        log('🔒 DB_SSL: Using verified SSL for Supabase Transaction Pooler (pooler-optimized)');
+        const fs = require('fs');
+        ssl = {
+          rejectUnauthorized: true,
+          ca: fs.existsSync('/etc/ssl/certs/ca-certificates.crt') 
+            ? fs.readFileSync('/etc/ssl/certs/ca-certificates.crt')
+            : undefined
         };
-        this.sslModeUsed = 'railway-compatible';
+        this.sslModeUsed = 'verified';
       } else {
         log('🔒 DB_SSL: Using verified SSL for direct connection');
         ssl = { rejectUnauthorized: true };
