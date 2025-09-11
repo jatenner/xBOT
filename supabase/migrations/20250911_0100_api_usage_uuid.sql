@@ -144,14 +144,9 @@ DECLARE
     test_count INTEGER;
 BEGIN
     -- Test insert
-    INSERT INTO public.api_usage (event, cost_cents, meta)
-    VALUES ('migration_test', 0, '{"test": true, "migration": "20250911_0100_api_usage_uuid"}')
-    RETURNING id INTO test_id;
-    
-    -- Test select
-    SELECT COUNT(*) INTO test_count 
-    FROM public.api_usage 
-    WHERE id = test_id;
+    INSERT INTO public.api_usage (event, cost_cents, meta, model)
+    VALUES ('migration_test', 0, '{"test": true, "migration": "20250911_0100_api_usage_uuid"}', 'test-migration')
+    RETURNING id INTO test_id;    WHERE id = test_id;
     
     IF test_count = 1 THEN
         RAISE NOTICE 'SUCCESS: api_usage table verification passed (UUID: %)', test_id;
