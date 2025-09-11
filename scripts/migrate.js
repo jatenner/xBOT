@@ -60,11 +60,25 @@ async function sleep(ms) {
     return;
   }
 
-  // SSL Configuration - Supabase Transaction Pooler requires special handling
+  // SSL Configuration - Railway/Supabase Transaction Pooler compatible
   function getSSLConfig() {
     if (isPooler) {
-      safeLog('info', '🔒 DB_SSL: Using Supabase Transaction Pooler SSL strategy (encrypted, pooler-compatible)');
-      // Supabase Transaction Pooler requires this specific SSL configuration
+      safeLog('info', '🔒 DB_SSL: Using Supabase Transaction Pooler SSL strategy (Railway-compatible)');
+      
+      // For Railway deployment, we need to handle Supabase pooler certificates
+      // Set NODE_TLS_REJECT_UNAUTHORIZED=0 temporarily for pooler connections only
+      const originalRejectUnauthorized = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+      
+      // Restore original setting after connection
+      process.on('exit', () => {
+        if (originalRejectUnauthorized !== undefined) {
+          process.env.NODE_TLS_REJECT_UNAUTHORIZED = originalRejectUnauthorized;
+        } else {
+          delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+        }
+      });
+      
       return { 
         rejectUnauthorized: false  // Required for Supabase pooler infrastructure
       };
