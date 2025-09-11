@@ -56,16 +56,31 @@ async function sleep(ms) {
     process.exit(1);
   }
 
-  // SSL Configuration based on environment and pooler detection
+  // SSL Configuration with CA bundle support for Transaction Pooler
   function getSSLConfig() {
     const sslMode = process.env.MIGRATION_SSL_MODE || process.env.DB_SSL_MODE || 'require';
-    const certPath = process.env.DB_SSL_ROOT_CERT_PATH;
+    const certPath = process.env.DB_SSL_ROOT_CERT_PATH || '/etc/ssl/certs/ca-certificates.crt';
     const allowFallback = process.env.ALLOW_SSL_FALLBACK === 'true';
     
     if (isPooler) {
-      // Transaction Pooler: use lightweight SSL without custom certs
-      safeLog('info', '🔒 DB_SSL: Using Transaction Pooler managed SSL');
-      return { rejectUnauthorized: sslMode === 'require' };
+      // Transaction Pooler: try verified SSL with CA bundle first
+      if (fs.existsSync(certPath)) {
+        try {
+          const ca = fs.readFileSync(certPath);
+          safeLog('info', '🔒 DB_SSL: Using verified CA bundle for Transaction Pooler');
+          return { rejectUnauthorized: true, ca };
+        } catch (err) {
+          safeLog('warn', `⚠️ DB_SSL: CA bundle read failed: ${err.message}`);
+        }
+      }
+      
+      if (allowFallback) {
+        safeLog('warn', '🔒 DB_SSL: Fallback to managed SSL (no-verify) for Transaction Pooler');
+        return { rejectUnauthorized: false };
+      }
+      
+      safeLog('error', '❌ DB_SSL: SSL verification failed and ALLOW_SSL_FALLBACK not enabled');
+      throw new Error('SSL verification required but CA bundle unavailable');
     }
     
     // Direct connection SSL configuration
@@ -146,6 +161,28 @@ async function sleep(ms) {
     
     // Run idempotent migrations
     safeLog('info', '📊 MIGRATIONS: Starting schema setup...');
+    
+    // Load and execute content brain migration
+    const migrationFiles = [
+      'supabase/migrations/20250911_0100_api_usage_uuid.sql',
+      'supabase/migrations/20250911_0200_xbot_content_brain.sql'
+    ];
+    
+    for (const migrationFile of migrationFiles) {
+      if (fs.existsSync(migrationFile)) {
+        try {
+          const migrationSQL = fs.readFileSync(migrationFile, 'utf8');
+          safeLog('info', `📊 MIGRATIONS: Executing ${migrationFile}...`);
+          await client.query(migrationSQL);
+          safeLog('info', `✅ MIGRATIONS: ${migrationFile} completed`);
+        } catch (migError) {
+          safeLog('error', `❌ MIGRATION_ERROR: ${migrationFile} failed - ${migError.message}`);
+          throw migError;
+        }
+      } else {
+        safeLog('info', `📊 MIGRATIONS: ${migrationFile} not found, creating inline...`);
+      }
+    }
     
     // Check if we're on pooler (no superuser operations)
     if (isPooler) {
