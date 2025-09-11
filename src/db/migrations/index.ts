@@ -8,6 +8,8 @@ import { Client } from 'pg';
 import fs from 'fs';
 import path from 'path';
 import { DatabaseUrlResolver } from '../databaseUrlResolver';
+import { createSSLClient } from '../sslClient';
+import { FEATURE_FLAGS } from '../../config/featureFlags';
 
 interface MigrationRecord {
   filename: string;
@@ -32,7 +34,23 @@ export class MigrationRunner {
   };
 
   async run(): Promise<void> {
-    console.log('📊 MIGRATIONS: Starting automatic migration runner...');
+    // Check if migrations were already run successfully in prestart
+    if (process.env.MIGRATIONS_ALREADY_RAN === 'true') {
+      console.log('✅ MIGRATIONS: Skipping runtime migrations (prestart completed successfully)');
+      this.migrationHealth.success = true;
+      this.migrationHealth.error = null;
+      return;
+    }
+
+    // Check feature flag
+    if (!FEATURE_FLAGS.MIGRATIONS_RUNTIME_ENABLED) {
+      console.log('🚫 MIGRATIONS: Runtime migrations disabled by feature flag');
+      this.migrationHealth.success = true;
+      this.migrationHealth.error = null;
+      return;
+    }
+
+    console.log('📊 MIGRATIONS: Starting runtime migration runner (prestart failed or skipped)...');
     this.migrationHealth.lastRunAt = new Date();
 
     try {
@@ -77,14 +95,10 @@ export class MigrationRunner {
       this.migrationHealth.success = false;
       this.migrationHealth.error = errorMessage;
       
-      console.error('❌ MIGRATIONS: Failed to run migrations:', errorMessage);
+      console.error('❌ MIGRATIONS: Failed after fallback, manual intervention required:', errorMessage);
       
-      // In production, set degraded health but don't crash the process
-      if (process.env.APP_ENV === 'production') {
-        console.warn('🚨 MIGRATIONS: Continuing with degraded health - check /status endpoint');
-      } else {
-        throw error;
-      }
+      // Don't block app startup, but log the issue
+      console.log('💡 MIGRATIONS: App will continue running, check migration logs and /status endpoint');
       
     } finally {
       await this.cleanup();
@@ -93,23 +107,20 @@ export class MigrationRunner {
 
   private async initPgClient(): Promise<void> {
     try {
-      // Use enhanced database config with SSL support
-      const dbConfig = DatabaseUrlResolver.buildDatabaseConfig();
+      // Use shared SSL client for unified SSL handling
+      const connectionString = process.env.DATABASE_URL;
+      if (!connectionString) {
+        throw new Error('DATABASE_URL not configured');
+      }
+
+      const result = await createSSLClient(connectionString);
+      this.pgClient = result.client;
       
-      this.pgClient = new Client({ 
-        connectionString: dbConfig.connectionString,
-        ssl: dbConfig.ssl
-      });
-      
-      await this.pgClient.connect();
-      
-      const poolerStatus = dbConfig.usingPoolerHost ? ' (Session Pooler)' : '';
-      const sslStatus = dbConfig.usingRootCA ? ' with Root CA' : ` (${dbConfig.sslMode})`;
-      console.log(`📊 MIGRATIONS: Connected to PostgreSQL${poolerStatus}${sslStatus}`);
+      const fallbackStatus = result.fallbackUsed ? ' (fallback)' : '';
+      console.log(`✅ MIGRATIONS: Connected successfully with SSL [${result.sslMode}]${fallbackStatus}`);
       
     } catch (error) {
-      const guidance = DatabaseUrlResolver.getConnectionErrorGuidance(error as Error);
-      console.error(`❌ MIGRATIONS: Connection failed - ${guidance}`);
+      console.error(`❌ MIGRATIONS: Failed after fallback, manual intervention required: ${error instanceof Error ? error.message : error}`);
       throw error;
     }
   }
