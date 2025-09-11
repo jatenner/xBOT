@@ -4,10 +4,9 @@ FROM node:18-slim
 # Install SSL certificates
 RUN apt-get update && apt-get install -y curl ca-certificates && rm -rf /var/lib/apt/lists/*
 
-# Create SSL directory and download Supabase CA
-RUN mkdir -p /etc/ssl/certs/
-RUN curl -s https://raw.githubusercontent.com/supabase/postgres-meta/main/certs/prod-ca-2021.crt \
-    -o /etc/ssl/certs/supabase-ca.crt
+# --- CA cert for Supabase SSL ---
+RUN mkdir -p /etc/ssl/certs \
+ && curl -fsSL https://r2.supabase.com/ca-certs/supabase-ca.crt -o /etc/ssl/certs/supabase-ca.crt
 
 # Set working directory
 WORKDIR /app
@@ -18,7 +17,8 @@ COPY package*.json ./
 # Install dependencies
 RUN npm ci --only=production
 
-# Install Playwright browsers (Chromium)
+# --- Playwright browsers ---
+# Install Chromium with dependencies at build time (no runtime downloads)
 RUN npx playwright install --with-deps chromium
 
 # Copy application code
