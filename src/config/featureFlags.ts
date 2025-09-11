@@ -9,6 +9,7 @@ export interface FeatureFlags {
   ALLOW_LLM_CACHE_WARMUP: boolean;
   POSTING_DISABLED: boolean;
   DAILY_OPENAI_LIMIT_USD: number;
+  MIGRATIONS_RUNTIME_ENABLED: boolean;
 }
 
 export const FEATURE_FLAGS: FeatureFlags = {
@@ -16,7 +17,8 @@ export const FEATURE_FLAGS: FeatureFlags = {
   ALLOW_FALLBACK_GENERATION: process.env.ALLOW_FALLBACK_GENERATION === 'true',
   ALLOW_LLM_CACHE_WARMUP: process.env.ALLOW_LLM_CACHE_WARMUP === 'true',
   POSTING_DISABLED: process.env.POSTING_DISABLED === 'true',
-  DAILY_OPENAI_LIMIT_USD: parseFloat(process.env.DAILY_OPENAI_LIMIT_USD || '5.0')
+  DAILY_OPENAI_LIMIT_USD: parseFloat(process.env.DAILY_OPENAI_LIMIT_USD || '5.0'),
+  MIGRATIONS_RUNTIME_ENABLED: process.env.MIGRATIONS_RUNTIME_ENABLED !== 'false'
 };
 
 /**
@@ -29,6 +31,7 @@ export function logFeatureFlags(): void {
   console.log(`   ALLOW_LLM_CACHE_WARMUP: ${FEATURE_FLAGS.ALLOW_LLM_CACHE_WARMUP}`);
   console.log(`   POSTING_DISABLED: ${FEATURE_FLAGS.POSTING_DISABLED}`);
   console.log(`   DAILY_OPENAI_LIMIT_USD: $${FEATURE_FLAGS.DAILY_OPENAI_LIMIT_USD}`);
+  console.log(`   MIGRATIONS_RUNTIME_ENABLED: ${FEATURE_FLAGS.MIGRATIONS_RUNTIME_ENABLED}`);
 }
 
 /**

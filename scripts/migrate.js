@@ -43,28 +43,34 @@ const { Client } = require("pg");
     return { rejectUnauthorized };
   }
 
-  // Try connection with automatic SSL fallback
-  async function connectWithFallback() {
+  // Use shared SSL client for unified handling
+  async function connectWithSSL() {
+    // We can't import ES modules in this CommonJS script, so inline the SSL logic
+    const sslMode = process.env.MIGRATION_SSL_MODE || "prefer";
+    const certPath = process.env.MIGRATION_SSL_ROOT_CERT_PATH || "/etc/ssl/certs/supabase-ca.crt";
+    
     let ssl = buildSSLConfig();
     let client = new Client({ connectionString: url, ssl });
+    let fallbackUsed = false;
     
     try {
       await client.connect();
-      console.log("✅ DB_MIGRATE: Connected successfully with SSL");
-      return client;
+      const mode = ssl ? (ssl.ca ? 'strict' : 'system-certs') : 'disabled';
+      console.log(`🔒 DB_MIGRATE: Connected successfully with SSL (${mode})`);
+      return { client, fallbackUsed: false, mode };
     } catch (err) {
       await client.end().catch(() => {});
       
       // Check if it's a certificate error and retry with no-verify
       if (err.message && (err.message.includes('self-signed') || err.message.includes('certificate'))) {
-        console.log("⚠️ DB_MIGRATE_WARN: Falling back to ssl no-verify due to certificate chain error");
+        console.log("⚠️ DB_MIGRATE_WARN: Certificate error detected, falling back to no-verify mode");
         ssl = { rejectUnauthorized: false };
         client = new Client({ connectionString: url, ssl });
         
         try {
           await client.connect();
-          console.log("✅ DB_MIGRATE: Connected successfully with SSL fallback");
-          return client;
+          console.log("🔒 DB_MIGRATE: Connected successfully with SSL fallback (no-verify)");
+          return { client, fallbackUsed: true, mode: 'no-verify' };
         } catch (retryErr) {
           await client.end().catch(() => {});
           throw retryErr;
@@ -76,8 +82,10 @@ const { Client } = require("pg");
   }
 
   let client;
+  let connectionResult;
   try {
-    client = await connectWithFallback();
+    connectionResult = await connectWithSSL();
+    client = connectionResult.client;
 
     // Idempotent schema creation - exactly as specified
     await client.query(`
@@ -146,10 +154,14 @@ const { Client } = require("pg");
       migrationFailed = true;
     }
 
-    console.log("✅ MIGRATIONS: completed successfully (api_usage + RLS)");
+    // Set flag to indicate migrations have completed successfully
+    process.env.MIGRATIONS_ALREADY_RAN = "true";
+    
+    const sslMode = connectionResult.fallbackUsed ? 'fallback' : connectionResult.mode;
+    console.log(`✅ MIGRATIONS: Completed successfully with SSL [${sslMode}]`);
     
   } catch (err) {
-    console.error("❌ MIGRATIONS: Failed to run migrations:", err.message);
+    console.error("❌ MIGRATIONS: Failed after fallback, manual intervention required:", err.message);
     migrationFailed = true;
   } finally {
     try { 
