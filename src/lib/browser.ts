@@ -95,8 +95,8 @@ class BrowserManager {
         
         // Check for missing executable error
         if (lastError.message.includes("Executable doesn't exist")) {
-          safeLog.error('❌ CHROMIUM: Browser executable not found');
-          safeLog.info('💡 HINT: Run "npx playwright install --with-deps chromium" during build');
+          const { log } = await import('../utils/logger');
+          log('❌ REAL_METRICS: Disabled - browser unavailable (non-fatal)');
           this.isLaunching = false;
           throw new Error('BROWSER_NOT_INSTALLED: Playwright browser not found');
         }

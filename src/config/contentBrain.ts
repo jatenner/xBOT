@@ -1,5 +1,5 @@
 // src/config/contentBrain.ts - Health-First Content Brain Configuration
-import { safeLog } from '../utils/redact';
+import { log, warn } from '../utils/logger';
 
 export interface ContentBrainConfig {
   budget: {
@@ -183,29 +183,29 @@ export function loadContentBrainConfig(): ContentBrainConfig {
   if (process.env.POSTING_DISABLED === 'true') {
     config.posting.cadence.target_posts_per_day = [0, 0];
     config.posting.cadence.target_replies_per_day = [0, 0];
-    safeLog.info('📵 CONTENT_BRAIN: Posting disabled via environment variable');
+    log('📵 CONTENT_BRAIN: Posting disabled via environment variable');
   }
   
   if (process.env.BLOCK_POLITICS === 'true') {
     config.topics.blacklist.push('politics', 'partisan_content', 'political_debates');
-    safeLog.info('🚫 CONTENT_BRAIN: Political content blocked');
+    log('🚫 CONTENT_BRAIN: Political content blocked');
   }
   
   if (process.env.REPLY_TOPIC_MODE === 'broad') {
     config.posting.formats.reply.weight = 0.3; // Increase reply weight
-    safeLog.info('💬 CONTENT_BRAIN: Broad reply mode enabled');
+    log('💬 CONTENT_BRAIN: Broad reply mode enabled');
   }
   
   if (process.env.ENABLE_REPLIES === 'false') {
     config.posting.formats.reply.weight = 0;
     config.posting.cadence.target_replies_per_day = [0, 0];
-    safeLog.info('🔇 CONTENT_BRAIN: Replies disabled');
+    log('🔇 CONTENT_BRAIN: Replies disabled');
   }
   
-  safeLog.info('🧠 CONTENT_BRAIN: Configuration loaded successfully');
-  safeLog.info(`📊 Daily budget: $${config.budget.daily_limit_usd}`);
-  safeLog.info(`📝 Target posts: ${config.posting.cadence.target_posts_per_day[0]}-${config.posting.cadence.target_posts_per_day[1]}`);
-  safeLog.info(`💬 Target replies: ${config.posting.cadence.target_replies_per_day[0]}-${config.posting.cadence.target_replies_per_day[1]}`);
+  log('🧠 CONTENT_BRAIN: Configuration loaded successfully');
+  log(`📊 Daily budget: $${config.budget.daily_limit_usd}`);
+  log(`📝 Target posts: ${config.posting.cadence.target_posts_per_day[0]}-${config.posting.cadence.target_posts_per_day[1]}`);
+  log(`💬 Target replies: ${config.posting.cadence.target_replies_per_day[0]}-${config.posting.cadence.target_replies_per_day[1]}`);
   
   return config;
 }

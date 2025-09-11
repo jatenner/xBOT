@@ -1,16 +1,14 @@
 # Production Dockerfile for xBOT on Railway
 FROM node:lts-slim
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    curl \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
-# --- CA cert for Supabase SSL ---
-RUN mkdir -p /etc/ssl/certs \
- && (curl -fsSL https://raw.githubusercontent.com/supabase/postgres-meta/main/certs/prod-ca-2021.crt -o /etc/ssl/certs/supabase-ca.crt \
-     || curl -fsSL https://cacerts.digicert.com/DigiCertGlobalRootCA.crt.pem -o /etc/ssl/certs/supabase-ca.crt)
+# --- CA certificates + System dependencies ---
+# Ensure certs + system deps for Playwright
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates wget xvfb curl \
+    libnss3 libatk1.0-0 libatk-bridge2.0-0 libdrm2 libxkbcommon0 \
+    libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 \
+ && update-ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
@@ -21,13 +19,9 @@ COPY package*.json ./
 # Install dependencies
 RUN npm ci --only=production
 
-# --- Playwright browsers ---
-# Install Chromium with dependencies at build time (prevents Railway runtime errors)
-RUN npx playwright install --with-deps chromium
-
-# Verify browser installation
-RUN npx playwright --version && \
-    ls -la /root/.cache/ms-playwright/ || echo "Playwright cache not found"
+# --- Install Chromium for Playwright ---
+RUN npx --yes playwright install --with-deps chromium
+ENV PLAYWRIGHT_BROWSERS_PATH=0
 
 # Copy application code
 COPY . .
@@ -37,13 +31,11 @@ RUN npm run build
 
 # Set production environment
 ENV NODE_ENV=production
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-# Environment variables for SSL
+# SSL Configuration (verified only)
 ENV DB_SSL_MODE=require
-ENV DB_SSL_ROOT_CERT_PATH=/etc/ssl/certs/supabase-ca.crt
 ENV MIGRATION_SSL_MODE=require
-ENV MIGRATION_SSL_ROOT_CERT_PATH=/etc/ssl/certs/supabase-ca.crt
+ENV ALLOW_SSL_FALLBACK=false
 
 # Default environment variables
 ENV DAILY_OPENAI_LIMIT_USD=5
