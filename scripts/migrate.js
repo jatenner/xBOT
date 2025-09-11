@@ -1,22 +1,22 @@
-// scripts/migrate.js - Hardened database migrations with SSL and retry strategy
+// scripts/migrate.js - Production migrations with verified SSL only
 const fs = require("fs");
 const { Client } = require("pg");
 const { URL } = require("url");
 
-// Simple redaction for CommonJS environment
-function redact(str) {
-  if (!str || typeof str !== 'string') return String(str);
-  return str
-    .replace(/(postgres|postgresql):\/\/[^@\/]*@/gi, '$1://***:***@')
-    .replace(/sk-[a-zA-Z0-9-_]{20,}/g, 'sk-***REDACTED***')
-    .replace(/eyJ[a-zA-Z0-9-_=]+\.[a-zA-Z0-9-_=]+\.[a-zA-Z0-9-_=]+/g, 'eyJ***REDACTED***');
+// Secret masking for production logs
+function maskSecrets(s) {
+  if (!s || typeof s !== 'string') return String(s);
+  return s
+    .replace(/(sk-[a-zA-Z0-9_\-]+)/g, 'sk-***')
+    .replace(/(service_role|anon)[a-zA-Z0-9\.\-_]*\.[a-zA-Z0-9\.\-_]*/g, '[supabase-key-***]')
+    .replace(/(Bearer\s+)[A-Za-z0-9\-\._~+/=]+/gi, '$1***')
+    .replace(/([A-Za-z0-9]{16,}:[A-Za-z0-9]{16,})/g, '***:***')
+    .replace(/(postgres|postgresql):\/\/[^@]*@/gi, '$1://***:***@');
 }
 
-function safeLog(level, message) {
-  const timestamp = new Date().toISOString();
-  const logFn = level === 'error' ? console.error : level === 'warn' ? console.warn : console.log;
-  logFn(`[${timestamp}] ${redact(message)}`);
-}
+const log = (...args) => console.log(...args.map(x => typeof x === 'string' ? maskSecrets(x) : x));
+const warn = (...args) => console.warn(...args.map(x => typeof x === 'string' ? maskSecrets(x) : x));
+const error = (...args) => console.error(...args.map(x => typeof x === 'string' ? maskSecrets(x) : x));
 
 async function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -27,7 +27,7 @@ async function sleep(ms) {
   let migrationFailed = false;
 
   if (!rawUrl) {
-    safeLog('error', '❌ DB_MIGRATE_ERROR: DATABASE_URL not set');
+    error('❌ DB_MIGRATE_ERROR: DATABASE_URL not set');
     process.exit(1);
   }
 
@@ -46,63 +46,31 @@ async function sleep(ms) {
       throw new Error('Invalid URL components');
     }
     
-    safeLog('info', `🔗 DATABASE_HOST: ${parsedUrl.hostname}:${parsedUrl.port}`);
+    log(`🔗 DATABASE_HOST: ${parsedUrl.hostname}:${parsedUrl.port}`);
     if (isPooler) {
-      safeLog('info', '🔗 DB_POOLER: Detected Supabase Transaction Pooler');
+      log('🔗 DB_POOLER: Detected Supabase Transaction Pooler');
     }
     
   } catch (parseError) {
-    safeLog('error', `❌ DATABASE_SANITY_FAILED: Invalid URL format - ${parseError.message}`);
+    error(`❌ DATABASE_SANITY_FAILED: Invalid URL format - ${parseError.message}`);
     process.exit(1);
   }
 
-  // SSL Configuration with CA bundle support for Transaction Pooler
+  // Strict SSL Configuration - verified only, no fallback
   function getSSLConfig() {
     const sslMode = process.env.MIGRATION_SSL_MODE || process.env.DB_SSL_MODE || 'require';
-    const certPath = process.env.DB_SSL_ROOT_CERT_PATH || '/etc/ssl/certs/ca-certificates.crt';
-    const allowFallback = process.env.ALLOW_SSL_FALLBACK === 'true';
     
-    if (isPooler) {
-      // Transaction Pooler: try verified SSL with CA bundle first
-      if (fs.existsSync(certPath)) {
-        try {
-          const ca = fs.readFileSync(certPath);
-          safeLog('info', '🔒 DB_SSL: Using verified CA bundle for Transaction Pooler');
-          return { rejectUnauthorized: true, ca };
-        } catch (err) {
-          safeLog('warn', `⚠️ DB_SSL: CA bundle read failed: ${err.message}`);
-        }
-      }
-      
-      if (allowFallback) {
-        safeLog('warn', '🔒 DB_SSL: Fallback to managed SSL (no-verify) for Transaction Pooler');
-        return { rejectUnauthorized: false };
-      }
-      
-      safeLog('error', '❌ DB_SSL: SSL verification failed and ALLOW_SSL_FALLBACK not enabled');
-      throw new Error('SSL verification required but CA bundle unavailable');
+    if (sslMode !== 'require') {
+      throw new Error(`MIGRATION_SSL_MODE must be 'require' for production. Got: ${sslMode}`);
+    }
+
+    if (process.env.ALLOW_SSL_FALLBACK === 'true') {
+      throw new Error('ALLOW_SSL_FALLBACK must be false for production');
     }
     
-    // Direct connection SSL configuration
-    if (sslMode === 'disable') {
-      safeLog('info', '🔒 DB_SSL: Disabled');
-      return false;
-    }
-    
-    let ssl = { rejectUnauthorized: sslMode === 'require' };
-    
-    // Try to load custom CA certificate
-    if (certPath && fs.existsSync(certPath)) {
-      try {
-        ssl.ca = fs.readFileSync(certPath);
-        safeLog('info', '🔒 DB_SSL: Using custom CA certificate');
-      } catch (err) {
-        safeLog('warn', `⚠️ DB_SSL_WARN: Could not load CA cert from ${certPath}`);
-      }
-    }
-    
-    safeLog('info', `🔒 DB_SSL: Mode ${sslMode} (rejectUnauthorized: ${ssl.rejectUnauthorized})`);
-    return ssl;
+    // Verified SSL only - no fallback allowed
+    log('🔒 DB_SSL: Using verified CA bundle for Transaction Pooler');
+    return { rejectUnauthorized: true };
   }
 
   // Connection with retry strategy
@@ -117,36 +85,32 @@ async function sleep(ms) {
       
       try {
         await client.connect();
-        safeLog('info', `✅ DB_MIGRATE: Connected successfully (attempt ${attempt})`);
+        log(`✅ DB_MIGRATE: Connected successfully (attempt ${attempt})`);
         return client;
         
       } catch (error) {
         lastError = error;
         await client.end().catch(() => {});
         
-        // Handle different error types
+        // Handle different error types - no fallback allowed
         if (error.code === 'ENOTFOUND') {
-          safeLog('error', `❌ DATABASE_SANITY_FAILED: DNS resolution failed for host: ${parsedUrl.hostname}`);
+          error(`❌ DATABASE_SANITY_FAILED: DNS resolution failed for host: ${parsedUrl.hostname}`);
           process.exit(1);
         }
         
         if (error.message && error.message.includes('certificate')) {
-          const allowFallback = process.env.ALLOW_SSL_FALLBACK === 'true';
-          if (!allowFallback) {
-            safeLog('error', `❌ DB_SSL_ERROR: Certificate validation failed (host: ${parsedUrl.hostname})`);
-            safeLog('info', '💡 Set ALLOW_SSL_FALLBACK=true to enable fallback to no-verify mode');
-            process.exit(1);
-          }
-          
-          if (attempt === 1) {
-            safeLog('warn', `⚠️ DB_SSL_WARN: using no-verify (host: ${parsedUrl.hostname})`);
-          }
+          error(`❌ DB_SSL_ERROR: Certificate validation failed - no fallback allowed in production`);
+          error(`❌ Host: ${parsedUrl.hostname}`);
+          process.exit(1);
         }
         
         if (attempt < maxRetries) {
           const delay = baseDelay * Math.pow(2, attempt - 1);
-          safeLog('info', `🔄 DB_RETRY: Attempt ${attempt}/${maxRetries} failed, retrying in ${delay}ms`);
+          log(`🔄 DB_RETRY: Attempt ${attempt}/${maxRetries} failed, retrying in ${delay}ms`);
           await sleep(delay);
+        } else {
+          error(`❌ DB_CONNECT: All ${maxRetries} attempts failed - ${error.message}`);
+          process.exit(1);
         }
       }
     }
@@ -160,7 +124,7 @@ async function sleep(ms) {
     client = await connectWithRetry();
     
     // Run idempotent migrations
-    safeLog('info', '📊 MIGRATIONS: Starting schema setup...');
+    log('📊 MIGRATIONS: Starting schema setup...');
     
     // Load and execute content brain migration
     const migrationFiles = [
@@ -172,15 +136,15 @@ async function sleep(ms) {
       if (fs.existsSync(migrationFile)) {
         try {
           const migrationSQL = fs.readFileSync(migrationFile, 'utf8');
-          safeLog('info', `📊 MIGRATIONS: Executing ${migrationFile}...`);
+          log(`📊 MIGRATIONS: Executing ${migrationFile}...`);
           await client.query(migrationSQL);
-          safeLog('info', `✅ MIGRATIONS: ${migrationFile} completed`);
+          log(`✅ MIGRATIONS: ${migrationFile} completed`);
         } catch (migError) {
-          safeLog('error', `❌ MIGRATION_ERROR: ${migrationFile} failed - ${migError.message}`);
+          error(`❌ MIGRATION_ERROR: ${migrationFile} failed - ${migError.message}`);
           throw migError;
         }
       } else {
-        safeLog('info', `📊 MIGRATIONS: ${migrationFile} not found, creating inline...`);
+        log(`📊 MIGRATIONS: ${migrationFile} not found, creating inline...`);
       }
     }
     
@@ -289,8 +253,7 @@ async function sleep(ms) {
     
     if (!migrationFailed) {
       process.env.MIGRATIONS_ALREADY_RAN = 'true';
-      const connectionType = isPooler ? 'pooler' : 'direct';
-      safeLog('info', `✅ MIGRATIONS: ALL APPLIED (${connectionType}, ssl=require)`);
+      log('✅ MIGRATIONS: ALL_APPLIED (pooler, ssl=require, verified)');
     }
     
   } catch (err) {

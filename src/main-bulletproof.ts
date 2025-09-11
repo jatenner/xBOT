@@ -7,7 +7,7 @@ import { config } from 'dotenv';
 config();
 
 // Import safe logging
-import { safeLog } from './utils/redact';
+import { log, warn, error } from './utils/logger';
 
 // Run auto-migrations on startup (using DATABASE_URL or constructed URL)
 import './db/migrations';
@@ -47,15 +47,15 @@ class BulletproofMainSystem {
   private consecutiveFailures = 0;
 
   constructor() {
-    safeLog.info('🚀 BULLETPROOF_SYSTEM: Initializing...');
+    log('🚀 BULLETPROOF_SYSTEM: Initializing...');
     
     this.analyticsChecker = new TwitterAnalyticsScraper();
     // AuthoritativeContentEngine will be initialized in start() method
     
     // Initialize performance monitoring
-    safeLog.info('🔍 SYSTEM_MONITOR: Performance monitoring activated');
-    safeLog.info('🎯 AGGRESSIVE_ENGINE: Strategic engagement system ready');
-    safeLog.info('🚀 AGGRESSIVE_SCHEDULER: High-frequency posting system ready');
+    log('🔍 SYSTEM_MONITOR: Performance monitoring activated');
+    log('🎯 AGGRESSIVE_ENGINE: Strategic engagement system ready');
+    log('🚀 AGGRESSIVE_SCHEDULER: High-frequency posting system ready');
   }
 
   /**
@@ -65,9 +65,9 @@ class BulletproofMainSystem {
     try {
       const { AuthoritativeContentEngine } = await import('./ai/content/authoritativeContentEngine');
       // KILLED: this.authoritativeEngine = AuthoritativeContentEngine.getInstance();
-      safeLog.info('✅ AUTHORITATIVE_ENGINE: Expert content system initialized');
+      log('✅ AUTHORITATIVE_ENGINE: Expert content system initialized');
     } catch (error: any) {
-      safeLog.error('❌ AUTHORITATIVE_ENGINE_INIT_FAILED:', error.message);
+      error('❌ AUTHORITATIVE_ENGINE_INIT_FAILED:', error.message);
       throw new Error('Failed to initialize authoritative content engine');
     }
   }
@@ -77,11 +77,11 @@ class BulletproofMainSystem {
    */
   async start(): Promise<void> {
     if (this.isRunning) {
-      safeLog.warn('⚠️ SYSTEM_ALREADY_RUNNING');
+      warn('⚠️ SYSTEM_ALREADY_RUNNING');
       return;
     }
 
-    safeLog.info('🚀 BULLETPROOF_SYSTEM: Starting AI-driven aggressive learning and posting...');
+    log('🚀 BULLETPROOF_SYSTEM: Starting AI-driven aggressive learning and posting...');
     this.isRunning = true;
 
     // 🏥 RUN STARTUP HEALTH CHECK
@@ -95,18 +95,18 @@ class BulletproofMainSystem {
       await this.initializeAuthoritativeEngine();
       
       // 🧠 INITIALIZE AI DECISION ENGINE
-      safeLog.info('🧠 AI_SYSTEM: Initializing intelligent decision engine...');
+      log('🧠 AI_SYSTEM: Initializing intelligent decision engine...');
       
       // 🛡️ TEST BULLETPROOF POSTING SYSTEM
-      safeLog.info('🛡️ BULLETPROOF_TEST: Testing posting system...');
+      log('🛡️ BULLETPROOF_TEST: Testing posting system...');
       await this.testBulletproofPosting();
       
       // 🚀 CONDITIONAL: Start aggressive systems only if enabled
       if (AGGRESSIVE_SCHEDULER_ENABLED && !THREAD_PIPELINE_ONLY) {
         await aggressiveScheduler.startAggressivePosting();
-        safeLog.info('🚀 AGGRESSIVE_POSTING: AI-driven posting system started');
+        log('🚀 AGGRESSIVE_POSTING: AI-driven posting system started');
       } else {
-        safeLog.info('🚨 AGGRESSIVE_POSTING: DISABLED - Using ThreadComposer pipeline only');
+        log('🚨 AGGRESSIVE_POSTING: DISABLED - Using ThreadComposer pipeline only');
       }
       
       // Store system metrics every 5 minutes
