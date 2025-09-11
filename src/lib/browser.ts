@@ -1,5 +1,6 @@
 // src/lib/browser.ts - Robust Playwright launcher with retries and health logs
 import { chromium, Browser, Page, BrowserContext } from 'playwright';
+import { safeLog } from '../utils/redact';
 
 class BrowserManager {
   private static instance: BrowserManager;
@@ -51,7 +52,7 @@ class BrowserManager {
     
     for (let attempt = 1; attempt <= this.maxRetries + 1; attempt++) {
       try {
-        console.log(`🚀 CHROMIUM_LAUNCH: Attempt ${attempt}/${this.maxRetries + 1}`);
+        safeLog.info(`🚀 CHROMIUM_LAUNCH: Attempt ${attempt}/${this.maxRetries + 1}`);
 
         const launchOptions = {
           headless: true,
@@ -85,27 +86,36 @@ class BrowserManager {
         await testPage.goto('data:text/html,<html><body>Browser Test</body></html>');
         await testPage.close();
 
-        console.log('✅ CHROMIUM: Browser launched successfully');
+        safeLog.info('✅ CHROMIUM: Browser launched successfully');
         this.isLaunching = false;
         return this.browser;
 
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
-        console.error(`❌ CHROMIUM_LAUNCH_FAILED: Attempt ${attempt} - ${lastError.message}`);
+        
+        // Check for missing executable error
+        if (lastError.message.includes("Executable doesn't exist")) {
+          safeLog.error('❌ CHROMIUM: Browser executable not found');
+          safeLog.info('💡 HINT: Run "npx playwright install --with-deps chromium" during build');
+          this.isLaunching = false;
+          throw new Error('BROWSER_NOT_INSTALLED: Playwright browser not found');
+        }
+        
+        safeLog.error(`❌ CHROMIUM_LAUNCH_FAILED: Attempt ${attempt} - ${lastError.message}`);
         
         // Clean up failed attempt
         await this.cleanup();
 
         if (attempt <= this.maxRetries) {
           const backoffMs = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
-          console.log(`⏳ CHROMIUM_RETRY: Waiting ${backoffMs}ms before retry...`);
+          safeLog.info(`⏳ CHROMIUM_RETRY: Waiting ${backoffMs}ms before retry...`);
           await new Promise(resolve => setTimeout(resolve, backoffMs));
         }
       }
     }
 
     this.isLaunching = false;
-    console.error(`❌ CHROMIUM: browserType.launch failed: ${lastError?.message || 'Unknown error'}`);
+    safeLog.error(`❌ CHROMIUM: browserType.launch failed: ${lastError?.message || 'Unknown error'}`);
     throw lastError || new Error('Browser launch failed after all retries');
   }
 

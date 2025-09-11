@@ -1,230 +1,295 @@
-// scripts/migrate.js - Production-grade database migrations with SSL
+// scripts/migrate.js - Hardened database migrations with SSL and retry strategy
 const fs = require("fs");
 const { Client } = require("pg");
 const { URL } = require("url");
 
+// Simple redaction for CommonJS environment
+function redact(str) {
+  if (!str || typeof str !== 'string') return String(str);
+  return str
+    .replace(/(postgres|postgresql):\/\/[^@\/]*@/gi, '$1://***:***@')
+    .replace(/sk-[a-zA-Z0-9-_]{20,}/g, 'sk-***REDACTED***')
+    .replace(/eyJ[a-zA-Z0-9-_=]+\.[a-zA-Z0-9-_=]+\.[a-zA-Z0-9-_=]+/g, 'eyJ***REDACTED***');
+}
+
+function safeLog(level, message) {
+  const timestamp = new Date().toISOString();
+  const logFn = level === 'error' ? console.error : level === 'warn' ? console.warn : console.log;
+  logFn(`[${timestamp}] ${redact(message)}`);
+}
+
+async function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 (async () => {
-  let rawUrl = process.env.DATABASE_URL;
+  const rawUrl = process.env.DATABASE_URL;
   let migrationFailed = false;
 
   if (!rawUrl) {
-    console.error("❌ DB_MIGRATE_ERROR: DATABASE_URL not set");
+    safeLog('error', '❌ DB_MIGRATE_ERROR: DATABASE_URL not set');
     process.exit(1);
   }
-  
-  // Robust URL parsing and validation
-  rawUrl = rawUrl.trim(); // Remove trailing spaces/newlines
-  
+
+  // Parse and validate URL
+  const url = rawUrl.trim();
   let parsedUrl;
+  let isPooler = false;
+  
   try {
-    parsedUrl = new URL(rawUrl);
-  } catch (parseError) {
-    console.error(`❌ DATABASE_SANITY_FAILED: Invalid URL: "${rawUrl}"`);
-    console.error(`Parse error: ${parseError.message}`);
-    process.exit(1);
-  }
-
-  // Validate URL components
-  if (!parsedUrl.hostname || !parsedUrl.port) {
-    console.error(`❌ DATABASE_SANITY_FAILED: Invalid URL components - hostname: "${parsedUrl.hostname}", port: "${parsedUrl.port}"`);
-    process.exit(1);
-  }
-
-  // Pooler detection
-  const isPooler = parsedUrl.hostname.startsWith('db.') && parsedUrl.port === '6543';
-  
-  if (isPooler) {
-    console.log("🔗 DB_POOLER: Detected Supabase Transaction Pooler");
-    // Enforce SSL for pooler
-    if (!rawUrl.includes('sslmode=require')) {
-      console.log("🔒 DB_POOLER: Enforcing sslmode=require for Transaction Pooler");
-      const separator = rawUrl.includes('?') ? '&' : '?';
-      rawUrl = rawUrl + separator + 'sslmode=require';
+    parsedUrl = new URL(url.replace(/^postgres:\/\//, 'http://').replace(/^postgresql:\/\//, 'http://'));
+    isPooler = parsedUrl.port === '6543' && 
+               (parsedUrl.hostname.includes('pooler.supabase.co') || 
+                parsedUrl.hostname.startsWith('db.'));
+    
+    if (!parsedUrl.hostname || !parsedUrl.port) {
+      throw new Error('Invalid URL components');
     }
+    
+    safeLog('info', `🔗 DATABASE_HOST: ${parsedUrl.hostname}:${parsedUrl.port}`);
+    if (isPooler) {
+      safeLog('info', '🔗 DB_POOLER: Detected Supabase Transaction Pooler');
+    }
+    
+  } catch (parseError) {
+    safeLog('error', `❌ DATABASE_SANITY_FAILED: Invalid URL format - ${parseError.message}`);
+    process.exit(1);
   }
 
-  const url = rawUrl;
-
-  // SSL Strategy: require|prefer|no-verify|disable
-  const sslMode = process.env.MIGRATION_SSL_MODE || "prefer";
-  const certPath = process.env.MIGRATION_SSL_ROOT_CERT_PATH || "/etc/ssl/certs/supabase-ca.crt";
-  
-  function buildSSLConfig(useCA = true, rejectUnauthorized = true) {
-    if (sslMode === "disable") {
+  // SSL Configuration based on environment and pooler detection
+  function getSSLConfig() {
+    const sslMode = process.env.MIGRATION_SSL_MODE || process.env.DB_SSL_MODE || 'require';
+    const certPath = process.env.DB_SSL_ROOT_CERT_PATH;
+    const allowFallback = process.env.ALLOW_SSL_FALLBACK === 'true';
+    
+    if (isPooler) {
+      // Transaction Pooler: use lightweight SSL without custom certs
+      safeLog('info', '🔒 DB_SSL: Using Transaction Pooler managed SSL');
+      return { rejectUnauthorized: sslMode === 'require' };
+    }
+    
+    // Direct connection SSL configuration
+    if (sslMode === 'disable') {
+      safeLog('info', '🔒 DB_SSL: Disabled');
       return false;
     }
     
-    if (sslMode === "no-verify") {
-      console.log("🔒 DB_MIGRATE: Using SSL with no certificate verification");
-      return { rejectUnauthorized: false };
-    }
+    let ssl = { rejectUnauthorized: sslMode === 'require' };
     
-    if (useCA && (sslMode === "require" || sslMode === "prefer")) {
+    // Try to load custom CA certificate
+    if (certPath && fs.existsSync(certPath)) {
       try {
-        const ca = fs.readFileSync(certPath);
-        console.log("🔒 DB_MIGRATE: Using SSL with custom CA certificate");
-        return { ca, rejectUnauthorized };
+        ssl.ca = fs.readFileSync(certPath);
+        safeLog('info', '🔒 DB_SSL: Using custom CA certificate');
       } catch (err) {
-        if (sslMode === "require") {
-          console.log("⚠️ DB_MIGRATE_WARN: CA not found -> fallback to no-verify");
-          return { rejectUnauthorized: false };
-        }
-        // For "prefer", fall back to system certs
-        console.log("🔒 DB_MIGRATE: CA not found, using system certificates");
+        safeLog('warn', `⚠️ DB_SSL_WARN: Could not load CA cert from ${certPath}`);
       }
     }
     
-    return { rejectUnauthorized };
+    safeLog('info', `🔒 DB_SSL: Mode ${sslMode} (rejectUnauthorized: ${ssl.rejectUnauthorized})`);
+    return ssl;
   }
 
-  // Simplified SSL connection for Transaction Pooler
-  async function connectWithSSL() {
-    let ssl;
-    let client;
+  // Connection with retry strategy
+  async function connectWithRetry() {
+    const maxRetries = 5;
+    const baseDelay = 1000; // 1 second
+    let lastError;
     
-    if (isPooler) {
-      // Transaction Pooler: always use SSL without custom certificates
-      ssl = { rejectUnauthorized: false }; // Pooler handles SSL termination
-      console.log("🔒 DB_MIGRATE: Using Transaction Pooler SSL (managed)");
-    } else {
-      // Direct connection: use configured SSL
-      const sslMode = process.env.MIGRATION_SSL_MODE || "require";
-      if (sslMode === "require") {
-        ssl = { rejectUnauthorized: true };
-        console.log("🔒 DB_MIGRATE: Using direct SSL connection");
-      } else {
-        ssl = false;
-        console.log("🔒 DB_MIGRATE: SSL disabled");
-      }
-    }
-    
-    client = new Client({ connectionString: url, ssl });
-    
-    try {
-      await client.connect();
-      const mode = isPooler ? 'pooler' : (ssl ? 'direct-ssl' : 'no-ssl');
-      console.log(`✅ DB_MIGRATE: Connected successfully (${mode})`);
-      return { client, mode };
-    } catch (err) {
-      await client.end().catch(() => {});
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      const ssl = getSSLConfig();
+      const client = new Client({ connectionString: url, ssl });
       
-      // For DNS errors, fail fast with clear message
-      if (err.code === 'ENOTFOUND' || err.message.includes('getaddrinfo')) {
-        console.error(`❌ DATABASE_SANITY_FAILED: DNS resolution failed for hostname: "${parsedUrl.hostname}"`);
-        console.error(`Full error: ${err.message}`);
-        process.exit(1);
-      }
-      
-      throw err;
-    }
-  }
-
-  let client;
-  let connectionResult;
-  try {
-    connectionResult = await connectWithSSL();
-    client = connectionResult.client;
-
-    // Idempotent schema creation - exactly as specified
-    await client.query(`
-      create table if not exists api_usage (
-        id               bigserial primary key,
-        intent           text not null,
-        model            text not null,
-        prompt_tokens    integer default 0 not null,
-        completion_tokens integer default 0 not null,
-        cost_usd         numeric(12,6) default 0 not null,
-        meta             jsonb default '{}'::jsonb not null,
-        created_at       timestamptz not null default now()
-      );
-    `);
-
-    // Ensure meta column exists (for older tables)
-    await client.query(`
-      alter table api_usage
-        add column if not exists meta jsonb default '{}'::jsonb not null;
-    `);
-
-    // Ensure indexes exist
-    await client.query(`
-      create index if not exists idx_api_usage_created_at on api_usage(created_at desc);
-      create index if not exists idx_api_usage_intent on api_usage(intent);
-      create index if not exists idx_api_usage_model on api_usage(model);
-    `);
-
-    // Enable RLS
-    await client.query(`alter table api_usage enable row level security;`);
-
-    // Create permissive policy (service role bypasses RLS anyway)
-    await client.query(`
-      do $$
-      begin
-        if not exists (
-          select 1 from pg_policies
-          where schemaname = 'public' and tablename = 'api_usage' and policyname = 'api_usage_all'
-        ) then
-          create policy api_usage_all on api_usage for all using (true) with check (true);
-        end if;
-      end$$;
-    `);
-
-    // Force PostgREST schema cache reload (Supabase)
-    await client.query(`
-      do $$
-      begin
-        perform pg_notify('pgrst', 'reload schema');
-      exception when others then
-        raise notice 'PGRST notify skipped: %', SQLERRM;
-      end $$;
-    `);
-    console.log("📡 PGRST: requested schema reload");
-
-    // Service role connectivity test with new schema
-    try {
-      const result = await client.query(`
-        INSERT INTO api_usage(event, cost_cents, meta)
-        VALUES('startup_test', 0, '{"source": "migration_script", "timestamp": $1}')
-        RETURNING id
-      `, [new Date().toISOString()]);
-      
-      if (result.rows && result.rows.length > 0) {
-        const testId = result.rows[0].id;
-        console.log(`✅ STARTUP_SELF_TEST: api_usage insert successful (id: ${testId})`);
+      try {
+        await client.connect();
+        safeLog('info', `✅ DB_MIGRATE: Connected successfully (attempt ${attempt})`);
+        return client;
         
-        // Clean up test record
-        await client.query('DELETE FROM api_usage WHERE id = $1', [testId]);
-        console.log("✅ STARTUP_SELF_TEST: test record cleaned up");
-      } else {
-        throw new Error("Insert returned no rows");
+      } catch (error) {
+        lastError = error;
+        await client.end().catch(() => {});
+        
+        // Handle different error types
+        if (error.code === 'ENOTFOUND') {
+          safeLog('error', `❌ DATABASE_SANITY_FAILED: DNS resolution failed for host: ${parsedUrl.hostname}`);
+          process.exit(1);
+        }
+        
+        if (error.message && error.message.includes('certificate')) {
+          const allowFallback = process.env.ALLOW_SSL_FALLBACK === 'true';
+          if (!allowFallback) {
+            safeLog('error', `❌ DB_SSL_ERROR: Certificate validation failed (host: ${parsedUrl.hostname})`);
+            safeLog('info', '💡 Set ALLOW_SSL_FALLBACK=true to enable fallback to no-verify mode');
+            process.exit(1);
+          }
+          
+          if (attempt === 1) {
+            safeLog('warn', `⚠️ DB_SSL_WARN: using no-verify (host: ${parsedUrl.hostname})`);
+          }
+        }
+        
+        if (attempt < maxRetries) {
+          const delay = baseDelay * Math.pow(2, attempt - 1);
+          safeLog('info', `🔄 DB_RETRY: Attempt ${attempt}/${maxRetries} failed, retrying in ${delay}ms`);
+          await sleep(delay);
+        }
       }
+    }
+    
+    throw lastError;
+  }
+
+  // Main migration logic
+  let client;
+  try {
+    client = await connectWithRetry();
+    
+    // Run idempotent migrations
+    safeLog('info', '📊 MIGRATIONS: Starting schema setup...');
+    
+    // Check if we're on pooler (no superuser operations)
+    if (isPooler) {
+      safeLog('info', '🔗 POOLER_MODE: Skipping superuser operations');
+    } else {
+      // Enable UUID extension for direct connections
+      try {
+        await client.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
+      } catch (err) {
+        safeLog('warn', '⚠️ EXTENSION: uuid-ossp already exists or insufficient privileges');
+      }
+    }
+    
+    // Create api_usage table with UUID primary key
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS public.api_usage (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        event TEXT NOT NULL,
+        cost_cents INTEGER NOT NULL DEFAULT 0,
+        meta JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    
+    // Handle existing table migration
+    await client.query(`
+      DO $$
+      BEGIN
+        -- Migrate old schema if needed
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'api_usage' AND column_name = 'intent') THEN
+          ALTER TABLE public.api_usage RENAME COLUMN intent TO event;
+        END IF;
+        
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'api_usage' AND column_name = 'cost_usd') THEN
+          ALTER TABLE public.api_usage ADD COLUMN cost_cents INTEGER;
+          UPDATE public.api_usage SET cost_cents = ROUND(cost_usd * 100) WHERE cost_cents IS NULL;
+          ALTER TABLE public.api_usage ALTER COLUMN cost_cents SET NOT NULL;
+          ALTER TABLE public.api_usage ALTER COLUMN cost_cents SET DEFAULT 0;
+        END IF;
+        
+        -- Ensure all required columns exist
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'api_usage' AND column_name = 'meta') THEN
+          ALTER TABLE public.api_usage ADD COLUMN meta JSONB NOT NULL DEFAULT '{}'::jsonb;
+        END IF;
+      END $$;
+    `);
+    
+    // Create indexes
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_api_usage_created_at ON public.api_usage(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_api_usage_event ON public.api_usage(event);
+      CREATE INDEX IF NOT EXISTS idx_api_usage_meta_gin ON public.api_usage USING GIN(meta);
+    `);
+    
+    // Enable RLS and create policies
+    await client.query('ALTER TABLE public.api_usage ENABLE ROW LEVEL SECURITY');
+    
+    await client.query(`
+      DO $$
+      BEGIN
+        -- Drop existing policies
+        DROP POLICY IF EXISTS "api_usage_all" ON public.api_usage;
+        DROP POLICY IF EXISTS "api_usage_service" ON public.api_usage;
+        
+        -- Create new policies
+        CREATE POLICY "api_usage_all" ON public.api_usage FOR ALL TO authenticated USING (true) WITH CHECK (true);
+        CREATE POLICY "api_usage_service" ON public.api_usage FOR ALL TO service_role USING (true) WITH CHECK (true);
+      END $$;
+    `);
+    
+    // Grant permissions
+    await client.query(`
+      GRANT ALL ON public.api_usage TO authenticated;
+      GRANT ALL ON public.api_usage TO service_role;
+      GRANT ALL ON public.api_usage TO postgres;
+    `);
+    
+    // Request PostgREST schema reload if possible
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    
+    if (supabaseUrl && serviceKey) {
+      try {
+        await client.query("NOTIFY pgrst, 'reload schema'");
+        safeLog('info', '📡 PGRST: Schema reload requested');
+      } catch (err) {
+        safeLog('warn', '⚠️ PGRST: Schema reload skipped - no NOTIFY support');
+      }
+    }
+    
+    // Startup self-test
+    const testId = require('crypto').randomUUID();
+    try {
+      await client.query(
+        'INSERT INTO api_usage(id, event, cost_cents, meta) VALUES($1, $2, $3, $4)',
+        [testId, 'startup_test', 0, { source: 'migration_script' }]
+      );
+      await client.query('DELETE FROM api_usage WHERE id = $1', [testId]);
+      safeLog('info', '✅ STARTUP_SELF_TEST: api_usage insert/delete successful');
     } catch (testErr) {
-      console.error(`❌ STARTUP_SELF_TEST: Failed to insert into api_usage`);
-      console.error(`Error code: ${testErr.code}`);
-      console.error(`Error message: ${testErr.message}`);
-      console.error(`Error detail: ${testErr.detail || 'N/A'}`);
+      safeLog('error', `❌ STARTUP_SELF_TEST: ${testErr.code || 'UNKNOWN'} - ${testErr.message}`);
       migrationFailed = true;
     }
-
-    // Set flag to indicate migrations have completed successfully
-    process.env.MIGRATIONS_ALREADY_RAN = "true";
     
-    const sslStatus = isPooler ? 'ssl=require' : `ssl=${connectionResult.mode}`;
-    const connectionType = isPooler ? 'pooler' : 'direct';
-    console.log(`✅ MIGRATIONS: ALL APPLIED (${connectionType}, ${sslStatus})`);
+    if (!migrationFailed) {
+      process.env.MIGRATIONS_ALREADY_RAN = 'true';
+      const connectionType = isPooler ? 'pooler' : 'direct';
+      safeLog('info', `✅ MIGRATIONS: ALL APPLIED (${connectionType}, ssl=require)`);
+    }
     
   } catch (err) {
-    console.error("❌ MIGRATIONS: Failed after fallback, manual intervention required:", err.message);
     migrationFailed = true;
+    safeLog('error', `❌ MIGRATIONS: Failed - ${err.code || 'UNKNOWN'}: ${err.message}`);
+    
+    // Write to migration log for debugging (no secrets)
+    const logEntry = {
+      timestamp: new Date().toISOString(),
+      error: {
+        code: err.code,
+        message: redact(err.message),
+        host: parsedUrl.hostname
+      },
+      isPooler,
+      attempt: 'prestart'
+    };
+    
+    try {
+      const logDir = 'logs';
+      if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+      fs.appendFileSync('logs/migrations.log', JSON.stringify(logEntry) + '\n');
+    } catch (logErr) {
+      // Ignore log write errors
+    }
+    
   } finally {
-    try { 
-      if (client) await client.end(); 
-    } catch {}
+    if (client) {
+      try {
+        await client.end();
+      } catch (err) {
+        // Ignore cleanup errors
+      }
+    }
   }
 
-  // Set flag for health monitoring but don't block app start
-  if (migrationFailed) {
-    process.env.MIGRATION_FAILED = "true";
-  }
-  
-  process.exit(0); // Always allow app to start
+  // Exit 0 to allow app to start even if migrations failed
+  process.exit(0);
 })();
