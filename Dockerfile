@@ -1,8 +1,11 @@
-# Railway deployment Dockerfile
-FROM node:18-slim
+# Production Dockerfile for xBOT on Railway
+FROM node:lts-slim
 
-# Install SSL certificates
-RUN apt-get update && apt-get install -y curl ca-certificates && rm -rf /var/lib/apt/lists/*
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 # --- CA cert for Supabase SSL ---
 RUN mkdir -p /etc/ssl/certs \
@@ -25,22 +28,26 @@ RUN npx playwright install --with-deps chromium
 # Copy application code
 COPY . .
 
-# Ensure critical directories are present
-RUN mkdir -p supabase/migrations scripts
-COPY supabase/migrations/ ./supabase/migrations/
-COPY scripts/ ./scripts/
-
 # Build application
 RUN npm run build
 
-# Expose port
-EXPOSE 8080
+# Set production environment
+ENV NODE_ENV=production
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-# Set environment variables for SSL
+# Environment variables for SSL
 ENV DB_SSL_MODE=require
 ENV DB_SSL_ROOT_CERT_PATH=/etc/ssl/certs/supabase-ca.crt
 ENV MIGRATION_SSL_MODE=require
 ENV MIGRATION_SSL_ROOT_CERT_PATH=/etc/ssl/certs/supabase-ca.crt
 
-# Start application
+# Default environment variables
+ENV DAILY_OPENAI_LIMIT_USD=5
+ENV POSTING_DISABLED=true
+ENV REAL_METRICS_ENABLED=true
+
+# Expose port
+EXPOSE 8080
+
+# Start application (prestart will run migrations automatically)
 CMD ["npm", "start"]

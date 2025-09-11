@@ -12,3 +12,5 @@ export REDIS_PREFIX='prod:'
 
 export APP_ENV='production'
 export LIVE_POSTS='true'   # we'll flip to true at the end
+
+export DATABASE_URL='postgresql://postgres.qtgjmaelglghnlahqpbl:Christophernolanfan123!!@aws-0-us-east-1.pooler.supabase.com:5432/postgres'
