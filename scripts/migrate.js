@@ -11,31 +11,73 @@ const { Client } = require("pg");
     process.exit(0); // Don't block app start
   }
 
-  // SSL Configuration for Railway/Supabase
-  let ssl = false;
-  if (process.env.MIGRATION_SSL_MODE === "require") {
-    const certPath = process.env.MIGRATION_SSL_ROOT_CERT_PATH || "/etc/ssl/certs/supabase-ca.crt";
-    try {
-      ssl = {
-        ca: fs.readFileSync(certPath),
-        rejectUnauthorized: true,
-      };
-      console.log("🔒 DB_MIGRATE: Using SSL with custom CA certificate");
-    } catch (err) {
-      console.log("⚠️ DB_MIGRATE_WARN: SSL CA not found, falling back");
-      ssl = { rejectUnauthorized: false };
+  // SSL Strategy: require|prefer|no-verify|disable
+  const sslMode = process.env.MIGRATION_SSL_MODE || "prefer";
+  const certPath = process.env.MIGRATION_SSL_ROOT_CERT_PATH || "/etc/ssl/certs/supabase-ca.crt";
+  
+  function buildSSLConfig(useCA = true, rejectUnauthorized = true) {
+    if (sslMode === "disable") {
+      return false;
     }
-  } else if (url.includes('supabase.co') || process.env.NODE_ENV === 'production') {
-    // Auto-enable SSL for Supabase/production with Railway-compatible settings
-    ssl = { rejectUnauthorized: false };
-    console.log("🔒 DB_MIGRATE: Enabling SSL for production environment");
+    
+    if (sslMode === "no-verify") {
+      console.log("🔒 DB_MIGRATE: Using SSL with no certificate verification");
+      return { rejectUnauthorized: false };
+    }
+    
+    if (useCA && (sslMode === "require" || sslMode === "prefer")) {
+      try {
+        const ca = fs.readFileSync(certPath);
+        console.log("🔒 DB_MIGRATE: Using SSL with custom CA certificate");
+        return { ca, rejectUnauthorized };
+      } catch (err) {
+        if (sslMode === "require") {
+          console.log("⚠️ DB_MIGRATE_WARN: CA not found -> fallback to no-verify");
+          return { rejectUnauthorized: false };
+        }
+        // For "prefer", fall back to system certs
+        console.log("🔒 DB_MIGRATE: CA not found, using system certificates");
+      }
+    }
+    
+    return { rejectUnauthorized };
   }
 
-  const client = new Client({ connectionString: url, ssl });
+  // Try connection with automatic SSL fallback
+  async function connectWithFallback() {
+    let ssl = buildSSLConfig();
+    let client = new Client({ connectionString: url, ssl });
+    
+    try {
+      await client.connect();
+      console.log("✅ DB_MIGRATE: Connected successfully with SSL");
+      return client;
+    } catch (err) {
+      await client.end().catch(() => {});
+      
+      // Check if it's a certificate error and retry with no-verify
+      if (err.message && (err.message.includes('self-signed') || err.message.includes('certificate'))) {
+        console.log("⚠️ DB_MIGRATE_WARN: Falling back to ssl no-verify due to certificate chain error");
+        ssl = { rejectUnauthorized: false };
+        client = new Client({ connectionString: url, ssl });
+        
+        try {
+          await client.connect();
+          console.log("✅ DB_MIGRATE: Connected successfully with SSL fallback");
+          return client;
+        } catch (retryErr) {
+          await client.end().catch(() => {});
+          throw retryErr;
+        }
+      }
+      
+      throw err;
+    }
+  }
 
+  let client;
   try {
-    await client.connect();
-    console.log("✅ DB_MIGRATE: Connected successfully with SSL");
+    client = await connectWithFallback();
 
     // Idempotent schema creation - exactly as specified
     await client.query(`
@@ -49,7 +91,16 @@ const { Client } = require("pg");
         meta             jsonb default '{}'::jsonb not null,
         created_at       timestamptz not null default now()
       );
+    `);
 
+    // Ensure meta column exists (for older tables)
+    await client.query(`
+      alter table api_usage
+        add column if not exists meta jsonb default '{}'::jsonb not null;
+    `);
+
+    // Ensure indexes exist
+    await client.query(`
       create index if not exists idx_api_usage_created_at on api_usage(created_at desc);
       create index if not exists idx_api_usage_intent on api_usage(intent);
       create index if not exists idx_api_usage_model on api_usage(model);
@@ -71,26 +122,39 @@ const { Client } = require("pg");
       end$$;
     `);
 
-    // Service role connectivity test
+    // Force PostgREST schema cache reload (Supabase)
+    await client.query(`
+      do $$
+      begin
+        perform pg_notify('pgrst', 'reload schema');
+      exception when others then
+        raise notice 'PGRST notify skipped: %', SQLERRM;
+      end $$;
+    `);
+    console.log("📡 PGRST: requested schema reload");
+
+    // Service role connectivity test - bypass REST with direct pg insert
     try {
-      await client.query(`
-        insert into api_usage (intent, model, prompt_tokens, completion_tokens, cost_usd, meta)
-        values ('bootstrap', 'migration-test', 0, 0, 0, '{"test": true}')
-        on conflict do nothing
+      const result = await client.query(`
+        insert into api_usage(intent, model, prompt_tokens, completion_tokens, cost_usd)
+        values('bootstrap','healthcheck',0,0,0)
+        returning id
       `);
       console.log("✅ DB_HEALTH: Service role insert test successful");
     } catch (testErr) {
-      console.error("❌ DB_HEALTH: Service role test failed:", testErr.message);
+      console.error(`❌ DB_HEALTH: Service role test failed: ${testErr.code}/${testErr.message}`);
       migrationFailed = true;
     }
 
     console.log("✅ MIGRATIONS: completed successfully (api_usage + RLS)");
     
   } catch (err) {
-    console.error("❌ DB_MIGRATE_ERROR:", err.message);
+    console.error("❌ MIGRATIONS: Failed to run migrations:", err.message);
     migrationFailed = true;
   } finally {
-    try { await client.end(); } catch {}
+    try { 
+      if (client) await client.end(); 
+    } catch {}
   }
 
   // Set flag for health monitoring but don't block app start
