@@ -6,7 +6,8 @@ RUN apt-get update && apt-get install -y curl ca-certificates && rm -rf /var/lib
 
 # --- CA cert for Supabase SSL ---
 RUN mkdir -p /etc/ssl/certs \
- && curl -fsSL https://r2.supabase.com/ca-certs/supabase-ca.crt -o /etc/ssl/certs/supabase-ca.crt
+ && (curl -fsSL https://raw.githubusercontent.com/supabase/postgres-meta/main/certs/prod-ca-2021.crt -o /etc/ssl/certs/supabase-ca.crt \
+     || curl -fsSL https://cacerts.digicert.com/DigiCertGlobalRootCA.crt.pem -o /etc/ssl/certs/supabase-ca.crt)
 
 # Set working directory
 WORKDIR /app
