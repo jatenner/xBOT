@@ -1,0 +1,8 @@
+[phases.setup]
+nixPkgs = ["ca-certificates"]
+
+[build]
+cmd = "npm run build"
+
+[start]
+cmd = "npm run prestart && npm start"

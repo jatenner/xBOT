@@ -126,32 +126,17 @@ export class MigrationRunner {
         log('🔗 DB_POOLER: Detected Supabase Transaction Pooler');
       }
 
-      // Smart SSL configuration - Supabase Transaction Pooler aware
+      // SSL configuration - Supabase Transaction Pooler requires special handling
       let ssl: any;
       
       if (isPooler) {
-        // For Supabase Transaction Pooler, use optimized SSL settings
-        log('🔒 DB_SSL: Using Supabase Transaction Pooler SSL strategy (encrypted, pooler-optimized)');
-        
-        // Temporarily disable TLS rejection for pooler connections
-        const originalRejectUnauthorized = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-        process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-        
-        // Restore after connection
-        process.on('exit', () => {
-          if (originalRejectUnauthorized !== undefined) {
-            process.env.NODE_TLS_REJECT_UNAUTHORIZED = originalRejectUnauthorized;
-          } else {
-            delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-          }
-        });
-        
+        log('🔒 DB_SSL: Using Supabase Transaction Pooler SSL strategy (encrypted, pooler-compatible)');
+        // Supabase Transaction Pooler requires this specific SSL configuration
         ssl = { 
-          rejectUnauthorized: false
+          rejectUnauthorized: false  // Required for Supabase pooler infrastructure
         };
-        this.sslModeUsed = 'pooler-optimized';
+        this.sslModeUsed = 'pooler-compatible';
       } else {
-        // For direct connections, use strict SSL verification
         log('🔒 DB_SSL: Using verified SSL for direct connection');
         ssl = { rejectUnauthorized: true };
         this.sslModeUsed = 'verified';

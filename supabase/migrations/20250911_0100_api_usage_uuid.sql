@@ -1,164 +1,148 @@
--- api_usage table with UUID primary key for production
--- Migration: 20250911_0100_api_usage_uuid.sql
--- Compatible with: Supabase Transaction Pooler
+-- 20250911_0100_api_usage_uuid.sql
+-- Purpose: Ensure api_usage table exists with UUID PK, safe defaults, indexes
+-- Compatible with Supabase + Transaction Pooler; idempotent.
 
-BEGIN;
+-- Enable UUID generation (pgcrypto) if not already present
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
--- Enable UUID extension if not already enabled
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
--- Create api_usage table with UUID primary key
-CREATE TABLE IF NOT EXISTS public.api_usage (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    event TEXT NOT NULL,
-    cost_cents INTEGER NOT NULL DEFAULT 0,
-    meta JSONB NOT NULL DEFAULT '{}'::jsonb,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- Handle existing table with different schema
-DO $$
-BEGIN
-    -- Check if table exists with old schema and migrate if needed
-    IF EXISTS (
-        SELECT 1 FROM information_schema.tables 
-        WHERE table_name = 'api_usage' 
-        AND table_schema = 'public'
-    ) THEN
-        -- Add missing columns if they don't exist
-        IF NOT EXISTS (
-            SELECT 1 FROM information_schema.columns 
-            WHERE table_name = 'api_usage' 
-            AND column_name = 'event'
-        ) THEN
-            -- Map old 'intent' column to new 'event' column
-            IF EXISTS (
-                SELECT 1 FROM information_schema.columns 
-                WHERE table_name = 'api_usage' 
-                AND column_name = 'intent'
-            ) THEN
-                ALTER TABLE public.api_usage RENAME COLUMN intent TO event;
-            ELSE
-                ALTER TABLE public.api_usage ADD COLUMN event TEXT;
-                UPDATE public.api_usage SET event = 'migrated' WHERE event IS NULL;
-                ALTER TABLE public.api_usage ALTER COLUMN event SET NOT NULL;
-            END IF;
-        END IF;
-
-        -- Add cost_cents column (convert from cost_usd if exists)
-        IF NOT EXISTS (
-            SELECT 1 FROM information_schema.columns 
-            WHERE table_name = 'api_usage' 
-            AND column_name = 'cost_cents'
-        ) THEN
-            IF EXISTS (
-                SELECT 1 FROM information_schema.columns 
-                WHERE table_name = 'api_usage' 
-                AND column_name = 'cost_usd'
-            ) THEN
-                ALTER TABLE public.api_usage ADD COLUMN cost_cents INTEGER;
-                UPDATE public.api_usage SET cost_cents = ROUND(cost_usd * 100);
-                ALTER TABLE public.api_usage ALTER COLUMN cost_cents SET NOT NULL;
-                ALTER TABLE public.api_usage ALTER COLUMN cost_cents SET DEFAULT 0;
-            ELSE
-                ALTER TABLE public.api_usage ADD COLUMN cost_cents INTEGER NOT NULL DEFAULT 0;
-            END IF;
-        END IF;
-
-        -- Ensure meta column exists with proper default
-        IF NOT EXISTS (
-            SELECT 1 FROM information_schema.columns 
-            WHERE table_name = 'api_usage' 
-            AND column_name = 'meta'
-        ) THEN
-            ALTER TABLE public.api_usage ADD COLUMN meta JSONB NOT NULL DEFAULT '{}'::jsonb;
-        END IF;
-
-        -- Ensure created_at exists
-        IF NOT EXISTS (
-            SELECT 1 FROM information_schema.columns 
-            WHERE table_name = 'api_usage' 
-            AND column_name = 'created_at'
-        ) THEN
-            ALTER TABLE public.api_usage ADD COLUMN created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
-        END IF;
-
-        RAISE NOTICE 'api_usage table schema updated to new format';
-    END IF;
-END $$;
-
--- Create optimized indexes
-CREATE INDEX IF NOT EXISTS idx_api_usage_created_at ON public.api_usage(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_api_usage_event ON public.api_usage(event);
-CREATE INDEX IF NOT EXISTS idx_api_usage_meta_gin ON public.api_usage USING GIN(meta);
--- Create index with date truncation (PostgreSQL requires IMMUTABLE functions)
-CREATE INDEX IF NOT EXISTS idx_api_usage_cost_date ON public.api_usage(created_at, cost_cents);
--- Enable Row Level Security
-ALTER TABLE public.api_usage ENABLE ROW LEVEL SECURITY;
-
--- Drop all existing policies to ensure clean setup
-DO $$
+DO
+$$
 DECLARE
-    pol RECORD;
+  col_type text;
+  pk_name text;
 BEGIN
-    FOR pol IN 
-        SELECT policyname FROM pg_policies 
-        WHERE tablename = 'api_usage' AND schemaname = 'public'
-    LOOP
-        EXECUTE 'DROP POLICY IF EXISTS ' || quote_ident(pol.policyname) || ' ON public.api_usage';
-    END LOOP;
-END $$;
+  -- 1) Create table if it doesn't exist (with correct shape)
+  IF NOT EXISTS (
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = 'api_usage'
+  ) THEN
+    CREATE TABLE public.api_usage (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      created_at timestamptz NOT NULL DEFAULT now(),
+      model text,
+      tokens integer,
+      cost numeric(12,4)
+    );
+  END IF;
 
--- Create required policies
-CREATE POLICY "api_usage_all" ON public.api_usage 
-FOR ALL TO authenticated
-USING (true) 
-WITH CHECK (true);
+  -- 2) Ensure id column exists
+  IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='api_usage' AND column_name='id'
+  ) THEN
+    ALTER TABLE public.api_usage
+      ADD COLUMN id uuid DEFAULT gen_random_uuid();
+  END IF;
 
-CREATE POLICY "api_usage_service" ON public.api_usage 
-FOR ALL TO service_role
-USING (true) 
-WITH CHECK (true);
+  -- 3) Normalize id to UUID type (handles legacy int/text ids)
+  SELECT data_type INTO col_type
+  FROM information_schema.columns
+  WHERE table_schema='public' AND table_name='api_usage' AND column_name='id';
 
--- Grant comprehensive permissions
-GRANT ALL ON public.api_usage TO authenticated;
-GRANT ALL ON public.api_usage TO service_role;
-GRANT ALL ON public.api_usage TO postgres;
+  IF col_type IS NULL THEN
+    -- Shouldn't happen due to step 2, but guard anyway
+    ALTER TABLE public.api_usage
+      ADD COLUMN id uuid DEFAULT gen_random_uuid();
+    col_type := 'uuid';
+  END IF;
 
--- Set ownership
-ALTER TABLE public.api_usage OWNER TO postgres;
+  IF col_type <> 'uuid' THEN
+    -- Add a new UUID column, backfill with gen_random_uuid(), then swap
+    ALTER TABLE public.api_usage
+      ADD COLUMN id_uuid uuid DEFAULT gen_random_uuid();
 
--- Add documentation
-COMMENT ON TABLE public.api_usage IS 'API usage tracking with cost in cents and flexible metadata';
-COMMENT ON COLUMN public.api_usage.event IS 'Event type or category (e.g., content_generation, ai_decision)';
-COMMENT ON COLUMN public.api_usage.cost_cents IS 'Cost in cents (100 = $1.00) for precise budget tracking';
-COMMENT ON COLUMN public.api_usage.meta IS 'Flexible JSON metadata for additional context';
+    -- Only fill where NULL (shouldn't be needed, but safe)
+    UPDATE public.api_usage SET id_uuid = COALESCE(id_uuid, gen_random_uuid());
 
--- PostgREST schema reload notification
-NOTIFY pgrst, 'reload schema';
+    -- Drop existing PK if any
+    SELECT tc.constraint_name INTO pk_name
+    FROM information_schema.table_constraints tc
+    WHERE tc.table_schema='public'
+      AND tc.table_name='api_usage'
+      AND tc.constraint_type='PRIMARY KEY'
+    LIMIT 1;
 
--- Verification test
-DO $$
-DECLARE
-    test_id UUID;
-    test_count INTEGER;
-BEGIN
-    -- Test insert
-    INSERT INTO public.api_usage (event, cost_cents, meta, model)
-    VALUES ('migration_test', 0, '{"test": true, "migration": "20250911_0100_api_usage_uuid"}', 'test-migration')
-    RETURNING id INTO test_id;
-    
-    -- Test select
-    SELECT COUNT(*) INTO test_count 
-    FROM public.api_usage 
-    WHERE id = test_id;    
-    IF test_count = 1 THEN
-        RAISE NOTICE 'SUCCESS: api_usage table verification passed (UUID: %)', test_id;
-        -- Clean up test record
-        DELETE FROM public.api_usage WHERE id = test_id;
-    ELSE
-        RAISE EXCEPTION 'FAILURE: api_usage table verification failed';
+    IF pk_name IS NOT NULL THEN
+      EXECUTE format('ALTER TABLE public.api_usage DROP CONSTRAINT %I', pk_name);
     END IF;
-END $$;
 
-COMMIT;
+    -- Remove old id column and rename id_uuid -> id
+    ALTER TABLE public.api_usage DROP COLUMN id;
+    ALTER TABLE public.api_usage RENAME COLUMN id_uuid TO id;
+
+    -- Recreate PK
+    ALTER TABLE public.api_usage
+      ALTER COLUMN id SET DEFAULT gen_random_uuid(),
+      ALTER COLUMN id SET NOT NULL;
+
+    ALTER TABLE public.api_usage
+      ADD PRIMARY KEY (id);
+  ELSE
+    -- Ensure constraints/defaults are present in case they were missing
+    -- (not all ALTERs support IF EXISTS/IF NOT EXISTS, so guard)
+    BEGIN
+      ALTER TABLE public.api_usage
+        ALTER COLUMN id SET DEFAULT gen_random_uuid();
+    EXCEPTION WHEN others THEN
+      -- ignore if already set
+    END;
+
+    BEGIN
+      ALTER TABLE public.api_usage
+        ALTER COLUMN id SET NOT NULL;
+    EXCEPTION WHEN others THEN
+      -- ignore if already not null
+    END;
+
+    -- Ensure there is a primary key on id
+    SELECT tc.constraint_name INTO pk_name
+    FROM information_schema.table_constraints tc
+    JOIN information_schema.key_column_usage kcu
+      ON tc.constraint_name = kcu.constraint_name
+     AND tc.table_schema = kcu.table_schema
+    WHERE tc.table_schema='public'
+      AND tc.table_name='api_usage'
+      AND tc.constraint_type='PRIMARY KEY'
+      AND kcu.column_name='id'
+    LIMIT 1;
+
+    IF pk_name IS NULL THEN
+      ALTER TABLE public.api_usage ADD PRIMARY KEY (id);
+    END IF;
+  END IF;
+
+  -- 4) Make sure common columns exist
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='api_usage' AND column_name='created_at'
+  ) THEN
+    ALTER TABLE public.api_usage ADD COLUMN created_at timestamptz NOT NULL DEFAULT now();
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='api_usage' AND column_name='model'
+  ) THEN
+    ALTER TABLE public.api_usage ADD COLUMN model text;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='api_usage' AND column_name='tokens'
+  ) THEN
+    ALTER TABLE public.api_usage ADD COLUMN tokens integer;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='api_usage' AND column_name='cost'
+  ) THEN
+    ALTER TABLE public.api_usage ADD COLUMN cost numeric(12,4);
+  END IF;
+
+  -- 5) Helpful indexes (idempotent with IF NOT EXISTS)
+  CREATE INDEX IF NOT EXISTS idx_api_usage_created_at ON public.api_usage(created_at);
+  CREATE INDEX IF NOT EXISTS idx_api_usage_model ON public.api_usage(model);
+
+END
+$$;
