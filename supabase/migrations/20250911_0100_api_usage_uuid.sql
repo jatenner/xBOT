@@ -2,6 +2,8 @@
 -- Migration: 20250911_0100_api_usage_uuid.sql
 -- Compatible with: Supabase Transaction Pooler
 
+BEGIN;
+
 -- Enable UUID extension if not already enabled
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
@@ -159,3 +161,5 @@ BEGIN
         RAISE EXCEPTION 'FAILURE: api_usage table verification failed';
     END IF;
 END $$;
+
+COMMIT;
