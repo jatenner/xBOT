@@ -6,13 +6,18 @@ const { Client } = require("pg");
   const url = process.env.MIGRATION_DATABASE_URL || process.env.DATABASE_URL;
 
   // Use SSL when asked to (Railway prod)
-  const ssl =
-    process.env.MIGRATION_SSL_MODE === "require"
-      ? {
-          ca: fs.readFileSync(process.env.MIGRATION_SSL_ROOT_CERT_PATH),
-          rejectUnauthorized: true,
-        }
-      : false;
+  let ssl = false;
+  if (process.env.MIGRATION_SSL_MODE === "require") {
+    try {
+      ssl = {
+        ca: fs.readFileSync(process.env.MIGRATION_SSL_ROOT_CERT_PATH || "/etc/ssl/certs/supabase-ca.crt"),
+        rejectUnauthorized: true,
+      };
+    } catch (err) {
+      console.log("⚠️ DB_MIGRATE_WARN: SSL cert not found, trying without SSL...");
+      ssl = { rejectUnauthorized: false };
+    }
+  }
 
   const client = new Client({ connectionString: url, ssl });
 
