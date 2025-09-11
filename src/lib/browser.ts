@@ -18,6 +18,11 @@ class BrowserManager {
   }
 
   async getBrowser(): Promise<Browser> {
+    if (process.env.ENABLE_METRICS === 'false') {
+      console.log('📊 METRICS: disabled - browser operations skipped');
+      throw new Error('METRICS_DISABLED: Browser operations are disabled');
+    }
+    
     if (!process.env.REAL_METRICS_ENABLED || process.env.REAL_METRICS_ENABLED === 'false') {
       throw new Error('REAL_METRICS_DISABLED: Browser operations are disabled by feature flag');
     }
@@ -137,6 +142,11 @@ class BrowserManager {
 
   async healthCheck(): Promise<boolean> {
     try {
+      if (process.env.ENABLE_METRICS === 'false') {
+        console.log('📊 METRICS: disabled - health check skipped');
+        return false;
+      }
+      
       if (!process.env.REAL_METRICS_ENABLED || process.env.REAL_METRICS_ENABLED === 'false') {
         console.log('ℹ️ CHROMIUM_HEALTH: Skipped (REAL_METRICS_ENABLED=false)');
         return false;
@@ -168,4 +178,4 @@ export { BrowserManager };
 
 // Legacy exports for compatibility
 export const tryLaunchChromium = () => browserManager.getBrowser();
-export const isBrowserEnabled = () => process.env.REAL_METRICS_ENABLED !== 'false';
+export const isBrowserEnabled = () => process.env.ENABLE_METRICS !== 'false' && process.env.REAL_METRICS_ENABLED !== 'false';

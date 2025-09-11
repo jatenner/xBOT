@@ -1,15 +1,49 @@
 // scripts/migrate.js - Production-grade database migrations with SSL
 const fs = require("fs");
 const { Client } = require("pg");
+const { URL } = require("url");
 
 (async () => {
-  const url = process.env.DATABASE_URL;
+  let rawUrl = process.env.DATABASE_URL;
   let migrationFailed = false;
 
-  if (!url) {
+  if (!rawUrl) {
     console.error("❌ DB_MIGRATE_ERROR: DATABASE_URL not set");
-    process.exit(0); // Don't block app start
+    process.exit(1);
   }
+  
+  // Robust URL parsing and validation
+  rawUrl = rawUrl.trim(); // Remove trailing spaces/newlines
+  
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(rawUrl);
+  } catch (parseError) {
+    console.error(`❌ DATABASE_SANITY_FAILED: Invalid URL: "${rawUrl}"`);
+    console.error(`Parse error: ${parseError.message}`);
+    process.exit(1);
+  }
+
+  // Validate URL components
+  if (!parsedUrl.hostname || !parsedUrl.port) {
+    console.error(`❌ DATABASE_SANITY_FAILED: Invalid URL components - hostname: "${parsedUrl.hostname}", port: "${parsedUrl.port}"`);
+    process.exit(1);
+  }
+
+  // Pooler detection
+  const isPooler = parsedUrl.hostname.startsWith('db.') && parsedUrl.port === '6543';
+  
+  if (isPooler) {
+    console.log("🔗 DB_POOLER: Detected Supabase Transaction Pooler");
+    // Enforce SSL for pooler
+    if (!rawUrl.includes('sslmode=require')) {
+      console.log("🔒 DB_POOLER: Enforcing sslmode=require for Transaction Pooler");
+      const separator = rawUrl.includes('?') ? '&' : '?';
+      rawUrl = rawUrl + separator + 'sslmode=require';
+    }
+  }
+
+  const url = rawUrl;
 
   // SSL Strategy: require|prefer|no-verify|disable
   const sslMode = process.env.MIGRATION_SSL_MODE || "prefer";
@@ -43,50 +77,42 @@ const { Client } = require("pg");
     return { rejectUnauthorized };
   }
 
-  // Use optimized SSL client for Transaction Pooler
+  // Simplified SSL connection for Transaction Pooler
   async function connectWithSSL() {
-    const sslMode = process.env.MIGRATION_SSL_MODE || "require";
-    const certPath = process.env.MIGRATION_SSL_ROOT_CERT_PATH || "/etc/ssl/certs/supabase-ca.crt";
-    
-    // Detect Transaction Pooler for optimized handling
-    const isTransactionPooler = url.includes(':6543');
-    const isSupabaseHost = url.includes('supabase.co');
-    
-    let ssl = buildSSLConfig();
+    let ssl;
     let client;
-    let fallbackUsed = false;
     
-    // For Transaction Pooler, use more permissive SSL by default
-    if (isTransactionPooler) {
-      console.log("🔒 DB_MIGRATE: Detected Transaction Pooler, using optimized SSL");
-      ssl = { rejectUnauthorized: false, sslmode: 'require' };
+    if (isPooler) {
+      // Transaction Pooler: always use SSL without custom certificates
+      ssl = { rejectUnauthorized: false }; // Pooler handles SSL termination
+      console.log("🔒 DB_MIGRATE: Using Transaction Pooler SSL (managed)");
+    } else {
+      // Direct connection: use configured SSL
+      const sslMode = process.env.MIGRATION_SSL_MODE || "require";
+      if (sslMode === "require") {
+        ssl = { rejectUnauthorized: true };
+        console.log("🔒 DB_MIGRATE: Using direct SSL connection");
+      } else {
+        ssl = false;
+        console.log("🔒 DB_MIGRATE: SSL disabled");
+      }
     }
     
     client = new Client({ connectionString: url, ssl });
     
     try {
       await client.connect();
-      const mode = isTransactionPooler ? 'pooler-ssl' : 
-                   ssl ? (ssl.ca ? 'strict' : 'system-certs') : 'disabled';
-      console.log(`🔒 DB_MIGRATE: Connected successfully with SSL (${mode})`);
-      return { client, fallbackUsed: false, mode };
+      const mode = isPooler ? 'pooler' : (ssl ? 'direct-ssl' : 'no-ssl');
+      console.log(`✅ DB_MIGRATE: Connected successfully (${mode})`);
+      return { client, mode };
     } catch (err) {
       await client.end().catch(() => {});
       
-      // Fallback to no-verify for any SSL issues
-      if (err.message && (err.message.includes('SSL') || err.message.includes('certificate') || err.message.includes('TLS'))) {
-        console.log("⚠️ DB_MIGRATE_WARN: SSL error detected, falling back to no-verify mode");
-        ssl = { rejectUnauthorized: false };
-        client = new Client({ connectionString: url, ssl });
-        
-        try {
-          await client.connect();
-          console.log("🔒 DB_MIGRATE: Connected successfully with SSL fallback (no-verify)");
-          return { client, fallbackUsed: true, mode: 'no-verify' };
-        } catch (retryErr) {
-          await client.end().catch(() => {});
-          throw retryErr;
-        }
+      // For DNS errors, fail fast with clear message
+      if (err.code === 'ENOTFOUND' || err.message.includes('getaddrinfo')) {
+        console.error(`❌ DATABASE_SANITY_FAILED: DNS resolution failed for hostname: "${parsedUrl.hostname}"`);
+        console.error(`Full error: ${err.message}`);
+        process.exit(1);
       }
       
       throw err;
@@ -153,32 +179,38 @@ const { Client } = require("pg");
     `);
     console.log("📡 PGRST: requested schema reload");
 
-    // Service role connectivity test - bypass REST with direct pg insert
+    // Service role connectivity test with new schema
     try {
       const result = await client.query(`
-        insert into api_usage(intent, model, prompt_tokens, completion_tokens, cost_usd)
-        values('bootstrap','healthcheck',0,0,0)
-        returning id
-      `);
-      console.log("✅ DB_HEALTH: Service role insert test successful");
+        INSERT INTO api_usage(event, cost_cents, meta)
+        VALUES('startup_test', 0, '{"source": "migration_script", "timestamp": $1}')
+        RETURNING id
+      `, [new Date().toISOString()]);
+      
+      if (result.rows && result.rows.length > 0) {
+        const testId = result.rows[0].id;
+        console.log(`✅ STARTUP_SELF_TEST: api_usage insert successful (id: ${testId})`);
+        
+        // Clean up test record
+        await client.query('DELETE FROM api_usage WHERE id = $1', [testId]);
+        console.log("✅ STARTUP_SELF_TEST: test record cleaned up");
+      } else {
+        throw new Error("Insert returned no rows");
+      }
     } catch (testErr) {
-      console.error(`❌ DB_HEALTH: Service role test failed: ${testErr.code}/${testErr.message}`);
+      console.error(`❌ STARTUP_SELF_TEST: Failed to insert into api_usage`);
+      console.error(`Error code: ${testErr.code}`);
+      console.error(`Error message: ${testErr.message}`);
+      console.error(`Error detail: ${testErr.detail || 'N/A'}`);
       migrationFailed = true;
     }
 
     // Set flag to indicate migrations have completed successfully
     process.env.MIGRATIONS_ALREADY_RAN = "true";
     
-    const sslMode = connectionResult.fallbackUsed ? 'fallback' : connectionResult.mode;
-    console.log("🎉 ============================================");
-    console.log("✅ ALL MIGRATIONS APPLIED SUCCESSFULLY");
-    console.log(`🔒 SSL Mode: ${sslMode}`);
-    console.log(`📊 api_usage table: READY`);
-    console.log(`🔐 RLS policies: ENABLED`);
-    console.log(`📡 PostgREST: RELOADED`);
-    console.log(`🧪 Health test: PASSED`);
-    console.log("============================================");
-    console.log(`✅ MIGRATIONS: Completed successfully with SSL [${sslMode}]`);
+    const sslStatus = isPooler ? 'ssl=require' : `ssl=${connectionResult.mode}`;
+    const connectionType = isPooler ? 'pooler' : 'direct';
+    console.log(`✅ MIGRATIONS: ALL APPLIED (${connectionType}, ${sslStatus})`);
     
   } catch (err) {
     console.error("❌ MIGRATIONS: Failed after fallback, manual intervention required:", err.message);
