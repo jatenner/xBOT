@@ -22,8 +22,12 @@ COPY package*.json ./
 RUN npm ci --only=production
 
 # --- Playwright browsers ---
-# Install Chromium with dependencies at build time (no runtime downloads)
+# Install Chromium with dependencies at build time (prevents Railway runtime errors)
 RUN npx playwright install --with-deps chromium
+
+# Verify browser installation
+RUN npx playwright --version && \
+    ls -la /root/.cache/ms-playwright/ || echo "Playwright cache not found"
 
 # Copy application code
 COPY . .
