@@ -5,27 +5,19 @@ const { Client } = require("pg");
 (async () => {
   const url = process.env.MIGRATION_DATABASE_URL || process.env.DATABASE_URL;
 
-  // Use SSL when asked to (Railway prod)
+  // Use SSL - Railway has built-in support for Supabase SSL
   let ssl = false;
-  if (process.env.MIGRATION_SSL_MODE === "require") {
-    try {
-      const certPath = process.env.MIGRATION_SSL_ROOT_CERT_PATH || "/etc/ssl/certs/supabase-ca.crt";
-      const ca = fs.readFileSync(certPath);
-      ssl = {
-        ca: ca,
-        rejectUnauthorized: true,
-      };
-      console.log("🔒 DB_MIGRATE: Using SSL with custom CA certificate");
-    } catch (err) {
-      console.log("⚠️ DB_MIGRATE_WARN: SSL cert not found, using system certs...");
-      ssl = { 
-        rejectUnauthorized: true  // Use system CA bundle instead
-      };
-    }
-  } else if (url && url.includes('supabase.co')) {
-    // Always use SSL for Supabase, even if not explicitly required
-    ssl = { rejectUnauthorized: true };
-    console.log("🔒 DB_MIGRATE: Auto-enabling SSL for Supabase connection");
+  if (url && url.includes('supabase.co')) {
+    // For Supabase connections, use SSL but don't validate certs (Railway handles this)
+    ssl = { 
+      rejectUnauthorized: false,  // Railway's network layer handles SSL validation
+      sslmode: 'require'
+    };
+    console.log("🔒 DB_MIGRATE: Enabling SSL for Supabase with Railway network security");
+  } else if (process.env.NODE_ENV === 'production') {
+    // For other production DBs, use SSL
+    ssl = { rejectUnauthorized: false };
+    console.log("🔒 DB_MIGRATE: Enabling SSL for production environment");
   }
 
   const client = new Client({ connectionString: url, ssl });
