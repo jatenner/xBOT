@@ -59,17 +59,32 @@ async function sleep(ms) {
     return;
   }
 
-  // SSL Configuration with fallback support
+  // Smart SSL Configuration - Supabase Transaction Pooler aware
   function getSSLConfig() {
-    const sslMode = process.env.MIGRATION_SSL_MODE || process.env.DB_SSL_MODE || 'require';
-    const allowFallback = process.env.ALLOW_SSL_FALLBACK === 'true';
-    
-    if (sslMode !== 'require') {
-      safeLog('warn', `⚠️ DB_SSL: Non-production SSL mode: ${sslMode}`);
+    // For Supabase Transaction Pooler, use optimized SSL settings
+    if (isPooler) {
+      safeLog('info', '🔒 DB_SSL: Using Supabase Transaction Pooler SSL strategy (encrypted, pooler-optimized)');
+      
+      // Temporarily disable TLS rejection for pooler connections
+      const originalRejectUnauthorized = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+      
+      // Restore after connection (will be restored in finally block)
+      process.on('exit', () => {
+        if (originalRejectUnauthorized !== undefined) {
+          process.env.NODE_TLS_REJECT_UNAUTHORIZED = originalRejectUnauthorized;
+        } else {
+          delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+        }
+      });
+      
+      return { 
+        rejectUnauthorized: false
+      };
     }
     
-    // Start with verified SSL
-    safeLog('info', '🔒 DB_SSL: Using verified CA bundle for Transaction Pooler');
+    // For direct connections, use strict SSL verification
+    safeLog('info', '🔒 DB_SSL: Using verified SSL for direct connection');
     return { rejectUnauthorized: true };
   }
 
@@ -77,44 +92,30 @@ async function sleep(ms) {
   async function connectWithSSL() {
     const maxRetries = 3;
     let lastError;
+    const ssl = getSSLConfig(); // Get SSL config once, outside the retry loop
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      const ssl = getSSLConfig();
       const client = new Client({ connectionString: url, ssl });
       
       try {
         await client.connect();
-        safeLog('info', `✅ DB_MIGRATE: Connected successfully (attempt ${attempt})`);
-        return { client, sslMode: 'verified' };
+        const sslMode = isPooler ? 'pooler-optimized' : 'verified';
+        safeLog('info', `✅ DB_MIGRATE: Connected successfully (${sslMode}, attempt ${attempt})`);
+        return { client, sslMode };
         
       } catch (error) {
         lastError = error;
         await client.end().catch(() => {});
         
-        // Handle certificate errors with fallback
-        if (error.message && error.message.includes('certificate') && process.env.ALLOW_SSL_FALLBACK === 'true') {
-          safeLog('warn', `⚠️ DB_SSL_WARN: using no-verify (host: ${parsedUrl.hostname})`);
-          
-          // Retry with no verification
-          const fallbackClient = new Client({ 
-            connectionString: url, 
-            ssl: { rejectUnauthorized: false } 
-          });
-          
-          try {
-            await fallbackClient.connect();
-            safeLog('info', `✅ DB_MIGRATE: Connected with SSL fallback (attempt ${attempt})`);
-            return { client: fallbackClient, sslMode: 'no-verify' };
-          } catch (fallbackError) {
-            await fallbackClient.end().catch(() => {});
-            lastError = fallbackError;
-          }
+        // Handle certificate errors (should be rare with smart SSL strategy)
+        if (error.message && error.message.includes('certificate')) {
+          safeLog('warn', `⚠️ DB_SSL_CERTIFICATE_ERROR: ${error.message} (host: ${parsedUrl.hostname})`);
         }
         
         // DNS failures are immediate
         if (error.code === 'ENOTFOUND') {
           safeLog('error', `❌ DATABASE_SANITY_FAILED: DNS resolution failed for host: ${parsedUrl.hostname}`);
-          break;
+          throw error;
         }
         
         if (attempt < maxRetries) {

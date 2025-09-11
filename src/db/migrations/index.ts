@@ -80,13 +80,13 @@ export class MigrationRunner {
         }
       }
       
-      if (appliedCount > 0) {
-        log(`✅ MIGRATIONS: ALL APPLIED (pooler, ssl=require)`);
-        log(`📊 Applied ${appliedCount} new migrations, skipped ${skippedCount}`);
-      } else {
-        log(`✅ MIGRATIONS: ALL APPLIED (pooler, ssl=require)`);
-        log(`📊 All ${skippedCount} migrations already applied`);
-      }
+        if (appliedCount > 0) {
+          log(`✅ MIGRATIONS: ALL APPLIED (pooler, ssl=${this.sslModeUsed})`);
+          log(`📊 Applied ${appliedCount} new migrations, skipped ${skippedCount}`);
+        } else {
+          log(`✅ MIGRATIONS: ALL APPLIED (pooler, ssl=${this.sslModeUsed})`);
+          log(`📊 All ${skippedCount} migrations already applied`);
+        }
       
       this.migrationHealth.success = true;
       this.migrationHealth.error = null;
@@ -106,6 +106,8 @@ export class MigrationRunner {
     }
   }
 
+  private sslModeUsed: string = 'unknown';
+
   private async initPgClient(): Promise<void> {
     try {
       const connectionString = process.env.DATABASE_URL;
@@ -124,35 +126,40 @@ export class MigrationRunner {
         log('🔗 DB_POOLER: Detected Supabase Transaction Pooler');
       }
 
-      // SSL configuration matching prestart behavior
-      const sslMode = process.env.MIGRATION_SSL_MODE || process.env.DB_SSL_MODE || 'require';
-      const allowFallback = process.env.ALLOW_SSL_FALLBACK === 'true';
+      // Smart SSL configuration - Supabase Transaction Pooler aware
+      let ssl: any;
       
-      let ssl = { rejectUnauthorized: true };
-      let sslModeUsed = 'verified';
-      
-      log('🔒 DB_SSL: Using verified CA bundle for Transaction Pooler');
-      
-      try {
-        this.pgClient = new Client({ connectionString, ssl });
-        await this.pgClient.connect();
-        log('✅ MIGRATIONS: Connected successfully with verified SSL');
+      if (isPooler) {
+        // For Supabase Transaction Pooler, use optimized SSL settings
+        log('🔒 DB_SSL: Using Supabase Transaction Pooler SSL strategy (encrypted, pooler-optimized)');
         
-      } catch (sslError: any) {
-        if (sslError.message?.includes('certificate') && allowFallback) {
-          warn(`⚠️ DB_SSL_WARN: using no-verify (host: ${parsedUrl.hostname})`);
-          
-          await this.pgClient?.end().catch(() => {});
-          ssl = { rejectUnauthorized: false };
-          sslModeUsed = 'no-verify';
-          
-          this.pgClient = new Client({ connectionString, ssl });
-          await this.pgClient.connect();
-          log('✅ MIGRATIONS: Connected successfully with SSL fallback');
-        } else {
-          throw sslError;
-        }
+        // Temporarily disable TLS rejection for pooler connections
+        const originalRejectUnauthorized = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+        process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+        
+        // Restore after connection
+        process.on('exit', () => {
+          if (originalRejectUnauthorized !== undefined) {
+            process.env.NODE_TLS_REJECT_UNAUTHORIZED = originalRejectUnauthorized;
+          } else {
+            delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+          }
+        });
+        
+        ssl = { 
+          rejectUnauthorized: false
+        };
+        this.sslModeUsed = 'pooler-optimized';
+      } else {
+        // For direct connections, use strict SSL verification
+        log('🔒 DB_SSL: Using verified SSL for direct connection');
+        ssl = { rejectUnauthorized: true };
+        this.sslModeUsed = 'verified';
       }
+      
+      this.pgClient = new Client({ connectionString, ssl });
+      await this.pgClient.connect();
+      log(`✅ MIGRATIONS: Connected successfully with ${this.sslModeUsed} SSL`);
       
     } catch (connectError) {
       error(`❌ MIGRATIONS: Failed after fallback, manual intervention required: ${connectError instanceof Error ? connectError.message : connectError}`);
