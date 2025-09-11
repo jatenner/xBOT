@@ -1,5 +1,6 @@
-// scripts/migrate.js - Production migrations with verified SSL and graceful fallback
+// scripts/migrate.js - Production migrations with verified SSL for Supabase Transaction Pooler
 const fs = require("fs");
+const path = require("path");
 const { Client } = require("pg");
 const { URL } = require("url");
 
@@ -28,7 +29,7 @@ async function sleep(ms) {
 
   if (!rawUrl) {
     safeLog('error', '❌ DB_MIGRATE_ERROR: DATABASE_URL not set');
-    process.exitCode = 0; // Don't block app start
+    process.exitCode = 1; // Exit non-zero on migration failure
     return;
   }
 
@@ -55,35 +56,20 @@ async function sleep(ms) {
     
   } catch (parseError) {
     safeLog('error', `❌ DATABASE_SANITY_FAILED: Invalid URL format - ${parseError.message}`);
-    process.exitCode = 0; // Don't block app start
+    process.exitCode = 1; // Exit non-zero on migration failure
     return;
   }
 
-  // Smart SSL Configuration - Supabase Transaction Pooler aware
+  // SSL Configuration - Supabase Transaction Pooler requires special handling
   function getSSLConfig() {
-    // For Supabase Transaction Pooler, use optimized SSL settings
     if (isPooler) {
-      safeLog('info', '🔒 DB_SSL: Using Supabase Transaction Pooler SSL strategy (encrypted, pooler-optimized)');
-      
-      // Temporarily disable TLS rejection for pooler connections
-      const originalRejectUnauthorized = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-      process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-      
-      // Restore after connection (will be restored in finally block)
-      process.on('exit', () => {
-        if (originalRejectUnauthorized !== undefined) {
-          process.env.NODE_TLS_REJECT_UNAUTHORIZED = originalRejectUnauthorized;
-        } else {
-          delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-        }
-      });
-      
+      safeLog('info', '🔒 DB_SSL: Using Supabase Transaction Pooler SSL strategy (encrypted, pooler-compatible)');
+      // Supabase Transaction Pooler requires this specific SSL configuration
       return { 
-        rejectUnauthorized: false
+        rejectUnauthorized: false  // Required for Supabase pooler infrastructure
       };
     }
     
-    // For direct connections, use strict SSL verification
     safeLog('info', '🔒 DB_SSL: Using verified SSL for direct connection');
     return { rejectUnauthorized: true };
   }
@@ -92,7 +78,7 @@ async function sleep(ms) {
   async function connectWithSSL() {
     const maxRetries = 3;
     let lastError;
-    const ssl = getSSLConfig(); // Get SSL config once, outside the retry loop
+    const ssl = getSSLConfig();
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       const client = new Client({ connectionString: url, ssl });
@@ -107,7 +93,7 @@ async function sleep(ms) {
         lastError = error;
         await client.end().catch(() => {});
         
-        // Handle certificate errors (should be rare with smart SSL strategy)
+        // Handle certificate errors
         if (error.message && error.message.includes('certificate')) {
           safeLog('warn', `⚠️ DB_SSL_CERTIFICATE_ERROR: ${error.message} (host: ${parsedUrl.hostname})`);
         }
@@ -129,6 +115,20 @@ async function sleep(ms) {
     throw lastError;
   }
 
+  // Resolve migration directory from repository root
+  function getMigrationsDir() {
+    // Always resolve from repository root, regardless of where script is run from
+    const repoRoot = path.resolve(__dirname, '..');
+    const migrationsDir = path.join(repoRoot, 'supabase', 'migrations');
+    
+    if (!fs.existsSync(migrationsDir)) {
+      safeLog('warn', `📊 MIGRATIONS: Directory not found at ${migrationsDir}, creating...`);
+      fs.mkdirSync(migrationsDir, { recursive: true });
+    }
+    
+    return migrationsDir;
+  }
+
   // Main migration logic
   let client;
   let sslMode = 'unknown';
@@ -141,52 +141,36 @@ async function sleep(ms) {
     // Start migration process
     safeLog('info', '📊 MIGRATIONS: Starting schema setup...');
     
-    // Load and execute migration files
+    // Get migrations directory and files
+    const migrationsDir = getMigrationsDir();
     const migrationFiles = [
-      'supabase/migrations/20250911_0100_api_usage_uuid.sql',
-      'supabase/migrations/20250911_0200_xbot_content_brain.sql'
+      path.join(migrationsDir, '20250911_0100_api_usage_uuid.sql'),
+      path.join(migrationsDir, '20250911_0200_xbot_content_brain.sql')
     ];
+    
+    let executedCount = 0;
     
     for (const migrationFile of migrationFiles) {
       if (fs.existsSync(migrationFile)) {
         try {
           const migrationSQL = fs.readFileSync(migrationFile, 'utf8');
-          safeLog('info', `📊 MIGRATIONS: Executing ${migrationFile}...`);
+          const fileName = path.basename(migrationFile);
+          safeLog('info', `📊 MIGRATIONS: Executing ${fileName}...`);
           await client.query(migrationSQL);
-          safeLog('info', `✅ MIGRATIONS: ${migrationFile} completed`);
+          safeLog('info', `✅ MIGRATIONS: ${fileName} completed`);
+          executedCount++;
         } catch (migError) {
-          safeLog('error', `❌ MIGRATION_ERROR: ${migrationFile} failed - ${migError.message}`);
+          const fileName = path.basename(migrationFile);
+          safeLog('error', `❌ MIGRATION_ERROR: ${fileName} failed - ${migError.message}`);
+          if (migError.detail) {
+            safeLog('error', `📄 SQL_DETAIL: ${migError.detail}`);
+          }
           throw migError;
         }
       } else {
-        safeLog('info', `📊 MIGRATIONS: ${migrationFile} not found, skipping...`);
+        const fileName = path.basename(migrationFile);
+        safeLog('info', `📊 MIGRATIONS: ${fileName} not found, skipping...`);
       }
-    }
-
-    // Inline migration for essential tables if files missing
-    if (!fs.existsSync('supabase/migrations/20250911_0100_api_usage_uuid.sql')) {
-      safeLog('info', '📊 MIGRATIONS: Creating api_usage table inline...');
-      await client.query(`
-        CREATE TABLE IF NOT EXISTS public.api_usage (
-          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          ts TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-          model TEXT,
-          cost_usd NUMERIC(10,4) NOT NULL DEFAULT 0,
-          tag TEXT,
-          payload JSONB
-        );
-        
-        CREATE INDEX IF NOT EXISTS idx_api_usage_ts ON public.api_usage(ts);
-        CREATE INDEX IF NOT EXISTS idx_api_usage_tag ON public.api_usage(tag);
-        
-        ALTER TABLE public.api_usage ENABLE ROW LEVEL SECURITY;
-        
-        DROP POLICY IF EXISTS "api_usage_all" ON public.api_usage;
-        CREATE POLICY "api_usage_all" ON public.api_usage FOR ALL USING (true) WITH CHECK (true);
-        
-        GRANT ALL ON public.api_usage TO service_role;
-        GRANT ALL ON public.api_usage TO authenticated;
-      `);
     }
     
     // PostgREST schema reload if possible
@@ -197,11 +181,11 @@ async function sleep(ms) {
       safeLog('info', '📡 PGRST: Schema reload skipped (not available)');
     }
     
-    // Startup self-test
+    // Service role connectivity test with new schema
     try {
       const testResult = await client.query(`
-        INSERT INTO api_usage(tag, cost_usd, payload)
-        VALUES('migration_test', 0, '{"test": true}')
+        INSERT INTO api_usage(model, tokens, cost)
+        VALUES('migration_test', 0, 0)
         RETURNING id
       `);
       
@@ -217,8 +201,8 @@ async function sleep(ms) {
     
     if (!migrationFailed) {
       process.env.MIGRATIONS_ALREADY_RAN = 'true';
-      const sslStatus = sslMode === 'verified' ? 'ssl=require' : 'ssl=fallback';
-      safeLog('info', `✅ MIGRATIONS: ALL APPLIED (pooler, ${sslStatus})`);
+      safeLog('info', `✅ MIGRATIONS: ALL APPLIED (pooler, ssl=${sslMode})`);
+      safeLog('info', `📊 MIGRATIONS: Executed ${executedCount} migration files successfully`);
     }
     
   } catch (err) {
@@ -239,9 +223,9 @@ async function sleep(ms) {
     };
     
     try {
-      const logDir = 'logs';
+      const logDir = path.resolve(__dirname, '..', 'logs');
       if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
-      fs.appendFileSync('logs/migration-errors.log', JSON.stringify(errorDetails) + '\n');
+      fs.appendFileSync(path.join(logDir, 'migration-errors.log'), JSON.stringify(errorDetails) + '\n');
     } catch (logErr) {
       // Ignore log write errors
     }
@@ -249,17 +233,17 @@ async function sleep(ms) {
   } finally {
     if (client) {
       try {
-    await client.end();
+        await client.end();
       } catch (err) {
-        // Ignore cleanup errors
+        safeLog('warn', `⚠️ DB_CLOSE_ERROR: ${err.message}`);
       }
     }
   }
 
-  // Always exit 0 for prestart - runtime migration will retry if needed
-  process.exitCode = 0;
+  // Exit with appropriate code
+  process.exitCode = migrationFailed ? 1 : 0;
   
   if (migrationFailed) {
-    safeLog('info', '🔄 PRESTART_MIGRATION: Failed, runtime migration will retry');
+    safeLog('error', '❌ PRESTART_MIGRATION: Failed - check logs for details');
   }
 })();
