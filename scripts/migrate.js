@@ -60,27 +60,15 @@ async function sleep(ms) {
     return;
   }
 
-  // SSL Configuration - Railway/Supabase Transaction Pooler compatible
+  // SSL Configuration - Verified SSL with system CA certificates
   function getSSLConfig() {
     if (isPooler) {
-      safeLog('info', '🔒 DB_SSL: Using Supabase Transaction Pooler SSL strategy (Railway-compatible)');
-      
-      // For Railway deployment, we need to handle Supabase pooler certificates
-      // Set NODE_TLS_REJECT_UNAUTHORIZED=0 temporarily for pooler connections only
-      const originalRejectUnauthorized = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-      process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-      
-      // Restore original setting after connection
-      process.on('exit', () => {
-        if (originalRejectUnauthorized !== undefined) {
-          process.env.NODE_TLS_REJECT_UNAUTHORIZED = originalRejectUnauthorized;
-        } else {
-          delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-        }
-      });
-      
-      return { 
-        rejectUnauthorized: false  // Required for Supabase pooler infrastructure
+      safeLog('info', '🔒 DB_SSL: Using verified SSL for Supabase Transaction Pooler (pooler-optimized)');
+      return {
+        rejectUnauthorized: true,
+        ca: fs.existsSync('/etc/ssl/certs/ca-certificates.crt') 
+          ? fs.readFileSync('/etc/ssl/certs/ca-certificates.crt')
+          : undefined
       };
     }
     
@@ -159,7 +147,7 @@ async function sleep(ms) {
     const migrationsDir = getMigrationsDir();
     const migrationFiles = [
       path.join(migrationsDir, '20250911_0100_api_usage_uuid.sql'),
-      path.join(migrationsDir, '20250911_0200_xbot_content_brain.sql')
+      path.join(migrationsDir, '20250911_0201_xbot_content_brain_fix.sql')
     ];
     
     let executedCount = 0;
