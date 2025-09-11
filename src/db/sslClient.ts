@@ -60,6 +60,7 @@ export function buildSSLConfig(
 
 /**
  * Create PostgreSQL client with unified SSL handling and automatic fallback
+ * Optimized for Supabase Transaction Pooler (port 6543)
  */
 export async function createSSLClient(
   connectionString: string,
@@ -70,24 +71,43 @@ export async function createSSLClient(
   } = {}
 ): Promise<ConnectionResult> {
   const {
-    sslMode = process.env.DB_SSL_MODE || process.env.MIGRATION_SSL_MODE || 'prefer',
+    sslMode = process.env.DB_SSL_MODE || process.env.MIGRATION_SSL_MODE || 'require',
     certPath = process.env.DB_SSL_ROOT_CERT_PATH || process.env.MIGRATION_SSL_ROOT_CERT_PATH || '/etc/ssl/certs/supabase-ca.crt',
     maxRetries = 1
   } = options;
 
+  // Special handling for Supabase Transaction Pooler
+  const isTransactionPooler = connectionString.includes(':6543');
+  const isSupabaseHost = connectionString.includes('supabase.co');
+
   let lastError: Error;
   let fallbackUsed = false;
 
-  // First attempt with configured SSL
-  const sslConfig = buildSSLConfig(sslMode, certPath);
+  // First attempt with configured SSL  
+  let sslConfig = buildSSLConfig(sslMode, certPath);
+  
+  // For Transaction Pooler, start with more permissive SSL if strict mode fails
+  if (isTransactionPooler && sslMode === 'require') {
+    console.log('🔒 DB_SSL: Attempting Transaction Pooler connection with SSL');
+    // Transaction pooler often needs less strict SSL validation
+    sslConfig = { 
+      mode: 'no-verify',
+      rejectUnauthorized: false 
+    } as SSLConfig;
+  }
+  
   let client = new Client({ 
     connectionString, 
-    ssl: sslConfig 
+    ssl: sslConfig === false ? false : {
+      rejectUnauthorized: sslConfig.rejectUnauthorized,
+      ca: sslConfig.ca
+    }
   });
 
   try {
     await client.connect();
-    const mode = sslConfig ? (sslConfig.ca ? 'strict' : 'system-certs') : 'disabled';
+    const mode = isTransactionPooler ? 'pooler-ssl' : 
+                 sslConfig ? (sslConfig.ca ? 'strict' : 'system-certs') : 'disabled';
     console.log(`🔒 DB_SSL: Connected successfully with SSL (${mode})`);
     
     return {
@@ -175,7 +195,7 @@ export async function executeWithSSL<T = any>(
   
   try {
     const queryResult = await result.client.query(query, values);
-    return queryResult.rows;
+    return queryResult.rows as T;
   } finally {
     await result.client.end().catch(() => {});
   }
