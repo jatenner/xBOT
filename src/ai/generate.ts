@@ -196,7 +196,7 @@ ${request.format === 'thread' ? 'Write as individual tweets separated by line br
     // Estimate engagement potential
     const estimated_engagement_score = await this.estimateEngagement(text, request.format);
 
-    return {
+      return { 
       text,
       format: request.format,
       topic,
@@ -333,7 +333,7 @@ ${request.format === 'thread' ? 'Write as individual tweets separated by line br
             embeddings,
             overall_score: candidate.estimated_engagement_score
           });
-      } catch (error) {
+    } catch (error) {
         console.error('Failed to save candidate:', error);
       }
     }

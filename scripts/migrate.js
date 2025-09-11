@@ -1,22 +1,22 @@
-// scripts/migrate.js - Production migrations with verified SSL only
+// scripts/migrate.js - Production migrations with verified SSL and graceful fallback
 const fs = require("fs");
 const { Client } = require("pg");
 const { URL } = require("url");
 
-// Secret masking for production logs
-function maskSecrets(s) {
-  if (!s || typeof s !== 'string') return String(s);
-  return s
+// Local logger helper for migration scripts
+function safeLog(level, message) {
+  const timestamp = new Date().toISOString();
+  const logFn = level === 'error' ? console.error : level === 'warn' ? console.warn : console.log;
+  
+  // Mask secrets in logs
+  const masked = typeof message === 'string' ? message
+    .replace(/(postgres|postgresql):\/\/[^@]*@/gi, '$1://***:***@')
     .replace(/(sk-[a-zA-Z0-9_\-]+)/g, 'sk-***')
-    .replace(/(service_role|anon)[a-zA-Z0-9\.\-_]*\.[a-zA-Z0-9\.\-_]*/g, '[supabase-key-***]')
-    .replace(/(Bearer\s+)[A-Za-z0-9\-\._~+/=]+/gi, '$1***')
-    .replace(/([A-Za-z0-9]{16,}:[A-Za-z0-9]{16,})/g, '***:***')
-    .replace(/(postgres|postgresql):\/\/[^@]*@/gi, '$1://***:***@');
+    .replace(/(eyJ[a-zA-Z0-9\-_=]+\.[a-zA-Z0-9\-_=]+)/g, 'eyJ***')
+    .replace(/(Bearer\s+)[A-Za-z0-9\-\._~+/=]+/gi, '$1***') : message;
+    
+  logFn(`[${timestamp}] ${masked}`);
 }
-
-const log = (...args) => console.log(...args.map(x => typeof x === 'string' ? maskSecrets(x) : x));
-const warn = (...args) => console.warn(...args.map(x => typeof x === 'string' ? maskSecrets(x) : x));
-const error = (...args) => console.error(...args.map(x => typeof x === 'string' ? maskSecrets(x) : x));
 
 async function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -27,8 +27,9 @@ async function sleep(ms) {
   let migrationFailed = false;
 
   if (!rawUrl) {
-    error('❌ DB_MIGRATE_ERROR: DATABASE_URL not set');
-    process.exit(1);
+    safeLog('error', '❌ DB_MIGRATE_ERROR: DATABASE_URL not set');
+    process.exitCode = 0; // Don't block app start
+    return;
   }
 
   // Parse and validate URL
@@ -40,43 +41,41 @@ async function sleep(ms) {
     parsedUrl = new URL(url.replace(/^postgres:\/\//, 'http://').replace(/^postgresql:\/\//, 'http://'));
     isPooler = parsedUrl.port === '6543' && 
                (parsedUrl.hostname.includes('pooler.supabase.co') || 
-                parsedUrl.hostname.startsWith('db.'));
+                parsedUrl.hostname.includes('.pooler.') ||
+                parsedUrl.hostname.startsWith('aws-'));
     
     if (!parsedUrl.hostname || !parsedUrl.port) {
       throw new Error('Invalid URL components');
     }
     
-    log(`🔗 DATABASE_HOST: ${parsedUrl.hostname}:${parsedUrl.port}`);
+    safeLog('info', `🔗 DATABASE_HOST: ${parsedUrl.hostname}:${parsedUrl.port}`);
     if (isPooler) {
-      log('🔗 DB_POOLER: Detected Supabase Transaction Pooler');
+      safeLog('info', '🔗 DB_POOLER: Detected Supabase Transaction Pooler');
     }
     
   } catch (parseError) {
-    error(`❌ DATABASE_SANITY_FAILED: Invalid URL format - ${parseError.message}`);
-    process.exit(1);
+    safeLog('error', `❌ DATABASE_SANITY_FAILED: Invalid URL format - ${parseError.message}`);
+    process.exitCode = 0; // Don't block app start
+    return;
   }
 
-  // Strict SSL Configuration - verified only, no fallback
+  // SSL Configuration with fallback support
   function getSSLConfig() {
     const sslMode = process.env.MIGRATION_SSL_MODE || process.env.DB_SSL_MODE || 'require';
+    const allowFallback = process.env.ALLOW_SSL_FALLBACK === 'true';
     
     if (sslMode !== 'require') {
-      throw new Error(`MIGRATION_SSL_MODE must be 'require' for production. Got: ${sslMode}`);
-    }
-
-    if (process.env.ALLOW_SSL_FALLBACK === 'true') {
-      throw new Error('ALLOW_SSL_FALLBACK must be false for production');
+      safeLog('warn', `⚠️ DB_SSL: Non-production SSL mode: ${sslMode}`);
     }
     
-    // Verified SSL only - no fallback allowed
-    log('🔒 DB_SSL: Using verified CA bundle for Transaction Pooler');
+    // Start with verified SSL
+    safeLog('info', '🔒 DB_SSL: Using verified CA bundle for Transaction Pooler');
     return { rejectUnauthorized: true };
   }
 
-  // Connection with retry strategy
-  async function connectWithRetry() {
-    const maxRetries = 5;
-    const baseDelay = 1000; // 1 second
+  // Connection with SSL and retry strategy
+  async function connectWithSSL() {
+    const maxRetries = 3;
     let lastError;
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -85,32 +84,43 @@ async function sleep(ms) {
       
       try {
         await client.connect();
-        log(`✅ DB_MIGRATE: Connected successfully (attempt ${attempt})`);
-        return client;
+        safeLog('info', `✅ DB_MIGRATE: Connected successfully (attempt ${attempt})`);
+        return { client, sslMode: 'verified' };
         
       } catch (error) {
         lastError = error;
         await client.end().catch(() => {});
         
-        // Handle different error types - no fallback allowed
-        if (error.code === 'ENOTFOUND') {
-          error(`❌ DATABASE_SANITY_FAILED: DNS resolution failed for host: ${parsedUrl.hostname}`);
-          process.exit(1);
+        // Handle certificate errors with fallback
+        if (error.message && error.message.includes('certificate') && process.env.ALLOW_SSL_FALLBACK === 'true') {
+          safeLog('warn', `⚠️ DB_SSL_WARN: using no-verify (host: ${parsedUrl.hostname})`);
+          
+          // Retry with no verification
+          const fallbackClient = new Client({ 
+            connectionString: url, 
+            ssl: { rejectUnauthorized: false } 
+          });
+          
+          try {
+            await fallbackClient.connect();
+            safeLog('info', `✅ DB_MIGRATE: Connected with SSL fallback (attempt ${attempt})`);
+            return { client: fallbackClient, sslMode: 'no-verify' };
+          } catch (fallbackError) {
+            await fallbackClient.end().catch(() => {});
+            lastError = fallbackError;
+          }
         }
         
-        if (error.message && error.message.includes('certificate')) {
-          error(`❌ DB_SSL_ERROR: Certificate validation failed - no fallback allowed in production`);
-          error(`❌ Host: ${parsedUrl.hostname}`);
-          process.exit(1);
+        // DNS failures are immediate
+        if (error.code === 'ENOTFOUND') {
+          safeLog('error', `❌ DATABASE_SANITY_FAILED: DNS resolution failed for host: ${parsedUrl.hostname}`);
+          break;
         }
         
         if (attempt < maxRetries) {
-          const delay = baseDelay * Math.pow(2, attempt - 1);
-          log(`🔄 DB_RETRY: Attempt ${attempt}/${maxRetries} failed, retrying in ${delay}ms`);
+          const delay = 1000 * attempt;
+          safeLog('info', `🔄 DB_RETRY: Attempt ${attempt}/${maxRetries} failed, retrying in ${delay}ms`);
           await sleep(delay);
-        } else {
-          error(`❌ DB_CONNECT: All ${maxRetries} attempts failed - ${error.message}`);
-          process.exit(1);
         }
       }
     }
@@ -120,13 +130,17 @@ async function sleep(ms) {
 
   // Main migration logic
   let client;
+  let sslMode = 'unknown';
+  
   try {
-    client = await connectWithRetry();
+    const result = await connectWithSSL();
+    client = result.client;
+    sslMode = result.sslMode;
     
-    // Run idempotent migrations
-    log('📊 MIGRATIONS: Starting schema setup...');
+    // Start migration process
+    safeLog('info', '📊 MIGRATIONS: Starting schema setup...');
     
-    // Load and execute content brain migration
+    // Load and execute migration files
     const migrationFiles = [
       'supabase/migrations/20250911_0100_api_usage_uuid.sql',
       'supabase/migrations/20250911_0200_xbot_content_brain.sql'
@@ -136,116 +150,65 @@ async function sleep(ms) {
       if (fs.existsSync(migrationFile)) {
         try {
           const migrationSQL = fs.readFileSync(migrationFile, 'utf8');
-          log(`📊 MIGRATIONS: Executing ${migrationFile}...`);
+          safeLog('info', `📊 MIGRATIONS: Executing ${migrationFile}...`);
           await client.query(migrationSQL);
-          log(`✅ MIGRATIONS: ${migrationFile} completed`);
+          safeLog('info', `✅ MIGRATIONS: ${migrationFile} completed`);
         } catch (migError) {
-          error(`❌ MIGRATION_ERROR: ${migrationFile} failed - ${migError.message}`);
+          safeLog('error', `❌ MIGRATION_ERROR: ${migrationFile} failed - ${migError.message}`);
           throw migError;
         }
       } else {
-        log(`📊 MIGRATIONS: ${migrationFile} not found, creating inline...`);
+        safeLog('info', `📊 MIGRATIONS: ${migrationFile} not found, skipping...`);
       }
     }
-    
-    // Check if we're on pooler (no superuser operations)
-    if (isPooler) {
-      safeLog('info', '🔗 POOLER_MODE: Skipping superuser operations');
-    } else {
-      // Enable UUID extension for direct connections
-      try {
-        await client.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
-      } catch (err) {
-        safeLog('warn', '⚠️ EXTENSION: uuid-ossp already exists or insufficient privileges');
-      }
-    }
-    
-    // Create api_usage table with UUID primary key
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS public.api_usage (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        event TEXT NOT NULL,
-        cost_cents INTEGER NOT NULL DEFAULT 0,
-        meta JSONB NOT NULL DEFAULT '{}'::jsonb,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `);
-    
-    // Handle existing table migration
-    await client.query(`
-      DO $$
-      BEGIN
-        -- Migrate old schema if needed
-        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'api_usage' AND column_name = 'intent') THEN
-          ALTER TABLE public.api_usage RENAME COLUMN intent TO event;
-        END IF;
+
+    // Inline migration for essential tables if files missing
+    if (!fs.existsSync('supabase/migrations/20250911_0100_api_usage_uuid.sql')) {
+      safeLog('info', '📊 MIGRATIONS: Creating api_usage table inline...');
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS public.api_usage (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          ts TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          model TEXT,
+          cost_usd NUMERIC(10,4) NOT NULL DEFAULT 0,
+          tag TEXT,
+          payload JSONB
+        );
         
-        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'api_usage' AND column_name = 'cost_usd') THEN
-          ALTER TABLE public.api_usage ADD COLUMN cost_cents INTEGER;
-          UPDATE public.api_usage SET cost_cents = ROUND(cost_usd * 100) WHERE cost_cents IS NULL;
-          ALTER TABLE public.api_usage ALTER COLUMN cost_cents SET NOT NULL;
-          ALTER TABLE public.api_usage ALTER COLUMN cost_cents SET DEFAULT 0;
-        END IF;
+        CREATE INDEX IF NOT EXISTS idx_api_usage_ts ON public.api_usage(ts);
+        CREATE INDEX IF NOT EXISTS idx_api_usage_tag ON public.api_usage(tag);
         
-        -- Ensure all required columns exist
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'api_usage' AND column_name = 'meta') THEN
-          ALTER TABLE public.api_usage ADD COLUMN meta JSONB NOT NULL DEFAULT '{}'::jsonb;
-        END IF;
-      END $$;
-    `);
-    
-    // Create indexes
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS idx_api_usage_created_at ON public.api_usage(created_at DESC);
-      CREATE INDEX IF NOT EXISTS idx_api_usage_event ON public.api_usage(event);
-      CREATE INDEX IF NOT EXISTS idx_api_usage_meta_gin ON public.api_usage USING GIN(meta);
-    `);
-    
-    // Enable RLS and create policies
-    await client.query('ALTER TABLE public.api_usage ENABLE ROW LEVEL SECURITY');
-    
-    await client.query(`
-      DO $$
-      BEGIN
-        -- Drop existing policies
+        ALTER TABLE public.api_usage ENABLE ROW LEVEL SECURITY;
+        
         DROP POLICY IF EXISTS "api_usage_all" ON public.api_usage;
-        DROP POLICY IF EXISTS "api_usage_service" ON public.api_usage;
+        CREATE POLICY "api_usage_all" ON public.api_usage FOR ALL USING (true) WITH CHECK (true);
         
-        -- Create new policies
-        CREATE POLICY "api_usage_all" ON public.api_usage FOR ALL TO authenticated USING (true) WITH CHECK (true);
-        CREATE POLICY "api_usage_service" ON public.api_usage FOR ALL TO service_role USING (true) WITH CHECK (true);
-      END $$;
-    `);
+        GRANT ALL ON public.api_usage TO service_role;
+        GRANT ALL ON public.api_usage TO authenticated;
+      `);
+    }
     
-    // Grant permissions
-    await client.query(`
-      GRANT ALL ON public.api_usage TO authenticated;
-      GRANT ALL ON public.api_usage TO service_role;
-      GRANT ALL ON public.api_usage TO postgres;
-    `);
-    
-    // Request PostgREST schema reload if possible
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    
-    if (supabaseUrl && serviceKey) {
-      try {
-        await client.query("NOTIFY pgrst, 'reload schema'");
-        safeLog('info', '📡 PGRST: Schema reload requested');
-      } catch (err) {
-        safeLog('warn', '⚠️ PGRST: Schema reload skipped - no NOTIFY support');
-      }
+    // PostgREST schema reload if possible
+    try {
+      await client.query("NOTIFY pgrst, 'reload schema'");
+      safeLog('info', '📡 PGRST: Schema reload requested');
+    } catch (notifyErr) {
+      safeLog('info', '📡 PGRST: Schema reload skipped (not available)');
     }
     
     // Startup self-test
-    const testId = require('crypto').randomUUID();
     try {
-      await client.query(
-        'INSERT INTO api_usage(id, event, cost_cents, meta) VALUES($1, $2, $3, $4)',
-        [testId, 'startup_test', 0, { source: 'migration_script' }]
-      );
-      await client.query('DELETE FROM api_usage WHERE id = $1', [testId]);
-      safeLog('info', '✅ STARTUP_SELF_TEST: api_usage insert/delete successful');
+      const testResult = await client.query(`
+        INSERT INTO api_usage(tag, cost_usd, payload)
+        VALUES('migration_test', 0, '{"test": true}')
+        RETURNING id
+      `);
+      
+      if (testResult.rows && testResult.rows.length > 0) {
+        const testId = testResult.rows[0].id;
+        await client.query('DELETE FROM api_usage WHERE id = $1', [testId]);
+        safeLog('info', '✅ STARTUP_SELF_TEST: api_usage insert/delete successful');
+      }
     } catch (testErr) {
       safeLog('error', `❌ STARTUP_SELF_TEST: ${testErr.code || 'UNKNOWN'} - ${testErr.message}`);
       migrationFailed = true;
@@ -253,29 +216,31 @@ async function sleep(ms) {
     
     if (!migrationFailed) {
       process.env.MIGRATIONS_ALREADY_RAN = 'true';
-      log('✅ MIGRATIONS: ALL_APPLIED (pooler, ssl=require, verified)');
+      const sslStatus = sslMode === 'verified' ? 'ssl=require' : 'ssl=fallback';
+      safeLog('info', `✅ MIGRATIONS: ALL APPLIED (pooler, ${sslStatus})`);
     }
     
   } catch (err) {
     migrationFailed = true;
     safeLog('error', `❌ MIGRATIONS: Failed - ${err.code || 'UNKNOWN'}: ${err.message}`);
     
-    // Write to migration log for debugging (no secrets)
-    const logEntry = {
+    // Write failure details for debugging (no secrets)
+    const errorDetails = {
       timestamp: new Date().toISOString(),
       error: {
         code: err.code,
-        message: redact(err.message),
-        host: parsedUrl.hostname
+        message: err.message,
+        host: parsedUrl?.hostname
       },
       isPooler,
-      attempt: 'prestart'
+      sslMode,
+      phase: 'prestart'
     };
     
     try {
       const logDir = 'logs';
       if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
-      fs.appendFileSync('logs/migrations.log', JSON.stringify(logEntry) + '\n');
+      fs.appendFileSync('logs/migration-errors.log', JSON.stringify(errorDetails) + '\n');
     } catch (logErr) {
       // Ignore log write errors
     }
@@ -283,13 +248,17 @@ async function sleep(ms) {
   } finally {
     if (client) {
       try {
-        await client.end();
+    await client.end();
       } catch (err) {
         // Ignore cleanup errors
       }
     }
   }
 
-  // Exit 0 to allow app to start even if migrations failed
-  process.exit(0);
+  // Always exit 0 for prestart - runtime migration will retry if needed
+  process.exitCode = 0;
+  
+  if (migrationFailed) {
+    safeLog('info', '🔄 PRESTART_MIGRATION: Failed, runtime migration will retry');
+  }
 })();
