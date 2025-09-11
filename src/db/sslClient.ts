@@ -3,7 +3,7 @@ import { Client } from 'pg';
 import fs from 'fs';
 
 export interface SSLConfig {
-  mode: 'require' | 'prefer' | 'no-verify' | 'disable';
+  mode: 'require' | 'prefer' | 'no-verify' | 'disable' | 'pooler';
   certPath?: string;
   rejectUnauthorized: boolean;
   ca?: Buffer;
@@ -76,9 +76,15 @@ export async function createSSLClient(
     maxRetries = 1
   } = options;
 
-  // Special handling for Supabase Transaction Pooler
-  const isTransactionPooler = connectionString.includes(':6543');
-  const isSupabaseHost = connectionString.includes('supabase.co');
+  // Pooler detection: hostname starts with "db." AND port 6543
+  let isPooler = false;
+  try {
+    const url = new URL(connectionString.replace('postgres://', 'http://').replace('postgresql://', 'http://'));
+    isPooler = url.hostname.startsWith('db.') && url.port === '6543';
+  } catch {
+    // Fallback detection for older URLs
+    isPooler = connectionString.includes(':6543') && connectionString.includes('db.');
+  }
 
   let lastError: Error;
   let fallbackUsed = false;
@@ -86,12 +92,11 @@ export async function createSSLClient(
   // First attempt with configured SSL  
   let sslConfig = buildSSLConfig(sslMode, certPath);
   
-  // For Transaction Pooler, start with more permissive SSL if strict mode fails
-  if (isTransactionPooler && sslMode === 'require') {
-    console.log('🔒 DB_SSL: Attempting Transaction Pooler connection with SSL');
-    // Transaction pooler often needs less strict SSL validation
+  // For Transaction Pooler, ignore custom certificates and use managed SSL
+  if (isPooler) {
+    console.log('🔗 DB_SSL: Detected Transaction Pooler - using managed SSL');
     sslConfig = { 
-      mode: 'no-verify',
+      mode: 'pooler',
       rejectUnauthorized: false 
     } as SSLConfig;
   }
@@ -106,7 +111,7 @@ export async function createSSLClient(
 
   try {
     await client.connect();
-    const mode = isTransactionPooler ? 'pooler-ssl' : 
+    const mode = isPooler ? 'pooler' : 
                  sslConfig ? (sslConfig.ca ? 'strict' : 'system-certs') : 'disabled';
     console.log(`🔒 DB_SSL: Connected successfully with SSL (${mode})`);
     
