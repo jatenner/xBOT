@@ -9,14 +9,23 @@ const { Client } = require("pg");
   let ssl = false;
   if (process.env.MIGRATION_SSL_MODE === "require") {
     try {
+      const certPath = process.env.MIGRATION_SSL_ROOT_CERT_PATH || "/etc/ssl/certs/supabase-ca.crt";
+      const ca = fs.readFileSync(certPath);
       ssl = {
-        ca: fs.readFileSync(process.env.MIGRATION_SSL_ROOT_CERT_PATH || "/etc/ssl/certs/supabase-ca.crt"),
+        ca: ca,
         rejectUnauthorized: true,
       };
+      console.log("🔒 DB_MIGRATE: Using SSL with custom CA certificate");
     } catch (err) {
-      console.log("⚠️ DB_MIGRATE_WARN: SSL cert not found, trying without SSL...");
-      ssl = { rejectUnauthorized: false };
+      console.log("⚠️ DB_MIGRATE_WARN: SSL cert not found, using system certs...");
+      ssl = { 
+        rejectUnauthorized: true  // Use system CA bundle instead
+      };
     }
+  } else if (url && url.includes('supabase.co')) {
+    // Always use SSL for Supabase, even if not explicitly required
+    ssl = { rejectUnauthorized: true };
+    console.log("🔒 DB_MIGRATE: Auto-enabling SSL for Supabase connection");
   }
 
   const client = new Client({ connectionString: url, ssl });
