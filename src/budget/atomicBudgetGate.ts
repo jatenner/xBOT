@@ -37,7 +37,7 @@ function getTodayKey(): string {
  * Throws BudgetExceededException if would exceed daily limit
  */
 export async function ensureBudget(intent: string, estimatedCost: number): Promise<void> {
-  const client = getRedis();
+  const client = await getRedis();
   const key = getTodayKey();
   
   // Get current budget (simple atomic operation)
@@ -70,15 +70,16 @@ export async function ensureBudget(intent: string, estimatedCost: number): Promi
  * Returns new total spent today
  */
 export async function commitCost(intent: string, actualCost: number): Promise<number> {
-  const client = getRedis();
+  const client = await getRedis();
   const key = getTodayKey();
   
   // Use atomic increment by float
-  const newTotal = await client.incrByFloat(key, actualCost);
+  const newTotalStr = await client.incrByFloat(key, actualCost);
+  const newTotal = parseFloat(newTotalStr);
   
   // Set TTL for 48 hours if this is a new key
   if (newTotal === actualCost) {
-    await client.set(key, newTotal.toString(), 60 * 60 * 48);
+    await client.expire(key, 60 * 60 * 48);
   }
   
   const log: BudgetLog = {
@@ -118,7 +119,7 @@ export async function commitCost(intent: string, actualCost: number): Promise<nu
  * Get current budget status
  */
 export async function getBudgetStatus(): Promise<BudgetStatus> {
-  const client = getRedis();
+  const client = await getRedis();
   const key = getTodayKey();
   
   const current = await client.get(key);
