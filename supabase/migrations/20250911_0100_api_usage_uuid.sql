@@ -91,7 +91,11 @@ END $$;
 CREATE INDEX IF NOT EXISTS idx_api_usage_created_at ON public.api_usage(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_api_usage_event ON public.api_usage(event);
 CREATE INDEX IF NOT EXISTS idx_api_usage_meta_gin ON public.api_usage USING GIN(meta);
-CREATE INDEX IF NOT EXISTS idx_api_usage_cost_date ON public.api_usage(DATE(created_at), cost_cents);
+-- Create index with date truncation (PostgreSQL requires IMMUTABLE functions)
+CREATE INDEX IF NOT EXISTS idx_api_usage_cost_date ON public.api_usage(
+    date_trunc('day', created_at)::date, 
+    cost_cents
+);
 
 -- Enable Row Level Security
 ALTER TABLE public.api_usage ENABLE ROW LEVEL SECURITY;
