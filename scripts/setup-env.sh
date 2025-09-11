@@ -1,61 +1,109 @@
 #!/bin/bash
-# Setup script for xBOT Production Environment
-# Run this to set all required environment variables on Railway
+# scripts/setup-env.sh - Environment validation and setup guidance
 
-echo "🚀 Setting up xBOT Production Environment Variables"
-echo "======================================================"
+echo "🔍 xBOT Environment Setup & Validation"
+echo "======================================="
 
-# Check if railway CLI is available
-if ! command -v railway &> /dev/null; then
-    echo "❌ Railway CLI not found. Please install it first:"
-    echo "   npm install -g @railway/cli"
-    exit 1
+# Critical environment variables (presence check only)
+CRITICAL_ENVS=(
+  "DATABASE_URL"
+  "SUPABASE_SERVICE_ROLE_KEY" 
+  "OPENAI_API_KEY"
+  "REDIS_URL"
+)
+
+# Optional but recommended
+OPTIONAL_ENVS=(
+  "SUPABASE_URL"
+  "DB_SSL_MODE"
+  "MIGRATION_SSL_MODE"
+  "ALLOW_SSL_FALLBACK"
+  "NODE_ENV"
+  "POSTING_DISABLED"
+)
+
+missing_critical=0
+missing_optional=0
+
+echo "📋 Critical Environment Variables:"
+for env in "${CRITICAL_ENVS[@]}"; do
+  if [ -z "${!env}" ]; then
+    echo "❌ $env: MISSING"
+    missing_critical=$((missing_critical + 1))
+  else
+    echo "✅ $env: present"
+  fi
+done
+
+echo ""
+echo "📋 Optional Environment Variables:"
+for env in "${OPTIONAL_ENVS[@]}"; do
+  if [ -z "${!env}" ]; then
+    echo "⚠️  $env: not set"
+    missing_optional=$((missing_optional + 1))
+  else
+    # Show actual value for non-secret configs
+    if [[ "$env" == "DB_SSL_MODE" || "$env" == "MIGRATION_SSL_MODE" || "$env" == "ALLOW_SSL_FALLBACK" || "$env" == "NODE_ENV" || "$env" == "POSTING_DISABLED" ]]; then
+      echo "✅ $env: ${!env}"
+    else
+      echo "✅ $env: present"
+    fi
+  fi
+done
+
+echo ""
+echo "======================================="
+
+if [ $missing_critical -gt 0 ]; then
+  echo "❌ Missing $missing_critical critical environment variables"
+  echo ""
+  echo "🛠️  To fix (Railway):"
+  echo "   railway variables set DATABASE_URL=\"postgresql://user:pass@aws-0-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require\""
+  echo "   railway variables set SUPABASE_SERVICE_ROLE_KEY=\"eyJ...\""
+  echo "   railway variables set OPENAI_API_KEY=\"sk-...\""
+  echo "   railway variables set REDIS_URL=\"redis://...\""
+  echo ""
+  echo "🛠️  To fix (Local):"
+  echo "   Copy .env.example to .env and fill in the values"
+  exit 1
+else
+  echo "✅ All critical environment variables present"
 fi
 
-echo "📋 Setting core environment variables..."
+if [ $missing_optional -gt 0 ]; then
+  echo "⚠️  $missing_optional optional variables not set (using defaults)"
+  echo ""
+  echo "📝 Recommended settings:"
+  echo "   DB_SSL_MODE=require"
+  echo "   MIGRATION_SSL_MODE=require" 
+  echo "   ALLOW_SSL_FALLBACK=true"
+  echo "   NODE_ENV=production"
+  echo "   POSTING_DISABLED=true"
+fi
 
-# SSL and Database
-echo "🔒 Setting SSL and Database configuration..."
-railway variables set PGSSLMODE=require
-railway variables set DB_SSL_ROOT_CERT_PATH=/etc/ssl/certs/ca-certificates.crt
-railway variables set ALLOW_SSL_FALLBACK=true
-
-# Migrations
-echo "📊 Setting migration configuration..."
-railway variables set DB_MIGRATIONS_ENABLED=true
-railway variables set MIGRATIONS_RUNTIME_ENABLED=true
-
-# Playwright
-echo "🎭 Setting Playwright configuration..."
-railway variables set PLAYWRIGHT_BROWSERS_PATH=0
-railway variables set PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=1
-
-# Feature Flags
-echo "🎯 Setting feature flags..."
-railway variables set ENABLE_METRICS=true
-railway variables set POSTING_DISABLED=true
-railway variables set BLOCK_POLITICS=false
-railway variables set TOPIC_BLACKLIST=nsfw
-railway variables set REPLY_TOPIC_MODE=broad
-railway variables set ENABLE_REPLIES=true
-
-# Content Brain Settings
-echo "🧠 Setting content brain configuration..."
-railway variables set MIN_POST_INTERVAL_MINUTES=45
-railway variables set MAX_POSTS_PER_HOUR=3
-railway variables set DAILY_OPENAI_LIMIT_USD=5.0
+# Database URL validation
+if [ -n "$DATABASE_URL" ]; then
+  echo ""
+  echo "📊 Database URL Analysis:"
+  
+  if [[ "$DATABASE_URL" == *":6543"* ]]; then
+    echo "✅ Transaction Pooler detected (port 6543)"
+  else
+    echo "⚠️  Direct connection detected (not using Transaction Pooler)"
+  fi
+  
+  if [[ "$DATABASE_URL" == *"sslmode=require"* ]]; then
+    echo "✅ SSL mode: require"
+  else
+    echo "⚠️  SSL mode not specified or not 'require'"
+  fi
+fi
 
 echo ""
-echo "✅ Environment variables set successfully!"
+echo "🎯 Setup validation complete"
 echo ""
-echo "📝 Manual steps required:"
-echo "   1. Set DATABASE_URL (Transaction Pooler URL ending with :6543)"
-echo "   2. Set OPENAI_API_KEY"
-echo "   3. Set SUPABASE_SERVICE_ROLE_KEY"
-echo "   4. Set REDIS_URL"
-echo ""
-echo "🧪 To verify setup:"
-echo "   npm run diagnostics"
-echo ""
-echo "🚀 To enable posting after verification:"
-echo "   railway variables set POSTING_DISABLED=false"
+echo "📚 Next steps:"
+echo "   1. Run: npm run diagnostics"
+echo "   2. Run: npm run build"
+echo "   3. Test: npm start (local) or deploy to Railway"
+echo "   4. When ready: set POSTING_DISABLED=false"

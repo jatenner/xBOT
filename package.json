@@ -7,7 +7,7 @@
     "prestart": "node scripts/migrate.js",
     "start": "node dist/main-bulletproof.js",
     "start:bulletproof": "node dist/main-bulletproof.js",
-    "postinstall": "npx playwright install --with-deps chromium",
+    "postinstall": "npx playwright install --with-deps",
     "build": "tsc -p .",
     "build-clean": "rm -rf dist && npm run build",
     "logs": "node bulletproof_railway_monitor.js",

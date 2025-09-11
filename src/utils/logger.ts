@@ -1,21 +1,22 @@
-// src/utils/logger.ts - Secret-safe logging for production
-function maskSecrets(s: string): string {
-  if (!s) return s;
-  return s
+// src/utils/logger.ts - Production-safe logging with secret masking
+export function safeLog(level: 'info' | 'warn' | 'error', message: string): void {
+  const timestamp = new Date().toISOString();
+  const logFn = level === 'error' ? console.error : level === 'warn' ? console.warn : console.log;
+  
+  // Mask secrets in logs
+  const masked = typeof message === 'string' ? message
+    .replace(/(postgres|postgresql):\/\/[^@]*@/gi, '$1://***:***@')
     .replace(/(sk-[a-zA-Z0-9_\-]+)/g, 'sk-***')
-    .replace(/(service_role|anon)[a-zA-Z0-9\.\-_]*\.[a-zA-Z0-9\.\-_]*/g, '[supabase-key-***]')
+    .replace(/(eyJ[a-zA-Z0-9\-_=]+\.[a-zA-Z0-9\-_=]+)/g, 'eyJ***')
     .replace(/(Bearer\s+)[A-Za-z0-9\-\._~+/=]+/gi, '$1***')
-    .replace(/([A-Za-z0-9]{16,}:[A-Za-z0-9]{16,})/g, '***:***') // redis, twitter pairs
-    .replace(/(postgres|postgresql):\/\/[^@]*@/gi, '$1://***:***@'); // postgres credentials
+    .replace(/([A-Za-z0-9]{16,}:[A-Za-z0-9]{16,})/g, '***:***') : message;
+    
+  logFn(`[${timestamp}] ${masked}`);
 }
 
-const safeLog = (...args: any[]) => 
-  console.log(...args.map(x => typeof x === 'string' ? maskSecrets(x) : x));
+// Convenience exports
+export const log = (message: string) => safeLog('info', message);
+export const warn = (message: string) => safeLog('warn', message);
+export const error = (message: string) => safeLog('error', message);
 
-const safeWarn = (...args: any[]) => 
-  console.warn(...args.map(x => typeof x === 'string' ? maskSecrets(x) : x));
-
-const safeError = (...args: any[]) => 
-  console.error(...args.map(x => typeof x === 'string' ? maskSecrets(x) : x));
-
-export { safeLog as log, safeWarn as warn, safeError as error, maskSecrets };
+export default { safeLog, log, warn, error };

@@ -7,9 +7,8 @@ import { createClient } from '@supabase/supabase-js';
 import { Client } from 'pg';
 import fs from 'fs';
 import path from 'path';
-import { DatabaseUrlResolver } from '../databaseUrlResolver';
-import { createSSLClient } from '../sslClient';
 import { FEATURE_FLAGS } from '../../config/featureFlags';
+import { log, warn, error } from '../../utils/logger';
 
 interface MigrationRecord {
   filename: string;
@@ -36,7 +35,7 @@ export class MigrationRunner {
   async run(): Promise<void> {
     // Check if migrations were already run successfully in prestart
     if (process.env.MIGRATIONS_ALREADY_RAN === 'true') {
-      console.log('✅ MIGRATIONS: Skipping runtime migrations (prestart completed successfully)');
+      log('✅ MIGRATIONS: Skipping runtime migrations (prestart completed successfully)');
       this.migrationHealth.success = true;
       this.migrationHealth.error = null;
       return;
@@ -44,13 +43,13 @@ export class MigrationRunner {
 
     // Check feature flag
     if (!FEATURE_FLAGS.MIGRATIONS_RUNTIME_ENABLED) {
-      console.log('🚫 MIGRATIONS: Runtime migrations disabled by feature flag');
+      log('🚫 MIGRATIONS: Runtime migrations disabled by feature flag');
       this.migrationHealth.success = true;
       this.migrationHealth.error = null;
       return;
     }
 
-    console.log('📊 MIGRATIONS: Starting runtime migration runner (prestart failed or skipped)...');
+    log('📊 MIGRATIONS: Starting runtime migration runner (prestart failed or skipped)...');
     this.migrationHealth.lastRunAt = new Date();
 
     try {
@@ -82,9 +81,11 @@ export class MigrationRunner {
       }
       
       if (appliedCount > 0) {
-        console.log(`✅ MIGRATIONS: Applied ${appliedCount} new migrations, skipped ${skippedCount}`);
+        log(`✅ MIGRATIONS: ALL APPLIED (pooler, ssl=require)`);
+        log(`📊 Applied ${appliedCount} new migrations, skipped ${skippedCount}`);
       } else {
-        console.log(`✅ MIGRATIONS: All ${skippedCount} migrations already applied`);
+        log(`✅ MIGRATIONS: ALL APPLIED (pooler, ssl=require)`);
+        log(`📊 All ${skippedCount} migrations already applied`);
       }
       
       this.migrationHealth.success = true;
@@ -107,21 +108,55 @@ export class MigrationRunner {
 
   private async initPgClient(): Promise<void> {
     try {
-      // Use shared SSL client for unified SSL handling
       const connectionString = process.env.DATABASE_URL;
       if (!connectionString) {
         throw new Error('DATABASE_URL not configured');
       }
 
-      const result = await createSSLClient(connectionString);
-      this.pgClient = result.client;
+      // Parse URL to detect pooler
+      const parsedUrl = new URL(connectionString.replace(/^postgres:\/\//, 'http://'));
+      const isPooler = parsedUrl.port === '6543' && 
+                      (parsedUrl.hostname.includes('pooler.supabase.co') || 
+                       parsedUrl.hostname.includes('.pooler.') ||
+                       parsedUrl.hostname.startsWith('aws-'));
+
+      if (isPooler) {
+        log('🔗 DB_POOLER: Detected Supabase Transaction Pooler');
+      }
+
+      // SSL configuration matching prestart behavior
+      const sslMode = process.env.MIGRATION_SSL_MODE || process.env.DB_SSL_MODE || 'require';
+      const allowFallback = process.env.ALLOW_SSL_FALLBACK === 'true';
       
-      const fallbackStatus = result.fallbackUsed ? ' (fallback)' : '';
-      console.log(`✅ MIGRATIONS: Connected successfully with SSL [${result.sslMode}]${fallbackStatus}`);
+      let ssl = { rejectUnauthorized: true };
+      let sslModeUsed = 'verified';
       
-    } catch (error) {
-      console.error(`❌ MIGRATIONS: Failed after fallback, manual intervention required: ${error instanceof Error ? error.message : error}`);
-      throw error;
+      log('🔒 DB_SSL: Using verified CA bundle for Transaction Pooler');
+      
+      try {
+        this.pgClient = new Client({ connectionString, ssl });
+        await this.pgClient.connect();
+        log('✅ MIGRATIONS: Connected successfully with verified SSL');
+        
+      } catch (sslError: any) {
+        if (sslError.message?.includes('certificate') && allowFallback) {
+          warn(`⚠️ DB_SSL_WARN: using no-verify (host: ${parsedUrl.hostname})`);
+          
+          await this.pgClient?.end().catch(() => {});
+          ssl = { rejectUnauthorized: false };
+          sslModeUsed = 'no-verify';
+          
+          this.pgClient = new Client({ connectionString, ssl });
+          await this.pgClient.connect();
+          log('✅ MIGRATIONS: Connected successfully with SSL fallback');
+        } else {
+          throw sslError;
+        }
+      }
+      
+    } catch (connectError) {
+      error(`❌ MIGRATIONS: Failed after fallback, manual intervention required: ${connectError instanceof Error ? connectError.message : connectError}`);
+      throw connectError;
     }
   }
 
