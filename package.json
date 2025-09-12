@@ -12,6 +12,7 @@
     "build-clean": "rm -rf dist && npm run build",
     "logs": "node bulletproof_railway_monitor.js",
     "diagnostics": "node scripts/diagnostics.js",
+    "ssl:debug": "node scripts/ssl-debug.js",
     "rail:logs": "railway logs --service xBOT | tail -n 400",
     "rail:scan": "railway logs --service xBOT | tail -n 400 | grep -E 'PLAYWRIGHT_FACTORY_READY|POST_SKIPPED_(PLAYWRIGHT|LIVE_OFF)|PGRST116|headless_shell|Target page|ENOENT' || true",
     "seed:session": "tsx scripts/seed-session.ts",

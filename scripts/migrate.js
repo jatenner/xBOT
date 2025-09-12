@@ -60,16 +60,24 @@ async function sleep(ms) {
     return;
   }
 
-  // SSL Configuration - Connection string only with verified TLS
+  // SSL Configuration - Verified TLS with system CA bundle
   function getSSLConfig() {
+    console.log('[DB_SSL] Using verified system CA at /etc/ssl/certs/ca-certificates.crt');
+    
     if (isPooler) {
       safeLog('info', '🔒 DB_SSL: Using verified SSL for Supabase Transaction Pooler (pooler-optimized)');
+      return {
+        rejectUnauthorized: true,
+        ca: fs.readFileSync('/etc/ssl/certs/ca-certificates.crt', 'utf8'),
+        servername: 'aws-0-us-east-1.pooler.supabase.com'
+      };
     } else {
       safeLog('info', '🔒 DB_SSL: Using verified SSL for direct connection');
+      return { 
+        rejectUnauthorized: true,
+        ca: fs.readFileSync('/etc/ssl/certs/ca-certificates.crt', 'utf8')
+      };
     }
-    
-    // Use system CA bundle - let Node.js handle certificate validation
-    return { rejectUnauthorized: true };
   }
 
   // Connection with SSL and retry strategy
@@ -83,8 +91,8 @@ async function sleep(ms) {
       
       try {
         await client.connect();
-        const sslMode = isPooler ? 'pooler-optimized' : 'verified';
-        safeLog('info', `✅ DB_MIGRATE: Connected successfully (${sslMode}, attempt ${attempt})`);
+        const sslMode = isPooler ? 'pooler' : 'direct';
+        safeLog('info', `✅ DB_MIGRATE: Connected successfully (${sslMode}, verified TLS)`);
         return { client, sslMode };
         
       } catch (error) {
@@ -143,7 +151,8 @@ async function sleep(ms) {
     const migrationsDir = getMigrationsDir();
     const migrationFiles = [
       path.join(migrationsDir, '20250911_0100_api_usage_uuid.sql'),
-      path.join(migrationsDir, '20250911_0200_xbot_content_brain.sql')
+      path.join(migrationsDir, '20250911_0200_xbot_content_brain.sql'),
+      path.join(migrationsDir, '20250911_0201_xbot_content_brain_fix.sql')
     ];
     
     let executedCount = 0;
@@ -199,7 +208,7 @@ async function sleep(ms) {
     
     if (!migrationFailed) {
       process.env.MIGRATIONS_ALREADY_RAN = 'true';
-      safeLog('info', `✅ MIGRATIONS: ALL APPLIED (pooler, ssl=${sslMode})`);
+      safeLog('info', '✅ MIGRATIONS: ALL APPLIED');
       safeLog('info', `📊 MIGRATIONS: Executed ${executedCount} migration files successfully`);
     }
     
