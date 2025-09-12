@@ -7,7 +7,7 @@ BEGIN;
 -- API usage tracking with enhanced cost and tagging
 CREATE TABLE IF NOT EXISTS public.api_usage (
     id BIGSERIAL PRIMARY KEY,
-    ts TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     model TEXT,
     cost_usd NUMERIC(10,4) NOT NULL DEFAULT 0,
     tag TEXT,
@@ -15,14 +15,14 @@ CREATE TABLE IF NOT EXISTS public.api_usage (
 );
 
 -- Create indexes for api_usage
-CREATE INDEX IF NOT EXISTS idx_api_usage_ts ON public.api_usage(ts);
+CREATE INDEX IF NOT EXISTS idx_api_usage_created_at ON public.api_usage(created_at);
 CREATE INDEX IF NOT EXISTS idx_api_usage_tag ON public.api_usage(tag);
 CREATE INDEX IF NOT EXISTS idx_api_usage_model ON public.api_usage(model) WHERE model IS NOT NULL;
 
 -- Content generation and posting events
 CREATE TABLE IF NOT EXISTS public.content_events (
     id BIGSERIAL PRIMARY KEY,
-    ts TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     event TEXT NOT NULL,  -- generated, posted, replied, skipped, failed
     post_id TEXT,
     kind TEXT,            -- single, thread, reply
@@ -32,13 +32,13 @@ CREATE TABLE IF NOT EXISTS public.content_events (
 -- Create indexes for content_events
 CREATE INDEX IF NOT EXISTS idx_content_events_event ON public.content_events(event);
 CREATE INDEX IF NOT EXISTS idx_content_events_kind ON public.content_events(kind);
-CREATE INDEX IF NOT EXISTS idx_content_events_ts ON public.content_events(ts);
+CREATE INDEX IF NOT EXISTS idx_content_events_created_at ON public.content_events(created_at);
 CREATE INDEX IF NOT EXISTS idx_content_events_post_id ON public.content_events(post_id);
 
 -- Learning metrics from post performance
 CREATE TABLE IF NOT EXISTS public.learn_metrics (
     id BIGSERIAL PRIMARY KEY,
-    ts TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     post_id TEXT NOT NULL,
     likes INTEGER DEFAULT 0,
     reposts INTEGER DEFAULT 0,
@@ -51,14 +51,14 @@ CREATE TABLE IF NOT EXISTS public.learn_metrics (
 );
 
 -- Create indexes for learn_metrics
-CREATE INDEX IF NOT EXISTS idx_learn_metrics_post_ts ON public.learn_metrics(post_id, ts DESC);
-CREATE INDEX IF NOT EXISTS idx_learn_metrics_ts ON public.learn_metrics(ts);
+CREATE INDEX IF NOT EXISTS idx_learn_metrics_post_created_at ON public.learn_metrics(post_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_learn_metrics_created_at ON public.learn_metrics(created_at);
 CREATE INDEX IF NOT EXISTS idx_learn_metrics_engagement ON public.learn_metrics(engagement_rate) WHERE engagement_rate IS NOT NULL;
 
 -- AI decision logging for Thompson Sampling optimization
 CREATE TABLE IF NOT EXISTS public.decision_log (
     id BIGSERIAL PRIMARY KEY,
-    ts TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     action TEXT NOT NULL,  -- choose_slot, pick_topic, format_decision, bandit_update
     reason TEXT,
     score NUMERIC(5,2),
@@ -67,7 +67,7 @@ CREATE TABLE IF NOT EXISTS public.decision_log (
 
 -- Create indexes for decision_log
 CREATE INDEX IF NOT EXISTS idx_decision_log_action ON public.decision_log(action);
-CREATE INDEX IF NOT EXISTS idx_decision_log_ts ON public.decision_log(ts);
+CREATE INDEX IF NOT EXISTS idx_decision_log_created_at ON public.decision_log(created_at);
 CREATE INDEX IF NOT EXISTS idx_decision_log_params ON public.decision_log USING GIN(params);
 
 -- Bandit arms tracking for Thompson Sampling
@@ -107,7 +107,7 @@ CREATE INDEX IF NOT EXISTS idx_budget_tracking_date ON public.budget_tracking(da
 CREATE TABLE IF NOT EXISTS public.quality_metrics (
     id BIGSERIAL PRIMARY KEY,
     post_id TEXT NOT NULL,
-    ts TIMESTAMPTZ DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     regret_check_passed BOOLEAN,
     fact_check_score NUMERIC(3,2),
     helpfulness_score NUMERIC(3,2),
@@ -119,7 +119,7 @@ CREATE TABLE IF NOT EXISTS public.quality_metrics (
 
 -- Create indexes for quality_metrics
 CREATE INDEX IF NOT EXISTS idx_quality_metrics_post_id ON public.quality_metrics(post_id);
-CREATE INDEX IF NOT EXISTS idx_quality_metrics_ts ON public.quality_metrics(ts);
+CREATE INDEX IF NOT EXISTS idx_quality_metrics_created_at ON public.quality_metrics(created_at);
 CREATE INDEX IF NOT EXISTS idx_quality_metrics_scores ON public.quality_metrics(fact_check_score, helpfulness_score, confidence_score);
 
 -- Enable Row Level Security on all tables
@@ -166,15 +166,15 @@ GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO postgres;
 -- Create helpful views for analytics
 CREATE OR REPLACE VIEW public.daily_content_summary AS
 SELECT 
-    DATE(ts) as date,
+    DATE(created_at) as date,
     event,
     kind,
     COUNT(*) as count,
     AVG((meta->>'cost_usd')::numeric) as avg_cost,
     SUM((meta->>'cost_usd')::numeric) as total_cost
 FROM public.content_events 
-WHERE ts >= CURRENT_DATE - INTERVAL '30 days'
-GROUP BY DATE(ts), event, kind
+WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
+GROUP BY DATE(created_at), event, kind
 ORDER BY date DESC, count DESC;
 
 CREATE OR REPLACE VIEW public.top_performing_content AS
@@ -185,12 +185,12 @@ SELECT
     lm.engagement_rate,
     lm.likes + lm.reposts + lm.comments as total_engagement,
     lm.impressions,
-    ce.ts as posted_at
+    ce.created_at as posted_at
 FROM public.content_events ce
 JOIN public.learn_metrics lm ON ce.post_id = lm.post_id
 WHERE ce.event = 'posted' 
     AND lm.engagement_rate IS NOT NULL
-    AND lm.ts >= CURRENT_DATE - INTERVAL '7 days'
+    AND lm.created_at >= CURRENT_DATE - INTERVAL '7 days'
 ORDER BY lm.engagement_rate DESC
 LIMIT 50;
 
