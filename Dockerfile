@@ -2,13 +2,16 @@
 FROM node:lts-slim
 
 # --- CA certificates + System dependencies ---
-# Ensure certs + system deps for Playwright
+# Install CA bundle and system deps for Playwright
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates wget xvfb curl \
     libnss3 libatk1.0-0 libatk-bridge2.0-0 libdrm2 libxkbcommon0 \
     libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 \
  && update-ca-certificates \
  && rm -rf /var/lib/apt/lists/*
+
+# SSL Configuration - Use system CA bundle
+ENV SSL_CERT_DIR=/etc/ssl/certs
 
 # Set working directory
 WORKDIR /app
