@@ -7,7 +7,7 @@ import { config } from 'dotenv';
 config();
 
 // Import safe logging
-import { log, warn, error } from './utils/logger';
+import { log_compat as log, log_compat as warn, log_compat as error } from './utils/logger';
 
 // Run auto-migrations on startup (using DATABASE_URL or constructed URL)
 import './db/migrations';
