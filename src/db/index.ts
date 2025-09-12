@@ -30,27 +30,12 @@ export function getSupabaseClient() {
  */
 export function getPgPool(): Pool {
   if (!pgPool) {
-    if (!DATABASE_URL) {
-      throw new Error('DATABASE_URL not configured');
-    }
-
-    // Ensure remote connection with SSL
-    const connectionString = DATABASE_URL.includes('sslmode=') 
-      ? DATABASE_URL 
-      : `${DATABASE_URL}${DATABASE_URL.includes('?') ? '&' : '?'}sslmode=require`;
-
-    pgPool = new Pool({
-      connectionString,
-      ssl: connectionString.includes('localhost') ? false : { rejectUnauthorized: false },
-      max: 10,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 10000,
-    });
-
-    // Handle pool errors
-    pgPool.on('error', (err) => {
-      console.error('PostgreSQL pool error:', err);
-    });
+    // Import from centralized PG connection
+    const { pgPool: centralPool } = require('./pg');
+    pgPool = centralPool;
+    
+    // Log connection status
+    console.log('DB_POOLER: Using centralized PG pool with sslmode=require');
   }
 
   return pgPool;

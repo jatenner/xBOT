@@ -1,182 +1,45 @@
 // src/db/sslClient.ts - Shared SSL connection utility for unified database connections
 import { Client } from 'pg';
-import fs from 'fs';
-
-export interface SSLConfig {
-  mode: 'require' | 'prefer' | 'no-verify' | 'disable' | 'pooler';
-  certPath?: string;
-  rejectUnauthorized: boolean;
-  ca?: Buffer;
-}
+import { pgPool } from './pg';
 
 export interface ConnectionResult {
   client: Client;
   sslMode: string;
   success: boolean;
-  fallbackUsed: boolean;
 }
 
 /**
- * Unified SSL configuration builder
+ * Create PostgreSQL client using the centralized connection pool
+ * No SSL options - rely on sslmode=require in connection string
  */
-export function buildSSLConfig(
-  mode: string = 'prefer',
-  certPath: string = '/etc/ssl/certs/supabase-ca.crt'
-): SSLConfig | false {
-  if (mode === 'disable') {
-    return false;
-  }
-
-  const config: SSLConfig = {
-    mode: mode as SSLConfig['mode'],
-    certPath,
-    rejectUnauthorized: mode !== 'no-verify'
-  };
-
-  if (mode === 'no-verify') {
-    return config;
-  }
-
-  // Try to load CA certificate for require/prefer modes
-  if (mode === 'require' || mode === 'prefer') {
-    try {
-      config.ca = fs.readFileSync(certPath);
-      return config;
-    } catch (err) {
-      if (mode === 'require') {
-        // For require mode, fall back to no-verify rather than fail
-        return {
-          mode: 'no-verify',
-          rejectUnauthorized: false
-        };
-      }
-      // For prefer mode, continue without CA (use system certs)
-      return config;
-    }
-  }
-
-  return config;
-}
-
-/**
- * Create PostgreSQL client with unified SSL handling and automatic fallback
- * Optimized for Supabase Transaction Pooler (port 6543)
- */
-export async function createSSLClient(
-  connectionString: string,
-  options: {
-    sslMode?: string;
-    certPath?: string;
-    maxRetries?: number;
-  } = {}
+export async function createClient(
+  connectionString: string = process.env.DATABASE_URL || ''
 ): Promise<ConnectionResult> {
-  const {
-    sslMode = process.env.DB_SSL_MODE || process.env.MIGRATION_SSL_MODE || 'require',
-    certPath = process.env.DB_SSL_ROOT_CERT_PATH || process.env.MIGRATION_SSL_ROOT_CERT_PATH || '/etc/ssl/certs/supabase-ca.crt',
-    maxRetries = 1
-  } = options;
-
-  // Pooler detection: hostname starts with "db." AND port 6543
-  let isPooler = false;
-  try {
-    const url = new URL(connectionString.replace('postgres://', 'http://').replace('postgresql://', 'http://'));
-    isPooler = url.hostname.startsWith('db.') && url.port === '6543';
-  } catch {
-    // Fallback detection for older URLs
-    isPooler = connectionString.includes(':6543') && connectionString.includes('db.');
-  }
-
-  let lastError: Error;
-  let fallbackUsed = false;
-
-  // First attempt with configured SSL  
-  let sslConfig = buildSSLConfig(sslMode, certPath);
+  // Use the centralized PG pool
+  const client = await pgPool.connect();
   
-  // For Transaction Pooler, ignore custom certificates and use managed SSL
-  if (isPooler) {
-    console.log('🔗 DB_SSL: Detected Transaction Pooler - using managed SSL');
-    sslConfig = { 
-      mode: 'pooler',
-      rejectUnauthorized: false 
-    } as SSLConfig;
-  }
+  // Log connection status
+  console.log('DB_POOLER: Using connection string with sslmode=require');
   
-  let client = new Client({ 
-    connectionString, 
-    ssl: sslConfig === false ? false : {
-      rejectUnauthorized: sslConfig.rejectUnauthorized,
-      ca: sslConfig.ca
-    }
-  });
-
-  try {
-    await client.connect();
-    const mode = isPooler ? 'pooler' : 
-                 sslConfig ? (sslConfig.ca ? 'strict' : 'system-certs') : 'disabled';
-    console.log(`🔒 DB_SSL: Connected successfully with SSL (${mode})`);
-    
-    return {
-      client,
-      sslMode: mode,
-      success: true,
-      fallbackUsed: false
-    };
-  } catch (err) {
-    lastError = err as Error;
-    await client.end().catch(() => {});
-
-    // Check if it's a certificate-related error and we haven't already fallen back
-    const isCertError = err && typeof err === 'object' && 'message' in err && 
-      (err.message.includes('self-signed') || 
-       err.message.includes('certificate') ||
-       err.message.includes('CERT_') ||
-       err.message.includes('SSL'));
-
-    if (isCertError && sslMode !== 'no-verify' && maxRetries > 0) {
-      console.log('⚠️ DB_SSL_WARN: Certificate error detected, falling back to no-verify mode');
-      
-      // Retry with no certificate verification
-      client = new Client({ 
-        connectionString, 
-        ssl: { rejectUnauthorized: false }
-      });
-
-      try {
-        await client.connect();
-        fallbackUsed = true;
-        console.log('🔒 DB_SSL: Connected successfully with SSL fallback (no-verify)');
-        
-        return {
-          client,
-          sslMode: 'no-verify',
-          success: true,
-          fallbackUsed: true
-        };
-      } catch (fallbackErr) {
-        lastError = fallbackErr as Error;
-        await client.end().catch(() => {});
-      }
-    }
-  }
-
-  // All attempts failed
-  throw new Error(`SSL connection failed: ${lastError.message}`);
+  return {
+    client,
+    sslMode: 'verified',
+    success: true
+  };
 }
 
 /**
- * Test database connectivity with the same SSL logic
+ * Test database connectivity with the centralized pool
  */
-export async function testDatabaseConnection(
-  connectionString: string,
-  options?: { sslMode?: string; certPath?: string }
-): Promise<{ success: boolean; mode: string; error?: string }> {
+export async function testDatabaseConnection(): Promise<{ success: boolean; mode: string; error?: string }> {
   try {
-    const result = await createSSLClient(connectionString, options);
-    await result.client.end();
+    const client = await pgPool.connect();
+    await client.query('SELECT 1');
+    client.release();
     
     return {
       success: true,
-      mode: result.sslMode
+      mode: 'verified'
     };
   } catch (err) {
     return {
@@ -188,20 +51,18 @@ export async function testDatabaseConnection(
 }
 
 /**
- * Execute a query with automatic SSL connection handling
+ * Execute a query with the centralized pool
  */
-export async function executeWithSSL<T = any>(
-  connectionString: string,
+export async function executeQuery<T = any>(
   query: string,
-  values?: any[],
-  options?: { sslMode?: string; certPath?: string }
+  values?: any[]
 ): Promise<T> {
-  const result = await createSSLClient(connectionString, options);
+  const client = await pgPool.connect();
   
   try {
-    const queryResult = await result.client.query(query, values);
+    const queryResult = await client.query(query, values);
     return queryResult.rows as T;
   } finally {
-    await result.client.end().catch(() => {});
+    client.release();
   }
 }

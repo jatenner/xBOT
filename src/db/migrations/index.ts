@@ -8,7 +8,7 @@ import { Client } from 'pg';
 import fs from 'fs';
 import path from 'path';
 import { FEATURE_FLAGS } from '../../config/featureFlags';
-import { log, warn, error } from '../../utils/logger';
+import { log_compat as log } from '../../utils/logger';
 
 interface MigrationRecord {
   filename: string;
@@ -154,7 +154,7 @@ export class MigrationRunner {
       log(`✅ MIGRATIONS: Connected successfully with ${this.sslModeUsed} SSL`);
       
     } catch (connectError) {
-      error(`❌ MIGRATIONS: Failed after fallback, manual intervention required: ${connectError instanceof Error ? connectError.message : connectError}`);
+      log(`❌ MIGRATIONS: Failed after fallback, manual intervention required: ${connectError instanceof Error ? connectError.message : connectError}`);
       throw connectError;
     }
   }

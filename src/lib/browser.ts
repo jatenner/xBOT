@@ -95,8 +95,8 @@ class BrowserManager {
         
         // Check for missing executable error
         if (lastError.message.includes("Executable doesn't exist")) {
-          const { log } = await import('../utils/logger');
-          log('❌ REAL_METRICS: Disabled - browser unavailable (non-fatal)');
+          const { log_compat } = await import('../utils/logger');
+          log_compat('❌ REAL_METRICS: Disabled - browser unavailable (non-fatal)');
           this.isLaunching = false;
           throw new Error('BROWSER_NOT_INSTALLED: Playwright browser not found');
         }
