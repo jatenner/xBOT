@@ -126,19 +126,28 @@ export class MigrationRunner {
         log('🔗 DB_POOLER: Detected Supabase Transaction Pooler');
       }
 
-      // SSL configuration - Connection string only with verified TLS
+      // SSL configuration - Verified TLS with system CA bundle
       let ssl: any;
+      const fs = require('fs');
+      
+      console.log('[DB_SSL] Using verified system CA at /etc/ssl/certs/ca-certificates.crt');
       
       if (isPooler) {
         log('🔒 DB_SSL: Using verified SSL for Supabase Transaction Pooler (pooler-optimized)');
+        ssl = {
+          rejectUnauthorized: true,
+          ca: fs.readFileSync('/etc/ssl/certs/ca-certificates.crt', 'utf8'),
+          servername: 'aws-0-us-east-1.pooler.supabase.com'
+        };
         this.sslModeUsed = 'verified';
       } else {
         log('🔒 DB_SSL: Using verified SSL for direct connection');
+        ssl = { 
+          rejectUnauthorized: true,
+          ca: fs.readFileSync('/etc/ssl/certs/ca-certificates.crt', 'utf8')
+        };
         this.sslModeUsed = 'verified';
       }
-      
-      // Use system CA bundle - let Node.js handle certificate validation
-      ssl = { rejectUnauthorized: true };
       
       this.pgClient = new Client({ connectionString, ssl });
       await this.pgClient.connect();

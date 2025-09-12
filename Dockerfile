@@ -1,10 +1,10 @@
 # Production Dockerfile for xBOT on Railway
-FROM node:lts-slim
+FROM node:22-bookworm-slim
 
 # --- CA certificates + System dependencies ---
-# Install CA bundle and system deps for Playwright
+# Install CA bundle, openssl for debugging, and system deps for Playwright
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates wget xvfb curl \
+    ca-certificates openssl wget xvfb curl \
     libnss3 libatk1.0-0 libatk-bridge2.0-0 libdrm2 libxkbcommon0 \
     libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 \
  && update-ca-certificates \
