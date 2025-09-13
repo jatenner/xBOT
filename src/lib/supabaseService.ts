@@ -56,7 +56,13 @@ export async function ensureApiUsageTable() {
     if (rpcError) {
       console.warn('⚠️ API_USAGE_TABLE: RPC failed, trying direct insert test...');
       
-      // Test direct insert to see if table exists
+      // Skip test insert in production to avoid budget pollution
+      if (process.env.APP_ENV === 'production') {
+        console.log('✅ API_USAGE_TABLE: Skipping test insert in production (budget protection)');
+        return;
+      }
+      
+      // Test direct insert to see if table exists (dev/staging only)
       const { error: testError } = await supaService
         .from('api_usage')
         .insert([{
