@@ -52,14 +52,20 @@ function runJavaScriptMigrations() {
     .catch((error) => {
       console.error('❌ MIGRATE: Connection failed:', error.message);
       
-      // Check if it's an SSL certificate error
-      if (error.message && error.message.includes('self-signed certificate')) {
-        console.log('⚠️ MIGRATE: SSL certificate issue detected');
-        console.log('💡 MIGRATE: Ensure DATABASE_URL uses Transaction Pooler with ?sslmode=require');
-        console.log('💡 MIGRATE: Runtime migrations will retry with verified SSL');
+      // Check if it's the specific pooler SSL certificate error
+      if (error.message && error.message.includes('self-signed certificate in certificate chain')) {
+        console.log('⚠️ MIGRATE: Skipping prestart due to pooler SSL; runtime will handle migrations');
+        console.log('💡 MIGRATE: This is expected with Supabase Transaction Pooler on Railway');
+        client.end().catch(() => {});
+        process.exit(0); // Non-fatal exit - runtime migrations use verified system CA
+        return;
       }
       
+      // For other errors, provide guidance
+      console.log('💡 MIGRATE: Ensure DATABASE_URL uses Transaction Pooler with ?sslmode=require');
+      console.log('💡 MIGRATE: Runtime migrations will retry with verified SSL');
+      
       client.end().catch(() => {});
-      process.exit(0); // Non-fatal exit - let runtime migrations handle it
+      process.exit(0); // Non-fatal exit
     });
 }

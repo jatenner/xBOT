@@ -857,33 +857,34 @@ class BulletproofMainSystem {
         
         processedCount++;
         
-        // 🛡️ REAL DATA ENFORCEMENT - Zero fake data allowed
-        console.log('🛡️ REAL_DATA_ENFORCEMENT: Validating all metrics for authenticity...');
+        // 🛡️ REAL DATA ENFORCEMENT - Only if real metrics are enabled
+        const { isRealMetricsEnabled } = await import('./config/realMetrics');
         
-        const { realDataEnforcementSystem } = await import('./data/realDataEnforcementSystem');
-        
-        // 🚨 REPLACED FAKE DATA WITH REAL METRICS COLLECTION
-        // Start real metrics tracking for this tweet (no more fake data!)
-        const { realMetricsCollector } = await import('./metrics/realTwitterMetricsCollector');
-        
-        realMetricsCollector.trackTweet({
-          tweetId: id,
-          postedAt: new Date(created),
-          content: content,
-          contentLength: content.length,
-          persona: post.persona || 'unknown',
-          emotion: post.emotion || 'neutral',
-          framework: post.framework || 'default'
-        });
-        
-        console.log(`📊 REAL_TRACKING: Started authenticated metrics collection for ${id}`);
+        if (isRealMetricsEnabled()) {
+          console.log('🛡️ REAL_DATA_ENFORCEMENT: Validating all metrics for authenticity...');
+          
+          const { realDataEnforcementSystem } = await import('./data/realDataEnforcementSystem');
+          
+          // 🚨 REPLACED FAKE DATA WITH REAL METRICS COLLECTION
+          // Start real metrics tracking for this tweet (no more fake data!)
+          const { realMetricsCollector } = await import('./metrics/realTwitterMetricsCollector');
+          
+          realMetricsCollector.trackTweet({
+            tweetId: id,
+            postedAt: new Date(created),
+            content: content,
+            contentLength: content.length,
+            persona: post.persona || 'unknown',
+            emotion: post.emotion || 'neutral',
+            framework: post.framework || 'default'
+          });
+          
+          console.log(`📊 REAL_TRACKING: Started authenticated metrics collection for ${id}`);
+          console.log(`✅ REAL_METRICS_QUEUED: ${id} scheduled for validated authentic data collection`);
+        }
         
         // ❌ ABSOLUTELY NO FAKE ANALYTICS - All data must be real and validated
         const analytics = null; // Fake data generation permanently disabled
-        
-        // ✅ REAL DATA PROCESSING ONLY with validation
-        // Real metrics will be validated before storage to ensure authenticity
-        console.log(`✅ REAL_METRICS_QUEUED: ${id} scheduled for validated authentic data collection`);
       }
 
       // Analytics summary (reduce log spam)

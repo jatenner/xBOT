@@ -323,12 +323,14 @@ CRITICAL: MUST include these viral triggers:
 - Use shock words: "surprising", "disturbing", "shocking", or "hidden"
 - End with impact: "This means..." or "The reason:"`;
 
-    const response = await this.openai.chat.completions.create({
+    // Use budget-enforced OpenAI service instead of direct calls
+    const { createChatCompletion } = await import('../services/openaiWrapper');
+    const response = await createChatCompletion({
       model: 'gpt-4o-mini',
       messages: [{ role: 'user', content: megaPrompt }],
       temperature: 0.8,
       max_tokens: 600
-    });
+    }, 'mega_prompt_content');
 
     const content = response.choices[0]?.message?.content?.trim();
     if (!content) {
@@ -450,12 +452,14 @@ Use this exact pattern:
 
 Generate ONLY the content - make it absolutely mind-blowing.`;
 
-    const response = await this.openai.chat.completions.create({
+    // Use budget-enforced OpenAI service instead of direct calls
+    const { createChatCompletion } = await import('../services/openaiWrapper');
+    const response = await createChatCompletion({
       model: 'gpt-4o-mini',
       messages: [{ role: 'user', content: stricterPrompt }],
       temperature: 0.6, // Lower temperature for more controlled output
       max_tokens: 400
-    });
+    }, 'mega_prompt_repair');
 
     const content = response.choices[0]?.message?.content?.trim();
     if (!content) {
