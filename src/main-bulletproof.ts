@@ -9,6 +9,10 @@ config();
 // Import safe logging
 import { log_compat as log, log_compat as warn, log_compat as error } from './utils/logger';
 
+// Log real metrics status on startup
+import { logRealMetricsStatus } from './config/realMetrics';
+logRealMetricsStatus();
+
 // Run auto-migrations on startup (using DATABASE_URL or constructed URL)
 import './db/migrations';
 
@@ -1551,7 +1555,7 @@ class BulletproofMainSystem {
       try {
         const { DatabaseUrlResolver } = await import('./db/databaseUrlResolver');
         const dbConfig = DatabaseUrlResolver.buildDatabaseConfig();
-        console.log(`🔧 MIGRATION_SSL: ${dbConfig.sslMode} (Pooler: ${dbConfig.usingPoolerHost}, CA: ${dbConfig.usingRootCA})`);
+        console.log(`🔧 MIGRATION_SSL: ${dbConfig.sslMode} (Pooler: ${dbConfig.usingPoolerHost})`);
       } catch (migrationError: any) {
         console.warn('⚠️ MIGRATION_SANITY_FAILED:', migrationError.message);
       }

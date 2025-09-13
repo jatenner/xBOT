@@ -1,263 +1,271 @@
 /**
  * Migration Runner for xBOT
- * - Creates migration tracking table
- * - Runs migrations in lexicographic order
- * - Idempotent: handles duplicates gracefully
- * - Never crashes the process on migration errors
+ * - Creates schema_migrations tracking table
+ * - Runs migrations with retry logic
+ * - Idempotent execution
+ * - No custom SSL config (uses DATABASE_URL sslmode)
  */
 
 const fs = require('fs');
 const path = require('path');
-const { Pool, Client } = require('pg');
-const { URL } = require('url');
+const { Client } = require('pg');
 
-// Safe logging helper (masks secrets)
+// Sleep utility
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Safe logging utility
 function safeLog(level, message) {
   const timestamp = new Date().toISOString();
   const logFn = level === 'error' ? console.error : level === 'warn' ? console.warn : console.log;
   
-  // Mask secrets in logs
+  // Mask any potential secrets
   const masked = typeof message === 'string' ? message
     .replace(/(postgres|postgresql):\/\/[^@]*@/gi, '$1://***:***@')
-    .replace(/(sk-[a-zA-Z0-9_\-]+)/g, 'sk-***')
-    .replace(/(eyJ[a-zA-Z0-9\-_=]+\.[a-zA-Z0-9\-_=]+)/g, 'eyJ***')
-    .replace(/(Bearer\s+)[A-Za-z0-9\-\._~+/=]+/gi, '$1***') : message;
+    .replace(/(sk-[a-zA-Z0-9_\-]+)/g, 'sk-***') : message;
     
   logFn(`[${timestamp}] ${masked}`);
 }
 
-async function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
 // Get migrations directory
 function getMigrationsDir() {
-  // Always resolve from repository root, regardless of where script is run from
   const repoRoot = path.resolve(__dirname, '..');
   const migrationsDir = path.join(repoRoot, 'supabase', 'migrations');
   
   if (!fs.existsSync(migrationsDir)) {
-    safeLog('info', `📊 MIGRATIONS: Directory not found at ${migrationsDir}, creating...`);
+    safeLog('info', `MIGRATIONS: Creating directory at ${migrationsDir}`);
     fs.mkdirSync(migrationsDir, { recursive: true });
   }
   
   return migrationsDir;
 }
 
-// Main migration function
-async function runMigrations() {
+// Create a fresh client with retry logic
+async function createClientWithRetry(maxRetries = 3) {
   const connectionString = process.env.DATABASE_URL;
   
   if (!connectionString) {
-    safeLog('error', '❌ DB_MIGRATE_ERROR: DATABASE_URL not set');
-    return false;
+    throw new Error('DATABASE_URL environment variable is missing');
   }
 
-  // Log connection details (without credentials)
+  // Log connection info
   try {
     const url = new URL(connectionString.replace(/^postgres:\/\//, 'http://').replace(/^postgresql:\/\//, 'http://'));
-    const isPooler = url.port === '6543' && 
-                    (url.hostname.includes('pooler.supabase.co') || 
-                     url.hostname.includes('.pooler.') ||
-                     url.hostname.startsWith('aws-'));
-    
-    safeLog('info', `🔗 DATABASE_HOST: ${url.hostname}:${url.port}`);
-    if (isPooler) {
-      safeLog('info', '🔗 DB_POOLER: Using connection string with sslmode=require');
-    }
+    safeLog('info', `DB_POOLER: Using sslmode=require (host: ${url.hostname}:${url.port || 5432})`);
   } catch (parseError) {
-    safeLog('warn', `⚠️ DATABASE_URL_PARSE_ERROR: ${parseError.message}`);
+    safeLog('warn', `DATABASE_URL parse error: ${parseError.message}`);
   }
 
-  // Create client (no SSL options - rely on sslmode=require in connection string)
-  const client = new Client({ connectionString });
-  let connected = false;
-  let migrationsFailed = false;
-  let appliedCount = 0;
-  let skippedCount = 0;
-  let errorCount = 0;
+  let lastError;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const client = new Client({ connectionString });
+    
+    try {
+      await client.connect();
+      safeLog('info', `✅ DB_MIGRATE: Connected successfully (attempt ${attempt})`);
+      return client;
+    } catch (error) {
+      lastError = error;
+      
+      try {
+        await client.end();
+      } catch (endError) {
+        // Ignore cleanup errors
+      }
+      
+      if (attempt < maxRetries) {
+        const delay = Math.pow(2, attempt - 1) * 1000; // 1s, 2s, 4s
+        safeLog('warn', `🔄 DB_RETRY: Attempt ${attempt}/${maxRetries} failed, retrying in ${delay}ms`);
+        await sleep(delay);
+      }
+    }
+  }
+  
+  throw new Error(`DB connection failed after ${maxRetries} attempts: ${lastError.message}`);
+}
+
+// Execute SQL with transaction and retry logic
+async function executeSQLWithRetry(sql, description, maxRetries = 3) {
+  let lastError;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    let client;
+    
+    try {
+      client = await createClientWithRetry(1); // Single attempt per retry cycle
+      
+      await client.query('BEGIN');
+      await client.query(sql);
+      await client.query('COMMIT');
+      
+      safeLog('info', `✅ Applied: ${description}`);
+      return true;
+      
+    } catch (error) {
+      lastError = error;
+      
+      if (client) {
+        try {
+          await client.query('ROLLBACK');
+        } catch (rollbackError) {
+          safeLog('warn', `Rollback error: ${rollbackError.message}`);
+        }
+      }
+      
+      // Check for idempotency errors (these are OK)
+      if (error.code === '42710' || // duplicate_object
+          error.code === '23505' || // unique_violation
+          error.message.includes('already exists')) {
+        safeLog('info', `📊 ${description}: Already exists (idempotent)`);
+        return true;
+      }
+      
+      if (attempt < maxRetries) {
+        const delay = Math.pow(2, attempt - 1) * 1000;
+        safeLog('warn', `🔄 RETRY: ${description} attempt ${attempt}/${maxRetries} failed, retrying in ${delay}ms`);
+        await sleep(delay);
+      }
+      
+    } finally {
+      if (client) {
+        try {
+          await client.end();
+        } catch (endError) {
+          // Ignore cleanup errors
+        }
+      }
+    }
+  }
+  
+  safeLog('error', `❌ FAILED: ${description} - ${lastError.code || 'UNKNOWN'}: ${lastError.message}`);
+  return false;
+}
+
+// Main migration function
+async function runMigrations() {
+  safeLog('info', '🔄 MIGRATIONS: Starting migration runner...');
   
   try {
-    // Connect with retry logic
-    const maxRetries = 3;
+    // Step 1: Create tracking table
+    const createTrackingTable = `
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        id TEXT PRIMARY KEY,
+        applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `;
     
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        await client.connect();
-        safeLog('info', `✅ DB_MIGRATE: Connected successfully (pooler-optimized)`);
-        connected = true;
-        break;
-      } catch (error) {
-        if (error.code === 'ENOTFOUND') {
-          safeLog('error', `❌ DATABASE_SANITY_FAILED: DNS resolution failed for host`);
-          return false;
-        }
-        
-        if (attempt < maxRetries) {
-          const delay = 1000 * attempt;
-          safeLog('info', `🔄 DB_RETRY: Attempt ${attempt}/${maxRetries} failed, retrying in ${delay}ms`);
-          await sleep(delay);
-        } else {
-          safeLog('error', `❌ DB_CONNECT_ERROR: ${error.code || 'UNKNOWN'} - ${error.message}`);
-          return false;
+    const trackingSuccess = await executeSQLWithRetry(
+      createTrackingTable, 
+      'schema_migrations tracking table'
+    );
+    
+    if (!trackingSuccess) {
+      throw new Error('Failed to create schema_migrations table');
+    }
+    
+    // Step 2: Get applied migrations
+    let client;
+    let appliedMigrations = new Set();
+    
+    try {
+      client = await createClientWithRetry();
+      const result = await client.query('SELECT id FROM schema_migrations');
+      appliedMigrations = new Set(result.rows.map(row => row.id));
+      safeLog('info', `📊 MIGRATIONS: Found ${appliedMigrations.size} previously applied migrations`);
+    } catch (error) {
+      safeLog('warn', `Could not read applied migrations: ${error.message}`);
+    } finally {
+      if (client) {
+        try {
+          await client.end();
+        } catch (endError) {
+          // Ignore cleanup errors
         }
       }
     }
     
-    if (!connected) {
-      safeLog('error', '❌ DB_MIGRATE: Failed to connect after retries');
-      return false;
-    }
-    
-    // Create migration tracking table
-    try {
-      await client.query(`
-        CREATE TABLE IF NOT EXISTS _migrations (
-          id SERIAL PRIMARY KEY,
-          name TEXT UNIQUE NOT NULL,
-          applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        );
-      `);
-      safeLog('info', '📊 MIGRATIONS: Created tracking table');
-    } catch (tableError) {
-      safeLog('warn', `⚠️ MIGRATIONS_TABLE_ERROR: ${tableError.message}`);
-      // Continue even if table creation fails
-    }
-    
-    // Get list of applied migrations
-    const appliedMigrations = new Set();
-    try {
-      const { rows } = await client.query('SELECT name FROM _migrations');
-      rows.forEach(row => appliedMigrations.add(row.name));
-      safeLog('info', `📊 MIGRATIONS: Found ${appliedMigrations.size} previously applied migrations`);
-    } catch (queryError) {
-      safeLog('warn', `⚠️ MIGRATIONS_QUERY_ERROR: ${queryError.message}`);
-      // Continue even if query fails
-    }
-    
-    // Get migration files and sort lexicographically
+    // Step 3: Get migration files
     const migrationsDir = getMigrationsDir();
     const migrationFiles = fs.readdirSync(migrationsDir)
       .filter(file => file.endsWith('.sql'))
-      .sort();
+      .sort(); // Lexicographic order
     
     safeLog('info', `📊 MIGRATIONS: Found ${migrationFiles.length} migration files`);
     
-    // Apply migrations
+    if (migrationFiles.length === 0) {
+      safeLog('info', '📊 MIGRATIONS: No migration files found');
+      return true;
+    }
+    
+    // Step 4: Apply migrations
+    let appliedCount = 0;
+    let skippedCount = 0;
+    let failedCount = 0;
+    
     for (const file of migrationFiles) {
-      // Skip if already applied
-      if (appliedMigrations.has(file)) {
+      const migrationId = file.replace('.sql', '');
+      
+      if (appliedMigrations.has(migrationId)) {
         safeLog('info', `📊 MIGRATIONS: Skipping ${file} (already applied)`);
         skippedCount++;
         continue;
       }
       
       const filePath = path.join(migrationsDir, file);
+      let sql;
       
       try {
-        // Read migration SQL
-        const sql = fs.readFileSync(filePath, 'utf8');
-        safeLog('info', `📊 MIGRATIONS: Executing ${file}...`);
+        sql = fs.readFileSync(filePath, 'utf8');
+      } catch (readError) {
+        safeLog('error', `❌ FAILED: Could not read ${file}: ${readError.message}`);
+        failedCount++;
+        continue;
+      }
+      
+      safeLog('info', `📊 MIGRATIONS: Applying ${file}...`);
+      
+      // Wrap migration in transaction if not already wrapped
+      const wrappedSql = sql.trim().toUpperCase().startsWith('BEGIN') ? sql : `BEGIN;\n${sql}\nCOMMIT;`;
+      
+      const success = await executeSQLWithRetry(wrappedSql, file);
+      
+      if (success) {
+        // Record the migration as applied
+        const recordSuccess = await executeSQLWithRetry(
+          `INSERT INTO schema_migrations (id) VALUES ('${migrationId}') ON CONFLICT DO NOTHING`,
+          `Recording ${file}`
+        );
         
-        // Wrap in transaction if not already wrapped
-        const wrappedSql = sql.trim().toUpperCase().startsWith('BEGIN') ? sql : `BEGIN;\n${sql}\nCOMMIT;`;
-        
-        // Execute migration
-        await client.query(wrappedSql);
-        
-        // Record successful migration
-        await client.query('INSERT INTO _migrations (name) VALUES ($1)', [file]);
-        
-        safeLog('info', `✅ MIGRATIONS: ${file} completed`);
-        appliedCount++;
-        
-      } catch (migError) {
-        // Handle idempotency errors gracefully
-        if (
-          migError.code === '42710' || // duplicate_object
-          migError.code === '23505' || // unique_violation
-          migError.message.includes('already exists')
-        ) {
-          safeLog('info', `📊 MIGRATIONS: ${file} contains already existing objects (idempotent)`);
-          
-          // Still record it as applied to avoid re-running
-          try {
-            await client.query('INSERT INTO _migrations (name) VALUES ($1) ON CONFLICT DO NOTHING', [file]);
-          } catch (recordError) {
-            safeLog('warn', `⚠️ MIGRATIONS_RECORD_ERROR: ${recordError.message}`);
-          }
-          
-          skippedCount++;
+        if (recordSuccess) {
+          appliedCount++;
         } else {
-          safeLog('error', `❌ MIGRATION_ERROR: ${file} failed - ${migError.code || 'UNKNOWN'}: ${migError.message}`);
-          if (migError.detail) {
-            safeLog('error', `📄 SQL_DETAIL: ${migError.detail}`);
-          }
-          errorCount++;
-          migrationsFailed = true;
+          safeLog('warn', `⚠️ Migration ${file} applied but not recorded`);
         }
+      } else {
+        failedCount++;
       }
     }
     
-    // Notify PostgREST to reload schema if available
-    try {
-      await client.query("NOTIFY pgrst, 'reload schema'");
-      safeLog('info', '📡 PGRST: Schema reload requested');
-    } catch (notifyErr) {
-      safeLog('info', '📡 PGRST: Schema reload skipped (not available)');
-    }
-    
-    // Run smoke test
-    try {
-      const testResult = await client.query(`
-        INSERT INTO api_usage (provider, model, cost_usd, tokens_in, tokens_out)
-        VALUES ('test', 'migration-test', 0, 0, 0)
-        RETURNING id
-      `);
-      
-      if (testResult.rows && testResult.rows.length > 0) {
-        const testId = testResult.rows[0].id;
-        await client.query('DELETE FROM api_usage WHERE id = $1', [testId]);
-        safeLog('info', '✅ STARTUP_SELF_TEST: api_usage insert/delete successful');
-      }
-    } catch (testErr) {
-      safeLog('warn', `⚠️ STARTUP_SELF_TEST: ${testErr.code || 'UNKNOWN'} - ${testErr.message}`);
-      // Don't fail the migration process for smoke test errors
-    }
-    
-    // Log final status
-    if (errorCount > 0) {
-      safeLog('warn', `⚠️ MIGRATIONS: APPLIED WITH SKIPS (${appliedCount} applied, ${skippedCount} skipped, ${errorCount} errors)`);
+    // Step 5: Summary
+    if (failedCount > 0) {
+      safeLog('error', `❌ MIGRATIONS: ${failedCount} failed, ${appliedCount} applied, ${skippedCount} skipped`);
+      return false;
+    } else if (appliedCount > 0) {
+      safeLog('info', `✅ MIGRATIONS: ALL APPLIED (${appliedCount} new, ${skippedCount} skipped)`);
     } else {
-      safeLog('info', '✅ MIGRATIONS: ALL APPLIED');
-      safeLog('info', `📊 MIGRATIONS: ${appliedCount} applied, ${skippedCount} skipped`);
+      safeLog('info', `✅ MIGRATIONS: ALL APPLIED (${skippedCount} already applied)`);
     }
     
-    return !migrationsFailed;
+    return true;
     
-  } catch (err) {
-    safeLog('error', `❌ MIGRATIONS: Failed - ${err.code || 'UNKNOWN'}: ${err.message}`);
+  } catch (error) {
+    safeLog('error', `❌ MIGRATIONS: Fatal error - ${error.message}`);
     return false;
-  } finally {
-    if (connected) {
-      try {
-        await client.end();
-      } catch (err) {
-        safeLog('warn', `⚠️ DB_CLOSE_ERROR: ${err.message}`);
-      }
-    }
   }
 }
 
-// Run migrations and set exit code
+// Run migrations and exit with appropriate code
 (async () => {
   const success = await runMigrations();
-  
-  // Mark migrations as run for runtime checks
-  if (success) {
-    process.env.MIGRATIONS_ALREADY_RAN = 'true';
-  }
-  
-  // Never exit with error - let app start anyway
-  process.exit(0);
+  process.exit(success ? 0 : 1);
 })();

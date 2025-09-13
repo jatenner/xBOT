@@ -33,9 +33,6 @@ export function getPgPool(): Pool {
     // Import from centralized PG connection
     const { pgPool: centralPool } = require('./pg');
     pgPool = centralPool;
-    
-    // Log connection status
-    console.log('DB_POOLER: Using centralized PG pool with sslmode=require');
   }
 
   return pgPool;

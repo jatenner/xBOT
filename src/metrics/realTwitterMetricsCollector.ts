@@ -50,6 +50,13 @@ export class RealTwitterMetricsCollector {
    * 🎯 Add tweet for real metrics tracking
    */
   public trackTweet(tweetData: TweetToTrack): void {
+    // Check if real metrics are enabled
+    const { isRealMetricsEnabled, skipRealMetricsCollection } = require('../config/realMetrics');
+    if (!isRealMetricsEnabled()) {
+      skipRealMetricsCollection('trackTweet', tweetData.tweetId);
+      return;
+    }
+    
     console.log(`📊 REAL_METRICS: Starting real tracking for ${tweetData.tweetId}`);
     
     this.trackingQueue.set(tweetData.tweetId, tweetData);
@@ -83,6 +90,13 @@ export class RealTwitterMetricsCollector {
    * 📈 Collect REAL metrics from Twitter using browser automation
    */
   private async collectRealMetrics(tweetId: string, phase: string): Promise<RealTweetMetrics | null> {
+    // Check if real metrics are enabled
+    const { isRealMetricsEnabled, skipRealMetricsCollection } = await import('../config/realMetrics');
+    if (!isRealMetricsEnabled()) {
+      skipRealMetricsCollection('collectRealMetrics', tweetId);
+      return null;
+    }
+
     const tweetData = this.trackingQueue.get(tweetId);
     if (!tweetData) {
       console.warn(`⚠️ REAL_METRICS: Tweet ${tweetId} not found in tracking queue`);
@@ -92,7 +106,7 @@ export class RealTwitterMetricsCollector {
     // Check if browser is available
     const { isBrowserEnabled } = await import('../lib/browser');
     if (!isBrowserEnabled()) {
-      console.log(`🚫 REAL_METRICS: Disabled for ${tweetId} - browser unavailable`);
+      skipRealMetricsCollection('browser check', tweetId);
       return null;
     }
 

@@ -45,11 +45,36 @@ export function startHealthServer(): Promise<void> {
     // 🚨 CRITICAL: Health endpoint for Railway - INSTANT 200 OK
     app.get('/health', (_req, res) => {
       console.log('🏥 Railway health check requested');
+      res.status(200).json({
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        uptime: Math.floor(process.uptime()),
+        memory_mb: Math.round(process.memoryUsage().rss / 1024 / 1024)
+      });
+    });
+
+    // 📊 COMPREHENSIVE STATUS endpoint
+    app.get('/status', async (_req, res) => {
+      try {
+        const { getSystemStatus } = await import('./api/status');
+        const status = await getSystemStatus();
+        res.status(status.status === 'healthy' ? 200 : 503).json(status);
+      } catch (error: any) {
+        res.status(500).json({
+          status: 'unhealthy',
+          timestamp: new Date().toISOString(),
+          error: error.message
+        });
+      }
+    });
+
+    // 💓 Simple health check for load balancers
+    app.get('/ping', (_req, res) => {
       res.status(200).send('ok');
     });
 
-    // Detailed status for debugging (but never fails)
-    app.get('/status', async (_req, res) => {
+    // Detailed debug status (legacy endpoint)
+    app.get('/debug', async (_req, res) => {
       try {
         const uptime = Date.now() - healthServerStatus.startTime.getTime();
         
