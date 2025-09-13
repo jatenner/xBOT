@@ -43,7 +43,7 @@ export function getRealMetricsConfig() {
 }
 
 /**
- * Log real metrics status on startup
+ * Log real metrics status on startup (once only)
  */
 export function logRealMetricsStatus(): void {
   const config = getRealMetricsConfig();
@@ -51,7 +51,7 @@ export function logRealMetricsStatus(): void {
   if (config.enabled) {
     console.log('✅ REAL_METRICS: Enabled for browser-based collection');
   } else {
-    console.log(`🚫 REAL_METRICS: Disabled (${config.reason})`);
+    console.log('🚫 REAL_METRICS: disabled in prod');
   }
 }
 

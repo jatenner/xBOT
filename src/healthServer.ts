@@ -73,6 +73,20 @@ export function startHealthServer(): Promise<void> {
       res.status(200).send('ok');
     });
 
+    // 💰 BUDGET STATUS endpoint
+    app.get('/budget', async (_req, res) => {
+      try {
+        const { getBudgetStatusForAPI } = await import('./src/budget/hardGuard');
+        const status = await getBudgetStatusForAPI();
+        res.json(status);
+      } catch (error: any) {
+        res.status(500).json({
+          error: 'Budget status unavailable',
+          message: error.message
+        });
+      }
+    });
+
     // Detailed debug status (legacy endpoint)
     app.get('/debug', async (_req, res) => {
       try {

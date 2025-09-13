@@ -4,6 +4,7 @@
 
 import { pgPool } from '../db/pg';
 import { getBudgetStatus } from '../budget/guard';
+import { getBudgetStatusForAPI } from '../budget/hardGuard';
 import { getRealMetricsConfig } from '../config/realMetrics';
 
 export interface SystemStatus {
@@ -60,8 +61,8 @@ export async function getSystemStatus(): Promise<SystemStatus> {
   // Database status
   const dbStatus = await getDatabaseStatus();
   
-  // Budget status
-  const budgetStatus = await getBudgetStatus();
+  // Budget status (use hard guard for production)
+  const budgetStatus = await getBudgetStatusForAPI();
   
   // Real metrics status
   const realMetricsStatus = getRealMetricsConfig();
