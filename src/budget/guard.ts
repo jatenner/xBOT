@@ -40,72 +40,18 @@ function getHourKey(): string {
 /**
  * Check if LLM generation is allowed
  * Returns { allowed: boolean, reason?: string, cost?: number }
+ * @deprecated Use hardGuard.checkBudgetAllowed() for production
  */
 export async function checkLLMAllowed(): Promise<{ allowed: boolean; reason?: string; cost?: number }> {
-  // Check 1: POSTING_DISABLED takes precedence
-  if (POSTING_DISABLED) {
-    console.log('LLM_SKIPPED: posting disabled');
-    return { allowed: false, reason: 'POSTING_DISABLED=true' };
-  }
+  // Delegate to hard guard for production enforcement
+  const { checkBudgetAllowed } = await import('./hardGuard');
+  const result = await checkBudgetAllowed();
   
-  // Check 2: DRY_RUN mode
-  if (DRY_RUN) {
-    console.log('DRY_RUN: no LLM usage');
-    return { allowed: false, reason: 'DRY_RUN=true' };
-  }
-  
-  // Check 3: Budget enforcer (if enabled)
-  if (BUDGET_ENFORCER_ENABLED) {
-    try {
-      const redis = getRedis();
-      if (!redis) {
-        console.warn('BUDGET_GUARD: Redis unavailable, allowing LLM call');
-        return { allowed: true };
-      }
-      
-      // Check daily budget
-      const dateKey = getDateKey();
-      const costKey = `prod:openai_cost:${dateKey}`;
-      const currentCostStr = await redis.get(costKey);
-      const currentCost = parseFloat(currentCostStr || '0');
-      
-      if (currentCost >= DAILY_OPENAI_LIMIT_USD) {
-        console.log(`BUDGET_BLOCK: limit reached ($${currentCost}/$${DAILY_OPENAI_LIMIT_USD})`);
-        return { 
-          allowed: false, 
-          reason: `Daily budget limit reached: $${currentCost}/$${DAILY_OPENAI_LIMIT_USD}`,
-          cost: currentCost
-        };
-      }
-      
-      // Check hourly generation limit (if configured)
-      if (MAX_GENERATIONS_PER_HOUR > 0) {
-        const hourKey = getHourKey();
-        const generationKey = `prod:generations:${hourKey}`;
-        const currentGenerationsStr = await redis.get(generationKey);
-        const currentGenerations = parseInt(currentGenerationsStr || '0');
-        
-        if (currentGenerations >= MAX_GENERATIONS_PER_HOUR) {
-          console.log(`GENERATION_LIMIT: hourly limit reached (${currentGenerations}/${MAX_GENERATIONS_PER_HOUR})`);
-          return { 
-            allowed: false, 
-            reason: `Hourly generation limit reached: ${currentGenerations}/${MAX_GENERATIONS_PER_HOUR}`
-          };
-        }
-      }
-      
-      // All checks passed
-      console.log(`BUDGET_GUARD: LLM allowed (cost: $${currentCost}/$${DAILY_OPENAI_LIMIT_USD})`);
-      return { allowed: true, cost: currentCost };
-      
-    } catch (error) {
-      console.error('BUDGET_GUARD: Error checking budget, allowing LLM call:', error);
-      return { allowed: true };
-    }
-  }
-  
-  // Budget enforcer disabled - allow call
-  return { allowed: true };
+  return {
+    allowed: result.allowed,
+    reason: result.reason,
+    cost: result.status?.spent
+  };
 }
 
 /**
