@@ -96,10 +96,15 @@ export function estimateTokens(text: string): number {
 
 /**
  * Get today's date key for Redis
+ * Centralized key builder to ensure consistency
  */
 function getTodayKey(): string {
   const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-  return `${REDIS_PREFIX}${BUDGET_ENV_KEY}openai_cost:${today}`;
+  
+  // Build consistent key format: prod:openai_cost:YYYY-MM-DD
+  // Avoid double "prod" by using REDIS_PREFIX OR BUDGET_ENV_KEY, not both
+  const prefix = REDIS_PREFIX || 'prod:';
+  return `${prefix}openai_cost:${today}`;
 }
 
 /**

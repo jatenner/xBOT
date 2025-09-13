@@ -12,29 +12,9 @@ const path = require('path');
 const tsNodePath = path.join(__dirname, '../node_modules/.bin/ts-node');
 const migrateTsPath = path.join(__dirname, 'migrate.ts');
 
-// Check if ts-node is available
-const fs = require('fs');
-if (fs.existsSync(tsNodePath) && fs.existsSync(migrateTsPath)) {
-  console.log('📦 MIGRATE: Using TypeScript migration runner');
-  
-  const child = spawn('node', ['-r', 'ts-node/register', migrateTsPath], {
-    stdio: 'inherit',
-    env: process.env
-  });
-  
-  child.on('close', (code) => {
-    process.exit(code || 0);
-  });
-  
-  child.on('error', (error) => {
-    console.error('❌ MIGRATE: Failed to run TypeScript version:', error.message);
-    console.log('🔄 MIGRATE: Falling back to JavaScript implementation...');
-    runJavaScriptMigrations();
-  });
-} else {
-  console.log('⚠️ MIGRATE: TypeScript runner not available, using JavaScript fallback');
-  runJavaScriptMigrations();
-}
+// Use JavaScript migration runner directly for reliability
+console.log('📦 MIGRATE: Using JavaScript migration runner');
+runJavaScriptMigrations();
 
 // Simplified JavaScript fallback
 function runJavaScriptMigrations() {
@@ -49,9 +29,10 @@ function runJavaScriptMigrations() {
     process.exit(1);
   }
   
-  const client = new Client({ 
-    connectionString,
-    ssl: { rejectUnauthorized: true } // Production verified SSL
+  // Production-grade SSL configuration for Supabase Transaction Pooler
+  const client = new Client({
+    connectionString, // Must end with ?sslmode=require
+    ssl: { rejectUnauthorized: true } // Use system CA certificates only
   });
   
   client.connect()
@@ -70,7 +51,15 @@ function runJavaScriptMigrations() {
     })
     .catch((error) => {
       console.error('❌ MIGRATE: Connection failed:', error.message);
+      
+      // Check if it's an SSL certificate error
+      if (error.message && error.message.includes('self-signed certificate')) {
+        console.log('⚠️ MIGRATE: SSL certificate issue detected');
+        console.log('💡 MIGRATE: Ensure DATABASE_URL uses Transaction Pooler with ?sslmode=require');
+        console.log('💡 MIGRATE: Runtime migrations will retry with verified SSL');
+      }
+      
       client.end().catch(() => {});
-      process.exit(0); // Non-fatal exit
+      process.exit(0); // Non-fatal exit - let runtime migrations handle it
     });
 }

@@ -26,7 +26,7 @@ function buildPgConfig(connectionString: string): ClientConfig {
     console.warn('DB_CLIENT: Could not parse DATABASE_URL for logging');
   }
 
-  // Production: Always use verified SSL
+  // Production: Always use verified SSL with system CA certificates
   // Development: Allow unverified for local development
   const sslConfig = isProd ? { rejectUnauthorized: true } : undefined;
   
