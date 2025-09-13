@@ -58,7 +58,15 @@ async function createClientWithRetry(maxRetries = 3) {
   let lastError;
   
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    const client = new Client({ connectionString });
+    // Create client with pooler-compatible SSL
+    const isPooler = connectionString.includes('pooler.supabase.com') || connectionString.includes(':6543');
+    if (isPooler) {
+      safeLog('info', 'DB_MIGRATE: Using pooler-compatible SSL (rejectUnauthorized: false)');
+    }
+    const client = new Client({ 
+      connectionString,
+      ssl: isPooler ? { rejectUnauthorized: false } : true // Pooler uses managed SSL
+    });
     
     try {
       await client.connect();

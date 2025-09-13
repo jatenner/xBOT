@@ -18,9 +18,17 @@ try {
   console.warn('DB_POOLER: Could not parse DATABASE_URL for logging');
 }
 
-// Create singleton pool - let libpq handle SSL via connection string
+// Create singleton pool with pooler-compatible SSL
+const connectionString = process.env.DATABASE_URL;
+const isPooler = connectionString?.includes('pooler.supabase.com') || connectionString?.includes(':6543');
+
+if (isPooler) {
+  console.log('DB_POOLER: Using pooler-compatible SSL (rejectUnauthorized: false)');
+}
+
 export const pgPool = new Pool({ 
-  connectionString: process.env.DATABASE_URL,
+  connectionString,
+  ssl: isPooler ? { rejectUnauthorized: false } : true, // Pooler uses managed SSL
   max: 10,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000
