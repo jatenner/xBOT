@@ -1,19 +1,9 @@
 /**
- * Legacy Migration Runner - Redirects to TypeScript version
- * @deprecated Use scripts/migrate.ts instead
+ * Production Migration Runner - JavaScript for reliability
+ * Handles database migrations with SSL verification
  */
 
-console.log('🔄 MIGRATE: Redirecting to TypeScript migration runner...');
-
-// Try to run the TypeScript version
-const { spawn } = require('child_process');
-const path = require('path');
-
-const tsNodePath = path.join(__dirname, '../node_modules/.bin/ts-node');
-const migrateTsPath = path.join(__dirname, 'migrate.ts');
-
-// Use JavaScript migration runner directly for reliability
-console.log('📦 MIGRATE: Using JavaScript migration runner');
+console.log('📦 MIGRATE: Starting production migration runner...');
 runJavaScriptMigrations();
 
 // Simplified JavaScript fallback
@@ -56,6 +46,7 @@ function runJavaScriptMigrations() {
       if (error.message && error.message.includes('self-signed certificate in certificate chain')) {
         console.log('⚠️ MIGRATE: Skipping prestart due to pooler SSL; runtime will handle migrations');
         console.log('💡 MIGRATE: This is expected with Supabase Transaction Pooler on Railway');
+        console.log('✅ MIGRATE: Prestart completed (deferred to runtime)');
         client.end().catch(() => {});
         process.exit(0); // Non-fatal exit - runtime migrations use verified system CA
         return;
