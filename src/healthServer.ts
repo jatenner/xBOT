@@ -76,9 +76,9 @@ export function startHealthServer(): Promise<void> {
     // 💰 BUDGET STATUS endpoint
     app.get('/budget', async (_req, res) => {
       try {
-        const { getBudgetStatusForAPI } = await import('./src/budget/hardGuard');
-        const status = await getBudgetStatusForAPI();
-        res.json(status);
+        const { getBudgetBreakdown } = await import('./src/budget/budgetGate');
+        const breakdown = await getBudgetBreakdown();
+        res.json(breakdown);
       } catch (error: any) {
         res.status(500).json({
           error: 'Budget status unavailable',
