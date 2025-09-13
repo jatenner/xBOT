@@ -1,25 +1,20 @@
-import * as fs from 'fs';
 import { URL } from 'url';
+import { pgPool } from './pg';
 
 export interface DatabaseConfig {
   connectionString: string;
-  ssl: {
-    rejectUnauthorized: boolean;
-    ca?: string;
-  };
   sslMode: string;
-  usingRootCA: boolean;
   usingPoolerHost: boolean;
 }
 
 /**
- * Enhanced database URL resolver with comprehensive SSL/TLS support
- * Supports Session Pooler, root CA certificates, and configurable SSL modes
+ * Simple database URL resolver using centralized PG pool
+ * No custom SSL config - uses DATABASE_URL sslmode parameter
  */
 export class DatabaseUrlResolver {
   
   /**
-   * Build complete database configuration with SSL settings
+   * Build database configuration using centralized pool
    */
   static buildDatabaseConfig(): DatabaseConfig {
     let databaseUrl = process.env.DATABASE_URL;
@@ -36,19 +31,21 @@ export class DatabaseUrlResolver {
     // Parse and enhance URL with SSL mode
     const enhancedUrl = this.enhanceUrlWithSslMode(databaseUrl);
     
-    // Build SSL configuration
-    const sslConfig = this.buildSslConfig();
-    
     // Detect pooler usage
     const usingPoolerHost = this.isPoolerUrl(enhancedUrl);
     
     return {
       connectionString: enhancedUrl,
-      ssl: sslConfig.ssl,
-      sslMode: sslConfig.mode,
-      usingRootCA: sslConfig.usingRootCA,
+      sslMode: 'require',
       usingPoolerHost
     };
+  }
+
+  /**
+   * Get a connection from the centralized pool
+   */
+  static async getConnection() {
+    return await pgPool.connect();
   }
 
   /**
@@ -110,50 +107,6 @@ export class DatabaseUrlResolver {
     return `${databaseUrl}${separator}sslmode=${sslMode}`;
   }
 
-  /**
-   * Build SSL configuration based on environment variables
-   */
-  private static buildSslConfig(): { ssl: { rejectUnauthorized: boolean; ca?: string }, mode: string, usingRootCA: boolean } {
-    const sslMode = process.env.DB_SSL_MODE || 'require';
-    const rootCertPath = process.env.DB_SSL_ROOT_CERT_PATH;
-    
-    // Option A: Use root CA certificate (most secure)
-    if (rootCertPath && fs.existsSync(rootCertPath)) {
-      try {
-        const ca = fs.readFileSync(rootCertPath, 'utf8');
-        return {
-          ssl: {
-            ca,
-            rejectUnauthorized: true
-          },
-          mode: sslMode,
-          usingRootCA: true
-        };
-      } catch (error) {
-        console.warn(`⚠️ DB_SSL: Failed to read root CA from ${rootCertPath}, falling back to mode-based SSL`);
-      }
-    }
-    
-    // Option B: Configure based on SSL mode
-    if (sslMode === 'no-verify') {
-      return {
-        ssl: {
-          rejectUnauthorized: false
-        },
-        mode: sslMode,
-        usingRootCA: false
-      };
-    }
-    
-    // Option C: Default strict SSL (require mode)
-    return {
-      ssl: {
-        rejectUnauthorized: true
-      },
-      mode: sslMode,
-      usingRootCA: false
-    };
-  }
 
   /**
    * Detect if URL is using Supabase Session/Transaction Pooler
@@ -171,11 +124,11 @@ export class DatabaseUrlResolver {
     const message = error.message.toLowerCase();
     
     if (message.includes('self-signed certificate') || message.includes('certificate')) {
-      return `🔐 TLS Certificate Error: Consider using DB_SSL_ROOT_CERT_PATH with Supabase CA certificate, or set DB_SSL_MODE=no-verify for development`;
+      return `🔐 TLS Certificate Error: Check DATABASE_URL has sslmode=require and system CA certificates are available`;
     }
     
     if (message.includes('enetunreach') || message.includes('ipv6') || message.includes('network')) {
-      return `🌐 Network Error: Switch to Supabase Session Pooler URI (aws-0-us-east-1.pooler.supabase.com) for better IPv4 compatibility`;
+      return `🌐 Network Error: Switch to Supabase Transaction Pooler URI (aws-0-us-east-1.pooler.supabase.com:6543) for better connectivity`;
     }
     
     if (message.includes('authentication') || message.includes('password')) {
@@ -183,7 +136,7 @@ export class DatabaseUrlResolver {
     }
     
     if (message.includes('timeout') || message.includes('connect')) {
-      return `⏱️ Connection Timeout: Check network connectivity and consider using Session Pooler`;
+      return `⏱️ Connection Timeout: Check network connectivity and DATABASE_URL`;
     }
     
     return `💥 Database Connection Failed: ${error.message}`;

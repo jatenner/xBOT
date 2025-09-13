@@ -1,9 +1,9 @@
 {
-  "totalLogs": 0,
-  "errors": 328,
+  "totalLogs": 508,
+  "errors": 7,
   "posts": 0,
-  "reconnects": 332,
-  "uptime": 840,
-  "endTime": "2025-09-12T13:40:04.891Z",
-  "finalUptime": "00:14:00"
+  "reconnects": 0,
+  "uptime": 210,
+  "endTime": "2025-09-13T19:43:32.133Z",
+  "finalUptime": "00:03:30"
 }
