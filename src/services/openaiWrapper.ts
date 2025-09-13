@@ -55,7 +55,7 @@ export async function createChatCompletion(
   
   try {
     // Make the actual OpenAI API call
-    const response = await client.chat.completions.create(params);
+    const response = await client.chat.completions.create(params) as OpenAI.Chat.Completions.ChatCompletion;
     
     // Extract actual token usage
     const actualInputTokens = response.usage?.prompt_tokens || estimatedInputTokens;
