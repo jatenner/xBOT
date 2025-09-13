@@ -223,7 +223,11 @@ export async function testDatabaseConnection(): Promise<DatabaseResult> {
       return tableResult;
     }
     
-    // Test actual insert/delete cycle
+    // Test actual insert/delete cycle (skip in production to avoid budget pollution)
+    if (process.env.APP_ENV === 'production') {
+      return { success: true };
+    }
+    
     const testRecord: ApiUsageRecord = {
       intent: 'connection_test',
       model: 'test_model',

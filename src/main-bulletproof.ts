@@ -1501,14 +1501,7 @@ class BulletproofMainSystem {
       const { logFeatureFlags } = await import('./config/featureFlags');
       logFeatureFlags();
       
-      // Log atomic budget status
-      const { getBudgetStatus } = await import('./budget/atomicBudgetGate');
-      const budgetStatus = await getBudgetStatus();
-      console.log(`💰 BUDGET_KEY: ${budgetStatus.key}`);
-      console.log(`💰 BUDGET_STATUS: $${budgetStatus.current.toFixed(4)} / $${budgetStatus.limit.toFixed(4)} (${budgetStatus.remaining.toFixed(4)} remaining)`);
-      console.log(`🛡️ BUDGET_GATE: ENABLED`);
-      
-      // 1. Redis key and current spend
+      // Log authoritative budget status
       try {
         const { getBudgetBreakdown } = await import('./budget/budgetGate');
         const breakdown = await getBudgetBreakdown();
