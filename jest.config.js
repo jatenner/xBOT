@@ -16,5 +16,11 @@ module.exports = {
     '^@/(.*)$': '<rootDir>/src/$1'
   },
   testTimeout: 10000,
-  verbose: true
+  verbose: true,
+  // Fix for strict mock typing
+  globals: {
+    'ts-jest': {
+      isolatedModules: true
+    }
+  }
 };

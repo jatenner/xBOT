@@ -1510,13 +1510,13 @@ class BulletproofMainSystem {
       
       // 1. Redis key and current spend
       try {
-        const { getTodayKey, getBudgetStatus } = await import('./budget/budgetGate');
-        const todayKey = await getTodayKey();
-        const budgetStatus = await getBudgetStatus();
+        const { getBudgetBreakdown } = await import('./budget/budgetGate');
+        const breakdown = await getBudgetBreakdown();
+        const budgetStatus = breakdown.status;
         
-        console.log(`💰 BUDGET_KEY: ${todayKey}`);
+        console.log(`💰 BUDGET_KEY: ${breakdown.redisKey}`);
         console.log(`💰 BUDGET_STATUS: $${budgetStatus.spent} / $${budgetStatus.limit} (${budgetStatus.remaining} remaining)`);
-        console.log(`🛡️ BUDGET_GATE: ${budgetStatus.hitLimit ? 'LOCKED' : 'ENABLED'}`);
+        console.log(`🛡️ BUDGET_GATE: ${budgetStatus.spent >= budgetStatus.limit ? 'LOCKED' : 'ENABLED'}`);
       } catch (budgetError: any) {
         console.warn('⚠️ BUDGET_SANITY_FAILED:', budgetError.message);
       }
