@@ -44,9 +44,7 @@ function runJavaScriptMigrations() {
       
       // Check if it's the specific pooler SSL certificate error
       if (error.message && error.message.includes('self-signed certificate in certificate chain')) {
-        console.log('⚠️ MIGRATE: Skipping prestart due to pooler SSL; runtime will handle migrations');
-        console.log('💡 MIGRATE: This is expected with Supabase Transaction Pooler on Railway');
-        console.log('✅ MIGRATE: Prestart completed (deferred to runtime)');
+        console.log('✅ MIGRATE: Prestart skipped (pooler SSL); using runtime migrations');
         client.end().catch(() => {});
         process.exit(0); // Non-fatal exit - runtime migrations use verified system CA
         return;

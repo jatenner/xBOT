@@ -901,7 +901,8 @@ class BulletproofMainSystem {
       }
 
       // Log bandit performance
-      console.log('📊 SYSTEM_REPORT: Prompt evolution tracking not implemented');
+      // TODO: Implement prompt evolution tracking
+      // console.log('📊 SYSTEM_REPORT: Prompt evolution tracking not implemented');
       // Bandit report removed - using existing learning systems instead
 
     } catch (error: any) {
