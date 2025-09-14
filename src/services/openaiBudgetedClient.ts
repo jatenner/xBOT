@@ -5,7 +5,8 @@
 
 import OpenAI from 'openai';
 import { Redis } from 'ioredis';
-import { calculateTokenCost, estimateTokenCount, getModelPricing, getModelRecommendations } from '../config/openai/pricing';
+import { calculateTokenCost, estimateTokenCount, getModelRecommendations } from '../config/openai/pricing';
+import { getModelPricing } from '../config/openai/pricingSource';
 
 // Typed errors
 export class BudgetExceededError extends Error {
@@ -33,6 +34,7 @@ export interface BudgetConfig {
   rolloverTimezone: string;
   redisKeyPrefix: string;
   strictMode: boolean;
+  alertThreshold: number; // 0.8 = 80%
 }
 
 export interface CallMetadata {
@@ -80,7 +82,8 @@ export class OpenAIBudgetedClient {
       dailyLimitUSD: parseFloat(process.env.DAILY_OPENAI_LIMIT_USD || '5.0'),
       rolloverTimezone: process.env.COST_TRACKER_ROLLOVER_TZ || 'UTC',
       redisKeyPrefix: process.env.REDIS_PREFIX || 'prod:',
-      strictMode: process.env.BUDGET_STRICT !== 'false'
+      strictMode: process.env.BUDGET_STRICT !== 'false',
+      alertThreshold: parseFloat(process.env.BUDGET_ALERT_THRESHOLD || '0.8')
     };
     
     // Validate pricing on startup
@@ -116,7 +119,8 @@ export class OpenAIBudgetedClient {
       await this.enforcePreCallBudget(estimatedCost, metadata.purpose, modelName);
       
       // 2. Execute the OpenAI operation
-      console.log(`[COST_TRACKER] PRE-CALL model=${modelName} estimated=$${estimatedCost.toFixed(4)} purpose=${metadata.purpose} id=${requestId}`);
+      const status = await this.getBudgetStatus();
+      console.log(`COST_TRACKER attempt: purpose=${metadata.purpose} model=${modelName} est_cost=$${estimatedCost.toFixed(4)} today=$${status.usedTodayUSD.toFixed(4)}/${status.dailyLimitUSD.toFixed(4)}`);
       
       const result = await operation();
       
@@ -125,7 +129,9 @@ export class OpenAIBudgetedClient {
       await this.recordActualSpend(actualCost, metadata, modelName, requestId);
       
       const duration = Date.now() - startTime;
-      console.log(`[COST_TRACKER] SUCCESS model=${modelName} actual=$${actualCost.toFixed(4)} duration=${duration}ms purpose=${metadata.purpose} id=${requestId}`);
+      const inputTokens = (result as any)?.usage?.prompt_tokens || 0;
+      const outputTokens = (result as any)?.usage?.completion_tokens || 0;
+      console.log(`OPENAI_CALL: model=${modelName} in=${inputTokens} out=${outputTokens} purpose=${metadata.purpose} cost=$${actualCost.toFixed(4)}`);
       
       // 4. Check if this call pushed us over budget
       await this.checkPostCallBudgetStatus();
@@ -136,7 +142,7 @@ export class OpenAIBudgetedClient {
       const duration = Date.now() - startTime;
       
       if (error instanceof BudgetExceededError) {
-        console.log(`🛑 BUDGET: blocked attempted=$${error.attempted.toFixed(4)} used=$${error.used.toFixed(4)}/${error.allowed.toFixed(2)} purpose=${metadata.purpose} model=${modelName}`);
+        console.log(`BUDGET_GATE DENY: projected=$${error.attempted.toFixed(4)} today=$${error.used.toFixed(4)}/${error.allowed.toFixed(2)} purpose=${metadata.purpose} model=${modelName}`);
         throw error;
       }
       
@@ -152,22 +158,25 @@ export class OpenAIBudgetedClient {
   }
   
   /**
-   * Chat completion with budget enforcement
+   * Chat completion with budget enforcement and runtime optimization
    */
   async chatComplete(
     params: OpenAI.Chat.Completions.ChatCompletionCreateParams,
     metadata: CallMetadata
   ): Promise<OpenAI.Chat.Completions.ChatCompletion> {
     
-    const model = params.model || 'gpt-4o-mini';
-    const estimatedTokens = this.estimateInputTokens(params.messages);
-    const maxOutputTokens = params.max_tokens || 1000;
+    // Apply budget-aware optimizations
+    const optimizedParams = await this.applyBudgetOptimizations(params, metadata);
+    
+    const model = optimizedParams.model || 'gpt-4o-mini';
+    const estimatedTokens = this.estimateInputTokens(optimizedParams.messages);
+    const maxOutputTokens = optimizedParams.max_tokens || 1000;
     const estimatedCost = calculateTokenCost(model, estimatedTokens, maxOutputTokens);
     
     return this.withBudgetGuard(
       'chat.completions.create',
       async () => {
-        const response = await this.openai.chat.completions.create(params);
+        const response = await this.openai.chat.completions.create(optimizedParams);
         return response as OpenAI.Chat.Completions.ChatCompletion;
       },
       metadata,
@@ -373,6 +382,9 @@ export class OpenAIBudgetedClient {
       );
     }
     
+    // Log successful budget gate passage
+    console.log(`BUDGET_GATE ALLOW: new_today=$${projectedTotal.toFixed(4)}/${status.dailyLimitUSD.toFixed(4)} purpose=${purpose} model=${model}`);
+    
     // Shadow mode logging
     if (!this.config.strictMode) {
       console.log(`🕵️ BUDGET_SHADOW: would allow $${estimatedCost.toFixed(4)} call (total: $${projectedTotal.toFixed(4)}/$${status.dailyLimitUSD.toFixed(2)})`);
@@ -487,6 +499,69 @@ export class OpenAIBudgetedClient {
     // For non-UTC, convert to local date string
     // This is simplified - in production, use a proper timezone library
     return now.toISOString().split('T')[0];
+  }
+
+  /**
+   * Apply budget-aware optimizations to reduce costs when approaching limits
+   */
+  private async applyBudgetOptimizations(
+    params: OpenAI.Chat.Completions.ChatCompletionCreateParams,
+    metadata: CallMetadata
+  ): Promise<OpenAI.Chat.Completions.ChatCompletionCreateParams> {
+    const status = await this.getBudgetStatus();
+    const usagePercent = status.percentUsed / 100;
+    
+    // No optimization needed if under alert threshold
+    if (usagePercent < this.config.alertThreshold) {
+      return params;
+    }
+    
+    const optimizedParams = { ...params };
+    let optimizationReason = '';
+    
+    // 80-90%: Reduce max_tokens
+    if (usagePercent >= 0.8 && usagePercent < 0.9) {
+      const originalTokens = params.max_tokens || 1000;
+      optimizedParams.max_tokens = Math.floor(originalTokens * 0.7); // 30% reduction
+      optimizationReason += `max_tokens=${originalTokens}→${optimizedParams.max_tokens} `;
+    }
+    
+    // 90-95%: Switch to cheaper model + reduce tokens
+    if (usagePercent >= 0.9 && usagePercent < 0.95) {
+      const originalModel = params.model || 'gpt-4o-mini';
+      const originalTokens = params.max_tokens || 1000;
+      
+      // Model downgrade mapping
+      const modelDowngrades: Record<string, string> = {
+        'gpt-4o': 'gpt-4o-mini',
+        'gpt-4': 'gpt-4o-mini',
+        'gpt-4-turbo': 'gpt-4o-mini',
+        'gpt-4o-mini': 'gpt-3.5-turbo'
+      };
+      
+      if (modelDowngrades[originalModel]) {
+        optimizedParams.model = modelDowngrades[originalModel];
+        optimizationReason += `model=${originalModel}→${optimizedParams.model} `;
+      }
+      
+      optimizedParams.max_tokens = Math.floor(originalTokens * 0.5); // 50% reduction
+      optimizationReason += `max_tokens=${originalTokens}→${optimizedParams.max_tokens} `;
+    }
+    
+    // 95%+: Maximum cost reduction
+    if (usagePercent >= 0.95) {
+      optimizedParams.model = 'gpt-3.5-turbo'; // Cheapest model
+      optimizedParams.max_tokens = 256; // Minimal tokens
+      optimizedParams.temperature = 0.1; // Reduce randomness for efficiency
+      optimizationReason += `model=gpt-3.5-turbo max_tokens=256 temp=0.1 `;
+    }
+    
+    // Log optimization decision
+    if (optimizationReason) {
+      console.log(`BUDGET_OPTIMIZER: throttle ${optimizationReason}reason=threshold${Math.round(usagePercent * 100)} purpose=${metadata.purpose}`);
+    }
+    
+    return optimizedParams;
   }
 }
 
