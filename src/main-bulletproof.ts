@@ -161,6 +161,12 @@ class BulletproofMainSystem {
   private async mainLoop(): Promise<void> {
     console.log('🔄 BULLETPROOF_MAIN_LOOP: Starting cycle...');
 
+    // Early exit if posting is disabled - don't waste cycles on content generation
+    if (process.env.POSTING_DISABLED === 'true') {
+      console.log('🚫 POSTING_DISABLED=true: skipping content generation & posting entirely');
+      return;
+    }
+
     try {
       const now = Date.now();
       const timeSinceLastPost = now - this.lastPostTime;

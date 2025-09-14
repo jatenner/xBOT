@@ -30,12 +30,6 @@ export async function createChatCompletion(
   context: string = 'chat_completion'
 ): Promise<OpenAI.Chat.Completions.ChatCompletion> {
   
-  // Check if posting is disabled
-  if (process.env.POSTING_DISABLED === 'true') {
-    console.log('🚫 LLM_SKIPPED: posting disabled');
-    throw new Error('LLM calls disabled (POSTING_DISABLED=true)');
-  }
-  
   const client = getOpenAIClient();
   const model = params.model;
   
@@ -47,6 +41,15 @@ export async function createChatCompletion(
   
   // Estimate output tokens (use max_tokens if provided, otherwise conservative estimate)
   const estimatedOutputTokens = params.max_tokens || Math.min(1000, estimatedInputTokens * 0.5);
+  
+  // Check if posting is disabled - add shadow logging for visibility
+  if (process.env.POSTING_DISABLED === 'true') {
+    const { calculateCost } = await import('../budget/budgetGate');
+    const estimatedCost = calculateCost(model || 'gpt-4o-mini', estimatedInputTokens, estimatedOutputTokens);
+    console.log(`🕵️ BUDGET_SHADOW: would call model=${model || 'gpt-4o-mini'} est_tokens=${estimatedInputTokens + estimatedOutputTokens} cost=$${estimatedCost.toFixed(4)} [${context}]`);
+    console.log('🚫 LLM_SKIPPED: posting disabled');
+    throw new Error('LLM calls disabled (POSTING_DISABLED=true)');
+  }
   
   console.log(`🤖 OPENAI_REQUEST: ${model} (est: ${estimatedInputTokens} input + ${estimatedOutputTokens} output tokens) [${context}]`);
   
