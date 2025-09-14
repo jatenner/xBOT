@@ -49,7 +49,11 @@ export class SafeOpenAIWrapper {
     try {
       console.log(`LLM_CALL: ${context} (model: ${params.model}, estimated: $${estimatedCost.toFixed(4)})`);
       
-      const response = await this.openai.chat.completions.create(params);
+      const { createBudgetedChatCompletion } = await import('../services/openaiBudgetedClient');
+      const response = await createBudgetedChatCompletion(params, {
+        purpose: context,
+        priority: 'medium'
+      });
       
       // Record actual usage
       const actualCost = this.calculateActualCost(response);

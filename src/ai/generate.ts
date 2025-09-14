@@ -52,14 +52,18 @@ export class AdvancedContentGenerator {
     // Generate 5 candidates for diversity
     for (let i = 0; i < 5; i++) {
       try {
-        const response = await this.openai.chat.completions.create({
-          model: 'gpt-4',
+        const { createBudgetedChatCompletion } = await import('../services/openaiBudgetedClient');
+        const response = await createBudgetedChatCompletion({
+          model: 'gpt-4o-mini', // Use cost-effective model
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt }
           ],
           temperature: 0.8 + (i * 0.1), // Increase temperature for diversity
           max_tokens: request.format === 'thread' ? 2000 : 300,
+        }, {
+          purpose: `content_generation_candidate_${i + 1}`,
+          priority: 'medium'
         });
 
         const content = response.choices[0]?.message?.content;
@@ -215,7 +219,8 @@ ${request.format === 'thread' ? 'Write as individual tweets separated by line br
    */
   private async extractTopic(text: string): Promise<string> {
     try {
-      const response = await this.openai.chat.completions.create({
+      const { createBudgetedChatCompletion } = await import('../services/openaiBudgetedClient');
+      const response = await createBudgetedChatCompletion({
         model: 'gpt-3.5-turbo',
         messages: [{
           role: 'user',
@@ -223,6 +228,9 @@ ${request.format === 'thread' ? 'Write as individual tweets separated by line br
         }],
         temperature: 0.1,
         max_tokens: 10
+      }, {
+        purpose: 'topic_extraction',
+        priority: 'low'
       });
 
       return response.choices[0]?.message?.content?.trim() || 'general_health';
@@ -297,9 +305,13 @@ ${request.format === 'thread' ? 'Write as individual tweets separated by line br
    * Get OpenAI embeddings for text
    */
   private async getEmbedding(text: string): Promise<number[]> {
-    const response = await this.openai.embeddings.create({
-      model: 'text-embedding-ada-002',
+    const { createBudgetedEmbedding } = await import('../services/openaiBudgetedClient');
+    const response = await createBudgetedEmbedding({
+      model: 'text-embedding-3-small', // Use newer, cheaper model
       input: text
+    }, {
+      purpose: 'content_similarity_embedding',
+      priority: 'low'
     });
     return response.data[0].embedding;
   }

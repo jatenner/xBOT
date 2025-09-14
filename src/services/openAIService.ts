@@ -185,7 +185,11 @@ export class OpenAIService {
           createParams.response_format = response_format;
         }
         
-        return await this.openai.chat.completions.create(createParams);
+        const { createBudgetedChatCompletion } = await import("./openaiBudgetedClient");
+        return await createBudgetedChatCompletion(createParams, {
+          purpose: requestType,
+          priority: "high"
+        });
       }, { estimatedCost });
 
       // TRUNCATION GUARD: Check if response was truncated

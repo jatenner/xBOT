@@ -6,6 +6,7 @@ import { pgPool } from '../db/pg';
 import { getBudgetStatus } from '../budget/guard';
 import { getBudgetStatusForAPI } from '../budget/hardGuard';
 import { getRealMetricsConfig } from '../config/realMetrics';
+import { budgetedOpenAI } from '../services/openaiBudgetedClient';
 
 export interface SystemStatus {
   status: 'healthy' | 'degraded' | 'unhealthy';
@@ -61,8 +62,8 @@ export async function getSystemStatus(): Promise<SystemStatus> {
   // Database status
   const dbStatus = await getDatabaseStatus();
   
-  // Budget status (use hard guard for production)
-  const budgetStatus = await getBudgetStatusForAPI();
+  // Budget status (use new budgeted client for comprehensive status)
+  const budgetStatus = await getComprehensiveBudgetStatus();
   
   // Real metrics status
   const realMetricsStatus = getRealMetricsConfig();
@@ -231,5 +232,47 @@ export async function handleHealthCheck(req: any, res: any): Promise<void> {
     
   } catch (error) {
     res.status(503).send('ERROR');
+  }
+}
+
+/**
+ * Get comprehensive budget status using the new budgeted client
+ */
+async function getComprehensiveBudgetStatus() {
+  try {
+    const [status, spending] = await Promise.all([
+      budgetedOpenAI.getBudgetStatus(),
+      budgetedOpenAI.getSpendingBreakdown()
+    ]);
+    
+    return {
+      ...status,
+      spending_breakdown: {
+        by_model: Object.entries(spending.byModel).slice(0, 5), // Top 5 models
+        by_purpose: Object.entries(spending.byPurpose).slice(0, 5), // Top 5 purposes
+        top_expensive_calls: spending.topExpensive.slice(0, 3) // Top 3 expensive calls
+      },
+      alerts: {
+        budget_warning: status.percentUsed > 80,
+        budget_critical: status.percentUsed > 95,
+        blocked: status.isBlocked
+      }
+    };
+  } catch (error) {
+    console.error('❌ COMPREHENSIVE_BUDGET_STATUS_ERROR:', error);
+    
+    // Fallback to legacy budget status
+    try {
+      return await getBudgetStatusForAPI();
+    } catch (fallbackError) {
+      return {
+        error: 'Budget status unavailable',
+        dailyLimitUSD: parseFloat(process.env.DAILY_OPENAI_LIMIT_USD || '5.0'),
+        usedTodayUSD: 0,
+        remainingUSD: 0,
+        percentUsed: 0,
+        isBlocked: false
+      };
+    }
   }
 }
