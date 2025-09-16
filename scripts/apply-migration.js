@@ -1,163 +1,56 @@
-#!/usr/bin/env node
-
+#!/usr/bin/env tsx
+"use strict";
 /**
- * 🚀 DATABASE MIGRATION APPLIER
- * 
- * Executes the robust architecture migration via Supabase client
+ * Apply Migration Script
+ * Uses our existing SupabaseMetaRunner to apply the migration via HTTP
  */
-
-const { createClient } = require('@supabase/supabase-js');
-const fs = require('fs');
-const path = require('path');
-require('dotenv').config();
-
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const SupabaseMetaRunner_1 = require("../src/lib/SupabaseMetaRunner");
+const fs_1 = __importDefault(require("fs"));
+const path_1 = __importDefault(require("path"));
 async function applyMigration() {
-  console.log('🚀 === APPLYING ROBUST ARCHITECTURE MIGRATION ===');
-  
-  const supabase = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-  );
-
-  try {
-    // Read the migration file
-    const migrationPath = path.join(__dirname, '..', 'migrations', '20250119_robust_architecture_upgrade.sql');
-    const migrationSQL = fs.readFileSync(migrationPath, 'utf8');
-    
-    console.log('📄 Migration file loaded');
-    console.log('🔄 Executing migration...');
-    
-    // Execute the migration
-    const { data, error } = await supabase.rpc('exec_sql', { sql: migrationSQL });
-    
-    if (error) {
-      console.error('❌ Migration failed:', error);
-      
-      // Try executing individual statements
-      console.log('🔄 Trying to execute statements individually...');
-      
-      const statements = migrationSQL
-        .split(';')
-        .map(s => s.trim())
-        .filter(s => s.length > 0 && !s.startsWith('--'))
-        .filter(s => !s.match(/^(SELECT|COMMENT)/i));
-      
-      let successCount = 0;
-      let errorCount = 0;
-      
-      for (const statement of statements) {
-        try {
-          console.log(`📝 Executing: ${statement.substring(0, 50)}...`);
-          
-          const { error: stmtError } = await supabase.rpc('exec_sql', { 
-            sql: statement + ';' 
-          });
-          
-          if (stmtError) {
-            console.warn(`⚠️ Statement failed: ${stmtError.message}`);
-            errorCount++;
-          } else {
-            successCount++;
-          }
-        } catch (err) {
-          console.warn(`⚠️ Statement error: ${err.message}`);
-          errorCount++;
+    console.log('🚀 MIGRATION: Starting telemetry and content quality migration');
+    const migrationPath = path_1.default.join(__dirname, '../supabase/migrations/20250818_telemetry_and_content_quality.sql');
+    if (!fs_1.default.existsSync(migrationPath)) {
+        console.error('❌ MIGRATION: Migration file not found:', migrationPath);
+        process.exit(1);
+    }
+    const migrationSql = fs_1.default.readFileSync(migrationPath, 'utf8');
+    console.log('📄 MIGRATION: Loaded migration SQL (', migrationSql.length, 'characters)');
+    const runner = new SupabaseMetaRunner_1.SupabaseMetaRunner();
+    try {
+        console.log('🔄 MIGRATION: Testing connection...');
+        const testResult = await runner.testConnection();
+        if (!testResult.success) {
+            throw new Error(`Connection test failed: ${testResult.error}`);
         }
-      }
-      
-      console.log(`📊 Results: ${successCount} successful, ${errorCount} failed`);
-      
-      if (successCount === 0) {
-        throw new Error('All migration statements failed');
-      }
-    } else {
-      console.log('✅ Migration executed successfully');
-    }
-    
-    // Verify the migration
-    console.log('🔍 Verifying migration...');
-    
-    const tables = [
-      'twitter_rate_limits',
-      'tweet_performance', 
-      'daily_growth',
-      'quality_improvements',
-      'cached_insights',
-      'content_templates',
-      'system_logs'
-    ];
-    
-    let verificationResults = {};
-    
-    for (const table of tables) {
-      try {
-        const { count, error } = await supabase
-          .from(table)
-          .select('*', { count: 'exact', head: true });
-        
-        if (error) {
-          verificationResults[table] = { exists: false, error: error.message };
-        } else {
-          verificationResults[table] = { exists: true, count };
+        console.log('✅ MIGRATION: Connection successful');
+        console.log('🔄 MIGRATION: Executing migration via Supabase Meta API...');
+        const migrationResult = await runner.execSql(migrationSql);
+        if (!migrationResult.success) {
+            throw new Error(`Migration failed: ${migrationResult.error}`);
         }
-      } catch (err) {
-        verificationResults[table] = { exists: false, error: err.message };
-      }
+        console.log('✅ MIGRATION: Migration applied successfully!');
+        console.log('🔄 MIGRATION: Reloading PostgREST schema cache...');
+        const reloadResult = await runner.reloadPostgrest();
+        if (!reloadResult.success) {
+            console.warn('⚠️ MIGRATION: Schema reload failed, but migration was applied:', reloadResult.error);
+        }
+        else {
+            console.log('✅ MIGRATION: PostgREST schema reloaded!');
+        }
+        console.log('🎉 MIGRATION: Complete! Database is ready for xBOT operations.');
     }
-    
-    console.log('\n📋 VERIFICATION RESULTS:');
-    for (const [table, result] of Object.entries(verificationResults)) {
-      if (result.exists) {
-        console.log(`✅ ${table} - Created (${result.count || 0} rows)`);
-      } else {
-        console.log(`❌ ${table} - Missing: ${result.error}`);
-      }
+    catch (error) {
+        console.error('❌ MIGRATION: Failed to apply migration:', error.message);
+        console.error('💡 MIGRATION: Try applying the SQL manually in Supabase SQL Editor');
+        process.exit(1);
     }
-    
-    // Check content templates specifically
-    const { data: templates, error: templatesError } = await supabase
-      .from('content_templates')
-      .select('count(*)', { count: 'exact' });
-    
-    if (!templatesError && templates) {
-      console.log(`📝 Content templates seeded: ${templates.length || 0} templates`);
-    }
-    
-    console.log('\n🎉 Migration application complete!');
-    
-  } catch (error) {
-    console.error('💥 Migration failed:', error);
-    process.exit(1);
-  }
 }
-
-// Helper function to create exec_sql function if it doesn't exist
-async function ensureExecSqlFunction() {
-  const supabase = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-  );
-  
-  const createFunctionSQL = `
-    CREATE OR REPLACE FUNCTION exec_sql(sql text)
-    RETURNS text AS $$
-    BEGIN
-      EXECUTE sql;
-      RETURN 'OK';
-    END;
-    $$ LANGUAGE plpgsql SECURITY DEFINER;
-  `;
-  
-  try {
-    // This might not work due to security restrictions
-    console.log('🔧 Attempting to create exec_sql function...');
-    const { error } = await supabase.rpc('exec_sql', { sql: createFunctionSQL });
-    if (error) {
-      console.log('ℹ️ exec_sql function creation skipped (expected in hosted environments)');
-    }
-  } catch (err) {
-    console.log('ℹ️ exec_sql function not available - using alternative method');
-  }
+if (require.main === module) {
+    applyMigration();
 }
-
-applyMigration(); 
+//# sourceMappingURL=apply-migration.js.map
