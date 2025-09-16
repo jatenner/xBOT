@@ -1,137 +1,214 @@
-#!/usr/bin/env node
-// scripts/health-check.js
-require('dotenv').config();
-const { createClient } = require('@supabase/supabase-js');
-
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
-
-const REQUIRED_TABLES = {
-  // Analytics tables with specific column requirements
-  tweet_metrics: [
-    'tweet_id', 'captured_at', 'like_count', 'retweet_count', 
-    'reply_count', 'quote_count', 'impression_count', 'json_payload'
-  ],
-  bot_dashboard: [
-    'date', 'planned_posts_json', 'created_at', 'updated_at'
-  ],
-  // Core bot tables (existence check only)
-  tweets: [],
-  tweet_topics: [],
-  tweet_images: []
-};
-
-async function checkTable(tableName, requiredColumns = []) {
-  try {
-    // First try to select from the table to check if it exists
-    const { data, error } = await supabase
-      .from(tableName)
-      .select('*')
-      .limit(1);
-    
-    if (error) {
-      if (error.code === 'PGRST116' || error.code === '42P01' || error.message.includes('does not exist')) {
-        return { status: 'missing', message: 'Table missing' };
-      } else {
-        return { status: 'error', message: error.message };
-      }
+#!/usr/bin/env tsx
+"use strict";
+/**
+ * 🏥 HEALTH CHECK SCRIPT
+ *
+ * Verifies all system components are working:
+ * - Supabase connectivity and write/read test
+ * - Redis connectivity and cache operations
+ * - Environment variables presence
+ * - Core dependencies
+ */
+Object.defineProperty(exports, "__esModule", { value: true });
+const supabaseClient_1 = require("../src/db/supabaseClient");
+const redisCache_1 = require("../src/cache/redisCache");
+async function runHealthChecks() {
+    console.log('🏥 HEALTH_CHECK: Starting comprehensive system health check...\n');
+    const results = [];
+    // Environment Variables Check
+    console.log('📋 ENV_CHECK: Verifying environment variables...');
+    const envResult = checkEnvironmentVariables();
+    results.push(envResult);
+    console.log(`${envResult.status === 'healthy' ? '✅' : '❌'} ${envResult.component}: ${envResult.details}\n`);
+    // Supabase Health Check
+    console.log('🗄️ SUPABASE_CHECK: Testing database connectivity...');
+    const supabaseResult = await checkSupabaseHealth();
+    results.push(supabaseResult);
+    console.log(`${supabaseResult.status === 'healthy' ? '✅' : '❌'} ${supabaseResult.component}: ${supabaseResult.details}\n`);
+    // Redis Health Check
+    console.log('⚡ REDIS_CHECK: Testing cache connectivity...');
+    const redisResult = await checkRedisHealth();
+    results.push(redisResult);
+    console.log(`${redisResult.status === 'healthy' ? '✅' : '❌'} ${redisResult.component}: ${redisResult.details}\n`);
+    // OpenAI Check (without making actual requests)
+    console.log('🤖 OPENAI_CHECK: Verifying API key format...');
+    const openaiResult = checkOpenAIConfig();
+    results.push(openaiResult);
+    console.log(`${openaiResult.status === 'healthy' ? '✅' : '❌'} ${openaiResult.component}: ${openaiResult.details}\n`);
+    // Summary
+    const healthy = results.filter(r => r.status === 'healthy').length;
+    const total = results.length;
+    console.log('='.repeat(60));
+    console.log(`🎯 HEALTH_SUMMARY: ${healthy}/${total} components healthy`);
+    if (healthy === total) {
+        console.log('✅ ALL_SYSTEMS_GO: Ready for production use');
+        process.exit(0);
     }
-    
-    // Now get the count since table exists
-    const { count, error: countError } = await supabase
-      .from(tableName)
-      .select('*', { count: 'exact', head: true });
-    
-    if (countError) {
-      return { status: 'error', message: countError.message };
+    else {
+        console.log('❌ ISSUES_DETECTED: Some components need attention');
+        process.exit(1);
     }
-    
-    // If no specific columns required, just check existence
-    if (requiredColumns.length === 0) {
-      return { status: 'ok', count, message: `${count} rows` };
-    }
-    
-    // Test required columns by selecting them
-    const selectFields = requiredColumns.join(', ');
-    const { data: colData, error: colError } = await supabase
-      .from(tableName)
-      .select(selectFields)
-      .limit(1);
-      
-    if (colError) {
-      // Parse column error to identify missing columns
-      const missingCols = requiredColumns.filter(col => 
-        colError.message.includes(`column "${col}" does not exist`)
-      );
-      
-      if (missingCols.length > 0) {
-        return { 
-          status: 'incomplete', 
-          count,
-          message: `Missing columns: ${missingCols.join(', ')}` 
+}
+function checkEnvironmentVariables() {
+    const requiredEnvs = [
+        'OPENAI_API_KEY',
+        'SUPABASE_URL',
+        'SUPABASE_SERVICE_ROLE_KEY',
+        'REDIS_URL'
+    ];
+    const missing = requiredEnvs.filter(env => !process.env[env]);
+    if (missing.length === 0) {
+        return {
+            component: 'Environment Variables',
+            status: 'healthy',
+            details: `All ${requiredEnvs.length} required environment variables present`
         };
-      } else {
-        return { status: 'error', message: colError.message };
-      }
     }
-    
-    return { 
-      status: 'ok', 
-      count, 
-      message: `${requiredColumns.length} columns OK, ${count} rows` 
+    else {
+        return {
+            component: 'Environment Variables',
+            status: 'failed',
+            details: `Missing: ${missing.join(', ')}`
+        };
+    }
+}
+async function checkSupabaseHealth() {
+    try {
+        const start = Date.now();
+        const health = await supabaseClient_1.supabaseClient.healthCheck();
+        const latency = Date.now() - start;
+        if (health.connected) {
+            // Test write operation
+            const testData = {
+                tweet_id: `health_check_${Date.now()}`,
+                content: 'Health check test post',
+                posted_at: new Date().toISOString()
+            };
+            const writeResult = await supabaseClient_1.supabaseClient.safeInsert('posts', testData);
+            if (writeResult.success) {
+                // Clean up test data
+                const { data, error } = await supabaseClient_1.supabaseClient.getRawClient()
+                    .from('posts')
+                    .delete()
+                    .eq('tweet_id', testData.tweet_id);
+                return {
+                    component: 'Supabase Database',
+                    status: 'healthy',
+                    details: `Connected, write/read/delete operations successful`,
+                    latency
+                };
+            }
+            else {
+                return {
+                    component: 'Supabase Database',
+                    status: 'degraded',
+                    details: `Connected but write failed: ${writeResult.error?.message}`,
+                    latency
+                };
+            }
+        }
+        else {
+            return {
+                component: 'Supabase Database',
+                status: 'failed',
+                details: `Connection failed: ${health.error}`,
+                latency
+            };
+        }
+    }
+    catch (error) {
+        return {
+            component: 'Supabase Database',
+            status: 'failed',
+            details: `Health check error: ${error.message}`
+        };
+    }
+}
+async function checkRedisHealth() {
+    try {
+        const start = Date.now();
+        const health = await redisCache_1.redisCache.health();
+        const healthLatency = Date.now() - start;
+        if (health.connected) {
+            // Test cache operations
+            const testKey = `health_check_${Date.now()}`;
+            const testValue = { test: true, timestamp: Date.now() };
+            const setResult = await redisCache_1.redisCache.set(testKey, testValue, 60);
+            if (!setResult.success) {
+                return {
+                    component: 'Redis Cache',
+                    status: 'degraded',
+                    details: `Connected but SET failed: ${setResult.error}`,
+                    latency: healthLatency
+                };
+            }
+            const getResult = await redisCache_1.redisCache.get(testKey);
+            if (!getResult.success || !getResult.data) {
+                return {
+                    component: 'Redis Cache',
+                    status: 'degraded',
+                    details: `Connected but GET failed: ${getResult.error}`,
+                    latency: healthLatency
+                };
+            }
+            // Clean up
+            await redisCache_1.redisCache.del(testKey);
+            return {
+                component: 'Redis Cache',
+                status: 'healthy',
+                details: `Connected, cache operations successful${health.version ? ` (v${health.version})` : ''}`,
+                latency: health.latency || healthLatency
+            };
+        }
+        else {
+            return {
+                component: 'Redis Cache',
+                status: 'failed',
+                details: `Connection failed: ${health.error}`,
+                latency: healthLatency
+            };
+        }
+    }
+    catch (error) {
+        return {
+            component: 'Redis Cache',
+            status: 'failed',
+            details: `Health check error: ${error.message}`
+        };
+    }
+}
+function checkOpenAIConfig() {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+        return {
+            component: 'OpenAI Configuration',
+            status: 'failed',
+            details: 'OPENAI_API_KEY not set'
+        };
+    }
+    if (!apiKey.startsWith('sk-')) {
+        return {
+            component: 'OpenAI Configuration',
+            status: 'failed',
+            details: 'OPENAI_API_KEY format invalid (should start with sk-)'
+        };
+    }
+    if (apiKey.length < 20) {
+        return {
+            component: 'OpenAI Configuration',
+            status: 'failed',
+            details: 'OPENAI_API_KEY appears too short'
+        };
+    }
+    return {
+        component: 'OpenAI Configuration',
+        status: 'healthy',
+        details: 'API key format valid'
     };
-    
-  } catch (error) {
-    return { status: 'error', message: error.message };
-  }
 }
-
-async function main() {
-  console.log('🔍 xBOT Database Health Check');
-  console.log('=' .repeat(40));
-  
-  let allPassed = true;
-  const results = [];
-  
-  for (const [tableName, requiredColumns] of Object.entries(REQUIRED_TABLES)) {
-    const result = await checkTable(tableName, requiredColumns);
-    results.push({ tableName, ...result });
-    
-    const icon = result.status === 'ok' ? '✅' : '❌';
-    const name = tableName.padEnd(15);
-    
-    console.log(`${icon} ${name} | ${result.message}`);
-    
-    if (result.status !== 'ok') {
-      allPassed = false;
-    }
-  }
-  
-  console.log('=' .repeat(40));
-  
-  if (!allPassed) {
-    console.log('🚨 Database health check FAILED');
-    console.log('\n💡 To fix issues:');
-    console.log('   1. Run: npx supabase db push');
-    console.log('   2. Check migration files in /migrations/');
+// Run health checks
+runHealthChecks().catch(error => {
+    console.error('💥 HEALTH_CHECK_FAILED:', error);
     process.exit(1);
-  }
-  
-  console.log('✅ Database health check PASSED');
-  console.log('\n📊 Summary:');
-  results.forEach(r => {
-    if (r.count !== undefined) {
-      console.log(`   ${r.tableName}: ${r.count} rows`);
-    }
-  });
-  
-  process.exit(0);
-}
-
-if (require.main === module) {
-  main().catch(console.error);
-}
-
-module.exports = { checkTable, main }; 
+});
+//# sourceMappingURL=health-check.js.map

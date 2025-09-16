@@ -4,9 +4,15 @@
  * Uses real Twitter analytics to make data-driven decisions
  */
 
-import { OpenAI } from 'openai';
+import { safeChatCompletion, CircuitOpenError, QuotaExhaustedError } from '../llm/openaiClient';
 import { admin as supabase } from '../lib/supabaseClients';
 import { systemMonitor } from '../monitoring/systemPerformanceMonitor';
+import { shouldRunLearning } from './learningScheduler';
+import { selectTimingArm, selectContentArm } from '../learning/bandits';
+import { predictPerformance } from '../learning/predictor';
+import { planNextContent } from '../jobs/planNext';
+import { FEATURE_FLAGS } from '../config/featureFlags';
+import { isCircuitOpen } from '../utils/circuitBreaker';
 
 export interface TwitterAnalytics {
   timestamp: Date;
@@ -34,6 +40,11 @@ export interface ContentDecision {
   expected_engagement: number;
   expected_followers: number;
   diversity_score: number;
+  action?: string;
+  reason?: string;
+  bandit_arm?: string;
+  predicted_er?: number;
+  predicted_follow_through?: number;
 }
 
 export interface TimingDecision {
@@ -43,6 +54,9 @@ export interface TimingDecision {
   reasoning: string;
   expected_audience_size: number;
   competition_level: number;
+  action?: string;
+  reason?: string;
+  timing_arm?: string;
 }
 
 export interface TrendingInsight {
@@ -56,7 +70,6 @@ export interface TrendingInsight {
 
 export class IntelligentDecisionEngine {
   private static instance: IntelligentDecisionEngine;
-  private openai: OpenAI;
   
   // AI learning data
   private recentAnalytics: TwitterAnalytics[] = [];
@@ -66,7 +79,6 @@ export class IntelligentDecisionEngine {
   private trendingTopics: TrendingInsight[] = [];
 
   private constructor() {
-    this.openai = new OpenAI();
     this.initializeDecisionEngine();
   }
 
@@ -104,6 +116,87 @@ export class IntelligentDecisionEngine {
   }
 
   /**
+   * 🤖 MAKE LEARNING-AWARE DECISION
+   * Uses bandits and predictor for optimal timing and content
+   */
+  async makeLearningAwareDecision(): Promise<{
+    timing_arm: string;
+    content_arm: string;
+    reasons: string[];
+    should_post_now: boolean;
+    predicted_er: number;
+    predicted_follow_through: number;
+  }> {
+    try {
+      // Check circuit breaker first
+      if (await isCircuitOpen('openai_quota')) {
+        return {
+          timing_arm: '',
+          content_arm: '',
+          reasons: ['OpenAI circuit breaker is open'],
+          should_post_now: false,
+          predicted_er: 0,
+          predicted_follow_through: 0
+        };
+      }
+
+      if (!FEATURE_FLAGS.POSTING_ENABLED || FEATURE_FLAGS.POSTING_DISABLED) {
+        return {
+          timing_arm: '',
+          content_arm: '',
+          reasons: ['Posting disabled via feature flags'],
+          should_post_now: false,
+          predicted_er: 0,
+          predicted_follow_through: 0
+        };
+      }
+
+      // Use planning system if bandit learning is enabled
+      if (process.env.ENABLE_BANDIT_LEARNING === 'true') {
+        const plan = await planNextContent();
+        if (plan) {
+          return {
+            timing_arm: plan.timingArm,
+            content_arm: plan.contentArm,
+            reasons: plan.reasoning,
+            should_post_now: true,
+            predicted_er: plan.predictedER,
+            predicted_follow_through: plan.predictedFollowThrough
+          };
+        }
+      }
+
+      // Fallback to basic bandit selection
+      const timingSelection = await selectTimingArm();
+      const contentSelection = await selectContentArm(
+        'single',
+        ['educational', 'myth_busting', 'controversy_starter'],
+        ['health_general', 'nutrition_science', 'sleep_optimization']
+      );
+
+      return {
+        timing_arm: timingSelection.armId,
+        content_arm: contentSelection.armId,
+        reasons: [timingSelection.reason, contentSelection.reason],
+        should_post_now: true,
+        predicted_er: 0.025, // Default prediction
+        predicted_follow_through: 0.002
+      };
+
+    } catch (error: any) {
+      console.error('❌ LEARNING_AWARE_DECISION_ERROR:', error.message);
+      return {
+        timing_arm: '',
+        content_arm: '',
+        reasons: [`Error: ${error.message}`],
+        should_post_now: false,
+        predicted_er: 0,
+        predicted_follow_through: 0
+      };
+    }
+  }
+
+  /**
    * 🕐 AI-DRIVEN TIMING DECISION
    * Analyzes real-time data to determine optimal posting time
    */
@@ -111,8 +204,56 @@ export class IntelligentDecisionEngine {
     console.log('🕐 TIMING_AI: Analyzing optimal posting time...');
     
     try {
+      // Check for circuit breaker or disabled posting first
+      if (await isCircuitOpen('openai_quota')) {
+        return {
+          should_post_now: false,
+          optimal_wait_minutes: FEATURE_FLAGS.AI_COOLDOWN_MINUTES,
+          confidence_score: 100,
+          reasoning: 'OpenAI circuit breaker is open',
+          expected_audience_size: 0,
+          competition_level: 0,
+          action: 'skip',
+          reason: 'quota_circuit'
+        };
+      }
+
+      if (!FEATURE_FLAGS.POSTING_ENABLED || FEATURE_FLAGS.POSTING_DISABLED) {
+        return {
+          should_post_now: false,
+          optimal_wait_minutes: 5,
+          confidence_score: 100,
+          reasoning: 'Posting disabled via feature flags',
+          expected_audience_size: 0,
+          competition_level: 0,
+          action: 'skip',
+          reason: 'posting_disabled'
+        };
+      }
+
       const currentHour = new Date().getHours();
       const dayOfWeek = new Date().getDay();
+      
+      // Use bandit selection if enabled
+      if (process.env.ENABLE_BANDIT_LEARNING === 'true') {
+        try {
+          const timingSelection = await selectTimingArm();
+          
+          const decision: TimingDecision = {
+            should_post_now: true, // Bandit selection implies readiness to post
+            optimal_wait_minutes: 0,
+            confidence_score: Math.round(timingSelection.confidence || 0.75 * 100),
+            reasoning: `Bandit timing selection: ${timingSelection.reason}`,
+            expected_audience_size: 1000, // Would be estimated from historical data
+            competition_level: 50, // Would be analyzed from real-time data
+            timing_arm: timingSelection.armId
+          };
+          
+          return decision;
+        } catch (banditError) {
+          console.warn('❌ TIMING_BANDIT: Failed, falling back to AI analysis:', banditError);
+        }
+      }
       
       // Get real-time insights
       const audienceSizeEstimate = await this.estimateCurrentAudienceSize();
@@ -164,6 +305,65 @@ export class IntelligentDecisionEngine {
     console.log('🎨 CONTENT_AI: Analyzing optimal content strategy...');
     
     try {
+      // Check for circuit breaker or disabled posting first
+      if (await isCircuitOpen('openai_quota')) {
+        return {
+          recommended_content_type: '',
+          recommended_voice_style: '',
+          recommended_topic: '',
+          confidence_score: 0,
+          reasoning: 'OpenAI circuit breaker is open',
+          expected_engagement: 0,
+          expected_followers: 0,
+          diversity_score: 0,
+          action: 'skip',
+          reason: 'quota_circuit'
+        };
+      }
+
+      // Use bandit selection if enabled
+      if (process.env.ENABLE_BANDIT_LEARNING === 'true') {
+        try {
+          const contentSelection = await selectContentArm(
+            'single',
+            ['educational', 'myth_busting', 'controversy_starter', 'data_driven'],
+            ['health_general', 'nutrition_science', 'sleep_optimization', 'fitness_advice']
+          );
+          
+          // Parse the arm to get components
+          const armParts = contentSelection.armId.split('|');
+          const format = armParts[0] || 'single';
+          const hookType = armParts[1] || 'educational';
+          const topic = armParts[2] || 'health_general';
+          
+          // Get prediction for this combination
+          const mockContent = `[${hookType}] ${topic.replace(/_/g, ' ')} content`;
+          const prediction = await predictPerformance(mockContent, {
+            hook_type: hookType,
+            topic: topic,
+            format: format
+          });
+          
+          const decision: ContentDecision = {
+            recommended_content_type: format,
+            recommended_voice_style: hookType,
+            recommended_topic: topic.replace(/_/g, ' '),
+            confidence_score: Math.round(prediction.confidence * 100),
+            reasoning: `Bandit content selection: ${contentSelection.reason}`,
+            expected_engagement: prediction.engagementRate * 100,
+            expected_followers: prediction.followThrough * 1000, // Scale to expected follower count
+            diversity_score: 80, // Would be calculated from recent content
+            bandit_arm: contentSelection.armId,
+            predicted_er: prediction.engagementRate,
+            predicted_follow_through: prediction.followThrough
+          };
+          
+          return decision;
+        } catch (banditError) {
+          console.warn('❌ CONTENT_BANDIT: Failed, falling back to AI analysis:', banditError);
+        }
+      }
+      
       // Analyze current content diversity needs
       const diversityAnalysis = await this.analyzeDiversityNeeds();
       
@@ -314,17 +514,24 @@ Return JSON only:
   "reasoning": "aggressive growth focused explanation"
 }`;
 
-      const response = await this.openai.chat.completions.create({
+      const response = await safeChatCompletion([
+        { role: 'user', content: prompt }
+      ], {
         model: 'gpt-4',
-        messages: [{ role: 'user', content: prompt }],
         temperature: 0.3,
-        max_tokens: 200
+        max_tokens: 200,
+        requestType: 'timing_decision'
       });
 
       const result = JSON.parse(response.choices[0]?.message?.content || '{}');
       return result;
       
     } catch (error) {
+      if (error instanceof CircuitOpenError) {
+        console.log(`🚨 AI_TIMING: Circuit breaker open, using fallback decision`);
+        return { action: 'skip', reason: 'quota_circuit' };
+      }
+      
       console.error('❌ AI_TIMING: Failed to get recommendation:', error);
       return {
         post_now: true,
@@ -384,17 +591,24 @@ Return JSON only:
   "expected_followers": number (8-25)
 }`;
 
-      const response = await this.openai.chat.completions.create({
+      const response = await safeChatCompletion([
+        { role: 'user', content: prompt }
+      ], {
         model: 'gpt-4',
-        messages: [{ role: 'user', content: prompt }],
         temperature: 0.4,
-        max_tokens: 300
+        max_tokens: 300,
+        requestType: 'content_decision'
       });
 
       const result = JSON.parse(response.choices[0]?.message?.content || '{}');
       return result;
       
     } catch (error) {
+      if (error instanceof CircuitOpenError) {
+        console.log(`🚨 AI_CONTENT: Circuit breaker open, using fallback decision`);
+        return { action: 'skip', reason: 'quota_circuit' };
+      }
+      
       console.error('❌ AI_CONTENT: Failed to get recommendation:', error);
       return {
         content_type: 'myth_busting',
@@ -533,6 +747,12 @@ Return JSON only:
   }
 
   private async updateTrendingTopics(): Promise<void> {
+    // Only run if learning debounce allows
+    if (!(await shouldRunLearning())) {
+      console.log('📈 TRENDING: Skipped due to learning debounce');
+      return;
+    }
+    
     // This would connect to real trending data sources
     console.log('📈 TRENDING: Updated trending topics analysis');
   }
