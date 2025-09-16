@@ -11,13 +11,14 @@ COPY package*.json ./
 RUN npm ci --include=dev
 
 COPY tsconfig.json ./
+COPY tsconfig.build.json ./
 COPY src ./src
 COPY scripts ./scripts
 COPY tools ./tools
 COPY supabase ./supabase
 COPY docker ./docker
 
-# Compile TypeScript -> dist/
+# Compile TypeScript -> dist/ (production runtime only)
 RUN npm run build
 
 # -------- Runtime stage: slim prod image --------
