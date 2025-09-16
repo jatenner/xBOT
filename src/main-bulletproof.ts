@@ -13,8 +13,8 @@ import { log_compat as log, log_compat as warn, log_compat as error } from './ut
 import { logRealMetricsStatus } from './config/realMetrics';
 logRealMetricsStatus();
 
-// Run auto-migrations on startup (using DATABASE_URL or constructed URL)
-import './db/migrations';
+// Run runtime migrations if enabled
+import { runRuntimeMigrations } from './db/runtimeMigrations';
 
 import { TwitterAnalyticsScraper } from './analytics/twitterAnalyticsScraper';
 import { systemMonitor } from './monitoring/systemPerformanceMonitor';
@@ -1777,24 +1777,33 @@ class BulletproofMainSystem {
   }
 }
 
-// Initialize and start the bulletproof system
-const bulletproofSystem = new BulletproofMainSystem();
+// Initialize system with runtime migrations
+async function initialize() {
+  // Run runtime migrations first if enabled
+  await runRuntimeMigrations();
+  
+  // Initialize and start the bulletproof system
+  const bulletproofSystem = new BulletproofMainSystem();
+  
+  // Handle graceful shutdown
+  process.on('SIGINT', () => {
+    console.log('\n🛑 RECEIVED_SIGINT: Shutting down gracefully...');
+    bulletproofSystem.stop();
+    process.exit(0);
+  });
 
-// Handle graceful shutdown
-process.on('SIGINT', () => {
-  console.log('\n🛑 RECEIVED_SIGINT: Shutting down gracefully...');
-  bulletproofSystem.stop();
-  process.exit(0);
-});
+  process.on('SIGTERM', () => {
+    console.log('\n🛑 RECEIVED_SIGTERM: Shutting down gracefully...');
+    bulletproofSystem.stop();
+    process.exit(0);
+  });
 
-process.on('SIGTERM', () => {
-  console.log('\n🛑 RECEIVED_SIGTERM: Shutting down gracefully...');
-  bulletproofSystem.stop();
-  process.exit(0);
-});
+  // Start the system
+  await bulletproofSystem.start();
+}
 
 // Start the system
-bulletproofSystem.start().catch(error => {
+initialize().catch(error => {
   console.error('💥 BULLETPROOF_SYSTEM_CRASHED:', error);
   process.exit(1);
 });

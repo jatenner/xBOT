@@ -4,6 +4,7 @@
  */
 
 import { Pool, Client, ClientConfig } from 'pg';
+import { getPgSSL, logSafeConnectionInfo } from './pgSSL';
 
 // Environment detection
 const isProd = process.env.APP_ENV === 'production' || process.env.NODE_ENV === 'production';
@@ -14,47 +15,14 @@ if (!DATABASE_URL) {
 }
 
 /**
- * Build PostgreSQL configuration with verified SSL
+ * Build PostgreSQL configuration with centralized SSL handling
  */
 function buildPgConfig(connectionString: string): ClientConfig {
-  // Parse URL for logging (without credentials)
-  let hostInfo = 'unknown';
-  try {
-    const url = new URL(connectionString.replace(/^postgres:\/\//, 'http://').replace(/^postgresql:\/\//, 'http://'));
-    hostInfo = `${url.hostname}:${url.port || 5432}`;
-  } catch (error) {
-    console.warn('DB_CLIENT: Could not parse DATABASE_URL for logging');
-  }
-
-  // Production: Always use verified SSL with system CA certificates
-  // Development: Allow unverified for local development
-  const sslConfig = isProd ? { rejectUnauthorized: true } : undefined;
+  // Use centralized SSL configuration
+  const sslConfig = getPgSSL();
   
-  // Log SSL configuration at startup
-  if (isProd) {
-    console.log(`[DB_SSL] mode=require, nodeTLS.rejectUnauthorized=true, CA=system`);
-    console.log(`DB_POOLER: Using sslmode=require (host: ${hostInfo})`);
-  } else {
-    console.log(`DB_CLIENT: Development mode, SSL config: ${sslConfig ? 'verified' : 'flexible'}`);
-  }
-
-  // Check for insecure environment variables and warn
-  const insecureVars = [
-    'NODE_TLS_REJECT_UNAUTHORIZED',
-    'SSL_CERT_FILE', 
-    'PGSSLROOTCERT',
-    'DB_SSL_ROOT_CERT_PATH'
-  ];
-  
-  for (const varName of insecureVars) {
-    if (process.env[varName]) {
-      if (isProd) {
-        console.error(`❌ SECURITY_ERROR: ${varName} is set in production - ignoring for security`);
-      } else {
-        console.warn(`⚠️ DEV_WARNING: ${varName} is set - may affect SSL behavior`);
-      }
-    }
-  }
+  // Log safe connection info
+  logSafeConnectionInfo(connectionString);
 
   return {
     connectionString,

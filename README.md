@@ -16,6 +16,41 @@ This bot now features a **bulletproof posting system** with quality gates, threa
 - ✅ **Rate limiting** respects minimum hours between posts
 - ✅ **Bulletproof Playwright** extracts real tweet IDs from CreateTweet responses
 
+## 🛡️ DB SSL/Migrations
+
+### SSL Configuration
+
+The system automatically handles PostgreSQL SSL connections using centralized logic:
+
+- **Why no-verify:** Supabase connection pooler uses SSL but with certificates that don't verify against standard CA chains
+- **Automatic detection:** If `DATABASE_URL` contains `?sslmode=require`, SSL is configured with `rejectUnauthorized: false`
+- **Security:** Only used for Supabase pooler connections; regular PostgreSQL servers use standard SSL verification
+
+### Migrations
+
+Two migration modes are supported:
+
+#### Manual Migrations (Recommended for Production)
+```bash
+# Run migrations manually before deploy
+npm run db:migrate
+```
+
+#### Runtime Migrations (Optional)
+Set `MIGRATIONS_RUNTIME_ENABLED="true"` to run migrations automatically at boot.
+
+**Default behavior:** `MIGRATIONS_RUNTIME_ENABLED="false"` (prevents crash loops)
+
+```bash
+# If runtime migrations fail, logs show:
+# runtime migrations disabled
+# OR
+# → Applying 001_initial.sql ... OK
+# ✅ Runtime migrations completed
+```
+
+⚠️ **Production Safety:** Keep `MIGRATIONS_RUNTIME_ENABLED="false"` to avoid boot-time failures. Run `npm run db:migrate` in CI/CD or manually.
+
 ## 🚀 Quick Start
 
 ### Development
