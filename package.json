@@ -8,7 +8,7 @@
     "start": "node dist/main-bulletproof.js",
     "start:bulletproof": "node dist/main-bulletproof.js",
     "postinstall": "npx playwright install chromium --with-deps || true",
-    "build": "node ./node_modules/typescript/bin/tsc -p tsconfig.json",
+    "build": "node ./node_modules/typescript/bin/tsc -p tsconfig.build.json",
     "build-clean": "rm -rf dist && npm run build",
     "logs": "node bulletproof_railway_monitor.js",
     "diagnostics": "node scripts/diagnostics.js",
