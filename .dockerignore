@@ -2,9 +2,8 @@ node_modules
 npm-debug.log
 .env*
 .env.*.sh
-*.md
 .git
-.gitignore
 .vscode
 coverage
 tmp
+*.md
