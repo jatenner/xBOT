@@ -36,7 +36,10 @@
     "src/config/featureFlags.ts",
     "src/lib/supabaseClients.ts",
     "src/replies/targetDiscovery.ts",
-    "src/llm/openaiClient.ts"
+    "src/llm/openaiClient.ts",
+    "src/db/pgSSL.ts",
+    "src/db/runtimeMigrations.ts",
+    "src/db/client.ts"
   ],
   "exclude": [
     "node_modules",

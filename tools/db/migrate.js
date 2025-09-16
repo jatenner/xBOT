@@ -1,77 +1,71 @@
-#!/usr/bin/env node
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.runMigrations = runMigrations;
-const fs_1 = require("fs");
-const path_1 = require("path");
-const pg_1 = require("pg");
-async function runMigrations() {
-    const DATABASE_URL = process.env.DATABASE_URL;
-    if (!DATABASE_URL) {
-        console.error('❌ DATABASE_URL environment variable is required');
-        process.exit(1);
-    }
-    console.log('🗃️  Starting database migrations...');
-    console.log(`🔗 Connecting to database with SSL...`);
-    const client = new pg_1.Client({
-        connectionString: DATABASE_URL,
-        ssl: {
-            rejectUnauthorized: false // Accept self-signed certificates
-        }
-    });
+const fs = require('fs');
+const path = require('path');
+const { Client } = require('pg');
+
+// Import SSL helper (CommonJS compatible)
+function getPgSSL() {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) return undefined;
+  return databaseUrl.includes('sslmode=require') ? { rejectUnauthorized: false } : undefined;
+}
+
+function logSafeConnectionInfo(connectionString) {
+  if (!connectionString) {
+    console.log('DB connect → no connection string provided');
+    return;
+  }
+  try {
+    const url = new URL(connectionString);
+    const host = url.hostname;
+    const port = url.port || '5432';
+    const ssl = connectionString.includes('sslmode=require') ? 'no-verify' : 'verify';
+    console.log(`DB connect → host=${host} port=${port} ssl=${ssl}`);
+  } catch (error) {
+    console.log('DB connect → invalid connection string format');
+  }
+}
+
+(async () => {
+  const dir = path.join(process.cwd(), 'supabase/migrations');
+
+  if (!fs.existsSync(dir)) {
+    console.error('❌ Migration directory not found:', dir);
+    process.exit(1);
+  }
+
+  const files = fs.readdirSync(dir).filter(f => f.endsWith('.sql')).sort();
+  const cs = process.env.DATABASE_URL;
+
+  if (!cs) {
+    console.error('❌ DATABASE_URL missing');
+    process.exit(1);
+  }
+
+  console.log(`🗃️  Found ${files.length} migration files`);
+  logSafeConnectionInfo(cs);
+
+  const client = new Client({
+    connectionString: cs,
+    ssl: getPgSSL()
+  });
+
+  await client.connect();
+
+  for (const f of files) {
+    const sql = fs.readFileSync(path.join(dir, f), 'utf8');
+    process.stdout.write(`→ Applying ${f} ... `);
     try {
-        await client.connect();
-        console.log('✅ Database connection established');
-        // Get all migration files
-        const migrationsDir = (0, path_1.join)(process.cwd(), 'supabase', 'migrations');
-        let migrationFiles;
-        try {
-            migrationFiles = (0, fs_1.readdirSync)(migrationsDir)
-                .filter(file => file.endsWith('.sql'))
-                .sort(); // Sort alphabetically for consistent ordering
-        }
-        catch (error) {
-            console.error('❌ Could not read migrations directory:', migrationsDir);
-            throw error;
-        }
-        if (migrationFiles.length === 0) {
-            console.log('ℹ️  No migration files found');
-            return;
-        }
-        console.log(`📋 Found ${migrationFiles.length} migration files`);
-        // Execute each migration
-        for (const filename of migrationFiles) {
-            const filePath = (0, path_1.join)(migrationsDir, filename);
-            try {
-                console.log(`🔄 Executing ${filename}...`);
-                const sql = (0, fs_1.readFileSync)(filePath, 'utf8');
-                // Execute with error handling
-                await client.query('BEGIN');
-                await client.query(sql);
-                await client.query('COMMIT');
-                console.log(`✅ ${filename} completed successfully`);
-            }
-            catch (error) {
-                await client.query('ROLLBACK');
-                console.error(`❌ ${filename} failed:`, error.message);
-                throw error;
-            }
-        }
-        console.log('🎉 All migrations completed successfully');
+      await client.query(sql);
+      console.log('OK');
+    } catch (error) {
+      console.log('FAILED:', error.message);
+      throw error;
     }
-    catch (error) {
-        console.error('💥 Migration failed:', error.message);
-        process.exit(1);
-    }
-    finally {
-        await client.end();
-    }
-}
-// Run migrations if this file is executed directly
-if (require.main === module) {
-    runMigrations().catch(error => {
-        console.error('💥 Unhandled migration error:', error);
-        process.exit(1);
-    });
-}
-//# sourceMappingURL=migrate.js.map
+  }
+
+  await client.end();
+  console.log('✅ All migrations applied');
+})().catch(e => {
+  console.error('💥 Migration failed:', e?.message || e);
+  process.exit(1);
+});
