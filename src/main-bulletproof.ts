@@ -37,6 +37,9 @@ import { smartContentDecisionEngine } from './ai/smartContentDecisionEngine';
 import { intelligentTimingSystem } from './ai/intelligentTimingSystem';
 import { megaPromptSystem } from './ai/megaPromptSystem';
 import { budgetOptimizer } from './services/budgetOptimizer';
+import { isCircuitOpen, getCircuitRemaining } from './utils/circuitBreaker';
+import { sleepMinutes } from './utils/time';
+import { FEATURE_FLAGS } from './config/featureFlags';
 
 class BulletproofMainSystem {
   private analyticsChecker: TwitterAnalyticsScraper;
@@ -1130,6 +1133,25 @@ class BulletproofMainSystem {
    */
   private async strategicAIPostingLoop(): Promise<void> {
     try {
+      // Early circuit breaker check
+      const circuitOpen = await isCircuitOpen('openai_quota');
+      if (circuitOpen) {
+        const remainingMs = await getCircuitRemaining('openai_quota');
+        const remainingMinutes = Math.ceil(remainingMs / 1000 / 60);
+        console.log(`🚨 CIRCUIT_OPEN: OpenAI quota circuit breaker is open (${remainingMinutes} minutes remaining)`);
+        console.log(`⏳ WAITING: Sleeping for ${FEATURE_FLAGS.AI_COOLDOWN_MINUTES} minutes...`);
+        await sleepMinutes(FEATURE_FLAGS.AI_COOLDOWN_MINUTES);
+        return;
+      }
+
+      // Early posting check
+      if (!FEATURE_FLAGS.POSTING_ENABLED || FEATURE_FLAGS.POSTING_DISABLED) {
+        console.log('🚫 POSTING_DISABLED: Skipping posting due to feature flags');
+        console.log('⏳ WAITING: Sleeping for 5 minutes...');
+        await sleepMinutes(5);
+        return;
+      }
+
       console.log('🧠 STRATEGIC_AI: Analyzing optimal posting strategy...');
       
       // 1. Analyze current Twitter landscape
@@ -1140,6 +1162,12 @@ class BulletproofMainSystem {
       // 2. Get AI-driven timing decision
       const timingDecision = await intelligentDecision.makeTimingDecision();
       
+      // Handle circuit breaker skip from decision engine
+      if (timingDecision.action === 'skip' && timingDecision.reason === 'quota_circuit') {
+        console.log(`🚨 STRATEGIC_AI: Skipping due to quota circuit breaker`);
+        return;
+      }
+      
       if (!timingDecision.should_post_now) {
         console.log(`⏰ STRATEGIC_AI: Not optimal time to post - ${timingDecision.reasoning}`);
         console.log(`⏰ NEXT_OPTIMAL: Wait ${timingDecision.optimal_wait_minutes} minutes`);
@@ -1148,6 +1176,13 @@ class BulletproofMainSystem {
       
       // 3. Get strategic content decision
       const contentDecision = await intelligentDecision.makeContentDecision();
+      
+      // Handle circuit breaker skip from content decision
+      if (contentDecision.action === 'skip' && contentDecision.reason === 'quota_circuit') {
+        console.log(`🚨 STRATEGIC_AI: Skipping content generation due to quota circuit breaker`);
+        return;
+      }
+      
       console.log(`🎯 STRATEGIC_AI: ${contentDecision.recommended_content_type} | ${contentDecision.recommended_voice_style}`);
       
       // 4. Generate follower-optimized content (70% of time) or sophisticated content (30%)

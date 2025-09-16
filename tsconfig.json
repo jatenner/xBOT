@@ -4,7 +4,7 @@
     "module": "commonjs",
     "lib": ["ES2020", "DOM"],
     "outDir": "./dist",
-    "rootDir": "./src",
+    "rootDir": "./",
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"]
@@ -16,16 +16,20 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "declaration": false,
-    "sourceMap": false,
+    "sourceMap": true,
     "noImplicitAny": false,
     "strictNullChecks": false,
     "noImplicitReturns": false,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "incremental": true,
-    "noEmitOnError": false
+    "noEmitOnError": false,
+    "skipLibCheck": true
   },
   "include": [
+    "src/**/*",
+    "scripts/**/*",
+    "tools/**/*",
     "src/main.ts",
     "src/main-bulletproof.ts",
     "src/core/aiDrivenPostingSystem.ts",

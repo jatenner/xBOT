@@ -1,0 +1,30 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "sourceMap": true,
+    "noEmitOnError": false
+  },
+  "include": [
+    "src/main-bulletproof.ts",
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "tests/**/*",
+    "test_*.js",
+    "scripts/**/*",
+    "tools/**/*",
+    "src/app/**/*",
+    "src/components/**/*",
+    "src/lib/analyzeImageWithOCR.ts",
+    "src/lib/apiUtils.ts",
+    "src/lib/runOCR.ts",
+    "src/middleware.ts",
+    "src/content/ImageGenerator.ts"
+  ]
+}

@@ -7,6 +7,10 @@ import { getBudgetStatus } from '../budget/guard';
 import { getBudgetStatusForAPI } from '../budget/hardGuard';
 import { getRealMetricsConfig } from '../config/realMetrics';
 import { budgetedOpenAI } from '../services/openaiBudgetedClient';
+import { getOpenAIHealth } from '../llm/openaiClient';
+import { getLearningStatus } from '../ai/learningScheduler';
+import { FEATURE_FLAGS } from '../config/featureFlags';
+import { handleLearningStatusRequest } from './learningStatus';
 
 export interface SystemStatus {
   status: 'healthy' | 'degraded' | 'unhealthy';
@@ -29,6 +33,17 @@ export interface SystemStatus {
     posting_disabled: boolean;
     dry_run: boolean;
   };
+  circuit_breaker: {
+    circuit_open: boolean;
+    circuit_remaining_ms: number;
+    quota_override: boolean;
+  };
+  learning: {
+    should_run: boolean;
+    last_run_at: string | null;
+    next_run_at: string | null;
+    minutes_remaining: number;
+  };
   posting: {
     enabled: boolean;
     reason?: string;
@@ -41,6 +56,9 @@ export interface SystemStatus {
   environment: {
     node_env: string;
     posting_disabled: boolean;
+    posting_enabled: boolean;
+    ai_cooldown_minutes: number;
+    learning_debounce_minutes: number;
     dry_run: boolean;
     budget_enforcer_enabled: boolean;
     real_metrics_enabled: boolean;
@@ -64,6 +82,12 @@ export async function getSystemStatus(): Promise<SystemStatus> {
   
   // Budget status (use new budgeted client for comprehensive status)
   const budgetStatus = await getComprehensiveBudgetStatus();
+  
+  // Circuit breaker status
+  const circuitStatus = await getOpenAIHealth();
+  
+  // Learning scheduler status
+  const learningStatus = await getLearningStatus();
   
   // Real metrics status
   const realMetricsStatus = getRealMetricsConfig();
@@ -95,11 +119,16 @@ export async function getSystemStatus(): Promise<SystemStatus> {
     uptime: Math.floor(process.uptime()),
     database: dbStatus,
     budget: budgetStatus,
+    circuit_breaker: circuitStatus,
+    learning: learningStatus,
     posting: postingStatus,
     real_metrics: realMetricsStatus,
     environment: {
       node_env: process.env.NODE_ENV || 'production',
       posting_disabled: process.env.POSTING_DISABLED === 'true',
+      posting_enabled: FEATURE_FLAGS.POSTING_ENABLED,
+      ai_cooldown_minutes: FEATURE_FLAGS.AI_COOLDOWN_MINUTES,
+      learning_debounce_minutes: FEATURE_FLAGS.LEARNING_DEBOUNCE_MINUTES,
       dry_run: process.env.DRY_RUN === 'true',
       budget_enforcer_enabled: process.env.BUDGET_ENFORCER_ENABLED === 'true',
       real_metrics_enabled: process.env.REAL_METRICS_ENABLED === 'true'

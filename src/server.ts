@@ -186,6 +186,22 @@ app.get('/metrics', async (req, res) => {
 });
 
 /**
+ * Learning system status endpoint
+ */
+app.get('/learn/status', async (req, res) => {
+  try {
+    const { handleLearningStatusRequest } = await import('./api/learningStatus');
+    await handleLearningStatusRequest(req, res);
+  } catch (error) {
+    console.error('Learning status error:', error);
+    res.status(500).json({ 
+      error: 'Failed to get learning status',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+/**
  * Manual metrics tracking for a tweet
  */
 app.post('/metrics/track/:tweetId', async (req, res) => {
