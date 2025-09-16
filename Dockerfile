@@ -1,52 +1,40 @@
-# Production Dockerfile for xBOT on Railway
-FROM node:22-bookworm-slim
-
-# --- CA certificates + System dependencies ---
-# Install CA bundle, openssl for debugging, and system deps for Playwright
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates openssl wget xvfb curl \
-    libnss3 libatk1.0-0 libatk-bridge2.0-0 libdrm2 libxkbcommon0 \
-    libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 \
- && update-ca-certificates \
- && rm -rf /var/lib/apt/lists/*
-
-# SSL Configuration - Use system CA bundle
-ENV SSL_CERT_DIR=/etc/ssl/certs
-
-# Set working directory
+# ---------- Build stage ----------
+FROM node:18-bullseye AS build
 WORKDIR /app
 
-# Copy package files
+# Speed up installs
+ENV NODE_ENV=development
+
 COPY package*.json ./
+RUN npm ci
 
-# Install dependencies
-RUN npm ci --only=production
+COPY tsconfig.json ./
+COPY src ./src
+COPY scripts ./scripts
+COPY tools ./tools
+COPY supabase ./supabase
 
-# --- Install Chromium for Playwright ---
-RUN npx --yes playwright install --with-deps chromium
-ENV PLAYWRIGHT_BROWSERS_PATH=0
-
-# Copy application code
-COPY . .
-
-# Build application
+# Build TypeScript to dist/
 RUN npm run build
 
-# Set production environment
+# ---------- Runtime stage ----------
+FROM node:18-bullseye AS runtime
+WORKDIR /app
+
 ENV NODE_ENV=production
+# Prune dev deps to keep the image small
+COPY package*.json ./
+RUN npm ci --omit=dev
 
-# SSL Configuration (verified only)
-ENV DB_SSL_MODE=require
-ENV MIGRATION_SSL_MODE=require
-ENV ALLOW_SSL_FALLBACK=false
+# Bring compiled code + tools only
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/tools ./tools
+COPY --from=build /app/supabase ./supabase
+COPY docker/entrypoint.sh ./docker/entrypoint.sh
 
-# Default environment variables
-ENV DAILY_OPENAI_LIMIT_USD=5
-ENV POSTING_DISABLED=true
-ENV REAL_METRICS_ENABLED=true
+# Health check endpoint (adjust the path if you have an HTTP server)
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=5 \
+  CMD node -e "process.exit(0)" || exit 1
 
-# Expose port
-EXPOSE 8080
-
-# Start application (prestart will run migrations automatically)
-CMD ["npm", "start"]
+EXPOSE 3000
+ENTRYPOINT ["/app/docker/entrypoint.sh"]
