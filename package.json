@@ -8,7 +8,7 @@
     "start": "node dist/main-bulletproof.js",
     "start:bulletproof": "node dist/main-bulletproof.js",
     "postinstall": "npx playwright install chromium --with-deps || true",
-    "build": "tools/env/run-with-env.sh \"tsc --noEmitOnError false -p tsconfig.json\"",
+    "build": "node ./node_modules/typescript/bin/tsc -p tsconfig.json",
     "build-clean": "rm -rf dist && npm run build",
     "logs": "node bulletproof_railway_monitor.js",
     "diagnostics": "node scripts/diagnostics.js",
@@ -187,13 +187,13 @@
     "redis": "^4.7.1",
     "socket.io": "^4.7.4",
     "twitter-api-v2": "^1.17.2",
-    "typescript": "^5.5.4",
     "winston": "^3.14.2",
     "ws": "^8.18.3",
     "xml2js": "^0.6.2",
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "typescript": "^5.4.0",
     "@types/cheerio": "^0.22.35",
     "@types/cors": "^2.8.17",
     "@types/cron": "^2.4.0",
