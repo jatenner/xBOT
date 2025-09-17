@@ -285,6 +285,10 @@ app.use((req, res) => {
 /**
  * Start the health server
  */
+export function start(port?: number): Promise<void> {
+  return startHealthServer();
+}
+
 export function startHealthServer(): Promise<void> {
   return new Promise((resolve, reject) => {
     try {

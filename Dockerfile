@@ -53,4 +53,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=5 \
   CMD node -e "process.exit(0)" || exit 1
 
 EXPOSE 3000
-ENTRYPOINT ["/app/docker/entrypoint.sh"]
+CMD ["node", "dist/main-bulletproof.js"]
