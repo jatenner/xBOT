@@ -3,16 +3,14 @@
  * Handles TLS settings based on DATABASE_URL sslmode parameter
  */
 
-export function getPgSSL(): { rejectUnauthorized: false } | undefined {
-  const databaseUrl = process.env.DATABASE_URL;
-  
-  if (!databaseUrl) {
+export function getPgSSL(dbUrl: string): { rejectUnauthorized: false; require: true } | undefined {
+  if (!dbUrl) {
     return undefined;
   }
 
   // Check if sslmode=require is present in the connection string
-  if (databaseUrl.includes('sslmode=require')) {
-    return { rejectUnauthorized: false };
+  if (dbUrl.includes('sslmode=require')) {
+    return { rejectUnauthorized: false, require: true };
   }
 
   return undefined;
@@ -23,7 +21,7 @@ export function getPgSSL(): { rejectUnauthorized: false } | undefined {
  */
 export function logSafeConnectionInfo(connectionString?: string): void {
   if (!connectionString) {
-    console.log('DB connect → no connection string provided');
+    console.log('DB connect -> no connection string provided');
     return;
   }
 
@@ -31,10 +29,10 @@ export function logSafeConnectionInfo(connectionString?: string): void {
     const url = new URL(connectionString);
     const host = url.hostname;
     const port = url.port || '5432';
-    const ssl = connectionString.includes('sslmode=require') ? 'no-verify' : 'verify';
+    const ssl = connectionString.includes('sslmode=require') ? 'no-verify' : 'off';
     
-    console.log(`DB connect → host=${host} port=${port} ssl=${ssl}`);
+    console.log(`DB connect -> host=${host} port=${port} ssl=${ssl}`);
   } catch (error) {
-    console.log('DB connect → invalid connection string format');
+    console.log('DB connect -> invalid connection string format');
   }
 }

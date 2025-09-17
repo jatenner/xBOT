@@ -1,42 +1,17 @@
-#!/usr/bin/env ts-node
-
 import { Client } from 'pg';
 import { readFileSync, readdirSync, existsSync } from 'fs';
 import { join } from 'path';
+import { getPgSSL, logSafeConnectionInfo } from './pgSSL';
 
-// Import SSL helper
-function getPgSSL(dbUrl: string): { rejectUnauthorized: false; require: true } | undefined {
-  if (!dbUrl) {
-    return undefined;
-  }
-  if (dbUrl.includes('sslmode=require')) {
-    return { rejectUnauthorized: false, require: true };
-  }
-  return undefined;
-}
-
-function logSafeConnectionInfo(connectionString?: string): void {
-  if (!connectionString) {
-    console.log('DB connect -> no connection string provided');
-    return;
-  }
-  try {
-    const url = new URL(connectionString);
-    const host = url.hostname;
-    const port = url.port || '5432';
-    const ssl = connectionString.includes('sslmode=require') ? 'no-verify' : 'off';
-    console.log(`DB connect -> host=${host} port=${port} ssl=${ssl}`);
-  } catch (error) {
-    console.log('DB connect -> invalid connection string format');
-  }
-}
-
-async function runMigrations() {
+/**
+ * Run migrations - shared implementation for both runtime and CLI
+ */
+export async function runMigrations(): Promise<void> {
   const enabled = process.env.MIGRATIONS_RUNTIME_ENABLED === 'true';
   
   if (!enabled) {
     console.log('runtime migrations disabled');
-    process.exit(0);
+    return;
   }
 
   const DATABASE_URL = process.env.DATABASE_URL;
@@ -49,14 +24,14 @@ async function runMigrations() {
   
   if (!existsSync(migrationsDir)) {
     console.log('ℹ️  No migrations directory found');
-    process.exit(0);
+    return;
   }
 
   const files = readdirSync(migrationsDir).filter(f => f.endsWith('.sql')).sort();
   
   if (files.length === 0) {
     console.log('ℹ️  No migration files found');
-    process.exit(0);
+    return;
   }
 
   console.log(`🗃️  Found ${files.length} migration files`);
@@ -101,12 +76,3 @@ async function runMigrations() {
   await client.end();
   console.log('✅ All migrations applied');
 }
-
-if (require.main === module) {
-  runMigrations().catch(error => {
-    console.error('💥 Migration failed:', error.message);
-    process.exit(1);
-  });
-}
-
-export { runMigrations };

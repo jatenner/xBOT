@@ -4,7 +4,7 @@
  */
 
 import { Pool, Client, ClientConfig } from 'pg';
-import { getPgSSL, logSafeConnectionInfo } from './pgSSL';
+import { makePgPool } from './pgClient';
 
 // Environment detection
 const isProd = process.env.APP_ENV === 'production' || process.env.NODE_ENV === 'production';
@@ -18,15 +18,8 @@ if (!DATABASE_URL) {
  * Build PostgreSQL configuration with centralized SSL handling
  */
 function buildPgConfig(connectionString: string): ClientConfig {
-  // Use centralized SSL configuration
-  const sslConfig = getPgSSL();
-  
-  // Log safe connection info
-  logSafeConnectionInfo(connectionString);
-
   return {
     connectionString,
-    ssl: sslConfig,
     // Query timeout
     query_timeout: 30000,
     // Statement timeout
@@ -37,13 +30,7 @@ function buildPgConfig(connectionString: string): ClientConfig {
 /**
  * Singleton connection pool for application use
  */
-export const pool = new Pool({
-  ...buildPgConfig(DATABASE_URL),
-  // Pool-specific settings
-  max: 10,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000
-});
+export const pool = makePgPool();
 
 // Pool event handlers
 pool.on('connect', (client) => {

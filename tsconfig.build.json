@@ -38,6 +38,8 @@
     "src/replies/targetDiscovery.ts",
     "src/llm/openaiClient.ts",
     "src/db/pgSSL.ts",
+    "src/db/pgClient.ts",
+    "src/db/migrate.ts",
     "src/db/runtimeMigrations.ts",
     "src/db/client.ts"
   ],
