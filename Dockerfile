@@ -2,6 +2,9 @@
 FROM node:18-bullseye AS build
 WORKDIR /app
 
+# Install CA certificates for TLS
+RUN apt-get update && apt-get install -y ca-certificates && update-ca-certificates && rm -rf /var/lib/apt/lists/*
+
 # Force devDependencies installation even if Railway sets production flags
 ENV NODE_ENV=development
 ENV NPM_CONFIG_PRODUCTION=false
@@ -9,6 +12,9 @@ ENV CI=true
 
 COPY package*.json ./
 RUN npm ci --include=dev
+
+# Sanity check TypeScript is available
+RUN npx tsc -v
 
 COPY tsconfig.json ./
 COPY tsconfig.build.json ./
@@ -24,6 +30,9 @@ RUN npm run build
 # -------- Runtime stage: slim prod image --------
 FROM node:18-bullseye AS runtime
 WORKDIR /app
+
+# Install CA certificates for TLS in runtime stage
+RUN apt-get update && apt-get install -y ca-certificates && update-ca-certificates && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production
 # Only production deps in runtime

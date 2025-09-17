@@ -20,10 +20,11 @@ This bot now features a **bulletproof posting system** with quality gates, threa
 
 ### SSL Configuration
 
-The system automatically handles PostgreSQL SSL connections using centralized logic:
+The system automatically handles PostgreSQL SSL connections with TLS hardening:
 
+- **CA Certificates:** Docker images include `ca-certificates` in both build and runtime stages to prevent TLS errors
 - **Why no-verify:** Supabase connection pooler uses SSL but with certificates that don't verify against standard CA chains
-- **Automatic detection:** If `DATABASE_URL` contains `?sslmode=require`, SSL is configured with `rejectUnauthorized: false`
+- **Automatic detection:** If `DATABASE_URL` contains `?sslmode=require`, SSL is configured with `{ rejectUnauthorized: false, require: true }`
 - **Security:** Only used for Supabase pooler connections; regular PostgreSQL servers use standard SSL verification
 
 ### Migrations
@@ -42,14 +43,17 @@ Set `MIGRATIONS_RUNTIME_ENABLED="true"` to run migrations automatically at boot.
 **Default behavior:** `MIGRATIONS_RUNTIME_ENABLED="false"` (prevents crash loops)
 
 ```bash
-# If runtime migrations fail, logs show:
+# Expected logs:
+# DB connect -> host=aws-0-us-east-1.pooler.supabase.com port=6543 ssl=no-verify
 # runtime migrations disabled
 # OR
 # → Applying 001_initial.sql ... OK
-# ✅ Runtime migrations completed
+# ✅ All migrations applied
 ```
 
 ⚠️ **Production Safety:** Keep `MIGRATIONS_RUNTIME_ENABLED="false"` to avoid boot-time failures. Run `npm run db:migrate` in CI/CD or manually.
+
+**TLS Retry Logic:** If connection fails with "self-signed certificate" error, the migrator retries once with the same SSL options before failing.
 
 ## 🚀 Quick Start
 
