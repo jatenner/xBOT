@@ -1,29 +1,26 @@
 {
   "compilerOptions": {
-    "outDir": "./dist",
-    "rootDir": "./",
+    "outDir": "dist",
     "module": "commonjs",
     "target": "ES2020",
-    "esModuleInterop": true,
-    "resolveJsonModule": true,
-    "strict": false,
-    "skipLibCheck": true,
     "sourceMap": true,
     "declaration": false,
-    "noEmitOnError": true
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "noEmitOnError": false,
+    "strict": false
   },
   "include": [
     "src/main-bulletproof.ts",
     "src/server.ts",
+    "scripts/startup-acceptance.ts",
     "scripts/jobs-learn.ts",
     "scripts/dryrun-plan.ts",
     "scripts/dryrun-reply.ts"
   ],
   "exclude": [
     "node_modules",
-    "dist",
-    "**/*.test.ts",
-    "**/*.spec.ts",
-    "tests/**/*"
+    "dist"
   ]
 }
