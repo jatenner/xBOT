@@ -8,10 +8,10 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "start": "node dist/main-bulletproof.js",
+    "start": "node tools/start.js",
     "start:accept": "node dist/scripts/startup-acceptance.js",
-    "jobs:learn:js": "node dist/scripts/jobs-learn.js",
-    "dryrun:plan:js": "node dist/scripts/dryrun-plan.js 2",
+    "jobs:learn": "node dist/scripts/jobs-learn.js",
+    "dryrun:plan:js": "node dist/scripts/dryrun-plan.js",
     "dryrun:reply:js": "node dist/scripts/dryrun-reply.js",
     "logs": "node bulletproof_railway_monitor.js",
     "prestart": "node scripts/migrate.js",
