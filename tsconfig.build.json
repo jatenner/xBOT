@@ -9,13 +9,14 @@
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "noEmitOnError": false,
-    "strict": false
+    "strict": false,
+    "rootDir": "."
   },
   "include": [
     "src/main-bulletproof.ts",
     "src/server.ts",
     "scripts/startup-acceptance.ts",
-    "scripts/jobs-learn.ts",
+    "scripts/jobs-learn.ts", 
     "scripts/dryrun-plan.ts",
     "scripts/dryrun-reply.ts"
   ],
