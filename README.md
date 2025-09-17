@@ -20,40 +20,47 @@ This bot now features a **bulletproof posting system** with quality gates, threa
 
 ### SSL Configuration
 
-The system automatically handles PostgreSQL SSL connections with TLS hardening:
+The system uses **canonical TLS hardening** for all database connections:
 
 - **CA Certificates:** Docker images include `ca-certificates` in both build and runtime stages to prevent TLS errors
-- **Why no-verify:** Supabase connection pooler uses SSL but with certificates that don't verify against standard CA chains
-- **Automatic detection:** If `DATABASE_URL` contains `?sslmode=require`, SSL is configured with `{ rejectUnauthorized: false, require: true }`
-- **Security:** Only used for Supabase pooler connections; regular PostgreSQL servers use standard SSL verification
+- **Canonical SSL:** All PostgreSQL clients use `src/db/pgClient.ts` with centralized SSL configuration
+- **Supabase Pooler:** If `DATABASE_URL` contains `?sslmode=require`, SSL is configured with `{ require: true, rejectUnauthorized: false }`
+- **Single Source:** All database code paths use the same SSL options via `makePgPool()`
 
 ### Migrations
 
-Two migration modes are supported:
+**CANONICAL MIGRATION RUNNER:** Only `tools/db/migrate.js` applies migrations.
 
 #### Manual Migrations (Recommended for Production)
 ```bash
-# Run migrations manually before deploy
+# Test database connection
+npm run db:ping
+
+# Run migrations manually
 npm run db:migrate
 ```
 
-#### Runtime Migrations (Optional)
+#### Runtime Migrations (Disabled by Default)
 Set `MIGRATIONS_RUNTIME_ENABLED="true"` to run migrations automatically at boot.
 
 **Default behavior:** `MIGRATIONS_RUNTIME_ENABLED="false"` (prevents crash loops)
 
 ```bash
-# Expected logs:
-# DB connect -> host=aws-0-us-east-1.pooler.supabase.com port=6543 ssl=no-verify
-# runtime migrations disabled
-# OR
-# → Applying 001_initial.sql ... OK
-# ✅ All migrations applied
+# Expected logs with MIGRATIONS_RUNTIME_ENABLED="false":
+runtime migrations disabled
+
+# Expected logs with manual migration run:
+Found 3 migration files
+DB connect -> host=aws-0-us-east-1.pooler.supabase.com port=6543 ssl=no-verify
+→ Applying 001_initial.sql ... OK
+→ Applying 002_features.sql ... OK
+→ Applying 003_learning.sql ... OK
+✅ All migrations applied
 ```
 
-⚠️ **Production Safety:** Keep `MIGRATIONS_RUNTIME_ENABLED="false"` to avoid boot-time failures. Run `npm run db:migrate` in CI/CD or manually.
+⚠️ **Production Safety:** Keep `MIGRATIONS_RUNTIME_ENABLED="false"` to avoid boot-time failures. Use `npm run db:migrate` in CI/CD or manually.
 
-**TLS Retry Logic:** If connection fails with "self-signed certificate" error, the migrator retries once with the same SSL options before failing.
+**One Migration Entry Point:** All other migration runners are neutralized to prevent conflicts.
 
 ## 🚀 Quick Start
 

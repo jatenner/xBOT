@@ -314,19 +314,19 @@ export class MigrationRunner {
   }
 }
 
-// Auto-run on import (checks DATABASE_URL first, then builds from env)
-if (process.env.NODE_ENV === 'production' || process.env.RUN_MIGRATIONS === 'true') {
-  const runner = new MigrationRunner();
-  runner.run().then(() => {
-    console.log('✅ STARTUP_MIGRATIONS: All migrations completed successfully');
-  }).catch(error => {
-    console.error('❌ STARTUP_MIGRATIONS_FAILED:', error.message);
-    console.error('💡 Check DATABASE_URL or SUPABASE_DB_PASSWORD + PROJECT_REF variables');
-    // Don't exit in development, but do in production
-    if (process.env.NODE_ENV === 'production') {
-      process.exit(1);
-    }
-  });
-}
+// NEUTRALIZED: Auto-run disabled - use tools/db/migrate.js instead
+// if (process.env.NODE_ENV === 'production' || process.env.RUN_MIGRATIONS === 'true') {
+//   const runner = new MigrationRunner();
+//   runner.run().then(() => {
+//     console.log('✅ STARTUP_MIGRATIONS: All migrations completed successfully');
+//   }).catch(error => {
+//     console.error('❌ STARTUP_MIGRATIONS_FAILED:', error.message);
+//     console.error('💡 Check DATABASE_URL or SUPABASE_DB_PASSWORD + PROJECT_REF variables');
+//     // Don't exit in development, but do in production
+//     if (process.env.NODE_ENV === 'production') {
+//       process.exit(1);
+//     }
+//   });
+// }
 
 export default MigrationRunner;

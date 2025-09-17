@@ -1,31 +1,10 @@
 /**
- * Production-grade PostgreSQL client with verified SSL
- * Connects to Supabase Transaction Pooler with system CA certificates
+ * CANONICAL PostgreSQL client - delegates to pgClient.ts
+ * All database connections use the same SSL configuration
  */
 
 import { Pool, Client, ClientConfig } from 'pg';
-import { makePgPool } from './pgClient';
-
-// Environment detection
-const isProd = process.env.APP_ENV === 'production' || process.env.NODE_ENV === 'production';
-const DATABASE_URL = process.env.DATABASE_URL;
-
-if (!DATABASE_URL) {
-  throw new Error('DATABASE_URL environment variable is required');
-}
-
-/**
- * Build PostgreSQL configuration with centralized SSL handling
- */
-function buildPgConfig(connectionString: string): ClientConfig {
-  return {
-    connectionString,
-    // Query timeout
-    query_timeout: 30000,
-    // Statement timeout
-    statement_timeout: 30000
-  };
-}
+import { makePgPool, closePgPool } from './pgClient';
 
 /**
  * Singleton connection pool for application use
@@ -46,38 +25,13 @@ pool.on('remove', (client) => {
 });
 
 /**
- * Create a fresh client for one-time operations (like migrations)
- * Always creates a new client to avoid "already connected" errors
- */
-export function createFreshClient(): Client {
-  return new Client(buildPgConfig(DATABASE_URL));
-}
-
-/**
- * Execute a function with a fresh client (auto-cleanup)
- */
-export async function withFreshClient<T>(fn: (client: Client) => Promise<T>): Promise<T> {
-  const client = createFreshClient();
-  try {
-    await client.connect();
-    return await fn(client);
-  } finally {
-    try {
-      await client.end();
-    } catch (error) {
-      console.warn('DB_CLIENT: Error closing client:', error);
-    }
-  }
-}
-
-/**
  * Test database connectivity
  */
 export async function testConnection(): Promise<{ success: boolean; error?: string }> {
   try {
-    await withFreshClient(async (client) => {
-      await client.query('SELECT 1');
-    });
+    const client = await pool.connect();
+    await client.query('SELECT 1');
+    client.release();
     return { success: true };
   } catch (error: any) {
     return { 
@@ -91,12 +45,7 @@ export async function testConnection(): Promise<{ success: boolean; error?: stri
  * Graceful shutdown
  */
 export async function closePool(): Promise<void> {
-  try {
-    await pool.end();
-    console.log('DB_POOL: Connection pool closed');
-  } catch (error) {
-    console.error('DB_POOL: Error closing pool:', error);
-  }
+  await closePgPool();
 }
 
 // Graceful shutdown handlers

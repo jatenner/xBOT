@@ -3,14 +3,14 @@
  * Handles TLS settings based on DATABASE_URL sslmode parameter
  */
 
-export function getPgSSL(dbUrl: string): { rejectUnauthorized: false; require: true } | undefined {
+export function getPgSSL(dbUrl: string): { require: true; rejectUnauthorized: false } | undefined {
   if (!dbUrl) {
     return undefined;
   }
 
   // Check if sslmode=require is present in the connection string
   if (dbUrl.includes('sslmode=require')) {
-    return { rejectUnauthorized: false, require: true };
+    return { require: true, rejectUnauthorized: false };
   }
 
   return undefined;
