@@ -23,7 +23,8 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
 COPY --from=builder /app/dist ./dist
+COPY tools/start.js ./tools/start.js
 
 # Health & start
 EXPOSE 8080
-CMD ["node","dist/main-bulletproof.js"]
+CMD ["node","tools/start.js"]
