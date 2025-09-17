@@ -2,7 +2,7 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "outDir": "./dist",
-    "rootDir": "./src",
+    "rootDir": "./",
     "sourceMap": true,
     "declaration": false,
     "noEmitOnError": false,
@@ -40,7 +40,10 @@
     "src/db/pgSSL.ts",
     "src/db/pgClient.ts",
     "src/db/runtimeMigrations.ts",
-    "src/db/client.ts"
+    "src/db/client.ts",
+    "scripts/jobs-learn.ts",
+    "scripts/dryrun-plan.ts",
+    "scripts/dryrun-reply.ts"
   ],
   "exclude": [
     "node_modules",
