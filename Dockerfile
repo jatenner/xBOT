@@ -1,56 +1,35 @@
-# -------- Build stage: install dev deps & compile TS --------
-FROM node:18-bullseye AS build
+# ---- Builder ----
+FROM node:18-bullseye AS builder
 WORKDIR /app
 
-# Install CA certificates for TLS
-RUN apt-get update && apt-get install -y ca-certificates && update-ca-certificates && rm -rf /var/lib/apt/lists/*
+# Ensure npm version is stable with our lock
+RUN npm i -g npm@10.8.2
 
-# Force devDependencies installation even if Railway sets production flags
-ENV NODE_ENV=development
-ENV NPM_CONFIG_PRODUCTION=false
-ENV CI=true
+COPY package.json package-lock.json ./
+RUN npm ci
 
-COPY package*.json ./
-RUN npm ci --include=dev
-
-# Sanity check TypeScript is available
-RUN npx tsc -v
-
-COPY tsconfig.json ./
-COPY tsconfig.build.json ./
+COPY tsconfig.json tsconfig.build.json ./
 COPY src ./src
 COPY scripts ./scripts
-COPY tools ./tools
-COPY supabase ./supabase
-COPY docker ./docker
 
-# Compile TypeScript -> dist/ (production runtime only)
+# Build Typescript (no JSX/Next)
 RUN npm run build
 
-# -------- Runtime stage: slim prod image --------
+# Prune to prod-only deps AFTER build
+RUN npm prune --omit=dev
+
+# ---- Runtime ----
 FROM node:18-bullseye AS runtime
 WORKDIR /app
 
-# Install CA certificates for TLS in runtime stage
-RUN apt-get update && apt-get install -y ca-certificates && update-ca-certificates && rm -rf /var/lib/apt/lists/*
-
 ENV NODE_ENV=production
-# Only production deps in runtime (no ts-node)
-COPY package*.json ./
-RUN npm ci --omit=dev
+ENV PORT=8080
 
-# Bring compiled output + needed tools/migrations
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/tools ./tools
-COPY --from=build /app/supabase ./supabase
-COPY --from=build /app/docker/entrypoint.sh ./docker/entrypoint.sh
+# Only copy what we need
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/dist ./dist
 
-# Ensure entrypoint is executable
-RUN chmod +x ./docker/entrypoint.sh
-
-# Healthcheck (adjust if you expose HTTP)
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=5 \
-  CMD node -e "process.exit(0)" || exit 1
-
-EXPOSE 3000
-CMD ["node", "dist/main-bulletproof.js"]
+# Health & start
+EXPOSE 8080
+CMD ["node","dist/main-bulletproof.js"]
