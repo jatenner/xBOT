@@ -35,7 +35,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y ca-certificates && update-ca-certificates && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production
-# Only production deps in runtime
+# Only production deps in runtime (no ts-node)
 COPY package*.json ./
 RUN npm ci --omit=dev
 

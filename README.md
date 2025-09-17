@@ -62,6 +62,30 @@ DB connect -> host=aws-0-us-east-1.pooler.supabase.com port=6543 ssl=no-verify
 
 **One Migration Entry Point:** All other migration runners are neutralized to prevent conflicts.
 
+### Startup Acceptance Smoke
+
+Production boot includes optional acceptance smoke tests:
+
+- **Default:** `STARTUP_ACCEPTANCE_ENABLED="false"` (disabled for fast boot)
+- **When enabled:** Scripts are compiled to `dist/scripts` and run with `node` (no ts-node)
+- **Non-blocking:** Test failures are logged but don't prevent app startup
+- **Scripts tested:** `jobs-learn.js`, `dryrun-plan.js`, `dryrun-reply.js`
+
+```bash
+# Enable acceptance smoke at boot (optional)
+STARTUP_ACCEPTANCE_ENABLED="true"
+
+# Expected logs when disabled:
+🧪 Acceptance smoke: skipped (STARTUP_ACCEPTANCE_ENABLED=false)
+
+# Expected logs when enabled:
+🧪 Running acceptance smoke (posting OFF)...
+→ Testing learning job...
+→ Testing plan dryrun...
+→ Testing reply dryrun...
+✅ Acceptance smoke completed (failures are non-blocking)
+```
+
 ## 🚀 Quick Start
 
 ### Development
