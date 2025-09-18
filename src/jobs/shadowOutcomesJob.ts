@@ -123,8 +123,27 @@ async function simulateEngagementMetrics(decisions: any[]): Promise<any[]> {
 async function storeSimulatedOutcomes(outcomes: any[]): Promise<void> {
   console.log('[SHADOW_OUTCOMES] 💾 Storing simulated outcomes in database...');
   
-  // TODO: Implement database storage
-  // This would store outcomes in tweets/tweet_analytics tables with simulated=true flag
+  // Store simulated outcomes in unified outcomes table
+  const { storeUnifiedOutcome } = await import('./outcomeWriter');
+  
+  for (let i = 0; i < outcomes.length; i++) {
+    const outcome = outcomes[i];
+    
+    await storeUnifiedOutcome({
+      decision_id: `decision_${i + 1}`, // In real system, would use actual decision IDs from unified_ai_intelligence
+      tweet_id: undefined, // No real tweet for shadow mode
+      impressions: outcome.impressions,
+      likes: outcome.likes,
+      retweets: outcome.retweets,
+      replies: outcome.replies,
+      bookmarks: Math.floor(outcome.likes * 0.1), // Estimate bookmarks
+      er_calculated: outcome.er,
+      followers_delta_24h: Math.floor(outcome.likes * 0.02), // Estimate follower gain
+      viral_score: outcome.er > 0.04 ? 85 : outcome.er > 0.03 ? 65 : 45,
+      simulated: true, // Mark as simulated data
+      collected_at: new Date()
+    });
+  }
   
   console.log(`[SHADOW_OUTCOMES] 📝 Stored ${outcomes.length} simulated outcomes`);
   

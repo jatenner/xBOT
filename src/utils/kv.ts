@@ -246,3 +246,18 @@ export async function closeKVStore(): Promise<void> {
     kvStore = null;
   }
 }
+
+/**
+ * JSON convenience methods for model coefficients
+ */
+export async function setKV(key: string, value: string, ttlSeconds?: number): Promise<void> {
+  await getKVStore().set(key, value, ttlSeconds);
+}
+
+export async function getKV(key: string): Promise<string | null> {
+  return await getKVStore().get(key);
+}
+
+export async function deleteKV(key: string): Promise<void> {
+  await getKVStore().del(key);
+}

@@ -333,6 +333,39 @@ export class PostingOrchestrator {
 
         console.log(`✅ ${currentPhase}: Quality validation passed (${qualityResult.score}/100)`);
 
+        // Phase 3.5: Pre-Post Gate Chain Validation
+        console.log(`📍 Running pre-post gate chain validation...`);
+        
+        try {
+          const { prePostValidation } = await import('./gateChain');
+          const gateResult = await prePostValidation(
+            normalizedContent.tweets ? normalizedContent.tweets[0] : normalizedContent.content || '',
+            {
+              decision_id: `decision_${Date.now()}`, // Would use real decision ID in production
+              topic_cluster: request.topic || 'general',
+              content_type: chosenFormat,
+              quality_score: qualityResult.score / 100 // Convert to 0-1 scale
+            }
+          );
+
+          if (!gateResult.passed) {
+            console.log(`❌ Gate chain failed: ${gateResult.reason} (gate: ${gateResult.gate})`);
+            await CadenceGuard.markPostFailure(`Gate validation failed: ${gateResult.reason}`);
+            
+            return {
+              success: false,
+              phase: currentPhase,
+              error: `Content gate failed: ${gateResult.reason}`,
+              attempts: contentResult.attempts
+            };
+          }
+
+          console.log(`✅ Gate chain passed: all validation gates successful`);
+        } catch (gateError) {
+          console.warn(`⚠️ Gate chain error (continuing): ${gateError.message}`);
+          // Continue posting if gate chain fails (fail open for safety)
+        }
+
         // Phase 4: Sanitize and Post
         currentPhase = PostingPhase.POST;
         console.log(`📍 ${currentPhase}: Sanitizing content and posting to X`);

@@ -119,13 +119,13 @@ export async function adminJobRunHandler(req: Request, res: Response): Promise<v
     if (!name || typeof name !== 'string') {
       res.status(400).json({
         success: false,
-        error: 'Job name required. Valid options: plan, reply, outcomes, learn',
+        error: 'Job name required. Valid options: plan, reply, outcomes, realOutcomes, analyticsCollector, learn',
         timestamp: new Date().toISOString()
       });
       return;
     }
 
-    const validJobs = ['plan', 'reply', 'outcomes', 'learn'];
+    const validJobs = ['plan', 'reply', 'outcomes', 'realOutcomes', 'analyticsCollector', 'learn'];
     if (!validJobs.includes(name)) {
       res.status(400).json({
         success: false,
@@ -150,7 +150,7 @@ export async function adminJobRunHandler(req: Request, res: Response): Promise<v
     console.log(`[ADMIN_JOBS] 🚀 Manual trigger: ${name} job`);
     
     const jobManager = JobManager.getInstance();
-    await jobManager.runJobNow(name as 'plan' | 'reply' | 'outcomes' | 'learn');
+    await jobManager.runJobNow(name as 'plan' | 'reply' | 'outcomes' | 'realOutcomes' | 'analyticsCollector' | 'learn');
 
     res.json({
       success: true,

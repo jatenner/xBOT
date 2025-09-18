@@ -102,6 +102,20 @@ async function boot() {
     console.log(`⚠️ STARTUP_GATES: Error during gates: ${error.message} (continuing...)`);
   }
   
+  // Load latest predictor model
+  try {
+    console.log('🤖 Loading latest predictor model...');
+    const { loadLatestCoefficients } = await import('./jobs/predictorTrainer');
+    const coeffs = await loadLatestCoefficients();
+    if (coeffs) {
+      console.log(`✅ Loaded predictor ${coeffs.version} (R²=${coeffs.ridge.rSquared.toFixed(3)})`);
+    } else {
+      console.log('ℹ️ No persisted predictor found, will use defaults');
+    }
+  } catch (error) {
+    console.log('⚠️ Predictor loading failed:', error.message);
+  }
+
   // Initialize job manager
   const jobManager = JobManager.getInstance();
   try {

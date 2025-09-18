@@ -23,7 +23,7 @@ export async function runAcceptanceTest(): Promise<void> {
     
     if (config.MODE === 'shadow') {
       console.log('🧪 [2/3] Running shadowOutcomes job...');
-      await jobManager.runJobNow('shadowOutcomes');
+      await jobManager.runJobNow('outcomes');
     }
     
     console.log('🧪 [3/3] Running learn job...');

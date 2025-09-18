@@ -14,11 +14,9 @@ export interface SystemMetrics {
   // Job counts
   plans: number;
   replies: number;
-  outcomesWritten: number;
   learnRuns: number;
   
   // AI usage
-  openaiCalls: number;
   openaiCostUsd: number;
   
   // Learning stats
@@ -31,6 +29,10 @@ export interface SystemMetrics {
   mockCompletions: number;
   mockEmbeddings: number;
   uniqueBlocksCount: number;
+  outcomesWritten: number;
+  openaiCalls: number;
+  qualityBlocksCount: number;
+  rotationBlocksCount: number;
   
   // Growth metrics
   followsPer1kImpressions: number; // F/1k
@@ -45,9 +47,7 @@ export interface SystemMetrics {
 const metricsStore = {
   plans: 0,
   replies: 0,
-  outcomesWritten: 0,
   learnRuns: 0,
-  openaiCalls: 0,
   openaiCostUsd: 0,
   banditArmsUpdated: 0,
   predictorStatus: 'none' as 'none' | 'v1' | 'v2',
@@ -56,6 +56,10 @@ const metricsStore = {
   mockCompletions: 0,
   mockEmbeddings: 0,
   uniqueBlocksCount: 0,
+  outcomesWritten: 0,
+  openaiCalls: 0,
+  qualityBlocksCount: 0,
+  rotationBlocksCount: 0,
   followsPer1kImpressions: 0,
   nonFollowerER: 0,
   errors: 0,
@@ -96,6 +100,8 @@ export function metricsHandler(req: Request, res: Response): void {
       mockCompletions: metricsStore.mockCompletions,
       mockEmbeddings: metricsStore.mockEmbeddings,
       uniqueBlocksCount: metricsStore.uniqueBlocksCount,
+      qualityBlocksCount: metricsStore.qualityBlocksCount,
+      rotationBlocksCount: metricsStore.rotationBlocksCount,
       
       // Growth metrics
       followsPer1kImpressions: metricsStore.followsPer1kImpressions,
@@ -154,11 +160,19 @@ export function updateMockMetrics(mockMetrics: {
   mockCompletions?: number;
   mockEmbeddings?: number;
   uniqueBlocksCount?: number;
+  outcomesWritten?: number;
+  openaiCalls?: number;
+  qualityBlocksCount?: number;
+  rotationBlocksCount?: number;
 }): void {
   if (mockMetrics.llmBlocked !== undefined) metricsStore.llmBlocked += mockMetrics.llmBlocked;
   if (mockMetrics.mockCompletions !== undefined) metricsStore.mockCompletions += mockMetrics.mockCompletions;
   if (mockMetrics.mockEmbeddings !== undefined) metricsStore.mockEmbeddings += mockMetrics.mockEmbeddings;
   if (mockMetrics.uniqueBlocksCount !== undefined) metricsStore.uniqueBlocksCount += mockMetrics.uniqueBlocksCount;
+  if (mockMetrics.outcomesWritten !== undefined) metricsStore.outcomesWritten += mockMetrics.outcomesWritten;
+  if (mockMetrics.openaiCalls !== undefined) metricsStore.openaiCalls += mockMetrics.openaiCalls;
+  if (mockMetrics.qualityBlocksCount !== undefined) metricsStore.qualityBlocksCount += mockMetrics.qualityBlocksCount;
+  if (mockMetrics.rotationBlocksCount !== undefined) metricsStore.rotationBlocksCount += mockMetrics.rotationBlocksCount;
 }
 
 /**
@@ -188,6 +202,8 @@ export function getCurrentMetrics(): SystemMetrics {
     mockCompletions: metricsStore.mockCompletions,
     mockEmbeddings: metricsStore.mockEmbeddings,
     uniqueBlocksCount: metricsStore.uniqueBlocksCount,
+    qualityBlocksCount: metricsStore.qualityBlocksCount,
+    rotationBlocksCount: metricsStore.rotationBlocksCount,
     followsPer1kImpressions: metricsStore.followsPer1kImpressions,
     nonFollowerER: metricsStore.nonFollowerER,
     errors: jobStats.errors + metricsStore.errors,
