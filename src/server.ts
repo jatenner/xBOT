@@ -11,6 +11,7 @@ import { learnStatusHandler } from './api/learnStatus';
 import { configHandler } from './api/configEndpoint';
 import { auditProfileHandler } from './api/auditProfile';
 import { requireAdminAuth, adminJobsHandler, adminJobRunHandler } from './api/adminJobs';
+import { jobScheduleHandler } from './api/adminJobSchedule';
 
 const app = express();
 
@@ -73,6 +74,7 @@ app.get('/audit/profile', auditProfileHandler);
  */
 app.get('/admin/jobs', requireAdminAuth, adminJobsHandler);
 app.post('/admin/jobs/run', requireAdminAuth, adminJobRunHandler);
+app.get('/admin/jobs/schedule', requireAdminAuth, jobScheduleHandler);
 
 /**
  * Health and readiness check

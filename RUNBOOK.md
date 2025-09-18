@@ -1,202 +1,277 @@
-# xBOT Database & Content Quality Implementation
+# 🚀 **xBOT Shadow→Live Pilot Runbook**
 
-## Prerequisites
+## **📋 Prerequisites**
 
-- Node.js 18+ environment
-- Access to Supabase project (URL and service role key)
-- Railway deployment environment
-- Redis instance (for posting locks)
+### **Environment Variables (Production)**
+```bash
+# Core
+MODE=shadow|live                    # CRITICAL: Controls real vs synthetic
+NODE_ENV=production
+PORT=8080
+DATABASE_URL=postgresql://...?sslmode=require
+REDIS_URL=redis://...
 
-## Implementation Steps
+# OpenAI (only used when MODE=live)  
+OPENAI_API_KEY=sk-...              # Required for embeddings & quality gates
 
-### 1. Install Dependencies (if new deps added)
+# Twitter (for analytics collection)
+TWITTER_SESSION_B64=...            # Base64 encoded session for scraping
+
+# Safety Limits
+LOG_LEVEL=info
+DAILY_OPENAI_LIMIT_USD=5           # Budget protection
+DISABLE_LLM_WHEN_BUDGET_HIT=true
+MAX_POSTS_PER_HOUR=1               # Safe pilot limit
+REPLY_MAX_PER_DAY=5
+MIN_QUALITY_SCORE=0.75             # Quality gate threshold
+```
+
+### **Database Setup**
+```bash
+# Run idempotent migrations
+node tools/migrate-all.js
+
+# Verify tables exist
+psql "$DATABASE_URL" -c "\dt" | grep -E "(outcomes|tweet_analytics|content_metadata)"
+```
+
+## **🧪 Validation Protocol**
+
+### **Phase 1: Shadow Mode Validation (Zero Cost)**
 
 ```bash
-npm install
+# 1. Verify shadow mode is active
+curl -s http://localhost:8080/config | jq '.config.MODE'
+# Expected: "shadow"
+
+# 2. Force-run shadow loop (simulated outcomes)
+curl -s -X POST "http://localhost:8080/admin/jobs/run?name=plan"
+curl -s -X POST "http://localhost:8080/admin/jobs/run?name=reply" 
+curl -s -X POST "http://localhost:8080/admin/jobs/run?name=outcomes"
+curl -s -X POST "http://localhost:8080/admin/jobs/run?name=learn"
+
+# 3. Verify metrics & database
+curl -s http://localhost:8080/metrics | jq '{outcomesWritten, openaiCalls, uniqueBlocksCount, rotationBlocksCount, qualityBlocksCount}'
+# Expected: outcomesWritten > 0, openaiCalls = 0 (shadow mode)
+
+# 4. Check simulated outcomes in database
+psql "$DATABASE_URL" -c "SELECT simulated, COUNT(*) FROM outcomes WHERE created_at > NOW() - INTERVAL '30 min' GROUP BY simulated;"
+# Expected: Only simulated=true rows
+
+# 5. Verify learning system integration
+curl -s http://localhost:8080/learn/status | jq '.learningSystem.predictorCoefficients.version'
+# Expected: Version string (e.g., "v2_default")
+
+# 6. Check job schedule
+curl -s http://localhost:8080/admin/jobs/schedule -H "Authorization: Bearer <ADMIN_TOKEN>" | jq '.schedule[] | {name, nextRun, enabled}'
+# Expected: All jobs showing next run times
 ```
 
-### 2. Apply Database Migration
+### **Phase 2: Live Mode Pilot (Tiny Spend)**
 
-**Option A: Via Supabase SQL Editor (Recommended)**
-
-1. Copy the contents of `migrations/2025-08-18-telemetry.sql`
-2. Open your Supabase project dashboard → SQL Editor
-3. Paste and execute the migration SQL
-4. Verify successful execution (should see "Success" message)
-
-**Option B: Via psql (if you have direct database access)**
+**⚠️ SAFETY FIRST: Set MODE=live and redeploy with strict limits**
 
 ```bash
-psql "your-supabase-connection-string" -f migrations/2025-08-18-telemetry.sql
+# 1. Switch to live mode
+# Set MODE=live in environment and redeploy
+
+# 2. Verify live mode is active
+curl -s http://localhost:8080/config | jq '.config.MODE'  
+# Expected: "live" (secrets redacted in response)
+
+# 3. Run one complete cycle end-to-end
+curl -s -X POST "http://localhost:8080/admin/jobs/run?name=plan"
+curl -s -X POST "http://localhost:8080/admin/jobs/run?name=analyticsCollector"
+curl -s -X POST "http://localhost:8080/admin/jobs/run?name=realOutcomes"
+curl -s -X POST "http://localhost:8080/admin/jobs/run?name=learn"
+
+# 4. Confirm real outcomes exist
+psql "$DATABASE_URL" -c "SELECT simulated, COUNT(*) FROM outcomes WHERE created_at > NOW() - INTERVAL '1 hour' GROUP BY simulated;"
+# Expected: Both simulated=true and simulated=false rows
+
+# 5. Verify OpenAI embeddings were used
+curl -s http://localhost:8080/metrics | jq '{openaiCalls, uniqueBlocksCount}'
+# Expected: openaiCalls > 0 (small number), uniqueBlocksCount >= 0
+
+# 6. Check predictor is consuming real data
+curl -s http://localhost:8080/learn/status | jq '.learningSystem.predictorCoefficients.version'
+# Expected: Updated version with recent timestamp
 ```
 
-### 3. Verify Schema Implementation
+## **✅ Pass Criteria**
 
+### **Shadow Mode (Phase 1)**
+- [ ] outcomesWritten > 0, openaiCalls = 0
+- [ ] Only simulated=true outcomes in database  
+- [ ] Learn job processes synthetic data successfully
+- [ ] All job endpoints respond without errors
+- [ ] /learn/status shows predictor coefficients
+
+### **Live Mode (Phase 2)**  
+- [ ] openaiCalls > 0 (small) with budget respected
+- [ ] At least one outcomes(simulated=false) row written
+- [ ] Analytics collector populates tweet_analytics table
+- [ ] Learn job processes real outcomes without errors
+- [ ] Gates show appropriate block counts (even 0 is fine)
+- [ ] Predictor version updates with real training data
+
+## **🚨 Emergency Procedures**
+
+### **Immediate Stop**
 ```bash
-npm run verify:schema
+# Option 1: Disable posting entirely
+# Set MAX_POSTS_PER_HOUR=0 and redeploy
+
+# Option 2: Return to shadow mode  
+# Set MODE=shadow and redeploy
+
+# Option 3: Emergency disable (if admin access available)
+curl -X POST "http://localhost:8080/admin/emergency/disable"
 ```
 
-**Expected Output:**
-```
-🔍 SCHEMA_VERIFY: Starting comprehensive schema verification
-📋 Checking table: tweet_metrics
-✅ Table tweet_metrics exists and is accessible
-✅ All required columns present in tweet_metrics
-📋 Checking table: learning_posts
-✅ Table learning_posts exists and is accessible
-✅ All required columns present in learning_posts
-🧪 Performing smoke tests...
-✅ Smoke test passed for tweet_metrics
-✅ Smoke test passed for learning_posts
-✅ SCHEMA_VERIFY: All checks passed
-🎉 Database schema is ready for xBOT operations
-```
+### **Budget Protection**
+- Daily OpenAI limit: $5 (enforced in code)
+- Posting rate limit: 1 post/hour max
+- Auto-disable on budget hit: DISABLE_LLM_WHEN_BUDGET_HIT=true
 
-### 4. Environment Configuration
+### **Rollback Plan**
+1. Set MODE=shadow in environment
+2. Redeploy application  
+3. Verify shadow mode active: `curl -s http://localhost:8080/config`
+4. All synthetic generation resumes, no real API calls
 
-**Optional: Enable IPv4-only mode (if ENETUNREACH issues persist)**
+## **📊 Monitoring & Observability**
 
-Add to your Railway environment variables:
+### **Key Endpoints**
+- `/metrics` - System metrics with gate counts
+- `/learn/status` - Learning system status & coefficients  
+- `/config` - Current configuration (secrets redacted)
+- `/admin/jobs/run?name=X` - Manual job triggers
+- `/admin/jobs/schedule` - Next-run ETAs for all jobs
 
-```
-SUPABASE_IPV4_ONLY=true
-```
-
-**Required Environment Variables (should already be set):**
-- `SUPABASE_URL` - Your Supabase project URL
-- `SUPABASE_SERVICE_ROLE_KEY` - Service role key for admin operations
-- `SUPABASE_ANON_KEY` - Anon key for public operations
-- `REDIS_URL` - Redis connection string for posting locks
-
-### 5. Deploy and Start xBOT
-
-Deploy to Railway as usual. The bot will automatically:
-
-1. Run schema verification at startup
-2. Initialize the new BrowserManager for stability
-3. Use AdminClient for all database writes
-4. Implement cadence gating to prevent spam
-
-### 6. Verify Deployment Success
-
-Monitor Railway logs for these key indicators:
-
-```
-✅ Environment validation passed
-🗄️ Checking database schema...
-SCHEMA_GUARD: schema ensure OK
-DB: adminClient ready (service-role)
-🏥 Health server listening on 0.0.0.0:8080
-🤖 Starting autonomous posting engine...
-CADENCE: bootstrap mode - first post
-```
-
-**No more repeated spam of:**
-- ❌ "Minimum interval not met" every few seconds
-- ❌ "Could not find column X in schema cache"
-- ❌ "permission denied for table tweet_metrics"
-- ❌ "browser.newContext: Target page, context or browser has been closed"
-
-### 7. Functional Verification
-
-**Test posting workflow:**
-
+### **Log Monitoring**
 ```bash
-# Check health endpoints
-curl https://your-app.railway.app/status
-curl https://your-app.railway.app/env
-curl https://your-app.railway.app/playwright
+# Watch for these critical log patterns:
+tail -f logs | grep -E "(GATE_CHAIN|EMBEDDING_SERVICE|ANALYTICS_COLLECTOR|OUTCOME_WRITER)"
 
-# If logs show successful posts, verify they include:
-# - METRICS_UPSERT_OK logs
-# - LEARNING_UPSERT_OK logs
-# - No repeated "Minimum interval not met" spam
-# - Replies show contextual mirroring of source tweets
-# - Threads follow the new narrative structure
+# Success patterns:
+# [GATE_CHAIN] ✅ All gates passed
+# [EMBEDDING_SERVICE] ✅ Generated embedding  
+# [ANALYTICS_COLLECTOR] ✅ Collected metrics
+# [OUTCOME_WRITER] ✅ Stored outcome
+
+# Error patterns requiring attention:
+# [GATE_CHAIN] ❌ Gate chain failed
+# [EMBEDDING_SERVICE] ❌ OpenAI embedding failed
+# Budget limit reached
 ```
 
-## New Features Implemented
+### **Database Monitoring**
+```sql
+-- Real vs simulated outcome ratio
+SELECT simulated, COUNT(*) FROM outcomes 
+WHERE created_at > NOW() - INTERVAL '24 hours' 
+GROUP BY simulated;
 
-### Database & Schema
-- ✅ **Dual Supabase clients**: PublicClient (anon) and AdminClient (service-role)
-- ✅ **IPv4 fallback**: Resolves ENETUNREACH issues with `SUPABASE_IPV4_ONLY=true`
-- ✅ **Idempotent migrations**: Safe to run multiple times
-- ✅ **Self-healing**: Automatic schema fixes on first column-not-found error
-- ✅ **Graceful degradation**: Metrics failures don't crash posting
+-- Recent analytics collection
+SELECT COUNT(*) FROM tweet_analytics 
+WHERE captured_at > NOW() - INTERVAL '1 hour';
 
-### Browser Reliability
-- ✅ **BrowserManager singleton**: Eliminates context-closed errors
-- ✅ **Auto-recovery**: Exponential backoff on browser failures
-- ✅ **Circuit breaker**: Pause metrics tracking after 3 consecutive failures
+-- Content uniqueness enforcement  
+SELECT COUNT(*) FROM content_metadata 
+WHERE created_at > NOW() - INTERVAL '24 hours';
+```
 
-### Cadence & Logging
-- ✅ **CadenceGate**: Prevents redundant posting attempts during cooldown
-- ✅ **Bootstrap mode**: More frequent posting for accounts with <5 total posts
-- ✅ **Rate-limited logs**: No more spam of identical error messages
+## **🎯 Success Metrics**
 
-### Content Quality
-- ✅ **Thread Composer v2**: Narrative-driven structure with hooks, steps, proof, pitfalls, CTAs
-- ✅ **Reply Engine v2**: Contextual replies that mirror source tweet keywords
-- ✅ **Quality Gate**: LLM-based scoring for hook strength, specificity, safety
-- ✅ **Medical safety**: Blocks unsafe phrasing, treatment claims, diagnostic language
+### **Technical Health**
+- Zero application errors during pilot
+- Real outcomes pipeline: decision → analytics → outcome → learning
+- Gate enforcement: quality, uniqueness, rotation policies active
+- Predictor training: real data → model coefficients → KV persistence
 
-### Testing
-- ✅ **Jest test suites**: Cadence logic, reply contextuality, quality gate thresholds
-- ✅ **Schema verification**: Automated smoke tests for database operations
+### **Cost Control**
+- OpenAI spend < $1 for full pilot cycle
+- Embedding calls < 10 during validation
+- Posting rate maintained at 1/hour maximum
+- Budget protection triggers correctly
 
-## Troubleshooting
+### **Data Quality**
+- Real outcomes show realistic engagement patterns
+- Learning system adapts to real data vs synthetic
+- Gate blocks recorded in metrics (shows enforcement working)
+- Analytics data matches posting decisions
 
-### If `npm run verify:schema` fails:
+---
 
-1. Check environment variables are correctly set
-2. Verify Supabase project is accessible
-3. Re-run the migration SQL in Supabase SQL Editor
-4. Check for any RLS policies blocking service_role access
+## **🔄 Operational Commands Summary**
 
-### If posting fails with "permission denied":
-
-1. Ensure SUPABASE_SERVICE_ROLE_KEY is set (not ANON key)
-2. Verify RLS policies allow service_role access
-3. Check Railway logs for AdminClient initialization
-
-### If browser automation fails frequently:
-
-1. Enable `PLAYWRIGHT_HEADLESS=false` for debugging
-2. Set `PLAYWRIGHT_SLOW_MO=1000` to slow down actions
-3. Check Railway memory limits (Playwright is memory-intensive)
-
-### If cadence logic seems wrong:
-
-1. Check `/tmp/cadence-state.json` for current state
-2. Use `CadenceGate.reset()` method to clear state for testing
-3. Verify `MIN_POST_INTERVAL_MINUTES` environment variable
-
-## Success Metrics
-
-**You'll know the implementation is working when:**
-
-1. ✅ **No database permission errors** in logs
-2. ✅ **Successful METRICS_UPSERT_OK** logs after posts
-3. ✅ **No browser context-closed errors**
-4. ✅ **Single-line cadence logs** (not spam every few seconds)
-5. ✅ **Contextual replies** that reference source tweet content
-6. ✅ **Structured threads** with clear hooks, steps, and CTAs
-7. ✅ **Quality gate filtering** blocks low-quality content
-8. ✅ **Medical safety** prevents unsafe health claims
-
-## Monitoring Commands
-
+### **Database Setup**
 ```bash
-# Test individual components
-npm run test:cadence
-npm run test:reply  
-npm run test:quality
-
-# Verify schema integrity
-npm run verify:schema
-
-# Manual migration (if needed)
-npm run migrate:meta
+# Run migrations (requires DATABASE_URL)
+node tools/migrate-all.js
 ```
 
-The bot should now operate with significantly improved reliability, content quality, and database consistency while maintaining all existing functionality.
+### **Shadow Mode Validation (Zero Cost)**
+```bash
+# 1. Verify shadow mode
+curl -s http://localhost:8080/config | jq '.config.MODE'
+# Expected: "shadow"
+
+# 2. Force-run shadow loop  
+curl -s -X POST "http://localhost:8080/admin/jobs/run?name=plan" -H "Authorization: Bearer <ADMIN_TOKEN>"
+curl -s -X POST "http://localhost:8080/admin/jobs/run?name=outcomes" -H "Authorization: Bearer <ADMIN_TOKEN>"
+curl -s -X POST "http://localhost:8080/admin/jobs/run?name=learn" -H "Authorization: Bearer <ADMIN_TOKEN>"
+
+# 3. Verify metrics & gates
+curl -s http://localhost:8080/metrics | jq '.metrics | {outcomesWritten, openaiCalls, uniqueBlocksCount, qualityBlocksCount, rotationBlocksCount}'
+# Expected: outcomesWritten >= 0, openaiCalls = 0, all gate counts present
+
+# 4. Check job schedule
+curl -s http://localhost:8080/admin/jobs/schedule -H "Authorization: Bearer <ADMIN_TOKEN>" | jq '.schedule[] | {name, nextRun, enabled}'
+```
+
+### **Live Mode Validation (Tiny Spend)**
+```bash
+# After setting MODE=live and redeploying:
+
+# 1. Verify live mode
+curl -s http://localhost:8080/config | jq '.config.MODE'  
+# Expected: "live" (secrets redacted)
+
+# 2. Run complete cycle end-to-end
+curl -s -X POST "http://localhost:8080/admin/jobs/run?name=plan" -H "Authorization: Bearer <ADMIN_TOKEN>"
+curl -s -X POST "http://localhost:8080/admin/jobs/run?name=analyticsCollector" -H "Authorization: Bearer <ADMIN_TOKEN>"
+curl -s -X POST "http://localhost:8080/admin/jobs/run?name=realOutcomes" -H "Authorization: Bearer <ADMIN_TOKEN>"
+curl -s -X POST "http://localhost:8080/admin/jobs/run?name=learn" -H "Authorization: Bearer <ADMIN_TOKEN>"
+
+# 3. Verify real engagement pipeline
+curl -s http://localhost:8080/metrics | jq '.metrics | {openaiCalls, uniqueBlocksCount, qualityBlocksCount, rotationBlocksCount}'
+# Expected: openaiCalls > 0 (small), gate counts >= 0
+```
+
+### **Database Verification**
+```bash
+# Check outcomes (real vs simulated)
+psql "$DATABASE_URL" -c "SELECT simulated, COUNT(*) FROM outcomes WHERE created_at > NOW() - INTERVAL '1 hour' GROUP BY simulated;"
+
+# Check analytics collection
+psql "$DATABASE_URL" -c "SELECT COUNT(*) FROM tweet_analytics WHERE captured_at > NOW() - INTERVAL '1 hour';"
+
+# Check embeddings usage
+psql "$DATABASE_URL" -c "SELECT COUNT(*) FROM content_metadata WHERE created_at > NOW() - INTERVAL '1 hour';"
+```
+
+### **Emergency Procedures**
+```bash
+# Option 1: Return to shadow mode
+# Set MODE=shadow and redeploy
+
+# Option 2: Disable posting
+# Set MAX_POSTS_PER_HOUR=0 and redeploy
+
+# Option 3: Emergency disable endpoint
+curl -X POST "http://localhost:8080/admin/emergency/disable" -H "Authorization: Bearer <ADMIN_TOKEN>"
+```
+
+**🎯 End Goal: Confident live deployment with real engagement → learning pipeline and robust safety gates.**

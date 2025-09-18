@@ -47,7 +47,7 @@ export interface LearnStatusResponse {
   timestamp: string;
 }
 
-export function learnStatusHandler(req: Request, res: Response): void {
+export async function learnStatusHandler(req: Request, res: Response): Promise<void> {
   try {
     const config = getConfig();
     
@@ -63,7 +63,7 @@ export function learnStatusHandler(req: Request, res: Response): void {
         topArms: generateTopArms(),
         currentExploreRatio: config.EXPLORE_RATIO_MIN + 
           (config.EXPLORE_RATIO_MAX - config.EXPLORE_RATIO_MIN) * 0.6, // Mock current ratio
-        predictorCoefficients: generatePredictorCoefficients()
+        predictorCoefficients: await generatePredictorCoefficients()
       },
       timestamp: new Date().toISOString()
     };
@@ -168,9 +168,54 @@ function generateTopArms(): BanditArm[] {
   return arms.sort((a, b) => b.posteriorMean - a.posteriorMean).slice(0, 10);
 }
 
-function generatePredictorCoefficients(): PredictorCoefficients {
+async function generateTimingHeatmap(): Promise<{ hour: number; avgReward: number; plays: number; confidence: number }[]> {
+  try {
+    // Try to get real timing heatmap from UCB bandit
+    const { getUCBTimingBandit } = await import('../schedule/ucbTiming');
+    const ucbTiming = getUCBTimingBandit();
+    return ucbTiming.getTimingHeatmap();
+  } catch (error) {
+    console.warn('[LEARN_STATUS] Failed to load timing heatmap:', error.message);
+    
+    // Fallback to mock heatmap
+    const heatmap = [];
+    for (let hour = 0; hour < 24; hour++) {
+      heatmap.push({
+        hour,
+        avgReward: 0.02 + Math.random() * 0.03, // 0.02-0.05 range
+        plays: Math.floor(Math.random() * 20) + 5, // 5-25 plays
+        confidence: Math.random() * 0.8 + 0.2 // 0.2-1.0 confidence
+      });
+    }
+    return heatmap;
+  }
+}
+
+async function generatePredictorCoefficients(): Promise<PredictorCoefficients> {
+  try {
+    // Try to load real coefficients from KV store
+    const { loadLatestCoefficients } = await import('../jobs/predictorTrainer');
+    const coeffs = await loadLatestCoefficients();
+    
+    if (coeffs) {
+      return {
+        version: coeffs.version,
+        intercept: coeffs.ridge.intercept,
+        qualityWeight: coeffs.ridge.qualityWeight,
+        contentTypeWeight: coeffs.ridge.contentTypeWeight,
+        timingWeight: coeffs.ridge.timingWeight,
+        rSquared: coeffs.ridge.rSquared,
+        mse: coeffs.ridge.mse,
+        updatedAt: coeffs.meta.trainedAt.toISOString()
+      };
+    }
+  } catch (error) {
+    console.warn('[LEARN_STATUS] Failed to load predictor coefficients:', error.message);
+  }
+  
+  // Fallback to mock coefficients
   return {
-    version: 'v2',
+    version: 'v2_default',
     intercept: 0.012,
     qualityWeight: 0.034,
     contentTypeWeight: 0.008,

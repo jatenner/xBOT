@@ -12,6 +12,15 @@ export async function planContent(): Promise<void> {
   console.log('[PLAN_JOB] 📝 Starting content planning cycle...');
   
   try {
+    // 1. Select optimal timing using UCB bandit
+    const { getUCBTimingBandit } = await import('../schedule/ucbTiming');
+    const ucbTiming = getUCBTimingBandit();
+    const timingSelection = await ucbTiming.selectTimingWithUCB();
+    
+    console.log(`[PLAN_JOB] ⏰ UCB selected timing: slot ${timingSelection.slot} (confidence: ${(timingSelection.confidence * 100).toFixed(1)}%)`);
+    console.log(`[PLAN_JOB] 🔍 Neighboring slots for exploration: [${timingSelection.neighbors.join(', ')}]`);
+    
+    // 2. Generate content based on mode
     if (flags.useSyntheticGeneration) {
       // Shadow mode: generate mock content
       await generateSyntheticContent();

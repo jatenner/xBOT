@@ -179,7 +179,7 @@ export class JobManager {
   /**
    * Force run a specific job (for testing/manual trigger)
    */
-  public async runJobNow(jobName: 'plan' | 'reply' | 'outcomes' | 'learn'): Promise<void> {
+  public async runJobNow(jobName: 'plan' | 'reply' | 'outcomes' | 'realOutcomes' | 'analyticsCollector' | 'learn'): Promise<void> {
     console.log(`🔄 JOB_MANAGER: Force running ${jobName} job...`);
     
     switch (jobName) {
@@ -204,6 +204,23 @@ export class JobManager {
           await simulateOutcomes();
           this.stats.outcomeRuns++;
           this.stats.lastOutcomeTime = new Date();
+        });
+        break;
+      
+      case 'realOutcomes':
+        await this.safeExecute('realOutcomes', async () => {
+          const { runRealOutcomesJob } = await import('./outcomeWriter');
+          await runRealOutcomesJob();
+          this.stats.outcomeRuns++;
+          this.stats.lastOutcomeTime = new Date();
+        });
+        break;
+      
+      case 'analyticsCollector':
+        await this.safeExecute('analyticsCollector', async () => {
+          const { runAnalyticsCollectorJob } = await import('./analyticsCollectorJob');
+          await runAnalyticsCollectorJob();
+          // Analytics collection doesn't have dedicated stats yet
         });
         break;
       
