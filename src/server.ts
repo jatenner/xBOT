@@ -4,6 +4,13 @@ import { getBrowserStatus } from './playwright/browserFactory';
 import { checkDatabaseHealth } from './db/index';
 import { CadenceGuard } from './posting/cadenceGuard';
 import { TweetMetricsTracker } from './metrics/trackTweet';
+import { getConfig, printConfigSummary, printDeprecationWarnings } from './config/config';
+import { JobManager } from './jobs/jobManager';
+import { metricsHandler } from './api/metrics';
+import { learnStatusHandler } from './api/learnStatus';
+import { configHandler } from './api/configEndpoint';
+import { auditProfileHandler } from './api/auditProfile';
+import { requireAdminAuth, adminJobsHandler, adminJobRunHandler } from './api/adminJobs';
 
 const app = express();
 
@@ -47,37 +54,25 @@ app.get('/env', (req, res) => {
 });
 
 /**
+ * Unified configuration endpoint (requires authentication)
+ */
+app.get('/config', configHandler);
+
+/**
  * Learning system status
  */
-app.get('/learn/status', (req, res) => {
-  const learningStatus = {
-    bandit_learning_enabled: process.env.ENABLE_BANDIT_LEARNING === 'true',
-    dry_run_mode: process.env.DRY_RUN === 'true',
-    posting_disabled: process.env.POSTING_DISABLED === 'true',
-    reply_max_per_day: parseInt(process.env.REPLY_MAX_PER_DAY || '0'),
-    learning_lookback_days: parseInt(process.env.LEARNING_LOOKBACK_DAYS || '7'),
-    dup_window_days: parseInt(process.env.DUP_WINDOW_DAYS || '3'),
-    embed_model: process.env.EMBED_MODEL || 'text-embedding-3-small',
-    content_pipeline: {
-      explore_ratio_min: parseFloat(process.env.EXPLORE_RATIO_MIN || '0.1'),
-      explore_ratio_max: parseFloat(process.env.EXPLORE_RATIO_MAX || '0.4'),
-      min_quality_score: parseFloat(process.env.MIN_QUALITY_SCORE || '0.6'),
-      force_no_hashtags: process.env.FORCE_NO_HASHTAGS === 'true',
-      emoji_max: parseInt(process.env.EMOJI_MAX || '2')
-    },
-    timing: {
-      last_jobs_learn: 'N/A', // Could connect to Redis to get actual timestamp
-      arms_status: 'Available', // Placeholder
-      predictor_status: 'Available' // Placeholder
-    }
-  };
-  
-  res.json({
-    learning_system: learningStatus,
-    timestamp: new Date().toISOString(),
-    message: 'Learning system status (mock data - real implementation would query Redis/DB)'
-  });
-});
+app.get('/learn/status', learnStatusHandler);
+
+/**
+ * Profile audit endpoint
+ */
+app.get('/audit/profile', auditProfileHandler);
+
+/**
+ * Admin job management routes (protected)
+ */
+app.get('/admin/jobs', requireAdminAuth, adminJobsHandler);
+app.post('/admin/jobs/run', requireAdminAuth, adminJobRunHandler);
 
 /**
  * Health and readiness check
@@ -250,37 +245,11 @@ app.post('/posting/unlock', async (req, res) => {
 });
 
 /**
- * Metrics tracking status
+ * Unified metrics endpoint
  */
-app.get('/metrics', async (req, res) => {
-  try {
-    const health = await TweetMetricsTracker.getInstance().healthCheck();
-    res.json({
-      metrics: health,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    res.status(500).json({
-      error: error instanceof Error ? error.message : 'Failed to get metrics status'
-    });
-  }
-});
+app.get('/metrics', metricsHandler);
 
-/**
- * Learning system status endpoint
- */
-app.get('/learn/status', async (req, res) => {
-  try {
-    const { handleLearningStatusRequest } = await import('./api/learningStatus');
-    await handleLearningStatusRequest(req, res);
-  } catch (error) {
-    console.error('Learning status error:', error);
-    res.status(500).json({ 
-      error: 'Failed to get learning status',
-      message: error instanceof Error ? error.message : 'Unknown error'
-    });
-  }
-});
+// Learning status endpoint already defined above
 
 /**
  * Manual metrics tracking for a tweet

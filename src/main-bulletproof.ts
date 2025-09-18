@@ -1,5 +1,7 @@
 import { createServer } from "http";
 import { spawn } from "child_process";
+import { getConfig, printConfigSummary, printDeprecationWarnings, getModeFlags } from './config/config';
+import { JobManager } from './jobs/jobManager';
 
 // Startup configuration summary
 function getStartupSummary() {
@@ -52,7 +54,7 @@ async function runStartupGates(config: any) {
     console.log('🧪 Running startup acceptance...');
     const acceptanceOk = await runScript('dist/scripts/startup-acceptance.js');
     console.log(`🧪 Startup acceptance: ${acceptanceOk ? 'PASS' : 'FAIL'}`);
-  } else {
+      } else {
     console.log('🧪 Acceptance smoke: skipped (STARTUP_ACCEPTANCE_ENABLED=false)');
   }
   
@@ -61,7 +63,7 @@ async function runStartupGates(config: any) {
     console.log('📝 Running dry-run plan...');
     const planOk = await runScript('dist/scripts/dryrun-plan.js', ['3']);
     console.log(`📝 Dry-run plan: ${planOk ? 'COMPLETED' : 'FAILED'}`);
-  } else {
+      } else {
     console.log('📝 Dry-run plan: skipped (STARTUP_RUN_DRYRUN_PLAN=false)');
   }
   
@@ -80,14 +82,32 @@ async function runStartupGates(config: any) {
 async function boot() {
   console.log('🔄 XBOT_BOOT: Starting bulletproof production runtime...');
   
-  // Display startup summary
-  const config = getStartupSummary();
+  // Load and display unified configuration
+  const config = getConfig();
+  printConfigSummary(config);
+  printDeprecationWarnings();
+  
+  // Log shadow prod activation
+  if (config.MODE === 'shadow') {
+    console.log('🎭 SHADOW_PROD ACTIVE: Zero-cost learning loop with synthetic outcomes');
+  }
+  
+  // Legacy config for startup gates
+  const legacyConfig = getStartupSummary();
   
   // Run startup gates (non-blocking)
   try {
-    await runStartupGates(config);
-  } catch (error) {
+    await runStartupGates(legacyConfig);
+    } catch (error) {
     console.log(`⚠️ STARTUP_GATES: Error during gates: ${error.message} (continuing...)`);
+  }
+  
+  // Initialize job manager
+  const jobManager = JobManager.getInstance();
+  try {
+    await jobManager.startJobs();
+    } catch (error) {
+    console.log(`⚠️ JOB_MANAGER: Error starting jobs: ${error.message} (continuing...)`);
   }
   
   // Try common server modules in priority order
@@ -104,7 +124,7 @@ async function boot() {
         break;
       }
       if (m.app?.listen) {
-        const port = Number(config.port);
+        const port = Number(config.PORT);
         console.log(`✅ Using runtime entry: ${mod}.app.listen(${port})`);
         m.app.listen(port);
         started = true;
@@ -117,17 +137,18 @@ async function boot() {
 
   if (!started) {
     // fallback: bare HTTP server to keep container alive + health
-    const port = Number(config.port);
+    const port = Number(config.PORT);
     createServer((req, res) => {
       const url = req.url || '/';
       
       if (url === '/status' || url === '/health') {
         res.writeHead(200, { "content-type": "application/json" });
+        const flags = getModeFlags(config);
         res.end(JSON.stringify({ 
           ok: true, 
           message: "xBOT up (fallback)", 
-          posting_disabled: config.posting_disabled,
-          dry_run: config.dry_run,
+          posting_disabled: flags.postingDisabled,
+          dry_run: flags.dryRun,
           timestamp: new Date().toISOString()
         }));
       } else {
@@ -142,7 +163,8 @@ async function boot() {
   
   // Start heartbeat
   setInterval(() => {
-    console.log(`💓 HEARTBEAT: ${new Date().toISOString()} - posting_disabled=${config.posting_disabled}, dry_run=${config.dry_run}`);
+    const flags = getModeFlags(config);
+    console.log(`💓 HEARTBEAT: ${new Date().toISOString()} - posting_disabled=${flags.postingDisabled}, dry_run=${flags.dryRun}, mode=${config.MODE}`);
   }, 60000); // 1-minute heartbeat
 }
 
