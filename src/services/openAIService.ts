@@ -1,18 +1,19 @@
 /**
- * 💰 OPENAI SERVICE WITH BUDGET ENFORCEMENT
- * Centralized OpenAI API wrapper with budget controls and monitoring
+ * 💰 OPENAI SERVICE WITH AUTHORITATIVE BUDGET ENFORCEMENT
+ * Centralized OpenAI API wrapper with mandatory pre-request budget checks
  * 
  * ALL OpenAI calls MUST go through this service for:
- * - Budget tracking and enforcement
+ * - MANDATORY budget enforcement (blocks requests before OpenAI API)
+ * - Accurate cost tracking with real per-model pricing
  * - Usage monitoring and analytics
  * - Error handling and retries
- * - Rate limiting and optimization
  */
 
 import OpenAI from 'openai';
+import { createChatCompletion, createChatCompletionStream, withBudgetEnforcement, BudgetExceededError } from './openaiWrapper';
+import { getBudgetStatus } from '../budget/budgetGate';
 import { getUnifiedDataManager } from '../lib/unifiedDataManager';
-import { costTracker as newCostTracker } from './costTracker';
-import { budgetOptimizer } from './budgetOptimizer';
+import redisManager from '@/lib/redis';
 
 interface BudgetConfig {
   dailyLimit: number; // USD per day
@@ -99,7 +100,7 @@ export class OpenAIService {
       maxTokens?: number;
       requestType?: string;
       priority?: 'high' | 'medium' | 'low';
-      response_format?: any;
+      response_format?: { type: 'json_object' } | { type: 'text' };
     } = {}
   ): Promise<any> {
     let {
@@ -141,6 +142,13 @@ export class OpenAIService {
     console.log(`🤖 OPENAI_SERVICE: ${requestType} request (${model}, priority: ${priority})`);
 
     try {
+      // Check budget disable flag
+      if (process.env.DISABLE_LLM_WHEN_BUDGET_HIT === 'true') {
+        const budgetStatus = await this.getBudgetStatus();
+        if (budgetStatus.isOverLimit) {
+          throw new Error(`LLM calls disabled due to budget limit exceeded: $${budgetStatus.spent.toFixed(2)} >= $${budgetStatus.limit.toFixed(2)}`);
+        }
+      }
       // Get optimization recommendation
       const optimization = await budgetOptimizer.optimize(requestType);
       if (model === 'gpt-4o' && optimization.recommendedModel === 'gpt-4o-mini') {
@@ -148,90 +156,29 @@ export class OpenAIService {
         model = optimization.recommendedModel;
       }
 
-      // Check budget before making request
-      const budgetCheck = await this.checkBudgetLimits(requestType, priority);
-      if (!budgetCheck.allowed) {
-        throw new Error(`Budget limit exceeded: ${budgetCheck.reason}`);
-      }
-
-      // Estimate cost before request
-      const estimatedTokens = this.estimateTokens(messages, maxTokens);
-      const estimatedCost = this.calculateCost(model, estimatedTokens.input, estimatedTokens.output);
+      // MANDATORY BUDGET ENFORCEMENT - Will throw BudgetExceededError if over limit
+      const createParams: OpenAI.Chat.Completions.ChatCompletionCreateParams = {
+        model: String(model), // Ensure model is always a string
+        messages,
+        temperature,
+        max_tokens: optimization.allowExpensive ? maxTokens : Math.min(maxTokens, 150)
+      };
       
-      console.log(`💰 ESTIMATED_COST: $${estimatedCost.toFixed(4)} (${estimatedTokens.total} tokens)`);
-
-      // Check optimization cost limit
-      if (estimatedCost > optimization.maxCostPerCall) {
-        console.warn(`💰 COST_LIMIT_EXCEEDED: $${estimatedCost.toFixed(4)} > $${optimization.maxCostPerCall.toFixed(4)} (${optimization.reasoning})`);
-        throw new Error(`Request exceeds optimized cost limit: $${estimatedCost.toFixed(4)} > $${optimization.maxCostPerCall.toFixed(4)}`);
+      // Add response_format if provided
+      if (response_format) {
+        createParams.response_format = response_format;
       }
 
-      // ATOMIC BUDGET GATE: Check before every LLM call
-      const { ensureBudget, commitCost } = await import('../budget/atomicBudgetGate');
-      await ensureBudget(requestType, estimatedCost);
-
-      // Make the OpenAI request with hard budget enforcement
+      // Make the OpenAI request with AUTHORITATIVE budget enforcement
       const startTime = Date.now();
-      const response = await newCostTracker.wrapOpenAI(requestType, model, async () => {
-        const createParams: any = {
-          model,
-          messages,
-          temperature,
-          max_tokens: optimization.allowExpensive ? maxTokens : Math.min(maxTokens, 150)
-        };
-        
-        // Add response_format if provided
-        if (response_format) {
-          createParams.response_format = response_format;
-        }
-        
-        const { createBudgetedChatCompletion } = await import("./openaiBudgetedClient");
-        return await createBudgetedChatCompletion(createParams, {
-          purpose: requestType,
-          priority: "high"
-        });
-      }, { estimatedCost });
+      const response = await createChatCompletion(createParams, requestType);
 
       // TRUNCATION GUARD: Check if response was truncated
-      if (response && !('skipped' in response) && response.usage && response.choices?.[0]?.finish_reason === 'length') {
+      if (response && response.usage && response.choices?.[0]?.finish_reason === 'length') {
         throw new Error(`TRUNCATED_RESPONSE: Response truncated at ${response.usage.completion_tokens} tokens for ${requestType}`);
       }
 
-      // Add actual cost to budget after successful call
-      if (response && !('skipped' in response)) {
-        const actualCost = this.calculateCost(model, 
-          response.usage?.prompt_tokens || 0, 
-          response.usage?.completion_tokens || 0
-        );
-        await commitCost(requestType, actualCost);
-        
-        // Log to Supabase for analytics with service role
-        try {
-          const { insertApiUsage } = await import('../db/supabaseService');
-          const result = await insertApiUsage({
-            intent: requestType,
-            model,
-            prompt_tokens: response.usage?.prompt_tokens || 0,
-            completion_tokens: response.usage?.completion_tokens || 0,
-            cost_usd: actualCost,
-            meta: { priority, estimatedCost, optimization: optimization.reasoning }
-          });
-          
-          if (!result.success) {
-            console.error('⚠️ API_USAGE_LOG_FAILED:', result.error);
-          }
-        } catch (logError: any) {
-          console.warn('⚠️ API_USAGE_LOG_ERROR:', logError.message);
-          // Don't throw - logging failure shouldn't break posting
-        }
-      }
-
-      // Check if request was skipped due to budget
-      if (response && typeof response === 'object' && 'skipped' in response) {
-        const skippedResponse = response as { skipped: true; reason: string };
-        console.warn(`⏭️ OPENAI_SKIPPED: ${requestType} - ${skippedResponse.reason}`);
-        throw new Error(`Daily budget exceeded: ${skippedResponse.reason}`);
-      }
+      // Budget enforcement and cost tracking is handled by createChatCompletion wrapper
 
       const endTime = Date.now();
       const duration = endTime - startTime;
@@ -374,14 +321,12 @@ export class OpenAIService {
    * 📊 GET BUDGET STATUS
    */
   public async getBudgetStatus(): Promise<BudgetStatus> {
+    // Use the authoritative budget gate for real-time status
+    const authoritativeStatus = await getBudgetStatus();
+    
+    // Legacy compatibility - calculate monthly from history
     const now = new Date();
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-
-    const dailyUsage = this.usageHistory
-      .filter(record => record.timestamp >= startOfDay && record.success)
-      .reduce((sum, record) => sum + record.estimatedCost, 0);
-
     const monthlyUsage = this.usageHistory
       .filter(record => record.timestamp >= startOfMonth && record.success)
       .reduce((sum, record) => sum + record.estimatedCost, 0);
@@ -391,12 +336,12 @@ export class OpenAIService {
     const successRate = totalRequests > 0 ? successfulRequests / totalRequests : 1;
 
     return {
-      dailyUsed: dailyUsage,
+      dailyUsed: authoritativeStatus.spent,
       monthlyUsed: monthlyUsage,
-      dailyRemaining: Math.max(0, this.budgetConfig.dailyLimit - dailyUsage),
+      dailyRemaining: authoritativeStatus.remaining,
       monthlyRemaining: Math.max(0, this.budgetConfig.monthlyLimit - monthlyUsage),
-      isEmergencyStop: this.isEmergencyStop,
-      isWarningLevel: monthlyUsage >= this.budgetConfig.warningThreshold,
+      isEmergencyStop: authoritativeStatus.spent >= authoritativeStatus.limit,
+      isWarningLevel: authoritativeStatus.spent >= (authoritativeStatus.limit * 0.8),
       totalRequests,
       successRate
     };

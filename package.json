@@ -27,6 +27,8 @@
     "auth:session": "node create_authenticated_session.js",
     "verify:session": "node verify_session.js",
     "test:session": "node scripts/session_check.js",
+    "test": "npx ts-node scripts/test-system-integration.ts",
+    "test:schema": "npx ts-node scripts/verify-schema.ts",
     "verify": "npm run build && npm run test:unit && npm run guard:budget",
     "test:unit": "jest tests/",
     "check:openai-imports": "node scripts/check-openai-imports.js",

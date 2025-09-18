@@ -65,6 +65,12 @@ export async function validateQualityScore(content: string, metadata: ContentMet
   const config = getConfig();
   const minQualityScore = Number(config.MIN_QUALITY_SCORE) || 0.75;
 
+  // First check content safety rules
+  const contentSafetyResult = validateContentSafety(content, config);
+  if (!contentSafetyResult.passed) {
+    return contentSafetyResult;
+  }
+
   const qualityScore = metadata.quality_score || 0;
 
   if (qualityScore < minQualityScore) {
@@ -83,6 +89,45 @@ export async function validateQualityScore(content: string, metadata: ContentMet
 
   console.log(`[GATE_CHAIN] ✅ Quality gate passed: ${qualityScore.toFixed(3)} >= ${minQualityScore}`);
   return { passed: true, gate: 'quality' };
+}
+
+/**
+ * Content Safety Validation
+ */
+function validateContentSafety(content: string, config: any): GateResult {
+  // Check for hashtags (should be disabled per requirements)
+  if (config.FORCE_NO_HASHTAGS === 'true' && content.includes('#')) {
+    return {
+      passed: false,
+      reason: 'Hashtags are disabled by FORCE_NO_HASHTAGS flag',
+      gate: 'safety'
+    };
+  }
+
+  // Check emoji count
+  const emojiRegex = /[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu;
+  const emojiMatches = content.match(emojiRegex);
+  const emojiCount = emojiMatches ? emojiMatches.length : 0;
+  const maxEmojis = parseInt(config.EMOJI_MAX || '3');
+
+  if (emojiCount > maxEmojis) {
+    return {
+      passed: false,
+      reason: `Too many emojis: ${emojiCount} > ${maxEmojis}`,
+      gate: 'safety'
+    };
+  }
+
+  // Check for length
+  if (content.length > 280) {
+    return {
+      passed: false,
+      reason: `Content too long: ${content.length} characters > 280`,
+      gate: 'safety'
+    };
+  }
+
+  return { passed: true, gate: 'safety' };
 }
 
 /**
