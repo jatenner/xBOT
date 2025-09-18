@@ -214,10 +214,35 @@ async function updateBanditArms(trainingData: any[]): Promise<{ armsUpdated: num
 async function updatePredictors(trainingData: any[]): Promise<{ updated: boolean; version: string }> {
   console.log('[LEARN_JOB] 🔮 Training predictive models...');
   
-  if (trainingData.length < 5) {
-    console.log('[LEARN_JOB] ⚠️ Insufficient data for predictor training (need 5+ samples)');
+  if (trainingData.length < 10) {
+    console.log(`[LEARN_JOB] ⚠️ Insufficient data for predictor training (need 10+ samples, have ${trainingData.length})`);
     return { updated: false, version: 'none' };
   }
+
+  try {
+    const { trainWeeklyModel, persistCoefficients } = await import('./predictorTrainer');
+    
+    // Train new model on recent data
+    const newCoefficients = await trainWeeklyModel();
+    
+    // Persist to Redis KV store
+    await persistCoefficients(newCoefficients);
+    
+    console.log(`[LEARN_JOB] ✅ Predictor ${newCoefficients.version} trained and persisted (R²=${newCoefficients.ridge.rSquared.toFixed(3)})`);
+    
+    return { updated: true, version: newCoefficients.version };
+    
+  } catch (error) {
+    console.error('[LEARN_JOB] ❌ Predictor training failed:', error.message);
+    console.log('[LEARN_JOB] ⚠️ Continuing with existing model');
+    
+    // Fallback to mock training
+    return mockPredictorTraining(trainingData);
+  }
+}
+
+async function mockPredictorTraining(trainingData: any[]): Promise<{ updated: boolean; version: string }> {
+  console.log('[LEARN_JOB] 🔄 Falling back to mock predictor training...');
   
   // Mock predictor training - would use ridge/logit regression
   // Features: quality_score, content_type_encoded, timing_slot, etc.

@@ -125,7 +125,7 @@ export async function adminJobRunHandler(req: Request, res: Response): Promise<v
       return;
     }
 
-    const validJobs = ['plan', 'reply', 'outcomes', 'realOutcomes', 'analyticsCollector', 'learn'];
+    const validJobs = ['plan', 'reply', 'posting', 'outcomes', 'realOutcomes', 'analyticsCollector', 'learn', 'trainPredictor'];
     if (!validJobs.includes(name)) {
       res.status(400).json({
         success: false,

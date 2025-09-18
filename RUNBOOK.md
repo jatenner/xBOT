@@ -1,277 +1,537 @@
-# 🚀 **xBOT Shadow→Live Pilot Runbook**
+# 🚀 xBOT Live Posting & Learning System - RUNBOOK
 
-## **📋 Prerequisites**
+## **🎯 OVERVIEW**
 
-### **Environment Variables (Production)**
-```bash
-# Core
-MODE=shadow|live                    # CRITICAL: Controls real vs synthetic
-NODE_ENV=production
-PORT=8080
-DATABASE_URL=postgresql://...?sslmode=require
-REDIS_URL=redis://...
+This runbook provides exact copy-paste commands for deploying, monitoring, and operating the xBOT live posting & learning system. The system features:
 
-# OpenAI (only used when MODE=live)  
-OPENAI_API_KEY=sk-...              # Required for embeddings & quality gates
-
-# Twitter (for analytics collection)
-TWITTER_SESSION_B64=...            # Base64 encoded session for scraping
-
-# Safety Limits
-LOG_LEVEL=info
-DAILY_OPENAI_LIMIT_USD=5           # Budget protection
-DISABLE_LLM_WHEN_BUDGET_HIT=true
-MAX_POSTS_PER_HOUR=1               # Safe pilot limit
-REPLY_MAX_PER_DAY=5
-MIN_QUALITY_SCORE=0.75             # Quality gate threshold
-```
-
-### **Database Setup**
-```bash
-# Run idempotent migrations
-node tools/migrate-all.js
-
-# Verify tables exist
-psql "$DATABASE_URL" -c "\dt" | grep -E "(outcomes|tweet_analytics|content_metadata)"
-```
-
-## **🧪 Validation Protocol**
-
-### **Phase 1: Shadow Mode Validation (Zero Cost)**
-
-```bash
-# 1. Verify shadow mode is active
-curl -s http://localhost:8080/config | jq '.config.MODE'
-# Expected: "shadow"
-
-# 2. Force-run shadow loop (simulated outcomes)
-curl -s -X POST "http://localhost:8080/admin/jobs/run?name=plan"
-curl -s -X POST "http://localhost:8080/admin/jobs/run?name=reply" 
-curl -s -X POST "http://localhost:8080/admin/jobs/run?name=outcomes"
-curl -s -X POST "http://localhost:8080/admin/jobs/run?name=learn"
-
-# 3. Verify metrics & database
-curl -s http://localhost:8080/metrics | jq '{outcomesWritten, openaiCalls, uniqueBlocksCount, rotationBlocksCount, qualityBlocksCount}'
-# Expected: outcomesWritten > 0, openaiCalls = 0 (shadow mode)
-
-# 4. Check simulated outcomes in database
-psql "$DATABASE_URL" -c "SELECT simulated, COUNT(*) FROM outcomes WHERE created_at > NOW() - INTERVAL '30 min' GROUP BY simulated;"
-# Expected: Only simulated=true rows
-
-# 5. Verify learning system integration
-curl -s http://localhost:8080/learn/status | jq '.learningSystem.predictorCoefficients.version'
-# Expected: Version string (e.g., "v2_default")
-
-# 6. Check job schedule
-curl -s http://localhost:8080/admin/jobs/schedule -H "Authorization: Bearer <ADMIN_TOKEN>" | jq '.schedule[] | {name, nextRun, enabled}'
-# Expected: All jobs showing next run times
-```
-
-### **Phase 2: Live Mode Pilot (Tiny Spend)**
-
-**⚠️ SAFETY FIRST: Set MODE=live and redeploy with strict limits**
-
-```bash
-# 1. Switch to live mode
-# Set MODE=live in environment and redeploy
-
-# 2. Verify live mode is active
-curl -s http://localhost:8080/config | jq '.config.MODE'  
-# Expected: "live" (secrets redacted in response)
-
-# 3. Run one complete cycle end-to-end
-curl -s -X POST "http://localhost:8080/admin/jobs/run?name=plan"
-curl -s -X POST "http://localhost:8080/admin/jobs/run?name=analyticsCollector"
-curl -s -X POST "http://localhost:8080/admin/jobs/run?name=realOutcomes"
-curl -s -X POST "http://localhost:8080/admin/jobs/run?name=learn"
-
-# 4. Confirm real outcomes exist
-psql "$DATABASE_URL" -c "SELECT simulated, COUNT(*) FROM outcomes WHERE created_at > NOW() - INTERVAL '1 hour' GROUP BY simulated;"
-# Expected: Both simulated=true and simulated=false rows
-
-# 5. Verify OpenAI embeddings were used
-curl -s http://localhost:8080/metrics | jq '{openaiCalls, uniqueBlocksCount}'
-# Expected: openaiCalls > 0 (small number), uniqueBlocksCount >= 0
-
-# 6. Check predictor is consuming real data
-curl -s http://localhost:8080/learn/status | jq '.learningSystem.predictorCoefficients.version'
-# Expected: Updated version with recent timestamp
-```
-
-## **✅ Pass Criteria**
-
-### **Shadow Mode (Phase 1)**
-- [ ] outcomesWritten > 0, openaiCalls = 0
-- [ ] Only simulated=true outcomes in database  
-- [ ] Learn job processes synthetic data successfully
-- [ ] All job endpoints respond without errors
-- [ ] /learn/status shows predictor coefficients
-
-### **Live Mode (Phase 2)**  
-- [ ] openaiCalls > 0 (small) with budget respected
-- [ ] At least one outcomes(simulated=false) row written
-- [ ] Analytics collector populates tweet_analytics table
-- [ ] Learn job processes real outcomes without errors
-- [ ] Gates show appropriate block counts (even 0 is fine)
-- [ ] Predictor version updates with real training data
-
-## **🚨 Emergency Procedures**
-
-### **Immediate Stop**
-```bash
-# Option 1: Disable posting entirely
-# Set MAX_POSTS_PER_HOUR=0 and redeploy
-
-# Option 2: Return to shadow mode  
-# Set MODE=shadow and redeploy
-
-# Option 3: Emergency disable (if admin access available)
-curl -X POST "http://localhost:8080/admin/emergency/disable"
-```
-
-### **Budget Protection**
-- Daily OpenAI limit: $5 (enforced in code)
-- Posting rate limit: 1 post/hour max
-- Auto-disable on budget hit: DISABLE_LLM_WHEN_BUDGET_HIT=true
-
-### **Rollback Plan**
-1. Set MODE=shadow in environment
-2. Redeploy application  
-3. Verify shadow mode active: `curl -s http://localhost:8080/config`
-4. All synthetic generation resumes, no real API calls
-
-## **📊 Monitoring & Observability**
-
-### **Key Endpoints**
-- `/metrics` - System metrics with gate counts
-- `/learn/status` - Learning system status & coefficients  
-- `/config` - Current configuration (secrets redacted)
-- `/admin/jobs/run?name=X` - Manual job triggers
-- `/admin/jobs/schedule` - Next-run ETAs for all jobs
-
-### **Log Monitoring**
-```bash
-# Watch for these critical log patterns:
-tail -f logs | grep -E "(GATE_CHAIN|EMBEDDING_SERVICE|ANALYTICS_COLLECTOR|OUTCOME_WRITER)"
-
-# Success patterns:
-# [GATE_CHAIN] ✅ All gates passed
-# [EMBEDDING_SERVICE] ✅ Generated embedding  
-# [ANALYTICS_COLLECTOR] ✅ Collected metrics
-# [OUTCOME_WRITER] ✅ Stored outcome
-
-# Error patterns requiring attention:
-# [GATE_CHAIN] ❌ Gate chain failed
-# [EMBEDDING_SERVICE] ❌ OpenAI embedding failed
-# Budget limit reached
-```
-
-### **Database Monitoring**
-```sql
--- Real vs simulated outcome ratio
-SELECT simulated, COUNT(*) FROM outcomes 
-WHERE created_at > NOW() - INTERVAL '24 hours' 
-GROUP BY simulated;
-
--- Recent analytics collection
-SELECT COUNT(*) FROM tweet_analytics 
-WHERE captured_at > NOW() - INTERVAL '1 hour';
-
--- Content uniqueness enforcement  
-SELECT COUNT(*) FROM content_metadata 
-WHERE created_at > NOW() - INTERVAL '24 hours';
-```
-
-## **🎯 Success Metrics**
-
-### **Technical Health**
-- Zero application errors during pilot
-- Real outcomes pipeline: decision → analytics → outcome → learning
-- Gate enforcement: quality, uniqueness, rotation policies active
-- Predictor training: real data → model coefficients → KV persistence
-
-### **Cost Control**
-- OpenAI spend < $1 for full pilot cycle
-- Embedding calls < 10 during validation
-- Posting rate maintained at 1/hour maximum
-- Budget protection triggers correctly
-
-### **Data Quality**
-- Real outcomes show realistic engagement patterns
-- Learning system adapts to real data vs synthetic
-- Gate blocks recorded in metrics (shows enforcement working)
-- Analytics data matches posting decisions
+- **Real OpenAI content generation** with budget safety
+- **Actual Twitter posting** via browser automation
+- **Real-time analytics collection** from Twitter
+- **Unified learning system** with bandits and predictors
+- **Safety gates** (uniqueness, quality, rotation)
+- **Comprehensive observability** and admin endpoints
 
 ---
 
-## **🔄 Operational Commands Summary**
+## **🛡️ SAFETY-FIRST DEPLOYMENT**
 
-### **Database Setup**
+### **Required Environment Variables**
+
+Set these **exactly** in Railway for production:
+
 ```bash
-# Run migrations (requires DATABASE_URL)
-node tools/migrate-all.js
+# Core Mode & Safety
+MODE=live
+JOBS_AUTOSTART=true
+ADMIN_TOKEN=<your-secure-admin-token>
+
+# Budget Safety (CRITICAL)
+DAILY_OPENAI_LIMIT_USD=5.0
+DISABLE_LLM_WHEN_BUDGET_HIT=true
+MAX_POSTS_PER_HOUR=1
+REPLY_MAX_PER_DAY=0
+
+# Quality & Safety Gates
+MIN_QUALITY_SCORE=0.75
+DUP_COSINE_THRESHOLD=0.85
+FORCE_NO_HASHTAGS=true
+EMOJI_MAX=2
+
+# Infrastructure
+PORT=8080
+DATABASE_URL=postgresql://<user>:<pass>@aws-0-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require
+REDIS_URL=redis://default:<password>@<host>:<port>
+SUPABASE_URL=https://<your>.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=<your-service-role-key>
+
+# LLM
+OPENAI_API_KEY=<your-openai-key>
+OPENAI_MODEL=gpt-4o-mini
+
+# Twitter (use one method)
+TWITTER_USERNAME=<username>
+TWITTER_PASSWORD=<password>
+# OR
+TWITTER_SESSION_B64=<base64-encoded-session>
+
+# Job Intervals (minutes)
+JOBS_PLAN_INTERVAL_MIN=15
+JOBS_REPLY_INTERVAL_MIN=30
+JOBS_POSTING_INTERVAL_MIN=5
+JOBS_LEARN_INTERVAL_MIN=60
 ```
 
-### **Shadow Mode Validation (Zero Cost)**
+---
+
+## **🚀 DEPLOYMENT PIPELINE**
+
+### **1. Deploy to Railway**
+
 ```bash
-# 1. Verify shadow mode
-curl -s http://localhost:8080/config | jq '.config.MODE'
-# Expected: "shadow"
+# Commit and push changes
+git add .
+git commit -m "feat: enable real plan/reply + live outcomes & learning"
+git push origin main
 
-# 2. Force-run shadow loop  
-curl -s -X POST "http://localhost:8080/admin/jobs/run?name=plan" -H "Authorization: Bearer <ADMIN_TOKEN>"
-curl -s -X POST "http://localhost:8080/admin/jobs/run?name=outcomes" -H "Authorization: Bearer <ADMIN_TOKEN>"
-curl -s -X POST "http://localhost:8080/admin/jobs/run?name=learn" -H "Authorization: Bearer <ADMIN_TOKEN>"
-
-# 3. Verify metrics & gates
-curl -s http://localhost:8080/metrics | jq '.metrics | {outcomesWritten, openaiCalls, uniqueBlocksCount, qualityBlocksCount, rotationBlocksCount}'
-# Expected: outcomesWritten >= 0, openaiCalls = 0, all gate counts present
-
-# 4. Check job schedule
-curl -s http://localhost:8080/admin/jobs/schedule -H "Authorization: Bearer <ADMIN_TOKEN>" | jq '.schedule[] | {name, nextRun, enabled}'
+# Monitor deployment
+railway logs --follow
 ```
 
-### **Live Mode Validation (Tiny Spend)**
+### **2. Run Database Migrations**
+
 ```bash
-# After setting MODE=live and redeploying:
+# Using Railway CLI
+railway run node tools/db/migrate.js
 
-# 1. Verify live mode
-curl -s http://localhost:8080/config | jq '.config.MODE'  
-# Expected: "live" (secrets redacted)
-
-# 2. Run complete cycle end-to-end
-curl -s -X POST "http://localhost:8080/admin/jobs/run?name=plan" -H "Authorization: Bearer <ADMIN_TOKEN>"
-curl -s -X POST "http://localhost:8080/admin/jobs/run?name=analyticsCollector" -H "Authorization: Bearer <ADMIN_TOKEN>"
-curl -s -X POST "http://localhost:8080/admin/jobs/run?name=realOutcomes" -H "Authorization: Bearer <ADMIN_TOKEN>"
-curl -s -X POST "http://localhost:8080/admin/jobs/run?name=learn" -H "Authorization: Bearer <ADMIN_TOKEN>"
-
-# 3. Verify real engagement pipeline
-curl -s http://localhost:8080/metrics | jq '.metrics | {openaiCalls, uniqueBlocksCount, qualityBlocksCount, rotationBlocksCount}'
-# Expected: openaiCalls > 0 (small), gate counts >= 0
+# Or via API
+curl -X POST -H "x-admin-token: $ADMIN_TOKEN" \
+  "$APP_URL/admin/jobs/run?name=migrate"
 ```
 
-### **Database Verification**
+### **3. Initial System Test**
+
 ```bash
-# Check outcomes (real vs simulated)
-psql "$DATABASE_URL" -c "SELECT simulated, COUNT(*) FROM outcomes WHERE created_at > NOW() - INTERVAL '1 hour' GROUP BY simulated;"
+# Run system integration tests
+npm test
 
-# Check analytics collection
-psql "$DATABASE_URL" -c "SELECT COUNT(*) FROM tweet_analytics WHERE captured_at > NOW() - INTERVAL '1 hour';"
-
-# Check embeddings usage
-psql "$DATABASE_URL" -c "SELECT COUNT(*) FROM content_metadata WHERE created_at > NOW() - INTERVAL '1 hour';"
+# Or using ts-node directly
+npx ts-node scripts/test-system-integration.ts
 ```
 
-### **Emergency Procedures**
+---
+
+## **🔄 LIVE OPERATION COMMANDS**
+
+### **Manual Job Execution**
+
+Use these commands to manually trigger specific jobs:
+
 ```bash
-# Option 1: Return to shadow mode
-# Set MODE=shadow and redeploy
+# 1. Generate content (creates decisions in queue)
+curl -s -X POST -H "x-admin-token: $ADMIN_TOKEN" \
+  "$APP_URL/admin/jobs/run?name=plan"
 
-# Option 2: Disable posting
-# Set MAX_POSTS_PER_HOUR=0 and redeploy
+# 2. Process posting queue (posts to Twitter)
+curl -s -X POST -H "x-admin-token: $ADMIN_TOKEN" \
+  "$APP_URL/admin/jobs/run?name=posting"
 
-# Option 3: Emergency disable endpoint
-curl -X POST "http://localhost:8080/admin/emergency/disable" -H "Authorization: Bearer <ADMIN_TOKEN>"
+# 3. Generate replies
+curl -s -X POST -H "x-admin-token: $ADMIN_TOKEN" \
+  "$APP_URL/admin/jobs/run?name=reply"
+
+# 4. Collect Twitter analytics
+curl -s -X POST -H "x-admin-token: $ADMIN_TOKEN" \
+  "$APP_URL/admin/jobs/run?name=analyticsCollector"
+
+# 5. Store real outcomes from analytics
+curl -s -X POST -H "x-admin-token: $ADMIN_TOKEN" \
+  "$APP_URL/admin/jobs/run?name=realOutcomes"
+
+# 6. Run learning cycle (update bandits & predictors)
+curl -s -X POST -H "x-admin-token: $ADMIN_TOKEN" \
+  "$APP_URL/admin/jobs/run?name=learn"
+
+# 7. Train predictor models
+curl -s -X POST -H "x-admin-token: $ADMIN_TOKEN" \
+  "$APP_URL/admin/jobs/run?name=trainPredictor"
 ```
 
-**🎯 End Goal: Confident live deployment with real engagement → learning pipeline and robust safety gates.**
+### **Complete End-to-End Test Cycle**
+
+Run this sequence to test the full pipeline:
+
+```bash
+#!/bin/bash
+export APP_URL="https://your-app.up.railway.app"
+export ADMIN_TOKEN="your-admin-token"
+
+echo "🚀 Starting end-to-end test cycle..."
+
+echo "1. Generate content..."
+curl -s -X POST -H "x-admin-token: $ADMIN_TOKEN" \
+  "$APP_URL/admin/jobs/run?name=plan"
+
+sleep 10
+
+echo "2. Process posting queue..."
+curl -s -X POST -H "x-admin-token: $ADMIN_TOKEN" \
+  "$APP_URL/admin/jobs/run?name=posting"
+
+sleep 30
+
+echo "3. Collect analytics..."
+curl -s -X POST -H "x-admin-token: $ADMIN_TOKEN" \
+  "$APP_URL/admin/jobs/run?name=analyticsCollector"
+
+sleep 10
+
+echo "4. Store real outcomes..."
+curl -s -X POST -H "x-admin-token: $ADMIN_TOKEN" \
+  "$APP_URL/admin/jobs/run?name=realOutcomes"
+
+sleep 10
+
+echo "5. Run learning cycle..."
+curl -s -X POST -H "x-admin-token: $ADMIN_TOKEN" \
+  "$APP_URL/admin/jobs/run?name=learn"
+
+echo "✅ End-to-end cycle completed!"
+```
+
+---
+
+## **📊 MONITORING & OBSERVABILITY**
+
+### **System Metrics**
+
+```bash
+# Real-time system metrics
+curl -s "$APP_URL/metrics" | jq '{
+  openaiCalls: .openaiCalls,
+  outcomesWritten: .outcomesWritten,
+  postsPosted: .postsPosted,
+  qualityBlocksCount: .qualityBlocksCount,
+  uniqueBlocksCount: .uniqueBlocksCount,
+  rotationBlocksCount: .rotationBlocksCount
+}'
+
+# Job schedule and status
+curl -s -H "x-admin-token: $ADMIN_TOKEN" \
+  "$APP_URL/admin/jobs/schedule" | jq '.jobs[] | {name, status, nextRun}'
+
+# Learning system status
+curl -s "$APP_URL/learn/status" | jq '{
+  bandits: .bandits,
+  predictorVersion: .predictorVersion,
+  timingHeatmap: .timingHeatmap
+}'
+
+# General system status
+curl -s "$APP_URL/status" | jq '{
+  mode: .mode,
+  posting: .posting,
+  uptime: .uptime,
+  dbStatus: .dbStatus
+}'
+```
+
+### **Database Queries**
+
+```sql
+-- Check recent decisions and posting status
+SELECT id, decision_type, status, created_at, posted_at, tweet_id
+FROM unified_ai_intelligence 
+WHERE created_at > NOW() - INTERVAL '24 hours'
+ORDER BY created_at DESC;
+
+-- Check real vs simulated outcomes
+SELECT simulated, COUNT(*) as count, AVG(er_calculated) as avg_er
+FROM outcomes 
+WHERE collected_at > NOW() - INTERVAL '7 days'
+GROUP BY simulated;
+
+-- Check gate blocking patterns
+SELECT 
+  COUNT(*) FILTER (WHERE content LIKE '%quality%') as quality_blocks,
+  COUNT(*) FILTER (WHERE content LIKE '%uniqueness%') as uniqueness_blocks,
+  COUNT(*) FILTER (WHERE content LIKE '%rotation%') as rotation_blocks
+FROM unified_ai_intelligence 
+WHERE status = 'failed' AND created_at > NOW() - INTERVAL '24 hours';
+
+-- Check posting rate compliance
+SELECT 
+  DATE_TRUNC('hour', posted_at) as hour,
+  COUNT(*) as posts_per_hour
+FROM unified_ai_intelligence 
+WHERE status = 'posted' AND posted_at > NOW() - INTERVAL '24 hours'
+GROUP BY hour 
+ORDER BY hour DESC;
+```
+
+### **Log Monitoring**
+
+```bash
+# Monitor Railway logs in real-time
+railway logs --follow | grep -E "(JOB_|GATE_|POST_|LEARN_|❌|✅)"
+
+# Check for errors
+railway logs --lines 100 | grep "❌"
+
+# Monitor posting activity
+railway logs --lines 50 | grep "POSTING_QUEUE"
+
+# Check budget usage
+railway logs --lines 50 | grep "BUDGET"
+```
+
+---
+
+## **🚨 EMERGENCY PROCEDURES**
+
+### **Emergency Stop Posting**
+
+```bash
+# Method 1: Disable via environment variable (Railway)
+railway variables set MODE=shadow
+
+# Method 2: Disable jobs via admin API
+curl -X POST -H "x-admin-token: $ADMIN_TOKEN" \
+  "$APP_URL/admin/emergency/disable-posting"
+
+# Method 3: Scale to zero (temporary)
+railway scale --service xBOT --replicas 0
+```
+
+### **Budget Emergency Stop**
+
+```bash
+# Check current budget usage
+curl -s "$APP_URL/metrics" | jq '.openaiCostUsd'
+
+# Emergency budget disable
+railway variables set DISABLE_LLM_WHEN_BUDGET_HIT=true
+railway variables set DAILY_OPENAI_LIMIT_USD=0.01
+```
+
+### **Reset to Shadow Mode**
+
+```bash
+# Switch to shadow mode (safe testing)
+railway variables set MODE=shadow
+railway variables set POSTING_DISABLED=true
+
+# Restart service
+railway restart --service xBOT
+```
+
+---
+
+## **🔧 TROUBLESHOOTING**
+
+### **Common Issues**
+
+**1. "Real LLM generation not yet implemented" in logs**
+```bash
+# Check MODE setting
+railway variables get MODE
+
+# Should be "live" for production
+railway variables set MODE=live
+```
+
+**2. "No outcomes data found" in learning**
+```bash
+# Check if analytics are being collected
+curl -s "$APP_URL/metrics" | jq '.outcomesWritten'
+
+# Manually trigger analytics collection
+curl -X POST -H "x-admin-token: $ADMIN_TOKEN" \
+  "$APP_URL/admin/jobs/run?name=analyticsCollector"
+```
+
+**3. "Failed to store decision" errors**
+```bash
+# Check database connectivity
+curl -s "$APP_URL/status" | jq '.dbStatus'
+
+# Run schema verification
+npm run test:schema
+```
+
+**4. "Budget exceeded" errors**
+```bash
+# Check current budget status
+curl -s "$APP_URL/metrics" | jq '{spent: .openaiCostUsd, limit: .dailyLimit}'
+
+# Reset budget tracking (if needed)
+railway variables set DAILY_OPENAI_LIMIT_USD=10.0
+```
+
+### **Health Checks**
+
+```bash
+# Quick system health check
+#!/bin/bash
+APP_URL="https://your-app.up.railway.app"
+
+echo "🏥 System Health Check"
+echo "====================="
+
+# 1. Basic connectivity
+if curl -s "$APP_URL/status" > /dev/null; then
+  echo "✅ App responding"
+else
+  echo "❌ App not responding"
+fi
+
+# 2. Database connectivity
+DB_STATUS=$(curl -s "$APP_URL/status" | jq -r '.dbStatus')
+echo "DB Status: $DB_STATUS"
+
+# 3. Recent activity
+RECENT_POSTS=$(curl -s "$APP_URL/metrics" | jq '.postsPosted')
+echo "Posts today: $RECENT_POSTS"
+
+# 4. Budget usage
+BUDGET_USED=$(curl -s "$APP_URL/metrics" | jq '.openaiCostUsd')
+echo "Budget used: \$$BUDGET_USED"
+
+# 5. Error count
+ERROR_COUNT=$(curl -s "$APP_URL/metrics" | jq '.errors')
+echo "Errors: $ERROR_COUNT"
+```
+
+---
+
+## **📋 REGULAR MAINTENANCE**
+
+### **Daily Checks** (5 minutes)
+
+```bash
+# 1. Check system status
+curl -s "$APP_URL/status" | jq '{mode, posting, uptime}'
+
+# 2. Check posting activity (should be ~24 posts/day max)
+curl -s "$APP_URL/metrics" | jq '{postsPosted, postingErrors}'
+
+# 3. Check budget usage
+curl -s "$APP_URL/metrics" | jq '{openaiCostUsd, dailyLimit: 5.0}'
+
+# 4. Check error rate
+curl -s "$APP_URL/metrics" | jq '.errors'
+```
+
+### **Weekly Maintenance** (15 minutes)
+
+```bash
+# 1. Review learning performance
+curl -s "$APP_URL/learn/status" | jq '.predictorVersion'
+
+# 2. Check database growth
+psql $DATABASE_URL -c "
+SELECT 
+  schemaname,
+  tablename,
+  n_tup_ins as inserts,
+  n_tup_upd as updates,
+  n_tup_del as deletes
+FROM pg_stat_user_tables 
+WHERE schemaname = 'public'
+ORDER BY n_tup_ins DESC;
+"
+
+# 3. Train new predictor model
+curl -X POST -H "x-admin-token: $ADMIN_TOKEN" \
+  "$APP_URL/admin/jobs/run?name=trainPredictor"
+
+# 4. Review gate effectiveness
+curl -s "$APP_URL/metrics" | jq '{
+  qualityBlocks: .qualityBlocksCount,
+  uniquenessBlocks: .uniqueBlocksCount,
+  rotationBlocks: .rotationBlocksCount
+}'
+```
+
+---
+
+## **🎛️ CONFIGURATION TUNING**
+
+### **Adjust Posting Rate**
+
+```bash
+# Increase posting (carefully!)
+railway variables set MAX_POSTS_PER_HOUR=2
+railway variables set JOBS_PLAN_INTERVAL_MIN=10
+
+# Enable replies (start small)
+railway variables set REPLY_MAX_PER_DAY=2
+```
+
+### **Adjust Quality Thresholds**
+
+```bash
+# Higher quality requirement
+railway variables set MIN_QUALITY_SCORE=0.85
+
+# Lower similarity threshold (more strict uniqueness)
+railway variables set DUP_COSINE_THRESHOLD=0.80
+
+# Restart to apply changes
+railway restart --service xBOT
+```
+
+### **Budget Adjustments**
+
+```bash
+# Increase daily budget (if needed)
+railway variables set DAILY_OPENAI_LIMIT_USD=10.0
+
+# Disable budget hard stop (not recommended)
+railway variables set DISABLE_LLM_WHEN_BUDGET_HIT=false
+```
+
+---
+
+## **📈 SUCCESS METRICS**
+
+### **Daily Success Indicators**
+
+- **✅ Posts Created**: 15-24 per day (within rate limits)
+- **✅ Gate Pass Rate**: >60% (quality content gets through)
+- **✅ Error Rate**: <5% (minimal system failures) 
+- **✅ Budget Usage**: <$5/day (within limits)
+- **✅ Learning Active**: Predictor version updates weekly
+
+### **Weekly Performance Review**
+
+```bash
+# Generate weekly report
+#!/bin/bash
+echo "📊 WEEKLY PERFORMANCE REPORT"
+echo "=============================="
+
+# Posts and engagement
+psql $DATABASE_URL -c "
+SELECT 
+  COUNT(*) as total_posts,
+  AVG(predicted_er) as avg_predicted_er,
+  COUNT(*) FILTER (WHERE status = 'posted') as successful_posts
+FROM unified_ai_intelligence 
+WHERE created_at > NOW() - INTERVAL '7 days';
+"
+
+# Learning system health
+curl -s "$APP_URL/learn/status" | jq '{
+  predictorVersion: .predictorVersion,
+  banditArmCount: (.bandits | length),
+  topPerformingArm: .bandits[0]
+}'
+
+# Budget efficiency
+curl -s "$APP_URL/metrics" | jq '{
+  totalSpent: .openaiCostUsd,
+  costPerPost: (.openaiCostUsd / .postsPosted),
+  budgetEfficiency: (.postsPosted / .openaiCostUsd)
+}'
+```
+
+---
+
+## **🔗 USEFUL LINKS**
+
+- **Railway App**: https://your-app.up.railway.app
+- **Metrics Dashboard**: https://your-app.up.railway.app/metrics
+- **System Status**: https://your-app.up.railway.app/status
+- **Learning Dashboard**: https://your-app.up.railway.app/learn/status
+- **Admin Jobs**: https://your-app.up.railway.app/admin/jobs/schedule
+- **Database**: [Supabase Dashboard](https://supabase.com/dashboard)
+- **Redis**: [Redis Cloud Dashboard](https://app.redislabs.com)
+- **Railway Logs**: `railway logs --follow`
+
+---
+
+**⚠️ REMEMBER**: Always test changes in shadow mode first (`MODE=shadow`) before switching to live mode (`MODE=live`).
+
+**🛡️ SAFETY**: The system is designed to fail safe. When in doubt, switch to shadow mode and investigate.
+
+**📞 SUPPORT**: Check logs first, then review this runbook. Most issues have copy-paste solutions above.

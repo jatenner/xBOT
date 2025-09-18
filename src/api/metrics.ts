@@ -14,6 +14,7 @@ export interface SystemMetrics {
   // Job counts
   plans: number;
   replies: number;
+  postings: number;
   learnRuns: number;
   
   // AI usage
@@ -33,6 +34,11 @@ export interface SystemMetrics {
   openaiCalls: number;
   qualityBlocksCount: number;
   rotationBlocksCount: number;
+  
+  // Posting metrics
+  postsQueued: number;
+  postsPosted: number;
+  postingErrors: number;
   
   // Growth metrics
   followsPer1kImpressions: number; // F/1k
@@ -60,6 +66,9 @@ const metricsStore = {
   openaiCalls: 0,
   qualityBlocksCount: 0,
   rotationBlocksCount: 0,
+  postsQueued: 0,
+  postsPosted: 0,
+  postingErrors: 0,
   followsPer1kImpressions: 0,
   nonFollowerER: 0,
   errors: 0,
@@ -83,6 +92,7 @@ export function metricsHandler(req: Request, res: Response): void {
       // Job counts from JobManager
       plans: jobStats.planRuns,
       replies: jobStats.replyRuns,
+      postings: jobStats.postingRuns || 0,
       outcomesWritten: jobStats.outcomeRuns,
       learnRuns: jobStats.learnRuns,
       
@@ -102,6 +112,11 @@ export function metricsHandler(req: Request, res: Response): void {
       uniqueBlocksCount: metricsStore.uniqueBlocksCount,
       qualityBlocksCount: metricsStore.qualityBlocksCount,
       rotationBlocksCount: metricsStore.rotationBlocksCount,
+      
+      // Posting metrics
+      postsQueued: metricsStore.postsQueued,
+      postsPosted: metricsStore.postsPosted,
+      postingErrors: metricsStore.postingErrors,
       
       // Growth metrics
       followsPer1kImpressions: metricsStore.followsPer1kImpressions,
@@ -164,6 +179,9 @@ export function updateMockMetrics(mockMetrics: {
   openaiCalls?: number;
   qualityBlocksCount?: number;
   rotationBlocksCount?: number;
+  postsQueued?: number;
+  postsPosted?: number;
+  postingErrors?: number;
 }): void {
   if (mockMetrics.llmBlocked !== undefined) metricsStore.llmBlocked += mockMetrics.llmBlocked;
   if (mockMetrics.mockCompletions !== undefined) metricsStore.mockCompletions += mockMetrics.mockCompletions;
@@ -173,6 +191,9 @@ export function updateMockMetrics(mockMetrics: {
   if (mockMetrics.openaiCalls !== undefined) metricsStore.openaiCalls += mockMetrics.openaiCalls;
   if (mockMetrics.qualityBlocksCount !== undefined) metricsStore.qualityBlocksCount += mockMetrics.qualityBlocksCount;
   if (mockMetrics.rotationBlocksCount !== undefined) metricsStore.rotationBlocksCount += mockMetrics.rotationBlocksCount;
+  if (mockMetrics.postsQueued !== undefined) metricsStore.postsQueued += mockMetrics.postsQueued;
+  if (mockMetrics.postsPosted !== undefined) metricsStore.postsPosted += mockMetrics.postsPosted;
+  if (mockMetrics.postingErrors !== undefined) metricsStore.postingErrors += mockMetrics.postingErrors;
 }
 
 /**

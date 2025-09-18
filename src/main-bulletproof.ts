@@ -76,6 +76,21 @@ async function runStartupGates(config: any) {
     console.log('💬 Dry-run reply: skipped (STARTUP_RUN_DRYRUN_REPLY=false)');
   }
   
+  // Load latest predictor model
+  console.log('🤖 Loading latest predictor model...');
+  try {
+    const { loadLatestCoefficients } = await import('./jobs/predictorTrainer');
+    const coefficients = await loadLatestCoefficients();
+    
+    if (coefficients) {
+      console.log(`✅ Loaded predictor ${coefficients.version} from KV (trained: ${coefficients.meta.trainedAt})`);
+    } else {
+      console.log('ℹ️ No persisted predictor found, will use defaults');
+    }
+  } catch (error) {
+    console.warn('⚠️ Failed to load predictor, will use defaults:', error.message);
+  }
+  
   console.log('🧪 STARTUP_GATES: All gates processed (non-blocking)');
 }
 
