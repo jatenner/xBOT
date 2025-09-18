@@ -72,7 +72,7 @@ export class JobManager {
     
     // Log next run ETAs
     const now = new Date();
-    const postingIntervalMin = parseInt(config.JOBS_POSTING_INTERVAL_MIN || '5');
+    const postingIntervalMin = parseInt(String(config.JOBS_POSTING_INTERVAL_MIN || 5));
     console.log('🕐 Next job ETAs:');
     console.log(`   • Plan: ${new Date(now.getTime() + config.JOBS_PLAN_INTERVAL_MIN * 60 * 1000).toISOString()}`);
     console.log(`   • Reply: ${new Date(now.getTime() + config.JOBS_REPLY_INTERVAL_MIN * 60 * 1000).toISOString()}`);

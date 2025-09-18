@@ -144,9 +144,7 @@ Format your response as JSON:
 
   console.log('[PLAN_JOB] 🤖 Calling OpenAI for content generation...');
   
-  const response = await openaiService.generateCompletion({
-    model: 'gpt-4o-mini',
-    messages: [
+  const response = await openaiService.chatCompletion([
       {
         role: 'system',
         content: 'You are a health content expert who creates evidence-based, engaging social media content. Focus on providing genuine value without making false claims.'
@@ -155,11 +153,13 @@ Format your response as JSON:
         role: 'user',
         content: prompt
       }
-    ],
-    max_tokens: 300,
+    ], {
+    model: 'gpt-4o-mini',
+    maxTokens: 300,
     temperature: 0.8,
-    response_format: { type: 'json_object' }
-  }, 'content_generation');
+    response_format: { type: 'json_object' },
+    requestType: 'content_generation'
+  });
 
   const rawContent = response.choices[0]?.message?.content;
   if (!rawContent) {

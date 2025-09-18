@@ -35,6 +35,11 @@ const ConfigSchema = z.object({
   JOBS_PLAN_INTERVAL_MIN: z.number().default(60),
   JOBS_REPLY_INTERVAL_MIN: z.number().default(90),
   JOBS_LEARN_INTERVAL_MIN: z.number().default(120),
+  JOBS_POSTING_INTERVAL_MIN: z.number().default(5),
+  
+  // Rate Limits
+  MAX_POSTS_PER_HOUR: z.number().default(1),
+  REPLY_MAX_PER_DAY: z.number().default(10),
   
   // Security
   ADMIN_TOKEN: z.string().default('dev-admin-token')

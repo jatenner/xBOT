@@ -126,10 +126,10 @@ function calculateEmbeddingCost(tokens: number): number {
  */
 async function checkEmbeddingBudget(): Promise<void> {
   try {
-    const { checkBudget } = await import('../budget/guard');
-    const budgetOk = await checkBudget();
+    const { getBudgetStatus } = await import('../budget/budgetGate');
+    const budgetStatus = await getBudgetStatus();
     
-    if (!budgetOk) {
+    if (budgetStatus.spent >= budgetStatus.limit) {
       throw new Error('Daily budget limit reached');
     }
   } catch (error) {
