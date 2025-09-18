@@ -18,7 +18,6 @@ function getRedisClient(): Redis | null {
     try {
       redis = new Redis(REDIS_URL, {
         maxRetriesPerRequest: 3,
-        retryDelayOnFailover: 100,
         lazyConnect: true
       });
       
@@ -172,11 +171,12 @@ export async function recordBudgetUsage(costUsd: number, context: string = 'unkn
       redisClient.setex(updateKey, 86400 * 7, new Date().toISOString())
     ]);
     
-    console.log(`💰 BUDGET_RECORDED: +$${costUsd.toFixed(4)} (total: $${newTotal.toFixed(4)}/$${DAILY_OPENAI_LIMIT_USD.toFixed(2)}) [${context}]`);
+    const newTotalNum = parseFloat(newTotal.toString());
+    console.log(`💰 BUDGET_RECORDED: +$${costUsd.toFixed(4)} (total: $${newTotalNum.toFixed(4)}/$${DAILY_OPENAI_LIMIT_USD.toFixed(2)}) [${context}]`);
     
     // Check if we just hit the limit
-    if (newTotal >= DAILY_OPENAI_LIMIT_USD && (newTotal - costUsd) < DAILY_OPENAI_LIMIT_USD) {
-      console.log(`🛡️ BUDGET_HARD_STOP: Daily limit reached! ($${newTotal.toFixed(2)}/$${DAILY_OPENAI_LIMIT_USD.toFixed(2)})`);
+    if (newTotalNum >= DAILY_OPENAI_LIMIT_USD && (newTotalNum - costUsd) < DAILY_OPENAI_LIMIT_USD) {
+      console.log(`🛡️ BUDGET_HARD_STOP: Daily limit reached! ($${newTotalNum.toFixed(2)}/$${DAILY_OPENAI_LIMIT_USD.toFixed(2)})`);
     }
     
   } catch (error) {

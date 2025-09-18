@@ -146,7 +146,7 @@ interface GeneratedReply {
 
 async function checkReplyRateLimits(): Promise<boolean> {
   const config = getConfig();
-  const maxRepliesPerDay = parseInt(config.REPLY_MAX_PER_DAY || '0');
+  const maxRepliesPerDay = parseInt(String(config.REPLY_MAX_PER_DAY || 0));
   
   if (maxRepliesPerDay === 0) {
     console.log('[REPLY_JOB] ℹ️ Reply generation disabled (REPLY_MAX_PER_DAY=0)');
@@ -254,9 +254,7 @@ Format as JSON:
 
   console.log(`[REPLY_JOB] 🤖 Generating reply for @${target.username}...`);
   
-  const response = await openaiService.generateCompletion({
-    model: 'gpt-4o-mini',
-    messages: [
+  const response = await openaiService.chatCompletion([
       {
         role: 'system',
         content: 'You are a knowledgeable health enthusiast who provides genuine, evidence-based insights. Focus on being helpful and authentic, never making false claims.'
@@ -265,11 +263,13 @@ Format as JSON:
         role: 'user',
         content: prompt
       }
-    ],
-    max_tokens: 200,
+    ], {
+    model: 'gpt-4o-mini',
+    maxTokens: 200,
     temperature: 0.7,
-    response_format: { type: 'json_object' }
-  }, 'reply_generation');
+    response_format: { type: 'json_object' },
+    requestType: 'reply_generation'
+  });
 
   const rawContent = response.choices[0]?.message?.content;
   if (!rawContent) {

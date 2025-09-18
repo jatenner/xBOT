@@ -71,7 +71,7 @@ interface QueuedDecision {
 
 async function checkPostingRateLimits(): Promise<boolean> {
   const config = getConfig();
-  const maxPostsPerHour = parseInt(config.MAX_POSTS_PER_HOUR || '1');
+  const maxPostsPerHour = parseInt(String(config.MAX_POSTS_PER_HOUR || 1));
   
   try {
     const { getSupabaseClient } = await import('../db/index');
