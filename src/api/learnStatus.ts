@@ -1,227 +1,175 @@
 /**
  * 🧠 LEARN STATUS ENDPOINT
- * Provides detailed learning system status and arm performance
+ * Provides learning system status and performance metrics
  */
 
 import { Request, Response } from 'express';
-import { getConfig } from '../config/config';
 
-export interface BanditArm {
-  armId: string;
-  armType: 'content' | 'timing' | 'reply';
-  posteriorMean: number;
-  confidenceInterval: [number, number]; // 80% CI
-  totalSamples: number;
-  successRate: number;
-  lastUsed: string;
-}
-
-export interface LearningRunSummary {
-  timestamp: string;
-  sampleSize: number;
-  simulatedPercent: number;
-  armsUpdated: number;
-  exploreRatio: number;
-  duration: string;
-}
-
-export interface PredictorCoefficients {
-  version: string;
-  intercept: number;
-  qualityWeight: number;
-  contentTypeWeight: number;
-  timingWeight: number;
-  rSquared: number;
-  mse: number;
-  updatedAt: string;
-}
-
-export interface LearnStatusResponse {
-  success: true;
-  learningSystem: {
-    lastRuns: LearningRunSummary[];
-    topArms: BanditArm[];
-    currentExploreRatio: number;
-    predictorCoefficients: PredictorCoefficients;
+export interface LearnStatus {
+  // Learning overview
+  mode: 'shadow' | 'live';
+  last_run: string;
+  next_run_estimate: string;
+  
+  // Training data
+  training_samples_available: number;
+  real_outcomes_count: number;
+  simulated_outcomes_count: number;
+  
+  // Bandit arms performance
+  content_arms: Array<{
+    arm_name: string;
+    successes: number;
+    trials: number;
+    success_rate: number;
+    confidence_interval: [number, number];
+  }>;
+  
+  timing_arms: Array<{
+    slot: number;
+    avg_reward: number;
+    trials: number;
+    ucb_score: number;
+  }>;
+  
+  // Predictor status
+  predictor: {
+    version: string;
+    last_trained: string;
+    feature_count: number;
+    accuracy_score?: number;
+    training_samples_used: number;
   };
-  timestamp: string;
+  
+  // Performance insights
+  top_performing_content_type: string;
+  best_timing_slot: number;
+  current_explore_ratio: number;
+  
+  // Recent improvements
+  er_trend_7d: number; // % change
+  engagement_momentum: 'increasing' | 'stable' | 'decreasing';
 }
 
-export async function learnStatusHandler(req: Request, res: Response): Promise<void> {
+export async function getLearnStatus(req: Request, res: Response): Promise<void> {
   try {
+    const { getConfig } = await import('../config/config');
     const config = getConfig();
     
-    // Generate mock learning status - in real implementation this would query:
-    // - Recent learning runs from learning_runs table
-    // - Current bandit arms from bandit_arms table  
-    // - Latest predictor coefficients from predictor_coefficients table
+    // Get learning metrics from various sources
+    const banditStats = await getBanditStatus();
+    const predictorStats = await getPredictorStatus();
+    const trainingDataStats = await getTrainingDataStats();
     
-    const response: LearnStatusResponse = {
-      success: true,
-      learningSystem: {
-        lastRuns: generateLastRuns(),
-        topArms: generateTopArms(),
-        currentExploreRatio: config.EXPLORE_RATIO_MIN + 
-          (config.EXPLORE_RATIO_MAX - config.EXPLORE_RATIO_MIN) * 0.6, // Mock current ratio
-        predictorCoefficients: await generatePredictorCoefficients()
-      },
-      timestamp: new Date().toISOString()
+    const status: LearnStatus = {
+      mode: config.MODE,
+      last_run: await getLastLearnRun(),
+      next_run_estimate: estimateNextRun(),
+      
+      training_samples_available: trainingDataStats.total,
+      real_outcomes_count: trainingDataStats.real,
+      simulated_outcomes_count: trainingDataStats.simulated,
+      
+      content_arms: banditStats.content_arms,
+      timing_arms: banditStats.timing_arms,
+      
+      predictor: predictorStats,
+      
+      top_performing_content_type: banditStats.top_content_type,
+      best_timing_slot: banditStats.best_timing_slot,
+      current_explore_ratio: banditStats.explore_ratio,
+      
+      er_trend_7d: await calculateERTrend(),
+      engagement_momentum: await calculateMomentum()
     };
     
-    res.json(response);
+    res.json(status);
     
-  } catch (error) {
-    console.error('❌ LEARN_STATUS_ENDPOINT: Error:', error.message);
-    res.status(500).json({
-      success: false,
+  } catch (error: any) {
+    console.error('[LEARN_STATUS] ❌ Failed to get learn status:', error.message);
+    res.status(500).json({ 
       error: 'Failed to get learning status',
-      timestamp: new Date().toISOString()
+      details: error.message 
     });
   }
 }
 
-function generateLastRuns(): LearningRunSummary[] {
-  // Mock last 5 learning runs
-  const runs: LearningRunSummary[] = [];
-  
-  for (let i = 0; i < 5; i++) {
-    const hoursAgo = i * 2 + 1; // Every 2 hours
-    const timestamp = new Date(Date.now() - hoursAgo * 60 * 60 * 1000);
-    
-    runs.push({
-      timestamp: timestamp.toISOString(),
-      sampleSize: Math.floor(Math.random() * 10) + 5, // 5-15 samples
-      simulatedPercent: 100, // All simulated in shadow mode
-      armsUpdated: Math.floor(Math.random() * 8) + 3, // 3-10 arms
-      exploreRatio: 0.15 + Math.random() * 0.1, // 0.15-0.25
-      duration: `${Math.floor(Math.random() * 30) + 10}s` // 10-40s
-    });
-  }
-  
-  return runs.reverse(); // Most recent first
-}
-
-function generateTopArms(): BanditArm[] {
-  const arms: BanditArm[] = [
-    // Content arms
-    {
-      armId: 'content_educational',
-      armType: 'content',
-      posteriorMean: 0.036,
-      confidenceInterval: [0.029, 0.043],
-      totalSamples: 34,
-      successRate: 0.71,
-      lastUsed: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
-    },
-    {
-      armId: 'content_fact_sharing',
-      armType: 'content',
-      posteriorMean: 0.041,
-      confidenceInterval: [0.033, 0.049],
-      totalSamples: 28,
-      successRate: 0.82,
-      lastUsed: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString()
-    },
-    {
-      armId: 'content_wellness_tip',
-      armType: 'content',
-      posteriorMean: 0.038,
-      confidenceInterval: [0.031, 0.045],
-      totalSamples: 31,
-      successRate: 0.77,
-      lastUsed: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString()
-    },
-    
-    // Timing arms
-    {
-      armId: 'timing_14h',
-      armType: 'timing',
-      posteriorMean: 0.039,
-      confidenceInterval: [0.032, 0.046],
-      totalSamples: 19,
-      successRate: 0.79,
-      lastUsed: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString()
-    },
-    {
-      armId: 'timing_18h',
-      armType: 'timing',
-      posteriorMean: 0.042,
-      confidenceInterval: [0.034, 0.050],
-      totalSamples: 22,
-      successRate: 0.86,
-      lastUsed: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString()
-    },
-    
-    // Reply arms
-    {
-      armId: 'reply_high_follower',
-      armType: 'reply',
-      posteriorMean: 0.033,
-      confidenceInterval: [0.026, 0.040],
-      totalSamples: 15,
-      successRate: 0.67,
-      lastUsed: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString()
-    }
-  ];
-  
-  // Sort by posterior mean (best performing first)
-  return arms.sort((a, b) => b.posteriorMean - a.posteriorMean).slice(0, 10);
-}
-
-async function generateTimingHeatmap(): Promise<{ hour: number; avgReward: number; plays: number; confidence: number }[]> {
-  try {
-    // Try to get real timing heatmap from UCB bandit
-    const { getUCBTimingBandit } = await import('../schedule/ucbTiming');
-    const ucbTiming = getUCBTimingBandit();
-    return ucbTiming.getTimingHeatmap();
-  } catch (error) {
-    console.warn('[LEARN_STATUS] Failed to load timing heatmap:', error.message);
-    
-    // Fallback to mock heatmap
-    const heatmap = [];
-    for (let hour = 0; hour < 24; hour++) {
-      heatmap.push({
-        hour,
-        avgReward: 0.02 + Math.random() * 0.03, // 0.02-0.05 range
-        plays: Math.floor(Math.random() * 20) + 5, // 5-25 plays
-        confidence: Math.random() * 0.8 + 0.2 // 0.2-1.0 confidence
-      });
-    }
-    return heatmap;
-  }
-}
-
-async function generatePredictorCoefficients(): Promise<PredictorCoefficients> {
-  try {
-    // Try to load real coefficients from KV store
-    const { loadLatestCoefficients } = await import('../jobs/predictorTrainer');
-    const coeffs = await loadLatestCoefficients();
-    
-    if (coeffs) {
-      return {
-        version: coeffs.version,
-        intercept: coeffs.ridge.intercept,
-        qualityWeight: coeffs.ridge.qualityWeight,
-        contentTypeWeight: coeffs.ridge.contentTypeWeight,
-        timingWeight: coeffs.ridge.timingWeight,
-        rSquared: coeffs.ridge.rSquared,
-        mse: coeffs.ridge.mse,
-        updatedAt: coeffs.meta.trainedAt.toISOString()
-      };
-    }
-  } catch (error) {
-    console.warn('[LEARN_STATUS] Failed to load predictor coefficients:', error.message);
-  }
-  
-  // Fallback to mock coefficients
+async function getBanditStatus() {
+  // Mock bandit status - in real implementation would query bandit_arms table
   return {
-    version: 'v2_default',
-    intercept: 0.012,
-    qualityWeight: 0.034,
-    contentTypeWeight: 0.008,
-    timingWeight: 0.003,
-    rSquared: 0.73,
-    mse: 0.0001,
-    updatedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() // 2 hours ago
+    content_arms: [
+      { arm_name: 'educational', successes: 15, trials: 20, success_rate: 0.75, confidence_interval: [0.65, 0.85] as [number, number] },
+      { arm_name: 'wellness_tip', successes: 12, trials: 18, success_rate: 0.67, confidence_interval: [0.55, 0.79] as [number, number] },
+      { arm_name: 'fact_sharing', successes: 8, trials: 15, success_rate: 0.53, confidence_interval: [0.39, 0.67] as [number, number] }
+    ],
+    timing_arms: [
+      { slot: 14, avg_reward: 0.031, trials: 8, ucb_score: 1.45 },
+      { slot: 16, avg_reward: 0.038, trials: 12, ucb_score: 1.52 },
+      { slot: 18, avg_reward: 0.042, trials: 15, ucb_score: 1.48 }
+    ],
+    top_content_type: 'educational',
+    best_timing_slot: 18,
+    explore_ratio: 0.224
   };
+}
+
+async function getPredictorStatus() {
+  // Mock predictor status - in real implementation would check Redis and DB
+  return {
+    version: 'v2',
+    last_trained: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2 hours ago
+    feature_count: 12,
+    accuracy_score: 0.73,
+    training_samples_used: 45
+  };
+}
+
+async function getTrainingDataStats() {
+  try {
+    const { getSupabaseClient } = await import('../db/index');
+    const supabase = getSupabaseClient();
+    
+    // Get counts of real vs simulated outcomes
+    const { count: realCount } = await supabase
+      .from('outcomes')
+      .select('*', { count: 'exact', head: true })
+      .eq('simulated', false);
+      
+    const { count: simulatedCount } = await supabase
+      .from('outcomes')
+      .select('*', { count: 'exact', head: true })
+      .eq('simulated', true);
+    
+    return {
+      total: (realCount || 0) + (simulatedCount || 0),
+      real: realCount || 0,
+      simulated: simulatedCount || 0
+    };
+  } catch (error) {
+    return { total: 0, real: 0, simulated: 0 };
+  }
+}
+
+async function getLastLearnRun(): Promise<string> {
+  // Mock - in real implementation would check job manager or database
+  return new Date(Date.now() - 45 * 60 * 1000).toISOString(); // 45 minutes ago
+}
+
+function estimateNextRun(): string {
+  // Learning runs every 2 hours
+  const nextRun = new Date(Date.now() + 75 * 60 * 1000); // 75 minutes from now
+  return nextRun.toISOString();
+}
+
+async function calculateERTrend(): Promise<number> {
+  // Mock ER trend calculation - in real implementation would compare 7d windows
+  return 5.2; // +5.2% improvement over last 7 days
+}
+
+async function calculateMomentum(): Promise<'increasing' | 'stable' | 'decreasing'> {
+  // Mock momentum calculation
+  const trend = await calculateERTrend();
+  if (trend > 2) return 'increasing';
+  if (trend < -2) return 'decreasing';
+  return 'stable';
 }

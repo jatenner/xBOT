@@ -1,170 +1,180 @@
 /**
- * 🔐 ADMIN JOB MANAGEMENT
- * Protected routes for job monitoring and manual execution
+ * 🔧 ADMIN JOBS ENDPOINT
+ * Allows manual triggering of specific jobs with authentication
  */
 
 import { Request, Response } from 'express';
-import { getConfig } from '../config/config';
-import { JobManager } from '../jobs/jobManager';
 
-/**
- * Middleware to verify admin token
- */
-export function requireAdminAuth(req: Request, res: Response, next: Function): void {
-  const authHeader = req.headers.authorization;
-  const config = getConfig();
-  
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    res.status(401).json({
-      success: false,
-      error: 'Authorization header required. Use: Authorization: Bearer <ADMIN_TOKEN>',
-      timestamp: new Date().toISOString()
-    });
-    return;
-  }
-  
-  const token = authHeader.slice(7);
-  
-  if (token !== config.ADMIN_TOKEN) {
-    res.status(403).json({
-      success: false,
-      error: 'Invalid admin token',
-      timestamp: new Date().toISOString()
-    });
-    return;
-  }
-  
-  next();
+interface JobRunRequest {
+  name: string;
+  params?: Record<string, any>;
 }
 
-/**
- * GET /admin/jobs - List all jobs with status and next run times
- */
-export function adminJobsHandler(req: Request, res: Response): void {
+export async function runJob(req: Request, res: Response): Promise<void> {
   try {
-    const config = getConfig();
-    const jobManager = JobManager.getInstance();
-    const stats = jobManager.getStats();
+    // Check admin token authentication
+    const adminToken = process.env.ADMIN_TOKEN;
+    const providedToken = req.headers.authorization?.replace('Bearer ', '') || req.query.token;
     
-    const now = new Date();
-    const jobs = [
-      {
-        name: 'plan',
-        interval: `${config.JOBS_PLAN_INTERVAL_MIN}min`,
-        lastRun: stats.lastPlanTime,
-        nextRun: stats.lastPlanTime ? 
-          new Date(stats.lastPlanTime.getTime() + config.JOBS_PLAN_INTERVAL_MIN * 60 * 1000) : 
-          new Date(now.getTime() + config.JOBS_PLAN_INTERVAL_MIN * 60 * 1000),
-        runCount: stats.planRuns,
-        enabled: config.JOBS_AUTOSTART
-      },
-      {
-        name: 'reply',
-        interval: `${config.JOBS_REPLY_INTERVAL_MIN}min`,
-        lastRun: stats.lastReplyTime,
-        nextRun: stats.lastReplyTime ? 
-          new Date(stats.lastReplyTime.getTime() + config.JOBS_REPLY_INTERVAL_MIN * 60 * 1000) : 
-          new Date(now.getTime() + config.JOBS_REPLY_INTERVAL_MIN * 60 * 1000),
-        runCount: stats.replyRuns,
-        enabled: config.JOBS_AUTOSTART
-      },
-      {
-        name: 'shadowOutcomes',
-        interval: `${config.JOBS_LEARN_INTERVAL_MIN}min`,
-        lastRun: stats.lastOutcomeTime,
-        nextRun: stats.lastOutcomeTime ? 
-          new Date(stats.lastOutcomeTime.getTime() + config.JOBS_LEARN_INTERVAL_MIN * 60 * 1000) : 
-          new Date(now.getTime() + config.JOBS_LEARN_INTERVAL_MIN * 60 * 1000),
-        runCount: stats.outcomeRuns,
-        enabled: config.JOBS_AUTOSTART && config.MODE === 'shadow'
-      },
-      {
-        name: 'learn',
-        interval: `${config.JOBS_LEARN_INTERVAL_MIN}min`,
-        lastRun: stats.lastLearnTime,
-        nextRun: stats.lastLearnTime ? 
-          new Date(stats.lastLearnTime.getTime() + config.JOBS_LEARN_INTERVAL_MIN * 60 * 1000) : 
-          new Date(now.getTime() + config.JOBS_LEARN_INTERVAL_MIN * 60 * 1000),
-        runCount: stats.learnRuns,
-        enabled: config.JOBS_AUTOSTART
+    if (!adminToken || !providedToken || providedToken !== adminToken) {
+      res.status(401).json({ error: 'Unauthorized: Invalid admin token' });
+      return;
+    }
+    
+    const jobName = req.query.name as string;
+    const params = req.body || {};
+    
+    if (!jobName) {
+      res.status(400).json({ error: 'Missing required parameter: name' });
+      return;
+    }
+    
+    console.log(`[ADMIN_JOBS] 🔧 Manual job trigger: ${jobName}`);
+    
+    const result = await executeJob(jobName, params);
+    
+    res.json({
+      success: true,
+      job: jobName,
+      executedAt: new Date().toISOString(),
+      result
+    });
+    
+  } catch (error: any) {
+    console.error(`[ADMIN_JOBS] ❌ Job execution failed:`, error.message);
+    res.status(500).json({ 
+      error: 'Job execution failed',
+      details: error.message 
+    });
+  }
+}
+
+async function executeJob(jobName: string, params: Record<string, any>): Promise<any> {
+  switch (jobName) {
+    case 'analyticsCollector':
+      const { collectRealOutcomes } = await import('../jobs/analyticsCollectorJob');
+      await collectRealOutcomes();
+      return { message: 'Analytics collection completed' };
+      
+    case 'learn':
+      const { runLearningCycle } = await import('../jobs/learnJob');
+      const stats = await runLearningCycle();
+      return { message: 'Learning cycle completed', stats };
+      
+    case 'plan':
+      const { planContent } = await import('../jobs/planJob');
+      await planContent();
+      return { message: 'Content planning completed' };
+      
+    case 'reply':
+      const { generateReplies } = await import('../jobs/replyJob');
+      await generateReplies();
+      return { message: 'Reply generation completed' };
+      
+    case 'posting':
+      const { processPostingQueue } = await import('../posting/orchestrator');
+      await processPostingQueue();
+      return { message: 'Posting queue processed' };
+      
+    case 'backfillEmbeddings':
+      const count = parseInt(params.count) || 100;
+      const result = await backfillEmbeddings(count);
+      return { message: `Backfilled embeddings for ${result.processed} items`, ...result };
+      
+    default:
+      throw new Error(`Unknown job: ${jobName}. Available jobs: analyticsCollector, learn, plan, reply, posting, backfillEmbeddings`);
+  }
+}
+
+async function backfillEmbeddings(count: number): Promise<{processed: number, updated: number, errors: number}> {
+  console.log(`[ADMIN_JOBS] 🔍 Backfilling embeddings for up to ${count} items...`);
+  
+  try {
+    const { getSupabaseClient } = await import('../db/index');
+    const supabase = getSupabaseClient();
+    
+    // Get content without embeddings
+    const { data: contentItems, error } = await supabase
+      .from('content_metadata')
+      .select('id, text')
+      .is('embedding', null)
+      .limit(count);
+    
+    if (error) {
+      throw new Error(`Database error: ${error.message}`);
+    }
+    
+    if (!contentItems || contentItems.length === 0) {
+      return { processed: 0, updated: 0, errors: 0 };
+    }
+    
+    let updated = 0;
+    let errors = 0;
+    
+    // Process each item
+    for (const item of contentItems) {
+      try {
+        // Generate embedding
+        const { getEmbedding } = await import('../llm/embeddingService');
+        const embedding = await getEmbedding(item.text);
+        
+        // Calculate content hash
+        const crypto = await import('crypto');
+        const contentHash = crypto.createHash('sha256').update(item.text).digest('hex').substring(0, 16);
+        
+        // Update database
+        const { error: updateError } = await supabase
+          .from('content_metadata')
+          .update({ 
+            embedding,
+            content_hash: contentHash,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', item.id);
+        
+        if (updateError) {
+          console.error(`[ADMIN_JOBS] ❌ Failed to update embedding for ${item.id}:`, updateError.message);
+          errors++;
+        } else {
+          updated++;
+          console.log(`[ADMIN_JOBS] ✅ Updated embedding for content ${item.id}`);
+        }
+        
+        // Small delay to avoid overwhelming APIs
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+      } catch (error: any) {
+        console.error(`[ADMIN_JOBS] ❌ Failed to process item ${item.id}:`, error.message);
+        errors++;
       }
-    ];
-
-    res.json({
-      success: true,
-      jobs,
-      totalErrors: stats.errors,
-      mode: config.MODE,
-      autostart: config.JOBS_AUTOSTART,
-      timestamp: new Date().toISOString()
-    });
-
-  } catch (error) {
-    console.error('❌ ADMIN_JOBS: Error:', error.message);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to get job status',
-      timestamp: new Date().toISOString()
-    });
+    }
+    
+    console.log(`[ADMIN_JOBS] 📊 Backfill complete: ${updated} updated, ${errors} errors`);
+    
+    return {
+      processed: contentItems.length,
+      updated,
+      errors
+    };
+    
+  } catch (error: any) {
+    console.error(`[ADMIN_JOBS] ❌ Backfill embeddings failed:`, error.message);
+    throw error;
   }
 }
 
-/**
- * POST /admin/jobs/run?name=<job> - Manually trigger a specific job
- */
-export async function adminJobRunHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const { name } = req.query;
-    
-    if (!name || typeof name !== 'string') {
-      res.status(400).json({
-        success: false,
-        error: 'Job name required. Valid options: plan, reply, outcomes, realOutcomes, analyticsCollector, learn',
-        timestamp: new Date().toISOString()
-      });
-      return;
-    }
-
-    const validJobs = ['plan', 'reply', 'posting', 'outcomes', 'realOutcomes', 'analyticsCollector', 'learn', 'trainPredictor'];
-    if (!validJobs.includes(name)) {
-      res.status(400).json({
-        success: false,
-        error: `Invalid job name. Valid options: ${validJobs.join(', ')}`,
-        timestamp: new Date().toISOString()
-      });
-      return;
-    }
-
-    const config = getConfig();
-    
-    // Check if outcomes job is requested in live mode  
-    if (name === 'outcomes' && config.MODE === 'live') {
-      res.status(400).json({
-        success: false,
-        error: 'outcomes job only available in shadow mode',
-        timestamp: new Date().toISOString()
-      });
-      return;
-    }
-
-    console.log(`[ADMIN_JOBS] 🚀 Manual trigger: ${name} job`);
-    
-    const jobManager = JobManager.getInstance();
-    await jobManager.runJobNow(name as 'plan' | 'reply' | 'outcomes' | 'realOutcomes' | 'analyticsCollector' | 'learn');
-
-    res.json({
-      success: true,
-      message: `Job '${name}' executed successfully`,
-      jobName: name,
-      timestamp: new Date().toISOString()
-    });
-
-  } catch (error) {
-    console.error(`❌ ADMIN_JOB_RUN: Error running job:`, error.message);
-    res.status(500).json({
-      success: false,
-      error: `Failed to run job: ${error.message}`,
-      timestamp: new Date().toISOString()
-    });
-  }
+export function listAvailableJobs(req: Request, res: Response): void {
+  const jobs = [
+    { name: 'analyticsCollector', description: 'Collect real engagement metrics from posted tweets' },
+    { name: 'learn', description: 'Run full learning cycle (bandits + predictors)' },
+    { name: 'plan', description: 'Generate new content for posting queue' },
+    { name: 'reply', description: 'Generate strategic replies to target accounts' },
+    { name: 'posting', description: 'Process posting queue and publish to X' },
+    { name: 'backfillEmbeddings', description: 'Generate embeddings for content missing them (params: count)' }
+  ];
+  
+  res.json({
+    available_jobs: jobs,
+    usage: 'POST /admin/jobs/run?name={jobName} with Admin-Token header or ?token=... query param'
+  });
 }

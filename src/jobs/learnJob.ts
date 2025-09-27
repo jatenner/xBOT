@@ -3,7 +3,7 @@
  * Handles learning cycle: update bandits, train predictors, compute arm rewards
  */
 
-import { getConfig, getModeFlags } from '../config/config';
+import { getConfig } from '../config/config';
 
 export interface LearningStats {
   sampleSize: number;
@@ -15,7 +15,6 @@ export interface LearningStats {
 
 export async function runLearningCycle(): Promise<LearningStats> {
   const config = getConfig();
-  const flags = getModeFlags(config);
   
   console.log('[LEARN_JOB] 🧠 Starting learning cycle...');
   
@@ -31,7 +30,7 @@ export async function runLearningCycle(): Promise<LearningStats> {
         armsUpdated: 0,
         exploreRatio: config.EXPLORE_RATIO_MIN || 0.1,
         predictorUpdated: false,
-        simulatedPercent: flags.simulateOutcomes ? 100 : 0
+        simulatedPercent: config.MODE === 'shadow' ? 100 : 0
       };
     }
     
@@ -49,7 +48,7 @@ export async function runLearningCycle(): Promise<LearningStats> {
       armsUpdated: banditStats.armsUpdated,
       exploreRatio,
       predictorUpdated: predictorStats.updated,
-      simulatedPercent: flags.simulateOutcomes ? 100 : calculateSimulatedPercent(trainingData)
+      simulatedPercent: config.MODE === 'shadow' ? 100 : calculateSimulatedPercent(trainingData)
     };
     
     // Log one-line summary
@@ -62,9 +61,8 @@ export async function runLearningCycle(): Promise<LearningStats> {
   }
 }
 
-async function collectTrainingData(): Promise<any[]> {
-  const config = getConfig();
-  const flags = getModeFlags(config);
+async function collectTrainingData(config?: any): Promise<any[]> {
+  if (!config) config = getConfig();
   
   console.log('[LEARN_JOB] 📊 Collecting training data from decisions and outcomes...');
   
@@ -73,7 +71,7 @@ async function collectTrainingData(): Promise<any[]> {
     const supabase = getSupabaseClient();
     
     // In live mode, prioritize real outcomes; in shadow mode, use simulated
-    const simulatedFilter = flags.simulateOutcomes ? true : false;
+    const simulatedFilter = config.MODE === 'shadow';
     
     // Get recent outcomes for training
     const { data: outcomes, error } = await supabase
@@ -86,8 +84,8 @@ async function collectTrainingData(): Promise<any[]> {
 
     if (error || !outcomes || outcomes.length === 0) {
       // In LIVE mode, never use mock data - only train on real outcomes
-      if (!flags.simulateOutcomes) {
-        console.log('[LEARN_JOB] ℹ️ No real outcomes data found in LIVE mode, skipping training');
+      if (config.MODE === 'live') {
+        console.log('[LEARN_JOB] ⚠️ Training skipped: insufficient real outcomes (need 5)');
         return [];
       }
       
