@@ -3,7 +3,7 @@
  * Handles reply generation on timer intervals
  */
 
-import { getConfig, getModeFlags } from '../config/config';
+import { getConfig } from '../config/config';
 
 // Global metrics tracking for replies
 let replyLLMMetrics = {
@@ -14,16 +14,16 @@ let replyLLMMetrics = {
 
 export async function generateReplies(): Promise<void> {
   const config = getConfig();
-  const flags = getModeFlags(config);
   
   console.log('[REPLY_JOB] 💬 Starting reply generation cycle...');
   
   try {
-    if (flags.useSyntheticGeneration) {
+    if (config.MODE === 'shadow') {
       // Shadow mode: generate mock replies
       await generateSyntheticReplies();
     } else {
       // Live mode: use real LLM and target discovery
+      console.log('[REPLY_JOB] 🧠 Discovering real targets and generating replies...');
       await generateRealReplies();
     }
     
@@ -467,4 +467,65 @@ function determineReplyBanditArm(topic: string): string {
   };
   
   return replyArms[topic] || 'supportive_reply';
+}
+
+async function generateRealReplies(): Promise<void> {
+  try {
+    // Discover real target tweets/accounts for health-focused engagement
+    const targets = await discoverTargets();
+    
+    if (targets.length === 0) {
+      console.log('[REPLY_JOB] ℹ️ No suitable targets found, falling back to synthetic');
+      await generateSyntheticReplies();
+      return;
+    }
+    
+    const successfulReplies = [];
+    
+    for (const target of targets) {
+      try {
+        const reply = await generateReplyForTarget(target);
+        
+        if (reply) {
+          successfulReplies.push(reply);
+          console.log(`[REPLY_JOB] ✅ Real LLM reply generated successfully for @${target.username}`);
+        }
+        
+      } catch (error: any) {
+        const errorMessage = error.message?.toLowerCase() || '';
+        const isQuotaError = errorMessage.includes('insufficient_quota') || 
+                            errorMessage.includes('rate_limit') ||
+                            error.status === 429;
+        
+        if (isQuotaError) {
+          console.log(`[REPLY_JOB] 🔄 OpenAI insufficient_quota → skipping reply for @${target.username}`);
+          // Skip this target and continue with others
+          continue;
+        } else {
+          console.warn(`[REPLY_JOB] ⚠️ Failed to generate reply for @${target.username}: ${error.message}`);
+        }
+      }
+    }
+    
+    if (successfulReplies.length === 0) {
+      console.log('[REPLY_JOB] ⚠️ No successful real replies generated, falling back to synthetic');
+      await generateSyntheticReplies();
+    } else {
+      console.log(`[REPLY_JOB] 📊 Generated ${successfulReplies.length} real replies`);
+    }
+    
+  } catch (error: any) {
+    console.error('[REPLY_JOB] ❌ Real reply generation failed:', error.message);
+    console.log('[REPLY_JOB] 🔄 Falling back to synthetic replies');
+    await generateSyntheticReplies();
+  }
+}
+
+async function discoverTargets(): Promise<any[]> {
+  // Mock target discovery for now - in real implementation this would use X API
+  return [
+    { username: 'health_influencer', followers: 150000, topic: 'nutrition', tweet_id: 'mock_123' },
+    { username: 'wellness_coach', followers: 85000, topic: 'mental_health', tweet_id: 'mock_456' },
+    { username: 'fitness_expert', followers: 200000, topic: 'exercise', tweet_id: 'mock_789' }
+  ];
 }

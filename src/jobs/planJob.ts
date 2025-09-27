@@ -3,7 +3,7 @@
  * Handles content planning on timer intervals
  */
 
-import { getConfig, getModeFlags } from '../config/config';
+import { getConfig } from '../config/config';
 
 // Global metrics tracking
 let llmMetrics = {
@@ -14,7 +14,6 @@ let llmMetrics = {
 
 export async function planContent(): Promise<void> {
   const config = getConfig();
-  const flags = getModeFlags(config);
   
   console.log('[PLAN_JOB] 📝 Starting content planning cycle...');
   
@@ -28,11 +27,12 @@ export async function planContent(): Promise<void> {
     console.log(`[PLAN_JOB] 🔍 Neighboring slots for exploration: [${timingSelection.neighbors.join(', ')}]`);
     
     // 2. Generate content based on mode
-    if (flags.useSyntheticGeneration) {
+    if (config.MODE === 'shadow') {
       // Shadow mode: generate mock content
       await generateSyntheticContent();
     } else {
       // Live mode: use real LLM with graceful fallback
+      console.log('[PLAN_JOB] 🧠 Generating real content using LLM...');
       await generateRealContent();
     }
     
@@ -51,85 +51,96 @@ async function generateSyntheticContent(): Promise<void> {
   
   const mockContent = [
     {
-      content: "Health tip: Stay hydrated! Your body needs water for optimal function.",
-      quality: 0.82,
-      predicted_er: 0.034,
+      text: "Health tip: Stay hydrated! Your body needs water for optimal function.",
+      topic: "hydration",
       format: "educational",
-      timestamp: new Date().toISOString()
+      quality_score: 0.82,
+      predicted_er: 0.034,
+      bandit_arm: "educational",
+      generation_source: 'synthetic' as const
     },
     {
-      content: "Did you know? Regular sleep schedules can improve your immune system significantly.",
-      quality: 0.91,
-      predicted_er: 0.041,
+      text: "Did you know? Regular sleep schedules can improve your immune system significantly.",
+      topic: "sleep",
       format: "fact_sharing",
-      timestamp: new Date().toISOString()
+      quality_score: 0.91,
+      predicted_er: 0.041,
+      bandit_arm: "fact_sharing", 
+      generation_source: 'synthetic' as const
     },
     {
-      content: "Mental health matters: Take 5 minutes today for mindful breathing exercises.",
-      quality: 0.88,
-      predicted_er: 0.037,
+      text: "Mental health matters: Take 5 minutes today for mindful breathing exercises.",
+      topic: "mental_health",
       format: "wellness_tip",
-      timestamp: new Date().toISOString()
+      quality_score: 0.88,
+      predicted_er: 0.037,
+      bandit_arm: "wellness_tip",
+      generation_source: 'synthetic' as const
     }
   ];
   
   for (const content of mockContent) {
-    console.log(`[PLAN_JOB] ✨ Generated: "${content.content.substring(0, 50)}..."`);
-    console.log(`[PLAN_JOB]    Quality: ${content.quality}, Predicted ER: ${content.predicted_er}`);
+    console.log(`[PLAN_JOB] ✨ Generated: "${content.text.substring(0, 50)}..."`);
+    console.log(`[PLAN_JOB]    Quality: ${content.quality_score}, Predicted ER: ${content.predicted_er}`);
   }
   
   console.log(`[PLAN_JOB] 📊 Generated ${mockContent.length} synthetic content items`);
 }
 
 async function generateRealContent(): Promise<void> {
-  console.log('[PLAN_JOB] 🧠 Generating real content using LLM...');
-  
   try {
-    // Get real decision ID and timing info
-    const decisionId = `decision_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+    // Generate 3 pieces of content with real LLM
+    const contentResults = [];
     
-    // 1. Get UCB timing selection for context
-    const { getUCBTimingBandit } = await import('../schedule/ucbTiming');
-    const ucbTiming = getUCBTimingBandit();
-    const timingSelection = await ucbTiming.selectTimingWithUCB();
-    
-    // 2. Generate content using OpenAI
-    const content = await generateContentWithOpenAI(decisionId, timingSelection);
-    
-    // 3. Run through gate chain
-    const gateResult = await runGateChain(content, decisionId);
-    
-    if (!gateResult.passed) {
-      console.log(`[PLAN_JOB] ❌ Content blocked by ${gateResult.gate}: ${gateResult.reason}`);
-      await updateGateMetrics(gateResult.gate);
-      return;
+    for (let i = 0; i < 3; i++) {
+      try {
+        const decisionId = `decision_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+        
+        // Generate content using OpenAI
+        const content = await generateContentWithOpenAI(decisionId);
+        
+        // Run through gate chain
+        const gateResult = await runGateChain(content, decisionId);
+        
+        if (!gateResult.passed) {
+          console.log(`[PLAN_JOB] ❌ Content blocked by ${gateResult.gate}: ${gateResult.reason}`);
+          await updateGateMetrics(gateResult.gate);
+          continue;
+        }
+        
+        // Store decision for posting  
+        await storeDecisionForPosting(decisionId, content, { slot: 19 });
+        contentResults.push(content);
+        
+        console.log(`[PLAN_JOB] ✨ Generated: "${content.text.substring(0, 50)}..."`);
+        console.log(`[PLAN_JOB]    Quality: ${content.quality_score}, Predicted ER: ${content.predicted_er}`);
+        
+      } catch (itemError: any) {
+        // Handle per-item errors (continue with other items)
+        const errorMessage = itemError.message?.toLowerCase() || '';
+        const isQuotaError = errorMessage.includes('insufficient_quota') || 
+                            errorMessage.includes('rate_limit') ||
+                            itemError.status === 429;
+        
+        if (isQuotaError) {
+          console.log('[PLAN_JOB] 🔄 OpenAI insufficient_quota → fallback to shadow generation');
+          // Fall back to synthetic for remaining items
+          await generateSyntheticContent();
+          return;
+        } else {
+          console.warn(`[PLAN_JOB] ⚠️ Failed to generate content item: ${itemError.message}`);
+        }
+      }
     }
     
-    // 4. Store decision for posting and analytics tracking
-    await storeDecisionForPosting(decisionId, content, timingSelection);
-    
-    console.log(`[PLAN_JOB] ✅ Real content generated and queued: "${content.text.substring(0, 50)}..."`);
+    console.log(`[PLAN_JOB] 📊 Generated ${contentResults.length} real content items`);
     
   } catch (error: any) {
     console.error('[PLAN_JOB] ❌ Real content generation failed:', error.message);
     
-    // Check if this is a known OpenAI error that should trigger shadow fallback
-    const errorMessage = error.message?.toLowerCase() || '';
-    const isKnownLLMError = errorMessage.includes('insufficient_quota') || 
-                           errorMessage.includes('rate_limit') ||
-                           errorMessage.includes('invalid_api_key') ||
-                           errorMessage.includes('budget') ||
-                           error.status === 429 || 
-                           error.status === 401;
-
-    if (isKnownLLMError) {
-      console.log('[PLAN_JOB] 🔄 OpenAI insufficient_quota → fallback to shadow generation');
-      await generateSyntheticContent();
-    } else {
-      // For unknown errors, still fallback but log as unexpected
-      console.error('[PLAN_JOB] ⚠️ Unexpected error, falling back to shadow:', error);
-      await generateSyntheticContent();
-    }
+    // Fallback to synthetic on any major error
+    console.log('[PLAN_JOB] 🔄 OpenAI insufficient_quota → fallback to shadow generation');
+    await generateSyntheticContent();
   }
 }
 
@@ -140,6 +151,7 @@ interface GeneratedContent {
   quality_score: number;
   predicted_er: number;
   bandit_arm: string;
+  generation_source: 'real' | 'synthetic';
 }
 
 async function updateLLMMetrics(status: 'success' | 'failed', error?: any): Promise<void> {
@@ -165,7 +177,7 @@ export function getLLMMetrics() {
   return { ...llmMetrics };
 }
 
-async function generateContentWithOpenAI(decisionId: string, timingSelection: any): Promise<GeneratedContent> {
+async function generateContentWithOpenAI(decisionId: string): Promise<GeneratedContent> {
   // Get budgeted OpenAI service
   const { OpenAIService } = await import('../services/openAIService');
   const openaiService = OpenAIService.getInstance();
@@ -188,6 +200,9 @@ Format your response as JSON:
 }`;
 
   console.log(`[PLAN_JOB] 🤖 Calling OpenAI (${model}) for content generation...`);
+  
+  // Track metrics
+  llmMetrics.calls_total++;
   
   try {
     const response = await openaiService.chatCompletion([
@@ -232,38 +247,29 @@ Format your response as JSON:
 
     console.log('[PLAN_JOB] ✅ Real LLM content generated successfully');
     
-    // Log success metrics
-    await updateLLMMetrics('success');
-    
     return {
       text: contentData.text,
       topic: contentData.topic || 'health',
       format: contentData.format || 'educational',
       quality_score: qualityScore,
       predicted_er: predictedER,
-      bandit_arm: determineBanditArm(contentData.topic, contentData.format)
+      bandit_arm: determineBanditArm(contentData.topic, contentData.format),
+      generation_source: 'real'
     };
 
   } catch (error: any) {
-    // Log OpenAI metrics for observability
-    await updateLLMMetrics('failed', error);
+    // Log failure metrics
+    llmMetrics.calls_failed++;
+    const errorType = error?.status === 429 ? 'rate_limit' :
+                     error?.status === 401 ? 'invalid_api_key' :
+                     error?.message?.includes('insufficient_quota') ? 'insufficient_quota' :
+                     error?.message?.includes('budget') ? 'budget_exceeded' :
+                     'unknown';
+    
+    llmMetrics.failure_reasons[errorType] = (llmMetrics.failure_reasons[errorType] || 0) + 1;
     
     console.error('[PLAN_JOB] ❌ OpenAI generation failed:', error.message);
-    
-    // Check for known OpenAI errors that should trigger fallback
-    const errorMessage = error.message?.toLowerCase() || '';
-    const isKnownError = errorMessage.includes('insufficient_quota') || 
-                        errorMessage.includes('rate_limit') ||
-                        errorMessage.includes('invalid_api_key') ||
-                        errorMessage.includes('budget') ||
-                        error.status === 429 || 
-                        error.status === 401;
-
-    if (isKnownError) {
-      console.log('[PLAN_JOB] 🔄 OpenAI insufficient_quota → fallback to shadow generation');
-    } else {
-      console.error('[PLAN_JOB] ⚠️ Unknown OpenAI error, propagating:', error);
-    }
+    console.log(`[PLAN_JOB] 📊 LLM Metrics - Total: ${llmMetrics.calls_total}, Failed: ${llmMetrics.calls_failed}`);
     
     // Re-throw to trigger fallback in caller
     throw error;

@@ -7,6 +7,25 @@ import { Request, Response } from 'express';
 import { JobManager } from '../jobs/jobManager';
 import { getConfig } from '../config/config';
 
+// Metrics imports
+async function getLLMMetrics() {
+  try {
+    const { getLLMMetrics } = await import('../jobs/planJob');
+    return getLLMMetrics();
+  } catch {
+    return { calls_total: 0, calls_failed: 0, failure_reasons: {} };
+  }
+}
+
+async function getPostingMetrics() {
+  try {
+    const { getPostingMetrics } = await import('../posting/orchestrator');
+    return getPostingMetrics();
+  } catch {
+    return { posts_attempted: 0, posts_posted: 0, posts_skipped: 0, skip_reasons: {} };
+  }
+}
+
 export interface SystemMetrics {
   // Time window (last 60 minutes)
   timeWindow: string;
@@ -221,9 +240,9 @@ export function getCurrentMetrics(): SystemMetrics {
     learnRuns: jobStats.learnRuns,
     openaiCalls: metricsStore.openaiCalls,
     openaiCostUsd: metricsStore.openaiCostUsd,
-    openaiCalls_total: 0, // TODO: Implement LLM metrics collection
-    openaiCalls_failed: 0,
-    openaiFailureReasons: {},
+    openaiCalls_total: await getLLMMetrics().calls_total || 0,
+    openaiCalls_failed: await getLLMMetrics().calls_failed || 0,
+    openaiFailureReasons: await getLLMMetrics().failure_reasons || {},
     banditArmsUpdated: metricsStore.banditArmsUpdated,
     predictorStatus: metricsStore.predictorStatus,
     exploreRatio: metricsStore.exploreRatio,
@@ -233,10 +252,10 @@ export function getCurrentMetrics(): SystemMetrics {
     uniqueBlocksCount: metricsStore.uniqueBlocksCount,
     qualityBlocksCount: metricsStore.qualityBlocksCount,
     rotationBlocksCount: metricsStore.rotationBlocksCount,
-    postsQueued: 0, // TODO: Implement queue metrics
-    postsPosted: 0, // TODO: Implement posting metrics
-    postingErrors: 0,
-    post_skipped_reason_counts: {},
+    postsQueued: await getPostingMetrics().posts_attempted || 0,
+    postsPosted: await getPostingMetrics().posts_posted || 0,
+    postingErrors: await getPostingMetrics().posts_skipped || 0,
+    post_skipped_reason_counts: await getPostingMetrics().skip_reasons || {},
     followsPer1kImpressions: metricsStore.followsPer1kImpressions,
     nonFollowerER: metricsStore.nonFollowerER,
     errors: jobStats.errors + metricsStore.errors,
