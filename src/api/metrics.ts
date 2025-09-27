@@ -98,18 +98,40 @@ const metricsStore = {
   startTime: Date.now()
 };
 
-export function metricsHandler(req: Request, res: Response): void {
+export async function metricsHandler(req: Request, res: Response): Promise<void> {
   try {
+    const metrics = await getCurrentMetrics();
+    
     const config = getConfig();
-    const jobManager = JobManager.getInstance();
-    const jobStats = jobManager.getStats();
     
-    // Calculate uptime
-    const uptimeMs = Date.now() - metricsStore.startTime;
-    const uptimeHours = Math.floor(uptimeMs / (1000 * 60 * 60));
-    const uptimeMinutes = Math.floor((uptimeMs % (1000 * 60 * 60)) / (1000 * 60));
+    res.json({
+      success: true,
+      metrics,
+      mode: config.MODE,
+      timestamp: new Date().toISOString()
+    });
     
-    const metrics: SystemMetrics = {
+  } catch (error) {
+    console.error('❌ METRICS_ENDPOINT: Error:', error.message);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to generate metrics',
+      timestamp: new Date().toISOString()
+    });
+  }
+}
+
+function getBasicMetrics(): SystemMetrics {
+  const config = getConfig();
+  const jobManager = JobManager.getInstance();
+  const jobStats = jobManager.getStats();
+  
+  // Calculate uptime
+  const uptimeMs = Date.now() - metricsStore.startTime;
+  const uptimeHours = Math.floor(uptimeMs / (1000 * 60 * 60));
+  const uptimeMinutes = Math.floor((uptimeMs % (1000 * 60 * 60)) / (1000 * 60));
+  
+  const metrics: SystemMetrics = {
       timeWindow: 'last_60m',
       
       // Job counts from JobManager
@@ -147,24 +169,16 @@ export function metricsHandler(req: Request, res: Response): void {
       
       // System health
       errors: jobStats.errors + metricsStore.errors,
-      uptime: `${uptimeHours}h ${uptimeMinutes}m`
+      uptime: `${uptimeHours}h ${uptimeMinutes}m`,
+      
+      // Add missing required fields with defaults
+      openaiCalls_total: 0,
+      openaiCalls_failed: 0,
+      openaiFailureReasons: {},
+      post_skipped_reason_counts: {}
     };
     
-    res.json({
-      success: true,
-      metrics,
-      mode: config.MODE,
-      timestamp: new Date().toISOString()
-    });
-    
-  } catch (error) {
-    console.error('❌ METRICS_ENDPOINT: Error:', error.message);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to generate metrics',
-      timestamp: new Date().toISOString()
-    });
-  }
+    return metrics;
 }
 
 /**
@@ -222,7 +236,7 @@ export function updateMockMetrics(mockMetrics: {
 /**
  * Get current metrics for internal use
  */
-export function getCurrentMetrics(): SystemMetrics {
+export async function getCurrentMetrics(): Promise<SystemMetrics> {
   const config = getConfig();
   const jobManager = JobManager.getInstance();
   const jobStats = jobManager.getStats();
@@ -230,6 +244,10 @@ export function getCurrentMetrics(): SystemMetrics {
   const uptimeMs = Date.now() - metricsStore.startTime;
   const uptimeHours = Math.floor(uptimeMs / (1000 * 60 * 60));
   const uptimeMinutes = Math.floor((uptimeMs % (1000 * 60 * 60)) / (1000 * 60));
+  
+  // Get LLM and posting metrics
+  const llmMetrics = await getLLMMetrics();
+  const postingMetrics = await getPostingMetrics();
   
   return {
     timeWindow: 'last_60m',
@@ -240,9 +258,9 @@ export function getCurrentMetrics(): SystemMetrics {
     learnRuns: jobStats.learnRuns,
     openaiCalls: metricsStore.openaiCalls,
     openaiCostUsd: metricsStore.openaiCostUsd,
-    openaiCalls_total: await getLLMMetrics().calls_total || 0,
-    openaiCalls_failed: await getLLMMetrics().calls_failed || 0,
-    openaiFailureReasons: await getLLMMetrics().failure_reasons || {},
+    openaiCalls_total: llmMetrics.calls_total || 0,
+    openaiCalls_failed: llmMetrics.calls_failed || 0,
+    openaiFailureReasons: llmMetrics.failure_reasons || {},
     banditArmsUpdated: metricsStore.banditArmsUpdated,
     predictorStatus: metricsStore.predictorStatus,
     exploreRatio: metricsStore.exploreRatio,
@@ -252,10 +270,10 @@ export function getCurrentMetrics(): SystemMetrics {
     uniqueBlocksCount: metricsStore.uniqueBlocksCount,
     qualityBlocksCount: metricsStore.qualityBlocksCount,
     rotationBlocksCount: metricsStore.rotationBlocksCount,
-    postsQueued: await getPostingMetrics().posts_attempted || 0,
-    postsPosted: await getPostingMetrics().posts_posted || 0,
-    postingErrors: await getPostingMetrics().posts_skipped || 0,
-    post_skipped_reason_counts: await getPostingMetrics().skip_reasons || {},
+    postsQueued: postingMetrics.posts_attempted || 0,
+    postsPosted: postingMetrics.posts_posted || 0,
+    postingErrors: postingMetrics.posts_skipped || 0,
+    post_skipped_reason_counts: postingMetrics.skip_reasons || {},
     followsPer1kImpressions: metricsStore.followsPer1kImpressions,
     nonFollowerER: metricsStore.nonFollowerER,
     errors: jobStats.errors + metricsStore.errors,

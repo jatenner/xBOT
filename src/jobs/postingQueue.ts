@@ -69,6 +69,22 @@ interface QueuedDecision {
   created_at: string;
 }
 
+interface QueuedDecisionRow {
+  [key: string]: unknown;
+  id: unknown;
+  content: unknown;
+  decision_type: unknown;
+  target_tweet_id?: unknown;
+  target_username?: unknown;
+  bandit_arm: unknown;
+  timing_arm?: unknown;
+  predicted_er: unknown;
+  quality_score?: unknown;
+  topic_cluster: unknown;
+  status: unknown;
+  created_at: unknown;
+}
+
 async function checkPostingRateLimits(): Promise<boolean> {
   const config = getConfig();
   const maxPostsPerHour = parseInt(String(config.MAX_POSTS_PER_HOUR || 1));
@@ -122,7 +138,28 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
       return [];
     }
     
-    return data || [];
+    if (!data || data.length === 0) {
+      return [];
+    }
+    
+    // Map raw rows to typed decisions
+    const rows = data as QueuedDecisionRow[];
+    const decisions: QueuedDecision[] = rows.map(row => ({
+      id: String(row.id ?? ''),
+      content: String(row.content ?? ''),
+      decision_type: String(row.decision_type ?? 'content') as 'content' | 'reply',
+      target_tweet_id: row.target_tweet_id ? String(row.target_tweet_id) : undefined,
+      target_username: row.target_username ? String(row.target_username) : undefined,
+      bandit_arm: String(row.bandit_arm ?? ''),
+      timing_arm: row.timing_arm ? String(row.timing_arm) : undefined,
+      predicted_er: Number(row.predicted_er ?? 0),
+      quality_score: row.quality_score ? Number(row.quality_score) : undefined,
+      topic_cluster: String(row.topic_cluster ?? ''),
+      status: String(row.status ?? 'ready_for_posting'),
+      created_at: String(row.created_at ?? new Date().toISOString())
+    }));
+    
+    return decisions;
     
   } catch (error) {
     console.error('[POSTING_QUEUE] ❌ Failed to fetch ready decisions:', error.message);

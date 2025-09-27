@@ -173,3 +173,6 @@ async function calculateMomentum(): Promise<'increasing' | 'stable' | 'decreasin
   if (trend < -2) return 'decreasing';
   return 'stable';
 }
+
+// Export for server.ts
+export const learnStatusHandler = getLearnStatus;
