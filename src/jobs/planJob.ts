@@ -5,6 +5,13 @@
 
 import { getConfig, getModeFlags } from '../config/config';
 
+// Global metrics tracking
+let llmMetrics = {
+  calls_total: 0,
+  calls_failed: 0,
+  failure_reasons: {} as Record<string, number>
+};
+
 export async function planContent(): Promise<void> {
   const config = getConfig();
   const flags = getModeFlags(config);
@@ -25,7 +32,7 @@ export async function planContent(): Promise<void> {
       // Shadow mode: generate mock content
       await generateSyntheticContent();
     } else {
-      // Live mode: use real LLM
+      // Live mode: use real LLM with graceful fallback
       await generateRealContent();
     }
     
@@ -103,12 +110,26 @@ async function generateRealContent(): Promise<void> {
     
     console.log(`[PLAN_JOB] ✅ Real content generated and queued: "${content.text.substring(0, 50)}..."`);
     
-  } catch (error) {
+  } catch (error: any) {
     console.error('[PLAN_JOB] ❌ Real content generation failed:', error.message);
     
-    // Fallback to synthetic on error (fail-safe)
-    console.log('[PLAN_JOB] 🔄 Falling back to synthetic content');
-    await generateSyntheticContent();
+    // Check if this is a known OpenAI error that should trigger shadow fallback
+    const errorMessage = error.message?.toLowerCase() || '';
+    const isKnownLLMError = errorMessage.includes('insufficient_quota') || 
+                           errorMessage.includes('rate_limit') ||
+                           errorMessage.includes('invalid_api_key') ||
+                           errorMessage.includes('budget') ||
+                           error.status === 429 || 
+                           error.status === 401;
+
+    if (isKnownLLMError) {
+      console.log('[PLAN_JOB] 🔄 OpenAI insufficient_quota → fallback to shadow generation');
+      await generateSyntheticContent();
+    } else {
+      // For unknown errors, still fallback but log as unexpected
+      console.error('[PLAN_JOB] ⚠️ Unexpected error, falling back to shadow:', error);
+      await generateSyntheticContent();
+    }
   }
 }
 
@@ -121,10 +142,34 @@ interface GeneratedContent {
   bandit_arm: string;
 }
 
+async function updateLLMMetrics(status: 'success' | 'failed', error?: any): Promise<void> {
+  llmMetrics.calls_total++;
+  
+  if (status === 'failed') {
+    llmMetrics.calls_failed++;
+    
+    // Track failure reasons for observability
+    const errorType = error?.status === 429 ? 'rate_limit' :
+                     error?.status === 401 ? 'invalid_api_key' :
+                     error?.message?.includes('insufficient_quota') ? 'insufficient_quota' :
+                     error?.message?.includes('budget') ? 'budget_exceeded' :
+                     'unknown';
+    
+    llmMetrics.failure_reasons[errorType] = (llmMetrics.failure_reasons[errorType] || 0) + 1;
+  }
+  
+  console.log(`[PLAN_JOB] 📊 LLM Metrics - Total: ${llmMetrics.calls_total}, Failed: ${llmMetrics.calls_failed}, Failure Rate: ${((llmMetrics.calls_failed / llmMetrics.calls_total) * 100).toFixed(1)}%`);
+}
+
+export function getLLMMetrics() {
+  return { ...llmMetrics };
+}
+
 async function generateContentWithOpenAI(decisionId: string, timingSelection: any): Promise<GeneratedContent> {
   // Get budgeted OpenAI service
   const { OpenAIService } = await import('../services/openAIService');
   const openaiService = OpenAIService.getInstance();
+  const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
   
   // Health-focused content prompt
   const prompt = `Generate a high-quality health-focused Twitter post that is:
@@ -142,56 +187,87 @@ Format your response as JSON:
   "reasoning": "why this content is valuable"
 }`;
 
-  console.log('[PLAN_JOB] 🤖 Calling OpenAI for content generation...');
+  console.log(`[PLAN_JOB] 🤖 Calling OpenAI (${model}) for content generation...`);
   
-  const response = await openaiService.chatCompletion([
-      {
-        role: 'system',
-        content: 'You are a health content expert who creates evidence-based, engaging social media content. Focus on providing genuine value without making false claims.'
-      },
-      {
-        role: 'user',
-        content: prompt
-      }
-    ], {
-    model: 'gpt-4o-mini',
-    maxTokens: 300,
-    temperature: 0.8,
-    response_format: { type: 'json_object' },
-    requestType: 'content_generation'
-  });
-
-  const rawContent = response.choices[0]?.message?.content;
-  if (!rawContent) {
-    throw new Error('Empty response from OpenAI');
-  }
-
-  // Parse and validate response
-  let contentData;
   try {
-    contentData = JSON.parse(rawContent);
-  } catch (error) {
-    throw new Error('Invalid JSON response from OpenAI');
+    const response = await openaiService.chatCompletion([
+        {
+          role: 'system',
+          content: 'You are a health content expert who creates evidence-based, engaging social media content. Focus on providing genuine value without making false claims.'
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ], {
+      model,
+      maxTokens: 300,
+      temperature: 0.8,
+      response_format: { type: 'json_object' },
+      requestType: 'content_generation'
+    });
+
+    const rawContent = response.choices[0]?.message?.content;
+    if (!rawContent) {
+      throw new Error('Empty response from OpenAI');
+    }
+
+    // Parse and validate response
+    let contentData;
+    try {
+      contentData = JSON.parse(rawContent);
+    } catch (error) {
+      throw new Error('Invalid JSON response from OpenAI');
+    }
+
+    if (!contentData.text || contentData.text.length > 280) {
+      throw new Error('Invalid content: missing text or too long');
+    }
+
+    // Calculate quality score based on content characteristics
+    const qualityScore = calculateContentQuality(contentData.text);
+    
+    // Predict engagement rate (simplified model)
+    const predictedER = predictEngagementRate(contentData.text, contentData.topic);
+
+    console.log('[PLAN_JOB] ✅ Real LLM content generated successfully');
+    
+    // Log success metrics
+    await updateLLMMetrics('success');
+    
+    return {
+      text: contentData.text,
+      topic: contentData.topic || 'health',
+      format: contentData.format || 'educational',
+      quality_score: qualityScore,
+      predicted_er: predictedER,
+      bandit_arm: determineBanditArm(contentData.topic, contentData.format)
+    };
+
+  } catch (error: any) {
+    // Log OpenAI metrics for observability
+    await updateLLMMetrics('failed', error);
+    
+    console.error('[PLAN_JOB] ❌ OpenAI generation failed:', error.message);
+    
+    // Check for known OpenAI errors that should trigger fallback
+    const errorMessage = error.message?.toLowerCase() || '';
+    const isKnownError = errorMessage.includes('insufficient_quota') || 
+                        errorMessage.includes('rate_limit') ||
+                        errorMessage.includes('invalid_api_key') ||
+                        errorMessage.includes('budget') ||
+                        error.status === 429 || 
+                        error.status === 401;
+
+    if (isKnownError) {
+      console.log('[PLAN_JOB] 🔄 OpenAI insufficient_quota → fallback to shadow generation');
+    } else {
+      console.error('[PLAN_JOB] ⚠️ Unknown OpenAI error, propagating:', error);
+    }
+    
+    // Re-throw to trigger fallback in caller
+    throw error;
   }
-
-  if (!contentData.text || contentData.text.length > 280) {
-    throw new Error('Invalid content: missing text or too long');
-  }
-
-  // Calculate quality score based on content characteristics
-  const qualityScore = calculateContentQuality(contentData.text);
-  
-  // Predict engagement rate (simplified model)
-  const predictedER = predictEngagementRate(contentData.text, contentData.topic);
-
-  return {
-    text: contentData.text,
-    topic: contentData.topic || 'health',
-    format: contentData.format || 'educational',
-    quality_score: qualityScore,
-    predicted_er: predictedER,
-    bandit_arm: determineBanditArm(contentData.topic, contentData.format)
-  };
 }
 
 async function runGateChain(content: GeneratedContent, decisionId: string): Promise<{passed: boolean, gate: string, reason?: string}> {

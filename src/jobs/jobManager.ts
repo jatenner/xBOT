@@ -9,7 +9,7 @@ import { generateReplies } from './replyJob';
 import { processPostingQueue } from './postingQueue';
 import { simulateOutcomes } from './shadowOutcomesJob';
 import { collectRealOutcomes } from './realOutcomesJob';
-import { runAnalyticsCollectorJob } from './analyticsCollectorJob';
+import { collectRealOutcomes as collectAnalytics } from './analyticsCollectorJob';
 import { runLearningCycle } from './learnJob';
 
 export interface JobStats {

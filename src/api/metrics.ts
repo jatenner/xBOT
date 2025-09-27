@@ -19,6 +19,9 @@ export interface SystemMetrics {
   
   // AI usage
   openaiCostUsd: number;
+  openaiCalls_total: number;
+  openaiCalls_failed: number;
+  openaiFailureReasons: Record<string, number>;
   
   // Learning stats
   banditArmsUpdated: number;
@@ -39,6 +42,7 @@ export interface SystemMetrics {
   postsQueued: number;
   postsPosted: number;
   postingErrors: number;
+  post_skipped_reason_counts: Record<string, number>;
   
   // Growth metrics
   followsPer1kImpressions: number; // F/1k
@@ -212,10 +216,14 @@ export function getCurrentMetrics(): SystemMetrics {
     timeWindow: 'last_60m',
     plans: jobStats.planRuns,
     replies: jobStats.replyRuns,
+    postings: 0, // TODO: Add posting job stats
     outcomesWritten: jobStats.outcomeRuns,
     learnRuns: jobStats.learnRuns,
     openaiCalls: metricsStore.openaiCalls,
     openaiCostUsd: metricsStore.openaiCostUsd,
+    openaiCalls_total: 0, // TODO: Implement LLM metrics collection
+    openaiCalls_failed: 0,
+    openaiFailureReasons: {},
     banditArmsUpdated: metricsStore.banditArmsUpdated,
     predictorStatus: metricsStore.predictorStatus,
     exploreRatio: metricsStore.exploreRatio,
@@ -225,6 +233,10 @@ export function getCurrentMetrics(): SystemMetrics {
     uniqueBlocksCount: metricsStore.uniqueBlocksCount,
     qualityBlocksCount: metricsStore.qualityBlocksCount,
     rotationBlocksCount: metricsStore.rotationBlocksCount,
+    postsQueued: 0, // TODO: Implement queue metrics
+    postsPosted: 0, // TODO: Implement posting metrics
+    postingErrors: 0,
+    post_skipped_reason_counts: {},
     followsPer1kImpressions: metricsStore.followsPer1kImpressions,
     nonFollowerER: metricsStore.nonFollowerER,
     errors: jobStats.errors + metricsStore.errors,
