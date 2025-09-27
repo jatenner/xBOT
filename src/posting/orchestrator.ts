@@ -19,6 +19,7 @@ interface QueuedDecision {
   decision_type: 'content' | 'reply';
   generation_source: 'real' | 'synthetic';
   target_tweet_id?: string;
+  topic_cluster?: string;
 }
 
 export async function processPostingQueue(): Promise<void> {
@@ -34,9 +35,9 @@ export async function processPostingQueue(): Promise<void> {
     
     for (const decision of queuedDecisions) {
       await processDecision(decision);
-    }
-    
-  } catch (error) {
+      }
+
+    } catch (error) {
     console.error('[POSTING_ORCHESTRATOR] ❌ Queue processing failed:', error.message);
     throw error;
   }
@@ -47,9 +48,9 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
   
   const config = getConfig();
   
-  // Skip if posting disabled
-  if (config.POSTING_DISABLED) {
-    const skipReason = 'posting_disabled';
+  // Skip if in shadow mode (posting disabled)
+  if (config.MODE === 'shadow') {
+    const skipReason = 'shadow_mode';
     await skipPosting(decision.id, skipReason);
     updateSkipMetrics(skipReason);
     return;
@@ -155,8 +156,12 @@ async function runPostingGates(decision: QueuedDecision): Promise<{passed: boole
   try {
     // Import gate chain
     const { prePostValidation } = await import('../posting/gateChain');
-    return await prePostValidation(decision);
-  } catch (error) {
+    return await prePostValidation(decision.content, {
+      decision_id: decision.id,
+      topic_cluster: decision.topic_cluster,
+      content_type: decision.decision_type
+    });
+    } catch (error) {
     console.warn('[POSTING_ORCHESTRATOR] ⚠️ Gate chain failed:', error.message);
     // Fail closed in live mode, open in shadow
     const config = getConfig();

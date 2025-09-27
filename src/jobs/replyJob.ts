@@ -77,73 +77,7 @@ async function generateSyntheticReplies(): Promise<void> {
   console.log(`[REPLY_JOB] 📊 Generated ${mockTargets.length} synthetic replies`);
 }
 
-async function generateRealReplies(): Promise<void> {
-  console.log('[REPLY_JOB] 🧠 Discovering real targets and generating replies...');
-  
-  try {
-    // 1. Check rate limits and daily caps
-    const canGenerateReplies = await checkReplyRateLimits();
-    if (!canGenerateReplies) {
-      console.log('[REPLY_JOB] ⚠️ Reply rate limit reached, skipping');
-      return;
-    }
-    
-    // 2. Discover reply targets 
-    const targets = await discoverReplyTargets();
-    if (targets.length === 0) {
-      console.log('[REPLY_JOB] ℹ️ No suitable targets found');
-      return;
-    }
-    
-    console.log(`[REPLY_JOB] 🎯 Found ${targets.length} potential targets`);
-    
-    // 3. Generate replies for each target
-    let successCount = 0;
-    for (const target of targets) {
-      try {
-        const reply = await generateReplyForTarget(target);
-        const gateResult = await runReplyGateChain(reply, target);
-        
-        if (!gateResult.passed) {
-          console.log(`[REPLY_JOB] ❌ Reply blocked by ${gateResult.gate}: ${gateResult.reason}`);
-          await updateGateMetrics(gateResult.gate);
-          continue;
-        }
-        
-        // Store reply decision for posting
-        await storeReplyDecisionForPosting(reply, target);
-        successCount++;
-        
-        console.log(`[REPLY_JOB] ✅ Reply generated for @${target.username}: "${reply.content.substring(0, 50)}..."`);
-        
-      } catch (error: any) {
-        // Check if this is a known OpenAI error
-        const errorMessage = error.message?.toLowerCase() || '';
-        const isKnownLLMError = errorMessage.includes('insufficient_quota') || 
-                               errorMessage.includes('rate_limit') ||
-                               errorMessage.includes('invalid_api_key') ||
-                               errorMessage.includes('budget') ||
-                               error.status === 429 || 
-                               error.status === 401;
-
-        if (isKnownLLMError) {
-          console.log(`[REPLY_JOB] 🔄 OpenAI insufficient_quota → skipping reply for @${target.username}`);
-        } else {
-          console.warn(`[REPLY_JOB] ⚠️ Failed to generate reply for @${target.username}:`, error.message);
-        }
-      }
-    }
-    
-    console.log(`[REPLY_JOB] 📊 Generated ${successCount} valid replies`);
-    
-  } catch (error) {
-    console.error('[REPLY_JOB] ❌ Real reply generation failed:', error.message);
-    
-    // Fallback to synthetic on error (fail-safe)
-    console.log('[REPLY_JOB] 🔄 Falling back to synthetic replies');
-    await generateSyntheticReplies();
-  }
-}
+// Removed duplicate function - using the improved implementation later in the file
 
 interface ReplyTarget {
   tweet_id: string;
@@ -381,8 +315,8 @@ async function runReplyGateChain(reply: GeneratedReply, target: ReplyTarget): Pr
     return await prePostValidation(reply.content, {
       decision_id: `reply_${Date.now()}`,
       topic_cluster: reply.topic,
-      content_type: 'reply',
-      target_username: target.username
+      content_type: 'reply'
+      // Note: target_username stored separately in reply data, not in ContentMetadata
     });
   } catch (error) {
     console.warn('[REPLY_JOB] ⚠️ Reply gate chain error, allowing reply:', error.message);

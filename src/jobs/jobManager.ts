@@ -247,7 +247,7 @@ export class JobManager {
       
       case 'analyticsCollector':
         await this.safeExecute('analyticsCollector', async () => {
-          await runAnalyticsCollectorJob();
+          await collectAnalytics();
           // Analytics collection doesn't have dedicated stats yet
         });
         break;

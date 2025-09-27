@@ -28,9 +28,20 @@ export async function collectRealOutcomes(): Promise<void> {
     
     console.log(`[REAL_OUTCOMES] 📋 Found ${recentDecisions.length} posted decisions needing outcomes`);
     
-    // 2. Collect real analytics for each decision
+    // 2. Collect real analytics for each decision  
     const { collectRealEngagementData, storeUnifiedOutcome } = await import('./outcomeWriter');
-    const outcomes = await collectRealEngagementData(recentDecisions);
+    // Convert PostedDecision to Decision format expected by outcomeWriter
+    const decisionsForAnalytics = recentDecisions.map(pd => ({
+      id: pd.id,
+      content: pd.content,
+      decision_type: pd.decision_type,
+      bandit_arm: pd.bandit_arm,
+      timing_arm: pd.timing_arm,
+      predicted_er: pd.predicted_er,
+      posted_at: new Date(pd.posted_at), // Convert string to Date
+      tweet_id: pd.tweet_id
+    }));
+    const outcomes = await collectRealEngagementData(decisionsForAnalytics);
     
     if (outcomes.length === 0) {
       console.log('[REAL_OUTCOMES] ⚠️ No analytics data available yet');
@@ -105,17 +116,31 @@ async function getRecentPostedDecisions(): Promise<PostedDecision[]> {
     
     const existingOutcomeIds = new Set((existingOutcomes || []).map(o => o.decision_id));
     
-    const filteredDecisions = decisions
-      .filter(d => !existingOutcomeIds.has(d.id))
+    // Define a proper row interface for safer mapping
+    interface DecisionRow {
+      [key: string]: unknown;
+      id: unknown;
+      content: unknown;
+      tweet_id: unknown;
+      posted_at: unknown;
+      decision_type: unknown;
+      bandit_arm?: unknown;
+      timing_arm?: unknown;
+      predicted_er?: unknown;
+    }
+    
+    const rows = decisions as DecisionRow[];
+    const filteredDecisions = rows
+      .filter(d => !existingOutcomeIds.has(String(d.id)))
       .map(d => ({
-        id: d.id,
-        content: d.content,
-        tweet_id: d.tweet_id,
-        posted_at: d.posted_at,
-        decision_type: d.decision_type as 'content' | 'reply',
-        bandit_arm: d.bandit_arm,
-        timing_arm: d.timing_arm,
-        predicted_er: d.predicted_er
+        id: String(d.id ?? ''),
+        content: String(d.content ?? ''),
+        tweet_id: String(d.tweet_id ?? ''),
+        posted_at: String(d.posted_at ?? new Date().toISOString()),
+        decision_type: String(d.decision_type ?? 'content') as 'content' | 'reply',
+        bandit_arm: d.bandit_arm ? String(d.bandit_arm) : undefined,
+        timing_arm: d.timing_arm ? String(d.timing_arm) : undefined,
+        predicted_er: d.predicted_er ? Number(d.predicted_er) : undefined
       }));
     
     console.log(`[REAL_OUTCOMES] 📋 Found ${filteredDecisions.length} decisions needing real outcomes`);

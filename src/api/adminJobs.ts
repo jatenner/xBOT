@@ -116,11 +116,13 @@ async function backfillEmbeddings(count: number): Promise<{processed: number, up
       try {
         // Generate embedding
         const { getEmbedding } = await import('../llm/embeddingService');
-        const embedding = await getEmbedding(item.text);
+        const textValue = String(item.text ?? '');
+        const embedding = await getEmbedding(textValue);
         
         // Calculate content hash
         const crypto = await import('crypto');
-        const contentHash = crypto.createHash('sha256').update(item.text).digest('hex').substring(0, 16);
+        const hashInput = typeof item.text === 'string' ? item.text : JSON.stringify(item.text);
+        const contentHash = crypto.createHash('sha256').update(hashInput, 'utf8').digest('hex').substring(0, 16);
         
         // Update database
         const { error: updateError } = await supabase
@@ -178,3 +180,19 @@ export function listAvailableJobs(req: Request, res: Response): void {
     usage: 'POST /admin/jobs/run?name={jobName} with Admin-Token header or ?token=... query param'
   });
 }
+
+// Exports for server.ts
+export function requireAdminAuth(req: Request, res: Response, next: any): void {
+  const adminToken = process.env.ADMIN_TOKEN;
+  const providedToken = req.headers.authorization?.replace('Bearer ', '') || req.query.token;
+  
+  if (!adminToken || !providedToken || providedToken !== adminToken) {
+    res.status(401).json({ error: 'Unauthorized: Invalid admin token' });
+    return;
+  }
+  
+  next();
+}
+
+export const adminJobsHandler = listAvailableJobs;
+export const adminJobRunHandler = runJob;

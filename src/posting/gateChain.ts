@@ -251,10 +251,18 @@ async function findSimilarContent(embedding: number[], threshold: number): Promi
       return [];
     }
 
+    // Define interface for proper typing
+    interface ContentRow {
+      decision_id: unknown;
+      embedding: unknown;
+    }
+    
+    const contentRows = recentContent as ContentRow[];
     const similarContent: Array<{similarity: number, decision_id: string}> = [];
 
-    for (const content of recentContent) {
+    for (const content of contentRows) {
       try {
+        const decisionId = String(content.decision_id ?? '');
         let storedEmbedding: number[];
         
         if (Array.isArray(content.embedding)) {
@@ -272,7 +280,7 @@ async function findSimilarContent(embedding: number[], threshold: number): Promi
         if (similarity >= threshold) {
           similarContent.push({
             similarity,
-            decision_id: content.decision_id
+            decision_id: decisionId
           });
         }
       } catch (parseError) {
@@ -308,10 +316,17 @@ async function getTopicDistribution(): Promise<Record<string, number>> {
       return {};
     }
 
+    // Define interface for topic rows
+    interface TopicRow {
+      topic_cluster: unknown;
+    }
+    
+    const topicRows = topics as TopicRow[];
+    
     // Count topics
     const distribution: Record<string, number> = {};
-    for (const topic of topics) {
-      const cluster = topic.topic_cluster;
+    for (const topic of topicRows) {
+      const cluster = String(topic.topic_cluster ?? 'unknown');
       distribution[cluster] = (distribution[cluster] || 0) + 1;
     }
 

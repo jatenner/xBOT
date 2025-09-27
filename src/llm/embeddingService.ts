@@ -181,6 +181,9 @@ export function calculateCosineSimilarity(a: number[], b: number[]): number {
   return dotProduct / magnitude;
 }
 
+// Export alias for compatibility with admin jobs
+export const getEmbedding = generateRealEmbedding;
+
 /**
  * Store embedding in content_metadata table
  */
