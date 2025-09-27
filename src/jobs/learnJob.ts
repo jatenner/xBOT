@@ -23,6 +23,18 @@ export async function runLearningCycle(): Promise<LearningStats> {
     // 1. Collect recent decisions and outcomes
     const trainingData = await collectTrainingData();
     
+    // Check if we have sufficient data for training
+    if (trainingData.length === 0) {
+      console.log('[LEARN_JOB] ⚠️ Training skipped: insufficient samples (need real outcomes in LIVE mode)');
+      return {
+        sampleSize: 0,
+        armsUpdated: 0,
+        exploreRatio: config.EXPLORE_RATIO_MIN || 0.1,
+        predictorUpdated: false,
+        simulatedPercent: flags.simulateOutcomes ? 100 : 0
+      };
+    }
+    
     // 2. Update bandit arms (Thompson sampling for content/reply, UCB for timing)
     const banditStats = await updateBanditArms(trainingData);
     
@@ -73,6 +85,12 @@ async function collectTrainingData(): Promise<any[]> {
       .limit(50);
 
     if (error || !outcomes || outcomes.length === 0) {
+      // In LIVE mode, never use mock data - only train on real outcomes
+      if (!flags.simulateOutcomes) {
+        console.log('[LEARN_JOB] ℹ️ No real outcomes data found in LIVE mode, skipping training');
+        return [];
+      }
+      
       console.log('[LEARN_JOB] ℹ️ No outcomes data found, using mock training data');
       return getMockTrainingData();
     }

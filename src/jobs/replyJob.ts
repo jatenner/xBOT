@@ -5,6 +5,13 @@
 
 import { getConfig, getModeFlags } from '../config/config';
 
+// Global metrics tracking for replies
+let replyLLMMetrics = {
+  calls_total: 0,
+  calls_failed: 0,
+  failure_reasons: {} as Record<string, number>
+};
+
 export async function generateReplies(): Promise<void> {
   const config = getConfig();
   const flags = getModeFlags(config);
@@ -109,8 +116,21 @@ async function generateRealReplies(): Promise<void> {
         
         console.log(`[REPLY_JOB] ✅ Reply generated for @${target.username}: "${reply.content.substring(0, 50)}..."`);
         
-      } catch (error) {
-        console.warn(`[REPLY_JOB] ⚠️ Failed to generate reply for @${target.username}:`, error.message);
+      } catch (error: any) {
+        // Check if this is a known OpenAI error
+        const errorMessage = error.message?.toLowerCase() || '';
+        const isKnownLLMError = errorMessage.includes('insufficient_quota') || 
+                               errorMessage.includes('rate_limit') ||
+                               errorMessage.includes('invalid_api_key') ||
+                               errorMessage.includes('budget') ||
+                               error.status === 429 || 
+                               error.status === 401;
+
+        if (isKnownLLMError) {
+          console.log(`[REPLY_JOB] 🔄 OpenAI insufficient_quota → skipping reply for @${target.username}`);
+        } else {
+          console.warn(`[REPLY_JOB] ⚠️ Failed to generate reply for @${target.username}:`, error.message);
+        }
       }
     }
     
@@ -228,6 +248,29 @@ async function discoverReplyTargets(): Promise<ReplyTarget[]> {
   return filteredTargets;
 }
 
+async function updateReplyLLMMetrics(status: 'success' | 'failed', error?: any): Promise<void> {
+  replyLLMMetrics.calls_total++;
+  
+  if (status === 'failed') {
+    replyLLMMetrics.calls_failed++;
+    
+    // Track failure reasons for observability
+    const errorType = error?.status === 429 ? 'rate_limit' :
+                     error?.status === 401 ? 'invalid_api_key' :
+                     error?.message?.includes('insufficient_quota') ? 'insufficient_quota' :
+                     error?.message?.includes('budget') ? 'budget_exceeded' :
+                     'unknown';
+    
+    replyLLMMetrics.failure_reasons[errorType] = (replyLLMMetrics.failure_reasons[errorType] || 0) + 1;
+  }
+  
+  console.log(`[REPLY_JOB] 📊 Reply LLM Metrics - Total: ${replyLLMMetrics.calls_total}, Failed: ${replyLLMMetrics.calls_failed}, Failure Rate: ${((replyLLMMetrics.calls_failed / replyLLMMetrics.calls_total) * 100).toFixed(1)}%`);
+}
+
+export function getReplyLLMMetrics() {
+  return { ...replyLLMMetrics };
+}
+
 async function generateReplyForTarget(target: ReplyTarget): Promise<GeneratedReply> {
   // Get budgeted OpenAI service
   const { OpenAIService } = await import('../services/openAIService');
@@ -252,52 +295,83 @@ Format as JSON:
   "reasoning": "why this adds value"
 }`;
 
-  console.log(`[REPLY_JOB] 🤖 Generating reply for @${target.username}...`);
+  const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+  console.log(`[REPLY_JOB] 🤖 Generating reply for @${target.username} using ${model}...`);
   
-  const response = await openaiService.chatCompletion([
-      {
-        role: 'system',
-        content: 'You are a knowledgeable health enthusiast who provides genuine, evidence-based insights. Focus on being helpful and authentic, never making false claims.'
-      },
-      {
-        role: 'user',
-        content: prompt
-      }
-    ], {
-    model: 'gpt-4o-mini',
-    maxTokens: 200,
-    temperature: 0.7,
-    response_format: { type: 'json_object' },
-    requestType: 'reply_generation'
-  });
-
-  const rawContent = response.choices[0]?.message?.content;
-  if (!rawContent) {
-    throw new Error('Empty response from OpenAI');
-  }
-
-  let replyData;
   try {
-    replyData = JSON.parse(rawContent);
-  } catch (error) {
-    throw new Error('Invalid JSON response from OpenAI');
+    const response = await openaiService.chatCompletion([
+        {
+          role: 'system',
+          content: 'You are a knowledgeable health enthusiast who provides genuine, evidence-based insights. Focus on being helpful and authentic, never making false claims.'
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ], {
+      model,
+      maxTokens: 200,
+      temperature: 0.7,
+      response_format: { type: 'json_object' },
+      requestType: 'reply_generation'
+    });
+
+    const rawContent = response.choices[0]?.message?.content;
+    if (!rawContent) {
+      throw new Error('Empty response from OpenAI');
+    }
+
+    let replyData;
+    try {
+      replyData = JSON.parse(rawContent);
+    } catch (error) {
+      throw new Error('Invalid JSON response from OpenAI');
+    }
+
+    if (!replyData.content || replyData.content.length > 280) {
+      throw new Error('Invalid reply: missing content or too long');
+    }
+
+    // Log success metrics
+    await updateReplyLLMMetrics('success');
+    console.log('[REPLY_JOB] ✅ Real LLM reply generated successfully');
+
+    // Predict engagement for this reply
+    const predictedEngagement = predictReplyEngagement(replyData.content, target);
+
+    return {
+      content: replyData.content,
+      target_tweet_id: target.tweet_id,
+      target_username: target.username,
+      predicted_engagement: predictedEngagement,
+      bandit_arm: determineReplyBanditArm(target.topic),
+      topic: target.topic
+    };
+
+  } catch (error: any) {
+    // Log failure metrics
+    await updateReplyLLMMetrics('failed', error);
+    
+    console.error(`[REPLY_JOB] ❌ OpenAI reply generation failed for @${target.username}:`, error.message);
+    
+    // Check for known OpenAI errors
+    const errorMessage = error.message?.toLowerCase() || '';
+    const isKnownError = errorMessage.includes('insufficient_quota') || 
+                        errorMessage.includes('rate_limit') ||
+                        errorMessage.includes('invalid_api_key') ||
+                        errorMessage.includes('budget') ||
+                        error.status === 429 || 
+                        error.status === 401;
+
+    if (isKnownError) {
+      console.log(`[REPLY_JOB] 🔄 OpenAI insufficient_quota → skipping reply for @${target.username}`);
+    } else {
+      console.error(`[REPLY_JOB] ⚠️ Unknown OpenAI error for @${target.username}:`, error);
+    }
+    
+    // Re-throw to let caller handle fallback
+    throw error;
   }
-
-  if (!replyData.content || replyData.content.length > 280) {
-    throw new Error('Invalid reply: missing content or too long');
-  }
-
-  // Predict engagement for this reply
-  const predictedEngagement = predictReplyEngagement(replyData.content, target);
-
-  return {
-    content: replyData.content,
-    target_tweet_id: target.tweet_id,
-    target_username: target.username,
-    predicted_engagement: predictedEngagement,
-    bandit_arm: determineReplyBanditArm(target.topic),
-    topic: target.topic
-  };
 }
 
 async function runReplyGateChain(reply: GeneratedReply, target: ReplyTarget): Promise<{passed: boolean, gate: string, reason?: string}> {
