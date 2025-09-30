@@ -69,7 +69,22 @@ async function getQueuedDecisions(): Promise<QueuedDecision[]> {
     return [];
   }
   
-  return (data || []) as QueuedDecision[];
+  if (!data) return [];
+  
+  // Map to typed interface
+  return data.map((row: any) => ({
+    decision_id: row.decision_id as string,
+    id: row.id as number,
+    content: row.content as string,
+    decision_type: row.decision_type as 'single' | 'thread' | 'reply',
+    generation_source: row.generation_source as 'real' | 'synthetic',
+    scheduled_at: row.scheduled_at as string,
+    target_tweet_id: row.target_tweet_id as string | undefined,
+    target_username: row.target_username as string | undefined,
+    bandit_arm: row.bandit_arm as string | undefined,
+    timing_arm: row.timing_arm as string | undefined,
+    quality_score: row.quality_score as number | undefined
+  }));
 }
 
 async function processDecision(decision: QueuedDecision): Promise<void> {
