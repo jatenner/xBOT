@@ -23,7 +23,8 @@ export async function createChatCompletion(
 ): Promise<OpenAI.Chat.Completions.ChatCompletion> {
   console.warn('⚠️ DEPRECATED: createChatCompletion() - use openaiBudgetedClient instead');
   
-  // Check if posting is disabled - add shadow logging for visibility
+  // LLM generation is now decoupled from posting - budget flags control LLM, not POSTING_DISABLED
+  // Shadow logging for visibility
   if (process.env.POSTING_DISABLED === 'true') {
     const { calculateTokenCost, estimateTokenCount } = await import('../config/openai/pricing');
     const messageText = params.messages
@@ -33,9 +34,7 @@ export async function createChatCompletion(
     const estimatedOutputTokens = params.max_tokens || 1000;
     const estimatedCost = calculateTokenCost(params.model || 'gpt-4o-mini', estimatedInputTokens, estimatedOutputTokens);
     
-    console.log(`🕵️ BUDGET_SHADOW: would call model=${params.model || 'gpt-4o-mini'} est_tokens=${estimatedInputTokens + estimatedOutputTokens} cost=$${estimatedCost.toFixed(4)} [${context}]`);
-    console.log('🚫 LLM_SKIPPED: posting disabled');
-    throw new Error('LLM calls disabled (POSTING_DISABLED=true)');
+    console.log(`🕵️ BUDGET_SHADOW: calling model=${params.model || 'gpt-4o-mini'} est_tokens=${estimatedInputTokens + estimatedOutputTokens} cost=$${estimatedCost.toFixed(4)} [${context}] (posting disabled but LLM enabled)`);
   }
   
   // Use new budgeted client
@@ -54,10 +53,9 @@ export async function createChatCompletionStream(
 ): Promise<AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>> {
   console.warn('⚠️ DEPRECATED: createChatCompletionStream() - use openaiBudgetedClient instead');
   
-  // Check if posting is disabled
+  // LLM generation is now decoupled from posting - budget flags control LLM, not POSTING_DISABLED
   if (process.env.POSTING_DISABLED === 'true') {
-    console.log('🚫 LLM_SKIPPED: posting disabled');
-    throw new Error('LLM calls disabled (POSTING_DISABLED=true)');
+    console.log('🕵️ LLM_ENABLED: posting disabled but LLM generation allowed for queue building');
   }
   
   // Use new budgeted client
@@ -76,9 +74,9 @@ export async function withBudgetEnforcement<T>(
 ): Promise<T> {
   console.warn('⚠️ DEPRECATED: withBudgetEnforcement() - use openaiBudgetedClient.withBudgetGuard instead');
   
+  // LLM generation is now decoupled from posting
   if (process.env.POSTING_DISABLED === 'true') {
-    console.log('🚫 LLM_SKIPPED: posting disabled');
-    throw new Error('LLM calls disabled (POSTING_DISABLED=true)');
+    console.log('🕵️ LLM_ENABLED: posting disabled but LLM generation allowed');
   }
   
   return operation();

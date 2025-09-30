@@ -15,6 +15,8 @@ export async function processPostingQueue(): Promise<void> {
     // 1. Check if posting is enabled
     if (flags.postingDisabled) {
       console.log('[POSTING_QUEUE] ⚠️ Posting disabled, skipping queue processing');
+      // Update metrics for skip reason
+      await updatePostingSkipMetrics('posting_disabled');
       return;
     }
     
@@ -96,9 +98,8 @@ async function checkPostingRateLimits(): Promise<boolean> {
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     
     const { count, error } = await supabase
-      .from('unified_ai_intelligence')
+      .from('posted_decisions')
       .select('*', { count: 'exact', head: true })
-      .eq('status', 'posted')
       .gte('posted_at', oneHourAgo);
     
     if (error) {
@@ -127,9 +128,10 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
     const supabase = getSupabaseClient();
     
     const { data, error } = await supabase
-      .from('unified_ai_intelligence')
+      .from('content_metadata')
       .select('*')
-      .eq('status', 'ready_for_posting')
+      .eq('status', 'queued')
+      .eq('generation_source', 'real')
       .order('created_at', { ascending: true })
       .limit(5); // Process max 5 at a time to avoid overwhelming Twitter
     
@@ -283,7 +285,7 @@ async function updateDecisionStatus(decisionId: string, status: string): Promise
     const supabase = getSupabaseClient();
     
     const { error } = await supabase
-      .from('unified_ai_intelligence')
+      .from('content_metadata')
       .update({ 
         status,
         updated_at: new Date().toISOString()
@@ -303,18 +305,51 @@ async function markDecisionPosted(decisionId: string, tweetId: string): Promise<
     const { getSupabaseClient } = await import('../db/index');
     const supabase = getSupabaseClient();
     
-    const { error } = await supabase
-      .from('unified_ai_intelligence')
+    // 1. Update content_metadata status
+    const { error: updateError } = await supabase
+      .from('content_metadata')
       .update({ 
         status: 'posted',
-        tweet_id: tweetId,
-        posted_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       })
       .eq('id', decisionId);
     
-    if (error) {
-      console.warn(`[POSTING_QUEUE] ⚠️ Failed to mark posted for ${decisionId}:`, error.message);
+    if (updateError) {
+      console.warn(`[POSTING_QUEUE] ⚠️ Failed to update content_metadata for ${decisionId}:`, updateError.message);
+    }
+    
+    // 2. Get the full decision details for posted_decisions archive
+    const { data: decisionData, error: fetchError } = await supabase
+      .from('content_metadata')
+      .select('*')
+      .eq('id', decisionId)
+      .single();
+    
+    if (fetchError || !decisionData) {
+      console.warn(`[POSTING_QUEUE] ⚠️ Failed to fetch decision data for ${decisionId}`);
+      return;
+    }
+    
+    // 3. Store in posted_decisions archive
+    const { error: archiveError } = await supabase
+      .from('posted_decisions')
+      .insert([{
+        decision_id: decisionId,
+        content: decisionData.content,
+        tweet_id: tweetId,
+        decision_type: decisionData.decision_type || 'content',
+        target_tweet_id: decisionData.target_tweet_id,
+        target_username: decisionData.target_username,
+        bandit_arm: decisionData.bandit_arm,
+        timing_arm: decisionData.timing_arm,
+        predicted_er: decisionData.predicted_er,
+        quality_score: decisionData.quality_score,
+        topic_cluster: decisionData.topic_cluster,
+        posted_at: new Date().toISOString()
+      }]);
+    
+    if (archiveError) {
+      console.warn(`[POSTING_QUEUE] ⚠️ Failed to archive posted decision ${decisionId}:`, archiveError.message);
     } else {
       console.log(`[POSTING_QUEUE] 📝 Decision ${decisionId} marked as posted with tweet ID: ${tweetId}`);
     }
@@ -329,10 +364,9 @@ async function markDecisionFailed(decisionId: string, errorMessage: string): Pro
     const supabase = getSupabaseClient();
     
     const { error } = await supabase
-      .from('unified_ai_intelligence')
+      .from('content_metadata')
       .update({ 
         status: 'failed',
-        error_message: errorMessage,
         updated_at: new Date().toISOString()
       })
       .eq('id', decisionId);
@@ -364,5 +398,16 @@ async function updatePostingMetrics(type: 'queued' | 'posted' | 'error'): Promis
     }
   } catch (error) {
     console.warn('[POSTING_QUEUE] ⚠️ Failed to update posting metrics:', error.message);
+  }
+}
+
+async function updatePostingSkipMetrics(reason: string): Promise<void> {
+  try {
+    const { updateMockMetrics } = await import('../api/metrics');
+    updateMockMetrics({ 
+      post_skipped_reason_counts: { [reason]: 1 } 
+    });
+  } catch (error) {
+    console.warn('[POSTING_QUEUE] ⚠️ Failed to update skip metrics:', error.message);
   }
 }
