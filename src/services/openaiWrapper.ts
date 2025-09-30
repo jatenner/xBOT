@@ -10,6 +10,7 @@ import {
   createBudgetedChatCompletionStream,
   BudgetExceededError 
 } from './openaiBudgetedClient';
+import { isLLMAllowed } from '../config/envFlags';
 
 // Re-export for compatibility
 export { BudgetExceededError };
@@ -23,18 +24,11 @@ export async function createChatCompletion(
 ): Promise<OpenAI.Chat.Completions.ChatCompletion> {
   console.warn('⚠️ DEPRECATED: createChatCompletion() - use openaiBudgetedClient instead');
   
-  // LLM generation is now decoupled from posting - budget flags control LLM, not POSTING_DISABLED
-  // Shadow logging for visibility
-  if (process.env.POSTING_DISABLED === 'true') {
-    const { calculateTokenCost, estimateTokenCount } = await import('../config/openai/pricing');
-    const messageText = params.messages
-      .map(msg => typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content))
-      .join(' ');
-    const estimatedInputTokens = estimateTokenCount(messageText);
-    const estimatedOutputTokens = params.max_tokens || 1000;
-    const estimatedCost = calculateTokenCost(params.model || 'gpt-4o-mini', estimatedInputTokens, estimatedOutputTokens);
-    
-    console.log(`🕵️ BUDGET_SHADOW: calling model=${params.model || 'gpt-4o-mini'} est_tokens=${estimatedInputTokens + estimatedOutputTokens} cost=$${estimatedCost.toFixed(4)} [${context}] (posting disabled but LLM enabled)`);
+  // Check AI quota circuit breaker (primary LLM control)
+  const llmCheck = isLLMAllowed();
+  if (!llmCheck.allowed) {
+    console.log(`🚫 LLM_BLOCKED: ${llmCheck.reason}`);
+    throw new Error(`LLM calls blocked: ${llmCheck.reason}`);
   }
   
   // Use new budgeted client
@@ -53,9 +47,11 @@ export async function createChatCompletionStream(
 ): Promise<AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>> {
   console.warn('⚠️ DEPRECATED: createChatCompletionStream() - use openaiBudgetedClient instead');
   
-  // LLM generation is now decoupled from posting - budget flags control LLM, not POSTING_DISABLED
-  if (process.env.POSTING_DISABLED === 'true') {
-    console.log('🕵️ LLM_ENABLED: posting disabled but LLM generation allowed for queue building');
+  // Check AI quota circuit breaker
+  const llmCheck = isLLMAllowed();
+  if (!llmCheck.allowed) {
+    console.log(`🚫 LLM_BLOCKED: ${llmCheck.reason}`);
+    throw new Error(`LLM calls blocked: ${llmCheck.reason}`);
   }
   
   // Use new budgeted client
@@ -74,9 +70,11 @@ export async function withBudgetEnforcement<T>(
 ): Promise<T> {
   console.warn('⚠️ DEPRECATED: withBudgetEnforcement() - use openaiBudgetedClient.withBudgetGuard instead');
   
-  // LLM generation is now decoupled from posting
-  if (process.env.POSTING_DISABLED === 'true') {
-    console.log('🕵️ LLM_ENABLED: posting disabled but LLM generation allowed');
+  // Check AI quota circuit breaker
+  const llmCheck = isLLMAllowed();
+  if (!llmCheck.allowed) {
+    console.log(`🚫 LLM_BLOCKED: ${llmCheck.reason}`);
+    throw new Error(`LLM calls blocked: ${llmCheck.reason}`);
   }
   
   return operation();
