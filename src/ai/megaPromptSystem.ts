@@ -87,16 +87,10 @@ export class MegaPromptSystem {
     format?: 'single' | 'thread';
     urgency?: 'viral' | 'shocking' | 'authority';
   }): Promise<MegaPromptResult> {
-    // Early exit if posting is disabled - don't make LLM calls
+    // LLM generation is decoupled from posting - allow LLM calls even when posting is disabled
+    // This allows building a queue of content that can be posted when posting is re-enabled
     if (process.env.POSTING_DISABLED === 'true') {
-      console.log('🚫 LLM_SKIPPED: posting disabled (pre-call gate)');
-      return { 
-        skipped: true, 
-        reason: 'posting_disabled',
-        content: '',
-        viralScore: 0,
-        qualityScore: 0
-      } as any;
+      console.log('🕵️ MEGA_PROMPT: posting disabled but LLM generation proceeding to build queue');
     }
 
     // Use new viral content strategy system
