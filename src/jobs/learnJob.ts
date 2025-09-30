@@ -70,7 +70,7 @@ async function collectTrainingData(config?: any): Promise<any[]> {
     const { getSupabaseClient } = await import('../db/index');
     const supabase = getSupabaseClient();
     
-    // In live mode, prioritize real outcomes; in shadow mode, use simulated
+    // In live mode, ONLY use real outcomes (simulated=false); in shadow mode, use simulated
     const simulatedFilter = config.MODE === 'shadow';
     
     // Get recent outcomes for training
@@ -91,6 +91,12 @@ async function collectTrainingData(config?: any): Promise<any[]> {
       
       console.log('[LEARN_JOB] ℹ️ No outcomes data found, using mock training data');
       return getMockTrainingData();
+    }
+    
+    // In LIVE mode, require at least 5 real outcomes
+    if (config.MODE === 'live' && outcomes.length < 5) {
+      console.log(`[LEARN_JOB] ⚠️ Training skipped: insufficient real outcomes (have ${outcomes.length}, need 5)`);
+      return [];
     }
 
     // Convert outcomes to training format

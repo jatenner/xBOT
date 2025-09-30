@@ -1,34 +1,37 @@
 /**
- * 💬 REPLY JOB
- * Handles reply generation on timer intervals
+ * 💬 REPLY JOB - Autonomous Reply Generation
+ * Generates replies using LLM and queues for posting
  */
 
+import { v4 as uuidv4 } from 'uuid';
 import { getConfig } from '../config/config';
+import { getEnvFlags, isLLMAllowed } from '../config/envFlags';
+import { getSupabaseClient } from '../db/index';
+import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 
-// Global metrics tracking for replies
+// Global metrics
 let replyLLMMetrics = {
   calls_total: 0,
   calls_failed: 0,
   failure_reasons: {} as Record<string, number>
 };
 
+export function getReplyLLMMetrics() {
+  return { ...replyLLMMetrics };
+}
+
 export async function generateReplies(): Promise<void> {
   const config = getConfig();
-  
   console.log('[REPLY_JOB] 💬 Starting reply generation cycle...');
   
   try {
     if (config.MODE === 'shadow') {
-      // Shadow mode: generate mock replies
       await generateSyntheticReplies();
     } else {
-      // Live mode: use real LLM and target discovery
-      console.log('[REPLY_JOB] 🧠 Discovering real targets and generating replies...');
       await generateRealReplies();
     }
-    
     console.log('[REPLY_JOB] ✅ Reply generation completed');
-  } catch (error) {
+  } catch (error: any) {
     console.error('[REPLY_JOB] ❌ Reply generation failed:', error.message);
     throw error;
   }
@@ -36,442 +39,182 @@ export async function generateReplies(): Promise<void> {
 
 async function generateSyntheticReplies(): Promise<void> {
   console.log('[REPLY_JOB] 🎭 Generating synthetic replies for shadow mode...');
+  const decision_id = uuidv4();
   
-  // Mock reply discovery and generation
-  await new Promise(resolve => setTimeout(resolve, 1500));
+  const supabase = getSupabaseClient();
+  await supabase.from('content_metadata').insert([{
+    decision_id,
+    decision_type: 'reply',
+    content: "Great point about nutrition! Here's an additional insight based on recent research...",
+    generation_source: 'synthetic',
+    status: 'queued',
+    scheduled_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+    quality_score: 0.85,
+    predicted_er: 0.028,
+    topic_cluster: 'nutrition',
+    target_tweet_id: 'mock_tweet_123',
+    target_username: 'health_influencer',
+    bandit_arm: 'supportive_reply'
+  }]);
   
-  const mockTargets = [
-    {
-      username: '@health_influencer',
-      followers: 150000,
-      topic: 'nutrition',
-      velocity: 'high',
-      reply: "Great point about nutrition! Here's an additional insight based on recent research...",
-      predicted_engagement: 0.032
-    },
-    {
-      username: '@wellness_coach',
-      followers: 85000,
-      topic: 'mental_health',
-      velocity: 'medium',
-      reply: "Absolutely agree on mental wellness! Studies show that mindfulness can reduce stress by 40%...",
-      predicted_engagement: 0.028
-    },
-    {
-      username: '@fitness_expert',
-      followers: 200000,
-      topic: 'exercise',
-      velocity: 'high',
-      reply: "Excellent exercise advice! For optimal results, consider adding progressive overload...",
-      predicted_engagement: 0.035
-    }
-  ];
-  
-  console.log('[REPLY_JOB] 🎯 Found target accounts:');
-  for (const target of mockTargets) {
-    console.log(`[REPLY_JOB]    • ${target.username} (${target.followers.toLocaleString()} followers, ${target.topic}, ${target.velocity} velocity)`);
-    console.log(`[REPLY_JOB]      💬 Reply: "${target.reply.substring(0, 50)}..."`);
-    console.log(`[REPLY_JOB]      📈 Predicted engagement: ${target.predicted_engagement}`);
+  console.log(`[REPLY_JOB] 🎭 Synthetic reply queued decision_id=${decision_id}`);
+}
+
+async function generateRealReplies(): Promise<void> {
+  const llmCheck = isLLMAllowed();
+  if (!llmCheck.allowed) {
+    console.log(`[REPLY_JOB] ⏭️ LLM blocked: ${llmCheck.reason}`);
+    return;
   }
   
-  console.log(`[REPLY_JOB] 📊 Generated ${mockTargets.length} synthetic replies`);
-}
-
-// Removed duplicate function - using the improved implementation later in the file
-
-interface ReplyTarget {
-  tweet_id: string;
-  username: string;
-  followers: number;
-  content: string;
-  topic: string;
-  velocity: 'high' | 'medium' | 'low';
-  engagement_rate: number;
-}
-
-interface GeneratedReply {
-  content: string;
-  target_tweet_id: string;
-  target_username: string;
-  predicted_engagement: number;
-  bandit_arm: string;
-  topic: string;
-}
-
-async function checkReplyRateLimits(): Promise<boolean> {
-  const config = getConfig();
-  const maxRepliesPerDay = parseInt(String(config.REPLY_MAX_PER_DAY || 0));
+  console.log('[REPLY_JOB] 🧠 Generating real replies using LLM...');
   
-  if (maxRepliesPerDay === 0) {
-    console.log('[REPLY_JOB] ℹ️ Reply generation disabled (REPLY_MAX_PER_DAY=0)');
-    return false;
-  }
+  // Discover targets (mock for now)
+  const targets = await discoverTargets();
   
-  try {
-    // Check today's reply count from database
-    const { getSupabaseClient } = await import('../db/index');
-    const supabase = getSupabaseClient();
-    
-    const today = new Date().toISOString().split('T')[0];
-    
-    const { count, error } = await supabase
-      .from('content_metadata')
-      .select('*', { count: 'exact', head: true })
-      .eq('decision_type', 'reply')
-      .gte('created_at', `${today}T00:00:00.000Z`)
-      .lt('created_at', `${today}T23:59:59.999Z`);
-    
-    if (error) {
-      console.warn('[REPLY_JOB] ⚠️ Failed to check daily reply count, allowing replies');
-      return true;
+  for (const target of targets.slice(0, 2)) {
+    try {
+      const reply = await generateReplyWithLLM(target);
+      const gateResult = await runGateChain(reply.content, reply.decision_id);
+      
+      if (!gateResult.passed) {
+        console.log(`[GATE_CHAIN] ⛔ Blocked (${gateResult.gate}) decision_id=${reply.decision_id}, reason=${gateResult.reason}`);
+        continue;
+      }
+      
+      // Queue for posting
+      await queueReply(reply);
+      console.log(`[REPLY_JOB] ✅ Real LLM reply queued decision_id=${reply.decision_id} scheduled_at=${reply.scheduled_at}`);
+      
+    } catch (error: any) {
+      replyLLMMetrics.calls_failed++;
+      const errorType = categorizeError(error);
+      replyLLMMetrics.failure_reasons[errorType] = (replyLLMMetrics.failure_reasons[errorType] || 0) + 1;
+      
+      console.error(`[REPLY_JOB] ❌ LLM generation failed: ${error.message}`);
+      
+      if (errorType === 'insufficient_quota') {
+        console.log('[REPLY_JOB] OpenAI insufficient_quota → not queueing');
+      }
     }
-    
-    const todayCount = count || 0;
-    if (todayCount >= maxRepliesPerDay) {
-      console.log(`[REPLY_JOB] ⚠️ Daily reply limit reached: ${todayCount}/${maxRepliesPerDay}`);
-      return false;
-    }
-    
-    console.log(`[REPLY_JOB] ✅ Reply budget available: ${todayCount}/${maxRepliesPerDay}`);
-    return true;
-    
-  } catch (error) {
-    console.warn('[REPLY_JOB] ⚠️ Failed to check rate limits, allowing replies:', error.message);
-    return true;
   }
 }
 
-async function discoverReplyTargets(): Promise<ReplyTarget[]> {
-  // For now, use a simplified target discovery approach
-  // In a full implementation, this would search Twitter for recent health-related tweets
-  // from accounts with good engagement and follower counts
-  
-  console.log('[REPLY_JOB] 🔍 Discovering reply targets...');
-  
-  // Mock targets that represent real discovery patterns
-  const mockTargets: ReplyTarget[] = [
-    {
-      tweet_id: `tweet_${Date.now()}_1`,
-      username: 'health_researcher',
-      followers: 125000,
-      content: "New study shows that Mediterranean diet reduces cardiovascular risk by 30%. The key components are...",
-      topic: 'nutrition',
-      velocity: 'high',
-      engagement_rate: 0.045
-    },
-    {
-      tweet_id: `tweet_${Date.now()}_2`,
-      username: 'mindfulness_expert',
-      followers: 89000,
-      content: "Daily meditation practice can significantly improve focus and reduce anxiety. Start with just 5 minutes...",
-      topic: 'mental_health',
-      velocity: 'medium',
-      engagement_rate: 0.032
-    }
-  ];
-  
-  // Filter based on criteria (engagement rate, follower count, topic relevance)
-  const filteredTargets = mockTargets.filter(target => 
-    target.followers >= 50000 &&
-    target.engagement_rate >= 0.02 &&
-    ['nutrition', 'exercise', 'mental_health', 'wellness', 'sleep'].includes(target.topic)
-  );
-  
-  console.log(`[REPLY_JOB] 📋 Filtered to ${filteredTargets.length} high-quality targets`);
-  
-  return filteredTargets;
-}
-
-async function updateReplyLLMMetrics(status: 'success' | 'failed', error?: any): Promise<void> {
-  replyLLMMetrics.calls_total++;
-  
-  if (status === 'failed') {
-    replyLLMMetrics.calls_failed++;
-    
-    // Track failure reasons for observability
-    const errorType = error?.status === 429 ? 'rate_limit' :
-                     error?.status === 401 ? 'invalid_api_key' :
-                     error?.message?.includes('insufficient_quota') ? 'insufficient_quota' :
-                     error?.message?.includes('budget') ? 'budget_exceeded' :
-                     'unknown';
-    
-    replyLLMMetrics.failure_reasons[errorType] = (replyLLMMetrics.failure_reasons[errorType] || 0) + 1;
-  }
-  
-  console.log(`[REPLY_JOB] 📊 Reply LLM Metrics - Total: ${replyLLMMetrics.calls_total}, Failed: ${replyLLMMetrics.calls_failed}, Failure Rate: ${((replyLLMMetrics.calls_failed / replyLLMMetrics.calls_total) * 100).toFixed(1)}%`);
-}
-
-export function getReplyLLMMetrics() {
-  return { ...replyLLMMetrics };
-}
-
-async function generateReplyForTarget(target: ReplyTarget): Promise<GeneratedReply> {
-  // Get budgeted OpenAI service
-  const { OpenAIService } = await import('../services/openAIService');
-  const openaiService = OpenAIService.getInstance();
+async function generateReplyWithLLM(target: any) {
+  const flags = getEnvFlags();
+  const decision_id = uuidv4();
   
   const prompt = `Generate a helpful, evidence-based reply to this health-related tweet:
 
 Original tweet: "${target.content}"
-Author: @${target.username} (${target.followers} followers)
+Author: @${target.username}
 
 Your reply should:
 - Add genuine value with research or practical insights
 - Be conversational and supportive
 - Under 280 characters
 - No hashtags or excessive emojis
-- Never make false claims about credentials or experience
-- Focus on being helpful, not promotional
+- Never make false claims
 
 Format as JSON:
 {
-  "content": "Your reply text here",
-  "reasoning": "why this adds value"
+  "content": "Your reply text here"
 }`;
 
-  const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
-  console.log(`[REPLY_JOB] 🤖 Generating reply for @${target.username} using ${model}...`);
+  replyLLMMetrics.calls_total++;
   
-  try {
-    const response = await openaiService.chatCompletion([
-        {
-          role: 'system',
-          content: 'You are a knowledgeable health enthusiast who provides genuine, evidence-based insights. Focus on being helpful and authentic, never making false claims.'
-        },
-        {
-          role: 'user',
-          content: prompt
-        }
-      ], {
-      model,
-      maxTokens: 200,
-      temperature: 0.7,
-      response_format: { type: 'json_object' },
-      requestType: 'reply_generation'
-    });
-
-    const rawContent = response.choices[0]?.message?.content;
-    if (!rawContent) {
-      throw new Error('Empty response from OpenAI');
-    }
-
-    let replyData;
-    try {
-      replyData = JSON.parse(rawContent);
-    } catch (error) {
-      throw new Error('Invalid JSON response from OpenAI');
-    }
-
-    if (!replyData.content || replyData.content.length > 280) {
-      throw new Error('Invalid reply: missing content or too long');
-    }
-
-    // Log success metrics
-    await updateReplyLLMMetrics('success');
-    console.log('[REPLY_JOB] ✅ Real LLM reply generated successfully');
-
-    // Predict engagement for this reply
-    const predictedEngagement = predictReplyEngagement(replyData.content, target);
-
-    return {
-      content: replyData.content,
-      target_tweet_id: target.tweet_id,
-      target_username: target.username,
-      predicted_engagement: predictedEngagement,
-      bandit_arm: determineReplyBanditArm(target.topic),
-      topic: target.topic
-    };
-
-  } catch (error: any) {
-    // Log failure metrics
-    await updateReplyLLMMetrics('failed', error);
-    
-    console.error(`[REPLY_JOB] ❌ OpenAI reply generation failed for @${target.username}:`, error.message);
-    
-    // Check for known OpenAI errors
-    const errorMessage = error.message?.toLowerCase() || '';
-    const isKnownError = errorMessage.includes('insufficient_quota') || 
-                        errorMessage.includes('rate_limit') ||
-                        errorMessage.includes('invalid_api_key') ||
-                        errorMessage.includes('budget') ||
-                        error.status === 429 || 
-                        error.status === 401;
-
-    if (isKnownError) {
-      console.log(`[REPLY_JOB] 🔄 OpenAI insufficient_quota → skipping reply for @${target.username}`);
-    } else {
-      console.error(`[REPLY_JOB] ⚠️ Unknown OpenAI error for @${target.username}:`, error);
-    }
-    
-    // Re-throw to let caller handle fallback
-    throw error;
-  }
-}
-
-async function runReplyGateChain(reply: GeneratedReply, target: ReplyTarget): Promise<{passed: boolean, gate: string, reason?: string}> {
-  try {
-    const { prePostValidation } = await import('../posting/gateChain');
-    
-    return await prePostValidation(reply.content, {
-      decision_id: `reply_${Date.now()}`,
-      topic_cluster: reply.topic,
-      content_type: 'reply'
-      // Note: target_username stored separately in reply data, not in ContentMetadata
-    });
-  } catch (error) {
-    console.warn('[REPLY_JOB] ⚠️ Reply gate chain error, allowing reply:', error.message);
-    return { passed: true, gate: 'error' };
-  }
-}
-
-async function updateGateMetrics(gate: string): Promise<void> {
-  try {
-    const { updateMockMetrics } = await import('../api/metrics');
-    
-    switch (gate) {
-      case 'quality':
-        updateMockMetrics({ qualityBlocksCount: 1 });
-        break;
-      case 'rotation':
-        updateMockMetrics({ rotationBlocksCount: 1 });
-        break;
-      case 'uniqueness':
-        updateMockMetrics({ uniqueBlocksCount: 1 });
-        break;
-    }
-  } catch (error) {
-    console.warn('[REPLY_JOB] ⚠️ Failed to update gate metrics:', error.message);
-  }
-}
-
-async function storeReplyDecisionForPosting(reply: GeneratedReply, target: ReplyTarget): Promise<void> {
-  try {
-    const { getSupabaseClient } = await import('../db/index');
-    const supabase = getSupabaseClient();
-    
-    const decisionId = `reply_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
-    
-    const { error } = await supabase
-      .from('content_metadata')
-      .insert([{
-        id: decisionId,
-        content_id: decisionId,
-        content: reply.content,
-        decision_type: 'reply',
-        target_tweet_id: reply.target_tweet_id,
-        target_username: reply.target_username,
-        bandit_arm: reply.bandit_arm,
-        predicted_er: reply.predicted_engagement,
-        topic_cluster: reply.topic,
-        topic: reply.topic,
-        status: 'queued',
-        generation_source: 'real',
-        scheduled_at: new Date().toISOString(),
-        style: 'educational',
-        fact_source: 'llm_generated',
-        hook_type: 'tip_promise',
-        cta_type: 'engagement_question',
-        predicted_engagement: 'medium',
-        thread_length: 1,
-        fact_count: 1,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      }]);
-
-    if (error) {
-      console.warn('[REPLY_JOB] ⚠️ Failed to store reply decision:', error.message);
-    } else {
-      console.log(`[REPLY_JOB] 📝 Reply decision stored: ${decisionId} (status=queued, generation_source=real)`);
-    }
-  } catch (error) {
-    console.warn('[REPLY_JOB] ⚠️ Failed to store reply decision:', error.message);
-  }
-}
-
-function predictReplyEngagement(content: string, target: ReplyTarget): number {
-  // Base engagement prediction for replies (typically lower than original posts)
-  let baseER = target.engagement_rate * 0.3; // Replies typically get 30% of original post engagement
+  console.log(`[OPENAI] using budgeted client purpose=reply_generation model=${flags.OPENAI_MODEL}`);
   
-  // Content quality bonuses
-  if (/\b(study|research|data)\b/i.test(content)) baseER += 0.005;
-  if (content.includes('?')) baseER += 0.003; // Questions in replies work well
-  if (/\b(thanks|great|helpful|agree)\b/i.test(content)) baseER += 0.002; // Positive sentiment
-  
-  // Target account bonuses
-  if (target.followers > 100000) baseER += 0.002;
-  if (target.velocity === 'high') baseER += 0.003;
-  
-  return Math.min(0.05, baseER); // Cap at 5% for replies
-}
+  const response = await createBudgetedChatCompletion({
+    model: flags.OPENAI_MODEL,
+    messages: [
+      { role: 'system', content: 'You are a knowledgeable health enthusiast who provides genuine, evidence-based insights.' },
+      { role: 'user', content: prompt }
+    ],
+    temperature: parseFloat(process.env.OPENAI_TEMPERATURE || '0.7'),
+    top_p: parseFloat(process.env.OPENAI_TOP_P || '1.0'),
+    max_tokens: 200,
+    response_format: { type: 'json_object' }
+  }, {
+    purpose: 'reply_generation',
+    requestId: decision_id
+  });
 
-function determineReplyBanditArm(topic: string): string {
-  const replyArms: Record<string, string> = {
-    'nutrition': 'supportive_reply',
-    'exercise': 'advice_reply',
-    'mental_health': 'empathetic_reply',
-    'wellness': 'supportive_reply'
+  const rawContent = response.choices[0]?.message?.content;
+  if (!rawContent) throw new Error('Empty response from OpenAI');
+
+  const replyData = JSON.parse(rawContent);
+  if (!replyData.content || replyData.content.length > 280) {
+    throw new Error('Invalid reply: missing content or too long');
+  }
+
+  const scheduledAt = new Date(Date.now() + 15 * 60 * 1000); // 15 min from now
+
+  return {
+    decision_id,
+    content: replyData.content,
+    target_tweet_id: target.tweet_id,
+    target_username: target.username,
+    topic: target.topic,
+    quality_score: calculateQuality(replyData.content),
+    predicted_er: 0.025,
+    scheduled_at: scheduledAt.toISOString()
   };
+}
+
+async function queueReply(reply: any): Promise<void> {
+  const supabase = getSupabaseClient();
   
-  return replyArms[topic] || 'supportive_reply';
+  await supabase.from('content_metadata').insert([{
+    decision_id: reply.decision_id,
+    decision_type: 'reply',
+    content: reply.content,
+    generation_source: 'real',
+    status: 'queued',
+    scheduled_at: reply.scheduled_at,
+    quality_score: reply.quality_score,
+    predicted_er: reply.predicted_er,
+    topic_cluster: reply.topic,
+    target_tweet_id: reply.target_tweet_id,
+    target_username: reply.target_username,
+    bandit_arm: 'supportive_reply',
+    created_at: new Date().toISOString()
+  }]);
 }
 
-async function generateRealReplies(): Promise<void> {
-  try {
-    // Discover real target tweets/accounts for health-focused engagement
-    const targets = await discoverTargets();
-    
-    if (targets.length === 0) {
-      console.log('[REPLY_JOB] ℹ️ No suitable targets found, falling back to synthetic');
-      await generateSyntheticReplies();
-      return;
-    }
-    
-    const successfulReplies = [];
-    
-    for (const target of targets) {
-      try {
-        const reply = await generateReplyForTarget(target);
-        
-        if (reply) {
-          successfulReplies.push(reply);
-          console.log(`[REPLY_JOB] ✅ Real LLM reply generated successfully for @${target.username}`);
-        }
-        
-      } catch (error: any) {
-        const errorMessage = error.message?.toLowerCase() || '';
-        const isQuotaError = errorMessage.includes('insufficient_quota') || 
-                            errorMessage.includes('rate_limit') ||
-                            error.status === 429;
-        
-        if (isQuotaError) {
-          console.log(`[REPLY_JOB] 🔄 OpenAI insufficient_quota → skipping reply for @${target.username}`);
-          // Skip this target and continue with others
-          continue;
-        } else {
-          console.warn(`[REPLY_JOB] ⚠️ Failed to generate reply for @${target.username}: ${error.message}`);
-        }
-      }
-    }
-    
-    if (successfulReplies.length === 0) {
-      console.log('[REPLY_JOB] ⚠️ No successful real replies generated, falling back to synthetic');
-      await generateSyntheticReplies();
-    } else {
-      console.log(`[REPLY_JOB] 📊 Generated ${successfulReplies.length} real replies`);
-    }
-    
-  } catch (error: any) {
-    console.error('[REPLY_JOB] ❌ Real reply generation failed:', error.message);
-    console.log('[REPLY_JOB] 🔄 Falling back to synthetic replies');
-    await generateSyntheticReplies();
-  }
-}
-
-async function discoverTargets(): Promise<any[]> {
-  // Mock target discovery for now - in real implementation this would use X API
+async function discoverTargets() {
+  // Mock target discovery
   return [
-    { username: 'health_influencer', followers: 150000, topic: 'nutrition', tweet_id: 'mock_123' },
-    { username: 'wellness_coach', followers: 85000, topic: 'mental_health', tweet_id: 'mock_456' },
-    { username: 'fitness_expert', followers: 200000, topic: 'exercise', tweet_id: 'mock_789' }
+    {
+      tweet_id: `tweet_${Date.now()}_1`,
+      username: 'health_researcher',
+      content: "New study shows Mediterranean diet reduces cardiovascular risk by 30%.",
+      topic: 'nutrition'
+    }
   ];
+}
+
+async function runGateChain(text: string, decision_id: string) {
+  const flags = getEnvFlags();
+  const quality = calculateQuality(text);
+  if (quality < flags.MIN_QUALITY_SCORE) {
+    return { passed: false, gate: 'quality', reason: 'below_threshold' };
+  }
+  return { passed: true };
+}
+
+function calculateQuality(text: string): number {
+  let score = 0.5;
+  if (text.length >= 50 && text.length <= 250) score += 0.2;
+  if (/\b(study|research)\b/i.test(text)) score += 0.15;
+  if (!/\b(amazing|incredible)\b/i.test(text)) score += 0.15;
+  return Math.min(1.0, score);
+}
+
+function categorizeError(error: any): string {
+  const msg = error.message?.toLowerCase() || '';
+  if (error.status === 429 || msg.includes('rate_limit')) return 'rate_limit';
+  if (msg.includes('quota')) return 'insufficient_quota';
+  if (msg.includes('budget')) return 'budget_exceeded';
+  return 'unknown';
 }
