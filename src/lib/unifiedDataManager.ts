@@ -192,20 +192,23 @@ export class UnifiedDataManager {
     console.log(`🤖 UNIFIED_DATA: Storing AI decision ${decisionData.decisionType}`);
 
     try {
-      const { data, error } = await supabase.from('unified_ai_intelligence').insert({
-        decision_timestamp: decisionData.decisionTimestamp.toISOString(),
-        decision_type: decisionData.decisionType,
-        recommendation: JSON.stringify(decisionData.recommendation),
-        confidence: decisionData.confidence,
-        reasoning: decisionData.reasoning,
-        data_points_used: decisionData.dataPointsUsed,
-        context_data: JSON.stringify(decisionData.contextData || {}),
-        competitive_data: JSON.stringify(decisionData.competitiveData || {}),
-        performance_data: JSON.stringify(decisionData.performanceData || {}),
-        implemented: decisionData.implemented || false,
-        implementation_timestamp: decisionData.implementationTimestamp?.toISOString(),
-        outcome_data: JSON.stringify(decisionData.outcomeData || {}),
-        success_score: decisionData.successScore || 0.5
+      // Store AI decisions in content_metadata (new schema)
+      const { data, error } = await supabase.from('content_metadata').insert({
+        created_at: decisionData.decisionTimestamp.toISOString(),
+        decision_type: decisionData.decisionType === 'content' ? 'single' : 'reply',
+        content: JSON.stringify(decisionData.recommendation),
+        quality_score: decisionData.confidence,
+        features: {
+          reasoning: decisionData.reasoning,
+          data_points_used: decisionData.dataPointsUsed,
+          context_data: decisionData.contextData || {},
+          competitive_data: decisionData.competitiveData || {},
+          performance_data: decisionData.performanceData || {},
+          outcome_data: decisionData.outcomeData || {}
+        },
+        status: decisionData.implemented ? 'posted' : 'pending',
+        posted_at: decisionData.implementationTimestamp?.toISOString(),
+        generation_source: 'synthetic'
       }).select('id').single();
 
       if (error) throw error;
@@ -288,9 +291,10 @@ export class UnifiedDataManager {
    */
   public async getAIDecisions(daysBack: number): Promise<AIDecision[]> {
     try {
-      const { data: decisions, error } = await supabase.from('unified_ai_intelligence')
+      // Query from content_metadata (new schema)
+      const { data: decisions, error } = await supabase.from('content_metadata')
         .select('*')
-        .gte('decision_timestamp', new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString())
+        .gte('created_at', new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString())
         .order('decision_timestamp', { ascending: false });
 
       if (error) throw error;
