@@ -1,168 +1,203 @@
-# Production-Grade OpenAI Budget & Reliability Fixes
+# Fix: LLM Generation Health with Posting Disabled
 
 ## Summary
 
-This PR implements production-grade fixes to enforce a hard $5/day OpenAI spending cap with strict budget controls, eliminates JSON parsing errors, improves Playwright reliability, and ensures proper database/TLS configuration.
+This PR makes xBOT fully healthy with **LLM generation running while posting stays off**. Tomorrow we can flip posting on without any code changes.
 
-## Key Issues Resolved
+## What Changed
 
-1. **Budget Overruns** - Spending exceeded $5 with 0 posts due to retries, warmups, and pipeline tests consuming budget without production value
-2. **JSON Parse Failures** - `JSON_PARSE_ERROR: Unterminated string` causing fallback content generation and budget drain  
-3. **Database Insert Failures** - `message: undefined` errors preventing cost logging
-4. **TLS Configuration Issues** - `self-signed certificate in certificate chain` blocking migrations
-5. **Playwright Reliability** - `COMPOSER_NOT_FOCUSED` and infinite retry loops
+### 1. **Decoupled LLM Generation from Posting Flags**
+- ✅ Removed `POSTING_DISABLED` blocks from `openaiWrapper.ts` and `megaPromptSystem.ts`
+- ✅ LLM calls now governed by budget flags (`DISABLE_LLM_WHEN_BUDGET_HIT`, `DAILY_OPENAI_LIMIT_USD`) only
+- ✅ Allows building content queue even when posting is disabled
 
-## Changes Made
+### 2. **Fixed Database Schema Mismatch**
+- ✅ Migrated posting queue from `unified_ai_intelligence` to `content_metadata`
+- ✅ Added new columns: `status`, `generation_source`, `scheduled_at`, `content`, `decision_type`, etc.
+- ✅ Created `posted_decisions` table for archiving posted content with tweet IDs
+- ✅ New migration: `20250930_content_metadata_posting_queue.sql`
 
-### 🔒 **Atomic Budget Gate**
-- **`src/budget/atomicBudgetGate.ts`** - Redis Lua scripts for race-condition-free budget enforcement
-- `ensureBudget(intent, cost)` - Check before every LLM call
-- `commitCost(intent, actualCost)` - Atomic cost tracking with `INCRBYFLOAT`
-- Hard $5/day cap with detailed logging (`intent`, `estimated_cost`, `actual_cost`)
+### 3. **Updated Job Workflows**
+- ✅ `planJob.ts`: Stores decisions with `status='queued'` and `generation_source='real'`
+- ✅ `replyJob.ts`: Stores reply decisions in `content_metadata` with proper schema
+- ✅ `postingQueue.ts`: Reads from `content_metadata`, archives to `posted_decisions`
+- ✅ Rate-limit checks use `posted_decisions` table (no errors on missing columns)
 
-### 📝 **Strict JSON Enforcement** 
-- **`src/services/openAIService.ts`** - Force `response_format: json_schema { strict: true }` for content generation
-- **`src/ai/followerGrowthContentEngine.ts`** - Remove JSON repair logic, fail fast on invalid JSON
-- **`src/errors/InvalidJsonError.ts`** - Typed error for JSON failures  
-- `max_tokens >= 800` to prevent truncation, truncation guard throws on `finish_reason: 'length'`
+### 4. **Enhanced Metrics & Skip Tracking**
+- ✅ Added `updatePostingSkipMetrics()` to track skip reasons
+- ✅ Posting disabled now logs skip reason `posting_disabled` without throwing
+- ✅ LLM metrics properly reflect success/failure rates
 
-### 🚫 **Production Cost Controls**
-- **`src/config/featureFlags.ts`** - Feature flags to disable costly operations:
-  - `PIPELINE_TESTS_ENABLED=false` - Disable test endpoints
-  - `ALLOW_FALLBACK_GENERATION=false` - No fallback content on JSON failures
-  - `ALLOW_LLM_CACHE_WARMUP=false` - Disable smart cache LLM calls
-- **`src/utils/pipelineTest.ts`** - Gate pipeline tests behind feature flag
-- **`src/lib/smartCacheManager.ts`** - Skip cache warming if disabled
+### 5. **Documentation**
+- ✅ Updated `RUNBOOK.md` with validation commands for both modes (posting off/on)
+- ✅ Clear migration path from today (posting off) to tomorrow (posting on)
 
-### 🗄️ **Database & TLS Fixes**
-- **`src/db/supabaseService.ts`** - Service role client for writes, bypasses RLS
-- **`supabase/migrations/20250910_api_usage.sql`** - Proper `api_usage` table with schema + RLS
-- **`scripts/setup-ssl-cert.sh`** - Download Supabase CA certificate
-- **`Dockerfile`** - Install SSL certificates during Railway build
-- Consistent `sslmode=require` across runtime and migrations
+## Validation Today (Posting OFF, LLM ON)
 
-### 🎭 **Playwright Bounded Retries**
-- **`src/posting/bulletproofTwitterComposer.ts`** - Max 2 attempts, no escalation
-- Navigate to `https://x.com/compose/tweet` for reliability
-- X/Twitter Q3 2025 selectors: `data-testid="tweetTextarea_0"`
-- Block `**/*analytics*` requests to reduce noise
-- Throw `COMPOSER_NOT_AVAILABLE` on final failure (no infinite loops)
+### Environment
+```bash
+MODE=live
+POSTING_DISABLED=true
+LIVE_POSTS=false
+ENABLE_REPLIES=true
+ENABLE_SINGLES=true
+ENABLE_THREADS=true
+ENABLE_BANDIT_LEARNING=true
+REAL_METRICS_ENABLED=false
+DISABLE_LLM_WHEN_BUDGET_HIT=true
+ALLOW_FALLBACK_GENERATION=true
+OPENAI_MODEL=gpt-4o-mini
+```
 
-### 🚀 **Integration & Monitoring**
-- **`src/main-bulletproof.ts`** - Enhanced startup logging with budget status and feature flags
-- All LLM call sites updated to use `ensureBudget()` / `commitCost()`
-- Service role client for reliable cost logging to Supabase
+### Expected Behavior
 
-## Files Changed
+1. **LLM Calls Work**
+```bash
+curl -s -XPOST http://localhost:8080/admin/jobs/run?job=plan
+curl -s -XPOST http://localhost:8080/admin/jobs/run?job=reply
+```
+✅ Logs show: `✅ Real LLM content generated`  
+❌ Does NOT show: `LLM calls disabled (POSTING_DISABLED=true)`
 
-### New Files
-- `src/budget/atomicBudgetGate.ts` - Atomic Redis budget enforcement
-- `src/config/featureFlags.ts` - Production feature flag system  
-- `src/errors/InvalidJsonError.ts` - Typed JSON error handling
-- `src/db/supabaseService.ts` - Service role database client
-- `supabase/migrations/20250910_api_usage.sql` - API usage table schema
-- `scripts/setup-ssl-cert.sh` - SSL certificate setup
-- `Dockerfile` - Railway deployment with SSL
+2. **Content Queued in Database**
+```bash
+psql $DATABASE_URL -c "SELECT status, generation_source, COUNT(*) FROM content_metadata GROUP BY 1,2;"
+```
+Expected output:
+```
+ status  | generation_source | count 
+---------+-------------------+-------
+ queued  | real              |     3
+```
 
-### Updated Files
-- `src/services/openAIService.ts` - Atomic budget integration + strict JSON
-- `src/ai/followerGrowthContentEngine.ts` - Remove JSON repair, strict parsing
-- `src/posting/bulletproofTwitterComposer.ts` - Bounded retries + current selectors
-- `src/content/EnhancedContentGenerator.ts` - Budget gate integration
-- `src/utils/pipelineTest.ts` - Feature flag gate
-- `src/lib/smartCacheManager.ts` - Feature flag for warmups  
-- `src/main-bulletproof.ts` - Enhanced startup logging
-- `env.template` - Production environment variables
+3. **Posting Job Skips Cleanly**
+```bash
+curl -s -XPOST http://localhost:8080/admin/jobs/run?job=posting
+```
+✅ Logs show: `Posting disabled, skipping queue processing`  
+❌ Does NOT show: SQL errors about missing columns
 
-## Environment Variables Required
+4. **Metrics Look Healthy**
+```bash
+curl -s http://localhost:8080/api/metrics | jq '.openaiCalls_total, .openaiCalls_failed, .post_skipped_reason_counts'
+```
+Expected:
+```json
+{
+  "openaiCalls_total": 6,
+  "openaiCalls_failed": 0,
+  "post_skipped_reason_counts": {
+    "posting_disabled": 1
+  }
+}
+```
+
+5. **No DB Errors**
+❌ No occurrences of `unified_ai_intelligence.status does not exist` in logs  
+❌ No occurrences of `column "status" does not exist` in logs
+
+## Validation Tomorrow (Posting ON)
+
+When ready to post:
 
 ```bash
-# Production Budget Controls
-PIPELINE_TESTS_ENABLED=false
-ALLOW_FALLBACK_GENERATION=false  
-ALLOW_LLM_CACHE_WARMUP=false
-DAILY_OPENAI_LIMIT_USD=5
-
-# Database SSL Configuration
-DB_SSL_MODE=require
-DB_SSL_ROOT_CERT_PATH=/etc/ssl/certs/supabase-ca.crt
-MIGRATION_SSL_MODE=require
-MIGRATION_SSL_ROOT_CERT_PATH=/etc/ssl/certs/supabase-ca.crt
-
-# Supabase Service Role for Writes
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
+export POSTING_DISABLED=false
+export LIVE_POSTS=true
+export REAL_METRICS_ENABLED=true
 ```
 
-## How to Verify
+Then verify:
+1. Posts successfully to Twitter
+2. `posted_decisions` fills with tweet IDs
+3. `outcomes` table gets real metrics (`simulated=false`)
+4. Learning job trains once ≥5 outcomes exist
 
-### 1. **Startup Logs Should Show:**
+See [RUNBOOK.md](./RUNBOOK.md) for full validation commands.
+
+## Database Changes
+
+### New Migration
+`supabase/migrations/20250930_content_metadata_posting_queue.sql`
+
+Adds to `content_metadata`:
+- `status` (planned|queued|posted|failed|skipped)
+- `generation_source` (real|synthetic)
+- `scheduled_at` (timestamptz)
+- `content` (text)
+- `decision_type` (content|reply)
+- `target_tweet_id`, `target_username` (for replies)
+- `predicted_er`, `updated_at`
+
+Creates `posted_decisions` table for archiving.
+
+### Breaking Changes
+❌ None - This is purely additive. Old code paths will continue to work (they just won't find data in `unified_ai_intelligence`).
+
+## Testing Checklist
+
+- [x] No TypeScript/lint errors
+- [ ] LLM generation works with `POSTING_DISABLED=true`
+- [ ] Content stored in `content_metadata` with `status='queued'`
+- [ ] Posting job skips cleanly without SQL errors
+- [ ] Metrics show `openaiCalls_total > 0` and low failure rate
+- [ ] Migration runs successfully on clean database
+- [ ] Tomorrow's flip to posting ON requires no code changes
+
+## Deployment Steps
+
+1. **Merge this PR to production branch**
+2. **Run migration on production DB:**
+   ```bash
+   psql $DATABASE_URL -f supabase/migrations/20250930_content_metadata_posting_queue.sql
+   ```
+3. **Deploy with posting OFF:**
+   ```bash
+   export POSTING_DISABLED=true
+   export LIVE_POSTS=false
+   export REAL_METRICS_ENABLED=false
+   ```
+4. **Validate LLM generation and queue building** (see RUNBOOK.md)
+5. **Tomorrow: Flip posting ON** (update env vars only, no redeploy needed):
+   ```bash
+   export POSTING_DISABLED=false
+   export LIVE_POSTS=true  
+   export REAL_METRICS_ENABLED=true
+   ```
+
+## Related Issues
+
+Fixes:
+- ❌ "LLM calls disabled (POSTING_DISABLED=true)" blocking content generation
+- ❌ "column unified_ai_intelligence.status does not exist" DB errors
+- ❌ Deprecated `createChatCompletion()` warnings (already using budgeted client)
+- ❌ Rate-limit check warnings/errors
+
+## Architecture Notes
+
+### Before
 ```
-🏁 FEATURE_FLAGS:
-   PIPELINE_TEST_ENABLED: false
-   ALLOW_FALLBACK_GENERATION: false
-   ALLOW_LLM_CACHE_WARMUP: false
-   POSTING_DISABLED: false
-   DAILY_OPENAI_LIMIT_USD: $5
-
-💰 BUDGET_KEY: prod:openai_cost:2025-09-10
-💰 BUDGET_STATUS: $0.0000 / $5.0000 (5.0000 remaining)
-🛡️ BUDGET_GATE: ENABLED
-
-🔐 SERVICE_ROLE_KEY: PRESENT
-🔒 DATABASE_SSL: require ✅
-✅ DATABASE_CONNECTION: Service role client working
+POSTING_DISABLED=true → blocks LLM → no content generation → empty queue
 ```
 
-### 2. **Follower Content Generation:**
-```bash
-curl -X POST /api/generate-content
+### After
 ```
-**Expected logs:**
-```
-💰 BUDGET_GATE: OK intent=follower_growth_content est=$0.0045 current=$0.0000
-✅ CONTENT_GENERATED: Using strict JSON schema with max_tokens=400
-💰 BUDGET_COMMIT: actual=$0.0045 total=$0.0045 intent=follower_growth_content
-📊 API_USAGE_LOGGED: follower_growth_content $0.0045
-```
-**No JSON_PARSE_ERROR or JSON_REPAIR_ERROR logs**
-
-### 3. **Budget Enforcement Test:**
-```bash
-# Temporarily set low budget limit
-export DAILY_OPENAI_LIMIT_USD=0.01
-```
-**Expected:** Calls blocked with `BUDGET_EXCEEDED` after $0.01 spent
-
-### 4. **Playwright Posting:**
-```bash
-curl -X POST /api/test-post -d '{"content":"Test post"}'
-```
-**Expected logs:**
-```
-🎯 COMPOSER_ATTEMPT: 1/2
-✅ COMPOSER_FOUND: Element located successfully
-✅ CONTENT_ENTERED: 9 characters typed  
-✅ BULLETPROOF_SUCCESS: Post submitted successfully
+POSTING_DISABLED=true → allows LLM → content queued → posting skipped cleanly
 ```
 
-### 5. **Feature Flag Verification:**
-- Pipeline test endpoints return `{ skipped: true, reason: 'pipeline_tests_disabled' }`
-- Cache warming logs show `⏭️ SMART_CACHE: Cache warming disabled`
-- JSON failures throw `InvalidJsonError` instead of generating fallback content
+This enables:
+- ✅ Testing LLM without posting risk
+- ✅ Building content queue in advance
+- ✅ Gradual rollout (generate today, post tomorrow)
+- ✅ Budget protection via budget flags, not posting flags
 
-## Expected Impact
+---
 
-- **✅ Zero budget overruns** - Hard $5/day cap with atomic enforcement
-- **✅ Zero JSON parse errors** - Strict schema eliminates malformed responses  
-- **✅ Reliable database logging** - Service role client ensures cost tracking
-- **✅ Stable Playwright posting** - Bounded retries prevent infinite loops
-- **✅ Secure TLS connections** - Proper SSL for all database operations
-- **📈 Improved reliability** - Production-grade error handling and monitoring
+## Screenshots
 
-## Deployment Notes
+_To be added after deployment validation_
 
-1. **Railway:** Dockerfile automatically downloads SSL certificates during build
-2. **Environment:** Ensure all required environment variables are set
-3. **Migration:** Run `supabase migration up` to create `api_usage` table
-4. **Monitoring:** Check startup logs for proper configuration
-5. **Testing:** Verify budget gate with low limit before production deployment
+Expected screenshots:
+1. ✅ Successful plan/reply logs with real LLM content
+2. ✅ Posting job skipping with `posting_disabled` reason (no SQL errors)
+3. ✅ `/api/metrics` showing `openaiCalls_total > 0`
+4. ✅ Database query showing `status='queued', generation_source='real'`

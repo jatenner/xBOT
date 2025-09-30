@@ -317,11 +317,12 @@ async function storeDecisionForPosting(decisionId: string, content: GeneratedCon
     const { getSupabaseClient } = await import('../db/index');
     const supabase = getSupabaseClient();
     
-    // Store decision in unified_ai_intelligence table for tracking
+    // Store decision in content_metadata table with posting queue status
     const { error } = await supabase
-      .from('unified_ai_intelligence')
+      .from('content_metadata')
       .insert([{
         id: decisionId,
+        content_id: decisionId,
         content: content.text,
         decision_type: 'content',
         bandit_arm: content.bandit_arm,
@@ -329,14 +330,25 @@ async function storeDecisionForPosting(decisionId: string, content: GeneratedCon
         predicted_er: content.predicted_er,
         quality_score: content.quality_score,
         topic_cluster: content.topic,
-        status: 'ready_for_posting',
-        created_at: new Date().toISOString()
+        topic: content.topic,
+        status: 'queued',
+        generation_source: 'real',
+        scheduled_at: new Date(Date.now() + timingSelection.slot * 60 * 60 * 1000).toISOString(),
+        style: 'educational',
+        fact_source: 'llm_generated',
+        hook_type: 'tip_promise',
+        cta_type: 'follow_for_more',
+        predicted_engagement: 'medium',
+        thread_length: 1,
+        fact_count: 1,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       }]);
 
     if (error) {
       console.warn('[PLAN_JOB] ⚠️ Failed to store decision:', error.message);
     } else {
-      console.log(`[PLAN_JOB] 📝 Decision stored for posting: ${decisionId}`);
+      console.log(`[PLAN_JOB] 📝 Decision stored for posting: ${decisionId} (status=queued, generation_source=real)`);
     }
   } catch (error) {
     console.warn('[PLAN_JOB] ⚠️ Failed to store decision:', error.message);
