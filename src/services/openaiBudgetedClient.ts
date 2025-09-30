@@ -7,6 +7,7 @@ import OpenAI from 'openai';
 import { Redis } from 'ioredis';
 import { calculateTokenCost, estimateTokenCount, getModelRecommendations } from '../config/openai/pricing';
 import { getModelPricing } from '../config/openai/pricingSource';
+import { withExponentialBackoff, isQuotaExhausted } from './openaiRetry';
 
 // Typed errors
 export class BudgetExceededError extends Error {

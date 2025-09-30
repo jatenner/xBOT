@@ -154,18 +154,15 @@ export async function runRealOutcomesJob(): Promise<void> {
   try {
     const supabase = getSupabaseClient();
     
-    // Get recent decisions (posted in last 24 hours) that don't have real outcomes yet
+    // Get recent posted decisions that don't have real outcomes yet
     const { data: decisions, error } = await supabase
-      .from('unified_ai_intelligence')
+      .from('posted_decisions')
       .select(`
-        id, content, tweet_id, posted_at, decision_type, 
-        bandit_arm, timing_arm, predicted_er
+        id, decision_id, content, tweet_id, posted_at, decision_type, 
+        bandit_arm, timing_arm, generation_source
       `)
       .not('tweet_id', 'is', null)
       .gte('posted_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
-      .not('id', 'in', 
-        supabase.from('outcomes').select('decision_id').eq('simulated', false)
-      )
       .order('posted_at', { ascending: false })
       .limit(50);
 

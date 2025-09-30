@@ -85,10 +85,10 @@ async function getRecentPostedDecisions(): Promise<PostedDecision[]> {
     // Get decisions posted in the last 24 hours that don't have outcomes yet
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     
+    // Query from posted_decisions (the authoritative table for posted content)
     const { data: decisions, error: decisionsError } = await supabase
-      .from('unified_ai_intelligence')
+      .from('posted_decisions')
       .select('*')
-      .eq('status', 'posted')
       .not('tweet_id', 'is', null)
       .gte('posted_at', twentyFourHoursAgo)
       .order('posted_at', { ascending: false });
