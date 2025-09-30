@@ -15,8 +15,6 @@ export async function processPostingQueue(): Promise<void> {
     // 1. Check if posting is enabled
     if (flags.postingDisabled) {
       console.log('[POSTING_QUEUE] ⚠️ Posting disabled, skipping queue processing');
-      // Update metrics for skip reason
-      await updatePostingSkipMetrics('posting_disabled');
       return;
     }
     
@@ -398,16 +396,5 @@ async function updatePostingMetrics(type: 'queued' | 'posted' | 'error'): Promis
     }
   } catch (error) {
     console.warn('[POSTING_QUEUE] ⚠️ Failed to update posting metrics:', error.message);
-  }
-}
-
-async function updatePostingSkipMetrics(reason: string): Promise<void> {
-  try {
-    const { updateMockMetrics } = await import('../api/metrics');
-    updateMockMetrics({ 
-      post_skipped_reason_counts: { [reason]: 1 } 
-    });
-  } catch (error) {
-    console.warn('[POSTING_QUEUE] ⚠️ Failed to update skip metrics:', error.message);
   }
 }
