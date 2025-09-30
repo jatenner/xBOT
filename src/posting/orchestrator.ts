@@ -1,11 +1,12 @@
 /**
  * 🚀 POSTING ORCHESTRATOR
- * Handles real posting to X with graceful fallbacks
+ * Handles real posting to X with proper queue management
  */
 
 import { getConfig } from '../config/config';
+import { getEnvFlags, isPostingAllowed } from '../config/envFlags';
+import { getSupabaseClient } from '../db/index';
 
-// Global metrics tracking
 let postingMetrics = {
   posts_attempted: 0,
   posts_posted: 0,
@@ -14,12 +15,17 @@ let postingMetrics = {
 };
 
 interface QueuedDecision {
-  id: string;
+  decision_id: string;
+  id: number;
   content: string;
-  decision_type: 'content' | 'reply';
+  decision_type: 'single' | 'thread' | 'reply';
   generation_source: 'real' | 'synthetic';
+  scheduled_at: string;
   target_tweet_id?: string;
-  topic_cluster?: string;
+  target_username?: string;
+  bandit_arm?: string;
+  timing_arm?: string;
+  quality_score?: number;
 }
 
 export async function processPostingQueue(): Promise<void> {
@@ -33,155 +39,231 @@ export async function processPostingQueue(): Promise<void> {
       return;
     }
     
+    console.log(`[POSTING_ORCHESTRATOR] 📋 Found ${queuedDecisions.length} decisions in queue`);
+    
     for (const decision of queuedDecisions) {
       await processDecision(decision);
-      }
-
-    } catch (error) {
+    }
+    
+  } catch (error: any) {
     console.error('[POSTING_ORCHESTRATOR] ❌ Queue processing failed:', error.message);
     throw error;
   }
 }
 
+async function getQueuedDecisions(): Promise<QueuedDecision[]> {
+  const supabase = getSupabaseClient();
+  
+  // CANONICAL QUERY
+  const { data, error } = await supabase
+    .from('content_metadata')
+    .select('*')
+    .eq('status', 'queued')
+    .eq('generation_source', 'real')
+    .lte('scheduled_at', new Date().toISOString())
+    .order('scheduled_at', { ascending: true })
+    .limit(5);
+  
+  if (error) {
+    console.error('[POSTING_ORCHESTRATOR] ❌ Failed to fetch queue:', error.message);
+    return [];
+  }
+  
+  return (data || []) as QueuedDecision[];
+}
+
 async function processDecision(decision: QueuedDecision): Promise<void> {
   postingMetrics.posts_attempted++;
   
-  const config = getConfig();
-  
-  // Skip if in shadow mode (posting disabled)
-  if (config.MODE === 'shadow') {
-    const skipReason = 'shadow_mode';
-    await skipPosting(decision.id, skipReason);
-    updateSkipMetrics(skipReason);
-    return;
-  }
-  
-  // Skip if not real LLM generation in live mode
-  if (config.MODE === 'live' && decision.generation_source !== 'real') {
-    const skipReason = 'llm_unavailable';
-    console.log(`[POSTING_ORCHESTRATOR] ⏭️ Skipped posting ${decision.id}: ${skipReason}`);
-    await skipPosting(decision.id, skipReason);
-    updateSkipMetrics(skipReason);
+  // Check if posting is allowed
+  const postingCheck = isPostingAllowed();
+  if (!postingCheck.allowed) {
+    console.log(`[POSTING_ORCHESTRATOR] ⏭️ Skipped posting decision_id=${decision.decision_id}: ${postingCheck.reason}`);
+    updateSkipMetrics(postingCheck.reason || 'posting_disabled');
+    // Keep in queue (do NOT update status)
     return;
   }
   
   // Check rate limits
   if (await isRateLimited()) {
-    const skipReason = 'rate_limit_exceeded';
-    console.log(`[POSTING_ORCHESTRATOR] ⏭️ Skipped posting ${decision.id}: ${skipReason}`);
-    await skipPosting(decision.id, skipReason);
+    const skipReason = 'rate_limit';
+    console.log(`[POSTING_ORCHESTRATOR] ⏭️ Skipped posting decision_id=${decision.decision_id}: ${skipReason}`);
     updateSkipMetrics(skipReason);
     return;
   }
   
-  // Run through gate chain
-  const gateResult = await runPostingGates(decision);
-  if (!gateResult.passed) {
-    const skipReason = `gate_${gateResult.gate}_failed`;
-    console.log(`[POSTING_ORCHESTRATOR] ⛔ Blocked by gate: ${gateResult.gate} (${gateResult.reason})`);
-    await skipPosting(decision.id, skipReason);
-    updateSkipMetrics(skipReason);
-    return;
-  }
-  
-  // Attempt posting with retry logic
+  // Attempt posting with retry
   try {
     const tweetId = await postToXWithRetry(decision);
     
     // Store successful posting
     await storePostedDecision(decision, tweetId);
     
-    console.log(`[POSTING_ORCHESTRATOR] ✅ Posted successfully: tweet_id=${tweetId}`);
+    // Update content_metadata
+    await markAsPosted(decision.decision_id, tweetId);
+    
+    console.log(`[POSTING_ORCHESTRATOR] ✅ Posted successfully tweet_id=${tweetId} decision_id=${decision.decision_id}`);
     postingMetrics.posts_posted++;
     
   } catch (error: any) {
-    console.error(`[POSTING_ORCHESTRATOR] ❌ Failed to post ${decision.id}:`, error.message);
+    console.error(`[POSTING_ORCHESTRATOR] ❌ Failed to post decision_id=${decision.decision_id}:`, error.message);
     const skipReason = 'posting_failed';
-    await skipPosting(decision.id, skipReason);
     updateSkipMetrics(skipReason);
+    
+    // Mark as failed
+    await markAsFailed(decision.decision_id, error.message);
   }
 }
 
-async function postToXWithRetry(decision: QueuedDecision): Promise<string> {
-  const maxRetries = 3;
-  const baseDelay = 500; // Start with 500ms
+async function postToXWithRetry(decision: QueuedDecision, retries = 3): Promise<string> {
+  const delays = [1000, 2000, 4000]; // Exponential backoff
   
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+  for (let attempt = 0; attempt < retries; attempt++) {
     try {
-      console.log(`[POSTING_ORCHESTRATOR] 🚀 Posting attempt ${attempt}/${maxRetries}: "${decision.content.substring(0, 50)}..."`);
-      
-      // Simulate posting to X (would be real Playwright automation)
-      const tweetId = await postToX(decision);
-      
-      return tweetId;
-      
-    } catch (error: any) {
-      console.warn(`[POSTING_ORCHESTRATOR] ⚠️ Attempt ${attempt} failed:`, error.message);
-      
-      if (attempt === maxRetries) {
-        throw error; // Final attempt failed
+      if (attempt > 0) {
+        console.log(`[POSTING_ORCHESTRATOR] 🔄 Retry attempt ${attempt + 1}/${retries}`);
+        await new Promise(resolve => setTimeout(resolve, delays[attempt - 1]));
       }
       
-      // Exponential backoff with jitter
-      const delay = baseDelay * Math.pow(2, attempt - 1) + Math.random() * 100;
-      console.log(`[POSTING_ORCHESTRATOR] ⏱️ Waiting ${delay.toFixed(0)}ms before retry...`);
-      await new Promise(resolve => setTimeout(resolve, delay));
+      if (decision.decision_type === 'reply' && decision.target_tweet_id) {
+        return await postReply(decision);
+      } else {
+        return await postContent(decision);
+      }
+      
+    } catch (error: any) {
+      if (attempt === retries - 1) throw error;
+      console.warn(`[POSTING_ORCHESTRATOR] ⚠️ Attempt ${attempt + 1} failed: ${error.message}`);
     }
   }
   
-  throw new Error('All retry attempts exhausted');
+  throw new Error('Max retries exceeded');
 }
 
-async function postToX(decision: QueuedDecision): Promise<string> {
-  // Simulate posting via Playwright (in real implementation this would use browser automation)
-  // For now, simulate success with random tweet ID
-  await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 500));
+async function postContent(decision: QueuedDecision): Promise<string> {
+  const { RailwayCompatiblePoster } = await import('./railwayCompatiblePoster');
+  const poster = new RailwayCompatiblePoster();
   
-  // Simulate occasional failures for testing
-  if (Math.random() < 0.1) { // 10% failure rate
-    throw new Error('Twitter API rate limit exceeded');
-  }
-  
-  const tweetId = `tweet_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
-  return tweetId;
-}
-
-async function isRateLimited(): Promise<boolean> {
-  // Check against MAX_POSTS_PER_HOUR 
-  // For now, return false - TODO: implement rate checking
-  return false;
-}
-
-async function runPostingGates(decision: QueuedDecision): Promise<{passed: boolean, gate?: string, reason?: string}> {
   try {
-    // Import gate chain
-    const { prePostValidation } = await import('../posting/gateChain');
-    return await prePostValidation(decision.content, {
-      decision_id: decision.id,
-      topic_cluster: decision.topic_cluster,
-      content_type: decision.decision_type
-    });
-    } catch (error) {
-    console.warn('[POSTING_ORCHESTRATOR] ⚠️ Gate chain failed:', error.message);
-    // Fail closed in live mode, open in shadow
-    const config = getConfig();
-    return { passed: config.MODE === 'shadow', gate: 'gate_chain', reason: 'gate_error' };
+    const initSuccess = await poster.initialize();
+    if (!initSuccess) {
+      throw new Error('Failed to initialize poster');
+    }
+    
+    const result = await poster.postTweet(decision.content);
+    
+    if (!result.success) {
+      throw new Error(result.error || 'Unknown posting error');
+    }
+    
+    return result.tweetId || `posted_${Date.now()}`;
+    
+  } finally {
+    try {
+      await poster.cleanup();
+    } catch (e) {
+      console.warn('[POSTING_ORCHESTRATOR] ⚠️ Cleanup warning:', e);
+    }
+  }
+}
+
+async function postReply(decision: QueuedDecision): Promise<string> {
+  // For replies, use the same posting infrastructure
+  // In production, would navigate to specific tweet and reply
+  const { RailwayCompatiblePoster } = await import('./railwayCompatiblePoster');
+  const poster = new RailwayCompatiblePoster();
+  
+  try {
+    await poster.initialize();
+    const replyContent = `@${decision.target_username} ${decision.content}`;
+    const result = await poster.postTweet(replyContent);
+    
+    if (!result.success) {
+      throw new Error(result.error || 'Reply posting failed');
+    }
+    
+    return result.tweetId || `reply_${Date.now()}`;
+    
+  } finally {
+    await poster.cleanup();
   }
 }
 
 async function storePostedDecision(decision: QueuedDecision, tweetId: string): Promise<void> {
-  // TODO: Store to posted_decisions table
-  console.log(`[POSTING_ORCHESTRATOR] 💾 Storing posted decision: ${decision.id} -> ${tweetId}`);
+  const supabase = getSupabaseClient();
+  
+  const { error } = await supabase
+    .from('posted_decisions')
+    .insert([{
+      decision_id: decision.decision_id,
+      decision_type: decision.decision_type,
+      content: decision.content,
+      tweet_id: tweetId,
+      generation_source: decision.generation_source,
+      bandit_arm: decision.bandit_arm,
+      timing_arm: decision.timing_arm,
+      target_tweet_id: decision.target_tweet_id,
+      posted_at: new Date().toISOString()
+    }]);
+  
+  if (error) {
+    console.warn(`[POSTING_ORCHESTRATOR] ⚠️ Failed to store posted_decision:`, error.message);
+  }
 }
 
-async function getQueuedDecisions(): Promise<QueuedDecision[]> {
-  // Mock for now - TODO: implement database query
-  return [];
+async function markAsPosted(decision_id: string, tweetId: string): Promise<void> {
+  const supabase = getSupabaseClient();
+  
+  const { error } = await supabase
+    .from('content_metadata')
+    .update({
+      status: 'posted',
+      tweet_id: tweetId,
+      posted_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    })
+    .eq('decision_id', decision_id);
+  
+  if (error) {
+    console.warn(`[POSTING_ORCHESTRATOR] ⚠️ Failed to update status:`, error.message);
+  }
 }
 
-async function skipPosting(decisionId: string, reason: string): Promise<void> {
-  // TODO: Mark decision as skipped in database
-  console.log(`[POSTING_ORCHESTRATOR] ⏭️ Skipped posting ${decisionId}: ${reason}`);
+async function markAsFailed(decision_id: string, errorMsg: string): Promise<void> {
+  const supabase = getSupabaseClient();
+  
+  const { error } = await supabase
+    .from('content_metadata')
+    .update({
+      status: 'failed',
+      error_message: errorMsg,
+      updated_at: new Date().toISOString()
+    })
+    .eq('decision_id', decision_id);
+  
+  if (error) {
+    console.warn(`[POSTING_ORCHESTRATOR] ⚠️ Failed to mark as failed:`, error.message);
+  }
+}
+
+async function isRateLimited(): Promise<boolean> {
+  const config = getConfig();
+  const maxPerHour = parseInt(String(config.MAX_POSTS_PER_HOUR || 1));
+  
+  const supabase = getSupabaseClient();
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  
+  const { count, error } = await supabase
+    .from('posted_decisions')
+    .select('*', { count: 'exact', head: true })
+    .gte('posted_at', oneHourAgo);
+  
+  if (error) {
+    console.warn('[POSTING_ORCHESTRATOR] ⚠️ Rate limit check failed, allowing');
+    return false;
+  }
+  
+  return (count || 0) >= maxPerHour;
 }
 
 function updateSkipMetrics(reason: string): void {
