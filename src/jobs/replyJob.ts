@@ -115,7 +115,7 @@ async function checkReplyRateLimits(): Promise<boolean> {
     const today = new Date().toISOString().split('T')[0];
     
     const { count, error } = await supabase
-      .from('unified_ai_intelligence')
+      .from('content_metadata')
       .select('*', { count: 'exact', head: true })
       .eq('decision_type', 'reply')
       .gte('created_at', `${today}T00:00:00.000Z`)
@@ -352,9 +352,10 @@ async function storeReplyDecisionForPosting(reply: GeneratedReply, target: Reply
     const decisionId = `reply_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
     
     const { error } = await supabase
-      .from('unified_ai_intelligence')
+      .from('content_metadata')
       .insert([{
         id: decisionId,
+        content_id: decisionId,
         content: reply.content,
         decision_type: 'reply',
         target_tweet_id: reply.target_tweet_id,
@@ -362,14 +363,25 @@ async function storeReplyDecisionForPosting(reply: GeneratedReply, target: Reply
         bandit_arm: reply.bandit_arm,
         predicted_er: reply.predicted_engagement,
         topic_cluster: reply.topic,
-        status: 'ready_for_posting',
-        created_at: new Date().toISOString()
+        topic: reply.topic,
+        status: 'queued',
+        generation_source: 'real',
+        scheduled_at: new Date().toISOString(),
+        style: 'educational',
+        fact_source: 'llm_generated',
+        hook_type: 'tip_promise',
+        cta_type: 'engagement_question',
+        predicted_engagement: 'medium',
+        thread_length: 1,
+        fact_count: 1,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       }]);
 
     if (error) {
       console.warn('[REPLY_JOB] ⚠️ Failed to store reply decision:', error.message);
     } else {
-      console.log(`[REPLY_JOB] 📝 Reply decision stored: ${decisionId}`);
+      console.log(`[REPLY_JOB] 📝 Reply decision stored: ${decisionId} (status=queued, generation_source=real)`);
     }
   } catch (error) {
     console.warn('[REPLY_JOB] ⚠️ Failed to store reply decision:', error.message);
