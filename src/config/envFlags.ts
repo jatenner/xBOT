@@ -1,168 +1,122 @@
 /**
- * 🚦 ENVIRONMENT FLAGS - Autonomous System Control
- * 
- * Critical flags that control LLM generation, posting, and analytics behavior
+ * Environment Flags - Single Source of Truth
+ * Consolidated environment variable semantics with deprecation warnings
  */
 
-export interface EnvironmentFlags {
-  // ===== AI/LLM Control =====
-  AI_QUOTA_CIRCUIT_OPEN: boolean;           // true = block ALL LLM calls (circuit breaker)
-  DAILY_OPENAI_LIMIT_USD: number;          // Daily spend cap
-  DISABLE_LLM_WHEN_BUDGET_HIT: boolean;    // Stop LLM when budget exceeded
-  BUDGET_STRICT: boolean;                   // Fail hard on budget violations
-  
-  // ===== Posting Control =====
-  POSTING_DISABLED: boolean;                // true = do NOT post (but still queue)
-  LIVE_POSTS: boolean;                      // true = allow actual X posting
-  
-  // ===== Analytics Control =====
-  REAL_METRICS_ENABLED: boolean;            // true = collect real X engagement
-  
-  // ===== Operational Mode =====
-  MODE: 'shadow' | 'live';                  // Shadow = synthetic, Live = real
-  
-  // ===== Content Controls =====
-  ENABLE_REPLIES: boolean;
-  ENABLE_SINGLES: boolean;
-  ENABLE_THREADS: boolean;
-  ENABLE_BANDIT_LEARNING: boolean;
-  
-  // ===== Thresholds =====
-  DUP_COSINE_THRESHOLD: number;             // Uniqueness similarity threshold
-  SIMILARITY_THRESHOLD: number;             // Fallback similarity threshold
-  MIN_QUALITY_SCORE: number;                // Minimum content quality
-  
-  // ===== Rate Limits =====
-  MAX_POSTS_PER_HOUR: number;
-  MIN_POST_INTERVAL_MINUTES: number;
-  REPLY_MAX_PER_DAY: number;
-  
-  // ===== Models =====
-  OPENAI_MODEL: string;
-  EMBED_MODEL: string;
+export type AppMode = 'live' | 'shadow';
+
+export interface EnvConfig {
+  MODE: AppMode;
+  REAL_METRICS_ENABLED: boolean;
+  OPENAI_API_KEY: string;
+  ADMIN_TOKEN: string;
+  REDIS_URL: string;
+  SUPABASE_URL: string;
+  SUPABASE_SERVICE_ROLE_KEY: string;
 }
 
-/**
- * Load environment flags from process.env
- */
-export function loadEnvironmentFlags(): EnvironmentFlags {
-  const parseBoolean = (val: string | undefined, defaultVal: boolean): boolean => {
-    if (val === undefined) return defaultVal;
-    return val === 'true' || val === '1';
-  };
+function normalizeMode(): AppMode {
+  const mode = process.env.MODE?.toLowerCase();
   
-  const parseNumber = (val: string | undefined, defaultVal: number): number => {
-    if (val === undefined) return defaultVal;
-    const parsed = parseFloat(val);
-    return isNaN(parsed) ? defaultVal : parsed;
-  };
+  // Handle legacy flags with deprecation warnings
+  if (!mode) {
+    const legacyPosting = process.env.POSTING_DISABLED === 'true';
+    const legacyDryRun = process.env.DRY_RUN === 'true';
+    const legacyLivePosts = process.env.LIVE_POSTS === 'true';
+    
+    if (legacyPosting || legacyDryRun) {
+      console.warn('⚠️ DEPRECATED: POSTING_DISABLED and DRY_RUN are deprecated. Use MODE=shadow instead.');
+      return 'shadow';
+    }
+    
+    if (legacyLivePosts) {
+      console.warn('⚠️ DEPRECATED: LIVE_POSTS is deprecated. Use MODE=live instead.');
+      return 'live';
+    }
+    
+    // Default to shadow for safety
+    console.warn('⚠️ MODE not set. Defaulting to MODE=shadow (safe mode, no posting).');
+    return 'shadow';
+  }
+  
+  if (mode !== 'live' && mode !== 'shadow') {
+    console.error(`❌ Invalid MODE="${mode}". Must be "live" or "shadow". Defaulting to shadow.`);
+    return 'shadow';
+  }
+  
+  return mode as AppMode;
+}
+
+export function getEnvConfig(): EnvConfig {
+  const MODE = normalizeMode();
   
   return {
-    // AI/LLM Control
-    AI_QUOTA_CIRCUIT_OPEN: parseBoolean(process.env.AI_QUOTA_CIRCUIT_OPEN, false),
-    DAILY_OPENAI_LIMIT_USD: parseNumber(process.env.DAILY_OPENAI_LIMIT_USD, 10.0),
-    DISABLE_LLM_WHEN_BUDGET_HIT: parseBoolean(process.env.DISABLE_LLM_WHEN_BUDGET_HIT, true),
-    BUDGET_STRICT: parseBoolean(process.env.BUDGET_STRICT, true),
-    
-    // Posting Control
-    POSTING_DISABLED: parseBoolean(process.env.POSTING_DISABLED, true),
-    LIVE_POSTS: parseBoolean(process.env.LIVE_POSTS, false),
-    
-    // Analytics Control
-    REAL_METRICS_ENABLED: parseBoolean(process.env.REAL_METRICS_ENABLED, false),
-    
-    // Operational Mode
-    MODE: (process.env.MODE === 'live' ? 'live' : 'shadow') as 'shadow' | 'live',
-    
-    // Content Controls
-    ENABLE_REPLIES: parseBoolean(process.env.ENABLE_REPLIES, true),
-    ENABLE_SINGLES: parseBoolean(process.env.ENABLE_SINGLES, true),
-    ENABLE_THREADS: parseBoolean(process.env.ENABLE_THREADS, true),
-    ENABLE_BANDIT_LEARNING: parseBoolean(process.env.ENABLE_BANDIT_LEARNING, true),
-    
-    // Thresholds
-    DUP_COSINE_THRESHOLD: parseNumber(process.env.DUP_COSINE_THRESHOLD, 0.85),
-    SIMILARITY_THRESHOLD: parseNumber(process.env.SIMILARITY_THRESHOLD, 0.85),
-    MIN_QUALITY_SCORE: parseNumber(process.env.MIN_QUALITY_SCORE, 0.7),
-    
-    // Rate Limits
-    MAX_POSTS_PER_HOUR: parseNumber(process.env.MAX_POSTS_PER_HOUR, 1),
-    MIN_POST_INTERVAL_MINUTES: parseNumber(process.env.MIN_POST_INTERVAL_MINUTES, 15),
-    REPLY_MAX_PER_DAY: parseNumber(process.env.REPLY_MAX_PER_DAY, 10),
-    
-    // Models
-    OPENAI_MODEL: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-    EMBED_MODEL: process.env.EMBED_MODEL || 'text-embedding-3-small'
+    MODE,
+    REAL_METRICS_ENABLED: process.env.REAL_METRICS_ENABLED === 'true',
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',
+    ADMIN_TOKEN: process.env.ADMIN_TOKEN || '',
+    REDIS_URL: process.env.REDIS_URL || '',
+    SUPABASE_URL: process.env.SUPABASE_URL || '',
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
   };
 }
 
-// Singleton instance
-let cachedFlags: EnvironmentFlags | null = null;
-
-export function getEnvFlags(): EnvironmentFlags {
-  if (!cachedFlags) {
-    cachedFlags = loadEnvironmentFlags();
-  }
-  return cachedFlags;
-}
-
-/**
- * Check if LLM calls are allowed
- * Returns: { allowed: boolean, reason?: string }
- */
 export function isLLMAllowed(): { allowed: boolean; reason?: string } {
-  const flags = getEnvFlags();
+  const config = getEnvConfig();
   
-  // Circuit breaker takes priority
-  if (flags.AI_QUOTA_CIRCUIT_OPEN) {
-    return { allowed: false, reason: 'AI_QUOTA_CIRCUIT_OPEN=true (circuit breaker active)' };
+  if (!config.OPENAI_API_KEY) {
+    return { allowed: false, reason: 'OPENAI_API_KEY not set' };
   }
   
-  // Note: POSTING_DISABLED does NOT block LLM
-  // LLM is only blocked by AI_QUOTA_CIRCUIT_OPEN and budget limits
+  if (process.env.AI_QUOTA_CIRCUIT_OPEN === 'true') {
+    return { allowed: false, reason: 'AI_QUOTA_CIRCUIT_OPEN=true' };
+  }
   
   return { allowed: true };
 }
 
-/**
- * Check if posting is allowed
- * Returns: { allowed: boolean, reason?: string }
- */
 export function isPostingAllowed(): { allowed: boolean; reason?: string } {
-  const flags = getEnvFlags();
+  const config = getEnvConfig();
   
-  if (flags.POSTING_DISABLED) {
-    return { allowed: false, reason: 'POSTING_DISABLED=true' };
+  if (config.MODE === 'shadow') {
+    return { allowed: false, reason: 'MODE=shadow (no posting in shadow mode)' };
   }
   
-  if (!flags.LIVE_POSTS) {
-    return { allowed: false, reason: 'LIVE_POSTS=false' };
+  if (config.MODE === 'live') {
+    return { allowed: true };
+  }
+  
+  return { allowed: false, reason: 'Unknown mode' };
+}
+
+export function isRealMetricsAllowed(): { allowed: boolean; reason?: string } {
+  const config = getEnvConfig();
+  
+  if (!config.REAL_METRICS_ENABLED) {
+    return { allowed: false, reason: 'REAL_METRICS_ENABLED=false' };
   }
   
   return { allowed: true };
 }
 
-/**
- * Check if real analytics collection is allowed
- */
-export function isRealAnalyticsAllowed(): boolean {
-  const flags = getEnvFlags();
-  return flags.REAL_METRICS_ENABLED;
-}
-
-/**
- * Get flag summary for logging
- */
-export function getFlagSummary(): string {
-  const flags = getEnvFlags();
-  const llm = isLLMAllowed();
-  const posting = isPostingAllowed();
+// Startup validation
+export function validateEnvOrExit(): void {
+  const config = getEnvConfig();
+  const missing: string[] = [];
   
-  return [
-    `MODE=${flags.MODE}`,
-    `LLM=${llm.allowed ? '✅' : '❌' + (llm.reason ? ` (${llm.reason})` : '')}`,
-    `POSTING=${posting.allowed ? '✅' : '❌' + (posting.reason ? ` (${posting.reason})` : '')}`,
-    `ANALYTICS=${flags.REAL_METRICS_ENABLED ? '✅' : '❌'}`,
-    `BUDGET_LIMIT=$${flags.DAILY_OPENAI_LIMIT_USD}/day`
-  ].join(' | ');
+  if (!config.OPENAI_API_KEY) missing.push('OPENAI_API_KEY');
+  if (!config.REDIS_URL) missing.push('REDIS_URL');
+  if (!config.SUPABASE_URL) missing.push('SUPABASE_URL');
+  if (!config.SUPABASE_SERVICE_ROLE_KEY) missing.push('SUPABASE_SERVICE_ROLE_KEY');
+  
+  if (missing.length > 0) {
+    console.error(`❌ FATAL: Missing required environment variables: ${missing.join(', ')}`);
+    process.exit(1);
+  }
+  
+  if (!config.ADMIN_TOKEN) {
+    console.warn('⚠️ WARNING: ADMIN_TOKEN not set. Admin endpoints will be unavailable.');
+  }
+  
+  console.log(`✅ ENV_CONFIG: MODE=${config.MODE}, REAL_METRICS=${config.REAL_METRICS_ENABLED}`);
 }

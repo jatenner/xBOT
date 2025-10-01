@@ -1,0 +1,11 @@
+# Local Git Configuration
+# To apply: git config --local include.path ../.git-config-local
+
+[core]
+    # Disable pager for non-interactive environments
+    pager = cat
+
+[alias]
+    # Quick commit helper
+    commit-push = "!f() { git add -A && git commit -m \"$@\" && git push; }; f"
+

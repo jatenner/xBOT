@@ -1,9 +1,9 @@
 /**
  * 🔄 OPENAI RETRY LOGIC
  * 
- * Exponential backoff with jitter for OpenAI 429 rate limit errors
- * Max retries: 2
- * Delays: 500ms, 1s, 2s (with random jitter)
+ * Exponential backoff with jitter for OpenAI 429/5xx errors
+ * Max retries: 4
+ * Delays: 500ms, 1s, 2s, 4s, 8s (capped at 10s with jitter)
  */
 
 export interface RetryConfig {
@@ -13,9 +13,9 @@ export interface RetryConfig {
 }
 
 const DEFAULT_RETRY_CONFIG: RetryConfig = {
-  maxRetries: 2,
+  maxRetries: 4,
   baseDelayMs: 500,
-  maxDelayMs: 2000
+  maxDelayMs: 10000 // 10s cap
 };
 
 /**
@@ -50,30 +50,38 @@ export async function withExponentialBackoff<T>(
     } catch (error: any) {
       lastError = error;
 
-      // Check if it's a 429 rate limit error
-      if (is429Error(error)) {
+      // Check if it's a retryable error (429 or 5xx)
+      if (isRetryableError(error)) {
+        const errorType = is429Error(error) ? '429 rate limit' : '5xx server error';
         console.warn(
-          `[OPENAI_BACKOFF] ⚠️  429 rate limit hit for ${context} ` +
-          `(attempt ${attempt + 1}/${config.maxRetries + 1})`
+          `[OPENAI_RETRY] ⚠️  ${errorType} hit for ${context} ` +
+          `(attempt=${attempt + 1}/${config.maxRetries + 1})`
         );
 
         if (attempt < config.maxRetries) {
           continue; // Retry
         } else {
           console.error(
-            `[OPENAI_BACKOFF] ❌ Max retries exceeded for ${context}, giving up`
+            `[OPENAI_RETRY] ❌ Max retries exceeded for ${context}, giving up`
           );
           throw error;
         }
       }
 
-      // For non-429 errors, throw immediately
-      console.error(`[OPENAI_BACKOFF] ❌ Non-retryable error for ${context}: ${error.message}`);
+      // For non-retryable errors, throw immediately
+      console.error(`[OPENAI_RETRY] ❌ Non-retryable error for ${context}: ${error.message}`);
       throw error;
     }
   }
 
   throw lastError;
+}
+
+/**
+ * Check if error is retryable (429 or 5xx)
+ */
+function isRetryableError(error: any): boolean {
+  return is429Error(error) || is5xxError(error);
 }
 
 /**
@@ -95,6 +103,28 @@ function is429Error(error: any): boolean {
     message.includes('429') ||
     message.includes('too many requests') ||
     message.includes('insufficient_quota')
+  );
+}
+
+/**
+ * Check if error is a 5xx server error
+ */
+function is5xxError(error: any): boolean {
+  if (!error) return false;
+
+  const status = error.status || error.statusCode;
+  if (status && status >= 500 && status < 600) return true;
+
+  const message = (error.message || '').toLowerCase();
+  return (
+    message.includes('500') ||
+    message.includes('502') ||
+    message.includes('503') ||
+    message.includes('504') ||
+    message.includes('internal server error') ||
+    message.includes('bad gateway') ||
+    message.includes('service unavailable') ||
+    message.includes('gateway timeout')
   );
 }
 
