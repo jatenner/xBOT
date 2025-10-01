@@ -454,9 +454,10 @@ export class OpenAIBudgetedClient {
     requestId: string
   ): Promise<void> {
     try {
-      const { supaService } = await import('../db/supabaseService');
+      const { getSupabaseClient } = await import('../db/index');
+      const supabase = getSupabaseClient();
       
-      await supaService.from('api_usage').insert({
+      await supabase.from('api_usage').insert({
         intent: metadata.purpose,
         model,
         prompt_tokens: 0, // Will be updated if we track tokens separately
