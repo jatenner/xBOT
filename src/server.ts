@@ -361,8 +361,10 @@ app.get('/canary', async (req, res) => {
     // Test DB
     try {
       const dbHealth = await checkDatabaseHealth();
-      results.db_ok = dbHealth.ok;
-      if (!dbHealth.ok) results.db_error = dbHealth.error;
+      results.db_ok = dbHealth.supabase && dbHealth.postgres;
+      if (dbHealth.errors.length > 0) {
+        results.db_error = dbHealth.errors.join(', ');
+      }
     } catch (error: any) {
       results.db_error = error.message;
     }
