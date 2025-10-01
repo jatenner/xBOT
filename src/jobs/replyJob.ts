@@ -101,7 +101,7 @@ async function generateRealReplies(): Promise<void> {
 }
 
 async function generateReplyWithLLM(target: any) {
-  const flags = getEnvConfig();
+  const flags = getConfig();
   const decision_id = uuidv4();
   
   const prompt = `Generate a helpful, evidence-based reply to this health-related tweet:
@@ -195,7 +195,7 @@ async function discoverTargets() {
 }
 
 async function runGateChain(text: string, decision_id: string) {
-  const flags = getEnvConfig();
+  const flags = getConfig();
   const quality = calculateQuality(text);
   if (quality < flags.MIN_QUALITY_SCORE) {
     return { passed: false, gate: 'quality', reason: 'below_threshold' };
