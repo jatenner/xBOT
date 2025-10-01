@@ -97,7 +97,7 @@ async function generateRealContent(): Promise<void> {
 }
 
 async function generateContentWithLLM() {
-  const flags = getEnvFlags();
+  const flags = getEnvConfig();
   const decision_id = uuidv4();
   
   const prompt = `Generate a high-quality health-focused Twitter post that is:
@@ -180,7 +180,7 @@ async function queueContent(content: any): Promise<void> {
 }
 
 async function runGateChain(text: string, decision_id: string) {
-  const flags = getEnvFlags();
+  const flags = getEnvConfig();
   
   // Quality gate
   const quality = calculateQuality(text);

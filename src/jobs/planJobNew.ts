@@ -42,7 +42,7 @@ export function getPlanMetrics() {
  * Main planning job
  */
 export async function planContent(): Promise<void> {
-  const flags = getEnvFlags();
+  const flags = getEnvConfig();
   
   console.log(`[PLAN_JOB] 📝 Starting content planning (MODE=${flags.MODE})...`);
   
@@ -161,7 +161,7 @@ async function generateRealContent(): Promise<void> {
 async function generateContentWithLLM(): Promise<ContentDecision> {
   const { OpenAIService } = await import('../services/openAIService');
   const openaiService = OpenAIService.getInstance();
-  const flags = getEnvFlags();
+  const flags = getEnvConfig();
   
   const prompt = `Generate a high-quality health-focused Twitter post that is:
 - Educational and evidence-based
@@ -240,7 +240,7 @@ async function runGateChain(decision: ContentDecision): Promise<{
   reason?: string;
   score?: number;
 }> {
-  const flags = getEnvFlags();
+  const flags = getEnvConfig();
   
   // Quality gate
   if (decision.quality_score < flags.MIN_QUALITY_SCORE) {
@@ -285,7 +285,7 @@ async function checkUniqueness(content: string): Promise<{
   reason?: string;
   similarity?: number;
 }> {
-  const flags = getEnvFlags();
+  const flags = getEnvConfig();
   const threshold = flags.DUP_COSINE_THRESHOLD || flags.SIMILARITY_THRESHOLD;
   
   try {
