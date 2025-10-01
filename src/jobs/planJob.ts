@@ -5,7 +5,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import { getConfig } from '../config/config';
-import { getEnvFlags, isLLMAllowed } from '../config/envFlags';
+import { getEnvConfig, isLLMAllowed } from '../config/envFlags';
 import { getSupabaseClient } from '../db/index';
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 
