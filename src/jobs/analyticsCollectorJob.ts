@@ -3,12 +3,13 @@
  * Fetches real engagement metrics from X and stores in outcomes table
  */
 
-import { getEnvFlags, isRealAnalyticsAllowed } from '../config/envFlags';
+import { getEnvConfig, isRealMetricsAllowed } from '../config/envFlags';
 import { getSupabaseClient } from '../db/index';
 
 export async function collectRealOutcomes(): Promise<void> {
-  if (!isRealAnalyticsAllowed()) {
-    console.log('[ANALYTICS_COLLECTOR] ℹ️ Real metrics disabled (REAL_METRICS_ENABLED=false)');
+  const analyticsCheck = isRealMetricsAllowed();
+  if (!analyticsCheck.allowed) {
+    console.log(`[ANALYTICS_COLLECTOR] ℹ️ Skipping: ${analyticsCheck.reason}`);
     return;
   }
   

@@ -13,7 +13,7 @@
  */
 
 import { getSupabaseClient } from '../db';
-import { isRealAnalyticsAllowed } from '../config/envFlags';
+import { isRealMetricsAllowed } from '../config/envFlags';
 
 interface PostedDecisionForCollection {
   id: number;

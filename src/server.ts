@@ -385,9 +385,9 @@ app.get('/canary', async (req, res) => {
     
     // Test Playwright
     try {
-      const playwrightStatus = await getBrowserStatus();
-      results.playwright_ok = playwrightStatus.status === 'ready';
-      results.playwright_session = playwrightStatus.sessionValid ? 'valid' : 'invalid';
+      const playwrightStatus = getBrowserStatus();
+      results.playwright_ok = playwrightStatus.connected && !playwrightStatus.isInitializing;
+      results.playwright_session = playwrightStatus.connected ? 'connected' : 'disconnected';
     } catch (error: any) {
       results.playwright_error = error.message;
     }
@@ -410,17 +410,18 @@ app.get('/canary', async (req, res) => {
  */
 app.get('/playwright/ping', async (req, res) => {
   try {
-    const status = await getBrowserStatus();
+    const status = getBrowserStatus();
     const { BrowserManager } = await import('./browser/browserManager');
     const browserManager = BrowserManager.getInstance();
     const sessionState = await browserManager.getSessionState();
     
     res.json({
-      ok: status.status === 'ready',
-      status: status.status,
-      sessionValid: status.sessionValid,
-      lastLoginTime: sessionState?.lastLoginTime,
-      sessionAge: sessionState?.lastLoginTime 
+      ok: status.connected && !status.isInitializing,
+      connected: status.connected,
+      isInitializing: status.isInitializing,
+      sessionValid: sessionState.isValid,
+      lastLoginTime: sessionState.lastLoginTime,
+      sessionAge: sessionState.lastLoginTime 
         ? Date.now() - new Date(sessionState.lastLoginTime).getTime() 
         : null,
       timestamp: new Date().toISOString()

@@ -4,7 +4,7 @@
  */
 
 import { getConfig } from '../config/config';
-import { getEnvFlags, isPostingAllowed } from '../config/envFlags';
+import { getEnvConfig, isPostingAllowed } from '../config/envFlags';
 import { getSupabaseClient } from '../db/index';
 
 let postingMetrics = {
