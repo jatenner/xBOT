@@ -324,6 +324,117 @@ app.use((error: Error, req: express.Request, res: express.Response, next: expres
 });
 
 /**
+ * Canary endpoint - System-wide health check with LLM test
+ */
+app.get('/canary', async (req, res) => {
+  try {
+    const { getEnvConfig, isPostingAllowed } = await import('./config/envFlags');
+    const config = getEnvConfig();
+    const postingAllowed = isPostingAllowed();
+    
+    const results: any = {
+      ok: true,
+      mode: config.MODE,
+      llm_ok: false,
+      db_ok: false,
+      queue_ok: false,
+      playwright_ok: false,
+      timestamp: new Date().toISOString()
+    };
+    
+    // Test LLM (small call)
+    try {
+      const { createBudgetedChatCompletion } = await import('./services/openaiBudgetedClient');
+      await createBudgetedChatCompletion(
+        {
+          model: 'gpt-4o-mini',
+          messages: [{ role: 'user', content: 'ping' }],
+          max_tokens: 5
+        },
+        { purpose: 'canary_health_check' }
+      );
+      results.llm_ok = true;
+    } catch (error: any) {
+      results.llm_error = error.message;
+    }
+    
+    // Test DB
+    try {
+      const dbHealth = await checkDatabaseHealth();
+      results.db_ok = dbHealth.ok;
+      if (!dbHealth.ok) results.db_error = dbHealth.error;
+    } catch (error: any) {
+      results.db_error = error.message;
+    }
+    
+    // Test Queue (count queued items)
+    try {
+      const { getSupabaseClient } = await import('./db/index');
+      const supabase = getSupabaseClient();
+      const { count, error } = await supabase
+        .from('content_metadata')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'queued');
+      
+      results.queue_ok = !error;
+      results.queue_count = count || 0;
+      if (error) results.queue_error = error.message;
+    } catch (error: any) {
+      results.queue_error = error.message;
+    }
+    
+    // Test Playwright
+    try {
+      const playwrightStatus = await getBrowserStatus();
+      results.playwright_ok = playwrightStatus.status === 'ready';
+      results.playwright_session = playwrightStatus.sessionValid ? 'valid' : 'invalid';
+    } catch (error: any) {
+      results.playwright_error = error.message;
+    }
+    
+    // Overall health
+    results.ok = results.llm_ok && results.db_ok && results.queue_ok;
+    
+    res.json(results);
+  } catch (error: any) {
+    res.status(500).json({
+      ok: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+/**
+ * Playwright session ping
+ */
+app.get('/playwright/ping', async (req, res) => {
+  try {
+    const status = await getBrowserStatus();
+    const { BrowserManager } = await import('./browser/browserManager');
+    const browserManager = BrowserManager.getInstance();
+    const sessionState = await browserManager.getSessionState();
+    
+    res.json({
+      ok: status.status === 'ready',
+      status: status.status,
+      sessionValid: status.sessionValid,
+      lastLoginTime: sessionState?.lastLoginTime,
+      sessionAge: sessionState?.lastLoginTime 
+        ? Date.now() - new Date(sessionState.lastLoginTime).getTime() 
+        : null,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      ok: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+/**
  * 404 handler
  */
 app.use((req, res) => {
@@ -331,7 +442,7 @@ app.use((req, res) => {
     error: 'Endpoint not found',
     path: req.path,
     timestamp: new Date().toISOString(),
-    availableEndpoints: ['/status', '/env', '/playwright', '/session', '/posting', '/metrics']
+    availableEndpoints: ['/status', '/env', '/canary', '/playwright', '/playwright/ping', '/session', '/posting', '/metrics']
   });
 });
 

@@ -177,7 +177,11 @@ export class OpenAIBudgetedClient {
     return this.withBudgetGuard(
       'chat.completions.create',
       async () => {
-        const response = await this.openai.chat.completions.create(optimizedParams);
+        // Wrap OpenAI call in retry logic with exponential backoff
+        const response = await withExponentialBackoff(
+          () => this.openai.chat.completions.create(optimizedParams),
+          `${metadata.purpose}:${model}`
+        );
         return response as OpenAI.Chat.Completions.ChatCompletion;
       },
       metadata,
@@ -230,7 +234,11 @@ export class OpenAIBudgetedClient {
     return this.withBudgetGuard(
       'embeddings.create',
       async () => {
-        return await this.openai.embeddings.create(params);
+        // Wrap OpenAI call in retry logic with exponential backoff
+        return await withExponentialBackoff(
+          () => this.openai.embeddings.create(params),
+          `embedding:${model}`
+        );
       },
       metadata,
       estimatedCost,

@@ -1,168 +1,289 @@
 # xBOT Operations Runbook
 
-## System Health Validation
-
-### Today: Posting OFF, LLM ON
-
-This configuration allows the system to generate content and build a queue without actually posting to Twitter.
-
-#### Environment Configuration
-```bash
-MODE=live
-POSTING_DISABLED=true         # posting OFF
-LIVE_POSTS=false              # posting OFF
-ENABLE_REPLIES=true
-ENABLE_SINGLES=true
-ENABLE_THREADS=true
-ENABLE_BANDIT_LEARNING=true   # learning will run but skip until real outcomes exist
-REAL_METRICS_ENABLED=false    # fine until posting is ON
-DISABLE_LLM_WHEN_BUDGET_HIT=true
-ALLOW_FALLBACK_GENERATION=true
-OPENAI_MODEL=gpt-4o-mini
-```
-
-#### Validation Steps
-
-1. **Verify System Status**
-```bash
-curl -s http://localhost:8080/status | jq
-```
-
-2. **Trigger Content Planning**
-```bash
-curl -s -XPOST http://localhost:8080/admin/jobs/run?job=plan
-```
-Expected: Logs showing "✅ Real LLM content generated" (not "LLM calls disabled")
-
-3. **Trigger Reply Generation**
-```bash
-curl -s -XPOST http://localhost:8080/admin/jobs/run?job=reply
-```
-Expected: Logs showing LLM generation without blocking
-
-4. **Check Metrics**
-```bash
-curl -s http://localhost:8080/api/metrics | jq
-```
-Expected outputs:
-- `openaiCalls_total > 0`
-- `openaiCalls_failed` should be low (not 100% failure)
-- `post_skipped_reason_counts.posting_disabled` should increment
-
-5. **Verify Database Content**
-```bash
-psql $DATABASE_URL -c "SELECT status, generation_source, COUNT(*) FROM content_metadata GROUP BY 1,2;"
-```
-Expected: Rows with status='queued' and generation_source='real'
-
-6. **Run Posting Job (Should Skip Cleanly)**
-```bash
-curl -s -XPOST http://localhost:8080/admin/jobs/run?job=posting
-```
-Expected: Logs showing "Posting disabled, skipping queue processing" with NO SQL errors
+**Last Updated:** 2025-10-01  
+**System:** Autonomous X/Twitter Bot (xBOT)  
+**Platform:** Railway (production)
 
 ---
 
-### Tomorrow: Flip to Posting ON
+## 🚀 Quick Start
 
-When ready to enable actual posting to Twitter:
+### Enable Live Posting
 
-#### Update Environment
 ```bash
-export POSTING_DISABLED=false
-export LIVE_POSTS=true
-export REAL_METRICS_ENABLED=true
+# Set MODE to live (enables real posting)
+railway variables --service xbot-production --set MODE=live
+
+# Restart the service (Railway auto-restarts on variable changes)
+# Or manually restart:
+railway restart --service xbot-production
 ```
 
-#### Validation After Posting Enabled
+### Seed After Deploy
 
-1. **Trigger Posting**
 ```bash
-curl -s -XPOST http://localhost:8080/admin/jobs/run?job=posting
-```
-Expected: Actual posts to Twitter, logs showing tweet IDs
+# Generate content
+railway run --service xbot-production -- npm run job:plan
 
-2. **Verify Posted Decisions Archive**
-```bash
-psql $DATABASE_URL -c "SELECT COUNT(*), MIN(posted_at), MAX(posted_at) FROM posted_decisions;"
-```
-
-3. **Check Outcomes Collection**
-```bash
-psql $DATABASE_URL -c "SELECT COUNT(*) FROM outcomes WHERE simulated=false;"
-```
-Expected: Real outcomes being collected (simulated=false)
-
-4. **Verify Learning System**
-Once you have ≥5 real outcomes, the learning job should start training:
-```bash
-curl -s -XPOST http://localhost:8080/admin/jobs/run?job=learn
+# Post the generated content
+railway run --service xbot-production -- npm run job:posting
 ```
 
 ---
 
-## Troubleshooting
+## 📋 Environment Variables
 
-### Issue: "LLM calls disabled (POSTING_DISABLED=true)"
-**Solution**: This error should NO LONGER OCCUR after this PR. LLM generation is now decoupled from posting flags. If you see this, the PR was not applied correctly.
+### Required Variables
 
-### Issue: "column unified_ai_intelligence.status does not exist"
-**Solution**: This error should NO LONGER OCCUR after this PR. The system now uses `content_metadata` table instead of `unified_ai_intelligence`. Run the migration:
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `MODE` | Operating mode: `live` or `shadow` | `live` |
+| `OPENAI_API_KEY` | OpenAI API key | `sk-...` |
+| `REDIS_URL` | Redis connection string | `redis://...` |
+| `SUPABASE_URL` | Supabase project URL | `https://...` |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key | `eyJ...` |
+
+### Optional Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `ADMIN_TOKEN` | Admin API access token | (none, admin API disabled) |
+| `REAL_METRICS_ENABLED` | Enable real Twitter metrics collection | `false` |
+| `DAILY_OPENAI_LIMIT_USD` | OpenAI daily budget limit | `5.0` |
+
+### Legacy Variables (Deprecated)
+
+⚠️ These are deprecated and mapped to `MODE`:
+- `POSTING_DISABLED` → Use `MODE=shadow` instead
+- `DRY_RUN` → Use `MODE=shadow` instead
+- `LIVE_POSTS` → Use `MODE=live` instead
+
+---
+
+## 🔍 Troubleshooting
+
+### Why is the system not posting?
+
+**Check these in order:**
+
+1. **MODE setting**
+   ```bash
+   railway variables --service xbot-production | grep MODE
+   ```
+   Should show `MODE=live`. If `MODE=shadow`, posting is disabled.
+
+2. **Empty queue**
+   Check logs for:
+   ```
+   [POSTING_QUEUE] ℹ️ No decisions ready for posting
+   ```
+   **Fix:** Run `npm run job:plan` to generate content.
+
+3. **Quality gate failures**
+   Check logs for:
+   ```
+   [GATE_CHAIN] ❌ Quality check failed
+   [GATE_CHAIN] ❌ Duplicate detected
+   ```
+   **Fix:** System is working correctly, filtering low-quality content.
+
+4. **OpenAI 429 errors**
+   Check logs for:
+   ```
+   429 You exceeded your current quota
+   [OPENAI_RETRY] ❌ Max retries exceeded
+   ```
+   **Fix:** Add credits to OpenAI account or wait for quota reset.
+
+5. **Invalid Playwright session**
+   Check logs for:
+   ```
+   [PLAYWRIGHT_SESSION_INVALID]
+   [POST_ERROR] Failed to post: session expired
+   ```
+   **Fix:** Re-authenticate Twitter session (see Playwright Session section).
+
+### Log Patterns (Grep Regex)
+
 ```bash
-psql $DATABASE_URL -f supabase/migrations/20250930_content_metadata_posting_queue.sql
+# Check posting activity
+railway logs --service xbot-production --tail | grep -E "PLAN_JOB|POSTING_QUEUE|POST_"
+
+# Check errors
+railway logs --service xbot-production --tail | grep -E "ERROR|FAIL|❌"
+
+# Check LLM calls
+railway logs --service xbot-production --tail | grep -E "OPENAI|LLM_"
+
+# Check job execution
+railway logs --service xbot-production --tail | grep -E "JOB_PLAN|JOB_REPLY|JOB_POSTING|JOB_LEARN"
+
+# Check retries and backoff
+railway logs --service xbot-production --tail | grep -E "RETRY|BACKOFF"
 ```
 
-### Issue: High LLM Failure Rate
-**Check**: 
-- OpenAI API key is valid
-- Budget limits haven't been hit
-- Network connectivity to OpenAI
+---
 
-### Issue: No Content in Queue
-**Check**:
-- Plan job is running: `curl -XPOST http://localhost:8080/admin/jobs/run?job=plan`
-- LLM metrics show successful calls: `curl http://localhost:8080/api/metrics | jq .openaiCalls_total`
-- Database has rows: `psql $DATABASE_URL -c "SELECT COUNT(*) FROM content_metadata WHERE status='queued';"`
+## 🔐 Admin API
+
+### Authentication
+
+Admin endpoints require the `x-admin-token` header:
+
+```bash
+curl -H "x-admin-token: YOUR_ADMIN_TOKEN" \
+  https://your-railway-app.up.railway.app/admin/jobs
+```
+
+### Admin Routes
+
+| Route | Method | Description |
+|-------|--------|-------------|
+| `/admin/jobs` | GET | List available jobs |
+| `/admin/jobs/run?name=plan` | POST | Run a specific job |
+| `/admin/jobs/schedule` | GET | View job schedule |
 
 ---
 
-## Database Schema Reference
+## 🛠️ Maintenance Tasks
 
-### content_metadata
-Primary table for content tracking and posting queue:
-- `status`: 'planned' | 'queued' | 'posted' | 'failed' | 'skipped'
-- `generation_source`: 'real' (LLM) | 'synthetic' (fallback)
-- `scheduled_at`: When content should be posted
-- `content`: The actual tweet text
-- `decision_type`: 'content' | 'reply'
+### View Logs (Press `q` to Exit)
 
-### posted_decisions
-Archive of successfully posted content with tweet IDs.
+```bash
+# Follow live logs (stuck in less? press q)
+railway logs --service xbot-production --tail
 
-### outcomes
-Engagement metrics for learning system:
-- `simulated=false`: Real Twitter metrics
-- `simulated=true`: Synthetic shadow mode data
+# Show last 300 lines
+railway logs --service xbot-production --tail | tail -n 300
+
+# Filter for specific job
+railway logs --service xbot-production --tail | grep PLAN_JOB
+```
+
+### Run One-Off Jobs
+
+```bash
+# Plan content
+railway run --service xbot-production -- npm run job:plan
+
+# Post content
+railway run --service xbot-production -- npm run job:posting
+
+# Generate replies
+railway run --service xbot-production -- npm run job:reply
+
+# Run learning cycle
+railway run --service xbot-production -- npm run job:learn
+```
+
+### Deploy
+
+```bash
+# Deploy current code
+railway up --service xbot-production --yes
+
+# Deploy from specific branch
+git push origin main  # CI/CD auto-deploys
+```
+
+### Reset Redis Budget Counter
+
+If the budget displays negative values:
+
+```bash
+railway run --service xbot-production -- npx tsx scripts/reset-redis-budget.ts
+```
 
 ---
 
-## Architecture Notes
+## 🧪 Health Checks
 
-### LLM vs Posting Decoupling
+### Endpoints
 
-**Before**: `POSTING_DISABLED=true` would block all LLM calls
-**After**: `POSTING_DISABLED` only affects actual Twitter posting, LLM generation proceeds normally to build queue
+| Endpoint | Description |
+|----------|-------------|
+| `/status` | Basic health check |
+| `/canary` | Comprehensive system test (LLM, DB, Queue, Playwright) |
+| `/playwright/ping` | Playwright session status |
+| `/metrics` | System metrics |
 
-This allows:
-1. Testing LLM generation without posting
-2. Building a content queue while posting is disabled
-3. Gradual rollout: generate content today, post tomorrow (no code changes needed)
+### Example Health Check
 
-### Budget Protection
+```bash
+curl https://your-railway-app.up.railway.app/canary
 
-LLM calls are governed by:
-- `DAILY_OPENAI_LIMIT_USD`
-- `DISABLE_LLM_WHEN_BUDGET_HIT`
-- Budget tracking in `openaiBudgetedClient`
+# Expected response:
+{
+  "ok": true,
+  "mode": "live",
+  "llm_ok": true,
+  "db_ok": true,
+  "queue_ok": true,
+  "playwright_ok": true,
+  "queue_count": 5
+}
+```
 
-NOT by `POSTING_DISABLED`.
+---
+
+## 🔄 Operational Modes
+
+### Shadow Mode (`MODE=shadow`)
+- **LLM:** ✅ Enabled (real OpenAI calls)
+- **Posting:** ❌ Disabled
+- **Use case:** Testing content generation without posting
+
+### Live Mode (`MODE=live`)
+- **LLM:** ✅ Enabled
+- **Posting:** ✅ Enabled
+- **Use case:** Production operation
+
+---
+
+## 🐛 Common Issues
+
+### Issue: "ADMIN_TOKEN not configured"
+
+**Symptoms:** Admin endpoints return 503.
+
+**Fix:**
+```bash
+railway variables --service xbot-production --set ADMIN_TOKEN=xbot-admin-2025
+```
+
+### Issue: "DATABASE_INSERT_ERROR: Cannot read properties of null"
+
+**Symptoms:** `api_usage` table inserts fail.
+
+**Fix:** This was fixed in recent deployment. If still occurring:
+```bash
+git pull origin main
+railway up --service xbot-production --yes
+```
+
+### Issue: Negative budget display
+
+**Symptoms:** Logs show `daily=$-0.10/1.50`
+
+**Fix:** This is cosmetic. Budget refunds exceeded charges. Will self-correct or run:
+```bash
+railway run --service xbot-production -- npx tsx scripts/reset-redis-budget.ts
+```
+
+---
+
+## 📞 Emergency Contacts
+
+- **Platform:** Railway Dashboard
+- **Logs:** `railway logs --service xbot-production --tail`
+- **Errors:** Check `/canary` endpoint
+- **Restart:** `railway restart --service xbot-production`
+
+---
+
+## 📚 Related Documentation
+
+- [DEPLOYMENT_SUMMARY_V2.md](./DEPLOYMENT_SUMMARY_V2.md) - Deployment guide
+- [EXECUTIVE_SUMMARY.md](./EXECUTIVE_SUMMARY.md) - High-level overview
+- [README_OPERATIONS.md](./README_OPERATIONS.md) - Operations guide
+- [CANARY_VALIDATION.md](./CANARY_VALIDATION.md) - Validation tests
