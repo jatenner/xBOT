@@ -10,7 +10,8 @@ import { metricsHandler } from './api/metrics';
 import { learnStatusHandler } from './api/learnStatus';
 import { configHandler } from './api/configEndpoint';
 import { auditProfileHandler } from './api/auditProfile';
-import { requireAdminAuth, adminJobsHandler, adminJobRunHandler } from './api/adminJobs';
+import { requireAdminAuth as legacyAuth, adminJobsHandler, adminJobRunHandler } from './api/adminJobs';
+import { requireAdminAuth } from './api/middleware/adminAuth';
 import { jobScheduleHandler } from './api/adminJobSchedule';
 
 const app = express();
