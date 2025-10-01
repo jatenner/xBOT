@@ -24,11 +24,22 @@ const ConfigSchema = z.object({
   
   // AI Services (only used in live mode)
   OPENAI_API_KEY: z.string().optional(),
+  OPENAI_MODEL: z.string().default('gpt-4o-mini'),
+  EMBED_MODEL: z.string().default('text-embedding-3-small'),
+  OPENAI_TEMPERATURE: z.number().min(0).max(2).default(0.7),
+  OPENAI_TOP_P: z.number().min(0).max(1).default(1.0),
+  
+  // AI Budget Controls
+  DAILY_OPENAI_LIMIT_USD: z.number().default(5.0),
+  BUDGET_STRICT: z.boolean().default(false),
+  DISABLE_LLM_WHEN_BUDGET_HIT: z.boolean().default(false),
   
   // Learning Parameters
   EXPLORE_RATIO_MIN: z.number().min(0).max(1).default(0.1),
   EXPLORE_RATIO_MAX: z.number().min(0).max(1).default(0.3),
   MIN_QUALITY_SCORE: z.number().min(0).max(1).default(0.7),
+  DUP_COSINE_THRESHOLD: z.number().min(0).max(1).default(0.9),
+  SIMILARITY_THRESHOLD: z.number().min(0).max(1).default(0.9),
   
   // Job Scheduling
   JOBS_AUTOSTART: z.boolean().default(false),
@@ -87,15 +98,29 @@ export function loadConfig(): Config {
     REDIS_URL: process.env.REDIS_URL,
     
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    OPENAI_MODEL: process.env.OPENAI_MODEL,
+    EMBED_MODEL: process.env.EMBED_MODEL,
+    OPENAI_TEMPERATURE: process.env.OPENAI_TEMPERATURE ? parseFloat(process.env.OPENAI_TEMPERATURE) : undefined,
+    OPENAI_TOP_P: process.env.OPENAI_TOP_P ? parseFloat(process.env.OPENAI_TOP_P) : undefined,
+    
+    DAILY_OPENAI_LIMIT_USD: process.env.DAILY_OPENAI_LIMIT_USD ? parseFloat(process.env.DAILY_OPENAI_LIMIT_USD) : undefined,
+    BUDGET_STRICT: process.env.BUDGET_STRICT === 'true',
+    DISABLE_LLM_WHEN_BUDGET_HIT: process.env.DISABLE_LLM_WHEN_BUDGET_HIT === 'true',
     
     EXPLORE_RATIO_MIN: process.env.EXPLORE_RATIO_MIN ? parseFloat(process.env.EXPLORE_RATIO_MIN) : undefined,
     EXPLORE_RATIO_MAX: process.env.EXPLORE_RATIO_MAX ? parseFloat(process.env.EXPLORE_RATIO_MAX) : undefined,
     MIN_QUALITY_SCORE: process.env.MIN_QUALITY_SCORE ? parseFloat(process.env.MIN_QUALITY_SCORE) : undefined,
+    DUP_COSINE_THRESHOLD: process.env.DUP_COSINE_THRESHOLD ? parseFloat(process.env.DUP_COSINE_THRESHOLD) : undefined,
+    SIMILARITY_THRESHOLD: process.env.SIMILARITY_THRESHOLD ? parseFloat(process.env.SIMILARITY_THRESHOLD) : undefined,
     
     JOBS_AUTOSTART: process.env.JOBS_AUTOSTART === 'true',
     JOBS_PLAN_INTERVAL_MIN: process.env.JOBS_PLAN_INTERVAL_MIN ? parseInt(process.env.JOBS_PLAN_INTERVAL_MIN) : undefined,
     JOBS_REPLY_INTERVAL_MIN: process.env.JOBS_REPLY_INTERVAL_MIN ? parseInt(process.env.JOBS_REPLY_INTERVAL_MIN) : undefined,
     JOBS_LEARN_INTERVAL_MIN: process.env.JOBS_LEARN_INTERVAL_MIN ? parseInt(process.env.JOBS_LEARN_INTERVAL_MIN) : undefined,
+    JOBS_POSTING_INTERVAL_MIN: process.env.JOBS_POSTING_INTERVAL_MIN ? parseInt(process.env.JOBS_POSTING_INTERVAL_MIN) : undefined,
+    
+    MAX_POSTS_PER_HOUR: process.env.MAX_POSTS_PER_HOUR ? parseInt(process.env.MAX_POSTS_PER_HOUR) : undefined,
+    REPLY_MAX_PER_DAY: process.env.REPLY_MAX_PER_DAY ? parseInt(process.env.REPLY_MAX_PER_DAY) : undefined,
     
     ADMIN_TOKEN: process.env.ADMIN_TOKEN
   };
