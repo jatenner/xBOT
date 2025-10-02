@@ -9,15 +9,17 @@ import { chromium, Browser, Page, BrowserContext } from 'playwright';
 import { TwitterSessionManager } from '../utils/twitterSessionManager';
 
 export class RailwayCompatiblePoster {
-  private browser: Browser | null = null;
-  private context: BrowserContext | null = null;
-  private page: Page | null = null;
-  private isInitialized = false;
-  private initAttempts = 0;
-  private readonly MAX_INIT_ATTEMPTS = 3;
+  // Singleton pattern - share browser across all instances
+  private static sharedBrowser: Browser | null = null;
+  private static sharedContext: BrowserContext | null = null;
+  private static sharedPage: Page | null = null;
+  private static isInitialized = false;
+  private static initAttempts = 0;
+  private static readonly MAX_INIT_ATTEMPTS = 3;
+  private static initializationPromise: Promise<boolean> | null = null;
 
   constructor() {
-    console.log('🚄 RAILWAY_POSTER_V2: Initializing with detailed logging...');
+    console.log('🚄 RAILWAY_POSTER_V2: Using shared browser instance...');
   }
 
   private async loadSessionData(): Promise<any> {
@@ -50,14 +52,35 @@ export class RailwayCompatiblePoster {
   }
 
   async initialize(): Promise<boolean> {
+    // Prevent concurrent initialization
+    if (RailwayCompatiblePoster.initializationPromise) {
+      console.log('⏳ RAILWAY_POSTER: Waiting for ongoing initialization...');
+      return await RailwayCompatiblePoster.initializationPromise;
+    }
+
+    // Return early if already initialized and browser still connected
+    if (RailwayCompatiblePoster.isInitialized && 
+        RailwayCompatiblePoster.sharedBrowser?.isConnected()) {
+      console.log('✅ RAILWAY_POSTER: Using existing browser (already initialized)');
+      return true;
+    }
+
+    // Start initialization
+    RailwayCompatiblePoster.initializationPromise = this.doInitialize();
+    const result = await RailwayCompatiblePoster.initializationPromise;
+    RailwayCompatiblePoster.initializationPromise = null;
+    return result;
+  }
+
+  private async doInitialize(): Promise<boolean> {
     try {
-      console.log(`🚄 RAILWAY_POSTER: Starting browser initialization (attempt ${this.initAttempts + 1}/${this.MAX_INIT_ATTEMPTS})...`);
+      console.log(`🚄 RAILWAY_POSTER: Starting browser initialization (attempt ${RailwayCompatiblePoster.initAttempts + 1}/${RailwayCompatiblePoster.MAX_INIT_ATTEMPTS})...`);
       
       // STEP 1: Launch Browser
       console.log('📦 STEP 1: Launching Chromium with Railway config...');
       console.log('   Args: --no-sandbox, --single-process, --disable-dev-shm-usage');
       
-      this.browser = await chromium.launch({
+      RailwayCompatiblePoster.sharedBrowser = await chromium.launch({
         headless: true, // Always headless on Railway
         timeout: 60000, // 60s timeout for Railway startup
         args: [
@@ -81,11 +104,11 @@ export class RailwayCompatiblePoster {
         ]
       });
 
-      console.log('✅ STEP 1 COMPLETE: Browser launched, PID:', this.browser.isConnected() ? 'connected' : 'disconnected');
+      console.log('✅ STEP 1 COMPLETE: Browser launched, PID:', RailwayCompatiblePoster.sharedBrowser.isConnected() ? 'connected' : 'disconnected');
 
       // STEP 2: Create Context
       console.log('📦 STEP 2: Creating browser context...');
-      this.context = await this.browser.newContext({
+      RailwayCompatiblePoster.sharedContext = await RailwayCompatiblePoster.sharedBrowser.newContext({
         viewport: { width: 1280, height: 720 },
         userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         ignoreHTTPSErrors: true, // Ignore SSL errors on Railway
@@ -98,7 +121,7 @@ export class RailwayCompatiblePoster {
       console.log('📦 STEP 3: Loading Twitter session cookies...');
       const sessionData = await this.loadSessionData();
       if (sessionData && sessionData.cookies) {
-        await this.context.addCookies(sessionData.cookies);
+        await RailwayCompatiblePoster.sharedContext.addCookies(sessionData.cookies);
         console.log(`✅ STEP 3 COMPLETE: Loaded ${sessionData.cookies.length} session cookies`);
       } else {
         console.error('❌ STEP 3 FAILED: No valid session data');
@@ -108,16 +131,16 @@ export class RailwayCompatiblePoster {
 
       // STEP 4: Create Page
       console.log('📦 STEP 4: Creating new page...');
-      this.page = await this.context.newPage();
+      RailwayCompatiblePoster.sharedPage = await RailwayCompatiblePoster.sharedContext.newPage();
       
       // Set timeouts
-      this.page.setDefaultNavigationTimeout(60000); // 60s for Railway network
-      this.page.setDefaultTimeout(30000);            // 30s for operations
+      RailwayCompatiblePoster.sharedPage.setDefaultNavigationTimeout(60000); // 60s for Railway network
+      RailwayCompatiblePoster.sharedPage.setDefaultTimeout(30000);            // 30s for operations
       
       console.log('✅ STEP 4 COMPLETE: Page created with extended timeouts');
       
-      this.isInitialized = true;
-      this.initAttempts++;
+      RailwayCompatiblePoster.isInitialized = true;
+      RailwayCompatiblePoster.initAttempts++;
       
       console.log('🎉 RAILWAY_POSTER: FULL INITIALIZATION SUCCESSFUL!');
       return true;
@@ -131,26 +154,26 @@ export class RailwayCompatiblePoster {
       // Cleanup on failure
       await this.cleanup();
       
-      this.initAttempts++;
+      RailwayCompatiblePoster.initAttempts++;
       return false;
     }
   }
 
   async postTweet(content: string): Promise<{ success: boolean; error?: string; tweetId?: string }> {
-    if (!this.isInitialized || !this.page || !this.browser) {
+    // Initialize if needed
+    if (!RailwayCompatiblePoster.isInitialized || 
+        !RailwayCompatiblePoster.sharedBrowser?.isConnected()) {
+      console.log('🔄 RAILWAY_POSTER: Browser not ready, initializing...');
       const initSuccess = await this.initialize();
       if (!initSuccess) {
         return { success: false, error: 'Failed to initialize browser' };
       }
     }
 
-    // Verify browser is still connected
-    if (!this.browser!.isConnected()) {
-      console.warn('⚠️ RAILWAY_POSTER: Browser disconnected, reinitializing...');
-      const initSuccess = await this.initialize();
-      if (!initSuccess) {
-        return { success: false, error: 'Browser disconnected and failed to reinitialize' };
-      }
+    // Double-check browser is still connected
+    if (!RailwayCompatiblePoster.sharedBrowser?.isConnected()) {
+      console.error('❌ RAILWAY_POSTER: Browser disconnected unexpectedly');
+      return { success: false, error: 'Browser disconnected' };
     }
 
     try {
@@ -158,16 +181,16 @@ export class RailwayCompatiblePoster {
       console.log(`📝 CONTENT: "${content.substring(0, 100)}..."`);
 
       // Navigate to Twitter with extended timeout
-      await this.page!.goto('https://x.com/home', { 
+      await RailwayCompatiblePoster.sharedPage!.goto('https://x.com/home', { 
         waitUntil: 'domcontentloaded',
         timeout: 60000  // Extended to 60s for Railway
       });
 
       // Wait for page to load
-      await this.page!.waitForTimeout(3000);
+      await RailwayCompatiblePoster.sharedPage!.waitForTimeout(3000);
 
       // Check if logged in by looking for compose button
-      const composeButton = this.page!.locator('[data-testid="SideNav_NewTweet_Button"]');
+      const composeButton = RailwayCompatiblePoster.sharedPage!.locator('[data-testid="SideNav_NewTweet_Button"]');
       const isLoggedIn = await composeButton.isVisible({ timeout: 10000 });
       
       if (!isLoggedIn) {
@@ -180,10 +203,10 @@ export class RailwayCompatiblePoster {
       console.log('✅ RAILWAY_POSTER: Compose dialog opened');
 
       // Wait for text area
-      await this.page!.waitForTimeout(2000);
+      await RailwayCompatiblePoster.sharedPage!.waitForTimeout(2000);
       
       // Find and fill text area (NO KEYBOARD SHORTCUTS!)
-      const textArea = this.page!.locator('[data-testid="tweetTextarea_0"]').first();
+      const textArea = RailwayCompatiblePoster.sharedPage!.locator('[data-testid="tweetTextarea_0"]').first();
       await textArea.waitFor({ state: 'visible', timeout: 10000 });
       
       // Clear and type content
@@ -191,10 +214,10 @@ export class RailwayCompatiblePoster {
       console.log('✅ RAILWAY_POSTER: Content typed into text area');
 
       // Wait a moment for Twitter to process
-      await this.page!.waitForTimeout(1000);
+      await RailwayCompatiblePoster.sharedPage!.waitForTimeout(1000);
 
       // Find and click Post button (NO KEYBOARD SHORTCUTS!)
-      const postButton = this.page!.locator('[data-testid="tweetButtonInline"]');
+      const postButton = RailwayCompatiblePoster.sharedPage!.locator('[data-testid="tweetButtonInline"]');
       await postButton.waitFor({ state: 'visible', timeout: 5000 });
       
       const isEnabled = await postButton.isEnabled();
@@ -207,10 +230,10 @@ export class RailwayCompatiblePoster {
       console.log('✅ RAILWAY_POSTER: Post button clicked');
 
       // Wait for posting to complete
-      await this.page!.waitForTimeout(3000);
+      await RailwayCompatiblePoster.sharedPage!.waitForTimeout(3000);
 
       // Verify posting success by checking URL change or success indicators
-      const currentUrl = this.page!.url();
+      const currentUrl = RailwayCompatiblePoster.sharedPage!.url();
       const isSuccess = currentUrl.includes('/home') || currentUrl.includes('/status/');
 
       if (isSuccess) {
@@ -247,23 +270,23 @@ export class RailwayCompatiblePoster {
 
       // Post remaining tweets as replies
       for (let i = 1; i < tweets.length; i++) {
-        await this.page!.waitForTimeout(2000); // Wait between tweets
+        await RailwayCompatiblePoster.sharedPage!.waitForTimeout(2000); // Wait between tweets
         
         // Click reply button on the previous tweet
-        const replyButton = this.page!.locator('[data-testid="reply"]').first();
+        const replyButton = RailwayCompatiblePoster.sharedPage!.locator('[data-testid="reply"]').first();
         await replyButton.click();
         
-        await this.page!.waitForTimeout(1000);
+        await RailwayCompatiblePoster.sharedPage!.waitForTimeout(1000);
         
         // Fill reply text area
-        const replyTextArea = this.page!.locator('[data-testid="tweetTextarea_0"]').first();
+        const replyTextArea = RailwayCompatiblePoster.sharedPage!.locator('[data-testid="tweetTextarea_0"]').first();
         await replyTextArea.fill(tweets[i]);
         
         // Click reply button
-        const replySubmitButton = this.page!.locator('[data-testid="tweetButtonInline"]');
+        const replySubmitButton = RailwayCompatiblePoster.sharedPage!.locator('[data-testid="tweetButtonInline"]');
         await replySubmitButton.click();
         
-        await this.page!.waitForTimeout(2000);
+        await RailwayCompatiblePoster.sharedPage!.waitForTimeout(2000);
         
         tweetIds.push(`railway_${Date.now()}_${i}`);
         console.log(`✅ RAILWAY_POSTER: Posted thread tweet ${i + 1}/${tweets.length}`);
@@ -277,21 +300,8 @@ export class RailwayCompatiblePoster {
   }
 
   async cleanup(): Promise<void> {
-    try {
-      if (this.page) {
-        await this.page.close();
-      }
-      if (this.context) {
-        await this.context.close();
-      }
-      if (this.browser) {
-        await this.browser.close();
-      }
-      this.isInitialized = false;
-      console.log('✅ RAILWAY_POSTER: Cleanup completed');
-    } catch (error) {
-      console.error('❌ RAILWAY_POSTER: Cleanup failed:', error);
-    }
+    // DON'T cleanup shared browser - keep it alive for reuse across all tweets
+    console.log('✅ RAILWAY_POSTER: Cleanup skipped (keeping shared browser alive)');
   }
 }
 
