@@ -23,12 +23,16 @@ export async function performLogin(page: Page): Promise<boolean> {
     await page.goto('https://twitter.com/i/flow/login', { waitUntil: 'domcontentloaded', timeout: 45_000 });
     await page.waitForTimeout(2000);
 
-    // Enter username
+    // Enter username with human-like typing
     console.log('[X_LOGIN] Entering username...');
     const usernameInput = page.locator('input[autocomplete="username"]').first();
     await usernameInput.waitFor({ state: 'visible', timeout: 10000 });
-    await usernameInput.fill(username);
-    await page.waitForTimeout(1000);
+    
+    // Human-like typing with random delays
+    await usernameInput.click();
+    await page.waitForTimeout(200 + Math.random() * 300);
+    await usernameInput.pressSequentially(username, { delay: 50 + Math.random() * 100 });
+    await page.waitForTimeout(500 + Math.random() * 500);
 
     // Click Next
     const nextButton = page.locator('button:has-text("Next"), div[role="button"]:has-text("Next")').first();
@@ -49,8 +53,11 @@ export async function performLogin(page: Page): Promise<boolean> {
       // If email is provided, try to enter it
       if (process.env.X_EMAIL) {
         console.log(`[X_LOGIN] Entering email: ${process.env.X_EMAIL}`);
-        await verificationInput.fill(process.env.X_EMAIL);
-        await page.waitForTimeout(1500);
+        // Human-like typing for email
+        await verificationInput.click();
+        await page.waitForTimeout(300);
+        await verificationInput.pressSequentially(process.env.X_EMAIL, { delay: 75 + Math.random() * 100 });
+        await page.waitForTimeout(800 + Math.random() * 400);
         const verifyNext = page.locator('button:has-text("Next")').first();
         await verifyNext.click();
         await page.waitForTimeout(3000); // Increased wait
@@ -80,8 +87,11 @@ export async function performLogin(page: Page): Promise<boolean> {
     }
     
     console.log('[X_LOGIN] ✓ Password field found, entering password...');
-    await passwordInput.fill(password);
-    await page.waitForTimeout(1000);
+    // Human-like typing for password
+    await passwordInput.click();
+    await page.waitForTimeout(200 + Math.random() * 300);
+    await passwordInput.pressSequentially(password, { delay: 60 + Math.random() * 120 });
+    await page.waitForTimeout(700 + Math.random() * 500);
 
     // Click Log in
     const loginButton = page.locator('button:has-text("Log in"), div[role="button"]:has-text("Log in")').first();
