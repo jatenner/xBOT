@@ -11,6 +11,7 @@ router.get('/', async (req, res) => {
   try {
     const { flags } = await import('../../config/featureFlags');
     const { JobManager } = await import('../../jobs/jobManager');
+    const { SESSION_PATH } = await import('../../infra/session/xSession');
     
     const jobManager = JobManager.getInstance();
     const stats = jobManager.getStats();
@@ -26,6 +27,9 @@ router.get('/', async (req, res) => {
         learn: stats.learnRuns > 0 || flags.learnEnabled,
       },
       browserProfileDirExists: fs.existsSync('/tmp/xbot-profile'),
+      sessionFileExists: fs.existsSync(SESSION_PATH),
+      lastLoginAt: (globalThis as any).__x_last_login_at || null,
+      lastAuthCheck: (globalThis as any).__x_last_auth_check || null,
       jobStats: {
         planRuns: stats.planRuns,
         replyRuns: stats.replyRuns,
