@@ -27,7 +27,7 @@
     "auth:session": "node create_authenticated_session.js",
     "verify:session": "node verify_session.js",
     "test:session": "node scripts/session_check.js",
-    "test": "npx ts-node scripts/test-system-integration.ts",
+    "test": "jest",
     "test:schema": "npx ts-node scripts/verify-schema.ts",
     "verify": "npm run build && npm run test:unit && npm run guard:budget",
     "test:unit": "jest tests/",
@@ -62,7 +62,6 @@
     "probe:pw": "node scripts/probe_playwright.js",
     "probe:remote": "curl -sSf $PROD_URL/playwright",
     "post:dry": "curl -sSf -X POST $PROD_URL/ai-post -H 'content-type: application/json' -d '{\"topic\":\"smoke\",\"dryRun\":true}'",
-    "postbuild": "mkdir -p dist/dashboard && cp src/dashboard/*.html dist/dashboard/ 2>/dev/null || true && mkdir -p dist/prompts && cp -r src/prompts/* dist/prompts/ && echo 'Build completed successfully'",
     "migrate:prod": "node scripts/bulletproof_migrate.js",
     "migrate:stg": "bash -lc 'set -euo pipefail; set -a; source ./.env.staging-cli.sh; set +a; npx supabase db push --project-ref \"$STAGING_PROJECT_REF\"'",
     "start:prod": "npm run migrate:prod && node dist/main.js",
@@ -72,7 +71,6 @@
     "cost:report": "tsx scripts/cost-audit.ts > reports/cost-report-$(date +%Y%m%d).txt",
     "cost:migrate": "npx supabase db push --file scripts/migration-openai-cost-tracking.sql",
     "dev": "npm run setup-check && nodemon src/index.js",
-    "test": "jest",
     "lint": "eslint .",
     "dashboard": "node src/dashboard/dashboardLauncher.js",
     "simulation": "npm run build && node dist/dashboard/simulationLauncher.js",
@@ -88,7 +86,6 @@
     "emergency": "node --max-old-space-size=400 emergency_main.js",
     "safe-start": "EMERGENCY_MODE=true npm start",
     "start-original": "npm run migrate && node dist/main.js",
-    "logs": "node bulletproof_railway_monitor.js",
     "dry:thread": "tsx tools/dryRunThread.ts",
     "migrate:meta": "tsx scripts/run-meta-migration.ts",
     "verify:schema": "tsx scripts/verify-schema.ts",
@@ -198,6 +195,8 @@
     "openai": "^4.56.0",
     "pg": "^8.16.3",
     "playwright": "1.47.2",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
     "redis": "^4.7.1",
     "socket.io": "^4.7.4",
     "source-map-support": "^0.5.21",
@@ -208,7 +207,6 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "typescript": "^5.4.0",
     "@types/cheerio": "^0.22.35",
     "@types/cors": "^2.8.17",
     "@types/cron": "^2.4.0",
@@ -223,6 +221,7 @@
     "supabase": "^1.200.3",
     "ts-jest": "^29.4.0",
     "ts-node": "^10.9.2",
-    "tsx": "^4.20.4"
+    "tsx": "^4.20.4",
+    "typescript": "^5.4.0"
   }
 }
