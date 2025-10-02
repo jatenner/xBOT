@@ -250,14 +250,21 @@ async function analyzeTopicPerformance() {
     const content = contentData?.find(c => c.id === outcome.decision_id);
     if (!content?.topic) continue;
     
-    const engagement = (outcome.likes || 0) + (outcome.retweets || 0) * 2 + (outcome.replies || 0) * 3 + (outcome.follows || 0) * 10;
+    // Type-safe access to outcome metrics
+    const likes = Number(outcome.likes) || 0;
+    const retweets = Number(outcome.retweets) || 0;
+    const replies = Number(outcome.replies) || 0;
+    const follows = Number(outcome.follows) || 0;
     
-    if (!topicPerformance[content.topic]) {
-      topicPerformance[content.topic] = { total_engagement: 0, count: 0 };
+    const engagement = likes + retweets * 2 + replies * 3 + follows * 10;
+    
+    const topicKey = String(content.topic);
+    if (!topicPerformance[topicKey]) {
+      topicPerformance[topicKey] = { total_engagement: 0, count: 0 };
     }
     
-    topicPerformance[content.topic].total_engagement += engagement;
-    topicPerformance[content.topic].count += 1;
+    topicPerformance[topicKey].total_engagement += engagement;
+    topicPerformance[topicKey].count += 1;
   }
 
   // Sort topics by average engagement
@@ -360,7 +367,10 @@ async function checkUniqueness(text: string): Promise<boolean> {
   const newWords = new Set(text.toLowerCase().split(/\s+/));
   
   for (const post of recentPosts) {
-    const existingWords = new Set(post.content.toLowerCase().split(/\s+/));
+    const postContent = String(post.content || '');
+    if (!postContent) continue;
+    
+    const existingWords = new Set(postContent.toLowerCase().split(/\s+/));
     const overlap = [...newWords].filter(w => existingWords.has(w)).length;
     const similarity = overlap / Math.max(newWords.size, existingWords.size);
     
