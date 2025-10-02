@@ -36,26 +36,50 @@ export async function performLogin(page: Page): Promise<boolean> {
     await page.waitForTimeout(2000);
 
     // Check for unusual activity verification (phone/email)
+    console.log('[X_LOGIN] Checking for verification challenge...');
     const verificationInput = page.locator('input[data-testid="ocfEnterTextTextInput"]');
-    if (await verificationInput.isVisible({ timeout: 3000 }).catch(() => false)) {
+    const isVerificationVisible = await verificationInput.isVisible({ timeout: 5000 }).catch(() => false);
+    
+    if (isVerificationVisible) {
       console.log('[X_LOGIN] ⚠️ Unusual activity detected - verification required');
+      
+      // Take screenshot for debugging
+      await page.screenshot({ path: `/tmp/login-verification-${Date.now()}.png` }).catch(() => {});
+      
       // If email is provided, try to enter it
       if (process.env.X_EMAIL) {
+        console.log(`[X_LOGIN] Entering email: ${process.env.X_EMAIL}`);
         await verificationInput.fill(process.env.X_EMAIL);
-        await page.waitForTimeout(1000);
+        await page.waitForTimeout(1500);
         const verifyNext = page.locator('button:has-text("Next")').first();
         await verifyNext.click();
-        await page.waitForTimeout(2000);
+        await page.waitForTimeout(3000); // Increased wait
       } else {
         console.error('[X_LOGIN] ❌ X_EMAIL not set for verification');
         return false;
       }
+    } else {
+      console.log('[X_LOGIN] ✓ No verification challenge detected');
     }
 
     // Enter password
-    console.log('[X_LOGIN] Entering password...');
+    console.log('[X_LOGIN] Waiting for password field...');
+    await page.waitForTimeout(2000); // Give page time to load
+    
+    // Take screenshot before password entry for debugging
+    await page.screenshot({ path: `/tmp/login-before-password-${Date.now()}.png` }).catch(() => {});
+    
     const passwordInput = page.locator('input[autocomplete="current-password"], input[name="password"], input[type="password"]').first();
-    await passwordInput.waitFor({ state: 'visible', timeout: 10000 });
+    const isPasswordVisible = await passwordInput.isVisible({ timeout: 15000 }).catch(() => false);
+    
+    if (!isPasswordVisible) {
+      console.error('[X_LOGIN] ❌ Password field not visible after 15s');
+      await page.screenshot({ path: `/tmp/login-password-timeout-${Date.now()}.png` }).catch(() => {});
+      console.log(`[X_LOGIN] Current URL: ${page.url()}`);
+      return false;
+    }
+    
+    console.log('[X_LOGIN] ✓ Password field found, entering password...');
     await passwordInput.fill(password);
     await page.waitForTimeout(1000);
 

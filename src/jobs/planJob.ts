@@ -49,8 +49,8 @@ async function generateSyntheticContent(): Promise<void> {
     generation_source: 'synthetic',
     status: 'queued',
     scheduled_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-    quality_score: 0.82,
-    predicted_er: 0.034,
+      quality_score: 0.82,
+      predicted_er: 0.034,
     topic_cluster: 'hydration',
     bandit_arm: 'educational'
   }]);
@@ -66,17 +66,17 @@ async function generateRealContent(): Promise<void> {
   }
   
   console.log('[PLAN_JOB] 🧠 Generating real content using LLM...');
-  
-  for (let i = 0; i < 3; i++) {
-    try {
+    
+    for (let i = 0; i < 3; i++) {
+      try {
       const content = await generateContentWithLLM();
       const gateResult = await runGateChain(content.text, content.decision_id);
-      
-      if (!gateResult.passed) {
+        
+        if (!gateResult.passed) {
         console.log(`[GATE_CHAIN] ⛔ Blocked (${gateResult.gate}) decision_id=${content.decision_id}, reason=${gateResult.reason}`);
-        continue;
-      }
-      
+          continue;
+        }
+        
       // Queue for posting
       await queueContent(content);
       console.log(`[PLAN_JOB] ✅ Real LLM content queued decision_id=${content.decision_id} scheduled_at=${content.scheduled_at}`);
