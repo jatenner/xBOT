@@ -3,8 +3,6 @@
  * Supports Redis, Supabase, and in-memory fallback
  */
 
-import { FEATURE_FLAGS } from '../config/featureFlags';
-
 export interface KVStore {
   get(key: string): Promise<string | null>;
   set(key: string, value: string, ttlSeconds?: number): Promise<void>;

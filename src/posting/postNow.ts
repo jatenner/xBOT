@@ -24,18 +24,7 @@ export async function postNow({ text }: { text: string }): Promise<PostResult> {
     }
 
     const result = await withBrowser(async (page) => {
-      console.log('[POST_NOW] Loading session cookies...');
-      // Session is already loaded by withBrowser via persistent context
-      // But we need to ensure auth cookies are present
-      const cookies = await page.context().cookies();
-      if (cookies.length === 0) {
-        console.log('[POST_NOW] No cookies found, loading from session manager...');
-        const sessionData = railwaySessionManager.getSessionData();
-        if (sessionData?.cookies) {
-          await page.context().addCookies(sessionData.cookies);
-          console.log(`[POST_NOW] Added ${sessionData.cookies.length} cookies`);
-        }
-      }
+      console.log('[POST_NOW] Session loaded via persistent context...');
 
       // Check if we're logged in
       console.log('[POST_NOW] Checking login status...');
