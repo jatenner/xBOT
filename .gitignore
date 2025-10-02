@@ -60,3 +60,4 @@ data/twitter_session.json
 ops/supabase-ca.crt
 *.crt
 *.pem
+dist/
