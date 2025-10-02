@@ -56,8 +56,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit
 
-# Install Playwright browser + deps
-RUN npx playwright install --with-deps chromium
+# Install Playwright browser binary only (system deps already installed above)
+RUN npx playwright install chromium
 
 # Copy compiled artifacts from builder
 COPY --from=builder /app/dist ./dist
