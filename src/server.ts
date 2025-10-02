@@ -84,9 +84,15 @@ app.get('/admin/jobs/schedule', requireAdminAuth, jobScheduleHandler);
 app.use('/admin', adminRouter);
 
 /**
- * Health and readiness check
+ * Health and readiness check (use dedicated status route)
  */
-app.get('/status', async (req, res) => {
+app.use('/status', async (req, res, next) => {
+  const statusRoute = await import('./server/routes/status');
+  statusRoute.default(req, res, next);
+});
+
+// Legacy /status endpoint (redirects to new handler)
+app.get('/health', async (req, res) => {
   try {
     console.log('🩺 Performing health check...');
     

@@ -139,19 +139,30 @@ export class JobManager {
       registered.learn = true;
     }
 
-    // Log registration status
-    console.log('JOB_REGISTERED', JSON.stringify(registered), `mode=${flags.mode}`);
+    // Log registration status (EXPLICIT for observability)
+    console.log('════════════════════════════════════════════════════════');
+    console.log('JOB_MANAGER: Timer Registration Complete');
+    console.log(`  MODE: ${flags.mode}`);
+    console.log(`  Timers registered:`);
+    console.log(`    - plan:    ${registered.plan ? '✅' : '❌'}`);
+    console.log(`    - reply:   ${registered.reply ? '✅' : '❌'}`);
+    console.log(`    - posting: ${registered.posting ? '✅' : '❌'}`);
+    console.log(`    - learn:   ${registered.learn ? '✅' : '❌'}`);
+    console.log('════════════════════════════════════════════════════════');
 
     // FAIL-FAST: Posting job MUST be registered in live mode
     if (flags.live && !registered.posting) {
+      console.error('════════════════════════════════════════════════════════');
       console.error('❌ FATAL: Posting job not registered despite MODE=live');
-      console.error('   This indicates a configuration error. Exiting to prevent silent failure.');
+      console.error('   This indicates a configuration error.');
+      console.error('   Exiting to prevent silent failure...');
+      console.error('════════════════════════════════════════════════════════');
       process.exit(1);
     }
 
     this.isRunning = true;
-    const jobCount = this.timers.size - 1; // Subtract status timer
-    console.log(`✅ JOB_MANAGER: Started ${jobCount} job timers`);
+    const jobCount = Object.values(registered).filter(Boolean).length;
+    console.log(`✅ JOB_MANAGER: Started ${jobCount} job timers (mode=${flags.mode})`);
 
     // Print hourly status
     this.timers.set('status', setInterval(() => {
