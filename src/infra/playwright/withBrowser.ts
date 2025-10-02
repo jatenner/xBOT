@@ -32,7 +32,6 @@ export async function withBrowser<T>(fn: (page: Page) => Promise<T>): Promise<T>
       }
 
       const page = await ctx.newPage();
-      await page.setUserAgent(REAL_UA);
       page.setDefaultTimeout(45_000);
       
       // Try twitter.com first (works with legacy cookies)
