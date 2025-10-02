@@ -27,12 +27,14 @@ export async function processPostingQueue(): Promise<void> {
     
     // 3. Get ready decisions from queue
     const readyDecisions = await getReadyDecisions();
+    const GRACE_MINUTES = parseInt(process.env.GRACE_MINUTES || '5', 10);
+    
     if (readyDecisions.length === 0) {
-      console.log('[POSTING_QUEUE] ℹ️ No decisions ready for posting');
+      console.log(`[POSTING_QUEUE] ℹ️ No decisions ready for posting (grace_window=${GRACE_MINUTES}m)`);
       return;
     }
     
-    console.log(`[POSTING_QUEUE] 📝 Found ${readyDecisions.length} decisions ready for posting`);
+    console.log(`[POSTING_QUEUE] 📝 Found ${readyDecisions.length} decisions ready for posting (grace_window=${GRACE_MINUTES}m)`);
     
     // 4. Process each decision
     let successCount = 0;
@@ -125,12 +127,19 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
     const { getSupabaseClient } = await import('../db/index');
     const supabase = getSupabaseClient();
     
+    // Add grace window for "close enough" posts
+    const GRACE_MINUTES = parseInt(process.env.GRACE_MINUTES || '5', 10);
+    const graceWindow = new Date(Date.now() + GRACE_MINUTES * 60 * 1000).toISOString();
+    
+    console.log(`[POSTING_QUEUE] 📅 Fetching posts ready within ${GRACE_MINUTES} minute window`);
+    
     const { data, error } = await supabase
       .from('content_metadata')
       .select('*')
       .eq('status', 'queued')
       .eq('generation_source', 'real')
-      .order('created_at', { ascending: true })
+      .lte('scheduled_at', graceWindow) // Add grace window filter
+      .order('scheduled_at', { ascending: true }) // Order by scheduled time, not creation time
       .limit(5); // Process max 5 at a time to avoid overwhelming Twitter
     
     if (error) {

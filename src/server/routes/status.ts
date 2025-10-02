@@ -16,10 +16,29 @@ router.get('/', async (req, res) => {
     const jobManager = JobManager.getInstance();
     const stats = jobManager.getStats();
     
+    // Get next ready count
+    const { getSupabaseClient } = await import('../../db/index');
+    const supabase = getSupabaseClient();
+    const GRACE_MINUTES = parseInt(process.env.GRACE_MINUTES || '5', 10);
+    const graceWindow = new Date(Date.now() + GRACE_MINUTES * 60 * 1000).toISOString();
+    
+    const { count: nextReadyCount } = await supabase
+      .from('content_metadata')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'queued')
+      .lte('scheduled_at', graceWindow);
+    
     const status = {
       ok: true,
       mode: flags.mode,
       postingEnabled: flags.postingEnabled,
+      scheduling: {
+        timezone: process.env.SCHED_TZ || 'UTC',
+        grace_minutes: GRACE_MINUTES,
+        next_ready_count: nextReadyCount || 0,
+        min_minutes_until_slot: parseInt(process.env.MIN_MINUTES_UNTIL_SLOT || '0', 10),
+        post_now_on_cold_start: process.env.POST_NOW_ON_COLD_START !== 'false'
+      },
       timers: {
         plan: stats.planRuns > 0 || flags.plannerEnabled,
         reply: stats.replyRuns > 0 || flags.replyEnabled,
