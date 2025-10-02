@@ -13,9 +13,11 @@ export class RailwayCompatiblePoster {
   private context: BrowserContext | null = null;
   private page: Page | null = null;
   private isInitialized = false;
+  private initAttempts = 0;
+  private readonly MAX_INIT_ATTEMPTS = 3;
 
   constructor() {
-    console.log('🚄 RAILWAY_POSTER: Initializing Railway-compatible Twitter poster...');
+    console.log('🚄 RAILWAY_POSTER_V2: Initializing with detailed logging...');
   }
 
   private async loadSessionData(): Promise<any> {
@@ -49,9 +51,12 @@ export class RailwayCompatiblePoster {
 
   async initialize(): Promise<boolean> {
     try {
-      console.log('🚄 RAILWAY_POSTER: Starting browser initialization...');
+      console.log(`🚄 RAILWAY_POSTER: Starting browser initialization (attempt ${this.initAttempts + 1}/${this.MAX_INIT_ATTEMPTS})...`);
       
-      // Railway-optimized browser configuration (containerized environment)
+      // STEP 1: Launch Browser
+      console.log('📦 STEP 1: Launching Chromium with Railway config...');
+      console.log('   Args: --no-sandbox, --single-process, --disable-dev-shm-usage');
+      
       this.browser = await chromium.launch({
         headless: true, // Always headless on Railway
         timeout: 60000, // 60s timeout for Railway startup
@@ -76,8 +81,10 @@ export class RailwayCompatiblePoster {
         ]
       });
 
-      console.log('✅ RAILWAY_POSTER: Browser launched successfully');
+      console.log('✅ STEP 1 COMPLETE: Browser launched, PID:', this.browser.isConnected() ? 'connected' : 'disconnected');
 
+      // STEP 2: Create Context
+      console.log('📦 STEP 2: Creating browser context...');
       this.context = await this.browser.newContext({
         viewport: { width: 1280, height: 720 },
         userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -85,31 +92,46 @@ export class RailwayCompatiblePoster {
         bypassCSP: true          // Bypass Content Security Policy
       });
 
-      console.log('✅ RAILWAY_POSTER: Context created successfully');
+      console.log('✅ STEP 2 COMPLETE: Context created');
 
-      // Load Twitter session
+      // STEP 3: Load Session
+      console.log('📦 STEP 3: Loading Twitter session cookies...');
       const sessionData = await this.loadSessionData();
       if (sessionData && sessionData.cookies) {
         await this.context.addCookies(sessionData.cookies);
-        console.log(`🚄 RAILWAY_POSTER: Loaded ${sessionData.cookies.length} session cookies`);
+        console.log(`✅ STEP 3 COMPLETE: Loaded ${sessionData.cookies.length} session cookies`);
       } else {
-        console.error('❌ RAILWAY_POSTER: Failed to load valid session data');
+        console.error('❌ STEP 3 FAILED: No valid session data');
+        await this.cleanup();
         return false;
       }
 
-      // Create page with extended timeout
+      // STEP 4: Create Page
+      console.log('📦 STEP 4: Creating new page...');
       this.page = await this.context.newPage();
       
-      // Set default navigation timeout (critical for Railway)
+      // Set timeouts
       this.page.setDefaultNavigationTimeout(60000); // 60s for Railway network
       this.page.setDefaultTimeout(30000);            // 30s for operations
       
-      this.isInitialized = true;
+      console.log('✅ STEP 4 COMPLETE: Page created with extended timeouts');
       
-      console.log('✅ RAILWAY_POSTER: Browser initialized successfully');
+      this.isInitialized = true;
+      this.initAttempts++;
+      
+      console.log('🎉 RAILWAY_POSTER: FULL INITIALIZATION SUCCESSFUL!');
       return true;
+      
     } catch (error: any) {
-      console.error('❌ RAILWAY_POSTER: Browser initialization failed:', error?.message || error);
+      console.error('❌ RAILWAY_POSTER: Initialization failed at some step');
+      console.error('   Error type:', error?.name || 'Unknown');
+      console.error('   Error message:', error?.message || 'No message');
+      console.error('   Error stack (first 200 chars):', error?.stack?.substring(0, 200) || 'No stack');
+      
+      // Cleanup on failure
+      await this.cleanup();
+      
+      this.initAttempts++;
       return false;
     }
   }
