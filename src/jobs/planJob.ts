@@ -147,9 +147,26 @@ async function generateContentWithLLM() {
   const rawContent = response.choices[0]?.message?.content;
   if (!rawContent) throw new Error('Empty response from OpenAI');
 
-  const contentData = JSON.parse(rawContent);
-  if (!contentData.text || contentData.text.length > 280) {
-    throw new Error('Invalid content: missing text or too long');
+  let contentData;
+  try {
+    contentData = JSON.parse(rawContent);
+  } catch (e) {
+    console.error('[PLAN_JOB] ❌ Failed to parse LLM response:', rawContent);
+    throw new Error('Invalid JSON from LLM');
+  }
+
+  // Validate and clean the response
+  const tweetText = contentData.text || contentData.tweet || contentData.content;
+  if (!tweetText) {
+    console.error('[PLAN_JOB] ❌ LLM response missing text field:', contentData);
+    throw new Error('Invalid content: missing text field');
+  }
+  
+  if (tweetText.length > 280) {
+    console.warn(`[PLAN_JOB] ⚠️ Tweet too long (${tweetText.length} chars), truncating...`);
+    contentData.text = tweetText.substring(0, 277) + '...';
+  } else {
+    contentData.text = tweetText;
   }
 
   // Select timing
@@ -185,8 +202,8 @@ async function queueContent(content: any): Promise<void> {
     predicted_er: content.predicted_er,
     topic: content.topic || 'health',
     bandit_arm: content.style || 'varied', // Store the style as bandit_arm
-    timing_arm: `slot_${content.timing_slot}`,
-    angle: content.angle
+    timing_arm: `slot_${content.timing_slot}`
+    // Note: angle field removed - not in schema
   }]);
   
   if (error) {
