@@ -214,13 +214,31 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
 async function postContent(decision: QueuedDecision): Promise<string> {
   console.log(`[POSTING_QUEUE] 📝 Posting content: "${decision.content.substring(0, 50)}..."`);
   
-  // Use the new postTweet function with built-in retry + traces
+  // Try remote browser first if configured
+  const useRemote = !!process.env.BROWSER_SERVER_URL && !!process.env.BROWSER_SERVER_SECRET;
+  
+  if (useRemote) {
+    console.log('[POSTING_QUEUE] 🌐 Using remote browser (local machine)...');
+    const { postTweetRemote } = await import('../posting/remoteBrowserPoster');
+    const remoteResult = await postTweetRemote(decision.content);
+    
+    if (remoteResult.success) {
+      const tweetId = remoteResult.tweetId || `posted_${Date.now()}`;
+      console.log(`[POSTING_QUEUE] ✅ Content posted via remote browser with ID: ${tweetId}`);
+      return tweetId;
+    } else {
+      console.error(`[POSTING_QUEUE] ⚠️ Remote browser failed: ${remoteResult.error}`);
+      throw new Error(remoteResult.error || 'Remote browser posting failed');
+    }
+  }
+  
+  // Fallback to Railway browser (will likely fail due to IP blocks)
+  console.log('[POSTING_QUEUE] 🚂 Using Railway browser...');
   const { postTweet } = await import('../posting/railwayCompatiblePoster');
   
   const result = await postTweet(decision.content);
   
   if (!result.success) {
-    // Artifacts logged by withBrowser on failure (/tmp/trace-*.zip, /tmp/fail-*.png)
     throw new Error(result.error || 'Unknown posting error');
   }
   

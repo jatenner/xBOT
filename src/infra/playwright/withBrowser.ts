@@ -51,25 +51,12 @@ export async function withBrowser<T>(fn: (page: Page) => Promise<T>): Promise<T>
         loggedIn = await isLoggedIn(page);
       }
       
-      // If still not logged in, attempt automatic login
+      // If still not logged in, skip auto-login (Railway IPs are blocked by Twitter)
       if (!loggedIn) {
-        console.log('[PW] ⚠️ Not logged in, attempting automatic login...');
-        const loginSuccess = await performLogin(page);
-        
-        if (loginSuccess) {
-          // Save session after successful login
-          const state = await ctx.storageState();
-          await saveStorageState(state);
-          console.log('[PW] ✅ Login successful, session saved');
-          
-          // Navigate back to home
-          await page.goto(`https://${targetDomain}/home`, { waitUntil: 'domcontentloaded', timeout: 45_000 });
-          loggedIn = await isLoggedIn(page);
-        }
-        
-        if (!loggedIn) {
-          throw new Error('Not logged in to Twitter after login attempt');
-        }
+        console.log('[PW] ❌ Not logged in to Twitter - cookies not accepted');
+        console.log('[PW] ℹ️ Auto-login disabled due to Railway IP blocks');
+        console.log('[PW] 💡 Recommendation: Run bot locally or use residential proxy');
+        throw new Error('Not logged in to Twitter - cookies rejected by Twitter anti-bot');
       }
 
       console.log('[PW] ✅ Logged in and ready');
