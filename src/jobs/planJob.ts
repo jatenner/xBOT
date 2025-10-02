@@ -162,7 +162,7 @@ Format your response as JSON:
 async function queueContent(content: any): Promise<void> {
   const supabase = getSupabaseClient();
   
-  await supabase.from('content_metadata').insert([{
+  const { data, error } = await supabase.from('content_metadata').insert([{
     decision_id: content.decision_id,
     decision_type: 'single',
     content: content.text,
@@ -177,6 +177,11 @@ async function queueContent(content: any): Promise<void> {
     timing_arm: `slot_${content.timing_slot}`,
     created_at: new Date().toISOString()
   }]);
+  
+  if (error) {
+    console.error(`[PLAN_JOB] ❌ Failed to queue content:`, error);
+    throw new Error(`Database insert failed: ${error.message}`);
+  }
 }
 
 async function runGateChain(text: string, decision_id: string) {
