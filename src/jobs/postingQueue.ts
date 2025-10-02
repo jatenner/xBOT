@@ -170,8 +170,8 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
 async function processDecision(decision: QueuedDecision): Promise<void> {
   console.log(`[POSTING_QUEUE] 📮 Processing ${decision.decision_type}: ${decision.id}`);
   
-    // Mark as posting to prevent duplicate processing
-    await updateDecisionStatus(decision.id, 'posting');
+    // Note: We keep status as 'queued' until actually posted
+    // No intermediate 'posting' status to avoid DB constraint violations
     
     // Update metrics
     await updatePostingMetrics('queued');
