@@ -51,26 +51,41 @@ export class RailwayCompatiblePoster {
     try {
       console.log('🚄 RAILWAY_POSTER: Starting browser initialization...');
       
-      // Railway-specific browser configuration
+      // Railway-optimized browser configuration (containerized environment)
       this.browser = await chromium.launch({
         headless: true, // Always headless on Railway
+        timeout: 60000, // 60s timeout for Railway startup
         args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
-          '--disable-gpu',
-          '--disable-web-security',
-          '--disable-features=VizDisplayCompositor'
+          '--no-sandbox',                           // REQUIRED for containers
+          '--disable-setuid-sandbox',               // REQUIRED for containers
+          '--disable-dev-shm-usage',                // REQUIRED for low memory
+          '--disable-accelerated-2d-canvas',        // Reduce GPU usage
+          '--no-first-run',                         // Skip first run
+          '--no-zygote',                           // Single process mode
+          '--single-process',                       // CRITICAL: Prevents subprocess issues
+          '--disable-gpu',                          // No GPU in containers
+          '--disable-web-security',                 // Allow cross-origin
+          '--disable-features=VizDisplayCompositor', // Reduce resource usage
+          '--disable-background-timer-throttling',  // Keep timers active
+          '--disable-backgrounding-occluded-windows', // Keep windows active
+          '--disable-renderer-backgrounding',       // Keep renderer active
+          '--disable-hang-monitor',                 // Prevent hang detection
+          '--disable-ipc-flooding-protection',      // Allow fast operations
+          '--memory-pressure-off',                  // Prevent OOM kills
+          '--disable-software-rasterizer'           // Use simple rendering
         ]
       });
 
+      console.log('✅ RAILWAY_POSTER: Browser launched successfully');
+
       this.context = await this.browser.newContext({
         viewport: { width: 1280, height: 720 },
-        userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        ignoreHTTPSErrors: true, // Ignore SSL errors on Railway
+        bypassCSP: true          // Bypass Content Security Policy
       });
+
+      console.log('✅ RAILWAY_POSTER: Context created successfully');
 
       // Load Twitter session
       const sessionData = await this.loadSessionData();
@@ -82,22 +97,37 @@ export class RailwayCompatiblePoster {
         return false;
       }
 
+      // Create page with extended timeout
       this.page = await this.context.newPage();
+      
+      // Set default navigation timeout (critical for Railway)
+      this.page.setDefaultNavigationTimeout(60000); // 60s for Railway network
+      this.page.setDefaultTimeout(30000);            // 30s for operations
+      
       this.isInitialized = true;
       
       console.log('✅ RAILWAY_POSTER: Browser initialized successfully');
       return true;
-    } catch (error) {
-      console.error('❌ RAILWAY_POSTER: Browser initialization failed:', error);
+    } catch (error: any) {
+      console.error('❌ RAILWAY_POSTER: Browser initialization failed:', error?.message || error);
       return false;
     }
   }
 
   async postTweet(content: string): Promise<{ success: boolean; error?: string; tweetId?: string }> {
-    if (!this.isInitialized || !this.page) {
+    if (!this.isInitialized || !this.page || !this.browser) {
       const initSuccess = await this.initialize();
       if (!initSuccess) {
         return { success: false, error: 'Failed to initialize browser' };
+      }
+    }
+
+    // Verify browser is still connected
+    if (!this.browser!.isConnected()) {
+      console.warn('⚠️ RAILWAY_POSTER: Browser disconnected, reinitializing...');
+      const initSuccess = await this.initialize();
+      if (!initSuccess) {
+        return { success: false, error: 'Browser disconnected and failed to reinitialize' };
       }
     }
 
@@ -105,10 +135,10 @@ export class RailwayCompatiblePoster {
       console.log('🚄 RAILWAY_POSTER: Starting tweet posting...');
       console.log(`📝 CONTENT: "${content.substring(0, 100)}..."`);
 
-      // Navigate to Twitter
+      // Navigate to Twitter with extended timeout
       await this.page!.goto('https://x.com/home', { 
         waitUntil: 'domcontentloaded',
-        timeout: 30000 
+        timeout: 60000  // Extended to 60s for Railway
       });
 
       // Wait for page to load
