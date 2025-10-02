@@ -163,6 +163,7 @@ async function queueContent(content: any): Promise<void> {
   const supabase = getSupabaseClient();
   
   const { data, error } = await supabase.from('content_metadata').insert([{
+    id: content.decision_id,
     content_id: content.decision_id,
     content: content.text,
     generation_source: 'real',
