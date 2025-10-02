@@ -169,11 +169,8 @@ async function generateContentWithLLM() {
     contentData.text = tweetText;
   }
 
-  // Select timing
-  const { getUCBTimingBandit } = await import('../schedule/ucbTiming');
-  const ucbTiming = getUCBTimingBandit();
-  const timingSelection = await ucbTiming.selectTimingWithUCB();
-  const scheduledAt = new Date(Date.now() + timingSelection.slot * 60 * 60 * 1000);
+  // Select timing with same-day preference
+  const scheduledAt = await selectOptimalSchedule();
 
   return {
     decision_id,
@@ -183,7 +180,7 @@ async function generateContentWithLLM() {
     style: selectedStyle,
     quality_score: calculateQuality(contentData.text),
     predicted_er: 0.03,
-    timing_slot: timingSelection.slot,
+    timing_slot: scheduledAt.getHours(),
     scheduled_at: scheduledAt.toISOString()
   };
 }
@@ -398,6 +395,79 @@ async function checkUniqueness(text: string): Promise<boolean> {
   }
 
   return true;
+}
+
+/**
+ * 🕒 Select optimal schedule with same-day preference and grace window
+ * 
+ * Strategy:
+ * 1. Check if cold start → schedule immediately
+ * 2. Use UCB to find optimal slot
+ * 3. Prefer same-day slots >= now + MIN_MINUTES_UNTIL_SLOT
+ * 4. If no same-day slots, pick tomorrow's best slot
+ */
+async function selectOptimalSchedule(): Promise<Date> {
+  const MIN_MINUTES_UNTIL_SLOT = parseInt(process.env.MIN_MINUTES_UNTIL_SLOT || '0', 10);
+  const POST_NOW_ON_COLD_START = process.env.POST_NOW_ON_COLD_START !== 'false';
+  
+  // Check for cold start (queue is empty)
+  if (POST_NOW_ON_COLD_START) {
+    const { getSupabaseClient } = await import('../db/index');
+    const supabase = getSupabaseClient();
+    
+    const { count, error } = await supabase
+      .from('content_metadata')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'queued')
+      .gte('scheduled_at', new Date().toISOString());
+    
+    if (!error && (count === 0 || count === null)) {
+      console.log('[SCHEDULE] 🚀 Cold start detected - scheduling immediate post');
+      return new Date(Date.now() + 30 * 1000); // 30 seconds from now
+    }
+  }
+  
+  // Use UCB timing to find optimal slot
+  const { getUCBTimingBandit } = await import('../schedule/ucbTiming');
+  const ucbTiming = getUCBTimingBandit();
+  const timingSelection = await ucbTiming.selectTimingWithUCB();
+  
+  const now = new Date();
+  const currentHour = now.getHours();
+  
+  // Calculate target time for the selected slot
+  let targetDate = new Date(now);
+  targetDate.setHours(timingSelection.slot, 0, 0, 0);
+  
+  // If selected slot is earlier than now + MIN_MINUTES, move to tomorrow
+  const minTime = now.getTime() + MIN_MINUTES_UNTIL_SLOT * 60 * 1000;
+  
+  if (targetDate.getTime() < minTime) {
+    // Try to find next same-day slot
+    let foundSameDaySlot = false;
+    
+    for (let hour = currentHour + 1; hour < 24; hour++) {
+      const testDate = new Date(now);
+      testDate.setHours(hour, 0, 0, 0);
+      
+      if (testDate.getTime() >= minTime) {
+        targetDate = testDate;
+        foundSameDaySlot = true;
+        console.log(`[SCHEDULE] 📅 Using same-day slot: ${hour}:00`);
+        break;
+      }
+    }
+    
+    if (!foundSameDaySlot) {
+      // No same-day slots available, use tomorrow at selected slot
+      targetDate.setDate(targetDate.getDate() + 1);
+      console.log(`[SCHEDULE] 📅 No same-day slots, using tomorrow at ${timingSelection.slot}:00`);
+    }
+  } else {
+    console.log(`[SCHEDULE] 📅 Using selected slot today at ${timingSelection.slot}:00`);
+  }
+  
+  return targetDate;
 }
 
 function calculateQuality(text: string): number {
