@@ -205,34 +205,20 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
 async function postContent(decision: QueuedDecision): Promise<string> {
   console.log(`[POSTING_QUEUE] 📝 Posting content: "${decision.content.substring(0, 50)}..."`);
   
-  // Use the existing Twitter posting infrastructure
-  const { RailwayCompatiblePoster } = await import('../posting/railwayCompatiblePoster');
-  const poster = new RailwayCompatiblePoster();
+  // Use the new postTweet function with built-in retry + traces
+  const { postTweet } = await import('../posting/railwayCompatiblePoster');
   
-  try {
-    const initSuccess = await poster.initialize();
-    if (!initSuccess) {
-      throw new Error('Failed to initialize poster');
-    }
-    
-    const result = await poster.postTweet(decision.content);
-    
-    if (!result.success) {
-      throw new Error(result.error || 'Unknown posting error');
-    }
-    
-    const tweetId = result.tweetId || `posted_${Date.now()}`;
-    console.log(`[POSTING_QUEUE] ✅ Content posted with ID: ${tweetId}`);
-    
-    return tweetId;
-    
-  } finally {
-    try {
-      await poster.cleanup();
-    } catch (cleanupError) {
-      console.warn('[POSTING_QUEUE] ⚠️ Poster cleanup failed:', cleanupError.message);
-    }
+  const result = await postTweet(decision.content);
+  
+  if (!result.success) {
+    // Artifacts logged by withBrowser on failure (/tmp/trace-*.zip, /tmp/fail-*.png)
+    throw new Error(result.error || 'Unknown posting error');
   }
+  
+  const tweetId = result.id || `posted_${Date.now()}`;
+  console.log(`[POSTING_QUEUE] ✅ Content posted with ID: ${tweetId}`);
+  
+  return tweetId;
 }
 
 async function postReply(decision: QueuedDecision): Promise<string> {
@@ -244,37 +230,23 @@ async function postReply(decision: QueuedDecision): Promise<string> {
   
   // For now, use the same posting infrastructure for replies
   // In a full implementation, this would navigate to the specific tweet and reply
-  const { RailwayCompatiblePoster } = await import('../posting/railwayCompatiblePoster');
-  const poster = new RailwayCompatiblePoster();
+  const { postTweet } = await import('../posting/railwayCompatiblePoster');
   
-  try {
-    const initSuccess = await poster.initialize();
-    if (!initSuccess) {
-      throw new Error('Failed to initialize poster for reply');
-    }
-    
-    // For this implementation, we'll post a standalone tweet mentioning the user
-    // A full implementation would navigate to the specific tweet and use the reply function
-    const replyContent = `@${decision.target_username} ${decision.content}`;
-    
-    const result = await poster.postTweet(replyContent);
-    
-    if (!result.success) {
-      throw new Error(result.error || 'Unknown reply posting error');
-    }
-    
-    const tweetId = result.tweetId || `reply_${Date.now()}`;
-    console.log(`[POSTING_QUEUE] ✅ Reply posted with ID: ${tweetId}`);
-    
-    return tweetId;
-    
-  } finally {
-    try {
-      await poster.cleanup();
-    } catch (cleanupError) {
-      console.warn('[POSTING_QUEUE] ⚠️ Reply poster cleanup failed:', cleanupError.message);
-    }
+  // For this implementation, we'll post a standalone tweet mentioning the user
+  // A full implementation would navigate to the specific tweet and use the reply function
+  const replyContent = `@${decision.target_username} ${decision.content}`;
+  
+  const result = await postTweet(replyContent);
+  
+  if (!result.success) {
+    // Artifacts logged by withBrowser on failure
+    throw new Error(result.error || 'Unknown reply posting error');
   }
+  
+  const tweetId = result.id || `reply_${Date.now()}`;
+  console.log(`[POSTING_QUEUE] ✅ Reply posted with ID: ${tweetId}`);
+  
+  return tweetId;
 }
 
 async function updateDecisionStatus(decisionId: string, status: string): Promise<void> {

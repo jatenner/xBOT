@@ -1,6 +1,7 @@
 /**
  * 🚀 ROBUST PLAYWRIGHT LAUNCHER FOR RAILWAY
  * Uses persistent context to avoid /dev/shm and sandbox issues in Docker
+ * NO --single-process flag (causes crashes)
  */
 
 import { chromium, BrowserContext } from 'playwright';
@@ -24,13 +25,14 @@ export async function launchPersistent(): Promise<BrowserContext> {
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',  // Critical: avoid /dev/shm
-      '--no-zygote',              // No subprocess zygote
+      '--no-zygote',              // No subprocess zygote (but NOT --single-process)
       '--disable-gpu',
       '--disable-features=TranslateUI',
       '--ignore-certificate-errors',
       '--window-size=1920,1080',
       '--hide-scrollbars',
-      '--mute-audio'
+      '--mute-audio',
+      '--disable-software-rasterizer'
     ],
     viewport: { width: 1280, height: 800 },
     locale: 'en-US',
