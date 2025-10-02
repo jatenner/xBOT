@@ -136,6 +136,17 @@ export async function postThread(tweets: string[]): Promise<PostResult> {
 
 // Export for backwards compatibility (old code may use this class)
 export class RailwayCompatiblePoster {
+  // Backwards compatible initialize method (no-op, context created per-post now)
+  async initialize(): Promise<boolean> {
+    console.log('[RAILWAY_POSTER] ℹ️ initialize() called (no-op in new implementation)');
+    return true;
+  }
+
+  // Backwards compatible cleanup method (no-op, context cleaned per-post now)
+  async cleanup(): Promise<void> {
+    console.log('[RAILWAY_POSTER] ℹ️ cleanup() called (no-op in new implementation)');
+  }
+
   async postTweet(content: string) {
     const result = await postTweet(content);
     return {
