@@ -1,8 +1,9 @@
 /**
  * 🕒 UNIFIED JOB MANAGER
- * Manages all recurring jobs: plan, reply, outcomes, learn with shadow mode support
+ * Manages all recurring jobs: plan, reply, posting, learn with fail-fast in live mode
  */
 
+import { flags } from '../config/featureFlags';
 import { getConfig, getModeFlags } from '../config/config';
 import { planContent } from './planJob';
 import { generateReplies } from './replyJob';
@@ -48,6 +49,7 @@ export class JobManager {
 
   /**
    * Start all job timers based on configuration
+   * FAIL-FAST: If MODE=live and posting job doesn't register, exit with error
    */
   public async startJobs(): Promise<void> {
     if (this.isRunning) {
@@ -56,52 +58,54 @@ export class JobManager {
     }
 
     const config = getConfig();
-    const flags = getModeFlags(config);
+    const modeFlags = getModeFlags(config);
 
-    if (!flags.enableJobScheduling) {
+    if (!modeFlags.enableJobScheduling) {
       console.log('🕒 JOB_MANAGER: Job scheduling disabled (JOBS_AUTOSTART=false)');
       return;
     }
 
     console.log('🕒 JOB_MANAGER: Starting job timers...');
-    console.log(`   • Mode: ${config.MODE}`);
-    console.log(`   • Plan interval: ${config.JOBS_PLAN_INTERVAL_MIN}min`);
-    console.log(`   • Reply interval: ${config.JOBS_REPLY_INTERVAL_MIN}min`);
-    console.log(`   • Posting interval: ${config.JOBS_POSTING_INTERVAL_MIN || 5}min`);
-    console.log(`   • Learn interval: ${config.JOBS_LEARN_INTERVAL_MIN}min`);
+    console.log(`   • Mode: ${flags.mode} (live=${flags.live})`);
+    console.log(`   • Plan: ${flags.plannerEnabled ? 'ENABLED' : 'DISABLED'}`);
+    console.log(`   • Reply: ${flags.replyEnabled ? 'ENABLED' : 'DISABLED'}`);
+    console.log(`   • Posting: ${flags.postingEnabled ? 'ENABLED' : 'DISABLED'}`);
+    console.log(`   • Learn: ${flags.learnEnabled ? 'ENABLED' : 'DISABLED'}`);
     
-    // Log next run ETAs
-    const now = new Date();
-    const postingIntervalMin = parseInt(String(config.JOBS_POSTING_INTERVAL_MIN || 5));
-    console.log('🕐 Next job ETAs:');
-    console.log(`   • Plan: ${new Date(now.getTime() + config.JOBS_PLAN_INTERVAL_MIN * 60 * 1000).toISOString()}`);
-    console.log(`   • Reply: ${new Date(now.getTime() + config.JOBS_REPLY_INTERVAL_MIN * 60 * 1000).toISOString()}`);
-    console.log(`   • Posting: ${new Date(now.getTime() + postingIntervalMin * 60 * 1000).toISOString()}`);
-    console.log(`   • Learn: ${new Date(now.getTime() + config.JOBS_LEARN_INTERVAL_MIN * 60 * 1000).toISOString()}`);
-    if (flags.simulateOutcomes) {
-      console.log(`   • ShadowOutcomes: ${new Date(now.getTime() + config.JOBS_LEARN_INTERVAL_MIN * 60 * 1000).toISOString()}`);
-    }
+    const registered: Record<string, boolean> = {
+      plan: false,
+      reply: false,
+      posting: false,
+      learn: false
+    };
 
     // Plan job timer
-    this.timers.set('plan', setInterval(async () => {
-      await this.safeExecute('plan', async () => {
-        await planContent();
-        this.stats.planRuns++;
-        this.stats.lastPlanTime = new Date();
-      });
-    }, config.JOBS_PLAN_INTERVAL_MIN * 60 * 1000));
+    if (flags.plannerEnabled) {
+      this.timers.set('plan', setInterval(async () => {
+        await this.safeExecute('plan', async () => {
+          await planContent();
+          this.stats.planRuns++;
+          this.stats.lastPlanTime = new Date();
+        });
+      }, config.JOBS_PLAN_INTERVAL_MIN * 60 * 1000));
+      registered.plan = true;
+    }
 
     // Reply job timer
-    this.timers.set('reply', setInterval(async () => {
-      await this.safeExecute('reply', async () => {
-        await generateReplies();
-        this.stats.replyRuns++;
-        this.stats.lastReplyTime = new Date();
-      });
-    }, config.JOBS_REPLY_INTERVAL_MIN * 60 * 1000));
+    if (flags.replyEnabled) {
+      this.timers.set('reply', setInterval(async () => {
+        await this.safeExecute('reply', async () => {
+          await generateReplies();
+          this.stats.replyRuns++;
+          this.stats.lastReplyTime = new Date();
+        });
+      }, config.JOBS_REPLY_INTERVAL_MIN * 60 * 1000));
+      registered.reply = true;
+    }
 
-    // Posting queue timer (only in live mode)
-    if (!flags.postingDisabled) {
+    // Posting queue timer (CRITICAL in live mode)
+    if (flags.postingEnabled) {
+      const postingIntervalMin = config.JOBS_POSTING_INTERVAL_MIN || 5;
       this.timers.set('posting', setInterval(async () => {
         await this.safeExecute('posting', async () => {
           await processPostingQueue();
@@ -109,27 +113,41 @@ export class JobManager {
           this.stats.lastPostingTime = new Date();
         });
       }, postingIntervalMin * 60 * 1000));
+      registered.posting = true;
     }
 
     // Shadow outcomes job (only in shadow mode)
-    if (flags.simulateOutcomes) {
+    if (modeFlags.simulateOutcomes) {
       this.timers.set('outcomes', setInterval(async () => {
         await this.safeExecute('outcomes', async () => {
           await simulateOutcomes();
           this.stats.outcomeRuns++;
           this.stats.lastOutcomeTime = new Date();
         });
-      }, config.JOBS_LEARN_INTERVAL_MIN * 60 * 1000)); // Run at learn frequency
+      }, config.JOBS_LEARN_INTERVAL_MIN * 60 * 1000));
     }
 
     // Learn job timer
-    this.timers.set('learn', setInterval(async () => {
-      await this.safeExecute('learn', async () => {
-        await runLearningCycle();
-        this.stats.learnRuns++;
-        this.stats.lastLearnTime = new Date();
-      });
-    }, config.JOBS_LEARN_INTERVAL_MIN * 60 * 1000));
+    if (flags.learnEnabled) {
+      this.timers.set('learn', setInterval(async () => {
+        await this.safeExecute('learn', async () => {
+          await runLearningCycle();
+          this.stats.learnRuns++;
+          this.stats.lastLearnTime = new Date();
+        });
+      }, config.JOBS_LEARN_INTERVAL_MIN * 60 * 1000));
+      registered.learn = true;
+    }
+
+    // Log registration status
+    console.log('JOB_REGISTERED', JSON.stringify(registered), `mode=${flags.mode}`);
+
+    // FAIL-FAST: Posting job MUST be registered in live mode
+    if (flags.live && !registered.posting) {
+      console.error('❌ FATAL: Posting job not registered despite MODE=live');
+      console.error('   This indicates a configuration error. Exiting to prevent silent failure.');
+      process.exit(1);
+    }
 
     this.isRunning = true;
     const jobCount = this.timers.size - 1; // Subtract status timer

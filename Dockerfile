@@ -31,14 +31,33 @@ ENV PORT=8080
 
 WORKDIR /app
 
-# Install CA certificates for SSL
-RUN apt-get update && apt-get install -y ca-certificates && \
-    update-ca-certificates && \
-    rm -rf /var/lib/apt/lists/*
+# Install CA certificates + Playwright system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    fonts-liberation \
+    libasound2 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libdrm2 \
+    libgbm1 \
+    libgtk-3-0 \
+    libnss3 \
+    libx11-xcb1 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libxshmfence1 \
+    libxkbcommon0 \
+    && update-ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy package files and install production dependencies only
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit
+
+# Install Playwright browser + deps
+RUN npx playwright install --with-deps chromium
 
 # Copy compiled artifacts from builder
 COPY --from=builder /app/dist ./dist

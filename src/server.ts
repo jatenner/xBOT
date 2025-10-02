@@ -13,6 +13,7 @@ import { auditProfileHandler } from './api/auditProfile';
 import { requireAdminAuth as legacyAuth, adminJobsHandler, adminJobRunHandler } from './api/adminJobs';
 import { requireAdminAuth } from './api/middleware/adminAuth';
 import { jobScheduleHandler } from './api/adminJobSchedule';
+import adminRouter from './server/routes/admin';
 
 const app = express();
 
@@ -78,26 +79,48 @@ app.post('/admin/jobs/run', requireAdminAuth, adminJobRunHandler);
 app.get('/admin/jobs/schedule', requireAdminAuth, jobScheduleHandler);
 
 /**
+ * Admin smoke test routes (protected)
+ */
+app.use('/admin', adminRouter);
+
+/**
  * Health and readiness check
  */
 app.get('/status', async (req, res) => {
   try {
     console.log('🩺 Performing health check...');
     
-    // Basic health without complex dependencies
-    const basicHealth = {
-      posting_disabled: process.env.POSTING_DISABLED === 'true',
-      dry_run: process.env.DRY_RUN === 'true',
+    const { flags } = await import('./config/featureFlags');
+    const { JobManager } = await import('./jobs/jobManager');
+    const jobManager = JobManager.getInstance();
+    const stats = jobManager.getStats();
+    const fs = require('fs');
+    
+    // Enhanced health with job timer status
+    const health = {
+      mode: flags.mode,
+      postingEnabled: flags.postingEnabled,
+      postingDisabledEnv: process.env.POSTING_DISABLED,
+      dryRunEnv: process.env.DRY_RUN,
       node_env: process.env.NODE_ENV,
       uptime_seconds: process.uptime(),
       memory_usage: process.memoryUsage(),
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      timers: {
+        plan: stats.planRuns > 0 || flags.plannerEnabled,
+        reply: stats.replyRuns > 0 || flags.replyEnabled,
+        posting: stats.postingRuns > 0 || flags.postingEnabled,
+        learn: stats.learnRuns > 0 || flags.learnEnabled,
+      },
+      browserProfileDirExists: fs.existsSync('/tmp/xbot-profile'),
+      lastPostAttemptAt: (globalThis as any).__xbotLastPostAttemptAt || null,
+      lastPostResult: (globalThis as any).__xbotLastPostResult || null,
     };
     
     res.json({
       ok: true,
       status: 'healthy',
-      ...basicHealth
+      ...health
     });
     
     /*
@@ -178,9 +201,13 @@ app.get('/env', (req, res) => {
  */
 app.get('/playwright', (req, res) => {
   try {
+    const fs = require('fs');
     const status = getBrowserStatus();
     res.json({
-      browser: status,
+      browserHealthy: status.connected && !status.isInitializing,
+      profileDirExists: fs.existsSync('/tmp/xbot-profile'),
+      connected: status.connected,
+      isInitializing: status.isInitializing,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
