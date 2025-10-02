@@ -163,19 +163,16 @@ async function queueContent(content: any): Promise<void> {
   const supabase = getSupabaseClient();
   
   const { data, error } = await supabase.from('content_metadata').insert([{
-    decision_id: content.decision_id,
-    decision_type: 'single',
+    content_id: content.decision_id,
     content: content.text,
     generation_source: 'real',
     status: 'queued',
     scheduled_at: content.scheduled_at,
-    quality_score: content.quality_score,
+    quality_score: Math.round(content.quality_score * 100),
     predicted_er: content.predicted_er,
-    topic_cluster: content.topic,
-    angle: content.angle,
+    topic: content.topic || 'health',
     bandit_arm: 'educational',
-    timing_arm: `slot_${content.timing_slot}`,
-    created_at: new Date().toISOString()
+    timing_arm: `slot_${content.timing_slot}`
   }]);
   
   if (error) {
