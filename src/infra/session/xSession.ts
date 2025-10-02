@@ -46,20 +46,46 @@ function dupDomains(cookies: Cookie[]): Cookie[] {
 
 /**
  * Load storage state with domain-normalized cookies
+ * Tries: 1) /tmp/xbot-session.json, 2) TWITTER_SESSION_B64 env var
  */
 export async function loadStorageState(): Promise<{ cookies: Cookie[]; origins: any[] } | null> {
+  // Try loading from file first
   try {
     const raw = await fs.readFile(SESSION_PATH, 'utf8');
     const state = JSON.parse(raw);
     
     if (Array.isArray(state?.cookies)) {
       state.cookies = dupDomains(state.cookies as Cookie[]);
-      console.log(`[X_SESSION] Loaded ${state.cookies.length} cookies (normalized for both domains)`);
+      console.log(`[X_SESSION] Loaded ${state.cookies.length} cookies from file (normalized for both domains)`);
     }
     
     return state;
   } catch (error: any) {
-    console.log('[X_SESSION] No session file found or invalid:', error.message);
+    console.log('[X_SESSION] No session file found, trying TWITTER_SESSION_B64...');
+  }
+  
+  // Fallback to TWITTER_SESSION_B64 env var
+  try {
+    const b64 = process.env.TWITTER_SESSION_B64;
+    if (!b64) {
+      console.log('[X_SESSION] ⚠️ No TWITTER_SESSION_B64 env var found');
+      return null;
+    }
+    
+    const decoded = Buffer.from(b64, 'base64').toString('utf8');
+    const state = JSON.parse(decoded);
+    
+    if (Array.isArray(state?.cookies)) {
+      state.cookies = dupDomains(state.cookies as Cookie[]);
+      console.log(`[X_SESSION] Loaded ${state.cookies.length} cookies from TWITTER_SESSION_B64 (normalized for both domains)`);
+      
+      // Save to file for next time
+      await saveStorageState(state);
+    }
+    
+    return state;
+  } catch (error: any) {
+    console.error('[X_SESSION] ❌ Failed to load from TWITTER_SESSION_B64:', error.message);
     return null;
   }
 }
