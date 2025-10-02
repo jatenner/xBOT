@@ -1,30 +1,37 @@
 #!/bin/bash
-set -e
+# Quick status check - no stalling!
 
-echo "🔍 QUICK NON-STALLING DIAGNOSTIC"
-echo "================================"
+echo "🔍 QUICK STATUS CHECK"
+echo "===================="
 echo ""
 
-echo "1️⃣ Database Status:"
+# Check if Railway deployment is complete
+echo "📦 Railway Deployment:"
+railway status 2>&1 | grep -E "(Active|Building)" | head -3
+echo ""
+
+# Check database for recent posts
+echo "📊 Recent Posts (last 10 min):"
 psql 'postgresql://postgres.qtgjmaelglghnlahqpbl:Christophernolanfan123!!@aws-0-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require' -t -c "
 SELECT 
-  COUNT(*) FILTER (WHERE status = 'posted') as posted,
-  COUNT(*) FILTER (WHERE status = 'failed') as failed,
-  COUNT(*) FILTER (WHERE status = 'queued') as queued
-FROM content_metadata
-WHERE generated_at > NOW() - INTERVAL '1 hour';
-"
+  COALESCE(COUNT(*), 0) as posted_count,
+  COALESCE(MAX(generated_at)::text, 'none') as last_post
+FROM content_metadata 
+WHERE status = 'posted' 
+AND generated_at > NOW() - INTERVAL '10 minutes';
+" 2>/dev/null || echo "   ❌ Database connection failed"
 
 echo ""
-echo "2️⃣ Failed Tweet Details:"
+echo "📈 Queued Content Ready:"
 psql 'postgresql://postgres.qtgjmaelglghnlahqpbl:Christophernolanfan123!!@aws-0-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require' -t -c "
-SELECT LEFT(content, 50) FROM content_metadata WHERE status = 'failed' AND generated_at > NOW() - INTERVAL '1 hour' LIMIT 1;
-"
+SELECT COUNT(*) 
+FROM content_metadata 
+WHERE status = 'queued' 
+AND scheduled_at <= NOW();
+" 2>/dev/null || echo "   ❌ Database connection failed"
 
 echo ""
-echo "3️⃣ Railway Build Status (no streaming):"
-railway status | head -10
-
-echo ""
-echo "✅ DONE - No stalling!"
-
+echo "⏰ What's Next:"
+echo "   • Posting runs every 5 minutes"
+echo "   • Next cycle: $(date -v+5M '+%I:%M %p')"
+echo "   • Watch live: npm run logs"
