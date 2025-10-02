@@ -74,42 +74,40 @@ export class RailwaySessionManager {
 
   /**
    * 🧪 TEST SESSION VALIDITY
+   * Now uses the same login check as the actual posting system
    */
   private async testSessionValidity(sessionData: SessionData): Promise<boolean> {
-    let browser: Browser | null = null;
-    let context: BrowserContext | null = null;
+    const { isLoggedIn } = await import('../infra/session/xSession');
+    const { launchPersistent } = await import('../infra/playwright/launcher');
+    
+    let ctx: any = null;
     
     try {
       console.log('🧪 RAILWAY_SESSION: Testing session with headless browser...');
       
-      browser = await chromium.launch({
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-gpu',
-          '--disable-dev-shm-usage',
-          '--single-process',
-          '--no-zygote'
-        ]
-      });
-
-      context = await browser.newContext({
-        viewport: { width: 1280, height: 720 },
-        userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      });
-
-      await context.addCookies(sessionData.cookies);
-      const page = await context.newPage();
+      ctx = await launchPersistent();
       
-      // Navigate to Twitter home and check for login
-      await page.goto('https://x.com/home', { waitUntil: 'domcontentloaded', timeout: 30000 });
-      await page.waitForTimeout(5000);
+      // Add cookies with domain normalization
+      const normalizedCookies = this.normalizeCookieDomains(sessionData.cookies);
+      await ctx.addCookies(normalizedCookies);
       
-      // Check for the new tweet button (indicates logged in)
-      const isLoggedIn = await page.locator('[data-testid="SideNav_NewTweet_Button"]').isVisible({ timeout: 10000 });
+      const page = await ctx.newPage();
       
-      if (isLoggedIn) {
+      // Try twitter.com first (same as posting logic)
+      await page.goto('https://twitter.com/home', { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await page.waitForTimeout(3000);
+      
+      let loggedIn = await isLoggedIn(page);
+      
+      if (!loggedIn) {
+        // Fallback to x.com (same as posting logic)
+        console.log('🧪 RAILWAY_SESSION: Trying x.com fallback...');
+        await page.goto('https://x.com/home', { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await page.waitForTimeout(3000);
+        loggedIn = await isLoggedIn(page);
+      }
+      
+      if (loggedIn) {
         console.log('✅ RAILWAY_SESSION: Session test passed - user is logged in');
         return true;
       } else {
@@ -120,9 +118,36 @@ export class RailwaySessionManager {
       console.error('❌ RAILWAY_SESSION: Session test error:', error.message);
       return false;
     } finally {
-      if (context) await context.close();
-      if (browser) await browser.close();
+      if (ctx) await ctx.close();
     }
+  }
+
+  /**
+   * Normalize cookies for both .twitter.com and .x.com domains
+   */
+  private normalizeCookieDomains(cookies: any[]): any[] {
+    const out: any[] = [];
+    
+    for (const c of cookies) {
+      const base = { ...c };
+      const d = (base.domain || '').replace(/^https?:\/\//, '');
+      
+      if (d.includes('twitter.com') || d.includes('x.com')) {
+        out.push({ ...base, domain: '.twitter.com' });
+        out.push({ ...base, domain: '.x.com' });
+      } else {
+        out.push(base);
+      }
+    }
+    
+    // Deduplicate
+    const seen = new Set<string>();
+    return out.filter(c => {
+      const k = `${c.name}|${c.domain}|${c.path || '/'}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
   }
 
   /**

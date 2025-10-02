@@ -1,10 +1,15 @@
 /**
  * 🛡️ CRASH-AWARE BROWSER RUNNER
  * Auto-retries with traces/screenshots on failure
+ * Handles both twitter.com and x.com domains with proper auth
  */
 
 import { Page } from 'playwright';
 import { launchPersistent } from './launcher';
+import { applyStateToContext, isLoggedIn, saveStorageState } from '../session/xSession';
+import { performLogin } from './xLogin';
+
+const REAL_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
 export async function withBrowser<T>(fn: (page: Page) => Promise<T>): Promise<T> {
   for (let attempt = 1; attempt <= 3; attempt++) {
@@ -13,6 +18,12 @@ export async function withBrowser<T>(fn: (page: Page) => Promise<T>): Promise<T>
       console.log(`[PW] Attempt ${attempt}/3 starting...`);
       ctx = await launchPersistent();
 
+      // Apply session cookies
+      await applyStateToContext(ctx);
+
+      // Set realistic headers and user agent
+      await ctx.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
+      
       // Enable tracing if requested
       const tracing = process.env.PLAYWRIGHT_TRACE === 'on';
       if (tracing) {
@@ -21,11 +32,48 @@ export async function withBrowser<T>(fn: (page: Page) => Promise<T>): Promise<T>
       }
 
       const page = await ctx.newPage();
+      await page.setUserAgent(REAL_UA);
       page.setDefaultTimeout(45_000);
       
-      console.log('[PW] Navigating to X home...');
-      await page.goto('https://x.com/home', { waitUntil: 'domcontentloaded', timeout: 45_000 });
+      // Try twitter.com first (works with legacy cookies)
+      const targetDomain = process.env.X_TARGET_DOMAIN || 'twitter.com';
+      console.log(`[PW] Navigating to ${targetDomain}/home...`);
+      
+      await page.goto(`https://${targetDomain}/home`, { waitUntil: 'domcontentloaded', timeout: 45_000 });
       console.log('[PW] ✅ Page loaded');
+
+      // Check if logged in
+      let loggedIn = await isLoggedIn(page);
+      
+      if (!loggedIn && targetDomain === 'twitter.com') {
+        // Fallback to x.com
+        console.log('[PW] Not logged in on twitter.com, trying x.com...');
+        await page.goto('https://x.com/home', { waitUntil: 'domcontentloaded', timeout: 45_000 });
+        loggedIn = await isLoggedIn(page);
+      }
+      
+      // If still not logged in, attempt automatic login
+      if (!loggedIn) {
+        console.log('[PW] ⚠️ Not logged in, attempting automatic login...');
+        const loginSuccess = await performLogin(page);
+        
+        if (loginSuccess) {
+          // Save session after successful login
+          const state = await ctx.storageState();
+          await saveStorageState(state);
+          console.log('[PW] ✅ Login successful, session saved');
+          
+          // Navigate back to home
+          await page.goto(`https://${targetDomain}/home`, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+          loggedIn = await isLoggedIn(page);
+        }
+        
+        if (!loggedIn) {
+          throw new Error('Not logged in to Twitter after login attempt');
+        }
+      }
+
+      console.log('[PW] ✅ Logged in and ready');
 
       // Execute user function
       const result = await fn(page);
