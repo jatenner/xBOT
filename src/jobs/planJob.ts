@@ -390,46 +390,50 @@ GROWTH FOCUS:
 function buildDynamicPrompt(performanceData: any, style: string, dayOfWeek: string, month: string): string {
   const primaryTopic = performanceData.topTopics[0] || 'health';
   
+  // Randomly select from available topics for more variety
+  const availableTopics = performanceData.topTopics || ['health'];
+  const selectedTopic = availableTopics[Math.floor(Math.random() * availableTopics.length)];
+  
   const styleGuides: Record<string, string> = {
-    research_insight: `Find a recent or surprising research finding about ${primaryTopic}. Make it feel cutting-edge and non-obvious. Focus on WHY it matters practically.`,
+    research_insight: `Find a recent or surprising research finding about ${selectedTopic}. Make it feel cutting-edge and non-obvious. Focus on WHY it matters practically.`,
     
-    practical_tip: `Share an actionable ${primaryTopic} tip that most people don't know but can implement today. Be specific about timing, dosage, or method.`,
+    practical_tip: `Share an actionable ${selectedTopic} tip that most people don't know but can implement today. Be specific about timing, dosage, or method.`,
     
-    myth_buster: `Debunk a common health myth related to ${primaryTopic}. Start with what people believe, then flip it with evidence. Make it memorable.`,
+    myth_buster: `Debunk a common health myth related to ${selectedTopic}. Start with what people believe, then flip it with evidence. Make it memorable.`,
     
-    data_point: `Share a shocking statistic or data point about ${primaryTopic} that challenges assumptions. Connect it to a practical takeaway.`,
+    data_point: `Share a shocking statistic or data point about ${selectedTopic} that challenges assumptions. Connect it to a practical takeaway.`,
     
-    story_based: `Tell a compelling mini-story or case study about ${primaryTopic}. Make it relatable and inspiring without being preachy.`,
+    story_based: `Tell a compelling mini-story or case study about ${selectedTopic}. Make it relatable and inspiring without being preachy.`,
     
-    question_hook: `Start with a provocative question about ${primaryTopic}, then answer it in a surprising way. Make people reconsider what they thought they knew.`,
+    question_hook: `Start with a provocative question about ${selectedTopic}, then answer it in a surprising way. Make people reconsider what they thought they knew.`,
     
-    comparison: `Compare two ${primaryTopic} approaches/methods showing why one is vastly superior. Use concrete numbers or examples.`,
+    comparison: `Compare two ${selectedTopic} approaches/methods showing why one is vastly superior. Use concrete numbers or examples.`,
     
-    contrarian: `Take a contrarian stance on ${primaryTopic}. Challenge conventional wisdom with evidence. Be bold but not reckless.`,
+    contrarian: `Take a contrarian stance on ${selectedTopic}. Challenge conventional wisdom with evidence. Be bold but not reckless.`,
     
-    personal_experience: `Share a relatable personal scenario about ${primaryTopic}. Use "Imagine you're..." or "Picture this..." to draw readers in.`,
+    personal_experience: `Share a relatable personal scenario about ${selectedTopic}. Use "Imagine you're..." or "Picture this..." to draw readers in.`,
     
-    shocking_stat: `Lead with a jaw-dropping statistic about ${primaryTopic} that most people don't know. Explain why it matters and what to do about it.`,
+    shocking_stat: `Lead with a jaw-dropping statistic about ${selectedTopic} that most people don't know. Explain why it matters and what to do about it.`,
     
-    timeline_based: `Show the progression of ${primaryTopic} over time - "In 30 days...", "After 6 months...", "Within a year...". Make it aspirational.`,
+    timeline_based: `Show the progression of ${selectedTopic} over time - "In 30 days...", "After 6 months...", "Within a year...". Make it aspirational.`,
     
-    before_after: `Paint a vivid before/after picture related to ${primaryTopic}. Show the transformation that's possible with specific changes.`,
+    before_after: `Paint a vivid before/after picture related to ${selectedTopic}. Show the transformation that's possible with specific changes.`,
     
-    expert_quote: `Reference what leading experts say about ${primaryTopic} that contradicts popular belief. Make it feel like insider knowledge.`,
+    expert_quote: `Reference what leading experts say about ${selectedTopic} that contradicts popular belief. Make it feel like insider knowledge.`,
     
-    trend_analysis: `Analyze a current trend in ${primaryTopic}. Explain why it's happening now and whether it's worth following.`,
+    trend_analysis: `Analyze a current trend in ${selectedTopic}. Explain why it's happening now and whether it's worth following.`,
     
-    common_mistake: `Expose a common mistake people make with ${primaryTopic}. Explain why it's wrong and what to do instead.`,
+    common_mistake: `Expose a common mistake people make with ${selectedTopic}. Explain why it's wrong and what to do instead.`,
     
-    life_hack: `Share a clever shortcut or optimization for ${primaryTopic} that saves time/effort while improving results.`,
+    life_hack: `Share a clever shortcut or optimization for ${selectedTopic} that saves time/effort while improving results.`,
     
-    scientific_breakdown: `Break down the science behind ${primaryTopic} in simple terms. Make complex concepts accessible and actionable.`,
+    scientific_breakdown: `Break down the science behind ${selectedTopic} in simple terms. Make complex concepts accessible and actionable.`,
     
-    real_world_example: `Use a concrete, real-world example to illustrate a point about ${primaryTopic}. Make it specific and relatable.`,
+    real_world_example: `Use a concrete, real-world example to illustrate a point about ${selectedTopic}. Make it specific and relatable.`,
     
-    challenge_assumption: `Challenge a widely-held assumption about ${primaryTopic}. Present evidence that flips conventional thinking.`,
+    challenge_assumption: `Challenge a widely-held assumption about ${selectedTopic}. Present evidence that flips conventional thinking.`,
     
-    future_prediction: `Make a bold prediction about the future of ${primaryTopic} based on current research trends. Be thought-provoking.`
+    future_prediction: `Make a bold prediction about the future of ${selectedTopic} based on current research trends. Be thought-provoking.`
   };
 
   return `${styleGuides[style] || styleGuides.practical_tip}
@@ -443,7 +447,7 @@ Format as JSON (randomly choose between single tweet or thread for variety):
 For single tweet:
 {
   "text": "Your 280-char tweet (varied style, NO 'Did you know' pattern)",
-  "topic": "${primaryTopic}",
+  "topic": "${selectedTopic}",
   "angle": "specific hook/perspective used",
   "format": "single"
 }
@@ -451,7 +455,7 @@ For single tweet:
 For thread (30% chance):
 {
   "text": ["Tweet 1 text (hook + preview)", "Tweet 2 text (main insight)", "Tweet 3 text (actionable tip)", "Tweet 4 text (conclusion + engagement)"],
-  "topic": "${primaryTopic}",
+  "topic": "${selectedTopic}",
   "angle": "specific hook/perspective used",
   "format": "thread"
 }`;
