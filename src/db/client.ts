@@ -3,7 +3,7 @@
  * All database connections use the same SSL configuration
  */
 
-import { Pool, Client, ClientConfig } from 'pg';
+import { Pool, Client, ClientConfig, PoolClient } from 'pg';
 import { makePgPool, closePgPool } from './pgClient';
 
 /**
@@ -23,6 +23,19 @@ pool.on('error', (err, client) => {
 pool.on('remove', (client) => {
   console.log('DB_POOL: Client removed from pool');
 });
+
+/**
+ * Execute a function with a fresh database client
+ * Used by migration scripts
+ */
+export async function withFreshClient<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  const client = await pool.connect();
+  try {
+    return await fn(client);
+  } finally {
+    client.release();
+  }
+}
 
 /**
  * Test database connectivity

@@ -26,7 +26,7 @@ CREATE INDEX IF NOT EXISTS idx_openai_usage_log_created_at ON public.openai_usag
 CREATE INDEX IF NOT EXISTS idx_openai_usage_log_model ON public.openai_usage_log (model);
 CREATE INDEX IF NOT EXISTS idx_openai_usage_log_intent ON public.openai_usage_log (intent);
 CREATE INDEX IF NOT EXISTS idx_openai_usage_log_cost_usd ON public.openai_usage_log (cost_usd);
-CREATE INDEX IF NOT EXISTS idx_openai_usage_log_daily ON public.openai_usage_log (date_trunc('day', created_at), cost_usd);
+-- Removed problematic date_trunc index - using simple created_at index instead
 
 -- 3) Create or replace the RPC function with jsonb parameter
 CREATE OR REPLACE FUNCTION public.log_openai_usage(payload jsonb)
