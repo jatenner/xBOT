@@ -108,18 +108,21 @@ async function generateContentWithLLM() {
   const dayOfWeek = currentDate.toLocaleDateString('en-US', { weekday: 'long' });
   const month = currentDate.toLocaleDateString('en-US', { month: 'long' });
   
-  // 3. Select varied writing style (not just "Did you know")
+  // 3. Select varied writing style with rotation to prevent repetition
   const styles = [
-    'research_insight',
-    'practical_tip',
-    'myth_buster',
-    'data_point',
-    'story_based',
-    'question_hook',
-    'comparison',
-    'contrarian'
+    'research_insight', 'practical_tip', 'myth_buster', 'data_point',
+    'story_based', 'question_hook', 'comparison', 'contrarian',
+    'personal_experience', 'shocking_stat', 'timeline_based', 'before_after',
+    'expert_quote', 'trend_analysis', 'common_mistake', 'life_hack',
+    'scientific_breakdown', 'real_world_example', 'challenge_assumption', 'future_prediction'
   ];
-  const selectedStyle = styles[Math.floor(Math.random() * styles.length)];
+  
+  // Rotate style based on minute to ensure variety within the hour
+  const minuteOfHour = new Date().getMinutes();
+  const styleIndex = minuteOfHour % styles.length;
+  const selectedStyle = styles[styleIndex];
+  
+  console.log(`[STYLE_ROTATION] Minute ${minuteOfHour} -> Style: ${selectedStyle}`);
   
   // 4. Build AI-driven prompt with performance context
   const prompt = buildDynamicPrompt(performanceData, selectedStyle, dayOfWeek, month);
@@ -155,18 +158,44 @@ async function generateContentWithLLM() {
     throw new Error('Invalid JSON from LLM');
   }
 
-  // Validate and clean the response
+  // Validate and clean the response - handle both single tweets and threads
   const tweetText = contentData.text || contentData.tweet || contentData.content;
   if (!tweetText) {
     console.error('[PLAN_JOB] ❌ LLM response missing text field:', contentData);
     throw new Error('Invalid content: missing text field');
   }
   
-  if (tweetText.length > 280) {
-    console.warn(`[PLAN_JOB] ⚠️ Tweet too long (${tweetText.length} chars), truncating...`);
-    contentData.text = tweetText.substring(0, 277) + '...';
+  const isThread = Array.isArray(tweetText);
+  const format = contentData.format || (isThread ? 'thread' : 'single');
+  
+  if (isThread) {
+    // Validate thread format
+    if (tweetText.length < 2 || tweetText.length > 8) {
+      console.warn(`[PLAN_JOB] ⚠️ Thread has ${tweetText.length} tweets, using first 4`);
+      contentData.text = tweetText.slice(0, 4);
+    } else {
+      contentData.text = tweetText;
+    }
+    
+    // Validate each tweet length
+    contentData.text = contentData.text.map((tweet: string, i: number) => {
+      if (tweet.length > 280) {
+        console.warn(`[PLAN_JOB] ⚠️ Thread tweet ${i+1} too long (${tweet.length} chars), truncating...`);
+        return tweet.substring(0, 277) + '...';
+      }
+      return tweet;
+    });
+    
+    console.log(`[PLAN_JOB] 🧵 Generated ${contentData.text.length}-tweet thread`);
   } else {
-    contentData.text = tweetText;
+    // Handle single tweet
+    if (tweetText.length > 280) {
+      console.warn(`[PLAN_JOB] ⚠️ Tweet too long (${tweetText.length} chars), truncating...`);
+      contentData.text = tweetText.substring(0, 277) + '...';
+    } else {
+      contentData.text = tweetText;
+    }
+    console.log(`[PLAN_JOB] 📝 Generated single tweet (${contentData.text.length} chars)`);
   }
 
   // Select timing with same-day preference
@@ -178,7 +207,8 @@ async function generateContentWithLLM() {
     topic: contentData.topic || 'health',
     angle: contentData.angle,
     style: selectedStyle,
-    quality_score: calculateQuality(contentData.text),
+    format: format,
+    quality_score: calculateQuality(Array.isArray(contentData.text) ? contentData.text.join(' ') : contentData.text),
     predicted_er: 0.03,
     timing_slot: scheduledAt.getHours(),
     scheduled_at: scheduledAt.toISOString()
@@ -188,12 +218,18 @@ async function generateContentWithLLM() {
 async function queueContent(content: any): Promise<void> {
   const supabase = getSupabaseClient();
   
+  // Handle content storage for both single tweets and threads
+  const contentText = Array.isArray(content.text) 
+    ? content.text.join('\n\n--- THREAD BREAK ---\n\n') // Store threads with separators
+    : content.text;
+  
   const { data, error } = await supabase.from('content_metadata').insert([{
     id: content.decision_id,
     content_id: content.decision_id,
-    content: content.text,
+    content: contentText,
     generation_source: 'real',
     status: 'queued',
+    decision_type: content.format || 'single', // Store format type
     scheduled_at: content.scheduled_at,
     quality_score: Math.round(content.quality_score * 100),
     predicted_er: content.predicted_er,
@@ -295,8 +331,27 @@ async function analyzeTopicPerformance() {
   console.log(`[PERFORMANCE_ANALYSIS] Analyzed ${recentOutcomes?.length || 0} recent outcomes`);
   console.log(`[PERFORMANCE_ANALYSIS] Top performers: ${topTopics.join(', ')}`);
 
+  // If no performance data, rotate through diverse topics
+  let defaultTopics = ['exercise', 'nutrition', 'mental_health'];
+  if (topTopics.length === 0) {
+    // Rotate topics based on hour to ensure diversity
+    const allHealthTopics = [
+      'exercise', 'nutrition', 'mental_health', 'sleep', 'hydration', 
+      'stress_management', 'supplements', 'heart_health', 'brain_health',
+      'immune_system', 'gut_health', 'metabolism', 'longevity', 'recovery'
+    ];
+    const hourOfDay = new Date().getHours();
+    const topicIndex = hourOfDay % allHealthTopics.length;
+    defaultTopics = [
+      allHealthTopics[topicIndex],
+      allHealthTopics[(topicIndex + 1) % allHealthTopics.length],
+      allHealthTopics[(topicIndex + 2) % allHealthTopics.length]
+    ];
+    console.log(`[TOPIC_ROTATION] Hour ${hourOfDay} -> Topics: ${defaultTopics.join(', ')}`);
+  }
+
   return {
-    topTopics: topTopics.length > 0 ? topTopics : ['exercise', 'nutrition', 'mental_health'],
+    topTopics: topTopics.length > 0 ? topTopics : defaultTopics,
     lowTopics,
     avgEngagement: sortedTopics[0]?.avgEngagement || 0.03,
     sampleSize: recentOutcomes?.length || 0
@@ -333,22 +388,48 @@ GROWTH FOCUS:
 }
 
 function buildDynamicPrompt(performanceData: any, style: string, dayOfWeek: string, month: string): string {
+  const primaryTopic = performanceData.topTopics[0] || 'health';
+  
   const styleGuides: Record<string, string> = {
-    research_insight: `Find a recent or surprising research finding about ${performanceData.topTopics[0] || 'health'}. Make it feel cutting-edge and non-obvious. Focus on WHY it matters practically.`,
+    research_insight: `Find a recent or surprising research finding about ${primaryTopic}. Make it feel cutting-edge and non-obvious. Focus on WHY it matters practically.`,
     
-    practical_tip: `Share an actionable ${performanceData.topTopics[0] || 'health'} tip that most people don't know but can implement today. Be specific about timing, dosage, or method.`,
+    practical_tip: `Share an actionable ${primaryTopic} tip that most people don't know but can implement today. Be specific about timing, dosage, or method.`,
     
-    myth_buster: `Debunk a common health myth related to ${performanceData.topTopics[0] || 'nutrition'}. Start with what people believe, then flip it with evidence. Make it memorable.`,
+    myth_buster: `Debunk a common health myth related to ${primaryTopic}. Start with what people believe, then flip it with evidence. Make it memorable.`,
     
-    data_point: `Share a shocking statistic or data point about ${performanceData.topTopics[0] || 'wellness'} that challenges assumptions. Connect it to a practical takeaway.`,
+    data_point: `Share a shocking statistic or data point about ${primaryTopic} that challenges assumptions. Connect it to a practical takeaway.`,
     
-    story_based: `Tell a compelling mini-story or case study about ${performanceData.topTopics[0] || 'health transformation'}. Make it relatable and inspiring without being preachy.`,
+    story_based: `Tell a compelling mini-story or case study about ${primaryTopic}. Make it relatable and inspiring without being preachy.`,
     
-    question_hook: `Start with a provocative question about ${performanceData.topTopics[0] || 'health'}, then answer it in a surprising way. Make people reconsider what they thought they knew.`,
+    question_hook: `Start with a provocative question about ${primaryTopic}, then answer it in a surprising way. Make people reconsider what they thought they knew.`,
     
-    comparison: `Compare two ${performanceData.topTopics[0] || 'health'} approaches/foods/habits showing why one is vastly superior. Use concrete numbers or examples.`,
+    comparison: `Compare two ${primaryTopic} approaches/methods showing why one is vastly superior. Use concrete numbers or examples.`,
     
-    contrarian: `Take a contrarian stance on ${performanceData.topTopics[0] || 'wellness'}. Challenge conventional wisdom with evidence. Be bold but not reckless.`
+    contrarian: `Take a contrarian stance on ${primaryTopic}. Challenge conventional wisdom with evidence. Be bold but not reckless.`,
+    
+    personal_experience: `Share a relatable personal scenario about ${primaryTopic}. Use "Imagine you're..." or "Picture this..." to draw readers in.`,
+    
+    shocking_stat: `Lead with a jaw-dropping statistic about ${primaryTopic} that most people don't know. Explain why it matters and what to do about it.`,
+    
+    timeline_based: `Show the progression of ${primaryTopic} over time - "In 30 days...", "After 6 months...", "Within a year...". Make it aspirational.`,
+    
+    before_after: `Paint a vivid before/after picture related to ${primaryTopic}. Show the transformation that's possible with specific changes.`,
+    
+    expert_quote: `Reference what leading experts say about ${primaryTopic} that contradicts popular belief. Make it feel like insider knowledge.`,
+    
+    trend_analysis: `Analyze a current trend in ${primaryTopic}. Explain why it's happening now and whether it's worth following.`,
+    
+    common_mistake: `Expose a common mistake people make with ${primaryTopic}. Explain why it's wrong and what to do instead.`,
+    
+    life_hack: `Share a clever shortcut or optimization for ${primaryTopic} that saves time/effort while improving results.`,
+    
+    scientific_breakdown: `Break down the science behind ${primaryTopic} in simple terms. Make complex concepts accessible and actionable.`,
+    
+    real_world_example: `Use a concrete, real-world example to illustrate a point about ${primaryTopic}. Make it specific and relatable.`,
+    
+    challenge_assumption: `Challenge a widely-held assumption about ${primaryTopic}. Present evidence that flips conventional thinking.`,
+    
+    future_prediction: `Make a bold prediction about the future of ${primaryTopic} based on current research trends. Be thought-provoking.`
   };
 
   return `${styleGuides[style] || styleGuides.practical_tip}
@@ -357,11 +438,22 @@ Context: It's ${dayOfWeek}, ${month} 2024. Consider seasonality if relevant.
 
 ${performanceData.sampleSize > 10 ? `Data shows our audience engages most with ${performanceData.topTopics[0]} content, so prioritize that.` : ''}
 
-Format as JSON:
+Format as JSON (randomly choose between single tweet or thread for variety):
+
+For single tweet:
 {
   "text": "Your 280-char tweet (varied style, NO 'Did you know' pattern)",
-  "topic": "${performanceData.topTopics[0] || 'health'}",
-  "angle": "specific hook/perspective used"
+  "topic": "${primaryTopic}",
+  "angle": "specific hook/perspective used",
+  "format": "single"
+}
+
+For thread (30% chance):
+{
+  "text": ["Tweet 1 text (hook + preview)", "Tweet 2 text (main insight)", "Tweet 3 text (actionable tip)", "Tweet 4 text (conclusion + engagement)"],
+  "topic": "${primaryTopic}",
+  "angle": "specific hook/perspective used",
+  "format": "thread"
 }`;
 }
 
