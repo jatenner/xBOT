@@ -84,6 +84,47 @@ app.get('/admin/jobs/schedule', requireAdminAuth, jobScheduleHandler);
 app.use('/admin', adminRouter);
 
 /**
+ * 📤 POST /post - Direct posting endpoint for remote browser
+ */
+app.post('/post', async (req, res) => {
+  try {
+    const { text } = req.body;
+    
+    if (!text || typeof text !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing or invalid text parameter'
+      });
+    }
+    
+    console.log(`[POST_ENDPOINT] 📝 Posting: "${text.substring(0, 50)}..."`);
+    
+    const { postNow } = await import('./posting/postNow');
+    const result = await postNow({ text });
+    
+    if (result.success) {
+      console.log(`[POST_ENDPOINT] ✅ Posted successfully: ${result.id}`);
+      res.json({
+        success: true,
+        tweetId: result.id
+      });
+    } else {
+      console.error(`[POST_ENDPOINT] ❌ Failed: ${result.error}`);
+      res.status(500).json({
+        success: false,
+        error: result.error || 'Posting failed'
+      });
+    }
+  } catch (error: any) {
+    console.error(`[POST_ENDPOINT] ❌ Exception:`, error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
  * Health and readiness check (use dedicated status route)
  */
 app.use('/status', async (req, res, next) => {
