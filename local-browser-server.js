@@ -1,260 +1,315 @@
-#!/usr/bin/env node
-/**
- * 🏠 LOCAL BROWSER SERVER
- * Runs Playwright browser on your Mac, controlled by Railway
- * 
- * Railway sends posting requests → Your Mac executes them → Returns result
- */
-
 const express = require('express');
 const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
 
 const app = express();
-app.use(express.json({ limit: '10mb' }));
+const PORT = process.env.PORT || 3100;
+const SESSION_PATH = process.env.XBOT_SESSION_PATH || path.join(process.cwd(), 'data', 'twitter_session.json');
+const BROWSER_SERVER_SECRET = process.env.BROWSER_SERVER_SECRET;
 
-// Security: Only accept requests from Railway
-const RAILWAY_SECRET = process.env.BROWSER_SERVER_SECRET || 'change-me-in-production';
-const PORT = process.env.BROWSER_SERVER_PORT || 3100;
-const SESSION_PATH = path.join(__dirname, 'data', 'twitter_session.json');
+app.use(express.json());
 
-// Middleware: Verify requests from Railway
-function verifyRailway(req, res, next) {
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  if (token !== RAILWAY_SECRET) {
+console.log(`🚀 Starting local browser server on port ${PORT}...`);
+console.log(`📁 Session path: ${SESSION_PATH}`);
+console.log(`🔐 Secret configured: ${!!BROWSER_SERVER_SECRET}`);
+
+// Middleware to authenticate requests
+function authenticate(req, res, next) {
+  const secret = req.headers['x-browser-secret'];
+  if (!BROWSER_SERVER_SECRET || secret !== BROWSER_SERVER_SECRET) {
+    console.log(`❌ Auth failed. Expected: ${BROWSER_SERVER_SECRET?.substring(0, 8)}..., Got: ${secret?.substring(0, 8)}...`);
     return res.status(401).json({ success: false, error: 'Unauthorized' });
   }
   next();
 }
 
-// Apply stealth techniques
-async function applyStealth(context) {
-  await context.addInitScript(() => {
-    Object.defineProperty(navigator, 'webdriver', { get: () => false });
-    Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
-    Object.defineProperty(navigator, 'plugins', {
-      get: () => [
-        { description: 'Portable Document Format', filename: 'internal-pdf-viewer', length: 1, name: 'PDF Viewer' }
-      ],
-    });
-    window.chrome = { runtime: {}, loadTimes: function() {}, csi: function() {}, app: {} };
-  });
-}
-
-// Load session cookies
-function loadSession() {
+// Helper to load session state
+async function loadSessionState() {
   try {
-    const raw = fs.readFileSync(SESSION_PATH, 'utf8');
-    return JSON.parse(raw);
+    const data = await fs.promises.readFile(SESSION_PATH, 'utf8');
+    const session = JSON.parse(data);
+    console.log(`📋 Loaded ${session.cookies?.length || 0} cookies from session`);
+    return session;
   } catch (error) {
-    console.error('❌ Failed to load session:', error.message);
+    console.error('❌ Error loading session state:', error.message);
     return null;
   }
 }
 
-/**
- * POST /post - Post a tweet
- * Body: { text: string }
- */
-app.post('/post', verifyRailway, async (req, res) => {
-  const { text } = req.body;
-  
-  if (!text) {
-    return res.status(400).json({ success: false, error: 'Missing text' });
-  }
-  
-  console.log(`\n🚀 [${new Date().toISOString()}] Posting tweet (${text.length} chars)...`);
-  
-  let context;
+// Helper to save session state
+async function saveSessionState(state) {
   try {
-    // Launch browser with stealth
-    console.log('🌐 Launching browser...');
-    context = await chromium.launchPersistentContext('/tmp/xbot-local-profile', {
-      headless: false, // VISIBLE for debugging
-      args: [
-        '--disable-blink-features=AutomationControlled',
-        '--disable-web-security',
+    await fs.promises.writeFile(SESSION_PATH, JSON.stringify(state, null, 2), 'utf8');
+    console.log('✅ Session state saved.');
+  } catch (error) {
+    console.error('❌ Error saving session state:', error.message);
+  }
+}
+
+// Helper to launch browser context with session
+async function launchBrowserWithSession() {
+  const browser = await chromium.launch({ 
+    headless: true, // HEADLESS - no visible windows
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox', 
+      '--disable-dev-shm-usage',
+      '--no-zygote',
+      '--disable-gpu',
+      '--disable-features=TranslateUI',
+      '--ignore-certificate-errors',
+      '--window-size=1920,1080',
+      '--hide-scrollbars',
+      '--mute-audio',
+      '--disable-software-rasterizer',
+      // STEALTH MODE: Additional args to avoid detection
+      '--disable-blink-features=AutomationControlled',
+      '--disable-features=IsolateOrigins,site-per-process',
+      '--disable-web-security'
+    ]
+  });
+  const context = await browser.newContext({
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.118 Safari/537.36',
+    viewport: { width: 1920, height: 1080 },
+    locale: 'en-US',
+    timezoneId: 'America/New_York',
+    ignoreHTTPSErrors: true,
+    permissions: ['geolocation', 'notifications'],
+    geolocation: { longitude: -74.006, latitude: 40.7128 }, // New York
+    colorScheme: 'light'
+  });
+
+  // Apply stealth techniques
+  await context.addInitScript(() => {
+    // Pass the Webdriver Test
+    Object.defineProperty(navigator, 'webdriver', {
+      get: () => false,
+    });
+
+    // Pass the Chrome Test
+    window.chrome = {
+      runtime: {},
+    };
+
+    // Pass the Permissions Test
+    const originalQuery = window.navigator.permissions.query;
+    window.navigator.permissions.query = (parameters) =>
+      parameters.name === 'notifications'
+        ? Promise.resolve({ state: Notification.permission })
+        : originalQuery(parameters);
+
+    // Pass the Plugins Test
+    Object.defineProperty(navigator, 'plugins', {
+      get: () => [
+        {
+          description: 'Portable Document Format',
+          filename: 'internal-pdf-viewer',
+          length: 1,
+          name: 'Chrome PDF Plugin',
+        },
+        {
+          description: 'Portable Document Format', 
+          filename: 'mhjfbmdgcfjbbpaeojvcddffxjkjabeb',
+          length: 1,
+          name: 'Chrome PDF Viewer',
+        },
       ],
-      viewport: { width: 1920, height: 1080 },
     });
-    
-    await applyStealth(context);
-    
-    // Load session cookies
-    const session = loadSession();
-    if (session?.cookies) {
-      await context.addCookies(session.cookies);
-      console.log(`🍪 Loaded ${session.cookies.length} cookies`);
-    }
-    
-    const page = await context.newPage();
-    await page.goto('https://twitter.com/home', { waitUntil: 'domcontentloaded', timeout: 30000 });
-    
-    // Check if logged in
-    const composeButton = page.locator('[data-testid="SideNav_NewTweet_Button"]');
-    const isLoggedIn = await composeButton.isVisible({ timeout: 5000 });
-    
-    if (!isLoggedIn) {
-      console.error('❌ Not logged in to Twitter');
-      await context.close();
-      return res.json({ success: false, error: 'Not logged in' });
-    }
-    
-    console.log('✅ Logged in, composing tweet...');
-    
-    // Compose tweet
-    await composeButton.click();
-    await page.waitForTimeout(1000);
-    
-    const textarea = page.locator('[data-testid="tweetTextarea_0"]');
-    await textarea.fill(text);
-    await page.waitForTimeout(1500);
-    
-    // Post tweet
-    const postButton = page.locator('[data-testid="tweetButtonInline"]');
-    await postButton.click();
-    await page.waitForTimeout(5000); // Wait for post to complete
-    
-    // Extract tweet ID from URL
-    const currentUrl = page.url();
-    const tweetIdMatch = currentUrl.match(/\/status\/(\d+)/);
-    const tweetId = tweetIdMatch ? tweetIdMatch[1] : `posted_${Date.now()}`;
-    
-    await context.close();
-    
-    console.log(`✅ Posted successfully! ID: ${tweetId}\n`);
-    
-    res.json({
-      success: true,
-      tweetId,
-      postedAt: new Date().toISOString()
-    });
-    
-  } catch (error) {
-    console.error('❌ Error:', error.message);
-    if (context) await context.close().catch(() => {});
-    
-    res.json({
-      success: false,
-      error: error.message
-    });
-  }
-});
 
-/**
- * POST /thread - Post a thread
- * Body: { tweets: string[] }
- */
-app.post('/thread', verifyRailway, async (req, res) => {
-  const { tweets } = req.body;
+    // Pass the Languages Test
+    Object.defineProperty(navigator, 'languages', {
+      get: () => ['en-US', 'en'],
+    });
+  });
   
-  if (!tweets || !Array.isArray(tweets) || tweets.length === 0) {
-    return res.status(400).json({ success: false, error: 'Missing tweets array' });
+  const sessionState = await loadSessionState();
+  if (sessionState?.cookies) {
+    await context.addCookies(sessionState.cookies);
+    console.log(`🍪 Applied ${sessionState.cookies.length} cookies to browser`);
   }
   
-  console.log(`\n🧵 [${new Date().toISOString()}] Posting thread (${tweets.length} tweets)...`);
-  
-  let context;
-  const postedIds = [];
-  
+  return { browser, context };
+}
+
+// Helper to check if logged in
+async function isLoggedIn(page) {
   try {
-    context = await chromium.launchPersistentContext('/tmp/xbot-local-profile', {
-      headless: false,
-      args: ['--disable-blink-features=AutomationControlled', '--disable-web-security'],
-      viewport: { width: 1920, height: 1080 },
-    });
+    // Look for compose button or user menu
+    const composeButton = await page.$('[data-testid="SideNav_NewTweet_Button"]');
+    const userMenu = await page.$('[data-testid="AppTabBar_Profile_Link"]');
+    const loginButton = await page.$('a[href*="login"]');
     
-    await applyStealth(context);
-    
-    const session = loadSession();
-    if (session?.cookies) {
-      await context.addCookies(session.cookies);
-    }
-    
-    const page = await context.newPage();
-    await page.goto('https://twitter.com/home', { waitUntil: 'domcontentloaded', timeout: 30000 });
-    
-    const composeButton = page.locator('[data-testid="SideNav_NewTweet_Button"]');
-    const isLoggedIn = await composeButton.isVisible({ timeout: 5000 });
-    
-    if (!isLoggedIn) {
-      await context.close();
-      return res.json({ success: false, error: 'Not logged in' });
-    }
-    
-    // Post first tweet
-    await composeButton.click();
-    await page.waitForTimeout(1000);
-    await page.locator('[data-testid="tweetTextarea_0"]').fill(tweets[0]);
-    await page.waitForTimeout(1500);
-    await page.locator('[data-testid="tweetButtonInline"]').click();
-    await page.waitForTimeout(5000);
-    
-    const firstUrl = page.url();
-    const firstIdMatch = firstUrl.match(/\/status\/(\d+)/);
-    postedIds.push(firstIdMatch ? firstIdMatch[1] : `thread_0_${Date.now()}`);
-    console.log(`✅ Posted tweet 1/${tweets.length}`);
-    
-    // Post subsequent tweets as replies
-    for (let i = 1; i < tweets.length; i++) {
-      await page.waitForTimeout(2000);
-      await page.locator('[data-testid="reply"]').first().click();
-      await page.waitForTimeout(1000);
-      await page.locator('[data-testid="tweetTextarea_0"]').fill(tweets[i]);
-      await page.waitForTimeout(1500);
-      await page.locator('[data-testid="tweetButtonInline"]').click();
-      await page.waitForTimeout(5000);
-      
-      postedIds.push(`thread_${i}_${Date.now()}`);
-      console.log(`✅ Posted tweet ${i + 1}/${tweets.length}`);
-    }
-    
-    await context.close();
-    console.log(`✅ Thread posted successfully!\n`);
-    
-    res.json({
-      success: true,
-      tweetIds: postedIds,
-      postedAt: new Date().toISOString()
-    });
-    
+    const loggedIn = (composeButton || userMenu) && !loginButton;
+    console.log(`🔍 Login check: compose=${!!composeButton}, user=${!!userMenu}, login=${!!loginButton} → ${loggedIn}`);
+    return loggedIn;
   } catch (error) {
-    console.error('❌ Error:', error.message);
-    if (context) await context.close().catch(() => {});
-    
-    res.json({
-      success: false,
-      error: error.message,
-      partialIds: postedIds
-    });
+    console.error('❌ Login check failed:', error.message);
+    return false;
   }
-});
+}
 
-/**
- * GET /health - Health check
- */
-app.get('/health', (req, res) => {
+// Health check endpoint
+app.get('/health', async (req, res) => {
+  const sessionExists = fs.existsSync(SESSION_PATH);
   res.json({
     status: 'ok',
     browserServer: 'running',
-    sessionExists: fs.existsSync(SESSION_PATH),
+    sessionExists,
     timestamp: new Date().toISOString()
   });
 });
 
-// Start server
-app.listen(PORT, '0.0.0.0', () => {
-  console.log('╔════════════════════════════════════════════════════╗');
-  console.log('║     🏠 LOCAL BROWSER SERVER RUNNING               ║');
-  console.log('╚════════════════════════════════════════════════════╝');
-  console.log(`\n✅ Server listening on: http://0.0.0.0:${PORT}`);
-  console.log(`🔐 Secret: ${RAILWAY_SECRET.substring(0, 10)}...`);
-  console.log(`🍪 Session file: ${SESSION_PATH}`);
-  console.log(`\n📝 Endpoints:`);
-  console.log(`   POST /post    - Post a single tweet`);
-  console.log(`   POST /thread  - Post a thread`);
-  console.log(`   GET  /health  - Health check`);
-  console.log(`\n⏳ Waiting for requests from Railway...\n`);
+// Post tweet endpoint
+app.post('/post', authenticate, async (req, res) => {
+  const { text } = req.body;
+  
+  if (!text || typeof text !== 'string') {
+    return res.status(400).json({ success: false, error: 'Missing or invalid text' });
+  }
+  
+  console.log(`📝 Posting tweet: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
+  
+  let browser, context, page;
+  
+  try {
+    // Launch browser with session
+    ({ browser, context } = await launchBrowserWithSession());
+    page = await context.newPage();
+    
+    // Navigate to X (Twitter)
+    console.log('🌐 Navigating to X...');
+    await page.goto('https://x.com/home', { waitUntil: 'networkidle', timeout: 45000 });
+    await page.waitForTimeout(5000); // Give more time for page to fully load
+    
+    // Take screenshot for debugging
+    await page.screenshot({ path: `/tmp/twitter-page-${Date.now()}.png`, fullPage: true });
+    console.log('📸 Screenshot saved for debugging');
+    
+    // Check if logged in with more detailed logging
+    console.log('🔍 Checking login status...');
+    const composeButton = await page.$('[data-testid="SideNav_NewTweet_Button"]');
+    const userMenu = await page.$('[data-testid="AppTabBar_Profile_Link"]');  
+    const loginButton = await page.$('a[href*="login"]');
+    const signInText = await page.$('text=Sign in');
+    
+    console.log(`🔍 Elements found: compose=${!!composeButton}, user=${!!userMenu}, login=${!!loginButton}, signIn=${!!signInText}`);
+    
+    const loggedIn = (composeButton || userMenu) && !loginButton && !signInText;
+    
+    if (!loggedIn) {
+      // Get page title and URL for debugging
+      const title = await page.title();
+      const url = page.url();
+      console.log(`❌ Not logged in to X. Title: "${title}", URL: ${url}`);
+      
+      // Check if we're on login page - if so, cookies are invalid
+      if (title.includes('Log in to X') || url.includes('/login') || url.includes('/i/flow/login')) {
+        throw new Error(`Session expired - redirected to login page. Please refresh your session cookies.`);
+      }
+      
+      throw new Error(`Not logged in to X. Page title: "${title}"`);
+    }
+    
+    console.log('✅ Logged in successfully');
+    
+    // Click compose button
+    console.log('🖱️ Clicking compose button...');
+    await page.click('[data-testid="SideNav_NewTweet_Button"]');
+    await page.waitForTimeout(2000);
+    
+    // Fill tweet text
+    console.log('✍️ Filling tweet text...');
+    const textArea = await page.waitForSelector('[data-testid="tweetTextarea_0"]', { timeout: 10000 });
+    await textArea.fill(text);
+    await page.waitForTimeout(1000);
+    
+    // Click post button
+    console.log('📤 Clicking post button...');
+    await page.click('[data-testid="tweetButtonInline"]');
+    
+    // Wait for success indicators
+    console.log('⏳ Waiting for post confirmation...');
+    await page.waitForTimeout(5000);
+    
+    // Try to detect success (URL change or success message)
+    const currentUrl = page.url();
+    const tweetIdMatch = currentUrl.match(/\/status\/(\d+)/);
+    const tweetId = tweetIdMatch ? tweetIdMatch[1] : `posted_${Date.now()}`;
+    
+    console.log(`✅ Tweet posted successfully! ID: ${tweetId}`);
+    
+    // Save updated session
+    const storageState = await context.storageState();
+    await saveSessionState(storageState);
+    
+    res.json({ 
+      success: true, 
+      tweetId,
+      url: tweetIdMatch ? `https://x.com/i/status/${tweetId}` : null
+    });
+    
+  } catch (error) {
+    console.error('❌ Posting failed:', error.message);
+    
+    // Take screenshot for debugging
+    if (page) {
+      try {
+        await page.screenshot({ path: `/tmp/post-error-${Date.now()}.png`, fullPage: true });
+        console.log('📸 Error screenshot saved to /tmp/');
+      } catch (screenshotError) {
+        console.error('Failed to save screenshot:', screenshotError.message);
+      }
+    }
+    
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  } finally {
+    // Clean up
+    if (browser) {
+      await browser.close();
+    }
+  }
 });
 
+// Thread posting endpoint
+app.post('/thread', authenticate, async (req, res) => {
+  const { tweets } = req.body;
+  
+  if (!Array.isArray(tweets) || tweets.length === 0) {
+    return res.status(400).json({ success: false, error: 'Missing or invalid tweets array' });
+  }
+  
+  console.log(`📝 Posting thread with ${tweets.length} tweets`);
+  
+  // For now, just post the first tweet
+  // Full thread implementation would require more complex logic
+  try {
+    const result = await postSingleTweet(tweets[0]);
+    res.json({ 
+      success: true, 
+      tweetIds: [result.tweetId],
+      message: `Posted first tweet of thread. Full thread posting not yet implemented.`
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`🎯 Local browser server running on http://localhost:${PORT}`);
+  console.log(`🔐 Authentication: ${BROWSER_SERVER_SECRET ? 'Enabled' : 'DISABLED - Set BROWSER_SERVER_SECRET!'}`);
+  console.log(`📁 Session file: ${SESSION_PATH}`);
+  console.log('');
+  console.log('Available endpoints:');
+  console.log('  GET  /health - Health check');
+  console.log('  POST /post   - Post a tweet');
+  console.log('  POST /thread - Post a thread');
+  console.log('');
+  console.log('Ready for requests! 🚀');
+});

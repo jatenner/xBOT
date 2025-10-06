@@ -34,29 +34,21 @@ export async function withBrowser<T>(fn: (page: Page) => Promise<T>): Promise<T>
       const page = await ctx.newPage();
       page.setDefaultTimeout(45_000);
       
-      // Try twitter.com first (works with legacy cookies)
-      const targetDomain = process.env.X_TARGET_DOMAIN || 'twitter.com';
-      console.log(`[PW] Navigating to ${targetDomain}/home...`);
+      // Navigate directly to x.com (Twitter's new domain)
+      console.log(`[PW] Navigating to x.com/home...`);
       
-      await page.goto(`https://${targetDomain}/home`, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+      await page.goto('https://x.com/home', { waitUntil: 'domcontentloaded', timeout: 45_000 });
       console.log('[PW] ✅ Page loaded');
 
       // Check if logged in
-      let loggedIn = await isLoggedIn(page);
-      
-      if (!loggedIn && targetDomain === 'twitter.com') {
-        // Fallback to x.com
-        console.log('[PW] Not logged in on twitter.com, trying x.com...');
-        await page.goto('https://x.com/home', { waitUntil: 'domcontentloaded', timeout: 45_000 });
-        loggedIn = await isLoggedIn(page);
-      }
+      const loggedIn = await isLoggedIn(page);
       
       // If still not logged in, skip auto-login (Railway IPs are blocked by Twitter)
       if (!loggedIn) {
-        console.log('[PW] ❌ Not logged in to Twitter - cookies not accepted');
+        console.log('[PW] ❌ Not logged in to X - cookies not accepted');
         console.log('[PW] ℹ️ Auto-login disabled due to Railway IP blocks');
         console.log('[PW] 💡 Recommendation: Run bot locally or use residential proxy');
-        throw new Error('Not logged in to Twitter - cookies rejected by Twitter anti-bot');
+        throw new Error('Not logged in to X - cookies rejected by X anti-bot systems');
       }
 
       console.log('[PW] ✅ Logged in and ready');
