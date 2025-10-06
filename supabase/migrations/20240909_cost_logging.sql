@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS public.openai_usage_log (
 -- 2) Performance indexes
 CREATE INDEX IF NOT EXISTS idx_openai_usage_log_created_at ON public.openai_usage_log (created_at);
 CREATE INDEX IF NOT EXISTS idx_openai_usage_log_model ON public.openai_usage_log (model);
-CREATE INDEX IF NOT EXISTS idx_openai_usage_log_date_cost ON public.openai_usage_log (created_at::date, cost_usd);
+CREATE INDEX IF NOT EXISTS idx_openai_usage_log_cost ON public.openai_usage_log (cost_usd);
 
 -- 3) Secure RPC for logging (matches expected signature from logs)
 CREATE OR REPLACE FUNCTION public.log_openai_usage(
