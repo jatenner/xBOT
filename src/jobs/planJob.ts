@@ -331,27 +331,47 @@ async function analyzeTopicPerformance() {
   console.log(`[PERFORMANCE_ANALYSIS] Analyzed ${recentOutcomes?.length || 0} recent outcomes`);
   console.log(`[PERFORMANCE_ANALYSIS] Top performers: ${topTopics.join(', ')}`);
 
-  // If no performance data, rotate through diverse topics
-  let defaultTopics = ['exercise', 'nutrition', 'mental_health'];
-  if (topTopics.length === 0) {
-    // Rotate topics based on hour to ensure diversity
-    const allHealthTopics = [
-      'exercise', 'nutrition', 'mental_health', 'sleep', 'hydration', 
-      'stress_management', 'supplements', 'heart_health', 'brain_health',
-      'immune_system', 'gut_health', 'metabolism', 'longevity', 'recovery'
+  // AI-driven topic selection based on performance data
+  let intelligentTopics;
+  
+  if (topTopics.length > 0) {
+    // We have performance data - use AI-driven selection
+    console.log(`[AI_TOPIC_SELECTION] Using performance data: ${topTopics.join(', ')}`);
+    
+    // Weight topics by performance but add exploration
+    const explorationRate = 0.2; // 20% chance to explore new topics
+    
+    if (Math.random() < explorationRate) {
+      // Exploration: try topics that haven't been tested much
+      const allHealthTopics = [
+        'exercise', 'nutrition', 'mental_health', 'sleep', 'hydration', 
+        'stress_management', 'supplements', 'heart_health', 'brain_health',
+        'immune_system', 'gut_health', 'metabolism', 'longevity', 'recovery',
+        'weight_loss', 'muscle_building', 'flexibility', 'energy_optimization',
+        'hormone_health', 'skin_health', 'eye_health', 'bone_health'
+      ];
+      
+      // Find topics not in recent performance data
+      const unexploredTopics = allHealthTopics.filter(topic => !topTopics.includes(topic));
+      const randomUnexplored = unexploredTopics[Math.floor(Math.random() * unexploredTopics.length)];
+      
+      intelligentTopics = [randomUnexplored, ...topTopics.slice(0, 2)];
+      console.log(`[AI_EXPLORATION] Exploring new topic: ${randomUnexplored}`);
+    } else {
+      // Exploitation: focus on proven performers with some variety
+      intelligentTopics = [...topTopics];
+      console.log(`[AI_EXPLOITATION] Using proven performers: ${intelligentTopics.join(', ')}`);
+    }
+  } else {
+    // No performance data yet - start with diverse foundation topics
+    intelligentTopics = [
+      'nutrition', 'exercise', 'mental_health', 'sleep', 'stress_management'
     ];
-    const hourOfDay = new Date().getHours();
-    const topicIndex = hourOfDay % allHealthTopics.length;
-    defaultTopics = [
-      allHealthTopics[topicIndex],
-      allHealthTopics[(topicIndex + 1) % allHealthTopics.length],
-      allHealthTopics[(topicIndex + 2) % allHealthTopics.length]
-    ];
-    console.log(`[TOPIC_ROTATION] Hour ${hourOfDay} -> Topics: ${defaultTopics.join(', ')}`);
+    console.log(`[AI_BOOTSTRAP] Starting with foundation topics: ${intelligentTopics.join(', ')}`);
   }
 
   return {
-    topTopics: topTopics.length > 0 ? topTopics : defaultTopics,
+    topTopics: intelligentTopics,
     lowTopics,
     avgEngagement: sortedTopics[0]?.avgEngagement || 0.03,
     sampleSize: recentOutcomes?.length || 0
@@ -359,40 +379,85 @@ async function analyzeTopicPerformance() {
 }
 
 function buildSystemPrompt(performanceData: any): string {
-  return `You are an AI health content strategist with deep expertise in evidence-based medicine, behavioral psychology, and viral social media growth.
+  const hasData = performanceData.sampleSize > 0;
+  const isHighPerformance = performanceData.avgEngagement > 0.05;
+  
+  return `You are an AI-driven health content strategist with unlimited creative freedom. Your decisions are guided by data, not restrictions.
 
-PERFORMANCE DATA (Learn from this):
-- Your best-performing topics: ${performanceData.topTopics.join(', ')}
-- Topics to deprioritize: ${performanceData.lowTopics.length > 0 ? performanceData.lowTopics.join(', ') : 'none yet'}
-- Current avg engagement: ${performanceData.avgEngagement.toFixed(2)}
-- Sample size: ${performanceData.sampleSize} posts
+${hasData ? `🧠 AI PERFORMANCE INTELLIGENCE:
+- TOP PERFORMERS (double down on these): ${performanceData.topTopics.join(', ')}
+- UNDERPERFORMERS (avoid unless exploring): ${performanceData.lowTopics.length > 0 ? performanceData.lowTopics.join(', ') : 'none identified'}
+- Current engagement rate: ${performanceData.avgEngagement.toFixed(3)} (${isHighPerformance ? 'EXCELLENT' : 'ROOM FOR IMPROVEMENT'})
+- Data confidence: ${performanceData.sampleSize} posts analyzed
 
-YOUR MISSION:
-Create content that drives follower growth by being:
-1. Genuinely valuable (people should save/share it)
-2. Counterintuitive or surprising (breaks common assumptions)
-3. Actionable (clear next steps)
-4. Evidence-based (cites research when relevant)
+🎯 AI STRATEGY DIRECTIVE:
+${isHighPerformance ? 
+  '- You are WINNING! Lean heavily into your top-performing topics while exploring adjacent areas' : 
+  '- GROWTH MODE: Experiment aggressively with new angles, topics, and formats to find what resonates'}` : 
+`🚀 AI BOOTSTRAP MODE:
+- No performance data yet - you have COMPLETE CREATIVE FREEDOM
+- Test diverse topics to build your intelligence database
+- Focus on viral potential over safe content`}
 
-DIVERSITY REQUIREMENTS:
-- Vary your opening hooks constantly
-- Mix data, stories, myths, tips, questions
-- Avoid formulaic patterns like "Did you know"
-- Be conversational, not academic
-- Use strategic emojis sparingly (1-2 max)
+🤖 AI CONTENT GENERATION RULES:
+- UNLIMITED topic exploration - if data shows nutrition gets 10x engagement, CREATE MORE NUTRITION CONTENT
+- UNLIMITED format variety - singles, threads, stories, data, myths, tips, questions
+- UNLIMITED hook diversity - never repeat patterns, always surprise
+- UNLIMITED creativity - break rules, challenge assumptions, be contrarian
+- ZERO restrictions on health topics - cover everything from metabolism to mental health
 
-GROWTH FOCUS:
-- Content that makes people go "wow, I need to follow this account"
-- Share non-obvious insights most health accounts miss
-- Bridge science to practical everyday life`;
+🧬 VIRAL GROWTH ALGORITHM:
+- Create content that makes people think "I NEED to follow this account"
+- Share insights that 99% of health accounts don't know
+- Bridge complex science to simple, actionable advice
+- Use data-driven hooks that grab attention in first 5 words
+- End with engagement triggers that drive comments/saves
+
+🎭 VOICE INTELLIGENCE:
+- Conversational expert (not academic robot)
+- Confident but not arrogant
+- Evidence-based but accessible
+- Strategic emoji use (1-2 max, only if they add value)
+- Vary sentence structure and length for rhythm
+
+The AI has spoken. Create content that GROWS followers.`;
 }
 
 function buildDynamicPrompt(performanceData: any, style: string, dayOfWeek: string, month: string): string {
   const primaryTopic = performanceData.topTopics[0] || 'health';
   
-  // Randomly select from available topics for more variety
+  // AI-driven topic selection with performance weighting
   const availableTopics = performanceData.topTopics || ['health'];
-  const selectedTopic = availableTopics[Math.floor(Math.random() * availableTopics.length)];
+  
+  let selectedTopic;
+  if (performanceData.sampleSize > 5) {
+    // We have enough data to make intelligent decisions
+    // Weight selection towards better-performing topics (80% of the time)
+    if (Math.random() < 0.8) {
+      // Favor top performers (exponential weighting)
+      const weights = availableTopics.map((_, index) => Math.pow(2, availableTopics.length - index));
+      const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+      const randomWeight = Math.random() * totalWeight;
+      
+      let cumulativeWeight = 0;
+      for (let i = 0; i < availableTopics.length; i++) {
+        cumulativeWeight += weights[i];
+        if (randomWeight <= cumulativeWeight) {
+          selectedTopic = availableTopics[i];
+          break;
+        }
+      }
+      console.log(`[AI_WEIGHTED_SELECTION] Selected high-performer: ${selectedTopic}`);
+    } else {
+      // 20% exploration - try other available topics
+      selectedTopic = availableTopics[Math.floor(Math.random() * availableTopics.length)];
+      console.log(`[AI_EXPLORATION_SELECTION] Exploring topic: ${selectedTopic}`);
+    }
+  } else {
+    // Not enough data yet - balanced random selection
+    selectedTopic = availableTopics[Math.floor(Math.random() * availableTopics.length)];
+    console.log(`[AI_BOOTSTRAP_SELECTION] Bootstrap topic: ${selectedTopic}`);
+  }
   
   const styleGuides: Record<string, string> = {
     research_insight: `Find a recent or surprising research finding about ${selectedTopic}. Make it feel cutting-edge and non-obvious. Focus on WHY it matters practically.`,
