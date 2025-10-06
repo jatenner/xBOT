@@ -229,7 +229,7 @@ async function queueContent(content: any): Promise<void> {
     content: contentText,
     generation_source: 'real',
     status: 'queued',
-    decision_type: content.format || 'single', // Store format type
+    decision_type: content.format === 'thread' ? 'thread' : 'content', // Map format to valid DB values
     scheduled_at: content.scheduled_at,
     quality_score: Math.round(content.quality_score * 100),
     predicted_er: content.predicted_er,
@@ -526,8 +526,11 @@ For thread (30% chance):
 }`;
 }
 
-async function checkUniqueness(text: string): Promise<boolean> {
+async function checkUniqueness(text: string | string[]): Promise<boolean> {
   const supabase = getSupabaseClient();
+  
+  // Handle both single tweets and threads
+  const textToCheck = Array.isArray(text) ? text.join(' ') : text;
   
   // Get recent posts from last 7 days
   const { data: recentPosts } = await supabase
@@ -539,7 +542,7 @@ async function checkUniqueness(text: string): Promise<boolean> {
   if (!recentPosts || recentPosts.length === 0) return true;
 
   // Simple word overlap check (TODO: add embedding-based similarity)
-  const newWords = new Set(text.toLowerCase().split(/\s+/));
+  const newWords = new Set(textToCheck.toLowerCase().split(/\s+/));
   
   for (const post of recentPosts) {
     const postContent = String(post.content || '');
