@@ -5,6 +5,7 @@
 
 import { withBrowser } from '../infra/playwright/withBrowser';
 import { railwaySessionManager } from '../infra/session/railwaySessionManager';
+import { emergencyCircuitBreaker } from '../infra/emergencyCircuitBreaker';
 
 export interface PostResult {
   success: boolean;
@@ -15,6 +16,16 @@ export interface PostResult {
 export async function postNow({ text }: { text: string }): Promise<PostResult> {
   console.log(`POSTING_START textLength=${text.length}`);
   globalThis.__xbotLastPostAttemptAt = new Date().toISOString();
+
+  // 🚨 EMERGENCY CIRCUIT BREAKER CHECK
+  if (!emergencyCircuitBreaker.canAttemptPost()) {
+    const status = emergencyCircuitBreaker.getStatus();
+    console.log('🚨 POSTING_BLOCKED: Circuit breaker is open', status);
+    return { 
+      success: false, 
+      error: `Circuit breaker open - ${status.failures} failures. Reset in ${Math.round((status.timeUntilReset || 0) / 1000)}s` 
+    };
+  }
 
   try {
     // Try headless X poster first (most reliable)
