@@ -8,6 +8,8 @@ import { getConfig } from '../config/config';
 import { getEnvConfig, isLLMAllowed } from '../config/envFlags';
 import { getSupabaseClient } from '../db/index';
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
+import { dynamicPromptGenerator } from '../ai/content/dynamicPromptGenerator';
+import { contentDiversityEngine } from '../ai/content/contentDiversityEngine';
 
 // Global metrics
 let llmMetrics = {
@@ -100,46 +102,33 @@ async function generateContentWithLLM() {
   const flags = getConfig();
   const decision_id = uuidv4();
   
-  // 1. Analyze what content performs best
-  const performanceData = await analyzeTopicPerformance();
+  // 🎨 USE DIVERSITY ENGINE FOR COMPLETELY UNIQUE CONTENT
+  console.log('[DIVERSITY_ENGINE] Generating completely unique content...');
   
-  // 2. Get current date/context for freshness
-  const currentDate = new Date();
-  const dayOfWeek = currentDate.toLocaleDateString('en-US', { weekday: 'long' });
-  const month = currentDate.toLocaleDateString('en-US', { month: 'long' });
+  // Get diverse prompt that ensures no repetition
+  const diversePrompt = dynamicPromptGenerator.generateDiversePrompt();
+  const diversitySelection = contentDiversityEngine.selectDiverseElements();
   
-  // 3. Select varied writing style with rotation to prevent repetition
-  const styles = [
-    'research_insight', 'practical_tip', 'myth_buster', 'data_point',
-    'story_based', 'question_hook', 'comparison', 'contrarian',
-    'personal_experience', 'shocking_stat', 'timeline_based', 'before_after',
-    'expert_quote', 'trend_analysis', 'common_mistake', 'life_hack',
-    'scientific_breakdown', 'real_world_example', 'challenge_assumption', 'future_prediction'
-  ];
+  // Get diversity stats for logging
+  const diversityStats = contentDiversityEngine.getDiversityStats();
+  console.log(`[DIVERSITY_STATS] Recent hooks: ${diversityStats.recentHooksUsed}, formats: ${diversityStats.recentFormatsUsed}, styles: ${diversityStats.recentStylesUsed}`);
+  console.log(`[DIVERSITY_SELECTION] Hook: "${diversitySelection.hook}", Format: ${diversitySelection.format}, Style: ${diversitySelection.style}`);
   
-  // Rotate style based on minute to ensure variety within the hour
-  const minuteOfHour = new Date().getMinutes();
-  const styleIndex = minuteOfHour % styles.length;
-  const selectedStyle = styles[styleIndex];
-  
-  console.log(`[STYLE_ROTATION] Minute ${minuteOfHour} -> Style: ${selectedStyle}`);
-  
-  // 4. Build AI-driven prompt with performance context
-  const prompt = buildDynamicPrompt(performanceData, selectedStyle, dayOfWeek, month);
-
   llmMetrics.calls_total++;
   
-  console.log(`[OPENAI] using budgeted client purpose=content_generation model=${flags.OPENAI_MODEL} style=${selectedStyle}`);
-  console.log(`[CONTENT_STRATEGY] Top topics: ${performanceData.topTopics.join(', ')} | Avoiding: ${performanceData.lowTopics.join(', ')}`);
+  console.log(`[OPENAI] Using diversity-driven content generation, model=${flags.OPENAI_MODEL}`);
   
   const response = await createBudgetedChatCompletion({
     model: flags.OPENAI_MODEL,
     messages: [
-      { role: 'system', content: buildSystemPrompt(performanceData) },
-      { role: 'user', content: prompt }
+      { 
+        role: 'system', 
+        content: 'You are a diverse health content creator. Never repeat patterns, hooks, or formats. Each tweet should feel completely unique and fresh.' 
+      },
+      { role: 'user', content: diversePrompt }
     ],
-    temperature: parseFloat(process.env.OPENAI_TEMPERATURE || '0.9'),
-    top_p: parseFloat(process.env.OPENAI_TOP_P || '0.95'),
+    temperature: 0.9, // High creativity for diversity
+    top_p: 0.95,
     max_tokens: 350,
     response_format: { type: 'json_object' }
   }, {
@@ -206,7 +195,7 @@ async function generateContentWithLLM() {
     text: contentData.text,
     topic: contentData.topic || 'health',
     angle: contentData.angle,
-    style: selectedStyle,
+    style: diversitySelection.style,
     format: format,
     quality_score: calculateQuality(Array.isArray(contentData.text) ? contentData.text.join(' ') : contentData.text),
     predicted_er: 0.03,
