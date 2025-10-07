@@ -7,6 +7,7 @@ import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import fs from 'fs';
 import path from 'path';
 import { getConfig } from '../config/config';
+import { railwaySessionManager } from '../infra/session/railwaySessionManager';
 
 export interface PostResult {
   success: boolean;
@@ -33,11 +34,14 @@ export class HeadlessXPoster {
   async initialize(): Promise<void> {
     console.log('🤖 Initializing Headless X Poster...');
     
-    // Load session
-    const sessionData = this.loadSession();
-    if (!sessionData) {
-      throw new Error('No valid session found. Please refresh your X session cookies.');
+    // Load session using bulletproof manager
+    const sessionData = await railwaySessionManager.loadSession();
+    
+    if (!railwaySessionManager.validateSession(sessionData)) {
+      throw new Error('No valid Twitter session available');
     }
+    
+    console.log(`✅ Session loaded: ${sessionData.cookies.length} cookies from ${sessionData.source}`);
 
     // Launch headless browser with enhanced stealth
     this.browser = await chromium.launch({
@@ -116,33 +120,6 @@ export class HeadlessXPoster {
     // Apply session cookies
     await this.context.addCookies(sessionData.cookies);
     console.log(`✅ Headless browser initialized with ${sessionData.cookies.length} cookies`);
-  }
-
-  private loadSession(): SessionData | null {
-    try {
-      // First try to load from file
-      if (fs.existsSync(this.sessionPath)) {
-        const data = fs.readFileSync(this.sessionPath, 'utf8');
-        const session = JSON.parse(data);
-        console.log(`📋 Loaded ${session.cookies?.length || 0} cookies from file`);
-        return session;
-      }
-      
-      // Fallback to TWITTER_SESSION_B64 environment variable
-      if (process.env.TWITTER_SESSION_B64) {
-        console.log('📋 Loading session from TWITTER_SESSION_B64 environment variable');
-        const decoded = Buffer.from(process.env.TWITTER_SESSION_B64, 'base64').toString('utf8');
-        const session = JSON.parse(decoded);
-        console.log(`📋 Loaded ${session.cookies?.length || 0} cookies from environment`);
-        return session;
-      }
-      
-      console.error('❌ No session found in file or environment variable');
-      return null;
-    } catch (error: any) {
-      console.error('❌ Failed to load session:', error.message);
-      return null;
-    }
   }
 
   async postTweet(text: string): Promise<PostResult> {
