@@ -4,7 +4,7 @@
  */
 
 import { withBrowser } from '../infra/playwright/withBrowser';
-import { railwaySessionManager } from '../utils/railwaySessionManager';
+import { railwaySessionManager } from '../infra/session/railwaySessionManager';
 
 export interface PostResult {
   success: boolean;
@@ -61,7 +61,8 @@ export async function postNow({ text }: { text: string }): Promise<PostResult> {
     console.log('[POST_NOW] 🚂 Using Railway browser...');
     
     // Ensure we have a valid session before attempting to post
-    const hasSession = await railwaySessionManager.ensureValidSession();
+    const sessionData = await railwaySessionManager.loadSession();
+    const hasSession = railwaySessionManager.validateSession(sessionData);
     if (!hasSession) {
       throw new Error('No valid Twitter session available');
     }

@@ -213,9 +213,56 @@ class HeadlessXPoster {
         throw new Error('No enabled post button found');
       }
       
-      // Click post button
+      // Enhanced clicking strategy to handle interception
       console.log('📤 Posting tweet...');
-      await postButton.click();
+      
+      try {
+        // Strategy 1: Try keyboard shortcut first (most reliable)
+        console.log('⌨️ Trying keyboard shortcut (Ctrl+Enter)...');
+        await page.keyboard.press('Control+Enter');
+        await page.waitForTimeout(2000);
+        
+        // Check if it worked
+        const urlAfterKeyboard = page.url();
+        if (urlAfterKeyboard.includes('/status/') || urlAfterKeyboard !== 'https://x.com/compose/post') {
+          console.log('✅ Keyboard shortcut worked!');
+        } else {
+          throw new Error('Keyboard shortcut failed, trying click');
+        }
+      } catch (keyboardError) {
+        console.log('⚠️ Keyboard failed, trying enhanced click...');
+        
+        // Strategy 2: Enhanced click with force and multiple attempts
+        let clickSuccess = false;
+        const maxAttempts = 3;
+        
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+          try {
+            console.log(`🖱️ Click attempt ${attempt}/${maxAttempts}...`);
+            
+            // Wait a bit for any overlays to clear
+            await page.waitForTimeout(1000);
+            
+            // Try force click to bypass interception
+            await postButton.click({ force: true });
+            await page.waitForTimeout(1000);
+            
+            clickSuccess = true;
+            break;
+          } catch (clickError) {
+            console.log(`⚠️ Click attempt ${attempt} failed: ${clickError.message.substring(0, 50)}`);
+            if (attempt === maxAttempts) {
+              // Last resort: try JavaScript click
+              console.log('🔧 Last resort: JavaScript click...');
+              await postButton.evaluate(btn => btn.click());
+            }
+          }
+        }
+        
+        if (!clickSuccess) {
+          console.log('⚠️ All click attempts failed, but continuing...');
+        }
+      }
       
       // Wait for posting to complete
       await page.waitForTimeout(5000);
