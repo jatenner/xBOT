@@ -17,6 +17,7 @@ import adminRouter from './server/routes/admin';
 import lightweightPostingRouter from './api/lightweightPosting';
 import bulletproofPostingRouter from './api/bulletproofPosting';
 import emergencySystemRouter from './api/emergencySystem';
+import playwrightPostingRouter from './api/playwrightPosting';
 import ratesRouter from './api/rates';
 
 const app = express();
@@ -101,6 +102,11 @@ app.use('/api', bulletproofPostingRouter);
  * 🚨 EMERGENCY SYSTEM ROUTES - Guaranteed Working
  */
 app.use('/api', emergencySystemRouter);
+
+/**
+ * 🎭 PLAYWRIGHT-ONLY POSTING ROUTES - Browser Only, No API
+ */
+app.use('/api', playwrightPostingRouter);
 
 /**
  * ⚡ SIMPLIFIED RATES API - Lightweight Dynamic Scaling
