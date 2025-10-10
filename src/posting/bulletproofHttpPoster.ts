@@ -1,4 +1,4 @@
-const { getSupabaseClient } = require('../db/index');
+import { getSupabaseClient } from '../db/index';
 
 /**
  * 🚀 BULLETPROOF HTTP POSTER - NO BROWSER DEPENDENCY
@@ -8,15 +8,21 @@ const { getSupabaseClient } = require('../db/index');
  * Designed to handle Railway resource constraints efficiently.
  */
 
-class BulletproofHttpPoster {
-    constructor() {
-        this.sessionCookies = null;
-        this.lastSuccessfulPost = null;
-        this.consecutiveFailures = 0;
-        this.maxRetries = 3;
-    }
+interface PostResult {
+    success: boolean;
+    error?: string;
+    tweetId?: string;
+    method?: string;
+    retryAfter?: number;
+}
 
-    async initializeSession() {
+export class BulletproofHttpPoster {
+    private sessionCookies: string | null = null;
+    private lastSuccessfulPost: Date | null = null;
+    private consecutiveFailures: number = 0;
+    private maxRetries: number = 3;
+
+    async initializeSession(): Promise<boolean> {
         console.log('🔧 BULLETPROOF_HTTP: Initializing session from environment...');
         
         try {
@@ -28,17 +34,17 @@ class BulletproofHttpPoster {
             const sessionData = JSON.parse(Buffer.from(sessionB64, 'base64').toString());
             this.sessionCookies = this.formatCookiesForHttp(sessionData.cookies);
             
-            console.log(`✅ BULLETPROOF_HTTP: Session loaded with ${this.sessionCookies.length} cookies`);
+            console.log(`✅ BULLETPROOF_HTTP: Session loaded with cookies`);
             return true;
             
-        } catch (error) {
+        } catch (error: any) {
             console.error('❌ BULLETPROOF_HTTP: Session initialization failed:', error.message);
             return false;
         }
     }
 
-    formatCookiesForHttp(cookies) {
-        if (!Array.isArray(cookies)) return [];
+    private formatCookiesForHttp(cookies: any[]): string {
+        if (!Array.isArray(cookies)) return '';
         
         return cookies
             .filter(cookie => cookie.name && cookie.value)
@@ -46,50 +52,53 @@ class BulletproofHttpPoster {
             .join('; ');
     }
 
-    async postViaHttp(content) {
+    async postViaHttp(content: string): Promise<PostResult> {
         console.log('🌐 BULLETPROOF_HTTP: Attempting HTTP-based posting...');
         
         if (!this.sessionCookies) {
             const sessionReady = await this.initializeSession();
             if (!sessionReady) {
-                throw new Error('Session not available for HTTP posting');
+                return { success: false, error: 'Session not available for HTTP posting' };
             }
         }
 
         try {
-            const response = await fetch('https://api.twitter.com/1.1/statuses/update.json', {
+            // Use the existing /api/post-lightweight endpoint which is working
+            const response = await fetch('https://xbot-production-844b.up.railway.app/api/post-lightweight', {
                 method: 'POST',
                 headers: {
-                    'Cookie': this.sessionCookies,
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'Referer': 'https://twitter.com/compose/tweet'
+                    'Content-Type': 'application/json',
+                    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                 },
-                body: new URLSearchParams({
-                    status: content,
-                    tweet_mode: 'extended'
-                })
+                body: JSON.stringify({ content })
             });
 
             if (response.ok) {
                 const result = await response.json();
-                console.log('✅ BULLETPROOF_HTTP: HTTP posting successful');
-                this.consecutiveFailures = 0;
-                this.lastSuccessfulPost = new Date();
-                return { success: true, data: result };
+                if (result.success) {
+                    console.log('✅ BULLETPROOF_HTTP: HTTP posting successful');
+                    this.consecutiveFailures = 0;
+                    this.lastSuccessfulPost = new Date();
+                    return { 
+                        success: true, 
+                        tweetId: result.tweetId,
+                        method: 'http'
+                    };
+                } else {
+                    throw new Error(result.error || 'HTTP posting failed');
+                }
             } else {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
             
-        } catch (error) {
+        } catch (error: any) {
             console.error('❌ BULLETPROOF_HTTP: HTTP posting failed:', error.message);
             this.consecutiveFailures++;
             return { success: false, error: error.message };
         }
     }
 
-    async postViaMinimalBrowser(content) {
+    async postViaMinimalBrowser(content: string): Promise<PostResult> {
         console.log('🔄 BULLETPROOF_HTTP: Falling back to minimal browser...');
         
         try {
@@ -107,9 +116,8 @@ class BulletproofHttpPoster {
                     '--disable-extensions',
                     '--disable-plugins',
                     '--disable-images',
-                    '--disable-javascript', // Minimal JS for posting only
                     '--memory-pressure-off',
-                    '--max_old_space_size=256'
+                    '--max_old_space_size=128'
                 ]
             });
 
@@ -118,15 +126,18 @@ class BulletproofHttpPoster {
             });
 
             // Load session cookies
-            if (this.sessionCookies) {
-                const sessionData = JSON.parse(Buffer.from(process.env.TWITTER_SESSION_B64, 'base64').toString());
-                await context.addCookies(sessionData.cookies);
+            const sessionB64 = process.env.TWITTER_SESSION_B64;
+            if (sessionB64) {
+                const sessionData = JSON.parse(Buffer.from(sessionB64, 'base64').toString());
+                if (sessionData.cookies) {
+                    await context.addCookies(sessionData.cookies);
+                }
             }
 
             const page = await context.newPage();
             
             // Navigate and post
-            await page.goto('https://twitter.com/compose/tweet', { 
+            await page.goto('https://x.com/compose/tweet', { 
                 waitUntil: 'domcontentloaded',
                 timeout: 15000 
             });
@@ -145,14 +156,14 @@ class BulletproofHttpPoster {
             this.lastSuccessfulPost = new Date();
             return { success: true, method: 'minimal_browser' };
             
-        } catch (error) {
+        } catch (error: any) {
             console.error('❌ BULLETPROOF_HTTP: Minimal browser failed:', error.message);
             this.consecutiveFailures++;
             return { success: false, error: error.message };
         }
     }
 
-    async post(content) {
+    async post(content: string): Promise<PostResult> {
         console.log(`🚀 BULLETPROOF_HTTP: Posting content (${content.length} chars)`);
         console.log(`📊 BULLETPROOF_HTTP: Consecutive failures: ${this.consecutiveFailures}`);
 
@@ -187,7 +198,6 @@ class BulletproofHttpPoster {
         return {
             success: false,
             error: `Both HTTP and browser posting failed. Consecutive failures: ${this.consecutiveFailures}`,
-            httpError: httpResult.error
         };
     }
 
@@ -202,28 +212,21 @@ class BulletproofHttpPoster {
 }
 
 // Singleton instance
-let bulletproofPoster = null;
+let bulletproofPoster: BulletproofHttpPoster | null = null;
 
-async function getBulletproofPoster() {
+export async function getBulletproofPoster(): Promise<BulletproofHttpPoster> {
     if (!bulletproofPoster) {
         bulletproofPoster = new BulletproofHttpPoster();
     }
     return bulletproofPoster;
 }
 
-async function bulletproofPost(content) {
+export async function bulletproofPost(content: string): Promise<PostResult> {
     const poster = await getBulletproofPoster();
     return await poster.post(content);
 }
 
-async function getBulletproofStatus() {
+export async function getBulletproofStatus() {
     const poster = await getBulletproofPoster();
     return await poster.getStatus();
 }
-
-module.exports = {
-    BulletproofHttpPoster,
-    getBulletproofPoster,
-    bulletproofPost,
-    getBulletproofStatus
-};

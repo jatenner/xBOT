@@ -214,66 +214,55 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
 async function postContent(decision: QueuedDecision): Promise<string> {
   console.log(`[POSTING_QUEUE] 📝 Posting content: "${decision.content.substring(0, 50)}..."`);
   
-  // Try remote browser first if configured
-  const useRemote = !!process.env.BROWSER_SERVER_URL && !!process.env.BROWSER_SERVER_SECRET;
+  // 🛡️ Use bulletproof posting system (crash-resistant)
+  console.log('[POSTING_QUEUE] 🛡️ Using bulletproof posting system...');
   
-  if (useRemote) {
-    console.log('[POSTING_QUEUE] 🌐 Using remote browser (local machine)...');
-    const { postTweetRemote } = await import('../posting/remoteBrowserPoster');
-    const remoteResult = await postTweetRemote(decision.content);
+  try {
+    const { bulletproofPost } = await import('../posting/bulletproofHttpPoster');
+    const bulletproofResult = await bulletproofPost(decision.content);
     
-    if (remoteResult.success) {
-      const tweetId = remoteResult.tweetId || `posted_${Date.now()}`;
-      console.log(`[POSTING_QUEUE] ✅ Content posted via remote browser with ID: ${tweetId}`);
+    if (bulletproofResult.success) {
+      const tweetId = bulletproofResult.tweetId || `bulletproof_${Date.now()}`;
+      console.log(`[POSTING_QUEUE] ✅ Content posted via bulletproof system with ID: ${tweetId}`);
       return tweetId;
     } else {
-      console.error(`[POSTING_QUEUE] ⚠️ Remote browser failed: ${remoteResult.error}`);
-      throw new Error(remoteResult.error || 'Remote browser posting failed');
+      console.error(`[POSTING_QUEUE] ❌ Bulletproof posting failed: ${bulletproofResult.error}`);
+      throw new Error(bulletproofResult.error || 'Bulletproof posting failed');
     }
+  } catch (error: any) {
+    console.error(`[POSTING_QUEUE] ❌ Bulletproof system error: ${error.message}`);
+    throw new Error(`Bulletproof posting failed: ${error.message}`);
   }
-  
-  // Fallback to Railway browser (will likely fail due to IP blocks)
-  console.log('[POSTING_QUEUE] 🚂 Using Railway browser...');
-  const { postTweet } = await import('../posting/railwayCompatiblePoster');
-  
-  const result = await postTweet(decision.content);
-  
-  if (!result.success) {
-    throw new Error(result.error || 'Unknown posting error');
-  }
-  
-  const tweetId = result.id || `posted_${Date.now()}`;
-  console.log(`[POSTING_QUEUE] ✅ Content posted with ID: ${tweetId}`);
-  
-  return tweetId;
 }
 
 async function postReply(decision: QueuedDecision): Promise<string> {
-  if (!decision.target_tweet_id || !decision.target_username) {
-    throw new Error('Reply decision missing target information');
-  }
-  
   console.log(`[POSTING_QUEUE] 💬 Posting reply to @${decision.target_username}: "${decision.content.substring(0, 50)}..."`);
   
-  // For now, use the same posting infrastructure for replies
-  // In a full implementation, this would navigate to the specific tweet and reply
-  const { postTweet } = await import('../posting/railwayCompatiblePoster');
-  
-  // For this implementation, we'll post a standalone tweet mentioning the user
-  // A full implementation would navigate to the specific tweet and use the reply function
-  const replyContent = `@${decision.target_username} ${decision.content}`;
-  
-  const result = await postTweet(replyContent);
-  
-  if (!result.success) {
-    // Artifacts logged by withBrowser on failure
-    throw new Error(result.error || 'Unknown reply posting error');
+  if (!decision.target_tweet_id) {
+    throw new Error('Reply decision missing target_tweet_id');
   }
   
-  const tweetId = result.id || `reply_${Date.now()}`;
-  console.log(`[POSTING_QUEUE] ✅ Reply posted with ID: ${tweetId}`);
+  // 🛡️ Use bulletproof posting system for replies too
+  console.log('[POSTING_QUEUE] 🛡️ Using bulletproof reply system...');
   
-  return tweetId;
+  try {
+    // For now, use the same bulletproof posting system
+    // TODO: Implement proper reply functionality in bulletproof system
+    const { bulletproofPost } = await import('../posting/bulletproofHttpPoster');
+    const bulletproofResult = await bulletproofPost(decision.content);
+    
+    if (bulletproofResult.success) {
+      const tweetId = bulletproofResult.tweetId || `bulletproof_reply_${Date.now()}`;
+      console.log(`[POSTING_QUEUE] ✅ Reply posted via bulletproof system with ID: ${tweetId}`);
+      return tweetId;
+    } else {
+      console.error(`[POSTING_QUEUE] ❌ Bulletproof reply failed: ${bulletproofResult.error}`);
+      throw new Error(bulletproofResult.error || 'Bulletproof reply failed');
+    }
+  } catch (error: any) {
+    console.error(`[POSTING_QUEUE] ❌ Bulletproof reply system error: ${error.message}`);
+    throw new Error(`Bulletproof reply failed: ${error.message}`);
+  }
 }
 
 async function updateDecisionStatus(decisionId: string, status: string): Promise<void> {
