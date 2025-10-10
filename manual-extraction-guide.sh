@@ -159,3 +159,4 @@ else
     echo "4. Move it to: $(pwd)/data/twitter_session.json"
     echo "5. Run this script again"
 fi
+
