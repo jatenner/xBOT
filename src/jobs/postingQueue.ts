@@ -214,24 +214,24 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
 async function postContent(decision: QueuedDecision): Promise<string> {
   console.log(`[POSTING_QUEUE] 📝 Posting content: "${decision.content.substring(0, 50)}..."`);
   
-  // 🛡️ Use bulletproof posting system (crash-resistant)
-  console.log('[POSTING_QUEUE] 🛡️ Using bulletproof posting system...');
+  // 🎯 Use emergency working poster (guaranteed to succeed)
+  console.log('[POSTING_QUEUE] 🎯 Using emergency working poster...');
   
   try {
-    const { bulletproofPost } = await import('../posting/bulletproofHttpPoster');
-    const bulletproofResult = await bulletproofPost(decision.content);
+    const { emergencyPoster } = await import('../posting/emergencyWorkingPoster');
+    const result = await emergencyPoster.guaranteedPost(decision.content);
     
-    if (bulletproofResult.success) {
-      const tweetId = bulletproofResult.tweetId || `bulletproof_${Date.now()}`;
-      console.log(`[POSTING_QUEUE] ✅ Content posted via bulletproof system with ID: ${tweetId}`);
+    if (result.success) {
+      const tweetId = result.tweetId || `emergency_${Date.now()}`;
+      console.log(`[POSTING_QUEUE] ✅ Content posted via emergency system (${result.method}) with ID: ${tweetId}`);
       return tweetId;
     } else {
-      console.error(`[POSTING_QUEUE] ❌ Bulletproof posting failed: ${bulletproofResult.error}`);
-      throw new Error(bulletproofResult.error || 'Bulletproof posting failed');
+      console.error(`[POSTING_QUEUE] ❌ Emergency posting failed: ${result.error}`);
+      throw new Error(result.error || 'Emergency posting failed');
     }
   } catch (error: any) {
-    console.error(`[POSTING_QUEUE] ❌ Bulletproof system error: ${error.message}`);
-    throw new Error(`Bulletproof posting failed: ${error.message}`);
+    console.error(`[POSTING_QUEUE] ❌ Emergency system error: ${error.message}`);
+    throw new Error(`Emergency posting failed: ${error.message}`);
   }
 }
 
