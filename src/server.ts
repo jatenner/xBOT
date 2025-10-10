@@ -16,6 +16,7 @@ import { jobScheduleHandler } from './api/adminJobSchedule';
 import adminRouter from './server/routes/admin';
 import lightweightPostingRouter from './api/lightweightPosting';
 import dynamicRatesRouter from './api/dynamicRates';
+import ratesRouter from './api/rates';
 
 const app = express();
 
@@ -94,6 +95,11 @@ app.use('/api', lightweightPostingRouter);
  * 🎯 DYNAMIC RATE CONTROLLER ROUTES - AI-Driven Scaling
  */
 app.use('/api/dynamic-rates', dynamicRatesRouter);
+
+/**
+ * ⚡ SIMPLIFIED RATES API - Lightweight Dynamic Scaling
+ */
+app.use('/api/rates', ratesRouter);
 
 /**
  * 📤 POST /post - Direct posting endpoint for remote browser
