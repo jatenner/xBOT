@@ -14,6 +14,7 @@ import { requireAdminAuth as legacyAuth, adminJobsHandler, adminJobRunHandler } 
 import { requireAdminAuth } from './api/middleware/adminAuth';
 import { jobScheduleHandler } from './api/adminJobSchedule';
 import adminRouter from './server/routes/admin';
+import lightweightPostingRouter from './api/lightweightPosting';
 
 const app = express();
 
@@ -82,6 +83,11 @@ app.get('/admin/jobs/schedule', requireAdminAuth, jobScheduleHandler);
  * Admin smoke test routes (protected)
  */
 app.use('/admin', adminRouter);
+
+/**
+ * 🚀 LIGHTWEIGHT POSTING ROUTES - Railway Optimized
+ */
+app.use('/api', lightweightPostingRouter);
 
 /**
  * 📤 POST /post - Direct posting endpoint for remote browser

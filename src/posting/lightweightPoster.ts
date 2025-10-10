@@ -40,9 +40,13 @@ export class LightweightPoster {
     // Queue system prevents resource exhaustion
     if (this.isPosting) {
       console.log('⏳ QUEUE: Adding to post queue (preventing resource overload)');
-      return new Promise((resolve) => {
-        this.postQueue.push(content);
-        this.processQueue().then(resolve);
+      this.postQueue.push(content);
+      return new Promise<LightweightPostResult>((resolve) => {
+        // Will be processed when current post completes
+        setTimeout(async () => {
+          const result = await this.postContent(content);
+          resolve(result);
+        }, 1000);
       });
     }
 

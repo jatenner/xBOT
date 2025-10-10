@@ -80,7 +80,7 @@ export class RailwayResourceProtector {
         console.log(`🚀 PROTECTED_POST: Processing (queue: ${this.postQueue.length}, active: ${this.activePosts})`);
         
         // Import and use lightweight poster
-        const { LightweightPoster } = await import('./lightweightPoster');
+        const { LightweightPoster } = await import('../posting/lightweightPoster');
         const poster = LightweightPoster.getInstance();
         const result = await poster.postContent(nextPost.content);
         
