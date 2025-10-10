@@ -78,10 +78,10 @@ router.post('/force-content-generation', async (req, res) => {
     console.log('🔥 EMERGENCY_API: Forcing content generation...');
     
     // Import and run content generation directly
-    const { generateRealContent } = await import('../jobs/planJobNew');
+    const { planContent } = await import('../jobs/planJob');
     
-    console.log('🧠 EMERGENCY_API: Running real content generation...');
-    await generateRealContent();
+    console.log('🧠 EMERGENCY_API: Running content planning...');
+    await planContent();
     
     // Check if content was generated
     const { getSupabaseClient } = await import('../db/index');
@@ -125,8 +125,8 @@ router.post('/emergency-system-test', async (req, res) => {
     console.log('🎯 EMERGENCY_API: Running complete system test...');
     
     // Step 1: Force content generation
-    const { generateRealContent } = await import('../jobs/planJobNew');
-    await generateRealContent();
+    const { planContent } = await import('../jobs/planJob');
+    await planContent();
     
     // Step 2: Check queue
     const { getSupabaseClient } = await import('../db/index');

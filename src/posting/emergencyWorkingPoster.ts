@@ -6,6 +6,7 @@
  */
 
 import { bulletproofPoster } from './bulletproofPoster';
+import { getConfig } from '../config/config';
 
 export class EmergencyWorkingPoster {
     private static instance: EmergencyWorkingPoster;
