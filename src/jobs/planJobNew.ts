@@ -181,7 +181,7 @@ Format your response as JSON:
   const response = await openaiService.chatCompletion([
     {
       role: 'system',
-      content: 'You are a health content expert who creates evidence-based, engaging social media content. Focus on providing genuine value without making false claims.'
+      content: 'You are a health content expert who creates evidence-based, engaging social media content. Focus on providing genuine value without making false claims. Always respond with valid JSON format.'
     },
     {
       role: 'user',

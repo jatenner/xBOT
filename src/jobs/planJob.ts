@@ -123,7 +123,7 @@ async function generateContentWithLLM() {
     messages: [
       { 
         role: 'system', 
-        content: 'You are a diverse health content creator. Never repeat patterns, hooks, or formats. Each tweet should feel completely unique and fresh.' 
+        content: 'You are a diverse health content creator. Never repeat patterns, hooks, or formats. Each tweet should feel completely unique and fresh. Always respond with valid JSON format.' 
       },
       { role: 'user', content: diversePrompt }
     ],
