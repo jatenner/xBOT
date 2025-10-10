@@ -11,22 +11,42 @@ const resourceProtector = RailwayResourceProtector.getInstance();
 
 /**
  * 📝 POST /api/post-lightweight
- * Ultra-efficient posting endpoint for Railway
+ * Ultra-efficient posting endpoint for Railway - PRODUCTION SAFE
  */
 router.post('/post-lightweight', async (req, res) => {
   const startTime = Date.now();
   
   try {
-    const { content } = req.body;
+    let { content } = req.body;
     
-    if (!content || typeof content !== 'string') {
+    // 🛡️ PRODUCTION SAFETY: Generate high-quality content if none provided
+    if (!content) {
+      console.log('🎨 GENERATING: High-quality production content...');
+      const { ProductionContentManager } = await import('../content/productionContentManager');
+      const contentManager = ProductionContentManager.getInstance();
+      
+      const generatedContent = await contentManager.generateProductionContent();
+      content = generatedContent.content;
+      
+      console.log(`✅ GENERATED: ${generatedContent.content_type} with ${generatedContent.quality_score}% quality`);
+    }
+    
+    // 🚫 BLOCK TEST CONTENT IN PRODUCTION
+    const { ProductionContentManager } = await import('../content/productionContentManager');
+    const contentManager = ProductionContentManager.getInstance();
+    const validation = await contentManager.validateProductionContent(content);
+    
+    if (!validation.safe_to_post) {
+      console.log(`🚫 BLOCKED: ${validation.reason}`);
       return res.status(400).json({
         success: false,
-        error: 'Content is required and must be a string'
+        error: `Content blocked: ${validation.reason}`,
+        quality_score: validation.quality_score
       });
     }
 
-    console.log(`🚀 LIGHTWEIGHT_ENDPOINT: Posting "${content.substring(0, 50)}..."`);
+    console.log(`🚀 LIGHTWEIGHT_ENDPOINT: Posting high-quality content (${validation.quality_score}% quality)`);
+    console.log(`📝 Content preview: "${content.substring(0, 100)}..."`);
     
     // Get current resource stats
     const beforeStats = resourceProtector.getStats();
@@ -47,12 +67,13 @@ router.post('/post-lightweight', async (req, res) => {
     res.json({
       success: result.success,
       tweetId: result.tweetId,
+      quality_score: validation.quality_score,
       performance: {
         totalTimeMs: totalTime,
         memoryUsedMB: result.resourcesUsed?.memoryMB || 0,
         queueLength: afterStats.queueLength
       },
-      message: 'Posted via lightweight Railway-optimized system'
+      message: 'Posted high-quality content via lightweight Railway-optimized system'
     });
 
   } catch (error: any) {
@@ -98,6 +119,51 @@ router.get('/system-stats', (req, res) => {
       optimized: true
     }
   });
+});
+
+/**
+ * 🎯 POST /api/engage-replies
+ * Run reply engagement cycle to maximize growth
+ */
+router.post('/engage-replies', async (req, res) => {
+  const startTime = Date.now();
+  
+  try {
+    console.log('🎯 ENGAGEMENT_CYCLE: Starting reply engagement...');
+    
+    const { RealReplySystem } = await import('../engagement/realReplySystem');
+    const replySystem = RealReplySystem.getInstance();
+    
+    const result = await replySystem.runReplyEngagementCycle();
+    const totalTime = Date.now() - startTime;
+    
+    console.log(`✅ ENGAGEMENT_COMPLETE: ${result.replies_sent} replies sent in ${totalTime}ms`);
+    
+    res.json({
+      success: result.replies_sent > 0,
+      targets_found: result.targets_found,
+      replies_sent: result.replies_sent,
+      engagement_potential: result.engagement_potential,
+      performance: {
+        totalTimeMs: totalTime
+      },
+      errors: result.errors,
+      message: `Reply engagement cycle completed - ${result.replies_sent} replies sent`
+    });
+
+  } catch (error: any) {
+    const totalTime = Date.now() - startTime;
+    console.error(`❌ ENGAGEMENT_ERROR: ${error.message} (${totalTime}ms)`);
+    
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      performance: {
+        totalTimeMs: totalTime,
+        failed: true
+      }
+    });
+  }
 });
 
 /**
