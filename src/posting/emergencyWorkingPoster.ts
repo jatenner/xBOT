@@ -87,7 +87,7 @@ export class EmergencyWorkingPoster {
     }> {
         const { chromium } = await import('playwright');
         
-        let browser = null;
+        let browser: any = null;
         try {
             // Ultra-minimal browser setup
             browser = await chromium.launch({
@@ -114,7 +114,7 @@ export class EmergencyWorkingPoster {
                     if (sessionData.cookies) {
                         await context.addCookies(sessionData.cookies);
                     }
-                } catch (error) {
+                } catch (error: any) {
                     console.log('⚠️ EMERGENCY_POSTER: Session loading failed, continuing without');
                 }
             }
@@ -155,19 +155,21 @@ export class EmergencyWorkingPoster {
             const { getSupabaseClient } = await import('../db/index');
             const supabase = getSupabaseClient();
             
+            const insertData = {
+                decision_id: `emergency_${Date.now()}`,
+                content: content,
+                tweet_id: tweetId,
+                decision_type: 'content' as const,
+                posted_at: new Date().toISOString()
+            };
+            
             await supabase
                 .from('posted_decisions')
-                .insert([{
-                    decision_id: `emergency_${Date.now()}`,
-                    content: content,
-                    tweet_id: tweetId,
-                    decision_type: 'content',
-                    posted_at: new Date().toISOString()
-                }]);
+                .insert([insertData]);
                 
             console.log(`📝 EMERGENCY_POSTER: Logged successful post ${tweetId}`);
-        } catch (error) {
-            console.warn('⚠️ EMERGENCY_POSTER: Database logging failed:', error);
+        } catch (error: any) {
+            console.warn('⚠️ EMERGENCY_POSTER: Database logging failed:', error?.message || 'Unknown error');
         }
     }
 }
