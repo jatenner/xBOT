@@ -12,6 +12,7 @@ import { simulateOutcomes } from './shadowOutcomesJob';
 import { collectRealOutcomes } from './realOutcomesJob';
 import { collectRealOutcomes as collectAnalytics } from './analyticsCollectorJob';
 import { runLearningCycle } from './learnJob';
+import { runDynamicRateJob } from './dynamicRateJob';
 
 export interface JobStats {
   planRuns: number;
@@ -19,11 +20,13 @@ export interface JobStats {
   postingRuns: number;
   outcomeRuns: number;
   learnRuns: number;
+  dynamicRateRuns: number;
   lastPlanTime?: Date;
   lastReplyTime?: Date;
   lastPostingTime?: Date;
   lastOutcomeTime?: Date;
   lastLearnTime?: Date;
+  lastDynamicRateTime?: Date;
   errors: number;
 }
 
@@ -36,6 +39,7 @@ export class JobManager {
     postingRuns: 0,
     outcomeRuns: 0,
     learnRuns: 0,
+    dynamicRateRuns: 0,
     errors: 0
   };
   private isRunning = false;
@@ -139,15 +143,28 @@ export class JobManager {
       registered.learn = true;
     }
 
+    // Dynamic rate job timer (runs every 2 hours in live mode)
+    if (flags.live) {
+      this.timers.set('dynamic_rate', setInterval(async () => {
+        await this.safeExecute('dynamic_rate', async () => {
+          await runDynamicRateJob();
+          this.stats.dynamicRateRuns++;
+          this.stats.lastDynamicRateTime = new Date();
+        });
+      }, 2 * 60 * 60 * 1000)); // 2 hours
+      registered.dynamic_rate = true;
+    }
+
     // Log registration status (EXPLICIT for observability)
     console.log('════════════════════════════════════════════════════════');
     console.log('JOB_MANAGER: Timer Registration Complete');
     console.log(`  MODE: ${flags.mode}`);
     console.log(`  Timers registered:`);
-    console.log(`    - plan:    ${registered.plan ? '✅' : '❌'}`);
-    console.log(`    - reply:   ${registered.reply ? '✅' : '❌'}`);
-    console.log(`    - posting: ${registered.posting ? '✅' : '❌'}`);
-    console.log(`    - learn:   ${registered.learn ? '✅' : '❌'}`);
+    console.log(`    - plan:        ${registered.plan ? '✅' : '❌'}`);
+    console.log(`    - reply:       ${registered.reply ? '✅' : '❌'}`);
+    console.log(`    - posting:     ${registered.posting ? '✅' : '❌'}`);
+    console.log(`    - learn:       ${registered.learn ? '✅' : '❌'}`);
+    console.log(`    - dynamic_rate: ${registered.dynamic_rate ? '✅' : '❌'} (2h interval)`);
     console.log('════════════════════════════════════════════════════════');
 
     // FAIL-FAST: Posting job MUST be registered in live mode

@@ -15,6 +15,7 @@ import { requireAdminAuth } from './api/middleware/adminAuth';
 import { jobScheduleHandler } from './api/adminJobSchedule';
 import adminRouter from './server/routes/admin';
 import lightweightPostingRouter from './api/lightweightPosting';
+import dynamicRatesRouter from './api/dynamicRates';
 
 const app = express();
 
@@ -88,6 +89,11 @@ app.use('/admin', adminRouter);
  * 🚀 LIGHTWEIGHT POSTING ROUTES - Railway Optimized
  */
 app.use('/api', lightweightPostingRouter);
+
+/**
+ * 🎯 DYNAMIC RATE CONTROLLER ROUTES - AI-Driven Scaling
+ */
+app.use('/api/dynamic-rates', dynamicRatesRouter);
 
 /**
  * 📤 POST /post - Direct posting endpoint for remote browser
