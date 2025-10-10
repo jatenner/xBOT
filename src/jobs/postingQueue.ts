@@ -214,24 +214,24 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
 async function postContent(decision: QueuedDecision): Promise<string> {
   console.log(`[POSTING_QUEUE] 📝 Posting content: "${decision.content.substring(0, 50)}..."`);
   
-  // 🎯 Use emergency working poster (guaranteed to succeed)
-  console.log('[POSTING_QUEUE] 🎯 Using emergency working poster...');
+  // 🎭 Use Playwright-only posting (no Twitter API, only browser)
+  console.log('[POSTING_QUEUE] 🎭 Using Playwright-only posting system...');
   
   try {
-    const { emergencyPoster } = await import('../posting/emergencyWorkingPoster');
-    const result = await emergencyPoster.guaranteedPost(decision.content);
+    const { playwrightOnlyPoster } = await import('../posting/playwrightOnlyPoster');
+    const result = await playwrightOnlyPoster.postWithPlaywright(decision.content);
     
     if (result.success) {
-      const tweetId = result.tweetId || `emergency_${Date.now()}`;
-      console.log(`[POSTING_QUEUE] ✅ Content posted via emergency system (${result.method}) with ID: ${tweetId}`);
+      const tweetId = result.tweetId || `playwright_${Date.now()}`;
+      console.log(`[POSTING_QUEUE] ✅ Content posted via Playwright in ${result.duration}ms with ID: ${tweetId}`);
       return tweetId;
     } else {
-      console.error(`[POSTING_QUEUE] ❌ Emergency posting failed: ${result.error}`);
-      throw new Error(result.error || 'Emergency posting failed');
+      console.error(`[POSTING_QUEUE] ❌ Playwright posting failed: ${result.error}`);
+      throw new Error(result.error || 'Playwright posting failed');
     }
   } catch (error: any) {
-    console.error(`[POSTING_QUEUE] ❌ Emergency system error: ${error.message}`);
-    throw new Error(`Emergency posting failed: ${error.message}`);
+    console.error(`[POSTING_QUEUE] ❌ Playwright system error: ${error.message}`);
+    throw new Error(`Playwright posting failed: ${error.message}`);
   }
 }
 
