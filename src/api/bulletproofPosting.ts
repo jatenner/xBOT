@@ -141,6 +141,10 @@ router.post('/bulletproof-reset', async (req, res) => {
     // Get current status
     const beforeStatus = await bulletproofPoster.getStatus();
     
+    // 🚨 EMERGENCY RESET: Clear failure counter
+    const { resetBulletproofFailures } = await import('../posting/bulletproofHttpPoster');
+    await resetBulletproofFailures();
+    
     // Force garbage collection if available
     if (global.gc) {
       global.gc();
@@ -153,12 +157,13 @@ router.post('/bulletproof-reset', async (req, res) => {
     
     res.json({
       success: true,
-      message: 'Bulletproof system reset completed',
-      before: beforeStatus.systemHealth,
-      after: afterStatus.systemHealth,
+      message: 'Bulletproof system reset completed with failure counter cleared',
+      before: beforeStatus,
+      after: afterStatus,
       improvements: {
         memoryFreed: beforeStatus.systemHealth.memoryMB - afterStatus.systemHealth.memoryMB,
-        queueCleared: beforeStatus.queueLength - afterStatus.queueLength
+        queueCleared: beforeStatus.queueLength - afterStatus.queueLength,
+        failuresCleared: beforeStatus.bulletproof.consecutiveFailures
       }
     });
     
