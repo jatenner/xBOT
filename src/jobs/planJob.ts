@@ -563,7 +563,20 @@ async function selectOptimalSchedule(): Promise<Date> {
   const MIN_MINUTES_UNTIL_SLOT = parseInt(process.env.MIN_MINUTES_UNTIL_SLOT || '0', 10);
   const POST_NOW_ON_COLD_START = process.env.POST_NOW_ON_COLD_START !== 'false';
   
-  // Check for cold start (queue is empty)
+  // 🚀 AGGRESSIVE GROWTH MODE: Always schedule for immediate posting
+  // Instead of waiting for optimal timing, we post every 30 minutes for 2 posts/hour
+  const AGGRESSIVE_GROWTH_MODE = process.env.MODE === 'live';
+  
+  if (AGGRESSIVE_GROWTH_MODE) {
+    console.log('[SCHEDULE] 🚀 AGGRESSIVE_GROWTH: Scheduling for immediate posting (2 posts/hour target)');
+    
+    // Schedule 5-10 minutes from now to allow for content review and processing
+    const immediatePostTime = new Date(Date.now() + (5 + Math.random() * 5) * 60 * 1000);
+    console.log(`[SCHEDULE] ⚡ Immediate post scheduled for: ${immediatePostTime.toISOString()}`);
+    return immediatePostTime;
+  }
+  
+  // Check for cold start (queue is empty) - fallback for non-aggressive mode
   if (POST_NOW_ON_COLD_START) {
     const { getSupabaseClient } = await import('../db/index');
     const supabase = getSupabaseClient();
@@ -580,7 +593,7 @@ async function selectOptimalSchedule(): Promise<Date> {
     }
   }
   
-  // Use UCB timing to find optimal slot
+  // Use UCB timing to find optimal slot (only for non-aggressive mode)
   const { getUCBTimingBandit } = await import('../schedule/ucbTiming');
   const ucbTiming = getUCBTimingBandit();
   const timingSelection = await ucbTiming.selectTimingWithUCB();

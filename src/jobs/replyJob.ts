@@ -20,9 +20,59 @@ export function getReplyLLMMetrics() {
   return { ...replyLLMMetrics };
 }
 
+// 🚀 AGGRESSIVE GROWTH: Reply frequency control (3 replies per hour)
+async function checkReplyHourlyQuota(): Promise<{
+  canReply: boolean;
+  repliesThisHour: number;
+  minutesUntilNext?: number;
+}> {
+  const supabase = getSupabaseClient();
+  const now = new Date();
+  const hourStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), 0, 0, 0);
+  
+  try {
+    // Count replies posted in the current hour
+    const { count, error } = await supabase
+      .from('content_metadata')
+      .select('*', { count: 'exact', head: true })
+      .eq('decision_type', 'reply')
+      .gte('created_at', hourStart.toISOString())
+      .lt('created_at', new Date(hourStart.getTime() + 60 * 60 * 1000).toISOString());
+    
+    if (error) {
+      console.error('[REPLY_QUOTA] ❌ Database error:', error);
+      return { canReply: true, repliesThisHour: 0 }; // Allow on error
+    }
+    
+    const repliesThisHour = count || 0;
+    const canReply = repliesThisHour < 3; // 3 replies per hour limit
+    
+    let minutesUntilNext;
+    if (!canReply) {
+      const nextHour = new Date(hourStart.getTime() + 60 * 60 * 1000);
+      minutesUntilNext = (nextHour.getTime() - now.getTime()) / (1000 * 60);
+    }
+    
+    return { canReply, repliesThisHour, minutesUntilNext };
+    
+  } catch (error) {
+    console.error('[REPLY_QUOTA] ❌ Quota check failed:', error);
+    return { canReply: true, repliesThisHour: 0 }; // Allow on error
+  }
+}
+
 export async function generateReplies(): Promise<void> {
   const config = getConfig();
   console.log('[REPLY_JOB] 💬 Starting reply generation cycle...');
+  
+  // 🚀 AGGRESSIVE GROWTH: Check reply frequency limits (3 replies per hour)
+  const replyQuotaCheck = await checkReplyHourlyQuota();
+  if (!replyQuotaCheck.canReply) {
+    console.log(`[REPLY_JOB] ⏸️ Reply quota reached: ${replyQuotaCheck.repliesThisHour}/3 this hour. Next reply in ${Math.ceil(replyQuotaCheck.minutesUntilNext || 0)} minutes`);
+    return;
+  }
+  
+  console.log(`[REPLY_JOB] ✅ Reply quota available: ${replyQuotaCheck.repliesThisHour}/3 this hour`);
   
   try {
     if (config.MODE === 'shadow') {
