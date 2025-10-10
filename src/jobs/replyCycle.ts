@@ -49,8 +49,8 @@ export interface ReplyRequest {
   };
 }
 
-const REPLY_MAX_PER_DAY = parseInt(process.env.REPLY_MAX_PER_DAY || '10', 10);
-const REPLY_MINUTES_BETWEEN = parseInt(process.env.REPLY_MINUTES_BETWEEN || '60', 10);
+const REPLY_MAX_PER_DAY = parseInt(process.env.REPLY_MAX_PER_DAY || '72', 10); // 3 per hour * 24 hours
+const REPLY_MINUTES_BETWEEN = parseInt(process.env.REPLY_MINUTES_BETWEEN || '20', 10); // 20 minutes = 3 per hour
 const TARGET_DISCOVERY_INTERVAL_MIN = parseInt(process.env.TARGET_DISCOVERY_INTERVAL_MIN || '30', 10);
 
 const HEALTH_KEYWORDS = [
