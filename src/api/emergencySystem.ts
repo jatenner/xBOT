@@ -158,7 +158,8 @@ router.post('/emergency-system-test', async (req, res) => {
     } else {
       // Step 4: Process existing queued content
       const content = queuedContent[0];
-      const result = await emergencyPoster.guaranteedPost(content.content);
+      const contentText = typeof content.content === 'string' ? content.content : String(content.content || '');
+      const result = await emergencyPoster.guaranteedPost(contentText);
       
       // Mark as posted
       await supabase
