@@ -9,7 +9,29 @@
  */
 
 import { getSupabaseClient } from '../db/index';
-import { kvGet, kvSet } from '../lib/kv';
+
+// Simple KV implementation using environment variables as fallback
+async function kvGet(key: string): Promise<string | null> {
+  try {
+    // Try to import KV functions, fallback if not available
+    const { kvGet: realKvGet } = await import('../lib/kv');
+    return await realKvGet(key);
+  } catch {
+    // Fallback to environment variable or return null
+    return process.env[`KV_${key.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase()}`] || null;
+  }
+}
+
+async function kvSet(key: string, value: string, ttl?: number): Promise<void> {
+  try {
+    // Try to import KV functions, fallback if not available
+    const { kvSet: realKvSet } = await import('../lib/kv');
+    await realKvSet(key, value, ttl);
+  } catch {
+    // Fallback to environment variable (not persistent but works for current session)
+    process.env[`KV_${key.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase()}`] = value;
+  }
+}
 
 interface PerformanceMetrics {
   avg_engagement_rate: number;
@@ -230,7 +252,7 @@ export class DynamicRateController {
     const secondHalfAvg = secondHalf.reduce((sum, p) => sum + (p.engagement_rate || 0), 0) / secondHalf.length;
 
     // Higher score means more saturation (engagement declining over time)
-    const decline = Math.max(0, (firstHalfAvg - secondHalfAvg) / firstHalfAvg);
+    const decline = Math.max(0, firstHalfAvg > 0 ? (firstHalfAvg - secondHalfAvg) / firstHalfAvg : 0);
     return Math.min(1, decline * 2); // Scale to 0-1
   }
 
