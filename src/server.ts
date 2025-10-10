@@ -16,6 +16,7 @@ import { jobScheduleHandler } from './api/adminJobSchedule';
 import adminRouter from './server/routes/admin';
 import lightweightPostingRouter from './api/lightweightPosting';
 import bulletproofPostingRouter from './api/bulletproofPosting';
+import emergencySystemRouter from './api/emergencySystem';
 import ratesRouter from './api/rates';
 
 const app = express();
@@ -95,6 +96,11 @@ app.use('/api', lightweightPostingRouter);
  * 🛡️ BULLETPROOF POSTING ROUTES - Crash Resistant
  */
 app.use('/api', bulletproofPostingRouter);
+
+/**
+ * 🚨 EMERGENCY SYSTEM ROUTES - Guaranteed Working
+ */
+app.use('/api', emergencySystemRouter);
 
 /**
  * ⚡ SIMPLIFIED RATES API - Lightweight Dynamic Scaling
