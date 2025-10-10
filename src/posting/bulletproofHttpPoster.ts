@@ -53,7 +53,7 @@ export class BulletproofHttpPoster {
     }
 
     async postViaHttp(content: string): Promise<PostResult> {
-        console.log('🌐 BULLETPROOF_HTTP: Attempting HTTP-based posting...');
+        console.log('🌐 BULLETPROOF_HTTP: Attempting direct Twitter API posting...');
         
         if (!this.sessionCookies) {
             const sessionReady = await this.initializeSession();
@@ -63,36 +63,111 @@ export class BulletproofHttpPoster {
         }
 
         try {
-            // Use the existing /api/post-lightweight endpoint which is working
-            const response = await fetch('https://xbot-production-844b.up.railway.app/api/post-lightweight', {
+            // Extract session data for Twitter API
+            const sessionB64 = process.env.TWITTER_SESSION_B64;
+            if (!sessionB64) {
+                return { success: false, error: 'Twitter session not found' };
+            }
+
+            const sessionData = JSON.parse(Buffer.from(sessionB64, 'base64').toString());
+            const cookies = sessionData.cookies;
+
+            // Extract required tokens from cookies
+            const authToken = cookies.find((c: any) => c.name === 'auth_token')?.value;
+            const csrfToken = cookies.find((c: any) => c.name === 'ct0')?.value;
+            
+            if (!authToken || !csrfToken) {
+                return { success: false, error: 'Missing auth_token or ct0 cookies' };
+            }
+
+            // Build cookie string
+            const cookieString = cookies
+                .map((c: any) => `${c.name}=${c.value}`)
+                .join('; ');
+
+            console.log('🔑 BULLETPROOF_HTTP: Using direct Twitter GraphQL API...');
+
+            // Use Twitter's GraphQL endpoint for posting tweets
+            const response = await fetch('https://twitter.com/i/api/graphql/VzE2lcVcgN2hjfZ99C794A/CreateTweet', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                    'authorization': 'Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA',
+                    'content-type': 'application/json',
+                    'cookie': cookieString,
+                    'x-csrf-token': csrfToken,
+                    'x-twitter-auth-type': 'OAuth2Session',
+                    'x-twitter-active-user': 'yes',
+                    'x-twitter-client-language': 'en',
+                    'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'referer': 'https://twitter.com/compose/tweet',
+                    'origin': 'https://twitter.com'
                 },
-                body: JSON.stringify({ content })
+                body: JSON.stringify({
+                    variables: {
+                        tweet_text: content,
+                        dark_request: false,
+                        media: {
+                            media_entities: [],
+                            possibly_sensitive: false
+                        },
+                        semantic_annotation_ids: []
+                    },
+                    features: {
+                        tweetypie_unmention_optimization_enabled: true,
+                        responsive_web_edit_tweet_api_enabled: true,
+                        graphql_is_translatable_rweb_tweet_is_translatable_enabled: true,
+                        view_counts_everywhere_api_enabled: true,
+                        longform_notetweets_consumption_enabled: true,
+                        responsive_web_twitter_article_tweet_consumption_enabled: false,
+                        tweet_awards_web_tipping_enabled: false,
+                        longform_notetweets_rich_text_read_enabled: true,
+                        longform_notetweets_inline_media_enabled: true,
+                        responsive_web_graphql_exclude_directive_enabled: true,
+                        verified_phone_label_enabled: false,
+                        freedom_of_speech_not_reach_fetch_enabled: true,
+                        standardized_nudges_misinfo: true,
+                        tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled: true,
+                        responsive_web_media_download_video_enabled: false,
+                        responsive_web_graphql_skip_user_profile_image_extensions_enabled: false,
+                        responsive_web_graphql_timeline_navigation_enabled: true,
+                        responsive_web_enhance_cards_enabled: false
+                    }
+                })
             });
 
-            if (response.ok) {
-                const result = await response.json();
-                if (result.success) {
-                    console.log('✅ BULLETPROOF_HTTP: HTTP posting successful');
-                    this.consecutiveFailures = 0;
-                    this.lastSuccessfulPost = new Date();
-                    return { 
-                        success: true, 
-                        tweetId: result.tweetId,
-                        method: 'http'
-                    };
-                } else {
-                    throw new Error(result.error || 'HTTP posting failed');
-                }
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error(`❌ BULLETPROOF_HTTP: Twitter API error ${response.status}: ${errorText}`);
+                return { success: false, error: `Twitter API ${response.status}: ${response.statusText}` };
+            }
+
+            const data = await response.json();
+            
+            if (data.errors && data.errors.length > 0) {
+                const errorMsg = data.errors[0].message;
+                console.error(`❌ BULLETPROOF_HTTP: Twitter GraphQL error: ${errorMsg}`);
+                return { success: false, error: `Twitter GraphQL error: ${errorMsg}` };
+            }
+
+            // Extract tweet ID from response
+            const tweetId = data.data?.create_tweet?.tweet_results?.result?.rest_id;
+            
+            if (tweetId) {
+                console.log(`✅ BULLETPROOF_HTTP: Tweet posted successfully with ID ${tweetId}`);
+                this.consecutiveFailures = 0;
+                this.lastSuccessfulPost = new Date();
+                return { 
+                    success: true, 
+                    tweetId: tweetId,
+                    method: 'direct_twitter_api'
+                };
             } else {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                console.error('❌ BULLETPROOF_HTTP: No tweet ID in response:', JSON.stringify(data, null, 2));
+                return { success: false, error: 'No tweet ID in Twitter API response' };
             }
             
         } catch (error: any) {
-            console.error('❌ BULLETPROOF_HTTP: HTTP posting failed:', error.message);
+            console.error('❌ BULLETPROOF_HTTP: Direct Twitter API failed:', error.message);
             this.consecutiveFailures++;
             return { success: false, error: error.message };
         }
