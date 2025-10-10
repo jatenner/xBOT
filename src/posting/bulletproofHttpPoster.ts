@@ -209,6 +209,14 @@ export class BulletproofHttpPoster {
             isHealthy: this.consecutiveFailures < 3
         };
     }
+
+    // 🔧 EMERGENCY RESET METHOD
+    async resetFailures() {
+        console.log('🔧 BULLETPROOF_HTTP: Emergency failure reset...');
+        this.consecutiveFailures = 0;
+        this.lastSuccessfulPost = new Date();
+        console.log('✅ BULLETPROOF_HTTP: Failure counter reset to 0');
+    }
 }
 
 // Singleton instance
@@ -229,4 +237,9 @@ export async function bulletproofPost(content: string): Promise<PostResult> {
 export async function getBulletproofStatus() {
     const poster = await getBulletproofPoster();
     return await poster.getStatus();
+}
+
+export async function resetBulletproofFailures() {
+    const poster = await getBulletproofPoster();
+    return await poster.resetFailures();
 }
