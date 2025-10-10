@@ -128,7 +128,7 @@ Format as JSON:
   const response = await createBudgetedChatCompletion({
     model: flags.OPENAI_MODEL,
     messages: [
-      { role: 'system', content: 'You are a knowledgeable health enthusiast who provides genuine, evidence-based insights.' },
+      { role: 'system', content: 'You are a knowledgeable health enthusiast who provides genuine, evidence-based insights. Always respond with valid JSON format.' },
       { role: 'user', content: prompt }
     ],
     temperature: parseFloat(process.env.OPENAI_TEMPERATURE || '0.7'),
