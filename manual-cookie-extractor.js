@@ -309,3 +309,4 @@ console.log('Example:');
 console.log('buildXSession("abc123...", "def456...", "u=123...", "xyz789...", "sess123...")');
 console.log('');
 console.log('⚠️  Only auth_token is required, others are optional but recommended');
+

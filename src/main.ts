@@ -2,7 +2,7 @@ import { validateEnvironment } from './config/env';
 import { startHealthServer } from './server';
 import { closeBrowser } from './playwright/browserFactory';
 import { closeDatabaseConnections } from './db/index';
-import { BulletproofMainSystem } from './main-bulletproof';
+import { boot } from './main-bulletproof';
 
 /**
  * Main application entry point with proper error handling and graceful shutdown
@@ -22,14 +22,13 @@ async function main() {
   console.log('🏥 Health server started');
 
   // Initialize and start the bulletproof system
-  console.log('🚀 BULLETPROOF_STARTUP: Initializing bulletproof prompt system...');
-  const bulletproofSystem = new BulletproofMainSystem();
+  console.log('🚀 BULLETPROOF_STARTUP: Initializing lightweight Railway-optimized system...');
   
-  console.log('🎯 BULLETPROOF_FEATURES: Learning systems, AI-driven content, Real analytics');
-  console.log('✅ BULLETPROOF_READY: Professional content generation with existing systems');
+  console.log('🎯 BULLETPROOF_FEATURES: Lightweight posting, Resource protection, Memory optimization');
+  console.log('✅ BULLETPROOF_READY: Railway-optimized system starting...');
   
   // Start the bulletproof system
-  await bulletproofSystem.start();
+  await boot();
   
   // Set up graceful shutdown
   const shutdown = async (signal: string) => {
@@ -37,7 +36,7 @@ async function main() {
     
     try {
       console.log('🛡️ Stopping bulletproof system...');
-      await bulletproofSystem.stop();
+      // The boot function handles its own cleanup
       
       console.log('🌐 Closing browser...');
       await closeBrowser();
