@@ -41,16 +41,16 @@ const ConfigSchema = z.object({
   DUP_COSINE_THRESHOLD: z.number().min(0).max(1).default(0.9),
   SIMILARITY_THRESHOLD: z.number().min(0).max(1).default(0.9),
   
-  // Job Scheduling
+  // Job Scheduling - AGGRESSIVE GROWTH SETTINGS
   JOBS_AUTOSTART: z.boolean().default(false),
-  JOBS_PLAN_INTERVAL_MIN: z.number().default(60),
-  JOBS_REPLY_INTERVAL_MIN: z.number().default(90),
+  JOBS_PLAN_INTERVAL_MIN: z.number().default(30), // More frequent content planning
+  JOBS_REPLY_INTERVAL_MIN: z.number().default(20), // Check for replies every 20 minutes
   JOBS_LEARN_INTERVAL_MIN: z.number().default(120),
   JOBS_POSTING_INTERVAL_MIN: z.number().default(5),
   
-  // Rate Limits
-  MAX_POSTS_PER_HOUR: z.number().default(1),
-  REPLY_MAX_PER_DAY: z.number().default(10),
+  // Rate Limits - AGGRESSIVE GROWTH
+  MAX_POSTS_PER_HOUR: z.number().default(2), // 2 posts per hour
+  MAX_DAILY_POSTS: z.number().default(48), // 2 per hour * 24 hours
   
   // Security
   ADMIN_TOKEN: z.string().default('dev-admin-token')

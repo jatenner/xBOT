@@ -92,10 +92,10 @@ export const DEFAULT_CONTENT_BRAIN_CONFIG: ContentBrainConfig = {
   },
   posting: {
     cadence: {
-      target_posts_per_day: [10, 25],
-      target_replies_per_day: [20, 40],
-      min_post_interval_minutes: parseInt(process.env.MIN_POST_INTERVAL_MINUTES || '45'),
-      max_posts_per_hour: parseInt(process.env.MAX_POSTS_PER_HOUR || '3')
+      target_posts_per_day: [40, 48], // Aggressive: 40-48 posts per day
+      target_replies_per_day: [60, 72], // Aggressive: 60-72 replies per day  
+      min_post_interval_minutes: parseInt(process.env.MIN_POST_INTERVAL_MINUTES || '30'), // 30 min = 2 per hour
+      max_posts_per_hour: parseInt(process.env.MAX_POSTS_PER_HOUR || '2') // 2 posts per hour
     },
     formats: {
       single: { max_chars: 279, weight: 0.4 },

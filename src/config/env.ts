@@ -2,9 +2,9 @@
  * Centralized environment configuration with validation
  */
 
-// Core posting controls
-export const MIN_POST_INTERVAL_MINUTES = parseInt(process.env.MIN_POST_INTERVAL_MINUTES || '5', 10);
-export const MAX_DAILY_POSTS = parseInt(process.env.MAX_DAILY_POSTS || '12', 10);
+// Core posting controls - AGGRESSIVE GROWTH SETTINGS
+export const MIN_POST_INTERVAL_MINUTES = parseInt(process.env.MIN_POST_INTERVAL_MINUTES || '30', 10); // 30 min = 2 per hour
+export const MAX_DAILY_POSTS = parseInt(process.env.MAX_DAILY_POSTS || '48', 10); // 2 per hour * 24 hours
 export const FORCE_POST = process.env.FORCE_POST === 'true';
 
 // Feature toggles
