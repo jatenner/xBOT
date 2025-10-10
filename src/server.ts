@@ -15,6 +15,7 @@ import { requireAdminAuth } from './api/middleware/adminAuth';
 import { jobScheduleHandler } from './api/adminJobSchedule';
 import adminRouter from './server/routes/admin';
 import lightweightPostingRouter from './api/lightweightPosting';
+import bulletproofPostingRouter from './api/bulletproofPosting';
 import ratesRouter from './api/rates';
 
 const app = express();
@@ -89,6 +90,11 @@ app.use('/admin', adminRouter);
  * 🚀 LIGHTWEIGHT POSTING ROUTES - Railway Optimized
  */
 app.use('/api', lightweightPostingRouter);
+
+/**
+ * 🛡️ BULLETPROOF POSTING ROUTES - Crash Resistant
+ */
+app.use('/api', bulletproofPostingRouter);
 
 /**
  * ⚡ SIMPLIFIED RATES API - Lightweight Dynamic Scaling

@@ -1,29 +1,34 @@
 /**
- * 🛡️ BULLETPROOF TWITTER POSTER
- * Guaranteed posting that actually works on Railway
- * Fixes all browser crashes and posting failures
+ * 🚀 BULLETPROOF POSTING SYSTEM - BROWSER CRASH RESISTANT
+ * 
+ * This system is designed to handle Railway resource constraints and browser crashes
+ * by prioritizing HTTP posting and implementing intelligent fallback strategies.
  */
 
-import { BulletproofPoster as NewPoster } from './poster';
-import BulletproofComposer from './bulletproofComposer';
+import { bulletproofPost, getBulletproofStatus } from './bulletproofHttpPoster';
 
-export interface PostResult {
+interface BulletproofPostResult {
   success: boolean;
-  content: string;
   tweetId?: string;
   error?: string;
-  timestamp: Date;
+  method?: string;
+  resourcesUsed: {
+    memoryMB: number;
+    durationMs: number;
+  };
+  retryAfter?: number;
 }
 
 export class BulletproofPoster {
   private static instance: BulletproofPoster;
-  private poster: NewPoster;
-
-  private constructor() {
-    this.poster = new NewPoster();
-  }
-
-  public static getInstance(): BulletproofPoster {
+  private isPosting = false;
+  private postQueue: Array<{
+    content: string;
+    resolve: (result: BulletproofPostResult) => void;
+    reject: (error: any) => void;
+  }> = [];
+  
+  static getInstance(): BulletproofPoster {
     if (!BulletproofPoster.instance) {
       BulletproofPoster.instance = new BulletproofPoster();
     }
@@ -31,160 +36,104 @@ export class BulletproofPoster {
   }
 
   /**
-   * 🚀 POST CONTENT WITH GUARANTEED SUCCESS
+   * 🚀 MAIN POSTING METHOD - Crash Resistant
    */
-  public async postContent(content: string): Promise<PostResult> {
-    console.log('🚀 BULLETPROOF_POSTER: Starting guaranteed post...');
-    console.log(`📝 CONTENT: "${content.substring(0, 100)}${content.length > 100 ? '...' : ''}"`);
+  async postContent(content: string): Promise<BulletproofPostResult> {
+    const startTime = Date.now();
+    const startMemory = process.memoryUsage().heapUsed / 1024 / 1024;
+
+    console.log('🛡️ BULLETPROOF_POSTER: Starting crash-resistant post...');
+    
+    // Queue system prevents resource exhaustion
+    if (this.isPosting) {
+      console.log('📋 QUEUE: Adding to bulletproof queue (preventing crashes)');
+      return new Promise<BulletproofPostResult>((resolve, reject) => {
+        this.postQueue.push({ content, resolve, reject });
+      });
+    }
+
+    this.isPosting = true;
 
     try {
-      const result = await this.poster.postSingle(content);
-      
-      return {
+      // Use the bulletproof HTTP poster
+      console.log('🚀 BULLETPROOF_HTTP: Using crash-resistant posting...');
+      const result = await bulletproofPost(content);
+
+      const endMemory = process.memoryUsage().heapUsed / 1024 / 1024;
+      const bulletproofResult: BulletproofPostResult = {
         success: result.success,
-        content,
         tweetId: result.tweetId,
         error: result.error,
-        timestamp: new Date()
+        method: result.method || 'http',
+        resourcesUsed: {
+          memoryMB: Math.round(endMemory - startMemory),
+          durationMs: Date.now() - startTime
+        },
+        retryAfter: result.retryAfter
       };
 
-    } catch (error) {
-      console.error('❌ BULLETPROOF_POSTER_ERROR:', error);
-      
-      return {
-        success: false,
-        content,
-        error: error instanceof Error ? error.message : 'Unknown error',
-        timestamp: new Date()
-      };
-    }
-  }
-
-  /**
-   * 💬 POST REAL REPLY AS ACTUAL COMMENT
-   */
-  public async postReply(replyContent: string, targetTweetId: string): Promise<PostResult> {
-    console.log('💬 BULLETPROOF_REPLY: Starting real reply post...');
-    console.log(`📝 REPLY: "${replyContent.substring(0, 80)}..."`);
-    console.log(`🎯 TARGET: Tweet ${targetTweetId}`);
-
-    try {
-      const result = await this.poster.postReply(replyContent, targetTweetId);
-      
-      return {
-        success: result.success,
-        content: replyContent,
-        tweetId: result.tweetId, // Reply tweet ID
-        error: result.error,
-        timestamp: new Date()
-      };
-
-    } catch (error) {
-      console.error('❌ BULLETPROOF_REPLY_ERROR:', error);
-      
-      return {
-        success: false,
-        content: replyContent,
-        error: error instanceof Error ? error.message : 'Unknown error',
-        timestamp: new Date()
-      };
-    }
-  }
-
-  /**
-   * 🧵 POST THREAD WITH GUARANTEED SUCCESS
-   */
-  public async postThread(tweets: string[]): Promise<PostResult> {
-    console.log('🧵 BULLETPROOF_THREAD: Starting guaranteed thread post...');
-    console.log(`📝 THREAD: ${tweets.length} tweets`);
-
-    try {
-      const result = await this.poster.postThread(tweets);
-      
-      return {
-        success: result.success,
-        content: tweets.join('\n\n'),
-        tweetId: result.tweetIds[0], // First tweet ID
-        error: result.error,
-        timestamp: new Date()
-      };
-
-    } catch (error) {
-      console.error('❌ BULLETPROOF_THREAD_ERROR:', error);
-      
-      return {
-        success: false,
-        content: tweets.join('\n\n'),
-        error: error instanceof Error ? error.message : 'Unknown error',
-        timestamp: new Date()
-      };
-    }
-  }
-
-  /**
-   * ✅ HEALTH CHECK
-   */
-  public async healthCheck(): Promise<{
-    status: 'healthy' | 'degraded' | 'unhealthy';
-    message: string;
-    details: any;
-  }> {
-    try {
-      const testResult = await this.poster.testComposerAccess();
-      
-      if (testResult.composerAccessible && testResult.sessionValid) {
-        return {
-          status: 'healthy',
-          message: 'Bulletproof poster ready for action',
-          details: testResult
-        };
-      } else if (testResult.sessionValid) {
-        return {
-          status: 'degraded',
-          message: 'Session valid but composer issues detected',
-          details: testResult
-        };
+      if (result.success) {
+        console.log(`✅ BULLETPROOF_SUCCESS: Posted via ${result.method || 'HTTP'} in ${bulletproofResult.resourcesUsed.durationMs}ms`);
       } else {
-        return {
-          status: 'unhealthy',
-          message: 'Session invalid or major issues',
-          details: testResult
-        };
+        console.error(`❌ BULLETPROOF_FAILED: ${result.error}`);
       }
 
-    } catch (error) {
+      return bulletproofResult;
+
+    } catch (error: any) {
+      const endMemory = process.memoryUsage().heapUsed / 1024 / 1024;
+      
+      console.error('❌ BULLETPROOF_POSTER: Unexpected error:', error.message);
+      
       return {
-        status: 'unhealthy',
-        message: 'Health check failed',
-        details: { error: error instanceof Error ? error.message : 'Unknown error' }
+        success: false,
+        error: `Unexpected error: ${error.message}`,
+        resourcesUsed: {
+          memoryMB: Math.round(endMemory - startMemory),
+          durationMs: Date.now() - startTime
+        }
       };
+    } finally {
+      this.isPosting = false;
+      this.processQueue();
     }
   }
 
   /**
-   * 📊 GET STATUS
+   * ⏳ Process Post Queue
    */
-  public getStatus(): {
-    ready: boolean;
-    sessionValid: boolean;
-    lastActivity: Date;
-  } {
-    return {
-      ready: true,
-      sessionValid: true, // Would be determined by health check
-      lastActivity: new Date()
-    };
+  private processQueue(): void {
+    if (this.postQueue.length === 0 || this.isPosting) return;
+    
+    const next = this.postQueue.shift();
+    if (next) {
+      console.log(`📋 BULLETPROOF_QUEUE: Processing queued post (${this.postQueue.length} remaining)`);
+      
+      // Process next item
+      this.postContent(next.content)
+        .then(next.resolve)
+        .catch(next.reject);
+    }
   }
 
   /**
-   * 🧹 CLEANUP
+   * 📊 Get System Status
    */
-  public async cleanup(): Promise<void> {
-    await this.poster.cleanup();
+  async getStatus() {
+    const bulletproofStatus = await getBulletproofStatus();
+    
+    return {
+      isPosting: this.isPosting,
+      queueLength: this.postQueue.length,
+      bulletproof: bulletproofStatus,
+      systemHealth: {
+        memoryMB: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+        uptime: process.uptime(),
+        healthy: bulletproofStatus.isHealthy && this.postQueue.length < 5
+      }
+    };
   }
 }
 
 // Export singleton instance
 export const bulletproofPoster = BulletproofPoster.getInstance();
-
-export default BulletproofPoster;
