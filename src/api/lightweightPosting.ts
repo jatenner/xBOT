@@ -19,8 +19,8 @@ router.post('/post-lightweight', async (req, res) => {
   try {
     let { content } = req.body;
     
-    // 🛡️ PRODUCTION SAFETY: Generate high-quality content if none provided
-    if (!content) {
+    // 🛡️ PRODUCTION SAFETY: Generate high-quality content if none provided or empty
+    if (!content || content.trim() === '') {
       console.log('🎨 GENERATING: High-quality production content...');
       const { ProductionContentManager } = await import('../content/productionContentManager');
       const contentManager = ProductionContentManager.getInstance();
