@@ -313,11 +313,11 @@ async function postContent(decision: QueuedDecision): Promise<string> {
         get: () => ['en-US', 'en'],
       });
       
-      // Spoof permissions
-      const originalQuery = window.navigator.permissions.query;
-      window.navigator.permissions.query = (parameters) => (
+      // Spoof permissions (with proper typing)
+      const originalQuery = (window.navigator.permissions as any).query;
+      (window.navigator.permissions as any).query = (parameters: any) => (
         parameters.name === 'notifications' ?
-          Promise.resolve({ state: Notification.permission }) :
+          Promise.resolve({ state: (Notification as any).permission }) :
           originalQuery(parameters)
       );
       
