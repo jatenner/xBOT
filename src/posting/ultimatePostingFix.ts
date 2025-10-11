@@ -39,7 +39,7 @@ export class UltimateTwitterPoster {
           console.log(`🔧 ULTIMATE_SESSION: Using cookies array from session data (${cookies.length} cookies)`);
         } else if (typeof sessionData === 'object') {
           // Try to convert object values to cookie array
-          cookies = Object.values(sessionData).filter(cookie => 
+          cookies = Object.values(sessionData).filter((cookie: any) => 
             cookie && 
             typeof cookie === 'object' && 
             cookie.name && 
@@ -50,7 +50,7 @@ export class UltimateTwitterPoster {
       }
       
       // Validate cookies before adding
-      const validCookies = cookies.filter(cookie => 
+      const validCookies = cookies.filter((cookie: any) => 
         cookie && 
         typeof cookie === 'object' && 
         typeof cookie.name === 'string' && 
