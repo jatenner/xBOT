@@ -100,12 +100,46 @@ export class UltimateTwitterPoster {
         throw new Error('No composer found with ultimate selectors');
       }
       
-      // Focus and type content
+      // Focus and type content with ADVANCED human-like patterns
       await composer.click();
       await composer.fill('');
-      await composer.type(content, { delay: 50 });
       
-      console.log(`✅ ULTIMATE_CONTENT: Typed ${content.length} characters`);
+      // 🎭 ANTI-DETECTION: Human-like typing with random delays and pauses
+      console.log('⌨️ ULTIMATE_HUMAN_TYPING: Simulating realistic typing pattern...');
+      
+      for (let i = 0; i < content.length; i++) {
+        const char = content[i];
+        await composer.type(char);
+        
+        // Variable typing speed (30-120ms between characters)
+        const baseDelay = Math.floor(Math.random() * 90) + 30;
+        
+        // Longer delays for punctuation (like humans pause)
+        const extraDelay = /[.!?,:;]/.test(char) ? Math.floor(Math.random() * 200) + 100 : 0;
+        
+        // Occasional thinking pauses (every 15-25 characters)
+        const thinkingPause = (i > 0 && i % (Math.floor(Math.random() * 10) + 15) === 0) 
+          ? Math.floor(Math.random() * 800) + 300 : 0;
+        
+        const totalDelay = baseDelay + extraDelay + thinkingPause;
+        await this.page.waitForTimeout(totalDelay);
+        
+        if (thinkingPause > 0) {
+          console.log(`⏸️ ULTIMATE_HUMAN_PAUSE: ${thinkingPause}ms thinking pause at position ${i}`);
+        }
+      }
+      
+      console.log(`✅ ULTIMATE_CONTENT: Typed ${content.length} characters with human patterns`);
+      
+      // 🐭 HUMAN-LIKE MOUSE MOVEMENT: Random small movements to mimic human behavior
+      const currentMouse = await this.page.mouse.position();
+      await this.page.mouse.move(
+        currentMouse.x + Math.floor(Math.random() * 20) - 10,
+        currentMouse.y + Math.floor(Math.random() * 20) - 10
+      );
+      
+      // Brief pause before clicking post (like humans do)
+      await this.page.waitForTimeout(Math.floor(Math.random() * 1000) + 500);
       
       // Find and click post button
       let postButton = null;
