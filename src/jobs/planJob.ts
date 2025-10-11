@@ -570,8 +570,8 @@ async function selectOptimalSchedule(): Promise<Date> {
   if (AGGRESSIVE_GROWTH_MODE) {
     console.log('[SCHEDULE] 🚀 AGGRESSIVE_GROWTH: Scheduling for immediate posting (2 posts/hour target)');
     
-    // Schedule 5-10 minutes from now to allow for content review and processing
-    const immediatePostTime = new Date(Date.now() + (5 + Math.random() * 5) * 60 * 1000);
+    // Schedule immediately (within 1-2 minutes for optimal engagement)
+    const immediatePostTime = new Date(Date.now() + (1 + Math.random() * 1) * 60 * 1000);
     console.log(`[SCHEDULE] ⚡ Immediate post scheduled for: ${immediatePostTime.toISOString()}`);
     return immediatePostTime;
   }
