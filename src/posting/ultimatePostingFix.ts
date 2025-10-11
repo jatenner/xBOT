@@ -128,11 +128,41 @@ export class UltimateTwitterPoster {
       await postButton.click();
       console.log('🚀 ULTIMATE_POST: Tweet submitted!');
       
-      // Wait for success indicators
-      await this.page.waitForTimeout(2000);
+      // 🎯 CRITICAL: Actually verify the tweet was posted to Twitter
+      console.log('🔍 ULTIMATE_VERIFICATION: Waiting for Twitter to confirm post...');
       
-      const tweetId = `ultimate_${Date.now()}`;
-      return { success: true, tweetId };
+      try {
+        // Method 1: Wait for navigation to status URL (most reliable)
+        await this.page.waitForURL(/.*\/status\/\d+/, { timeout: 15000 });
+        const tweetUrl = this.page.url();
+        const tweetId = tweetUrl.split('/').pop();
+        console.log(`✅ ULTIMATE_SUCCESS: Tweet posted with URL: ${tweetUrl}`);
+        return { success: true, tweetId: tweetId };
+      } catch (urlError) {
+        console.log('⚠️ ULTIMATE_VERIFICATION: No status URL redirect, trying alternative verification...');
+        
+        // Method 2: Check if composer disappeared (weaker but still valid)
+        try {
+          await this.page.waitForSelector('[data-testid="tweetTextarea_0"]', { 
+            state: 'detached', 
+            timeout: 10000 
+          });
+          console.log('✅ ULTIMATE_SUCCESS: Composer disappeared - tweet likely posted');
+          return { success: true, tweetId: `ultimate_${Date.now()}` };
+        } catch (composerError) {
+          console.log('❌ ULTIMATE_VERIFICATION: Composer still present - tweet may not have posted');
+          
+          // Method 3: Check if we're back on timeline
+          const currentUrl = this.page.url();
+          if (currentUrl.includes('/home') || currentUrl.match(/x\.com\/[^\/]+\/?$/)) {
+            console.log('✅ ULTIMATE_SUCCESS: Back on timeline - assuming success');
+            return { success: true, tweetId: `ultimate_timeline_${Date.now()}` };
+          } else {
+            console.log('❌ ULTIMATE_FAILURE: Still on compose page - tweet failed');
+            return { success: false, error: 'Tweet was not posted - still on compose page' };
+          }
+        }
+      }
       
     } catch (error) {
       console.error('❌ ULTIMATE_POSTER_ERROR:', error.message);
