@@ -218,24 +218,38 @@ async function postContent(decision: QueuedDecision): Promise<string> {
   console.log('[POSTING_QUEUE] 🛡️ Using BulletproofTwitterComposer with 4 strategies...');
   
   try {
-    const { PostingFacade } = await import('../posting/PostingFacade');
-    const draft = {
-      content: decision.content,
-      id: decision.id
-    };
-    const result = await PostingFacade.post(draft);
+    // 🎯 EMERGENCY: Use UltimateTwitterPoster with current X selectors
+    console.log('[POSTING_QUEUE] 🎯 Using UltimateTwitterPoster with updated selectors...');
+    
+    const { UltimateTwitterPoster } = await import('../posting/ultimatePostingFix');
+    const { chromium } = await import('playwright');
+    
+    const browser = await chromium.launch({ 
+      headless: true,
+      args: ['--no-sandbox', '--disable-dev-shm-usage']
+    });
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    
+    // Load session and navigate to X
+    await page.goto('https://x.com');
+    
+    const ultimatePoster = new UltimateTwitterPoster(page);
+    const result = await ultimatePoster.postTweet(decision.content);
+    
+    await browser.close();
     
     if (result.success) {
-      const tweetId = result.tweetId || result.rootTweetUrl || `bulletproof_${Date.now()}`;
-      console.log(`[POSTING_QUEUE] ✅ Content posted via BulletproofComposer with ID: ${tweetId}`);
+      const tweetId = result.tweetId || `ultimate_${Date.now()}`;
+      console.log(`[POSTING_QUEUE] ✅ Content posted via UltimateTwitterPoster with ID: ${tweetId}`);
       return tweetId;
     } else {
-      console.error(`[POSTING_QUEUE] ❌ BulletproofComposer posting failed: ${result.error}`);
-      throw new Error(result.error || 'BulletproofComposer posting failed');
+      console.error(`[POSTING_QUEUE] ❌ UltimateTwitterPoster posting failed: ${result.error}`);
+      throw new Error(result.error || 'UltimateTwitterPoster posting failed');
     }
   } catch (error: any) {
-    console.error(`[POSTING_QUEUE] ❌ BulletproofComposer system error: ${error.message}`);
-    throw new Error(`BulletproofComposer posting failed: ${error.message}`);
+    console.error(`[POSTING_QUEUE] ❌ UltimateTwitterPoster system error: ${error.message}`);
+    throw new Error(`UltimateTwitterPoster posting failed: ${error.message}`);
   }
 }
 
