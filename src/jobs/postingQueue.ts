@@ -225,7 +225,7 @@ async function postContent(decision: QueuedDecision): Promise<string> {
     const { chromium } = await import('playwright');
     
     const browser = await chromium.launch({ 
-      headless: false,  // ← XVFB allows this to work in Railway!
+      headless: true,  // ← PERMANENT FIX: Back to headless but with MAXIMUM stealth
       args: [
         '--no-sandbox', 
         '--disable-dev-shm-usage',
@@ -235,14 +235,31 @@ async function postContent(decision: QueuedDecision): Promise<string> {
         '--disable-default-apps',
         '--disable-infobars',
         '--window-size=1920,1080',
-        '--start-maximized',
         '--disable-web-security',
         '--disable-features=VizDisplayCompositor',
         '--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        '--virtual-time-budget=5000',  // Virtual time control
-        '--run-all-compositor-stages-before-draw',  // Ensure rendering
-        '--disable-backgrounding-occluded-windows',  // Keep active
-        '--disable-renderer-backgrounding'  // Prevent throttling
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding',
+        '--disable-background-timer-throttling',
+        '--disable-ipc-flooding-protection',
+        '--disable-hang-monitor',
+        '--disable-prompt-on-repost',
+        '--disable-popup-blocking',
+        '--disable-client-side-phishing-detection',
+        '--disable-component-extensions-with-background-pages',
+        '--disable-background-networking',
+        '--disable-breakpad',
+        '--disable-component-update',
+        '--no-default-browser-check',
+        '--force-color-profile=srgb',
+        '--metrics-recording-only',
+        '--enable-automation',
+        '--password-store=basic',
+        '--use-mock-keychain',
+        '--no-service-autorun',
+        '--export-tagged-pdf',
+        '--disable-search-engine-choice-screen',
+        '--unsafely-disable-devtools-self-xss-warnings'
       ]
     });
     const context = await browser.newContext({
@@ -251,17 +268,23 @@ async function postContent(decision: QueuedDecision): Promise<string> {
       locale: 'en-US',
       timezoneId: 'America/New_York',
       extraHTTPHeaders: {
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
         'Accept-Language': 'en-US,en;q=0.9',
         'Accept-Encoding': 'gzip, deflate, br',
         'DNT': '1',
         'Connection': 'keep-alive',
         'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Cache-Control': 'max-age=0'
       }
     });
     
-    // 🎭 NUCLEAR STEALTH: Remove automation indicators
+    // 🎭 ULTIMATE STEALTH: Remove ALL automation indicators
     await context.addInitScript(() => {
+      // Remove webdriver property
       Object.defineProperty(navigator, 'webdriver', {
         get: () => undefined,
       });
@@ -269,16 +292,45 @@ async function postContent(decision: QueuedDecision): Promise<string> {
       // Remove automation flags
       delete (window as any).chrome?.runtime?.onConnect;
       delete (window as any).chrome?.runtime?.onMessage;
+      delete (window as any).__nightmare;
+      delete (window as any).__phantomas;
+      delete (window as any).__fxdriver_unwrapped;
+      delete (window as any).callPhantom;
+      delete (window as any)._phantom;
+      delete (window as any).phantom;
       
-      // Spoof plugins
+      // Spoof plugins to look like real browser
       Object.defineProperty(navigator, 'plugins', {
-        get: () => [1, 2, 3, 4, 5],
+        get: () => [
+          { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+          { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: '' },
+          { name: 'Native Client', filename: 'internal-nacl-plugin', description: '' }
+        ],
       });
       
       // Spoof languages
       Object.defineProperty(navigator, 'languages', {
         get: () => ['en-US', 'en'],
       });
+      
+      // Spoof permissions
+      const originalQuery = window.navigator.permissions.query;
+      window.navigator.permissions.query = (parameters) => (
+        parameters.name === 'notifications' ?
+          Promise.resolve({ state: Notification.permission }) :
+          originalQuery(parameters)
+      );
+      
+      // Hide that we're headless
+      Object.defineProperty(navigator, 'maxTouchPoints', {
+        get: () => 0,
+      });
+      
+      // Spoof screen properties
+      Object.defineProperty(screen, 'availHeight', { get: () => 1080 });
+      Object.defineProperty(screen, 'availWidth', { get: () => 1920 });
+      Object.defineProperty(screen, 'height', { get: () => 1080 });
+      Object.defineProperty(screen, 'width', { get: () => 1920 });
     });
     
     const page = await context.newPage();

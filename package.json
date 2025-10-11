@@ -9,7 +9,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "postbuild": "mkdir -p dist/dashboard && cp src/dashboard/*.html dist/dashboard/ 2>/dev/null || true && mkdir -p dist/prompts && cp -r src/prompts/* dist/prompts/ && echo 'Build completed successfully'",
-    "start": "xvfb-run -a -s '-screen 0 1920x1080x24 -ac +extension GLX +render -noreset' node -r dotenv/config dist/src/main-bulletproof.js dotenv_config_path=.env",
+    "start": "node -r dotenv/config dist/src/main-bulletproof.js dotenv_config_path=.env",
     "start:accept": "node dist/scripts/startup-acceptance.js",
     "jobs:learn": "node dist/scripts/jobs-learn.js",
     "dryrun:plan": "node dist/scripts/dryrun-plan.js 3",
@@ -17,7 +17,7 @@
     "logs": "node bulletproof_railway_monitor.js",
     "prestart": "node -r dotenv/config scripts/migrate.js dotenv_config_path=.env",
     "start:bulletproof": "node dist/src/main-bulletproof.js",
-    "postinstall": "npx playwright install chromium --with-deps && apt-get update && apt-get install -y xvfb || true",
+    "postinstall": "npx playwright install chromium --with-deps || true",
     "build-clean": "rm -rf dist && npm run build",
     "diagnostics": "node scripts/diagnostics.js",
     "ssl:debug": "node scripts/ssl-debug.js",
