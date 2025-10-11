@@ -132,10 +132,9 @@ export class UltimateTwitterPoster {
       console.log(`✅ ULTIMATE_CONTENT: Typed ${content.length} characters with human patterns`);
       
       // 🐭 HUMAN-LIKE MOUSE MOVEMENT: Random small movements to mimic human behavior
-      const currentMouse = await this.page.mouse.position();
       await this.page.mouse.move(
-        currentMouse.x + Math.floor(Math.random() * 20) - 10,
-        currentMouse.y + Math.floor(Math.random() * 20) - 10
+        Math.floor(Math.random() * 20) + 500,  // Random X position
+        Math.floor(Math.random() * 20) + 300   // Random Y position
       );
       
       // Brief pause before clicking post (like humans do)
