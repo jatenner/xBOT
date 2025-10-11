@@ -23,8 +23,17 @@ export class UltimateTwitterPoster {
       }
       
       const sessionData = JSON.parse(Buffer.from(sessionB64, 'base64').toString());
-      await this.page.context().addCookies(sessionData);
-      console.log('✅ ULTIMATE_SESSION: Session cookies loaded');
+      
+      // 🍪 CRITICAL FIX: Ensure cookies is an array
+      let cookies = sessionData;
+      if (!Array.isArray(sessionData)) {
+        // If sessionData is an object, convert to array format
+        cookies = Object.values(sessionData).filter(cookie => cookie && typeof cookie === 'object');
+        console.log(`🔧 ULTIMATE_SESSION: Converted ${cookies.length} cookies from object to array`);
+      }
+      
+      await this.page.context().addCookies(cookies);
+      console.log(`✅ ULTIMATE_SESSION: ${cookies.length} session cookies loaded`);
       
       // Navigate to Twitter
       await this.page.goto('https://x.com', { waitUntil: 'networkidle' });
