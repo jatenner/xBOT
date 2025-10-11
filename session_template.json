@@ -1,0 +1,49 @@
+{
+  "cookies": [
+    {
+      "name": "ct0",
+      "value": "PASTE_YOUR_CT0_VALUE_HERE",
+      "domain": ".x.com",
+      "path": "/",
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax",
+      "expires": 1762726356
+    },
+    {
+      "name": "twid",
+      "value": "PASTE_YOUR_TWID_VALUE_HERE",
+      "domain": ".x.com",
+      "path": "/",
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax",
+      "expires": 1762726356
+    },
+    {
+      "name": "personalization_id",
+      "value": "\"v1_fiwdr65tw\"",
+      "domain": ".x.com",
+      "path": "/",
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax",
+      "expires": 1791670356
+    },
+    {
+      "name": "guest_id",
+      "value": "v1%3A1760134356042",
+      "domain": ".x.com",
+      "path": "/",
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax",
+      "expires": 1791670356
+    }
+  ],
+  "timestamp": "2025-10-10T22:12:36.042Z",
+  "method": "stealth_manual",
+  "stealthMode": true,
+  "playwrightCompatible": true,
+  "note": "Created without auth_token - Playwright will handle authentication via browser state"
+}
