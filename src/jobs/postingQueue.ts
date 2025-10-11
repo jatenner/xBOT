@@ -214,24 +214,28 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
 async function postContent(decision: QueuedDecision): Promise<string> {
   console.log(`[POSTING_QUEUE] 📝 Posting content: "${decision.content.substring(0, 50)}..."`);
   
-  // 🎭 Use Playwright-only posting (no Twitter API, only browser)
-  console.log('[POSTING_QUEUE] 🎭 Using Playwright-only posting system...');
+  // 🛡️ Use BulletproofTwitterComposer with 4 fallback strategies
+  console.log('[POSTING_QUEUE] 🛡️ Using BulletproofTwitterComposer with 4 strategies...');
   
   try {
-    const { playwrightOnlyPoster } = await import('../posting/playwrightOnlyPoster');
-    const result = await playwrightOnlyPoster.postWithPlaywright(decision.content);
+    const { PostingFacade } = await import('../posting/PostingFacade');
+    const draft = {
+      content: decision.content,
+      decision_id: decision.decision_id
+    };
+    const result = await PostingFacade.post(draft);
     
     if (result.success) {
-      const tweetId = result.tweetId || `playwright_${Date.now()}`;
-      console.log(`[POSTING_QUEUE] ✅ Content posted via Playwright in ${result.duration}ms with ID: ${tweetId}`);
+      const tweetId = result.tweetId || result.rootTweetUrl || `bulletproof_${Date.now()}`;
+      console.log(`[POSTING_QUEUE] ✅ Content posted via BulletproofComposer with ID: ${tweetId}`);
       return tweetId;
     } else {
-      console.error(`[POSTING_QUEUE] ❌ Playwright posting failed: ${result.error}`);
-      throw new Error(result.error || 'Playwright posting failed');
+      console.error(`[POSTING_QUEUE] ❌ BulletproofComposer posting failed: ${result.error}`);
+      throw new Error(result.error || 'BulletproofComposer posting failed');
     }
   } catch (error: any) {
-    console.error(`[POSTING_QUEUE] ❌ Playwright system error: ${error.message}`);
-    throw new Error(`Playwright posting failed: ${error.message}`);
+    console.error(`[POSTING_QUEUE] ❌ BulletproofComposer system error: ${error.message}`);
+    throw new Error(`BulletproofComposer posting failed: ${error.message}`);
   }
 }
 
