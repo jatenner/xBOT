@@ -7,11 +7,22 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import { getEnvFlags, isLLMAllowed } from '../config/envFlags';
+
+function getConfig() {
+  return getEnvFlags();
+}
+
+// Add missing imports for advanced functions
+function hashContent(content: string): string {
+  // Simple hash function for content
+  return Buffer.from(content).toString('base64').slice(0, 16);
+}
+
 import { getSupabaseClient } from '../db/index';
 
 interface ContentDecision {
   decision_id: string;
-  decision_type: 'single' | 'thread';
+  decision_type: 'content';
   content: string;
   bandit_arm: string;
   timing_arm: string;
@@ -22,8 +33,9 @@ interface ContentDecision {
   scheduled_at: Date;
   topic_cluster?: string;
   angle?: string;
-  content_hash: string;
+  content_hash?: string;
   skip_reason?: string;
+  metadata?: any; // Advanced learning metadata
 }
 
 // Global metrics
@@ -156,78 +168,136 @@ async function generateRealContent(): Promise<void> {
 }
 
 /**
- * Generate content using OpenAI
+ * Generate content using ADVANCED FOLLOWER GROWTH ALGORITHMS
  */
 async function generateContentWithLLM(): Promise<ContentDecision> {
-  const { OpenAIService } = await import('../services/openAIService');
-  const openaiService = OpenAIService.getInstance();
-  const flags = getConfig();
+  console.log('🚀 ADVANCED_GENERATION: Using FollowerGrowthService + ML optimization...');
   
-  const prompt = `Generate a high-quality health-focused Twitter post that is:
-- Educational and evidence-based
-- Engaging and shareable 
+  // 🎯 STEP 1: Use FollowerGrowthService for viral content optimization
+  const { getFollowerGrowthService } = await import('../services/followerGrowthService');
+  const followerGrowthService = getFollowerGrowthService();
+  
+  try {
+    // Generate follower-optimized content using advanced algorithms
+    const optimizedContent = await followerGrowthService.optimizeForFollowerGrowth();
+    
+    console.log(`✅ FOLLOWER_OPTIMIZED: Expected ${optimizedContent.expectedFollowers} followers, viral potential: ${optimizedContent.viralPotential}/10`);
+    console.log(`🎯 STRATEGY: ${optimizedContent.strategy}`);
+    
+    // 🎯 STEP 2: Use EngagementOptimizer for viral prediction
+    const { getEngagementOptimizer } = await import('../intelligence/engagementOptimizer');
+    const engagementOptimizer = getEngagementOptimizer();
+    
+    const contentText = Array.isArray(optimizedContent.content) 
+      ? optimizedContent.content[0] // Use first part for single posts
+      : optimizedContent.content;
+    
+    const viralPrediction = await engagementOptimizer.predictViralPotential(contentText);
+    
+    console.log(`📊 VIRAL_PREDICTION: ${viralPrediction.predicted_followers} followers, ${viralPrediction.predicted_likes} likes`);
+    console.log(`🔥 VIRAL_PROBABILITY: ${Math.round(viralPrediction.viral_probability * 100)}%`);
+    
+    const contentData = {
+      text: contentText,
+      topic: 'follower-optimized health content',
+      angle: optimizedContent.strategy,
+      format: optimizedContent.isThread ? 'thread' : 'single',
+      // Advanced metadata for learning
+      followerOptimized: true,
+      expectedFollowers: optimizedContent.expectedFollowers,
+      viralPotential: optimizedContent.viralPotential,
+      viralPrediction: viralPrediction,
+      strategy: optimizedContent.strategy
+    };
+    
+    console.log('🧠 ADVANCED_CONTENT_GENERATED: Using ML-optimized follower magnet content');
+    
+  } catch (error: any) {
+    console.error('❌ ADVANCED_GENERATION failed, falling back to basic LLM:', error.message);
+    
+    // Fallback to basic generation if advanced systems fail
+    const { OpenAIService } = await import('../services/openAIService');
+    const openaiService = OpenAIService.getInstance();
+    const flags = getConfig();
+    
+    const prompt = `Generate a high-quality health-focused Twitter post optimized for MAXIMUM FOLLOWER GROWTH:
+- Use viral hooks and psychological triggers
+- Educational but highly engaging
 - Under 280 characters
-- No hashtags or excessive emojis
-- Genuine health advice that adds real value
+- Designed to make people want to follow for more content
+- Include authority signals and social proof
 
 Format your response as JSON:
 {
-  "text": "Your tweet text here",
+  "text": "Your viral tweet text here",
   "topic": "specific health topic",
-  "angle": "perspective or hook",
+  "angle": "viral hook or perspective",
   "format": "single|thread"
 }`;
 
-  const response = await openaiService.chatCompletion([
-    {
-      role: 'system',
-      content: 'You are a health content expert who creates evidence-based, engaging social media content. Focus on providing genuine value without making false claims. Always respond with valid JSON format.'
-    },
-    {
-      role: 'user',
-      content: prompt
+    const response = await openaiService.chatCompletion([
+      {
+        role: 'system',
+        content: 'You are a viral content expert who creates health content optimized for maximum follower growth. Focus on hooks that make people want to follow for more insights.'
+      },
+      {
+        role: 'user',
+        content: prompt
+      }
+    ], {
+      model: flags.OPENAI_MODEL,
+      maxTokens: 300,
+      temperature: 0.8,
+      response_format: { type: 'json_object' },
+      requestType: 'follower_growth_content'
+    });
+
+    const rawContent = response.choices[0]?.message?.content;
+    if (!rawContent) {
+      throw new Error('Empty response from OpenAI');
     }
-  ], {
-    model: flags.OPENAI_MODEL,
-    maxTokens: 300,
-    temperature: 0.8,
-    response_format: { type: 'json_object' },
-    requestType: 'content_generation'
-  });
 
-  const rawContent = response.choices[0]?.message?.content;
-  if (!rawContent) {
-    throw new Error('Empty response from OpenAI');
+    const contentData = JSON.parse(rawContent);
   }
-
-  const contentData = JSON.parse(rawContent);
   
   if (!contentData.text || contentData.text.length > 280) {
     throw new Error('Invalid content: missing text or too long');
   }
   
-  // Select timing using UCB
+  // 🎯 STEP 3: Select timing using UCB bandit learning
   const { getUCBTimingBandit } = await import('../schedule/ucbTiming');
   const ucbTiming = getUCBTimingBandit();
   const timingSelection = await ucbTiming.selectTimingWithUCB();
   
+  // 🎯 STEP 4: Apply advanced ML predictions for metadata
   const decision_id = uuidv4();
   const scheduledTime = new Date(Date.now() + timingSelection.slot * 60 * 60 * 1000);
   
+  console.log(`🎯 ADVANCED_TIMING: Selected slot ${timingSelection.slot} (${timingSelection.reason})`);
+  console.log(`⏰ SCHEDULED_FOR: ${scheduledTime.toISOString()}`);
+  
   return {
     decision_id,
-    decision_type: contentData.format === 'thread' ? 'thread' : 'single',
+    decision_type: 'content',
     content: contentData.text,
-    bandit_arm: determineBanditArm(contentData.topic),
-    timing_arm: `slot_${timingSelection.slot}`,
-    quality_score: calculateQualityScore(contentData.text),
-    predicted_er: predictEngagementRate(contentData.text, contentData.topic),
-    generation_source: 'real',
-    status: 'queued',
     scheduled_at: scheduledTime,
-    topic_cluster: contentData.topic || 'health',
-    angle: contentData.angle,
-    content_hash: hashContent(contentData.text)
+    status: 'queued',
+    bandit_arm: `health_${contentData.topic}`,
+    timing_arm: `slot_${timingSelection.slot}`,
+    predicted_er: contentData.viralPrediction?.viral_probability || 0.05,
+    quality_score: contentData.viralPotential || 0.8,
+    topic_cluster: contentData.topic,
+    generation_source: 'real', // Critical: Mark as real for posting queue
+    metadata: {
+      // Advanced learning metadata
+      followerOptimized: contentData.followerOptimized || false,
+      expectedFollowers: contentData.expectedFollowers || 5,
+      viralPotential: contentData.viralPotential || 7,
+      strategy: contentData.strategy || 'viral_health_content',
+      viralPrediction: contentData.viralPrediction,
+      timingReason: timingSelection.reason,
+      generationMethod: 'advanced_ml_algorithms'
+    }
   };
 }
 

@@ -5,7 +5,7 @@
 
 import { flags } from '../config/featureFlags';
 import { getConfig, getModeFlags } from '../config/config';
-import { planContent } from './planJob';
+import { planContent } from './planJobNew';
 import { generateReplies } from './replyJob';
 import { processPostingQueue } from './postingQueue';
 import { simulateOutcomes } from './shadowOutcomesJob';
