@@ -1,0 +1,1242 @@
+{
+  "timestamp": "2025-10-10T21:34:45.965Z",
+  "cookies": [
+    {
+      "name": "ph_phc_TXdpocbGVeZVm5VJmAsHTMrCofBQu3e0kN8HGMNGTVW_posthog",
+      "value": "",
+      "domain": ".x.com",
+      "path": "/",
+      "expires": 13436065537000000,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "NetflixId",
+      "value": "",
+      "domain": ".netflix.com",
+      "path": "/",
+      "expires": 13435780746582010,
+      "secure": true,
+      "httpOnly": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "SecureNetflixId",
+      "value": "",
+      "domain": ".netflix.com",
+      "path": "/",
+      "expires": 13435780746581904,
+      "secure": true,
+      "httpOnly": true,
+      "sameSite": "Strict"
+    },
+    {
+      "name": "gsid",
+      "value": "",
+      "domain": ".netflix.com",
+      "path": "/",
+      "expires": 13404331144149282,
+      "secure": true,
+      "httpOnly": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "flwssn",
+      "value": "",
+      "domain": ".netflix.com",
+      "path": "/",
+      "expires": 13404255543871148,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "smxrbc",
+      "value": "",
+      "domain": ".smadex.com",
+      "path": "/",
+      "expires": 13406342526088896,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "None"
+    },
+    {
+      "name": "ADGRX_CM_APPNEXUS_BRIDGED",
+      "value": "",
+      "domain": ".adgrx.com",
+      "path": "/",
+      "expires": 13403819981251772,
+      "secure": true,
+      "httpOnly": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "ADGRX_CM_CASALE_BRIDGED",
+      "value": "",
+      "domain": ".adgrx.com",
+      "path": "/",
+      "expires": 13403819977364352,
+      "secure": true,
+      "httpOnly": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "OptanonConsent",
+      "value": "",
+      "domain": ".netflix.com",
+      "path": "/",
+      "expires": 13434577819000000,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "pamuid2",
+      "value": "",
+      "domain": ".a-mx.com",
+      "path": "/",
+      "expires": 13434507224517776,
+      "secure": true,
+      "httpOnly": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "pamdt_t",
+      "value": "",
+      "domain": ".a-mx.com",
+      "path": "/",
+      "expires": 13434507224517768,
+      "secure": true,
+      "httpOnly": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "cnx_userId",
+      "value": "",
+      "domain": ".connatix.com",
+      "path": "/",
+      "expires": 13404071240635448,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "None"
+    },
+    {
+      "name": "uuid",
+      "value": "",
+      "domain": ".getrockerbox.com",
+      "path": "/",
+      "expires": 13404574521106574,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "None"
+    },
+    {
+      "name": "_twitter_sess",
+      "value": "",
+      "domain": ".x.com",
+      "path": "/",
+      "expires": -1,
+      "secure": true,
+      "httpOnly": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "cf_clearance",
+      "value": "",
+      "domain": ".x.com",
+      "path": "/",
+      "expires": 13433374075385216,
+      "secure": true,
+      "httpOnly": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "twid",
+      "value": "",
+      "domain": ".x.com",
+      "path": "/",
+      "expires": 13436141534689474,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "None"
+    },
+    {
+      "name": "ct0",
+      "value": "",
+      "domain": ".x.com",
+      "path": "/",
+      "expires": 13436398071310688,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "auth_token",
+      "value": "",
+      "domain": ".x.com",
+      "path": "/",
+      "expires": 13436398071180194,
+      "secure": true,
+      "httpOnly": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "personalization_id",
+      "value": "",
+      "domain": ".x.com",
+      "path": "/",
+      "expires": 13436398064661552,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "None"
+    },
+    {
+      "name": "TXCSDMN_",
+      "value": "",
+      "domain": ".tappx.com",
+      "path": "/",
+      "expires": 13404144195077262,
+      "secure": true,
+      "httpOnly": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "_ga_K0D3QK4GKE",
+      "value": "",
+      "domain": ".mapbox.com",
+      "path": "/",
+      "expires": 13436064522102838,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_ga_DFEQHDGZYR",
+      "value": "",
+      "domain": ".mapbox.com",
+      "path": "/",
+      "expires": 13436064522093476,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_ga",
+      "value": "",
+      "domain": ".mapbox.com",
+      "path": "/",
+      "expires": 13436064520915140,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_clck",
+      "value": "",
+      "domain": ".mapbox.com",
+      "path": "/",
+      "expires": 13433040520000000,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "OptanonConsent",
+      "value": "",
+      "domain": ".www.mapbox.com",
+      "path": "/",
+      "expires": 13433040520000000,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "ax_cx",
+      "value": "",
+      "domain": "openrtb-us-east-1.axonix.com",
+      "path": "/",
+      "expires": 13402631656396360,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "None"
+    },
+    {
+      "name": "lang",
+      "value": "",
+      "domain": "x.com",
+      "path": "/",
+      "expires": -1,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "__cuid",
+      "value": "",
+      "domain": ".x.com",
+      "path": "/",
+      "expires": 13439165531615908,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "vdz_sync",
+      "value": "",
+      "domain": ".cootlogix.com",
+      "path": "/",
+      "expires": 13406349473634556,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "None"
+    },
+    {
+      "name": "pamuid2",
+      "value": "",
+      "domain": ".a-mx.com",
+      "path": "/",
+      "expires": 13428220383831468,
+      "secure": true,
+      "httpOnly": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "pamdt_t",
+      "value": "",
+      "domain": ".a-mx.com",
+      "path": "/",
+      "expires": 13428220383831454,
+      "secure": true,
+      "httpOnly": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "OptanonAlertBoxClosed",
+      "value": "",
+      "domain": ".www.mapbox.com",
+      "path": "/",
+      "expires": 13428206266000000,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "mkjs_user_id",
+      "value": "",
+      "domain": ".mapbox.com",
+      "path": "/",
+      "expires": 13433040521000000,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "mkjs_group_id",
+      "value": "",
+      "domain": ".mapbox.com",
+      "path": "/",
+      "expires": 13433040520000000,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_cioid",
+      "value": "",
+      "domain": ".mapbox.com",
+      "path": "/",
+      "expires": 13428120875000000,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_vwo_uuid_v2",
+      "value": "",
+      "domain": ".mapbox.com",
+      "path": "/",
+      "expires": 13433126920000000,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "xdid",
+      "value": "",
+      "domain": ".trvl-px.com",
+      "path": "/",
+      "expires": 13430473123769456,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "None"
+    },
+    {
+      "name": "DUAID",
+      "value": "",
+      "domain": ".trvl-px.com",
+      "path": "/",
+      "expires": 13430843123769496,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "None"
+    },
+    {
+      "name": "MC1",
+      "value": "",
+      "domain": ".trvl-px.com",
+      "path": "/",
+      "expires": 13430843123769500,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "None"
+    },
+    {
+      "name": "HMS",
+      "value": "",
+      "domain": ".trvl-px.com",
+      "path": "/",
+      "expires": 13396284923769488,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "None"
+    },
+    {
+      "name": "_ga_RJGMY4G45L",
+      "value": "",
+      "domain": ".x.com",
+      "path": "/",
+      "expires": 13430583373354468,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_ga",
+      "value": "",
+      "domain": ".x.com",
+      "path": "/",
+      "expires": 13430535681809988,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "session",
+      "value": "",
+      "domain": ".mapbox.com",
+      "path": "/",
+      "expires": 13427223275379586,
+      "secure": true,
+      "httpOnly": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "__stripe_mid",
+      "value": "",
+      "domain": ".console.mapbox.com",
+      "path": "/",
+      "expires": 13433117172000000,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "Strict"
+    },
+    {
+      "name": "ajs_user_id",
+      "value": "",
+      "domain": ".mapbox.com",
+      "path": "/",
+      "expires": 13433117170000000,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_ga_DFEQHDGZYR",
+      "value": "",
+      "domain": ".mapbox.com",
+      "path": "/auth/signin",
+      "expires": 13430246583030426,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "__stripe_mid",
+      "value": "",
+      "domain": ".account.mapbox.com",
+      "path": "/",
+      "expires": 13427222374000000,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "Strict"
+    },
+    {
+      "name": "_gcl_au",
+      "value": "",
+      "domain": ".mapbox.com",
+      "path": "/",
+      "expires": 13403462353000000,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_ga",
+      "value": "",
+      "domain": ".mapbox.com",
+      "path": "/auth/signin",
+      "expires": 13430246353338974,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "ajs_anonymous_id",
+      "value": "",
+      "domain": ".mapbox.com",
+      "path": "/",
+      "expires": 13433117170000000,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_mkto_trk",
+      "value": "",
+      "domain": ".mapbox.com",
+      "path": "/",
+      "expires": 13436064520832052,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "dnt",
+      "value": "",
+      "domain": ".x.com",
+      "path": "/",
+      "expires": 13436398111612728,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "None"
+    },
+    {
+      "name": "twid",
+      "value": "",
+      "domain": ".twitter.com",
+      "path": "/",
+      "expires": 13430279530399366,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "None"
+    },
+    {
+      "name": "aso_uid",
+      "value": "",
+      "domain": ".bidgx.com",
+      "path": "/",
+      "expires": 13426391679920810,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "None"
+    },
+    {
+      "name": "_ga_QCLBQC10R6",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13429341887704626,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "RT",
+      "value": "",
+      "domain": ".www.max.com",
+      "path": "/",
+      "expires": 13395386687000000,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "OptanonConsent",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13426317887000000,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_sctr",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13428968584000000,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "AF_SYNC",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13395386685000000,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "afUserId",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13429341885730594,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "FPGSID",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13394783685333858,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "Strict"
+    },
+    {
+      "name": "FPAU",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13402557885333852,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "FPLC",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13394853885333844,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "FPID",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13429341887777848,
+      "secure": true,
+      "httpOnly": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_ScCbts",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13395386685000000,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_pin_unauth",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13426317885000000,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "tfpsi",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13394783687707148,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "None"
+    },
+    {
+      "name": "_ga",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13429341885135844,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_scid_r",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13428968583000000,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_scid",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13428968583000000,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "isInAuthTokenExperiment",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13426317885000000,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "psmPageLoadId",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13426317885000000,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "psmSessionStart",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13426317885000000,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "psmLastActiveTimestamp",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13426317885000000,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "psmSessionId",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13426317885000000,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "sendAuthToken2",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13426317885000000,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "sendAuthToken",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13426317885000000,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "sendWMSegs",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13426317885000000,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "CDPID",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13426317885000000,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "None"
+    },
+    {
+      "name": "_uetvid",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13428477885000000,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_uetsid",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13394868285000000,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_rdt_uuid",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13402557885000000,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "Strict"
+    },
+    {
+      "name": "datid",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13426317884000000,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "WMUKID_STABLE",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13426317884000000,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "session",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13426317884918588,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "consent_flags",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13394782484000000,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "None"
+    },
+    {
+      "name": "usr_city",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13397373884000000,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "None"
+    },
+    {
+      "name": "usr_state",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13397373884000000,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "None"
+    },
+    {
+      "name": "usr_country",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13397373884000000,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "None"
+    },
+    {
+      "name": "_gcl_au",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13402557885000000,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "gi_ls",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13429341884708468,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "None"
+    },
+    {
+      "name": "st",
+      "value": "",
+      "domain": ".api.max.com",
+      "path": "/",
+      "expires": 13429341884708436,
+      "secure": true,
+      "httpOnly": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "dotcomLFE",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13397373884000000,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "GI_WEB_SDK_SONIC_DEVICE_ID",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13426317884406256,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "transientID",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13429341884405284,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "continent",
+      "value": "",
+      "domain": "www.max.com",
+      "path": "/",
+      "expires": 13394825084216490,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "city",
+      "value": "",
+      "domain": "www.max.com",
+      "path": "/",
+      "expires": 13394825084216468,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "stateCode",
+      "value": "",
+      "domain": "www.max.com",
+      "path": "/",
+      "expires": 13394825084216440,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "countryCode",
+      "value": "",
+      "domain": ".max.com",
+      "path": "/",
+      "expires": 13394825084216328,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "kdt",
+      "value": "",
+      "domain": ".x.com",
+      "path": "/",
+      "expires": 13436398071179884,
+      "secure": true,
+      "httpOnly": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "guest_id_ads",
+      "value": "",
+      "domain": ".x.com",
+      "path": "/",
+      "expires": 13439165531234540,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "None"
+    },
+    {
+      "name": "guest_id_marketing",
+      "value": "",
+      "domain": ".x.com",
+      "path": "/",
+      "expires": 13439165531234628,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "None"
+    },
+    {
+      "name": "guest_id",
+      "value": "",
+      "domain": ".x.com",
+      "path": "/",
+      "expires": 13428645306622252,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "None"
+    },
+    {
+      "name": "des_opt_in",
+      "value": "",
+      "domain": ".x.com",
+      "path": "/",
+      "expires": 13428640260192512,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "g_state",
+      "value": "",
+      "domain": "x.com",
+      "path": "/",
+      "expires": 13409637311000000,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "dax_listenerid",
+      "value": "",
+      "domain": ".thisisdax.com",
+      "path": "/",
+      "expires": 13424742539110776,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "None"
+    },
+    {
+      "name": "nfvdid",
+      "value": "",
+      "domain": ".netflix.com",
+      "path": "/",
+      "expires": 13424564570450816,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "netflix-sans-bold-3-loaded",
+      "value": "",
+      "domain": ".netflix.com",
+      "path": "/",
+      "expires": 13412020746826592,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "netflix-sans-normal-3-loaded",
+      "value": "",
+      "domain": ".netflix.com",
+      "path": "/",
+      "expires": 13412020746826424,
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "jvxsync",
+      "value": "",
+      "domain": ".jivox.com",
+      "path": "/",
+      "expires": 13411510267391168,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "None"
+    },
+    {
+      "name": "smxtrack",
+      "value": "",
+      "domain": ".smadex.com",
+      "path": "/",
+      "expires": 13434854526088832,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "None"
+    },
+    {
+      "name": "pamuid2",
+      "value": "",
+      "domain": ".a-mx.com",
+      "path": "/",
+      "expires": 13423691920866160,
+      "secure": true,
+      "httpOnly": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "pamdt_t",
+      "value": "",
+      "domain": ".a-mx.com",
+      "path": "/",
+      "expires": 13423691920866156,
+      "secure": true,
+      "httpOnly": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "svid",
+      "value": "",
+      "domain": ".mediaplex.com",
+      "path": "/",
+      "expires": 13426111120498704,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "None"
+    },
+    {
+      "name": "ADGRX_UID",
+      "value": "",
+      "domain": ".adgrx.com",
+      "path": "/",
+      "expires": 13437861581251692,
+      "secure": true,
+      "httpOnly": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "pamdt_t",
+      "value": "",
+      "domain": ".a-mx.com",
+      "path": "/",
+      "expires": 13434397631993664,
+      "secure": true,
+      "httpOnly": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "amdt_t",
+      "value": "",
+      "domain": ".a-mx.com",
+      "path": "/",
+      "expires": 13434507224517744,
+      "secure": true,
+      "httpOnly": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "pamuid2",
+      "value": "",
+      "domain": ".a-mx.com",
+      "path": "/",
+      "expires": 13434397631993688,
+      "secure": true,
+      "httpOnly": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "amuid2",
+      "value": "",
+      "domain": ".a-mx.com",
+      "path": "/",
+      "expires": 13434507224517756,
+      "secure": true,
+      "httpOnly": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "guest_id",
+      "value": "",
+      "domain": ".twitter.com",
+      "path": "/",
+      "expires": 13426371143295456,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "None"
+    },
+    {
+      "name": "personalization_id",
+      "value": "",
+      "domain": ".twitter.com",
+      "path": "/",
+      "expires": 13426371143295412,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "None"
+    },
+    {
+      "name": "guest_id_ads",
+      "value": "",
+      "domain": ".twitter.com",
+      "path": "/",
+      "expires": 13426371143295348,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "None"
+    },
+    {
+      "name": "guest_id_marketing",
+      "value": "",
+      "domain": ".twitter.com",
+      "path": "/",
+      "expires": 13426371143295288,
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "None"
+    }
+  ],
+  "localStorage": {},
+  "sessionStorage": {},
+  "browserInfo": {
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "extractionMethod": "direct_filesystem",
+    "source": "chrome_database"
+  }
+}

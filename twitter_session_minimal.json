@@ -1,0 +1,66 @@
+{
+  "cookies": [
+    {
+      "name": "twid",
+      "value": "",
+      "domain": ".x.com",
+      "path": "/",
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax",
+      "expires": 1762724755
+    },
+    {
+      "name": "ct0",
+      "value": "",
+      "domain": ".x.com",
+      "path": "/",
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax",
+      "expires": 1762724755
+    },
+    {
+      "name": "auth_token",
+      "value": "",
+      "domain": ".x.com",
+      "path": "/",
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Lax",
+      "expires": 1762724755
+    },
+    {
+      "name": "personalization_id",
+      "value": "",
+      "domain": ".x.com",
+      "path": "/",
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax",
+      "expires": 1762724755
+    },
+    {
+      "name": "twid",
+      "value": "",
+      "domain": ".twitter.com",
+      "path": "/",
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax",
+      "expires": 1762724755
+    },
+    {
+      "name": "personalization_id",
+      "value": "",
+      "domain": ".twitter.com",
+      "path": "/",
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax",
+      "expires": 1762724755
+    }
+  ],
+  "timestamp": "2025-10-10T21:45:55.344Z",
+  "minimal": true
+}
