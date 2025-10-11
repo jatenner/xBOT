@@ -214,143 +214,53 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
 async function postContent(decision: QueuedDecision): Promise<string> {
   console.log(`[POSTING_QUEUE] 📝 Posting content: "${decision.content.substring(0, 50)}..."`);
   
-  // 🛡️ Use BulletproofTwitterComposer with 4 fallback strategies
-  console.log('[POSTING_QUEUE] 🛡️ Using BulletproofTwitterComposer with 4 strategies...');
+  // Check feature flag for posting method
+  const { getEnvConfig } = await import('../config/env');
+  const config = getEnvConfig();
   
-  try {
-    // 🎯 EMERGENCY: Use UltimateTwitterPoster with current X selectors
-    console.log('[POSTING_QUEUE] 🎯 Using UltimateTwitterPoster with updated selectors...');
+  if (config.FEATURE_X_API_POSTING) {
+    console.log('[POSTING_QUEUE] 🔌 Using official X API posting...');
     
-    const { UltimateTwitterPoster } = await import('../posting/ultimatePostingFix');
-    const { chromium } = await import('playwright');
-    
-    const browser = await chromium.launch({ 
-      headless: true,  // ← PERMANENT FIX: Back to headless but with MAXIMUM stealth
-      args: [
-        '--no-sandbox', 
-        '--disable-dev-shm-usage',
-        '--disable-blink-features=AutomationControlled',
-        '--disable-extensions',
-        '--no-first-run',
-        '--disable-default-apps',
-        '--disable-infobars',
-        '--window-size=1920,1080',
-        '--disable-web-security',
-        '--disable-features=VizDisplayCompositor',
-        '--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        '--disable-backgrounding-occluded-windows',
-        '--disable-renderer-backgrounding',
-        '--disable-background-timer-throttling',
-        '--disable-ipc-flooding-protection',
-        '--disable-hang-monitor',
-        '--disable-prompt-on-repost',
-        '--disable-popup-blocking',
-        '--disable-client-side-phishing-detection',
-        '--disable-component-extensions-with-background-pages',
-        '--disable-background-networking',
-        '--disable-breakpad',
-        '--disable-component-update',
-        '--no-default-browser-check',
-        '--force-color-profile=srgb',
-        '--metrics-recording-only',
-        '--enable-automation',
-        '--password-store=basic',
-        '--use-mock-keychain',
-        '--no-service-autorun',
-        '--export-tagged-pdf',
-        '--disable-search-engine-choice-screen',
-        '--unsafely-disable-devtools-self-xss-warnings'
-      ]
-    });
-    const context = await browser.newContext({
-      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      viewport: { width: 1920, height: 1080 },
-      locale: 'en-US',
-      timezoneId: 'America/New_York',
-      extraHTTPHeaders: {
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'DNT': '1',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Sec-Fetch-User': '?1',
-        'Cache-Control': 'max-age=0'
+    try {
+      const { XApiPoster } = await import('../posting/xApiPoster');
+      const apiPoster = new XApiPoster();
+      const result = await apiPoster.postStatus(decision.content);
+      
+      if (result.success) {
+        const tweetId = result.tweetId || `api_${Date.now()}`;
+        console.log(`[POSTING_QUEUE] ✅ Content posted via X API with ID: ${tweetId}`);
+        return tweetId;
+      } else {
+        console.error(`[POSTING_QUEUE] ❌ X API posting failed: ${result.error}`);
+        throw new Error(result.error || 'X API posting failed');
       }
-    });
-    
-    // 🎭 ULTIMATE STEALTH: Remove ALL automation indicators
-    await context.addInitScript(() => {
-      // Remove webdriver property
-      Object.defineProperty(navigator, 'webdriver', {
-        get: () => undefined,
-      });
-      
-      // Remove automation flags
-      delete (window as any).chrome?.runtime?.onConnect;
-      delete (window as any).chrome?.runtime?.onMessage;
-      delete (window as any).__nightmare;
-      delete (window as any).__phantomas;
-      delete (window as any).__fxdriver_unwrapped;
-      delete (window as any).callPhantom;
-      delete (window as any)._phantom;
-      delete (window as any).phantom;
-      
-      // Spoof plugins to look like real browser
-      Object.defineProperty(navigator, 'plugins', {
-        get: () => [
-          { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
-          { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: '' },
-          { name: 'Native Client', filename: 'internal-nacl-plugin', description: '' }
-        ],
-      });
-      
-      // Spoof languages
-      Object.defineProperty(navigator, 'languages', {
-        get: () => ['en-US', 'en'],
-      });
-      
-      // Spoof permissions (with proper typing)
-      const originalQuery = (window.navigator.permissions as any).query;
-      (window.navigator.permissions as any).query = (parameters: any) => (
-        parameters.name === 'notifications' ?
-          Promise.resolve({ state: (Notification as any).permission }) :
-          originalQuery(parameters)
-      );
-      
-      // Hide that we're headless
-      Object.defineProperty(navigator, 'maxTouchPoints', {
-        get: () => 0,
-      });
-      
-      // Spoof screen properties
-      Object.defineProperty(screen, 'availHeight', { get: () => 1080 });
-      Object.defineProperty(screen, 'availWidth', { get: () => 1920 });
-      Object.defineProperty(screen, 'height', { get: () => 1080 });
-      Object.defineProperty(screen, 'width', { get: () => 1920 });
-    });
-    
-    const page = await context.newPage();
-    
-    const ultimatePoster = new UltimateTwitterPoster(page);
-    const result = await ultimatePoster.postTweet(decision.content);
-    
-    await browser.close();
-    
-    if (result.success) {
-      const tweetId = result.tweetId || `ultimate_${Date.now()}`;
-      console.log(`[POSTING_QUEUE] ✅ Content posted via UltimateTwitterPoster with ID: ${tweetId}`);
-      return tweetId;
-    } else {
-      console.error(`[POSTING_QUEUE] ❌ UltimateTwitterPoster posting failed: ${result.error}`);
-      throw new Error(result.error || 'UltimateTwitterPoster posting failed');
+    } catch (error: any) {
+      console.error(`[POSTING_QUEUE] ❌ X API system error: ${error.message}`);
+      throw new Error(`X API posting failed: ${error.message}`);
     }
-  } catch (error: any) {
-    console.error(`[POSTING_QUEUE] ❌ UltimateTwitterPoster system error: ${error.message}`);
-    throw new Error(`UltimateTwitterPoster posting failed: ${error.message}`);
+  } else {
+    console.log('[POSTING_QUEUE] 🌐 Using reliable Playwright posting...');
+    
+    try {
+      const { UltimateTwitterPoster } = await import('../posting/UltimateTwitterPoster');
+      const poster = new UltimateTwitterPoster();
+      const result = await poster.postTweet(decision.content);
+      
+      // Clean up resources
+      await poster.dispose();
+      
+      if (result.success) {
+        const tweetId = result.tweetId || `playwright_${Date.now()}`;
+        console.log(`[POSTING_QUEUE] ✅ Content posted via Playwright with ID: ${tweetId}`);
+        return tweetId;
+      } else {
+        console.error(`[POSTING_QUEUE] ❌ Playwright posting failed: ${result.error}`);
+        throw new Error(result.error || 'Playwright posting failed');
+      }
+    } catch (error: any) {
+      console.error(`[POSTING_QUEUE] ❌ Playwright system error: ${error.message}`);
+      throw new Error(`Playwright posting failed: ${error.message}`);
+    }
   }
 }
 
