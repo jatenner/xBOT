@@ -128,6 +128,10 @@ export class UltimateTwitterPoster {
       await postButton.click();
       console.log('🚀 ULTIMATE_POST: Tweet submitted!');
       
+      // 🕐 Add delay to avoid rate limiting
+      console.log('⏳ ULTIMATE_DELAY: Waiting 3 seconds for Twitter to process...');
+      await this.page.waitForTimeout(3000);
+      
       // 🎯 CRITICAL: Actually verify the tweet was posted to Twitter
       console.log('🔍 ULTIMATE_VERIFICATION: Waiting for Twitter to confirm post...');
       
@@ -152,14 +156,42 @@ export class UltimateTwitterPoster {
         } catch (composerError) {
           console.log('❌ ULTIMATE_VERIFICATION: Composer still present - tweet may not have posted');
           
-          // Method 3: Check if we're back on timeline
-          const currentUrl = this.page.url();
-          if (currentUrl.includes('/home') || currentUrl.match(/x\.com\/[^\/]+\/?$/)) {
-            console.log('✅ ULTIMATE_SUCCESS: Back on timeline - assuming success');
-            return { success: true, tweetId: `ultimate_timeline_${Date.now()}` };
-          } else {
-            console.log('❌ ULTIMATE_FAILURE: Still on compose page - tweet failed');
-            return { success: false, error: 'Tweet was not posted - still on compose page' };
+          // Method 3: STRICT VERIFICATION - Actually check if tweet posted
+          console.log('🔄 ULTIMATE_STRICT_VERIFICATION: Checking if tweet actually posted...');
+          
+          // First check for Twitter error messages
+          try {
+            const errorMessage = await this.page.locator('[data-testid="toast"] [role="alert"], .r-1loqt21, [data-testid="error"]').first().textContent({ timeout: 2000 });
+            if (errorMessage && errorMessage.trim()) {
+              console.log(`❌ ULTIMATE_ERROR: Twitter error detected: ${errorMessage}`);
+              return { success: false, error: `Twitter rejected post: ${errorMessage}` };
+            }
+          } catch (e) {
+            // No error message found, continue with timeline check
+          }
+          
+          // Navigate to timeline and verify tweet exists
+          try {
+            await this.page.goto('https://x.com/home', { waitUntil: 'networkidle' });
+            await this.page.waitForTimeout(3000);
+            
+            // Look for our tweet content in the timeline
+            const searchText = content.substring(0, 30).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const tweetLocator = this.page.locator(`[data-testid="tweetText"]`).filter({ hasText: new RegExp(searchText, 'i') });
+            
+            const tweetExists = await tweetLocator.first().isVisible({ timeout: 5000 });
+            
+            if (tweetExists) {
+              console.log('✅ ULTIMATE_SUCCESS: Tweet verified in timeline - actually posted!');
+              return { success: true, tweetId: `ultimate_verified_${Date.now()}` };
+            } else {
+              console.log('❌ ULTIMATE_FAILURE: Tweet NOT in timeline - Twitter silently rejected it');
+              return { success: false, error: 'Tweet was silently rejected by Twitter - not found in timeline' };
+            }
+            
+          } catch (verificationError) {
+            console.log('❌ ULTIMATE_VERIFICATION_ERROR: Could not verify posting');
+            return { success: false, error: `Timeline verification failed: ${verificationError.message}` };
           }
         }
       }
