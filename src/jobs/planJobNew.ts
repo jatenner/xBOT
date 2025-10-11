@@ -215,18 +215,26 @@ async function storeContentDecisions(decisions: ContentDecision[]): Promise<void
   const supabase = getSupabaseClient();
   
   const dbRows = decisions.map(decision => ({
-    decision_id: decision.decision_id,
+    id: decision.decision_id, // Use 'id' instead of 'decision_id'
+    content_id: decision.decision_id, // Also set content_id for compatibility
     decision_type: decision.decision_type,
     content: decision.content,
     bandit_arm: decision.bandit_arm,
     timing_arm: decision.timing_arm,
     scheduled_at: decision.scheduled_at,
     status: 'queued',
-    quality_score: decision.quality_score,
+    quality_score: Math.round(decision.quality_score * 100), // Convert to integer (0-100)
     predicted_er: decision.predicted_er,
     topic_cluster: decision.topic_cluster,
+    topic: decision.topic_cluster, // Also set topic for compatibility
     generation_source: decision.generation_source,
-    metadata: {
+    style: 'contrarian', // Set required style field
+    fact_source: 'enhanced_llm', // Set required fact_source field
+    hook_type: 'myth_buster', // Set required hook_type field
+    cta_type: 'follow_for_more', // Set required cta_type field
+    predicted_engagement: 'high', // Set required predicted_engagement field
+    angle: decision.contrarian_angle,
+    features: {
       enhanced_generation: decision.enhanced_generation,
       uniqueness_indicators: decision.uniqueness_indicators,
       contrarian_angle: decision.contrarian_angle
