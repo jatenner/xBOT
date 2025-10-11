@@ -221,7 +221,7 @@ async function postContent(decision: QueuedDecision): Promise<string> {
     const { PostingFacade } = await import('../posting/PostingFacade');
     const draft = {
       content: decision.content,
-      decision_id: decision.decision_id
+      id: decision.id
     };
     const result = await PostingFacade.post(draft);
     
