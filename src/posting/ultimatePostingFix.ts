@@ -13,10 +13,28 @@ export class UltimateTwitterPoster {
     try {
       console.log('🎯 ULTIMATE_POSTER: Starting with updated selectors...');
       
+      // 🍪 CRITICAL: Load Twitter session first!
+      console.log('🍪 ULTIMATE_SESSION: Loading Twitter session...');
+      
+      // Load session from environment
+      const sessionB64 = process.env.TWITTER_SESSION_B64;
+      if (!sessionB64) {
+        throw new Error('TWITTER_SESSION_B64 not found in environment');
+      }
+      
+      const sessionData = JSON.parse(Buffer.from(sessionB64, 'base64').toString());
+      await this.page.context().addCookies(sessionData);
+      console.log('✅ ULTIMATE_SESSION: Session cookies loaded');
+      
+      // Navigate to Twitter
+      await this.page.goto('https://x.com', { waitUntil: 'networkidle' });
+      console.log('🌐 ULTIMATE_NAVIGATION: Navigated to Twitter');
+      
       // Check if logged out
       if (await isLoggedOut(this.page)) {
-        throw new Error('Not logged in to Twitter');
+        throw new Error('Not logged in to Twitter - session may have expired');
       }
+      console.log('✅ ULTIMATE_AUTH: Successfully logged in to Twitter');
       
       // Find composer with ultimate selectors
       let composer = null;
