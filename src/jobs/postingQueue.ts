@@ -231,9 +231,6 @@ async function postContent(decision: QueuedDecision): Promise<string> {
     const context = await browser.newContext();
     const page = await context.newPage();
     
-    // Load session and navigate to X
-    await page.goto('https://x.com');
-    
     const ultimatePoster = new UltimateTwitterPoster(page);
     const result = await ultimatePoster.postTweet(decision.content);
     
@@ -334,7 +331,7 @@ async function markDecisionPosted(decisionId: string, tweetId: string): Promise<
       return;
     }
     
-    // 3. Store in posted_decisions archive
+    // 3. Store in posted_decisions archive with safer numeric handling
     const { error: archiveError } = await supabase
       .from('posted_decisions')
       .insert([{
@@ -346,8 +343,8 @@ async function markDecisionPosted(decisionId: string, tweetId: string): Promise<
         target_username: decisionData.target_username,
         bandit_arm: decisionData.bandit_arm,
         timing_arm: decisionData.timing_arm,
-        predicted_er: decisionData.predicted_er,
-        quality_score: decisionData.quality_score,
+        predicted_er: Math.min(1.0, Math.max(0.0, Number(decisionData.predicted_er) || 0)),
+        quality_score: Math.min(1.0, Math.max(0.0, Number(decisionData.quality_score) || 0)),
         topic_cluster: decisionData.topic_cluster,
         posted_at: new Date().toISOString()
       }]);
