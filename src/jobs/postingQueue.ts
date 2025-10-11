@@ -225,7 +225,7 @@ async function postContent(decision: QueuedDecision): Promise<string> {
     const { chromium } = await import('playwright');
     
     const browser = await chromium.launch({ 
-      headless: false,  // ← NUCLEAR FIX: Visible browser to bypass Twitter detection
+      headless: false,  // ← XVFB allows this to work in Railway!
       args: [
         '--no-sandbox', 
         '--disable-dev-shm-usage',
@@ -238,7 +238,11 @@ async function postContent(decision: QueuedDecision): Promise<string> {
         '--start-maximized',
         '--disable-web-security',
         '--disable-features=VizDisplayCompositor',
-        '--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        '--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        '--virtual-time-budget=5000',  // Virtual time control
+        '--run-all-compositor-stages-before-draw',  // Ensure rendering
+        '--disable-backgrounding-occluded-windows',  // Keep active
+        '--disable-renderer-backgrounding'  // Prevent throttling
       ]
     });
     const context = await browser.newContext({
