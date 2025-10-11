@@ -2,21 +2,26 @@ import { Page, Locator } from 'playwright';
 
 export const SELECTORS = {
   composer: [
-    // Prioritize the exact selectors specified for X/Twitter
-    'div[role="textbox"][contenteditable="true"]',
+    // Primary X/Twitter selectors (October 2025) - UPDATED
+    'div[contenteditable="true"][role="textbox"]',
+    'div[aria-label*="Post text"]',
+    'div[aria-label*="What is happening"]',
+    'div[aria-label*="What\'s happening"]',
+    '[data-testid="tweetTextarea_0"]',
+    
+    // Secondary selectors
     'div[data-testid="tweetTextarea_0"] div[contenteditable="true"]',
     '[data-testid="tweetTextarea_0"] [role="textbox"]',
-    // Fallback selectors
     'div[role="textbox"][data-testid="tweetTextarea_0"]',
     '[data-testid="tweetTextarea_0-label"] ~ div[role="textbox"]',
+    
+    // Fallback selectors
     'div.DraftEditor-root div[contenteditable="true"]',
     '[data-testid="tweetTextarea_0"]',
-    'div[contenteditable="true"][role="textbox"]',
     'div[contenteditable="true"]',
     '[data-testid="toolBar"] + div div[contenteditable="true"]',
-    'div[aria-label*="Post text"]',
-    'div[aria-label*="Tweet text"]',
-    'div[data-text="true"]'
+    'div[data-text="true"]',
+    '.public-DraftEditor-content'
   ],
   postBtn: [
     '[data-testid="tweetButtonInline"]:not([aria-hidden="true"])',

@@ -11,13 +11,21 @@ const PLAYWRIGHT_FOCUS_TIMEOUT_MS = parseInt(process.env.PLAYWRIGHT_FOCUS_TIMEOU
 const PLAYWRIGHT_REPLY_TIMEOUT_MS = parseInt(process.env.PLAYWRIGHT_REPLY_TIMEOUT_MS || '12000', 10);
 const PLAYWRIGHT_COMPOSER_STRICT = (process.env.PLAYWRIGHT_COMPOSER_STRICT ?? 'true') === 'true';
 
-// Comprehensive selector sets
+// Comprehensive selector sets - UPDATED FOR CURRENT X INTERFACE
 const COMPOSER_SELECTORS = [
+  // Primary X/Twitter selectors (October 2025)
   '[data-testid="tweetTextarea_0"]',
-  '[data-testid="tweetTextarea_1"]', 
-  '[aria-label="Post text"]',
-  'div[role="textbox"][contenteditable="true"]',
-  '[data-testid="tweetTextEditor"]'
+  'div[contenteditable="true"][role="textbox"]',
+  'div[aria-label*="Post text"]',
+  'div[aria-label*="What is happening"]',
+  'div[aria-label*="What\'s happening"]',
+  
+  // Fallback selectors
+  '[data-testid="tweetTextarea_1"]',
+  '[data-testid="tweetTextEditor"]',
+  'div[contenteditable="true"]',
+  '.public-DraftEditor-content',
+  '[placeholder*="What\'s happening"]'
 ];
 
 const REPLY_SELECTORS = [
