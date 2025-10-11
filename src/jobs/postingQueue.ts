@@ -137,7 +137,7 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
       .from('content_metadata')
       .select('*')
       .eq('status', 'queued')
-      .eq('generation_source', 'real')
+      // Remove generation_source filter to allow all queued content
       .lte('scheduled_at', graceWindow) // Add grace window filter
       .order('scheduled_at', { ascending: true }) // Order by scheduled time, not creation time
       .limit(5); // Process max 5 at a time to avoid overwhelming Twitter
