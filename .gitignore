@@ -61,3 +61,4 @@ ops/supabase-ca.crt
 *.crt
 *.pem
 dist/
+.browser-profile/
