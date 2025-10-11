@@ -24,16 +24,46 @@ export class UltimateTwitterPoster {
       
       const sessionData = JSON.parse(Buffer.from(sessionB64, 'base64').toString());
       
-      // 🍪 CRITICAL FIX: Ensure cookies is an array
+      // 🍪 CRITICAL FIX: Parse session data properly
       let cookies = sessionData;
+      
+      // Debug: Log session data structure
+      console.log('🔍 ULTIMATE_DEBUG: Session data type:', typeof sessionData);
+      console.log('🔍 ULTIMATE_DEBUG: Is array:', Array.isArray(sessionData));
+      
       if (!Array.isArray(sessionData)) {
-        // If sessionData is an object, convert to array format
-        cookies = Object.values(sessionData).filter(cookie => cookie && typeof cookie === 'object');
-        console.log(`🔧 ULTIMATE_SESSION: Converted ${cookies.length} cookies from object to array`);
+        // If sessionData is an object, it might be a cookie object or contain cookies
+        if (sessionData.cookies && Array.isArray(sessionData.cookies)) {
+          // Session data has a cookies array property
+          cookies = sessionData.cookies;
+          console.log(`🔧 ULTIMATE_SESSION: Using cookies array from session data (${cookies.length} cookies)`);
+        } else if (typeof sessionData === 'object') {
+          // Try to convert object values to cookie array
+          cookies = Object.values(sessionData).filter(cookie => 
+            cookie && 
+            typeof cookie === 'object' && 
+            cookie.name && 
+            cookie.value
+          );
+          console.log(`🔧 ULTIMATE_SESSION: Converted ${cookies.length} valid cookies from object`);
+        }
       }
       
-      await this.page.context().addCookies(cookies);
-      console.log(`✅ ULTIMATE_SESSION: ${cookies.length} session cookies loaded`);
+      // Validate cookies before adding
+      const validCookies = cookies.filter(cookie => 
+        cookie && 
+        typeof cookie === 'object' && 
+        typeof cookie.name === 'string' && 
+        typeof cookie.value === 'string'
+      );
+      
+      if (validCookies.length === 0) {
+        throw new Error('No valid cookies found in session data');
+      }
+      
+      console.log(`🍪 ULTIMATE_SESSION: Adding ${validCookies.length} valid cookies to browser`);
+      await this.page.context().addCookies(validCookies);
+      console.log(`✅ ULTIMATE_SESSION: ${validCookies.length} session cookies loaded successfully`);
       
       // Navigate to Twitter
       await this.page.goto('https://x.com', { waitUntil: 'networkidle' });
