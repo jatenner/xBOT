@@ -225,10 +225,58 @@ async function postContent(decision: QueuedDecision): Promise<string> {
     const { chromium } = await import('playwright');
     
     const browser = await chromium.launch({ 
-      headless: true,
-      args: ['--no-sandbox', '--disable-dev-shm-usage']
+      headless: false,  // ← NUCLEAR FIX: Visible browser to bypass Twitter detection
+      args: [
+        '--no-sandbox', 
+        '--disable-dev-shm-usage',
+        '--disable-blink-features=AutomationControlled',
+        '--disable-extensions',
+        '--no-first-run',
+        '--disable-default-apps',
+        '--disable-infobars',
+        '--window-size=1920,1080',
+        '--start-maximized',
+        '--disable-web-security',
+        '--disable-features=VizDisplayCompositor',
+        '--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      ]
     });
-    const context = await browser.newContext();
+    const context = await browser.newContext({
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      viewport: { width: 1920, height: 1080 },
+      locale: 'en-US',
+      timezoneId: 'America/New_York',
+      extraHTTPHeaders: {
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'DNT': '1',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+      }
+    });
+    
+    // 🎭 NUCLEAR STEALTH: Remove automation indicators
+    await context.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', {
+        get: () => undefined,
+      });
+      
+      // Remove automation flags
+      delete (window as any).chrome?.runtime?.onConnect;
+      delete (window as any).chrome?.runtime?.onMessage;
+      
+      // Spoof plugins
+      Object.defineProperty(navigator, 'plugins', {
+        get: () => [1, 2, 3, 4, 5],
+      });
+      
+      // Spoof languages
+      Object.defineProperty(navigator, 'languages', {
+        get: () => ['en-US', 'en'],
+      });
+    });
+    
     const page = await context.newPage();
     
     const ultimatePoster = new UltimateTwitterPoster(page);
