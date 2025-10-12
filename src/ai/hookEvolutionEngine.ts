@@ -584,9 +584,38 @@ Output as JSON:
   
   private async storeHook(hook: HookDNA): Promise<void> {
     try {
+      const hookData = {
+        hook_id: hook.hook_id,
+        hook_text: hook.hook_text,
+        hook_category: hook.hook_category,
+        engagement_gene: hook.engagement_gene,
+        viral_gene: hook.viral_gene,
+        follower_gene: hook.follower_gene,
+        authority_gene: hook.authority_gene,
+        word_count: hook.word_count,
+        has_statistics: hook.has_statistics,
+        has_controversy: hook.has_controversy,
+        has_question: hook.has_question,
+        has_emotional_trigger: hook.has_emotional_trigger,
+        generation: hook.generation,
+        parent_hooks: JSON.stringify(hook.parent_hooks),
+        mutation_rate: hook.mutation_rate,
+        times_used: hook.times_used,
+        avg_engagement_rate: hook.avg_engagement_rate,
+        avg_viral_coefficient: hook.avg_viral_coefficient,
+        avg_followers_gained: hook.avg_followers_gained,
+        success_rate: hook.success_rate,
+        best_topics: JSON.stringify(hook.best_topics),
+        best_audiences: JSON.stringify(hook.best_audiences),
+        optimal_timing: JSON.stringify(hook.optimal_timing),
+        created_at: hook.created_at,
+        last_used: hook.last_used || null,
+        last_evolved: hook.last_evolved || null
+      };
+
       const { error } = await this.supabase
         .from('hook_dna')
-        .upsert([hook], { onConflict: 'hook_id' });
+        .upsert([hookData], { onConflict: 'hook_id' });
       
       if (error) {
         console.error('[HOOK_EVOLUTION] Error storing hook:', error);
@@ -731,13 +760,21 @@ Output as JSON:
   
   private async updateHookUsage(hookId: string): Promise<void> {
     try {
-      await this.supabase
+      const { data: currentHook } = await this.supabase
         .from('hook_dna')
-        .update({ 
-          last_used: new Date().toISOString(),
-          times_used: this.supabase.raw('times_used + 1')
-        })
-        .eq('hook_id', hookId);
+        .select('times_used')
+        .eq('hook_id', hookId)
+        .single();
+      
+      if (currentHook) {
+        await this.supabase
+          .from('hook_dna')
+          .update({ 
+            last_used: new Date().toISOString(),
+            times_used: (currentHook.times_used || 0) + 1
+          })
+          .eq('hook_id', hookId);
+      }
     } catch (error) {
       console.error('[HOOK_EVOLUTION] Error updating hook usage:', error);
     }

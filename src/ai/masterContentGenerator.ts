@@ -231,9 +231,9 @@ export class MasterContentGenerator {
       case 'follower_optimized':
         return await followerAcquisitionGenerator.generateFollowerMagnetContent({
           target_audience: request.target_audience,
-          content_goal: request.primary_goal as any,
+          content_goal: request.primary_goal === 'followers' ? 'value' : request.primary_goal as any,
           topic_preference: request.topic_preference,
-          format_preference: request.format_preference
+          format_preference: request.format_preference === 'auto' ? undefined : request.format_preference
         });
         
       case 'viral_formula':
@@ -241,7 +241,7 @@ export class MasterContentGenerator {
           target_virality: request.viral_target || 'high',
           topic_preference: request.topic_preference,
           audience_segment: request.target_audience,
-          format_preference: request.format_preference
+          format_preference: request.format_preference === 'auto' ? undefined : request.format_preference
         });
         
       case 'hook_evolved':
@@ -323,9 +323,9 @@ export class MasterContentGenerator {
     // Get follower-optimized content
     const followerContent = await followerAcquisitionGenerator.generateFollowerMagnetContent({
       target_audience: request.target_audience,
-      content_goal: request.primary_goal as any,
+      content_goal: 'value',
       topic_preference: request.topic_preference,
-      format_preference: request.format_preference
+      format_preference: request.format_preference === 'auto' ? undefined : request.format_preference
     });
     
     // Combine the best elements
