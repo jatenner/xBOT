@@ -14,7 +14,7 @@
     "jobs:learn": "node dist/scripts/jobs-learn.js",
     "dryrun:plan": "node dist/scripts/dryrun-plan.js 3",
     "dryrun:reply": "node dist/scripts/dryrun-reply.js",
-    "logs": "node bulletproof_railway_monitor.js",
+    "logs": "node bulletproof_system_monitor.js",
     "prestart": "node -r dotenv/config scripts/migrate.js dotenv_config_path=.env",
     "start:bulletproof": "node dist/src/main-bulletproof.js",
     "postinstall": "npx playwright install chromium --with-deps && mkdir -p artifacts || true",
