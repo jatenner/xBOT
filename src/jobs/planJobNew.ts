@@ -233,11 +233,11 @@ async function storeContentDecisions(decisions: ContentDecision[]): Promise<void
     hook_type: 'myth_buster', // Set required hook_type field
     cta_type: 'follow_for_more', // Set required cta_type field
     predicted_engagement: 'high', // Set required predicted_engagement field
-    angle: decision.contrarian_angle,
+    // Remove the 'angle' field since it doesn't exist in the database
     features: {
       enhanced_generation: decision.enhanced_generation,
       uniqueness_indicators: decision.uniqueness_indicators,
-      contrarian_angle: decision.contrarian_angle
+      contrarian_angle: decision.contrarian_angle // Store angle in features instead
     }
   }));
   
