@@ -1,0 +1,43 @@
+#!/bin/bash
+
+echo "🚀 DEPLOYING AGGRESSIVE TWITTER GROWTH SYSTEM"
+echo "============================================="
+
+# Set all environment variables in Railway
+railway variables set MODE="live"
+railway variables set JOBS_AUTOSTART="true"
+railway variables set JOBS_PLAN_INTERVAL_MIN="15"
+railway variables set JOBS_POSTING_INTERVAL_MIN="5"
+railway variables set JOBS_REPLY_INTERVAL_MIN="20"
+railway variables set JOBS_LEARN_INTERVAL_MIN="60"
+railway variables set MAX_POSTS_PER_HOUR="2"
+railway variables set MAX_DAILY_POSTS="48"
+railway variables set REPLY_MAX_PER_DAY="72"
+railway variables set REPLY_MINUTES_BETWEEN="20"
+railway variables set ENABLE_REPLIES="true"
+railway variables set ENABLE_THREADS="true"
+railway variables set THREAD_PERCENTAGE="10"
+railway variables set MIN_QUALITY_SCORE="0.7"
+railway variables set EXPLORE_RATIO_MIN="0.1"
+railway variables set EXPLORE_RATIO_MAX="0.3"
+railway variables set DAILY_OPENAI_LIMIT_USD="10.0"
+railway variables set BUDGET_STRICT="false"
+railway variables set GRACE_MINUTES="5"
+railway variables set MIN_POST_INTERVAL_MINUTES="30"
+railway variables set FEATURE_HOOK_EVOLUTION="true"
+railway variables set FEATURE_FOLLOWER_OPTIMIZATION="true"
+railway variables set FEATURE_PERFORMANCE_TRACKING="true"
+
+echo "✅ All environment variables set!"
+echo "🔄 Restarting Railway service..."
+railway service restart
+
+echo "🎯 AGGRESSIVE CONFIGURATION DEPLOYED:"
+echo "   📝 Content Planning: Every 15 minutes"
+echo "   📮 Posting Rate: 2 posts per hour"
+echo "   💬 Reply Rate: 3 replies per hour"
+echo "   🧬 Hook Evolution: ENABLED"
+echo "   📊 Learning System: ENABLED"
+echo "   🎯 Follower Optimization: ENABLED"
+echo ""
+echo "🚀 Your Twitter growth system is now optimized for maximum engagement!"
