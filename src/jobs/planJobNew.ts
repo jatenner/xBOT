@@ -35,6 +35,8 @@ interface ContentDecision {
   enhanced_generation?: boolean;
   uniqueness_indicators?: string[];
   contrarian_angle?: string;
+  content_format?: 'single' | 'thread'; // Track format for learning
+  thread_tweets?: string[]; // Store individual tweets for threads
 }
 
 // Global metrics
@@ -141,10 +143,11 @@ async function generateContentWithLLM(): Promise<ContentDecision> {
     
     const enhancedContent = await generateEnhancedContent({
       style: 'contrarian',
-      format: 'single'
+      // Let the system intelligently choose format (10% threads, 90% singles)
+      // format: 'single' - removed to enable adaptive format selection
     });
     
-    console.log(`✅ ENHANCED_CONTENT: Topic: ${enhancedContent.topic}, Quality: ${enhancedContent.quality_score.toFixed(3)}`);
+    console.log(`✅ ENHANCED_CONTENT: Topic: ${enhancedContent.topic}, Format: ${enhancedContent.format}, Quality: ${enhancedContent.quality_score.toFixed(3)}`);
     console.log(`🎯 ANGLE: ${enhancedContent.angle}`);
     console.log(`🔍 UNIQUENESS: ${enhancedContent.uniqueness_indicators.join(', ')}`);
     
@@ -155,11 +158,16 @@ async function generateContentWithLLM(): Promise<ContentDecision> {
     const delayMinutes = 30 + Math.random() * 60;
     const scheduledTime = new Date(Date.now() + delayMinutes * 60 * 1000);
     
+    // Handle both single tweets and threads
+    const contentText = Array.isArray(enhancedContent.content) 
+      ? enhancedContent.content.join('\n\n') // Join thread tweets with double newlines
+      : enhancedContent.content;
+    
     const decision: ContentDecision = {
       decision_id,
       decision_type: 'content',
-      content: enhancedContent.content,
-      bandit_arm: `enhanced_${enhancedContent.topic.replace(/\s+/g, '_')}`,
+      content: contentText,
+      bandit_arm: `enhanced_${enhancedContent.topic.replace(/\s+/g, '_')}_${enhancedContent.format}`,
       timing_arm: 'enhanced_timing',
       scheduled_at: scheduledTime.toISOString(),
       quality_score: Math.min(1.0, Math.max(0.0, enhancedContent.quality_score)),
@@ -169,7 +177,9 @@ async function generateContentWithLLM(): Promise<ContentDecision> {
       // Advanced metadata
       enhanced_generation: true,
       uniqueness_indicators: enhancedContent.uniqueness_indicators,
-      contrarian_angle: enhancedContent.angle
+      contrarian_angle: enhancedContent.angle,
+      content_format: enhancedContent.format, // Track if it's single or thread
+      thread_tweets: Array.isArray(enhancedContent.content) ? enhancedContent.content : undefined
     };
     
     planMetrics.calls_success++;
@@ -233,11 +243,14 @@ async function storeContentDecisions(decisions: ContentDecision[]): Promise<void
     hook_type: 'myth_buster', // Set required hook_type field
     cta_type: 'follow_for_more', // Set required cta_type field
     predicted_engagement: 'high', // Set required predicted_engagement field
-    // Remove the 'angle' field since it doesn't exist in the database
+    // Store thread and format metadata in features JSONB column
     features: {
       enhanced_generation: decision.enhanced_generation,
       uniqueness_indicators: decision.uniqueness_indicators,
-      contrarian_angle: decision.contrarian_angle // Store angle in features instead
+      contrarian_angle: decision.contrarian_angle,
+      content_format: decision.content_format, // 'single' or 'thread'
+      thread_tweets: decision.thread_tweets, // Individual tweets for threads
+      is_thread: decision.content_format === 'thread'
     }
   }));
   
