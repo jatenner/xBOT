@@ -466,6 +466,9 @@ export class HookEvolutionEngine {
 
   private async storeHooks(hooks: HookDNA[]): Promise<void> {
     try {
+      // First, ensure the table exists by creating it if needed
+      await this.ensureHookDnaTable();
+      
       const hookData = hooks.map(hook => ({
         hook_id: hook.hook_id,
         hook_text: hook.hook_text,
@@ -506,6 +509,54 @@ export class HookEvolutionEngine {
       }
     } catch (error: any) {
       console.error('[HOOK_EVOLUTION] ❌ Database storage error:', error.message);
+    }
+  }
+
+  /**
+   * Ensure the hook_dna table exists
+   */
+  private async ensureHookDnaTable(): Promise<void> {
+    try {
+      const createTableSQL = `
+        CREATE TABLE IF NOT EXISTS public.hook_dna (
+          hook_id text PRIMARY KEY,
+          hook_text text NOT NULL,
+          hook_category text NOT NULL,
+          engagement_gene double precision NOT NULL,
+          viral_gene double precision NOT NULL,
+          follower_gene double precision NOT NULL,
+          authority_gene double precision NOT NULL,
+          word_count integer NOT NULL,
+          has_statistics boolean DEFAULT false,
+          has_controversy boolean DEFAULT false,
+          has_question boolean DEFAULT false,
+          has_emotional_trigger boolean DEFAULT false,
+          generation integer DEFAULT 0,
+          parent_hooks jsonb,
+          mutation_rate double precision DEFAULT 0.1,
+          times_used integer DEFAULT 0,
+          avg_engagement_rate double precision DEFAULT 0.0,
+          avg_viral_coefficient double precision DEFAULT 0.0,
+          avg_followers_gained double precision DEFAULT 0.0,
+          success_rate double precision DEFAULT 0.5,
+          best_topics jsonb,
+          best_audiences jsonb,
+          optimal_timing jsonb,
+          created_at timestamptz DEFAULT now() NOT NULL,
+          last_used timestamptz,
+          last_evolved timestamptz
+        );
+        
+        CREATE INDEX IF NOT EXISTS idx_hook_dna_category ON public.hook_dna (hook_category);
+      `;
+      
+      const { error } = await this.supabase.rpc('exec_sql', { sql: createTableSQL });
+      
+      if (error) {
+        console.warn('[HOOK_EVOLUTION] ⚠️ Could not ensure table exists:', error.message);
+      }
+    } catch (error: any) {
+      console.warn('[HOOK_EVOLUTION] ⚠️ Table creation check failed:', error.message);
     }
   }
 
