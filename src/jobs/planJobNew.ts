@@ -8,7 +8,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { getEnvConfig, isLLMAllowed } from '../config/envFlags';
 import { learningSystem } from '../learning/learningSystem';
-import { masterContentGenerator } from '../ai/masterContentGenerator';
+import { masterContentGenerator } from '../ai/masterContentGenerator'; // Using minimal version
 
 function getConfig() {
   return getEnvConfig();
@@ -144,7 +144,7 @@ async function generateContentWithLLM(): Promise<ContentDecision> {
       primary_goal: 'followers',
       secondary_goal: 'viral',
       target_audience: 'health_seekers',
-      format_preference: 'single', // Simplified to avoid 'auto' type issues
+      format_preference: 'single', // Using single format to avoid type issues
       viral_target: 'high',
       use_evolved_hooks: true,
       apply_viral_formulas: true,
