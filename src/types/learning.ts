@@ -74,27 +74,39 @@ export interface LearningAdjustment {
 export interface HookDNA {
   hook_id: string;
   hook_text: string;
-  hook_category: string;
-  engagement_gene: number;
-  viral_gene: number;
-  follower_gene: number;
-  authority_gene: number;
+  hook_category: 'statistical' | 'contrarian' | 'authority' | 'curiosity' | 'social_proof' | 'value_bomb';
+  
+  // Performance genetics
+  engagement_gene: number; // 0-1 score for engagement potential
+  viral_gene: number; // 0-1 score for viral potential  
+  follower_gene: number; // 0-1 score for follower conversion
+  authority_gene: number; // 0-1 score for authority building
+  
+  // Hook characteristics
   word_count: number;
   has_statistics: boolean;
   has_controversy: boolean;
   has_question: boolean;
   has_emotional_trigger: boolean;
-  generation: number;
-  parent_hooks: string[];
-  mutation_rate: number;
+  
+  // Evolution data
+  generation: number; // Which generation of evolution this is
+  parent_hooks: string[]; // Hook IDs that contributed to this hook
+  mutation_rate: number; // How much this hook changes when evolved
+  
+  // Performance tracking
   times_used: number;
   avg_engagement_rate: number;
   avg_viral_coefficient: number;
   avg_followers_gained: number;
-  success_rate: number;
-  best_topics: string[];
-  best_audiences: string[];
-  optimal_timing: any;
+  success_rate: number; // Overall success rate (0-1)
+  
+  // Learning data
+  best_topics: string[]; // Topics this hook works best with
+  best_audiences: string[]; // Audiences this hook resonates with
+  optimal_timing: any; // Best times to use this hook
+  
+  // Timestamps
   created_at: string;
   last_used?: string;
   last_evolved?: string;
