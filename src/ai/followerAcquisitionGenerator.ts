@@ -5,7 +5,7 @@
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { learningSystem } from '../learning/learningSystem';
-import { performanceTracker } from '../learning/performanceTracker';
+// import { performanceTracker } from '../learning/performanceTracker'; // Temporarily disabled
 
 export interface FollowerMagnetContent {
   content: string | string[]; // Single tweet or thread
@@ -72,7 +72,7 @@ export class FollowerAcquisitionGenerator {
     console.log('[FOLLOWER_GENERATOR] 🧲 Generating follower magnet content...');
     
     try {
-      // Get learning insights to inform content generation
+      // Get learning insights to inform content generation (simplified)
       const learningInsights = await this.getLearningInsights();
       
       // Select optimal viral formula based on recent performance
@@ -211,14 +211,20 @@ export class FollowerAcquisitionGenerator {
   
   private async getLearningInsights(): Promise<any> {
     try {
-      const recommendations = await learningSystem.getOptimizationRecommendations();
-      const performanceInsights = await performanceTracker.getPerformanceInsights();
-      
+      // Simplified learning insights (no complex dependencies)
       return {
-        top_hooks: performanceInsights.topHooks,
-        best_topics: performanceInsights.topTopics,
-        optimal_timing: performanceInsights.optimalTiming,
-        recommendations: recommendations.immediate_actions
+        top_hooks: [
+          'Most people think X, but research shows Y',
+          'Did you know X% of people are wrong about Y?',
+          'The #1 mistake people make with X is Y'
+        ],
+        best_topics: ['sleep optimization', 'nutrition myths', 'exercise science'],
+        optimal_timing: ['morning', 'evening'],
+        recommendations: {
+          hook_recommendations: ['Use contrarian statements', 'Include statistics'],
+          timing_optimizations: ['Post during peak hours'],
+          content_insights: ['Focus on actionable advice']
+        }
       };
     } catch (error) {
       console.warn('[FOLLOWER_GENERATOR] Warning: Could not get learning insights, using defaults');
