@@ -8,6 +8,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { getEnvConfig, isLLMAllowed } from '../config/envFlags';
 import { learningSystem } from '../learning/learningSystem';
+import { masterContentGenerator } from '../ai/masterContentGenerator';
 
 function getConfig() {
   return getEnvConfig();
@@ -136,21 +137,24 @@ async function generateRealContent(): Promise<void> {
  * Generate content using ENHANCED CONTENT GENERATION SYSTEM
  */
 async function generateContentWithLLM(): Promise<ContentDecision> {
-  console.log('🚀 ENHANCED_GENERATION: Using contrarian content system...');
+  console.log('🚀 MASTER_GENERATOR: Using follower-optimized content system...');
   
   try {
-    // Use the enhanced content generator
-    const { generateEnhancedContent } = await import('../ai/enhancedContentGenerator');
-    
-    const enhancedContent = await generateEnhancedContent({
-      style: 'contrarian',
-      // Let the system intelligently choose format (10% threads, 90% singles)
-      // format: 'single' - removed to enable adaptive format selection
+    const masterContent = await masterContentGenerator.generateMasterContent({
+      primary_goal: 'followers',
+      secondary_goal: 'viral',
+      target_audience: 'health_seekers',
+      format_preference: 'auto', // Let system choose optimal format
+      viral_target: 'high',
+      use_evolved_hooks: true,
+      apply_viral_formulas: true,
+      optimize_for_followers: true
     });
-    
-    console.log(`✅ ENHANCED_CONTENT: Topic: ${enhancedContent.topic}, Format: ${enhancedContent.format}, Quality: ${enhancedContent.quality_score.toFixed(3)}`);
-    console.log(`🎯 ANGLE: ${enhancedContent.angle}`);
-    console.log(`🔍 UNIQUENESS: ${enhancedContent.uniqueness_indicators.join(', ')}`);
+
+    console.log(`✅ MASTER_CONTENT: Generated ${masterContent.format} content`);
+    console.log(`🎯 PREDICTIONS: Followers: ${masterContent.expected_outcomes.followers_gained_prediction}, Engagement: ${(masterContent.expected_outcomes.engagement_rate_prediction * 100).toFixed(1)}%, Viral: ${masterContent.expected_outcomes.viral_coefficient_prediction.toFixed(3)}`);
+    console.log(`🧬 HOOK: "${masterContent.hook_used.hook_text}" (Gen ${masterContent.hook_used.evolution_generation})`);
+    console.log(`🔥 FORMULA: ${masterContent.viral_formula_applied.formula_name} (${(masterContent.viral_formula_applied.success_rate * 100).toFixed(1)}% success rate)`);
     
     // Generate decision ID and timing
     const decision_id = uuidv4();
@@ -160,28 +164,30 @@ async function generateContentWithLLM(): Promise<ContentDecision> {
     const scheduledTime = new Date(Date.now() + delayMinutes * 60 * 1000);
     
     // Handle both single tweets and threads
-    const contentText = Array.isArray(enhancedContent.content) 
-      ? enhancedContent.content.join('\n\n') // Join thread tweets with double newlines
-      : enhancedContent.content;
+    const contentText = Array.isArray(masterContent.content) 
+      ? masterContent.content.join('\n\n') // Join thread tweets with double newlines
+      : masterContent.content;
     
     // Prepare predictions for learning system
     const predictedMetrics = {
-      engagement_rate: Math.min(1.0, Math.max(0.0, 0.035 + (enhancedContent.quality_score * 0.02))),
-      viral_potential: enhancedContent.quality_score * 0.3, // Simple viral prediction
+      engagement_rate: masterContent.expected_outcomes.engagement_rate_prediction,
+      viral_potential: masterContent.expected_outcomes.viral_coefficient_prediction,
       optimal_timing: scheduledTime.toISOString()
     };
     
     const contentMetadata = {
-      topic: enhancedContent.topic,
-      format: enhancedContent.format,
-      hook_type: 'contrarian_hook', // Simplified for now
-      evidence_type: 'statistical_evidence', // Simplified for now
-      has_statistics: enhancedContent.uniqueness_indicators.some(indicator => 
-        indicator.includes('percentage') || indicator.includes('study') || indicator.includes('data')
-      ),
-      has_controversy: enhancedContent.uniqueness_indicators.some(indicator => 
-        indicator.includes('contrarian') || indicator.includes('myth') || indicator.includes('challenge')
-      )
+      topic: 'health_optimization',
+      format: masterContent.format,
+      hook_type: masterContent.hook_used.hook_category,
+      evidence_type: 'statistical_evidence',
+      has_statistics: masterContent.content_characteristics.has_statistics,
+      has_controversy: masterContent.content_characteristics.has_controversy,
+      // Master content specific metadata
+      generation_method: masterContent.generation_method,
+      hook_evolution_generation: masterContent.hook_used.evolution_generation,
+      viral_formula_used: masterContent.viral_formula_applied.formula_name,
+      follower_magnet_score: masterContent.follower_magnet_score,
+      confidence_score: masterContent.confidence_score
     };
     
     // Process with learning system
@@ -196,21 +202,21 @@ async function generateContentWithLLM(): Promise<ContentDecision> {
       decision_id,
       decision_type: 'content',
       content: contentText,
-      bandit_arm: `enhanced_${enhancedContent.topic.replace(/\s+/g, '_')}_${enhancedContent.format}`,
-      timing_arm: 'enhanced_timing',
+      bandit_arm: `master_${masterContent.generation_method}_${masterContent.format}`,
+      timing_arm: 'master_timing',
       scheduled_at: scheduledTime.toISOString(),
-      quality_score: Math.min(1.0, Math.max(0.0, enhancedContent.quality_score)),
+      quality_score: masterContent.confidence_score,
       predicted_er: predictedMetrics.engagement_rate,
-      topic_cluster: enhancedContent.topic,
-      generation_source: 'enhanced',
+      topic_cluster: 'health_optimization',
+      generation_source: 'master',
       // Advanced metadata
       enhanced_generation: true,
-      uniqueness_indicators: enhancedContent.uniqueness_indicators,
-      contrarian_angle: enhancedContent.angle,
-      content_format: enhancedContent.format, // Track if it's single or thread
-      thread_tweets: Array.isArray(enhancedContent.content) ? enhancedContent.content : undefined
+      uniqueness_indicators: masterContent.content_characteristics.credibility_signals,
+      contrarian_angle: masterContent.hook_used.hook_text,
+      content_format: masterContent.format,
+      thread_tweets: Array.isArray(masterContent.content) ? masterContent.content : undefined
     };
-    
+
     planMetrics.calls_success++;
     return decision;
     
