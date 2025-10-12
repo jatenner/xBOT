@@ -8,7 +8,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { getEnvConfig, isLLMAllowed } from '../config/envFlags';
 import { learningSystem } from '../learning/learningSystem';
-import { masterContentGenerator } from '../ai/masterContentGenerator';
+import { masterContentGenerator } from '../ai/masterContentGeneratorSimple';
 
 function getConfig() {
   return getEnvConfig();
