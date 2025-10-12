@@ -5,8 +5,8 @@
 
 import { generateEnhancedContent, GeneratedContent } from './enhancedContentGenerator';
 import { followerAcquisitionGenerator, FollowerMagnetContent } from './followerAcquisitionGenerator';
-import { viralFormulaEngine } from './viralFormulaEngine';
-import { hookEvolutionEngine } from './hookEvolutionEngine';
+import { viralFormulaEngine } from './viralFormulaEngineSimple';
+import { hookEvolutionEngine } from './hookEvolutionEngineSimple';
 
 export interface MasterContentRequest {
   // Content goals
@@ -15,7 +15,7 @@ export interface MasterContentRequest {
   
   // Content preferences
   topic_preference?: string;
-  format_preference?: 'single' | 'thread' | 'auto';
+  format_preference?: 'single' | 'thread'; // Removed 'auto' to fix type conflicts
   target_audience?: 'health_seekers' | 'fitness_enthusiasts' | 'wellness_beginners' | 'biohackers';
   
   // Advanced options
@@ -233,7 +233,7 @@ export class MasterContentGenerator {
           target_audience: request.target_audience,
           content_goal: request.primary_goal === 'followers' ? 'value' : request.primary_goal as any,
           topic_preference: request.topic_preference,
-          format_preference: request.format_preference === 'auto' ? undefined : request.format_preference
+          format_preference: request.format_preference
         });
         
       case 'viral_formula':
@@ -241,7 +241,7 @@ export class MasterContentGenerator {
           target_virality: request.viral_target || 'high',
           topic_preference: request.topic_preference,
           audience_segment: request.target_audience,
-          format_preference: request.format_preference === 'auto' ? undefined : request.format_preference
+          format_preference: request.format_preference
         });
         
       case 'hook_evolved':
@@ -265,7 +265,7 @@ export class MasterContentGenerator {
     const enhancedContent = await generateEnhancedContent({
       style: 'contrarian',
       format: request.format_preference,
-      forceFormat: request.format_preference !== 'auto'
+      forceFormat: true // Always force format since we removed 'auto'
     });
     
     // Replace the hook with the evolved one
@@ -325,7 +325,7 @@ export class MasterContentGenerator {
       target_audience: request.target_audience,
       content_goal: 'value',
       topic_preference: request.topic_preference,
-      format_preference: request.format_preference === 'auto' ? undefined : request.format_preference
+      format_preference: request.format_preference
     });
     
     // Combine the best elements
