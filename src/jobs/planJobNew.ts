@@ -7,6 +7,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import { getEnvConfig, isLLMAllowed } from '../config/envFlags';
+import { learningSystem } from '../learning/learningSystem';
 
 function getConfig() {
   return getEnvConfig();
@@ -163,6 +164,34 @@ async function generateContentWithLLM(): Promise<ContentDecision> {
       ? enhancedContent.content.join('\n\n') // Join thread tweets with double newlines
       : enhancedContent.content;
     
+    // Prepare predictions for learning system
+    const predictedMetrics = {
+      engagement_rate: Math.min(1.0, Math.max(0.0, 0.035 + (enhancedContent.quality_score * 0.02))),
+      viral_potential: enhancedContent.quality_score * 0.3, // Simple viral prediction
+      optimal_timing: scheduledTime.toISOString()
+    };
+    
+    const contentMetadata = {
+      topic: enhancedContent.topic,
+      format: enhancedContent.format,
+      hook_type: 'contrarian_hook', // Simplified for now
+      evidence_type: 'statistical_evidence', // Simplified for now
+      has_statistics: enhancedContent.uniqueness_indicators.some(indicator => 
+        indicator.includes('percentage') || indicator.includes('study') || indicator.includes('data')
+      ),
+      has_controversy: enhancedContent.uniqueness_indicators.some(indicator => 
+        indicator.includes('contrarian') || indicator.includes('myth') || indicator.includes('challenge')
+      )
+    };
+    
+    // Process with learning system
+    await learningSystem.processNewPost(
+      decision_id,
+      contentText,
+      predictedMetrics,
+      contentMetadata
+    );
+    
     const decision: ContentDecision = {
       decision_id,
       decision_type: 'content',
@@ -171,7 +200,7 @@ async function generateContentWithLLM(): Promise<ContentDecision> {
       timing_arm: 'enhanced_timing',
       scheduled_at: scheduledTime.toISOString(),
       quality_score: Math.min(1.0, Math.max(0.0, enhancedContent.quality_score)),
-      predicted_er: Math.min(1.0, Math.max(0.0, 0.035 + (enhancedContent.quality_score * 0.02))),
+      predicted_er: predictedMetrics.engagement_rate,
       topic_cluster: enhancedContent.topic,
       generation_source: 'enhanced',
       // Advanced metadata

@@ -10,6 +10,8 @@ import { metricsHandler } from './api/metrics';
 import { learnStatusHandler } from './api/learnStatus';
 import { configHandler } from './api/configEndpoint';
 import { auditProfileHandler } from './api/auditProfile';
+import { getLearningSystemStatus, getLearningMetrics } from './api/learningStatus';
+import { learningSystem } from './learning/learningSystem';
 import { requireAdminAuth as legacyAuth, adminJobsHandler, adminJobRunHandler } from './api/adminJobs';
 import { requireAdminAuth } from './api/middleware/adminAuth';
 import { jobScheduleHandler } from './api/adminJobSchedule';
@@ -70,6 +72,16 @@ app.get('/config', configHandler);
  * Learning system status
  */
 app.get('/learn/status', learnStatusHandler);
+
+/**
+ * Enhanced Learning System Status (comprehensive)
+ */
+app.get('/learning/status', getLearningSystemStatus);
+
+/**
+ * Learning System Metrics (for monitoring)
+ */
+app.get('/learning/metrics', getLearningMetrics);
 
 /**
  * Profile audit endpoint
@@ -563,12 +575,23 @@ export function start(port?: number): Promise<void> {
 export function startHealthServer(): Promise<void> {
   return new Promise((resolve, reject) => {
     try {
-      const server = app.listen(PORT, HOST, () => {
+      const server = app.listen(PORT, HOST, async () => {
         console.log(`🏥 Health server listening on ${HOST}:${PORT}`);
         console.log(`📊 Status endpoint: http://${HOST}:${PORT}/status`);
         console.log(`🔧 Environment: http://${HOST}:${PORT}/env`);
         console.log(`🌐 Browser status: http://${HOST}:${PORT}/playwright`);
         console.log(`📝 Session info: http://${HOST}:${PORT}/session`);
+        console.log(`🧠 Learning status: http://${HOST}:${PORT}/learning/status`);
+        console.log(`📈 Learning metrics: http://${HOST}:${PORT}/learning/metrics`);
+        
+        // Initialize learning system
+        try {
+          await learningSystem.initialize();
+          console.log('🧠 Learning system initialized successfully');
+        } catch (error: any) {
+          console.error('⚠️ Learning system initialization failed:', error.message);
+        }
+        
         resolve();
       });
 
