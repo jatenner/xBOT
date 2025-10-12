@@ -4,6 +4,7 @@
  */
 
 import { getConfig, getModeFlags } from '../config/config';
+import { learningSystem } from '../learning/learningSystem';
 
 export async function processPostingQueue(): Promise<void> {
   const config = getConfig();
@@ -203,6 +204,20 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
     await updatePostingMetrics('posted');
     
     console.log(`[POSTING_QUEUE] ✅ ${decision.decision_type} posted: ${tweetId}`);
+    
+    // TODO: Track with learning system (actual performance will be updated later via webhook/job)
+    // For now, we'll simulate some basic metrics for learning
+    try {
+      await learningSystem.updatePostPerformance(decision.id, {
+        likes: 0, // Will be updated later with real data
+        retweets: 0,
+        replies: 0,
+        saves: 0,
+        follower_growth: 0
+      });
+    } catch (learningError: any) {
+      console.warn(`[POSTING_QUEUE] ⚠️ Learning system update failed: ${learningError.message}`);
+    }
     
   } catch (error) {
     await updateDecisionStatus(decision.id, 'failed');
