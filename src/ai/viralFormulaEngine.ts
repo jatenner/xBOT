@@ -400,9 +400,32 @@ export class ViralFormulaDiscoveryEngine {
   
   private async storeViralPattern(pattern: ViralPattern): Promise<void> {
     try {
-      const { error } = await this.supabase
+      const patternData = {
+        pattern_id: pattern.pattern_id,
+        name: pattern.name,
+        description: pattern.description,
+        hook_template: pattern.hook_template,
+        content_flow: JSON.stringify(pattern.content_flow),
+        evidence_requirements: JSON.stringify(pattern.evidence_requirements),
+        engagement_triggers: JSON.stringify(pattern.engagement_triggers),
+        viral_success_rate: pattern.viral_success_rate,
+        avg_follower_conversion: pattern.avg_follower_conversion,
+        avg_engagement_multiplier: pattern.avg_engagement_multiplier,
+        avg_viral_coefficient: pattern.avg_viral_coefficient,
+        sample_size: pattern.sample_size,
+        confidence_score: pattern.confidence_score,
+        last_updated: pattern.last_updated,
+        discovery_method: pattern.discovery_method,
+        best_topics: JSON.stringify(pattern.best_topics),
+        optimal_timing: JSON.stringify(pattern.optimal_timing),
+        target_audiences: JSON.stringify(pattern.target_audiences),
+        avoid_conditions: JSON.stringify(pattern.avoid_conditions),
+        created_at: new Date().toISOString()
+      };
+
+      const { data, error } = await this.supabase
         .from('viral_patterns')
-        .upsert([pattern], { onConflict: 'pattern_id' });
+        .upsert([patternData], { onConflict: 'pattern_id' });
       
       if (error) {
         console.error('[VIRAL_DISCOVERY] Error storing pattern:', error);

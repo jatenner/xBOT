@@ -144,7 +144,7 @@ async function generateContentWithLLM(): Promise<ContentDecision> {
       primary_goal: 'followers',
       secondary_goal: 'viral',
       target_audience: 'health_seekers',
-      format_preference: 'auto', // Let system choose optimal format
+      format_preference: 'single', // Simplified to avoid 'auto' type issues
       viral_target: 'high',
       use_evolved_hooks: true,
       apply_viral_formulas: true,

@@ -66,7 +66,7 @@ export class FollowerAcquisitionGenerator {
     target_audience?: string;
     content_goal?: 'viral' | 'authority' | 'value' | 'controversy';
     topic_preference?: string;
-    format_preference?: 'single' | 'thread' | 'auto';
+    format_preference?: 'single' | 'thread';
   } = {}): Promise<FollowerMagnetContent> {
     
     console.log('[FOLLOWER_GENERATOR] 🧲 Generating follower magnet content...');
