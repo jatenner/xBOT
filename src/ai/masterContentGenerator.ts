@@ -325,7 +325,7 @@ export class MasterContentGenerator {
       target_audience: request.target_audience,
       content_goal: 'value',
       topic_preference: request.topic_preference,
-      format_preference: request.format_preference === 'auto' ? undefined : request.format_preference
+      format_preference: request.format_preference
     });
     
     // Combine the best elements

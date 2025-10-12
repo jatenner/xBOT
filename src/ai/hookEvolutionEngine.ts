@@ -6,6 +6,7 @@
 import { getSupabaseClient } from '../db/index';
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { HookDNA } from '../types/learning';
+import { castToHookDNA } from '../utils/dbTypeCasting';
 
 // HookDNA interface imported from shared types
 

@@ -4,7 +4,7 @@
  */
 
 import { getSupabaseClient } from '../db/index';
-import { EnhancedPerformanceData, ContentPattern } from '../types/learning';
+// Removed conflicting imports - using local interfaces
 
 export interface EnhancedPerformanceData {
   // Basic metrics (existing)
@@ -20,7 +20,7 @@ export interface EnhancedPerformanceData {
   engagement_decay_rate: number; // How fast engagement drops (per hour)
   audience_retention: number; // Followers retained after post
   viral_coefficient: number; // Spread beyond direct followers
-  reply_sentiment: 'positive' | 'negative' | 'neutral' | 'mixed';
+  reply_sentiment: 'positive' | 'negative' | 'neutral';
   topic_saturation_effect: number; // Performance vs recent similar content
   
   // Content characteristics
@@ -67,7 +67,22 @@ export class EnhancedPerformanceTracker {
       // Store in enhanced_performance table
       const { error } = await this.supabase
         .from('enhanced_performance')
-        .upsert([postData], { onConflict: 'post_id' });
+        .upsert([{
+          post_id: postData.post_id,
+          timestamp: postData.timestamp,
+          engagement_rate: postData.engagement_rate,
+          likes: postData.likes,
+          retweets: postData.retweets,
+          replies: postData.replies,
+          saves: postData.saves || 0,
+          follower_growth: postData.follower_growth || 0,
+          time_to_peak_engagement: postData.time_to_peak_engagement,
+          engagement_decay_rate: postData.engagement_decay_rate,
+          audience_retention: postData.audience_retention,
+          viral_coefficient: postData.viral_coefficient,
+          reply_sentiment: postData.reply_sentiment,
+          topic_saturation_effect: postData.topic_saturation_effect
+        }], { onConflict: 'post_id' });
       
       if (error) {
         console.error('[PERFORMANCE_TRACKER] ❌ Failed to store performance data:', error);
