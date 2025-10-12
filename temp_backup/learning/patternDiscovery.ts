@@ -541,7 +541,19 @@ export class PatternDiscoveryEngine {
     try {
       const { error } = await this.supabase
         .from('discovered_patterns')
-        .upsert([pattern], { onConflict: 'id' });
+        .upsert([{
+          id: pattern.id,
+          type: pattern.type,
+          description: pattern.description,
+          confidence: pattern.confidence,
+          impact_score: pattern.impact_score,
+          sample_size: pattern.sample_size,
+          discovered_at: pattern.discovered_at,
+          validation_status: pattern.validation_status,
+          conditions: JSON.stringify(pattern.conditions),
+          outcomes: JSON.stringify(pattern.outcomes),
+          recommendations: JSON.stringify(pattern.recommendations)
+        }], { onConflict: 'id' });
       
       if (error) {
         console.error('[PATTERN_DISCOVERY] Error storing pattern:', error);

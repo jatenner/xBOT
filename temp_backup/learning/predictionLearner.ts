@@ -137,7 +137,19 @@ export class PredictionErrorLearner {
     try {
       const { error: dbError } = await this.supabase
         .from('prediction_errors')
-        .insert([error]);
+        .insert([{
+          id: error.id,
+          post_id: error.post_id,
+          prediction_type: error.prediction_type,
+          predicted_value: error.predicted_value,
+          actual_value: error.actual_value,
+          error_magnitude: error.error_magnitude,
+          error_direction: error.error_direction,
+          prediction_context: JSON.stringify(error.prediction_context),
+          error_analysis: JSON.stringify(error.error_analysis),
+          created_at: error.created_at,
+          learned_from: error.learned_from
+        }]);
       
       if (dbError) {
         console.error('[PREDICTION_LEARNER] Error storing prediction error:', dbError);
@@ -525,7 +537,17 @@ export class PredictionErrorLearner {
     try {
       const { error } = await this.supabase
         .from('learning_adjustments')
-        .insert([adjustment]);
+        .insert([{
+          id: adjustment.id,
+          adjustment_type: adjustment.adjustment_type,
+          target_component: adjustment.target_component,
+          adjustment_description: adjustment.adjustment_description,
+          expected_improvement: adjustment.expected_improvement,
+          confidence: adjustment.confidence,
+          source_errors: JSON.stringify(adjustment.source_errors),
+          implementation: JSON.stringify(adjustment.implementation),
+          created_at: new Date().toISOString()
+        }]);
       
       if (error) {
         console.error('[PREDICTION_LEARNER] Error storing adjustment:', error);

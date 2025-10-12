@@ -299,7 +299,16 @@ export class EnhancedPerformanceTracker {
     try {
       const { error } = await this.supabase
         .from('content_patterns')
-        .upsert([pattern], { onConflict: 'pattern_id' });
+        .upsert([{
+          pattern_id: pattern.pattern_id,
+          pattern_type: pattern.pattern_type,
+          pattern_description: pattern.pattern_description,
+          avg_performance: pattern.avg_performance,
+          sample_size: pattern.sample_size,
+          confidence_score: pattern.confidence_score,
+          discovered_at: pattern.discovered_at,
+          last_validated: pattern.last_validated
+        }], { onConflict: 'pattern_id' });
       
       if (error) {
         console.error('[PERFORMANCE_TRACKER] Error storing pattern:', error);
