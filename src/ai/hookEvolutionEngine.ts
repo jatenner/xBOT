@@ -5,46 +5,9 @@
 
 import { getSupabaseClient } from '../db/index';
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
+import { HookDNA } from '../types/learning';
 
-export interface HookDNA {
-  hook_id: string;
-  hook_text: string;
-  hook_category: 'statistical' | 'contrarian' | 'authority' | 'curiosity' | 'social_proof' | 'value_bomb';
-  
-  // Performance genetics
-  engagement_gene: number; // 0-1 score for engagement potential
-  viral_gene: number; // 0-1 score for viral potential  
-  follower_gene: number; // 0-1 score for follower conversion
-  authority_gene: number; // 0-1 score for authority building
-  
-  // Hook characteristics
-  word_count: number;
-  has_statistics: boolean;
-  has_controversy: boolean;
-  has_question: boolean;
-  has_emotional_trigger: boolean;
-  
-  // Evolution data
-  generation: number; // Which generation of evolution this is
-  parent_hooks: string[]; // Hook IDs that contributed to this hook
-  mutation_rate: number; // How much this hook changes when evolved
-  
-  // Performance tracking
-  times_used: number;
-  avg_engagement_rate: number;
-  avg_viral_coefficient: number;
-  avg_followers_gained: number;
-  success_rate: number; // % of times this hook performed above average
-  
-  // Context data
-  best_topics: string[];
-  best_audiences: string[];
-  optimal_timing: string[];
-  
-  created_at: string;
-  last_used: string;
-  last_evolved: string;
-}
+// HookDNA interface imported from shared types
 
 export interface HookEvolutionResult {
   evolved_hooks: HookDNA[];
