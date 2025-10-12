@@ -1,9 +1,10 @@
 /**
- * Minimal Working Master Content Generator
- * Uses only the follower acquisition generator to avoid interface conflicts
+ * Enhanced Master Content Generator
+ * Orchestrates follower acquisition generator with hook evolution
  */
 
 import { followerAcquisitionGenerator } from './followerAcquisitionGenerator';
+import { hookEvolutionEngine } from './hookEvolutionEngine';
 
 export interface MasterContentRequest {
   primary_goal: 'followers' | 'viral' | 'engagement' | 'authority';
@@ -47,13 +48,22 @@ export interface MasterContentOutput {
 
 export class MasterContentGenerator {
   /**
-   * Generate content using only the follower acquisition generator
+   * Generate content using evolved hooks and follower optimization
    */
   async generateMasterContent(request: MasterContentRequest): Promise<MasterContentOutput> {
-    console.log('[MASTER_GENERATOR] Generating content with minimal system...');
+    console.log('[MASTER_GENERATOR] 🎯 Generating content with evolved hooks...');
     
     try {
-      // Use follower acquisition generator as the primary method
+      // Step 1: Get optimal hook from evolution engine
+      const optimalHook = await hookEvolutionEngine.selectOptimalHook({
+        goal: request.primary_goal === 'followers' ? 'followers' : request.primary_goal,
+        topic: request.topic_preference,
+        audience: request.target_audience
+      });
+      
+      console.log(`[MASTER_GENERATOR] 🧬 Selected evolved hook: "${optimalHook.hook_text}" (Gen ${optimalHook.generation})`);
+
+      // Step 2: Generate content with follower acquisition generator
       const content = await followerAcquisitionGenerator.generateFollowerMagnetContent({
         target_audience: request.target_audience,
         content_goal: 'value',
@@ -61,35 +71,50 @@ export class MasterContentGenerator {
         format_preference: request.format_preference
       });
 
+      // Step 3: Replace the hook with the evolved one
+      let finalContent = content.content;
+      if (typeof finalContent === 'string') {
+        // Replace the opening with the evolved hook
+        const sentences = finalContent.split('. ');
+        sentences[0] = optimalHook.hook_text;
+        finalContent = sentences.join('. ');
+      } else if (Array.isArray(finalContent)) {
+        // For threads, replace the first tweet's opening
+        const firstTweet = finalContent[0];
+        const sentences = firstTweet.split('. ');
+        sentences[0] = optimalHook.hook_text;
+        finalContent[0] = sentences.join('. ');
+      }
+
       return {
-        content: content.content,
+        content: finalContent,
         format: content.format,
-        generation_method: 'minimal_master',
+        generation_method: 'evolved_hook_master',
         hook_used: {
-          hook_text: 'Most people think...',
-          hook_category: 'curiosity_gap',
-          evolution_generation: 0
+          hook_text: optimalHook.hook_text,
+          hook_category: optimalHook.hook_category,
+          evolution_generation: optimalHook.generation
         },
         viral_formula_applied: {
-          formula_name: 'standard_insight',
-          success_rate: 0.6
+          formula_name: 'evolved_hook_formula',
+          success_rate: optimalHook.success_rate
         },
-        follower_magnet_score: content.follower_magnet_score,
-        confidence_score: content.follower_magnet_score, // Use same value
+        follower_magnet_score: Math.max(content.follower_magnet_score, optimalHook.follower_gene),
+        confidence_score: (content.follower_magnet_score + optimalHook.success_rate) / 2,
         expected_outcomes: {
-          engagement_rate_prediction: content.viral_potential * 0.5,
-          viral_coefficient_prediction: content.viral_potential,
-          followers_gained_prediction: Math.round(content.follower_magnet_score * 20)
+          engagement_rate_prediction: content.viral_potential * 0.5 * (1 + optimalHook.engagement_gene),
+          viral_coefficient_prediction: content.viral_potential * (1 + optimalHook.viral_gene),
+          followers_gained_prediction: Math.round(content.follower_magnet_score * 20 * (1 + optimalHook.follower_gene))
         },
         content_characteristics: {
-          has_statistics: content.credibility_signals.includes('statistics'),
-          has_controversy: content.hook_strategy === 'controversy_magnet',
-          credibility_signals: content.credibility_signals,
-          follow_triggers: content.follow_triggers
+          has_statistics: content.credibility_signals.includes('statistics') || optimalHook.has_statistics,
+          has_controversy: content.hook_strategy === 'controversy_magnet' || optimalHook.has_controversy,
+          credibility_signals: [...content.credibility_signals, 'evolved_hook'],
+          follow_triggers: [...content.follow_triggers, 'genetic_optimization']
         }
       };
     } catch (error: any) {
-      console.error('[MASTER_GENERATOR] Error generating content:', error.message);
+      console.error('[MASTER_GENERATOR] ❌ Error generating content with evolved hooks:', error.message);
       
       // Fallback to basic content
       return {
