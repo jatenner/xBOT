@@ -51,6 +51,14 @@ CONTENT RULES:
 - NEVER sound like a corporate wellness blog
 - Focus on actionable insights people can implement immediately
 
+CRITICAL COMPLETENESS REQUIREMENTS:
+- MAXIMUM 250 characters total (including spaces and punctuation)
+- NEVER use ellipses (...) or incomplete thoughts
+- EVERY sentence must be grammatically complete
+- If approaching character limit, remove entire sentences, not partial words
+- ALWAYS end with proper punctuation (. ! ?)
+- NEVER cut off mid-word or leave hanging thoughts
+
 WINNING PATTERNS:
 - "X% of people believe Y, but research shows Z"
 - "Your [body part] is smarter than [authority figure]"
@@ -115,12 +123,65 @@ Output as JSON:
     throw new Error('Invalid JSON response from OpenAI');
   }
 
-  // Validate content length
+  // Validate content length and ensure completeness
   const content = parsedContent.content || '';
   if (content.length > 280) {
-    // Truncate while preserving meaning
-    const truncated = content.substring(0, 277) + '...';
-    parsedContent.content = truncated;
+    // NEVER truncate mid-sentence! Regenerate instead.
+    console.warn(`[ENHANCED_CONTENT] Content too long (${content.length} chars), regenerating...`);
+    
+    // Try to regenerate with stricter length instruction
+    const shorterPrompt = userPrompt + `
+
+CRITICAL: Your response MUST be under 250 characters total. Count every character including spaces and punctuation. If your content approaches 250 characters, remove entire sentences, not partial words. NEVER use ellipses (...) or incomplete thoughts.`;
+
+    const retryResponse = await createBudgetedChatCompletion({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: shorterPrompt }
+      ],
+      temperature: 0.7, // Slightly lower for more controlled output
+      top_p: 0.8,
+      max_tokens: 300,
+      response_format: { type: 'json_object' }
+    }, {
+      purpose: 'enhanced_content_generation_retry',
+      requestId: `enhanced_retry_${Date.now()}`
+    });
+
+    const retryRawContent = retryResponse.choices[0]?.message?.content;
+    if (retryRawContent) {
+      try {
+        const retryParsed = JSON.parse(retryRawContent);
+        const retryContent = retryParsed.content || '';
+        
+        if (retryContent.length <= 280 && retryContent.length >= 50) {
+          parsedContent = retryParsed;
+          console.log(`[ENHANCED_CONTENT] Successfully regenerated shorter content (${retryContent.length} chars)`);
+        } else {
+          console.warn(`[ENHANCED_CONTENT] Retry failed, using fallback content`);
+          parsedContent.content = `New research challenges common health assumptions. Here's what the data actually shows about optimizing your daily habits.`;
+        }
+      } catch (e) {
+        console.warn(`[ENHANCED_CONTENT] Retry parsing failed, using fallback`);
+        parsedContent.content = `New research challenges common health assumptions. Here's what the data actually shows about optimizing your daily habits.`;
+      }
+    } else {
+      console.warn(`[ENHANCED_CONTENT] Retry failed, using fallback content`);
+      parsedContent.content = `New research challenges common health assumptions. Here's what the data actually shows about optimizing your daily habits.`;
+    }
+  }
+
+  // Validate final content doesn't end with incomplete thoughts
+  const finalContent = parsedContent.content || '';
+  if (finalContent.endsWith('...') || finalContent.endsWith('..') || finalContent.endsWith('.')) {
+    // Remove ellipses if present
+    parsedContent.content = finalContent.replace(/\.{2,}$/, '.').trim();
+  }
+  
+  // Ensure content ends with proper punctuation
+  if (!/[.!?]$/.test(parsedContent.content)) {
+    parsedContent.content += '.';
   }
 
   // Calculate quality score based on uniqueness indicators
