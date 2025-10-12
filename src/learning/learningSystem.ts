@@ -225,7 +225,7 @@ export class LearningIntegrationSystem {
   /**
    * Get learning system status
    */
-  async getSystemStatus(): Promise<LearningSystemStatus> {
+  async getStatus(): Promise<LearningSystemStatus> {
     try {
       // Get performance tracking stats
       const { data: performanceData } = await this.supabase
