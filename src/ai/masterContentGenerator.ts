@@ -5,8 +5,8 @@
 
 import { generateEnhancedContent, GeneratedContent } from './enhancedContentGenerator';
 import { followerAcquisitionGenerator, FollowerMagnetContent } from './followerAcquisitionGenerator';
-import { viralFormulaEngine } from './viralFormulaEngine';
-import { hookEvolutionEngine } from './hookEvolutionEngine';
+import { viralFormulaEngine } from './viralFormulaEngineSimple';
+import { hookEvolutionEngine } from './hookEvolutionEngineSimple';
 
 export interface MasterContentRequest {
   // Content goals
