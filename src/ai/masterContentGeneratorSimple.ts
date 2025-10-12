@@ -75,9 +75,18 @@ export class MasterContentGenerator {
           success_rate: 0.6
         },
         follower_magnet_score: content.follower_magnet_score,
-        confidence_score: content.confidence_score,
-        expected_outcomes: content.expected_outcomes,
-        content_characteristics: content.content_characteristics
+        confidence_score: content.follower_magnet_score, // Use follower_magnet_score as confidence
+        expected_outcomes: {
+          engagement_rate_prediction: content.viral_potential * 0.5,
+          viral_coefficient_prediction: content.viral_potential,
+          followers_gained_prediction: Math.round(content.follower_magnet_score * 20)
+        },
+        content_characteristics: {
+          has_statistics: content.credibility_signals.includes('statistics'),
+          has_controversy: content.hook_strategy === 'controversy_magnet',
+          credibility_signals: content.credibility_signals,
+          follow_triggers: content.follow_triggers
+        }
       };
     } catch (error: any) {
       console.error('[MASTER_GENERATOR] Error generating content:', error.message);
