@@ -18,6 +18,11 @@ export class UltimateTwitterPoster {
   private context: BrowserContext | null = null;
   private page: Page | null = null;
   private readonly storageStatePath = join(process.cwd(), 'twitter-auth.json');
+  
+  // Circuit breaker pattern
+  private clickFailures = 0;
+  private readonly maxClickFailures = 5;
+  private lastResetTime = Date.now();
 
   async postTweet(content: string): Promise<PostResult> {
     let retryCount = 0;
@@ -176,7 +181,23 @@ export class UltimateTwitterPoster {
     return false;
   }
 
+  private async isPageClosed(): Promise<boolean> {
+    try {
+      if (!this.page) return true;
+      await this.page.evaluate(() => true); // Test if page is responsive
+      return false;
+    } catch {
+      return true;
+    }
+  }
+
   private async closeAnyModal(): Promise<void> {
+    // Check if page is still open before attempting modal closure
+    if (await this.isPageClosed()) {
+      console.log('ULTIMATE_POSTER: Page closed, skipping modal dismissal');
+      return;
+    }
+
     const modalCloseSelectors = [
       '[data-testid="app-bar-close"]',
       'div[role="dialog"] [aria-label="Close"]',
@@ -190,7 +211,12 @@ export class UltimateTwitterPoster {
       'div[role="dialog"] button:has-text("Close")',
       'div[role="dialog"] button:has-text("Skip")',
       'div[role="dialog"] button:has-text("Not now")',
-      'div[role="dialog"] button:has-text("Dismiss")'
+      'div[role="dialog"] button:has-text("Dismiss")',
+      // Enhanced selectors for blocking overlays
+      'div[id="layers"] button',
+      'div[id="layers"] [role="button"]',
+      'div[class*="r-1p0dtai"] button',
+      'div[aria-modal="true"] button'
     ];
 
     for (const selector of modalCloseSelectors) {
@@ -206,19 +232,33 @@ export class UltimateTwitterPoster {
       }
     }
     
-    // Force-remove overlay divs that intercept clicks
+    // Force-remove overlay divs that intercept clicks - ENHANCED
     try {
       await this.page!.evaluate(() => {
-        const overlays = document.querySelectorAll('div[id="layers"] > div, div.css-175oi2r.r-1p0dtai');
+        // Strategy 1: Clear the layers div entirely
+        const layers = document.querySelector('div#layers');
+        if (layers && layers.children.length > 0) {
+          console.log('Clearing layers div with', layers.children.length, 'children');
+          layers.innerHTML = '';
+        }
+        
+        // Strategy 2: Remove specific blocking overlays
+        const overlays = document.querySelectorAll('div[id="layers"] > div, div.css-175oi2r.r-1p0dtai, div[class*="r-1d2f490"]');
         overlays.forEach(overlay => {
           const style = window.getComputedStyle(overlay);
           if (style.position === 'fixed' || style.position === 'absolute') {
-            overlay.remove();
+            if (!style.zIndex || parseInt(style.zIndex) > 100) {
+              overlay.remove();
+            }
           }
         });
       });
       console.log('ULTIMATE_POSTER: Force-removed overlay divs');
-    } catch (e) {
+      
+      // Strategy 3: Press ESC to dismiss modals
+      await this.page!.keyboard.press('Escape');
+      await this.page!.waitForTimeout(200);
+    } catch (e: any) {
       console.log('ULTIMATE_POSTER: Could not force-remove overlays:', e.message);
     }
   }
@@ -314,17 +354,35 @@ export class UltimateTwitterPoster {
 
     console.log('ULTIMATE_POSTER: Clicking post button...');
     
+    // Circuit breaker check
+    if (this.clickFailures >= this.maxClickFailures) {
+      const timeSinceReset = Date.now() - this.lastResetTime;
+      if (timeSinceReset < 300000) { // 5 minutes
+        console.log('ULTIMATE_POSTER: Circuit breaker OPEN - too many failures, resetting browser...');
+        await this.cleanup(); // Use existing cleanup method
+        this.clickFailures = 0;
+        this.lastResetTime = Date.now();
+        throw new Error('Circuit breaker triggered - browser reset');
+      } else {
+        // Reset counter after cooldown
+        this.clickFailures = 0;
+        this.lastResetTime = Date.now();
+      }
+    }
+    
     // Try multiple click strategies to bypass overlay
     try {
-      // Strategy 1: Normal click
-      await postButton.click({ timeout: 10000 });
+      // Strategy 1: Normal click (REDUCED TIMEOUT from 10s to 5s)
+      await postButton.click({ timeout: 5000 });
+      this.clickFailures = 0; // Reset on success
     } catch (clickError) {
-      console.log('ULTIMATE_POSTER: Normal click failed, trying force-click...');
+      this.clickFailures++;
+      console.log(`ULTIMATE_POSTER: Normal click failed (${this.clickFailures}/${this.maxClickFailures}), trying force-click...`);
       
       // Strategy 2: Force-click via JavaScript
       try {
         await this.page.evaluate((selector) => {
-          const btn = document.querySelector(selector);
+          const btn = document.querySelector(selector) as HTMLElement;
           if (btn) {
             btn.click();
           }
@@ -349,9 +407,15 @@ export class UltimateTwitterPoster {
     
     if (networkVerificationPromise) {
       try {
-        const response = await networkVerificationPromise;
+        // Add timeout wrapper to prevent hanging
+        const response = await Promise.race([
+          networkVerificationPromise,
+          new Promise<any>((_, reject) => 
+            setTimeout(() => reject(new Error('Network verification timeout')), 40000)
+          )
+        ]);
         
-        if (response.ok()) {
+        if (response && response.ok()) {
           // Try to extract tweet ID from response
           let tweetId = `posted_${Date.now()}`;
           try {
@@ -367,10 +431,15 @@ export class UltimateTwitterPoster {
           console.log(`ULTIMATE_POSTER: ✅ Network verification successful - tweet posted with ID: ${tweetId}`);
           return { success: true, tweetId };
         } else {
-          console.log(`ULTIMATE_POSTER: Network response not OK (${response.status()}), trying UI verification...`);
+          console.log(`ULTIMATE_POSTER: Network response not OK (${response?.status()}), trying UI verification...`);
         }
-      } catch (networkError) {
-        console.log(`ULTIMATE_POSTER: Network verification failed: ${networkError.message}, trying UI verification...`);
+      } catch (networkError: any) {
+        // Critical: Catch browser/page closure errors
+        if (networkError.message?.includes('closed') || networkError.message?.includes('Target page')) {
+          console.log('ULTIMATE_POSTER: Browser/page closed during verification - will use UI fallback');
+        } else {
+          console.log(`ULTIMATE_POSTER: Network verification failed: ${networkError.message}, trying UI verification...`);
+        }
       }
     }
 
@@ -562,3 +631,4 @@ export class UltimateTwitterPoster {
     await this.cleanup();
   }
 }
+
