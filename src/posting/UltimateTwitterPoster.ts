@@ -182,7 +182,15 @@ export class UltimateTwitterPoster {
       'div[role="dialog"] [aria-label="Close"]',
       'div[role="dialog"] [data-testid="SheetClose"]',
       '[data-testid="confirmationSheetCancel"]',
-      'button[aria-label="Close"]'
+      'button[aria-label="Close"]',
+      '[aria-label="Close"]',
+      'div[id="layers"] [aria-label="Close"]',
+      'div[data-testid="mask"]',
+      'div[class*="modal"] button',
+      'div[role="dialog"] button:has-text("Close")',
+      'div[role="dialog"] button:has-text("Skip")',
+      'div[role="dialog"] button:has-text("Not now")',
+      'div[role="dialog"] button:has-text("Dismiss")'
     ];
 
     for (const selector of modalCloseSelectors) {
@@ -191,11 +199,27 @@ export class UltimateTwitterPoster {
         if (element && await element.isVisible()) {
           console.log(`ULTIMATE_POSTER: Closing modal with selector: ${selector}`);
           await element.click();
-          await this.page!.waitForTimeout(200);
+          await this.page!.waitForTimeout(300);
         }
       } catch (e) {
         // Continue to next selector
       }
+    }
+    
+    // Force-remove overlay divs that intercept clicks
+    try {
+      await this.page!.evaluate(() => {
+        const overlays = document.querySelectorAll('div[id="layers"] > div, div.css-175oi2r.r-1p0dtai');
+        overlays.forEach(overlay => {
+          const style = window.getComputedStyle(overlay);
+          if (style.position === 'fixed' || style.position === 'absolute') {
+            overlay.remove();
+          }
+        });
+      });
+      console.log('ULTIMATE_POSTER: Force-removed overlay divs');
+    } catch (e) {
+      console.log('ULTIMATE_POSTER: Could not force-remove overlays:', e.message);
     }
   }
 
@@ -289,7 +313,36 @@ export class UltimateTwitterPoster {
     }
 
     console.log('ULTIMATE_POSTER: Clicking post button...');
-    await postButton.click();
+    
+    // Try multiple click strategies to bypass overlay
+    try {
+      // Strategy 1: Normal click
+      await postButton.click({ timeout: 10000 });
+    } catch (clickError) {
+      console.log('ULTIMATE_POSTER: Normal click failed, trying force-click...');
+      
+      // Strategy 2: Force-click via JavaScript
+      try {
+        await this.page.evaluate((selector) => {
+          const btn = document.querySelector(selector);
+          if (btn) {
+            btn.click();
+          }
+        }, postButtonSelectors[0]);
+        console.log('ULTIMATE_POSTER: Force-click executed');
+      } catch (forceError) {
+        console.log('ULTIMATE_POSTER: Force-click failed, trying mouse click...');
+        
+        // Strategy 3: Click via coordinates
+        const box = await postButton.boundingBox();
+        if (box) {
+          await this.page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+          console.log('ULTIMATE_POSTER: Mouse coordinate click executed');
+        } else {
+          throw new Error('All click strategies failed');
+        }
+      }
+    }
 
     // Try network verification first, fallback to UI verification
     console.log('ULTIMATE_POSTER: Attempting network verification...');
