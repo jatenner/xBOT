@@ -251,8 +251,13 @@ async function generateContentWithLLM(): Promise<ContentDecision> {
       uniqueness_indicators: masterContent.content_characteristics.credibility_signals,
       contrarian_angle: masterContent.hook_used.hook_text,
       content_format: masterContent.format,
-      thread_tweets: Array.isArray(masterContent.content) ? masterContent.content : undefined
-    };
+      thread_tweets: Array.isArray(masterContent.content) ? masterContent.content : undefined,
+      // CRITICAL: Add metadata for rotation tracking
+      content_type_id: contentTypeSelection.selectedType.type_id,
+      content_type_name: contentTypeSelection.selectedType.name,
+      viral_formula: masterContent.viral_formula_applied?.formula_name || 'unknown',
+      hook_used: masterContent.hook_used?.hook_text || 'unknown'
+    } as any;
 
     planMetrics.calls_success++;
     return decision;
@@ -315,6 +320,16 @@ async function storeContentDecisions(decisions: ContentDecision[]): Promise<void
     hook_type: 'myth_buster', // Set required hook_type field
     cta_type: 'follow_for_more', // Set required cta_type field
     predicted_engagement: 'high', // Set required predicted_engagement field
+    // Store ALL metadata in generation_metadata JSONB column for rotation tracking
+    generation_metadata: {
+      content_type_id: (decision as any).content_type_id,
+      content_type_name: (decision as any).content_type_name,
+      viral_formula: (decision as any).viral_formula,
+      hook_used: (decision as any).hook_used,
+      enhanced_generation: decision.enhanced_generation,
+      uniqueness_indicators: decision.uniqueness_indicators,
+      contrarian_angle: decision.contrarian_angle
+    },
     // Store thread and format metadata in features JSONB column
     features: {
       enhanced_generation: decision.enhanced_generation,
