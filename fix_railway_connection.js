@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 /**
- * RAILWAY PROJECT CONNECTOR
- * Fixes Railway CLI project connection issues
+ * RAILWAY PROJECT CONNECTOR - UPDATED
+ * Automatically fixes Railway CLI connection to XBOT project
  */
 
 const fs = require('fs');
@@ -10,13 +10,33 @@ const path = require('path');
 const { execSync } = require('child_process');
 
 const RAILWAY_CONFIG_PATH = path.join(process.env.HOME, '.railway', 'config.json');
-const PROJECT_NAME = 'xBOT';
-const SERVICE_NAME = 'xbot-production-844b';
+const XBOT_PROJECT_PATH = '/Users/jonahtenner/Desktop/xBOT';
+const XBOT_PROJECT_ID = 'c987ff2e-2bc7-4c65-9187-11c1a82d4ac1';
+const XBOT_ENV_ID = '253a53f1-f80e-401a-8a7f-afdcf2648fad';
+const XBOT_SERVICE_ID = '21eb1b60-57f1-40fe-bd0e-d589345fc37f';
 
 class RailwayFixer {
   constructor() {
-    console.log('🔧 RAILWAY PROJECT CONNECTOR');
-    console.log('============================');
+    console.log('🔧 RAILWAY PROJECT CONNECTOR (UPDATED)');
+    console.log('======================================');
+  }
+
+  exec(command, silent = true) {
+    try {
+      return {
+        success: true,
+        output: execSync(command, { 
+          encoding: 'utf-8',
+          stdio: silent ? 'pipe' : 'inherit',
+          timeout: 10000 
+        })
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message
+      };
+    }
   }
 
   async fixRailwayConnection() {
@@ -25,7 +45,7 @@ class RailwayFixer {
       
       // Check if config exists
       if (!fs.existsSync(RAILWAY_CONFIG_PATH)) {
-        console.log('❌ Railway config not found');
+        console.log('❌ Railway config not found - please run: railway login');
         return false;
       }
       
@@ -33,46 +53,43 @@ class RailwayFixer {
       const config = JSON.parse(fs.readFileSync(RAILWAY_CONFIG_PATH, 'utf8'));
       console.log('✅ Railway config found');
       
-      // Try to link to the correct project
-      console.log('🔗 Attempting to link to xBOT project...');
+      // Check current project link
+      const currentProject = config.projects?.[XBOT_PROJECT_PATH];
       
-      try {
-        // Try different approaches to connect
-        const approaches = [
-          () => execSync('railway link', { stdio: 'inherit', timeout: 30000 }),
-          () => execSync('railway connect xBOT', { stdio: 'inherit', timeout: 30000 }),
-          () => execSync('railway service connect xbot-production-844b', { stdio: 'inherit', timeout: 30000 })
-        ];
-        
-        for (let i = 0; i < approaches.length; i++) {
-          try {
-            console.log(`🔄 Trying approach ${i + 1}...`);
-            approaches[i]();
-            console.log('✅ Successfully connected!');
-            return true;
-          } catch (e) {
-            console.log(`❌ Approach ${i + 1} failed: ${e.message}`);
-          }
-        }
-        
-      } catch (error) {
-        console.log('⚠️ Railway CLI connection failed, using direct API approach');
+      if (currentProject?.name === 'XBOT' && currentProject?.service === XBOT_SERVICE_ID) {
+        console.log('✅ Already correctly linked to XBOT project!');
+        return true;
+      }
+
+      // Backup config
+      const backupPath = RAILWAY_CONFIG_PATH + '.backup.' + Date.now();
+      fs.writeFileSync(backupPath, JSON.stringify(config, null, 2));
+      console.log(`📋 Backed up config to: ${backupPath}`);
+      
+      // Update the project link
+      console.log('🔗 Linking to XBOT project...');
+      
+      config.projects = config.projects || {};
+      config.projects[XBOT_PROJECT_PATH] = {
+        projectPath: XBOT_PROJECT_PATH,
+        name: 'XBOT',
+        project: XBOT_PROJECT_ID,
+        environment: XBOT_ENV_ID,
+        environmentName: 'production',
+        service: XBOT_SERVICE_ID
+      };
+
+      // Remove any temp project links
+      if (config.projects['/private/tmp']) {
+        delete config.projects['/private/tmp'];
+      }
+      if (config.projects['/tmp']) {
+        delete config.projects['/tmp'];
       }
       
-      // Create a local railway.json for this project
-      const railwayJson = {
-        "$schema": "https://railway.app/railway.schema.json",
-        "build": {
-          "builder": "NIXPACKS"
-        },
-        "deploy": {
-          "startCommand": "npm start",
-          "healthcheckPath": "/status"
-        }
-      };
-      
-      fs.writeFileSync('railway.json', JSON.stringify(railwayJson, null, 2));
-      console.log('✅ Created railway.json configuration');
+      // Write updated config
+      fs.writeFileSync(RAILWAY_CONFIG_PATH, JSON.stringify(config, null, 2));
+      console.log('✅ Successfully linked to XBOT project!');
       
       return true;
       
@@ -86,25 +103,42 @@ class RailwayFixer {
     try {
       console.log('🧪 Testing Railway connection...');
       
-      // Test basic Railway CLI
-      execSync('railway whoami', { stdio: 'pipe', timeout: 10000 });
-      console.log('✅ Railway CLI authenticated');
-      
-      // Test project connection
-      try {
-        const output = execSync('railway status', { stdio: 'pipe', timeout: 15000 });
-        console.log('✅ Railway project connected');
-        console.log(output.toString());
-        return true;
-      } catch (e) {
-        console.log('⚠️ Project not connected, but CLI works');
+      // Test authentication
+      const whoami = this.exec('railway whoami');
+      if (!whoami.success) {
+        console.log('❌ Not authenticated - run: railway login');
         return false;
       }
+      console.log(`✅ Authenticated as: ${whoami.output.trim()}`);
+      
+      // Test project connection
+      const status = this.exec('railway status');
+      if (!status.success) {
+        console.log('⚠️ Project not connected');
+        return false;
+      }
+      
+      console.log('✅ Railway project connected:');
+      console.log(status.output);
+      return true;
       
     } catch (error) {
       console.log('❌ Railway CLI test failed:', error.message);
       return false;
     }
+  }
+
+  displayHelp() {
+    console.log('\n🎯 USEFUL RAILWAY COMMANDS:');
+    console.log('   railway status           - Check connection status');
+    console.log('   railway logs             - View live logs (Ctrl+C to stop)');
+    console.log('   railway variables        - View environment variables');
+    console.log('   railway open             - Open project in browser');
+    console.log('   railway link             - Re-link to different project');
+    console.log('\n📝 HELPER SCRIPTS:');
+    console.log('   node railway-diagnostic.js           - Run comprehensive diagnostics');
+    console.log('   node railway-diagnostic.js --logs    - Diagnostics + recent logs');
+    console.log('   node bulletproof_system_monitor.js   - Direct API monitoring');
   }
 }
 
@@ -121,21 +155,18 @@ async function main() {
     const fixed = await fixer.fixRailwayConnection();
     
     if (fixed) {
-      console.log('\n✅ Railway connection should be fixed!');
-      console.log('🔄 Testing connection again...');
+      console.log('\n✅ Railway connection fixed!');
+      console.log('🔄 Testing connection again...\n');
       await fixer.testConnection();
     } else {
       console.log('\n❌ Could not fix Railway connection automatically');
-      console.log('💡 Use the bulletproof_system_monitor.js for direct API monitoring');
+      console.log('💡 Please run: railway login');
     }
   } else {
-    console.log('\n✅ Railway connection is working!');
+    console.log('\n✅ Railway connection is working perfectly!');
   }
   
-  console.log('\n🎯 Next Steps:');
-  console.log('   1. Use: node bulletproof_system_monitor.js');
-  console.log('   2. Or try: railway logs (if connection fixed)');
-  console.log('   3. Monitor via: https://railway.app dashboard');
+  fixer.displayHelp();
 }
 
 main().catch(console.error);
