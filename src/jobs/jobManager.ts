@@ -127,11 +127,14 @@ export class JobManager {
       }, config.JOBS_LEARN_INTERVAL_MIN * 60 * 1000));
     }
 
-    // Learn job timer
+    // Learn job timer - Real-time learning loop
     if (flags.learnEnabled) {
       this.timers.set('learn', setInterval(async () => {
         await this.safeExecute('learn', async () => {
-          await runLearningCycle();
+          // Use real-time learning loop for continuous improvement
+          const { getRealTimeLearningLoop } = await import('../intelligence/realTimeLearningLoop');
+          await getRealTimeLearningLoop().runLearningCycle();
+          console.log('✅ JOB_MANAGER: Real-time learning cycle completed');
           this.stats.learnRuns++;
           this.stats.lastLearnTime = new Date();
         });
