@@ -140,16 +140,30 @@ async function generateContentWithLLM(): Promise<ContentDecision> {
   console.log('🚀 MASTER_GENERATOR: Using follower-optimized content system with learning...');
   
   try {
-    // STEP 1: Learning insights (will be enhanced over time as data accumulates)
+    // STEP 1: Select optimal content type (Phase 1: Content Type Diversity)
+    const { getContentTypeSelector } = await import('../intelligence/contentTypeSelector');
+    const contentTypeSelector = getContentTypeSelector();
+    
+    const contentTypeSelection = await contentTypeSelector.selectContentType({
+      format: 'both',
+      goal: 'followers'
+    });
+    
+    console.log(`[CONTENT_TYPE] 📋 Selected: ${contentTypeSelection.selectedType.name}`);
+    console.log(`[CONTENT_TYPE] 💡 ${contentTypeSelection.selectionReason}`);
+    
+    // STEP 2: Learning insights (will be enhanced over time as data accumulates)
     console.log('[LEARNING] 📊 Using AI-driven content generation with formula rotation...');
     const topicPreference = undefined; // Let master generator choose optimal topic
     
-    // STEP 2: Generate content with learning-informed parameters
+    // STEP 3: Generate content with learning-informed parameters and selected content type
     const masterContent = await masterContentGenerator.generateMasterContent({
       primary_goal: 'followers',
       secondary_goal: 'viral',
       target_audience: 'health_seekers',
-      format_preference: 'single',
+      format_preference: contentTypeSelection.selectedType.format === 'both' 
+        ? 'single' 
+        : contentTypeSelection.selectedType.format,
       viral_target: 'high',
       topic_preference: topicPreference, // Use top performing topic
       use_evolved_hooks: true,
@@ -207,7 +221,10 @@ async function generateContentWithLLM(): Promise<ContentDecision> {
       hook_evolution_generation: masterContent.hook_used.evolution_generation,
       viral_formula_used: masterContent.viral_formula_applied.formula_name,
       follower_magnet_score: masterContent.follower_magnet_score,
-      confidence_score: masterContent.confidence_score
+      confidence_score: masterContent.confidence_score,
+      // Phase 1: Content type tracking
+      content_type_id: contentTypeSelection.selectedType.type_id,
+      content_type_name: contentTypeSelection.selectedType.name
     };
     
     // Process with learning system
