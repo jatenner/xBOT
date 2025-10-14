@@ -143,12 +143,23 @@ export class UltimateTwitterPoster {
     // Find and interact with composer
     const composer = await this.getComposer();
     
-    console.log('ULTIMATE_POSTER: Typing content...');
+    console.log('ULTIMATE_POSTER: Inserting content...');
     await composer.click({ delay: 60 });
-    await composer.fill(''); // Clear any existing content
+    await this.page!.waitForTimeout(500);
     
-    // Type content with reasonable delay (no excessive randomness)
-    await composer.type(content, { delay: 25 });
+    // Use paste instead of slow typing to avoid timeouts
+    // This is much faster and more reliable for long content
+    await this.page!.evaluate(async (text) => {
+      const activeElement = document.activeElement as HTMLElement;
+      if (activeElement && activeElement.isContentEditable) {
+        // Clear existing content
+        activeElement.textContent = '';
+        // Insert new content
+        activeElement.textContent = text;
+        // Trigger input event so Twitter knows content changed
+        activeElement.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    }, content);
 
     // Close modals again before posting (in case typing triggered something)
     await this.closeAnyModal();
