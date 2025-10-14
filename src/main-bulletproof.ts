@@ -3,6 +3,40 @@ import { spawn } from "child_process";
 import { getConfig, printConfigSummary, printDeprecationWarnings, getModeFlags } from './config/config';
 import { JobManager } from './jobs/jobManager';
 
+// CRITICAL: Process-level error handlers to prevent crashes
+process.on('uncaughtException', (error: Error) => {
+  console.error('🚨 UNCAUGHT EXCEPTION:', error.message);
+  console.error('Stack:', error.stack);
+  
+  // Handle specific known errors gracefully
+  if (error.message?.includes('Target page, context or browser has been closed')) {
+    console.log('⚠️  Browser closed unexpectedly - will recover on next cycle');
+    // Don't crash - let the system continue
+  } else if (error.message?.includes('Timeout')) {
+    console.log('⚠️  Operation timed out - will retry on next cycle');
+    // Don't crash - let the system continue  
+  } else if (error.message?.includes('Network verification')) {
+    console.log('⚠️  Network verification error - non-fatal');
+    // Don't crash - continue operation
+  } else {
+    // For truly fatal errors, log and restart
+    console.error('💥 FATAL ERROR - System may need restart');
+    console.error('Error type:', error.name);
+    console.error('This will be logged but system continues...');
+    // In production, you might want to: process.exit(1);
+    // For now, we let it continue to prevent unnecessary crashes
+  }
+});
+
+process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
+  console.error('🚨 UNHANDLED REJECTION at:', promise);
+  console.error('Reason:', reason);
+  // Log but don't crash - most rejections can be recovered from
+  if (reason?.message?.includes('closed') || reason?.message?.includes('Timeout')) {
+    console.log('⚠️  Recoverable rejection - continuing operation');
+  }
+});
+
 // Startup configuration summary
 function getStartupSummary() {
   const config = {
