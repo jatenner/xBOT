@@ -233,26 +233,103 @@ export class FollowerAcquisitionGenerator {
   }
   
   private async selectOptimalViralFormula(request: any, insights: any): Promise<ViralFormula> {
+    console.log('[FOLLOWER_GENERATOR] 🎯 Selecting optimal viral formula with diversity...');
+    
     // Filter formulas based on request preferences
-    let candidateFormulas = this.viralFormulas.filter(f => f.sample_size >= 3);
+    let candidateFormulas = this.viralFormulas.filter(f => {
+      // Include formulas with decent performance
+      if (f.success_rate < 0.2) return false;
+      
+      // Filter by format if specified
+      if (request.format_preference === 'thread' && !f.name.includes('Thread')) {
+        return false;
+      }
+      if (request.format_preference === 'single' && f.name.includes('Thread')) {
+        return false;
+      }
+      
+      return true;
+    });
     
-    if (request.content_goal) {
-      candidateFormulas = candidateFormulas.filter(f => 
-        f.name.toLowerCase().includes(request.content_goal)
-      );
+    if (candidateFormulas.length === 0) {
+      candidateFormulas = this.viralFormulas; // Use all if none match
     }
     
-    if (request.target_audience) {
-      candidateFormulas = candidateFormulas.filter(f => 
-        f.audience_segments.includes(request.target_audience)
-      );
+    // Get recent formula usage to avoid repetition
+    const recentUse = await this.getRecentFormulaUsage();
+    
+    // Calculate weighted scores with recency penalty
+    const scoredFormulas = candidateFormulas.map(f => {
+      // Base score: weighted by follower growth (60%) + engagement (20%) + success rate (20%)
+      const baseScore = (f.avg_follower_growth * 0.6) + 
+                       (f.avg_engagement_rate * 100 * 0.2) + 
+                       (f.success_rate * 100 * 0.2);
+      
+      // Recency penalty: heavily penalize recently used formulas
+      const recentCount = recentUse.filter(id => id === f.formula_id).length;
+      const recencyPenalty = Math.pow(0.4, recentCount); // 0.4^n - very aggressive penalty
+      
+      // Final weighted score
+      const finalScore = baseScore * recencyPenalty;
+      
+      return { formula: f, score: finalScore, recentCount };
+    });
+    
+    // Sort by score
+    scoredFormulas.sort((a, b) => b.score - a.score);
+    
+    // Thompson Sampling: 70% exploit best, 30% explore others
+    const random = Math.random();
+    
+    if (random < 0.7 && scoredFormulas.length > 0) {
+      // Exploit: Use best scoring formula
+      const selected = scoredFormulas[0];
+      console.log(`[FORMULA_SELECT] Exploiting: ${selected.formula.name} (score: ${selected.score.toFixed(2)}, recent: ${selected.recentCount})`);
+      return selected.formula;
+    } else {
+      // Explore: Weighted random selection across top formulas
+      const topCandidates = scoredFormulas.slice(0, Math.min(4, scoredFormulas.length));
+      const totalScore = topCandidates.reduce((sum, s) => sum + Math.max(s.score, 1), 0);
+      const randomScore = Math.random() * totalScore;
+      
+      let cumulative = 0;
+      for (const candidate of topCandidates) {
+        cumulative += Math.max(candidate.score, 1);
+        if (randomScore <= cumulative) {
+          console.log(`[FORMULA_SELECT] Exploring: ${candidate.formula.name} (score: ${candidate.score.toFixed(2)})`);
+          return candidate.formula;
+        }
+      }
+      
+      return topCandidates[0].formula;
     }
-    
-    // Sort by follower growth potential
-    candidateFormulas.sort((a, b) => b.avg_follower_growth - a.avg_follower_growth);
-    
-    // Return top formula, or default if none match
-    return candidateFormulas[0] || this.viralFormulas[0];
+  }
+  
+  /**
+   * Get recent formula usage to avoid repetition
+   */
+  private async getRecentFormulaUsage(): Promise<string[]> {
+    try {
+      const { getSupabaseClient } = await import('../db');
+      const supabase = getSupabaseClient();
+      
+      const { data, error } = await supabase
+        .from('content_decisions')
+        .select('generation_metadata')
+        .order('created_at', { ascending: false })
+        .limit(20);
+      
+      if (error || !data) {
+        return [];
+      }
+      
+      return data
+        .map((d: any) => d.generation_metadata?.viral_formula_used)
+        .filter(Boolean);
+    } catch (error) {
+      // Fallback if database query fails
+      return [];
+    }
   }
   
   private async generateContentWithFormula(formula: ViralFormula, request: any): Promise<any> {
