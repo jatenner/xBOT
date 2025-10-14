@@ -149,32 +149,101 @@ export class RealTimeLearningLoop {
   
   /**
    * Update viral formulas based on what's working
+   * PHASE 2: REAL FEEDBACK LOOP - Actually update scores based on performance
    */
   private async updateViralFormulas(insights: any): Promise<void> {
     console.log('🔥 LEARNING_LOOP: Analyzing viral formula performance...');
     
     try {
-      // Log insights for viral formula optimization
-      console.log('🔥 LEARNING_LOOP: Analyzing formula performance...');
-      
-      // Track formula performance over time (simplified)
       const { getSupabaseClient } = await import('../db');
       const supabase = getSupabaseClient();
       
+      // Get recent follower attributions (last 24 hours)
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      
+      const { data: attributions, error } = await supabase
+        .from('follower_attributions')
+        .select('*')
+        .gte('created_at', oneDayAgo)
+        .eq('confidence', 'high'); // Only use high-confidence data
+      
+      if (error || !attributions || attributions.length === 0) {
+        console.log('⏭️ LEARNING_LOOP: No recent attribution data to learn from yet');
+        return;
+      }
+      
+      console.log(`🔥 LEARNING_LOOP: Found ${attributions.length} high-confidence posts to learn from`);
+      
+      // Group by formula and content type
+      const formulaPerformance = this.aggregatePerformance(attributions, 'viral_formula');
+      const contentTypePerformance = this.aggregatePerformance(attributions, 'content_type');
+      
+      // Update content type scores
+      const { getContentTypeSelector } = await import('./contentTypeSelector');
+      const contentTypeSelector = getContentTypeSelector();
+      
+      for (const [contentType, stats] of Object.entries(contentTypePerformance)) {
+        await contentTypeSelector.updateContentTypePerformance(
+          contentType,
+          stats.avg_followers,
+          stats.avg_engagement,
+          stats.success_rate > 0.5
+        );
+        
+        console.log(`  📊 ${contentType}: ${stats.avg_followers.toFixed(1)} followers/post, ${(stats.success_rate * 100).toFixed(0)}% success`);
+      }
+      
+      // Log formula performance (would update followerAcquisitionGenerator here)
+      console.log('🔥 LEARNING_LOOP: Viral formula performance:');
+      for (const [formula, stats] of Object.entries(formulaPerformance)) {
+        console.log(`  📊 ${formula}: ${stats.avg_followers.toFixed(1)} followers/post, ${(stats.success_rate * 100).toFixed(0)}% success`);
+      }
+      
+      // Store summary
       await supabase.from('formula_performance').insert([{
         tracked_at: new Date().toISOString(),
-        top_topics: insights.top_performing_topics?.slice(0, 5) || [],
-        insights_summary: JSON.stringify({
-          topics: insights.top_performing_topics || [],
-          timestamp: new Date().toISOString()
-        })
-      }]).select();
+        formula_stats: formulaPerformance,
+        content_type_stats: contentTypePerformance,
+        total_posts_analyzed: attributions.length
+      }]);
       
-      console.log('✅ LEARNING_LOOP: Formula performance tracking updated');
+      console.log('✅ LEARNING_LOOP: Performance scores updated based on real data!');
+      
     } catch (error: any) {
-      // Table might not exist yet, that's okay
-      console.log('⏭️ LEARNING_LOOP: Formula tracking (table may not exist yet)');
+      console.warn('⚠️ LEARNING_LOOP: Formula update failed:', error.message);
     }
+  }
+  
+  /**
+   * Aggregate performance metrics by a field
+   */
+  private aggregatePerformance(data: any[], groupBy: string): Record<string, any> {
+    const grouped = data.reduce((acc: any, item: any) => {
+      const key = item[groupBy] || 'unknown';
+      if (!acc[key]) {
+        acc[key] = [];
+      }
+      acc[key].push(item);
+      return acc;
+    }, {});
+    
+    const aggregated: Record<string, any> = {};
+    
+    for (const [key, items] of Object.entries(grouped) as [string, any[]][]) {
+      const totalFollowers = items.reduce((sum, i) => sum + (i.followers_gained || 0), 0);
+      const avgFollowers = totalFollowers / items.length;
+      const successCount = items.filter(i => i.followers_gained > 5).length;
+      const successRate = successCount / items.length;
+      
+      aggregated[key] = {
+        avg_followers: avgFollowers,
+        avg_engagement: 0, // Would calculate from engagement data
+        success_rate: successRate,
+        sample_size: items.length
+      };
+    }
+    
+    return aggregated;
   }
   
   /**
