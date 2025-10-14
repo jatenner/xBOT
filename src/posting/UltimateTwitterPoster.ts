@@ -147,19 +147,13 @@ export class UltimateTwitterPoster {
     await composer.click({ delay: 60 });
     await this.page!.waitForTimeout(500);
     
-    // Use paste instead of slow typing to avoid timeouts
-    // This is much faster and more reliable for long content
-    await this.page!.evaluate(async (text) => {
-      const activeElement = document.activeElement as HTMLElement;
-      if (activeElement && activeElement.isContentEditable) {
-        // Clear existing content
-        activeElement.textContent = '';
-        // Insert new content
-        activeElement.textContent = text;
-        // Trigger input event so Twitter knows content changed
-        activeElement.dispatchEvent(new Event('input', { bubbles: true }));
-      }
-    }, content);
+    // Use fast typing with Playwright's native method
+    // This is more reliable than page.evaluate for contenteditable
+    await composer.fill(''); // Clear first
+    await this.page!.waitForTimeout(200);
+    
+    // Type quickly but not instant (Twitter might detect instant paste)
+    await composer.type(content, { delay: 5 }); // 5ms = very fast but not suspicious
 
     // Close modals again before posting (in case typing triggered something)
     await this.closeAnyModal();
