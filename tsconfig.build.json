@@ -18,6 +18,10 @@
   ],
   "exclude": [
     "node_modules",
-    "dist"
+    "dist",
+    "src/app/**/*",
+    "src/dashboard/**/*",
+    "**/*.test.ts",
+    "**/*.spec.ts"
   ]
 }
