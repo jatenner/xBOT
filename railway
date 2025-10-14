@@ -1,0 +1,88 @@
+#!/usr/bin/env node
+
+/**
+ * RAILWAY CLI HELPER
+ * One-command access to all Railway tools
+ */
+
+const { spawn } = require('child_process');
+
+const command = process.argv[2];
+const args = process.argv.slice(3);
+
+const commands = {
+  status: 'railway status',
+  logs: 'node railway-logs.js',
+  errors: 'node railway-logs.js --errors',
+  diagnostic: 'node railway-diagnostic.js',
+  fix: 'node fix_railway_connection.js',
+  test: 'node railway-test-all.js',
+  open: 'railway open',
+  vars: 'railway variables',
+  domain: 'railway domain',
+  help: null
+};
+
+function showHelp() {
+  console.log(`
+╔════════════════════════════════════════════════════════════════╗
+║              🚂 RAILWAY CLI HELPER                             ║
+╚════════════════════════════════════════════════════════════════╝
+
+Usage: ./railway <command> [options]
+
+Commands:
+  status       Check connection status
+  logs         View live logs
+  errors       View error logs only
+  diagnostic   Run full diagnostics
+  fix          Auto-fix connection issues
+  test         Run comprehensive tests
+  open         Open project in browser
+  vars         View environment variables
+  domain       Show deployment domain
+  help         Show this help
+
+Examples:
+  ./railway status
+  ./railway logs
+  ./railway diagnostic
+  ./railway fix
+
+Direct Railway CLI:
+  You can also use 'railway' commands directly:
+  - railway status
+  - railway logs
+  - npm run railway:status
+  - npm run railway:logs
+
+Documentation:
+  - RAILWAY_COMPLETE_SOLUTION.md    (Full overview)
+  - RAILWAY_QUICK_REFERENCE.md      (Quick reference)
+
+╚════════════════════════════════════════════════════════════════╝
+`);
+}
+
+if (!command || command === 'help' || !commands[command]) {
+  showHelp();
+  process.exit(0);
+}
+
+const cmdString = commands[command];
+const [cmd, ...cmdArgs] = cmdString.split(' ');
+
+const child = spawn(cmd, [...cmdArgs, ...args], {
+  stdio: 'inherit',
+  cwd: __dirname
+});
+
+child.on('error', (error) => {
+  console.error('Error:', error.message);
+  process.exit(1);
+});
+
+child.on('close', (code) => {
+  process.exit(code || 0);
+});
+
