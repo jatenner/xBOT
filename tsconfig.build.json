@@ -13,28 +13,16 @@
     "rootDir": "."
   },
   "include": [
-    "src/**/*",
-    "scripts/**/*"
+    "src/main-bulletproof.ts",
+    "src/server.ts",
+    "src/intelligence/**/*",
+    "scripts/startup-acceptance.ts",
+    "scripts/jobs-learn.ts",
+    "scripts/dryrun-plan.ts",
+    "scripts/dryrun-reply.ts"
   ],
   "exclude": [
     "node_modules",
-    "dist",
-    "src/app/**/*",
-    "src/dashboard/**/*",
-    "src/agents/**/*",
-    "src/utils/**/*",
-    "src/scrapers/**/*",
-    "src/test/**/*",
-    "src/testing/**/*",
-    "src/quality/**/*",
-    "src/schedule/**/*",
-    "src/scheduler/**/*",
-    "src/strategy/**/*",
-    "scripts/**/*",
-    "!scripts/startup-acceptance.ts",
-    "!scripts/jobs-learn.ts",
-    "!scripts/migrate.ts",
-    "**/*.test.ts",
-    "**/*.spec.ts"
+    "dist"
   ]
 }
