@@ -15,7 +15,9 @@
   "include": [
     "src/main-bulletproof.ts",
     "src/server.ts",
-    "src/intelligence/**/*",
+    "src/intelligence/contentTypeSelector.ts",
+    "src/intelligence/followerTracker.ts",
+    "src/intelligence/realTimeLearningLoop.ts",
     "scripts/startup-acceptance.ts",
     "scripts/jobs-learn.ts",
     "scripts/dryrun-plan.ts",
