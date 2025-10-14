@@ -13,12 +13,8 @@
     "rootDir": "."
   },
   "include": [
-    "src/main-bulletproof.ts",
-    "src/server.ts",
-    "scripts/startup-acceptance.ts",
-    "scripts/jobs-learn.ts", 
-    "scripts/dryrun-plan.ts",
-    "scripts/dryrun-reply.ts"
+    "src/**/*",
+    "scripts/**/*"
   ],
   "exclude": [
     "node_modules",
