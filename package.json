@@ -18,7 +18,7 @@
     "logs:errors": "node railway-logs.js --errors",
     "logs:search": "node railway-logs.js --search",
     "logs:monitor": "node bulletproof_system_monitor.js",
-    "prestart-disabled": "node -r dotenv/config scripts/migrate.js dotenv_config_path=.env",
+    "prestart": "node -r dotenv/config scripts/migrate.js dotenv_config_path=.env",
     "start:bulletproof": "node dist/src/main-bulletproof.js",
     "postinstall": "npx playwright install chromium --with-deps && mkdir -p artifacts || true",
     "build-clean": "rm -rf dist && npm run build",
