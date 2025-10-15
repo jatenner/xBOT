@@ -1,1 +1,1 @@
-web: node railway-start.js
+web: bash railway-start.sh
