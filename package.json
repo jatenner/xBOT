@@ -9,7 +9,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "postbuild": "mkdir -p dist/dashboard && cp src/dashboard/*.html dist/dashboard/ 2>/dev/null || true && mkdir -p dist/prompts && cp -r src/prompts/* dist/prompts/ && echo 'Build completed successfully'",
-    "start": "node -r dotenv/config dist/src/main-bulletproof.js dotenv_config_path=.env",
+    "start": "node dist/src/main-bulletproof.js",
     "start:accept": "node dist/scripts/startup-acceptance.js",
     "jobs:learn": "node dist/scripts/jobs-learn.js",
     "dryrun:plan": "node dist/scripts/dryrun-plan.js 3",
@@ -18,7 +18,6 @@
     "logs:errors": "node railway-logs.js --errors",
     "logs:search": "node railway-logs.js --search",
     "logs:monitor": "node bulletproof_system_monitor.js",
-    "prestart": "node -r dotenv/config scripts/migrate-bulletproof.js dotenv_config_path=.env",
     "start:bulletproof": "node dist/src/main-bulletproof.js",
     "postinstall": "npx playwright install chromium --with-deps && mkdir -p artifacts || true",
     "build-clean": "rm -rf dist && npm run build",

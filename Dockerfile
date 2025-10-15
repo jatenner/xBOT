@@ -62,15 +62,18 @@ RUN npx playwright install chromium
 # Copy compiled artifacts from builder
 COPY --from=builder /app/dist ./dist
 
-# Copy tools for startup
-COPY tools/start.js ./tools/start.js
+# Copy scripts for migrations
+COPY scripts ./scripts
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-  CMD curl -f http://localhost:8080/status || exit 1
+# Copy tools for startup (if exists)
+COPY tools/start.js ./tools/start.js 2>/dev/null || true
+
+# Health check - more lenient for Railway
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD curl -f http://localhost:${PORT:-8080}/status || exit 1
 
 # Expose port
-EXPOSE 8080
+EXPOSE ${PORT:-8080}
 
 # Start with compiled entry point
 CMD ["node", "dist/src/main-bulletproof.js"]
