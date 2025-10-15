@@ -4,7 +4,7 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "bash railway-start.sh",
+    "startCommand": "node -r dotenv/config scripts/migrate-bulletproof.js dotenv_config_path=.env && npm start",
     "healthcheckPath": "/status",
     "healthcheckTimeout": 600,
     "restartPolicyType": "ON_FAILURE",
