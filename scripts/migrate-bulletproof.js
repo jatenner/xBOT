@@ -14,8 +14,9 @@ const fs = require('fs');
 const path = require('path');
 const { withFreshClient } = require('../dist/src/db/client');
 
-// Timeout for entire migration process (5 seconds max)
-const MIGRATION_TIMEOUT_MS = 5000;
+// Timeout for entire migration process (3 seconds max - Railway needs faster)
+const MIGRATION_TIMEOUT_MS = 3000;
+const CONNECTION_TIMEOUT_MS = 1000; // Max 1 second to connect
 
 function log(level, message) {
   const timestamp = new Date().toISOString();
@@ -25,17 +26,23 @@ function log(level, message) {
 
 async function ensureTrackingTable() {
   try {
-    await withFreshClient(async (client) => {
-      await client.query(`
-        CREATE TABLE IF NOT EXISTS public.schema_migrations (
-          id TEXT PRIMARY KEY,
-          applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        );
-      `);
-    });
+    const result = await Promise.race([
+      withFreshClient(async (client) => {
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS public.schema_migrations (
+            id TEXT PRIMARY KEY,
+            applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+        `);
+      }),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Connection timeout')), CONNECTION_TIMEOUT_MS)
+      )
+    ]);
     log('info', '✅ Schema tracking table ready');
   } catch (error) {
     log('warn', `⚠️ Could not create tracking table: ${error.message}`);
+    throw error; // Abort if we can't even connect
   }
 }
 
@@ -105,8 +112,14 @@ async function runMigrations() {
   log('info', '🚀 Starting non-blocking migrations...');
 
   try {
-    // Step 1: Ensure tracking table
-    await ensureTrackingTable();
+    // Step 1: Ensure tracking table (with timeout)
+    try {
+      await ensureTrackingTable();
+    } catch (error) {
+      log('error', `❌ Cannot connect to database: ${error.message}`);
+      log('info', '⚠️ Skipping migrations - app will start anyway');
+      return;
+    }
 
     // Step 2: Get list of migration files
     const migrationsDir = path.resolve(__dirname, '../supabase/migrations');
@@ -179,9 +192,18 @@ runMigrations()
     process.exit(0); // Still exit successfully - don't block app!
   });
 
-// Timeout safety
+// MULTIPLE timeout safety mechanisms
 setTimeout(() => {
   log('warn', '⏱️ Migration runner timeout - exiting to allow app startup');
   process.exit(0);
-}, MIGRATION_TIMEOUT_MS + 1000);
+}, MIGRATION_TIMEOUT_MS + 500);
+
+// Emergency timeout (if setTimeout somehow doesn't work)
+const emergencyTimeout = setTimeout(() => {
+  console.error('[MIGRATE] 🚨 EMERGENCY TIMEOUT - FORCE EXIT');
+  process.exit(0);
+}, 5000);
+
+// Clear emergency timeout if we finish normally
+process.on('beforeExit', () => clearTimeout(emergencyTimeout));
 
