@@ -128,6 +128,28 @@ async function runStartupGates(config: any) {
   console.log('🧪 STARTUP_GATES: All gates processed (non-blocking)');
 }
 
+async function runBackgroundMigrations() {
+  console.log('🗄️ MIGRATIONS: Starting background migrations...');
+  try {
+    const { spawn } = await import('child_process');
+    const migrationProcess = spawn('node', ['scripts/migrate-bulletproof.js'], {
+      stdio: 'inherit',
+      env: process.env,
+      detached: false
+    });
+    
+    migrationProcess.on('close', (code) => {
+      console.log(`🗄️ MIGRATIONS: Completed with code ${code}`);
+    });
+    
+    migrationProcess.on('error', (error) => {
+      console.log(`⚠️ MIGRATIONS: Error: ${error.message} (non-fatal)`);
+    });
+  } catch (error) {
+    console.log(`⚠️ MIGRATIONS: Could not start: ${error.message} (continuing...)`);
+  }
+}
+
 async function boot() {
   console.log('🔄 XBOT_BOOT: Starting bulletproof production runtime...');
   
@@ -141,39 +163,7 @@ async function boot() {
     console.log('🎭 SHADOW_PROD ACTIVE: Zero-cost learning loop with synthetic outcomes');
   }
   
-  // Legacy config for startup gates
-  const legacyConfig = getStartupSummary();
-  
-  // Run startup gates (non-blocking)
-  try {
-    await runStartupGates(legacyConfig);
-    } catch (error) {
-    console.log(`⚠️ STARTUP_GATES: Error during gates: ${error.message} (continuing...)`);
-  }
-  
-  // Load latest predictor model
-  try {
-    console.log('🤖 Loading latest predictor model...');
-    const { loadLatestCoefficients } = await import('./jobs/predictorTrainer');
-    const coeffs = await loadLatestCoefficients();
-    if (coeffs) {
-      console.log(`✅ Loaded predictor ${coeffs.version} (R²=${coeffs.ridge.rSquared.toFixed(3)})`);
-    } else {
-      console.log('ℹ️ No persisted predictor found, will use defaults');
-    }
-  } catch (error) {
-    console.log('⚠️ Predictor loading failed:', error.message);
-  }
-
-  // Initialize job manager
-  const jobManager = JobManager.getInstance();
-  try {
-    await jobManager.startJobs();
-    } catch (error) {
-    console.log(`⚠️ JOB_MANAGER: Error starting jobs: ${error.message} (continuing...)`);
-  }
-  
-  // Try common server modules in priority order
+  // Try common server modules in priority order - START IMMEDIATELY
   const candidates = ["./server", "./main", "./index", "./api/index"];
   let started = false;
 
@@ -223,6 +213,46 @@ async function boot() {
       console.log(`📊 Status endpoint: http://0.0.0.0:${port}/status`);
     });
   }
+  
+  console.log('✅ HEALTH_SERVER: Server is ready, starting background tasks...');
+  
+  // NOW run background tasks after server is up
+  // Run migrations in background (non-blocking)
+  runBackgroundMigrations();
+  
+  // Legacy config for startup gates
+  const legacyConfig = getStartupSummary();
+  
+  // Run startup gates (non-blocking, in background)
+  runStartupGates(legacyConfig).catch((error) => {
+    console.log(`⚠️ STARTUP_GATES: Error during gates: ${error.message} (continuing...)`);
+  });
+  
+  // Load latest predictor model (background)
+  (async () => {
+    try {
+      console.log('🤖 Loading latest predictor model...');
+      const { loadLatestCoefficients } = await import('./jobs/predictorTrainer');
+      const coeffs = await loadLatestCoefficients();
+      if (coeffs) {
+        console.log(`✅ Loaded predictor ${coeffs.version} (R²=${coeffs.ridge.rSquared.toFixed(3)})`);
+      } else {
+        console.log('ℹ️ No persisted predictor found, will use defaults');
+      }
+    } catch (error) {
+      console.log('⚠️ Predictor loading failed:', error.message);
+    }
+  })();
+
+  // Initialize job manager (background)
+  (async () => {
+    const jobManager = JobManager.getInstance();
+    try {
+      await jobManager.startJobs();
+    } catch (error) {
+      console.log(`⚠️ JOB_MANAGER: Error starting jobs: ${error.message} (continuing...)`);
+    }
+  })();
   
   // Start heartbeat
   setInterval(() => {
