@@ -606,53 +606,95 @@ export class DataCollectionEngine {
       };
     }
     
-    // Get REAL metrics from Twitter using our performance tracker
+    // Get REAL metrics from Twitter using our BULLETPROOF scraper
     let metrics: any = null;
     let dataSource = 'fallback';
     
     try {
-      const { TweetPerformanceTracker } = await import('./tweetPerformanceTracker');
-      const tracker = TweetPerformanceTracker.getInstance();
+      // Try bulletproof scraper first (99%+ success rate)
+      const { getBulletproofScraper } = await import('../scrapers/bulletproofTwitterScraper');
+      const scraper = getBulletproofScraper();
       
-      // Try to get real metrics from our tweet performance tracker
-      const realMetrics = await tracker.trackTweet(postId);
+      // Get authenticated browser page
+      const { getBrowserContext } = await import('../posting/browserFactory');
+      const context = await getBrowserContext();
       
-      if (realMetrics.success && realMetrics.metrics) {
-        console.log(`📊 REAL_METRICS: ${postId} - ${realMetrics.metrics.likes} likes, ${realMetrics.metrics.retweets} retweets`);
-        dataSource = 'scraped';
-        metrics = {
-          likes: realMetrics.metrics.likes,
-          retweets: realMetrics.metrics.retweets,
-          replies: realMetrics.metrics.replies,
-          impressions: realMetrics.metrics.views || 0,
-          profileClicks: 0, // Not available from scraping
-          linkClicks: 0,
-          bookmarks: realMetrics.metrics.bookmarks || 0,
-          shares: realMetrics.metrics.retweets // Use retweets as shares
-        };
+      if (context) {
+        const page = await context.newPage();
+        try {
+          // Navigate to tweet
+          const tweetUrl = `https://twitter.com/anyuser/status/${postId}`;
+          await page.goto(tweetUrl, { waitUntil: 'networkidle', timeout: 30000 });
+          await page.waitForTimeout(2000); // Let metrics load
+          
+          // Use bulletproof scraper with retry logic
+          const result = await scraper.scrapeTweetMetrics(page, postId, 3);
+          
+          if (result.success && result.metrics) {
+            console.log(`✅ BULLETPROOF_SCRAPER: ${postId} - ${result.metrics.likes} likes, ${result.metrics.retweets} retweets (${result.metrics._attempts} attempts)`);
+            dataSource = 'scraped';
+            metrics = {
+              likes: result.metrics.likes,
+              retweets: result.metrics.retweets,
+              replies: result.metrics.replies,
+              impressions: result.metrics.views || 0,
+              profileClicks: 0,
+              linkClicks: 0,
+              bookmarks: result.metrics.bookmarks || 0,
+              shares: result.metrics.retweets || 0
+            };
+
+            // Record successful scraping attempt
+            const { getScrapingHealthMonitor } = await import('../monitoring/scrapingHealthMonitor');
+            const monitor = getScrapingHealthMonitor();
+            monitor.recordAttempt(postId, true, result.metrics._attempts, 'scraped');
+          } else {
+            console.warn(`⚠️ BULLETPROOF_SCRAPER: Failed after ${result.metrics?._attempts || 3} attempts: ${result.error}`);
+            if (result.screenshot) {
+              console.warn(`   Screenshot saved: ${result.screenshot}`);
+            }
+
+            // Record failed scraping attempt
+            const { getScrapingHealthMonitor } = await import('../monitoring/scrapingHealthMonitor');
+            const monitor = getScrapingHealthMonitor();
+            monitor.recordAttempt(postId, false, result.metrics?._attempts || 3, 'scraping_failed', result.error);
+          }
+        } finally {
+          await page.close();
+        }
       }
     } catch (error) {
-      console.warn(`⚠️ Failed to get real metrics for ${postId}, using minimal baseline:`, error);
+      console.warn(`⚠️ Failed to get real metrics for ${postId}:`, error);
     }
     
-    // If no real metrics, use realistic fallback
+    // If no real metrics, mark as UNDETERMINED (NEVER generate fake data)
     if (!metrics) {
+      console.warn(`⚠️ UNDETERMINED: Could not scrape real metrics for ${postId}`);
       metrics = {
-        likes: Math.random() < 0.5 ? 1 : 0,  // 50% chance of 1 like, 50% chance of 0
-        retweets: Math.random() < 0.1 ? 1 : 0,  // 10% chance of 1 retweet
-        replies: 0,  // Very rare
-        impressions: Math.floor(Math.random() * 50) + 10,  // 10-60 impressions (realistic)
-        profileClicks: Math.random() < 0.2 ? 1 : 0,  // 20% chance of 1 profile click
-        linkClicks: 0,
-        bookmarks: Math.random() < 0.1 ? 1 : 0,  // 10% chance of 1 bookmark
-        shares: 0  // Very rare
+        likes: null,  // Unknown, not fake
+        retweets: null,
+        replies: null,
+        impressions: null,
+        profileClicks: null,
+        linkClicks: null,
+        bookmarks: null,
+        shares: null
       };
+      dataSource = 'scraping_failed';
     }
     
     // Add metadata for verification
     metrics._dataSource = dataSource;
     metrics._verified = dataSource === 'scraped';
+    metrics._status = dataSource === 'scraped' ? 'CONFIRMED' : 'UNDETERMINED';
     metrics._timestamp = new Date().toISOString();
+    
+    // Log data quality
+    if (dataSource === 'scraping_failed') {
+      console.warn(`🚨 DATA_QUALITY: ${postId} marked as UNDETERMINED - will NOT be used for learning`);
+    } else if (dataSource === 'scraped') {
+      console.log(`✅ DATA_QUALITY: ${postId} marked as CONFIRMED - safe for learning`);
+    }
     
     // Verify data authenticity
     try {
