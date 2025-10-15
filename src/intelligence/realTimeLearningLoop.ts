@@ -161,11 +161,15 @@ export class RealTimeLearningLoop {
       // Get recent follower attributions (last 24 hours)
       const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       
+      // CRITICAL: Only use VERIFIED, HIGH-CONFIDENCE data for learning
+      // NEVER use UNDETERMINED or unverified data
       const { data: attributions, error } = await supabase
         .from('follower_attributions')
         .select('*')
         .gte('created_at', oneDayAgo)
-        .eq('confidence', 'high'); // Only use high-confidence data
+        .eq('confidence_score', 'high') // Only high-confidence attributions
+        .filter('metadata->_verified', 'eq', true) // Only verified scraped data
+        .filter('metadata->_status', 'eq', 'CONFIRMED'); // Only confirmed metrics
       
       if (error || !attributions || attributions.length === 0) {
         console.log('⏭️ LEARNING_LOOP: No recent attribution data to learn from yet');
