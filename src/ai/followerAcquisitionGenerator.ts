@@ -211,12 +211,13 @@ export class FollowerAcquisitionGenerator {
   
   private async getLearningInsights(): Promise<any> {
     try {
-      // Simplified learning insights (no complex dependencies)
+      // AI-driven learning insights - hook templates are handled by hookEvolutionEngine
+      // These are just guidance for the AI, not templates
       return {
         top_hooks: [
-          'Most people think X, but research shows Y',
-          'Did you know X% of people are wrong about Y?',
-          'The #1 mistake people make with X is Y'
+          'contrarian_statement',
+          'surprising_statistic',
+          'common_mistake_revelation'
         ],
         best_topics: ['sleep optimization', 'nutrition myths', 'exercise science'],
         optimal_timing: ['morning', 'evening'],
