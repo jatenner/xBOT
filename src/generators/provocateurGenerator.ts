@@ -46,8 +46,8 @@ Mechanism: ${research.mechanism}
 Use this to back up your hot take.
 ` : ''}
 
-${format === 'thread' ? `
-OUTPUT: Return JSON array of 3-5 tweets (150-230 chars each):
+  ${format === 'thread' ? `
+OUTPUT FORMAT: Return response as json object with array of 3-5 tweets (150-230 chars each):
 Tweet 1: Incendiary hot take
 Tweet 2: Why everyone's wrong
 Tweet 3: Evidence for your position
