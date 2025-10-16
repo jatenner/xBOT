@@ -127,9 +127,9 @@ async function generateRealReplies(): Promise<void> {
   
   for (const target of targets.slice(0, 2)) {
     try {
-      // Pick a reply-appropriate generator
-      const replyGenerator = selectReplyGenerator();
-      console.log(`[REPLY_JOB] 🎭 Using ${replyGenerator} for reply to @${target.account.username}`);
+      // Pick a reply-appropriate generator (intelligent matching)
+      const replyGenerator = selectReplyGenerator(target.account.category, target.account.username);
+      console.log(`[REPLY_JOB] 🎭 Using ${replyGenerator} for reply to @${target.account.username} (${target.account.category})`);
       
       // Generate strategic reply
       const strategicReply = await strategicReplySystem.generateStrategicReply(target);
@@ -181,22 +181,41 @@ async function generateRealReplies(): Promise<void> {
 }
 
 /**
- * Select generator appropriate for replies
- * Not all generators make sense for replies - pick strategic ones
+ * Select generator appropriate for replies - INTELLIGENT MATCHING
+ * Matches generator to tweet category for maximum value addition
  */
-function selectReplyGenerator(): GeneratorType {
-  // Reply-appropriate generators (provide value, not too aggressive)
-  const replyGenerators: GeneratorType[] = [
-    'data_nerd',      // Add research details
-    'myth_buster',    // Correct misconceptions
-    'news_reporter',  // Share related findings
-    'coach',          // Add actionable insights
-    'thought_leader'  // Build on their point
-  ];
+function selectReplyGenerator(category: string, target_account: string): GeneratorType {
+  // Get best performing generator for this account (if we have data)
+  const { replyLearningSystem } = require('../growth/replyLearningSystem');
+  const bestForAccount = replyLearningSystem.getBestGeneratorForAccount(target_account);
   
-  // Weighted random based on performance (if tracked)
-  // For now, equal weight
-  return replyGenerators[Math.floor(Math.random() * replyGenerators.length)];
+  if (bestForAccount && Math.random() < 0.7) {
+    // 70% exploit best performer
+    console.log(`[GENERATOR_SELECT] 🎯 Using best performer for @${target_account}: ${bestForAccount}`);
+    return bestForAccount;
+  }
+  
+  // 30% explore - match generator to category
+  const categoryMapping: Record<string, GeneratorType[]> = {
+    neuroscience: ['data_nerd', 'news_reporter', 'thought_leader'],
+    longevity: ['data_nerd', 'coach', 'thought_leader'],
+    nutrition: ['myth_buster', 'coach', 'data_nerd'],
+    science: ['data_nerd', 'news_reporter'],
+    medical: ['data_nerd', 'news_reporter'],
+    functional_medicine: ['coach', 'thought_leader', 'myth_buster'],
+    biohacking: ['data_nerd', 'coach', 'news_reporter'],
+    fitness: ['coach', 'myth_buster'],
+    wellness: ['coach', 'thought_leader'],
+    brain_health: ['data_nerd', 'news_reporter'],
+    movement: ['coach', 'myth_buster'],
+    optimization: ['data_nerd', 'coach']
+  };
+  
+  const generators = categoryMapping[category] || ['data_nerd', 'coach', 'thought_leader'];
+  const selected = generators[Math.floor(Math.random() * generators.length)];
+  
+  console.log(`[GENERATOR_SELECT] 🎲 Exploring with ${selected} for category: ${category}`);
+  return selected;
 }
 
 async function generateReplyWithLLM(target: any) {

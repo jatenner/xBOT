@@ -7,6 +7,8 @@
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { getSupabaseClient } from '../db';
+import { dynamicAccountDiscovery, type DiscoveredAccount } from './dynamicAccountDiscovery';
+import { replyLearningSystem } from './replyLearningSystem';
 
 export interface BigAccount {
   username: string;
@@ -34,18 +36,10 @@ export interface GeneratedReply {
 export class StrategicReplySystem {
   private static instance: StrategicReplySystem;
   
-  // Big accounts in health/wellness space to engage with
-  private readonly BIG_ACCOUNTS: BigAccount[] = [
-    { username: 'hubermanlab', followers: 5000000, category: 'neuroscience', engagement_velocity: 'high' },
-    { username: 'PeterAttiaMD', followers: 800000, category: 'longevity', engagement_velocity: 'medium' },
-    { username: 'foundmyfitness', followers: 400000, category: 'nutrition', engagement_velocity: 'medium' },
-    { username: 'ScienceDaily', followers: 2000000, category: 'science', engagement_velocity: 'high' },
-    { username: 'NIH', followers: 500000, category: 'medical', engagement_velocity: 'low' },
-    { username: 'DrMarkHyman', followers: 600000, category: 'functional_medicine', engagement_velocity: 'medium' },
-    { username: 'bengreenfield', followers: 300000, category: 'biohacking', engagement_velocity: 'high' },
-  ];
-  
-  private constructor() {}
+  private constructor() {
+    // Initialize systems
+    replyLearningSystem.loadHistoricalData();
+  }
   
   public static getInstance(): StrategicReplySystem {
     if (!StrategicReplySystem.instance) {
@@ -56,17 +50,36 @@ export class StrategicReplySystem {
   
   /**
    * Find optimal reply targets - tweets from big accounts to engage with
+   * LEARNING-DRIVEN: Prioritizes accounts that have yielded followers
    */
   public async findReplyTargets(count: number = 3): Promise<ReplyTarget[]> {
-    console.log('[STRATEGIC_REPLY] 🎯 Finding optimal reply targets...');
+    console.log('[STRATEGIC_REPLY] 🎯 Finding optimal reply targets (learning-driven)...');
     
-    // For MVP: Return mock targets based on big accounts
-    // In production: Would scrape Twitter API or use Playwright to find recent tweets
+    // Get best performing accounts from learning system
+    const bestAccounts = replyLearningSystem.getBestAccounts(count);
+    
+    // Get performance data for prioritization
+    const performanceMap = new Map<string, number>();
+    bestAccounts.forEach(username => {
+      const priority = replyLearningSystem.getAccountPriority(username);
+      performanceMap.set(username, priority);
+    });
+    
+    // Get top accounts from dynamic discovery (includes performance boost)
+    const topAccounts = dynamicAccountDiscovery.getTopAccounts(count, performanceMap);
+    
+    console.log(`[STRATEGIC_REPLY] 📊 Total available targets: ${dynamicAccountDiscovery.getTotalTargets()}`);
+    console.log(`[STRATEGIC_REPLY] 🎯 Total potential reach: ${dynamicAccountDiscovery.getTotalPotentialReach().toLocaleString()} followers`);
     
     const targets: ReplyTarget[] = [];
     
-    for (let i = 0; i < Math.min(count, this.BIG_ACCOUNTS.length); i++) {
-      const account = this.BIG_ACCOUNTS[i];
+    for (const discovered of topAccounts) {
+      const account: BigAccount = {
+        username: discovered.username,
+        followers: discovered.followers,
+        category: discovered.category,
+        engagement_velocity: discovered.engagement_velocity
+      };
       
       targets.push({
         account,
@@ -77,7 +90,11 @@ export class StrategicReplySystem {
       });
     }
     
-    console.log(`[STRATEGIC_REPLY] ✅ Found ${targets.length} potential targets`);
+    console.log(`[STRATEGIC_REPLY] ✅ Selected ${targets.length} high-priority targets`);
+    targets.forEach(t => {
+      console.log(`  - @${t.account.username} (${t.account.followers.toLocaleString()} followers, ${t.account.category})`);
+    });
+    
     return targets;
   }
   
@@ -236,16 +253,32 @@ Output as JSON:
   }
   
   /**
-   * Track reply performance
+   * Track reply performance - INTEGRATED WITH LEARNING SYSTEM
    */
   public async trackReplyPerformance(data: {
     reply_id: string;
     target_account: string;
     reply_content: string;
+    generator_used?: string;
     likes: number;
     followers_gained: number;
+    profile_clicks?: number;
     posted_at: string;
   }): Promise<void> {
+    console.log(`[STRATEGIC_REPLY] 📊 Tracking reply to @${data.target_account}: +${data.followers_gained} followers`);
+    
+    // Use learning system to track and optimize
+    await replyLearningSystem.trackReplyPerformance({
+      reply_id: data.reply_id,
+      target_account: data.target_account,
+      generator_used: (data.generator_used as any) || 'unknown',
+      followers_gained: data.followers_gained,
+      profile_clicks: data.profile_clicks || 0,
+      likes: data.likes,
+      posted_at: data.posted_at
+    });
+    
+    // Also persist to database
     try {
       const supabase = getSupabaseClient();
       
@@ -255,16 +288,23 @@ Output as JSON:
           reply_id: data.reply_id,
           target_account: data.target_account,
           reply_content: data.reply_content,
+          generator_used: data.generator_used,
           likes: data.likes,
           followers_gained: data.followers_gained,
+          profile_clicks: data.profile_clicks || 0,
           posted_at: data.posted_at,
           created_at: new Date().toISOString()
         });
-      
-      console.log(`[STRATEGIC_REPLY] 📊 Tracked reply performance: ${data.followers_gained} followers gained`);
     } catch (error) {
-      console.warn('[STRATEGIC_REPLY] ⚠️ Could not track to DB');
+      console.warn('[STRATEGIC_REPLY] ⚠️ Could not persist to DB');
     }
+  }
+  
+  /**
+   * Get learning insights
+   */
+  public getLearningInsights() {
+    return replyLearningSystem.getInsights();
   }
 }
 
