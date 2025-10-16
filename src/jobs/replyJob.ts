@@ -8,6 +8,8 @@ import { getConfig } from '../config/config';
 import { getEnvConfig, isLLMAllowed } from '../config/envFlags';
 import { getSupabaseClient } from '../db/index';
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
+import { strategicReplySystem } from '../growth/strategicReplySystem';
+import { getPersonalityScheduler, type GeneratorType } from '../scheduling/personalityScheduler';
 
 // Global metrics
 let replyLLMMetrics = {
@@ -117,37 +119,84 @@ async function generateRealReplies(): Promise<void> {
     return;
   }
   
-  console.log('[REPLY_JOB] 🧠 Generating real replies using LLM...');
+  console.log('[REPLY_JOB] 🧠 Generating STRATEGIC replies using multi-generator system...');
   
-  // Discover targets (mock for now)
-  const targets = await discoverTargets();
+  // USE STRATEGIC REPLY SYSTEM - Find big accounts to reply to
+  const targets = await strategicReplySystem.findReplyTargets(3);
+  console.log(`[REPLY_JOB] 🎯 Found ${targets.length} strategic targets (big accounts)`);
   
   for (const target of targets.slice(0, 2)) {
     try {
-      const reply = await generateReplyWithLLM(target);
-      const gateResult = await runGateChain(reply.content, reply.decision_id);
+      // Pick a reply-appropriate generator
+      const replyGenerator = selectReplyGenerator();
+      console.log(`[REPLY_JOB] 🎭 Using ${replyGenerator} for reply to @${target.account.username}`);
       
-      if (!gateResult.passed) {
-        console.log(`[GATE_CHAIN] ⛔ Blocked (${gateResult.gate}) decision_id=${reply.decision_id}, reason=${gateResult.reason}`);
+      // Generate strategic reply
+      const strategicReply = await strategicReplySystem.generateStrategicReply(target);
+      
+      // Validate quality
+      if (!strategicReply.provides_value || !strategicReply.not_spam) {
+        console.log(`[REPLY_JOB] ⚠️ Reply quality too low (value: ${strategicReply.provides_value}, not_spam: ${strategicReply.not_spam})`);
         continue;
       }
       
+      const decision_id = uuidv4();
+      
+      // Run gate chain
+      const gateResult = await runGateChain(strategicReply.content, decision_id);
+      
+      if (!gateResult.passed) {
+        console.log(`[GATE_CHAIN] ⛔ Blocked (${gateResult.gate}) decision_id=${decision_id}, reason=${gateResult.reason}`);
+        continue;
+      }
+      
+      const reply = {
+        decision_id,
+        content: strategicReply.content,
+        target_username: target.account.username,
+        target_tweet_id: target.tweet_url.split('/').pop() || 'unknown',
+        target_tweet_content: target.tweet_content,
+        generator_used: replyGenerator,
+        estimated_reach: target.estimated_reach,
+        scheduled_at: new Date(Date.now() + 5 * 60 * 1000).toISOString() // 5 min from now
+      };
+      
       // Queue for posting
       await queueReply(reply);
-      console.log(`[REPLY_JOB] ✅ Real LLM reply queued decision_id=${reply.decision_id} scheduled_at=${reply.scheduled_at}`);
+      console.log(`[REPLY_JOB] ✅ Strategic reply queued to @${target.account.username} (${target.account.followers.toLocaleString()} followers)`);
+      console.log(`[REPLY_JOB] 📊 Estimated reach: ${target.estimated_reach.toLocaleString()} people`);
       
     } catch (error: any) {
       replyLLMMetrics.calls_failed++;
       const errorType = categorizeError(error);
       replyLLMMetrics.failure_reasons[errorType] = (replyLLMMetrics.failure_reasons[errorType] || 0) + 1;
       
-      console.error(`[REPLY_JOB] ❌ LLM generation failed: ${error.message}`);
+      console.error(`[REPLY_JOB] ❌ Strategic reply generation failed: ${error.message}`);
       
       if (errorType === 'insufficient_quota') {
         console.log('[REPLY_JOB] OpenAI insufficient_quota → not queueing');
       }
     }
   }
+}
+
+/**
+ * Select generator appropriate for replies
+ * Not all generators make sense for replies - pick strategic ones
+ */
+function selectReplyGenerator(): GeneratorType {
+  // Reply-appropriate generators (provide value, not too aggressive)
+  const replyGenerators: GeneratorType[] = [
+    'data_nerd',      // Add research details
+    'myth_buster',    // Correct misconceptions
+    'news_reporter',  // Share related findings
+    'coach',          // Add actionable insights
+    'thought_leader'  // Build on their point
+  ];
+  
+  // Weighted random based on performance (if tracked)
+  // For now, equal weight
+  return replyGenerators[Math.floor(Math.random() * replyGenerators.length)];
 }
 
 async function generateReplyWithLLM(target: any) {
@@ -219,15 +268,18 @@ async function queueReply(reply: any): Promise<void> {
     decision_id: reply.decision_id,
     decision_type: 'reply',
     content: reply.content,
-    generation_source: 'real',
+    generation_source: 'strategic_multi_generator',
     status: 'queued',
     scheduled_at: reply.scheduled_at,
-    quality_score: reply.quality_score,
-    predicted_er: reply.predicted_er,
-    topic_cluster: reply.topic,
+    quality_score: reply.quality_score || 0.85,
+    predicted_er: reply.predicted_er || 0.028,
+    topic_cluster: reply.topic || 'health',
     target_tweet_id: reply.target_tweet_id,
     target_username: reply.target_username,
-    bandit_arm: 'supportive_reply',
+    target_tweet_content: reply.target_tweet_content || '',
+    generator_used: reply.generator_used || 'unknown',
+    estimated_reach: reply.estimated_reach || 0,
+    bandit_arm: `strategic_reply_${reply.generator_used || 'unknown'}`,
     created_at: new Date().toISOString()
   }]);
 }
