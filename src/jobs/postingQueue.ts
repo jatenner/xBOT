@@ -257,20 +257,40 @@ async function postContent(decision: QueuedDecision): Promise<string> {
     console.log('[POSTING_QUEUE] 🌐 Using reliable Playwright posting...');
     
     try {
-      const { UltimateTwitterPoster } = await import('../posting/UltimateTwitterPoster');
-      const poster = new UltimateTwitterPoster();
-      const result = await poster.postTweet(decision.content);
+      // CHECK IF THIS IS A THREAD (has thread_tweets array)
+      const metadata = (decision as any).thread_tweets;
+      const isThread = Array.isArray(metadata) && metadata.length > 1;
       
-      // Clean up resources
-      await poster.dispose();
-      
-      if (result.success) {
-        const tweetId = result.tweetId || `playwright_${Date.now()}`;
-        console.log(`[POSTING_QUEUE] ✅ Content posted via Playwright with ID: ${tweetId}`);
-        return tweetId;
+      if (isThread) {
+        console.log(`[POSTING_QUEUE] 🧵 Posting as THREAD (${metadata.length} tweets)`);
+        const { BulletproofThreadComposer } = await import('../posting/BulletproofThreadComposer');
+        const result = await BulletproofThreadComposer.post(metadata);
+        
+        if (result.success) {
+          const tweetId = result.tweetIds?.[0] || result.rootTweetUrl || `thread_${Date.now()}`;
+          console.log(`[POSTING_QUEUE] ✅ Thread posted via Playwright with ID: ${tweetId}`);
+          return tweetId;
+        } else {
+          console.error(`[POSTING_QUEUE] ❌ Thread posting failed: ${result.error}`);
+          throw new Error(result.error || 'Thread posting failed');
+        }
       } else {
-        console.error(`[POSTING_QUEUE] ❌ Playwright posting failed: ${result.error}`);
-        throw new Error(result.error || 'Playwright posting failed');
+        console.log(`[POSTING_QUEUE] 📝 Posting as SINGLE tweet`);
+        const { UltimateTwitterPoster } = await import('../posting/UltimateTwitterPoster');
+        const poster = new UltimateTwitterPoster();
+        const result = await poster.postTweet(decision.content);
+        
+        // Clean up resources
+        await poster.dispose();
+        
+        if (result.success) {
+          const tweetId = result.tweetId || `playwright_${Date.now()}`;
+          console.log(`[POSTING_QUEUE] ✅ Content posted via Playwright with ID: ${tweetId}`);
+          return tweetId;
+        } else {
+          console.error(`[POSTING_QUEUE] ❌ Playwright posting failed: ${result.error}`);
+          throw new Error(result.error || 'Playwright posting failed');
+        }
       }
     } catch (error: any) {
       console.error(`[POSTING_QUEUE] ❌ Playwright system error: ${error.message}`);
