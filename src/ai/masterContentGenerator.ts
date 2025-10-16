@@ -16,6 +16,12 @@ export interface MasterContentRequest {
   use_evolved_hooks?: boolean;
   apply_viral_formulas?: boolean;
   optimize_for_followers?: boolean;
+  // CONTENT TYPE DIVERSITY - Pass selected type details
+  content_type_name?: string;
+  content_type_structure?: string;
+  content_type_hook_style?: string;
+  content_type_length?: string;
+  content_type_value_prop?: string;
 }
 
 export interface MasterContentOutput {
@@ -115,7 +121,13 @@ export class MasterContentGenerator {
         target_audience: request.target_audience,
         content_goal: 'value',
         topic_preference: request.topic_preference,
-        format_preference: request.format_preference
+        format_preference: request.format_preference,
+        // PASS CONTENT TYPE DETAILS FOR DIVERSITY
+        content_type_name: request.content_type_name,
+        content_type_structure: request.content_type_structure,
+        content_type_hook_style: request.content_type_hook_style,
+        content_type_length: request.content_type_length,
+        content_type_value_prop: request.content_type_value_prop
       });
 
       // Step 3: Fill hook template with real content
