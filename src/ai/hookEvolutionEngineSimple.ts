@@ -57,11 +57,15 @@ export class HookEvolutionEngine {
   }
 
   async selectOptimalHook(criteria: any): Promise<SimpleHookDNA> {
-    console.log('[HOOK_EVOLUTION] Selecting optimal hook (simplified)');
+    console.log('[HOOK_EVOLUTION] 🎯 Selecting optimal hook for followers');
     
-    // Simple selection based on success rate
-    const sortedHooks = [...this.hookPopulation].sort((a, b) => b.success_rate - a.success_rate);
-    return sortedHooks[0] || this.hookPopulation[0];
+    // Simple selection based on follower_gene (since goal is followers)
+    const sortedHooks = [...this.hookPopulation].sort((a, b) => b.follower_gene - a.follower_gene);
+    const selected = sortedHooks[0] || this.hookPopulation[0];
+    
+    console.log(`[HOOK_EVOLUTION] ✅ Selected hook: "${selected.hook_text}" (Gen ${selected.generation})`);
+    
+    return selected;
   }
 
   async evolveHooks(): Promise<void> {

@@ -147,13 +147,30 @@ export class UltimateTwitterPoster {
     await composer.click({ delay: 60 });
     await this.page!.waitForTimeout(500);
     
-    // Use fast typing with Playwright's native method
-    // This is more reliable than page.evaluate for contenteditable
+    // Clear any existing content
     await composer.fill(''); // Clear first
     await this.page!.waitForTimeout(200);
     
-    // Type quickly but not instant (Twitter might detect instant paste)
-    await composer.type(content, { delay: 5 }); // 5ms = very fast but not suspicious
+    // For long content (>300 chars), use clipboard paste to avoid timeout
+    // For shorter content, use typing for more natural behavior
+    if (content.length > 300) {
+      console.log(`ULTIMATE_POSTER: Using clipboard paste for ${content.length} char content`);
+      
+      // Use Playwright's clipboard API
+      await this.page!.evaluate(async (text) => {
+        await navigator.clipboard.writeText(text);
+      }, content);
+      
+      // Paste via keyboard shortcut
+      await this.page!.keyboard.press('ControlOrMeta+KeyV');
+      await this.page!.waitForTimeout(500);
+      
+      console.log('ULTIMATE_POSTER: Content pasted via clipboard');
+    } else {
+      // Type quickly but not instant (Twitter might detect instant paste)
+      await composer.type(content, { delay: 5 }); // 5ms = very fast but not suspicious
+      console.log('ULTIMATE_POSTER: Content typed');
+    }
 
     // Close modals again before posting (in case typing triggered something)
     await this.closeAnyModal();
