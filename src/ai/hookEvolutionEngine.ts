@@ -82,8 +82,33 @@ export class HookEvolutionEngine {
         .limit(this.POPULATION_SIZE);
 
       if (data && data.length > 0) {
-        this.hookPopulation = this.castToHookDNA(data);
-        console.log(`[HOOK_EVOLUTION] ✅ Loaded ${this.hookPopulation.length} hooks from database`);
+        const loadedHooks = this.castToHookDNA(data);
+        
+        // CHECK: Are these old template hooks? If so, clear and recreate
+        const hasOldTemplates = loadedHooks.some(h => 
+          h.hook_text.includes('Most people think X') || 
+          h.hook_text.includes('Did you know X%') ||
+          h.hook_text.includes('#1 mistake') ||
+          h.hook_text.includes('what X experts don\'t want')
+        );
+        
+        if (hasOldTemplates) {
+          console.log('[HOOK_EVOLUTION] 🔄 Detected old template hooks - clearing and recreating with natural hooks...');
+          
+          // Delete old template hooks
+          await this.supabase
+            .from('hook_dna')
+            .delete()
+            .in('hook_id', loadedHooks.map(h => h.hook_id));
+          
+          // Create new natural hooks
+          this.hookPopulation = this.createSeedPopulation();
+          await this.storeHooks(this.hookPopulation);
+          console.log('[HOOK_EVOLUTION] ✅ Created NEW natural hook population');
+        } else {
+          this.hookPopulation = loadedHooks;
+          console.log(`[HOOK_EVOLUTION] ✅ Loaded ${this.hookPopulation.length} hooks from database`);
+        }
       } else {
         // Initialize with seed hooks
         this.hookPopulation = this.createSeedPopulation();
@@ -100,9 +125,10 @@ export class HookEvolutionEngine {
    * Create initial seed population with proven hooks
    */
   private createSeedPopulation(): HookDNA[] {
+    // NATURAL HOOKS - NO TEMPLATES! These are guidance patterns for AI
     const seedHooks = [
       {
-        hook_text: 'Most people think X, but research shows Y',
+        hook_text: 'NATURAL_CONTRARIAN', // AI generates contrarian insight naturally
         hook_category: 'contrarian' as const,
         engagement_gene: 0.8,
         viral_gene: 0.7,
@@ -110,7 +136,7 @@ export class HookEvolutionEngine {
         authority_gene: 0.8
       },
       {
-        hook_text: 'Did you know X% of people are wrong about Y?',
+        hook_text: 'NATURAL_STATISTIC', // AI generates surprising stat naturally
         hook_category: 'statistical' as const,
         engagement_gene: 0.7,
         viral_gene: 0.8,
@@ -118,7 +144,7 @@ export class HookEvolutionEngine {
         authority_gene: 0.6
       },
       {
-        hook_text: 'The #1 mistake people make with X is Y',
+        hook_text: 'NATURAL_VALUE', // AI generates value bomb naturally
         hook_category: 'value_bomb' as const,
         engagement_gene: 0.9,
         viral_gene: 0.6,
@@ -126,7 +152,7 @@ export class HookEvolutionEngine {
         authority_gene: 0.7
       },
       {
-        hook_text: 'What if everything you knew about X was wrong?',
+        hook_text: 'NATURAL_QUESTION', // AI generates thought-provoking question
         hook_category: 'curiosity' as const,
         engagement_gene: 0.6,
         viral_gene: 0.7,
@@ -134,12 +160,20 @@ export class HookEvolutionEngine {
         authority_gene: 0.5
       },
       {
-        hook_text: 'Here\'s what X experts don\'t want you to know about Y',
+        hook_text: 'NATURAL_BOLD', // AI generates bold claim with authority
         hook_category: 'authority' as const,
         engagement_gene: 0.7,
         viral_gene: 0.8,
         follower_gene: 0.6,
         authority_gene: 0.9
+      },
+      {
+        hook_text: 'DIRECT_NO_HOOK', // NO hook - start directly with content
+        hook_category: 'social_proof' as const,
+        engagement_gene: 0.6,
+        viral_gene: 0.5,
+        follower_gene: 0.6,
+        authority_gene: 0.7
       }
     ];
 

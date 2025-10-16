@@ -85,16 +85,15 @@ export class MasterContentGenerator {
         content_type_value_prop: request.content_type_value_prop
       });
 
-      // Step 3: Hook is now just guidance for AI, content already uses it naturally
-      // No more template filling - AI generates natural hooks based on guidance
+      // Step 3: Hook is guidance, content is generated naturally by AI
       console.log(`[MASTER_GENERATOR] ✨ Hook guidance: "${optimalHook.hook_text}" (category: ${optimalHook.hook_category})`);
 
       return {
         content: content.content,
         format: content.format,
-        generation_method: 'enhanced_ai_master',
+        generation_method: 'natural_ai_enhanced',
         hook_used: {
-          hook_text: optimalHook.hook_text, // Guidance pattern
+          hook_text: `${optimalHook.hook_category}_style`, // Category as guidance
           hook_category: optimalHook.hook_category,
           evolution_generation: optimalHook.generation
         },
