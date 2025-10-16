@@ -162,7 +162,7 @@ async function estimateFollowerCount(): Promise<number> {
   
   // Simple linear extrapolation
   const latest = data[0];
-  const estimate = latest.follower_count;
+  const estimate = Number(latest.follower_count) || 0;
   
   console.log(`[FOLLOWER_TRACKER] Estimated count: ${estimate} (based on last snapshot)`);
   return estimate;
@@ -185,8 +185,8 @@ export async function getFollowerGrowth(startTime: Date, endTime: Date): Promise
     return 0;
   }
   
-  const first = snapshots[0].follower_count;
-  const last = snapshots[snapshots.length - 1].follower_count;
+  const first = Number(snapshots[0].follower_count) || 0;
+  const last = Number(snapshots[snapshots.length - 1].follower_count) || 0;
   
   return last - first;
 }
