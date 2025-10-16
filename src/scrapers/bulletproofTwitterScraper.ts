@@ -129,7 +129,12 @@ export class BulletproofTwitterScraper {
           return {
             success: true,
             metrics: {
-              ...metrics,
+              likes: metrics.likes ?? null,
+              retweets: metrics.retweets ?? null,
+              replies: metrics.replies ?? null,
+              bookmarks: metrics.bookmarks ?? null,
+              views: metrics.views ?? null,
+              _selectors_used: metrics._selectors_used ?? [],
               _verified: true,
               _status: 'CONFIRMED',
               _dataSource: 'scraped',

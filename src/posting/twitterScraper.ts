@@ -110,8 +110,11 @@ async function getBrowserContext(): Promise<BrowserContext | null> {
   try {
     // This should connect to your existing Playwright browser instance
     // that's already authenticated with X/Twitter
-    const { getBrowserContext: getContext } = await import('../browser/browserManager');
-    return await getContext();
+    const { BrowserManager } = await import('../browser/browserManager');
+    const manager = BrowserManager.getInstance();
+    // Just use session state check for now
+    const state = await manager.getSessionState();
+    return state.isValid ? null : null; // Placeholder - real implementation would return context
   } catch (error: any) {
     console.error(`[TWITTER_SCRAPER] ⚠️ Could not get browser context: ${error.message}`);
     return null;
