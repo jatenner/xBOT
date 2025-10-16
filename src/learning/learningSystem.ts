@@ -63,10 +63,15 @@ export class LearningSystem {
    */
   async updatePostPerformance(post_id: string, actualPerformance: {
     followers_gained?: number;
+    follower_growth?: number; // Alternative name for followers_gained
     engagement_rate?: number;
     likes?: number;
     retweets?: number;
     replies?: number;
+    saves?: number; // Twitter bookmarks
+    impressions?: number;
+    profile_clicks?: number;
+    [key: string]: any; // Allow additional metrics
   }): Promise<void> {
     
     const tracked = this.postTracking.get(post_id);
@@ -75,7 +80,8 @@ export class LearningSystem {
       return;
     }
     
-    const followers_gained = actualPerformance.followers_gained || 0;
+    // Support both naming conventions
+    const followers_gained = actualPerformance.followers_gained || actualPerformance.follower_growth || 0;
     
     console.log(`[LEARNING_SYSTEM] 📊 Post ${post_id} gained ${followers_gained} followers`);
     
@@ -250,11 +256,14 @@ export class LearningSystem {
           content_type: tracked.content_type,
           hook_strategy: tracked.hook_strategy,
           topic_category: tracked.topic_category,
-          followers_gained: performance.followers_gained || 0,
+          followers_gained: performance.followers_gained || performance.follower_growth || 0,
           engagement_rate: performance.engagement_rate || 0,
           likes: performance.likes || 0,
           retweets: performance.retweets || 0,
           replies: performance.replies || 0,
+          saves: performance.saves || 0,
+          impressions: performance.impressions || 0,
+          profile_clicks: performance.profile_clicks || 0,
           created_at: new Date().toISOString(),
         });
     } catch (error) {
