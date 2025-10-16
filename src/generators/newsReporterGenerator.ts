@@ -45,14 +45,18 @@ Mechanism: ${research.mechanism}
 ` : ''}
 
 ${format === 'thread' ? `
-OUTPUT: Return JSON array of 3-5 tweets (150-230 chars each):
+OUTPUT FORMAT: Return response as json object with array of 3-5 tweets (MAX 230 chars each):
 Tweet 1: Breaking news hook
 Tweet 2: Study details and findings
 Tweet 3: Why it matters now
 Tweet 4: What to do with this info
+
+CRITICAL: Each tweet MUST be under 230 characters!
 ` : `
-OUTPUT: Return single tweet (180-250 chars):
+OUTPUT FORMAT: Return single tweet as json object (MAX 250 chars):
 New finding + implication + urgency
+
+CRITICAL: Tweet MUST be under 250 characters!
 `}`;
 
   const userPrompt = `Report breaking research about: ${topic}
