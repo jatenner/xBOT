@@ -47,13 +47,13 @@ Use this to ground philosophical exploration.
 ` : ''}
 
 ${format === 'thread' ? `
-OUTPUT: Return JSON array of 3-5 tweets (150-230 chars each):
+OUTPUT FORMAT: Return response as json object with array of 3-5 tweets (150-230 chars each):
 Tweet 1: Deep question about the topic
 Tweet 2: Paradox or contradiction to explore
 Tweet 3: Connection to bigger meaning
 Tweet 4: Reframing how to think about it
 ` : `
-OUTPUT: Return single tweet (180-250 chars):
+OUTPUT FORMAT: Return single tweet as json object (180-250 chars):
 Philosophical question + deeper implication
 `}`;
 
