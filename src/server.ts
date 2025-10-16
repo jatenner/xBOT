@@ -588,6 +588,17 @@ export function startHealthServer(): Promise<void> {
         try {
           await learningSystem.initialize();
           console.log('🧠 Learning system initialized successfully');
+          
+          // Clear old template hooks on startup
+          console.log('[HOOK_CLEANER] 🧹 Clearing old template hooks...');
+          try {
+            const { hookEvolutionEngine } = await import('./ai/hookEvolutionEngine');
+            // Force re-initialization to clear old hooks
+            await hookEvolutionEngine.getInstance()['initializePopulation']();
+            console.log('[HOOK_CLEANER] ✅ Old hooks cleared, fresh natural hooks loaded');
+          } catch (hookError: any) {
+            console.warn('[HOOK_CLEANER] ⚠️ Could not clear hooks:', hookError.message);
+          }
         } catch (error: any) {
           console.error('⚠️ Learning system initialization failed:', error.message);
         }
