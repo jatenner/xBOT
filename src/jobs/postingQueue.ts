@@ -205,6 +205,21 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
     // Update metrics
     await updatePostingMetrics('posted');
     
+    // PHASE 2: Initialize attribution tracking
+    try {
+      const { initializePostAttribution } = await import('../learning/engagementAttribution');
+      await initializePostAttribution(tweetId, {
+        hook_pattern: (decision as any).metadata?.hook_pattern || 'unknown',
+        topic: (decision as any).metadata?.topic || decision.topic_cluster,
+        generator: (decision as any).metadata?.generator_used || 'unknown',
+        format: (decision as any).metadata?.format || 'single',
+        viral_score: (decision as any).metadata?.viral_score || 50
+      });
+      console.log(`[POSTING_QUEUE] 📊 Attribution tracking initialized for ${tweetId}`);
+    } catch (attrError: any) {
+      console.warn(`[POSTING_QUEUE] ⚠️ Attribution init failed: ${attrError.message}`);
+    }
+    
     console.log(`[POSTING_QUEUE] ✅ ${decision.decision_type} posted: ${tweetId}`);
     
     // TODO: Track with learning system (actual performance will be updated later via webhook/job)

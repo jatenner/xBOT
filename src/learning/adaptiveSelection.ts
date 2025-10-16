@@ -79,8 +79,8 @@ async function selectExploratoryContent(): Promise<AdaptiveDecision> {
     .order('last_used', { ascending: true })
     .limit(3);
   
-  const generator = generatorPerf?.[0]?.generator || 'provocateur';
-  const topic = topicPerf?.[0]?.topic || 'sleep optimization';
+  const generator = String(generatorPerf?.[0]?.generator || 'provocateur');
+  const topic = String(topicPerf?.[0]?.topic || 'sleep optimization');
   
   return {
     hook_pattern: 'bold_claim', // High variance hook
@@ -103,10 +103,10 @@ async function selectBestPerformer(recentPosts: any[]): Promise<AdaptiveDecision
   const best = sorted[0];
   
   return {
-    hook_pattern: best.hook_pattern || 'story_opener',
-    topic: best.topic || 'sleep optimization',
-    generator: best.generator_used || 'provocateur',
-    format: best.format || 'thread',
+    hook_pattern: String(best.hook_pattern || 'story_opener'),
+    topic: String(best.topic || 'sleep optimization'),
+    generator: String(best.generator_used || 'provocateur'),
+    format: (best.format || 'thread') as 'single' | 'thread',
     reasoning: `Best recent post gained ${best.followers_gained || 0} followers`
   };
 }
@@ -141,10 +141,10 @@ async function thompsonSamplingSelection(): Promise<AdaptiveDecision> {
     : topics?.[Math.floor(Math.random() * (topics?.length || 1))];
   
   return {
-    hook_pattern: hookChoice?.hook_pattern || 'contrarian',
-    topic: topicChoice?.topic || 'exercise timing',
+    hook_pattern: String(hookChoice?.hook_pattern || 'contrarian'),
+    topic: String(topicChoice?.topic || 'exercise timing'),
     generator: 'provocateur', // TODO: Select based on topic
-    format: Math.random() < 0.6 ? 'thread' : 'single', // 60% threads
+    format: (Math.random() < 0.6 ? 'thread' : 'single') as 'single' | 'thread', // 60% threads
     reasoning: 'Thompson Sampling - balanced exploit/explore'
   };
 }
