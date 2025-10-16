@@ -170,118 +170,55 @@ async function generateRealContent(): Promise<void> {
 }
 
 /**
- * Generate content using ENHANCED CONTENT GENERATION SYSTEM
+ * Generate content using NEW MULTI-GENERATOR ORCHESTRATOR SYSTEM
  */
 async function generateContentWithLLM(): Promise<ContentDecision> {
-  console.log('🚀 MASTER_GENERATOR: Using follower-optimized content system with learning...');
+  console.log('🚀 ORCHESTRATOR: Using multi-personality content system...');
   
   try {
-    // STEP 0: Get optimal growth strategy from FollowerGrowthEngine
-    console.log('[GROWTH_ENGINE] 🚀 Getting optimal follower growth strategy...');
-    const growthStrategy = await followerGrowthEngine.getOptimalGrowthStrategy();
-    console.log(`[GROWTH_ENGINE] ✅ Strategy: ${growthStrategy.content_type}, Hook: ${growthStrategy.hook_strategy}`);
+    // USE NEW ORCHESTRATOR - All intelligence systems integrated
+    const { getContentOrchestrator } = await import('../orchestrator/contentOrchestrator');
+    const orchestrator = getContentOrchestrator();
     
-    // STEP 1: Select optimal content type (Phase 1: Content Type Diversity)
-    const { getContentTypeSelector } = await import('../intelligence/contentTypeSelector');
-    const contentTypeSelector = getContentTypeSelector();
+    const orchestratedContent = await orchestrator.generateContent();
     
-    const contentTypeSelection = await contentTypeSelector.selectContentType({
-      format: growthStrategy.content_type === 'thread' ? 'thread' : 'both', // Prioritize growth strategy
-      goal: 'followers'
-    });
+    console.log(`[ORCHESTRATOR] ✅ Generated ${orchestratedContent.format} content using ${orchestratedContent.metadata.generator_used}`);
     
-    console.log(`[CONTENT_TYPE] 📋 Selected: ${contentTypeSelection.selectedType.name}`);
-    console.log(`[CONTENT_TYPE] 💡 ${contentTypeSelection.selectionReason}`);
-    
-    // STEP 2: Learning insights (will be enhanced over time as data accumulates)
-    console.log('[LEARNING] 📊 Using AI-driven content generation with formula rotation...');
-    const topicPreference = undefined; // Let master generator choose optimal topic
-    
-    // STEP 3: Generate content with learning-informed parameters and selected content type
-    const masterContent = await masterContentGenerator.generateMasterContent({
-      primary_goal: 'followers',
-      secondary_goal: 'viral',
-      target_audience: 'health_seekers',
-      format_preference: contentTypeSelection.selectedType.format === 'both' 
-        ? 'single' 
-        : contentTypeSelection.selectedType.format,
-      viral_target: 'high',
-      topic_preference: topicPreference, // Use top performing topic
-      use_evolved_hooks: true,
-      apply_viral_formulas: true,
-      optimize_for_followers: true,
-      // PASS FULL CONTENT TYPE DETAILS FOR DIVERSITY!
-      content_type_name: contentTypeSelection.selectedType.name,
-      content_type_structure: contentTypeSelection.selectedType.typical_structure,
-      content_type_hook_style: contentTypeSelection.selectedType.hook_style,
-      content_type_length: contentTypeSelection.selectedType.typical_length,
-      content_type_value_prop: contentTypeSelection.selectedType.value_proposition
-    });
-
-    console.log(`✅ MASTER_CONTENT: Generated ${masterContent.format} content`);
-    console.log(`🎯 PREDICTIONS: Followers: ${masterContent.expected_outcomes.followers_gained_prediction}, Engagement: ${(masterContent.expected_outcomes.engagement_rate_prediction * 100).toFixed(1)}%, Viral: ${masterContent.expected_outcomes.viral_coefficient_prediction.toFixed(3)}`);
-    console.log(`🧬 HOOK: "${masterContent.hook_used.hook_text}" (Gen ${masterContent.hook_used.evolution_generation})`);
-    console.log(`🔥 FORMULA: ${masterContent.viral_formula_applied.formula_name} (${(masterContent.viral_formula_applied.success_rate * 100).toFixed(1)}% success rate)`);
-    
-    // STEP 4: Validate content quality
-    const contentPreview = Array.isArray(masterContent.content) 
-      ? masterContent.content.join(' ') 
-      : masterContent.content;
-    
-    const qualityScore = validateContentQuality(contentPreview);
-    console.log(`[QUALITY] Content quality score: ${(qualityScore * 100).toFixed(1)}%`);
-    
-    if (qualityScore < 0.6) {
-      console.warn('[QUALITY] ⚠️ Content quality below threshold, using fallback...');
-      // Don't retry, just use fallback to avoid infinite loops
-      throw new Error('Quality too low');
-    }
-    
-    // Generate decision ID and timing
+    // Orchestrator already did all the work - just format for storage
     const decision_id = uuidv4();
     
-    // Calculate optimal scheduling (use growth engine timing)
+    // Calculate optimal scheduling
     const delayMinutes = 30 + Math.random() * 60;
     const scheduledTime = new Date(Date.now() + delayMinutes * 60 * 1000);
     
-    // STEP 5: Post-process content to remove robotic patterns
-    let cleanedContent = masterContent.content;
-    
-    if (Array.isArray(cleanedContent)) {
-      // Clean each tweet in thread
-      cleanedContent = cleanedContent.map(tweet => cleanRoboticPatterns(tweet));
-    } else {
-      cleanedContent = cleanRoboticPatterns(cleanedContent);
-    }
-    
     // Handle both single tweets and threads
-    const contentText = Array.isArray(cleanedContent) 
-      ? cleanedContent.join('\n\n') // Join thread tweets with double newlines
-      : cleanedContent;
+    const contentText = Array.isArray(orchestratedContent.content) 
+      ? orchestratedContent.content.join('\n\n') // Join thread tweets
+      : orchestratedContent.content;
+    
+    // Validate content quality
+    const qualityScore = validateContentQuality(contentText);
+    console.log(`[QUALITY] Content quality score: ${(qualityScore * 100).toFixed(1)}%`);
+    
+    if (qualityScore < 0.6) {
+      console.warn('[QUALITY] ⚠️ Content quality below threshold');
+      throw new Error('Quality too low');
+    }
     
     // Prepare predictions for learning system
     const predictedMetrics = {
-      engagement_rate: masterContent.expected_outcomes.engagement_rate_prediction,
-      viral_potential: masterContent.expected_outcomes.viral_coefficient_prediction,
+      engagement_rate: 0.05, // Baseline prediction
+      viral_potential: 0.8,
       optimal_timing: scheduledTime.toISOString()
     };
     
     const contentMetadata = {
-      topic: 'health_optimization',
-      format: masterContent.format,
-      hook_type: masterContent.hook_used.hook_category,
-      evidence_type: 'statistical_evidence',
-      has_statistics: masterContent.content_characteristics.has_statistics,
-      has_controversy: masterContent.content_characteristics.has_controversy,
-      // Master content specific metadata
-      generation_method: masterContent.generation_method,
-      hook_evolution_generation: masterContent.hook_used.evolution_generation,
-      viral_formula_used: masterContent.viral_formula_applied.formula_name,
-      follower_magnet_score: masterContent.follower_magnet_score,
-      confidence_score: masterContent.confidence_score,
-      // Phase 1: Content type tracking
-      content_type_id: contentTypeSelection.selectedType.type_id,
-      content_type_name: contentTypeSelection.selectedType.name
+      topic: orchestratedContent.metadata.topic,
+      format: orchestratedContent.format,
+      generator: orchestratedContent.metadata.generator_used,
+      has_research: orchestratedContent.metadata.has_research,
+      narrative_type: orchestratedContent.metadata.narrative_type,
+      chaos_applied: orchestratedContent.metadata.chaos_applied
     };
     
     // Process with learning system
@@ -296,24 +233,19 @@ async function generateContentWithLLM(): Promise<ContentDecision> {
       decision_id,
       decision_type: 'content',
       content: contentText,
-      bandit_arm: `master_${masterContent.generation_method}_${masterContent.format}`,
-      timing_arm: 'master_timing',
+      bandit_arm: `orchestrator_${orchestratedContent.metadata.generator_used}_${orchestratedContent.format}`,
+      timing_arm: 'orchestrator_timing',
       scheduled_at: scheduledTime.toISOString(),
-      quality_score: masterContent.confidence_score,
+      quality_score: orchestratedContent.confidence,
       predicted_er: predictedMetrics.engagement_rate,
-      topic_cluster: 'health_optimization',
-      generation_source: 'master',
+      topic_cluster: orchestratedContent.metadata.topic,
+      generation_source: 'orchestrator',
       // Advanced metadata
       enhanced_generation: true,
-      uniqueness_indicators: masterContent.content_characteristics.credibility_signals,
-      contrarian_angle: masterContent.hook_used.hook_text,
-      content_format: masterContent.format,
-      thread_tweets: Array.isArray(masterContent.content) ? masterContent.content : undefined,
-      // CRITICAL: Add metadata for rotation tracking
-      content_type_id: contentTypeSelection.selectedType.type_id,
-      content_type_name: contentTypeSelection.selectedType.name,
-      viral_formula: masterContent.viral_formula_applied?.formula_name || 'unknown',
-      hook_used: masterContent.hook_used?.hook_text || 'unknown'
+      uniqueness_indicators: [orchestratedContent.metadata.generator_used],
+      contrarian_angle: orchestratedContent.metadata.generator_used === 'contrarian' ? 'yes' : 'no',
+      content_format: orchestratedContent.format,
+      thread_tweets: Array.isArray(orchestratedContent.content) ? orchestratedContent.content : undefined
     } as any;
 
     planMetrics.calls_success++;
