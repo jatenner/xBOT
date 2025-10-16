@@ -166,7 +166,9 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
       quality_score: row.quality_score ? Number(row.quality_score) : undefined,
       topic_cluster: String(row.topic_cluster ?? ''),
       status: String(row.status ?? 'ready_for_posting'),
-      created_at: String(row.created_at ?? new Date().toISOString())
+      created_at: String(row.created_at ?? new Date().toISOString()),
+      // CRITICAL: Pass through features for thread_tweets
+      features: row.features as any
     }));
     
     return decisions;
