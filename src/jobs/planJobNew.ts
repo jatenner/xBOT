@@ -201,6 +201,12 @@ async function generateContentWithLLM(): Promise<ContentDecision> {
       ? orchestratedContent.content.join('\n\n') // Join thread tweets
       : orchestratedContent.content;
     
+    // VALIDATE: Ensure content exists and is a string
+    if (!contentText || typeof contentText !== 'string' || contentText.trim().length === 0) {
+      console.error('[ORCHESTRATOR] ❌ Invalid content returned:', contentText);
+      throw new Error('Orchestrator returned invalid content');
+    }
+    
     // Validate content quality
     const qualityScore = validateContentQuality(contentText);
     console.log(`[QUALITY] Content quality score: ${(qualityScore * 100).toFixed(1)}%`);
@@ -351,6 +357,12 @@ async function storeContentDecisions(decisions: ContentDecision[]): Promise<void
  * Validate content quality to reject generic/boring content
  */
 function validateContentQuality(content: string): number {
+  // SAFETY: Ensure content is valid
+  if (!content || typeof content !== 'string') {
+    console.error('[QUALITY] ⚠️ Invalid content passed to validator:', typeof content);
+    return 0.5; // Return low quality score for invalid content
+  }
+  
   let qualityScore = 1.0;
   
   // Penalize generic phrases heavily

@@ -5,6 +5,7 @@
  */
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
+import { validateAndExtractContent, createFallbackContent } from './generatorUtils';
 
 export interface ProvocateurContent {
   content: string | string[];
@@ -75,7 +76,7 @@ ${format === 'thread' ? 'Build a provocative case that makes people want to deba
     const parsed = JSON.parse(response.choices[0].message.content || '{}');
     
     return {
-      content: parsed.content || (format === 'thread' ? parsed.thread : parsed.tweet),
+      content: validateAndExtractContent(parsed, format, 'GENERATOR'),
       format,
       confidence: 0.9
     };

@@ -5,6 +5,7 @@
  */
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
+import { validateAndExtractContent, createFallbackContent } from './generatorUtils';
 
 export interface MythBusterContent {
   content: string | string[];
@@ -73,7 +74,7 @@ ${format === 'thread' ? 'Break down why this myth is wrong and what the truth ac
     const parsed = JSON.parse(response.choices[0].message.content || '{}');
     
     return {
-      content: parsed.content || (format === 'thread' ? parsed.thread : parsed.tweet),
+      content: validateAndExtractContent(parsed, format, 'GENERATOR'),
       format,
       confidence: 0.85
     };

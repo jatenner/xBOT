@@ -5,6 +5,7 @@
  */
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
+import { validateAndExtractContent, createFallbackContent } from './generatorUtils';
 
 export interface ExplorerContent {
   content: string | string[];
@@ -75,7 +76,7 @@ ${format === 'thread' ? 'Take us on an exploratory journey through an interestin
     const parsed = JSON.parse(response.choices[0].message.content || '{}');
     
     return {
-      content: parsed.content || (format === 'thread' ? parsed.thread : parsed.tweet),
+      content: validateAndExtractContent(parsed, format, 'GENERATOR'),
       format,
       confidence: 0.75
     };
