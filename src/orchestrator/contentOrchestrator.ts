@@ -39,6 +39,9 @@ export interface OrchestratedContent {
     has_research: boolean;
     narrative_type?: string;
     chaos_applied: boolean;
+    viral_score?: number;
+    quality_score?: number;
+    hook_pattern?: string;
   };
   confidence: number;
 }
@@ -134,12 +137,49 @@ export class ContentOrchestrator {
       console.log(`[ORCHESTRATOR] 👤 Added human touch: ${humanTouch}`);
     }
     
+    // === PHASE 1: VIRAL OPTIMIZATION & QUALITY ===
+    console.log('[ORCHESTRATOR] 🎯 Applying viral optimization...');
+    
+    // Format for Twitter readability
+    let finalContent = formatForTwitter(generatedContent.content);
+    
+    // Calculate viral potential score
+    const viralScore = calculateViralPotential(finalContent);
+    console.log(`[ORCHESTRATOR] 📊 Viral Score: ${viralScore.total_score}/100`);
+    viralScore.breakdown.forEach(b => console.log(`  ${b}`));
+    
+    // Quality gate: reject if too generic
+    const contentText = Array.isArray(finalContent) ? finalContent.join(' ') : finalContent;
+    if (isTooGeneric(contentText)) {
+      console.error('[ORCHESTRATOR] ❌ Content too generic, will retry...');
+      throw new Error('Content too generic - rejected by quality gate');
+    }
+    
+    // Quality validation
+    const quality = validateContentQuality(contentText);
+    if (!quality.passed) {
+      console.warn(`[ORCHESTRATOR] ⚠️ Quality issues (${quality.score}/100):`);
+      quality.issues.forEach(i => console.warn(`  - ${i}`));
+    }
+    
+    // Viral threshold check
+    if (!meetsViralThreshold(viralScore, 50)) {
+      console.error('[ORCHESTRATOR] ❌ Viral score too low (<50), rejected');
+      const suggestions = getImprovementSuggestions(viralScore);
+      suggestions.forEach(s => console.error(`  ${s}`));
+      throw new Error(`Viral score too low: ${viralScore.total_score}/100`);
+    }
+    
+    if (viralScore.total_score >= 70) {
+      console.log('[ORCHESTRATOR] 🔥 HIGH VIRAL POTENTIAL - Prioritize posting!');
+    }
+    
     // STEP 9: Store in post history
     await postHistory.addPost({
       post_id: `temp_${Date.now()}`,
-      content: Array.isArray(generatedContent.content) 
-        ? generatedContent.content.join(' | ') 
-        : generatedContent.content,
+      content: Array.isArray(finalContent) 
+        ? finalContent.join(' | ') 
+        : finalContent,
       topic,
       generator_used: generator,
       created_at: new Date().toISOString()
@@ -148,16 +188,19 @@ export class ContentOrchestrator {
     console.log(`[ORCHESTRATOR] ✅ Content generated successfully`);
     
     return {
-      content: generatedContent.content,
+      content: finalContent,
       format: generatedContent.format,
       metadata: {
         generator_used: generator,
         topic,
         has_research: research.hasResearch,
         narrative_type: narrativeOpp?.type,
-        chaos_applied: chaosDecision.shouldBreakRules
+        chaos_applied: chaosDecision.shouldBreakRules,
+        viral_score: viralScore.total_score,
+        quality_score: quality.score,
+        hook_pattern: viralScore.hook_score > 0 ? 'detected' : 'none'
       },
-      confidence: generatedContent.confidence
+      confidence: Math.min((viralScore.total_score / 100) * 0.7 + (quality.score / 100) * 0.3, 0.95)
     };
   }
   
