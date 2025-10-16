@@ -53,7 +53,7 @@ Tweet 2: Exact timing/quantities
 Tweet 3: Why it works (mechanism)
 Tweet 4: Common mistakes to avoid
 ` : `
-OUTPUT: Return single tweet (180-250 chars):
+OUTPUT FORMAT: Return single tweet as json object (180-250 chars):
 Protocol + timing + mechanism
 `}`;
 

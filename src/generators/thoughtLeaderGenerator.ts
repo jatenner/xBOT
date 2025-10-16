@@ -47,13 +47,13 @@ Use this to support your authoritative claims.
 ` : ''}
 
 ${format === 'thread' ? `
-OUTPUT: Return JSON array of 3-5 tweets (150-230 chars each):
+OUTPUT FORMAT: Return response as json object with array of 3-5 tweets (150-230 chars each):
 Tweet 1: Bold authoritative claim
 Tweet 2: Evidence supporting claim
 Tweet 3: Mechanism/why it's true
 Tweet 4: Implications for how we should think
 ` : `
-OUTPUT: Return single tweet (180-250 chars):
+OUTPUT FORMAT: Return single tweet as json object (180-250 chars):
 Bold claim + evidence + why it matters
 `}`;
 
