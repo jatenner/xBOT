@@ -434,27 +434,36 @@ TOP VOICE ELEMENTS: ${metaInsights.effective_voice_elements.slice(0, 3).map(v =>
 ENGAGEMENT TRIGGERS: ${metaInsights.engagement_triggers.slice(0, 2).map(t => t.trigger_type).join(', ')}
 
 === CRITICAL REQUIREMENTS ===
-1. NATURAL WRITING - Write like a smart human, not a template
-2. VARY OPENINGS - Each post should start differently
-3. SHORT & PUNCHY - Twitter-optimized length (threads: 150-230 chars per tweet, single: 180-250 chars)
-4. SPECIFIC INSIGHTS - Include numbers, mechanisms, non-obvious details
-5. NO REPETITION - Avoid repetitive phrases or patterns
-6. PROPER THREADING - If thread, return array of separate tweets that flow naturally
+1. DEPTH & SUBSTANCE - Don't just say WHAT, explain HOW and WHY with mechanisms
+2. NATURAL WRITING - Write like a smart human expert, not a listicle or template
+3. VARY OPENINGS - Each post should start differently
+4. SPECIFIC & ACTIONABLE - Include exact numbers, protocols, mechanisms, and HOW to actually do it
+5. NO NUMBERED LISTS - Never use "1. **Title**: content" format - it screams AI
+6. NO BOLD FORMATTING - Never use **bold text** - write naturally without markdown
+7. CONVERSATIONAL FLOW - Write like you're explaining to a smart friend, not writing a textbook
+8. PROPER THREADING - If thread, return array of separate tweets that flow naturally
 
-=== THREAD FORMAT RULES ===
+=== CONTENT DEPTH RULES ===
 ${format === 'thread' ? `
-THREAD (4-6 tweets):
-- Each tweet is a SEPARATE STRING in the array
+THREAD (4-6 tweets) - DEPTH REQUIRED:
 - Each tweet: 150-230 characters MAX
-- Flow: Hook → Insight 1 → Insight 2 → Insight 3 → Actionable → (Optional) CTA
-- Each tweet should be understandable standalone
-- NO "🧵" or "thread below" or "1/" numbering
-- Natural progression, not robotic list
+- Tweet 1 (Hook): Lead with surprising insight or contrarian claim
+- Tweet 2-3 (Mechanism): Explain HOW and WHY it works (actual biology/psychology)
+- Tweet 4-5 (Action): SPECIFIC protocol with exact numbers, timing, methods
+- Tweet 6 (Insight): Non-obvious key that makes it work
+- NO numbered lists (1., 2., 3.)
+- NO bold formatting (**text**)
+- NO generic advice ("eat healthy", "exercise more")
+- Each tweet adds NEW depth, not repetition
+- Write like explaining to a smart friend over coffee
 ` : `
-SINGLE TWEET:
-- One powerful insight: 180-250 characters
-- Complete thought, not a teaser
-- Strong opening, valuable content, natural end
+SINGLE TWEET (180-250 chars) - SUBSTANCE REQUIRED:
+- Lead with surprising mechanism or non-obvious insight
+- Include specific number or research finding
+- Explain WHY it works (biological/psychological mechanism)
+- Add actionable detail if space allows
+- NO generic advice - must be specific and insightful
+- Write conversationally, not like a textbook
 `}
 
 FORMAT: ${format}
@@ -463,18 +472,41 @@ CATEGORY: ${topicSelection.category.name}
 
 ${hybridType ? `\nHYBRID TYPE: ${hybridType.name}\nHYBRID STRUCTURE: ${hybridType.structure}\nEXAMPLE STYLE: ${hybridType.examples[0]}` : ''}`;
 
-    const userPrompt = `Create ${format} content about "${selectedTopic}" using your full intelligence:
+    const userPrompt = `Create ${format} content about "${selectedTopic}" that would make ME want to follow this account.
 
 CONTEXT: ${contextGuidance.reasoning}
 PSYCHOLOGY: ${psychGuidance.primary_motive.name} - ${psychGuidance.voice_guidance}
 ${hybridType ? `HYBRID FORMAT: ${hybridType.name} - ${hybridType.description}` : ''}
 
-Make it:
-- NATURALLY engaging (not formulaic)
-- VALUABLE enough people want to follow
-- SPECIFIC with data, examples, mechanisms
-- VARIED in structure (don't repeat patterns)
-- AUTHENTIC to the voice and context
+DEPTH REQUIREMENTS (CRITICAL):
+- Don't just say WHAT (e.g., "cultivate connections")
+- Explain HOW with specific steps (e.g., "weekly face-to-face with 3-5 people, shared activities that create vulnerability")
+- Explain WHY with mechanisms (e.g., "mortality risk from isolation = smoking 15 cigs/day")
+- Include the KEY insight (e.g., "reciprocal emotional support matters, not quantity")
+- Add non-obvious details that show expertise
+
+FORBIDDEN PATTERNS:
+❌ "1. **Title**: Generic advice"
+❌ "2. **Title**: Generic advice"
+❌ Any numbered list format
+❌ Any **bold** formatting
+❌ Generic advice without HOW ("eat healthy", "exercise more", "get sleep")
+❌ Surface-level claims without mechanisms
+❌ "Here's everything for free" or template phrases
+
+REQUIRED ELEMENTS:
+✅ Specific numbers (timing, quantity, percentages)
+✅ Biological/psychological mechanisms
+✅ Exact protocols people can follow
+✅ Non-obvious insights that surprise
+✅ Conversational expert voice
+✅ Each sentence adds NEW information (no repetition)
+
+EXAMPLE OF DEPTH:
+BAD: "Social connections matter. Cultivate meaningful relationships for better health."
+GOOD: "The loneliness epidemic isn't just sad - it's lethal. Isolation mortality risk = smoking 15 cigs/day. What works: weekly face-to-face with 3-5 people, shared activities creating vulnerability, being first to reach out. Key: reciprocal emotional support beats quantity."
+
+Write content with THIS level of depth and substance.
 
 ${format === 'thread' ? `
 Output as JSON:
