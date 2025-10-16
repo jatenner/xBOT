@@ -340,52 +340,113 @@ export class FollowerAcquisitionGenerator {
   }
   
   private async generateContentWithFormula(formula: ViralFormula, request: any): Promise<any> {
-    const topics = formula.best_topics.length > 0 ? formula.best_topics : [
-      'metabolism optimization', 'sleep quality', 'nutrition myths', 'exercise science'
-    ];
+    // STEP 1: Get context from ALL new intelligence systems
+    const { getTopicExpansion } = await import('../intelligence/topicExpansion');
+    const { getContextualIntelligence } = await import('../intelligence/contextualIntelligence');
+    const { getFollowerPsychology } = await import('../intelligence/followerPsychology');
+    const { getHybridContentTypes } = await import('../intelligence/hybridContentTypes');
+    const { getMetaLearning } = await import('../intelligence/metaLearning');
     
-    const selectedTopic = request.topic_preference || topics[Math.floor(Math.random() * topics.length)];
+    const topicExpansion = getTopicExpansion();
+    const contextIntel = getContextualIntelligence();
+    const psychology = getFollowerPsychology();
+    const hybrids = getHybridContentTypes();
+    const metaLearning = getMetaLearning();
+    
+    // Get contextual guidance
+    const context = contextIntel.getCurrentContext();
+    const contextGuidance = contextIntel.getContextualGuidance();
+    
+    // Get follower psychology
+    const psychGuidance = psychology.getPsychologyGuidance();
+    
+    // Get topic (diverse, not just health!)
+    const topicSelection = await topicExpansion.selectTopic();
+    const selectedTopic = request.topic_preference || topicSelection.specific_angle;
+    
+    // Check for hybrid type
+    const hybridType = hybrids.getHybridType();
+    
+    // Get meta-learning insights
+    const metaInsights = await metaLearning.getMetaInsights();
+    
+    console.log(`[CONTENT_INTELLIGENCE] 🧠 Context: ${context.timeOfDay}, ${context.dayOfWeek}`);
+    console.log(`[CONTENT_INTELLIGENCE] 🎯 Topic: ${selectedTopic}`);
+    console.log(`[CONTENT_INTELLIGENCE] 🧬 Psychology: ${psychGuidance.primary_motive.name}`);
+    if (hybridType) {
+      console.log(`[CONTENT_INTELLIGENCE] 🔀 Hybrid: ${hybridType.name}`);
+    }
     
     // Determine format
     const format = request.format_preference === 'auto' 
       ? (formula.name.includes('Thread') ? 'thread' : 'single')
-      : (request.format_preference || 'single');
+      : (request.format_preference || contextGuidance.recommended_format || 'single');
     
-    const systemPrompt = `You are @SignalAndSynapse, a health optimization expert known for viral, follower-attracting content.
+    // ENHANCED SYSTEM PROMPT with ALL intelligence systems
+    const systemPrompt = `You are @SignalAndSynapse, an expert on ${topicSelection.category.name} known for viral, follower-attracting content.
 
-VIRAL FORMULA: ${formula.name}
-HOOK PATTERN: ${formula.hook_pattern}
-CONTENT STRUCTURE: ${formula.content_structure}
-EVIDENCE TYPE: ${formula.evidence_type}
+=== CONTEXTUAL AWARENESS ===
+TIME: ${context.timeOfDay} on ${context.dayOfWeek} (${context.season})
+CONTEXT GUIDANCE: ${contextGuidance.reasoning}
+TONE: ${contextGuidance.recommended_tone}
 
-FOLLOWER MAGNET REQUIREMENTS:
-- Create content that makes people IMMEDIATELY want to follow for more
-- Include credibility signals that build trust and authority
-- Use specific, surprising insights that showcase expertise
-- End with subtle follow triggers that feel natural
-- Make the value so high that NOT following feels like a mistake
+=== VIRAL FORMULA ===
+FORMULA: ${formula.name}
+STRUCTURE: ${hybridType ? hybridType.structure : formula.content_structure}
+EVIDENCE: ${formula.evidence_type}
 
-CONTENT RULES:
+=== FOLLOWER PSYCHOLOGY ===
+PRIMARY MOTIVE: ${psychGuidance.primary_motive.name} - ${psychGuidance.primary_motive.description}
+VOICE: ${psychGuidance.voice_guidance}
+MUST INCLUDE: ${psychGuidance.content_instructions.join(', ')}
+AVOID: ${psychGuidance.avoid.join(', ')}
+
+=== CONTENT TYPE DETAILS ===
+TYPE: ${request.content_type_name || 'Educational'}
+STRUCTURE: ${request.content_type_structure || 'Standard'}
+HOOK STYLE: ${request.content_type_hook_style || 'Natural'}
+LENGTH: ${request.content_type_length || 'Medium'}
+VALUE PROP: ${request.content_type_value_prop || 'Informative'}
+
+=== META-LEARNING INSIGHTS ===
+TOP VOICE ELEMENTS: ${metaInsights.effective_voice_elements.slice(0, 3).map(v => v.element).join(', ')}
+ENGAGEMENT TRIGGERS: ${metaInsights.engagement_triggers.slice(0, 2).map(t => t.trigger_type).join(', ')}
+
+=== CORE REQUIREMENTS ===
+- Create content that makes people IMMEDIATELY want to follow
+- Be NATURAL and CONVERSATIONAL, not robotic or templated
+- Vary your opening - NOT every post needs a formulaic hook
+- Include specific, surprising insights that showcase expertise
+- Build authority through demonstration, not claims
+- Make following feel essential through sheer value
+
+=== CONTENT RULES ===
 - NEVER use hashtags or emojis
-- Lead with surprising, counterintuitive insights
-- Include specific numbers, studies, or mechanisms
-- Build authority through demonstration of expertise
-- Create "aha moments" that make people think differently
-- End with value that makes following feel essential
+- Be specific with numbers, studies, mechanisms
+- Vary sentence structure and length
+- Some posts start mid-conversation, others with bold claims
+- Mix tones: sometimes provocative, sometimes educational, sometimes storytelling
+- End naturally - no forced CTAs every time
 
-FORMAT: ${format === 'thread' ? 'Create 4-6 tweets for a thread' : 'Create a single powerful tweet'}
+FORMAT: ${format === 'thread' ? `Create ${hybridType ? '4-5 tweets' : '4-6 tweets'} for a thread` : 'Create a single powerful tweet'}
 TOPIC: ${selectedTopic}
-MAX CHARS PER TWEET: 250`;
+CATEGORY: ${topicSelection.category.name}
+MAX CHARS PER TWEET: 250
 
-    const userPrompt = `Create ${format} content about ${selectedTopic} using the ${formula.name} formula.
+${hybridType ? `\nHYBRID TYPE: ${hybridType.name}\nHYBRID STRUCTURE: ${hybridType.structure}\nEXAMPLE STYLE: ${hybridType.examples[0]}` : ''}`;
 
-Requirements:
-- Hook: ${formula.hook_pattern}
-- Structure: ${formula.content_structure}  
-- Evidence: ${formula.evidence_type}
-- Goal: Attract new followers who want more insights like this
+    const userPrompt = `Create ${format} content about "${selectedTopic}" using your full intelligence:
 
-Make it so valuable and authoritative that people immediately want to follow for more content like this.
+CONTEXT: ${contextGuidance.reasoning}
+PSYCHOLOGY: ${psychGuidance.primary_motive.name} - ${psychGuidance.voice_guidance}
+${hybridType ? `HYBRID FORMAT: ${hybridType.name} - ${hybridType.description}` : ''}
+
+Make it:
+- NATURALLY engaging (not formulaic)
+- VALUABLE enough people want to follow
+- SPECIFIC with data, examples, mechanisms
+- VARIED in structure (don't repeat patterns)
+- AUTHENTIC to the voice and context
 
 ${format === 'thread' ? `
 Output as JSON:
