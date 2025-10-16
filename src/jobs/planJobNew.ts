@@ -22,6 +22,40 @@ function hashContent(content: string): string {
   return Buffer.from(content).toString('base64').slice(0, 16);
 }
 
+/**
+ * Clean robotic patterns from AI-generated content
+ * Strips numbered lists, bold formatting, and template phrases
+ */
+function cleanRoboticPatterns(content: string): string {
+  let cleaned = content;
+  
+  // Remove numbered list formatting (1., 2., 3. etc at start of lines)
+  cleaned = cleaned.replace(/^\d+\.\s+/gm, '');
+  cleaned = cleaned.replace(/\n\d+\.\s+/g, '\n');
+  
+  // Remove bold markdown formatting
+  cleaned = cleaned.replace(/\*\*([^*]+)\*\*/g, '$1');
+  
+  // Remove thread indicators
+  cleaned = cleaned.replace(/🧵/g, '');
+  cleaned = cleaned.replace(/thread below/gi, '');
+  cleaned = cleaned.replace(/\d+\/\d+\s+/g, ''); // Remove 1/5, 2/5 etc
+  
+  // Replace template phrases with more natural alternatives
+  cleaned = cleaned.replace(/Here's everything for free:/gi, 'What you need to know:');
+  cleaned = cleaned.replace(/Most people think X, but research shows Y/gi, 'Common belief vs. research:');
+  
+  // Remove multiple spaces
+  cleaned = cleaned.replace(/\s+/g, ' ');
+  
+  // Trim
+  cleaned = cleaned.trim();
+  
+  console.log('[POST_PROCESS] 🧹 Cleaned robotic patterns from content');
+  
+  return cleaned;
+}
+
 import { getSupabaseClient } from '../db/index';
 
 interface ContentDecision {
@@ -142,12 +176,17 @@ async function generateContentWithLLM(): Promise<ContentDecision> {
   console.log('🚀 MASTER_GENERATOR: Using follower-optimized content system with learning...');
   
   try {
+    // STEP 0: Get optimal growth strategy from FollowerGrowthEngine
+    console.log('[GROWTH_ENGINE] 🚀 Getting optimal follower growth strategy...');
+    const growthStrategy = await followerGrowthEngine.getOptimalGrowthStrategy();
+    console.log(`[GROWTH_ENGINE] ✅ Strategy: ${growthStrategy.content_type}, Hook: ${growthStrategy.hook_strategy}`);
+    
     // STEP 1: Select optimal content type (Phase 1: Content Type Diversity)
     const { getContentTypeSelector } = await import('../intelligence/contentTypeSelector');
     const contentTypeSelector = getContentTypeSelector();
     
     const contentTypeSelection = await contentTypeSelector.selectContentType({
-      format: 'both',
+      format: growthStrategy.content_type === 'thread' ? 'thread' : 'both', // Prioritize growth strategy
       goal: 'followers'
     });
     
@@ -201,14 +240,24 @@ async function generateContentWithLLM(): Promise<ContentDecision> {
     // Generate decision ID and timing
     const decision_id = uuidv4();
     
-    // Calculate optimal scheduling (30-90 minutes from now)
+    // Calculate optimal scheduling (use growth engine timing)
     const delayMinutes = 30 + Math.random() * 60;
     const scheduledTime = new Date(Date.now() + delayMinutes * 60 * 1000);
     
+    // STEP 5: Post-process content to remove robotic patterns
+    let cleanedContent = masterContent.content;
+    
+    if (Array.isArray(cleanedContent)) {
+      // Clean each tweet in thread
+      cleanedContent = cleanedContent.map(tweet => cleanRoboticPatterns(tweet));
+    } else {
+      cleanedContent = cleanRoboticPatterns(cleanedContent);
+    }
+    
     // Handle both single tweets and threads
-    const contentText = Array.isArray(masterContent.content) 
-      ? masterContent.content.join('\n\n') // Join thread tweets with double newlines
-      : masterContent.content;
+    const contentText = Array.isArray(cleanedContent) 
+      ? cleanedContent.join('\n\n') // Join thread tweets with double newlines
+      : cleanedContent;
     
     // Prepare predictions for learning system
     const predictedMetrics = {
