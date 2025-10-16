@@ -37,6 +37,15 @@ STYLE:
 - NO numbered lists, NO bold text
 - Write like you're starting a bar fight (intellectually)
 
+=== VIRAL OPTIMIZATION ===
+HOOK PATTERNS (vary each time):
+- Bold claim: "Your X advice is making Y worse."
+- Reversal: "X doesn't cause Y. Z does."
+- Number shock: "73% of experts are wrong about X."
+
+❌ BANNED: "optimize health", "boost energy", "holistic approach"
+✅ REQUIRED: Specific numbers, named sources (Stanford/MIT), concrete actions
+
 ${research ? `
 RESEARCH AMMUNITION:
 Finding: ${research.finding}

@@ -23,6 +23,13 @@ import { getResearchCurator } from '../research/researchCurator';
 import { getPersonalityScheduler, GeneratorType } from '../scheduling/personalityScheduler';
 import { getImperfectionInjector } from '../chaos/imperfectionInjector';
 
+// PHASE 1: Quality & Viral Optimization
+import { calculateViralPotential, meetsViralThreshold, getImprovementSuggestions } from '../learning/viralScoring';
+import { formatForTwitter, validateContentQuality, isTooGeneric } from '../content/contentFormatter';
+
+// PHASE 2: Learning & Attribution
+import { initializePostAttribution } from '../learning/engagementAttribution';
+
 export interface OrchestratedContent {
   content: string | string[];
   format: 'single' | 'thread';
