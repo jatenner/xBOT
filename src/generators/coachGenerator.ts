@@ -47,7 +47,7 @@ Use this to ground your protocol recommendations.
 ` : ''}
 
 ${format === 'thread' ? `
-OUTPUT: Return JSON array of 3-5 tweets (150-230 chars each):
+OUTPUT FORMAT: Return response as json object with array of 3-5 tweets (150-230 chars each):
 Tweet 1: The protocol (what to do)
 Tweet 2: Exact timing/quantities
 Tweet 3: Why it works (mechanism)
