@@ -29,26 +29,29 @@ export class ImperfectionInjector {
   }
   
   /**
-   * Decide if we should inject imperfection
+   * Decide if we should inject imperfection (30% CHAOS!)
    */
   shouldInjectChaos(): ChaosDecision {
     const roll = Math.random();
     
-    // 80% normal behavior
-    if (roll > 0.2) {
+    // 70% normal behavior (down from 80%)
+    if (roll > 0.3) {
       return {
         shouldBreakRules: false,
         type: 'none',
-        reasoning: 'Following schedule'
+        reasoning: 'Following selection algorithm'
       };
     }
     
-    // 20% CHAOS TIME!
+    // 30% CHAOS TIME! (up from 20%)
     const chaosType = roll;
     
-    if (chaosType < 0.08) {
-      // 8% - Use wrong generator
-      const randomGenerators: GeneratorType[] = ['contrarian', 'data_nerd', 'storyteller', 'coach', 'explorer', 'thought_leader'];
+    if (chaosType < 0.12) {
+      // 12% - Use completely random generator
+      const randomGenerators: GeneratorType[] = [
+        'contrarian', 'data_nerd', 'storyteller', 'coach', 'explorer', 'thought_leader',
+        'myth_buster', 'news_reporter', 'philosopher', 'provocateur'
+      ];
       const randomGen = randomGenerators[Math.floor(Math.random() * randomGenerators.length)];
       
       return {
@@ -59,8 +62,8 @@ export class ImperfectionInjector {
       };
     }
     
-    if (chaosType < 0.12) {
-      // 4% - Random format switch
+    if (chaosType < 0.18) {
+      // 6% - Random format switch
       const randomFormat: FormatType = Math.random() < 0.5 ? 'single' : 'thread';
       
       return {
@@ -71,8 +74,8 @@ export class ImperfectionInjector {
       };
     }
     
-    if (chaosType < 0.16) {
-      // 4% - Completely random topic
+    if (chaosType < 0.24) {
+      // 6% - Completely random topic
       const randomTopics = [
         'productivity',
         'decision making',
@@ -91,8 +94,11 @@ export class ImperfectionInjector {
       };
     }
     
-    // 4% - Multiple overrides (maximum chaos!)
-    const randomGenerators: GeneratorType[] = ['contrarian', 'data_nerd', 'storyteller', 'coach', 'explorer', 'thought_leader'];
+    // 6% - Multiple overrides (maximum chaos!)
+    const randomGenerators: GeneratorType[] = [
+      'contrarian', 'data_nerd', 'storyteller', 'coach', 'explorer', 'thought_leader',
+      'myth_buster', 'news_reporter', 'philosopher', 'provocateur'
+    ];
     const randomGen = randomGenerators[Math.floor(Math.random() * randomGenerators.length)];
     const randomFormat: FormatType = Math.random() < 0.5 ? 'single' : 'thread';
     
