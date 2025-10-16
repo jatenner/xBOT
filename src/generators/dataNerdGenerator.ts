@@ -5,6 +5,7 @@
  */
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
+import { validateAndExtractContent, createFallbackContent } from './generatorUtils';
 
 export interface DataNerdContent {
   content: string | string[];
@@ -71,9 +72,10 @@ ${format === 'thread' ? 'Break down a study with all the juicy details and mecha
     }, { purpose: 'data_nerd_content_generation' });
 
     const parsed = JSON.parse(response.choices[0].message.content || '{}');
+    const content = validateAndExtractContent(parsed, format, 'DATA_NERD');
     
     return {
-      content: parsed.content || (format === 'thread' ? parsed.thread : parsed.tweet),
+      content,
       format,
       confidence: 0.9
     };
