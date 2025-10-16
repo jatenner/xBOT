@@ -67,6 +67,12 @@ export class FollowerAcquisitionGenerator {
     content_goal?: 'viral' | 'authority' | 'value' | 'controversy';
     topic_preference?: string;
     format_preference?: 'single' | 'thread';
+    // CONTENT TYPE DIVERSITY - Use selected type details
+    content_type_name?: string;
+    content_type_structure?: string;
+    content_type_hook_style?: string;
+    content_type_length?: string;
+    content_type_value_prop?: string;
   } = {}): Promise<FollowerMagnetContent> {
     
     console.log('[FOLLOWER_GENERATOR] 🧲 Generating follower magnet content...');

@@ -168,7 +168,13 @@ async function generateContentWithLLM(): Promise<ContentDecision> {
       topic_preference: topicPreference, // Use top performing topic
       use_evolved_hooks: true,
       apply_viral_formulas: true,
-      optimize_for_followers: true
+      optimize_for_followers: true,
+      // PASS FULL CONTENT TYPE DETAILS FOR DIVERSITY!
+      content_type_name: contentTypeSelection.selectedType.name,
+      content_type_structure: contentTypeSelection.selectedType.typical_structure,
+      content_type_hook_style: contentTypeSelection.selectedType.hook_style,
+      content_type_length: contentTypeSelection.selectedType.typical_length,
+      content_type_value_prop: contentTypeSelection.selectedType.value_proposition
     });
 
     console.log(`✅ MASTER_CONTENT: Generated ${masterContent.format} content`);
