@@ -62,11 +62,9 @@ RUN npx playwright install chromium
 # Copy compiled artifacts from builder
 COPY --from=builder /app/dist ./dist
 
-# Copy scripts for migrations
+# Copy scripts and tools
 COPY scripts ./scripts
-
-# Copy tools for startup (if exists)
-COPY tools/start.js ./tools/start.js 2>/dev/null || true
+COPY tools ./tools
 
 # Health check - more lenient for Railway
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
