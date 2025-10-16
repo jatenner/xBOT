@@ -48,6 +48,53 @@ export interface MasterContentOutput {
 
 export class MasterContentGenerator {
   /**
+   * Fill hook template with real health content
+   */
+  private fillHookTemplate(hookText: string, topicContext: string): string {
+    // If hook has template variables, fill them with real content
+    if (hookText.includes('X') && hookText.includes('Y')) {
+      const healthMisconceptions = {
+        'X': [
+          'cold showers boost immunity',
+          'breakfast is the most important meal',
+          'fat makes you fat',
+          'cardio is best for fat loss',
+          '8 hours of sleep is mandatory',
+          'stretching prevents injuries',
+          'protein shakes are necessary',
+          'intermittent fasting works for everyone'
+        ],
+        'Y': [
+          'cold exposure can suppress your immune system without proper adaptation',
+          'meal timing matters less than total nutrition quality',
+          'insulin resistance and inflammation are the real culprits',
+          'strength training burns more fat long-term through metabolic adaptation',
+          'sleep quality and consistency matter more than arbitrary hour targets',
+          'proper warm-ups and progressive loading prevent injuries better',
+          'whole food protein sources provide better nutrient density',
+          'metabolic flexibility requires personalized carb tolerance testing'
+        ]
+      };
+      
+      const xIndex = Math.floor(Math.random() * healthMisconceptions.X.length);
+      const yIndex = Math.floor(Math.random() * healthMisconceptions.Y.length);
+      
+      return hookText
+        .replace('X', healthMisconceptions.X[xIndex])
+        .replace('Y', healthMisconceptions.Y[yIndex]);
+    }
+    
+    // If hook has X% pattern, fill it
+    if (hookText.includes('X%')) {
+      const percentage = Math.floor(Math.random() * 30) + 70; // 70-99%
+      return hookText.replace('X%', `${percentage}%`);
+    }
+    
+    // Otherwise return as-is
+    return hookText;
+  }
+
+  /**
    * Generate content using evolved hooks and follower optimization
    */
   async generateMasterContent(request: MasterContentRequest): Promise<MasterContentOutput> {
@@ -71,18 +118,22 @@ export class MasterContentGenerator {
         format_preference: request.format_preference
       });
 
-      // Step 3: Replace the hook with the evolved one
+      // Step 3: Fill hook template with real content
+      const filledHook = this.fillHookTemplate(optimalHook.hook_text, request.topic_preference || 'health');
+      console.log(`[MASTER_GENERATOR] ✨ Filled hook: "${filledHook}"`);
+
+      // Step 4: Replace the hook in content
       let finalContent = content.content;
       if (typeof finalContent === 'string') {
-        // Replace the opening with the evolved hook
+        // Replace the opening with the filled hook
         const sentences = finalContent.split('. ');
-        sentences[0] = optimalHook.hook_text;
+        sentences[0] = filledHook;
         finalContent = sentences.join('. ');
       } else if (Array.isArray(finalContent)) {
         // For threads, replace the first tweet's opening
         const firstTweet = finalContent[0];
         const sentences = firstTweet.split('. ');
-        sentences[0] = optimalHook.hook_text;
+        sentences[0] = filledHook;
         finalContent[0] = sentences.join('. ');
       }
 
@@ -91,7 +142,7 @@ export class MasterContentGenerator {
         format: content.format,
         generation_method: 'evolved_hook_master',
         hook_used: {
-          hook_text: optimalHook.hook_text,
+          hook_text: filledHook, // Use filled hook, not template
           hook_category: optimalHook.hook_category,
           evolution_generation: optimalHook.generation
         },
