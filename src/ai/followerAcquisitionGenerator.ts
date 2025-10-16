@@ -346,12 +346,19 @@ export class FollowerAcquisitionGenerator {
     const { getFollowerPsychology } = await import('../intelligence/followerPsychology');
     const { getHybridContentTypes } = await import('../intelligence/hybridContentTypes');
     const { getMetaLearning } = await import('../intelligence/metaLearning');
+    const { hookEvolutionEngine } = await import('./hookEvolutionEngine');
     
     const topicExpansion = getTopicExpansion();
     const contextIntel = getContextualIntelligence();
     const psychology = getFollowerPsychology();
     const hybrids = getHybridContentTypes();
     const metaLearning = getMetaLearning();
+    
+    // Get optimal hook (NATURAL guidance, not template!)
+    const optimalHook = await hookEvolutionEngine.selectOptimalHook({
+      goal: 'followers',
+      topic: request.topic_preference
+    });
     
     // Get contextual guidance
     const context = contextIntel.getCurrentContext();
@@ -390,6 +397,20 @@ TIME: ${context.timeOfDay} on ${context.dayOfWeek} (${context.season})
 CONTEXT GUIDANCE: ${contextGuidance.reasoning}
 TONE: ${contextGuidance.recommended_tone}
 
+=== HOOK STYLE GUIDANCE (NATURAL, NOT TEMPLATES!) ===
+Hook Category: ${optimalHook.hook_category}
+Hook Pattern: ${optimalHook.hook_text}
+
+HOOK INTERPRETATION:
+- NATURAL_CONTRARIAN: Start with a contrarian insight that challenges common beliefs (e.g., "Cold showers don't boost immunity - they can actually suppress it.")
+- NATURAL_STATISTIC: Lead with a surprising statistic or number (e.g., "73% of sleep advice is backwards.")
+- NATURAL_VALUE: Open with immediate value proposition (e.g., "Three changes that fixed my chronic fatigue:")
+- NATURAL_QUESTION: Begin with thought-provoking question (e.g., "Why do 'healthy' people still feel terrible?")
+- NATURAL_BOLD: Make a bold, authoritative claim (e.g., "Breakfast timing matters more than what you eat.")
+- DIRECT_NO_HOOK: Skip the hook entirely, start directly with content (e.g., "Protein timing has a 2-hour window.")
+
+DO NOT use template phrases like "Most people think X, but research shows Y" - generate your OWN natural opening!
+
 === VIRAL FORMULA ===
 FORMULA: ${formula.name}
 STRUCTURE: ${hybridType ? hybridType.structure : formula.content_structure}
@@ -399,7 +420,7 @@ EVIDENCE: ${formula.evidence_type}
 PRIMARY MOTIVE: ${psychGuidance.primary_motive.name} - ${psychGuidance.primary_motive.description}
 VOICE: ${psychGuidance.voice_guidance}
 MUST INCLUDE: ${psychGuidance.content_instructions.join(', ')}
-AVOID: ${psychGuidance.avoid.join(', ')}
+AVOID: ${psychGuidance.avoid.join(', ')}, "Here's everything for free", "Most people think X but", ANY template phrases
 
 === CONTENT TYPE DETAILS ===
 TYPE: ${request.content_type_name || 'Educational'}
@@ -412,26 +433,33 @@ VALUE PROP: ${request.content_type_value_prop || 'Informative'}
 TOP VOICE ELEMENTS: ${metaInsights.effective_voice_elements.slice(0, 3).map(v => v.element).join(', ')}
 ENGAGEMENT TRIGGERS: ${metaInsights.engagement_triggers.slice(0, 2).map(t => t.trigger_type).join(', ')}
 
-=== CORE REQUIREMENTS ===
-- Create content that makes people IMMEDIATELY want to follow
-- Be NATURAL and CONVERSATIONAL, not robotic or templated
-- Vary your opening - NOT every post needs a formulaic hook
-- Include specific, surprising insights that showcase expertise
-- Build authority through demonstration, not claims
-- Make following feel essential through sheer value
+=== CRITICAL REQUIREMENTS ===
+1. NATURAL WRITING - Write like a smart human, not a template
+2. VARY OPENINGS - Each post should start differently
+3. SHORT & PUNCHY - Twitter-optimized length (threads: 150-230 chars per tweet, single: 180-250 chars)
+4. SPECIFIC INSIGHTS - Include numbers, mechanisms, non-obvious details
+5. NO REPETITION - Avoid repetitive phrases or patterns
+6. PROPER THREADING - If thread, return array of separate tweets that flow naturally
 
-=== CONTENT RULES ===
-- NEVER use hashtags or emojis
-- Be specific with numbers, studies, mechanisms
-- Vary sentence structure and length
-- Some posts start mid-conversation, others with bold claims
-- Mix tones: sometimes provocative, sometimes educational, sometimes storytelling
-- End naturally - no forced CTAs every time
+=== THREAD FORMAT RULES ===
+${format === 'thread' ? `
+THREAD (4-6 tweets):
+- Each tweet is a SEPARATE STRING in the array
+- Each tweet: 150-230 characters MAX
+- Flow: Hook → Insight 1 → Insight 2 → Insight 3 → Actionable → (Optional) CTA
+- Each tweet should be understandable standalone
+- NO "🧵" or "thread below" or "1/" numbering
+- Natural progression, not robotic list
+` : `
+SINGLE TWEET:
+- One powerful insight: 180-250 characters
+- Complete thought, not a teaser
+- Strong opening, valuable content, natural end
+`}
 
-FORMAT: ${format === 'thread' ? `Create ${hybridType ? '4-5 tweets' : '4-6 tweets'} for a thread` : 'Create a single powerful tweet'}
+FORMAT: ${format}
 TOPIC: ${selectedTopic}
 CATEGORY: ${topicSelection.category.name}
-MAX CHARS PER TWEET: 250
 
 ${hybridType ? `\nHYBRID TYPE: ${hybridType.name}\nHYBRID STRUCTURE: ${hybridType.structure}\nEXAMPLE STYLE: ${hybridType.examples[0]}` : ''}`;
 
