@@ -134,11 +134,11 @@ async function thompsonSamplingSelection(): Promise<AdaptiveDecision> {
   // Simple Thompson Sampling: pick best with 80% probability
   const hookChoice = Math.random() < 0.8 && hooks?.[0] 
     ? hooks[0] 
-    : hooks?.[Math.floor(Math.random() * (hooks?.length || 1))];
+    : (hooks?.[Math.floor(Math.random() * (hooks?.length || 1))] || hooks?.[0]);
   
   const topicChoice = Math.random() < 0.8 && topics?.[0]
     ? topics[0]
-    : topics?.[Math.floor(Math.random() * (topics?.length || 1))];
+    : (topics?.[Math.floor(Math.random() * (topics?.length || 1))] || topics?.[0]);
   
   return {
     hook_pattern: String(hookChoice?.hook_pattern || 'contrarian'),
