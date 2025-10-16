@@ -41,11 +41,11 @@ const ConfigSchema = z.object({
   DUP_COSINE_THRESHOLD: z.number().min(0).max(1).default(0.9),
   SIMILARITY_THRESHOLD: z.number().min(0).max(1).default(0.9),
   
-  // Job Scheduling - AGGRESSIVE GROWTH SETTINGS
+  // Job Scheduling - OPTIMIZED FOR QUALITY & GROWTH
   JOBS_AUTOSTART: z.boolean().default(true), // Auto-start jobs
-  JOBS_PLAN_INTERVAL_MIN: z.number().default(15), // Plan content every 15 minutes (4x per hour)
-  JOBS_REPLY_INTERVAL_MIN: z.number().default(20), // Check for replies every 20 minutes (3 per hour)
-  JOBS_LEARN_INTERVAL_MIN: z.number().default(60), // Learn more frequently
+  JOBS_PLAN_INTERVAL_MIN: z.number().default(180), // Plan content every 3 hours (8x per day) - OPTIMIZED from 15min
+  JOBS_REPLY_INTERVAL_MIN: z.number().default(60), // Check for replies every 60 minutes
+  JOBS_LEARN_INTERVAL_MIN: z.number().default(60), // Learn every hour
   JOBS_POSTING_INTERVAL_MIN: z.number().default(5), // Check posting queue every 5 minutes
   
   // Rate Limits - AGGRESSIVE GROWTH

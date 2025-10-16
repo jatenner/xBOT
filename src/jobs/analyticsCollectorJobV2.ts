@@ -39,7 +39,7 @@ interface TweetMetrics {
 export async function analyticsCollectorJobV2(): Promise<void> {
   console.log('[ANALYTICS_COLLECTOR] 📊 Starting real analytics collection (V2)...');
 
-  const analyticsCheck = isRealAnalyticsAllowed();
+  const analyticsCheck = isRealMetricsAllowed();
   if (!analyticsCheck.allowed) {
     console.log(`[ANALYTICS_COLLECTOR] ⏭️ Skipping: ${analyticsCheck.reason}`);
     return;

@@ -78,7 +78,10 @@ export class JobManager {
       reply: false,
       posting: false,
       learn: false,
-      attribution: false
+      attribution: false,
+      analytics: false,
+      outcomes_real: false,
+      data_collection: false
     };
 
     // Plan job timer
@@ -152,17 +155,51 @@ export class JobManager {
       });
     }, 2 * 60 * 60 * 1000)); // 2 hours
     registered.attribution = true;
+    
+    // ANALYTICS COLLECTOR JOB - every 30 minutes to collect real metrics
+    this.timers.set('analytics', setInterval(async () => {
+      await this.safeExecute('analytics', async () => {
+        const { analyticsCollectorJobV2 } = await import('./analyticsCollectorJobV2');
+        await analyticsCollectorJobV2();
+        console.log('✅ JOB_MANAGER: Analytics collection completed');
+      });
+    }, 30 * 60 * 1000)); // 30 minutes
+    registered.analytics = true;
+    
+    // REAL OUTCOMES JOB - every 2 hours to collect comprehensive engagement data
+    this.timers.set('outcomes_real', setInterval(async () => {
+      await this.safeExecute('outcomes_real', async () => {
+        const { runRealOutcomesJob } = await import('./outcomeWriter');
+        await runRealOutcomesJob();
+        console.log('✅ JOB_MANAGER: Real outcomes collection completed');
+      });
+    }, 2 * 60 * 60 * 1000)); // 2 hours
+    registered.outcomes_real = true;
+    
+    // DATA COLLECTION ENGINE - every hour for comprehensive tracking
+    this.timers.set('data_collection', setInterval(async () => {
+      await this.safeExecute('data_collection', async () => {
+        const { DataCollectionEngine } = await import('../intelligence/dataCollectionEngine');
+        const engine = DataCollectionEngine.getInstance();
+        await engine.collectComprehensiveData();
+        console.log('✅ JOB_MANAGER: Data collection engine completed');
+      });
+    }, 60 * 60 * 1000)); // 1 hour
+    registered.data_collection = true;
 
     // Log registration status (EXPLICIT for observability)
     console.log('════════════════════════════════════════════════════════');
     console.log('JOB_MANAGER: Timer Registration Complete');
     console.log(`  MODE: ${flags.mode}`);
     console.log(`  Timers registered:`);
-    console.log(`    - plan:        ${registered.plan ? '✅' : '❌'}`);
-    console.log(`    - reply:       ${registered.reply ? '✅' : '❌'}`);
-    console.log(`    - posting:     ${registered.posting ? '✅' : '❌'}`);
-    console.log(`    - learn:       ${registered.learn ? '✅' : '❌'}`);
-    console.log(`    - attribution: ${registered.attribution ? '✅' : '❌'}`);
+    console.log(`    - plan:            ${registered.plan ? '✅' : '❌'} (every 3h - OPTIMIZED)`);
+    console.log(`    - reply:           ${registered.reply ? '✅' : '❌'} (every 1h)`);
+    console.log(`    - posting:         ${registered.posting ? '✅' : '❌'} (every 5min)`);
+    console.log(`    - learn:           ${registered.learn ? '✅' : '❌'} (every 1h)`);
+    console.log(`    - attribution:     ${registered.attribution ? '✅' : '❌'} (every 2h)`);
+    console.log(`    - analytics:       ${registered.analytics ? '✅' : '❌'} (every 30min) ← NEW!`);
+    console.log(`    - outcomes_real:   ${registered.outcomes_real ? '✅' : '❌'} (every 2h) ← NEW!`);
+    console.log(`    - data_collection: ${registered.data_collection ? '✅' : '❌'} (every 1h) ← NEW!`);
     console.log('════════════════════════════════════════════════════════');
 
     // FAIL-FAST: Posting job MUST be registered in live mode
