@@ -151,21 +151,22 @@ export class UltimateTwitterPoster {
     await composer.fill(''); // Clear first
     await this.page!.waitForTimeout(200);
     
-    // For long content (>300 chars), use clipboard paste to avoid timeout
+    // For long content (>300 chars), use fill() to avoid timeout
     // For shorter content, use typing for more natural behavior
     if (content.length > 300) {
-      console.log(`ULTIMATE_POSTER: Using clipboard paste for ${content.length} char content`);
+      console.log(`ULTIMATE_POSTER: Using fill() for ${content.length} char content`);
       
-      // Use Playwright's clipboard API
-      await this.page!.evaluate(async (text) => {
-        await navigator.clipboard.writeText(text);
-      }, content);
-      
-      // Paste via keyboard shortcut
-      await this.page!.keyboard.press('ControlOrMeta+KeyV');
+      // Use fill() - works with contenteditable in headless mode
+      await composer.fill(content);
       await this.page!.waitForTimeout(500);
       
-      console.log('ULTIMATE_POSTER: Content pasted via clipboard');
+      // Verify content was inserted
+      const text = await composer.textContent();
+      if (!text || !text.includes(content.substring(0, 50))) {
+        throw new Error('Content fill verification failed');
+      }
+      
+      console.log('ULTIMATE_POSTER: Content filled successfully');
     } else {
       // Type quickly but not instant (Twitter might detect instant paste)
       await composer.type(content, { delay: 5 }); // 5ms = very fast but not suspicious
