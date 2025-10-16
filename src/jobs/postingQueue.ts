@@ -257,14 +257,15 @@ async function postContent(decision: QueuedDecision): Promise<string> {
     console.log('[POSTING_QUEUE] 🌐 Using reliable Playwright posting...');
     
     try {
-      // CHECK IF THIS IS A THREAD (has thread_tweets array)
-      const metadata = (decision as any).thread_tweets;
-      const isThread = Array.isArray(metadata) && metadata.length > 1;
+      // CHECK IF THIS IS A THREAD (retrieve from features.thread_tweets)
+      const features = (decision as any).features || {};
+      const thread_tweets = features.thread_tweets || (decision as any).thread_tweets;
+      const isThread = Array.isArray(thread_tweets) && thread_tweets.length > 1;
       
       if (isThread) {
-        console.log(`[POSTING_QUEUE] 🧵 Posting as THREAD (${metadata.length} tweets)`);
+        console.log(`[POSTING_QUEUE] 🧵 Posting as THREAD (${thread_tweets.length} tweets)`);
         const { BulletproofThreadComposer } = await import('../posting/BulletproofThreadComposer');
-        const result = await BulletproofThreadComposer.post(metadata);
+        const result = await BulletproofThreadComposer.post(thread_tweets);
         
         if (result.success) {
           const tweetId = result.tweetIds?.[0] || result.rootTweetUrl || `thread_${Date.now()}`;
