@@ -39,21 +39,13 @@ export class BulletproofThreadComposer {
   static async post(segments: string[]): Promise<ThreadPostResult> {
     console.log(`THREAD_DECISION mode=composer segments=${segments.length}`);
     
-    // Ensure numbering at send time if not already present
+    // NO AUTOMATIC NUMBERING - Threads should flow naturally!
+    // Robotic "1/5, 2/5" numbering removed for follower-optimized content
     const isThread = segments.length > 1;
-    let numberedSegments = segments;
+    let numberedSegments = segments; // Keep segments as-is, no numbering
     
     if (isThread) {
-      const n = segments.length;
-      const hasNumbering = segments[0]?.match(/^\d+\/\d+\s/);
-      
-      if (!hasNumbering) {
-        // Add numbering "i/n " at send time
-        numberedSegments = segments.map((s, i) => `${i+1}/${n} ${s}`);
-        console.log(`🧵 NUMBERING_ADDED: ${n} segments numbered at send time`);
-      } else {
-        console.log(`🧵 NUMBERING_DETECTED: Segments already numbered`);
-      }
+      console.log(`🧵 THREAD_MODE: Natural flow (${segments.length} tweets), NO numbering`);
     }
     
     if (process.env.DRY_RUN === '1' || process.env.DRY_RUN === 'true') {
