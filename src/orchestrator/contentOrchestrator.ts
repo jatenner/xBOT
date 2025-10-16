@@ -9,6 +9,10 @@ import { generateStorytellerContent } from '../generators/storytellerGenerator';
 import { generateCoachContent } from '../generators/coachGenerator';
 import { generateExplorerContent } from '../generators/explorerGenerator';
 import { generateThoughtLeaderContent } from '../generators/thoughtLeaderGenerator';
+import { generateMythBusterContent } from '../generators/mythBusterGenerator';
+import { generateNewsReporterContent } from '../generators/newsReporterGenerator';
+import { generatePhilosopherContent } from '../generators/philosopherGenerator';
+import { generateProvocateurContent } from '../generators/provocateurGenerator';
 
 import { getPostHistory } from '../memory/postHistory';
 import { getNarrativeEngine } from '../memory/narrativeEngine';
@@ -67,17 +71,18 @@ export class ContentOrchestrator {
       console.log(`[ORCHESTRATOR] ${chaosDecision.reasoning}`);
     }
     
-    // STEP 3: Select personality for today (with chaos override)
+    // STEP 3: Select generator dynamically (with chaos override)
     const scheduler = getPersonalityScheduler();
-    const scheduledPersonality = scheduler.getAdjustedPersonality();
+    const selection = scheduler.selectGenerator();
     
-    const generator: GeneratorType = chaosDecision.override?.generator || scheduledPersonality.generator;
-    const formatRaw = chaosDecision.override?.format || params?.formatHint || scheduledPersonality.format;
+    const generator: GeneratorType = chaosDecision.override?.generator || selection.generator;
+    const formatRaw = chaosDecision.override?.format || params?.formatHint || selection.format;
     const format: 'single' | 'thread' = formatRaw === 'auto' 
       ? (Math.random() < 0.6 ? 'single' : 'thread') 
       : formatRaw as 'single' | 'thread';
     
     console.log(`[ORCHESTRATOR] 🎭 Generator: ${generator}, Format: ${format}`);
+    console.log(`[ORCHESTRATOR] 💡 ${selection.reasoning}`);
     
     // STEP 4: Select topic (with diversity check)
     let topic = chaosDecision.override?.topic || params?.topicHint || await this.selectDiverseTopic();
@@ -209,8 +214,36 @@ export class ContentOrchestrator {
           research: params.research
         });
       
+      case 'myth_buster':
+        return await generateMythBusterContent({
+          topic: enrichedTopic,
+          format: params.format,
+          research: params.research
+        });
+      
+      case 'news_reporter':
+        return await generateNewsReporterContent({
+          topic: enrichedTopic,
+          format: params.format,
+          research: params.research
+        });
+      
+      case 'philosopher':
+        return await generatePhilosopherContent({
+          topic: enrichedTopic,
+          format: params.format,
+          research: params.research
+        });
+      
+      case 'provocateur':
+        return await generateProvocateurContent({
+          topic: enrichedTopic,
+          format: params.format,
+          research: params.research
+        });
+      
       default:
-        // Fallback
+        // Fallback to thought leader
         return await generateThoughtLeaderContent({
           topic: enrichedTopic,
           format: params.format,

@@ -145,10 +145,15 @@ async function generateRealContent(): Promise<void> {
     return;
   }
   
-  console.log('[PLAN_JOB] 🧠 Generating real content using enhanced system...');
+  console.log('[PLAN_JOB] 🧠 Generating real content using multi-generator orchestrator...');
+  
+  // NOTE: This job runs every 15 minutes and generates 3 posts per run
+  // With 15-min intervals = 4 runs/hour = 12 posts/hour generated
+  // Actual posting: 2 posts/hour based on posting queue budget
+  // This ensures always fresh content available for posting
   
   const decisions: ContentDecision[] = [];
-  const numToGenerate = 3;
+  const numToGenerate = 3; // Generate 3 posts per cycle
   
   for (let i = 0; i < numToGenerate; i++) {
     try {
