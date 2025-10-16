@@ -9,6 +9,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { getEnvConfig, isLLMAllowed } from '../config/envFlags';
 import { learningSystem } from '../learning/learningSystem';
 import { masterContentGenerator } from '../ai/masterContentGenerator'; // Using minimal version
+import { threadMaster } from '../growth/threadMaster';
+import { followerGrowthEngine } from '../growth/followerGrowthEngine';
 
 function getConfig() {
   return getEnvConfig();
