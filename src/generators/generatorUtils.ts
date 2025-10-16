@@ -33,6 +33,20 @@ export function validateAndExtractContent(
     if (content.length === 0) {
       throw new Error(`${generatorName} generator returned empty thread array`);
     }
+    
+    // STRICT CHARACTER LIMIT ENFORCEMENT FOR THREADS
+    const MAX_THREAD_TWEET_LENGTH = 250; // Leave buffer for Twitter
+    const tooLong = content.filter((tweet: string) => tweet.length > MAX_THREAD_TWEET_LENGTH);
+    
+    if (tooLong.length > 0) {
+      console.error(`[${generatorName}] ❌ ${tooLong.length} tweets exceed ${MAX_THREAD_TWEET_LENGTH} chars:`);
+      tooLong.forEach((tweet: string, i: number) => {
+        console.error(`  Tweet ${i + 1}: ${tweet.length} chars - "${tweet.substring(0, 50)}..."`);
+      });
+      throw new Error(`${generatorName} generated tweets that are too long (>${MAX_THREAD_TWEET_LENGTH} chars)`);
+    }
+    
+    console.log(`[${generatorName}] ✅ Thread validated: ${content.length} tweets, all under ${MAX_THREAD_TWEET_LENGTH} chars`);
   }
   
   // Validate single format
@@ -45,6 +59,16 @@ export function validateAndExtractContent(
     if (typeof content !== 'string' || content.trim().length === 0) {
       throw new Error(`${generatorName} generator returned invalid single tweet`);
     }
+    
+    // STRICT CHARACTER LIMIT ENFORCEMENT FOR SINGLE TWEETS
+    const MAX_SINGLE_TWEET_LENGTH = 280; // Twitter absolute limit
+    if (content.length > MAX_SINGLE_TWEET_LENGTH) {
+      console.error(`[${generatorName}] ❌ Tweet exceeds ${MAX_SINGLE_TWEET_LENGTH} chars: ${content.length} chars`);
+      console.error(`  Content: "${content.substring(0, 100)}..."`);
+      throw new Error(`${generatorName} generated tweet that is too long (${content.length}>${MAX_SINGLE_TWEET_LENGTH} chars)`);
+    }
+    
+    console.log(`[${generatorName}] ✅ Single tweet validated: ${content.length} chars`);
   }
   
   return content;
