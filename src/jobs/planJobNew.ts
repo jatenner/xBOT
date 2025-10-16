@@ -181,11 +181,30 @@ async function generateContentWithLLM(): Promise<ContentDecision> {
   console.log('🚀 ORCHESTRATOR: Using multi-personality content system...');
   
   try {
+    // PHASE 2: Adaptive content selection based on performance
+    let topicHint: string | undefined;
+    let formatHint: 'single' | 'thread' | undefined;
+    
+    try {
+      const { selectOptimalContent } = await import('../learning/adaptiveSelection');
+      const adaptiveDecision = await selectOptimalContent();
+      console.log(`[ADAPTIVE] 📊 ${adaptiveDecision.reasoning}`);
+      console.log(`[ADAPTIVE] 🎯 Selected: ${adaptiveDecision.topic} (${adaptiveDecision.format}) via ${adaptiveDecision.generator}`);
+      
+      topicHint = adaptiveDecision.topic;
+      formatHint = adaptiveDecision.format;
+    } catch (adaptiveError: any) {
+      console.warn('[ADAPTIVE] ⚠️ Adaptive selection failed, using defaults:', adaptiveError.message);
+    }
+    
     // USE NEW ORCHESTRATOR - All intelligence systems integrated
     const { getContentOrchestrator } = await import('../orchestrator/contentOrchestrator');
     const orchestrator = getContentOrchestrator();
     
-    const orchestratedContent = await orchestrator.generateContent();
+    const orchestratedContent = await orchestrator.generateContent({
+      topicHint,
+      formatHint
+    });
     
     console.log(`[ORCHESTRATOR] ✅ Generated ${orchestratedContent.format} content using ${orchestratedContent.metadata.generator_used}`);
     

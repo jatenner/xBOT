@@ -71,12 +71,14 @@ export class JobManager {
     console.log(`   • Reply: ${flags.replyEnabled ? 'ENABLED' : 'DISABLED'}`);
     console.log(`   • Posting: ${flags.postingEnabled ? 'ENABLED' : 'DISABLED'}`);
     console.log(`   • Learn: ${flags.learnEnabled ? 'ENABLED' : 'DISABLED'}`);
+    console.log(`   • Attribution: ENABLED (every 2h)`);
     
     const registered: Record<string, boolean> = {
       plan: false,
       reply: false,
       posting: false,
-      learn: false
+      learn: false,
+      attribution: false
     };
 
     // Plan job timer
@@ -141,16 +143,26 @@ export class JobManager {
       }, config.JOBS_LEARN_INTERVAL_MIN * 60 * 1000));
       registered.learn = true;
     }
+    
+    // ATTRIBUTION JOB - every 2 hours to update post performance
+    this.timers.set('attribution', setInterval(async () => {
+      await this.safeExecute('attribution', async () => {
+        const { runAttributionJob } = await import('./attributionJob');
+        await runAttributionJob();
+      });
+    }, 2 * 60 * 60 * 1000)); // 2 hours
+    registered.attribution = true;
 
     // Log registration status (EXPLICIT for observability)
     console.log('════════════════════════════════════════════════════════');
     console.log('JOB_MANAGER: Timer Registration Complete');
     console.log(`  MODE: ${flags.mode}`);
     console.log(`  Timers registered:`);
-    console.log(`    - plan:    ${registered.plan ? '✅' : '❌'}`);
-    console.log(`    - reply:   ${registered.reply ? '✅' : '❌'}`);
-    console.log(`    - posting: ${registered.posting ? '✅' : '❌'}`);
-    console.log(`    - learn:   ${registered.learn ? '✅' : '❌'}`);
+    console.log(`    - plan:        ${registered.plan ? '✅' : '❌'}`);
+    console.log(`    - reply:       ${registered.reply ? '✅' : '❌'}`);
+    console.log(`    - posting:     ${registered.posting ? '✅' : '❌'}`);
+    console.log(`    - learn:       ${registered.learn ? '✅' : '❌'}`);
+    console.log(`    - attribution: ${registered.attribution ? '✅' : '❌'}`);
     console.log('════════════════════════════════════════════════════════');
 
     // FAIL-FAST: Posting job MUST be registered in live mode
