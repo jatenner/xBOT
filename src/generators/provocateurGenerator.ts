@@ -53,7 +53,7 @@ Tweet 2: Why everyone's wrong
 Tweet 3: Evidence for your position
 Tweet 4: Challenge to readers
 ` : `
-OUTPUT: Return single tweet (180-250 chars):
+OUTPUT FORMAT: Return single tweet as json object (180-250 chars):
 Provocative claim + why it matters
 `}`;
 
