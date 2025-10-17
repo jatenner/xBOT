@@ -41,12 +41,13 @@ const ConfigSchema = z.object({
   DUP_COSINE_THRESHOLD: z.number().min(0).max(1).default(0.9),
   SIMILARITY_THRESHOLD: z.number().min(0).max(1).default(0.9),
   
-  // Job Scheduling - OPTIMIZED FOR QUALITY & GROWTH
+  // Job Scheduling - OPTIMIZED FOR GROWTH STRATEGY
   JOBS_AUTOSTART: z.boolean().default(true), // Auto-start jobs
-  JOBS_PLAN_INTERVAL_MIN: z.number().default(180), // Plan content every 3 hours (8x per day) - OPTIMIZED from 15min
-  JOBS_REPLY_INTERVAL_MIN: z.number().default(60), // Check for replies every 60 minutes
+  JOBS_PLAN_INTERVAL_MIN: z.number().default(300), // Plan content every 5 hours (5 posts/day) - GROWTH OPTIMIZED
+  JOBS_REPLY_INTERVAL_MIN: z.number().default(180), // Strategic replies every 3 hours (titan targeting)
   JOBS_LEARN_INTERVAL_MIN: z.number().default(60), // Learn every hour
   JOBS_POSTING_INTERVAL_MIN: z.number().default(5), // Check posting queue every 5 minutes
+  JOBS_VIRAL_THREAD_INTERVAL_MIN: z.number().default(10080), // Viral thread attempt weekly (7 days)
   
   // Rate Limits - AGGRESSIVE GROWTH
   MAX_POSTS_PER_HOUR: z.number().default(2), // 2 posts per hour

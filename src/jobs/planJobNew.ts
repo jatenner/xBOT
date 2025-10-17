@@ -147,14 +147,15 @@ async function generateRealContent(): Promise<void> {
   
   console.log('[PLAN_JOB] 🧠 Generating real content using multi-generator orchestrator...');
   
-  // NOTE: OPTIMIZED POSTING FREQUENCY
-  // Job runs every 3 hours and generates 2 posts per run
-  // = 8 cycles per day × 2 posts = 16 posts/day generated
-  // Actual posting: ~6-8 posts/day based on posting queue budget and quality gates
-  // This ensures high-quality content without spam detection
-  
-  const decisions: ContentDecision[] = [];
-  const numToGenerate = 2; // Generate 2 high-quality posts per cycle (reduced from 3)
+        // NOTE: GROWTH-OPTIMIZED POSTING FREQUENCY
+        // Job runs every 5 hours and generates 1 post per run
+        // = ~5 posts/day generated
+        // PLUS: 5-10 strategic replies to titans per day
+        // Total activity: 10-15 engagements/day (optimal for growth)
+        // This ensures quality over quantity + strategic positioning
+        
+        const decisions: ContentDecision[] = [];
+        const numToGenerate = 1; // Generate 1 high-quality post per cycle (GROWTH STRATEGY)
   
   for (let i = 0; i < numToGenerate; i++) {
     try {
