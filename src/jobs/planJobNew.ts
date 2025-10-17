@@ -12,6 +12,12 @@ import { masterContentGenerator } from '../ai/masterContentGenerator'; // Using 
 import { threadMaster } from '../growth/threadMaster';
 import { followerGrowthEngine } from '../growth/followerGrowthEngine';
 
+// ADVANCED ALGORITHMS 🚀
+import { getFollowerPredictor } from '../algorithms/followerPredictor';
+import { getTimingOptimizer } from '../algorithms/timingOptimizer';
+import { getTwitterAlgorithmOptimizer } from '../algorithms/twitterAlgorithmOptimizer';
+import { getConversionFunnelTracker } from '../algorithms/conversionFunnelTracker';
+
 function getConfig() {
   return getEnvConfig();
 }
@@ -214,9 +220,62 @@ async function generateContentWithLLM(): Promise<ContentDecision> {
     // Orchestrator already did all the work - just format for storage
     const decision_id = uuidv4();
     
-    // Calculate optimal scheduling
-    const delayMinutes = 30 + Math.random() * 60;
-    const scheduledTime = new Date(Date.now() + delayMinutes * 60 * 1000);
+    // ═══════════════════════════════════════════════════════════
+    // 🚀 ADVANCED ALGORITHMS: TIMING & PREDICTION
+    // ═══════════════════════════════════════════════════════════
+    
+    // 1. CHECK TIMING OPTIMIZATION
+    const timingOptimizer = getTimingOptimizer();
+    const timingCheck = await timingOptimizer.isGoodTimeToPost();
+    console.log(`[TIMING] ${timingCheck.reason}`);
+    
+    // Get optimal scheduling (respects YOUR followers' activity)
+    let scheduledTime: Date;
+    if (timingCheck.is_good) {
+      // Good time, schedule soon
+      const delayMinutes = 15 + Math.random() * 30;
+      scheduledTime = new Date(Date.now() + delayMinutes * 60 * 1000);
+    } else {
+      // Bad time, schedule for next optimal slot
+      scheduledTime = await timingOptimizer.getRecommendedTime();
+      console.log(`[TIMING] ⏰ Rescheduling to optimal time: ${scheduledTime.toLocaleTimeString()}`);
+    }
+    
+    // 2. PREDICT FOLLOWERS BEFORE POSTING
+    const followerPredictor = getFollowerPredictor();
+    const content = Array.isArray(orchestratedContent.content) 
+      ? orchestratedContent.content.join(' ') 
+      : orchestratedContent.content;
+    
+    const prediction = await followerPredictor.predictFollowers({
+      content_length: content.length,
+      has_controversy: /wrong|myth|but|actually/i.test(content),
+      has_numbers: /\d+/.test(content),
+      has_study_citation: /study|research|data/i.test(content),
+      hook_strength: orchestratedContent.metadata.viral_score || 0.7,
+      format: orchestratedContent.format,
+      content_type: orchestratedContent.metadata.generator_used,
+      topic: orchestratedContent.metadata.topic || 'health',
+      hour: scheduledTime.getHours(),
+      day_of_week: scheduledTime.getDay(),
+      is_peak_time: timingCheck.is_good,
+      recent_avg_followers: 2,
+      recent_engagement_rate: 0.03
+    });
+    
+    console.log(`[PREDICTION] 🔮 ${prediction.reasoning}`);
+    console.log(`[PREDICTION]    Expected: ${prediction.predicted_followers} followers (${(prediction.confidence * 100).toFixed(0)}% confidence)`);
+    
+    // 3. NOTE: Low predictions are logged but not rejected
+    // (User can improve content over time based on predictions)
+    if (prediction.recommendation === 'regenerate') {
+      console.warn('[PREDICTION] ⚠️ Low prediction (<2 followers expected)');
+    }
+    
+    // 4. LOG PREDICTION FOR ACCURACY TRACKING
+    await followerPredictor.trackPredictionAccuracy(decision_id, prediction);
+    
+    // ═══════════════════════════════════════════════════════════
     
     // Handle both single tweets and threads
     const contentText = Array.isArray(orchestratedContent.content) 
