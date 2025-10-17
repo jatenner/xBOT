@@ -430,26 +430,32 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     throw new Error('Reply decision missing target_tweet_id');
   }
   
-  // 🛡️ Use bulletproof posting system for replies too
-  console.log('[POSTING_QUEUE] 🛡️ Using bulletproof reply system...');
+  // ✅ Use Playwright-based reply system (only way to post replies)
+  console.log(`[POSTING_QUEUE] 🎯 Posting reply to tweet ${decision.target_tweet_id}...`);
   
   try {
-    // For now, use the same bulletproof posting system
-    // TODO: Implement proper reply functionality in bulletproof system
-    const { bulletproofPost } = await import('../posting/bulletproofHttpPoster');
-    const bulletproofResult = await bulletproofPost(decision.content);
+    const browserManager = (await import('../lib/browser')).default;
+    const { BulletproofTwitterComposer } = await import('../posting/bulletproofTwitterComposer');
     
-    if (bulletproofResult.success) {
-      const tweetId = bulletproofResult.tweetId || `bulletproof_reply_${Date.now()}`;
-      console.log(`[POSTING_QUEUE] ✅ Reply posted via bulletproof system with ID: ${tweetId}`);
-      return tweetId;
+    // Get authenticated browser page
+    const page = await browserManager.newPage();
+    
+    // Create composer with page and post reply
+    const composer = new BulletproofTwitterComposer(page);
+    const result = await composer.postReply(decision.content, decision.target_tweet_id);
+    
+    if (result.success) {
+      const replyId = result.tweetId || `reply_${Date.now()}`;
+      console.log(`[POSTING_QUEUE] ✅ Reply posted successfully with ID: ${replyId}`);
+      console.log(`[POSTING_QUEUE] 🔗 Reply URL: https://x.com/i/web/status/${replyId}`);
+      return replyId;
     } else {
-      console.error(`[POSTING_QUEUE] ❌ Bulletproof reply failed: ${bulletproofResult.error}`);
-      throw new Error(bulletproofResult.error || 'Bulletproof reply failed');
+      console.error(`[POSTING_QUEUE] ❌ Reply posting failed: ${result.error}`);
+      throw new Error(result.error || 'Reply posting failed');
     }
   } catch (error: any) {
-    console.error(`[POSTING_QUEUE] ❌ Bulletproof reply system error: ${error.message}`);
-    throw new Error(`Bulletproof reply failed: ${error.message}`);
+    console.error(`[POSTING_QUEUE] ❌ Reply system error: ${error.message}`);
+    throw new Error(`Reply posting failed: ${error.message}`);
   }
 }
 

@@ -343,12 +343,24 @@ export class BulletproofTwitterScraper {
    */
   private async reloadTweetPage(page: Page, tweetId: string): Promise<void> {
     try {
-      const tweetUrl = `https://twitter.com/anyuser/status/${tweetId}`;
+      // Use proper x.com URL with direct status link (no username needed)
+      const tweetUrl = `https://x.com/i/web/status/${tweetId}`;
+      console.log(`    🔄 RELOAD: Navigating to ${tweetUrl}`);
+      
       await page.goto(tweetUrl, {
-        waitUntil: 'networkidle',
+        waitUntil: 'domcontentloaded',
         timeout: 30000
       });
-      await this.sleep(3000); // Wait for metrics to load
+      
+      // Wait for tweet element to load
+      try {
+        await page.waitForSelector('article[data-testid="tweet"]', { timeout: 10000 });
+        console.log(`    ✅ RELOAD: Tweet element loaded`);
+      } catch {
+        console.warn(`    ⚠️ RELOAD: Tweet element didn't load, continuing anyway...`);
+      }
+      
+      await this.sleep(2000); // Wait for metrics to stabilize
     } catch (error) {
       console.warn(`    ⚠️ RELOAD: Failed to reload page:`, error);
     }

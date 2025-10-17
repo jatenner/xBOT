@@ -348,32 +348,11 @@ async function generateContentWithLLM(): Promise<ContentDecision> {
     
   } catch (error: any) {
     console.error(`[ENHANCED_GENERATION] ❌ Enhanced generation failed: ${error.message}`);
+    planMetrics.calls_failed++;
     
-    // Fallback to basic generation
-    console.log('[ENHANCED_GENERATION] 🔄 Falling back to basic generation...');
-    
-    const decision_id = uuidv4();
-    
-    const fallbackContent = {
-      text: `New research challenges common health assumptions. Here's what the data actually shows about optimizing your daily habits for better outcomes.`,
-      topic: 'health optimization',
-      angle: 'evidence-based approach'
-    };
-    
-    const decision: ContentDecision = {
-      decision_id,
-      decision_type: 'content',
-      content: fallbackContent.text,
-      bandit_arm: 'fallback_health',
-      timing_arm: 'fallback_timing',
-      scheduled_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-      quality_score: 0.5,
-      predicted_er: 0.025,
-      topic_cluster: fallbackContent.topic,
-      generation_source: 'fallback'
-    };
-    
-    return decision;
+    // NO FALLBACK - Let it fail so system can retry with different generator
+    // This ensures only high-quality content posts, never generic placeholders
+    throw new Error(`Content generation failed: ${error.message}`);
   }
 }
 
