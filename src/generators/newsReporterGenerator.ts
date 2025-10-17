@@ -21,7 +21,28 @@ export async function generateNewsReporterContent(params: {
   
   const { topic, format, research } = params;
   
+  // 🗞️ GET REAL SCRAPED NEWS
+  const realNews = await getRealNewsForTopic(topic);
+  
+  if (realNews) {
+    console.log(`[NEWS_REPORTER] 📰 Using real news: "${realNews.headline}"`);
+  }
+  
   const systemPrompt = `You are THE NEWS REPORTER - you break timely health news and fresh research.
+
+${realNews ? `
+🚨 REAL NEWS AVAILABLE (USE THIS):
+Headline: ${realNews.headline}
+Key Claim: ${realNews.key_claim}
+Source: @${realNews.author_username} (${realNews.source_credibility} credibility)
+Viral Score: ${realNews.viral_score.toLocaleString()} (${realNews.freshness_score}/100 freshness)
+${realNews.study_url ? `Study URL: ${realNews.study_url}` : ''}
+Posted: ${realNews.posted_at}
+
+YOU MUST USE THIS REAL NEWS. Do not make up any information.
+Reference the actual source and timing accurately.
+` : ''}
+
 
 🚨 MANDATORY VIRAL REQUIREMENTS (Auto-rejected if ANY missing):
 
@@ -67,9 +88,22 @@ Breaking hook + citation + stat + implication
 Format your response as JSON.
 `}`;
 
-  const userPrompt = `Report breaking research about: ${topic}
+  const userPrompt = `${realNews 
+    ? `Create content about this REAL breaking news: "${realNews.headline}"
 
-${format === 'thread' ? 'Break down new findings and why they matter right now.' : 'Share urgent new finding.'}`;
+Key finding: ${realNews.key_claim}
+${realNews.study_url ? `Study: ${realNews.study_url}` : ''}
+
+${format === 'thread' ? 'Break down this real finding and why it matters right now.' : 'Share this urgent real finding.'}
+
+IMPORTANT: Reference the actual timing (hours/days ago). Use phrases like:
+- "Just published" (if < 24 hours old)
+- "New study shows" (if < 48 hours old)
+- "Recent research" (if < 72 hours old)`
+    : `Report breaking research about: ${topic}
+
+${format === 'thread' ? 'Break down new findings and why they matter right now.' : 'Share urgent new finding.'}`
+  }`;
 
   try {
     const response = await createBudgetedChatCompletion({
@@ -85,10 +119,15 @@ ${format === 'thread' ? 'Break down new findings and why they matter right now.'
 
     const parsed = JSON.parse(response.choices[0].message.content || '{}');
     
+    // Mark news as used if we used real news
+    if (realNews) {
+      await markNewsAsUsed(realNews.id);
+    }
+    
     return {
       content: validateAndExtractContent(parsed, format, 'GENERATOR'),
       format,
-      confidence: 0.8
+      confidence: realNews ? 0.95 : 0.8 // Higher confidence with real news
     };
     
   } catch (error: any) {
@@ -106,6 +145,63 @@ ${format === 'thread' ? 'Break down new findings and why they matter right now.'
       format,
       confidence: 0.5
     };
+  }
+}
+
+/**
+ * Get real scraped news for topic
+ */
+async function getRealNewsForTopic(topic: string): Promise<any | null> {
+  try {
+    const { NewsCuratorService } = await import('../news/newsCuratorService');
+    const curator = NewsCuratorService.getInstance();
+    
+    // Get fresh, high-credibility, unused news
+    const news = await curator.getCuratedNews({
+      topic,
+      minCredibility: 'medium',
+      minFreshnessScore: 60,
+      unused: true,
+      limit: 1
+    });
+    
+    if (news.length > 0) {
+      // Get the full scraped tweet data
+      const { getSupabaseClient } = await import('../db');
+      const supabase = getSupabaseClient();
+      
+      const { data: scrapedTweet } = await supabase
+        .from('health_news_scraped')
+        .select('*')
+        .eq('tweet_id', news[0].original_tweet_id)
+        .single();
+      
+      return {
+        ...news[0],
+        author_username: scrapedTweet?.author_username,
+        posted_at: scrapedTweet?.posted_at,
+        study_url: news[0].study_url
+      };
+    }
+    
+    return null;
+  } catch (error) {
+    console.warn('[NEWS_REPORTER] ⚠️ Could not fetch real news:', error);
+    return null;
+  }
+}
+
+/**
+ * Mark news as used
+ */
+async function markNewsAsUsed(newsId: string): Promise<void> {
+  try {
+    const { NewsCuratorService } = await import('../news/newsCuratorService');
+    const curator = NewsCuratorService.getInstance();
+    await curator.markNewsAsUsed(newsId, `post_${Date.now()}`);
+    console.log(`[NEWS_REPORTER] ✅ Marked news ${newsId} as used`);
+  } catch (error) {
+    console.warn('[NEWS_REPORTER] ⚠️ Could not mark news as used:', error);
   }
 }
 
