@@ -103,6 +103,16 @@ export class PostHistory {
   getRecentPosts(limit: number = 30): PostRecord[] {
     return this.cache.slice(0, limit);
   }
+  
+  /**
+   * Get recent topics (for dynamic generation to avoid repetition)
+   */
+  getRecentTopics(limit: number = 10): string[] {
+    const recent = this.cache.slice(0, limit);
+    return recent
+      .map(p => p.topic)
+      .filter(t => t && t !== 'unknown');
+  }
 }
 
 export const getPostHistory = () => PostHistory.getInstance();
