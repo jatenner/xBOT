@@ -52,6 +52,7 @@ const ConfigSchema = z.object({
   // Rate Limits - SUSTAINABLE QUALITY GROWTH 🔥
   MAX_POSTS_PER_HOUR: z.number().default(2), // 2 posts per hour MAX (user requirement)
   MAX_DAILY_POSTS: z.number().default(48), // 2 per hour * 24 hours
+  REPLIES_PER_HOUR: z.number().default(4), // 4 replies per hour (user requirement)
   
   // Security
   ADMIN_TOKEN: z.string().default('dev-admin-token')
@@ -121,6 +122,7 @@ export function loadConfig(): Config {
     JOBS_POSTING_INTERVAL_MIN: process.env.JOBS_POSTING_INTERVAL_MIN ? parseInt(process.env.JOBS_POSTING_INTERVAL_MIN) : undefined,
     
     MAX_POSTS_PER_HOUR: process.env.MAX_POSTS_PER_HOUR ? parseInt(process.env.MAX_POSTS_PER_HOUR) : undefined,
+    REPLIES_PER_HOUR: process.env.REPLIES_PER_HOUR ? parseInt(process.env.REPLIES_PER_HOUR) : undefined,
     REPLY_MAX_PER_DAY: process.env.REPLY_MAX_PER_DAY ? parseInt(process.env.REPLY_MAX_PER_DAY) : undefined,
     
     ADMIN_TOKEN: process.env.ADMIN_TOKEN
