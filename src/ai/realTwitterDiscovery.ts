@@ -1,0 +1,398 @@
+/**
+ * REAL TWITTER DISCOVERY - Actual browser-based scraping
+ * Replaces placeholder AI generation with real Twitter browsing
+ */
+
+import { browserManager } from '../posting/BrowserManager';
+import { getSupabaseClient } from '../db';
+import type { Page } from 'playwright';
+
+export interface DiscoveredAccount {
+  username: string;
+  follower_count: number;
+  following_count: number;
+  tweet_count: number;
+  bio: string;
+  verified: boolean;
+  discovery_method: 'hashtag' | 'network' | 'content' | 'follower_overlap';
+  discovery_date: string;
+  last_tweet_date?: string;
+}
+
+export interface ReplyOpportunity {
+  account_username: string;
+  tweet_id: string;
+  tweet_url: string;
+  tweet_content: string;
+  tweet_author: string;
+  reply_count: number;
+  like_count: number;
+  posted_minutes_ago: number;
+  opportunity_score: number;
+}
+
+export class RealTwitterDiscovery {
+  private static instance: RealTwitterDiscovery;
+  
+  private readonly HEALTH_ACCOUNTS = [
+    'hubermanlab', 'peterattia', 'RhondaPatrick', 'drmarkhyman',
+    'bengreenfieldhq', 'davidasinclair', 'foundmyfitness', 'LairdHamilton',
+    'drdavinaguilera', 'drsten', 'DrLaPuma', 'WhitMD', 'KellyanneHulme'
+  ];
+  
+  private readonly HEALTH_HASHTAGS = [
+    'longevity', 'biohacking', 'nutrition', 'sleep', 'fitness',
+    'wellness', 'health', 'neuroscience', 'exercise', 'fasting',
+    'supplements', 'antiaging', 'healthspan', 'metabolichealth'
+  ];
+
+  private constructor() {}
+
+  static getInstance(): RealTwitterDiscovery {
+    if (!RealTwitterDiscovery.instance) {
+      RealTwitterDiscovery.instance = new RealTwitterDiscovery();
+    }
+    return RealTwitterDiscovery.instance;
+  }
+
+  /**
+   * Discover accounts via Twitter search (REAL SCRAPING)
+   */
+  async discoverAccountsViaSearch(hashtag: string, limit: number = 10): Promise<DiscoveredAccount[]> {
+    console.log(`[REAL_DISCOVERY] 🔍 Searching Twitter for #${hashtag}...`);
+    
+    try {
+      return await browserManager.withContext('posting', async (context) => {
+        const page = await context.newPage();
+        
+        try {
+          // Search for hashtag
+          const searchUrl = `https://twitter.com/search?q=%23${hashtag}&src=typed_query&f=top`;
+          await page.goto(searchUrl, { waitUntil: 'networkidle', timeout: 30000 });
+          await page.waitForTimeout(3000);
+          
+          // Extract accounts from search results
+          const accounts = await page.evaluate(() => {
+            const results: any[] = [];
+            const tweetElements = document.querySelectorAll('article[data-testid="tweet"]');
+            
+            for (let i = 0; i < Math.min(tweetElements.length, 20); i++) {
+              const tweet = tweetElements[i];
+              const authorEl = tweet.querySelector('[data-testid="User-Name"]');
+              
+              if (authorEl) {
+                const text = authorEl.textContent || '';
+                const matches = text.match(/@(\w+)/);
+                if (matches && matches[1]) {
+                  results.push({
+                    username: matches[1],
+                    discovery_method: 'hashtag'
+                  });
+                }
+              }
+            }
+            
+            return results;
+          });
+          
+          console.log(`[REAL_DISCOVERY] ✅ Found ${accounts.length} accounts for #${hashtag}`);
+          
+          // Get full account details
+          const discovered: DiscoveredAccount[] = [];
+          for (const account of accounts.slice(0, limit)) {
+            const details = await this.getAccountDetails(page, account.username);
+            if (details) {
+              discovered.push({
+                ...details,
+                discovery_method: 'hashtag',
+                discovery_date: new Date().toISOString()
+              });
+            }
+          }
+          
+          return discovered;
+          
+        } finally {
+          await page.close();
+        }
+      });
+    } catch (error: any) {
+      console.error(`[REAL_DISCOVERY] ❌ Search failed for #${hashtag}:`, error.message);
+      return [];
+    }
+  }
+
+  /**
+   * Discover reply opportunities from an account (REAL SCRAPING)
+   */
+  async findReplyOpportunitiesFromAccount(username: string): Promise<ReplyOpportunity[]> {
+    console.log(`[REAL_DISCOVERY] 🎯 Finding reply opportunities from @${username}...`);
+    
+    try {
+      return await browserManager.withContext('posting', async (context) => {
+        const page = await context.newPage();
+        
+        try {
+          // Navigate to account timeline
+          await page.goto(`https://twitter.com/${username}`, { 
+            waitUntil: 'networkidle', 
+            timeout: 30000 
+          });
+          await page.waitForTimeout(3000);
+          
+          // Extract recent tweets
+          const opportunities = await page.evaluate(() => {
+            const results: any[] = [];
+            const tweetElements = document.querySelectorAll('article[data-testid="tweet"]');
+            
+            for (let i = 0; i < Math.min(tweetElements.length, 10); i++) {
+              const tweet = tweetElements[i];
+              
+              // Get tweet content
+              const contentEl = tweet.querySelector('[data-testid="tweetText"]');
+              const content = contentEl?.textContent || '';
+              
+              // Get tweet link
+              const linkEl = tweet.querySelector('a[href*="/status/"]');
+              const href = linkEl?.getAttribute('href') || '';
+              const match = href.match(/\/status\/(\d+)/);
+              const tweetId = match ? match[1] : '';
+              
+              // Get engagement metrics
+              const replyEl = tweet.querySelector('[data-testid="reply"]');
+              const likeEl = tweet.querySelector('[data-testid="like"]');
+              const replyText = replyEl?.textContent || '0';
+              const likeText = likeEl?.textContent || '0';
+              const replyCount = parseInt(replyText.replace(/[^\d]/g, '')) || 0;
+              const likeCount = parseInt(likeText.replace(/[^\d]/g, '')) || 0;
+              
+              // Get author
+              const authorEl = tweet.querySelector('[data-testid="User-Name"]');
+              const authorMatch = (authorEl?.textContent || '').match(/@(\w+)/);
+              const author = authorMatch ? authorMatch[1] : '';
+              
+              // Filter criteria for reply opportunities
+              const hasContent = content.length > 20;
+              const notTooManyReplies = replyCount < 100; // Sweet spot for visibility
+              const hasEngagement = likeCount > 5; // Some social proof
+              const noLinks = !content.includes('http'); // Avoid promotional tweets
+              
+              if (hasContent && notTooManyReplies && hasEngagement && noLinks && tweetId && author) {
+                results.push({
+                  tweet_id: tweetId,
+                  tweet_url: `https://twitter.com/${author}/status/${tweetId}`,
+                  tweet_content: content,
+                  tweet_author: author,
+                  reply_count: replyCount,
+                  like_count: likeCount
+                });
+              }
+            }
+            
+            return results;
+          });
+          
+          console.log(`[REAL_DISCOVERY] ✅ Found ${opportunities.length} reply opportunities from @${username}`);
+          
+          // Calculate opportunity scores
+          return opportunities.map((opp: any) => ({
+            ...opp,
+            account_username: username,
+            posted_minutes_ago: 15, // Estimated
+            opportunity_score: this.calculateOpportunityScore(opp.like_count, opp.reply_count)
+          }));
+          
+        } finally {
+          await page.close();
+        }
+      });
+    } catch (error: any) {
+      console.error(`[REAL_DISCOVERY] ❌ Failed to find opportunities from @${username}:`, error.message);
+      return [];
+    }
+  }
+
+  /**
+   * Get full account details (REAL SCRAPING)
+   */
+  private async getAccountDetails(page: Page, username: string): Promise<DiscoveredAccount | null> {
+    try {
+      await page.goto(`https://twitter.com/${username}`, { 
+        waitUntil: 'networkidle', 
+        timeout: 20000 
+      });
+      await page.waitForTimeout(2000);
+      
+      const details = await page.evaluate(() => {
+        // Extract follower count
+        const followerLinkEl = document.querySelector('a[href$="/verified_followers"]');
+        const followerText = followerLinkEl?.textContent || '0';
+        const followerMatch = followerText.match(/([\d.]+)([KMB]?)/);
+        let followers = 0;
+        if (followerMatch) {
+          const num = parseFloat(followerMatch[1]);
+          const multiplier = followerMatch[2];
+          followers = multiplier === 'K' ? num * 1000 :
+                     multiplier === 'M' ? num * 1000000 :
+                     multiplier === 'B' ? num * 1000000000 : num;
+        }
+        
+        // Extract bio
+        const bioEl = document.querySelector('[data-testid="UserDescription"]');
+        const bio = bioEl?.textContent || '';
+        
+        // Check if verified
+        const verified = !!document.querySelector('[data-testid="icon-verified"]');
+        
+        return {
+          follower_count: Math.round(followers),
+          following_count: 0,
+          tweet_count: 0,
+          bio,
+          verified
+        };
+      });
+      
+      return {
+        username,
+        ...details,
+        discovery_method: 'content',
+        discovery_date: new Date().toISOString()
+      };
+      
+    } catch (error: any) {
+      console.error(`[REAL_DISCOVERY] ⚠️ Could not get details for @${username}:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Calculate opportunity score for a tweet
+   */
+  private calculateOpportunityScore(likes: number, replies: number): number {
+    // High likes + low replies = best opportunity (high visibility, low competition)
+    const engagementScore = Math.min(likes / 100, 50); // Max 50 points
+    const competitionScore = Math.max(50 - (replies / 2), 0); // Max 50 points
+    return Math.min(engagementScore + competitionScore, 100);
+  }
+
+  /**
+   * Batch discover accounts from health seed list
+   */
+  async discoverFromHealthAccounts(limit: number = 5): Promise<DiscoveredAccount[]> {
+    console.log('[REAL_DISCOVERY] 🏥 Discovering from known health accounts...');
+    
+    const discovered: DiscoveredAccount[] = [];
+    
+    for (const username of this.HEALTH_ACCOUNTS.slice(0, limit)) {
+      try {
+        const account = await this.getAccountDetailsStandalone(username);
+        if (account) {
+          discovered.push({
+            ...account,
+            discovery_method: 'content',
+            discovery_date: new Date().toISOString()
+          });
+        }
+        
+        // Small delay between accounts
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+      } catch (error) {
+        console.error(`[REAL_DISCOVERY] ⚠️ Failed to discover @${username}`);
+      }
+    }
+    
+    console.log(`[REAL_DISCOVERY] ✅ Discovered ${discovered.length} accounts from health seed list`);
+    return discovered;
+  }
+
+  /**
+   * Standalone method to get account details with its own page
+   */
+  private async getAccountDetailsStandalone(username: string): Promise<DiscoveredAccount | null> {
+    try {
+      return await browserManager.withContext('posting', async (context) => {
+        const page = await context.newPage();
+        try {
+          return await this.getAccountDetails(page, username);
+        } finally {
+          await page.close();
+        }
+      });
+    } catch (error) {
+      return null;
+    }
+  }
+
+  /**
+   * Store discovered accounts in database
+   */
+  async storeAccounts(accounts: DiscoveredAccount[]): Promise<void> {
+    if (accounts.length === 0) return;
+    
+    const supabase = getSupabaseClient();
+    
+    for (const account of accounts) {
+      try {
+        await supabase
+          .from('discovered_accounts')
+          .upsert({
+            username: account.username,
+            follower_count: account.follower_count,
+            following_count: account.following_count,
+            tweet_count: account.tweet_count,
+            bio: account.bio,
+            verified: account.verified,
+            discovery_method: account.discovery_method,
+            discovery_date: account.discovery_date,
+            last_updated: new Date().toISOString()
+          }, {
+            onConflict: 'username'
+          });
+      } catch (error: any) {
+        console.error(`[REAL_DISCOVERY] ⚠️ Failed to store @${account.username}:`, error.message);
+      }
+    }
+    
+    console.log(`[REAL_DISCOVERY] 💾 Stored ${accounts.length} accounts in database`);
+  }
+
+  /**
+   * Store reply opportunities in database
+   */
+  async storeOpportunities(opportunities: ReplyOpportunity[]): Promise<void> {
+    if (opportunities.length === 0) return;
+    
+    const supabase = getSupabaseClient();
+    
+    for (const opp of opportunities) {
+      try {
+        await supabase
+          .from('reply_opportunities')
+          .upsert({
+            account_username: opp.account_username,
+            tweet_id: opp.tweet_id,
+            tweet_url: opp.tweet_url,
+            tweet_content: opp.tweet_content,
+            tweet_author: opp.tweet_author,
+            reply_count: opp.reply_count,
+            like_count: opp.like_count,
+            posted_minutes_ago: opp.posted_minutes_ago,
+            opportunity_score: opp.opportunity_score,
+            discovered_at: new Date().toISOString(),
+            status: 'pending'
+          }, {
+            onConflict: 'tweet_id'
+          });
+      } catch (error: any) {
+        console.error(`[REAL_DISCOVERY] ⚠️ Failed to store opportunity ${opp.tweet_id}:`, error.message);
+      }
+    }
+    
+    console.log(`[REAL_DISCOVERY] 💾 Stored ${opportunities.length} reply opportunities in database`);
+  }
+}
+
+export const realTwitterDiscovery = RealTwitterDiscovery.getInstance();
+
