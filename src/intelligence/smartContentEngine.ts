@@ -94,44 +94,34 @@ export class SmartContentEngine {
     console.log('[SMART_ENGINE] 🧠 Generating SMART content...');
     console.log(`[SMART_ENGINE] Context: ${context.recentTopics.length} recent topics`);
     
-    const systemPrompt = `You are a BRILLIANT HEALTH/SCIENCE THINKER - not just interesting, SMART.
+    const systemPrompt = `You make people stop scrolling with GENUINELY INTERESTING INSIGHTS.
 
-🧠 WHAT MAKES CONTENT SMART (not just interesting):
+🎯 YOUR JOB: Say something that makes people go "shit, I never thought about it that way"
 
-1. **MAKES CONNECTIONS** between seemingly unrelated things
-   Example: "Your gut bacteria and anxiety aren't separate issues—they're the same issue. 
-   90% of serotonin is made in your gut. When you 'feel' anxious, you're literally feeling 
-   your microbiome talking."
+✅ WHAT MAKES IT GOOD:
 
-2. **REVEALS HIDDEN MECHANISMS** that explain why things work
-   Example: "Cold exposure doesn't burn calories. It trains your mitochondria to work harder. 
-   That's why Wim Hof climbers can summit Everest in shorts—they literally have more efficient 
-   cellular engines."
+"Your gut bacteria outvote your brain. 100 trillion vs 86 billion neurons. When you crave 
+sugar, it's them voting, not you. Democracy at the cellular level."
+→ Unexpected connection + specific numbers + reframes cravings
 
-3. **CHALLENGES FRAMEWORKS** not just beliefs
-   Example: "We ask 'how much sleep?' Wrong question. Sleep isn't about duration—it's about 
-   depth. 6 hours of deep sleep beats 9 hours of shallow. We're optimizing the wrong variable."
+"Zone 2 cardio = barely hold a conversation. Too easy? Go harder. Can't talk? Slow down. 
+That's the mitochondrial adaptation zone most people miss."
+→ Practical test + explains why + corrects common mistake
 
-4. **CONNECTS ACROSS DOMAINS** (biology ↔ psychology ↔ behavior)
-   Example: "Procrastination isn't laziness. It's your brain protecting you from perceived 
-   threat. The solution isn't discipline—it's making the task feel safer."
+"Sleep isn't about hours. It's about cycles. 6 hours (4 complete cycles) beats 7 hours 
+(interrupted mid-cycle). That's why you feel worse after 'more' sleep."
+→ Challenges assumption + explains mechanism + paradox
 
-5. **REFRAMES PROBLEMS** to reveal solutions
-   Example: "Everyone treats stress as the enemy. But stress is just energy without direction. 
-   Channel it = performance. Suppress it = anxiety. Same input, opposite outcomes."
+"Fasting works at 16+ hours when you switch from glucose to ketones. Eat every 3 hours? 
+You never switch. Spend entire life in one fuel mode."
+→ Reveals mechanism + shows what people miss
 
-6. **BUILDS ON PREVIOUS IDEAS** (continuity)
-   Example: If you've talked about gut health before → now connect it to something new
-   "Remember gut bacteria? Turns out they control your circadian rhythm too. They're not 
-   just digesting food—they're timing your entire biology."
-
-🚨 MANDATORY REQUIREMENTS - NO EXCEPTIONS:
-1. MUST include specific numbers: "30%", "2,000 subjects", "16 hours", "65°F"
-2. MUST cite real research/examples: "Harvard 2020 (n=4,521)", "Huberman Lab", "Wim Hof study"
-3. MUST explain mechanism: "via autophagy", "through mitochondrial adaptation", "by reducing cortisol"
-4. MUST be 180-280 characters (NOT longer)
-5. NO VAGUE CLAIMS like "boosts fertility" - say "increases sperm motility by 23%"
-6. NO "What if everything we think about..." patterns
+🚨 REQUIREMENTS:
+- Specific numbers ("30%", "16 hours", "100 trillion vs 86 billion")
+- Real examples or research when possible
+- Explains WHY it works (mechanism)
+- 180-280 chars max
+- NO vague claims, NO templates, NO "What if..."
 
 ${context.recentTopics.length > 0 ? `
 📚 WHAT WE'VE ALREADY COVERED:
@@ -216,8 +206,8 @@ Return JSON: {
 Not just interesting facts - INSIGHTS that change how people think.`;
 
     const userPrompt = topic 
-      ? `Generate SMART content about: ${topic}\n\nFind the connection or mechanism that reveals something deeper.`
-      : `Generate SMART content.\n\nMake a connection or reveal an insight that changes how people think.`;
+      ? `What's the most interesting insight about: ${topic}\n\nWhat connection or mechanism makes people think "wait, REALLY?" Be specific.`
+      : `Share something genuinely interesting.\n\nMake a connection or reveal a mechanism that changes how people think. Be specific with numbers.`;
 
     try {
       const response = await createBudgetedChatCompletion({
