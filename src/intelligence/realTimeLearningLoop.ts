@@ -112,14 +112,56 @@ export class RealTimeLearningLoop {
               .eq('decision_id', dataPoint.post_id)
               .single();
             
-            // Train with actual metrics (only accepts: likes, retweets, replies, followers_gained)
+            // 🚀 Train with ALL COMPREHENSIVE METRICS (40+ data points)
             await this.mlEngine.trainWithNewData(
               String(contentData?.content || ''),
               {
+                // Basic engagement
                 likes: Number(dataPoint.actual_engagement || 0),
                 retweets: 0,
                 replies: 0,
-                followers_gained: Number(dataPoint.followers_attributed || 0)
+                bookmarks: 0,
+                views: 0,
+                impressions: 0,
+                
+                // Follower metrics (multi-phase tracking)
+                followers_gained: Number(dataPoint.followers_attributed || 0),
+                followers_before: Number(dataPoint.followers_before || 0),
+                followers_2h_after: Number(dataPoint.followers_2h_after || 0),
+                followers_24h_after: Number(dataPoint.followers_24h_after || 0),
+                followers_48h_after: Number(dataPoint.followers_48h_after || 0),
+                
+                // Velocity & timing
+                engagement_velocity: Number(dataPoint.engagement_velocity || 0),
+                time_to_first_engagement: Number(dataPoint.time_to_first_engagement || 0),
+                peak_engagement_hour: Number(dataPoint.peak_engagement_hour || 0),
+                engagement_decay_rate: Number(dataPoint.engagement_decay_rate || 0),
+                
+                // Virality indicators
+                shareability_score: Number(dataPoint.shareability_score || 0),
+                profile_clicks_ratio: Number(dataPoint.profile_clicks_ratio || 0),
+                bookmark_rate: Number(dataPoint.bookmark_rate || 0),
+                retweet_with_comment_ratio: Number(dataPoint.retweet_with_comment_ratio || 0),
+                
+                // Content quality
+                hook_effectiveness: Number(dataPoint.hook_effectiveness || 0),
+                hook_type: String(dataPoint.hook_type || 'unknown'),
+                content_length: Number(dataPoint.content_length || 0),
+                has_numbers: Boolean(dataPoint.has_numbers),
+                has_personal_story: Boolean(dataPoint.has_personal_story),
+                has_question: Boolean(dataPoint.has_question),
+                has_call_to_action: Boolean(dataPoint.has_call_to_action),
+                controversy_level: Number(dataPoint.controversy_level || 0),
+                
+                // Performance prediction
+                predicted_engagement: Number(dataPoint.predicted_engagement || 0),
+                actual_engagement: Number(dataPoint.actual_engagement || 0),
+                prediction_accuracy: Number(dataPoint.prediction_accuracy || 0),
+                
+                // Audience behavior
+                reply_sentiment: String(dataPoint.reply_sentiment || 'neutral'),
+                reply_quality: Number(dataPoint.reply_quality || 0),
+                follower_quality: Number(dataPoint.follower_quality || 0)
               }
             );
           } catch (mlError: any) {
