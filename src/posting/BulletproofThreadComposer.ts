@@ -64,8 +64,8 @@ export class BulletproofThreadComposer {
     // Get browser page with resilience
     await this.ensureBrowserReady();
 
-    // Try with exponential backoff
-    const maxRetries = parseInt(process.env.PLAYWRIGHT_MAX_CONTEXT_RETRIES || '3', 10);
+    // Try with exponential backoff - REDUCED RETRIES to prevent spam
+    const maxRetries = parseInt(process.env.PLAYWRIGHT_MAX_CONTEXT_RETRIES || '2', 10); // Reduced from 3 to 2
     const baseBackoffMs = parseInt(process.env.PLAYWRIGHT_CONTEXT_RETRY_BACKOFF_MS || '2000', 10);
     
     for (let attempt = 0; attempt < maxRetries; attempt++) {
