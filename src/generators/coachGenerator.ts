@@ -1,11 +1,11 @@
 /**
- * COACH GENERATOR
- * Personality: Direct, actionable, no-nonsense protocols
- * Voice: Practical, step-by-step, coach-like
+ * COACH GENERATOR - REBUILT
+ * Gives SPECIFIC, actionable protocols
+ * NO GENERIC ADVICE - Exact numbers, temps, timing
  */
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
-import { validateAndExtractContent, createFallbackContent } from './generatorUtils';
+import { validateAndExtractContent } from './generatorUtils';
 
 export interface CoachContent {
   content: string | string[];
@@ -21,60 +21,71 @@ export async function generateCoachContent(params: {
   
   const { topic, format, research } = params;
   
-  const systemPrompt = `You are a PRACTICAL COACH who gives specific, actionable advice.
+  const systemPrompt = `You give SPECIFIC, actionable protocols - not generic advice.
 
-YOUR JOB: Make health advice so specific and simple that anyone can follow it.
+🎯 YOUR JOB: Give people something they can DO tomorrow with EXACT specs.
 
-GOOD EXAMPLES:
-✅ "Try this: 30g protein within 30min of waking. Your energy will stabilize for 4-6 hours. Works because morning protein spikes GLP-1, which suppresses hunger hormones."
+✅ GOOD EXAMPLES:
 
-✅ "Can't sleep? Your room is probably too warm. Drop it to 65-68°F. Your body needs to cool down 2-3 degrees to trigger sleep hormones."
+"Protocol: 30g protein within 30min of waking. Spikes GLP-1 which suppresses ghrelin for 
+4-6 hours. That's why you won't crave carbs at 10am. Eggs, Greek yogurt, or protein shake."
+→ Exact amount, timing, mechanism, examples
 
-❌ "Optimize your morning routine for better energy."
-❌ "Studies show protein timing matters."
-❌ Vague advice without specifics
+"Sleep protocol: Room 65-68°F, magnesium glycinate 400mg 2hrs before bed, blackout curtains. 
+Your core temp needs to drop 2-3° to trigger sleep hormones. Most rooms are 72-75°."
+→ Exact temps, dosage, timing, explains why
 
-BE SPECIFIC. Give exact protocols people can try tomorrow
+"Zone 2 cardio test: Can barely hold a conversation. If you can talk easily, go harder. 
+If you can't talk at all, slow down. That's the mitochondrial adaptation zone."
+→ Practical test, clear boundaries, explains benefit
 
-GOOD HOOK EXAMPLES:
-- "67% of cortisol issues stem from poor sleep timing."
-- "Why does everyone ignore magnesium-to-calcium ratios?"
-- "Sleep architecture beats sleep duration—here's the protocol:"
+"Fasting protocol: 16:8 window, eat 12pm-8pm. First meal protein-heavy (40g+). Breaks fast 
+without spiking insulin. Black coffee okay—doesn't break autophagy until 50+ calories."
+→ Exact window, first meal specs, what breaks it
 
-GOOD PROTOCOL EXAMPLES:
-- "Try: 400mg magnesium glycinate 90min before bed for 8 weeks"
-- "Protocol: 20min Zone 2 cardio, 4x/week, before 10am"  
-- "Start: 30g protein within 30min of waking, every day"
-
-GOOD MECHANISM EXAMPLES:
-- "Works because glycinate crosses blood-brain barrier, activating GABA-A receptors for deeper REM cycles"
-- "Works because morning protein spikes GLP-1, suppressing ghrelin for 4-6 hours"
+🚨 NEVER DO THIS:
+❌ "Try to sleep better" (too vague)
+❌ "Eat more protein" (no specifics)
+❌ "Exercise regularly" (what does that mean?)
+❌ Generic advice without numbers
 
 ${research ? `
-RESEARCH FOUNDATION:
-Finding: ${research.finding}
+📊 USE THIS RESEARCH:
+${research.finding}
 Source: ${research.source}
 Mechanism: ${research.mechanism}
 
-Use this to create specific, evidence-based protocols.
+Turn this into a SPECIFIC protocol - exact numbers and timing.
 ` : ''}
 
 ${format === 'thread' ? `
-OUTPUT FORMAT: Return JSON object with array of 3-5 tweets (150-230 chars each):
-Tweet 1: Hook + specific number/stat
-Tweet 2: Study citation + finding
-Tweet 3: Exact protocol with measurements
-Tweet 4: Mechanism explanation
-Format your response as JSON.
+📱 THREAD FORMAT (3-5 tweets, 150-250 chars each):
+
+Tweet 1: The protocol with exact specs
+Tweet 2: Why it works (mechanism)
+Tweet 3: Common mistakes to avoid
+Tweet 4: How to know it's working
+
+NO templates. Just specific, actionable info.
+
+Return JSON: {"tweets": ["...", "...", ...]}
 ` : `
-OUTPUT FORMAT: Return single tweet as JSON object (180-260 chars):
-Hook + study citation + protocol + mechanism (all in one tweet)
-Format your response as JSON.
-`}`;
+📱 SINGLE TWEET (180-280 chars):
 
-  const userPrompt = `Give actionable protocol for: ${topic}
+One protocol with EXACT specs people can follow tomorrow.
+Include numbers, timing, or measurable tests.
 
-${format === 'thread' ? 'Break down the complete protocol with exact steps.' : 'Share one clear, implementable action.'}`;
+Return JSON: {"tweet": "..."}
+`}
+
+🔥 BE EXACT: 30g protein, 65-68°F, 16:8 window, 400mg dose
+🧠 EXPLAIN WHY: Mechanism that makes it work
+⚡ BE PRACTICAL: People can do this tomorrow`;
+
+  const userPrompt = `Give the most specific, actionable protocol for: ${topic}
+
+What are the EXACT specs? Numbers, timing, doses, temps?
+What's the mechanism that makes it work?`;
 
   try {
     const response = await createBudgetedChatCompletion({
@@ -83,34 +94,21 @@ ${format === 'thread' ? 'Break down the complete protocol with exact steps.' : '
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
       ],
-      temperature: 0.6, // Lower creativity, more practical
-      max_tokens: format === 'thread' ? 600 : 200,
+      temperature: 0.7,
+      max_tokens: format === 'thread' ? 600 : 150,
       response_format: { type: 'json_object' }
     }, { purpose: 'coach_content_generation' });
 
     const parsed = JSON.parse(response.choices[0].message.content || '{}');
     
     return {
-      content: validateAndExtractContent(parsed, format, 'GENERATOR'),
+      content: validateAndExtractContent(parsed, format, 'COACH'),
       format,
       confidence: 0.85
     };
     
   } catch (error: any) {
     console.error('[COACH_GEN] Error:', error.message);
-    
-    return {
-      content: format === 'thread'
-        ? [
-            `Protocol for ${topic}: specific action within timeframe.`,
-            `Exact timing: number + unit with consistency.`,
-            `Why it works: mechanism explanation.`,
-            `Key: what makes it effective.`
-          ]
-        : `${topic} protocol: specific action with timing and why it works.`,
-      format,
-      confidence: 0.5
-    };
+    throw new Error(`Coach generator failed: ${error.message}. System will retry with different approach.`);
   }
 }
-
