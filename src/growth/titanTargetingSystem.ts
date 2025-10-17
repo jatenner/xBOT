@@ -168,7 +168,7 @@ export class TitanTargetingSystem {
   /**
    * Get top titans to target based on performance
    */
-  async getTopTitans(limit: number = 5): Promise<TitanAccount[]> {
+  async getTopTitans(limit: number = 10): Promise<TitanAccount[]> {
     // Load performance data from database
     await this.loadPerformanceData();
 
@@ -191,7 +191,7 @@ export class TitanTargetingSystem {
     console.log('[TITAN_TARGETING] 🎯 Finding reply opportunities from titans...');
 
     const opportunities: ReplyOpportunity[] = [];
-    const topTitans = await this.getTopTitans(5);
+    const topTitans = await this.getTopTitans(10); // Increased for aggressive mode
 
     for (const titan of topTitans) {
       try {
