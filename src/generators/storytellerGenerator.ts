@@ -21,49 +21,61 @@ export async function generateStorytellerContent(params: {
   
   const { topic, format, research } = params;
   
-  const systemPrompt = `You are THE STORYTELLER - you share real transformation stories and case studies.
+  const systemPrompt = `You are an EXPERT explaining how things actually work - NO FAKE PEOPLE, NO MADE-UP STORIES.
 
-PERSONALITY:
-- Narrative arc: problem → intervention → result
-- Relatable, human stories
-- Transformation-focused
-- Emotionally resonant but grounded in data
+🚫 NEVER DO THIS:
+❌ "Sarah struggled with hormonal imbalances..."
+❌ "A person tried intermittent fasting and..."
+❌ "Someone changed their diet and..."
+❌ ANY fake case studies with made-up people
 
-STYLE:
-- Start with relatable problem or moment
-- Show the intervention/change
-- Reveal the transformation
-- Extract the lesson/mechanism
-- NO numbered lists, NO bold text
-- Write like you're sharing a real story over coffee
+✅ INSTEAD, DO THIS:
+✅ "Here's what actually happens when you..."
+✅ "The pattern most people miss..."
+✅ "Why this works for some but not others..."
+✅ "The mechanism behind [phenomenon]..."
+
+TALK ABOUT PATTERNS, NOT PEOPLE:
+- "Most people do X, but the data shows Y"
+- "The mechanism: [explain how it works]"
+- "Why timing matters more than duration"
+- "The difference between X and Y that nobody talks about"
 
 ${research ? `
-RESEARCH CONTEXT:
+REAL RESEARCH TO USE:
 Finding: ${research.finding}
 Source: ${research.source}
 Mechanism: ${research.mechanism}
 
-Use this to ground the story in real science.
+Explain this finding - the MECHANISM, not a fake story.
 ` : ''}
 
-${format === 'thread' ? `
-OUTPUT: Return valid JSON array of 3-5 tweets (150-230 chars each):
-Tweet 1: The problem (relatable moment)
-Tweet 2: The intervention (what changed)
-Tweet 3: The result (transformation)
-Tweet 4: The lesson (why it worked - mechanism)
+BE SPECIFIC AND INSIGHTFUL:
+- Use real data and mechanisms
+- Explain WHY things work
+- Compare approaches
+- Reveal non-obvious connections
+- Sound like an expert who actually knows this stuff
 
+${format === 'thread' ? `
+OUTPUT: Return valid JSON array of 3-5 tweets (150-250 chars each):
+Tweet 1: The pattern or mechanism (what people miss)
+Tweet 2: Why it works (the science/data)
+Tweet 3: The key insight (what this means)
+Tweet 4: The takeaway (how to think about it differently)
+
+NO FAKE PEOPLE. Just insights and explanations.
 Format your response as JSON.
 ` : `
-OUTPUT: Return single tweet in JSON format (180-250 chars):
-Mini case study: problem → solution → result
+OUTPUT: Return single tweet in JSON format (180-280 chars):
+Explain a mechanism, pattern, or insight - NO fake people
 
 Format your response as JSON.
 `}`;
 
-  const userPrompt = `Tell a transformation story about: ${topic}
+  const userPrompt = `Explain the mechanism or pattern behind: ${topic}
 
-${format === 'thread' ? 'Share a compelling narrative with clear transformation arc.' : 'Share a quick case study with impact.'}`;
+${format === 'thread' ? 'Break down how it works and why it matters - NO fake people or stories.' : 'Explain the key insight or mechanism - NO fake people.'}`;
 
   try {
     const response = await createBudgetedChatCompletion({
@@ -88,18 +100,9 @@ ${format === 'thread' ? 'Share a compelling narrative with clear transformation 
   } catch (error: any) {
     console.error('[STORYTELLER_GEN] Error:', error.message);
     
-    return {
-      content: format === 'thread'
-        ? [
-            `Person struggled with ${topic} for years.`,
-            `Changed one thing based on research.`,
-            `Five years later, complete transformation.`,
-            `The mechanism: why it worked.`
-          ]
-        : `Real story: changed approach to ${topic}, complete transformation.`,
-      format,
-      confidence: 0.5
-    };
+    // NO FALLBACK - Throw error to force retry with different generator
+    // We will NOT post fake case studies as fallback content
+    throw new Error(`Storyteller generator failed: ${error.message}. System will retry with different approach.`);
   }
 }
 
