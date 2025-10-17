@@ -49,33 +49,32 @@ async function getRecentTopics(): Promise<string[]> {
 }
 
 /**
- * Force a DIFFERENT topic than recent posts
+ * Generate a DIVERSE topic using AI (UNLIMITED topics, not hardcoded)
  */
-function selectDiverseTopic(recentTopics: string[]): string {
-  const allTopics = [
-    'gut microbiome', 'longevity science', 'metabolic health', 'hormone optimization',
-    'biohacking protocols', 'circadian biology', 'exercise physiology', 'nutritional biochemistry',
-    'cognitive enhancement', 'stress physiology', 'immune system', 'inflammation science',
-    'autophagy', 'mitochondrial health', 'epigenetics', 'neuroscience',
-    'cold exposure', 'heat therapy', 'fasting biology', 'supplement science',
-    'medical controversies', 'health myths debunked', 'emerging research',
-    'preventive medicine', 'functional medicine', 'integrative health'
-  ];
-  
-  // Filter out recently used topics
-  const availableTopics = allTopics.filter(topic => {
-    return !recentTopics.some(recent => 
-      topic.includes(recent) || recent.includes(topic.split(' ')[0])
-    );
-  });
-  
-  if (availableTopics.length === 0) {
-    console.log('[EXPLORATION_WRAPPER] ⚠️ All topics recently used, using full list');
-    return allTopics[Math.floor(Math.random() * allTopics.length)];
+async function generateDiverseTopic(recentTopics: string[]): Promise<string> {
+  try {
+    // Use the DynamicTopicGenerator to create unlimited unique topics
+    const { DynamicTopicGenerator } = await import('../intelligence/dynamicTopicGenerator');
+    const topicGenerator = DynamicTopicGenerator.getInstance();
+    
+    console.log('[EXPLORATION_WRAPPER] 🤖 Generating AI-driven diverse topic...');
+    
+    const dynamicTopic = await topicGenerator.generateTopic({
+      recentTopics,
+      preferTrending: false // Prefer unique, not trending
+    });
+    
+    console.log(`[EXPLORATION_WRAPPER] ✅ AI generated topic: "${dynamicTopic.topic}"`);
+    console.log(`[EXPLORATION_WRAPPER] 🎯 Angle: ${dynamicTopic.angle}`);
+    console.log(`[EXPLORATION_WRAPPER] 🔥 Viral potential: ${dynamicTopic.viral_potential}`);
+    
+    return dynamicTopic.topic;
+    
+  } catch (error: any) {
+    console.error('[EXPLORATION_WRAPPER] ⚠️ AI topic generation failed:', error.message);
+    // Fallback: return a generic prompt that forces OpenAI to be creative
+    return 'Generate a completely unique health topic that has NOT been discussed recently';
   }
-  
-  // Return a random available topic
-  return availableTopics[Math.floor(Math.random() * availableTopics.length)];
 }
 
 export async function generateWithExplorationMode(params?: {
@@ -101,19 +100,19 @@ export async function generateWithExplorationMode(params?: {
     console.log(`[EXPLORATION_WRAPPER] 🎲 Forcing variety: ${recommendation.recommendedType} @ controversy ${recommendation.controversyLevel}`);
     console.log(`[EXPLORATION_WRAPPER] 📝 Reason: ${recommendation.reason}`);
     
-    // 🚨 FORCE A DIFFERENT TOPIC - Override any topic hint
-    const diverseTopic = selectDiverseTopic(recentTopics);
+    // 🚨 FORCE A DIFFERENT TOPIC - AI GENERATED (UNLIMITED)
+    const diverseTopic = await generateDiverseTopic(recentTopics);
     params = {
       ...params,
-      topicHint: diverseTopic // Force diverse topic
+      topicHint: diverseTopic // Force AI-generated diverse topic
     };
     
-    console.log(`[EXPLORATION_WRAPPER] 🎯 FORCING DIVERSE TOPIC: "${diverseTopic}"`);
+    console.log(`[EXPLORATION_WRAPPER] 🎯 FORCING AI-GENERATED DIVERSE TOPIC: "${diverseTopic}"`);
   } else {
-    // Even in exploitation mode, avoid exact repetition
+    // Even in exploitation mode, avoid exact repetition with AI topics
     if (recentTopics.length > 0) {
-      const diverseTopic = selectDiverseTopic(recentTopics);
-      console.log(`[EXPLORATION_WRAPPER] 🔄 Suggesting diverse topic: "${diverseTopic}"`);
+      const diverseTopic = await generateDiverseTopic(recentTopics);
+      console.log(`[EXPLORATION_WRAPPER] 🔄 Suggesting AI-generated diverse topic: "${diverseTopic}"`);
       params = {
         ...params,
         topicHint: params?.topicHint || diverseTopic
