@@ -82,7 +82,8 @@ export class JobManager {
       analytics: false,
       outcomes_real: false,
       data_collection: false,
-      ai_orchestration: false
+      ai_orchestration: false,
+      viral_thread: false
     };
 
     // Plan job timer
@@ -146,6 +147,20 @@ export class JobManager {
         });
       }, config.JOBS_LEARN_INTERVAL_MIN * 60 * 1000));
       registered.learn = true;
+    }
+
+    // Viral thread job timer - 1 AMAZING THREAD PER DAY 🔥
+    if (flags.live) {
+      const viralThreadIntervalMin = config.JOBS_VIRAL_THREAD_INTERVAL_MIN || 1440; // 24 hours
+      this.timers.set('viral_thread', setInterval(async () => {
+        await this.safeExecute('viral_thread', async () => {
+          const { runViralThreadJob } = await import('./viralThreadJob');
+          await runViralThreadJob();
+          console.log('✅ JOB_MANAGER: Daily viral thread generated');
+        });
+      }, viralThreadIntervalMin * 60 * 1000));
+      registered.viral_thread = true;
+      console.log(`   • Viral thread: ENABLED (every ${viralThreadIntervalMin / 60} hours)`);
     }
     
     // ATTRIBUTION JOB - every 2 hours to update post performance
