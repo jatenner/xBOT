@@ -256,10 +256,10 @@ export class JobManager {
     console.log('JOB_MANAGER: Timer Registration Complete');
     console.log(`  MODE: ${flags.mode}`);
     console.log(`  Timers registered:`);
-    console.log(`    - plan:            ${registered.plan ? '✅' : '❌'} (every 3h - OPTIMIZED)`);
-    console.log(`    - reply:           ${registered.reply ? '✅' : '❌'} (every 1h)`);
-    console.log(`    - posting:         ${registered.posting ? '✅' : '❌'} (every 5min)`);
-    console.log(`    - learn:           ${registered.learn ? '✅' : '❌'} (every 1h)`);
+    console.log(`    - plan:            ${registered.plan ? '✅' : '❌'} (every ${config.JOBS_PLAN_INTERVAL_MIN}min)`);
+    console.log(`    - reply:           ${registered.reply ? '✅' : '❌'} (every ${config.JOBS_REPLY_INTERVAL_MIN}min)`);
+    console.log(`    - posting:         ${registered.posting ? '✅' : '❌'} (every ${config.JOBS_POSTING_INTERVAL_MIN}min)`);
+    console.log(`    - learn:           ${registered.learn ? '✅' : '❌'} (every ${config.JOBS_LEARN_INTERVAL_MIN}min)`);
     console.log(`    - attribution:     ${registered.attribution ? '✅' : '❌'} (every 2h)`);
     console.log(`    - analytics:       ${registered.analytics ? '✅' : '❌'} (every 30min)`);
     console.log(`    - outcomes_real:   ${registered.outcomes_real ? '✅' : '❌'} (every 2h)`);
