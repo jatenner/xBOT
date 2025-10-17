@@ -1,11 +1,11 @@
 /**
- * CONTRARIAN GENERATOR
- * Personality: Questions everything, challenges mainstream beliefs
- * Voice: Skeptical, evidence-based, provocative
+ * CONTRARIAN GENERATOR - REBUILT
+ * Challenges bullshit with data and mechanisms
+ * NO TEMPLATES - Just make people think "wait, REALLY?"
  */
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
-import { validateAndExtractContent, createFallbackContent } from './generatorUtils';
+import { validateAndExtractContent } from './generatorUtils';
 
 export interface ContrarianContent {
   content: string | string[];
@@ -21,50 +21,71 @@ export async function generateContrarianContent(params: {
   
   const { topic, format, research } = params;
   
-  // SIMPLE, FOCUSED PROMPT - ONE JOB ONLY
-  const systemPrompt = `You are a CONTRARIAN HEALTH EXPERT who challenges bullshit with data.
+  const systemPrompt = `You challenge conventional wisdom with DATA and MECHANISMS.
 
-YOUR VIBE:
-- "Everyone thinks X, but actually Y"
-- Back bold claims with receipts
-- Make people question what they thought they knew
-- Be specific and surprising, not generic
+🎯 YOUR JOB: Make people stop mid-scroll and think "wait, REALLY?"
 
-WHAT MAKES GOOD CONTRARIAN CONTENT:
-✅ "Cold showers don't work because of the cold. They work because you're training your nervous system to override panic."
-✅ "Your gut bacteria outvote your brain. 100 trillion vs 86 billion neurons."
-✅ "Fasting isn't about calories. It's about giving your metabolism time to switch fuel modes."
+✅ GOOD EXAMPLES:
 
-❌ "The common belief about fasting is wrong."
-❌ "Studies show intermittent fasting has benefits."
-❌ Generic statements everyone's heard
+"Cold showers don't work because of the cold. They work because you're training your nervous 
+system to override panic. 2min at 50°F trains the same response as 20min at 40°F."
+→ Challenges mechanism, gives specific temps, explains why
 
-MAKE IT INTERESTING. Find the angle that makes people go "wait, REALLY?"
+"Fasting isn't about calories. It's about fuel switching. Most people eat every 3 hours and 
+stay in glucose-burning mode their entire lives. You need 16+ hours to switch to ketones."
+→ Reframes the entire concept, explains mechanism
+
+"Sleep duration is overrated. 6 hours deep sleep beats 9 hours shallow. We're optimizing 
+the wrong variable. Track HRV and REM%, not hours."
+→ Challenges common belief, gives better metric
+
+"Stretching doesn't prevent injuries. Strength through full ROM does. That's why gymnasts 
+never 'stretch'—they lift heavy through extreme ranges."
+→ Challenges practice, gives counter-example
+
+🚨 NEVER DO THIS:
+❌ "Everyone thinks X, but actually Y" (too generic)
+❌ "Studies show..." without specifics
+❌ Vague claims without numbers
+❌ Template format
 
 ${research ? `
-RESEARCH PROVIDED:
-Finding: ${research.finding}
+📊 USE THIS RESEARCH:
+${research.finding}
 Source: ${research.source}
 Mechanism: ${research.mechanism}
+
+Find the CONTRARIAN angle - what does everyone get wrong about this?
 ` : ''}
 
 ${format === 'thread' ? `
-OUTPUT: Return valid JSON array of 3-5 tweets (150-230 chars each):
-Tweet 1: Bold contrarian claim
-Tweet 2-3: Evidence + mechanism
-Tweet 4: Key insight
+📱 THREAD FORMAT (3-5 tweets, 150-250 chars each):
 
-Format your response as JSON.
+Tweet 1: The contrarian claim with specific data
+Tweet 2: Why conventional wisdom fails (mechanism)
+Tweet 3: What actually works (counter-approach)
+Tweet 4: Practical takeaway
+
+Make it flow naturally. NO numbering. NO "Let me explain..."
+
+Return JSON: {"tweets": ["...", "...", ...]}
 ` : `
-OUTPUT: Return single tweet in JSON format (180-250 chars):
-Contrarian claim + evidence + why it matters
+📱 SINGLE TWEET (180-280 chars):
 
-Format your response as JSON.
-`}`;
+One tweet that challenges bullshit with data and mechanism.
+Make it stop-scrolling good.
 
-  const userPrompt = `Challenge conventional wisdom about: ${topic}
+Return JSON: {"tweet": "..."}
+`}
 
-${format === 'thread' ? 'Create provocative thread that makes people question what they thought they knew.' : 'Create one punchy contrarian take.'}`;
+🔥 BE SPECIFIC: Use numbers, temps, percentages, time frames
+🧠 EXPLAIN WHY: Give the mechanism that makes it contrarian
+⚡ BE SHARP: No fluff, no "interesting fact", just the insight`;
+
+  const userPrompt = `What's the most contrarian, data-backed insight about: ${topic}
+
+What does everyone get wrong? What's the mechanism they miss?
+Make it specific and sharp - numbers, not generics.`;
 
   try {
     const response = await createBudgetedChatCompletion({
@@ -73,34 +94,21 @@ ${format === 'thread' ? 'Create provocative thread that makes people question wh
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
       ],
-      temperature: 0.9, // High creativity for contrarian takes
-      max_tokens: format === 'thread' ? 600 : 200,
+      temperature: 0.9,
+      max_tokens: format === 'thread' ? 600 : 150,
       response_format: { type: 'json_object' }
     }, { purpose: 'contrarian_content_generation' });
 
     const parsed = JSON.parse(response.choices[0].message.content || '{}');
     
     return {
-      content: validateAndExtractContent(parsed, format, 'GENERATOR'),
+      content: validateAndExtractContent(parsed, format, 'CONTRARIAN'),
       format,
-      confidence: 0.85
+      confidence: 0.9
     };
     
   } catch (error: any) {
     console.error('[CONTRARIAN_GEN] Error:', error.message);
-    
-    // Fallback
-    return {
-      content: format === 'thread' 
-        ? [
-            `Everyone thinks ${topic} works one way. Data shows the opposite.`,
-            `The mechanism: what we thought was X is actually Y.`,
-            `Key insight: conventional wisdom got it backwards.`
-          ]
-        : `Common belief about ${topic} is backwards. Evidence shows the opposite.`,
-      format,
-      confidence: 0.5
-    };
+    throw new Error(`Contrarian generator failed: ${error.message}. System will retry with different approach.`);
   }
 }
-
