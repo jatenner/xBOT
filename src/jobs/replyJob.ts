@@ -47,7 +47,7 @@ async function checkReplyHourlyQuota(): Promise<{
     }
     
     const repliesThisHour = count || 0;
-    const canReply = repliesThisHour < 3; // 3 replies per hour limit
+    const canReply = repliesThisHour < 10; // 10 replies per hour limit (AGGRESSIVE GROWTH)
     
     let minutesUntilNext;
     if (!canReply) {
@@ -67,14 +67,14 @@ export async function generateReplies(): Promise<void> {
   const config = getConfig();
   console.log('[REPLY_JOB] 💬 Starting reply generation cycle...');
   
-  // 🚀 AGGRESSIVE GROWTH: Check reply frequency limits (3 replies per hour)
+  // 🚀 MAXIMUM GROWTH: Check reply frequency limits (10 replies per hour)
   const replyQuotaCheck = await checkReplyHourlyQuota();
   if (!replyQuotaCheck.canReply) {
-    console.log(`[REPLY_JOB] ⏸️ Reply quota reached: ${replyQuotaCheck.repliesThisHour}/3 this hour. Next reply in ${Math.ceil(replyQuotaCheck.minutesUntilNext || 0)} minutes`);
+    console.log(`[REPLY_JOB] ⏸️ Reply quota reached: ${replyQuotaCheck.repliesThisHour}/10 this hour. Next reply in ${Math.ceil(replyQuotaCheck.minutesUntilNext || 0)} minutes`);
     return;
   }
   
-  console.log(`[REPLY_JOB] ✅ Reply quota available: ${replyQuotaCheck.repliesThisHour}/3 this hour`);
+  console.log(`[REPLY_JOB] ✅ Reply quota available: ${replyQuotaCheck.repliesThisHour}/10 this hour`);
   
   try {
     if (config.MODE === 'shadow') {

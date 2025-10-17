@@ -175,12 +175,15 @@ export class ContentOrchestrator {
       quality.issues.forEach(i => console.warn(`  - ${i}`));
     }
     
-    // Viral threshold check
-    if (!meetsViralThreshold(viralScore, 50)) {
-      console.error('[ORCHESTRATOR] ❌ Viral score too low (<50), rejected');
+    // DYNAMIC VIRAL THRESHOLD: Adapts based on followers + engagement
+    const { getDynamicViralThreshold } = await import('../learning/viralScoring');
+    const dynamicThreshold = await getDynamicViralThreshold();
+    
+    if (!meetsViralThreshold(viralScore, dynamicThreshold)) {
+      console.error(`[ORCHESTRATOR] ❌ Viral score too low (<${dynamicThreshold}), rejected`);
       const suggestions = getImprovementSuggestions(viralScore);
       suggestions.forEach(s => console.error(`  ${s}`));
-      throw new Error(`Viral score too low: ${viralScore.total_score}/100`);
+      throw new Error(`Viral score too low: ${viralScore.total_score}/${dynamicThreshold}`);
     }
     
     if (viralScore.total_score >= 70) {

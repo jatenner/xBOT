@@ -1,12 +1,12 @@
 #!/bin/bash
 
 # 🚂 BULLETPROOF RAILWAY LOGS
-# Automatically handles CLI auth issues
+# Now uses OAuth authentication from browser login
 
 echo "🚂 Fetching Railway logs..."
 echo ""
 
-# Try to get logs
+# Try to get logs (uses OAuth token from ~/.railway/config.json)
 railway logs 2>&1 | tee /tmp/railway_logs_output.txt
 
 # Check if unauthorized

@@ -47,14 +47,18 @@ Use this to ground the story in real science.
 ` : ''}
 
 ${format === 'thread' ? `
-OUTPUT: Return JSON array of 3-5 tweets (150-230 chars each):
+OUTPUT: Return valid JSON array of 3-5 tweets (150-230 chars each):
 Tweet 1: The problem (relatable moment)
 Tweet 2: The intervention (what changed)
 Tweet 3: The result (transformation)
 Tweet 4: The lesson (why it worked - mechanism)
+
+Format your response as JSON.
 ` : `
-OUTPUT: Return single tweet (180-250 chars):
+OUTPUT: Return single tweet in JSON format (180-250 chars):
 Mini case study: problem → solution → result
+
+Format your response as JSON.
 `}`;
 
   const userPrompt = `Tell a transformation story about: ${topic}
