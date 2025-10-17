@@ -81,7 +81,8 @@ export class JobManager {
       attribution: false,
       analytics: false,
       outcomes_real: false,
-      data_collection: false
+      data_collection: false,
+      ai_orchestration: false
     };
 
     // Plan job timer
@@ -186,6 +187,15 @@ export class JobManager {
       });
     }, 60 * 60 * 1000)); // 1 hour
     registered.data_collection = true;
+    
+    // AI ORCHESTRATION - every 6 hours to run AI systems within budget
+    this.timers.set('ai_orchestration', setInterval(async () => {
+      await this.safeExecute('ai_orchestration', async () => {
+        const { runAIOrchestrationJob } = await import('./aiOrchestrationJob');
+        await runAIOrchestrationJob();
+      });
+    }, 6 * 60 * 60 * 1000)); // 6 hours
+    registered.ai_orchestration = true;
 
     // Log registration status (EXPLICIT for observability)
     console.log('════════════════════════════════════════════════════════');
@@ -197,9 +207,10 @@ export class JobManager {
     console.log(`    - posting:         ${registered.posting ? '✅' : '❌'} (every 5min)`);
     console.log(`    - learn:           ${registered.learn ? '✅' : '❌'} (every 1h)`);
     console.log(`    - attribution:     ${registered.attribution ? '✅' : '❌'} (every 2h)`);
-    console.log(`    - analytics:       ${registered.analytics ? '✅' : '❌'} (every 30min) ← NEW!`);
-    console.log(`    - outcomes_real:   ${registered.outcomes_real ? '✅' : '❌'} (every 2h) ← NEW!`);
-    console.log(`    - data_collection: ${registered.data_collection ? '✅' : '❌'} (every 1h) ← NEW!`);
+    console.log(`    - analytics:       ${registered.analytics ? '✅' : '❌'} (every 30min)`);
+    console.log(`    - outcomes_real:   ${registered.outcomes_real ? '✅' : '❌'} (every 2h)`);
+    console.log(`    - data_collection: ${registered.data_collection ? '✅' : '❌'} (every 1h)`);
+    console.log(`    - ai_orchestration:${registered.ai_orchestration ? '✅' : '❌'} (every 6h) ← AI-DRIVEN!`);
     console.log('════════════════════════════════════════════════════════');
 
     // FAIL-FAST: Posting job MUST be registered in live mode
