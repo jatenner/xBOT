@@ -45,13 +45,17 @@ Mechanism: ${research.mechanism}
 ` : ''}
 
 ${format === 'thread' ? `
-OUTPUT: Return JSON array of 3-5 tweets (150-230 chars each):
+OUTPUT: Return valid JSON array of 3-5 tweets (150-230 chars each):
 Tweet 1: Bold contrarian claim
 Tweet 2-3: Evidence + mechanism
 Tweet 4: Key insight
+
+Format your response as JSON.
 ` : `
-OUTPUT: Return single tweet (180-250 chars):
+OUTPUT: Return single tweet in JSON format (180-250 chars):
 Contrarian claim + evidence + why it matters
+
+Format your response as JSON.
 `}`;
 
   const userPrompt = `Challenge conventional wisdom about: ${topic}

@@ -19,9 +19,17 @@ const RAILWAY_API = 'backboard.railway.app';
 
 // Get token from environment or .railway file
 function getToken() {
+  // Hardcoded account token (API access)
+  const ACCOUNT_TOKEN = 'ca6e1ea5-7b31-447a-b465-72c2df7dd034';
+  
   // First try environment variable
   if (process.env.RAILWAY_TOKEN) {
     return process.env.RAILWAY_TOKEN;
+  }
+  
+  // Use hardcoded account token
+  if (ACCOUNT_TOKEN) {
+    return ACCOUNT_TOKEN;
   }
   
   // Try to read from .railway directory
@@ -51,8 +59,16 @@ function getToken() {
 
 // Get project ID from environment
 function getProjectId() {
+  // Hardcoded project ID
+  const PROJECT_ID = 'c987ff2e-2bc7-4c65-9187-11c1a82d4ac1';
+  
   if (process.env.RAILWAY_PROJECT_ID) {
     return process.env.RAILWAY_PROJECT_ID;
+  }
+  
+  // Use hardcoded project ID
+  if (PROJECT_ID) {
+    return PROJECT_ID;
   }
   
   // Try to read from .railway directory

@@ -46,7 +46,7 @@ function getStartupSummary() {
     startup_dryrun_plan: process.env.STARTUP_RUN_DRYRUN_PLAN === 'true',
     startup_dryrun_reply: process.env.STARTUP_RUN_DRYRUN_REPLY === 'true',
     log_level: process.env.LOG_LEVEL || 'info',
-    db_ssl_mode: process.env.DATABASE_URL?.includes('sslmode=require') ? 'no-verify' : 'disabled',
+    db_ssl_mode: process.env.DATABASE_URL?.includes('sslmode=require') ? 'verified' : 'disabled',
     node_env: process.env.NODE_ENV || 'development',
     port: process.env.PORT || '8080'
   };

@@ -161,7 +161,63 @@ export function calculateViralPotential(content: string | string[]): ViralScore 
 }
 
 /**
+ * Get dynamic viral threshold based on account growth stage
+ * ADAPTIVE: Lower threshold for new accounts, higher as you grow
+ */
+export async function getDynamicViralThreshold(): Promise<number> {
+  try {
+    // Get current follower count and engagement from Supabase
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabase = createClient(
+      process.env.SUPABASE_URL || '',
+      process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+    );
+    
+    const { data: metrics } = await supabase
+      .from('twitter_metrics')
+      .select('followers, avg_engagement')
+      .order('timestamp', { ascending: false })
+      .limit(1)
+      .single();
+    
+    const followers = metrics?.followers || 0;
+    const avgEngagement = metrics?.avg_engagement || 0;
+    
+    // DYNAMIC THRESHOLD FORMULA
+    let threshold = 30; // Base threshold for exploration
+    
+    if (followers < 100) {
+      threshold = 30; // Exploration phase - accept more variety
+    } else if (followers < 500) {
+      threshold = 35; // Early growth
+    } else if (followers < 2000) {
+      threshold = 40; // Scaling phase
+    } else if (followers < 10000) {
+      threshold = 45; // Optimization phase
+    } else {
+      threshold = 50; // Mature phase - be selective
+    }
+    
+    // ENGAGEMENT ADJUSTMENT: Good engagement = can be more selective
+    if (avgEngagement > 0.05) {
+      threshold += 5; // High engagement - raise standards
+    } else if (avgEngagement < 0.02 && followers > 100) {
+      threshold -= 5; // Low engagement - try more variety
+    }
+    
+    console.log(`[VIRAL_THRESHOLD] 🎯 Dynamic threshold: ${threshold} (followers: ${followers}, engagement: ${(avgEngagement * 100).toFixed(2)}%)`);
+    
+    return threshold;
+    
+  } catch (error) {
+    console.warn('[VIRAL_THRESHOLD] ⚠️ Could not fetch metrics, using fallback threshold: 35');
+    return 35; // Fallback for new accounts
+  }
+}
+
+/**
  * Determine if content meets viral threshold
+ * Use getDynamicViralThreshold() for adaptive thresholds
  */
 export function meetsViralThreshold(score: ViralScore, threshold: number = 70): boolean {
   return score.total_score >= threshold;
