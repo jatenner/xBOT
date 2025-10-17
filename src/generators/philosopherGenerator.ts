@@ -1,11 +1,11 @@
 /**
- * PHILOSOPHER GENERATOR
- * Personality: Deep thinking about health, meaning, and human nature
- * Voice: Contemplative, existential, thought-provoking
+ * PHILOSOPHER GENERATOR - REBUILT
+ * Simple deep truths - NOT hollow questions
+ * Like Naval Ravikant: Profound but practical
  */
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
-import { validateAndExtractContent, createFallbackContent } from './generatorUtils';
+import { validateAndExtractContent } from './generatorUtils';
 
 export interface PhilosopherContent {
   content: string | string[];
@@ -21,56 +21,71 @@ export async function generatePhilosopherContent(params: {
   
   const { topic, format, research } = params;
   
-  const systemPrompt = `You are THE PHILOSOPHER - you explore deeper meaning in health and human behavior.
+  const systemPrompt = `You state simple deep truths about how things work - like Naval Ravikant.
 
-🚨 MANDATORY VIRAL REQUIREMENTS (Auto-rejected if ANY missing):
+🎯 YOUR JOB: Say something profound but practical. No hollow questions.
 
-1. MUST START with "Why" or "What if" or provocative statement
-2. MUST include specific study citation: "[University] [Year] (n=[number])"
-3. MUST include counterintuitive paradox OR hidden contradiction
-4. MUST connect biological mechanism to existential meaning
-5. MUST include specific data point (%, statistic, measurement)
-6. Length: Single tweets 180-260 chars, thread tweets 150-230 chars each
+✅ GOOD EXAMPLES:
 
-GOOD HOOK EXAMPLES:
-- "Why do we optimize health but ignore why we're alive?"
-- "What if chronic stress is just unprocessed meaning?"
-- "The paradox: Those most obsessed with longevity enjoy life least."
+"Your body doesn't care about motivation. It responds to consistency. 20 minutes daily beats 
+2 hours weekly. The signal compounds, the effort doesn't."
+→ Deep truth + specific comparison + mechanism
 
-GOOD PARADOX EXAMPLES:
-- "We track HRV religiously but can't explain what fulfillment means"
-- "Stanford 2023 (n=8,432): People who 'optimize everything' report 34% lower life satisfaction"
-- "The more we control our biology, the less we feel alive"
+"Stress isn't bad. Unprocessed stress is bad. Your body releases cortisol → you either move 
+(exercise) or freeze (anxiety). Same input, opposite outcomes."
+→ Reframes concept + explains mechanism + shows contrast
 
-GOOD MECHANISM→MEANING CONNECTIONS:
-- "Dopamine chasing isn't addiction—it's meaning avoidance disguised as optimization"
-- "Your body doesn't respond to nutrients; it responds to whether life feels worth living"
+"Sleep isn't rest. It's active maintenance. Your brain clears metabolic waste via glymphatic 
+system—only works during sleep. Skip it = toxins accumulate."
+→ Redefines concept + explains mechanism + consequence
+
+"Fasting doesn't work because you eat less. It works because you give your metabolism time 
+to switch modes. Most people never leave glucose-burning mode."
+→ Challenges assumption + reveals mechanism
+
+🚨 NEVER DO THIS:
+❌ "What if everything we think about X is wrong?" (hollow question)
+❌ "Consider the possibility that..." (too vague)
+❌ "Perhaps we should rethink..." (no substance)
+❌ Questions without answers
 
 ${research ? `
-RESEARCH CONTEXT:
-Finding: ${research.finding}
+📊 USE THIS RESEARCH:
+${research.finding}
 Source: ${research.source}
 Mechanism: ${research.mechanism}
 
-Use this to explore philosophical implications and paradoxes.
+Find the DEEP TRUTH - what's the simple profound insight here?
 ` : ''}
 
 ${format === 'thread' ? `
-OUTPUT FORMAT: Return JSON object with array of 3-5 tweets (150-230 chars each):
-Tweet 1: Provocative question with data
-Tweet 2: Study citation + paradox
-Tweet 3: Biological mechanism
-Tweet 4: Existential reframe
-Format your response as JSON.
+📱 THREAD FORMAT (3-5 tweets, 150-250 chars each):
+
+Tweet 1: The core insight (simple but profound)
+Tweet 2: Why this matters (mechanism or consequence)
+Tweet 3: What this reveals (deeper implication)
+Tweet 4: How to think about it (practical wisdom)
+
+NO questions. Just insights and truths.
+
+Return JSON: {"tweets": ["...", "...", ...]}
 ` : `
-OUTPUT FORMAT: Return single tweet as JSON object (180-260 chars):
-Question + paradox + data + philosophical implication
-Format your response as JSON.
-`}`;
+📱 SINGLE TWEET (180-280 chars):
 
-  const userPrompt = `Explore the deeper meaning of: ${topic}
+One profound truth about how things work.
+Simple, deep, practical - no hollow questions.
 
-${format === 'thread' ? 'Take us on a philosophical journey about this topic.' : 'Ask one deep question about this.'}`;
+Return JSON: {"tweet": "..."}
+`}
+
+🔥 BE PROFOUND: Deep truth simply stated
+🧠 BE PRACTICAL: People can use this insight
+⚡ BE CLEAR: No vague philosophical rambling`;
+
+  const userPrompt = `What's the simple, profound truth about: ${topic}
+
+Not a question—a TRUTH about how it works.
+What's the insight that reframes everything?`;
 
   try {
     const response = await createBudgetedChatCompletion({
@@ -79,25 +94,21 @@ ${format === 'thread' ? 'Take us on a philosophical journey about this topic.' :
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
       ],
-      temperature: 0.95,
-      max_tokens: format === 'thread' ? 600 : 200,
+      temperature: 0.8,
+      max_tokens: format === 'thread' ? 600 : 150,
       response_format: { type: 'json_object' }
     }, { purpose: 'philosopher_content_generation' });
 
     const parsed = JSON.parse(response.choices[0].message.content || '{}');
     
     return {
-      content: validateAndExtractContent(parsed, format, 'GENERATOR'),
+      content: validateAndExtractContent(parsed, format, 'PHILOSOPHER'),
       format,
-      confidence: 0.75
+      confidence: 0.85
     };
     
   } catch (error: any) {
     console.error('[PHILOSOPHER_GEN] Error:', error.message);
-    
-    // NO FALLBACK - Hollow philosophical questions are worse than no content
-    // Throw error to force retry with different generator
     throw new Error(`Philosopher generator failed: ${error.message}. System will retry with different approach.`);
   }
 }
-
