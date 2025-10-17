@@ -276,7 +276,11 @@ async function generateContentWithLLM(): Promise<ContentDecision> {
       uniqueness_indicators: [orchestratedContent.metadata.generator_used],
       contrarian_angle: orchestratedContent.metadata.generator_used === 'contrarian' ? 'yes' : 'no',
       content_format: orchestratedContent.format,
-      thread_tweets: Array.isArray(orchestratedContent.content) ? orchestratedContent.content : undefined
+      thread_tweets: Array.isArray(orchestratedContent.content) ? orchestratedContent.content : undefined,
+      // CRITICAL FIX: Store thread data in features column for database storage
+      features: {
+        thread_tweets: Array.isArray(orchestratedContent.content) ? orchestratedContent.content : null
+      }
     } as any;
 
     planMetrics.calls_success++;
