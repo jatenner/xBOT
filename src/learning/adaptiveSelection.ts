@@ -86,7 +86,7 @@ async function selectExploratoryContent(): Promise<AdaptiveDecision> {
     hook_pattern: 'bold_claim', // High variance hook
     topic,
     generator,
-    format: (Math.random() < 0.4 ? 'thread' : 'single') as 'single' | 'thread', // 40% threads, 60% singles for stability
+    format: 'single', // Single tweets only - daily thread handled by viralThreadJob
     reasoning: 'Exploring new approach due to declining performance'
   };
 }
@@ -106,7 +106,7 @@ async function selectBestPerformer(recentPosts: any[]): Promise<AdaptiveDecision
     hook_pattern: String(best.hook_pattern || 'story_opener'),
     topic: String(best.topic || 'sleep optimization'),
     generator: String(best.generator_used || 'provocateur'),
-    format: (best.format || 'thread') as 'single' | 'thread',
+    format: 'single', // Single tweets only - 1 thread/day handled by viralThreadJob
     reasoning: `Best recent post gained ${best.followers_gained || 0} followers`
   };
 }
@@ -144,7 +144,7 @@ async function thompsonSamplingSelection(): Promise<AdaptiveDecision> {
     hook_pattern: String(hookChoice?.hook_pattern || 'contrarian'),
     topic: String(topicChoice?.topic || 'exercise timing'),
     generator: 'provocateur', // TODO: Select based on topic
-    format: (Math.random() < 0.6 ? 'thread' : 'single') as 'single' | 'thread', // 60% threads
+    format: 'single', // Single tweets only - 1 thread/day handled by viralThreadJob
     reasoning: 'Thompson Sampling - balanced exploit/explore'
   };
 }
@@ -157,7 +157,7 @@ function getDefaultDecision(): AdaptiveDecision {
     hook_pattern: 'bold_claim',
     topic: 'sleep optimization',
     generator: 'provocateur',
-    format: (Math.random() < 0.3 ? 'thread' : 'single') as 'single' | 'thread', // 30% threads, 70% singles for stability
+    format: 'single', // Single tweets only - 1 thread/day handled by viralThreadJob
     reasoning: 'Default - no performance data available yet'
   };
 }
