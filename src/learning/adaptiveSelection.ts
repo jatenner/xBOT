@@ -86,7 +86,7 @@ async function selectExploratoryContent(): Promise<AdaptiveDecision> {
     hook_pattern: 'bold_claim', // High variance hook
     topic,
     generator,
-    format: 'thread', // Threads generally perform better
+    format: (Math.random() < 0.4 ? 'thread' : 'single') as 'single' | 'thread', // 40% threads, 60% singles for stability
     reasoning: 'Exploring new approach due to declining performance'
   };
 }
