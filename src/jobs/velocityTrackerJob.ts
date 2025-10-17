@@ -135,6 +135,8 @@ async function trackPostCheckpoint(postId: string, tweetId: string, hoursAfter: 
     }
     
     // Store follower tracking data
+    console.log(`[VELOCITY] 👥 Followers at ${hoursAfter}h: ${profileMetrics.followerCount}`);
+    
     const { error: followerError } = await supabase
       .from('post_follower_tracking')
       .insert({
