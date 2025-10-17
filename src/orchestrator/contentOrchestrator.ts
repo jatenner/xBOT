@@ -23,6 +23,9 @@ import { getResearchCurator } from '../research/researchCurator';
 import { getPersonalityScheduler, GeneratorType } from '../scheduling/personalityScheduler';
 import { getImperfectionInjector } from '../chaos/imperfectionInjector';
 
+// DYNAMIC TOPIC GENERATION
+import { getDynamicTopicGenerator } from '../intelligence/dynamicTopicGenerator';
+
 // PHASE 1: Quality & Viral Optimization
 import { calculateViralPotential, meetsViralThreshold, getImprovementSuggestions } from '../learning/viralScoring';
 import { formatForTwitter, validateContentQuality, isTooGeneric } from '../content/contentFormatter';
@@ -305,7 +308,50 @@ export class ContentOrchestrator {
   /**
    * Select diverse topic (simplified - could be more sophisticated)
    */
+  /**
+   * 🤖 DYNAMIC TOPIC SELECTION
+   * 
+   * 70% of time: Use AI to generate unique topics dynamically
+   * 30% of time: Use hardcoded safety topics (fallback + variety)
+   * 
+   * This gives us UNLIMITED content possibilities!
+   */
   private async selectDiverseTopic(avoid?: string): Promise<string> {
+    const useDynamicGeneration = Math.random() < 0.7; // 70% dynamic, 30% hardcoded
+    
+    if (useDynamicGeneration) {
+      try {
+        console.log('[ORCHESTRATOR] 🤖 Using dynamic AI topic generation...');
+        
+        const dynamicGenerator = getDynamicTopicGenerator();
+        
+        // Get recent topics to avoid repetition
+        const postHistory = getPostHistory();
+        const recentTopics = postHistory.getRecentTopics ? postHistory.getRecentTopics(10) : [];
+        
+        // Generate unique topic
+        const dynamicTopic = await dynamicGenerator.generateTopic({
+          recentTopics: avoid ? [...recentTopics, avoid] : recentTopics,
+          preferTrending: Math.random() < 0.3 // 30% prefer trending topics
+        });
+        
+        // Format topic string (combine topic + angle + dimension)
+        const fullTopic = `${dynamicTopic.topic} (${dynamicTopic.dimension}: ${dynamicTopic.angle})`;
+        
+        console.log(`[ORCHESTRATOR] ✨ Dynamic topic: "${fullTopic}"`);
+        console.log(`[ORCHESTRATOR] 🔥 Viral potential: ${dynamicTopic.viral_potential}`);
+        
+        return fullTopic;
+        
+      } catch (error: any) {
+        console.error('[ORCHESTRATOR] ⚠️ Dynamic generation failed, using fallback:', error.message);
+        // Fall through to hardcoded topics
+      }
+    }
+    
+    // FALLBACK: Hardcoded topics (safety net + variety)
+    console.log('[ORCHESTRATOR] 📋 Using curated topic list...');
+    
     const topics = [
       'sleep optimization',
       'protein timing',
