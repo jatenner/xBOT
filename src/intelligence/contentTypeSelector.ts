@@ -44,6 +44,10 @@ export class ContentTypeSelector {
   
   private constructor() {
     this.initializeContentTypes();
+    // Load persisted performance data to override hardcoded values
+    this.loadPersistedPerformance().catch(err => {
+      console.warn('[CONTENT_TYPE] ⚠️ Could not load persisted performance:', err.message);
+    });
   }
   
   public static getInstance(): ContentTypeSelector {
@@ -374,6 +378,45 @@ export class ContentTypeSelector {
     } catch (error) {
       // Table might not exist yet, that's okay
       console.log('[CONTENT_TYPE] ⏭️ Could not persist to DB (table may not exist)');
+    }
+  }
+  
+  /**
+   * Load persisted performance data from database
+   * This replaces hardcoded values with learned metrics
+   */
+  private async loadPersistedPerformance(): Promise<void> {
+    try {
+      const supabase = getSupabaseClient();
+      
+      const { data: persistedData, error } = await supabase
+        .from('content_type_performance')
+        .select('*')
+        .order('updated_at', { ascending: false });
+      
+      if (error || !persistedData || persistedData.length === 0) {
+        console.log('[CONTENT_TYPE] ℹ️ No persisted performance data found, using initial values');
+        return;
+      }
+      
+      // Update each content type with persisted data
+      let updatedCount = 0;
+      for (const persisted of persistedData) {
+        const type = this.contentTypes.find(ct => ct.type_id === persisted.type_id);
+        if (type) {
+          type.success_rate = persisted.success_rate;
+          type.avg_follower_conversion = persisted.avg_follower_conversion;
+          type.avg_engagement_rate = persisted.avg_engagement_rate;
+          type.sample_size = persisted.sample_size;
+          updatedCount++;
+        }
+      }
+      
+      console.log(`[CONTENT_TYPE] ✅ Loaded persisted performance for ${updatedCount} content types`);
+      const topPerformer = this.contentTypes.sort((a, b) => b.avg_follower_conversion - a.avg_follower_conversion)[0];
+      console.log(`[CONTENT_TYPE] 📊 Top performer: ${topPerformer.name} (${topPerformer.avg_follower_conversion.toFixed(1)} followers/post)`);
+    } catch (error: any) {
+      console.error('[CONTENT_TYPE] ❌ Error loading persisted performance:', error.message);
     }
   }
 }

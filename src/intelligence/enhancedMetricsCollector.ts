@@ -312,12 +312,100 @@ Return JSON:
    * 💾 STORE DETAILED METRICS
    */
   private async storeDetailedMetrics(metrics: DetailedMetrics): Promise<void> {
-    console.log('💾 ENHANCED_METRICS: Storing detailed metrics...');
+    console.log('💾 ENHANCED_METRICS: Storing detailed metrics to comprehensive_metrics table...');
 
     try {
-      // Store in database for analysis
-      // This would integrate with your unified database schema
-      console.log(`✅ METRICS_STORED: ${metrics.postId} with ${Object.keys(metrics).length} data points`);
+      const dataManager = getUnifiedDataManager();
+      
+      // Get tweet_id for this post
+      const { getSupabaseClient } = await import('../db/index');
+      const supabase = getSupabaseClient();
+      const { data: postData } = await supabase
+        .from('posted_decisions')
+        .select('tweet_id')
+        .eq('decision_id', metrics.postId)
+        .single();
+
+      if (!postData || !postData.tweet_id) {
+        console.error(`⚠️ METRICS_STORAGE: No tweet_id found for ${metrics.postId}`);
+        return;
+      }
+
+      // Get follower data for attribution
+      const { data: attributionData } = await supabase
+        .from('post_attribution')
+        .select('*')
+        .eq('post_id', metrics.postId)
+        .single();
+
+      // Store comprehensive metrics
+      const { error } = await supabase
+        .from('comprehensive_metrics')
+        .upsert({
+          post_id: metrics.postId,
+          tweet_id: postData.tweet_id,
+          collected_at: metrics.timestamp,
+          
+          // Real-time engagement
+          engagement_velocity: metrics.engagementVelocity,
+          time_to_first_engagement: metrics.timeToFirstEngagement,
+          peak_engagement_hour: metrics.peakEngagementHour,
+          engagement_decay_rate: metrics.engagementDecayRate,
+          likes_per_hour: JSON.stringify(metrics.likesPerHour),
+          
+          // Virality indicators
+          profile_clicks_ratio: metrics.profileClicksRatio,
+          bookmark_rate: metrics.bookmarkRate,
+          retweet_with_comment_ratio: metrics.retweetWithCommentRatio,
+          shareability_score: metrics.shareabilityScore,
+          
+          // Audience behavior
+          reply_sentiment: metrics.replySentiment,
+          reply_quality: metrics.replyQuality,
+          followers_attributed: metrics.followersAttributed,
+          follower_quality: metrics.followerQuality,
+          
+          // Content analysis
+          hook_type: metrics.hookType,
+          hook_effectiveness: metrics.hookEffectiveness,
+          content_length: metrics.contentLength,
+          has_numbers: metrics.hasNumbers,
+          has_personal_story: metrics.hasPersonalStory,
+          has_question: metrics.hasQuestion,
+          has_call_to_action: metrics.hasCallToAction,
+          controversy_level: metrics.controversyLevel,
+          
+          // Performance prediction
+          predicted_engagement: metrics.predictedEngagement,
+          actual_engagement: metrics.actualEngagement,
+          prediction_accuracy: metrics.predictionAccuracy,
+          
+          // Follower attribution (from attribution tracking)
+          followers_before: attributionData?.followers_before || null,
+          followers_2h_after: attributionData?.followers_2h_after || null,
+          followers_24h_after: attributionData?.followers_24h_after || null,
+          followers_48h_after: attributionData?.followers_48h_after || null,
+          
+          // Timing context
+          posted_hour: metrics.timestamp.getHours(),
+          posted_day_of_week: metrics.timestamp.getDay(),
+          is_weekend: [0, 6].includes(metrics.timestamp.getDay()),
+          is_peak_time: false, // TODO: Calculate from timing optimizer
+          
+          // Advanced metrics (defaults for now)
+          scroll_depth: null,
+          link_clicks: 0,
+          media_views: 0,
+          quote_tweet_sentiment: null
+        }, {
+          onConflict: 'post_id'
+        });
+
+      if (error) {
+        console.error('❌ METRICS_STORAGE: Database error:', error.message);
+      } else {
+        console.log(`✅ METRICS_STORED: ${metrics.postId} with ${Object.keys(metrics).length} data points → comprehensive_metrics table`);
+      }
     } catch (error: any) {
       console.error('❌ Metrics storage failed:', error.message);
     }
