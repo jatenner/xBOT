@@ -108,15 +108,19 @@ async function extractMetricsFromPage(
  */
 async function getBrowserContext(): Promise<BrowserContext | null> {
   try {
-    // This should connect to your existing Playwright browser instance
-    // that's already authenticated with X/Twitter
-    const { BrowserManager } = await import('../browser/browserManager');
-    const manager = BrowserManager.getInstance();
-    // Just use session state check for now
-    const state = await manager.getSessionState();
-    return state.isValid ? null : null; // Placeholder - real implementation would return context
+    // Get authenticated browser context via UltimateTwitterPoster
+    const { UltimateTwitterPoster } = await import('./UltimateTwitterPoster');
+    const poster = UltimateTwitterPoster.getInstance();
+    const context = await poster.getAuthenticatedContext();
+    
+    if (!context) {
+      throw new Error('Could not initialize authenticated browser context');
+    }
+    
+    console.log('[TWITTER_SCRAPER] ✅ Got authenticated browser context');
+    return context;
   } catch (error: any) {
-    console.error(`[TWITTER_SCRAPER] ⚠️ Could not get browser context: ${error.message}`);
+    console.error(`[TWITTER_SCRAPER] ❌ Could not get browser context: ${error.message}`);
     return null;
   }
 }
