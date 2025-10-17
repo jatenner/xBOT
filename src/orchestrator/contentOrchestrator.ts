@@ -357,38 +357,22 @@ export class ContentOrchestrator {
         return fullTopic;
         
       } catch (error: any) {
-        console.error('[ORCHESTRATOR] ⚠️ Dynamic generation failed, using fallback:', error.message);
-        // Fall through to hardcoded topics
+        console.error('[ORCHESTRATOR] ❌ AI topic generation failed:', error.message);
+        
+        // NO FALLBACK TO HARDCODED TOPICS - System is fully AI-driven
+        // If AI fails, throw error to trigger retry with different approach
+        throw new Error(`AI topic generation failed: ${error.message}. System will retry.`);
       }
     }
     
-    // FALLBACK: Hardcoded topics (safety net + variety)
-    console.log('[ORCHESTRATOR] 📋 Using curated topic list...');
+    /* REMOVED: Hardcoded topic fallback list
+     * System is now 100% AI-driven with unlimited topics
+     * No more limited topic pools - AI generates infinite variety
+     * If AI fails, system throws error instead of using hardcoded fallback
+     */
     
-    const topics = [
-      'sleep optimization',
-      'protein timing',
-      'social connections',
-      'stress management',
-      'exercise timing',
-      'circadian rhythm',
-      'nutrition myths',
-      'longevity strategies',
-      'mental resilience',
-      'cognitive performance',
-      'habit formation',
-      'metabolic health',
-      'inflammation',
-      'gut health',
-      'hormonal balance'
-    ];
-    
-    // Filter out avoided topic
-    const available = avoid 
-      ? topics.filter(t => !t.includes(avoid.toLowerCase()) && !avoid.toLowerCase().includes(t))
-      : topics;
-    
-    return available[Math.floor(Math.random() * available.length)];
+    // This code should never be reached (AI generation above always returns or throws)
+    throw new Error('Topic generation reached unreachable code - this should not happen');
   }
   
   /**
