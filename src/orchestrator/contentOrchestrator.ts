@@ -143,6 +143,15 @@ export class ContentOrchestrator {
       narrativeContext
     });
     
+    // STEP 7.5: HUMANIZE CONTENT (Make it sound like a real person!)
+    try {
+      const { humanizeContent } = await import('../generators/humanVoiceFilter');
+      generatedContent.content = await humanizeContent(generatedContent.content);
+      console.log('[ORCHESTRATOR] 🗣️ Content humanized - now sounds like a real person');
+    } catch (humanizeError: any) {
+      console.warn('[ORCHESTRATOR] ⚠️ Humanization failed, using original:', humanizeError.message);
+    }
+    
     // STEP 8: Apply human touch (meta-commentary)
     const humanTouch = chaosInjector.getHumanTouch();
     if (humanTouch && typeof generatedContent.content === 'string') {
