@@ -163,34 +163,38 @@ Format your response as JSON with fields: topic, headline, key_claim, source_cre
   }
 
   /**
-   * Determine source credibility
+   * Determine source credibility based on tweet patterns and engagement
    */
   private determineCredibility(news: any, analysis: any): 'high' | 'medium' | 'low' {
-    const sourceType = news.source_type;
+    const tweetText = String(news.tweet_text || '').toLowerCase();
     const viralScore = news.viral_score;
     const hasStudyUrl = news.study_urls?.length > 0;
-    const aiCredibility = String(analysis.source_credibility || 'medium').toLowerCase();
     
-    // News outlets and health accounts are high credibility
-    if (sourceType === 'news_outlet' || sourceType === 'health_account') {
-      return hasStudyUrl ? 'high' : 'medium';
-    }
+    // HIGH CREDIBILITY indicators
+    const highCredibilityPatterns = [
+      'according to', 'sources say', 'officials confirm', 
+      'published in', 'peer reviewed', 'clinical trial',
+      'breaking news', 'just announced', 'reports'
+    ];
     
-    // Influencers depend on viral score and study URLs
-    if (sourceType === 'influencer') {
-      if (hasStudyUrl && viralScore > 5000) return 'high';
-      if (viralScore > 2000) return 'medium';
+    const hasHighPattern = highCredibilityPatterns.some(p => tweetText.includes(p));
+    
+    // News outlet patterns (discovered dynamically)
+    if (news.source_type === 'news_outlet') {
+      if (hasHighPattern && viralScore > 1000) return 'high';
+      if (viralScore > 500) return 'medium';
       return 'low';
     }
     
-    // Viral trends depend on engagement
-    if (sourceType === 'viral_trend') {
-      if (hasStudyUrl && viralScore > 10000) return 'high';
-      if (viralScore > 5000) return 'medium';
-      return 'low';
-    }
+    // Research patterns (has study URL or citations)
+    if (hasStudyUrl && viralScore > 5000) return 'high';
+    if (hasStudyUrl && viralScore > 1000) return 'medium';
     
-    return aiCredibility === 'high' ? 'high' : aiCredibility === 'low' ? 'low' : 'medium';
+    // High engagement generally indicates quality
+    if (viralScore > 10000) return 'high';
+    if (viralScore > 3000) return 'medium';
+    
+    return 'low';
   }
 
   /**
