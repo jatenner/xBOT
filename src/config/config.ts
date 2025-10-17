@@ -43,8 +43,8 @@ const ConfigSchema = z.object({
   
   // Job Scheduling - AGGRESSIVE GROWTH MODE 🚀
   JOBS_AUTOSTART: z.boolean().default(true), // Auto-start jobs
-  JOBS_PLAN_INTERVAL_MIN: z.number().default(150), // Plan content every 2.5 hours (16-20 posts/day) - AGGRESSIVE
-  JOBS_REPLY_INTERVAL_MIN: z.number().default(120), // Strategic replies every 2 hours (20-40/day) - AGGRESSIVE
+  JOBS_PLAN_INTERVAL_MIN: z.number().default(60), // Plan content every hour (generates 2 posts per run)
+  JOBS_REPLY_INTERVAL_MIN: z.number().default(60), // Replies every hour
   JOBS_LEARN_INTERVAL_MIN: z.number().default(60), // Learn every hour
   JOBS_POSTING_INTERVAL_MIN: z.number().default(5), // Check posting queue every 5 minutes
   JOBS_VIRAL_THREAD_INTERVAL_MIN: z.number().default(1440), // Viral thread DAILY (24 hours) - AGGRESSIVE
