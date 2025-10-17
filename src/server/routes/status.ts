@@ -51,6 +51,7 @@ router.get('/', async (req, res) => {
         data_collection: true, // 1h - DataCollectionEngine (40+ metrics)
         ai_orchestration: true, // 6h - AI-driven strategy
         viral_thread: flags.live, // 24h - daily amazing thread
+        velocity_tracker: true, // 30 min - NEW: follower attribution & velocity tracking
       },
       browserProfileDirExists: fs.existsSync('/tmp/xbot-profile'),
       sessionFileExists: fs.existsSync(SESSION_PATH),
@@ -69,6 +70,24 @@ router.get('/', async (req, res) => {
       uptime_seconds: process.uptime(),
       timestamp: new Date().toISOString()
     };
+    
+    // Add exploration mode status
+    try {
+      const { getModeStatus } = await import('../../exploration/explorationModeManager');
+      const explorationStatus = await getModeStatus();
+      (status as any).exploration = {
+        mode: explorationStatus.mode,
+        currentFollowers: explorationStatus.currentFollowers,
+        avgEngagement: explorationStatus.avgEngagement.toFixed(2),
+        reason: explorationStatus.reason,
+        thresholds: {
+          followers: explorationStatus.followerThreshold,
+          engagement: explorationStatus.engagementThreshold
+        }
+      };
+    } catch (error: any) {
+      console.warn('⚠️ Failed to get exploration status:', error.message);
+    }
     
     res.json(status);
   } catch (error: any) {

@@ -112,24 +112,38 @@ export class RealTimeLearningLoop {
               .eq('decision_id', dataPoint.post_id)
               .single();
             
-            // 🚀 Train with ALL COMPREHENSIVE METRICS (40+ data points)
+            // 🎯 Get REAL follower attribution data from new tracking tables
+            const { data: followerData } = await supabase
+              .from('follower_attribution_simple')
+              .select('*')
+              .eq('post_id', dataPoint.post_id)
+              .single();
+            
+            // 🎯 Get REAL velocity data from new tracking tables
+            const { data: velocityData } = await supabase
+              .from('velocity_analysis_simple')
+              .select('*')
+              .eq('post_id', dataPoint.post_id)
+              .single();
+            
+            // 🚀 Train with ALL COMPREHENSIVE METRICS (40+ data points) - NOW WITH REAL DATA
             await this.mlEngine.trainWithNewData(
               String(contentData?.content || ''),
               {
-                // Basic engagement
-                likes: Number(dataPoint.actual_engagement || 0),
-                retweets: 0,
-                replies: 0,
-                bookmarks: 0,
-                views: 0,
+                // Basic engagement (from velocity tracking - REAL)
+                likes: Number(velocityData?.likes_24h || dataPoint.actual_engagement || 0),
+                retweets: Number(velocityData?.retweets_24h || 0),
+                replies: Number(velocityData?.replies_24h || 0),
+                bookmarks: Number(velocityData?.bookmarks_24h || 0),
+                views: Number(velocityData?.views_24h || 0),
                 impressions: 0,
                 
-                // Follower metrics (multi-phase tracking)
-                followers_gained: Number(dataPoint.followers_attributed || 0),
-                followers_before: Number(dataPoint.followers_before || 0),
-                followers_2h_after: Number(dataPoint.followers_2h_after || 0),
-                followers_24h_after: Number(dataPoint.followers_24h_after || 0),
-                followers_48h_after: Number(dataPoint.followers_48h_after || 0),
+                // Follower metrics - REAL DATA from tracking! ✅
+                followers_gained: Number(followerData?.followers_gained_24h || 0),
+                followers_before: Number(followerData?.baseline_followers || 0),
+                followers_2h_after: 0, // Not tracked yet (simplified to 24h only)
+                followers_24h_after: Number(followerData?.followers_24h || 0),
+                followers_48h_after: Number(followerData?.followers_48h || 0),
                 
                 // Velocity & timing
                 engagement_velocity: Number(dataPoint.engagement_velocity || 0),
