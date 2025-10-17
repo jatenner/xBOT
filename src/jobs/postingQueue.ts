@@ -114,7 +114,7 @@ async function checkPostingRateLimits(): Promise<boolean> {
     const recentPosts = count || 0;
     if (recentPosts >= maxPostsPerHour) {
       console.log(`[POSTING_QUEUE] ⚠️ Hourly CONTENT post limit reached: ${recentPosts}/${maxPostsPerHour}`);
-      console.log(`[POSTING_QUEUE] ℹ️ Note: Replies have separate 10/hr limit and can still post`);
+      console.log(`[POSTING_QUEUE] ℹ️ Note: Replies have separate 4/hr limit and can still post`);
       return false;
     }
     
@@ -178,10 +178,10 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
     
     console.log(`[POSTING_QUEUE] 📋 Filtered: ${rows.length} → ${filteredRows.length} (removed ${rows.length - filteredRows.length} duplicates)`);
     
-    // SEPARATE RATE LIMITS: Content (2/hr) vs Replies (10/hr)
+    // SEPARATE RATE LIMITS: Content (2/hr) vs Replies (4/hr)
     const config = getConfig();
     const maxContentPerHour = parseInt(String(config.MAX_POSTS_PER_HOUR || 2));
-    const maxRepliesPerHour = 10; // Replies have separate higher limit
+    const maxRepliesPerHour = parseInt(String(config.REPLIES_PER_HOUR || 4)); // Replies have separate limit (4/hr)
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     
     // Count content posts and replies separately
