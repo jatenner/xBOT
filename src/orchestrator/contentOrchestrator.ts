@@ -98,14 +98,22 @@ export class ContentOrchestrator {
     const scheduler = getPersonalityScheduler();
     const selection = scheduler.selectGenerator();
     
-    const generator: GeneratorType = chaosDecision.override?.generator || selection.generator;
+    // 🔥 NEW: 30% chance to use "interesting" generator instead of formulaic ones
+    const useInterestingGenerator = Math.random() < 0.3;
+    
+    const generator: GeneratorType = chaosDecision.override?.generator || 
+      (useInterestingGenerator ? 'contrarian' : selection.generator); // Use contrarian slot for interesting
     const formatRaw = chaosDecision.override?.format || params?.formatHint || selection.format;
     const format: 'single' | 'thread' = formatRaw === 'auto' 
       ? (Math.random() < 0.6 ? 'single' : 'thread') 
       : formatRaw as 'single' | 'thread';
     
-    console.log(`[ORCHESTRATOR] 🎭 Generator: ${generator}, Format: ${format}`);
-    console.log(`[ORCHESTRATOR] 💡 ${selection.reasoning}`);
+    if (useInterestingGenerator) {
+      console.log(`[ORCHESTRATOR] 🔥 Using INTERESTING generator (open-ended creativity)`);
+    } else {
+      console.log(`[ORCHESTRATOR] 🎭 Generator: ${generator}, Format: ${format}`);
+      console.log(`[ORCHESTRATOR] 💡 ${selection.reasoning}`);
+    }
     
     // STEP 4: Select topic (with diversity check)
     let topic = chaosDecision.override?.topic || params?.topicHint || await this.selectDiverseTopic();
@@ -136,12 +144,34 @@ export class ContentOrchestrator {
     }
     
     // STEP 7: Generate content with selected generator
-    const generatedContent = await this.callGenerator(generator, {
-      topic,
-      format: format as 'single' | 'thread',
-      research: research.hasResearch ? research : undefined,
-      narrativeContext
-    });
+    let generatedContent;
+    
+    if (useInterestingGenerator) {
+      // Use the INTERESTING generator (open-ended, creative, engaging)
+      const { generateBestInterestingContent } = await import('../generators/interestingContentGenerator');
+      const interesting = await generateBestInterestingContent({
+        topic,
+        format: format as 'single' | 'thread',
+        research: research.hasResearch ? research : undefined,
+        attempts: 2 // Generate 2 variations, pick best
+      });
+      
+      generatedContent = {
+        content: interesting.content,
+        format: interesting.format,
+        confidence: interesting.confidence
+      };
+      
+      console.log(`[ORCHESTRATOR] 🔥 Generated interesting content (intrigue: ${interesting.metadata.intrigue_factor}/10)`);
+    } else {
+      // Use traditional personality generator
+      generatedContent = await this.callGenerator(generator, {
+        topic,
+        format: format as 'single' | 'thread',
+        research: research.hasResearch ? research : undefined,
+        narrativeContext
+      });
+    }
     
     // STEP 7.25: VALIDATE SUBSTANCE (NO HOLLOW QUESTIONS OR TITLES!)
     try {
