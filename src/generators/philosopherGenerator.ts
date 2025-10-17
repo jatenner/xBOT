@@ -95,18 +95,9 @@ ${format === 'thread' ? 'Take us on a philosophical journey about this topic.' :
   } catch (error: any) {
     console.error('[PHILOSOPHER_GEN] Error:', error.message);
     
-    return {
-      content: format === 'thread'
-        ? [
-            `Why do we obsess over ${topic}?`,
-            `Consider the paradox.`,
-            `What if we're missing the point?`,
-            `Maybe the question itself reveals the answer.`
-          ]
-        : `Why do we treat ${topic} as mechanical when it's deeply human?`,
-      format,
-      confidence: 0.5
-    };
+    // NO FALLBACK - Hollow philosophical questions are worse than no content
+    // Throw error to force retry with different generator
+    throw new Error(`Philosopher generator failed: ${error.message}. System will retry with different approach.`);
   }
 }
 

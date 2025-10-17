@@ -96,18 +96,9 @@ ${format === 'thread' ? 'Take us on an exploratory journey through an interestin
   } catch (error: any) {
     console.error('[EXPLORER_GEN] Error:', error.message);
     
-    return {
-      content: format === 'thread'
-        ? [
-            `Why do we assume ${topic} works this way?`,
-            `What if the opposite is true?`,
-            `Consider: alternative perspective.`,
-            `Makes you wonder about assumptions.`
-          ]
-        : `What if everything we think about ${topic} is backwards?`,
-      format,
-      confidence: 0.5
-    };
+    // NO FALLBACK - Hollow content is worse than no content
+    // Throw error to force retry with different generator
+    throw new Error(`Explorer generator failed: ${error.message}. System will retry with different approach.`);
   }
 }
 
