@@ -172,8 +172,30 @@ export class DataCollectionEngine {
       }
       
       if (metrics) {
-        // Store metrics in database
+        // Store basic metrics in database
         await this.storePostMetrics(postId, tweetId, metrics);
+        
+        // 🚀 COLLECT COMPREHENSIVE METRICS (40+ data points)
+        try {
+          const { EnhancedMetricsCollector } = await import('./enhancedMetricsCollector');
+          const collector = EnhancedMetricsCollector.getInstance();
+          
+          // Get content for analysis
+          const { data: contentData } = await this.supabase
+            .from('content_metadata')
+            .select('content')
+            .eq('decision_id', postId)
+            .single();
+          
+          if (contentData && contentData.content) {
+            await collector.collectDetailedMetrics(postId, contentData.content, metrics);
+            console.log(`[DATA_ENGINE] ✅ Comprehensive metrics collected for ${postId}`);
+          }
+        } catch (error: any) {
+          console.error(`[DATA_ENGINE] ⚠️ Enhanced metrics collection failed for ${postId}:`, error.message);
+          // Don't fail the whole process if enhanced metrics fail
+        }
+        
         console.log(`[DATA_ENGINE] ✅ Metrics collected for ${postId}`);
       } else {
         console.log(`[DATA_ENGINE] ⚠️ No metrics available for ${postId}`);

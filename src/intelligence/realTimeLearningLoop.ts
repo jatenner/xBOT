@@ -85,39 +85,51 @@ export class RealTimeLearningLoop {
         return;
       }
       
-      // Get actual tweet data from database (simplified - just log for now)
-      console.log('🎓 LEARNING_LOOP: Would train ML models here with recent tweet data');
+      // 🚀 TRAIN ML MODELS WITH REAL DATA FROM COMPREHENSIVE_METRICS
+      console.log('🎓 LEARNING_LOOP: Training ML models with comprehensive metrics...');
       
-      /* Disabled for now until we have better tweet tracking
-      for (const topic of insights.top_performing_topics.slice(0, 5)) {
-        // Get actual tweet content for training
-        const { getSupabaseClient } = await import('../db');
-        const supabase = getSupabaseClient();
+      const { getSupabaseClient } = await import('../db');
+      const supabase = getSupabaseClient();
+      
+      // Get recent posts with comprehensive metrics
+      const { data: comprehensiveData, error: compError } = await supabase
+        .from('comprehensive_metrics')
+        .select(`
+          *,
+          posted_decisions!inner(decision_id, content)
+        `)
+        .order('collected_at', { ascending: false })
+        .limit(50);
+      
+      if (compError || !comprehensiveData || comprehensiveData.length === 0) {
+        console.log('⏭️ LEARNING_LOOP: No comprehensive metrics data yet for ML training');
+      } else {
+        console.log(`🎓 LEARNING_LOOP: Training on ${comprehensiveData.length} posts with comprehensive metrics`);
         
-        const { data: tweets, error } = await supabase
-          .from('posted_content')
-          .select('*')
-          .eq('topic_cluster', topic.topic)
-          .order('posted_at', { ascending: false })
-          .limit(10);
-        
-        if (error || !tweets || tweets.length === 0) {
-          continue;
+        for (const dataPoint of comprehensiveData.slice(0, 20)) {
+          try {
+            // Train with rich feature set
+            await this.mlEngine.trainWithNewData(
+              String(dataPoint.posted_decisions?.content || ''),
+              {
+                likes: dataPoint.actual_engagement || 0,
+                retweets: 0,
+                replies: 0,
+                followers_gained: dataPoint.followers_attributed || 0,
+                engagement_velocity: dataPoint.engagement_velocity || 0,
+                shareability_score: dataPoint.shareability_score || 0,
+                hook_effectiveness: dataPoint.hook_effectiveness || 0,
+                prediction_accuracy: dataPoint.prediction_accuracy || 0
+              }
+            );
+          } catch (mlError: any) {
+            console.error(`⚠️ ML training error:`, mlError.message);
+            // Continue with other data points
+          }
         }
         
-        for (const tweet of tweets) {
-          await this.mlEngine.trainWithNewData(
-            String(tweet.content || ''),
-            {
-              likes: tweet.likes || 0,
-              retweets: tweet.retweets || 0,
-              replies: tweet.replies || 0,
-              followers_gained: tweet.followers_gained || 0
-            }
-          );
-        }
+        console.log('✅ LEARNING_LOOP: ML training completed');
       }
-      */
       
       console.log('✅ LEARNING_LOOP: ML model update complete (placeholder)');
     } catch (error: any) {
