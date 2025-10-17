@@ -51,8 +51,7 @@ export async function generateViralThread(request: ViralThreadRequest = {}): Pro
       max_tokens: 800,
       response_format: { type: 'json_object' }
     }, {
-      purpose: 'viral_thread_generation',
-      requireJSON: true
+      purpose: 'viral_thread_generation'
     });
 
     const content = completion.choices[0]?.message?.content;
