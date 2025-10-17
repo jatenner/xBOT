@@ -22,6 +22,14 @@ import { HumanVoiceEngine } from '../ai/humanVoiceEngine';
 import { generateNewsReporterContent } from '../generators/newsReporterGenerator';
 import { generateStorytellerContent } from '../generators/storytellerGenerator';
 import { generateInterestingContent } from '../generators/interestingContentGenerator';
+import { generateProvocateurContent } from '../generators/provocateurGenerator';
+import { generateDataNerdContent } from '../generators/dataNerdGenerator';
+import { generateMythBusterContent } from '../generators/mythBusterGenerator';
+import { generateCoachContent } from '../generators/coachGenerator';
+import { generateThoughtLeaderContent } from '../generators/thoughtLeaderGenerator';
+import { generateContrarianContent } from '../generators/contrarianGenerator';
+import { generateExplorerContent } from '../generators/explorerGenerator';
+import { generatePhilosopherContent } from '../generators/philosopherGenerator';
 
 // ═══════════════════════════════════════════════════════════
 // TYPES
@@ -266,8 +274,20 @@ export class UnifiedContentEngine {
   // ═══════════════════════════════════════════════════════════
   
   /**
-   * Select and use one of the REAL content generators you built
-   * Rotates between: HumanVoice styles, News Reporter, Storyteller, Interesting Content
+   * Select and use one of the 12 REAL content generators you built
+   * COMPLETE LIST:
+   * 1. HumanVoice (5 voice styles)
+   * 2. NewsReporter
+   * 3. Storyteller
+   * 4. InterestingContent
+   * 5. Provocateur
+   * 6. DataNerd
+   * 7. MythBuster
+   * 8. Coach
+   * 9. ThoughtLeader
+   * 10. Contrarian
+   * 11. Explorer
+   * 12. Philosopher
    */
   private async selectAndGenerateWithPersona(params: {
     topic: string;
@@ -277,22 +297,64 @@ export class UnifiedContentEngine {
     experimentArm: string;
   }): Promise<{ generatorName: string; content: string | string[]; confidence: number }> {
     
-    // Define generator weights based on experiment arm
+    // Define generator weights based on experiment arm (12 generators total)
     const generatorWeights = params.experimentArm === 'control'
-      ? { humanVoice: 0.40, newsReporter: 0.25, storyteller: 0.20, interesting: 0.15 }
+      ? {
+          // Exploit proven patterns - more weight on reliable generators
+          humanVoice: 0.15,
+          newsReporter: 0.12,
+          storyteller: 0.12,
+          interesting: 0.10,
+          provocateur: 0.10,
+          dataNerd: 0.10,
+          mythBuster: 0.10,
+          coach: 0.08,
+          thoughtLeader: 0.05,
+          contrarian: 0.04,
+          explorer: 0.02,
+          philosopher: 0.02
+        }
       : params.experimentArm === 'variant_a'
-      ? { humanVoice: 0.30, newsReporter: 0.20, storyteller: 0.25, interesting: 0.25 }
-      : { humanVoice: 0.20, newsReporter: 0.20, storyteller: 0.30, interesting: 0.30 };
+      ? {
+          // Moderate exploration - balanced weights
+          humanVoice: 0.10,
+          newsReporter: 0.08,
+          storyteller: 0.08,
+          interesting: 0.08,
+          provocateur: 0.08,
+          dataNerd: 0.09,
+          mythBuster: 0.09,
+          coach: 0.10,
+          thoughtLeader: 0.08,
+          contrarian: 0.08,
+          explorer: 0.07,
+          philosopher: 0.07
+        }
+      : {
+          // Aggressive exploration - more weight on experimental generators
+          humanVoice: 0.05,
+          newsReporter: 0.06,
+          storyteller: 0.10,
+          interesting: 0.10,
+          provocateur: 0.10,
+          dataNerd: 0.08,
+          mythBuster: 0.08,
+          coach: 0.08,
+          thoughtLeader: 0.10,
+          contrarian: 0.10,
+          explorer: 0.08,
+          philosopher: 0.07
+        };
     
     // Weighted random selection
     const random = Math.random();
     let cumulativeWeight = 0;
-    let selectedGenerator: 'humanVoice' | 'newsReporter' | 'storyteller' | 'interesting';
+    let selectedGenerator: keyof typeof generatorWeights;
     
     for (const [gen, weight] of Object.entries(generatorWeights)) {
       cumulativeWeight += weight;
       if (random <= cumulativeWeight) {
-        selectedGenerator = gen as any;
+        selectedGenerator = gen as keyof typeof generatorWeights;
         break;
       }
     }
@@ -301,7 +363,9 @@ export class UnifiedContentEngine {
     console.log(`  🎯 Selected: ${selectedGenerator} (arm: ${params.experimentArm})`);
     
     try {
-      // HUMAN VOICE ENGINE (5 voice styles)
+      // ═══════════════════════════════════════════════════════════
+      // GENERATOR 1: HUMAN VOICE ENGINE (5 voice styles)
+      // ═══════════════════════════════════════════════════════════
       if (selectedGenerator === 'humanVoice') {
         const result = await this.humanVoice.generateHumanContent({
           topic: params.topic,
@@ -316,7 +380,9 @@ export class UnifiedContentEngine {
         };
       }
       
-      // NEWS REPORTER (Breaking health news, FDA announcements, product launches)
+      // ═══════════════════════════════════════════════════════════
+      // GENERATOR 2: NEWS REPORTER
+      // ═══════════════════════════════════════════════════════════
       if (selectedGenerator === 'newsReporter') {
         const result = await generateNewsReporterContent({
           topic: params.topic,
@@ -330,7 +396,9 @@ export class UnifiedContentEngine {
         };
       }
       
-      // STORYTELLER (Real documented cases: Wim Hof, Navy SEALs, etc.)
+      // ═══════════════════════════════════════════════════════════
+      // GENERATOR 3: STORYTELLER
+      // ═══════════════════════════════════════════════════════════
       if (selectedGenerator === 'storyteller') {
         const result = await generateStorytellerContent({
           topic: params.topic,
@@ -344,7 +412,9 @@ export class UnifiedContentEngine {
         };
       }
       
-      // INTERESTING CONTENT (Counterintuitive, "wait REALLY?" content)
+      // ═══════════════════════════════════════════════════════════
+      // GENERATOR 4: INTERESTING CONTENT
+      // ═══════════════════════════════════════════════════════════
       if (selectedGenerator === 'interesting') {
         const result = await generateInterestingContent({
           topic: params.topic,
@@ -353,6 +423,134 @@ export class UnifiedContentEngine {
         
         return {
           generatorName: 'InterestingContent',
+          content: result.content,
+          confidence: result.confidence
+        };
+      }
+      
+      // ═══════════════════════════════════════════════════════════
+      // GENERATOR 5: PROVOCATEUR
+      // ═══════════════════════════════════════════════════════════
+      if (selectedGenerator === 'provocateur') {
+        const result = await generateProvocateurContent({
+          topic: params.topic,
+          format: params.format
+        });
+        
+        return {
+          generatorName: 'Provocateur',
+          content: result.content,
+          confidence: result.confidence
+        };
+      }
+      
+      // ═══════════════════════════════════════════════════════════
+      // GENERATOR 6: DATA NERD
+      // ═══════════════════════════════════════════════════════════
+      if (selectedGenerator === 'dataNerd') {
+        const result = await generateDataNerdContent({
+          topic: params.topic,
+          format: params.format
+        });
+        
+        return {
+          generatorName: 'DataNerd',
+          content: result.content,
+          confidence: result.confidence
+        };
+      }
+      
+      // ═══════════════════════════════════════════════════════════
+      // GENERATOR 7: MYTH BUSTER
+      // ═══════════════════════════════════════════════════════════
+      if (selectedGenerator === 'mythBuster') {
+        const result = await generateMythBusterContent({
+          topic: params.topic,
+          format: params.format
+        });
+        
+        return {
+          generatorName: 'MythBuster',
+          content: result.content,
+          confidence: result.confidence
+        };
+      }
+      
+      // ═══════════════════════════════════════════════════════════
+      // GENERATOR 8: COACH
+      // ═══════════════════════════════════════════════════════════
+      if (selectedGenerator === 'coach') {
+        const result = await generateCoachContent({
+          topic: params.topic,
+          format: params.format
+        });
+        
+        return {
+          generatorName: 'Coach',
+          content: result.content,
+          confidence: result.confidence
+        };
+      }
+      
+      // ═══════════════════════════════════════════════════════════
+      // GENERATOR 9: THOUGHT LEADER
+      // ═══════════════════════════════════════════════════════════
+      if (selectedGenerator === 'thoughtLeader') {
+        const result = await generateThoughtLeaderContent({
+          topic: params.topic,
+          format: params.format
+        });
+        
+        return {
+          generatorName: 'ThoughtLeader',
+          content: result.content,
+          confidence: result.confidence
+        };
+      }
+      
+      // ═══════════════════════════════════════════════════════════
+      // GENERATOR 10: CONTRARIAN
+      // ═══════════════════════════════════════════════════════════
+      if (selectedGenerator === 'contrarian') {
+        const result = await generateContrarianContent({
+          topic: params.topic,
+          format: params.format
+        });
+        
+        return {
+          generatorName: 'Contrarian',
+          content: result.content,
+          confidence: result.confidence
+        };
+      }
+      
+      // ═══════════════════════════════════════════════════════════
+      // GENERATOR 11: EXPLORER
+      // ═══════════════════════════════════════════════════════════
+      if (selectedGenerator === 'explorer') {
+        const result = await generateExplorerContent({
+          topic: params.topic,
+          format: params.format
+        });
+        
+        return {
+          generatorName: 'Explorer',
+          content: result.content,
+          confidence: result.confidence
+        };
+      }
+      
+      // ═══════════════════════════════════════════════════════════
+      // GENERATOR 12: PHILOSOPHER
+      // ═══════════════════════════════════════════════════════════
+      if (selectedGenerator === 'philosopher') {
+        const result = await generatePhilosopherContent({
+          topic: params.topic,
+          format: params.format
+        });
+        
+        return {
+          generatorName: 'Philosopher',
           content: result.content,
           confidence: result.confidence
         };
