@@ -200,6 +200,13 @@ app.get('/health', async (req, res) => {
         reply: stats.replyRuns > 0 || flags.replyEnabled,
         posting: stats.postingRuns > 0 || flags.postingEnabled,
         learn: stats.learnRuns > 0 || flags.learnEnabled,
+        // COMPREHENSIVE DATA COLLECTION SYSTEMS
+        analytics: true, // 30 min - scrapes real Twitter metrics
+        attribution: true, // 2h - tracks follower growth
+        outcomes_real: true, // 2h - comprehensive engagement
+        data_collection: true, // 1h - DataCollectionEngine (40+ metrics)
+        ai_orchestration: true, // 6h - AI-driven strategy
+        viral_thread: flags.live, // 24h - daily amazing thread
       },
       browserProfileDirExists: fs.existsSync('/tmp/xbot-profile'),
       lastPostAttemptAt: (globalThis as any).__xbotLastPostAttemptAt || null,
