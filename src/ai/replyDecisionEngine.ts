@@ -48,31 +48,60 @@ export class AIReplyDecisionEngine {
   }
 
   /**
-   * MAIN DECISION LOOP - AI decides best reply opportunities
+   * MAIN DECISION LOOP - AI decides best reply opportunities (REAL TWITTER SCRAPING)
    */
   async findBestOpportunities(count: number = 10): Promise<ReplyOpportunity[]> {
-    console.log(`[AI_DECISION] 🤖 Finding top ${count} reply opportunities...`);
+    console.log(`[AI_DECISION] 🤖 Finding top ${count} reply opportunities with REAL scraping...`);
     
     try {
       // Step 1: Get current context
       const context = await this.getCurrentContext();
       
-      // Step 2: Get potential targets from discovery system
-      const potentialTargets = await aiAccountDiscovery.getTopTargets(100);
+      // Step 2: Get discovered accounts
+      const supabase = getSupabaseClient();
+      const { data: accounts } = await supabase
+        .from('discovered_accounts')
+        .select('username, follower_count')
+        .gte('follower_count', 10000)
+        .lte('follower_count', 500000)
+        .order('last_updated', { ascending: false })
+        .limit(20);
       
-      if (potentialTargets.length === 0) {
-        console.log('[AI_DECISION] ⚠️ No targets discovered yet, triggering discovery...');
+      if (!accounts || accounts.length === 0) {
+        console.log('[AI_DECISION] ⚠️ No accounts discovered yet, triggering discovery...');
         await aiAccountDiscovery.runDiscoveryLoop();
         return [];
       }
       
-      // Step 3: Filter based on recent activity
-      const availableTargets = await this.filterRecentTargets(potentialTargets);
+      // Step 3: Scrape real reply opportunities from top accounts
+      const { realTwitterDiscovery } = await import('./realTwitterDiscovery');
+      const allOpportunities: any[] = [];
       
-      // Step 4: Use AI to rank opportunities
-      const rankedOpportunities = await this.rankOpportunitiesWithAI(availableTargets, context);
+      for (const account of accounts.slice(0, 5)) {
+        try {
+          const opps = await realTwitterDiscovery.findReplyOpportunitiesFromAccount(String(account.username));
+          allOpportunities.push(...opps);
+          
+          // Small delay between accounts
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        } catch (error: any) {
+          console.error(`[AI_DECISION] ⚠️ Failed to scrape @${account.username}:`, error.message);
+        }
+      }
       
-      // Step 5: Return top N
+      if (allOpportunities.length === 0) {
+        console.log('[AI_DECISION] ⚠️ No tweet opportunities found in current scan');
+        return [];
+      }
+      
+      // Step 4: Store opportunities in database
+      await realTwitterDiscovery.storeOpportunities(allOpportunities);
+      
+      // Step 5: Filter and rank opportunities
+      const filteredOpps = await this.filterRecentTargets(allOpportunities);
+      const rankedOpportunities = await this.convertToReplyOpportunities(filteredOpps);
+      
+      // Step 6: Return top N
       const topOpportunities = rankedOpportunities.slice(0, count);
       
       console.log(`[AI_DECISION] ✅ Found ${topOpportunities.length} high-value opportunities`);
@@ -83,6 +112,26 @@ export class AIReplyDecisionEngine {
       console.error('[AI_DECISION] ❌ Decision engine failed:', error.message);
       return [];
     }
+  }
+  
+  /**
+   * Convert scraped opportunities to ReplyOpportunity format
+   */
+  private async convertToReplyOpportunities(opportunities: any[]): Promise<ReplyOpportunity[]> {
+    return opportunities.map(opp => ({
+      target_username: opp.account_username || opp.tweet_author,
+      target_followers: 50000, // Estimated
+      tweet_url: opp.tweet_url,
+      tweet_content: opp.tweet_content,
+      tweet_engagement: opp.like_count,
+      opportunity_score: opp.opportunity_score,
+      recommended_generator: 'research_backed_explainer',
+      recommended_timing: 0,
+      predicted_impressions: Math.round(opp.like_count * 10),
+      predicted_profile_clicks: Math.round(opp.like_count * 0.05),
+      predicted_follows: Math.round(opp.like_count * 0.01),
+      reasoning: `High engagement (${opp.like_count} likes), low competition (${opp.reply_count} replies)`
+    }));
   }
 
   /**
