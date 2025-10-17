@@ -38,6 +38,15 @@ export function validateSubstance(content: string | string[]): SubstanceValidati
     };
   }
   
+  // 2.5. "What if everything we think about..." pattern
+  if (/^what if everything we think about/i.test(text)) {
+    return {
+      isValid: false,
+      reason: 'Hollow "what if everything" pattern with no substance',
+      score: 5
+    };
+  }
+  
   // 3. Just "Myth: X" or "Truth: Y" without elaboration
   if (/^myth:/i.test(text) && text.length < 80) {
     return {
