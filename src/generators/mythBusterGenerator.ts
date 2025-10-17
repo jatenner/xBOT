@@ -1,11 +1,11 @@
 /**
- * MYTH BUSTER GENERATOR
- * Personality: Debunks common health myths with evidence
- * Voice: Direct, myth-crushing, fact-focused
+ * MYTH BUSTER GENERATOR - REBUILT
+ * Corrects misconceptions with data
+ * Shows what's wrong + what's actually true
  */
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
-import { validateAndExtractContent, createFallbackContent } from './generatorUtils';
+import { validateAndExtractContent } from './generatorUtils';
 
 export interface MythBusterContent {
   content: string | string[];
@@ -21,60 +21,70 @@ export async function generateMythBusterContent(params: {
   
   const { topic, format, research } = params;
   
-  const systemPrompt = `You are THE MYTH BUSTER - you crush common health myths with hard evidence.
+  const systemPrompt = `You bust myths with DATA and MECHANISMS - not just "actually..."
 
-🚨 MANDATORY VIRAL REQUIREMENTS (Auto-rejected if ANY missing):
+🎯 YOUR JOB: Show what's wrong, what's true, and WHY.
 
-1. MUST START with "Myth:" or "Everyone thinks [X] but..."
-2. MUST include study citation debunking it: "[University] [Year] (n=[number])"
-3. MUST include specific statistic proving it wrong
-4. MUST include mechanism: "Actually works via [biological process]"
-5. MUST include corrected action: "Instead: [specific protocol]"
-6. Length: Single tweets 180-260 chars, thread tweets 150-230 chars each
+✅ GOOD EXAMPLES:
 
-GOOD MYTH HOOKS:
-- "Myth: More sleep = better recovery. Harvard 2024 (n=8,932): Sleep continuity beats duration 3x"
-- "Everyone thinks cardio burns fat. MIT 2023 (n=4,567): Resistance training increases RMR 23% more"
-- "Myth: Fasted cardio burns more fat. Stanford debunked this with 2,847 participants"
+"Myth: Blue light alone ruins sleep. Harvard 2020 (n=4,521): Sleep debt matters 10x more. 
+Each hour increases cognitive decline 14%. Fix duration first, then optimize light."
+→ States myth + cites study + gives data + prioritizes correctly
 
-GOOD DEBUNKING FORMATS:
-- "Wrong. Oxford 2024 (n=12,456): Protein timing matters 4x more than fasting state"
-- "False. Johns Hopkins meta-analysis: 89% of benefits come from sleep pressure, not hours"
-- "Debunked. Yale 2023: Caloric deficit determines fat loss, timing contributes <3%"
+"Myth: Stretching prevents injuries. Meta-analysis of 26 studies: No effect. What works? 
+Strength through full ROM. That's why gymnasts don't 'stretch'—they lift heavy through 
+extreme ranges."
+→ Busts myth + cites evidence + gives alternative + example
 
-GOOD TRUTH REVEALS:
-- "Truth: GABA-A receptor density matters more than total sleep time"
-- "Reality: Muscle protein synthesis peaks when glycogen is PRESENT, not depleted"
-- "Actually: Cortisol awakening response needs morning light exposure, not suppression"
+"Myth: Eating before bed ruins sleep. Actually: Protein before bed improves sleep quality 
+via stable blood sugar. Going to bed hungry spikes cortisol at 2am. That's the real problem."
+→ Busts myth + explains mechanism + reveals actual issue
 
-GOOD CORRECTIONS:
-- "Instead: Optimize sleep continuity (wake count) not duration"
-- "Try this: 30g protein within 30min of training beats fasted state"
-- "Protocol: 15min morning sunlight > melatonin supplements"
+"Myth: More cardio = better fat loss. Zone 2 (60-70% max HR) burns more fat than Zone 4. 
+Harder isn't better—it shifts fuel source from fat to glucose. Train easier, burn more fat."
+→ Busts myth + gives specific zones + explains mechanism
+
+🚨 NEVER DO THIS:
+❌ "Myth: X. Actually: Y." (no data or mechanism)
+❌ Busting myths without alternatives
+❌ "Studies show..." without citing which study
+❌ No explanation of WHY myth is wrong
 
 ${research ? `
-RESEARCH PROVIDED:
-Finding: ${research.finding}
+📊 USE THIS RESEARCH:
+${research.finding}
 Source: ${research.source}
 Mechanism: ${research.mechanism}
+
+What myth does this bust? What's the truth?
 ` : ''}
 
 ${format === 'thread' ? `
-OUTPUT: Return JSON array of 3-5 tweets (150-230 chars each):
-Tweet 1: State the myth
-Tweet 2: Debunk with study + stat
-Tweet 3: Explain true mechanism
-Tweet 4: Give corrected protocol
-Format your response as JSON.
+📱 THREAD FORMAT (3-5 tweets, 150-250 chars each):
+
+Tweet 1: The myth + the truth (with data)
+Tweet 2: Why the myth is wrong (mechanism)
+Tweet 3: What actually works (alternative)
+Tweet 4: How to apply it (practical)
+
+Return JSON: {"tweets": ["...", "...", ...]}
 ` : `
-OUTPUT: Return single tweet as JSON object (180-260 chars):
-Myth + debunk + truth + correction
-Format your response as JSON.
-`}`;
+📱 SINGLE TWEET (180-280 chars):
 
-  const userPrompt = `Debunk a common myth about: ${topic}
+Bust one myth with data and give the truth with mechanism.
+Show what's wrong + what's actually true.
 
-${format === 'thread' ? 'Break down why this myth is wrong and what the truth actually is.' : 'Crush one myth with evidence.'}`;
+Return JSON: {"tweet": "..."}
+`}
+
+🔥 CITE SOURCES: Study names, meta-analyses, sample sizes
+🧠 EXPLAIN WHY: Mechanism that reveals why myth is wrong
+⚡ GIVE ALTERNATIVE: Don't just bust—show what works`;
+
+  const userPrompt = `Bust the biggest myth about: ${topic}
+
+What do people get wrong? What's the data? What's actually true?
+Cite specific studies and explain the mechanism.`;
 
   try {
     const response = await createBudgetedChatCompletion({
@@ -83,34 +93,21 @@ ${format === 'thread' ? 'Break down why this myth is wrong and what the truth ac
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
       ],
-      temperature: 0.75,
-      max_tokens: format === 'thread' ? 600 : 200,
+      temperature: 0.8,
+      max_tokens: format === 'thread' ? 600 : 150,
       response_format: { type: 'json_object' }
     }, { purpose: 'myth_buster_content_generation' });
 
     const parsed = JSON.parse(response.choices[0].message.content || '{}');
     
     return {
-      content: validateAndExtractContent(parsed, format, 'GENERATOR'),
+      content: validateAndExtractContent(parsed, format, 'MYTH_BUSTER'),
       format,
       confidence: 0.85
     };
     
   } catch (error: any) {
     console.error('[MYTH_BUSTER_GEN] Error:', error.message);
-    
-    return {
-      content: format === 'thread'
-        ? [
-            `Common myth: ${topic} works this way.`,
-            `Wrong. Evidence shows the opposite.`,
-            `The truth: actual mechanism.`,
-            `Why the myth persists: explanation.`
-          ]
-        : `Myth: ${topic} belief. Truth: evidence shows otherwise.`,
-      format,
-      confidence: 0.5
-    };
+    throw new Error(`Myth buster generator failed: ${error.message}. System will retry with different approach.`);
   }
 }
-

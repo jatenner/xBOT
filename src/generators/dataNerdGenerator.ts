@@ -1,11 +1,11 @@
 /**
- * DATA NERD GENERATOR
- * Personality: Obsessed with numbers, studies, mechanisms
- * Voice: Research-heavy, citation-focused, precise
+ * DATA NERD GENERATOR - REBUILT
+ * Shares surprising data and statistics
+ * SPECIFIC numbers, not "studies show..."
  */
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
-import { validateAndExtractContent, createFallbackContent } from './generatorUtils';
+import { validateAndExtractContent } from './generatorUtils';
 
 export interface DataNerdContent {
   content: string | string[];
@@ -16,62 +16,74 @@ export interface DataNerdContent {
 export async function generateDataNerdContent(params: {
   topic: string;
   format: 'single' | 'thread';
-  research?: { finding: string; source: string; mechanism: string; sampleSize?: number; };
+  research?: { finding: string; source: string; mechanism: string; };
 }): Promise<DataNerdContent> {
   
   const { topic, format, research } = params;
   
-  const systemPrompt = `You are THE DATA NERD - obsessed with research, numbers, and mechanisms.
+  const systemPrompt = `You share SURPRISING DATA with context - like Peter Attia.
 
-🚨 MANDATORY VIRAL REQUIREMENTS (Auto-rejected if ANY missing):
+🎯 YOUR JOB: Make statistics actually interesting with mechanism.
 
-1. MUST START with specific number or statistic
-2. MUST include FULL study citation: "[Institution] [Year] (n=[exact number])"
-3. MUST include at least THREE specific numbers/percentages
-4. MUST include mechanism with specific pathway: "via [biological process]"
-5. MUST include practical implication with measurement
-6. Length: Single tweets 180-260 chars, thread tweets 150-230 chars each
+✅ GOOD EXAMPLES:
 
-GOOD DATA HOOKS:
-- "83% improvement in REM cycles with 400mg magnesium glycinate (MIT 2024, n=2,847)"
-- "Protein synthesis peaks 73% higher when timed pre-workout vs. post (Stanford 2023, n=1,456)"
-- "Morning sunlight (15min) syncs circadian rhythm in 94% of participants (Oxford 2024, n=6,234)"
+"Harvard 2020 (n=4,521): Each hour of sleep debt increases cognitive decline risk by 14%. 
+Works via impaired glymphatic clearance. Sleep isn't optional—it's metabolic maintenance."
+→ Specific study + sample size + percentage + mechanism
 
-GOOD MECHANISM FORMATS:
-- "Works via GABA-A receptor activation → increased slow-wave sleep → 31% better HRV recovery"
-- "Mechanism: GLP-1 spike → 6hr ghrelin suppression → 24% reduction in caloric intake"
-- "Process: Blue light suppression → melatonin onset 47min earlier → deeper REM phases"
+"Zone 2 cardio at 60-70% max HR improves VO2max by 15-20% in 8 weeks. But 85% of people 
+train in Zone 3-4 (too hard for mitochondrial adaptation, too easy for performance gains)."
+→ Specific zones + improvement rate + common mistake
 
-GOOD PRACTICAL IMPLICATIONS:
-- "Takeaway: 400mg 90min before bed = 31% deeper sleep within 8 weeks"
-- "Action: 30g protein within 30min of waking = 4hr appetite control"
-- "Protocol: 15min morning sun (before 10am) > $300 SAD lamp"
+"16:8 fasting increases autophagy markers by 30% after 16 hours. But eating window matters: 
+12pm-8pm beats 8am-4pm because cortisol rhythm. Same fasting, different hormonal context."
+→ Specific protocol + percentage + timing nuance
+
+"Cold exposure at 11°C for 11 minutes weekly boosts norepinephrine 200-300%. That's why 
+2 min cold shower daily works—you hit threshold. Temperature and duration both matter."
+→ Specific temp + time + mechanism + practical application
+
+🚨 NEVER DO THIS:
+❌ "Studies show..." (which study?)
+❌ "Research indicates..." (what research?)
+❌ "X percent of people..." (what's X?)
+❌ Data without mechanism
 
 ${research ? `
-RESEARCH PROVIDED:
-Finding: ${research.finding}
+📊 USE THIS RESEARCH:
+${research.finding}
 Source: ${research.source}
-${research.sampleSize ? `Sample Size: n=${research.sampleSize}` : ''}
 Mechanism: ${research.mechanism}
+
+Turn this into SPECIFIC data with context.
 ` : ''}
 
 ${format === 'thread' ? `
-OUTPUT: Return JSON array of 4-6 tweets (150-230 chars each):
-Tweet 1: Opening stat hook
-Tweet 2: Full study citation + sample
-Tweet 3: Key finding with percentages
-Tweet 4: Mechanism with pathway
-Tweet 5: Practical protocol with measurements
-Format your response as JSON.
+📱 THREAD FORMAT (3-5 tweets, 150-250 chars each):
+
+Tweet 1: The surprising statistic with source
+Tweet 2: What this means (mechanism)
+Tweet 3: Common mistake people make
+Tweet 4: Practical application
+
+Return JSON: {"tweets": ["...", "...", ...]}
 ` : `
-OUTPUT: Return single tweet as JSON object (180-260 chars):
-Stat + citation + finding + mechanism + action
-Format your response as JSON.
-`}`;
+📱 SINGLE TWEET (180-280 chars):
 
-  const userPrompt = `Share fascinating research about: ${topic}
+One surprising statistic with source, percentage, and mechanism.
+Make the data mean something.
 
-${format === 'thread' ? 'Break down a study with all the juicy details and mechanisms.' : 'Share one compelling research finding with numbers.'}`;
+Return JSON: {"tweet": "..."}
+`}
+
+🔥 BE SPECIFIC: Study name, sample size (n=), percentages, exact numbers
+🧠 ADD CONTEXT: What does this mean? Why does it matter?
+⚡ EXPLAIN HOW: Mechanism that makes the data interesting`;
+
+  const userPrompt = `Share the most surprising data about: ${topic}
+
+What's the specific study, sample size, percentage? What's the mechanism?
+Make the statistics actually interesting.`;
 
   try {
     const response = await createBudgetedChatCompletion({
@@ -80,35 +92,21 @@ ${format === 'thread' ? 'Break down a study with all the juicy details and mecha
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
       ],
-      temperature: 0.7, // Moderate creativity, stay grounded
-      max_tokens: format === 'thread' ? 700 : 200,
+      temperature: 0.7,
+      max_tokens: format === 'thread' ? 600 : 150,
       response_format: { type: 'json_object' }
     }, { purpose: 'data_nerd_content_generation' });
 
     const parsed = JSON.parse(response.choices[0].message.content || '{}');
-    const content = validateAndExtractContent(parsed, format, 'DATA_NERD');
     
     return {
-      content,
+      content: validateAndExtractContent(parsed, format, 'DATA_NERD'),
       format,
       confidence: 0.9
     };
     
   } catch (error: any) {
     console.error('[DATA_NERD_GEN] Error:', error.message);
-    
-    return {
-      content: format === 'thread'
-        ? [
-            `Study on ${topic}: researchers tracked thousands of people.`,
-            `The finding: specific measurable improvement.`,
-            `The mechanism: biological pathway explanation.`,
-            `Practical takeaway: actionable protocol.`
-          ]
-        : `Research shows ${topic} has measurable impact through specific mechanism.`,
-      format,
-      confidence: 0.5
-    };
+    throw new Error(`Data nerd generator failed: ${error.message}. System will retry with different approach.`);
   }
 }
-

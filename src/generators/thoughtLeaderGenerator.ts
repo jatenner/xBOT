@@ -1,11 +1,11 @@
 /**
- * THOUGHT LEADER GENERATOR
- * Personality: Bold claims, authoritative, confident
- * Voice: Declarative, evidence-backed, leadership
+ * THOUGHT LEADER GENERATOR - REBUILT
+ * Shares forward-thinking perspectives
+ * NOT buzzwords - actual insights about where things are going
  */
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
-import { validateAndExtractContent, createFallbackContent } from './generatorUtils';
+import { validateAndExtractContent } from './generatorUtils';
 
 export interface ThoughtLeaderContent {
   content: string | string[];
@@ -21,57 +21,70 @@ export async function generateThoughtLeaderContent(params: {
   
   const { topic, format, research } = params;
   
-  const systemPrompt = `You are THE THOUGHT LEADER - you make bold, authoritative claims backed by evidence.
+  const systemPrompt = `You share FORWARD-THINKING INSIGHTS about where health is going.
 
-🚨 MANDATORY VIRAL REQUIREMENTS (Auto-rejected if ANY missing):
+🎯 YOUR JOB: Say something people will be talking about in 5 years.
 
-1. MUST START with authoritative declaration: "Here's the truth:" or "Everyone gets [topic] wrong:"
-2. MUST include specific study citation: "[University] [Year] (n=[number])"
-3. MUST include bold statistic or percentage
-4. MUST include mechanism: "because [biological process]"
-5. MUST include reframe: "The real issue is..." or "What actually matters is..."
-6. Length: Single tweets 180-260 chars, thread tweets 150-230 chars each
+✅ GOOD EXAMPLES:
 
-GOOD AUTHORITATIVE HOOKS:
-- "Here's the truth about sleep: Duration doesn't matter. Architecture does."
-- "Everyone gets cortisol wrong. It's not your enemy—dysregulation is."
-- "The fitness industry sold you a lie about protein timing. Here's what MIT found:"
+"We're shifting from 'fix disease' to 'optimize biology'. Continuous glucose monitors went 
+from diabetics-only to biohackers tracking metabolic responses. Next: real-time neurotransmitter 
+tracking via wearables."
+→ Shows trend + current example + future prediction
 
-GOOD EVIDENCE FORMATS:
-- "Johns Hopkins 2023 (n=9,847): Sleep continuity beats total hours by 3x for recovery"
-- "Stanford meta-analysis: 78% of 'adrenal fatigue' is actually blood sugar dysregulation"
-- "Harvard 2024: Timing protein intake around training matters 4x more than total amount"
+"Health isn't about symptoms anymore. It's about biomarkers. APOE4 carriers know Alzheimer's 
+risk at 25, not 75. We're treating 30-year timelines, not acute conditions."
+→ Paradigm shift + specific example + time horizon change
 
-GOOD REFRAMES:
-- "The real issue isn't stress—it's your recovery capacity"
-- "What actually matters: mitochondrial flexibility, not ketone levels"
-- "Stop optimizing sleep duration. Start optimizing sleep pressure."
+"Sleep tracking normalized 'orthosomnia'—optimizing sleep to the point of anxiety. Next wave: 
+Accepting 'good enough'. 7.5hrs solid beats 8hrs anxious. Quantification paradox."
+→ Names phenomenon + shows evolution + predicts counter-trend
+
+"Zone 2 cardio was nerds in 2018, normies in 2024. Next: Mitochondrial training becomes as 
+common as protein timing. VO2max will be tracked like body weight."
+→ Shows adoption curve + predicts mainstreaming
+
+🚨 NEVER DO THIS:
+❌ Buzzwords without substance
+❌ "The future of health is..." (too vague)
+❌ Predictions without current examples
+❌ No specific mechanisms or trends
 
 ${research ? `
-RESEARCH FOUNDATION:
-Finding: ${research.finding}
+📊 USE THIS RESEARCH:
+${research.finding}
 Source: ${research.source}
 Mechanism: ${research.mechanism}
 
-Use this to support your authoritative claims.
+Where is this trend going? What's the forward-thinking angle?
 ` : ''}
 
 ${format === 'thread' ? `
-OUTPUT FORMAT: Return JSON object with array of 3-5 tweets (150-230 chars each):
-Tweet 1: Bold authoritative declaration + hook
-Tweet 2: Study citation + statistic
-Tweet 3: Mechanism (why this is true)
-Tweet 4: Reframe (how to think differently)
-Format your response as JSON.
+📱 THREAD FORMAT (3-5 tweets, 150-250 chars each):
+
+Tweet 1: The shift happening now
+Tweet 2: Current example/proof point
+Tweet 3: Where it's going (prediction)
+Tweet 4: What this means (implication)
+
+Return JSON: {"tweets": ["...", "...", ...]}
 ` : `
-OUTPUT FORMAT: Return single tweet as JSON object (180-260 chars):
-Authoritative claim + citation + stat + reframe
-Format your response as JSON.
-`}`;
+📱 SINGLE TWEET (180-280 chars):
 
-  const userPrompt = `Make authoritative statement about: ${topic}
+One forward-thinking insight with current example and future direction.
+Show where things are going, not just what is.
 
-${format === 'thread' ? 'Build authoritative case with bold leadership perspective.' : 'Make one confident, evidence-backed claim.'}`;
+Return JSON: {"tweet": "..."}
+`}
+
+🔥 SHOW TRENDS: Where is this moving? What's the trajectory?
+🧠 GIVE EXAMPLES: Current proof points of the shift
+⚡ PREDICT: Where will this be in 2-5 years?`;
+
+  const userPrompt = `What's the forward-thinking perspective on: ${topic}
+
+Where is this trend going? What's happening now that proves it?
+What will be mainstream in 5 years?`;
 
   try {
     const response = await createBudgetedChatCompletion({
@@ -80,34 +93,21 @@ ${format === 'thread' ? 'Build authoritative case with bold leadership perspecti
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
       ],
-      temperature: 0.8, // Good creativity but authoritative
-      max_tokens: format === 'thread' ? 600 : 200,
+      temperature: 0.85,
+      max_tokens: format === 'thread' ? 600 : 150,
       response_format: { type: 'json_object' }
     }, { purpose: 'thought_leader_content_generation' });
 
     const parsed = JSON.parse(response.choices[0].message.content || '{}');
     
     return {
-      content: validateAndExtractContent(parsed, format, 'GENERATOR'),
+      content: validateAndExtractContent(parsed, format, 'THOUGHT_LEADER'),
       format,
-      confidence: 0.9
+      confidence: 0.8
     };
     
   } catch (error: any) {
     console.error('[THOUGHT_LEADER_GEN] Error:', error.message);
-    
-    return {
-      content: format === 'thread'
-        ? [
-            `${topic} matters more than we realize.`,
-            `Evidence shows clear impact.`,
-            `The mechanism: biological explanation.`,
-            `This changes how we should approach it.`
-          ]
-        : `${topic} is more important than commonly understood. Here's why.`,
-      format,
-      confidence: 0.5
-    };
+    throw new Error(`Thought leader generator failed: ${error.message}. System will retry with different approach.`);
   }
 }
-
