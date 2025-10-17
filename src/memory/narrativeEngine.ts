@@ -122,16 +122,17 @@ export class NarrativeEngine {
     
     switch (opportunity.type) {
       case 'callback':
-        return `NARRATIVE CONTEXT: You posted about ${opportunity.previousPost.topic} a few days ago. Reference it naturally to create continuity. Example: "Remember that ${opportunity.previousPost.topic} post? Here's the deeper picture..."`;
+        // NO META REFERENCES - Just give the topic, let AI make natural connections
+        return `Related to previous content on: ${opportunity.previousPost.topic}. Make a natural connection if relevant, but don't explicitly reference "your post" or "remember that post".`;
       
       case 'continuation':
-        return `NARRATIVE CONTEXT: Yesterday you posted about ${opportunity.previousPost.topic}. Build on that directly. Example: "Following up on yesterday's ${opportunity.previousPost.topic} insight..."`;
+        return `Previously covered: ${opportunity.previousPost.topic}. Build on this naturally without meta-references.`;
       
       case 'expansion':
-        return `NARRATIVE CONTEXT: You previously touched on ${opportunity.previousPost.topic} briefly. Dive deeper now. Example: "Let's expand on ${opportunity.previousPost.topic}..."`;
+        return `Topic relates to: ${opportunity.previousPost.topic}. Dive deeper without saying "let's expand on..." - just do it.`;
       
       case 'answer_question':
-        return `NARRATIVE CONTEXT: People had questions about your ${opportunity.previousPost.topic} post. Answer them now.`;
+        return `Related question about: ${opportunity.previousPost.topic}. Answer it directly without meta-commentary.`;
       
       default:
         return '';

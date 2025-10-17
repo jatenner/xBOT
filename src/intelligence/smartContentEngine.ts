@@ -125,6 +125,14 @@ export class SmartContentEngine {
    "Remember gut bacteria? Turns out they control your circadian rhythm too. They're not 
    just digesting food—they're timing your entire biology."
 
+🚨 MANDATORY REQUIREMENTS - NO EXCEPTIONS:
+1. MUST include specific numbers: "30%", "2,000 subjects", "16 hours", "65°F"
+2. MUST cite real research/examples: "Harvard 2020 (n=4,521)", "Huberman Lab", "Wim Hof study"
+3. MUST explain mechanism: "via autophagy", "through mitochondrial adaptation", "by reducing cortisol"
+4. MUST be 180-280 characters (NOT longer)
+5. NO VAGUE CLAIMS like "boosts fertility" - say "increases sperm motility by 23%"
+6. NO "What if everything we think about..." patterns
+
 ${context.recentTopics.length > 0 ? `
 📚 WHAT WE'VE ALREADY COVERED:
 Recent topics: ${context.recentTopics.slice(0, 5).join(', ')}
