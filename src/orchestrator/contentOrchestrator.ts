@@ -143,6 +143,23 @@ export class ContentOrchestrator {
       narrativeContext
     });
     
+    // STEP 7.25: VALIDATE SUBSTANCE (NO HOLLOW QUESTIONS OR TITLES!)
+    try {
+      const { validateContentSubstance } = await import('../validators/substanceValidator');
+      const substanceCheck = validateContentSubstance(generatedContent.content);
+      
+      if (!substanceCheck.isValid) {
+        console.error(`[ORCHESTRATOR] ❌ HOLLOW CONTENT REJECTED: ${substanceCheck.reason}`);
+        console.error(`[ORCHESTRATOR]    Content: "${Array.isArray(generatedContent.content) ? generatedContent.content[0] : generatedContent.content}"`);
+        throw new Error(`Content lacks substance: ${substanceCheck.reason}`);
+      }
+      
+      console.log(`[ORCHESTRATOR] ✅ Content has substance (score: ${substanceCheck.score}/100)`);
+    } catch (substanceError: any) {
+      console.error('[ORCHESTRATOR] ❌ Content substance validation failed');
+      throw substanceError; // Reject this content, force retry
+    }
+    
     // STEP 7.5: HUMANIZE CONTENT (Make it sound like a real person!)
     try {
       const { humanizeContent } = await import('../generators/humanVoiceFilter');
