@@ -112,18 +112,14 @@ export class RealTimeLearningLoop {
               .eq('decision_id', dataPoint.post_id)
               .single();
             
-            // Train with rich feature set
+            // Train with actual metrics (only accepts: likes, retweets, replies, followers_gained)
             await this.mlEngine.trainWithNewData(
               String(contentData?.content || ''),
               {
                 likes: Number(dataPoint.actual_engagement || 0),
                 retweets: 0,
                 replies: 0,
-                followers_gained: Number(dataPoint.followers_attributed || 0),
-                engagement_velocity: Number(dataPoint.engagement_velocity || 0),
-                shareability_score: Number(dataPoint.shareability_score || 0),
-                hook_effectiveness: Number(dataPoint.hook_effectiveness || 0),
-                prediction_accuracy: Number(dataPoint.prediction_accuracy || 0)
+                followers_gained: Number(dataPoint.followers_attributed || 0)
               }
             );
           } catch (mlError: any) {
