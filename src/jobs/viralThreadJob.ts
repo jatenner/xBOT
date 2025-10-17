@@ -52,12 +52,13 @@ export async function runViralThreadJob(): Promise<void> {
         predicted_er: 0.1, // Viral threads should get 10%+ engagement
         topic_cluster: 'viral_attempt',
         generation_source: 'viral_generator',
-        status: 'ready_for_posting',
+        status: 'queued',
         features: {
           thread_tweets: viralThread.content,
           viral_thread: true,
           hook_type: viralThread.hook_type,
-          viral_score: viralThread.viral_score
+          viral_score: viralThread.viral_score,
+          is_daily_thread: true
         }
       });
 
