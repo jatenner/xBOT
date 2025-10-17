@@ -182,6 +182,16 @@ export class JobManager {
     }, 30 * 60 * 1000)); // 30 minutes
     registered.analytics = true;
     
+    // VELOCITY TRACKER JOB - every 30 minutes to track follower attribution & velocity
+    this.timers.set('velocity_tracker', setInterval(async () => {
+      await this.safeExecute('velocity_tracker', async () => {
+        const { runVelocityTracking } = await import('./velocityTrackerJob');
+        await runVelocityTracking();
+        console.log('✅ JOB_MANAGER: Velocity tracking completed');
+      });
+    }, 30 * 60 * 1000)); // 30 minutes
+    registered.velocity_tracker = true;
+    
     // REAL OUTCOMES JOB - every 2 hours to collect comprehensive engagement data
     this.timers.set('outcomes_real', setInterval(async () => {
       await this.safeExecute('outcomes_real', async () => {

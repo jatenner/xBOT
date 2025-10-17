@@ -409,6 +409,129 @@ export class BulletproofTwitterScraper {
       rate: 0
     };
   }
+
+  /**
+   * Scrape profile metrics (follower count, profile views)
+   */
+  async scrapeProfileMetrics(page: Page, username?: string): Promise<{
+    followerCount: number;
+    followingCount: number;
+    profileViews: number;
+  }> {
+    const profileUsername = username || process.env.TWITTER_USERNAME || '';
+    
+    console.log(`[SCRAPER] 👤 Scraping profile metrics for @${profileUsername}...`);
+
+    try {
+      // Navigate to profile
+      await page.goto(`https://twitter.com/${profileUsername}`, {
+        waitUntil: 'networkidle',
+        timeout: 30000
+      });
+
+      await page.waitForTimeout(2000);
+
+      // Scrape follower count using multiple selector strategies
+      let followerCount = 0;
+      const followerSelectors = [
+        'a[href*="/followers"] span',
+        'a[href$="/verified_followers"] + a span',
+        '[data-testid="primaryColumn"] a[href*="/followers"] span'
+      ];
+
+      for (const selector of followerSelectors) {
+        try {
+          const elements = await page.locator(selector).all();
+          for (const element of elements) {
+            const text = await element.textContent();
+            if (text) {
+              const count = this.parseFollowerCount(text.trim());
+              if (count > 0) {
+                followerCount = count;
+                console.log(`[SCRAPER] ✅ Found follower count: ${followerCount}`);
+                break;
+              }
+            }
+          }
+          if (followerCount > 0) break;
+        } catch (error) {
+          // Try next selector
+        }
+      }
+
+      // Scrape following count (similar logic)
+      let followingCount = 0;
+      const followingSelectors = [
+        'a[href*="/following"] span',
+        '[data-testid="primaryColumn"] a[href$="/following"] span'
+      ];
+
+      for (const selector of followingSelectors) {
+        try {
+          const elements = await page.locator(selector).all();
+          for (const element of elements) {
+            const text = await element.textContent();
+            if (text) {
+              const count = this.parseFollowerCount(text.trim());
+              if (count > 0) {
+                followingCount = count;
+                break;
+              }
+            }
+          }
+          if (followingCount > 0) break;
+        } catch (error) {
+          // Try next selector
+        }
+      }
+
+      console.log(`[SCRAPER] 📊 Profile metrics: ${followerCount} followers, ${followingCount} following`);
+
+      return {
+        followerCount,
+        followingCount,
+        profileViews: 0 // Profile views may not be available via scraping
+      };
+
+    } catch (error: any) {
+      console.error(`[SCRAPER] ❌ Profile scraping failed:`, error.message);
+      return {
+        followerCount: 0,
+        followingCount: 0,
+        profileViews: 0
+      };
+    }
+  }
+
+  /**
+   * Parse follower count from text like "1.2K", "45.3M", "1,234"
+   */
+  private parseFollowerCount(text: string): number {
+    // Remove commas
+    const cleaned = text.replace(/,/g, '').trim();
+
+    // Check for K (thousands)
+    if (cleaned.match(/[\d.]+K/i)) {
+      const num = parseFloat(cleaned.replace(/K/i, ''));
+      return Math.round(num * 1000);
+    }
+
+    // Check for M (millions)
+    if (cleaned.match(/[\d.]+M/i)) {
+      const num = parseFloat(cleaned.replace(/M/i, ''));
+      return Math.round(num * 1000000);
+    }
+
+    // Check for B (billions - just in case!)
+    if (cleaned.match(/[\d.]+B/i)) {
+      const num = parseFloat(cleaned.replace(/B/i, ''));
+      return Math.round(num * 1000000000);
+    }
+
+    // Try to parse as plain number
+    const parsed = parseInt(cleaned);
+    return isNaN(parsed) ? 0 : parsed;
+  }
 }
 
 export const getBulletproofScraper = () => BulletproofTwitterScraper.getInstance();

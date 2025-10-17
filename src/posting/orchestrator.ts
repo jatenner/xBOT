@@ -117,6 +117,11 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
     // Update content_metadata
     await markAsPosted(decision.decision_id, tweetId);
     
+    // Track baseline followers (non-blocking)
+    trackBaselineFollowers(decision.decision_id, tweetId).catch(error => {
+      console.warn(`[POSTING_ORCHESTRATOR] ⚠️ Baseline follower tracking failed:`, error.message);
+    });
+    
     console.log(`[POSTING_ORCHESTRATOR] ✅ Posted successfully tweet_id=${tweetId} decision_id=${decision.decision_id}`);
     postingMetrics.posts_posted++;
     
@@ -279,6 +284,58 @@ async function isRateLimited(): Promise<boolean> {
   }
   
   return (count || 0) >= maxPerHour;
+}
+
+async function trackBaselineFollowers(postId: string, tweetId: string): Promise<void> {
+  try {
+    console.log(`[POSTING_ORCHESTRATOR] 👥 Tracking baseline followers for ${postId}...`);
+    
+    const { BrowserManager } = await import('../browser/browserManager');
+    const { getBulletproofScraper } = await import('../scrapers/bulletproofTwitterScraper');
+    const { getKVStore } = await import('../utils/kv');
+    
+    const browserManager = BrowserManager.getInstance();
+    const scraper = getBulletproofScraper();
+    const kv = getKVStore();
+    const supabase = getSupabaseClient();
+    
+    // Get page
+    const page = await browserManager.getPage();
+    
+    try {
+      // Scrape current follower count
+      const { followerCount, profileViews } = await scraper.scrapeProfileMetrics(page);
+      
+      // Store baseline in database
+      const { error } = await supabase
+        .from('post_follower_tracking')
+        .insert({
+          post_id: postId,
+          tweet_id: tweetId,
+          check_time: new Date().toISOString(),
+          follower_count: followerCount,
+          profile_views: profileViews,
+          hours_after_post: 0,
+          collection_phase: 'baseline'
+        });
+      
+      if (error) {
+        console.error(`[POSTING_ORCHESTRATOR] ❌ Failed to store baseline followers:`, error.message);
+      } else {
+        console.log(`[POSTING_ORCHESTRATOR] ✅ Baseline tracked: ${followerCount} followers`);
+      }
+      
+      // Cache in Redis for fast access
+      await kv.set(`follower:baseline:${postId}`, String(followerCount), 172800); // 48h TTL
+      
+    } finally {
+      await browserManager.releasePage(page);
+    }
+    
+  } catch (error: any) {
+    console.error(`[POSTING_ORCHESTRATOR] ❌ Baseline tracking error:`, error.message);
+    // Don't throw - this is non-critical
+  }
 }
 
 function updateSkipMetrics(reason: string): void {
