@@ -59,71 +59,58 @@ export class SmartReplyTargeting {
   }
 
   /**
-   * Find optimal reply opportunities RIGHT NOW
+   * Find optimal reply opportunities RIGHT NOW - FULLY AI-DRIVEN
    */
   async findReplyOpportunities(count: number = 5): Promise<ReplyOpportunity[]> {
-    console.log('[SMART_REPLY] 🎯 Finding optimal reply opportunities...');
+    console.log('[SMART_REPLY] 🎯 Finding optimal reply opportunities (AI-DRIVEN)...');
 
     try {
-      // Step 1: Get all potential targets (from AI-discovered targets)
-      const { data: targets } = await this.supabase
-        .from('ai_discovered_targets')
-        .select('*')
-        .gte('followers', 10000)
-        .lte('followers', 100000)
-        .order('conversion_potential', { ascending: false })
-        .limit(20);
-
-      if (!targets || targets.length === 0) {
-        console.log('[SMART_REPLY] ⚠️ No targets found, using defaults');
-        return this.getDefaultOpportunities(count);
+      // Use AI decision engine to find best opportunities
+      const { aiReplyDecisionEngine } = await import('../ai/replyDecisionEngine');
+      const opportunities = await aiReplyDecisionEngine.findBestOpportunities(count);
+      
+      if (opportunities.length === 0) {
+        console.log('[SMART_REPLY] ⚠️ AI found no opportunities, triggering discovery...');
+        const { aiAccountDiscovery } = await import('../ai/accountDiscovery');
+        await aiAccountDiscovery.runDiscoveryLoop();
+        return [];
       }
-
-      // Step 2: Score each target
-      const scoredTargets: OptimalReplyTarget[] = targets.map(t => {
-        const priorityScore = this.calculatePriorityScore({
-          followers: Number(t.followers) || 0,
-          conversion_potential: Number(t.conversion_potential) || 0.5,
-          times_replied: Number(t.times_replied) || 0,
-          actual_conversion_rate: Number(t.actual_conversion_rate) || 0
-        });
-
-        return {
-          handle: String(t.handle),
-          username: String(t.username) || String(t.handle).replace('@', ''),
-          followers: Number(t.followers) || 0,
-          engagement_rate: 0.05, // Estimated
-          follower_overlap_score: Number(t.conversion_potential) || 0.5,
+      
+      // Convert AI opportunities to reply opportunities format
+      return opportunities.map(opp => ({
+        target: {
+          handle: `@${opp.target_username}`,
+          username: opp.target_username,
+          followers: opp.target_followers,
+          engagement_rate: 0.05,
+          follower_overlap_score: opp.opportunity_score / 100,
           reply_window: 'early',
           rising_potential: 0.7,
-          conversion_potential: Number(t.conversion_potential) || 0.5,
-          times_replied: Number(t.times_replied) || 0,
-          avg_engagement_on_replies: 10,
-          avg_followers_gained: Number(t.total_followers_gained) || 0,
-          actual_conversion_rate: Number(t.actual_conversion_rate) || 0,
-          priority_score: priorityScore
-        };
-      });
-
-      // Sort by priority score
-      scoredTargets.sort((a, b) => b.priority_score - a.priority_score);
-
-      // Step 3: Create reply opportunities
-      const opportunities: ReplyOpportunity[] = scoredTargets.slice(0, count).map((target, index) => ({
-        target,
+          conversion_potential: opp.opportunity_score / 100,
+          times_replied: 0,
+          avg_engagement_on_replies: 0,
+          avg_followers_gained: opp.predicted_follows,
+          actual_conversion_rate: 0,
+          priority_score: opp.opportunity_score
+        },
+        tweet_url: opp.tweet_url,
         tweet_posted_at: new Date().toISOString(),
-        minutes_since_post: Math.floor(Math.random() * 10), // Simulated timing
-        reply_strategy: this.getReplyStrategy(target),
-        estimated_followers: Math.round(target.conversion_potential * 100)
+        minutes_since_post: 0,
+        reply_strategy: opp.recommended_generator,
+        estimated_followers: opp.predicted_follows
       }));
 
-      console.log(`[SMART_REPLY] ✅ Found ${opportunities.length} optimal opportunities`);
-      
-      return opportunities;
+      /* ALL OLD HARD-CODED LOGIC REMOVED - Using AI Decision Engine */
 
     } catch (error: any) {
       console.error('[SMART_REPLY] ❌ Error finding opportunities:', error.message);
-      return this.getDefaultOpportunities(count);
+      console.log('[SMART_REPLY] 🤖 Triggering AI discovery to build target pool...');
+      
+      // Trigger discovery instead of using hardcoded defaults
+      const { aiAccountDiscovery } = await import('../ai/accountDiscovery');
+      await aiAccountDiscovery.runDiscoveryLoop();
+      
+      return []; // Return empty, next cycle will have targets
     }
   }
 
@@ -297,51 +284,10 @@ export class SmartReplyTargeting {
     }
   }
 
-  /**
-   * Default opportunities when no data
+  /* REMOVED: getDefaultOpportunities() - No more hardcoded accounts!
+   * System now uses AI-driven discovery exclusively.
+   * If no targets exist, AI discovery is triggered automatically.
    */
-  private getDefaultOpportunities(count: number): ReplyOpportunity[] {
-    const defaultTargets: OptimalReplyTarget[] = [
-      {
-        handle: '@hubermanlab',
-        username: 'Andrew Huberman',
-        followers: 500000,
-        engagement_rate: 0.05,
-        follower_overlap_score: 0.7,
-        reply_window: 'early',
-        rising_potential: 0.8,
-        conversion_potential: 0.6,
-        times_replied: 0,
-        avg_engagement_on_replies: 20,
-        avg_followers_gained: 0,
-        actual_conversion_rate: 0,
-        priority_score: 0.7
-      },
-      {
-        handle: '@peterattiamd',
-        username: 'Peter Attia',
-        followers: 400000,
-        engagement_rate: 0.04,
-        follower_overlap_score: 0.8,
-        reply_window: 'early',
-        rising_potential: 0.7,
-        conversion_potential: 0.7,
-        times_replied: 0,
-        avg_engagement_on_replies: 15,
-        avg_followers_gained: 0,
-        actual_conversion_rate: 0,
-        priority_score: 0.75
-      }
-    ];
-
-    return defaultTargets.slice(0, count).map(target => ({
-      target,
-      tweet_posted_at: new Date().toISOString(),
-      minutes_since_post: 2,
-      reply_strategy: this.getReplyStrategy(target),
-      estimated_followers: 5
-    }));
-  }
 }
 
 export const getSmartReplyTargeting = () => SmartReplyTargeting.getInstance();
