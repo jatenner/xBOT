@@ -157,7 +157,7 @@ function getDefaultDecision(): AdaptiveDecision {
     hook_pattern: 'bold_claim',
     topic: 'sleep optimization',
     generator: 'provocateur',
-    format: 'thread',
+    format: (Math.random() < 0.3 ? 'thread' : 'single') as 'single' | 'thread', // 30% threads, 70% singles for stability
     reasoning: 'Default - no performance data available yet'
   };
 }
