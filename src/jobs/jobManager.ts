@@ -83,7 +83,8 @@ export class JobManager {
       outcomes_real: false,
       data_collection: false,
       ai_orchestration: false,
-      viral_thread: false
+      viral_thread: false,
+      news_scraping: false
     };
 
     // Plan job timer
@@ -230,6 +231,15 @@ export class JobManager {
       });
     }, 6 * 60 * 60 * 1000)); // 6 hours
     registered.ai_orchestration = true;
+    
+    // NEWS SCRAPING - every 1 hour to scrape Twitter for health news
+    this.timers.set('news_scraping', setInterval(async () => {
+      await this.safeExecute('news_scraping', async () => {
+        const { twitterNewsScraperJob } = await import('../news/newsScraperJob');
+        await twitterNewsScraperJob.runScrapingJob();
+      });
+    }, 60 * 60 * 1000)); // 1 hour
+    registered.news_scraping = true;
 
     // Log registration status (EXPLICIT for observability)
     console.log('════════════════════════════════════════════════════════');
@@ -245,6 +255,7 @@ export class JobManager {
     console.log(`    - outcomes_real:   ${registered.outcomes_real ? '✅' : '❌'} (every 2h)`);
     console.log(`    - data_collection: ${registered.data_collection ? '✅' : '❌'} (every 1h)`);
     console.log(`    - ai_orchestration:${registered.ai_orchestration ? '✅' : '❌'} (every 6h) ← AI-DRIVEN!`);
+    console.log(`    - news_scraping:   ${registered.news_scraping ? '✅' : '❌'} (every 1h) ← REAL NEWS!`);
     console.log('════════════════════════════════════════════════════════');
 
     // FAIL-FAST: Posting job MUST be registered in live mode
