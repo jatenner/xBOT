@@ -192,6 +192,15 @@ export class JobManager {
     }, 30 * 60 * 1000)); // 30 minutes
     registered.velocity_tracker = true;
     
+    // SYNC FOLLOWER DATA JOB - every 30 minutes to sync tracking data into outcomes table
+    this.timers.set('sync_follower', setInterval(async () => {
+      await this.safeExecute('sync_follower', async () => {
+        const { syncFollowerData } = await import('./syncFollowerDataJob');
+        await syncFollowerData();
+      });
+    }, 30 * 60 * 1000)); // 30 minutes
+    registered.sync_follower = true;
+    
     // REAL OUTCOMES JOB - every 2 hours to collect comprehensive engagement data
     this.timers.set('outcomes_real', setInterval(async () => {
       await this.safeExecute('outcomes_real', async () => {

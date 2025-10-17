@@ -206,11 +206,10 @@ async function generateContentWithLLM(): Promise<ContentDecision> {
       console.warn('[ADAPTIVE] ⚠️ Adaptive selection failed, using defaults:', adaptiveError.message);
     }
     
-    // USE NEW ORCHESTRATOR - All intelligence systems integrated
-    const { getContentOrchestrator } = await import('../orchestrator/contentOrchestrator');
-    const orchestrator = getContentOrchestrator();
+    // USE EXPLORATION WRAPPER - Applies exploration mode + orchestrator
+    const { generateWithExplorationMode } = await import('../orchestrator/explorationWrapper');
     
-    const orchestratedContent = await orchestrator.generateContent({
+    const orchestratedContent = await generateWithExplorationMode({
       topicHint,
       formatHint
     });

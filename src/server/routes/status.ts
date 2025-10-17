@@ -51,7 +51,8 @@ router.get('/', async (req, res) => {
         data_collection: true, // 1h - DataCollectionEngine (40+ metrics)
         ai_orchestration: true, // 6h - AI-driven strategy
         viral_thread: flags.live, // 24h - daily amazing thread
-        velocity_tracker: true, // 30 min - NEW: follower attribution & velocity tracking
+        velocity_tracker: true, // 30 min - follower attribution & velocity tracking
+        sync_follower: true, // 30 min - sync tracking data into outcomes
       },
       browserProfileDirExists: fs.existsSync('/tmp/xbot-profile'),
       sessionFileExists: fs.existsSync(SESSION_PATH),

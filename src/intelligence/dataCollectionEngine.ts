@@ -211,7 +211,7 @@ export class DataCollectionEngine {
   private async storePostMetrics(postId: string, tweetId: string, metrics: any): Promise<void> {
     try {
       const { error } = await this.supabase
-        .from('unified_outcomes')
+        .from('outcomes')
         .upsert({
           decision_id: postId,
           tweet_id: tweetId,

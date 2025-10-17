@@ -85,25 +85,26 @@ export class RealTimeLearningLoop {
         return;
       }
       
-      // 🚀 TRAIN ML MODELS WITH REAL DATA FROM COMPREHENSIVE_METRICS
-      console.log('🎓 LEARNING_LOOP: Training ML models with comprehensive metrics...');
+      // 🚀 TRAIN ML MODELS WITH REAL DATA FROM OUTCOMES TABLE
+      console.log('🎓 LEARNING_LOOP: Training ML models with real outcomes data...');
       
       const { getSupabaseClient } = await import('../db');
       const supabase = getSupabaseClient();
       
-      // Get recent posts with comprehensive metrics
-      const { data: comprehensiveData, error: compError } = await supabase
-        .from('comprehensive_metrics')
+      // Get recent posts with real outcomes (not simulated)
+      const { data: outcomesData, error: outcomesError } = await supabase
+        .from('outcomes')
         .select('*')
+        .eq('simulated', false)
         .order('collected_at', { ascending: false })
         .limit(50);
       
-      if (compError || !comprehensiveData || comprehensiveData.length === 0) {
-        console.log('⏭️ LEARNING_LOOP: No comprehensive metrics data yet for ML training');
+      if (outcomesError || !outcomesData || outcomesData.length === 0) {
+        console.log('⏭️ LEARNING_LOOP: No real outcomes data yet for ML training');
       } else {
-        console.log(`🎓 LEARNING_LOOP: Training on ${comprehensiveData.length} posts with comprehensive metrics`);
+        console.log(`🎓 LEARNING_LOOP: Training on ${outcomesData.length} posts with real outcomes`);
         
-        for (const dataPoint of comprehensiveData.slice(0, 20)) {
+        for (const dataPoint of outcomesData.slice(0, 20)) {
           try {
             // Get content for this post
             const { data: contentData } = await supabase
@@ -112,36 +113,35 @@ export class RealTimeLearningLoop {
               .eq('decision_id', dataPoint.post_id)
               .single();
             
-            // 🎯 Get REAL follower attribution data from new tracking tables
+            // 🎯 Get follower attribution from tracking tables (if available)
             const { data: followerData } = await supabase
               .from('follower_attribution_simple')
               .select('*')
-              .eq('post_id', dataPoint.post_id)
-              .single();
+              .eq('post_id', dataPoint.decision_id)
+              .maybeSingle();
             
-            // 🎯 Get REAL velocity data from new tracking tables
-            const { data: velocityData } = await supabase
-              .from('velocity_analysis_simple')
-              .select('*')
-              .eq('post_id', dataPoint.post_id)
-              .single();
+            // 🚀 Train with REAL DATA from outcomes + follower tracking
+            const followersGained = Number(followerData?.followers_gained_24h || dataPoint.follows || 0);
+            const likes = Number(dataPoint.likes || 0);
+            const retweets = Number(dataPoint.retweets || 0);
             
-            // 🚀 Train with ALL COMPREHENSIVE METRICS (40+ data points) - NOW WITH REAL DATA
+            console.log(`[LEARNING] 🎓 Training on post ${dataPoint.decision_id}: ${likes} likes, ${retweets} RTs, +${followersGained} followers`);
+            
             await this.mlEngine.trainWithNewData(
               String(contentData?.content || ''),
               {
-                // Basic engagement (from velocity tracking - REAL)
-                likes: Number(velocityData?.likes_24h || dataPoint.actual_engagement || 0),
-                retweets: Number(velocityData?.retweets_24h || 0),
-                replies: Number(velocityData?.replies_24h || 0),
-                bookmarks: Number(velocityData?.bookmarks_24h || 0),
-                views: Number(velocityData?.views_24h || 0),
-                impressions: 0,
+                // Basic engagement from outcomes table - REAL
+                likes,
+                retweets,
+                replies: Number(dataPoint.replies || 0),
+                bookmarks: Number(dataPoint.bookmarks || 0),
+                views: 0, // Not in outcomes table
+                impressions: Number(dataPoint.impressions || 0),
                 
-                // Follower metrics - REAL DATA from tracking! ✅
-                followers_gained: Number(followerData?.followers_gained_24h || 0),
+                // Follower metrics - REAL from tracking tables when available! ✅
+                followers_gained: followersGained,
                 followers_before: Number(followerData?.baseline_followers || 0),
-                followers_2h_after: 0, // Not tracked yet (simplified to 24h only)
+                followers_2h_after: 0, // Not tracked yet
                 followers_24h_after: Number(followerData?.followers_24h || 0),
                 followers_48h_after: Number(followerData?.followers_48h || 0),
                 
