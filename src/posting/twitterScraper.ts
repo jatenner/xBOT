@@ -108,10 +108,9 @@ async function extractMetricsFromPage(
  */
 async function getBrowserContext(): Promise<BrowserContext | null> {
   try {
-    // Get authenticated browser context via UltimateTwitterPoster
-    const { UltimateTwitterPoster } = await import('./UltimateTwitterPoster');
-    const poster = UltimateTwitterPoster.getInstance();
-    const context = await poster.getAuthenticatedContext();
+    // Get authenticated browser context with Twitter session
+    const { browserManager } = await import('./BrowserManager');
+    const context = await browserManager.newPostingContext();
     
     if (!context) {
       throw new Error('Could not initialize authenticated browser context');
