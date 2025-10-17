@@ -15,7 +15,7 @@ export async function humanizeContent(content: string | string[]): Promise<strin
   
   try {
     const response = await createBudgetedChatCompletion({
-      model: 'gpt-4o-mini',
+      model: 'gpt-4o',
       messages: [
         {
           role: 'system',
