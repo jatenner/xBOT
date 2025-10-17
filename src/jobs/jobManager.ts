@@ -84,7 +84,8 @@ export class JobManager {
       data_collection: false,
       ai_orchestration: false,
       viral_thread: false,
-      news_scraping: false
+      news_scraping: false,
+      competitive_analysis: false
     };
 
     // Plan job timer
@@ -241,6 +242,15 @@ export class JobManager {
     }, 60 * 60 * 1000)); // 1 hour
     registered.news_scraping = true;
 
+    // COMPETITIVE ANALYSIS - every 24 hours to learn from top accounts
+    this.timers.set('competitive_analysis', setInterval(async () => {
+      await this.safeExecute('competitive_analysis', async () => {
+        const { competitiveAnalysisJob } = await import('./competitiveAnalysisJob');
+        await competitiveAnalysisJob();
+      });
+    }, 24 * 60 * 60 * 1000)); // 24 hours
+    registered.competitive_analysis = true;
+
     // Log registration status (EXPLICIT for observability)
     console.log('════════════════════════════════════════════════════════');
     console.log('JOB_MANAGER: Timer Registration Complete');
@@ -256,6 +266,7 @@ export class JobManager {
     console.log(`    - data_collection: ${registered.data_collection ? '✅' : '❌'} (every 1h)`);
     console.log(`    - ai_orchestration:${registered.ai_orchestration ? '✅' : '❌'} (every 6h) ← AI-DRIVEN!`);
     console.log(`    - news_scraping:   ${registered.news_scraping ? '✅' : '❌'} (every 1h) ← REAL NEWS!`);
+    console.log(`    - competitive:     ${registered.competitive_analysis ? '✅' : '❌'} (every 24h) ← LEARN FROM WINNERS!`);
     console.log('════════════════════════════════════════════════════════');
 
     // FAIL-FAST: Posting job MUST be registered in live mode

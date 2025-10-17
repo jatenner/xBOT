@@ -206,12 +206,62 @@ async function generateContentWithLLM(): Promise<ContentDecision> {
       console.warn('[ADAPTIVE] ⚠️ Adaptive selection failed, using defaults:', adaptiveError.message);
     }
     
+    // ═══════════════════════════════════════════════════════════
+    // 🎯 INTELLIGENCE LAYER: HOOK OPTIMIZATION (If enabled)
+    // ═══════════════════════════════════════════════════════════
+    let bestHook: any = null;
+    let predictedPerformance: any = null;
+    
+    if (process.env.ENABLE_HOOK_TESTING === 'true' && topicHint) {
+      try {
+        const { hookOptimizationService } = await import('../intelligence/hookOptimizationService');
+        
+        // Generate 3 hook variations
+        console.log('[INTELLIGENCE] 🎣 Generating hook variations...');
+        const generator = 'contrarian'; // Default, can be dynamic
+        const hooks = await hookOptimizationService.generateHookVariations({
+          topic: topicHint,
+          generator
+        });
+        
+        // Select best hook
+        bestHook = hookOptimizationService.selectBestHook(hooks);
+        console.log(`[INTELLIGENCE] ✅ Best hook: "${bestHook.hook}" (${bestHook.predictedScore}/100)`);
+        
+        // 🔮 PREDICTIVE SCORING: Should we generate this content?
+        if (process.env.ENABLE_PREDICTIVE_SCORING === 'true') {
+          const { predictiveViralScoringService } = await import('../intelligence/predictiveViralScoringService');
+          
+          predictedPerformance = await predictiveViralScoringService.predictPostPerformance({
+            topic: topicHint,
+            generator,
+            hook: bestHook.hook,
+            hookType: bestHook.hookType,
+            hour: new Date().getHours()
+          });
+          
+          console.log(`[INTELLIGENCE] 🔮 Prediction: ${predictedPerformance.reasoning}`);
+          
+          // If prediction is too low, skip generation (saves AI costs)
+          if (!predictedPerformance.shouldGenerate) {
+            console.log('[INTELLIGENCE] ⏭️ Skipping generation - predicted performance too low');
+            throw new Error(`Low predicted performance: ${predictedPerformance.reasoning}`);
+          }
+        }
+        
+      } catch (hookError: any) {
+        console.warn('[INTELLIGENCE] ⚠️ Hook optimization failed:', hookError.message);
+        // Continue with generation anyway
+      }
+    }
+    
     // USE EXPLORATION WRAPPER - Applies exploration mode + orchestrator
     const { generateWithExplorationMode } = await import('../orchestrator/explorationWrapper');
     
     const orchestratedContent = await generateWithExplorationMode({
       topicHint,
-      formatHint
+      formatHint,
+      hookHint: bestHook?.hook // Pass best hook to generator
     });
     
     console.log(`[ORCHESTRATOR] ✅ Generated ${orchestratedContent.format} content using ${orchestratedContent.metadata.generator_used}`);

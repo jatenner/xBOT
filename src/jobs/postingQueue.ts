@@ -282,12 +282,42 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
       return; // Skip posting
     }
     
+    // 📊 INTELLIGENCE LAYER: Capture follower count BEFORE posting
+    try {
+      const { followerAttributionService } = await import('../intelligence/followerAttributionService');
+      await followerAttributionService.captureFollowerCountBefore(decision.id);
+    } catch (attrError: any) {
+      console.warn(`[POSTING_QUEUE] ⚠️ Follower capture failed: ${attrError.message}`);
+    }
+    
     if (decision.decision_type === 'content') {
       tweetId = await postContent(decision);
     } else if (decision.decision_type === 'reply') {
       tweetId = await postReply(decision);
     } else {
       throw new Error(`Unknown decision type: ${decision.decision_type}`);
+    }
+    
+    // 🎣 INTELLIGENCE LAYER: Extract and classify hook
+    try {
+      const { hookAnalysisService } = await import('../intelligence/hookAnalysisService');
+      const hook = hookAnalysisService.extractHook(decision.content);
+      const hookType = hookAnalysisService.classifyHookType(hook);
+      
+      // Store hook in outcomes
+      const { getSupabaseClient: getSupa } = await import('../db/index');
+      const supa = getSupa();
+      await supa
+        .from('outcomes')
+        .update({ 
+          hook_text: hook, 
+          hook_type: hookType 
+        })
+        .eq('tweet_id', tweetId);
+      
+      console.log(`[POSTING_QUEUE] 🎣 Hook captured: "${hook}" (${hookType})`);
+    } catch (hookError: any) {
+      console.warn(`[POSTING_QUEUE] ⚠️ Hook capture failed: ${hookError.message}`);
     }
     
     // Mark as posted and store tweet ID
