@@ -195,7 +195,7 @@ export class UnifiedDataManager {
       // Store AI decisions in content_metadata (new schema)
       const { data, error } = await supabase.from('content_metadata').insert({
         created_at: decisionData.decisionTimestamp.toISOString(),
-        decision_type: decisionData.decisionType === 'content' ? 'single' : 'reply',
+        decision_type: String(decisionData.decisionType) === 'content' ? 'single' : 'reply',
         content: JSON.stringify(decisionData.recommendation),
         quality_score: decisionData.confidence,
         features: {

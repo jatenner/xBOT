@@ -94,10 +94,7 @@ export class RealTimeLearningLoop {
       // Get recent posts with comprehensive metrics
       const { data: comprehensiveData, error: compError } = await supabase
         .from('comprehensive_metrics')
-        .select(`
-          *,
-          posted_decisions!inner(decision_id, content)
-        `)
+        .select('*')
         .order('collected_at', { ascending: false })
         .limit(50);
       
@@ -108,18 +105,25 @@ export class RealTimeLearningLoop {
         
         for (const dataPoint of comprehensiveData.slice(0, 20)) {
           try {
+            // Get content for this post
+            const { data: contentData } = await supabase
+              .from('content_metadata')
+              .select('content')
+              .eq('decision_id', dataPoint.post_id)
+              .single();
+            
             // Train with rich feature set
             await this.mlEngine.trainWithNewData(
-              String(dataPoint.posted_decisions?.content || ''),
+              String(contentData?.content || ''),
               {
-                likes: dataPoint.actual_engagement || 0,
+                likes: Number(dataPoint.actual_engagement || 0),
                 retweets: 0,
                 replies: 0,
-                followers_gained: dataPoint.followers_attributed || 0,
-                engagement_velocity: dataPoint.engagement_velocity || 0,
-                shareability_score: dataPoint.shareability_score || 0,
-                hook_effectiveness: dataPoint.hook_effectiveness || 0,
-                prediction_accuracy: dataPoint.prediction_accuracy || 0
+                followers_gained: Number(dataPoint.followers_attributed || 0),
+                engagement_velocity: Number(dataPoint.engagement_velocity || 0),
+                shareability_score: Number(dataPoint.shareability_score || 0),
+                hook_effectiveness: Number(dataPoint.hook_effectiveness || 0),
+                prediction_accuracy: Number(dataPoint.prediction_accuracy || 0)
               }
             );
           } catch (mlError: any) {

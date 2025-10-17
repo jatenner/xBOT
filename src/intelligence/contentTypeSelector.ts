@@ -403,11 +403,11 @@ export class ContentTypeSelector {
       let updatedCount = 0;
       for (const persisted of persistedData) {
         const type = this.contentTypes.find(ct => ct.type_id === persisted.type_id);
-        if (type) {
-          type.success_rate = persisted.success_rate;
-          type.avg_follower_conversion = persisted.avg_follower_conversion;
-          type.avg_engagement_rate = persisted.avg_engagement_rate;
-          type.sample_size = persisted.sample_size;
+        if (type && persisted) {
+          type.success_rate = Number(persisted.success_rate || 0);
+          type.avg_follower_conversion = Number(persisted.avg_follower_conversion || 0);
+          type.avg_engagement_rate = Number(persisted.avg_engagement_rate || 0);
+          type.sample_size = Number(persisted.sample_size || 0);
           updatedCount++;
         }
       }
