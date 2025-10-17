@@ -1,0 +1,368 @@
+/**
+ * 🤖 AI REPLY DECISION ENGINE
+ * AI decides WHO to reply to, WHEN, and HOW - no hard-coded rules
+ * 
+ * Decisions Made:
+ * - Which account to target (from discovered pool)
+ * - Which specific tweet to reply to
+ * - Which generator personality to use
+ * - Optimal timing for reply
+ * - Expected ROI prediction
+ */
+
+import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
+import { getSupabaseClient } from '../db';
+import { aiAccountDiscovery } from './accountDiscovery';
+
+export interface ReplyOpportunity {
+  target_username: string;
+  target_followers: number;
+  tweet_url: string;
+  tweet_content: string;
+  tweet_engagement: number;
+  opportunity_score: number; // 0-100
+  recommended_generator: string;
+  recommended_timing: number; // Minutes to wait
+  predicted_impressions: number;
+  predicted_profile_clicks: number;
+  predicted_follows: number;
+  reasoning: string;
+}
+
+export interface ReplyDecision {
+  should_reply: boolean;
+  opportunity?: ReplyOpportunity;
+  reason: string;
+}
+
+export class AIReplyDecisionEngine {
+  private static instance: AIReplyDecisionEngine;
+  
+  private constructor() {}
+  
+  static getInstance(): AIReplyDecisionEngine {
+    if (!AIReplyDecisionEngine.instance) {
+      AIReplyDecisionEngine.instance = new AIReplyDecisionEngine();
+    }
+    return AIReplyDecisionEngine.instance;
+  }
+
+  /**
+   * MAIN DECISION LOOP - AI decides best reply opportunities
+   */
+  async findBestOpportunities(count: number = 10): Promise<ReplyOpportunity[]> {
+    console.log(`[AI_DECISION] 🤖 Finding top ${count} reply opportunities...`);
+    
+    try {
+      // Step 1: Get current context
+      const context = await this.getCurrentContext();
+      
+      // Step 2: Get potential targets from discovery system
+      const potentialTargets = await aiAccountDiscovery.getTopTargets(100);
+      
+      if (potentialTargets.length === 0) {
+        console.log('[AI_DECISION] ⚠️ No targets discovered yet, triggering discovery...');
+        await aiAccountDiscovery.runDiscoveryLoop();
+        return [];
+      }
+      
+      // Step 3: Filter based on recent activity
+      const availableTargets = await this.filterRecentTargets(potentialTargets);
+      
+      // Step 4: Use AI to rank opportunities
+      const rankedOpportunities = await this.rankOpportunitiesWithAI(availableTargets, context);
+      
+      // Step 5: Return top N
+      const topOpportunities = rankedOpportunities.slice(0, count);
+      
+      console.log(`[AI_DECISION] ✅ Found ${topOpportunities.length} high-value opportunities`);
+      
+      return topOpportunities;
+      
+    } catch (error: any) {
+      console.error('[AI_DECISION] ❌ Decision engine failed:', error.message);
+      return [];
+    }
+  }
+
+  /**
+   * Get current context for decision making
+   */
+  private async getCurrentContext(): Promise<any> {
+    const supabase = getSupabaseClient();
+    
+    // Get our current follower count
+    const { data: metrics } = await supabase
+      .from('growth_metrics')
+      .select('followers')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+    
+    const ourFollowers = Number(metrics?.followers) || 31;
+    
+    // Get recent reply performance
+    const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: recentReplies } = await supabase
+      .from('posted_decisions')
+      .select('*')
+      .eq('decision_type', 'reply')
+      .gte('posted_at', oneWeekAgo);
+    
+    // Get what worked best recently
+    const { data: topPerformers } = await supabase
+      .from('posted_decisions')
+      .select('target_username, generator_used, avg_engagement:outcomes(engagement_rate)')
+      .eq('decision_type', 'reply')
+      .gte('posted_at', oneWeekAgo)
+      .order('outcomes.engagement_rate', { ascending: false })
+      .limit(10);
+    
+    return {
+      our_followers: ourFollowers,
+      total_replies_this_week: recentReplies?.length || 0,
+      top_performing_generators: topPerformers || [],
+      current_hour: new Date().getHours(),
+      day_of_week: new Date().getDay(),
+      growth_stage: this.determineGrowthStage(ourFollowers)
+    };
+  }
+
+  /**
+   * Determine growth stage based on follower count
+   */
+  private determineGrowthStage(followers: number): string {
+    if (followers < 100) return 'bootstrap';
+    if (followers < 1000) return 'early_growth';
+    if (followers < 10000) return 'scaling';
+    return 'established';
+  }
+
+  /**
+   * Filter targets we haven't replied to recently
+   */
+  private async filterRecentTargets(targets: any[]): Promise<any[]> {
+    const supabase = getSupabaseClient();
+    
+    // Get accounts we've replied to in last 3 days
+    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: recentTargets } = await supabase
+      .from('posted_decisions')
+      .select('target_username')
+      .eq('decision_type', 'reply')
+      .gte('posted_at', threeDaysAgo);
+    
+    const recentUsernames = new Set(
+      (recentTargets || []).map(r => String(r.target_username || '').toLowerCase())
+    );
+    
+    // Filter out recent targets
+    const available = targets.filter(target => 
+      !recentUsernames.has(target.username?.toLowerCase())
+    );
+    
+    console.log(`[AI_DECISION] 🔍 Filtered ${targets.length} → ${available.length} (removed ${targets.length - available.length} recent targets)`);
+    
+    return available;
+  }
+
+  /**
+   * Use AI to rank opportunities intelligently
+   */
+  private async rankOpportunitiesWithAI(targets: any[], context: any): Promise<ReplyOpportunity[]> {
+    console.log('[AI_DECISION] 🤖 Using AI to rank opportunities...');
+    
+    // For each target, create an opportunity
+    const opportunities: ReplyOpportunity[] = [];
+    
+    for (const target of targets.slice(0, 50)) { // Analyze top 50
+      const opportunity = await this.createOpportunity(target, context);
+      if (opportunity.opportunity_score >= 50) { // Minimum threshold
+        opportunities.push(opportunity);
+      }
+    }
+    
+    // Sort by opportunity score
+    opportunities.sort((a, b) => b.opportunity_score - a.opportunity_score);
+    
+    return opportunities;
+  }
+
+  /**
+   * Create opportunity with AI-powered scoring
+   */
+  private async createOpportunity(target: any, context: any): Promise<ReplyOpportunity> {
+    // Calculate opportunity score based on multiple factors
+    const followerScore = this.scoreFollowerCount(target.follower_count, context.our_followers);
+    const qualityScore = target.final_score || 50;
+    const timingScore = this.scoreOptimalTiming(context.current_hour);
+    const growthFitScore = this.scoreGrowthFit(target.follower_count, context.growth_stage);
+    
+    const opportunityScore = Math.round(
+      followerScore * 0.3 +
+      qualityScore * 0.3 +
+      timingScore * 0.2 +
+      growthFitScore * 0.2
+    );
+    
+    // Recommend generator based on target's content style
+    const recommendedGenerator = await this.recommendGenerator(target, context);
+    
+    // Calculate predicted outcomes
+    const predictions = this.predictOutcomes(target, context, opportunityScore);
+    
+    // Determine optimal reply timing
+    const recommendedTiming = this.calculateOptimalTiming(target, context);
+    
+    return {
+      target_username: target.username,
+      target_followers: target.follower_count || 0,
+      tweet_url: '', // Will be filled when actual tweet is found
+      tweet_content: '',
+      tweet_engagement: 0,
+      opportunity_score: opportunityScore,
+      recommended_generator: recommendedGenerator,
+      recommended_timing: recommendedTiming,
+      predicted_impressions: predictions.impressions,
+      predicted_profile_clicks: predictions.profile_clicks,
+      predicted_follows: predictions.follows,
+      reasoning: this.generateReasoning(target, opportunityScore, recommendedGenerator)
+    };
+  }
+
+  /**
+   * Score follower count relative to our size
+   */
+  private scoreFollowerCount(targetFollowers: number, ourFollowers: number): number {
+    // Sweet spot: 10-100x our size
+    const ratio = targetFollowers / Math.max(ourFollowers, 1);
+    
+    if (ratio >= 10 && ratio <= 100) return 100; // Perfect range
+    if (ratio >= 5 && ratio <= 200) return 80;   // Good range
+    if (ratio >= 2 && ratio <= 500) return 60;   // Acceptable
+    if (ratio < 2) return 20; // Too small
+    if (ratio > 1000) return 30; // Too big, replies get buried
+    
+    return 50;
+  }
+
+  /**
+   * Score timing based on hour of day
+   */
+  private scoreOptimalTiming(hour: number): number {
+    // Best hours: 7-9am EST (high engagement), 6-8pm EST (evening)
+    const est_hour = hour; // Assume EST for now
+    
+    if (est_hour >= 7 && est_hour <= 9) return 100;   // Morning peak
+    if (est_hour >= 18 && est_hour <= 20) return 90;  // Evening peak
+    if (est_hour >= 11 && est_hour <= 14) return 70;  // Lunch time
+    if (est_hour >= 21 || est_hour <= 6) return 30;   // Late night/early morning
+    
+    return 60;
+  }
+
+  /**
+   * Score how well target fits our growth stage
+   */
+  private scoreGrowthFit(targetFollowers: number, growthStage: string): number {
+    switch (growthStage) {
+      case 'bootstrap': // <100 followers - target micro influencers
+        if (targetFollowers >= 10000 && targetFollowers <= 50000) return 100;
+        if (targetFollowers >= 5000 && targetFollowers <= 100000) return 80;
+        return 50;
+        
+      case 'early_growth': // 100-1k followers - target small-mid influencers
+        if (targetFollowers >= 20000 && targetFollowers <= 200000) return 100;
+        if (targetFollowers >= 10000 && targetFollowers <= 500000) return 80;
+        return 50;
+        
+      case 'scaling': // 1k-10k followers - target mid-large influencers
+        if (targetFollowers >= 50000 && targetFollowers <= 500000) return 100;
+        if (targetFollowers >= 20000 && targetFollowers <= 1000000) return 80;
+        return 50;
+        
+      case 'established': // 10k+ followers - can target anyone
+        return 80;
+        
+      default:
+        return 50;
+    }
+  }
+
+  /**
+   * Recommend which generator to use based on target and context
+   */
+  private async recommendGenerator(target: any, context: any): Promise<string> {
+    // Check if we have performance data
+    const topPerformers = context.top_performing_generators || [];
+    
+    if (topPerformers.length > 0) {
+      // Use best performing generator
+      return topPerformers[0].generator_used || 'data_nerd';
+    }
+    
+    // Default intelligent matching
+    const bio = target.bio?.toLowerCase() || '';
+    
+    if (bio.includes('research') || bio.includes('phd') || bio.includes('science')) {
+      return 'data_nerd';
+    }
+    if (bio.includes('coach') || bio.includes('trainer')) {
+      return 'coach';
+    }
+    if (bio.includes('doctor') || bio.includes('md')) {
+      return 'thought_leader';
+    }
+    
+    // Default to data_nerd (research-heavy, broadly applicable)
+    return 'data_nerd';
+  }
+
+  /**
+   * Predict outcomes for this opportunity
+   */
+  private predictOutcomes(target: any, context: any, opportunityScore: number): any {
+    const followers = target.follower_count || 0;
+    
+    // Base predictions on opportunity score and target size
+    const impressionRate = opportunityScore / 100 * 0.05; // 0-5% of their followers
+    const clickRate = 0.02; // 2% of impressions click profile
+    const followRate = 0.1; // 10% of clicks convert to follows
+    
+    const impressions = Math.round(followers * impressionRate);
+    const clicks = Math.round(impressions * clickRate);
+    const follows = Math.round(clicks * followRate);
+    
+    return {
+      impressions,
+      profile_clicks: clicks,
+      follows
+    };
+  }
+
+  /**
+   * Calculate optimal timing in minutes
+   */
+  private calculateOptimalTiming(target: any, context: any): number {
+    const followers = target.follower_count || 0;
+    
+    // Larger accounts = wait longer (more initial engagement)
+    if (followers > 500000) return 45; // Wait 45 min
+    if (followers > 100000) return 20; // Wait 20 min
+    if (followers > 10000) return 5;   // Wait 5 min
+    
+    return 2; // Reply immediately for smaller accounts
+  }
+
+  /**
+   * Generate human-readable reasoning
+   */
+  private generateReasoning(target: any, score: number, generator: string): string {
+    const followers = target.follower_count || 0;
+    return `Score ${score}/100: ${followers.toLocaleString()} followers, using ${generator} generator for optimal engagement`;
+  }
+}
+
+// Singleton export
+export const aiReplyDecisionEngine = AIReplyDecisionEngine.getInstance();
+

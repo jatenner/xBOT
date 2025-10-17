@@ -35,6 +35,11 @@ export async function runAIOrchestrationJob(): Promise<void> {
     // Run orchestration
     await orchestrator.orchestrate();
 
+    // Run AI-driven reply systems
+    console.log('[JOB_AI_ORCHESTRATION] 🤖 Running AI reply systems...');
+    const { runAISystems } = await import('./aiSystemsJob');
+    await runAISystems();
+
     // Get recommendations
     const recommendations = await orchestrator.getSystemRecommendations();
 
