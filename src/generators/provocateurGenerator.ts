@@ -1,11 +1,11 @@
 /**
- * PROVOCATEUR GENERATOR
- * Personality: Hot takes, intentionally controversial, debate-sparking
- * Voice: Bold, unapologetic, conversation-starting
+ * PROVOCATEUR GENERATOR - REBUILT
+ * Asks provocative questions that reveal deeper truths
+ * NOT hollow questions - questions that challenge assumptions
  */
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
-import { validateAndExtractContent, createFallbackContent } from './generatorUtils';
+import { validateAndExtractContent } from './generatorUtils';
 
 export interface ProvocateurContent {
   content: string | string[];
@@ -21,62 +21,74 @@ export async function generateProvocateurContent(params: {
   
   const { topic, format, research } = params;
   
-  const systemPrompt = `You are THE PROVOCATEUR - you drop hot takes that spark debates.
+  const systemPrompt = `You ask PROVOCATIVE QUESTIONS that reveal deeper truths.
 
-🚨 MANDATORY VIRAL REQUIREMENTS (Auto-rejected if ANY missing):
+🎯 YOUR JOB: Make people question their assumptions (then answer the question).
 
-1. MUST START with "Hot take:" or "Unpopular opinion:" or "Everyone's wrong about"
-2. MUST include study citation: "[University] [Year] (n=[number])"
-3. MUST include specific statistic proving the hot take
-4. MUST include mechanism: "because [biological process]"
-5. MUST include challenge: "Prove me wrong" or "Change my mind"
-6. Length: Single tweets 180-260 chars, thread tweets 150-230 chars each
+✅ GOOD EXAMPLES:
 
-GOOD HOT TAKE HOOKS:
-- "Hot take: Tracking HRV is making your sleep worse, not better."
-- "Unpopular opinion: 83% of 'biohacking' is placebo (MIT 2024, n=6,234)"
-- "Everyone's wrong about protein timing. Stanford 2023: Post-workout = broscience"
+"Why do we 'fix' sleep with pills instead of darkness? Humans spent 200,000 years in natural 
+light cycles. 100 years with lightbulbs. We're treating the symptom (can't sleep) not the 
+cause (circadian disruption)."
+→ Provocative question + historical context + reveals real problem
 
-GOOD PROVOCATIVE FORMATS:
-- "Your sleep optimization is causing insomnia. Harvard 2024 (n=9,456): Tracking anxiety > sleep quality"
-- "Fasted cardio is worse than fed training. Oxford meta-analysis: 67% lower performance, 23% higher cortisol"
-- "Vitamin D is overrated. Yale 2023 (n=12,847): Only works if you're ACTUALLY deficient (<20ng/ml)"
+"What if 'laziness' is your body protecting you? When you 'don't feel like' exercising after 
+poor sleep, that's HRV dropping, cortisol spiking. Not motivation failure—physiological 
+preservation."
+→ Reframes concept + gives mechanism + challenges judgment
 
-GOOD MECHANISM REVEALS:
-- "Because pre-sleep cortisol from tracking suppresses melatonin onset via HPA axis activation"
-- "Mechanism: Depleted glycogen = impaired neurotransmitter synthesis = worse workouts"
-- "Works via confirmation bias, not biology: Expecting benefits activates reward prediction pathways"
+"Why do we measure health by what's wrong instead of what's optimal? Blood work says 'normal' 
+= not diseased. Doesn't mean optimized. We set bar at 'not dying' instead of 'thriving'."
+→ Questions framework + shows gap + suggests better approach
 
-GOOD CHALLENGES:
-- "Prove me wrong. Show me one study where HRV tracking improved actual sleep architecture."
-- "Change my mind: Name one person who got jacked from fasted cardio instead of progressive overload."
-- "I'll wait: Find evidence that supplements outperform whole food sources in healthy populations."
+"What if inflammation isn't the enemy? It's communication. Your immune system isn't 'overreacting'
+—it's responding to chronic stimulus (processed food, poor sleep, stress). Fix signal, not 
+response."
+→ Reframes problem + explains mechanism + suggests solution
+
+🚨 NEVER DO THIS:
+❌ Hollow "What if..." without answering
+❌ Questions without substance or data
+❌ "Have you ever thought..." (too generic)
+❌ Asking without revealing deeper truth
 
 ${research ? `
-RESEARCH AMMUNITION:
-Finding: ${research.finding}
+📊 USE THIS RESEARCH:
+${research.finding}
 Source: ${research.source}
 Mechanism: ${research.mechanism}
 
-Use this to back up your hot take.
+What provocative question does this research answer?
 ` : ''}
 
 ${format === 'thread' ? `
-OUTPUT FORMAT: Return JSON object with array of 3-5 tweets (150-230 chars each):
-Tweet 1: Incendiary hot take
-Tweet 2: Study citation + stat
-Tweet 3: Mechanism (why everyone's wrong)
-Tweet 4: Challenge to readers
-Format your response as JSON.
+📱 THREAD FORMAT (3-5 tweets, 150-250 chars each):
+
+Tweet 1: The provocative question
+Tweet 2: Why we have it backwards
+Tweet 3: The deeper truth (mechanism)
+Tweet 4: What to do instead (solution)
+
+MUST answer the question - no hollow questions.
+
+Return JSON: {"tweets": ["...", "...", ...]}
 ` : `
-OUTPUT FORMAT: Return single tweet as JSON object (180-260 chars):
-Hot take + citation + stat + challenge
-Format your response as JSON.
-`}`;
+📱 SINGLE TWEET (180-280 chars):
 
-  const userPrompt = `Drop a hot take about: ${topic}
+One provocative question that ANSWERS ITSELF with mechanism.
+Challenge assumption + reveal truth.
 
-${format === 'thread' ? 'Build a provocative case that makes people want to debate.' : 'Make one bold, controversial claim.'}`;
+Return JSON: {"tweet": "..."}
+`}
+
+🔥 BE PROVOCATIVE: Challenge how people think
+🧠 REVEAL TRUTH: Answer the question with mechanism
+⚡ SUGGEST SOLUTION: Show what to do instead`;
+
+  const userPrompt = `Ask a provocative question about: ${topic}
+
+What assumption needs challenging? What question reveals a deeper truth?
+MUST answer the question - explain the mechanism.`;
 
   try {
     const response = await createBudgetedChatCompletion({
@@ -85,34 +97,21 @@ ${format === 'thread' ? 'Build a provocative case that makes people want to deba
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
       ],
-      temperature: 0.95,
-      max_tokens: format === 'thread' ? 600 : 200,
+      temperature: 0.9,
+      max_tokens: format === 'thread' ? 600 : 150,
       response_format: { type: 'json_object' }
     }, { purpose: 'provocateur_content_generation' });
 
     const parsed = JSON.parse(response.choices[0].message.content || '{}');
     
     return {
-      content: validateAndExtractContent(parsed, format, 'GENERATOR'),
+      content: validateAndExtractContent(parsed, format, 'PROVOCATEUR'),
       format,
-      confidence: 0.9
+      confidence: 0.85
     };
     
   } catch (error: any) {
     console.error('[PROVOCATEUR_GEN] Error:', error.message);
-    
-    return {
-      content: format === 'thread'
-        ? [
-            `Hot take: ${topic} is completely overrated.`,
-            `Everyone's doing it wrong.`,
-            `Evidence shows the opposite works better.`,
-            `Change my mind.`
-          ]
-        : `Unpopular opinion: ${topic} is mostly placebo and social signaling.`,
-      format,
-      confidence: 0.5
-    };
+    throw new Error(`Provocateur generator failed: ${error.message}. System will retry with different approach.`);
   }
 }
-
