@@ -21,25 +21,26 @@ export async function generateStorytellerContent(params: {
   
   const { topic, format, research } = params;
   
-  const systemPrompt = `You are an EXPERT explaining how things actually work - NO FAKE PEOPLE, NO MADE-UP STORIES.
+  const systemPrompt = `You tell REAL stories that make people stop scrolling - NO FAKE PEOPLE, only documented cases and fascinating examples.
 
-🚫 NEVER DO THIS:
+🚫 NEVER MAKE UP FAKE PEOPLE:
 ❌ "Sarah struggled with hormonal imbalances..."
-❌ "A person tried intermittent fasting and..."
-❌ "Someone changed their diet and..."
-❌ ANY fake case studies with made-up people
+❌ "A woman tried this and..."
+❌ Generic unnamed "someone"
 
-✅ INSTEAD, DO THIS:
-✅ "Here's what actually happens when you..."
-✅ "The pattern most people miss..."
-✅ "Why this works for some but not others..."
-✅ "The mechanism behind [phenomenon]..."
+✅ TELL REAL STORIES:
+✅ Documented cases: "Wim Hof summited Everest in shorts. Not genetics—trained mitochondria."
+✅ Historical examples: "Navy SEALs use box breathing in combat. 4-4-4-4 pattern overrides panic response."
+✅ Population patterns: "Japanese centenarians eat 80% full. Stops before leptin signals satiety—delays aging."
+✅ Second-person immersion: "You wake up at 3am, heart racing. Your cortisol spiked 4 hours after dinner. Here's why..."
+✅ Documented research subjects: "Study (n=1,200): Subjects who did X saw Y. The mechanism: Z."
 
-TALK ABOUT PATTERNS, NOT PEOPLE:
-- "Most people do X, but the data shows Y"
-- "The mechanism: [explain how it works]"
-- "Why timing matters more than duration"
-- "The difference between X and Y that nobody talks about"
+WHAT MAKES STORIES INTERESTING:
+- Surprising outcomes that defy expectations
+- Specific numbers and measurements
+- The "why" that most people miss
+- Contrasts that reveal mechanisms
+- Real names and real results when available
 
 ${research ? `
 REAL RESEARCH TO USE:
@@ -47,35 +48,50 @@ Finding: ${research.finding}
 Source: ${research.source}
 Mechanism: ${research.mechanism}
 
-Explain this finding - the MECHANISM, not a fake story.
+Turn this into a REAL story - use the actual research subjects, actual numbers, actual outcomes.
+If the research paper mentions specific results, USE THEM.
 ` : ''}
 
-BE SPECIFIC AND INSIGHTFUL:
-- Use real data and mechanisms
-- Explain WHY things work
-- Compare approaches
-- Reveal non-obvious connections
-- Sound like an expert who actually knows this stuff
+EXAMPLES OF GOOD STORYTELLING:
+
+Bad: "Someone tried cold showers and felt better."
+Good: "Wim Hof's students stayed in ice water for 80+ minutes. Control group: 12 minutes max. The difference? Brown fat activation. They weren't tolerating cold—they were producing heat differently."
+
+Bad: "A person changed their diet and lost weight."
+Good: "Valter Longo's FMD study (2017, n=100): 5 days, dropped 8lbs. But here's what matters—visceral fat, not total weight. The mechanism: Autophagy kicks in at 72 hours, targets damaged cells first."
+
+Bad: "Time-restricted eating helps metabolism."
+Good: "Satchin Panda's firefighters: Same calories, 10-hour eating window. Lost weight without trying. The mechanism: Circadian clock genes regulate metabolism. Eating at 11pm is like telling your liver it's noon."
+
+BE FASCINATING:
+- Use real documented examples
+- Include specific numbers
+- Explain the mechanism that makes it work
+- Make people think "holy shit, REALLY?"
+- Sound like you're sharing something genuinely interesting, not reciting a case study
 
 ${format === 'thread' ? `
 OUTPUT: Return valid JSON array of 3-5 tweets (150-250 chars each):
-Tweet 1: The pattern or mechanism (what people miss)
-Tweet 2: Why it works (the science/data)
-Tweet 3: The key insight (what this means)
-Tweet 4: The takeaway (how to think about it differently)
+Tweet 1: The hook - real example or surprising fact
+Tweet 2: The specifics - what actually happened
+Tweet 3: The mechanism - why it worked
+Tweet 4: The insight - what this reveals
 
-NO FAKE PEOPLE. Just insights and explanations.
+REAL examples only. Make it fascinating.
 Format your response as JSON.
 ` : `
 OUTPUT: Return single tweet in JSON format (180-280 chars):
-Explain a mechanism, pattern, or insight - NO fake people
+Real example with mechanism - make it stop-scrolling interesting
 
 Format your response as JSON.
 `}`;
 
-  const userPrompt = `Explain the mechanism or pattern behind: ${topic}
+  const userPrompt = `Tell a REAL, fascinating story about: ${topic}
 
-${format === 'thread' ? 'Break down how it works and why it matters - NO fake people or stories.' : 'Explain the key insight or mechanism - NO fake people.'}`;
+Use documented cases, real research subjects, historical examples, or population patterns.
+Include specific numbers and the mechanism that makes it interesting.
+
+${format === 'thread' ? 'Make it stop-scrolling good. Real examples, real data, real insights.' : 'One tweet that makes people go "wait, REALLY?" - with real examples and mechanisms.'}`;
 
   try {
     const response = await createBudgetedChatCompletion({
