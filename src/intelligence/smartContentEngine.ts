@@ -58,7 +58,7 @@ export class SmartContentEngine {
     }
     
     // Extract topics
-    const recentTopics = [...new Set(recentPosts.map(p => p.topic_cluster).filter(Boolean))];
+    const recentTopics = [...new Set(recentPosts.map(p => String(p.topic_cluster || '')).filter(Boolean))];
     
     // Extract key angles from content
     const recentAngles = recentPosts
@@ -66,9 +66,9 @@ export class SmartContentEngine {
         const content = String(p.content || '');
         // Extract first sentence as the "angle"
         const firstSentence = content.split(/[.!?]/)[0];
-        return firstSentence.substring(0, 100);
+        return firstSentence ? firstSentence.substring(0, 100) : '';
       })
-      .filter(Boolean);
+      .filter(Boolean) as string[];
     
     return {
       recentTopics,
