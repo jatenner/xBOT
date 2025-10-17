@@ -49,9 +49,9 @@ const ConfigSchema = z.object({
   JOBS_POSTING_INTERVAL_MIN: z.number().default(5), // Check posting queue every 5 minutes
   JOBS_VIRAL_THREAD_INTERVAL_MIN: z.number().default(1440), // Viral thread DAILY (24 hours) - AGGRESSIVE
   
-  // Rate Limits - MAXIMUM AGGRESSIVE GROWTH 🔥
-  MAX_POSTS_PER_HOUR: z.number().default(3), // 3 posts per hour (up from 2)
-  MAX_DAILY_POSTS: z.number().default(72), // 3 per hour * 24 hours
+  // Rate Limits - SUSTAINABLE QUALITY GROWTH 🔥
+  MAX_POSTS_PER_HOUR: z.number().default(2), // 2 posts per hour MAX (user requirement)
+  MAX_DAILY_POSTS: z.number().default(48), // 2 per hour * 24 hours
   
   // Security
   ADMIN_TOKEN: z.string().default('dev-admin-token')

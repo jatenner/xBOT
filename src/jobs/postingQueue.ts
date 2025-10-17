@@ -134,6 +134,13 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
     
     console.log(`[POSTING_QUEUE] 📅 Fetching posts ready within ${GRACE_MINUTES} minute window`);
     
+    // CRITICAL FIX: Check what's already been posted to avoid duplicates
+    const { data: alreadyPosted } = await supabase
+      .from('posted_decisions')
+      .select('decision_id');
+    
+    const postedIds = new Set((alreadyPosted || []).map(p => p.decision_id));
+    
     const { data, error } = await supabase
       .from('content_metadata')
       .select('*')
@@ -141,7 +148,7 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
       // Remove generation_source filter to allow all queued content
       .lte('scheduled_at', graceWindow) // Add grace window filter
       .order('scheduled_at', { ascending: true }) // Order by scheduled time, not creation time
-      .limit(5); // Process max 5 at a time to avoid overwhelming Twitter
+      .limit(10); // Get more to filter out already-posted
     
     if (error) {
       console.error('[POSTING_QUEUE] ❌ Failed to fetch ready decisions:', error.message);
@@ -154,7 +161,34 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
     
     // Map raw rows to typed decisions
     const rows = data as QueuedDecisionRow[];
-    const decisions: QueuedDecision[] = rows.map(row => ({
+    
+    // DEDUPLICATION: Filter out already-posted content
+    const filteredRows = rows.filter(row => {
+      const id = String(row.id ?? '');
+      if (postedIds.has(id)) {
+        console.log(`[POSTING_QUEUE] ⚠️ Skipping duplicate: ${id} (already posted)`);
+        return false;
+      }
+      return true;
+    });
+    
+    console.log(`[POSTING_QUEUE] 📋 Filtered: ${rows.length} → ${filteredRows.length} (removed ${rows.length - filteredRows.length} duplicates)`);
+    
+    // STRICT RATE LIMITING: Calculate how many posts we can still make this hour
+    const config = getConfig();
+    const maxPostsPerHour = parseInt(String(config.MAX_POSTS_PER_HOUR || 2));
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { count: recentPostCount } = await supabase
+      .from('posted_decisions')
+      .select('*', { count: 'exact', head: true })
+      .gte('posted_at', oneHourAgo);
+    
+    const postsAlreadyMadeThisHour = recentPostCount || 0;
+    const postsAllowedNow = Math.max(0, maxPostsPerHour - postsAlreadyMadeThisHour);
+    
+    console.log(`[POSTING_QUEUE] 🚦 Rate limit: ${postsAlreadyMadeThisHour}/${maxPostsPerHour} posts this hour, can post ${postsAllowedNow} more`);
+    
+    const decisions: QueuedDecision[] = filteredRows.slice(0, postsAllowedNow).map(row => ({
       id: String(row.id ?? ''),
       content: String(row.content ?? ''),
       decision_type: String(row.decision_type ?? 'content') as 'content' | 'reply',
@@ -190,6 +224,35 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
   
   try {
     let tweetId: string;
+    
+    // 🚨 CRITICAL: Check if already posted (double-check before posting)
+    const { getSupabaseClient } = await import('../db/index');
+    const supabase = getSupabaseClient();
+    const { data: alreadyExists } = await supabase
+      .from('posted_decisions')
+      .select('tweet_id')
+      .eq('decision_id', decision.id)
+      .single();
+    
+    if (alreadyExists) {
+      console.log(`[POSTING_QUEUE] 🚫 DUPLICATE PREVENTED: ${decision.id} already posted as ${alreadyExists.tweet_id}`);
+      await updateDecisionStatus(decision.id, 'posted'); // Mark as posted to prevent retry
+      return; // Skip posting
+    }
+    
+    // 🔍 CONTENT HASH CHECK: Also check for duplicate content
+    const contentHash = require('crypto').createHash('md5').update(decision.content).digest('hex');
+    const { data: duplicateContent } = await supabase
+      .from('posted_decisions')
+      .select('tweet_id, content')
+      .eq('content', decision.content)
+      .limit(1);
+    
+    if (duplicateContent && duplicateContent.length > 0) {
+      console.log(`[POSTING_QUEUE] 🚫 DUPLICATE CONTENT PREVENTED: Same content already posted as ${duplicateContent[0].tweet_id}`);
+      await updateDecisionStatus(decision.id, 'posted'); // Mark as posted to prevent retry
+      return; // Skip posting
+    }
     
     if (decision.decision_type === 'content') {
       tweetId = await postContent(decision);
@@ -311,13 +374,19 @@ async function postContent(decision: QueuedDecision): Promise<string> {
     console.log('[POSTING_QUEUE] 🌐 Using reliable Playwright posting...');
     
     try {
-      // CHECK IF THIS IS A THREAD (retrieve from features.thread_tweets)
+      // 🧵 CHECK IF THIS IS A THREAD (retrieve from features.thread_tweets)
       const features = (decision as any).features || {};
       const thread_tweets = features.thread_tweets || (decision as any).thread_tweets;
       const isThread = Array.isArray(thread_tweets) && thread_tweets.length > 1;
       
+      console.log(`[POSTING_QUEUE] 🔍 Thread detection: isThread=${isThread}, segments=${isThread ? thread_tweets.length : 0}`);
+      
       if (isThread) {
-        console.log(`[POSTING_QUEUE] 🧵 Posting as THREAD (${thread_tweets.length} tweets)`);
+        console.log(`[POSTING_QUEUE] 🧵 THREAD MODE: Posting ${thread_tweets.length} connected tweets`);
+        thread_tweets.forEach((tweet: string, i: number) => {
+          console.log(`[POSTING_QUEUE]   📝 Tweet ${i + 1}/${thread_tweets.length}: "${tweet.substring(0, 60)}..."`);
+        });
+        
         const { BulletproofThreadComposer } = await import('../posting/BulletproofThreadComposer');
         const result = await BulletproofThreadComposer.post(thread_tweets);
         
