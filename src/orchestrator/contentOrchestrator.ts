@@ -26,6 +26,9 @@ import { getImperfectionInjector } from '../chaos/imperfectionInjector';
 // DYNAMIC TOPIC GENERATION
 import { getDynamicTopicGenerator } from '../intelligence/dynamicTopicGenerator';
 
+// AI-DRIVEN SYSTEMS
+import { getStrategyDiscoveryEngine } from '../ai-core/strategyDiscoveryEngine';
+
 // PHASE 1: Quality & Viral Optimization
 import { calculateViralPotential, meetsViralThreshold, getImprovementSuggestions } from '../learning/viralScoring';
 import { formatForTwitter, validateContentQuality, isTooGeneric } from '../content/contentFormatter';
@@ -69,7 +72,14 @@ export class ContentOrchestrator {
     formatHint?: 'single' | 'thread';
   }): Promise<OrchestratedContent> {
     
-    console.log('[ORCHESTRATOR] 🧠 Starting content generation...');
+    console.log('[ORCHESTRATOR] 🧠 Starting AI-driven content generation...');
+    
+    // STEP 0: Get AI strategy insights (cached, doesn't hit API every time)
+    const strategyEngine = getStrategyDiscoveryEngine();
+    const aiAdvice = await strategyEngine.getContentAdvice().catch(() => '');
+    if (aiAdvice) {
+      console.log(`[ORCHESTRATOR] 🤖 AI Strategy: ${aiAdvice.substring(0, 100)}...`);
+    }
     
     // STEP 1: Load recent posts into memory
     const postHistory = getPostHistory();
