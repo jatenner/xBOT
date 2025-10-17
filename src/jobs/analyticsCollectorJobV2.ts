@@ -237,6 +237,38 @@ async function collectPass2(supabase: any): Promise<void> {
 
       if (upsertError) throw upsertError;
 
+      // 📊 INTELLIGENCE LAYER: Capture follower count AFTER (24h)
+      try {
+        const { followerAttributionService } = await import('../intelligence/followerAttributionService');
+        await followerAttributionService.captureFollowerCountAfter(decision.tweet_id);
+      } catch (attrError: any) {
+        console.warn(`[ANALYTICS_COLLECTOR] ⚠️ Follower capture after failed: ${attrError.message}`);
+      }
+
+      // 🎣 INTELLIGENCE LAYER: Store hook performance
+      try {
+        const { hookAnalysisService } = await import('../intelligence/hookAnalysisService');
+        const { data: outcome } = await supabase
+          .from('outcomes')
+          .select('*')
+          .eq('tweet_id', decision.tweet_id)
+          .single();
+        
+        if (outcome) {
+          await hookAnalysisService.storeHookPerformance(outcome);
+        }
+      } catch (hookError: any) {
+        console.warn(`[ANALYTICS_COLLECTOR] ⚠️ Hook performance storage failed: ${hookError.message}`);
+      }
+
+      // ⏰ INTELLIGENCE LAYER: Update time performance aggregates
+      try {
+        const { timeOptimizationService } = await import('../intelligence/timeOptimizationService');
+        await timeOptimizationService.updateTimePerformance();
+      } catch (timeError: any) {
+        console.warn(`[ANALYTICS_COLLECTOR] ⚠️ Time performance update failed: ${timeError.message}`);
+      }
+
       console.log(
         `[ANALYTICS_COLLECTOR] ✅ Pass 2 stored: decision_id=${decision.decision_id} ` +
         `ER=${(er * 100).toFixed(2)}% FPKI=${fpki.toFixed(2)} follows=${metrics.follows} (final)`
