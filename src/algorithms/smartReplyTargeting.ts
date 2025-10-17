@@ -82,25 +82,25 @@ export class SmartReplyTargeting {
       // Step 2: Score each target
       const scoredTargets: OptimalReplyTarget[] = targets.map(t => {
         const priorityScore = this.calculatePriorityScore({
-          followers: t.followers,
-          conversion_potential: t.conversion_potential || 0.5,
-          times_replied: t.times_replied || 0,
-          actual_conversion_rate: t.actual_conversion_rate || 0
+          followers: Number(t.followers) || 0,
+          conversion_potential: Number(t.conversion_potential) || 0.5,
+          times_replied: Number(t.times_replied) || 0,
+          actual_conversion_rate: Number(t.actual_conversion_rate) || 0
         });
 
         return {
-          handle: t.handle,
-          username: t.username || t.handle.replace('@', ''),
-          followers: t.followers,
+          handle: String(t.handle),
+          username: String(t.username) || String(t.handle).replace('@', ''),
+          followers: Number(t.followers) || 0,
           engagement_rate: 0.05, // Estimated
-          follower_overlap_score: t.conversion_potential || 0.5,
+          follower_overlap_score: Number(t.conversion_potential) || 0.5,
           reply_window: 'early',
           rising_potential: 0.7,
-          conversion_potential: t.conversion_potential || 0.5,
-          times_replied: t.times_replied || 0,
+          conversion_potential: Number(t.conversion_potential) || 0.5,
+          times_replied: Number(t.times_replied) || 0,
           avg_engagement_on_replies: 10,
-          avg_followers_gained: t.total_followers_gained || 0,
-          actual_conversion_rate: t.actual_conversion_rate || 0,
+          avg_followers_gained: Number(t.total_followers_gained) || 0,
+          actual_conversion_rate: Number(t.actual_conversion_rate) || 0,
           priority_score: priorityScore
         };
       });
@@ -199,9 +199,9 @@ export class SmartReplyTargeting {
 
       if (!target) return;
 
-      const newTimesReplied = (target.times_replied || 0) + 1;
-      const newTotalEngagement = (target.total_engagement || 0) + reply.engagement;
-      const newTotalFollowers = (target.total_followers_gained || 0) + reply.followers_gained;
+      const newTimesReplied = (Number(target.times_replied) || 0) + 1;
+      const newTotalEngagement = (Number(target.total_engagement) || 0) + reply.engagement;
+      const newTotalFollowers = (Number(target.total_followers_gained) || 0) + reply.followers_gained;
       const newConversionRate = newTotalFollowers / newTimesReplied;
 
       await this.supabase
@@ -276,19 +276,19 @@ export class SmartReplyTargeting {
       }
 
       return targets.map(t => ({
-        handle: t.handle,
-        username: t.username || t.handle.replace('@', ''),
-        followers: t.followers,
+        handle: String(t.handle),
+        username: String(t.username || String(t.handle).replace('@', '')),
+        followers: Number(t.followers) || 0,
         engagement_rate: 0.05,
-        follower_overlap_score: t.conversion_potential || 0.5,
+        follower_overlap_score: Number(t.conversion_potential) || 0.5,
         reply_window: 'early',
         rising_potential: 0.7,
-        conversion_potential: t.conversion_potential || 0.5,
-        times_replied: t.times_replied || 0,
+        conversion_potential: Number(t.conversion_potential) || 0.5,
+        times_replied: Number(t.times_replied) || 0,
         avg_engagement_on_replies: 10,
-        avg_followers_gained: t.total_followers_gained || 0,
-        actual_conversion_rate: t.actual_conversion_rate || 0,
-        priority_score: t.actual_conversion_rate || 0.5
+        avg_followers_gained: Number(t.total_followers_gained) || 0,
+        actual_conversion_rate: Number(t.actual_conversion_rate) || 0,
+        priority_score: Number(t.actual_conversion_rate) || 0.5
       }));
 
     } catch (error: any) {

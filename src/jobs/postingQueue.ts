@@ -222,6 +222,43 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
     
     console.log(`[POSTING_QUEUE] ✅ ${decision.decision_type} posted: ${tweetId}`);
     
+    // ═══════════════════════════════════════════════════════════
+    // 🚀 POST-POSTING FEEDBACK LOOP - Track with Advanced Algorithms
+    // ═══════════════════════════════════════════════════════════
+    
+    try {
+      // 1. TWITTER ALGORITHM OPTIMIZER - Track engagement velocity
+      const { getTwitterAlgorithmOptimizer } = await import('../algorithms/twitterAlgorithmOptimizer');
+      const twitterAlgo = getTwitterAlgorithmOptimizer();
+      await twitterAlgo.trackVelocity(tweetId, new Date().toISOString());
+      console.log(`[POSTING_QUEUE] ⚡ Velocity tracking initialized for ${tweetId}`);
+    } catch (veloError: any) {
+      console.warn(`[POSTING_QUEUE] ⚠️ Velocity tracking failed: ${veloError.message}`);
+    }
+    
+    try {
+      // 2. CONVERSION FUNNEL TRACKER - Track full funnel
+      const { getConversionFunnelTracker } = await import('../algorithms/conversionFunnelTracker');
+      const funnelTracker = getConversionFunnelTracker();
+      await funnelTracker.trackFunnelMetrics(decision.id);
+      console.log(`[POSTING_QUEUE] 📊 Funnel tracking initialized for ${decision.id}`);
+    } catch (funnelError: any) {
+      console.warn(`[POSTING_QUEUE] ⚠️ Funnel tracking failed: ${funnelError.message}`);
+    }
+    
+    try {
+      // 3. FOLLOWER PREDICTOR - Track prediction for accuracy
+      // Prediction data is stored in planJobNew, we'll update accuracy later when real results come in
+      const { getFollowerPredictor } = await import('../algorithms/followerPredictor');
+      const predictor = getFollowerPredictor();
+      // Note: Prediction was already tracked in planJobNew, will update with actuals in analytics job
+      console.log(`[POSTING_QUEUE] 🔮 Prediction will be validated with actual results`);
+    } catch (predError: any) {
+      console.warn(`[POSTING_QUEUE] ⚠️ Predictor tracking failed: ${predError.message}`);
+    }
+    
+    // ═══════════════════════════════════════════════════════════
+    
     // TODO: Track with learning system (actual performance will be updated later via webhook/job)
     // For now, we'll simulate some basic metrics for learning
     try {

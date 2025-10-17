@@ -121,12 +121,12 @@ async function generateRealReplies(): Promise<void> {
   
   console.log('[REPLY_JOB] 🎯 Generating TITAN-TARGETED replies...');
   
-  // USE TITAN TARGETING SYSTEM - Find high-value opportunities
-  const { getTitanTargeting } = await import('../growth/titanTargetingSystem');
-  const titanSystem = getTitanTargeting();
-  const opportunities = await titanSystem.findReplyOpportunities();
+  // 🚀 USE SMART REPLY TARGETING - Find OPTIMAL opportunities (10k-100k accounts)
+  const { getSmartReplyTargeting } = await import('../algorithms/smartReplyTargeting');
+  const smartTargeting = getSmartReplyTargeting();
+  const opportunities = await smartTargeting.findReplyOpportunities();
   
-  console.log(`[REPLY_JOB] 🎯 Found ${opportunities.length} titan opportunities`);
+  console.log(`[REPLY_JOB] 🎯 Found ${opportunities.length} smart targeting opportunities`);
   
   // Take top 3-5 opportunities (AGGRESSIVE MODE - generate more replies)
   const replyCount = Math.min(5, opportunities.length);
@@ -135,14 +135,14 @@ async function generateRealReplies(): Promise<void> {
   for (const opportunity of opportunities.slice(0, replyCount)) {
     const target = {
       account: {
-        username: opportunity.titan.username,
-        category: opportunity.titan.category,
-        followers: opportunity.titan.follower_count,
+        username: opportunity.target.username,
+        category: 'health',
+        followers: opportunity.target.followers,
         engagement_velocity: 'high' as const
       },
-      tweet_url: opportunity.tweet_url,
-      tweet_content: opportunity.tweet_content,
-      estimated_reach: opportunity.titan.estimated_reach,
+      tweet_url: opportunity.tweet_url || '',
+      tweet_content: '',
+      estimated_reach: opportunity.estimated_followers || 0,
       reply_angle: opportunity.reply_strategy
     };
     try {
