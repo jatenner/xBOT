@@ -89,7 +89,7 @@ What's the mechanism that makes it work?`;
 
   try {
     const response = await createBudgetedChatCompletion({
-      model: 'gpt-4o-mini',
+      model: 'gpt-4o',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }

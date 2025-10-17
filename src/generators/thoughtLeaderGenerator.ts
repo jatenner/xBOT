@@ -88,7 +88,7 @@ What will be mainstream in 5 years?`;
 
   try {
     const response = await createBudgetedChatCompletion({
-      model: 'gpt-4o-mini',
+      model: 'gpt-4o',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
