@@ -1,11 +1,11 @@
 /**
- * EXPLORER GENERATOR
- * Personality: Asks questions, explores ideas, wonders aloud
- * Voice: Curious, exploratory, question-driven
+ * EXPLORER GENERATOR - REBUILT
+ * Reveals unexpected connections and discoveries
+ * NOT "did you know..." - genuine insights
  */
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
-import { validateAndExtractContent, createFallbackContent } from './generatorUtils';
+import { validateAndExtractContent } from './generatorUtils';
 
 export interface ExplorerContent {
   content: string | string[];
@@ -21,57 +21,72 @@ export async function generateExplorerContent(params: {
   
   const { topic, format, research } = params;
   
-  const systemPrompt = `You are THE CURIOUS EXPLORER - you ask questions and explore ideas openly.
+  const systemPrompt = `You reveal UNEXPECTED CONNECTIONS and discoveries.
 
-🚨 MANDATORY VIRAL REQUIREMENTS (Auto-rejected if ANY missing):
+🎯 YOUR JOB: Show people something they didn't know existed or connected.
 
-1. MUST START with "What if" or "Have you noticed" or "Why does"
-2. MUST include study citation supporting the question: "[University] [Year] (n=[number])"
-3. MUST include specific statistic or measurement
-4. MUST include mechanism: "because [biological process]"
-5. MUST include unexpected connection: "This connects to [surprising link]"
-6. Length: Single tweets 180-260 chars, thread tweets 150-230 chars each
+✅ GOOD EXAMPLES:
 
-GOOD EXPLORATORY HOOKS:
-- "What if chronic fatigue isn't energy depletion but energy misdirection?"
-- "Have you noticed people who track everything sleep worse? There's data on this."
-- "Why does optimizing sleep architecture beat optimizing duration by 3x?"
+"Your appendix isn't vestigial. It's a bacterial safe house. When gut infection wipes out 
+microbiome, appendix releases backup colony. We only thought it was useless because we didn't 
+know what we were looking for."
+→ Challenges assumption + reveals function + explains misunderstanding
 
-GOOD QUESTION FORMATS WITH DATA:
-- "What if MIT 2023 (n=4,782) is right: Sleep pressure > sleep duration for recovery?"
-- "Have you noticed: Stanford found 67% of 'burnout' is actually blood sugar dysregulation?"
-- "Why does morning light (Oxford 2024, n=8,123) reset circadian rhythm better than melatonin?"
+"Humans are bioluminescent. We emit photons—just 1,000x weaker than visible threshold. Brightest 
+at 4pm (metabolic peak), dimmest at 10am. You're literally glowing right now, cameras just 
+can't see it."
+→ Surprising fact + specific data + practical implication
 
-GOOD UNEXPECTED CONNECTIONS:
-- "This connects to why meditation works: GABA-A receptor upregulation, not 'stress relief'"
-- "Fascinating link: Same pathway as psychedelics → default mode network suppression"
-- "Unexpected: Same mechanism drives addiction and optimization behavior"
+"Your heart has 40,000 neurons—its own 'brain'. Sends more signals TO brain than receives. 
+That's why 'gut feeling' is real: enteric nervous system votes, vagus nerve transmits, heart 
+processes, THEN brain decides."
+→ Reveals system + shows hierarchy + explains phenomenon
+
+"Mitochondria have their own DNA (inherited only from mother). They're ex-bacteria that merged 
+2 billion years ago. Not human cells with powerhouses—symbiotic bacteria running your metabolism."
+→ Reframes understanding + gives timeline + shows implications
+
+🚨 NEVER DO THIS:
+❌ "Did you know..." (too generic)
+❌ Random trivia without mechanism
+❌ "X is connected to Y" without explaining how
+❌ Surface-level facts
 
 ${research ? `
-RESEARCH CONTEXT:
-Finding: ${research.finding}
+📊 USE THIS RESEARCH:
+${research.finding}
 Source: ${research.source}
 Mechanism: ${research.mechanism}
 
-Use this as jumping-off point for exploration.
+What's the unexpected discovery or connection here?
 ` : ''}
 
 ${format === 'thread' ? `
-OUTPUT: Return JSON array of 3-5 tweets (150-230 chars each):
-Tweet 1: Intriguing question with data
-Tweet 2: Study citation + finding
-Tweet 3: Mechanism exploration
-Tweet 4: Unexpected connection revealed
-Format your response as JSON.
+📱 THREAD FORMAT (3-5 tweets, 150-250 chars each):
+
+Tweet 1: The surprising discovery
+Tweet 2: Why we missed it before
+Tweet 3: What this reveals (mechanism)
+Tweet 4: What this means (implication)
+
+Return JSON: {"tweets": ["...", "...", ...]}
 ` : `
-OUTPUT: Return single tweet as JSON object (180-260 chars):
-Question + data + mechanism + surprising link
-Format your response as JSON.
-`}`;
+📱 SINGLE TWEET (180-280 chars):
 
-  const userPrompt = `Explore curious questions about: ${topic}
+One unexpected connection or discovery with mechanism.
+Make people think "wait, WHAT?"
 
-${format === 'thread' ? 'Take us on an exploratory journey through an interesting question.' : 'Ask one question that makes people think differently.'}`;
+Return JSON: {"tweet": "..."}
+`}
+
+🔥 BE SURPRISING: Things people genuinely don't know
+🧠 EXPLAIN HOW: Mechanism behind the connection
+⚡ SHOW IMPLICATIONS: Why this discovery matters`;
+
+  const userPrompt = `What's the most unexpected discovery or connection about: ${topic}
+
+What do people not know exists? What surprising connection can you reveal?
+Explain the mechanism that makes it fascinating.`;
 
   try {
     const response = await createBudgetedChatCompletion({
@@ -80,25 +95,21 @@ ${format === 'thread' ? 'Take us on an exploratory journey through an interestin
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
       ],
-      temperature: 0.95, // Highest creativity for exploration
-      max_tokens: format === 'thread' ? 600 : 200,
+      temperature: 0.9,
+      max_tokens: format === 'thread' ? 600 : 150,
       response_format: { type: 'json_object' }
     }, { purpose: 'explorer_content_generation' });
 
     const parsed = JSON.parse(response.choices[0].message.content || '{}');
     
     return {
-      content: validateAndExtractContent(parsed, format, 'GENERATOR'),
+      content: validateAndExtractContent(parsed, format, 'EXPLORER'),
       format,
-      confidence: 0.75
+      confidence: 0.85
     };
     
   } catch (error: any) {
     console.error('[EXPLORER_GEN] Error:', error.message);
-    
-    // NO FALLBACK - Hollow content is worse than no content
-    // Throw error to force retry with different generator
     throw new Error(`Explorer generator failed: ${error.message}. System will retry with different approach.`);
   }
 }
-
