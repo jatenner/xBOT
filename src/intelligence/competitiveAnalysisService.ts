@@ -345,7 +345,7 @@ export class CompetitiveAnalysisService {
       .limit(1)
       .single();
     
-    return data?.pattern || 'question';
+    return String(data?.pattern || 'question');
   }
 }
 

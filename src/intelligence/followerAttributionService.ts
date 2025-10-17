@@ -75,7 +75,8 @@ export class FollowerAttributionService {
         return;
       }
       
-      const gained = currentFollowers - outcome.followers_before;
+      const followersBefore = Number(outcome.followers_before) || 0;
+      const gained = currentFollowers - followersBefore;
       
       // Update outcomes
       await supabase
@@ -138,7 +139,7 @@ export class FollowerAttributionService {
         .limit(1)
         .single();
       
-      return data?.follower_count || 0;
+      return Number(data?.follower_count) || 0;
     }
   }
 
@@ -170,8 +171,8 @@ export class FollowerAttributionService {
       .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
       .not('followers_gained', 'is', null);
     
-    const totalGained = (outcomes || []).reduce((sum, o) => sum + (o.followers_gained || 0), 0);
-    const postsWithGrowth = (outcomes || []).filter(o => (o.followers_gained || 0) > 0).length;
+    const totalGained = (outcomes || []).reduce((sum, o) => sum + (Number(o.followers_gained) || 0), 0);
+    const postsWithGrowth = (outcomes || []).filter(o => (Number(o.followers_gained) || 0) > 0).length;
     
     return {
       totalGained,

@@ -52,19 +52,20 @@ export class TimeOptimizationService {
     
     // Aggregate data
     for (const outcome of data || []) {
-      const hour = outcome.post_hour;
-      if (hour < 0 || hour > 23) continue;
+      const hour = Number(outcome.post_hour);
+      if (hour < 0 || hour > 23 || isNaN(hour)) continue;
       
       performance[hour].totalPosts++;
-      performance[hour].avgImpressions += outcome.impressions || 0;
-      performance[hour].avgLikes += outcome.likes || 0;
-      performance[hour].avgFollowers += outcome.followers_gained || 0;
+      performance[hour].avgImpressions += Number(outcome.impressions) || 0;
+      performance[hour].avgLikes += Number(outcome.likes) || 0;
+      performance[hour].avgFollowers += Number(outcome.followers_gained) || 0;
     }
     
     // Calculate averages
-    for (const hour in performance) {
-      const p = performance[hour];
-      if (p.totalPosts > 0) {
+    for (const hourKey in performance) {
+      const hourNum = Number(hourKey);
+      const p = performance[hourNum];
+      if (p && p.totalPosts > 0) {
         p.avgImpressions = Math.round(p.avgImpressions / p.totalPosts);
         p.avgLikes = Math.round(p.avgLikes / p.totalPosts);
         p.avgFollowers = p.avgFollowers / p.totalPosts;
