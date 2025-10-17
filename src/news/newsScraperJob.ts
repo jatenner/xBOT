@@ -40,26 +40,34 @@ export class TwitterNewsScraperJob {
   // System discovers news sources dynamically
   
   // NEWS SEARCH QUERIES - Find breaking news organically
+  // Focus: Headlines, events, announcements, launches, recalls, policies
   private readonly NEWS_SEARCH_QUERIES = [
-    // Breaking news (any topic)
-    'breaking news health',
+    // Product launches & availability
+    'now available',
+    'launches at',
+    'approved by FDA',
+    
+    // Official statements & claims
+    'officials say',
+    'secretary claims',
+    'announces',
+    'confirms',
+    
+    // Regulatory & policy
+    'FDA recalls',
+    'CDC warns',
+    'banned',
+    'approved',
+    
+    // Breaking events
+    'breaking health',
     'just in health',
     'developing health',
     
-    // Headlines
-    'headline health',
-    'announces health',
-    'reports health',
-    
-    // Specific news patterns
-    '"according to" health',
-    '"sources say" health',
-    '"officials confirm" health',
-    
-    // Time-sensitive
-    'today health news',
-    'this morning health',
-    'tonight health'
+    // Corporate/industry
+    'company announces',
+    'launches new',
+    'recalls'
   ];
   
   // RESEARCH SEARCH QUERIES - Separate from news
@@ -148,17 +156,37 @@ export class TwitterNewsScraperJob {
         // Extract tweets - filter for verified accounts or high engagement
         const tweets = await this.extractTweetsFromPage(page, 'news_outlet', 'search');
         
-        // Filter for actual news patterns (not just mentions)
+        // Filter for actual NEWS EVENTS (not research)
         const newsPatterns = [
-          'breaking', 'just in', 'reports', 'according to', 
-          'announces', 'confirms', 'sources say', 'officials'
+          // Headlines & breaking events
+          'breaking', 'just in', 'developing',
+          
+          // Product/availability 
+          'now available', 'launches', 'launching', 'released',
+          
+          // Regulatory
+          'fda', 'cdc', 'approved', 'banned', 'recall',
+          
+          // Official statements
+          'officials', 'secretary', 'announces', 'claims',
+          'warns', 'confirms', 'reports',
         ];
         
-        const filteredNews = tweets.filter(tweet => 
-          newsPatterns.some(pattern => 
-            tweet.tweet_text.toLowerCase().includes(pattern)
-          )
-        );
+        // EXCLUDE research patterns from news
+        const researchExcludePatterns = [
+          'study shows', 'research finds', 'scientists', 
+          'clinical trial', 'peer reviewed', 'published in'
+        ];
+        
+        // Only include if it's NEWS and NOT research
+        const filteredNews = tweets.filter(tweet => {
+          const text = tweet.tweet_text.toLowerCase();
+          
+          const hasNewsPattern = newsPatterns.some(p => text.includes(p));
+          const hasResearchPattern = researchExcludePatterns.some(p => text.includes(p));
+          
+          return hasNewsPattern && !hasResearchPattern;
+        });
         
         breakingNews.push(...filteredNews);
         

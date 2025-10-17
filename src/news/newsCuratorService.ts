@@ -103,22 +103,28 @@ export class NewsCuratorService {
    */
   private async analyzeNewsWithAI(news: any): Promise<CuratedNews | null> {
     try {
-      const prompt = `Analyze this health-related tweet and extract key information:
+      const prompt = `Analyze this health NEWS tweet (not research) and extract key information:
 
 TWEET:
 "${news.tweet_text}"
 
-SOURCE: @${news.author_username} (${news.source_type})
+SOURCE: @${news.author_username}
 ENGAGEMENT: ${news.likes_count} likes, ${news.retweets_count} retweets
-POSTED: ${news.posted_at}
+
+This should be a NEWS EVENT (product launch, official claim, policy, recall, etc.)
+NOT a research study or clinical trial.
 
 Extract:
-1. Main topic (one word: "sleep", "nutrition", "exercise", etc.)
-2. Catchy headline (10-15 words, newsworthy)
-3. Key claim (the main finding or statement)
-4. Source credibility (high/medium/low based on account type and engagement)
+1. Main topic (one word: "medication", "supplement", "policy", "outbreak", etc.)
+2. News headline (10-15 words): What happened? Who said/did what?
+3. Key event (the actual news): "Ozempic available at CVS" or "RFK claims Tylenol causes autism"
+4. Source credibility (high/medium/low based on whether it's official announcement, verified source, or rumor)
 
-Format your response as JSON with fields: topic, headline, key_claim, source_credibility`;
+Format your response as JSON with fields: topic, headline, key_claim, source_credibility
+
+Example good extractions:
+- Topic: "medication", Headline: "Ozempic now available at CVS pharmacies", Key Claim: "Weight loss drug Ozempic launched at CVS locations nationwide"
+- Topic: "policy", Headline: "HHS Secretary claims Tylenol linked to autism", Key Claim: "RFK Jr. states Tylenol may cause autism, contradicting FDA stance"`;
 
       const response = await createBudgetedChatCompletion({
         model: 'gpt-4o-mini',
