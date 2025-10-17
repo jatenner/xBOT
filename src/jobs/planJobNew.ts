@@ -260,8 +260,8 @@ async function generateContentWithLLM(): Promise<ContentDecision> {
     
     const orchestratedContent = await generateWithExplorationMode({
       topicHint,
-      formatHint,
-      hookHint: bestHook?.hook // Pass best hook to generator
+      formatHint
+      // Note: hookHint removed - generator will create its own hooks
     });
     
     console.log(`[ORCHESTRATOR] ✅ Generated ${orchestratedContent.format} content using ${orchestratedContent.metadata.generator_used}`);

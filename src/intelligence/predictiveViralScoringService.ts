@@ -67,10 +67,10 @@ export class PredictiveViralScoringService {
       }
       
       // Calculate baseline averages
-      const avgFollowers = similar.reduce((sum, s) => sum + (s.followers_gained || 0), 0) / similar.length;
-      const avgLikes = similar.reduce((sum, s) => sum + (s.likes || 0), 0) / similar.length;
-      const avgRetweets = similar.reduce((sum, s) => sum + (s.retweets || 0), 0) / similar.length;
-      const avgImpressions = similar.reduce((sum, s) => sum + (s.impressions || 0), 0) / similar.length;
+      const avgFollowers = similar.reduce((sum, s) => sum + (Number(s.followers_gained) || 0), 0) / similar.length;
+      const avgLikes = similar.reduce((sum, s) => sum + (Number(s.likes) || 0), 0) / similar.length;
+      const avgRetweets = similar.reduce((sum, s) => sum + (Number(s.retweets) || 0), 0) / similar.length;
+      const avgImpressions = similar.reduce((sum, s) => sum + (Number(s.impressions) || 0), 0) / similar.length;
       
       // Hook type multiplier
       const hookAnalysis = HookAnalysisService.getInstance();
@@ -181,12 +181,12 @@ export class PredictiveViralScoringService {
     let engagementErrorSum = 0;
     
     for (const outcome of data) {
-      const actualFollowers = outcome.followers_gained || 0;
-      const predictedFollowers = outcome.predicted_followers || 0;
+      const actualFollowers = Number(outcome.followers_gained) || 0;
+      const predictedFollowers = Number(outcome.predicted_followers) || 0;
       followerErrorSum += Math.abs(actualFollowers - predictedFollowers);
       
-      const actualEngagement = (outcome.likes || 0) + (outcome.retweets || 0) * 2;
-      const predictedEngagement = outcome.predicted_engagement || 0;
+      const actualEngagement = (Number(outcome.likes) || 0) + (Number(outcome.retweets) || 0) * 2;
+      const predictedEngagement = Number(outcome.predicted_engagement) || 0;
       engagementErrorSum += Math.abs(actualEngagement - predictedEngagement);
     }
     
@@ -194,7 +194,7 @@ export class PredictiveViralScoringService {
       totalPredictions: data.length,
       avgFollowerError: followerErrorSum / data.length,
       avgEngagementError: engagementErrorSum / data.length,
-      accuracy: 100 - ((followerErrorSum / data.length) * 100 / Math.max(1, data[0].followers_gained || 1))
+      accuracy: 100 - ((followerErrorSum / data.length) * 100 / Math.max(1, Number(data[0].followers_gained) || 1))
     };
   }
 }

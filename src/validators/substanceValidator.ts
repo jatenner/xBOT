@@ -184,7 +184,11 @@ export function validateContentSubstance(content: string | string[]): {
   const substanceCheck = validateSubstance(content);
   if (!substanceCheck.isValid) {
     console.error(`[SUBSTANCE] ❌ Failed: ${substanceCheck.reason} (${substanceCheck.score}/100)`);
-    return substanceCheck;
+    return {
+      isValid: false,
+      reason: substanceCheck.reason || 'Substance check failed',
+      score: substanceCheck.score
+    };
   }
   
   // Check completeness

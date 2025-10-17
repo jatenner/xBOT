@@ -111,11 +111,11 @@ export class HookAnalysisService {
       .limit(limit);
     
     return (data || []).map(d => ({
-      hook_text: d.hook_text,
-      hook_type: d.hook_type || this.classifyHookType(d.hook_text),
-      followers_gained: d.followers_gained || 0,
-      engagement_score: (d.likes || 0) + (d.retweets || 0) * 2,
-      impressions: d.impressions || 0
+      hook_text: String(d.hook_text || ''),
+      hook_type: String(d.hook_type || this.classifyHookType(String(d.hook_text || ''))),
+      followers_gained: Number(d.followers_gained) || 0,
+      engagement_score: (Number(d.likes) || 0) + (Number(d.retweets) || 0) * 2,
+      impressions: Number(d.impressions) || 0
     }));
   }
 
@@ -143,7 +143,8 @@ export class HookAnalysisService {
     }> = {};
     
     for (const outcome of outcomes || []) {
-      const hookType = outcome.hook_type || this.classifyHookType(outcome.hook_text);
+      const hookText = String(outcome.hook_text || '');
+      const hookType = String(outcome.hook_type || this.classifyHookType(hookText));
       
       if (!performance[hookType]) {
         performance[hookType] = { 
@@ -155,9 +156,9 @@ export class HookAnalysisService {
       }
       
       performance[hookType].count++;
-      performance[hookType].avgFollowers += outcome.followers_gained || 0;
-      performance[hookType].avgEngagement += (outcome.likes || 0) + (outcome.retweets || 0) * 2;
-      performance[hookType].avgImpressions += outcome.impressions || 0;
+      performance[hookType].avgFollowers += Number(outcome.followers_gained) || 0;
+      performance[hookType].avgEngagement += (Number(outcome.likes) || 0) + (Number(outcome.retweets) || 0) * 2;
+      performance[hookType].avgImpressions += Number(outcome.impressions) || 0;
     }
     
     // Calculate averages
@@ -205,12 +206,12 @@ export class HookAnalysisService {
     const typePerformance: Record<string, { count: number; totalFollowers: number }> = {};
     
     for (const outcome of data) {
-      const type = outcome.hook_type;
+      const type = String(outcome.hook_type || 'statement');
       if (!typePerformance[type]) {
         typePerformance[type] = { count: 0, totalFollowers: 0 };
       }
       typePerformance[type].count++;
-      typePerformance[type].totalFollowers += outcome.followers_gained || 0;
+      typePerformance[type].totalFollowers += Number(outcome.followers_gained) || 0;
     }
     
     // Find best performing type
