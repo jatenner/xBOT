@@ -128,8 +128,11 @@ async function generateRealReplies(): Promise<void> {
   
   console.log(`[REPLY_JOB] 🎯 Found ${opportunities.length} titan opportunities`);
   
-  // Take top 2 opportunities
-  for (const opportunity of opportunities.slice(0, 2)) {
+  // Take top 3-5 opportunities (AGGRESSIVE MODE - generate more replies)
+  const replyCount = Math.min(5, opportunities.length);
+  console.log(`[REPLY_JOB] 🚀 AGGRESSIVE MODE: Generating ${replyCount} strategic replies`);
+  
+  for (const opportunity of opportunities.slice(0, replyCount)) {
     const target = {
       account: {
         username: opportunity.titan.username,
