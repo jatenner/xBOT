@@ -1,6 +1,16 @@
 /**
- * 🎭 EXPERT PERSONA SYSTEM
- * Dynamic expert personalities for ultimate content variety
+ * ⚠️ DEPRECATED - DO NOT USE
+ * 
+ * This file contains FAKE doctor personas that should NOT be used.
+ * The user explicitly rejected these personas (Dr. Elena Vasquez, Marcus Chen, etc.)
+ * 
+ * USE INSTEAD:
+ * - HumanVoiceEngine (research_enthusiast, truth_seeker, practical_optimizer, etc.)
+ * - NewsReporterGenerator (breaking health news)
+ * - StorytellerGenerator (real documented cases)
+ * - InterestingContentGenerator (counterintuitive content)
+ * 
+ * These are now integrated in UnifiedContentEngine.
  */
 
 export interface ExpertPersona {

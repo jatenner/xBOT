@@ -18,6 +18,10 @@ import { getSupabaseClient } from '../db/index';
 import { FollowerGrowthOptimizer } from '../intelligence/followerGrowthOptimizer';
 import { PerformancePredictionEngine } from '../intelligence/performancePredictionEngine';
 import { ContentQualityController } from '../quality/contentQualityController';
+import { HumanVoiceEngine } from '../ai/humanVoiceEngine';
+import { generateNewsReporterContent } from '../generators/newsReporterGenerator';
+import { generateStorytellerContent } from '../generators/storytellerGenerator';
+import { generateInterestingContent } from '../generators/interestingContentGenerator';
 
 // ═══════════════════════════════════════════════════════════
 // TYPES
@@ -78,6 +82,9 @@ export class UnifiedContentEngine {
   private predictor = PerformancePredictionEngine.getInstance();
   private qualityController: ContentQualityController;
   
+  // 🎭 REAL CONTENT GENERATORS (The actual personas you built!)
+  private humanVoice = HumanVoiceEngine.getInstance();
+  
   private constructor() {
     const apiKey = process.env.OPENAI_API_KEY || '';
     this.qualityController = new ContentQualityController(apiKey);
@@ -137,47 +144,33 @@ export class UnifiedContentEngine {
       console.log(`  ✓ Follower potential: ${viralAnalysis.followerPotential}/100`);
       
       // ═══════════════════════════════════════════════════════════
-      // STEP 4: BUILD INTELLIGENT PROMPT
+      // STEP 4: SELECT CONTENT GENERATOR (THE REAL PERSONAS!)
       // ═══════════════════════════════════════════════════════════
-      console.log('🎨 STEP 4: Building intelligent prompt with all insights...');
-      const prompt = this.buildIntelligentPrompt({
+      console.log('🎭 STEP 4: Selecting content generator persona...');
+      const { generatorName, content: generatedContent, confidence } = await this.selectAndGenerateWithPersona({
         topic: topicHint,
         format: request.format || 'single',
         insights,
         viralAnalysis,
-        experimentArm,
-        variantFeatures
+        experimentArm
       });
-      systemsActive.push('Intelligent Prompting');
+      systemsActive.push(`Persona: ${generatorName}`);
+      
+      console.log(`  ✓ Used generator: ${generatorName}`);
+      console.log(`  ✓ Confidence: ${(confidence * 100).toFixed(1)}%`);
       
       // ═══════════════════════════════════════════════════════════
-      // STEP 5: GENERATE WITH AI
+      // STEP 5: EXTRACT CONTENT
       // ═══════════════════════════════════════════════════════════
-      console.log('🤖 STEP 5: Generating content with AI...');
-      const temperature = experimentArm === 'variant_b' ? 0.95 : 0.85; // Explore vs exploit
-      
-      const response = await this.openai.chatCompletion([
-        {
-          role: 'system',
-          content: 'You are an elite Twitter content creator specializing in health content. Your posts consistently gain followers and go viral. You understand psychology, trends, and the Twitter algorithm. Always respond in valid JSON format.'
-        },
-        {
-          role: 'user',
-          content: prompt
-        }
-      ], {
-        model: 'gpt-4o-mini',
-        temperature,
-        maxTokens: 400,
-        requestType: 'unified_content_generation',
-        response_format: { type: 'json_object' }
-      });
-      
-      const rawContent = response.choices[0]?.message?.content;
-      if (!rawContent) throw new Error('Empty AI response');
-      
-      const aiResponse = JSON.parse(rawContent);
-      systemsActive.push('GPT-4 Generation');
+      const aiResponse: any = {};
+      if (request.format === 'thread' && Array.isArray(generatedContent)) {
+        aiResponse.thread = generatedContent;
+        aiResponse.content = generatedContent.join('\n\n');
+      } else if (typeof generatedContent === 'string') {
+        aiResponse.content = generatedContent;
+      } else {
+        aiResponse.content = Array.isArray(generatedContent) ? generatedContent[0] : String(generatedContent);
+      }
       
       // ═══════════════════════════════════════════════════════════
       // STEP 6: VALIDATE QUALITY
@@ -265,6 +258,124 @@ export class UnifiedContentEngine {
     } catch (error: any) {
       console.error('❌ UNIFIED_ENGINE: Generation failed:', error.message);
       throw error;
+    }
+  }
+  
+  // ═══════════════════════════════════════════════════════════
+  // PERSONA SELECTION & GENERATION (THE REAL GENERATORS!)
+  // ═══════════════════════════════════════════════════════════
+  
+  /**
+   * Select and use one of the REAL content generators you built
+   * Rotates between: HumanVoice styles, News Reporter, Storyteller, Interesting Content
+   */
+  private async selectAndGenerateWithPersona(params: {
+    topic: string;
+    format: 'single' | 'thread';
+    insights: ViralInsights;
+    viralAnalysis: any;
+    experimentArm: string;
+  }): Promise<{ generatorName: string; content: string | string[]; confidence: number }> {
+    
+    // Define generator weights based on experiment arm
+    const generatorWeights = params.experimentArm === 'control'
+      ? { humanVoice: 0.40, newsReporter: 0.25, storyteller: 0.20, interesting: 0.15 }
+      : params.experimentArm === 'variant_a'
+      ? { humanVoice: 0.30, newsReporter: 0.20, storyteller: 0.25, interesting: 0.25 }
+      : { humanVoice: 0.20, newsReporter: 0.20, storyteller: 0.30, interesting: 0.30 };
+    
+    // Weighted random selection
+    const random = Math.random();
+    let cumulativeWeight = 0;
+    let selectedGenerator: 'humanVoice' | 'newsReporter' | 'storyteller' | 'interesting';
+    
+    for (const [gen, weight] of Object.entries(generatorWeights)) {
+      cumulativeWeight += weight;
+      if (random <= cumulativeWeight) {
+        selectedGenerator = gen as any;
+        break;
+      }
+    }
+    selectedGenerator = selectedGenerator! || 'humanVoice';
+    
+    console.log(`  🎯 Selected: ${selectedGenerator} (arm: ${params.experimentArm})`);
+    
+    try {
+      // HUMAN VOICE ENGINE (5 voice styles)
+      if (selectedGenerator === 'humanVoice') {
+        const result = await this.humanVoice.generateHumanContent({
+          topic: params.topic,
+          format: params.format,
+          context: params.insights.topHooks.slice(0, 3).join(', ')
+        });
+        
+        return {
+          generatorName: `HumanVoice (${result.style_used})`,
+          content: result.content,
+          confidence: result.authenticity_score / 100
+        };
+      }
+      
+      // NEWS REPORTER (Breaking health news, FDA announcements, product launches)
+      if (selectedGenerator === 'newsReporter') {
+        const result = await generateNewsReporterContent({
+          topic: params.topic,
+          format: params.format
+        });
+        
+        return {
+          generatorName: 'NewsReporter',
+          content: result.content,
+          confidence: result.confidence
+        };
+      }
+      
+      // STORYTELLER (Real documented cases: Wim Hof, Navy SEALs, etc.)
+      if (selectedGenerator === 'storyteller') {
+        const result = await generateStorytellerContent({
+          topic: params.topic,
+          format: params.format
+        });
+        
+        return {
+          generatorName: 'Storyteller',
+          content: result.content,
+          confidence: result.confidence
+        };
+      }
+      
+      // INTERESTING CONTENT (Counterintuitive, "wait REALLY?" content)
+      if (selectedGenerator === 'interesting') {
+        const result = await generateInterestingContent({
+          topic: params.topic,
+          format: params.format
+        });
+        
+        return {
+          generatorName: 'InterestingContent',
+          content: result.content,
+          confidence: result.confidence
+        };
+      }
+      
+      // Fallback (shouldn't reach here)
+      throw new Error('No generator selected');
+      
+    } catch (error: any) {
+      console.warn(`⚠️ ${selectedGenerator} failed: ${error.message}`);
+      console.log('  🔄 Falling back to HumanVoice...');
+      
+      // Fallback to HumanVoice if selected generator fails
+      const result = await this.humanVoice.generateHumanContent({
+        topic: params.topic,
+        format: params.format
+      });
+      
+      return {
+        generatorName: `HumanVoice (${result.style_used}) [Fallback]`,
+        content: result.content,
+        confidence: result.authenticity_score / 100
+      };
     }
   }
   
