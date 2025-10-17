@@ -36,38 +36,39 @@ export interface ScrapedNews {
 export class TwitterNewsScraperJob {
   private static instance: TwitterNewsScraperJob;
   
-  // NEWS OUTLETS - Real news sources
-  private readonly NEWS_ACCOUNTS = [
-    'CNN', 'FoxNews', 'nytimes', 'MSNBC', 'CBSNews', 'ABCNews',
-    'NBCNews', 'Reuters', 'AP', 'BBCNews', 'guardian',
-    'WSJ', 'washingtonpost', 'NPR', 'USATODAY', 'axios'
+  // 🚫 NO MORE HARDCODED ACCOUNTS!
+  // System discovers news sources dynamically
+  
+  // NEWS SEARCH QUERIES - Find breaking news organically
+  private readonly NEWS_SEARCH_QUERIES = [
+    // Breaking news (any topic)
+    'breaking news health',
+    'just in health',
+    'developing health',
+    
+    // Headlines
+    'headline health',
+    'announces health',
+    'reports health',
+    
+    // Specific news patterns
+    '"according to" health',
+    '"sources say" health',
+    '"officials confirm" health',
+    
+    // Time-sensitive
+    'today health news',
+    'this morning health',
+    'tonight health'
   ];
   
-  // HEALTH NEWS ACCOUNTS - Dedicated health reporting
-  private readonly HEALTH_NEWS_ACCOUNTS = [
-    'WebMD', 'MayoClinic', 'CDCgov', 'WHO', 'NIH', 
-    'HarvardHealth', 'ClevelandClinic', 'KaiserHealth',
-    'statnews', 'medscape', 'HealthDay', 'MedPageToday',
-    'ScienceDaily', 'nature', 'ScienceMagazine'
-  ];
-  
-  // HEALTH INFLUENCERS - Top health content creators
-  private readonly HEALTH_INFLUENCERS = [
-    'hubermanlab', 'peterattiamd', 'foundmyfitness', 'DrRhaganSekelsky',
-    'drlaurendeverett', 'DrKellyann', 'DrMarkHyman', 'bengreenfield',
-    'RobertLustigMD', 'GundryMD', 'DrWillCole', 'mindbodygreen',
-    'nutritionsource', 'nutritionstripped', 'precisionnutri'
-  ];
-  
-  // TRENDING SEARCH QUERIES
-  private readonly HEALTH_SEARCH_QUERIES = [
-    'new study health',
-    'research shows health',
-    'scientists found',
-    'breakthrough health',
-    'health news',
-    'medical study',
-    'clinical trial results'
+  // RESEARCH SEARCH QUERIES - Separate from news
+  private readonly RESEARCH_SEARCH_QUERIES = [
+    'new study shows',
+    'research finds',
+    'scientists discover',
+    'clinical trial results',
+    'peer reviewed study'
   ];
   
   private constructor() {}
@@ -92,25 +93,15 @@ export class TwitterNewsScraperJob {
       // Scrape from all sources
       const allNews: ScrapedNews[] = [];
       
-      // 1. Scrape major news outlets
-      console.log('[NEWS_SCRAPER] 📰 Scraping major news outlets...');
-      const newsOutletTweets = await this.scrapeAccounts(page, this.NEWS_ACCOUNTS, 'news_outlet');
-      allNews.push(...newsOutletTweets);
+      // 🗞️ SCRAPE BREAKING NEWS (news outlets + verified accounts)
+      console.log('[NEWS_SCRAPER] 🔥 Scraping breaking health news...');
+      const breakingNews = await this.scrapeBreakingNews(page);
+      allNews.push(...breakingNews);
       
-      // 2. Scrape health-specific news
-      console.log('[NEWS_SCRAPER] 🏥 Scraping health news accounts...');
-      const healthNewsTweets = await this.scrapeAccounts(page, this.HEALTH_NEWS_ACCOUNTS, 'health_account');
-      allNews.push(...healthNewsTweets);
-      
-      // 3. Scrape health influencers
-      console.log('[NEWS_SCRAPER] 👨‍⚕️ Scraping health influencers...');
-      const influencerTweets = await this.scrapeAccounts(page, this.HEALTH_INFLUENCERS, 'influencer');
-      allNews.push(...influencerTweets);
-      
-      // 4. Scrape trending health topics
-      console.log('[NEWS_SCRAPER] 🔥 Scraping trending health topics...');
-      const trendingTweets = await this.scrapeTrendingTopics(page);
-      allNews.push(...trendingTweets);
+      // 🔬 SCRAPE RESEARCH NEWS (separate from headlines)
+      console.log('[NEWS_SCRAPER] 🧪 Scraping research announcements...');
+      const researchNews = await this.scrapeResearchNews(page);
+      allNews.push(...researchNews);
       
       // Close browser
       await page.close();
@@ -136,60 +127,99 @@ export class TwitterNewsScraperJob {
   }
 
   /**
-   * Scrape tweets from specific accounts
+   * Scrape BREAKING NEWS (headlines, announcements, reports)
    */
-  private async scrapeAccounts(
-    page: Page, 
-    accounts: string[], 
-    sourceType: ScrapedNews['source_type']
-  ): Promise<ScrapedNews[]> {
-    const scrapedNews: ScrapedNews[] = [];
+  private async scrapeBreakingNews(page: Page): Promise<ScrapedNews[]> {
+    const breakingNews: ScrapedNews[] = [];
     
-    for (const account of accounts.slice(0, 10)) { // Limit to prevent rate limiting
+    for (const query of this.NEWS_SEARCH_QUERIES.slice(0, 5)) {
       try {
-        const tweets = await this.scrapeSingleAccount(page, account, sourceType);
-        scrapedNews.push(...tweets);
+        console.log(`[NEWS_SCRAPER] 🔍 Searching news: "${query}"`);
         
-        // Rate limiting delay
-        await page.waitForTimeout(2000);
+        // Search with "Latest" filter for most recent
+        const searchUrl = `https://x.com/search?q=${encodeURIComponent(query)}&f=live`;
+        await page.goto(searchUrl, {
+          waitUntil: 'domcontentloaded',
+          timeout: 30000
+        });
+        
+        await page.waitForTimeout(3000);
+        
+        // Extract tweets - filter for verified accounts or high engagement
+        const tweets = await this.extractTweetsFromPage(page, 'news_outlet', 'search');
+        
+        // Filter for actual news patterns (not just mentions)
+        const newsPatterns = [
+          'breaking', 'just in', 'reports', 'according to', 
+          'announces', 'confirms', 'sources say', 'officials'
+        ];
+        
+        const filteredNews = tweets.filter(tweet => 
+          newsPatterns.some(pattern => 
+            tweet.tweet_text.toLowerCase().includes(pattern)
+          )
+        );
+        
+        breakingNews.push(...filteredNews);
+        
+        // Rate limiting
+        await page.waitForTimeout(3000);
+        
       } catch (error: any) {
-        console.warn(`[NEWS_SCRAPER] ⚠️ Failed to scrape @${account}:`, error.message);
+        console.warn(`[NEWS_SCRAPER] ⚠️ Failed to search "${query}":`, error.message);
       }
     }
     
-    return scrapedNews;
+    console.log(`[NEWS_SCRAPER] ✅ Found ${breakingNews.length} breaking news items`);
+    return breakingNews;
   }
 
   /**
-   * Scrape a single Twitter account
+   * Scrape RESEARCH NEWS (studies, findings, clinical trials)
+   * Separate from breaking news headlines
    */
-  private async scrapeSingleAccount(
-    page: Page,
-    username: string,
-    sourceType: ScrapedNews['source_type']
-  ): Promise<ScrapedNews[]> {
-    console.log(`[NEWS_SCRAPER] 🔍 Scraping @${username}...`);
+  private async scrapeResearchNews(page: Page): Promise<ScrapedNews[]> {
+    const researchNews: ScrapedNews[] = [];
     
-    try {
-      // Navigate to user's profile
-      await page.goto(`https://x.com/${username}`, {
-        waitUntil: 'domcontentloaded',
-        timeout: 30000
-      });
-      
-      await page.waitForTimeout(3000);
-      
-      // Get recent tweets (last 24 hours only)
-      const tweets = await this.extractTweetsFromPage(page, sourceType, username);
-      
-      console.log(`[NEWS_SCRAPER] ✅ Scraped ${tweets.length} tweets from @${username}`);
-      
-      return tweets;
-      
-    } catch (error: any) {
-      console.error(`[NEWS_SCRAPER] ❌ Failed to scrape @${username}:`, error.message);
-      return [];
+    for (const query of this.RESEARCH_SEARCH_QUERIES.slice(0, 3)) {
+      try {
+        console.log(`[NEWS_SCRAPER] 🔍 Searching research: "${query}"`);
+        
+        const searchUrl = `https://x.com/search?q=${encodeURIComponent(query)}&f=top`;
+        await page.goto(searchUrl, {
+          waitUntil: 'domcontentloaded',
+          timeout: 30000
+        });
+        
+        await page.waitForTimeout(3000);
+        
+        // Extract tweets - mark as viral_trend for research
+        const tweets = await this.extractTweetsFromPage(page, 'viral_trend', 'search');
+        
+        // Filter for actual research citations
+        const researchPatterns = [
+          'study', 'research', 'scientist', 'trial', 
+          'journal', 'published', 'university', 'findings'
+        ];
+        
+        const filteredResearch = tweets.filter(tweet =>
+          researchPatterns.some(pattern =>
+            tweet.tweet_text.toLowerCase().includes(pattern)
+          )
+        );
+        
+        researchNews.push(...filteredResearch);
+        
+        // Rate limiting
+        await page.waitForTimeout(3000);
+        
+      } catch (error: any) {
+        console.warn(`[NEWS_SCRAPER] ⚠️ Failed to search "${query}":`, error.message);
+      }
     }
+    
+    console.log(`[NEWS_SCRAPER] ✅ Found ${researchNews.length} research announcements`);
+    return researchNews;
   }
 
   /**
@@ -294,39 +324,7 @@ export class TwitterNewsScraperJob {
     }
   }
 
-  /**
-   * Scrape trending health topics via search
-   */
-  private async scrapeTrendingTopics(page: Page): Promise<ScrapedNews[]> {
-    const trendingTweets: ScrapedNews[] = [];
-    
-    for (const query of this.HEALTH_SEARCH_QUERIES.slice(0, 3)) {
-      try {
-        console.log(`[NEWS_SCRAPER] 🔍 Searching for: "${query}"`);
-        
-        // Navigate to search
-        const searchUrl = `https://x.com/search?q=${encodeURIComponent(query)}&f=top`;
-        await page.goto(searchUrl, {
-          waitUntil: 'domcontentloaded',
-          timeout: 30000
-        });
-        
-        await page.waitForTimeout(3000);
-        
-        // Extract tweets
-        const tweets = await this.extractTweetsFromPage(page, 'viral_trend', 'search');
-        trendingTweets.push(...tweets);
-        
-        // Rate limiting
-        await page.waitForTimeout(3000);
-        
-      } catch (error: any) {
-        console.warn(`[NEWS_SCRAPER] ⚠️ Failed to search "${query}":`, error.message);
-      }
-    }
-    
-    return trendingTweets;
-  }
+  /* Removed hardcoded account scraping - now uses dynamic search */
 
   /**
    * Parse engagement count (handles K, M notation)
