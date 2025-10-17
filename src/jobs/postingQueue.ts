@@ -98,9 +98,12 @@ async function checkPostingRateLimits(): Promise<boolean> {
     
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     
+    // SEPARATE RATE LIMITS: Content posts (2/hr) vs Replies (10/hr)
+    // Only check CONTENT posts here - replies have their own quota in replyJob
     const { count, error } = await supabase
       .from('posted_decisions')
       .select('*', { count: 'exact', head: true })
+      .eq('decision_type', 'content')  // Only count content posts, not replies
       .gte('posted_at', oneHourAgo);
     
     if (error) {
@@ -110,11 +113,12 @@ async function checkPostingRateLimits(): Promise<boolean> {
     
     const recentPosts = count || 0;
     if (recentPosts >= maxPostsPerHour) {
-      console.log(`[POSTING_QUEUE] ⚠️ Hourly post limit reached: ${recentPosts}/${maxPostsPerHour}`);
+      console.log(`[POSTING_QUEUE] ⚠️ Hourly CONTENT post limit reached: ${recentPosts}/${maxPostsPerHour}`);
+      console.log(`[POSTING_QUEUE] ℹ️ Note: Replies have separate 10/hr limit and can still post`);
       return false;
     }
     
-    console.log(`[POSTING_QUEUE] ✅ Post budget available: ${recentPosts}/${maxPostsPerHour}`);
+    console.log(`[POSTING_QUEUE] ✅ Post budget available: ${recentPosts}/${maxPostsPerHour} content posts`);
     return true;
     
   } catch (error) {
@@ -174,21 +178,45 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
     
     console.log(`[POSTING_QUEUE] 📋 Filtered: ${rows.length} → ${filteredRows.length} (removed ${rows.length - filteredRows.length} duplicates)`);
     
-    // STRICT RATE LIMITING: Calculate how many posts we can still make this hour
+    // SEPARATE RATE LIMITS: Content (2/hr) vs Replies (10/hr)
     const config = getConfig();
-    const maxPostsPerHour = parseInt(String(config.MAX_POSTS_PER_HOUR || 2));
+    const maxContentPerHour = parseInt(String(config.MAX_POSTS_PER_HOUR || 2));
+    const maxRepliesPerHour = 10; // Replies have separate higher limit
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-    const { count: recentPostCount } = await supabase
+    
+    // Count content posts and replies separately
+    const { count: contentCount } = await supabase
       .from('posted_decisions')
       .select('*', { count: 'exact', head: true })
+      .eq('decision_type', 'content')
       .gte('posted_at', oneHourAgo);
     
-    const postsAlreadyMadeThisHour = recentPostCount || 0;
-    const postsAllowedNow = Math.max(0, maxPostsPerHour - postsAlreadyMadeThisHour);
+    const { count: replyCount } = await supabase
+      .from('posted_decisions')
+      .select('*', { count: 'exact', head: true })
+      .eq('decision_type', 'reply')
+      .gte('posted_at', oneHourAgo);
     
-    console.log(`[POSTING_QUEUE] 🚦 Rate limit: ${postsAlreadyMadeThisHour}/${maxPostsPerHour} posts this hour, can post ${postsAllowedNow} more`);
+    const contentPosted = contentCount || 0;
+    const repliesPosted = replyCount || 0;
+    const contentAllowed = Math.max(0, maxContentPerHour - contentPosted);
+    const repliesAllowed = Math.max(0, maxRepliesPerHour - repliesPosted);
     
-    const decisions: QueuedDecision[] = filteredRows.slice(0, postsAllowedNow).map(row => ({
+    console.log(`[POSTING_QUEUE] 🚦 Rate limits: Content ${contentPosted}/${maxContentPerHour}, Replies ${repliesPosted}/${maxRepliesPerHour}`);
+    
+    // Apply rate limits per type
+    const decisionsWithLimits = filteredRows.filter(row => {
+      const type = String(row.decision_type ?? 'content');
+      if (type === 'reply') {
+        return repliesPosted < maxRepliesPerHour;
+      } else {
+        return contentPosted < maxContentPerHour;
+      }
+    });
+    
+    console.log(`[POSTING_QUEUE] ✅ After rate limits: ${decisionsWithLimits.length} decisions can post (${contentAllowed} content, ${repliesAllowed} replies available)`);
+    
+    const decisions: QueuedDecision[] = decisionsWithLimits.map(row => ({
       id: String(row.id ?? ''),
       content: String(row.content ?? ''),
       decision_type: String(row.decision_type ?? 'content') as 'content' | 'reply',
