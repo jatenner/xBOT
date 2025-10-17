@@ -5,7 +5,7 @@
 
 import { flags } from '../config/featureFlags';
 import { getConfig, getModeFlags } from '../config/config';
-import { planContent } from './planJobNew';
+import { planContent } from './planJobUnified'; // 🚀 UNIFIED SYSTEM ACTIVE
 import { generateReplies } from './replyJob';
 import { processPostingQueue } from './postingQueue';
 import { simulateOutcomes } from './shadowOutcomesJob';

@@ -19,20 +19,12 @@ const RAILWAY_API = 'backboard.railway.app';
 
 // Get token from environment or .railway file
 function getToken() {
-  // Hardcoded account token (API access)
-  const ACCOUNT_TOKEN = 'ca6e1ea5-7b31-447a-b465-72c2df7dd034';
-  
   // First try environment variable
   if (process.env.RAILWAY_TOKEN) {
     return process.env.RAILWAY_TOKEN;
   }
   
-  // Use hardcoded account token
-  if (ACCOUNT_TOKEN) {
-    return ACCOUNT_TOKEN;
-  }
-  
-  // Try to read from .railway directory
+  // Try to read from .railway directory FIRST (prioritize OAuth token)
   const fs = require('fs');
   const path = require('path');
   const os = require('os');
@@ -41,7 +33,9 @@ function getToken() {
     const configPath = path.join(os.homedir(), '.railway', 'config.json');
     if (fs.existsSync(configPath)) {
       const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      return config.token;
+      if (config.user && config.user.token) {
+        return config.user.token;
+      }
     }
   } catch (error) {
     console.error('⚠️ Could not read Railway token from config:', error.message);
@@ -49,11 +43,11 @@ function getToken() {
   
   console.error('❌ ERROR: No Railway token found!');
   console.error('');
-  console.error('Set RAILWAY_TOKEN environment variable:');
-  console.error('  export RAILWAY_TOKEN="your_token_here"');
+  console.error('Railway CLI token expired. You need to:');
+  console.error('1. Get a permanent API token from https://railway.app/account/tokens');
+  console.error('2. Set it: export RAILWAY_TOKEN="your_token_here"');
   console.error('');
-  console.error('Or login with Railway CLI:');
-  console.error('  railway login');
+  console.error('OR temporarily fix with: railway login (will expire again)');
   process.exit(1);
 }
 
