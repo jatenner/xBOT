@@ -187,7 +187,7 @@ export class DataCollectionEngine {
             .eq('decision_id', postId)
             .single();
           
-          if (contentData && contentData.content) {
+          if (contentData && contentData.content && typeof contentData.content === 'string') {
             await collector.collectDetailedMetrics(postId, contentData.content, metrics);
             console.log(`[DATA_ENGINE] ✅ Comprehensive metrics collected for ${postId}`);
           }
