@@ -98,18 +98,18 @@ export class ContentOrchestrator {
     const scheduler = getPersonalityScheduler();
     const selection = scheduler.selectGenerator();
     
-    // 🔥 NEW: 30% chance to use "interesting" generator instead of formulaic ones
-    const useInterestingGenerator = Math.random() < 0.3;
+    // 🧠 NEW: 50% chance to use SMART engine (makes connections, has insights)
+    const useSmartEngine = Math.random() < 0.5;
     
     const generator: GeneratorType = chaosDecision.override?.generator || 
-      (useInterestingGenerator ? 'contrarian' : selection.generator); // Use contrarian slot for interesting
+      (useSmartEngine ? 'contrarian' : selection.generator); // Use contrarian slot for smart
     const formatRaw = chaosDecision.override?.format || params?.formatHint || selection.format;
     const format: 'single' | 'thread' = formatRaw === 'auto' 
       ? (Math.random() < 0.6 ? 'single' : 'thread') 
       : formatRaw as 'single' | 'thread';
     
-    if (useInterestingGenerator) {
-      console.log(`[ORCHESTRATOR] 🔥 Using INTERESTING generator (open-ended creativity)`);
+    if (useSmartEngine) {
+      console.log(`[ORCHESTRATOR] 🧠 Using SMART ENGINE (connections, insights, context-aware)`);
     } else {
       console.log(`[ORCHESTRATOR] 🎭 Generator: ${generator}, Format: ${format}`);
       console.log(`[ORCHESTRATOR] 💡 ${selection.reasoning}`);
@@ -146,23 +146,25 @@ export class ContentOrchestrator {
     // STEP 7: Generate content with selected generator
     let generatedContent;
     
-    if (useInterestingGenerator) {
-      // Use the INTERESTING generator (open-ended, creative, engaging)
-      const { generateBestInterestingContent } = await import('../generators/interestingContentGenerator');
-      const interesting = await generateBestInterestingContent({
+    if (useSmartEngine) {
+      // Use the SMART ENGINE (makes connections, has insights, builds context)
+      const { smartContentEngine } = await import('../intelligence/smartContentEngine');
+      const smart = await smartContentEngine.generateUniqueSmartContent({
         topic,
         format: format as 'single' | 'thread',
         research: research.hasResearch ? research : undefined,
-        attempts: 2 // Generate 2 variations, pick best
+        maxRetries: 3 // Try up to 3 times to avoid duplicates
       });
       
       generatedContent = {
-        content: interesting.content,
-        format: interesting.format,
-        confidence: interesting.confidence
+        content: smart.content,
+        format: smart.format,
+        confidence: smart.confidence
       };
       
-      console.log(`[ORCHESTRATOR] 🔥 Generated interesting content (intrigue: ${interesting.metadata.intrigue_factor}/10)`);
+      console.log(`[ORCHESTRATOR] 🧠 SMART content generated (insight: ${smart.metadata.insight_level}/10)`);
+      console.log(`[ORCHESTRATOR] 💡 Connection: ${smart.metadata.connection_made}`);
+      console.log(`[ORCHESTRATOR] 🎯 Builds on: ${smart.metadata.builds_on.join(', ') || 'new topic'}`);
     } else {
       // Use traditional personality generator
       generatedContent = await this.callGenerator(generator, {
