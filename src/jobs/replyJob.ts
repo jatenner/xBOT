@@ -119,13 +119,29 @@ async function generateRealReplies(): Promise<void> {
     return;
   }
   
-  console.log('[REPLY_JOB] 🧠 Generating STRATEGIC replies using multi-generator system...');
+  console.log('[REPLY_JOB] 🎯 Generating TITAN-TARGETED replies...');
   
-  // USE STRATEGIC REPLY SYSTEM - Find big accounts to reply to
-  const targets = await strategicReplySystem.findReplyTargets(3);
-  console.log(`[REPLY_JOB] 🎯 Found ${targets.length} strategic targets (big accounts)`);
+  // USE TITAN TARGETING SYSTEM - Find high-value opportunities
+  const { getTitanTargeting } = await import('../growth/titanTargetingSystem');
+  const titanSystem = getTitanTargeting();
+  const opportunities = await titanSystem.findReplyOpportunities();
   
-  for (const target of targets.slice(0, 2)) {
+  console.log(`[REPLY_JOB] 🎯 Found ${opportunities.length} titan opportunities`);
+  
+  // Take top 2 opportunities
+  for (const opportunity of opportunities.slice(0, 2)) {
+    const target = {
+      account: {
+        username: opportunity.titan.username,
+        category: opportunity.titan.category,
+        followers: opportunity.titan.follower_count,
+        engagement_velocity: 'high' as const
+      },
+      tweet_url: opportunity.tweet_url,
+      tweet_content: opportunity.tweet_content,
+      estimated_reach: opportunity.titan.estimated_reach,
+      reply_angle: opportunity.reply_strategy
+    };
     try {
       // Pick a reply-appropriate generator (intelligent matching)
       const replyGenerator = selectReplyGenerator(target.account.category, target.account.username);
