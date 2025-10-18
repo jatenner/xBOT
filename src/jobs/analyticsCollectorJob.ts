@@ -145,6 +145,7 @@ async function storeOutcome(post: any, metrics: any): Promise<void> {
   
   const er = calculateEngagementRate(metrics);
   
+  // PHASE 2 FIX: Use null coalescing for bookmarks and quotes
   const { error } = await supabase
     .from('outcomes')
     .insert([{
@@ -154,8 +155,8 @@ async function storeOutcome(post: any, metrics: any): Promise<void> {
       likes: metrics.likes,
       retweets: metrics.retweets,
       replies: metrics.replies,
-      bookmarks: metrics.bookmarks || 0,
-      quotes: metrics.quotes || 0,
+      bookmarks: metrics.bookmarks ?? null,
+      quotes: metrics.quotes ?? null,
       er_calculated: er,
       simulated: false, // REAL X METRICS
       collected_at: new Date().toISOString()

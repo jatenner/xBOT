@@ -1,0 +1,16 @@
+{
+  "timestamp": "2025-10-18T17:04:20.324Z",
+  "scope": {
+    "outcomes_total": 0,
+    "posted_decisions_total": 217,
+    "comprehensive_metrics_total": 0
+  },
+  "findings": {},
+  "patterns": {
+    "all_zeros": 0,
+    "no_collection_time": 0,
+    "invalid_tweet_ids": 91,
+    "valid_tweet_ids": 9
+  },
+  "actionItems": []
+}
