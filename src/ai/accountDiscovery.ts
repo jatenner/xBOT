@@ -10,7 +10,9 @@
  */
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
+import { parseAIJson } from '../utils/aiJsonParser';
 import { getSupabaseClient } from '../db';
+import { parseAIJson } from '../utils/aiJsonParser';
 
 export interface DiscoveredAccount {
   username: string;
@@ -227,7 +229,7 @@ Format your response as JSON with array of accounts.`
         response_format: { type: 'json_object' }
       }, { purpose: 'ai_account_discovery' });
 
-      const result = JSON.parse(response.choices[0].message.content || '{"accounts":[]}');
+      const result = parseAIJson(response.choices[0].message.content || '{"accounts":[]}');
       const accounts = result.accounts || [];
       
       return accounts.map((account: any) => ({

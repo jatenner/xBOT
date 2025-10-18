@@ -1,5 +1,7 @@
 import OpenAI from 'openai';
+import { parseAIJson } from '../utils/aiJsonParser';
 import { admin } from '../lib/supabaseClients';
+import { parseAIJson } from '../utils/aiJsonParser';
 
 interface ContentFeatures {
   // Structural features
@@ -231,7 +233,7 @@ Respond in JSON:
         max_tokens: 600
       });
 
-      const prediction = JSON.parse(response.choices[0]?.message?.content || '{}');
+      const prediction = parseAIJson(response.choices[0]?.message?.content || '{}');
       
       return {
         predicted_likes: Math.max(0, prediction.predicted_likes || 0),

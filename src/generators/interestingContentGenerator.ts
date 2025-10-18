@@ -6,6 +6,7 @@
  */
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
+import { parseAIJson } from '../utils/aiJsonParser';
 
 export interface InterestingContent {
   content: string | string[];
@@ -134,7 +135,7 @@ Return JSON: {"tweet": "your tweet"}
       response_format: { type: 'json_object' }
     }, { purpose: 'interesting_content_generation' });
 
-    const parsed = JSON.parse(response.choices[0].message.content || '{}');
+    const parsed = parseAIJson(response.choices[0].message.content || '{}');
     
     const content = format === 'thread' 
       ? (parsed.tweets || parsed.thread || ['Interesting fact coming soon'])

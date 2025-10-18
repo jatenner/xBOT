@@ -11,6 +11,7 @@
 import { getUnifiedDataManager } from '../lib/unifiedDataManager';
 import { getEnhancedMetricsCollector } from './enhancedMetricsCollector';
 import { getOpenAIService } from '../services/openAIService';
+import { parseAIJson } from '../utils/aiJsonParser';
 
 interface PerformancePrediction {
   predictedLikes: number;
@@ -157,7 +158,8 @@ Return JSON:
         priority: 'medium'
       });
 
-      const aiFeatures = JSON.parse(response.choices[0]?.message?.content || '{}');
+      const rawContent = response.choices[0]?.message?.content || '{}';
+      const aiFeatures = parseAIJson(rawContent);
       
       const features: ContentFeatures = {
         length: content.length,
