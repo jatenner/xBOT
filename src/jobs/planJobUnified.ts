@@ -197,47 +197,92 @@ async function generateRealContent(): Promise<void> {
 async function storeContentDecisions(decisions: any[]): Promise<void> {
   const supabase = getSupabaseClient();
   
+  console.log(`[UNIFIED_PLAN] 💾 Storing ${decisions.length} decisions to database...`);
+  
   for (const decision of decisions) {
     try {
+      console.log(`[UNIFIED_PLAN] 📝 Storing decision ${decision.decision_id}...`);
+      console.log(`   Content preview: "${decision.content.substring(0, 50)}..."`);
+      console.log(`   Generation source: ${decision.generation_source}`);
+      console.log(`   Scheduled for: ${decision.scheduled_at}`);
+      
+      // Prepare complete data with all required fields
+      const metadataRecord = {
+        decision_id: decision.decision_id,
+        decision_type: decision.decision_type || 'single', // REQUIRED
+        content: decision.content,
+        thread_parts: decision.thread_parts || null,
+        topic_cluster: decision.topic_cluster || null,
+        bandit_arm: decision.bandit_arm || null,
+        timing_arm: decision.timing_arm || null,
+        quality_score: decision.quality_score || null,
+        predicted_er: decision.predicted_er || null,
+        generation_source: decision.generation_source, // REQUIRED
+        status: 'queued', // REQUIRED (has default but explicit is better)
+        scheduled_at: decision.scheduled_at || new Date().toISOString(), // REQUIRED
+        created_at: new Date().toISOString(),
+        // Optional metadata
+        generator_name: decision.generator_name || null,
+        experiment_arm: decision.experiment_arm || null,
+        style: decision.style || null
+      };
+      
+      console.log(`[UNIFIED_PLAN] 🔍 Insert data prepared for ${decision.decision_id}`);
+      
       // Store in content_metadata
-      const { error: metadataError } = await supabase
+      const { data: insertedData, error: metadataError } = await supabase
         .from('content_metadata')
-        .insert({
-          decision_id: decision.decision_id,
-          content: decision.content,
-          thread_parts: decision.thread_parts,
-          topic_cluster: decision.topic_cluster,
-          bandit_arm: decision.bandit_arm,
-          timing_arm: decision.timing_arm,
-          quality_score: decision.quality_score,
-          predicted_er: decision.predicted_er,
-          created_at: new Date().toISOString()
-        });
+        .insert(metadataRecord)
+        .select();
       
       if (metadataError) {
-        console.error('[UNIFIED_PLAN] ❌ Failed to store metadata:', metadataError.message);
+        console.error('[UNIFIED_PLAN] ❌ FAILED to store metadata:');
+        console.error(`   Error: ${metadataError.message}`);
+        console.error(`   Code: ${metadataError.code}`);
+        console.error(`   Details: ${JSON.stringify(metadataError.details)}`);
+        console.error(`   Hint: ${metadataError.hint}`);
+        console.error(`   Decision ID: ${decision.decision_id}`);
         continue;
       }
       
-      // Store in posting_queue
-      const { error: queueError } = await supabase
-        .from('posting_queue')
-        .insert({
-          decision_id: decision.decision_id,
-          scheduled_at: decision.scheduled_at,
-          status: 'pending',
-          created_at: new Date().toISOString()
-        });
-      
-      if (queueError) {
-        console.error('[UNIFIED_PLAN] ❌ Failed to queue:', queueError.message);
+      if (insertedData && insertedData.length > 0) {
+        console.log(`[UNIFIED_PLAN] ✅ Successfully stored decision ${decision.decision_id} (DB id: ${insertedData[0].id})`);
       } else {
-        console.log(`[UNIFIED_PLAN] ✅ Queued decision ${decision.decision_id}`);
+        console.warn(`[UNIFIED_PLAN] ⚠️ Insert succeeded but no data returned for ${decision.decision_id}`);
       }
       
     } catch (error: any) {
-      console.error('[UNIFIED_PLAN] ❌ Storage error:', error.message);
+      console.error('[UNIFIED_PLAN] ❌ EXCEPTION during storage:');
+      console.error(`   Message: ${error.message}`);
+      console.error(`   Stack: ${error.stack}`);
+      console.error(`   Decision ID: ${decision.decision_id}`);
     }
+  }
+  
+  console.log(`[UNIFIED_PLAN] 💾 Storage complete. Checking database...`);
+  
+  // Verify what was actually stored
+  try {
+    const { data: recentRows, error: countError } = await supabase
+      .from('content_metadata')
+      .select('id, decision_id, content, status, scheduled_at, created_at')
+      .gte('created_at', new Date(Date.now() - 5 * 60 * 1000).toISOString()) // Last 5 minutes
+      .order('created_at', { ascending: false })
+      .limit(5);
+    
+    if (countError) {
+      console.error('[UNIFIED_PLAN] ❌ Failed to verify storage:', countError.message);
+    } else if (recentRows && recentRows.length > 0) {
+      console.log(`[UNIFIED_PLAN] ✅ Verified ${recentRows.length} rows in database (last 5 min):`);
+      recentRows.forEach(row => {
+        const contentPreview = String(row.content || '').substring(0, 40);
+        console.log(`   - ${row.decision_id}: "${contentPreview}..." [${row.status}]`);
+      });
+    } else {
+      console.warn(`[UNIFIED_PLAN] ⚠️ No rows found in database from last 5 minutes!`);
+    }
+  } catch (verifyError: any) {
+    console.error('[UNIFIED_PLAN] ❌ Verification error:', verifyError.message);
   }
 }
 

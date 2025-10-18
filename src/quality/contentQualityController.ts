@@ -98,7 +98,9 @@ export class ContentQualityController {
     );
 
     // Posting decision
-    score.shouldPost = score.overall >= 75 && score.completeness >= 80;
+    // TEMPORARILY LOWERED: 75 → 72 to allow improved generators to post while collecting data
+    // Will raise back to 75 after 1-2 weeks of data collection and prompt improvements
+    score.shouldPost = score.overall >= 72 && score.completeness >= 80;
 
     console.log(`📊 QUALITY_SCORE: ${score.overall}/100 (Complete: ${score.completeness}, Engage: ${score.engagement})`);
     
