@@ -107,11 +107,11 @@ export class FollowerAttributionService {
             .eq('tweet_id', tweetId)
             .single();
           
-          if (metadata && metadata.generator_name) {
+          if (metadata && metadata.generator_name && typeof metadata.generator_name === 'string') {
             // Recalculate all stats for this generator (including total_followers_gained)
             const { getGeneratorPerformanceTracker } = await import('../learning/generatorPerformanceTracker');
             const tracker = getGeneratorPerformanceTracker();
-            await tracker.updateGeneratorStats(metadata.generator_name);
+            await tracker.updateGeneratorStats(metadata.generator_name as string);
             
             console.log(`[ATTRIBUTION] 📊 Updated generator stats: ${metadata.generator_name} ${gained > 0 ? '+' : ''}${gained} followers`);
           }

@@ -312,7 +312,8 @@ export class UnifiedContentEngine {
       // Convert to weight object
       const weights: Record<string, number> = {};
       for (const row of data) {
-        weights[row.generator_name] = row.weight;
+        const typedRow = row as { generator_name: string; weight: number };
+        weights[typedRow.generator_name] = typedRow.weight;
       }
       
       console.log(`✅ UNIFIED_ENGINE: Loaded ${data.length} generator weights from database`);
