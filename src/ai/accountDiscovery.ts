@@ -12,7 +12,6 @@
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { parseAIJson } from '../utils/aiJsonParser';
 import { getSupabaseClient } from '../db';
-import { parseAIJson } from '../utils/aiJsonParser';
 
 export interface DiscoveredAccount {
   username: string;
