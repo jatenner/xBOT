@@ -60,7 +60,7 @@ export async function processPostingQueue(): Promise<void> {
 interface QueuedDecision {
   id: string;
   content: string;
-  decision_type: 'content' | 'reply';
+  decision_type: 'single' | 'thread' | 'reply'; // FIXED: Match database schema
   target_tweet_id?: string;
   target_username?: string;
   bandit_arm: string;
@@ -70,6 +70,8 @@ interface QueuedDecision {
   topic_cluster: string;
   status: string;
   created_at: string;
+  thread_parts?: string[]; // For threads
+  features?: any; // For thread metadata
 }
 
 interface QueuedDecisionRow {
@@ -103,7 +105,7 @@ async function checkPostingRateLimits(): Promise<boolean> {
     const { count, error } = await supabase
       .from('posted_decisions')
       .select('*', { count: 'exact', head: true })
-      .eq('decision_type', 'content')  // Only count content posts, not replies
+      .in('decision_type', ['single', 'thread'])  // Count content posts (single + thread), not replies
       .gte('posted_at', oneHourAgo);
     
     if (error) {
@@ -212,7 +214,7 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
     const { count: contentCount } = await supabase
       .from('posted_decisions')
       .select('*', { count: 'exact', head: true })
-      .eq('decision_type', 'content')
+      .in('decision_type', ['single', 'thread'])  // Count content posts (single + thread)
       .gte('posted_at', oneHourAgo);
     
     const { count: replyCount } = await supabase
@@ -230,10 +232,11 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
     
     // Apply rate limits per type
     const decisionsWithLimits = filteredRows.filter(row => {
-      const type = String(row.decision_type ?? 'content');
+      const type = String(row.decision_type ?? 'single');
       if (type === 'reply') {
         return repliesPosted < maxRepliesPerHour;
       } else {
+        // 'single' and 'thread' are both content posts
         return contentPosted < maxContentPerHour;
       }
     });
@@ -243,10 +246,11 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
     const decisions: QueuedDecision[] = decisionsWithLimits.map(row => ({
       id: String(row.id ?? ''),
       content: String(row.content ?? ''),
-      decision_type: String(row.decision_type ?? 'content') as 'content' | 'reply',
+      decision_type: String(row.decision_type ?? 'single') as 'single' | 'thread' | 'reply',
       target_tweet_id: row.target_tweet_id ? String(row.target_tweet_id) : undefined,
       target_username: row.target_username ? String(row.target_username) : undefined,
       bandit_arm: String(row.bandit_arm ?? ''),
+      thread_parts: row.thread_parts as string[] | undefined,
       timing_arm: row.timing_arm ? String(row.timing_arm) : undefined,
       predicted_er: Number(row.predicted_er ?? 0),
       quality_score: row.quality_score ? Number(row.quality_score) : undefined,
@@ -314,7 +318,8 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
       console.warn(`[POSTING_QUEUE] ⚠️ Follower capture failed: ${attrError.message}`);
     }
     
-    if (decision.decision_type === 'content') {
+    // Handle all content types: 'single', 'thread', and 'reply'
+    if (decision.decision_type === 'single' || decision.decision_type === 'thread') {
       tweetId = await postContent(decision);
     } else if (decision.decision_type === 'reply') {
       tweetId = await postReply(decision);
@@ -599,7 +604,7 @@ async function markDecisionPosted(decisionId: string, tweetId: string): Promise<
         decision_id: decisionId,
         content: decisionData.content,
         tweet_id: tweetId,
-        decision_type: decisionData.decision_type || 'content',
+        decision_type: decisionData.decision_type || 'single',  // Default to 'single' not 'content'
         target_tweet_id: decisionData.target_tweet_id,
         target_username: decisionData.target_username,
         bandit_arm: decisionData.bandit_arm,
