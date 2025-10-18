@@ -61,7 +61,7 @@ async function generateSyntheticContent(): Promise<void> {
     
     decisions.push({
       decision_id,
-      decision_type: 'content',
+      decision_type: 'single', // Fixed: must be 'single', 'thread', or 'reply'
       content: `Synthetic health insight #${i + 1}: Evidence-based approach to wellness.`,
       bandit_arm: `synthetic_${i}`,
       timing_arm: 'synthetic_timing',
@@ -119,9 +119,11 @@ async function generateRealContent(): Promise<void> {
       const decision_id = uuidv4();
       const scheduledTime = new Date(Date.now() + (i * 30 + 30) * 60 * 1000);
       
+      const decisionType: 'single' | 'thread' = (generated.threadParts && generated.threadParts.length > 1) ? 'thread' : 'single';
+      
       const decision = {
         decision_id,
-        decision_type: 'content' as const,
+        decision_type: decisionType,
         content: generated.content,
         thread_parts: generated.threadParts,
         
