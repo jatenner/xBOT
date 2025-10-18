@@ -117,7 +117,9 @@ async function generateRealContent(): Promise<void> {
       // BUILD DECISION
       // ═══════════════════════════════════════════════════════════
       const decision_id = uuidv4();
-      const scheduledTime = new Date(Date.now() + (i * 30 + 30) * 60 * 1000);
+      // PHASE 2 FIX: Schedule sooner (10-20 min instead of 30-60 min)
+      // First post: +10 min, Second post: +20 min
+      const scheduledTime = new Date(Date.now() + (i * 10 + 10) * 60 * 1000);
       
       const decisionType: 'single' | 'thread' = (generated.threadParts && generated.threadParts.length > 1) ? 'thread' : 'single';
       

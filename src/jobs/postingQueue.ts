@@ -134,9 +134,12 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
     
     // Add grace window for "close enough" posts
     const GRACE_MINUTES = parseInt(process.env.GRACE_MINUTES || '5', 10);
-    const graceWindow = new Date(Date.now() + GRACE_MINUTES * 60 * 1000).toISOString();
+    const now = new Date();
+    const graceWindow = new Date(Date.now() + GRACE_MINUTES * 60 * 1000);
     
     console.log(`[POSTING_QUEUE] 📅 Fetching posts ready within ${GRACE_MINUTES} minute window`);
+    console.log(`[POSTING_QUEUE] 🕒 Current time: ${now.toISOString()}`);
+    console.log(`[POSTING_QUEUE] 🕒 Grace window: ${graceWindow.toISOString()}`);
     
     // CRITICAL FIX: Check what's already been posted to avoid duplicates
     const { data: alreadyPosted } = await supabase
@@ -150,7 +153,7 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
       .select('*')
       .eq('status', 'queued')
       // Remove generation_source filter to allow all queued content
-      .lte('scheduled_at', graceWindow) // Add grace window filter
+      .lte('scheduled_at', graceWindow.toISOString()) // Add grace window filter
       .order('scheduled_at', { ascending: true }) // Order by scheduled time, not creation time
       .limit(10); // Get more to filter out already-posted
     
@@ -159,7 +162,28 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
       return [];
     }
     
+    console.log(`[POSTING_QUEUE] 📊 Query returned ${data?.length || 0} decisions`);
+    
     if (!data || data.length === 0) {
+      // Debug: Check what IS in the queue
+      const { data: futureDecisions } = await supabase
+        .from('content_metadata')
+        .select('decision_id, scheduled_at, status, quality_score')
+        .eq('status', 'queued')
+        .order('scheduled_at', { ascending: true })
+        .limit(5);
+      
+      if (futureDecisions && futureDecisions.length > 0) {
+        console.log(`[POSTING_QUEUE] 🔮 Upcoming posts in queue:`);
+        futureDecisions.forEach((d: any) => {
+          const scheduledTime = new Date(d.scheduled_at);
+          const minutesUntil = Math.round((scheduledTime.getTime() - now.getTime()) / 60000);
+          console.log(`   - ${d.decision_id}: in ${minutesUntil} min (quality: ${d.quality_score})`);
+        });
+      } else {
+        console.log(`[POSTING_QUEUE] ⚠️ No queued content found in database at all`);
+      }
+      
       return [];
     }
     
