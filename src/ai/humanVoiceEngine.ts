@@ -66,12 +66,12 @@ export class HumanVoiceEngine {
         name: 'research_enthusiast',
         description: 'Someone passionate about diving deep into health research',
         voice_patterns: [
-          'Been diving deep into {topic} research and found something interesting',
+          'Deep analysis of {topic} research reveals something interesting',
           'The latest studies on {topic} show something most people miss',
           'Here\'s what the research actually says about {topic}',
-          'Found this fascinating study on {topic} that changes everything',
-          'The science behind {topic} is more complex than you think',
-          'New research on {topic} contradicts what we thought we knew',
+          'Recent {topic} study changes everything we thought',
+          'The science behind {topic} is more complex than most realize',
+          'New research on {topic} contradicts what was previously known',
           'This {topic} study has implications nobody\'s talking about'
         ],
         engagement_multiplier: 1.8,
@@ -96,13 +96,13 @@ export class HumanVoiceEngine {
         name: 'practical_optimizer',
         description: 'Someone focused on actionable health improvements',
         voice_patterns: [
-          'Here\'s a simple {topic} change that made a real difference',
+          'Research shows this simple {topic} change produces measurable results',
           'This {topic} approach actually works - here\'s why',
-          'Tried this {topic} method and the results surprised me',
+          'Evidence reveals this {topic} method has surprising outcomes',
           'Simple {topic} optimization that most people overlook',
-          'This {topic} strategy is easier than you think',
-          'Found a better way to approach {topic}',
-          'This {topic} insight changed how I think about health'
+          'This {topic} strategy is easier than most realize',
+          'Better approaches to {topic} are emerging from recent data',
+          'This {topic} insight challenges conventional health recommendations'
         ],
         engagement_multiplier: 1.7,
         frequency_weight: 0.25
@@ -113,10 +113,10 @@ export class HumanVoiceEngine {
         voice_patterns: [
           'Ever wonder why {topic} advice varies so much?',
           'Something doesn\'t add up about {topic}',
-          'Been questioning the standard advice on {topic}',
+          'Recent analysis questions the standard advice on {topic}',
           'Why does everyone say different things about {topic}?',
-          'The {topic} advice you hear everywhere might be wrong',
-          'Started questioning everything I thought I knew about {topic}',
+          'The {topic} advice circulating widely might be wrong',
+          'Conventional wisdom about {topic} deserves scrutiny',
           'What if we\'ve been thinking about {topic} all wrong?'
         ],
         engagement_multiplier: 1.6,

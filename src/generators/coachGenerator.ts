@@ -7,6 +7,7 @@
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { validateAndExtractContent } from './generatorUtils';
 import { parseAIJson } from '../utils/aiJsonParser';
+import { VOICE_GUIDELINES } from './sharedPatterns';
 
 export interface CoachContent {
   content: string | string[];
@@ -23,6 +24,8 @@ export async function generateCoachContent(params: {
   const { topic, format, research } = params;
   
   const systemPrompt = `You give SPECIFIC, actionable protocols - not generic advice.
+
+${VOICE_GUIDELINES}
 
 🎯 YOUR JOB: Give people something they can DO tomorrow with EXACT specs.
 

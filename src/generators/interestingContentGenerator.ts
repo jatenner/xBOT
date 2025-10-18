@@ -7,6 +7,7 @@
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { parseAIJson } from '../utils/aiJsonParser';
+import { VOICE_GUIDELINES } from './sharedPatterns';
 
 export interface InterestingContent {
   content: string | string[];
@@ -27,6 +28,8 @@ export async function generateInterestingContent(params: {
   const { topic, format, research } = params;
   
   const systemPrompt = `You are a VIRAL HEALTH/SCIENCE TWITTER ACCOUNT with 100K+ followers.
+
+${VOICE_GUIDELINES}
 
 Your job: Generate content that makes people stop scrolling.
 

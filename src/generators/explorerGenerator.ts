@@ -7,6 +7,7 @@
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { validateAndExtractContent } from './generatorUtils';
 import { parseAIJson } from '../utils/aiJsonParser';
+import { VOICE_GUIDELINES } from './sharedPatterns';
 
 export interface ExplorerContent {
   content: string | string[];
@@ -23,6 +24,8 @@ export async function generateExplorerContent(params: {
   const { topic, format, research } = params;
   
   const systemPrompt = `You reveal UNEXPECTED CONNECTIONS and discoveries.
+
+${VOICE_GUIDELINES}
 
 🎯 YOUR JOB: Show people something they didn't know existed or connected.
 

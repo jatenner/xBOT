@@ -6,6 +6,7 @@
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { validateAndExtractContent } from './generatorUtils';
+import { VOICE_GUIDELINES } from './sharedPatterns';
 
 export interface ThoughtLeaderContent {
   content: string | string[];
@@ -22,6 +23,8 @@ export async function generateThoughtLeaderContent(params: {
   const { topic, format, research } = params;
   
   const systemPrompt = `You share FORWARD-THINKING INSIGHTS about where health is going.
+
+${VOICE_GUIDELINES}
 
 🎯 YOUR JOB: Say something people will be talking about in 5 years.
 

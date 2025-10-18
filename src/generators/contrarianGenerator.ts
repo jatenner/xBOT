@@ -7,6 +7,7 @@
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { validateAndExtractContent } from './generatorUtils';
 import { parseAIJson } from '../utils/aiJsonParser';
+import { VOICE_GUIDELINES } from './sharedPatterns';
 
 export interface ContrarianContent {
   content: string | string[];
@@ -23,6 +24,8 @@ export async function generateContrarianContent(params: {
   const { topic, format, research } = params;
   
   const systemPrompt = `You challenge conventional wisdom with DATA and MECHANISMS.
+
+${VOICE_GUIDELINES}
 
 🎯 YOUR JOB: Make people stop mid-scroll and think "wait, REALLY?"
 
