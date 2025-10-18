@@ -8,7 +8,7 @@
  */
 
 import { BANNED_PHRASES, REQUIRED_PATTERNS, hasBannedPhrase, hasSpecificity } from './sharedPatterns';
-import { supabase } from '../db/supabaseClient';
+import { supabaseClient } from '../db/supabaseClient';
 
 export interface SanitizationResult {
   content: string;
@@ -238,30 +238,28 @@ export async function trackViolation(params: {
   retrySucceeded?: boolean;
 }): Promise<void> {
   try {
-    const { error } = await supabase
-      .from('content_violations')
-      .insert({
-        generator_name: params.generatorName,
-        topic: params.topic || 'unknown',
-        format: params.format,
-        violation_type: params.violation.type,
-        severity: params.violation.severity,
-        detected_phrase: params.violation.detected,
-        context_snippet: params.violation.location,
-        content_preview: params.content.substring(0, 200),
-        full_content: params.content,
-        specificity_score: params.specificityScore,
-        specificity_matches: params.specificityMatches,
-        action_taken: params.actionTaken,
-        retry_succeeded: params.retrySucceeded,
-        metadata: {
-          timestamp: new Date().toISOString(),
-          content_length: params.content.length
-        }
-      });
+    const result = await supabaseClient.safeInsert('content_violations', {
+      generator_name: params.generatorName,
+      topic: params.topic || 'unknown',
+      format: params.format,
+      violation_type: params.violation.type,
+      severity: params.violation.severity,
+      detected_phrase: params.violation.detected,
+      context_snippet: params.violation.location,
+      content_preview: params.content.substring(0, 200),
+      full_content: params.content,
+      specificity_score: params.specificityScore,
+      specificity_matches: params.specificityMatches,
+      action_taken: params.actionTaken,
+      retry_succeeded: params.retrySucceeded,
+      metadata: {
+        timestamp: new Date().toISOString(),
+        content_length: params.content.length
+      }
+    });
 
-    if (error) {
-      console.error('❌ VIOLATION_TRACKING_ERROR:', error);
+    if (!result.success) {
+      console.error('❌ VIOLATION_TRACKING_ERROR:', result.error);
     } else {
       console.log(`  ✓ Logged ${params.violation.severity} violation to database`);
     }
