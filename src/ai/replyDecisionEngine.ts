@@ -59,13 +59,22 @@ export class AIReplyDecisionEngine {
       
       // Step 2: Get discovered accounts
       const supabase = getSupabaseClient();
-      const { data: accounts } = await supabase
-        .from('discovered_accounts')
-        .select('username, follower_count')
-        .gte('follower_count', 10000)
-        .lte('follower_count', 500000)
-        .order('last_updated', { ascending: false })
-        .limit(20);
+      
+      // Ensure table exists
+      const { ensureTableOrSkip } = await import('../db/ensureDiscoveredAccounts');
+      const tableReady = await ensureTableOrSkip('REPLY_DECISION');
+      
+      let accounts = null;
+      if (tableReady) {
+        const { data } = await supabase
+          .from('discovered_accounts')
+          .select('username, follower_count')
+          .gte('follower_count', 10000)
+          .lte('follower_count', 500000)
+          .order('last_updated', { ascending: false })
+          .limit(20);
+        accounts = data;
+      }
       
       if (!accounts || accounts.length === 0) {
         console.log('[AI_DECISION] ⚠️ No accounts discovered yet, triggering discovery...');
