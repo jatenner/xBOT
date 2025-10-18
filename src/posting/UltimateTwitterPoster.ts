@@ -516,7 +516,10 @@ export class UltimateTwitterPoster {
       const results = await Promise.all(verificationChecks);
       if (results.some(r => r === true)) {
         console.log('ULTIMATE_POSTER: ✅ UI verification successful - post confirmed');
-        return { success: true, tweetId: `verified_${Date.now()}` };
+        
+        // PHASE 3 FIX: Try to extract real tweet ID from URL
+        const tweetId = await this.extractTweetIdFromUrl();
+        return { success: true, tweetId };
       }
       
       console.log('ULTIMATE_POSTER: No explicit success indicators, checking for errors...');
@@ -531,7 +534,10 @@ export class UltimateTwitterPoster {
         if (criticalErrors === 0) {
           // No errors found and we successfully clicked - assume success!
           console.log('ULTIMATE_POSTER: ✅ No critical errors detected - POST LIKELY SUCCESSFUL');
-          return { success: true, tweetId: `optimistic_${Date.now()}` };
+          
+          // PHASE 3 FIX: Try to extract real tweet ID from URL
+          const tweetId = await this.extractTweetIdFromUrl();
+          return { success: true, tweetId };
         } else {
           console.log('ULTIMATE_POSTER: ❌ Critical error message detected');
           throw new Error('Critical error message detected after posting');
@@ -545,6 +551,51 @@ export class UltimateTwitterPoster {
     } catch (verificationError) {
       console.log('ULTIMATE_POSTER: ❌ All verification methods failed');
       throw new Error(`Post verification failed: ${verificationError.message}`);
+    }
+  }
+
+  /**
+   * PHASE 3: Extract real tweet ID from current URL
+   * Twitter redirects to /status/TWEET_ID after posting
+   */
+  private async extractTweetIdFromUrl(): Promise<string> {
+    try {
+      await this.page.waitForTimeout(1000); // Wait for redirect
+      const currentUrl = this.page.url();
+      console.log(`ULTIMATE_POSTER: Current URL: ${currentUrl}`);
+      
+      // Extract ID from URLs like:
+      // https://twitter.com/username/status/1760799324367
+      // https://x.com/username/status/1760799324367
+      const match = currentUrl.match(/\/status\/(\d+)/);
+      if (match && match[1]) {
+        const tweetId = match[1];
+        console.log(`ULTIMATE_POSTER: ✅ Extracted tweet ID: ${tweetId}`);
+        return tweetId;
+      }
+      
+      // Fallback: Check for tweet in timeline
+      const timelineMatch = currentUrl.match(/compose\/tweet/);
+      if (!timelineMatch) {
+        // We're on timeline, try to get the most recent tweet ID
+        const latestTweetLink = await this.page.locator('article a[href*="/status/"]').first().getAttribute('href');
+        if (latestTweetLink) {
+          const idMatch = latestTweetLink.match(/\/status\/(\d+)/);
+          if (idMatch && idMatch[1]) {
+            console.log(`ULTIMATE_POSTER: ✅ Extracted from timeline: ${idMatch[1]}`);
+            return idMatch[1];
+          }
+        }
+      }
+      
+      // Final fallback: Use timestamp (numeric only)
+      const fallbackId = Date.now().toString();
+      console.log(`ULTIMATE_POSTER: ⚠️ Using fallback ID: ${fallbackId}`);
+      return fallbackId;
+      
+    } catch (error: any) {
+      console.log(`ULTIMATE_POSTER: ⚠️ Could not extract tweet ID: ${error.message}`);
+      return Date.now().toString();
     }
   }
 
