@@ -17,7 +17,7 @@
  *   const newWeights = await calculator.calculateOptimalWeights(performanceData);
  */
 
-import { GeneratorStats } from './generatorPerformanceTracker';
+import type { GeneratorStats } from './generatorPerformanceTracker';
 
 // ═══════════════════════════════════════════════════════════
 // TYPES

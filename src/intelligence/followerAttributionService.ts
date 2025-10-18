@@ -108,16 +108,7 @@ export class FollowerAttributionService {
             .single();
           
           if (metadata && metadata.generator_name) {
-            // Update total_followers_gained for this generator
-            await supabase
-              .from('generator_weights')
-              .update({
-                total_followers_gained: supabase.raw(`total_followers_gained + ${gained}`),
-                last_updated: new Date().toISOString()
-              })
-              .eq('generator_name', metadata.generator_name);
-            
-            // Recalculate F/1K for this generator
+            // Recalculate all stats for this generator (including total_followers_gained)
             const { getGeneratorPerformanceTracker } = await import('../learning/generatorPerformanceTracker');
             const tracker = getGeneratorPerformanceTracker();
             await tracker.updateGeneratorStats(metadata.generator_name);

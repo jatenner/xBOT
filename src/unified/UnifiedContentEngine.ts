@@ -53,6 +53,10 @@ export interface GeneratedContent {
     viral_probability: number;
     confidence: number;
     
+    // Generator tracking (for autonomous learning)
+    generator_name?: string;
+    generator_confidence?: number;
+    
     // Learning applied
     learning_insights_used: string[];
     viral_patterns_applied: string[];

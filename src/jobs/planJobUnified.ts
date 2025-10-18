@@ -146,8 +146,8 @@ async function generateRealContent(): Promise<void> {
         
         // Learning tracking
         experiment_arm: generated.metadata.experiment_arm,
-        generator_name: generated.metadata.generator_name, // For autonomous learning
-        generator_confidence: generated.metadata.generator_confidence,
+        generator_name: (generated.metadata as any).generator_name || null, // For autonomous learning
+        generator_confidence: (generated.metadata as any).generator_confidence || null,
         systems_used: generated.metadata.systems_active.join(','),
         viral_patterns_applied: generated.metadata.viral_patterns_applied.join(', '),
         learning_insights_used: generated.metadata.learning_insights_used.join(', ')

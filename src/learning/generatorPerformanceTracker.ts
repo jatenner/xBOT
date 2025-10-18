@@ -17,7 +17,7 @@
  *   const topPerformers = await tracker.getTopPerformers(3);
  */
 
-import { getSupabaseClient } from '../config/supabaseClient';
+import { getSupabaseClient } from '../db/index';
 
 // ═══════════════════════════════════════════════════════════
 // TYPES

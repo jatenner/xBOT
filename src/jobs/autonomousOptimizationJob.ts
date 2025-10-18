@@ -20,9 +20,11 @@
  * - Respects locked generators (status != 'active')
  */
 
-import { getSupabaseClient } from '../config/supabaseClient';
-import { GeneratorPerformanceTracker, GeneratorStats } from '../learning/generatorPerformanceTracker';
-import { GeneratorWeightCalculator, GeneratorWeights, WeightChange } from '../learning/generatorWeightCalculator';
+import { getSupabaseClient } from '../db/index';
+import { GeneratorPerformanceTracker } from '../learning/generatorPerformanceTracker';
+import type { GeneratorStats } from '../learning/generatorPerformanceTracker';
+import { GeneratorWeightCalculator } from '../learning/generatorWeightCalculator';
+import type { GeneratorWeights, WeightChange } from '../learning/generatorWeightCalculator';
 
 // ═══════════════════════════════════════════════════════════
 // TYPES

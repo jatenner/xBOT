@@ -16,7 +16,7 @@
  *   const health = await monitor.getSystemHealth();
  */
 
-import { getSupabaseClient } from '../config/supabaseClient';
+import { getSupabaseClient } from '../db/index';
 import { getGeneratorPerformanceTracker } from './generatorPerformanceTracker';
 
 // ═══════════════════════════════════════════════════════════
