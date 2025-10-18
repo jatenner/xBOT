@@ -518,21 +518,20 @@ async function postContent(decision: QueuedDecision): Promise<string> {
     console.log('[POSTING_QUEUE] 🌐 Using reliable Playwright posting...');
     
     try {
-      // 🧵 CHECK IF THIS IS A THREAD (retrieve from features.thread_tweets)
-      const features = (decision as any).features || {};
-      const thread_tweets = features.thread_tweets || (decision as any).thread_tweets;
-      const isThread = Array.isArray(thread_tweets) && thread_tweets.length > 1;
+      // 🧵 CHECK IF THIS IS A THREAD (retrieve from thread_parts)
+      const thread_parts = decision.thread_parts || (decision as any).thread_tweets; // Support both names for backwards compat
+      const isThread = Array.isArray(thread_parts) && thread_parts.length > 1;
       
-      console.log(`[POSTING_QUEUE] 🔍 Thread detection: isThread=${isThread}, segments=${isThread ? thread_tweets.length : 0}`);
+      console.log(`[POSTING_QUEUE] 🔍 Thread detection: isThread=${isThread}, segments=${isThread ? thread_parts.length : 0}`);
       
       if (isThread) {
-        console.log(`[POSTING_QUEUE] 🧵 THREAD MODE: Posting ${thread_tweets.length} connected tweets`);
-        thread_tweets.forEach((tweet: string, i: number) => {
-          console.log(`[POSTING_QUEUE]   📝 Tweet ${i + 1}/${thread_tweets.length}: "${tweet.substring(0, 60)}..."`);
+        console.log(`[POSTING_QUEUE] 🧵 THREAD MODE: Posting ${thread_parts.length} connected tweets`);
+        thread_parts.forEach((tweet: string, i: number) => {
+          console.log(`[POSTING_QUEUE]   📝 Tweet ${i + 1}/${thread_parts.length}: "${tweet.substring(0, 60)}..."`);
         });
         
         const { BulletproofThreadComposer } = await import('../posting/BulletproofThreadComposer');
-        const result = await BulletproofThreadComposer.post(thread_tweets);
+        const result = await BulletproofThreadComposer.post(thread_parts);
         
         if (result.success) {
           const tweetId = result.tweetIds?.[0] || result.rootTweetUrl || `thread_${Date.now()}`;
