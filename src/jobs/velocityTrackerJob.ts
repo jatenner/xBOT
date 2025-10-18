@@ -113,6 +113,7 @@ async function trackPostCheckpoint(postId: string, tweetId: string, hoursAfter: 
     const collectionPhase = `checkpoint_${hoursAfter}h`;
     
     // Store velocity tracking data
+    // PHASE 2 FIX: Use null coalescing to avoid fake zeros
     const { error: velocityError } = await supabase
       .from('post_velocity_tracking')
       .insert({
@@ -120,11 +121,11 @@ async function trackPostCheckpoint(postId: string, tweetId: string, hoursAfter: 
         tweet_id: tweetId,
         check_time: checkTime.toISOString(),
         hours_after_post: hoursAfter,
-        likes: tweetMetrics.likes || 0,
-        retweets: tweetMetrics.retweets || 0,
-        replies: tweetMetrics.replies || 0,
-        bookmarks: tweetMetrics.bookmarks || 0,
-        views: tweetMetrics.views || 0,
+        likes: tweetMetrics.likes ?? null,
+        retweets: tweetMetrics.retweets ?? null,
+        replies: tweetMetrics.replies ?? null,
+        bookmarks: tweetMetrics.bookmarks ?? null,
+        views: tweetMetrics.views ?? null,
         collection_phase: collectionPhase
       });
     
@@ -137,14 +138,15 @@ async function trackPostCheckpoint(postId: string, tweetId: string, hoursAfter: 
     // Store follower tracking data
     console.log(`[VELOCITY] 👥 Followers at ${hoursAfter}h: ${profileMetrics.followerCount}`);
     
+    // PHASE 2 FIX: Use null coalescing for follower data too
     const { error: followerError } = await supabase
       .from('post_follower_tracking')
       .insert({
         post_id: postId,
         tweet_id: tweetId,
         check_time: checkTime.toISOString(),
-        follower_count: profileMetrics.followerCount || 0,
-        profile_views: profileMetrics.profileViews || 0,
+        follower_count: profileMetrics.followerCount ?? null,
+        profile_views: profileMetrics.profileViews ?? null,
         hours_after_post: hoursAfter,
         collection_phase: collectionPhase
       });

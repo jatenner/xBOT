@@ -197,6 +197,7 @@ export class RealEngagementTracker {
   private async storeEngagementData(data: RealEngagementData, content: string): Promise<void> {
     try {
       const supabase = getSupabaseClient();
+      // PHASE 2 FIX: Use null coalescing for views
       const { error } = await supabase
         .from('tweet_analytics')
         .upsert({
@@ -204,7 +205,7 @@ export class RealEngagementTracker {
           likes: data.likes,
           retweets: data.retweets,
           replies: data.replies,
-          views: data.views || 0,
+          views: data.views ?? null,
           engagement_rate: data.engagementRate,
           viral_score: data.isViral ? 100 : Math.min(95, data.engagementRate * 10),
           content: content,
