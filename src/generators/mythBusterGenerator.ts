@@ -6,6 +6,7 @@
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { validateAndExtractContent } from './generatorUtils';
+import { VOICE_GUIDELINES } from './sharedPatterns';
 
 export interface MythBusterContent {
   content: string | string[];
@@ -22,6 +23,8 @@ export async function generateMythBusterContent(params: {
   const { topic, format, research } = params;
   
   const systemPrompt = `You bust myths with DATA and MECHANISMS - not just "actually..."
+
+${VOICE_GUIDELINES}
 
 🎯 YOUR JOB: Show what's wrong, what's true, and WHY.
 

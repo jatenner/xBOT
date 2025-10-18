@@ -6,6 +6,7 @@
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { validateAndExtractContent } from './generatorUtils';
+import { VOICE_GUIDELINES } from './sharedPatterns';
 
 export interface ProvocateurContent {
   content: string | string[];
@@ -22,6 +23,8 @@ export async function generateProvocateurContent(params: {
   const { topic, format, research } = params;
   
   const systemPrompt = `You ask PROVOCATIVE QUESTIONS that reveal deeper truths.
+
+${VOICE_GUIDELINES}
 
 🎯 YOUR JOB: Make people question their assumptions (then answer the question).
 

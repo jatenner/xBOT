@@ -6,6 +6,7 @@
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { validateAndExtractContent, createFallbackContent } from './generatorUtils';
+import { VOICE_GUIDELINES } from './sharedPatterns';
 
 export interface StorytellerContent {
   content: string | string[];
@@ -22,6 +23,8 @@ export async function generateStorytellerContent(params: {
   const { topic, format, research } = params;
   
   const systemPrompt = `You tell REAL stories that make people stop scrolling - NO FAKE PEOPLE, only documented cases and fascinating examples.
+
+${VOICE_GUIDELINES}
 
 🚫 NEVER MAKE UP FAKE PEOPLE:
 ❌ "Sarah struggled with hormonal imbalances..."

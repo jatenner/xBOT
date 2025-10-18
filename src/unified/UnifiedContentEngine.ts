@@ -185,12 +185,93 @@ export class UnifiedContentEngine {
       }
       
       // ═══════════════════════════════════════════════════════════
+      // STEP 5.5: CONTENT SANITIZATION (Safety Net)
+      // ═══════════════════════════════════════════════════════════
+      const content = aiResponse.content || aiResponse.tweet || aiResponse.text || '';
+      
+      console.log('🛡️ STEP 5.5: Sanitizing content for violations...');
+      const { sanitizeContent, formatViolationReport, shouldRetry, trackViolation } = await import('../generators/contentSanitizer');
+      const sanitization = sanitizeContent(content);
+      
+      console.log(formatViolationReport(sanitization));
+      
+      if (!sanitization.passed) {
+        systemsActive.push('Content Sanitization [FAILED]');
+        
+        // Track violations in database (don't await - fire and forget)
+        for (const violation of sanitization.violations) {
+          trackViolation({
+            generatorName: generatorName,
+            topic: request.topic,
+            format: request.format || 'single',
+            violation,
+            content,
+            specificityScore: sanitization.specificity_score,
+            specificityMatches: sanitization.specificity_matches,
+            actionTaken: shouldRetry(sanitization) ? 'retried' : 'rejected',
+            retrySucceeded: undefined // Will be updated if retry succeeds
+          }).catch(err => console.error('Failed to track violation:', err));
+        }
+        
+        // Check if we should retry with different generator
+        if (shouldRetry(sanitization) && !request.forceGeneration) {
+          console.log('🔄 SANITIZATION_RETRY: Attempting with different generator...');
+          
+          // Retry generation (will use different generator due to weighted random)
+          return this.generateContent({
+            ...request,
+            forceGeneration: true // Prevent infinite loop
+          });
+        }
+        
+        // If forceGeneration is true, we've already retried - throw error
+        throw new Error(`Content quality violation: ${sanitization.violations[0]?.detected || 'Unknown violation'}`);
+      }
+      
+      systemsActive.push('Content Sanitization [PASSED]');
+      console.log(`  ✓ Specificity score: ${sanitization.specificity_score}`);
+      if (sanitization.specificity_matches.length > 0) {
+        console.log(`  ✓ Found: ${sanitization.specificity_matches.slice(0, 3).join(', ')}`);
+      }
+      
+      // ═══════════════════════════════════════════════════════════
+      // STEP 5.7: CONTENT ENRICHMENT (Optional - adds contrast)
+      // ═══════════════════════════════════════════════════════════
+      // NOTE: This is currently DISABLED by default
+      // Enable by setting request.enableEnrichment = true
+      let finalContent = content;
+      
+      if (request.enableEnrichment) {
+        console.log('🎨 STEP 5.7: Enriching content with contrast injection...');
+        const { enrichContent } = await import('../generators/contentEnricher');
+        
+        const enrichmentResult = await enrichContent({
+          content: content,
+          topic: request.topic || 'health optimization',
+          format: request.format || 'single',
+          force: false // Use 60% probability
+        });
+        
+        if (enrichmentResult.enriched) {
+          finalContent = Array.isArray(enrichmentResult.enriched_content) 
+            ? enrichmentResult.enriched_content.join('\n\n') 
+            : enrichmentResult.enriched_content;
+          
+          console.log(`  ✓ Enrichment applied (score: ${enrichmentResult.improvement_score}/100)`);
+          console.log(`  ✓ ${enrichmentResult.explanation}`);
+          systemsActive.push('Content Enrichment [APPLIED]');
+        } else {
+          console.log(`  ⊘ Enrichment skipped: ${enrichmentResult.explanation}`);
+          systemsActive.push('Content Enrichment [SKIPPED]');
+        }
+      }
+      
+      // ═══════════════════════════════════════════════════════════
       // STEP 6: VALIDATE QUALITY
       // ═══════════════════════════════════════════════════════════
       console.log('🔍 STEP 6: Validating content quality...');
-      const content = aiResponse.content || aiResponse.tweet || aiResponse.text || '';
       const qualityResult = await this.qualityController.validateContentQuality(
-        content,
+        finalContent,
         {
           isThread: request.format === 'thread',
           threadParts: aiResponse.thread || aiResponse.thread_parts || aiResponse.threadParts || []
@@ -225,7 +306,7 @@ export class UnifiedContentEngine {
       // STEP 7: PREDICT PERFORMANCE
       // ═══════════════════════════════════════════════════════════
       console.log('🔮 STEP 7: Predicting performance...');
-      const prediction = await this.predictor.predictPerformance(content);
+      const prediction = await this.predictor.predictPerformance(finalContent);
       systemsActive.push('Performance Prediction');
       
       console.log(`  ✓ Predicted likes: ${prediction.predictedLikes}`);
@@ -241,7 +322,7 @@ export class UnifiedContentEngine {
         : undefined);
       
       const result: GeneratedContent = {
-        content,
+        content: finalContent,
         threadParts,
         metadata: {
           quality_score: qualityResult.overall / 100,

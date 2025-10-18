@@ -7,6 +7,7 @@
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { validateAndExtractContent, createFallbackContent } from './generatorUtils';
+import { VOICE_GUIDELINES } from './sharedPatterns';
 
 interface ViralThreadRequest {
   topic?: string;
@@ -115,6 +116,8 @@ export async function generateViralThread(request: ViralThreadRequest = {}): Pro
 
 function buildViralPrompt(topic: string, hookStyle: string, emotion: string): { system: string; user: string } {
   const system = `You are a viral content creator specializing in health/science threads.
+
+${VOICE_GUIDELINES}
 
 Your threads consistently get 10K+ likes because you:
 - Challenge conventional wisdom

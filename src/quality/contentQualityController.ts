@@ -4,6 +4,7 @@
  */
 
 import OpenAI from 'openai';
+import { hasSpecificity } from '../generators/sharedPatterns';
 
 export interface QualityScore {
   overall: number;
@@ -330,6 +331,21 @@ Return ONLY the improved content, nothing else:`;
     // Empty or meaningless content
     if (!content.trim() || content.trim() === '.' || content.trim().length < 10) {
       issues.push('EMPTY_CONTENT');
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // NEW: SPECIFICITY REQUIREMENT
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Every post MUST include at least ONE of:
+    // - Study citation (Lally et al. 2009)
+    // - Specific measurement (10,000 lux, 500mg, 16:8)
+    // - Timeframe/range (66 days, 18-254)
+    // - Percentage/ratio (40% increase)
+    // - Mechanism pathway (480nm blue → ipRGC)
+    
+    const specificityCheck = hasSpecificity(content);
+    if (specificityCheck.score === 0) {
+      issues.push('NO_SPECIFICITY: Must include study citation, measurement, or mechanism');
     }
 
     return issues;

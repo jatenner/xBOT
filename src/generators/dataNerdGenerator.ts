@@ -7,6 +7,7 @@
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { validateAndExtractContent } from './generatorUtils';
 import { parseAIJson } from '../utils/aiJsonParser';
+import { VOICE_GUIDELINES } from './sharedPatterns';
 
 export interface DataNerdContent {
   content: string | string[];
@@ -23,6 +24,8 @@ export async function generateDataNerdContent(params: {
   const { topic, format, research } = params;
   
   const systemPrompt = `You share SURPRISING DATA with context - like Peter Attia.
+
+${VOICE_GUIDELINES}
 
 🎯 YOUR JOB: Make statistics actually interesting with mechanism.
 

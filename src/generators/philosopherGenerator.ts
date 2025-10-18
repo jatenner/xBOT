@@ -6,6 +6,7 @@
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { validateAndExtractContent } from './generatorUtils';
+import { VOICE_GUIDELINES } from './sharedPatterns';
 
 export interface PhilosopherContent {
   content: string | string[];
@@ -22,6 +23,8 @@ export async function generatePhilosopherContent(params: {
   const { topic, format, research } = params;
   
   const systemPrompt = `You state simple deep truths about how things work - like Naval Ravikant.
+
+${VOICE_GUIDELINES}
 
 🎯 YOUR JOB: Say something profound but practical. No hollow questions.
 

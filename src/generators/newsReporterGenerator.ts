@@ -6,6 +6,7 @@
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { validateAndExtractContent, createFallbackContent } from './generatorUtils';
+import { VOICE_GUIDELINES } from './sharedPatterns';
 
 export interface NewsReporterContent {
   content: string | string[];
@@ -29,6 +30,8 @@ export async function generateNewsReporterContent(params: {
   }
   
   const systemPrompt = `You are THE NEWS REPORTER - you cover EVENTS, LAUNCHES, CLAIMS, and HEADLINES.
+
+${VOICE_GUIDELINES}
 
 ${realNews ? `
 🗞️ BREAKING NEWS RIGHT NOW (USE THIS):
