@@ -104,7 +104,7 @@ export async function metricsScraperJob(): Promise<void> {
               .eq('decision_id', post.decision_id)
               .single();
             
-            if (metadata && metadata.generator_name) {
+            if (metadata && metadata.generator_name && typeof metadata.generator_name === 'string') {
               const { getGeneratorPerformanceTracker } = await import('../learning/generatorPerformanceTracker');
               const tracker = getGeneratorPerformanceTracker();
               await tracker.updateGeneratorStats(metadata.generator_name);
