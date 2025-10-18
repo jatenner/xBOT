@@ -185,7 +185,13 @@ export class UnifiedContentEngine {
       // ═══════════════════════════════════════════════════════════
       console.log('🔍 STEP 6: Validating content quality...');
       const content = aiResponse.content || aiResponse.tweet || aiResponse.text || '';
-      const qualityResult = await this.qualityController.validateContentQuality(content);
+      const qualityResult = await this.qualityController.validateContentQuality(
+        content,
+        {
+          isThread: request.format === 'thread',
+          threadParts: aiResponse.thread_parts || aiResponse.threadParts || []
+        }
+      );
       systemsActive.push('Quality Validation');
       
       console.log(`  ✓ Quality score: ${qualityResult.overall}/100`);
