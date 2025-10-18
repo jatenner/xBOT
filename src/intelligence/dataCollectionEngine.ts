@@ -210,18 +210,20 @@ export class DataCollectionEngine {
    */
   private async storePostMetrics(postId: string, tweetId: string, metrics: any): Promise<void> {
     try {
+      // PHASE 4 FIX: Store null instead of 0 when metrics unavailable
+      // This prevents fake data from corrupting the learning system
       const { error } = await this.supabase
         .from('outcomes')
         .upsert({
           decision_id: postId,
           tweet_id: tweetId,
-          likes: metrics.likes || 0,
-          retweets: metrics.retweets || 0,
-          replies: metrics.replies || 0,
-          bookmarks: metrics.bookmarks || 0,
-          views: metrics.views || 0,
-          impressions: metrics.impressions || 0,
-          profile_clicks: metrics.profile_clicks || 0,
+          likes: metrics.likes ?? null,          // Use null, not 0
+          retweets: metrics.retweets ?? null,    // Use null, not 0
+          replies: metrics.replies ?? null,      // Use null, not 0
+          bookmarks: metrics.bookmarks ?? null,  // Use null, not 0
+          views: metrics.views ?? null,          // Use null, not 0
+          impressions: metrics.impressions ?? null,      // Use null, not 0
+          profile_clicks: metrics.profile_clicks ?? null, // Use null, not 0
           collected_at: new Date().toISOString(),
           data_source: 'data_collection_engine',
           updated_at: new Date().toISOString()
