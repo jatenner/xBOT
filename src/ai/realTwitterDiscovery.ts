@@ -205,9 +205,9 @@ export class RealTwitterDiscovery {
         const page = await context.newPage();
         
         try {
-          // Navigate to account timeline
-          await page.goto(`https://twitter.com/${username}`, { 
-            waitUntil: 'networkidle', 
+          // Navigate to account timeline - FIXED: x.com + domcontentloaded
+          await page.goto(`https://x.com/${username}`, { 
+            waitUntil: 'domcontentloaded', 
             timeout: 30000 
           });
           await page.waitForTimeout(3000);
@@ -252,7 +252,7 @@ export class RealTwitterDiscovery {
               if (hasContent && notTooManyReplies && hasEngagement && noLinks && tweetId && author) {
                 results.push({
                   tweet_id: tweetId,
-                  tweet_url: `https://twitter.com/${author}/status/${tweetId}`,
+                  tweet_url: `https://x.com/${author}/status/${tweetId}`,
                   tweet_content: content,
                   tweet_author: author,
                   reply_count: replyCount,
@@ -289,8 +289,8 @@ export class RealTwitterDiscovery {
    */
   private async getAccountDetails(page: Page, username: string): Promise<DiscoveredAccount | null> {
     try {
-      await page.goto(`https://twitter.com/${username}`, { 
-        waitUntil: 'networkidle', 
+      await page.goto(`https://x.com/${username}`, { 
+        waitUntil: 'domcontentloaded', 
         timeout: 20000 
       });
       await page.waitForTimeout(2000);
