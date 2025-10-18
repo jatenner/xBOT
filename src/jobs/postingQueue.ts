@@ -72,6 +72,9 @@ interface QueuedDecision {
   created_at: string;
   thread_parts?: string[]; // For threads
   features?: any; // For thread metadata
+  // PHASE 5 additions for learning system
+  predicted_followers?: number;
+  hook_type?: string;
 }
 
 interface QueuedDecisionRow {
@@ -409,18 +412,24 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
     
     // ═══════════════════════════════════════════════════════════
     
-    // TODO: Track with learning system (actual performance will be updated later via webhook/job)
-    // For now, we'll simulate some basic metrics for learning
+    // PHASE 5 FIX: Initialize tracking in learning system FIRST
     try {
-      await learningSystem.updatePostPerformance(decision.id, {
-        likes: 0, // Will be updated later with real data
-        retweets: 0,
-        replies: 0,
-        saves: 0,
-        follower_growth: 0
-      });
+      // Step 1: Add post to tracking (so learning system knows about it)
+      await learningSystem.processNewPost(
+        decision.id,
+        String(decision.content),
+        {
+          followers_gained_prediction: decision.predicted_followers || 0
+        },
+        {
+          content_type_name: decision.decision_type,
+          hook_used: decision.hook_type || 'unknown',
+          topic: decision.topic_cluster || 'health'
+        }
+      );
+      console.log('[LEARNING_SYSTEM] ✅ Post ' + decision.id + ' tracked');
     } catch (learningError: any) {
-      console.warn(`[POSTING_QUEUE] ⚠️ Learning system update failed: ${learningError.message}`);
+      console.warn('[LEARNING_SYSTEM] ⚠️ Failed to track post:', learningError.message);
     }
     
   } catch (error) {

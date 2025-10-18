@@ -273,18 +273,20 @@ Return JSON:
     try {
       // This would integrate with Twitter API to get actual replies
       // For now, providing structure for future implementation
+      // PHASE 4 FIX: Don't generate random fake follower data
+      // Wait for real metrics from actual follower tracking
       return {
         sentiment: 'neutral' as const,
-        replyQuality: 5,
-        followersAttributed: Math.random() > 0.7 ? 1 : 0,
-        followerQuality: 0.7
+        replyQuality: null,  // null until we have real data
+        followersAttributed: null,  // null until real tracking
+        followerQuality: null
       };
     } catch (error) {
       return {
         sentiment: 'neutral' as const,
-        replyQuality: 0,
-        followersAttributed: 0,
-        followerQuality: 0
+        replyQuality: null,
+        followersAttributed: null,
+        followerQuality: null
       };
     }
   }

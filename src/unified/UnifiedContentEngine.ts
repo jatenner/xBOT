@@ -198,8 +198,9 @@ export class UnifiedContentEngine {
       console.log(`  ✓ Engagement potential: ${qualityResult.engagement}/100`);
       console.log(`  ✓ Authenticity: ${qualityResult.authenticity}/100`);
       
-      // Strict quality gate
-      const MIN_QUALITY = parseFloat(process.env.MIN_QUALITY_SCORE || '75');
+      // PHASE 6 FIX: Quality gate (temporarily lowered to allow learning)
+      // Will raise back to 75+ after generators improve from real data
+      const MIN_QUALITY = parseFloat(process.env.MIN_QUALITY_SCORE || '72');
       if (qualityResult.overall < MIN_QUALITY && !request.forceGeneration) {
         console.log(`  ❌ REJECTED: Quality ${qualityResult.overall} below ${MIN_QUALITY}`);
         

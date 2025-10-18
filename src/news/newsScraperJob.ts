@@ -261,11 +261,24 @@ export class TwitterNewsScraperJob {
     const tweets: ScrapedNews[] = [];
     
     try {
-      // Wait for tweets to load
-      await page.waitForSelector('article[data-testid="tweet"]', { timeout: 10000 });
+      // PHASE 4.2 FIX: Better selectors with multiple fallbacks
+      // Wait for tweets to load with multiple selector attempts
+      const tweetLoaded = await Promise.race([
+        page.waitForSelector('article[data-testid="tweet"]', { timeout: 15000 }).catch(() => null),
+        page.waitForSelector('[data-testid="tweetDetail"]', { timeout: 15000 }).catch(() => null),
+        page.waitForSelector('article[role="article"]', { timeout: 15000 }).catch(() => null),
+        page.waitForTimeout(10000).then(() => null)  // Give up after 10s
+      ]);
       
-      // Extract tweet data
-      const tweetElements = await page.locator('article[data-testid="tweet"]').all();
+      if (!tweetLoaded) {
+        console.warn('    ⚠️ RELOAD: Tweet element didn\'t load, continuing anyway...');
+      }
+      
+      // Try multiple selectors for tweets
+      let tweetElements = await page.locator('article[data-testid="tweet"]').all();
+      if (tweetElements.length === 0) {
+        tweetElements = await page.locator('article[role="article"]').all();
+      }
       
       // Limit to first 5 tweets per account
       for (const tweetEl of tweetElements.slice(0, 5)) {
