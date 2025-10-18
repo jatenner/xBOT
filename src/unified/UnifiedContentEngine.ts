@@ -189,7 +189,7 @@ export class UnifiedContentEngine {
         content,
         {
           isThread: request.format === 'thread',
-          threadParts: aiResponse.thread_parts || aiResponse.threadParts || []
+          threadParts: aiResponse.thread || aiResponse.thread_parts || aiResponse.threadParts || []
         }
       );
       systemsActive.push('Quality Validation');
