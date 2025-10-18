@@ -196,27 +196,51 @@ export class BulletproofTwitterScraper {
 
   /**
    * Validate that page is in correct state for scraping
+   * PHASE 3: Enhanced with multiple selector fallbacks
    */
   private async validatePageState(page: Page): Promise<boolean> {
     try {
-      // Check 1: Is this actually a tweet page?
+      // Check 1: Is this actually a tweet page? (Multiple fallbacks)
       const isTweetPage = await page.evaluate(() => {
-        return document.querySelector('article[data-testid="tweet"]') !== null;
+        // Try multiple selectors (Twitter HTML changes frequently)
+        return (
+          document.querySelector('article[data-testid="tweet"]') !== null ||
+          document.querySelector('[data-testid="tweetDetail"]') !== null ||
+          document.querySelector('article[role="article"]') !== null ||
+          document.querySelector('div[data-testid="primaryColumn"] article') !== null ||
+          // Fallback: Check URL
+          window.location.href.includes('/status/')
+        );
       });
 
       if (!isTweetPage) {
         console.warn(`    ⚠️ VALIDATE: Not on tweet page`);
+        
+        // Debug: Log what we found instead
+        const pageInfo = await page.evaluate(() => ({
+          url: window.location.href,
+          title: document.title,
+          hasArticles: document.querySelectorAll('article').length,
+          testIds: Array.from(document.querySelectorAll('[data-testid]'))
+            .slice(0, 10)
+            .map(el => el.getAttribute('data-testid'))
+        }));
+        console.warn(`    🔍 DEBUG:`, JSON.stringify(pageInfo));
+        
         return false;
       }
 
-      // Check 2: Are engagement buttons visible?
+      // Check 2: Are engagement buttons visible? (Enhanced with fallbacks)
       const hasEngagementButtons = await page.evaluate(() => {
-        const buttons = document.querySelector('div[role="group"]');
-        return buttons !== null;
+        return (
+          document.querySelector('[data-testid="like"]') !== null ||
+          document.querySelector('[data-testid="retweet"]') !== null ||
+          document.querySelector('div[role="group"]') !== null
+        );
       });
 
       if (!hasEngagementButtons) {
-        console.warn(`    ⚠️ VALIDATE: Engagement buttons not found`);
+        console.warn(`    ⚠️ VALIDATE: No engagement buttons`);
         return false;
       }
 
