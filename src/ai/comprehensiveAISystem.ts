@@ -11,9 +11,7 @@
  */
 
 import { OpenAI } from 'openai';
-import { parseAIJson } from '../utils/aiJsonParser';
 import { createClient } from '@supabase/supabase-js';
-import { parseAIJson } from '../utils/aiJsonParser';
 import Redis from 'ioredis';
 import { parseAIJson } from '../utils/aiJsonParser';
 
