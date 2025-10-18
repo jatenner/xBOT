@@ -8,7 +8,7 @@
  */
 
 import { BANNED_PHRASES, REQUIRED_PATTERNS, hasBannedPhrase, hasSpecificity } from './sharedPatterns';
-import { supabase } from '../services/supabaseClient';
+import { supabase } from '../db/supabaseClient';
 
 export interface SanitizationResult {
   content: string;
