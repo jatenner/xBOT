@@ -213,7 +213,7 @@ LEFT JOIN (
     SUM(o.followers_gained) as recent_followers,
     (SUM(o.followers_gained)::DECIMAL / NULLIF(SUM(o.impressions), 0) * 1000) as recent_f_per_1k
   FROM content_metadata cm
-  JOIN outcomes o ON cm.decision_id = o.decision_id
+  JOIN outcomes o ON cm.decision_id::text = o.decision_id::text
   WHERE cm.posted_at > NOW() - INTERVAL '7 days'
     AND cm.generator_name IS NOT NULL
     AND o.impressions > 0
@@ -258,7 +258,7 @@ BEGIN
       COUNT(*) FILTER (WHERE (o.followers_gained::DECIMAL / NULLIF(o.impressions, 0) * 1000) > 5) as viral_count,
       COUNT(*) FILTER (WHERE o.followers_gained = 0 AND o.impressions > 100) as failed_count
     FROM content_metadata cm
-    JOIN outcomes o ON cm.decision_id = o.decision_id
+    JOIN outcomes o ON cm.decision_id::text = o.decision_id::text
     WHERE cm.generator_name = p_generator_name
       AND cm.posted_at IS NOT NULL
       AND o.impressions > 0
