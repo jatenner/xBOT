@@ -140,7 +140,7 @@ async function generateRealContent(): Promise<void> {
         
         // Metadata
         topic_cluster: 'health',
-        generation_source: 'unified_engine',
+        generation_source: 'real', // Fixed: Database expects 'real' or 'synthetic', not 'unified_engine'
         
         // Learning tracking
         experiment_arm: generated.metadata.experiment_arm,

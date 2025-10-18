@@ -32,9 +32,23 @@ export class ContentQualityController {
 
   /**
    * COMPREHENSIVE QUALITY GATE - Prevents posting bad content
+   * 
+   * Phase 1 Update: Now handles threads properly (validates each tweet separately)
    */
-  async validateContentQuality(content: string): Promise<QualityScore> {
+  async validateContentQuality(
+    content: string,
+    options?: {
+      isThread?: boolean;
+      threadParts?: string[];
+    }
+  ): Promise<QualityScore> {
     console.log('🔍 QUALITY_GATE: Comprehensive content validation');
+    
+    // NEW: Handle thread validation separately
+    if (options?.isThread && options?.threadParts && options.threadParts.length > 1) {
+      console.log(`🧵 THREAD_VALIDATION: Validating ${options.threadParts.length} tweets`);
+      return await this.validateThread(options.threadParts);
+    }
 
     const score: QualityScore = {
       overall: 0,
@@ -176,6 +190,91 @@ Return ONLY the improved content, nothing else:`;
         qualityIncrease: 0
       };
     }
+  }
+
+  /**
+   * THREAD VALIDATION - Phase 1 Addition
+   * Validates each tweet in thread separately to avoid TOO_LONG errors
+   */
+  private async validateThread(threadParts: string[]): Promise<QualityScore> {
+    const tweetScores: QualityScore[] = [];
+    
+    // Validate each tweet
+    for (let i = 0; i < threadParts.length; i++) {
+      const tweet = threadParts[i];
+      console.log(`   [${i + 1}/${threadParts.length}] "${tweet.substring(0, 40)}..."`);
+      
+      const tweetScore = await this.validateSingleTweet(tweet);
+      tweetScores.push(tweetScore);
+      
+      if (!tweetScore.shouldPost) {
+        console.log(`   ❌ Tweet ${i + 1} failed: ${tweetScore.issues.join(', ')}`);
+      }
+    }
+    
+    // Aggregate
+    const avg = (arr: number[]) => arr.reduce((a, b) => a + b, 0) / arr.length;
+    const allPass = tweetScores.every(s => s.shouldPost);
+    
+    const threadScore: QualityScore = {
+      overall: avg(tweetScores.map(s => s.overall)),
+      completeness: avg(tweetScores.map(s => s.completeness)),
+      engagement: avg(tweetScores.map(s => s.engagement)),
+      clarity: avg(tweetScores.map(s => s.clarity)),
+      actionability: avg(tweetScores.map(s => s.actionability)),
+      authenticity: avg(tweetScores.map(s => s.authenticity)),
+      shouldPost: allPass,
+      issues: allPass ? [] : ['Some tweets failed validation'],
+      improvements: []
+    };
+    
+    console.log(`🧵 THREAD: ${threadScore.overall.toFixed(1)}/100 (${allPass ? 'PASS' : 'FAIL'})`);
+    return threadScore;
+  }
+
+  /**
+   * SINGLE TWEET VALIDATION - Phase 1 Addition
+   */
+  private async validateSingleTweet(content: string): Promise<QualityScore> {
+    const score: QualityScore = {
+      overall: 0,
+      completeness: 0,
+      engagement: 0,
+      clarity: 0,
+      actionability: 0,
+      authenticity: 0,
+      issues: [],
+      improvements: [],
+      shouldPost: false
+    };
+
+    // Critical failures
+    const criticalIssues = this.detectCriticalIssues(content);
+    if (criticalIssues.length > 0) {
+      score.issues = criticalIssues;
+      return score;
+    }
+
+    // Score all dimensions
+    score.completeness = this.scoreCompleteness(content);
+    score.engagement = this.scoreEngagementPotential(content);
+    score.clarity = this.scoreClarity(content);
+    score.actionability = this.scoreActionability(content);
+    score.authenticity = this.scoreAuthenticity(content);
+
+    // Calculate overall
+    score.overall = Math.round(
+      score.completeness * 0.40 +
+      score.engagement * 0.25 +
+      score.clarity * 0.20 +
+      score.actionability * 0.10 +
+      score.authenticity * 0.05
+    );
+
+    // Decision
+    score.shouldPost = score.overall >= 72 && score.completeness >= 80;
+
+    return score;
   }
 
   /**

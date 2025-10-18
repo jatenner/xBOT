@@ -187,10 +187,19 @@ export class UnifiedDataManager {
 
   /**
    * 🤖 STORE AI DECISION
+   * 
+   * TEMPORARILY DISABLED (Phase 1 Fix):
+   * This was trying to store API usage logs in content_metadata table,
+   * but that table is for content decisions only, causing constraint violations.
+   * TODO Phase 2: Create proper ai_api_usage table for this
    */
   public async storeAIDecision(decisionData: AIDecision): Promise<number> {
-    console.log(`🤖 UNIFIED_DATA: Storing AI decision ${decisionData.decisionType}`);
-
+    console.log(`🤖 UNIFIED_DATA: AI decision logging temporarily disabled (${decisionData.decisionType})`);
+    
+    // Return mock ID to prevent errors in calling code
+    return -1;
+    
+    /* ORIGINAL CODE - RE-ENABLE IN PHASE 2 WITH CORRECT TABLE
     try {
       // Store AI decisions in content_metadata (new schema)
       const { data, error } = await supabase.from('content_metadata').insert({
@@ -215,11 +224,11 @@ export class UnifiedDataManager {
 
       console.log(`✅ UNIFIED_DATA: AI decision stored with ID ${data.id}`);
       return data.id;
-
     } catch (error: any) {
       console.error('❌ UNIFIED_DATA: Failed to store AI decision:', error.message);
       throw error;
     }
+    */
   }
 
   /**
