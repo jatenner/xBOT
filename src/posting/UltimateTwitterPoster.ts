@@ -23,6 +23,9 @@ export class UltimateTwitterPoster {
   private clickFailures = 0;
   private readonly maxClickFailures = 5;
   private lastResetTime = Date.now();
+  
+  // PHASE 3.5: Real tweet ID extraction
+  private capturedTweetId: string | null = null;
 
   async postTweet(content: string): Promise<PostResult> {
     let retryCount = 0;
@@ -320,6 +323,22 @@ export class UltimateTwitterPoster {
 
     console.log('ULTIMATE_POSTER: Setting up robust posting with fallback verification...');
     
+    // PHASE 3.5: Set up redirect listener to capture real tweet ID
+    // Twitter briefly redirects to /status/[ID] after posting (200-500ms window)
+    this.capturedTweetId = null; // Reset
+    this.page.on('framenavigated', (frame) => {
+      if (frame === this.page?.mainFrame()) {
+        const url = frame.url();
+        if (url.includes('/status/') && !this.capturedTweetId) {
+          const match = url.match(/\/status\/(\d+)/);
+          if (match && match[1]) {
+            this.capturedTweetId = match[1];
+            console.log(`ULTIMATE_POSTER: 🎯 REDIRECT CAPTURED: ${this.capturedTweetId}`);
+          }
+        }
+      }
+    });
+    
     // Set up network response monitoring (with longer timeout and more patterns)
     let networkVerificationPromise: Promise<any> | null = null;
     
@@ -555,47 +574,84 @@ export class UltimateTwitterPoster {
   }
 
   /**
-   * PHASE 3: Extract real tweet ID from current URL
-   * Twitter redirects to /status/TWEET_ID after posting
+   * PHASE 3.5: Extract real tweet ID with multiple strategies
+   * Priority: 1) Redirect capture, 2) Toast notification, 3) Profile page, 4) Timestamp fallback
    */
   private async extractTweetIdFromUrl(): Promise<string> {
+    if (!this.page) {
+      console.log('ULTIMATE_POSTER: ⚠️ Page not available, using timestamp');
+      return Date.now().toString();
+    }
+    
     try {
-      await this.page.waitForTimeout(1000); // Wait for redirect
-      const currentUrl = this.page.url();
-      console.log(`ULTIMATE_POSTER: Current URL: ${currentUrl}`);
-      
-      // Extract ID from URLs like:
-      // https://twitter.com/username/status/1760799324367
-      // https://x.com/username/status/1760799324367
-      const match = currentUrl.match(/\/status\/(\d+)/);
-      if (match && match[1]) {
-        const tweetId = match[1];
-        console.log(`ULTIMATE_POSTER: ✅ Extracted tweet ID: ${tweetId}`);
-        return tweetId;
+      // STRATEGY 1: Use captured redirect ID (most reliable!)
+      if (this.capturedTweetId) {
+        console.log(`ULTIMATE_POSTER: ✅ Using captured ID: ${this.capturedTweetId}`);
+        return this.capturedTweetId;
       }
       
-      // Fallback: Check for tweet in timeline
-      const timelineMatch = currentUrl.match(/compose\/tweet/);
-      if (!timelineMatch) {
-        // We're on timeline, try to get the most recent tweet ID
-        const latestTweetLink = await this.page.locator('article a[href*="/status/"]').first().getAttribute('href');
-        if (latestTweetLink) {
-          const idMatch = latestTweetLink.match(/\/status\/(\d+)/);
-          if (idMatch && idMatch[1]) {
-            console.log(`ULTIMATE_POSTER: ✅ Extracted from timeline: ${idMatch[1]}`);
-            return idMatch[1];
+      // Wait a bit more for redirect to happen
+      await this.page.waitForTimeout(2000);
+      if (this.capturedTweetId) {
+        console.log(`ULTIMATE_POSTER: ✅ Captured after wait: ${this.capturedTweetId}`);
+        return this.capturedTweetId;
+      }
+      
+      console.log('ULTIMATE_POSTER: ⚠️ Redirect not captured, trying fallback strategies...');
+      
+      // STRATEGY 2: Check for success toast with link
+      try {
+        console.log('ULTIMATE_POSTER: Trying toast notification...');
+        const toast = await this.page.locator('[data-testid="toast"]').first();
+        const viewLink = await toast.locator('a[href*="/status/"]').getAttribute('href', { timeout: 2000 });
+        if (viewLink) {
+          const match = viewLink.match(/\/status\/(\d+)/);
+          if (match && match[1]) {
+            console.log(`ULTIMATE_POSTER: ✅ Extracted from toast: ${match[1]}`);
+            return match[1];
           }
         }
+      } catch (e) {
+        console.log('ULTIMATE_POSTER: Toast strategy failed');
       }
       
-      // Final fallback: Use timestamp (numeric only)
+      // STRATEGY 3: Navigate to profile and get latest tweet
+      try {
+        console.log('ULTIMATE_POSTER: Trying profile page...');
+        const currentUrl = this.page.url();
+        
+        // Extract username from current URL or use default
+        let username = 'Signal_Synapse';
+        const usernameMatch = currentUrl.match(/x\.com\/([^\/]+)/);
+        if (usernameMatch) {
+          username = usernameMatch[1];
+        }
+        
+        await this.page.goto(`https://x.com/${username}`, { waitUntil: 'domcontentloaded', timeout: 10000 });
+        await this.page.waitForTimeout(2000);
+        
+        const latestTweetLink = await this.page.locator('article a[href*="/status/"]').first().getAttribute('href', { timeout: 5000 });
+        if (latestTweetLink) {
+          const match = latestTweetLink.match(/\/status\/(\d+)/);
+          if (match && match[1]) {
+            console.log(`ULTIMATE_POSTER: ✅ Extracted from profile: ${match[1]}`);
+            return match[1];
+          }
+        }
+      } catch (e) {
+        console.log('ULTIMATE_POSTER: Profile strategy failed');
+      }
+      
+      // STRATEGY 4: Final fallback - timestamp with warning
       const fallbackId = Date.now().toString();
-      console.log(`ULTIMATE_POSTER: ⚠️ Using fallback ID: ${fallbackId}`);
+      console.warn(`ULTIMATE_POSTER: ⚠️⚠️⚠️ FALLBACK ID: ${fallbackId} - SCRAPING WILL FAIL`);
       return fallbackId;
       
     } catch (error: any) {
-      console.log(`ULTIMATE_POSTER: ⚠️ Could not extract tweet ID: ${error.message}`);
-      return Date.now().toString();
+      console.error(`ULTIMATE_POSTER: ❌ All extraction strategies failed: ${error.message}`);
+      const fallbackId = Date.now().toString();
+      console.warn(`ULTIMATE_POSTER: ⚠️⚠️⚠️ FALLBACK ID: ${fallbackId} - SCRAPING WILL FAIL`);
+      return fallbackId;
     }
   }
 
