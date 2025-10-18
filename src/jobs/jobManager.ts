@@ -85,7 +85,9 @@ export class JobManager {
       ai_orchestration: false,
       viral_thread: false,
       news_scraping: false,
-      competitive_analysis: false
+      competitive_analysis: false,
+      metrics_scraper: false,
+      enhanced_metrics: false
     };
 
     // Plan job timer
@@ -251,6 +253,24 @@ export class JobManager {
     }, 24 * 60 * 60 * 1000)); // 24 hours
     registered.competitive_analysis = true;
 
+    // SMART BATCH FIX: METRICS SCRAPER - every 10 minutes to collect fresh metrics
+    this.timers.set('metrics_scraper', setInterval(async () => {
+      await this.safeExecute('metrics_scraper', async () => {
+        const { metricsScraperJob } = await import('./metricsScraperJob');
+        await metricsScraperJob();
+      });
+    }, 10 * 60 * 1000)); // 10 minutes
+    registered.metrics_scraper = true;
+
+    // SMART BATCH FIX: ENHANCED METRICS - every 30 minutes for velocity tracking
+    this.timers.set('enhanced_metrics', setInterval(async () => {
+      await this.safeExecute('enhanced_metrics', async () => {
+        const { enhancedMetricsScraperJob } = await import('./metricsScraperJob');
+        await enhancedMetricsScraperJob();
+      });
+    }, 30 * 60 * 1000)); // 30 minutes
+    registered.enhanced_metrics = true;
+
     // Log registration status (EXPLICIT for observability)
     console.log('════════════════════════════════════════════════════════');
     console.log('JOB_MANAGER: Timer Registration Complete');
@@ -267,6 +287,8 @@ export class JobManager {
     console.log(`    - ai_orchestration:${registered.ai_orchestration ? '✅' : '❌'} (every 6h) ← AI-DRIVEN!`);
     console.log(`    - news_scraping:   ${registered.news_scraping ? '✅' : '❌'} (every 1h) ← REAL NEWS!`);
     console.log(`    - competitive:     ${registered.competitive_analysis ? '✅' : '❌'} (every 24h) ← LEARN FROM WINNERS!`);
+    console.log(`    - metrics_scraper: ${registered.metrics_scraper ? '✅' : '❌'} (every 10min) ← SMART BATCH FIX!`);
+    console.log(`    - enhanced_metrics:${registered.enhanced_metrics ? '✅' : '❌'} (every 30min) ← VELOCITY TRACKING!`);
     console.log('════════════════════════════════════════════════════════');
 
     // FAIL-FAST: Posting job MUST be registered in live mode

@@ -93,20 +93,47 @@ export class AIAccountDiscovery {
       const hashtagAccounts = await this.discoverViaHashtags();
       console.log(`[AI_DISCOVERY] 📊 Found ${hashtagAccounts.length} accounts via hashtags`);
       
+      // SMART BATCH FIX: Rate limit between discovery methods
+      console.log(`[AI_DISCOVERY] ⏳ Cooling down 30s before network mapping...`);
+      await new Promise(resolve => setTimeout(resolve, 30000));
+      
       // Method 2: Network Mapping (discover from existing targets)
       const networkAccounts = await this.discoverViaNetwork();
       console.log(`[AI_DISCOVERY] 🕸️ Found ${networkAccounts.length} accounts via network mapping`);
+      
+      // SMART BATCH FIX: Rate limit between discovery methods
+      console.log(`[AI_DISCOVERY] ⏳ Cooling down 30s before content analysis...`);
+      await new Promise(resolve => setTimeout(resolve, 30000));
       
       // Method 3: Content Analysis (AI reads tweets to identify experts)
       const contentAccounts = await this.discoverViaContent();
       console.log(`[AI_DISCOVERY] 📝 Found ${contentAccounts.length} accounts via content analysis`);
       
       // Combine and deduplicate
-      const allAccounts = this.deduplicateAccounts([
+      let allAccounts = this.deduplicateAccounts([
         ...hashtagAccounts,
         ...networkAccounts,
         ...contentAccounts
       ]);
+      
+      // SMART BATCH FIX: Curated fallback if discovery found nothing
+      if (allAccounts.length === 0) {
+        console.log(`[AI_DISCOVERY] 📋 No accounts discovered, using curated health influencers...`);
+        
+        const curatedAccounts = this.getFallbackHealthAccounts().map(account => ({
+          username: account.username,
+          follower_count: 0, // Will be filled by real scraping
+          following_count: 0,
+          tweet_count: 0,
+          bio: account.description,
+          verified: false,
+          discovery_method: 'content' as const, // Use existing type
+          discovery_date: new Date().toISOString()
+        }));
+        
+        allAccounts = curatedAccounts;
+        console.log(`[AI_DISCOVERY] 📋 Added ${allAccounts.length} curated accounts as fallback`);
+      }
       
       console.log(`[AI_DISCOVERY] ✅ Discovered ${allAccounts.length} unique accounts`);
       

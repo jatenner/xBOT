@@ -105,6 +105,7 @@ export class FollowerAttributionService {
 
   /**
    * Scrape current follower count from profile
+   * SMART BATCH FIX: Enhanced with multiple strategies and better selectors
    */
   private async scrapeCurrentFollowers(): Promise<number> {
     try {
@@ -112,17 +113,80 @@ export class FollowerAttributionService {
       const browserManager = (await import('../lib/browser')).default;
       const page = await browserManager.newPage();
       
-      // Navigate to our profile
-      await page.goto('https://x.com/SignalAndSynapse', {
+      // Navigate to our profile (updated username)
+      await page.goto('https://x.com/Signal_Synapse', {
         waitUntil: 'domcontentloaded',
         timeout: 30000
       });
       
-      await page.waitForTimeout(2000);
+      await page.waitForTimeout(5000); // Wait longer for profile to load
       
-      // Extract follower count
-      const followerText = await page.locator('a[href*="/followers"] span').first().innerText().catch(() => '0');
-      const followers = this.parseFollowerCount(followerText);
+      // SMART BATCH FIX: Multiple strategies to extract follower count
+      let followers = 0;
+      
+      // Strategy 1: Try follower link
+      try {
+        const followerText = await page.locator('a[href*="/followers"] span').first().innerText({ timeout: 5000 });
+        followers = this.parseFollowerCount(followerText);
+        if (followers > 0) {
+          console.log(`[ATTRIBUTION] ✅ Strategy 1 success: ${followers} followers`);
+          await page.close();
+          return followers;
+        }
+      } catch (e) {
+        console.log(`[ATTRIBUTION] ⚠️ Strategy 1 failed, trying strategy 2...`);
+      }
+      
+      // Strategy 2: Look for any element containing "followers"
+      try {
+        const followersElements = await page.locator('*:has-text("followers")').all();
+        for (const el of followersElements) {
+          const text = await el.innerText().catch(() => '');
+          if (text.toLowerCase().includes('followers')) {
+            const parsed = this.parseFollowerCount(text);
+            if (parsed > 0) {
+              followers = parsed;
+              console.log(`[ATTRIBUTION] ✅ Strategy 2 success: ${followers} followers`);
+              break;
+            }
+          }
+        }
+        if (followers > 0) {
+          await page.close();
+          return followers;
+        }
+      } catch (e) {
+        console.log(`[ATTRIBUTION] ⚠️ Strategy 2 failed, trying strategy 3...`);
+      }
+      
+      // Strategy 3: Evaluate in browser context
+      try {
+        followers = await page.evaluate(() => {
+          // Look for follower count in various ways
+          const elements = Array.from(document.querySelectorAll('*'));
+          for (const el of elements) {
+            const text = el.textContent || '';
+            if (text.toLowerCase().includes('followers')) {
+              const match = text.match(/([\d,\.]+[KMB]?)\s*followers/i);
+              if (match) {
+                const numStr = match[1].replace(/,/g, '');
+                if (numStr.includes('K')) return Math.round(parseFloat(numStr) * 1000);
+                if (numStr.includes('M')) return Math.round(parseFloat(numStr) * 1000000);
+                if (numStr.includes('B')) return Math.round(parseFloat(numStr) * 1000000000);
+                const num = parseInt(numStr);
+                if (!isNaN(num) && num > 0) return num;
+              }
+            }
+          }
+          return 0;
+        });
+        
+        if (followers > 0) {
+          console.log(`[ATTRIBUTION] ✅ Strategy 3 success: ${followers} followers`);
+        }
+      } catch (e) {
+        console.log(`[ATTRIBUTION] ⚠️ Strategy 3 failed`);
+      }
       
       await page.close();
       
