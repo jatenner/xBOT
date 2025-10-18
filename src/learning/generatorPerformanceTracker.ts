@@ -32,9 +32,13 @@ export interface GeneratorStats {
   engagement_rate: number;
   avg_likes: number;
   avg_retweets: number;
+  avg_quote_tweets: number;
   avg_replies: number;
   avg_views: number;
+  avg_bookmarks: number;
   avg_quality_score: number;
+  avg_first_hour_engagement: number;
+  avg_virality_coefficient: number;
   viral_posts: number; // Posts with F/1K > 5
   failed_posts: number; // Posts with 0 followers
   current_weight: number;
@@ -91,15 +95,16 @@ export class GeneratorPerformanceTracker {
               (SUM(o.followers_gained)::DECIMAL / NULLIF(SUM(o.impressions), 0) * 1000),
               0
             ) as f_per_1k,
-            COALESCE(
-              AVG((o.likes + o.retweets * 2 + o.replies * 3)::DECIMAL / NULLIF(o.impressions, 0)),
-              0
-            ) as engagement_rate,
+            COALESCE(AVG(o.engagement_rate), 0) as engagement_rate,
             COALESCE(AVG(o.likes), 0) as avg_likes,
             COALESCE(AVG(o.retweets), 0) as avg_retweets,
+            COALESCE(AVG(o.quote_tweets), 0) as avg_quote_tweets,
             COALESCE(AVG(o.replies), 0) as avg_replies,
             COALESCE(AVG(o.views), 0) as avg_views,
+            COALESCE(AVG(o.bookmarks), 0) as avg_bookmarks,
             COALESCE(AVG(cm.quality_score), 0) as avg_quality_score,
+            COALESCE(AVG(o.first_hour_engagement), 0) as avg_first_hour_engagement,
+            COALESCE(AVG(o.virality_coefficient), 0) as avg_virality_coefficient,
             COUNT(*) FILTER (
               WHERE (o.followers_gained::DECIMAL / NULLIF(o.impressions, 0) * 1000) > 5
             ) as viral_posts,
@@ -132,8 +137,13 @@ export class GeneratorPerformanceTracker {
                 impressions,
                 likes,
                 retweets,
+                quote_tweets,
                 replies,
-                views
+                views,
+                bookmarks,
+                first_hour_engagement,
+                engagement_rate,
+                virality_coefficient
               )
             `)
             .gte('posted_at', new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000).toISOString())
@@ -181,9 +191,14 @@ export class GeneratorPerformanceTracker {
           total_impressions: 0,
           total_likes: 0,
           total_retweets: 0,
+          total_quote_tweets: 0,
           total_replies: 0,
           total_views: 0,
+          total_bookmarks: 0,
           total_quality: 0,
+          total_first_hour_engagement: 0,
+          total_engagement_rate: 0,
+          total_virality_coefficient: 0,
           viral_posts: 0,
           failed_posts: 0,
           current_weight: 0,
@@ -200,9 +215,14 @@ export class GeneratorPerformanceTracker {
       stats.total_impressions += outcome.impressions || 0;
       stats.total_likes += outcome.likes || 0;
       stats.total_retweets += outcome.retweets || 0;
+      stats.total_quote_tweets += outcome.quote_tweets || 0;
       stats.total_replies += outcome.replies || 0;
       stats.total_views += outcome.views || 0;
+      stats.total_bookmarks += outcome.bookmarks || 0;
       stats.total_quality += row.quality_score || 0;
+      stats.total_first_hour_engagement += outcome.first_hour_engagement || 0;
+      stats.total_engagement_rate += outcome.engagement_rate || 0;
+      stats.total_virality_coefficient += outcome.virality_coefficient || 0;
 
       const f_per_1k = outcome.impressions > 0 
         ? (outcome.followers_gained / outcome.impressions) * 1000 
@@ -220,14 +240,16 @@ export class GeneratorPerformanceTracker {
       f_per_1k: stats.total_impressions > 0 
         ? (stats.total_followers_gained / stats.total_impressions) * 1000 
         : 0,
-      engagement_rate: stats.total_impressions > 0
-        ? (stats.total_likes + stats.total_retweets * 2 + stats.total_replies * 3) / stats.total_impressions
-        : 0,
+      engagement_rate: stats.total_posts > 0 ? stats.total_engagement_rate / stats.total_posts : 0,
       avg_likes: stats.total_posts > 0 ? stats.total_likes / stats.total_posts : 0,
       avg_retweets: stats.total_posts > 0 ? stats.total_retweets / stats.total_posts : 0,
+      avg_quote_tweets: stats.total_posts > 0 ? stats.total_quote_tweets / stats.total_posts : 0,
       avg_replies: stats.total_posts > 0 ? stats.total_replies / stats.total_posts : 0,
       avg_views: stats.total_posts > 0 ? stats.total_views / stats.total_posts : 0,
+      avg_bookmarks: stats.total_posts > 0 ? stats.total_bookmarks / stats.total_posts : 0,
       avg_quality_score: stats.total_posts > 0 ? stats.total_quality / stats.total_posts : 0,
+      avg_first_hour_engagement: stats.total_posts > 0 ? stats.total_first_hour_engagement / stats.total_posts : 0,
+      avg_virality_coefficient: stats.total_posts > 0 ? stats.total_virality_coefficient / stats.total_posts : 0,
       viral_posts: stats.viral_posts,
       failed_posts: stats.failed_posts,
       current_weight: stats.current_weight,
@@ -452,8 +474,12 @@ export class GeneratorPerformanceTracker {
         engagement_rate: stat.engagement_rate,
         total_likes: Math.round(stat.avg_likes * stat.total_posts),
         total_retweets: Math.round(stat.avg_retweets * stat.total_posts),
+        total_quote_tweets: Math.round(stat.avg_quote_tweets * stat.total_posts),
         total_replies: Math.round(stat.avg_replies * stat.total_posts),
         total_views: Math.round(stat.avg_views * stat.total_posts),
+        total_bookmarks: Math.round(stat.avg_bookmarks * stat.total_posts),
+        avg_first_hour_engagement: stat.avg_first_hour_engagement,
+        avg_virality_coefficient: stat.avg_virality_coefficient,
         weight_used: stat.current_weight,
         experiment_arm: null
       }));

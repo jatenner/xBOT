@@ -78,16 +78,28 @@ export async function metricsScraperJob(): Promise<void> {
             continue;
           }
         
+          // Calculate first hour engagement if this is collected within first hour
+          const postedAt = new Date(post.posted_at);
+          const collectedAt = new Date();
+          const hoursSincePost = (collectedAt.getTime() - postedAt.getTime()) / (1000 * 60 * 60);
+          const isFirstHour = hoursSincePost <= 1;
+          
+          const totalEngagement = (metrics.likes ?? 0) + (metrics.retweets ?? 0) + 
+                                  (metrics.quote_tweets ?? 0) + (metrics.replies ?? 0) + 
+                                  (metrics.bookmarks ?? 0);
+          
           // Update outcomes table
           await supabase.from('outcomes').upsert({
             decision_id: post.decision_id,
             tweet_id: post.tweet_id,
             likes: metrics.likes ?? null,
             retweets: metrics.retweets ?? null,
+            quote_tweets: metrics.quote_tweets ?? null,
             replies: metrics.replies ?? null,
             views: metrics.views ?? null,
             bookmarks: metrics.bookmarks ?? null,
             impressions: metrics.impressions ?? null,
+            first_hour_engagement: isFirstHour ? totalEngagement : null,
             collected_at: new Date().toISOString(),
             data_source: 'scheduled_scraper',
             simulated: false
@@ -202,6 +214,11 @@ export async function enhancedMetricsScraperJob(): Promise<void> {
               continue;
             }
           
+            // Calculate engagement for this checkpoint
+            const checkpointEngagement = (metrics.likes ?? 0) + (metrics.retweets ?? 0) + 
+                                         (metrics.quote_tweets ?? 0) + (metrics.replies ?? 0) + 
+                                         (metrics.bookmarks ?? 0);
+            
             // Store velocity data
             await supabase.from('post_velocity_tracking').insert({
               post_id: post.decision_id,
@@ -210,9 +227,11 @@ export async function enhancedMetricsScraperJob(): Promise<void> {
               hours_after_post: window.hours,
               likes: metrics.likes ?? null,
               retweets: metrics.retweets ?? null,
+              quote_tweets: metrics.quote_tweets ?? null,
               replies: metrics.replies ?? null,
               bookmarks: metrics.bookmarks ?? null,
               views: metrics.views ?? null,
+              total_engagement: checkpointEngagement,
               collection_phase: `checkpoint_${window.hours}h`
             });
             
