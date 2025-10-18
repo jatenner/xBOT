@@ -146,6 +146,8 @@ async function generateRealContent(): Promise<void> {
         
         // Learning tracking
         experiment_arm: generated.metadata.experiment_arm,
+        generator_name: generated.metadata.generator_name, // For autonomous learning
+        generator_confidence: generated.metadata.generator_confidence,
         systems_used: generated.metadata.systems_active.join(','),
         viral_patterns_applied: generated.metadata.viral_patterns_applied.join(', '),
         learning_insights_used: generated.metadata.learning_insights_used.join(', ')
@@ -227,6 +229,7 @@ async function storeContentDecisions(decisions: any[]): Promise<void> {
         created_at: new Date().toISOString(),
         // Optional metadata
         generator_name: decision.generator_name || null,
+        generator_confidence: decision.generator_confidence || null,
         experiment_arm: decision.experiment_arm || null,
         style: decision.style || null
       };

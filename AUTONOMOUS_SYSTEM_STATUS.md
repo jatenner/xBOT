@@ -1,397 +1,314 @@
-# 🤖 AUTONOMOUS SYSTEM IMPLEMENTATION STATUS
+# 🤖 AUTONOMOUS SYSTEM STATUS - FULL AUDIT
 
-## ✅ COMPLETED (Deployed to Production)
-
-### 1. Environment Flag System ✅
-**File**: `src/config/envFlags.ts`
-
-Implemented flags:
-- `AI_QUOTA_CIRCUIT_OPEN` - Primary LLM circuit breaker (default: false)
-- `POSTING_DISABLED` - Controls posting only, NOT LLM (default: true)
-- `LIVE_POSTS` - Enables actual X posting (default: false)
-- `REAL_METRICS_ENABLED` - Enables real analytics collection (default: false)
-- `MODE` - shadow|live operational mode
-- `DAILY_OPENAI_LIMIT_USD` - Budget cap (default: $10)
-- `DISABLE_LLM_WHEN_BUDGET_HIT` - Budget enforcement (default: true)
-- `DUP_COSINE_THRESHOLD` - Uniqueness threshold (default: 0.85)
-- `SIMILARITY_THRESHOLD` - Fallback threshold (default: 0.85)
-- `MIN_QUALITY_SCORE` - Quality gate (default: 0.7)
-- `OPENAI_MODEL` - Model selection (default: gpt-4o-mini)
-- `EMBED_MODEL` - Embedding model (default: text-embedding-3-small)
-
-**Functions**:
-- `isLLMAllowed()` - Returns {allowed, reason} based on AI_QUOTA_CIRCUIT_OPEN only
-- `isPostingAllowed()` - Returns {allowed, reason} based on POSTING_DISABLED + LIVE_POSTS
-- `isRealAnalyticsAllowed()` - Returns boolean for REAL_METRICS_ENABLED
-- `getFlagSummary()` - One-line status for logging
-
-### 2. Database Schema ✅
-**Migrations**: 
-- `20251001_comprehensive_autonomous_system.sql`
-- `20251001_alter_content_metadata_autonomous.sql`
-
-**Tables Created/Updated**:
-
-#### content_metadata
-- ✅ `decision_id` UUID (unique identifier for decisions)
-- ✅ `decision_type` ('single' | 'thread' | 'reply')
-- ✅ `content` TEXT (actual tweet text)
-- ✅ `bandit_arm` TEXT (content strategy)
-- ✅ `timing_arm` TEXT (UCB timing slot)
-- ✅ `quality_score` NUMERIC (0-1)
-- ✅ `predicted_er` NUMERIC (predicted engagement rate)
-- ✅ `generation_source` ('real' | 'synthetic')
-- ✅ `status` ('queued' | 'posted' | 'skipped' | 'failed')
-- ✅ `scheduled_at` TIMESTAMPTZ
-- ✅ `topic_cluster`, `angle`, `content_hash`, `features`
-- ✅ `skip_reason`, `error_message`
-- ✅ Indexes: status+scheduled, generation_source, decision_type, decision_id
-
-#### posted_decisions
-- ✅ Archive of successfully posted content
-- ✅ Includes: decision_id, tweet_id, posted_at, bandit_arm, timing_arm
-
-#### outcomes
-- ✅ `decision_id` UUID (links to content_metadata)
-- ✅ `tweet_id` TEXT
-- ✅ `impressions`, `likes`, `retweets`, `replies`, `bookmarks`, `quotes`
-- ✅ `er_calculated` NUMERIC (engagement rate)
-- ✅ `simulated` BOOLEAN (false=real X data, true=shadow)
-- ✅ `collected_at` TIMESTAMPTZ
-
-#### bandit_arms
-- ✅ Thompson sampling state (arm_name, scope, successes, failures, alpha, beta)
-
-#### api_usage
-- ✅ Cost tracking (request_id, kind, model, tokens, cost_usd, status, failure_reason)
-
-### 3. OpenAI Wrapper Updates ✅
-**File**: `src/services/openaiWrapper.ts`
-
-**Changes**:
-- ✅ Now checks `isLLMAllowed()` instead of `POSTING_DISABLED`
-- ✅ Throws error only when `AI_QUOTA_CIRCUIT_OPEN=true`
-- ✅ POSTING_DISABLED no longer blocks LLM calls
-- ✅ LLM can run with posting disabled to build queue
-
-### 4. Plan Job (New Implementation) ✅
-**File**: `src/jobs/planJobNew.ts`
-
-**Features Implemented**:
-- ✅ Respects `AI_QUOTA_CIRCUIT_OPEN` flag
-- ✅ Shadow mode: generates synthetic content
-- ✅ Live mode: generates real LLM content
-- ✅ **Gate Chain**:
-  - Quality gate (MIN_QUALITY_SCORE threshold)
-  - Uniqueness gate (cosine similarity with DUP_COSINE_THRESHOLD)
-  - Rotation policy (topic ≤35%, angle ≤40% over 7 days)
-- ✅ Fail-closed in live mode: gates block → status='skipped' + reason
-- ✅ Inserts to `content_metadata` with:
-  - `generation_source='real'`
-  - `status='queued'` (if passed gates) or `status='skipped'` (if blocked)
-  - `scheduled_at` from UCB timing
-  - Proper embedding, content_hash, topic_cluster, angle
-- ✅ **Logging**:
-  - Success: `[PLAN_JOB] ✅ Real LLM content generated (decision_id=..., status=queued, scheduled_at=...)`
-  - Gate block: `[GATE_CHAIN] ⛔ Blocked (quality|uniqueness|rotation) decision_id=..., reason=..., score=...`
-  - LLM failure: `[PLAN_JOB] OpenAI failed, not queueing real content`
-- ✅ Metrics tracking: calls_total, calls_success, calls_failed, failure_reasons
+**Date:** October 18, 2025  
+**Status:** PARTIALLY AUTONOMOUS (Needs Integration)
 
 ---
 
-## 🚧 PARTIALLY IMPLEMENTED (Needs Completion)
+## 🎯 YOUR VISION
 
-### 5. Posting Orchestrator
-**Status**: Old postingQueue.ts exists but needs rewrite
-
-**Required**:
-```typescript
-// Query pattern MUST be:
-SELECT * FROM content_metadata
-WHERE status='queued'
-  AND generation_source='real'
-  AND scheduled_at <= NOW()
-ORDER BY scheduled_at ASC
-LIMIT 5;
-
-// When POSTING_DISABLED=true:
-// Do NOT post, but DO query queue
-// Log: [POSTING_ORCHESTRATOR] ⏭️ Skipped posting decision_id=... reason=posting_disabled
-// Do NOT change status (keep in queue)
-
-// When posting allowed + success:
-// 1. Post via Playwright
-// 2. INSERT into posted_decisions (decision_id, tweet_id, posted_at, ...)
-// 3. UPDATE content_metadata SET status='posted' WHERE decision_id=...
-// Log: [POSTING_ORCHESTRATOR] ✅ Posted successfully: tweet_id=...
-
-// Retry logic: 3 attempts with exponential backoff
-// Rate limit: MAX_POSTS_PER_HOUR + MIN_POST_INTERVAL_MINUTES
-```
-
-**File to create**: `src/posting/orchestratorNew.ts`
-
-### 6. Real Analytics Collector
-**Status**: Not implemented
-
-**Required**:
-```typescript
-// When REAL_METRICS_ENABLED=true, run every 4h:
-// 1. SELECT * FROM posted_decisions WHERE NOT EXISTS (SELECT 1 FROM outcomes WHERE outcomes.decision_id = posted_decisions.decision_id)
-// 2. For each: fetch X metrics via Playwright
-// 3. INSERT INTO outcomes (decision_id, tweet_id, impressions, likes, retweets, replies, er_calculated, simulated=false, collected_at)
-// 4. Log: [ANALYTICS_COLLECTOR] ✅ Stored real outcome decision_id=... ER=...
-
-// In MODE=live, NEVER fabricate outcomes
-```
-
-**File to create**: `src/jobs/analyticsCollector.ts`
-
-### 7. Learning Job Updates
-**Status**: Exists but needs live-mode filter
-
-**Required changes** to `src/jobs/learnJob.ts`:
-```typescript
-// In live mode: ONLY train on outcomes WHERE simulated=false
-const { data: outcomes } = await supabase
-  .from('outcomes')
-  .select('*')
-  .eq('simulated', false);  // <-- CRITICAL
-
-if (outcomes.length < 5) {
-  console.log('[LEARN_JOB] ⚠️ Training skipped: insufficient real outcomes (need 5)');
-  return;
-}
-
-// Update bandit_arms (Thompson for content/reply, UCB for timing)
-// Train predictors (ridge + logistic)
-// Version in Redis: predictor:content:v{n}
-// Log: [LEARN_JOB] ✅ arms_trained=X, coeffs_updated=v{n}
-```
-
-### 8. Reply Job
-**Status**: Old replyJob.ts exists but needs rewrite
-
-**Required**: Mirror planJobNew.ts structure but for replies
-- Same gate chain
-- Insert with `decision_type='reply'`
-- Include `target_tweet_id`, `target_username`
-- Log: `[REPLY_JOB] ✅ Real LLM reply generated (decision_id=..., status=queued, scheduled_at=...)`
-
-**File to create**: `src/jobs/replyJobNew.ts`
+**Fully autonomous learning machine that:**
+1. ✅ Posts amazing content (12 personas)
+2. ✅ Scrapes every data point possible  
+3. ⚠️ Learns which personas/structures work best (BUILT BUT NOT CONNECTED)
+4. ⚠️ Self-optimizes without manual intervention (BUILT BUT NOT CONNECTED)
 
 ---
 
-## ❌ NOT STARTED
+## ✅ WHAT'S WORKING (CONFIRMED)
 
-### 9. Observability Endpoints
-**File**: `src/api/metrics.ts` (update)
+### **1. CONTENT GENERATION - ROCKET SHIP ✅**
+**File:** `src/unified/UnifiedContentEngine.ts` (774 lines)
 
-**Required additions**:
-```typescript
-GET /api/metrics should return:
-{
-  // LLM metrics
-  openaiCalls_total: number,
-  openaiCalls_failed: number,
-  openaiFailureReasons: Record<string, number>,
-  
-  // Queue metrics
-  queueSize: number,  // COUNT(*) FROM content_metadata WHERE status='queued'
-  
-  // Posting metrics
-  postsAttempted: number,
-  postsPosted: number,
-  post_skipped_reason_counts: Record<string, number>,
-  
-  // Learning metrics
-  outcomesWritten: number,  // COUNT(*) FROM outcomes WHERE simulated=false
-  learnRuns: number,
-  banditArmsUpdated: number,
-  predictorVersion: string
-}
-```
+**Status:** ✅ FULLY FUNCTIONAL (Just restored)
 
-### 10. Admin Job Triggers
-**File**: `src/api/adminJobs.ts` (create)
+**All 12 Personas Active:**
+1. HumanVoice (5 voice styles) - 15% weight
+2. NewsReporter - 12% weight
+3. Storyteller - 12% weight
+4. InterestingContent - 10% weight
+5. Provocateur - 10% weight
+6. DataNerd - 10% weight
+7. MythBuster - 10% weight
+8. Coach - 8% weight
+9. ThoughtLeader - 5% weight
+10. Contrarian - 4% weight
+11. Explorer - 2% weight
+12. Philosopher - 2% weight
 
-```typescript
-POST /admin/jobs/run?job=plan
-POST /admin/jobs/run?job=reply
-POST /admin/jobs/run?job=posting
-POST /admin/jobs/run?job=learn
+**Selection Method:** Weighted random based on experiment arm (control/variant_a/variant_b)
 
-// Require ADMIN_TOKEN header
-// Trigger job once, return immediately
-```
-
-### 11. Environment Status Endpoint
-**File**: `src/api/env.ts` (create)
-
-```typescript
-GET /env
-
-Returns:
-{
-  AI_QUOTA_CIRCUIT_OPEN: boolean,
-  POSTING_DISABLED: boolean,
-  LIVE_POSTS: boolean,
-  REAL_METRICS_ENABLED: boolean,
-  MODE: 'shadow' | 'live',
-  OPENAI_MODEL: string,
-  llmAllowed: boolean,
-  postingAllowed: boolean,
-  analyticsAllowed: boolean,
-  summary: string  // from getFlagSummary()
-}
-```
-
-### 12. RUNBOOK Documentation
-**File**: `RUNBOOK_AUTONOMOUS.md` (create)
-
-Content should include:
-- Tonight prep (posting OFF, LLM ON)
-- Validation commands
-- Expected logs for each job
-- Tomorrow go-live switches
-- Troubleshooting
+**Problem:** ⚠️ **WEIGHTS ARE HARDCODED** - Not learning from performance data!
 
 ---
 
-## 🎯 VALIDATION COMMANDS (Use These Tonight)
+### **2. DATA COLLECTION - SCRAPING ✅**
+**Files:** 
+- `src/jobs/metricsScraperJob.ts` (NEW - just added)
+- `src/scrapers/bulletproofTwitterScraper.ts`
+- `src/intelligence/dataCollectionEngine.ts`
 
-### Preparation Env
-```bash
-export AI_QUOTA_CIRCUIT_OPEN=false
-export POSTING_DISABLED=true
-export LIVE_POSTS=false
-export REAL_METRICS_ENABLED=false
-export MODE=live
+**Status:** ✅ FUNCTIONAL (Just fixed in Smart Batch)
+
+**What's Collected:**
+- Likes, retweets, replies, views, bookmarks
+- Impressions, profile clicks
+- Follower count before/after
+- Post velocity (1h, 6h, 24h, 7d checkpoints)
+- Collection timestamps
+
+**Storage:**
+- `outcomes` table - Main metrics
+- `post_velocity_tracking` - Time-series data
+- `follower_snapshots` - Follower attribution
+- `comprehensive_metrics` - Extended data points
+
+**Frequency:**
+- Immediate placeholder after post
+- Every 10 minutes (metricsScraperJob)
+- Every 30 minutes (enhancedMetricsScraperJob for velocity)
+
+---
+
+### **3. LEARNING SYSTEMS - BUILT BUT DISCONNECTED ⚠️**
+
+#### **System A: DataDrivenLearner ✅ (Built)**
+**File:** `src/ai/dataDrivenLearner.ts`
+
+**What It Does:**
+- Analyzes post performance
+- Extracts content patterns
+- Calculates engagement rates
+- Updates pattern performance
+- Generates insights
+
+**Problem:** ⚠️ **NOT CALLED BY UNIFIED ENGINE**
+
+---
+
+#### **System B: LearningSystemOrchestrator ✅ (Built)**
+**File:** `src/core/learningSystemOrchestrator.ts`
+
+**What It Does:**
+- Runs complete learning cycles
+- Generates vetted content
+- Amplifies winning patterns
+- Avoids failing patterns
+
+**Problem:** ⚠️ **NOT INTEGRATED WITH POSTING FLOW**
+
+---
+
+#### **System C: EnhancedContentOrchestrator ✅ (Built)**
+**File:** `src/ai/enhancedContentOrchestrator.ts`
+
+**What It Does:**
+- Records performance for learning
+- Tracks voice patterns
+- Monitors content diversity
+- Provides performance insights
+
+**Problem:** ⚠️ **NOT CALLED AFTER POSTS**
+
+---
+
+#### **System D: DiverseContentGenerator ✅ (Built)**
+**File:** `src/ai/diverseContentGenerator.ts`
+
+**What It Does:**
+- Selects optimal content types
+- Loads performance data
+- Scores types based on engagement
+- Optimizes for time and diversity
+
+**Problem:** ⚠️ **NOT USED BY UNIFIED ENGINE**
+
+---
+
+#### **System E: LearningIngestor ✅ (Built)**
+**File:** `src/learn/ingest.ts`
+
+**What It Does:**
+- Processes tweet learning
+- Updates bandit arms (topics, hours, tags)
+- Generates rewards with context
+- Tracks baseline performance
+
+**Problem:** ⚠️ **NOT INTEGRATED WITH METRICS FLOW**
+
+---
+
+## 🚨 THE CRITICAL GAP
+
+### **WHAT'S MISSING:**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                                                             │
+│  UnifiedContentEngine (12 Personas)                        │
+│  └─ Hardcoded weights: humanVoice=15%, newsReporter=12%... │
+│                                                             │
+│                    ❌ NO CONNECTION ❌                       │
+│                                                             │
+│  Learning Systems (5 different systems built!)             │
+│  └─ DataDrivenLearner, LearningOrchestrator, etc.         │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### Test LLM Generation
-```bash
-# Trigger plan job (should generate real content)
-curl -s -XPOST http://localhost:8080/admin/jobs/run?job=plan
+**The Problem:**
+1. Content engine posts with fixed weights
+2. Metrics are collected successfully
+3. Learning systems exist but aren't called
+4. **No feedback loop from performance → weights**
 
-# Expected log:
-# [PLAN_JOB] ✅ Real LLM content generated (decision_id=..., status=queued, scheduled_at=...)
+---
+
+## 🔧 WHAT NEEDS TO BE CONNECTED
+
+### **PHASE 1: Connect Learning to Content Engine**
+
+**Goal:** Make UnifiedContentEngine query learning systems for optimal weights
+
+**Changes Needed:**
+1. Add method to query best-performing generators from database
+2. Replace hardcoded weights with dynamic weights from learning data
+3. Update weights after every X posts based on performance
+
+**Files to Modify:**
+- `src/unified/UnifiedContentEngine.ts` (add dynamic weight loading)
+- Create `src/learning/generatorPerformanceTracker.ts` (track persona performance)
+
+---
+
+### **PHASE 2: Connect Metrics to Learning Systems**
+
+**Goal:** Feed collected metrics into all 5 learning systems
+
+**Changes Needed:**
+1. After metrics scraped → call DataDrivenLearner.analyzePerformanceAndLearn()
+2. After metrics scraped → call EnhancedContentOrchestrator.recordContentPerformance()
+3. After metrics scraped → call LearningIngestor.processTweetLearning()
+
+**Files to Modify:**
+- `src/jobs/metricsScraperJob.ts` (add learning system calls)
+- `src/intelligence/dataCollectionEngine.ts` (integrate learning)
+
+---
+
+### **PHASE 3: Autonomous Optimization Loop**
+
+**Goal:** System automatically adjusts without human intervention
+
+**Changes Needed:**
+1. Every 50 posts → analyze generator performance
+2. Automatically adjust weights based on F/1K (followers per 1000 impressions)
+3. Automatically disable generators with consistent poor performance
+4. Automatically boost generators with viral success
+
+**Files to Create:**
+- `src/autonomous/generatorOptimizer.ts` (autonomous weight adjustment)
+- `src/jobs/autonomousOptimizationJob.ts` (runs every 6 hours)
+
+---
+
+## 📊 CURRENT SYSTEM FLOW
+
+### **What Happens Now:**
+```
+1. planJobUnified runs every 30 min
+2. UnifiedContentEngine.generateContent()
+   └─ Selects persona with HARDCODED weights
+   └─ Generates content
+3. postingQueue posts to Twitter
+4. metricsScraperJob collects data (every 10 min)
+5. Data stored in database
+6. ❌ NOTHING HAPPENS WITH THE DATA ❌
 ```
 
-### Check Database
-```bash
-railway run bash -c "psql \$DATABASE_URL -c \"SELECT status, generation_source, decision_type, COUNT(*) FROM content_metadata GROUP BY 1,2,3;\""
-
-# Expected:
-#  status | generation_source | decision_type | count 
-# --------+-------------------+---------------+-------
-#  queued | real              | single        |     3
+### **What SHOULD Happen:**
 ```
-
-### Test Posting Skip
-```bash
-# Trigger posting (should skip with reason)
-curl -s -XPOST http://localhost:8080/admin/jobs/run?job=posting
-
-# Expected log:
-# [POSTING_ORCHESTRATOR] ⏭️ Skipped posting decision_id=... reason=posting_disabled
+1. planJobUnified runs every 30 min
+2. UnifiedContentEngine.generateContent()
+   └─ Queries learning system for optimal weights
+   └─ Selects persona with DYNAMIC weights
+   └─ Generates content
+3. postingQueue posts to Twitter
+4. metricsScraperJob collects data (every 10 min)
+5. Data stored in database
+6. ✅ Learning systems analyze performance
+7. ✅ Update generator weights in database
+8. ✅ Next post uses improved weights
+9. ✅ Cycle repeats → continuous improvement
 ```
 
 ---
 
-## 🚀 GO-LIVE SWITCHES (Tomorrow)
+## 🎯 AUTONOMOUS OPTIMIZATION ALGORITHM (Not Built Yet)
 
-```bash
-export AI_QUOTA_CIRCUIT_OPEN=false
-export POSTING_DISABLED=false
-export LIVE_POSTS=true
-export REAL_METRICS_ENABLED=true
-export MODE=live
+### **What It Should Do:**
+
+```javascript
+Every 50 posts:
+1. Query outcomes table for last 50 posts
+2. Group by generator_name
+3. Calculate for each generator:
+   - Average engagement rate
+   - Average F/1K (followers per 1000 impressions)
+   - Success rate (posts above baseline)
+4. Rank generators by performance
+5. Adjust weights:
+   - Top 3 performers: +5% weight each
+   - Bottom 3 performers: -3% weight each
+   - Viral generators (F/1K > 5): +10% weight
+   - Failing generators (F/1K = 0 consistently): -50% weight
+6. Store new weights in database
+7. UnifiedContentEngine loads weights on next run
 ```
 
-After first post, expect:
-- `[POSTING_ORCHESTRATOR] ✅ Posted successfully: tweet_id=...`
-- `[ANALYTICS_COLLECTOR] ✅ Stored real outcome decision_id=... ER=...`
-- `[LEARN_JOB] ✅ arms_trained=..., coeffs_updated=v...`
+---
+
+## 🚀 IMPLEMENTATION PRIORITY
+
+### **HIGH PRIORITY (Do This First):**
+1. ✅ Content engine restored (DONE)
+2. ✅ Metrics collection working (DONE)
+3. ⚠️ **Connect metrics → learning systems** (30 min)
+4. ⚠️ **Dynamic weight loading in UnifiedContentEngine** (20 min)
+
+### **MEDIUM PRIORITY (Do This Next):**
+5. ⚠️ **Build generator performance tracker** (20 min)
+6. ⚠️ **Autonomous optimization job** (30 min)
+
+### **LOW PRIORITY (Nice to Have):**
+7. Dashboard to visualize generator performance
+8. Manual override for weights
+9. A/B testing framework for new generators
 
 ---
 
-## 📝 NEXT STEPS TO COMPLETE
+## 💡 BOTTOM LINE
 
-1. **Create postingOrchestrator with correct SQL and skip logic** ⚠️ HIGH PRIORITY
-2. **Create analyticsCollector for real metrics** ⚠️ HIGH PRIORITY
-3. **Update learnJob to filter simulated=false** ⚠️ MEDIUM PRIORITY
-4. **Create replyJobNew (mirror planJobNew)** - MEDIUM PRIORITY
-5. **Add /api/metrics endpoints** - LOW PRIORITY (metrics work without endpoint)
-6. **Add admin job triggers** - LOW PRIORITY (can use JobManager directly)
-7. **Create RUNBOOK** - LOW PRIORITY (this doc serves as interim)
+**You Have:**
+- ✅ Amazing content engine (12 personas)
+- ✅ Comprehensive data collection
+- ✅ Multiple learning systems (5 different ones!)
 
----
+**You're Missing:**
+- ❌ Connection between them
+- ❌ Feedback loop from data → content
+- ❌ Autonomous optimization
 
-## 🔥 CRITICAL IMMEDIATE TASKS
+**Time to Fix:** ~2 hours of coding to connect everything
 
-Before tonight's OpenAI quota reset:
-
-1. ✅ **Database schema** - DONE
-2. ✅ **Environment flags** - DONE
-3. ✅ **LLM decoupling** - DONE
-4. ✅ **planJobNew with gates** - DONE
-5. ⚠️ **Posting orchestrator** - NEEDS COMPLETION
-6. ⚠️ **Wire planJobNew into job scheduler** - NEEDS COMPLETION
+**Result:** Fully autonomous system that learns and improves without human intervention
 
 ---
 
-## ENV CHECK
+## 🎮 NEXT STEPS
 
-**What the code now honors**:
+**Option 1:** Connect everything now (2 hours)
+**Option 2:** Monitor current system for 24 hours, then connect (safer)
+**Option 3:** Connect in phases (metrics→learning first, then optimization)
 
-| Flag | Effect | Default |
-|------|--------|---------|
-| `AI_QUOTA_CIRCUIT_OPEN` | true = block ALL LLM calls | false |
-| `POSTING_DISABLED` | true = skip posting (but still queue) | true |
-| `LIVE_POSTS` | true = allow actual X posting | false |
-| `REAL_METRICS_ENABLED` | true = collect real engagement | false |
-| `MODE` | shadow = synthetic, live = real | shadow |
-| `DAILY_OPENAI_LIMIT_USD` | Daily spend cap | $10 |
-| `DUP_COSINE_THRESHOLD` | Uniqueness similarity threshold | 0.85 |
-| `MIN_QUALITY_SCORE` | Quality gate threshold | 0.7 |
-
----
-
-## SQL MIGRATIONS APPLIED
-
-1. ✅ `20251001_comprehensive_autonomous_system.sql` (initial schema)
-2. ✅ `20251001_alter_content_metadata_autonomous.sql` (column additions)
-3. ✅ Manual ALTER for outcomes.collected_at
-
-All tables now exist in production:
-- ✅ content_metadata (with decision_id, status, generation_source)
-- ✅ posted_decisions
-- ✅ outcomes (with decision_id, collected_at, simulated)
-- ✅ bandit_arms
-- ✅ api_usage
-
----
-
-## WHAT TO WATCH TOMORROW
-
-After enabling posting (`POSTING_DISABLED=false`, `LIVE_POSTS=true`, `REAL_METRICS_ENABLED=true`):
-
-1. **Posted tweet**:
-   ```
-   [POSTING_ORCHESTRATOR] ✅ Posted successfully: tweet_id=1234567890
-   ```
-
-2. **Real outcomes stored**:
-   ```
-   [ANALYTICS_COLLECTOR] ✅ Stored real outcome decision_id=abc-123, ER=0.0423
-   ```
-
-3. **Learning updated**:
-   ```
-   [LEARN_JOB] ✅ arms_trained=12, coeffs_updated=v5
-   ```
-
----
-
-**Status**: Core foundation complete. Posting orchestrator + analytics collector needed for end-to-end flow.
+**What do you want to do?** 🚀

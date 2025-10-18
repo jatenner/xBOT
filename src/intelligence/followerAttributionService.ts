@@ -98,6 +98,37 @@ export class FollowerAttributionService {
       
       console.log(`[ATTRIBUTION] ✅ Post ${tweetId}: ${gained > 0 ? '+' : ''}${gained} followers`);
       
+      // Update generator performance stats (Autonomous Learning!)
+      if (gained !== 0) {
+        try {
+          const { data: metadata } = await supabase
+            .from('content_metadata')
+            .select('generator_name')
+            .eq('tweet_id', tweetId)
+            .single();
+          
+          if (metadata && metadata.generator_name) {
+            // Update total_followers_gained for this generator
+            await supabase
+              .from('generator_weights')
+              .update({
+                total_followers_gained: supabase.raw(`total_followers_gained + ${gained}`),
+                last_updated: new Date().toISOString()
+              })
+              .eq('generator_name', metadata.generator_name);
+            
+            // Recalculate F/1K for this generator
+            const { getGeneratorPerformanceTracker } = await import('../learning/generatorPerformanceTracker');
+            const tracker = getGeneratorPerformanceTracker();
+            await tracker.updateGeneratorStats(metadata.generator_name);
+            
+            console.log(`[ATTRIBUTION] 📊 Updated generator stats: ${metadata.generator_name} ${gained > 0 ? '+' : ''}${gained} followers`);
+          }
+        } catch (statsError: any) {
+          console.warn(`[ATTRIBUTION] ⚠️ Failed to update generator stats:`, statsError.message);
+        }
+      }
+      
     } catch (error: any) {
       console.warn('[ATTRIBUTION] ⚠️ Failed to capture after count:', error.message);
     }

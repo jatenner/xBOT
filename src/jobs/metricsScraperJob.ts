@@ -96,6 +96,24 @@ export async function metricsScraperJob(): Promise<void> {
           console.log(`[METRICS_JOB] ✅ Updated ${post.tweet_id}: ${metrics.likes ?? 0} likes, ${metrics.views ?? 0} views`);
           updated++;
           
+          // Update generator stats for autonomous learning
+          try {
+            const { data: metadata } = await supabase
+              .from('content_metadata')
+              .select('generator_name')
+              .eq('decision_id', post.decision_id)
+              .single();
+            
+            if (metadata && metadata.generator_name) {
+              const { getGeneratorPerformanceTracker } = await import('../learning/generatorPerformanceTracker');
+              const tracker = getGeneratorPerformanceTracker();
+              await tracker.updateGeneratorStats(metadata.generator_name);
+              console.log(`[METRICS_JOB] 📊 Updated generator stats for ${metadata.generator_name}`);
+            }
+          } catch (statsError: any) {
+            console.warn(`[METRICS_JOB] ⚠️ Failed to update generator stats:`, statsError.message);
+          }
+          
         } finally {
           await page.close();
         }
