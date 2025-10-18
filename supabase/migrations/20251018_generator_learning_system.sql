@@ -172,8 +172,33 @@ CREATE INDEX IF NOT EXISTS idx_optimization_events_created
   ON optimization_events(created_at DESC);
 
 -- =====================================================================================
--- 5. CREATE GENERATOR_PERFORMANCE VIEW
+-- 5. CREATE GENERATOR_PERFORMANCE VIEW (with safe column checks)
 -- =====================================================================================
+
+-- First add followers_gained column to outcomes if it doesn't exist
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'outcomes' AND column_name = 'followers_gained'
+  ) THEN
+    ALTER TABLE outcomes ADD COLUMN followers_gained INTEGER DEFAULT 0;
+  END IF;
+  
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'outcomes' AND column_name = 'followers_before'
+  ) THEN
+    ALTER TABLE outcomes ADD COLUMN followers_before INTEGER;
+  END IF;
+  
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'outcomes' AND column_name = 'followers_after'
+  ) THEN
+    ALTER TABLE outcomes ADD COLUMN followers_after INTEGER;
+  END IF;
+END $$;
 
 CREATE OR REPLACE VIEW generator_performance_summary AS
 SELECT 
@@ -210,8 +235,8 @@ LEFT JOIN (
   SELECT 
     cm.generator_name,
     COUNT(*) as recent_posts,
-    SUM(o.followers_gained) as recent_followers,
-    (SUM(o.followers_gained)::DECIMAL / NULLIF(SUM(o.impressions), 0) * 1000) as recent_f_per_1k
+    SUM(COALESCE(o.followers_gained, 0)) as recent_followers,
+    (SUM(COALESCE(o.followers_gained, 0))::DECIMAL / NULLIF(SUM(o.impressions), 0) * 1000) as recent_f_per_1k
   FROM content_metadata cm
   JOIN outcomes o ON cm.decision_id::text = o.decision_id::text
   WHERE cm.posted_at > NOW() - INTERVAL '7 days'
@@ -247,16 +272,16 @@ BEGIN
     SELECT 
       cm.generator_name,
       COUNT(*) as posts,
-      SUM(o.followers_gained) as followers,
+      SUM(COALESCE(o.followers_gained, 0)) as followers,
       SUM(o.impressions) as impressions,
-      (SUM(o.followers_gained)::DECIMAL / NULLIF(SUM(o.impressions), 0) * 1000) as f_per_1k,
+      (SUM(COALESCE(o.followers_gained, 0))::DECIMAL / NULLIF(SUM(o.impressions), 0) * 1000) as f_per_1k,
       AVG((o.likes + o.retweets * 2 + o.replies * 3)::DECIMAL / NULLIF(o.impressions, 0)) as engagement_rate,
       AVG(o.likes) as avg_likes,
       AVG(o.retweets) as avg_retweets,
       AVG(o.replies) as avg_replies,
       AVG(cm.quality_score) as avg_quality,
-      COUNT(*) FILTER (WHERE (o.followers_gained::DECIMAL / NULLIF(o.impressions, 0) * 1000) > 5) as viral_count,
-      COUNT(*) FILTER (WHERE o.followers_gained = 0 AND o.impressions > 100) as failed_count
+      COUNT(*) FILTER (WHERE (COALESCE(o.followers_gained, 0)::DECIMAL / NULLIF(o.impressions, 0) * 1000) > 5) as viral_count,
+      COUNT(*) FILTER (WHERE COALESCE(o.followers_gained, 0) = 0 AND o.impressions > 100) as failed_count
     FROM content_metadata cm
     JOIN outcomes o ON cm.decision_id::text = o.decision_id::text
     WHERE cm.generator_name = p_generator_name
