@@ -292,7 +292,7 @@ async function fetchTwitterMetrics(tweetId: string, pass: number): Promise<Tweet
     // For now, returning a placeholder structure
     // In production, this should call your existing Twitter scraping logic
     const { collectTweetMetrics } = await import('../posting/twitterScraper');
-    return await collectTweetMetrics(tweetId, pass);
+    return await collectTweetMetrics(tweetId, pass, undefined); // TODO: Pass browser context
   } catch (error: any) {
     console.error(`[ANALYTICS_COLLECTOR] ⚠️ Failed to fetch Twitter metrics: ${error.message}`);
     return null;
