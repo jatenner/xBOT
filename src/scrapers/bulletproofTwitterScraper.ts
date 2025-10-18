@@ -16,6 +16,7 @@ import path from 'path';
 export interface ScrapedMetrics {
   likes: number | null;
   retweets: number | null;
+  quote_tweets: number | null;
   replies: number | null;
   bookmarks: number | null;
   views: number | null;
@@ -50,6 +51,12 @@ const SELECTORS = {
     '[aria-label*="repost"] span',
     '[aria-label*="retweet"] span',
     'div[role="group"] button:nth-child(2) span'
+  ],
+  quote_tweets: [
+    '[data-testid="retweet"] [aria-label*="quote"]',
+    '[aria-label*="quote"] span',
+    'div[role="group"] [href*="quotes"] span',
+    'a[href$="/quotes"] span'
   ],
   replies: [
     '[data-testid="reply"] span:not([aria-hidden])',
@@ -124,13 +131,14 @@ export class BulletproofTwitterScraper {
         // Step 3: Validate extracted metrics
         if (this.areMetricsValid(metrics)) {
           console.log(`  ✅ SCRAPER: Success on attempt ${attempt}`);
-          console.log(`     Likes: ${metrics.likes}, Retweets: ${metrics.retweets}, Replies: ${metrics.replies}`);
+          console.log(`     Likes: ${metrics.likes}, Retweets: ${metrics.retweets}, Quote Tweets: ${metrics.quote_tweets}, Replies: ${metrics.replies}`);
 
           return {
             success: true,
             metrics: {
               likes: metrics.likes ?? null,
               retweets: metrics.retweets ?? null,
+              quote_tweets: metrics.quote_tweets ?? null,
               replies: metrics.replies ?? null,
               bookmarks: metrics.bookmarks ?? null,
               views: metrics.views ?? null,
@@ -181,6 +189,7 @@ export class BulletproofTwitterScraper {
       metrics: {
         likes: null,
         retweets: null,
+        quote_tweets: null,
         replies: null,
         bookmarks: null,
         views: null,
@@ -274,6 +283,7 @@ export class BulletproofTwitterScraper {
     // Extract each metric with fallbacks
     results.likes = await this.extractMetricWithFallbacks(page, 'likes', SELECTORS.likes);
     results.retweets = await this.extractMetricWithFallbacks(page, 'retweets', SELECTORS.retweets);
+    results.quote_tweets = await this.extractMetricWithFallbacks(page, 'quote_tweets', SELECTORS.quote_tweets);
     results.replies = await this.extractMetricWithFallbacks(page, 'replies', SELECTORS.replies);
     results.bookmarks = await this.extractMetricWithFallbacks(page, 'bookmarks', SELECTORS.bookmarks);
     results.views = await this.extractMetricWithFallbacks(page, 'views', SELECTORS.views);
