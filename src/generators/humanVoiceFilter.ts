@@ -6,6 +6,7 @@
  */
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
+import { parseAIJson } from '../utils/aiJsonParser';
 
 export async function humanizeContent(content: string | string[]): Promise<string | string[]> {
   const isThread = Array.isArray(content);
@@ -61,7 +62,7 @@ TONE: Casual expert. Like you're the friend who knows way too much about health 
       response_format: { type: 'json_object' }
     }, { purpose: 'human_voice_filter' });
     
-    const parsed = JSON.parse(response.choices[0].message.content || '{}');
+    const parsed = parseAIJson(response.choices[0].message.content || '{}');
     
     if (isThread) {
       const humanized = parsed.tweets || parsed.thread || content;

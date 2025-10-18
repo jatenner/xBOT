@@ -11,8 +11,11 @@
  */
 
 import { OpenAI } from 'openai';
+import { parseAIJson } from '../utils/aiJsonParser';
 import { createClient } from '@supabase/supabase-js';
+import { parseAIJson } from '../utils/aiJsonParser';
 import Redis from 'ioredis';
+import { parseAIJson } from '../utils/aiJsonParser';
 
 export interface AIContentResult {
   content: string[];
@@ -291,7 +294,7 @@ Format: {"optimal_time": "ISO_STRING", "confidence": NUMBER, "reasoning": "STRIN
     });
 
     try {
-      const aiDecision = JSON.parse(response.choices[0]?.message?.content || '{}');
+      const aiDecision = parseAIJson(response.choices[0]?.message?.content || '{}');
       return new Date(aiDecision.optimal_time || Date.now() + 1800000); // Default: 30 min from now
     } catch {
       return new Date(Date.now() + 1800000); // Fallback: 30 minutes

@@ -6,6 +6,7 @@
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { validateAndExtractContent } from './generatorUtils';
+import { parseAIJson } from '../utils/aiJsonParser';
 
 export interface CoachContent {
   content: string | string[];
@@ -99,7 +100,7 @@ What's the mechanism that makes it work?`;
       response_format: { type: 'json_object' }
     }, { purpose: 'coach_content_generation' });
 
-    const parsed = JSON.parse(response.choices[0].message.content || '{}');
+    const parsed = parseAIJson(response.choices[0].message.content || '{}');
     
     return {
       content: validateAndExtractContent(parsed, format, 'COACH'),

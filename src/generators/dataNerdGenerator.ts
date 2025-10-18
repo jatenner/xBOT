@@ -6,6 +6,7 @@
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { validateAndExtractContent } from './generatorUtils';
+import { parseAIJson } from '../utils/aiJsonParser';
 
 export interface DataNerdContent {
   content: string | string[];
@@ -97,7 +98,7 @@ Make the statistics actually interesting.`;
       response_format: { type: 'json_object' }
     }, { purpose: 'data_nerd_content_generation' });
 
-    const parsed = JSON.parse(response.choices[0].message.content || '{}');
+    const parsed = parseAIJson(response.choices[0].message.content || '{}');
     
     return {
       content: validateAndExtractContent(parsed, format, 'DATA_NERD'),

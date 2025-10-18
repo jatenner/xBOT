@@ -6,6 +6,7 @@
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { validateAndExtractContent } from './generatorUtils';
+import { parseAIJson } from '../utils/aiJsonParser';
 
 export interface ExplorerContent {
   content: string | string[];
@@ -100,7 +101,7 @@ Explain the mechanism that makes it fascinating.`;
       response_format: { type: 'json_object' }
     }, { purpose: 'explorer_content_generation' });
 
-    const parsed = JSON.parse(response.choices[0].message.content || '{}');
+    const parsed = parseAIJson(response.choices[0].message.content || '{}');
     
     return {
       content: validateAndExtractContent(parsed, format, 'EXPLORER'),

@@ -9,7 +9,9 @@
  */
 
 import { getUnifiedDataManager } from '../lib/unifiedDataManager';
+import { parseAIJson } from '../utils/aiJsonParser';
 import { getOpenAIService } from '../services/openAIService';
+import { parseAIJson } from '../utils/aiJsonParser';
 
 interface DetailedMetrics {
   postId: string;
@@ -221,7 +223,7 @@ Return JSON:
         priority: 'medium'
       });
 
-      const analysis = JSON.parse(response.choices[0]?.message?.content || '{}');
+      const analysis = parseAIJson(response.choices[0]?.message?.content || '{}');
       console.log(`✅ CONTENT_ANALYSIS: Hook type: ${analysis.hookType}, Effectiveness: ${analysis.hookEffectiveness}/10`);
       
       return analysis;
