@@ -37,6 +37,25 @@ export interface AccountScore {
 }
 
 export class AIAccountDiscovery {
+  
+  /**
+   * Fallback health accounts if discovered_accounts table isn't ready
+   */
+  private getFallbackHealthAccounts(): any[] {
+    return [
+      { username: 'hubermanlab', description: 'Neuroscience & health optimization' },
+      { username: 'PeterAttiaMD', description: 'Longevity & performance medicine' },
+      { username: 'foundmyfitness', description: 'Dr. Rhonda Patrick - Health science' },
+      { username: 'bengreenfield', description: 'Biohacking & fitness' },
+      { username: 'drjasonchung', description: 'Preventative medicine' },
+      { username: 'GaryBrecka', description: 'Human biologist & biohacker' },
+      { username: 'BryanJohnson_', description: 'Anti-aging optimization' },
+      { username: 'MarkHymanMD', description: 'Functional medicine doctor' },
+      { username: 'davestacy', description: 'Health optimization' },
+      { username: 'SachinPanda', description: 'Circadian biology researcher' }
+    ];
+  }
+  
   private static instance: AIAccountDiscovery;
   
   // Health-related hashtags to monitor
@@ -138,6 +157,15 @@ export class AIAccountDiscovery {
     console.log('[AI_DISCOVERY] 🕸️ Mapping network connections...');
     
     const supabase = getSupabaseClient();
+    
+    // Ensure table exists before querying
+    const { ensureTableOrSkip } = await import('../db/ensureDiscoveredAccounts');
+    const tableReady = await ensureTableOrSkip('REPLY_DISCOVERY');
+    if (!tableReady) {
+      console.warn('[AI_REPLY] ⚠️ Skipping discovery - table not ready, using fallback targets');
+      // Use fallback health accounts
+      return this.getFallbackHealthAccounts();
+    }
     
     // Get existing target accounts
     const { data: existingTargets } = await supabase
@@ -274,7 +302,13 @@ Format your response as JSON with array of accounts.`
     
     const supabase = getSupabaseClient();
     
-    // Tables are created via migrations, no need to create here
+    // Ensure table exists before storing
+    const { ensureTableOrSkip } = await import('../db/ensureDiscoveredAccounts');
+    const tableReady = await ensureTableOrSkip('ACCOUNT_DISCOVERY');
+    if (!tableReady) {
+      console.warn('[AI_DISCOVERY] ⚠️ Skipping storage - table not ready');
+      return;
+    }
     
     // Upsert accounts
     for (const account of accounts) {
@@ -305,6 +339,14 @@ Format your response as JSON with array of accounts.`
     console.log('[AI_DISCOVERY] 📊 Scoring all accounts...');
     
     const supabase = getSupabaseClient();
+    
+    // Ensure table exists before scoring
+    const { ensureTableOrSkip } = await import('../db/ensureDiscoveredAccounts');
+    const tableReady = await ensureTableOrSkip('ACCOUNT_SCORING');
+    if (!tableReady) {
+      console.warn('[AI_DISCOVERY] ⚠️ Skipping scoring - table not ready');
+      return;
+    }
     
     const { data: accounts } = await supabase
       .from('discovered_accounts')
@@ -457,6 +499,14 @@ Format your response as JSON with array of accounts.`
    */
   async getTopTargets(limit: number = 50): Promise<any[]> {
     const supabase = getSupabaseClient();
+    
+    // Ensure table exists before selecting
+    const { ensureTableOrSkip } = await import('../db/ensureDiscoveredAccounts');
+    const tableReady = await ensureTableOrSkip('TARGET_SELECTION');
+    if (!tableReady) {
+      console.warn('[AI_DISCOVERY] ⚠️ Table not ready, returning fallback targets');
+      return this.getFallbackHealthAccounts().slice(0, limit);
+    }
     
     const { data: targets } = await supabase
       .from('discovered_accounts')
