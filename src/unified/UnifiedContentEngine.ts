@@ -246,6 +246,10 @@ export class UnifiedContentEngine {
           viral_probability: prediction.viralProbability,
           confidence: prediction.confidence,
           
+          // GENERATOR TRACKING (for autonomous learning)
+          generator_name: generatorName,
+          generator_confidence: confidence,
+          
           learning_insights_used: insights.topHooks.slice(0, 3),
           viral_patterns_applied: insights.successPatterns.slice(0, 3).map(p => p.pattern),
           failed_patterns_avoided: insights.failedPatterns.slice(0, 3).map(p => p.pattern),
@@ -277,6 +281,151 @@ export class UnifiedContentEngine {
   }
   
   // ═══════════════════════════════════════════════════════════
+  // DYNAMIC WEIGHT LOADING (AUTONOMOUS LEARNING)
+  // ═══════════════════════════════════════════════════════════
+  
+  /**
+   * Load generator weights from database (autonomous learning system)
+   */
+  private async loadDynamicWeights(experimentArm: string): Promise<Record<string, number>> {
+    try {
+      // Query database for current weights
+      const { data, error } = await this.supabase
+        .from('generator_weights')
+        .select('generator_name, weight')
+        .eq('status', 'active');
+      
+      if (error) {
+        console.warn('⚠️ UNIFIED_ENGINE: Failed to load weights from DB, using defaults:', error.message);
+        return this.getDefaultWeights(experimentArm);
+      }
+      
+      if (!data || data.length === 0) {
+        console.warn('⚠️ UNIFIED_ENGINE: No weights in DB, using defaults');
+        return this.getDefaultWeights(experimentArm);
+      }
+      
+      // Convert to weight object
+      const weights: Record<string, number> = {};
+      for (const row of data) {
+        weights[row.generator_name] = row.weight;
+      }
+      
+      console.log(`✅ UNIFIED_ENGINE: Loaded ${data.length} generator weights from database`);
+      
+      // Apply experiment arm adjustments
+      if (experimentArm === 'variant_a') {
+        // Moderate exploration - flatten weights slightly
+        return this.flattenWeights(weights, 0.3);
+      } else if (experimentArm === 'variant_b') {
+        // Aggressive exploration - boost low performers
+        return this.boostLowPerformers(weights);
+      }
+      
+      return weights;
+      
+    } catch (error: any) {
+      console.error('❌ UNIFIED_ENGINE: Weight loading failed:', error.message);
+      return this.getDefaultWeights(experimentArm);
+    }
+  }
+  
+  /**
+   * Get default weights (fallback if DB fails)
+   */
+  private getDefaultWeights(experimentArm: string): Record<string, number> {
+    return experimentArm === 'control'
+      ? {
+          humanVoice: 0.15,
+          newsReporter: 0.12,
+          storyteller: 0.12,
+          interesting: 0.10,
+          provocateur: 0.10,
+          dataNerd: 0.10,
+          mythBuster: 0.10,
+          coach: 0.08,
+          thoughtLeader: 0.05,
+          contrarian: 0.04,
+          explorer: 0.02,
+          philosopher: 0.02
+        }
+      : experimentArm === 'variant_a'
+      ? {
+          humanVoice: 0.10,
+          newsReporter: 0.08,
+          storyteller: 0.08,
+          interesting: 0.08,
+          provocateur: 0.08,
+          dataNerd: 0.09,
+          mythBuster: 0.09,
+          coach: 0.10,
+          thoughtLeader: 0.08,
+          contrarian: 0.08,
+          explorer: 0.07,
+          philosopher: 0.07
+        }
+      : {
+          humanVoice: 0.05,
+          newsReporter: 0.06,
+          storyteller: 0.10,
+          interesting: 0.10,
+          provocateur: 0.10,
+          dataNerd: 0.08,
+          mythBuster: 0.08,
+          coach: 0.08,
+          thoughtLeader: 0.10,
+          contrarian: 0.10,
+          explorer: 0.08,
+          philosopher: 0.07
+        };
+  }
+  
+  /**
+   * Flatten weight distribution for exploration
+   */
+  private flattenWeights(weights: Record<string, number>, factor: number): Record<string, number> {
+    const avg = Object.values(weights).reduce((a, b) => a + b, 0) / Object.keys(weights).length;
+    const flattened: Record<string, number> = {};
+    
+    for (const [gen, weight] of Object.entries(weights)) {
+      flattened[gen] = weight * (1 - factor) + avg * factor;
+    }
+    
+    // Normalize
+    const total = Object.values(flattened).reduce((a, b) => a + b, 0);
+    for (const gen in flattened) {
+      flattened[gen] /= total;
+    }
+    
+    return flattened;
+  }
+  
+  /**
+   * Boost low performers for exploration
+   */
+  private boostLowPerformers(weights: Record<string, number>): Record<string, number> {
+    const boosted: Record<string, number> = {};
+    const sorted = Object.entries(weights).sort((a, b) => a[1] - b[1]);
+    const lowPerformers = sorted.slice(0, Math.ceil(sorted.length / 3)).map(([name]) => name);
+    
+    for (const [gen, weight] of Object.entries(weights)) {
+      if (lowPerformers.includes(gen)) {
+        boosted[gen] = weight * 1.3; // 30% boost
+      } else {
+        boosted[gen] = weight * 0.9; // 10% reduction
+      }
+    }
+    
+    // Normalize
+    const total = Object.values(boosted).reduce((a, b) => a + b, 0);
+    for (const gen in boosted) {
+      boosted[gen] /= total;
+    }
+    
+    return boosted;
+  }
+  
+  // ═══════════════════════════════════════════════════════════
   // PERSONA SELECTION & GENERATION (THE REAL GENERATORS!)
   // ═══════════════════════════════════════════════════════════
   
@@ -304,56 +453,10 @@ export class UnifiedContentEngine {
     experimentArm: string;
   }): Promise<{ generatorName: string; content: string | string[]; confidence: number }> {
     
-    // Define generator weights based on experiment arm (12 generators total)
-    const generatorWeights = params.experimentArm === 'control'
-      ? {
-          // Exploit proven patterns - more weight on reliable generators
-          humanVoice: 0.15,
-          newsReporter: 0.12,
-          storyteller: 0.12,
-          interesting: 0.10,
-          provocateur: 0.10,
-          dataNerd: 0.10,
-          mythBuster: 0.10,
-          coach: 0.08,
-          thoughtLeader: 0.05,
-          contrarian: 0.04,
-          explorer: 0.02,
-          philosopher: 0.02
-        }
-      : params.experimentArm === 'variant_a'
-      ? {
-          // Moderate exploration - balanced weights
-          humanVoice: 0.10,
-          newsReporter: 0.08,
-          storyteller: 0.08,
-          interesting: 0.08,
-          provocateur: 0.08,
-          dataNerd: 0.09,
-          mythBuster: 0.09,
-          coach: 0.10,
-          thoughtLeader: 0.08,
-          contrarian: 0.08,
-          explorer: 0.07,
-          philosopher: 0.07
-        }
-      : {
-          // Aggressive exploration - more weight on experimental generators
-          humanVoice: 0.05,
-          newsReporter: 0.06,
-          storyteller: 0.10,
-          interesting: 0.10,
-          provocateur: 0.10,
-          dataNerd: 0.08,
-          mythBuster: 0.08,
-          coach: 0.08,
-          thoughtLeader: 0.10,
-          contrarian: 0.10,
-          explorer: 0.08,
-          philosopher: 0.07
-        };
+    // LOAD DYNAMIC WEIGHTS FROM DATABASE (Autonomous Learning!)
+    const generatorWeights = await this.loadDynamicWeights(params.experimentArm);
     
-    // Weighted random selection
+    // Weighted random selection using dynamic weights
     const random = Math.random();
     let cumulativeWeight = 0;
     let selectedGenerator: keyof typeof generatorWeights;

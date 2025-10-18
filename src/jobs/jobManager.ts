@@ -235,6 +235,15 @@ export class JobManager {
     }, 6 * 60 * 60 * 1000)); // 6 hours
     registered.ai_orchestration = true;
     
+    // AUTONOMOUS OPTIMIZATION - every 6 hours to optimize generator weights based on performance
+    this.timers.set('autonomous_optimization', setInterval(async () => {
+      await this.safeExecute('autonomous_optimization', async () => {
+        const { runAutonomousOptimization } = await import('./autonomousOptimizationJob');
+        await runAutonomousOptimization();
+      });
+    }, 6 * 60 * 60 * 1000)); // 6 hours
+    registered.autonomous_optimization = true;
+    
     // NEWS SCRAPING - every 1 hour to scrape Twitter for health news
     this.timers.set('news_scraping', setInterval(async () => {
       await this.safeExecute('news_scraping', async () => {
