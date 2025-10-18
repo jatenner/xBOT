@@ -9,8 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getConfig } from '../config/config';
 import { checkLLMAllowed } from '../budget/guard';
 import { getSupabaseClient } from '../db/index';
-// SMART BATCH FIX: UnifiedContentEngine was deleted, using alternative
-// import { UnifiedContentEngine } from '../unified/UnifiedContentEngine';
+import { UnifiedContentEngine } from '../unified/UnifiedContentEngine';
 
 // Metrics
 let planMetrics = {
@@ -95,24 +94,7 @@ async function generateRealContent(): Promise<void> {
   const decisions = [];
   const numToGenerate = 2; // 2 posts per cycle (aggressive growth mode)
   
-  // SMART BATCH FIX: Use alternative content generation
-  // const engine = UnifiedContentEngine.getInstance();
-  
-  // Temporary stub - generate simple content
-  const generateStubContent = () => ({
-    content: "Health tip: Stay hydrated! Drinking enough water supports every system in your body.",
-    threadParts: null,
-    metadata: {
-      quality_score: 75,
-      viral_probability: 0.15,
-      predicted_likes: 5,
-      predicted_followers: 1,
-      experiment_arm: 'control',
-      systems_active: ['stub'],
-      viral_patterns_applied: [],
-      learning_insights_used: []
-    }
-  });
+  const engine = UnifiedContentEngine.getInstance();
   
   for (let i = 0; i < numToGenerate; i++) {
     try {
@@ -121,9 +103,9 @@ async function generateRealContent(): Promise<void> {
       // ═══════════════════════════════════════════════════════════
       // GENERATE WITH ALL SYSTEMS ACTIVE
       // ═══════════════════════════════════════════════════════════
-      // SMART BATCH FIX: Use stub content generation
-      const generated = generateStubContent();
-      // Original: await engine.generateContent({ format: Math.random() < 0.3 ? 'thread' : 'single' });
+      const generated = await engine.generateContent({
+        format: Math.random() < 0.3 ? 'thread' : 'single' // 30% threads, 70% singles
+      });
       
       // Update metrics
       planMetrics.avg_quality_score = 
