@@ -79,7 +79,7 @@ export async function metricsScraperJob(): Promise<void> {
           }
         
           // Calculate first hour engagement if this is collected within first hour
-          const postedAt = new Date(post.posted_at);
+          const postedAt = new Date(String(post.posted_at));
           const collectedAt = new Date();
           const hoursSincePost = (collectedAt.getTime() - postedAt.getTime()) / (1000 * 60 * 60);
           const isFirstHour = hoursSincePost <= 1;
