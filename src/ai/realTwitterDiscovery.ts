@@ -57,6 +57,7 @@ export class RealTwitterDiscovery {
 
   /**
    * Discover accounts via Twitter search (REAL SCRAPING)
+   * SMART BATCH FIX: Updated selectors + rate limiting + fallbacks
    */
   async discoverAccountsViaSearch(hashtag: string, limit: number = 10): Promise<DiscoveredAccount[]> {
     console.log(`[REAL_DISCOVERY] 🔍 Searching Twitter for #${hashtag}...`);
@@ -66,47 +67,118 @@ export class RealTwitterDiscovery {
         const page = await context.newPage();
         
         try {
-          // Search for hashtag
-          const searchUrl = `https://twitter.com/search?q=%23${hashtag}&src=typed_query&f=top`;
-          await page.goto(searchUrl, { waitUntil: 'networkidle', timeout: 30000 });
-          await page.waitForTimeout(3000);
+          // SMART BATCH FIX: Use x.com and better search URL
+          const searchUrl = `https://x.com/search?q=%23${hashtag}&src=typed_query&f=live`;
+          await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
           
-          // Extract accounts from search results
+          // SMART BATCH FIX: Wait for tweets with multiple fallback selectors
+          const tweetsLoaded = await Promise.race([
+            page.waitForSelector('article[data-testid="tweet"]', { timeout: 15000 }).catch(() => null),
+            page.waitForSelector('div[data-testid="cellInnerDiv"]', { timeout: 15000 }).catch(() => null),
+            page.waitForSelector('article[role="article"]', { timeout: 15000 }).catch(() => null),
+            page.waitForTimeout(10000).then(() => null)  // Give up after 10s
+          ]);
+          
+          if (!tweetsLoaded) {
+            console.warn(`[REAL_DISCOVERY] ⚠️ No tweets loaded for #${hashtag}`);
+            return [];
+          }
+          
+          // SMART BATCH FIX: Enhanced account extraction with multiple strategies
           const accounts = await page.evaluate(() => {
             const results: any[] = [];
-            const tweetElements = document.querySelectorAll('article[data-testid="tweet"]');
+            
+            // Strategy 1: Try data-testid="tweet" articles
+            let tweetElements = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
+            
+            // Strategy 2: Fallback to any articles
+            if (tweetElements.length === 0) {
+              tweetElements = Array.from(document.querySelectorAll('article[role="article"]'));
+            }
+            
+            // Strategy 3: Fallback to cell divs
+            if (tweetElements.length === 0) {
+              tweetElements = Array.from(document.querySelectorAll('div[data-testid="cellInnerDiv"]'));
+            }
             
             for (let i = 0; i < Math.min(tweetElements.length, 20); i++) {
               const tweet = tweetElements[i];
-              const authorEl = tweet.querySelector('[data-testid="User-Name"]');
               
-              if (authorEl) {
-                const text = authorEl.textContent || '';
+              // Multiple strategies to extract username
+              let username = '';
+              
+              // Strategy A: User-Name testid
+              const userNameEl = tweet.querySelector('[data-testid="User-Name"]');
+              if (userNameEl) {
+                const text = userNameEl.textContent || '';
                 const matches = text.match(/@(\w+)/);
                 if (matches && matches[1]) {
-                  results.push({
-                    username: matches[1],
-                    discovery_method: 'hashtag'
-                  });
+                  username = matches[1];
                 }
+              }
+              
+              // Strategy B: Profile link
+              if (!username) {
+                const profileLink = tweet.querySelector('a[href^="/"][href*="status"]');
+                if (profileLink) {
+                  const href = profileLink.getAttribute('href') || '';
+                  const pathParts = href.split('/');
+                  if (pathParts.length >= 2 && pathParts[1]) {
+                    username = pathParts[1];
+                  }
+                }
+              }
+              
+              // Strategy C: Any link with username pattern
+              if (!username) {
+                const links = tweet.querySelectorAll('a[href^="/"]');
+                for (const link of links) {
+                  const href = link.getAttribute('href') || '';
+                  const match = href.match(/^\/([a-zA-Z0-9_]+)$/);
+                  if (match && match[1] && !match[1].includes('status')) {
+                    username = match[1];
+                    break;
+                  }
+                }
+              }
+              
+              if (username && username !== 'home' && username !== 'search' && username !== 'notifications') {
+                results.push({
+                  username: username,
+                  discovery_method: 'hashtag'
+                });
               }
             }
             
-            return results;
+            // Remove duplicates
+            const unique = results.filter((item, index, arr) => 
+              arr.findIndex(other => other.username === item.username) === index
+            );
+            
+            return unique;
           });
           
           console.log(`[REAL_DISCOVERY] ✅ Found ${accounts.length} accounts for #${hashtag}`);
           
-          // Get full account details
+          // SMART BATCH FIX: Rate limit between account detail fetches
           const discovered: DiscoveredAccount[] = [];
           for (const account of accounts.slice(0, limit)) {
-            const details = await this.getAccountDetails(page, account.username);
-            if (details) {
-              discovered.push({
-                ...details,
-                discovery_method: 'hashtag',
-                discovery_date: new Date().toISOString()
-              });
+            try {
+              const details = await this.getAccountDetails(page, account.username);
+              if (details) {
+                discovered.push({
+                  ...details,
+                  discovery_method: 'hashtag',
+                  discovery_date: new Date().toISOString()
+                });
+              }
+              
+              // Rate limit: 3 seconds between account fetches
+              await new Promise(resolve => setTimeout(resolve, 3000));
+              
+            } catch (err) {
+              console.warn(`[REAL_DISCOVERY] ⚠️ Failed to get details for @${account.username}`);
+              continue;
             }
           }
           

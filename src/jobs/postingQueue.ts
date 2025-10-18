@@ -101,29 +101,39 @@ async function checkPostingRateLimits(): Promise<boolean> {
     const { getSupabaseClient } = await import('../db/index');
     const supabase = getSupabaseClient();
     
+    // SMART BATCH FIX: Use exact time window from database timestamps
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     
-    // SEPARATE RATE LIMITS: Content posts (2/hr) vs Replies (10/hr)
-    // Only check CONTENT posts here - replies have their own quota in replyJob
-    const { count, error } = await supabase
+    // Query actual posted content (not queued)
+    const { data: recentPosts, error } = await supabase
       .from('posted_decisions')
-      .select('*', { count: 'exact', head: true })
-      .in('decision_type', ['single', 'thread'])  // Count content posts (single + thread), not replies
-      .gte('posted_at', oneHourAgo);
+      .select('decision_id, decision_type, posted_at')
+      .in('decision_type', ['single', 'thread'])
+      .gte('posted_at', oneHourAgo)
+      .order('posted_at', { ascending: false });
     
     if (error) {
       console.warn('[POSTING_QUEUE] ⚠️ Failed to check posting rate limit, allowing posts');
       return true;
     }
     
-    const recentPosts = count || 0;
-    if (recentPosts >= maxPostsPerHour) {
-      console.log(`[POSTING_QUEUE] ⚠️ Hourly CONTENT post limit reached: ${recentPosts}/${maxPostsPerHour}`);
+    const count = recentPosts?.length || 0;
+    
+    if (count >= maxPostsPerHour) {
+      console.log(`[POSTING_QUEUE] ⚠️ Hourly CONTENT post limit reached: ${count}/${maxPostsPerHour}`);
       console.log(`[POSTING_QUEUE] ℹ️ Note: Replies have separate 4/hr limit and can still post`);
+      
+      // Log most recent post time for debugging
+      if (recentPosts && recentPosts.length > 0) {
+        const mostRecent = recentPosts[0].posted_at;
+        const nextAvailable = new Date(new Date(String(mostRecent)).getTime() + 60 * 60 * 1000);
+        console.log(`[POSTING_QUEUE] 📅 Next post available after: ${nextAvailable.toISOString()}`);
+      }
+      
       return false;
     }
     
-    console.log(`[POSTING_QUEUE] ✅ Post budget available: ${recentPosts}/${maxPostsPerHour} content posts`);
+    console.log(`[POSTING_QUEUE] ✅ Post budget available: ${count}/${maxPostsPerHour} content posts`);
     return true;
     
   } catch (error) {
@@ -274,6 +284,15 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
 
 async function processDecision(decision: QueuedDecision): Promise<void> {
   console.log(`[POSTING_QUEUE] 📮 Processing ${decision.decision_type}: ${decision.id}`);
+  
+  // SMART BATCH FIX: Hard stop - double-check rate limit before EVERY post
+  if (decision.decision_type === 'single' || decision.decision_type === 'thread') {
+    const canPost = await checkPostingRateLimits();
+    if (!canPost) {
+      console.log(`[POSTING_QUEUE] ⛔ HARD STOP: Rate limit reached, skipping ${decision.id}`);
+      return; // Don't process this decision
+    }
+  }
   
     // Note: We keep status as 'queued' until actually posted
     // No intermediate 'posting' status to avoid DB constraint violations
@@ -430,6 +449,35 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
       console.log('[LEARNING_SYSTEM] ✅ Post ' + decision.id + ' tracked');
     } catch (learningError: any) {
       console.warn('[LEARNING_SYSTEM] ⚠️ Failed to track post:', learningError.message);
+    }
+    
+    // SMART BATCH FIX: Immediate metrics scraping after post
+    try {
+      console.log(`[METRICS] 🔍 Collecting initial metrics for ${tweetId}...`);
+      
+      // Wait 30 seconds for tweet to be indexed by Twitter
+      await new Promise(resolve => setTimeout(resolve, 30000));
+      
+      // SMART BATCH FIX: Simplified metrics collection (avoid complex scraping in posting flow)
+      // Store placeholder entry, let scheduled scraper collect real metrics
+      await supabase.from('outcomes').upsert({
+        decision_id: decision.id,
+        tweet_id: tweetId,
+        likes: null, // Will be filled by scheduled scraper
+        retweets: null,
+        replies: null,
+        views: null,
+        bookmarks: null,
+        impressions: null,
+        collected_at: new Date().toISOString(),
+        data_source: 'post_placeholder',
+        simulated: false
+      }, { onConflict: 'decision_id' });
+      
+      console.log(`[METRICS] ✅ Placeholder created for ${tweetId}, scheduled scraper will collect metrics`);
+    } catch (metricsError: any) {
+      console.warn(`[METRICS] ⚠️ Failed to collect initial metrics: ${metricsError.message}`);
+      // Don't fail the post, just log and continue
     }
     
   } catch (error) {

@@ -319,25 +319,37 @@ export class UltimateTwitterPoster {
   }
 
   private async postWithNetworkVerification(): Promise<PostResult> {
-    if (!this.page) throw new Error('Page not initialized');
+        if (!this.page) throw new Error('Page not initialized');
 
-    console.log('ULTIMATE_POSTER: Setting up robust posting with fallback verification...');
-    
-    // PHASE 3.5: Set up redirect listener to capture real tweet ID
-    // Twitter briefly redirects to /status/[ID] after posting (200-500ms window)
-    this.capturedTweetId = null; // Reset
-    this.page.on('framenavigated', (frame) => {
-      if (frame === this.page?.mainFrame()) {
-        const url = frame.url();
-        if (url.includes('/status/') && !this.capturedTweetId) {
-          const match = url.match(/\/status\/(\d+)/);
-          if (match && match[1]) {
-            this.capturedTweetId = match[1];
-            console.log(`ULTIMATE_POSTER: 🎯 REDIRECT CAPTURED: ${this.capturedTweetId}`);
-          }
-        }
-      }
-    });
+        console.log('ULTIMATE_POSTER: Setting up robust posting with fallback verification...');
+        
+        // SMART BATCH FIX: Set up redirect listener EARLY and with Promise
+        this.capturedTweetId = null; // Reset
+        
+        const redirectPromise = new Promise<string>((resolve) => {
+          const handler = (frame: any) => {
+            if (frame === this.page?.mainFrame()) {
+              const url = frame.url();
+              if (url.includes('/status/') && !this.capturedTweetId) {
+                const match = url.match(/\/status\/(\d+)/);
+                if (match && match[1]) {
+                  this.capturedTweetId = match[1];
+                  console.log(`ULTIMATE_POSTER: 🎯 REDIRECT CAPTURED: ${this.capturedTweetId}`);
+                  this.page?.off('framenavigated', handler); // Remove listener
+                  resolve(match[1]);
+                }
+              }
+            }
+          };
+          
+          this.page!.on('framenavigated', handler);
+          
+          // Timeout after 5 seconds
+          setTimeout(() => {
+            this.page?.off('framenavigated', handler);
+            resolve('');
+          }, 5000);
+        });
     
     // Set up network response monitoring (with longer timeout and more patterns)
     let networkVerificationPromise: Promise<any> | null = null;
@@ -536,7 +548,14 @@ export class UltimateTwitterPoster {
       if (results.some(r => r === true)) {
         console.log('ULTIMATE_POSTER: ✅ UI verification successful - post confirmed');
         
-        // PHASE 3 FIX: Try to extract real tweet ID from URL
+        // SMART BATCH FIX: Try redirect promise first, then fallback
+        const redirectId = await redirectPromise;
+        if (redirectId) {
+          console.log(`ULTIMATE_POSTER: ✅ Using redirect ID: ${redirectId}`);
+          return { success: true, tweetId: redirectId };
+        }
+        
+        // Fallback to traditional extraction
         const tweetId = await this.extractTweetIdFromUrl();
         return { success: true, tweetId };
       }
@@ -554,7 +573,14 @@ export class UltimateTwitterPoster {
           // No errors found and we successfully clicked - assume success!
           console.log('ULTIMATE_POSTER: ✅ No critical errors detected - POST LIKELY SUCCESSFUL');
           
-          // PHASE 3 FIX: Try to extract real tweet ID from URL
+          // SMART BATCH FIX: Try redirect promise first, then fallback
+          const redirectId = await redirectPromise;
+          if (redirectId) {
+            console.log(`ULTIMATE_POSTER: ✅ Using redirect ID: ${redirectId}`);
+            return { success: true, tweetId: redirectId };
+          }
+          
+          // Fallback to traditional extraction
           const tweetId = await this.extractTweetIdFromUrl();
           return { success: true, tweetId };
         } else {
