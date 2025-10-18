@@ -40,6 +40,7 @@ export interface ContentRequest {
   format?: 'single' | 'thread';
   experimentArm?: 'control' | 'variant_a' | 'variant_b';
   forceGeneration?: boolean;
+  enableEnrichment?: boolean; // Enable contrast injection (disabled by default)
 }
 
 export interface GeneratedContent {
