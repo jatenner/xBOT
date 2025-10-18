@@ -421,7 +421,8 @@ Return JSON:
         priority: 'high'
       });
 
-      let aiPrediction = JSON.parse(response.choices[0]?.message?.content || '{}');
+      const rawContent = response.choices[0]?.message?.content || '{}';
+      let aiPrediction = parseAIJson(rawContent);
       
       // Apply context adjustments
       aiPrediction.predictedLikes = Math.round(aiPrediction.predictedLikes * contextAdjustments.timingMultiplier);
