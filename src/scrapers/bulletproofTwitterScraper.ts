@@ -390,38 +390,83 @@ export class BulletproofTwitterScraper {
   /**
    * Extract number from a selector
    * PHASE 1 FIX: Now searches within specific element, not entire page
-   * This prevents grabbing follower counts, tweet counts, etc. from sidebar
+   * PHASE 2 FIX: Added comprehensive debug logging to identify selector issues
    */
   private async extractNumberFromSelector(
     tweetArticle: any, // ElementHandle
     selector: string
   ): Promise<number | null> {
     try {
+      // Find the element first
+      const element = await tweetArticle.$(selector);
+      if (!element) {
+        return null;
+      }
+
+      // COMPREHENSIVE DEBUG LOGGING - Shows EXACTLY what we're scraping
+      try {
+        const debugInfo = await element.evaluate((el: any) => {
+          return {
+            tagName: el.tagName,
+            outerHTML: el.outerHTML.substring(0, 300), // First 300 chars
+            textContent: el.textContent?.trim() || '',
+            innerHTML: el.innerHTML?.substring(0, 200),
+            ariaLabel: el.getAttribute('aria-label'),
+            dataTestId: el.getAttribute('data-testid'),
+            className: el.className,
+            parentTag: el.parentElement?.tagName,
+            childrenCount: el.children?.length || 0
+          };
+        });
+        
+        console.log(`    🔍 SELECTOR_DEBUG: ${selector}`);
+        console.log(`       Tag: ${debugInfo.tagName}, TestID: ${debugInfo.dataTestId}`);
+        console.log(`       Text: "${debugInfo.textContent}"`);
+        console.log(`       HTML: ${debugInfo.outerHTML}`);
+        console.log(`       Children: ${debugInfo.childrenCount}, Parent: ${debugInfo.parentTag}`);
+        
+        if (debugInfo.ariaLabel) {
+          console.log(`       AriaLabel: ${debugInfo.ariaLabel}`);
+        }
+      } catch (debugError) {
+        console.log(`    ⚠️ Debug logging failed: ${debugError}`);
+      }
+
       // CRITICAL FIX: Use tweetArticle.$eval instead of page.$eval
       // This searches ONLY within the tweet article, not the entire document
       const text = await tweetArticle.$eval(selector, (el: any) => el.textContent?.trim() || '');
 
       if (!text || text === '0' || text === '') {
+        console.log(`       ➜ Extracted: 0 (empty or zero)`);
         return 0;
       }
 
       // Handle abbreviated numbers: 1.2K, 5.3M
       const lower = text.toLowerCase();
+      let parsed: number;
+      
       if (lower.includes('k')) {
-        return Math.floor(parseFloat(lower) * 1000);
+        parsed = Math.floor(parseFloat(lower) * 1000);
+        console.log(`       ➜ Extracted: ${parsed} (from "${text}")`);
+        return parsed;
       }
       if (lower.includes('m')) {
-        return Math.floor(parseFloat(lower) * 1000000);
+        parsed = Math.floor(parseFloat(lower) * 1000000);
+        console.log(`       ➜ Extracted: ${parsed} (from "${text}")`);
+        return parsed;
       }
 
       // Handle regular numbers
       const num = parseInt(text.replace(/,/g, ''), 10);
       if (!isNaN(num)) {
+        console.log(`       ➜ Extracted: ${num} (from "${text}")`);
         return num;
       }
 
+      console.log(`       ➜ Failed to parse: "${text}"`);
       return null;
     } catch (error) {
+      console.log(`    ❌ Selector exception: ${error}`);
       return null;
     }
   }
