@@ -113,12 +113,12 @@ export class ContentQualityController {
     );
 
     // Posting decision
-    // ADJUSTED THRESHOLDS: Lowered for early-stage account (31 followers)
-    // Will raise as account grows and system learns from real data
-    const MIN_OVERALL = 78;
-    const MIN_COMPLETENESS = 80;
-    const MIN_ENGAGEMENT = 65;
-    const MIN_AUTHENTICITY = 65;
+    // PREMIUM THRESHOLDS: With multi-option generation, we can be selective
+    // Only post A-grade content (88+) for maximum engagement
+    const MIN_OVERALL = process.env.ENABLE_MULTI_OPTION === 'true' ? 88 : 78;
+    const MIN_COMPLETENESS = process.env.ENABLE_MULTI_OPTION === 'true' ? 85 : 80;
+    const MIN_ENGAGEMENT = process.env.ENABLE_MULTI_OPTION === 'true' ? 80 : 65;
+    const MIN_AUTHENTICITY = process.env.ENABLE_MULTI_OPTION === 'true' ? 75 : 65;
     
     score.shouldPost = score.overall >= MIN_OVERALL && 
                        score.completeness >= MIN_COMPLETENESS &&
