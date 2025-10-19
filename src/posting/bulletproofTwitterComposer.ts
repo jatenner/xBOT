@@ -204,8 +204,11 @@ export class BulletproofTwitterComposer {
           console.log(`✅ TWEET_ID_EXTRACTED: ${tweetId}`);
           return { success: true, tweetId };
         } else {
-          console.warn('⚠️ TWEET_ID_MISSING: Post succeeded but could not extract ID');
-          return { success: true, tweetId: undefined };
+          console.error('❌ TWEET_ID_MISSING: Post may have succeeded but could not extract real ID');
+          return { 
+            success: false, 
+            error: 'Failed to extract tweet ID after posting - cannot verify post success'
+          };
         }
         
       } catch (error: any) {
@@ -490,14 +493,13 @@ export class BulletproofTwitterComposer {
         console.log('⚠️ ID_EXTRACTION: Timeline-based extraction failed');
       }
       
-      // Fallback: generate timestamp-based ID
-      const fallbackId = `bulletproof_${Date.now()}`;
-      console.log(`🔄 ID_EXTRACTION: Using fallback ID: ${fallbackId}`);
-      return fallbackId;
+      // NO FALLBACKS - if we can't extract real ID, return null
+      console.error('❌ ID_EXTRACTION: All strategies failed, returning null');
+      return null;
       
     } catch (e) {
-      console.log(`❌ ID_EXTRACTION: All methods failed: ${(e as Error).message}`);
-      return `fallback_${Date.now()}`;
+      console.error(`❌ ID_EXTRACTION: Extraction failed: ${(e as Error).message}`);
+      return null;
     }
   }
 

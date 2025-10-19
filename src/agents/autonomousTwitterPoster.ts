@@ -304,84 +304,19 @@ export class AutonomousTwitterPoster {
         throw new Error('Failed to post tweet - all post methods failed');
       }
       
-      await page.waitForTimeout(3000);
+      console.log('✅ POST_SUBMITTED: Waiting for confirmation...');
+      await page.waitForTimeout(2000);
 
-      // Enhanced tweet ID extraction with multiple strategies
-      let tweetId = `browser_${Date.now()}`; // fallback
-      
-      try {
-        console.log('🔍 ENHANCED_TWEET_ID_EXTRACTION: Starting multi-strategy capture...');
-        
-        // Strategy 1: Check current URL first
-        const currentUrl = page.url();
-        console.log(`📍 Current URL: ${currentUrl}`);
-        
-        if (currentUrl.includes('/status/')) {
-          const urlMatch = currentUrl.match(/status\/(\d+)/);
-          if (urlMatch && urlMatch[1]) {
-            tweetId = urlMatch[1];
-            console.log(`✅ CAPTURED_FROM_URL: ${tweetId}`);
-          }
-        } else {
-          // Strategy 2: Look for status links on page
-          const selectors = [
-            'a[href*="/status/"]',
-            'article a[href*="/status/"]',
-            'div[data-testid="tweet"] a[href*="/status/"]',
-            'time[datetime] ~ a[href*="/status/"]'
-          ];
-          
-          for (const selector of selectors) {
-            try {
-              const anchor = await page.waitForSelector(selector, { timeout: 5000 });
-              if (anchor) {
-                const href = await anchor.getAttribute('href');
-                if (href) {
-                  const match = href.match(/status\/(\d+)/);
-                  if (match && match[1]) {
-                    tweetId = match[1];
-                    console.log(`✅ CAPTURED_FROM_SELECTOR: ${tweetId}`);
-                    break;
-                  }
-                }
-              }
-            } catch {
-              continue; // Try next selector
-            }
-          }
-          
-          // Strategy 3: Navigate to home and look for our tweet
-          if (tweetId.startsWith('browser_')) {
-            console.log('🔄 Navigating to home to find tweet...');
-            await page.goto('https://x.com/home', { waitUntil: 'domcontentloaded' });
-            await page.waitForTimeout(3000);
-            
-            // Look for status links
-            const allLinks = await page.$$eval('a[href*="/status/"]', links => 
-              links.map(link => link.getAttribute('href')).filter(Boolean)
-            ).catch(() => []);
-            
-            if (allLinks.length > 0) {
-              // Get the most recent tweet ID (highest number)
-              const tweetIds = allLinks
-                .map(href => href?.match(/status\/(\d+)/)?.[1])
-                .filter(Boolean)
-                .filter(id => id && id.length >= 15 && id.length <= 19);
-              
-              if (tweetIds.length > 0) {
-                const latestId = tweetIds.sort().pop();
-                if (latestId) {
-                  tweetId = latestId;
-                  console.log(`✅ CAPTURED_FROM_HOME: ${tweetId}`);
-                }
-              }
-            }
-          }
-        }
-        
-      } catch (extractError) {
-        console.warn(`⚠️ Enhanced tweet ID extraction failed: ${extractError}`);
-        console.log(`🔄 Using fallback ID: ${tweetId}`);
+      // PHASE 1: Verify posting actually succeeded
+      const postingSucceeded = await this.verifyPostingSuccess(page);
+      if (!postingSucceeded) {
+        throw new Error('POST_FAILED: Tweet did not post successfully (no confirmation detected)');
+      }
+
+      // PHASE 2: Extract REAL tweet ID with verification
+      const tweetId = await this.extractVerifiedTweetId(page, sanitizedContent);
+      if (!tweetId) {
+        throw new Error('POST_ID_EXTRACTION_FAILED: Could not extract tweet ID after successful post');
       }
 
       console.log(`POST_DONE: id=${tweetId}`);
@@ -392,6 +327,228 @@ export class AutonomousTwitterPoster {
       
       return tweetId;
     });
+  }
+
+  /**
+   * PHASE 1: Verify posting actually succeeded
+   * Checks for compose modal disappearance, success indicators, and absence of error messages
+   */
+  private async verifyPostingSuccess(page: Page): Promise<boolean> {
+    try {
+      console.log('🔍 VERIFY_POST: Checking for posting success indicators...');
+
+      // Check 1: Compose modal should disappear or URL should change
+      const urlChanged = await page.waitForFunction(
+        () => {
+          return window.location.href.includes('/status/') || 
+                 window.location.href.includes('/home') ||
+                 !window.location.href.includes('/compose/tweet');
+        },
+        { timeout: 10000 }
+      ).then(() => true).catch(() => false);
+
+      if (!urlChanged) {
+        console.warn('⚠️ VERIFY_POST: URL did not change after posting');
+        return false;
+      }
+
+      // Check 2: Look for error messages
+      const hasError = await page.evaluate(() => {
+        const errorIndicators = [
+          'Something went wrong',
+          'Try again',
+          'Failed to send',
+          'Error',
+          'limit exceeded',
+          'temporarily restricted'
+        ];
+        
+        const bodyText = document.body.innerText.toLowerCase();
+        return errorIndicators.some(indicator => bodyText.includes(indicator.toLowerCase()));
+      });
+
+      if (hasError) {
+        console.error('❌ VERIFY_POST: Error message detected on page');
+        return false;
+      }
+
+      // Check 3: If we're on a status page, that's a good sign
+      const currentUrl = page.url();
+      if (currentUrl.includes('/status/')) {
+        console.log('✅ VERIFY_POST: Successfully navigated to status page');
+        return true;
+      }
+
+      console.log('✅ VERIFY_POST: No errors detected, proceeding with ID extraction');
+      return true;
+
+    } catch (error) {
+      console.error(`❌ VERIFY_POST: Verification failed: ${error}`);
+      return false;
+    }
+  }
+
+  /**
+   * PHASE 2: Extract REAL tweet ID with content verification
+   * NO FALLBACKS - if we can't find the real ID, throw error
+   */
+  private async extractVerifiedTweetId(page: Page, expectedContent: string): Promise<string | null> {
+    try {
+      console.log('🔍 EXTRACT_ID: Starting verified tweet ID extraction...');
+
+      // Strategy 1: Check current URL (most reliable if we're on the tweet page)
+      const currentUrl = page.url();
+      console.log(`📍 EXTRACT_ID: Current URL: ${currentUrl}`);
+      
+      if (currentUrl.includes('/status/')) {
+        const urlMatch = currentUrl.match(/status\/(\d+)/);
+        if (urlMatch && urlMatch[1]) {
+          const tweetId = urlMatch[1];
+          console.log(`✅ EXTRACT_ID: Found tweet ID in URL: ${tweetId}`);
+          
+          // Verify this tweet contains our content
+          const contentMatches = await this.verifyTweetContent(page, expectedContent);
+          if (contentMatches) {
+            console.log(`✅ CONTENT_VERIFIED: Tweet ${tweetId} contains our posted content`);
+            return tweetId;
+          } else {
+            console.warn(`⚠️ CONTENT_MISMATCH: Tweet ${tweetId} does not contain our content`);
+          }
+        }
+      }
+
+      // Strategy 2: Navigate to profile and find most recent tweet
+      console.log('🔍 EXTRACT_ID: Navigating to profile to find tweet...');
+      const username = process.env.TWITTER_USERNAME || 'Signal_Synapse';
+      await page.goto(`https://x.com/${username}`, { waitUntil: 'domcontentloaded', timeout: 15000 });
+      await page.waitForTimeout(3000);
+
+      // Look for the first tweet on profile
+      const firstTweetId = await page.evaluate(() => {
+        const firstArticle = document.querySelector('article[data-testid="tweet"]');
+        if (!firstArticle) return null;
+        
+        const link = firstArticle.querySelector('a[href*="/status/"]') as HTMLAnchorElement;
+        if (!link) return null;
+        
+        const match = link.href.match(/\/status\/(\d+)/);
+        return match ? match[1] : null;
+      });
+
+      if (firstTweetId) {
+        console.log(`✅ EXTRACT_ID: Found first profile tweet: ${firstTweetId}`);
+        
+        // Verify content by navigating to tweet and checking
+        await page.goto(`https://x.com/${username}/status/${firstTweetId}`, { 
+          waitUntil: 'domcontentloaded', 
+          timeout: 15000 
+        });
+        await page.waitForTimeout(2000);
+
+        const contentMatches = await this.verifyTweetContent(page, expectedContent);
+        if (contentMatches) {
+          console.log(`✅ CONTENT_VERIFIED: Tweet ${firstTweetId} contains our posted content`);
+          return firstTweetId;
+        } else {
+          console.warn(`⚠️ CONTENT_MISMATCH: Tweet ${firstTweetId} does not contain our content`);
+        }
+      }
+
+      // Strategy 3: Check home timeline for recent tweet
+      console.log('🔍 EXTRACT_ID: Checking home timeline...');
+      await page.goto('https://x.com/home', { waitUntil: 'domcontentloaded', timeout: 15000 });
+      await page.waitForTimeout(3000);
+
+      const homeTimelineTweets = await page.evaluate((username) => {
+        const articles = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
+        const results: Array<{ id: string; text: string; time: string }> = [];
+        
+        for (const article of articles.slice(0, 5)) { // Check first 5 tweets
+          const link = article.querySelector('a[href*="/status/"]') as HTMLAnchorElement;
+          const timeEl = article.querySelector('time');
+          const textEl = article.querySelector('[data-testid="tweetText"]');
+          
+          if (link && timeEl) {
+            const match = link.href.match(/\/status\/(\d+)/);
+            const userLink = article.querySelector('a[href*="/' + username + '"]');
+            
+            // Only include our tweets
+            if (match && userLink) {
+              results.push({
+                id: match[1],
+                text: textEl?.textContent || '',
+                time: timeEl.getAttribute('datetime') || ''
+              });
+            }
+          }
+        }
+        
+        return results;
+      }, username);
+
+      // Find the most recent tweet with matching content
+      for (const tweet of homeTimelineTweets) {
+        const similarity = this.calculateContentSimilarity(tweet.text, expectedContent);
+        console.log(`🔍 EXTRACT_ID: Tweet ${tweet.id} similarity: ${(similarity * 100).toFixed(1)}%`);
+        
+        if (similarity > 0.8) { // 80% similarity threshold
+          console.log(`✅ CONTENT_VERIFIED: Tweet ${tweet.id} matches posted content`);
+          return tweet.id;
+        }
+      }
+
+      // All strategies failed
+      console.error('❌ EXTRACT_ID: Could not extract verified tweet ID');
+      return null;
+
+    } catch (error) {
+      console.error(`❌ EXTRACT_ID: Extraction failed: ${error}`);
+      return null;
+    }
+  }
+
+  /**
+   * Verify that a tweet page contains our expected content
+   */
+  private async verifyTweetContent(page: Page, expectedContent: string): Promise<boolean> {
+    try {
+      const tweetText = await page.evaluate(() => {
+        const article = document.querySelector('article[data-testid="tweet"]');
+        if (!article) return '';
+        
+        const textEl = article.querySelector('[data-testid="tweetText"]');
+        return textEl?.textContent || '';
+      });
+
+      const similarity = this.calculateContentSimilarity(tweetText, expectedContent);
+      console.log(`🔍 CONTENT_CHECK: Similarity ${(similarity * 100).toFixed(1)}%`);
+      
+      return similarity > 0.8; // 80% similarity threshold
+    } catch (error) {
+      console.error(`❌ CONTENT_CHECK: Failed to verify: ${error}`);
+      return false;
+    }
+  }
+
+  /**
+   * Calculate similarity between two strings (0.0 to 1.0)
+   * Simple word overlap metric
+   */
+  private calculateContentSimilarity(text1: string, text2: string): number {
+    const normalize = (str: string) => str.toLowerCase()
+      .replace(/[^\w\s]/g, '')
+      .split(/\s+/)
+      .filter(w => w.length > 2);
+    
+    const words1 = new Set(normalize(text1));
+    const words2 = new Set(normalize(text2));
+    
+    if (words1.size === 0 || words2.size === 0) return 0;
+    
+    const intersection = new Set([...words1].filter(w => words2.has(w)));
+    const union = new Set([...words1, ...words2]);
+    
+    return intersection.size / union.size; // Jaccard similarity
   }
 
   /**
@@ -539,20 +696,8 @@ export class AutonomousTwitterPoster {
       
       if (!extractedId) {
         const currentUrl = page.url();
-        console.warn(`⚠️ CRITICAL: Could not extract real tweet ID from URL: ${currentUrl}`);
-        
-        // EMERGENCY STRATEGY: Check if we're on Twitter
-        if (currentUrl.includes('x.com') || currentUrl.includes('twitter.com')) {
-          const fallbackId = `posted_${Date.now()}`;
-          console.log(`⚠️ THREAD_WILL_FAIL: Using fallback ID ${fallbackId} - this prevents proper threading!`);
-          return {
-            rootTweetId: fallbackId,
-            permalink: currentUrl,
-            replyIds: []
-          };
-        } else {
-          throw new Error(`Not on Twitter after posting attempt. URL: ${currentUrl}`);
-        }
+        console.error(`❌ CRITICAL: Could not extract real tweet ID from URL: ${currentUrl}`);
+        throw new Error(`Tweet ID extraction failed after posting. Cannot proceed without real ID. URL: ${currentUrl}`);
       }
       
       // Verify the tweet actually exists before proceeding with thread
