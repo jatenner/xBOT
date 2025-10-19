@@ -637,11 +637,13 @@ async function markDecisionPosted(decisionId: string, tweetId: string): Promise<
     const { getSupabaseClient } = await import('../db/index');
     const supabase = getSupabaseClient();
     
-    // 1. Update content_metadata status
+    // 1. Update content_metadata status AND tweet_id (CRITICAL!)
     const { error: updateError } = await supabase
       .from('content_metadata')
       .update({ 
         status: 'posted',
+        tweet_id: tweetId, // 🔥 CRITICAL: Save tweet ID for metrics scraping!
+        posted_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       })
       .eq('id', decisionId);

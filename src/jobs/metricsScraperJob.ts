@@ -15,15 +15,33 @@ export async function metricsScraperJob(): Promise<void> {
   try {
     const supabase = getSupabaseClient();
     
-    // Find posts from last 7 days that need metrics updates
-    const { data: posts, error: postsError } = await supabase
+    // PRIORITY 1: Recent tweets (last 3 days) - scrape aggressively
+    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    const { data: recentPosts, error: recentError } = await supabase
       .from('content_metadata')
       .select('id, tweet_id, created_at')
       .eq('status', 'posted')
       .not('tweet_id', 'is', null)
-      .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+      .gte('created_at', threeDaysAgo.toISOString())
       .order('created_at', { ascending: false })
-      .limit(20); // Process 20 most recent posts
+      .limit(15); // Scrape 15 most recent (last 3 days)
+    
+    // PRIORITY 2: Historical tweets (3-30 days old) - scrape less frequently
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const { data: historicalPosts, error: historicalError } = await supabase
+      .from('content_metadata')
+      .select('id, tweet_id, created_at')
+      .eq('status', 'posted')
+      .not('tweet_id', 'is', null)
+      .lt('created_at', threeDaysAgo.toISOString())
+      .gte('created_at', thirtyDaysAgo.toISOString())
+      .order('created_at', { ascending: false })
+      .limit(5); // Only scrape 5 historical posts per cycle
+    
+    // Combine: prioritize recent, then add some historical
+    const posts = [...(recentPosts || []), ...(historicalPosts || [])];
+    
+    const postsError = recentError || historicalError;
     
     if (postsError) {
       console.error('[METRICS_JOB] ❌ Failed to fetch posts:', postsError.message);
@@ -35,7 +53,9 @@ export async function metricsScraperJob(): Promise<void> {
       return;
     }
     
-    console.log(`[METRICS_JOB] 📊 Found ${posts.length} posts to check`);
+    const recentCount = recentPosts?.length || 0;
+    const historicalCount = historicalPosts?.length || 0;
+    console.log(`[METRICS_JOB] 📊 Found ${posts.length} posts to check (${recentCount} recent, ${historicalCount} historical)`);
     
     let updated = 0;
     let skipped = 0;
