@@ -92,7 +92,7 @@ async function generateRealContent(): Promise<void> {
   console.log('[UNIFIED_PLAN] 🚀 Generating content with UNIFIED ENGINE');
   
   const decisions = [];
-  const numToGenerate = 2; // 2 posts per cycle (aggressive growth mode)
+  const numToGenerate = 1; // 1 post per cycle (30min intervals = 2 posts/hour)
   
   const engine = UnifiedContentEngine.getInstance();
   

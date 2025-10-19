@@ -73,29 +73,30 @@ export class TwitterAlgorithmOptimizer {
     try {
       // Get engagement data at different time windows
       const { data: post } = await this.supabase
-        .from('content_decisions')
-        .select('actual_performance, created_at')
+        .from('outcomes')
+        .select('likes, retweets, replies, impressions, engagement_rate, collected_at, tweet_id')
         .eq('tweet_id', tweetId)
+        .order('collected_at', { ascending: false })
+        .limit(1)
         .single();
 
       if (!post) return;
 
-      const perf = post.actual_performance as any || {};
       const posted = new Date(String(postedAt));
       const now = new Date();
       const minutesElapsed = (now.getTime() - posted.getTime()) / (1000 * 60);
 
       // Calculate velocity (likes per minute)
-      const likes = Number(perf.likes) || 0;
+      const likes = Number(post.likes) || 0;
       const velocity = minutesElapsed > 0 
         ? likes / minutesElapsed 
         : 0;
 
       // Weighted engagement score (Twitter's priorities)
       const weightedScore = 
-        (Number(perf.retweets) || 0) * 2.0 +
-        (Number(perf.replies) || 0) * 1.5 +
-        (Number(perf.likes) || 0) * 1.0;
+        (Number(post.retweets) || 0) * 2.0 +
+        (Number(post.replies) || 0) * 1.5 +
+        (Number(post.likes) || 0) * 1.0;
 
       // Viral prediction (based on velocity)
       const viralPotential = this.calculateViralPotential(velocity, minutesElapsed);
@@ -110,10 +111,8 @@ export class TwitterAlgorithmOptimizer {
         weighted_score: weightedScore,
         viral_potential: viralPotential,
         is_viral: isViral,
-        profile_clicks: perf.profile_clicks || 0,
-        follow_through_rate: perf.profile_clicks > 0
-          ? (perf.followers_gained || 0) / perf.profile_clicks
-          : 0
+        profile_clicks: 0, // Not in outcomes table yet
+        follow_through_rate: 0 // Not in outcomes table yet
       };
 
       // Store velocity data

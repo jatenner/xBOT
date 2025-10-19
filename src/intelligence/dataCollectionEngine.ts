@@ -91,9 +91,8 @@ export class DataCollectionEngine {
       const cutoffTime = new Date(Date.now() - 48 * 60 * 60 * 1000);
       
       const { data: recentPosts, error } = await this.supabase
-        .from('content_decisions')
+        .from('posted_decisions')
         .select('decision_id, content, posted_at, tweet_id')
-        .eq('status', 'posted')
         .gte('posted_at', cutoffTime.toISOString())
         .order('posted_at', { ascending: false })
         .limit(50);
@@ -256,9 +255,8 @@ export class DataCollectionEngine {
       const cutoffTime = new Date(Date.now() - 48 * 60 * 60 * 1000);
       
       const { data: recentPosts, error } = await this.supabase
-        .from('content_decisions')
+        .from('posted_decisions')
         .select('decision_id, posted_at')
-        .eq('status', 'posted')
         .gte('posted_at', cutoffTime.toISOString())
         .order('posted_at', { ascending: false });
 

@@ -248,9 +248,22 @@ async function boot() {
   (async () => {
     const jobManager = JobManager.getInstance();
     try {
+      console.log('🕒 JOB_MANAGER: Initializing job timers...');
       await jobManager.startJobs();
+      console.log('✅ JOB_MANAGER: All timers started successfully');
+      
+      // 🔥 CRITICAL FIX: Run plan job IMMEDIATELY on startup, don't wait for first interval
+      // This ensures content is generated right away instead of waiting 15+ minutes
+      console.log('🚀 STARTUP: Running immediate plan job to populate queue...');
+      await jobManager.runJobNow('plan');
+      console.log('✅ STARTUP: Initial plan job completed');
     } catch (error) {
-      console.log(`⚠️ JOB_MANAGER: Error starting jobs: ${error.message} (continuing...)`);
+      // 🚨 CRITICAL ERROR: Job manager MUST start successfully
+      console.error(`❌ FATAL: JOB_MANAGER failed to start: ${error.message}`);
+      console.error(`Stack: ${error.stack}`);
+      console.error(`❌ System cannot generate content without job manager!`);
+      // Don't exit - but make the error VERY visible in logs
+      console.error(`❌ ❌ ❌ JOB MANAGER STARTUP FAILED ❌ ❌ ❌`);
     }
   })();
   

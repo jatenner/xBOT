@@ -72,9 +72,11 @@ export class ConversionFunnelTracker {
   async trackFunnelMetrics(postId: string): Promise<FunnelMetrics | null> {
     try {
       const { data: post } = await this.supabase
-        .from('content_decisions')
+        .from('outcomes')
         .select('*')
         .eq('decision_id', postId)
+        .order('collected_at', { ascending: false })
+        .limit(1)
         .single();
 
       if (!post) return null;
