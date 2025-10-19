@@ -410,6 +410,14 @@ Return ONLY the improved content, nothing else:`;
     if (content.includes('comprehensive')) score -= 20;
     if (content.includes('ultimate guide')) score -= 20;
     if (content.length > 200 && !content.includes('?') && !content.match(/\d/)) score -= 15;
+    
+    // ENHANCED BORING FORMAT PENALTIES
+    if (content.match(/^Protocol:/i)) score -= 25; // "Protocol:" format
+    if (content.match(/^Step \d+:/i)) score -= 25; // "Step 1:" format
+    if (content.match(/optimization protocol/i)) score -= 20; // Protocol language
+    if (content.match(/\bet al\.\s+\d{4}/)) score -= 15; // Academic citation as hook (boring)
+    if (content.match(/^In \d{4},.*study/i)) score -= 15; // "In 2011, study..." format
+    if (content.match(/\(\s*n\s*=\s*\d+\)/)) score -= 10; // (n=144) in main content (too academic)
 
     return Math.min(100, Math.max(0, score));
   }
