@@ -153,16 +153,50 @@ async function generateRealContent(): Promise<void> {
   
   console.log('[PLAN_JOB] 🧠 Generating real content using multi-generator orchestrator...');
   
-        // NOTE: AGGRESSIVE GROWTH MODE 🚀
-        // Job runs every 2.5 hours and generates 2 posts per run
-        // = ~16-20 posts/day generated
-        // PLUS: 20-40 strategic replies to titans per day
-        // PLUS: 1 viral thread attempt per day
-        // Total activity: 40-60 engagements/day (MAXIMUM GROWTH)
-        // Quality maintained via viral scoring + quality gates
-        
-        const decisions: ContentDecision[] = [];
-        const numToGenerate = 2; // Generate 2 posts per cycle (AGGRESSIVE MODE)
+  // ═══════════════════════════════════════════════════════════
+  // 🚀 ENHANCEMENT: DYNAMIC POSTING FREQUENCY
+  // ═══════════════════════════════════════════════════════════
+  const recentPerformance = await getRecentPerformanceMetrics();
+  
+  let numToGenerate = 2; // Default
+  
+  if (recentPerformance.avgEngagement < 0.005 || recentPerformance.avgFollowers < 0.5) {
+    // CRISIS: Focus on quality, not quantity
+    numToGenerate = 1;
+    console.log('[PLAN_JOB] 🚨 CRISIS MODE: Generating 1 high-quality post (engagement: ${(recentPerformance.avgEngagement * 100).toFixed(2)}%)');
+  } else if (recentPerformance.avgEngagement > 0.05 || recentPerformance.avgFollowers > 10) {
+    // HOT STREAK: Maximize output
+    numToGenerate = 3;
+    console.log('[PLAN_JOB] 🔥 HOT STREAK: Generating 3 posts (engagement: ${(recentPerformance.avgEngagement * 100).toFixed(2)}%)');
+  } else {
+    console.log('[PLAN_JOB] ⚖️ NORMAL MODE: Generating 2 posts (engagement: ${(recentPerformance.avgEngagement * 100).toFixed(2)}%)');
+  }
+  
+  // ═══════════════════════════════════════════════════════════
+  // ⏰ ENHANCEMENT: TIMING OPTIMIZATION CHECK
+  // ═══════════════════════════════════════════════════════════
+  let timingAdjustment = 0;
+  try {
+    const timingOptimizer = getTimingOptimizer();
+    const timingCheck = await timingOptimizer.isGoodTimeToPost();
+    
+    console.log(`[PLAN_JOB] ⏰ Timing check: ${timingCheck.reason}`);
+    
+    if (!timingCheck.is_good) {
+      // Bad time - schedule for later
+      const optimalTime = await timingOptimizer.getRecommendedTime();
+      const now = new Date();
+      timingAdjustment = Math.max(0, Math.floor((optimalTime.getTime() - now.getTime()) / 60000));
+      
+      if (timingAdjustment > 60) {
+        console.log(`[PLAN_JOB] ⏰ Delaying posts by ${Math.floor(timingAdjustment / 60)}h ${timingAdjustment % 60}m for optimal timing`);
+      }
+    }
+  } catch (timingError: any) {
+    console.warn(`[PLAN_JOB] ⚠️ Timing optimization unavailable: ${timingError.message}`);
+  }
+  
+  const decisions: ContentDecision[] = [];
   
   for (let i = 0; i < numToGenerate; i++) {
     try {
@@ -195,10 +229,12 @@ async function generateContentWithLLM(): Promise<ContentDecision> {
     let formatHint: 'single' | 'thread' | undefined;
     
     try {
-      const { selectOptimalContent } = await import('../learning/adaptiveSelection');
-      const adaptiveDecision = await selectOptimalContent();
+      // 🚀 ENHANCEMENT: Use enhanced adaptive selection with competitor intelligence
+      const { selectOptimalContentEnhanced } = await import('../learning/enhancedAdaptiveSelection');
+      const adaptiveDecision = await selectOptimalContentEnhanced();
       console.log(`[ADAPTIVE] 📊 ${adaptiveDecision.reasoning}`);
       console.log(`[ADAPTIVE] 🎯 Selected: ${adaptiveDecision.topic} (${adaptiveDecision.format}) via ${adaptiveDecision.generator}`);
+      console.log(`[ADAPTIVE] 🔍 Intelligence source: ${adaptiveDecision.intelligence_source || 'internal'}`);
       
       topicHint = adaptiveDecision.topic;
       formatHint = adaptiveDecision.format;
@@ -530,4 +566,51 @@ function validateContentQuality(content: string): number {
   }
   
   return Math.max(0, Math.min(1, qualityScore));
+}
+
+/**
+ * 📊 Get recent performance metrics for dynamic frequency adjustment
+ */
+async function getRecentPerformanceMetrics(): Promise<{
+  avgEngagement: number;
+  avgFollowers: number;
+  postsAnalyzed: number;
+}> {
+  try {
+    const { getSupabaseClient } = await import('../db/index');
+    const supabase = getSupabaseClient();
+    
+    const { data: recentPosts } = await supabase
+      .from('post_attribution')
+      .select('engagement_rate, followers_gained')
+      .order('posted_at', { ascending: false })
+      .limit(10);
+    
+    if (!recentPosts || recentPosts.length === 0) {
+      return {
+        avgEngagement: 0.02, // Assume default
+        avgFollowers: 2,
+        postsAnalyzed: 0
+      };
+    }
+    
+    const avgEngagement = recentPosts.reduce((sum: number, p: any) => 
+      sum + (Number(p.engagement_rate) || 0), 0) / recentPosts.length;
+    
+    const avgFollowers = recentPosts.reduce((sum: number, p: any) => 
+      sum + (Number(p.followers_gained) || 0), 0) / recentPosts.length;
+    
+    return {
+      avgEngagement,
+      avgFollowers,
+      postsAnalyzed: recentPosts.length
+    };
+  } catch (error) {
+    console.warn('[PERFORMANCE_METRICS] ⚠️ Failed to get recent performance, using defaults');
+    return {
+      avgEngagement: 0.02,
+      avgFollowers: 2,
+      postsAnalyzed: 0
+    };
+  }
 }

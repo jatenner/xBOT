@@ -1,0 +1,388 @@
+/**
+ * 🚀 ENHANCED ADAPTIVE CONTENT SELECTION
+ * 
+ * ENHANCEMENTS:
+ * 1. Integrates competitor intelligence for trending topics
+ * 2. Separates view analysis from like analysis (different problems)
+ * 3. Crisis mode detection for zero engagement
+ * 4. Uses ViralTrendMonitor for real-time trending topics
+ * 5. Better thresholds for low performance detection
+ */
+
+import { getSupabaseClient } from '../db/index';
+import { CompetitorIntelligenceMonitor } from '../intelligence/competitorIntelligenceMonitor';
+import { ViralTrendMonitor } from '../intelligence/viralTrendMonitor';
+
+export interface AdaptiveDecision {
+  hook_pattern: string;
+  topic: string;
+  generator: string;
+  format: 'single' | 'thread';
+  reasoning: string;
+  intelligence_source?: 'internal' | 'competitor' | 'trending' | 'crisis';
+}
+
+export interface PerformanceAnalysis {
+  avgEngagement: number;
+  avgFollowers: number;
+  avgViews: number;
+  avgLikes: number;
+  viewToLikeRatio: number;
+  diagnosisType: 'no_visibility' | 'no_engagement' | 'normal' | 'strong';
+  reasoning: string;
+}
+
+/**
+ * 🧠 Main entry point - Enhanced adaptive selection
+ */
+export async function selectOptimalContentEnhanced(): Promise<AdaptiveDecision> {
+  console.log('[ENHANCED_ADAPTIVE] 🚀 Starting enhanced adaptive selection...');
+  
+  const supabase = getSupabaseClient();
+  
+  // Get last 10 posts performance
+  const { data: recentPosts } = await supabase
+    .from('post_attribution')
+    .select('*')
+    .order('posted_at', { ascending: false })
+    .limit(10);
+  
+  if (!recentPosts || recentPosts.length === 0) {
+    console.log('[ENHANCED_ADAPTIVE] ℹ️ No performance data, using competitor intelligence');
+    return await getCompetitorInspiredDecision();
+  }
+  
+  // ═══════════════════════════════════════════════════════════
+  // 🔬 ENHANCEMENT 1: SEPARATE VIEW vs LIKE ANALYSIS
+  // ═══════════════════════════════════════════════════════════
+  const analysis = analyzePerformanceDetailed(recentPosts);
+  
+  console.log(`[ENHANCED_ADAPTIVE] 📊 Performance Analysis:`);
+  console.log(`   Engagement: ${(analysis.avgEngagement * 100).toFixed(2)}%`);
+  console.log(`   Followers: ${analysis.avgFollowers.toFixed(1)}/post`);
+  console.log(`   Views: ${analysis.avgViews.toFixed(0)}/post`);
+  console.log(`   Likes: ${analysis.avgLikes.toFixed(1)}/post`);
+  console.log(`   View→Like: ${(analysis.viewToLikeRatio * 100).toFixed(2)}%`);
+  console.log(`   Diagnosis: ${analysis.diagnosisType}`);
+  console.log(`   ${analysis.reasoning}`);
+  
+  // ═══════════════════════════════════════════════════════════
+  // 🚨 ENHANCEMENT 2: CRISIS MODE (Zero Engagement)
+  // ═══════════════════════════════════════════════════════════
+  if (analysis.diagnosisType === 'no_visibility' || 
+      (analysis.avgEngagement < 0.005 && analysis.avgFollowers < 0.5)) {
+    console.log('[ENHANCED_ADAPTIVE] 🚨 CRISIS MODE: Zero engagement detected');
+    return await selectCrisisModeContent(analysis);
+  }
+  
+  // ═══════════════════════════════════════════════════════════
+  // 🔥 ENHANCEMENT 3: LOW PERFORMANCE = USE COMPETITOR DATA
+  // ═══════════════════════════════════════════════════════════
+  if (analysis.avgEngagement < 0.02 || analysis.avgFollowers < 3) {
+    console.log('[ENHANCED_ADAPTIVE] 🔄 Performance declining, using competitor intelligence...');
+    return await selectExploratoryContentEnhanced(analysis);
+  }
+  
+  // ═══════════════════════════════════════════════════════════
+  // 📈 STRONG PERFORMANCE: Double down on what works
+  // ═══════════════════════════════════════════════════════════
+  if (analysis.avgEngagement > 0.05 || analysis.avgFollowers > 10) {
+    console.log('[ENHANCED_ADAPTIVE] 📈 Performance strong, doubling down...');
+    return await selectBestPerformer(recentPosts);
+  }
+  
+  // ═══════════════════════════════════════════════════════════
+  // ⚖️ NORMAL: Thompson Sampling
+  // ═══════════════════════════════════════════════════════════
+  console.log('[ENHANCED_ADAPTIVE] ⚖️ Balanced approach - exploit + explore');
+  return await thompsonSamplingSelection();
+}
+
+/**
+ * 🔬 Analyze performance with view/like separation
+ */
+function analyzePerformanceDetailed(recentPosts: any[]): PerformanceAnalysis {
+  const avgEngagement = recentPosts.reduce((sum: number, p: any) => 
+    sum + (Number(p.engagement_rate) || 0), 0) / recentPosts.length;
+  
+  const avgFollowers = recentPosts.reduce((sum: number, p: any) => 
+    sum + (Number(p.followers_gained) || 0), 0) / recentPosts.length;
+  
+  // NEW: Separate view and like metrics
+  const avgViews = recentPosts.reduce((sum: number, p: any) => 
+    sum + (Number(p.impressions) || Number(p.views) || 0), 0) / recentPosts.length;
+  
+  const avgLikes = recentPosts.reduce((sum: number, p: any) => 
+    sum + (Number(p.total_engagement) || Number(p.likes) || 0), 0) / recentPosts.length;
+  
+  const viewToLikeRatio = avgViews > 0 ? avgLikes / avgViews : 0;
+  
+  // Diagnosis logic
+  let diagnosisType: PerformanceAnalysis['diagnosisType'];
+  let reasoning: string;
+  
+  if (avgViews < 20 && avgLikes < 1) {
+    diagnosisType = 'no_visibility';
+    reasoning = 'Nobody is seeing your content - timing or topic issue';
+  } else if (avgViews > 20 && avgLikes < 1) {
+    diagnosisType = 'no_engagement';
+    reasoning = 'People see content but not engaging - hook/content quality issue';
+  } else if (avgEngagement > 0.05 || avgFollowers > 10) {
+    diagnosisType = 'strong';
+    reasoning = 'Strong performance - keep doing what works';
+  } else {
+    diagnosisType = 'normal';
+    reasoning = 'Normal performance - continue learning';
+  }
+  
+  return {
+    avgEngagement,
+    avgFollowers,
+    avgViews,
+    avgLikes,
+    viewToLikeRatio,
+    diagnosisType,
+    reasoning
+  };
+}
+
+/**
+ * 🚨 CRISIS MODE: Aggressive exploration with competitor intelligence
+ */
+async function selectCrisisModeContent(analysis: PerformanceAnalysis): Promise<AdaptiveDecision> {
+  console.log('[CRISIS_MODE] 🚨 Activating crisis recovery strategy...');
+  
+  try {
+    // STRATEGY 1: Use competitor's PROVEN trending topics
+    const competitorMonitor = CompetitorIntelligenceMonitor.getInstance();
+    const insights = await competitorMonitor.getCompetitorInsights();
+    
+    if (insights.trending_opportunities && insights.trending_opportunities.length > 0) {
+      const hotTopic = insights.trending_opportunities[0];
+      
+      console.log(`[CRISIS_MODE] 🔥 Using competitor trending topic: "${hotTopic.topic}"`);
+      console.log(`[CRISIS_MODE] 📊 Trending score: ${hotTopic.trending_score}, Reason: ${hotTopic.why_trending}`);
+      
+      return {
+        hook_pattern: 'provocateur', // Bold, attention-grabbing
+        topic: hotTopic.topic,
+        generator: 'provocateur', // Use most aggressive generator
+        format: 'single',
+        reasoning: `CRISIS MODE: Using competitor proven topic "${hotTopic.topic}" (score: ${hotTopic.trending_score})`,
+        intelligence_source: 'crisis'
+      };
+    }
+  } catch (error) {
+    console.warn('[CRISIS_MODE] ⚠️ Competitor intelligence failed, trying viral trends...');
+  }
+  
+  // STRATEGY 2: Use viral trend monitor
+  try {
+    const trendMonitor = ViralTrendMonitor.getInstance();
+    const trending = await trendMonitor.getTrendingHealthTopics();
+    
+    if (trending && trending.length > 0) {
+      const hotTrend = trending[0];
+      
+      console.log(`[CRISIS_MODE] 🔥 Using viral trending topic: "${hotTrend.topic}"`);
+      
+      return {
+        hook_pattern: 'bold_claim',
+        topic: hotTrend.topic,
+        generator: 'provocateur',
+        format: 'single',
+        reasoning: `CRISIS MODE: Viral trend "${hotTrend.topic}" (strength: ${hotTrend.trend_strength})`,
+        intelligence_source: 'trending'
+      };
+    }
+  } catch (error) {
+    console.warn('[CRISIS_MODE] ⚠️ Viral trends failed, using fallback...');
+  }
+  
+  // STRATEGY 3: Fallback to most underused generator with controversial topic
+  return {
+    hook_pattern: 'bold_claim',
+    topic: 'sleep myths everyone believes',
+    generator: 'mythbuster',
+    format: 'single',
+    reasoning: 'CRISIS MODE: Fallback to mythbuster with controversial topic',
+    intelligence_source: 'crisis'
+  };
+}
+
+/**
+ * 🔄 EXPLORATORY CONTENT: Enhanced with competitor intelligence
+ */
+async function selectExploratoryContentEnhanced(analysis: PerformanceAnalysis): Promise<AdaptiveDecision> {
+  const supabase = getSupabaseClient();
+  
+  // Check if it's a visibility problem or engagement problem
+  if (analysis.diagnosisType === 'no_visibility') {
+    console.log('[ENHANCED_ADAPTIVE] 🎯 Visibility issue: Using trending topics + optimal timing');
+    
+    try {
+      // Get trending topics that are proven to get views
+      const trendMonitor = ViralTrendMonitor.getInstance();
+      const trending = await trendMonitor.getTrendingHealthTopics();
+      
+      if (trending && trending.length > 0) {
+        const hotTrend = trending[0];
+        
+        return {
+          hook_pattern: 'contrarian',
+          topic: hotTrend.topic,
+          generator: 'contrarian',
+          format: 'single',
+          reasoning: `Visibility fix: Trending topic "${hotTrend.topic}" for more views`,
+          intelligence_source: 'trending'
+        };
+      }
+    } catch (error) {
+      console.warn('[ENHANCED_ADAPTIVE] ⚠️ Trending topics unavailable');
+    }
+  }
+  
+  if (analysis.diagnosisType === 'no_engagement') {
+    console.log('[ENHANCED_ADAPTIVE] 🎣 Engagement issue: Using provocative hooks');
+    
+    // Get what competitors are using successfully
+    try {
+      const competitorMonitor = CompetitorIntelligenceMonitor.getInstance();
+      const insights = await competitorMonitor.getCompetitorInsights();
+      
+      if (insights.trending_opportunities && insights.trending_opportunities.length > 0) {
+        const hotTopic = insights.trending_opportunities[0];
+        
+        return {
+          hook_pattern: 'provocateur',
+          topic: hotTopic.topic,
+          generator: 'provocateur',
+          format: 'single',
+          reasoning: `Engagement fix: Competitor successful topic "${hotTopic.topic}"`,
+          intelligence_source: 'competitor'
+        };
+      }
+    } catch (error) {
+      console.warn('[ENHANCED_ADAPTIVE] ⚠️ Competitor intelligence unavailable');
+    }
+  }
+  
+  // Fallback to existing logic
+  const { data: generatorPerf } = await supabase
+    .from('generator_performance')
+    .select('*')
+    .order('posts_count', { ascending: true })
+    .limit(3);
+  
+  const { data: topicPerf } = await supabase
+    .from('topic_performance')
+    .select('*')
+    .order('last_used', { ascending: true })
+    .limit(3);
+  
+  const generator = String(generatorPerf?.[0]?.generator || 'provocateur');
+  const topic = String(topicPerf?.[0]?.topic || 'sleep optimization');
+  
+  return {
+    hook_pattern: 'bold_claim',
+    topic,
+    generator,
+    format: 'single',
+    reasoning: `Exploring underused: ${generator} + ${topic}`,
+    intelligence_source: 'internal'
+  };
+}
+
+/**
+ * 📈 Select best performing approach when doing well
+ */
+async function selectBestPerformer(recentPosts: any[]): Promise<AdaptiveDecision> {
+  const sorted = [...recentPosts].sort((a, b) => 
+    (Number(b.followers_gained) || 0) - (Number(a.followers_gained) || 0)
+  );
+  
+  const best = sorted[0];
+  
+  return {
+    hook_pattern: String(best.hook_pattern || 'story_opener'),
+    topic: String(best.topic || 'sleep optimization'),
+    generator: String(best.generator_used || 'provocateur'),
+    format: 'single',
+    reasoning: `Best performer: ${best.followers_gained || 0} followers, ${((Number(best.engagement_rate) || 0) * 100).toFixed(2)}% engagement`,
+    intelligence_source: 'internal'
+  };
+}
+
+/**
+ * ⚖️ Thompson Sampling for balanced exploration/exploitation
+ */
+async function thompsonSamplingSelection(): Promise<AdaptiveDecision> {
+  const supabase = getSupabaseClient();
+  
+  const { data: hooks } = await supabase
+    .from('hook_performance')
+    .select('*')
+    .order('avg_followers_per_post', { ascending: false })
+    .limit(5);
+  
+  const { data: topics } = await supabase
+    .from('topic_performance')
+    .select('*')
+    .order('avg_followers_per_post', { ascending: false })
+    .limit(5);
+  
+  const hookChoice = Math.random() < 0.8 && hooks?.[0] 
+    ? hooks[0] 
+    : (hooks?.[Math.floor(Math.random() * (hooks?.length || 1))] || hooks?.[0]);
+  
+  const topicChoice = Math.random() < 0.8 && topics?.[0]
+    ? topics[0]
+    : (topics?.[Math.floor(Math.random() * (topics?.length || 1))] || topics?.[0]);
+  
+  return {
+    hook_pattern: String(hookChoice?.hook_pattern || 'contrarian'),
+    topic: String(topicChoice?.topic || 'exercise timing'),
+    generator: 'provocateur',
+    format: 'single',
+    reasoning: 'Thompson Sampling - balanced exploit/explore',
+    intelligence_source: 'internal'
+  };
+}
+
+/**
+ * 🆕 Get decision inspired by competitor intelligence (no data case)
+ */
+async function getCompetitorInspiredDecision(): Promise<AdaptiveDecision> {
+  console.log('[ENHANCED_ADAPTIVE] 🔍 No historical data, using competitor intelligence...');
+  
+  try {
+    const competitorMonitor = CompetitorIntelligenceMonitor.getInstance();
+    const insights = await competitorMonitor.getCompetitorInsights();
+    
+    if (insights.trending_opportunities && insights.trending_opportunities.length > 0) {
+      const hotTopic = insights.trending_opportunities[0];
+      
+      return {
+        hook_pattern: 'contrarian',
+        topic: hotTopic.topic,
+        generator: 'contrarian',
+        format: 'single',
+        reasoning: `Cold start: Using competitor trending topic "${hotTopic.topic}"`,
+        intelligence_source: 'competitor'
+      };
+    }
+  } catch (error) {
+    console.warn('[ENHANCED_ADAPTIVE] ⚠️ Competitor intelligence failed, using default');
+  }
+  
+  // Fallback
+  return {
+    hook_pattern: 'bold_claim',
+    topic: 'sleep optimization',
+    generator: 'provocateur',
+    format: 'single',
+    reasoning: 'Default - no data available',
+    intelligence_source: 'internal'
+  };
+}
+
