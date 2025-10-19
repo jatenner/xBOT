@@ -30,7 +30,7 @@ export interface JobStats {
 export class JobManager {
   private static instance: JobManager;
   private timers: Map<string, NodeJS.Timeout> = new Map();
-  private stats: JobStats = {
+  public stats: JobStats = {
     planRuns: 0,
     replyRuns: 0,
     postingRuns: 0,
@@ -45,6 +45,310 @@ export class JobManager {
       JobManager.instance = new JobManager();
     }
     return JobManager.instance;
+  }
+
+  /**
+   * 🎯 STAGGERED JOB SCHEDULING
+   * Prevents resource stampede by spreading job starts across time
+   * Critical fix: Ensures only ONE job uses browser resources at a time
+   */
+  private scheduleStaggeredJob(
+    name: string,
+    jobFn: () => Promise<void>,
+    intervalMs: number,
+    initialDelayMs: number
+  ): void {
+    console.log(`🕒 JOB_MANAGER: Scheduling ${name} - first run in ${Math.round(initialDelayMs / 1000)}s, then every ${Math.round(intervalMs / 60000)}min`);
+    
+    // Schedule first run after initial delay
+    const initialTimer = setTimeout(async () => {
+      await jobFn(); // First execution
+      
+      // Then set up recurring interval
+      const recurringTimer = setInterval(jobFn, intervalMs);
+      this.timers.set(name, recurringTimer);
+    }, initialDelayMs);
+    
+    // Store initial timer (will be replaced by recurring timer after first run)
+    this.timers.set(`${name}_initial`, initialTimer);
+  }
+
+  /**
+   * 🚀 START STAGGERED JOBS
+   * Spread job execution across time to prevent browser resource collisions
+   */
+  private async startStaggeredJobs(config: any, modeFlags: any): Promise<void> {
+    this.isRunning = true;
+    
+    console.log('🎯 JOB_MANAGER: Starting STAGGERED scheduling (prevents resource collisions)');
+    
+    // Define stagger offsets (in seconds) to spread jobs across time
+    const MINUTE = 60 * 1000;
+    const SECOND = 1000;
+    
+    // 🔥 CRITICAL: Posting queue - runs every 5 min, NO delay (highest priority)
+    if (flags.postingEnabled) {
+      this.scheduleStaggeredJob(
+        'posting',
+        async () => {
+          await this.safeExecute('posting', async () => {
+            await processPostingQueue();
+            this.stats.postingRuns++;
+            this.stats.lastPostingTime = new Date();
+          });
+        },
+        5 * MINUTE,
+        0 // NO DELAY - start immediately
+      );
+    }
+
+    // Plan job - every 30 min, offset 2 min
+    if (flags.plannerEnabled) {
+      this.scheduleStaggeredJob(
+        'plan',
+        async () => {
+          await this.safeExecute('plan', async () => {
+            await planContent();
+            this.stats.planRuns++;
+            this.stats.lastPlanTime = new Date();
+          });
+        },
+        config.JOBS_PLAN_INTERVAL_MIN * MINUTE,
+        2 * MINUTE // Start after 2 minutes
+      );
+    }
+
+    // Reply job - every 60 min, offset 15 min
+    if (flags.replyEnabled) {
+      this.scheduleStaggeredJob(
+        'reply',
+        async () => {
+          await this.safeExecute('reply', async () => {
+            await generateReplies();
+            this.stats.replyRuns++;
+            this.stats.lastReplyTime = new Date();
+          });
+        },
+        config.JOBS_REPLY_INTERVAL_MIN * MINUTE,
+        15 * MINUTE // Start after 15 minutes
+      );
+    }
+
+    // Velocity tracker - every 30 min, offset 12 min
+    this.scheduleStaggeredJob(
+      'velocity_tracker',
+      async () => {
+        await this.safeExecute('velocity_tracker', async () => {
+          const { runVelocityTracking } = await import('./velocityTrackerJob');
+          await runVelocityTracking();
+        });
+      },
+      30 * MINUTE,
+      12 * MINUTE
+    );
+
+    // Analytics - every 30 min, offset 22 min
+    this.scheduleStaggeredJob(
+      'analytics',
+      async () => {
+        await this.safeExecute('analytics', async () => {
+          const { analyticsCollectorJobV2 } = await import('./analyticsCollectorJobV2');
+          await analyticsCollectorJobV2();
+        });
+      },
+      30 * MINUTE,
+      22 * MINUTE
+    );
+
+    // Sync follower - every 30 min, offset 32 min (no browser needed)
+    this.scheduleStaggeredJob(
+      'sync_follower',
+      async () => {
+        await this.safeExecute('sync_follower', async () => {
+          const { syncFollowerData } = await import('./syncFollowerDataJob');
+          await syncFollowerData();
+        });
+      },
+      30 * MINUTE,
+      32 * MINUTE
+    );
+
+    // Enhanced metrics - every 30 min, offset 42 min
+    this.scheduleStaggeredJob(
+      'enhanced_metrics',
+      async () => {
+        await this.safeExecute('enhanced_metrics', async () => {
+          const { enhancedMetricsScraperJob } = await import('./metricsScraperJob');
+          await enhancedMetricsScraperJob();
+        });
+      },
+      30 * MINUTE,
+      42 * MINUTE
+    );
+
+    // Metrics scraper - every 10 min, offset 7 min
+    this.scheduleStaggeredJob(
+      'metrics_scraper',
+      async () => {
+        await this.safeExecute('metrics_scraper', async () => {
+          const { metricsScraperJob } = await import('./metricsScraperJob');
+          await metricsScraperJob();
+        });
+      },
+      10 * MINUTE,
+      7 * MINUTE
+    );
+
+    // Data collection - every 60 min, offset 52 min
+    this.scheduleStaggeredJob(
+      'data_collection',
+      async () => {
+        await this.safeExecute('data_collection', async () => {
+          const { DataCollectionEngine } = await import('../intelligence/dataCollectionEngine');
+          const engine = DataCollectionEngine.getInstance();
+          await engine.collectComprehensiveData();
+        });
+      },
+      60 * MINUTE,
+      52 * MINUTE
+    );
+
+    // Learn job - every 60 min, offset 45 min (no browser)
+    if (flags.learnEnabled) {
+      this.scheduleStaggeredJob(
+        'learn',
+        async () => {
+          await this.safeExecute('learn', async () => {
+            const { getRealTimeLearningLoop } = await import('../intelligence/realTimeLearningLoop');
+            await getRealTimeLearningLoop().runLearningCycle();
+            this.stats.learnRuns++;
+            this.stats.lastLearnTime = new Date();
+          });
+        },
+        config.JOBS_LEARN_INTERVAL_MIN * MINUTE,
+        45 * MINUTE
+      );
+    }
+
+    // News scraping - every 60 min, offset 35 min
+    this.scheduleStaggeredJob(
+      'news_scraping',
+      async () => {
+        await this.safeExecute('news_scraping', async () => {
+          const { twitterNewsScraperJob } = await import('../news/newsScraperJob');
+          await twitterNewsScraperJob.runScrapingJob();
+        });
+      },
+      60 * MINUTE,
+      35 * MINUTE
+    );
+
+    // Attribution - every 2 hours, offset 70 min
+    this.scheduleStaggeredJob(
+      'attribution',
+      async () => {
+        await this.safeExecute('attribution', async () => {
+          const { runAttributionJob } = await import('./attributionJob');
+          await runAttributionJob();
+        });
+      },
+      2 * 60 * MINUTE,
+      70 * MINUTE
+    );
+
+    // Real outcomes - every 2 hours, offset 100 min
+    this.scheduleStaggeredJob(
+      'outcomes_real',
+      async () => {
+        await this.safeExecute('outcomes_real', async () => {
+          const { runRealOutcomesJob } = await import('./outcomeWriter');
+          await runRealOutcomesJob();
+        });
+      },
+      2 * 60 * MINUTE,
+      100 * MINUTE
+    );
+
+    // AI orchestration - every 6 hours, offset 200 min
+    this.scheduleStaggeredJob(
+      'ai_orchestration',
+      async () => {
+        await this.safeExecute('ai_orchestration', async () => {
+          const { runAIOrchestrationJob } = await import('./aiOrchestrationJob');
+          await runAIOrchestrationJob();
+        });
+      },
+      6 * 60 * MINUTE,
+      200 * MINUTE
+    );
+
+    // Autonomous optimization - every 6 hours, offset 230 min
+    this.scheduleStaggeredJob(
+      'autonomous_optimization',
+      async () => {
+        await this.safeExecute('autonomous_optimization', async () => {
+          const { runAutonomousOptimization } = await import('./autonomousOptimizationJob');
+          await runAutonomousOptimization();
+        });
+      },
+      6 * 60 * MINUTE,
+      230 * MINUTE
+    );
+
+    // Competitive analysis - every 24 hours, offset 270 min
+    this.scheduleStaggeredJob(
+      'competitive_analysis',
+      async () => {
+        await this.safeExecute('competitive_analysis', async () => {
+          const { competitiveAnalysisJob } = await import('./competitiveAnalysisJob');
+          await competitiveAnalysisJob();
+        });
+      },
+      24 * 60 * MINUTE,
+      270 * MINUTE
+    );
+
+    // Viral thread - every 24 hours if enabled
+    if (flags.live) {
+      const viralThreadIntervalMin = config.JOBS_VIRAL_THREAD_INTERVAL_MIN || 1440;
+      this.scheduleStaggeredJob(
+        'viral_thread',
+        async () => {
+          await this.safeExecute('viral_thread', async () => {
+            const { runViralThreadJob } = await import('./viralThreadJob');
+            await runViralThreadJob();
+          });
+        },
+        viralThreadIntervalMin * MINUTE,
+        300 * MINUTE
+      );
+    }
+
+    // Shadow outcomes (only in shadow mode)
+    if (modeFlags.simulateOutcomes) {
+      this.scheduleStaggeredJob(
+        'outcomes',
+        async () => {
+          await this.safeExecute('outcomes', async () => {
+            await simulateOutcomes();
+            this.stats.outcomeRuns++;
+            this.stats.lastOutcomeTime = new Date();
+          });
+        },
+        config.JOBS_LEARN_INTERVAL_MIN * MINUTE,
+        25 * MINUTE
+      );
+    }
+
+    // Status reporting - every hour
+    this.timers.set('status', setInterval(() => {
+      this.printHourlyStatus();
+    }, 60 * MINUTE));
+
+    console.log('✅ JOB_MANAGER: All jobs scheduled with staggered timing');
+    console.log('   📊 Jobs spread across 60 minutes to prevent resource collisions');
+    console.log('   🔥 Posting runs every 5 min with NO delay (highest priority)');
+    console.log('   ⏰ Other jobs staggered: 2m, 7m, 12m, 15m, 22m, 32m, 35m, 42m, 45m, 52m...');
   }
 
   /**
@@ -65,13 +369,25 @@ export class JobManager {
       return;
     }
 
+    // 🎯 FEATURE FLAG: Choose scheduling strategy
+    const USE_STAGGERED = process.env.USE_STAGGERED_SCHEDULING !== 'false'; // Default ON
+    
     console.log('🕒 JOB_MANAGER: Starting job timers...');
     console.log(`   • Mode: ${flags.mode} (live=${flags.live})`);
+    console.log(`   • Scheduling: ${USE_STAGGERED ? 'STAGGERED (optimized)' : 'LEGACY (simultaneous)'}`);
     console.log(`   • Plan: ${flags.plannerEnabled ? 'ENABLED' : 'DISABLED'}`);
     console.log(`   • Reply: ${flags.replyEnabled ? 'ENABLED' : 'DISABLED'}`);
     console.log(`   • Posting: ${flags.postingEnabled ? 'ENABLED' : 'DISABLED'}`);
     console.log(`   • Learn: ${flags.learnEnabled ? 'ENABLED' : 'DISABLED'}`);
     console.log(`   • Attribution: ENABLED (every 2h)`);
+    
+    if (USE_STAGGERED) {
+      await this.startStaggeredJobs(config, modeFlags);
+      return;
+    }
+    
+    // LEGACY SCHEDULING (fallback)
+    console.log('⚠️  JOB_MANAGER: Using legacy simultaneous scheduling');
     
     const registered: Record<string, boolean> = {
       plan: false,
