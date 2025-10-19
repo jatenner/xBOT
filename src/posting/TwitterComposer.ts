@@ -85,29 +85,36 @@ async function openReplyComposer(page: Page, rootUrl: string): Promise<void> {
 }
 
 /**
- * Capture numeric tweet ID from timeline after posting - ENHANCED VERSION
+ * Capture numeric tweet ID from timeline after posting - ENHANCED VERSION + AUTHOR VERIFICATION
  */
 async function captureTweetId(page: Page, attempts: number = 5): Promise<string> {
-  console.log('🔍 ENHANCED_TWEET_ID_CAPTURE: Starting with multiple strategies');
+  console.log('🔍 ENHANCED_TWEET_ID_CAPTURE: Starting with author verification...');
+  
+  const expectedUsername = process.env.TWITTER_USERNAME || 'Signal_Synapse';
+  console.log(`🔐 TWEET_ID_CAPTURE: Expected author: @${expectedUsername}`);
   
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
       console.log(`🔍 TWEET_ID_CAPTURE attempt ${attempt}/${attempts}`);
       
-      // Strategy 1: Check current URL for status pattern
+      // Strategy 1: Check current URL for status pattern WITH AUTHOR VERIFICATION
       const currentUrl = page.url();
       console.log(`📍 Current URL: ${currentUrl}`);
       
-      if (currentUrl.includes('/status/')) {
+      if (currentUrl.includes(`/${expectedUsername}/status/`)) {
         const urlMatch = currentUrl.match(/status\/(\d+)/);
         if (urlMatch && urlMatch[1]) {
           const tweetId = urlMatch[1];
-          console.log(`✅ CAPTURED_FROM_URL: ${tweetId}`);
+          console.log(`✅ CAPTURED_FROM_URL: ${tweetId} (verified author: @${expectedUsername})`);
           return tweetId;
         }
+      } else if (currentUrl.includes('/status/')) {
+        console.log(`⚠️ TWEET_ID_CAPTURE: URL has tweet ID but WRONG AUTHOR - rejecting`);
+        console.log(`   Current URL: ${currentUrl}`);
+        console.log(`   Expected: /${expectedUsername}/status/`);
       }
       
-      // Strategy 2: Look for status links with multiple selectors
+      // Strategy 2: Look for status links WITH AUTHOR VERIFICATION
       const selectors = [
         'a[href*="/status/"]:has(time)',
         'a[href*="/status/"]',
@@ -124,13 +131,17 @@ async function captureTweetId(page: Page, attempts: number = 5): Promise<string>
           
           if (anchor) {
             const href = await anchor.getAttribute('href');
-            if (href) {
+            if (href && href.includes(`/${expectedUsername}/status/`)) {
               const match = href.match(/status\/(\d+)/);
               if (match && match[1]) {
                 const tweetId = match[1];
-                console.log(`✅ CAPTURED_FROM_SELECTOR: ${tweetId} (${selector})`);
+                console.log(`✅ CAPTURED_FROM_SELECTOR: ${tweetId} (verified author: @${expectedUsername})`);
                 return tweetId;
               }
+            } else if (href && href.includes('/status/')) {
+              console.log(`⚠️ TWEET_ID_CAPTURE: Selector found tweet but WRONG AUTHOR`);
+              console.log(`   href: ${href}`);
+              console.log(`   Expected pattern: /${expectedUsername}/status/`);
             }
           }
         } catch (selectorError) {

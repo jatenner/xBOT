@@ -366,11 +366,77 @@ export class BulletproofTwitterComposer {
   }
 
   /**
-   * 🆔 Extract tweet ID from URL or response with enhanced detection
+   * 👤 Extract author username from a tweet element
+   */
+  private async extractAuthorFromTweet(tweetElement: any): Promise<string | null> {
+    try {
+      // Strategy 1: Look for username in author link
+      const authorLinkSelectors = [
+        '[data-testid="User-Name"] a[href^="/"]',
+        'a[role="link"][href^="/"]',
+        '[data-testid="User-Name"] span'
+      ];
+      
+      for (const selector of authorLinkSelectors) {
+        try {
+          const element = await tweetElement.locator(selector).first();
+          const href = await element.getAttribute('href').catch(() => null);
+          
+          if (href) {
+            // Extract username from href like "/@username" or "/username"
+            const match = href.match(/^\/(@)?([^/]+)$/);
+            if (match && match[2]) {
+              const username = match[2];
+              console.log(`   🔍 AUTHOR: Extracted from href: @${username}`);
+              return username;
+            }
+          }
+          
+          // Try text content
+          const text = await element.innerText().catch(() => null);
+          if (text && text.startsWith('@')) {
+            const username = text.substring(1).trim();
+            console.log(`   🔍 AUTHOR: Extracted from text: @${username}`);
+            return username;
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+      
+      // Strategy 2: Look for aria-label containing username
+      try {
+        const userNameElement = await tweetElement.locator('[data-testid="User-Name"]').first();
+        const ariaLabel = await userNameElement.getAttribute('aria-label').catch(() => null);
+        if (ariaLabel) {
+          // aria-label might be like "John Doe @username"
+          const match = ariaLabel.match(/@(\w+)/);
+          if (match) {
+            console.log(`   🔍 AUTHOR: Extracted from aria-label: @${match[1]}`);
+            return match[1];
+          }
+        }
+      } catch (e) {
+        // Continue to next strategy
+      }
+      
+      console.log('   ⚠️ AUTHOR: Could not extract author username');
+      return null;
+    } catch (e) {
+      console.log(`   ❌ AUTHOR: Extraction failed: ${(e as Error).message}`);
+      return null;
+    }
+  }
+
+  /**
+   * 🆔 Extract tweet ID from URL or response with enhanced detection + AUTHOR VERIFICATION
    */
   private async extractTweetId(): Promise<string | null> {
     try {
-      console.log('🆔 ID_EXTRACTION: Starting enhanced tweet ID capture...');
+      console.log('🆔 ID_EXTRACTION: Starting enhanced tweet ID capture with author verification...');
+      
+      const expectedUsername = process.env.TWITTER_USERNAME || 'Signal_Synapse';
+      console.log(`🔐 ID_EXTRACTION: Expected author: @${expectedUsername}`);
       
       // Strategy 1: Wait for URL change indicating successful post
       try {
@@ -383,16 +449,24 @@ export class BulletproofTwitterComposer {
         const url = this.page.url();
         console.log(`🔍 ID_EXTRACTION: Current URL: ${url}`);
         
-        const match = url.match(/\/status\/(\d+)/);
-        if (match) {
-          console.log(`✅ ID_EXTRACTION: Found tweet ID in URL: ${match[1]}`);
-          return match[1];
+        // CRITICAL FIX: Verify URL contains OUR username
+        if (url.includes(`/${expectedUsername}/status/`)) {
+          const match = url.match(/\/status\/(\d+)/);
+          if (match) {
+            const tweetId = match[1];
+            console.log(`✅ ID_EXTRACTION: Found verified tweet ID in URL: ${tweetId} (author: @${expectedUsername})`);
+            return tweetId;
+          }
+        } else if (url.includes('/status/')) {
+          console.log(`⚠️ ID_EXTRACTION: URL contains tweet ID but WRONG AUTHOR - rejecting`);
+          console.log(`   URL: ${url}`);
+          console.log(`   Expected: /${expectedUsername}/status/`);
         }
       } catch (e) {
         console.log('⚠️ ID_EXTRACTION: URL-based extraction failed, trying alternatives...');
       }
       
-      // Strategy 2: Look for tweet ID in DOM elements
+      // Strategy 2: Look for tweet ID in DOM elements WITH AUTHOR VERIFICATION
       try {
         const tweetSelectors = [
           'article[data-testid="tweet"]',
@@ -404,10 +478,19 @@ export class BulletproofTwitterComposer {
         for (const selector of tweetSelectors) {
           const elements = await this.page.locator(selector).all();
           for (const element of elements) {
+            // CRITICAL FIX: Extract and verify author FIRST
+            const authorUsername = await this.extractAuthorFromTweet(element);
+            if (!authorUsername || authorUsername.toLowerCase() !== expectedUsername.toLowerCase()) {
+              console.log(`⚠️ ID_EXTRACTION: Skipping tweet from wrong author: @${authorUsername || 'unknown'}`);
+              continue;
+            }
+            
+            console.log(`✅ ID_EXTRACTION: Found tweet from correct author: @${authorUsername}`);
+            
             // Check for data attributes that might contain tweet ID
             const tweetId = await element.getAttribute('data-tweet-id').catch(() => null);
             if (tweetId && /^\d+$/.test(tweetId)) {
-              console.log(`✅ ID_EXTRACTION: Found tweet ID in DOM: ${tweetId}`);
+              console.log(`✅ ID_EXTRACTION: Found verified tweet ID in DOM: ${tweetId}`);
               return tweetId;
             }
             
@@ -415,10 +498,10 @@ export class BulletproofTwitterComposer {
             const links = await element.locator('a[href*="/status/"]').all();
             for (const link of links) {
               const href = await link.getAttribute('href').catch(() => null);
-              if (href) {
+              if (href && href.includes(`/${expectedUsername}/status/`)) {
                 const match = href.match(/\/status\/(\d+)/);
                 if (match) {
-                  console.log(`✅ ID_EXTRACTION: Found tweet ID in link: ${match[1]}`);
+                  console.log(`✅ ID_EXTRACTION: Found verified tweet ID in link: ${match[1]}`);
                   return match[1];
                 }
               }
@@ -461,36 +544,55 @@ export class BulletproofTwitterComposer {
         console.log('⚠️ ID_EXTRACTION: Network-based extraction failed');
       }
       
-      // Strategy 4: Timeline change detection
+      // Strategy 4: USER PROFILE check (NOT home timeline!) - CRITICAL FIX
       try {
-        console.log('🔍 ID_EXTRACTION: Checking timeline for new tweets...');
+        console.log('🔍 ID_EXTRACTION: Checking USER PROFILE for new tweet...');
         
-        // Navigate to home to see if tweet appears
-        await this.page.goto('https://x.com/home', { timeout: 10000 });
+        // CRITICAL FIX: Navigate to OUR profile, not /home timeline
+        const profileUrl = `https://x.com/${expectedUsername}`;
+        console.log(`🔍 ID_EXTRACTION: Navigating to ${profileUrl}`);
+        await this.page.goto(profileUrl, { timeout: 10000 });
         await this.page.waitForTimeout(2000);
         
-        // Look for the most recent tweet
+        // Look for the most recent tweet on OUR profile
         const recentTweet = this.page.locator('article[data-testid="tweet"]').first();
         await recentTweet.waitFor({ state: 'visible', timeout: 5000 });
+        
+        // ADDITIONAL VERIFICATION: Extract author from this tweet
+        const authorUsername = await this.extractAuthorFromTweet(recentTweet);
+        if (authorUsername && authorUsername.toLowerCase() !== expectedUsername.toLowerCase()) {
+          console.log(`⚠️ ID_EXTRACTION: Tweet on profile has WRONG AUTHOR: @${authorUsername} (expected @${expectedUsername})`);
+          throw new Error('Author mismatch on profile page');
+        }
+        
+        console.log(`✅ ID_EXTRACTION: Verified tweet is from @${authorUsername}`);
         
         const timeElement = recentTweet.locator('time').first();
         const timeText = await timeElement.innerText().catch(() => '');
         
-        // If posted within last minute, it's likely our tweet
-        if (timeText.includes('now') || timeText.includes('1m') || timeText.includes('s')) {
+        console.log(`🕒 ID_EXTRACTION: Tweet timestamp: "${timeText}"`);
+        
+        // If posted within last 2 minutes, it's our tweet
+        if (timeText.includes('now') || timeText.includes('s') || timeText.includes('1m') || timeText.includes('2m')) {
           const tweetLink = recentTweet.locator('a[href*="/status/"]').first();
           const href = await tweetLink.getAttribute('href').catch(() => null);
           
-          if (href) {
+          if (href && href.includes(`/${expectedUsername}/status/`)) {
             const match = href.match(/\/status\/(\d+)/);
             if (match) {
-              console.log(`✅ ID_EXTRACTION: Found recent tweet ID: ${match[1]}`);
+              console.log(`✅ ID_EXTRACTION: Found VERIFIED recent tweet ID from profile: ${match[1]}`);
               return match[1];
             }
+          } else {
+            console.log(`⚠️ ID_EXTRACTION: Tweet link doesn't match expected username pattern`);
+            console.log(`   href: ${href}`);
+            console.log(`   Expected pattern: /${expectedUsername}/status/`);
           }
+        } else {
+          console.log(`⚠️ ID_EXTRACTION: Most recent tweet is too old (timestamp: "${timeText}"), not our just-posted tweet`);
         }
       } catch (e) {
-        console.log('⚠️ ID_EXTRACTION: Timeline-based extraction failed');
+        console.log(`⚠️ ID_EXTRACTION: Profile-based extraction failed: ${(e as Error).message}`);
       }
       
       // NO FALLBACKS - if we can't extract real ID, return null
