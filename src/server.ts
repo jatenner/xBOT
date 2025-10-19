@@ -69,6 +69,40 @@ app.get('/env', (req, res) => {
 app.get('/config', configHandler);
 
 /**
+ * System Health Dashboard - Browser Pool + Job Manager
+ */
+app.get('/api/system/health', async (req, res) => {
+  try {
+    const { getBrowserPool } = await import('./browser/UnifiedBrowserPool');
+    const browserPool = getBrowserPool();
+    const jobManager = JobManager.getInstance();
+    
+    const health = {
+      timestamp: new Date().toISOString(),
+      browserPool: browserPool.getHealth(),
+      jobManager: {
+        stats: jobManager.stats,
+        isRunning: jobManager['isRunning'],
+        activeTimers: jobManager['timers'].size
+      },
+      system: {
+        uptime: Math.floor(process.uptime()),
+        memory: {
+          used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+          total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),
+          external: Math.round(process.memoryUsage().external / 1024 / 1024)
+        },
+        nodeVersion: process.version
+      }
+    };
+    
+    res.json(health);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Health check failed', message: error.message });
+  }
+});
+
+/**
  * Learning system status
  */
 app.get('/learn/status', learnStatusHandler);

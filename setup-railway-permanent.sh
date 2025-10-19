@@ -62,3 +62,4 @@ echo "🔄 Reload your terminal or run:"
 echo "  source ~/.zshrc"
 echo ""
 
+
