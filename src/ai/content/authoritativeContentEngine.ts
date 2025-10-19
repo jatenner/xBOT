@@ -186,23 +186,24 @@ ${isThread ? `
 `}
 
 📊 EVIDENCE REQUIREMENTS:
-- Cite specific journals: "Journal of [Name]", "[Institution] researchers"  
-- Include sample sizes: "(n=1,247 participants)", "(12-week study)"
-- Use exact percentages: "23% reduction", "increased by 47%"
-- Specify populations: "post-menopausal women", "adults aged 40-65"
-- Reference publication years: "(2023 meta-analysis)", "(recent 2024 study)"
+- Use specific data but keep it simple and viral
+- NO academic citations (no "n=", no "et al.", no journal names)
+- Use compelling numbers: "23% reduction", "increased by 47%"
+- Make it feel like insider knowledge, not a research paper
+- NO publication years or study references - sounds too academic
 
-🎯 PROFESSIONAL VOICE EXAMPLES:
-✅ "Clinical trials demonstrate that..."
-✅ "Peer-reviewed research indicates..."  
-✅ "Evidence from randomized controlled trials..."
-✅ "Systematic reviews confirm..."
-✅ "Longitudinal studies reveal..."
+🎯 VIRAL VOICE EXAMPLES (NO BORING ACADEMIC SHIT):
+✅ "Most people don't know this, but..."
+✅ "Here's what actually works..."  
+✅ "The data is clear:"
+✅ "Studies found something crazy:"
+✅ "This changes everything we thought about..."
 
-❌ "I discovered that..."
-❌ "My friend tried this..."
-❌ "In my experience..."
-❌ "This worked for me..."
+❌ "Clinical trials demonstrate..." (TOO ACADEMIC)
+❌ "Peer-reviewed research indicates..." (TOO BORING)
+❌ "I discovered that..." (TOO PERSONAL)
+❌ "My friend tried this..." (NO ONE CARES)
+❌ "In my experience..." (NOT AUTHORITATIVE)
 
 🔬 TOPIC FOCUS: ${request.topic}
 ${insights.topPerformingContent ? `
