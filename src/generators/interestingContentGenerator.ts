@@ -8,6 +8,7 @@
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { parseAIJson } from '../utils/aiJsonParser';
 import { VOICE_GUIDELINES } from './sharedPatterns';
+import { getContentGenerationModel } from '../config/modelConfig';
 
 export interface InterestingContent {
   content: string | string[];
@@ -128,7 +129,7 @@ Return JSON: {"tweet": "your tweet"}
 
   try {
     const response = await createBudgetedChatCompletion({
-      model: 'gpt-4o',
+      model: getContentGenerationModel() // Budget-optimized,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }

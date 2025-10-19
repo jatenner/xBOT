@@ -8,6 +8,7 @@ import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { validateAndExtractContent } from './generatorUtils';
 import { parseAIJson } from '../utils/aiJsonParser';
 import { VOICE_GUIDELINES } from './sharedPatterns';
+import { getContentGenerationModel } from '../config/modelConfig';
 
 export interface ContrarianContent {
   content: string | string[];
@@ -93,7 +94,7 @@ Make it specific and sharp - numbers, not generics.`;
 
   try {
     const response = await createBudgetedChatCompletion({
-      model: 'gpt-4o',
+      model: getContentGenerationModel() // Budget-optimized,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
