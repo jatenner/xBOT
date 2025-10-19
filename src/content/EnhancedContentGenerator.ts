@@ -176,16 +176,8 @@ export class EnhancedContentGenerator {
     } catch (error) {
       console.error(`❌ GENERATION_ERROR (candidate ${index}):`, error);
       
-      // Fallback candidate
-      return {
-        id: `fallback_${Date.now()}_${index}`,
-        text: this.getFallbackContent(topic, hook_type),
-        format,
-        hook_type,
-        scores: { hook_strength: 60, novelty: 40, clarity: 80, shareability: 50, overall: 58 },
-        critique: 'Fallback content due to generation error',
-        created_at: new Date()
-      };
+      // NO FALLBACKS - content generation must succeed or throw
+      throw new Error(`Content generation failed for candidate ${index}: ${error}`);
     }
   }
 

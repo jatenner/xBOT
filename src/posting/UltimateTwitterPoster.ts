@@ -675,16 +675,13 @@ export class UltimateTwitterPoster {
         console.log('ULTIMATE_POSTER: Profile strategy failed');
       }
       
-      // STRATEGY 4: Final fallback - timestamp with warning
-      const fallbackId = Date.now().toString();
-      console.warn(`ULTIMATE_POSTER: ⚠️⚠️⚠️ FALLBACK ID: ${fallbackId} - SCRAPING WILL FAIL`);
-      return fallbackId;
+      // NO FALLBACKS - All strategies failed
+      console.error('ULTIMATE_POSTER: ❌ All extraction strategies failed - returning null');
+      return null;
       
     } catch (error: any) {
       console.error(`ULTIMATE_POSTER: ❌ All extraction strategies failed: ${error.message}`);
-      const fallbackId = Date.now().toString();
-      console.warn(`ULTIMATE_POSTER: ⚠️⚠️⚠️ FALLBACK ID: ${fallbackId} - SCRAPING WILL FAIL`);
-      return fallbackId;
+      return null;
     }
   }
 

@@ -317,9 +317,9 @@ export class SchedulingLoop {
         // const poster = AutonomousTwitterPoster.getInstance();
         // const result = await poster.postTweet(decision.candidate.candidate.text);
         
-        // For now, simulate successful posting
-        const mockTweetId = `mock_${Date.now()}`;
-        console.log(`✅ Posted tweet: ${decision.candidate.candidate.text}`);
+        // This is a simulation/dry-run path - do NOT create mock tweet IDs
+        console.log(`✅ [DRY_RUN] Would post tweet: ${decision.candidate.candidate.text}`);
+        console.warn('⚠️ SCHEDULING_LOOP: This is simulation code - integrate with real posting system');
         
         // Update rate limits
         await this.updateRateLimits();

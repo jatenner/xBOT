@@ -671,14 +671,13 @@ export class EnhancedThreadComposer {
         return replyId;
       }
 
-      // Fallback: Generate unique ID
-      const fallbackId = `reply_${Date.now()}_${replyIndex}`;
-      console.warn(`⚠️ No new tweet ID found, using fallback: ${fallbackId}`);
-      return fallbackId;
+      // NO FALLBACKS - Reply ID extraction must succeed or fail
+      console.error(`❌ REPLY_ID_CAPTURE: Could not find new reply tweet ID for reply ${replyIndex}`);
+      throw new Error(`Failed to extract reply ID for reply ${replyIndex} to ${rootTweetId}`);
 
     } catch (error) {
-      console.warn(`⚠️ REPLY_ID_CAPTURE failed for reply ${replyIndex}:`, error);
-      return `reply_fallback_${Date.now()}_${replyIndex}`;
+      console.error(`❌ REPLY_ID_CAPTURE failed for reply ${replyIndex}:`, error);
+      throw error;
     }
   }
 

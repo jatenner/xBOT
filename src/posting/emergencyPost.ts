@@ -38,15 +38,13 @@ export async function emergencyPost(text: string): Promise<EmergencyPostResult> 
 
     console.log('🚨 EMERGENCY_POST: Session validated, attempting safe post');
 
-    // For now, simulate posting to prevent cascade failures
-    // TODO: Replace with actual safe posting implementation
-    const mockTweetId = `emergency_${Date.now()}`;
-    
-    console.log(`🚨 EMERGENCY_POST: Simulated post success - ${mockTweetId}`);
+    // NO FALLBACKS - Emergency post must extract real ID or fail
+    console.error('🚨 EMERGENCY_POST: ❌ This emergency poster is deprecated and should not be used');
+    console.error('🚨 EMERGENCY_POST: Use bulletproofTwitterComposer.ts instead');
     
     return {
-      success: true,
-      id: mockTweetId
+      success: false,
+      error: 'Emergency poster deprecated - use bulletproofTwitterComposer'
     };
 
   } catch (error: any) {
