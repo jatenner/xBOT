@@ -37,6 +37,11 @@ import { getViralExamplesForTopic } from '../intelligence/viralTweetDatabase';
 import { getCachedTopTweets, formatTopTweetsForPrompt } from '../intelligence/dynamicFewShotProvider';
 import { validateAndImprove } from '../generators/contentAutoImprover';
 import { validateContent } from '../generators/preQualityValidator';
+import { PreGenerationIntelligence } from '../intelligence/preGenerationIntelligence';
+import { PostGenerationIntelligence } from '../intelligence/postGenerationIntelligence';
+import { IntelligenceEnhancer } from '../intelligence/intelligenceEnhancer';
+import { intelligenceConfig, getIntelligenceStatus } from '../intelligence/intelligenceConfig';
+import { IntelligencePackage } from '../intelligence/intelligenceTypes';
 
 // ═══════════════════════════════════════════════════════════
 // TYPES
@@ -106,9 +111,19 @@ export class UnifiedContentEngine {
   // 🎭 REAL CONTENT GENERATORS (The actual personas you built!)
   private humanVoice = HumanVoiceEngine.getInstance();
   
+  // 🧠 INTELLIGENCE MODULES (NEW!)
+  private preGenIntelligence = new PreGenerationIntelligence();
+  private postGenIntelligence = new PostGenerationIntelligence();
+  private intelligenceEnhancer = new IntelligenceEnhancer();
+  
   private constructor() {
     const apiKey = process.env.OPENAI_API_KEY || '';
     this.qualityController = new ContentQualityController(apiKey);
+    
+    const intelligenceStatus = getIntelligenceStatus();
+    if (intelligenceStatus !== 'Disabled') {
+      console.log(`🧠 UnifiedContentEngine initialized with Intelligence: ${intelligenceStatus}`);
+    }
   }
   
   public static getInstance(): UnifiedContentEngine {
@@ -129,8 +144,30 @@ export class UnifiedContentEngine {
     console.log('🚀 UNIFIED_ENGINE: Starting generation with all systems active');
     
     const systemsActive: string[] = [];
+    let intelligence: IntelligencePackage | undefined;
     
     try {
+      // ═══════════════════════════════════════════════════════════
+      // STEP 0: PRE-GENERATION INTELLIGENCE (NEW!)
+      // ═══════════════════════════════════════════════════════════
+      if (intelligenceConfig.preGeneration.enabled) {
+        try {
+          console.log('🧠 STEP 0: Gathering deep intelligence on topic...');
+          
+          const initialTopic = request.topic || 'health and wellness';
+          intelligence = await this.preGenIntelligence.analyzeTopicIntelligence(initialTopic);
+          
+          console.log(`  ✓ Research: ${intelligence.research.surprise_factor}`);
+          console.log(`  ✓ Perspectives: ${intelligence.perspectives.length} unique angles found`);
+          console.log(`  ✓ Context: ${intelligence.context.gaps.length} narrative gaps identified`);
+          
+          systemsActive.push('Pre-Gen Intelligence');
+        } catch (error: any) {
+          console.warn(`  ⚠️ Pre-Gen Intelligence failed (continuing without): ${error.message}`);
+          // Continue without intelligence - graceful degradation
+        }
+      }
+      
       // ═══════════════════════════════════════════════════════════
       // STEP 1: RETRIEVE LEARNING INSIGHTS
       // ═══════════════════════════════════════════════════════════
@@ -239,7 +276,8 @@ export class UnifiedContentEngine {
           format: request.format || 'single',
           insights,
           viralAnalysis,
-          experimentArm
+          experimentArm,
+          intelligence // 🆕 PASS INTELLIGENCE
         });
         
         generatorName = result.generatorName;
@@ -686,6 +724,7 @@ export class UnifiedContentEngine {
     insights: ViralInsights;
     viralAnalysis: any;
     experimentArm: string;
+    intelligence?: IntelligencePackage; // 🆕 ACCEPT INTELLIGENCE
   }): Promise<{ generatorName: string; content: string | string[]; confidence: number }> {
     
     // LOAD DYNAMIC WEIGHTS FROM DATABASE (Autonomous Learning!)
@@ -795,7 +834,8 @@ export class UnifiedContentEngine {
       if (selectedGenerator === 'dataNerd') {
         const result = await generateDataNerdContent({
           topic: params.topic,
-          format: params.format
+          format: params.format,
+          intelligence: params.intelligence // 🆕 PASS INTELLIGENCE
         });
         
         return {
@@ -843,7 +883,8 @@ export class UnifiedContentEngine {
       if (selectedGenerator === 'thoughtLeader') {
         const result = await generateThoughtLeaderContent({
           topic: params.topic,
-          format: params.format
+          format: params.format,
+          intelligence: params.intelligence // 🆕 PASS INTELLIGENCE
         });
         
         return {
@@ -859,7 +900,8 @@ export class UnifiedContentEngine {
       if (selectedGenerator === 'contrarian') {
         const result = await generateContrarianContent({
           topic: params.topic,
-          format: params.format
+          format: params.format,
+          intelligence: params.intelligence // 🆕 PASS INTELLIGENCE
         });
         
         return {
