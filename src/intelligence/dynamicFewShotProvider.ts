@@ -26,18 +26,18 @@ export async function fetchTopTweets(limit: number = 10): Promise<TopTweet[]> {
   const supabase = getSupabaseClient();
   
   try {
-    // Query outcomes table joined with posted_decisions to get content
+    // Query using content_with_outcomes view (has foreign key relationship)
     const { data, error } = await supabase
-      .from('outcomes')
+      .from('content_with_outcomes')
       .select(`
         decision_id,
+        content,
+        posted_at,
         likes,
         retweets,
         replies,
-        collected_at,
-        posted_decisions!inner(content, posted_at)
+        collected_at
       `)
-      .eq('simulated', false)
       .not('likes', 'is', null)
       .order('likes', { ascending: false })
       .limit(limit);
@@ -61,12 +61,12 @@ export async function fetchTopTweets(limit: number = 10): Promise<TopTweet[]> {
       const engagementRate = totalEngagement / Math.max(1, likes);
       
       return {
-        content: String(row.posted_decisions?.content || ''),
+        content: String(row.content || ''),
         likes,
         retweets,
         replies,
         engagement_rate: engagementRate,
-        posted_at: String(row.posted_decisions?.posted_at || row.collected_at || ''),
+        posted_at: String(row.posted_at || row.collected_at || ''),
         topic: undefined
       };
     });
