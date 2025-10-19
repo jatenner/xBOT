@@ -113,12 +113,12 @@ export class ContentQualityController {
     );
 
     // Posting decision
-    // ENHANCED THRESHOLDS: Raised from 72 to 82, added engagement and authenticity gates
-    // Only post B+ grade content with strong engagement potential
-    const MIN_OVERALL = 82;
+    // ADJUSTED THRESHOLDS: Lowered for early-stage account (31 followers)
+    // Will raise as account grows and system learns from real data
+    const MIN_OVERALL = 78;
     const MIN_COMPLETENESS = 80;
-    const MIN_ENGAGEMENT = 75;
-    const MIN_AUTHENTICITY = 70;
+    const MIN_ENGAGEMENT = 65;
+    const MIN_AUTHENTICITY = 65;
     
     score.shouldPost = score.overall >= MIN_OVERALL && 
                        score.completeness >= MIN_COMPLETENESS &&
@@ -285,11 +285,11 @@ Return ONLY the improved content, nothing else:`;
       score.authenticity * 0.05
     );
 
-    // Decision - ENHANCED THRESHOLDS (matching main validation)
-    const MIN_OVERALL = 82;
+    // Decision - ADJUSTED THRESHOLDS (matching main validation)
+    const MIN_OVERALL = 78;
     const MIN_COMPLETENESS = 80;
-    const MIN_ENGAGEMENT = 75;
-    const MIN_AUTHENTICITY = 70;
+    const MIN_ENGAGEMENT = 65;
+    const MIN_AUTHENTICITY = 65;
     
     score.shouldPost = score.overall >= MIN_OVERALL && 
                        score.completeness >= MIN_COMPLETENESS &&
