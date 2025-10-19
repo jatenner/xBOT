@@ -71,6 +71,7 @@ export class EmergencyWorkingPoster {
         success: boolean;
         tweetId?: string;
         method?: string;
+        error?: string;
     }> {
         const { chromium } = await import('playwright');
         
