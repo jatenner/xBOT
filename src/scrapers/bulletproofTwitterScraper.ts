@@ -125,6 +125,18 @@ export class BulletproofTwitterScraper {
           continue;
         }
 
+        // Step 1.5: PHASE 1 FIX - Validate we're scraping the correct tweet
+        const correctTweet = await this.validateScrapingCorrectTweet(page, tweetId);
+        if (!correctTweet) {
+          console.warn(`  ⚠️ SCRAPER: Tweet ID mismatch detected, reloading...`);
+          if (attempt < maxAttempts) {
+            await this.reloadTweetPage(page, tweetId);
+            attempt++;
+            await this.sleep(2000 * attempt);
+            continue;
+          }
+        }
+
         // Step 2: Extract metrics using multiple selectors
         const metrics = await this.extractMetricsWithFallbacks(page);
 
@@ -204,6 +216,45 @@ export class BulletproofTwitterScraper {
   }
 
   /**
+   * PHASE 1 FIX: Validate we're scraping the CORRECT tweet
+   * Prevents accidentally scraping a different tweet in a thread or timeline
+   */
+  private async validateScrapingCorrectTweet(page: Page, expectedTweetId: string): Promise<boolean> {
+    try {
+      const actualTweetId = await page.evaluate(() => {
+        // Find the main tweet article
+        const article = document.querySelector('article[data-testid="tweet"]');
+        if (!article) return null;
+        
+        // Look for status link within the article
+        const link = article.querySelector('a[href*="/status/"]') as HTMLAnchorElement;
+        if (!link) return null;
+        
+        // Extract tweet ID from URL
+        const match = link.href.match(/\/status\/(\d+)/);
+        return match ? match[1] : null;
+      });
+
+      if (!actualTweetId) {
+        console.warn(`    ⚠️ TWEET_ID_CHECK: Could not extract tweet ID from page`);
+        return false;
+      }
+
+      if (actualTweetId !== expectedTweetId) {
+        console.error(`    ❌ TWEET_ID_MISMATCH: Expected ${expectedTweetId}, found ${actualTweetId}`);
+        return false;
+      }
+
+      console.log(`    ✅ TWEET_ID_CHECK: Confirmed scraping correct tweet (${expectedTweetId})`);
+      return true;
+
+    } catch (error) {
+      console.warn(`    ⚠️ TWEET_ID_CHECK: Validation failed:`, error);
+      return false;
+    }
+  }
+
+  /**
    * Validate that page is in correct state for scraping
    * PHASE 3: Enhanced with multiple selector fallbacks
    */
@@ -274,35 +325,45 @@ export class BulletproofTwitterScraper {
 
   /**
    * Extract metrics using multiple selector fallbacks
+   * PHASE 1 FIX: Now scoped to specific tweet article to prevent "8k tweets" bug
    */
   private async extractMetricsWithFallbacks(page: Page): Promise<Partial<ScrapedMetrics>> {
     const results: Partial<ScrapedMetrics> = {
       _selectors_used: []
     };
 
-    // Extract each metric with fallbacks
-    results.likes = await this.extractMetricWithFallbacks(page, 'likes', SELECTORS.likes);
-    results.retweets = await this.extractMetricWithFallbacks(page, 'retweets', SELECTORS.retweets);
-    results.quote_tweets = await this.extractMetricWithFallbacks(page, 'quote_tweets', SELECTORS.quote_tweets);
-    results.replies = await this.extractMetricWithFallbacks(page, 'replies', SELECTORS.replies);
-    results.bookmarks = await this.extractMetricWithFallbacks(page, 'bookmarks', SELECTORS.bookmarks);
-    results.views = await this.extractMetricWithFallbacks(page, 'views', SELECTORS.views);
+    // CRITICAL FIX: Get the main tweet article element first
+    // This ensures we only search within THIS tweet, not the entire page
+    const tweetArticle = await page.$('article[data-testid="tweet"]');
+    if (!tweetArticle) {
+      console.warn('    ⚠️ EXTRACT: Could not find main tweet article');
+      return results;
+    }
+
+    // Extract each metric with fallbacks (now scoped to tweet article)
+    results.likes = await this.extractMetricWithFallbacks(tweetArticle, 'likes', SELECTORS.likes);
+    results.retweets = await this.extractMetricWithFallbacks(tweetArticle, 'retweets', SELECTORS.retweets);
+    results.quote_tweets = await this.extractMetricWithFallbacks(tweetArticle, 'quote_tweets', SELECTORS.quote_tweets);
+    results.replies = await this.extractMetricWithFallbacks(tweetArticle, 'replies', SELECTORS.replies);
+    results.bookmarks = await this.extractMetricWithFallbacks(tweetArticle, 'bookmarks', SELECTORS.bookmarks);
+    results.views = await this.extractMetricWithFallbacks(tweetArticle, 'views', SELECTORS.views);
 
     return results;
   }
 
   /**
    * Try multiple selectors for a single metric
+   * PHASE 1 FIX: Now accepts ElementHandle to search within specific element
    */
   private async extractMetricWithFallbacks(
-    page: Page,
+    tweetArticle: any, // ElementHandle
     metricName: string,
     selectors: string[]
   ): Promise<number | null> {
     for (let i = 0; i < selectors.length; i++) {
       try {
         const selector = selectors[i];
-        const value = await this.extractNumberFromSelector(page, selector);
+        const value = await this.extractNumberFromSelector(tweetArticle, selector);
 
         if (value !== null) {
           if (i > 0) {
@@ -321,10 +382,17 @@ export class BulletproofTwitterScraper {
 
   /**
    * Extract number from a selector
+   * PHASE 1 FIX: Now searches within specific element, not entire page
+   * This prevents grabbing follower counts, tweet counts, etc. from sidebar
    */
-  private async extractNumberFromSelector(page: Page, selector: string): Promise<number | null> {
+  private async extractNumberFromSelector(
+    tweetArticle: any, // ElementHandle
+    selector: string
+  ): Promise<number | null> {
     try {
-      const text = await page.$eval(selector, (el) => el.textContent?.trim() || '');
+      // CRITICAL FIX: Use tweetArticle.$eval instead of page.$eval
+      // This searches ONLY within the tweet article, not the entire document
+      const text = await tweetArticle.$eval(selector, (el: any) => el.textContent?.trim() || '');
 
       if (!text || text === '0' || text === '') {
         return 0;
@@ -353,6 +421,7 @@ export class BulletproofTwitterScraper {
 
   /**
    * Validate that extracted metrics are reasonable
+   * PHASE 1 FIX: Enhanced validation to catch "8k tweets" type bugs
    */
   private areMetricsValid(metrics: Partial<ScrapedMetrics>): boolean {
     // At minimum, we should have likes (even if 0)
@@ -361,10 +430,39 @@ export class BulletproofTwitterScraper {
       return false;
     }
 
-    // Sanity check: retweets shouldn't exceed likes by more than 10x (usually)
+    // ENHANCED CHECK 1: Retweets shouldn't exceed likes by more than 10x (usually)
     if (metrics.likes !== null && metrics.retweets !== null) {
       if (metrics.retweets > metrics.likes * 10) {
         console.warn(`    ⚠️ VALIDATE: Retweets (${metrics.retweets}) > Likes (${metrics.likes}) * 10 - suspicious`);
+        return false;
+      }
+    }
+
+    // ENHANCED CHECK 2: Extremely high values are suspicious (likely grabbed from wrong element)
+    // For small accounts, values > 50K are very rare unless viral
+    const maxReasonableValue = 100000; // Adjust based on your account size
+    if (metrics.likes !== null && metrics.likes > maxReasonableValue) {
+      console.warn(`    ⚠️ VALIDATE: Likes (${metrics.likes}) exceeds reasonable threshold - possible "8k bug"`);
+      return false;
+    }
+    if (metrics.retweets !== null && metrics.retweets > maxReasonableValue) {
+      console.warn(`    ⚠️ VALIDATE: Retweets (${metrics.retweets}) exceeds reasonable threshold`);
+      return false;
+    }
+
+    // ENHANCED CHECK 3: Engagement rate sanity check
+    if (metrics.views !== null && metrics.likes !== null && metrics.views > 0) {
+      const engagementRate = metrics.likes / metrics.views;
+      if (engagementRate > 0.5) { // 50%+ engagement is extremely rare
+        console.warn(`    ⚠️ VALIDATE: Engagement rate ${(engagementRate * 100).toFixed(1)}% is unrealistically high`);
+        return false;
+      }
+    }
+
+    // ENHANCED CHECK 4: Quote tweets shouldn't exceed retweets significantly
+    if (metrics.quote_tweets !== null && metrics.retweets !== null && metrics.retweets > 0) {
+      if (metrics.quote_tweets > metrics.retweets * 2) {
+        console.warn(`    ⚠️ VALIDATE: Quote tweets (${metrics.quote_tweets}) >> retweets (${metrics.retweets})`);
         return false;
       }
     }
