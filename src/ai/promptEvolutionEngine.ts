@@ -255,12 +255,13 @@ export class PromptEvolutionEngine {
     console.log(`📝 RECORDING_PERFORMANCE: ${metrics.postId} with ${metrics.engagementRate.toFixed(3)} engagement`);
 
     try {
-      // Ensure post_id is valid before database write
-      const postId = metrics.postId || `fallback_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      
+      // NO FALLBACKS - post_id is required for analytics
       if (!metrics.postId) {
-        console.warn(`⚠️ POST_ID_FALLBACK: Using generated ID ${postId} for analytics`);
+        console.error(`❌ POST_ID_MISSING: Cannot record performance without valid post ID`);
+        throw new Error('Cannot record prompt performance without valid post ID');
       }
+      
+      const postId = metrics.postId;
 
       // Store in database with validated post_id
       await this.db.executeQuery(

@@ -121,9 +121,11 @@ export class EmergencyWorkingPoster {
             // Wait for success
             await page.waitForTimeout(3000);
             
+            // NO FALLBACK IDs - emergency poster should fail if can't extract real ID
+            console.error('EMERGENCY_POSTER: ❌ Cannot extract tweet ID - emergency post failed');
             return {
-                success: true,
-                tweetId: `browser_${Date.now()}`,
+                success: false,
+                error: 'Emergency post failed - could not extract tweet ID',
                 method: 'emergency_browser'
             };
             
@@ -142,8 +144,14 @@ export class EmergencyWorkingPoster {
             const { getSupabaseClient } = await import('../db/index');
             const supabase = getSupabaseClient();
             
+            // Only log if we have a real tweet ID (not a fallback)
+            if (!tweetId || tweetId.includes('emergency_') || tweetId.includes('browser_')) {
+                console.warn('EMERGENCY_POSTER: ⚠️ Skipping database log - no valid tweet ID');
+                return;
+            }
+            
             const insertData = {
-                decision_id: `emergency_${Date.now()}`,
+                decision_id: `emergency_log_${Date.now()}`, // Just for logging, not a tweet ID
                 content: content,
                 tweet_id: tweetId,
                 decision_type: 'content' as const,
