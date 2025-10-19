@@ -333,6 +333,7 @@ export class BulletproofTwitterScraper {
   /**
    * Extract metrics using multiple selector fallbacks
    * PHASE 1 FIX: Now scoped to specific tweet article to prevent "8k tweets" bug
+   * PHASE 3 FIX: Intelligent extraction using aria-labels + multiple strategies
    */
   private async extractMetricsWithFallbacks(page: Page): Promise<Partial<ScrapedMetrics>> {
     const results: Partial<ScrapedMetrics> = {
@@ -347,15 +348,188 @@ export class BulletproofTwitterScraper {
       return results;
     }
 
-    // Extract each metric with fallbacks (now scoped to tweet article)
-    results.likes = await this.extractMetricWithFallbacks(tweetArticle, 'likes', SELECTORS.likes);
-    results.retweets = await this.extractMetricWithFallbacks(tweetArticle, 'retweets', SELECTORS.retweets);
+    // PHASE 3: Try intelligent extraction first (aria-labels), then fallback to selectors
+    console.log('    🎯 PHASE 3: Trying intelligent extraction methods...');
+    
+    results.likes = await this.extractLikesIntelligent(tweetArticle) ?? 
+                    await this.extractMetricWithFallbacks(tweetArticle, 'likes', SELECTORS.likes);
+    
+    results.retweets = await this.extractRetweetsIntelligent(tweetArticle) ?? 
+                       await this.extractMetricWithFallbacks(tweetArticle, 'retweets', SELECTORS.retweets);
+    
+    results.replies = await this.extractRepliesIntelligent(tweetArticle) ?? 
+                      await this.extractMetricWithFallbacks(tweetArticle, 'replies', SELECTORS.replies);
+    
+    results.views = await this.extractViewsIntelligent(tweetArticle) ?? 
+                    await this.extractMetricWithFallbacks(tweetArticle, 'views', SELECTORS.views);
+    
+    // These don't have aria-labels usually, use standard extraction
     results.quote_tweets = await this.extractMetricWithFallbacks(tweetArticle, 'quote_tweets', SELECTORS.quote_tweets);
-    results.replies = await this.extractMetricWithFallbacks(tweetArticle, 'replies', SELECTORS.replies);
     results.bookmarks = await this.extractMetricWithFallbacks(tweetArticle, 'bookmarks', SELECTORS.bookmarks);
-    results.views = await this.extractMetricWithFallbacks(tweetArticle, 'views', SELECTORS.views);
 
     return results;
+  }
+
+  /**
+   * PHASE 3: Intelligent likes extraction using aria-label
+   * Most reliable method - Twitter's aria-labels are stable
+   */
+  private async extractLikesIntelligent(tweetArticle: any): Promise<number | null> {
+    try {
+      const likeButton = await tweetArticle.$('[data-testid="like"]');
+      if (!likeButton) return null;
+
+      const ariaLabel = await likeButton.evaluate((el: any) => el.getAttribute('aria-label'));
+      if (!ariaLabel) return null;
+
+      console.log(`    🎯 LIKES aria-label: "${ariaLabel}"`);
+
+      // Parse patterns: "123 Likes" or "123 Likes. Like" or "Like"
+      const match = ariaLabel.match(/(\d[\d,]*)\s+(?:Like|like)/i);
+      if (match) {
+        const count = parseInt(match[1].replace(/,/g, ''), 10);
+        console.log(`    ✅ LIKES from aria-label: ${count}`);
+        return count;
+      }
+
+      // If aria-label is just "Like" with no number, it means 0 likes
+      if (ariaLabel.toLowerCase().includes('like') && !ariaLabel.match(/\d/)) {
+        console.log(`    ✅ LIKES from aria-label: 0 (no count in label)`);
+        return 0;
+      }
+
+      return null;
+    } catch (error) {
+      console.log(`    ⚠️ LIKES intelligent extraction failed: ${error}`);
+      return null;
+    }
+  }
+
+  /**
+   * PHASE 3: Intelligent retweets extraction using aria-label
+   */
+  private async extractRetweetsIntelligent(tweetArticle: any): Promise<number | null> {
+    try {
+      const retweetButton = await tweetArticle.$('[data-testid="retweet"]');
+      if (!retweetButton) return null;
+
+      const ariaLabel = await retweetButton.evaluate((el: any) => el.getAttribute('aria-label'));
+      if (!ariaLabel) return null;
+
+      console.log(`    🎯 RETWEETS aria-label: "${ariaLabel}"`);
+
+      // Parse patterns: "456 Retweets" or "456 Reposts"
+      const match = ariaLabel.match(/(\d[\d,]*)\s+(?:Retweet|Repost|repost)/i);
+      if (match) {
+        const count = parseInt(match[1].replace(/,/g, ''), 10);
+        console.log(`    ✅ RETWEETS from aria-label: ${count}`);
+        return count;
+      }
+
+      if (ariaLabel.toLowerCase().match(/repost|retweet/) && !ariaLabel.match(/\d/)) {
+        console.log(`    ✅ RETWEETS from aria-label: 0`);
+        return 0;
+      }
+
+      return null;
+    } catch (error) {
+      console.log(`    ⚠️ RETWEETS intelligent extraction failed: ${error}`);
+      return null;
+    }
+  }
+
+  /**
+   * PHASE 3: Intelligent replies extraction using aria-label
+   */
+  private async extractRepliesIntelligent(tweetArticle: any): Promise<number | null> {
+    try {
+      const replyButton = await tweetArticle.$('[data-testid="reply"]');
+      if (!replyButton) return null;
+
+      const ariaLabel = await replyButton.evaluate((el: any) => el.getAttribute('aria-label'));
+      if (!ariaLabel) return null;
+
+      console.log(`    🎯 REPLIES aria-label: "${ariaLabel}"`);
+
+      // Parse patterns: "789 Replies" or "789 replies. Reply"
+      const match = ariaLabel.match(/(\d[\d,]*)\s+(?:Repl|repl)/i);
+      if (match) {
+        const count = parseInt(match[1].replace(/,/g, ''), 10);
+        console.log(`    ✅ REPLIES from aria-label: ${count}`);
+        return count;
+      }
+
+      if (ariaLabel.toLowerCase().includes('repl') && !ariaLabel.match(/\d/)) {
+        console.log(`    ✅ REPLIES from aria-label: 0`);
+        return 0;
+      }
+
+      return null;
+    } catch (error) {
+      console.log(`    ⚠️ REPLIES intelligent extraction failed: ${error}`);
+      return null;
+    }
+  }
+
+  /**
+   * PHASE 3: Intelligent views extraction - multiple strategies
+   */
+  private async extractViewsIntelligent(tweetArticle: any): Promise<number | null> {
+    try {
+      // Strategy 1: Look for analytics link
+      const analyticsLink = await tweetArticle.$('a[href*="/analytics"]');
+      if (analyticsLink) {
+        const ariaLabel = await analyticsLink.evaluate((el: any) => el.getAttribute('aria-label'));
+        console.log(`    🎯 VIEWS aria-label: "${ariaLabel || 'none'}"`);
+        
+        if (ariaLabel) {
+          const match = ariaLabel.match(/(\d[\d,\.]*[KkMm]?)\s+(?:View|view)/i);
+          if (match) {
+            const text = match[1].toLowerCase();
+            let count: number;
+            if (text.includes('k')) {
+              count = Math.floor(parseFloat(text) * 1000);
+            } else if (text.includes('m')) {
+              count = Math.floor(parseFloat(text) * 1000000);
+            } else {
+              count = parseInt(text.replace(/,/g, ''), 10);
+            }
+            console.log(`    ✅ VIEWS from aria-label: ${count}`);
+            return count;
+          }
+        }
+
+        // Strategy 2: Get text from analytics link span
+        const viewsText = await analyticsLink.evaluate((el: any) => {
+          const span = el.querySelector('span:not([aria-hidden])');
+          return span?.textContent?.trim() || '';
+        });
+        
+        console.log(`    🎯 VIEWS text from analytics: "${viewsText}"`);
+        
+        if (viewsText && viewsText !== '') {
+          const lower = viewsText.toLowerCase();
+          let count: number;
+          if (lower.includes('k')) {
+            count = Math.floor(parseFloat(lower) * 1000);
+          } else if (lower.includes('m')) {
+            count = Math.floor(parseFloat(lower) * 1000000);
+          } else {
+            count = parseInt(viewsText.replace(/,/g, ''), 10);
+          }
+          
+          if (!isNaN(count)) {
+            console.log(`    ✅ VIEWS from analytics text: ${count}`);
+            return count;
+          }
+        }
+      }
+
+      return null;
+    } catch (error) {
+      console.log(`    ⚠️ VIEWS intelligent extraction failed: ${error}`);
+      return null;
+    }
   }
 
   /**
