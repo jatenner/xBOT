@@ -26,10 +26,19 @@ export async function fetchTopTweets(limit: number = 10): Promise<TopTweet[]> {
   const supabase = getSupabaseClient();
   
   try {
-    // Query outcomes table for YOUR best tweets
+    // Query outcomes table joined with posted_decisions to get content
     const { data, error } = await supabase
       .from('outcomes')
-      .select('content, likes, retweets, replies, posted_at, topic_cluster')
+      .select(`
+        decision_id,
+        likes,
+        retweets,
+        replies,
+        collected_at,
+        posted_decisions!inner(content, posted_at)
+      `)
+      .eq('simulated', false)
+      .not('likes', 'is', null)
       .order('likes', { ascending: false })
       .limit(limit);
     
@@ -44,18 +53,21 @@ export async function fetchTopTweets(limit: number = 10): Promise<TopTweet[]> {
     }
     
     // Calculate engagement rate and format
-    const topTweets: TopTweet[] = data.map(tweet => {
-      const totalEngagement = (tweet.likes || 0) + (tweet.retweets || 0) + (tweet.replies || 0);
-      const engagementRate = totalEngagement / Math.max(1, tweet.likes || 1);
+    const topTweets: TopTweet[] = data.map((row: any) => {
+      const likes = Number(row.likes) || 0;
+      const retweets = Number(row.retweets) || 0;
+      const replies = Number(row.replies) || 0;
+      const totalEngagement = likes + retweets + replies;
+      const engagementRate = totalEngagement / Math.max(1, likes);
       
       return {
-        content: tweet.content || '',
-        likes: tweet.likes || 0,
-        retweets: tweet.retweets || 0,
-        replies: tweet.replies || 0,
+        content: String(row.posted_decisions?.content || ''),
+        likes,
+        retweets,
+        replies,
         engagement_rate: engagementRate,
-        posted_at: tweet.posted_at || '',
-        topic: tweet.topic_cluster || undefined
+        posted_at: String(row.posted_decisions?.posted_at || row.collected_at || ''),
+        topic: undefined
       };
     });
     
@@ -96,34 +108,9 @@ Create new content that matches what YOUR audience actually responds to.
  * Get topic-specific examples from YOUR history
  */
 export async function getTopTweetsForTopic(topic: string, limit: number = 3): Promise<TopTweet[]> {
-  const supabase = getSupabaseClient();
-  
-  try {
-    const { data, error } = await supabase
-      .from('outcomes')
-      .select('content, likes, retweets, replies, posted_at, topic_cluster')
-      .ilike('topic_cluster', `%${topic}%`)
-      .order('likes', { ascending: false })
-      .limit(limit);
-    
-    if (error || !data || data.length === 0) {
-      // Fallback to general top tweets
-      return fetchTopTweets(limit);
-    }
-    
-    return data.map(tweet => ({
-      content: tweet.content || '',
-      likes: tweet.likes || 0,
-      retweets: tweet.retweets || 0,
-      replies: tweet.replies || 0,
-      engagement_rate: ((tweet.likes || 0) + (tweet.retweets || 0) + (tweet.replies || 0)) / Math.max(1, tweet.likes || 1),
-      posted_at: tweet.posted_at || '',
-      topic: tweet.topic_cluster || undefined
-    }));
-    
-  } catch (error) {
-    return fetchTopTweets(limit);
-  }
+  // For now, just return general top tweets
+  // Topic-specific filtering can be added later when topic_cluster is populated
+  return fetchTopTweets(limit);
 }
 
 /**
