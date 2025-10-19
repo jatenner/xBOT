@@ -30,6 +30,10 @@ import { generateThoughtLeaderContent } from '../generators/thoughtLeaderGenerat
 import { generateContrarianContent } from '../generators/contrarianGenerator';
 import { generateExplorerContent } from '../generators/explorerGenerator';
 import { generatePhilosopherContent } from '../generators/philosopherGenerator';
+import { multiOptionGenerator, ContentOption } from '../ai/multiOptionGenerator';
+import { aiContentJudge } from '../ai/aiContentJudge';
+import { aiContentRefiner } from '../ai/aiContentRefiner';
+import { getViralExamplesForTopic } from '../intelligence/viralTweetDatabase';
 
 // ═══════════════════════════════════════════════════════════
 // TYPES
@@ -41,6 +45,7 @@ export interface ContentRequest {
   experimentArm?: 'control' | 'variant_a' | 'variant_b';
   forceGeneration?: boolean;
   enableEnrichment?: boolean; // Enable contrast injection (disabled by default)
+  useMultiOption?: boolean; // Enable multi-option generation with AI judge (NEW)
 }
 
 export interface GeneratedContent {
@@ -157,16 +162,74 @@ export class UnifiedContentEngine {
       console.log(`  ✓ Follower potential: ${viralAnalysis.followerPotential}/100`);
       
       // ═══════════════════════════════════════════════════════════
-      // STEP 4: SELECT CONTENT GENERATOR (THE REAL PERSONAS!)
+      // STEP 3.5: MULTI-OPTION GENERATION (NEW - if enabled)
       // ═══════════════════════════════════════════════════════════
-      console.log('🎭 STEP 4: Selecting content generator persona...');
-      const { generatorName, content: generatedContent, confidence } = await this.selectAndGenerateWithPersona({
-        topic: topicHint,
-        format: request.format || 'single',
-        insights,
-        viralAnalysis,
-        experimentArm
-      });
+      const useMultiOption = request.useMultiOption ?? (process.env.ENABLE_MULTI_OPTION === 'true');
+      
+      let generatorName: string;
+      let generatedContent: any;
+      let confidence: number;
+      let judgeReasoning: string | undefined;
+      
+      if (useMultiOption) {
+        console.log('🎯 STEP 3.5: MULTI-OPTION GENERATION (5 options)...');
+        
+        // Generate 5 options in parallel
+        const options = await multiOptionGenerator.generateOptions({
+          topic: topicHint,
+          format: request.format || 'single'
+        });
+        
+        console.log(`  ✓ Generated ${options.length} options`);
+        systemsActive.push('Multi-Option Generation');
+        
+        // AI judge selects best
+        const judgment = await aiContentJudge.selectBest(options);
+        console.log(`  ✓ Winner: ${judgment.winner.generator_name} (${judgment.score}/10)`);
+        console.log(`  ✓ Reasoning: ${judgment.reasoning}`);
+        systemsActive.push('AI Content Judge');
+        
+        // Get viral examples for refinement
+        const viralExamples = getViralExamplesForTopic(topicHint, 3);
+        
+        // Refine winner
+        console.log('  ✨ Refining winner...');
+        const refinement = await aiContentRefiner.refine({
+          content: judgment.winner.raw_content,
+          format: judgment.winner.format,
+          judge_feedback: {
+            strengths: judgment.strengths,
+            improvements: judgment.improvements,
+            score: judgment.score
+          },
+          viral_examples: viralExamples
+        });
+        console.log(`  ✓ Improvements: ${refinement.improvements_made.join(', ')}`);
+        systemsActive.push('AI Content Refiner');
+        
+        generatorName = judgment.winner.generator_name;
+        generatedContent = refinement.refined_content;
+        confidence = judgment.viral_probability;
+        judgeReasoning = judgment.reasoning;
+        
+      } else {
+        // ═══════════════════════════════════════════════════════════
+        // STEP 4: SELECT CONTENT GENERATOR (LEGACY - single option)
+        // ═══════════════════════════════════════════════════════════
+        console.log('🎭 STEP 4: Selecting content generator persona (legacy mode)...');
+        const result = await this.selectAndGenerateWithPersona({
+          topic: topicHint,
+          format: request.format || 'single',
+          insights,
+          viralAnalysis,
+          experimentArm
+        });
+        
+        generatorName = result.generatorName;
+        generatedContent = result.content;
+        confidence = result.confidence;
+      }
+      
       systemsActive.push(`Persona: ${generatorName}`);
       
       console.log(`  ✓ Used generator: ${generatorName}`);
@@ -316,9 +379,9 @@ export class UnifiedContentEngine {
       console.log(`  ✓ Confidence: ${(prediction.confidence * 100).toFixed(1)}%`);
       
       // ═══════════════════════════════════════════════════════════
-      // STEP 7.5: VIRAL PROBABILITY GATE (15% minimum for early account)
+      // STEP 7.5: VIRAL PROBABILITY GATE (adaptive threshold)
       // ═══════════════════════════════════════════════════════════
-      const MIN_VIRAL_PROBABILITY = 0.15; // 15% (adjusted for 31 followers)
+      const MIN_VIRAL_PROBABILITY = useMultiOption ? 0.25 : 0.15; // Higher for multi-option (better quality)
       
       if (prediction.viralProbability < MIN_VIRAL_PROBABILITY && !request.forceGeneration) {
         console.log(`❌ VIRAL_GATE_FAILED: ${(prediction.viralProbability * 100).toFixed(1)}% < ${(MIN_VIRAL_PROBABILITY * 100).toFixed(0)}% threshold`);
