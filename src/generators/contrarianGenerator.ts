@@ -9,6 +9,8 @@ import { validateAndExtractContent } from './generatorUtils';
 import { parseAIJson } from '../utils/aiJsonParser';
 import { VOICE_GUIDELINES } from './sharedPatterns';
 import { getContentGenerationModel } from '../config/modelConfig';
+import { IntelligencePackage } from '../intelligence/intelligenceTypes';
+import { buildIntelligenceContext } from './_intelligenceHelpers';
 
 export interface ContrarianContent {
   content: string | string[];
@@ -20,9 +22,11 @@ export async function generateContrarianContent(params: {
   topic: string;
   format: 'single' | 'thread';
   research?: { finding: string; source: string; mechanism: string; };
+  intelligence?: IntelligencePackage;
 }): Promise<ContrarianContent> {
   
-  const { topic, format, research } = params;
+  const { topic, format, research, intelligence } = params;
+  const intelligenceContext = buildIntelligenceContext(intelligence);
   
   const systemPrompt = `You challenge conventional wisdom with DATA and MECHANISMS.
 
@@ -71,6 +75,8 @@ Mechanism: ${research.mechanism}
 
 Find the CONTRARIAN angle - what does everyone get wrong about this?
 ` : ''}
+
+${intelligenceContext}
 
 ${format === 'thread' ? `
 📱 THREAD FORMAT (3-5 tweets, 150-250 chars each):

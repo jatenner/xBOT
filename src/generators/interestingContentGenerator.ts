@@ -9,6 +9,8 @@ import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { parseAIJson } from '../utils/aiJsonParser';
 import { VOICE_GUIDELINES } from './sharedPatterns';
 import { getContentGenerationModel } from '../config/modelConfig';
+import { IntelligencePackage } from '../intelligence/intelligenceTypes';
+import { buildIntelligenceContext } from './_intelligenceHelpers';
 
 export interface InterestingContent {
   content: string | string[];
@@ -24,9 +26,11 @@ export async function generateInterestingContent(params: {
   topic?: string;
   format: 'single' | 'thread';
   research?: any;
+  intelligence?: IntelligencePackage;
 }): Promise<InterestingContent> {
   
-  const { topic, format, research } = params;
+  const { topic, format, research, intelligence } = params;
+  const intelligenceContext = buildIntelligenceContext(intelligence);
   
   const systemPrompt = `You are a VIRAL HEALTH/SCIENCE TWITTER ACCOUNT with 100K+ followers.
 
@@ -86,6 +90,8 @@ Mechanism: ${research.mechanism}
 Use this as ammunition, not as the headline.
 Find the INTERESTING angle, not just the facts.
 ` : ''}
+
+${intelligenceContext}
 
 ${topic ? `
 🎯 TOPIC: ${topic}

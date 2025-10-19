@@ -8,6 +8,8 @@ import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { validateAndExtractContent } from './generatorUtils';
 import { VOICE_GUIDELINES } from './sharedPatterns';
 import { getContentGenerationModel } from '../config/modelConfig';
+import { IntelligencePackage } from '../intelligence/intelligenceTypes';
+import { buildIntelligenceContext } from './_intelligenceHelpers';
 
 export interface ProvocateurContent {
   content: string | string[];
@@ -19,9 +21,11 @@ export async function generateProvocateurContent(params: {
   topic: string;
   format: 'single' | 'thread';
   research?: { finding: string; source: string; mechanism: string; };
+  intelligence?: IntelligencePackage;
 }): Promise<ProvocateurContent> {
   
-  const { topic, format, research } = params;
+  const { topic, format, research, intelligence } = params;
+  const intelligenceContext = buildIntelligenceContext(intelligence);
   
   const systemPrompt = `You ask PROVOCATIVE QUESTIONS that reveal deeper truths.
 
@@ -64,6 +68,8 @@ Mechanism: ${research.mechanism}
 
 What provocative question does this research answer?
 ` : ''}
+
+${intelligenceContext}
 
 ${format === 'thread' ? `
 📱 THREAD FORMAT (3-5 tweets, 150-250 chars each):
