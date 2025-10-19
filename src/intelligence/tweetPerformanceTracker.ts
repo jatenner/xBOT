@@ -199,7 +199,8 @@ export class TweetPerformanceTracker {
   private async getFollowerCount(page: Page): Promise<number> {
     try {
       // Navigate to profile
-      await page.goto('https://twitter.com/Signal_Synapse', {
+      const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
+      await page.goto(`https://twitter.com/${username}`, {
         waitUntil: 'domcontentloaded',
         timeout: 30000
       });
@@ -350,7 +351,8 @@ export class TweetPerformanceTracker {
           continue;
         }
         
-        const tweetUrl = `https://twitter.com/Signal_Synapse/status/${tweet.tweet_id}`;
+        const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
+        const tweetUrl = `https://twitter.com/${username}/status/${tweet.tweet_id}`;
         await this.trackTweetPerformance(tweetUrl);
         await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second delay between requests
       }

@@ -136,7 +136,8 @@ export class FollowerAttributionService {
       const page = await browserManager.newPage();
       
       // Navigate to our profile (updated username)
-      await page.goto('https://x.com/Signal_Synapse', {
+      const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
+      await page.goto(`https://x.com/${username}`, {
         waitUntil: 'domcontentloaded',
         timeout: 30000
       });

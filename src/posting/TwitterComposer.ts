@@ -90,7 +90,7 @@ async function openReplyComposer(page: Page, rootUrl: string): Promise<void> {
 async function captureTweetId(page: Page, attempts: number = 5): Promise<string> {
   console.log('🔍 ENHANCED_TWEET_ID_CAPTURE: Starting with author verification...');
   
-  const expectedUsername = process.env.TWITTER_USERNAME || 'Signal_Synapse';
+  const expectedUsername = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
   console.log(`🔐 TWEET_ID_CAPTURE: Expected author: @${expectedUsername}`);
   
   for (let attempt = 1; attempt <= attempts; attempt++) {

@@ -716,7 +716,8 @@ export class BulletproofTwitterScraper {
   private async reloadTweetPage(page: Page, tweetId: string): Promise<void> {
     try {
       // Use proper x.com URL with YOUR account username
-      const tweetUrl = `https://x.com/Signal_Synapse/status/${tweetId}`;
+      const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
+      const tweetUrl = `https://x.com/${username}/status/${tweetId}`;
       console.log(`    🔄 RELOAD: Navigating to ${tweetUrl}`);
       
       await page.goto(tweetUrl, {

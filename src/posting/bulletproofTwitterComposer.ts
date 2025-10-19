@@ -435,7 +435,7 @@ export class BulletproofTwitterComposer {
     try {
       console.log('🆔 ID_EXTRACTION: Starting enhanced tweet ID capture with author verification...');
       
-      const expectedUsername = process.env.TWITTER_USERNAME || 'Signal_Synapse';
+      const expectedUsername = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
       console.log(`🔐 ID_EXTRACTION: Expected author: @${expectedUsername}`);
       
       // Strategy 1: Wait for URL change indicating successful post

@@ -95,7 +95,8 @@ export class TwitterAnalyticsScraper {
     console.log('🔍 ANALYTICS: Navigating to profile page...');
     
     // Go to our profile (should be logged in already)
-    await page.goto('https://twitter.com/Signal_Synapse', { waitUntil: 'networkidle' });
+    const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
+    await page.goto(`https://twitter.com/${username}`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(3000);
 
     // Check if we're logged in and on the right page

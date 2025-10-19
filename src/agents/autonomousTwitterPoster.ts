@@ -419,7 +419,7 @@ export class AutonomousTwitterPoster {
 
       // Strategy 2: Navigate to profile and find most recent tweet
       console.log('🔍 EXTRACT_ID: Navigating to profile to find tweet...');
-      const username = process.env.TWITTER_USERNAME || 'Signal_Synapse';
+      const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
       await page.goto(`https://x.com/${username}`, { waitUntil: 'domcontentloaded', timeout: 15000 });
       await page.waitForTimeout(3000);
 
