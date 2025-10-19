@@ -316,6 +316,32 @@ export class UnifiedContentEngine {
       console.log(`  ✓ Confidence: ${(prediction.confidence * 100).toFixed(1)}%`);
       
       // ═══════════════════════════════════════════════════════════
+      // STEP 7.5: VIRAL PROBABILITY GATE (20% minimum)
+      // ═══════════════════════════════════════════════════════════
+      const MIN_VIRAL_PROBABILITY = 0.20; // 20%
+      
+      if (prediction.viralProbability < MIN_VIRAL_PROBABILITY && !request.forceGeneration) {
+        console.log(`❌ VIRAL_GATE_FAILED: ${(prediction.viralProbability * 100).toFixed(1)}% < ${(MIN_VIRAL_PROBABILITY * 100).toFixed(0)}% threshold`);
+        console.log(`  🔄 RETRYING: Attempting with different generator...`);
+        
+        systemsActive.push('Viral Probability Gate [FAILED - RETRY]');
+        
+        // Retry with different generator (will use weighted random)
+        return this.generateContent({
+          ...request,
+          forceGeneration: true // Prevent infinite loop
+        });
+      }
+      
+      if (prediction.viralProbability >= MIN_VIRAL_PROBABILITY) {
+        console.log(`  ✅ VIRAL_GATE_PASSED: ${(prediction.viralProbability * 100).toFixed(1)}% >= ${(MIN_VIRAL_PROBABILITY * 100).toFixed(0)}%`);
+        systemsActive.push('Viral Probability Gate [PASSED]');
+      } else if (request.forceGeneration) {
+        console.log(`  ⚠️ VIRAL_GATE_BYPASSED: forceGeneration=true (${(prediction.viralProbability * 100).toFixed(1)}%)`);
+        systemsActive.push('Viral Probability Gate [BYPASSED]');
+      }
+      
+      // ═══════════════════════════════════════════════════════════
       // STEP 8: ASSEMBLE RESULT
       // ═══════════════════════════════════════════════════════════
       const threadParts = aiResponse.thread || (aiResponse.content?.includes('\n\n') 
