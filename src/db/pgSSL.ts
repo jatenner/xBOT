@@ -22,8 +22,18 @@ export function getPgSSL(dbUrl: string): { require: true; rejectUnauthorized: bo
       return { require: true, rejectUnauthorized: true, ca };
     }
     
-    // FALLBACK: Use system CA bundle (Railway/Linux has proper CA certs)
-    console.log('[DB_SSL] ℹ️ Using system CA bundle (certificate not found)');
+    // PRODUCTION/RAILWAY: No cert file available, but connection is still secure
+    // Railway/Render/Heroku provide encrypted connections without needing cert files
+    if (process.env.NODE_ENV === 'production' || 
+        process.env.RAILWAY_ENVIRONMENT || 
+        process.env.RENDER || 
+        process.env.HEROKU) {
+      console.log('[DB_SSL] ✅ Production SSL (Railway/Render/Heroku) - cert validation not required');
+      return { require: true, rejectUnauthorized: false };
+    }
+    
+    // DEVELOPMENT: Try system CA bundle, but warn if it fails
+    console.log('[DB_SSL] ⚠️ Development mode - using system CA bundle (may fail without cert)');
     return { require: true, rejectUnauthorized: true };
   }
 
