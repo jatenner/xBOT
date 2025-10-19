@@ -27,8 +27,9 @@ export class ThreadBuilder {
   static buildThreadSegments(content: string): ThreadBuildResult {
     const THREAD_MAX_TWEETS = parseInt(process.env.THREAD_MAX_TWEETS || '9');
     
-    // Clean and normalize content
-    const cleanContent = content.trim().replace(/\s+/g, ' ');
+    // Strip thread labels and clean content
+    const cleanedContent = this.stripThreadLabels(content);
+    const cleanContent = cleanedContent.trim().replace(/\s+/g, ' ');
     
     // Check if content needs threading
     if (cleanContent.length <= this.TWEET_MAX_CHARS_HARD) {
@@ -225,6 +226,30 @@ export class ThreadBuilder {
     }
 
     return { valid: errors.length === 0, errors };
+  }
+
+  /**
+   * 🧹 STRIP THREAD LABELS - Remove "Tweet 1:", "Thread 1:", "1/", etc.
+   */
+  private static stripThreadLabels(content: string): string {
+    let cleaned = content;
+    
+    // Remove "Tweet N:" labels
+    cleaned = cleaned.replace(/\bTweet\s+\d+:\s*/gi, '');
+    
+    // Remove "Thread N:" labels  
+    cleaned = cleaned.replace(/\bThread\s+\d+:\s*/gi, '');
+    
+    // Remove standalone "N/" at start of lines
+    cleaned = cleaned.replace(/^\d+\/\s*/gm, '');
+    
+    // Remove "Part N:" labels
+    cleaned = cleaned.replace(/\bPart\s+\d+:\s*/gi, '');
+    
+    // Clean up any double spaces created by removal
+    cleaned = cleaned.replace(/\s{2,}/g, ' ');
+    
+    return cleaned.trim();
   }
 }
 

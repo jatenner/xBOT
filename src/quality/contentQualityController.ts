@@ -113,14 +113,27 @@ export class ContentQualityController {
     );
 
     // Posting decision
-    // TEMPORARILY LOWERED: 75 → 72 to allow improved generators to post while collecting data
-    // Will raise back to 75 after 1-2 weeks of data collection and prompt improvements
-    score.shouldPost = score.overall >= 72 && score.completeness >= 80;
+    // ENHANCED THRESHOLDS: Raised from 72 to 82, added engagement and authenticity gates
+    // Only post B+ grade content with strong engagement potential
+    const MIN_OVERALL = 82;
+    const MIN_COMPLETENESS = 80;
+    const MIN_ENGAGEMENT = 75;
+    const MIN_AUTHENTICITY = 70;
+    
+    score.shouldPost = score.overall >= MIN_OVERALL && 
+                       score.completeness >= MIN_COMPLETENESS &&
+                       score.engagement >= MIN_ENGAGEMENT &&
+                       score.authenticity >= MIN_AUTHENTICITY;
 
-    console.log(`📊 QUALITY_SCORE: ${score.overall}/100 (Complete: ${score.completeness}, Engage: ${score.engagement})`);
+    console.log(`📊 QUALITY_SCORE: ${score.overall}/100 (Complete: ${score.completeness}, Engage: ${score.engagement}, Auth: ${score.authenticity})`);
     
     if (!score.shouldPost) {
-      console.log('🚫 QUALITY_GATE: Content REJECTED for posting');
+      const failures = [];
+      if (score.overall < MIN_OVERALL) failures.push(`overall ${score.overall}<${MIN_OVERALL}`);
+      if (score.completeness < MIN_COMPLETENESS) failures.push(`completeness ${score.completeness}<${MIN_COMPLETENESS}`);
+      if (score.engagement < MIN_ENGAGEMENT) failures.push(`engagement ${score.engagement}<${MIN_ENGAGEMENT}`);
+      if (score.authenticity < MIN_AUTHENTICITY) failures.push(`authenticity ${score.authenticity}<${MIN_AUTHENTICITY}`);
+      console.log(`🚫 QUALITY_GATE: Content REJECTED - ${failures.join(', ')}`);
     }
 
     return score;
@@ -272,8 +285,16 @@ Return ONLY the improved content, nothing else:`;
       score.authenticity * 0.05
     );
 
-    // Decision
-    score.shouldPost = score.overall >= 72 && score.completeness >= 80;
+    // Decision - ENHANCED THRESHOLDS (matching main validation)
+    const MIN_OVERALL = 82;
+    const MIN_COMPLETENESS = 80;
+    const MIN_ENGAGEMENT = 75;
+    const MIN_AUTHENTICITY = 70;
+    
+    score.shouldPost = score.overall >= MIN_OVERALL && 
+                       score.completeness >= MIN_COMPLETENESS &&
+                       score.engagement >= MIN_ENGAGEMENT &&
+                       score.authenticity >= MIN_AUTHENTICITY;
 
     return score;
   }

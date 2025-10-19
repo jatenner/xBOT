@@ -20,7 +20,7 @@ export interface SanitizationResult {
 }
 
 export interface Violation {
-  type: 'first_person' | 'banned_phrase' | 'low_specificity' | 'incomplete_sentence';
+  type: 'first_person' | 'banned_phrase' | 'low_specificity' | 'incomplete_sentence' | 'excessive_emojis';
   severity: 'critical' | 'high' | 'medium' | 'low';
   detected: string;
   location?: string;
@@ -87,6 +87,18 @@ export function sanitizeContent(content: string | string[]): SanitizationResult 
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // CHECK 5: EXCESSIVE EMOJIS (MEDIUM)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const emojiCount = countEmojis(fullContent);
+  if (emojiCount > 2) {
+    violations.push({
+      type: 'excessive_emojis',
+      severity: 'medium',
+      detected: `${emojiCount} emojis found (max 2 allowed)`
+    });
+  }
+  
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // DETERMINE IF CONTENT SHOULD AUTO-REJECT
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const criticalViolations = violations.filter(v => v.severity === 'critical');
@@ -105,6 +117,16 @@ export function sanitizeContent(content: string | string[]): SanitizationResult 
 }
 
 /**
+ * Count emojis in content
+ */
+function countEmojis(content: string): number {
+  // Unicode ranges for emojis
+  const emojiRegex = /[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F900}-\u{1F9FF}]|[\u{1FA00}-\u{1FA6F}]|[\u{1FA70}-\u{1FAFF}]|[\u{FE00}-\u{FE0F}]|[\u{1F200}-\u{1F2FF}]/gu;
+  const matches = content.match(emojiRegex);
+  return matches ? matches.length : 0;
+}
+
+/**
  * Detect first-person language (most critical violation)
  */
 function detectFirstPerson(content: string): Violation[] {
@@ -115,6 +137,11 @@ function detectFirstPerson(content: string): Violation[] {
       pattern: /\b(I|me|my|mine)\b/gi, 
       name: 'Personal pronouns (I, me, my, mine)',
       examples: ['I', 'me', 'my', 'mine']
+    },
+    { 
+      pattern: /\b(we|us|our|ours)\b/gi, 
+      name: 'Collective first-person (we, us, our, ours)',
+      examples: ['we', 'us', 'our', 'ours']
     },
     { 
       pattern: /\bI've\b/gi, 
@@ -132,24 +159,34 @@ function detectFirstPerson(content: string): Violation[] {
       examples: ["I'll"]
     },
     { 
+      pattern: /\bI'd\b/gi, 
+      name: "Contractions with 'I'",
+      examples: ["I'd"]
+    },
+    { 
       pattern: /worked for me\b/gi, 
       name: 'Anecdotal framing',
       examples: ['worked for me']
     },
     { 
-      pattern: /\bmy (experience|gut|journey|results|friend)\b/gi, 
-      name: 'Personal possession phrases',
-      examples: ['my experience', 'my gut', 'my journey']
+      pattern: /\bmy \w+/gi, 
+      name: 'Possessive phrases (my [anything])',
+      examples: ['my experience', 'my morning', 'my mood', 'my routine']
     },
     { 
-      pattern: /\bI (tried|found|discovered|realized)\b/gi, 
+      pattern: /\bI (tried|found|discovered|realized|started|noticed)\b/gi, 
       name: 'First-person action verbs',
-      examples: ['I tried', 'I found', 'I discovered']
+      examples: ['I tried', 'I found', 'I discovered', 'I started']
     },
     {
-      pattern: /\bbeen diving deep\b/gi,
-      name: 'First-person activity phrases',
-      examples: ['been diving deep']
+      pattern: /\bbeen (reading|diving|working|doing|trying|studying|exploring|testing)\b/gi,
+      name: 'Been [verb]ing phrases',
+      examples: ['been reading', 'been diving', 'been working']
+    },
+    {
+      pattern: /\b(who knew|turns out|just realized)\b/gi,
+      name: 'Casual personal discovery phrases',
+      examples: ['who knew', 'turns out', 'just realized']
     }
   ];
   
