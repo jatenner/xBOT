@@ -653,7 +653,14 @@ export class UltimateTwitterPoster {
           username = usernameMatch[1];
         }
         
-        await this.page.goto(`https://x.com/${username}`, { waitUntil: 'domcontentloaded', timeout: 10000 });
+        // CRITICAL FIX: Wait 5 seconds for Twitter to process the post
+        console.log('ULTIMATE_POSTER: Waiting 5s for Twitter to process...');
+        await this.page.waitForTimeout(5000);
+        
+        // CRITICAL FIX: Force reload to get fresh tweets
+        await this.page.goto(`https://x.com/${username}`, { waitUntil: 'networkidle', timeout: 15000 });
+        console.log('ULTIMATE_POSTER: Page reloaded, extracting latest tweet...');
+        
         await this.page.waitForTimeout(2000);
         
         const latestTweetLink = await this.page.locator('article a[href*="/status/"]').first().getAttribute('href', { timeout: 5000 });
