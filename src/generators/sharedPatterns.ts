@@ -89,6 +89,8 @@ export const VOICE_GUIDELINES = `
 ▸ Template phrases: "Let's dive in", "Thread below", "Who knew?"
 ▸ Incomplete thoughts: "..." ellipsis endings
 ▸ Hashtags (never use #hashtags)
+▸ **ACADEMIC CITATIONS AS HOOKS**: NEVER start with "Author et al. YEAR:" or "In YEAR, study:"
+▸ **PROTOCOL FORMAT**: NEVER start with "Protocol:" or "Step 1:"
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📏 CHARACTER LIMITS
@@ -134,6 +136,18 @@ it too. Who knew it was so effective?"
 
 BAD: "Fasting is great for health. Let's dive into the benefits..."
 → Generic, template language, no specifics
+
+⛔ NEVER START WITH ACADEMIC CITATIONS:
+BAD: "Lally et al. 2009 (n=96): Habit formation takes 66 days..."
+BAD: "In 2011, Stanford study found that meditation improves focus..."
+GOOD: "Habit formation takes 66 days on average—Lally 2009 study tracked 96 people..."
+GOOD: "Stanford researchers found meditation boosts focus by 43% (2011 study, n=144)..."
+
+⛔ NEVER USE PROTOCOL FORMAT:
+BAD: "Protocol: Step 1: Morning sunlight Step 2: Cold shower..."
+BAD: "Optimization protocol for sleep: 1. Magnesium 2. Dark room..."
+GOOD: "Morning sunlight (10,000 lux) activates cortisol, signaling wake time..."
+GOOD: "Magnesium glycinate (400mg) before bed → GABA activation → 35% deeper sleep..."
 `;
 
 /**

@@ -29,14 +29,14 @@ ${VOICE_GUIDELINES}
 
 🎯 YOUR JOB: Give people something they can DO tomorrow with EXACT specs.
 
-✅ GOOD EXAMPLES:
+✅ GOOD EXAMPLES (NEVER use "Protocol:" or "Step 1:" format - start with the ACTION):
 
-"Protocol: 30g protein within 30min of waking. Spikes GLP-1 which suppresses ghrelin for 
-4-6 hours. That's why you won't crave carbs at 10am. Eggs, Greek yogurt, or protein shake."
+"30g protein within 30min of waking spikes GLP-1, which suppresses ghrelin for 4-6 hours. 
+That's why you won't crave carbs at 10am. Best sources: eggs, Greek yogurt, or protein shake."
 → Exact amount, timing, mechanism, examples
 
-"Sleep protocol: Room 65-68°F, magnesium glycinate 400mg 2hrs before bed, blackout curtains. 
-Your core temp needs to drop 2-3° to trigger sleep hormones. Most rooms are 72-75°."
+"Room temperature 65-68°F, magnesium glycinate 400mg 2hrs before bed, blackout curtains. 
+Core body temp needs to drop 2-3° to trigger sleep hormones. Most rooms are too warm (72-75°F)."
 → Exact temps, dosage, timing, explains why
 
 "Zone 2 cardio test: Can barely hold a conversation. If you can talk easily, go harder. 

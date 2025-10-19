@@ -316,9 +316,9 @@ export class UnifiedContentEngine {
       console.log(`  ✓ Confidence: ${(prediction.confidence * 100).toFixed(1)}%`);
       
       // ═══════════════════════════════════════════════════════════
-      // STEP 7.5: VIRAL PROBABILITY GATE (20% minimum)
+      // STEP 7.5: VIRAL PROBABILITY GATE (15% minimum for early account)
       // ═══════════════════════════════════════════════════════════
-      const MIN_VIRAL_PROBABILITY = 0.20; // 20%
+      const MIN_VIRAL_PROBABILITY = 0.15; // 15% (adjusted for 31 followers)
       
       if (prediction.viralProbability < MIN_VIRAL_PROBABILITY && !request.forceGeneration) {
         console.log(`❌ VIRAL_GATE_FAILED: ${(prediction.viralProbability * 100).toFixed(1)}% < ${(MIN_VIRAL_PROBABILITY * 100).toFixed(0)}% threshold`);

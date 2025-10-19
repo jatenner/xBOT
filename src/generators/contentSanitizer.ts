@@ -32,7 +32,11 @@ export interface Violation {
  */
 export function sanitizeContent(content: string | string[]): SanitizationResult {
   // Handle both single tweets and threads
-  const fullContent = Array.isArray(content) ? content.join(' ') : content;
+  let fullContent = Array.isArray(content) ? content.join(' ') : content;
+  
+  // STRIP ACADEMIC CITATIONS FROM START (boring hooks)
+  fullContent = stripAcademicHooks(fullContent);
+  
   const violations: Violation[] = [];
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -124,6 +128,33 @@ function countEmojis(content: string): number {
   const emojiRegex = /[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F900}-\u{1F9FF}]|[\u{1FA00}-\u{1FA6F}]|[\u{1FA70}-\u{1FAFF}]|[\u{FE00}-\u{FE0F}]|[\u{1F200}-\u{1F2FF}]/gu;
   const matches = content.match(emojiRegex);
   return matches ? matches.length : 0;
+}
+
+/**
+ * Strip academic citations from the start of content (boring hooks)
+ * Examples: "Lally et al. 2009 (n=96):" → Remove, move data to end
+ *           "In 2011, Stanford study..." → Rewrite as "Stanford found..."
+ */
+function stripAcademicHooks(content: string): string {
+  let cleaned = content;
+  
+  // Pattern 1: "Author et al. YEAR (n=X): [content]" → "[content] (Author et al. YEAR)"
+  const etAlPattern = /^([A-Z][a-z]+\s+et\s+al\.\s+\d{4}\s*(?:\(n=\d+\))?):\s*/;
+  const etAlMatch = cleaned.match(etAlPattern);
+  if (etAlMatch) {
+    const citation = etAlMatch[1];
+    cleaned = cleaned.replace(etAlPattern, '').trim();
+    // Move citation to end in parentheses
+    cleaned = `${cleaned} (${citation})`;
+  }
+  
+  // Pattern 2: "In YEAR, [Institution] study..." → "[Institution] found..."
+  cleaned = cleaned.replace(/^In\s+\d{4},\s+([^:]+?)\s+study\s*(?:\(n=\d+\))?\s*:\s*/i, '$1 found ');
+  
+  // Pattern 3: Remove standalone (n=X) from start
+  cleaned = cleaned.replace(/^\(n=\d+\)\s*:\s*/, '');
+  
+  return cleaned.trim();
 }
 
 /**
