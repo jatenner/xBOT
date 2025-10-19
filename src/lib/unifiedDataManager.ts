@@ -304,7 +304,7 @@ export class UnifiedDataManager {
       const { data: decisions, error } = await supabase.from('content_metadata')
         .select('*')
         .gte('created_at', new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString())
-        .order('decision_timestamp', { ascending: false });
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
 
@@ -528,7 +528,7 @@ export class UnifiedDataManager {
   private convertDatabaseToDecision(dbDecision: any): AIDecision {
     return {
       id: dbDecision.id,
-      decisionTimestamp: new Date(dbDecision.decision_timestamp),
+      decisionTimestamp: new Date(dbDecision.created_at),
       decisionType: dbDecision.decision_type,
       recommendation: this.safeParseJSON(dbDecision.recommendation),
       confidence: dbDecision.confidence,

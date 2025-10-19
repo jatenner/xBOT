@@ -35,6 +35,8 @@ import { aiContentJudge } from '../ai/aiContentJudge';
 import { aiContentRefiner } from '../ai/aiContentRefiner';
 import { getViralExamplesForTopic } from '../intelligence/viralTweetDatabase';
 import { getCachedTopTweets, formatTopTweetsForPrompt } from '../intelligence/dynamicFewShotProvider';
+import { validateAndImprove } from '../generators/contentAutoImprover';
+import { validateContent } from '../generators/preQualityValidator';
 
 // ═══════════════════════════════════════════════════════════
 // TYPES
@@ -264,9 +266,50 @@ export class UnifiedContentEngine {
       }
       
       // ═══════════════════════════════════════════════════════════
+      // STEP 5.3: PRE-QUALITY VALIDATION & AUTO-IMPROVEMENT
+      // ═══════════════════════════════════════════════════════════
+      let rawContent = aiResponse.content || aiResponse.tweet || aiResponse.text || '';
+      
+      console.log('🔍 STEP 5.3: Validating content quality...');
+      const preValidation = validateContent(
+        request.format === 'thread' && Array.isArray(generatedContent) ? generatedContent : rawContent
+      );
+      
+      console.log(`  📊 Quality score: ${preValidation.score}/100 (threshold: 78)`);
+      
+      if (!preValidation.passes && !request.forceGeneration) {
+        console.log(`  ⚠️ Content failed pre-validation (${preValidation.score}/100)`);
+        console.log(`  Issues: ${preValidation.issues.join(', ')}`);
+        console.log(`  🔧 Attempting auto-improvement...`);
+        
+        const improvement = await validateAndImprove(
+          request.format === 'thread' && Array.isArray(generatedContent) ? generatedContent : rawContent,
+          { topic: topicHint, format: request.format }
+        );
+        
+        if (improvement.passed) {
+          console.log(`  ✅ Auto-improved: ${preValidation.score} → ${improvement.score}/100`);
+          rawContent = Array.isArray(improvement.content) ? improvement.content.join('\n\n') : improvement.content;
+          if (request.format === 'thread' && Array.isArray(improvement.content)) {
+            aiResponse.thread = improvement.content;
+            aiResponse.content = improvement.content.join('\n\n');
+          } else {
+            aiResponse.content = improvement.content;
+          }
+          systemsActive.push('Auto-Improvement [SUCCESS]');
+        } else {
+          console.log(`  ⚠️ Auto-improvement failed (${improvement.score}/100) - proceeding anyway`);
+          systemsActive.push('Auto-Improvement [ATTEMPTED]');
+        }
+      } else {
+        console.log(`  ✅ Content passes pre-validation (${preValidation.score}/100)`);
+        systemsActive.push('Pre-Validation [PASSED]');
+      }
+      
+      // ═══════════════════════════════════════════════════════════
       // STEP 5.5: CONTENT SANITIZATION (Safety Net)
       // ═══════════════════════════════════════════════════════════
-      const content = aiResponse.content || aiResponse.tweet || aiResponse.text || '';
+      const content = rawContent;
       
       console.log('🛡️ STEP 5.5: Sanitizing content for violations...');
       const { sanitizeContent, formatViolationReport, shouldRetry, trackViolation } = await import('../generators/contentSanitizer');
