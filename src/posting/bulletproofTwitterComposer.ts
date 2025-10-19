@@ -193,10 +193,20 @@ export class BulletproofTwitterComposer {
         
         await postButton.waitFor({ state: 'visible', timeout: 6000 });
         await postButton.click();
-        await this.page.waitForTimeout(2000);
+        await this.page.waitForTimeout(3000); // Wait for navigation
         
-        console.log('✅ BULLETPROOF_SUCCESS: Post submitted successfully');
-        return { success: true };
+        console.log('✅ BULLETPROOF_SUCCESS: Post submitted, extracting tweet ID...');
+        
+        // Extract real tweet ID from Twitter
+        const tweetId = await this.extractTweetId();
+        
+        if (tweetId) {
+          console.log(`✅ TWEET_ID_EXTRACTED: ${tweetId}`);
+          return { success: true, tweetId };
+        } else {
+          console.warn('⚠️ TWEET_ID_MISSING: Post succeeded but could not extract ID');
+          return { success: true, tweetId: undefined };
+        }
         
       } catch (error: any) {
         console.error(`❌ ATTEMPT_${attempt}_FAILED: ${error.message}`);

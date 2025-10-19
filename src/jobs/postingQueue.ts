@@ -503,9 +503,11 @@ async function postContent(decision: QueuedDecision): Promise<string> {
       const result = await apiPoster.postStatus(decision.content);
       
       if (result.success) {
-        const tweetId = result.tweetId || `api_${Date.now()}`;
-        console.log(`[POSTING_QUEUE] ✅ Content posted via X API with ID: ${tweetId}`);
-        return tweetId;
+        if (!result.tweetId) {
+          throw new Error('X API posting succeeded but no tweet ID was returned');
+        }
+        console.log(`[POSTING_QUEUE] ✅ Content posted via X API with ID: ${result.tweetId}`);
+        return result.tweetId;
       } else {
         console.error(`[POSTING_QUEUE] ❌ X API posting failed: ${result.error}`);
         throw new Error(result.error || 'X API posting failed');
@@ -534,7 +536,10 @@ async function postContent(decision: QueuedDecision): Promise<string> {
         const result = await BulletproofThreadComposer.post(thread_parts);
         
         if (result.success) {
-          const tweetId = result.tweetIds?.[0] || result.rootTweetUrl || `thread_${Date.now()}`;
+          const tweetId = result.tweetIds?.[0] || result.rootTweetUrl;
+          if (!tweetId) {
+            throw new Error('Thread posting succeeded but no tweet ID was extracted - cannot track metrics');
+          }
           console.log(`[POSTING_QUEUE] ✅ Thread posted via Playwright with ID: ${tweetId}`);
           return tweetId;
         } else {
@@ -551,9 +556,11 @@ async function postContent(decision: QueuedDecision): Promise<string> {
         await poster.dispose();
         
         if (result.success) {
-          const tweetId = result.tweetId || `playwright_${Date.now()}`;
-          console.log(`[POSTING_QUEUE] ✅ Content posted via Playwright with ID: ${tweetId}`);
-          return tweetId;
+          if (!result.tweetId) {
+            throw new Error('Posting succeeded but no tweet ID was extracted - cannot track metrics');
+          }
+          console.log(`[POSTING_QUEUE] ✅ Content posted via Playwright with ID: ${result.tweetId}`);
+          return result.tweetId;
         } else {
           console.error(`[POSTING_QUEUE] ❌ Playwright posting failed: ${result.error}`);
           throw new Error(result.error || 'Playwright posting failed');
@@ -588,10 +595,12 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     const result = await composer.postReply(decision.content, decision.target_tweet_id);
     
     if (result.success) {
-      const replyId = result.tweetId || `reply_${Date.now()}`;
-      console.log(`[POSTING_QUEUE] ✅ Reply posted successfully with ID: ${replyId}`);
-      console.log(`[POSTING_QUEUE] 🔗 Reply URL: https://x.com/Signal_Synapse/status/${replyId}`);
-      return replyId;
+      if (!result.tweetId) {
+        throw new Error('Reply posting succeeded but no tweet ID was extracted - cannot track metrics');
+      }
+      console.log(`[POSTING_QUEUE] ✅ Reply posted successfully with ID: ${result.tweetId}`);
+      console.log(`[POSTING_QUEUE] 🔗 Reply URL: https://x.com/Signal_Synapse/status/${result.tweetId}`);
+      return result.tweetId;
     } else {
       console.error(`[POSTING_QUEUE] ❌ Reply posting failed: ${result.error}`);
       throw new Error(result.error || 'Reply posting failed');
