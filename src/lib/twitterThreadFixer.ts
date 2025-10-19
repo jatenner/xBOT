@@ -161,7 +161,8 @@ export class TwitterThreadFixer {
    */
   static async verifyTweetExists(page: any, tweetId: string): Promise<boolean> {
     try {
-      const tweetUrl = `https://x.com/Signal_Synapse/status/${tweetId}`;
+      const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
+      const tweetUrl = `https://x.com/${username}/status/${tweetId}`;
       console.log(`🔍 VERIFYING_TWEET: ${tweetUrl}`);
       
       const response = await page.goto(tweetUrl, { 

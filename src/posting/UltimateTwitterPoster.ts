@@ -647,7 +647,7 @@ export class UltimateTwitterPoster {
         const currentUrl = this.page.url();
         
         // Extract username from current URL or use default
-        let username = 'Signal_Synapse';
+        let username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
         const usernameMatch = currentUrl.match(/x\.com\/([^\/]+)/);
         if (usernameMatch) {
           username = usernameMatch[1];

@@ -599,7 +599,8 @@ async function postReply(decision: QueuedDecision): Promise<string> {
         throw new Error('Reply posting succeeded but no tweet ID was extracted - cannot track metrics');
       }
       console.log(`[POSTING_QUEUE] ✅ Reply posted successfully with ID: ${result.tweetId}`);
-      console.log(`[POSTING_QUEUE] 🔗 Reply URL: https://x.com/Signal_Synapse/status/${result.tweetId}`);
+      const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
+      console.log(`[POSTING_QUEUE] 🔗 Reply URL: https://x.com/${username}/status/${result.tweetId}`);
       return result.tweetId;
     } else {
       console.error(`[POSTING_QUEUE] ❌ Reply posting failed: ${result.error}`);
