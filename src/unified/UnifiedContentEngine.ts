@@ -34,6 +34,7 @@ import { multiOptionGenerator, ContentOption } from '../ai/multiOptionGenerator'
 import { aiContentJudge } from '../ai/aiContentJudge';
 import { aiContentRefiner } from '../ai/aiContentRefiner';
 import { getViralExamplesForTopic } from '../intelligence/viralTweetDatabase';
+import { getCachedTopTweets, formatTopTweetsForPrompt } from '../intelligence/dynamicFewShotProvider';
 
 // ═══════════════════════════════════════════════════════════
 // TYPES
@@ -160,6 +161,20 @@ export class UnifiedContentEngine {
       console.log(`  ✓ Topic: "${topicHint}"`);
       console.log(`  ✓ Viral score: ${viralAnalysis.viralScore}/100`);
       console.log(`  ✓ Follower potential: ${viralAnalysis.followerPotential}/100`);
+      
+      // ═══════════════════════════════════════════════════════════
+      // STEP 3.3: FETCH YOUR TOP TWEETS (Budget Optimization)
+      // ═══════════════════════════════════════════════════════════
+      console.log('🏆 STEP 3.3: Loading YOUR top-performing tweets for examples...');
+      const yourTopTweets = await getCachedTopTweets();
+      
+      if (yourTopTweets.length > 0) {
+        console.log(`  ✓ Found ${yourTopTweets.length} top tweets from YOUR history`);
+        console.log(`  ✓ Best: ${yourTopTweets[0].likes} likes, ${yourTopTweets[0].retweets} RTs`);
+        systemsActive.push('Dynamic Few-Shot (YOUR Data)');
+      } else {
+        console.log(`  ℹ️ No historical tweets yet, using curated examples`);
+      }
       
       // ═══════════════════════════════════════════════════════════
       // STEP 3.5: MULTI-OPTION GENERATION (NEW - if enabled)

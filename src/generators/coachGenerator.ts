@@ -8,6 +8,7 @@ import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { validateAndExtractContent } from './generatorUtils';
 import { parseAIJson } from '../utils/aiJsonParser';
 import { VOICE_GUIDELINES } from './sharedPatterns';
+import { getContentGenerationModel } from '../config/modelConfig';
 
 export interface CoachContent {
   content: string | string[];
@@ -93,7 +94,7 @@ What's the mechanism that makes it work?`;
 
   try {
     const response = await createBudgetedChatCompletion({
-      model: 'gpt-4o',
+      model: getContentGenerationModel() // Budget-optimized,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }

@@ -7,6 +7,7 @@
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { validateAndExtractContent, createFallbackContent } from './generatorUtils';
 import { VOICE_GUIDELINES } from './sharedPatterns';
+import { getContentGenerationModel } from '../config/modelConfig';
 
 export interface StorytellerContent {
   content: string | string[];
@@ -99,7 +100,7 @@ ${format === 'thread' ? 'Make it stop-scrolling good. Real examples, real data, 
 
   try {
     const response = await createBudgetedChatCompletion({
-      model: 'gpt-4o',
+      model: getContentGenerationModel() // Budget-optimized,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }

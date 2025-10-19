@@ -7,6 +7,7 @@
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { validateAndExtractContent, createFallbackContent } from './generatorUtils';
 import { VOICE_GUIDELINES } from './sharedPatterns';
+import { getContentGenerationModel } from '../config/modelConfig';
 
 export interface NewsReporterContent {
   content: string | string[];
@@ -157,7 +158,7 @@ ${format === 'thread' ? 'Break down new findings and why they matter right now.'
 
   try {
     const response = await createBudgetedChatCompletion({
-      model: 'gpt-4o',
+      model: getContentGenerationModel() // Budget-optimized,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }

@@ -7,6 +7,7 @@
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { validateAndExtractContent } from './generatorUtils';
 import { VOICE_GUIDELINES } from './sharedPatterns';
+import { getContentGenerationModel } from '../config/modelConfig';
 
 export interface ProvocateurContent {
   content: string | string[];
@@ -95,7 +96,7 @@ MUST answer the question - explain the mechanism.`;
 
   try {
     const response = await createBudgetedChatCompletion({
-      model: 'gpt-4o',
+      model: getContentGenerationModel(), // Budget-optimized (gpt-4o-mini by default)
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
