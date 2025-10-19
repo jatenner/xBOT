@@ -14,9 +14,9 @@ const fs = require('fs');
 const path = require('path');
 const { withFreshClient } = require('../dist/src/db/client');
 
-// Timeout for entire migration process (3 seconds max - Railway needs faster)
-const MIGRATION_TIMEOUT_MS = 3000;
-const CONNECTION_TIMEOUT_MS = 1000; // Max 1 second to connect
+// Timeout for entire migration process (increased for SSL handshake)
+const MIGRATION_TIMEOUT_MS = 10000; // 10 seconds for migrations
+const CONNECTION_TIMEOUT_MS = 5000; // 5 seconds to connect (SSL negotiation needs time)
 
 function log(level, message) {
   const timestamp = new Date().toISOString();
