@@ -18,7 +18,7 @@ export async function metricsScraperJob(): Promise<void> {
     // Find posts from last 7 days that need metrics updates
     const { data: posts, error: postsError } = await supabase
       .from('content_metadata')
-      .select('id, content_id, tweet_id, created_at')
+      .select('id, tweet_id, created_at')
       .eq('status', 'posted')
       .not('tweet_id', 'is', null)
       .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
@@ -50,7 +50,7 @@ export async function metricsScraperJob(): Promise<void> {
         const { data: lastMetrics } = await supabase
           .from('outcomes')
           .select('collected_at')
-          .eq('decision_id', post.content_id || post.id)
+          .eq('decision_id', post.id)
           .order('collected_at', { ascending: false })
           .limit(1)
           .single();
@@ -103,7 +103,7 @@ export async function metricsScraperJob(): Promise<void> {
           
           // Update outcomes table (for backward compatibility with existing systems)
           const { data: outcomeData, error: outcomeError } = await supabase.from('outcomes').upsert({
-            decision_id: post.content_id || post.id,
+            decision_id: post.id,
             tweet_id: post.tweet_id,
             likes: metrics.likes ?? null,
             retweets: metrics.retweets ?? null,
@@ -228,7 +228,7 @@ export async function enhancedMetricsScraperJob(): Promise<void> {
       
       const { data: posts } = await supabase
         .from('content_metadata')
-        .select('id, content_id, tweet_id, created_at')
+        .select('id, tweet_id, created_at')
         .eq('status', 'posted')
         .not('tweet_id', 'is', null)
         .gte('created_at', windowStart.toISOString())
@@ -247,7 +247,7 @@ export async function enhancedMetricsScraperJob(): Promise<void> {
           const { data: existing } = await supabase
             .from('post_velocity_tracking')
             .select('id')
-            .eq('post_id', post.content_id || post.id)
+            .eq('post_id', post.id)
             .eq('hours_after_post', window.hours)
             .single();
           
@@ -275,7 +275,7 @@ export async function enhancedMetricsScraperJob(): Promise<void> {
             
             // Store velocity data
             await supabase.from('post_velocity_tracking').insert({
-              post_id: post.content_id || post.id,
+              post_id: post.id,
               tweet_id: post.tweet_id,
               check_time: now.toISOString(),
               hours_after_post: window.hours,
