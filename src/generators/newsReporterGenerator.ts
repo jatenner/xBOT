@@ -158,7 +158,7 @@ ${format === 'thread' ? 'Break down new findings and why they matter right now.'
 
   try {
     const response = await createBudgetedChatCompletion({
-      model: getContentGenerationModel() // Budget-optimized,
+      model: getContentGenerationModel(), // Budget-optimized
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }

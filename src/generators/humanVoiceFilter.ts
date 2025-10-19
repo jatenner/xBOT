@@ -16,7 +16,7 @@ export async function humanizeContent(content: string | string[]): Promise<strin
   
   try {
     const response = await createBudgetedChatCompletion({
-      model: getContentGenerationModel() // Budget-optimized,
+      model: getContentGenerationModel(), // Budget-optimized
       messages: [
         {
           role: 'system',

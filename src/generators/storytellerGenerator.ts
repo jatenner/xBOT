@@ -100,7 +100,7 @@ ${format === 'thread' ? 'Make it stop-scrolling good. Real examples, real data, 
 
   try {
     const response = await createBudgetedChatCompletion({
-      model: getContentGenerationModel() // Budget-optimized,
+      model: getContentGenerationModel(), // Budget-optimized
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }

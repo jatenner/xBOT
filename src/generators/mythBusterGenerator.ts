@@ -92,7 +92,7 @@ Cite specific studies and explain the mechanism.`;
 
   try {
     const response = await createBudgetedChatCompletion({
-      model: getContentGenerationModel() // Budget-optimized,
+      model: getContentGenerationModel(), // Budget-optimized
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }

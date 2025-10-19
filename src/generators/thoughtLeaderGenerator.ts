@@ -92,7 +92,7 @@ What will be mainstream in 5 years?`;
 
   try {
     const response = await createBudgetedChatCompletion({
-      model: getContentGenerationModel() // Budget-optimized,
+      model: getContentGenerationModel(), // Budget-optimized
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }

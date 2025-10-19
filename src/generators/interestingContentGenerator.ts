@@ -129,7 +129,7 @@ Return JSON: {"tweet": "your tweet"}
 
   try {
     const response = await createBudgetedChatCompletion({
-      model: getContentGenerationModel() // Budget-optimized,
+      model: getContentGenerationModel(), // Budget-optimized
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
