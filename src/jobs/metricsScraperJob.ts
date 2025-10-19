@@ -89,7 +89,7 @@ export async function metricsScraperJob(): Promise<void> {
                                   (metrics.bookmarks ?? 0);
           
           // Update outcomes table
-          await supabase.from('outcomes').upsert({
+          const { data: outcomeData, error: outcomeError } = await supabase.from('outcomes').upsert({
             decision_id: post.decision_id,
             tweet_id: post.tweet_id,
             likes: metrics.likes ?? null,
@@ -104,6 +104,13 @@ export async function metricsScraperJob(): Promise<void> {
             data_source: 'scheduled_scraper',
             simulated: false
           }, { onConflict: 'decision_id' });
+          
+          if (outcomeError) {
+            console.error(`[METRICS_JOB] ❌ Failed to write outcomes for ${post.tweet_id}:`, outcomeError.message);
+            console.error(`[METRICS_JOB] 🔍 Error details:`, JSON.stringify(outcomeError, null, 2));
+            failed++;
+            continue;
+          }
           
           console.log(`[METRICS_JOB] ✅ Updated ${post.tweet_id}: ${metrics.likes ?? 0} likes, ${metrics.views ?? 0} views`);
           updated++;
