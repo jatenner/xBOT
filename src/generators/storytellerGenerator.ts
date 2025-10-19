@@ -8,6 +8,8 @@ import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { validateAndExtractContent, createFallbackContent } from './generatorUtils';
 import { VOICE_GUIDELINES } from './sharedPatterns';
 import { getContentGenerationModel } from '../config/modelConfig';
+import { IntelligencePackage } from '../intelligence/intelligenceTypes';
+import { buildIntelligenceContext } from './_intelligenceHelpers';
 
 export interface StorytellerContent {
   content: string | string[];
@@ -19,9 +21,11 @@ export async function generateStorytellerContent(params: {
   topic: string;
   format: 'single' | 'thread';
   research?: { finding: string; source: string; mechanism: string; };
+  intelligence?: IntelligencePackage;
 }): Promise<StorytellerContent> {
   
-  const { topic, format, research } = params;
+  const { topic, format, research, intelligence } = params;
+  const intelligenceContext = buildIntelligenceContext(intelligence);
   
   const systemPrompt = `You tell REAL stories that make people stop scrolling - NO FAKE PEOPLE, only documented cases and fascinating examples.
 
@@ -55,6 +59,8 @@ Mechanism: ${research.mechanism}
 Turn this into a REAL story - use the actual research subjects, actual numbers, actual outcomes.
 If the research paper mentions specific results, USE THEM.
 ` : ''}
+
+${intelligenceContext}
 
 EXAMPLES OF GOOD STORYTELLING:
 

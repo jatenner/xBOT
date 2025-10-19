@@ -8,6 +8,8 @@ import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { validateAndExtractContent, createFallbackContent } from './generatorUtils';
 import { VOICE_GUIDELINES } from './sharedPatterns';
 import { getContentGenerationModel } from '../config/modelConfig';
+import { IntelligencePackage } from '../intelligence/intelligenceTypes';
+import { buildIntelligenceContext } from './_intelligenceHelpers';
 
 export interface NewsReporterContent {
   content: string | string[];
@@ -19,9 +21,11 @@ export async function generateNewsReporterContent(params: {
   topic: string;
   format: 'single' | 'thread';
   research?: { finding: string; source: string; mechanism: string; };
+  intelligence?: IntelligencePackage;
 }): Promise<NewsReporterContent> {
   
-  const { topic, format, research } = params;
+  const { topic, format, research, intelligence } = params;
+  const intelligenceContext = buildIntelligenceContext(intelligence);
   
   // 🗞️ GET REAL SCRAPED NEWS
   const realNews = await getRealNewsForTopic(topic);
@@ -133,6 +137,8 @@ Finding: ${research.finding}
 Source: ${research.source}
 Mechanism: ${research.mechanism}
 ` : ''}
+
+${intelligenceContext}
 
 ${format === 'thread' ? `
 OUTPUT FORMAT: Return JSON object with array of 3-5 tweets (150-230 chars each):

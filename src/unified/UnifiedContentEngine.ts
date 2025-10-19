@@ -345,6 +345,61 @@ export class UnifiedContentEngine {
       }
       
       // ═══════════════════════════════════════════════════════════
+      // STEP 5.4: POST-GENERATION INTELLIGENCE SCORING
+      // ═══════════════════════════════════════════════════════════
+      if (intelligenceConfig.postGeneration.enabled && intelligence) {
+        try {
+          console.log('🧠 STEP 5.4: Scoring content intelligence...');
+          const finalContent = request.format === 'thread' && Array.isArray(generatedContent) 
+            ? generatedContent.join('\n\n') 
+            : rawContent;
+          
+          const intelligenceScores = await this.postGenIntelligence.scoreIntelligence(finalContent);
+          
+          console.log(`  📊 Intelligence Scores:`);
+          console.log(`     • Engagement: ${intelligenceScores.engagement_potential}/100`);
+          console.log(`     • Actionability: ${intelligenceScores.actionability_score}/100`);
+          console.log(`     • Intelligence: ${intelligenceScores.intelligence_score}/100`);
+          console.log(`     • Overall: ${intelligenceScores.overall_score}/100`);
+          
+          // ═══════════════════════════════════════════════════════════
+          // STEP 5.4.5: INTELLIGENCE ENHANCEMENT (if low score)
+          // ═══════════════════════════════════════════════════════════
+          if (intelligenceConfig.enhancement.enabled && intelligenceScores.overall_score < intelligenceConfig.enhancement.minScoreToEnhance) {
+            console.log(`  ⚠️ Low intelligence score (${intelligenceScores.overall_score}/100) - Enhancing...`);
+            
+            const enhanced = await this.intelligenceEnhancer.boostIntelligence(
+              finalContent,
+              intelligenceScores.weaknesses,
+              intelligence,
+              intelligenceConfig.enhancement.maxAttempts
+            );
+            
+            if (enhanced.improved) {
+              console.log(`  ✅ Intelligence enhanced: ${intelligenceScores.overall_score} → ${enhanced.finalScore}/100`);
+              rawContent = Array.isArray(enhanced.content) ? enhanced.content.join('\n\n') : enhanced.content;
+              if (request.format === 'thread' && Array.isArray(enhanced.content)) {
+                aiResponse.thread = enhanced.content;
+                aiResponse.content = enhanced.content.join('\n\n');
+              } else {
+                aiResponse.content = enhanced.content;
+              }
+              systemsActive.push('Intelligence Enhancement [SUCCESS]');
+            } else {
+              console.log(`  ⚠️ Enhancement failed or no improvement - keeping original`);
+              systemsActive.push('Intelligence Enhancement [ATTEMPTED]');
+            }
+          } else {
+            console.log(`  ✅ High intelligence score - no enhancement needed`);
+            systemsActive.push('Intelligence Scoring [HIGH]');
+          }
+        } catch (error: any) {
+          console.error(`  ❌ Intelligence scoring failed: ${error.message}`);
+          systemsActive.push('Intelligence Scoring [FAILED]');
+        }
+      }
+      
+      // ═══════════════════════════════════════════════════════════
       // STEP 5.5: CONTENT SANITIZATION (Safety Net)
       // ═══════════════════════════════════════════════════════════
       const content = rawContent;
@@ -770,7 +825,8 @@ export class UnifiedContentEngine {
       if (selectedGenerator === 'newsReporter') {
         const result = await generateNewsReporterContent({
           topic: params.topic,
-          format: params.format
+          format: params.format,
+          intelligence: params.intelligence
         });
         
         return {
@@ -786,7 +842,8 @@ export class UnifiedContentEngine {
       if (selectedGenerator === 'storyteller') {
         const result = await generateStorytellerContent({
           topic: params.topic,
-          format: params.format
+          format: params.format,
+          intelligence: params.intelligence
         });
         
         return {
@@ -802,7 +859,8 @@ export class UnifiedContentEngine {
       if (selectedGenerator === 'interesting') {
         const result = await generateInterestingContent({
           topic: params.topic,
-          format: params.format
+          format: params.format,
+          intelligence: params.intelligence
         });
         
         return {
@@ -818,7 +876,8 @@ export class UnifiedContentEngine {
       if (selectedGenerator === 'provocateur') {
         const result = await generateProvocateurContent({
           topic: params.topic,
-          format: params.format
+          format: params.format,
+          intelligence: params.intelligence
         });
         
         return {
@@ -851,7 +910,8 @@ export class UnifiedContentEngine {
       if (selectedGenerator === 'mythBuster') {
         const result = await generateMythBusterContent({
           topic: params.topic,
-          format: params.format
+          format: params.format,
+          intelligence: params.intelligence
         });
         
         return {
@@ -867,7 +927,8 @@ export class UnifiedContentEngine {
       if (selectedGenerator === 'coach') {
         const result = await generateCoachContent({
           topic: params.topic,
-          format: params.format
+          format: params.format,
+          intelligence: params.intelligence
         });
         
         return {
@@ -917,7 +978,8 @@ export class UnifiedContentEngine {
       if (selectedGenerator === 'explorer') {
         const result = await generateExplorerContent({
           topic: params.topic,
-          format: params.format
+          format: params.format,
+          intelligence: params.intelligence
         });
         
         return {
@@ -933,7 +995,8 @@ export class UnifiedContentEngine {
       if (selectedGenerator === 'philosopher') {
         const result = await generatePhilosopherContent({
           topic: params.topic,
-          format: params.format
+          format: params.format,
+          intelligence: params.intelligence
         });
         
         return {

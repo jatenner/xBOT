@@ -9,6 +9,8 @@ import { validateAndExtractContent } from './generatorUtils';
 import { parseAIJson } from '../utils/aiJsonParser';
 import { VOICE_GUIDELINES } from './sharedPatterns';
 import { getContentGenerationModel } from '../config/modelConfig';
+import { IntelligencePackage } from '../intelligence/intelligenceTypes';
+import { buildIntelligenceContext } from './_intelligenceHelpers';
 
 export interface DataNerdContent {
   content: string | string[];
@@ -20,9 +22,11 @@ export async function generateDataNerdContent(params: {
   topic: string;
   format: 'single' | 'thread';
   research?: { finding: string; source: string; mechanism: string; };
+  intelligence?: IntelligencePackage;
 }): Promise<DataNerdContent> {
   
-  const { topic, format, research } = params;
+  const { topic, format, research, intelligence } = params;
+  const intelligenceContext = buildIntelligenceContext(intelligence);
   
   const systemPrompt = `You share SURPRISING DATA with context - like Peter Attia.
 
@@ -71,6 +75,8 @@ Mechanism: ${research.mechanism}
 
 Turn this into SPECIFIC data with context.
 ` : ''}
+
+${intelligenceContext}
 
 ${format === 'thread' ? `
 📱 THREAD FORMAT (3-5 tweets, 150-250 chars each):

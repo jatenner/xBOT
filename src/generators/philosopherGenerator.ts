@@ -8,6 +8,8 @@ import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { validateAndExtractContent } from './generatorUtils';
 import { VOICE_GUIDELINES } from './sharedPatterns';
 import { getContentGenerationModel } from '../config/modelConfig';
+import { IntelligencePackage } from '../intelligence/intelligenceTypes';
+import { buildIntelligenceContext } from './_intelligenceHelpers';
 
 export interface PhilosopherContent {
   content: string | string[];
@@ -19,9 +21,11 @@ export async function generatePhilosopherContent(params: {
   topic: string;
   format: 'single' | 'thread';
   research?: { finding: string; source: string; mechanism: string; };
+  intelligence?: IntelligencePackage;
 }): Promise<PhilosopherContent> {
   
-  const { topic, format, research } = params;
+  const { topic, format, research, intelligence } = params;
+  const intelligenceContext = buildIntelligenceContext(intelligence);
   
   const systemPrompt = `You state simple deep truths about how things work - like Naval Ravikant.
 
@@ -61,6 +65,8 @@ Mechanism: ${research.mechanism}
 
 Find the DEEP TRUTH - what's the simple profound insight here?
 ` : ''}
+
+${intelligenceContext}
 
 ${format === 'thread' ? `
 📱 THREAD FORMAT (3-5 tweets, 150-250 chars each):

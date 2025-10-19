@@ -9,6 +9,8 @@ import { validateAndExtractContent } from './generatorUtils';
 import { parseAIJson } from '../utils/aiJsonParser';
 import { VOICE_GUIDELINES } from './sharedPatterns';
 import { getContentGenerationModel } from '../config/modelConfig';
+import { IntelligencePackage } from '../intelligence/intelligenceTypes';
+import { buildIntelligenceContext } from './_intelligenceHelpers';
 
 export interface ExplorerContent {
   content: string | string[];
@@ -20,9 +22,11 @@ export async function generateExplorerContent(params: {
   topic: string;
   format: 'single' | 'thread';
   research?: { finding: string; source: string; mechanism: string; };
+  intelligence?: IntelligencePackage;
 }): Promise<ExplorerContent> {
   
-  const { topic, format, research } = params;
+  const { topic, format, research, intelligence } = params;
+  const intelligenceContext = buildIntelligenceContext(intelligence);
   
   const systemPrompt = `You reveal UNEXPECTED CONNECTIONS and discoveries.
 
@@ -65,6 +69,8 @@ Mechanism: ${research.mechanism}
 
 What's the unexpected discovery or connection here?
 ` : ''}
+
+${intelligenceContext}
 
 ${format === 'thread' ? `
 📱 THREAD FORMAT (3-5 tweets, 150-250 chars each):
