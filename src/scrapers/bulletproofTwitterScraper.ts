@@ -68,9 +68,16 @@ const SELECTORS = {
     '[aria-label*="bookmark"] span'
   ],
   views: [
-    'a[href*="analytics"] span',
-    '[aria-label*="view"] span',
-    '[data-testid="analyticsButton"] span'
+    // CRITICAL FIX: Be EXTREMELY specific to avoid grabbing sidebar/other tweet metrics
+    // Strategy 1: Look for the analytics link in the engagement group (most reliable)
+    'div[role="group"] + a[href$="/analytics"] span[class*="css"]',
+    'div[role="group"] ~ a[aria-label*="View"] span',
+    // Strategy 2: Direct descendant of article engagement area
+    'article[data-testid="tweet"] > div > div > div:last-child a[href*="analytics"] span',
+    // Strategy 3: Look for views count by position after engagement buttons
+    'article[data-testid="tweet"] [role="group"] ~ a span:not([aria-hidden="true"])',
+    // Strategy 4: Fallback with stricter attribute matching
+    'a[href*="/analytics"][aria-label*="view" i] span'
   ]
 };
 
@@ -422,6 +429,7 @@ export class BulletproofTwitterScraper {
   /**
    * Validate that extracted metrics are reasonable
    * PHASE 1 FIX: Enhanced validation to catch "8k tweets" type bugs
+   * PHASE 2 FIX: Adjusted thresholds to be less aggressive while still catching obvious errors
    */
   private areMetricsValid(metrics: Partial<ScrapedMetrics>): boolean {
     // At minimum, we should have likes (even if 0)
@@ -430,17 +438,17 @@ export class BulletproofTwitterScraper {
       return false;
     }
 
-    // ENHANCED CHECK 1: Retweets shouldn't exceed likes by more than 10x (usually)
-    if (metrics.likes !== null && metrics.retweets !== null) {
-      if (metrics.retweets > metrics.likes * 10) {
-        console.warn(`    ⚠️ VALIDATE: Retweets (${metrics.retweets}) > Likes (${metrics.likes}) * 10 - suspicious`);
+    // ENHANCED CHECK 1: Retweets shouldn't exceed likes by more than 20x (adjusted from 10x)
+    if (metrics.likes !== null && metrics.retweets !== null && metrics.likes > 0) {
+      if (metrics.retweets > metrics.likes * 20) {
+        console.warn(`    ⚠️ VALIDATE: Retweets (${metrics.retweets}) > Likes (${metrics.likes}) * 20 - suspicious`);
         return false;
       }
     }
 
-    // ENHANCED CHECK 2: Extremely high values are suspicious (likely grabbed from wrong element)
-    // For small accounts, values > 50K are very rare unless viral
-    const maxReasonableValue = 100000; // Adjust based on your account size
+    // ENHANCED CHECK 2: Catch OBVIOUSLY wrong values (like 200K likes on a small account)
+    // For your account size, anything > 10K is almost certainly wrong
+    const maxReasonableValue = 10000; // Much more strict threshold for small accounts
     if (metrics.likes !== null && metrics.likes > maxReasonableValue) {
       console.warn(`    ⚠️ VALIDATE: Likes (${metrics.likes}) exceeds reasonable threshold - possible "8k bug"`);
       return false;
@@ -449,11 +457,23 @@ export class BulletproofTwitterScraper {
       console.warn(`    ⚠️ VALIDATE: Retweets (${metrics.retweets}) exceeds reasonable threshold`);
       return false;
     }
+    if (metrics.views !== null && metrics.views > 500000) { // Views can be higher, but 500K is suspicious
+      console.warn(`    ⚠️ VALIDATE: Views (${metrics.views}) exceeds reasonable threshold`);
+      return false;
+    }
 
-    // ENHANCED CHECK 3: Engagement rate sanity check
-    if (metrics.views !== null && metrics.likes !== null && metrics.views > 0) {
+    // ENHANCED CHECK 3: Engagement rate sanity check (views should be MORE than likes)
+    if (metrics.views !== null && metrics.likes !== null && metrics.views > 0 && metrics.likes > 0) {
       const engagementRate = metrics.likes / metrics.views;
-      if (engagementRate > 0.5) { // 50%+ engagement is extremely rare
+      
+      // If likes > views, something is definitely wrong
+      if (metrics.likes > metrics.views) {
+        console.warn(`    ⚠️ VALIDATE: Likes (${metrics.likes}) > Views (${metrics.views}) - impossible`);
+        return false;
+      }
+      
+      // 20%+ like rate is extremely rare (typical is 1-5%)
+      if (engagementRate > 0.2) {
         console.warn(`    ⚠️ VALIDATE: Engagement rate ${(engagementRate * 100).toFixed(1)}% is unrealistically high`);
         return false;
       }
@@ -461,12 +481,13 @@ export class BulletproofTwitterScraper {
 
     // ENHANCED CHECK 4: Quote tweets shouldn't exceed retweets significantly
     if (metrics.quote_tweets !== null && metrics.retweets !== null && metrics.retweets > 0) {
-      if (metrics.quote_tweets > metrics.retweets * 2) {
+      if (metrics.quote_tweets > metrics.retweets * 3) {
         console.warn(`    ⚠️ VALIDATE: Quote tweets (${metrics.quote_tweets}) >> retweets (${metrics.retweets})`);
         return false;
       }
     }
 
+    console.log(`    ✅ VALIDATE: Metrics pass all sanity checks`);
     return true;
   }
 
