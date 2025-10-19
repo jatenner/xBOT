@@ -54,22 +54,26 @@ export class AIContentRefiner {
       
       const prompt = this.buildRefinementPrompt(content, format, judge_feedback, examples);
       
-      const response = await createBudgetedChatCompletion({
-        model: 'gpt-4o',
-        messages: [
-          {
-            role: 'system',
-            content: this.getRefinerSystemPrompt()
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        purpose: 'ai_content_refiner',
-        temperature: 0.7, // Balanced for creativity + consistency
-        max_tokens: 600
-      });
+      const response = await createBudgetedChatCompletion(
+        {
+          model: 'gpt-4o',
+          messages: [
+            {
+              role: 'system',
+              content: this.getRefinerSystemPrompt()
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          temperature: 0.7, // Balanced for creativity + consistency
+          max_tokens: 600
+        },
+        {
+          purpose: 'ai_content_refiner'
+        }
+      );
       
       const result = this.parseRefinementResponse(response, content);
       

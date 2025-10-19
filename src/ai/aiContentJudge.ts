@@ -62,22 +62,26 @@ export class AIContentJudge {
     try {
       const prompt = this.buildJudgmentPrompt(options);
       
-      const response = await createBudgetedChatCompletion({
-        model: 'gpt-4o',
-        messages: [
-          {
-            role: 'system',
-            content: this.getJudgeSystemPrompt()
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        purpose: 'ai_content_judge',
-        temperature: 0.3, // Lower temperature for consistent judgment
-        max_tokens: 800
-      });
+      const response = await createBudgetedChatCompletion(
+        {
+          model: 'gpt-4o',
+          messages: [
+            {
+              role: 'system',
+              content: this.getJudgeSystemPrompt()
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          temperature: 0.3, // Lower temperature for consistent judgment
+          max_tokens: 800
+        },
+        {
+          purpose: 'ai_content_judge'
+        }
+      );
       
       const analysis = this.parseJudgmentResponse(response, options);
       
