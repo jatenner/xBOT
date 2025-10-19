@@ -127,7 +127,7 @@ export class TweetMetricsTracker {
       await createPageContext();
 
       // Navigate to tweet
-      const tweetUrl = `https://x.com/i/web/status/${tweetId}`;
+      const tweetUrl = `https://x.com/Signal_Synapse/status/${tweetId}`;
       console.log(`🔗 Navigating to: ${tweetUrl}`);
       
       await page.goto(tweetUrl, { 

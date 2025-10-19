@@ -173,7 +173,7 @@ export class NativeThreadComposer {
     try {
       // Navigate to the tweet to check if it's a thread
       console.log(`🔍 THREAD_VERIFY: Checking ${tweetId} for ${expectedTweets} tweets...`);
-      await page.goto(`https://x.com/i/web/status/${tweetId}`, {
+      await page.goto(`https://x.com/Signal_Synapse/status/${tweetId}`, {
         waitUntil: 'domcontentloaded',
         timeout: 15000
       });

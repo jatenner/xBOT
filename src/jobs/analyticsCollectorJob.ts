@@ -106,7 +106,7 @@ async function scrapeTweetMetrics(tweetId: string) {
     await poster.initialize();
     
     // Navigate to tweet URL
-    const tweetUrl = `https://x.com/i/web/status/${tweetId}`;
+    const tweetUrl = `https://x.com/Signal_Synapse/status/${tweetId}`;
     const page = (poster as any).page;
     
     if (!page) {
