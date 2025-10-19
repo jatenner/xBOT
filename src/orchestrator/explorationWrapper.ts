@@ -2,9 +2,12 @@
  * 🔍 EXPLORATION WRAPPER
  * Wraps content generation to apply exploration mode dynamically
  * ENFORCES topic diversity to prevent repetition
+ * 
+ * NOW USING: Intelligent multi-pass AI system for better content
  */
 
 import { ContentOrchestrator, type OrchestratedContent } from './contentOrchestrator';
+import { getIntelligentOrchestrator, type IntelligentOrchestratedContent } from './intelligentOrchestrator';
 import { getCurrentMode, getModeStatus } from '../exploration/explorationModeManager';
 import { getVarietyRecommendation } from '../exploration/coldStartOptimizer';
 import { getSupabaseClient } from '../db/index';
@@ -80,7 +83,7 @@ async function generateDiverseTopic(recentTopics: string[]): Promise<string> {
 export async function generateWithExplorationMode(params?: {
   topicHint?: string;
   formatHint?: 'single' | 'thread';
-}): Promise<OrchestratedContent> {
+}): Promise<OrchestratedContent | IntelligentOrchestratedContent> {
   
   const mode = await getCurrentMode();
   const status = await getModeStatus();
@@ -120,16 +123,33 @@ export async function generateWithExplorationMode(params?: {
     }
   }
   
-  // Generate content using normal orchestrator
-  const orchestrator = ContentOrchestrator.getInstance();
-  const content = await orchestrator.generateContent(params);
+  // 🚀 USE INTELLIGENT ORCHESTRATOR (Multi-pass AI system)
+  console.log('[EXPLORATION_WRAPPER] 🧠 Using Intelligent Multi-Pass AI Engine...');
   
-  // Log what was generated
-  console.log(`[EXPLORATION_WRAPPER] ✅ Generated ${content.format} using: ${content.metadata.generator_used}`);
-  console.log(`[EXPLORATION_WRAPPER] 🎯 Topic: ${params?.topicHint || 'default'}`);
-  console.log(`[EXPLORATION_WRAPPER] 🎯 Viral score: ${content.metadata.viral_score || 'N/A'}`);
-  console.log(`[EXPLORATION_WRAPPER] ⭐ Quality score: ${content.metadata.quality_score || 'N/A'}`);
-  
-  return content;
+  try {
+    const intelligentOrchestrator = getIntelligentOrchestrator();
+    const content = await intelligentOrchestrator.generateIntelligentContent(params);
+    
+    // Log what was generated
+    console.log(`[EXPLORATION_WRAPPER] ✅ Generated ${content.format} using: ${content.metadata.generator_used}`);
+    console.log(`[EXPLORATION_WRAPPER] 🎯 Topic: ${content.metadata.topic}`);
+    console.log(`[EXPLORATION_WRAPPER] 🎯 Angle: ${content.metadata.angle}`);
+    console.log(`[EXPLORATION_WRAPPER] 🎯 Viral score: ${content.metadata.viralScore}`);
+    console.log(`[EXPLORATION_WRAPPER] ⭐ Quality score: ${content.metadata.qualityScore}/10`);
+    console.log(`[EXPLORATION_WRAPPER] 🔄 AI iterations: ${content.metadata.aiIterations}`);
+    
+    return content;
+  } catch (error: any) {
+    console.error('[EXPLORATION_WRAPPER] ❌ Intelligent engine failed:', error.message);
+    console.log('[EXPLORATION_WRAPPER] 🔄 Falling back to traditional orchestrator...');
+    
+    // Fallback to old orchestrator if intelligent fails
+    const orchestrator = ContentOrchestrator.getInstance();
+    const content = await orchestrator.generateContent(params);
+    
+    console.log(`[EXPLORATION_WRAPPER] ✅ Generated ${content.format} using fallback`);
+    
+    return content;
+  }
 }
 
