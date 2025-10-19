@@ -164,16 +164,18 @@ export function hasBannedPhrase(content: string): { violated: boolean; phrase?: 
 /**
  * Check if content has sufficient specificity
  */
-export function hasSpecificity(content: string): { score: number; matches: string[] } {
+export function hasSpecificity(content: string): { score: number; matches: string[]; types: number } {
   let score = 0;
   const matches: string[] = [];
+  const typesFound = new Set<string>();
   
-  // Check specificity patterns
+  // Check specificity patterns (measurements, percentages, etc.)
   for (const pattern of REQUIRED_PATTERNS.specificity) {
     const match = content.match(pattern);
     if (match) {
       score++;
       matches.push(match[0]);
+      typesFound.add('measurement');
     }
   }
   
@@ -182,20 +184,23 @@ export function hasSpecificity(content: string): { score: number; matches: strin
     if (pattern.test(content)) {
       score++;
       matches.push('mechanism');
+      typesFound.add('mechanism');
       break; // Only count once
     }
   }
   
-  // Check evidence patterns
+  // Check evidence patterns (studies, citations, etc.)
   for (const pattern of REQUIRED_PATTERNS.evidence) {
     const match = content.match(pattern);
     if (match) {
       score++;
       matches.push(match[0] || 'evidence');
+      typesFound.add('evidence');
       break; // Only count once
     }
   }
   
-  return { score, matches };
+  // ENHANCED: Return number of distinct types
+  return { score, matches, types: typesFound.size };
 }
 

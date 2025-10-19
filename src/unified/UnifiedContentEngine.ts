@@ -449,16 +449,17 @@ export class UnifiedContentEngine {
   private getDefaultWeights(experimentArm: string): Record<string, number> {
     return experimentArm === 'control'
       ? {
+          // REBALANCED: More provocative/engaging, less protocol/academic
           humanVoice: 0.15,
-          newsReporter: 0.12,
-          storyteller: 0.12,
+          provocateur: 0.15,      // ↑ from 0.10 (more engaging)
+          contrarian: 0.15,       // ↑ from 0.04 (more interesting)
+          storyteller: 0.13,      // ↑ from 0.12 (better engagement)
           interesting: 0.10,
-          provocateur: 0.10,
           dataNerd: 0.10,
           mythBuster: 0.10,
-          coach: 0.08,
           thoughtLeader: 0.05,
-          contrarian: 0.04,
+          newsReporter: 0.04,     // ↓ from 0.12 (too academic)
+          coach: 0.03,            // ↓ from 0.08 (too protocol-heavy)
           explorer: 0.02,
           philosopher: 0.02
         }
