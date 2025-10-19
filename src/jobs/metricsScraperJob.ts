@@ -7,6 +7,7 @@
 
 import { getSupabaseClient } from '../db';
 import { BulletproofTwitterScraper } from '../scrapers/bulletproofTwitterScraper';
+import { ScrapingOrchestrator } from '../metrics/scrapingOrchestrator';
 
 export async function metricsScraperJob(): Promise<void> {
   console.log('[METRICS_JOB] 🔍 Starting scheduled metrics collection...');
@@ -38,7 +39,8 @@ export async function metricsScraperJob(): Promise<void> {
     let skipped = 0;
     let failed = 0;
     
-    const scraper = BulletproofTwitterScraper.getInstance();
+    // PHASE 4: Use ScrapingOrchestrator instead of direct scraper
+    const orchestrator = ScrapingOrchestrator.getInstance();
     
     for (const post of posts) {
       try {
@@ -70,25 +72,34 @@ export async function metricsScraperJob(): Promise<void> {
         const page = await browserManager.newPage();
         
         try {
-          const result = await scraper.scrapeTweetMetrics(page, String(post.tweet_id));
-          const metrics = result.metrics || {} as any;
+          // PHASE 4: Use orchestrator (includes validation, quality tracking, caching)
+          const postedAt = new Date(String(post.posted_at));
+          const hoursSincePost = (Date.now() - postedAt.getTime()) / (1000 * 60 * 60);
+          
+          const result = await orchestrator.scrapeAndStore(page, String(post.tweet_id), {
+            collectionPhase: 'scheduled_job',
+            postedAt: postedAt
+          });
           
           if (!result.success) {
             console.warn(`[METRICS_JOB] ⚠️ Scraping failed for ${post.tweet_id}: ${result.error}`);
+            failed++;
             continue;
           }
-        
-          // Calculate first hour engagement if this is collected within first hour
-          const postedAt = new Date(String(post.posted_at));
-          const collectedAt = new Date();
-          const hoursSincePost = (collectedAt.getTime() - postedAt.getTime()) / (1000 * 60 * 60);
+          
+          const metrics = result.metrics || {} as any;
           const isFirstHour = hoursSincePost <= 1;
           
           const totalEngagement = (metrics.likes ?? 0) + (metrics.retweets ?? 0) + 
                                   (metrics.quote_tweets ?? 0) + (metrics.replies ?? 0) + 
                                   (metrics.bookmarks ?? 0);
           
-          // Update outcomes table
+          // Log validation quality
+          if (result.validationResult) {
+            console.log(`[METRICS_JOB] 📊 Quality: confidence=${result.validationResult.confidence.toFixed(2)}, valid=${result.validationResult.isValid}`);
+          }
+          
+          // Update outcomes table (for backward compatibility with existing systems)
           const { data: outcomeData, error: outcomeError } = await supabase.from('outcomes').upsert({
             decision_id: post.decision_id,
             tweet_id: post.tweet_id,
@@ -98,10 +109,10 @@ export async function metricsScraperJob(): Promise<void> {
             replies: metrics.replies ?? null,
             views: metrics.views ?? null,
             bookmarks: metrics.bookmarks ?? null,
-            impressions: metrics.impressions ?? null,
+            impressions: metrics.views ?? null, // Map views to impressions
             first_hour_engagement: isFirstHour ? totalEngagement : null,
             collected_at: new Date().toISOString(),
-            data_source: 'scheduled_scraper',
+            data_source: 'orchestrator_v2',
             simulated: false
           }, { onConflict: 'decision_id' });
           
