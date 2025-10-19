@@ -590,7 +590,7 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     if (result.success) {
       const replyId = result.tweetId || `reply_${Date.now()}`;
       console.log(`[POSTING_QUEUE] ✅ Reply posted successfully with ID: ${replyId}`);
-      console.log(`[POSTING_QUEUE] 🔗 Reply URL: https://x.com/i/web/status/${replyId}`);
+      console.log(`[POSTING_QUEUE] 🔗 Reply URL: https://x.com/Signal_Synapse/status/${replyId}`);
       return replyId;
     } else {
       console.error(`[POSTING_QUEUE] ❌ Reply posting failed: ${result.error}`);

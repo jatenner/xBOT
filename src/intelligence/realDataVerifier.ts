@@ -148,7 +148,7 @@ export class RealDataVerifier {
       }
 
       // Navigate to the specific tweet
-      const tweetUrl = `https://x.com/i/web/status/${tweetId}`;
+      const tweetUrl = `https://x.com/Signal_Synapse/status/${tweetId}`;
       console.log(`🔗 VERIFICATION: Navigating to ${tweetUrl}`);
       
       await page.goto(tweetUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
