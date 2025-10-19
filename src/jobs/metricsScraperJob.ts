@@ -17,10 +17,12 @@ export async function metricsScraperJob(): Promise<void> {
     
     // Find posts from last 7 days that need metrics updates
     const { data: posts, error: postsError } = await supabase
-      .from('posted_decisions')
-      .select('decision_id, tweet_id, posted_at')
-      .gte('posted_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
-      .order('posted_at', { ascending: false })
+      .from('content_metadata')
+      .select('id, content_id, tweet_id, created_at')
+      .eq('status', 'posted')
+      .not('tweet_id', 'is', null)
+      .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+      .order('created_at', { ascending: false })
       .limit(20); // Process 20 most recent posts
     
     if (postsError) {
@@ -48,7 +50,7 @@ export async function metricsScraperJob(): Promise<void> {
         const { data: lastMetrics } = await supabase
           .from('outcomes')
           .select('collected_at')
-          .eq('decision_id', post.decision_id)
+          .eq('decision_id', post.content_id || post.id)
           .order('collected_at', { ascending: false })
           .limit(1)
           .single();
@@ -73,7 +75,7 @@ export async function metricsScraperJob(): Promise<void> {
         
         try {
           // PHASE 4: Use orchestrator (includes validation, quality tracking, caching)
-          const postedAt = new Date(String(post.posted_at));
+          const postedAt = new Date(String(post.created_at));
           const hoursSincePost = (Date.now() - postedAt.getTime()) / (1000 * 60 * 60);
           
           const result = await orchestrator.scrapeAndStore(page, String(post.tweet_id), {
@@ -101,7 +103,7 @@ export async function metricsScraperJob(): Promise<void> {
           
           // Update outcomes table (for backward compatibility with existing systems)
           const { data: outcomeData, error: outcomeError } = await supabase.from('outcomes').upsert({
-            decision_id: post.decision_id,
+            decision_id: post.content_id || post.id,
             tweet_id: post.tweet_id,
             likes: metrics.likes ?? null,
             retweets: metrics.retweets ?? null,
@@ -131,7 +133,7 @@ export async function metricsScraperJob(): Promise<void> {
             const { data: metadata } = await supabase
               .from('content_metadata')
               .select('generator_name')
-              .eq('decision_id', post.decision_id)
+              .eq('id', post.id)
               .single();
             
             if (metadata && metadata.generator_name && typeof metadata.generator_name === 'string') {
@@ -193,10 +195,12 @@ export async function enhancedMetricsScraperJob(): Promise<void> {
       const windowEnd = new Date(targetTime.getTime() + 30 * 60 * 1000);   // 30 min after
       
       const { data: posts } = await supabase
-        .from('posted_decisions')
-        .select('decision_id, tweet_id, posted_at')
-        .gte('posted_at', windowStart.toISOString())
-        .lte('posted_at', windowEnd.toISOString())
+        .from('content_metadata')
+        .select('id, content_id, tweet_id, created_at')
+        .eq('status', 'posted')
+        .not('tweet_id', 'is', null)
+        .gte('created_at', windowStart.toISOString())
+        .lte('created_at', windowEnd.toISOString())
         .limit(10);
       
       if (!posts || posts.length === 0) continue;
@@ -211,7 +215,7 @@ export async function enhancedMetricsScraperJob(): Promise<void> {
           const { data: existing } = await supabase
             .from('post_velocity_tracking')
             .select('id')
-            .eq('post_id', post.decision_id)
+            .eq('post_id', post.content_id || post.id)
             .eq('hours_after_post', window.hours)
             .single();
           
@@ -239,7 +243,7 @@ export async function enhancedMetricsScraperJob(): Promise<void> {
             
             // Store velocity data
             await supabase.from('post_velocity_tracking').insert({
-              post_id: post.decision_id,
+              post_id: post.content_id || post.id,
               tweet_id: post.tweet_id,
               check_time: now.toISOString(),
               hours_after_post: window.hours,
