@@ -221,23 +221,27 @@ export class FollowerPredictor {
   }> {
     try {
       const { data: posts } = await this.supabase
-        .from('content_decisions')
-        .select('actual_performance')
-        .not('actual_performance', 'is', null)
-        .order('created_at', { ascending: false })
+        .from('outcomes')
+        .select('likes, retweets, replies, impressions, engagement_rate, collected_at')
+        .not('impressions', 'is', null)
+        .order('collected_at', { ascending: false })
         .limit(50);
 
       if (!posts || posts.length === 0) {
         return { avg_followers_per_post: 2, post_count: 0 };
       }
 
-      let totalFollowers = 0;
+      // Note: outcomes table doesn't have followers_gained directly yet
+      // Using engagement as proxy: high engagement typically correlates with follower growth
+      let totalEngagement = 0;
       posts.forEach(p => {
-        const perf = p.actual_performance as any || {};
-        totalFollowers += (Number(perf.followers_gained) || 0);
+        const engagement = (Number(p.likes) || 0) + (Number(p.retweets) || 0) + (Number(p.replies) || 0);
+        totalEngagement += engagement;
       });
 
-      const avgFollowers = totalFollowers / posts.length;
+      const avgEngagement = totalEngagement / posts.length;
+      // Rough estimate: 1 follower per 50 engagements
+      const avgFollowers = avgEngagement / 50;
 
       return {
         avg_followers_per_post: avgFollowers,

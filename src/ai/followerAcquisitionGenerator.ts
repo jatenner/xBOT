@@ -321,9 +321,9 @@ export class FollowerAcquisitionGenerator {
       const supabase = getSupabaseClient();
       
       const { data, error } = await supabase
-        .from('content_decisions')
-        .select('generation_metadata')
-        .order('created_at', { ascending: false })
+        .from('posted_decisions')
+        .select('content, posted_at')
+        .order('posted_at', { ascending: false })
         .limit(20);
       
       if (error || !data) {

@@ -86,10 +86,10 @@ export class TargetFinderEngine {
    */
   private async analyzeReplyPerformance(): Promise<any> {
     const { data: replies } = await this.supabase
-      .from('content_decisions')
+      .from('posted_decisions')
       .select('*')
       .eq('decision_type', 'reply')
-      .order('created_at', { ascending: false })
+      .order('posted_at', { ascending: false })
       .limit(100);
 
     if (!replies || replies.length === 0) {

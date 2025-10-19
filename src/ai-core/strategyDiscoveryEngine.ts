@@ -127,10 +127,10 @@ export class StrategyDiscoveryEngine {
     cutoffDate.setDate(cutoffDate.getDate() - days);
 
     const { data: posts } = await this.supabase
-      .from('content_decisions')
+      .from('posted_decisions')
       .select('*')
-      .gte('created_at', cutoffDate.toISOString())
-      .order('created_at', { ascending: false })
+      .gte('posted_at', cutoffDate.toISOString())
+      .order('posted_at', { ascending: false })
       .limit(100);
 
     if (!posts || posts.length === 0) {

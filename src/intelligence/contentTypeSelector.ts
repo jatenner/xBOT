@@ -341,9 +341,9 @@ export class ContentTypeSelector {
       const supabase = getSupabaseClient();
       
       const { data, error } = await supabase
-        .from('content_decisions')
-        .select('generation_metadata')
-        .order('created_at', { ascending: false })
+        .from('posted_decisions')
+        .select('posted_at, content')
+        .order('posted_at', { ascending: false })
         .limit(20);
       
       if (error || !data) {

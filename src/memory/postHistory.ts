@@ -38,9 +38,9 @@ export class PostHistory {
       const supabase = getSupabaseClient();
       
       const { data, error } = await supabase
-        .from('content_decisions')
-        .select('decision_id, content, generation_metadata, created_at, actual_performance')
-        .order('created_at', { ascending: false })
+        .from('posted_decisions')
+        .select('decision_id, content, posted_at')
+        .order('posted_at', { ascending: false})
         .limit(limit);
       
       if (error || !data) {

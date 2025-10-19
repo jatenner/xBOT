@@ -55,10 +55,10 @@ export class TimingOptimizer {
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
       const { data: posts } = await this.supabase
-        .from('content_decisions')
-        .select('created_at, actual_performance')
-        .gte('created_at', thirtyDaysAgo.toISOString())
-        .not('actual_performance', 'is', null);
+        .from('outcomes')
+        .select('collected_at, likes, retweets, replies, impressions, engagement_rate')
+        .gte('collected_at', thirtyDaysAgo.toISOString())
+        .not('impressions', 'is', null);
 
       if (!posts || posts.length < 10) {
         console.log('[TIMING] ⚠️ Not enough data yet, using defaults');
@@ -73,7 +73,7 @@ export class TimingOptimizer {
       }> = {};
 
       posts.forEach(post => {
-        const date = new Date(String(post.created_at));
+        const date = new Date(String(post.collected_at));
         const hour = date.getHours();
         const dayOfWeek = date.getDay();
         const key = `${hour}-${dayOfWeek}`;
@@ -86,10 +86,11 @@ export class TimingOptimizer {
           };
         }
 
-        const perf = post.actual_performance as any || {};
-        patterns[key].impressions.push(Number(perf.views) || Number(perf.impressions) || 0);
-        patterns[key].engagement.push((Number(perf.likes) || 0) + (Number(perf.retweets) || 0) + (Number(perf.replies) || 0));
-        patterns[key].followers.push(Number(perf.followers_gained) || 0);
+        patterns[key].impressions.push(Number(post.impressions) || 0);
+        const engagement = (Number(post.likes) || 0) + (Number(post.retweets) || 0) + (Number(post.replies) || 0);
+        patterns[key].engagement.push(engagement);
+        // Estimate followers from engagement rate
+        patterns[key].followers.push(Math.floor(engagement / 50));
       });
 
       // Calculate averages for each time slot
@@ -106,7 +107,10 @@ export class TimingOptimizer {
 
         // Success rate = how often this time slot performs above average
         const overallAvgFollowers = posts
-          .reduce((sum, p) => sum + ((p.actual_performance as any)?.followers_gained || 0), 0) / posts.length;
+          .reduce((sum, p) => {
+            const eng = (Number(p.likes) || 0) + (Number(p.retweets) || 0) + (Number(p.replies) || 0);
+            return sum + Math.floor(eng / 50);
+          }, 0) / posts.length;
         
         const successCount = data.followers.filter(f => f > overallAvgFollowers).length;
         const successRate = successCount / data.followers.length;
