@@ -125,6 +125,38 @@ export async function metricsScraperJob(): Promise<void> {
             continue;
           }
           
+          // CRITICAL: Also update learning_posts table (used by 30+ learning systems!)
+          const { error: learningError } = await supabase.from('learning_posts').upsert({
+            tweet_id: post.tweet_id,
+            likes_count: metrics.likes ?? 0,
+            retweets_count: metrics.retweets ?? 0,
+            replies_count: metrics.replies ?? 0,
+            bookmarks_count: metrics.bookmarks ?? 0,
+            impressions_count: metrics.views ?? 0,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'tweet_id' });
+          
+          if (learningError) {
+            console.warn(`[METRICS_JOB] ⚠️ Failed to update learning_posts for ${post.tweet_id}:`, learningError.message);
+            // Don't fail - outcomes table is the primary store
+          }
+          
+          // CRITICAL: Also update tweet_metrics table (used by timing & quantity optimizers!)
+          const { error: metricsError } = await supabase.from('tweet_metrics').upsert({
+            tweet_id: post.tweet_id,
+            likes_count: metrics.likes ?? 0,
+            retweets_count: metrics.retweets ?? 0,
+            replies_count: metrics.replies ?? 0,
+            impressions_count: metrics.views ?? 0,
+            updated_at: new Date().toISOString(),
+            created_at: post.created_at
+          }, { onConflict: 'tweet_id' });
+          
+          if (metricsError) {
+            console.warn(`[METRICS_JOB] ⚠️ Failed to update tweet_metrics for ${post.tweet_id}:`, metricsError.message);
+            // Don't fail - outcomes table is the primary store
+          }
+          
           console.log(`[METRICS_JOB] ✅ Updated ${post.tweet_id}: ${metrics.likes ?? 0} likes, ${metrics.views ?? 0} views`);
           updated++;
           
