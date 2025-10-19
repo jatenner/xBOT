@@ -25,6 +25,7 @@ export function getPgSSL(dbUrl: string): { require: true; rejectUnauthorized: bo
     // PRODUCTION/RAILWAY: No cert file available, but connection is still secure
     // Railway/Render/Heroku provide encrypted connections without needing cert files
     if (process.env.NODE_ENV === 'production' || 
+        process.env.RAILWAY_ENVIRONMENT_ID ||  // ✅ FIX: Correct Railway variable
         process.env.RAILWAY_ENVIRONMENT || 
         process.env.RENDER || 
         process.env.HEROKU) {
