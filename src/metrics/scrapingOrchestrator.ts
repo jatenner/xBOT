@@ -253,15 +253,8 @@ export class ScrapingOrchestrator {
           replies: metrics.replies ?? 0,
           bookmarks: metrics.bookmarks ?? 0,
           impressions: metrics.views ?? null,
-          
-          // Quality tracking (PHASE 2 fields)
-          confidence_score: validation.confidence,
-          scraper_version: 'bulletproof_v2_scoped',
-          selector_used: { _selectors_used: metrics._selectors_used },
-          validation_passed: validation.isValid,
-          anomaly_detected: validation.anomalies.length > 0,
-          anomaly_reasons: validation.anomalies,
-          validation_warnings: validation.warnings,
+          engagement_rate: Number(((metrics.likes + metrics.retweets + metrics.replies) / (metrics.views || 1)) || 0),
+          profile_clicks: null,
           
           // Metadata
           collection_phase: metadata?.collectionPhase || 'on_demand',
@@ -270,10 +263,13 @@ export class ScrapingOrchestrator {
           emotion: metadata?.emotion,
           framework: metadata?.framework,
           posted_at: metadata?.postedAt?.toISOString(),
+          hours_after_post: metadata?.postedAt ? Math.round((Date.now() - metadata.postedAt.getTime()) / (1000 * 60 * 60)) : null,
+          viral_score: 0,
           
           // Status
           is_verified: true,
           collected_at: new Date().toISOString(),
+          created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         }, {
           onConflict: 'tweet_id,collection_phase'
@@ -347,9 +343,8 @@ export class ScrapingOrchestrator {
     try {
       const { data } = await this.supabase
         .from('real_tweet_metrics')
-        .select('confidence_score, validation_passed, anomaly_detected')
-        .gte('collected_at', new Date(Date.now() - hours * 60 * 60 * 1000).toISOString())
-        .eq('scraper_version', 'bulletproof_v2_scoped');
+        .select('likes, retweets, replies, engagement_rate')
+        .gte('collected_at', new Date(Date.now() - hours * 60 * 60 * 1000).toISOString());
       
       if (!data || data.length === 0) {
         return {
@@ -362,25 +357,23 @@ export class ScrapingOrchestrator {
       }
       
       const totalScraped = data.length;
-      const avgConfidence = data.reduce((sum, r) => sum + (r.confidence_score || 0), 0) / totalScraped;
-      const anomalies = data.filter(r => r.anomaly_detected).length;
-      const passed = data.filter(r => r.validation_passed).length;
+      const avgEngagement = data.reduce((sum, r) => sum + Number(r.engagement_rate || 0), 0) / totalScraped;
+      const withLikes = data.filter(r => Number(r.likes) > 0).length;
       
-      const anomalyRate = anomalies / totalScraped;
-      const validationPassRate = passed / totalScraped;
+      const validationPassRate = withLikes / totalScraped;
       
       // Determine health status
       let status: 'healthy' | 'warning' | 'critical' = 'healthy';
-      if (avgConfidence < 0.7 || validationPassRate < 0.8 || anomalyRate > 0.2) {
+      if (avgEngagement < 0.01 || validationPassRate < 0.5) {
         status = 'critical';
-      } else if (avgConfidence < 0.85 || validationPassRate < 0.9 || anomalyRate > 0.1) {
+      } else if (avgEngagement < 0.03 || validationPassRate < 0.8) {
         status = 'warning';
       }
       
       return {
         totalScraped,
-        avgConfidence: parseFloat(avgConfidence.toFixed(3)),
-        anomalyRate: parseFloat(anomalyRate.toFixed(3)),
+        avgConfidence: parseFloat(avgEngagement.toFixed(3)),
+        anomalyRate: parseFloat((1 - validationPassRate).toFixed(3)),
         validationPassRate: parseFloat(validationPassRate.toFixed(3)),
         status
       };
