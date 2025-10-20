@@ -341,13 +341,21 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
     }
     
     // Handle all content types: 'single', 'thread', and 'reply'
+    let tweetUrl: string | undefined;
+    
     if (decision.decision_type === 'single' || decision.decision_type === 'thread') {
-      tweetId = await postContent(decision);
+      const result = await postContent(decision);
+      tweetId = result.tweetId;
+      tweetUrl = result.tweetUrl;
     } else if (decision.decision_type === 'reply') {
       tweetId = await postReply(decision);
+      // For replies, construct URL (reply system doesn't return URL yet)
+      tweetUrl = `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${tweetId}`;
     } else {
       throw new Error(`Unknown decision type: ${decision.decision_type}`);
     }
+    
+    console.log(`[POSTING_QUEUE] 🔗 Tweet URL: ${tweetUrl}`);
     
     // 🎣 INTELLIGENCE LAYER: Extract and classify hook
     try {
@@ -371,8 +379,8 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
       console.warn(`[POSTING_QUEUE] ⚠️ Hook capture failed: ${hookError.message}`);
     }
     
-    // Mark as posted and store tweet ID
-    await markDecisionPosted(decision.id, tweetId);
+    // Mark as posted and store tweet ID and URL
+    await markDecisionPosted(decision.id, tweetId, tweetUrl);
     
     // Update metrics
     await updatePostingMetrics('posted');
@@ -487,7 +495,7 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
   }
 }
 
-async function postContent(decision: QueuedDecision): Promise<string> {
+async function postContent(decision: QueuedDecision): Promise<{ tweetId: string; tweetUrl: string }> {
   console.log(`[POSTING_QUEUE] 📝 Posting content: "${decision.content.substring(0, 50)}..."`);
   
   // Check feature flag for posting method
@@ -601,7 +609,10 @@ async function postContent(decision: QueuedDecision): Promise<string> {
         }
         
         console.log(`[POSTING_QUEUE] ✅ Tweet ID extracted: ${extraction.tweetId}`);
-        return extraction.tweetId;
+        console.log(`[POSTING_QUEUE] ✅ Tweet URL: ${extraction.url}`);
+        
+        // Return object with both ID and URL
+        return { tweetId: extraction.tweetId, tweetUrl: extraction.url || extraction.tweetId };
       }
     } catch (error: any) {
       console.error(`[POSTING_QUEUE] ❌ Playwright system error: ${error.message}`);
@@ -670,20 +681,27 @@ async function updateDecisionStatus(decisionId: string, status: string): Promise
   }
 }
 
-async function markDecisionPosted(decisionId: string, tweetId: string): Promise<void> {
+async function markDecisionPosted(decisionId: string, tweetId: string, tweetUrl?: string): Promise<void> {
   try {
     const { getSupabaseClient } = await import('../db/index');
     const supabase = getSupabaseClient();
     
-    // 1. Update content_metadata status AND tweet_id (CRITICAL!)
+    // 1. Update content_metadata status, tweet_id, AND tweet_url (CRITICAL!)
+    const updateData: any = { 
+      status: 'posted',
+      tweet_id: tweetId, // 🔥 CRITICAL: Save tweet ID for metrics scraping!
+      posted_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    
+    // Add tweet_url if provided (column might not exist yet in database)
+    if (tweetUrl) {
+      updateData.tweet_url = tweetUrl; // 🔗 IDEAL: Save full URL for direct scraping!
+    }
+    
     const { error: updateError } = await supabase
       .from('content_metadata')
-      .update({ 
-        status: 'posted',
-        tweet_id: tweetId, // 🔥 CRITICAL: Save tweet ID for metrics scraping!
-        posted_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
+      .update(updateData)
       .eq('decision_id', decisionId);  // 🔥 FIX: decisionId is UUID, query by decision_id not id!
     
     if (updateError) {
