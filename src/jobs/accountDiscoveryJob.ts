@@ -49,7 +49,7 @@ export async function runAccountDiscovery(): Promise<void> {
     
     // Run discovery loop
     console.log('[ACCOUNT_DISCOVERY] 🌐 Searching Twitter for health accounts...');
-    const result = await aiAccountDiscovery.runDiscoveryLoop();
+    await aiAccountDiscovery.runDiscoveryLoop();
     
     // Get updated pool size
     const { count: newCount } = await supabase
@@ -59,11 +59,10 @@ export async function runAccountDiscovery(): Promise<void> {
     const accountsAdded = (newCount || 0) - (currentCount || 0);
     
     console.log(`[ACCOUNT_DISCOVERY] ✅ Discovery complete:`);
-    console.log(`  📈 Accounts found: ${result?.accounts_discovered || 0}`);
     console.log(`  💾 New accounts stored: ${accountsAdded}`);
     console.log(`  📊 Total pool size: ${newCount || 0}`);
     
-    discoveryMetrics.accounts_found += result?.accounts_discovered || 0;
+    discoveryMetrics.accounts_found += accountsAdded;
     discoveryMetrics.accounts_stored += accountsAdded;
     
     // Cleanup old/low-quality accounts if pool is too large

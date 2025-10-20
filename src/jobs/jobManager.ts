@@ -799,7 +799,7 @@ export class JobManager {
   /**
    * Force run a specific job (for testing/manual trigger)
    */
-  public async runJobNow(jobName: 'plan' | 'reply' | 'posting' | 'outcomes' | 'realOutcomes' | 'analyticsCollector' | 'learn' | 'trainPredictor'): Promise<void> {
+  public async runJobNow(jobName: 'plan' | 'reply' | 'posting' | 'outcomes' | 'realOutcomes' | 'analyticsCollector' | 'learn' | 'trainPredictor' | 'account_discovery'): Promise<void> {
     console.log(`🔄 JOB_MANAGER: Force running ${jobName} job...`);
     
     switch (jobName) {
