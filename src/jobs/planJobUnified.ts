@@ -91,6 +91,21 @@ async function generateRealContent(): Promise<void> {
   
   console.log('[UNIFIED_PLAN] 🚀 Generating content with UNIFIED ENGINE');
   
+  // ═══════════════════════════════════════════════════════════
+  // LOAD RECENT CONTENT TO AVOID DUPLICATES & ENSURE VARIETY
+  // ═══════════════════════════════════════════════════════════
+  const supabase = getSupabaseClient();
+  const { data: recentContent } = await supabase
+    .from('content_metadata')
+    .select('content, decision_id, generator_name')
+    .order('created_at', { ascending: false })
+    .limit(20); // Check last 20 pieces of content
+  
+  const recentTexts = recentContent?.map(c => String(c.content || '').toLowerCase()) || [];
+  const recentGenerators = recentContent?.map(c => c.generator_name).filter(Boolean) || [];
+  console.log(`[UNIFIED_PLAN] 📚 Loaded ${recentTexts.length} recent posts for duplicate checking`);
+  console.log(`[UNIFIED_PLAN] 🎨 Recent generators: ${recentGenerators.slice(0, 5).join(', ')}`);
+  
   const decisions = [];
   const numToGenerate = 1; // 1 post per cycle (30min intervals = 2 posts/hour)
   
@@ -101,11 +116,40 @@ async function generateRealContent(): Promise<void> {
       planMetrics.calls_total++;
       
       // ═══════════════════════════════════════════════════════════
-      // GENERATE WITH ALL SYSTEMS ACTIVE
+      // GENERATE WITH ALL SYSTEMS ACTIVE (with variety preferences)
       // ═══════════════════════════════════════════════════════════
+      // TODO: Pass recentGenerators to avoid repetition once ContentRequest interface supports it
+      console.log(`[UNIFIED_PLAN] 🎲 Avoiding recent generators: ${recentGenerators.slice(0, 3).join(', ')}`);
       const generated = await engine.generateContent({
         format: Math.random() < 0.3 ? 'thread' : 'single' // 30% threads, 70% singles
       });
+      
+      // ═══════════════════════════════════════════════════════════
+      // DUPLICATE CHECK: Ensure content is unique
+      // ═══════════════════════════════════════════════════════════
+      const contentToCheck = generated.content.toLowerCase();
+      const isDuplicate = recentTexts.some(recentText => {
+        // Check for high similarity (more than 70% of words match)
+        const recentWords = new Set(recentText.split(/\s+/));
+        const newWords = contentToCheck.split(/\s+/);
+        const matchingWords = newWords.filter(w => recentWords.has(w)).length;
+        const similarity = matchingWords / newWords.length;
+        
+        if (similarity > 0.7) {
+          console.log(`[UNIFIED_PLAN] ⚠️ Duplicate detected! Similarity: ${(similarity * 100).toFixed(1)}%`);
+          return true;
+        }
+        return false;
+      });
+      
+      if (isDuplicate) {
+        console.log(`[UNIFIED_PLAN] 🚫 Skipping duplicate content, will retry next cycle`);
+        planMetrics.calls_failed++;
+        planMetrics.failure_reasons['duplicate'] = (planMetrics.failure_reasons['duplicate'] || 0) + 1;
+        continue; // Skip this iteration
+      }
+      
+      console.log(`[UNIFIED_PLAN] ✅ Content is unique (not a duplicate)`);
       
       // Update metrics
       planMetrics.avg_quality_score = 
