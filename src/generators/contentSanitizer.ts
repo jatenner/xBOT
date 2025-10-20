@@ -169,10 +169,52 @@ function detectFirstPerson(content: string): Violation[] {
       name: 'Personal pronouns (I, me, my, mine)',
       examples: ['I', 'me', 'my', 'mine']
     },
+    // Context-aware: Only flag "we/us/our" when used as pronouns, not in words
     { 
-      pattern: /\b(we|us|our|ours)\b/gi, 
+      pattern: /\b(we|us|our|ours)\b(?!\w)/gi, 
       name: 'Collective first-person (we, us, our, ours)',
-      examples: ['we', 'us', 'our', 'ours']
+      examples: ['we', 'us', 'our', 'ours'],
+      validate: (match: string, fullText: string) => {
+        // Get surrounding context
+        const index = fullText.toLowerCase().indexOf(match.toLowerCase());
+        const before = fullText.slice(Math.max(0, index - 20), index).toLowerCase();
+        const after = fullText.slice(index + match.length, index + match.length + 20).toLowerCase();
+        
+        // FALSE POSITIVES - Don't flag these:
+        if (match.toLowerCase() === 'us') {
+          // "versus", "focus", "Jesus", "SEALs use", "status", etc.
+          if (/vers$/.test(before) || /foc$/.test(before) || /\bjes$/.test(before) || 
+              /\bstat$/.test(before) || /\bgen$/.test(before) || /\bconsens$/.test(before)) {
+            return false; // Not a violation
+          }
+          // "use", "used", "using" in proper context
+          if (/^e/.test(after) || /^ing/.test(after) || /^ed/.test(after)) {
+            return false; // "use/used/using" not "us"
+          }
+        }
+        
+        if (match.toLowerCase() === 'our') {
+          // "hour", "flour", "tour", "pour"
+          if (/h$/.test(before) || /fl$/.test(before) || /t$/.test(before) || /p$/.test(before)) {
+            return false;
+          }
+        }
+        
+        // TRUE VIOLATIONS - Flag these:
+        // "we know", "we can", "we understand", "we think"
+        if (match.toLowerCase() === 'we' && /\b(know|can|think|understand|believe|see|should|need)/.test(after)) {
+          return true;
+        }
+        
+        // "us to", "us that", "our research"
+        if ((match.toLowerCase() === 'us' && /\b(to|that|how|what|why)/.test(after)) ||
+            (match.toLowerCase() === 'our' && /\b(research|study|analysis|team|data)/.test(after))) {
+          return true;
+        }
+        
+        // Default: flag if it stands alone as a pronoun
+        return /^\s/.test(before) && /\s/.test(after);
+      }
     },
     { 
       pattern: /\bI've\b/gi, 
@@ -221,15 +263,23 @@ function detectFirstPerson(content: string): Violation[] {
     }
   ];
   
-  for (const { pattern, name, examples } of firstPersonPatterns) {
+  for (const patternObj of firstPersonPatterns) {
+    const { pattern, name, examples, validate } = patternObj as any;
     const matches = content.match(pattern);
     if (matches && matches.length > 0) {
-      violations.push({
-        type: 'first_person',
-        severity: 'critical',
-        detected: `${name}: "${matches[0]}"`,
-        location: extractContext(content, matches[0])
-      });
+      // If pattern has context-aware validation, filter out false positives
+      const validMatches = validate 
+        ? matches.filter((match: string) => validate(match, content))
+        : matches;
+      
+      if (validMatches.length > 0) {
+        violations.push({
+          type: 'first_person',
+          severity: 'critical',
+          detected: `${name}: "${validMatches[0]}"`,
+          location: extractContext(content, validMatches[0])
+        });
+      }
     }
   }
   
