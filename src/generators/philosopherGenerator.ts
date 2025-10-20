@@ -65,7 +65,7 @@ The signal compounds, effort doesn't."
 - Sounds like fortune cookie ("Follow your dreams...")
 - Asks question without answering ("What if...?")
 - Uses vague terms ("perhaps", "maybe", "consider")
-- > 3 sentences or > 270 characters
+- > 3 sentences or > 260 characters
 - No practical implication
 
 ⚡ TESTABLE CRITERIA:
@@ -155,7 +155,7 @@ What's the insight that reframes everything?`;
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.8,
-      max_tokens: format === 'thread' ? 600 : 150,
+      max_tokens: format === 'thread' ? 600 : 100,
       response_format: { type: 'json_object' }
     }, { purpose: 'philosopher_content_generation' });
 

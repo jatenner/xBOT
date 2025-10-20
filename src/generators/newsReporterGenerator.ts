@@ -41,7 +41,7 @@ ${VOICE_GUIDELINES}
 🚨 NON-NEGOTIABLES:
 1. ZERO first-person: NO "I/me/my/we/us/our"
 2. Max 2 emojis (prefer 0)
-3. Max 270 chars
+3. Max 260 chars
 4. MUST be timely & newsworthy
 
 🎨 DIVERSITY MANDATE - VARY HOW YOU REPORT NEWS:

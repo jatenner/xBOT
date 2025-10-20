@@ -56,7 +56,7 @@ ${VOICE_GUIDELINES}
 - Uses "studies show" or "research suggests" (name the institution)
 - No mechanism explanation
 - Ends with question instead of insight
-- > 270 characters
+- > 260 characters (STRICT LIMIT - system rejects at 280)
 
 📊 DATA SPECIFICITY REQUIREMENTS:
 Every tweet must include at LEAST 2 of these:
@@ -176,7 +176,7 @@ Make the statistics actually interesting.`;
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.7,
-      max_tokens: format === 'thread' ? 600 : 150,
+      max_tokens: format === 'thread' ? 600 : 100,
       response_format: { type: 'json_object' }
     }, { purpose: 'data_nerd_content_generation' });
 

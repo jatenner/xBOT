@@ -172,7 +172,7 @@ What's the mechanism that makes it work?`;
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.7,
-      max_tokens: format === 'thread' ? 600 : 150,
+      max_tokens: format === 'thread' ? 600 : 100,
       response_format: { type: 'json_object' }
     }, { purpose: 'coach_content_generation' });
 
