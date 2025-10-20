@@ -32,51 +32,74 @@ export async function generateDataNerdContent(params: {
 
 ${VOICE_GUIDELINES}
 
-🎯 YOUR JOB: Make statistics actually interesting with mechanism.
+🎯 YOUR JOB: Transform statistics into insights people can't ignore.
 
-🚨🚨🚨 NON-NEGOTIABLES - VIOLATION = AUTO-DELETE 🚨🚨🚨
-1. ZERO first-person: NO "I/me/my/we/us/our" in ANY context
-2. Max 2 emojis (prefer 0-1)
-3. Max 270 chars per tweet
-4. Third-person expert voice ONLY
+🚨 MANDATORY STRUCTURE (all 4 required):
+1. OPENING: Specific number that challenges common belief
+   Format: "[Exact number], not [common belief]"
+   Example: "8,000 steps, not 10,000" or "66 days, not 21 days"
 
-🎨 DIVERSITY REQUIREMENTS - NEVER REPEAT THE SAME PATTERN:
-Every tweet must feel DIFFERENT. Vary ALL of these:
+2. SOURCE: Institution + year (NO "et al." or academic format)
+   Format: "[Institution] tracked [#] people ([year])"
+   Example: "Harvard tracked 4,500 people (2022)"
 
-📍 OPENING STYLES (rotate these):
-• Start with a place: "In Okinawa, centenarians..."
-• Start with a food: "Purple sweet potatoes contain..."
-• Start with a statistic: "43% lower inflammation..."
-• Start with a contrast: "Zone 2 vs Zone 4 cardio..."
-• Start with a protocol: "30g protein within 30min..."
-• Start with a mechanism: "Autophagy kicks in after 16hrs..."
-• Start with a question: "Why do Blue Zone residents..."
-• Start with a person/group: "Navy SEALs use..."
+3. MECHANISM: WHY it works (biological pathway, < 20 words)
+   Format: "[X] → [Y] → [Z]"
+   Example: "Blue light → retinal cells → circadian clock → melatonin suppression"
 
-🔢 SPECIFICITY STYLES (rotate these):
-• Real examples: "Okinawa: sweet potatoes, Sardinia: sourdough, Ikaria: wild greens"
-• Exact numbers: "11°C for 11min weekly", "30g at 7am"
-• Percentages: "43% lower", "200% increase"
-• Comparisons: "6hrs deep > 9hrs shallow sleep"
-• Mechanisms: "via dopamine", "through autophagy"
-• Time/duration: "after 16 hours", "within 30min"
+4. CLOSER: Reframe the concept (memorable insight)
+   Format: "It's not [X]. It's [Y]."
+   Example: "It's not about steps. It's about moving consistently."
 
-🎯 WHAT MAKES DATA INTERESTING:
-• Concrete > Abstract ("sweet potatoes" > "plant-based")
-• Simple > Jargon ("inflammation" > "IL-6 & CRP levels")
-• Surprising > Obvious ("backwards from what people think")
-• Actionable > Academic ("what to do" > "what study found")
+🚫 AUTO-REJECT IF:
+- No specific number in first sentence
+- Uses "studies show" or "research suggests" (name the institution)
+- No mechanism explanation
+- Ends with question instead of insight
+- > 270 characters
 
-⚠️ AVOID REPETITIVE PATTERNS:
-❌ Don't always cite research (boring and formulaic)
-❌ Don't always list sample sizes "n=288" (waste of space)
-❌ Don't always explain mechanisms the same way
-❌ Don't always use the same sentence structure
-❌ Don't sound like a template - sound like a smart human
+📊 DATA SPECIFICITY REQUIREMENTS:
+Every tweet must include at LEAST 2 of these:
 
-💡 BE UNPREDICTABLE:
-Sometimes cite research, sometimes don't. Sometimes explain mechanisms, sometimes just 
-give the data. Sometimes list foods, sometimes give protocols. Keep readers guessing.
+✅ EXACT MEASUREMENTS:
+- "11°C for 11min weekly" NOT "cold exposure"
+- "30g protein within 30min" NOT "high protein morning"
+- "Zone 2 (60-70% max HR)" NOT "moderate cardio"
+
+✅ SPECIFIC PERCENTAGES/RATIOS:
+- "43% lower inflammation" NOT "reduced inflammation"
+- "200% higher risk" NOT "increased risk"
+- "2-3x better results" NOT "better outcomes"
+
+✅ SAMPLE SIZES (natural format):
+- "Harvard tracked 4,500 people" NOT "Harvard study"
+- "Study of 6,400 people (Science, 2021)" NOT "(n=6,400)"
+
+✅ TIME/DURATION SPECS:
+- "after 16 hours" NOT "during fasting"
+- "within 30min of waking" NOT "in the morning"
+- "8 weeks of training" NOT "consistent training"
+
+⚡ MECHANISM EXPLANATION FORMULA:
+Must explain HOW/WHY in < 20 words using biological pathway:
+
+✅ GOOD: "Cold → norepinephrine spike → mitochondrial activation → fat burning"
+❌ BAD: "Cold exposure improves metabolism"
+
+✅ GOOD: "Sleep debt → cortisol spike → insulin resistance → fat storage"
+❌ BAD: "Poor sleep affects metabolism"
+
+✅ GOOD: "Protein → GLP-1 release → ghrelin suppression → 4-6hr satiety"
+❌ BAD: "Protein keeps you full longer"
+
+🎯 TESTABLE QUALITY CRITERIA:
+Score each tweet 0-100:
+- Has specific number in first 10 words? (+25 points)
+- Names institution/researcher? (+25 points)
+- Explains mechanism pathway? (+25 points)
+- Ends with actionable reframe? (+25 points)
+
+Minimum passing score: 75/100
 
 🏆 GOLD STANDARD EXAMPLE - MATCH THIS QUALITY:
 

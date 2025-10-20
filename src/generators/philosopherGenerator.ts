@@ -31,43 +31,48 @@ export async function generatePhilosopherContent(params: {
 
 ${VOICE_GUIDELINES}
 
-🚨 NON-NEGOTIABLES:
-1. ZERO first-person: NO "I/me/my/we/us/our"
-2. Max 2 emojis (prefer 0)
-3. Max 270 chars
-4. MUST be profound yet practical
+🚨 PHILOSOPHICAL INSIGHT FORMULA (3-sentence structure):
 
-🎨 DIVERSITY MANDATE - VARY YOUR WISDOM:
+SENTENCE 1: Universal truth (what everyone experiences)
+Format: "Your [X] is the only [Y] you're guaranteed..."
+Example: "Your body is the only place you're guaranteed to live."
 
-🧘 TRUTH STYLES (rotate these):
-• Core principle: "Health isn't what you do when motivated..."
-• Reframe concept: "Sleep isn't rest. It's active maintenance..."
-• Reveal mechanism: "Stress isn't bad. Unprocessed stress is bad..."
-• Show paradox: "Fasting doesn't work because you eat less..."
-• State reality: "Your body doesn't care about motivation..."
-• Contrast options: "20 minutes daily beats 2 hours weekly..."
-• Simple truth: "Consistency compounds. Effort doesn't..."
+SENTENCE 2: The contrast (what most people do vs what makes sense)
+Format: "Most people treat it like [BAD]. [Should be GOOD]."
+Example: "Most people treat it like a rental. Treat it like a home."
 
-🔄 VARY YOUR DELIVERY:
-• Sometimes give the insight directly
-• Sometimes show the contrast
-• Sometimes reveal the mechanism
-• Sometimes challenge assumptions
-• Sometimes state simple truths
-• Sometimes show paradoxes
+SENTENCE 3: The mechanism/reason (why this matters)
+Format: "Because [biological/logical truth]."
+Example: "Because consistency compounds. Effort doesn't."
 
-💡 WHAT MAKES WISDOM PROFOUND:
-• Simple but deep
-• Practical implications
-• Reveals hidden truth
-• Changes how people think
-• Backed by mechanism or logic
+🎯 INSIGHT TYPES (rotate these):
 
-⚠️ AVOID FORMULAIC WISDOM:
-❌ Don't always structure the same way
-❌ Don't always use "X isn't Y. It's Z" format
-❌ Don't sound like fortune cookies
-❌ Sound like genuine insight, not platitudes
+✅ REFRAME TYPE:
+"Sleep isn't rest. It's active maintenance.
+Your brain clears metabolic waste via glymphatic system during sleep.
+Skip it = toxins accumulate."
+
+✅ PARADOX TYPE:
+"Fasting doesn't work because you eat less. It works because you give metabolism time to switch modes.
+Most people never leave glucose-burning mode."
+
+✅ REALITY CHECK TYPE:
+"Your body doesn't care about motivation. It responds to consistency.
+20 minutes daily beats 2 hours weekly.
+The signal compounds, effort doesn't."
+
+🚫 AUTO-REJECT IF:
+- Sounds like fortune cookie ("Follow your dreams...")
+- Asks question without answering ("What if...?")
+- Uses vague terms ("perhaps", "maybe", "consider")
+- > 3 sentences or > 270 characters
+- No practical implication
+
+⚡ TESTABLE CRITERIA:
+- Would Naval Ravikant or Derek Sivers tweet this? (yes = good)
+- Does it change how you think about something? (yes = profound)
+- Is it immediately actionable? (yes = practical)
+- Could it be on a motivational poster? (yes = reject, too generic)
 
 🎯 YOUR JOB: Say something profound but practical. No hollow questions.
 
