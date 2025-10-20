@@ -361,35 +361,55 @@ export class BulletproofTwitterScraper {
       _selectors_used: []
     };
 
-    // PROPER FIX: Find the article matching our tweet ID
-    // (Don't just grab the first article - it might be a parent tweet in a thread)
-    let tweetArticle;
+    // 🎯 CRITICAL FIX: Find the EXACT article matching our tweet ID
+    // Twitter shows multiple tweets: YOUR tweet + recommended tweets + parent tweets
+    // We MUST only extract metrics from YOUR tweet's article
+    
+    let tweetArticle: ElementHandle | null = null;
     
     if (tweetId) {
-      // Find ALL articles and search for the one with our tweet ID
-      tweetArticle = await page.evaluateHandle((id) => {
+      console.log(`    🔍 Searching for article with tweet ID ${tweetId}...`);
+      
+      // Find which article contains our tweet ID
+      const articleIndex = await page.evaluate((id) => {
         const articles = document.querySelectorAll('article[data-testid="tweet"]');
-        for (const article of articles) {
+        for (let i = 0; i < articles.length; i++) {
+          const article = articles[i];
           const link = article.querySelector('a[href*="/status/"]') as HTMLAnchorElement;
           if (link) {
             const match = link.href.match(/\/status\/(\d+)/);
             if (match && match[1] === id) {
-              return article; // Found it!
+              return i; // Return the index of the matching article
             }
           }
         }
-        // Fallback: return first article if we can't find match
-        return articles[0] || null;
+        return -1; // Not found
       }, tweetId);
+      
+      if (articleIndex === -1) {
+        console.warn(`    ⚠️ EXTRACT: Could not find article with tweet ID ${tweetId}`);
+        console.warn(`    💡 Page may be showing different tweets (recommended, parent tweets, etc.)`);
+        return results;
+      }
+      
+      console.log(`    ✅ Found correct tweet at article index ${articleIndex}`);
+      
+      // Get all articles and select the one at our index
+      const articles = await page.$$('article[data-testid="tweet"]');
+      if (articles[articleIndex]) {
+        tweetArticle = articles[articleIndex];
+      }
     } else {
       // No tweet ID provided, use first article (legacy behavior)
       tweetArticle = await page.$('article[data-testid="tweet"]');
     }
     
     if (!tweetArticle) {
-      console.warn('    ⚠️ EXTRACT: Could not find tweet article');
+      console.warn('    ⚠️ EXTRACT: Could not get article element');
       return results;
     }
+    
+    console.log(`    🎯 Extracting metrics from the correct article`);
 
     // PHASE 3: Try intelligent extraction first (aria-labels), then fallback to selectors
     console.log('    🎯 PHASE 3: Trying intelligent extraction methods...');
@@ -715,19 +735,20 @@ export class BulletproofTwitterScraper {
       }
     }
 
-    // ENHANCED CHECK 2: Catch OBVIOUSLY wrong values (like 200K likes on a small account)
-    // For your account size, anything > 10K is almost certainly wrong
-    const maxReasonableValue = 10000; // Much more strict threshold for small accounts
+    // ENHANCED CHECK 2: Sanity check for OBVIOUSLY wrong values
+    // Note: These thresholds are HIGH because viral tweets can get huge engagement
+    // Only reject if it's clearly a scraping bug (like 10M likes)
+    const maxReasonableValue = 1000000; // 1M likes threshold (viral tweets can get 100K+)
     if (metrics.likes !== null && metrics.likes > maxReasonableValue) {
-      console.warn(`    ⚠️ VALIDATE: Likes (${metrics.likes}) exceeds reasonable threshold - possible "8k bug"`);
+      console.warn(`    ⚠️ VALIDATE: Likes (${metrics.likes}) exceeds 1M - likely scraping bug`);
       return false;
     }
     if (metrics.retweets !== null && metrics.retweets > maxReasonableValue) {
-      console.warn(`    ⚠️ VALIDATE: Retweets (${metrics.retweets}) exceeds reasonable threshold`);
+      console.warn(`    ⚠️ VALIDATE: Retweets (${metrics.retweets}) exceeds 1M - likely scraping bug`);
       return false;
     }
-    if (metrics.views !== null && metrics.views > 500000) { // Views can be higher, but 500K is suspicious
-      console.warn(`    ⚠️ VALIDATE: Views (${metrics.views}) exceeds reasonable threshold`);
+    if (metrics.views !== null && metrics.views > 50000000) { // 50M views for viral content
+      console.warn(`    ⚠️ VALIDATE: Views (${metrics.views}) exceeds 50M - likely scraping bug`);
       return false;
     }
 
