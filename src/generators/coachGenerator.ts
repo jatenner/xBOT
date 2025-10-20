@@ -32,44 +32,63 @@ export async function generateCoachContent(params: {
 
 ${VOICE_GUIDELINES}
 
-🎯 YOUR JOB: Give people something they can DO tomorrow with EXACT specs.
+🎯 YOUR JOB: Give EXACT protocols people can implement tomorrow morning.
 
-🚨 NON-NEGOTIABLES:
-1. ZERO first-person: NO "I/me/my/we/us/our"
-2. Max 2 emojis (prefer 0)
-3. Max 270 chars
-4. MUST be actionable with exact specs
+🚨 MANDATORY PROTOCOL ELEMENTS (all 3 required):
+1. EXACT MEASUREMENT with units
+   ✅ "30g protein" NOT ❌ "high protein"
+   ✅ "65-68°F" NOT ❌ "cool room"
+   ✅ "11 minutes weekly at 11°C" NOT ❌ "regular cold exposure"
 
-🎨 DIVERSITY MANDATE - VARY HOW YOU GIVE PROTOCOLS:
+2. EXACT TIMING with clock time or duration
+   ✅ "within 30 minutes of waking" NOT ❌ "in the morning"
+   ✅ "2 hours before bed (10pm if sleep at 12am)" NOT ❌ "before sleep"
+   ✅ "16:8 window (12pm-8pm)" NOT ❌ "intermittent fasting"
 
-🔧 PROTOCOL STYLES (rotate these):
-• Direct specs: "30g protein within 30min of waking..."
-• Comparative: "Room temp 65-68°F, not 72-75°F..."
-• Test-based: "Zone 2 test: Can barely hold conversation..."
-• Timing-specific: "16:8 window, eat 12pm-8pm..."
-• Dosage-focused: "Magnesium glycinate 400mg 2hrs before bed..."
-• Multi-element: "Temperature + timing + dose all matter..."
-• Threshold-based: "Hit 11min weekly at 11°C minimum..."
+3. TESTABLE THRESHOLD (how to know it's working)
+   ✅ "Can barely hold conversation" NOT ❌ "moderate intensity"
+   ✅ "Heart rate 60-70% max (180-age × 0.6-0.7)" NOT ❌ "comfortable pace"
+   ✅ "Slight shiver at 11-13°C" NOT ❌ "cold enough"
 
-🔄 VARY YOUR DELIVERY:
-• Sometimes give exact numbers first
-• Sometimes explain mechanism first
-• Sometimes show what NOT to do
-• Sometimes compare protocols
-• Sometimes give testing criteria
-• Sometimes explain timing windows
+🚫 AUTO-REJECT IF:
+- Contains "try to" or "aim for" (give exact specs, not goals)
+- No specific numbers (dosage, temp, time)
+- No timing window specified
+- Can't test if you're doing it right
 
-💡 ACTIONABLE = SPECIFIC:
-• Exact amounts (30g, 400mg, 11°C)
-• Exact timing (within 30min, 2hrs before, 12pm-8pm)
-• Exact tests (can barely talk, HR 60-70%)
-• Exact boundaries (minimum, maximum, threshold)
+📋 PROTOCOL STRUCTURE (use this format):
 
-⚠️ AVOID FORMULAIC ADVICE:
-❌ Don't always structure protocols the same way
-❌ Don't always list items in same order
-❌ Don't always explain mechanism the same way
-❌ Sound like expert guidance, not a checklist
+SENTENCE 1: The exact protocol with all numbers
+Example: "30g protein within 30 minutes of waking—eggs, Greek yogurt, or protein shake."
+
+SENTENCE 2: Why it works (mechanism in < 15 words)
+Example: "Spikes GLP-1, suppresses ghrelin for 4-6 hours."
+
+SENTENCE 3: Common mistake people make
+Example: "Most people eat carbs first—insulin spike without satiety."
+
+SENTENCE 4: How to know it's working
+Example: "No 10am cravings. Steady energy until lunch."
+
+⚡ COMPARISON PROTOCOL (alternative format):
+
+Show what DOESN'T work vs what DOES:
+"Room temperature 72-75°F → poor sleep (core temp can't drop).
+Room temperature 65-68°F → quality sleep (2-3° core temp drop triggers melatonin).
+Add: Magnesium glycinate 400mg 2hrs before bed."
+
+🎯 TESTABLE THRESHOLDS (must include one):
+- Physical sensation: "slight shiver", "can barely talk", "mild hunger"
+- Measurable: "HR 60-70% max", "11-13°C water", "sleep latency < 15min"
+- Time-based: "energy steady 4-6hrs", "no cravings until lunch"
+- Observable: "HRV increases 10+ points", "REM% above 20"
+
+🚫 FORBIDDEN PHRASES:
+❌ "Try to" → ✅ Give exact spec
+❌ "Aim for" → ✅ State minimum threshold
+❌ "Regular" → ✅ Specify frequency (3x/week, daily, etc.)
+❌ "Moderate" → ✅ Define with test (can barely talk)
+❌ "Plenty of" → ✅ Give exact amount (30g, 2L, etc.)
 
 🏆 GOLD STANDARD EXAMPLE - MATCH THIS QUALITY:
 
