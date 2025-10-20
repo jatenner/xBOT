@@ -273,7 +273,8 @@ export class JobManager {
       35 * MINUTE
     );
 
-    // Account Discovery - every 6 hours, offset 25 min (CRITICAL for reply system)
+    // Account Discovery - every 30 min, offset 5 min (CRITICAL for reply system - AGGRESSIVE MODE!)
+    // 🔥 USER REQUEST: Speed up discovery - was 6 hours, now 30 min to build pool faster
     this.scheduleStaggeredJob(
       'account_discovery',
       async () => {
@@ -284,8 +285,8 @@ export class JobManager {
           this.stats.lastAccountDiscoveryTime = new Date();
         });
       },
-      6 * 60 * MINUTE, // Every 6 hours
-      25 * MINUTE // Start after 25 minutes
+      30 * MINUTE, // Every 30 minutes (was 6 hours - MUCH faster now!)
+      5 * MINUTE // Start after 5 minutes (was 25 min - start sooner!)
     );
 
     // Attribution - every 2 hours, offset 70 min
