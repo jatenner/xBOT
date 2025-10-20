@@ -132,7 +132,8 @@ export class RealTwitterDiscovery {
               // Strategy C: Any link with username pattern
               if (!username) {
                 const links = tweet.querySelectorAll('a[href^="/"]');
-                for (const link of links) {
+                // Convert NodeList to Array for iteration
+                for (const link of Array.from(links)) {
                   const href = link.getAttribute('href') || '';
                   const match = href.match(/^\/([a-zA-Z0-9_]+)$/);
                   if (match && match[1] && !match[1].includes('status')) {
