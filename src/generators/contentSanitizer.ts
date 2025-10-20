@@ -91,14 +91,14 @@ export function sanitizeContent(content: string | string[]): SanitizationResult 
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // CHECK 5: EXCESSIVE EMOJIS (MEDIUM) - RELAXED
+  // CHECK 5: EXCESSIVE EMOJIS (MEDIUM)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const emojiCount = countEmojis(fullContent);
-  if (emojiCount > 5) { // Increased from 2 to 5 for intelligence system
+  if (emojiCount > 2) {
     violations.push({
       type: 'excessive_emojis',
       severity: 'medium',
-      detected: `${emojiCount} emojis found (max 5 allowed)`
+      detected: `${emojiCount} emojis found (max 2 allowed)`
     });
   }
   
@@ -169,8 +169,11 @@ function detectFirstPerson(content: string): Violation[] {
       name: 'Personal pronouns (I, me, my, mine)',
       examples: ['I', 'me', 'my', 'mine']
     },
-    // NOTE: Removed "we, us, our, ours" - these are acceptable in expert voice
-    // e.g., "we know", "we understand" is common in science communication
+    { 
+      pattern: /\b(we|us|our|ours)\b/gi, 
+      name: 'Collective first-person (we, us, our, ours)',
+      examples: ['we', 'us', 'our', 'ours']
+    },
     { 
       pattern: /\bI've\b/gi, 
       name: "Contractions with 'I'",
