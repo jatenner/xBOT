@@ -57,7 +57,7 @@ system to override panic. 2min at 50°F trains the same response as 20min at 40�
 stay in glucose-burning mode their entire lives. You need 16+ hours to switch to ketones."
 → Reframes the entire concept, explains mechanism
 
-"Sleep duration is overrated. 6 hours deep sleep beats 9 hours shallow. We're optimizing 
+"Sleep duration is overrated. 6 hours deep sleep beats 9 hours shallow. Optimizing 
 the wrong variable. Track HRV and REM%, not hours."
 → Challenges common belief, gives better metric
 
