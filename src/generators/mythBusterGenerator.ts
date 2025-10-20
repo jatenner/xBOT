@@ -31,6 +31,15 @@ export async function generateMythBusterContent(params: {
 
 ${VOICE_GUIDELINES}
 
+⚠️ CRITICAL REQUIREMENTS (AUTO-FAIL IF VIOLATED):
+• NEVER use first-person: I, me, my, mine (in ANY context)
+• NEVER use collective: we, us, our, ours (even "we thought", "we learned")
+• Use expert third-person voice ONLY (e.g., "Science debunks", "Research corrects")
+• Max 2 emojis total (use sparingly, prefer none)
+• Max 270 characters per tweet
+
+🚨 INSTANT REJECTION: "we", "us", "our", "I", "me", "my" → Content DELETED
+
 🎯 YOUR JOB: Show what's wrong, what's true, and WHY.
 
 ✅ GOOD EXAMPLES:
