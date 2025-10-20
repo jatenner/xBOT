@@ -618,21 +618,15 @@ export class UnifiedContentEngine {
   private async loadDynamicWeights(experimentArm: string, recentGenerators: string[] = []): Promise<Record<string, number>> {
     try {
       // ═══════════════════════════════════════════════════════════
-      // DATA COLLECTION MODE: Equal weights until we have enough data
+      // USE EXISTING EXPLORATION MODE MANAGER
       // ═══════════════════════════════════════════════════════════
-      const MIN_DATA_THRESHOLD = 50; // Need 50+ posts with engagement before learning
+      const { getCurrentMode } = await import('../exploration/explorationModeManager');
+      const explorationMode = await getCurrentMode();
       
-      // Check how many posts we have with actual engagement data
-      const { count: dataCount } = await this.supabase
-        .from('outcomes')
-        .select('*', { count: 'exact', head: true })
-        .not('likes', 'is', null)
-        .gte('likes', 1); // At least 1 like = real engagement
-      
-      const hasEnoughData = (dataCount || 0) >= MIN_DATA_THRESHOLD;
+      const hasEnoughData = explorationMode === 'exploitation';
       
       if (!hasEnoughData) {
-        console.log(`🔬 DATA_COLLECTION_MODE: Only ${dataCount}/${MIN_DATA_THRESHOLD} posts with engagement`);
+        console.log(`🔬 EXPLORATION_MODE: followers < 200 or engagement < 10`);
         console.log(`🎲 Using EQUAL WEIGHTS for all generators (exploring)`);
         
         // EQUAL WEIGHTS for all 12 generators
@@ -672,9 +666,9 @@ export class UnifiedContentEngine {
       }
       
       // ═══════════════════════════════════════════════════════════
-      // LEARNING MODE: Use performance-based weights
+      // EXPLOITATION MODE: Use performance-based weights
       // ═══════════════════════════════════════════════════════════
-      console.log(`🧠 LEARNING_MODE: ${dataCount} posts with engagement - using learned weights`);
+      console.log(`🧠 EXPLOITATION_MODE: Using learned weights from performance data`);
       
       // Query database for current weights
       const { data, error } = await this.supabase
