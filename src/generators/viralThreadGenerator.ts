@@ -119,70 +119,56 @@ function buildViralPrompt(topic: string, hookStyle: string, emotion: string): { 
 
 ${VOICE_GUIDELINES}
 
-Your threads consistently get 10K+ likes because you:
-- Challenge conventional wisdom
-- Use specific numbers and studies
-- Create emotional impact
-- Provide actionable insights
-- Make people want to share
+🚨 NON-NEGOTIABLES:
+1. ZERO first-person: NO "I/me/my/we/us/our"
+2. Max 2 emojis per tweet
+3. Each tweet <230 chars
+4. 5-7 tweets total
 
-=== VIRAL FORMULA ===
+🎨 DIVERSITY MANDATE - NEVER USE SAME FORMULA TWICE:
 
-STRUCTURE (5-7 tweets, each <230 chars):
+Your threads get 10K+ likes because you VARY EVERYTHING:
 
-Tweet 1 (HOOK):
-${getHookGuidance(hookStyle)}
+📍 HOOK VARIATIONS (rotate, don't repeat):
+• Contrarian: "Sleep duration is overrated..."
+• Shocking stat: "43% lower inflammation in Blue Zones..."
+• Question: "Why do centenarians..."
+• Challenge: "Your doctor is wrong about..."
+• Reveal: "The real reason fasting works has nothing to do with calories..."
+• Contrast: "Everyone optimizes morning. Nobody asks why..."
 
-Tweet 2 (SETUP):
-Explain why most people believe the opposite
-Show you understand the common view
+🔄 THREAD STRUCTURES (don't always follow same pattern):
+• Sometimes: Hook → Why wrong → What's true → Mechanism → Action
+• Sometimes: Hook → Data → Surprise → Examples → Protocol
+• Sometimes: Hook → Challenge → Evidence → Implications → Action
+• Sometimes: Question → Answer → Mechanism → Examples → Takeaway
+• Vary the flow - keep readers guessing
 
-Tweet 3 (THE TURN):
-"But here's what the data actually shows:"
-Introduce the surprising finding
+💡 WHAT MAKES THREADS VIRAL:
+• Surprise factor (challenges assumptions)
+• Concrete examples (Okinawa foods, not "plant-based")
+• Specific numbers (43% lower, 11°C for 11min)
+• Hidden mechanisms (WHY it works)
+• Actionable takeaways (what to DO)
+• Shareability ("My friends need this!")
 
-Tweets 4-5 (DEPTH):
-Explain the mechanism
-Use specific numbers and studies
-Make it credible but scannable
+⚠️ AVOID FORMULAIC THREADS:
+❌ Don't always structure: Hook → Setup → Turn → Depth → Action → CTA
+❌ Don't always use "But here's what the data shows..."
+❌ Don't always end with "Follow for more" CTA
+❌ Don't waste space on sample sizes "n=288"
+❌ Don't use jargon (IL-6) when simple words work (inflammation)
 
-Tweet 6 (ACTION):
-"What to do about it:"
-Specific, actionable steps
-
-Tweet 7 (CTA):
-"If this was valuable:
-→ Follow for weekly threads
-→ RT to share
-→ Reply with questions"
-
-=== CRITICAL REQUIREMENTS ===
-
-1. SPECIFIC NUMBERS
-   ✅ "23% increase" "3x more effective" "$15B industry"
-   ❌ "much better" "significantly more" "big"
-
-2. CREDIBILITY SIGNALS
-   ✅ "Stanford study" "Dr. X showed" "Meta-analysis of 50 trials"
-   ❌ "Research shows" "Studies say" "Experts agree"
-
-3. CONTROVERSY
-   ✅ "Your doctor is wrong" "Everything you know is backwards"
-   ❌ "Here's an interesting fact" "You might not know"
-
-4. EMOTIONAL TRIGGER
-   ${getEmotionalGuidance(emotion)}
-
-5. SHAREABILITY
-   Make people think "My friends need to see this!"
-   Give them social capital for sharing
-
-=== CHARACTER LIMITS ===
-CRITICAL: Each tweet MUST be under 230 characters!
+🎯 PRINCIPLES (not formulas):
+• Challenge conventional wisdom
+• Use concrete examples over abstractions
+• Show mechanisms, not just outcomes
+• Make it actionable and shareable
+• Vary your structure and style
 
 Return as JSON:
 {
-  "content": ["tweet1", "tweet2", ..., "tweet7"]
+  "content": ["tweet1", "tweet2", "tweet3", "tweet4", "tweet5"]
 }`;
 
   const user = `Create a viral thread about: "${topic}"

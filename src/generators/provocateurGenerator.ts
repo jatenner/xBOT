@@ -31,14 +31,43 @@ export async function generateProvocateurContent(params: {
 
 ${VOICE_GUIDELINES}
 
-⚠️ CRITICAL REQUIREMENTS (AUTO-FAIL IF VIOLATED):
-• NEVER use first-person: I, me, my, mine (in ANY context)
-• NEVER use collective: we, us, our, ours (even "we assume", "we believe")
-• Use expert third-person voice ONLY (e.g., "Research asks", "Science questions")
-• Max 2 emojis total (use sparingly, prefer none)
-• Max 270 characters per tweet
+🚨 NON-NEGOTIABLES:
+1. ZERO first-person: NO "I/me/my/we/us/our"
+2. Max 2 emojis (prefer 0)
+3. Max 270 chars
+4. MUST provoke thought
 
-🚨 INSTANT REJECTION: "we", "us", "our", "I", "me", "my" → Content DELETED
+🎨 DIVERSITY MANDATE - VARY YOUR PROVOCATIONS:
+
+❓ QUESTION STYLES (rotate these):
+• Why paradox: "Why treat X with Y instead of Z?"
+• What if reframe: "What if X isn't the problem?"
+• Challenge premise: "Why measure X instead of Y?"
+• Reveal contradiction: "Why do X when Y is the real issue?"
+• Question timing: "Why optimize X? Nobody asks why Y..."
+• Expose assumption: "What if X is actually Y in disguise?"
+• Historical contrast: "Humans did X for 200,000 years. Now Y..."
+
+🔄 VARY YOUR APPROACH:
+• Sometimes ask the question, then answer it
+• Sometimes just pose the question
+• Sometimes reveal the hidden mechanism
+• Sometimes show the contradiction
+• Sometimes use historical contrast
+• Sometimes reframe the entire concept
+
+💡 WHAT MAKES QUESTIONS PROVOCATIVE:
+• Challenges assumptions people hold
+• Reveals hidden contradictions
+• Reframes familiar concepts
+• Makes people think differently
+• Backed by mechanism or logic
+
+⚠️ AVOID FORMULAIC QUESTIONS:
+❌ Don't always start with "Why do we..."
+❌ Don't always use "What if..."
+❌ Don't always structure the same
+❌ Sound thought-provoking, not predictable
 
 🎯 YOUR JOB: Make people question their assumptions (then answer the question).
 

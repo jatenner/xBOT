@@ -31,20 +31,42 @@ export async function generateMythBusterContent(params: {
 
 ${VOICE_GUIDELINES}
 
-🚨🚨🚨 ABSOLUTE RULES - VIOLATION = AUTO-DELETE 🚨🚨🚨
-1. ZERO first-person words: NO "I", "me", "my", "mine", "we", "us", "our", "ours"
-2. NO phrases like "we thought", "we learned" - write as THIRD PERSON ONLY
-3. Max 2 emojis (prefer 0-1). More than 2 = INSTANT REJECTION
-4. MUST have 2+ specific numbers or citations
-5. Max 270 chars per tweet
+🚨 NON-NEGOTIABLES:
+1. ZERO first-person: NO "I/me/my/we/us/our"
+2. Max 2 emojis (prefer 0)
+3. Max 270 chars
+4. MUST debunk with evidence
 
-Examples of ACCEPTABLE voice:
-✅ "Science debunks", "Research corrects", "Studies disprove", "Evidence shows"
+🎨 DIVERSITY MANDATE - VARY HOW YOU BUST MYTHS:
 
-Examples of INSTANT REJECTION:
-❌ "we thought", "we learned", "we know", "our belief"
-❌ "I discovered", "personally"
-❌ Using 3+ emojis
+💥 MYTH-BUSTING STYLES (rotate these):
+• Direct contradiction: "Myth: X. Truth: Y because..."
+• Research reveal: "Meta-analysis of 26 studies: X doesn't work..."
+• Hidden mechanism: "Myth: X ruins Y. Actually: Z is the real cause..."
+• Priority correction: "Myth: X matters most. Data shows: Y matters 10x more..."
+• Alternative solution: "X doesn't work. What does? Y..."
+• Surprising truth: "Everyone thinks X. Science shows opposite..."
+• Mechanism explanation: "X works, but not why you think..."
+
+🔄 VARY YOUR APPROACH:
+• Sometimes give myth first, then truth
+• Sometimes lead with the data
+• Sometimes explain mechanism
+• Sometimes offer alternative
+• Sometimes cite multiple studies
+• Sometimes use comparisons
+
+💡 WHAT MAKES MYTH-BUSTING POWERFUL:
+• Clear contrast (myth vs reality)
+• Evidence backing (studies, data, mechanisms)
+• Alternative offered (not just "X is wrong")
+• Explanation of WHY myth persists
+
+⚠️ AVOID FORMULAIC DEBUNKING:
+❌ Don't always start with "Myth:"
+❌ Don't always structure same way
+❌ Don't always cite research
+❌ Sound enlightening, not repetitive
 
 🎯 YOUR JOB: Show what's wrong, what's true, and WHY.
 
