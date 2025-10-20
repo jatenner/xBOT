@@ -89,32 +89,44 @@ export class BulletproofTweetExtractor {
         }
       }
 
-      // Strategy 2: Find latest tweet on profile
+      // Strategy 2: Navigate to FRESH profile page (bypass cache)
       if (!tweetId) {
-        verificationSteps.push('Looking for latest tweet on profile...');
+        verificationSteps.push('Navigating to profile for fresh content...');
         
-        // Navigate to profile if not there
-        if (!currentUrl.includes(`/${expectedUsername}`)) {
-          await page.goto(`https://x.com/${expectedUsername}`, {
-            waitUntil: 'domcontentloaded', // ✅ More reliable than networkidle for modern Twitter
-            timeout: 15000
-          });
-          verificationSteps.push(`Navigated to profile`);
-          
-          // Wait for tweets to load
-          await page.waitForSelector('article[data-testid="tweet"]', {
-            state: 'visible',
-            timeout: 10000
-          }).catch(() => {
-            verificationSteps.push(`⚠️ Tweets not visible after navigation`);
-          });
-          
-          await page.waitForTimeout(1500); // Reduced wait time
-        }
-
-        // Find recent articles
+        // Navigate to profile (force fresh content)
+        const profileUrl = `https://x.com/${expectedUsername}`;
+        await page.goto(profileUrl, {
+          waitUntil: 'domcontentloaded',
+          timeout: 15000
+        });
+        verificationSteps.push(`Navigated to profile: ${profileUrl}`);
+        
+        // Wait for tweets to load
+        await page.waitForSelector('article[data-testid="tweet"]', {
+          state: 'visible',
+          timeout: 10000
+        }).catch(() => {
+          verificationSteps.push(`⚠️ Tweets not visible after navigation`);
+        });
+        
+        // Give Twitter a moment to render
+        await page.waitForTimeout(2000);
+        
+        // FORCE RELOAD to get fresh content (bypass cache)
+        verificationSteps.push(`Reloading page to get fresh content...`);
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        
+        // Wait again for tweets after reload
+        await page.waitForSelector('article[data-testid="tweet"]', {
+          state: 'visible',
+          timeout: 10000
+        });
+        await page.waitForTimeout(1500);
+        verificationSteps.push(`Page reloaded - should have fresh tweets now`);
+        
+        // Fetch articles from profile
         const articles = await page.locator('article[data-testid="tweet"]').all();
-        verificationSteps.push(`Found ${articles.length} tweet articles`);
+        verificationSteps.push(`Found ${articles.length} tweet articles on profile`)
 
         for (let i = 0; i < Math.min(articles.length, 5); i++) {
           try {

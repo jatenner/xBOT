@@ -571,7 +571,7 @@ async function postContent(decision: QueuedDecision): Promise<string> {
         }
         
         // ✅ POST SUCCEEDED - Now extract tweet ID using ONLY bulletproof method
-        console.log(`[POSTING_QUEUE] ✅ Tweet posted! Extracting tweet ID...`);
+        console.log(`[POSTING_QUEUE] ✅ Tweet posted! Waiting for Twitter to process...`);
         
         const page = (poster as any).page;
         if (!page) {
@@ -579,14 +579,15 @@ async function postContent(decision: QueuedDecision): Promise<string> {
           throw new Error('No browser page available after posting');
         }
         
-        // Give Twitter a moment to process the post
-        await page.waitForTimeout(2000);
+        // Give Twitter time to process the post and update profile
+        await page.waitForTimeout(5000); // Increased to 5 seconds
+        console.log(`[POSTING_QUEUE] 🔍 Now extracting tweet ID from profile...`);
         
         // Use bulletproof extractor (this is the ONLY extraction method now)
         const extraction = await BulletproofTweetExtractor.extractTweetId(page, {
           expectedContent: decision.content,
           expectedUsername: process.env.TWITTER_USERNAME || 'SignalAndSynapse',
-          maxAgeSeconds: 60,
+          maxAgeSeconds: 120, // ✅ Increased to 2 minutes to account for Twitter delays
           navigateToVerify: true
         });
         
