@@ -34,7 +34,7 @@ ${VOICE_GUIDELINES}
 🚨 NON-NEGOTIABLES:
 1. ZERO first-person: NO "I/me/my/we/us/our"
 2. Max 2 emojis (prefer 0)
-3. Max 270 chars
+3. Max 260 chars
 4. MUST debunk with evidence
 
 🎨 DIVERSITY MANDATE - VARY HOW YOU BUST MYTHS:
@@ -156,7 +156,7 @@ Cite specific studies and explain the mechanism.`;
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.8,
-      max_tokens: format === 'thread' ? 600 : 150,
+      max_tokens: format === 'thread' ? 600 : 100,
       response_format: { type: 'json_object' }
     }, { purpose: 'myth_buster_content_generation' });
 

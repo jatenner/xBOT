@@ -36,7 +36,7 @@ ${VOICE_GUIDELINES}
 🚨 NON-NEGOTIABLES:
 1. ZERO first-person: NO "I/me/my/we/us/our"
 2. Max 2 emojis (prefer 0)
-3. Max 270 chars
+3. Max 260 chars
 4. Third-person expert voice ONLY
 
 🎨 DIVERSITY MANDATE - EVERY POST MUST FEEL UNIQUE:
@@ -156,7 +156,7 @@ What will be mainstream in 5 years?`;
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.85,
-      max_tokens: format === 'thread' ? 600 : 150,
+      max_tokens: format === 'thread' ? 600 : 100,
       response_format: { type: 'json_object' }
     }, { purpose: 'thought_leader_content_generation' });
 

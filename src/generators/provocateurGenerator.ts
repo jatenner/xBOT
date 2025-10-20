@@ -34,7 +34,7 @@ ${VOICE_GUIDELINES}
 🚨 NON-NEGOTIABLES:
 1. ZERO first-person: NO "I/me/my/we/us/our"
 2. Max 2 emojis (prefer 0)
-3. Max 270 chars
+3. Max 260 chars
 4. MUST provoke thought
 
 🎨 DIVERSITY MANDATE - VARY YOUR PROVOCATIONS:
@@ -161,7 +161,7 @@ MUST answer the question - explain the mechanism.`;
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.9,
-      max_tokens: format === 'thread' ? 600 : 150,
+      max_tokens: format === 'thread' ? 600 : 100,
       response_format: { type: 'json_object' }
     }, { purpose: 'provocateur_content_generation' });
 

@@ -1053,19 +1053,64 @@ export class UnifiedContentEngine {
       
     } catch (error: any) {
       console.warn(`⚠️ ${selectedGenerator} failed: ${error.message}`);
-      console.log('  🔄 Falling back to HumanVoice...');
       
-      // Fallback to HumanVoice if selected generator fails
-      const result = await this.humanVoice.generateHumanContent({
-        topic: params.topic,
-        format: params.format
-      });
+      // Try fallback generators in order (avoiding first-person prone ones)
+      const fallbackOrder = ['newsReporter', 'thoughtLeader', 'mythBuster', 'coach'];
       
-      return {
-        generatorName: `HumanVoice (${result.style_used}) [Fallback]`,
-        content: result.content,
-        confidence: result.authenticity_score / 100
-      };
+      for (const fallbackGen of fallbackOrder) {
+        if (fallbackGen === selectedGenerator) continue; // Skip if already tried
+        
+        try {
+          console.log(`  🔄 Trying fallback: ${fallbackGen}...`);
+          
+          let result;
+          switch (fallbackGen) {
+            case 'newsReporter':
+              result = await this.newsReporter.generateNewsContent({
+                topic: params.topic,
+                format: params.format,
+                intelligence: params.intelligence
+              });
+              break;
+            case 'thoughtLeader':
+              result = await this.thoughtLeader.generateThoughtLeaderContent({
+                topic: params.topic,
+                format: params.format,
+                intelligence: params.intelligence
+              });
+              break;
+            case 'mythBuster':
+              result = await this.mythBuster.generateMythBusterContent({
+                topic: params.topic,
+                format: params.format,
+                intelligence: params.intelligence
+              });
+              break;
+            case 'coach':
+              result = await this.coach.generateCoachContent({
+                topic: params.topic,
+                format: params.format,
+                intelligence: params.intelligence
+              });
+              break;
+          }
+          
+          if (result) {
+            console.log(`  ✅ Fallback ${fallbackGen} succeeded`);
+            return {
+              generatorName: `${fallbackGen} [Fallback]`,
+              content: result.content,
+              confidence: result.confidence
+            };
+          }
+        } catch (fallbackError: any) {
+          console.warn(`  ⚠️ Fallback ${fallbackGen} also failed: ${fallbackError.message}`);
+          continue;
+        }
+      }
+      
+      // All fallbacks failed - throw error instead of using HumanVoice
+      throw new Error(`All generators failed. Original: ${error.message}`);
     }
   }
   

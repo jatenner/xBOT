@@ -145,7 +145,7 @@ Make it specific and sharp - numbers, not generics.`;
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.9,
-      max_tokens: format === 'thread' ? 600 : 150,
+      max_tokens: format === 'thread' ? 600 : 100,
       response_format: { type: 'json_object' }
     }, { purpose: 'contrarian_content_generation' });
 

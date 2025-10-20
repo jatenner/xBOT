@@ -34,7 +34,7 @@ ${VOICE_GUIDELINES}
 🚨 NON-NEGOTIABLES:
 1. ZERO first-person: NO "I/me/my/we/us/our"
 2. Max 2 emojis (prefer 0)
-3. Max 270 chars
+3. Max 260 chars
 4. NO FAKE PEOPLE (only real documented cases)
 
 🎨 DIVERSITY MANDATE - TELL DIFFERENT TYPES OF STORIES:
@@ -175,7 +175,7 @@ ${format === 'thread' ? 'Make it stop-scrolling good. Real examples, real data, 
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.85, // High creativity for narrative
-      max_tokens: format === 'thread' ? 600 : 150, // Reduced to stay under 280 chars
+      max_tokens: format === 'thread' ? 600 : 100, // Reduced to stay under 280 chars
       response_format: { type: 'json_object' }
     }, { purpose: 'storyteller_content_generation' });
 

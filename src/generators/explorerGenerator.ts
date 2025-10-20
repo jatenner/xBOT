@@ -35,7 +35,7 @@ ${VOICE_GUIDELINES}
 🚨 NON-NEGOTIABLES:
 1. ZERO first-person: NO "I/me/my/we/us/our"
 2. Max 2 emojis (prefer 0)
-3. Max 270 chars
+3. Max 260 chars
 4. MUST reveal unexpected connections
 
 🎨 DIVERSITY MANDATE - VARY YOUR DISCOVERIES:
@@ -162,7 +162,7 @@ Explain the mechanism that makes it fascinating.`;
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.9,
-      max_tokens: format === 'thread' ? 600 : 150,
+      max_tokens: format === 'thread' ? 600 : 100,
       response_format: { type: 'json_object' }
     }, { purpose: 'explorer_content_generation' });
 
