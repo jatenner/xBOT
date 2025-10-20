@@ -102,7 +102,7 @@ async function generateRealContent(): Promise<void> {
     .limit(20); // Check last 20 pieces of content
   
   const recentTexts = recentContent?.map(c => String(c.content || '').toLowerCase()) || [];
-  const recentGenerators = recentContent?.map(c => c.generator_name).filter(Boolean) || [];
+  const recentGenerators = (recentContent?.map(c => String(c.generator_name || '')).filter(Boolean) as string[]) || [];
   console.log(`[UNIFIED_PLAN] 📚 Loaded ${recentTexts.length} recent posts for duplicate checking`);
   console.log(`[UNIFIED_PLAN] 🎨 Recent generators: ${recentGenerators.slice(0, 5).join(', ')}`);
   
@@ -116,12 +116,12 @@ async function generateRealContent(): Promise<void> {
       planMetrics.calls_total++;
       
       // ═══════════════════════════════════════════════════════════
-      // GENERATE WITH ALL SYSTEMS ACTIVE (with variety preferences)
+      // GENERATE WITH ALL SYSTEMS ACTIVE (with rotation avoidance)
       // ═══════════════════════════════════════════════════════════
-      // TODO: Pass recentGenerators to avoid repetition once ContentRequest interface supports it
-      console.log(`[UNIFIED_PLAN] 🎲 Avoiding recent generators: ${recentGenerators.slice(0, 3).join(', ')}`);
+      console.log(`[UNIFIED_PLAN] 🎲 Recent generators: ${recentGenerators.slice(0, 5).join(', ')}`);
       const generated = await engine.generateContent({
-        format: Math.random() < 0.3 ? 'thread' : 'single' // 30% threads, 70% singles
+        format: Math.random() < 0.3 ? 'thread' : 'single', // 30% threads, 70% singles
+        recentGenerators: recentGenerators.slice(0, 3) // Avoid last 3 generators
       });
       
       // ═══════════════════════════════════════════════════════════
