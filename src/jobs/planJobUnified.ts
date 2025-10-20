@@ -116,12 +116,15 @@ async function generateRealContent(): Promise<void> {
       planMetrics.calls_total++;
       
       // ═══════════════════════════════════════════════════════════
-      // GENERATE WITH ALL SYSTEMS ACTIVE (with rotation avoidance)
+      // GENERATE WITH ALL SYSTEMS ACTIVE (with diversity enforcement)
       // ═══════════════════════════════════════════════════════════
       console.log(`[UNIFIED_PLAN] 🎲 Recent generators: ${recentGenerators.slice(0, 5).join(', ')}`);
+      console.log(`[UNIFIED_PLAN] 📚 Passing ${recentTexts.length} recent posts to AI for diversity`);
+      
       const generated = await engine.generateContent({
         format: Math.random() < 0.3 ? 'thread' : 'single', // 30% threads, 70% singles
-        recentGenerators: recentGenerators.slice(0, 3) // Avoid last 3 generators
+        recentGenerators: recentGenerators.slice(0, 3), // Avoid last 3 generators
+        recentContent: recentTexts.slice(0, 10) // 🆕 Pass last 10 posts for AI to avoid repetition
       });
       
       // ═══════════════════════════════════════════════════════════
