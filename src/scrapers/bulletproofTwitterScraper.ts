@@ -9,7 +9,7 @@
  * - NEVER generates fake data
  */
 
-import type { Page } from 'playwright';
+import type { Page, ElementHandle } from 'playwright';
 import { promises as fs } from 'fs';
 import path from 'path';
 
