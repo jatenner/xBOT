@@ -96,11 +96,20 @@ export class BulletproofTweetExtractor {
         // Navigate to profile if not there
         if (!currentUrl.includes(`/${expectedUsername}`)) {
           await page.goto(`https://x.com/${expectedUsername}`, {
-            waitUntil: 'networkidle',
+            waitUntil: 'domcontentloaded', // ✅ More reliable than networkidle for modern Twitter
             timeout: 15000
           });
           verificationSteps.push(`Navigated to profile`);
-          await page.waitForTimeout(2000);
+          
+          // Wait for tweets to load
+          await page.waitForSelector('article[data-testid="tweet"]', {
+            state: 'visible',
+            timeout: 10000
+          }).catch(() => {
+            verificationSteps.push(`⚠️ Tweets not visible after navigation`);
+          });
+          
+          await page.waitForTimeout(1500); // Reduced wait time
         }
 
         // Find recent articles
@@ -185,10 +194,19 @@ export class BulletproofTweetExtractor {
         
         const tweetUrl = `https://x.com/${expectedUsername}/status/${tweetId}`;
         await page.goto(tweetUrl, {
-          waitUntil: 'networkidle',
+          waitUntil: 'domcontentloaded', // ✅ More reliable than networkidle
           timeout: 15000
         });
-        await page.waitForTimeout(2000);
+        
+        // Wait for tweet content to be visible
+        await page.waitForSelector('[data-testid="tweetText"]', {
+          state: 'visible',
+          timeout: 10000
+        }).catch(() => {
+          verificationSteps.push(`⚠️ Tweet content not visible after navigation`);
+        });
+        
+        await page.waitForTimeout(1000); // Reduced wait time
 
         // Verify we're on the right page
         const finalUrl = page.url();
@@ -320,10 +338,20 @@ export class BulletproofTweetExtractor {
       const tweetUrl = `https://x.com/${expectedUsername}/status/${tweetId}`;
       
       await page.goto(tweetUrl, {
-        waitUntil: 'networkidle',
+        waitUntil: 'domcontentloaded', // ✅ More reliable than networkidle
         timeout: 15000
       });
-      await page.waitForTimeout(2000);
+      
+      // Wait for tweet content to be visible
+      await page.waitForSelector('[data-testid="tweetText"]', {
+        state: 'visible',
+        timeout: 10000
+      }).catch(() => {
+        console.error(`[BULLETPROOF_EXTRACTOR] Tweet content not visible`);
+        return false;
+      });
+      
+      await page.waitForTimeout(1000); // Reduced wait time
 
       // Check if page loaded correctly
       const finalUrl = page.url();
