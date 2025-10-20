@@ -155,13 +155,19 @@ export class BulletproofTwitterComposer {
       try {
         console.log(`🎯 COMPOSER_ATTEMPT: ${attempt}/2`);
         
-        // Navigate to compose page for reliability
-        if (attempt === 1) {
+        // 🔧 FIX: Check if composer is already open (e.g., from reply dialog)
+        const composerAlreadyOpen = await this.checkForComposer();
+        
+        // Navigate to compose page ONLY if composer is not already open
+        if (attempt === 1 && !composerAlreadyOpen) {
+          console.log('🌐 NAVIGATION: Composer not found, navigating to compose page...');
           await this.page.goto('https://x.com/compose/tweet', { 
             waitUntil: 'domcontentloaded',
             timeout: 8000 
           });
           await this.page.waitForTimeout(1000);
+        } else if (composerAlreadyOpen) {
+          console.log('✅ COMPOSER_READY: Composer already open (likely from reply), using it...');
         }
         
         // Block analytics to reduce noise
@@ -613,7 +619,9 @@ export class BulletproofTwitterComposer {
     
     try {
       // Navigate to the tweet we're replying to
-      await this.page.goto(`https://x.com/i/status/${replyToTweetId}`, { 
+      const targetTweetUrl = `https://x.com/i/status/${replyToTweetId}`;
+      console.log(`🌐 REPLY_NAV: Navigating to ${targetTweetUrl}`);
+      await this.page.goto(targetTweetUrl, { 
         waitUntil: 'domcontentloaded',
         timeout: 15000 
       });
@@ -761,7 +769,20 @@ export class BulletproofTwitterComposer {
       
       // Now use the standard posting logic
       console.log('📝 REPLY_POSTING: Reply composer opened, posting content...');
-      return await this.findAndPost(content);
+      
+      // 🔧 FIX: Use special reply ID extraction that checks the thread
+      const result = await this.findAndPost(content);
+      
+      // If posting succeeded but ID extraction failed, try reply-specific extraction
+      if (result.success && !result.tweetId) {
+        console.log('🔍 REPLY_ID_EXTRACTION: Standard extraction failed, trying reply-specific method...');
+        const replyId = await this.extractReplyIdFromThread(replyToTweetId);
+        if (replyId) {
+          return { success: true, tweetId: replyId };
+        }
+      }
+      
+      return result;
       
     } catch (error: any) {
       console.log(`❌ REPLY_ERROR: ${error.message}`);
@@ -769,6 +790,75 @@ export class BulletproofTwitterComposer {
         success: false,
         error: `Reply failed: ${error.message}`
       };
+    }
+  }
+
+  /**
+   * 🔍 Extract reply tweet ID by checking the parent tweet's thread
+   */
+  private async extractReplyIdFromThread(parentTweetId: string): Promise<string | null> {
+    try {
+      console.log(`🔍 REPLY_THREAD_CHECK: Navigating to parent tweet ${parentTweetId} to find our reply...`);
+      
+      // Navigate to the parent tweet
+      await this.page.goto(`https://x.com/i/status/${parentTweetId}`, { 
+        waitUntil: 'domcontentloaded',
+        timeout: 10000 
+      });
+      await this.page.waitForTimeout(3000);
+      
+      // Get expected username from env
+      const expectedUsername = process.env.TWITTER_USERNAME?.replace('@', '') || 'Signal_Synapse';
+      
+      // Find all tweet articles on the page
+      const articles = await this.page.$$('article[data-testid="tweet"]');
+      console.log(`🔍 REPLY_THREAD_CHECK: Found ${articles.length} articles on page`);
+      
+      // Look for a recent tweet from our username (not the parent)
+      for (const article of articles) {
+        try {
+          // Get the tweet ID from this article
+          const link = await article.$('a[href*="/status/"]');
+          if (!link) continue;
+          
+          const href = await link.getAttribute('href');
+          if (!href) continue;
+          
+          const match = href.match(/\/status\/(\d+)/);
+          if (!match) continue;
+          
+          const tweetId = match[1];
+          
+          // Skip if this is the parent tweet
+          if (tweetId === parentTweetId) {
+            console.log(`⏭️ REPLY_THREAD_CHECK: Skipping parent tweet ${tweetId}`);
+            continue;
+          }
+          
+          // Check if this tweet is from our username
+          const usernameLink = await article.$(`a[href*="/${expectedUsername}"]`);
+          if (usernameLink) {
+            // Check if it's recent (posted within last minute)
+            const timeElement = await article.$('time');
+            if (timeElement) {
+              const timeText = await timeElement.innerText().catch(() => '');
+              if (timeText.includes('now') || timeText.includes('s') || timeText.includes('1m')) {
+                console.log(`✅ REPLY_FOUND: Found our reply with ID ${tweetId} (timestamp: ${timeText})`);
+                return tweetId;
+              }
+            }
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+      
+      console.log('❌ REPLY_THREAD_CHECK: Could not find our reply in the thread');
+      return null;
+      
+    } catch (error) {
+      console.error(`❌ REPLY_THREAD_CHECK failed: ${(error as Error).message}`);
+      return null;
     }
   }
 }
