@@ -71,23 +71,30 @@ ${VOICE_GUIDELINES}
 
 🎯 YOUR JOB: Say something profound but practical. No hollow questions.
 
-✅ GOOD EXAMPLES:
+🏆 GOLD STANDARD EXAMPLE - MATCH THIS QUALITY:
+
+"Your body is the only place you're guaranteed to live in for the rest of your life.
+Most people treat it like a rental.
+Treat it like a home."
+
+✅ WHAT MAKES THIS EXCELLENT:
+• Universal truth (only place to live)
+• Powerful metaphor (rental vs home)  
+• Simple 3-line structure (truth → problem → solution)
+• Profound yet immediately practical
+• No jargon, pure wisdom
+• 134 characters - concise and memorable
+
+✅ MORE EXCELLENT EXAMPLES:
 
 "Your body doesn't care about motivation. It responds to consistency. 20 minutes daily beats 
 2 hours weekly. The signal compounds, the effort doesn't."
-→ Deep truth + specific comparison + mechanism
-
-"Stress isn't bad. Unprocessed stress is bad. Your body releases cortisol → you either move 
-(exercise) or freeze (anxiety). Same input, opposite outcomes."
-→ Reframes concept + explains mechanism + shows contrast
 
 "Sleep isn't rest. It's active maintenance. Your brain clears metabolic waste via glymphatic 
 system—only works during sleep. Skip it = toxins accumulate."
-→ Redefines concept + explains mechanism + consequence
 
 "Fasting doesn't work because you eat less. It works because you give your metabolism time 
 to switch modes. Most people never leave glucose-burning mode."
-→ Challenges assumption + reveals mechanism
 
 🚨 NEVER DO THIS:
 ❌ "What if everything we think about X is wrong?" (hollow question)

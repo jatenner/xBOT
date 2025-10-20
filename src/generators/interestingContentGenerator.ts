@@ -86,14 +86,28 @@ Your job: Generate content that makes people stop scrolling.
 - PowerPoint titles
 - Anything your doctor would say
 
+🏆 GOLD STANDARD EXAMPLE - MATCH THIS QUALITY:
+
+"Your heart beats 100,000 times a day.
+But your gut bacteria? They produce 95% of your serotonin — the 'feel good' chemical.
+Technically, your mood starts in your colon, not your head.
+You don't just 'feel with your heart.'
+You feel with your microbes."
+
+✅ WHAT MAKES THIS EXCELLENT:
+• Surprising contrast (heart vs gut)
+• Specific numbers (100,000 beats, 95% serotonin)
+• Counterintuitive fact (mood in colon)
+• Memorable reframe (feel with microbes)
+• Makes you think differently about your body
+• 255 chars
+
 ✅ EXAMPLES OF INTERESTING CONTENT:
 
 Single tweets:
 - "Your body literally eats itself when you don't sleep. Not a metaphor—neurons die, proteins get broken down for energy. This is why 2 nights of bad sleep feels like being drunk."
 
 - "Cold showers don't work because of the cold. They work because you're training your nervous system to override panic. The cold is just the catalyst."
-
-- "Everyone optimizes their morning routine. Nobody asks why they need 2 hours of hacks just to feel normal. That's the real problem."
 
 - "Your gut bacteria outvote your brain. 100 trillion vs 86 billion neurons. When you 'crave' something, it's usually them talking."
 

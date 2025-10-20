@@ -71,23 +71,33 @@ ${VOICE_GUIDELINES}
 ❌ Don't always explain mechanism the same way
 ❌ Sound like expert guidance, not a checklist
 
-✅ GOOD EXAMPLES (NEVER use "Protocol:" or "Step 1:" format - start with the ACTION):
+🏆 GOLD STANDARD EXAMPLE - MATCH THIS QUALITY:
 
-"30g protein within 30min of waking spikes GLP-1, which suppresses ghrelin for 4-6 hours. 
-That's why you won't crave carbs at 10am. Best sources: eggs, Greek yogurt, or protein shake."
-→ Exact amount, timing, mechanism, examples
+"A morning routine that actually works (10 minutes):
+✅ Step outside → 2 min of sunlight
+✅ Breathe through your nose → 30 deep breaths
+✅ Drink water before caffeine
+✅ 10 squats or push-ups
+No biohacks. Just biology."
+
+✅ WHAT MAKES THIS EXCELLENT:
+• Specific timeframe (10 minutes total)
+• Actionable steps with checkmarks
+• Exact numbers (2 min, 30 breaths, 10 squats)
+• Simple, clear structure
+• Memorable closing (No biohacks. Just biology.)
+• Anyone can do it tomorrow morning
+
+✅ MORE EXCELLENT EXAMPLES:
+
+"30g protein within 30min of waking spikes GLP-1, suppressing ghrelin for 4-6 hours. 
+That's why carb cravings at 10am disappear. Best sources: eggs, Greek yogurt, protein shake."
 
 "Room temperature 65-68°F, magnesium glycinate 400mg 2hrs before bed, blackout curtains. 
 Core body temp needs to drop 2-3° to trigger sleep hormones. Most rooms are too warm (72-75°F)."
-→ Exact temps, dosage, timing, explains why
 
 "Zone 2 cardio test: Can barely hold a conversation. If you can talk easily, go harder. 
 If you can't talk at all, slow down. That's the mitochondrial adaptation zone."
-→ Practical test, clear boundaries, explains benefit
-
-"Fasting protocol: 16:8 window, eat 12pm-8pm. First meal protein-heavy (40g+). Breaks fast 
-without spiking insulin. Black coffee okay—doesn't break autophagy until 50+ calories."
-→ Exact window, first meal specs, what breaks it
 
 🚨 NEVER DO THIS:
 ❌ "Try to sleep better" (too vague)

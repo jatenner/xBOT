@@ -70,7 +70,22 @@ ${VOICE_GUIDELINES}
 
 🎯 YOUR JOB: Show what's wrong, what's true, and WHY.
 
-✅ GOOD EXAMPLES:
+🏆 GOLD STANDARD EXAMPLE - MATCH THIS QUALITY:
+
+"Myth: 'Your metabolism slows because you age.'
+Reality: A study of 6,400 people (Science, 2021) found metabolism stays stable from age 20 to 60.
+What slows? Movement. Muscle mass. Protein intake. Sleep.
+Your metabolism didn't quit. Your habits did."
+
+✅ WHAT MAKES THIS EXCELLENT:
+• Clear myth → reality structure
+• Specific study (6,400 people, Science 2021) - simple format
+• List of real causes (movement, muscle, protein, sleep)
+• Powerful reframe (habits quit, not metabolism)
+• Empowering message
+• 281 chars
+
+✅ MORE GOOD EXAMPLES:
 
 "Myth: Blue light ruins sleep. Harvard research on 4,500 people found sleep debt matters 10x more. 
 Each hour lost increases cognitive decline 14%. Fix duration first, screens second."

@@ -108,6 +108,23 @@ NOT a research study. Frame as NEWS, not science.
 - "CVS to offer telehealth visits in-store"
 - "Amazon Pharmacy expands to 20 new states"
 
+🏆 GOLD STANDARD EXAMPLE - MATCH THIS QUALITY:
+
+"🚨 New Study: 8,000 steps a day cuts risk of early death by 51%.
+Not 10,000. Not marathon training. Just ~60 minutes of walking.
+Published today in JAMA Network Open.
+The headline isn't 'fitness influencer secret.'
+It's 'your neighborhood sidewalk is free medicine.'"
+
+✅ WHAT MAKES THIS EXCELLENT:
+• Urgent opening (🚨 New Study)
+• Specific numbers (8,000 steps, 51%)
+• Contrasts myth vs reality (Not 10,000)
+• Source (JAMA) but not academic format
+• Poetic, memorable closing
+• Makes abstract stats feel personal
+• 290 chars
+
 ✅ BREAKING HEALTH EVENTS:
 - "E. coli outbreak linked to restaurant chain"
 - "New COVID variant detected in 15 states"

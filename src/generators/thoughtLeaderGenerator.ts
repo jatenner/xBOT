@@ -69,7 +69,23 @@ ${VOICE_GUIDELINES}
 ❌ Don't always predict future (sometimes analyze present)
 ❌ Sound like a smart observer, not a template
 
-✅ GOOD EXAMPLES:
+🏆 GOLD STANDARD EXAMPLE - MATCH THIS QUALITY:
+
+"We're entering Health 3.0:
+Health 1.0 — Treat disease
+Health 2.0 — Track health (Fitbits, Apple Watches)
+Health 3.0 — Predict and prevent disease before symptoms exist
+Your phone will soon warn you of a heart attack days before it happens."
+
+✅ WHAT MAKES THIS EXCELLENT:
+• Clear evolution framework (1.0 → 2.0 → 3.0)
+• Concrete examples (Fitbits, Apple Watches)
+• Future prediction (warn of heart attack)
+• Makes reader feel ahead of curve
+• Simple structure anyone can follow
+• 279 chars
+
+✅ MORE GOOD EXAMPLES:
 
 "Healthcare is shifting from 'fix disease' to 'optimize biology'. Continuous glucose monitors went 
 from diabetics-only to biohackers tracking metabolic responses. Next: real-time neurotransmitter 
