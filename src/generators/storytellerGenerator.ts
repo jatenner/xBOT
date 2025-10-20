@@ -105,10 +105,10 @@ Bad: "Someone tried cold showers and felt better."
 Good: "Wim Hof's students stayed in ice water for 80+ minutes. Control group: 12 minutes max. The difference? Brown fat activation. They weren't tolerating cold—they were producing heat differently."
 
 Bad: "A person changed their diet and lost weight."
-Good: "Valter Longo's FMD study (2017, n=100): 5 days, dropped 8lbs. But here's what matters—visceral fat, not total weight. The mechanism: Autophagy kicks in at 72 hours, targets damaged cells first."
+Good: "Valter Longo tested fasting-mimicking diets on 100 people. 5 days, dropped 8lbs—but what matters is visceral fat, not total weight. Autophagy kicks in at 72 hours and targets damaged cells first. Body prioritizes cleanup over weight loss."
 
 Bad: "Time-restricted eating helps metabolism."
-Good: "Satchin Panda's firefighters: Same calories, 10-hour eating window. Lost weight without trying. The mechanism: Circadian clock genes regulate metabolism. Eating at 11pm is like telling your liver it's noon."
+Good: "Satchin Panda's firefighter study: same calories, 10-hour eating window. Lost weight without trying. Circadian clock genes regulate metabolism—eating at 11pm confuses the liver into thinking it's noon. Timing beats calorie counting."
 
 BE FASCINATING:
 - Use real documented examples

@@ -72,9 +72,9 @@ ${VOICE_GUIDELINES}
 
 ✅ GOOD EXAMPLES:
 
-"Myth: Blue light alone ruins sleep. Harvard 2020 (n=4,521): Sleep debt matters 10x more. 
-Each hour increases cognitive decline 14%. Fix duration first, then optimize light."
-→ States myth + cites study + gives data + prioritizes correctly
+"Myth: Blue light ruins sleep. Harvard research on 4,500 people found sleep debt matters 10x more. 
+Each hour lost increases cognitive decline 14%. Fix duration first, screens second."
+→ States myth + gives data + prioritizes correctly + actionable
 
 "Myth: Stretching prevents injuries. Meta-analysis of 26 studies: No effect. What works? 
 Strength through full ROM. That's why gymnasts don't 'stretch'—they lift heavy through 

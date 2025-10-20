@@ -112,25 +112,25 @@ export const VOICE_GUIDELINES = `
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Every post MUST include at least ONE:
-✓ Study citation: "Lally et al. 2009 (n=96)"
 ✓ Specific measurement: "10,000 lux", "500mg", "16:8 fasting"
 ✓ Timeframe/range: "66 days average (18-254 range)"
 ✓ Percentage/ratio: "40% increase", "2-3x better"
-✓ Mechanism pathway: "480nm blue → ipRGC → SCN → serotonin"
+✓ Research reference: "Harvard tracked 4,500 people", "96-person study"
+✓ Mechanism pathway: "Blue light → brain clock → serotonin"
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ✨ EXAMPLES OF EXCELLENT CONTENT
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-GOOD: "Intermittent fasting 16:8 (eat 12pm-8pm) + 500mg NMN supplement 
-daily. Fasting initiates autophagy, clearing damaged cells. NMN boosts 
-NAD+ levels, critical for energy metabolism and DNA repair."
-→ Specific protocol, mechanisms, no first-person
+GOOD: "16:8 fasting (eat 12pm-8pm) + 500mg NMN daily. Fasting triggers 
+autophagy, clearing damaged cells. NMN boosts NAD+ for energy metabolism 
+and DNA repair. Timing + supplementation work synergistically."
+→ Specific protocol, mechanisms, no first-person, engaging
 
-GOOD: "Lally et al. 2009 (n=96): Average 66 days to form habit (range 
-18-254). Process follows logistic curve, not linear timeline. Consistency 
-matters more than duration."
-→ Cites study, gives data, explains misconception
+GOOD: "Habit formation takes 66 days on average (18-254 day range). University 
+of London tracked 96 people—process follows logistic curve, not linear timeline. 
+Consistency matters more than intensity."
+→ Gives data, explains mechanism, no academic citation format
 
 GOOD: "10,000 lux bright light within 1 hour of waking. 480nm wavelength 
 hits ipRGC cells, signals SCN master clock, triggers serotonin release. 
@@ -147,8 +147,8 @@ BAD: "Fasting is great for health. Let's dive into the benefits..."
 ⛔ NEVER START WITH ACADEMIC CITATIONS:
 BAD: "Lally et al. 2009 (n=96): Habit formation takes 66 days..."
 BAD: "In 2011, Stanford study found that meditation improves focus..."
-GOOD: "Habit formation takes 66 days on average—Lally 2009 study tracked 96 people..."
-GOOD: "Stanford researchers found meditation boosts focus by 43% (2011 study, n=144)..."
+GOOD: "Habit formation takes 66 days on average. University of London tracked 96 people—consistency matters more than speed."
+GOOD: "Stanford researchers found meditation boosts focus 43% in 8 weeks. The key: daily practice, not duration."
 
 ⛔ NEVER USE PROTOCOL FORMAT:
 BAD: "Protocol: Step 1: Morning sunlight Step 2: Cold shower..."

@@ -80,21 +80,21 @@ give the data. Sometimes list foods, sometimes give protocols. Keep readers gues
 
 ✅ GOOD EXAMPLES:
 
-"Harvard 2020 (n=4,521): Each hour of sleep debt increases cognitive decline risk by 14%. 
-Works via impaired glymphatic clearance. Sleep isn't optional—it's metabolic maintenance."
-→ Specific study + sample size + percentage + mechanism
+"Each hour of sleep debt increases cognitive decline risk by 14%. Harvard researchers tracked 4,500 people—
+glymphatic system clears brain waste during sleep. Missing sleep is like skipping trash day for your brain."
+→ Specific percentage + mechanism + relatable analogy
 
-"Zone 2 cardio at 60-70% max HR improves VO2max by 15-20% in 8 weeks. But 85% of people 
-train in Zone 3-4 (too hard for mitochondrial adaptation, too easy for performance gains)."
-→ Specific zones + improvement rate + common mistake
+"Zone 2 cardio at 60-70% max heart rate builds mitochondria in 8 weeks. Most people train too hard (Zone 3-4) 
+and wonder why cardio feels worse over time. Slower is faster for adaptation."
+→ Specific zones + timeframe + common mistake + counterintuitive insight
 
-"16:8 fasting increases autophagy markers by 30% after 16 hours. But eating window matters: 
-12pm-8pm beats 8am-4pm because cortisol rhythm. Same fasting, different hormonal context."
-→ Specific protocol + percentage + timing nuance
+"Fasting for 16 hours triggers 30% more autophagy (cellular cleanup). But timing matters—noon to 8pm beats 
+8am to 4pm because cortisol naturally drops in evening. Same fasting, different hormonal context."
+→ Specific protocol + percentage + timing insight + practical application
 
-"Cold exposure at 11°C for 11 minutes weekly boosts norepinephrine 200-300%. That's why 
-2 min cold shower daily works—you hit threshold. Temperature and duration both matter."
-→ Specific temp + time + mechanism + practical application
+"Cold exposure (50-55°F for 11 minutes per week) boosts norepinephrine 200-300%. Daily 2-minute cold showers hit 
+threshold. Temperature and duration both matter—lukewarm doesn't work, neither does 30 seconds."
+→ Specific temp/time + mechanism + practical takeaway
 
 🚨 NEVER DO THIS:
 ❌ "Studies show..." (which study?)
