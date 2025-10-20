@@ -207,9 +207,9 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
     
     // DEDUPLICATION: Filter out already-posted content
     const filteredRows = rows.filter(row => {
-      const id = String(row.id ?? '');
-      if (postedIds.has(id)) {
-        console.log(`[POSTING_QUEUE] ⚠️ Skipping duplicate: ${id} (already posted)`);
+      const decisionId = String(row.decision_id ?? '');  // 🔥 FIX: Use decision_id (UUID), not id (integer)
+      if (postedIds.has(decisionId)) {
+        console.log(`[POSTING_QUEUE] ⚠️ Skipping duplicate: ${decisionId} (already posted)`);
         return false;
       }
       return true;
@@ -257,7 +257,7 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
     console.log(`[POSTING_QUEUE] ✅ After rate limits: ${decisionsWithLimits.length} decisions can post (${contentAllowed} content, ${repliesAllowed} replies available)`);
     
     const decisions: QueuedDecision[] = decisionsWithLimits.map(row => ({
-      id: String(row.id ?? ''),
+      id: String(row.decision_id ?? ''),  // 🔥 FIX: Map to decision_id (UUID), not id (integer)!
       content: String(row.content ?? ''),
       decision_type: String(row.decision_type ?? 'single') as 'single' | 'thread' | 'reply',
       target_tweet_id: row.target_tweet_id ? String(row.target_tweet_id) : undefined,
@@ -559,18 +559,57 @@ async function postContent(decision: QueuedDecision): Promise<string> {
       } else {
         console.log(`[POSTING_QUEUE] 📝 Posting as SINGLE tweet`);
         const { UltimateTwitterPoster } = await import('../posting/UltimateTwitterPoster');
+        const { BulletproofTweetExtractor } = await import('../utils/bulletproofTweetExtractor');
+        
         const poster = new UltimateTwitterPoster();
         const result = await poster.postTweet(decision.content);
         
-        // Clean up resources
+        let finalTweetId = result.tweetId;
+        
+        // 🎯 NEW: Use bulletproof extractor to verify BEFORE cleanup
+        if (result.success && result.tweetId) {
+          try {
+            console.log(`[POSTING_QUEUE] 🔍 Verifying extracted tweet ID with bulletproof extractor...`);
+            
+            // Get page from poster (before disposal)
+            const page = (poster as any).page;
+            
+            if (page) {
+              const verification = await BulletproofTweetExtractor.extractWithRetries(page, {
+                expectedContent: decision.content,
+                expectedUsername: process.env.TWITTER_USERNAME || 'SignalAndSynapse',
+                maxAgeSeconds: 60,
+                navigateToVerify: true
+              });
+              
+              BulletproofTweetExtractor.logVerificationSteps(verification);
+              
+              if (verification.success && verification.tweetId) {
+                if (verification.tweetId !== result.tweetId) {
+                  console.warn(`[POSTING_QUEUE] ⚠️ Tweet ID mismatch detected!`);
+                  console.warn(`   Original extraction: ${result.tweetId}`);
+                  console.warn(`   Bulletproof verification: ${verification.tweetId}`);
+                  console.warn(`   Using verified ID: ${verification.tweetId} ✅`);
+                }
+                finalTweetId = verification.tweetId;
+              } else {
+                console.warn(`[POSTING_QUEUE] ⚠️ Bulletproof verification failed, using original ID`);
+              }
+            }
+          } catch (verifyError: any) {
+            console.warn(`[POSTING_QUEUE] ⚠️ Verification error: ${verifyError.message}`);
+          }
+        }
+        
+        // Clean up resources AFTER verification
         await poster.dispose();
         
         if (result.success) {
-          if (!result.tweetId) {
+          if (!finalTweetId) {
             throw new Error('Posting succeeded but no tweet ID was extracted - cannot track metrics');
           }
-          console.log(`[POSTING_QUEUE] ✅ Content posted via Playwright with ID: ${result.tweetId}`);
-          return result.tweetId;
+          console.log(`[POSTING_QUEUE] ✅ Content posted via Playwright with ID: ${finalTweetId}`);
+          return finalTweetId;
         } else {
           console.error(`[POSTING_QUEUE] ❌ Playwright posting failed: ${result.error}`);
           throw new Error(result.error || 'Playwright posting failed');
@@ -633,7 +672,7 @@ async function updateDecisionStatus(decisionId: string, status: string): Promise
         status,
         updated_at: new Date().toISOString()
       })
-      .eq('id', decisionId);
+      .eq('decision_id', decisionId);  // 🔥 FIX: decisionId is UUID, query by decision_id not id!
     
     if (error) {
       console.warn(`[POSTING_QUEUE] ⚠️ Failed to update status for ${decisionId}:`, error.message);
@@ -657,7 +696,7 @@ async function markDecisionPosted(decisionId: string, tweetId: string): Promise<
         posted_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       })
-      .eq('id', decisionId);
+      .eq('decision_id', decisionId);  // 🔥 FIX: decisionId is UUID, query by decision_id not id!
     
     if (updateError) {
       console.warn(`[POSTING_QUEUE] ⚠️ Failed to update content_metadata for ${decisionId}:`, updateError.message);
@@ -667,7 +706,7 @@ async function markDecisionPosted(decisionId: string, tweetId: string): Promise<
     const { data: decisionData, error: fetchError } = await supabase
       .from('content_metadata')
       .select('*')
-      .eq('id', decisionId)
+      .eq('decision_id', decisionId)  // 🔥 FIX: decisionId is UUID, query by decision_id not id!
       .single();
     
     if (fetchError || !decisionData) {
@@ -679,7 +718,7 @@ async function markDecisionPosted(decisionId: string, tweetId: string): Promise<
     const { error: archiveError } = await supabase
       .from('posted_decisions')
       .insert([{
-        decision_id: decisionId,
+        decision_id: decisionData.decision_id,  // 🔥 FIX: Use UUID from data, not integer ID!
         content: decisionData.content,
         tweet_id: tweetId,
         decision_type: decisionData.decision_type || 'single',  // Default to 'single' not 'content'

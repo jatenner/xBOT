@@ -74,6 +74,33 @@ export function validateContent(content: string | string[]): ValidationResult {
     score -= 10;
   }
 
+  // 🆕 Check 5A: Named mechanism (specific hormone, pathway, system)
+  const mechanismTerms = /\b(leptin|ghrelin|cortisol|dopamine|serotonin|insulin|glucagon|testosterone|estrogen|melatonin|adrenaline|norepinephrine|oxytocin|thyroid|growth hormone|vagal tone|parasympathetic|sympathetic|circadian|rem|nrem|slow wave|autophagy|mitophagy|mtor|ampk|nad\+|mitochondria|insulin sensitivity|glycogen|gluconeogenesis|ketosis|beta oxidation|lipolysis|thermogenesis|brown fat|white fat|inflammation|cytokines|histamine|prostaglandins)\b/gi;
+  const mechanismMatches = fullText.match(mechanismTerms);
+  if (!mechanismMatches || mechanismMatches.length === 0) {
+    issues.push('Missing specific mechanism term (hormone, pathway, neurotransmitter, or system name)');
+    fixes.push('Name the specific mechanism: e.g., "cortisol", "insulin", "vagal tone", "circadian rhythm"');
+    score -= 12;
+  } else {
+    console.log(`✓ Named mechanisms found: ${[...new Set(mechanismMatches)].join(', ')}`);
+  }
+
+  // 🆕 Check 5B: Protocol specificity (dose, time, frequency)
+  const hasProtocol = /\d+\s*(mg|mcg|g|ml|iu|minutes?|mins?|hours?|hrs?|times?|reps?|sets?|days?|weeks?|months?|seconds?|°c|°f|cycles?|servings?)\b/gi.test(fullText);
+  if (!hasProtocol) {
+    issues.push('Protocol lacks specificity (no dose, duration, or frequency mentioned)');
+    fixes.push('Add specific protocol: "20 minutes", "500mg", "3 times per week", "15-20 reps"');
+    score -= 10;
+  }
+
+  // 🆕 Check 5C: Failure mode or conditional mentioned
+  const hasFailureMode = /\b(if|unless|except|avoid|don't|warning|caution|contraindication|not for|fails when|doesn't work|exception)\b/i.test(fullText);
+  if (!hasFailureMode) {
+    issues.push('Missing failure mode, exception, or conditional ("if X then Y", "avoid if")');
+    fixes.push('Add when it doesn\'t work or who should avoid: "If you wake at 3am, skip...", "Not for those with..."');
+    score -= 8;
+  }
+
   // ⚠️ Check 6: Vague claims
   const vaguePhrases = /\b(studies show|research suggests|experts say|many believe|some people|it is known)\b/gi;
   const vagueMatches = fullText.match(vaguePhrases);

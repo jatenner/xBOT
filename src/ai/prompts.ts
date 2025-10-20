@@ -45,26 +45,29 @@ ${topic ? `TOPIC: ${topic}` : ''}
 - Create "need to know" urgency
 - End with impactful conclusions
 
-📊 VARIED LANGUAGE PATTERNS:
-OPENERS: "Let me break this down:", "Here's what's really happening:", "The truth is more complex:", "Most people miss this:"
-TRANSITIONS: "But here's the kicker:", "Here's where it gets interesting:", "The plot thickens:", "It gets worse:"
-EMPHASIS: "Pay close attention:", "This is crucial:", "Don't miss this:", "Mark my words:"
-CONCLUSIONS: "This changes everything.", "The implications are huge.", "Let that sink in.", "The numbers don't lie."
+📊 VARIED LANGUAGE PATTERNS (rotate these, don't use the same one twice in a row):
+- Start with surprising data points or counter-intuitive facts
+- Use "Why X matters" explanations with mechanisms
+- Lead with personal discovery or transformation stories
+- Open with myth-busting ("Everyone thinks X, but actually Y")
+- Use comparison frameworks ("Most people do X, but the top 1% do Y")
+- Share protocol-based content with specific steps
+- Explain physiological processes in simple terms
 
-🧬 UNDERGROUND HEALTH SECRETS:
-"Your appendix produces 70% of your body's serotonin"
-"Chewing on one side creates facial asymmetry over 10 years"  
-"Your liver can taste sweetness and craves sugar at 3 AM"
-"Certain eye movements eliminate motion sickness in 30 seconds"
+🧬 CONTENT DIVERSITY MANDATE:
+- NEVER repeat topic clusters (sleep, inflammation, gut health) back-to-back
+- Rotate between systems: hormonal, metabolic, neurological, cardiovascular, immune
+- Vary content types: protocols, mechanisms, myths, discoveries, comparisons
+- Use different opener styles: data-driven, story-based, question-based, statement-based
+- Explore lesser-known health areas: fascia, lymphatic system, circadian proteins, cellular cleanup
+- Mix timeframes: immediate hacks, daily routines, weekly practices, monthly protocols
 
-🎯 COMPLEX SCIENTIFIC CONTENT FORMULA:
-- Hook: "[Topic] is crucial for [unexpected benefit] due to [physiological mechanism]"
-- Structure: "[Number] ways to optimize [topic]:"
-- Methods: Each point has exact protocols with numbers/timings
-- Mechanisms: Explain WHY at cellular/hormonal level
-- Advanced: Include lesser-known optimization techniques
-
-EXAMPLE: "Sleep is crucial for digestion due to blood glucose being lowered during REM sleep. 5 ways to get better sleep:"
+🎯 CONTENT STRUCTURE PRINCIPLES:
+- Hook: Lead with most surprising/counterintuitive element
+- Structure: Build from simple concept to actionable protocol
+- Methods: Include specific numbers, timings, and sequences
+- Mechanisms: Explain cellular or hormonal WHY in accessible terms
+- Depth: Go beyond surface-level advice to optimization techniques
 
 STYLE REQUIREMENTS:
 - Human, conversational tone (not robotic or corporate)
@@ -109,17 +112,21 @@ STRICT CONTENT RULES:
 - Each tweet must stand alone (no cliffhangers)
 - Real examples people can immediately apply
 
-🔥 VIRAL HOOKS THAT GET MILLIONS OF VIEWS:
-- "99% of people are doing [X] wrong. Here's what actually works:"
-- "Your doctor will NEVER tell you this about [topic]:"
-- "I discovered this [protocol] that [shocking result] in [timeframe]:"
-- "Big pharma doesn't want you to know [secret]:"
-- "This common [habit] is secretly destroying your [health aspect]:"
-- "Scientists found [shocking discovery] but no one talks about it:"
-- "I was [skeptical/wrong] about [topic] until [discovery]:"
-- "Only 1% of people know this [category] secret:"
-- "The [industry] buried this study because [reason]:"
-- "[Number] people tried this protocol. Results were insane:"
+🔥 HOOK CONSTRUCTION PRINCIPLES (create YOUR OWN unique hooks, don't copy patterns):
+- Lead with the most surprising data point or counterintuitive finding
+- Use specific numbers and research-backed claims (not generic "studies show")
+- Create cognitive dissonance ("You think X, but research shows Y")
+- Promise mechanism-level understanding (not just surface tips)
+- Focus on optimization vs. basic advice ("from good to elite performance")
+- Target specific pain points with precise solutions
+- Use comparative frameworks ("X vs Y: which one actually works")
+
+HOOK VARIETY MANDATE:
+- Rotate between 7+ distinct hook types: data-led, myth-busting, personal discovery, expert insight, protocol-based, mechanism-explained, optimization-focused
+- NEVER use the same hook structure twice in a row
+- Avoid overused patterns like "99% of people" or "doctors won't tell you"
+- Create fresh, specific hooks for each piece of content
+- Test unconventional angles and lesser-known topics
 
 ${format === 'thread' ? `
 THREAD STRUCTURE (5-9 tweets):
