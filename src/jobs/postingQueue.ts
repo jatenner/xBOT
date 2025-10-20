@@ -564,56 +564,43 @@ async function postContent(decision: QueuedDecision): Promise<string> {
         const poster = new UltimateTwitterPoster();
         const result = await poster.postTweet(decision.content);
         
-        let finalTweetId = result.tweetId;
-        
-        // 🎯 NEW: Use bulletproof extractor to verify BEFORE cleanup
-        if (result.success && result.tweetId) {
-          try {
-            console.log(`[POSTING_QUEUE] 🔍 Verifying extracted tweet ID with bulletproof extractor...`);
-            
-            // Get page from poster (before disposal)
-            const page = (poster as any).page;
-            
-            if (page) {
-              const verification = await BulletproofTweetExtractor.extractWithRetries(page, {
-                expectedContent: decision.content,
-                expectedUsername: process.env.TWITTER_USERNAME || 'SignalAndSynapse',
-                maxAgeSeconds: 60,
-                navigateToVerify: true
-              });
-              
-              BulletproofTweetExtractor.logVerificationSteps(verification);
-              
-              if (verification.success && verification.tweetId) {
-                if (verification.tweetId !== result.tweetId) {
-                  console.warn(`[POSTING_QUEUE] ⚠️ Tweet ID mismatch detected!`);
-                  console.warn(`   Original extraction: ${result.tweetId}`);
-                  console.warn(`   Bulletproof verification: ${verification.tweetId}`);
-                  console.warn(`   Using verified ID: ${verification.tweetId} ✅`);
-                }
-                finalTweetId = verification.tweetId;
-              } else {
-                console.warn(`[POSTING_QUEUE] ⚠️ Bulletproof verification failed, using original ID`);
-              }
-            }
-          } catch (verifyError: any) {
-            console.warn(`[POSTING_QUEUE] ⚠️ Verification error: ${verifyError.message}`);
-          }
-        }
-        
-        // Clean up resources AFTER verification
-        await poster.dispose();
-        
-        if (result.success) {
-          if (!finalTweetId) {
-            throw new Error('Posting succeeded but no tweet ID was extracted - cannot track metrics');
-          }
-          console.log(`[POSTING_QUEUE] ✅ Content posted via Playwright with ID: ${finalTweetId}`);
-          return finalTweetId;
-        } else {
+        if (!result.success) {
+          await poster.dispose();
           console.error(`[POSTING_QUEUE] ❌ Playwright posting failed: ${result.error}`);
           throw new Error(result.error || 'Playwright posting failed');
         }
+        
+        // ✅ POST SUCCEEDED - Now extract tweet ID using ONLY bulletproof method
+        console.log(`[POSTING_QUEUE] ✅ Tweet posted! Extracting tweet ID...`);
+        
+        const page = (poster as any).page;
+        if (!page) {
+          await poster.dispose();
+          throw new Error('No browser page available after posting');
+        }
+        
+        // Give Twitter a moment to process the post
+        await page.waitForTimeout(2000);
+        
+        // Use bulletproof extractor (this is the ONLY extraction method now)
+        const extraction = await BulletproofTweetExtractor.extractTweetId(page, {
+          expectedContent: decision.content,
+          expectedUsername: process.env.TWITTER_USERNAME || 'SignalAndSynapse',
+          maxAgeSeconds: 60,
+          navigateToVerify: true
+        });
+        
+        BulletproofTweetExtractor.logVerificationSteps(extraction);
+        
+        // Clean up browser
+        await poster.dispose();
+        
+        if (!extraction.success || !extraction.tweetId) {
+          throw new Error(`Tweet posted but ID extraction failed: ${extraction.error || 'Unknown error'}`);
+        }
+        
+        console.log(`[POSTING_QUEUE] ✅ Tweet ID extracted: ${extraction.tweetId}`);
+        return extraction.tweetId;
       }
     } catch (error: any) {
       console.error(`[POSTING_QUEUE] ❌ Playwright system error: ${error.message}`);
@@ -751,9 +738,10 @@ async function markDecisionFailed(decisionId: string, errorMessage: string): Pro
       .from('content_metadata')
       .update({ 
         status: 'failed',
+        error_message: errorMessage, // Also store the error
         updated_at: new Date().toISOString()
       })
-      .eq('id', decisionId);
+      .eq('decision_id', decisionId);  // 🔥 FIX: Use decision_id (UUID), not id (integer)!
     
     if (error) {
       console.warn(`[POSTING_QUEUE] ⚠️ Failed to mark failed for ${decisionId}:`, error.message);
