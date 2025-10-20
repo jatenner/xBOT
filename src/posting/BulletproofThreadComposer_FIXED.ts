@@ -1,10 +1,9 @@
 /**
- * 🧵 BULLETPROOF THREAD COMPOSER
- * Forces all multi-segment content to post as connected threads
- * Composer-first with reply-chain fallback - NO standalone numbered tweets
+ * 🧵 BULLETPROOF THREAD COMPOSER - FIXED VERSION
+ * Fixes browser context lifecycle and timeout issues
  */
 
-import { Page } from 'playwright';
+import { Page, BrowserContext } from 'playwright';
 import { ensureComposerFocused } from './composerFocus';
 
 interface ThreadPostResult {
@@ -17,12 +16,8 @@ interface ThreadPostResult {
 
 export class BulletproofThreadComposer {
   // ❌ REMOVED: private static browserPage: Page | null = null;
-  // This caused context lifecycle issues - context cleaned up while page still referenced!
-  
-  // 🔥 NEW: Overall timeout for thread posting
-  private static readonly THREAD_TIMEOUT_MS = 90000; // 90 seconds max
+  // This was causing context lifecycle issues!
 
-  // Modern selectors for resilient reply flow
   private static readonly replyButtonSelectors = [
     '[data-testid="reply"]',
     'div[role="button"][data-testid="reply"]',
@@ -36,6 +31,9 @@ export class BulletproofThreadComposer {
     'textarea[aria-label*="Post"]',
     'div[aria-label="Post text"]'
   ];
+
+  // 🔥 NEW: Overall timeout for thread posting
+  private static readonly THREAD_TIMEOUT_MS = 90000; // 90 seconds max
 
   /**
    * 🎯 MAIN METHOD: Post segments as connected thread
@@ -62,7 +60,7 @@ export class BulletproofThreadComposer {
       };
     }
 
-    // 🔥 FIXED: Wrap entire operation in timeout + proper context management
+    // 🔥 NEW: Wrap entire operation in timeout
     try {
       const result = await Promise.race([
         this.postWithContext(segments),
@@ -101,10 +99,11 @@ export class BulletproofThreadComposer {
     const { default: browserManager } = await import('../core/BrowserManager');
     
     // ✅ CORRECT: Use withContext properly - context cleaned up automatically
-    return await browserManager.withContext(async (context: any) => {
+    return await browserManager.withContext(async (context: BrowserContext) => {
       const page = await context.newPage();
       
       try {
+        // Try composer-first approach
         const maxRetries = 2;
         
         for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -124,6 +123,7 @@ export class BulletproofThreadComposer {
           } catch (composerError: any) {
             console.log(`🧵 THREAD_COMPOSER_FAILED (attempt ${attempt + 1}): ${String(composerError).slice(0, 200)}`);
             
+            // Try reply-chain fallback
             try {
               const rootUrl = await this.postViaReplies(page, segments);
               console.log('THREAD_PUBLISH_OK mode=reply_chain');
@@ -135,12 +135,16 @@ export class BulletproofThreadComposer {
             } catch (replyError: any) {
               console.warn(`🔄 THREAD_RETRY_FALLBACK: Reply chain failed on attempt ${attempt + 1}`);
               
+              // If this is not the last attempt, wait before retry
               if (attempt < maxRetries - 1) {
                 const backoffMs = 2000 * Math.pow(2, attempt);
                 console.log(`⏰ THREAD_BACKOFF: Waiting ${backoffMs}ms before retry ${attempt + 2}`);
                 await page.waitForTimeout(backoffMs);
+                
+                // Reload page for fresh start
                 await page.reload({ waitUntil: 'load', timeout: 10000 });
               } else {
+                // Final failure
                 console.error(`THREAD_POST_FAIL: All ${maxRetries} attempts exhausted`);
                 return {
                   success: false,
@@ -152,6 +156,7 @@ export class BulletproofThreadComposer {
           }
         }
         
+        // Safety fallback
         return {
           success: false,
           mode: 'composer',
@@ -159,23 +164,15 @@ export class BulletproofThreadComposer {
         };
         
       } finally {
+        // ✅ IMPORTANT: Close page explicitly
         try {
           await page.close();
         } catch {
           // Ignore close errors
         }
       }
+      // Context automatically cleaned up when this callback finishes
     });
-  }
-
-  /**
-   * 🌐 Initialize browser connection
-   * ❌ DEPRECATED: No longer needed with proper context management
-   */
-  private static async initializeBrowser(): Promise<void> {
-    // ❌ REMOVED: Browser page is now created fresh in postWithContext
-    // This method is kept for backward compatibility but does nothing
-    console.log('⚠️ DEPRECATED: initializeBrowser() called but no longer needed');
   }
 
   /**
@@ -261,9 +258,9 @@ export class BulletproofThreadComposer {
       console.log(`🔗 THREAD_REPLY ${i}/${segments.length - 1}: Posting reply...`);
       
       // Navigate to root tweet
-      await page.goto(rootUrl, { waitUntil: 'networkidle' });
+      await page.goto(rootUrl, { waitUntil: 'load', timeout: 15000 });
       
-      // Resilient reply flow with multiple selectors + kb fallback
+      // Resilient reply flow
       await page.bringToFront();
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(300);
@@ -322,7 +319,6 @@ export class BulletproofThreadComposer {
     }
     return null;
   }
-
 
   /**
    * 📝 Verify textbox contains expected content
@@ -392,26 +388,7 @@ export class BulletproofThreadComposer {
     
     return `https://x.com/status/${Date.now()}`;
   }
-
-  /**
-   * 🔄 Ensure browser is ready with retry mechanism
-   * ❌ DEPRECATED: No longer needed with proper context management
-   */
-  private static async ensureBrowserReady(): Promise<void> {
-    // ❌ REMOVED: Browser context is now managed by postWithContext
-    // This method is kept for backward compatibility but does nothing
-    console.log('⚠️ DEPRECATED: ensureBrowserReady() called but no longer needed');
-  }
-
-  /**
-   * 🚑 Recover browser context after failures
-   * ❌ DEPRECATED: No longer needed with proper context management
-   */
-  private static async recoverBrowserContext(): Promise<void> {
-    // ❌ REMOVED: Browser context recovery is now handled by BrowserManager
-    // This method is kept for backward compatibility but does nothing
-    console.log('⚠️ DEPRECATED: recoverBrowserContext() called but no longer needed');
-  }
 }
 
 export default BulletproofThreadComposer;
+
