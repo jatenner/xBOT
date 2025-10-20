@@ -317,30 +317,19 @@ export class UnifiedContentEngine {
       
       console.log(`  📊 Quality score: ${preValidation.score}/100 (threshold: 78)`);
       
+      // ✅ FIX #1: Auto-improver DISABLED - it was making content MORE academic
+      // Generators should create RIGHT content from the start, not "fix" it after
       if (!preValidation.passes && !request.forceGeneration) {
         console.log(`  ⚠️ Content failed pre-validation (${preValidation.score}/100)`);
         console.log(`  Issues: ${preValidation.issues.join(', ')}`);
-        console.log(`  🔧 Attempting auto-improvement...`);
+        console.log(`  🚫 Auto-improvement DISABLED (was making content worse)`);
+        console.log(`  📊 Proceeding with original generator content...`);
+        systemsActive.push('Pre-Validation [LOW_SCORE_ACCEPTED]');
         
-        const improvement = await validateAndImprove(
-          request.format === 'thread' && Array.isArray(generatedContent) ? generatedContent : rawContent,
-          { topic: topicHint, format: request.format }
-        );
-        
-        if (improvement.passed) {
-          console.log(`  ✅ Auto-improved: ${preValidation.score} → ${improvement.score}/100`);
-          rawContent = Array.isArray(improvement.content) ? improvement.content.join('\n\n') : improvement.content;
-          if (request.format === 'thread' && Array.isArray(improvement.content)) {
-            aiResponse.thread = improvement.content;
-            aiResponse.content = improvement.content.join('\n\n');
-          } else {
-            aiResponse.content = improvement.content;
-          }
-          systemsActive.push('Auto-Improvement [SUCCESS]');
-        } else {
-          console.log(`  ⚠️ Auto-improvement failed (${improvement.score}/100) - proceeding anyway`);
-          systemsActive.push('Auto-Improvement [ATTEMPTED]');
-        }
+        // OLD APPROACH (commented out - made content worse):
+        // const improvement = await validateAndImprove(...);
+        // Problem: Made content MORE academic, opposite of goal
+        // Solution: Fix generators to create good content from start
       } else {
         console.log(`  ✅ Content passes pre-validation (${preValidation.score}/100)`);
         systemsActive.push('Pre-Validation [PASSED]');
@@ -364,36 +353,23 @@ export class UnifiedContentEngine {
           console.log(`     • Intelligence: ${intelligenceScores.intelligence_score}/100`);
           console.log(`     • Overall: ${intelligenceScores.overall_score}/100`);
           
-          // ═══════════════════════════════════════════════════════════
-          // STEP 5.4.5: INTELLIGENCE ENHANCEMENT (if low score)
-          // ═══════════════════════════════════════════════════════════
+          // ✅ FIX #2: Intelligence Enhancement DISABLED - it was breaking character limits
+          // Adding "intelligence" = adding complexity = longer content = cut off sentences
+          // Generators already have intelligence package as INPUT - use it there, not patch after
+          
           if (intelligenceConfig.enhancement.enabled && intelligenceScores.overall_score < intelligenceConfig.enhancement.minScoreToEnhance) {
-            console.log(`  ⚠️ Low intelligence score (${intelligenceScores.overall_score}/100) - Enhancing...`);
+            console.log(`  ⚠️ Low intelligence score (${intelligenceScores.overall_score}/100)`);
+            console.log(`  🚫 Intelligence enhancement DISABLED (was breaking content)`);
+            console.log(`  📊 Original content from generator will be used`);
+            systemsActive.push('Intelligence Enhancement [DISABLED]');
             
-            const enhanced = await this.intelligenceEnhancer.boostIntelligence(
-              finalContent,
-              intelligenceScores.weaknesses,
-              intelligence,
-              intelligenceConfig.enhancement.maxAttempts
-            );
-            
-            if (enhanced.improved) {
-              console.log(`  ✅ Intelligence enhanced: ${intelligenceScores.overall_score} → ${enhanced.finalScore}/100`);
-              rawContent = Array.isArray(enhanced.content) ? enhanced.content.join('\n\n') : enhanced.content;
-              if (request.format === 'thread' && Array.isArray(enhanced.content)) {
-                aiResponse.thread = enhanced.content;
-                aiResponse.content = enhanced.content.join('\n\n');
-              } else {
-                aiResponse.content = enhanced.content;
-              }
-              systemsActive.push('Intelligence Enhancement [SUCCESS]');
-            } else {
-              console.log(`  ⚠️ Enhancement failed or no improvement - keeping original`);
-              systemsActive.push('Intelligence Enhancement [ATTEMPTED]');
-            }
+            // OLD APPROACH (commented out - broke content):
+            // const enhanced = await this.intelligenceEnhancer.boostIntelligence(...);
+            // Problem: Added complexity, ran out of 280 chars, cut sentences
+            // Solution: Generators already have intelligence package - use it there
           } else {
-            console.log(`  ✅ High intelligence score - no enhancement needed`);
-            systemsActive.push('Intelligence Scoring [HIGH]');
+            console.log(`  ✅ Intelligence score acceptable (${intelligenceScores.overall_score}/100)`);
+            systemsActive.push('Intelligence Scoring [ACCEPTED]');
           }
         } catch (error: any) {
           console.error(`  ❌ Intelligence scoring failed: ${error.message}`);

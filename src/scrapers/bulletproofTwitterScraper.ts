@@ -132,16 +132,19 @@ export class BulletproofTwitterScraper {
           continue;
         }
 
-        // Step 1.5: PHASE 1 FIX - Validate we're scraping the correct tweet
+        // ✅ FIX #3: FAIL FAST on tweet ID mismatch - don't retry
+        // Twitter will keep showing the same wrong tweet (parent in thread)
+        // Retrying is wasteful - fail immediately and log the issue
         const correctTweet = await this.validateScrapingCorrectTweet(page, tweetId);
         if (!correctTweet) {
-          console.warn(`  ⚠️ SCRAPER: Tweet ID mismatch detected, reloading...`);
-          if (attempt < maxAttempts) {
-            await this.reloadTweetPage(page, tweetId);
-            attempt++;
-            await this.sleep(2000 * attempt);
-            continue;
-          }
+          console.error(`  ❌ SCRAPER: Tweet ID mismatch - FAILING FAST (don't waste retries)`);
+          console.error(`     Likely a reply/thread where parent tweet is shown`);
+          return {
+            success: false,
+            metrics: null,
+            error: 'Tweet ID mismatch - wrong tweet loaded (possibly parent in thread)',
+            _confidence: 0
+          };
         }
 
         // Step 2: Extract metrics using multiple selectors
