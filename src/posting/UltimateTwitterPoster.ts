@@ -663,14 +663,59 @@ export class UltimateTwitterPoster {
         
         await this.page.waitForTimeout(2000);
         
-        const latestTweetLink = await this.page.locator('article a[href*="/status/"]').first().getAttribute('href', { timeout: 5000 });
-        if (latestTweetLink) {
-          const match = latestTweetLink.match(/\/status\/(\d+)/);
-          if (match && match[1]) {
-            console.log(`ULTIMATE_POSTER: ✅ Extracted from profile: ${match[1]}`);
-            return match[1];
+        // 🔥 CRITICAL FIX: Verify tweet is from YOUR account (not recommended tweets!)
+        console.log(`ULTIMATE_POSTER: Searching for YOUR tweet (from @${username})...`);
+        
+        // Get all articles and find the one from YOUR account that was posted recently
+        const articles = await this.page.locator('article').all();
+        console.log(`ULTIMATE_POSTER: Found ${articles.length} articles on profile page`);
+        
+        for (let i = 0; i < articles.length; i++) {
+          try {
+            const article = articles[i];
+            
+            // STEP 1: Verify this tweet is from YOUR account (not recommended/promoted)
+            const profileLinks = await article.locator(`a[href="/${username}"]`).count();
+            if (profileLinks === 0) {
+              console.log(`ULTIMATE_POSTER: Article ${i} - NOT from your account, skipping...`);
+              continue;
+            }
+            
+            // STEP 2: Check if posted recently (last 3 minutes)
+            const timeEl = await article.locator('time').first();
+            const datetime = await timeEl.getAttribute('datetime');
+            
+            if (datetime) {
+              const tweetTime = new Date(datetime);
+              const ageSeconds = (Date.now() - tweetTime.getTime()) / 1000;
+              
+              console.log(`ULTIMATE_POSTER: Article ${i} - Posted ${Math.round(ageSeconds)}s ago`);
+              
+              if (ageSeconds < 180) { // Within last 3 minutes
+                // STEP 3: Extract tweet ID
+                const statusLink = await article.locator('a[href*="/status/"]').first();
+                const href = await statusLink.getAttribute('href');
+                
+                if (href) {
+                  const match = href.match(/\/status\/(\d+)/);
+                  if (match && match[1]) {
+                    console.log(`ULTIMATE_POSTER: ✅ Found YOUR recent tweet: ${match[1]}`);
+                    console.log(`ULTIMATE_POSTER: ✅ Verified: From @${username}, posted ${Math.round(ageSeconds)}s ago`);
+                    return match[1];
+                  }
+                }
+              } else {
+                console.log(`ULTIMATE_POSTER: Article ${i} - Too old (${Math.round(ageSeconds)}s), skipping...`);
+              }
+            }
+          } catch (e: any) {
+            console.log(`ULTIMATE_POSTER: Article ${i} - Error checking: ${e.message}`);
+            continue;
           }
         }
+        
+        console.error(`ULTIMATE_POSTER: ❌ No recent tweets from @${username} found on profile`);
+        return null;
       } catch (e) {
         console.log('ULTIMATE_POSTER: Profile strategy failed');
       }
