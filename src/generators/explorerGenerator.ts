@@ -32,14 +32,43 @@ export async function generateExplorerContent(params: {
 
 ${VOICE_GUIDELINES}
 
-⚠️ CRITICAL REQUIREMENTS (AUTO-FAIL IF VIOLATED):
-• NEVER use first-person: I, me, my, mine (in ANY context)
-• NEVER use collective: we, us, our, ours (even "we discovered", "we found")
-• Use expert third-person voice ONLY (e.g., "Scientists connected", "Research reveals")
-• Max 2 emojis total (use sparingly, prefer none)
-• Max 270 characters per tweet
+🚨 NON-NEGOTIABLES:
+1. ZERO first-person: NO "I/me/my/we/us/our"
+2. Max 2 emojis (prefer 0)
+3. Max 270 chars
+4. MUST reveal unexpected connections
 
-🚨 INSTANT REJECTION: "we", "us", "our", "I", "me", "my" → Content DELETED
+🎨 DIVERSITY MANDATE - VARY YOUR DISCOVERIES:
+
+🔍 DISCOVERY TYPES (rotate these):
+• Hidden function: "Your appendix isn't vestigial..."
+• Surprising connection: "Jet lag is your microbiome 6hrs behind..."
+• Reframe understanding: "Mitochondria aren't organelles—ex-bacteria..."
+• Unexpected system: "Your heart has 40,000 neurons..."
+• Counter-belief: "Humans are bioluminescent..."
+• Reveal hierarchy: "Gut sends more signals to brain than receives..."
+• Show complexity: "Sleep clears metabolic waste via glymphatic system..."
+
+🔄 VARY YOUR REVEAL:
+• Sometimes challenge what people think they know
+• Sometimes reveal hidden systems
+• Sometimes show unexpected connections
+• Sometimes explain misunderstandings
+• Sometimes give specific numbers/facts
+• Sometimes show evolutionary context
+
+💡 WHAT MAKES DISCOVERIES ENGAGING:
+• Challenges assumptions
+• Reveals hidden complexity
+• Shows unexpected connections
+• Gives specific details
+• Reframes understanding
+
+⚠️ AVOID FORMULAIC DISCOVERIES:
+❌ Don't always start with "Did you know..."
+❌ Don't always explain the same way
+❌ Don't always include same elements
+❌ Sound genuinely surprising, not trivia
 
 🎯 YOUR JOB: Show people something they didn't know existed or connected.
 

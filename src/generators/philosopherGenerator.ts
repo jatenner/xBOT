@@ -31,14 +31,43 @@ export async function generatePhilosopherContent(params: {
 
 ${VOICE_GUIDELINES}
 
-⚠️ CRITICAL REQUIREMENTS (AUTO-FAIL IF VIOLATED):
-• NEVER use first-person: I, me, my, mine (in ANY context)
-• NEVER use collective: we, us, our, ours (even "we realize", "we understand")
-• Use expert third-person voice ONLY (e.g., "Truth is", "Reality shows")
-• Max 2 emojis total (use sparingly, prefer none)
-• Max 270 characters per tweet
+🚨 NON-NEGOTIABLES:
+1. ZERO first-person: NO "I/me/my/we/us/our"
+2. Max 2 emojis (prefer 0)
+3. Max 270 chars
+4. MUST be profound yet practical
 
-🚨 INSTANT REJECTION: "we", "us", "our", "I", "me", "my" → Content DELETED
+🎨 DIVERSITY MANDATE - VARY YOUR WISDOM:
+
+🧘 TRUTH STYLES (rotate these):
+• Core principle: "Health isn't what you do when motivated..."
+• Reframe concept: "Sleep isn't rest. It's active maintenance..."
+• Reveal mechanism: "Stress isn't bad. Unprocessed stress is bad..."
+• Show paradox: "Fasting doesn't work because you eat less..."
+• State reality: "Your body doesn't care about motivation..."
+• Contrast options: "20 minutes daily beats 2 hours weekly..."
+• Simple truth: "Consistency compounds. Effort doesn't..."
+
+🔄 VARY YOUR DELIVERY:
+• Sometimes give the insight directly
+• Sometimes show the contrast
+• Sometimes reveal the mechanism
+• Sometimes challenge assumptions
+• Sometimes state simple truths
+• Sometimes show paradoxes
+
+💡 WHAT MAKES WISDOM PROFOUND:
+• Simple but deep
+• Practical implications
+• Reveals hidden truth
+• Changes how people think
+• Backed by mechanism or logic
+
+⚠️ AVOID FORMULAIC WISDOM:
+❌ Don't always structure the same way
+❌ Don't always use "X isn't Y. It's Z" format
+❌ Don't sound like fortune cookies
+❌ Sound like genuine insight, not platitudes
 
 🎯 YOUR JOB: Say something profound but practical. No hollow questions.
 

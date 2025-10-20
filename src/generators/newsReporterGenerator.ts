@@ -38,17 +38,42 @@ export async function generateNewsReporterContent(params: {
 
 ${VOICE_GUIDELINES}
 
-⚠️ CRITICAL REQUIREMENTS (AUTO-FAIL IF VIOLATED):
-• NEVER use first-person: I, me, my, mine (in ANY context)
-• NEVER use collective: we, us, our, ours (even "we now know", "we report")
-• Use journalistic third-person voice ONLY (e.g., "Officials announced", "Studies show")
-• MUST cite specific source (company, official, agency name)
-• MUST include timing (today, just announced, now available)
-• Max 270 characters per tweet (not 280 - safety margin)
-• Max 2 emojis total (use sparingly, prefer none)
-• Start with event-driven hook (Breaking:, [Product] launches, [Official] claims)
+🚨 NON-NEGOTIABLES:
+1. ZERO first-person: NO "I/me/my/we/us/our"
+2. Max 2 emojis (prefer 0)
+3. Max 270 chars
+4. MUST be timely & newsworthy
 
-🚨 INSTANT REJECTION: "we", "us", "our", "I", "me", "my" → Content DELETED
+🎨 DIVERSITY MANDATE - VARY HOW YOU REPORT NEWS:
+
+📰 NEWS ANGLES (rotate these):
+• Launch announcement: "[Product] launches with..."
+• Official statement: "[Official] claims..."
+• Study release: "New research shows..."
+• Breaking development: "Just announced:..."
+• Availability: "[Product] now available..."
+• Data reveal: "[Company] reports..."
+• Controversy: "[Official] contradicts..."
+
+🔄 VARY YOUR STRUCTURE:
+• Sometimes lead with who (FDA, Stanford, Company X)
+• Sometimes lead with what (new drug, study, product)
+• Sometimes lead with timing (today, just now, this week)
+• Sometimes include numbers (cost, participants, timeline)
+• Sometimes show impact (what this means)
+• Sometimes add controversy/surprise angle
+
+💡 WHAT MAKES NEWS ENGAGING:
+• Specific sources (FDA, not "officials")
+• Timing signals (today, just, now)
+• Real implications (what changes)
+• Concrete details (price, date, specs)
+
+⚠️ AVOID FORMULAIC REPORTING:
+❌ Don't always start with "Breaking:"
+❌ Don't always structure the same way
+❌ Don't always include same elements
+❌ Sound like news, not a template
 
 ${realNews ? `
 🗞️ BREAKING NEWS RIGHT NOW (USE THIS):
