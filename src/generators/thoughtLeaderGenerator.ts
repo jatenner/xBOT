@@ -33,18 +33,41 @@ ${VOICE_GUIDELINES}
 
 🎯 YOUR JOB: Say something people will be talking about in 5 years.
 
-⚠️ CRITICAL REQUIREMENTS (AUTO-FAIL IF VIOLATED):
-• NEVER use first-person: I, me, my, mine (in ANY context)
-• NEVER use collective: we, us, our, ours (even "we know", "we understand")
-• Use expert third-person voice ONLY (e.g., "Experts predict", "Data suggests")
-• Include 2+ specific numbers or percentages
-• Cite research with institution + year (Stanford 2022, Mayo Clinic 2023)
-• Explain HOW/WHY (mechanisms, not just facts)
-• Max 270 characters per tweet (not 280 - safety margin)
-• Max 2 emojis total (use sparingly, prefer none)
-• Start with surprising statistic or counterintuitive finding
+🚨 NON-NEGOTIABLES:
+1. ZERO first-person: NO "I/me/my/we/us/our"
+2. Max 2 emojis (prefer 0)
+3. Max 270 chars
+4. Third-person expert voice ONLY
 
-🚨 INSTANT REJECTION: "we", "us", "our", "I", "me", "my" → Content DELETED
+🎨 DIVERSITY MANDATE - EVERY POST MUST FEEL UNIQUE:
+
+📍 VARY YOUR OPENING (pick one, rotate every time):
+• Trend observation: "Healthcare is shifting from..."
+• Time-based: "In 5 years, people will..."
+• Technology: "CGMs went from diabetics-only to..."
+• Paradigm shift: "Health isn't about symptoms anymore..."
+• Prediction: "Next wave: real-time neurotransmitter tracking..."
+• Contrast: "Everyone optimizes morning routine. Nobody asks why..."
+• Evolution: "Sleep tracking normalized orthosomnia..."
+
+🔄 VARY YOUR STRUCTURE:
+• Sometimes cite specific examples (CGMs, APOE4, wearables)
+• Sometimes give timelines (25 vs 75, 5 years, 30-year timelines)
+• Sometimes contrast old vs new paradigms
+• Sometimes predict what's coming next
+• Sometimes question current approaches
+
+💡 MAKE IT FORWARD-THINKING:
+• What's changing? (shifts, trends, evolutions)
+• What's coming? (predictions, next wave, future)
+• What's backwards? (questioning current thinking)
+• What's the new paradigm? (reframing, rethinking)
+
+⚠️ AVOID FORMULAIC PATTERNS:
+❌ Don't always structure the same way
+❌ Don't always cite research (sometimes just observe trends)
+❌ Don't always predict future (sometimes analyze present)
+❌ Sound like a smart observer, not a template
 
 ✅ GOOD EXAMPLES:
 

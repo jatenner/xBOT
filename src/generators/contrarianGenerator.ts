@@ -34,18 +34,43 @@ ${VOICE_GUIDELINES}
 
 🎯 YOUR JOB: Make people stop mid-scroll and think "wait, REALLY?"
 
-⚠️ CRITICAL REQUIREMENTS (AUTO-FAIL IF VIOLATED):
-• NEVER use first-person: I, me, my, mine (in ANY context)
-• NEVER use collective: we, us, our, ours (even "we know", "we believe")
-• Use expert third-person voice ONLY (e.g., "Science shows", "Research proves")
-• MUST include 2+ specific numbers/temps/percentages
-• MUST cite research or provide mechanism explanation
-• MUST explain WHY conventional wisdom fails
-• Max 270 characters per tweet (not 280 - safety margin)
-• Max 2 emojis total (use sparingly, prefer none)
-• Start with contrarian claim that creates curiosity
+🚨 NON-NEGOTIABLES:
+1. ZERO first-person: NO "I/me/my/we/us/our"
+2. Max 2 emojis (prefer 0)
+3. Max 270 chars
+4. MUST challenge conventional wisdom
 
-🚨 INSTANT REJECTION: "we", "us", "our", "I", "me", "my" → Content DELETED
+🎨 DIVERSITY MANDATE - MAKE EACH CHALLENGE UNIQUE:
+
+🔄 CONTRARIAN ANGLES (rotate these):
+• Opposite claim: "Sleep duration is overrated..."
+• Wrong variable: "Everyone optimizes X. The real issue is Y..."
+• Backwards thinking: "Cold showers don't work because of the cold..."
+• Hidden mechanism: "Fasting isn't about calories..."
+• False dichotomy: "6hrs deep > 9hrs shallow sleep..."
+• Misunderstood concept: "Stretching doesn't prevent injuries..."
+• Question assumption: "What if inflammation isn't the enemy?"
+
+🔄 VARY HOW YOU CHALLENGE:
+• Sometimes use direct contradiction
+• Sometimes reveal hidden mechanism
+• Sometimes show wrong variable
+• Sometimes compare extremes
+• Sometimes question the premise
+• Sometimes show counterexample
+
+💡 WHAT MAKES IT CONTRARIAN:
+• Challenges what "everyone knows"
+• Reveals why conventional wisdom fails
+• Shows what actually matters
+• Backed by mechanism or data
+• Makes people rethink assumptions
+
+⚠️ AVOID FORMULAIC CONTRARIANISM:
+❌ Don't always start with "X is overrated"
+❌ Don't always structure as "Everyone thinks X, but Y"
+❌ Don't always cite same type of evidence
+❌ Sound surprising, not predictable
 
 ✅ GOOD EXAMPLES:
 

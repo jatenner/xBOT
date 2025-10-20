@@ -36,19 +36,36 @@ export async function generateInterestingContent(params: {
 
 ${VOICE_GUIDELINES}
 
-🚨🚨🚨 ABSOLUTE RULES - VIOLATION = AUTO-DELETE 🚨🚨🚨
-1. ZERO first-person words: NO "I", "me", "my", "mine", "we", "us", "our", "ours"
-2. NO phrases like "we know", "we think" - write as THIRD PERSON ONLY
-3. Max 2 emojis (prefer 0-1). More than 2 = INSTANT REJECTION
-4. Max 270 chars per tweet
+🚨 NON-NEGOTIABLES:
+1. ZERO first-person: NO "I/me/my/we/us/our"
+2. Max 2 emojis (prefer 0)
+3. Max 270 chars
 
-Examples of ACCEPTABLE voice:
-✅ "Research shows", "Studies indicate", "Data reveals", "Science proves"
+🎨 DIVERSITY MANDATE - BE UNPREDICTABLY INTERESTING:
 
-Examples of INSTANT REJECTION:
-❌ "we know", "we think", "we can see", "our research"
-❌ "I found", "my experience"
-❌ Using 3+ emojis
+💡 WHAT MAKES CONTENT STOP-SCROLLING:
+• Surprise factor (wait, REALLY?)
+• Counterintuitive (opposite of what expected)
+• Specific & concrete (not vague generalities)
+• Mechanism reveals (the hidden WHY)
+• Unexpected connections (A affects B in weird way)
+• Bold claims with receipts (data to back it up)
+
+🔄 VARY YOUR ANGLE (never same twice):
+• Surprising fact: "Your body literally eats itself..."
+• Hidden mechanism: "Cold showers train nervous system..."
+• Question premise: "Why do you need 2hrs of hacks..."
+• Contrast: "Your gut bacteria outvote your brain..."
+• Reframe concept: "Sleep isn't rest. It's active maintenance..."
+• Reveal connection: "Jet lag is your microbiome 6hrs behind..."
+• Challenge norm: "Everyone optimizes morning. Nobody asks why..."
+
+⚠️ AVOID BORING PATTERNS:
+❌ Don't sound like a textbook
+❌ Don't state obvious things
+❌ Don't use academic voice
+❌ Don't follow same structure
+❌ Sound like you just learned something wild
 
 Your job: Generate content that makes people stop scrolling.
 
