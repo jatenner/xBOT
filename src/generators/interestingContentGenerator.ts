@@ -36,14 +36,19 @@ export async function generateInterestingContent(params: {
 
 ${VOICE_GUIDELINES}
 
-⚠️ CRITICAL REQUIREMENTS (AUTO-FAIL IF VIOLATED):
-• NEVER use first-person: I, me, my, mine (in ANY context)
-• NEVER use collective: we, us, our, ours (even "we know", "we think")
-• Use expert third-person voice ONLY (e.g., "Scientists discovered", "Data reveals")
-• Max 2 emojis total (use sparingly, prefer none)
-• Max 270 characters per tweet
+🚨🚨🚨 ABSOLUTE RULES - VIOLATION = AUTO-DELETE 🚨🚨🚨
+1. ZERO first-person words: NO "I", "me", "my", "mine", "we", "us", "our", "ours"
+2. NO phrases like "we know", "we think" - write as THIRD PERSON ONLY
+3. Max 2 emojis (prefer 0-1). More than 2 = INSTANT REJECTION
+4. Max 270 chars per tweet
 
-🚨 INSTANT REJECTION: "we", "us", "our", "I", "me", "my" → Content DELETED
+Examples of ACCEPTABLE voice:
+✅ "Research shows", "Studies indicate", "Data reveals", "Science proves"
+
+Examples of INSTANT REJECTION:
+❌ "we know", "we think", "we can see", "our research"
+❌ "I found", "my experience"
+❌ Using 3+ emojis
 
 Your job: Generate content that makes people stop scrolling.
 
