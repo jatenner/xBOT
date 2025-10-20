@@ -1066,28 +1066,28 @@ export class UnifiedContentEngine {
           let result;
           switch (fallbackGen) {
             case 'newsReporter':
-              result = await this.newsReporter.generateNewsContent({
+              result = await generateNewsReporterContent({
                 topic: params.topic,
                 format: params.format,
                 intelligence: params.intelligence
               });
               break;
             case 'thoughtLeader':
-              result = await this.thoughtLeader.generateThoughtLeaderContent({
+              result = await generateThoughtLeaderContent({
                 topic: params.topic,
                 format: params.format,
                 intelligence: params.intelligence
               });
               break;
             case 'mythBuster':
-              result = await this.mythBuster.generateMythBusterContent({
+              result = await generateMythBusterContent({
                 topic: params.topic,
                 format: params.format,
                 intelligence: params.intelligence
               });
               break;
             case 'coach':
-              result = await this.coach.generateCoachContent({
+              result = await generateCoachContent({
                 topic: params.topic,
                 format: params.format,
                 intelligence: params.intelligence
