@@ -158,7 +158,7 @@ async function generateRealContent(): Promise<void> {
   console.log(`[UNIFIED_PLAN] 🎯 Focus: ${todaySeries.focus}`);
   
   const decisions = [];
-  const numToGenerate = 1; // 1 post per cycle (30min intervals = 2 posts/hour)
+  const numToGenerate = 1; // 1 post per cycle (runs every 30min = 2 posts/hour)
   
   const engine = UnifiedContentEngine.getInstance();
   
