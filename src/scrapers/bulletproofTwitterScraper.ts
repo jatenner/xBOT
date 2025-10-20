@@ -368,48 +368,87 @@ export class BulletproofTwitterScraper {
     let tweetArticle: ElementHandle | null = null;
     
     if (tweetId) {
-      console.log(`    🔍 Searching for article with tweet ID ${tweetId}...`);
+      console.log(`    🔍 VERIFICATION: Searching for article with tweet ID ${tweetId}...`);
       
-      // Find which article contains our tweet ID
-      const articleIndex = await page.evaluate((id) => {
+      // STEP 1: Find which article contains our tweet ID
+      const articleData = await page.evaluate((id) => {
         const articles = document.querySelectorAll('article[data-testid="tweet"]');
+        const results = [];
+        
+        // Log ALL articles found on page for debugging
         for (let i = 0; i < articles.length; i++) {
           const article = articles[i];
           const link = article.querySelector('a[href*="/status/"]') as HTMLAnchorElement;
           if (link) {
             const match = link.href.match(/\/status\/(\d+)/);
-            if (match && match[1] === id) {
-              return i; // Return the index of the matching article
+            if (match) {
+              results.push({
+                index: i,
+                tweetId: match[1],
+                isMatch: match[1] === id
+              });
             }
           }
         }
-        return -1; // Not found
+        
+        return results;
       }, tweetId);
       
-      if (articleIndex === -1) {
-        console.warn(`    ⚠️ EXTRACT: Could not find article with tweet ID ${tweetId}`);
-        console.warn(`    💡 Page may be showing different tweets (recommended, parent tweets, etc.)`);
+      console.log(`    📊 VERIFICATION: Found ${articleData.length} tweet articles on page:`);
+      for (const item of articleData) {
+        if (item.isMatch) {
+          console.log(`       ✅ Article ${item.index}: Tweet ${item.tweetId} [TARGET - THIS IS OURS]`);
+        } else {
+          console.log(`       ❌ Article ${item.index}: Tweet ${item.tweetId} [NOT OURS - Skip]`);
+        }
+      }
+      
+      const matchedArticle = articleData.find(a => a.isMatch);
+      
+      if (!matchedArticle) {
+        console.error(`    ❌ VERIFICATION FAILED: Could not find article with tweet ID ${tweetId}`);
+        console.error(`    💡 Page is showing different tweets (recommended, parent tweets, quoted tweets)`);
+        console.error(`    🚫 ABORTING: Will not scrape wrong tweet's metrics`);
         return results;
       }
       
-      console.log(`    ✅ Found correct tweet at article index ${articleIndex}`);
+      console.log(`    ✅ VERIFICATION PASSED: Our tweet is at article index ${matchedArticle.index}`);
       
-      // Get all articles and select the one at our index
+      // STEP 2: Get the specific article element
       const articles = await page.$$('article[data-testid="tweet"]');
-      if (articles[articleIndex]) {
-        tweetArticle = articles[articleIndex];
+      if (articles[matchedArticle.index]) {
+        tweetArticle = articles[matchedArticle.index];
+        
+        // STEP 3: DOUBLE-CHECK we have the right article by extracting its tweet ID again
+        const verifyId = await tweetArticle.evaluate((article) => {
+          const link = article.querySelector('a[href*="/status/"]') as HTMLAnchorElement;
+          if (link) {
+            const match = link.href.match(/\/status\/(\d+)/);
+            return match ? match[1] : null;
+          }
+          return null;
+        });
+        
+        if (verifyId !== tweetId) {
+          console.error(`    ❌ DOUBLE-CHECK FAILED: Article has tweet ID ${verifyId}, expected ${tweetId}`);
+          console.error(`    🚫 ABORTING: Article mismatch, will not scrape wrong metrics`);
+          return results;
+        }
+        
+        console.log(`    ✅ DOUBLE-CHECK PASSED: Article confirmed to be tweet ${tweetId}`);
       }
     } else {
-      // No tweet ID provided, use first article (legacy behavior)
+      // No tweet ID provided, use first article (legacy behavior - not recommended)
+      console.warn(`    ⚠️ No tweet ID provided, using first article (may be wrong tweet!)`);
       tweetArticle = await page.$('article[data-testid="tweet"]');
     }
     
     if (!tweetArticle) {
-      console.warn('    ⚠️ EXTRACT: Could not get article element');
+      console.error('    ❌ EXTRACT: Could not get article element');
       return results;
     }
     
-    console.log(`    🎯 Extracting metrics from the correct article`);
+    console.log(`    🎯 EXTRACTION START: Metrics will be extracted from verified article`);
 
     // PHASE 3: Try intelligent extraction first (aria-labels), then fallback to selectors
     console.log('    🎯 PHASE 3: Trying intelligent extraction methods...');
@@ -429,6 +468,27 @@ export class BulletproofTwitterScraper {
     // These don't have aria-labels usually, use standard extraction
     results.quote_tweets = await this.extractMetricWithFallbacks(tweetArticle, 'quote_tweets', SELECTORS.quote_tweets);
     results.bookmarks = await this.extractMetricWithFallbacks(tweetArticle, 'bookmarks', SELECTORS.bookmarks);
+
+    // FINAL VERIFICATION: Confirm we extracted from the correct tweet
+    if (tweetId && tweetArticle) {
+      const finalVerifyId = await tweetArticle.evaluate((article) => {
+        const link = article.querySelector('a[href*="/status/"]') as HTMLAnchorElement;
+        if (link) {
+          const match = link.href.match(/\/status\/(\d+)/);
+          return match ? match[1] : null;
+        }
+        return null;
+      });
+      
+      if (finalVerifyId === tweetId) {
+        console.log(`    ✅ FINAL VERIFICATION: Metrics extracted from tweet ${tweetId} ✓`);
+        console.log(`    📊 Extracted: ${results.likes}❤️ ${results.retweets}🔄 ${results.replies}💬`);
+      } else {
+        console.error(`    ❌ FINAL VERIFICATION FAILED: Extracted from ${finalVerifyId}, expected ${tweetId}`);
+        console.error(`    🚫 Discarding metrics - they belong to wrong tweet!`);
+        return { _selectors_used: [] }; // Return empty results
+      }
+    }
 
     return results;
   }
