@@ -136,13 +136,19 @@ It's 'your neighborhood sidewalk is free medicine.'"
 - Academic papers ("Published in Nature...")
 - Scientific findings ("Scientists discover...")
 
-🚨 MANDATORY REQUIREMENTS:
+🚨 NEWS FORMULA (mandatory 5-parts):
 
-1. MUST START with event language: "Breaking:", "[Product] now available", "[Official] claims", "FDA approves/recalls"
-2. MUST reference WHAT HAPPENED: Product launch, official statement, policy change, outbreak, recall
-3. MUST include WHO: Company name, official's name/title, agency name
-4. MUST include TIMING: "today", "just announced", "now available", "starting tomorrow"
-5. Length: Single tweets 180-260 chars, thread tweets 150-230 chars each
+1. URGENCY: "🚨 [Time marker]: [Event]"
+2. FINDING: "[Exact stat/claim]"
+3. CONTRAST: "Not [X]. Not [Y]. Just [Z]."
+4. SOURCE: "Published [when] in [Journal]"
+5. REFRAME: "It's not [expected]. It's [surprising]."
+
+🚫 AUTO-REJECT IF:
+- No timestamp ("recently" = reject)
+- Sounds like blog not news
+- No specific finding/claim
+- Missing source/publication
 
 HOOK TEMPLATES:
 

@@ -32,45 +32,31 @@ export async function generateContrarianContent(params: {
 
 ${VOICE_GUIDELINES}
 
-🎯 YOUR JOB: Make people stop mid-scroll and think "wait, REALLY?"
+🎯 YOUR JOB: Challenge conventional wisdom with data that proves the opposite.
 
-🚨 NON-NEGOTIABLES:
-1. ZERO first-person: NO "I/me/my/we/us/our"
-2. Max 2 emojis (prefer 0)
-3. Max 270 chars
-4. MUST challenge conventional wisdom
+🚨 CONTRARIAN STRUCTURE (mandatory 4-parts):
 
-🎨 DIVERSITY MANDATE - MAKE EACH CHALLENGE UNIQUE:
+PART 1 - SETUP: State what EVERYONE believes/does
+Format: "Everyone [believes/optimizes/focuses on] X"
+Example: "Everyone optimizes their morning routine"
 
-🔄 CONTRARIAN ANGLES (rotate these):
-• Opposite claim: "Sleep duration is overrated..."
-• Wrong variable: "Everyone optimizes X. The real issue is Y..."
-• Backwards thinking: "Cold showers don't work because of the cold..."
-• Hidden mechanism: "Fasting isn't about calories..."
-• False dichotomy: "6hrs deep > 9hrs shallow sleep..."
-• Misunderstood concept: "Stretching doesn't prevent injuries..."
-• Question assumption: "What if inflammation isn't the enemy?"
+PART 2 - THE TWIST: Show why it's backwards
+Format: "Nobody asks [the real problem]"
+Example: "Nobody asks why 2 hours of hacks just to feel normal"
 
-🔄 VARY HOW YOU CHALLENGE:
-• Sometimes use direct contradiction
-• Sometimes reveal hidden mechanism
-• Sometimes show wrong variable
-• Sometimes compare extremes
-• Sometimes question the premise
-• Sometimes show counterexample
+PART 3 - THE PROOF: Data or mechanism supporting contrarian view
+Format: "[Study/Data] shows [surprising truth]"
+Example: "Sleep debt matters 10x more than blue light screens"
 
-💡 WHAT MAKES IT CONTRARIAN:
-• Challenges what "everyone knows"
-• Reveals why conventional wisdom fails
-• Shows what actually matters
-• Backed by mechanism or data
-• Makes people rethink assumptions
+PART 4 - REFRAME: Give the correct mental model
+Format: "It's not about [X]. It's about [Y]."
+Example: "It's not about morning routines. It's about sleep debt."
 
-⚠️ AVOID FORMULAIC CONTRARIANISM:
-❌ Don't always start with "X is overrated"
-❌ Don't always structure as "Everyone thinks X, but Y"
-❌ Don't always cite same type of evidence
-❌ Sound surprising, not predictable
+🚫 AUTO-REJECT IF:
+- Just says "hot take" without supporting data
+- Contrarian for shock value (no mechanism or proof)
+- Challenges established science without evidence
+- Uses "most people don't know..." (too vague)
 
 🏆 GOLD STANDARD EXAMPLE - MATCH THIS QUALITY:
 
