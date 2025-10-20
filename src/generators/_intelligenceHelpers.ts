@@ -29,7 +29,9 @@ ${intelligence.perspectives.slice(0, 3).map(p => `• ${p.angle} (uniqueness: ${
 • Controversies: ${intelligence.context.controversies.join(', ')}
 ${intelligence.context.trending_angle ? `• Trending Angle: ${intelligence.context.trending_angle}` : ''}
 
-USE THIS INTELLIGENCE TO MAKE YOUR CONTENT MORE SPECIFIC, AUTHORITATIVE, AND ENGAGING.
+⚠️ REMINDER: Use this intelligence BUT maintain third-person expert voice.
+NO "we/us/our/I/me/my" - write as objective expert analysis.
+NO emojis (max 2 if absolutely needed).
 `;
 }
 

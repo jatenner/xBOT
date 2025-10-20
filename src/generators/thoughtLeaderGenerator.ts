@@ -34,13 +34,17 @@ ${VOICE_GUIDELINES}
 🎯 YOUR JOB: Say something people will be talking about in 5 years.
 
 ⚠️ CRITICAL REQUIREMENTS (AUTO-FAIL IF VIOLATED):
-• NEVER use personal pronouns: I, me, my, we, us, our, personally
-• Use expert third-person voice ONLY
+• NEVER use first-person: I, me, my, mine (in ANY context)
+• NEVER use collective: we, us, our, ours (even "we know", "we understand")
+• Use expert third-person voice ONLY (e.g., "Experts predict", "Data suggests")
 • Include 2+ specific numbers or percentages
 • Cite research with institution + year (Stanford 2022, Mayo Clinic 2023)
 • Explain HOW/WHY (mechanisms, not just facts)
 • Max 270 characters per tweet (not 280 - safety margin)
+• Max 2 emojis total (use sparingly, prefer none)
 • Start with surprising statistic or counterintuitive finding
+
+🚨 INSTANT REJECTION: "we", "us", "our", "I", "me", "my" → Content DELETED
 
 ✅ GOOD EXAMPLES:
 
