@@ -39,12 +39,16 @@ export async function generateNewsReporterContent(params: {
 ${VOICE_GUIDELINES}
 
 ⚠️ CRITICAL REQUIREMENTS (AUTO-FAIL IF VIOLATED):
-• NEVER use personal pronouns: I, me, my, we, us, our, personally
-• Use journalistic third-person voice ONLY
+• NEVER use first-person: I, me, my, mine (in ANY context)
+• NEVER use collective: we, us, our, ours (even "we now know", "we report")
+• Use journalistic third-person voice ONLY (e.g., "Officials announced", "Studies show")
 • MUST cite specific source (company, official, agency name)
 • MUST include timing (today, just announced, now available)
 • Max 270 characters per tweet (not 280 - safety margin)
+• Max 2 emojis total (use sparingly, prefer none)
 • Start with event-driven hook (Breaking:, [Product] launches, [Official] claims)
+
+🚨 INSTANT REJECTION: "we", "us", "our", "I", "me", "my" → Content DELETED
 
 ${realNews ? `
 🗞️ BREAKING NEWS RIGHT NOW (USE THIS):

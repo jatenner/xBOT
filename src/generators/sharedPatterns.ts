@@ -81,7 +81,8 @@ export const VOICE_GUIDELINES = `
 ▸ Complete sentences - no trailing "..."
 
 ❌ STRICTLY FORBIDDEN:
-▸ First-person language: "I", "me", "my", "we", "our"
+▸ First-person language: "I", "me", "my", "mine"
+▸ Collective pronouns: "we", "us", "our", "ours" (even in phrases like "we know", "we understand")
 ▸ Anecdotal framing: "worked for me", "in my experience"
 ▸ Personal discoveries: "I found", "I tried", "I realized"
 ▸ Vague claims without data: "amazing results", "game changer"
@@ -89,8 +90,14 @@ export const VOICE_GUIDELINES = `
 ▸ Template phrases: "Let's dive in", "Thread below", "Who knew?"
 ▸ Incomplete thoughts: "..." ellipsis endings
 ▸ Hashtags (never use #hashtags)
+▸ Emojis: Maximum 2 emojis per tweet (use sparingly)
 ▸ **ACADEMIC CITATIONS AS HOOKS**: NEVER start with "Author et al. YEAR:" or "In YEAR, study:"
 ▸ **PROTOCOL FORMAT**: NEVER start with "Protocol:" or "Step 1:"
+
+🚨 AUTO-REJECT TRIGGERS (Content will be deleted):
+▸ ANY use of "we", "us", "our" in ANY context
+▸ More than 2 emojis in the entire tweet/thread
+▸ Any personal pronouns (I, me, my)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📏 CHARACTER LIMITS
