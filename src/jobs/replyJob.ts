@@ -122,14 +122,30 @@ async function generateRealReplies(): Promise<void> {
     return;
   }
   
-  console.log('[REPLY_JOB] 🎯 Generating TITAN-TARGETED replies...');
+  console.log('[REPLY_JOB] 🎯 Starting reply generation (AI-driven targeting)...');
   
-  // 🚀 USE SMART REPLY TARGETING - Find OPTIMAL opportunities (10k-100k accounts)
+  // Log account pool status
+  const { getAccountPoolHealth } = await import('./accountDiscoveryJob');
+  const poolHealth = await getAccountPoolHealth();
+  console.log(`[REPLY_JOB] 📊 Account Pool Status:`);
+  console.log(`  • Total accounts: ${poolHealth.total_accounts}`);
+  console.log(`  • High quality: ${poolHealth.high_quality}`);
+  console.log(`  • Recent discoveries: ${poolHealth.recent_discoveries}`);
+  console.log(`  • Health: ${poolHealth.status.toUpperCase()}`);
+  
+  if (poolHealth.status === 'critical') {
+    console.warn('[REPLY_JOB] ⚠️ CRITICAL: Account pool too small (<20 accounts)');
+    console.log('[REPLY_JOB] 💡 Waiting for account_discovery job to populate pool...');
+    return;
+  }
+  
+  // 🚀 USE SMART REPLY TARGETING - Find OPTIMAL opportunities (10k-500k accounts)
+  console.log('[REPLY_JOB] 🔍 Searching for reply opportunities...');
   const { getSmartReplyTargeting } = await import('../algorithms/smartReplyTargeting');
   const smartTargeting = getSmartReplyTargeting();
   const opportunities = await smartTargeting.findReplyOpportunities();
   
-  console.log(`[REPLY_JOB] 🎯 Found ${opportunities.length} smart targeting opportunities`);
+  console.log(`[REPLY_JOB] ✅ Found ${opportunities.length} reply opportunities`);
   
   // Take top 3-5 opportunities (AGGRESSIVE MODE - generate more replies)
   const replyCount = Math.min(5, opportunities.length);
@@ -185,21 +201,38 @@ async function generateRealReplies(): Promise<void> {
       
       // Queue for posting
       await queueReply(reply);
-      console.log(`[REPLY_JOB] ✅ Strategic reply queued to @${target.account.username} (${target.account.followers.toLocaleString()} followers)`);
-      console.log(`[REPLY_JOB] 📊 Estimated reach: ${target.estimated_reach.toLocaleString()} people`);
+      console.log(`[REPLY_JOB] ✅ Reply queued:`);
+      console.log(`  • Target: @${target.account.username}`);
+      console.log(`  • Followers: ${target.account.followers.toLocaleString()}`);
+      console.log(`  • Estimated reach: ${target.estimated_reach.toLocaleString()}`);
+      console.log(`  • Generator: ${replyGenerator}`);
+      console.log(`  • Content preview: "${strategicReply.content.substring(0, 60)}..."`);
       
     } catch (error: any) {
       replyLLMMetrics.calls_failed++;
       const errorType = categorizeError(error);
       replyLLMMetrics.failure_reasons[errorType] = (replyLLMMetrics.failure_reasons[errorType] || 0) + 1;
       
-      console.error(`[REPLY_JOB] ❌ Strategic reply generation failed: ${error.message}`);
+      console.error(`[REPLY_JOB] ❌ Reply generation failed: ${error.message}`);
       
       if (errorType === 'insufficient_quota') {
-        console.log('[REPLY_JOB] OpenAI insufficient_quota → not queueing');
+        console.log('[REPLY_JOB] ⚠️ OpenAI quota exhausted - skipping remaining replies');
+        break; // Exit loop if quota exhausted
       }
     }
   }
+  
+  // Final summary
+  const supabase = getSupabaseClient();
+  const { count } = await supabase
+    .from('content_metadata')
+    .select('*', { count: 'exact', head: true })
+    .eq('decision_type', 'reply')
+    .is('posted_at', null);
+  
+  console.log(`[REPLY_JOB] 📋 Reply Queue Status:`);
+  console.log(`  • Queued for posting: ${count || 0} replies`);
+  console.log(`  • Next posting cycle: ~15 minutes`);
 }
 
 /**

@@ -77,29 +77,39 @@ export class AIReplyDecisionEngine {
       }
       
       if (!accounts || accounts.length === 0) {
-        console.log('[AI_DECISION] ⚠️ No accounts discovered yet, triggering discovery...');
+        console.warn('[AI_DECISION] ❌ No accounts in discovered_accounts table!');
+        console.log('[AI_DECISION] 💡 Triggering emergency account discovery...');
         await aiAccountDiscovery.runDiscoveryLoop();
+        console.log('[AI_DECISION] ⏭️ Returning empty - next reply cycle will have accounts');
         return [];
       }
       
+      console.log(`[AI_DECISION] ✅ Found ${accounts.length} discovered accounts in database`);
+      
       // Step 3: Scrape real reply opportunities from top accounts
+      console.log(`[AI_DECISION] 🌐 Scraping top ${Math.min(5, accounts.length)} accounts for reply opportunities...`);
       const { realTwitterDiscovery } = await import('./realTwitterDiscovery');
       const allOpportunities: any[] = [];
       
       for (const account of accounts.slice(0, 5)) {
         try {
+          console.log(`[AI_DECISION]   → Scraping @${account.username} (${account.follower_count?.toLocaleString() || 'unknown'} followers)...`);
           const opps = await realTwitterDiscovery.findReplyOpportunitiesFromAccount(String(account.username));
           allOpportunities.push(...opps);
+          console.log(`[AI_DECISION]     ✓ Found ${opps.length} opportunities`);
           
           // Small delay between accounts
           await new Promise(resolve => setTimeout(resolve, 2000));
         } catch (error: any) {
-          console.error(`[AI_DECISION] ⚠️ Failed to scrape @${account.username}:`, error.message);
+          console.error(`[AI_DECISION]     ✗ Failed to scrape @${account.username}:`, error.message);
         }
       }
       
+      console.log(`[AI_DECISION] 📊 Total opportunities scraped: ${allOpportunities.length}`);
+      
       if (allOpportunities.length === 0) {
-        console.log('[AI_DECISION] ⚠️ No tweet opportunities found in current scan');
+        console.warn('[AI_DECISION] ⚠️ No reply opportunities found - tweets may be too old or engagement too low');
+        console.log('[AI_DECISION] 💡 Will try again next cycle');
         return [];
       }
       
@@ -113,7 +123,13 @@ export class AIReplyDecisionEngine {
       // Step 6: Return top N
       const topOpportunities = rankedOpportunities.slice(0, count);
       
-      console.log(`[AI_DECISION] ✅ Found ${topOpportunities.length} high-value opportunities`);
+      console.log(`[AI_DECISION] ✅ Returning top ${topOpportunities.length} opportunities:`);
+      for (const opp of topOpportunities.slice(0, 3)) {
+        console.log(`  • @${opp.target_username}: ${opp.tweet_content.substring(0, 50)}... (score: ${opp.opportunity_score})`);
+      }
+      if (topOpportunities.length > 3) {
+        console.log(`  • ... and ${topOpportunities.length - 3} more`);
+      }
       
       return topOpportunities;
       

@@ -19,11 +19,13 @@ export interface JobStats {
   postingRuns: number;
   outcomeRuns: number;
   learnRuns: number;
+  accountDiscoveryRuns?: number;
   lastPlanTime?: Date;
   lastReplyTime?: Date;
   lastPostingTime?: Date;
   lastOutcomeTime?: Date;
   lastLearnTime?: Date;
+  lastAccountDiscoveryTime?: Date;
   errors: number;
 }
 
@@ -241,6 +243,21 @@ export class JobManager {
       },
       60 * MINUTE,
       35 * MINUTE
+    );
+
+    // Account Discovery - every 6 hours, offset 25 min (CRITICAL for reply system)
+    this.scheduleStaggeredJob(
+      'account_discovery',
+      async () => {
+        await this.safeExecute('account_discovery', async () => {
+          const { runAccountDiscovery } = await import('./accountDiscoveryJob');
+          await runAccountDiscovery();
+          this.stats.accountDiscoveryRuns = (this.stats.accountDiscoveryRuns || 0) + 1;
+          this.stats.lastAccountDiscoveryTime = new Date();
+        });
+      },
+      6 * 60 * MINUTE, // Every 6 hours
+      25 * MINUTE // Start after 25 minutes
     );
 
     // Attribution - every 2 hours, offset 70 min
@@ -799,6 +816,15 @@ export class JobManager {
           await generateReplies();
           this.stats.replyRuns++;
           this.stats.lastReplyTime = new Date();
+        });
+        break;
+      
+      case 'account_discovery':
+        await this.safeExecute('account_discovery', async () => {
+          const { runAccountDiscovery } = await import('./accountDiscoveryJob');
+          await runAccountDiscovery();
+          this.stats.accountDiscoveryRuns = (this.stats.accountDiscoveryRuns || 0) + 1;
+          this.stats.lastAccountDiscoveryTime = new Date();
         });
         break;
       
