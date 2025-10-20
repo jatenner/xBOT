@@ -97,7 +97,7 @@ async function generateRealContent(): Promise<void> {
   const supabase = getSupabaseClient();
   const { data: recentContent } = await supabase
     .from('content_metadata')
-    .select('content, decision_id, generator_name')
+    .select('content, decision_id, generator_name, hook_type')
     .order('created_at', { ascending: false })
     .limit(20); // Check last 20 pieces of content
   
@@ -105,6 +105,57 @@ async function generateRealContent(): Promise<void> {
   const recentGenerators = (recentContent?.map(c => String(c.generator_name || '')).filter(Boolean) as string[]) || [];
   console.log(`[UNIFIED_PLAN] 📚 Loaded ${recentTexts.length} recent posts for duplicate checking`);
   console.log(`[UNIFIED_PLAN] 🎨 Recent generators: ${recentGenerators.slice(0, 5).join(', ')}`);
+  
+  // ═══════════════════════════════════════════════════════════
+  // 🎣 HOOK VARIETY ENFORCER - Track recent hook types
+  // ═══════════════════════════════════════════════════════════
+  const extractHookType = (content: string): string => {
+    const text = content.toLowerCase();
+    if (/\d+%/.test(text) || /\d+\s*(people|studies|research)/.test(text)) return 'data-led';
+    if (/myth|wrong|everyone thinks|contrary|actually/.test(text)) return 'myth-busting';
+    if (/how to|protocol|steps|here's/.test(text)) return 'protocol-led';
+    if (/discovered|found|learned|realized/.test(text)) return 'story-led';
+    if (/because|why|mechanism|works by|through/.test(text)) return 'mechanism-led';
+    if (/vs|versus|compared|better than/.test(text)) return 'comparison';
+    if (/unpopular|controversial|most don't/.test(text)) return 'contrarian';
+    return 'unknown';
+  };
+  
+  const recentHookTypes = recentContent?.map(c => {
+    const savedHook = String(c.hook_type || '');
+    if (savedHook && savedHook !== 'unknown') return savedHook;
+    return extractHookType(String(c.content || ''));
+  }).filter(Boolean) || [];
+  
+  const last3Hooks = recentHookTypes.slice(0, 3);
+  console.log(`[UNIFIED_PLAN] 🎣 Recent hooks: ${last3Hooks.join(', ')}`);
+  
+  // Enforce hook variety: avoid repeating last 3 hook types
+  const allHookTypes = ['data-led', 'myth-busting', 'protocol-led', 'story-led', 'mechanism-led', 'comparison', 'contrarian'];
+  const availableHooks = allHookTypes.filter(h => !last3Hooks.includes(h));
+  const preferredHook = availableHooks.length > 0 
+    ? availableHooks[Math.floor(Math.random() * availableHooks.length)]
+    : allHookTypes[Math.floor(Math.random() * allHookTypes.length)];
+  
+  console.log(`[UNIFIED_PLAN] 🎯 Preferred hook for this post: ${preferredHook}`);
+  
+  // ═══════════════════════════════════════════════════════════
+  // 📅 SERIES SCAFFOLDS - Day-based recurring series
+  // ═══════════════════════════════════════════════════════════
+  const dayOfWeek = new Date().getDay(); // 0=Sunday, 1=Monday, etc.
+  const series = [
+    { name: 'Mechanism Explained', focus: 'Explain HOW something works at cellular/hormonal level', dayEmoji: '🔬' }, // Sunday
+    { name: 'Protocol Lab', focus: 'Exact step-by-step protocol with dose/time/frequency', dayEmoji: '⚗️' }, // Monday
+    { name: 'Myth Surgery', focus: 'Bust common health belief with research', dayEmoji: '🔪' }, // Tuesday
+    { name: 'Data Deep Dive', focus: 'Present surprising statistics with source', dayEmoji: '📊' }, // Wednesday
+    { name: 'Optimization Edge', focus: 'Go from good to elite performance', dayEmoji: '⚡' }, // Thursday
+    { name: 'Failure Mode Friday', focus: 'Explain when protocols fail and exceptions', dayEmoji: '⚠️' }, // Friday
+    { name: 'Comparative Analysis', focus: 'Compare 2 approaches or interventions', dayEmoji: '⚖️' } // Saturday
+  ];
+  
+  const todaySeries = series[dayOfWeek % series.length];
+  console.log(`[UNIFIED_PLAN] 📅 Today's series: ${todaySeries.dayEmoji} ${todaySeries.name}`);
+  console.log(`[UNIFIED_PLAN] 🎯 Focus: ${todaySeries.focus}`);
   
   const decisions = [];
   const numToGenerate = 1; // 1 post per cycle (30min intervals = 2 posts/hour)
@@ -124,7 +175,9 @@ async function generateRealContent(): Promise<void> {
       const generated = await engine.generateContent({
         format: Math.random() < 0.3 ? 'thread' : 'single', // 30% threads, 70% singles
         recentGenerators: recentGenerators.slice(0, 3), // Avoid last 3 generators
-        recentContent: recentTexts.slice(0, 10) // 🆕 Pass last 10 posts for AI to avoid repetition
+        recentContent: recentTexts.slice(0, 10), // 🆕 Pass last 10 posts for AI to avoid repetition
+        preferredHookType: preferredHook, // 🎣 Enforce hook variety
+        seriesContext: todaySeries // 📅 Provide series context
       });
       
       // ═══════════════════════════════════════════════════════════
@@ -170,6 +223,9 @@ async function generateRealContent(): Promise<void> {
       
       const decisionType: 'single' | 'thread' = (generated.threadParts && generated.threadParts.length > 1) ? 'thread' : 'single';
       
+      // Extract actual hook type from generated content
+      const actualHookType = extractHookType(generated.content);
+      
       const decision = {
         decision_id,
         decision_type: decisionType,
@@ -190,6 +246,7 @@ async function generateRealContent(): Promise<void> {
         // Metadata
         topic_cluster: 'health',
         generation_source: 'real', // Fixed: Database expects 'real' or 'synthetic', not 'unified_engine'
+        hook_type: actualHookType, // 🎣 Track hook type for variety enforcement
         
         // Learning tracking
         experiment_arm: generated.metadata.experiment_arm,

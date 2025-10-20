@@ -19,7 +19,7 @@ export async function metricsScraperJob(): Promise<void> {
     const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
     const { data: recentPosts, error: recentError } = await supabase
       .from('content_metadata')
-      .select('id, tweet_id, created_at')
+      .select('decision_id, tweet_id, created_at')  // 🔥 FIX: Use decision_id (UUID), not id (integer)!
       .eq('status', 'posted')
       .not('tweet_id', 'is', null)
       .gte('created_at', threeDaysAgo.toISOString())
@@ -30,7 +30,7 @@ export async function metricsScraperJob(): Promise<void> {
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const { data: historicalPosts, error: historicalError } = await supabase
       .from('content_metadata')
-      .select('id, tweet_id, created_at')
+      .select('decision_id, tweet_id, created_at')  // 🔥 FIX: Use decision_id (UUID), not id (integer)!
       .eq('status', 'posted')
       .not('tweet_id', 'is', null)
       .lt('created_at', threeDaysAgo.toISOString())
@@ -70,7 +70,7 @@ export async function metricsScraperJob(): Promise<void> {
         const { data: lastMetrics } = await supabase
           .from('outcomes')
           .select('collected_at')
-          .eq('decision_id', post.id)
+          .eq('decision_id', post.decision_id)  // 🔥 FIX: Use decision_id (UUID)
           .order('collected_at', { ascending: false })
           .limit(1)
           .single();
@@ -123,7 +123,7 @@ export async function metricsScraperJob(): Promise<void> {
           
           // Update outcomes table (for backward compatibility with existing systems)
           const { data: outcomeData, error: outcomeError } = await supabase.from('outcomes').upsert({
-            decision_id: post.id,
+            decision_id: post.decision_id,  // 🔥 FIX: Use decision_id (UUID), not integer id
             tweet_id: post.tweet_id,
             likes: metrics.likes ?? null,
             retweets: metrics.retweets ?? null,
@@ -185,7 +185,7 @@ export async function metricsScraperJob(): Promise<void> {
             const { data: metadata } = await supabase
               .from('content_metadata')
               .select('generator_name')
-              .eq('id', post.id)
+              .eq('decision_id', post.decision_id)  // 🔥 FIX: Use decision_id (UUID)
               .single();
             
             if (metadata && metadata.generator_name && typeof metadata.generator_name === 'string') {
@@ -248,7 +248,7 @@ export async function enhancedMetricsScraperJob(): Promise<void> {
       
       const { data: posts } = await supabase
         .from('content_metadata')
-        .select('id, tweet_id, created_at')
+        .select('decision_id, tweet_id, created_at')  // 🔥 FIX: Use decision_id (UUID), not id
         .eq('status', 'posted')
         .not('tweet_id', 'is', null)
         .gte('created_at', windowStart.toISOString())
@@ -267,7 +267,7 @@ export async function enhancedMetricsScraperJob(): Promise<void> {
           const { data: existing } = await supabase
             .from('post_velocity_tracking')
             .select('id')
-            .eq('post_id', post.id)
+            .eq('post_id', post.decision_id)  // 🔥 FIX: Use decision_id (UUID), not integer id
             .eq('hours_after_post', window.hours)
             .single();
           
@@ -295,7 +295,7 @@ export async function enhancedMetricsScraperJob(): Promise<void> {
             
             // Store velocity data
             await supabase.from('post_velocity_tracking').insert({
-              post_id: post.id,
+              post_id: post.decision_id,  // 🔥 FIX: Use decision_id (UUID), not integer id
               tweet_id: post.tweet_id,
               check_time: now.toISOString(),
               hours_after_post: window.hours,

@@ -56,6 +56,8 @@ export interface ContentRequest {
   useMultiOption?: boolean; // Enable multi-option generation with AI judge (NEW)
   recentGenerators?: string[]; // For rotation avoidance (DATA COLLECTION MODE)
   recentContent?: string[]; // 🆕 Recent posts to avoid topic repetition
+  preferredHookType?: string; // 🎣 Hook variety enforcer
+  seriesContext?: { name: string; focus: string; dayEmoji: string }; // 📅 Series scaffolds
 }
 
 export interface GeneratedContent {
