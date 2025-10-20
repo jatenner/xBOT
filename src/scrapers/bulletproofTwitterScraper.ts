@@ -356,7 +356,88 @@ export class BulletproofTwitterScraper {
    * PHASE 3 FIX: Intelligent extraction using aria-labels + multiple strategies
    * PROPER FIX: Find the CORRECT article (not just the first one on the page)
    */
+  /**
+   * 📊 Extract detailed metrics from analytics page
+   * Analytics page shows: Impressions, Engagements, Detail expands, Profile visits
+   */
+  private async extractAnalyticsMetrics(page: Page): Promise<Partial<ScrapedMetrics>> {
+    console.log(`    📊 ANALYTICS: Extracting metrics from analytics page...`);
+    
+    const metrics: Partial<ScrapedMetrics> = {
+      _selectors_used: ['analytics_page']
+    };
+    
+    try {
+      // Wait for analytics modal/content to load
+      await page.waitForTimeout(2000);
+      
+      // Extract text content from page
+      const analyticsText = await page.evaluate(() => {
+        return document.body.textContent || '';
+      });
+      
+      console.log(`    📊 ANALYTICS: Page loaded, extracting numbers...`);
+      
+      // Extract Impressions (labeled as "Impressions" on analytics page)
+      const impressionsMatch = analyticsText.match(/Impressions[^\d]*(\d+(?:,\d+)*)/i);
+      if (impressionsMatch) {
+        metrics.views = parseInt(impressionsMatch[1].replace(/,/g, ''));
+        console.log(`    ✅ IMPRESSIONS: ${metrics.views}`);
+      }
+      
+      // Extract Engagements (labeled as "Engagements" on analytics page)
+      const engagementsMatch = analyticsText.match(/Engagements[^\d]*(\d+(?:,\d+)*)/i);
+      if (engagementsMatch) {
+        const engagements = parseInt(engagementsMatch[1].replace(/,/g, ''));
+        console.log(`    ✅ ENGAGEMENTS: ${engagements}`);
+        // Store in a new field or use as validation
+      }
+      
+      // Extract Detail expands
+      const detailExpandsMatch = analyticsText.match(/Detail expands[^\d]*(\d+(?:,\d+)*)/i);
+      if (detailExpandsMatch) {
+        const detailExpands = parseInt(detailExpandsMatch[1].replace(/,/g, ''));
+        console.log(`    ✅ DETAIL EXPANDS: ${detailExpands}`);
+      }
+      
+      // Extract Profile visits
+      const profileVisitsMatch = analyticsText.match(/Profile visits[^\d]*(\d+(?:,\d+)*)/i);
+      if (profileVisitsMatch) {
+        const profileVisits = parseInt(profileVisitsMatch[1].replace(/,/g, ''));
+        console.log(`    ✅ PROFILE VISITS: ${profileVisits}`);
+      }
+      
+      // Also extract basic metrics (likes, retweets, replies) from the tweet shown on analytics page
+      const likesMatch = analyticsText.match(/(\d+(?:,\d+)*)\s*(?:Like|like)/);
+      if (likesMatch) {
+        metrics.likes = parseInt(likesMatch[1].replace(/,/g, ''));
+      }
+      
+      const retweetsMatch = analyticsText.match(/(\d+(?:,\d+)*)\s*(?:Retweet|retweet)/);
+      if (retweetsMatch) {
+        metrics.retweets = parseInt(retweetsMatch[1].replace(/,/g, ''));
+      }
+      
+      const repliesMatch = analyticsText.match(/(\d+(?:,\d+)*)\s*(?:Reply|reply|replies)/);
+      if (repliesMatch) {
+        metrics.replies = parseInt(repliesMatch[1].replace(/,/g, ''));
+      }
+      
+    } catch (error: any) {
+      console.warn(`    ⚠️ ANALYTICS: Extraction error: ${error.message}`);
+    }
+    
+    return metrics;
+  }
+
   private async extractMetricsWithFallbacks(page: Page, tweetId?: string): Promise<Partial<ScrapedMetrics>> {
+    // 📊 Check if we're on the analytics page
+    const currentUrl = page.url();
+    if (currentUrl.includes('/analytics')) {
+      console.log(`    📊 ANALYTICS: Detected analytics page, using analytics extractor`);
+      return await this.extractAnalyticsMetrics(page);
+    }
+    
     const results: Partial<ScrapedMetrics> = {
       _selectors_used: []
     };
@@ -848,8 +929,14 @@ export class BulletproofTwitterScraper {
     try {
       // Use proper x.com URL with YOUR account username
       const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
-      const tweetUrl = `https://x.com/${username}/status/${tweetId}`;
-      console.log(`    🔄 RELOAD: Navigating to ${tweetUrl}`);
+      
+      // 📊 Navigate to ANALYTICS page for detailed metrics (impressions, engagements, profile visits)
+      const useAnalytics = process.env.USE_ANALYTICS_PAGE !== 'false'; // Default to true
+      const tweetUrl = useAnalytics 
+        ? `https://x.com/${username}/status/${tweetId}/analytics`
+        : `https://x.com/${username}/status/${tweetId}`;
+      
+      console.log(`    🔄 RELOAD: Navigating to ${tweetUrl}${useAnalytics ? ' (analytics)' : ''}`);
       
       await page.goto(tweetUrl, {
         waitUntil: 'domcontentloaded',
