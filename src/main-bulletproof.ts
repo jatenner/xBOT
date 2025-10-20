@@ -252,18 +252,55 @@ async function boot() {
       await jobManager.startJobs();
       console.log('✅ JOB_MANAGER: All timers started successfully');
       
-      // 🔥 CRITICAL FIX: Run plan job IMMEDIATELY on startup, don't wait for first interval
-      // This ensures content is generated right away instead of waiting 15+ minutes
+      // 🔥 CRITICAL: Run plan job IMMEDIATELY with retry logic
       console.log('🚀 STARTUP: Running immediate plan job to populate queue...');
-      await jobManager.runJobNow('plan');
-      console.log('✅ STARTUP: Initial plan job completed');
+      let startupPlanSuccess = false;
+      
+      for (let i = 1; i <= 3; i++) {
+        try {
+          await jobManager.runJobNow('plan');
+          console.log('✅ STARTUP: Initial plan job completed');
+          startupPlanSuccess = true;
+          break;
+        } catch (error) {
+          console.error(`❌ STARTUP: Plan job attempt ${i}/3 failed:`, error.message);
+          if (i < 3) {
+            const delay = i * 2000; // 2s, 4s
+            console.log(`🔄 Retrying in ${delay/1000}s...`);
+            await new Promise(r => setTimeout(r, delay));
+          }
+        }
+      }
+      
+      if (!startupPlanSuccess) {
+        console.error(`🚨 CRITICAL: Startup plan job failed all 3 retries!`);
+        console.error(`⚠️ System will rely on scheduled plan jobs (every 2 hours)`);
+      }
+      
+      // Schedule health check every 30 minutes
+      console.log('🏥 HEALTH_CHECK: Starting content pipeline health monitor (30min intervals)');
+      setInterval(() => {
+        jobManager.checkContentPipelineHealth().catch(err => {
+          console.error('❌ HEALTH_CHECK: Health check failed:', err.message);
+        });
+      }, 30 * 60 * 1000); // 30 minutes
+      
+      // Run first health check after 10 minutes (give system time to settle)
+      setTimeout(() => {
+        console.log('🏥 HEALTH_CHECK: Running first health check...');
+        jobManager.checkContentPipelineHealth().catch(err => {
+          console.error('❌ HEALTH_CHECK: First health check failed:', err.message);
+        });
+      }, 10 * 60 * 1000);
+      
     } catch (error) {
-      // 🚨 CRITICAL ERROR: Job manager MUST start successfully
+      // 🚨 FATAL ERROR: Job manager startup itself failed
       console.error(`❌ FATAL: JOB_MANAGER failed to start: ${error.message}`);
       console.error(`Stack: ${error.stack}`);
-      console.error(`❌ System cannot generate content without job manager!`);
-      // Don't exit - but make the error VERY visible in logs
+      console.error(`❌ System cannot function without job manager!`);
       console.error(`❌ ❌ ❌ JOB MANAGER STARTUP FAILED ❌ ❌ ❌`);
+      // Exit with error code to force Railway restart
+      process.exit(1);
     }
   })();
   
