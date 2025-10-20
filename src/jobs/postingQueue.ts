@@ -536,7 +536,17 @@ async function postContent(decision: QueuedDecision): Promise<string> {
         const result = await BulletproofThreadComposer.post(thread_parts);
         
         if (result.success) {
-          const tweetId = result.tweetIds?.[0] || result.rootTweetUrl;
+          let tweetId = result.tweetIds?.[0] || result.rootTweetUrl;
+          
+          // 🔥 FIX: Extract ID from URL if needed (thread composer returns full URL)
+          if (tweetId && tweetId.includes('/status/')) {
+            const match = tweetId.match(/\/status\/(\d+)/);
+            if (match) {
+              tweetId = match[1];
+              console.log(`[POSTING_QUEUE] 📎 Extracted tweet ID from URL: ${tweetId}`);
+            }
+          }
+          
           if (!tweetId) {
             throw new Error('Thread posting succeeded but no tweet ID was extracted - cannot track metrics');
           }
