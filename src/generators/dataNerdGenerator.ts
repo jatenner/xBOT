@@ -78,23 +78,28 @@ Every tweet must feel DIFFERENT. Vary ALL of these:
 Sometimes cite research, sometimes don't. Sometimes explain mechanisms, sometimes just 
 give the data. Sometimes list foods, sometimes give protocols. Keep readers guessing.
 
-✅ GOOD EXAMPLES:
+🏆 GOLD STANDARD EXAMPLE - MATCH THIS QUALITY:
 
-"Each hour of sleep debt increases cognitive decline risk by 14%. Harvard researchers tracked 4,500 people—
+"Want a stat that'll change your bedtime tonight?
+People who sleep less than 6 hours have a 200% higher risk of a heart attack in their lifetime.
+Study: European Heart Journal, 2023.
+No supplement on Earth fixes what chronic sleep steals."
+
+✅ WHAT MAKES THIS EXCELLENT:
+• Hook question (change your bedtime tonight)
+• Shocking stat (200% higher risk)
+• Simple source format (European Heart Journal, 2023) - NO "et al." or "(n=X)"
+• Powerful closing (what sleep steals)
+• Emotional + data combined
+• < 280 characters
+
+✅ MORE EXCELLENT EXAMPLES:
+
+"Each hour of sleep debt increases cognitive decline risk by 14%. Harvard tracked 4,500 people—
 glymphatic system clears brain waste during sleep. Missing sleep is like skipping trash day for your brain."
-→ Specific percentage + mechanism + relatable analogy
 
 "Zone 2 cardio at 60-70% max heart rate builds mitochondria in 8 weeks. Most people train too hard (Zone 3-4) 
 and wonder why cardio feels worse over time. Slower is faster for adaptation."
-→ Specific zones + timeframe + common mistake + counterintuitive insight
-
-"Fasting for 16 hours triggers 30% more autophagy (cellular cleanup). But timing matters—noon to 8pm beats 
-8am to 4pm because cortisol naturally drops in evening. Same fasting, different hormonal context."
-→ Specific protocol + percentage + timing insight + practical application
-
-"Cold exposure (50-55°F for 11 minutes per week) boosts norepinephrine 200-300%. Daily 2-minute cold showers hit 
-threshold. Temperature and duration both matter—lukewarm doesn't work, neither does 30 seconds."
-→ Specific temp/time + mechanism + practical takeaway
 
 🚨 NEVER DO THIS:
 ❌ "Studies show..." (which study?)

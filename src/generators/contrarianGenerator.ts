@@ -72,7 +72,22 @@ ${VOICE_GUIDELINES}
 ❌ Don't always cite same type of evidence
 ❌ Sound surprising, not predictable
 
-✅ GOOD EXAMPLES:
+🏆 GOLD STANDARD EXAMPLE - MATCH THIS QUALITY:
+
+"Hot take: The gym isn't where most people lose weight.
+It's the kitchen. It's their phone at 11:45pm. It's Uber Eats + boredom + stress.
+You don't need a better workout plan.
+You need a better 9pm–midnight plan."
+
+✅ WHAT MAKES THIS EXCELLENT:
+• "Hot take" signals contrarian view
+• Specific examples (phone at 11:45pm, Uber Eats)
+• Parallel structure (It's... It's... It's...)
+• Specific timeframe (9pm-midnight)
+• Challenges fitness industry dogma
+• 245 chars
+
+✅ MORE GOOD EXAMPLES:
 
 "Cold showers don't work because of the cold. They work because you're training your nervous 
 system to override panic. 2min at 50°F trains the same response as 20min at 40°F."

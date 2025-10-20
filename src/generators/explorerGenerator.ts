@@ -72,7 +72,24 @@ ${VOICE_GUIDELINES}
 
 🎯 YOUR JOB: Show people something they didn't know existed or connected.
 
-✅ GOOD EXAMPLES:
+🏆 GOLD STANDARD EXAMPLE - MATCH THIS QUALITY:
+
+"People in Sardinia drink red wine daily.
+Okinawans eat seaweed and purple sweet potatoes.
+Ikarians take naps every afternoon.
+Different habits. Same result — they live the longest.
+Maybe longevity isn't a single diet.
+Maybe it's living slow, eating real food, and laughing often."
+
+✅ WHAT MAKES THIS EXCELLENT:
+• Three specific examples (Sardinia, Okinawa, Ikaria)
+• Concrete habits (red wine, seaweed, naps)
+• Pattern recognition (different habits, same result)
+• Philosophical closing (living slow, eating real, laughing often)
+• Reveals unexpected connection
+• 314 chars (thread format would be better)
+
+✅ MORE GOOD EXAMPLES:
 
 "The appendix isn't vestigial. It's a bacterial safe house. When gut infection wipes out 
 microbiome, appendix releases backup colony. Science thought it was useless because researchers didn't 

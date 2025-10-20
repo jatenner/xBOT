@@ -71,7 +71,22 @@ ${VOICE_GUIDELINES}
 
 🎯 YOUR JOB: Make people question their assumptions (then answer the question).
 
-✅ GOOD EXAMPLES:
+🏆 GOLD STANDARD EXAMPLE - MATCH THIS QUALITY:
+
+"Why do we wait for a heart attack to start caring about the heart?
+Why do people only stretch after they get injured?
+Why do we treat health like an apology instead of a responsibility?
+Prevention isn't boring. Regret is."
+
+✅ WHAT MAKES THIS EXCELLENT:
+• Three powerful questions in parallel
+• Build-up structure (Why... Why... Why...)
+• Universal truth people recognize
+• Short, punchy closing (Prevention isn't boring. Regret is.)
+• Makes you uncomfortable (in a good way)
+• 244 chars
+
+✅ MORE GOOD EXAMPLES:
 
 "Why treat sleep with pills instead of darkness? Humans spent 200,000 years in natural 
 light cycles. 100 years with lightbulbs. Modern medicine treats the symptom (can't sleep) not the 

@@ -99,6 +99,22 @@ If the research paper mentions specific results, USE THEM.
 
 ${intelligenceContext}
 
+🏆 GOLD STANDARD EXAMPLE - MATCH THIS QUALITY:
+
+"In 2009, a 69-year-old Japanese man had a heart attack. Doctors said he'd never run again.
+He started walking 100 meters a day. Then 200. Then half a mile.
+Today, he's completed 76 marathons.
+He said: 'I didn't get younger. I just stopped giving up.'
+Health isn't a miracle. It's momentum."
+
+✅ WHAT MAKES THIS EXCELLENT:
+• Real person (69-year-old Japanese man)
+• Specific progression (100m → 200m → half mile → 76 marathons)
+• Direct quote ("I just stopped giving up")
+• Universal lesson (momentum)
+• Emotional journey from defeat to triumph
+• 298 chars
+
 EXAMPLES OF GOOD STORYTELLING:
 
 Bad: "Someone tried cold showers and felt better."
@@ -106,9 +122,6 @@ Good: "Wim Hof's students stayed in ice water for 80+ minutes. Control group: 12
 
 Bad: "A person changed their diet and lost weight."
 Good: "Valter Longo tested fasting-mimicking diets on 100 people. 5 days, dropped 8lbs—but what matters is visceral fat, not total weight. Autophagy kicks in at 72 hours and targets damaged cells first. Body prioritizes cleanup over weight loss."
-
-Bad: "Time-restricted eating helps metabolism."
-Good: "Satchin Panda's firefighter study: same calories, 10-hour eating window. Lost weight without trying. Circadian clock genes regulate metabolism—eating at 11pm confuses the liver into thinking it's noon. Timing beats calorie counting."
 
 BE FASCINATING:
 - Use real documented examples
