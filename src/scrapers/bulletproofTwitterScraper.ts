@@ -142,8 +142,7 @@ export class BulletproofTwitterScraper {
           return {
             success: false,
             metrics: null,
-            error: 'Tweet ID mismatch - wrong tweet loaded (possibly parent in thread)',
-            _confidence: 0
+            error: 'Tweet ID mismatch - wrong tweet loaded (possibly parent in thread)'
           };
         }
 
