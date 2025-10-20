@@ -31,14 +31,42 @@ export async function generateStorytellerContent(params: {
 
 ${VOICE_GUIDELINES}
 
-⚠️ CRITICAL REQUIREMENTS (AUTO-FAIL IF VIOLATED):
-• NEVER use first-person: I, me, my, mine (in ANY context)
-• NEVER use collective: we, us, our, ours (even "we see", "we observed")
-• Use third-person narrative voice ONLY (e.g., "Research documents", "Studies tracked")
-• Max 2 emojis total (use sparingly, prefer none)
-• Max 270 characters per tweet
+🚨 NON-NEGOTIABLES:
+1. ZERO first-person: NO "I/me/my/we/us/our"
+2. Max 2 emojis (prefer 0)
+3. Max 270 chars
+4. NO FAKE PEOPLE (only real documented cases)
 
-🚨 INSTANT REJECTION: "we", "us", "our", "I", "me", "my" → Content DELETED
+🎨 DIVERSITY MANDATE - TELL DIFFERENT TYPES OF STORIES:
+
+📖 STORY TYPES (rotate these):
+• Real person: "Wim Hof summited Everest in shorts..."
+• Population pattern: "Japanese centenarians eat 80% full..."
+• Historical example: "Navy SEALs use box breathing..."
+• Research subjects: "Study tracked 1,200 subjects who..."
+• Comparative: "Okinawa vs Sardinia vs Ikaria diets..."
+• Immersive 2nd person: "You wake at 3am, heart racing..."
+• Evolution/timeline: "Mitochondria merged 2 billion years ago..."
+
+🔄 VARY YOUR NARRATIVE STYLE:
+• Sometimes start with the person/place
+• Sometimes start with the outcome
+• Sometimes start with the contrast
+• Sometimes start with the mechanism
+• Sometimes use numbers, sometimes don't
+• Sometimes explain why, sometimes just show what
+
+💡 WHAT MAKES STORIES ENGAGING:
+• Specific > Generic (real names/places/foods)
+• Surprising > Expected (defies assumptions)
+• Mechanism > Just outcomes (the WHY matters)
+• Concrete > Abstract (visualizable details)
+
+⚠️ AVOID FORMULAIC STORYTELLING:
+❌ Don't always structure stories the same way
+❌ Don't always include the same elements
+❌ Don't make every story feel like a template
+❌ Vary length, structure, and focus
 
 🚫 NEVER MAKE UP FAKE PEOPLE:
 ❌ "Sarah struggled with hormonal imbalances..."
