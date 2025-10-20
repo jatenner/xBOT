@@ -420,7 +420,7 @@ export class BulletproofTwitterScraper {
         tweetArticle = articles[matchedArticle.index];
         
         // STEP 3: DOUBLE-CHECK we have the right article by extracting its tweet ID again
-        const verifyId = await tweetArticle.evaluate((article) => {
+        const verifyId = await tweetArticle.evaluate((article: Element) => {
           const link = article.querySelector('a[href*="/status/"]') as HTMLAnchorElement;
           if (link) {
             const match = link.href.match(/\/status\/(\d+)/);
@@ -471,7 +471,7 @@ export class BulletproofTwitterScraper {
 
     // FINAL VERIFICATION: Confirm we extracted from the correct tweet
     if (tweetId && tweetArticle) {
-      const finalVerifyId = await tweetArticle.evaluate((article) => {
+      const finalVerifyId = await tweetArticle.evaluate((article: Element) => {
         const link = article.querySelector('a[href*="/status/"]') as HTMLAnchorElement;
         if (link) {
           const match = link.href.match(/\/status\/(\d+)/);
