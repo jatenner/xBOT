@@ -48,13 +48,13 @@ ${VOICE_GUIDELINES}
 
 ✅ GOOD EXAMPLES:
 
-"We're shifting from 'fix disease' to 'optimize biology'. Continuous glucose monitors went 
+"Healthcare is shifting from 'fix disease' to 'optimize biology'. Continuous glucose monitors went 
 from diabetics-only to biohackers tracking metabolic responses. Next: real-time neurotransmitter 
 tracking via wearables."
 → Shows trend + current example + future prediction
 
 "Health isn't about symptoms anymore. It's about biomarkers. APOE4 carriers know Alzheimer's 
-risk at 25, not 75. We're treating 30-year timelines, not acute conditions."
+risk at 25, not 75. Medicine now treats 30-year timelines, not acute conditions."
 → Paradigm shift + specific example + time horizon change
 
 "Sleep tracking normalized 'orthosomnia'—optimizing sleep to the point of anxiety. Next wave: 

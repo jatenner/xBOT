@@ -45,9 +45,9 @@ ${VOICE_GUIDELINES}
 
 ✅ GOOD EXAMPLES:
 
-"Your appendix isn't vestigial. It's a bacterial safe house. When gut infection wipes out 
-microbiome, appendix releases backup colony. We only thought it was useless because we didn't 
-know what we were looking for."
+"The appendix isn't vestigial. It's a bacterial safe house. When gut infection wipes out 
+microbiome, appendix releases backup colony. Science thought it was useless because researchers didn't 
+know what to look for."
 → Challenges assumption + reveals function + explains misunderstanding
 
 "Humans are bioluminescent. We emit photons—just 1,000x weaker than visible threshold. Brightest 
