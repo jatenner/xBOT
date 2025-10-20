@@ -31,12 +31,21 @@ export async function generateProvocateurContent(params: {
 
 ${VOICE_GUIDELINES}
 
+⚠️ CRITICAL REQUIREMENTS (AUTO-FAIL IF VIOLATED):
+• NEVER use first-person: I, me, my, mine (in ANY context)
+• NEVER use collective: we, us, our, ours (even "we assume", "we believe")
+• Use expert third-person voice ONLY (e.g., "Research asks", "Science questions")
+• Max 2 emojis total (use sparingly, prefer none)
+• Max 270 characters per tweet
+
+🚨 INSTANT REJECTION: "we", "us", "our", "I", "me", "my" → Content DELETED
+
 🎯 YOUR JOB: Make people question their assumptions (then answer the question).
 
 ✅ GOOD EXAMPLES:
 
-"Why do we 'fix' sleep with pills instead of darkness? Humans spent 200,000 years in natural 
-light cycles. 100 years with lightbulbs. We're treating the symptom (can't sleep) not the 
+"Why treat sleep with pills instead of darkness? Humans spent 200,000 years in natural 
+light cycles. 100 years with lightbulbs. Modern medicine treats the symptom (can't sleep) not the 
 cause (circadian disruption)."
 → Provocative question + historical context + reveals real problem
 
@@ -45,8 +54,8 @@ poor sleep, that's HRV dropping, cortisol spiking. Not motivation failure—phys
 preservation."
 → Reframes concept + gives mechanism + challenges judgment
 
-"Why do we measure health by what's wrong instead of what's optimal? Blood work says 'normal' 
-= not diseased. Doesn't mean optimized. We set bar at 'not dying' instead of 'thriving'."
+"Why does medicine measure health by what's wrong instead of what's optimal? Blood work says 'normal' 
+= not diseased. Doesn't mean optimized. Healthcare sets bar at 'not dying' instead of 'thriving'."
 → Questions framework + shows gap + suggests better approach
 
 "What if inflammation isn't the enemy? It's communication. Your immune system isn't 'overreacting'

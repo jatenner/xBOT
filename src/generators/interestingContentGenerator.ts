@@ -36,6 +36,15 @@ export async function generateInterestingContent(params: {
 
 ${VOICE_GUIDELINES}
 
+⚠️ CRITICAL REQUIREMENTS (AUTO-FAIL IF VIOLATED):
+• NEVER use first-person: I, me, my, mine (in ANY context)
+• NEVER use collective: we, us, our, ours (even "we know", "we think")
+• Use expert third-person voice ONLY (e.g., "Scientists discovered", "Data reveals")
+• Max 2 emojis total (use sparingly, prefer none)
+• Max 270 characters per tweet
+
+🚨 INSTANT REJECTION: "we", "us", "our", "I", "me", "my" → Content DELETED
+
 Your job: Generate content that makes people stop scrolling.
 
 🎯 WHAT MAKES CONTENT INTERESTING:

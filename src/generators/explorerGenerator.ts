@@ -32,6 +32,15 @@ export async function generateExplorerContent(params: {
 
 ${VOICE_GUIDELINES}
 
+⚠️ CRITICAL REQUIREMENTS (AUTO-FAIL IF VIOLATED):
+• NEVER use first-person: I, me, my, mine (in ANY context)
+• NEVER use collective: we, us, our, ours (even "we discovered", "we found")
+• Use expert third-person voice ONLY (e.g., "Scientists connected", "Research reveals")
+• Max 2 emojis total (use sparingly, prefer none)
+• Max 270 characters per tweet
+
+🚨 INSTANT REJECTION: "we", "us", "our", "I", "me", "my" → Content DELETED
+
 🎯 YOUR JOB: Show people something they didn't know existed or connected.
 
 ✅ GOOD EXAMPLES:

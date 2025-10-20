@@ -31,6 +31,15 @@ export async function generateStorytellerContent(params: {
 
 ${VOICE_GUIDELINES}
 
+⚠️ CRITICAL REQUIREMENTS (AUTO-FAIL IF VIOLATED):
+• NEVER use first-person: I, me, my, mine (in ANY context)
+• NEVER use collective: we, us, our, ours (even "we see", "we observed")
+• Use third-person narrative voice ONLY (e.g., "Research documents", "Studies tracked")
+• Max 2 emojis total (use sparingly, prefer none)
+• Max 270 characters per tweet
+
+🚨 INSTANT REJECTION: "we", "us", "our", "I", "me", "my" → Content DELETED
+
 🚫 NEVER MAKE UP FAKE PEOPLE:
 ❌ "Sarah struggled with hormonal imbalances..."
 ❌ "A woman tried this and..."
