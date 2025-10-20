@@ -28,6 +28,17 @@ ${intelligence.perspectives.slice(0, 3).map(p => `• ${p.angle} (uniqueness: ${
 • Gaps: ${intelligence.context.gaps.join(', ')}
 • Controversies: ${intelligence.context.controversies.join(', ')}
 ${intelligence.context.trending_angle ? `• Trending Angle: ${intelligence.context.trending_angle}` : ''}
+${intelligence.recentPosts && intelligence.recentPosts.length > 0 ? `
+
+🚫 AVOID REPETITION - Recently posted (last 10 posts):
+${intelligence.recentPosts.slice(0, 5).map((post, i) => `${i + 1}. "${post.substring(0, 70)}..."`).join('\n')}
+
+⚠️ YOUR POST MUST BE UNIQUE:
+- Cover a DIFFERENT topic/subject than these recent posts
+- Use a DIFFERENT angle/perspective  
+- Provide insights NOT covered in recent posts
+- Make it feel FRESH and NOVEL compared to what was just posted
+- If same general topic area, find completely new angle/mechanism/application` : ''}
 
 ⚠️ REMINDER: Use this intelligence BUT maintain third-person expert voice.
 NO "we/us/our/I/me/my" - write as objective expert analysis.

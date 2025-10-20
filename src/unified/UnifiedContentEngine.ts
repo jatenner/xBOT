@@ -55,6 +55,7 @@ export interface ContentRequest {
   enableEnrichment?: boolean; // Enable contrast injection (disabled by default)
   useMultiOption?: boolean; // Enable multi-option generation with AI judge (NEW)
   recentGenerators?: string[]; // For rotation avoidance (DATA COLLECTION MODE)
+  recentContent?: string[]; // 🆕 Recent posts to avoid topic repetition
 }
 
 export interface GeneratedContent {
@@ -157,6 +158,12 @@ export class UnifiedContentEngine {
           
           const initialTopic = request.topic || 'health and wellness';
           intelligence = await this.preGenIntelligence.analyzeTopicIntelligence(initialTopic);
+          
+          // 🆕 ADD RECENT CONTENT CONTEXT to intelligence package
+          if (request.recentContent && request.recentContent.length > 0) {
+            intelligence.recentPosts = request.recentContent.slice(0, 10); // Last 10 posts
+            console.log(`  📚 Loaded ${intelligence.recentPosts.length} recent posts for diversity`);
+          }
           
           console.log(`  ✓ Research: ${intelligence.research.surprise_factor}`);
           console.log(`  ✓ Perspectives: ${intelligence.perspectives.length} unique angles found`);

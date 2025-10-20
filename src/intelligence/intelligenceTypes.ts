@@ -32,6 +32,7 @@ export interface IntelligencePackage {
   context: ContextInsights;
   perspectives: Perspective[];
   generated_at: Date;
+  recentPosts?: string[]; // 🆕 Recent posts to avoid repetition
 }
 
 export interface IntelligenceScore {
