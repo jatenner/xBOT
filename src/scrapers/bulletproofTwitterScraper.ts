@@ -148,7 +148,8 @@ export class BulletproofTwitterScraper {
         }
 
         // Step 2: Extract metrics using multiple selectors
-        const metrics = await this.extractMetricsWithFallbacks(page);
+        // PROPER FIX: Pass tweet ID so extraction targets the CORRECT article
+        const metrics = await this.extractMetricsWithFallbacks(page, tweetId);
 
         // Step 3: Validate extracted metrics
         if (this.areMetricsValid(metrics)) {
@@ -231,27 +232,44 @@ export class BulletproofTwitterScraper {
    */
   private async validateScrapingCorrectTweet(page: Page, expectedTweetId: string): Promise<boolean> {
     try {
-      const actualTweetId = await page.evaluate(() => {
-        // Find the main tweet article
-        const article = document.querySelector('article[data-testid="tweet"]');
-        if (!article) return null;
+      const actualTweetId = await page.evaluate((tweetId) => {
+        // PROPER FIX: Find ALL tweet articles, search for the one matching our ID
+        // (Twitter shows parent tweet first when displaying a reply)
+        const articles = document.querySelectorAll('article[data-testid="tweet"]');
         
-        // Look for status link within the article
-        const link = article.querySelector('a[href*="/status/"]') as HTMLAnchorElement;
-        if (!link) return null;
+        for (const article of articles) {
+          // Look for status link within THIS article
+          const link = article.querySelector('a[href*="/status/"]') as HTMLAnchorElement;
+          if (!link) continue;
+          
+          // Extract tweet ID from URL
+          const match = link.href.match(/\/status\/(\d+)/);
+          if (match && match[1] === tweetId) {
+            // Found the article matching our tweet ID!
+            return match[1];
+          }
+        }
         
-        // Extract tweet ID from URL
-        const match = link.href.match(/\/status\/(\d+)/);
-        return match ? match[1] : null;
-      });
+        // If we didn't find our tweet, return the first article's ID (for error reporting)
+        if (articles.length > 0) {
+          const firstLink = articles[0].querySelector('a[href*="/status/"]') as HTMLAnchorElement;
+          if (firstLink) {
+            const match = firstLink.href.match(/\/status\/(\d+)/);
+            return match ? match[1] : null;
+          }
+        }
+        
+        return null;
+      }, expectedTweetId);
 
       if (!actualTweetId) {
-        console.warn(`    ⚠️ TWEET_ID_CHECK: Could not extract tweet ID from page`);
+        console.warn(`    ⚠️ TWEET_ID_CHECK: Could not find any tweet articles on page`);
         return false;
       }
 
       if (actualTweetId !== expectedTweetId) {
         console.error(`    ❌ TWEET_ID_MISMATCH: Expected ${expectedTweetId}, found ${actualTweetId}`);
+        console.error(`    💡 HINT: Your tweet might be a reply - found parent tweet instead`);
         return false;
       }
 
@@ -337,17 +355,40 @@ export class BulletproofTwitterScraper {
    * Extract metrics using multiple selector fallbacks
    * PHASE 1 FIX: Now scoped to specific tweet article to prevent "8k tweets" bug
    * PHASE 3 FIX: Intelligent extraction using aria-labels + multiple strategies
+   * PROPER FIX: Find the CORRECT article (not just the first one on the page)
    */
-  private async extractMetricsWithFallbacks(page: Page): Promise<Partial<ScrapedMetrics>> {
+  private async extractMetricsWithFallbacks(page: Page, tweetId?: string): Promise<Partial<ScrapedMetrics>> {
     const results: Partial<ScrapedMetrics> = {
       _selectors_used: []
     };
 
-    // CRITICAL FIX: Get the main tweet article element first
-    // This ensures we only search within THIS tweet, not the entire page
-    const tweetArticle = await page.$('article[data-testid="tweet"]');
+    // PROPER FIX: Find the article matching our tweet ID
+    // (Don't just grab the first article - it might be a parent tweet in a thread)
+    let tweetArticle;
+    
+    if (tweetId) {
+      // Find ALL articles and search for the one with our tweet ID
+      tweetArticle = await page.evaluateHandle((id) => {
+        const articles = document.querySelectorAll('article[data-testid="tweet"]');
+        for (const article of articles) {
+          const link = article.querySelector('a[href*="/status/"]') as HTMLAnchorElement;
+          if (link) {
+            const match = link.href.match(/\/status\/(\d+)/);
+            if (match && match[1] === id) {
+              return article; // Found it!
+            }
+          }
+        }
+        // Fallback: return first article if we can't find match
+        return articles[0] || null;
+      }, tweetId);
+    } else {
+      // No tweet ID provided, use first article (legacy behavior)
+      tweetArticle = await page.$('article[data-testid="tweet"]');
+    }
+    
     if (!tweetArticle) {
-      console.warn('    ⚠️ EXTRACT: Could not find main tweet article');
+      console.warn('    ⚠️ EXTRACT: Could not find tweet article');
       return results;
     }
 
