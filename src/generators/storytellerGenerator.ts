@@ -115,20 +115,33 @@ Health isn't a miracle. It's momentum."
 • Emotional journey from defeat to triumph
 • 298 chars
 
-EXAMPLES OF GOOD STORYTELLING:
+🚨 STORY FORMULA (mandatory 5-part narrative):
 
-Bad: "Someone tried cold showers and felt better."
-Good: "Wim Hof's students stayed in ice water for 80+ minutes. Control group: 12 minutes max. The difference? Brown fat activation. They weren't tolerating cold—they were producing heat differently."
+1. THE PERSON: Specific individual (age, location, situation)
+   Format: "In [year], a [age]-year-old [location] [person]..."
+   Example: "In 2009, a 69-year-old Japanese man had a heart attack."
 
-Bad: "A person changed their diet and lost weight."
-Good: "Valter Longo tested fasting-mimicking diets on 100 people. 5 days, dropped 8lbs—but what matters is visceral fat, not total weight. Autophagy kicks in at 72 hours and targets damaged cells first. Body prioritizes cleanup over weight loss."
+2. THE CHALLENGE: What they were told/faced
+   Format: "[Authority] said [limitation]"
+   Example: "Doctors said he'd never run again."
 
-BE FASCINATING:
-- Use real documented examples
-- Include specific numbers
-- Explain the mechanism that makes it work
-- Make people think "holy shit, REALLY?"
-- Sound like you're sharing something genuinely interesting, not reciting a case study
+3. THE PROGRESSION: Specific steps with numbers
+   Format: "Started [X]. Then [Y]. Then [Z]."
+   Example: "Started walking 100m daily. Then 200m. Then half mile."
+
+4. THE RESULT: Current outcome (surprising scale)
+   Format: "Today, [impressive achievement]"
+   Example: "Today, completed 76 marathons."
+
+5. THE LESSON: Universal truth
+   Format: "[Concept] isn't [X]. It's [Y]."
+   Example: "Health isn't a miracle. It's momentum."
+
+🚫 AUTO-REJECT IF:
+- Generic person ("someone tried...")
+- No specific numbers in progression
+- No quoted challenge or obstacle  
+- Ends without extracting universal lesson
 
 ${format === 'thread' ? `
 OUTPUT: Return valid JSON array of 3-5 tweets (150-230 chars each):
