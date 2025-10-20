@@ -663,14 +663,99 @@ export class JobManager {
   /**
    * Execute job with error handling
    */
+  /**
+   * 🔄 Execute job with retry logic for critical jobs
+   * Critical jobs (plan, posting) get 3 attempts with exponential backoff
+   * Non-critical jobs fail fast after 1 attempt
+   */
   private async safeExecute(jobName: string, jobFn: () => Promise<void>): Promise<void> {
+    const isCritical = jobName === 'plan' || jobName === 'posting';
+    const maxRetries = isCritical ? 3 : 1;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        if (attempt > 1) {
+          console.log(`🕒 JOB_${jobName.toUpperCase()}: Starting (attempt ${attempt}/${maxRetries})...`);
+        } else {
+          console.log(`🕒 JOB_${jobName.toUpperCase()}: Starting...`);
+        }
+        
+        await jobFn();
+        console.log(`✅ JOB_${jobName.toUpperCase()}: Completed successfully`);
+        return; // Success!
+        
+      } catch (error) {
+        const errorMsg = error?.message || String(error);
+        console.error(`❌ JOB_${jobName.toUpperCase()}: Attempt ${attempt} failed - ${errorMsg}`);
+        
+        if (attempt < maxRetries) {
+          const delay = Math.min(1000 * Math.pow(2, attempt), 30000); // Exponential backoff: 2s, 4s, 8s (max 30s)
+          console.log(`🔄 Retrying in ${delay/1000}s...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        } else {
+          this.stats.errors++;
+          console.error(`❌ JOB_${jobName.toUpperCase()}: All ${maxRetries} attempts failed`);
+          
+          if (isCritical) {
+            console.error(`🚨 CRITICAL: ${jobName.toUpperCase()} job completely failed! System may not post content.`);
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * 🏥 Content Pipeline Health Check
+   * Ensures plan job is running and queue has content
+   * Runs every 30 minutes to catch stuck pipelines
+   */
+  public async checkContentPipelineHealth(): Promise<void> {
     try {
-      console.log(`🕒 JOB_${jobName.toUpperCase()}: Starting...`);
-      await jobFn();
-      console.log(`✅ JOB_${jobName.toUpperCase()}: Completed successfully`);
+      const now = new Date();
+      
+      // Check 1: Has plan job run recently?
+      if (this.stats.lastPlanTime) {
+        const hoursSinceLastPlan = (now.getTime() - this.stats.lastPlanTime.getTime()) / (1000 * 60 * 60);
+        
+        if (hoursSinceLastPlan > 3) {
+          console.error(`🚨 HEALTH_CHECK: Plan job hasn't run in ${hoursSinceLastPlan.toFixed(1)} hours!`);
+          console.error(`🔧 ATTEMPTING EMERGENCY PLAN RUN...`);
+          await this.runJobNow('plan');
+          return; // Exit early after emergency run
+        }
+      } else {
+        console.warn(`⚠️ HEALTH_CHECK: Plan job has never run!`);
+        console.log(`🔧 Running plan job now...`);
+        await this.runJobNow('plan');
+        return;
+      }
+      
+      // Check 2: Does queue have content?
+      const { getSupabaseClient } = await import('../db/index');
+      const supabase = getSupabaseClient();
+      
+      const { data: queuedContent, error } = await supabase
+        .from('content_metadata')
+        .select('id')
+        .is('posted_at', null)
+        .limit(1);
+      
+      if (error) {
+        console.error(`❌ HEALTH_CHECK: Failed to query queue:`, error.message);
+        return;
+      }
+      
+      if (!queuedContent || queuedContent.length === 0) {
+        console.warn(`⚠️ HEALTH_CHECK: No content in queue! Generating now...`);
+        await this.runJobNow('plan');
+        return;
+      }
+      
+      // All checks passed
+      console.log(`✅ HEALTH_CHECK: Content pipeline healthy (${queuedContent.length} posts queued)`);
+      
     } catch (error) {
-      this.stats.errors++;
-      console.error(`❌ JOB_${jobName.toUpperCase()}: Failed -`, error.message);
+      console.error(`❌ HEALTH_CHECK: Error during health check:`, error.message);
     }
   }
 
@@ -690,6 +775,7 @@ export class JobManager {
     console.log(`   • Outcome runs: ${this.stats.outcomeRuns}`);
     console.log(`   • Learn runs: ${this.stats.learnRuns}`);
     console.log(`   • Errors: ${this.stats.errors}`);
+    console.log(`   • Last plan: ${this.stats.lastPlanTime?.toISOString() || 'never'}`);
     console.log(`   • Last learn: ${this.stats.lastLearnTime?.toISOString() || 'never'}`);
   }
 
