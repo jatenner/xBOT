@@ -84,6 +84,34 @@ export class JobManager {
     
     console.log('🎯 JOB_MANAGER: Starting STAGGERED scheduling (prevents resource collisions)');
     
+    // 🚨 CRITICAL: Check if discovered_accounts table is empty on startup
+    // If empty, trigger account discovery IMMEDIATELY so reply system can work
+    try {
+      const { getAccountPoolHealth } = await import('./accountDiscoveryJob');
+      const poolHealth = await getAccountPoolHealth();
+      
+      if (poolHealth.status === 'critical' && poolHealth.total_accounts === 0) {
+        console.log('[JOB_MANAGER] 🚨 discovered_accounts table is EMPTY - triggering immediate discovery...');
+        const { runAccountDiscovery } = await import('./accountDiscoveryJob');
+        
+        // Run in background, don't block startup
+        runAccountDiscovery()
+          .then(() => {
+            console.log('[JOB_MANAGER] ✅ Initial account discovery completed');
+            this.stats.accountDiscoveryRuns = (this.stats.accountDiscoveryRuns || 0) + 1;
+            this.stats.lastAccountDiscoveryTime = new Date();
+          })
+          .catch((err) => {
+            console.error('[JOB_MANAGER] ❌ Initial account discovery failed:', err.message);
+            console.log('[JOB_MANAGER] 💡 Will retry in 25 minutes on scheduled run');
+          });
+      } else {
+        console.log(`[JOB_MANAGER] ℹ️ Account pool status: ${poolHealth.status} (${poolHealth.total_accounts} accounts) - reply system ready`);
+      }
+    } catch (error: any) {
+      console.error('[JOB_MANAGER] ⚠️ Failed to check account pool health:', error.message);
+    }
+    
     // Define stagger offsets (in seconds) to spread jobs across time
     const MINUTE = 60 * 1000;
     const SECOND = 1000;
