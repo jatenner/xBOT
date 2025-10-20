@@ -694,9 +694,16 @@ export class BulletproofTwitterScraper {
    * PHASE 2 FIX: Adjusted thresholds to be less aggressive while still catching obvious errors
    */
   private areMetricsValid(metrics: Partial<ScrapedMetrics>): boolean {
-    // At minimum, we should have likes (even if 0)
-    if (metrics.likes === null && metrics.retweets === null && metrics.replies === null) {
-      console.warn(`    ⚠️ VALIDATE: All core metrics are null`);
+    // Allow tweets with zero engagement (new tweets, low-performing tweets)
+    // Just ensure we extracted SOMETHING (not all undefined)
+    const hasAnyMetric = 
+      metrics.likes !== undefined || 
+      metrics.retweets !== undefined || 
+      metrics.replies !== undefined ||
+      metrics.views !== undefined;
+    
+    if (!hasAnyMetric) {
+      console.warn(`    ⚠️ VALIDATE: No metrics extracted at all`);
       return false;
     }
 
