@@ -515,7 +515,8 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
           throw new Error('X API posting succeeded but no tweet ID was returned');
         }
         console.log(`[POSTING_QUEUE] ✅ Content posted via X API with ID: ${result.tweetId}`);
-        return result.tweetId;
+        const tweetUrl = `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${result.tweetId}`;
+        return { tweetId: result.tweetId, tweetUrl };
       } else {
         console.error(`[POSTING_QUEUE] ❌ X API posting failed: ${result.error}`);
         throw new Error(result.error || 'X API posting failed');
@@ -559,7 +560,8 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
             throw new Error('Thread posting succeeded but no tweet ID was extracted - cannot track metrics');
           }
           console.log(`[POSTING_QUEUE] ✅ Thread posted via Playwright with ID: ${tweetId}`);
-          return tweetId;
+          const tweetUrl = `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${tweetId}`;
+          return { tweetId, tweetUrl };
         } else {
           console.error(`[POSTING_QUEUE] ❌ Thread posting failed: ${result.error}`);
           throw new Error(result.error || 'Thread posting failed');
