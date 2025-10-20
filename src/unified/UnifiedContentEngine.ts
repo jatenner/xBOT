@@ -54,6 +54,7 @@ export interface ContentRequest {
   forceGeneration?: boolean;
   enableEnrichment?: boolean; // Enable contrast injection (disabled by default)
   useMultiOption?: boolean; // Enable multi-option generation with AI judge (NEW)
+  recentGenerators?: string[]; // For rotation avoidance (DATA COLLECTION MODE)
 }
 
 export interface GeneratedContent {
@@ -277,7 +278,8 @@ export class UnifiedContentEngine {
           insights,
           viralAnalysis,
           experimentArm,
-          intelligence // 🆕 PASS INTELLIGENCE
+          intelligence, // 🆕 PASS INTELLIGENCE
+          recentGenerators: request.recentGenerators // 🆕 For rotation
         });
         
         generatorName = result.generatorName;
@@ -613,8 +615,67 @@ export class UnifiedContentEngine {
   /**
    * Load generator weights from database (autonomous learning system)
    */
-  private async loadDynamicWeights(experimentArm: string): Promise<Record<string, number>> {
+  private async loadDynamicWeights(experimentArm: string, recentGenerators: string[] = []): Promise<Record<string, number>> {
     try {
+      // ═══════════════════════════════════════════════════════════
+      // DATA COLLECTION MODE: Equal weights until we have enough data
+      // ═══════════════════════════════════════════════════════════
+      const MIN_DATA_THRESHOLD = 50; // Need 50+ posts with engagement before learning
+      
+      // Check how many posts we have with actual engagement data
+      const { count: dataCount } = await this.supabase
+        .from('outcomes')
+        .select('*', { count: 'exact', head: true })
+        .not('likes', 'is', null)
+        .gte('likes', 1); // At least 1 like = real engagement
+      
+      const hasEnoughData = (dataCount || 0) >= MIN_DATA_THRESHOLD;
+      
+      if (!hasEnoughData) {
+        console.log(`🔬 DATA_COLLECTION_MODE: Only ${dataCount}/${MIN_DATA_THRESHOLD} posts with engagement`);
+        console.log(`🎲 Using EQUAL WEIGHTS for all generators (exploring)`);
+        
+        // EQUAL WEIGHTS for all 12 generators
+        const equalWeights = {
+          humanVoice: 1/12,
+          newsReporter: 1/12,
+          storyteller: 1/12,
+          interesting: 1/12,
+          provocateur: 1/12,
+          dataNerd: 1/12,
+          mythBuster: 1/12,
+          coach: 1/12,
+          thoughtLeader: 1/12,
+          contrarian: 1/12,
+          explorer: 1/12,
+          philosopher: 1/12
+        };
+        
+        // ROTATION LOGIC: Reduce weight for recently used to force variety
+        if (recentGenerators.length > 0) {
+          console.log(`🔄 Avoiding recently used: ${recentGenerators.slice(0, 3).join(', ')}`);
+          
+          for (const gen of recentGenerators.slice(0, 3)) { // Avoid last 3
+            if (equalWeights[gen]) {
+              equalWeights[gen] *= 0.01; // Almost zero chance of repeating
+            }
+          }
+          
+          // Renormalize to sum to 1.0
+          const total = Object.values(equalWeights).reduce((sum, w) => sum + w, 0);
+          for (const gen in equalWeights) {
+            equalWeights[gen] /= total;
+          }
+        }
+        
+        return equalWeights;
+      }
+      
+      // ═══════════════════════════════════════════════════════════
+      // LEARNING MODE: Use performance-based weights
+      // ═══════════════════════════════════════════════════════════
+      console.log(`🧠 LEARNING_MODE: ${dataCount} posts with engagement - using learned weights`);
+      
       // Query database for current weights
       const { data, error } = await this.supabase
         .from('generator_weights')
@@ -780,10 +841,14 @@ export class UnifiedContentEngine {
     viralAnalysis: any;
     experimentArm: string;
     intelligence?: IntelligencePackage; // 🆕 ACCEPT INTELLIGENCE
+    recentGenerators?: string[]; // 🆕 For rotation avoidance
   }): Promise<{ generatorName: string; content: string | string[]; confidence: number }> {
     
-    // LOAD DYNAMIC WEIGHTS FROM DATABASE (Autonomous Learning!)
-    const generatorWeights = await this.loadDynamicWeights(params.experimentArm);
+    // LOAD DYNAMIC WEIGHTS (with data collection mode + rotation avoidance)
+    const generatorWeights = await this.loadDynamicWeights(
+      params.experimentArm, 
+      params.recentGenerators || []
+    );
     
     // Weighted random selection using dynamic weights
     const random = Math.random();
