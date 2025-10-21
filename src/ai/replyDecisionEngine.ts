@@ -87,11 +87,13 @@ export class AIReplyDecisionEngine {
       console.log(`[AI_DECISION] ✅ Found ${accounts.length} discovered accounts in database`);
       
       // Step 3: Scrape real reply opportunities from top accounts
-      console.log(`[AI_DECISION] 🌐 Scraping top ${Math.min(5, accounts.length)} accounts for reply opportunities...`);
+      // 🔥 SCALE: Scrape 15 accounts per cycle (was 5) → 15 × 20 tweets = 300 opportunities!
+      const accountsToScrape = Math.min(15, accounts.length);
+      console.log(`[AI_DECISION] 🌐 Scraping top ${accountsToScrape} accounts (from ${accounts.length} total pool) for reply opportunities...`);
       const { realTwitterDiscovery } = await import('./realTwitterDiscovery');
       const allOpportunities: any[] = [];
       
-      for (const account of accounts.slice(0, 5)) {
+      for (const account of accounts.slice(0, accountsToScrape)) {
         try {
           console.log(`[AI_DECISION]   → Scraping @${account.username} (${account.follower_count?.toLocaleString() || 'unknown'} followers)...`);
           const opps = await realTwitterDiscovery.findReplyOpportunitiesFromAccount(String(account.username));
@@ -230,12 +232,32 @@ export class AIReplyDecisionEngine {
       (recentTargets || []).map(r => String(r.target_username || '').toLowerCase())
     );
     
-    // Filter out recent targets
-    const available = targets.filter(target => 
-      !recentUsernames.has(target.username?.toLowerCase())
-    );
+    // 🎯 USER REQUIREMENT: Only reply to tweets <24 hours old
+    const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000;
     
-    console.log(`[AI_DECISION] 🔍 Filtered ${targets.length} → ${available.length} (removed ${targets.length - available.length} recent targets)`);
+    // Filter: (1) Not recently replied to, (2) Tweet <24h old
+    const available = targets.filter(target => {
+      // Filter 1: Remove accounts we've recently replied to
+      if (recentUsernames.has(target.username?.toLowerCase())) {
+        return false;
+      }
+      
+      // Filter 2: Only tweets <24h old
+      if (target.tweet_posted_at) {
+        const tweetAge = new Date(target.tweet_posted_at).getTime();
+        if (Date.now() - tweetAge > 24 * 60 * 60 * 1000) {
+          console.log(`[AI_DECISION]   ⏭️ Skipping @${target.username} - tweet too old (${Math.round((Date.now() - tweetAge) / 3600000)}h ago)`);
+          return false;
+        }
+      } else {
+        // If no timestamp, assume it's fresh (from live scraping)
+        console.log(`[AI_DECISION]   ⚠️ No timestamp for @${target.username} - assuming fresh`);
+      }
+      
+      return true;
+    });
+    
+    console.log(`[AI_DECISION] 🔍 Filtered ${targets.length} → ${available.length} (removed ${targets.length - available.length} recent/old targets)`);
     
     return available;
   }
