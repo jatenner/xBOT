@@ -202,19 +202,30 @@ Output as JSON:
     const hasMechanism = /(because|mechanism|process|affects|triggers|causes)/i.test(reply);
     if (hasMechanism) score += 0.3;
     
+    // 🔧 EXPANDED: Check for health/science words (broader value signals)
+    const hasHealthInsight = /(research|study|evidence|shows|found|indicates|suggests|data|results)/i.test(reply);
+    if (hasHealthInsight) score += 0.25;
+    
+    // Check for substantive content (not just generic praise)
+    const hasSubstance = reply.length > 80 && !/^(great|nice|awesome|interesting|love this)/i.test(reply);
+    if (hasSubstance) score += 0.15;
+    
     // Check NOT spam
-    const notSpam = !/check out|click here|follow me|my content|great post/i.test(reply);
+    const notSpam = !/check out|click here|follow me|my content|great post|dm me/i.test(reply);
     if (notSpam) score += 0.2;
     
     // Check NOT repetition of original
     const notRepetitive = !reply.toLowerCase().includes(original.toLowerCase().slice(0, 30));
     if (notRepetitive) score += 0.2;
     
+    // 🎯 RELAXED: Accept if reply has ANY of: numbers, mechanism, health insight, OR substantive content
+    const providesValue = hasNumbers || hasMechanism || hasHealthInsight || hasSubstance;
+    
     return {
-      value: hasNumbers || hasMechanism,
-      insight: hasMechanism,
+      value: providesValue,
+      insight: hasMechanism || hasHealthInsight,
       not_spam: notSpam,
-      score
+      score: Math.min(score, 1.0)
     };
   }
   
