@@ -140,7 +140,11 @@ export class BulletproofTwitterScraper {
         const currentUrl = page.url();
         const isAnalyticsPage = currentUrl.includes('/analytics');
         
+        console.log(`    🔍 URL CHECK: Current URL = ${currentUrl}`);
+        console.log(`    🔍 URL CHECK: Is analytics page? ${isAnalyticsPage}`);
+        
         if (!isAnalyticsPage) {
+          console.log(`    🔍 VALIDATION: Not analytics page, running tweet ID validation...`);
           const correctTweet = await this.validateScrapingCorrectTweet(page, tweetId);
           if (!correctTweet) {
             console.error(`  ❌ SCRAPER: Tweet ID mismatch - FAILING FAST (don't waste retries)`);
@@ -153,6 +157,7 @@ export class BulletproofTwitterScraper {
           }
         } else {
           console.log(`    ✅ ANALYTICS: Skipping tweet ID validation (analytics page is modal)`);
+          console.log(`    ✅ ANALYTICS: Proceeding directly to metrics extraction...`);
         }
 
         // Step 2: Extract metrics using multiple selectors
