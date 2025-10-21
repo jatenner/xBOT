@@ -116,6 +116,19 @@ export async function metricsScraperJob(): Promise<void> {
                                   (metrics.quote_tweets ?? 0) + (metrics.replies ?? 0) + 
                                   (metrics.bookmarks ?? 0);
           
+          // 🐛 DEBUG: Log what the scraper actually extracted
+          console.log(`[METRICS_JOB] 🔍 Extracted metrics for ${post.tweet_id}:`, JSON.stringify({
+            views: metrics.views,
+            impressions: metrics.views,
+            profile_clicks: metrics.profile_clicks,
+            likes: metrics.likes,
+            retweets: metrics.retweets,
+            replies: metrics.replies,
+            _verified: metrics._verified,
+            _status: metrics._status,
+            _dataSource: metrics._dataSource
+          }, null, 2));
+          
           // Log validation quality
           if (result.validationResult) {
             console.log(`[METRICS_JOB] 📊 Quality: confidence=${result.validationResult.confidence.toFixed(2)}, valid=${result.validationResult.isValid}`);
@@ -132,6 +145,7 @@ export async function metricsScraperJob(): Promise<void> {
             views: metrics.views ?? null,
             bookmarks: metrics.bookmarks ?? null,
             impressions: metrics.views ?? null, // Map views to impressions
+            profile_clicks: metrics.profile_clicks ?? null, // 📊 Save Profile visits from analytics page
             first_hour_engagement: isFirstHour ? totalEngagement : null,
             collected_at: new Date().toISOString(),
             data_source: 'orchestrator_v2',
