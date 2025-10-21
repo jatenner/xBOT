@@ -1,0 +1,100 @@
+[REAL_DISCOVERY] ✅ Found 0 reply opportunities from @DrLaurenKelley
+[HARVESTER]     ✗ No opportunities found
+[HARVESTER]   11/20 → @GabrielleNLyon...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @GabrielleNLyon...
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+[REAL_DISCOVERY] ✅ Found 0 reply opportunities from @GabrielleNLyon
+[HARVESTER]     ✗ No opportunities found
+[HARVESTER]   12/20 → @ProfTimSpector...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @ProfTimSpector...
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+[REAL_DISCOVERY] ✅ Found 0 reply opportunities from @ProfTimSpector
+[HARVESTER]     ✗ No opportunities found
+[HARVESTER]   13/20 → @shawnstevenson...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @shawnstevenson...
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+[REAL_DISCOVERY] ✅ Found 0 reply opportunities from @shawnstevenson
+[HARVESTER]     ✗ No opportunities found
+[HARVESTER]   14/20 → @nutritionfacts...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @nutritionfacts...
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+[REAL_DISCOVERY] ✅ Found 0 reply opportunities from @nutritionfacts
+[HARVESTER]     ✗ No opportunities found
+💓 HEARTBEAT: 2025-10-21T18:41:35.905Z - posting_disabled=false, dry_run=false, mode=live
+[HARVESTER]   15/20 → @DaveAsprey...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @DaveAsprey...
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+[REAL_DISCOVERY] ✅ Found 0 reply opportunities from @DaveAsprey
+[HARVESTER]     ✗ No opportunities found
+[HARVESTER]   16/20 → @MaxLugavere...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @MaxLugavere...
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+[REAL_DISCOVERY] ✅ Found 0 reply opportunities from @MaxLugavere
+[HARVESTER]     ✗ No opportunities found
+[HARVESTER]   17/20 → @DrJasonFung...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @DrJasonFung...
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+[REAL_DISCOVERY] ✅ Found 0 reply opportunities from @DrJasonFung
+[HARVESTER]     ✗ No opportunities found
+[HARVESTER]   18/20 → @bengreenfield...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @bengreenfield...
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+[REAL_DISCOVERY] ✅ Found 0 reply opportunities from @bengreenfield
+[HARVESTER]     ✗ No opportunities found
+[HARVESTER]   19/20 → @foundmyfitness...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @foundmyfitness...
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+[REAL_DISCOVERY] ✅ Found 0 reply opportunities from @foundmyfitness
+[HARVESTER]     ✗ No opportunities found
+[HARVESTER]   20/20 → @DrAndrewHuberman...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @DrAndrewHuberman...
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+[REAL_DISCOVERY] ✅ Found 0 reply opportunities from @DrAndrewHuberman
+[HARVESTER]     ✗ No opportunities found
+[HARVESTER] ⚠️ Failed to clean up old opportunities: relation "public.reply_opportunities" does not exist
+[HARVESTER] ✅ Harvest complete!
+[HARVESTER] 📊 Pool size: 0 → 0
+[HARVESTER] 🌾 Harvested: 0 new opportunities
+[HARVESTER] 💡 Will harvest more in next cycle
+✅ JOB_REPLY_HARVESTER: Completed successfully
+[HARVESTER] ⚠️ Pool still low (0/100)
+[POSTING_QUEUE] ℹ️ No decisions ready for posting (grace_window=5m)
+🕒 JOB_LEARN: Starting...
+✅ JOB_POSTING: Completed successfully
+❌ JOB_LEARN: Attempt 1 failed - supabaseKey is required.
+❌ JOB_LEARN: All 1 attempts failed
+📊 CACHE_METRICS: Hit rate: 60.0%, Avg response: 2.4ms, Ops/sec: 0.0
+🔧 SMART_CACHE: Auto-optimized TTL for low hit rate
+🕒 JOB_POSTING: Starting...
+[POSTING_QUEUE] 📮 Processing posting queue...
+💓 HEARTBEAT: 2025-10-21T18:42:35.906Z - posting_disabled=false, dry_run=false, mode=live
+[POSTING_QUEUE] ✅ Post budget available: 0/2 content posts
+[POSTING_QUEUE] 📅 Fetching posts ready within 5 minute window
+[POSTING_QUEUE] 🕒 Current time: 2025-10-21T18:42:35.958Z
+[POSTING_QUEUE] 🕒 Grace window: 2025-10-21T18:47:35.958Z
+[POSTING_QUEUE] 📊 Query returned 0 decisions
+[POSTING_QUEUE] ⚠️ No queued content found in database at all
+💓 HEARTBEAT: 2025-10-21T18:43:35.906Z - posting_disabled=false, dry_run=false, mode=live
+💓 HEARTBEAT: 2025-10-21T18:44:35.932Z - posting_disabled=false, dry_run=false, mode=live
+💓 HEARTBEAT: 2025-10-21T18:45:35.933Z - posting_disabled=false, dry_run=false, mode=live
+💓 HEARTBEAT: 2025-10-21T18:46:35.962Z - posting_disabled=false, dry_run=false, mode=live
+🕒 JOB_METRICS_SCRAPER: Starting...
+[METRICS_JOB] 🔍 Starting scheduled metrics collection...
+[METRICS_JOB] 📊 Found 15 posts to check (15 recent, 0 historical)
+📊 CACHE_METRICS: Hit rate: 60.0%, Avg response: 2.4ms, Ops/sec: 0.0
+🔧 SMART_CACHE: Auto-optimized TTL for low hit rate
+🕒 JOB_POSTING: Starting...
+[POSTING_QUEUE] 📮 Processing posting queue...
+[POSTING_QUEUE] ✅ Post budget available: 0/2 content posts
+[POSTING_QUEUE] 📅 Fetching posts ready within 5 minute window
+[POSTING_QUEUE] 🕒 Current time: 2025-10-21T18:47:35.925Z
+[POSTING_QUEUE] 🕒 Grace window: 2025-10-21T18:52:35.925Z
+[METRICS_JOB] ✅ Metrics collection complete: 0 updated, 15 skipped, 0 failed
+✅ JOB_METRICS_SCRAPER: Completed successfully
+💓 HEARTBEAT: 2025-10-21T18:47:35.962Z - posting_disabled=false, dry_run=false, mode=live
+[POSTING_QUEUE] 📊 Query returned 0 decisions
+[POSTING_QUEUE] ⚠️ No queued content found in database at all
+[POSTING_QUEUE] ℹ️ No decisions ready for posting (grace_window=5m)
+✅ JOB_POSTING: Completed successfully
+💓 HEARTBEAT: 2025-10-21T18:48:35.985Z - posting_disabled=false, dry_run=false, mode=live
+  📊 SCRAPER: Attempt 1/3

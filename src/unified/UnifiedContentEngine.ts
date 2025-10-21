@@ -42,6 +42,9 @@ import { PostGenerationIntelligence } from '../intelligence/postGenerationIntell
 import { IntelligenceEnhancer } from '../intelligence/intelligenceEnhancer';
 import { intelligenceConfig, getIntelligenceStatus } from '../intelligence/intelligenceConfig';
 import { IntelligencePackage } from '../intelligence/intelligenceTypes';
+import { competitiveIntelligence } from '../intelligence/competitiveIntelligence';
+import { contentRefinementEngine } from '../intelligence/contentRefinementEngine';
+import { intelligentTopicSelector } from '../intelligence/intelligentTopicSelector';
 
 // ═══════════════════════════════════════════════════════════
 // TYPES
@@ -200,10 +203,32 @@ export class UnifiedContentEngine {
       systemsActive.push('A/B Testing');
       
       // ═══════════════════════════════════════════════════════════
-      // STEP 3: OPTIMIZE FOR FOLLOWER GROWTH
+      // STEP 3: INTELLIGENT TOPIC SELECTION + FOLLOWER OPTIMIZATION
       // ═══════════════════════════════════════════════════════════
       console.log('📈 STEP 3: Optimizing for follower growth...');
-      const topicHint = request.topic || await this.selectOptimalTopic(insights);
+      
+      // 🆕 Use intelligent topic selector if no topic provided
+      let topicHint: string;
+      if (request.topic) {
+        topicHint = request.topic;
+        console.log(`  ✓ Using provided topic: "${topicHint}"`);
+      } else {
+        try {
+          const topicSuggestion = await intelligentTopicSelector.selectTopic({
+            recent_topics: request.recentContent?.slice(0, 10),
+            generator_type: request.preferredHookType,
+            time_of_day: new Date().getHours()
+          });
+          topicHint = topicSuggestion.topic;
+          console.log(`  🎯 Intelligent topic: "${topicHint}" (viral: ${topicSuggestion.viral_potential}/10)`);
+          console.log(`  💡 Reasoning: ${topicSuggestion.reasoning}`);
+          systemsActive.push('Intelligent Topic Selector');
+        } catch (error: any) {
+          console.warn(`  ⚠️ Intelligent topic selection failed: ${error.message}`);
+          topicHint = await this.selectOptimalTopic(insights);
+        }
+      }
+      
       const viralAnalysis = await this.followerOptimizer.analyzeViralPotential(topicHint);
       systemsActive.push('Follower Growth Optimizer');
       
@@ -253,26 +278,54 @@ export class UnifiedContentEngine {
         console.log(`  ✓ Reasoning: ${judgment.reasoning}`);
         systemsActive.push('AI Content Judge');
         
-        // Get viral examples for refinement
+        // 🆕 ENHANCED REFINEMENT: Use competitive intelligence + multi-layer refinement
+        console.log('  ✨ Refining winner with competitive intelligence...');
+        
+        // Get viral examples from both curated and competitive sources
         const viralExamples = getViralExamplesForTopic(topicHint, 3);
         
-        // Refine winner
-        console.log('  ✨ Refining winner...');
-        const refinement = await aiContentRefiner.refine({
-          content: judgment.winner.raw_content,
-          format: judgment.winner.format,
-          judge_feedback: {
-            strengths: judgment.strengths,
-            improvements: judgment.improvements,
-            score: judgment.score
-          },
-          viral_examples: viralExamples
-        });
-        console.log(`  ✓ Improvements: ${refinement.improvements_made.join(', ')}`);
-        systemsActive.push('AI Content Refiner');
+        try {
+          // Use new refinement engine with competitive intelligence
+          const advancedRefinement = await contentRefinementEngine.refineContent(
+            judgment.winner.raw_content,
+            {
+              generator_used: judgment.winner.generator_name,
+              topic: topicHint,
+              recent_posts: request.recentContent?.slice(0, 10)
+            }
+          );
+          
+          console.log(`  ✓ Quality improved: ${advancedRefinement.quality_increase.toFixed(1)} points`);
+          console.log(`  ✓ Predicted engagement: ${advancedRefinement.engagement_prediction} likes`);
+          systemsActive.push('Advanced Content Refinement');
+          systemsActive.push('Competitive Intelligence');
+          
+          generatedContent = advancedRefinement.should_use_refined 
+            ? advancedRefinement.refined_content 
+            : advancedRefinement.original_content;
+            
+        } catch (error: any) {
+          console.warn(`  ⚠️ Advanced refinement failed: ${error.message}, using legacy refiner`);
+          
+          // Fallback to legacy refiner
+          const refinement = await aiContentRefiner.refine({
+            content: judgment.winner.raw_content,
+            format: judgment.winner.format,
+            judge_feedback: {
+              strengths: judgment.strengths,
+              improvements: judgment.improvements,
+              score: judgment.score
+            },
+            viral_examples: viralExamples
+          });
+          console.log(`  ✓ Improvements: ${refinement.improvements_made.join(', ')}`);
+          systemsActive.push('AI Content Refiner (Legacy)');
+          
+          generatedContent = refinement.refined_content;
+        }
         
         generatorName = judgment.winner.generator_name;
-        generatedContent = refinement.refined_content;
+        // generatedContent already set above
         confidence = judgment.viral_probability;
         judgeReasoning = judgment.reasoning;
         
