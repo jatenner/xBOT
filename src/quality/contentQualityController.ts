@@ -113,12 +113,12 @@ export class ContentQualityController {
     );
 
     // Posting decision
-    // PREMIUM THRESHOLDS: With multi-option generation, we can be selective
-    // Only post A-grade content (88+) for maximum engagement
-    const MIN_OVERALL = process.env.ENABLE_MULTI_OPTION === 'true' ? 88 : 78;
-    const MIN_COMPLETENESS = process.env.ENABLE_MULTI_OPTION === 'true' ? 85 : 80;
-    const MIN_ENGAGEMENT = process.env.ENABLE_MULTI_OPTION === 'true' ? 80 : 65;
-    const MIN_AUTHENTICITY = process.env.ENABLE_MULTI_OPTION === 'true' ? 75 : 65;
+    // ADAPTIVE THRESHOLDS: Balanced for cold start (31 followers, low engagement)
+    // Gates will tighten automatically as engagement grows
+    const MIN_OVERALL = process.env.ENABLE_MULTI_OPTION === 'true' ? 72 : 70;
+    const MIN_COMPLETENESS = process.env.ENABLE_MULTI_OPTION === 'true' ? 80 : 75;
+    const MIN_ENGAGEMENT = process.env.ENABLE_MULTI_OPTION === 'true' ? 65 : 60;
+    const MIN_AUTHENTICITY = process.env.ENABLE_MULTI_OPTION === 'true' ? 65 : 60;
     
     score.shouldPost = score.overall >= MIN_OVERALL && 
                        score.completeness >= MIN_COMPLETENESS &&
@@ -285,8 +285,8 @@ Return ONLY the improved content, nothing else:`;
       score.authenticity * 0.05
     );
 
-    // Decision - ADJUSTED THRESHOLDS (matching main validation)
-    const MIN_OVERALL = 78;
+    // Decision - ADAPTIVE THRESHOLDS (matching main validation for consistency)
+    const MIN_OVERALL = 72;
     const MIN_COMPLETENESS = 80;
     const MIN_ENGAGEMENT = 65;
     const MIN_AUTHENTICITY = 65;

@@ -1,0 +1,500 @@
+  ✗ contrarian: Failed - Contrarian generator failed: CONTRARIAN generated tweet that is too long (343>280 chars). System will retry with different approach.
+[COST_TRACKER] model=gpt-4o-mini cost=$0.0011 daily=$1.4587/6.00 purpose=myth_buster_content_generation
+OPENAI_CALL: model=gpt-4o-mini in=1953 out=64 purpose=myth_buster_content_generation cost=$0.0011
+[MYTH_BUSTER] ✅ Single tweet validated: 274 chars
+  ✓ mythBuster: Generated in 1902ms (confidence: 0.85)
+[COST_TRACKER] model=gpt-4o-mini cost=$0.0012 daily=$1.4598/6.00 purpose=storyteller_content_generation
+OPENAI_CALL: model=gpt-4o-mini in=2152 out=65 purpose=storyteller_content_generation cost=$0.0012
+[GENERATOR] ✅ Single tweet validated: 272 chars
+  ✓ storyteller: Generated in 2228ms (confidence: 0.8)
+  ✓ Generated 3 options
+🏆 AI_JUDGE: Evaluating 3 content options...
+BUDGET_GATE ALLOW: new_today=$1.4706/6.0000 purpose=ai_content_judge model=gpt-4o
+🕵️ BUDGET_SHADOW: would allow $0.0096 call (total: $1.4706/$6.00)
+COST_TRACKER attempt: purpose=ai_content_judge model=gpt-4o est_cost=$0.0096 today=$1.4610/6.0000
+[COST_TRACKER] model=gpt-4o-mini cost=$0.0012 daily=$1.4610/6.00 purpose=data_nerd_content_generation
+OPENAI_CALL: model=gpt-4o-mini in=2129 out=60 purpose=data_nerd_content_generation cost=$0.0012
+[DATA_NERD] ❌ Tweet exceeds 280 chars: 282 chars
+  Content: "Just 15 minutes of exercise daily can reduce the risk of premature death by 22%. A study of 400,000 ..."
+[DATA_NERD_GEN] Error: DATA_NERD generated tweet that is too long (282>280 chars)
+  ✗ dataNerd: Failed - Data nerd generator failed: DATA_NERD generated tweet that is too long (282>280 chars). System will retry with different approach.
+✅ MULTI_OPTION_GEN: 3/5 options generated successfully
+[COST_TRACKER] model=gpt-4o cost=$0.0031 daily=$1.4641/6.00 purpose=ai_content_judge
+OPENAI_CALL: model=gpt-4o in=608 out=160 purpose=ai_content_judge cost=$0.0031
+✅ AI_JUDGE: Winner = mythBuster (9/10)
+   Reasoning: Option 3 challenges a common belief about exercise and weight loss, supported by specific data from a meta-analysis. It provides a surprising insight that diet plays a more significant role, which can provoke discussion and sharing.
+  ✓ Winner: mythBuster (9/10)
+  ✓ Reasoning: Option 3 challenges a common belief about exercise and weight loss, supported by specific data from a meta-analysis. It provides a surprising insight that diet plays a more significant role, which can provoke discussion and sharing.
+  ✨ Refining winner...
+✨ AI_REFINER: Polishing content (score: 9)...
+BUDGET_GATE ALLOW: new_today=$1.4720/6.0000 purpose=ai_content_refiner model=gpt-4o
+🕵️ BUDGET_SHADOW: would allow $0.0079 call (total: $1.4720/$6.00)
+COST_TRACKER attempt: purpose=ai_content_refiner model=gpt-4o est_cost=$0.0079 today=$1.4641/6.0000
+[COST_TRACKER] model=gpt-4o cost=$0.0032 daily=$1.4673/6.00 purpose=ai_content_refiner
+OPENAI_CALL: model=gpt-4o in=731 out=138 purpose=ai_content_refiner cost=$0.0032
+✅ AI_REFINER: Content polished successfully
+   Improvements: Strengthened hook with 'Myth-busted' to grab attention, Simplified language for broader audience, Added action-oriented tip for diet alignment
+  ✓ Improvements: Strengthened hook with 'Myth-busted' to grab attention, Simplified language for broader audience, Added action-oriented tip for diet alignment
+  ✓ Used generator: mythBuster
+  ✓ Confidence: 85.0%
+🔍 STEP 5.3: Validating content quality...
+  📊 Quality score: 45/100 (threshold: 78)
+  ✅ Content passes pre-validation (45/100)
+🧠 STEP 5.4: Scoring content intelligence...
+🧠 POST_GEN_INTELLIGENCE: Scoring content intelligence...
+BUDGET_GATE ALLOW: new_today=$1.4690/6.0000 purpose=post_gen_intelligence - content scoring model=gpt-4o-mini
+🕵️ BUDGET_SHADOW: would allow $0.0017 call (total: $1.4690/$6.00)
+COST_TRACKER attempt: purpose=post_gen_intelligence - content scoring model=gpt-4o-mini est_cost=$0.0017 today=$1.4673/6.0000
+     • Intelligence: 75/100
+     • Overall: 77/100
+  ✅ Intelligence score acceptable (77/100)
+🛡️ STEP 5.5: Sanitizing content for violations...
+❌ SANITIZATION_FAILED (1 violations)
+   ⚠️ banned_phrase: game-changer
+[COST_TRACKER] model=gpt-4o-mini cost=$0.0004 daily=$1.4677/6.00 purpose=post_gen_intelligence - content scoring
+   ✓ Specificity: 2 (20%, mechanism)
+OPENAI_CALL: model=gpt-4o-mini in=443 out=133 purpose=post_gen_intelligence - content scoring cost=$0.0004
+📝 DB_INSERT: content_violations with keys: generator_name, topic, format, violation_type, severity, detected_phrase, context_snippet, content_preview, full_content, specificity_score, specificity_matches, action_taken, retry_succeeded, metadata
+  📊 Intelligence: 75/100
+  📊 Engagement: 85/100
+  📊 Viral: 70/100
+  📊 Overall: 77/100
+  📊 Intelligence Scores:
+❌ UNIFIED_ENGINE: Generation failed: Content quality violation: game-changer
+     • Engagement: 85/100
+     • Actionability: 80/100
+[UNIFIED_PLAN] ❌ Generation 1 failed: Content quality violation: game-changer
+[UNIFIED_PLAN] ⚠️ No decisions generated this cycle
+✅ JOB_PLAN: Completed successfully
+✅ DB_INSERT_SUCCESS: content_violations - inserted 1 rows
+  ✓ Logged high violation to database
+💓 HEARTBEAT: 2025-10-21T18:30:35.864Z - posting_disabled=false, dry_run=false, mode=live
+💓 HEARTBEAT: 2025-10-21T18:31:35.865Z - posting_disabled=false, dry_run=false, mode=live
+[POSTING_QUEUE] ⚠️ No queued content found in database at all
+[POSTING_QUEUE] ℹ️ No decisions ready for posting (grace_window=5m)
+✅ JOB_POSTING: Completed successfully
+[NEWS_SCRAPER] 🔥 Scraping breaking health news...
+🕒 JOB_NEWS_SCRAPING: Starting...
+[NEWS_SCRAPER] 🔍 Searching news: "now available"
+📊 CACHE_METRICS: Hit rate: 60.0%, Avg response: 2.4ms, Ops/sec: 0.0
+[NEWS_SCRAPER] 🗞️ Starting Twitter news scraping job...
+🔧 SMART_CACHE: Auto-optimized TTL for low hit rate
+💓 HEARTBEAT: 2025-10-21T18:32:35.865Z - posting_disabled=false, dry_run=false, mode=live
+🕒 JOB_POSTING: Starting...
+[POSTING_QUEUE] 📮 Processing posting queue...
+[POSTING_QUEUE] ✅ Post budget available: 0/2 content posts
+[POSTING_QUEUE] 📅 Fetching posts ready within 5 minute window
+[POSTING_QUEUE] 🕒 Current time: 2025-10-21T18:32:36.025Z
+[POSTING_QUEUE] 🕒 Grace window: 2025-10-21T18:37:36.025Z
+[POSTING_QUEUE] 📊 Query returned 0 decisions
+    ⚠️ RELOAD: Tweet element didn't load, continuing anyway...
+[NEWS_SCRAPER] 🔍 Searching news: "launches at"
+    ⚠️ RELOAD: Tweet element didn't load, continuing anyway...
+[NEWS_SCRAPER] 🔍 Searching news: "approved by FDA"
+    ⚠️ RELOAD: Tweet element didn't load, continuing anyway...
+[NEWS_SCRAPER] 🔍 Searching news: "officials say"
+💓 HEARTBEAT: 2025-10-21T18:33:35.865Z - posting_disabled=false, dry_run=false, mode=live
+    ⚠️ RELOAD: Tweet element didn't load, continuing anyway...
+[NEWS_SCRAPER] 🔍 Searching news: "secretary claims"
+    ⚠️ RELOAD: Tweet element didn't load, continuing anyway...
+[NEWS_SCRAPER] ✅ Found 0 breaking news items
+[NEWS_SCRAPER] 🧪 Scraping research announcements...
+[NEWS_SCRAPER] 🔍 Searching research: "new study shows"
+    ⚠️ RELOAD: Tweet element didn't load, continuing anyway...
+[NEWS_SCRAPER] 🔍 Searching research: "research finds"
+    ⚠️ RELOAD: Tweet element didn't load, continuing anyway...
+[NEWS_SCRAPER] 🔍 Searching research: "scientists discover"
+💓 HEARTBEAT: 2025-10-21T18:34:35.865Z - posting_disabled=false, dry_run=false, mode=live
+🕒 JOB_ACCOUNT_DISCOVERY: Starting...
+[ACCOUNT_DISCOVERY] 🔍 Starting account discovery cycle...
+[ACCOUNT_DISCOVERY] 📊 Current pool size: 24 accounts
+[ACCOUNT_DISCOVERY] 🌐 Searching Twitter for health accounts...
+[AI_DISCOVERY] 🔍 Starting AI-driven account discovery...
+[AI_DISCOVERY] 🏷️ Mining health hashtags with REAL scraping...
+[REAL_DISCOVERY] 🔍 Searching Twitter for #longevity...
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+    ⚠️ RELOAD: Tweet element didn't load, continuing anyway...
+[NEWS_SCRAPER] ✅ Found 0 research announcements
+[NEWS_SCRAPER] 💾 Storing 0 scraped tweets...
+[NEWS_SCRAPER] 🤖 Running AI analysis on scraped news...
+[NEWS_CURATOR] 🎯 Analyzing scraped news with AI...
+[NEWS_CURATOR] ℹ️ No new news to curate
+[NEWS_SCRAPER] 📊 Updating trending topics...
+[TRENDING] 📈 Updating trending topics...
+[TRENDING] 📊 Found 0 trending topics
+[TRENDING] ✅ Trending topics updated
+[NEWS_SCRAPER] ✅ Scraping job completed: 0 tweets scraped
+✅ JOB_NEWS_SCRAPING: Completed successfully
+[REAL_DISCOVERY] ⚠️ No tweets loaded for #longevity
+[REAL_DISCOVERY] 🔍 Searching Twitter for #biohacking...
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+[REAL_DISCOVERY] ⚠️ No tweets loaded for #biohacking
+[REAL_DISCOVERY] 🔍 Searching Twitter for #nutrition...
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+[REAL_DISCOVERY] ⚠️ No tweets loaded for #nutrition
+[REAL_DISCOVERY] 🏥 Discovering from known health accounts...
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+💓 HEARTBEAT: 2025-10-21T18:35:35.865Z - posting_disabled=false, dry_run=false, mode=live
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+[REAL_DISCOVERY] ✅ Discovered 5 accounts from health seed list
+[AI_DISCOVERY] 📊 Found 5 accounts via hashtags
+[AI_DISCOVERY] ⏳ Cooling down 30s before network mapping...
+[AI_DISCOVERY] 🕸️ Mapping network connections...
+[DB_INIT] 🔍 Checking discovered_accounts table...
+[DB_INIT] ✅ discovered_accounts table exists
+[AI_DISCOVERY] 🕸️ Found 0 accounts via network mapping
+[AI_DISCOVERY] ⏳ Cooling down 30s before content analysis...
+💓 HEARTBEAT: 2025-10-21T18:36:35.876Z - posting_disabled=false, dry_run=false, mode=live
+[AI_DISCOVERY] 📝 Analyzing content with REAL scraping...
+[AI_DISCOVERY] 📝 Found 0 accounts via content analysis
+[AI_DISCOVERY] ✅ Discovered 5 unique accounts
+[DB_INIT] 🔍 Checking discovered_accounts table...
+[DB_INIT] ✅ discovered_accounts table exists
+[AI_DISCOVERY] 💾 Stored 5 accounts in database
+[AI_DISCOVERY] 📊 Scoring all accounts...
+[DB_INIT] 🔍 Checking discovered_accounts table...
+[DB_INIT] ✅ discovered_accounts table exists
+[AI_DISCOVERY] ✅ Scored 24 accounts
+[ACCOUNT_DISCOVERY] ✅ Discovery complete:
+  💾 New accounts stored: 0
+  📊 Total pool size: 24
+✅ JOB_ACCOUNT_DISCOVERY: Completed successfully
+🕒 JOB_METRICS_SCRAPER: Starting...
+[METRICS_JOB] 🔍 Starting scheduled metrics collection...
+[METRICS_JOB] 📊 Found 15 posts to check (15 recent, 0 historical)
+📊 CACHE_METRICS: Hit rate: 60.0%, Avg response: 2.4ms, Ops/sec: 0.0
+🔧 SMART_CACHE: Auto-optimized TTL for low hit rate
+🕒 JOB_POSTING: Starting...
+[POSTING_QUEUE] 📮 Processing posting queue...
+💓 HEARTBEAT: 2025-10-21T18:37:35.877Z - posting_disabled=false, dry_run=false, mode=live
+[POSTING_QUEUE] ✅ Post budget available: 0/2 content posts
+[POSTING_QUEUE] 📅 Fetching posts ready within 5 minute window
+[POSTING_QUEUE] 🕒 Current time: 2025-10-21T18:37:35.933Z
+[POSTING_QUEUE] 🕒 Grace window: 2025-10-21T18:42:35.933Z
+[METRICS_JOB] ✅ Metrics collection complete: 0 updated, 15 skipped, 0 failed
+✅ JOB_METRICS_SCRAPER: Completed successfully
+[POSTING_QUEUE] 📊 Query returned 0 decisions
+[POSTING_QUEUE] ⚠️ No queued content found in database at all
+[POSTING_QUEUE] ℹ️ No decisions ready for posting (grace_window=5m)
+✅ JOB_POSTING: Completed successfully
+💓 HEARTBEAT: 2025-10-21T18:38:35.904Z - posting_disabled=false, dry_run=false, mode=live
+🕒 JOB_ENHANCED_METRICS: Starting...
+[ENHANCED_METRICS] 🔍 Starting enhanced metrics collection...
+🕒 JOB_VELOCITY_TRACKER: Starting...
+[VELOCITY] ⚡ Starting velocity tracking cycle...
+[VELOCITY] 📋 Found 35 recent posts
+[VELOCITY] ✅ Velocity tracking complete: 0 tracked, 0 skipped
+✅ JOB_VELOCITY_TRACKER: Completed successfully
+💓 HEARTBEAT: 2025-10-21T18:39:35.905Z - posting_disabled=false, dry_run=false, mode=live
+[ENHANCED_METRICS] 📊 Checking 2 posts at 6h mark
+🔍 SCRAPER: Starting bulletproof scraping for tweet 1980621164708774260
+  📊 SCRAPER: Attempt 1/3
+    ⚠️ VALIDATE: Not on tweet page
+    🔍 DEBUG: {"url":"about:blank","title":"","hasArticles":0,"testIds":[]}
+  ⚠️ SCRAPER: Page state invalid, reloading...
+    🔄 RELOAD: Navigating to https://x.com/Signal_Synapse/status/1980621164708774260/analytics (analytics)
+      background-color: #FFF;
+    ⚠️ RELOAD: Tweet element didn't load, continuing anyway...
+      color: #0F1419;
+  📊 SCRAPER: Attempt 2/3
+    ✅ VALIDATE: Page state valid
+      max-width: 600px;
+    🔍 URL CHECK: Current URL = https://x.com/Signal_Synapse/status/1980621164708774260/analytics
+    🔍 URL CHECK: Is analytics page? true
+      margin: 0 auto;
+    ✅ ANALYTICS: Skipping tweet ID validation (analytics page is modal)
+      padding: 10%;
+    ✅ ANALYTICS: Proceeding directly to metrics extraction...
+      font-family: Helvetica, sans-serif;
+    📊 ANALYTICS: Detected analytics page, using analytics extractor
+      font-size: 16px;
+    📊 ANALYTICS: Extracting metrics from analytics page...
+    }
+    📊 ANALYTICS: Page content preview (first 1000 chars):
+    <style>
+    body {
+      -ms-overflow-style: scrollbar;
+      overflow-y: scroll;
+      overscroll-behavior-y: none;
+    }
+
+    .errorContainer {
+
+    .errorFooter a:visited {
+    .errorButton {
+      color: #657786;
+      background: rgb(26, 145, 218);
+      text-decoration: none;
+      margin: 3em 0;
+      padding-right: 1em;
+    }
+    }
+    }
+
+
+
+    .errorFooter a:hover,
+    .errorButton a {
+    .errorFooter {
+    .errorFooter a:active {
+      background: #1DA1F2;
+      color: #657786;
+      border-radius: 2.5em;
+      color: white;
+      font-size: 80%;
+      padding: 1em 2em;
+      line-height: 1.5;
+      text-decoration: none;
+      padding: 1em 0;
+    }
+    }
+
+
+    .errorButton a:hover,
+    .errorButton a:focus {
+    .errorFooter a,
+      text-decoration: underline;
+    }
+
+      #placeholder,
+
+    📊 ANALYTICS: Searching for 'Impressions' in text...
+    📊 ANALYTICS: Contains 'Impressions'? true
+    📊 ANALYTICS: Contains 'Post Analytics'? false
+    📊 ANALYTICS: Contains 'permission'? true
+    📊 ANALYTICS: Page loaded, extracting numbers...
+    ✅ IMPRESSIONS: 5000000
+    ✅ ENGAGEMENTS: 2
+    ❌ DETAIL EXPANDS: No match found in text
+    ❌ PROFILE VISITS: No match found in text
+    ❌ LIKES: No match found in text
+    ❌ RETWEETS: No match found in text
+    ❌ REPLIES: No match found in text
+    ✅ VALIDATE: Metrics pass all sanity checks
+  ✅ SCRAPER: Success on attempt 2
+     Likes: undefined, Retweets: undefined, Quote Tweets: undefined, Replies: undefined
+[ENHANCED_METRICS] ✅ Velocity tracked for 1980621164708774260 at 6h: 0 likes
+🕒 JOB_REPLY_HARVESTER: Starting...
+[HARVESTER] 🌾 Starting reply opportunity harvesting...
+[HARVESTER] 📊 Current pool: 0 opportunities (<24h old)
+[HARVESTER] 🎯 Need to harvest ~300 opportunities
+[HARVESTER] 📋 Found 20 accounts to harvest from
+[HARVESTER] 🌐 Scraping 20 accounts...
+[HARVESTER]   1/20 → @drmarkhyman...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @drmarkhyman...
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+🔍 SCRAPER: Starting bulletproof scraping for tweet 1980613611274776975
+  📊 SCRAPER: Attempt 1/3
+    ⚠️ VALIDATE: Not on tweet page
+    🔍 DEBUG: {"url":"about:blank","title":"","hasArticles":0,"testIds":[]}
+  ⚠️ SCRAPER: Page state invalid, reloading...
+    🔄 RELOAD: Navigating to https://x.com/Signal_Synapse/status/1980613611274776975/analytics (analytics)
+[REAL_DISCOVERY] ✅ Found 0 reply opportunities from @drmarkhyman
+[HARVESTER]     ✗ No opportunities found
+[HARVESTER]   2/20 → @PeterAttiaMD...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @PeterAttiaMD...
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+[REAL_DISCOVERY] ✅ Found 0 reply opportunities from @PeterAttiaMD
+[HARVESTER]     ✗ No opportunities found
+    ⚠️ RELOAD: Tweet element didn't load, continuing anyway...
+[HARVESTER]   3/20 → @MarkSisson...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @MarkSisson...
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+  📊 SCRAPER: Attempt 2/3
+    ✅ VALIDATE: Page state valid
+    🔍 URL CHECK: Current URL = https://x.com/Signal_Synapse/status/1980613611274776975/analytics
+    🔍 URL CHECK: Is analytics page? true
+    ✅ ANALYTICS: Skipping tweet ID validation (analytics page is modal)
+    ✅ ANALYTICS: Proceeding directly to metrics extraction...
+    📊 ANALYTICS: Detected analytics page, using analytics extractor
+    📊 ANALYTICS: Extracting metrics from analytics page...
+[REAL_DISCOVERY] ✅ Found 0 reply opportunities from @MarkSisson
+[HARVESTER]     ✗ No opportunities found
+      font-size: 16px;
+    📊 ANALYTICS: Page content preview (first 1000 chars):
+    <style>
+    }
+    body {
+
+      -ms-overflow-style: scrollbar;
+      overflow-y: scroll;
+    .errorButton {
+      overscroll-behavior-y: none;
+      margin: 3em 0;
+    }
+    }
+
+
+    .errorContainer {
+    .errorButton a {
+      background: #1DA1F2;
+      background-color: #FFF;
+      border-radius: 2.5em;
+      color: #0F1419;
+      color: white;
+      max-width: 600px;
+      padding: 1em 2em;
+      margin: 0 auto;
+      text-decoration: none;
+      padding: 10%;
+    }
+      font-family: Helvetica, sans-serif;
+
+    .errorButton a:hover,
+    .errorButton a:focus {
+      background: rgb(26, 145, 218);
+    }
+
+    .errorFooter {
+      color: #657786;
+      font-size: 80%;
+      line-height: 1.5;
+      padding: 1em 0;
+    }
+
+    .errorFooter a,
+    .errorFooter a:visited {
+      color: #657786;
+      text-decoration: none;
+      padding-right: 1em;
+    }
+
+    .errorFooter a:hover,
+    .errorFooter a:active {
+      text-decoration: underline;
+    }
+
+      #placeholder,
+
+    📊 ANALYTICS: Searching for 'Impressions' in text...
+    📊 ANALYTICS: Contains 'Impressions'? true
+    📊 ANALYTICS: Contains 'Post Analytics'? false
+    📊 ANALYTICS: Contains 'permission'? true
+    📊 ANALYTICS: Page loaded, extracting numbers...
+    ✅ IMPRESSIONS: 5000000
+    ✅ ENGAGEMENTS: 2
+    ❌ DETAIL EXPANDS: No match found in text
+    ❌ PROFILE VISITS: No match found in text
+    ❌ LIKES: No match found in text
+    ❌ RETWEETS: No match found in text
+    ❌ REPLIES: No match found in text
+    ✅ VALIDATE: Metrics pass all sanity checks
+  ✅ SCRAPER: Success on attempt 2
+     Likes: undefined, Retweets: undefined, Quote Tweets: undefined, Replies: undefined
+[ENHANCED_METRICS] ✅ Velocity tracked for 1980613611274776975 at 6h: 0 likes
+[HARVESTER]   4/20 → @drberg1...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @drberg1...
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+[ENHANCED_METRICS] ✅ Enhanced metrics collection complete
+✅ JOB_ENHANCED_METRICS: Completed successfully
+[REAL_DISCOVERY] ✅ Found 0 reply opportunities from @drberg1
+[HARVESTER]     ✗ No opportunities found
+[HARVESTER]   5/20 → @thomas_delauer...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @thomas_delauer...
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+[REAL_DISCOVERY] ✅ Found 0 reply opportunities from @thomas_delauer
+[HARVESTER]     ✗ No opportunities found
+[HARVESTER]   6/20 → @Mind_Pump...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @Mind_Pump...
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+💓 HEARTBEAT: 2025-10-21T18:40:35.905Z - posting_disabled=false, dry_run=false, mode=live
+[REAL_DISCOVERY] ✅ Found 0 reply opportunities from @Mind_Pump
+[HARVESTER]     ✗ No opportunities found
+[HARVESTER]   7/20 → @DrAmenClinics...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @DrAmenClinics...
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+[REAL_DISCOVERY] ✅ Found 0 reply opportunities from @DrAmenClinics
+[HARVESTER]     ✗ No opportunities found
+[HARVESTER]   8/20 → @drmikeT...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @drmikeT...
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+[REAL_DISCOVERY] ✅ Found 0 reply opportunities from @drmikeT
+[HARVESTER]     ✗ No opportunities found
+[HARVESTER]   9/20 → @DrWillCole...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @DrWillCole...
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+[REAL_DISCOVERY] ✅ Found 0 reply opportunities from @DrWillCole
+[HARVESTER]     ✗ No opportunities found
+[HARVESTER]   10/20 → @DrLaurenKelley...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @DrLaurenKelley...
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+[REAL_DISCOVERY] ✅ Found 0 reply opportunities from @DrLaurenKelley
+[HARVESTER]     ✗ No opportunities found
+[HARVESTER]   11/20 → @GabrielleNLyon...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @GabrielleNLyon...
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+[REAL_DISCOVERY] ✅ Found 0 reply opportunities from @GabrielleNLyon
+[HARVESTER]     ✗ No opportunities found
+[HARVESTER]   12/20 → @ProfTimSpector...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @ProfTimSpector...
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+[REAL_DISCOVERY] ✅ Found 0 reply opportunities from @ProfTimSpector
+[HARVESTER]     ✗ No opportunities found
+[HARVESTER]   13/20 → @shawnstevenson...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @shawnstevenson...
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+[REAL_DISCOVERY] ✅ Found 0 reply opportunities from @shawnstevenson
+[HARVESTER]     ✗ No opportunities found
+[HARVESTER]   14/20 → @nutritionfacts...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @nutritionfacts...
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+[REAL_DISCOVERY] ✅ Found 0 reply opportunities from @nutritionfacts
+[HARVESTER]     ✗ No opportunities found
+💓 HEARTBEAT: 2025-10-21T18:41:35.905Z - posting_disabled=false, dry_run=false, mode=live
+[HARVESTER]   15/20 → @DaveAsprey...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @DaveAsprey...
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+[REAL_DISCOVERY] ✅ Found 0 reply opportunities from @DaveAsprey
+[HARVESTER]     ✗ No opportunities found
+[HARVESTER]   16/20 → @MaxLugavere...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @MaxLugavere...
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+[REAL_DISCOVERY] ✅ Found 0 reply opportunities from @MaxLugavere
+[HARVESTER]     ✗ No opportunities found
+[HARVESTER]   17/20 → @DrJasonFung...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @DrJasonFung...
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+[REAL_DISCOVERY] ✅ Found 0 reply opportunities from @DrJasonFung
+[HARVESTER]     ✗ No opportunities found
+[HARVESTER]   18/20 → @bengreenfield...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @bengreenfield...
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+[REAL_DISCOVERY] ✅ Found 0 reply opportunities from @bengreenfield
+[HARVESTER]     ✗ No opportunities found
+[HARVESTER]   19/20 → @foundmyfitness...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @foundmyfitness...
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+[REAL_DISCOVERY] ✅ Found 0 reply opportunities from @foundmyfitness
+[HARVESTER]     ✗ No opportunities found
+[HARVESTER]   20/20 → @DrAndrewHuberman...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @DrAndrewHuberman...
+SESSION_LOADER: TWITTER_SESSION_B64 detected; writing /app/data/twitter_session.json
+[REAL_DISCOVERY] ✅ Found 0 reply opportunities from @DrAndrewHuberman
+[HARVESTER]     ✗ No opportunities found
+[HARVESTER] ⚠️ Failed to clean up old opportunities: relation "public.reply_opportunities" does not exist
+[HARVESTER] ✅ Harvest complete!
+[HARVESTER] 📊 Pool size: 0 → 0
+[HARVESTER] 🌾 Harvested: 0 new opportunities
+[HARVESTER] 💡 Will harvest more in next cycle
+✅ JOB_REPLY_HARVESTER: Completed successfully
+[HARVESTER] ⚠️ Pool still low (0/100)
+[POSTING_QUEUE] ℹ️ No decisions ready for posting (grace_window=5m)
+🕒 JOB_LEARN: Starting...
+✅ JOB_POSTING: Completed successfully
+❌ JOB_LEARN: Attempt 1 failed - supabaseKey is required.
+❌ JOB_LEARN: All 1 attempts failed
+📊 CACHE_METRICS: Hit rate: 60.0%, Avg response: 2.4ms, Ops/sec: 0.0
+🔧 SMART_CACHE: Auto-optimized TTL for low hit rate
+🕒 JOB_POSTING: Starting...
+[POSTING_QUEUE] 📮 Processing posting queue...
+💓 HEARTBEAT: 2025-10-21T18:42:35.906Z - posting_disabled=false, dry_run=false, mode=live
+[POSTING_QUEUE] ✅ Post budget available: 0/2 content posts
+[POSTING_QUEUE] 📅 Fetching posts ready within 5 minute window
+[POSTING_QUEUE] 🕒 Current time: 2025-10-21T18:42:35.958Z
+[POSTING_QUEUE] 🕒 Grace window: 2025-10-21T18:47:35.958Z
+[POSTING_QUEUE] 📊 Query returned 0 decisions
+[POSTING_QUEUE] ⚠️ No queued content found in database at all
+💓 HEARTBEAT: 2025-10-21T18:43:35.906Z - posting_disabled=false, dry_run=false, mode=live
