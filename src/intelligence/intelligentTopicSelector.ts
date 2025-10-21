@@ -5,7 +5,7 @@
  * Strategy: Don't pick randomly - pick what's HOT right now
  */
 
-import { openaiBudgetedClient } from '../ai/openaiBudgetedClient';
+import { budgetedOpenAI } from '../services/openaiBudgetedClient';
 import { competitiveIntelligence } from './competitiveIntelligence';
 
 export interface TopicSuggestion {
@@ -78,7 +78,7 @@ class IntelligentTopicSelector {
       const compInsights = await competitiveIntelligence.getInsights();
 
       // Ask AI to analyze current trends
-      const response = await openaiBudgetedClient.chat.completions.create({
+      const response = await budgetedOpenAI.chatComplete({
         model: 'gpt-4o-mini',
         messages: [{
           role: 'user',
@@ -120,6 +120,9 @@ Return ONLY the JSON array.`
         }],
         temperature: 0.7,
         response_format: { type: 'json_object' }
+      }, {
+        purpose: 'topic_trend_analysis',
+        priority: 'medium'
       });
 
       const result = response.choices[0]?.message?.content;
