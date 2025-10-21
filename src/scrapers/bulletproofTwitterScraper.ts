@@ -388,12 +388,31 @@ export class BulletproofTwitterScraper {
       console.log(`    📊 ANALYTICS: Page loaded, extracting numbers...`);
       
       // Extract Impressions (labeled as "Impressions" on analytics page)
-      const impressionsMatch = analyticsText.match(/Impressions[^\d]*(\d+(?:,\d+)*)/i);
+      // Try multiple patterns to handle different Twitter formats
+      let impressionsMatch = analyticsText.match(/Impressions[^\d]*(\d+(?:,\d+)*)/i);
+      if (!impressionsMatch) {
+        // Try without plural: "Impression"
+        impressionsMatch = analyticsText.match(/Impression[^\d]*(\d+(?:,\d+)*)/i);
+      }
+      if (!impressionsMatch) {
+        // Try with newline/whitespace between label and number
+        impressionsMatch = analyticsText.match(/Impressions?\s*\n?\s*(\d+(?:,\d+)*)/i);
+      }
+      if (!impressionsMatch) {
+        // Try looking for number after "Impressions" with lots of whitespace/content in between
+        impressionsMatch = analyticsText.match(/Impressions?[\s\S]{0,100}?(\d+(?:,\d+)*)/i);
+      }
+      
       if (impressionsMatch) {
         metrics.views = parseInt(impressionsMatch[1].replace(/,/g, ''));
         console.log(`    ✅ IMPRESSIONS: ${metrics.views}`);
       } else {
-        console.log(`    ❌ IMPRESSIONS: No match found in text`);
+        console.log(`    ❌ IMPRESSIONS: No match found with any pattern`);
+        // Debug: show what's around "Impression" if it exists
+        const debugMatch = analyticsText.match(/.{0,50}Impression.{0,50}/i);
+        if (debugMatch) {
+          console.log(`    🐛 Found "Impression" context: "${debugMatch[0]}"`);
+        }
       }
       
       // Extract Engagements (labeled as "Engagements" on analytics page)
