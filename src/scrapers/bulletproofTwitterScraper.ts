@@ -20,6 +20,7 @@ export interface ScrapedMetrics {
   replies: number | null;
   bookmarks: number | null;
   views: number | null;
+  profile_clicks?: number | null; // From analytics page: "Profile visits"
   _verified: boolean;
   _status: 'CONFIRMED' | 'UNDETERMINED';
   _dataSource: 'scraped' | 'scraping_failed';
