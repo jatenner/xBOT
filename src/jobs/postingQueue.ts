@@ -688,22 +688,17 @@ async function markDecisionPosted(decisionId: string, tweetId: string, tweetUrl?
     const { getSupabaseClient } = await import('../db/index');
     const supabase = getSupabaseClient();
     
-    // 1. Update content_metadata status, tweet_id, AND tweet_url (CRITICAL!)
-    const updateData: any = { 
-      status: 'posted',
-      tweet_id: tweetId, // 🔥 CRITICAL: Save tweet ID for metrics scraping!
-      posted_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-    
-    // Add tweet_url if provided (column might not exist yet in database)
-    if (tweetUrl) {
-      updateData.tweet_url = tweetUrl; // 🔗 IDEAL: Save full URL for direct scraping!
-    }
-    
+    // 1. Update content_metadata status and tweet_id (CRITICAL!)
+    // NOTE: tweet_url column commented out until added to database schema
     const { error: updateError } = await supabase
       .from('content_metadata')
-      .update(updateData)
+      .update({
+        status: 'posted',
+        tweet_id: tweetId, // 🔥 CRITICAL: Save tweet ID for metrics scraping!
+        posted_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+        // tweet_url: tweetUrl // 🔗 TODO: Add this column to database first!
+      })
       .eq('decision_id', decisionId);  // 🔥 FIX: decisionId is UUID, query by decision_id not id!
     
     if (updateError) {
