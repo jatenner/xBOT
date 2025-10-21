@@ -75,11 +75,26 @@ class BrowserManager {
 
         this.browser = await chromium.launch(launchOptions);
         
-        // Create persistent context for better performance
-        this.context = await this.browser.newContext({
+        // Create persistent context with session for authenticated scraping
+        const sessionPath = process.env.SESSION_CANONICAL_PATH || '/app/data/twitter_session.json';
+        const fs = await import('fs');
+        
+        const contextOptions: any = {
           viewport: { width: 1280, height: 720 },
           userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        });
+        };
+        
+        // Load session if it exists
+        if (fs.existsSync(sessionPath)) {
+          try {
+            contextOptions.storageState = sessionPath;
+            console.log(`🔑 BROWSER: Loading authenticated session for analytics access`);
+          } catch (error) {
+            console.warn(`⚠️  BROWSER: Session load failed, using anonymous mode`);
+          }
+        }
+        
+        this.context = await this.browser.newContext(contextOptions);
 
         // Test the browser with a simple page
         const testPage = await this.context.newPage();
@@ -122,10 +137,29 @@ class BrowserManager {
   async getContext(): Promise<BrowserContext> {
     const browser = await this.getBrowser();
     if (!this.context) {
-      this.context = await browser.newContext({
+      // 🔑 CRITICAL FIX: Load Twitter session for authenticated scraping!
+      const sessionPath = process.env.SESSION_CANONICAL_PATH || '/app/data/twitter_session.json';
+      const fs = await import('fs');
+      
+      const contextOptions: any = {
         viewport: { width: 1280, height: 720 },
         userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      });
+      };
+      
+      // Load session if it exists (for authenticated analytics access)
+      if (fs.existsSync(sessionPath)) {
+        try {
+          contextOptions.storageState = sessionPath;
+          console.log(`🔑 BROWSER: Loading authenticated session from ${sessionPath}`);
+        } catch (error) {
+          console.warn(`⚠️  BROWSER: Session file exists but couldn't be loaded:`, error);
+          // Continue without session (anonymous mode)
+        }
+      } else {
+        console.log(`ℹ️  BROWSER: No session file found, using anonymous mode`);
+      }
+      
+      this.context = await browser.newContext(contextOptions);
     }
     return this.context;
   }
