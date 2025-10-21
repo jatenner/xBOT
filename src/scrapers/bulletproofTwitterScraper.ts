@@ -136,15 +136,23 @@ export class BulletproofTwitterScraper {
         // ✅ FIX #3: FAIL FAST on tweet ID mismatch - don't retry
         // Twitter will keep showing the same wrong tweet (parent in thread)
         // Retrying is wasteful - fail immediately and log the issue
-        const correctTweet = await this.validateScrapingCorrectTweet(page, tweetId);
-        if (!correctTweet) {
-          console.error(`  ❌ SCRAPER: Tweet ID mismatch - FAILING FAST (don't waste retries)`);
-          console.error(`     Likely a reply/thread where parent tweet is shown`);
-          return {
-            success: false,
-            metrics: null,
-            error: 'Tweet ID mismatch - wrong tweet loaded (possibly parent in thread)'
-          };
+        // 🔧 SKIP VALIDATION on analytics page (it's a modal with different structure)
+        const currentUrl = page.url();
+        const isAnalyticsPage = currentUrl.includes('/analytics');
+        
+        if (!isAnalyticsPage) {
+          const correctTweet = await this.validateScrapingCorrectTweet(page, tweetId);
+          if (!correctTweet) {
+            console.error(`  ❌ SCRAPER: Tweet ID mismatch - FAILING FAST (don't waste retries)`);
+            console.error(`     Likely a reply/thread where parent tweet is shown`);
+            return {
+              success: false,
+              metrics: null,
+              error: 'Tweet ID mismatch - wrong tweet loaded (possibly parent in thread)'
+            };
+          }
+        } else {
+          console.log(`    ✅ ANALYTICS: Skipping tweet ID validation (analytics page is modal)`);
         }
 
         // Step 2: Extract metrics using multiple selectors
