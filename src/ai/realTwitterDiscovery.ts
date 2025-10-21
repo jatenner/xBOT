@@ -28,6 +28,7 @@ export interface ReplyOpportunity {
   reply_count: number;
   like_count: number;
   posted_minutes_ago: number;
+  tweet_posted_at?: string; // ISO timestamp - needed for <24h filtering
   opportunity_score: number;
 }
 
@@ -218,7 +219,8 @@ export class RealTwitterDiscovery {
             const results: any[] = [];
             const tweetElements = document.querySelectorAll('article[data-testid="tweet"]');
             
-            for (let i = 0; i < Math.min(tweetElements.length, 10); i++) {
+            // 🔥 SCALE: Extract up to 20 tweets per account (was 10)
+            for (let i = 0; i < Math.min(tweetElements.length, 20); i++) {
               const tweet = tweetElements[i];
               
               // Get tweet content
@@ -230,6 +232,16 @@ export class RealTwitterDiscovery {
               const href = linkEl?.getAttribute('href') || '';
               const match = href.match(/\/status\/(\d+)/);
               const tweetId = match ? match[1] : '';
+              
+              // 🕐 EXTRACT REAL TIMESTAMP from Twitter
+              const timeEl = tweet.querySelector('time');
+              const datetime = timeEl?.getAttribute('datetime') || '';
+              let postedMinutesAgo = 999999; // Default: very old
+              if (datetime) {
+                const tweetTime = new Date(datetime);
+                const now = new Date();
+                postedMinutesAgo = Math.floor((now.getTime() - tweetTime.getTime()) / 60000);
+              }
               
               // Get engagement metrics
               const replyEl = tweet.querySelector('[data-testid="reply"]');
@@ -249,15 +261,17 @@ export class RealTwitterDiscovery {
               const notTooManyReplies = replyCount < 100; // Sweet spot for visibility
               const hasEngagement = likeCount > 5; // Some social proof
               const noLinks = !content.includes('http'); // Avoid promotional tweets
+              const isRecent = postedMinutesAgo <= 1440; // 🔥 ONLY <24 hours old (1440 min = 24hr)
               
-              if (hasContent && notTooManyReplies && hasEngagement && noLinks && tweetId && author) {
+              if (hasContent && notTooManyReplies && hasEngagement && noLinks && isRecent && tweetId && author) {
                 results.push({
                   tweet_id: tweetId,
                   tweet_url: `https://x.com/${author}/status/${tweetId}`,
                   tweet_content: content,
                   tweet_author: author,
                   reply_count: replyCount,
-                  like_count: likeCount
+                  like_count: likeCount,
+                  posted_minutes_ago: postedMinutesAgo // 🕐 REAL timestamp!
                 });
               }
             }
@@ -267,11 +281,11 @@ export class RealTwitterDiscovery {
           
           console.log(`[REAL_DISCOVERY] ✅ Found ${opportunities.length} reply opportunities from @${username}`);
           
-          // Calculate opportunity scores
+          // Calculate opportunity scores (use real timestamps from scraper!)
           return opportunities.map((opp: any) => ({
             ...opp,
             account_username: username,
-            posted_minutes_ago: 15, // Estimated
+            // posted_minutes_ago already extracted from Twitter! No hardcoding.
             opportunity_score: this.calculateOpportunityScore(opp.like_count, opp.reply_count)
           }));
           

@@ -289,6 +289,20 @@ export class JobManager {
       5 * MINUTE // Start after 5 minutes (was 25 min - start sooner!)
     );
 
+    // 🌾 REPLY OPPORTUNITY HARVESTER - every 30 min, offset 10 min
+    // 🎯 USER REQUEST: Keep 200-300 fresh opportunities (<24h), harvest from discovered accounts
+    this.scheduleStaggeredJob(
+      'reply_harvester',
+      async () => {
+        await this.safeExecute('reply_harvester', async () => {
+          const { replyOpportunityHarvester } = await import('./replyOpportunityHarvester');
+          await replyOpportunityHarvester();
+        });
+      },
+      30 * MINUTE, // Every 30 minutes - replenish pool continuously
+      10 * MINUTE // Start after 10 minutes (after account discovery has run)
+    );
+
     // Attribution - every 2 hours, offset 70 min
     this.scheduleStaggeredJob(
       'attribution',
