@@ -5,7 +5,7 @@
  * Philosophy: Never post first draft. AI improves its own content.
  */
 
-import { openaiBudgetedClient } from '../ai/openaiBudgetedClient';
+import { budgetedOpenAI } from '../services/openaiBudgetedClient';
 import { competitiveIntelligence } from './competitiveIntelligence';
 
 export interface RefinementResult {
@@ -91,7 +91,7 @@ class ContentRefinementEngine {
       // Get successful examples for comparison
       const successfulExamples = await competitiveIntelligence.getExamplesForPrompt(2);
 
-      const response = await openaiBudgetedClient.chat.completions.create({
+      const response = await budgetedOpenAI.chatComplete({
         model: 'gpt-4o',
         messages: [{
           role: 'user',
@@ -138,6 +138,9 @@ Be critical. Don't inflate scores.`
         }],
         temperature: 0.3,
         response_format: { type: 'json_object' }
+      }, {
+        purpose: 'content_critique',
+        priority: 'high'
       });
 
       const result = response.choices[0]?.message?.content;
@@ -183,7 +186,7 @@ Be critical. Don't inflate scores.`
       // Get successful patterns to emulate
       const successfulExamples = await competitiveIntelligence.getExamplesForPrompt(2);
 
-      const response = await openaiBudgetedClient.chat.completions.create({
+      const response = await budgetedOpenAI.chatComplete({
         model: 'gpt-4o',
         messages: [{
           role: 'user',
@@ -218,6 +221,9 @@ Return ONLY the improved tweet, nothing else.`
         }],
         temperature: 0.7,
         max_tokens: 150
+      }, {
+        purpose: 'content_improvement',
+        priority: 'high'
       });
 
       const improved = response.choices[0]?.message?.content?.trim();

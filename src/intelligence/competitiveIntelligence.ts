@@ -5,7 +5,7 @@
  * Strategy: If we have no engagement data, learn from THEIR success
  */
 
-import { openaiBudgetedClient } from '../ai/openaiBudgetedClient';
+import { budgetedOpenAI } from '../services/openaiBudgetedClient';
 
 export interface SuccessfulPattern {
   hook_style: string;
@@ -66,7 +66,7 @@ class CompetitiveIntelligenceEngine {
    */
   private async generateInsightsFromAI(): Promise<CompetitiveInsights> {
     try {
-      const response = await openaiBudgetedClient.chat.completions.create({
+      const response = await budgetedOpenAI.chatComplete({
         model: 'gpt-4o',
         messages: [{
           role: 'user',
@@ -96,6 +96,9 @@ IMPORTANT: Base this on REAL patterns from successful science/health accounts.`
         }],
         temperature: 0.3,
         response_format: { type: 'json_object' }
+      }, {
+        purpose: 'competitive_intelligence_analysis',
+        priority: 'medium'
       });
 
       const content = response.choices[0]?.message?.content;
