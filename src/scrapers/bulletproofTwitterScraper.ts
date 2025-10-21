@@ -369,12 +369,20 @@ export class BulletproofTwitterScraper {
     
     try {
       // Wait for analytics modal/content to load
-      await page.waitForTimeout(2000);
+      await page.waitForTimeout(3000); // Increased from 2000 to 3000
       
       // Extract text content from page
       const analyticsText = await page.evaluate(() => {
         return document.body.textContent || '';
       });
+      
+      // 🐛 DEBUG: Log first 1000 chars to see what bot actually sees
+      console.log(`    📊 ANALYTICS: Page content preview (first 1000 chars):`);
+      console.log(`    ${analyticsText.substring(0, 1000)}`);
+      console.log(`    📊 ANALYTICS: Searching for 'Impressions' in text...`);
+      console.log(`    📊 ANALYTICS: Contains 'Impressions'? ${analyticsText.includes('Impressions')}`);
+      console.log(`    📊 ANALYTICS: Contains 'Post Analytics'? ${analyticsText.includes('Post Analytics')}`);
+      console.log(`    📊 ANALYTICS: Contains 'permission'? ${analyticsText.includes('permission')}`);
       
       console.log(`    📊 ANALYTICS: Page loaded, extracting numbers...`);
       
@@ -383,6 +391,8 @@ export class BulletproofTwitterScraper {
       if (impressionsMatch) {
         metrics.views = parseInt(impressionsMatch[1].replace(/,/g, ''));
         console.log(`    ✅ IMPRESSIONS: ${metrics.views}`);
+      } else {
+        console.log(`    ❌ IMPRESSIONS: No match found in text`);
       }
       
       // Extract Engagements (labeled as "Engagements" on analytics page)
@@ -391,6 +401,8 @@ export class BulletproofTwitterScraper {
         const engagements = parseInt(engagementsMatch[1].replace(/,/g, ''));
         console.log(`    ✅ ENGAGEMENTS: ${engagements}`);
         // Store in a new field or use as validation
+      } else {
+        console.log(`    ❌ ENGAGEMENTS: No match found in text`);
       }
       
       // Extract Detail expands
@@ -398,29 +410,43 @@ export class BulletproofTwitterScraper {
       if (detailExpandsMatch) {
         const detailExpands = parseInt(detailExpandsMatch[1].replace(/,/g, ''));
         console.log(`    ✅ DETAIL EXPANDS: ${detailExpands}`);
+      } else {
+        console.log(`    ❌ DETAIL EXPANDS: No match found in text`);
       }
       
       // Extract Profile visits
       const profileVisitsMatch = analyticsText.match(/Profile visits[^\d]*(\d+(?:,\d+)*)/i);
       if (profileVisitsMatch) {
         const profileVisits = parseInt(profileVisitsMatch[1].replace(/,/g, ''));
+        metrics.profile_clicks = profileVisits; // Save to metrics object
         console.log(`    ✅ PROFILE VISITS: ${profileVisits}`);
+      } else {
+        console.log(`    ❌ PROFILE VISITS: No match found in text`);
       }
       
       // Also extract basic metrics (likes, retweets, replies) from the tweet shown on analytics page
       const likesMatch = analyticsText.match(/(\d+(?:,\d+)*)\s*(?:Like|like)/);
       if (likesMatch) {
         metrics.likes = parseInt(likesMatch[1].replace(/,/g, ''));
+        console.log(`    ✅ LIKES: ${metrics.likes}`);
+      } else {
+        console.log(`    ❌ LIKES: No match found in text`);
       }
       
       const retweetsMatch = analyticsText.match(/(\d+(?:,\d+)*)\s*(?:Retweet|retweet)/);
       if (retweetsMatch) {
         metrics.retweets = parseInt(retweetsMatch[1].replace(/,/g, ''));
+        console.log(`    ✅ RETWEETS: ${metrics.retweets}`);
+      } else {
+        console.log(`    ❌ RETWEETS: No match found in text`);
       }
       
       const repliesMatch = analyticsText.match(/(\d+(?:,\d+)*)\s*(?:Reply|reply|replies)/);
       if (repliesMatch) {
         metrics.replies = parseInt(repliesMatch[1].replace(/,/g, ''));
+        console.log(`    ✅ REPLIES: ${metrics.replies}`);
+      } else {
+        console.log(`    ❌ REPLIES: No match found in text`);
       }
       
     } catch (error: any) {
