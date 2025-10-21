@@ -169,6 +169,15 @@ export class BulletproofTwitterScraper {
           console.log(`  ✅ SCRAPER: Success on attempt ${attempt}`);
           console.log(`     Likes: ${metrics.likes}, Retweets: ${metrics.retweets}, Quote Tweets: ${metrics.quote_tweets}, Replies: ${metrics.replies}`);
 
+          // 🔍 VALIDATION: Check if metrics are realistic for bot's follower count
+          try {
+            this.validateMetricsRealistic(metrics);
+            console.log(`  ✅ VALIDATION: Metrics passed realism check`);
+          } catch (validationError: any) {
+            console.error(`  ❌ VALIDATION: ${validationError.message}`);
+            throw validationError; // Fail fast on unrealistic metrics
+          }
+
           return {
             success: true,
             metrics: {
@@ -178,6 +187,7 @@ export class BulletproofTwitterScraper {
               replies: metrics.replies ?? null,
               bookmarks: metrics.bookmarks ?? null,
               views: metrics.views ?? null,
+              profile_clicks: metrics.profile_clicks ?? null,
               _selectors_used: metrics._selectors_used ?? [],
               _verified: true,
               _status: 'CONFIRMED',
@@ -390,13 +400,30 @@ export class BulletproofTwitterScraper {
         return document.body.textContent || '';
       });
       
+      // 🔐 AUTHENTICATION CHECK: Fail-fast if we're not authenticated
+      const hasPermissionError = analyticsText.toLowerCase().includes('permission');
+      const hasErrorPage = analyticsText.includes('errorContainer') || analyticsText.includes('Something went wrong');
+      const hasAuthError = analyticsText.includes('not authorized') || analyticsText.includes('access denied');
+      
+      console.log(`    🔐 AUTH CHECK: permission error? ${hasPermissionError}`);
+      console.log(`    🔐 AUTH CHECK: error page? ${hasErrorPage}`);
+      console.log(`    🔐 AUTH CHECK: auth error? ${hasAuthError}`);
+      
+      if (hasPermissionError || hasErrorPage || hasAuthError) {
+        console.error(`    ❌ ANALYTICS: NOT AUTHENTICATED - Cannot access analytics page!`);
+        console.error(`    ❌ ANALYTICS: Permission error: ${hasPermissionError}`);
+        console.error(`    ❌ ANALYTICS: Error page detected: ${hasErrorPage}`);
+        console.error(`    ❌ ANALYTICS: Auth error: ${hasAuthError}`);
+        console.error(`    💡 ANALYTICS: Session may be expired or analytics access restricted`);
+        throw new Error('ANALYTICS_AUTH_FAILED: Not authenticated to view analytics. Session invalid or expired.');
+      }
+      
       // 🐛 DEBUG: Log first 1000 chars to see what bot actually sees
       console.log(`    📊 ANALYTICS: Page content preview (first 1000 chars):`);
       console.log(`    ${analyticsText.substring(0, 1000)}`);
       console.log(`    📊 ANALYTICS: Searching for 'Impressions' in text...`);
       console.log(`    📊 ANALYTICS: Contains 'Impressions'? ${analyticsText.includes('Impressions')}`);
       console.log(`    📊 ANALYTICS: Contains 'Post Analytics'? ${analyticsText.includes('Post Analytics')}`);
-      console.log(`    📊 ANALYTICS: Contains 'permission'? ${analyticsText.includes('permission')}`);
       
       console.log(`    📊 ANALYTICS: Page loaded, extracting numbers...`);
       
@@ -913,6 +940,42 @@ export class BulletproofTwitterScraper {
    * PHASE 1 FIX: Enhanced validation to catch "8k tweets" type bugs
    * PHASE 2 FIX: Adjusted thresholds to be less aggressive while still catching obvious errors
    */
+  /**
+   * 🔍 VALIDATE: Check if metrics are realistic for bot's follower count
+   * Prevents fake metrics from corrupting the learning system
+   */
+  private validateMetricsRealistic(metrics: Partial<ScrapedMetrics>): void {
+    // Get bot's current follower count from environment or use conservative estimate
+    const botFollowerCount = parseInt(process.env.BOT_FOLLOWER_COUNT || '50');
+    
+    // Calculate realistic maximum views
+    // Formula: Follower count × 1000 (assumes 1% viral spread + retweets)
+    // Example: 50 followers → max 50,000 views is reasonable
+    // Example: 1000 followers → max 1,000,000 views is possible
+    const maxRealisticViews = botFollowerCount * 1000;
+    
+    // Check views/impressions
+    if (metrics.views !== null && metrics.views !== undefined && metrics.views > maxRealisticViews) {
+      console.error(`    ❌ REALISTIC CHECK: Views (${metrics.views.toLocaleString()}) exceed realistic range`);
+      console.error(`    ❌ Bot has ${botFollowerCount} followers → max realistic views: ${maxRealisticViews.toLocaleString()}`);
+      console.error(`    💡 This suggests scraping error or bot seeing wrong tweet's metrics`);
+      throw new Error(`METRICS_UNREALISTIC: Views (${metrics.views.toLocaleString()}) > ${maxRealisticViews.toLocaleString()} (${botFollowerCount} followers × 1000)`);
+    }
+    
+    // Check likes (should be much lower than views)
+    // Typical engagement rate: 1-5% of views result in likes
+    const maxRealisticLikes = botFollowerCount * 10; // Very conservative: 10 likes per follower
+    if (metrics.likes !== null && metrics.likes !== undefined && metrics.likes > maxRealisticLikes) {
+      console.error(`    ❌ REALISTIC CHECK: Likes (${metrics.likes.toLocaleString()}) exceed realistic range`);
+      console.error(`    ❌ Bot has ${botFollowerCount} followers → max realistic likes: ${maxRealisticLikes.toLocaleString()}`);
+      throw new Error(`METRICS_UNREALISTIC: Likes (${metrics.likes.toLocaleString()}) > ${maxRealisticLikes.toLocaleString()}`);
+    }
+    
+    console.log(`    ✅ REALISTIC CHECK: Metrics within expected range for ${botFollowerCount} followers`);
+    console.log(`       Views: ${metrics.views?.toLocaleString() || 'null'} (max: ${maxRealisticViews.toLocaleString()})`);
+    console.log(`       Likes: ${metrics.likes?.toLocaleString() || 'null'} (max: ${maxRealisticLikes.toLocaleString()})`);
+  }
+
   private areMetricsValid(metrics: Partial<ScrapedMetrics>): boolean {
     // Allow tweets with zero engagement (new tweets, low-performing tweets)
     // Just ensure we extracted SOMETHING (not all undefined)
