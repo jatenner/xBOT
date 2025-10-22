@@ -1,0 +1,15 @@
+__cf_bm	7W5snTuMdf4GksxQuhmSp0zygFP.IwoEHDs8M96YmOk-1761140918.527076-1.0.1.1-6IdsHGAMKw31iXFSEYZEI8Y7J3LEapg4.m.5FnLJz1tPCanzNgnsinKYj7CWPupQWej.laFgKDWF1S.UpFE3FixZm4y7dgs93gtoy2YJuaUg7TyiHNe.3BNFbLC97tXq	x.com	/	2025-10-22T14:18:38.802Z	205	✓	✓				Medium
+__cf_bm	c80LC3JiF_Ne5YCgSrv12XwXGTglqFxOXF4EnCV6AXA-1761140932.8979933-1.0.1.1-kr1NzEumRInhjRcggVKh055d0NMsdfaP6mid0vUvQuAst9EoSie4.m_PXJDnYymCY8pNz930Db2NJ8GG5lYP3NiaiDMaER6DnYt21vGQSw_5ZstCXA8EyO4rVH.wuYdc	api.x.com	/	2025-10-22T14:18:52.943Z	206	✓	✓				Medium
+__cuid	3bd6a5d2094d4f9e8a19e75a905d965a	.x.com	/	2026-11-26T13:31:38.298Z	38			Lax			Medium
+auth_token	e5738f434fc09376ae0bb0c5048b71d2fdb0daaa	.x.com	/	2026-11-14T21:52:03.974Z	50	✓	✓	None			Medium
+cf_clearance	ri0CLpgAEG6tHWizV2CCd9uliatsceND8FQqSXaZFeA-1757364475-1.2.1.1-rScwmaQ2mmIJkdFOebK9pVEV6JCH0q0B51iMlV5u0L0vQI09CgD_BifezoYEWFRq_gTvKsm5bbhQsuOXmgVvZggDhL9cKiDFjE0ZdBc3z3u_L9LfmJSV8_F6Tl.BzP_xUrMxk.Z.Y8p9gvJEOrcJAwnTyL_Z8zTa4yzhZqbfRFC2YcCqBBqRyvJr.U1GG.YrQrvP788X_hYXTSdpguwbW8d6xuW3dR2fQRH8TezjsKI	.x.com	/	2026-09-08T20:47:55.385Z	310	✓	✓	None	https://x.com		Medium
+ct0	5b32d6d820f15b4f7942f29e7197dc31ad67f4860e04710bdfa19307aab847dc4acca4ac0b2d28432456e8e0a864d392f1a13f393a3077a4d775d041f12f381d5e6f87f4189d0faf7a6b7b3187ba9149	.x.com	/	2026-11-14T21:54:34.003Z	163		✓	Lax			Medium
+external_referer	padhuUp37zjgzgv1mFWxJ12Ozwit7owX|0|8e8t2xd8A2w%3D	.x.com	/	2025-10-29T13:31:38.528Z	65		✓				Medium
+guest_id	v1%3A176013327402968747	.x.com	/	2026-11-14T21:54:34.003Z	31		✓	None			Medium
+guest_id_ads	v1%3A176013327402968747	.x.com	/	2026-11-26T13:31:37.890Z	35		✓	None			Medium
+guest_id_marketing	v1%3A176013327402968747	.x.com	/	2026-11-26T13:31:37.890Z	41		✓	None			Medium
+kdt	10IsWTXYUXRPFdyDASOviRVhD8tJnr2DqGs7Vz2K	.x.com	/	2026-11-14T21:52:03.974Z	43	✓	✓				Medium
+lang	en	x.com	/	Session	6						Medium
+personalization_id	"v1_5sVl67l8y6mNBQVwDxTDeA=="	.x.com	/	2026-11-14T21:54:34.003Z	47		✓	None			Medium
+twid	u%3D1932615318519808000	.x.com	/	2026-10-22T13:31:41.331Z	27		✓	None			Medium
+

@@ -1,0 +1,519 @@
+    ✅ RELOAD: Tweet element loaded
+    ✅ RELOAD: Tweet element loaded
+    📊 ANALYTICS: Detected analytics page, using analytics extractor
+  📊 SCRAPER: Attempt 3/3
+    📊 ANALYTICS: Extracting metrics from analytics page...
+    ✅ VALIDATE: Page state valid
+    🔍 URL CHECK: Current URL = https://x.com/Signal_Synapse/status/1980674476980535797/analytics
+    🔍 URL CHECK: Is analytics page? true
+    ✅ ANALYTICS: Skipping tweet ID validation (analytics page is modal)
+    ✅ ANALYTICS: Proceeding directly to metrics extraction...
+[REAL_DISCOVERY] ✅ Found 0 reply opportunities from @DrLaurenKelley
+[HARVESTER]     ✗ No opportunities found
+  ❌ SCRAPER: All 3 attempts failed for tweet 1980674476980535797
+    🔐 AUTH CHECK: permission error? true
+    🔐 AUTH CHECK: error page? true
+    🔐 AUTH CHECK: auth error? false
+    ❌ ANALYTICS: NOT AUTHENTICATED - Cannot access analytics page!
+    ❌ ANALYTICS: Permission error: true
+    ❌ ANALYTICS: Error page detected: true
+    ❌ ANALYTICS: Auth error: false
+    💡 ANALYTICS: Session may be expired or analytics access restricted
+    ⚠️ ANALYTICS: Extraction error: ANALYTICS_AUTH_FAILED: Not authenticated to view analytics. Session invalid or expired.
+    ⚠️ VALIDATE: No metrics extracted at all
+  ⚠️ SCRAPER: Extracted metrics invalid, retrying...
+    📸 EVIDENCE: Screenshot saved to /app/artifacts/scraping/scraping-failure-1980674476980535797-1761104037067.png
+    📄 EVIDENCE: HTML saved to /app/artifacts/scraping/scraping-failure-1980674476980535797-1761104037067.html
+  ❌ SCRAPING_FAILED: Invalid metrics extracted
+[METRICS_JOB] ⚠️ Scraping failed for 1980674476980535797: Invalid metrics extracted
+[HARVESTER]   20/20 → @GabrielleNLyon...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @GabrielleNLyon...
+[BROWSER_POOL] 📝 Request: timeline_scrape (queue: 0, active: 0)
+[BROWSER_POOL] ⚡ Executing: timeline_scrape-1761104037317-53k2f97tb
+[METRICS_JOB] 🔍 Scraping 1980653665317974187...
+[BROWSER_POOL] 📝 Request: metrics_1980653665317974187 (queue: 0, active: 1)
+[BROWSER_POOL] ⚡ Executing: metrics_1980653665317974187-1761104037340-x4oeys3w7
+📊 ORCHESTRATOR: Processing 1980653665317974187...
+  🔍 SCRAPING: Using BulletproofTwitterScraper...
+🔍 SCRAPER: Starting bulletproof scraping for tweet 1980653665317974187
+  📊 SCRAPER: Attempt 1/3
+    ⚠️ VALIDATE: Not on tweet page
+    🔍 DEBUG: {"url":"about:blank","title":"","hasArticles":0,"testIds":[]}
+  ⚠️ SCRAPER: Page state invalid, reloading...
+    🔄 RELOAD: Navigating to https://x.com/Signal_Synapse/status/1980653665317974187/analytics (analytics)
+  📊 SCRAPER: Attempt 2/3
+    ✅ VALIDATE: Page state valid
+    🔍 URL CHECK: Current URL = https://x.com/Signal_Synapse/status/1980487785967706551/analytics
+    🔍 URL CHECK: Is analytics page? true
+    ✅ ANALYTICS: Skipping tweet ID validation (analytics page is modal)
+    ✅ ANALYTICS: Proceeding directly to metrics extraction...
+    📊 ANALYTICS: Detected analytics page, using analytics extractor
+    📊 ANALYTICS: Extracting metrics from analytics page...
+[REAL_DISCOVERY] ✅ Authenticated session confirmed
+    🔐 AUTH CHECK: permission error? true
+    🔐 AUTH CHECK: error page? true
+    🔐 AUTH CHECK: auth error? false
+    ❌ ANALYTICS: NOT AUTHENTICATED - Cannot access analytics page!
+    ❌ ANALYTICS: Permission error: true
+    ❌ ANALYTICS: Error page detected: true
+    ❌ ANALYTICS: Auth error: false
+    💡 ANALYTICS: Session may be expired or analytics access restricted
+    ⚠️ ANALYTICS: Extraction error: ANALYTICS_AUTH_FAILED: Not authenticated to view analytics. Session invalid or expired.
+    ⚠️ VALIDATE: No metrics extracted at all
+  ⚠️ SCRAPER: Extracted metrics invalid, retrying...
+  🔄 SCRAPER: Waiting 4000ms before retry...
+    ✅ RELOAD: Tweet element loaded
+[REAL_DISCOVERY] ✅ Found 0 reply opportunities from @GabrielleNLyon
+[HARVESTER]     ✗ No opportunities found
+  🔄 SCRAPER: Final attempt - reloading page...
+    🔄 RELOAD: Navigating to https://x.com/Signal_Synapse/status/1980487785967706551/analytics (analytics)
+[HARVESTER] 🧹 Cleaned up opportunities >24h old
+[HARVESTER] ✅ Harvest complete!
+[HARVESTER] 📊 Pool size: 0 → 0
+[HARVESTER] 🌾 Harvested: 8 new opportunities
+[HARVESTER] 💡 Will harvest more in next cycle
+✅ JOB_REPLY_HARVESTER: Completed successfully
+[HARVESTER] ⚠️ Pool still low (0/100)
+  📊 SCRAPER: Attempt 2/3
+    ✅ VALIDATE: Page state valid
+    🔍 URL CHECK: Current URL = https://x.com/Signal_Synapse/status/1980653665317974187/analytics
+    🔍 URL CHECK: Is analytics page? true
+    ✅ ANALYTICS: Skipping tweet ID validation (analytics page is modal)
+    ✅ ANALYTICS: Proceeding directly to metrics extraction...
+    📊 ANALYTICS: Detected analytics page, using analytics extractor
+    📊 ANALYTICS: Extracting metrics from analytics page...
+    ✅ RELOAD: Tweet element loaded
+  📊 SCRAPER: Attempt 3/3
+    ✅ VALIDATE: Page state valid
+    🔍 URL CHECK: Current URL = https://x.com/Signal_Synapse/status/1980487785967706551/analytics
+    🔍 URL CHECK: Is analytics page? true
+    ✅ ANALYTICS: Skipping tweet ID validation (analytics page is modal)
+    ✅ ANALYTICS: Proceeding directly to metrics extraction...
+    📊 ANALYTICS: Detected analytics page, using analytics extractor
+    📊 ANALYTICS: Extracting metrics from analytics page...
+    🔐 AUTH CHECK: permission error? true
+    🔐 AUTH CHECK: error page? true
+    🔐 AUTH CHECK: auth error? false
+    ❌ ANALYTICS: NOT AUTHENTICATED - Cannot access analytics page!
+    ❌ ANALYTICS: Permission error: true
+    ❌ ANALYTICS: Error page detected: true
+    ❌ ANALYTICS: Auth error: false
+    💡 ANALYTICS: Session may be expired or analytics access restricted
+    ⚠️ ANALYTICS: Extraction error: ANALYTICS_AUTH_FAILED: Not authenticated to view analytics. Session invalid or expired.
+    ⚠️ VALIDATE: No metrics extracted at all
+  ⚠️ SCRAPER: Extracted metrics invalid, retrying...
+  🔄 SCRAPER: Waiting 4000ms before retry...
+    🔐 AUTH CHECK: permission error? true
+    🔐 AUTH CHECK: error page? true
+    🔐 AUTH CHECK: auth error? false
+    ❌ ANALYTICS: NOT AUTHENTICATED - Cannot access analytics page!
+    ❌ ANALYTICS: Permission error: true
+    ❌ ANALYTICS: Error page detected: true
+    ❌ ANALYTICS: Auth error: false
+    💡 ANALYTICS: Session may be expired or analytics access restricted
+    ⚠️ ANALYTICS: Extraction error: ANALYTICS_AUTH_FAILED: Not authenticated to view analytics. Session invalid or expired.
+    ⚠️ VALIDATE: No metrics extracted at all
+  ⚠️ SCRAPER: Extracted metrics invalid, retrying...
+  ❌ SCRAPER: All 3 attempts failed for tweet 1980487785967706551
+    📸 EVIDENCE: Screenshot saved to /app/artifacts/scraping/scraping-failure-1980487785967706551-1761104054223.png
+    📄 EVIDENCE: HTML saved to /app/artifacts/scraping/scraping-failure-1980487785967706551-1761104054223.html
+[VELOCITY] 👥 Scraping follower count for dd933a85-3a1b-42c7-936d-0f11c3d32d61...
+[SCRAPER] 👤 Scraping profile metrics for @Signal_Synapse...
+  🔄 SCRAPER: Final attempt - reloading page...
+    🔄 RELOAD: Navigating to https://x.com/Signal_Synapse/status/1980653665317974187/analytics (analytics)
+    ❌ ANALYTICS: NOT AUTHENTICATED - Cannot access analytics page!
+    ⚠️ RELOAD: Tweet element didn't load, continuing anyway...
+    ❌ ANALYTICS: Permission error: true
+  📊 SCRAPER: Attempt 3/3
+    ❌ ANALYTICS: Error page detected: true
+    🔍 URL CHECK: Current URL = https://x.com/Signal_Synapse/status/1980653665317974187/analytics
+    ❌ ANALYTICS: Auth error: false
+    💡 ANALYTICS: Session may be expired or analytics access restricted
+    🔍 URL CHECK: Is analytics page? true
+    ⚠️ ANALYTICS: Extraction error: ANALYTICS_AUTH_FAILED: Not authenticated to view analytics. Session invalid or expired.
+    ✅ ANALYTICS: Skipping tweet ID validation (analytics page is modal)
+    ⚠️ VALIDATE: No metrics extracted at all
+  ⚠️ SCRAPER: Extracted metrics invalid, retrying...
+    ✅ ANALYTICS: Proceeding directly to metrics extraction...
+    ⚠️ VALIDATE: No engagement buttons
+    📊 ANALYTICS: Detected analytics page, using analytics extractor
+    📊 ANALYTICS: Extracting metrics from analytics page...
+    🔐 AUTH CHECK: permission error? true
+    🔐 AUTH CHECK: error page? true
+    🔐 AUTH CHECK: auth error? false
+  ❌ SCRAPER: All 3 attempts failed for tweet 1980653665317974187
+    📸 EVIDENCE: Screenshot saved to /app/artifacts/scraping/scraping-failure-1980653665317974187-1761104071430.png
+    📄 EVIDENCE: HTML saved to /app/artifacts/scraping/scraping-failure-1980653665317974187-1761104071430.html
+  ❌ SCRAPING_FAILED: Invalid metrics extracted
+[METRICS_JOB] ⚠️ Scraping failed for 1980653665317974187: Invalid metrics extracted
+[METRICS_JOB] 🔍 Scraping 1980646109979791757...
+[BROWSER_POOL] 📝 Request: metrics_1980646109979791757 (queue: 0, active: 0)
+[BROWSER_POOL] ⚡ Executing: metrics_1980646109979791757-1761104071554-ivx7ip90f
+📊 ORCHESTRATOR: Processing 1980646109979791757...
+  🔍 SCRAPING: Using BulletproofTwitterScraper...
+🔍 SCRAPER: Starting bulletproof scraping for tweet 1980646109979791757
+  📊 SCRAPER: Attempt 1/3
+    ⚠️ VALIDATE: Not on tweet page
+    🔍 DEBUG: {"url":"about:blank","title":"","hasArticles":0,"testIds":[]}
+  ⚠️ SCRAPER: Page state invalid, reloading...
+    🔄 RELOAD: Navigating to https://x.com/Signal_Synapse/status/1980646109979791757/analytics (analytics)
+    ⚠️ RELOAD: Tweet element didn't load, continuing anyway...
+[SCRAPER] ❌ Profile scraping failed: page.goto: Timeout 30000ms exceeded.
+Call log:
+  - navigating to "https://twitter.com/Signal_Synapse", waiting until "networkidle"
+
+[VELOCITY] ✅ Velocity data saved: null likes
+[VELOCITY] 👥 Followers at 24h: 0
+[VELOCITY] ✅ Follower data saved: 0 followers
+[VELOCITY] ✅ Velocity tracking complete: 2 tracked, 2 skipped
+✅ JOB_VELOCITY_TRACKER: Completed successfully
+💓 HEARTBEAT: 2025-10-22T03:34:47.307Z - posting_disabled=false, dry_run=false, mode=live
+  📊 SCRAPER: Attempt 2/3
+    ⚠️ VALIDATE: No engagement buttons
+  ⚠️ SCRAPER: Page state invalid, reloading...
+    🔄 RELOAD: Navigating to https://x.com/Signal_Synapse/status/1980646109979791757/analytics (analytics)
+    ⚠️ RELOAD: Tweet element didn't load, continuing anyway...
+  📊 SCRAPER: Attempt 3/3
+    ⚠️ VALIDATE: No engagement buttons
+    🔍 URL CHECK: Current URL = https://x.com/Signal_Synapse/status/1980646109979791757/analytics
+    🔍 URL CHECK: Is analytics page? true
+    ✅ ANALYTICS: Skipping tweet ID validation (analytics page is modal)
+    ✅ ANALYTICS: Proceeding directly to metrics extraction...
+    📊 ANALYTICS: Detected analytics page, using analytics extractor
+    📊 ANALYTICS: Extracting metrics from analytics page...
+  ⚠️ SCRAPER: Extracted metrics invalid, retrying...
+    🔐 AUTH CHECK: permission error? true
+  ❌ SCRAPER: All 3 attempts failed for tweet 1980646109979791757
+    🔐 AUTH CHECK: error page? true
+    🔐 AUTH CHECK: auth error? false
+    ❌ ANALYTICS: NOT AUTHENTICATED - Cannot access analytics page!
+    ❌ ANALYTICS: Permission error: true
+    ❌ ANALYTICS: Error page detected: true
+    ❌ ANALYTICS: Auth error: false
+    💡 ANALYTICS: Session may be expired or analytics access restricted
+    ⚠️ ANALYTICS: Extraction error: ANALYTICS_AUTH_FAILED: Not authenticated to view analytics. Session invalid or expired.
+    ⚠️ VALIDATE: No metrics extracted at all
+    📸 EVIDENCE: Screenshot saved to /app/artifacts/scraping/scraping-failure-1980646109979791757-1761104110318.png
+    📄 EVIDENCE: HTML saved to /app/artifacts/scraping/scraping-failure-1980646109979791757-1761104110318.html
+  ❌ SCRAPING_FAILED: Invalid metrics extracted
+[METRICS_JOB] ⚠️ Scraping failed for 1980646109979791757: Invalid metrics extracted
+[METRICS_JOB] 🔍 Scraping 1980637418232664323...
+[BROWSER_POOL] 📝 Request: metrics_1980637418232664323 (queue: 0, active: 0)
+[BROWSER_POOL] ⚡ Executing: metrics_1980637418232664323-1761104110492-imarksstm
+📊 ORCHESTRATOR: Processing 1980637418232664323...
+  🔍 SCRAPING: Using BulletproofTwitterScraper...
+🔍 SCRAPER: Starting bulletproof scraping for tweet 1980637418232664323
+  📊 SCRAPER: Attempt 1/3
+    ⚠️ VALIDATE: Not on tweet page
+    🔍 DEBUG: {"url":"about:blank","title":"","hasArticles":0,"testIds":[]}
+  ⚠️ SCRAPER: Page state invalid, reloading...
+    🔄 RELOAD: Navigating to https://x.com/Signal_Synapse/status/1980637418232664323/analytics (analytics)
+    ⚠️ RELOAD: Tweet element didn't load, continuing anyway...
+  📊 SCRAPER: Attempt 2/3
+    ⚠️ VALIDATE: No engagement buttons
+  ⚠️ SCRAPER: Page state invalid, reloading...
+    🔄 RELOAD: Navigating to https://x.com/Signal_Synapse/status/1980637418232664323/analytics (analytics)
+    ⚠️ RELOAD: Tweet element didn't load, continuing anyway...
+  📊 SCRAPER: Attempt 3/3
+    ⚠️ VALIDATE: No engagement buttons
+    🔍 URL CHECK: Current URL = https://x.com/Signal_Synapse/status/1980637418232664323/analytics
+    🔍 URL CHECK: Is analytics page? true
+    ✅ ANALYTICS: Skipping tweet ID validation (analytics page is modal)
+    ✅ ANALYTICS: Proceeding directly to metrics extraction...
+    📊 ANALYTICS: Detected analytics page, using analytics extractor
+    📊 ANALYTICS: Extracting metrics from analytics page...
+💓 HEARTBEAT: 2025-10-22T03:35:47.307Z - posting_disabled=false, dry_run=false, mode=live
+🕒 JOB_REPLY: Starting...
+[REPLY_JOB] 💬 Starting reply generation cycle...
+📊 CACHE_METRICS: Hit rate: 66.7%, Avg response: 2.7ms, Ops/sec: 0.0
+🔧 SMART_CACHE: Auto-optimized TTL for low hit rate
+[REPLY_QUOTA] ❌ Database error: { message: '' }
+[REPLY_JOB] ✅ Reply quota available: 0/4 this hour
+[REPLY_JOB] 🎯 Starting reply generation (AI-driven targeting)...
+🕒 JOB_POSTING: Starting...
+[POSTING_QUEUE] 📮 Processing posting queue...
+[POSTING_QUEUE] ✅ Post budget available: 0/2 content posts
+[POSTING_QUEUE] 📅 Fetching posts ready within 5 minute window
+[POSTING_QUEUE] 🕒 Current time: 2025-10-22T03:35:47.700Z
+[POSTING_QUEUE] 🕒 Grace window: 2025-10-22T03:40:47.700Z
+[POSTING_QUEUE] 📊 Query returned 0 decisions
+[POSTING_QUEUE] ⚠️ No queued content found in database at all
+[POSTING_QUEUE] ℹ️ No decisions ready for posting (grace_window=5m)
+✅ JOB_POSTING: Completed successfully
+[REPLY_JOB] 📊 Account Pool Status:
+  • Total accounts: 64
+  • High quality: 38
+  • Recent discoveries: 45
+  • Health: HEALTHY
+[REPLY_JOB] 🔍 Searching for reply opportunities...
+[SMART_REPLY] 🎯 Finding optimal reply opportunities (AI-DRIVEN)...
+[AI_DECISION] 🤖 Finding top 5 reply opportunities with REAL scraping...
+[DB_INIT] 🔍 Checking discovered_accounts table...
+[DB_INIT] ✅ discovered_accounts table exists
+[AI_DECISION] ✅ Found 20 discovered accounts in database
+[AI_DECISION] 🌐 Scraping top 15 accounts (from 20 total pool) for reply opportunities...
+[AI_DECISION]   → Scraping @iamnikhilnanda (119,200 followers)...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @iamnikhilnanda...
+[BROWSER_POOL] 📝 Request: timeline_scrape (queue: 0, active: 0)
+[BROWSER_POOL] ⚡ Executing: timeline_scrape-1761104147983-n9l7ux79f
+    🔐 AUTH CHECK: permission error? true
+    🔐 AUTH CHECK: error page? true
+    🔐 AUTH CHECK: auth error? false
+    ❌ ANALYTICS: NOT AUTHENTICATED - Cannot access analytics page!
+    ❌ ANALYTICS: Permission error: true
+    ❌ ANALYTICS: Error page detected: true
+    ❌ ANALYTICS: Auth error: false
+    💡 ANALYTICS: Session may be expired or analytics access restricted
+    ⚠️ ANALYTICS: Extraction error: ANALYTICS_AUTH_FAILED: Not authenticated to view analytics. Session invalid or expired.
+    ⚠️ VALIDATE: No metrics extracted at all
+  ⚠️ SCRAPER: Extracted metrics invalid, retrying...
+  ❌ SCRAPER: All 3 attempts failed for tweet 1980637418232664323
+    📸 EVIDENCE: Screenshot saved to /app/artifacts/scraping/scraping-failure-1980637418232664323-1761104149265.png
+    📄 EVIDENCE: HTML saved to /app/artifacts/scraping/scraping-failure-1980637418232664323-1761104149265.html
+  ❌ SCRAPING_FAILED: Invalid metrics extracted
+[METRICS_JOB] ⚠️ Scraping failed for 1980637418232664323: Invalid metrics extracted
+[METRICS_JOB] 🔍 Scraping 1980629983430086920...
+[BROWSER_POOL] 📝 Request: metrics_1980629983430086920 (queue: 0, active: 0)
+[BROWSER_POOL] ⚡ Executing: metrics_1980629983430086920-1761104149372-fwvdn8h17
+📊 ORCHESTRATOR: Processing 1980629983430086920...
+  🔍 SCRAPING: Using BulletproofTwitterScraper...
+🔍 SCRAPER: Starting bulletproof scraping for tweet 1980629983430086920
+  📊 SCRAPER: Attempt 1/3
+    ⚠️ VALIDATE: Not on tweet page
+    🔍 DEBUG: {"url":"about:blank","title":"","hasArticles":0,"testIds":[]}
+  ⚠️ SCRAPER: Page state invalid, reloading...
+    🔄 RELOAD: Navigating to https://x.com/Signal_Synapse/status/1980629983430086920/analytics (analytics)
+[REAL_DISCOVERY] ❌ Not authenticated - session may not be loaded
+[REAL_DISCOVERY] ⚠️ Skipping @iamnikhilnanda - not authenticated
+[AI_DECISION]     ✓ Found 0 opportunities
+    ⚠️ RELOAD: Tweet element didn't load, continuing anyway...
+[AI_DECISION]   → Scraping @Salud_en_casa1 (13,900 followers)...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @Salud_en_casa1...
+[BROWSER_POOL] 📝 Request: timeline_scrape (queue: 0, active: 0)
+[BROWSER_POOL] ⚡ Executing: timeline_scrape-1761104160883-nwijqk1xj
+  📊 SCRAPER: Attempt 2/3
+    ⚠️ VALIDATE: No engagement buttons
+  ⚠️ SCRAPER: Page state invalid, reloading...
+    🔄 RELOAD: Navigating to https://x.com/Signal_Synapse/status/1980629983430086920/analytics (analytics)
+[REAL_DISCOVERY] ❌ Not authenticated - session may not be loaded
+[REAL_DISCOVERY] ⚠️ Skipping @Salud_en_casa1 - not authenticated
+[AI_DECISION]     ✓ Found 0 opportunities
+[AI_DECISION]   → Scraping @NewsMedical (16,200 followers)...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @NewsMedical...
+[BROWSER_POOL] 📝 Request: timeline_scrape (queue: 0, active: 0)
+[BROWSER_POOL] ⚡ Executing: timeline_scrape-1761104173813-4rd12umhr
+    ⚠️ RELOAD: Tweet element didn't load, continuing anyway...
+[REAL_DISCOVERY] ❌ Not authenticated - session may not be loaded
+[REAL_DISCOVERY] ⚠️ Skipping @NewsMedical - not authenticated
+[AI_DECISION]     ✓ Found 0 opportunities
+  📊 SCRAPER: Attempt 3/3
+    🔍 URL CHECK: Current URL = https://x.com/Signal_Synapse/status/1980629983430086920/analytics
+    🔍 URL CHECK: Is analytics page? true
+    ✅ ANALYTICS: Skipping tweet ID validation (analytics page is modal)
+    ⚠️ VALIDATE: No engagement buttons
+    ✅ ANALYTICS: Proceeding directly to metrics extraction...
+    📊 ANALYTICS: Detected analytics page, using analytics extractor
+    📊 ANALYTICS: Extracting metrics from analytics page...
+[AI_DECISION]   → Scraping @SalomonRejuven (11,000 followers)...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @SalomonRejuven...
+[BROWSER_POOL] 📝 Request: timeline_scrape (queue: 0, active: 0)
+[BROWSER_POOL] ⚡ Executing: timeline_scrape-1761104186743-wwdepgmg9
+    🔐 AUTH CHECK: permission error? true
+    🔐 AUTH CHECK: error page? true
+    🔐 AUTH CHECK: auth error? false
+    ❌ ANALYTICS: NOT AUTHENTICATED - Cannot access analytics page!
+    ❌ ANALYTICS: Permission error: true
+    ❌ ANALYTICS: Error page detected: true
+    ❌ ANALYTICS: Auth error: false
+    💡 ANALYTICS: Session may be expired or analytics access restricted
+    ⚠️ ANALYTICS: Extraction error: ANALYTICS_AUTH_FAILED: Not authenticated to view analytics. Session invalid or expired.
+    ⚠️ VALIDATE: No metrics extracted at all
+  ⚠️ SCRAPER: Extracted metrics invalid, retrying...
+  ❌ SCRAPER: All 3 attempts failed for tweet 1980629983430086920
+    📸 EVIDENCE: Screenshot saved to /app/artifacts/scraping/scraping-failure-1980629983430086920-1761104188132.png
+    📄 EVIDENCE: HTML saved to /app/artifacts/scraping/scraping-failure-1980629983430086920-1761104188132.html
+  ❌ SCRAPING_FAILED: Invalid metrics extracted
+[METRICS_JOB] ⚠️ Scraping failed for 1980629983430086920: Invalid metrics extracted
+[METRICS_JOB] ✅ Metrics collection complete: 0 updated, 0 skipped, 15 failed
+✅ JOB_METRICS_SCRAPER: Completed successfully
+[REAL_DISCOVERY] ❌ Not authenticated - session may not be loaded
+[REAL_DISCOVERY] ⚠️ Skipping @SalomonRejuven - not authenticated
+[AI_DECISION]     ✓ Found 0 opportunities
+[AI_DECISION]   → Scraping @drdavidfriedman (28,000 followers)...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @drdavidfriedman...
+[BROWSER_POOL] 📝 Request: timeline_scrape (queue: 0, active: 0)
+[BROWSER_POOL] ⚡ Executing: timeline_scrape-1761104199656-6ghxffafx
+💓 HEARTBEAT: 2025-10-22T03:36:47.307Z - posting_disabled=false, dry_run=false, mode=live
+[REAL_DISCOVERY] ❌ Not authenticated - session may not be loaded
+[REAL_DISCOVERY] ⚠️ Skipping @drdavidfriedman - not authenticated
+[AI_DECISION]     ✓ Found 0 opportunities
+[AI_DECISION]   → Scraping @hormonedietdoc (35,000 followers)...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @hormonedietdoc...
+[BROWSER_POOL] 📝 Request: timeline_scrape (queue: 0, active: 0)
+[BROWSER_POOL] ⚡ Executing: timeline_scrape-1761104212527-o8o435wqu
+[BROWSER_POOL] 🔄 Context reached max operations (50), will be replaced
+[REAL_DISCOVERY] ❌ Not authenticated - session may not be loaded
+[REAL_DISCOVERY] ⚠️ Skipping @hormonedietdoc - not authenticated
+[AI_DECISION]     ✓ Found 0 opportunities
+[BROWSER_POOL] ✅ Context closed (remaining: 0)
+[AI_DECISION]   → Scraping @daveasprey (250,000 followers)...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @daveasprey...
+[BROWSER_POOL] 📝 Request: timeline_scrape (queue: 0, active: 0)
+[BROWSER_POOL] 🆕 Creating context: ctx-1761104214559-1
+[BROWSER_POOL] 🔍 TWITTER_SESSION_B64 exists: true
+[BROWSER_POOL] 🔍 TWITTER_SESSION_B64 length: 1904
+[BROWSER_POOL] 🔐 Loading session from TWITTER_SESSION_B64...
+[BROWSER_POOL] ✅ Session loaded (8 cookies)
+[BROWSER_POOL] ✅ Context created (total: 1/3)
+[BROWSER_POOL] ⚡ Executing: timeline_scrape-1761104214559-ebvsgjcz9
+[REAL_DISCOVERY] ❌ Not authenticated - session may not be loaded
+[REAL_DISCOVERY] ⚠️ Skipping @daveasprey - not authenticated
+[AI_DECISION]     ✓ Found 0 opportunities
+[AI_DECISION]   → Scraping @AmyGarret_GBS (13,000 followers)...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @AmyGarret_GBS...
+[BROWSER_POOL] 📝 Request: timeline_scrape (queue: 0, active: 0)
+[BROWSER_POOL] ⚡ Executing: timeline_scrape-1761104227614-ewf0f605l
+[REAL_DISCOVERY] ❌ Not authenticated - session may not be loaded
+[REAL_DISCOVERY] ⚠️ Skipping @AmyGarret_GBS - not authenticated
+[AI_DECISION]     ✓ Found 0 opportunities
+[AI_DECISION]   → Scraping @Harvard85 (50,000 followers)...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @Harvard85...
+[BROWSER_POOL] 📝 Request: timeline_scrape (queue: 0, active: 0)
+[BROWSER_POOL] ⚡ Executing: timeline_scrape-1761104240662-rlh1cefjk
+[REAL_DISCOVERY] ❌ Not authenticated - session may not be loaded
+[REAL_DISCOVERY] ⚠️ Skipping @Harvard85 - not authenticated
+[AI_DECISION]     ✓ Found 0 opportunities
+[AI_DECISION]   → Scraping @kwadwo777 (17,800 followers)...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @kwadwo777...
+[BROWSER_POOL] 📝 Request: timeline_scrape (queue: 0, active: 0)
+[BROWSER_POOL] ⚡ Executing: timeline_scrape-1761104253749-f3jxvstk4
+[REAL_DISCOVERY] ❌ Not authenticated - session may not be loaded
+[REAL_DISCOVERY] ⚠️ Skipping @kwadwo777 - not authenticated
+[AI_DECISION]     ✓ Found 0 opportunities
+[AI_DECISION]   → Scraping @PeterAttiaMD (200,000 followers)...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @PeterAttiaMD...
+[BROWSER_POOL] 📝 Request: timeline_scrape (queue: 0, active: 0)
+[BROWSER_POOL] ⚡ Executing: timeline_scrape-1761104266798-whz8ujadm
+💓 HEARTBEAT: 2025-10-22T03:37:47.307Z - posting_disabled=false, dry_run=false, mode=live
+[REAL_DISCOVERY] ❌ Not authenticated - session may not be loaded
+[REAL_DISCOVERY] ⚠️ Skipping @PeterAttiaMD - not authenticated
+[AI_DECISION]     ✓ Found 0 opportunities
+[AI_DECISION]   → Scraping @MarkSisson (200,000 followers)...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @MarkSisson...
+[BROWSER_POOL] 📝 Request: timeline_scrape (queue: 0, active: 0)
+[BROWSER_POOL] ⚡ Executing: timeline_scrape-1761104279860-ndixbciyv
+[REAL_DISCOVERY] ❌ Not authenticated - session may not be loaded
+[REAL_DISCOVERY] ⚠️ Skipping @MarkSisson - not authenticated
+[AI_DECISION]     ✓ Found 0 opportunities
+[AI_DECISION]   → Scraping @drberg1 (200,000 followers)...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @drberg1...
+[BROWSER_POOL] 📝 Request: timeline_scrape (queue: 0, active: 0)
+[BROWSER_POOL] ⚡ Executing: timeline_scrape-1761104292974-wk4m9hdkf
+[REAL_DISCOVERY] ❌ Not authenticated - session may not be loaded
+[REAL_DISCOVERY] ⚠️ Skipping @drberg1 - not authenticated
+[AI_DECISION]     ✓ Found 0 opportunities
+[AI_DECISION]   → Scraping @thomas_delauer (200,000 followers)...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @thomas_delauer...
+[BROWSER_POOL] 📝 Request: timeline_scrape (queue: 0, active: 0)
+[BROWSER_POOL] ⚡ Executing: timeline_scrape-1761104306020-owbg5tf8p
+[REAL_DISCOVERY] ❌ Not authenticated - session may not be loaded
+[REAL_DISCOVERY] ⚠️ Skipping @thomas_delauer - not authenticated
+[AI_DECISION]     ✓ Found 0 opportunities
+[AI_DECISION]   → Scraping @Mind_Pump (200,000 followers)...
+[REAL_DISCOVERY] 🎯 Finding reply opportunities from @Mind_Pump...
+[BROWSER_POOL] 📝 Request: timeline_scrape (queue: 0, active: 0)
+[BROWSER_POOL] ⚡ Executing: timeline_scrape-1761104319102-v3jdrq4ei
+💓 HEARTBEAT: 2025-10-22T03:38:47.307Z - posting_disabled=false, dry_run=false, mode=live
+[REAL_DISCOVERY] ❌ Not authenticated - session may not be loaded
+[REAL_DISCOVERY] ⚠️ Skipping @Mind_Pump - not authenticated
+[AI_DECISION]     ✓ Found 0 opportunities
+[REAL_DISCOVERY] 🔍 Searching Twitter for #longevity...
+[BROWSER_POOL] 📝 Request: hashtag_search (queue: 0, active: 0)
+[BROWSER_POOL] ⚡ Executing: hashtag_search-1761104332127-lk2q7c0bf
+[AI_DECISION] 📊 Total opportunities scraped: 0
+[AI_DECISION] 💡 Will try again next cycle
+[SMART_REPLY] ⚠️ AI found no opportunities, triggering discovery...
+[AI_DECISION] ⚠️ No reply opportunities found - tweets may be too old or engagement too low
+[AI_DISCOVERY] 🔍 Starting AI-driven account discovery...
+[AI_DISCOVERY] 🏷️ Mining health hashtags with REAL scraping...
+[REAL_DISCOVERY] ❌ Not authenticated - session may not be loaded
+[REAL_DISCOVERY] ⚠️ Skipping search - not authenticated
+[REAL_DISCOVERY] 🔍 Searching Twitter for #biohacking...
+[BROWSER_POOL] 📝 Request: hashtag_search (queue: 0, active: 0)
+[BROWSER_POOL] ⚡ Executing: hashtag_search-1761104345148-dstq95le6
+[REAL_DISCOVERY] ❌ Not authenticated - session may not be loaded
+[REAL_DISCOVERY] ⚠️ Skipping search - not authenticated
+[REAL_DISCOVERY] 🔍 Searching Twitter for #nutrition...
+[BROWSER_POOL] 📝 Request: hashtag_search (queue: 0, active: 0)
+[BROWSER_POOL] ⚡ Executing: hashtag_search-1761104358221-39fafearn
+[REAL_DISCOVERY] ❌ Not authenticated - session may not be loaded
+[REAL_DISCOVERY] ⚠️ Skipping search - not authenticated
+[REAL_DISCOVERY] 🏥 Discovering from known health accounts...
+[BROWSER_POOL] 📝 Request: account_details (queue: 0, active: 0)
+[BROWSER_POOL] ⚡ Executing: account_details-1761104371489-x3s3zewpo
+[BROWSER_POOL] 📝 Request: account_details (queue: 0, active: 0)
+[BROWSER_POOL] ⚡ Executing: account_details-1761104376545-lrziut51w
+[BROWSER_POOL] 📝 Request: account_details (queue: 0, active: 0)
+[BROWSER_POOL] ⚡ Executing: account_details-1761104381640-a6dne44di
+[BROWSER_POOL] 📝 Request: account_details (queue: 0, active: 0)
+[BROWSER_POOL] ⚡ Executing: account_details-1761104386672-9qoy4wwi9
+💓 HEARTBEAT: 2025-10-22T03:39:47.308Z - posting_disabled=false, dry_run=false, mode=live
+[BROWSER_POOL] 📝 Request: account_details (queue: 0, active: 0)
+[BROWSER_POOL] ⚡ Executing: account_details-1761104391777-sqhnp0w1u
+[REAL_DISCOVERY] ✅ Discovered 5 accounts from health seed list
+[AI_DISCOVERY] 📊 Found 5 accounts via hashtags
+[AI_DISCOVERY] ⏳ Cooling down 30s before network mapping...
+[AI_DISCOVERY] 🕸️ Mapping network connections...
+[DB_INIT] 🔍 Checking discovered_accounts table...
+[DB_INIT] ✅ discovered_accounts table exists
+[AI_DISCOVERY] 🕸️ Found 0 accounts via network mapping
+[AI_DISCOVERY] ⏳ Cooling down 30s before content analysis...
+[POSTING_QUEUE] ℹ️ No decisions ready for posting (grace_window=5m)
+✅ JOB_POSTING: Completed successfully
+💓 HEARTBEAT: 2025-10-22T03:40:47.308Z - posting_disabled=false, dry_run=false, mode=live
+📊 CACHE_METRICS: Hit rate: 66.7%, Avg response: 2.7ms, Ops/sec: 0.0
+🔧 SMART_CACHE: Auto-optimized TTL for low hit rate
+🕒 JOB_POSTING: Starting...
+[POSTING_QUEUE] 📮 Processing posting queue...
+[POSTING_QUEUE] ✅ Post budget available: 0/2 content posts
+[POSTING_QUEUE] 📅 Fetching posts ready within 5 minute window
+[POSTING_QUEUE] 🕒 Current time: 2025-10-22T03:40:47.690Z
+[POSTING_QUEUE] 🕒 Grace window: 2025-10-22T03:45:47.690Z
+[POSTING_QUEUE] 📊 Query returned 0 decisions
+[POSTING_QUEUE] ⚠️ No queued content found in database at all
+[AI_DISCOVERY] 📝 Analyzing content with REAL scraping...
+[AI_DISCOVERY] 📝 Found 0 accounts via content analysis
+[AI_DISCOVERY] ✅ Discovered 5 unique accounts
+[DB_INIT] 🔍 Checking discovered_accounts table...
+[DB_INIT] ✅ discovered_accounts table exists
+[AI_DISCOVERY] 💾 Stored 5 accounts in database
+[AI_DISCOVERY] 📊 Scoring all accounts...
+[DB_INIT] 🔍 Checking discovered_accounts table...
+[DB_INIT] ✅ discovered_accounts table exists
+[AI_DISCOVERY] ✅ Scored 64 accounts
+[REPLY_JOB] ✅ Found 0 reply opportunities
+[REPLY_JOB] 🚀 AGGRESSIVE MODE: Generating 0 strategic replies
+[REPLY_JOB] 📋 Reply Queue Status:
+  • Queued for posting: 0 replies
+  • Next posting cycle: ~15 minutes
+[REPLY_JOB] ✅ Reply generation completed
+✅ JOB_REPLY: Completed successfully
+💓 HEARTBEAT: 2025-10-22T03:41:47.334Z - posting_disabled=false, dry_run=false, mode=live
+[ANALYTICS_COLLECTOR] 🔍 Found 2 posts for Pass 2 (T+24h)
+  ⚠️ SCRAPER: Page state invalid, reloading...
+[ANALYTICS_COLLECTOR] 🔍 Scraping tweet 1980475195560214627 (pass 2)...
+    🔄 RELOAD: Navigating to https://x.com/Signal_Synapse/status/1980475195560214627/analytics (analytics)
+[BROWSER_POOL] 📝 Request: analytics_pass_2 (queue: 0, active: 0)
+[BROWSER_POOL] ⚡ Executing: analytics_pass_2-1761104567683-vsfhqa28q
+[ANALYTICS_COLLECTOR] ✅ Browser acquired with session
+📊 ORCHESTRATOR: Processing 1980475195560214627...
+  🔍 SCRAPING: Using BulletproofTwitterScraper...
+💓 HEARTBEAT: 2025-10-22T03:42:47.364Z - posting_disabled=false, dry_run=false, mode=live
+🔍 SCRAPER: Starting bulletproof scraping for tweet 1980475195560214627
+🕒 JOB_ANALYTICS: Starting...
+  📊 SCRAPER: Attempt 1/3
+[ANALYTICS_COLLECTOR] 📊 Starting real analytics collection (V2)...
+    ⚠️ VALIDATE: Not on tweet page
+[ANALYTICS_COLLECTOR] ℹ️ No posts ready for Pass 1 (T+1h)
+    🔍 DEBUG: {"url":"about:blank","title":"","hasArticles":0,"testIds":[]}
+    ⚠️ RELOAD: Tweet element didn't load, continuing anyway...

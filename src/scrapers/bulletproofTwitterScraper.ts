@@ -427,8 +427,23 @@ export class BulletproofTwitterScraper {
     };
     
     try {
-      // Wait for analytics modal/content to load
-      await page.waitForTimeout(3000); // Increased from 2000 to 3000
+      // 🔧 FIX: Wait for analytics content to actually load (not just a fixed timeout)
+      // This prevents false "error page" detections when page is still loading
+      console.log(`    ⏳ ANALYTICS: Waiting for content to load...`);
+      
+      try {
+        // Try to wait for actual analytics content (with timeout)
+        await Promise.race([
+          page.waitForFunction(() => {
+            const text = document.body.textContent || '';
+            return text.includes('Impressions') || text.includes('Post Analytics');
+          }, { timeout: 8000 }),
+          page.waitForTimeout(8000) // Fallback: at least wait 8 seconds
+        ]);
+        console.log(`    ✅ ANALYTICS: Content loaded`);
+      } catch (waitError) {
+        console.log(`    ⚠️ ANALYTICS: Wait timed out, checking what we have...`);
+      }
       
       // Extract text content from page
       const analyticsText = await page.evaluate(() => {

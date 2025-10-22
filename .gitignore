@@ -55,6 +55,13 @@ browsers/
 
 # Session files (contain authentication cookies)
 data/twitter_session.json
+.session/
+*_session*.json
+*session*.txt
+session_*.txt
+twitter_session*.json
+cookies_raw.txt
+cookies_export.json
 
 # SSL certificates (mount these via Railway or local file system)
 ops/supabase-ca.crt
