@@ -435,22 +435,37 @@ export class BulletproofTwitterScraper {
         return document.body.textContent || '';
       });
       
-      // 🔐 AUTHENTICATION CHECK: Fail-fast if we're not authenticated
-      const hasPermissionError = analyticsText.toLowerCase().includes('permission');
-      const hasErrorPage = analyticsText.includes('errorContainer') || analyticsText.includes('Something went wrong');
-      const hasAuthError = analyticsText.includes('not authorized') || analyticsText.includes('access denied');
+      // 🔐 AUTHENTICATION CHECK: Check for actual analytics content first
+      const hasAnalyticsContent = analyticsText.includes('Impressions') || 
+                                   analyticsText.includes('Engagement') ||
+                                   analyticsText.includes('Post Analytics');
       
-      console.log(`    🔐 AUTH CHECK: permission error? ${hasPermissionError}`);
+      // Only check for errors if analytics content is missing
+      const hasSpecificPermissionError = analyticsText.includes('You don\'t have permission') || 
+                                          analyticsText.includes('Permission denied');
+      const hasErrorPage = analyticsText.includes('errorContainer') || 
+                           analyticsText.includes('Something went wrong');
+      const hasAuthError = analyticsText.includes('not authorized') || 
+                          analyticsText.includes('access denied') ||
+                          analyticsText.includes('This request requires authentication');
+      
+      console.log(`    🔐 AUTH CHECK: has analytics content? ${hasAnalyticsContent}`);
+      console.log(`    🔐 AUTH CHECK: specific permission error? ${hasSpecificPermissionError}`);
       console.log(`    🔐 AUTH CHECK: error page? ${hasErrorPage}`);
       console.log(`    🔐 AUTH CHECK: auth error? ${hasAuthError}`);
       
-      if (hasPermissionError || hasErrorPage || hasAuthError) {
+      // Only fail if we have errors AND no analytics content
+      if (!hasAnalyticsContent && (hasSpecificPermissionError || hasErrorPage || hasAuthError)) {
         console.error(`    ❌ ANALYTICS: NOT AUTHENTICATED - Cannot access analytics page!`);
-        console.error(`    ❌ ANALYTICS: Permission error: ${hasPermissionError}`);
+        console.error(`    ❌ ANALYTICS: Specific permission error: ${hasSpecificPermissionError}`);
         console.error(`    ❌ ANALYTICS: Error page detected: ${hasErrorPage}`);
         console.error(`    ❌ ANALYTICS: Auth error: ${hasAuthError}`);
         console.error(`    💡 ANALYTICS: Session may be expired or analytics access restricted`);
         throw new Error('ANALYTICS_AUTH_FAILED: Not authenticated to view analytics. Session invalid or expired.');
+      }
+      
+      if (hasAnalyticsContent) {
+        console.log(`    ✅ ANALYTICS: Content verified - page is authentic`);
       }
       
       // 🐛 DEBUG: Log first 1000 chars to see what bot actually sees
