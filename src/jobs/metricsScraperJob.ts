@@ -192,6 +192,27 @@ export async function metricsScraperJob(): Promise<void> {
             // Don't fail - outcomes table is the primary store
           }
           
+          // 🔥 CRITICAL FIX: Also update content_generation_metadata_comprehensive 
+          // This table has actual_impressions, actual_likes, actual_retweets, actual_replies
+          // These are used for content diversity analysis and topic cluster learning!
+          const { error: contentMetadataError } = await supabase
+            .from('content_generation_metadata_comprehensive')
+            .update({
+              actual_impressions: metrics.views ?? null,  // Keep NULL if no views (not 0!)
+              actual_likes: metrics.likes ?? 0,
+              actual_retweets: metrics.retweets ?? 0,
+              actual_replies: metrics.replies ?? 0,
+              updated_at: new Date().toISOString()
+            })
+            .eq('tweet_id', post.tweet_id);
+          
+          if (contentMetadataError) {
+            console.warn(`[METRICS_JOB] ⚠️ Failed to update content_metadata for ${post.tweet_id}:`, contentMetadataError.message);
+            // Don't fail - this is supplementary data
+          } else {
+            console.log(`[METRICS_JOB] 📊 Updated content_metadata: ${metrics.views ?? 0} views stored in actual_impressions`);
+          }
+          
           console.log(`[METRICS_JOB] ✅ Updated ${post.tweet_id}: ${metrics.likes ?? 0} likes, ${metrics.views ?? 0} views`);
           updated++;
           
