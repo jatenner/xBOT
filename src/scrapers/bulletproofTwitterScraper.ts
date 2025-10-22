@@ -381,6 +381,41 @@ export class BulletproofTwitterScraper {
    * PROPER FIX: Find the CORRECT article (not just the first one on the page)
    */
   /**
+   * 🔥 Warm up session before analytics access (CRITICAL for auth success)
+   */
+  private async warmUpSessionForAnalytics(page: Page): Promise<boolean> {
+    try {
+      // Check if already warmed
+      if ((page as any)._sessionWarmed) {
+        console.log('    ✅ [WARMUP] Session already warmed');
+        return true;
+      }
+      
+      console.log('    🔥 [WARMUP] Warming session with natural browsing...');
+      
+      // Visit home briefly
+      await page.goto('https://x.com/home', { waitUntil: 'domcontentloaded', timeout: 10000 });
+      await this.sleep(2000 + Math.random() * 1000);
+      
+      // Scroll naturally
+      await page.evaluate(() => window.scrollBy({ top: Math.random() * 300 + 200, behavior: 'smooth' }));
+      await this.sleep(1500 + Math.random() * 500);
+      
+      // Visit profile
+      await page.goto('https://x.com/Signal_Synapse', { waitUntil: 'domcontentloaded', timeout: 10000 });
+      await this.sleep(1500 + Math.random() * 500);
+      
+      // Mark as warmed
+      (page as any)._sessionWarmed = true;
+      console.log('    ✅ [WARMUP] Session warmed successfully');
+      return true;
+    } catch (error: any) {
+      console.warn('    ⚠️  [WARMUP] Warmup failed (continuing anyway):', error.message);
+      return false;
+    }
+  }
+
+  /**
    * 📊 Extract detailed metrics from analytics page
    * Analytics page shows: Impressions, Engagements, Detail expands, Profile visits
    */
@@ -1057,6 +1092,11 @@ export class BulletproofTwitterScraper {
       const tweetUrl = useAnalytics 
         ? `https://x.com/${username}/status/${tweetId}/analytics`
         : `https://x.com/${username}/status/${tweetId}`;
+      
+      // 🔥 CRITICAL: Warm up session BEFORE accessing analytics
+      if (useAnalytics) {
+        await this.warmUpSessionForAnalytics(page);
+      }
       
       console.log(`    🔄 RELOAD: Navigating to ${tweetUrl}${useAnalytics ? ' (analytics)' : ''}`);
       
