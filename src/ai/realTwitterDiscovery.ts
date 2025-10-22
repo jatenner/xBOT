@@ -57,6 +57,25 @@ export class RealTwitterDiscovery {
   }
 
   /**
+   * Verify Twitter authentication
+   */
+  private async verifyAuth(page: Page): Promise<boolean> {
+    try {
+      // Navigate to Twitter homepage to activate session
+      await page.goto('https://x.com/home', { waitUntil: 'domcontentloaded', timeout: 15000 });
+      
+      // Wait for authenticated element
+      await page.waitForSelector('[data-testid="SideNav_NewTweet_Button"]', { timeout: 10000 });
+      
+      console.log('[REAL_DISCOVERY] ✅ Authenticated session confirmed');
+      return true;
+    } catch (error) {
+      console.error('[REAL_DISCOVERY] ❌ Not authenticated - session may not be loaded');
+      return false;
+    }
+  }
+
+  /**
    * Discover accounts via Twitter search (REAL SCRAPING)
    * SMART BATCH FIX: Updated selectors + rate limiting + fallbacks
    */
@@ -68,9 +87,19 @@ export class RealTwitterDiscovery {
         const page = await context.newPage();
         
         try {
+          // 🔐 VERIFY AUTHENTICATION FIRST
+          const isAuth = await this.verifyAuth(page);
+          if (!isAuth) {
+            console.error('[REAL_DISCOVERY] ⚠️ Skipping search - not authenticated');
+            return [];
+          }
+
           // SMART BATCH FIX: Use x.com and better search URL
           const searchUrl = `https://x.com/search?q=%23${hashtag}&src=typed_query&f=live`;
           await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+          
+          // 🕐 GIVE TWITTER TIME TO LOAD
+          await page.waitForTimeout(3000);
           
           // SMART BATCH FIX: Wait for tweets with multiple fallback selectors
           const tweetsLoaded = await Promise.race([
@@ -207,11 +236,20 @@ export class RealTwitterDiscovery {
         const page = await context.newPage();
         
         try {
+          // 🔐 VERIFY AUTHENTICATION FIRST
+          const isAuth = await this.verifyAuth(page);
+          if (!isAuth) {
+            console.error('[REAL_DISCOVERY] ⚠️ Skipping @${username} - not authenticated');
+            return [];
+          }
+
           // Navigate to account timeline - FIXED: x.com + domcontentloaded
           await page.goto(`https://x.com/${username}`, { 
             waitUntil: 'domcontentloaded', 
             timeout: 30000 
           });
+          
+          // 🕐 GIVE TWITTER TIME TO LOAD
           await page.waitForTimeout(3000);
           
           // Extract recent tweets
