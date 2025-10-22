@@ -116,23 +116,29 @@ export class AIAccountDiscovery {
         ...contentAccounts
       ]);
       
-      // SMART BATCH FIX: Curated fallback if discovery found nothing
+      // SMART BATCH FIX: If discovery found nothing, trigger real scraping of fallback accounts
       if (allAccounts.length === 0) {
-        console.log(`[AI_DISCOVERY] 📋 No accounts discovered, using curated health influencers...`);
+        console.log(`[AI_DISCOVERY] 📋 No accounts discovered, scraping curated health influencers...`);
         
-        const curatedAccounts = this.getFallbackHealthAccounts().map(account => ({
-          username: account.username,
-          follower_count: 0, // Will be filled by real scraping
-          following_count: 0,
-          tweet_count: 0,
-          bio: account.description,
-          verified: false,
-          discovery_method: 'content' as const, // Use existing type
-          discovery_date: new Date().toISOString()
-        }));
+        const { realTwitterDiscovery } = await import('./realTwitterDiscovery');
+        const curatedUsernames = this.getFallbackHealthAccounts().map(a => a.username);
         
-        allAccounts = curatedAccounts;
-        console.log(`[AI_DISCOVERY] 📋 Added ${allAccounts.length} curated accounts as fallback`);
+        // Scrape real data for curated accounts (limit to 10 to avoid rate limits)
+        for (const username of curatedUsernames.slice(0, 10)) {
+          try {
+            const account = await realTwitterDiscovery.getAccountDetailsStandalone(username);
+            if (account && account.follower_count >= 10000) {
+              allAccounts.push(account);
+              console.log(`[AI_DISCOVERY]   ✅ @${username}: ${account.follower_count.toLocaleString()} followers`);
+            }
+            // Small delay to avoid rate limits
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          } catch (error: any) {
+            console.warn(`[AI_DISCOVERY]   ⚠️ Failed to scrape @${username}: ${error.message}`);
+          }
+        }
+        
+        console.log(`[AI_DISCOVERY] 📋 Scraped ${allAccounts.length} curated accounts with real data`);
       }
       
       console.log(`[AI_DISCOVERY] ✅ Discovered ${allAccounts.length} unique accounts`);

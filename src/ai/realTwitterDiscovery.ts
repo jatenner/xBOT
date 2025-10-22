@@ -396,8 +396,9 @@ export class RealTwitterDiscovery {
 
   /**
    * Standalone method to get account details with its own page
+   * PUBLIC: Used by accountDiscovery to scrape fallback accounts
    */
-  private async getAccountDetailsStandalone(username: string): Promise<DiscoveredAccount | null> {
+  public async getAccountDetailsStandalone(username: string): Promise<DiscoveredAccount | null> {
     try {
       return await browserManager.withContext('posting', async (context) => {
         const page = await context.newPage();
