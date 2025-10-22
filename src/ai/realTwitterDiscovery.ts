@@ -62,15 +62,25 @@ export class RealTwitterDiscovery {
   private async verifyAuth(page: Page): Promise<boolean> {
     try {
       // Navigate to Twitter homepage to activate session
-      await page.goto('https://x.com/home', { waitUntil: 'domcontentloaded', timeout: 15000 });
+      await page.goto('https://x.com/home', { waitUntil: 'domcontentloaded', timeout: 30000 });
       
-      // Wait for authenticated element
-      await page.waitForSelector('[data-testid="SideNav_NewTweet_Button"]', { timeout: 10000 });
+      // Wait for authenticated element with longer timeout (Twitter can be slow)
+      await page.waitForSelector('[data-testid="SideNav_NewTweet_Button"]', { timeout: 30000 });
       
       console.log('[REAL_DISCOVERY] ✅ Authenticated session confirmed');
       return true;
-    } catch (error) {
-      console.error('[REAL_DISCOVERY] ❌ Not authenticated - session may not be loaded');
+    } catch (error: any) {
+      console.error(`[REAL_DISCOVERY] ❌ Not authenticated - ${error.message}`);
+      
+      // Try alternative auth check
+      try {
+        const url = page.url();
+        if (url.includes('/home') || url.includes('/compose')) {
+          console.log('[REAL_DISCOVERY] ⚠️ On Twitter home, assuming authenticated despite missing button');
+          return true;
+        }
+      } catch {}
+      
       return false;
     }
   }
