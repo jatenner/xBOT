@@ -238,9 +238,9 @@ export class UnifiedBrowserPool {
     const contextId = `ctx-${Date.now()}-${this.metrics.contextsCreated}`;
     console.log(`[BROWSER_POOL] 🆕 Creating context: ${contextId}`);
 
-    // Load session state from TWITTER_SESSION_B64 (same as working browserFactory)
+    // Load session state from TWITTER_SESSION_B64 (primary source)
     let storageState;
-    if (this.sessionLoaded && process.env.TWITTER_SESSION_B64) {
+    if (process.env.TWITTER_SESSION_B64) {
       try {
         console.log('[BROWSER_POOL] 🔐 Loading session from TWITTER_SESSION_B64...');
         const sessionData = Buffer.from(process.env.TWITTER_SESSION_B64, 'base64').toString('utf-8');
@@ -257,7 +257,7 @@ export class UnifiedBrowserPool {
       } catch (error: any) {
         console.warn('[BROWSER_POOL] ⚠️ Session load failed, using fresh context:', error.message);
       }
-    } else if (!process.env.TWITTER_SESSION_B64) {
+    } else {
       console.warn('[BROWSER_POOL] ⚠️ TWITTER_SESSION_B64 not found - contexts will not be authenticated');
     }
 
