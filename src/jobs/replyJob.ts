@@ -390,7 +390,7 @@ Format as JSON:
 async function queueReply(reply: any): Promise<void> {
   const supabase = getSupabaseClient();
   
-  await supabase.from('content_metadata').insert([{
+  const { data, error } = await supabase.from('content_metadata').insert([{
     decision_id: reply.decision_id,
     decision_type: 'reply',
     content: reply.content,
@@ -404,10 +404,17 @@ async function queueReply(reply: any): Promise<void> {
     target_username: reply.target_username,
     target_tweet_content: reply.target_tweet_content || '',
     generator_used: reply.generator_used || 'unknown',
-    estimated_reach: reply.estimated_reach || 0,
+    // ❌ REMOVED: estimated_reach - column doesn't exist
     bandit_arm: `strategic_reply_${reply.generator_used || 'unknown'}`,
     created_at: new Date().toISOString()
   }]);
+  
+  if (error) {
+    console.error('[REPLY_JOB] ❌ Failed to queue reply:', error.message);
+    throw error;
+  }
+  
+  console.log(`[REPLY_JOB] 💾 Reply queued in database: ${reply.decision_id}`);
 }
 
 async function discoverTargets() {
