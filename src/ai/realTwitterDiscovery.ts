@@ -496,22 +496,28 @@ export class RealTwitterDiscovery {
     
     for (const opp of opportunities) {
       try {
+        // Calculate tweet_posted_at from posted_minutes_ago
+        const tweetPostedAt = opp.posted_minutes_ago 
+          ? new Date(Date.now() - opp.posted_minutes_ago * 60 * 1000).toISOString()
+          : new Date().toISOString();
+        
         await supabase
           .from('reply_opportunities')
           .upsert({
+            // ✅ FIXED: Use correct schema column names
             account_username: opp.account_username,
-            tweet_id: opp.tweet_id,
-            tweet_url: opp.tweet_url,
-            tweet_content: opp.tweet_content,
-            tweet_author: opp.tweet_author,
+            target_username: opp.tweet_author,
+            target_tweet_id: opp.tweet_id,
+            target_tweet_url: opp.tweet_url,
+            target_tweet_content: opp.tweet_content,
             reply_count: opp.reply_count,
             like_count: opp.like_count,
             posted_minutes_ago: opp.posted_minutes_ago,
             opportunity_score: opp.opportunity_score,
-            discovered_at: new Date().toISOString(),
+            tweet_posted_at: tweetPostedAt,
             status: 'pending'
           }, {
-            onConflict: 'tweet_id'
+            onConflict: 'target_tweet_id'  // ✅ FIXED: Use correct unique column name
           });
       } catch (error: any) {
         console.error(`[REAL_DISCOVERY] ⚠️ Failed to store opportunity ${opp.tweet_id}:`, error.message);
