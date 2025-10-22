@@ -1,5 +1,5 @@
 import { Page } from 'playwright';
-import BrowserManager from '../core/BrowserManager';
+import { UnifiedBrowserPool } from '../browser/UnifiedBrowserPool';
 
 export interface TweetMetrics {
   tweetId: string;
@@ -44,8 +44,10 @@ export class TweetPerformanceTracker {
     
     console.log('📊 Tracking tweet performance via browser automation...');
     
+    const pool = UnifiedBrowserPool.getInstance();
+    
     try {
-      const result = await BrowserManager.withContext(async (context) => {
+      const result = await pool.withContext('track_performance', async (context) => {
         const page = await context.newPage();
       
         // Navigate to the tweet
@@ -239,8 +241,10 @@ export class TweetPerformanceTracker {
    * Get current follower count using BrowserManager
    */
   public async getCurrentFollowerCount(): Promise<number> {
+    const pool = UnifiedBrowserPool.getInstance();
+    
     try {
-      return await BrowserManager.withContext(async (context) => {
+      return await pool.withContext('get_follower_count', async (context) => {
         const page = await context.newPage();
         return await this.getFollowerCount(page);
       });
