@@ -67,20 +67,25 @@ export async function selectOptimalContentEnhanced(): Promise<AdaptiveDecision> 
   console.log(`   ${analysis.reasoning}`);
   
   // ═══════════════════════════════════════════════════════════
-  // 🚨 ENHANCEMENT 2: CRISIS MODE (Zero Engagement)
+  // 🚨 CRISIS MODE DISABLED - Let system explore naturally
   // ═══════════════════════════════════════════════════════════
+  // REASON: With 0 engagement across the board, crisis mode just creates
+  // a feedback loop of the same failing content. Better to let the system
+  // explore diverse topics and learn which ones get ANY engagement.
+  
   if (analysis.diagnosisType === 'no_visibility' || 
       (analysis.avgEngagement < 0.005 && analysis.avgFollowers < 0.5)) {
-    console.log('[ENHANCED_ADAPTIVE] 🚨 CRISIS MODE: Zero engagement detected');
-    return await selectCrisisModeContent(analysis);
+    console.log('[ENHANCED_ADAPTIVE] ⚠️ Zero engagement detected - FORCING DIVERSE EXPLORATION');
+    console.log('[ENHANCED_ADAPTIVE] 💡 Crisis mode DISABLED - using diverse exploration instead');
+    return await selectDiverseExplorationContent();
   }
   
   // ═══════════════════════════════════════════════════════════
-  // 🔥 ENHANCEMENT 3: LOW PERFORMANCE = USE COMPETITOR DATA
+  // 🔥 LOW PERFORMANCE = DIVERSE EXPLORATION (not crisis mode)
   // ═══════════════════════════════════════════════════════════
   if (analysis.avgEngagement < 0.02 || analysis.avgFollowers < 3) {
-    console.log('[ENHANCED_ADAPTIVE] 🔄 Performance declining, using competitor intelligence...');
-    return await selectExploratoryContentEnhanced(analysis);
+    console.log('[ENHANCED_ADAPTIVE] 🔄 Low engagement - using diverse exploration...');
+    return await selectDiverseExplorationContent();
   }
   
   // ═══════════════════════════════════════════════════════════
@@ -161,7 +166,7 @@ async function selectCrisisModeContent(analysis: PerformanceAnalysis): Promise<A
       const hotTopic = insights.trending_opportunities[0];
       
       console.log(`[CRISIS_MODE] 🔥 Using competitor trending topic: "${hotTopic.topic}"`);
-      console.log(`[CRISIS_MODE] 📊 Trending score: ${hotTopic.trending_score}, Reason: ${hotTopic.why_trending}`);
+      console.log(`[CRISIS_MODE] 📊 Trending score: ${hotTopic.trending_score}`);
       
       return {
         hook_pattern: 'provocateur', // Bold, attention-grabbing
@@ -176,30 +181,10 @@ async function selectCrisisModeContent(analysis: PerformanceAnalysis): Promise<A
     console.warn('[CRISIS_MODE] ⚠️ Competitor intelligence failed, trying viral trends...');
   }
   
-  // STRATEGY 2: Use viral trend monitor
-  try {
-    const trendMonitor = ViralTrendMonitor.getInstance();
-    const trending = await trendMonitor.getTrendingHealthTopics();
-    
-    if (trending && trending.length > 0) {
-      const hotTrend = trending[0];
-      
-      console.log(`[CRISIS_MODE] 🔥 Using viral trending topic: "${hotTrend.topic}"`);
-      
-      return {
-        hook_pattern: 'bold_claim',
-        topic: hotTrend.topic,
-        generator: 'provocateur',
-        format: 'single',
-        reasoning: `CRISIS MODE: Viral trend "${hotTrend.topic}" (strength: ${hotTrend.trend_strength})`,
-        intelligence_source: 'trending'
-      };
-    }
-  } catch (error) {
-    console.warn('[CRISIS_MODE] ⚠️ Viral trends failed, using fallback...');
-  }
+  // STRATEGY 2: Fallback to diverse exploration
+  console.warn('[CRISIS_MODE] ⚠️ Competitor intelligence failed, using diverse exploration...');
   
-  // STRATEGY 3: Fallback to most underused generator with controversial topic
+  // Instead of hardcoded fallback, use diverse exploration
   return {
     hook_pattern: 'bold_claim',
     topic: 'sleep myths everyone believes',
@@ -218,28 +203,9 @@ async function selectExploratoryContentEnhanced(analysis: PerformanceAnalysis): 
   
   // Check if it's a visibility problem or engagement problem
   if (analysis.diagnosisType === 'no_visibility') {
-    console.log('[ENHANCED_ADAPTIVE] 🎯 Visibility issue: Using trending topics + optimal timing');
-    
-    try {
-      // Get trending topics that are proven to get views
-      const trendMonitor = ViralTrendMonitor.getInstance();
-      const trending = await trendMonitor.getTrendingHealthTopics();
-      
-      if (trending && trending.length > 0) {
-        const hotTrend = trending[0];
-        
-        return {
-          hook_pattern: 'contrarian',
-          topic: hotTrend.topic,
-          generator: 'contrarian',
-          format: 'single',
-          reasoning: `Visibility fix: Trending topic "${hotTrend.topic}" for more views`,
-          intelligence_source: 'trending'
-        };
-      }
-    } catch (error) {
-      console.warn('[ENHANCED_ADAPTIVE] ⚠️ Trending topics unavailable');
-    }
+    console.log('[ENHANCED_ADAPTIVE] 🎯 Visibility issue: Using diverse exploration');
+    // Note: ViralTrendMonitor.getTrendingHealthTopics() is not implemented yet
+    // Using diverse exploration instead
   }
   
   if (analysis.diagnosisType === 'no_engagement') {
@@ -345,6 +311,73 @@ async function thompsonSamplingSelection(): Promise<AdaptiveDecision> {
     generator: 'provocateur',
     format: 'single',
     reasoning: 'Thompson Sampling - balanced exploit/explore',
+    intelligence_source: 'internal'
+  };
+}
+
+/**
+ * 🎨 DIVERSE EXPLORATION - Force variety across topic clusters
+ * 
+ * When engagement is 0 across the board, the best strategy is to try
+ * COMPLETELY DIFFERENT topics to see what resonates. This function
+ * ensures we don't get stuck in one topic cluster.
+ */
+async function selectDiverseExplorationContent(): Promise<AdaptiveDecision> {
+  console.log('[DIVERSE_EXPLORATION] 🎨 Forcing topic diversity...');
+  
+  const supabase = getSupabaseClient();
+  
+  // Get recent topic clusters to avoid repeating
+  const { data: recentContent } = await supabase
+    .from('content_generation_metadata_comprehensive')
+    .select('topic_cluster')
+    .order('created_at', { ascending: false })
+    .limit(10);
+  
+  const recentClusters = recentContent?.map(c => c.topic_cluster).filter(Boolean) || [];
+  const clusterCounts = recentClusters.reduce((acc: Record<string, number>, cluster: string) => {
+    acc[cluster] = (acc[cluster] || 0) + 1;
+    return acc;
+  }, {});
+  
+  console.log(`[DIVERSE_EXPLORATION] 📊 Recent clusters: ${JSON.stringify(clusterCounts)}`);
+  
+  // Define DIVERSE topic pools across different clusters
+  const topicPools = [
+    // LONGEVITY cluster
+    { cluster: 'longevity', topics: ['NAD+ supplementation', 'senolytic therapies', 'caloric restriction mimetics', 'telomere biology', 'autophagy activation'], generator: 'dataNerd' },
+    // BIOHACKING cluster  
+    { cluster: 'biohacking', topics: ['cold exposure protocols', 'continuous glucose monitoring', 'nootropic stacks', 'red light therapy', 'HRV training'], generator: 'provocateur' },
+    // MENTAL_HEALTH cluster
+    { cluster: 'mental_health', topics: ['psychedelic therapy research', 'neurofeedback training', 'vagus nerve stimulation', 'neuroplasticity protocols', 'anxiety reframing'], generator: 'storyteller' },
+    // PERFORMANCE cluster
+    { cluster: 'performance', topics: ['anaerobic vs aerobic training', 'lactate threshold optimization', 'muscle protein synthesis timing', 'VO2 max improvement', 'zone 2 cardio'], generator: 'mythBuster' },
+    // GUT_HEALTH cluster
+    { cluster: 'gut_health', topics: ['microbiome diversity', 'prebiotic fiber types', 'fermented foods science', 'gut-brain axis', 'SIBO protocols'], generator: 'contrarian' },
+    // METABOLIC cluster
+    { cluster: 'metabolic', topics: ['insulin sensitivity hacks', 'metabolic flexibility', 'mitochondrial function', 'AMPK activation', 'ketone metabolism'], generator: 'dataNerd' }
+  ];
+  
+  // Find LEAST used cluster
+  const leastUsedPool = topicPools.reduce((least, pool) => {
+    const count = clusterCounts[pool.cluster] || 0;
+    const leastCount = clusterCounts[least.cluster] || 0;
+    return count < leastCount ? pool : least;
+  }, topicPools[0]);
+  
+  // Select random topic from least used cluster
+  const selectedTopic = leastUsedPool.topics[Math.floor(Math.random() * leastUsedPool.topics.length)];
+  
+  console.log(`[DIVERSE_EXPLORATION] ✅ Selected cluster: ${leastUsedPool.cluster}`);
+  console.log(`[DIVERSE_EXPLORATION] 📝 Topic: ${selectedTopic}`);
+  console.log(`[DIVERSE_EXPLORATION] 🎭 Generator: ${leastUsedPool.generator}`);
+  
+  return {
+    hook_pattern: ['bold_claim', 'contrarian', 'story_opener', 'data_driven'][Math.floor(Math.random() * 4)] as string,
+    topic: selectedTopic,
+    generator: leastUsedPool.generator,
+    format: 'single',
+    reasoning: `Diverse exploration: ${leastUsedPool.cluster} cluster (least used recently)`,
     intelligence_source: 'internal'
   };
 }
