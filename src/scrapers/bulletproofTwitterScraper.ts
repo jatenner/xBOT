@@ -69,16 +69,18 @@ const SELECTORS = {
     '[aria-label*="bookmark"] span'
   ],
   views: [
-    // CRITICAL FIX: Be EXTREMELY specific to avoid grabbing sidebar/other tweet metrics
-    // Strategy 1: Look for the analytics link in the engagement group (most reliable)
+    // 🔥 UPDATED 2025-10-22: Twitter changed HTML structure for views
+    // Strategy 1: Look for aria-label with "View" text (most reliable for 2024-2025)
+    'a[aria-label*="View" i][href$="/analytics"]',
+    // Strategy 2: Look for the analytics link by href pattern
+    'a[href*="/analytics"]:has(span)',
+    // Strategy 3: Look near engagement group (likes, retweets, replies area)
+    'div[role="group"] ~ a[href$="/analytics"]',
+    // Strategy 4: General analytics link (broadest fallback)
+    'article[data-testid="tweet"] a[href$="/analytics"]',
+    // Strategy 5: Legacy selectors (kept for backwards compat)
     'div[role="group"] + a[href$="/analytics"] span[class*="css"]',
-    'div[role="group"] ~ a[aria-label*="View"] span',
-    // Strategy 2: Direct descendant of article engagement area
-    'article[data-testid="tweet"] > div > div > div:last-child a[href*="analytics"] span',
-    // Strategy 3: Look for views count by position after engagement buttons
-    'article[data-testid="tweet"] [role="group"] ~ a span:not([aria-hidden="true"])',
-    // Strategy 4: Fallback with stricter attribute matching
-    'a[href*="/analytics"][aria-label*="view" i] span'
+    'article[data-testid="tweet"] [role="group"] ~ a span:not([aria-hidden="true"])'
   ]
 };
 
@@ -976,7 +978,23 @@ export class BulletproofTwitterScraper {
 
       // CRITICAL FIX: Use tweetArticle.$eval instead of page.$eval
       // This searches ONLY within the tweet article, not the entire document
-      const text = await tweetArticle.$eval(selector, (el: any) => el.textContent?.trim() || '');
+      // 🔥 SPECIAL HANDLING FOR VIEWS: Check aria-label FIRST (Twitter 2024-2025 pattern)
+      let text = '';
+      try {
+        const ariaLabel = await tweetArticle.$eval(selector, (el: any) => el.getAttribute('aria-label'));
+        if (ariaLabel && /\d/.test(ariaLabel)) {
+          // aria-label has numbers, use it (e.g., "123 Views", "1.2K Views")
+          text = ariaLabel;
+          console.log(`       📊 Using aria-label: "${text}"`);
+        }
+      } catch (e) {
+        // No aria-label, continue to textContent
+      }
+      
+      if (!text) {
+        // Fallback to textContent if aria-label doesn't have numbers
+        text = await tweetArticle.$eval(selector, (el: any) => el.textContent?.trim() || '');
+      }
 
       if (!text || text === '0' || text === '') {
         console.log(`       ➜ Extracted: 0 (empty or zero)`);
