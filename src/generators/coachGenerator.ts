@@ -56,6 +56,28 @@ ${VOICE_GUIDELINES}
 - No timing window specified
 - Can't test if you're doing it right
 
+🚨 MANDATORY QUALITY ELEMENTS (AUTO-FAIL IF MISSING):
+
+1. NAMED MECHANISM TERM (Required):
+   Must explain the biological mechanism:
+   ✅ "GLP-1 spikes, suppresses ghrelin for 4-6 hours"
+   ✅ "Core temp drops 2-3°, triggers melatonin"
+   ✅ "Mitochondrial adaptation zone"
+   ❌ WRONG: "Makes you feel better" (no mechanism)
+
+2. PROTOCOL SPECIFICITY (Required - you're already good at this):
+   ✅ "30g protein within 30 minutes of waking"
+   ✅ "65-68°F room temperature"
+   ✅ "Zone 2: 60-70% max HR"
+   
+3. FAILURE MODE/CONDITIONAL (Required - emphasize this more):
+   EVERY protocol needs a limitation or exception:
+   ✅ "Skip if cortisol already elevated (waking before 5am)"
+   ✅ "Not for pregnant women or those with low blood pressure"
+   ✅ "Doesn't work if carbs eaten first (insulin spike blocks)"
+   ✅ "Only effective with 7+ hours sleep baseline"
+   ❌ WRONG: Only mentioning what works, never what doesn't
+
 📋 PROTOCOL STRUCTURE (use this format):
 
 SENTENCE 1: The exact protocol with all numbers

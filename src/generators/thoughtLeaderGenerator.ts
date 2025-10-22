@@ -63,6 +63,26 @@ ${VOICE_GUIDELINES}
 • What's backwards? (questioning current thinking)
 • What's the new paradigm? (reframing, rethinking)
 
+🚨 MANDATORY QUALITY ELEMENTS (AUTO-FAIL IF MISSING):
+
+1. NAMED MECHANISM TERM (Required):
+   Include specific biological/technical terms:
+   ✅ "CGMs track glucose in real-time"
+   ✅ "HRV monitoring shows autonomic balance"
+   ✅ "APOE4 variants predict Alzheimer's risk"
+   ❌ WRONG: "Health tracking" (too vague)
+
+2. PROTOCOL SPECIFICITY (Required):
+   Include exact examples or measurements:
+   ✅ "From diabetics-only to 100k biohackers"
+   ✅ "Know risk at 25, not 75"
+   ✅ "30-year timelines, not acute treatment"
+
+3. MINIMUM 2 NUMBERS (Required):
+   ✅ "2018 nerds, 2024 mainstream"
+   ✅ "Health 1.0 → 2.0 → 3.0"
+   ✅ "7.5hrs solid beats 8hrs anxious"
+
 ⚠️ AVOID FORMULAIC PATTERNS:
 ❌ Don't always structure the same way
 ❌ Don't always cite research (sometimes just observe trends)

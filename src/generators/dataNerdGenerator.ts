@@ -92,6 +92,22 @@ Must explain HOW/WHY in < 20 words using biological pathway:
 ✅ GOOD: "Protein → GLP-1 release → ghrelin suppression → 4-6hr satiety"
 ❌ BAD: "Protein keeps you full longer"
 
+🚨 MANDATORY QUALITY ELEMENTS (AUTO-FAIL IF MISSING):
+
+1. NAMED MECHANISM TERM (Required):
+   Must include specific biological term:
+   ✅ Hormones: cortisol, insulin, ghrelin, leptin, melatonin, dopamine, norepinephrine
+   ✅ Processes: mitochondrial activation, insulin resistance, GLP-1 release, autophagy
+   ✅ Systems: glymphatic system, circadian rhythm, sympathetic nervous system
+   ❌ WRONG: "Your body responds..." (too vague)
+
+2. FAILURE MODE/CONDITIONAL (Required):
+   Must include when it doesn't work or exception:
+   ✅ "Doesn't work if already sleep-deprived"
+   ✅ "Avoid if taking beta-blockers"
+   ✅ "Only effective with 7+ hours sleep"
+   ❌ WRONG: Only mentioning benefits
+
 🎯 TESTABLE QUALITY CRITERIA:
 Score each tweet 0-100:
 - Has specific number in first 10 words? (+25 points)
