@@ -213,16 +213,16 @@ async function queueContent(content: any): Promise<void> {
     : content.text;
   
   const { data, error } = await supabase.from('content_metadata').insert([{
-    id: content.decision_id,
-    content_id: content.decision_id,
+    decision_id: content.decision_id,  // ✅ FIXED: Use decision_id, not id
+    // ❌ REMOVED: content_id - column doesn't exist
     content: contentText,
     generation_source: 'real',
     status: 'queued',
-    decision_type: content.format === 'thread' ? 'thread' : 'content', // Map format to valid DB values
+    decision_type: content.format === 'thread' ? 'thread' : 'single', // ✅ FIXED: Use 'single' not 'content'
     scheduled_at: content.scheduled_at,
     quality_score: Math.round(content.quality_score * 100),
     predicted_er: content.predicted_er,
-    topic: content.topic || 'health',
+    topic_cluster: content.topic || 'health',  // ✅ FIXED: Use topic_cluster
     bandit_arm: content.style || 'varied', // Store the style as bandit_arm
     timing_arm: `slot_${content.timing_slot}`
     // Note: angle field removed - not in schema
@@ -232,6 +232,8 @@ async function queueContent(content: any): Promise<void> {
     console.error(`[PLAN_JOB] ❌ Failed to queue content:`, error);
     throw new Error(`Database insert failed: ${error.message}`);
   }
+  
+  console.log(`[PLAN_JOB] 💾 Content queued in database: ${content.decision_id}`);
 }
 
 async function runGateChain(text: string, decision_id: string) {
