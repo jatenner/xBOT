@@ -1,5 +1,5 @@
 import { Page } from 'playwright';
-import browserManager from '../core/BrowserManager';
+import { UnifiedBrowserPool } from '../browser/UnifiedBrowserPool';
 import { admin as supabase } from '../lib/supabaseClients';
 
 interface TweetAnalytics {
@@ -31,11 +31,11 @@ interface ProfileAnalytics {
 }
 
 export class TwitterAnalyticsScraper {
-  private browserManager: any;
+  private pool: UnifiedBrowserPool;
   private isRunning: boolean = false;
 
   constructor() {
-    this.browserManager = browserManager;
+    this.pool = UnifiedBrowserPool.getInstance();
   }
 
   /**
@@ -55,7 +55,9 @@ export class TwitterAnalyticsScraper {
     console.log('📊 ANALYTICS_SCRAPER: Starting comprehensive Twitter data extraction...');
 
     try {
-      return await this.browserManager.withContext(async (page) => {
+      return await this.pool.withContext('scrape_analytics', async (context) => {
+        const page = await context.newPage();
+        
         // 1. Navigate to our profile
         await this.navigateToProfile(page);
 
