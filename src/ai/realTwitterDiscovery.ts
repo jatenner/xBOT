@@ -431,17 +431,15 @@ export class RealTwitterDiscovery {
    * PUBLIC: Used by accountDiscovery to scrape fallback accounts
    */
   public async getAccountDetailsStandalone(username: string): Promise<DiscoveredAccount | null> {
+    const pool = UnifiedBrowserPool.getInstance();
+    const page = await pool.acquirePage('account_details');
+    
     try {
-      return await browserManager.withContext('posting', async (context) => {
-        const page = await context.newPage();
-        try {
-          return await this.getAccountDetails(page, username);
-        } finally {
-          await page.close();
-        }
-      });
+      return await this.getAccountDetails(page, username);
     } catch (error) {
       return null;
+    } finally {
+      await pool.releasePage(page);
     }
   }
 
