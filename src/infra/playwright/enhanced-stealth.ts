@@ -234,3 +234,4 @@ export async function validateSession(page: Page): Promise<boolean> {
 // Export singleton rate limiter
 export const globalAnalyticsRateLimiter = new AnalyticsRateLimiter();
 
+
