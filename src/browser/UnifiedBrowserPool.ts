@@ -85,6 +85,32 @@ export class UnifiedBrowserPool {
   }
 
   /**
+   * Acquire a page directly from the pool
+   * Useful for operations that need explicit control over page lifecycle
+   */
+  public async acquirePage(operationName: string): Promise<Page> {
+    return this.withContext(operationName, async (context) => {
+      const page = await context.newPage();
+      return page;
+    });
+  }
+
+  /**
+   * Release a page back to the pool
+   * Note: With the current design, pages are tied to contexts
+   * So we just close the page here
+   */
+  public async releasePage(page: Page): Promise<void> {
+    try {
+      if (!page.isClosed()) {
+        await page.close();
+      }
+    } catch (error: any) {
+      console.warn(`[BROWSER_POOL] ⚠️ Error closing page: ${error.message}`);
+    }
+  }
+
+  /**
    * Execute an operation with a browser context
    * Automatically queues if all contexts are busy
    */
