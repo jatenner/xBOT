@@ -6,7 +6,7 @@
  */
 
 import { Page } from 'playwright';
-import { BrowserManager } from '../posting/BrowserManager';
+import { UnifiedBrowserPool } from '../browser/UnifiedBrowserPool';
 import { getSupabaseClient } from '../db/index';
 
 export interface RealTweetMetrics {
@@ -112,39 +112,42 @@ export class RealTwitterMetricsCollector {
 
     console.log(`📊 REAL_COLLECTION: Collecting ${phase} metrics for ${tweetId}`);
 
+    const pool = UnifiedBrowserPool.getInstance();
+    const page = await pool.acquirePage(`metrics_${phase}`);
+
     try {
-      return await BrowserManager.withPage(async (page: Page) => {
-        // Navigate to the actual tweet
-        const tweetUrl = `https://x.com/i/status/${tweetId}`;
-        await page.goto(tweetUrl, { 
-          waitUntil: 'domcontentloaded',
-          timeout: 20000 
-        });
-
-        // Wait for tweet to load
-        await page.waitForSelector('article[data-testid="tweet"]', { timeout: 15000 });
-        
-        // Extract REAL metrics from the page
-        const metrics = await this.extractMetricsFromPage(page, tweetId);
-        
-        if (metrics) {
-          // Store real metrics in database
-          await this.storeRealMetrics(metrics, tweetData, phase);
-          
-          // Update AI learning with REAL data
-          await this.updateAILearningWithRealData(metrics, tweetData);
-          
-          console.log(`✅ REAL_METRICS: ${tweetId} - ${metrics.likes}❤️ ${metrics.retweets}🔄 ${metrics.replies}💬 (${(metrics.engagementRate * 100).toFixed(2)}% REAL)`);
-          
-          return metrics;
-        }
-
-        return null;
+      // Navigate to the actual tweet
+      const tweetUrl = `https://x.com/i/status/${tweetId}`;
+      await page.goto(tweetUrl, { 
+        waitUntil: 'domcontentloaded',
+        timeout: 20000 
       });
+
+      // Wait for tweet to load
+      await page.waitForSelector('article[data-testid="tweet"]', { timeout: 15000 });
+      
+      // Extract REAL metrics from the page
+      const metrics = await this.extractMetricsFromPage(page, tweetId);
+      
+      if (metrics) {
+        // Store real metrics in database
+        await this.storeRealMetrics(metrics, tweetData, phase);
+        
+        // Update AI learning with REAL data
+        await this.updateAILearningWithRealData(metrics, tweetData);
+        
+        console.log(`✅ REAL_METRICS: ${tweetId} - ${metrics.likes}❤️ ${metrics.retweets}🔄 ${metrics.replies}💬 (${(metrics.engagementRate * 100).toFixed(2)}% REAL)`);
+        
+        return metrics;
+      }
+      
+      return null;
 
     } catch (error: any) {
       console.error(`❌ REAL_METRICS_ERROR: ${tweetId} (${phase}):`, error.message);
       return null;
+    } finally {
+      await pool.releasePage(page);
     }
   }
 

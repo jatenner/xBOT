@@ -76,15 +76,13 @@ async function trackPostCheckpoint(postId: string, tweetId: string, hoursAfter: 
   const supabase = getSupabaseClient();
   const scraper = getBulletproofScraper();
   
-  // Dynamically import BrowserManager
-  const { BrowserManager } = await import('../browser/browserManager');
-  const browserManager = BrowserManager.getInstance();
+  // Use UnifiedBrowserPool (same as working scraper!)
+  const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
+  const pool = UnifiedBrowserPool.getInstance();
   
-  let page;
+  const page = await pool.acquirePage(`velocity_${hoursAfter}h`);
   
   try {
-    // Get browser page
-    page = await browserManager.getPage();
     
     // Scrape tweet metrics
     console.log(`[VELOCITY] 📊 Scraping metrics for ${postId} at ${hoursAfter}h...`);
@@ -160,10 +158,10 @@ async function trackPostCheckpoint(postId: string, tweetId: string, hoursAfter: 
     // Calculate and log attribution
     await logFollowerAttribution(postId);
     
+  } catch (error: any) {
+    console.error(`[VELOCITY] ❌ Failed to track ${postId} at ${hoursAfter}h:`, error.message);
   } finally {
-    if (page) {
-      await browserManager.releasePage(page);
-    }
+    await pool.releasePage(page);
   }
 }
 
