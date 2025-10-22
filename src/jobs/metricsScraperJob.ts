@@ -293,7 +293,7 @@ export async function enhancedMetricsScraperJob(): Promise<void> {
           
           const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
           const pool = UnifiedBrowserPool.getInstance();
-          const page = await pool.acquirePage(`velocity_${hoursAfter}h`);
+          const page = await pool.acquirePage(`velocity_${window.hours}h`);
           
           try {
             const result = await scraper.scrapeTweetMetrics(page, String(post.tweet_id));
