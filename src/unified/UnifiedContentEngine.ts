@@ -36,7 +36,7 @@ import { aiContentRefiner } from '../ai/aiContentRefiner';
 import { getViralExamplesForTopic } from '../intelligence/viralTweetDatabase';
 import { getCachedTopTweets, formatTopTweetsForPrompt } from '../intelligence/dynamicFewShotProvider';
 import { validateAndImprove } from '../generators/contentAutoImprover';
-import { validateContent } from '../generators/preQualityValidator';
+import { validateContentSmart } from '../generators/smartQualityGates';
 import { PreGenerationIntelligence } from '../intelligence/preGenerationIntelligence';
 import { PostGenerationIntelligence } from '../intelligence/postGenerationIntelligence';
 import { IntelligenceEnhancer } from '../intelligence/intelligenceEnhancer';
@@ -373,28 +373,31 @@ export class UnifiedContentEngine {
       let rawContent = aiResponse.content || aiResponse.tweet || aiResponse.text || '';
       
       console.log('🔍 STEP 5.3: Validating content quality...');
-      const preValidation = validateContent(
-        request.format === 'thread' && Array.isArray(generatedContent) ? generatedContent : rawContent
+      // 🎯 SMART QUALITY GATES: Generator-aware validation
+      const preValidation = validateContentSmart(
+        request.format === 'thread' && Array.isArray(generatedContent) ? generatedContent : rawContent,
+        generatorName // Pass generator name for context-aware validation
       );
       
-      console.log(`  📊 Quality score: ${preValidation.score}/100 (threshold: 78)`);
+      console.log(`  📊 Quality score: ${preValidation.score}/100 (threshold: 72)`);
+      console.log(`  📊 Breakdown: Completeness ${preValidation.breakdown.completeness}/100, Engagement ${preValidation.breakdown.engagement}/100, Authenticity ${preValidation.breakdown.authenticity}/100`);
       
       // ✅ FIX #1: Auto-improver DISABLED - it was making content MORE academic
       // Generators should create RIGHT content from the start, not "fix" it after
-      if (!preValidation.passes && !request.forceGeneration) {
-        console.log(`  ⚠️ Content failed pre-validation (${preValidation.score}/100)`);
+      if (!preValidation.passed && !request.forceGeneration) {
+        console.log(`  ⚠️ Content failed smart validation (${preValidation.score}/100)`);
         console.log(`  Issues: ${preValidation.issues.join(', ')}`);
         console.log(`  🚫 Auto-improvement DISABLED (was making content worse)`);
         console.log(`  📊 Proceeding with original generator content...`);
-        systemsActive.push('Pre-Validation [LOW_SCORE_ACCEPTED]');
+        systemsActive.push('Smart Validation [LOW_SCORE_ACCEPTED]');
         
         // OLD APPROACH (commented out - made content worse):
         // const improvement = await validateAndImprove(...);
         // Problem: Made content MORE academic, opposite of goal
         // Solution: Fix generators to create good content from start
       } else {
-        console.log(`  ✅ Content passes pre-validation (${preValidation.score}/100)`);
-        systemsActive.push('Pre-Validation [PASSED]');
+        console.log(`  ✅ Content passes smart validation (${preValidation.score}/100)`);
+        systemsActive.push(`Smart Validation [${generatorName.toUpperCase()}]`);
       }
       
       // ═══════════════════════════════════════════════════════════
