@@ -9,7 +9,7 @@
  */
 
 import { Page } from 'playwright';
-import { browserManager } from '../posting/BrowserManager';
+import { UnifiedBrowserPool } from '../browser/UnifiedBrowserPool';
 import { getOpenAIService } from '../services/openAIService';
 import { admin } from '../lib/supabaseClients';
 

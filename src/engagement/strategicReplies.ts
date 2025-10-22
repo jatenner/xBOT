@@ -3,7 +3,7 @@
  */
 
 import { Page } from 'playwright';
-import { browserManager } from '../posting/BrowserManager';
+import { UnifiedBrowserPool } from '../browser/UnifiedBrowserPool';
 
 const HEALTH_INFLUENCERS = [
   { handle: '@hubermanlab', focus: 'neuroscience', expertise: 'dopamine, sleep, protocols' },
@@ -54,8 +54,10 @@ export async function executeStrategicReplies(): Promise<void> {
 }
 
 async function findReplyableTweet(influencer: any): Promise<TweetToReplyTo | null> {
+  const pool = UnifiedBrowserPool.getInstance();
+  
   try {
-    return await browserManager.withContext('posting', async (context) => {
+    return await pool.withContext('strategic_replies', async (context) => {
       const page = await context.newPage();
     
     // Navigate to influencer's profile with retry logic
@@ -388,8 +390,9 @@ async function postStrategicReply(tweetUrl: string, replyContent: string): Promi
   
   try {
     const { TwitterComposer } = await import('../posting/TwitterComposer');
+    const pool = UnifiedBrowserPool.getInstance();
     
-    await browserManager.withContext('posting', async (context) => {
+    await pool.withContext('post_reply', async (context) => {
       const page = await context.newPage();
       const composer = new TwitterComposer(page);
       
