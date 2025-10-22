@@ -1,5 +1,5 @@
 import { Page } from 'playwright';
-import { browserManager } from '../posting/BrowserManager';
+import { UnifiedBrowserPool } from '../browser/UnifiedBrowserPool';
 
 export interface TestResult {
   success: boolean;
@@ -281,7 +281,8 @@ export class ThreadTestingFramework {
     totalPosts: number;
     tweetIds: string[];
   }> {
-    return await browserManager.withContext('posting', async (context) => {
+    const pool = UnifiedBrowserPool.getInstance();
+    return await pool.withContext('testing', async (context) => {
       const page = await context.newPage();
       
       // Navigate to profile timeline

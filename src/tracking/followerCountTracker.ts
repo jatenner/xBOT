@@ -4,7 +4,7 @@
  */
 
 import { getSupabaseClient } from '../db/index';
-import { BrowserManager } from '../browser/browserManager';
+import { UnifiedBrowserPool } from '../browser/UnifiedBrowserPool';
 
 interface FollowerSnapshot {
   timestamp: Date;
@@ -62,8 +62,8 @@ export async function getCurrentFollowerCount(): Promise<number> {
  * Scrape follower count from Twitter profile
  */
 async function scrapeFollowerCount(): Promise<number> {
-  const manager = BrowserManager.getInstance();
-  const page = await manager.getPage();
+  const pool = UnifiedBrowserPool.getInstance();
+  const page = await pool.acquirePage('follower_count');
   
   try {
     // Navigate to our profile
@@ -86,7 +86,6 @@ async function scrapeFollowerCount(): Promise<number> {
           if (text) {
             const count = parseFollowerCount(text);
             if (count >= 0) {
-              await page.close();
               return count;
             }
           }
@@ -99,8 +98,11 @@ async function scrapeFollowerCount(): Promise<number> {
     
     throw new Error('Could not find follower count element');
     
+  } catch (error: any) {
+    console.error('❌ Failed to scrape follower count:', error.message);
+    throw error;
   } finally {
-    await manager.releasePage(page);
+    await pool.releasePage(page);
   }
 }
 
