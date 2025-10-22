@@ -3,7 +3,7 @@
  * Replaces placeholder AI generation with real Twitter browsing
  */
 
-import { browserManager } from '../posting/BrowserManager';
+import { UnifiedBrowserPool } from '../browser/UnifiedBrowserPool';
 import { getSupabaseClient } from '../db';
 import type { Page } from 'playwright';
 
@@ -82,24 +82,23 @@ export class RealTwitterDiscovery {
   async discoverAccountsViaSearch(hashtag: string, limit: number = 10): Promise<DiscoveredAccount[]> {
     console.log(`[REAL_DISCOVERY] 🔍 Searching Twitter for #${hashtag}...`);
     
+    const pool = UnifiedBrowserPool.getInstance();
+    const page = await pool.acquirePage('hashtag_search');
+    
     try {
-      return await browserManager.withContext('posting', async (context) => {
-        const page = await context.newPage();
-        
-        try {
-          // 🔐 VERIFY AUTHENTICATION FIRST
-          const isAuth = await this.verifyAuth(page);
-          if (!isAuth) {
-            console.error('[REAL_DISCOVERY] ⚠️ Skipping search - not authenticated');
-            return [];
-          }
+      // 🔐 VERIFY AUTHENTICATION FIRST
+      const isAuth = await this.verifyAuth(page);
+      if (!isAuth) {
+        console.error('[REAL_DISCOVERY] ⚠️ Skipping search - not authenticated');
+        return [];
+      }
 
-          // SMART BATCH FIX: Use x.com and better search URL
-          const searchUrl = `https://x.com/search?q=%23${hashtag}&src=typed_query&f=live`;
-          await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-          
-          // 🕐 GIVE TWITTER TIME TO LOAD
-          await page.waitForTimeout(3000);
+      // SMART BATCH FIX: Use x.com and better search URL
+      const searchUrl = `https://x.com/search?q=%23${hashtag}&src=typed_query&f=live`;
+      await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      
+      // 🕐 GIVE TWITTER TIME TO LOAD
+      await page.waitForTimeout(3000);
           
           // SMART BATCH FIX: Wait for tweets with multiple fallback selectors
           const tweetsLoaded = await Promise.race([
@@ -215,13 +214,11 @@ export class RealTwitterDiscovery {
           
           return discovered;
           
-        } finally {
-          await page.close();
-        }
-      });
     } catch (error: any) {
       console.error(`[REAL_DISCOVERY] ❌ Search failed for #${hashtag}:`, error.message);
       return [];
+    } finally {
+      await pool.releasePage(page);
     }
   }
 
@@ -231,26 +228,25 @@ export class RealTwitterDiscovery {
   async findReplyOpportunitiesFromAccount(username: string): Promise<ReplyOpportunity[]> {
     console.log(`[REAL_DISCOVERY] 🎯 Finding reply opportunities from @${username}...`);
     
+    const pool = UnifiedBrowserPool.getInstance();
+    const page = await pool.acquirePage('timeline_scrape');
+    
     try {
-      return await browserManager.withContext('posting', async (context) => {
-        const page = await context.newPage();
-        
-        try {
-          // 🔐 VERIFY AUTHENTICATION FIRST
-          const isAuth = await this.verifyAuth(page);
-          if (!isAuth) {
-            console.error('[REAL_DISCOVERY] ⚠️ Skipping @${username} - not authenticated');
-            return [];
-          }
+      // 🔐 VERIFY AUTHENTICATION FIRST
+      const isAuth = await this.verifyAuth(page);
+      if (!isAuth) {
+        console.error(`[REAL_DISCOVERY] ⚠️ Skipping @${username} - not authenticated`);
+        return [];
+      }
 
-          // Navigate to account timeline - FIXED: x.com + domcontentloaded
-          await page.goto(`https://x.com/${username}`, { 
-            waitUntil: 'domcontentloaded', 
-            timeout: 30000 
-          });
-          
-          // 🕐 GIVE TWITTER TIME TO LOAD
-          await page.waitForTimeout(3000);
+      // Navigate to account timeline - FIXED: x.com + domcontentloaded
+      await page.goto(`https://x.com/${username}`, { 
+        waitUntil: 'domcontentloaded', 
+        timeout: 30000 
+      });
+      
+      // 🕐 GIVE TWITTER TIME TO LOAD
+      await page.waitForTimeout(3000);
           
           // Extract recent tweets
           const opportunities = await page.evaluate(() => {
@@ -327,13 +323,11 @@ export class RealTwitterDiscovery {
             opportunity_score: this.calculateOpportunityScore(opp.like_count, opp.reply_count)
           }));
           
-        } finally {
-          await page.close();
-        }
-      });
     } catch (error: any) {
       console.error(`[REAL_DISCOVERY] ❌ Failed to find opportunities from @${username}:`, error.message);
       return [];
+    } finally {
+      await pool.releasePage(page);
     }
   }
 
