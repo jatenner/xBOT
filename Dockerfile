@@ -4,10 +4,14 @@ FROM node:20-bullseye AS builder
 
 WORKDIR /app
 
-# Install CA certificates for SSL
-RUN apt-get update && apt-get install -y ca-certificates && \
+# Install CA certificates for SSL with retry logic
+RUN for i in 1 2 3; do \
+    apt-get update && \
+    apt-get install -y ca-certificates && \
     update-ca-certificates && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* && break || \
+    { echo "Attempt $i failed, retrying in 5s..."; sleep 5; }; \
+    done
 
 # Copy package files
 COPY package.json package-lock.json ./
@@ -31,26 +35,30 @@ ENV PORT=8080
 
 WORKDIR /app
 
-# Install CA certificates + Playwright system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    fonts-liberation \
-    libasound2 \
-    libatk1.0-0 \
-    libatk-bridge2.0-0 \
-    libdrm2 \
-    libgbm1 \
-    libgtk-3-0 \
-    libnss3 \
-    libx11-xcb1 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxfixes3 \
-    libxrandr2 \
-    libxshmfence1 \
-    libxkbcommon0 \
-    && update-ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+# Install CA certificates + Playwright system dependencies with retry logic
+RUN for i in 1 2 3; do \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        fonts-liberation \
+        libasound2 \
+        libatk1.0-0 \
+        libatk-bridge2.0-0 \
+        libdrm2 \
+        libgbm1 \
+        libgtk-3-0 \
+        libnss3 \
+        libx11-xcb1 \
+        libxcomposite1 \
+        libxdamage1 \
+        libxfixes3 \
+        libxrandr2 \
+        libxshmfence1 \
+        libxkbcommon0 && \
+    update-ca-certificates && \
+    rm -rf /var/lib/apt/lists/* && break || \
+    { echo "Attempt $i failed, retrying in 5s..."; sleep 5; }; \
+    done
 
 # Copy package files and install production dependencies only
 COPY package.json package-lock.json ./
