@@ -89,9 +89,10 @@ export async function metricsScraperJob(): Promise<void> {
         
         console.log(`[METRICS_JOB] 🔍 Scraping ${post.tweet_id}...`);
         
-        // Scrape fresh metrics with browser
-        const browserManager = (await import('../lib/browser')).default;
-        const page = await browserManager.newPage();
+        // Use UnifiedBrowserPool (same as working discovery system)
+        const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
+        const pool = UnifiedBrowserPool.getInstance();
+        const page = await pool.acquirePage(`metrics_${post.tweet_id}`);
         
         try {
           // PHASE 4: Use orchestrator (includes validation, quality tracking, caching)
@@ -213,7 +214,7 @@ export async function metricsScraperJob(): Promise<void> {
           }
           
         } finally {
-          await page.close();
+          await pool.releasePage(page);
         }
         
         // Rate limit: wait 5 seconds between scrapes
@@ -290,8 +291,9 @@ export async function enhancedMetricsScraperJob(): Promise<void> {
           // Skip invalid IDs
           if (String(post.tweet_id).includes('verified_') || String(post.tweet_id).length < 19) continue;
           
-          const browserManager = (await import('../lib/browser')).default;
-          const page = await browserManager.newPage();
+          const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
+          const pool = UnifiedBrowserPool.getInstance();
+          const page = await pool.acquirePage(`velocity_${hoursAfter}h`);
           
           try {
             const result = await scraper.scrapeTweetMetrics(page, String(post.tweet_id));
@@ -326,7 +328,7 @@ export async function enhancedMetricsScraperJob(): Promise<void> {
             console.log(`[ENHANCED_METRICS] ✅ Velocity tracked for ${post.tweet_id} at ${window.label}: ${metrics.likes ?? 0} likes`);
             
           } finally {
-            await page.close();
+            await pool.releasePage(page);
           }
           
           // Rate limit
