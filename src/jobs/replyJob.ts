@@ -141,11 +141,11 @@ async function generateRealReplies(): Promise<void> {
   
   // 🚀 QUERY OPPORTUNITIES FROM DATABASE POOL (populated by harvester)
   console.log('[REPLY_JOB] 🔍 Querying reply opportunities from database pool...');
-  const supabase = getSupabaseClient();
+  const supabaseClient = getSupabaseClient();
   
   // Get fresh opportunities (<24h old, not yet replied to)
   const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const { data: dbOpportunities, error: oppError } = await supabase
+  const { data: dbOpportunities, error: oppError } = await supabaseClient
     .from('reply_opportunities')
     .select('*')
     .eq('status', 'pending')
@@ -164,27 +164,27 @@ async function generateRealReplies(): Promise<void> {
   }
   
   // Convert to the format expected by strategic reply system
-  const opportunities = dbOpportunities.map(opp => ({
+  const opportunities = dbOpportunities.map((opp: any) => ({
     target: {
-      username: opp.target_username || 'unknown',
-      followers: opp.target_followers || 50000,
+      username: String(opp.target_username || 'unknown'),
+      followers: Number(opp.target_followers) || 50000,
       follower_overlap_score: 0.5,
-      reply_window: 'early',
+      reply_window: 'early' as const,
       rising_potential: 0.7,
-      conversion_potential: opp.opportunity_score / 100,
+      conversion_potential: Number(opp.opportunity_score || 0) / 100,
       times_replied: 0,
       avg_engagement_on_replies: 0,
       avg_followers_gained: 0,
       actual_conversion_rate: 0,
-      priority_score: opp.opportunity_score,
-      handle: `@${opp.target_username}`,
+      priority_score: Number(opp.opportunity_score || 0),
+      handle: `@${String(opp.target_username || 'unknown')}`,
       engagement_rate: 0.05
     },
-    tweet_url: opp.target_tweet_url,
+    tweet_url: String(opp.target_tweet_url || ''),
     tweet_posted_at: opp.tweet_posted_at,
-    minutes_since_post: opp.posted_minutes_ago || 0,
+    minutes_since_post: Number(opp.posted_minutes_ago) || 0,
     reply_strategy: 'Add value with research or insights',
-    estimated_followers: Math.round((opp.opportunity_score / 100) * 10)
+    estimated_followers: Math.round((Number(opp.opportunity_score || 0) / 100) * 10)
   }));
   
   console.log(`[REPLY_JOB] ✅ Found ${opportunities.length} reply opportunities from database pool`);
@@ -230,11 +230,15 @@ async function generateRealReplies(): Promise<void> {
         continue;
       }
       
+      // Extract tweet ID from URL
+      const tweetUrlStr = String(target.tweet_url || '');
+      const tweetIdFromUrl = tweetUrlStr.split('/').pop() || 'unknown';
+      
       const reply = {
         decision_id,
         content: strategicReply.content,
         target_username: target.account.username,
-        target_tweet_id: target.tweet_url.split('/').pop() || 'unknown',
+        target_tweet_id: tweetIdFromUrl,
         target_tweet_content: target.tweet_content,
         generator_used: replyGenerator,
         estimated_reach: target.estimated_reach,
@@ -251,8 +255,7 @@ async function generateRealReplies(): Promise<void> {
       console.log(`  • Content preview: "${strategicReply.content.substring(0, 60)}..."`);
       
       // Mark opportunity as replied in database
-      const supabaseForUpdate = getSupabaseClient();
-      await supabaseForUpdate
+      await supabaseClient
         .from('reply_opportunities')
         .update({ 
           status: 'replied',
