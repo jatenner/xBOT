@@ -78,6 +78,60 @@ async function generateSyntheticContent(): Promise<void> {
 }
 
 // ═══════════════════════════════════════════════════════════
+// HELPER: INFER TOPIC CLUSTER FROM TOPIC
+// ═══════════════════════════════════════════════════════════
+/**
+ * Maps specific topics to broader topic clusters.
+ * This ensures we track diversity across clusters, not just individual topics.
+ */
+function inferTopicCluster(topic: string): string {
+  const topicLower = topic.toLowerCase();
+  
+  // LONGEVITY cluster
+  if (/nad\+|senolytic|caloric restriction|telomere|autophagy|aging|longevity|lifespan/i.test(topicLower)) {
+    return 'longevity';
+  }
+  
+  // BIOHACKING cluster
+  if (/cold exposure|glucose monitor|nootropic|red light|hrv|biohack|optimization|performance enhancement/i.test(topicLower)) {
+    return 'biohacking';
+  }
+  
+  // MENTAL_HEALTH cluster
+  if (/psychedelic|neurofeedback|vagus nerve|neuroplasticity|anxiety|depression|stress|mental|mood|cognitive/i.test(topicLower)) {
+    return 'mental_health';
+  }
+  
+  // PERFORMANCE cluster
+  if (/anaerobic|aerobic|lactate|muscle|vo2|zone 2|cardio|training|exercise|workout|athletic/i.test(topicLower)) {
+    return 'performance';
+  }
+  
+  // GUT_HEALTH cluster
+  if (/microbiome|prebiotic|fermented|gut|sibo|digestion|intestin|probiotic/i.test(topicLower)) {
+    return 'gut_health';
+  }
+  
+  // METABOLIC cluster
+  if (/insulin|metabolic|mitochondria|ampk|ketone|glucose|blood sugar|diabetes|energy/i.test(topicLower)) {
+    return 'metabolic';
+  }
+  
+  // SLEEP cluster
+  if (/sleep|circadian|melatonin|rem|deep sleep|insomnia/i.test(topicLower)) {
+    return 'sleep';
+  }
+  
+  // BREATHWORK cluster (separate from mental_health)
+  if (/breath|breathing|hrv|respiratory|diaphragm/i.test(topicLower)) {
+    return 'breathwork';
+  }
+  
+  // Default: health (catch-all)
+  return 'health';
+}
+
+// ═══════════════════════════════════════════════════════════
 // REAL CONTENT (LIVE MODE)
 // ═══════════════════════════════════════════════════════════
 
@@ -157,6 +211,30 @@ async function generateRealContent(): Promise<void> {
   console.log(`[UNIFIED_PLAN] 📅 Today's series: ${todaySeries.dayEmoji} ${todaySeries.name}`);
   console.log(`[UNIFIED_PLAN] 🎯 Focus: ${todaySeries.focus}`);
   
+  // ═══════════════════════════════════════════════════════════
+  // 🎯 ADAPTIVE SELECTION: Use learning to select optimal topic & cluster
+  // ═══════════════════════════════════════════════════════════
+  let adaptiveTopicCluster = 'health'; // Fallback
+  let adaptiveTopicHint: string | undefined;
+  let adaptiveGenerator: string | undefined;
+  
+  try {
+    const { selectOptimalContentEnhanced } = await import('../learning/enhancedAdaptiveSelection');
+    const adaptiveDecision = await selectOptimalContentEnhanced();
+    console.log(`[ADAPTIVE] 📊 ${adaptiveDecision.reasoning}`);
+    console.log(`[ADAPTIVE] 🎯 Selected: ${adaptiveDecision.topic} (${adaptiveDecision.format}) via ${adaptiveDecision.generator}`);
+    console.log(`[ADAPTIVE] 🔍 Intelligence source: ${adaptiveDecision.intelligence_source || 'internal'}`);
+    
+    // Extract topic cluster from topic (e.g., "NAD+ supplementation" → "longevity")
+    adaptiveTopicCluster = inferTopicCluster(adaptiveDecision.topic);
+    adaptiveTopicHint = adaptiveDecision.topic;
+    adaptiveGenerator = adaptiveDecision.generator;
+    
+    console.log(`[ADAPTIVE] 🏷️ Topic cluster: ${adaptiveTopicCluster}`);
+  } catch (adaptiveError: any) {
+    console.warn('[ADAPTIVE] ⚠️ Adaptive selection failed, using defaults:', adaptiveError.message);
+  }
+  
   const decisions = [];
   const numToGenerate = 1; // 1 post per cycle (runs every 30min = 2 posts/hour)
   
@@ -171,6 +249,8 @@ async function generateRealContent(): Promise<void> {
       // ═══════════════════════════════════════════════════════════
       console.log(`[UNIFIED_PLAN] 🎲 Recent generators: ${recentGenerators.slice(0, 5).join(', ')}`);
       console.log(`[UNIFIED_PLAN] 📚 Passing ${recentTexts.length} recent posts to AI for diversity`);
+      console.log(`[UNIFIED_PLAN] 🎯 Adaptive topic: ${adaptiveTopicHint || 'none (using AI selection)'}`);
+      console.log(`[UNIFIED_PLAN] 🏷️ Topic cluster: ${adaptiveTopicCluster}`);
       
       const generated = await engine.generateContent({
         format: Math.random() < 0.3 ? 'thread' : 'single', // 30% threads, 70% singles
@@ -178,6 +258,7 @@ async function generateRealContent(): Promise<void> {
         recentContent: recentTexts.slice(0, 10), // 🆕 Pass last 10 posts for AI to avoid repetition
         preferredHookType: preferredHook, // 🎣 Enforce hook variety
         seriesContext: todaySeries // 📅 Provide series context
+        // Note: topicHint and generatorHint passed via seriesContext
       });
       
       // ═══════════════════════════════════════════════════════════
@@ -244,7 +325,7 @@ async function generateRealContent(): Promise<void> {
         predicted_followers: generated.metadata.predicted_followers,
         
         // Metadata
-        topic_cluster: 'health',
+        topic_cluster: adaptiveTopicCluster, // 🏷️ Use adaptive topic cluster selection (not hardcoded!)
         generation_source: 'real', // Fixed: Database expects 'real' or 'synthetic', not 'unified_engine'
         hook_type: actualHookType, // 🎣 Track hook type for variety enforcement
         
