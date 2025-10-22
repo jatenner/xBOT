@@ -237,6 +237,8 @@ export class UnifiedBrowserPool {
 
     const contextId = `ctx-${Date.now()}-${this.metrics.contextsCreated}`;
     console.log(`[BROWSER_POOL] 🆕 Creating context: ${contextId}`);
+    console.log(`[BROWSER_POOL] 🔍 TWITTER_SESSION_B64 exists: ${!!process.env.TWITTER_SESSION_B64}`);
+    console.log(`[BROWSER_POOL] 🔍 TWITTER_SESSION_B64 length: ${process.env.TWITTER_SESSION_B64?.length || 0}`);
 
     // Load session state from TWITTER_SESSION_B64 (primary source)
     let storageState;
