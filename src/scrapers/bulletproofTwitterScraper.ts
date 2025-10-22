@@ -435,37 +435,50 @@ export class BulletproofTwitterScraper {
         return document.body.textContent || '';
       });
       
-      // 🔐 AUTHENTICATION CHECK: Check for actual analytics content first
-      const hasAnalyticsContent = analyticsText.includes('Impressions') || 
-                                   analyticsText.includes('Engagement') ||
-                                   analyticsText.includes('Post Analytics');
-      
-      // Only check for errors if analytics content is missing
+      // 🔐 AUTHENTICATION CHECK: Check for error pages FIRST (before content check)
+      // Error pages may contain "Impressions" in CSS, so we must detect errors first
       const hasSpecificPermissionError = analyticsText.includes('You don\'t have permission') || 
                                           analyticsText.includes('Permission denied');
       const hasErrorPage = analyticsText.includes('errorContainer') || 
-                           analyticsText.includes('Something went wrong');
+                           analyticsText.includes('Something went wrong') ||
+                           analyticsText.includes('.errorButton') ||
+                           analyticsText.includes('.errorFooter');
       const hasAuthError = analyticsText.includes('not authorized') || 
                           analyticsText.includes('access denied') ||
                           analyticsText.includes('This request requires authentication');
       
-      console.log(`    🔐 AUTH CHECK: has analytics content? ${hasAnalyticsContent}`);
+      // Detect error page CSS patterns (these pages show "Impressions" in styling)
+      const looksLikeErrorPageCSS = analyticsText.includes('<style>') && 
+                                     analyticsText.includes('.errorContainer') &&
+                                     analyticsText.includes('body {') &&
+                                     !analyticsText.includes('data-testid');
+      
       console.log(`    🔐 AUTH CHECK: specific permission error? ${hasSpecificPermissionError}`);
-      console.log(`    🔐 AUTH CHECK: error page? ${hasErrorPage}`);
+      console.log(`    🔐 AUTH CHECK: error page detected? ${hasErrorPage}`);
+      console.log(`    🔐 AUTH CHECK: error page CSS pattern? ${looksLikeErrorPageCSS}`);
       console.log(`    🔐 AUTH CHECK: auth error? ${hasAuthError}`);
       
-      // Only fail if we have errors AND no analytics content
-      if (!hasAnalyticsContent && (hasSpecificPermissionError || hasErrorPage || hasAuthError)) {
-        console.error(`    ❌ ANALYTICS: NOT AUTHENTICATED - Cannot access analytics page!`);
+      // FAIL IMMEDIATELY if we detect any error indicators
+      if (hasSpecificPermissionError || hasErrorPage || hasAuthError || looksLikeErrorPageCSS) {
+        console.error(`    ❌ ANALYTICS: ERROR PAGE DETECTED - Cannot access analytics!`);
         console.error(`    ❌ ANALYTICS: Specific permission error: ${hasSpecificPermissionError}`);
-        console.error(`    ❌ ANALYTICS: Error page detected: ${hasErrorPage}`);
+        console.error(`    ❌ ANALYTICS: Error page markup: ${hasErrorPage}`);
+        console.error(`    ❌ ANALYTICS: Error page CSS: ${looksLikeErrorPageCSS}`);
         console.error(`    ❌ ANALYTICS: Auth error: ${hasAuthError}`);
         console.error(`    💡 ANALYTICS: Session may be expired or analytics access restricted`);
         throw new Error('ANALYTICS_AUTH_FAILED: Not authenticated to view analytics. Session invalid or expired.');
       }
       
+      // NOW check for actual analytics content (only if no errors detected)
+      const hasAnalyticsContent = analyticsText.includes('Post Analytics') ||
+                                   (analyticsText.includes('Impressions') && analyticsText.includes('Engagements'));
+      
+      console.log(`    🔐 AUTH CHECK: has analytics content? ${hasAnalyticsContent}`);
+      
       if (hasAnalyticsContent) {
         console.log(`    ✅ ANALYTICS: Content verified - page is authentic`);
+      } else {
+        console.warn(`    ⚠️ ANALYTICS: No analytics content found, but no errors either`);
       }
       
       // 🐛 DEBUG: Log first 1000 chars to see what bot actually sees
