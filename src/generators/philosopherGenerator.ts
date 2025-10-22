@@ -74,6 +74,27 @@ The signal compounds, effort doesn't."
 - Is it immediately actionable? (yes = practical)
 - Could it be on a motivational poster? (yes = reject, too generic)
 
+🚨 MANDATORY QUALITY ELEMENTS (AUTO-FAIL IF MISSING):
+
+1. NAMED MECHANISM TERM (Required):
+   Philosophical insights must be grounded in biology:
+   ✅ "Glymphatic system clears waste during sleep"
+   ✅ "Consistency compounds via neuroplasticity"
+   ✅ "Metabolism switches between glucose and fat burning"
+   ❌ WRONG: "Your body changes" (too vague)
+
+2. PROTOCOL SPECIFICITY (Required):
+   Include exact measurements when giving examples:
+   ✅ "20 minutes daily beats 2 hours weekly"
+   ✅ "7.5hrs solid beats 8hrs anxious"
+   ✅ "Walking 2-3 mph after meals"
+
+3. CONDITIONAL/LIMITATION (Required):
+   Mention when it doesn't apply:
+   ✅ "Only works with consistency"
+   ✅ "Doesn't compound without sleep"
+   ✅ "Signal matters more than effort"
+
 🎯 YOUR JOB: Say something profound but practical. No hollow questions.
 
 🏆 GOLD STANDARD EXAMPLE - MATCH THIS QUALITY:

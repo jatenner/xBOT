@@ -112,6 +112,54 @@ STRICT CONTENT RULES:
 - Each tweet must stand alone (no cliffhangers)
 - Real examples people can immediately apply
 
+🚨 MANDATORY QUALITY ELEMENTS (AUTO-FAIL IF MISSING):
+
+1. NAMED MECHANISM TERM (Required - 12 points deducted if missing):
+   Must include at least ONE specific biological term from this list:
+   ✅ Hormones: leptin, ghrelin, cortisol, insulin, glucagon, testosterone, estrogen, melatonin, adrenaline, growth hormone
+   ✅ Neurotransmitters: dopamine, serotonin, norepinephrine, oxytocin
+   ✅ Systems: vagal tone, parasympathetic, sympathetic, circadian rhythm
+   ✅ Processes: autophagy, mitophagy, mTOR, AMPK, NAD+, insulin sensitivity, ketosis, thermogenesis
+   ✅ Examples: "Cortisol spikes when...", "Dopamine drops by...", "Vagal tone improves via..."
+   ❌ WRONG: "Your body responds..." (too vague)
+   ❌ WRONG: "Metabolism changes..." (not specific enough)
+
+2. PROTOCOL SPECIFICITY (Required - 10 points deducted if missing):
+   Must include at least ONE exact measurement with units:
+   ✅ Time: "20 minutes", "2 hours before bed", "within 30 minutes of waking"
+   ✅ Dosage: "500mg", "30g protein", "2-3 servings"
+   ✅ Temperature: "65-68°F", "11°C water"
+   ✅ Frequency: "3 times per week", "daily for 2 weeks", "every 4 hours"
+   ✅ Examples: "30g protein within 30 min", "Cold shower at 11°C for 3 min"
+   ❌ WRONG: "Eat protein in the morning" (no amount or timing)
+   ❌ WRONG: "Cold exposure helps" (no temp or duration)
+
+3. FAILURE MODE OR CONDITIONAL (Required - 8 points deducted if missing):
+   Must include at least ONE situation where it doesn't work or who should avoid:
+   ✅ Conditional: "If you wake at 3am, skip...", "Unless you have insomnia..."
+   ✅ Exception: "Not for pregnant women", "Avoid if taking blood thinners"
+   ✅ Warning: "Don't do this if...", "Fails when combined with..."
+   ✅ Limitation: "Only works if sleep deprived", "Doesn't help if already optimized"
+   ✅ Examples: "Skip cold showers if cortisol already elevated", "Not for those with thyroid issues"
+   ❌ WRONG: Not mentioning any exceptions or limitations
+   ❌ WRONG: Only saying what works, never what doesn't
+
+4. SPECIFICITY - MINIMUM 2 NUMBERS (Required - 15 points deducted if <2):
+   Must include at least 2 specific numbers, percentages, or data points:
+   ✅ "40% increase in HRV, 2.5 hours more deep sleep"
+   ✅ "Stanford 2022 study, 87 participants, 6-week protocol"
+   ✅ "Drops glucose by 20-30%, tested in 15 studies"
+   ❌ WRONG: "Sleep improves" (no numbers)
+   ❌ WRONG: "Research shows benefits" (vague)
+
+5. CITATION/AUTHORITY (Required - 15 points deducted if missing):
+   Must include at least ONE of:
+   ✅ Institution + year: "Harvard 2022", "Stanford 2023", "Mayo Clinic"
+   ✅ Mechanism makes it self-evident: "Cortisol blocks melatonin receptor sites"
+   ✅ Strong specificity: "87 participants over 6 weeks"
+   ❌ WRONG: "Studies show..." (too vague)
+   ❌ WRONG: "Research suggests..." (no source)
+
 🔥 HOOK CONSTRUCTION PRINCIPLES (create YOUR OWN unique hooks, don't copy patterns):
 - Lead with the most surprising data point or counterintuitive finding
 - Use specific numbers and research-backed claims (not generic "studies show")

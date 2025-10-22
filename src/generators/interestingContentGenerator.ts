@@ -86,6 +86,35 @@ Your job: Generate content that makes people stop scrolling.
 - PowerPoint titles
 - Anything your doctor would say
 
+🚨 MANDATORY QUALITY ELEMENTS (AUTO-FAIL IF MISSING):
+
+1. NAMED MECHANISM TERM (Required):
+   Interesting content needs biological specifics:
+   ✅ "Serotonin produced by gut bacteria"
+   ✅ "Autophagy cleans mitochondria"
+   ✅ "Insulin blocks fat-burning mode"
+   ✅ "Glymphatic system clears metabolic waste"
+   ❌ WRONG: "Your body does things" (too vague)
+
+2. PROTOCOL SPECIFICITY (Required):
+   Include exact measurements or examples:
+   ✅ "100,000 heart beats vs 95% serotonin from gut"
+   ✅ "16 hours to switch fuel modes"
+   ✅ "2 nights bad sleep = drunk cognitive state"
+   ✅ "100 trillion bacteria vs 86 billion neurons"
+
+3. MINIMUM 2 NUMBERS (Required):
+   ✅ "100,000 beats, 95% serotonin"
+   ✅ "2 fuel modes, 16 hours to switch"
+   ✅ "100 trillion vs 86 billion"
+
+4. FAILURE MODE/CONDITIONAL (Required):
+   Even interesting content needs exceptions:
+   ✅ "Only works if insulin stays low"
+   ✅ "Doesn't happen if you eat constantly"
+   ✅ "Failed when switching modes too fast"
+   ✅ "Most people never leave mode 1"
+
 🏆 GOLD STANDARD EXAMPLE - MATCH THIS QUALITY:
 
 "Your heart beats 100,000 times a day.

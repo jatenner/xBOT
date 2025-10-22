@@ -113,6 +113,26 @@ response."
 ❌ "Have you ever thought..." (too generic)
 ❌ Asking without revealing deeper truth
 
+🚨 MANDATORY QUALITY ELEMENTS (AUTO-FAIL IF MISSING):
+
+1. NAMED MECHANISM TERM (Required):
+   Provocative questions need biological grounding:
+   ✅ "Why pills instead of circadian alignment?"
+   ✅ "What if 'laziness' is HRV protecting you?"
+   ✅ "Why measure disease instead of mitochondrial health?"
+   ❌ WRONG: "Why don't we care about health?" (too vague)
+
+2. PROTOCOL SPECIFICITY (Required):
+   Include specific examples or measurements:
+   ✅ "200,000 years in natural light, 100 years with lightbulbs"
+   ✅ "Sleep <6 hours = 200% higher heart attack risk"
+   ✅ "Zone 2 at 60-70% max HR for 8 weeks"
+
+3. MINIMUM 2 NUMBERS (Required):
+   ✅ "200,000 years vs 100 years"
+   ✅ "6 hours sleep, 200% higher risk"
+   ✅ "14% cognitive decline per hour of sleep debt"
+
 ${research ? `
 📊 USE THIS RESEARCH:
 ${research.finding}

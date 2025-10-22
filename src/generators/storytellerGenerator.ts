@@ -87,6 +87,27 @@ WHAT MAKES STORIES INTERESTING:
 - Contrasts that reveal mechanisms
 - Real names and real results when available
 
+🚨 MANDATORY QUALITY ELEMENTS (AUTO-FAIL IF MISSING):
+
+1. NAMED MECHANISM TERM (Required):
+   Stories must explain biology with specific terms:
+   ✅ "Mitochondria adapted to cold" NOT "body adjusted"
+   ✅ "Cortisol spiked at 3am" NOT "stress hormones increased"
+   ✅ "Vagal tone improved" NOT "nervous system got better"
+
+2. PROTOCOL SPECIFICITY (Required):
+   Include exact measurements in the story:
+   ✅ "100 meters daily for 8 weeks"
+   ✅ "Room temp at 65°F, not 72°F"
+   ✅ "30g protein within 30 minutes"
+   ❌ WRONG: "He exercised regularly" (no specifics)
+
+3. FAILURE MODE/CONDITIONAL (Required):
+   Mention limitations or exceptions:
+   ✅ "Doesn't work if cortisol already elevated"
+   ✅ "Not for those with thyroid issues"
+   ✅ "Failed when combined with high stress"
+
 ${research ? `
 REAL RESEARCH TO USE:
 Finding: ${research.finding}
