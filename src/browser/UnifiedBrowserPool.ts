@@ -238,17 +238,27 @@ export class UnifiedBrowserPool {
     const contextId = `ctx-${Date.now()}-${this.metrics.contextsCreated}`;
     console.log(`[BROWSER_POOL] 🆕 Creating context: ${contextId}`);
 
-    // Load session state if available
+    // Load session state from TWITTER_SESSION_B64 (same as working browserFactory)
     let storageState;
-    if (this.sessionLoaded) {
-      const sessionResult = SessionLoader.getLastResult();
-      if (sessionResult?.ok && fs.existsSync(sessionResult.path)) {
-        try {
-          storageState = JSON.parse(fs.readFileSync(sessionResult.path, 'utf8'));
-        } catch (error) {
-          console.warn('[BROWSER_POOL] ⚠️ Session load failed, using fresh context');
+    if (this.sessionLoaded && process.env.TWITTER_SESSION_B64) {
+      try {
+        console.log('[BROWSER_POOL] 🔐 Loading session from TWITTER_SESSION_B64...');
+        const sessionData = Buffer.from(process.env.TWITTER_SESSION_B64, 'base64').toString('utf-8');
+        const sessionJson = JSON.parse(sessionData);
+        
+        if (sessionJson.cookies || sessionJson.origins) {
+          storageState = sessionJson;
+          console.log(`[BROWSER_POOL] ✅ Session loaded (${sessionJson.cookies?.length || 0} cookies)`);
+        } else if (Array.isArray(sessionJson)) {
+          // Handle legacy format where sessionJson is just cookies array
+          storageState = { cookies: sessionJson };
+          console.log(`[BROWSER_POOL] ✅ Legacy session loaded (${sessionJson.length} cookies)`);
         }
+      } catch (error: any) {
+        console.warn('[BROWSER_POOL] ⚠️ Session load failed, using fresh context:', error.message);
       }
+    } else if (!process.env.TWITTER_SESSION_B64) {
+      console.warn('[BROWSER_POOL] ⚠️ TWITTER_SESSION_B64 not found - contexts will not be authenticated');
     }
 
     const context = await this.browser!.newContext({
