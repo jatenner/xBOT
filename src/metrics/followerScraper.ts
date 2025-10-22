@@ -3,7 +3,7 @@
  * Resilient scraping when API/primary methods fail
  */
 
-import { browserManager } from '../posting/BrowserManager';
+import { UnifiedBrowserPool } from '../browser/UnifiedBrowserPool';
 
 /**
  * Parse abbreviated numbers like "1.2K", "15M", "3.4B"
@@ -33,20 +33,22 @@ function parseAbbrevNumber(s: string): number {
  * Scrape follower count from X.com profile page as fallback
  */
 export async function getFollowersFallback(handle: string): Promise<number> {
+  const pool = UnifiedBrowserPool.getInstance();
+  const page = await pool.acquirePage('follower_scrape');
+  
   try {
-    return await browserManager.withSharedContext(async ({ page }) => {
-      const cleanHandle = handle.replace('@', '');
-      const url = `https://x.com/${cleanHandle}`;
-      
-      console.log(`🔍 Scraping follower count for @${cleanHandle}...`);
-      
-      await page.goto(url, { 
-        waitUntil: 'domcontentloaded', 
-        timeout: 30000 
-      });
-      
-      // Wait for profile to load
-      await page.waitForTimeout(2000);
+    const cleanHandle = handle.replace('@', '');
+    const url = `https://x.com/${cleanHandle}`;
+    
+    console.log(`🔍 Scraping follower count for @${cleanHandle}...`);
+    
+    await page.goto(url, { 
+      waitUntil: 'domcontentloaded', 
+      timeout: 30000 
+    });
+    
+    // Wait for profile to load
+    await page.waitForTimeout(2000);
       
       // Multiple selectors for follower count
       const selectors = [
@@ -82,14 +84,15 @@ export async function getFollowersFallback(handle: string): Promise<number> {
         throw new Error(`Could not find follower count on ${url}`);
       }
       
-      const count = parseAbbrevNumber(followerText);
-      console.log(`📊 Scraped follower count: ${followerText} → ${count}`);
-      
-      return count;
-    });
+    const count = parseAbbrevNumber(followerText);
+    console.log(`📊 Scraped follower count: ${followerText} → ${count}`);
+    
+    return count;
   } catch (error: any) {
     console.error(`❌ Follower scraping failed for @${handle}: ${error.message}`);
     return 0; // Return 0 instead of throwing to prevent system crashes
+  } finally {
+    await pool.releasePage(page);
   }
 }
 
