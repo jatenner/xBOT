@@ -292,9 +292,13 @@ export class UnifiedBrowserPool {
   private async initializeBrowser(): Promise<void> {
     console.log('[BROWSER_POOL] 🚀 Initializing browser...');
     
-    // Load session first
-    const sessionResult = SessionLoader.load();
-    this.sessionLoaded = sessionResult.ok;
+    // Check if session exists in env var (Railway persistent storage)
+    this.sessionLoaded = !!process.env.TWITTER_SESSION_B64;
+    if (this.sessionLoaded) {
+      console.log('[BROWSER_POOL] ✅ TWITTER_SESSION_B64 detected - sessions will be authenticated');
+    } else {
+      console.warn('[BROWSER_POOL] ⚠️ TWITTER_SESSION_B64 not found - sessions will be unauthenticated');
+    }
 
     this.browser = await chromium.launch({
       headless: true,
