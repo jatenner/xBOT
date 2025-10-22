@@ -282,20 +282,75 @@ async function collectPass2(supabase: any): Promise<void> {
 }
 
 /**
- * Fetch Twitter/X metrics via Playwright scraping or API
+ * Fetch Twitter/X metrics via Playwright scraping
+ * 🔧 FIXED: Now uses UnifiedBrowserPool + ScrapingOrchestrator for real scraping
  */
 async function fetchTwitterMetrics(tweetId: string, pass: number): Promise<TweetMetrics | null> {
+  let page = null;
+  let browserPool = null;
+
   try {
-    // IMPLEMENTATION NOTE: This would use your existing Playwright automation
-    // or X API (if available) to scrape tweet metrics
+    console.log(`[ANALYTICS_COLLECTOR] 🔍 Scraping tweet ${tweetId} (pass ${pass})...`);
     
-    // For now, returning a placeholder structure
-    // In production, this should call your existing Twitter scraping logic
-    const { collectTweetMetrics } = await import('../posting/twitterScraper');
-    return await collectTweetMetrics(tweetId, pass, undefined); // TODO: Pass browser context
+    // Get browser pool instance (manages browsers with session)
+    const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
+    browserPool = UnifiedBrowserPool.getInstance();
+    
+    // Acquire a page with loaded Twitter session
+    page = await browserPool.acquirePage(`analytics_pass_${pass}`);
+    console.log(`[ANALYTICS_COLLECTOR] ✅ Browser acquired with session`);
+    
+    // Use the proven scraping orchestrator
+    const { ScrapingOrchestrator } = await import('../metrics/scrapingOrchestrator');
+    const orchestrator = ScrapingOrchestrator.getInstance();
+    
+    // Scrape and validate metrics
+    const result = await orchestrator.scrapeAndStore(
+      page,
+      tweetId,
+      {
+        collectionPhase: pass === 1 ? 'T+1h' : 'T+24h',
+        postedAt: new Date() // Will be updated if we have the actual posted_at
+      }
+    );
+    
+    if (!result.success || !result.metrics) {
+      console.warn(`[ANALYTICS_COLLECTOR] ⚠️ Scraping failed for tweet ${tweetId}: ${result.error || 'Unknown error'}`);
+      return null;
+    }
+    
+    console.log(
+      `[ANALYTICS_COLLECTOR] ✅ Scraped: ${result.metrics.likes}❤️ ${result.metrics.retweets}🔄 ` +
+      `${result.metrics.replies}💬 ${result.metrics.views || 0}👁️`
+    );
+    
+    // Convert to expected format
+    return {
+      impressions: result.metrics.views || 0,
+      likes: result.metrics.likes || 0,
+      retweets: result.metrics.retweets || 0,
+      replies: result.metrics.replies || 0,
+      bookmarks: result.metrics.bookmarks || 0,
+      quotes: result.metrics.quote_tweets || 0,
+      profile_visits: result.metrics.profile_clicks || 0,
+      link_clicks: 0, // Not available from basic scraping
+      follows: 0 // Will be calculated separately via follower attribution
+    };
+    
   } catch (error: any) {
-    console.error(`[ANALYTICS_COLLECTOR] ⚠️ Failed to fetch Twitter metrics: ${error.message}`);
+    console.error(`[ANALYTICS_COLLECTOR] ❌ Failed to fetch Twitter metrics: ${error.message}`);
+    console.error(`[ANALYTICS_COLLECTOR] Stack: ${error.stack}`);
     return null;
+  } finally {
+    // Release the browser page back to the pool
+    if (page && browserPool) {
+      try {
+        await browserPool.releasePage(page);
+        console.log(`[ANALYTICS_COLLECTOR] 🔄 Browser released back to pool`);
+      } catch (releaseError: any) {
+        console.warn(`[ANALYTICS_COLLECTOR] ⚠️ Failed to release page: ${releaseError.message}`);
+      }
+    }
   }
 }
 
