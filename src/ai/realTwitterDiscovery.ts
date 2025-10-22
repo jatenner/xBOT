@@ -303,9 +303,9 @@ export class RealTwitterDiscovery {
               // Filter criteria for reply opportunities
               const hasContent = content.length > 20;
               const notTooManyReplies = replyCount < 100; // Sweet spot for visibility
-              const hasEngagement = likeCount > 5; // Some social proof
-              const noLinks = !content.includes('http'); // Avoid promotional tweets
-              const isRecent = postedMinutesAgo <= 1440; // 🔥 ONLY <24 hours old (1440 min = 24hr)
+              const hasEngagement = likeCount >= 1; // ✅ FIXED: Allow tweets with 1+ likes (was 6+)
+              const noLinks = !content.includes('bit.ly') && !content.includes('amzn'); // ✅ FIXED: Only block affiliate links, allow educational links
+              const isRecent = postedMinutesAgo <= 4320; // ✅ FIXED: <3 days old (was <24hrs)
               
               if (hasContent && notTooManyReplies && hasEngagement && noLinks && isRecent && tweetId && author) {
                 results.push({
