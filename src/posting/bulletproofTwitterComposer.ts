@@ -372,6 +372,248 @@ export class BulletproofTwitterComposer {
   }
 
   /**
+   * 🔬 DIAGNOSTIC: Log DOM state for debugging
+   */
+  private async logDOMState(phase: string): Promise<void> {
+    try {
+      const state = await this.page.evaluate(() => {
+        const articles = document.querySelectorAll('article');
+        const buttons = document.querySelectorAll('button, [role="button"]');
+        const composer = document.querySelector('[contenteditable="true"]');
+        const modals = document.querySelectorAll('[role="dialog"]');
+        
+        return {
+          articleCount: articles.length,
+          buttonCount: buttons.length,
+          composerVisible: !!composer,
+          modalCount: modals.length,
+          url: window.location.href
+        };
+      });
+      
+      console.log(`🔬 DOM_STATE[${phase}]:`, JSON.stringify(state));
+    } catch (e) {
+      console.log(`⚠️ DOM_STATE[${phase}]: Failed to capture - ${(e as Error).message}`);
+    }
+  }
+
+  /**
+   * 🎯 ENHANCED: Try to click reply button with advanced event dispatch
+   */
+  private async enhancedClick(element: any): Promise<boolean> {
+    try {
+      console.log('🎯 ENHANCED_CLICK: Trying advanced event-based click...');
+      
+      // Strategy 1: Hover first (some UIs require hover state)
+      try {
+        await element.hover({ timeout: 2000 });
+        await this.page.waitForTimeout(500);
+        console.log('  ✓ Hover successful');
+      } catch (e) {
+        console.log('  ✗ Hover failed, continuing...');
+      }
+      
+      // Strategy 2: Focus the element
+      try {
+        await element.focus({ timeout: 2000 });
+        await this.page.waitForTimeout(300);
+        console.log('  ✓ Focus successful');
+      } catch (e) {
+        console.log('  ✗ Focus failed, continuing...');
+      }
+      
+      // Strategy 3: Dispatch proper events via JavaScript
+      const eventDispatched = await element.evaluate((el: any) => {
+        try {
+          // Dispatch full event sequence (realistic user interaction)
+          const events = [
+            new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }),
+            new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }),
+            new MouseEvent('click', { bubbles: true, cancelable: true, view: window }),
+            new PointerEvent('pointerdown', { bubbles: true, cancelable: true }),
+            new PointerEvent('pointerup', { bubbles: true, cancelable: true }),
+            new PointerEvent('click', { bubbles: true, cancelable: true })
+          ];
+          
+          events.forEach(event => el.dispatchEvent(event));
+          return true;
+        } catch (err) {
+          return false;
+        }
+      });
+      
+      console.log(`  ${eventDispatched ? '✓' : '✗'} Event dispatch ${eventDispatched ? 'successful' : 'failed'}`);
+      
+      // Strategy 4: Regular Playwright click
+      try {
+        await element.click({ timeout: 3000, force: true });
+        console.log('  ✓ Playwright click successful');
+      } catch (e) {
+        console.log('  ✗ Playwright click failed');
+      }
+      
+      return true;
+    } catch (error) {
+      console.log(`❌ ENHANCED_CLICK: Failed - ${(error as Error).message}`);
+      return false;
+    }
+  }
+
+  /**
+   * 👁️ ENHANCED: Wait for composer with MutationObserver
+   */
+  private async waitForComposerWithObserver(timeoutMs: number = 10000): Promise<boolean> {
+    try {
+      console.log('👁️ MUTATION_OBSERVER: Watching for composer appearance...');
+      
+      const composerAppeared = await this.page.evaluate((timeout) => {
+        return new Promise<boolean>((resolve) => {
+          const startTime = Date.now();
+          
+          // Check if composer is already visible
+          const checkComposer = () => {
+            const composer = document.querySelector('[contenteditable="true"]') ||
+                           document.querySelector('[data-testid="tweetTextarea_0"]') ||
+                           document.querySelector('[role="textbox"]');
+            return composer && (composer as HTMLElement).offsetParent !== null;
+          };
+          
+          if (checkComposer()) {
+            resolve(true);
+            return;
+          }
+          
+          // Set up mutation observer
+          const observer = new MutationObserver(() => {
+            if (checkComposer()) {
+              observer.disconnect();
+              resolve(true);
+            } else if (Date.now() - startTime > timeout) {
+              observer.disconnect();
+              resolve(false);
+            }
+          });
+          
+          observer.observe(document.body, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['style', 'class']
+          });
+          
+          // Timeout fallback
+          setTimeout(() => {
+            observer.disconnect();
+            resolve(checkComposer());
+          }, timeout);
+        });
+      }, timeoutMs);
+      
+      if (composerAppeared) {
+        console.log('✅ MUTATION_OBSERVER: Composer detected!');
+      } else {
+        console.log('❌ MUTATION_OBSERVER: Composer did not appear within timeout');
+      }
+      
+      return composerAppeared;
+    } catch (error) {
+      console.log(`❌ MUTATION_OBSERVER: Error - ${(error as Error).message}`);
+      return false;
+    }
+  }
+
+  /**
+   * 🔄 FALLBACK: Try direct compose URL
+   */
+  private async tryDirectComposeURL(replyToTweetId: string, content: string): Promise<BulletproofPostResult> {
+    try {
+      console.log('🔄 DIRECT_COMPOSE: Trying direct compose URL method...');
+      
+      // Method 1: Try compose URL with reply parameter
+      const composeUrl = `https://x.com/intent/post?in_reply_to=${replyToTweetId}`;
+      console.log(`🌐 DIRECT_COMPOSE: Navigating to ${composeUrl}`);
+      
+      await this.page.goto(composeUrl, { 
+        waitUntil: 'domcontentloaded',
+        timeout: 15000 
+      });
+      await this.page.waitForTimeout(3000);
+      
+      // Check if composer opened
+      const composerOpened = await this.checkForComposer();
+      if (composerOpened) {
+        console.log('✅ DIRECT_COMPOSE: Composer opened via direct URL!');
+        return await this.findAndPost(content);
+      }
+      
+      console.log('❌ DIRECT_COMPOSE: Direct URL did not open composer');
+      return { success: false, error: 'Direct compose URL failed' };
+      
+    } catch (error) {
+      console.log(`❌ DIRECT_COMPOSE: Failed - ${(error as Error).message}`);
+      return { success: false, error: `Direct compose failed: ${(error as Error).message}` };
+    }
+  }
+
+  /**
+   * 📱 FALLBACK: Try mobile interface
+   */
+  private async tryMobileInterface(replyToTweetId: string, content: string): Promise<BulletproofPostResult> {
+    try {
+      console.log('📱 MOBILE_FALLBACK: Switching to mobile interface...');
+      
+      // Set mobile user agent
+      await this.page.setViewportSize({ width: 375, height: 812 });
+      await this.page.setExtraHTTPHeaders({
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1'
+      });
+      
+      // Navigate to tweet in mobile view
+      const mobileUrl = `https://mobile.twitter.com/i/status/${replyToTweetId}`;
+      console.log(`🌐 MOBILE_FALLBACK: Navigating to ${mobileUrl}`);
+      
+      await this.page.goto(mobileUrl, { 
+        waitUntil: 'domcontentloaded',
+        timeout: 15000 
+      });
+      await this.page.waitForTimeout(3000);
+      
+      // Mobile Twitter might have different reply button selectors
+      const mobileReplySelectors = [
+        '[data-testid="reply"]',
+        'button[aria-label*="Reply"]',
+        'div[role="button"]:has-text("Reply")',
+        '.reply-button',
+        'button:has-text("Reply")'
+      ];
+      
+      for (const selector of mobileReplySelectors) {
+        try {
+          const btn = this.page.locator(selector).first();
+          await btn.waitFor({ state: 'visible', timeout: 2000 });
+          await btn.click();
+          await this.page.waitForTimeout(2000);
+          
+          const composerOpened = await this.checkForComposer();
+          if (composerOpened) {
+            console.log(`✅ MOBILE_FALLBACK: Composer opened with "${selector}"!`);
+            return await this.findAndPost(content);
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+      
+      console.log('❌ MOBILE_FALLBACK: Mobile interface did not work');
+      return { success: false, error: 'Mobile interface failed' };
+      
+    } catch (error) {
+      console.log(`❌ MOBILE_FALLBACK: Failed - ${(error as Error).message}`);
+      return { success: false, error: `Mobile interface failed: ${(error as Error).message}` };
+    }
+  }
+
+  /**
    * 👤 Extract author username from a tweet element
    */
   private async extractAuthorFromTweet(tweetElement: any): Promise<string | null> {
@@ -612,10 +854,11 @@ export class BulletproofTwitterComposer {
   }
 
   /**
-   * 💬 Post reply to specific tweet
+   * 💬 Post reply to specific tweet - ENHANCED VERSION
    */
   async postReply(content: string, replyToTweetId: string): Promise<BulletproofPostResult> {
     console.log(`💬 BULLETPROOF_REPLY: Replying to ${replyToTweetId}`);
+    console.log(`🔬 ENHANCED_REPLY: Using multi-layered detection and click strategies`);
     
     try {
       // Navigate to the tweet we're replying to
@@ -627,9 +870,20 @@ export class BulletproofTwitterComposer {
       });
       await this.page.waitForTimeout(3000); // Increased wait time
       
+      // 🔬 DIAGNOSTIC: Wait for network idle (Twitter loads composer async)
+      try {
+        await this.page.waitForLoadState('networkidle', { timeout: 5000 });
+        console.log('✅ NETWORK_IDLE: All network requests completed');
+      } catch (e) {
+        console.log('⚠️ NETWORK_IDLE: Timeout reached, proceeding anyway');
+      }
+      
       // Wait for the main article (tweet) to load
       await this.page.waitForSelector('article', { timeout: 10000 });
       console.log('✅ TWEET_PAGE: Article loaded successfully');
+      
+      // 🔬 DIAGNOSTIC: Capture DOM state before attempting reply
+      await this.logDOMState('before_reply_attempt');
       
       // Enhanced reply button selectors with latest Twitter patterns
       const replySelectors = [
@@ -676,9 +930,9 @@ export class BulletproofTwitterComposer {
       ];
       
       let replyClicked = false;
-      console.log('🔍 REPLY_SEARCH: Searching for reply button with enhanced selectors...');
+      console.log('🔍 REPLY_SEARCH: Searching for reply button with ENHANCED multi-strategy approach...');
       
-      // First, try keyboard shortcut (most reliable for Twitter)
+      // STRATEGY 0: Try keyboard shortcut FIRST (most reliable for Twitter)
       try {
         console.log('⌨️ REPLY_SHORTCUT: Trying keyboard shortcut "r"...');
         
@@ -688,44 +942,45 @@ export class BulletproofTwitterComposer {
         
         // Press 'r' to open reply composer
         await this.page.keyboard.press('r');
-        await this.page.waitForTimeout(5000); // Longer wait for Twitter UI to load
         
-        // Check if reply composer opened
-        const composerVisible = await this.checkForComposer();
+        // Use MutationObserver to wait for composer
+        const composerVisible = await this.waitForComposerWithObserver(8000);
         if (composerVisible) {
           console.log('✅ REPLY_SHORTCUT: Keyboard shortcut worked!');
           replyClicked = true;
         } else {
-          console.log('⚠️ REPLY_SHORTCUT: Composer not visible after keyboard press');
+          console.log('⚠️ REPLY_SHORTCUT: Composer not detected via MutationObserver');
         }
       } catch (e) {
         console.log(`⚠️ REPLY_SHORTCUT: Keyboard shortcut failed - ${(e as Error).message}`);
       }
       
-      // If shortcut didn't work, try aggressive approach first
+      // STRATEGY 1: If shortcut didn't work, try ENHANCED aggressive approach
       if (!replyClicked) {
-        // Try a more aggressive approach - look for any clickable element in the tweet
         try {
-          console.log('🔍 REPLY_AGGRESSIVE: Trying to find any clickable element in tweet...');
+          console.log('🔍 REPLY_AGGRESSIVE: Using enhanced click on clickable elements...');
           
           // Get all clickable elements in the article
           const clickableElements = await this.page.locator('article').first().locator('button, [role="button"], [tabindex="0"]').all();
           
           console.log(`🔍 REPLY_AGGRESSIVE: Found ${clickableElements.length} clickable elements`);
           
-          for (let i = 0; i < clickableElements.length; i++) {
+          // Focus on first 10 elements (likely action buttons)
+          const elementsToTry = clickableElements.slice(0, 10);
+          
+          for (let i = 0; i < elementsToTry.length; i++) {
             try {
-              const element = clickableElements[i];
+              const element = elementsToTry[i];
               const isVisible = await element.isVisible({ timeout: 1000 });
               
               if (isVisible) {
-                console.log(`🔍 REPLY_AGGRESSIVE: Trying element ${i + 1}/${clickableElements.length}`);
+                console.log(`🔍 REPLY_AGGRESSIVE: Trying element ${i + 1}/${elementsToTry.length} with enhanced click...`);
                 
-                // Try clicking the element
-                await element.click({ timeout: 3000 });
-                await this.page.waitForTimeout(2000);
+                // Use enhanced click method
+                await this.enhancedClick(element);
                 
-                const composerOpened = await this.checkForComposer();
+                // Wait and check with MutationObserver
+                const composerOpened = await this.waitForComposerWithObserver(4000);
                 if (composerOpened) {
                   console.log(`✅ REPLY_AGGRESSIVE: Element ${i + 1} worked!`);
                   replyClicked = true;
@@ -741,8 +996,15 @@ export class BulletproofTwitterComposer {
         }
       }
       
-      // If aggressive approach didn't work, try original selectors
+      // 🔬 DIAGNOSTIC: Log DOM state after aggressive attempt
       if (!replyClicked) {
+        await this.logDOMState('after_aggressive_attempt');
+      }
+      
+      // STRATEGY 2: If aggressive approach didn't work, try enhanced selector-based clicking
+      if (!replyClicked) {
+        console.log('🔍 REPLY_SELECTORS: Trying selector-based approach with enhanced clicks...');
+        
         for (const selector of replySelectors) {
           try {
             console.log(`🔍 REPLY_SEARCH: Trying "${selector}"`);
@@ -758,24 +1020,16 @@ export class BulletproofTwitterComposer {
             console.log(`🔍 REPLY_BUTTON: "${selector}" - visible:${isVisible}, enabled:${isEnabled}`);
             
             if (isVisible && isEnabled) {
-              console.log(`🚀 REPLY_BUTTON: Clicking "${selector}"`);
+              console.log(`🚀 REPLY_BUTTON: Using enhanced click on "${selector}"`);
               
-              // Try both regular and force click
-              try {
-                await replyBtn.click({ timeout: 5000 }); // Longer timeout
-              } catch {
-                // Force click with JavaScript if Playwright click fails
-                console.log(`  🔧 FORCE_CLICK: Trying JavaScript click...`);
-                await replyBtn.evaluate((el: any) => el.click());
-              }
+              // Use enhanced click method
+              await this.enhancedClick(replyBtn);
               
-              await this.page.waitForTimeout(3000); // Longer wait for composer
-              
-              // Verify reply composer opened
-              const composerOpened = await this.checkForComposer();
+              // Use MutationObserver to wait for composer
+              const composerOpened = await this.waitForComposerWithObserver(5000);
               if (composerOpened) {
                 replyClicked = true;
-                console.log(`✅ REPLY_SUCCESS: Reply button clicked and composer opened`);
+                console.log(`✅ REPLY_SUCCESS: Selector "${selector}" worked and composer opened!`);
                 break;
               } else {
                 console.log(`⚠️ REPLY_BUTTON: Button clicked but composer didn't open`);
@@ -788,9 +1042,14 @@ export class BulletproofTwitterComposer {
         }
       }
       
+      // 🔬 DIAGNOSTIC: Log DOM state after selector attempt
       if (!replyClicked) {
-        // Last resort: Enhanced fallback with multiple attempts
-        console.log('🔄 REPLY_FALLBACK: Trying enhanced fallback strategy...');
+        await this.logDOMState('after_selector_attempt');
+      }
+      
+      // STRATEGY 3: Enhanced keyboard fallback with multiple attempts
+      if (!replyClicked) {
+        console.log('🔄 REPLY_FALLBACK: Trying enhanced keyboard fallback...');
         try {
           // Click tweet to focus it
           await this.page.locator('article').first().click();
@@ -799,43 +1058,73 @@ export class BulletproofTwitterComposer {
           // Try 'r' key multiple times (Twitter sometimes needs it)
           for (let i = 0; i < 3; i++) {
             await this.page.keyboard.press('r');
-            await this.page.waitForTimeout(1000);
             
-            const composerOpened = await this.checkForComposer();
+            // Use MutationObserver for better detection
+            const composerOpened = await this.waitForComposerWithObserver(3000);
             if (composerOpened) {
               replyClicked = true;
               console.log(`✅ REPLY_FALLBACK: Keyboard retry ${i + 1} worked!`);
               break;
             }
           }
-          
-          if (!replyClicked) {
-            await this.page.waitForTimeout(2000);
-            
-            const composerOpened = await this.checkForComposer();
-            if (composerOpened) {
-              console.log('✅ REPLY_FALLBACK: Fallback method worked!');
-              replyClicked = true;
-            }
-          }
         } catch (e) {
-          console.log('❌ REPLY_FALLBACK: Fallback method failed');
+          console.log('❌ REPLY_FALLBACK: Keyboard fallback failed');
+        }
+      }
+      
+      // STRATEGY 4: Try direct compose URL
+      if (!replyClicked) {
+        console.log('🔄 ULTIMATE_FALLBACK: Trying direct compose URL...');
+        const directResult = await this.tryDirectComposeURL(replyToTweetId, content);
+        if (directResult.success) {
+          console.log('✅ ULTIMATE_FALLBACK: Direct compose URL succeeded!');
+          return directResult;
+        }
+      }
+      
+      // STRATEGY 5: Try mobile interface (last resort)
+      if (!replyClicked) {
+        console.log('📱 ULTIMATE_FALLBACK: Trying mobile interface...');
+        const mobileResult = await this.tryMobileInterface(replyToTweetId, content);
+        if (mobileResult.success) {
+          console.log('✅ ULTIMATE_FALLBACK: Mobile interface succeeded!');
+          return mobileResult;
         }
       }
       
       if (!replyClicked) {
+        // 🔬 FINAL DIAGNOSTIC: Comprehensive failure analysis
+        console.log('❌ REPLY_FAILURE: ALL STRATEGIES FAILED');
+        await this.logDOMState('final_failure');
+        
         // Take screenshot for debugging
         try {
+          const screenshotPath = `/app/data/reply_fail_${Date.now()}.png`;
           await this.page.screenshot({ 
-            path: `/app/data/reply_fail_${Date.now()}.png`,
-            fullPage: false 
+            path: screenshotPath,
+            fullPage: true 
           });
-          console.log('📸 DEBUG: Reply failure screenshot saved');
-        } catch (e) {}
+          console.log(`📸 DEBUG: Reply failure screenshot saved to ${screenshotPath}`);
+        } catch (e) {
+          console.log('⚠️ DEBUG: Could not save screenshot');
+        }
+        
+        // Log page HTML for debugging
+        try {
+          const html = await this.page.content();
+          console.log(`📄 DEBUG: Page HTML length: ${html.length} characters`);
+          // Log first 500 chars of body for debugging
+          const bodyMatch = html.match(/<body[^>]*>([\s\S]{0,500})/);
+          if (bodyMatch) {
+            console.log(`📄 DEBUG: Body preview: ${bodyMatch[1].substring(0, 200)}...`);
+          }
+        } catch (e) {
+          console.log('⚠️ DEBUG: Could not capture HTML');
+        }
         
         return {
           success: false,
-          error: 'Could not find or click reply button with any method'
+          error: 'Could not find or click reply button after trying 5 different strategies (keyboard shortcut, aggressive click, enhanced selectors, direct URL, mobile interface)'
         };
       }
       
