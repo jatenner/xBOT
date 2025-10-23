@@ -66,26 +66,34 @@ async function scrapeFollowerCount(): Promise<number> {
   const page = await pool.acquirePage('follower_count');
   
   try {
-    // Navigate to our profile
-    await page.goto('https://twitter.com/home', { waitUntil: 'networkidle', timeout: 30000 });
-    await page.waitForTimeout(2000);
+    // Navigate to our profile page directly (more reliable than home)
+    const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
+    await page.goto(`https://x.com/${username}`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(3000); // Wait longer for profile to load
     
-    // Try to find follower count
-    // Twitter has multiple possible selectors for follower count
+    // Enhanced selectors with multiple strategies
     const selectors = [
-      'a[href$="/followers"] span span',
-      '[data-testid="UserProfileHeader_Items"] a:has-text("Followers") span',
+      // Strategy 1: Direct follower link with text
+      'a[href$="/followers"] span',
+      // Strategy 2: Any link containing "followers"
       'a[href*="/followers"] span:not([aria-hidden])',
+      // Strategy 3: Look for any element with follower count pattern
+      '[data-testid="UserName"] ~ div a span',
+      // Strategy 4: Direct text search for "Followers"
+      'div:has-text("Followers") span',
+      // Strategy 5: Broader search
+      'a[role="link"] span',
     ];
     
     for (const selector of selectors) {
       try {
-        const element = await page.$(selector);
-        if (element) {
+        const elements = await page.locator(selector).all();
+        for (const element of elements) {
           const text = await element.textContent();
-          if (text) {
+          if (text && /[\d,]+[KMB]?/.test(text.trim())) {
             const count = parseFollowerCount(text);
             if (count >= 0) {
+              console.log(`✅ FOLLOWER_COUNT: Found ${count} using selector: ${selector}`);
               return count;
             }
           }
