@@ -368,11 +368,60 @@ export class UnifiedContentEngine {
       }
       
       // ═══════════════════════════════════════════════════════════
-      // STEP 5.3: PRE-QUALITY VALIDATION & AUTO-IMPROVEMENT
+      // STEP 5.3: EARLY SANITIZATION CHECK (MOVED UP - SAVES AI BUDGET)
       // ═══════════════════════════════════════════════════════════
       let rawContent = aiResponse.content || aiResponse.tweet || aiResponse.text || '';
       
-      console.log('🔍 STEP 5.3: Validating content quality...');
+      console.log('🛡️ STEP 5.3: Early sanitization check (before expensive intelligence scoring)...');
+      const { sanitizeContent, formatViolationReport, shouldRetry, trackViolation } = await import('../generators/contentSanitizer');
+      const sanitization = sanitizeContent(rawContent);
+      
+      console.log(formatViolationReport(sanitization));
+      
+      if (!sanitization.passed) {
+        systemsActive.push('Content Sanitization [FAILED - EARLY]');
+        
+        // Track violations in database (don't await - fire and forget)
+        for (const violation of sanitization.violations) {
+          trackViolation({
+            generatorName: generatorName,
+            topic: request.topic,
+            format: request.format || 'single',
+            violation,
+            content: rawContent,
+            specificityScore: sanitization.specificity_score,
+            specificityMatches: sanitization.specificity_matches,
+            actionTaken: shouldRetry(sanitization) ? 'retried' : 'rejected_early',
+            retrySucceeded: undefined // Will be updated if retry succeeds
+          }).catch(err => console.error('Failed to track violation:', err));
+        }
+        
+        // Check if we should retry with different generator
+        if (shouldRetry(sanitization) && !request.forceGeneration) {
+          console.log('🔄 SANITIZATION_RETRY: Attempting with different generator...');
+          
+          // Retry generation (will use different generator due to weighted random)
+          return this.generateContent({
+            ...request,
+            forceGeneration: true // Prevent infinite loop
+          });
+        }
+        
+        // If forceGeneration is true, we've already retried - throw error
+        // This early rejection saves ~$0.012 in AI costs (no intelligence scoring/refinement)
+        throw new Error(`Early sanitization failure: ${sanitization.violations[0]?.detected || 'Unknown violation'}`);
+      }
+      
+      systemsActive.push('Content Sanitization [PASSED - EARLY]');
+      console.log(`  ✓ Specificity score: ${sanitization.specificity_score}`);
+      if (sanitization.specificity_matches.length > 0) {
+        console.log(`  ✓ Found: ${sanitization.specificity_matches.slice(0, 3).join(', ')}`);
+      }
+      
+      // ═══════════════════════════════════════════════════════════
+      // STEP 5.4: PRE-QUALITY VALIDATION (Smart Gates)
+      // ═══════════════════════════════════════════════════════════
+      console.log('🔍 STEP 5.4: Validating content quality...');
       // 🎯 SMART QUALITY GATES: Generator-aware validation
       const preValidation = validateContentSmart(
         request.format === 'thread' && Array.isArray(generatedContent) ? generatedContent : rawContent,
@@ -401,7 +450,7 @@ export class UnifiedContentEngine {
       }
       
       // ═══════════════════════════════════════════════════════════
-      // STEP 5.4: POST-GENERATION INTELLIGENCE SCORING
+      // STEP 5.5: POST-GENERATION INTELLIGENCE SCORING
       // ═══════════════════════════════════════════════════════════
       if (intelligenceConfig.postGeneration.enabled && intelligence) {
         try {
@@ -443,61 +492,18 @@ export class UnifiedContentEngine {
       }
       
       // ═══════════════════════════════════════════════════════════
-      // STEP 5.5: CONTENT SANITIZATION (Safety Net)
+      // NOTE: SANITIZATION MOVED TO STEP 5.3 (EARLY CHECK)
       // ═══════════════════════════════════════════════════════════
-      const content = rawContent;
-      
-      console.log('🛡️ STEP 5.5: Sanitizing content for violations...');
-      const { sanitizeContent, formatViolationReport, shouldRetry, trackViolation } = await import('../generators/contentSanitizer');
-      const sanitization = sanitizeContent(content);
-      
-      console.log(formatViolationReport(sanitization));
-      
-      if (!sanitization.passed) {
-        systemsActive.push('Content Sanitization [FAILED]');
-        
-        // Track violations in database (don't await - fire and forget)
-        for (const violation of sanitization.violations) {
-          trackViolation({
-            generatorName: generatorName,
-            topic: request.topic,
-            format: request.format || 'single',
-            violation,
-            content,
-            specificityScore: sanitization.specificity_score,
-            specificityMatches: sanitization.specificity_matches,
-            actionTaken: shouldRetry(sanitization) ? 'retried' : 'rejected',
-            retrySucceeded: undefined // Will be updated if retry succeeds
-          }).catch(err => console.error('Failed to track violation:', err));
-        }
-        
-        // Check if we should retry with different generator
-        if (shouldRetry(sanitization) && !request.forceGeneration) {
-          console.log('🔄 SANITIZATION_RETRY: Attempting with different generator...');
-          
-          // Retry generation (will use different generator due to weighted random)
-          return this.generateContent({
-            ...request,
-            forceGeneration: true // Prevent infinite loop
-          });
-        }
-        
-        // If forceGeneration is true, we've already retried - throw error
-        throw new Error(`Content quality violation: ${sanitization.violations[0]?.detected || 'Unknown violation'}`);
-      }
-      
-      systemsActive.push('Content Sanitization [PASSED]');
-      console.log(`  ✓ Specificity score: ${sanitization.specificity_score}`);
-      if (sanitization.specificity_matches.length > 0) {
-        console.log(`  ✓ Found: ${sanitization.specificity_matches.slice(0, 3).join(', ')}`);
-      }
+      // Content sanitization now happens immediately after generation (line 375)
+      // This saves ~$0.012 per rejected content by avoiding expensive intelligence scoring
+      // If we reach this point, sanitization already passed
       
       // ═══════════════════════════════════════════════════════════
-      // STEP 5.7: CONTENT ENRICHMENT (Optional - adds contrast)
+      // STEP 5.6: CONTENT ENRICHMENT (Optional - adds contrast)
       // ═══════════════════════════════════════════════════════════
       // NOTE: This is currently DISABLED by default
       // Enable by setting request.enableEnrichment = true
-      let finalContent = content;
+      let finalContent = rawContent;
       
       if (request.enableEnrichment) {
         console.log('🎨 STEP 5.7: Enriching content with contrast injection...');
