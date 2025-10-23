@@ -85,15 +85,15 @@ export function sanitizeContent(content: string | string[], attemptAutoFix: bool
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // CHECK 4: SPECIFICITY SCORE (MEDIUM)
+  // CHECK 4: SPECIFICITY SCORE (LOW - RELAXED FOR CULTURAL/PHILOSOPHICAL CONTENT)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const specificityCheck = hasSpecificity(fullContent);
   
   if (specificityCheck.score === 0) {
     violations.push({
       type: 'low_specificity',
-      severity: 'medium',
-      detected: 'No specific numbers, studies, or mechanisms found'
+      severity: 'low', // Changed from 'medium' - allow cultural/wisdom content without numbers
+      detected: 'No specific numbers, studies, or mechanisms found (acceptable for some generators)'
     });
   }
   

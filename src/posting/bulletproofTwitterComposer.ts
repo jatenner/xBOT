@@ -678,20 +678,28 @@ export class BulletproofTwitterComposer {
       let replyClicked = false;
       console.log('🔍 REPLY_SEARCH: Searching for reply button with enhanced selectors...');
       
-      // First, try keyboard shortcut (most reliable)
+      // First, try keyboard shortcut (most reliable for Twitter)
       try {
         console.log('⌨️ REPLY_SHORTCUT: Trying keyboard shortcut "r"...');
+        
+        // Focus the tweet article first to ensure keyboard event is captured
+        await this.page.locator('article').first().click();
+        await this.page.waitForTimeout(500);
+        
+        // Press 'r' to open reply composer
         await this.page.keyboard.press('r');
-        await this.page.waitForTimeout(2000);
+        await this.page.waitForTimeout(3000); // Increased wait for Twitter UI to load
         
         // Check if reply composer opened
         const composerVisible = await this.checkForComposer();
         if (composerVisible) {
           console.log('✅ REPLY_SHORTCUT: Keyboard shortcut worked!');
           replyClicked = true;
+        } else {
+          console.log('⚠️ REPLY_SHORTCUT: Composer not visible after keyboard press');
         }
       } catch (e) {
-        console.log('⚠️ REPLY_SHORTCUT: Keyboard shortcut failed');
+        console.log(`⚠️ REPLY_SHORTCUT: Keyboard shortcut failed - ${(e as Error).message}`);
       }
       
       // If shortcut didn't work, try button selectors
@@ -712,8 +720,17 @@ export class BulletproofTwitterComposer {
             
             if (isVisible && isEnabled) {
               console.log(`🚀 REPLY_BUTTON: Clicking "${selector}"`);
-              await replyBtn.click();
-              await this.page.waitForTimeout(2000);
+              
+              // Try both regular and force click
+              try {
+                await replyBtn.click({ timeout: 5000 }); // Longer timeout
+              } catch {
+                // Force click with JavaScript if Playwright click fails
+                console.log(`  🔧 FORCE_CLICK: Trying JavaScript click...`);
+                await replyBtn.evaluate((el: any) => el.click());
+              }
+              
+              await this.page.waitForTimeout(3000); // Longer wait for composer
               
               // Verify reply composer opened
               const composerOpened = await this.checkForComposer();
@@ -733,13 +750,28 @@ export class BulletproofTwitterComposer {
       }
       
       if (!replyClicked) {
-        // Last resort: try clicking anywhere on the tweet area
-        console.log('🔄 REPLY_FALLBACK: Trying tweet area click + keyboard shortcut...');
+        // Last resort: Enhanced fallback with multiple attempts
+        console.log('🔄 REPLY_FALLBACK: Trying enhanced fallback strategy...');
         try {
+          // Click tweet to focus it
           await this.page.locator('article').first().click();
-          await this.page.waitForTimeout(1000);
-          await this.page.keyboard.press('r');
-          await this.page.waitForTimeout(2000);
+          await this.page.waitForTimeout(1500);
+          
+          // Try 'r' key multiple times (Twitter sometimes needs it)
+          for (let i = 0; i < 3; i++) {
+            await this.page.keyboard.press('r');
+            await this.page.waitForTimeout(1000);
+            
+            const composerOpened = await this.checkForComposer();
+            if (composerOpened) {
+              replyClicked = true;
+              console.log(`✅ REPLY_FALLBACK: Keyboard retry ${i + 1} worked!`);
+              break;
+            }
+          }
+          
+          if (!replyClicked) {
+            await this.page.waitForTimeout(2000);
           
           const composerOpened = await this.checkForComposer();
           if (composerOpened) {
