@@ -10,7 +10,7 @@
  */
 
 import OpenAI from 'openai';
-import { createChatCompletion, createChatCompletionStream, withBudgetEnforcement, BudgetExceededError } from './openaiWrapper';
+import { createBudgetedChatCompletion, createBudgetedChatCompletionStream, BudgetExceededError } from './openaiBudgetedClient';
 import { getBudgetStatus } from '../budget/budgetGate';
 import { getUnifiedDataManager } from '../lib/unifiedDataManager';
 // Redis manager removed - using direct budget guard instead
@@ -147,7 +147,11 @@ export class OpenAIService {
 
       // Make the OpenAI request with AUTHORITATIVE budget enforcement
       const startTime = Date.now();
-      const response = await createChatCompletion(createParams, requestType);
+      const response = await createBudgetedChatCompletion(createParams, {
+        purpose: requestType,
+        requestId: `openai_service_${Date.now()}`,
+        priority
+      });
 
       // TRUNCATION GUARD: Check if response was truncated
       if (response && response.usage && response.choices?.[0]?.finish_reason === 'length') {
