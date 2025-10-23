@@ -163,10 +163,7 @@ Return JSON: {"tweet": "..."}
 🧠 GIVE EXAMPLES: Current proof points of the shift
 ⚡ PREDICT: Where will this be in 2-5 years?`;
 
-  const userPrompt = `What's the forward-thinking perspective on: ${topic}
-
-Where is this trend going? What's happening now that proves it?
-What will be mainstream in 5 years?`;
+  const userPrompt = `Share a forward-thinking insight about ${topic}.`;
 
   try {
     const response = await createBudgetedChatCompletion({

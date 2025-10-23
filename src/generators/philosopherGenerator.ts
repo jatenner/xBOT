@@ -163,10 +163,7 @@ Return JSON: {"tweet": "..."}
 🧠 BE PRACTICAL: People can use this insight
 ⚡ BE CLEAR: No vague philosophical rambling`;
 
-  const userPrompt = `What's the simple, profound truth about: ${topic}
-
-Not a question—a TRUTH about how it works.
-What's the insight that reframes everything?`;
+  const userPrompt = `Share wisdom about ${topic} that's profound yet practical.`;
 
   try {
     const response = await createBudgetedChatCompletion({
