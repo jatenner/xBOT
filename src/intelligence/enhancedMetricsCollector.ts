@@ -344,7 +344,7 @@ Return JSON:
       // Store comprehensive metrics
       const { error } = await supabase
         .from('comprehensive_metrics')
-        .insert({
+        .insert([{
           post_id: metrics.postId,
           tweet_id: postData.tweet_id,
           collected_at: metrics.timestamp,
@@ -400,9 +400,7 @@ Return JSON:
           link_clicks: 0,
           media_views: 0,
           quote_tweet_sentiment: null
-        }, {
-          onConflict: 'post_id'
-        });
+        }]);
 
       if (error) {
         console.error('❌ METRICS_STORAGE: Database error:', error.message);
