@@ -213,7 +213,7 @@ export class TopicDiversityEngine {
             posts: 0,
             followers: [],
             engagement: [],
-            last_used: new Date(post.posted_at)
+            last_used: new Date(String(post.posted_at))
           };
         }
         
@@ -221,7 +221,7 @@ export class TopicDiversityEngine {
         topicStats[topic].followers.push(Number(post.followers_gained) || 0);
         topicStats[topic].engagement.push(Number(post.engagement_rate) || 0);
         
-        const postDate = new Date(post.posted_at);
+        const postDate = new Date(String(post.posted_at));
         if (postDate > topicStats[topic].last_used) {
           topicStats[topic].last_used = postDate;
         }
@@ -299,12 +299,15 @@ Return ONLY valid JSON:
 }`;
 
     try {
-      const response = await openai.chat.completions.create({
-        model: 'gpt-4o',
-        messages: [{ role: 'user', content: prompt }],
-        temperature: params.forceMaxDiversity ? 1.0 : 0.9,
-        max_tokens: 300
-      });
+      const response = await openai.chatCompletion(
+        [{ role: 'user', content: prompt }],
+        {
+          model: 'gpt-4o',
+          temperature: params.forceMaxDiversity ? 1.0 : 0.9,
+          maxTokens: 300,
+          response_format: { type: 'json_object' }
+        }
+      );
       
       const content = response.choices[0].message.content || '{}';
       const parsed = JSON.parse(content);
