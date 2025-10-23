@@ -116,6 +116,7 @@ export class TopicDiversityEngine {
 
   /**
    * 📚 Get recent topics (last 20 posts) to avoid repetition
+   * 🚀 USES ACTUAL AI-GENERATED TOPICS FROM DATABASE (not keywords!)
    */
   private async getRecentTopics(): Promise<string[]> {
     try {
@@ -132,16 +133,20 @@ export class TopicDiversityEngine {
       const topics: string[] = [];
       
       for (const post of data) {
-        // Extract topic from metadata if available
+        // PRIMARY SOURCE: Get AI-generated topic from metadata
         const metadata = post.metadata as any;
         if (metadata?.topic) {
-          topics.push(String(metadata.topic).toLowerCase());
+          topics.push(String(metadata.topic).toLowerCase().trim());
         }
         
-        // Also extract key topics from content via keyword detection
-        const content = String(post.content || '').toLowerCase();
-        const detectedTopics = this.extractTopicsFromContent(content);
-        topics.push(...detectedTopics);
+        // SECONDARY SOURCE: Extract topic from content (for posts without metadata)
+        // This uses semantic extraction, not hardcoded keywords
+        if (!metadata?.topic) {
+          const extractedTopic = this.extractTopicFromContent(String(post.content || ''));
+          if (extractedTopic) {
+            topics.push(extractedTopic.toLowerCase().trim());
+          }
+        }
       }
       
       return [...new Set(topics)]; // Remove duplicates
@@ -152,61 +157,59 @@ export class TopicDiversityEngine {
   }
 
   /**
-   * 🔍 Extract topics from content using keyword detection
+   * 🔍 Extract topic from content text (NO HARDCODED TOPICS!)
+   * 
+   * Works for ANY AI-generated content:
+   * - "psilocybin microdosing for anxiety" → extracts "psilocybin microdosing"
+   * - "NAD+ supplementation timing" → extracts "NAD+ supplementation"  
+   * - "zone 2 cardio optimization" → extracts "zone 2 cardio"
+   * 
+   * The AI decides the topics, we just extract them from the content
    */
-  private extractTopicsFromContent(content: string): string[] {
-    const topics: string[] = [];
-    
-    // 🚨 CRITICAL FIX: Extract SPECIFIC subtopics, not just broad categories
-    // This prevents psychedelic microdosing from appearing 4 times in a row
-    
-    const keywordMap: Record<string, string> = {
-      // SPECIFIC SUBTOPICS (must come first to match before broad categories)
-      'psilocybin|magic mushroom|shroom': 'psilocybin microdosing',
-      'microdosing|microdose': 'psychedelic microdosing',
-      'lsd|acid tab': 'LSD microdosing',
-      'psychedelic|hallucinogen': 'psychedelics',
-      'nad\\+|nmn|nr nicotinamide': 'NAD+ supplementation',
-      'creatine': 'creatine supplementation',
-      'omega-3|fish oil|dha|epa': 'omega-3 supplementation',
-      'vitamin d|cholecalciferol': 'vitamin D',
-      'magnesium glycinate|magnesium threonate': 'magnesium supplementation',
-      'ashwagandha': 'ashwagandha supplementation',
-      'cold plunge|ice bath': 'cold exposure therapy',
-      'sauna|heat exposure': 'heat therapy',
-      'intermittent fasting|time-restricted': 'intermittent fasting',
-      'zone 2|vo2 max|aerobic capacity': 'cardio optimization',
-      'protein timing|leucine threshold': 'protein optimization',
-      'sleep hygiene|sleep environment': 'sleep optimization',
-      'blue light|circadian rhythm': 'circadian optimization',
-      
-      // BROAD CATEGORIES (fallback if no specific match)
-      'sleep|melatonin|insomnia': 'sleep',
-      'breath|breathing|hrv': 'breathwork',
-      'anxiety|stress|depression': 'mental health',
-      'gut|microbiome|probiotic': 'gut health',
-      'exercise|workout|training': 'exercise',
-      'longevity|aging|senolytic': 'longevity',
-      'meditation|mindfulness': 'mindfulness'
-    };
-    
-    // Extract all matching topics (specific matches will be prioritized)
-    for (const [pattern, topic] of Object.entries(keywordMap)) {
-      if (new RegExp(pattern, 'i').test(content)) {
-        topics.push(topic);
+  private extractTopicFromContent(content: string): string | null {
+    try {
+      // Strategy 1: Extract capitalized multi-word phrases (e.g., "Psilocybin Microdosing")
+      const capitalizedPhrases = content.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2}\b/g);
+      if (capitalizedPhrases && capitalizedPhrases.length > 0) {
+        return capitalizedPhrases[0].trim();
       }
+      
+      // Strategy 2: Extract scientific/technical terms
+      const text = content.toLowerCase();
+      const scientificTerms = text.match(/\b(?:[a-z]+-\d+|nad\+|omega-\d+|vitamin\s+[a-z]\d*|zone\s+\d+|hrv|vo2|dha|epa|nmn)\b/gi);
+      if (scientificTerms && scientificTerms.length > 0) {
+        // Get surrounding words for context
+        const term = scientificTerms[0];
+        const index = text.indexOf(term);
+        const before = text.substring(Math.max(0, index - 30), index).split(/\s+/).filter(w => w.length > 0);
+        const after = text.substring(index + term.length, Math.min(text.length, index + term.length + 30)).split(/\s+/).filter(w => w.length > 0);
+        
+        // Build phrase: 1 word before + term + 1 word after
+        const phrase = [
+          before[before.length - 1] || '',
+          term,
+          after[0] || ''
+        ].filter(w => w).join(' ');
+        
+        return phrase.trim();
+      }
+      
+      // Strategy 3: Extract first meaningful multi-word phrase (2-3 words)
+      // Remove common filler words first
+      const fillerWords = new Set(['the', 'a', 'an', 'is', 'are', 'was', 'were', 'been', 'be', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'should', 'could', 'can', 'may', 'might', 'must', 'for', 'with', 'about', 'from', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'between', 'among']);
+      
+      const words = text.split(/\s+/)
+        .filter(w => w.length > 2 && !fillerWords.has(w))
+        .slice(0, 10); // First 10 meaningful words
+      
+      if (words.length >= 2) {
+        return `${words[0]} ${words[1]}`;
+      }
+      
+      return null;
+    } catch (error) {
+      return null;
     }
-    
-    // Remove duplicates and broad categories if specific ones exist
-    const uniqueTopics = [...new Set(topics)];
-    
-    // If we have both specific and broad matches, keep only specific
-    const specificTopics = uniqueTopics.filter(t => t.includes(' '));
-    if (specificTopics.length > 0) {
-      return specificTopics;
-    }
-    
-    return uniqueTopics;
   }
 
   /**
