@@ -148,21 +148,7 @@ export class JobManager {
       );
     }
 
-    // Reply job - every 60 min, offset 15 min
-    if (flags.replyEnabled) {
-      this.scheduleStaggeredJob(
-        'reply',
-        async () => {
-          await this.safeExecute('reply', async () => {
-            await generateReplies();
-            this.stats.replyRuns++;
-            this.stats.lastReplyTime = new Date();
-          });
-        },
-        config.JOBS_REPLY_INTERVAL_MIN * MINUTE,
-        15 * MINUTE // Start after 15 minutes
-      );
-    }
+    // Reply job - REMOVED (replaced by aggressive reply_posting job below)
 
     // Velocity tracker - every 30 min, offset 12 min
     this.scheduleStaggeredJob(
