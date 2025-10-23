@@ -316,70 +316,93 @@ async function thompsonSamplingSelection(): Promise<AdaptiveDecision> {
 }
 
 /**
- * 🎨 DIVERSE EXPLORATION - Force variety across topic clusters
+ * 🎨 DIVERSE EXPLORATION - AI-generated infinite topic variety
+ * 
+ * REPLACES hardcoded topic pools with intelligent topic generation.
  * 
  * When engagement is 0 across the board, the best strategy is to try
  * COMPLETELY DIFFERENT topics to see what resonates. This function
- * ensures we don't get stuck in one topic cluster.
+ * uses the TopicDiversityEngine to generate unique topics based on:
+ * 1. What topics were recently posted (avoid repetition)
+ * 2. What topics performed well (learn from success)
+ * 3. What topics are overused (avoid beating dead horses)
  */
 async function selectDiverseExplorationContent(): Promise<AdaptiveDecision> {
-  console.log('[DIVERSE_EXPLORATION] 🎨 Forcing topic diversity...');
+  console.log('[DIVERSE_EXPLORATION] 🎨 Using AI to generate unique topic...');
   
-  const supabase = getSupabaseClient();
-  
-  // Get recent topic clusters to avoid repeating
-  const { data: recentContent } = await supabase
-    .from('content_generation_metadata_comprehensive')
-    .select('topic_cluster')
-    .order('created_at', { ascending: false })
-    .limit(10);
-  
-  const recentClusters = recentContent?.map(c => c.topic_cluster).filter(Boolean) || [];
-  const clusterCounts = recentClusters.reduce((acc: Record<string, number>, cluster: string) => {
-    acc[cluster] = (acc[cluster] || 0) + 1;
-    return acc;
-  }, {});
-  
-  console.log(`[DIVERSE_EXPLORATION] 📊 Recent clusters: ${JSON.stringify(clusterCounts)}`);
-  
-  // Define DIVERSE topic pools across different clusters
-  const topicPools = [
-    // LONGEVITY cluster
-    { cluster: 'longevity', topics: ['NAD+ supplementation', 'senolytic therapies', 'caloric restriction mimetics', 'telomere biology', 'autophagy activation'], generator: 'dataNerd' },
-    // BIOHACKING cluster  
-    { cluster: 'biohacking', topics: ['cold exposure protocols', 'continuous glucose monitoring', 'nootropic stacks', 'red light therapy', 'HRV training'], generator: 'provocateur' },
-    // MENTAL_HEALTH cluster
-    { cluster: 'mental_health', topics: ['psychedelic therapy research', 'neurofeedback training', 'vagus nerve stimulation', 'neuroplasticity protocols', 'anxiety reframing'], generator: 'storyteller' },
-    // PERFORMANCE cluster
-    { cluster: 'performance', topics: ['anaerobic vs aerobic training', 'lactate threshold optimization', 'muscle protein synthesis timing', 'VO2 max improvement', 'zone 2 cardio'], generator: 'mythBuster' },
-    // GUT_HEALTH cluster
-    { cluster: 'gut_health', topics: ['microbiome diversity', 'prebiotic fiber types', 'fermented foods science', 'gut-brain axis', 'SIBO protocols'], generator: 'contrarian' },
-    // METABOLIC cluster
-    { cluster: 'metabolic', topics: ['insulin sensitivity hacks', 'metabolic flexibility', 'mitochondrial function', 'AMPK activation', 'ketone metabolism'], generator: 'dataNerd' }
-  ];
-  
-  // Find LEAST used cluster
-  const leastUsedPool = topicPools.reduce((least, pool) => {
-    const count = clusterCounts[pool.cluster] || 0;
-    const leastCount = clusterCounts[least.cluster] || 0;
-    return count < leastCount ? pool : least;
-  }, topicPools[0]);
-  
-  // Select random topic from least used cluster
-  const selectedTopic = leastUsedPool.topics[Math.floor(Math.random() * leastUsedPool.topics.length)];
-  
-  console.log(`[DIVERSE_EXPLORATION] ✅ Selected cluster: ${leastUsedPool.cluster}`);
-  console.log(`[DIVERSE_EXPLORATION] 📝 Topic: ${selectedTopic}`);
-  console.log(`[DIVERSE_EXPLORATION] 🎭 Generator: ${leastUsedPool.generator}`);
-  
-  return {
-    hook_pattern: ['bold_claim', 'contrarian', 'story_opener', 'data_driven'][Math.floor(Math.random() * 4)] as string,
-    topic: selectedTopic,
-    generator: leastUsedPool.generator,
-    format: 'single',
-    reasoning: `Diverse exploration: ${leastUsedPool.cluster} cluster (least used recently)`,
-    intelligence_source: 'internal'
-  };
+  try {
+    // 🆕 USE NEW TOPIC DIVERSITY ENGINE
+    const { TopicDiversityEngine } = await import('./topicDiversityEngine');
+    const diversityEngine = TopicDiversityEngine.getInstance();
+    
+    // Get recent topic clusters to find least-used cluster
+    const supabase = getSupabaseClient();
+    const { data: recentContent } = await supabase
+      .from('content_generation_metadata_comprehensive')
+      .select('topic_cluster')
+      .order('created_at', { ascending: false })
+      .limit(10);
+    
+    const recentClusters = recentContent?.map(c => c.topic_cluster).filter(Boolean) || [];
+    const clusterCounts = recentClusters.reduce((acc: Record<string, number>, cluster: string) => {
+      acc[cluster] = (acc[cluster] || 0) + 1;
+      return acc;
+    }, {});
+    
+    console.log(`[DIVERSE_EXPLORATION] 📊 Recent clusters: ${JSON.stringify(clusterCounts)}`);
+    
+    // Find least-used cluster
+    const allClusters = ['longevity', 'biohacking', 'mental_health', 'performance', 'gut_health', 'metabolic', 'sleep', 'breathwork'];
+    const leastUsedCluster = allClusters.reduce((least, cluster) => {
+      const count = clusterCounts[cluster] || 0;
+      const leastCount = clusterCounts[least] || 0;
+      return count < leastCount ? cluster : least;
+    }, allClusters[0]);
+    
+    console.log(`[DIVERSE_EXPLORATION] 🎯 Targeting least-used cluster: ${leastUsedCluster}`);
+    
+    // 🚀 GENERATE UNIQUE TOPIC using AI (not hardcoded!)
+    const topicResult = await diversityEngine.generateUniqueTopic(leastUsedCluster);
+    
+    console.log(`[DIVERSE_EXPLORATION] ✅ AI generated: "${topicResult.topic}"`);
+    console.log(`[DIVERSE_EXPLORATION] 💡 Reasoning: ${topicResult.reasoning}`);
+    
+    // Select appropriate generator for the cluster
+    const generatorMap: Record<string, string> = {
+      'longevity': 'dataNerd',
+      'biohacking': 'provocateur',
+      'mental_health': 'storyteller',
+      'performance': 'mythBuster',
+      'gut_health': 'contrarian',
+      'metabolic': 'dataNerd',
+      'sleep': 'coach',
+      'breathwork': 'explorer'
+    };
+    
+    const selectedGenerator = generatorMap[topicResult.cluster] || 'contrarian';
+    
+    return {
+      hook_pattern: ['bold_claim', 'contrarian', 'story_opener', 'data_driven'][Math.floor(Math.random() * 4)] as string,
+      topic: topicResult.topic,
+      generator: selectedGenerator,
+      format: 'single',
+      reasoning: `AI-generated diverse topic: ${topicResult.cluster} (${topicResult.reasoning})`,
+      intelligence_source: 'internal'
+    };
+    
+  } catch (error: any) {
+    console.error('[DIVERSE_EXPLORATION] ❌ AI topic generation failed, using fallback:', error.message);
+    
+    // Fallback to basic diverse selection if AI fails
+    return {
+      hook_pattern: 'contrarian',
+      topic: 'exercise timing optimization',
+      generator: 'mythBuster',
+      format: 'single',
+      reasoning: 'Fallback diverse topic',
+      intelligence_source: 'internal'
+    };
+  }
 }
 
 /**

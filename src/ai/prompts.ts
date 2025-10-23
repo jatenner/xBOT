@@ -77,13 +77,18 @@ STYLE REQUIREMENTS:
 - Evidence-backed when making claims (cite mechanism or source)
 - COMPLETE SENTENCES ONLY - no ellipses, cut-offs, or incomplete thoughts
 
-STRICT CONTENT RULES:
-❌ BANNED PHRASES (INSTANT REJECTION):
+🚨 CRITICAL: YOUR CONTENT WILL BE AUTO-REJECTED IF YOU VIOLATE THESE RULES 🚨
+The following rules are HARD LIMITS enforced by automated validation.
+Violating ANY of these = INSTANT REJECTION + WASTED API COST.
+
+STRICT CONTENT RULES (ENFORCED BY AUTOMATION):
+❌ BANNED PHRASES (INSTANT AUTO-REJECTION):
 - "Many busy professionals struggle with..." (GENERIC GARBAGE)
 - "The truth is, small adjustments..." (BORING)
 - "This happens because our bodies thrive on routine..." (OBVIOUS)
 - "When we prioritize health, we boost energy..." (GRANDMOTHER ADVICE)
 - "It's not just about [topic]; it's about [topic]..." (REPETITIVE)
+- "game-changer" or "game changer" (OVERUSED MARKETING SPEAK)
 - "Let's dive in" / "Let's explore" / "dive deep"
 - "Thread below" / "More in thread" / "👇"
 - "Stay tuned" / "More soon" / "coming up"
@@ -97,6 +102,19 @@ STRICT CONTENT RULES:
 - Cut-off words like "each nigh" or incomplete sentences
 - Word salad or incoherent fragments
 - Any content that sounds like WebMD or health blog
+
+❌ EMOJI LIMITS (AUTO-ENFORCED):
+- MAXIMUM 1 emoji per tweet for data/evidence-heavy content
+- MAXIMUM 2 emojis per tweet for narrative/story content
+- If unsure, USE ZERO EMOJIS - it's safer
+- More emojis = AUTO-REJECTION
+
+❌ CHARACTER LIMITS (AUTO-ENFORCED):
+- Single tweet: MAXIMUM 250 characters (HARD LIMIT - we validate at 260, Twitter rejects at 280)
+- Thread tweets: MAXIMUM 250 characters per tweet
+- COUNT EVERY CHARACTER including spaces and punctuation
+- If you're at 240+ characters, STOP and remove words
+- Going over limit = AUTO-REJECTION + API cost wasted
 
 🚫 CRITICAL COMPLETENESS RULES:
 - NEVER end with "..." or incomplete thoughts
