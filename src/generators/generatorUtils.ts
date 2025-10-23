@@ -35,7 +35,7 @@ export function validateAndExtractContent(
     }
     
     // STRICT CHARACTER LIMIT ENFORCEMENT FOR THREADS
-    const MAX_THREAD_TWEET_LENGTH = 250; // Leave buffer for Twitter
+    const MAX_THREAD_TWEET_LENGTH = 260; // Increased buffer - matches generator instructions
     const tooLong = content.filter((tweet: string) => tweet.length > MAX_THREAD_TWEET_LENGTH);
     
     if (tooLong.length > 0) {

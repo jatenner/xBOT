@@ -301,9 +301,17 @@ export class UnifiedContentEngine {
           systemsActive.push('Advanced Content Refinement');
           systemsActive.push('Competitive Intelligence');
           
-          generatedContent = advancedRefinement.should_use_refined 
+          // Only use refined if it stays under character limit
+          const refinedContent = advancedRefinement.should_use_refined 
             ? advancedRefinement.refined_content 
             : advancedRefinement.original_content;
+          
+          if (refinedContent.length <= 260) {
+            generatedContent = refinedContent;
+          } else {
+            console.log(`  ⚠️ Refined content too long (${refinedContent.length} chars), using original`);
+            generatedContent = advancedRefinement.original_content;
+          }
             
         } catch (error: any) {
           console.warn(`  ⚠️ Advanced refinement failed: ${error.message}, using legacy refiner`);
@@ -322,7 +330,13 @@ export class UnifiedContentEngine {
           console.log(`  ✓ Improvements: ${refinement.improvements_made.join(', ')}`);
           systemsActive.push('AI Content Refiner (Legacy)');
           
-          generatedContent = refinement.refined_content;
+          // Only use refined if it stays under character limit
+          if (refinement.refined_content.length <= 260) {
+            generatedContent = refinement.refined_content;
+          } else {
+            console.log(`  ⚠️ Refined content too long (${refinement.refined_content.length} chars), using original`);
+            generatedContent = judgment.winner.raw_content;
+          }
         }
         
         generatorName = judgment.winner.generator_name;
