@@ -262,12 +262,12 @@ export class TwitterNewsScraperJob {
     
     try {
       // PHASE 4.2 FIX: Better selectors with multiple fallbacks
-      // Wait for tweets to load with multiple selector attempts
+      // Wait for tweets to load with multiple selector attempts (increased timeout for Twitter's lazy loading)
       const tweetLoaded = await Promise.race([
-        page.waitForSelector('article[data-testid="tweet"]', { timeout: 15000 }).catch(() => null),
-        page.waitForSelector('[data-testid="tweetDetail"]', { timeout: 15000 }).catch(() => null),
-        page.waitForSelector('article[role="article"]', { timeout: 15000 }).catch(() => null),
-        page.waitForTimeout(10000).then(() => null)  // Give up after 10s
+        page.waitForSelector('article[data-testid="tweet"]', { timeout: 25000 }).catch(() => null),
+        page.waitForSelector('[data-testid="tweetDetail"]', { timeout: 25000 }).catch(() => null),
+        page.waitForSelector('article[role="article"]', { timeout: 25000 }).catch(() => null),
+        page.waitForTimeout(20000).then(() => null)  // Give up after 20s (increased from 10s)
       ]);
       
       if (!tweetLoaded) {

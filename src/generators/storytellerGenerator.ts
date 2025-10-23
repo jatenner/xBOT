@@ -196,7 +196,7 @@ ${format === 'thread' ? 'Make it stop-scrolling good. Real examples, real data, 
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.85, // High creativity for narrative
-      max_tokens: format === 'thread' ? 600 : 100, // Reduced to stay under 280 chars
+      max_tokens: format === 'thread' ? 600 : 200, // Increased to prevent mid-sentence truncation
       response_format: { type: 'json_object' }
     }, { purpose: 'storyteller_content_generation' });
 

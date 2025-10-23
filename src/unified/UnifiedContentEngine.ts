@@ -379,7 +379,7 @@ export class UnifiedContentEngine {
         generatorName // Pass generator name for context-aware validation
       );
       
-      console.log(`  📊 Quality score: ${preValidation.score}/100 (threshold: 72)`);
+      console.log(`  📊 Quality score: ${preValidation.score}/100 (threshold: 50)`);
       console.log(`  📊 Breakdown: Completeness ${preValidation.breakdown.completeness}/100, Engagement ${preValidation.breakdown.engagement}/100, Authenticity ${preValidation.breakdown.authenticity}/100`);
       
       // ✅ FIX #1: Auto-improver DISABLED - it was making content MORE academic

@@ -57,7 +57,7 @@ export const config: Config = {
   // Database
   supabaseUrl: getEnvVar('SUPABASE_URL'),
   supabaseAnonKey: getOptionalEnvVar('SUPABASE_ANON_KEY'),
-  supabaseServiceRole: getEnvVar('SUPABASE_SERVICE_ROLE'),
+  supabaseServiceRole: getEnvVar('SUPABASE_SERVICE_ROLE_KEY'),
   
   // Redis
   redisUrl: getEnvVar('REDIS_URL'),
