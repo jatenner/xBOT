@@ -344,7 +344,7 @@ Return JSON:
       // Store comprehensive metrics
       const { error } = await supabase
         .from('comprehensive_metrics')
-        .upsert({
+        .insert({
           post_id: metrics.postId,
           tweet_id: postData.tweet_id,
           collected_at: metrics.timestamp,
