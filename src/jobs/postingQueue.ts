@@ -597,7 +597,7 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         const extraction = await BulletproofTweetExtractor.extractTweetId(page, {
           expectedContent: decision.content,
           expectedUsername: process.env.TWITTER_USERNAME || 'SignalAndSynapse',
-          maxAgeSeconds: 120, // ✅ Increased to 2 minutes to account for Twitter delays
+          maxAgeSeconds: 600, // ✅ FIXED: 10 minutes to handle Twitter profile caching
           navigateToVerify: true
         });
         

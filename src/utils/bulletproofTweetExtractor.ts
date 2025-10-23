@@ -93,8 +93,9 @@ export class BulletproofTweetExtractor {
       if (!tweetId) {
         verificationSteps.push('Navigating to profile for fresh content...');
         
-        // Navigate to profile (force fresh content)
-        const profileUrl = `https://x.com/${expectedUsername}`;
+        // Navigate to profile with cache-busting timestamp
+        const cacheBust = Date.now();
+        const profileUrl = `https://x.com/${expectedUsername}?t=${cacheBust}`;
         await page.goto(profileUrl, {
           waitUntil: 'domcontentloaded',
           timeout: 15000
@@ -121,7 +122,7 @@ export class BulletproofTweetExtractor {
           state: 'visible',
           timeout: 10000
         });
-        await page.waitForTimeout(1500);
+        await page.waitForTimeout(3000); // ✅ Increased to 3s for Twitter to show fresh content
         verificationSteps.push(`Page reloaded - should have fresh tweets now`);
         
         // Fetch articles from profile
