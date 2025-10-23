@@ -548,16 +548,15 @@ export class UltimateTwitterPoster {
       if (results.some(r => r === true)) {
         console.log('ULTIMATE_POSTER: ✅ UI verification successful - post confirmed');
         
-        // SMART BATCH FIX: Try redirect promise first, then fallback
-        const redirectId = await redirectPromise;
-        if (redirectId) {
-          console.log(`ULTIMATE_POSTER: ✅ Using redirect ID: ${redirectId}`);
-          return { success: true, tweetId: redirectId };
+        // 🔥 NEW: Add real verification layer to catch silent rejections
+        const realVerification = await this.verifyActualPosting();
+        if (realVerification.success) {
+          console.log(`ULTIMATE_POSTER: ✅ Real verification passed - tweet actually posted`);
+          return { success: true, tweetId: realVerification.tweetId };
+        } else {
+          console.log('ULTIMATE_POSTER: ❌ Real verification failed - post was silently rejected');
+          throw new Error('Post was silently rejected by Twitter - UI showed success but tweet not found on profile');
         }
-        
-        // Fallback to traditional extraction
-        const tweetId = await this.extractTweetIdFromUrl();
-        return { success: true, tweetId };
       }
       
       console.log('ULTIMATE_POSTER: No explicit success indicators, checking for errors...');
@@ -850,6 +849,91 @@ export class UltimateTwitterPoster {
       }
     } catch (e) {
       console.warn('ULTIMATE_POSTER: Cleanup error:', e.message);
+    }
+  }
+
+  /**
+   * 🔥 REAL VERIFICATION: Check if tweet actually posted to profile
+   * This catches silent rejections where UI shows success but tweet doesn't appear
+   */
+  private async verifyActualPosting(): Promise<{ success: boolean; tweetId?: string }> {
+    if (!this.page) {
+      return { success: false };
+    }
+
+    try {
+      console.log('ULTIMATE_POSTER: 🔍 Starting real verification - checking profile for actual tweet...');
+      
+      // Navigate to profile to check for actual tweet
+      const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
+      await this.page.goto(`https://x.com/${username}?t=${Date.now()}`, { 
+        waitUntil: 'domcontentloaded',
+        timeout: 15000
+      });
+      
+      // Wait for Twitter to process and show fresh content
+      await this.page.waitForTimeout(3000);
+      
+      // Force reload to get fresh content (bypass cache)
+      await this.page.reload({ waitUntil: 'domcontentloaded' });
+      await this.page.waitForTimeout(2000);
+      
+      // Look for the most recent tweet (should be our posted tweet)
+      const articles = await this.page.locator('article[data-testid="tweet"]').all();
+      console.log(`ULTIMATE_POSTER: 🔍 Found ${articles.length} tweets on profile`);
+      
+      if (articles.length === 0) {
+        console.log('ULTIMATE_POSTER: ❌ No tweets found on profile');
+        return { success: false };
+      }
+      
+      // Check the first (most recent) tweet
+      const firstTweet = articles[0];
+      
+      // Verify it's from our account
+      const authorLink = await firstTweet.locator(`a[href="/${username}"]`).first();
+      const isOurTweet = await authorLink.count() > 0;
+      
+      if (!isOurTweet) {
+        console.log('ULTIMATE_POSTER: ❌ Most recent tweet is not from our account');
+        return { success: false };
+      }
+      
+      // Check if tweet is recent (within last 10 minutes)
+      const timeEl = await firstTweet.locator('time').first();
+      const datetime = await timeEl.getAttribute('datetime');
+      
+      if (datetime) {
+        const tweetTime = new Date(datetime);
+        const ageMinutes = (Date.now() - tweetTime.getTime()) / (1000 * 60);
+        
+        if (ageMinutes > 10) {
+          console.log(`ULTIMATE_POSTER: ❌ Most recent tweet is too old (${Math.round(ageMinutes)}m ago)`);
+          return { success: false };
+        }
+        
+        console.log(`ULTIMATE_POSTER: ✅ Found recent tweet (${Math.round(ageMinutes)}m ago)`);
+      }
+      
+      // Extract tweet ID from the tweet
+      const statusLink = await firstTweet.locator('a[href*="/status/"]').first();
+      const href = await statusLink.getAttribute('href');
+      
+      if (href) {
+        const match = href.match(/\/status\/(\d{15,20})/);
+        if (match) {
+          const tweetId = match[1];
+          console.log(`ULTIMATE_POSTER: ✅ Real verification successful - tweet ID: ${tweetId}`);
+          return { success: true, tweetId };
+        }
+      }
+      
+      console.log('ULTIMATE_POSTER: ❌ Could not extract tweet ID from profile');
+      return { success: false };
+      
+    } catch (error: any) {
+      console.log(`ULTIMATE_POSTER: ❌ Real verification error: ${error.message}`);
+      return { success: false };
     }
   }
 
