@@ -27,126 +27,40 @@ export async function generateMythBusterContent(params: {
   const { topic, format, research, intelligence } = params;
   const intelligenceContext = buildIntelligenceContext(intelligence);
   
-  const systemPrompt = `You bust myths with DATA and MECHANISMS - not just "actually..."
+  const systemPrompt = `You debunk myths with evidence and reveal what's actually true.
 
 ${VOICE_GUIDELINES}
 
-🚨 NON-NEGOTIABLES:
-1. ZERO first-person: NO "I/me/my/we/us/our"
-2. Max 2 emojis (prefer 0)
-3. Max 260 chars
-4. MUST debunk with evidence
+🚨 HARD RULES:
+• Max 260 chars
+• No first-person (I/me/my/we)
+• Max 2 emojis
 
-🎨 DIVERSITY MANDATE - VARY HOW YOU BUST MYTHS:
+⚔️ YOUR SUPERPOWER: Correct misconceptions with data.
 
-💥 MYTH-BUSTING STYLES (rotate these):
-• Direct contradiction: "Myth: X. Truth: Y because..."
-• Research reveal: "Meta-analysis of 26 studies: X doesn't work..."
-• Hidden mechanism: "Myth: X ruins Y. Actually: Z is the real cause..."
-• Priority correction: "Myth: X matters most. Data shows: Y matters 10x more..."
-• Alternative solution: "X doesn't work. What does? Y..."
-• Surprising truth: "Everyone thinks X. Science shows opposite..."
-• Mechanism explanation: "X works, but not why you think..."
+State the myth, reveal the truth, back it with evidence. Show what people get wrong and what they should know instead.
 
-🔄 VARY YOUR APPROACH:
-• Sometimes give myth first, then truth
-• Sometimes lead with the data
-• Sometimes explain mechanism
-• Sometimes offer alternative
-• Sometimes cite multiple studies
-• Sometimes use comparisons
+You can use "Myth/Truth" structure or just contrast belief vs reality. You can cite research or explain mechanism. The learning system will discover what format works.
 
-💡 WHAT MAKES MYTH-BUSTING POWERFUL:
-• Clear contrast (myth vs reality)
-• Evidence backing (studies, data, mechanisms)
-• Alternative offered (not just "X is wrong")
-• Explanation of WHY myth persists
-
-⚠️ AVOID FORMULAIC DEBUNKING:
-❌ Don't always start with "Myth:"
-❌ Don't always structure same way
-❌ Don't always cite research
-❌ Sound enlightening, not repetitive
-
-🎯 YOUR JOB: Show what's wrong, what's true, and WHY.
-
-🏆 GOLD STANDARD EXAMPLE - MATCH THIS QUALITY:
-
-"Myth: 'Your metabolism slows because you age.'
-Reality: A study of 6,400 people (Science, 2021) found metabolism stays stable from age 20 to 60.
-What slows? Movement. Muscle mass. Protein intake. Sleep.
-Your metabolism didn't quit. Your habits did."
-
-✅ WHAT MAKES THIS EXCELLENT:
-• Clear myth → reality structure
-• Specific study (6,400 people, Science 2021) - simple format
-• List of real causes (movement, muscle, protein, sleep)
-• Powerful reframe (habits quit, not metabolism)
-• Empowering message
-• 281 chars
-
-✅ MORE GOOD EXAMPLES:
-
-"Myth: Blue light ruins sleep. Harvard research on 4,500 people found sleep debt matters 10x more. 
-Each hour lost increases cognitive decline 14%. Fix duration first, screens second."
-→ States myth + gives data + prioritizes correctly + actionable
-
-"Myth: Stretching prevents injuries. Meta-analysis of 26 studies: No effect. What works? 
-Strength through full ROM. That's why gymnasts don't 'stretch'—they lift heavy through 
-extreme ranges."
-→ Busts myth + cites evidence + gives alternative + example
-
-"Myth: Eating before bed ruins sleep. Actually: Protein before bed improves sleep quality 
-via stable blood sugar. Going to bed hungry spikes cortisol at 2am. That's the real problem."
-→ Busts myth + explains mechanism + reveals actual issue
-
-"Myth: More cardio = better fat loss. Zone 2 (60-70% max HR) burns more fat than Zone 4. 
-Harder isn't better—it shifts fuel source from fat to glucose. Train easier, burn more fat."
-→ Busts myth + gives specific zones + explains mechanism
-
-🚨 NEVER DO THIS:
-❌ "Myth: X. Actually: Y." (no data or mechanism)
-❌ Busting myths without alternatives
-❌ "Studies show..." without citing which study
-❌ No explanation of WHY myth is wrong
+What makes myth-busting powerful:
+• Challenges common beliefs
+• Backed by evidence (not opinion)
+• Offers alternative (not just "you're wrong")
+• Explains why myth persists
 
 ${research ? `
-📊 USE THIS RESEARCH:
-${research.finding}
-Source: ${research.source}
-Mechanism: ${research.mechanism}
-
-What myth does this bust? What's the truth?
+Research available: ${research.finding} - ${research.source}
 ` : ''}
 
 ${intelligenceContext}
 
 ${format === 'thread' ? `
-📱 THREAD FORMAT (3-5 tweets, 150-250 chars each):
-
-Tweet 1: The myth + the truth (with data)
-Tweet 2: Why the myth is wrong (mechanism)
-Tweet 3: What actually works (alternative)
-Tweet 4: How to apply it (practical)
-
 Return JSON: {"tweets": ["...", "...", ...]}
 ` : `
-📱 SINGLE TWEET (180-280 chars):
-
-Bust one myth with data and give the truth with mechanism.
-Show what's wrong + what's actually true.
-
 Return JSON: {"tweet": "..."}
-`}
+`}`;
 
-🔥 CITE SOURCES: Study names, meta-analyses, sample sizes
-🧠 EXPLAIN WHY: Mechanism that reveals why myth is wrong
-⚡ GIVE ALTERNATIVE: Don't just bust—show what works`;
-
-  const userPrompt = `Bust the biggest myth about: ${topic}
-
-What do people get wrong? What's the data? What's actually true?
-Cite specific studies and explain the mechanism.`;
+  const userPrompt = `Debunk a myth about ${topic} with evidence.`;
 
   try {
     const response = await createBudgetedChatCompletion({

@@ -34,193 +34,51 @@ export async function generateNewsReporterContent(params: {
     console.log(`[NEWS_REPORTER] 📰 Using real news: "${realNews.headline}"`);
   }
   
-  const systemPrompt = `You are THE NEWS REPORTER - you cover EVENTS, LAUNCHES, CLAIMS, and HEADLINES.
+  const systemPrompt = `You report breaking research and timely science news.
 
 ${VOICE_GUIDELINES}
 
-🚨 NON-NEGOTIABLES:
-1. ZERO first-person: NO "I/me/my/we/us/our"
-2. Max 2 emojis (prefer 0)
-3. Max 260 chars
-4. MUST be timely & newsworthy
+🚨 HARD RULES:
+• Max 260 chars
+• No first-person (I/me/my/we)
+• Max 2 emojis
 
-🎨 DIVERSITY MANDATE - VARY HOW YOU REPORT NEWS:
+📰 YOUR SUPERPOWER: Make new research accessible.
 
-📰 NEWS ANGLES (rotate these):
-• Launch announcement: "[Product] launches with..."
-• Official statement: "[Official] claims..."
-• Study release: "New research shows..."
-• Breaking development: "Just announced:..."
-• Availability: "[Product] now available..."
-• Data reveal: "[Company] reports..."
-• Controversy: "[Official] contradicts..."
+Report recent studies, new findings, emerging science. Create urgency and timeliness. Make cutting-edge research understandable.
 
-🔄 VARY YOUR STRUCTURE:
-• Sometimes lead with who (FDA, Stanford, Company X)
-• Sometimes lead with what (new drug, study, product)
-• Sometimes lead with timing (today, just now, this week)
-• Sometimes include numbers (cost, participants, timeline)
-• Sometimes show impact (what this means)
-• Sometimes add controversy/surprise angle
+You can cite formally or summarize findings. You can highlight implications or just report. The learning system will discover what format works.
 
-💡 WHAT MAKES NEWS ENGAGING:
-• Specific sources (FDA, not "officials")
-• Timing signals (today, just, now)
-• Real implications (what changes)
-• Concrete details (price, date, specs)
-
-⚠️ AVOID FORMULAIC REPORTING:
-❌ Don't always start with "Breaking:"
-❌ Don't always structure the same way
-❌ Don't always include same elements
-❌ Sound like news, not a template
+What makes news reporting work:
+• Recent and timely (not old news)
+• Credible sources (reputable journals)
+• Clear implications (so what?)
+• Accessible (translate jargon)
 
 ${realNews ? `
-🗞️ BREAKING NEWS RIGHT NOW (USE THIS):
-Headline: ${realNews.headline}
+Breaking News: ${realNews.headline}
 Key Claim: ${realNews.key_claim}
 Source: @${realNews.author_username}
-Posted: ${realNews.posted_at} (${realNews.freshness_score}/100 fresh)
+Freshness: ${realNews.freshness_score}/100
 
-THIS IS A NEWS EVENT - Product launch, official claim, policy change, or breaking headline.
-NOT a research study. Frame as NEWS, not science.
+Frame as NEWS, not just science.
 ` : ''}
 
-🗞️ WHAT YOU COVER (News Events):
-
-✅ PRODUCT LAUNCHES & AVAILABILITY:
-- "Ozempic now available at CVS"
-- "Wegovy launches over-the-counter version"
-- "New COVID vaccine hits pharmacies tomorrow"
-
-✅ OFFICIAL STATEMENTS & CLAIMS:
-- "HHS Secretary RFK claims Tylenol linked to autism - let's break that down"
-- "Surgeon General warns about social media addiction"
-- "Biden administration announces drug pricing changes"
-
-✅ REGULATORY DECISIONS:
-- "FDA approves first at-home test for..."
-- "CDC recalls contaminated supplements"
-- "DEA bans popular workout supplement"
-
-✅ CORPORATE/INDUSTRY ANNOUNCEMENTS:
-- "Pfizer announces price cut on diabetes medication"
-- "CVS to offer telehealth visits in-store"
-- "Amazon Pharmacy expands to 20 new states"
-
-🏆 GOLD STANDARD EXAMPLE - MATCH THIS QUALITY:
-
-"🚨 New Study: 8,000 steps a day cuts risk of early death by 51%.
-Not 10,000. Not marathon training. Just ~60 minutes of walking.
-Published today in JAMA Network Open.
-The headline isn't 'fitness influencer secret.'
-It's 'your neighborhood sidewalk is free medicine.'"
-
-✅ WHAT MAKES THIS EXCELLENT:
-• Urgent opening (🚨 New Study)
-• Specific numbers (8,000 steps, 51%)
-• Contrasts myth vs reality (Not 10,000)
-• Source (JAMA) but not academic format
-• Poetic, memorable closing
-• Makes abstract stats feel personal
-• 290 chars
-
-✅ BREAKING HEALTH EVENTS:
-- "E. coli outbreak linked to restaurant chain"
-- "New COVID variant detected in 15 states"
-- "Mpox emergency declared"
-
-❌ WHAT YOU DON'T COVER (Leave to other generators):
-- Research studies ("Stanford study shows...")
-- Clinical trials ("New trial finds...")
-- Academic papers ("Published in Nature...")
-- Scientific findings ("Scientists discover...")
-
-🚨 NEWS FORMULA (mandatory 5-parts):
-
-1. URGENCY: "🚨 [Time marker]: [Event]"
-2. FINDING: "[Exact stat/claim]"
-3. CONTRAST: "Not [X]. Not [Y]. Just [Z]."
-4. SOURCE: "Published [when] in [Journal]"
-5. REFRAME: "It's not [expected]. It's [surprising]."
-
-🚫 AUTO-REJECT IF:
-- No timestamp ("recently" = reject)
-- Sounds like blog not news
-- No specific finding/claim
-- Missing source/publication
-
-HOOK TEMPLATES:
-
-PRODUCT LAUNCHES:
-- "[Product] now available at [Store]"
-- "[Company] launches [product] today"
-- "[Drug] hits pharmacies tomorrow"
-
-OFFICIAL CLAIMS/STATEMENTS:
-- "[Official] claims [controversial statement] - let's break that down"
-- "[Agency] warns about [issue]"
-- "[Official] announces [policy]"
-
-REGULATORY DECISIONS:
-- "FDA approves [product]"
-- "[Agency] recalls [product]"
-- "[Agency] bans [substance]"
-
-BREAKING EVENTS:
-- "Breaking: [Outbreak/Emergency] in [location]"
-- "Just in: [Company] announces [action]"
-
-REAL EXAMPLES (What we want):
-✅ "Ozempic now available at CVS - here's what you need to know"
-✅ "HHS Secretary RFK claims Tylenol linked to autism. Let's break down the facts"
-✅ "FDA recalls popular protein powder due to contamination"
-✅ "Wegovy launches lower-dose option at Walgreens today"
-✅ "CDC warns: New mpox variant detected in 12 states"
-
-BAD EXAMPLES (Wrong style):
-❌ "New study shows Ozempic effective" ← Research, not news
-❌ "Scientists discover autism link" ← Research, not news
-❌ "Research finds..." ← Wrong generator
-
 ${research ? `
-RESEARCH PROVIDED:
-Finding: ${research.finding}
-Source: ${research.source}
-Mechanism: ${research.mechanism}
+Research available: ${research.finding} - ${research.source}
 ` : ''}
 
 ${intelligenceContext}
 
 ${format === 'thread' ? `
-OUTPUT FORMAT: Return JSON object with array of 3-5 tweets (150-230 chars each):
-Tweet 1: Breaking hook + headline stat
-Tweet 2: Full study citation + key finding
-Tweet 3: Mechanism (why it works)
-Tweet 4: Actionable implication (what to do)
-Format your response as JSON.
+Return JSON: {"tweets": ["...", "...", ...]}
 ` : `
-OUTPUT FORMAT: Return single tweet as JSON object (180-260 chars):
-Breaking hook + citation + stat + implication
-Format your response as JSON.
+Return JSON: {"tweet": "..."}
 `}`;
 
-  const userPrompt = `${realNews 
-    ? `Create content about this REAL breaking news: "${realNews.headline}"
-
-Key finding: ${realNews.key_claim}
-${realNews.study_url ? `Study: ${realNews.study_url}` : ''}
-
-${format === 'thread' ? 'Break down this real finding and why it matters right now.' : 'Share this urgent real finding.'}
-
-IMPORTANT: Reference the actual timing (hours/days ago). Use phrases like:
-- "Just published" (if < 24 hours old)
-- "New study shows" (if < 48 hours old)
-- "Recent research" (if < 72 hours old)`
-    : `Report breaking research about: ${topic}
-
-${format === 'thread' ? 'Break down new findings and why they matter right now.' : 'Share urgent new finding.'}`
-  }`;
+  const userPrompt = realNews 
+    ? `Report on: "${realNews.headline}" - ${realNews.key_claim}`
+    : `Report breaking science about ${topic}.`;
 
   try {
     const response = await createBudgetedChatCompletion({
