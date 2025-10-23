@@ -113,13 +113,14 @@ export class ContentQualityController {
     );
 
     // Posting decision
-    // ADAPTIVE THRESHOLDS: Lowered to 50-55 to unblock content generation pipeline
-    // Will tighten as we gather engagement data
-    const MIN_OVERALL = process.env.ENABLE_MULTI_OPTION === 'true' ? 55 : 50;
-    const MIN_COMPLETENESS = process.env.ENABLE_MULTI_OPTION === 'true' ? 60 : 55;
-    const MIN_ENGAGEMENT = process.env.ENABLE_MULTI_OPTION === 'true' ? 55 : 50;
-    const MIN_AUTHENTICITY = process.env.ENABLE_MULTI_OPTION === 'true' ? 55 : 50;
+    // ✅ IMPROVED THRESHOLDS: Component-based validation ensures quality
+    // Each component must pass independently to catch low-quality content
+    const MIN_OVERALL = process.env.ENABLE_MULTI_OPTION === 'true' ? 65 : 60;
+    const MIN_COMPLETENESS = process.env.ENABLE_MULTI_OPTION === 'true' ? 70 : 65;
+    const MIN_ENGAGEMENT = process.env.ENABLE_MULTI_OPTION === 'true' ? 60 : 55;
+    const MIN_AUTHENTICITY = process.env.ENABLE_MULTI_OPTION === 'true' ? 65 : 60;
     
+    // ✅ Component-based validation: ALL must pass
     score.shouldPost = score.overall >= MIN_OVERALL && 
                        score.completeness >= MIN_COMPLETENESS &&
                        score.engagement >= MIN_ENGAGEMENT &&

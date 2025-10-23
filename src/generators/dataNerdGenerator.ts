@@ -192,7 +192,7 @@ Make the statistics actually interesting.`;
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.7,
-      max_tokens: format === 'thread' ? 600 : 200,
+      max_tokens: format === 'thread' ? 600 : 150, // ✅ Reduced to stay under 280 chars
       response_format: { type: 'json_object' }
     }, { purpose: 'data_nerd_content_generation' });
 
