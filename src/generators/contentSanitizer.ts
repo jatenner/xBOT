@@ -17,6 +17,8 @@ export interface SanitizationResult {
   specificity_score: number;
   specificity_matches: string[];
   auto_reject: boolean;
+  auto_fixed: boolean; // NEW: indicates if content was auto-fixed
+  original_content?: string; // NEW: stores original content before fixes
 }
 
 export interface Violation {
@@ -27,12 +29,15 @@ export interface Violation {
 }
 
 /**
- * Main sanitization function
+ * Main sanitization function with AUTO-FIXING
  * Returns detailed analysis of content quality and violations
+ * NOW: Automatically fixes simple issues like emojis and length
  */
-export function sanitizeContent(content: string | string[]): SanitizationResult {
+export function sanitizeContent(content: string | string[], attemptAutoFix: boolean = true): SanitizationResult {
   // Handle both single tweets and threads
   let fullContent = Array.isArray(content) ? content.join(' ') : content;
+  const originalContent = fullContent;
+  let autoFixed = false;
   
   // STRIP ACADEMIC CITATIONS FROM START (boring hooks)
   fullContent = stripAcademicHooks(fullContent);
@@ -91,15 +96,49 @@ export function sanitizeContent(content: string | string[]): SanitizationResult 
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // CHECK 5: EXCESSIVE EMOJIS (MEDIUM)
+  // CHECK 5: EXCESSIVE EMOJIS (MEDIUM) - WITH AUTO-FIX
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const emojiCount = countEmojis(fullContent);
   if (emojiCount > 2) {
-    violations.push({
-      type: 'excessive_emojis',
-      severity: 'medium',
-      detected: `${emojiCount} emojis found (max 2 allowed)`
-    });
+    if (attemptAutoFix) {
+      // AUTO-FIX: Remove excess emojis
+      fullContent = removeExcessEmojis(fullContent, 2);
+      autoFixed = true;
+      console.log(`   🔧 AUTO-FIXED: Removed ${emojiCount - 2} excess emoji(s)`);
+    } else {
+      violations.push({
+        type: 'excessive_emojis',
+        severity: 'medium',
+        detected: `${emojiCount} emojis found (max 2 allowed)`
+      });
+    }
+  }
+  
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // CHECK 6: LENGTH VIOLATIONS (CRITICAL) - WITH AUTO-FIX
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (fullContent.length > 280) {
+    if (attemptAutoFix && fullContent.length <= 300) {
+      // AUTO-FIX: Intelligently trim content (only if slightly over)
+      const trimmed = intelligentTrim(fullContent, 270);
+      if (trimmed.length <= 270) {
+        fullContent = trimmed;
+        autoFixed = true;
+        console.log(`   🔧 AUTO-FIXED: Trimmed content from ${originalContent.length} to ${fullContent.length} chars`);
+      } else {
+        violations.push({
+          type: 'incomplete_sentence',
+          severity: 'critical',
+          detected: `Content too long: ${fullContent.length} chars (max 280, prefer 250)`
+        });
+      }
+    } else {
+      violations.push({
+        type: 'incomplete_sentence',
+        severity: 'critical',
+        detected: `Content too long: ${fullContent.length} chars (max 280, prefer 250)`
+      });
+    }
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -116,7 +155,9 @@ export function sanitizeContent(content: string | string[]): SanitizationResult 
     violations,
     specificity_score: specificityCheck.score,
     specificity_matches: specificityCheck.matches,
-    auto_reject: autoReject
+    auto_reject: autoReject,
+    auto_fixed: autoFixed,
+    original_content: autoFixed ? originalContent : undefined
   };
 }
 
@@ -128,6 +169,58 @@ function countEmojis(content: string): number {
   const emojiRegex = /[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F900}-\u{1F9FF}]|[\u{1FA00}-\u{1FA6F}]|[\u{1FA70}-\u{1FAFF}]|[\u{FE00}-\u{FE0F}]|[\u{1F200}-\u{1F2FF}]/gu;
   const matches = content.match(emojiRegex);
   return matches ? matches.length : 0;
+}
+
+/**
+ * 🔧 AUTO-FIX: Remove excess emojis, keeping only the first N
+ */
+function removeExcessEmojis(content: string, maxEmojis: number): string {
+  const emojiRegex = /[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F900}-\u{1F9FF}]|[\u{1FA00}-\u{1FA6F}]|[\u{1FA70}-\u{1FAFF}]|[\u{FE00}-\u{FE0F}]|[\u{1F200}-\u{1F2FF}]/gu;
+  
+  let emojiCount = 0;
+  return content.replace(emojiRegex, (emoji) => {
+    emojiCount++;
+    return emojiCount <= maxEmojis ? emoji : '';
+  }).replace(/\s{2,}/g, ' ').trim(); // Clean up double spaces
+}
+
+/**
+ * 🔧 AUTO-FIX: Intelligently trim content to target length
+ * Preserves complete sentences and doesn't cut off mid-word
+ */
+function intelligentTrim(content: string, targetLength: number): string {
+  if (content.length <= targetLength) return content;
+  
+  // Strategy 1: Try removing the last sentence if multiple sentences exist
+  const sentences = content.split(/([.!?]+\s+)/);
+  if (sentences.length > 2) {
+    // Remove last sentence
+    const withoutLast = sentences.slice(0, -2).join('');
+    if (withoutLast.length <= targetLength && withoutLast.length > targetLength * 0.7) {
+      return withoutLast.trim();
+    }
+  }
+  
+  // Strategy 2: Trim to last complete sentence before target
+  const trimmed = content.substring(0, targetLength);
+  const lastPeriod = Math.max(
+    trimmed.lastIndexOf('.'),
+    trimmed.lastIndexOf('!'),
+    trimmed.lastIndexOf('?')
+  );
+  
+  if (lastPeriod > targetLength * 0.7) {
+    return content.substring(0, lastPeriod + 1).trim();
+  }
+  
+  // Strategy 3: Trim to last complete word before target
+  const lastSpace = trimmed.lastIndexOf(' ');
+  if (lastSpace > targetLength * 0.8) {
+    return content.substring(0, lastSpace).trim() + '.';
+  }
+  
+  // Fallback: Hard cut at target (not ideal but better than rejection)
+  return content.substring(0, targetLength - 3).trim() + '...';
 }
 
 /**
@@ -304,7 +397,8 @@ function extractContext(content: string, phrase: string, contextLength: number =
  */
 export function formatViolationReport(result: SanitizationResult): string {
   if (result.passed) {
-    return `✅ SANITIZATION_PASSED (specificity: ${result.specificity_score})`;
+    const autoFixMsg = result.auto_fixed ? ' (AUTO-FIXED ✓)' : '';
+    return `✅ SANITIZATION_PASSED${autoFixMsg} (specificity: ${result.specificity_score})`;
   }
   
   const lines: string[] = [];
@@ -319,6 +413,10 @@ export function formatViolationReport(result: SanitizationResult): string {
     if (violation.location) {
       lines.push(`      Context: ${violation.location}`);
     }
+  }
+  
+  if (result.auto_fixed) {
+    lines.push(`   🔧 Content was AUTO-FIXED (original length: ${result.original_content?.length || 0})`);
   }
   
   if (result.specificity_score > 0) {
