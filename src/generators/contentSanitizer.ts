@@ -73,8 +73,10 @@ export function sanitizeContent(content: string | string[], attemptAutoFix: bool
     });
   }
   
-  // Check for cut-off words
-  if (/\b\w{4,}\s*$/.test(fullContent) && !fullContent.match(/[.!?]$/)) {
+  // Check for cut-off words (RELAXED: only flag if truly incomplete, not just missing punctuation)
+  // Removed overly strict check - tweets often end without periods and that's fine!
+  // Only flag if content ends with "and" "or" "but" "because" etc.
+  if (/\b(and|or|but|because|however|although|if|when|while|since)\s*$/i.test(fullContent)) {
     violations.push({
       type: 'incomplete_sentence',
       severity: 'medium',
