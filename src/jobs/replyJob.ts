@@ -406,7 +406,7 @@ async function queueReply(reply: any): Promise<void> {
     target_tweet_id: reply.target_tweet_id,
     target_username: reply.target_username,
     target_tweet_content: reply.target_tweet_content || '',
-    generator_used: reply.generator_used || 'unknown',
+    generator_name: reply.generator_used || 'unknown',
     // ❌ REMOVED: estimated_reach - column doesn't exist
     bandit_arm: `strategic_reply_${reply.generator_used || 'unknown'}`,
     created_at: new Date().toISOString()
