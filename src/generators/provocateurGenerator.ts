@@ -181,7 +181,7 @@ MUST answer the question - explain the mechanism.`;
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.9,
-      max_tokens: format === 'thread' ? 600 : 100,
+      max_tokens: format === 'thread' ? 600 : 200,
       response_format: { type: 'json_object' }
     }, { purpose: 'provocateur_content_generation' });
 

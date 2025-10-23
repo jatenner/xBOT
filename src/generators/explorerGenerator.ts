@@ -162,7 +162,7 @@ Explain the mechanism that makes it fascinating.`;
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.9,
-      max_tokens: format === 'thread' ? 600 : 100,
+      max_tokens: format === 'thread' ? 600 : 200,
       response_format: { type: 'json_object' }
     }, { purpose: 'explorer_content_generation' });
 

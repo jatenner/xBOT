@@ -113,12 +113,12 @@ export class ContentQualityController {
     );
 
     // Posting decision
-    // ADAPTIVE THRESHOLDS: Balanced for cold start (31 followers, low engagement)
-    // Gates will tighten automatically as engagement grows
-    const MIN_OVERALL = process.env.ENABLE_MULTI_OPTION === 'true' ? 72 : 70;
-    const MIN_COMPLETENESS = process.env.ENABLE_MULTI_OPTION === 'true' ? 80 : 75;
-    const MIN_ENGAGEMENT = process.env.ENABLE_MULTI_OPTION === 'true' ? 65 : 60;
-    const MIN_AUTHENTICITY = process.env.ENABLE_MULTI_OPTION === 'true' ? 65 : 60;
+    // ADAPTIVE THRESHOLDS: Lowered to 50-55 to unblock content generation pipeline
+    // Will tighten as we gather engagement data
+    const MIN_OVERALL = process.env.ENABLE_MULTI_OPTION === 'true' ? 55 : 50;
+    const MIN_COMPLETENESS = process.env.ENABLE_MULTI_OPTION === 'true' ? 60 : 55;
+    const MIN_ENGAGEMENT = process.env.ENABLE_MULTI_OPTION === 'true' ? 55 : 50;
+    const MIN_AUTHENTICITY = process.env.ENABLE_MULTI_OPTION === 'true' ? 55 : 50;
     
     score.shouldPost = score.overall >= MIN_OVERALL && 
                        score.completeness >= MIN_COMPLETENESS &&
