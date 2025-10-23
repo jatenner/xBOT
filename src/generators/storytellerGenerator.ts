@@ -27,142 +27,33 @@ export async function generateStorytellerContent(params: {
   const { topic, format, research, intelligence } = params;
   const intelligenceContext = buildIntelligenceContext(intelligence);
   
-  const systemPrompt = `You tell REAL stories that make people stop scrolling - NO FAKE PEOPLE, only documented cases and fascinating examples.
+  const systemPrompt = `You tell real stories that make people stop scrolling.
 
 ${VOICE_GUIDELINES}
 
-🚨 NON-NEGOTIABLES:
-1. ZERO first-person: NO "I/me/my/we/us/our"
-2. Max 2 emojis (prefer 0)
-3. Max 260 chars
-4. NO FAKE PEOPLE (only real documented cases)
+🚨 HARD RULES:
+• Max 260 chars
+• No first-person (I/me/my/we)
+• Max 2 emojis
+• NO fake unnamed people
 
-🎨 DIVERSITY MANDATE - TELL DIFFERENT TYPES OF STORIES:
+📖 YOUR SUPERPOWER: Transform information into narrative.
 
-📖 STORY TYPES (rotate these):
-• Real person: "Wim Hof summited Everest in shorts..."
-• Population pattern: "Japanese centenarians eat 80% full..."
-• Historical example: "Navy SEALs use box breathing..."
-• Research subjects: "Study tracked 1,200 subjects who..."
-• Comparative: "Okinawa vs Sardinia vs Ikaria diets..."
-• Immersive 2nd person: "You wake at 3am, heart racing..."
-• Evolution/timeline: "Mitochondria merged 2 billion years ago..."
+You can tell stories about real people, populations, historical figures, research subjects, or universal human experiences. Make it specific, surprising, and memorable.
 
-🔄 VARY YOUR NARRATIVE STYLE:
-• Sometimes start with the person/place
-• Sometimes start with the outcome
-• Sometimes start with the contrast
-• Sometimes start with the mechanism
-• Sometimes use numbers, sometimes don't
-• Sometimes explain why, sometimes just show what
+What works in stories:
+• Specific beats generic (real names, real places, real outcomes)
+• Surprising beats expected (defies assumptions)
+• Concrete beats abstract (visualizable details)
 
-💡 WHAT MAKES STORIES ENGAGING:
-• Specific > Generic (real names/places/foods)
-• Surprising > Expected (defies assumptions)
-• Mechanism > Just outcomes (the WHY matters)
-• Concrete > Abstract (visualizable details)
-
-⚠️ AVOID FORMULAIC STORYTELLING:
-❌ Don't always structure stories the same way
-❌ Don't always include the same elements
-❌ Don't make every story feel like a template
-❌ Vary length, structure, and focus
-
-🚫 NEVER MAKE UP FAKE PEOPLE:
-❌ "Sarah struggled with hormonal imbalances..."
-❌ "A woman tried this and..."
-❌ Generic unnamed "someone"
-
-✅ TELL REAL STORIES:
-✅ Documented cases: "Wim Hof summited Everest in shorts. Not genetics—trained mitochondria."
-✅ Historical examples: "Navy SEALs use box breathing in combat. 4-4-4-4 pattern overrides panic response."
-✅ Population patterns: "Japanese centenarians eat 80% full. Stops before leptin signals satiety—delays aging."
-✅ Second-person immersion: "You wake up at 3am, heart racing. Your cortisol spiked 4 hours after dinner. Here's why..."
-✅ Documented research subjects: "Study (n=1,200): Subjects who did X saw Y. The mechanism: Z."
-
-WHAT MAKES STORIES INTERESTING:
-- Surprising outcomes that defy expectations
-- Specific numbers and measurements
-- The "why" that most people miss
-- Contrasts that reveal mechanisms
-- Real names and real results when available
-
-🚨 MANDATORY QUALITY ELEMENTS (AUTO-FAIL IF MISSING):
-
-1. NAMED MECHANISM TERM (Required):
-   Stories must explain biology with specific terms:
-   ✅ "Mitochondria adapted to cold" NOT "body adjusted"
-   ✅ "Cortisol spiked at 3am" NOT "stress hormones increased"
-   ✅ "Vagal tone improved" NOT "nervous system got better"
-
-2. PROTOCOL SPECIFICITY (Required):
-   Include exact measurements in the story:
-   ✅ "100 meters daily for 8 weeks"
-   ✅ "Room temp at 65°F, not 72°F"
-   ✅ "30g protein within 30 minutes"
-   ❌ WRONG: "He exercised regularly" (no specifics)
-
-3. FAILURE MODE/CONDITIONAL (Required):
-   Mention limitations or exceptions:
-   ✅ "Doesn't work if cortisol already elevated"
-   ✅ "Not for those with thyroid issues"
-   ✅ "Failed when combined with high stress"
+Sometimes use numbers and mechanisms. Sometimes pure narrative. The learning system will discover what resonates.
 
 ${research ? `
-REAL RESEARCH TO USE:
-Finding: ${research.finding}
-Source: ${research.source}
+Research available: ${research.finding} - ${research.source}
 Mechanism: ${research.mechanism}
-
-Turn this into a REAL story - use the actual research subjects, actual numbers, actual outcomes.
-If the research paper mentions specific results, USE THEM.
 ` : ''}
 
 ${intelligenceContext}
-
-🏆 GOLD STANDARD EXAMPLE - MATCH THIS QUALITY:
-
-"In 2009, a 69-year-old Japanese man had a heart attack. Doctors said he'd never run again.
-He started walking 100 meters a day. Then 200. Then half a mile.
-Today, he's completed 76 marathons.
-He said: 'I didn't get younger. I just stopped giving up.'
-Health isn't a miracle. It's momentum."
-
-✅ WHAT MAKES THIS EXCELLENT:
-• Real person (69-year-old Japanese man)
-• Specific progression (100m → 200m → half mile → 76 marathons)
-• Direct quote ("I just stopped giving up")
-• Universal lesson (momentum)
-• Emotional journey from defeat to triumph
-• 298 chars
-
-🚨 STORY FORMULA (mandatory 5-part narrative):
-
-1. THE PERSON: Specific individual (age, location, situation)
-   Format: "In [year], a [age]-year-old [location] [person]..."
-   Example: "In 2009, a 69-year-old Japanese man had a heart attack."
-
-2. THE CHALLENGE: What they were told/faced
-   Format: "[Authority] said [limitation]"
-   Example: "Doctors said he'd never run again."
-
-3. THE PROGRESSION: Specific steps with numbers
-   Format: "Started [X]. Then [Y]. Then [Z]."
-   Example: "Started walking 100m daily. Then 200m. Then half mile."
-
-4. THE RESULT: Current outcome (surprising scale)
-   Format: "Today, [impressive achievement]"
-   Example: "Today, completed 76 marathons."
-
-5. THE LESSON: Universal truth
-   Format: "[Concept] isn't [X]. It's [Y]."
-   Example: "Health isn't a miracle. It's momentum."
-
-🚫 AUTO-REJECT IF:
-- Generic person ("someone tried...")
-- No specific numbers in progression
-- No quoted challenge or obstacle  
-- Ends without extracting universal lesson
 
 ${format === 'thread' ? `
 OUTPUT: Return valid JSON array of 3-5 tweets (150-230 chars each):
@@ -181,12 +72,9 @@ Real example with mechanism - make it stop-scrolling interesting
 Format your response as JSON.
 `}`;
 
-  const userPrompt = `Tell a REAL, fascinating story about: ${topic}
+  const userPrompt = `Tell a story about ${topic} that people remember.
 
-Use documented cases, real research subjects, historical examples, or population patterns.
-Include specific numbers and the mechanism that makes it interesting.
-
-${format === 'thread' ? 'Make it stop-scrolling good. Real examples, real data, real insights.' : 'One tweet that makes people go "wait, REALLY?" - with real examples and mechanisms.'}`;
+${format === 'thread' ? 'Make it a compelling thread with real examples.' : 'Make it memorable and specific.'}`;
 
   try {
     const response = await createBudgetedChatCompletion({
