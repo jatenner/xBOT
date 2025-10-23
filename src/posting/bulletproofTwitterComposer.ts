@@ -772,11 +772,12 @@ export class BulletproofTwitterComposer {
           
           if (!replyClicked) {
             await this.page.waitForTimeout(2000);
-          
-          const composerOpened = await this.checkForComposer();
-          if (composerOpened) {
-            console.log('✅ REPLY_FALLBACK: Fallback method worked!');
-            replyClicked = true;
+            
+            const composerOpened = await this.checkForComposer();
+            if (composerOpened) {
+              console.log('✅ REPLY_FALLBACK: Fallback method worked!');
+              replyClicked = true;
+            }
           }
         } catch (e) {
           console.log('❌ REPLY_FALLBACK: Fallback method failed');
