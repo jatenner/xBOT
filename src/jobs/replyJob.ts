@@ -405,7 +405,7 @@ async function queueReply(reply: any): Promise<void> {
     topic_cluster: reply.topic || 'health',
     target_tweet_id: reply.target_tweet_id,
     target_username: reply.target_username,
-    target_tweet_content: reply.target_tweet_content || '',
+    // ❌ REMOVED: target_tweet_content - column doesn't exist in schema
     generator_name: reply.generator_used || 'unknown',
     // ❌ REMOVED: estimated_reach - column doesn't exist
     bandit_arm: `strategic_reply_${reply.generator_used || 'unknown'}`,
