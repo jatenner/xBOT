@@ -575,7 +575,10 @@ export class UnifiedContentEngine {
       // ═══════════════════════════════════════════════════════════
       // STEP 7.5: VIRAL PROBABILITY GATE (adaptive threshold)
       // ═══════════════════════════════════════════════════════════
-      const MIN_VIRAL_PROBABILITY = useMultiOption ? 0.25 : 0.15; // Higher for multi-option (better quality)
+      // ✅ LOWERED VIRAL THRESHOLD: Match reality while collecting data
+      // Was 25%/15%, now 12%/10% to match actual performance
+      // Will retrain model once we have 100+ posts with real engagement data
+      const MIN_VIRAL_PROBABILITY = useMultiOption ? 0.12 : 0.10;
       
       if (prediction.viralProbability < MIN_VIRAL_PROBABILITY && !request.forceGeneration) {
         console.log(`❌ VIRAL_GATE_FAILED: ${(prediction.viralProbability * 100).toFixed(1)}% < ${(MIN_VIRAL_PROBABILITY * 100).toFixed(0)}% threshold`);

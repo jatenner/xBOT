@@ -230,11 +230,26 @@ export function validateContentSmart(
   // DETERMINE PASS/FAIL
   // ============================================================================
   
-  // Minimum thresholds (LOWERED to unblock content generation)
-  const minOverall = 50; // Lowered from 72 to allow content through
-  const minCompleteness = generatorName === 'storyteller' || generatorName === 'philosopher' ? 50 : 55;
-  const minEngagement = 50;
-  const minAuthenticity = 50;
+  // ✅ IMPROVED THRESHOLDS: Generator-specific standards ensure quality
+  // Each generator type has customized requirements
+  const minOverall = 60; // Raised from 50 for better quality
+  const minCompleteness = (() => {
+    // Storyteller & Philosopher: Don't need data/citations
+    if (generatorName === 'storyteller' || generatorName === 'philosopher') return 60;
+    // Data Nerd: Needs high completeness (data + citations)
+    if (generatorName === 'dataNerd') return 75;
+    // Others: Standard requirement
+    return 70;
+  })();
+  const minEngagement = (() => {
+    // Provocateur: Engagement is critical
+    if (generatorName === 'provocateur') return 70;
+    // Storyteller: Engagement matters most
+    if (generatorName === 'storyteller') return 70;
+    // Others: Standard requirement
+    return 60;
+  })();
+  const minAuthenticity = 60; // Universal standard
   
   const passed = 
     score >= minOverall &&

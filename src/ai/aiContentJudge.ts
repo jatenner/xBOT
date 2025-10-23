@@ -76,7 +76,8 @@ export class AIContentJudge {
             }
           ],
           temperature: 0.3, // Lower temperature for consistent judgment
-          max_tokens: 800
+          max_tokens: 800,
+          response_format: { type: "json_object" } // ✅ FIX #3: Force JSON output
         },
         {
           purpose: 'ai_content_judge'
@@ -117,13 +118,16 @@ export class AIContentJudge {
    */
   private buildJudgmentPrompt(options: ContentOption[]): string {
     const optionsText = options.map((opt, idx) => `
-OPTION ${idx + 1} (${opt.generator_name}):
+OPTION ${idx} (${opt.generator_name}):
 ${opt.raw_content}
 `).join('\n---\n');
     
     return `Evaluate these ${options.length} content options and select the BEST one for maximum engagement:
 
 ${optionsText}
+
+CRITICAL: There are exactly ${options.length} options indexed 0 to ${options.length - 1}.
+You MUST return winner_index between 0 and ${options.length - 1} (inclusive).
 
 Analyze each option based on:
 1. Viral Potential (1-10) - Will people share this?
@@ -134,13 +138,13 @@ Analyze each option based on:
 
 Return ONLY a JSON object (no markdown, no code blocks):
 {
-  "winner_index": <0-based index of best option>,
+  "winner_index": <MUST be 0 to ${options.length - 1}>,
   "overall_score": <1-10>,
   "viral_probability": <0.0-1.0>,
   "reasoning": "<2-3 sentences explaining why this option wins>",
   "strengths": ["<strength 1>", "<strength 2>", "<strength 3>"],
   "improvements": ["<optional improvement 1>", "<optional improvement 2>"],
-  "runner_up_index": <index of second best>,
+  "runner_up_index": <MUST be 0 to ${options.length - 1}, different from winner>,
   "runner_up_reason": "<why second best lost>"
 }`;
   }
@@ -198,11 +202,32 @@ Be HARSH but FAIR. Pick the winner that will actually get engagement, not just t
         }
       }
       
-      const winnerIndex = parsed.winner_index || 0;
+      // ✅ FIX #1: Bounds checking for winner index
+      let winnerIndex = parsed.winner_index || 0;
+      
+      // Validate and clamp winner index to valid range
+      if (typeof winnerIndex !== 'number' || winnerIndex < 0 || winnerIndex >= options.length) {
+        console.warn(`⚠️ AI_JUDGE: Invalid winner index ${winnerIndex} (valid: 0-${options.length - 1})`);
+        console.warn(`⚠️ AI_JUDGE: Clamping to valid range...`);
+        winnerIndex = Math.max(0, Math.min(winnerIndex, options.length - 1));
+      }
+      
       const winner = options[winnerIndex];
       
       if (!winner) {
         throw new Error(`Invalid winner index: ${winnerIndex}`);
+      }
+      
+      // ✅ FIX #2: Validate runner-up index
+      let runnerUp = undefined;
+      if (parsed.runner_up_index !== undefined) {
+        const runnerUpIndex = parsed.runner_up_index;
+        if (runnerUpIndex >= 0 && runnerUpIndex < options.length && runnerUpIndex !== winnerIndex) {
+          runnerUp = {
+            generator: options[runnerUpIndex]?.generator_name || 'unknown',
+            reason: parsed.runner_up_reason || 'Close second'
+          };
+        }
       }
       
       return {
@@ -213,10 +238,7 @@ Be HARSH but FAIR. Pick the winner that will actually get engagement, not just t
         reasoning: parsed.reasoning || 'Selected as best option',
         strengths: parsed.strengths || [],
         improvements: parsed.improvements || [],
-        runner_up: parsed.runner_up_index !== undefined ? {
-          generator: options[parsed.runner_up_index]?.generator_name || 'unknown',
-          reason: parsed.runner_up_reason || 'Close second'
-        } : undefined
+        runner_up: runnerUp
       };
       
     } catch (error: any) {
