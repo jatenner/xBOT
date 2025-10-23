@@ -684,11 +684,11 @@ export class BulletproofTwitterComposer {
         
         // Focus the tweet article first to ensure keyboard event is captured
         await this.page.locator('article').first().click();
-        await this.page.waitForTimeout(500);
+        await this.page.waitForTimeout(1000);
         
         // Press 'r' to open reply composer
         await this.page.keyboard.press('r');
-        await this.page.waitForTimeout(3000); // Increased wait for Twitter UI to load
+        await this.page.waitForTimeout(5000); // Longer wait for Twitter UI to load
         
         // Check if reply composer opened
         const composerVisible = await this.checkForComposer();
@@ -702,7 +702,46 @@ export class BulletproofTwitterComposer {
         console.log(`⚠️ REPLY_SHORTCUT: Keyboard shortcut failed - ${(e as Error).message}`);
       }
       
-      // If shortcut didn't work, try button selectors
+      // If shortcut didn't work, try aggressive approach first
+      if (!replyClicked) {
+        // Try a more aggressive approach - look for any clickable element in the tweet
+        try {
+          console.log('🔍 REPLY_AGGRESSIVE: Trying to find any clickable element in tweet...');
+          
+          // Get all clickable elements in the article
+          const clickableElements = await this.page.locator('article').first().locator('button, [role="button"], [tabindex="0"]').all();
+          
+          console.log(`🔍 REPLY_AGGRESSIVE: Found ${clickableElements.length} clickable elements`);
+          
+          for (let i = 0; i < clickableElements.length; i++) {
+            try {
+              const element = clickableElements[i];
+              const isVisible = await element.isVisible({ timeout: 1000 });
+              
+              if (isVisible) {
+                console.log(`🔍 REPLY_AGGRESSIVE: Trying element ${i + 1}/${clickableElements.length}`);
+                
+                // Try clicking the element
+                await element.click({ timeout: 3000 });
+                await this.page.waitForTimeout(2000);
+                
+                const composerOpened = await this.checkForComposer();
+                if (composerOpened) {
+                  console.log(`✅ REPLY_AGGRESSIVE: Element ${i + 1} worked!`);
+                  replyClicked = true;
+                  break;
+                }
+              }
+            } catch (e) {
+              // Continue to next element
+            }
+          }
+        } catch (e) {
+          console.log(`❌ REPLY_AGGRESSIVE: Failed - ${(e as Error).message}`);
+        }
+      }
+      
+      // If aggressive approach didn't work, try original selectors
       if (!replyClicked) {
         for (const selector of replySelectors) {
           try {
