@@ -13,11 +13,12 @@ export type GeneratorType =
   | 'myth_buster'
   | 'news_reporter'
   | 'philosopher'
-  | 'provocateur';
+  | 'provocateur'
+  | 'cultural_bridge';
 
 export type FormatType = 'single' | 'thread' | 'auto';
 
-// GENERATOR POOL - All 10 voices with their characteristics
+// GENERATOR POOL - All 12 voices with their characteristics
 export const GENERATOR_POOL: Array<{
   generator: GeneratorType;
   weight: number; // Initial weight (adjusted by learning)
@@ -33,7 +34,8 @@ export const GENERATOR_POOL: Array<{
   { generator: 'myth_buster', weight: 1.0, preferredFormats: ['single', 'thread'], description: 'Debunks myths with evidence' },
   { generator: 'news_reporter', weight: 1.0, preferredFormats: ['single'], description: 'Breaking research news' },
   { generator: 'philosopher', weight: 1.0, preferredFormats: ['thread'], description: 'Deep existential thinking' },
-  { generator: 'provocateur', weight: 1.0, preferredFormats: ['single', 'thread'], description: 'Hot takes and debates' }
+  { generator: 'provocateur', weight: 1.0, preferredFormats: ['single', 'thread'], description: 'Hot takes and debates' },
+  { generator: 'cultural_bridge', weight: 1.0, preferredFormats: ['single', 'thread'], description: 'Bridges science with culture, books, philosophy, history' }
 ];
 
 // WEEKLY ROTATION - Different emphasis each week, but not rigid
@@ -48,6 +50,7 @@ export class PersonalityScheduler {
   private static instance: PersonalityScheduler;
   private learningWeights: Record<GeneratorType, number> = {
     'contrarian': 1.0,
+    'cultural_bridge': 1.0,
     'data_nerd': 1.0,
     'storyteller': 1.0,
     'coach': 1.0,

@@ -30,6 +30,7 @@ import { generateThoughtLeaderContent } from '../generators/thoughtLeaderGenerat
 import { generateContrarianContent } from '../generators/contrarianGenerator';
 import { generateExplorerContent } from '../generators/explorerGenerator';
 import { generatePhilosopherContent } from '../generators/philosopherGenerator';
+import { generateCulturalBridgeContent } from '../generators/culturalBridgeGenerator';
 import { multiOptionGenerator, ContentOption } from '../ai/multiOptionGenerator';
 import { aiContentJudge } from '../ai/aiContentJudge';
 import { aiContentRefiner } from '../ai/aiContentRefiner';
@@ -1110,6 +1111,20 @@ export class UnifiedContentEngine {
         
         return {
           generatorName: 'Philosopher',
+          content: result.content,
+          confidence: result.confidence
+        };
+      }
+      
+      if (selectedGenerator === 'cultural_bridge') {
+        const result = await generateCulturalBridgeContent({
+          topic: params.topic,
+          format: params.format,
+          intelligence: params.intelligence
+        });
+        
+        return {
+          generatorName: 'Cultural Bridge',
           content: result.content,
           confidence: result.confidence
         };
