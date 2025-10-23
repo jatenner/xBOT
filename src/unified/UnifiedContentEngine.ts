@@ -391,7 +391,7 @@ export class UnifiedContentEngine {
             content: rawContent,
             specificityScore: sanitization.specificity_score,
             specificityMatches: sanitization.specificity_matches,
-            actionTaken: shouldRetry(sanitization) ? 'retried' : 'rejected_early',
+            actionTaken: shouldRetry(sanitization) ? 'retried' : 'rejected',
             retrySucceeded: undefined // Will be updated if retry succeeds
           }).catch(err => console.error('Failed to track violation:', err));
         }
@@ -510,7 +510,7 @@ export class UnifiedContentEngine {
         const { enrichContent } = await import('../generators/contentEnricher');
         
         const enrichmentResult = await enrichContent({
-          content: content,
+          content: finalContent,
           topic: request.topic || 'health optimization',
           format: request.format || 'single',
           force: false // Use 60% probability
