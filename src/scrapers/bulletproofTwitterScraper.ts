@@ -69,18 +69,23 @@ const SELECTORS = {
     '[aria-label*="bookmark"] span'
   ],
   views: [
-    // 🔥 UPDATED 2025-10-22: Twitter changed HTML structure for views
-    // Strategy 1: Look for aria-label with "View" text (most reliable for 2024-2025)
-    'a[aria-label*="View" i][href$="/analytics"]',
-    // Strategy 2: Look for the analytics link by href pattern
-    'a[href*="/analytics"]:has(span)',
-    // Strategy 3: Look near engagement group (likes, retweets, replies area)
-    'div[role="group"] ~ a[href$="/analytics"]',
-    // Strategy 4: General analytics link (broadest fallback)
-    'article[data-testid="tweet"] a[href$="/analytics"]',
-    // Strategy 5: Legacy selectors (kept for backwards compat)
-    'div[role="group"] + a[href$="/analytics"] span[class*="css"]',
-    'article[data-testid="tweet"] [role="group"] ~ a span:not([aria-hidden="true"])'
+    // 🔥 UPDATED 2025-10-23: Views are now directly visible on tweet pages
+    // Strategy 1: Look for "X Views" text pattern (most common)
+    'span:contains("Views")',
+    // Strategy 2: Look for views text with number pattern
+    'span:contains("View")',
+    // Strategy 3: Look for text containing "Views" near engagement buttons
+    'div[role="group"] ~ span:contains("Views")',
+    // Strategy 4: Look for views text in tweet metadata area
+    'article[data-testid="tweet"] span:contains("Views")',
+    // Strategy 5: Look for analytics link (fallback for older tweets)
+    'a[href*="/analytics"] span:contains("View")',
+    // Strategy 6: Look for views in aria-labels
+    '[aria-label*="View"]',
+    // Strategy 7: Look for views text anywhere in the tweet article
+    'article span:contains("Views")',
+    // Strategy 8: Look for views with specific text patterns
+    'span:contains("View post engagements")'
   ]
 };
 
@@ -843,10 +848,45 @@ export class BulletproofTwitterScraper {
 
   /**
    * PHASE 3: Intelligent views extraction - multiple strategies
+   * UPDATED: Now looks for direct "X Views" text on the page
    */
   private async extractViewsIntelligent(tweetArticle: any): Promise<number | null> {
     try {
-      // Strategy 1: Look for analytics link
+      // Strategy 1: Look for direct "X Views" text pattern
+      const viewsText = await tweetArticle.evaluate((article: Element) => {
+        // Look for spans containing "Views" text
+        const spans = Array.from(article.querySelectorAll('span'));
+        for (const span of spans) {
+          const text = span.textContent?.trim() || '';
+          // Match patterns like "8 Views", "1.2K Views", "5M Views"
+          const match = text.match(/^(\d+(?:\.\d+)?[KkMm]?)\s+Views?$/i);
+          if (match) {
+            return match[1];
+          }
+        }
+        return null;
+      });
+      
+      if (viewsText) {
+        console.log(`    🎯 VIEWS found text: "${viewsText}"`);
+        
+        const lower = viewsText.toLowerCase();
+        let count: number;
+        if (lower.includes('k')) {
+          count = Math.floor(parseFloat(lower) * 1000);
+        } else if (lower.includes('m')) {
+          count = Math.floor(parseFloat(lower) * 1000000);
+        } else {
+          count = parseInt(viewsText.replace(/,/g, ''), 10);
+        }
+        
+        if (!isNaN(count)) {
+          console.log(`    ✅ VIEWS from direct text: ${count}`);
+          return count;
+        }
+      }
+
+      // Strategy 2: Look for analytics link (fallback for older tweets)
       const analyticsLink = await tweetArticle.$('a[href*="/analytics"]');
       if (analyticsLink) {
         const ariaLabel = await analyticsLink.evaluate((el: any) => el.getAttribute('aria-label'));
@@ -868,31 +908,6 @@ export class BulletproofTwitterScraper {
             return count;
           }
         }
-
-        // Strategy 2: Get text from analytics link span
-        const viewsText = await analyticsLink.evaluate((el: any) => {
-          const span = el.querySelector('span:not([aria-hidden])');
-          return span?.textContent?.trim() || '';
-        });
-        
-        console.log(`    🎯 VIEWS text from analytics: "${viewsText}"`);
-        
-        if (viewsText && viewsText !== '') {
-          const lower = viewsText.toLowerCase();
-          let count: number;
-          if (lower.includes('k')) {
-            count = Math.floor(parseFloat(lower) * 1000);
-          } else if (lower.includes('m')) {
-            count = Math.floor(parseFloat(lower) * 1000000);
-          } else {
-            count = parseInt(viewsText.replace(/,/g, ''), 10);
-          }
-          
-          if (!isNaN(count)) {
-            console.log(`    ✅ VIEWS from analytics text: ${count}`);
-            return count;
-          }
-        }
       }
 
       return null;
@@ -905,6 +920,7 @@ export class BulletproofTwitterScraper {
   /**
    * Try multiple selectors for a single metric
    * PHASE 1 FIX: Now accepts ElementHandle to search within specific element
+   * UPDATED: Handles both CSS selectors and text-based selectors
    */
   private async extractMetricWithFallbacks(
     tweetArticle: any, // ElementHandle
@@ -914,7 +930,14 @@ export class BulletproofTwitterScraper {
     for (let i = 0; i < selectors.length; i++) {
       try {
         const selector = selectors[i];
-        const value = await this.extractNumberFromSelector(tweetArticle, selector);
+        let value: number | null = null;
+
+        // Handle :contains() selectors specially (not standard CSS)
+        if (selector.includes(':contains(')) {
+          value = await this.extractFromTextSelector(tweetArticle, selector);
+        } else {
+          value = await this.extractNumberFromSelector(tweetArticle, selector);
+        }
 
         if (value !== null) {
           if (i > 0) {
@@ -929,6 +952,63 @@ export class BulletproofTwitterScraper {
 
     console.warn(`    ⚠️ ${metricName}: All selectors failed`);
     return null;
+  }
+
+  /**
+   * Extract number from text-based selectors (like :contains())
+   * Handles selectors that look for text content rather than CSS attributes
+   */
+  private async extractFromTextSelector(
+    tweetArticle: any, // ElementHandle
+    selector: string
+  ): Promise<number | null> {
+    try {
+      // Parse the :contains() selector
+      const match = selector.match(/^([^:]+):contains\(['"]([^'"]+)['"]\)/);
+      if (!match) {
+        console.log(`    ⚠️ Invalid text selector: ${selector}`);
+        return null;
+      }
+
+      const baseSelector = match[1];
+      const searchText = match[2];
+
+      // Find all elements matching the base selector
+      const elements = await tweetArticle.$$(baseSelector);
+      
+      for (const element of elements) {
+        const text = await element.evaluate((el: any) => el.textContent?.trim() || '');
+        
+        if (text.includes(searchText)) {
+          console.log(`    🎯 Found text match: "${text}" contains "${searchText}"`);
+          
+          // Extract number from the text
+          const numberMatch = text.match(/(\d+(?:\.\d+)?[KkMm]?)/);
+          if (numberMatch) {
+            const numberText = numberMatch[1].toLowerCase();
+            let count: number;
+            
+            if (numberText.includes('k')) {
+              count = Math.floor(parseFloat(numberText) * 1000);
+            } else if (numberText.includes('m')) {
+              count = Math.floor(parseFloat(numberText) * 1000000);
+            } else {
+              count = parseInt(numberText.replace(/,/g, ''), 10);
+            }
+            
+            if (!isNaN(count)) {
+              console.log(`    ✅ Extracted: ${count} from "${text}"`);
+              return count;
+            }
+          }
+        }
+      }
+
+      return null;
+    } catch (error) {
+      console.log(`    ❌ Text selector exception: ${error}`);
+      return null;
+    }
   }
 
   /**
