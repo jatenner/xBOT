@@ -3,6 +3,7 @@ import { startHealthServer } from './server';
 import { closeBrowser } from './playwright/browserFactory';
 import { closeDatabaseConnections } from './db/index';
 import { boot } from './main-bulletproof';
+import { validateDatabaseSchema } from './db/schemaValidator';
 
 /**
  * Main application entry point with proper error handling and graceful shutdown
@@ -16,6 +17,31 @@ async function main() {
     console.error('❌ Environment validation failed');
     process.exit(1);
   }
+
+  // Validate database schema BEFORE starting
+  console.log('🔍 Validating database schema...');
+  const schemaResult = await validateDatabaseSchema();
+  
+  if (!schemaResult.valid) {
+    console.error('\n❌ DATABASE SCHEMA VALIDATION FAILED!');
+    console.error(`   Errors: ${schemaResult.errors.length}`);
+    console.error(`   Missing tables: ${schemaResult.missingTables.length}`);
+    console.error(`   Missing columns: ${schemaResult.missingColumns.length}`);
+    
+    schemaResult.errors.forEach(err => console.error(`   • ${err}`));
+    
+    if (schemaResult.missingColumns.length > 0) {
+      console.error('\n📊 Missing columns:');
+      schemaResult.missingColumns.forEach(({ table, columns }) => {
+        console.error(`   • ${table}: ${columns.join(', ')}`);
+      });
+    }
+    
+    console.error('\n💡 Fix: Run database migrations or check EXPECTED_SCHEMA in src/db/schemaValidator.ts');
+    process.exit(1);
+  }
+  
+  console.log('✅ Database schema validated successfully\n');
 
   // Start health server
   await startHealthServer();
