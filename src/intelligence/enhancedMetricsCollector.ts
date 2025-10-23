@@ -334,12 +334,30 @@ Return JSON:
         return;
       }
 
-      // Get follower data for attribution
-      const { data: attributionData } = await supabase
+      // Get follower data for attribution (create if missing)
+      let { data: attributionData } = await supabase
         .from('post_attribution')
         .select('*')
         .eq('post_id', metrics.postId)
         .single();
+      
+      // If no attribution exists, create a basic one (for old posts)
+      if (!attributionData) {
+        console.log(`⚠️ METRICS: No attribution found for ${metrics.postId}, creating basic record...`);
+        const { data: newAttribution } = await supabase
+          .from('post_attribution')
+          .insert([{
+            post_id: metrics.postId,
+            tweet_id: postData.tweet_id,
+            followers_before: 0,
+            followers_after: 0,
+            followers_attributed: 0,
+            created_at: new Date().toISOString()
+          }])
+          .select()
+          .single();
+        attributionData = newAttribution;
+      }
 
       // Store comprehensive metrics
       const { error } = await supabase
