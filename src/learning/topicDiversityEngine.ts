@@ -157,27 +157,56 @@ export class TopicDiversityEngine {
   private extractTopicsFromContent(content: string): string[] {
     const topics: string[] = [];
     
-    // Health topic keywords
+    // 🚨 CRITICAL FIX: Extract SPECIFIC subtopics, not just broad categories
+    // This prevents psychedelic microdosing from appearing 4 times in a row
+    
     const keywordMap: Record<string, string> = {
-      'sleep|circadian|melatonin|insomnia': 'sleep',
-      'breath|breathing|hrv|respiratory': 'breathwork',
-      'anxiety|stress|mental|depression|mood': 'mental health',
-      'gut|microbiome|probiotic|digestion': 'gut health',
-      'exercise|workout|cardio|training|muscle': 'exercise',
-      'supplement|vitamin|mineral|magnesium': 'supplements',
-      'fasting|intermittent|caloric restriction': 'fasting',
-      'longevity|aging|nad\\+|senolytic': 'longevity',
-      'cold exposure|ice bath|wim hof': 'cold therapy',
-      'meditation|mindfulness|vagus nerve': 'mindfulness'
+      // SPECIFIC SUBTOPICS (must come first to match before broad categories)
+      'psilocybin|magic mushroom|shroom': 'psilocybin microdosing',
+      'microdosing|microdose': 'psychedelic microdosing',
+      'lsd|acid tab': 'LSD microdosing',
+      'psychedelic|hallucinogen': 'psychedelics',
+      'nad\\+|nmn|nr nicotinamide': 'NAD+ supplementation',
+      'creatine': 'creatine supplementation',
+      'omega-3|fish oil|dha|epa': 'omega-3 supplementation',
+      'vitamin d|cholecalciferol': 'vitamin D',
+      'magnesium glycinate|magnesium threonate': 'magnesium supplementation',
+      'ashwagandha': 'ashwagandha supplementation',
+      'cold plunge|ice bath': 'cold exposure therapy',
+      'sauna|heat exposure': 'heat therapy',
+      'intermittent fasting|time-restricted': 'intermittent fasting',
+      'zone 2|vo2 max|aerobic capacity': 'cardio optimization',
+      'protein timing|leucine threshold': 'protein optimization',
+      'sleep hygiene|sleep environment': 'sleep optimization',
+      'blue light|circadian rhythm': 'circadian optimization',
+      
+      // BROAD CATEGORIES (fallback if no specific match)
+      'sleep|melatonin|insomnia': 'sleep',
+      'breath|breathing|hrv': 'breathwork',
+      'anxiety|stress|depression': 'mental health',
+      'gut|microbiome|probiotic': 'gut health',
+      'exercise|workout|training': 'exercise',
+      'longevity|aging|senolytic': 'longevity',
+      'meditation|mindfulness': 'mindfulness'
     };
     
+    // Extract all matching topics (specific matches will be prioritized)
     for (const [pattern, topic] of Object.entries(keywordMap)) {
       if (new RegExp(pattern, 'i').test(content)) {
         topics.push(topic);
       }
     }
     
-    return topics;
+    // Remove duplicates and broad categories if specific ones exist
+    const uniqueTopics = [...new Set(topics)];
+    
+    // If we have both specific and broad matches, keep only specific
+    const specificTopics = uniqueTopics.filter(t => t.includes(' '));
+    if (specificTopics.length > 0) {
+      return specificTopics;
+    }
+    
+    return uniqueTopics;
   }
 
   /**
