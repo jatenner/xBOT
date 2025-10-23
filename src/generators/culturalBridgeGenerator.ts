@@ -4,30 +4,19 @@
  * Makes complex ideas accessible through books, movies, philosophy, history, trends
  */
 
-import { getOpenAIService } from '../services/openAIService';
-import { IntelligencePackage } from '../intelligence/intelligenceTypes';
+import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
+import { validateAndExtractContent } from './generatorUtils';
+import { VOICE_GUIDELINES } from './sharedPatterns';
 import { getContentGenerationModel } from '../config/modelConfig';
-import { createBudgetedChatCompletion } from '../ai/openaiBudgetedClient';
-import { VOICE_GUIDELINES } from './universalRules';
+import { IntelligencePackage } from '../intelligence/intelligenceTypes';
+import { buildIntelligenceContext } from './_intelligenceHelpers';
 
 export interface CulturalBridgeContent {
-  content: string;
+  content: string | string[];
   format: 'single' | 'thread';
   confidence: number;
 }
 
-function buildIntelligenceContext(intelligence?: IntelligencePackage): string {
-  if (!intelligence) return '';
-  
-  let context = '\n🔬 INTELLIGENCE INSIGHTS:\n';
-  if (intelligence.viral_patterns?.length) {
-    context += `Viral patterns: ${intelligence.viral_patterns.slice(0, 3).join(', ')}\n`;
-  }
-  if (intelligence.competitive_insights) {
-    context += `Market insight: ${intelligence.competitive_insights}\n`;
-  }
-  return context;
-}
 
 export async function generateCulturalBridgeContent(params: {
   topic: string;
@@ -84,34 +73,19 @@ Return JSON: {"tweet": "..."}
       temperature: 0.85,
       max_tokens: 300,
       response_format: { type: 'json_object' }
-    }, 'cultural_bridge_content_generation');
+    }, { purpose: 'cultural_bridge_content_generation' });
 
-    const result = JSON.parse(response.content);
+    const parsed = JSON.parse(response.choices[0].message.content || '{}');
     
-    if (format === 'thread') {
-      const tweets = result.tweets || [];
-      if (!Array.isArray(tweets) || tweets.length === 0) {
-        throw new Error('No thread tweets generated');
-      }
-      return {
-        content: tweets.join('\n\n'),
-        format: 'thread',
-        confidence: 0.8
-      };
-    } else {
-      const tweet = result.tweet || result.content || '';
-      if (!tweet) {
-        throw new Error('No tweet generated');
-      }
-      return {
-        content: tweet,
-        format: 'single',
-        confidence: 0.8
-      };
-    }
+    return {
+      content: validateAndExtractContent(parsed, format, 'CULTURAL_BRIDGE'),
+      format,
+      confidence: 0.8
+    };
+    
   } catch (error: any) {
     console.error('[CULTURAL_BRIDGE] Generation failed:', error.message);
-    throw error;
+    throw new Error(`Cultural bridge generator failed: ${error.message}. System will retry with different approach.`);
   }
 }
 
