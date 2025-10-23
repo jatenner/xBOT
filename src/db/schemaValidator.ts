@@ -42,8 +42,9 @@ export const EXPECTED_SCHEMA = {
   
   discovered_accounts: [
     'id', 'username', 'follower_count', 'following_count', 'tweet_count',
-    'bio', 'verified', 'profile_url', 'discovery_source', 'relevance_score',
-    'engagement_rate', 'last_tweet_at', 'status', 'created_at', 'updated_at'
+    'bio', 'verified', 'discovery_method', 'discovery_date', 'quality_score',
+    'engagement_score', 'content_score', 'audience_relevance', 'growth_score',
+    'final_score', 'last_scored', 'last_updated', 'created_at'
   ],
   
   content_violations: [
@@ -54,8 +55,9 @@ export const EXPECTED_SCHEMA = {
   ],
 
   post_attribution: [
-    'id', 'post_id', 'posted_at', 'topic', 'hook_pattern', 'generator',
-    'content_type', 'engagement_rate', 'impressions', 'followers_gained', 'metadata'
+    'id', 'post_id', 'decision_id', 'followers_before', 'followers_2h_after',
+    'followers_24h_after', 'followers_48h_after', 'followers_gained', 'posted_at',
+    'last_check', 'created_at', 'updated_at', 'engagement_rate', 'impressions'
   ]
 } as const;
 
