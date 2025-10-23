@@ -14,6 +14,7 @@ import { UnifiedContentEngine } from '../unified/UnifiedContentEngine';
 // Metrics
 let planMetrics = {
   calls_total: 0,
+  calls_successful: 0, // Track successful generations separately
   calls_failed: 0,
   failure_reasons: {} as Record<string, number>,
   quality_rejections: 0,
@@ -288,11 +289,12 @@ async function generateRealContent(): Promise<void> {
       
       console.log(`[UNIFIED_PLAN] ✅ Content is unique (not a duplicate)`);
       
-      // Update metrics
+      // Update metrics - use calls_successful (not calls_total which includes failures)
+      planMetrics.calls_successful++;
       planMetrics.avg_quality_score = 
-        (planMetrics.avg_quality_score * (planMetrics.calls_total - 1) + generated.metadata.quality_score) / planMetrics.calls_total;
+        (planMetrics.avg_quality_score * (planMetrics.calls_successful - 1) + generated.metadata.quality_score) / planMetrics.calls_successful;
       planMetrics.avg_viral_probability = 
-        (planMetrics.avg_viral_probability * (planMetrics.calls_total - 1) + generated.metadata.viral_probability) / planMetrics.calls_total;
+        (planMetrics.avg_viral_probability * (planMetrics.calls_successful - 1) + generated.metadata.viral_probability) / planMetrics.calls_successful;
       
       // ═══════════════════════════════════════════════════════════
       // BUILD DECISION

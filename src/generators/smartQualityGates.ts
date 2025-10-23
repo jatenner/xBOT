@@ -33,7 +33,7 @@ const GENERATOR_STANDARDS = {
     shouldHave: ['mechanism term', 'sample size or year'],
     optional: ['protocol specificity'],
     allowEmojis: 1, // Data is serious
-    maxChars: 270
+    maxChars: 260 // 10-char safety buffer (270 often fails validation)
   },
   
   mythBuster: {
@@ -42,7 +42,7 @@ const GENERATOR_STANDARDS = {
     shouldHave: ['study reference or meta-analysis', 'mechanism'],
     optional: ['alternative solution'],
     allowEmojis: 1,
-    maxChars: 270
+    maxChars: 260 // 10-char safety buffer
   },
   
   provocateur: {
@@ -51,7 +51,7 @@ const GENERATOR_STANDARDS = {
     shouldHave: ['challenges assumption', '1+ number'],
     optional: ['research citation', 'protocol'],
     allowEmojis: 0, // Questions should be sharp, not cute
-    maxChars: 270
+    maxChars: 260 // 10-char safety buffer
   },
   
   storyteller: {
@@ -60,7 +60,7 @@ const GENERATOR_STANDARDS = {
     shouldHave: ['emotional resonance', 'relatable scenario'],
     optional: ['numbers', 'citations', 'mechanisms'], // Stories don't need data!
     allowEmojis: 2, // Stories can be warmer
-    maxChars: 270
+    maxChars: 260 // 10-char safety buffer
   },
   
   contrarian: {
@@ -69,7 +69,7 @@ const GENERATOR_STANDARDS = {
     shouldHave: ['setup + twist structure', '1+ number'],
     optional: ['research citation', 'protocol'],
     allowEmojis: 1,
-    maxChars: 270
+    maxChars: 260 // 10-char safety buffer
   },
   
   thoughtLeader: {
@@ -78,7 +78,7 @@ const GENERATOR_STANDARDS = {
     shouldHave: ['supports with logic or data', 'actionable'],
     optional: ['specific numbers', 'citations'],
     allowEmojis: 1,
-    maxChars: 270
+    maxChars: 260 // 10-char safety buffer
   },
   
   philosopher: {
@@ -87,7 +87,7 @@ const GENERATOR_STANDARDS = {
     shouldHave: ['connects concepts', 'reframes perspective'],
     optional: ['numbers', 'citations', 'protocols'], // Philosophy is about ideas
     allowEmojis: 0, // Philosophical = serious
-    maxChars: 270
+    maxChars: 260 // 10-char safety buffer
   },
   
   coach: {
@@ -96,7 +96,7 @@ const GENERATOR_STANDARDS = {
     shouldHave: ['dosage or duration', 'clear next step'],
     optional: ['research citation', 'mechanism'], // Coach = practical
     allowEmojis: 2, // Coaches can be encouraging
-    maxChars: 270
+    maxChars: 260 // 10-char safety buffer
   },
   
   explorer: {
@@ -105,7 +105,7 @@ const GENERATOR_STANDARDS = {
     shouldHave: ['explains clearly', '1+ concrete example'],
     optional: ['numbers', 'citations'],
     allowEmojis: 1,
-    maxChars: 270
+    maxChars: 260 // 10-char safety buffer
   },
   
   interestingContent: {
@@ -114,7 +114,7 @@ const GENERATOR_STANDARDS = {
     shouldHave: ['mechanism or explanation', 'concrete details'],
     optional: ['numbers', 'citations'],
     allowEmojis: 2,
-    maxChars: 270
+    maxChars: 260 // 10-char safety buffer
   },
   
   newsReporter: {
@@ -123,7 +123,7 @@ const GENERATOR_STANDARDS = {
     shouldHave: ['institution or study name', 'date or timeline'],
     optional: ['mechanism'],
     allowEmojis: 0, // News is professional
-    maxChars: 270
+    maxChars: 260 // 10-char safety buffer
   },
   
   viralThread: {
@@ -132,7 +132,7 @@ const GENERATOR_STANDARDS = {
     shouldHave: ['concrete examples', 'actionable insights'],
     optional: ['numbers per tweet', 'citations'],
     allowEmojis: 2,
-    maxChars: 250 // Threads need buffer for thread numbering
+    maxChars: 250 // Threads need buffer for thread numbering (already strict)
   }
 };
 
