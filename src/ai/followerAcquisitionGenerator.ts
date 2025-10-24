@@ -341,14 +341,14 @@ export class FollowerAcquisitionGenerator {
   
   private async generateContentWithFormula(formula: ViralFormula, request: any): Promise<any> {
     // STEP 1: Get context from ALL new intelligence systems
-    const { getTopicExpansion } = await import('../intelligence/topicExpansion');
+    const { DynamicTopicGenerator } = await import('../intelligence/dynamicTopicGenerator');
     const { getContextualIntelligence } = await import('../intelligence/contextualIntelligence');
     const { getFollowerPsychology } = await import('../intelligence/followerPsychology');
     const { getHybridContentTypes } = await import('../intelligence/hybridContentTypes');
     const { getMetaLearning } = await import('../intelligence/metaLearning');
     const { hookEvolutionEngine } = await import('./hookEvolutionEngine');
     
-    const topicExpansion = getTopicExpansion();
+    const topicGenerator = DynamicTopicGenerator.getInstance();
     const contextIntel = getContextualIntelligence();
     const psychology = getFollowerPsychology();
     const hybrids = getHybridContentTypes();
@@ -367,9 +367,9 @@ export class FollowerAcquisitionGenerator {
     // Get follower psychology
     const psychGuidance = psychology.getPsychologyGuidance();
     
-    // Get topic (diverse, not just health!)
-    const topicSelection = await topicExpansion.selectTopic();
-    const selectedTopic = request.topic_preference || topicSelection.specific_angle;
+    // Get topic using AI-driven generator (NO HARDCODED TOPICS!)
+    const dynamicTopic = await topicGenerator.generateTopic();
+    const selectedTopic = request.topic_preference || dynamicTopic.topic;
     
     // Check for hybrid type
     const hybridType = hybrids.getHybridType();
@@ -390,7 +390,7 @@ export class FollowerAcquisitionGenerator {
       : (request.format_preference || contextGuidance.recommended_format || 'single');
     
     // ENHANCED SYSTEM PROMPT with ALL intelligence systems
-    const systemPrompt = `You are @SignalAndSynapse, an expert on ${topicSelection.category.name} known for viral, follower-attracting content.
+    const systemPrompt = `You are @SignalAndSynapse, a viral content expert on ${dynamicTopic.topic} known for follower-attracting content.
 
 === CONTEXTUAL AWARENESS ===
 TIME: ${context.timeOfDay} on ${context.dayOfWeek} (${context.season})
@@ -468,7 +468,7 @@ SINGLE TWEET (180-250 chars) - SUBSTANCE REQUIRED:
 
 FORMAT: ${format}
 TOPIC: ${selectedTopic}
-CATEGORY: ${topicSelection.category.name}
+ANGLE: ${dynamicTopic.angle}
 
 ${hybridType ? `\nHYBRID TYPE: ${hybridType.name}\nHYBRID STRUCTURE: ${hybridType.structure}\nEXAMPLE STYLE: ${hybridType.examples[0]}` : ''}`;
 
