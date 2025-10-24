@@ -289,8 +289,9 @@ export class JobManager {
       10 * MINUTE // Start after 10 minutes (after account discovery has run)
     );
 
-    // 💬 REPLY POSTING JOB - every 15 min, offset 20 min
+    // 💬 REPLY POSTING JOB - every 15 min, offset 2 min
     // 🎯 CRITICAL: Actually POST replies to harvested opportunities
+    // 🔥 FIX: Reduced delay from 20min to 2min to post queued replies faster
     this.scheduleStaggeredJob(
       'reply_posting',
       async () => {
@@ -301,7 +302,7 @@ export class JobManager {
         });
       },
       15 * MINUTE, // Every 15 minutes - frequent reply posting
-      20 * MINUTE // Start after 20 minutes (after harvester has collected opportunities)
+      2 * MINUTE // Start after 2 minutes - FAST startup to process queued replies
     );
 
     // Attribution - every 2 hours, offset 70 min
