@@ -335,51 +335,27 @@ async function selectDiverseExplorationContent(): Promise<AdaptiveDecision> {
     const { TopicDiversityEngine } = await import('./topicDiversityEngine');
     const diversityEngine = TopicDiversityEngine.getInstance();
     
-    // Get recent topic clusters to find least-used cluster
-    const supabase = getSupabaseClient();
-    const { data: recentContent } = await supabase
-      .from('content_generation_metadata_comprehensive')
-      .select('topic_cluster')
-      .order('created_at', { ascending: false })
-      .limit(10);
+    // 🚀 USE ULTIMATE TOPIC GENERATION
+    // - Adaptive exploration (adjusts based on performance)
+    // - Multi-candidate generation (5 topics, pick best)
+    // - Trending integration (when relevant)
+    // - Performance learning (when available)
+    // - Pure randomness (when exploring)
     
-    const recentClusters = recentContent?.map(c => c.topic_cluster).filter(Boolean) || [];
-    const clusterCounts = recentClusters.reduce((acc: Record<string, number>, cluster: string) => {
-      acc[cluster] = (acc[cluster] || 0) + 1;
-      return acc;
-    }, {});
+    console.log(`[DIVERSE_EXPLORATION] 🚀 Using ULTIMATE topic generation with adaptive intelligence`);
     
-    console.log(`[DIVERSE_EXPLORATION] 📊 Recent clusters: ${JSON.stringify(clusterCounts)}`);
-    
-    // Find least-used cluster
-    const allClusters = ['longevity', 'biohacking', 'mental_health', 'performance', 'gut_health', 'metabolic', 'sleep', 'breathwork'];
-    const leastUsedCluster = allClusters.reduce((least, cluster) => {
-      const count = clusterCounts[cluster] || 0;
-      const leastCount = clusterCounts[least] || 0;
-      return count < leastCount ? cluster : least;
-    }, allClusters[0]);
-    
-    console.log(`[DIVERSE_EXPLORATION] 🎯 Targeting least-used cluster: ${leastUsedCluster}`);
-    
-    // 🚀 GENERATE UNIQUE TOPIC using AI (not hardcoded!)
-    const topicResult = await diversityEngine.generateUniqueTopic(leastUsedCluster);
+    const topicResult = await diversityEngine.generateUltimateTopic();
     
     console.log(`[DIVERSE_EXPLORATION] ✅ AI generated: "${topicResult.topic}"`);
     console.log(`[DIVERSE_EXPLORATION] 💡 Reasoning: ${topicResult.reasoning}`);
+    console.log(`[DIVERSE_EXPLORATION] 🏷️ AI-assigned cluster: ${topicResult.cluster} (for tracking only)`);
     
-    // Select appropriate generator for the cluster
-    const generatorMap: Record<string, string> = {
-      'longevity': 'dataNerd',
-      'biohacking': 'provocateur',
-      'mental_health': 'storyteller',
-      'performance': 'mythBuster',
-      'gut_health': 'contrarian',
-      'metabolic': 'dataNerd',
-      'sleep': 'coach',
-      'breathwork': 'explorer'
-    };
+    // 🎲 RANDOMIZE GENERATOR (no hardcoded cluster mappings!)
+    // Let the system explore different generators for any topic
+    const allGenerators = ['dataNerd', 'provocateur', 'storyteller', 'mythBuster', 'contrarian', 'coach', 'explorer'];
+    const selectedGenerator = allGenerators[Math.floor(Math.random() * allGenerators.length)];
     
-    const selectedGenerator = generatorMap[topicResult.cluster] || 'contrarian';
+    console.log(`[DIVERSE_EXPLORATION] 🎭 Selected generator: ${selectedGenerator} (randomized for exploration)`);
     
     return {
       hook_pattern: ['bold_claim', 'contrarian', 'story_opener', 'data_driven'][Math.floor(Math.random() * 4)] as string,
