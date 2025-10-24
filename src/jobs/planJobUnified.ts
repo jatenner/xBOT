@@ -327,7 +327,7 @@ async function generateRealContent(): Promise<void> {
         predicted_followers: generated.metadata.predicted_followers,
         
         // Metadata
-        topic_cluster: adaptiveTopicCluster, // 🏷️ Use adaptive topic cluster selection (not hardcoded!)
+        topic_cluster: adaptiveTopicHint || adaptiveTopicCluster || 'health', // 🏷️ Store ACTUAL AI-generated topic (not broad cluster!)
         generation_source: 'real', // Fixed: Database expects 'real' or 'synthetic', not 'unified_engine'
         hook_type: actualHookType, // 🎣 Track hook type for variety enforcement
         
