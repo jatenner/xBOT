@@ -27,22 +27,10 @@ export class ContentDiversityTracker {
     'breathing_techniques', 'genetic_optimization', 'inflammation_control'
   ];
 
+  // REMOVED: Hardcoded specificTopics - now uses AI-generated topics only
   private readonly specificTopics = {
-    supplements_advanced: ['NAD+', 'phosphatidylserine', 'PQQ', 'berberine', 'ashwagandha timing'],
-    exercise_science: ['zone 2 cardio', 'eccentric training', 'blood flow restriction', 'HRV-guided training'],
-    circadian_biology: ['light therapy', 'temperature regulation', 'meal timing', 'blue light blocking'],
-    gut_microbiome: ['resistant starch', 'fermented foods', 'prebiotic fiber', 'gut-brain axis'],
-    hormonal_health: ['testosterone optimization', 'insulin sensitivity', 'cortisol management', 'thyroid function'],
-    metabolic_flexibility: ['ketosis cycling', 'fasting protocols', 'glucose monitoring', 'mitochondrial health'],
-    stress_physiology: ['HRV training', 'cold exposure', 'breathwork', 'vagus nerve stimulation'],
-    cognitive_enhancement: ['nootropics', 'brain training', 'meditation techniques', 'flow states'],
-    longevity_research: ['telomere health', 'autophagy', 'caloric restriction', 'rapamycin'],
-    biohacking_tools: ['red light therapy', 'grounding', 'EMF protection', 'sleep tracking'],
-    nutrition_timing: ['protein synthesis', 'carb cycling', 'intermittent fasting', 'nutrient timing'],
-    thermal_therapy: ['sauna protocols', 'cold plunging', 'contrast therapy', 'brown fat activation'],
-    breathing_techniques: ['Wim Hof method', 'box breathing', 'CO2 tolerance', 'breath holds'],
-    genetic_optimization: ['SNP testing', 'methylation', 'detox pathways', 'personalized nutrition'],
-    inflammation_control: ['omega-3 ratios', 'polyphenols', 'curcumin', 'anti-inflammatory foods']
+    // Topics are now generated dynamically by DynamicTopicGenerator
+    // This prevents repetition and ensures infinite variety: ['omega-3 ratios', 'polyphenols', 'curcumin', 'anti-inflammatory foods']
   };
 
   public static getInstance(): ContentDiversityTracker {
