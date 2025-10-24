@@ -188,7 +188,10 @@ export class RealEngagementTracker {
     const replies = metrics.reply_count || 0;
     
     // Viral thresholds (adjust based on account size)
-    return likes >= 10 || retweets >= 3 || replies >= 5;
+    // "Good engagement" means actual traction (not just noise)
+    // Weighted scoring: retweets worth 3x, replies worth 2x
+    const totalEngagement = likes + (retweets * 3) + (replies * 2);
+    return totalEngagement >= 50 && likes >= 10; // At least 50 weighted engagement + 10 likes minimum
   }
 
   /**

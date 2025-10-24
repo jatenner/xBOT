@@ -431,11 +431,15 @@ export class ContinuousMetricsEngine {
   private calculatePerformanceTier(metrics: any): 'low' | 'medium' | 'high' | 'viral' {
     const likes = metrics.likes || 0;
     const engagement = metrics.engagementRate || 0;
+    const views = metrics.views || metrics.impressions || 0;
     
-    if (likes >= 100 || engagement >= 15) return 'viral';
-    if (likes >= 50 || engagement >= 8) return 'high';
-    if (likes >= 20 || engagement >= 4) return 'medium';
-    return 'low';
+    // REALISTIC THRESHOLDS for ~2,800 followers
+    // USER REQUIREMENT: 1,000+ views AND 100+ likes = viral
+    if (views >= 1000 && likes >= 100) return 'viral';
+    if (views >= 500 && likes >= 50) return 'high';
+    if (views >= 200 && likes >= 20) return 'medium';
+    if (views >= 100 && likes >= 5) return 'low';
+    return 'poor'; // <100 views or <5 likes = don't learn from this
   }
 
   private calculateViralScore(metrics: any): number {

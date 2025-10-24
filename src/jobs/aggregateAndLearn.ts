@@ -37,8 +37,12 @@ const ENGAGEMENT_THRESHOLDS = {
   high: 0.06    // 6% ER
 };
 
-const VIRAL_THRESHOLD = 0.10; // 10% ER for viral content
-const MIN_IMPRESSIONS = 100; // Minimum impressions to consider reliable
+// REALISTIC VIRAL: High engagement + high reach
+// USER REQUIREMENT: 1,000 views + 100 likes minimum
+const VIRAL_THRESHOLD = 0.10; // 10% ER (100 likes / 1000 views)
+const VIRAL_MIN_VIEWS = 1000; // Must have significant reach
+const VIRAL_MIN_LIKES = 100; // Must have significant engagement  
+const MIN_IMPRESSIONS = 500; // Don't learn from posts <500 views (filters noise)
 
 /**
  * Calculate engagement rate from metrics
