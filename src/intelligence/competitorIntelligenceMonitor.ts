@@ -120,14 +120,26 @@ export class CompetitorIntelligenceMonitor {
       // Simulate trending topic detection
       // In production, this would analyze real competitor content via Twitter API
       
-      const currentTrends = [
+      // 🔥 FIX: Check recent posts to avoid topic repetition
+      const supabase = getSupabaseClient();
+      const { data: recentPosts } = await supabase
+        .from('content_metadata')
+        .select('content')
+        .order('created_at', { ascending: false })
+        .limit(10);
+      
+      const recentContent = recentPosts?.map(p => String(p.content || '').toLowerCase()).join(' ') || '';
+      
+      // Expanded topic pool for more diversity
+      const allTrends = [
         {
           topic: 'NAD+ supplementation',
           trending_score: 0.8,
           competition_level: 0.4,
           viral_potential: 0.7,
           suggested_angle: 'Natural ways to boost NAD+ without expensive supplements',
-          timing_window: 'Next 24-48 hours'
+          timing_window: 'Next 24-48 hours',
+          keywords: ['nad', 'nad+', 'nicotinamide']
         },
         {
           topic: 'Circadian light therapy',
@@ -135,7 +147,8 @@ export class CompetitorIntelligenceMonitor {
           competition_level: 0.3,
           viral_potential: 0.8,
           suggested_angle: 'DIY circadian optimization with household items',
-          timing_window: 'Next 12 hours'
+          timing_window: 'Next 12 hours',
+          keywords: ['circadian', 'light therapy', 'blue light', 'rhythm']
         },
         {
           topic: 'Metabolic flexibility training',
@@ -143,7 +156,8 @@ export class CompetitorIntelligenceMonitor {
           competition_level: 0.5,
           viral_potential: 0.6,
           suggested_angle: 'Simple metabolic flexibility tests you can do at home',
-          timing_window: 'Next 3 days'
+          timing_window: 'Next 3 days',
+          keywords: ['metabolic', 'flexibility', 'ketone']
         },
         {
           topic: 'Microplastic detox protocols',
@@ -151,13 +165,91 @@ export class CompetitorIntelligenceMonitor {
           competition_level: 0.2,
           viral_potential: 0.9,
           suggested_angle: 'Evidence-based methods to reduce microplastic exposure',
-          timing_window: 'URGENT - Next 6 hours'
+          timing_window: 'URGENT - Next 6 hours',
+          keywords: ['microplastic', 'detox', 'plastic']
+        },
+        {
+          topic: 'Zone 2 cardio optimization',
+          trending_score: 0.75,
+          competition_level: 0.35,
+          viral_potential: 0.8,
+          suggested_angle: 'Why elite athletes spend 80% of training in Zone 2',
+          timing_window: 'Next 2 days',
+          keywords: ['zone 2', 'cardio', 'aerobic', 'endurance']
+        },
+        {
+          topic: 'Protein timing myths',
+          trending_score: 0.7,
+          competition_level: 0.4,
+          viral_potential: 0.75,
+          suggested_angle: 'The anabolic window is longer than you think',
+          timing_window: 'Next 48 hours',
+          keywords: ['protein', 'timing', 'anabolic', 'window']
+        },
+        {
+          topic: 'Cold exposure protocols',
+          trending_score: 0.65,
+          competition_level: 0.5,
+          viral_potential: 0.7,
+          suggested_angle: 'Cold showers vs ice baths: what science actually says',
+          timing_window: 'Next 3 days',
+          keywords: ['cold', 'exposure', 'ice', 'bath', 'shower']
+        },
+        {
+          topic: 'Glucose monitoring insights',
+          trending_score: 0.8,
+          competition_level: 0.3,
+          viral_potential: 0.85,
+          suggested_angle: 'What CGMs reveal about "healthy" foods',
+          timing_window: 'Next 24 hours',
+          keywords: ['glucose', 'cgm', 'monitor', 'blood sugar']
+        },
+        {
+          topic: 'Sauna benefits beyond heat',
+          trending_score: 0.7,
+          competition_level: 0.4,
+          viral_potential: 0.75,
+          suggested_angle: 'Sauna protocols for longevity and brain health',
+          timing_window: 'Next 2 days',
+          keywords: ['sauna', 'heat', 'infrared']
+        },
+        {
+          topic: 'Electrolyte optimization',
+          trending_score: 0.65,
+          competition_level: 0.45,
+          viral_potential: 0.7,
+          suggested_angle: 'Why you need more than water for hydration',
+          timing_window: 'Next 3 days',
+          keywords: ['electrolyte', 'sodium', 'potassium', 'magnesium', 'hydration']
         }
       ];
+      
+      // Filter out topics we've recently covered
+      const freshTrends = allTrends.filter(trend => {
+        const hasRecentCoverage = trend.keywords.some(keyword => 
+          recentContent.includes(keyword.toLowerCase())
+        );
+        if (hasRecentCoverage) {
+          console.log(`[COMPETITOR_INTEL] 🔄 Skipping recently covered topic: ${trend.topic}`);
+        }
+        return !hasRecentCoverage;
+      });
+      
+      console.log(`[COMPETITOR_INTEL] ✅ Filtered ${allTrends.length} → ${freshTrends.length} fresh topics`);
+      
+      // If all topics were recently covered, shuffle and take top 4 anyway
+      const selectedTrends = freshTrends.length > 0 
+        ? freshTrends.slice(0, 4)
+        : allTrends.sort(() => Math.random() - 0.5).slice(0, 4);
 
       // Add content gap identification
-      return currentTrends.map(trend => ({
-        ...trend,
+      return selectedTrends.map(trend => ({
+        topic: trend.topic,
+        trending_score: trend.trending_score,
+        competition_level: trend.competition_level,
+        viral_potential: trend.viral_potential,
+        suggested_angle: trend.suggested_angle,
+        timing_window: trend.timing_window,
         content_gap_identified: trend.competition_level < 0.4
       }));
 
