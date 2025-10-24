@@ -781,50 +781,59 @@ export class UnifiedContentEngine {
    * Get default weights (fallback if DB fails)
    */
   private getDefaultWeights(experimentArm: string): Record<string, number> {
+    // 🎯 BALANCED DISTRIBUTION: Let system LEARN what works, don't pre-bias
+    // All generators get EQUAL starting weight (1/12 = ~8.33%)
+    // System will naturally favor what performs well through learning
+    
+    const equalWeight = 1.0 / 12; // ~8.33% each
+    
     return experimentArm === 'control'
       ? {
-          // REBALANCED: More provocative/engaging, less protocol/academic
-          humanVoice: 0.15,
-          provocateur: 0.15,      // ↑ from 0.10 (more engaging)
-          contrarian: 0.15,       // ↑ from 0.04 (more interesting)
-          storyteller: 0.13,      // ↑ from 0.12 (better engagement)
-          interesting: 0.10,
-          dataNerd: 0.10,
-          mythBuster: 0.10,
-          thoughtLeader: 0.05,
-          newsReporter: 0.04,     // ↓ from 0.12 (too academic)
-          coach: 0.03,            // ↓ from 0.08 (too protocol-heavy)
-          explorer: 0.02,
-          philosopher: 0.02
+          // FULLY BALANCED: Give all generators equal opportunity
+          // Let LEARNING decide which work best, not pre-programmed bias
+          humanVoice: equalWeight,
+          provocateur: equalWeight,
+          contrarian: equalWeight,
+          storyteller: equalWeight,
+          interesting: equalWeight,
+          dataNerd: equalWeight,
+          mythBuster: equalWeight,
+          thoughtLeader: equalWeight,
+          newsReporter: equalWeight,
+          coach: equalWeight,
+          explorer: equalWeight,
+          philosopher: equalWeight
         }
       : experimentArm === 'variant_a'
       ? {
+          // Variant A: Still balanced but slightly favor engagement-focused
           humanVoice: 0.10,
-          newsReporter: 0.08,
-          storyteller: 0.08,
-          interesting: 0.08,
-          provocateur: 0.08,
-          dataNerd: 0.09,
-          mythBuster: 0.09,
-          coach: 0.10,
+          provocateur: 0.09,
+          contrarian: 0.09,
+          storyteller: 0.09,
+          interesting: 0.09,
+          dataNerd: 0.08,
+          mythBuster: 0.08,
+          coach: 0.08,
           thoughtLeader: 0.08,
-          contrarian: 0.08,
+          newsReporter: 0.08,
           explorer: 0.07,
           philosopher: 0.07
         }
       : {
-          humanVoice: 0.05,
-          newsReporter: 0.06,
-          storyteller: 0.10,
-          interesting: 0.10,
-          provocateur: 0.10,
-          dataNerd: 0.08,
-          mythBuster: 0.08,
-          coach: 0.08,
-          thoughtLeader: 0.10,
-          contrarian: 0.10,
-          explorer: 0.08,
-          philosopher: 0.07
+          // Variant B: Completely flat for pure exploration
+          humanVoice: equalWeight,
+          newsReporter: equalWeight,
+          storyteller: equalWeight,
+          interesting: equalWeight,
+          provocateur: equalWeight,
+          dataNerd: equalWeight,
+          mythBuster: equalWeight,
+          coach: equalWeight,
+          thoughtLeader: equalWeight,
+          contrarian: equalWeight,
+          explorer: equalWeight,
+          philosopher: equalWeight
         };
   }
   
