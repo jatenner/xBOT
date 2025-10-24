@@ -592,7 +592,7 @@ ${params.successful.map(t => `- "${t.topic}" (${t.avg_followers.toFixed(1)} foll
       topic: 'Generate a completely unique health/wellness topic not covered in recent posts',
       cluster: 'health',
       reasoning: 'Fallback rare topic for diversity',
-      keywords: selected.topic.split(' ')
+      keywords: ['health', 'wellness', 'unique']
     };
   }
 
