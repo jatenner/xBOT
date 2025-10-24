@@ -25,7 +25,7 @@
     "session:archive": "node scripts/session-manager.js archive",
     "session:cleanup": "node scripts/session-manager.js cleanup",
     "start:bulletproof": "node dist/src/main-bulletproof.js",
-    "postinstall": "npx playwright install chromium --with-deps && mkdir -p artifacts || true",
+    "postinstall": "npx playwright install chromium && mkdir -p artifacts || true",
     "build-clean": "rm -rf dist && npm run build",
     "diagnostics": "node scripts/diagnostics.js",
     "ssl:debug": "node scripts/ssl-debug.js",
