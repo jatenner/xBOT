@@ -1,5 +1,5 @@
-# Multi-stage build for xBOT
-FROM node:20-slim AS builder
+# Multi-stage build for xBOT with proper Playwright support
+FROM node:20-bullseye-slim AS builder
 
 WORKDIR /app
 
@@ -16,23 +16,9 @@ COPY . .
 RUN npm run build
 
 # Production stage
-FROM node:20-slim
+FROM mcr.microsoft.com/playwright:v1.48.2-noble
 
 WORKDIR /app
-
-# Install Playwright dependencies (minimal set)
-RUN apt-get update && \
-    apt-get install -y \
-    chromium \
-    fonts-liberation \
-    libnss3 \
-    libxss1 \
-    libasound2 \
-    && rm -rf /var/lib/apt/lists/*
-
-# Tell Playwright to use system chromium
-ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
-ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
 
 # Copy package files
 COPY package*.json ./
