@@ -119,13 +119,13 @@ export class CompetitorIntelligenceMonitor {
     try {
       console.log('[COMPETITOR_INTEL] 🤖 Using AI to generate trending topics (no hardcoded lists)...');
       
-      // Get recent posts to avoid repetition
+      // Get recent posts to avoid repetition (TEMPORARY 20-post window)
       const supabase = getSupabaseClient();
       const { data: recentPosts } = await supabase
         .from('content_metadata')
         .select('content, topic_cluster')
         .order('created_at', { ascending: false })
-        .limit(15);
+        .limit(20); // Check last 20 posts for TEMPORARY avoidance
       
       // Extract KEY KEYWORDS from content (not full text)
       const recentKeywords = recentPosts?.map(p => {
@@ -137,10 +137,10 @@ export class CompetitorIntelligenceMonitor {
       
       // Get unique keywords
       const uniqueKeywords = [...new Set(recentKeywords)];
-      console.log(`[COMPETITOR_INTEL] 📚 Keywords to avoid: ${uniqueKeywords.slice(0, 10).join(', ')}${uniqueKeywords.length > 10 ? '...' : ''}`);
+      console.log(`[COMPETITOR_INTEL] 📚 Keywords to avoid (for next 20 posts): ${uniqueKeywords.slice(0, 10).join(', ')}${uniqueKeywords.length > 10 ? '...' : ''}`);
       
-      // Convert to topic strings for AI (join related keywords)
-      const recentTopics = uniqueKeywords.slice(0, 15);
+      // Pass keywords to AI (these will be avoided for next ~20 posts, then fair game again)
+      const recentTopics = uniqueKeywords;
       
       // 🔥 USE AI TO GENERATE TRENDING TOPICS DYNAMICALLY
       const { DynamicTopicGenerator } = await import('./dynamicTopicGenerator');
