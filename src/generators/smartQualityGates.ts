@@ -47,10 +47,10 @@ const GENERATOR_STANDARDS = {
   
   provocateur: {
     name: 'Provocateur',
-    mustHave: ['provocative question', 'mechanism term'],
-    shouldHave: ['challenges assumption', '1+ number'],
+    mustHave: ['challenges assumptions or reveals deeper truth', 'mechanism or insight'],
+    shouldHave: ['provocative angle', '1+ number'],
     optional: ['research citation', 'protocol'],
-    allowEmojis: 0, // Questions should be sharp, not cute
+    allowEmojis: 0, // Sharp, not cute
     maxChars: 260 // 10-char safety buffer
   },
   
@@ -83,7 +83,7 @@ const GENERATOR_STANDARDS = {
   
   philosopher: {
     name: 'Philosopher',
-    mustHave: ['deep question or principle', 'makes you think'],
+    mustHave: ['deep insight or principle', 'makes you think'],
     shouldHave: ['connects concepts', 'reframes perspective'],
     optional: ['numbers', 'citations', 'protocols'], // Philosophy is about ideas
     allowEmojis: 0, // Philosophical = serious
@@ -338,14 +338,19 @@ function checkGeneratorRequirements(
       break;
       
     case 'provocateur':
-      if (!hasQuestion && !/\b(why|what if|nobody asks|challenge|conventional)\b/i.test(text)) {
-        issues.push('Provocateur must ask provocative question');
-        fixes.push('Ask challenging question: "Why do we...?", "What if...?"');
+      // Check for provocative/challenging content in ANY format (not just questions)
+      const isProvocative = hasQuestion || 
+        /\b(challenge|conventional|assumption|reveal|truth|paradox|opposite|backwards|wrong about)\b/i.test(text) ||
+        /\b(nobody asks|rarely discussed|overlooked|ignored|misunderstood)\b/i.test(text);
+      
+      if (!isProvocative) {
+        issues.push('Provocateur needs provocative angle (question, claim, or challenge)');
+        fixes.push('Challenge assumptions: "What if...?", "X is backwards", or bold claim');
         deductions += 30;
       }
-      if (!hasMechanism) {
-        issues.push('Provocateur needs mechanism term');
-        fixes.push('Ground question in biology: HRV, cortisol, circadian, etc.');
+      if (!hasMechanism && numberCount < 1) {
+        issues.push('Provocateur needs mechanism or data to ground the provocation');
+        fixes.push('Add mechanism (HRV, cortisol, etc.) or data point');
         deductions += 20;
       }
       if (numberCount < 1) {
