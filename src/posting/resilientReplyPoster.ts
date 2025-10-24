@@ -143,7 +143,20 @@ export class ResilientReplyPoster {
       
       // Wait for Twitter to render composer (CRITICAL - increased wait)
       console.log('🎯 VISUAL_POSITION: Waiting for composer to render...');
-      await this.page.waitForTimeout(3000);
+      
+      // First, wait for reply modal to appear
+      try {
+        await this.page.waitForSelector('div[role="dialog"], div[aria-modal="true"]', { 
+          state: 'visible', 
+          timeout: 5000 
+        });
+        console.log('✅ VISUAL_POSITION: Reply modal appeared');
+      } catch (e) {
+        console.log('⚠️ VISUAL_POSITION: Modal detection timed out, continuing anyway...');
+      }
+      
+      // Then wait for composer to render inside modal
+      await this.page.waitForTimeout(4000); // Increased from 3000
       
       // Type reply content
       const composer = await this.findComposer();
@@ -406,7 +419,8 @@ export class ResilientReplyPoster {
    */
   private async findComposer() {
     // Wait for composer to appear (Twitter needs time to render it)
-    await this.page.waitForTimeout(1500);
+    console.log('🔍 FIND_COMPOSER: Waiting 3s for composer to appear...');
+    await this.page.waitForTimeout(3000); // Increased from 1500
     
     const composerSelectors = [
       // Most specific first
