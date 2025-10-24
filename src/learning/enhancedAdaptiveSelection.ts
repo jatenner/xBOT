@@ -73,9 +73,10 @@ export async function selectOptimalContentEnhanced(): Promise<AdaptiveDecision> 
   // a feedback loop of the same failing content. Better to let the system
   // explore diverse topics and learn which ones get ANY engagement.
   
+  // USER REQUIREMENT: Near-zero = truly abysmal performance
   if (analysis.diagnosisType === 'no_visibility' || 
       (analysis.avgEngagement < 0.005 && analysis.avgFollowers < 0.5)) {
-    console.log('[ENHANCED_ADAPTIVE] ⚠️ Zero engagement detected - FORCING DIVERSE EXPLORATION');
+    console.log('[ENHANCED_ADAPTIVE] ⚠️ Near-zero engagement detected - FORCING DIVERSE EXPLORATION');
     console.log('[ENHANCED_ADAPTIVE] 💡 Crisis mode DISABLED - using diverse exploration instead');
     return await selectDiverseExplorationContent();
   }
@@ -83,8 +84,10 @@ export async function selectOptimalContentEnhanced(): Promise<AdaptiveDecision> 
   // ═══════════════════════════════════════════════════════════
   // 🔥 LOW PERFORMANCE = DIVERSE EXPLORATION (not crisis mode)
   // ═══════════════════════════════════════════════════════════
-  if (analysis.avgEngagement < 0.02 || analysis.avgFollowers < 3) {
-    console.log('[ENHANCED_ADAPTIVE] 🔄 Low engagement - using diverse exploration...');
+  // USER REQUIREMENT: "Low" = below noise floor (not just below viral)
+  // 1% ER or 1 follower/post = truly struggling
+  if (analysis.avgEngagement < 0.01 || analysis.avgFollowers < 1) {
+    console.log('[ENHANCED_ADAPTIVE] 🔄 Very low engagement (below noise floor) - using diverse exploration...');
     return await selectDiverseExplorationContent();
   }
   

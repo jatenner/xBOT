@@ -480,16 +480,21 @@ You create content that positions the account as a trusted health authority, not
       console.warn('⚠️ TOPIC_SELECTION: Could not access recent performance data, using fallback');
     }
 
-    // Fallback topics
-    const fallbackTopics = [
-      'sleep optimization', 'metabolic health', 'stress management', 
-      'nutrition myths', 'exercise science', 'mental performance',
-      'biohacking basics', 'hormone optimization', 'gut health'
-    ];
+    // NO FALLBACK - System is 100% AI-driven
+    // If we can't get performance data, generate a random topic via AI
+    console.log('🤖 TOPIC_SELECTION: No performance data, using AI to generate random topic');
     
-    const selectedTopic = fallbackTopics[Math.floor(Math.random() * fallbackTopics.length)];
-    console.log(`🎯 TOPIC_SELECTION: Using fallback topic "${selectedTopic}"`);
-    return selectedTopic;
+    // Use dynamic topic generator instead of hardcoded list
+    try {
+      const { DynamicTopicGenerator } = await import('../intelligence/dynamicTopicGenerator');
+      const generator = DynamicTopicGenerator.getInstance();
+      const topic = await generator.generateTopic({ preferTrending: false });
+      console.log(`✨ TOPIC_SELECTION: AI-generated topic "${topic.topic}"`);
+      return topic.topic;
+    } catch (err) {
+      // Last resort: throw error to trigger retry (don't use hardcoded)
+      throw new Error('AI topic generation failed - system will retry');
+    }
   }
 
   /**
