@@ -61,7 +61,7 @@ Return JSON: {"tweets": ["...", "...", ...]}
 Return JSON: {"tweet": "..."}
 `}`;
 
-  const userPrompt = `Connect ${topic} to broader culture/knowledge in a way that makes it accessible.`;
+  const userPrompt = `Create content connecting ${topic} to culture, books, philosophy, or history. Make connections in whatever format is most engaging.`;
 
   try {
     const response = await createBudgetedChatCompletion({

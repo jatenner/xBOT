@@ -61,7 +61,7 @@ Return JSON: {"tweets": ["...", "...", ...]}
 Return JSON: {"tweet": "..."}
 `}`;
 
-  const userPrompt = `Give a clear, actionable protocol for ${topic}.`;
+  const userPrompt = `Create actionable coaching content about ${topic}. Share protocols, insights, or guidance in whatever format works best.`;
 
   try {
     const response = await createBudgetedChatCompletion({

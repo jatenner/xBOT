@@ -60,7 +60,7 @@ Return JSON: {"tweets": ["...", "...", ...]}
 Return JSON: {"tweet": "..."}
 `}`;
 
-  const userPrompt = `Ask a provocative question about ${topic} that changes how people think.`;
+  const userPrompt = `Create provocative content about ${topic}. You can ask questions, make bold claims, challenge assumptions, or present contrarian views - whatever is most effective.`;
 
   try {
     const response = await createBudgetedChatCompletion({

@@ -60,7 +60,7 @@ Return JSON: {"tweets": ["...", "...", ...]}
 Return JSON: {"tweet": "..."}
 `}`;
 
-  const userPrompt = `Present compelling data about ${topic} that makes people trust the science.`;
+  const userPrompt = `Create data-driven content about ${topic}. Use research, statistics, or studies however works best - no required format.`;
 
   try {
     const response = await createBudgetedChatCompletion({

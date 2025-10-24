@@ -61,7 +61,7 @@ Return JSON: {"tweets": ["...", "...", ...]}
 Return JSON: {"tweet": "..."}
 `}`;
 
-  const userPrompt = `Challenge conventional thinking about ${topic}.`;
+  const userPrompt = `Create contrarian content about ${topic}. Challenge conventional wisdom in whatever format is most effective - questions, statements, or data.`;
 
   try {
     const response = await createBudgetedChatCompletion({

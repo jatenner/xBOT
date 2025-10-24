@@ -61,7 +61,7 @@ Return JSON: {"tweets": ["...", "...", ...]}
 Return JSON: {"tweet": "..."}
 `}`;
 
-  const userPrompt = `Reveal an unexpected connection about ${topic}.`;
+  const userPrompt = `Create exploratory content about ${topic}. Reveal unexpected connections, patterns, or insights in whatever format works best.`;
 
   try {
     const response = await createBudgetedChatCompletion({
