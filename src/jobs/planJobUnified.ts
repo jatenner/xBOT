@@ -331,6 +331,12 @@ async function generateRealContent(): Promise<void> {
         generation_source: 'real', // Fixed: Database expects 'real' or 'synthetic', not 'unified_engine'
         hook_type: actualHookType, // 🎣 Track hook type for variety enforcement
         
+        // 📝 VERIFICATION LOG
+        metadata: {
+          ai_generated_topic: adaptiveTopicHint,  // Store in metadata for verification
+          topic_cluster_broad: adaptiveTopicCluster
+        }
+        
         // Learning tracking
         experiment_arm: generated.metadata.experiment_arm,
         generator_name: (generated.metadata as any).generator_name || null, // For autonomous learning
@@ -422,6 +428,7 @@ async function storeContentDecisions(decisions: any[]): Promise<void> {
       };
       
       console.log(`[UNIFIED_PLAN] 🔍 Insert data prepared for ${decision.decision_id}`);
+      console.log(`[UNIFIED_PLAN] 🏷️ TOPIC TRACKING: Storing topic_cluster="${metadataRecord.topic_cluster}"`);
       
       // Store in content_metadata
       const { data: insertedData, error: metadataError } = await supabase
