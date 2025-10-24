@@ -148,7 +148,7 @@ export class ResilientReplyPoster {
       try {
         await this.page.waitForSelector('div[role="dialog"], div[aria-modal="true"]', { 
           state: 'visible', 
-          timeout: 5000 
+          timeout: 8000 // Increased from 5000
         });
         console.log('✅ VISUAL_POSITION: Reply modal appeared');
       } catch (e) {
@@ -156,7 +156,8 @@ export class ResilientReplyPoster {
       }
       
       // Then wait for composer to render inside modal
-      await this.page.waitForTimeout(4000); // Increased from 3000
+      // Twitter is VERY slow to render the composer sometimes
+      await this.page.waitForTimeout(6000); // Increased from 4000
       
       // Type reply content
       const composer = await this.findComposer();
@@ -212,7 +213,7 @@ export class ResilientReplyPoster {
       await this.page.keyboard.press('r');
       
       // Wait longer for Twitter to render composer
-      await this.page.waitForTimeout(3000);
+      await this.page.waitForTimeout(5000); // Increased from 3000
       
       // Type reply
       const composer = await this.findComposer();
@@ -418,62 +419,89 @@ export class ResilientReplyPoster {
    * 🔍 Helper: Find composer textbox (RESILIENT)
    */
   private async findComposer() {
-    // Wait for composer to appear (Twitter needs time to render it)
-    console.log('🔍 FIND_COMPOSER: Waiting 3s for composer to appear...');
-    await this.page.waitForTimeout(3000); // Increased from 1500
+    // Wait LONGER for composer to appear (Twitter is slow to render modals)
+    console.log('🔍 FIND_COMPOSER: Waiting 5s for composer to appear...');
+    await this.page.waitForTimeout(5000); // Increased from 3000
     
     const composerSelectors = [
-      // Most specific first
+      // Most specific first (Twitter's current selectors as of 2025)
       '[data-testid="tweetTextarea_0"]',
       'div[data-testid^="tweetTextarea"]',
+      '[data-testid="tweetTextarea_0RichTextInputContainer"]',
       
       // Role-based (very reliable)
       'div[role="textbox"][contenteditable="true"]',
       'div[role="textbox"]',
       
+      // Contenteditable inside modal (most reliable for replies)
+      'div[role="dialog"] [contenteditable="true"]:not([aria-hidden="true"])',
+      'div[role="dialog"] div[role="textbox"]',
+      'div[aria-modal="true"] [contenteditable="true"]:not([aria-hidden="true"])',
+      'div[aria-modal="true"] div[role="textbox"]',
+      
       // Contenteditable (broad but works)
-      '[contenteditable="true"]',
-      'div[contenteditable="true"]',
+      '[contenteditable="true"]:not([aria-hidden="true"])',
+      'div[contenteditable="true"]:not([aria-hidden="true"])',
       
       // Aria labels
+      'div[aria-label*="Post text"]',
+      'div[aria-label*="Tweet text"]',
+      'div[aria-label*="Post your reply"]',
+      'div[aria-label*="reply"]',
       'div[aria-label*="Post"]',
       'div[aria-label*="Tweet"]',
-      'div[aria-label*="reply"]',
       
-      // Look inside dialog/modal
-      'div[role="dialog"] [contenteditable="true"]',
-      'div[role="dialog"] div[role="textbox"]',
-      '[aria-modal="true"] [contenteditable="true"]',
-      
-      // Last resort - any contenteditable in visible modal
-      'div:visible [contenteditable="true"]'
+      // Last resort - any visible contenteditable 
+      '[contenteditable="true"]:visible',
+      'div[contenteditable="true"]:visible'
     ];
     
+    // Try each selector with MORE patience
     for (const selector of composerSelectors) {
       try {
+        console.log(`🔍 TRYING: "${selector}"`);
         const composer = this.page.locator(selector).first();
-        await composer.waitFor({ state: 'visible', timeout: 2000 });
         
-        // Verify it's actually editable
+        // Wait up to 3 seconds for this specific selector
+        await composer.waitFor({ state: 'visible', timeout: 3000 });
+        
+        // Verify it's actually editable and visible
         const isEditable = await composer.isEditable();
-        if (isEditable) {
+        const isVisible = await composer.isVisible();
+        
+        if (isEditable && isVisible) {
           console.log(`✅ COMPOSER_FOUND: Using selector "${selector}"`);
           return composer;
+        } else {
+          console.log(`⚠️ ELEMENT_FOUND but not editable/visible, trying next...`);
         }
       } catch (e) {
+        // Silent continue to next selector
         continue;
       }
     }
     
-    // Final attempt: look for ANY contenteditable element
+    // FINAL ATTEMPT: Use evaluate to find ANY contenteditable that's actually visible in viewport
     try {
-      const anyEditable = this.page.locator('[contenteditable="true"]').first();
-      const exists = await anyEditable.count() > 0;
-      if (exists) {
-        console.log('⚠️ COMPOSER_FOUND: Using fallback contenteditable');
+      console.log('🔍 FINAL_ATTEMPT: Looking for any visible contenteditable element...');
+      
+      const hasContentEditable = await this.page.evaluate(() => {
+        const editables = Array.from(document.querySelectorAll('[contenteditable="true"]'));
+        const visible = editables.find(el => {
+          const rect = el.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0 && rect.top >= 0;
+        });
+        return visible !== undefined;
+      });
+      
+      if (hasContentEditable) {
+        const anyEditable = this.page.locator('[contenteditable="true"]').first();
+        console.log('⚠️ COMPOSER_FOUND: Using emergency fallback contenteditable');
         return anyEditable;
       }
-    } catch (e) {}
+    } catch (e) {
+      console.log(`❌ EMERGENCY_FALLBACK_FAILED: ${(e as Error).message}`);
+    }
     
     console.log('❌ COMPOSER_NOT_FOUND: Tried all selectors');
     return null;
