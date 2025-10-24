@@ -293,9 +293,9 @@ export class JobManager {
         10 * MINUTE // Start after 10 minutes (after account discovery has run)
       );
 
-      // 💬 REPLY POSTING JOB - every 15 min, offset 2 min
-      // 🎯 CRITICAL: Actually POST replies to harvested opportunities
-      // 🔥 FIX: Reduced delay from 20min to 2min to post queued replies faster
+      // 💬 REPLY POSTING JOB - every 15 min, offset 15 min
+      // 🎯 CRITICAL: Generate and queue replies
+      // ⏰ TIMING: Starts at 15min (AFTER harvester at 10min has populated opportunities)
       this.scheduleStaggeredJob(
         'reply_posting',
         async () => {
@@ -305,8 +305,8 @@ export class JobManager {
             this.stats.lastReplyTime = new Date();
           });
         },
-        15 * MINUTE, // Every 15 minutes - frequent reply posting
-        2 * MINUTE // Start after 2 minutes - FAST startup to process queued replies
+        15 * MINUTE, // Every 15 minutes - aligned with MIN_MINUTES_BETWEEN
+        15 * MINUTE // Start after 15 minutes (AFTER first harvest at 10min + buffer)
       );
     } else {
       console.log('⚠️  JOB_MANAGER: Reply jobs DISABLED (ENABLE_REPLIES not set or flags.replyEnabled false)');
