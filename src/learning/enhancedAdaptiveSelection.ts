@@ -373,12 +373,16 @@ async function selectDiverseExplorationContent(): Promise<AdaptiveDecision> {
     console.log(`[DIVERSE_EXPLORATION] 💡 Reasoning: ${topicResult.reasoning}`);
     console.log(`[DIVERSE_EXPLORATION] 🏷️ AI-assigned cluster: ${topicResult.cluster} (for tracking only)`);
     
-    // 🎲 RANDOMIZE GENERATOR (no hardcoded cluster mappings!)
+    // 🎲 RANDOMIZE GENERATOR - USE ALL 11 GENERATORS (no hardcoded cluster mappings!)
     // Let the system explore different generators for any topic
-    const allGenerators = ['dataNerd', 'provocateur', 'storyteller', 'mythBuster', 'contrarian', 'coach', 'explorer'];
+    const allGenerators = [
+      'dataNerd', 'provocateur', 'storyteller', 'mythBuster', 'contrarian', 
+      'coach', 'explorer', 'thoughtLeader', 'newsReporter', 'philosopher', 
+      'culturalBridge'
+    ]; // ALL 11 generators (humanVoice uses different path)
     const selectedGenerator = allGenerators[Math.floor(Math.random() * allGenerators.length)];
     
-    console.log(`[DIVERSE_EXPLORATION] 🎭 Selected generator: ${selectedGenerator} (randomized for exploration)`);
+    console.log(`[DIVERSE_EXPLORATION] 🎭 Selected generator: ${selectedGenerator} (randomized from all 11 generators)`);
     
     return {
       hook_pattern: ['bold_claim', 'contrarian', 'story_opener', 'data_driven'][Math.floor(Math.random() * 4)] as string,
@@ -390,15 +394,22 @@ async function selectDiverseExplorationContent(): Promise<AdaptiveDecision> {
     };
     
   } catch (error: any) {
-    console.error('[DIVERSE_EXPLORATION] ❌ AI topic generation failed, using fallback:', error.message);
+    console.error('[DIVERSE_EXPLORATION] ❌ AI topic generation failed, delegating to content engine:', error.message);
     
-    // Fallback to basic diverse selection if AI fails
+    // NO HARDCODED FALLBACK - let the content engine be creative
+    const allGenerators = [
+      'dataNerd', 'provocateur', 'storyteller', 'mythBuster', 'contrarian', 
+      'coach', 'explorer', 'thoughtLeader', 'newsReporter', 'philosopher', 
+      'culturalBridge'
+    ];
+    const randomGenerator = allGenerators[Math.floor(Math.random() * allGenerators.length)];
+    
     return {
-      hook_pattern: 'contrarian',
-      topic: 'exercise timing optimization',
-      generator: 'mythBuster',
+      hook_pattern: ['bold_claim', 'contrarian', 'story_opener', 'data_driven'][Math.floor(Math.random() * 4)] as string,
+      topic: 'Generate a completely unique health/wellness topic not covered recently',
+      generator: randomGenerator,
       format: 'single',
-      reasoning: 'Fallback diverse topic',
+      reasoning: 'AI failed, delegating creativity to content generator',
       intelligence_source: 'internal'
     };
   }
@@ -417,12 +428,24 @@ async function getCompetitorInspiredDecision(): Promise<AdaptiveDecision> {
     if (insights.trending_opportunities && insights.trending_opportunities.length > 0) {
       const hotTopic = insights.trending_opportunities[0];
       
+      // Randomize which competitor topic to use (don't always use first)
+      const randomIndex = Math.floor(Math.random() * insights.trending_opportunities.length);
+      const selectedTopic = insights.trending_opportunities[randomIndex];
+      
+      // Randomize generator (don't always use contrarian)
+      const allGenerators = [
+        'dataNerd', 'provocateur', 'storyteller', 'mythBuster', 'contrarian', 
+        'coach', 'explorer', 'thoughtLeader', 'newsReporter', 'philosopher', 
+        'culturalBridge'
+      ];
+      const randomGenerator = allGenerators[Math.floor(Math.random() * allGenerators.length)];
+      
       return {
-        hook_pattern: 'contrarian',
-        topic: hotTopic.topic,
-        generator: 'contrarian',
+        hook_pattern: ['bold_claim', 'contrarian', 'story_opener', 'data_driven'][Math.floor(Math.random() * 4)] as string,
+        topic: selectedTopic.topic,
+        generator: randomGenerator,
         format: 'single',
-        reasoning: `Cold start: Using competitor trending topic "${hotTopic.topic}"`,
+        reasoning: `Cold start: Using AI-generated trending topic "${selectedTopic.topic}" with ${randomGenerator}`,
         intelligence_source: 'competitor'
       };
     }
@@ -430,13 +453,20 @@ async function getCompetitorInspiredDecision(): Promise<AdaptiveDecision> {
     console.warn('[ENHANCED_ADAPTIVE] ⚠️ Competitor intelligence failed, using default');
   }
   
-  // Fallback
+  // NO HARDCODED FALLBACK - randomize everything
+  const allGenerators = [
+    'dataNerd', 'provocateur', 'storyteller', 'mythBuster', 'contrarian', 
+    'coach', 'explorer', 'thoughtLeader', 'newsReporter', 'philosopher', 
+    'culturalBridge'
+  ];
+  const randomGenerator = allGenerators[Math.floor(Math.random() * allGenerators.length)];
+  
   return {
-    hook_pattern: 'bold_claim',
-    topic: 'sleep optimization',
-    generator: 'provocateur',
+    hook_pattern: ['bold_claim', 'contrarian', 'story_opener', 'data_driven'][Math.floor(Math.random() * 4)] as string,
+    topic: 'Generate a unique health/wellness topic with high viral potential',
+    generator: randomGenerator,
     format: 'single',
-    reasoning: 'Default - no data available',
+    reasoning: 'Cold start - using random generator with AI topic generation',
     intelligence_source: 'internal'
   };
 }
