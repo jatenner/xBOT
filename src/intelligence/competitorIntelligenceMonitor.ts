@@ -113,14 +113,13 @@ export class CompetitorIntelligenceMonitor {
   }
 
   /**
-   * 📈 Identify trending opportunities
+   * 📈 Identify trending opportunities - 100% AI-GENERATED (NO HARDCODED TOPICS)
    */
   private async identifyTrendingOpportunities(): Promise<TrendingOpportunity[]> {
     try {
-      // Simulate trending topic detection
-      // In production, this would analyze real competitor content via Twitter API
+      console.log('[COMPETITOR_INTEL] 🤖 Using AI to generate trending topics (no hardcoded lists)...');
       
-      // 🔥 FIX: Check recent posts to avoid topic repetition
+      // Get recent posts to avoid repetition
       const supabase = getSupabaseClient();
       const { data: recentPosts } = await supabase
         .from('content_metadata')
@@ -128,132 +127,50 @@ export class CompetitorIntelligenceMonitor {
         .order('created_at', { ascending: false })
         .limit(10);
       
-      const recentContent = recentPosts?.map(p => String(p.content || '').toLowerCase()).join(' ') || '';
+      const recentTopics = recentPosts?.map(p => String(p.content || '').toLowerCase()) || [];
       
-      // Expanded topic pool for more diversity
-      const allTrends = [
-        {
-          topic: 'NAD+ supplementation',
-          trending_score: 0.8,
-          competition_level: 0.4,
-          viral_potential: 0.7,
-          suggested_angle: 'Natural ways to boost NAD+ without expensive supplements',
-          timing_window: 'Next 24-48 hours',
-          keywords: ['nad', 'nad+', 'nicotinamide']
-        },
-        {
-          topic: 'Circadian light therapy',
-          trending_score: 0.7,
-          competition_level: 0.3,
-          viral_potential: 0.8,
-          suggested_angle: 'DIY circadian optimization with household items',
-          timing_window: 'Next 12 hours',
-          keywords: ['circadian', 'light therapy', 'blue light', 'rhythm']
-        },
-        {
-          topic: 'Metabolic flexibility training',
-          trending_score: 0.6,
-          competition_level: 0.5,
-          viral_potential: 0.6,
-          suggested_angle: 'Simple metabolic flexibility tests you can do at home',
-          timing_window: 'Next 3 days',
-          keywords: ['metabolic', 'flexibility', 'ketone']
-        },
-        {
-          topic: 'Microplastic detox protocols',
-          trending_score: 0.9,
-          competition_level: 0.2,
-          viral_potential: 0.9,
-          suggested_angle: 'Evidence-based methods to reduce microplastic exposure',
-          timing_window: 'URGENT - Next 6 hours',
-          keywords: ['microplastic', 'detox', 'plastic']
-        },
-        {
-          topic: 'Zone 2 cardio optimization',
-          trending_score: 0.75,
-          competition_level: 0.35,
-          viral_potential: 0.8,
-          suggested_angle: 'Why elite athletes spend 80% of training in Zone 2',
-          timing_window: 'Next 2 days',
-          keywords: ['zone 2', 'cardio', 'aerobic', 'endurance']
-        },
-        {
-          topic: 'Protein timing myths',
-          trending_score: 0.7,
-          competition_level: 0.4,
-          viral_potential: 0.75,
-          suggested_angle: 'The anabolic window is longer than you think',
-          timing_window: 'Next 48 hours',
-          keywords: ['protein', 'timing', 'anabolic', 'window']
-        },
-        {
-          topic: 'Cold exposure protocols',
-          trending_score: 0.65,
-          competition_level: 0.5,
-          viral_potential: 0.7,
-          suggested_angle: 'Cold showers vs ice baths: what science actually says',
-          timing_window: 'Next 3 days',
-          keywords: ['cold', 'exposure', 'ice', 'bath', 'shower']
-        },
-        {
-          topic: 'Glucose monitoring insights',
-          trending_score: 0.8,
-          competition_level: 0.3,
-          viral_potential: 0.85,
-          suggested_angle: 'What CGMs reveal about "healthy" foods',
-          timing_window: 'Next 24 hours',
-          keywords: ['glucose', 'cgm', 'monitor', 'blood sugar']
-        },
-        {
-          topic: 'Sauna benefits beyond heat',
-          trending_score: 0.7,
-          competition_level: 0.4,
-          viral_potential: 0.75,
-          suggested_angle: 'Sauna protocols for longevity and brain health',
-          timing_window: 'Next 2 days',
-          keywords: ['sauna', 'heat', 'infrared']
-        },
-        {
-          topic: 'Electrolyte optimization',
-          trending_score: 0.65,
-          competition_level: 0.45,
-          viral_potential: 0.7,
-          suggested_angle: 'Why you need more than water for hydration',
-          timing_window: 'Next 3 days',
-          keywords: ['electrolyte', 'sodium', 'potassium', 'magnesium', 'hydration']
+      // 🔥 USE AI TO GENERATE TRENDING TOPICS DYNAMICALLY
+      const { DynamicTopicGenerator } = await import('./dynamicTopicGenerator');
+      const topicGenerator = DynamicTopicGenerator.getInstance();
+      
+      // Generate 4 unique trending topics using AI
+      const aiTopics: TrendingOpportunity[] = [];
+      
+      for (let i = 0; i < 4; i++) {
+        try {
+          const dynamicTopic = await topicGenerator.generateTopic({
+            recentTopics: [
+              ...recentTopics,
+              ...aiTopics.map(t => t.topic) // Also avoid duplicates within this batch
+            ],
+            preferTrending: true // Focus on viral potential
+          });
+          
+          aiTopics.push({
+            topic: dynamicTopic.topic,
+            trending_score: dynamicTopic.viral_potential,
+            competition_level: Math.random() * 0.5, // Simulate competition (0-50%)
+            viral_potential: dynamicTopic.viral_potential,
+            suggested_angle: dynamicTopic.angle,
+            timing_window: 'Next 24-48 hours',
+            content_gap_identified: dynamicTopic.viral_potential > 0.7
+          });
+          
+          console.log(`[COMPETITOR_INTEL] ✅ AI generated topic ${i + 1}/4: "${dynamicTopic.topic}"`);
+          
+        } catch (topicError: any) {
+          console.warn(`[COMPETITOR_INTEL] ⚠️ Failed to generate topic ${i + 1}:`, topicError.message);
         }
-      ];
+      }
       
-      // Filter out topics we've recently covered
-      const freshTrends = allTrends.filter(trend => {
-        const hasRecentCoverage = trend.keywords.some(keyword => 
-          recentContent.includes(keyword.toLowerCase())
-        );
-        if (hasRecentCoverage) {
-          console.log(`[COMPETITOR_INTEL] 🔄 Skipping recently covered topic: ${trend.topic}`);
-        }
-        return !hasRecentCoverage;
-      });
+      console.log(`[COMPETITOR_INTEL] 🎯 Generated ${aiTopics.length} AI-driven topics (0 hardcoded)`);
       
-      console.log(`[COMPETITOR_INTEL] ✅ Filtered ${allTrends.length} → ${freshTrends.length} fresh topics`);
-      
-      // If all topics were recently covered, shuffle and take top 4 anyway
-      const selectedTrends = freshTrends.length > 0 
-        ? freshTrends.slice(0, 4)
-        : allTrends.sort(() => Math.random() - 0.5).slice(0, 4);
+      return aiTopics;
 
-      // Add content gap identification
-      return selectedTrends.map(trend => ({
-        topic: trend.topic,
-        trending_score: trend.trending_score,
-        competition_level: trend.competition_level,
-        viral_potential: trend.viral_potential,
-        suggested_angle: trend.suggested_angle,
-        timing_window: trend.timing_window,
-        content_gap_identified: trend.competition_level < 0.4
-      }));
-
-    } catch (error) {
+    } catch (error: any) {
+      console.error('[COMPETITOR_INTEL] ❌ AI topic generation failed:', error.message);
+      
+      // If AI fails completely, return empty array (no hardcoded fallbacks!)
       return [];
     }
   }
