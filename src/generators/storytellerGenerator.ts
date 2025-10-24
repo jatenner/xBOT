@@ -72,7 +72,7 @@ Real example with mechanism - make it stop-scrolling interesting
 Format your response as JSON.
 `}`;
 
-  const userPrompt = `Tell a story about ${topic} that people remember.
+  const userPrompt = `Create narrative content about ${topic}. Use stories, examples, or case studies in whatever format is most engaging.
 
 ${format === 'thread' ? 'Make it a compelling thread with real examples.' : 'Make it memorable and specific.'}`;
 

@@ -60,7 +60,7 @@ Return JSON: {"tweets": ["...", "...", ...]}
 Return JSON: {"tweet": "..."}
 `}`;
 
-  const userPrompt = `Debunk a myth about ${topic} with evidence.`;
+  const userPrompt = `Create myth-busting content about ${topic}. Challenge misconceptions however works best - questions, statements, comparisons, or data.`;
 
   try {
     const response = await createBudgetedChatCompletion({

@@ -65,7 +65,7 @@ Return JSON: {"tweets": ["...", "...", ...]}
 Return JSON: {"tweet": "..."}
 `}`;
 
-  const userPrompt = `Make ${topic} fascinating and counterintuitive.`;
+  const userPrompt = `Create fascinating content about ${topic}. Find the counterintuitive angle in whatever format works - facts, questions, comparisons, or mechanisms.`;
 
   try {
     const response = await createBudgetedChatCompletion({
