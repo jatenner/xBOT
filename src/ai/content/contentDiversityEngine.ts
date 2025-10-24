@@ -16,6 +16,7 @@ export class ContentDiversityEngine {
   private recentHooks: string[] = [];
   private recentFormats: string[] = [];
   private recentStyles: string[] = [];
+  private recentTopics: string[] = []; // ✅ NOW TRACKING TOPICS TOO!
   
   // Track last used to prevent repetition
   private readonly MEMORY_WINDOW = 10; // Remember last 10 posts
@@ -193,6 +194,25 @@ export class ContentDiversityEngine {
     if (this.recentStyles.length > this.MEMORY_WINDOW) {
       this.recentStyles = this.recentStyles.slice(-this.MEMORY_WINDOW);
     }
+  }
+  
+  /**
+   * ✅ Track topic usage to prevent repeats
+   */
+  public trackTopic(topic: string): void {
+    this.recentTopics.push(topic);
+    if (this.recentTopics.length > this.MEMORY_WINDOW) {
+      this.recentTopics = this.recentTopics.slice(-this.MEMORY_WINDOW);
+    }
+    console.log(`[DIVERSITY_ENGINE] 📝 Tracked topic: "${topic}"`);
+    console.log(`[DIVERSITY_ENGINE] Recent topics (last ${this.recentTopics.length}): ${this.recentTopics.join(', ')}`);
+  }
+  
+  /**
+   * ✅ Get recent topics to avoid
+   */
+  public getRecentTopics(): string[] {
+    return [...this.recentTopics]; // Return copy
   }
 
   /**
