@@ -85,10 +85,10 @@ export class TopicDiversityEngine {
     
     // Step 5: Use AI to generate a NEW, UNIQUE topic
     const generatedTopic = await this.generateTopicWithAI({
-      preferredCluster,
       recentTopics,
-      successfulTopics,
-      overusedTopics
+      overusedTopics,
+      successful: successfulTopics.length > 0 ? successfulTopics : null,
+      mode: 'exploration'
     });
     
     // Step 6: Verify uniqueness and similarity
@@ -98,10 +98,10 @@ export class TopicDiversityEngine {
       console.log('[TOPIC_DIVERSITY] ⚠️ Generated topic too similar to recent, retrying...');
       // Retry with stronger diversity requirement
       return await this.generateTopicWithAI({
-        preferredCluster,
         recentTopics,
-        successfulTopics,
         overusedTopics,
+        successful: successfulTopics.length > 0 ? successfulTopics : null,
+        mode: 'exploration',
         forceMaxDiversity: true
       });
     }
@@ -608,20 +608,15 @@ ${params.successful.map(t => `- "${t.topic}" (${t.avg_followers.toFixed(1)} foll
 
   /**
    * 🔥 Get trending topics from ViralTrendMonitor
+   * TODO: Integrate with actual ViralTrendMonitor when monitoring is active
    */
   private async getTrendingTopics(): Promise<any[]> {
     try {
-      const { ViralTrendMonitor } = await import('../intelligence/viralTrendMonitor');
-      const monitor = ViralTrendMonitor.getInstance();
-      const trends = await monitor.detectTrendingTopics();
-      
-      // Filter for health-relevant trends
-      const healthTrends = trends
-        .filter((t: any) => t.health_relevance && t.health_relevance > 5)
-        .slice(0, 5);
-      
-      console.log(`[TOPIC_DIVERSITY] 🔥 Found ${healthTrends.length} health-relevant trending topics`);
-      return healthTrends;
+      // For now, return empty array (trending integration disabled)
+      // ViralTrendMonitor requires continuous monitoring to be active
+      // Will integrate once monitoring service is running
+      console.log(`[TOPIC_DIVERSITY] 🔥 Trending integration: Disabled (monitor not running)`);
+      return [];
     } catch (error: any) {
       console.warn('[TOPIC_DIVERSITY] ⚠️ Could not get trending topics:', error.message);
       return [];
