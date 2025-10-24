@@ -172,9 +172,17 @@ ${patternsText}
 4. **Avoid GENERIC** advice or obvious facts
 5. **Include NUMBERS** or specific research when possible
 
-=== RECENT TOPICS TO AVOID ===
+=== RECENT TOPICS (Avoid for next ~20 posts, then fair game again) ===
 
 ${recentText}
+
+⚠️ IMPORTANT: These are TEMPORARY avoidance, not blacklisted forever!
+- After ~20 more posts, you CAN talk about these topics again
+- Just don't repeat them in the IMMEDIATE future
+- Pick from the ENTIRE health/wellness spectrum
+- Examples of what you CAN explore: cold exposure, sauna protocols, hormone optimization, 
+  strength training, meditation techniques, sleep architecture, supplement timing, 
+  breathwork methods, Zone 2 cardio, protein synthesis, recovery protocols, etc.
 
 === OUTPUT FORMAT ===
 
