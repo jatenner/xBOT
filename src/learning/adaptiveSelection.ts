@@ -42,15 +42,18 @@ export async function selectOptimalContent(): Promise<AdaptiveDecision> {
   
   console.log(`[ADAPTIVE] 📊 Recent performance: ${(avgEngagement * 100).toFixed(2)}% engagement, ${avgFollowers.toFixed(1)} followers/post`);
   
-  // STRATEGY 1: If performance is dropping, pivot
-  if (avgEngagement < 0.02 || avgFollowers < 3) {
-    console.log('[ADAPTIVE] 🔄 Performance declining, trying new approach...');
+  // STRATEGY 1: If performance is truly poor (below learning threshold), pivot
+  // USER REQUIREMENT: Need volume to be meaningful (100+ views average at minimum)
+  if (avgEngagement < 0.01 || avgFollowers < 1) {
+    console.log('[ADAPTIVE] 🔄 Performance very poor (below noise floor), exploring new approaches...');
     return await selectExploratoryContent();
   }
   
-  // STRATEGY 2: If performance is strong, double down
-  if (avgEngagement > 0.05 || avgFollowers > 10) {
-    console.log('[ADAPTIVE] 📈 Performance strong, doubling down...');
+  // STRATEGY 2: If performance is TRULY strong (viral territory), double down
+  // USER REQUIREMENT: Strong = 1000+ views, 100+ likes consistently
+  // For averages, use: 5% ER (50 likes / 1000 views) + 5+ followers/post
+  if (avgEngagement > 0.05 && avgFollowers > 5) {
+    console.log('[ADAPTIVE] 📈 Performance TRULY strong (viral territory), doubling down...');
     return await selectBestPerformer(recentPosts);
   }
   

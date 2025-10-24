@@ -66,9 +66,11 @@ export class TopicDiversityEngine {
     const topicPerformance = await this.getTopicPerformance();
     console.log(`[TOPIC_DIVERSITY] 📊 Tracking performance for ${topicPerformance.length} topics`);
     
-    // Step 3: Identify what's working (high engagement/followers)
+    // Step 3: Identify what's TRULY working (realistic thresholds)
+    // USER REQUIREMENT: Success = 1000+ views, 100+ likes (viral territory)
+    // For topic-level averages: 5+ followers/post AND 5% ER minimum
     const successfulTopics = topicPerformance
-      .filter(t => t.avg_followers > 5 || t.avg_engagement > 0.05)
+      .filter(t => t.avg_followers > 5 && t.avg_engagement > 0.05)
       .slice(0, 5);
     
     // Step 4: Identify overused topics (appeared multiple times recently)
@@ -138,7 +140,7 @@ export class TopicDiversityEngine {
     ]);
     
     const successfulTopics = topicPerformance
-      .filter(t => t.avg_followers > 5 || t.avg_engagement > 0.05)
+      .filter(t => t.avg_followers > 5 && t.avg_engagement > 0.05)
       .slice(0, 5);
     
     const overusedTopics = Object.entries(
@@ -421,7 +423,7 @@ export class TopicDiversityEngine {
         posts_count: stats.posts,
         avg_followers: stats.followers.reduce((a, b) => a + b, 0) / stats.followers.length,
         avg_engagement: stats.engagement.reduce((a, b) => a + b, 0) / stats.engagement.length,
-        success_rate: stats.followers.filter(f => f > 5).length / stats.followers.length,
+        success_rate: stats.followers.filter(f => f > 5).length / stats.followers.length, // Success = 5+ followers
         last_used: stats.last_used
       }));
     } catch (error: any) {
