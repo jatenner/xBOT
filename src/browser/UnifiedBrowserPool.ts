@@ -309,7 +309,9 @@ export class UnifiedBrowserPool {
         '--disable-gpu',
         '--disable-web-security',
         '--memory-pressure-off',
-        '--max_old_space_size=2048' // Limit to 2GB
+        '--max_old_space_size=2048', // Limit to 2GB
+        // Force new headless mode (fixes zygote crash)
+        '--headless=new'
       ]
     });
 

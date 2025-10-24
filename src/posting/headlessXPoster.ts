@@ -50,7 +50,7 @@ export class HeadlessXPoster {
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
-        '--no-zygote',
+        '--headless=new', // Force new headless mode (fixes zygote crash)
         '--disable-gpu',
         '--disable-features=TranslateUI,VizDisplayCompositor,IsolateOrigins,site-per-process',
         '--disable-blink-features=AutomationControlled',

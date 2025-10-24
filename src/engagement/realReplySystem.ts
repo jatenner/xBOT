@@ -148,6 +148,7 @@ export class RealReplySystem {
           args: [
             '--no-sandbox',
             '--disable-dev-shm-usage',
+            '--headless=new', // Fix zygote crash
             '--disable-gpu',
             '--single-process',
             '--memory-pressure-off',
