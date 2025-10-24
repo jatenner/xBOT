@@ -133,18 +133,24 @@ export class DynamicTopicGenerator {
 
 Your goal: Generate unique, engaging topics that get FOLLOWERS (not just likes).
 
-=== TOPIC DOMAINS ===
+=== TOPIC DOMAINS (NO EXAMPLES - Pure Categories Only) ===
 
-You can generate content about ANY aspect of:
-- Health & Medicine (sleep, nutrition, hormones, gut health, heart health, etc)
-- Fitness & Performance (training, recovery, athletics, strength, endurance)
-- Psychology & Mental Health (anxiety, depression, relationships, habits, trauma)
-- Biohacking & Optimization (supplements, nootropics, cold/heat exposure, tracking)
-- Diet Philosophies (keto, carnivore, plant-based, fasting, paleo)
-- Longevity & Aging (anti-aging, life extension, healthspan)
-- Current Health News (trending topics, controversies, new research)
-- Industry Critique (pharma, food industry, healthcare system)
-- Specific Conditions (diabetes, autoimmune, ADHD, thyroid, fertility)
+You can generate content about ANY aspect of health and wellness:
+- Medical Science & Biology
+- Physical Fitness & Training
+- Mental Health & Psychology
+- Optimization & Biohacking
+- Nutrition & Diet
+- Longevity & Anti-Aging
+- Current Health Research & News
+- Healthcare Industry Analysis
+- Specific Health Conditions
+
+⚠️ IMPORTANT: DO NOT default to common topics. Be creative!
+- Don't always pick the "popular" topics everyone covers
+- Explore the ENTIRE spectrum of health/wellness/fitness/psychology
+- Be specific and novel in your topic selection
+- Think beyond the obvious
 
 === PERSPECTIVES (Dimensions) ===
 
@@ -166,11 +172,12 @@ ${patternsText}
 
 === REQUIREMENTS ===
 
-1. **Be SPECIFIC** (not "exercise is good" but "zone 2 cardio 4x/week for longevity")
+1. **Be SPECIFIC** (exact protocols, measurements, mechanisms - not generic advice)
 2. **Be INTERESTING** (counterintuitive, surprising, controversial, or novel)
 3. **Optimize for FOLLOWERS** (not just engagement)
-4. **Avoid GENERIC** advice or obvious facts
-5. **Include NUMBERS** or specific research when possible
+4. **Avoid POPULAR/OBVIOUS** topics unless you have a unique angle
+5. **EXPLORE THE UNEXPECTED** - don't default to common wellness topics
+6. **Include NUMBERS** or specific research when possible
 
 === RECENT TOPICS (Avoid for next ~20 posts, then fair game again) ===
 
@@ -188,8 +195,8 @@ ${recentText}
 
 Return JSON with:
 {
-  "topic": "Specific topic (e.g., 'Magnesium glycinate vs citrate for sleep')",
-  "angle": "Unique perspective (e.g., '8-week personal comparison with HRV data')",
+  "topic": "Specific topic (be creative - explore unexpected areas of health/wellness)",
+  "angle": "Unique perspective that makes it interesting",
   "dimension": "news|politics|psychology|health|controversy|personal|research|industry|long_term|short_term",
   "hook_suggestion": "Attention-grabbing opening line",
   "why_engaging": "Why this will get followers",

@@ -156,10 +156,21 @@ async function generateRealContent(): Promise<void> {
     .order('created_at', { ascending: false })
     .limit(20); // Check last 20 pieces of content
   
+  // Extract FULL content for duplicate checking (word-level comparison)
   const recentTexts = recentContent?.map(c => String(c.content || '').toLowerCase()) || [];
+  
+  // Extract KEYWORDS ONLY for topic avoidance (what AI needs to avoid)
+  const recentKeywords = recentContent?.map(c => {
+    const content = String(c.content || '').toLowerCase();
+    // Extract health/wellness keywords from content
+    const keywords = content.match(/\b(microbiome|gut|circadian|rhythm|nad\+|fasting|sleep|exercise|protein|ketone|glucose|inflammation|longevity|mitochondria|autophagy|hormone|thyroid|testosterone|estrogen|cortisol|insulin|serotonin|dopamine|meditation|breathwork|cold|heat|sauna|supplement|vitamin|mineral|fiber|probiotic|prebiotic|polyphenol|antioxidant|metabolic|cardiovascular|cognitive|brain|mental|anxiety|depression|stress|recovery|muscle|strength|endurance|vo2|hrv|zone 2|hiit|carb|fat|omega|keto|carnivore|vegan|plant-based|paleo|16:8|intermittent|omad)\b/g);
+    return keywords?.join(' ') || '';
+  }).filter(Boolean) || [];
+  
   const recentGenerators = (recentContent?.map(c => String(c.generator_name || '')).filter(Boolean) as string[]) || [];
   console.log(`[UNIFIED_PLAN] 📚 Loaded ${recentTexts.length} recent posts for duplicate checking`);
   console.log(`[UNIFIED_PLAN] 🎨 Recent generators: ${recentGenerators.slice(0, 5).join(', ')}`);
+  console.log(`[UNIFIED_PLAN] 🔑 Keywords to avoid (next 20 posts): ${[...new Set(recentKeywords.join(' ').split(' '))].slice(0, 10).join(', ')}...`);
   
   // ═══════════════════════════════════════════════════════════
   // 🎣 HOOK VARIETY ENFORCER - Track recent hook types
@@ -249,14 +260,14 @@ async function generateRealContent(): Promise<void> {
       // GENERATE WITH ALL SYSTEMS ACTIVE (with diversity enforcement)
       // ═══════════════════════════════════════════════════════════
       console.log(`[UNIFIED_PLAN] 🎲 Recent generators: ${recentGenerators.slice(0, 5).join(', ')}`);
-      console.log(`[UNIFIED_PLAN] 📚 Passing ${recentTexts.length} recent posts to AI for diversity`);
+      console.log(`[UNIFIED_PLAN] 📚 Passing ${recentKeywords.length} keyword sets to AI for diversity`);
       console.log(`[UNIFIED_PLAN] 🎯 Adaptive topic: ${adaptiveTopicHint || 'none (using AI selection)'}`);
       console.log(`[UNIFIED_PLAN] 🏷️ Topic cluster: ${adaptiveTopicCluster}`);
       
       const generated = await engine.generateContent({
         format: Math.random() < 0.3 ? 'thread' : 'single', // 30% threads, 70% singles
         recentGenerators: recentGenerators.slice(0, 3), // Avoid last 3 generators
-        recentContent: recentTexts.slice(0, 10), // 🆕 Pass last 10 posts for AI to avoid repetition
+        recentContent: recentKeywords.slice(0, 20), // 🔑 Pass KEYWORDS (not full content) for topic avoidance
         preferredHookType: preferredHook, // 🎣 Enforce hook variety
         seriesContext: todaySeries // 📅 Provide series context
         // Note: topicHint and generatorHint passed via seriesContext
