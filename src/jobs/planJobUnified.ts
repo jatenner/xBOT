@@ -266,11 +266,11 @@ async function generateRealContent(): Promise<void> {
       
       const generated = await engine.generateContent({
         format: Math.random() < 0.3 ? 'thread' : 'single', // 30% threads, 70% singles
+        topic: adaptiveTopicHint, // ✅ USER FIX: PASS THE AI-GENERATED TOPIC!
         recentGenerators: recentGenerators.slice(0, 3), // Avoid last 3 generators
         recentContent: recentKeywords.slice(0, 20), // 🔑 Pass KEYWORDS (not full content) for topic avoidance
         preferredHookType: preferredHook, // 🎣 Enforce hook variety
         seriesContext: todaySeries // 📅 Provide series context
-        // Note: topicHint and generatorHint passed via seriesContext
       });
       
       // ═══════════════════════════════════════════════════════════

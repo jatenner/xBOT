@@ -21,16 +21,16 @@ export async function selectOptimalContent(): Promise<AdaptiveDecision> {
   
   const supabase = getSupabaseClient();
   
-  // Get last 10 posts performance
+  // 🔧 ROOT CAUSE FIX: Query content_with_outcomes (has data) not post_attribution (empty!)
   const { data: recentPosts } = await supabase
-    .from('post_attribution')
+    .from('content_with_outcomes')  // ✅ FIXED: Use the table that has actual data!
     .select('*')
     .order('posted_at', { ascending: false })
     .limit(10);
   
   if (!recentPosts || recentPosts.length === 0) {
-    console.log('[ADAPTIVE] ℹ️ No performance data, using defaults');
-    return getDefaultDecision();
+    console.log('[ADAPTIVE] ℹ️ No performance data, using AI exploration (NOT defaults)');
+    return getDefaultDecision();  // Uses AI generation, not competitors
   }
   
   // Calculate average engagement

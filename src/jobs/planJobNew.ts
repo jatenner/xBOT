@@ -581,7 +581,7 @@ async function getRecentPerformanceMetrics(): Promise<{
     const supabase = getSupabaseClient();
     
     const { data: recentPosts } = await supabase
-      .from('post_attribution')
+      .from('content_with_outcomes')  // ✅ ROOT CAUSE FIX: Use table with actual data
       .select('engagement_rate, followers_gained')
       .order('posted_at', { ascending: false })
       .limit(10);

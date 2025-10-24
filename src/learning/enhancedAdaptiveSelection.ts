@@ -40,16 +40,16 @@ export async function selectOptimalContentEnhanced(): Promise<AdaptiveDecision> 
   
   const supabase = getSupabaseClient();
   
-  // Get last 10 posts performance
+  // 🔧 ROOT CAUSE FIX: Query content_with_outcomes (has 168 rows) not post_attribution (empty!)
   const { data: recentPosts } = await supabase
-    .from('post_attribution')
+    .from('content_with_outcomes')  // ✅ FIXED: Use the table that has actual data!
     .select('*')
     .order('posted_at', { ascending: false })
     .limit(10);
   
   if (!recentPosts || recentPosts.length === 0) {
-    console.log('[ENHANCED_ADAPTIVE] ℹ️ No performance data, using competitor intelligence');
-    return await getCompetitorInspiredDecision();
+    console.log('[ENHANCED_ADAPTIVE] ℹ️ No performance data, using AI exploration (NOT competitors)');
+    return await selectDiverseExplorationContent();  // ✅ FIXED: Use AI, not competitors!
   }
   
   // ═══════════════════════════════════════════════════════════

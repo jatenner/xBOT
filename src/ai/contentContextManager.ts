@@ -77,7 +77,7 @@ export class ContentContextManager {
   private async getRecentPosts(): Promise<string[]> {
     try {
       const { data } = await this.supabase
-        .from('post_attribution')
+        .from('content_with_outcomes')  // ✅ ROOT CAUSE FIX: Use table with actual data
         .select('content')
         .order('posted_at', { ascending: false })
         .limit(30);
@@ -142,7 +142,7 @@ export class ContentContextManager {
     try {
       // Get posts with engagement data
       const { data: posts } = await this.supabase
-        .from('post_attribution')
+        .from('content_with_outcomes')  // ✅ ROOT CAUSE FIX: Use table with actual data
         .select('content, engagement_rate, likes, followers_gained')
         .not('engagement_rate', 'is', null)
         .order('posted_at', { ascending: false })
