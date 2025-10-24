@@ -123,11 +123,24 @@ export class CompetitorIntelligenceMonitor {
       const supabase = getSupabaseClient();
       const { data: recentPosts } = await supabase
         .from('content_metadata')
-        .select('content')
+        .select('content, topic_cluster')
         .order('created_at', { ascending: false })
-        .limit(10);
+        .limit(15);
       
-      const recentTopics = recentPosts?.map(p => String(p.content || '').toLowerCase()) || [];
+      // Extract KEY KEYWORDS from content (not full text)
+      const recentKeywords = recentPosts?.map(p => {
+        const content = String(p.content || '').toLowerCase();
+        // Extract important health/wellness keywords
+        const keywords = content.match(/\b(microbiome|gut|circadian|rhythm|nad\+|fasting|sleep|exercise|protein|ketone|glucose|inflammation|longevity|mitochondria|autophagy|hormone|thyroid|testosterone|estrogen|cortisol|insulin|serotonin|dopamine|meditation|breathwork|cold|heat|sauna|supplement|vitamin|mineral|fiber|probiotic|prebiotic|polyphenol|antioxidant|metabolic|cardiovascular|cognitive|brain|mental|anxiety|depression|stress|recovery|muscle|strength|endurance|vo2|hrv|zone 2|hiit|carb|fat|omega|keto|carnivore|vegan|plant-based|paleo|16:8|intermittent)\b/g);
+        return keywords || [];
+      }).flat() || [];
+      
+      // Get unique keywords
+      const uniqueKeywords = [...new Set(recentKeywords)];
+      console.log(`[COMPETITOR_INTEL] 📚 Keywords to avoid: ${uniqueKeywords.slice(0, 10).join(', ')}${uniqueKeywords.length > 10 ? '...' : ''}`);
+      
+      // Convert to topic strings for AI (join related keywords)
+      const recentTopics = uniqueKeywords.slice(0, 15);
       
       // 🔥 USE AI TO GENERATE TRENDING TOPICS DYNAMICALLY
       const { DynamicTopicGenerator } = await import('./dynamicTopicGenerator');
