@@ -163,19 +163,15 @@ Generate ONE tweet only:`;
   }
 
   /**
-   * 🎲 Get random health topic
+   * 🤖 Get AI-generated topic (NO HARDCODED LIST!)
+   * This should NEVER be called - we should always use DynamicTopicGenerator
    */
   private getRandomHealthTopic(): string {
-    const topics = [
-      'hydration', 'sleep quality', 'gut health', 'metabolism', 'stress management',
-      'immune system', 'brain health', 'heart health', 'muscle recovery', 'bone health',
-      'mental clarity', 'energy levels', 'inflammation', 'antioxidants', 'fiber intake',
-      'protein timing', 'meal timing', 'exercise recovery', 'posture', 'breathing',
-      'vitamin D', 'omega-3s', 'probiotics', 'meditation', 'walking', 'stretching',
-      'sunlight exposure', 'cold exposure', 'heat therapy', 'fasting', 'meal prep'
-    ];
+    console.error('❌ WARNING: getRandomHealthTopic() called - this should use DynamicTopicGenerator instead!');
+    console.error('❌ This is a fallback that should never execute in production');
     
-    return topics[Math.floor(Math.random() * topics.length)];
+    // Return generic fallback - this will be obvious if it appears
+    return 'health optimization (ERROR: using hardcoded fallback instead of AI)';
   }
 }
 

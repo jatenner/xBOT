@@ -105,8 +105,24 @@ async function generateContentWithLLM() {
   // 🎨 USE DIVERSITY ENGINE FOR COMPLETELY UNIQUE CONTENT
   console.log('[DIVERSITY_ENGINE] Generating completely unique content...');
   
-  // Get diverse prompt that ensures no repetition
-  const diversePrompt = dynamicPromptGenerator.generateDiversePrompt();
+  // ✅ STEP 1: Generate AI-driven topic (not hardcoded!)
+  const { DynamicTopicGenerator } = await import('../intelligence/dynamicTopicGenerator');
+  const topicGenerator = DynamicTopicGenerator.getInstance();
+  
+  // Get recent topics to avoid repetition
+  const recentTopics = contentDiversityEngine.getRecentTopics();
+  console.log(`[TOPIC_GEN] Recent topics to avoid: ${recentTopics.join(', ')}`);
+  
+  // Generate truly unique AI topic
+  const dynamicTopic = await topicGenerator.generateTopic({ recentTopics });
+  console.log(`[TOPIC_GEN] ✨ AI generated topic: "${dynamicTopic.topic}" (angle: ${dynamicTopic.angle})`);
+  console.log(`[TOPIC_GEN] 🔥 Viral potential: ${dynamicTopic.viral_potential}, dimension: ${dynamicTopic.dimension}`);
+  
+  // Track topic to prevent repeats
+  contentDiversityEngine.trackTopic(dynamicTopic.topic);
+  
+  // Get diverse prompt with AI-generated topic
+  const diversePrompt = dynamicPromptGenerator.generateDiversePrompt(dynamicTopic.topic);
   const diversitySelection = contentDiversityEngine.selectDiverseElements();
   
   // Get diversity stats for logging
