@@ -630,30 +630,34 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     throw new Error('Reply decision missing target_tweet_id');
   }
   
-  // ✅ Use Playwright-based reply system (only way to post replies)
-  console.log(`[POSTING_QUEUE] 🎯 Posting reply to tweet ${decision.target_tweet_id}...`);
+  // 🛡️ Use RESILIENT reply system with auto-healing
+  console.log(`[POSTING_QUEUE] 🛡️ Using resilient multi-strategy reply system...`);
   
   try {
     const browserManager = (await import('../lib/browser')).default;
-    const { BulletproofTwitterComposer } = await import('../posting/bulletproofTwitterComposer');
+    const { ResilientReplyPoster } = await import('../posting/resilientReplyPoster');
     
     // Get authenticated browser page
     const page = await browserManager.newPage();
     
-    // Create composer with page and post reply
-    const composer = new BulletproofTwitterComposer(page);
-    const result = await composer.postReply(decision.content, decision.target_tweet_id);
+    // Create resilient poster and post reply
+    const poster = new ResilientReplyPoster(page);
+    const result = await poster.postReply(decision.content, decision.target_tweet_id);
     
     if (result.success) {
       if (!result.tweetId) {
         throw new Error('Reply posting succeeded but no tweet ID was extracted - cannot track metrics');
       }
       console.log(`[POSTING_QUEUE] ✅ Reply posted successfully with ID: ${result.tweetId}`);
+      console.log(`[POSTING_QUEUE] 📊 Strategy used: ${result.strategy}`);
       const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
       console.log(`[POSTING_QUEUE] 🔗 Reply URL: https://x.com/${username}/status/${result.tweetId}`);
       return result.tweetId;
     } else {
-      console.error(`[POSTING_QUEUE] ❌ Reply posting failed: ${result.error}`);
+      console.error(`[POSTING_QUEUE] ❌ All reply strategies failed`);
+      if (result.diagnostics) {
+        console.log(`[POSTING_QUEUE] 🔬 Diagnostics captured for analysis`);
+      }
       throw new Error(result.error || 'Reply posting failed');
     }
   } catch (error: any) {
