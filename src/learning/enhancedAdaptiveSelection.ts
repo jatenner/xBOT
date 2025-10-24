@@ -360,9 +360,44 @@ async function thompsonSamplingSelection(): Promise<AdaptiveDecision> {
     ? hooks[0] 
     : (hooks?.[Math.floor(Math.random() * (hooks?.length || 1))] || hooks?.[0]);
   
-  const topicChoice = Math.random() < 0.8 && topics?.[0]
-    ? topics[0]
-    : (topics?.[Math.floor(Math.random() * (topics?.length || 1))] || topics?.[0]);
+  // ═══════════════════════════════════════════════════════════
+  // 🚨 USER FIX: EXPLORATION MODE = AI-GENERATED TOPICS
+  // ═══════════════════════════════════════════════════════════
+  let selectedTopic: string;
+  
+  // If database has <3 topics OR random 50%, use AI generation (EXPLORATION!)
+  const shouldUseAI = !topics || topics.length < 3 || Math.random() < 0.5;
+  
+  if (shouldUseAI) {
+    console.log('[THOMPSON] 🤖 Using AI topic generation (exploration mode)');
+    
+    try {
+      const { DynamicTopicGenerator } = await import('../intelligence/dynamicTopicGenerator');
+      const { contentDiversityEngine } = await import('../ai/content/contentDiversityEngine');
+      
+      const topicGenerator = DynamicTopicGenerator.getInstance();
+      const recentTopics = contentDiversityEngine.getRecentTopics();
+      
+      const dynamicTopic = await topicGenerator.generateTopic({ recentTopics });
+      selectedTopic = dynamicTopic.topic;
+      
+      // Track to prevent immediate repeats
+      contentDiversityEngine.trackTopic(selectedTopic);
+      
+      console.log(`[THOMPSON] ✨ AI generated: "${selectedTopic}"`);
+    } catch (error) {
+      console.error('[THOMPSON] ❌ AI generation failed, using fallback');
+      selectedTopic = 'health optimization';
+    }
+  } else {
+    // Use database topic (EXPLOITATION)
+    const topicChoice = Math.random() < 0.8 && topics?.[0]
+      ? topics[0]
+      : (topics?.[Math.floor(Math.random() * (topics?.length || 1))] || topics?.[0]);
+    
+    selectedTopic = String(topicChoice?.topic || 'health optimization');
+    console.log(`[THOMPSON] 📊 Using database topic: "${selectedTopic}" (${topicChoice?.avg_followers_per_post || 0} F/post)`);
+  }
   
   // Randomize generator (not always provocateur)
   const allGenerators = [
@@ -374,10 +409,10 @@ async function thompsonSamplingSelection(): Promise<AdaptiveDecision> {
   
   return {
     hook_pattern: String(hookChoice?.hook_pattern || 'contrarian'),
-    topic: String(topicChoice?.topic || 'Generate unique health topic using Thompson Sampling'),
+    topic: selectedTopic, // ✅ Now uses AI-generated OR database topic
     generator: randomGenerator,
     format: 'single',
-    reasoning: `Thompson Sampling with ${randomGenerator} - balanced exploit/explore`,
+    reasoning: `Thompson Sampling with ${randomGenerator} - ${shouldUseAI ? 'AI-generated' : 'database'} topic`,
     intelligence_source: 'internal'
   };
 }
