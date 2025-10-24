@@ -318,10 +318,17 @@ async function selectBestPerformer(recentPosts: any[]): Promise<AdaptiveDecision
   
   const best = sorted[0];
   
+  // If no topic in best performer, use AI generation (no hardcoded fallback!)
+  const allGenerators = [
+    'dataNerd', 'provocateur', 'storyteller', 'mythBuster', 'contrarian', 
+    'coach', 'explorer', 'thoughtLeader', 'newsReporter', 'philosopher', 
+    'culturalBridge'
+  ];
+  
   return {
     hook_pattern: String(best.hook_pattern || 'story_opener'),
-    topic: String(best.topic || 'sleep optimization'),
-    generator: String(best.generator_used || 'provocateur'),
+    topic: String(best.topic || 'Generate unique health topic based on best performer style'),
+    generator: String(best.generator_used || allGenerators[Math.floor(Math.random() * allGenerators.length)]),
     format: 'single',
     reasoning: `Best performer: ${best.followers_gained || 0} followers, ${((Number(best.engagement_rate) || 0) * 100).toFixed(2)}% engagement`,
     intelligence_source: 'internal'
@@ -354,12 +361,20 @@ async function thompsonSamplingSelection(): Promise<AdaptiveDecision> {
     ? topics[0]
     : (topics?.[Math.floor(Math.random() * (topics?.length || 1))] || topics?.[0]);
   
+  // Randomize generator (not always provocateur)
+  const allGenerators = [
+    'dataNerd', 'provocateur', 'storyteller', 'mythBuster', 'contrarian', 
+    'coach', 'explorer', 'thoughtLeader', 'newsReporter', 'philosopher', 
+    'culturalBridge'
+  ];
+  const randomGenerator = allGenerators[Math.floor(Math.random() * allGenerators.length)];
+  
   return {
     hook_pattern: String(hookChoice?.hook_pattern || 'contrarian'),
-    topic: String(topicChoice?.topic || 'exercise timing'),
-    generator: 'provocateur',
+    topic: String(topicChoice?.topic || 'Generate unique health topic using Thompson Sampling'),
+    generator: randomGenerator,
     format: 'single',
-    reasoning: 'Thompson Sampling - balanced exploit/explore',
+    reasoning: `Thompson Sampling with ${randomGenerator} - balanced exploit/explore`,
     intelligence_source: 'internal'
   };
 }

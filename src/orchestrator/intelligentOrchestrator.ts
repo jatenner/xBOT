@@ -174,32 +174,28 @@ export class IntelligentOrchestrator {
       return trending[randomIndex];
     }
 
-    // Fallback topic list (health topics not recently covered)
-    const fallbackTopics = [
-      'sleep optimization',
-      'gut health and mood',
-      'stress management techniques',
-      'exercise timing',
-      'nutrition myths',
-      'supplement effectiveness',
-      'habit formation',
-      'energy management',
-      'focus and concentration',
-      'recovery optimization',
-      'inflammation reduction',
-      'immune system support',
-      'mental clarity',
-      'performance optimization',
-      'circadian rhythm'
-    ].filter(t => !recentTopics.includes(t));
-
-    if (fallbackTopics.length > 0) {
-      const randomIndex = Math.floor(Math.random() * fallbackTopics.length);
-      return fallbackTopics[randomIndex];
+    // NO HARDCODED FALLBACK TOPICS - use AI generation
+    // This ensures unlimited creative freedom and no repetition
+    console.log('[INTELLIGENT_ORCHESTRATOR] 🤖 No trending topics, using AI generation...');
+    
+    try {
+      const { DynamicTopicGenerator } = await import('../intelligence/dynamicTopicGenerator');
+      const topicGenerator = DynamicTopicGenerator.getInstance();
+      
+      const dynamicTopic = await topicGenerator.generateTopic({
+        recentTopics: recentTopics,
+        preferTrending: false
+      });
+      
+      console.log(`[INTELLIGENT_ORCHESTRATOR] ✅ Generated: "${dynamicTopic.topic}"`);
+      return dynamicTopic.topic;
+      
+    } catch (error: any) {
+      console.error('[INTELLIGENT_ORCHESTRATOR] ❌ AI failed, delegating to content engine');
+      
+      // Ultimate fallback: generic prompt for content engine to be creative
+      return 'Generate a completely unique health/wellness topic'
     }
-
-    // Last resort: generic health topic
-    return 'health optimization';
   }
 }
 
