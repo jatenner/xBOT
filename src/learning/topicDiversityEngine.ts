@@ -510,7 +510,7 @@ ${params.successful.map(t => `- "${t.topic}" (${t.avg_followers.toFixed(1)} foll
       const parsed = JSON.parse(content);
       
       return {
-        topic: parsed.topic || 'exercise timing',
+        topic: parsed.topic || 'Generate completely unique health/wellness topic',
         cluster: parsed.cluster || 'health',
         reasoning: parsed.reasoning || 'AI generated unique topic',
         keywords: parsed.keywords || []
@@ -584,29 +584,13 @@ ${params.successful.map(t => `- "${t.topic}" (${t.avg_followers.toFixed(1)} foll
    * 🔄 Fallback topic generator (when AI fails)
    */
   private getFallbackTopic(recentTopics: string[]): TopicGenerationResult {
-    // Ultra-diverse fallback topics that are rarely discussed
-    const rareFallbacks = [
-      { topic: 'fascia health and mobility', cluster: 'performance' },
-      { topic: 'lymphatic system drainage', cluster: 'metabolic' },
-      { topic: 'circadian protein timing', cluster: 'longevity' },
-      { topic: 'brown fat activation', cluster: 'metabolic' },
-      { topic: 'proprioception training', cluster: 'performance' },
-      { topic: 'nasal breathing biomechanics', cluster: 'breathwork' },
-      { topic: 'sleep spindle optimization', cluster: 'sleep' },
-      { topic: 'polyphenol diversity', cluster: 'gut_health' }
-    ];
-    
-    // Pick one that's not in recent topics
-    const available = rareFallbacks.filter(f => 
-      !recentTopics.some(r => r.includes(f.topic) || f.topic.includes(r))
-    );
-    
-    const selected = available.length > 0 
-      ? available[Math.floor(Math.random() * available.length)]
-      : rareFallbacks[0];
+    // NO HARDCODED TOPICS - delegate to AI even in fallback
+    // This ensures unlimited creative freedom
+    console.log('[TOPIC_DIVERSITY] 🤖 Fallback: Delegating to AI for creativity');
     
     return {
-      ...selected,
+      topic: 'Generate a completely unique health/wellness topic not covered in recent posts',
+      cluster: 'health',
       reasoning: 'Fallback rare topic for diversity',
       keywords: selected.topic.split(' ')
     };
