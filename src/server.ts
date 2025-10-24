@@ -16,7 +16,7 @@ import { requireAdminAuth as legacyAuth, adminJobsHandler, adminJobRunHandler } 
 import { requireAdminAuth } from './api/middleware/adminAuth';
 import { jobScheduleHandler } from './api/adminJobSchedule';
 import adminRouter from './server/routes/admin';
-import lightweightPostingRouter from './api/lightweightPosting';
+// import lightweightPostingRouter from './api/lightweightPosting'; // REMOVED: Legacy posting API
 import bulletproofPostingRouter from './api/bulletproofPosting';
 import emergencySystemRouter from './api/emergencySystem';
 import playwrightPostingRouter from './api/playwrightPosting';
@@ -137,7 +137,7 @@ app.use('/admin', adminRouter);
 /**
  * 🚀 LIGHTWEIGHT POSTING ROUTES - Railway Optimized
  */
-app.use('/api', lightweightPostingRouter);
+// app.use('/api', lightweightPostingRouter); // REMOVED: Legacy posting API
 
 /**
  * 🛡️ BULLETPROOF POSTING ROUTES - Crash Resistant
