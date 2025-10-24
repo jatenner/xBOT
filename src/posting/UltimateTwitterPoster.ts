@@ -370,11 +370,11 @@ export class UltimateTwitterPoster {
            url.includes('/compose/tweet') ||
            url.includes('/create'))
         );
-      }, { timeout: 45000 }); // Increased timeout
+      }, { timeout: 30000 }); // Reduced from 45s to 30s to fail faster
       
-      console.log('ULTIMATE_POSTER: Network monitoring active');
-    } catch (e) {
-      console.log('ULTIMATE_POSTER: Could not set up network monitoring, will use UI verification');
+      console.log('ULTIMATE_POSTER: Network monitoring active (30s timeout)');
+    } catch (e: any) {
+      console.log(`ULTIMATE_POSTER: Could not set up network monitoring: ${e.message}, will use UI verification`);
     }
 
     // Find and click post button
@@ -387,26 +387,39 @@ export class UltimateTwitterPoster {
     ];
 
     let postButton = null;
+    let lastError = '';
     for (const selector of postButtonSelectors) {
       try {
+        console.log(`ULTIMATE_POSTER: Trying post button selector: ${selector}`);
         postButton = await this.page.waitForSelector(selector, { 
           state: 'visible', 
-          timeout: 5000 
+          timeout: 8000  // Increased timeout
         });
         if (postButton) {
-          console.log(`ULTIMATE_POSTER: Found post button: ${selector}`);
+          console.log(`ULTIMATE_POSTER: ✅ Found post button: ${selector}`);
           break;
         }
-      } catch (e) {
+      } catch (e: any) {
+        lastError = e.message;
+        console.log(`ULTIMATE_POSTER: ❌ ${selector} not found (${e.message})`);
         continue;
       }
     }
 
     if (!postButton) {
-      throw new Error('No enabled post button found');
+      console.error(`ULTIMATE_POSTER: ❌ CRITICAL - No post button found after ${postButtonSelectors.length} attempts`);
+      console.log(`ULTIMATE_POSTER: Last error: ${lastError}`);
+      console.log('ULTIMATE_POSTER: 🔍 Taking debug screenshot...');
+      try {
+        await this.page.screenshot({ path: 'debug_no_post_button.png', fullPage: true });
+        console.log('ULTIMATE_POSTER: Screenshot saved to debug_no_post_button.png');
+      } catch (screenshotError) {
+        console.log('ULTIMATE_POSTER: Could not take screenshot');
+      }
+      throw new Error(`No enabled post button found. Tried ${postButtonSelectors.length} selectors. Last error: ${lastError}`);
     }
 
-    console.log('ULTIMATE_POSTER: Clicking post button...');
+    console.log('ULTIMATE_POSTER: 🚀 Clicking post button...');
     
     // Circuit breaker check
     if (this.clickFailures >= this.maxClickFailures) {
@@ -425,13 +438,18 @@ export class UltimateTwitterPoster {
     }
     
     // Try multiple click strategies to bypass overlay
+    let clickSuccess = false;
     try {
-      // Strategy 1: Normal click (REDUCED TIMEOUT from 10s to 5s)
+      // Strategy 1: Normal click
+      console.log('ULTIMATE_POSTER: Trying normal click...');
       await postButton.click({ timeout: 5000 });
       this.clickFailures = 0; // Reset on success
-    } catch (clickError) {
+      clickSuccess = true;
+      console.log('ULTIMATE_POSTER: ✅ Normal click succeeded');
+    } catch (clickError: any) {
       this.clickFailures++;
-      console.log(`ULTIMATE_POSTER: Normal click failed (${this.clickFailures}/${this.maxClickFailures}), trying force-click...`);
+      console.log(`ULTIMATE_POSTER: ❌ Normal click failed (${this.clickFailures}/${this.maxClickFailures}): ${clickError.message}`);
+      console.log('ULTIMATE_POSTER: Trying force-click...');
       
       // Strategy 2: Force-click via JavaScript
       try {
@@ -439,37 +457,58 @@ export class UltimateTwitterPoster {
           const btn = document.querySelector(selector) as HTMLElement;
           if (btn) {
             btn.click();
+            console.log('JS: Button clicked');
+          } else {
+            console.log('JS: Button not found');
           }
         }, postButtonSelectors[0]);
-        console.log('ULTIMATE_POSTER: Force-click executed');
-      } catch (forceError) {
-        console.log('ULTIMATE_POSTER: Force-click failed, trying mouse click...');
+        clickSuccess = true;
+        console.log('ULTIMATE_POSTER: ✅ Force-click executed');
+      } catch (forceError: any) {
+        console.log(`ULTIMATE_POSTER: ❌ Force-click failed: ${forceError.message}`);
+        console.log('ULTIMATE_POSTER: Trying mouse coordinate click...');
         
         // Strategy 3: Click via coordinates
         const box = await postButton.boundingBox();
         if (box) {
           await this.page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-          console.log('ULTIMATE_POSTER: Mouse coordinate click executed');
+          clickSuccess = true;
+          console.log('ULTIMATE_POSTER: ✅ Mouse coordinate click executed');
         } else {
+          console.error('ULTIMATE_POSTER: ❌ All click strategies failed - no bounding box');
           throw new Error('All click strategies failed');
         }
       }
     }
+    
+    if (!clickSuccess) {
+      console.error('ULTIMATE_POSTER: ❌ CRITICAL - Post button click failed completely');
+      throw new Error('Failed to click post button after all strategies');
+    }
+    
+    console.log('ULTIMATE_POSTER: ✅ Post button clicked successfully');
 
     // Try network verification first, fallback to UI verification
-    console.log('ULTIMATE_POSTER: Attempting network verification...');
+    console.log('ULTIMATE_POSTER: 🔍 Attempting network verification (waiting for Twitter API response)...');
     
     if (networkVerificationPromise) {
       try {
         // Add timeout wrapper to prevent hanging
+        console.log('ULTIMATE_POSTER: Waiting up to 30s for network response...');
         const response = await Promise.race([
           networkVerificationPromise,
           new Promise<any>((_, reject) => 
-            setTimeout(() => reject(new Error('Network verification timeout')), 40000)
+            setTimeout(() => {
+              console.log('ULTIMATE_POSTER: ⏱️ Network verification timeout (30s)');
+              reject(new Error('Network verification timeout'));
+            }, 30000)  // Match the waitForResponse timeout
           )
         ]);
         
+        console.log('ULTIMATE_POSTER: 📡 Network response received');
+        
         if (response && response.ok()) {
+          console.log(`ULTIMATE_POSTER: ✅ Response status: ${response.status()}`);
           // Try to extract tweet ID from response
           let tweetId = `posted_${Date.now()}`;
           try {
@@ -477,6 +516,9 @@ export class UltimateTwitterPoster {
             const extractedId = this.extractTweetId(responseBody);
             if (extractedId) {
               tweetId = extractedId;
+              console.log(`ULTIMATE_POSTER: 🎯 Extracted tweet ID from response: ${tweetId}`);
+            } else {
+              console.log('ULTIMATE_POSTER: ⚠️ Could not extract ID from response, using fallback');
             }
           } catch (e) {
             console.log('ULTIMATE_POSTER: Could not parse response for tweet ID');
@@ -485,16 +527,20 @@ export class UltimateTwitterPoster {
           console.log(`ULTIMATE_POSTER: ✅ Network verification successful - tweet posted with ID: ${tweetId}`);
           return { success: true, tweetId };
         } else {
-          console.log(`ULTIMATE_POSTER: Network response not OK (${response?.status()}), trying UI verification...`);
+          console.log(`ULTIMATE_POSTER: ⚠️ Network response not OK (${response?.status()}), trying UI verification...`);
         }
       } catch (networkError: any) {
         // Critical: Catch browser/page closure errors
         if (networkError.message?.includes('closed') || networkError.message?.includes('Target page')) {
-          console.log('ULTIMATE_POSTER: Browser/page closed during verification - will use UI fallback');
+          console.log('ULTIMATE_POSTER: ⚠️ Browser/page closed during verification - will use UI fallback');
+        } else if (networkError.message?.includes('timeout')) {
+          console.log(`ULTIMATE_POSTER: ⏱️ Network verification timeout - falling back to UI verification`);
         } else {
-          console.log(`ULTIMATE_POSTER: Network verification failed: ${networkError.message}, trying UI verification...`);
+          console.log(`ULTIMATE_POSTER: ⚠️ Network verification failed: ${networkError.message}, trying UI verification...`);
         }
       }
+    } else {
+      console.log('ULTIMATE_POSTER: ⚠️ No network promise available, using UI verification');
     }
 
     // Fallback to UI verification with improved reliability

@@ -142,11 +142,13 @@ export class ResilientReplyPoster {
       await replyButton.click();
       
       // Wait for Twitter to render composer (CRITICAL - increased wait)
+      console.log('🎯 VISUAL_POSITION: Waiting for composer to render...');
       await this.page.waitForTimeout(3000);
       
       // Type reply content
       const composer = await this.findComposer();
       if (!composer) {
+        console.log('❌ VISUAL_POSITION: Composer not found after clicking reply');
         throw new Error('Composer not found after clicking reply');
       }
       
