@@ -45,7 +45,7 @@ export async function getBrowser(): Promise<Browser> {
       args: [
         '--no-sandbox',
         '--disable-dev-shm-usage',
-        // Remove all headed-only flags
+        '--headless=new' // Force new headless mode (fixes zygote crash)
       ],
       timeout: 45000
     });

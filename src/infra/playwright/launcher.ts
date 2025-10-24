@@ -25,6 +25,7 @@ export async function launchPersistent(): Promise<BrowserContext> {
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
+      '--headless=new',
       '--disable-dev-shm-usage',
       '--no-zygote',
       '--disable-gpu',

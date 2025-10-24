@@ -43,6 +43,7 @@ export async function getBrowser(): Promise<Browser> {
       args: [
         '--no-sandbox',
         '--disable-dev-shm-usage',
+        '--headless=new',
         '--disable-gpu',
         '--disable-web-security',
         '--disable-features=VizDisplayCompositor',
