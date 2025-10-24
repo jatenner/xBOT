@@ -335,7 +335,7 @@ async function generateRealContent(): Promise<void> {
         metadata: {
           ai_generated_topic: adaptiveTopicHint,  // Store in metadata for verification
           topic_cluster_broad: adaptiveTopicCluster
-        }
+        },
         
         // Learning tracking
         experiment_arm: generated.metadata.experiment_arm,
