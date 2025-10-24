@@ -181,18 +181,41 @@ async function selectCrisisModeContent(analysis: PerformanceAnalysis): Promise<A
     console.warn('[CRISIS_MODE] ⚠️ Competitor intelligence failed, trying viral trends...');
   }
   
-  // STRATEGY 2: Fallback to diverse exploration
-  console.warn('[CRISIS_MODE] ⚠️ Competitor intelligence failed, using diverse exploration...');
+  // STRATEGY 2: Fallback to AI-generated diverse exploration (NO HARDCODED TOPICS!)
+  console.warn('[CRISIS_MODE] ⚠️ Competitor intelligence failed, generating AI topic...');
   
-  // Instead of hardcoded fallback, use diverse exploration
-  return {
-    hook_pattern: 'bold_claim',
-    topic: 'sleep myths everyone believes',
-    generator: 'mythbuster',
-    format: 'single',
-    reasoning: 'CRISIS MODE: Fallback to mythbuster with controversial topic',
-    intelligence_source: 'crisis'
-  };
+  try {
+    // Use DynamicTopicGenerator to create unique topic
+    const { DynamicTopicGenerator } = await import('../intelligence/dynamicTopicGenerator');
+    const topicGenerator = DynamicTopicGenerator.getInstance();
+    
+    const dynamicTopic = await topicGenerator.generateTopic({
+      preferTrending: true // Focus on viral potential in crisis mode
+    });
+    
+    console.log(`[CRISIS_MODE] 🤖 Generated AI topic: "${dynamicTopic.topic}"`);
+    
+    return {
+      hook_pattern: 'bold_claim',
+      topic: dynamicTopic.topic,
+      generator: 'mythbuster',
+      format: 'single',
+      reasoning: `CRISIS MODE: AI-generated topic "${dynamicTopic.topic}" (viral potential: ${dynamicTopic.viral_potential})`,
+      intelligence_source: 'crisis'
+    };
+  } catch (error) {
+    console.error('[CRISIS_MODE] ❌ All AI generation failed, using generic prompt...');
+    
+    // Ultimate fallback: let the content generator itself be creative
+    return {
+      hook_pattern: 'bold_claim',
+      topic: 'Generate a completely unique health topic',
+      generator: 'mythbuster',
+      format: 'single',
+      reasoning: 'CRISIS MODE: Delegating creativity to content generator',
+      intelligence_source: 'crisis'
+    };
+  }
 }
 
 /**
