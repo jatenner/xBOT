@@ -616,7 +616,7 @@ export function start(port?: number): Promise<void> {
 export function startHealthServer(): Promise<void> {
   return new Promise((resolve, reject) => {
     try {
-      const server = app.listen(PORT, HOST, async () => {
+      const server = app.listen(PORT, HOST, () => {
         console.log(`🏥 Health server listening on ${HOST}:${PORT}`);
         console.log(`📊 Status endpoint: http://${HOST}:${PORT}/status`);
         console.log(`🔧 Environment: http://${HOST}:${PORT}/env`);
@@ -624,17 +624,19 @@ export function startHealthServer(): Promise<void> {
         console.log(`📝 Session info: http://${HOST}:${PORT}/session`);
         console.log(`🧠 Learning status: http://${HOST}:${PORT}/learning/status`);
         console.log(`📈 Learning metrics: http://${HOST}:${PORT}/learning/metrics`);
+        console.log(`✅ SERVER_READY: Health endpoints active, Railway can now route traffic`);
         
-        // Initialize learning system
-        try {
-          await learningSystem.initialize();
-          console.log('🧠 Learning system initialized successfully');
-          
-          // Note: hookEvolutionEngine automatically clears old template hooks on first use
-          console.log('[HOOK_CLEANER] 🧹 Hook evolution engine will auto-clean on first generation');
-        } catch (error: any) {
-          console.error('⚠️ Learning system initialization failed:', error.message);
-        }
+        // Initialize learning system in background (non-blocking)
+        setImmediate(() => {
+          learningSystem.initialize()
+            .then(() => {
+              console.log('🧠 Learning system initialized successfully');
+              console.log('[HOOK_CLEANER] 🧹 Hook evolution engine will auto-clean on first generation');
+            })
+            .catch((error: any) => {
+              console.error('⚠️ Learning system initialization failed:', error.message);
+            });
+        });
         
         resolve();
       });
