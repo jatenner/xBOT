@@ -407,7 +407,7 @@ export async function runReplyCycle(): Promise<{
   try {
     // Check if replies are enabled
     if (process.env.ENABLE_REPLIES !== 'true') {
-      log(`REPLY_CYCLE: Replies disabled via feature flag`);
+      log(`REPLY_CYCLE: Replies disabled via ENABLE_REPLIES environment variable`);
       return {
         targetsDiscovered: 0,
         repliesPlanned: 0,

@@ -423,6 +423,10 @@ export class JobManager {
       return;
     }
 
+    // Validate environment variables before starting jobs
+    const { validateEnvironmentVariables } = await import('../config/envValidation');
+    validateEnvironmentVariables();
+
     const config = getConfig();
     const modeFlags = getModeFlags(config);
 
