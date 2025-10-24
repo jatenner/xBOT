@@ -277,33 +277,42 @@ export class JobManager {
 
     // 🌾 REPLY OPPORTUNITY HARVESTER - every 30 min, offset 10 min
     // 🎯 USER REQUEST: Keep 200-300 fresh opportunities (<24h), harvest from discovered accounts
-    this.scheduleStaggeredJob(
-      'reply_harvester',
-      async () => {
-        await this.safeExecute('reply_harvester', async () => {
-          const { replyOpportunityHarvester } = await import('./replyOpportunityHarvester');
-          await replyOpportunityHarvester();
-        });
-      },
-      30 * MINUTE, // Every 30 minutes - replenish pool continuously
-      10 * MINUTE // Start after 10 minutes (after account discovery has run)
-    );
+    // ⚠️ IMPORTANT: Only schedule if replies are enabled
+    if (flags.replyEnabled && process.env.ENABLE_REPLIES === 'true') {
+      console.log('💬 JOB_MANAGER: Reply jobs ENABLED - scheduling harvester and posting');
+      
+      this.scheduleStaggeredJob(
+        'reply_harvester',
+        async () => {
+          await this.safeExecute('reply_harvester', async () => {
+            const { replyOpportunityHarvester } = await import('./replyOpportunityHarvester');
+            await replyOpportunityHarvester();
+          });
+        },
+        30 * MINUTE, // Every 30 minutes - replenish pool continuously
+        10 * MINUTE // Start after 10 minutes (after account discovery has run)
+      );
 
-    // 💬 REPLY POSTING JOB - every 15 min, offset 2 min
-    // 🎯 CRITICAL: Actually POST replies to harvested opportunities
-    // 🔥 FIX: Reduced delay from 20min to 2min to post queued replies faster
-    this.scheduleStaggeredJob(
-      'reply_posting',
-      async () => {
-        await this.safeExecute('reply_posting', async () => {
-          await generateReplies();
-          this.stats.replyRuns = (this.stats.replyRuns || 0) + 1;
-          this.stats.lastReplyTime = new Date();
-        });
-      },
-      15 * MINUTE, // Every 15 minutes - frequent reply posting
-      2 * MINUTE // Start after 2 minutes - FAST startup to process queued replies
-    );
+      // 💬 REPLY POSTING JOB - every 15 min, offset 2 min
+      // 🎯 CRITICAL: Actually POST replies to harvested opportunities
+      // 🔥 FIX: Reduced delay from 20min to 2min to post queued replies faster
+      this.scheduleStaggeredJob(
+        'reply_posting',
+        async () => {
+          await this.safeExecute('reply_posting', async () => {
+            await generateReplies();
+            this.stats.replyRuns = (this.stats.replyRuns || 0) + 1;
+            this.stats.lastReplyTime = new Date();
+          });
+        },
+        15 * MINUTE, // Every 15 minutes - frequent reply posting
+        2 * MINUTE // Start after 2 minutes - FAST startup to process queued replies
+      );
+    } else {
+      console.log('⚠️  JOB_MANAGER: Reply jobs DISABLED (ENABLE_REPLIES not set or flags.replyEnabled false)');
+      console.log(`   • ENABLE_REPLIES: ${process.env.ENABLE_REPLIES}`);
+      console.log(`   • flags.replyEnabled: ${flags.replyEnabled}`);
+    }
 
     // Attribution - every 2 hours, offset 70 min
     this.scheduleStaggeredJob(
