@@ -115,6 +115,155 @@ export class TopicDiversityEngine {
   }
 
   /**
+   * 🚀 ULTIMATE TOPIC GENERATION: Adaptive Multi-Strategy System
+   * 
+   * Intelligently switches between:
+   * - Pure Exploration (random topics)
+   * - Trending (viral topics)
+   * - Performance-Driven (successful patterns)
+   * 
+   * Adapts exploration rate based on recent performance
+   */
+  public async generateUltimateTopic(
+    preferredCluster?: string
+  ): Promise<TopicGenerationResult> {
+    console.log('[ULTIMATE_TOPIC] 🚀 Starting adaptive topic generation...');
+    
+    // Step 1: Gather ALL intelligence
+    const [recentTopics, topicPerformance, trendingTopics, recentEngagement] = await Promise.all([
+      this.getRecentTopics(),
+      this.getTopicPerformance(),
+      this.getTrendingTopics(),
+      this.getRecentEngagement()
+    ]);
+    
+    const successfulTopics = topicPerformance
+      .filter(t => t.avg_followers > 5 || t.avg_engagement > 0.05)
+      .slice(0, 5);
+    
+    const overusedTopics = Object.entries(
+      recentTopics.reduce((acc, topic) => {
+        acc[topic] = (acc[topic] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>)
+    )
+      .filter(([_, count]) => count >= 2)
+      .map(([topic]) => topic);
+    
+    // Step 2: ADAPTIVE EXPLORATION - adjust based on performance
+    let explorationRate = 0.3; // Default 30%
+    
+    if (recentEngagement < 0.01) {
+      explorationRate = 0.6; // Low engagement = explore more (60%)
+      console.log('[ULTIMATE_TOPIC] 📉 Low engagement detected - INCREASING exploration to 60%');
+    } else if (recentEngagement > 0.05) {
+      explorationRate = 0.2; // High engagement = exploit more (20%)
+      console.log('[ULTIMATE_TOPIC] 📈 High engagement detected - DECREASING exploration to 20%');
+    } else {
+      console.log('[ULTIMATE_TOPIC] ⚖️ Normal engagement - balanced exploration (30%)');
+    }
+    
+    // Step 3: PICK STRATEGY randomly based on adaptive rates
+    const strategyRoll = Math.random();
+    let mode: 'exploration' | 'trending' | 'performance';
+    let strategyContext: any;
+    
+    if (strategyRoll < explorationRate) {
+      // PURE EXPLORATION MODE
+      mode = 'exploration';
+      console.log('[ULTIMATE_TOPIC] 🎲 Strategy: PURE EXPLORATION (complete randomness)');
+      strategyContext = {
+        recentTopics,
+        overusedTopics,
+        trending: null,
+        successful: null
+      };
+    } else if (strategyRoll < explorationRate + 0.3) {
+      // TRENDING MODE
+      mode = 'trending';
+      console.log('[ULTIMATE_TOPIC] 🔥 Strategy: TRENDING (ride viral wave)');
+      console.log(`[ULTIMATE_TOPIC] 📊 Found ${trendingTopics.length} trending topics`);
+      strategyContext = {
+        recentTopics,
+        overusedTopics,
+        trending: trendingTopics.length > 0 ? trendingTopics : null,
+        successful: null
+      };
+    } else {
+      // PERFORMANCE MODE
+      mode = 'performance';
+      console.log('[ULTIMATE_TOPIC] 📈 Strategy: PERFORMANCE (learn from success)');
+      console.log(`[ULTIMATE_TOPIC] 📊 Found ${successfulTopics.length} successful patterns`);
+      strategyContext = {
+        recentTopics,
+        overusedTopics,
+        trending: null,
+        successful: successfulTopics.length > 0 ? successfulTopics : null
+      };
+    }
+    
+    // Step 4: Generate 5 candidate topics in parallel
+    console.log('[ULTIMATE_TOPIC] 🎲 Generating 5 candidate topics...');
+    
+    const candidatePromises = Array.from({ length: 5 }, (_, i) => 
+      this.generateTopicWithAI({
+        ...strategyContext,
+        candidateNumber: i + 1,
+        mode
+      }).catch(err => {
+        console.log(`[ULTIMATE_TOPIC] ⚠️ Candidate ${i + 1} failed: ${err.message}`);
+        return null;
+      })
+    );
+    
+    const candidates = (await Promise.all(candidatePromises)).filter(c => c !== null) as TopicGenerationResult[];
+    
+    console.log(`[ULTIMATE_TOPIC] ✅ Generated ${candidates.length}/5 candidates`);
+    
+    if (candidates.length === 0) {
+      console.log('[ULTIMATE_TOPIC] ❌ All candidates failed, using fallback');
+      return this.getFallbackTopic(recentTopics);
+    }
+    
+    // Step 5: Score each candidate based on mode
+    console.log('[ULTIMATE_TOPIC] 📊 Scoring candidates...');
+    
+    const scoredCandidates = await Promise.all(
+      candidates.map(async (candidate, i) => {
+        const uniquenessScore = await this.scoreUniqueness(candidate.topic, recentTopics);
+        const trendingScore = mode === 'trending' && trendingTopics.length > 0
+          ? await this.scoreTrendingAlignment(candidate.topic, trendingTopics)
+          : 0;
+        const keywordScore = candidate.keywords.length * 10;
+        
+        const totalScore = uniquenessScore + trendingScore + keywordScore;
+        
+        console.log(`[ULTIMATE_TOPIC] 📊 Candidate ${i + 1}: "${candidate.topic.substring(0, 40)}..." = ${totalScore} pts`);
+        console.log(`   Mode: ${mode}, Uniqueness: ${uniquenessScore}, Trending: ${trendingScore}, Keywords: ${keywordScore}`);
+        
+        return {
+          ...candidate,
+          score: totalScore,
+          breakdown: { uniquenessScore, trendingScore, keywordScore },
+          mode
+        };
+      })
+    );
+    
+    // Step 6: Pick the best
+    const best = scoredCandidates.sort((a, b) => b.score - a.score)[0];
+    
+    console.log(`[ULTIMATE_TOPIC] 🏆 WINNER (${best.mode} mode): "${best.topic}"`);
+    console.log(`[ULTIMATE_TOPIC] 📊 Score: ${best.score}`);
+    console.log(`[ULTIMATE_TOPIC] 💡 Reasoning: ${best.reasoning}`);
+    
+    // Track the winner
+    await this.trackGeneratedTopic(best);
+    
+    return best;
+  }
+
+  /**
    * 📚 Get recent topics (last 20 posts) to avoid repetition
    * 🚀 USES ACTUAL AI-GENERATED TOPICS FROM DATABASE (not keywords!)
    */
@@ -277,67 +426,77 @@ export class TopicDiversityEngine {
 
   /**
    * 🤖 Use AI to generate a completely new topic
+   * 
+   * Builds different prompts based on mode (exploration/trending/performance)
    */
   private async generateTopicWithAI(params: {
-    preferredCluster?: string;
     recentTopics: string[];
-    successfulTopics: TopicWithPerformance[];
     overusedTopics: string[];
+    trending?: any[] | null;
+    successful?: TopicWithPerformance[] | null;
+    mode?: 'exploration' | 'trending' | 'performance';
+    candidateNumber?: number;
     forceMaxDiversity?: boolean;
   }): Promise<TopicGenerationResult> {
     const openai = getOpenAIService();
     
-    const clusterContext = params.preferredCluster 
-      ? `Focus on the ${params.preferredCluster} health cluster.`
-      : `Choose ANY health cluster (longevity, biohacking, mental_health, performance, gut_health, metabolic, sleep).`;
+    const mode = params.mode || 'exploration';
     
-    const successContext = params.successfulTopics.length > 0
-      ? `Topics that gained followers recently (learn from these): ${params.successfulTopics.map(t => `"${t.topic}" (${t.avg_followers.toFixed(1)} followers)`).join(', ')}`
-      : '';
-    
-    const diversityLevel = params.forceMaxDiversity 
-      ? 'MAXIMUM DIVERSITY REQUIRED - generate something COMPLETELY different from anything in recent topics'
-      : 'Generate a unique topic that provides variety';
-    
-    const prompt = `You are a health content strategist generating unique, engaging health topics.
+    // Build base prompt - NO LIMITING CATEGORIES!
+    let prompt = `Generate a unique health topic.
 
-${clusterContext}
+Avoid these recent topics:
+${params.recentTopics.length > 0 ? params.recentTopics.slice(0, 15).map((t, i) => `${i + 1}. ${t}`).join('\n') : 'None yet - complete freedom'}
 
-RECENT TOPICS (DO NOT REPEAT THESE):
-${params.recentTopics.slice(0, 15).map((t, i) => `${i + 1}. ${t}`).join('\n')}
+${params.overusedTopics.length > 0 ? `\nDo not use: ${params.overusedTopics.join(', ')}` : ''}
+`;
 
-OVERUSED TOPICS (DEFINITELY AVOID):
-${params.overusedTopics.join(', ')}
+    // Add mode-specific context
+    if (mode === 'trending' && params.trending && params.trending.length > 0) {
+      prompt += `\nTRENDING NOW (consider incorporating):
+${params.trending.map((t: any) => `- ${t.topic || t}`).join('\n')}
+`;
+    } else if (mode === 'performance' && params.successful && params.successful.length > 0) {
+      prompt += `\nThese performed well (learn from them):
+${params.successful.map(t => `- "${t.topic}" (${t.avg_followers.toFixed(1)} followers)`).join('\n')}
+`;
+    } else {
+      // Exploration mode - NO HINTS!
+      prompt += `\nComplete creative freedom. Surprise me.
+`;
+    }
 
-${successContext}
+    if (params.forceMaxDiversity) {
+      prompt += `\n⚠️ MAXIMUM DIVERSITY - be radically different from recent topics.\n`;
+    }
 
-${diversityLevel}
-
-REQUIREMENTS:
-- Topic MUST be completely different from recent topics
-- Avoid semantic similarity (e.g., if "breathwork" is recent, don't do "breathing exercises" or "vagus nerve breathing")
-- Should be specific and concrete (not generic like "health tips")
-- Should be evidence-based and interesting
-- Should have potential for engagement
-
-Generate a specific, unique health topic that will perform well.
-
-Return ONLY valid JSON:
+    prompt += `\nReturn ONLY valid JSON:
 {
-  "topic": "specific topic here",
-  "cluster": "cluster_name",
-  "reasoning": "why this topic is unique and will perform well",
-  "keywords": ["keyword1", "keyword2", "keyword3"]
+  "topic": "your unique topic",
+  "cluster": "your category (can be anything)",
+  "reasoning": "why this will work",
+  "keywords": ["key1", "key2", "key3"]
 }`;
 
     try {
+      // Adjust temperature based on mode
+      let temperature = 0.9;
+      if (mode === 'exploration' || params.forceMaxDiversity) {
+        temperature = 1.0; // Maximum creativity for exploration
+      } else if (mode === 'performance') {
+        temperature = 0.7; // More focused when using successful patterns
+      }
+      
+      console.log(`[TOPIC_GEN] 🌡️ Candidate ${params.candidateNumber || 1}: mode=${mode}, temp=${temperature}`);
+      
       const response = await openai.chatCompletion(
         [{ role: 'user', content: prompt }],
         {
           model: 'gpt-4o',
-          temperature: params.forceMaxDiversity ? 1.0 : 0.9,
+          temperature,
           maxTokens: 300,
-          response_format: { type: 'json_object' }
+          response_format: { type: 'json_object' },
+          requestType: `topic_gen_${mode}`
         }
       );
       
@@ -445,6 +604,104 @@ Return ONLY valid JSON:
       reasoning: 'Fallback rare topic for diversity',
       keywords: selected.topic.split(' ')
     };
+  }
+
+  /**
+   * 🔥 Get trending topics from ViralTrendMonitor
+   */
+  private async getTrendingTopics(): Promise<any[]> {
+    try {
+      const { ViralTrendMonitor } = await import('../intelligence/viralTrendMonitor');
+      const monitor = ViralTrendMonitor.getInstance();
+      const trends = await monitor.detectTrendingTopics();
+      
+      // Filter for health-relevant trends
+      const healthTrends = trends
+        .filter((t: any) => t.health_relevance && t.health_relevance > 5)
+        .slice(0, 5);
+      
+      console.log(`[TOPIC_DIVERSITY] 🔥 Found ${healthTrends.length} health-relevant trending topics`);
+      return healthTrends;
+    } catch (error: any) {
+      console.warn('[TOPIC_DIVERSITY] ⚠️ Could not get trending topics:', error.message);
+      return [];
+    }
+  }
+
+  /**
+   * 📊 Get recent engagement rate
+   */
+  private async getRecentEngagement(): Promise<number> {
+    try {
+      const supabase = getSupabaseClient();
+      
+      const { data } = await supabase
+        .from('post_attribution')
+        .select('engagement_rate')
+        .order('posted_at', { ascending: false })
+        .limit(10);
+      
+      if (!data || data.length === 0) return 0;
+      
+      const avgEngagement = data.reduce((sum, p) => sum + (Number(p.engagement_rate) || 0), 0) / data.length;
+      return avgEngagement;
+    } catch (error: any) {
+      console.warn('[TOPIC_DIVERSITY] ⚠️ Could not get recent engagement:', error.message);
+      return 0.02; // Default to normal range
+    }
+  }
+
+  /**
+   * 📊 Score topic uniqueness (0-100 points)
+   */
+  private async scoreUniqueness(topic: string, recentTopics: string[]): Promise<number> {
+    const topicLower = topic.toLowerCase();
+    const topicWords = new Set(topicLower.split(/\s+/).filter(w => w.length > 3));
+    
+    if (recentTopics.length === 0) return 100; // Perfect uniqueness if no recent topics
+    
+    let minSimilarity = 1.0;
+    
+    for (const recentTopic of recentTopics.slice(0, 10)) {
+      const recentWords = new Set(recentTopic.split(/\s+/).filter(w => w.length > 3));
+      const overlap = [...topicWords].filter(w => recentWords.has(w)).length;
+      const similarity = overlap / Math.max(topicWords.size, recentWords.size, 1);
+      
+      minSimilarity = Math.min(minSimilarity, similarity);
+    }
+    
+    // Convert similarity to uniqueness score (inverse)
+    const uniquenessScore = Math.round((1 - minSimilarity) * 100);
+    
+    return uniquenessScore;
+  }
+
+  /**
+   * 🔥 Score alignment with trending topics (0-100 points)
+   */
+  private async scoreTrendingAlignment(topic: string, trendingTopics: any[]): Promise<number> {
+    if (!trendingTopics || trendingTopics.length === 0) return 0;
+    
+    const topicLower = topic.toLowerCase();
+    let maxAlignment = 0;
+    
+    for (const trend of trendingTopics) {
+      const trendTopic = String(trend.topic || trend).toLowerCase();
+      const trendWords = new Set(trendTopic.split(/\s+/));
+      const topicWords = topicLower.split(/\s+/);
+      
+      // Check keyword overlap
+      const matchingWords = topicWords.filter(w => trendWords.has(w)).length;
+      const alignment = (matchingWords / Math.max(topicWords.length, trendWords.size, 1)) * 100;
+      
+      // Weight by trend strength if available
+      const trendStrength = trend.trend_strength || 5;
+      const weightedAlignment = alignment * (trendStrength / 10);
+      
+      maxAlignment = Math.max(maxAlignment, weightedAlignment);
+    }
+    
+    return Math.round(maxAlignment);
   }
 }
 
