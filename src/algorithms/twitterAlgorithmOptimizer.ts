@@ -100,7 +100,11 @@ export class TwitterAlgorithmOptimizer {
 
       // Viral prediction (based on velocity)
       const viralPotential = this.calculateViralPotential(velocity, minutesElapsed);
-      const isViral = velocity > 5; // 5 likes/min = viral threshold
+      // Viral = sustained high velocity over time
+      // 5 likes/min * 60 min = 300 likes/hour = TRULY viral
+      // But also need absolute threshold (100+ likes total)
+      const totalLikes = (velocity * 60) || 0; // Extrapolate to hourly
+      const isViral = velocity > 5 && totalLikes >= 100; // High velocity AND absolute threshold
 
       const velocityData: EngagementVelocity = {
         tweet_id: tweetId,

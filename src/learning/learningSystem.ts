@@ -80,6 +80,22 @@ export class LearningSystem {
       return;
     }
     
+    // ═══════════════════════════════════════════════════════════
+    // 🚨 LEARNING GATE: Don't learn from low-engagement posts
+    // ═══════════════════════════════════════════════════════════
+    const views = actualPerformance.impressions || 0;
+    const likes = actualPerformance.likes || 0;
+    
+    // USER REQUIREMENT: Don't learn from posts with <100 views or <5 likes
+    if (views < 100 || likes < 5) {
+      console.log(`[LEARNING_SYSTEM] ⏭️ SKIP LEARNING: Post has only ${views} views, ${likes} likes (below learning threshold)`);
+      console.log(`[LEARNING_SYSTEM] ℹ️ Minimum: 100 views + 5 likes to be considered meaningful data`);
+      this.postTracking.delete(post_id); // Remove from tracking
+      return; // Don't learn from noise
+    }
+    
+    console.log(`[LEARNING_SYSTEM] ✅ LEARNING GATE PASSED: ${views} views, ${likes} likes (above threshold)`);
+    
     // Support both naming conventions
     const followers_gained = actualPerformance.followers_gained || actualPerformance.follower_growth || 0;
     

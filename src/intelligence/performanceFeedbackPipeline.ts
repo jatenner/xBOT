@@ -381,12 +381,23 @@ Return JSON:
     
     const followerGrowthRate = totalFollowerGrowth / posts.length;
     
-    // Simple viral detection (engagement > 10)
-    const viralPosts = posts.filter(p => 
-      ((p.likes || 0) + (p.replies || 0) + (p.retweets || 0)) > 10
-    );
+    // REALISTIC viral detection (1,000+ views AND 100+ likes)
+    const viralPosts = posts.filter(p => {
+      const likes = p.likes || 0;
+      const views = p.actual_impressions || p.impressions || 0;
+      
+      // USER REQUIREMENT: Nothing is viral until 1K views + 100 likes
+      return views >= 1000 && likes >= 100;
+    });
     
     const viralHitRate = viralPosts.length / posts.length;
+    
+    // Also track "good" posts (above noise floor)
+    const goodPosts = posts.filter(p => {
+      const likes = p.likes || 0;
+      const views = p.actual_impressions || p.impressions || 0;
+      return views >= 100 && likes >= 5; // Minimum to be considered "working"
+    });
     
     // Trend analysis (simple: compare first half vs second half)
     const midPoint = Math.floor(posts.length / 2);

@@ -37,9 +37,23 @@ export interface HistoricalBaseline {
  * Metrics calculator and reward generator
  */
 export class EngagementMetricsCalculator {
-  private readonly VIRAL_THRESHOLD = 0.15; // 15% engagement rate
-  private readonly HIGH_THRESHOLD = 0.08;  // 8% engagement rate
-  private readonly MEDIUM_THRESHOLD = 0.03; // 3% engagement rate
+  // REALISTIC THRESHOLDS (for account with ~2,800 followers)
+  // USER REQUIREMENT: Nothing is viral until 1,000 views + 100 likes
+  private readonly VIRAL_THRESHOLD = 0.10; // 10% ER (100 likes / 1000 views)
+  private readonly VIRAL_MIN_VIEWS = 1000;
+  private readonly VIRAL_MIN_LIKES = 100;
+  
+  private readonly HIGH_THRESHOLD = 0.10;  // 10% ER (50 likes / 500 views)
+  private readonly HIGH_MIN_VIEWS = 500;
+  private readonly HIGH_MIN_LIKES = 50;
+  
+  private readonly MEDIUM_THRESHOLD = 0.10; // 10% ER (20 likes / 200 views)
+  private readonly MEDIUM_MIN_VIEWS = 200;
+  private readonly MEDIUM_MIN_LIKES = 20;
+  
+  // Minimum threshold to learn from (filters noise)
+  private readonly LEARNING_MIN_VIEWS = 100;
+  private readonly LEARNING_MIN_LIKES = 5;
 
   /**
    * Calculate basic engagement rate
