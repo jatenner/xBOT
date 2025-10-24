@@ -274,18 +274,15 @@ async function selectExploratoryContentEnhanced(analysis: PerformanceAnalysis): 
     }
   }
   
-  // Fallback to existing logic
+  // Get generator performance (still useful for generator selection)
   const { data: generatorPerf } = await supabase
     .from('generator_performance')
     .select('*')
     .order('posts_count', { ascending: true })
     .limit(3);
   
-  const { data: topicPerf } = await supabase
-    .from('topic_performance')
-    .select('*')
-    .order('last_used', { ascending: true })
-    .limit(3);
+  // ❌ REMOVED: topic_performance query (limited to 5 topics!)
+  // ✅ NOW: Using AI generation below instead
   
   // If no generator performance data, randomize across ALL generators
   const allGenerators = [
@@ -295,9 +292,26 @@ async function selectExploratoryContentEnhanced(analysis: PerformanceAnalysis): 
   ];
   const generator = String(generatorPerf?.[0]?.generator || allGenerators[Math.floor(Math.random() * allGenerators.length)]);
   
-  // If no topic performance data, use AI generation instead of hardcoded
-  let topic = String(topicPerf?.[0]?.topic || '');
-  if (!topic || topic === 'null') {
+  // ═══════════════════════════════════════════════════════════
+  // 🚨 USER FIX: USE AI GENERATION, NOT topic_performance table!
+  // ═══════════════════════════════════════════════════════════
+  let topic: string;
+  
+  try {
+    const { DynamicTopicGenerator } = await import('../intelligence/dynamicTopicGenerator');
+    const { contentDiversityEngine } = await import('../ai/content/contentDiversityEngine');
+    
+    const topicGenerator = DynamicTopicGenerator.getInstance();
+    const recentTopics = contentDiversityEngine.getRecentTopics();
+    
+    const dynamicTopic = await topicGenerator.generateTopic({ recentTopics });
+    topic = dynamicTopic.topic;
+    
+    contentDiversityEngine.trackTopic(topic);
+    
+    console.log(`[DIVERSE_EXPLORATION] ✨ AI generated topic: "${topic}"`);
+  } catch (error) {
+    console.error('[DIVERSE_EXPLORATION] ❌ AI generation failed, using generic prompt');
     topic = 'Generate a unique health/wellness topic not recently covered';
   }
   
@@ -306,7 +320,7 @@ async function selectExploratoryContentEnhanced(analysis: PerformanceAnalysis): 
     topic,
     generator,
     format: 'single',
-    reasoning: `Exploring underused: ${generator} + dynamic topic`,
+    reasoning: `Exploring underused: ${generator} + AI-generated topic`,
     intelligence_source: 'internal'
   };
 }
