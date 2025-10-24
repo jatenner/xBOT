@@ -195,24 +195,39 @@ async function selectCrisisModeContent(analysis: PerformanceAnalysis): Promise<A
     
     console.log(`[CRISIS_MODE] 🤖 Generated AI topic: "${dynamicTopic.topic}"`);
     
+    // Randomize generator - don't hardcode to mythbuster
+    const allGenerators = [
+      'dataNerd', 'provocateur', 'storyteller', 'mythBuster', 'contrarian', 
+      'coach', 'explorer', 'thoughtLeader', 'newsReporter', 'philosopher', 
+      'culturalBridge'
+    ];
+    const randomGenerator = allGenerators[Math.floor(Math.random() * allGenerators.length)];
+    
     return {
-      hook_pattern: 'bold_claim',
+      hook_pattern: ['bold_claim', 'contrarian', 'provocateur'][Math.floor(Math.random() * 3)] as string,
       topic: dynamicTopic.topic,
-      generator: 'mythbuster',
+      generator: randomGenerator,
       format: 'single',
-      reasoning: `CRISIS MODE: AI-generated topic "${dynamicTopic.topic}" (viral potential: ${dynamicTopic.viral_potential})`,
+      reasoning: `CRISIS MODE: AI topic "${dynamicTopic.topic}" with ${randomGenerator} (viral: ${dynamicTopic.viral_potential})`,
       intelligence_source: 'crisis'
     };
   } catch (error) {
     console.error('[CRISIS_MODE] ❌ All AI generation failed, using generic prompt...');
     
-    // Ultimate fallback: let the content generator itself be creative
+    // Ultimate fallback: randomize generator
+    const allGenerators = [
+      'dataNerd', 'provocateur', 'storyteller', 'mythBuster', 'contrarian', 
+      'coach', 'explorer', 'thoughtLeader', 'newsReporter', 'philosopher', 
+      'culturalBridge'
+    ];
+    const randomGenerator = allGenerators[Math.floor(Math.random() * allGenerators.length)];
+    
     return {
       hook_pattern: 'bold_claim',
       topic: 'Generate a completely unique health topic',
-      generator: 'mythbuster',
+      generator: randomGenerator,
       format: 'single',
-      reasoning: 'CRISIS MODE: Delegating creativity to content generator',
+      reasoning: `CRISIS MODE: Delegating creativity to ${randomGenerator}`,
       intelligence_source: 'crisis'
     };
   }
@@ -269,15 +284,26 @@ async function selectExploratoryContentEnhanced(analysis: PerformanceAnalysis): 
     .order('last_used', { ascending: true })
     .limit(3);
   
-  const generator = String(generatorPerf?.[0]?.generator || 'provocateur');
-  const topic = String(topicPerf?.[0]?.topic || 'sleep optimization');
+  // If no generator performance data, randomize across ALL generators
+  const allGenerators = [
+    'dataNerd', 'provocateur', 'storyteller', 'mythBuster', 'contrarian', 
+    'coach', 'explorer', 'thoughtLeader', 'newsReporter', 'philosopher', 
+    'culturalBridge'
+  ];
+  const generator = String(generatorPerf?.[0]?.generator || allGenerators[Math.floor(Math.random() * allGenerators.length)]);
+  
+  // If no topic performance data, use AI generation instead of hardcoded
+  let topic = String(topicPerf?.[0]?.topic || '');
+  if (!topic || topic === 'null') {
+    topic = 'Generate a unique health/wellness topic not recently covered';
+  }
   
   return {
-    hook_pattern: 'bold_claim',
+    hook_pattern: ['bold_claim', 'contrarian', 'story_opener', 'data_driven'][Math.floor(Math.random() * 4)] as string,
     topic,
     generator,
     format: 'single',
-    reasoning: `Exploring underused: ${generator} + ${topic}`,
+    reasoning: `Exploring underused: ${generator} + dynamic topic`,
     intelligence_source: 'internal'
   };
 }
