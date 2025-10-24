@@ -28,7 +28,7 @@ export async function runMetaLearningAnalysis(): Promise<void> {
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   
   const { data: posts, error } = await supabase
-    .from('post_attribution')
+    .from('content_with_outcomes')  // ✅ ROOT CAUSE FIX: Use table with actual data
     .select('*')
     .gte('posted_at', thirtyDaysAgo.toISOString())
     .not('followers_gained', 'is', null);
