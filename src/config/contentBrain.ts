@@ -199,7 +199,7 @@ export function loadContentBrainConfig(): ContentBrainConfig {
   if (process.env.ENABLE_REPLIES === 'false') {
     config.posting.formats.reply.weight = 0;
     config.posting.cadence.target_replies_per_day = [0, 0];
-    log('🔇 CONTENT_BRAIN: Replies disabled');
+    log('🔇 CONTENT_BRAIN: Replies disabled via ENABLE_REPLIES');
   }
   
   log('🧠 CONTENT_BRAIN: Configuration loaded successfully');
