@@ -614,6 +614,69 @@ export class BulletproofTwitterComposer {
   }
 
   /**
+   * 🔬 DIAGNOSTIC: Capture failure diagnostics for debugging
+   */
+  private async captureFailureDiagnostics(failureType: string, context: string): Promise<void> {
+    try {
+      console.log(`🔬 DIAGNOSTICS: Capturing ${failureType} diagnostics...`);
+      
+      // 1. Take screenshot
+      const timestamp = Date.now();
+      const screenshotPath = `./diagnostics/screenshot_${failureType}_${timestamp}.png`;
+      
+      try {
+        await this.page.screenshot({ 
+          path: screenshotPath,
+          fullPage: true 
+        });
+        console.log(`📸 SCREENSHOT: Saved to ${screenshotPath}`);
+      } catch (screenshotError) {
+        console.log(`⚠️ SCREENSHOT: Failed - ${(screenshotError as Error).message}`);
+      }
+      
+      // 2. Capture DOM structure of clickable elements
+      const clickableElements = await this.page.evaluate(() => {
+        const elements = Array.from(document.querySelectorAll('button, [role="button"], [tabindex="0"]'));
+        return elements.slice(0, 50).map((el, idx) => ({
+          index: idx,
+          tagName: el.tagName,
+          className: el.className,
+          id: el.id,
+          ariaLabel: el.getAttribute('aria-label'),
+          dataTestId: el.getAttribute('data-testid'),
+          text: el.textContent?.substring(0, 50),
+          visible: (el as HTMLElement).offsetParent !== null
+        }));
+      });
+      
+      console.log(`🔍 CLICKABLE_ELEMENTS: Found ${clickableElements.length} elements`);
+      console.log(JSON.stringify(clickableElements, null, 2));
+      
+      // 3. Log to database for tracking
+      try {
+        const { getSupabaseClient } = await import('../db/index');
+        const supabase = getSupabaseClient();
+        
+        await supabase.from('reply_diagnostics').insert([{
+          failure_type: failureType,
+          context: context,
+          timestamp: new Date().toISOString(),
+          screenshot_path: screenshotPath,
+          dom_structure: clickableElements,
+          page_url: this.page.url()
+        }]);
+        
+        console.log('✅ DIAGNOSTICS: Saved to database');
+      } catch (dbError) {
+        console.log(`⚠️ DIAGNOSTICS: DB save failed - ${(dbError as Error).message}`);
+      }
+      
+    } catch (error) {
+      console.log(`❌ DIAGNOSTICS: Failed to capture - ${(error as Error).message}`);
+    }
+  }
+
+  /**
    * 👤 Extract author username from a tweet element
    */
   private async extractAuthorFromTweet(tweetElement: any): Promise<string | null> {
@@ -1096,6 +1159,9 @@ export class BulletproofTwitterComposer {
         // 🔬 FINAL DIAGNOSTIC: Comprehensive failure analysis
         console.log('❌ REPLY_FAILURE: ALL STRATEGIES FAILED');
         await this.logDOMState('final_failure');
+        
+        // 🔬 NEW: Capture full diagnostics for self-healing
+        await this.captureFailureDiagnostics('reply_all_strategies_failed', replyToTweetId);
         
         // Take screenshot for debugging
         try {
