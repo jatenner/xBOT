@@ -282,20 +282,26 @@ export class TopicDiversityEngine {
       const topics: string[] = [];
       
       for (const post of data) {
-        // PRIMARY SOURCE: Get AI-generated topic from metadata
-        const metadata = post.metadata as any;
-        if (metadata?.topic) {
-          topics.push(String(metadata.topic).toLowerCase().trim());
+        // PRIMARY SOURCE: Get topic from topic_cluster field (where AI-generated topics are stored)
+        if (post.topic_cluster && post.topic_cluster !== 'health') {
+          topics.push(String(post.topic_cluster).toLowerCase().trim());
         }
-        
-        // SECONDARY SOURCE: Extract topic from content (for posts without metadata)
-        // This uses semantic extraction, not hardcoded keywords
-        if (!metadata?.topic) {
+        // FALLBACK 1: Check metadata.ai_generated_topic
+        else if (post.metadata && (post.metadata as any).ai_generated_topic) {
+          topics.push(String((post.metadata as any).ai_generated_topic).toLowerCase().trim());
+        }
+        // FALLBACK 2: Extract from content using NLP
+        else {
           const extractedTopic = this.extractTopicFromContent(String(post.content || ''));
           if (extractedTopic) {
             topics.push(extractedTopic.toLowerCase().trim());
           }
         }
+      }
+      
+      console.log(`[TOPIC_DIVERSITY] 📚 Extracted ${topics.length} recent topics from database`);
+      if (topics.length > 0) {
+        console.log(`[TOPIC_DIVERSITY] 📝 Recent topics: ${topics.slice(0, 5).join(', ')}...`);
       }
       
       return [...new Set(topics)]; // Remove duplicates
