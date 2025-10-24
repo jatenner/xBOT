@@ -10,6 +10,35 @@ import { getSupabaseClient } from '../db/index';
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { strategicReplySystem } from '../growth/strategicReplySystem';
 import { getPersonalityScheduler, type GeneratorType } from '../scheduling/personalityScheduler';
+import { ReplyDiagnosticLogger } from '../utils/replyDiagnostics';
+
+// ============================================================
+// RATE LIMIT CONFIGURATION (from .env)
+// ============================================================
+const REPLY_CONFIG = {
+  // Minutes between replies (prevents spam)
+  MIN_MINUTES_BETWEEN: parseInt(process.env.REPLY_MINUTES_BETWEEN || '15', 10),
+  
+  // Max replies per hour
+  MAX_REPLIES_PER_HOUR: parseInt(process.env.REPLIES_PER_HOUR || '4', 10),
+  
+  // Max replies per day
+  MAX_REPLIES_PER_DAY: parseInt(process.env.REPLY_MAX_PER_DAY || '50', 10),
+  
+  // How many to generate per cycle (batch size)
+  BATCH_SIZE: parseInt(process.env.REPLY_BATCH_SIZE || '1', 10),
+  
+  // Stagger delays (prevents bursts)
+  STAGGER_BASE_MIN: parseInt(process.env.REPLY_STAGGER_BASE_MIN || '5', 10),
+  STAGGER_INCREMENT_MIN: parseInt(process.env.REPLY_STAGGER_INCREMENT_MIN || '10', 10),
+};
+
+console.log('[REPLY_CONFIG] 📋 Rate limits loaded:');
+console.log(`  • Min between: ${REPLY_CONFIG.MIN_MINUTES_BETWEEN} minutes`);
+console.log(`  • Max per hour: ${REPLY_CONFIG.MAX_REPLIES_PER_HOUR}`);
+console.log(`  • Max per day: ${REPLY_CONFIG.MAX_REPLIES_PER_DAY}`);
+console.log(`  • Batch size: ${REPLY_CONFIG.BATCH_SIZE}`);
+console.log(`  • Stagger: ${REPLY_CONFIG.STAGGER_BASE_MIN}min base + ${REPLY_CONFIG.STAGGER_INCREMENT_MIN}min/reply`);
 
 // Global metrics
 let replyLLMMetrics = {
@@ -22,7 +51,9 @@ export function getReplyLLMMetrics() {
   return { ...replyLLMMetrics };
 }
 
-// 🚀 AGGRESSIVE GROWTH: Reply frequency control (3 replies per hour)
+/**
+ * Check hourly reply quota
+ */
 async function checkReplyHourlyQuota(): Promise<{
   canReply: boolean;
   repliesThisHour: number;
@@ -33,13 +64,13 @@ async function checkReplyHourlyQuota(): Promise<{
   const hourStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), 0, 0, 0);
   
   try {
-    // Count replies posted in the current hour
+    // Count replies POSTED in the current hour (use posted_decisions, not content_metadata)
     const { count, error } = await supabase
-      .from('content_metadata')
+      .from('posted_decisions')
       .select('*', { count: 'exact', head: true })
       .eq('decision_type', 'reply')
-      .gte('created_at', hourStart.toISOString())
-      .lt('created_at', new Date(hourStart.getTime() + 60 * 60 * 1000).toISOString());
+      .gte('posted_at', hourStart.toISOString())
+      .lt('posted_at', new Date(hourStart.getTime() + 60 * 60 * 1000).toISOString());
     
     if (error) {
       console.error('[REPLY_QUOTA] ❌ Database error:', error);
@@ -47,9 +78,7 @@ async function checkReplyHourlyQuota(): Promise<{
     }
     
     const repliesThisHour = count || 0;
-    const config = getConfig();
-    const maxRepliesPerHour = config.REPLIES_PER_HOUR || 6;
-    const canReply = repliesThisHour < maxRepliesPerHour;
+    const canReply = repliesThisHour < REPLY_CONFIG.MAX_REPLIES_PER_HOUR;
     
     let minutesUntilNext;
     if (!canReply) {
@@ -65,19 +94,151 @@ async function checkReplyHourlyQuota(): Promise<{
   }
 }
 
-export async function generateReplies(): Promise<void> {
-  const config = getConfig();
-  const maxRepliesPerHour = config.REPLIES_PER_HOUR || 6;
-  console.log('[REPLY_JOB] 💬 Starting reply generation cycle...');
+/**
+ * Check daily reply quota
+ */
+async function checkReplyDailyQuota(): Promise<{
+  canReply: boolean;
+  repliesToday: number;
+  resetTime?: Date;
+}> {
+  const supabase = getSupabaseClient();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0); // Start of today
   
-  // Check reply frequency limits
-  const replyQuotaCheck = await checkReplyHourlyQuota();
-  if (!replyQuotaCheck.canReply) {
-    console.log(`[REPLY_JOB] ⏸️ Reply quota reached: ${replyQuotaCheck.repliesThisHour}/${maxRepliesPerHour} this hour. Next reply in ${Math.ceil(replyQuotaCheck.minutesUntilNext || 0)} minutes`);
+  try {
+    // Count replies posted today
+    const { count, error } = await supabase
+      .from('posted_decisions')
+      .select('*', { count: 'exact', head: true })
+      .eq('decision_type', 'reply')
+      .gte('posted_at', today.toISOString());
+    
+    if (error) {
+      console.error('[DAILY_QUOTA] ❌ Database error:', error);
+      return { canReply: true, repliesToday: 0 }; // Allow on error
+    }
+    
+    const repliesToday = count || 0;
+    const canReply = repliesToday < REPLY_CONFIG.MAX_REPLIES_PER_DAY;
+    
+    // Calculate reset time (midnight tonight)
+    const resetTime = new Date(today);
+    resetTime.setDate(resetTime.getDate() + 1);
+    
+    return { canReply, repliesToday, resetTime };
+    
+  } catch (error) {
+    console.error('[DAILY_QUOTA] ❌ Check failed:', error);
+    return { canReply: true, repliesToday: 0 };
+  }
+}
+
+/**
+ * Check if enough time has passed since last reply
+ */
+async function checkTimeBetweenReplies(): Promise<{
+  canReply: boolean;
+  minutesSinceLast: number;
+  minutesUntilNext?: number;
+  lastReplyTime?: Date;
+}> {
+  const supabase = getSupabaseClient();
+  
+  try {
+    // Get most recent reply
+    const { data, error } = await supabase
+      .from('posted_decisions')
+      .select('posted_at')
+      .eq('decision_type', 'reply')
+      .order('posted_at', { ascending: false })
+      .limit(1)
+      .single();
+    
+    if (error || !data) {
+      // No previous replies or error - allow
+      return { canReply: true, minutesSinceLast: 999 };
+    }
+    
+    const lastReplyTime = new Date(String(data.posted_at));
+    const now = new Date();
+    const minutesSinceLast = (now.getTime() - lastReplyTime.getTime()) / (1000 * 60);
+    
+    const canReply = minutesSinceLast >= REPLY_CONFIG.MIN_MINUTES_BETWEEN;
+    const minutesUntilNext = canReply ? 0 : REPLY_CONFIG.MIN_MINUTES_BETWEEN - minutesSinceLast;
+    
+    return {
+      canReply,
+      minutesSinceLast: Math.floor(minutesSinceLast),
+      minutesUntilNext: Math.ceil(minutesUntilNext),
+      lastReplyTime
+    };
+    
+  } catch (error) {
+    console.error('[TIME_BETWEEN] ❌ Check failed:', error);
+    return { canReply: true, minutesSinceLast: 999 };
+  }
+}
+
+export async function generateReplies(): Promise<void> {
+  ReplyDiagnosticLogger.logCycleStart();
+  
+  // ===========================================================
+  // STEP 1: CHECK ALL RATE LIMITS
+  // ===========================================================
+  
+  // Check 1: Hourly quota
+  const hourlyCheck = await checkReplyHourlyQuota();
+  if (!hourlyCheck.canReply) {
+    const nextAvailable = new Date(Date.now() + (hourlyCheck.minutesUntilNext || 0) * 60 * 1000);
+    ReplyDiagnosticLogger.logBlocked('Hourly quota exceeded', nextAvailable);
+    ReplyDiagnosticLogger.logCycleEnd(false, ['Hourly quota exceeded']);
     return;
   }
   
-  console.log(`[REPLY_JOB] ✅ Reply quota available: ${replyQuotaCheck.repliesThisHour}/${maxRepliesPerHour} this hour`);
+  // Check 2: Daily quota
+  const dailyCheck = await checkReplyDailyQuota();
+  if (!dailyCheck.canReply) {
+    ReplyDiagnosticLogger.logBlocked('Daily quota exceeded', dailyCheck.resetTime);
+    ReplyDiagnosticLogger.logCycleEnd(false, ['Daily quota exceeded']);
+    return;
+  }
+  
+  // Check 3: Time between replies
+  const timeCheck = await checkTimeBetweenReplies();
+  if (!timeCheck.canReply) {
+    const nextAvailable = new Date(Date.now() + (timeCheck.minutesUntilNext || 0) * 60 * 1000);
+    ReplyDiagnosticLogger.logBlocked('Too soon since last reply', nextAvailable);
+    ReplyDiagnosticLogger.logCycleEnd(false, ['Too soon since last reply']);
+    return;
+  }
+  
+  // Log quota status
+  ReplyDiagnosticLogger.logQuotaStatus({
+    quota_hourly: {
+      used: hourlyCheck.repliesThisHour,
+      limit: REPLY_CONFIG.MAX_REPLIES_PER_HOUR,
+      available: REPLY_CONFIG.MAX_REPLIES_PER_HOUR - hourlyCheck.repliesThisHour
+    },
+    quota_daily: {
+      used: dailyCheck.repliesToday,
+      limit: REPLY_CONFIG.MAX_REPLIES_PER_DAY,
+      available: REPLY_CONFIG.MAX_REPLIES_PER_DAY - dailyCheck.repliesToday
+    },
+    time_since_last: {
+      minutes: timeCheck.minutesSinceLast,
+      required: REPLY_CONFIG.MIN_MINUTES_BETWEEN,
+      can_post: timeCheck.canReply
+    }
+  });
+  
+  // ===========================================================
+  // STEP 2: PROCEED WITH GENERATION
+  // ===========================================================
+  
+  console.log('[REPLY_JOB] 🎯 All rate limits passed - proceeding with generation');
+  
+  const config = getConfig();
   
   try {
     if (config.MODE === 'shadow') {
@@ -86,8 +247,10 @@ export async function generateReplies(): Promise<void> {
       await generateRealReplies();
     }
     console.log('[REPLY_JOB] ✅ Reply generation completed');
+    ReplyDiagnosticLogger.logCycleEnd(true);
   } catch (error: any) {
     console.error('[REPLY_JOB] ❌ Reply generation failed:', error.message);
+    ReplyDiagnosticLogger.logCycleEnd(false, [error.message]);
     throw error;
   }
 }
@@ -189,11 +352,17 @@ async function generateRealReplies(): Promise<void> {
   
   console.log(`[REPLY_JOB] ✅ Found ${opportunities.length} reply opportunities from database pool`);
   
-  // Take top 3-5 opportunities (AGGRESSIVE MODE - generate more replies)
-  const replyCount = Math.min(5, opportunities.length);
-  console.log(`[REPLY_JOB] 🚀 AGGRESSIVE MODE: Generating ${replyCount} strategic replies`);
+  // Batch size from config (prevents bursts)
+  const replyCount = Math.min(REPLY_CONFIG.BATCH_SIZE, opportunities.length);
+  console.log(`[REPLY_JOB] 🎯 Generating ${replyCount} replies (batch size: ${REPLY_CONFIG.BATCH_SIZE})`);
   
-  for (const opportunity of opportunities.slice(0, replyCount)) {
+  if (replyCount === 0) {
+    console.log('[REPLY_JOB] ⚠️ No opportunities available to generate replies for');
+    return;
+  }
+  
+  for (let i = 0; i < opportunities.slice(0, replyCount).length; i++) {
+    const opportunity = opportunities[i];
     const target = {
       account: {
         username: opportunity.target.username,
@@ -245,13 +414,19 @@ async function generateRealReplies(): Promise<void> {
         scheduled_at: new Date(Date.now() + 5 * 60 * 1000).toISOString() // 5 min from now
       };
       
-      // Queue for posting
-      await queueReply(reply);
-      console.log(`[REPLY_JOB] ✅ Reply queued:`);
+      // Calculate stagger delay (5 min base + 10 min per reply)
+      // Reply 0: 5min, Reply 1: 15min, Reply 2: 25min, etc.
+      const staggerDelay = REPLY_CONFIG.STAGGER_BASE_MIN + (i * REPLY_CONFIG.STAGGER_INCREMENT_MIN);
+      
+      // Queue for posting with stagger
+      await queueReply(reply, staggerDelay);
+      
+      console.log(`[REPLY_JOB] ✅ Reply queued (#${i+1}/${replyCount}):`);
       console.log(`  • Target: @${target.account.username}`);
       console.log(`  • Followers: ${target.account.followers.toLocaleString()}`);
       console.log(`  • Estimated reach: ${target.estimated_reach.toLocaleString()}`);
       console.log(`  • Generator: ${replyGenerator}`);
+      console.log(`  • Scheduled in: ${staggerDelay} minutes`);
       console.log(`  • Content preview: "${strategicReply.content.substring(0, 60)}..."`);
       
       // Mark opportunity as replied in database
@@ -390,8 +565,16 @@ Format as JSON:
   };
 }
 
-async function queueReply(reply: any): Promise<void> {
+/**
+ * Queue a reply for posting
+ * @param reply Reply data
+ * @param delayMinutes Optional delay before posting (for staggering)
+ */
+async function queueReply(reply: any, delayMinutes: number = 5): Promise<void> {
   const supabase = getSupabaseClient();
+  
+  // Calculate scheduled time with stagger delay
+  const scheduledAt = new Date(Date.now() + delayMinutes * 60 * 1000);
   
   const { data, error } = await supabase.from('content_metadata').insert([{
     decision_id: reply.decision_id,
@@ -399,15 +582,13 @@ async function queueReply(reply: any): Promise<void> {
     content: reply.content,
     generation_source: 'strategic_multi_generator',
     status: 'queued',
-    scheduled_at: reply.scheduled_at,
+    scheduled_at: scheduledAt.toISOString(), // Use calculated time
     quality_score: reply.quality_score || 0.85,
     predicted_er: reply.predicted_er || 0.028,
     topic_cluster: reply.topic || 'health',
     target_tweet_id: reply.target_tweet_id,
     target_username: reply.target_username,
-    // ❌ REMOVED: target_tweet_content - column doesn't exist in schema
     generator_name: reply.generator_used || 'unknown',
-    // ❌ REMOVED: estimated_reach - column doesn't exist
     bandit_arm: `strategic_reply_${reply.generator_used || 'unknown'}`,
     created_at: new Date().toISOString()
   }]);
@@ -417,7 +598,8 @@ async function queueReply(reply: any): Promise<void> {
     throw error;
   }
   
-  console.log(`[REPLY_JOB] 💾 Reply queued in database: ${reply.decision_id}`);
+  console.log(`[REPLY_JOB] 💾 Reply queued: ${reply.decision_id}`);
+  console.log(`[REPLY_JOB] ⏰ Scheduled for: ${scheduledAt.toLocaleString()} (in ${delayMinutes} min)`);
 }
 
 async function discoverTargets() {
