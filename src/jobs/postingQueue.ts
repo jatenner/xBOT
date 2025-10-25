@@ -630,25 +630,33 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     throw new Error('Reply decision missing target_tweet_id');
   }
   
-  // 🛡️ Use RESILIENT reply system with auto-healing
-  console.log(`[POSTING_QUEUE] 🛡️ Using resilient multi-strategy reply system...`);
+  // 🛡️ Use PROPER reply system (posts as actual reply, not @mention)
+  console.log(`[POSTING_QUEUE] 💬 Using UltimateTwitterPoster.postReply() for REAL replies...`);
   
   try {
+    // Validate we have the target tweet ID
+    if (!decision.target_tweet_id) {
+      throw new Error('Cannot post reply: missing target_tweet_id');
+    }
+    
     // Use UltimateTwitterPoster for replies (no Redis dependency!)
     const { UltimateTwitterPoster } = await import('../posting/UltimateTwitterPoster');
     const poster = new UltimateTwitterPoster();
     
-    console.log(`[POSTING_QUEUE] 💬 Posting reply using UltimateTwitterPoster...`);
+    console.log(`[POSTING_QUEUE] 💬 Posting REAL reply to tweet ${decision.target_tweet_id}...`);
+    console.log(`[POSTING_QUEUE] 📝 Reply content: "${decision.content.substring(0, 60)}..."`);
     
-    // Post as a mention reply (simpler, no Redis needed)
-    const replyContent = `@${decision.target_username} ${decision.content}`;
-    const result = await poster.postTweet(replyContent);
+    // Post as ACTUAL reply (not @mention tweet!)
+    const result = await poster.postReply(
+      decision.content, // Don't add @username - Twitter does that automatically
+      decision.target_tweet_id
+    );
     
     if (!result.success || !result.tweetId) {
       throw new Error(result.error || 'Reply posting failed');
     }
     
-    console.log(`[POSTING_QUEUE] ✅ Reply posted successfully with ID: ${result.tweetId}`);
+    console.log(`[POSTING_QUEUE] ✅ REAL reply posted successfully with ID: ${result.tweetId}`);
     const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
     console.log(`[POSTING_QUEUE] 🔗 Reply URL: https://x.com/${username}/status/${result.tweetId}`);
     
