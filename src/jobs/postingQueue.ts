@@ -634,17 +634,15 @@ async function postReply(decision: QueuedDecision): Promise<string> {
   console.log(`[POSTING_QUEUE] 🛡️ Using resilient multi-strategy reply system...`);
   
   try {
-    // Use BulletproofPoster from poster.ts (has postReply method)
-    const { BulletproofPoster } = await import('../posting/poster');
-    const poster = new BulletproofPoster();
+    // Use UltimateTwitterPoster for replies (no Redis dependency!)
+    const { UltimateTwitterPoster } = await import('../posting/UltimateTwitterPoster');
+    const poster = new UltimateTwitterPoster();
     
-    console.log(`[POSTING_QUEUE] 🛡️ Using BulletproofPoster for reply...`);
+    console.log(`[POSTING_QUEUE] 💬 Posting reply using UltimateTwitterPoster...`);
     
-    // BulletproofPoster doesn't need initialize() - it initializes on demand
-    const result = await poster.postReply(
-      decision.content,
-      decision.target_tweet_id
-    );
+    // Post as a mention reply (simpler, no Redis needed)
+    const replyContent = `@${decision.target_username} ${decision.content}`;
+    const result = await poster.postTweet(replyContent);
     
     if (!result.success || !result.tweetId) {
       throw new Error(result.error || 'Reply posting failed');
@@ -653,6 +651,9 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     console.log(`[POSTING_QUEUE] ✅ Reply posted successfully with ID: ${result.tweetId}`);
     const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
     console.log(`[POSTING_QUEUE] 🔗 Reply URL: https://x.com/${username}/status/${result.tweetId}`);
+    
+    await poster.dispose();
+    
     return result.tweetId;
   } catch (error: any) {
     console.error(`[POSTING_QUEUE] ❌ Reply system error: ${error.message}`);
