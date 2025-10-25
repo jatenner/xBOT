@@ -108,12 +108,27 @@ class BrowserManager {
           }
         }
 
-        const context = await browser.newContext({
+        // 🔐 Load Twitter session for authentication
+        const contextOptions = {
           viewport: { width: 1920, height: 1080 },
           userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           ignoreHTTPSErrors: true,
           ...options
-        });
+        };
+
+        // Load session from TWITTER_SESSION_B64 if available
+        if (process.env.TWITTER_SESSION_B64 && !options.storageState) {
+          try {
+            const sessionData = Buffer.from(process.env.TWITTER_SESSION_B64, 'base64').toString('utf-8');
+            const sessionJson = JSON.parse(sessionData);
+            contextOptions.storageState = sessionJson;
+            console.log(`🔐 BROWSER_CONTEXT: Loaded authenticated session (${sessionJson.cookies?.length || 0} cookies)`);
+          } catch (error) {
+            console.warn(`⚠️ BROWSER_CONTEXT: Failed to load session:`, error.message);
+          }
+        }
+
+        const context = await browser.newContext(contextOptions);
 
         // Track context creation time for cleanup
         context._createdAt = Date.now();
