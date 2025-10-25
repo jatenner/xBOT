@@ -634,32 +634,38 @@ async function postReply(decision: QueuedDecision): Promise<string> {
   console.log(`[POSTING_QUEUE] 🛡️ Using resilient multi-strategy reply system...`);
   
   try {
-    const browserManager = (await import('../lib/browser')).default;
+    const { getBrowserManager } = await import('../lib/browser');
+    const browserManager = getBrowserManager();
     const { ResilientReplyPoster } = await import('../posting/resilientReplyPoster');
     
-    // Get authenticated browser page
-    const page = await browserManager.newPage();
+    // Get authenticated browser page - use withContext for proper session management
+    let page;
+    let tweetId;
     
-    // Create resilient poster and post reply
-    const poster = new ResilientReplyPoster(page);
-    const result = await poster.postReply(decision.content, decision.target_tweet_id);
+    await browserManager.withContext('reply_posting', async (context: any) => {
+      page = await context.newPage();
+      
+      // Post reply within context
+      const poster = new ResilientReplyPoster(page);
+      const result = await poster.postReply(decision.content, decision.target_tweet_id);
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Reply posting failed');
+      }
+      
+      tweetId = result.tweetId;
+      
+      await page.close();
+    });
     
-    if (result.success) {
-      if (!result.tweetId) {
-        throw new Error('Reply posting succeeded but no tweet ID was extracted - cannot track metrics');
-      }
-      console.log(`[POSTING_QUEUE] ✅ Reply posted successfully with ID: ${result.tweetId}`);
-      console.log(`[POSTING_QUEUE] 📊 Strategy used: ${result.strategy}`);
-      const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
-      console.log(`[POSTING_QUEUE] 🔗 Reply URL: https://x.com/${username}/status/${result.tweetId}`);
-      return result.tweetId;
-    } else {
-      console.error(`[POSTING_QUEUE] ❌ All reply strategies failed`);
-      if (result.diagnostics) {
-        console.log(`[POSTING_QUEUE] 🔬 Diagnostics captured for analysis`);
-      }
-      throw new Error(result.error || 'Reply posting failed');
+    if (!tweetId) {
+      throw new Error('Reply posting succeeded but no tweet ID returned');
     }
+    
+    console.log(`[POSTING_QUEUE] ✅ Reply posted successfully with ID: ${tweetId}`);
+    const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
+    console.log(`[POSTING_QUEUE] 🔗 Reply URL: https://x.com/${username}/status/${tweetId}`);
+    return tweetId;
   } catch (error: any) {
     console.error(`[POSTING_QUEUE] ❌ Reply system error: ${error.message}`);
     throw new Error(`Reply posting failed: ${error.message}`);
