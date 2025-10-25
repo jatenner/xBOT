@@ -129,52 +129,63 @@ export class DynamicTopicGenerator {
       ? recentTopics.join(', ')
       : 'None yet';
 
-    const system = `You are a viral content strategist for an intelligent Twitter account.
+    const system = `You are a viral content strategist for a health/wellness Twitter account.
 
 Your goal: Generate unique, engaging topics that get FOLLOWERS (not just likes).
 
-=== UNLIMITED TOPIC DOMAINS ===
+=== HEALTH/WELLNESS TOPIC DOMAINS (Explore ALL of these!) ===
 
-You can generate content about ANYTHING interesting, educational, or thought-provoking:
+You can generate content about ANY aspect of health, wellness, fitness, nutrition, or human optimization:
 
-**Science & Technology:**
-- Space exploration, physics, chemistry, biology, neuroscience
-- AI, robotics, quantum computing, biotech, nanotech
-- Engineering marvels, innovation, future tech
+**Physical Health (20+ subtopics):**
+- Cardiovascular: heart rate, blood pressure, cholesterol, atherosclerosis, stroke prevention
+- Metabolic: insulin, glucose, diabetes, metabolic syndrome, ketones
+- Musculoskeletal: bone density, joint health, posture, injury prevention, flexibility
+- Immune: inflammation, autoimmune, allergies, infection resistance
+- Hormonal: testosterone, estrogen, thyroid, cortisol, growth hormone, insulin
+- Digestive: gut microbiome, IBS, SIBO, leaky gut, digestion, elimination
 
-**Human Knowledge:**
-- Psychology, philosophy, sociology, anthropology
-- History (ancient to modern), civilizations, historical figures
-- Economics, business, markets, startups, entrepreneurship
+**Mental & Brain Health (15+ subtopics):**
+- Cognitive: memory, focus, processing speed, brain fog, mental clarity
+- Neurological: neurotransmitters, neuroplasticity, BDNF, brain aging, dementia
+- Psychological: anxiety, depression, mood, emotional regulation, stress
+- Performance: flow state, productivity, creativity, learning, problem-solving
+- Sleep: REM, deep sleep, sleep cycles, insomnia, sleep quality, circadian rhythms
 
-**Health & Optimization:**
-- Fitness, nutrition, sleep, biohacking, longevity
-- Mental health, meditation, consciousness
-- Medical research, health tech
+**Nutrition & Diet (25+ subtopics):**
+- Macros: protein, fats, carbs, fiber, meal timing, fasting protocols
+- Micronutrients: vitamins (A,B,C,D,E,K), minerals (zinc, magnesium, iron)
+- Diet styles: keto, carnivore, vegan, Mediterranean, paleo, intermittent fasting
+- Food science: anti-nutrients, bioavailability, food synergies, absorption
+- Hydration: electrolytes, water quality, hydration timing, dehydration effects
 
-**Culture & Society:**
-- Books, literature, authors, reading
-- Movies, art, music, creativity
-- Social trends, generational differences
-- Education, learning, skills
+**Fitness & Movement (20+ subtopics):**
+- Strength training: hypertrophy, progressive overload, muscle protein synthesis
+- Cardio: Zone 2, VO2max, HIIT, mitochondrial health, endurance
+- Recovery: stretching, foam rolling, massage, cold/heat therapy, rest days
+- Athletic performance: explosiveness, power, speed, agility, coordination
+- Body composition: fat loss, muscle gain, recomposition, metabolism
 
-**Nature & Universe:**
-- Evolution, ecology, climate, biodiversity
-- Astronomy, cosmology, universe mysteries
-- Animals, plants, oceans, wilderness
+**Biohacking & Optimization (30+ subtopics):**
+- Supplements: nootropics, adaptogens, vitamins, minerals, peptides, herbs
+- Environmental: light exposure, temperature, air quality, EMF, nature exposure
+- Wearables: CGM, HRV, sleep tracking, fitness trackers, biomarker monitoring
+- Longevity: NAD+, rapamycin, metformin, senolytic, anti-aging protocols
+- Recovery protocols: sauna, cold plunge, red light, compression, massage
 
-**Current Events:**
-- Breaking discoveries, research papers
-- Tech announcements, product launches
-- Political/economic shifts affecting people
-- Viral trends worth analyzing
+**Emerging Health Topics (15+ subtopics):**
+- Peptides: BPC-157, TB-500, growth hormone peptides
+- Psychedelics: psilocybin, microdosing, ketamine, MDMA therapy
+- Continuous monitoring: CGM, continuous ketone monitors, real-time biomarkers
+- Genetic optimization: APOE4, MTHFR, genetic testing, epigenetics
+- Functional medicine: root cause analysis, systems approach, personalized protocols
 
-⚠️ CRITICAL: Be TRULY random and unlimited!
-- Don't default to health topics (only 20% health is fine!)
-- Explore ALL human knowledge
-- Think: "What would make someone say 'WOW, I didn't know that!'"
-- Be specific, surprising, counterintuitive
-- Cover topics NO other accounts are covering
+⚠️ CRITICAL: Be TRULY diverse WITHIN health!
+- Don't default to sleep/circadian/psychedelics (explore ALL health domains!)
+- Cover the ENTIRE spectrum: hormones, gut health, supplements, recovery, etc.
+- Be specific: "BDNF" not "brain health", "HRV" not "heart health"
+- Think: "What health topic does NO other account talk about?"
+- Explore obscure but fascinating health topics
 
 === PERSPECTIVES (Dimensions) ===
 
@@ -227,14 +238,15 @@ Return JSON with:
   "viral_potential": 0.0-1.0
 }`;
 
-    const user = `Generate a unique, engaging topic that will get followers.
+    const user = `Generate a unique, engaging health/wellness/fitness topic that will get followers.
 
-Topic can be about ANYTHING interesting - science, technology, history, philosophy, culture, nature, business, or health.
+Explore the FULL spectrum of health - don't default to common topics like sleep or mental health.
+Cover: hormones, gut health, supplements, recovery, peptides, genetics, longevity protocols, etc.
 
-Use the high-performing patterns if relevant, or discover something completely new.
-Be creative, specific, and TRULY random across all domains of human knowledge.
+Use the high-performing patterns if relevant, or discover something new within health.
+Be creative, specific, and explore UNCOMMON health topics.
 
-Think: "What fascinating thing would make someone instantly follow this account?"`;
+Think: "What fascinating health topic would make someone instantly follow this account?"`;
 
 
     return { system, user };
