@@ -366,6 +366,19 @@ export class JobManager {
       230 * MINUTE
     );
 
+    // 🏥 HEALTH CHECK - every 10 minutes, offset 3 min (continuous monitoring)
+    this.scheduleStaggeredJob(
+      'health_check',
+      async () => {
+        await this.safeExecute('health_check', async () => {
+          const { runHealthCheck } = await import('./healthCheckJob');
+          await runHealthCheck();
+        });
+      },
+      10 * MINUTE, // Every 10 minutes
+      3 * MINUTE   // Start after 3 minutes
+    );
+
     // Competitive analysis - every 24 hours, offset 270 min
     this.scheduleStaggeredJob(
       'competitive_analysis',
