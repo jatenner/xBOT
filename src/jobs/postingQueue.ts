@@ -634,39 +634,24 @@ async function postReply(decision: QueuedDecision): Promise<string> {
   console.log(`[POSTING_QUEUE] 🛡️ Using resilient multi-strategy reply system...`);
   
   try {
-    // Import from browser.js (not browser.ts) for getBrowserManager
-    const browserModule = await import('../lib/browser');
-    const browserManager = browserModule.getBrowserManager ? browserModule.getBrowserManager() : browserModule.default;
-    const { ResilientReplyPoster } = await import('../posting/resilientReplyPoster');
+    // Use bulletproof poster for replies (it handles browser management internally)
+    const { bulletproofPoster } = await import('../posting/bulletproofPoster');
     
-    // Get authenticated browser page - use withContext for proper session management
-    let page;
-    let tweetId;
+    console.log(`[POSTING_QUEUE] 🛡️ Using bulletproof poster for reply...`);
     
-    await browserManager.withContext('reply_posting', async (context: any) => {
-      page = await context.newPage();
-      
-      // Post reply within context
-      const poster = new ResilientReplyPoster(page);
-      const result = await poster.postReply(decision.content, decision.target_tweet_id);
-      
-      if (!result.success) {
-        throw new Error(result.error || 'Reply posting failed');
-      }
-      
-      tweetId = result.tweetId;
-      
-      await page.close();
-    });
+    const result = await bulletproofPoster.postReply(
+      decision.content,
+      decision.target_tweet_id
+    );
     
-    if (!tweetId) {
-      throw new Error('Reply posting succeeded but no tweet ID returned');
+    if (!result.success || !result.tweetId) {
+      throw new Error(result.error || 'Reply posting failed');
     }
     
-    console.log(`[POSTING_QUEUE] ✅ Reply posted successfully with ID: ${tweetId}`);
+    console.log(`[POSTING_QUEUE] ✅ Reply posted successfully with ID: ${result.tweetId}`);
     const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
-    console.log(`[POSTING_QUEUE] 🔗 Reply URL: https://x.com/${username}/status/${tweetId}`);
-    return tweetId;
+    console.log(`[POSTING_QUEUE] 🔗 Reply URL: https://x.com/${username}/status/${result.tweetId}`);
+    return result.tweetId;
   } catch (error: any) {
     console.error(`[POSTING_QUEUE] ❌ Reply system error: ${error.message}`);
     throw new Error(`Reply posting failed: ${error.message}`);
