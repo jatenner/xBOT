@@ -344,6 +344,7 @@ async function generateRealReplies(): Promise<void> {
       engagement_rate: 0.05
     },
     tweet_url: String(opp.target_tweet_url || ''),
+    tweet_content: String(opp.target_tweet_content || ''), // ✅ FIX: Use actual tweet content from DB!
     tweet_posted_at: opp.tweet_posted_at,
     minutes_since_post: Number(opp.posted_minutes_ago) || 0,
     reply_strategy: 'Add value with research or insights',
@@ -371,7 +372,7 @@ async function generateRealReplies(): Promise<void> {
         engagement_velocity: 'high' as const
       },
       tweet_url: opportunity.tweet_url || '',
-      tweet_content: '',
+      tweet_content: opportunity.tweet_content || '', // ✅ FIX: Pass actual tweet content to AI!
       estimated_reach: opportunity.estimated_followers || 0,
       reply_angle: opportunity.reply_strategy
     };
