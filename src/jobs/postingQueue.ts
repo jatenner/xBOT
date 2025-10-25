@@ -634,8 +634,9 @@ async function postReply(decision: QueuedDecision): Promise<string> {
   console.log(`[POSTING_QUEUE] 🛡️ Using resilient multi-strategy reply system...`);
   
   try {
-    const { getBrowserManager } = await import('../lib/browser');
-    const browserManager = getBrowserManager();
+    // Import from browser.js (not browser.ts) for getBrowserManager
+    const browserModule = await import('../lib/browser');
+    const browserManager = browserModule.getBrowserManager ? browserModule.getBrowserManager() : browserModule.default;
     const { ResilientReplyPoster } = await import('../posting/resilientReplyPoster');
     
     // Get authenticated browser page - use withContext for proper session management
