@@ -156,8 +156,8 @@ export class ResilientReplyPoster {
       }
       
       // Then wait for composer to render inside modal
-      // Twitter is VERY slow to render the composer sometimes
-      await this.page.waitForTimeout(6000); // Increased from 4000
+      // Twitter is EXTREMELY slow to render the composer - needs 10+ seconds!
+      await this.page.waitForTimeout(10000); // Increased from 6000 - Twitter is VERY slow
       
       // Type reply content
       const composer = await this.findComposer();
@@ -212,8 +212,8 @@ export class ResilientReplyPoster {
       // Press 'r' to open reply composer
       await this.page.keyboard.press('r');
       
-      // Wait longer for Twitter to render composer
-      await this.page.waitForTimeout(5000); // Increased from 3000
+      // Wait MUCH longer for Twitter to render composer
+      await this.page.waitForTimeout(8000); // Increased from 5000 - keyboard shortcut can be slow too
       
       // Type reply
       const composer = await this.findComposer();
@@ -419,9 +419,9 @@ export class ResilientReplyPoster {
    * 🔍 Helper: Find composer textbox (RESILIENT)
    */
   private async findComposer() {
-    // Wait LONGER for composer to appear (Twitter is slow to render modals)
-    console.log('🔍 FIND_COMPOSER: Waiting 5s for composer to appear...');
-    await this.page.waitForTimeout(5000); // Increased from 3000
+    // Wait EVEN LONGER for composer to appear (Twitter can take 10+ seconds!)
+    console.log('🔍 FIND_COMPOSER: Waiting 8s for composer to appear...');
+    await this.page.waitForTimeout(8000); // Increased from 5000 - Twitter is SLOW
     
     const composerSelectors = [
       // Most specific first (Twitter's current selectors as of 2025)
