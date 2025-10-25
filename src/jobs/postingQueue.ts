@@ -634,12 +634,15 @@ async function postReply(decision: QueuedDecision): Promise<string> {
   console.log(`[POSTING_QUEUE] 🛡️ Using resilient multi-strategy reply system...`);
   
   try {
-    // Use bulletproof poster for replies (it handles browser management internally)
-    const { bulletproofPoster } = await import('../posting/bulletproofPoster');
+    // Use BulletproofPoster from poster.ts (has postReply method)
+    const { BulletproofPoster } = await import('../posting/poster');
+    const poster = new BulletproofPoster();
     
-    console.log(`[POSTING_QUEUE] 🛡️ Using bulletproof poster for reply...`);
+    console.log(`[POSTING_QUEUE] 🛡️ Using BulletproofPoster for reply...`);
     
-    const result = await bulletproofPoster.postReply(
+    await poster.initialize();
+    
+    const result = await poster.postReply(
       decision.content,
       decision.target_tweet_id
     );
