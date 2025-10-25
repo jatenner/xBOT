@@ -382,49 +382,38 @@ export class ContentOrchestrator {
    * This gives us UNLIMITED content possibilities!
    */
   private async selectDiverseTopic(avoid?: string): Promise<string> {
-    const useDynamicGeneration = Math.random() < 0.7; // 70% dynamic, 30% hardcoded
+    // ✅ 100% AI-DRIVEN TOPIC GENERATION - No hardcoded lists!
+    // Let AI generate topics from its unlimited health knowledge
     
-    if (useDynamicGeneration) {
-      try {
-        console.log('[ORCHESTRATOR] 🤖 Using dynamic AI topic generation...');
-        
-        const dynamicGenerator = getDynamicTopicGenerator();
-        
-        // Get recent topics to avoid repetition
-        const postHistory = getPostHistory();
-        const recentTopics = postHistory.getRecentTopics ? postHistory.getRecentTopics(10) : [];
-        
-        // Generate unique topic
-        const dynamicTopic = await dynamicGenerator.generateTopic({
-          recentTopics: avoid ? [...recentTopics, avoid] : recentTopics,
-          preferTrending: Math.random() < 0.3 // 30% prefer trending topics
-        });
-        
-        // Format topic string (combine topic + angle + dimension)
-        const fullTopic = `${dynamicTopic.topic} (${dynamicTopic.dimension}: ${dynamicTopic.angle})`;
-        
-        console.log(`[ORCHESTRATOR] ✨ Dynamic topic: "${fullTopic}"`);
-        console.log(`[ORCHESTRATOR] 🔥 Viral potential: ${dynamicTopic.viral_potential}`);
-        
-        return fullTopic;
-        
-      } catch (error: any) {
-        console.error('[ORCHESTRATOR] ❌ AI topic generation failed:', error.message);
-        
-        // NO FALLBACK TO HARDCODED TOPICS - System is fully AI-driven
-        // If AI fails, throw error to trigger retry with different approach
-        throw new Error(`AI topic generation failed: ${error.message}. System will retry.`);
-      }
+    try {
+      console.log('[ORCHESTRATOR] 🤖 Using 100% AI-driven topic generation (no hardcoded lists)...');
+      
+      const dynamicGenerator = getDynamicTopicGenerator();
+      
+      // Get recent topics to avoid repetition
+      const postHistory = getPostHistory();
+      const recentTopics = postHistory.getRecentTopics ? postHistory.getRecentTopics(10) : [];
+      
+      // Generate unique topic - AI creates this from scratch!
+      const dynamicTopic = await dynamicGenerator.generateTopic({
+        recentTopics: avoid ? [...recentTopics, avoid] : recentTopics,
+        preferTrending: Math.random() < 0.3 // 30% prefer trending topics
+      });
+      
+      // Format topic string (combine topic + angle + dimension)
+      const fullTopic = `${dynamicTopic.topic} (${dynamicTopic.dimension}: ${dynamicTopic.angle})`;
+      
+      console.log(`[ORCHESTRATOR] ✨ AI-generated topic: "${fullTopic}"`);
+      console.log(`[ORCHESTRATOR] 🔥 Viral potential: ${dynamicTopic.viral_potential}`);
+      
+      return fullTopic;
+      
+    } catch (error: any) {
+      console.error('[ORCHESTRATOR] ❌ AI topic generation failed:', error.message);
+      
+      // NO FALLBACK - If AI fails, throw error and system will retry
+      throw new Error(`AI topic generation failed: ${error.message}. System will retry.`);
     }
-    
-    /* REMOVED: Hardcoded topic fallback list
-     * System is now 100% AI-driven with unlimited topics
-     * No more limited topic pools - AI generates infinite variety
-     * If AI fails, system throws error instead of using hardcoded fallback
-     */
-    
-    // This code should never be reached (AI generation above always returns or throws)
-    throw new Error('Topic generation reached unreachable code - this should not happen');
   }
   
   /**
