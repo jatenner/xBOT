@@ -163,21 +163,55 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
     
     const postedIds = new Set((alreadyPosted || []).map(p => p.decision_id));
     
-    const { data, error } = await supabase
+    // ✅ FIX: Fetch content and replies SEPARATELY to prevent blocking
+    // Prioritize content posts (main tweets), then add replies
+    const { data: contentPosts, error: contentError } = await supabase
       .from('content_metadata')
       .select('*')
       .eq('status', 'queued')
-      // Remove generation_source filter to allow all queued content
-      .lte('scheduled_at', graceWindow.toISOString()) // Add grace window filter
-      .order('scheduled_at', { ascending: true }) // Order by scheduled time, not creation time
-      .limit(10); // Get more to filter out already-posted
+      .in('decision_type', ['single', 'thread'])
+      .lte('scheduled_at', graceWindow.toISOString())
+      .order('scheduled_at', { ascending: true })
+      .limit(10); // Get up to 10 content posts
+    
+    const { data: replyPosts, error: replyError } = await supabase
+      .from('content_metadata')
+      .select('*')
+      .eq('status', 'queued')
+      .eq('decision_type', 'reply')
+      .lte('scheduled_at', graceWindow.toISOString())
+      .order('scheduled_at', { ascending: true })
+      .limit(10); // Get up to 10 replies
+    
+    // Combine: prioritize content, then replies
+    const data = [...(contentPosts || []), ...(replyPosts || [])];
+    const error = contentError || replyError;
+    
+    console.log(`[POSTING_QUEUE] 📊 Content posts: ${contentPosts?.length || 0}, Replies: ${replyPosts?.length || 0}`);
+    
+    // ✅ AUTO-CLEANUP: Cancel stale items (>2 hours old) to prevent queue blocking
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    const { data: staleItems } = await supabase
+      .from('content_metadata')
+      .select('decision_id, decision_type')
+      .eq('status', 'queued')
+      .lt('scheduled_at', twoHoursAgo.toISOString());
+    
+    if (staleItems && staleItems.length > 0) {
+      console.log(`[POSTING_QUEUE] 🧹 Auto-cleaning ${staleItems.length} stale items (>2h old)`);
+      await supabase
+        .from('content_metadata')
+        .update({ status: 'cancelled' })
+        .eq('status', 'queued')
+        .lt('scheduled_at', twoHoursAgo.toISOString());
+    }
     
     if (error) {
       console.error('[POSTING_QUEUE] ❌ Failed to fetch ready decisions:', error.message);
       return [];
     }
     
-    console.log(`[POSTING_QUEUE] 📊 Query returned ${data?.length || 0} decisions`);
+    console.log(`[POSTING_QUEUE] 📊 Total decisions ready: ${data?.length || 0}`);
     
     if (!data || data.length === 0) {
       // Debug: Check what IS in the queue
