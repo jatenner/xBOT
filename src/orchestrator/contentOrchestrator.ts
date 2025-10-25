@@ -94,26 +94,20 @@ export class ContentOrchestrator {
       console.log(`[ORCHESTRATOR] ${chaosDecision.reasoning}`);
     }
     
-    // STEP 3: Select generator dynamically (with chaos override)
+    // STEP 3: Select generator dynamically (with chaos override + TRUE diversity)
     const scheduler = getPersonalityScheduler();
     const selection = scheduler.selectGenerator();
     
-    // 🧠 NEW: 50% chance to use SMART engine (makes connections, has insights)
-    const useSmartEngine = Math.random() < 0.5;
-    
-    const generator: GeneratorType = chaosDecision.override?.generator || 
-      (useSmartEngine ? 'contrarian' : selection.generator); // Use contrarian slot for smart
+    // ✅ FIXED: Let scheduler pick generator (all 12 have equal chance to rotate)
+    // No more forcing 50% to 'contrarian' - that caused repetitive academic tone!
+    const generator: GeneratorType = chaosDecision.override?.generator || selection.generator;
     const formatRaw = chaosDecision.override?.format || params?.formatHint || selection.format;
     const format: 'single' | 'thread' = formatRaw === 'auto' 
       ? (Math.random() < 0.6 ? 'single' : 'thread') 
       : formatRaw as 'single' | 'thread';
     
-    if (useSmartEngine) {
-      console.log(`[ORCHESTRATOR] 🧠 Using SMART ENGINE (connections, insights, context-aware)`);
-    } else {
-      console.log(`[ORCHESTRATOR] 🎭 Generator: ${generator}, Format: ${format}`);
-      console.log(`[ORCHESTRATOR] 💡 ${selection.reasoning}`);
-    }
+    console.log(`[ORCHESTRATOR] 🎭 Generator: ${generator}, Format: ${format}`);
+    console.log(`[ORCHESTRATOR] 💡 ${selection.reasoning}`);
     
     // STEP 4: Select topic (with diversity check)
     let topic = chaosDecision.override?.topic || params?.topicHint || await this.selectDiverseTopic();
