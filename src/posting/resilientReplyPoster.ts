@@ -31,9 +31,11 @@ interface StrategyMetrics {
 
 export class ResilientReplyPoster {
   private static strategyMetrics: Map<string, StrategyMetrics> = new Map();
+  private static lastReset: number = 0;
   
   constructor(private page: Page) {
     this.initializeMetrics();
+    this.resetDisabledStrategiesIfNeeded();
   }
 
   /**
@@ -590,6 +592,31 @@ export class ResilientReplyPoster {
           enabled: true
         });
       });
+    }
+  }
+
+  /**
+   * 🔄 Reset disabled strategies if needed (after fixing bugs)
+   * Auto-resets every 6 hours to give strategies another chance
+   */
+  private resetDisabledStrategiesIfNeeded() {
+    const now = Date.now();
+    const sixHours = 6 * 60 * 60 * 1000;
+    
+    // Reset every 6 hours OR if all strategies disabled
+    const allDisabled = Array.from(ResilientReplyPoster.strategyMetrics.values())
+      .every(s => !s.enabled);
+    
+    if (allDisabled || (now - ResilientReplyPoster.lastReset > sixHours)) {
+      console.log('🔄 RESILIENT_REPLY: Re-enabling all strategies (fresh start after bug fix)');
+      
+      ResilientReplyPoster.strategyMetrics.forEach((metrics, name) => {
+        metrics.enabled = true;
+        // Don't reset attempts/failures - keep learning data
+      });
+      
+      ResilientReplyPoster.lastReset = now;
+      console.log('✅ All 5 strategies re-enabled');
     }
   }
 
