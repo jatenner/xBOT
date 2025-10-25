@@ -277,7 +277,7 @@ export async function runHealthCheck(): Promise<void> {
       .gte('created_at', oneDayAgo.toISOString());
 
     if (recentWithMetrics && recentWithMetrics.length > 0) {
-      const avgViews = recentWithMetrics.reduce((sum, p) => sum + (p.actual_impressions || 0), 0) / recentWithMetrics.length;
+      const avgViews = recentWithMetrics.reduce((sum, p) => sum + (Number(p.actual_impressions) || 0), 0) / recentWithMetrics.length;
       
       metrics.push({
         component: 'Engagement Tracking',
