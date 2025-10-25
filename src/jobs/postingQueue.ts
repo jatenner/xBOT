@@ -640,8 +640,7 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     
     console.log(`[POSTING_QUEUE] 🛡️ Using BulletproofPoster for reply...`);
     
-    await poster.initialize();
-    
+    // BulletproofPoster doesn't need initialize() - it initializes on demand
     const result = await poster.postReply(
       decision.content,
       decision.target_tweet_id
