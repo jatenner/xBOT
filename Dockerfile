@@ -1,5 +1,5 @@
 # Multi-stage build for xBOT with proper Playwright support
-FROM node:20-bullseye-slim AS builder
+FROM node:20.18.1-bullseye-slim AS builder
 
 WORKDIR /app
 
