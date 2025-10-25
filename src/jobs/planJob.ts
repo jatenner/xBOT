@@ -349,50 +349,22 @@ async function analyzeTopicPerformance() {
     const explorationRate = 0.2; // 20% chance to explore new topics
     
     if (Math.random() < explorationRate) {
-      // Exploration: try DIVERSE health topics (not same 5 rotating!)
-      const allHealthTopics = [
-        // Fitness & Movement
-        'strength_training', 'cardio_optimization', 'zone_2_training', 'VO2max', 'mobility', 'flexibility',
-        'athletic_performance', 'recovery_protocols', 'muscle_building', 'body_composition',
-        // Nutrition & Diet
-        'nutrition', 'protein_timing', 'meal_frequency', 'intermittent_fasting', 'keto', 'carnivore',
-        'gut_microbiome', 'probiotics', 'food_sensitivities', 'anti_nutrients',
-        // Hormones & Metabolism  
-        'testosterone_optimization', 'thyroid_health', 'cortisol_management', 'insulin_sensitivity',
-        'growth_hormone', 'estrogen_balance', 'hormone_replacement', 'metabolic_flexibility',
-        // Brain & Mental
-        'mental_health', 'cognitive_performance', 'neuroplasticity', 'BDNF', 'neurotransmitters',
-        'focus_optimization', 'memory_enhancement', 'brain_aging', 'dementia_prevention',
-        // Sleep & Recovery
-        'sleep', 'circadian_rhythms', 'sleep_architecture', 'recovery_science', 'rest_optimization',
-        // Biohacking & Tech
-        'CGM_monitoring', 'HRV_tracking', 'wearables', 'biomarker_testing', 'genetic_testing',
-        'peptides', 'NAD_optimization', 'red_light_therapy', 'cold_exposure', 'heat_therapy',
-        // Longevity & Prevention
-        'longevity', 'anti_aging', 'lifespan_extension', 'healthspan', 'senolytic_therapy',
-        'autophagy', 'mitochondrial_health', 'telomere_health',
-        // Specific Health Issues
-        'heart_health', 'bone_density', 'joint_health', 'immune_function', 'inflammation',
-        'autoimmune_conditions', 'allergies', 'skin_health', 'eye_health', 'dental_health'
-      ];
+      // ✅ PURE AI EXPLORATION: No hardcoded lists!
+      // Let AI generate completely random health topics from its unlimited knowledge
+      console.log(`[AI_EXPLORATION] Asking AI to generate completely random health topic...`);
       
-      // Find topics not in recent performance data
-      const unexploredTopics = allHealthTopics.filter(topic => !topTopics.includes(topic));
-      const randomUnexplored = unexploredTopics[Math.floor(Math.random() * unexploredTopics.length)];
-      
-      intelligentTopics = [randomUnexplored, ...topTopics.slice(0, 2)];
-      console.log(`[AI_EXPLORATION] Exploring new health topic: ${randomUnexplored}`);
+      // Use AI to generate the topic itself (not pick from a list!)
+      intelligentTopics = ['AI_GENERATE_RANDOM_HEALTH_TOPIC', ...topTopics.slice(0, 2)];
+      console.log(`[AI_EXPLORATION] AI will generate random topic (not limited to any list)`);
     } else {
       // Exploitation: focus on proven performers with some variety
       intelligentTopics = [...topTopics];
       console.log(`[AI_EXPLOITATION] Using proven performers: ${intelligentTopics.join(', ')}`);
     }
   } else {
-    // No performance data yet - start with diverse HEALTH foundation topics
-    intelligentTopics = [
-      'testosterone_optimization', 'gut_microbiome', 'VO2max_training', 'peptides', 'mitochondrial_health'
-    ];
-    console.log(`[AI_BOOTSTRAP] Starting with diverse health foundation: ${intelligentTopics.join(', ')}`);
+    // No performance data yet - let AI generate random topics (NO HARDCODED LIST!)
+    intelligentTopics = ['AI_GENERATE_RANDOM_HEALTH_TOPIC'];
+    console.log(`[AI_BOOTSTRAP] No performance data - AI will generate completely random health topics`);
   }
 
   return {
