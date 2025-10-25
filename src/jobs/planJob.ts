@@ -349,37 +349,50 @@ async function analyzeTopicPerformance() {
     const explorationRate = 0.2; // 20% chance to explore new topics
     
     if (Math.random() < explorationRate) {
-      // Exploration: try topics across ALL domains (not just health!)
-      const allTopicDomains = [
-        // Health & Wellness (20%)
-        'exercise', 'nutrition', 'sleep', 'mental_health',
-        // Science & Technology (30%)
-        'space_exploration', 'AI_breakthroughs', 'quantum_physics', 'biotech', 'robotics', 'innovation',
-        // Human Knowledge (25%)
-        'psychology', 'philosophy', 'history', 'economics', 'sociology', 'learning',
-        // Culture & Nature (15%)
-        'literature', 'creativity', 'evolution', 'astronomy', 'ecology',
-        // Current Events (10%)
-        'tech_trends', 'research_discoveries', 'future_predictions', 'counterintuitive_facts'
+      // Exploration: try DIVERSE health topics (not same 5 rotating!)
+      const allHealthTopics = [
+        // Fitness & Movement
+        'strength_training', 'cardio_optimization', 'zone_2_training', 'VO2max', 'mobility', 'flexibility',
+        'athletic_performance', 'recovery_protocols', 'muscle_building', 'body_composition',
+        // Nutrition & Diet
+        'nutrition', 'protein_timing', 'meal_frequency', 'intermittent_fasting', 'keto', 'carnivore',
+        'gut_microbiome', 'probiotics', 'food_sensitivities', 'anti_nutrients',
+        // Hormones & Metabolism  
+        'testosterone_optimization', 'thyroid_health', 'cortisol_management', 'insulin_sensitivity',
+        'growth_hormone', 'estrogen_balance', 'hormone_replacement', 'metabolic_flexibility',
+        // Brain & Mental
+        'mental_health', 'cognitive_performance', 'neuroplasticity', 'BDNF', 'neurotransmitters',
+        'focus_optimization', 'memory_enhancement', 'brain_aging', 'dementia_prevention',
+        // Sleep & Recovery
+        'sleep', 'circadian_rhythms', 'sleep_architecture', 'recovery_science', 'rest_optimization',
+        // Biohacking & Tech
+        'CGM_monitoring', 'HRV_tracking', 'wearables', 'biomarker_testing', 'genetic_testing',
+        'peptides', 'NAD_optimization', 'red_light_therapy', 'cold_exposure', 'heat_therapy',
+        // Longevity & Prevention
+        'longevity', 'anti_aging', 'lifespan_extension', 'healthspan', 'senolytic_therapy',
+        'autophagy', 'mitochondrial_health', 'telomere_health',
+        // Specific Health Issues
+        'heart_health', 'bone_density', 'joint_health', 'immune_function', 'inflammation',
+        'autoimmune_conditions', 'allergies', 'skin_health', 'eye_health', 'dental_health'
       ];
       
       // Find topics not in recent performance data
-      const unexploredTopics = allTopicDomains.filter(topic => !topTopics.includes(topic));
+      const unexploredTopics = allHealthTopics.filter(topic => !topTopics.includes(topic));
       const randomUnexplored = unexploredTopics[Math.floor(Math.random() * unexploredTopics.length)];
       
       intelligentTopics = [randomUnexplored, ...topTopics.slice(0, 2)];
-      console.log(`[AI_EXPLORATION] Exploring new topic: ${randomUnexplored}`);
+      console.log(`[AI_EXPLORATION] Exploring new health topic: ${randomUnexplored}`);
     } else {
       // Exploitation: focus on proven performers with some variety
       intelligentTopics = [...topTopics];
       console.log(`[AI_EXPLOITATION] Using proven performers: ${intelligentTopics.join(', ')}`);
     }
   } else {
-    // No performance data yet - start with diverse foundation topics across ALL domains
+    // No performance data yet - start with diverse HEALTH foundation topics
     intelligentTopics = [
-      'space_exploration', 'quantum_physics', 'ancient_history', 'philosophy', 'nutrition'
+      'testosterone_optimization', 'gut_microbiome', 'VO2max_training', 'peptides', 'mitochondrial_health'
     ];
-    console.log(`[AI_BOOTSTRAP] Starting with diverse foundation topics: ${intelligentTopics.join(', ')}`);
+    console.log(`[AI_BOOTSTRAP] Starting with diverse health foundation: ${intelligentTopics.join(', ')}`);
   }
 
   return {
