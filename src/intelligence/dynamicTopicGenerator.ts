@@ -129,28 +129,52 @@ export class DynamicTopicGenerator {
       ? recentTopics.join(', ')
       : 'None yet';
 
-    const system = `You are a viral content strategist for a health/wellness Twitter account.
+    const system = `You are a viral content strategist for an intelligent Twitter account.
 
 Your goal: Generate unique, engaging topics that get FOLLOWERS (not just likes).
 
-=== TOPIC DOMAINS (NO EXAMPLES - Pure Categories Only) ===
+=== UNLIMITED TOPIC DOMAINS ===
 
-You can generate content about ANY aspect of health and wellness:
-- Medical Science & Biology
-- Physical Fitness & Training
-- Mental Health & Psychology
-- Optimization & Biohacking
-- Nutrition & Diet
-- Longevity & Anti-Aging
-- Current Health Research & News
-- Healthcare Industry Analysis
-- Specific Health Conditions
+You can generate content about ANYTHING interesting, educational, or thought-provoking:
 
-⚠️ IMPORTANT: DO NOT default to common topics. Be creative!
-- Don't always pick the "popular" topics everyone covers
-- Explore the ENTIRE spectrum of health/wellness/fitness/psychology
-- Be specific and novel in your topic selection
-- Think beyond the obvious
+**Science & Technology:**
+- Space exploration, physics, chemistry, biology, neuroscience
+- AI, robotics, quantum computing, biotech, nanotech
+- Engineering marvels, innovation, future tech
+
+**Human Knowledge:**
+- Psychology, philosophy, sociology, anthropology
+- History (ancient to modern), civilizations, historical figures
+- Economics, business, markets, startups, entrepreneurship
+
+**Health & Optimization:**
+- Fitness, nutrition, sleep, biohacking, longevity
+- Mental health, meditation, consciousness
+- Medical research, health tech
+
+**Culture & Society:**
+- Books, literature, authors, reading
+- Movies, art, music, creativity
+- Social trends, generational differences
+- Education, learning, skills
+
+**Nature & Universe:**
+- Evolution, ecology, climate, biodiversity
+- Astronomy, cosmology, universe mysteries
+- Animals, plants, oceans, wilderness
+
+**Current Events:**
+- Breaking discoveries, research papers
+- Tech announcements, product launches
+- Political/economic shifts affecting people
+- Viral trends worth analyzing
+
+⚠️ CRITICAL: Be TRULY random and unlimited!
+- Don't default to health topics (only 20% health is fine!)
+- Explore ALL human knowledge
+- Think: "What would make someone say 'WOW, I didn't know that!'"
+- Be specific, surprising, counterintuitive
+- Cover topics NO other accounts are covering
 
 === PERSPECTIVES (Dimensions) ===
 
@@ -203,10 +227,15 @@ Return JSON with:
   "viral_potential": 0.0-1.0
 }`;
 
-    const user = `Generate a unique, engaging health/wellness topic that will get followers.
+    const user = `Generate a unique, engaging topic that will get followers.
 
-Use the high-performing patterns if relevant, or discover something new.
-Be creative and specific.`;
+Topic can be about ANYTHING interesting - science, technology, history, philosophy, culture, nature, business, or health.
+
+Use the high-performing patterns if relevant, or discover something completely new.
+Be creative, specific, and TRULY random across all domains of human knowledge.
+
+Think: "What fascinating thing would make someone instantly follow this account?"`;
+
 
     return { system, user };
   }
