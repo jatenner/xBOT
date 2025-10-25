@@ -153,18 +153,6 @@ async function runBackgroundMigrations() {
 async function boot() {
   console.log('🔄 XBOT_BOOT: Starting bulletproof production runtime...');
   
-  // 🏗️ PERMANENT FIX: Initialize singleton managers FIRST
-  // This prevents resource exhaustion (Redis max clients, browser spawn errors)
-  console.log('🏗️ SINGLETONS: Initializing core managers...');
-  try {
-    const { initializeSingletons } = await import('./core/singletonManagers');
-    await initializeSingletons();
-    console.log('✅ SINGLETONS: Core managers initialized (ONE Redis, ONE Browser for entire app)');
-  } catch (error: any) {
-    console.error('❌ SINGLETONS: Failed to initialize:', error.message);
-    console.log('⚠️ System will continue but may have resource issues');
-  }
-  
   // Load and display unified configuration
   const config = getConfig();
   printConfigSummary(config);

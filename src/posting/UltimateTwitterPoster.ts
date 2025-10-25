@@ -986,5 +986,172 @@ export class UltimateTwitterPoster {
   async dispose(): Promise<void> {
     await this.cleanup();
   }
+
+  /**
+   * 💬 POST REPLY TO TWEET (Permanent Solution)
+   * Navigates to tweet and posts actual reply (not @mention)
+   */
+  async postReply(content: string, replyToTweetId: string): Promise<PostResult> {
+    let retryCount = 0;
+    const maxRetries = 2;
+
+    console.log(`ULTIMATE_POSTER: Posting reply to tweet ${replyToTweetId}`);
+
+    while (retryCount <= maxRetries) {
+      try {
+        console.log(`ULTIMATE_POSTER: Reply attempt ${retryCount + 1}/${maxRetries + 1}`);
+        
+        await this.ensureContext();
+        
+        if (!this.page) throw new Error('Page not initialized');
+
+        // Navigate to the tweet
+        console.log(`ULTIMATE_POSTER: Navigating to tweet ${replyToTweetId}...`);
+        await this.page.goto(`https://x.com/i/status/${replyToTweetId}`, { 
+          waitUntil: 'domcontentloaded',
+          timeout: 30000 
+        });
+
+        await this.page.waitForTimeout(2000);
+
+        // Check authentication
+        const isLoggedOut = await this.checkIfLoggedOut();
+        if (isLoggedOut) {
+          throw new Error('Not logged in - session expired');
+        }
+
+        console.log(`ULTIMATE_POSTER: Finding reply button...`);
+
+        // Find and click reply button
+        const replyButton = this.page.locator('[data-testid="reply"]').first();
+        await replyButton.waitFor({ state: 'visible', timeout: 5000 });
+        await replyButton.click();
+
+        // Wait for reply modal to appear
+        console.log(`ULTIMATE_POSTER: Waiting for reply modal...`);
+        await this.page.waitForTimeout(3000);
+
+        // Find composer in modal
+        const composerSelectors = [
+          '[data-testid="tweetTextarea_0"]',
+          'div[role="dialog"] [contenteditable="true"]',
+          'div[aria-modal="true"] [contenteditable="true"]',
+          'div[role="textbox"][contenteditable="true"]',
+          '[contenteditable="true"]'
+        ];
+
+        let composer = null;
+        for (const selector of composerSelectors) {
+          try {
+            const element = this.page.locator(selector).first();
+            await element.waitFor({ state: 'visible', timeout: 2000 });
+            
+            if (await element.isVisible() && await element.isEditable()) {
+              composer = element;
+              console.log(`ULTIMATE_POSTER: Found reply composer: "${selector}"`);
+              break;
+            }
+          } catch (e) {
+            continue;
+          }
+        }
+
+        if (!composer) {
+          throw new Error('Reply composer not found');
+        }
+
+        // Type reply content
+        console.log(`ULTIMATE_POSTER: Typing reply content...`);
+        await composer.click();
+        await this.page.waitForTimeout(300);
+        await composer.fill(content);
+        await this.page.waitForTimeout(500);
+
+        // Find and click post button
+        const postButtonSelectors = [
+          '[data-testid="tweetButton"]',
+          '[data-testid="tweetButtonInline"]',
+          'div[role="button"]:has-text("Reply")',
+          'div[role="button"]:has-text("Post")'
+        ];
+
+        let posted = false;
+        for (const selector of postButtonSelectors) {
+          try {
+            const button = this.page.locator(selector).first();
+            await button.waitFor({ state: 'visible', timeout: 2000 });
+            await button.click();
+            posted = true;
+            console.log(`ULTIMATE_POSTER: Clicked post button: "${selector}"`);
+            break;
+          } catch (e) {
+            continue;
+          }
+        }
+
+        if (!posted) {
+          throw new Error('Could not click post button');
+        }
+
+        // Wait for post to complete
+        await this.page.waitForTimeout(3000);
+
+        // Extract tweet ID from URL or DOM
+        const tweetId = await this.extractReplyTweetId();
+
+        console.log(`ULTIMATE_POSTER: ✅ Reply posted successfully: ${tweetId || 'unknown'}`);
+
+        return {
+          success: true,
+          tweetId: tweetId || `reply_${Date.now()}`
+        };
+
+      } catch (error: any) {
+        console.error(`ULTIMATE_POSTER: Reply attempt ${retryCount + 1} failed:`, error.message);
+        
+        if (retryCount < maxRetries) {
+          console.log('ULTIMATE_POSTER: Retrying reply with fresh context...');
+          await this.cleanup();
+          retryCount++;
+          await new Promise(resolve => setTimeout(resolve, 2000 * retryCount));
+          continue;
+        }
+        
+        return { success: false, error: error.message };
+      }
+    }
+
+    return { success: false, error: 'Max retries exceeded for reply' };
+  }
+
+  private async extractReplyTweetId(): Promise<string | undefined> {
+    if (!this.page) return undefined;
+
+    try {
+      // Wait for URL to change or new tweet to appear
+      await this.page.waitForTimeout(2000);
+      
+      // Try to extract from URL
+      const url = this.page.url();
+      const match = url.match(/status\/(\d+)/);
+      if (match) {
+        return match[1];
+      }
+      
+      // Try to find in DOM
+      const statusLink = this.page.locator('a[href*="/status/"]').first();
+      const href = await statusLink.getAttribute('href');
+      if (href) {
+        const linkMatch = href.match(/status\/(\d+)/);
+        if (linkMatch) {
+          return linkMatch[1];
+        }
+      }
+      
+      return undefined;
+    } catch (error) {
+      return undefined;
+    }
+  }
 }
 
