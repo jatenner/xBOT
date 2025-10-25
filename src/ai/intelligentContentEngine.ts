@@ -393,8 +393,8 @@ Return ONLY the improved content (no explanations):`;
       }
     );
 
-    const content = response.choices[0].message.content || '';
-    return content.trim();
+    const humanizedContent = response.choices[0].message.content || '';
+    return humanizedContent.trim();
   }
 
   /**
@@ -442,8 +442,8 @@ Return ONLY valid JSON:
       }
     );
 
-    const content = response.choices[0].message.content || '{}';
-    return JSON.parse(content);
+    const reviewContent = response.choices[0].message.content || '{}';
+    return JSON.parse(reviewContent);
   }
 
   /**
