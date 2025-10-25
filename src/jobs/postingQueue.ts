@@ -630,19 +630,22 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     throw new Error('Reply decision missing target_tweet_id');
   }
   
-  // 🛡️ Use RESILIENT reply system with auto-healing
-  console.log(`[POSTING_QUEUE] 🛡️ Using resilient multi-strategy reply system...`);
+  console.log(`[POSTING_QUEUE] 🎯 Using singleton browser (no resource exhaustion)...`);
   
   try {
-    // Use UltimateTwitterPoster for replies (no Redis dependency!)
-    const { UltimateTwitterPoster } = await import('../posting/UltimateTwitterPoster');
-    const poster = new UltimateTwitterPoster();
+    // ✅ PERMANENT FIX: Use singleton browser (ONE browser for entire app)
+    const { SingletonBrowser } = await import('../core/singletonManagers');
+    const { ResilientReplyPoster } = await import('../posting/resilientReplyPoster');
     
-    console.log(`[POSTING_QUEUE] 💬 Posting reply using UltimateTwitterPoster...`);
+    // Get page from singleton (guaranteed authenticated, no new browser launch)
+    const page = await SingletonBrowser.getPage();
     
-    // Post as a mention reply (simpler, no Redis needed)
-    const replyContent = `@${decision.target_username} ${decision.content}`;
-    const result = await poster.postTweet(replyContent);
+    // Post reply
+    const poster = new ResilientReplyPoster(page);
+    const result = await poster.postReply(decision.content, decision.target_tweet_id);
+    
+    // Close page (but NOT browser - it stays alive)
+    await page.close();
     
     if (!result.success || !result.tweetId) {
       throw new Error(result.error || 'Reply posting failed');
@@ -651,8 +654,6 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     console.log(`[POSTING_QUEUE] ✅ Reply posted successfully with ID: ${result.tweetId}`);
     const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
     console.log(`[POSTING_QUEUE] 🔗 Reply URL: https://x.com/${username}/status/${result.tweetId}`);
-    
-    await poster.dispose();
     
     return result.tweetId;
   } catch (error: any) {
