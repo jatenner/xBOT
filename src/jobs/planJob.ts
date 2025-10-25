@@ -349,17 +349,22 @@ async function analyzeTopicPerformance() {
     const explorationRate = 0.2; // 20% chance to explore new topics
     
     if (Math.random() < explorationRate) {
-      // Exploration: try topics that haven't been tested much
-      const allHealthTopics = [
-        'exercise', 'nutrition', 'mental_health', 'sleep', 'hydration', 
-        'stress_management', 'supplements', 'heart_health', 'brain_health',
-        'immune_system', 'gut_health', 'metabolism', 'longevity', 'recovery',
-        'weight_loss', 'muscle_building', 'flexibility', 'energy_optimization',
-        'hormone_health', 'skin_health', 'eye_health', 'bone_health'
+      // Exploration: try topics across ALL domains (not just health!)
+      const allTopicDomains = [
+        // Health & Wellness (20%)
+        'exercise', 'nutrition', 'sleep', 'mental_health',
+        // Science & Technology (30%)
+        'space_exploration', 'AI_breakthroughs', 'quantum_physics', 'biotech', 'robotics', 'innovation',
+        // Human Knowledge (25%)
+        'psychology', 'philosophy', 'history', 'economics', 'sociology', 'learning',
+        // Culture & Nature (15%)
+        'literature', 'creativity', 'evolution', 'astronomy', 'ecology',
+        // Current Events (10%)
+        'tech_trends', 'research_discoveries', 'future_predictions', 'counterintuitive_facts'
       ];
       
       // Find topics not in recent performance data
-      const unexploredTopics = allHealthTopics.filter(topic => !topTopics.includes(topic));
+      const unexploredTopics = allTopicDomains.filter(topic => !topTopics.includes(topic));
       const randomUnexplored = unexploredTopics[Math.floor(Math.random() * unexploredTopics.length)];
       
       intelligentTopics = [randomUnexplored, ...topTopics.slice(0, 2)];
@@ -370,11 +375,11 @@ async function analyzeTopicPerformance() {
       console.log(`[AI_EXPLOITATION] Using proven performers: ${intelligentTopics.join(', ')}`);
     }
   } else {
-    // No performance data yet - start with diverse foundation topics
+    // No performance data yet - start with diverse foundation topics across ALL domains
     intelligentTopics = [
-      'nutrition', 'exercise', 'mental_health', 'sleep', 'stress_management'
+      'space_exploration', 'quantum_physics', 'ancient_history', 'philosophy', 'nutrition'
     ];
-    console.log(`[AI_BOOTSTRAP] Starting with foundation topics: ${intelligentTopics.join(', ')}`);
+    console.log(`[AI_BOOTSTRAP] Starting with diverse foundation topics: ${intelligentTopics.join(', ')}`);
   }
 
   return {
