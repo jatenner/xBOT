@@ -101,17 +101,17 @@ export function sanitizeContent(content: string | string[], attemptAutoFix: bool
   // CHECK 5: EXCESSIVE EMOJIS (MEDIUM) - WITH AUTO-FIX
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const emojiCount = countEmojis(fullContent);
-  if (emojiCount > 2) {
+  if (emojiCount > 1) {
     if (attemptAutoFix) {
-      // AUTO-FIX: Remove excess emojis
-      fullContent = removeExcessEmojis(fullContent, 2);
+      // AUTO-FIX: Remove excess emojis (prefer 0, max 1)
+      fullContent = removeExcessEmojis(fullContent, 1);
       autoFixed = true;
-      console.log(`   🔧 AUTO-FIXED: Removed ${emojiCount - 2} excess emoji(s)`);
+      console.log(`   🔧 AUTO-FIXED: Removed ${emojiCount - 1} excess emoji(s) - prefer 0 emojis`);
     } else {
       violations.push({
         type: 'excessive_emojis',
         severity: 'medium',
-        detected: `${emojiCount} emojis found (max 2 allowed)`
+        detected: `${emojiCount} emojis found (max 1 allowed, prefer 0)`
       });
     }
   }
