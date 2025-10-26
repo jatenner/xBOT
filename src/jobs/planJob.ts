@@ -154,7 +154,7 @@ async function generateContentWithLLM() {
   contentDiversityEngine.trackTopic(topic);
   
   // STEP 5: Create content prompt using matched generator
-  const contentPrompt = this.buildContentPrompt(topic, angle, tone, matchedGenerator);
+  const contentPrompt = buildContentPrompt(topic, angle, tone, matchedGenerator);
   
   llmMetrics.calls_total++;
   
