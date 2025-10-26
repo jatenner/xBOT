@@ -293,7 +293,7 @@ async function queueContent(content: any): Promise<void> {
     status: 'queued',
     decision_type: content.format === 'thread' ? 'thread' : 'single',
     scheduled_at: content.scheduled_at,
-    quality_score: Math.round(content.quality_score * 100),
+    quality_score: content.quality_score, // Already 0-1 range from calculateQuality
     predicted_er: content.predicted_er,
     
     // ═══════════════════════════════════════════════════════════
