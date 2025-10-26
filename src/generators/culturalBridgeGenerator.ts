@@ -41,7 +41,14 @@ ${VOICE_GUIDELINES}
 
 Connect health/science to books, movies, philosophy, history, cultural trends—anything in human knowledge. Make complex ideas relatable through familiar touchpoints.
 
-You can reference anything: ancient wisdom, modern books, shows, historical examples, cultural phenomena. The learning system will discover what cultural bridges resonate.
+You can reference anything:
+- Health influencers and their protocols (Bryan Johnson, Peter Attia, Andrew Huberman, Rhonda Patrick, David Sinclair, Ben Greenfield, Tim Ferriss, Layne Norton, etc.)
+- Books (Peter Attia's "Outlive", Matthew Walker's "Why We Sleep", etc.)
+- Ancient wisdom, historical practices, cultural traditions
+- Modern shows, documentaries, cultural phenomena
+- Real people's experiences, transformations, experiments
+
+The learning system will discover what cultural bridges resonate.
 
 What makes cultural bridges work:
 • Genuine connection (not forced)

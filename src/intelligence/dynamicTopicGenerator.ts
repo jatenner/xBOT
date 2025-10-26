@@ -13,6 +13,7 @@
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { getSupabaseClient } from '../db/index';
+import { getDiversityEnforcer } from './diversityEnforcer';
 
 export interface DynamicTopic {
   topic: string;
@@ -46,6 +47,11 @@ export class DynamicTopicGenerator {
 
   /**
    * Generate a unique topic dynamically using AI
+   * 
+   * ✨ ENHANCED with Diversity Enforcement:
+   * - Automatically gets banned topics from last 10 posts
+   * - Retries if AI generates a banned topic
+   * - Higher creativity (temp 1.5) for more variety
    */
   async generateTopic(context?: {
     recentTopics?: string[];
@@ -54,64 +60,88 @@ export class DynamicTopicGenerator {
   }): Promise<DynamicTopic> {
     console.log('[DYNAMIC_TOPIC] 🤖 Generating unique topic using AI...');
 
-    const recentTopics = context?.recentTopics || [];
+    // 🚀 DIVERSITY ENFORCEMENT: Get banned topics from last 10 posts
+    const diversityEnforcer = getDiversityEnforcer();
+    const bannedTopics = context?.recentTopics || await diversityEnforcer.getLast10Topics();
+    
     const patterns = context?.learningPatterns || await this.getLearningPatterns();
 
-    const prompt = this.buildTopicGenerationPrompt(recentTopics, patterns);
+    const prompt = this.buildTopicGenerationPrompt(bannedTopics, patterns);
 
-    try {
-      const completion = await createBudgetedChatCompletion({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: prompt.system },
-          { role: 'user', content: prompt.user }
-        ],
-        temperature: 0.9, // High creativity
-        max_tokens: 400,
-        response_format: { type: 'json_object' }
-      }, {
-        purpose: 'dynamic_topic_generation'
-      });
+    // 🔄 RETRY LOGIC: Try up to 3 times if AI generates banned topic
+    const maxRetries = 3;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const completion = await createBudgetedChatCompletion({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: prompt.system },
+            { role: 'user', content: prompt.user }
+          ],
+          temperature: 1.5, // ✨ INCREASED from 0.9 for MORE creativity
+          max_tokens: 400,
+          response_format: { type: 'json_object' }
+        }, {
+          purpose: 'dynamic_topic_generation'
+        });
 
-      const content = completion.choices[0]?.message?.content;
-      if (!content) {
-        throw new Error('No topic generated');
+        const content = completion.choices[0]?.message?.content;
+        if (!content) {
+          throw new Error('No topic generated');
+        }
+
+        const parsed = JSON.parse(content);
+        
+        const topic: DynamicTopic = {
+          topic: parsed.topic || 'health optimization',
+          angle: parsed.angle || 'general perspective',
+          dimension: this.validateDimension(parsed.dimension),
+          hook_suggestion: parsed.hook_suggestion || '',
+          why_engaging: parsed.why_engaging || '',
+          viral_potential: parsed.viral_potential || 0.7
+        };
+
+        // ✅ CHECK: Is this topic banned?
+        if (bannedTopics.includes(topic.topic)) {
+          console.log(`[DYNAMIC_TOPIC] ⚠️ Attempt ${attempt}/${maxRetries}: Generated banned topic "${topic.topic}", retrying...`);
+          
+          if (attempt === maxRetries) {
+            console.log(`[DYNAMIC_TOPIC] ⚠️ Max retries reached, accepting topic anyway (AI strongly prefers it)`);
+          } else {
+            continue; // Retry
+          }
+        }
+
+        console.log(`[DYNAMIC_TOPIC] ✅ Generated (attempt ${attempt}): "${topic.topic}"`);
+        console.log(`[DYNAMIC_TOPIC] 🎯 Angle: ${topic.angle}`);
+        console.log(`[DYNAMIC_TOPIC] 📊 Dimension: ${topic.dimension}`);
+        console.log(`[DYNAMIC_TOPIC] 🔥 Viral potential: ${topic.viral_potential}`);
+
+        // Store for learning
+        await this.storeGeneratedTopic(topic);
+
+        return topic;
+
+      } catch (error: any) {
+        console.error(`[DYNAMIC_TOPIC] ❌ Attempt ${attempt}/${maxRetries} error:`, error.message);
+        
+        if (attempt === maxRetries) {
+          // Final fallback
+          return {
+            topic: 'Sleep optimization strategies',
+            angle: 'Evidence-based approaches for better rest',
+            dimension: 'health',
+            hook_suggestion: 'Your sleep quality determines 80% of your health',
+            why_engaging: 'Everyone struggles with sleep, highly relatable',
+            viral_potential: 0.8
+          };
+        }
       }
-
-      const parsed = JSON.parse(content);
-      
-      const topic: DynamicTopic = {
-        topic: parsed.topic || 'health optimization',
-        angle: parsed.angle || 'general perspective',
-        dimension: this.validateDimension(parsed.dimension),
-        hook_suggestion: parsed.hook_suggestion || '',
-        why_engaging: parsed.why_engaging || '',
-        viral_potential: parsed.viral_potential || 0.7
-      };
-
-      console.log(`[DYNAMIC_TOPIC] ✅ Generated: "${topic.topic}"`);
-      console.log(`[DYNAMIC_TOPIC] 🎯 Angle: ${topic.angle}`);
-      console.log(`[DYNAMIC_TOPIC] 📊 Dimension: ${topic.dimension}`);
-      console.log(`[DYNAMIC_TOPIC] 🔥 Viral potential: ${topic.viral_potential}`);
-
-      // Store for learning
-      await this.storeGeneratedTopic(topic);
-
-      return topic;
-
-    } catch (error: any) {
-      console.error('[DYNAMIC_TOPIC] ❌ Error generating topic:', error.message);
-      
-      // Fallback to safe topic
-      return {
-        topic: 'Sleep optimization strategies',
-        angle: 'Evidence-based approaches for better rest',
-        dimension: 'health',
-        hook_suggestion: 'Your sleep quality determines 80% of your health',
-        why_engaging: 'Everyone struggles with sleep, highly relatable',
-        viral_potential: 0.8
-      };
     }
+    
+    // Should never reach here, but TypeScript needs it
+    throw new Error('Failed to generate topic after retries');
   }
 
   /**
