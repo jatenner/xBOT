@@ -102,48 +102,75 @@ async function generateContentWithLLM() {
   const flags = getConfig();
   const decision_id = uuidv4();
   
-  // 🎨 USE DIVERSITY ENGINE FOR COMPLETELY UNIQUE CONTENT
-  console.log('[DIVERSITY_ENGINE] Generating completely unique content...');
+  console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('🎯 DIVERSITY SYSTEM: Multi-Dimensional Content Generation');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   
-  // ✅ STEP 1: Generate AI-driven topic (not hardcoded!)
-  const { DynamicTopicGenerator } = await import('../intelligence/dynamicTopicGenerator');
-  const topicGenerator = DynamicTopicGenerator.getInstance();
+  // ═══════════════════════════════════════════════════════════
+  // 🚀 NEW DIVERSITY SYSTEM (Rolling 10-Post Blacklist)
+  // ═══════════════════════════════════════════════════════════
   
-  // Get recent topics to avoid repetition
-  const recentTopics = contentDiversityEngine.getRecentTopics();
-  console.log(`[TOPIC_GEN] Recent topics to avoid: ${recentTopics.join(', ')}`);
+  // Import all diversity modules
+  const { getDiversityEnforcer } = await import('../intelligence/diversityEnforcer');
+  const { getDynamicTopicGenerator } = await import('../intelligence/dynamicTopicGenerator');
+  const { getAngleGenerator } = await import('../intelligence/angleGenerator');
+  const { getToneGenerator } = await import('../intelligence/toneGenerator');
+  const { getGeneratorMatcher } = await import('../intelligence/generatorMatcher');
   
-  // Generate truly unique AI topic
-  const dynamicTopic = await topicGenerator.generateTopic({ recentTopics });
-  console.log(`[TOPIC_GEN] ✨ AI generated topic: "${dynamicTopic.topic}" (angle: ${dynamicTopic.angle})`);
-  console.log(`[TOPIC_GEN] 🔥 Viral potential: ${dynamicTopic.viral_potential}, dimension: ${dynamicTopic.dimension}`);
+  const diversityEnforcer = getDiversityEnforcer();
   
-  // Track topic to prevent repeats
-  contentDiversityEngine.trackTopic(dynamicTopic.topic);
+  // STEP 0: Show current diversity status
+  await diversityEnforcer.getDiversitySummary();
   
-  // Get diverse prompt with AI-generated topic
-  const diversePrompt = dynamicPromptGenerator.generateDiversePrompt(dynamicTopic.topic);
-  const diversitySelection = contentDiversityEngine.selectDiverseElements();
+  // STEP 1: Generate TOPIC (avoiding last 10)
+  const topicGenerator = getDynamicTopicGenerator();
+  const dynamicTopic = await topicGenerator.generateTopic();
+  const topic = dynamicTopic.topic; // Extract just the topic string
   
-  // Get diversity stats for logging
-  const diversityStats = contentDiversityEngine.getDiversityStats();
-  console.log(`[DIVERSITY_STATS] Recent hooks: ${diversityStats.recentHooksUsed}, formats: ${diversityStats.recentFormatsUsed}, styles: ${diversityStats.recentStylesUsed}`);
-  console.log(`[DIVERSITY_SELECTION] Hook: "${diversitySelection.hook}", Format: ${diversitySelection.format}, Style: ${diversitySelection.style}`);
+  console.log(`\n🎯 TOPIC: "${topic}"`);
+  console.log(`   Dimension: ${dynamicTopic.dimension}`);
+  console.log(`   Viral potential: ${dynamicTopic.viral_potential}`);
+  
+  // STEP 2: Generate ANGLE (avoiding last 10)
+  const angleGenerator = getAngleGenerator();
+  const angle = await angleGenerator.generateAngle(topic);
+  
+  console.log(`\n📐 ANGLE: "${angle}"`);
+  
+  // STEP 3: Generate TONE (avoiding last 10)
+  const toneGenerator = getToneGenerator();
+  const tone = await toneGenerator.generateTone();
+  
+  console.log(`\n🎤 TONE: "${tone}"`);
+  
+  // STEP 4: Match GENERATOR (pure random - 11 generators, 9% each)
+  const generatorMatcher = getGeneratorMatcher();
+  const matchedGenerator = generatorMatcher.matchGenerator(angle, tone);
+  
+  console.log(`\n🎭 GENERATOR: ${matchedGenerator}`);
+  console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+  
+  // LEGACY: Keep old diversity tracking for compatibility
+  contentDiversityEngine.trackTopic(topic);
+  
+  // STEP 5: Create content prompt using matched generator
+  const contentPrompt = this.buildContentPrompt(topic, angle, tone, matchedGenerator);
   
   llmMetrics.calls_total++;
   
-  console.log(`[OPENAI] Using diversity-driven content generation, model=${flags.OPENAI_MODEL}`);
+  console.log(`[CONTENT_GEN] Creating content with ${matchedGenerator}...`);
+  console.log(`[OPENAI] Model: ${flags.OPENAI_MODEL}`);
   
   const response = await createBudgetedChatCompletion({
     model: flags.OPENAI_MODEL,
     messages: [
       { 
         role: 'system', 
-        content: 'You are a diverse health content creator. Never repeat patterns, hooks, or formats. Each tweet should feel completely unique and fresh. Always respond with valid JSON format.' 
+        content: contentPrompt.system
       },
-      { role: 'user', content: diversePrompt }
+      { role: 'user', content: contentPrompt.user }
     ],
-    temperature: 0.9, // High creativity for diversity
+    temperature: 1.2, // High creativity with diversity system
     top_p: 0.95,
     max_tokens: 350,
     response_format: { type: 'json_object' }
@@ -151,6 +178,33 @@ async function generateContentWithLLM() {
     purpose: 'content_generation',
     requestId: decision_id
   });
+  
+  function buildContentPrompt(topic: string, angle: string, tone: string, generator: string) {
+    const system = `You are a health content creator.
+
+Generator personality: ${generator}
+Topic: ${topic}
+Angle: ${angle}
+Tone: ${tone}
+
+Create engaging health content that:
+1. Explores the TOPIC from this specific ANGLE
+2. Uses this exact TONE/voice
+3. Stays within 260 characters
+4. No first-person (I/me/my)
+5. Maximum 2 emojis
+
+Be specific, interesting, and match the tone precisely.`;
+
+    const user = `Create content about "${topic}" from this angle: "${angle}" using this tone: "${tone}".
+
+Output JSON:
+{
+  "text": "your tweet content here"
+}`;
+
+    return { system, user };
+  }
 
   const rawContent = response.choices[0]?.message?.content;
   if (!rawContent) throw new Error('Empty response from OpenAI');
@@ -209,9 +263,13 @@ async function generateContentWithLLM() {
   return {
     decision_id,
     text: contentData.text,
-    topic: contentData.topic || 'health',
-    angle: contentData.angle,
-    style: diversitySelection.style,
+    topic: contentData.topic || topic, // Use AI-generated topic
+    raw_topic: topic, // ✅ NEW: Store for diversity tracking
+    angle: angle, // ✅ NEW: Store AI-generated angle
+    tone: tone, // ✅ NEW: Store AI-generated tone
+    generator_used: matchedGenerator, // ✅ NEW: Track which generator created this
+    topic_cluster: dynamicTopic.dimension || 'health',
+    style: tone, // Map tone to style for compatibility
     format: format,
     quality_score: calculateQuality(Array.isArray(contentData.text) ? contentData.text.join(' ') : contentData.text),
     predicted_er: 0.03,
@@ -228,20 +286,29 @@ async function queueContent(content: any): Promise<void> {
     ? content.text.join('\n\n--- THREAD BREAK ---\n\n') // Store threads with separators
     : content.text;
   
-  const { data, error } = await supabase.from('content_metadata').insert([{
-    decision_id: content.decision_id,  // ✅ FIXED: Use decision_id, not id
-    // ❌ REMOVED: content_id - column doesn't exist
+  const { data, error} = await supabase.from('content_metadata').insert([{
+    decision_id: content.decision_id,
     content: contentText,
     generation_source: 'real',
     status: 'queued',
-    decision_type: content.format === 'thread' ? 'thread' : 'single', // ✅ FIXED: Use 'single' not 'content'
+    decision_type: content.format === 'thread' ? 'thread' : 'single',
     scheduled_at: content.scheduled_at,
     quality_score: Math.round(content.quality_score * 100),
     predicted_er: content.predicted_er,
-    topic_cluster: content.topic || 'health',  // ✅ FIXED: Use topic_cluster
-    bandit_arm: content.style || 'varied', // Store the style as bandit_arm
-    timing_arm: `slot_${content.timing_slot}`
-    // Note: angle field removed - not in schema
+    
+    // ═══════════════════════════════════════════════════════════
+    // ✨ DIVERSITY TRACKING FIELDS (for rolling 10-post blacklist)
+    // ═══════════════════════════════════════════════════════════
+    raw_topic: content.raw_topic, // AI-generated topic ("NAD+ precursors")
+    angle: content.angle, // AI-generated angle ("Industry secrets")
+    tone: content.tone, // AI-generated tone ("Skeptical investigative")
+    generator_name: content.generator_used, // Which generator ("contrarian")
+    topic_cluster: content.topic_cluster || 'health',
+    
+    // Legacy fields for compatibility
+    bandit_arm: content.style || 'varied',
+    timing_arm: `slot_${content.timing_slot}`,
+    thread_parts: Array.isArray(content.text) ? content.text : null
   }]);
   
   if (error) {
