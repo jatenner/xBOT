@@ -95,8 +95,10 @@ export class TwitterNewsScraperJob {
     console.log('[NEWS_SCRAPER] 🗞️ Starting Twitter news scraping job...');
     
     try {
-      const browserManager = (await import('../lib/browser')).default;
-      const page = await browserManager.newPage();
+      // 🔥 FIX: Use UnifiedBrowserPool (same as all working scrapers)
+      const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
+      const pool = UnifiedBrowserPool.getInstance();
+      const page = await pool.acquirePage('news_scraping');
       
       // Scrape from all sources
       const allNews: ScrapedNews[] = [];
@@ -111,8 +113,8 @@ export class TwitterNewsScraperJob {
       const researchNews = await this.scrapeResearchNews(page);
       allNews.push(...researchNews);
       
-      // Close browser
-      await page.close();
+      // Release page back to pool
+      await pool.releasePage(page);
       
       // Store in database
       console.log(`[NEWS_SCRAPER] 💾 Storing ${allNews.length} scraped tweets...`);
