@@ -153,63 +153,223 @@ export class UnifiedBrowserPool {
 
   /**
    * Process the operation queue
+   * 
+   * ✨ ENHANCED VERSION with:
+   * - Parallel processing (uses all MAX_CONTEXTS browsers simultaneously)
+   * - Operation timeouts (60 second limit prevents hanging)
+   * - Error recovery (auto-closes stuck contexts)
+   * - Better logging and metrics
    */
   private async processQueue(): Promise<void> {
     if (this.isProcessingQueue) return;
     this.isProcessingQueue = true;
 
+    console.log(`[BROWSER_POOL] 🚀 Queue processor started (queue: ${this.queue.length} operations)`);
+
     try {
       while (this.queue.length > 0) {
-        // Find available or create new context
-        const contextHandle = await this.acquireContext();
         
-        if (!contextHandle) {
-          // All contexts busy and at max capacity, wait a bit
-          console.log('[BROWSER_POOL] ⏳ All contexts busy, waiting...');
-          await this.sleep(1000);
+        // ═══════════════════════════════════════════════════════════
+        // PARALLEL BATCH: Acquire up to MAX_CONTEXTS for concurrent execution
+        // ═══════════════════════════════════════════════════════════
+        
+        const batch: Array<{op: QueuedOperation, context: ContextHandle}> = [];
+        
+        // Try to acquire multiple contexts (up to MAX_CONTEXTS)
+        for (let i = 0; i < this.MAX_CONTEXTS && this.queue.length > 0; i++) {
+          const contextHandle = await this.acquireContext();
+          
+          if (!contextHandle) {
+            // No more contexts available for this batch
+            break;
+          }
+          
+          const op = this.queue.shift();
+          if (!op) {
+            // No more operations, release the context we just acquired
+            this.releaseContext(contextHandle);
+            break;
+          }
+          
+          this.metrics.queuedOperations--;
+          batch.push({ op, context: contextHandle });
+        }
+        
+        // If no operations could be acquired, wait and retry
+        if (batch.length === 0) {
+          console.log(`[BROWSER_POOL] ⏳ All contexts busy (queue: ${this.queue.length} waiting), pausing 2s...`);
+          await this.sleep(2000);
           continue;
         }
-
-        // Get next operation
-        const op = this.queue.shift();
-        if (!op) continue;
-
-        this.metrics.queuedOperations--;
         
-        // Execute operation
-        console.log(`[BROWSER_POOL] ⚡ Executing: ${op.id}`);
+        // ═══════════════════════════════════════════════════════════
+        // EXECUTE BATCH IN PARALLEL (with timeouts and error recovery!)
+        // ═══════════════════════════════════════════════════════════
         
-        try {
-          const result = await op.operation(contextHandle.context);
-          op.resolve(result);
-          
-          // Track success
-          this.metrics.successfulOperations++;
-          this.recordSuccess();
-        } catch (error: any) {
-          console.error(`[BROWSER_POOL] ❌ Operation failed: ${op.id}:`, error.message);
-          op.reject(error);
-          
-          // Track failure
-          this.metrics.failedOperations++;
-          this.recordFailure();
-        } finally {
-          // Release context
-          this.releaseContext(contextHandle);
-        }
+        console.log(`[BROWSER_POOL] ⚡ Executing batch of ${batch.length} operations (${this.queue.length} remaining in queue)`);
+        
+        const OPERATION_TIMEOUT = 60000; // 60 second timeout
+        
+        // Execute all operations in parallel using Promise.allSettled
+        // This ensures one failure doesn't stop others
+        const results = await Promise.allSettled(
+          batch.map(async ({ op, context }) => {
+            const startTime = Date.now();
+            let contextClosed = false;
+            
+            try {
+              console.log(`[BROWSER_POOL]   → ${op.id}: Starting...`);
+              
+              // ✅ CRITICAL FIX: Race against timeout
+              const result = await Promise.race([
+                op.operation(context.context),
+                this.timeoutAfter(OPERATION_TIMEOUT, op.id)
+              ]);
+              
+              const duration = Date.now() - startTime;
+              console.log(`[BROWSER_POOL]   ✅ ${op.id}: Completed (${duration}ms)`);
+              
+              op.resolve(result);
+              this.metrics.successfulOperations++;
+              this.recordSuccess();
+              
+            } catch (error: any) {
+              const duration = Date.now() - startTime;
+              const isTimeout = error.message.includes('[TIMEOUT]');
+              
+              if (isTimeout) {
+                console.error(`[BROWSER_POOL]   ⏰ ${op.id}: TIMEOUT after ${duration}ms`);
+                console.warn(`[BROWSER_POOL]   🔨 Recycling stuck context...`);
+                
+                // Force close the stuck context
+                await this.forceCloseContext(context);
+                contextClosed = true; // Don't try to release in finally
+                
+              } else {
+                console.error(`[BROWSER_POOL]   ❌ ${op.id}: Failed (${duration}ms) - ${error.message}`);
+              }
+              
+              op.reject(error);
+              this.metrics.failedOperations++;
+              this.recordFailure();
+              
+            } finally {
+              // Release context back to pool (unless it was force-closed)
+              if (!contextClosed) {
+                this.releaseContext(context);
+              }
+            }
+          })
+        );
+        
+        // Log batch summary
+        const succeeded = results.filter(r => r.status === 'fulfilled').length;
+        const failed = results.filter(r => r.status === 'rejected').length;
+        console.log(`[BROWSER_POOL] 📊 Batch summary: ${succeeded} succeeded, ${failed} failed (${this.queue.length} remaining)`);
       }
+      
+      console.log(`[BROWSER_POOL] 🏁 Queue processor finished (queue empty)`);
+      
+    } catch (error: any) {
+      console.error(`[BROWSER_POOL] ❌ Queue processor error:`, error.message);
     } finally {
       this.isProcessingQueue = false;
     }
   }
 
   /**
+   * ⏰ Create a timeout promise that rejects after specified milliseconds
+   * Used to prevent operations from hanging indefinitely
+   */
+  private timeoutAfter(ms: number, operationId: string): Promise<never> {
+    return new Promise((_, reject) => {
+      setTimeout(() => {
+        reject(new Error(`[TIMEOUT] Operation ${operationId} exceeded ${ms}ms limit`));
+      }, ms);
+    });
+  }
+
+  /**
+   * 🏥 Check if a context is still healthy and usable
+   * Prevents using dead/broken contexts that would cause operations to hang
+   */
+  private async isContextHealthy(handle: ContextHandle): Promise<boolean> {
+    try {
+      // Quick health check: verify context still exists in browser
+      if (!this.browser || !this.browser.isConnected()) {
+        return false; // Browser itself is dead
+      }
+      
+      const contexts = await this.browser.contexts();
+      if (!contexts || !contexts.includes(handle.context)) {
+        return false; // Context no longer exists in browser
+      }
+      
+      // Context exists and browser is connected
+      return true;
+      
+    } catch (error: any) {
+      console.warn(`[BROWSER_POOL] ⚠️ Context health check failed:`, error.message);
+      return false;
+    }
+  }
+
+  /**
+   * 🔨 Force close a context (for stuck/unhealthy contexts)
+   * Used when operations timeout - context might be in bad state
+   */
+  private async forceCloseContext(handle: ContextHandle): Promise<void> {
+    console.log(`[BROWSER_POOL] 🔨 Force-closing potentially stuck context...`);
+    
+    try {
+      // Find context ID in our map
+      const contextId = Array.from(this.contexts.entries())
+        .find(([_, h]) => h === handle)?.[0];
+      
+      if (!contextId) {
+        console.warn(`[BROWSER_POOL] ⚠️ Context not found in map, skipping close`);
+        return;
+      }
+      
+      // Force close with timeout (even closing can hang!)
+      await Promise.race([
+        handle.context.close(),
+        this.timeoutAfter(5000, 'context-close')
+      ]).catch((error) => {
+        console.warn(`[BROWSER_POOL] ⚠️ Force close timed out: ${error.message}`);
+        // Continue anyway - we'll remove it from pool
+      });
+      
+      // Remove from pool regardless of close success
+      this.contexts.delete(contextId);
+      this.metrics.contextsClosed++;
+      this.metrics.activeContexts = this.contexts.size;
+      
+      console.log(`[BROWSER_POOL] ✅ Context force-closed (remaining: ${this.contexts.size}/${this.MAX_CONTEXTS})`);
+      
+    } catch (error: any) {
+      console.error(`[BROWSER_POOL] ❌ Force close error:`, error.message);
+    }
+  }
+
+  /**
    * Acquire a context from pool or create new one
+   * 
+   * ✨ ENHANCED with health checking to prevent using broken contexts
    */
   private async acquireContext(): Promise<ContextHandle | null> {
     // Try to find available context
     for (const [id, handle] of this.contexts) {
       if (!handle.inUse && handle.operationCount < handle.maxOperations) {
+        
+        // ✅ NEW: Health check before using context
+        const isHealthy = await this.isContextHealthy(handle);
+        if (!isHealthy) {
+          console.warn(`[BROWSER_POOL] ⚠️ Context ${id} is unhealthy, removing from pool...`);
+          await this.forceCloseContext(handle);
+          continue; // Try next context
+        }
+        
         handle.inUse = true;
         handle.lastUsed = new Date();
         handle.operationCount++;
