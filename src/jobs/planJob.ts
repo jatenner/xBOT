@@ -192,9 +192,9 @@ Create engaging health content that:
 2. Uses this exact TONE/voice
 3. Stays within 260 characters
 4. No first-person (I/me/my)
-5. Maximum 2 emojis
+5. Avoid emojis (use 0-1 maximum, strongly prefer 0). Only use if genuinely adds clarity (data charts 📊📉, literal objects 🧊). Never use decorative emojis (✨🌟💫🌱).
 
-Be specific, interesting, and match the tone precisely.`;
+Be specific, interesting, and match the tone precisely. Let the content speak for itself without emoji decoration.`;
 
     const user = `Create content about "${topic}" from this angle: "${angle}" using this tone: "${tone}".
 
