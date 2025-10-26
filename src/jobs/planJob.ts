@@ -198,10 +198,49 @@ Be specific, interesting, and match the tone precisely. Let the content speak fo
 
     const user = `Create content about "${topic}" from this angle: "${angle}" using this tone: "${tone}".
 
-Output JSON:
+RANDOMLY select format with genuine randomness:
+- 93% probability: Single tweet (260 chars max)
+- 7% probability: Thread (3-5 connected tweets)
+
+For SINGLE tweet (93% chance):
 {
-  "text": "your tweet content here"
-}`;
+  "text": "Your tweet content here (260 chars max)",
+  "format": "single"
+}
+
+For THREAD (7% chance - use when topic needs depth):
+{
+  "text": [
+    "Tweet 1: Hook or opening insight (200-260 chars)",
+    "Tweet 2: Main mechanism or data (200-260 chars)",
+    "Tweet 3: Additional depth or example (200-260 chars)",
+    "Tweet 4: Actionable takeaway or conclusion (200-260 chars)"
+  ],
+  "format": "thread"
+}
+
+THREAD QUALITY REQUIREMENTS (if you select thread):
+1. Each tweet: 200-260 characters (shorter than singles for safety)
+2. Natural conversation flow (each tweet stands alone but connects to next)
+3. NO numbering (1., 2., 3.) - threads are conversations, not lists
+4. NO "thread below 🧵" or thread indicators
+5. Build depth: Hook → Mechanism → Data → Action/Insight
+6. Each tweet should add NEW information (no repetition)
+7. Match the TONE consistently across all tweets
+8. Apply the ANGLE throughout the thread
+9. Avoid emojis (0-1 max total across ALL tweets)
+
+WHEN to choose THREAD over SINGLE:
+- Topic needs depth (mechanisms, protocols, comparisons)
+- Storytelling format (case studies, narratives, timelines)
+- Multi-step explanations (how-to, protocols)
+- Data-heavy content (multiple studies, comparisons)
+
+WHEN to choose SINGLE:
+- Quick insights (one key fact)
+- Questions (provocative, don't need answers)
+- Bold claims (controversial takes)
+- Simple mechanisms (can explain in 260 chars)`;
 
     return { system, user };
   }
