@@ -20,7 +20,7 @@ export class BulletproofThreadComposer {
   // This caused context lifecycle issues - context cleaned up while page still referenced!
   
   // 🔥 NEW: Overall timeout for thread posting
-  private static readonly THREAD_TIMEOUT_MS = 90000; // 90 seconds max
+  private static readonly THREAD_TIMEOUT_MS = 180000; // 180 seconds (3 minutes) - increased for reliability
 
   // Modern selectors for resilient reply flow
   private static readonly replyButtonSelectors = [
@@ -62,25 +62,59 @@ export class BulletproofThreadComposer {
       };
     }
 
-    // 🔥 FIXED: Wrap entire operation in timeout + proper context management
-    try {
-      const result = await Promise.race([
-        this.postWithContext(segments),
-        this.createTimeoutPromise()
-      ]);
-      
-      return result as ThreadPostResult;
-    } catch (error: any) {
-      if (error.message === 'Thread posting timeout') {
-        console.error(`THREAD_POST_TIMEOUT: Exceeded ${this.THREAD_TIMEOUT_MS}ms limit`);
-        return {
-          success: false,
-          mode: 'composer',
-          error: `Thread posting timeout after ${this.THREAD_TIMEOUT_MS/1000}s`
-        };
+    // 🔥 FIXED: Wrap entire operation in timeout + retry logic for reliability
+    const maxRetries = 2;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`[THREAD_COMPOSER] 🎯 Posting attempt ${attempt}/${maxRetries}`);
+        
+        const result = await Promise.race([
+          this.postWithContext(segments),
+          this.createTimeoutPromise()
+        ]);
+        
+        console.log(`[THREAD_COMPOSER] ✅ Success on attempt ${attempt}`);
+        return result as ThreadPostResult;
+        
+      } catch (error: any) {
+        if (error.message === 'Thread posting timeout') {
+          console.error(`[THREAD_COMPOSER] ⏱️ Timeout on attempt ${attempt}/${maxRetries} (exceeded ${this.THREAD_TIMEOUT_MS/1000}s)`);
+          
+          if (attempt === maxRetries) {
+            return {
+              success: false,
+              mode: 'composer',
+              error: `Thread posting timeout after ${maxRetries} attempts (${this.THREAD_TIMEOUT_MS/1000}s each)`
+            };
+          }
+          
+          console.log(`[THREAD_COMPOSER] 🔄 Retrying in 5 seconds...`);
+          await new Promise(resolve => setTimeout(resolve, 5000));
+          continue;
+        }
+        
+        console.error(`[THREAD_COMPOSER] ❌ Attempt ${attempt} error: ${error.message}`);
+        
+        if (attempt === maxRetries) {
+          return {
+            success: false,
+            mode: 'composer',
+            error: error.message
+          };
+        }
+        
+        console.log(`[THREAD_COMPOSER] 🔄 Retrying in 5 seconds...`);
+        await new Promise(resolve => setTimeout(resolve, 5000));
       }
-      throw error;
     }
+    
+    // TypeScript safety
+    return {
+      success: false,
+      mode: 'composer',
+      error: 'Retry loop completed without result'
+    };
   }
 
   /**

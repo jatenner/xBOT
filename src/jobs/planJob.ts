@@ -129,6 +129,7 @@ async function generateContentWithLLM() {
   const topic = dynamicTopic.topic; // Extract just the topic string
   
   console.log(`\n🎯 TOPIC: "${topic}"`);
+  console.log(`   Cluster sampled: ${dynamicTopic.cluster_sampled || 'unknown'}`);
   console.log(`   Dimension: ${dynamicTopic.dimension}`);
   console.log(`   Viral potential: ${dynamicTopic.viral_potential}`);
   
@@ -331,14 +332,21 @@ WHEN to choose SINGLE:
     angle: angle, // Store AI-generated angle
     tone: tone, // Store AI-generated tone
     generator_used: matchedGenerator, // Track which generator created this
-    format_strategy: formatStrategy, // ✅ NEW: Store AI-generated format strategy
+    format_strategy: formatStrategy, // ✅ AI-generated format strategy
     topic_cluster: dynamicTopic.dimension || 'health',
     style: tone, // Map tone to style for compatibility
     format: format,
     quality_score: calculateQuality(Array.isArray(contentData.text) ? contentData.text.join(' ') : contentData.text),
     predicted_er: 0.03,
     timing_slot: scheduledAt.getHours(),
-    scheduled_at: scheduledAt.toISOString()
+    scheduled_at: scheduledAt.toISOString(),
+    
+    // 🧠 META-AWARENESS: Pass through AI's cluster choices for database storage
+    topic_cluster_sampled: dynamicTopic.cluster_sampled || null,
+    angle_type: contentData.angle_type || null,
+    tone_is_singular: contentData.tone_is_singular !== false,
+    tone_cluster: contentData.tone_cluster || null,
+    structural_type: contentData.structural_type || null
   };
 }
 
@@ -367,8 +375,16 @@ async function queueContent(content: any): Promise<void> {
     angle: content.angle, // AI-generated angle ("Industry secrets")
     tone: content.tone, // AI-generated tone ("Skeptical investigative")
     generator_name: content.generator_used, // Which generator ("contrarian")
-    format_strategy: content.format_strategy, // ✅ NEW: AI-generated format strategy
-    topic_cluster: content.topic_cluster || 'health',
+    format_strategy: content.format_strategy, // ✅ AI-generated format strategy
+    topic_cluster: content.topic_cluster_sampled || 'health', // ✅ NEW: Which cluster AI sampled from
+    
+    // ═══════════════════════════════════════════════════════════
+    // 🧠 META-AWARENESS TRACKING (New system)
+    // ═══════════════════════════════════════════════════════════
+    angle_type: content.angle_type || null, // cultural|media|industry|controversial|mechanism
+    tone_is_singular: content.tone_is_singular !== false, // true if singular tone
+    tone_cluster: content.tone_cluster || null, // bold|neutral|warm|playful|thoughtful
+    structural_type: content.structural_type || null, // minimal|dense|chaotic|etc
     
     // Legacy fields for compatibility
     bandit_arm: content.style || 'varied',

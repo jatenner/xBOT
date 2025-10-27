@@ -21,6 +21,7 @@ import bulletproofPostingRouter from './api/bulletproofPosting';
 import emergencySystemRouter from './api/emergencySystem';
 import playwrightPostingRouter from './api/playwrightPosting';
 import ratesRouter from './api/rates';
+import resourceMetricsRouter from './api/resourceMetrics';
 
 const app = express();
 
@@ -158,6 +159,11 @@ app.use('/api', playwrightPostingRouter);
  * ⚡ SIMPLIFIED RATES API - Lightweight Dynamic Scaling
  */
 app.use('/api/rates', ratesRouter);
+
+/**
+ * 📊 RESOURCE METRICS - Container Resource Monitoring
+ */
+app.use('/api', resourceMetricsRouter);
 
 /**
  * 📤 POST /post - Direct posting endpoint for remote browser

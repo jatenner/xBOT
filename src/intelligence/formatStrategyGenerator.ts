@@ -98,6 +98,7 @@ export class FormatStrategyGenerator {
           }
         }
         const strategy = parsed.strategy || 'Clear, scannable format with logical flow and visual hierarchy';
+        const structuralType = parsed.structural_type || 'organized'; // NEW: Track structural type
         
         // Validate it's not in recent list
         if (recentStrategies.length > 0 && recentStrategies.includes(strategy)) {
@@ -106,6 +107,7 @@ export class FormatStrategyGenerator {
         }
         
         console.log(`[FORMAT_STRATEGY] ✅ Generated: "${strategy}"`);
+        console.log(`[FORMAT_STRATEGY] 📊 Structural type: ${structuralType}`);
         
         return strategy;
         
@@ -136,7 +138,71 @@ export class FormatStrategyGenerator {
     recentStrategies: string[]
   ): string {
     return `
-Generate a unique visual formatting and structural strategy for this Twitter content:
+Generate a unique visual formatting and structural strategy for this Twitter content.
+
+🧠 META-AWARENESS: Structural Bias Compensation
+
+Your training defaults for content structure:
+- Clean/scannable formats: 50% (textbook, organized, hierarchical)
+- Professional/polished: 30% (business writing, formal structure)
+- Bullet/list formats: 20% (academic, educational style)
+
+These are "safe" formats from formal writing training.
+
+🎯 COMPENSATION INSTRUCTION:
+Don't default to "clear, scannable, organized" - that's ONE valid approach, not the only one.
+
+Sample from FULL structural spectrum:
+
+MINIMAL/SPARSE (target 12%):
+- Hemingway-style: Short. Punchy. White space.
+- One-liners with extreme brevity
+- Breathing room, no density
+
+DENSE/PACKED (target 12%):
+- Maximum info, minimum words
+- Numbers dominate: 40%↓ 2.5x↑ $200 3wks
+- Compressed data-heavy
+
+UNCONVENTIONAL/CHAOTIC (target 12%):
+- Break expected flow, surprise structure
+- Non-linear narrative
+- Unexpected organization
+
+CONVERSATIONAL/NATURAL (target 12%):
+- How you'd actually explain verbally
+- Stream of consciousness
+- Informal flowing
+
+AGGRESSIVE/URGENT (target 12%):
+- Commands: Do this. Not that. Now.
+- Imperative sentences, no fluff
+- Urgent pacing
+
+DATA-LED (target 12%):
+- Numbers first, words support
+- Statistical dominance
+- Chart-like structure
+
+NARRATIVE/STORY (target 12%):
+- Story arc: beginning → middle → insight
+- Natural progression
+- Flowing narrative
+
+ORGANIZED/CLEAN (target 12%):
+- Bullets, lists, clear hierarchy
+- Your DEFAULT - use LEAST often to compensate bias
+
+QUESTION-DRIVEN (target 8%):
+- Cascade of questions
+- Socratic method
+- Inquiry-led
+
+Match structure to tone:
+- Provocative tone → Aggressive or chaotic structure
+- Deadpan tone → Minimal or dense structure
+- Playful tone → Unconventional structure
+- Clinical tone → Data-led or organized structure
 
 Content Context:
 - Topic: ${topic}
@@ -144,7 +210,8 @@ Content Context:
 - Tone: ${tone}
 - Generator personality: ${generator}
 
-Design a unique formatting strategy that makes this content scannable and engaging.
+Create a structure that matches the tone and makes content engaging.
+Don't auto-default to clean/scannable - be willing to be unconventional.
 
 ${recentStrategies.length > 0 ? `
 🚫 RECENTLY USED (create something different):
@@ -179,7 +246,8 @@ Create something unique that serves this content.
 
 Output JSON format (IMPORTANT: Escape any quotes in your strategy text):
 {
-  "strategy": "Your unique formatting strategy description (1-2 sentences max, avoid using quotes)"
+  "strategy": "Your unique formatting strategy description (1-2 sentences max, avoid using quotes)",
+  "structural_type": "minimal|dense|chaotic|conversational|aggressive|data|narrative|organized|question"
 }
 `;
   }

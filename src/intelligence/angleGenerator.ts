@@ -73,6 +73,7 @@ export class AngleGenerator {
         
         const parsed = JSON.parse(content);
         const angle = parsed.angle || 'General overview';
+        const angleType = parsed.angle_type || 'unknown'; // NEW: Track angle type
         
         // Check if this angle is banned
         if (bannedAngles.includes(angle)) {
@@ -86,6 +87,7 @@ export class AngleGenerator {
         }
         
         console.log(`[ANGLE_GEN] ✅ Generated (attempt ${attempt}): "${angle}"`);
+        console.log(`[ANGLE_GEN] 📊 Angle type: ${angleType}`);
         
         return angle;
         
@@ -120,17 +122,76 @@ export class AngleGenerator {
     
     const system = `You generate unique angles (perspectives/approaches) for health topics.
 
+🧠 META-AWARENESS: Angle Bias Compensation
+
+For health topics, your training heavily favors certain angle types:
+- Mechanism angles: 45% ("How X works biologically", "The science behind Y")
+- Benefit angles: 30% ("What X improves", "Why Y matters for Z")
+- Research angles: 15% ("New study shows...", "Evidence suggests...")
+- Protocol angles: 10% ("How to optimize X")
+
+Total biological/scientific framing: ~90% of your natural angles
+
+🎯 COMPENSATION INSTRUCTION:
+Don't let this bias limit you. ACTIVELY sample from underrepresented angle types:
+
+TARGET DISTRIBUTION (Aim for uniform sampling):
+- Mechanism/Biology: 20% (REDUCE from 45%)
+- Benefit/Outcome: 15% (REDUCE from 30%)
+- Cultural/People: 15% (INCREASE from <2%)
+- Media/Content: 15% (INCREASE from <1%)
+- Industry/Business: 15% (INCREASE from <1%)
+- Controversial/Challenge: 10% (INCREASE from <1%)
+- Historical/Origins: 5% (INCREASE from 0%)
+- Comparison/Tradeoffs: 5%
+
+ANGLE TYPE EXAMPLES (Learn these patterns):
+
+CULTURAL angles:
+- "Wim Hof's impact on mainstream cold exposure adoption"
+- "Why Bryan Johnson's longevity protocol went viral"
+- "How Huberman Lab changed supplement conversations"
+- "The biohacking community's stance on X"
+
+MEDIA angles:
+- "What Huberman Lab episode 142 revealed about X"
+- "The viral TikTok claim about Y (fact-checking)"
+- "Why health Twitter is obsessed with Z right now"
+- "Podcast coverage of X (Attia, Ferriss, Huberman)"
+
+INDUSTRY angles:
+- "Why insurance won't cover X testing (follow the incentives)"
+- "The $5B supplement industry's marketing tactics for Y"
+- "Who profits from mainstream Z advice"
+- "Cost comparison: Medical treatment vs DIY protocol"
+
+CONTROVERSIAL angles:
+- "What mainstream medicine gets wrong about X"
+- "Why the FDA's position on Y is outdated"
+- "The truth about Z that doctors won't mention"
+- "Challenging the conventional wisdom on X"
+
+HISTORICAL angles:
+- "Ancient practice X meets modern science"
+- "What monks knew about Y before we could measure it"
+- "Evolutionary perspective on Z (why our bodies respond)"
+
 An angle is the specific way you explore a topic. It's what makes the same topic feel completely different each time.
 
-Your angles can explore topics through:
+Your angles can explore topics through ALL perspectives:
 - Scientific mechanisms, biological pathways, cellular processes
 - Research findings, new studies, clinical trials
 - Practical protocols, optimization strategies, timing/dosage
 - Industry practices, costs, insurance coverage, business models
+- Cultural movements, influencer practices, viral trends
+- Media coverage, podcast discussions, content analysis
 - Comparisons (X vs Y), common mistakes, contraindications
 - Real-world results, transformations, case studies
 - Controversies, debates, challenges to mainstream beliefs
+- Historical origins, ancient practices, evolutionary context
 - Emerging trends, cutting-edge applications
+
+Don't default to mechanism/biology angles - actively explore cultural, media, and industry angles.
 
 CONSTRAINTS (for quality):
 1. Maximum 12 words (be concise)
@@ -152,12 +213,14 @@ NOTE: Angles about books, influencers, or cultural connections will be handled b
 
 Generate ONE unique, specific angle for this topic.
 
-Explore it from an interesting perspective.
+Consciously sample from a non-dominant cluster (not mechanism if possible).
+Explore from cultural, media, industry, or controversial perspective.
 Maximum 12 words.
 
 Output JSON:
 {
-  "angle": "your angle"
+  "angle": "your angle",
+  "angle_type": "cultural|media|industry|controversial|mechanism|benefit|etc"
 }`;
 
     return { system, user };
