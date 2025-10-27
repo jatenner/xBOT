@@ -176,13 +176,13 @@ GOOD formatting strategies (simple and clear):
 - "Arrow flow: Cause → mechanism → effect → action"
 - "Bullet list with headers: Section titles with key points below"
 
-BAD formatting strategies (gibberish - avoid):
+BAD formatting strategies (avoid):
 - Abstract concepts ("mystical manifold facts", "consciousness reveals")
+- Multiple emojis (max 1 emoji per post - prefer text markers like →)
 - Overly complex descriptions (more than 2 sentences)
 - Random characters or foreign scripts
-- Incoherent metaphors
 
-Create a SIMPLE, PRACTICAL formatting approach (max 15 words).
+Create a SIMPLE, PRACTICAL formatting approach (max 15 words, minimal emojis).
 
 Output JSON format (IMPORTANT: Escape any quotes in your strategy text):
 {
