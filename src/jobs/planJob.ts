@@ -15,6 +15,8 @@ import { contentDiversityEngine } from '../ai/content/contentDiversityEngine';
 let llmMetrics = {
   calls_total: 0,
   calls_failed: 0,
+  success: 0,
+  errors: 0,
   failure_reasons: {} as Record<string, number>
 };
 
@@ -98,6 +100,61 @@ async function generateRealContent(): Promise<void> {
   }
 }
 
+/**
+ * 🎭 SYSTEM B: Call dedicated generator with specialized prompt
+ */
+async function callDedicatedGenerator(generatorName: string, context: any) {
+  const { topic, angle, tone, formatStrategy, dynamicTopic } = context;
+  
+  // Map generator names to their actual files (with Generator suffix)
+  const generatorMap: Record<string, string> = {
+    'provocateur': 'provocateurGenerator',
+    'dataScientist': 'dataNerdGenerator',
+    'mythBuster': 'mythBusterGenerator',
+    'contrarian': 'contrarianGenerator',
+    'storyteller': 'storytellerGenerator',
+    'protocolBuilder': 'coachGenerator',  // Protocol builder maps to coach
+    'researchTranslator': 'philosopherGenerator',  // Research translator maps to philosopher
+    'culturalCritic': 'culturalBridgeGenerator',
+    'industryWatchdog': 'newsReporterGenerator',
+    'skepticalInvestigator': 'explorerGenerator',
+    'trendForecaster': 'thoughtLeaderGenerator',
+  };
+  
+  const moduleName = generatorMap[generatorName];
+  if (!moduleName) {
+    console.error(`[SYSTEM_B] ❌ Generator not mapped: ${generatorName}`);
+    throw new Error(`Unknown generator: ${generatorName}`);
+  }
+  
+  try {
+    console.log(`[SYSTEM_B] 🎭 Calling ${moduleName}...`);
+    
+    const generatorModule = await import(`../generators/${moduleName}.js`);
+    const generateFn = generatorModule.default || generatorModule.generate || generatorModule[moduleName];
+    
+    if (typeof generateFn !== 'function') {
+      console.error(`[SYSTEM_B] ❌ Generator ${moduleName} has no callable function`);
+      throw new Error(`Generator ${moduleName} not callable`);
+    }
+    
+    const result = await generateFn({
+      topic,
+      angle,
+      tone,
+      formatStrategy,
+      dimension: dynamicTopic?.dimension,
+      cluster: dynamicTopic?.cluster_sampled,
+      viral_potential: dynamicTopic?.viral_potential
+    });
+    
+    return result;
+  } catch (error: any) {
+    console.error(`[SYSTEM_B] ❌ Error calling ${moduleName}:`, error.message);
+    throw error;
+  }
+}
+
 async function generateContentWithLLM() {
   const flags = getConfig();
   const decision_id = uuidv4();
@@ -163,34 +220,28 @@ async function generateContentWithLLM() {
   // LEGACY: Keep old diversity tracking for compatibility
   contentDiversityEngine.trackTopic(topic);
   
-  // STEP 6: Create content prompt using ALL 5 dimensions
-  const contentPrompt = buildContentPrompt(topic, angle, tone, matchedGenerator, formatStrategy);
+  // STEP 6: Call dedicated generator (SYSTEM B - Specialized prompts!)
+  console.log(`[CONTENT_GEN] 🎭 Calling dedicated ${matchedGenerator} generator...`);
   
   llmMetrics.calls_total++;
   
-  console.log(`[CONTENT_GEN] Creating content with ${matchedGenerator}...`);
-  console.log(`[OPENAI] Model: ${flags.OPENAI_MODEL}`);
-  
-  const response = await createBudgetedChatCompletion({
-    model: flags.OPENAI_MODEL,
-    messages: [
-      { 
-        role: 'system', 
-        content: contentPrompt.system
-      },
-      { role: 'user', content: contentPrompt.user }
-    ],
-    temperature: 1.2, // High creativity with diversity system
-    top_p: 0.95,
-    max_tokens: 350,
-    // ⚠️ CRITICAL: When using json_object, the prompt MUST contain the word "json"
-    // See buildContentPrompt() - user message starts with "Return your response as valid JSON format"
-    response_format: { type: 'json_object' }
-  }, {
-    purpose: 'content_generation',
-    requestId: decision_id
+  const generatedContent = await callDedicatedGenerator(matchedGenerator, {
+    topic,
+    angle,
+    tone,
+    formatStrategy,
+    dynamicTopic
   });
   
+  if (!generatedContent) {
+    llmMetrics.errors++;
+    throw new Error('Empty response from dedicated generator');
+  }
+  
+  llmMetrics.success++;
+  const contentData = generatedContent;
+  
+  // LEGACY FUNCTION (unused now, kept for reference)
   function buildContentPrompt(topic: string, angle: string, tone: string, generator: string, formatStrategy: string) {
     const system = `You are a health content creator.
 
@@ -268,17 +319,6 @@ WHEN to choose SINGLE:
 - Simple mechanisms (can explain in 260 chars)`;
 
     return { system, user };
-  }
-
-  const rawContent = response.choices[0]?.message?.content;
-  if (!rawContent) throw new Error('Empty response from OpenAI');
-
-  let contentData;
-  try {
-    contentData = JSON.parse(rawContent);
-  } catch (e) {
-    console.error('[PLAN_JOB] ❌ Failed to parse LLM response:', rawContent);
-    throw new Error('Invalid JSON from LLM');
   }
 
   // Validate and clean the response - handle both single tweets and threads
