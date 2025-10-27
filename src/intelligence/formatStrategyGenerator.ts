@@ -76,8 +76,8 @@ export class FormatStrategyGenerator {
               content: this.buildPrompt(topic, angle, tone, generator, recentStrategies)
             }
           ],
-          temperature: 1.5, // Maximum creativity for format innovation
-          max_tokens: 120, // Concise strategy description
+          temperature: 0.9, // Balanced creativity (1.5 was causing gibberish)
+          max_tokens: 80, // Shorter, clearer strategies
           response_format: { type: 'json_object' }
         }, {
           purpose: 'format_strategy_generation'
@@ -144,14 +144,14 @@ Content Context:
 - Tone: ${tone}
 - Generator personality: ${generator}
 
-Your job: Design how this content should be visually structured and organized for maximum engagement.
+Your job: Design a SIMPLE, CLEAR formatting strategy for this content.
 
-Consider:
-- What organizational flow fits this angle best?
-- What visual elements would enhance this tone?
-- How can structure make the topic more scannable?
-- What formatting amplifies the generator's personality?
-- How can visual hierarchy improve comprehension?
+Focus on:
+- How to organize information for easy scanning
+- What visual structure makes key points stand out
+- How to create clear hierarchy and flow
+
+Keep it practical and coherent. No abstract concepts.
 
 ${recentStrategies.length > 0 ? `
 🚫 RECENTLY USED (create something different):
@@ -168,17 +168,21 @@ You have complete freedom to design formatting approaches.
 
 Don't follow templates or lists. Design formatting that serves THIS specific content uniquely.
 
-Examples of creative strategies (for inspiration only - create your own):
-- "Countdown revelation: Start with number, count down through mechanisms to action"
-- "Split-screen comparison: Side-by-side conventional vs optimal with visual contrast"
-- "Question cascade: Each sentence answers deeper 'why' building to breakthrough insight"
-- "Data waterfall: Lead with headline stat, cascade through components, pool at protocol"
-- "Reverse engineering: Begin with outcome, trace back through causal pathway"
-- "Dual pathway flow: Show two routes to same outcome, highlight which is superior"
-- "Progressive reveal: Layer information with increasing specificity"
-- "Checklist with rationale: Each item paired with why it matters"
+GOOD formatting strategies (simple and clear):
+- "Timeline format: Show progression at 0h→2h→6h→12h"
+- "Question then answer: Start with why, explain mechanism, give action"
+- "Before/after comparison: Old way vs new way"
+- "Numbered protocol: List steps 1, 2, 3 with brief explanations"
+- "Arrow flow: Cause → mechanism → effect → action"
+- "Bullet list with headers: Section titles with key points below"
 
-Be innovative. Create something unique and context-appropriate.
+BAD formatting strategies (gibberish - avoid):
+- Abstract concepts ("mystical manifold facts", "consciousness reveals")
+- Overly complex descriptions (more than 2 sentences)
+- Random characters or foreign scripts
+- Incoherent metaphors
+
+Create a SIMPLE, PRACTICAL formatting approach (max 15 words).
 
 Output JSON format (IMPORTANT: Escape any quotes in your strategy text):
 {
