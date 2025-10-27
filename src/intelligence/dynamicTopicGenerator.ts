@@ -217,6 +217,17 @@ You can generate content about ANY aspect of health, wellness, fitness, nutritio
 - Think: "What health topic does NO other account talk about?"
 - Explore obscure but fascinating health topics
 
+⚠️ ACCESSIBILITY: Use common, relatable language in topics:
+- Prefer everyday terms over pure scientific jargon
+- Think: "Cold Showers" not "Cryotherapy Protocol"
+- Think: "Sleep Better" not "Circadian Rhythm Entrainment"
+- Think: "Gut Health Reset" not "Microbiome Optimization"
+- Think: "This Molecule Your Body Stops Making" not "NAD+ Precursor Supplementation"
+- Still be specific and interesting, just more accessible
+- You CAN use technical terms, but frame them relatably
+- Example: "NAD+ (Your Cells' Energy Molecule)" ✅
+- Example: "Phosphatidylserine: The Overlooked Hero" ❌ (no context)
+
 === PERSPECTIVES (Dimensions) ===
 
 Choose the most engaging angle:
