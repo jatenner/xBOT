@@ -76,8 +76,8 @@ export class FormatStrategyGenerator {
               content: this.buildPrompt(topic, angle, tone, generator, recentStrategies)
             }
           ],
-          temperature: 0.9, // Balanced creativity (1.5 was causing gibberish)
-          max_tokens: 80, // Shorter, clearer strategies
+          temperature: 0.9, // Balanced creativity (coherent but creative)
+          max_tokens: 60, // Force conciseness (15 words ~= 20-30 tokens)
           response_format: { type: 'json_object' }
         }, {
           purpose: 'format_strategy_generation'
@@ -144,45 +144,38 @@ Content Context:
 - Tone: ${tone}
 - Generator personality: ${generator}
 
-Your job: Design a SIMPLE, CLEAR formatting strategy for this content.
-
-Focus on:
-- How to organize information for easy scanning
-- What visual structure makes key points stand out
-- How to create clear hierarchy and flow
-
-Keep it practical and coherent. No abstract concepts.
+Design a unique formatting strategy that makes this content scannable and engaging.
 
 ${recentStrategies.length > 0 ? `
 🚫 RECENTLY USED (create something different):
 ${recentStrategies.map((s, i) => `${i + 1}. "${s}"`).join('\n')}
-` : '(No recent strategies - total creative freedom!)'}
+` : ''}
 
-⚡ UNLIMITED CREATIVE FREEDOM:
-You have complete freedom to design formatting approaches.
-- Create ANY organizational structure
-- Design ANY visual hierarchy
-- Use ANY flow pattern or sequence
-- Invent novel formatting combinations
-- Think beyond conventional Twitter structures
+QUALITY PRINCIPLES:
+- Scannable: Easy to skim and absorb quickly
+- Hierarchical: Clear structure with visual organization
+- Coherent: Logical flow, no gibberish or abstract concepts
+- Practical: Implementable in Twitter text format
+- Concise: Under 15 words total
 
-Don't follow templates or lists. Design formatting that serves THIS specific content uniquely.
+FORMATTING KNOWLEDGE YOU HAVE:
+You know thousands of formatting approaches from your training:
+- Information architecture (organization, chunking, hierarchy)
+- Visual design (spacing, markers, emphasis, flow)
+- Cognitive principles (how people scan and process text)
+- Content structures (narratives, sequences, comparisons, lists)
+- Typography patterns (headers, bullets, arrows, sections)
 
-GOOD formatting strategies (simple and clear):
-- "Timeline format: Show progression at 0h→2h→6h→12h"
-- "Question then answer: Start with why, explain mechanism, give action"
-- "Before/after comparison: Old way vs new way"
-- "Numbered protocol: List steps 1, 2, 3 with brief explanations"
-- "Arrow flow: Cause → mechanism → effect → action"
-- "Bullet list with headers: Section titles with key points below"
+Use your complete knowledge to design the optimal structure for THIS specific content.
+Consider how the topic, angle, tone, and generator personality should influence your formatting choice.
 
-BAD formatting strategies (avoid):
-- Abstract concepts ("mystical manifold facts", "consciousness reveals")
-- Multiple emojis (max 1 emoji per post - prefer text markers like →)
-- Overly complex descriptions (more than 2 sentences)
-- Random characters or foreign scripts
+CONSTRAINTS for quality:
+- Max 15 words in your strategy description
+- Avoid multiple emojis (max 1, prefer text markers like →)
+- Be specific and actionable
+- No abstract or poetic language
 
-Create a SIMPLE, PRACTICAL formatting approach (max 15 words, minimal emojis).
+Create something unique that serves this content.
 
 Output JSON format (IMPORTANT: Escape any quotes in your strategy text):
 {
