@@ -455,17 +455,10 @@ async function queueContent(content: any): Promise<void> {
     thread_parts: Array.isArray(content.text) ? content.text : null
   };
   
-    // ✨ SCHEMA CACHE WORKAROUND: Make meta-awareness fields optional
-    // If Supabase rejects these, the insert will still succeed without them
-    try {
-      if (content.topic_cluster_sampled) insertPayload.topic_cluster = content.topic_cluster_sampled;
-      if (content.angle_type) insertPayload.angle_type = content.angle_type;
-      if (content.tone_is_singular !== undefined) insertPayload.tone_is_singular = content.tone_is_singular;
-      if (content.tone_cluster) insertPayload.tone_cluster = content.tone_cluster;
-      if (content.structural_type) insertPayload.structural_type = content.structural_type;
-    } catch (e) {
-      console.log('[QUEUE_CONTENT] ⚠️ Meta-awareness fields not yet in schema, skipping...');
-    }
+  // ⚠️ TEMPORARY: Meta-awareness fields DISABLED until Supabase schema cache refreshes
+  // These columns exist in DB but Supabase API cache is stale
+  // Will re-enable after cache refresh (24-48 hours)
+  console.log('[QUEUE_CONTENT] ⚠️ Meta-awareness tracking temporarily disabled (schema cache issue)');
   
   const { data, error} = await supabase.from('content_metadata').insert([insertPayload]);
   
