@@ -339,17 +339,17 @@ async function generateRealReplies(): Promise<void> {
   const sortedOpportunities = [...allOpportunities].sort((a, b) => {
     // Tier priority: golden > good > acceptable > null
     const tierOrder: Record<string, number> = { golden: 3, good: 2, acceptable: 1 };
-    const aTier = tierOrder[a.tier || ''] || 0;
-    const bTier = tierOrder[b.tier || ''] || 0;
+    const aTier = tierOrder[String(a.tier || '')] || 0;
+    const bTier = tierOrder[String(b.tier || '')] || 0;
     if (aTier !== bTier) return bTier - aTier; // Higher tier first
     
     // Within same tier, sort by momentum
-    const aMomentum = a.momentum_score || 0;
-    const bMomentum = b.momentum_score || 0;
+    const aMomentum = Number(a.momentum_score) || 0;
+    const bMomentum = Number(b.momentum_score) || 0;
     if (Math.abs(aMomentum - bMomentum) > 0.1) return bMomentum - aMomentum;
     
     // Finally, by engagement rate
-    return (b.engagement_rate || 0) - (a.engagement_rate || 0);
+    return (Number(b.engagement_rate) || 0) - (Number(a.engagement_rate) || 0);
   });
   
   // Get recently replied accounts (last 24 hours) to avoid duplicates

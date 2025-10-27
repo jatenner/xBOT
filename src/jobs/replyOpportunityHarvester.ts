@@ -93,8 +93,8 @@ export async function replyOpportunityHarvester(): Promise<void> {
           
           const opportunities = await realTwitterDiscovery.findReplyOpportunitiesFromAccount(
             String(account.username),
-            account.follower_count || 0,  // NEW: Pass follower count for engagement rate
-            account.engagement_rate || undefined  // NEW: Pass account engagement rate
+            Number(account.follower_count) || 0,  // NEW: Pass follower count for engagement rate
+            account.engagement_rate ? Number(account.engagement_rate) : undefined  // NEW: Pass account engagement rate
           );
           
           // Update last_scraped_at

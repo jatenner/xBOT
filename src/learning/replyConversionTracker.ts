@@ -47,7 +47,7 @@ export class ReplyConversionTracker {
       console.log(`[CONVERSION_TRACKER] 🎯 Found ${pendingReplies.length} replies to track`);
       
       for (const reply of pendingReplies) {
-        await this.trackReplyPerformance(reply.decision_id);
+        await this.trackReplyPerformance(String(reply.decision_id));
       }
       
       console.log('[CONVERSION_TRACKER] ✅ Tracking complete');
@@ -82,7 +82,7 @@ export class ReplyConversionTracker {
         .limit(1)
         .single();
       
-      const currentFollowers = metrics?.followers || 0;
+      const currentFollowers = Number(metrics?.followers) || 0;
       
       // Get follower count at time of reply
       const { data: reply } = await this.supabase
@@ -101,7 +101,7 @@ export class ReplyConversionTracker {
         .limit(1)
         .single();
       
-      const followersBefore = historicalMetrics?.followers || currentFollowers;
+      const followersBefore = Number(historicalMetrics?.followers) || currentFollowers;
       const followersGained = Math.max(0, currentFollowers - followersBefore);
       
       // Store conversion data
@@ -125,7 +125,7 @@ export class ReplyConversionTracker {
       console.log(`[CONVERSION_TRACKER] 📊 @${opportunity.target_username} (${opportunity.tier}): +${followersGained} followers`);
       
       // Update account conversion stats
-      await this.updateAccountConversionRate(opportunity.target_username, followersGained);
+      await this.updateAccountConversionRate(String(opportunity.target_username), followersGained);
       
     } catch (error: any) {
       console.error(`[CONVERSION_TRACKER] ❌ Error tracking reply ${replyDecisionId}:`, error.message);
@@ -146,8 +146,8 @@ export class ReplyConversionTracker {
       
       if (!account) return;
       
-      const totalReplies = (account.total_replies_to_account || 0) + 1;
-      const totalFollowers = (account.followers_gained_from_account || 0) + followersGained;
+      const totalReplies = (Number(account.total_replies_to_account) || 0) + 1;
+      const totalFollowers = (Number(account.followers_gained_from_account) || 0) + followersGained;
       const conversionRate = totalReplies > 0 ? totalFollowers / totalReplies : 0;
       
       // Update account
@@ -187,8 +187,8 @@ export class ReplyConversionTracker {
       
       // Update priority: quality_score + conversion boost
       for (const account of accounts) {
-        const qualityScore = account.quality_score || 50;
-        const conversionRate = account.conversion_rate || 0;
+        const qualityScore = Number(account.quality_score) || 50;
+        const conversionRate = Number(account.conversion_rate) || 0;
         
         // Boost priority by up to 30 points based on conversion
         const conversionBoost = Math.min(30, conversionRate * 10);
