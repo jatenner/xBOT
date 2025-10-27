@@ -194,7 +194,7 @@ Output JSON format:
       
       const strategies = (data || [])
         .map(d => d.format_strategy)
-        .filter((s): s is string => !!s && s.trim().length > 0);
+        .filter((s): s is string => typeof s === 'string' && s.trim().length > 0);
       
       console.log(`[FORMAT_STRATEGY] 🚫 Avoiding last ${strategies.length} strategies`);
       
@@ -241,15 +241,17 @@ Output JSON format:
       
       data.forEach(row => {
         const strategy = row.format_strategy;
-        if (!strategy) return;
+        if (!strategy || typeof strategy !== 'string') return;
         
         if (!strategyMap.has(strategy)) {
           strategyMap.set(strategy, { views: [], likes: [] });
         }
         
         const entry = strategyMap.get(strategy)!;
-        entry.views.push(row.actual_impressions || 0);
-        entry.likes.push(row.actual_likes || 0);
+        const impressions = typeof row.actual_impressions === 'number' ? row.actual_impressions : 0;
+        const likes = typeof row.actual_likes === 'number' ? row.actual_likes : 0;
+        entry.views.push(impressions);
+        entry.likes.push(likes);
       });
       
       // Calculate averages and sort by performance

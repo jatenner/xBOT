@@ -260,7 +260,7 @@ export class DiversityEnforcer {
       
       const strategies = (data || [])
         .map(d => d.format_strategy)
-        .filter((s): s is string => !!s && s.trim().length > 0);
+        .filter((s): s is string => typeof s === 'string' && s.trim().length > 0);
       
       const uniqueStrategies = [...new Set(strategies)];
       
