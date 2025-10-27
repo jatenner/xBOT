@@ -7,6 +7,7 @@
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { parseAIJson } from '../utils/aiJsonParser';
+import { getContentGenerationModel } from '../config/modelConfig';
 
 export async function humanizeContent(content: string | string[]): Promise<string | string[]> {
   const isThread = Array.isArray(content);
