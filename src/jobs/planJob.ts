@@ -130,7 +130,7 @@ async function callDedicatedGenerator(generatorName: string, context: any) {
   try {
     console.log(`[SYSTEM_B] 🎭 Calling ${config.module}.${config.fn}()...`);
     
-    const generatorModule = await import(`../generators/${config.module}.js`);
+    const generatorModule = await import(`../generators/${config.module}`);
     const generateFn = generatorModule[config.fn];
     
     if (typeof generateFn !== 'function') {
