@@ -116,6 +116,7 @@ async function generateContentWithLLM() {
   const { getAngleGenerator } = await import('../intelligence/angleGenerator');
   const { getToneGenerator } = await import('../intelligence/toneGenerator');
   const { getGeneratorMatcher } = await import('../intelligence/generatorMatcher');
+  const { getFormatStrategyGenerator } = await import('../intelligence/formatStrategyGenerator');  // ✅ NEW
   
   const diversityEnforcer = getDiversityEnforcer();
   
@@ -148,13 +149,21 @@ async function generateContentWithLLM() {
   const matchedGenerator = generatorMatcher.matchGenerator(angle, tone);
   
   console.log(`\n🎭 GENERATOR: ${matchedGenerator}`);
+  
+  // ═══════════════════════════════════════════════════════════
+  // ✨ STEP 5: Generate FORMAT STRATEGY (avoiding last 4)
+  // ═══════════════════════════════════════════════════════════
+  const formatStrategyGen = getFormatStrategyGenerator();
+  const formatStrategy = await formatStrategyGen.generateStrategy(topic, angle, tone, matchedGenerator);
+  
+  console.log(`\n🎨 FORMAT: "${formatStrategy}"`);
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   
   // LEGACY: Keep old diversity tracking for compatibility
   contentDiversityEngine.trackTopic(topic);
   
-  // STEP 5: Create content prompt using matched generator
-  const contentPrompt = buildContentPrompt(topic, angle, tone, matchedGenerator);
+  // STEP 6: Create content prompt using ALL 5 dimensions
+  const contentPrompt = buildContentPrompt(topic, angle, tone, matchedGenerator, formatStrategy);
   
   llmMetrics.calls_total++;
   
@@ -181,7 +190,7 @@ async function generateContentWithLLM() {
     requestId: decision_id
   });
   
-  function buildContentPrompt(topic: string, angle: string, tone: string, generator: string) {
+  function buildContentPrompt(topic: string, angle: string, tone: string, generator: string, formatStrategy: string) {
     const system = `You are a health content creator.
 
 Generator personality: ${generator}
@@ -189,19 +198,25 @@ Topic: ${topic}
 Angle: ${angle}
 Tone: ${tone}
 
+🎨 FORMATTING STRATEGY:
+${formatStrategy}
+
+Apply this formatting strategy to structure your content visually and organizationally.
+
 Create engaging health content that:
 1. Explores the TOPIC from this specific ANGLE
 2. Uses this exact TONE/voice
-3. Stays within 260 characters
-4. No first-person (I/me/my)
-5. Avoid emojis (use 0-1 maximum, strongly prefer 0). Only use if genuinely adds clarity (data charts 📊📉, literal objects 🧊). Never use decorative emojis (✨🌟💫🌱).
-6. Balance expert knowledge with clear communication:
+3. Applies the FORMATTING STRATEGY for visual engagement
+4. Stays within 260 characters (singles) or 200-260 per tweet (threads)
+5. No first-person (I/me/my)
+6. Avoid emojis (use 0-1 maximum, strategically placed per format strategy)
+7. Balance expert knowledge with clear communication:
    - Use technical terms when they add value (shows expertise)
    - Briefly explain what they mean in simple terms or parentheses
    - Include specific data, dosages, or mechanisms (builds credibility)
    - Keep sentences clear and direct (no unnecessary complexity)
 
-Be specific, interesting, and match the tone precisely. Sound like an expert who communicates clearly to an intelligent audience.`;
+Be specific, interesting, and match the tone precisely. Sound like an expert who communicates clearly to an intelligent audience. Let the formatting strategy guide your visual structure.`;
 
     const user = `Create content about "${topic}" from this angle: "${angle}" using this tone: "${tone}".
 
@@ -312,10 +327,11 @@ WHEN to choose SINGLE:
     decision_id,
     text: contentData.text,
     topic: contentData.topic || topic, // Use AI-generated topic
-    raw_topic: topic, // ✅ NEW: Store for diversity tracking
-    angle: angle, // ✅ NEW: Store AI-generated angle
-    tone: tone, // ✅ NEW: Store AI-generated tone
-    generator_used: matchedGenerator, // ✅ NEW: Track which generator created this
+    raw_topic: topic, // Store for diversity tracking
+    angle: angle, // Store AI-generated angle
+    tone: tone, // Store AI-generated tone
+    generator_used: matchedGenerator, // Track which generator created this
+    format_strategy: formatStrategy, // ✅ NEW: Store AI-generated format strategy
     topic_cluster: dynamicTopic.dimension || 'health',
     style: tone, // Map tone to style for compatibility
     format: format,
@@ -345,12 +361,13 @@ async function queueContent(content: any): Promise<void> {
     predicted_er: content.predicted_er,
     
     // ═══════════════════════════════════════════════════════════
-    // ✨ DIVERSITY TRACKING FIELDS (for rolling 10-post blacklist)
+    // ✨ DIVERSITY TRACKING FIELDS (5-dimensional system)
     // ═══════════════════════════════════════════════════════════
     raw_topic: content.raw_topic, // AI-generated topic ("NAD+ precursors")
     angle: content.angle, // AI-generated angle ("Industry secrets")
     tone: content.tone, // AI-generated tone ("Skeptical investigative")
     generator_name: content.generator_used, // Which generator ("contrarian")
+    format_strategy: content.format_strategy, // ✅ NEW: AI-generated format strategy
     topic_cluster: content.topic_cluster || 'health',
     
     // Legacy fields for compatibility

@@ -152,44 +152,53 @@ export class DiversityEnforcer {
   async getDiversitySummary(): Promise<void> {
     console.log(`
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🔍 DIVERSITY STATUS (Last ${this.BLACKLIST_WINDOW} Posts)
+🔍 DIVERSITY STATUS (Multi-Dimensional System)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
     
-    const [topics, angles, tones] = await Promise.all([
+    const [topics, angles, tones, formats] = await Promise.all([
       this.getLast10Topics(),
       this.getLast10Angles(),
-      this.getLast10Tones()
+      this.getLast10Tones(),
+      this.getLast4FormatStrategies()  // ✅ NEW
     ]);
     
     const uniqueTopics = new Set(topics).size;
     const uniqueAngles = new Set(angles).size;
     const uniqueTones = new Set(tones).size;
+    const uniqueFormats = new Set(formats).size;  // ✅ NEW
     
-    const totalPosts = Math.max(topics.length, angles.length, tones.length);
+    const totalPosts = Math.max(topics.length, angles.length, tones.length, formats.length);
     
     // Calculate diversity scores (higher is better)
     const topicDiversity = totalPosts > 0 ? (uniqueTopics / totalPosts) * 100 : 0;
     const angleDiversity = totalPosts > 0 ? (uniqueAngles / totalPosts) * 100 : 0;
     const toneDiversity = totalPosts > 0 ? (uniqueTones / totalPosts) * 100 : 0;
+    const formatDiversity = formats.length > 0 ? (uniqueFormats / formats.length) * 100 : 0;  // ✅ NEW
     
-    // Overall diversity score (average of all dimensions)
-    const overallDiversity = (topicDiversity + angleDiversity + toneDiversity) / 3;
+    // Overall diversity score (now includes 4 dimensions)
+    const overallDiversity = (topicDiversity + angleDiversity + toneDiversity + formatDiversity) / 4;
     
     console.log(`
-📌 TOPICS:
+📌 TOPICS (last 10):
    Total: ${topics.length} | Unique: ${uniqueTopics} | Diversity: ${topicDiversity.toFixed(0)}%
    ${topics.length === 0 ? 'No topics yet' : `Most recent: "${topics[0]}"`}
 
-📐 ANGLES:
+📐 ANGLES (last 10):
    Total: ${angles.length} | Unique: ${uniqueAngles} | Diversity: ${angleDiversity.toFixed(0)}%
    ${angles.length === 0 ? 'No angles yet' : `Most recent: "${angles[0]}"`}
 
-🎤 TONES:
+🎤 TONES (last 10):
    Total: ${tones.length} | Unique: ${uniqueTones} | Diversity: ${toneDiversity.toFixed(0)}%
    ${tones.length === 0 ? 'No tones yet' : `Most recent: "${tones[0]}"`}
 
+🎨 FORMAT STRATEGIES (last 4):
+   Total: ${formats.length} | Unique: ${uniqueFormats} | Diversity: ${formatDiversity.toFixed(0)}%
+   ${formats.length === 0 ? 'No formats yet' : `Most recent: "${formats[0].substring(0, 50)}..."`}
+
 ⭐ OVERALL DIVERSITY SCORE: ${overallDiversity.toFixed(0)}/100
    ${this.getDiversityGrade(overallDiversity)}
+   
+🎯 5-Dimensional Diversity System: ACTIVE
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     `);
@@ -229,6 +238,55 @@ export class DiversityEnforcer {
   async isToneBlacklisted(tone: string): Promise<boolean> {
     const banned = await this.getLast10Tones();
     return banned.includes(tone);
+  }
+  
+  /**
+   * Get last 4 format strategies (banned list)
+   * Lighter avoidance window since format strategies are more varied naturally
+   */
+  async getLast4FormatStrategies(): Promise<string[]> {
+    try {
+      const { data, error } = await this.supabase
+        .from('content_metadata')
+        .select('format_strategy')
+        .not('format_strategy', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(4); // Lighter window (4 vs 10 for topics/angles/tones)
+      
+      if (error) {
+        console.error('[DIVERSITY_ENFORCER] Error fetching format strategies:', error);
+        return [];
+      }
+      
+      const strategies = (data || [])
+        .map(d => d.format_strategy)
+        .filter((s): s is string => !!s && s.trim().length > 0);
+      
+      const uniqueStrategies = [...new Set(strategies)];
+      
+      console.log(`[DIVERSITY_ENFORCER] 🚫 Last ${strategies.length} format strategies (${uniqueStrategies.length} unique):`);
+      if (uniqueStrategies.length > 0) {
+        uniqueStrategies.forEach((s, i) => 
+          console.log(`   ${i + 1}. "${s.substring(0, 60)}${s.length > 60 ? '...' : ''}"`)
+        );
+      } else {
+        console.log('   (none yet - fresh start!)');
+      }
+      
+      return strategies;
+      
+    } catch (error) {
+      console.error('[DIVERSITY_ENFORCER] Exception fetching format strategies:', error);
+      return [];
+    }
+  }
+  
+  /**
+   * Check if a specific format strategy is currently blacklisted
+   */
+  async isFormatStrategyBlacklisted(strategy: string): Promise<boolean> {
+    const banned = await this.getLast4FormatStrategies();
+    return banned.includes(strategy);
   }
 }
 
