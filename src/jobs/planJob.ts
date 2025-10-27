@@ -138,22 +138,13 @@ async function callDedicatedGenerator(generatorName: string, context: any) {
       throw new Error(`Generator function ${config.fn} not found`);
     }
     
-    // Build intelligence package expected by generators
-    const intelligence = {
-      topic,
-      angle,
-      tone,
-      format_strategy: formatStrategy,
-      dimension: dynamicTopic?.dimension || 'health',
-      cluster: dynamicTopic?.cluster_sampled || 'educational',
-      viral_potential: dynamicTopic?.viral_potential || 0.7
-    };
-    
     // Call generator with correct parameters
+    // Note: intelligence parameter is optional - generators work without it
+    // We pass topic directly, generators will use their specialized prompts
     const result = await generateFn({
       topic,
       format: 'single', // Start with singles, let generators decide threads
-      intelligence
+      intelligence: undefined // Generators work without full intelligence package
     });
     
     // Transform generator response to expected format
