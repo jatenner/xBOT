@@ -106,19 +106,19 @@ async function generateRealContent(): Promise<void> {
 async function callDedicatedGenerator(generatorName: string, context: any) {
   const { topic, angle, tone, formatStrategy, dynamicTopic } = context;
   
-  // Map generator names to their module files and function names
+  // Map generator names (from generatorMatcher) to their module files and function names
   const generatorMap: Record<string, { module: string, fn: string }> = {
     'provocateur': { module: 'provocateurGenerator', fn: 'generateProvocateurContent' },
-    'dataScientist': { module: 'dataNerdGenerator', fn: 'generateDataNerdContent' },
+    'dataNerd': { module: 'dataNerdGenerator', fn: 'generateDataNerdContent' },
     'mythBuster': { module: 'mythBusterGenerator', fn: 'generateMythBusterContent' },
     'contrarian': { module: 'contrarianGenerator', fn: 'generateContrarianContent' },
     'storyteller': { module: 'storytellerGenerator', fn: 'generateStorytellerContent' },
-    'protocolBuilder': { module: 'coachGenerator', fn: 'generateCoachContent' },
-    'researchTranslator': { module: 'philosopherGenerator', fn: 'generatePhilosopherContent' },
-    'culturalCritic': { module: 'culturalBridgeGenerator', fn: 'generateCulturalBridgeContent' },
-    'industryWatchdog': { module: 'newsReporterGenerator', fn: 'generateNewsReporterContent' },
-    'skepticalInvestigator': { module: 'explorerGenerator', fn: 'generateExplorerContent' },
-    'trendForecaster': { module: 'thoughtLeaderGenerator', fn: 'generateThoughtLeaderContent' },
+    'coach': { module: 'coachGenerator', fn: 'generateCoachContent' },
+    'philosopher': { module: 'philosopherGenerator', fn: 'generatePhilosopherContent' },
+    'culturalBridge': { module: 'culturalBridgeGenerator', fn: 'generateCulturalBridgeContent' },
+    'newsReporter': { module: 'newsReporterGenerator', fn: 'generateNewsReporterContent' },
+    'explorer': { module: 'explorerGenerator', fn: 'generateExplorerContent' },
+    'thoughtLeader': { module: 'thoughtLeaderGenerator', fn: 'generateThoughtLeaderContent' },
   };
   
   const config = generatorMap[generatorName];
