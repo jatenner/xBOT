@@ -80,7 +80,7 @@ export class DynamicTopicGenerator {
             { role: 'system', content: prompt.system },
             { role: 'user', content: prompt.user }
           ],
-          temperature: 1.5, // ✨ INCREASED from 0.9 for MORE creativity
+          temperature: 0.9, // Balanced: creative but coherent (1.5 was causing gibberish)
           max_tokens: 400,
           response_format: { type: 'json_object' }
         }, {
