@@ -41,72 +41,111 @@ export async function replyOpportunityHarvester(): Promise<void> {
     const needToHarvest = TARGET_POOL_SIZE - poolSize;
     console.log(`[HARVESTER] 🎯 Need to harvest ~${needToHarvest} opportunities`);
     
-    // Step 3: Get discovered accounts
-    const { data: accounts } = await supabase
-      .from('discovered_accounts')
-      .select('username, follower_count')
-      .gte('follower_count', 10000)
-      .lte('follower_count', 500000)
-      .order('last_updated', { ascending: false })
-      .limit(50); // Get top 50 accounts
-    
-    if (!accounts || accounts.length === 0) {
-      console.log('[HARVESTER] ⚠️ No accounts in pool, waiting for discovery job');
-      return;
+  // Step 3: Get discovered accounts (UNLIMITED - sorted by priority)
+  const { data: accounts } = await supabase
+    .from('discovered_accounts')
+    .select('username, follower_count, quality_score, engagement_rate, scrape_priority')
+    .gte('follower_count', 50000)  // 10K → 50K (bigger reach)
+    .lte('follower_count', 500000)
+    .order('scrape_priority', { ascending: false })  // Best quality first
+    .order('last_scraped_at', { ascending: true, nullsFirst: true })  // Least recently scraped
+    .limit(100); // Top 100 candidates (not a hard limit, just query size)
+  
+  if (!accounts || accounts.length === 0) {
+    console.log('[HARVESTER] ⚠️ No accounts in pool, waiting for discovery job');
+    return;
+  }
+  
+  console.log(`[HARVESTER] 📋 Found ${accounts.length} high-quality accounts in pool`);
+  
+  // Step 4: TIME-BOXED PARALLEL HARVESTING (NO hardcoded account limits!)
+  const { realTwitterDiscovery } = await import('../ai/realTwitterDiscovery');
+  const { getReplyQualityScorer } = await import('../intelligence/replyQualityScorer');
+  
+  let totalHarvested = 0;
+  let accountsProcessed = 0;
+  
+  const TIME_BUDGET = 25 * 60 * 1000; // 25 minutes max
+  const BATCH_SIZE = 3; // Process 3 accounts simultaneously (MAX_CONTEXTS)
+  const startTime = Date.now();
+  
+  console.log(`[HARVESTER] 🌐 Starting UNLIMITED parallel harvesting (time budget: 25min, batch size: 3)...`);
+  
+  // Process accounts in parallel batches until time runs out
+  for (let i = 0; i < accounts.length; i += BATCH_SIZE) {
+    // Check time budget
+    const elapsed = Date.now() - startTime;
+    if (elapsed >= TIME_BUDGET) {
+      console.log(`[HARVESTER] ⏰ Time budget exhausted (${(elapsed/1000).toFixed(1)}s) - processed ${accountsProcessed} accounts`);
+      break;
     }
     
-    console.log(`[HARVESTER] 📋 Found ${accounts.length} accounts to harvest from`);
+    // Get next batch (3 accounts)
+    const batch = accounts.slice(i, i + BATCH_SIZE);
     
-    // Step 4: Harvest opportunities
-    const { realTwitterDiscovery } = await import('../ai/realTwitterDiscovery');
-    let totalHarvested = 0;
-    const accountsToScrape = Math.min(20, accounts.length); // Scrape up to 20 accounts per cycle
+    console.log(`[HARVESTER]   Batch ${Math.floor(i/BATCH_SIZE) + 1}: Processing ${batch.length} accounts in parallel...`);
     
-    console.log(`[HARVESTER] 🌐 Scraping ${accountsToScrape} accounts...`);
-    
-    for (let i = 0; i < accountsToScrape; i++) {
-      const account = accounts[i];
-      
-      try {
-        console.log(`[HARVESTER]   ${i + 1}/${accountsToScrape} → @${account.username}...`);
-        
-        const opportunities = await realTwitterDiscovery.findReplyOpportunitiesFromAccount(
-          String(account.username)
-        );
-        
-        if (opportunities && opportunities.length > 0) {
-          // Filter for <24 hours old (uses posted_minutes_ago field)
-          const fresh = opportunities.filter(opp => {
-            if (!opp.posted_minutes_ago) return false;
-            const tweetAgeHours = opp.posted_minutes_ago / 60;
-            return tweetAgeHours < 24;
-          });
+    // Scrape all 3 accounts IN PARALLEL
+    const batchResults = await Promise.allSettled(
+      batch.map(async (account) => {
+        try {
+          console.log(`[HARVESTER]     → @${account.username} (${account.follower_count?.toLocaleString()} followers, priority: ${account.scrape_priority || 50})...`);
           
-          console.log(`[HARVESTER]     ✓ Found ${fresh.length} fresh opportunities (<24h)`);
+          const opportunities = await realTwitterDiscovery.findReplyOpportunitiesFromAccount(
+            String(account.username),
+            account.follower_count || 0,  // NEW: Pass follower count for engagement rate
+            account.engagement_rate || undefined  // NEW: Pass account engagement rate
+          );
           
-          // Store in database
-          if (fresh.length > 0) {
-            await realTwitterDiscovery.storeOpportunities(fresh);
-            totalHarvested += fresh.length;
-          }
-        } else {
-          console.log(`[HARVESTER]     ✗ No opportunities found`);
+          // Update last_scraped_at
+          await supabase
+            .from('discovered_accounts')
+            .update({ last_scraped_at: new Date().toISOString() })
+            .eq('username', account.username);
+          
+          return { account, opportunities };
+        } catch (error: any) {
+          console.error(`[HARVESTER]       ✗ Failed @${account.username}:`, error.message);
+          return { account, opportunities: [] };
         }
+      })
+    );
+    
+    // Collect results
+    batchResults.forEach((result, idx) => {
+      if (result.status === 'fulfilled' && result.value.opportunities.length > 0) {
+        const { account, opportunities } = result.value;
+        totalHarvested += opportunities.length;
+        accountsProcessed++;
         
-        // Small delay between accounts to avoid rate limits
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        // Log tier breakdown
+        const golden = opportunities.filter((o: any) => o.tier === 'golden').length;
+        const good = opportunities.filter((o: any) => o.tier === 'good').length;
+        const acceptable = opportunities.filter((o: any) => o.tier === 'acceptable').length;
         
-        // Stop early if we've harvested enough
-        if (totalHarvested >= needToHarvest) {
-          console.log(`[HARVESTER] 🎯 Target reached! Harvested ${totalHarvested} opportunities`);
-          break;
-        }
-        
-      } catch (error: any) {
-        console.error(`[HARVESTER]     ✗ Failed to scrape @${account.username}:`, error.message);
-        continue;
+        console.log(`[HARVESTER]       ✓ ${account.username}: ${opportunities.length} opps (${golden} golden, ${good} good, ${acceptable} acceptable)`);
+      } else if (result.status === 'fulfilled') {
+        accountsProcessed++;
+        console.log(`[HARVESTER]       ✗ ${batch[idx].username}: No opportunities`);
       }
+    });
+    
+    // Check if we have enough GOLDEN opportunities to stop early
+    const { count: goldenCount } = await supabase
+      .from('reply_opportunities')
+      .select('*', { count: 'exact', head: true })
+      .eq('tier', 'golden')
+      .eq('replied_to', false)
+      .gt('expires_at', new Date().toISOString());
+    
+    if ((goldenCount || 0) >= 30) {
+      console.log(`[HARVESTER] 🎯 Found ${goldenCount} golden opportunities - stopping early!`);
+      break;
     }
+    
+    // Small delay between batches
+    await new Promise(resolve => setTimeout(resolve, 2000));
+  }
     
     // Step 5: Clean up old opportunities (>24 hours)
     const { error: cleanupError } = await supabase
@@ -120,24 +159,52 @@ export async function replyOpportunityHarvester(): Promise<void> {
       console.log(`[HARVESTER] 🧹 Cleaned up opportunities >24h old`);
     }
     
-    // Step 6: Report final status
-    const { count: finalCount } = await supabase
-      .from('reply_opportunities')
-      .select('*', { count: 'exact', head: true })
-      .gte('tweet_posted_at', twentyFourHoursAgo.toISOString());
-    
-    const finalPoolSize = finalCount || 0;
-    
-    console.log(`[HARVESTER] ✅ Harvest complete!`);
-    console.log(`[HARVESTER] 📊 Pool size: ${poolSize} → ${finalPoolSize}`);
-    console.log(`[HARVESTER] 🌾 Harvested: ${totalHarvested} new opportunities`);
-    
-    if (finalPoolSize < MIN_POOL_SIZE) {
-      console.warn(`[HARVESTER] ⚠️ Pool still low (${finalPoolSize}/${MIN_POOL_SIZE})`);
-      console.log(`[HARVESTER] 💡 Will harvest more in next cycle`);
-    } else {
-      console.log(`[HARVESTER] ✅ Pool healthy (${finalPoolSize}/${TARGET_POOL_SIZE})`);
-    }
+  // Step 6: Report final status with tier breakdown
+  const { count: finalCount } = await supabase
+    .from('reply_opportunities')
+    .select('*', { count: 'exact', head: true })
+    .gte('tweet_posted_at', twentyFourHoursAgo.toISOString());
+  
+  const finalPoolSize = finalCount || 0;
+  
+  // Get tier breakdown
+  const { count: goldenCount } = await supabase
+    .from('reply_opportunities')
+    .select('*', { count: 'exact', head: true })
+    .eq('tier', 'golden')
+    .eq('replied_to', false)
+    .gt('expires_at', new Date().toISOString());
+  
+  const { count: goodCount } = await supabase
+    .from('reply_opportunities')
+    .select('*', { count: 'exact', head: true })
+    .eq('tier', 'good')
+    .eq('replied_to', false)
+    .gt('expires_at', new Date().toISOString());
+  
+  const { count: acceptableCount } = await supabase
+    .from('reply_opportunities')
+    .select('*', { count: 'exact', head: true })
+    .eq('tier', 'acceptable')
+    .eq('replied_to', false)
+    .gt('expires_at', new Date().toISOString());
+  
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+  
+  console.log(`[HARVESTER] ✅ Harvest complete in ${elapsed}s!`);
+  console.log(`[HARVESTER] 📊 Pool size: ${poolSize} → ${finalPoolSize}`);
+  console.log(`[HARVESTER] 🌾 Harvested: ${totalHarvested} new opportunities from ${accountsProcessed} accounts`);
+  console.log(`[HARVESTER] 🏆 Quality breakdown:`);
+  console.log(`[HARVESTER]   GOLDEN: ${goldenCount || 0} (0.5%+ eng, <60min, <5 replies)`);
+  console.log(`[HARVESTER]   GOOD: ${goodCount || 0} (0.2%+ eng, <180min, <12 replies)`);
+  console.log(`[HARVESTER]   ACCEPTABLE: ${acceptableCount || 0} (0.05%+ eng, <720min, <20 replies)`);
+  
+  if (finalPoolSize < MIN_POOL_SIZE) {
+    console.warn(`[HARVESTER] ⚠️ Pool still low (${finalPoolSize}/${MIN_POOL_SIZE})`);
+    console.log(`[HARVESTER] 💡 Will harvest more in next cycle`);
+  } else {
+    console.log(`[HARVESTER] ✅ Pool healthy (${finalPoolSize}/${TARGET_POOL_SIZE})`);
+  }
     
   } catch (error: any) {
     console.error('[HARVESTER] ❌ Harvest failed:', error.message);

@@ -234,9 +234,17 @@ export class RealTwitterDiscovery {
 
   /**
    * Discover reply opportunities from an account (REAL SCRAPING)
+   * 
+   * @param username - Twitter username to scrape
+   * @param accountFollowers - Follower count of the account (for engagement rate calculation)
+   * @param accountEngagementRate - Optional known engagement rate for the account
    */
-  async findReplyOpportunitiesFromAccount(username: string): Promise<ReplyOpportunity[]> {
-    console.log(`[REAL_DISCOVERY] 🎯 Finding reply opportunities from @${username}...`);
+  async findReplyOpportunitiesFromAccount(
+    username: string, 
+    accountFollowers: number = 0,
+    accountEngagementRate?: number
+  ): Promise<ReplyOpportunity[]> {
+    console.log(`[REAL_DISCOVERY] 🎯 Finding reply opportunities from @${username} (${accountFollowers.toLocaleString()} followers)...`);
     
     const pool = UnifiedBrowserPool.getInstance();
     const page = await pool.acquirePage('timeline_scrape');
@@ -300,38 +308,66 @@ export class RealTwitterDiscovery {
               const authorMatch = (authorEl?.textContent || '').match(/@(\w+)/);
               const author = authorMatch ? authorMatch[1] : '';
               
-              // Filter criteria for reply opportunities
-              const hasContent = content.length > 20;
-              const notTooManyReplies = replyCount < 100; // Sweet spot for visibility
-              const hasEngagement = likeCount >= 1; // ✅ FIXED: Allow tweets with 1+ likes (was 6+)
-              const noLinks = !content.includes('bit.ly') && !content.includes('amzn'); // ✅ FIXED: Only block affiliate links, allow educational links
-              const isRecent = postedMinutesAgo <= 4320; // ✅ FIXED: <3 days old (was <24hrs)
-              
-              if (hasContent && notTooManyReplies && hasEngagement && noLinks && isRecent && tweetId && author) {
-                results.push({
-                  tweet_id: tweetId,
-                  tweet_url: `https://x.com/${author}/status/${tweetId}`,
-                  tweet_content: content,
-                  tweet_author: author,
-                  reply_count: replyCount,
-                  like_count: likeCount,
-                  posted_minutes_ago: postedMinutesAgo // 🕐 REAL timestamp!
-                });
-              }
+            // ENGAGEMENT RATE BASED FILTERING (no absolute like counts!)
+            const hasContent = content.length > 20;
+            const noLinks = !content.includes('bit.ly') && !content.includes('amzn');
+            
+            // Pass through all tweets with basic filters
+            // Tier filtering happens in the next step with engagement rate
+            if (hasContent && noLinks && tweetId && author) {
+              results.push({
+                tweet_id: tweetId,
+                tweet_url: `https://x.com/${author}/status/${tweetId}`,
+                tweet_content: content,
+                tweet_author: author,
+                reply_count: replyCount,
+                like_count: likeCount,
+                posted_minutes_ago: postedMinutesAgo // 🕐 REAL timestamp!
+              });
+            }
             }
             
             return results;
           });
           
-          console.log(`[REAL_DISCOVERY] ✅ Found ${opportunities.length} reply opportunities from @${username}`);
-          
-          // Calculate opportunity scores (use real timestamps from scraper!)
-          return opportunities.map((opp: any) => ({
-            ...opp,
-            account_username: username,
-            // posted_minutes_ago already extracted from Twitter! No hardcoding.
-            opportunity_score: this.calculateOpportunityScore(opp.like_count, opp.reply_count)
-          }));
+        console.log(`[REAL_DISCOVERY] ✅ Scraped ${opportunities.length} raw tweets from @${username}`);
+        
+        // Calculate engagement rate and tier for each opportunity
+        const { getReplyQualityScorer } = await import('../intelligence/replyQualityScorer');
+        const scorer = getReplyQualityScorer();
+        
+        const tieredOpportunities = opportunities
+          .map((opp: any) => {
+            const engagementRate = scorer.calculateEngagementRate(opp.like_count, accountFollowers);
+            const tier = scorer.calculateTier({
+              like_count: opp.like_count,
+              reply_count: opp.reply_count,
+              posted_minutes_ago: opp.posted_minutes_ago,
+              account_followers: accountFollowers
+            });
+            const momentum = scorer.calculateMomentum(opp.like_count, opp.posted_minutes_ago);
+            
+            return {
+              ...opp,
+              account_username: username,
+              account_followers: accountFollowers,
+              engagement_rate: engagementRate,
+              tier: tier,
+              momentum_score: momentum,
+              opportunity_score: this.calculateOpportunityScore(opp.like_count, opp.reply_count),
+              expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString() // 6 hours
+            };
+          })
+          .filter((opp: any) => opp.tier !== null); // Only keep tweets that meet tier thresholds
+        
+        // Log tier breakdown
+        const golden = tieredOpportunities.filter(o => o.tier === 'golden').length;
+        const good = tieredOpportunities.filter(o => o.tier === 'good').length;
+        const acceptable = tieredOpportunities.filter(o => o.tier === 'acceptable').length;
+        
+        console.log(`[REAL_DISCOVERY] 🎯 Quality filtered: ${tieredOpportunities.length} opportunities (${golden} golden, ${good} good, ${acceptable} acceptable)`);
+        
+        return tieredOpportunities;
           
     } catch (error: any) {
       console.error(`[REAL_DISCOVERY] ❌ Failed to find opportunities from @${username}:`, error.message);
@@ -504,7 +540,7 @@ export class RealTwitterDiscovery {
         await supabase
           .from('reply_opportunities')
           .upsert({
-            // ✅ FIXED: Use correct schema column names
+            // Core fields
             account_username: opp.account_username,
             target_username: opp.tweet_author,
             target_tweet_id: opp.tweet_id,
@@ -515,16 +551,28 @@ export class RealTwitterDiscovery {
             posted_minutes_ago: opp.posted_minutes_ago,
             opportunity_score: opp.opportunity_score,
             tweet_posted_at: tweetPostedAt,
-            status: 'pending'
+            status: 'pending',
+            // NEW: Engagement rate & tiering
+            engagement_rate: (opp as any).engagement_rate,
+            tier: (opp as any).tier,
+            momentum_score: (opp as any).momentum_score,
+            account_followers: (opp as any).account_followers,
+            expires_at: (opp as any).expires_at,
+            replied_to: false
           }, {
-            onConflict: 'target_tweet_id'  // ✅ FIXED: Use correct unique column name
+            onConflict: 'target_tweet_id'
           });
       } catch (error: any) {
         console.error(`[REAL_DISCOVERY] ⚠️ Failed to store opportunity ${opp.tweet_id}:`, error.message);
       }
     }
     
-    console.log(`[REAL_DISCOVERY] 💾 Stored ${opportunities.length} reply opportunities in database`);
+    // Log tier breakdown
+    const golden = opportunities.filter((o: any) => o.tier === 'golden').length;
+    const good = opportunities.filter((o: any) => o.tier === 'good').length;
+    const acceptable = opportunities.filter((o: any) => o.tier === 'acceptable').length;
+    
+    console.log(`[REAL_DISCOVERY] 💾 Stored ${opportunities.length} opportunities: ${golden} golden, ${good} good, ${acceptable} acceptable`);
   }
 }
 
