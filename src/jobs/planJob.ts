@@ -173,6 +173,8 @@ async function generateContentWithLLM() {
     temperature: 1.2, // High creativity with diversity system
     top_p: 0.95,
     max_tokens: 350,
+    // ⚠️ CRITICAL: When using json_object, the prompt MUST contain the word "json"
+    // See buildContentPrompt() - user message starts with "Return your response as valid JSON format"
     response_format: { type: 'json_object' }
   }, {
     purpose: 'content_generation',
@@ -198,17 +200,19 @@ Be specific, interesting, and match the tone precisely. Let the content speak fo
 
     const user = `Create content about "${topic}" from this angle: "${angle}" using this tone: "${tone}".
 
+⚠️ CRITICAL: Return your response as valid JSON format (required for API).
+
 RANDOMLY select format with genuine randomness:
 - 93% probability: Single tweet (260 chars max)
 - 7% probability: Thread (3-5 connected tweets)
 
-For SINGLE tweet (93% chance):
+For SINGLE tweet (93% chance) - return JSON:
 {
   "text": "Your tweet content here (260 chars max)",
   "format": "single"
 }
 
-For THREAD (7% chance - use when topic needs depth):
+For THREAD (7% chance - use when topic needs depth) - return JSON:
 {
   "text": [
     "Tweet 1: Hook or opening insight (200-260 chars)",
