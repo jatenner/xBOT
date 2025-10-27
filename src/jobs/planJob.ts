@@ -147,28 +147,8 @@ async function callDedicatedGenerator(generatorName: string, context: any) {
       intelligence: undefined // Generators work without full intelligence package
     });
     
-    // ✨ CHARACTER LIMIT VALIDATION
-    const content = result.content;
-    if (content && content.length > 280) {
-      console.log(`[SYSTEM_B] ⚠️ Content too long (${content.length} chars), trimming to 280...`);
-      const trimmed = content.substring(0, 277) + '...';
-      console.log(`[SYSTEM_B] ✅ Trimmed to ${trimmed.length} chars`);
-      
-      return {
-        text: trimmed,
-        format: result.format,
-        topic,
-        angle,
-        tone,
-        // Pass through meta-awareness attributes
-        angle_type: context.angle_type,
-        tone_is_singular: context.tone_is_singular,
-        tone_cluster: context.tone_cluster,
-        structural_type: context.structural_type
-      };
-    }
-
     // Transform generator response to expected format
+    // Note: Character validation handled by generatorUtils.ts (single source of truth)
     return {
       text: result.content,
       format: result.format,
@@ -190,6 +170,28 @@ async function callDedicatedGenerator(generatorName: string, context: any) {
 async function generateContentWithLLM() {
   const flags = getConfig();
   const decision_id = uuidv4();
+  
+  // ═══════════════════════════════════════════════════════════
+  // 🚦 HOURLY QUOTA CHECK: Enforce 2 posts/hour limit
+  // ═══════════════════════════════════════════════════════════
+  const supabase = getSupabaseClient();
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  
+  const { count: postsThisHour } = await supabase
+    .from('content_metadata')
+    .select('*', { count: 'exact', head: true })
+    .eq('decision_type', 'single')
+    .gte('created_at', oneHourAgo.toISOString());
+  
+  console.log(`[PLAN_JOB] 📊 Hourly quota: ${postsThisHour || 0}/2 posts generated in last 60 minutes`);
+  
+  if ((postsThisHour || 0) >= 2) {
+    console.log('[PLAN_JOB] ⏸️ Hourly quota reached (2/2) - skipping content generation');
+    console.log('[PLAN_JOB] ⏰ Will resume at next hour when quota resets');
+    return null; // Exit early - don't generate more content
+  }
+  
+  console.log(`[PLAN_JOB] ✅ Quota available - proceeding with content generation`);
   
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('🎯 DIVERSITY SYSTEM: Multi-Dimensional Content Generation');
