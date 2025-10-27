@@ -147,6 +147,27 @@ async function callDedicatedGenerator(generatorName: string, context: any) {
       intelligence: undefined // Generators work without full intelligence package
     });
     
+    // ✨ CHARACTER LIMIT VALIDATION
+    const content = result.content;
+    if (content && content.length > 280) {
+      console.log(`[SYSTEM_B] ⚠️ Content too long (${content.length} chars), trimming to 280...`);
+      const trimmed = content.substring(0, 277) + '...';
+      console.log(`[SYSTEM_B] ✅ Trimmed to ${trimmed.length} chars`);
+      
+      return {
+        text: trimmed,
+        format: result.format,
+        topic,
+        angle,
+        tone,
+        // Pass through meta-awareness attributes
+        angle_type: context.angle_type,
+        tone_is_singular: context.tone_is_singular,
+        tone_cluster: context.tone_cluster,
+        structural_type: context.structural_type
+      };
+    }
+
     // Transform generator response to expected format
     return {
       text: result.content,
@@ -434,17 +455,17 @@ async function queueContent(content: any): Promise<void> {
     thread_parts: Array.isArray(content.text) ? content.text : null
   };
   
-  // ✨ TRY to add meta-awareness fields (may fail if schema cache not refreshed)
-  // If Supabase rejects these, the insert will still succeed without them
-  try {
-    if (content.topic_cluster_sampled) insertPayload.topic_cluster = content.topic_cluster_sampled;
-    if (content.angle_type) insertPayload.angle_type = content.angle_type;
-    if (content.tone_is_singular !== undefined) insertPayload.tone_is_singular = content.tone_is_singular;
-    if (content.tone_cluster) insertPayload.tone_cluster = content.tone_cluster;
-    if (content.structural_type) insertPayload.structural_type = content.structural_type;
-  } catch (e) {
-    console.log('[QUEUE_CONTENT] ⚠️ Meta-awareness fields not yet in schema, skipping...');
-  }
+    // ✨ SCHEMA CACHE WORKAROUND: Make meta-awareness fields optional
+    // If Supabase rejects these, the insert will still succeed without them
+    try {
+      if (content.topic_cluster_sampled) insertPayload.topic_cluster = content.topic_cluster_sampled;
+      if (content.angle_type) insertPayload.angle_type = content.angle_type;
+      if (content.tone_is_singular !== undefined) insertPayload.tone_is_singular = content.tone_is_singular;
+      if (content.tone_cluster) insertPayload.tone_cluster = content.tone_cluster;
+      if (content.structural_type) insertPayload.structural_type = content.structural_type;
+    } catch (e) {
+      console.log('[QUEUE_CONTENT] ⚠️ Meta-awareness fields not yet in schema, skipping...');
+    }
   
   const { data, error} = await supabase.from('content_metadata').insert([insertPayload]);
   
