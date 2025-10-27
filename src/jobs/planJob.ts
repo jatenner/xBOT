@@ -106,51 +106,66 @@ async function generateRealContent(): Promise<void> {
 async function callDedicatedGenerator(generatorName: string, context: any) {
   const { topic, angle, tone, formatStrategy, dynamicTopic } = context;
   
-  // Map generator names to their actual files (with Generator suffix)
-  const generatorMap: Record<string, string> = {
-    'provocateur': 'provocateurGenerator',
-    'dataScientist': 'dataNerdGenerator',
-    'mythBuster': 'mythBusterGenerator',
-    'contrarian': 'contrarianGenerator',
-    'storyteller': 'storytellerGenerator',
-    'protocolBuilder': 'coachGenerator',  // Protocol builder maps to coach
-    'researchTranslator': 'philosopherGenerator',  // Research translator maps to philosopher
-    'culturalCritic': 'culturalBridgeGenerator',
-    'industryWatchdog': 'newsReporterGenerator',
-    'skepticalInvestigator': 'explorerGenerator',
-    'trendForecaster': 'thoughtLeaderGenerator',
+  // Map generator names to their module files and function names
+  const generatorMap: Record<string, { module: string, fn: string }> = {
+    'provocateur': { module: 'provocateurGenerator', fn: 'generateProvocateurContent' },
+    'dataScientist': { module: 'dataNerdGenerator', fn: 'generateDataNerdContent' },
+    'mythBuster': { module: 'mythBusterGenerator', fn: 'generateMythBusterContent' },
+    'contrarian': { module: 'contrarianGenerator', fn: 'generateContrarianContent' },
+    'storyteller': { module: 'storytellerGenerator', fn: 'generateStorytellerContent' },
+    'protocolBuilder': { module: 'coachGenerator', fn: 'generateCoachContent' },
+    'researchTranslator': { module: 'philosopherGenerator', fn: 'generatePhilosopherContent' },
+    'culturalCritic': { module: 'culturalBridgeGenerator', fn: 'generateCulturalBridgeContent' },
+    'industryWatchdog': { module: 'newsReporterGenerator', fn: 'generateNewsReporterContent' },
+    'skepticalInvestigator': { module: 'explorerGenerator', fn: 'generateExplorerContent' },
+    'trendForecaster': { module: 'thoughtLeaderGenerator', fn: 'generateThoughtLeaderContent' },
   };
   
-  const moduleName = generatorMap[generatorName];
-  if (!moduleName) {
+  const config = generatorMap[generatorName];
+  if (!config) {
     console.error(`[SYSTEM_B] ❌ Generator not mapped: ${generatorName}`);
     throw new Error(`Unknown generator: ${generatorName}`);
   }
   
   try {
-    console.log(`[SYSTEM_B] 🎭 Calling ${moduleName}...`);
+    console.log(`[SYSTEM_B] 🎭 Calling ${config.module}.${config.fn}()...`);
     
-    const generatorModule = await import(`../generators/${moduleName}.js`);
-    const generateFn = generatorModule.default || generatorModule.generate || generatorModule[moduleName];
+    const generatorModule = await import(`../generators/${config.module}.js`);
+    const generateFn = generatorModule[config.fn];
     
     if (typeof generateFn !== 'function') {
-      console.error(`[SYSTEM_B] ❌ Generator ${moduleName} has no callable function`);
-      throw new Error(`Generator ${moduleName} not callable`);
+      console.error(`[SYSTEM_B] ❌ Function ${config.fn} not found in ${config.module}`);
+      throw new Error(`Generator function ${config.fn} not found`);
     }
     
-    const result = await generateFn({
+    // Build intelligence package expected by generators
+    const intelligence = {
       topic,
       angle,
       tone,
-      formatStrategy,
-      dimension: dynamicTopic?.dimension,
-      cluster: dynamicTopic?.cluster_sampled,
-      viral_potential: dynamicTopic?.viral_potential
-    });
+      format_strategy: formatStrategy,
+      dimension: dynamicTopic?.dimension || 'health',
+      cluster: dynamicTopic?.cluster_sampled || 'educational',
+      viral_potential: dynamicTopic?.viral_potential || 0.7
+    };
     
-    return result;
+    const result = await generateFn({ intelligence });
+    
+    // Transform generator response to expected format
+    return {
+      text: result.content,
+      format: result.format,
+      topic,
+      angle,
+      tone,
+      // Pass through meta-awareness attributes
+      angle_type: context.angle_type,
+      tone_is_singular: context.tone_is_singular,
+      tone_cluster: context.tone_cluster,
+      structural_type: context.structural_type
+    };
   } catch (error: any) {
-    console.error(`[SYSTEM_B] ❌ Error calling ${moduleName}:`, error.message);
+    console.error(`[SYSTEM_B] ❌ Error calling ${config.module}:`, error.message);
     throw error;
   }
 }
@@ -322,9 +337,9 @@ WHEN to choose SINGLE:
   }
 
   // Validate and clean the response - handle both single tweets and threads
-  const tweetText = contentData.text || contentData.tweet || contentData.content;
+  const tweetText = contentData.text;
   if (!tweetText) {
-    console.error('[PLAN_JOB] ❌ LLM response missing text field:', contentData);
+    console.error('[PLAN_JOB] ❌ Generator response missing text field:', contentData);
     throw new Error('Invalid content: missing text field');
   }
   
