@@ -308,6 +308,22 @@ export class JobManager {
         15 * MINUTE, // Every 15 minutes - aligned with MIN_MINUTES_BETWEEN
         15 * MINUTE // Start after 15 minutes (AFTER first harvest at 10min + buffer)
       );
+      
+      // 📊 REPLY CONVERSION TRACKING JOB - every 60 min, offset 60 min
+      // 🎯 Tracks which replies drive followers and updates account priorities
+      this.scheduleStaggeredJob(
+        'reply_conversion_tracking',
+        async () => {
+          await this.safeExecute('reply_conversion_tracking', async () => {
+            const { getReplyConversionTracker } = await import('../learning/replyConversionTracker');
+            const tracker = getReplyConversionTracker();
+            await tracker.trackPendingReplies();
+            await tracker.updateAccountPriorities();
+          });
+        },
+        60 * MINUTE, // Every 60 minutes
+        60 * MINUTE // Start after 60 minutes (give time for replies to get engagement)
+      );
     } else {
       console.log('⚠️  JOB_MANAGER: Reply jobs DISABLED (ENABLE_REPLIES not set or flags.replyEnabled false)');
       console.log(`   • ENABLE_REPLIES: ${process.env.ENABLE_REPLIES}`);

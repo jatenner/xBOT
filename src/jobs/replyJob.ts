@@ -302,29 +302,82 @@ async function generateRealReplies(): Promise<void> {
     return;
   }
   
-  // 🚀 QUERY OPPORTUNITIES FROM DATABASE POOL (populated by harvester)
-  console.log('[REPLY_JOB] 🔍 Querying reply opportunities from database pool...');
+  // 🚀 SMART OPPORTUNITY SELECTION (tier-based, not replied to, not expired)
+  console.log('[REPLY_JOB] 🔍 Selecting best reply opportunities (tier-based prioritization)...');
   const supabaseClient = getSupabaseClient();
   
-  // Get fresh opportunities (<24h old, not yet replied to)
-  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const { data: dbOpportunities, error: oppError } = await supabaseClient
+  // Query ALL active opportunities (not replied to, not expired)
+  const { data: allOpportunities, error: oppError } = await supabaseClient
     .from('reply_opportunities')
     .select('*')
-    .eq('status', 'pending')
-    .gte('tweet_posted_at', twentyFourHoursAgo.toISOString())
-    .order('opportunity_score', { ascending: false })
-    .limit(10);
+    .eq('replied_to', false)
+    .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString())
+    .order('created_at', { ascending: false })
+    .limit(100); // Get pool of 100 to filter from
   
   if (oppError) {
     console.error('[REPLY_JOB] ❌ Failed to query opportunities:', oppError.message);
     return;
   }
   
-  if (!dbOpportunities || dbOpportunities.length === 0) {
+  if (!allOpportunities || allOpportunities.length === 0) {
     console.log('[REPLY_JOB] ⚠️ No opportunities in pool, waiting for harvester...');
     return;
   }
+  
+  // Log tier breakdown
+  const golden = allOpportunities.filter(o => o.tier === 'golden').length;
+  const good = allOpportunities.filter(o => o.tier === 'good').length;
+  const acceptable = allOpportunities.filter(o => o.tier === 'acceptable').length;
+  
+  console.log(`[REPLY_JOB] 📊 Opportunity pool: ${allOpportunities.length} total`);
+  console.log(`[REPLY_JOB]   🏆 GOLDEN: ${golden} (0.5%+ eng, <60min, <5 replies)`);
+  console.log(`[REPLY_JOB]   ✅ GOOD: ${good} (0.2%+ eng, <180min, <12 replies)`);
+  console.log(`[REPLY_JOB]   📊 ACCEPTABLE: ${acceptable} (0.05%+ eng, <720min, <20 replies)`);
+  
+  // SMART SELECTION: Prioritize by tier → momentum → engagement rate
+  const sortedOpportunities = [...allOpportunities].sort((a, b) => {
+    // Tier priority: golden > good > acceptable > null
+    const tierOrder: Record<string, number> = { golden: 3, good: 2, acceptable: 1 };
+    const aTier = tierOrder[a.tier || ''] || 0;
+    const bTier = tierOrder[b.tier || ''] || 0;
+    if (aTier !== bTier) return bTier - aTier; // Higher tier first
+    
+    // Within same tier, sort by momentum
+    const aMomentum = a.momentum_score || 0;
+    const bMomentum = b.momentum_score || 0;
+    if (Math.abs(aMomentum - bMomentum) > 0.1) return bMomentum - aMomentum;
+    
+    // Finally, by engagement rate
+    return (b.engagement_rate || 0) - (a.engagement_rate || 0);
+  });
+  
+  // Get recently replied accounts (last 24 hours) to avoid duplicates
+  const { data: recentReplies } = await supabaseClient
+    .from('reply_opportunities')
+    .select('target_username')
+    .eq('replied_to', true)
+    .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+  
+  const recentlyRepliedAccounts = new Set((recentReplies || []).map(r => r.target_username));
+  
+  // Filter out recently replied accounts and select top opportunities
+  const dbOpportunities = sortedOpportunities
+    .filter(opp => !recentlyRepliedAccounts.has(opp.target_username))
+    .slice(0, 10); // Top 10 opportunities
+  
+  if (dbOpportunities.length === 0) {
+    console.log('[REPLY_JOB] ⚠️ No new opportunities (all recently replied)');
+    return;
+  }
+  
+  const selectedGolden = dbOpportunities.filter(o => o.tier === 'golden').length;
+  const selectedGood = dbOpportunities.filter(o => o.tier === 'good').length;
+  const selectedAcceptable = dbOpportunities.filter(o => o.tier === 'acceptable').length;
+  
+  console.log(`[REPLY_JOB] 🎯 Selected ${dbOpportunities.length} best opportunities:`);
+  console.log(`[REPLY_JOB]   🏆 ${selectedGolden} golden, ✅ ${selectedGood} good, 📊 ${selectedAcceptable} acceptable`);
+  console.log(`[REPLY_JOB]   Filtered out ${recentlyRepliedAccounts.size} recently replied accounts`);
   
   // Convert to the format expected by strategic reply system
   const opportunities = dbOpportunities.map((opp: any) => ({
@@ -434,8 +487,9 @@ async function generateRealReplies(): Promise<void> {
       await supabaseClient
         .from('reply_opportunities')
         .update({ 
-          status: 'replied',
-          replied_at: new Date().toISOString()
+          replied_to: true,
+          reply_decision_id: decision_id,
+          status: 'replied'
         })
         .eq('target_tweet_id', reply.target_tweet_id);
       
