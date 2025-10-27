@@ -149,7 +149,12 @@ async function callDedicatedGenerator(generatorName: string, context: any) {
       viral_potential: dynamicTopic?.viral_potential || 0.7
     };
     
-    const result = await generateFn({ intelligence });
+    // Call generator with correct parameters
+    const result = await generateFn({
+      topic,
+      format: 'single', // Start with singles, let generators decide threads
+      intelligence
+    });
     
     // Transform generator response to expected format
     return {
