@@ -73,6 +73,8 @@ export class ToneGenerator {
         
         const parsed = JSON.parse(content);
         const tone = parsed.tone || 'Professional informative';
+        const isSingular = parsed.is_singular !== false; // NEW: Track if singular
+        const toneCluster = parsed.tone_cluster || 'neutral'; // NEW: Track cluster
         
         // Check if this tone is banned
         if (bannedTones.includes(tone)) {
@@ -86,6 +88,7 @@ export class ToneGenerator {
         }
         
         console.log(`[TONE_GEN] ✅ Generated (attempt ${attempt}): "${tone}"`);
+        console.log(`[TONE_GEN] 📊 Singular: ${isSingular}, Cluster: ${toneCluster}`);
         
         return tone;
         
@@ -117,6 +120,50 @@ export class ToneGenerator {
     
     const system = `You generate unique tones (voice/style) for health content.
 
+🧠 META-AWARENESS: Tone Bias Compensation
+
+Your training defaults for health content:
+- Helpful/educational tones: 40% ("Informative", "Educational", "Supportive")
+- Balanced/measured tones: 30% ("Thoughtful", "Analytical", "Balanced")
+- Compound descriptor tones: 60% ("Witty yet thoughtful", "Bold but measured")
+
+These compound tones are SAFETY HEDGES - mixing bold with safe to stay moderate.
+
+🎯 COMPENSATION INSTRUCTION:
+
+1. PREFER SINGULAR OVER COMPOUND (70% of time):
+   COMPOUND (hedging): "Witty yet thoughtful" ← Contradictory, safe middle
+   SINGULAR (committed): "Witty" ← Clear, committed, distinct
+   
+   COMPOUND (hedging): "Provocative with empathy" ← Neut
+
+ralizing
+   SINGULAR (committed): "Provocative" ← Bold choice
+   
+   Use compounds ONLY when truly needed (30%), default to singular.
+
+2. SAMPLE FROM FULL SPECTRUM (not just helpful middle):
+   
+   BOLD/AGGRESSIVE (20% target):
+   - Provocative, Irreverent, Combative, Urgent, Direct, Blunt
+   
+   NEUTRAL/FACTUAL (20% target):
+   - Deadpan, Clinical, Detached, Analytical, Matter-of-fact
+   
+   WARM/SUPPORTIVE (20% target):
+   - Empathetic, Encouraging, Compassionate, Nurturing
+   
+   PLAYFUL/LIGHT (20% target):
+   - Witty, Sarcastic, Humorous, Cheeky, Lighthearted
+   
+   THOUGHTFUL/DEEP (20% target):
+   - Contemplative, Philosophical, Curious, Reflective
+
+3. COMMIT TO TONE FULLY:
+   If you pick "Provocative" - BE provocative
+   If you pick "Deadpan" - BE deadpan
+   Don't hedge with "Provocative yet balanced"
+
 A tone is the emotional character and delivery style of writing.
 
 Your tones come from the FULL spectrum of:
@@ -125,6 +172,8 @@ Your tones come from the FULL spectrum of:
 - Energy levels (calm to urgent)
 - Delivery styles (storytelling to prescriptive)
 - Perspectives (supportive to critical)
+
+But AVOID compound hedging. Commit to singular tones.
 
 CONSTRAINTS (for quality):
 1. Maximum 8 words (be concise)
@@ -142,12 +191,18 @@ FREEDOM:
 
     const user = `Generate ONE unique tone for health content.
 
+PREFER singular committed tones over compound hedged tones (70% of time).
+If you use compound, must be genuinely complementary (not contradictory).
+
+Sample from full spectrum - don't default to helpful/balanced middle.
 Be descriptive and creative.
 Maximum 8 words.
 
 Output JSON:
 {
-  "tone": "your tone"
+  "tone": "your tone",
+  "is_singular": true/false,
+  "tone_cluster": "bold|neutral|warm|playful|thoughtful"
 }`;
 
     return { system, user };

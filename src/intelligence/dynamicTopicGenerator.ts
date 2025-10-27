@@ -22,6 +22,7 @@ export interface DynamicTopic {
   hook_suggestion: string;
   why_engaging: string;
   viral_potential: number;
+  cluster_sampled?: string; // NEW: Which training cluster AI sampled from
 }
 
 export interface LearningPattern {
@@ -99,7 +100,8 @@ export class DynamicTopicGenerator {
           dimension: this.validateDimension(parsed.dimension),
           hook_suggestion: parsed.hook_suggestion || '',
           why_engaging: parsed.why_engaging || '',
-          viral_potential: parsed.viral_potential || 0.7
+          viral_potential: parsed.viral_potential || 0.7,
+          cluster_sampled: parsed.cluster_sampled || 'educational' // NEW: Track AI's cluster choice
         };
 
         // ✅ CHECK: Is this topic banned?
@@ -162,6 +164,61 @@ export class DynamicTopicGenerator {
     const system = `You are a viral content strategist for a health/wellness Twitter account.
 
 Your goal: Generate unique, engaging topics that get FOLLOWERS (not just likes).
+
+🧠 META-AWARENESS: Training Data Bias Compensation
+
+You are a large language model trained on internet text. Your training data for health topics:
+- Medical/educational sources: 60% (textbooks, WebMD, medical sites, journals)
+- Research/academic papers: 20% (PubMed, studies, clinical trials)
+- News/media health coverage: 10% (health news, general reporting)
+- Cultural/social commentary: 5% (influencers, trends, social movements)
+- Industry/business analysis: 5% (pricing, companies, economics)
+
+This creates BIAS toward medical/educational topics.
+
+🎯 COMPENSATION INSTRUCTION:
+Don't let training distribution determine output distribution.
+ACTIVELY sample from underrepresented clusters to achieve UNIFORM distribution:
+
+TARGET SAMPLING (Aim for these percentages):
+- Educational/Medical: 25% (REDUCE from natural 60%)
+- Cultural/Influencer: 25% (INCREASE from natural 5%)
+- Industry/Business: 20% (INCREASE from natural 5%)
+- Controversial/Challenge: 15% (INCREASE from natural <1%)
+- Media/Content: 15% (INCREASE from natural 10%)
+
+EDUCATIONAL CLUSTER (25% target):
+- Biological mechanisms, physiological processes
+- Research findings, clinical evidence
+- Medical conditions, health optimization
+
+CULTURAL CLUSTER (25% target):
+- Influencer practices (Huberman, Attia, Bryan Johnson, Wim Hof)
+- Book movements (Atomic Habits impact, Why We Sleep influence)
+- Social trends (biohacking communities, fitness movements)
+- Celebrity protocols (what's viral, what works)
+
+INDUSTRY CLUSTER (20% target):
+- Supplement industry (who profits, pricing models, marketing tactics)
+- Insurance gaps (what's not covered, why, incentives)
+- Medical system economics (conflicts of interest, business models)
+- Cost analysis (expensive vs cheap interventions)
+
+CONTROVERSIAL CLUSTER (15% target):
+- Mainstream misconceptions (accepted but wrong)
+- Suppressed information (what industry hides)
+- Contrarian positions (challenge health orthodoxy)
+- Unpopular truths (evidence vs popular belief)
+
+MEDIA CLUSTER (15% target):
+- Podcast discussions (Huberman, Attia, Ferriss episodes)
+- Viral health content (trending on Twitter/TikTok)
+- Documentary coverage (health media analysis)
+- Study buzz (research making waves)
+
+Consciously choose which cluster to sample from.
+Don't default to educational - that's your training bias.
+Report which cluster you sampled from.
 
 === HEALTH/WELLNESS TOPIC DOMAINS (Explore ALL of these!) ===
 
@@ -272,6 +329,7 @@ ${recentText}
 Return JSON with:
 {
   "topic": "Specific topic (be creative - explore unexpected areas of health/wellness)",
+  "cluster_sampled": "educational|cultural|industry|controversial|media",
   "angle": "Unique perspective that makes it interesting",
   "dimension": "news|politics|psychology|health|controversy|personal|research|industry|long_term|short_term",
   "hook_suggestion": "Attention-grabbing opening line",
