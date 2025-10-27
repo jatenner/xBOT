@@ -83,7 +83,20 @@ export class FormatStrategyGenerator {
           purpose: 'format_strategy_generation'
         });
         
-        const parsed = JSON.parse(response.choices[0].message.content || '{}');
+        const content = response.choices[0].message.content || '{}';
+        let parsed;
+        try {
+          parsed = JSON.parse(content);
+        } catch (parseError) {
+          console.error('[FORMAT_STRATEGY] JSON parse error, raw content:', content.substring(0, 100));
+          // Try to extract strategy from malformed JSON
+          const match = content.match(/"strategy"\s*:\s*"([^"]+)"/);
+          if (match) {
+            parsed = { strategy: match[1] };
+          } else {
+            throw parseError;
+          }
+        }
         const strategy = parsed.strategy || 'Clear, scannable format with logical flow and visual hierarchy';
         
         // Validate it's not in recent list
@@ -167,9 +180,9 @@ Examples of creative strategies (for inspiration only - create your own):
 
 Be innovative. Create something unique and context-appropriate.
 
-Output JSON format:
+Output JSON format (IMPORTANT: Escape any quotes in your strategy text):
 {
-  "strategy": "Your unique formatting strategy description (1-2 sentences max)"
+  "strategy": "Your unique formatting strategy description (1-2 sentences max, avoid using quotes)"
 }
 `;
   }
