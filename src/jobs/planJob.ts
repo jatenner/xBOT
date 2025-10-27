@@ -195,8 +195,13 @@ Create engaging health content that:
 3. Stays within 260 characters
 4. No first-person (I/me/my)
 5. Avoid emojis (use 0-1 maximum, strongly prefer 0). Only use if genuinely adds clarity (data charts 📊📉, literal objects 🧊). Never use decorative emojis (✨🌟💫🌱).
+6. Balance expert knowledge with clear communication:
+   - Use technical terms when they add value (shows expertise)
+   - Briefly explain what they mean in simple terms or parentheses
+   - Include specific data, dosages, or mechanisms (builds credibility)
+   - Keep sentences clear and direct (no unnecessary complexity)
 
-Be specific, interesting, and match the tone precisely. Let the content speak for itself without emoji decoration.`;
+Be specific, interesting, and match the tone precisely. Sound like an expert who communicates clearly to an intelligent audience.`;
 
     const user = `Create content about "${topic}" from this angle: "${angle}" using this tone: "${tone}".
 
