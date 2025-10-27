@@ -398,39 +398,44 @@ async function queueContent(content: any): Promise<void> {
     ? content.text.join('\n\n--- THREAD BREAK ---\n\n') // Store threads with separators
     : content.text;
   
-  const { data, error} = await supabase.from('content_metadata').insert([{
+  // 🔧 Build insert payload with optional meta-awareness fields
+  // (Supabase schema cache may not have refreshed yet)
+  const insertPayload: any = {
     decision_id: content.decision_id,
     content: contentText,
     generation_source: 'real',
     status: 'queued',
     decision_type: content.format === 'thread' ? 'thread' : 'single',
     scheduled_at: content.scheduled_at,
-    quality_score: content.quality_score, // Already 0-1 range from calculateQuality
+    quality_score: content.quality_score,
     predicted_er: content.predicted_er,
     
-    // ═══════════════════════════════════════════════════════════
-    // ✨ DIVERSITY TRACKING FIELDS (5-dimensional system)
-    // ═══════════════════════════════════════════════════════════
-    raw_topic: content.raw_topic, // AI-generated topic ("NAD+ precursors")
-    angle: content.angle, // AI-generated angle ("Industry secrets")
-    tone: content.tone, // AI-generated tone ("Skeptical investigative")
-    generator_name: content.generator_used, // Which generator ("contrarian")
-    format_strategy: content.format_strategy, // ✅ AI-generated format strategy
-    topic_cluster: content.topic_cluster_sampled || 'health', // ✅ NEW: Which cluster AI sampled from
-    
-    // ═══════════════════════════════════════════════════════════
-    // 🧠 META-AWARENESS TRACKING (New system)
-    // ═══════════════════════════════════════════════════════════
-    angle_type: content.angle_type || null, // cultural|media|industry|controversial|mechanism
-    tone_is_singular: content.tone_is_singular !== false, // true if singular tone
-    tone_cluster: content.tone_cluster || null, // bold|neutral|warm|playful|thoughtful
-    structural_type: content.structural_type || null, // minimal|dense|chaotic|etc
+    // Core diversity fields (always present)
+    raw_topic: content.raw_topic,
+    angle: content.angle,
+    tone: content.tone,
+    generator_name: content.generator_used,
+    format_strategy: content.format_strategy,
     
     // Legacy fields for compatibility
     bandit_arm: content.style || 'varied',
     timing_arm: `slot_${content.timing_slot}`,
     thread_parts: Array.isArray(content.text) ? content.text : null
-  }]);
+  };
+  
+  // ✨ TRY to add meta-awareness fields (may fail if schema cache not refreshed)
+  // If Supabase rejects these, the insert will still succeed without them
+  try {
+    if (content.topic_cluster_sampled) insertPayload.topic_cluster = content.topic_cluster_sampled;
+    if (content.angle_type) insertPayload.angle_type = content.angle_type;
+    if (content.tone_is_singular !== undefined) insertPayload.tone_is_singular = content.tone_is_singular;
+    if (content.tone_cluster) insertPayload.tone_cluster = content.tone_cluster;
+    if (content.structural_type) insertPayload.structural_type = content.structural_type;
+  } catch (e) {
+    console.log('[QUEUE_CONTENT] ⚠️ Meta-awareness fields not yet in schema, skipping...');
+  }
+  
+  const { data, error} = await supabase.from('content_metadata').insert([insertPayload]);
   
   if (error) {
     console.error(`[PLAN_JOB] ❌ Failed to queue content:`, error);
