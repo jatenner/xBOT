@@ -3,6 +3,48 @@
  * Shared validation and error handling for all generators
  */
 
+export interface GeneratorResponse {
+  content: string | string[];
+  format: 'single' | 'thread';
+  topic?: string;
+  angle?: string;
+}
+
+/**
+ * Smart content trimming that preserves word boundaries
+ * Tries to trim at: 1) sentence boundary, 2) word boundary, 3) hard cut
+ */
+function smartTrim(text: string, maxLength: number = 280): string {
+  if (text.length <= maxLength) return text;
+  
+  console.log(`[SMART_TRIM] Input: ${text.length} chars, max: ${maxLength}`);
+  
+  // Strategy 1: Find last complete sentence within limit
+  const lastPeriod = text.lastIndexOf('.', maxLength - 3);
+  const lastExclamation = text.lastIndexOf('!', maxLength - 3);
+  const lastQuestion = text.lastIndexOf('?', maxLength - 3);
+  const lastSentenceEnd = Math.max(lastPeriod, lastExclamation, lastQuestion);
+  
+  if (lastSentenceEnd > maxLength * 0.7) { // At least 70% of content preserved
+    const result = text.substring(0, lastSentenceEnd + 1);
+    console.log(`[SMART_TRIM] ✅ Trimmed at sentence boundary: ${result.length} chars`);
+    return result;
+  }
+  
+  // Strategy 2: Find last complete word within limit
+  const lastSpace = text.lastIndexOf(' ', maxLength - 3);
+  if (lastSpace > 0) {
+    const result = text.substring(0, lastSpace) + '...';
+    console.log(`[SMART_TRIM] ✅ Trimmed at word boundary: ${result.length} chars`);
+    return result;
+  }
+  
+  // Strategy 3: Hard trim (should rarely happen)
+  const result = text.substring(0, maxLength - 3) + '...';
+  console.log(`[SMART_TRIM] ⚠️ Hard trim fallback: ${result.length} chars`);
+  return result;
+}
+
 export function validateAndExtractContent(
   parsed: any,
   format: 'single' | 'thread',
@@ -90,4 +132,3 @@ export function createFallbackContent(
     return `Recent ${topic} research reveals unexpected mechanisms that change optimization strategies.`;
   }
 }
-
