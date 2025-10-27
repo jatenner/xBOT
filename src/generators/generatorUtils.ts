@@ -34,13 +34,13 @@ export function validateAndExtractContent(
       throw new Error(`${generatorName} generator returned empty thread array`);
     }
     
-    // AUTO-TRIM THREAD TWEETS IF NEEDED (don't throw error, fix it)
+    // SMART TRIM: Preserve word boundaries for thread tweets
     const MAX_THREAD_TWEET_LENGTH = 260; // Increased buffer - matches generator instructions
     content = content.map((tweet: string, i: number) => {
       if (tweet.length > MAX_THREAD_TWEET_LENGTH) {
-        console.warn(`[${generatorName}] ⚠️ Thread tweet ${i+1} too long (${tweet.length} chars), trimming...`);
-        const trimmed = tweet.substring(0, 257) + '...';
-        console.log(`[${generatorName}] ✅ Trimmed tweet ${i+1} to ${trimmed.length} chars`);
+        console.warn(`[${generatorName}] ⚠️ Thread tweet ${i+1} too long (${tweet.length} chars), using smart trim...`);
+        const trimmed = smartTrim(tweet, MAX_THREAD_TWEET_LENGTH);
+        console.log(`[${generatorName}] ✅ Smart-trimmed tweet ${i+1} to ${trimmed.length} chars`);
         return trimmed;
       }
       return tweet;
@@ -60,12 +60,12 @@ export function validateAndExtractContent(
       throw new Error(`${generatorName} generator returned invalid single tweet`);
     }
     
-    // AUTO-TRIM IF EXCEEDS CHARACTER LIMIT (don't throw error, fix it)
+    // SMART TRIM: Preserve word boundaries if content exceeds limit
     const MAX_SINGLE_TWEET_LENGTH = 280; // Twitter absolute limit
     if (content.length > MAX_SINGLE_TWEET_LENGTH) {
-      console.warn(`[${generatorName}] ⚠️ Tweet too long (${content.length} chars), auto-trimming to 280...`);
-      content = content.substring(0, 277) + '...';
-      console.log(`[${generatorName}] ✅ Trimmed to ${content.length} chars`);
+      console.warn(`[${generatorName}] ⚠️ Tweet too long (${content.length} chars), using smart trim...`);
+      content = smartTrim(content, MAX_SINGLE_TWEET_LENGTH);
+      console.log(`[${generatorName}] ✅ Smart-trimmed to ${content.length} chars`);
     }
     
     console.log(`[${generatorName}] ✅ Single tweet validated: ${content.length} chars`);
