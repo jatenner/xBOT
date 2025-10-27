@@ -34,17 +34,17 @@ export function validateAndExtractContent(
       throw new Error(`${generatorName} generator returned empty thread array`);
     }
     
-    // STRICT CHARACTER LIMIT ENFORCEMENT FOR THREADS
+    // AUTO-TRIM THREAD TWEETS IF NEEDED (don't throw error, fix it)
     const MAX_THREAD_TWEET_LENGTH = 260; // Increased buffer - matches generator instructions
-    const tooLong = content.filter((tweet: string) => tweet.length > MAX_THREAD_TWEET_LENGTH);
-    
-    if (tooLong.length > 0) {
-      console.error(`[${generatorName}] ❌ ${tooLong.length} tweets exceed ${MAX_THREAD_TWEET_LENGTH} chars:`);
-      tooLong.forEach((tweet: string, i: number) => {
-        console.error(`  Tweet ${i + 1}: ${tweet.length} chars - "${tweet.substring(0, 50)}..."`);
-      });
-      throw new Error(`${generatorName} generated tweets that are too long (>${MAX_THREAD_TWEET_LENGTH} chars)`);
-    }
+    content = content.map((tweet: string, i: number) => {
+      if (tweet.length > MAX_THREAD_TWEET_LENGTH) {
+        console.warn(`[${generatorName}] ⚠️ Thread tweet ${i+1} too long (${tweet.length} chars), trimming...`);
+        const trimmed = tweet.substring(0, 257) + '...';
+        console.log(`[${generatorName}] ✅ Trimmed tweet ${i+1} to ${trimmed.length} chars`);
+        return trimmed;
+      }
+      return tweet;
+    });
     
     console.log(`[${generatorName}] ✅ Thread validated: ${content.length} tweets, all under ${MAX_THREAD_TWEET_LENGTH} chars`);
   }
@@ -60,12 +60,12 @@ export function validateAndExtractContent(
       throw new Error(`${generatorName} generator returned invalid single tweet`);
     }
     
-    // STRICT CHARACTER LIMIT ENFORCEMENT FOR SINGLE TWEETS
+    // AUTO-TRIM IF EXCEEDS CHARACTER LIMIT (don't throw error, fix it)
     const MAX_SINGLE_TWEET_LENGTH = 280; // Twitter absolute limit
     if (content.length > MAX_SINGLE_TWEET_LENGTH) {
-      console.error(`[${generatorName}] ❌ Tweet exceeds ${MAX_SINGLE_TWEET_LENGTH} chars: ${content.length} chars`);
-      console.error(`  Content: "${content.substring(0, 100)}..."`);
-      throw new Error(`${generatorName} generated tweet that is too long (${content.length}>${MAX_SINGLE_TWEET_LENGTH} chars)`);
+      console.warn(`[${generatorName}] ⚠️ Tweet too long (${content.length} chars), auto-trimming to 280...`);
+      content = content.substring(0, 277) + '...';
+      console.log(`[${generatorName}] ✅ Trimmed to ${content.length} chars`);
     }
     
     console.log(`[${generatorName}] ✅ Single tweet validated: ${content.length} chars`);
