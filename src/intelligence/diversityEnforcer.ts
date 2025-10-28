@@ -2,10 +2,10 @@
  * 🎯 DIVERSITY ENFORCER
  * 
  * Enforces content diversity by tracking recent topics, angles, and tones.
- * Implements a rolling 10-post blacklist system:
- * - Last 10 topics are banned from repetition
- * - Last 10 angles are banned from repetition
- * - Last 10 tones are banned from repetition
+ * Implements a rolling 20-post blacklist system:
+ * - Last 20 topics are banned from repetition
+ * - Last 20 angles are banned from repetition
+ * - Last 20 tones are banned from repetition
  * 
  * This forces the AI to explore new combinations and prevents staleness.
  */
@@ -17,7 +17,7 @@ export class DiversityEnforcer {
   private supabase = getSupabaseClient();
   
   // Rolling blacklist window size (number of posts to track)
-  private readonly BLACKLIST_WINDOW = 10;
+  private readonly BLACKLIST_WINDOW = 20; // INCREASED: Prevent topics from repeating too soon
   
   private constructor() {}
   
