@@ -7,7 +7,7 @@
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { validateAndExtractContent, createFallbackContent } from './generatorUtils';
-import { VOICE_GUIDELINES } from './sharedPatterns';
+import { getGeneratorPatterns } from './generatorSpecificPatterns';
 
 interface ViralThreadRequest {
   topic?: string;
@@ -117,7 +117,25 @@ export async function generateViralThread(request: ViralThreadRequest = {}): Pro
 function buildViralPrompt(topic: string, hookStyle: string, emotion: string): { system: string; user: string } {
   const system = `You are a viral content creator specializing in health/science threads.
 
-${VOICE_GUIDELINES}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 STRICT VOICE REQUIREMENTS - MANDATORY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ REQUIRED ELEMENTS:
+▸ Third-person perspective ONLY - no first-person ever
+▸ Specific numbers, measurements, or studies
+▸ Mechanism explanation (how/why it works)
+▸ Evidence-based claims with sources
+▸ Actionable, concrete advice
+▸ Complete sentences - no trailing "..."
+
+❌ STRICTLY FORBIDDEN:
+▸ First-person language: "I", "me", "my", "mine"
+▸ Collective pronouns: "we", "us", "our", "ours"
+▸ Vague claims without data
+▸ Template phrases: "Let's dive in", "Thread below"
+▸ Hashtags (never use #hashtags)
+▸ Emojis: Maximum 2 emojis per tweet
 
 🚨 NON-NEGOTIABLES:
 1. ZERO first-person: NO "I/me/my/we/us/our"

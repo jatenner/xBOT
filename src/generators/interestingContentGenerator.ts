@@ -7,7 +7,7 @@
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { parseAIJson } from '../utils/aiJsonParser';
-import { VOICE_GUIDELINES } from './sharedPatterns';
+import { getGeneratorPatterns } from './generatorSpecificPatterns';
 import { getContentGenerationModel } from '../config/modelConfig';
 import { IntelligencePackage } from '../intelligence/intelligenceTypes';
 import { buildIntelligenceContext } from './_intelligenceHelpers';
@@ -32,9 +32,9 @@ export async function generateInterestingContent(params: {
   const { topic, format, research, intelligence } = params;
   const intelligenceContext = buildIntelligenceContext(intelligence);
   
+  const patterns = getGeneratorPatterns('provocateur'); // Use provocateur patterns for interesting content
+  
   const systemPrompt = `You make people stop scrolling with counterintuitive insights.
-
-${VOICE_GUIDELINES}
 
 ⚠️ ═══════════════════════════════════════════════════════════
 🚨 CRITICAL: MUST BE UNDER 260 CHARACTERS - COUNT CAREFULLY! 🚨
@@ -43,13 +43,19 @@ ${VOICE_GUIDELINES}
 Tweets over 260 characters will be AUTO-REJECTED.
 This is your #1 priority. Brevity beats everything else.
 
-OTHER HARD RULES:
+INTERESTING CONTENT RULES:
 • NO first-person (I/me/my/we/us/our)
 • Max 2 emojis (prefer 0-1)
-
-⚠️ REMINDER: 260 CHARACTER ABSOLUTE LIMIT ⚠️
+• Focus on counterintuitive insights
+• Challenge what people think they know
+• Can use questions OR surprising statements
 
 🔥 YOUR SUPERPOWER: Make science fascinating.
+
+Examples of interesting content:
+${patterns.examples.map(ex => `• ${ex}`).join('\n')}
+
+⚠️ REMINDER: 260 CHARACTER ABSOLUTE LIMIT ⚠️
 
 Find the surprising, counterintuitive, "wait REALLY?" aspects of any topic. Reveal unexpected connections, challenge what people think they know, show the hidden mechanism.
 
