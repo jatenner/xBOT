@@ -295,13 +295,53 @@ export class RealTwitterDiscovery {
                 postedMinutesAgo = Math.floor((now.getTime() - tweetTime.getTime()) / 60000);
               }
               
-              // Get engagement metrics
-              const replyEl = tweet.querySelector('[data-testid="reply"]');
-              const likeEl = tweet.querySelector('[data-testid="like"]');
+              // Get engagement metrics - MULTI-STRATEGY FALLBACK (permanent fix)
+              // Strategy 1: data-testid selectors (primary)
+              let likeEl = tweet.querySelector('[data-testid="like"]');
+              let replyEl = tweet.querySelector('[data-testid="reply"]');
+              
+              // Strategy 2: aria-label fallback (if testid fails)
+              if (!likeEl) {
+                likeEl = tweet.querySelector('[aria-label*="like"]') || 
+                         tweet.querySelector('[data-testid="unlike"]'); // Liked tweets show "unlike"
+              }
+              if (!replyEl) {
+                replyEl = tweet.querySelector('[aria-label*="repl"]');
+              }
+              
+              // Strategy 3: SVG icon parents (last resort)
+              if (!likeEl) {
+                const likeSvg = tweet.querySelector('svg[viewBox="0 0 24 24"] path[d*="M20.884"]'); // Heart icon path
+                likeEl = likeSvg?.closest('div[role="group"]')?.querySelector('span');
+              }
+              if (!replyEl) {
+                const replySvg = tweet.querySelector('svg[viewBox="0 0 24 24"] path[d*="M1.751"]'); // Reply icon path
+                replyEl = replySvg?.closest('div[role="group"]')?.querySelector('span');
+              }
+              
               const replyText = replyEl?.textContent || '0';
               const likeText = likeEl?.textContent || '0';
-              const replyCount = parseInt(replyText.replace(/[^\d]/g, '')) || 0;
-              const likeCount = parseInt(likeText.replace(/[^\d]/g, '')) || 0;
+              
+              // Robust number parsing (handles "1.2K", "5M", etc)
+              const parseEngagement = (text: string): number => {
+                if (!text || text === '0') return 0;
+                const clean = text.trim().toUpperCase();
+                if (clean.includes('K')) return Math.floor(parseFloat(clean) * 1000);
+                if (clean.includes('M')) return Math.floor(parseFloat(clean) * 1000000);
+                return parseInt(clean.replace(/[^\d]/g, '')) || 0;
+              };
+              
+              const replyCount = parseEngagement(replyText);
+              const likeCount = parseEngagement(likeText);
+              
+              // 🔍 VALIDATION: Log if engagement extraction failed (diagnostic)
+              if (likeCount === 0 && replyCount === 0) {
+                // Tweet might be loading or selectors changed
+                // Don't log every time, but track failures
+                if (Math.random() < 0.1) { // 10% sample
+                  console.log(`[REAL_DISCOVERY] ⚠️ Zero engagement extracted - selectors may need update`);
+                }
+              }
               
               // Get author
               const authorEl = tweet.querySelector('[data-testid="User-Name"]');
@@ -332,16 +372,21 @@ export class RealTwitterDiscovery {
           
         console.log(`[REAL_DISCOVERY] ✅ Scraped ${opportunities.length} raw tweets from @${username}`);
         
-        // 🔍 DEBUG: Log raw engagement data from first tweet
+        // 🔍 DIAGNOSTIC: Log engagement stats for visibility
         if (opportunities.length > 0) {
           const sample = opportunities[0];
-          console.log(`[REAL_DISCOVERY] 📊 Sample tweet: ${sample.like_count} likes, ${sample.reply_count} replies, ${sample.posted_minutes_ago}min ago`);
+          const avgLikes = opportunities.reduce((sum: number, o: any) => sum + o.like_count, 0) / opportunities.length;
+          const maxLikes = Math.max(...opportunities.map((o: any) => o.like_count));
+          console.log(`[REAL_DISCOVERY] 📊 Sample: ${sample.like_count} likes, ${sample.reply_count} replies, ${sample.posted_minutes_ago}min ago`);
+          console.log(`[REAL_DISCOVERY] 📊 Stats: avg=${avgLikes.toFixed(1)} likes, max=${maxLikes} likes across ${opportunities.length} tweets`);
         }
         
         // Calculate engagement rate and tier for each opportunity
         const { getReplyQualityScorer } = await import('../intelligence/replyQualityScorer');
         const scorer = getReplyQualityScorer();
         
+        // 🎯 ADAPTIVE QUALITY FILTER (permanent fix)
+        // First pass: Try standard thresholds
         const tieredOpportunities = opportunities
           .map((opp: any) => {
             const engagementRate = scorer.calculateEngagementRate(opp.like_count, accountFollowers);
@@ -363,17 +408,36 @@ export class RealTwitterDiscovery {
               opportunity_score: this.calculateOpportunityScore(opp.like_count, opp.reply_count),
               expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString() // 6 hours
             };
-          })
-          .filter((opp: any) => opp.tier !== null); // Only keep tweets that meet tier thresholds
+          });
+        
+        // 🔄 FALLBACK STRATEGY: If standard thresholds reject everything, use adaptive thresholds
+        let qualifiedOpportunities = tieredOpportunities.filter((opp: any) => opp.tier !== null);
+        
+        if (qualifiedOpportunities.length === 0 && opportunities.length > 0) {
+          // No tweets met standard thresholds - use percentile-based approach
+          const sortedByEngagement = [...tieredOpportunities].sort((a, b) => b.engagement_rate - a.engagement_rate);
+          const top30Percent = Math.ceil(sortedByEngagement.length * 0.3);
+          
+          // Take top 30% and assign adaptive tiers
+          qualifiedOpportunities = sortedByEngagement.slice(0, top30Percent).map((opp, idx) => {
+            const percentile = idx / top30Percent;
+            const adaptiveTier = percentile < 0.2 ? 'golden' : percentile < 0.5 ? 'good' : 'acceptable';
+            return { ...opp, tier: adaptiveTier };
+          });
+          
+          if (qualifiedOpportunities.length > 0) {
+            console.log(`[REAL_DISCOVERY] 🔄 Adaptive thresholds: accepted top ${qualifiedOpportunities.length} tweets (standard thresholds too strict)`);
+          }
+        }
         
         // Log tier breakdown
-        const golden = tieredOpportunities.filter(o => o.tier === 'golden').length;
-        const good = tieredOpportunities.filter(o => o.tier === 'good').length;
-        const acceptable = tieredOpportunities.filter(o => o.tier === 'acceptable').length;
+        const golden = qualifiedOpportunities.filter(o => o.tier === 'golden').length;
+        const good = qualifiedOpportunities.filter(o => o.tier === 'good').length;
+        const acceptable = qualifiedOpportunities.filter(o => o.tier === 'acceptable').length;
         
-        console.log(`[REAL_DISCOVERY] 🎯 Quality filtered: ${tieredOpportunities.length} opportunities (${golden} golden, ${good} good, ${acceptable} acceptable)`);
+        console.log(`[REAL_DISCOVERY] 🎯 Quality filtered: ${qualifiedOpportunities.length} opportunities (${golden} golden, ${good} good, ${acceptable} acceptable)`);
         
-        return tieredOpportunities;
+        return qualifiedOpportunities;
           
     } catch (error: any) {
       console.error(`[REAL_DISCOVERY] ❌ Failed to find opportunities from @${username}:`, error.message);
