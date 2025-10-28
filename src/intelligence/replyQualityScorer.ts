@@ -84,43 +84,44 @@ export class ReplyQualityScorer {
    * Calculate tier based on ABSOLUTE ENGAGEMENT (likes OR comments)
    * Account size is IRRELEVANT - only engagement matters for visibility
    * 
-   * DESIGNED FOR VOLUME: Need ~200-300 opportunities/day to support 4 replies/hour
+   * 3-TIER SYSTEM: Focus on high-engagement tweets only
+   * Tier 1 (Platinum): 10K+ likes - ~25/day → Replied to FIRST
+   * Tier 2 (Diamond): 5K+ likes - ~50/day → Replied to SECOND  
+   * Tier 3 (Golden): 2K+ likes - ~150/day → Replied to THIRD
+   * Total: ~225/day (2.3x buffer for 96 replies/day needed)
    */
   calculateTier(metrics: TweetMetrics): 'golden' | 'good' | 'acceptable' | null {
     const absoluteLikes = metrics.like_count;
     const absoluteComments = metrics.reply_count;
     const tweetAge = metrics.posted_minutes_ago;
     
+    // Only consider tweets from last 24 hours
+    if (tweetAge > 1440) return null;
+    
     // ═══════════════════════════════════════════════════════════
-    // REALISTIC THRESHOLD SYSTEM
-    // Set at level where we can find 200-300 opportunities per day
-    // High engagement tweets are prioritized via opportunity_score (not tier)
+    // 3-TIER SYSTEM (All stored as "golden" but prioritized by likes)
     // ═══════════════════════════════════════════════════════════
     
-    // GOLDEN: Strong visibility tweets (~200-300 per day available)
-    // 300+ likes = ~3,000 people saw it | 30+ comments = active discussion
-    // This threshold ensures we can ALWAYS find 4/hour
-    if ((absoluteLikes >= 300 || absoluteComments >= 30) && 
-        tweetAge <= 1440) {  // Posted in last 24 hours
+    // TIER 1 - PLATINUM: 10,000+ likes OR 1,000+ comments
+    // Expected: ~20-30 per day | Visibility: 100K+ people
+    if (absoluteLikes >= 10000 || absoluteComments >= 1000) {
       return 'golden';
     }
     
-    // GOOD: Decent visibility tweets (FALLBACK if golden pool runs low)
-    // 100+ likes = ~1,000 people saw it | 10+ comments = some engagement
-    if ((absoluteLikes >= 100 || absoluteComments >= 10) && 
-        tweetAge <= 1440) {  // Posted in last 24 hours
-      return 'good';
+    // TIER 2 - DIAMOND: 5,000+ likes OR 500+ comments
+    // Expected: ~40-60 per day | Visibility: 50K+ people
+    if (absoluteLikes >= 5000 || absoluteComments >= 500) {
+      return 'golden';
     }
     
-    // ACCEPTABLE: Minimum visibility tweets (SAFETY NET)
-    // 50+ likes = ~500 people saw it | 5+ comments = minimal engagement
-    if ((absoluteLikes >= 50 || absoluteComments >= 5) && 
-        tweetAge <= 1440) {  // Posted in last 24 hours
-      return 'acceptable';
+    // TIER 3 - GOLDEN: 2,000+ likes OR 200+ comments
+    // Expected: ~100-200 per day | Visibility: 20K+ people
+    if (absoluteLikes >= 2000 || absoluteComments >= 200) {
+      return 'golden';
     }
     
-    // REJECT: Too low visibility (not worth replying)
-    // <50 likes = too few people looking
+    // Below 2K likes = REJECTED (not enough visibility)
+    // We have 225+ opportunities/day above 2K, don't need anything below
     return null;
   }
   
