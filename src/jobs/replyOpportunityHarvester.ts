@@ -111,12 +111,17 @@ export async function replyOpportunityHarvester(): Promise<void> {
       })
     );
     
-    // Collect results
+    // Collect results and store opportunities in database
+    const allOpportunitiesInBatch: any[] = [];
+    
     batchResults.forEach((result, idx) => {
       if (result.status === 'fulfilled' && result.value.opportunities.length > 0) {
         const { account, opportunities } = result.value;
         totalHarvested += opportunities.length;
         accountsProcessed++;
+        
+        // Collect for batch storage
+        allOpportunitiesInBatch.push(...opportunities);
         
         // Log tier breakdown
         const golden = opportunities.filter((o: any) => o.tier === 'golden').length;
@@ -129,6 +134,16 @@ export async function replyOpportunityHarvester(): Promise<void> {
         console.log(`[HARVESTER]       ✗ ${batch[idx].username}: No opportunities`);
       }
     });
+    
+    // 💾 CRITICAL: Store opportunities in database
+    if (allOpportunitiesInBatch.length > 0) {
+      try {
+        await realTwitterDiscovery.storeOpportunities(allOpportunitiesInBatch);
+        console.log(`[HARVESTER]     💾 Stored ${allOpportunitiesInBatch.length} opportunities in database`);
+      } catch (error: any) {
+        console.error(`[HARVESTER]     ❌ Failed to store opportunities:`, error.message);
+      }
+    }
     
     // Check if we have enough GOLDEN opportunities to stop early
     const { count: goldenCount } = await supabase
