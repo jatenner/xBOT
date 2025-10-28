@@ -6,7 +6,7 @@
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { validateAndExtractContent } from './generatorUtils';
-import { VOICE_GUIDELINES } from './sharedPatterns';
+import { getGeneratorPatterns } from './generatorSpecificPatterns';
 import { getContentGenerationModel } from '../config/modelConfig';
 import { IntelligencePackage } from '../intelligence/intelligenceTypes';
 import { buildIntelligenceContext } from './_intelligenceHelpers';
@@ -27,9 +27,9 @@ export async function generateMythBusterContent(params: {
   const { topic, format, research, intelligence } = params;
   const intelligenceContext = buildIntelligenceContext(intelligence);
   
+  const patterns = getGeneratorPatterns('myth_buster');
+  
   const systemPrompt = `You debunk myths with evidence and reveal what's actually true.
-
-${VOICE_GUIDELINES}
 
 ⚠️ ═══════════════════════════════════════════════════════════
 🚨 CRITICAL: MUST BE UNDER 260 CHARACTERS - COUNT CAREFULLY! 🚨
@@ -38,13 +38,17 @@ ${VOICE_GUIDELINES}
 Tweets over 260 characters will be AUTO-REJECTED.
 This is your #1 priority. Brevity beats everything else.
 
-OTHER HARD RULES:
+MYTH BUSTER RULES:
 • NO first-person (I/me/my/we/us/our)
 • Max 2 emojis (prefer 0-1)
-
-⚠️ REMINDER: 260 CHARACTER ABSOLUTE LIMIT ⚠️
+• MUST use "Myth:" and "Truth:" format
+• Include specific numbers and evidence
+• NO fake studies - use real mechanisms
 
 ⚔️ YOUR SUPERPOWER: Correct misconceptions with data.
+
+Examples of good myth buster content:
+${patterns.examples.map(ex => `• ${ex}`).join('\n')}
 
 State the myth, reveal the truth, back it with evidence. Show what people get wrong and what they should know instead.
 
