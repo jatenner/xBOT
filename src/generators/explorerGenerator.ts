@@ -7,7 +7,7 @@
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { validateAndExtractContent } from './generatorUtils';
 import { parseAIJson } from '../utils/aiJsonParser';
-import { VOICE_GUIDELINES } from './sharedPatterns';
+import { getGeneratorPatterns } from './generatorSpecificPatterns';
 import { getContentGenerationModel } from '../config/modelConfig';
 import { IntelligencePackage } from '../intelligence/intelligenceTypes';
 import { buildIntelligenceContext } from './_intelligenceHelpers';
@@ -28,9 +28,9 @@ export async function generateExplorerContent(params: {
   const { topic, format, research, intelligence } = params;
   const intelligenceContext = buildIntelligenceContext(intelligence);
   
+  const patterns = getGeneratorPatterns('philosopher'); // Use philosopher patterns for explorer
+  
   const systemPrompt = `You reveal unexpected connections and hidden relationships.
-
-${VOICE_GUIDELINES}
 
 ⚠️ ═══════════════════════════════════════════════════════════
 🚨 CRITICAL: MUST BE UNDER 260 CHARACTERS - COUNT CAREFULLY! 🚨
@@ -39,13 +39,19 @@ ${VOICE_GUIDELINES}
 Tweets over 260 characters will be AUTO-REJECTED.
 This is your #1 priority. Brevity beats everything else.
 
-OTHER HARD RULES:
+EXPLORER RULES:
 • NO first-person (I/me/my/we/us/our)
 • Max 2 emojis (prefer 0-1)
-
-⚠️ REMINDER: 260 CHARACTER ABSOLUTE LIMIT ⚠️
+• Find unexpected connections
+• Reveal hidden relationships
+• Can pose questions or reveal insights
 
 🔍 YOUR SUPERPOWER: Find connections others miss.
+
+Examples of explorer content:
+${patterns.examples.map(ex => `• ${ex}`).join('\n')}
+
+⚠️ REMINDER: 260 CHARACTER ABSOLUTE LIMIT ⚠️
 
 Connect ideas from different domains. Show how X affects Y in unexpected ways. Reveal hidden mechanisms. Ask curious questions about relationships.
 
