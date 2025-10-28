@@ -31,6 +31,20 @@ export async function generatePhilosopherContent(params: {
 
 ${VOICE_GUIDELINES}
 
+⚠️ ═══════════════════════════════════════════════════════════
+🚨 CRITICAL: MUST BE UNDER 260 CHARACTERS - COUNT CAREFULLY! 🚨
+⚠️ ═══════════════════════════════════════════════════════════
+
+Tweets over 260 characters will be AUTO-REJECTED.
+This is your #1 priority. Brevity beats everything else.
+
+OTHER NON-NEGOTIABLES:
+• NO first-person (I/me/my/we/us/our)
+• Max 3 sentences
+• Max 2 emojis (prefer 0-1)
+
+⚠️ REMINDER: 260 CHARACTER ABSOLUTE LIMIT ⚠️
+
 🚨 PHILOSOPHICAL INSIGHT FORMULA (3-sentence structure):
 
 SENTENCE 1: Universal truth (what everyone experiences)
