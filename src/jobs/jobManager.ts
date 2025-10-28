@@ -275,22 +275,24 @@ export class JobManager {
       5 * MINUTE // Start after 5 minutes (was 25 min - start sooner!)
     );
 
-    // 🌾 REPLY OPPORTUNITY HARVESTER - every 30 min, offset 10 min
-    // 🎯 USER REQUEST: Keep 200-300 fresh opportunities (<24h), harvest from discovered accounts
+    // 🎯 TWEET-BASED HARVESTER - every 30 min, offset 10 min
+    // NEW SYSTEM: Search Twitter directly for high-engagement tweets (not account-based)
+    // Finds tweets with 2K+ likes OR 200+ comments from ANY account
+    // No dependency on discovered_accounts - catches ALL viral health content
     // ⚠️ IMPORTANT: Only schedule if replies are enabled
     if (flags.replyEnabled && process.env.ENABLE_REPLIES === 'true') {
-      console.log('💬 JOB_MANAGER: Reply jobs ENABLED - scheduling harvester and posting');
+      console.log('💬 JOB_MANAGER: Reply jobs ENABLED - scheduling TWEET-BASED harvester and posting');
       
       this.scheduleStaggeredJob(
-        'reply_harvester',
+        'tweet_harvester',
         async () => {
-          await this.safeExecute('reply_harvester', async () => {
-            const { replyOpportunityHarvester } = await import('./replyOpportunityHarvester');
-            await replyOpportunityHarvester();
+          await this.safeExecute('tweet_harvester', async () => {
+            const { tweetBasedHarvester } = await import('./tweetBasedHarvester');
+            await tweetBasedHarvester();
           });
         },
-        30 * MINUTE, // Every 30 minutes - replenish pool continuously
-        10 * MINUTE // Start after 10 minutes (after account discovery has run)
+        30 * MINUTE, // Every 30 minutes - continuously find viral tweets
+        10 * MINUTE // Start after 10 minutes
       );
 
       // 💬 REPLY POSTING JOB - every 15 min, offset 15 min
