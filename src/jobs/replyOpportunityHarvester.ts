@@ -48,9 +48,9 @@ export async function replyOpportunityHarvester(): Promise<void> {
     .select('username, follower_count, quality_score, engagement_rate, scrape_priority')
     // ✅ REMOVED FOLLOWER FILTERS - scrape ALL accounts (big and small)
     // If a tweet has 1000+ likes, we reply - regardless of account size
-    .order('scrape_priority', { ascending: false })  // Best quality first
+    .order('follower_count', { ascending: false })  // BIG accounts first (they get 10K+ comments!)
     .order('last_scraped_at', { ascending: true, nullsFirst: true })  // Least recently scraped
-    .limit(200); // Increased to 200 to ensure enough volume
+    .limit(300); // Increased to 300 for faster coverage of high-engagement accounts
   
   if (!accounts || accounts.length === 0) {
     console.log('[HARVESTER] ⚠️ No accounts in pool, waiting for discovery job');
@@ -67,10 +67,10 @@ export async function replyOpportunityHarvester(): Promise<void> {
   let accountsProcessed = 0;
   
   const TIME_BUDGET = 25 * 60 * 1000; // 25 minutes max
-  const BATCH_SIZE = 3; // Process 3 accounts simultaneously (MAX_CONTEXTS)
+  const BATCH_SIZE = 10; // Process 10 accounts simultaneously (increased for speed)
   const startTime = Date.now();
   
-  console.log(`[HARVESTER] 🌐 Starting UNLIMITED parallel harvesting (time budget: 25min, batch size: 3)...`);
+  console.log(`[HARVESTER] 🌐 Starting UNLIMITED parallel harvesting (time budget: 25min, batch size: 10)...`);
   
   // Process accounts in parallel batches until time runs out
   for (let i = 0; i < accounts.length; i += BATCH_SIZE) {
@@ -81,7 +81,7 @@ export async function replyOpportunityHarvester(): Promise<void> {
       break;
     }
     
-    // Get next batch (3 accounts)
+    // Get next batch (10 accounts)
     const batch = accounts.slice(i, i + BATCH_SIZE);
     
     console.log(`[HARVESTER]   Batch ${Math.floor(i/BATCH_SIZE) + 1}: Processing ${batch.length} accounts in parallel...`);

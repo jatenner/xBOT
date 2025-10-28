@@ -92,7 +92,30 @@ export class ReplyQualityScorer {
     // ═══════════════════════════════════════════════════════════
     // ABSOLUTE ENGAGEMENT SYSTEM (Follower-count agnostic)
     // More engagement = More people saw it = More visibility for your reply
+    // 
+    // PRIORITY ORDER: Higher tiers checked first, falls back to lower tiers
     // ═══════════════════════════════════════════════════════════
+    
+    // MEGA VIRAL: Insane visibility (these exist - Huberman, Hyman, etc.)
+    // 10K+ likes = 100K+ people | 1K+ comments = MASSIVE conversation
+    if ((absoluteLikes >= 10000 || absoluteComments >= 1000) && 
+        tweetAge <= 1440) {  // Posted in last 24 hours
+      return 'golden';  // Still "golden" in DB but highest priority
+    }
+    
+    // SUPER VIRAL: Huge visibility
+    // 5K+ likes = 50K+ people | 500+ comments = huge conversation
+    if ((absoluteLikes >= 5000 || absoluteComments >= 500) && 
+        tweetAge <= 1440) {
+      return 'golden';
+    }
+    
+    // VIRAL: Very high visibility
+    // 2K+ likes = 20K+ people | 200+ comments = viral conversation
+    if ((absoluteLikes >= 2000 || absoluteComments >= 200) && 
+        tweetAge <= 1440) {
+      return 'golden';
+    }
     
     // GOLDEN: High visibility tweets
     // 800+ likes = ~8,000 people saw it | 80+ comments = very active conversation
@@ -101,14 +124,14 @@ export class ReplyQualityScorer {
       return 'golden';
     }
     
-    // GOOD: Strong visibility tweets
+    // GOOD: Strong visibility tweets (FALLBACK if golden pool too small)
     // 300+ likes = ~3,000 people saw it | 30+ comments = active discussion
     if ((absoluteLikes >= 300 || absoluteComments >= 30) && 
         tweetAge <= 1440) {  // Posted in last 24 hours
       return 'good';
     }
     
-    // ACCEPTABLE: Decent visibility tweets
+    // ACCEPTABLE: Decent visibility tweets (FALLBACK if good pool too small)
     // 100+ likes = ~1,000 people saw it | 10+ comments = some engagement
     if ((absoluteLikes >= 100 || absoluteComments >= 10) && 
         tweetAge <= 1440) {  // Posted in last 24 hours
