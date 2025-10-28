@@ -31,10 +31,18 @@ export async function generateProvocateurContent(params: {
 
 ${VOICE_GUIDELINES}
 
-🚨 HARD RULES:
-• Max 260 chars
-• No first-person (I/me/my/we)
-• Max 2 emojis
+⚠️ ═══════════════════════════════════════════════════════════
+🚨 CRITICAL: MUST BE UNDER 260 CHARACTERS - COUNT CAREFULLY! 🚨
+⚠️ ═══════════════════════════════════════════════════════════
+
+Tweets over 260 characters will be AUTO-REJECTED.
+This is your #1 priority. Brevity beats everything else.
+
+OTHER HARD RULES:
+• NO first-person (I/me/my/we/us/our)
+• Max 2 emojis (prefer 0-1)
+
+⚠️ REMINDER: 260 CHARACTER ABSOLUTE LIMIT ⚠️
 • Must provoke genuine thought
 
 ❓ YOUR SUPERPOWER: Challenge assumptions through questions.
