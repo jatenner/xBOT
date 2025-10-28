@@ -331,9 +331,9 @@ async function generateRealReplies(): Promise<void> {
   const acceptable = allOpportunities.filter(o => o.tier === 'acceptable').length;
   
   console.log(`[REPLY_JOB] 📊 Opportunity pool: ${allOpportunities.length} total`);
-  console.log(`[REPLY_JOB]   🏆 GOLDEN: ${golden} (0.5%+ eng, <60min, <5 replies)`);
-  console.log(`[REPLY_JOB]   ✅ GOOD: ${good} (0.2%+ eng, <180min, <12 replies)`);
-  console.log(`[REPLY_JOB]   📊 ACCEPTABLE: ${acceptable} (0.05%+ eng, <720min, <20 replies)`);
+  console.log(`[REPLY_JOB]   🏆 GOLDEN: ${golden} (0.3%+ eng, <90min, <8 replies)`);
+  console.log(`[REPLY_JOB]   ✅ GOOD: ${good} (0.15%+ eng, <240min, <15 replies)`);
+  console.log(`[REPLY_JOB]   📊 ACCEPTABLE: ${acceptable} (0.08%+ eng, <720min, <25 replies)`);
   
   // SMART SELECTION: Prioritize by tier → momentum → engagement rate
   const sortedOpportunities = [...allOpportunities].sort((a, b) => {
