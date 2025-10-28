@@ -45,8 +45,8 @@ export async function replyOpportunityHarvester(): Promise<void> {
   const { data: accounts } = await supabase
     .from('discovered_accounts')
     .select('username, follower_count, quality_score, engagement_rate, scrape_priority')
-    .gte('follower_count', 50000)  // 10K → 50K (bigger reach)
-    .lte('follower_count', 500000)
+    .gte('follower_count', 10000)  // 10K-100K (sweet spot for engagement)
+    .lte('follower_count', 100000)  // Smaller = higher engagement rates
     .order('scrape_priority', { ascending: false })  // Best quality first
     .order('last_scraped_at', { ascending: true, nullsFirst: true })  // Least recently scraped
     .limit(100); // Top 100 candidates (not a hard limit, just query size)
@@ -195,9 +195,9 @@ export async function replyOpportunityHarvester(): Promise<void> {
   console.log(`[HARVESTER] 📊 Pool size: ${poolSize} → ${finalPoolSize}`);
   console.log(`[HARVESTER] 🌾 Harvested: ${totalHarvested} new opportunities from ${accountsProcessed} accounts`);
   console.log(`[HARVESTER] 🏆 Quality breakdown:`);
-  console.log(`[HARVESTER]   GOLDEN: ${goldenCount || 0} (0.5%+ eng, <60min, <5 replies)`);
-  console.log(`[HARVESTER]   GOOD: ${goodCount || 0} (0.2%+ eng, <180min, <12 replies)`);
-  console.log(`[HARVESTER]   ACCEPTABLE: ${acceptableCount || 0} (0.05%+ eng, <720min, <20 replies)`);
+  console.log(`[HARVESTER]   GOLDEN: ${goldenCount || 0} (0.3%+ eng, <90min, <8 replies)`);
+  console.log(`[HARVESTER]   GOOD: ${goodCount || 0} (0.15%+ eng, <240min, <15 replies)`);
+  console.log(`[HARVESTER]   ACCEPTABLE: ${acceptableCount || 0} (0.08%+ eng, <720min, <25 replies)`);
   
   if (finalPoolSize < MIN_POOL_SIZE) {
     console.warn(`[HARVESTER] ⚠️ Pool still low (${finalPoolSize}/${MIN_POOL_SIZE})`);

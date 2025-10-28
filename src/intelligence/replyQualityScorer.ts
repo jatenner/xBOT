@@ -89,24 +89,27 @@ export class ReplyQualityScorer {
       metrics.account_followers
     );
     
-    // GOLDEN: Viral tweets (0.5%+ engagement, very fresh, top positioning)
-    if (engagementRate >= 0.005 && 
-        metrics.posted_minutes_ago <= 60 && 
-        metrics.reply_count < 5) {
+    // GOLDEN: Viral tweets (0.3%+ engagement, very fresh, top positioning)
+    // 10K account: 30+ likes | 50K account: 150+ likes | 100K account: 300+ likes
+    if (engagementRate >= 0.003 && 
+        metrics.posted_minutes_ago <= 90 && 
+        metrics.reply_count < 8) {
       return 'golden';
     }
     
-    // GOOD: Popular tweets (0.2%+ engagement, fresh, visible)
-    if (engagementRate >= 0.002 && 
-        metrics.posted_minutes_ago <= 180 && 
-        metrics.reply_count < 12) {
+    // GOOD: Popular tweets (0.15%+ engagement, fresh, visible)
+    // 10K account: 15+ likes | 50K account: 75+ likes | 100K account: 150+ likes
+    if (engagementRate >= 0.0015 && 
+        metrics.posted_minutes_ago <= 240 && 
+        metrics.reply_count < 15) {
       return 'good';
     }
     
-    // ACCEPTABLE: Viable tweets (0.05%+ engagement, recent, some visibility)
-    if (engagementRate >= 0.0005 && 
+    // ACCEPTABLE: Viable tweets (0.08%+ engagement, recent, some visibility)
+    // 10K account: 8+ likes | 50K account: 40+ likes | 100K account: 80+ likes
+    if (engagementRate >= 0.0008 && 
         metrics.posted_minutes_ago <= 720 && 
-        metrics.reply_count < 20) {
+        metrics.reply_count < 25) {
       return 'acceptable';
     }
     
