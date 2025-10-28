@@ -840,6 +840,11 @@ async function selectOptimalSchedule(): Promise<Date> {
   let targetDate = new Date(now);
   targetDate.setHours(timingSelection.slot, 0, 0, 0);
   
+  // 🎲 RANDOMIZED SCHEDULING: Add random minutes to prevent spam detection
+  const randomMinutes = Math.floor(Math.random() * 60); // 0-59 minutes
+  targetDate.setMinutes(randomMinutes);
+  console.log(`[SCHEDULE] 🎲 Randomized timing: ${timingSelection.slot}:${randomMinutes.toString().padStart(2, '0')}`);
+  
   // If selected slot is earlier than now + MIN_MINUTES, move to tomorrow
   const minTime = now.getTime() + MIN_MINUTES_UNTIL_SLOT * 60 * 1000;
   
@@ -853,8 +858,11 @@ async function selectOptimalSchedule(): Promise<Date> {
       
       if (testDate.getTime() >= minTime) {
         targetDate = testDate;
+        // 🎲 RANDOMIZE same-day slots too
+        const randomMinutes = Math.floor(Math.random() * 60);
+        targetDate.setMinutes(randomMinutes);
         foundSameDaySlot = true;
-        console.log(`[SCHEDULE] 📅 Using same-day slot: ${hour}:00`);
+        console.log(`[SCHEDULE] 📅 Using same-day slot: ${hour}:${randomMinutes.toString().padStart(2, '0')}`);
         break;
       }
     }
@@ -862,10 +870,13 @@ async function selectOptimalSchedule(): Promise<Date> {
     if (!foundSameDaySlot) {
       // No same-day slots available, use tomorrow at selected slot
       targetDate.setDate(targetDate.getDate() + 1);
-      console.log(`[SCHEDULE] 📅 No same-day slots, using tomorrow at ${timingSelection.slot}:00`);
+      // 🎲 RANDOMIZE tomorrow slots too
+      const randomMinutes = Math.floor(Math.random() * 60);
+      targetDate.setMinutes(randomMinutes);
+      console.log(`[SCHEDULE] 📅 No same-day slots, using tomorrow at ${timingSelection.slot}:${randomMinutes.toString().padStart(2, '0')}`);
     }
   } else {
-    console.log(`[SCHEDULE] 📅 Using selected slot today at ${timingSelection.slot}:00`);
+    console.log(`[SCHEDULE] 📅 Using selected slot today at ${timingSelection.slot}:${targetDate.getMinutes().toString().padStart(2, '0')}`);
   }
   
   return targetDate;
