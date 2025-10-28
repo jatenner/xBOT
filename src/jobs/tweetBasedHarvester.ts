@@ -143,16 +143,27 @@ async function searchTwitterForTweets(
         const replyCount = parseEngagement(replyEl);
         const retweetCount = parseEngagement(retweetEl);
         
-        // Get author follower count (for context, but not for filtering!)
-        const followerEl = authorEl?.querySelector('span:has-text("followers")');
-        const followerText = followerEl?.textContent || '';
-        const followerMatch = followerText.match(/([\d.]+)([KM]?)/);
-        let followerCount = 0;
-        if (followerMatch) {
-          const num = parseFloat(followerMatch[1]);
-          const multiplier = followerMatch[2] === 'K' ? 1000 : followerMatch[2] === 'M' ? 1000000 : 1;
-          followerCount = Math.floor(num * multiplier);
-        }
+              // Get author follower count (for context, but not for filtering!)
+              // Note: Follower count is optional - we don't use it for filtering anymore
+              let followerCount = 0;
+              try {
+                const followerSpans = authorEl?.querySelectorAll('span') || [];
+                for (const span of Array.from(followerSpans)) {
+                  const text = span.textContent || '';
+                  if (text.toLowerCase().includes('follower')) {
+                    const match = text.match(/([\d.]+)([KM]?)/);
+                    if (match) {
+                      const num = parseFloat(match[1]);
+                      const multiplier = match[2] === 'K' ? 1000 : match[2] === 'M' ? 1000000 : 1;
+                      followerCount = Math.floor(num * multiplier);
+                      break;
+                    }
+                  }
+                }
+              } catch (e) {
+                // Ignore follower count errors - it's optional
+                followerCount = 0;
+              }
         
         results.push({
           tweet_id: tweetId,
