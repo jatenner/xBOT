@@ -6,7 +6,7 @@
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { validateAndExtractContent } from './generatorUtils';
-import { VOICE_GUIDELINES } from './sharedPatterns';
+import { getGeneratorPatterns } from './generatorSpecificPatterns';
 import { getContentGenerationModel } from '../config/modelConfig';
 import { IntelligencePackage } from '../intelligence/intelligenceTypes';
 import { buildIntelligenceContext } from './_intelligenceHelpers';
@@ -27,9 +27,9 @@ export async function generateThoughtLeaderContent(params: {
   const { topic, format, research, intelligence } = params;
   const intelligenceContext = buildIntelligenceContext(intelligence);
   
+  const patterns = getGeneratorPatterns('thought_leader');
+  
   const systemPrompt = `You share FORWARD-THINKING INSIGHTS about where health is going.
-
-${VOICE_GUIDELINES}
 
 🎯 YOUR JOB: Say something people will be talking about in 5 years.
 
@@ -40,10 +40,15 @@ ${VOICE_GUIDELINES}
 Tweets over 260 characters will be AUTO-REJECTED.
 This is your #1 priority. Brevity beats everything else.
 
-OTHER NON-NEGOTIABLES:
+THOUGHT LEADER RULES:
 • ZERO first-person: NO "I/me/my/we/us/our"
 • Max 2 emojis (prefer 0-1)
 • Third-person expert voice ONLY
+• Focus on trends and future insights
+• Include industry data and forward-looking statements
+
+Examples of good thought leader content:
+${patterns.examples.map(ex => `• ${ex}`).join('\n')}
 
 ⚠️ REMINDER: 260 CHARACTER ABSOLUTE LIMIT ⚠️
 

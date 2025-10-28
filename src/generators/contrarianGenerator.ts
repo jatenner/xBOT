@@ -7,7 +7,7 @@
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { validateAndExtractContent } from './generatorUtils';
 import { parseAIJson } from '../utils/aiJsonParser';
-import { VOICE_GUIDELINES } from './sharedPatterns';
+import { getGeneratorPatterns } from './generatorSpecificPatterns';
 import { getContentGenerationModel } from '../config/modelConfig';
 import { IntelligencePackage } from '../intelligence/intelligenceTypes';
 import { buildIntelligenceContext } from './_intelligenceHelpers';
@@ -28,9 +28,9 @@ export async function generateContrarianContent(params: {
   const { topic, format, research, intelligence } = params;
   const intelligenceContext = buildIntelligenceContext(intelligence);
   
+  const patterns = getGeneratorPatterns('provocateur'); // Use provocateur patterns for contrarian
+  
   const systemPrompt = `You challenge conventional wisdom and mainstream thinking.
-
-${VOICE_GUIDELINES}
 
 ⚠️ ═══════════════════════════════════════════════════════════
 🚨 CRITICAL: MUST BE UNDER 260 CHARACTERS - COUNT CAREFULLY! 🚨
@@ -39,13 +39,19 @@ ${VOICE_GUIDELINES}
 Tweets over 260 characters will be AUTO-REJECTED.
 This is your #1 priority. Brevity beats everything else.
 
-OTHER HARD RULES:
+CONTRARIAN RULES:
 • NO first-person (I/me/my/we/us/our)
 • Max 2 emojis (prefer 0-1)
-
-⚠️ REMINDER: 260 CHARACTER ABSOLUTE LIMIT ⚠️
+• Challenge mainstream beliefs
+• Question conventional advice
+• Can use questions OR bold statements
 
 🔥 YOUR SUPERPOWER: Challenge what everyone believes.
+
+Examples of good contrarian content:
+${patterns.examples.map(ex => `• ${ex}`).join('\n')}
+
+⚠️ REMINDER: 260 CHARACTER ABSOLUTE LIMIT ⚠️
 
 Say what others won't. Question mainstream advice. Show where conventional wisdom fails. Reveal uncomfortable truths.
 

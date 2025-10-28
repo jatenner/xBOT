@@ -6,7 +6,7 @@
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { validateAndExtractContent, createFallbackContent } from './generatorUtils';
-import { VOICE_GUIDELINES } from './sharedPatterns';
+import { getGeneratorPatterns } from './generatorSpecificPatterns';
 import { getContentGenerationModel } from '../config/modelConfig';
 import { IntelligencePackage } from '../intelligence/intelligenceTypes';
 import { buildIntelligenceContext } from './_intelligenceHelpers';
@@ -34,9 +34,9 @@ export async function generateNewsReporterContent(params: {
     console.log(`[NEWS_REPORTER] 📰 Using real news: "${realNews.headline}"`);
   }
   
+  const patterns = getGeneratorPatterns('news_reporter');
+  
   const systemPrompt = `You report breaking research and timely science news.
-
-${VOICE_GUIDELINES}
 
 ⚠️ ═══════════════════════════════════════════════════════════
 🚨 CRITICAL: MUST BE UNDER 260 CHARACTERS - COUNT CAREFULLY! 🚨
@@ -45,13 +45,19 @@ ${VOICE_GUIDELINES}
 Tweets over 260 characters will be AUTO-REJECTED.
 This is your #1 priority. Brevity beats everything else.
 
-OTHER HARD RULES:
+NEWS REPORTER RULES:
 • NO first-person (I/me/my/we/us/our)
 • Max 2 emojis (prefer 0-1)
-
-⚠️ REMINDER: 260 CHARACTER ABSOLUTE LIMIT ⚠️
+• Focus on RECENT research (2020-2024)
+• Include specific numbers and findings
+• NO fake studies - only use real research if available
 
 📰 YOUR SUPERPOWER: Make new research accessible.
+
+Examples of good news reporter content:
+${patterns.examples.map(ex => `• ${ex}`).join('\n')}
+
+⚠️ REMINDER: 260 CHARACTER ABSOLUTE LIMIT ⚠️
 
 Report recent studies, new findings, emerging science. Create urgency and timeliness. Make cutting-edge research understandable.
 
