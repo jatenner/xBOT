@@ -74,6 +74,13 @@ async function generateRealContent(): Promise<void> {
     for (let i = 0; i < 3; i++) {
       try {
       const content = await generateContentWithLLM();
+      
+      // Handle quota reached (returns null)
+      if (!content) {
+        console.log('[PLAN_JOB] ⏸️ Quota reached, stopping generation');
+        break;
+      }
+      
       const gateResult = await runGateChain(content.text, content.decision_id);
         
         if (!gateResult.passed) {
