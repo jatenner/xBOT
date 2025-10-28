@@ -266,14 +266,35 @@ export class RealTwitterDiscovery {
       // 🕐 GIVE TWITTER TIME TO LOAD
       await page.waitForTimeout(3000);
           
-          // Extract recent tweets
+          // Extract recent tweets (FILTER OLD TWEETS IMMEDIATELY - permanent fix)
           const opportunities = await page.evaluate(() => {
             const results: any[] = [];
             const tweetElements = document.querySelectorAll('article[data-testid="tweet"]');
+            const NOW = Date.now();
+            const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+            let oldTweetsSkipped = 0;
+            let noTimestampSkipped = 0;
             
             // 🔥 SCALE: Extract up to 20 tweets per account (was 10)
             for (let i = 0; i < Math.min(tweetElements.length, 20); i++) {
               const tweet = tweetElements[i];
+              
+              // ⏰ PRE-FILTER: Check age FIRST (before extracting everything)
+              const timeEl = tweet.querySelector('time');
+              const datetime = timeEl?.getAttribute('datetime') || '';
+              if (!datetime) {
+                noTimestampSkipped++;
+                continue; // Skip if no timestamp
+              }
+              
+              const tweetTime = new Date(datetime).getTime();
+              const ageMs = NOW - tweetTime;
+              if (ageMs > MAX_AGE_MS) {
+                oldTweetsSkipped++;
+                continue; // Skip tweets older than 24 hours
+              }
+              
+              // Now extract full data (only for recent tweets)
               
               // Get tweet content
               const contentEl = tweet.querySelector('[data-testid="tweetText"]');
@@ -285,15 +306,8 @@ export class RealTwitterDiscovery {
               const match = href.match(/\/status\/(\d+)/);
               const tweetId = match ? match[1] : '';
               
-              // 🕐 EXTRACT REAL TIMESTAMP from Twitter
-              const timeEl = tweet.querySelector('time');
-              const datetime = timeEl?.getAttribute('datetime') || '';
-              let postedMinutesAgo = 999999; // Default: very old
-              if (datetime) {
-                const tweetTime = new Date(datetime);
-                const now = new Date();
-                postedMinutesAgo = Math.floor((now.getTime() - tweetTime.getTime()) / 60000);
-              }
+              // Calculate minutes ago (we already have tweetTime from pre-filter)
+              const postedMinutesAgo = Math.floor(ageMs / 60000);
               
               // Get engagement metrics - MULTI-STRATEGY FALLBACK (permanent fix)
               // Strategy 1: data-testid selectors (primary)
@@ -367,18 +381,26 @@ export class RealTwitterDiscovery {
             }
             }
             
-            return results;
+            return { results, oldTweetsSkipped, noTimestampSkipped };
           });
           
-        console.log(`[REAL_DISCOVERY] ✅ Scraped ${opportunities.length} raw tweets from @${username}`);
+          // Log filtering stats
+          if (opportunities.oldTweetsSkipped > 0 || opportunities.noTimestampSkipped > 0) {
+            console.log(`[REAL_DISCOVERY] 🕐 Filtered: ${opportunities.oldTweetsSkipped} old tweets (>24h), ${opportunities.noTimestampSkipped} no timestamp`);
+          }
+          
+          // Extract just the results array
+          const rawOpportunities = opportunities.results;
+          
+        console.log(`[REAL_DISCOVERY] ✅ Scraped ${rawOpportunities.length} raw tweets from @${username}`);
         
         // 🔍 DIAGNOSTIC: Log engagement stats for visibility
-        if (opportunities.length > 0) {
-          const sample = opportunities[0];
-          const avgLikes = opportunities.reduce((sum: number, o: any) => sum + o.like_count, 0) / opportunities.length;
-          const maxLikes = Math.max(...opportunities.map((o: any) => o.like_count));
+        if (rawOpportunities.length > 0) {
+          const sample = rawOpportunities[0];
+          const avgLikes = rawOpportunities.reduce((sum: number, o: any) => sum + o.like_count, 0) / rawOpportunities.length;
+          const maxLikes = Math.max(...rawOpportunities.map((o: any) => o.like_count));
           console.log(`[REAL_DISCOVERY] 📊 Sample: ${sample.like_count} likes, ${sample.reply_count} replies, ${sample.posted_minutes_ago}min ago`);
-          console.log(`[REAL_DISCOVERY] 📊 Stats: avg=${avgLikes.toFixed(1)} likes, max=${maxLikes} likes across ${opportunities.length} tweets`);
+          console.log(`[REAL_DISCOVERY] 📊 Stats: avg=${avgLikes.toFixed(1)} likes, max=${maxLikes} likes across ${rawOpportunities.length} tweets`);
         }
         
         // Calculate engagement rate and tier for each opportunity
@@ -387,7 +409,7 @@ export class RealTwitterDiscovery {
         
         // 🎯 ADAPTIVE QUALITY FILTER (permanent fix)
         // First pass: Try standard thresholds
-        const tieredOpportunities = opportunities
+        const tieredOpportunities = rawOpportunities
           .map((opp: any) => {
             const engagementRate = scorer.calculateEngagementRate(opp.like_count, accountFollowers);
             const tier = scorer.calculateTier({
@@ -413,7 +435,7 @@ export class RealTwitterDiscovery {
         // 🔄 FALLBACK STRATEGY: If standard thresholds reject everything, use adaptive thresholds
         let qualifiedOpportunities = tieredOpportunities.filter((opp: any) => opp.tier !== null);
         
-        if (qualifiedOpportunities.length === 0 && opportunities.length > 0) {
+        if (qualifiedOpportunities.length === 0 && rawOpportunities.length > 0) {
           // No tweets met standard thresholds - use percentile-based approach
           const sortedByEngagement = [...tieredOpportunities].sort((a, b) => b.engagement_rate - a.engagement_rate);
           const top30Percent = Math.ceil(sortedByEngagement.length * 0.3);
