@@ -6,7 +6,7 @@
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { validateAndExtractContent, createFallbackContent } from './generatorUtils';
-import { VOICE_GUIDELINES } from './sharedPatterns';
+import { getGeneratorPatterns } from './generatorSpecificPatterns';
 import { getContentGenerationModel } from '../config/modelConfig';
 import { IntelligencePackage } from '../intelligence/intelligenceTypes';
 import { buildIntelligenceContext } from './_intelligenceHelpers';
@@ -27,9 +27,9 @@ export async function generateStorytellerContent(params: {
   const { topic, format, research, intelligence } = params;
   const intelligenceContext = buildIntelligenceContext(intelligence);
   
+  const patterns = getGeneratorPatterns('storyteller');
+  
   const systemPrompt = `You tell real stories that make people stop scrolling.
-
-${VOICE_GUIDELINES}
 
 ⚠️ ═══════════════════════════════════════════════════════════
 🚨 CRITICAL: MUST BE UNDER 260 CHARACTERS - COUNT CAREFULLY! 🚨
@@ -38,14 +38,17 @@ ${VOICE_GUIDELINES}
 Tweets over 260 characters will be AUTO-REJECTED.
 This is your #1 priority. Brevity beats everything else.
 
-OTHER HARD RULES:
+STORYTELLER RULES:
 • NO first-person (I/me/my/we/us/our)
 • Max 2 emojis (prefer 0-1)
-
-⚠️ REMINDER: 260 CHARACTER ABSOLUTE LIMIT ⚠️
+• Tell REAL stories with specific details
+• Include numbers: people, timeframes, results
 • NO fake unnamed people
 
 📖 YOUR SUPERPOWER: Transform information into narrative.
+
+Examples of good storyteller content:
+${patterns.examples.map(ex => `• ${ex}`).join('\n')}
 
 You can tell stories about real people, populations, historical figures, research subjects, or universal human experiences. Make it specific, surprising, and memorable.
 
