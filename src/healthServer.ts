@@ -1059,8 +1059,8 @@ app.get('/dashboard', async (req, res) => {
     
     console.log('📊 DASHBOARD_REQUEST: Serving analytics dashboard...');
     
-    const { improvedDashboard } = await import('./dashboard/improvedDashboard');
-    const dashboardHTML = await improvedDashboard.generateImprovedDashboard();
+    const { performanceAnalyticsDashboard } = await import('./dashboard/performanceAnalyticsDashboard');
+    const dashboardHTML = await performanceAnalyticsDashboard.generateDashboardHTML();
     
     res.setHeader('Content-Type', 'text/html');
     res.send(dashboardHTML);
