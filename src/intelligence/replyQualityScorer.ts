@@ -83,6 +83,8 @@ export class ReplyQualityScorer {
   /**
    * Calculate tier based on ABSOLUTE ENGAGEMENT (likes OR comments)
    * Account size is IRRELEVANT - only engagement matters for visibility
+   * 
+   * DESIGNED FOR VOLUME: Need ~200-300 opportunities/day to support 4 replies/hour
    */
   calculateTier(metrics: TweetMetrics): 'golden' | 'good' | 'acceptable' | null {
     const absoluteLikes = metrics.like_count;
@@ -90,56 +92,35 @@ export class ReplyQualityScorer {
     const tweetAge = metrics.posted_minutes_ago;
     
     // ═══════════════════════════════════════════════════════════
-    // ABSOLUTE ENGAGEMENT SYSTEM (Follower-count agnostic)
-    // More engagement = More people saw it = More visibility for your reply
-    // 
-    // PRIORITY ORDER: Higher tiers checked first, falls back to lower tiers
+    // REALISTIC THRESHOLD SYSTEM
+    // Set at level where we can find 200-300 opportunities per day
+    // High engagement tweets are prioritized via opportunity_score (not tier)
     // ═══════════════════════════════════════════════════════════
     
-    // MEGA VIRAL: Insane visibility (these exist - Huberman, Hyman, etc.)
-    // 10K+ likes = 100K+ people | 1K+ comments = MASSIVE conversation
-    if ((absoluteLikes >= 10000 || absoluteComments >= 1000) && 
-        tweetAge <= 1440) {  // Posted in last 24 hours
-      return 'golden';  // Still "golden" in DB but highest priority
-    }
-    
-    // SUPER VIRAL: Huge visibility
-    // 5K+ likes = 50K+ people | 500+ comments = huge conversation
-    if ((absoluteLikes >= 5000 || absoluteComments >= 500) && 
-        tweetAge <= 1440) {
-      return 'golden';
-    }
-    
-    // VIRAL: Very high visibility
-    // 2K+ likes = 20K+ people | 200+ comments = viral conversation
-    if ((absoluteLikes >= 2000 || absoluteComments >= 200) && 
-        tweetAge <= 1440) {
-      return 'golden';
-    }
-    
-    // GOLDEN: High visibility tweets
-    // 800+ likes = ~8,000 people saw it | 80+ comments = very active conversation
-    if ((absoluteLikes >= 800 || absoluteComments >= 80) && 
-        tweetAge <= 1440) {  // Posted in last 24 hours
-      return 'golden';
-    }
-    
-    // GOOD: Strong visibility tweets (FALLBACK if golden pool too small)
+    // GOLDEN: Strong visibility tweets (~200-300 per day available)
     // 300+ likes = ~3,000 people saw it | 30+ comments = active discussion
+    // This threshold ensures we can ALWAYS find 4/hour
     if ((absoluteLikes >= 300 || absoluteComments >= 30) && 
+        tweetAge <= 1440) {  // Posted in last 24 hours
+      return 'golden';
+    }
+    
+    // GOOD: Decent visibility tweets (FALLBACK if golden pool runs low)
+    // 100+ likes = ~1,000 people saw it | 10+ comments = some engagement
+    if ((absoluteLikes >= 100 || absoluteComments >= 10) && 
         tweetAge <= 1440) {  // Posted in last 24 hours
       return 'good';
     }
     
-    // ACCEPTABLE: Decent visibility tweets (FALLBACK if good pool too small)
-    // 100+ likes = ~1,000 people saw it | 10+ comments = some engagement
-    if ((absoluteLikes >= 100 || absoluteComments >= 10) && 
+    // ACCEPTABLE: Minimum visibility tweets (SAFETY NET)
+    // 50+ likes = ~500 people saw it | 5+ comments = minimal engagement
+    if ((absoluteLikes >= 50 || absoluteComments >= 5) && 
         tweetAge <= 1440) {  // Posted in last 24 hours
       return 'acceptable';
     }
     
-    // REJECT: Low visibility (not worth replying)
-    // <100 likes = too few people looking
+    // REJECT: Too low visibility (not worth replying)
+    // <50 likes = too few people looking
     return null;
   }
   

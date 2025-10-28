@@ -335,7 +335,7 @@ async function generateRealReplies(): Promise<void> {
   console.log(`[REPLY_JOB]   ✅ GOOD: ${good} (0.15%+ eng, <240min, <15 replies)`);
   console.log(`[REPLY_JOB]   📊 ACCEPTABLE: ${acceptable} (0.08%+ eng, <720min, <25 replies)`);
   
-  // SMART SELECTION: Prioritize by tier → momentum → engagement rate
+  // SMART SELECTION: Prioritize by tier → ABSOLUTE likes → comments → engagement rate
   const sortedOpportunities = [...allOpportunities].sort((a, b) => {
     // Tier priority: golden > good > acceptable > null
     const tierOrder: Record<string, number> = { golden: 3, good: 2, acceptable: 1 };
@@ -343,12 +343,17 @@ async function generateRealReplies(): Promise<void> {
     const bTier = tierOrder[String(b.tier || '')] || 0;
     if (aTier !== bTier) return bTier - aTier; // Higher tier first
     
-    // Within same tier, sort by momentum
-    const aMomentum = Number(a.momentum_score) || 0;
-    const bMomentum = Number(b.momentum_score) || 0;
-    if (Math.abs(aMomentum - bMomentum) > 0.1) return bMomentum - aMomentum;
+    // Within same tier, prioritize by ABSOLUTE engagement (10K likes beats 300 likes!)
+    const aLikes = Number(a.like_count) || 0;
+    const bLikes = Number(b.like_count) || 0;
+    if (aLikes !== bLikes) return bLikes - aLikes; // More likes first
     
-    // Finally, by engagement rate
+    // Then by comments
+    const aComments = Number(a.reply_count) || 0;
+    const bComments = Number(b.reply_count) || 0;
+    if (aComments !== bComments) return bComments - aComments;
+    
+    // Finally, by engagement rate (for ties)
     return (Number(b.engagement_rate) || 0) - (Number(a.engagement_rate) || 0);
   });
   
