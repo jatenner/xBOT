@@ -30,8 +30,9 @@ export async function replyOpportunityHarvester(): Promise<void> {
     console.log(`[HARVESTER] 📊 Current pool: ${poolSize} opportunities (<24h old)`);
     
     // Step 2: Decide if we need to harvest
-    const MIN_POOL_SIZE = 100;
-    const TARGET_POOL_SIZE = 300;
+    // Need ~200 opportunities for 4 replies/hour (96/day with safety buffer)
+    const MIN_POOL_SIZE = 150;
+    const TARGET_POOL_SIZE = 250;
     
     if (poolSize >= TARGET_POOL_SIZE) {
       console.log(`[HARVESTER] ✅ Pool is full (${poolSize}/${TARGET_POOL_SIZE}), skipping harvest`);
@@ -41,15 +42,15 @@ export async function replyOpportunityHarvester(): Promise<void> {
     const needToHarvest = TARGET_POOL_SIZE - poolSize;
     console.log(`[HARVESTER] 🎯 Need to harvest ~${needToHarvest} opportunities`);
     
-  // Step 3: Get discovered accounts (UNLIMITED - sorted by priority)
+  // Step 3: Get discovered accounts (NO FOLLOWER FILTERS - engagement matters, not size)
   const { data: accounts } = await supabase
     .from('discovered_accounts')
     .select('username, follower_count, quality_score, engagement_rate, scrape_priority')
-    .gte('follower_count', 10000)  // 10K-100K (sweet spot for engagement)
-    .lte('follower_count', 100000)  // Smaller = higher engagement rates
+    // ✅ REMOVED FOLLOWER FILTERS - scrape ALL accounts (big and small)
+    // If a tweet has 1000+ likes, we reply - regardless of account size
     .order('scrape_priority', { ascending: false })  // Best quality first
     .order('last_scraped_at', { ascending: true, nullsFirst: true })  // Least recently scraped
-    .limit(100); // Top 100 candidates (not a hard limit, just query size)
+    .limit(200); // Increased to 200 to ensure enough volume
   
   if (!accounts || accounts.length === 0) {
     console.log('[HARVESTER] ⚠️ No accounts in pool, waiting for discovery job');
@@ -153,7 +154,8 @@ export async function replyOpportunityHarvester(): Promise<void> {
       .eq('replied_to', false)
       .gt('expires_at', new Date().toISOString());
     
-    if ((goldenCount || 0) >= 30) {
+    // Need ~100 golden for 4 replies/hour (96/day) - stop at 120 to be safe
+    if ((goldenCount || 0) >= 120) {
       console.log(`[HARVESTER] 🎯 Found ${goldenCount} golden opportunities - stopping early!`);
       break;
     }

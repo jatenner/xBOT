@@ -81,39 +81,43 @@ export class ReplyQualityScorer {
   }
   
   /**
-   * Calculate tier based on engagement rate, recency, and reply positioning
+   * Calculate tier based on ABSOLUTE ENGAGEMENT (likes OR comments)
+   * Account size is IRRELEVANT - only engagement matters for visibility
    */
   calculateTier(metrics: TweetMetrics): 'golden' | 'good' | 'acceptable' | null {
-    const engagementRate = this.calculateEngagementRate(
-      metrics.like_count, 
-      metrics.account_followers
-    );
+    const absoluteLikes = metrics.like_count;
+    const absoluteComments = metrics.reply_count;
+    const tweetAge = metrics.posted_minutes_ago;
     
-    // GOLDEN: Viral tweets (0.3%+ engagement, very fresh, top positioning)
-    // 10K account: 30+ likes | 50K account: 150+ likes | 100K account: 300+ likes
-    if (engagementRate >= 0.003 && 
-        metrics.posted_minutes_ago <= 90 && 
-        metrics.reply_count < 8) {
+    // ═══════════════════════════════════════════════════════════
+    // ABSOLUTE ENGAGEMENT SYSTEM (Follower-count agnostic)
+    // More engagement = More people saw it = More visibility for your reply
+    // ═══════════════════════════════════════════════════════════
+    
+    // GOLDEN: High visibility tweets
+    // 800+ likes = ~8,000 people saw it | 80+ comments = very active conversation
+    if ((absoluteLikes >= 800 || absoluteComments >= 80) && 
+        tweetAge <= 1440) {  // Posted in last 24 hours
       return 'golden';
     }
     
-    // GOOD: Popular tweets (0.15%+ engagement, fresh, visible)
-    // 10K account: 15+ likes | 50K account: 75+ likes | 100K account: 150+ likes
-    if (engagementRate >= 0.0015 && 
-        metrics.posted_minutes_ago <= 240 && 
-        metrics.reply_count < 15) {
+    // GOOD: Strong visibility tweets
+    // 300+ likes = ~3,000 people saw it | 30+ comments = active discussion
+    if ((absoluteLikes >= 300 || absoluteComments >= 30) && 
+        tweetAge <= 1440) {  // Posted in last 24 hours
       return 'good';
     }
     
-    // ACCEPTABLE: Viable tweets (0.08%+ engagement, recent, some visibility)
-    // 10K account: 8+ likes | 50K account: 40+ likes | 100K account: 80+ likes
-    if (engagementRate >= 0.0008 && 
-        metrics.posted_minutes_ago <= 720 && 
-        metrics.reply_count < 25) {
+    // ACCEPTABLE: Decent visibility tweets
+    // 100+ likes = ~1,000 people saw it | 10+ comments = some engagement
+    if ((absoluteLikes >= 100 || absoluteComments >= 10) && 
+        tweetAge <= 1440) {  // Posted in last 24 hours
       return 'acceptable';
     }
     
-    return null; // Below threshold
+    // REJECT: Low visibility (not worth replying)
+    // <100 likes = too few people looking
+    return null;
   }
   
   /**
