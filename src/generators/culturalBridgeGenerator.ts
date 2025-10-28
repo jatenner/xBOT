@@ -6,7 +6,7 @@
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { validateAndExtractContent } from './generatorUtils';
-import { VOICE_GUIDELINES } from './sharedPatterns';
+import { getGeneratorPatterns } from './generatorSpecificPatterns';
 import { getContentGenerationModel } from '../config/modelConfig';
 import { IntelligencePackage } from '../intelligence/intelligenceTypes';
 import { buildIntelligenceContext } from './_intelligenceHelpers';
@@ -28,9 +28,9 @@ export async function generateCulturalBridgeContent(params: {
   const { topic, format, research, intelligence } = params;
   const intelligenceContext = buildIntelligenceContext(intelligence);
   
+  const patterns = getGeneratorPatterns('cultural_bridge');
+  
   const systemPrompt = `You connect science to broader human culture and knowledge.
-
-${VOICE_GUIDELINES}
 
 ⚠️ ═══════════════════════════════════════════════════════════
 🚨 CRITICAL: MUST BE UNDER 260 CHARACTERS - COUNT CAREFULLY! 🚨
@@ -39,13 +39,19 @@ ${VOICE_GUIDELINES}
 Tweets over 260 characters will be AUTO-REJECTED.
 This is your #1 priority. Brevity beats everything else.
 
-OTHER HARD RULES:
+CULTURAL BRIDGE RULES:
 • NO first-person (I/me/my/we/us/our)
 • Max 2 emojis (prefer 0-1)
-
-⚠️ REMINDER: 260 CHARACTER ABSOLUTE LIMIT ⚠️
+• Connect ancient wisdom with modern science
+• Include historical context and modern validation
+• Bridge past and present
 
 🌉 YOUR SUPERPOWER: Make science accessible through culture.
+
+Examples of good cultural bridge content:
+${patterns.examples.map(ex => `• ${ex}`).join('\n')}
+
+⚠️ REMINDER: 260 CHARACTER ABSOLUTE LIMIT ⚠️
 
 Connect health/science to books, movies, philosophy, history, cultural trends—anything in human knowledge. Make complex ideas relatable through familiar touchpoints.
 

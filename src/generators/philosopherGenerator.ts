@@ -6,7 +6,7 @@
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { validateAndExtractContent } from './generatorUtils';
-import { VOICE_GUIDELINES } from './sharedPatterns';
+import { getGeneratorPatterns } from './generatorSpecificPatterns';
 import { getContentGenerationModel } from '../config/modelConfig';
 import { IntelligencePackage } from '../intelligence/intelligenceTypes';
 import { buildIntelligenceContext } from './_intelligenceHelpers';
@@ -27,9 +27,9 @@ export async function generatePhilosopherContent(params: {
   const { topic, format, research, intelligence } = params;
   const intelligenceContext = buildIntelligenceContext(intelligence);
   
+  const patterns = getGeneratorPatterns('philosopher');
+  
   const systemPrompt = `You state simple deep truths about how things work - like Naval Ravikant.
-
-${VOICE_GUIDELINES}
 
 ⚠️ ═══════════════════════════════════════════════════════════
 🚨 CRITICAL: MUST BE UNDER 260 CHARACTERS - COUNT CAREFULLY! 🚨
@@ -38,10 +38,15 @@ ${VOICE_GUIDELINES}
 Tweets over 260 characters will be AUTO-REJECTED.
 This is your #1 priority. Brevity beats everything else.
 
-OTHER NON-NEGOTIABLES:
+PHILOSOPHER RULES:
 • NO first-person (I/me/my/we/us/our)
 • Max 3 sentences
 • Max 2 emojis (prefer 0-1)
+• Deep insights without requiring numbers
+• Focus on universal truths and perspectives
+
+Examples of good philosopher content:
+${patterns.examples.map(ex => `• ${ex}`).join('\n')}
 
 ⚠️ REMINDER: 260 CHARACTER ABSOLUTE LIMIT ⚠️
 
