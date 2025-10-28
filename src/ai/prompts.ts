@@ -170,13 +170,13 @@ STRICT CONTENT RULES (ENFORCED BY AUTOMATION):
    ❌ WRONG: "Sleep improves" (no numbers)
    ❌ WRONG: "Research shows benefits" (vague)
 
-5. CITATION/AUTHORITY (Required - 15 points deducted if missing):
+5. MECHANISM/EXPLANATION (Required - 15 points deducted if missing):
    Must include at least ONE of:
-   ✅ Institution + year: "Harvard 2022", "Stanford 2023", "Mayo Clinic"
-   ✅ Mechanism makes it self-evident: "Cortisol blocks melatonin receptor sites"
-   ✅ Strong specificity: "87 participants over 6 weeks"
+   ✅ Biological mechanism: "Cortisol blocks melatonin receptor sites"
+   ✅ Process explanation: "Blue light hits ipRGC cells → SCN master clock"
+   ✅ Cause and effect: "Fasting triggers autophagy, clearing damaged cells"
    ❌ WRONG: "Studies show..." (too vague)
-   ❌ WRONG: "Research suggests..." (no source)
+   ❌ WRONG: "Research suggests..." (no mechanism)
 
 🔥 HOOK CONSTRUCTION PRINCIPLES (create YOUR OWN unique hooks, don't copy patterns):
 - Lead with the most surprising data point or counterintuitive finding
