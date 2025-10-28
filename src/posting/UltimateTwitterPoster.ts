@@ -89,7 +89,9 @@ export class UltimateTwitterPoster {
       'Target closed',
       'waiting for selector',
       'Network verification failed',
-      'UI verification failed'
+      'UI verification failed',
+      'timeout.*exceeded', // 🔧 ADDED: Playwright timeout errors
+      'Navigation elements not found' // 🔧 ADDED: Our new error
     ];
     
     return recoverableErrors.some(error => errorMessage.includes(error));
@@ -127,10 +129,33 @@ export class UltimateTwitterPoster {
 
     // Wait for navigation to complete and UI to be ready
     console.log('ULTIMATE_POSTER: Waiting for UI to be ready...');
-    await this.page.waitForSelector('nav[role="navigation"]', { 
-      state: 'visible', 
-      timeout: 20000 
-    });
+    
+    // 🔧 IMPROVED TIMEOUT: Try multiple selectors with longer timeout
+    const navigationSelectors = [
+      'nav[role="navigation"]',
+      '[data-testid="primaryColumn"]',
+      '[data-testid="SideNav_AccountSwitcher_Button"]',
+      'main[role="main"]'
+    ];
+    
+    let navigationFound = false;
+    for (const selector of navigationSelectors) {
+      try {
+        await this.page.waitForSelector(selector, { 
+          state: 'visible', 
+          timeout: 30000 // Increased from 20s to 30s
+        });
+        console.log(`ULTIMATE_POSTER: Found navigation via ${selector}`);
+        navigationFound = true;
+        break;
+      } catch (error) {
+        console.log(`ULTIMATE_POSTER: ${selector} not found, trying next...`);
+      }
+    }
+    
+    if (!navigationFound) {
+      throw new Error('Navigation elements not found - page may not have loaded properly');
+    }
 
     // Check if we're logged in
     const isLoggedOut = await this.checkIfLoggedOut();
