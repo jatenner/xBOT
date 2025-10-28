@@ -332,6 +332,12 @@ export class RealTwitterDiscovery {
           
         console.log(`[REAL_DISCOVERY] ✅ Scraped ${opportunities.length} raw tweets from @${username}`);
         
+        // 🔍 DEBUG: Log raw engagement data from first tweet
+        if (opportunities.length > 0) {
+          const sample = opportunities[0];
+          console.log(`[REAL_DISCOVERY] 📊 Sample tweet: ${sample.like_count} likes, ${sample.reply_count} replies, ${sample.posted_minutes_ago}min ago`);
+        }
+        
         // Calculate engagement rate and tier for each opportunity
         const { getReplyQualityScorer } = await import('../intelligence/replyQualityScorer');
         const scorer = getReplyQualityScorer();
