@@ -87,7 +87,7 @@ async function getTopPerformingPosts(supabase: any) {
     .eq('decision_type', 'single')
     .not('actual_likes', 'is', null)
     .order('actual_impressions', { ascending: false })
-    .limit(20);
+    .limit(500); // Show ALL posts with metrics (up to 500)
 
   return data || [];
 }
@@ -393,19 +393,20 @@ function generatePostsHTML(data: any): string {
                 <div class="stat-change">👁️ ${data.last24h.views.toLocaleString()} views • ❤️ ${data.last24h.likes} likes</div>
             </div>
             <div class="stat-card">
-                <div class="stat-label">Total Posts</div>
+                <div class="stat-label">Posts with Metrics</div>
                 <div class="stat-value">${data.topPosts.length}</div>
-                <div class="stat-change">📊 With performance data</div>
+                <div class="stat-change">📊 All shown below</div>
             </div>
         </div>
 
         <div class="section">
-            <h2>🏆 Top Performing Posts</h2>
-            <div style="margin-bottom: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
+            <h2>🏆 All Posts with Performance Data (${data.topPosts.length} posts)</h2>
+            <div style="margin-bottom: 15px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
                 <button class="sort-btn" onclick="sortTable('likes')">Sort by ❤️ Likes</button>
                 <button class="sort-btn active" onclick="sortTable('views')">Sort by 👁️ Views</button>
                 <button class="sort-btn" onclick="sortTable('viral')">Sort by 🔥 Viral Score</button>
                 <button class="sort-btn" onclick="sortTable('er')">Sort by 📊 ER</button>
+                <span style="color: #666; font-size: 14px; margin-left: 10px;">Showing entire database of posts with scraped metrics</span>
             </div>
             <table id="postsTable">
                 <thead>
@@ -421,7 +422,7 @@ function generatePostsHTML(data: any): string {
                     </tr>
                 </thead>
                 <tbody>
-                    ${data.topPosts.slice(0, 15).map((post: any) => {
+                    ${data.topPosts.map((post: any) => {
                         const views = post.actual_impressions || 0;
                         const likes = post.actual_likes || 0;
                         const viralScore = views * likes;
