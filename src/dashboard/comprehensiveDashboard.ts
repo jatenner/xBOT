@@ -400,85 +400,125 @@ function generatePostsHTML(data: any): string {
         </div>
 
         <div class="section">
-            <h2>🏆 Top 10 Performing Posts (by likes)</h2>
-            <table>
+            <h2>🏆 Top Performing Posts</h2>
+            <div style="margin-bottom: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
+                <button class="sort-btn active" onclick="sortTable('likes')">Sort by ❤️ Likes</button>
+                <button class="sort-btn" onclick="sortTable('views')">Sort by 👁️ Views</button>
+                <button class="sort-btn" onclick="sortTable('viral')">Sort by 🔥 Viral Score</button>
+                <button class="sort-btn" onclick="sortTable('er')">Sort by 📊 ER</button>
+            </div>
+            <table id="postsTable">
                 <thead>
                     <tr>
-                        <th>Content</th>
+                        <th style="width: 35%;">Content</th>
                         <th>Generator</th>
                         <th>Topic</th>
                         <th>📅 Posted</th>
-                        <th>👁️ Views</th>
-                        <th>❤️ Likes</th>
-                        <th>📊 ER</th>
+                        <th class="number-col">👁️ Views</th>
+                        <th class="number-col">❤️ Likes</th>
+                        <th class="number-col">🔥 Viral</th>
+                        <th class="number-col">📊 ER</th>
                     </tr>
                 </thead>
                 <tbody>
-                    ${data.topPosts.slice(0, 10).map((post: any) => `
-                        <tr>
-                            <td style="max-width: 300px;">${post.content?.substring(0, 80) || 'No content'}...</td>
-                            <td><span class="badge">${post.generator_name || 'unknown'}</span></td>
-                            <td>${post.topic_cluster || 'health'}</td>
-                            <td>${post.posted_at ? new Date(post.posted_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'N/A'}</td>
-                            <td><strong>${(post.actual_impressions || 0).toLocaleString()}</strong></td>
-                            <td><strong>${post.actual_likes || 0}</strong></td>
-                            <td><strong>${((post.actual_engagement_rate || 0) * 100).toFixed(2)}%</strong></td>
+                    ${data.topPosts.slice(0, 15).map((post: any) => {
+                        const views = post.actual_impressions || 0;
+                        const likes = post.actual_likes || 0;
+                        const viralScore = views * likes;
+                        const er = ((post.actual_engagement_rate || 0) * 100).toFixed(2);
+                        
+                        return `
+                        <tr data-views="${views}" data-likes="${likes}" data-viral="${viralScore}" data-er="${er}">
+                            <td class="content-cell">${post.content?.substring(0, 100) || 'No content'}...</td>
+                            <td><span class="badge badge-gen">${post.generator_name || 'unknown'}</span></td>
+                            <td><span class="topic-tag">${post.topic_cluster || 'health'}</span></td>
+                            <td class="date-cell">${post.posted_at ? new Date(post.posted_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'N/A'}</td>
+                            <td class="number-col"><strong>${views.toLocaleString()}</strong></td>
+                            <td class="number-col"><strong style="color: #e91e63;">${likes}</strong></td>
+                            <td class="number-col"><strong style="color: #ff5722;">${viralScore.toLocaleString()}</strong></td>
+                            <td class="number-col"><strong>${er}%</strong></td>
                         </tr>
-                    `).join('')}
+                    `}).join('')}
                 </tbody>
             </table>
         </div>
+        
+        <script>
+        function sortTable(sortBy) {
+            const table = document.getElementById('postsTable');
+            const tbody = table.querySelector('tbody');
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            
+            // Update button states
+            document.querySelectorAll('.sort-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            rows.sort((a, b) => {
+                const aVal = parseFloat(a.getAttribute('data-' + sortBy)) || 0;
+                const bVal = parseFloat(b.getAttribute('data-' + sortBy)) || 0;
+                return bVal - aVal; // Descending
+            });
+            
+            rows.forEach(row => tbody.appendChild(row));
+        }
+        </script>
 
         <div class="section">
             <h2>🎭 Performance by Generator</h2>
+            <p style="color: #666; margin-bottom: 15px; font-size: 14px;">Which AI generators create the best content</p>
             <table>
                 <thead>
                     <tr>
                         <th>Generator</th>
-                        <th>Posts</th>
-                        <th>Avg Views</th>
-                        <th>Avg Likes</th>
-                        <th>Avg ER</th>
+                        <th class="number-col">Posts</th>
+                        <th class="number-col">Avg Views</th>
+                        <th class="number-col">Avg Likes</th>
+                        <th class="number-col">Avg ER</th>
                     </tr>
                 </thead>
                 <tbody>
-                    ${data.generatorBreakdown.map((gen: any) => `
+                    ${data.generatorBreakdown.map((gen: any, index: number) => {
+                        const rank = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '';
+                        return `
                         <tr>
-                            <td><strong>${gen.name}</strong></td>
-                            <td>${gen.posts}</td>
-                            <td>${gen.avgViews.toLocaleString()}</td>
-                            <td>${gen.avgLikes}</td>
-                            <td><strong>${gen.avgER}%</strong></td>
+                            <td><strong>${rank} ${gen.name}</strong></td>
+                            <td class="number-col">${gen.posts}</td>
+                            <td class="number-col">${gen.avgViews.toLocaleString()}</td>
+                            <td class="number-col" style="color: #e91e63;"><strong>${gen.avgLikes}</strong></td>
+                            <td class="number-col"><strong>${gen.avgER}%</strong></td>
                         </tr>
-                    `).join('')}
-                    ${data.generatorBreakdown.length === 0 ? '<tr><td colspan="5" style="text-align: center; color: #999;">No data yet</td></tr>' : ''}
+                    `}).join('')}
+                    ${data.generatorBreakdown.length === 0 ? '<tr><td colspan="5" style="text-align: center; color: #999; padding: 30px;">No data yet - posts need metrics to be scraped</td></tr>' : ''}
                 </tbody>
             </table>
         </div>
 
         <div class="section">
             <h2>🎯 Performance by Topic</h2>
+            <p style="color: #666; margin-bottom: 15px; font-size: 14px;">Which topics resonate most with your audience</p>
             <table>
                 <thead>
                     <tr>
                         <th>Topic</th>
-                        <th>Posts</th>
-                        <th>Avg Views</th>
-                        <th>Avg Likes</th>
-                        <th>Avg ER</th>
+                        <th class="number-col">Posts</th>
+                        <th class="number-col">Avg Views</th>
+                        <th class="number-col">Avg Likes</th>
+                        <th class="number-col">Avg ER</th>
                     </tr>
                 </thead>
                 <tbody>
-                    ${data.topicBreakdown.map((topic: any) => `
+                    ${data.topicBreakdown.map((topic: any, index: number) => {
+                        const rank = index === 0 ? '🏆' : index === 1 ? '⭐' : index === 2 ? '✨' : '';
+                        return `
                         <tr>
-                            <td><strong>${topic.name}</strong></td>
-                            <td>${topic.posts}</td>
-                            <td>${topic.avgViews.toLocaleString()}</td>
-                            <td>${topic.avgLikes}</td>
-                            <td><strong>${topic.avgER}%</strong></td>
+                            <td><strong>${rank} ${topic.name}</strong></td>
+                            <td class="number-col">${topic.posts}</td>
+                            <td class="number-col">${topic.avgViews.toLocaleString()}</td>
+                            <td class="number-col" style="color: #e91e63;"><strong>${topic.avgLikes}</strong></td>
+                            <td class="number-col"><strong>${topic.avgER}%</strong></td>
                         </tr>
-                    `).join('')}
-                    ${data.topicBreakdown.length === 0 ? '<tr><td colspan="5" style="text-align: center; color: #999;">No data yet</td></tr>' : ''}
+                    `}).join('')}
+                    ${data.topicBreakdown.length === 0 ? '<tr><td colspan="5" style="text-align: center; color: #999; padding: 30px;">No data yet - posts need metrics to be scraped</td></tr>' : ''}
                 </tbody>
             </table>
         </div>
@@ -707,7 +747,7 @@ function getSharedStyles(): string {
         min-height: 100vh;
         padding: 20px;
     }
-    .container { max-width: 1600px; margin: 0 auto; }
+    .container { max-width: 1800px; margin: 0 auto; }
     .header {
         background: white;
         padding: 30px;
@@ -715,8 +755,8 @@ function getSharedStyles(): string {
         margin-bottom: 20px;
         box-shadow: 0 10px 30px rgba(0,0,0,0.2);
     }
-    .header h1 { color: #333; margin-bottom: 10px; }
-    .header p { color: #666; }
+    .header h1 { color: #333; margin-bottom: 10px; font-size: 32px; }
+    .header p { color: #666; font-size: 16px; }
     .stats-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -728,8 +768,10 @@ function getSharedStyles(): string {
         padding: 25px;
         border-radius: 15px;
         box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+        transition: transform 0.2s;
     }
-    .stat-label { color: #666; font-size: 14px; margin-bottom: 8px; }
+    .stat-card:hover { transform: translateY(-2px); }
+    .stat-label { color: #666; font-size: 14px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
     .stat-value { color: #333; font-size: 36px; font-weight: bold; }
     .stat-change { color: #28a745; font-size: 14px; margin-top: 8px; }
     .section {
@@ -739,23 +781,64 @@ function getSharedStyles(): string {
         box-shadow: 0 5px 20px rgba(0,0,0,0.1);
         margin-bottom: 20px;
     }
-    .section h2 { color: #333; margin-bottom: 20px; }
+    .section h2 { color: #333; margin-bottom: 20px; font-size: 24px; }
     table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
-    th { background: #f8f9fa; font-weight: 600; color: #666; font-size: 13px; }
+    th, td { padding: 14px 12px; text-align: left; border-bottom: 1px solid #f0f0f0; }
+    th { 
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        font-weight: 600;
+        color: white;
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
     td { font-size: 14px; }
+    tr:hover { background: #f8f9fa; }
+    .number-col { text-align: right; font-variant-numeric: tabular-nums; }
+    .content-cell { line-height: 1.5; color: #333; }
+    .date-cell { color: #666; font-size: 13px; white-space: nowrap; }
+    .topic-tag { 
+        display: inline-block;
+        padding: 4px 10px;
+        background: #f0f0f0;
+        border-radius: 12px;
+        font-size: 12px;
+        color: #666;
+    }
     .badge { 
         display: inline-block;
-        padding: 4px 12px;
+        padding: 5px 12px;
         border-radius: 20px;
         font-size: 12px;
         font-weight: 600;
         background: #e3f2fd;
         color: #1976d2;
     }
+    .badge-gen { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
     .badge-platinum { background: #e3f2fd; color: #1976d2; }
     .badge-diamond { background: #f3e5f5; color: #7b1fa2; }
     .badge-golden { background: #fff3e0; color: #f57c00; }
+    .sort-btn {
+        padding: 10px 20px;
+        background: white;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 14px;
+        color: #666;
+        transition: all 0.2s;
+    }
+    .sort-btn:hover {
+        background: #f8f9fa;
+        border-color: #667eea;
+        color: #667eea;
+    }
+    .sort-btn.active {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-color: #667eea;
+        color: white;
+    }
     .footer { text-align: center; color: white; margin-top: 40px; opacity: 0.9; }
   `;
 }
