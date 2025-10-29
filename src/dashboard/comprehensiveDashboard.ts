@@ -6,6 +6,36 @@
 
 import { getSupabaseClient } from '../db/index';
 
+export async function generateRecentDashboard(): Promise<string> {
+  const supabase = getSupabaseClient();
+  
+  try {
+    // Get recent posts sorted by date (not performance)
+    const [
+      recentPosts,
+      last24hStats,
+      generatorDistribution,
+      topicDistribution
+    ] = await Promise.all([
+      getRecentPostsChronological(supabase),
+      getLast24HourStats(supabase),
+      getRecentGeneratorDistribution(supabase),
+      getRecentTopicDistribution(supabase)
+    ]);
+
+    return generateRecentHTML({
+      recentPosts,
+      last24hStats,
+      generatorDistribution,
+      topicDistribution
+    });
+
+  } catch (error: any) {
+    console.error('[RECENT_DASHBOARD] Error:', error.message);
+    return generateErrorHTML(error.message);
+  }
+}
+
 export async function generatePostsDashboard(): Promise<string> {
   const supabase = getSupabaseClient();
   
@@ -389,7 +419,8 @@ function generatePostsHTML(data: any): string {
         </div>
 
         <div class="nav-tabs">
-            <a href="/dashboard/posts?token=xbot-admin-2025" class="nav-tab active">📝 Posts</a>
+            <a href="/dashboard/recent?token=xbot-admin-2025" class="nav-tab">📅 Recent</a>
+            <a href="/dashboard/posts?token=xbot-admin-2025" class="nav-tab active">📊 Metrics</a>
             <a href="/dashboard/replies?token=xbot-admin-2025" class="nav-tab">💬 Replies</a>
         </div>
 
@@ -630,7 +661,8 @@ function generateRepliesHTML(data: any): string {
         </div>
 
         <div class="nav-tabs">
-            <a href="/dashboard/posts?token=xbot-admin-2025" class="nav-tab">📝 Posts</a>
+            <a href="/dashboard/recent?token=xbot-admin-2025" class="nav-tab">📅 Recent</a>
+            <a href="/dashboard/posts?token=xbot-admin-2025" class="nav-tab">📊 Metrics</a>
             <a href="/dashboard/replies?token=xbot-admin-2025" class="nav-tab active">💬 Replies</a>
         </div>
 
@@ -879,8 +911,224 @@ function generateErrorHTML(error: string): string {
 </html>`;
 }
 
+// ============================================================
+// RECENT POSTS DATA FETCHERS (chronological, not performance)
+// ============================================================
+
+async function getRecentPostsChronological(supabase: any) {
+  const { data } = await supabase
+    .from('content_metadata')
+    .select('content, actual_likes, actual_retweets, actual_impressions, actual_engagement_rate, generator_name, raw_topic, topic_cluster, angle, tone, format_strategy, posted_at, created_at, status')
+    .eq('decision_type', 'single')
+    .order('created_at', { ascending: false })
+    .limit(100); // Last 100 posts (recent activity)
+
+  return data || [];
+}
+
+async function getRecentGeneratorDistribution(supabase: any) {
+  const last7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  
+  const { data } = await supabase
+    .from('content_metadata')
+    .select('generator_name')
+    .eq('decision_type', 'single')
+    .gte('created_at', last7d);
+
+  if (!data || data.length === 0) return [];
+
+  const counts = data.reduce((acc: any, post: any) => {
+    const gen = post.generator_name || 'unknown';
+    acc[gen] = (acc[gen] || 0) + 1;
+    return acc;
+  }, {});
+
+  return Object.entries(counts)
+    .map(([name, count]) => ({ name, count }))
+    .sort((a: any, b: any) => b.count - a.count);
+}
+
+async function getRecentTopicDistribution(supabase: any) {
+  const last7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  
+  const { data } = await supabase
+    .from('content_metadata')
+    .select('raw_topic, topic_cluster')
+    .eq('decision_type', 'single')
+    .gte('created_at', last7d);
+
+  if (!data || data.length === 0) return [];
+
+  const counts = data.reduce((acc: any, post: any) => {
+    let topic = post.raw_topic || post.topic_cluster || 'Uncategorized';
+    if (topic.length > 50) topic = topic.substring(0, 50) + '...';
+    acc[topic] = (acc[topic] || 0) + 1;
+    return acc;
+  }, {});
+
+  return Object.entries(counts)
+    .map(([name, count]) => ({ name, count }))
+    .sort((a: any, b: any) => b.count - a.count)
+    .slice(0, 15); // Top 15 topics
+}
+
+function generateRecentHTML(data: any): string {
+  const now = new Date().toLocaleString();
+  
+  return `<!DOCTYPE html>
+<html>
+<head>
+    <title>xBOT Recent Posts</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        ${getSharedStyles()}
+        .nav-tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+        .nav-tab { 
+            padding: 12px 24px; 
+            background: white; 
+            border-radius: 8px; 
+            text-decoration: none; 
+            color: #333;
+            font-weight: 600;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .nav-tab.active { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+        .nav-tab:hover { background: #5568d3; color: white; }
+        .status-posted { color: #28a745; font-weight: 600; }
+        .status-queued { color: #ffc107; font-weight: 600; }
+        .metadata-tag { 
+            display: inline-block;
+            padding: 3px 8px;
+            background: #f0f0f0;
+            border-radius: 10px;
+            font-size: 11px;
+            color: #666;
+            margin: 2px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📅 xBOT Recent Activity</h1>
+            <p>Latest posts with complete metadata - sorted by date</p>
+        </div>
+
+        <div class="nav-tabs">
+            <a href="/dashboard/recent?token=xbot-admin-2025" class="nav-tab active">📅 Recent</a>
+            <a href="/dashboard/posts?token=xbot-admin-2025" class="nav-tab">📊 Metrics</a>
+            <a href="/dashboard/replies?token=xbot-admin-2025" class="nav-tab">💬 Replies</a>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Last 24 Hours</div>
+                <div class="stat-value">${data.last24hStats.posts} posts</div>
+                <div class="stat-change">👁️ ${data.last24hStats.views.toLocaleString()} views • ❤️ ${data.last24hStats.likes} likes</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Total Showing</div>
+                <div class="stat-value">${data.recentPosts.length}</div>
+                <div class="stat-change">📝 Last 100 posts (all statuses)</div>
+            </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+            <div class="section">
+                <h2>🎭 Generator Distribution (Last 7 Days)</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Generator</th>
+                            <th class="number-col">Posts</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${data.generatorDistribution.slice(0, 12).map((gen: any) => `
+                            <tr>
+                                <td><strong>${gen.name}</strong></td>
+                                <td class="number-col">${gen.count}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="section">
+                <h2>🎯 Topic Distribution (Last 7 Days)</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Topic</th>
+                            <th class="number-col">Posts</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${data.topicDistribution.map((topic: any) => `
+                            <tr>
+                                <td>${topic.name}</td>
+                                <td class="number-col">${topic.count}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>📝 Recent Posts (Last 100, by date)</h2>
+            <p style="color: #666; margin-bottom: 15px; font-size: 14px;">Complete post history with all metadata - sorted by creation time</p>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 30%;">Content</th>
+                        <th>Generator</th>
+                        <th>Topic</th>
+                        <th>Tone</th>
+                        <th>Angle</th>
+                        <th>📅 Created</th>
+                        <th>Status</th>
+                        <th class="number-col">👁️ Views</th>
+                        <th class="number-col">❤️ Likes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${data.recentPosts.map((post: any) => {
+                        const views = post.actual_impressions || 0;
+                        const likes = post.actual_likes || 0;
+                        const statusColor = post.status === 'posted' ? 'status-posted' : 'status-queued';
+                        
+                        return `
+                        <tr>
+                            <td class="content-cell">${post.content?.substring(0, 100) || 'No content'}...</td>
+                            <td><span class="badge badge-gen">${post.generator_name || 'unknown'}</span></td>
+                            <td><span class="topic-tag" title="${post.raw_topic || post.topic_cluster || 'N/A'}">${(post.raw_topic || post.topic_cluster || 'N/A').substring(0, 30)}...</span></td>
+                            <td>${post.tone ? `<span class="metadata-tag">${post.tone}</span>` : '-'}</td>
+                            <td>${post.angle ? `<span class="metadata-tag">${post.angle}</span>` : '-'}</td>
+                            <td class="date-cell">${post.created_at ? new Date(post.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'N/A'}</td>
+                            <td><span class="${statusColor}">${post.status}</span></td>
+                            <td class="number-col">${views > 0 ? views.toLocaleString() : '-'}</td>
+                            <td class="number-col">${likes > 0 ? `<strong style="color: #e91e63;">${likes}</strong>` : '-'}</td>
+                        </tr>
+                    `}).join('')}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="footer">
+            <p>🤖 Last updated: ${now}</p>
+            <p>⚡ Real-time activity feed from content_metadata (all posts)</p>
+        </div>
+    </div>
+    <script>setTimeout(() => location.reload(), 120000);</script>
+</body>
+</html>`;
+}
+
 export const comprehensiveDashboard = { 
   generatePostsDashboard, 
-  generateRepliesDashboard 
+  generateRepliesDashboard,
+  generateRecentDashboard
 };
 
