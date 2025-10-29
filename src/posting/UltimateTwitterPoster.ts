@@ -1121,14 +1121,19 @@ export class UltimateTwitterPoster {
         // Wait for post to complete
         await this.page.waitForTimeout(3000);
 
-        // Extract tweet ID from URL or DOM
-        const tweetId = await this.extractReplyTweetId();
+        // Extract tweet ID from URL or DOM (MUST be different from parent!)
+        const tweetId = await this.extractReplyTweetId(replyToTweetId);
 
-        console.log(`ULTIMATE_POSTER: ✅ Reply posted successfully: ${tweetId || 'unknown'}`);
+        if (!tweetId) {
+          console.error(`❌ CRITICAL: Reply ID extraction failed for parent ${replyToTweetId}`);
+          throw new Error('Reply posted but could not extract reply ID');
+        }
+
+        console.log(`ULTIMATE_POSTER: ✅ Reply posted successfully: ${tweetId}`);
 
         return {
           success: true,
-          tweetId: tweetId || `reply_${Date.now()}`
+          tweetId: tweetId
         };
 
       } catch (error: any) {
@@ -1149,32 +1154,86 @@ export class UltimateTwitterPoster {
     return { success: false, error: 'Max retries exceeded for reply' };
   }
 
-  private async extractReplyTweetId(): Promise<string | undefined> {
+  private async extractReplyTweetId(parentTweetId: string): Promise<string | undefined> {
     if (!this.page) return undefined;
 
+    console.log(`🔍 REPLY_ID_EXTRACTION: Looking for NEW reply ID (must NOT be ${parentTweetId})`);
+
     try {
-      // Wait for URL to change or new tweet to appear
-      await this.page.waitForTimeout(2000);
+      // Wait for post to complete and DOM to update
+      await this.page.waitForTimeout(3000);
       
-      // Try to extract from URL
+      // ═══════════════════════════════════════════════════════════
+      // STRATEGY 1: Check URL change (most reliable)
+      // ═══════════════════════════════════════════════════════════
       const url = this.page.url();
-      const match = url.match(/status\/(\d+)/);
-      if (match) {
-        return match[1];
+      const urlMatch = url.match(/status\/(\d+)/);
+      if (urlMatch && urlMatch[1] !== parentTweetId) {
+        console.log(`✅ STRATEGY 1 SUCCESS: Extracted from URL: ${urlMatch[1]}`);
+        return urlMatch[1];
       }
+      console.log(`⚠️ STRATEGY 1 FAILED: URL doesn't contain new ID`);
       
-      // Try to find in DOM
-      const statusLink = this.page.locator('a[href*="/status/"]').first();
-      const href = await statusLink.getAttribute('href');
-      if (href) {
-        const linkMatch = href.match(/status\/(\d+)/);
-        if (linkMatch) {
-          return linkMatch[1];
+      // ═══════════════════════════════════════════════════════════
+      // STRATEGY 2: Find newest tweet in DOM (NOT the parent)
+      // ═══════════════════════════════════════════════════════════
+      try {
+        const allTweetLinks = await this.page.locator('article a[href*="/status/"]').all();
+        console.log(`🔍 STRATEGY 2: Found ${allTweetLinks.length} tweet links in DOM`);
+        
+        for (const link of allTweetLinks) {
+          const href = await link.getAttribute('href');
+          if (href) {
+            const match = href.match(/status\/(\d+)/);
+            if (match && match[1] !== parentTweetId) {
+              console.log(`✅ STRATEGY 2 SUCCESS: Found new tweet ID: ${match[1]} (≠ parent)`);
+              return match[1];
+            }
+          }
         }
+        console.log(`⚠️ STRATEGY 2 FAILED: No new tweet ID found (all matched parent)`);
+      } catch (e) {
+        console.log(`⚠️ STRATEGY 2 ERROR: ${e}`);
       }
       
+      // ═══════════════════════════════════════════════════════════
+      // STRATEGY 3: Navigate to our profile and get latest tweet
+      // ═══════════════════════════════════════════════════════════
+      try {
+        console.log(`🔍 STRATEGY 3: Navigating to profile to find latest tweet...`);
+        const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
+        await this.page.goto(`https://x.com/${username}`, { 
+          waitUntil: 'domcontentloaded',
+          timeout: 15000 
+        });
+        await this.page.waitForTimeout(2000);
+        
+        // Get first tweet link (latest tweet)
+        const latestTweet = this.page.locator('article a[href*="/status/"]').first();
+        const href = await latestTweet.getAttribute('href');
+        if (href) {
+          const match = href.match(/status\/(\d+)/);
+          if (match && match[1] !== parentTweetId) {
+            console.log(`✅ STRATEGY 3 SUCCESS: Latest tweet from profile: ${match[1]}`);
+            return match[1];
+          }
+        }
+        console.log(`⚠️ STRATEGY 3 FAILED: Latest tweet is parent or not found`);
+      } catch (e) {
+        console.log(`⚠️ STRATEGY 3 ERROR: ${e}`);
+      }
+      
+      // ═══════════════════════════════════════════════════════════
+      // STRATEGY 4: Use time-based fallback ID
+      // ═══════════════════════════════════════════════════════════
+      console.log(`⚠️ ALL STRATEGIES FAILED - Reply was posted but ID not extractable`);
+      console.log(`🔄 Using timestamp-based fallback (will need manual verification)`);
+      
+      // Return undefined so validation catches this
       return undefined;
+      
     } catch (error) {
+      console.error(`❌ REPLY_ID_EXTRACTION ERROR: ${error}`);
       return undefined;
     }
   }

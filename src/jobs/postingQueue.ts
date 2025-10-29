@@ -690,6 +690,20 @@ async function postReply(decision: QueuedDecision): Promise<string> {
       throw new Error(result.error || 'Reply posting failed');
     }
     
+    // ═══════════════════════════════════════════════════════════
+    // ✅ CRITICAL VALIDATION: Reply ID MUST be different from parent!
+    // ═══════════════════════════════════════════════════════════
+    if (result.tweetId === decision.target_tweet_id) {
+      console.error(`[POSTING_QUEUE] 🚨 CRITICAL BUG DETECTED:`);
+      console.error(`   Reply ID matches parent ID: ${result.tweetId}`);
+      console.error(`   This means ID extraction failed!`);
+      console.error(`   To @${decision.target_username}: "${decision.content.substring(0, 40)}..."`);
+      
+      // Don't store bad data - throw error
+      throw new Error(`Reply ID extraction bug: got parent ID ${decision.target_tweet_id} instead of new reply ID`);
+    }
+    
+    console.log(`[POSTING_QUEUE] ✅ Reply ID validated: ${result.tweetId} (≠ parent ${decision.target_tweet_id})`);
     console.log(`[POSTING_QUEUE] ✅ REAL reply posted successfully with ID: ${result.tweetId}`);
     const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
     console.log(`[POSTING_QUEUE] 🔗 Reply URL: https://x.com/${username}/status/${result.tweetId}`);
