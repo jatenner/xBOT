@@ -22,25 +22,25 @@ import type { Page } from 'playwright';
 // Each search uses OR operators to cast wide net within that category
 const BROAD_SEARCH_PATTERNS = [
   // Pattern 1: MAINSTREAM HEALTH (catches 70% of everything)
-  'health OR wellness OR fitness OR nutrition OR longevity',
+  '(health OR wellness OR fitness OR nutrition OR longevity) min_faves:2000',
   
   // Pattern 2: DIET & NUTRITION (extremely viral category)
-  'diet OR keto OR carnivore OR vegan OR fasting OR weight loss',
+  '(diet OR keto OR carnivore OR vegan OR fasting OR weight loss) min_faves:2000',
   
   // Pattern 3: OPTIMIZATION & BIOHACKING (high-engagement community)
-  'biohacking OR longevity OR aging OR optimize OR performance',
+  '(biohacking OR longevity OR aging OR optimize OR performance) min_faves:2000',
   
   // Pattern 4: FITNESS & TRAINING (huge engagement)
-  'workout OR gym OR exercise OR training OR fitness OR muscle',
+  '(workout OR gym OR exercise OR training OR fitness OR muscle) min_faves:2000',
   
   // Pattern 5: WELLNESS & MENTAL HEALTH (massive audience)
-  'sleep OR mental health OR anxiety OR stress OR meditation OR mindfulness',
+  '(sleep OR mental health OR anxiety OR stress OR meditation OR mindfulness) min_faves:2000',
   
   // Pattern 6: SCIENCE & RESEARCH (high-quality content)
-  'study OR research OR science OR protocol OR supplement OR vitamin',
+  '(study OR research OR science OR protocol OR supplement OR vitamin) min_faves:2000',
   
   // Pattern 7: TRENDING HOT TOPICS (what's viral NOW)
-  'ozempic OR seed oils OR carnivore OR testosterone OR gut health'
+  '(ozempic OR seed oils OR carnivore OR testosterone OR gut health) min_faves:2000'
 ];
 
 // No rotation needed - search ALL patterns every cycle (only 7 searches, very fast)
@@ -74,11 +74,12 @@ async function searchTwitterForTweets(
     // Wait for tweets to load
     await page.waitForTimeout(4000);
     
-    // Scroll down a bit to load more tweets
-    await page.evaluate(() => window.scrollBy(0, 2000));
-    await page.waitForTimeout(2000);
-    await page.evaluate(() => window.scrollBy(0, 2000));
-    await page.waitForTimeout(2000);
+    // 🚀 INCREASED SCROLLING: Load 15-20 tweets per topic (was 4-5)
+    // 6 scrolls with staggered delays for smooth loading
+    for (let scroll = 0; scroll < 6; scroll++) {
+      await page.evaluate(() => window.scrollBy(0, 2000));
+      await page.waitForTimeout(1500); // Reduced to 1.5s (was 2s) for efficiency
+    }
     
     // Extract tweets with engagement data
     const tweets = await page.evaluate(() => {
