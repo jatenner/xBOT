@@ -115,9 +115,9 @@ async function getTopPerformingPosts(supabase: any) {
     .select('content, actual_likes, actual_retweets, actual_impressions, actual_engagement_rate, generator_name, raw_topic, topic_cluster, angle, tone, posted_at')
     .eq('status', 'posted')
     .eq('decision_type', 'single')
-    .not('actual_likes', 'is', null)
-    .order('actual_impressions', { ascending: false })
-    .limit(500); // Show ALL posts with metrics (up to 500)
+    // ✅ REMOVED actual_likes filter - show ALL posts including brand new ones!
+    .order('actual_impressions', { ascending: false, nullsLast: true })
+    .limit(500); // Show ALL posts (up to 500)
 
   return data || [];
 }
