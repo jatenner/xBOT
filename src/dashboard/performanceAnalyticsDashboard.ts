@@ -265,7 +265,7 @@ export class PerformanceAnalyticsDashboard {
       const bestTimes = Object.entries(hourlyStats)
         .map(([hour, stats]) => ({
           hour: parseInt(hour),
-          avg_engagement: stats.total / stats.count
+          avg_engagement: (stats as any).total / (stats as any).count
         }))
         .sort((a, b) => b.avg_engagement - a.avg_engagement)
         .slice(0, 3);
@@ -297,12 +297,19 @@ export class PerformanceAnalyticsDashboard {
    */
   private async getAILearningStatus(supabase: any): Promise<DashboardMetrics['ai_learning_status']> {
     try {
-      // Check diversity score from recent analysis
-      const { emergencyDiversityFix } = await import('../content/emergencyContentDiversityFix');
-      const diversityCheck = await emergencyDiversityFix.emergencyDiversityCheck('sample content');
+      // Calculate diversity from recent posts
+      const { data: recentPosts } = await supabase
+        .from('content_metadata')
+        .select('generator_name')
+        .eq('decision_type', 'single')
+        .order('created_at', { ascending: false })
+        .limit(20);
+      
+      const uniqueGenerators = new Set(recentPosts?.map((p: any) => p.generator_name) || []).size;
+      const diversityScore = Math.round((uniqueGenerators / 12) * 100); // 12 total generators
 
       return {
-        diversity_score: diversityCheck.diversityScore,
+        diversity_score: diversityScore,
         learning_confidence: 75, // Will be calculated from actual learning data
         recommendations: [
           'Continue diverse health topic exploration',
