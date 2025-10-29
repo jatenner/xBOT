@@ -986,12 +986,92 @@ function generateErrorHTML(error: string): string {
 async function getRecentPostsChronological(supabase: any) {
   const { data } = await supabase
     .from('content_metadata')
-    .select('content, actual_likes, actual_retweets, actual_impressions, actual_engagement_rate, generator_name, raw_topic, topic_cluster, angle, tone, format_strategy, posted_at, created_at, status')
+    .select('content, actual_likes, actual_retweets, actual_impressions, actual_engagement_rate, generator_name, raw_topic, topic_cluster, angle, tone, format_strategy, posted_at, created_at, status, diversity_score, uniqueness_score')
     .eq('decision_type', 'single')
     .order('created_at', { ascending: false })
     .limit(100); // Last 100 posts (recent activity)
 
-  return data || [];
+  // Calculate uniqueness scores for posts that don't have them
+  const postsWithUniqueness = (data || []).map(post => {
+    if (!post.uniqueness_score) {
+      post.uniqueness_score = calculateUniquenessScore(post, data || []);
+    }
+    return post;
+  });
+
+  return postsWithUniqueness;
+}
+
+function calculateUniquenessScore(post: any, allPosts: any[]): number {
+  if (!post.content) return 0;
+  
+  const content = post.content.toLowerCase();
+  const topic = (post.raw_topic || post.topic_cluster || '').toLowerCase();
+  const tone = (post.tone || '').toLowerCase();
+  const angle = (post.angle || '').toLowerCase();
+  
+  let uniquenessScore = 100; // Start with perfect uniqueness
+  
+  // Check content similarity with recent posts (last 20)
+  const recentPosts = allPosts.slice(0, 20);
+  for (const otherPost of recentPosts) {
+    if (otherPost.id === post.id || !otherPost.content) continue;
+    
+    const otherContent = otherPost.content.toLowerCase();
+    const similarity = calculateTextSimilarity(content, otherContent);
+    
+    if (similarity > 0.7) {
+      uniquenessScore -= 30; // High similarity penalty
+    } else if (similarity > 0.5) {
+      uniquenessScore -= 15; // Medium similarity penalty
+    } else if (similarity > 0.3) {
+      uniquenessScore -= 5; // Low similarity penalty
+    }
+  }
+  
+  // Check topic uniqueness
+  const topicCount = recentPosts.filter(p => 
+    (p.raw_topic || p.topic_cluster || '').toLowerCase() === topic
+  ).length;
+  if (topicCount > 3) {
+    uniquenessScore -= 20; // Topic overuse penalty
+  }
+  
+  // Check tone uniqueness
+  const toneCount = recentPosts.filter(p => 
+    (p.tone || '').toLowerCase() === tone
+  ).length;
+  if (toneCount > 5) {
+    uniquenessScore -= 15; // Tone overuse penalty
+  }
+  
+  // Check angle uniqueness
+  const angleCount = recentPosts.filter(p => 
+    (p.angle || '').toLowerCase() === angle
+  ).length;
+  if (angleCount > 4) {
+    uniquenessScore -= 10; // Angle overuse penalty
+  }
+  
+  return Math.max(0, Math.min(100, uniquenessScore));
+}
+
+function calculateTextSimilarity(text1: string, text2: string): number {
+  if (!text1 || !text2) return 0;
+  
+  // Simple word-based similarity
+  const words1 = text1.split(/\s+/).filter(w => w.length > 3);
+  const words2 = text2.split(/\s+/).filter(w => w.length > 3);
+  
+  if (words1.length === 0 || words2.length === 0) return 0;
+  
+  const set1 = new Set(words1);
+  const set2 = new Set(words2);
+  
+  const intersection = new Set([...set1].filter(x => set2.has(x)));
+  const union = new Set([...set1, ...set2]);
+  
+  return intersection.size / union.size;
 }
 
 async function getRecentGeneratorDistribution(supabase: any) {
@@ -1079,8 +1159,8 @@ function generateRecentHTML(data: any): string {
 <body>
     <div class="container">
         <div class="header">
-            <h1>📅 xBOT Recent Activity</h1>
-            <p>Latest posts with complete metadata - sorted by date</p>
+            <h1>📅 xBOT Content Creation View</h1>
+            <p>Your Twitter posts with topic, tone, angle, structure & generator details</p>
         </div>
 
         <div class="nav-tabs">
@@ -1091,26 +1171,24 @@ function generateRecentHTML(data: any): string {
 
         <div class="stats-grid" style="margin-bottom: 30px;">
             <div class="stat-card">
-                <div class="stat-label">Last 24 Hours</div>
-                <div class="stat-value">${data.last24hStats.posts} posts</div>
-                <div class="stat-change">👁️ ${data.last24hStats.views.toLocaleString()} views • ❤️ ${data.last24hStats.likes} likes</div>
+                <div class="stat-label">Recent Posts</div>
+                <div class="stat-value">${data.recentPosts.length}</div>
+                <div class="stat-change">📝 Content creation view</div>
             </div>
             <div class="stat-card">
-                <div class="stat-label">Total Showing</div>
-                <div class="stat-value">${data.recentPosts.length}</div>
-                <div class="stat-change">📝 Recent posts (click to expand)</div>
+                <div class="stat-label">Generators Used</div>
+                <div class="stat-value">${data.generatorDistribution.length}</div>
+                <div class="stat-change">🤖 AI content creators</div>
             </div>
         </div>
 
         <div style="background: transparent; padding: 0;">
             <div style="text-align: center; margin-bottom: 30px;">
                 <h2 style="color: white; font-size: 28px; margin-bottom: 10px;">📝 Recent Posts</h2>
-                <p style="color: rgba(255,255,255,0.9); font-size: 16px;">Click any card to expand and see full content, topic, angle, tone & structure</p>
+                <p style="color: rgba(255,255,255,0.9); font-size: 16px;">Click any card to see full tweet, topic, angle, tone, structure & generator used</p>
             </div>
             
             ${data.recentPosts.map((post: any, idx: number) => {
-                const views = post.actual_impressions || 0;
-                const likes = post.actual_likes || 0;
                 const statusStyle = post.status === 'posted' 
                     ? 'background: #28a745; color: white;' 
                     : post.status === 'failed'
@@ -1123,32 +1201,22 @@ function generateRecentHTML(data: any): string {
                 <div class="post-card" onclick="document.getElementById('post-${idx}').classList.toggle('expanded')" id="post-${idx}">
                     <div class="post-header">
                         <div style="flex: 1;">
-                            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap;">
                                 <span class="badge badge-gen">${post.generator_name || 'unknown'}</span>
                                 <span style="padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; ${statusStyle}">${post.status.toUpperCase()}</span>
                                 <span style="color: #999; font-size: 13px;">${post.posted_at ? new Date(post.posted_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : (post.created_at ? new Date(post.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'N/A')}</span>
                             </div>
-                            <div class="post-preview">${post.content?.substring(0, 120) || 'No content'}${post.content?.length > 120 ? '...' : ''}</div>
-                        </div>
-                        <div class="post-stats">
-                            <div style="text-align: center;">
-                                <div style="font-size: 20px; font-weight: bold; color: #667eea;">${views > 0 ? views.toLocaleString() : '–'}</div>
-                                <div style="font-size: 11px; color: #999;">👁️ Views</div>
-                            </div>
-                            <div style="text-align: center;">
-                                <div style="font-size: 20px; font-weight: bold; color: #e91e63;">${likes > 0 ? likes : '–'}</div>
-                                <div style="font-size: 11px; color: #999;">❤️ Likes</div>
-                            </div>
+                            <div class="post-preview">${post.content?.substring(0, 150) || 'No content'}${post.content?.length > 150 ? '...' : ''}</div>
                         </div>
                     </div>
                     
                     <div class="post-details">
                         <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-                            <strong style="color: #667eea; display: block; margin-bottom: 8px;">📄 FULL CONTENT:</strong>
-                            <div style="line-height: 1.6; white-space: pre-wrap;">${post.content || 'No content available'}</div>
+                            <strong style="color: #667eea; display: block; margin-bottom: 8px;">📄 FULL TWEET:</strong>
+                            <div style="line-height: 1.6; white-space: pre-wrap; font-family: 'Segoe UI', sans-serif; font-size: 15px;">${post.content || 'No content available'}</div>
                         </div>
                         
-                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;">
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 15px;">
                             <div class="metadata-box">
                                 <strong style="color: #667eea;">🎯 Topic:</strong>
                                 <div>${topic}</div>
@@ -1164,6 +1232,13 @@ function generateRecentHTML(data: any): string {
                             <div class="metadata-box">
                                 <strong style="color: #ffc107;">📐 Angle:</strong>
                                 <div>${post.angle || 'N/A'}</div>
+                            </div>
+                        </div>
+                        
+                        <div style="display: grid; grid-template-columns: repeat(1, 1fr); gap: 15px; margin-bottom: 15px;">
+                            <div class="metadata-box" style="background: #f3e5f5; border: 1px solid #9c27b0;">
+                                <strong style="color: #9c27b0;">🤖 Generator Used:</strong>
+                                <div style="font-weight: bold; color: #9c27b0; font-size: 16px;">${post.generator_name || 'N/A'}</div>
                             </div>
                         </div>
                         
