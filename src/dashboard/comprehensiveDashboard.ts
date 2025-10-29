@@ -886,16 +886,17 @@ function getSharedStyles(): string {
     .post-card {
         background: white;
         border: 2px solid #e0e0e0;
-        border-radius: 12px;
-        margin-bottom: 15px;
-        padding: 20px;
+        border-radius: 16px;
+        margin-bottom: 20px;
+        padding: 24px;
         cursor: pointer;
         transition: all 0.3s ease;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
     }
     .post-card:hover {
         border-color: #667eea;
-        box-shadow: 0 5px 20px rgba(102, 126, 234, 0.2);
-        transform: translateY(-2px);
+        box-shadow: 0 8px 30px rgba(102, 126, 234, 0.25);
+        transform: translateY(-4px);
     }
     .post-header {
         display: flex;
@@ -1088,7 +1089,7 @@ function generateRecentHTML(data: any): string {
             <a href="/dashboard/replies?token=xbot-admin-2025" class="nav-tab">💬 Replies</a>
         </div>
 
-        <div class="stats-grid">
+        <div class="stats-grid" style="margin-bottom: 30px;">
             <div class="stat-card">
                 <div class="stat-label">Last 24 Hours</div>
                 <div class="stat-value">${data.last24hStats.posts} posts</div>
@@ -1097,55 +1098,15 @@ function generateRecentHTML(data: any): string {
             <div class="stat-card">
                 <div class="stat-label">Total Showing</div>
                 <div class="stat-value">${data.recentPosts.length}</div>
-                <div class="stat-change">📝 Last 100 posts (all statuses)</div>
+                <div class="stat-change">📝 Recent posts (click to expand)</div>
             </div>
         </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
-            <div class="section">
-                <h2>🎭 Generator Distribution (Last 7 Days)</h2>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Generator</th>
-                            <th class="number-col">Posts</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${data.generatorDistribution.slice(0, 12).map((gen: any) => `
-                            <tr>
-                                <td><strong>${gen.name}</strong></td>
-                                <td class="number-col">${gen.count}</td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
+        <div style="background: transparent; padding: 0;">
+            <div style="text-align: center; margin-bottom: 30px;">
+                <h2 style="color: white; font-size: 28px; margin-bottom: 10px;">📝 Recent Posts</h2>
+                <p style="color: rgba(255,255,255,0.9); font-size: 16px;">Click any card to expand and see full content, topic, angle, tone & structure</p>
             </div>
-
-            <div class="section">
-                <h2>🎯 Topic Distribution (Last 7 Days)</h2>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Topic</th>
-                            <th class="number-col">Posts</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${data.topicDistribution.map((topic: any) => `
-                            <tr>
-                                <td>${topic.name}</td>
-                                <td class="number-col">${topic.count}</td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <div class="section">
-            <h2>📝 Recent Posts (Last 100, by date)</h2>
-            <p style="color: #666; margin-bottom: 15px; font-size: 14px;">Complete post history with all metadata - sorted by creation time • <strong>Click any row to expand</strong></p>
             
             ${data.recentPosts.map((post: any, idx: number) => {
                 const views = post.actual_impressions || 0;
