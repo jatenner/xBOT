@@ -1126,7 +1126,7 @@ function generateRecentHTML(data: any): string {
                             <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
                                 <span class="badge badge-gen">${post.generator_name || 'unknown'}</span>
                                 <span style="padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; ${statusStyle}">${post.status.toUpperCase()}</span>
-                                <span style="color: #999; font-size: 13px;">${post.created_at ? new Date(post.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'N/A'}</span>
+                                <span style="color: #999; font-size: 13px;">${post.posted_at ? new Date(post.posted_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : (post.created_at ? new Date(post.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'N/A')}</span>
                             </div>
                             <div class="post-preview">${post.content?.substring(0, 120) || 'No content'}${post.content?.length > 120 ? '...' : ''}</div>
                         </div>
