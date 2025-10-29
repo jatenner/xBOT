@@ -675,8 +675,8 @@ export class UltimateTwitterPoster {
    */
   private async extractTweetIdFromUrl(): Promise<string> {
     if (!this.page) {
-      console.log('ULTIMATE_POSTER: ⚠️ Page not available, using timestamp');
-      return Date.now().toString();
+      console.log('ULTIMATE_POSTER: ❌ Page not available - cannot extract tweet ID');
+      throw new Error('Page not available for tweet ID extraction - post may have failed');
     }
     
     try {
@@ -728,7 +728,7 @@ export class UltimateTwitterPoster {
         await this.page.waitForTimeout(5000);
         
         // CRITICAL FIX: Force reload to get fresh tweets
-        await this.page.goto(`https://x.com/${username}`, { waitUntil: 'networkidle', timeout: 15000 });
+        await this.page.goto(`https://x.com/${username}`, { waitUntil: 'domcontentloaded', timeout: 30000 });
         console.log('ULTIMATE_POSTER: Page reloaded, extracting latest tweet...');
         
         await this.page.waitForTimeout(2000);

@@ -401,7 +401,7 @@ export class BulletproofPoster {
       
       // Test session validity
       await this.page!.goto('https://x.com/home', { 
-        waitUntil: 'networkidle', 
+        waitUntil: 'domcontentloaded', 
         timeout: this.PLAYWRIGHT_NAV_TIMEOUT_MS 
       });
       
@@ -524,7 +524,7 @@ export class BulletproofPoster {
     if (!currentUrl.includes('x.com') || currentUrl.includes('/login')) {
       console.log('🏠 NAVIGATE_HOME: Going to Twitter home...');
       await this.page.goto('https://x.com/home', { 
-        waitUntil: 'networkidle', 
+        waitUntil: 'domcontentloaded', 
         timeout: this.PLAYWRIGHT_NAV_TIMEOUT_MS 
       });
     }

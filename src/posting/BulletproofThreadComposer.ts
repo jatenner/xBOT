@@ -295,7 +295,7 @@ export class BulletproofThreadComposer {
       console.log(`🔗 THREAD_REPLY ${i}/${segments.length - 1}: Posting reply...`);
       
       // Navigate to root tweet
-      await page.goto(rootUrl, { waitUntil: 'networkidle' });
+      await page.goto(rootUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
       
       // Resilient reply flow with multiple selectors + kb fallback
       await page.bringToFront();

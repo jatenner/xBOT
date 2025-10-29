@@ -66,7 +66,7 @@ export class UltimateTwitterPoster {
       console.log(`✅ ULTIMATE_SESSION: ${validCookies.length} session cookies loaded successfully`);
       
       // Navigate to Twitter
-      await this.page.goto('https://x.com', { waitUntil: 'networkidle' });
+      await this.page.goto('https://x.com', { waitUntil: 'domcontentloaded', timeout: 30000 });
       console.log('🌐 ULTIMATE_NAVIGATION: Navigated to Twitter');
       
       // Check if logged out
@@ -205,7 +205,7 @@ export class UltimateTwitterPoster {
           
           // Navigate to timeline and verify tweet exists
           try {
-            await this.page.goto('https://x.com/home', { waitUntil: 'networkidle' });
+            await this.page.goto('https://x.com/home', { waitUntil: 'domcontentloaded', timeout: 30000 });
             await this.page.waitForTimeout(3000);
             
             // Look for our tweet content in the timeline
