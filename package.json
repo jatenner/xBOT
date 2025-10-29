@@ -4,7 +4,7 @@
   "description": "Autonomous X (Twitter) bot for Snap2Health with AI-powered content generation",
   "main": "dist/main.js",
   "engines": {
-    "node": ">=20.18.0"
+    "node": ">=20.0.0"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -219,6 +219,7 @@
     "socket.io": "^4.7.4",
     "source-map-support": "^0.5.21",
     "twitter-api-v2": "^1.17.2",
+    "undici": "^7.8.0",
     "winston": "^3.14.2",
     "ws": "^8.18.3",
     "xml2js": "^0.6.2",
