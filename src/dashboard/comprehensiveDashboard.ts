@@ -984,12 +984,25 @@ function generateErrorHTML(error: string): string {
 // ============================================================
 
 async function getRecentPostsChronological(supabase: any) {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('content_metadata')
     .select('content, actual_likes, actual_retweets, actual_impressions, actual_engagement_rate, generator_name, raw_topic, topic_cluster, angle, tone, format_strategy, posted_at, created_at, status, diversity_score, uniqueness_score')
     .eq('decision_type', 'single')
-    .order('created_at', { ascending: false })
-    .limit(100); // Last 100 posts (recent activity)
+    .eq('status', 'posted')
+    .order('posted_at', { ascending: false })
+    .limit(100); // Last 100 POSTED tweets
+
+  if (error) {
+    console.error('[RECENT_DASHBOARD] Error fetching posts:', error);
+    return [];
+  }
+
+  if (!data || data.length === 0) {
+    console.log('[RECENT_DASHBOARD] No posted content found in content_metadata');
+    return [];
+  }
+
+  console.log(`[RECENT_DASHBOARD] Found ${data.length} recent posts`);
 
   // Calculate uniqueness scores for posts that don't have them
   const postsWithUniqueness = (data || []).map(post => {
