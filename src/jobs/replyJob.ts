@@ -601,6 +601,8 @@ Your reply should:
 - Under 280 characters
 - No hashtags or excessive emojis
 - Never make false claims
+- Sound like a knowledgeable friend, not a research paper
+- Use context-appropriate language (formal for research, casual for personal posts)
 
 Format as JSON:
 {
