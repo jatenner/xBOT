@@ -698,9 +698,15 @@ function generateRepliesHTML(data: any): string {
         <div class="section">
             <h2>💬 Recent Replies (Last 50)</h2>
             <div style="background: #d1ecf1; border-left: 4px solid #0c5460; padding: 15px; margin-bottom: 20px; border-radius: 8px;">
-                <strong>ℹ️ Note:</strong> Showing YOUR actual replies in chronological order. Metrics are scraped 10-60 min after posting.
+                <strong>ℹ️ Note:</strong> Showing YOUR actual replies. Metrics update every 10 min. Page auto-refreshes every 2 min.
             </div>
-            <table>
+            <div style="margin-bottom: 15px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                <button class="sort-btn" onclick="sortRepliesTable('time')">Sort by ⏰ Time</button>
+                <button class="sort-btn active" onclick="sortRepliesTable('views')">Sort by 👁️ Views</button>
+                <button class="sort-btn" onclick="sortRepliesTable('likes')">Sort by ❤️ Likes</button>
+                <span style="color: #666; font-size: 14px; margin-left: 10px;">🔄 Auto-refresh: Every 2 minutes</span>
+            </div>
+            <table id="repliesTable">
                 <thead>
                     <tr>
                         <th>Content</th>
@@ -713,21 +719,51 @@ function generateRepliesHTML(data: any): string {
                     </tr>
                 </thead>
                 <tbody>
-                    ${data.topReplies.slice(0, 50).map((reply: any) => `
-                        <tr>
+                    ${data.topReplies.slice(0, 50).map((reply: any) => {
+                        const views = reply.actual_impressions || 0;
+                        const likes = reply.actual_likes || 0;
+                        const postedTime = reply.posted_at ? new Date(reply.posted_at).getTime() : 0;
+                        
+                        return `
+                        <tr data-views="${views}" data-likes="${likes}" data-time="${postedTime}">
                             <td style="max-width: 300px;">${reply.content?.substring(0, 80) || 'No content'}...</td>
                             <td><strong>@${reply.target_username || 'unknown'}</strong></td>
                             <td><span class="badge">${reply.generator_name || 'unknown'}</span></td>
                             <td>${reply.posted_at ? new Date(reply.posted_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'N/A'}</td>
-                            <td><strong>${(reply.actual_impressions || 0).toLocaleString()}</strong></td>
-                            <td><strong>${reply.actual_likes || 0}</strong></td>
+                            <td><strong>${views.toLocaleString()}</strong></td>
+                            <td><strong>${likes}</strong></td>
                             <td><strong>${((reply.actual_engagement_rate || 0) * 100).toFixed(2)}%</strong></td>
                         </tr>
-                    `).join('')}
+                    `}).join('')}
                     ${data.topReplies.length === 0 ? '<tr><td colspan="7" style="text-align: center; color: #999;">No replies yet</td></tr>' : ''}
                 </tbody>
             </table>
         </div>
+        
+        <script>
+        function sortRepliesTable(sortBy) {
+            const table = document.getElementById('repliesTable');
+            const tbody = table.querySelector('tbody');
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            
+            // Update button states
+            document.querySelectorAll('.sort-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            rows.sort((a, b) => {
+                const aVal = parseFloat(a.getAttribute('data-' + sortBy)) || 0;
+                const bVal = parseFloat(b.getAttribute('data-' + sortBy)) || 0;
+                return bVal - aVal; // Descending
+            });
+            
+            rows.forEach(row => tbody.appendChild(row));
+        }
+        
+        // Auto-sort by views on load
+        window.addEventListener('DOMContentLoaded', () => {
+            sortRepliesTable('views');
+        });
+        </script>
 
         <div class="section">
             <h2>🎭 Performance by Generator</h2>
@@ -780,9 +816,20 @@ function generateRepliesHTML(data: any): string {
         <div class="footer">
             <p>🤖 Last updated: ${now}</p>
             <p>⚡ Real-time data from reply_conversions & content_metadata</p>
+            <p>🔄 Auto-refresh every 2 minutes to show latest metrics</p>
         </div>
     </div>
-    <script>setTimeout(() => location.reload(), 120000);</script>
+    <script>
+        // Auto-refresh every 2 minutes (120 seconds) to get latest scraped metrics
+        setTimeout(() => location.reload(), 120000);
+        
+        // Show countdown timer
+        let secondsLeft = 120;
+        setInterval(() => {
+            secondsLeft--;
+            if (secondsLeft <= 0) secondsLeft = 120;
+        }, 1000);
+    </script>
 </body>
 </html>`;
 }
