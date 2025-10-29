@@ -237,32 +237,52 @@ export async function tweetBasedHarvester(): Promise<void> {
       // 🔐 ROBUST AUTHENTICATION CHECK WITH FALLBACKS
       console.log('[TWEET_HARVESTER] 🔐 Checking authentication status...');
       
+      // First, verify session is loaded by checking cookies
+      const cookies = await page.context().cookies();
+      console.log(`[TWEET_HARVESTER] 🍪 Session cookies loaded: ${cookies.length} cookies`);
+      
+      // Log cookie details for debugging
+      const twitterCookies = cookies.filter(c => c.domain.includes('x.com') || c.domain.includes('twitter.com'));
+      console.log(`[TWEET_HARVESTER] 🍪 Twitter-specific cookies: ${twitterCookies.length}`);
+      
+      if (twitterCookies.length === 0) {
+        console.warn('[TWEET_HARVESTER] ⚠️ No Twitter cookies found - session may not be loaded properly');
+      }
+      
       // Try multiple authentication verification methods
       let isAuthenticated = false;
       let authMethod = '';
       
-      // Method 1: Check for compose button (original method)
+      // Method 1: Check for compose button (using same method as working realTwitterDiscovery)
       try {
-        await page.goto('https://x.com/home', { waitUntil: 'domcontentloaded', timeout: 20000 });
+        await page.goto('https://x.com/home', { waitUntil: 'domcontentloaded', timeout: 30000 });
         await page.waitForTimeout(3000);
         
-        const composeButton = await page.locator('[data-testid="SideNav_NewTweet_Button"]').isVisible({ timeout: 5000 }).catch(() => false);
-        if (composeButton) {
-          isAuthenticated = true;
-          authMethod = 'compose_button';
+        // Check if we got redirected to login page
+        const currentUrl = page.url();
+        console.log(`[TWEET_HARVESTER] 🔍 Current URL after navigation: ${currentUrl}`);
+        
+        if (currentUrl.includes('/login') || currentUrl.includes('/i/flow/login')) {
+          console.log('[TWEET_HARVESTER] ❌ Redirected to login page - session expired');
+          throw new Error('Session expired - redirected to login');
         }
+        
+        // Use waitForSelector instead of isVisible for better reliability
+        await page.waitForSelector('[data-testid="SideNav_NewTweet_Button"]', { timeout: 30000 });
+        isAuthenticated = true;
+        authMethod = 'compose_button';
+        console.log('[TWEET_HARVESTER] ✅ Method 1: Compose button found');
       } catch (e) {
-        console.log('[TWEET_HARVESTER] ⚠️ Method 1 failed, trying alternatives...');
+        console.log(`[TWEET_HARVESTER] ⚠️ Method 1 failed: ${e.message}, trying alternatives...`);
       }
       
       // Method 2: Check for user menu (alternative)
       if (!isAuthenticated) {
         try {
-          const userMenu = await page.locator('[data-testid="SideNav_AccountSwitcher_Button"]').isVisible({ timeout: 3000 }).catch(() => false);
-          if (userMenu) {
-            isAuthenticated = true;
-            authMethod = 'user_menu';
-          }
+          await page.waitForSelector('[data-testid="SideNav_AccountSwitcher_Button"]', { timeout: 10000 });
+          isAuthenticated = true;
+          authMethod = 'user_menu';
+          console.log('[TWEET_HARVESTER] ✅ Method 2: User menu found');
         } catch (e) {
           console.log('[TWEET_HARVESTER] ⚠️ Method 2 failed, trying public search...');
         }
@@ -294,18 +314,50 @@ export async function tweetBasedHarvester(): Promise<void> {
         console.log('[TWEET_HARVESTER]   • Twitter authentication changes');
         console.log('[TWEET_HARVESTER]   • Rate limiting or blocking');
         
-        // 🔄 FALLBACK: Try account-based harvester as backup
-        console.log('[TWEET_HARVESTER] 🔄 Attempting fallback to account-based harvester...');
+        // 🔄 ATTEMPT SESSION REFRESH
+        console.log('[TWEET_HARVESTER] 🔄 Attempting session refresh...');
         try {
-          const { replyOpportunityHarvester } = await import('./replyOpportunityHarvester');
-          await replyOpportunityHarvester();
-          console.log('[TWEET_HARVESTER] ✅ Fallback harvester completed');
-        } catch (fallbackError) {
-          console.error('[TWEET_HARVESTER] ❌ Fallback harvester also failed:', fallbackError);
+          const { railwaySessionManager } = await import('../utils/railwaySessionManager');
+          const refreshSuccess = await railwaySessionManager.refreshSession();
+          if (refreshSuccess) {
+            console.log('[TWEET_HARVESTER] ✅ Session refreshed, retrying authentication...');
+            // Release current page and try again with fresh session
+            await pool.releasePage(page);
+            
+            // Try one more time with fresh session
+            const freshPage = await pool.acquirePage('tweet_search_fresh');
+            try {
+              await freshPage.goto('https://x.com/home', { waitUntil: 'domcontentloaded', timeout: 30000 });
+              await freshPage.waitForTimeout(3000);
+              await freshPage.waitForSelector('[data-testid="SideNav_NewTweet_Button"]', { timeout: 15000 });
+              console.log('[TWEET_HARVESTER] ✅ Authentication successful after session refresh!');
+              // Continue with fresh page
+              page = freshPage;
+              isAuthenticated = true;
+              authMethod = 'session_refresh';
+            } catch (retryError) {
+              console.log('[TWEET_HARVESTER] ❌ Authentication still failed after session refresh');
+              await pool.releasePage(freshPage);
+            }
+          }
+        } catch (refreshError) {
+          console.error('[TWEET_HARVESTER] ❌ Session refresh failed:', refreshError);
         }
         
-        await pool.releasePage(page);
-        return;
+        // If still not authenticated, try fallback harvester
+        if (!isAuthenticated) {
+          console.log('[TWEET_HARVESTER] 🔄 Attempting fallback to account-based harvester...');
+          try {
+            const { replyOpportunityHarvester } = await import('./replyOpportunityHarvester');
+            await replyOpportunityHarvester();
+            console.log('[TWEET_HARVESTER] ✅ Fallback harvester completed');
+          } catch (fallbackError) {
+            console.error('[TWEET_HARVESTER] ❌ Fallback harvester also failed:', fallbackError);
+          }
+          
+          await pool.releasePage(page);
+          return;
+        }
       }
       
       console.log(`[TWEET_HARVESTER] ✅ Authenticated via ${authMethod} - starting multi-angle broad searches...`);
