@@ -113,28 +113,25 @@ export class PerformanceAnalyticsDashboard {
    */
   private async getOverviewMetrics(supabase: any): Promise<DashboardMetrics['overview']> {
     try {
-      // Get total tweets from all possible tables
-      const [unifiedPosts, learningPosts, realMetrics] = await Promise.all([
-        supabase.from('unified_posts').select('content, postId').limit(1000),
-        supabase.from('learning_posts').select('content, tweet_id').limit(1000),
-        supabase.from('real_tweet_metrics').select('*').order('collected_at', { ascending: false }).limit(100)
+      // Get total tweets from CORRECT tables (content_metadata + outcomes)
+      const [postedContent, allOutcomes] = await Promise.all([
+        supabase.from('content_metadata').select('content, actual_likes, actual_retweets, actual_engagement_rate').eq('status', 'posted').eq('decision_type', 'single'),
+        supabase.from('outcomes').select('*').order('collected_at', { ascending: false }).limit(100)
       ]);
 
-      const allPosts = [
-        ...(unifiedPosts.data || []),
-        ...(learningPosts.data || [])
-      ];
+      const allPosts = postedContent.data || [];
 
-      // Get best performing tweet from real metrics
-      const bestTweet = realMetrics.data && realMetrics.data.length > 0 
-        ? realMetrics.data.reduce((best, current) => 
-            (current.engagement_rate || 0) > (best.engagement_rate || 0) ? current : best
+      // Get best performing tweet from content_metadata (has actual metrics)
+      const bestTweet = allPosts.length > 0 
+        ? allPosts.reduce((best: any, current: any) => 
+            (current.actual_engagement_rate || 0) > (best.actual_engagement_rate || 0) ? current : best
           )
         : null;
 
-      // Calculate average engagement rate
-      const avgEngagement = realMetrics.data && realMetrics.data.length > 0
-        ? realMetrics.data.reduce((sum, m) => sum + (m.engagement_rate || 0), 0) / realMetrics.data.length
+      // Calculate average engagement rate from posts with metrics
+      const postsWithMetrics = allPosts.filter((p: any) => p.actual_engagement_rate != null);
+      const avgEngagement = postsWithMetrics.length > 0
+        ? postsWithMetrics.reduce((sum: number, m: any) => sum + (m.actual_engagement_rate || 0), 0) / postsWithMetrics.length
         : 0;
 
       return {
@@ -142,10 +139,10 @@ export class PerformanceAnalyticsDashboard {
         totalFollowers: 0, // Will be populated by real metrics collection
         avgEngagementRate: avgEngagement,
         bestPerformingTweet: bestTweet ? {
-          content: bestTweet.content_preview || 'Tweet content',
-          likes: bestTweet.likes || 0,
-          retweets: bestTweet.retweets || 0,
-          engagement_rate: bestTweet.engagement_rate || 0
+          content: bestTweet.content?.substring(0, 100) || 'Tweet content',
+          likes: bestTweet.actual_likes || 0,
+          retweets: bestTweet.actual_retweets || 0,
+          engagement_rate: bestTweet.actual_engagement_rate || 0
         } : null
       };
 
@@ -167,17 +164,14 @@ export class PerformanceAnalyticsDashboard {
       const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       
       const { data: recentPosts } = await supabase
-        .from('unified_posts')
-        .select('*')
-        .gte('createdAt', last24h);
+        .from('content_metadata')
+        .select('actual_likes, actual_retweets, posted_at')
+        .eq('status', 'posted')
+        .eq('decision_type', 'single')
+        .gte('posted_at', last24h);
 
-      const { data: recentMetrics } = await supabase
-        .from('real_tweet_metrics')
-        .select('*')
-        .gte('collected_at', last24h);
-
-      const totalLikes = recentMetrics?.reduce((sum, m) => sum + (m.likes || 0), 0) || 0;
-      const totalRetweets = recentMetrics?.reduce((sum, m) => sum + (m.retweets || 0), 0) || 0;
+      const totalLikes = recentPosts?.reduce((sum: number, m: any) => sum + (m.actual_likes || 0), 0) || 0;
+      const totalRetweets = recentPosts?.reduce((sum: number, m: any) => sum + (m.actual_retweets || 0), 0) || 0;
 
       return {
         tweets_posted: recentPosts?.length || 0,
@@ -204,21 +198,20 @@ export class PerformanceAnalyticsDashboard {
       const last7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
       
       const { data: recentPosts } = await supabase
-        .from('unified_posts')
-        .select('*')
-        .gte('createdAt', last7d);
+        .from('content_metadata')
+        .select('actual_likes, actual_retweets, actual_engagement_rate, posted_at')
+        .eq('status', 'posted')
+        .eq('decision_type', 'single')
+        .gte('posted_at', last7d);
 
-      const { data: recentMetrics } = await supabase
-        .from('real_tweet_metrics')
-        .select('*')
-        .gte('collected_at', last7d);
+      const postsWithMetrics = recentPosts?.filter((p: any) => p.actual_likes != null) || [];
 
-      const avgLikes = recentMetrics && recentMetrics.length > 0
-        ? recentMetrics.reduce((sum, m) => sum + (m.likes || 0), 0) / recentMetrics.length
+      const avgLikes = postsWithMetrics.length > 0
+        ? postsWithMetrics.reduce((sum: number, m: any) => sum + (m.actual_likes || 0), 0) / postsWithMetrics.length
         : 0;
 
-      const avgEngagement = recentMetrics && recentMetrics.length > 0
-        ? recentMetrics.reduce((sum, m) => sum + (m.engagement_rate || 0), 0) / recentMetrics.length
+      const avgEngagement = postsWithMetrics.length > 0
+        ? postsWithMetrics.reduce((sum: number, m: any) => sum + (m.actual_engagement_rate || 0), 0) / postsWithMetrics.length
         : 0;
 
       return {
@@ -243,16 +236,37 @@ export class PerformanceAnalyticsDashboard {
    */
   private async getContentInsights(supabase: any): Promise<DashboardMetrics['content_insights']> {
     try {
-      const { data: recentMetrics } = await supabase
-        .from('real_tweet_metrics')
-        .select('*')
-        .order('collected_at', { ascending: false })
-        .limit(50);
+      const { data: recentPosts } = await supabase
+        .from('content_metadata')
+        .select('topic_cluster, actual_likes, actual_engagement_rate, posted_at')
+        .eq('status', 'posted')
+        .eq('decision_type', 'single')
+        .not('actual_likes', 'is', null)
+        .order('posted_at', { ascending: false })
+        .limit(100);
 
-      // Analyze posting times (simplified)
-      const postingTimes = recentMetrics?.map(m => ({
-        hour: new Date(m.collected_at).getHours(),
-        engagement: m.engagement_rate || 0
+      // Analyze topics
+      const topicStats = recentPosts?.reduce((acc: any, p: any) => {
+        const topic = p.topic_cluster || 'health';
+        if (!acc[topic]) acc[topic] = { total_engagement: 0, count: 0 };
+        acc[topic].total_engagement += p.actual_engagement_rate || 0;
+        acc[topic].count += 1;
+        return acc;
+      }, {}) || {};
+
+      const topTopics = Object.entries(topicStats)
+        .map(([topic, stats]: [string, any]) => ({
+          topic,
+          avg_engagement: stats.total_engagement / stats.count,
+          tweet_count: stats.count
+        }))
+        .sort((a, b) => b.avg_engagement - a.avg_engagement)
+        .slice(0, 3);
+
+      // Analyze posting times
+      const postingTimes = recentPosts?.map((m: any) => ({
+        hour: new Date(m.posted_at).getHours(),
+        engagement: m.actual_engagement_rate || 0
       })) || [];
 
       const hourlyStats = postingTimes.reduce((acc, p) => {
@@ -271,11 +285,7 @@ export class PerformanceAnalyticsDashboard {
         .slice(0, 3);
 
       return {
-        top_performing_topics: [
-          { topic: 'Health Optimization', avg_engagement: 0.05, tweet_count: 10 },
-          { topic: 'Nutrition Science', avg_engagement: 0.04, tweet_count: 8 },
-          { topic: 'Exercise Research', avg_engagement: 0.03, tweet_count: 6 }
-        ],
+        top_performing_topics: topTopics,
         optimal_content_length: {
           range: '150-200 characters',
           avg_engagement: 0.045
