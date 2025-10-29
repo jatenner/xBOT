@@ -1148,24 +1148,50 @@ function generateRecentHTML(data: any): string {
         }
         .nav-tab.active { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
         .nav-tab:hover { background: #5568d3; color: white; }
-        .status-posted { color: #28a745; font-weight: 600; }
-        .status-queued { color: #ffc107; font-weight: 600; }
-        .metadata-tag { 
-            display: inline-block;
-            padding: 3px 8px;
-            background: #f0f0f0;
-            border-radius: 10px;
+        .simple-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .post-content {
+            font-size: 15px;
+            line-height: 1.6;
+            color: #333;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+        .meta-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+        }
+        .meta-item {
+            padding: 8px 12px;
+            background: #f8f9fa;
+            border-radius: 6px;
+        }
+        .meta-label {
             font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
             color: #666;
-            margin: 2px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        .meta-value {
+            color: #333;
+            font-size: 13px;
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>📅 xBOT Content Creation View</h1>
-            <p>Your Twitter posts with topic, tone, angle, structure & generator details</p>
+            <h1>📅 Recent Posts</h1>
+            <p>Your Twitter posts with topic, tone, angle, structure & generator</p>
         </div>
 
         <div class="nav-tabs">
@@ -1176,76 +1202,47 @@ function generateRecentHTML(data: any): string {
 
         <div class="stats-grid" style="margin-bottom: 30px;">
             <div class="stat-card">
-                <div class="stat-label">Recent Posts</div>
+                <div class="stat-label">Total Posts</div>
                 <div class="stat-value">${data.recentPosts.length}</div>
-                <div class="stat-change">📝 Content creation view</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Generators Used</div>
-                <div class="stat-value">${data.generatorDistribution.length}</div>
-                <div class="stat-change">🤖 AI content creators</div>
+                <div class="stat-change">📝 Showing recent content</div>
             </div>
         </div>
 
         <div style="background: transparent; padding: 0;">
-            <div style="text-align: center; margin-bottom: 30px;">
-                <h2 style="color: white; font-size: 28px; margin-bottom: 10px;">📝 Recent Posts</h2>
-                <p style="color: rgba(255,255,255,0.9); font-size: 16px;">Click any card to see full tweet, topic, angle, tone, structure & generator used</p>
-            </div>
-            
-            ${data.recentPosts.map((post: any, idx: number) => {
+            ${data.recentPosts.map((post: any) => {
                 const structure = post.format_strategy || 'N/A';
                 const topic = post.raw_topic || post.topic_cluster || 'N/A';
+                const posted = post.posted_at ? new Date(post.posted_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'N/A';
                 
                 return `
-                <div class="post-card" onclick="document.getElementById('post-${idx}').classList.toggle('expanded')" id="post-${idx}">
-                    <div class="post-header">
-                        <div style="flex: 1;">
-                            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap;">
-                                <span class="badge badge-gen">${post.generator_name || 'unknown'}</span>
-                                <span style="color: #999; font-size: 13px;">${post.posted_at ? new Date(post.posted_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : (post.created_at ? new Date(post.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'N/A')}</span>
-                            </div>
-                            <div class="post-preview">${post.content?.substring(0, 150) || 'No content'}${post.content?.length > 150 ? '...' : ''}</div>
-                        </div>
-                    </div>
+                <div class="simple-card">
+                    <div class="post-content">${post.content || 'No content available'}</div>
                     
-                    <div class="post-details">
-                        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-                            <strong style="color: #667eea; display: block; margin-bottom: 8px;">📄 FULL TWEET:</strong>
-                            <div style="line-height: 1.6; white-space: pre-wrap; font-family: 'Segoe UI', sans-serif; font-size: 15px;">${post.content || 'No content available'}</div>
+                    <div class="meta-grid">
+                        <div class="meta-item">
+                            <div class="meta-label">🎯 Topic</div>
+                            <div class="meta-value">${topic}</div>
                         </div>
-                        
-                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 15px;">
-                            <div class="metadata-box">
-                                <strong style="color: #667eea;">🎯 Topic:</strong>
-                                <div>${topic}</div>
-                            </div>
-                            <div class="metadata-box">
-                                <strong style="color: #e91e63;">🎨 Structure:</strong>
-                                <div>${structure}</div>
-                            </div>
-                            <div class="metadata-box">
-                                <strong style="color: #28a745;">🎭 Tone:</strong>
-                                <div>${post.tone || 'N/A'}</div>
-                            </div>
-                            <div class="metadata-box">
-                                <strong style="color: #ffc107;">📐 Angle:</strong>
-                                <div>${post.angle || 'N/A'}</div>
-                            </div>
+                        <div class="meta-item">
+                            <div class="meta-label">📐 Angle</div>
+                            <div class="meta-value">${post.angle || 'N/A'}</div>
                         </div>
-                        
-                        <div style="display: grid; grid-template-columns: repeat(1, 1fr); gap: 15px; margin-bottom: 15px;">
-                            <div class="metadata-box" style="background: #f3e5f5; border: 1px solid #9c27b0;">
-                                <strong style="color: #9c27b0;">🤖 Generator Used:</strong>
-                                <div style="font-weight: bold; color: #9c27b0; font-size: 16px;">${post.generator_name || 'N/A'}</div>
-                            </div>
+                        <div class="meta-item">
+                            <div class="meta-label">🎨 Structure</div>
+                            <div class="meta-value">${structure}</div>
                         </div>
-                        
-                        ${post.posted_at ? `
-                        <div style="margin-top: 15px; padding: 10px; background: #e8f5e9; border-radius: 6px; font-size: 13px;">
-                            ✅ <strong>Posted:</strong> ${new Date(post.posted_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                        <div class="meta-item">
+                            <div class="meta-label">🎭 Tone</div>
+                            <div class="meta-value">${post.tone || 'N/A'}</div>
                         </div>
-                        ` : ''}
+                        <div class="meta-item">
+                            <div class="meta-label">🤖 Generator</div>
+                            <div class="meta-value">${post.generator_name || 'N/A'}</div>
+                        </div>
+                        <div class="meta-item">
+                            <div class="meta-label">📅 Posted</div>
+                            <div class="meta-value">${posted}</div>
+                        </div>
                     </div>
                 </div>
                 `;
@@ -1254,7 +1251,7 @@ function generateRecentHTML(data: any): string {
 
         <div class="footer">
             <p>🤖 Last updated: ${now}</p>
-            <p>⚡ Real-time activity feed from content_metadata (all posts)</p>
+            <p>⚡ Showing all recent posts</p>
         </div>
     </div>
     <script>setTimeout(() => location.reload(), 120000);</script>
