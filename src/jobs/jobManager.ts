@@ -305,9 +305,9 @@ export class JobManager {
         10 * MINUTE // Start after 10 minutes
       );
 
-      // 💬 REPLY POSTING JOB - every 15 min, offset 15 min
+      // 💬 REPLY POSTING JOB - every 15 min, START IMMEDIATELY
       // 🎯 CRITICAL: Generate and queue replies
-      // ⏰ TIMING: Starts at 15min (AFTER harvester at 10min has populated opportunities)
+      // ⏰ TIMING: Starts immediately, has own internal rate limiting
       this.scheduleStaggeredJob(
         'reply_posting',
         async () => {
@@ -318,7 +318,7 @@ export class JobManager {
           });
         },
         15 * MINUTE, // Every 15 minutes - aligned with MIN_MINUTES_BETWEEN
-        15 * MINUTE // Start after 15 minutes (AFTER first harvest at 10min + buffer)
+        1 * MINUTE // Start after 1 minute (immediate but allow harvester to populate)
       );
       
       // 📊 REPLY CONVERSION TRACKING JOB - every 60 min, offset 60 min
