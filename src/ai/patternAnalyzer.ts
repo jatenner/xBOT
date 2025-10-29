@@ -56,14 +56,22 @@ export class PatternAnalyzer {
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - timeWindowDays);
       
-      const { data: recentPatterns, error } = await this.supabase
+      let recentPatterns: any[] = [];
+      const { data: recentData, error } = await this.supabase
         .from('content_patterns')
         .select('patterns, created_at')
         .gte('created_at', cutoffDate.toISOString())
         .order('created_at', { ascending: false });
       
+      if (error) {
+        console.error('Error fetching recent patterns:', error);
+        return this.getDefaultFeedback();
+      }
+      
+      recentPatterns = recentData || [];
+      
       // If we don't have enough recent data, get all available patterns
-      if (!recentPatterns || recentPatterns.length < 10) {
+      if (recentPatterns.length < 10) {
         console.log('📊 Not enough recent patterns, analyzing all available data...');
         const { data: allPatterns, error: allError } = await this.supabase
           .from('content_patterns')
@@ -89,7 +97,7 @@ export class PatternAnalyzer {
       }
       
       // Extract patterns from JSONB and apply time-based weighting
-      const patternsWithWeights = recentPatterns.map(p => ({
+      const patternsWithWeights = recentPatterns.map((p: any) => ({
         patterns: p.patterns as ContentPatterns,
         weight: this.calculateTimeWeight(new Date(p.created_at), cutoffDate)
       }));

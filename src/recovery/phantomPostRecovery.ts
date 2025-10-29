@@ -118,7 +118,7 @@ export class PhantomPostRecovery {
       return [];
     }
     
-    return data || [];
+    return (data || []) as FailedPost[];
   }
   
   /**
@@ -128,7 +128,7 @@ export class PhantomPostRecovery {
     const browserManager = BrowserManager.getInstance();
     
     try {
-      const tweets = await browserManager.withContext('phantom_recovery', async (context) => {
+      const tweets = await browserManager.withContext('posting', async (context) => {
         const page = await context.newPage();
         
         const username = process.env.TWITTER_USERNAME || 'Signal_Synapse';
