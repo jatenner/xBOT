@@ -64,11 +64,21 @@ export class JobManager {
     
     // Schedule first run after initial delay
     const initialTimer = setTimeout(async () => {
-      await jobFn(); // First execution
-      
-      // Then set up recurring interval
-      const recurringTimer = setInterval(jobFn, intervalMs);
-      this.timers.set(name, recurringTimer);
+      try {
+        await jobFn(); // First execution
+        
+        // Then set up recurring interval
+        const recurringTimer = setInterval(async () => {
+          try {
+            await jobFn();
+          } catch (error) {
+            console.error(`❌ JOB_${name.toUpperCase()}: Recurring execution failed:`, error?.message || String(error));
+          }
+        }, intervalMs);
+        this.timers.set(name, recurringTimer);
+      } catch (error) {
+        console.error(`❌ JOB_${name.toUpperCase()}: Initial execution failed:`, error?.message || String(error));
+      }
     }, initialDelayMs);
     
     // Store initial timer (will be replaced by recurring timer after first run)
