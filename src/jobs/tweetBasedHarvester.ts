@@ -234,19 +234,81 @@ export async function tweetBasedHarvester(): Promise<void> {
     const page = await pool.acquirePage('tweet_search');
     
     try {
-      // Verify authentication
-      await page.goto('https://x.com/home', { waitUntil: 'domcontentloaded', timeout: 20000 });
-      await page.waitForTimeout(2000);
+      // 🔐 ROBUST AUTHENTICATION CHECK WITH FALLBACKS
+      console.log('[TWEET_HARVESTER] 🔐 Checking authentication status...');
       
-      const isAuthenticated = await page.locator('[data-testid="SideNav_NewTweet_Button"]').isVisible({ timeout: 5000 }).catch(() => false);
+      // Try multiple authentication verification methods
+      let isAuthenticated = false;
+      let authMethod = '';
+      
+      // Method 1: Check for compose button (original method)
+      try {
+        await page.goto('https://x.com/home', { waitUntil: 'domcontentloaded', timeout: 20000 });
+        await page.waitForTimeout(3000);
+        
+        const composeButton = await page.locator('[data-testid="SideNav_NewTweet_Button"]').isVisible({ timeout: 5000 }).catch(() => false);
+        if (composeButton) {
+          isAuthenticated = true;
+          authMethod = 'compose_button';
+        }
+      } catch (e) {
+        console.log('[TWEET_HARVESTER] ⚠️ Method 1 failed, trying alternatives...');
+      }
+      
+      // Method 2: Check for user menu (alternative)
+      if (!isAuthenticated) {
+        try {
+          const userMenu = await page.locator('[data-testid="SideNav_AccountSwitcher_Button"]').isVisible({ timeout: 3000 }).catch(() => false);
+          if (userMenu) {
+            isAuthenticated = true;
+            authMethod = 'user_menu';
+          }
+        } catch (e) {
+          console.log('[TWEET_HARVESTER] ⚠️ Method 2 failed, trying public search...');
+        }
+      }
+      
+      // Method 3: Try public search (no auth required)
+      if (!isAuthenticated) {
+        try {
+          console.log('[TWEET_HARVESTER] 🔍 Attempting public search (no authentication required)...');
+          await page.goto('https://x.com/search?q=health&src=typed_query&f=live', { waitUntil: 'domcontentloaded', timeout: 15000 });
+          await page.waitForTimeout(3000);
+          
+          // Check if we can see tweets (even without full auth)
+          const tweetsVisible = await page.locator('article[data-testid="tweet"]').count() > 0;
+          if (tweetsVisible) {
+            isAuthenticated = true;
+            authMethod = 'public_search';
+            console.log('[TWEET_HARVESTER] ✅ Public search working - proceeding with limited access');
+          }
+        } catch (e) {
+          console.log('[TWEET_HARVESTER] ⚠️ Public search also failed');
+        }
+      }
       
       if (!isAuthenticated) {
-        console.error('[TWEET_HARVESTER] ❌ Not authenticated - cannot search');
+        console.error('[TWEET_HARVESTER] ❌ All authentication methods failed - cannot search');
+        console.log('[TWEET_HARVESTER] 💡 This may be due to:');
+        console.log('[TWEET_HARVESTER]   • Stale session cookies');
+        console.log('[TWEET_HARVESTER]   • Twitter authentication changes');
+        console.log('[TWEET_HARVESTER]   • Rate limiting or blocking');
+        
+        // 🔄 FALLBACK: Try account-based harvester as backup
+        console.log('[TWEET_HARVESTER] 🔄 Attempting fallback to account-based harvester...');
+        try {
+          const { replyOpportunityHarvester } = await import('./replyOpportunityHarvester');
+          await replyOpportunityHarvester();
+          console.log('[TWEET_HARVESTER] ✅ Fallback harvester completed');
+        } catch (fallbackError) {
+          console.error('[TWEET_HARVESTER] ❌ Fallback harvester also failed:', fallbackError);
+        }
+        
         await pool.releasePage(page);
         return;
       }
       
-      console.log('[TWEET_HARVESTER] ✅ Authenticated - starting multi-angle broad searches...');
+      console.log(`[TWEET_HARVESTER] ✅ Authenticated via ${authMethod} - starting multi-angle broad searches...`);
       
       const allTweets: TweetSearchResult[] = [];
       

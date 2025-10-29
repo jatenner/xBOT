@@ -434,9 +434,24 @@ async function generateRealReplies(): Promise<void> {
   
   console.log(`[REPLY_JOB] ✅ Found ${opportunities.length} reply opportunities from database pool`);
   
-  // Batch size from config (prevents bursts)
-  const replyCount = Math.min(REPLY_CONFIG.BATCH_SIZE, opportunities.length);
-  console.log(`[REPLY_JOB] 🎯 Generating ${replyCount} replies (batch size: ${REPLY_CONFIG.BATCH_SIZE})`);
+  // 🚀 AGGRESSIVE BATCH SIZE: Generate more replies when opportunities are available
+  // If we have many opportunities, generate more replies to catch up
+  const baseBatchSize = REPLY_CONFIG.BATCH_SIZE;
+  const availableOpportunities = opportunities.length;
+  
+  // Scale up batch size based on available opportunities
+  let replyCount = baseBatchSize;
+  if (availableOpportunities >= 20) {
+    replyCount = Math.min(4, availableOpportunities); // Up to 4 replies per cycle
+    console.log(`[REPLY_JOB] 🚀 High opportunity count (${availableOpportunities}) - increasing batch size to ${replyCount}`);
+  } else if (availableOpportunities >= 10) {
+    replyCount = Math.min(3, availableOpportunities); // Up to 3 replies per cycle
+    console.log(`[REPLY_JOB] 📈 Good opportunity count (${availableOpportunities}) - increasing batch size to ${replyCount}`);
+  } else {
+    replyCount = Math.min(baseBatchSize, availableOpportunities);
+  }
+  
+  console.log(`[REPLY_JOB] 🎯 Generating ${replyCount} replies (base batch: ${baseBatchSize}, available: ${availableOpportunities})`);
   
   if (replyCount === 0) {
     console.log('[REPLY_JOB] ⚠️ No opportunities available to generate replies for');
