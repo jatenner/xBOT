@@ -446,6 +446,7 @@ function generatePostsHTML(data: any): string {
         <div class="section">
             <h2>🏆 All Posts with Performance Data (${data.topPosts.length} posts)</h2>
             <div style="margin-bottom: 15px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                <button class="sort-btn" onclick="sortTable('date')">Sort by 📅 Date</button>
                 <button class="sort-btn" onclick="sortTable('likes')">Sort by ❤️ Likes</button>
                 <button class="sort-btn active" onclick="sortTable('views')">Sort by 👁️ Views</button>
                 <button class="sort-btn" onclick="sortTable('viral')">Sort by 🔥 Viral Score</button>
@@ -471,9 +472,10 @@ function generatePostsHTML(data: any): string {
                         const likes = post.actual_likes || 0;
                         const viralScore = views * likes;
                         const er = ((post.actual_engagement_rate || 0) * 100).toFixed(2);
+                        const dateTimestamp = post.posted_at ? new Date(post.posted_at).getTime() : 0;
                         
                         return `
-                        <tr data-views="${views}" data-likes="${likes}" data-viral="${viralScore}" data-er="${er}">
+                        <tr data-views="${views}" data-likes="${likes}" data-viral="${viralScore}" data-er="${er}" data-date="${dateTimestamp}">
                             <td class="content-cell">${post.content?.substring(0, 100) || 'No content'}...</td>
                             <td><span class="badge badge-gen">${post.generator_name || 'unknown'}</span></td>
                             <td><span class="topic-tag" title="${post.raw_topic || post.topic_cluster || 'N/A'}">${(post.raw_topic || post.topic_cluster || 'N/A').substring(0, 40)}${(post.raw_topic || post.topic_cluster || '').length > 40 ? '...' : ''}</span></td>
