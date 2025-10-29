@@ -665,6 +665,31 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     throw new Error('Reply decision missing target_tweet_id');
   }
   
+  // 🚨 CRITICAL PRE-POST CHECK: Verify we haven't already replied to this tweet
+  const { getSupabaseClient } = await import('../db/index');
+  const supabase = getSupabaseClient();
+  
+  const { data: existingReply } = await supabase
+    .from('content_metadata')
+    .select('tweet_id, posted_at')
+    .eq('decision_type', 'reply')
+    .eq('target_tweet_id', decision.target_tweet_id)
+    .eq('status', 'posted')
+    .limit(1)
+    .single();
+    
+  if (existingReply) {
+    const replyTime = new Date(existingReply.posted_at).toLocaleString();
+    console.log(`[POSTING_QUEUE] 🚫 DUPLICATE PREVENTED: Already replied to tweet ${decision.target_tweet_id} at ${replyTime}`);
+    console.log(`[POSTING_QUEUE]    Previous reply ID: ${existingReply.tweet_id}`);
+    
+    // Mark this decision as posted (to prevent retry) but don't actually post
+    await updateDecisionStatus(decision.id, 'posted');
+    throw new Error(`Duplicate reply prevented: Already replied to ${decision.target_tweet_id}`);
+  }
+  
+  console.log(`[POSTING_QUEUE] ✅ Duplicate check passed - no existing reply to ${decision.target_tweet_id}`);
+  
   // 🛡️ Use PROPER reply system (posts as actual reply, not @mention)
   console.log(`[POSTING_QUEUE] 💬 Using UltimateTwitterPoster.postReply() for REAL replies...`);
   
