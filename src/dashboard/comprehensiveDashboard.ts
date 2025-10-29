@@ -82,7 +82,7 @@ export async function generateRepliesDashboard(): Promise<string> {
 async function getTopPerformingPosts(supabase: any) {
   const { data } = await supabase
     .from('content_metadata')
-    .select('content, actual_likes, actual_retweets, actual_impressions, actual_engagement_rate, generator_name, topic_cluster, angle, tone, posted_at')
+    .select('content, actual_likes, actual_retweets, actual_impressions, actual_engagement_rate, generator_name, raw_topic, topic_cluster, angle, tone, posted_at')
     .eq('status', 'posted')
     .eq('decision_type', 'single')
     .not('actual_likes', 'is', null)
@@ -128,7 +128,7 @@ async function getGeneratorBreakdown(supabase: any) {
 async function getTopicBreakdown(supabase: any) {
   const { data } = await supabase
     .from('content_metadata')
-    .select('topic_cluster, actual_likes, actual_impressions, actual_engagement_rate')
+    .select('raw_topic, topic_cluster, actual_likes, actual_impressions, actual_engagement_rate')
     .eq('status', 'posted')
     .eq('decision_type', 'single')
     .not('actual_likes', 'is', null);
@@ -136,7 +136,14 @@ async function getTopicBreakdown(supabase: any) {
   if (!data || data.length === 0) return [];
 
   const byTopic = data.reduce((acc: any, post: any) => {
-    const topic = post.topic_cluster || 'health';
+    // Use raw_topic if available, otherwise fall back to topic_cluster
+    let topic = post.raw_topic || post.topic_cluster || 'Uncategorized';
+    
+    // Simplify super long topics (keep first 60 chars)
+    if (topic.length > 60) {
+      topic = topic.substring(0, 60) + '...';
+    }
+    
     if (!acc[topic]) {
       acc[topic] = { posts: 0, totalLikes: 0, totalViews: 0, totalER: 0 };
     }
@@ -432,7 +439,7 @@ function generatePostsHTML(data: any): string {
                         <tr data-views="${views}" data-likes="${likes}" data-viral="${viralScore}" data-er="${er}">
                             <td class="content-cell">${post.content?.substring(0, 100) || 'No content'}...</td>
                             <td><span class="badge badge-gen">${post.generator_name || 'unknown'}</span></td>
-                            <td><span class="topic-tag">${post.topic_cluster || 'health'}</span></td>
+                            <td><span class="topic-tag" title="${post.raw_topic || post.topic_cluster || 'N/A'}">${(post.raw_topic || post.topic_cluster || 'N/A').substring(0, 40)}${(post.raw_topic || post.topic_cluster || '').length > 40 ? '...' : ''}</span></td>
                             <td class="date-cell">${post.posted_at ? new Date(post.posted_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'N/A'}</td>
                             <td class="number-col"><strong>${views.toLocaleString()}</strong></td>
                             <td class="number-col"><strong style="color: #e91e63;">${likes}</strong></td>
