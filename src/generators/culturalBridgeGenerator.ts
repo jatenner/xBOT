@@ -26,7 +26,7 @@ export async function generateCulturalBridgeContent(params: {
 }): Promise<CulturalBridgeContent> {
   
   const { topic, format, research, intelligence } = params;
-  const intelligenceContext = buildIntelligenceContext(intelligence);
+  const intelligenceContext = await buildIntelligenceContext(intelligence);
   
   const patterns = getGeneratorPatterns('cultural_bridge');
   
@@ -48,7 +48,10 @@ CULTURAL BRIDGE RULES:
 
 🌉 YOUR SUPERPOWER: Make science accessible through culture.
 
-Examples of good cultural bridge content:
+
+🎨 CREATE SOMETHING NEW: Invent fresh approaches every time. Surprise people. Experiment wildly.
+
+ cultural bridge content:
 ${patterns.examples.map(ex => `• ${ex}`).join('\n')}
 
 ⚠️ REMINDER: 260 CHARACTER ABSOLUTE LIMIT ⚠️

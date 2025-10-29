@@ -26,7 +26,7 @@ export async function generateExplorerContent(params: {
 }): Promise<ExplorerContent> {
   
   const { topic, format, research, intelligence } = params;
-  const intelligenceContext = buildIntelligenceContext(intelligence);
+  const intelligenceContext = await buildIntelligenceContext(intelligence);
   
   const patterns = getGeneratorPatterns('philosopher'); // Use philosopher patterns for explorer
   
@@ -51,7 +51,10 @@ EXPLORER RULES:
 Examples of explorer content:
 ${patterns.examples.map(ex => `• ${ex}`).join('\n')}
 
-⚠️ REMINDER: 260 CHARACTER ABSOLUTE LIMIT ⚠️
+
+🎨 CREATE SOMETHING NEW: Invent fresh approaches every time. Surprise people. Experiment wildly.
+
+ REMINDER: 260 CHARACTER ABSOLUTE LIMIT ⚠️
 
 Connect ideas from different domains. Show how X affects Y in unexpected ways. Reveal hidden mechanisms. Ask curious questions about relationships.
 

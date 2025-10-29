@@ -145,22 +145,7 @@ function buildViralPrompt(topic: string, hookStyle: string, emotion: string): { 
 
 🎨 DIVERSITY MANDATE - NEVER USE SAME FORMULA TWICE:
 
-Your threads get 10K+ likes because you VARY EVERYTHING:
-
-📍 HOOK VARIATIONS (rotate, don't repeat):
-• Contrarian: "Sleep duration is overrated..."
-• Shocking stat: "43% lower inflammation in Blue Zones..."
-• Question: "Why do centenarians..."
-• Challenge: "Your doctor is wrong about..."
-• Reveal: "The real reason fasting works has nothing to do with calories..."
-• Contrast: "Everyone optimizes morning. Nobody asks why..."
-
-🔄 THREAD STRUCTURES (don't always follow same pattern):
-• Sometimes: Hook → Why wrong → What's true → Mechanism → Action
-• Sometimes: Hook → Data → Surprise → Examples → Protocol
-• Sometimes: Hook → Challenge → Evidence → Implications → Action
-• Sometimes: Question → Answer → Mechanism → Examples → Takeaway
-• Vary the flow - keep readers guessing
+🎨 CREATE SOMETHING NEW: Invent fresh approaches every time. Surprise people. Experiment wildly.
 
 💡 WHAT MAKES THREADS VIRAL:
 • Surprise factor (challenges assumptions)

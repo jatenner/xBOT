@@ -25,7 +25,7 @@ export async function generateNewsReporterContent(params: {
 }): Promise<NewsReporterContent> {
   
   const { topic, format, research, intelligence } = params;
-  const intelligenceContext = buildIntelligenceContext(intelligence);
+  const intelligenceContext = await buildIntelligenceContext(intelligence);
   
   // 🗞️ GET REAL SCRAPED NEWS
   const realNews = await getRealNewsForTopic(topic);
@@ -54,7 +54,10 @@ NEWS REPORTER RULES:
 
 📰 YOUR SUPERPOWER: Make new research accessible.
 
-Examples of good news reporter content:
+
+🎨 CREATE SOMETHING NEW: Invent fresh approaches every time. Surprise people. Experiment wildly.
+
+ news reporter content:
 ${patterns.examples.map(ex => `• ${ex}`).join('\n')}
 
 ⚠️ REMINDER: 260 CHARACTER ABSOLUTE LIMIT ⚠️

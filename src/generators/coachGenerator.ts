@@ -26,7 +26,7 @@ export async function generateCoachContent(params: {
 }): Promise<CoachContent> {
   
   const { topic, format, research, intelligence } = params;
-  const intelligenceContext = buildIntelligenceContext(intelligence);
+  const intelligenceContext = await buildIntelligenceContext(intelligence);
   
   const patterns = getGeneratorPatterns('coach');
   
@@ -48,7 +48,10 @@ COACH RULES:
 
 💪 YOUR SUPERPOWER: Make science actionable.
 
-Examples of good coach content:
+
+🎨 CREATE SOMETHING NEW: Invent fresh approaches every time. Surprise people. Experiment wildly.
+
+ coach content:
 ${patterns.examples.map(ex => `• ${ex}`).join('\n')}
 
 You can be prescriptive or give options. You can explain why or just say what. The learning system will discover what gets people to act.

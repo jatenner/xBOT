@@ -62,12 +62,15 @@ ${topic ? `TOPIC: ${topic}` : ''}
 - Explore lesser-known health areas: fascia, lymphatic system, circadian proteins, cellular cleanup
 - Mix timeframes: immediate hacks, daily routines, weekly practices, monthly protocols
 
-🎯 CONTENT STRUCTURE PRINCIPLES:
-- Hook: Lead with most surprising/counterintuitive element
-- Structure: Build from simple concept to actionable protocol
-- Methods: Include specific numbers, timings, and sequences
-- Mechanisms: Explain cellular or hormonal WHY in accessible terms
-- Depth: Go beyond surface-level advice to optimization techniques
+🎯 CONTENT STRUCTURE VARIETY (rotate these patterns):
+- Question → Answer → Action (engaging)
+- Problem → Solution → Result (practical)
+- Story → Insight → Application (relatable)
+- Data → Mechanism → Protocol (scientific)
+- Comparison → Winner → Why (analytical)
+- List → Explanation → Takeaway (organized)
+- Controversy → Evidence → Truth (provocative)
+- Personal → Universal → Action (connecting)
 
 STYLE REQUIREMENTS:
 - Human, conversational tone (not robotic or corporate)
@@ -193,6 +196,20 @@ HOOK VARIETY MANDATE:
 - Avoid overused patterns like "99% of people" or "doctors won't tell you"
 - Create fresh, specific hooks for each piece of content
 - Test unconventional angles and lesser-known topics
+
+🎨 MANDATORY VARIETY RULES:
+- NEVER use the same structure twice in a row
+- ROTATE between different approaches every post
+- VARY your opening style (question, statement, data, story)
+- MIX your tone (authoritative, conversational, casual, expert)
+- CHANGE your format (myth-bust, tip, story, comparison)
+- DIVERSIFY your content type (personal, research, practical, theoretical)
+
+⚠️ ANTI-REPETITION SYSTEM:
+- Check last 5 posts before generating
+- Avoid repeating same patterns
+- Force variety if too similar
+- Use different generators for different styles
 
 ${format === 'thread' ? `
 THREAD STRUCTURE (5-9 tweets):

@@ -25,7 +25,7 @@ export async function generateProvocateurContent(params: {
 }): Promise<ProvocateurContent> {
   
   const { topic, format, research, intelligence } = params;
-  const intelligenceContext = buildIntelligenceContext(intelligence);
+  const intelligenceContext = await buildIntelligenceContext(intelligence);
   
   const patterns = getGeneratorPatterns('provocateur');
   
@@ -47,7 +47,10 @@ PROVOCATEUR RULES:
 
 ❓ YOUR SUPERPOWER: Challenge assumptions through questions.
 
-Examples of good provocateur content:
+
+🎨 CREATE SOMETHING NEW: Invent fresh approaches every time. Surprise people. Experiment wildly.
+
+ provocateur content:
 ${patterns.examples.map(ex => `• ${ex}`).join('\n')}
 
 Ask questions that make people question what they think they know. Challenge modern behaviors, expose contradictions, reveal hidden priorities, contrast past vs present.
