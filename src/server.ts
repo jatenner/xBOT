@@ -601,6 +601,50 @@ app.get('/playwright/ping', async (req, res) => {
 });
 
 /**
+ * 📊 DASHBOARD ENDPOINT
+ */
+app.get('/dashboard', async (req, res) => {
+  try {
+    // Simple token auth via query param or header
+    const token = req.query.token || req.headers.authorization?.replace('Bearer ', '');
+    const adminToken = process.env.ADMIN_TOKEN || 'xbot-admin-2025';
+    
+    if (token !== adminToken) {
+      return res.status(401).send(`
+        <html>
+          <body style="font-family: Arial; text-align: center; padding: 50px;">
+            <h1>🔒 Authentication Required</h1>
+            <p>Add <code>?token=YOUR_TOKEN</code> to the URL</p>
+            <p style="color: #666;">Get your token from Railway environment variables</p>
+          </body>
+        </html>
+      `);
+    }
+    
+    console.log('📊 DASHBOARD_REQUEST: Serving analytics dashboard...');
+    
+    const { performanceAnalyticsDashboard } = await import('./dashboard/performanceAnalyticsDashboard');
+    const dashboardHTML = await performanceAnalyticsDashboard.generateDashboardHTML();
+    
+    res.setHeader('Content-Type', 'text/html');
+    res.send(dashboardHTML);
+    
+    console.log('✅ DASHBOARD_SERVED: Analytics dashboard delivered');
+  } catch (error: any) {
+    console.error('❌ DASHBOARD_ERROR:', error.message);
+    res.status(500).send(`
+      <html>
+        <body style="font-family: Arial; text-align: center; padding: 50px;">
+          <h1>🚨 Dashboard Temporarily Unavailable</h1>
+          <p>Error: ${error.message}</p>
+          <p><a href="/dashboard?token=${req.query.token || ''}">🔄 Try Again</a></p>
+        </body>
+      </html>
+    `);
+  }
+});
+
+/**
  * 404 handler
  */
 app.use((req, res) => {
@@ -608,7 +652,7 @@ app.use((req, res) => {
     error: 'Endpoint not found',
     path: req.path,
     timestamp: new Date().toISOString(),
-    availableEndpoints: ['/status', '/env', '/canary', '/playwright', '/playwright/ping', '/session', '/posting', '/metrics']
+    availableEndpoints: ['/status', '/env', '/canary', '/playwright', '/playwright/ping', '/session', '/posting', '/metrics', '/dashboard']
   });
 });
 
