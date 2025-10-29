@@ -753,6 +753,27 @@ export function startHealthServer(): Promise<void> {
             });
         });
         
+        // 🚨 CRITICAL FIX: Start JobManager to enable posting and replies
+        setImmediate(async () => {
+          try {
+            console.log('🕒 JOB_MANAGER: Initializing job timers...');
+            const jobManager = JobManager.getInstance();
+            await jobManager.startJobs();
+            console.log('✅ JOB_MANAGER: All timers started successfully');
+            
+            // Run plan job immediately to populate queue
+            console.log('🚀 STARTUP: Running immediate plan job to populate queue...');
+            try {
+              await jobManager.runJobNow('plan');
+              console.log('✅ STARTUP: Initial plan job completed');
+            } catch (error: any) {
+              console.error('❌ STARTUP: Plan job failed:', error.message);
+            }
+          } catch (error: any) {
+            console.error('❌ JOB_MANAGER: Failed to start:', error.message);
+          }
+        });
+        
         resolve();
       });
 
