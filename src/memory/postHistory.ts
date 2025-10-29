@@ -11,6 +11,9 @@ export interface PostRecord {
   topic: string;
   generator_used: string;
   created_at: string;
+  angle?: string;
+  tone?: string;
+  format_strategy?: string;
   performance?: {
     followers_gained: number;
     engagement_rate: number;
@@ -37,10 +40,27 @@ export class PostHistory {
     try {
       const supabase = getSupabaseClient();
       
+      // Use content_metadata table which has all the rich metadata
       const { data, error } = await supabase
-        .from('posted_decisions')
-        .select('decision_id, content, posted_at')
-        .order('posted_at', { ascending: false})
+        .from('content_metadata')
+        .select(`
+          decision_id, 
+          content, 
+          topic_cluster, 
+          generator_name, 
+          angle, 
+          tone, 
+          format_strategy,
+          created_at, 
+          posted_at,
+          actual_impressions,
+          actual_likes,
+          actual_retweets,
+          actual_replies,
+          actual_engagement_rate
+        `)
+        .eq('status', 'posted')
+        .order('posted_at', { ascending: false })
         .limit(limit);
       
       if (error || !data) {
@@ -51,10 +71,16 @@ export class PostHistory {
       this.cache = data.map((d: any) => ({
         post_id: d.decision_id,
         content: d.content,
-        topic: d.generation_metadata?.topic || 'unknown',
-        generator_used: d.generation_metadata?.generator || 'unknown',
+        topic: d.topic_cluster || 'unknown',
+        generator_used: d.generator_name || 'unknown',
+        angle: d.angle || 'unknown',
+        tone: d.tone || 'unknown',
+        format_strategy: d.format_strategy || 'unknown',
         created_at: d.created_at,
-        performance: d.actual_performance
+        performance: {
+          followers_gained: 0, // Not tracked in this table
+          engagement_rate: d.actual_engagement_rate || 0
+        }
       }));
       
       return this.cache;

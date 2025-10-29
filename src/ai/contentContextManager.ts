@@ -76,22 +76,17 @@ export class ContentContextManager {
    */
   private async getRecentPosts(): Promise<string[]> {
     try {
+      // Use content_metadata table which has all the rich metadata
       const { data } = await this.supabase
-        .from('content_with_outcomes')  // ✅ ROOT CAUSE FIX: Use table with actual data
-        .select('content')
+        .from('content_metadata')
+        .select('content, topic_cluster, generator_name, angle, tone, format_strategy')
+        .eq('status', 'posted')
         .order('posted_at', { ascending: false })
         .limit(30);
 
       if (!data || data.length === 0) {
-        // Fallback to content_metadata if no posts yet
-        const { data: metadata } = await this.supabase
-          .from('content_metadata')
-          .select('content')
-          .eq('status', 'posted')
-          .order('created_at', { ascending: false })
-          .limit(30);
-
-        return (metadata || []).map((p: any) => String(p.content).substring(0, 200));
+        console.warn('   ⚠️ No posted content found in content_metadata');
+        return [];
       }
 
       return data.map((p: any) => String(p.content).substring(0, 200));
