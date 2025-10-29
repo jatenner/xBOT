@@ -986,11 +986,12 @@ function generateErrorHTML(error: string): string {
 async function getRecentPostsChronological(supabase: any) {
   const { data, error } = await supabase
     .from('content_metadata')
-    .select('content, actual_likes, actual_retweets, actual_impressions, actual_engagement_rate, generator_name, raw_topic, topic_cluster, angle, tone, format_strategy, posted_at, created_at, status')
+    .select('content, actual_likes, actual_retweets, actual_impressions, actual_engagement_rate, generator_name, raw_topic, topic_cluster, angle, tone, format_strategy, posted_at, created_at, status, tweet_id')
     .eq('decision_type', 'single')
     .eq('status', 'posted')
+    .not('tweet_id', 'is', null) // ✅ CRITICAL: Only show posts with REAL tweet IDs
     .order('posted_at', { ascending: false })
-    .limit(100); // Last 100 POSTED tweets
+    .limit(100); // Last 100 ACTUALLY POSTED tweets
 
   if (error) {
     console.error('[RECENT_DASHBOARD] Error fetching posts:', error);
@@ -1002,9 +1003,22 @@ async function getRecentPostsChronological(supabase: any) {
     return [];
   }
 
-  console.log(`[RECENT_DASHBOARD] Found ${data.length} recent posts`);
+  // Filter out any posts with fake/timestamp tweet IDs (just in case)
+  const realPosts = data.filter(post => {
+    const tweetId = post.tweet_id;
+    if (!tweetId) return false;
+    
+    // Real Twitter IDs are ~19 digits and start with '1'
+    // Fake timestamp IDs are 13 digits
+    if (tweetId.length < 15) return false; // Filter out timestamp IDs
+    if (!tweetId.startsWith('1')) return false; // Twitter IDs start with '1'
+    
+    return true;
+  });
 
-  return data;
+  console.log(`[RECENT_DASHBOARD] Found ${data.length} posted entries, ${realPosts.length} with real Twitter IDs`);
+
+  return realPosts;
 }
 
 function calculateUniquenessScore(post: any, allPosts: any[]): number {
