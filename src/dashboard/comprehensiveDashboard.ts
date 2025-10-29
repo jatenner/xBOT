@@ -1,0 +1,787 @@
+/**
+ * 📊 COMPREHENSIVE DASHBOARD - Multi-Page Analytics
+ * Page 1: Posts breakdown (topic, tone, angle, generator, structure)
+ * Page 2: Replies breakdown (tier, account, conversion)
+ */
+
+import { getSupabaseClient } from '../db/index';
+
+export async function generatePostsDashboard(): Promise<string> {
+  const supabase = getSupabaseClient();
+  
+  try {
+    // Get comprehensive post data
+    const [
+      topPosts,
+      generatorBreakdown,
+      topicBreakdown,
+      toneBreakdown,
+      angleBreakdown,
+      last24h
+    ] = await Promise.all([
+      getTopPerformingPosts(supabase),
+      getGeneratorBreakdown(supabase),
+      getTopicBreakdown(supabase),
+      getToneBreakdown(supabase),
+      getAngleBreakdown(supabase),
+      getLast24HourStats(supabase)
+    ]);
+
+    return generatePostsHTML({
+      topPosts,
+      generatorBreakdown,
+      topicBreakdown,
+      toneBreakdown,
+      angleBreakdown,
+      last24h
+    });
+
+  } catch (error: any) {
+    console.error('[POSTS_DASHBOARD] Error:', error.message);
+    return generateErrorHTML(error.message);
+  }
+}
+
+export async function generateRepliesDashboard(): Promise<string> {
+  const supabase = getSupabaseClient();
+  
+  try {
+    // Get comprehensive reply data
+    const [
+      topReplies,
+      tierBreakdown,
+      accountBreakdown,
+      generatorBreakdown,
+      conversionStats
+    ] = await Promise.all([
+      getTopPerformingReplies(supabase),
+      getReplyTierBreakdown(supabase),
+      getAccountBreakdown(supabase),
+      getReplyGeneratorBreakdown(supabase),
+      getConversionStats(supabase)
+    ]);
+
+    return generateRepliesHTML({
+      topReplies,
+      tierBreakdown,
+      accountBreakdown,
+      generatorBreakdown,
+      conversionStats
+    });
+
+  } catch (error: any) {
+    console.error('[REPLIES_DASHBOARD] Error:', error.message);
+    return generateErrorHTML(error.message);
+  }
+}
+
+// ============================================================
+// POSTS DATA FETCHERS
+// ============================================================
+
+async function getTopPerformingPosts(supabase: any) {
+  const { data } = await supabase
+    .from('content_metadata')
+    .select('content, actual_likes, actual_retweets, actual_impressions, actual_engagement_rate, generator_name, topic_cluster, angle, tone, posted_at')
+    .eq('status', 'posted')
+    .eq('decision_type', 'single')
+    .not('actual_likes', 'is', null)
+    .order('actual_likes', { ascending: false })
+    .limit(20);
+
+  return data || [];
+}
+
+async function getGeneratorBreakdown(supabase: any) {
+  const { data } = await supabase
+    .from('content_metadata')
+    .select('generator_name, actual_likes, actual_impressions, actual_engagement_rate')
+    .eq('status', 'posted')
+    .eq('decision_type', 'single')
+    .not('actual_likes', 'is', null);
+
+  if (!data || data.length === 0) return [];
+
+  const byGenerator = data.reduce((acc: any, post: any) => {
+    const gen = post.generator_name || 'unknown';
+    if (!acc[gen]) {
+      acc[gen] = { posts: 0, totalLikes: 0, totalViews: 0, totalER: 0 };
+    }
+    acc[gen].posts++;
+    acc[gen].totalLikes += post.actual_likes || 0;
+    acc[gen].totalViews += post.actual_impressions || 0;
+    acc[gen].totalER += post.actual_engagement_rate || 0;
+    return acc;
+  }, {});
+
+  return Object.entries(byGenerator)
+    .map(([name, stats]: [string, any]) => ({
+      name,
+      posts: stats.posts,
+      avgLikes: Math.round(stats.totalLikes / stats.posts),
+      avgViews: Math.round(stats.totalViews / stats.posts),
+      avgER: ((stats.totalER / stats.posts) * 100).toFixed(2)
+    }))
+    .sort((a, b) => parseFloat(b.avgER) - parseFloat(a.avgER));
+}
+
+async function getTopicBreakdown(supabase: any) {
+  const { data } = await supabase
+    .from('content_metadata')
+    .select('topic_cluster, actual_likes, actual_impressions, actual_engagement_rate')
+    .eq('status', 'posted')
+    .eq('decision_type', 'single')
+    .not('actual_likes', 'is', null);
+
+  if (!data || data.length === 0) return [];
+
+  const byTopic = data.reduce((acc: any, post: any) => {
+    const topic = post.topic_cluster || 'health';
+    if (!acc[topic]) {
+      acc[topic] = { posts: 0, totalLikes: 0, totalViews: 0, totalER: 0 };
+    }
+    acc[topic].posts++;
+    acc[topic].totalLikes += post.actual_likes || 0;
+    acc[topic].totalViews += post.actual_impressions || 0;
+    acc[topic].totalER += post.actual_engagement_rate || 0;
+    return acc;
+  }, {});
+
+  return Object.entries(byTopic)
+    .map(([name, stats]: [string, any]) => ({
+      name,
+      posts: stats.posts,
+      avgLikes: Math.round(stats.totalLikes / stats.posts),
+      avgViews: Math.round(stats.totalViews / stats.posts),
+      avgER: ((stats.totalER / stats.posts) * 100).toFixed(2)
+    }))
+    .sort((a, b) => parseFloat(b.avgER) - parseFloat(a.avgER));
+}
+
+async function getToneBreakdown(supabase: any) {
+  const { data } = await supabase
+    .from('content_metadata')
+    .select('tone, actual_likes, actual_impressions, actual_engagement_rate')
+    .eq('status', 'posted')
+    .eq('decision_type', 'single')
+    .not('actual_likes', 'is', null)
+    .not('tone', 'is', null);
+
+  if (!data || data.length === 0) return [];
+
+  const byTone = data.reduce((acc: any, post: any) => {
+    const tone = post.tone || 'unknown';
+    if (!acc[tone]) {
+      acc[tone] = { posts: 0, totalLikes: 0, totalViews: 0, totalER: 0 };
+    }
+    acc[tone].posts++;
+    acc[tone].totalLikes += post.actual_likes || 0;
+    acc[tone].totalViews += post.actual_impressions || 0;
+    acc[tone].totalER += post.actual_engagement_rate || 0;
+    return acc;
+  }, {});
+
+  return Object.entries(byTone)
+    .map(([name, stats]: [string, any]) => ({
+      name,
+      posts: stats.posts,
+      avgLikes: Math.round(stats.totalLikes / stats.posts),
+      avgViews: Math.round(stats.totalViews / stats.posts),
+      avgER: ((stats.totalER / stats.posts) * 100).toFixed(2)
+    }))
+    .sort((a, b) => parseFloat(b.avgER) - parseFloat(a.avgER));
+}
+
+async function getAngleBreakdown(supabase: any) {
+  const { data } = await supabase
+    .from('content_metadata')
+    .select('angle, actual_likes, actual_impressions, actual_engagement_rate')
+    .eq('status', 'posted')
+    .eq('decision_type', 'single')
+    .not('actual_likes', 'is', null)
+    .not('angle', 'is', null);
+
+  if (!data || data.length === 0) return [];
+
+  const byAngle = data.reduce((acc: any, post: any) => {
+    const angle = post.angle || 'unknown';
+    if (!acc[angle]) {
+      acc[angle] = { posts: 0, totalLikes: 0, totalViews: 0, totalER: 0 };
+    }
+    acc[angle].posts++;
+    acc[angle].totalLikes += post.actual_likes || 0;
+    acc[angle].totalViews += post.actual_impressions || 0;
+    acc[angle].totalER += post.actual_engagement_rate || 0;
+    return acc;
+  }, {});
+
+  return Object.entries(byAngle)
+    .map(([name, stats]: [string, any]) => ({
+      name,
+      posts: stats.posts,
+      avgLikes: Math.round(stats.totalLikes / stats.posts),
+      avgViews: Math.round(stats.totalViews / stats.posts),
+      avgER: ((stats.totalER / stats.posts) * 100).toFixed(2)
+    }))
+    .sort((a, b) => parseFloat(b.avgER) - parseFloat(a.avgER));
+}
+
+async function getLast24HourStats(supabase: any) {
+  const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  
+  const { data } = await supabase
+    .from('content_metadata')
+    .select('actual_likes, actual_retweets, actual_impressions')
+    .eq('status', 'posted')
+    .eq('decision_type', 'single')
+    .gte('posted_at', last24h);
+
+  const totalLikes = data?.reduce((sum: number, p: any) => sum + (p.actual_likes || 0), 0) || 0;
+  const totalViews = data?.reduce((sum: number, p: any) => sum + (p.actual_impressions || 0), 0) || 0;
+
+  return {
+    posts: data?.length || 0,
+    likes: totalLikes,
+    views: totalViews
+  };
+}
+
+// ============================================================
+// REPLIES DATA FETCHERS
+// ============================================================
+
+async function getTopPerformingReplies(supabase: any) {
+  const { data } = await supabase
+    .from('content_metadata')
+    .select('content, actual_likes, actual_impressions, actual_engagement_rate, generator_name, target_username, posted_at')
+    .eq('status', 'posted')
+    .eq('decision_type', 'reply')
+    .not('actual_likes', 'is', null)
+    .order('actual_likes', { ascending: false })
+    .limit(20);
+
+  return data || [];
+}
+
+async function getReplyTierBreakdown(supabase: any) {
+  const { data: opportunities } = await supabase
+    .from('reply_opportunities')
+    .select('tier, replied_to')
+    .eq('replied_to', true);
+
+  if (!opportunities || opportunities.length === 0) return [];
+
+  const byTier = opportunities.reduce((acc: any, opp: any) => {
+    const tier = opp.tier || 'unknown';
+    acc[tier] = (acc[tier] || 0) + 1;
+    return acc;
+  }, {});
+
+  return Object.entries(byTier).map(([tier, count]) => ({ tier, count }));
+}
+
+async function getAccountBreakdown(supabase: any) {
+  const { data } = await supabase
+    .from('reply_conversions')
+    .select('target_account, followers_gained, opportunity_tier')
+    .order('followers_gained', { ascending: false })
+    .limit(20);
+
+  return data || [];
+}
+
+async function getReplyGeneratorBreakdown(supabase: any) {
+  const { data } = await supabase
+    .from('content_metadata')
+    .select('generator_name, actual_likes, actual_impressions')
+    .eq('status', 'posted')
+    .eq('decision_type', 'reply')
+    .not('actual_likes', 'is', null);
+
+  if (!data || data.length === 0) return [];
+
+  const byGenerator = data.reduce((acc: any, reply: any) => {
+    const gen = reply.generator_name || 'unknown';
+    if (!acc[gen]) {
+      acc[gen] = { replies: 0, totalLikes: 0, totalViews: 0 };
+    }
+    acc[gen].replies++;
+    acc[gen].totalLikes += reply.actual_likes || 0;
+    acc[gen].totalViews += reply.actual_impressions || 0;
+    return acc;
+  }, {});
+
+  return Object.entries(byGenerator)
+    .map(([name, stats]: [string, any]) => ({
+      name,
+      replies: stats.replies,
+      avgLikes: Math.round(stats.totalLikes / stats.replies),
+      avgViews: Math.round(stats.totalViews / stats.replies)
+    }))
+    .sort((a, b) => b.avgLikes - a.avgLikes);
+}
+
+async function getConversionStats(supabase: any) {
+  const { data } = await supabase
+    .from('reply_conversions')
+    .select('followers_gained, opportunity_tier');
+
+  if (!data || data.length === 0) {
+    return { total: 0, byTier: [] };
+  }
+
+  const totalFollowers = data.reduce((sum: number, c: any) => sum + (c.followers_gained || 0), 0);
+  
+  const byTier = data.reduce((acc: any, c: any) => {
+    const tier = c.opportunity_tier || 'unknown';
+    if (!acc[tier]) acc[tier] = 0;
+    acc[tier] += c.followers_gained || 0;
+    return acc;
+  }, {});
+
+  return {
+    total: totalFollowers,
+    byTier: Object.entries(byTier).map(([tier, followers]) => ({ tier, followers }))
+  };
+}
+
+// ============================================================
+// HTML GENERATORS
+// ============================================================
+
+function generatePostsHTML(data: any): string {
+  const now = new Date().toLocaleString();
+  
+  return `<!DOCTYPE html>
+<html>
+<head>
+    <title>xBOT Posts Dashboard</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        ${getSharedStyles()}
+        .nav-tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+        .nav-tab { 
+            padding: 12px 24px; 
+            background: white; 
+            border-radius: 8px; 
+            text-decoration: none; 
+            color: #333;
+            font-weight: 600;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .nav-tab.active { background: #667eea; color: white; }
+        .nav-tab:hover { background: #5568d3; color: white; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📝 xBOT Posts Dashboard</h1>
+            <p>Content performance breakdown by topic, tone, angle, and generator</p>
+        </div>
+
+        <div class="nav-tabs">
+            <a href="/dashboard/posts?token=${getToken()}" class="nav-tab active">📝 Posts</a>
+            <a href="/dashboard/replies?token=${getToken()}" class="nav-tab">💬 Replies</a>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Last 24 Hours</div>
+                <div class="stat-value">${data.last24h.posts} posts</div>
+                <div class="stat-change">👁️ ${data.last24h.views.toLocaleString()} views • ❤️ ${data.last24h.likes} likes</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Total Posts</div>
+                <div class="stat-value">${data.topPosts.length}</div>
+                <div class="stat-change">📊 With performance data</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>🏆 Top 10 Performing Posts (by likes)</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Content</th>
+                        <th>Generator</th>
+                        <th>Topic</th>
+                        <th>👁️ Views</th>
+                        <th>❤️ Likes</th>
+                        <th>📊 ER</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${data.topPosts.slice(0, 10).map((post: any) => `
+                        <tr>
+                            <td style="max-width: 300px;">${post.content?.substring(0, 80) || 'No content'}...</td>
+                            <td><span class="badge">${post.generator_name || 'unknown'}</span></td>
+                            <td>${post.topic_cluster || 'health'}</td>
+                            <td><strong>${(post.actual_impressions || 0).toLocaleString()}</strong></td>
+                            <td><strong>${post.actual_likes || 0}</strong></td>
+                            <td><strong>${((post.actual_engagement_rate || 0) * 100).toFixed(2)}%</strong></td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2>🎭 Performance by Generator</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Generator</th>
+                        <th>Posts</th>
+                        <th>Avg Views</th>
+                        <th>Avg Likes</th>
+                        <th>Avg ER</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${data.generatorBreakdown.map((gen: any) => `
+                        <tr>
+                            <td><strong>${gen.name}</strong></td>
+                            <td>${gen.posts}</td>
+                            <td>${gen.avgViews.toLocaleString()}</td>
+                            <td>${gen.avgLikes}</td>
+                            <td><strong>${gen.avgER}%</strong></td>
+                        </tr>
+                    `).join('')}
+                    ${data.generatorBreakdown.length === 0 ? '<tr><td colspan="5" style="text-align: center; color: #999;">No data yet</td></tr>' : ''}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2>🎯 Performance by Topic</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Topic</th>
+                        <th>Posts</th>
+                        <th>Avg Views</th>
+                        <th>Avg Likes</th>
+                        <th>Avg ER</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${data.topicBreakdown.map((topic: any) => `
+                        <tr>
+                            <td><strong>${topic.name}</strong></td>
+                            <td>${topic.posts}</td>
+                            <td>${topic.avgViews.toLocaleString()}</td>
+                            <td>${topic.avgLikes}</td>
+                            <td><strong>${topic.avgER}%</strong></td>
+                        </tr>
+                    `).join('')}
+                    ${data.topicBreakdown.length === 0 ? '<tr><td colspan="5" style="text-align: center; color: #999;">No data yet</td></tr>' : ''}
+                </tbody>
+            </table>
+        </div>
+
+        ${data.toneBreakdown.length > 0 ? `
+        <div class="section">
+            <h2>🎤 Performance by Tone</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Tone</th>
+                        <th>Posts</th>
+                        <th>Avg Views</th>
+                        <th>Avg Likes</th>
+                        <th>Avg ER</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${data.toneBreakdown.map((tone: any) => `
+                        <tr>
+                            <td><strong>${tone.name}</strong></td>
+                            <td>${tone.posts}</td>
+                            <td>${tone.avgViews.toLocaleString()}</td>
+                            <td>${tone.avgLikes}</td>
+                            <td><strong>${tone.avgER}%</strong></td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+        ` : ''}
+
+        ${data.angleBreakdown.length > 0 ? `
+        <div class="section">
+            <h2>📐 Performance by Angle</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Angle</th>
+                        <th>Posts</th>
+                        <th>Avg Views</th>
+                        <th>Avg Likes</th>
+                        <th>Avg ER</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${data.angleBreakdown.map((angle: any) => `
+                        <tr>
+                            <td><strong>${angle.name}</strong></td>
+                            <td>${angle.posts}</td>
+                            <td>${angle.avgViews.toLocaleString()}</td>
+                            <td>${angle.avgLikes}</td>
+                            <td><strong>${angle.avgER}%</strong></td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+        ` : ''}
+
+        <div class="footer">
+            <p>🤖 Last updated: ${now}</p>
+            <p>⚡ Real-time data from content_metadata table</p>
+        </div>
+    </div>
+    <script>setTimeout(() => location.reload(), 120000);</script>
+</body>
+</html>`;
+}
+
+function generateRepliesHTML(data: any): string {
+  const now = new Date().toLocaleString();
+  
+  return `<!DOCTYPE html>
+<html>
+<head>
+    <title>xBOT Replies Dashboard</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        ${getSharedStyles()}
+        .nav-tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+        .nav-tab { 
+            padding: 12px 24px; 
+            background: white; 
+            border-radius: 8px; 
+            text-decoration: none; 
+            color: #333;
+            font-weight: 600;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .nav-tab.active { background: #667eea; color: white; }
+        .nav-tab:hover { background: #5568d3; color: white; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>💬 xBOT Replies Dashboard</h1>
+            <p>Reply performance and follower conversion breakdown</p>
+        </div>
+
+        <div class="nav-tabs">
+            <a href="/dashboard/posts?token=${getToken()}" class="nav-tab">📝 Posts</a>
+            <a href="/dashboard/replies?token=${getToken()}" class="nav-tab active">💬 Replies</a>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Total Followers from Replies</div>
+                <div class="stat-value">${data.conversionStats.total}</div>
+                <div class="stat-change">📈 Conversion tracking</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Platinum Tier</div>
+                <div class="stat-value">${data.tierBreakdown.find((t: any) => t.tier === 'Platinum' || t.tier === 'golden')?.count || 0}</div>
+                <div class="stat-change">💎 10k+ likes</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Diamond Tier</div>
+                <div class="stat-value">${data.tierBreakdown.find((t: any) => t.tier === 'Diamond')?.count || 0}</div>
+                <div class="stat-change">💎 5k+ likes</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Golden Tier</div>
+                <div class="stat-value">${data.tierBreakdown.find((t: any) => t.tier === 'Golden')?.count || 0}</div>
+                <div class="stat-change">💎 2k+ likes</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>🏆 Top 10 Performing Replies (by likes)</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Content</th>
+                        <th>To @</th>
+                        <th>Generator</th>
+                        <th>👁️ Views</th>
+                        <th>❤️ Likes</th>
+                        <th>📊 ER</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${data.topReplies.slice(0, 10).map((reply: any) => `
+                        <tr>
+                            <td style="max-width: 300px;">${reply.content?.substring(0, 80) || 'No content'}...</td>
+                            <td><strong>@${reply.target_username || 'unknown'}</strong></td>
+                            <td><span class="badge">${reply.generator_name || 'unknown'}</span></td>
+                            <td><strong>${(reply.actual_impressions || 0).toLocaleString()}</strong></td>
+                            <td><strong>${reply.actual_likes || 0}</strong></td>
+                            <td><strong>${((reply.actual_engagement_rate || 0) * 100).toFixed(2)}%</strong></td>
+                        </tr>
+                    `).join('')}
+                    ${data.topReplies.length === 0 ? '<tr><td colspan="6" style="text-align: center; color: #999;">No reply metrics yet</td></tr>' : ''}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2>🎭 Performance by Generator</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Generator</th>
+                        <th>Replies</th>
+                        <th>Avg Views</th>
+                        <th>Avg Likes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${data.generatorBreakdown.map((gen: any) => `
+                        <tr>
+                            <td><strong>${gen.name}</strong></td>
+                            <td>${gen.replies}</td>
+                            <td>${gen.avgViews.toLocaleString()}</td>
+                            <td>${gen.avgLikes}</td>
+                        </tr>
+                    `).join('')}
+                    ${data.generatorBreakdown.length === 0 ? '<tr><td colspan="4" style="text-align: center; color: #999;">No data yet</td></tr>' : ''}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2>🎯 Top Converting Accounts</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Account</th>
+                        <th>Tier</th>
+                        <th>Followers Gained</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${data.accountBreakdown.slice(0, 15).map((acc: any) => `
+                        <tr>
+                            <td><strong>@${acc.target_account}</strong></td>
+                            <td><span class="badge badge-${acc.opportunity_tier?.toLowerCase() || 'golden'}">${acc.opportunity_tier || 'Unknown'}</span></td>
+                            <td><strong>${acc.followers_gained || 0}</strong></td>
+                        </tr>
+                    `).join('')}
+                    ${data.accountBreakdown.length === 0 ? '<tr><td colspan="3" style="text-align: center; color: #999;">No conversions yet</td></tr>' : ''}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="footer">
+            <p>🤖 Last updated: ${now}</p>
+            <p>⚡ Real-time data from reply_conversions & content_metadata</p>
+        </div>
+    </div>
+    <script>setTimeout(() => location.reload(), 120000);</script>
+</body>
+</html>`;
+}
+
+function getSharedStyles(): string {
+  return `
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        padding: 20px;
+    }
+    .container { max-width: 1600px; margin: 0 auto; }
+    .header {
+        background: white;
+        padding: 30px;
+        border-radius: 15px;
+        margin-bottom: 20px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+    .header h1 { color: #333; margin-bottom: 10px; }
+    .header p { color: #666; }
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 20px;
+        margin-bottom: 20px;
+    }
+    .stat-card {
+        background: white;
+        padding: 25px;
+        border-radius: 15px;
+        box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+    }
+    .stat-label { color: #666; font-size: 14px; margin-bottom: 8px; }
+    .stat-value { color: #333; font-size: 36px; font-weight: bold; }
+    .stat-change { color: #28a745; font-size: 14px; margin-top: 8px; }
+    .section {
+        background: white;
+        padding: 30px;
+        border-radius: 15px;
+        box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+    }
+    .section h2 { color: #333; margin-bottom: 20px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
+    th { background: #f8f9fa; font-weight: 600; color: #666; font-size: 13px; }
+    td { font-size: 14px; }
+    .badge { 
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        background: #e3f2fd;
+        color: #1976d2;
+    }
+    .badge-platinum { background: #e3f2fd; color: #1976d2; }
+    .badge-diamond { background: #f3e5f5; color: #7b1fa2; }
+    .badge-golden { background: #fff3e0; color: #f57c00; }
+    .footer { text-align: center; color: white; margin-top: 40px; opacity: 0.9; }
+  `;
+}
+
+function getToken(): string {
+  return typeof window !== 'undefined' ? (new URLSearchParams(window.location.search).get('token') || '') : '';
+}
+
+function generateErrorHTML(error: string): string {
+  return `<!DOCTYPE html>
+<html>
+<head>
+    <title>Dashboard Error</title>
+    <style>
+        body { font-family: Arial; text-align: center; padding: 50px; background: #f5f5f5; }
+        .error-box { background: white; padding: 40px; border-radius: 10px; max-width: 600px; margin: 0 auto; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+    </style>
+</head>
+<body>
+    <div class="error-box">
+        <h1>🚨 Dashboard Error</h1>
+        <p style="color: #dc3545;">${error}</p>
+        <p><a href="/dashboard?token=xbot-admin-2025">🔄 Try Again</a></p>
+    </div>
+</body>
+</html>`;
+}
+
+export const comprehensiveDashboard = { 
+  generatePostsDashboard, 
+  generateRepliesDashboard 
+};
+
