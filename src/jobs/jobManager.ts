@@ -305,7 +305,7 @@ export class JobManager {
         10 * MINUTE // Start after 10 minutes
       );
 
-      // 💬 REPLY POSTING JOB - every 15 min, START IMMEDIATELY
+      // 💬 REPLY POSTING JOB - every 30 min (configurable via JOBS_REPLY_INTERVAL_MIN)
       // 🎯 CRITICAL: Generate and queue replies
       // ⏰ TIMING: Starts immediately, has own internal rate limiting
       this.scheduleStaggeredJob(
@@ -317,7 +317,7 @@ export class JobManager {
             this.stats.lastReplyTime = new Date();
           });
         },
-        15 * MINUTE, // Every 15 minutes - aligned with MIN_MINUTES_BETWEEN
+        config.JOBS_REPLY_INTERVAL_MIN * MINUTE, // Use config value (default: 30 min = 2 runs/hour)
         1 * MINUTE // Start after 1 minute (immediate but allow harvester to populate)
       );
       
