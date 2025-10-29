@@ -679,7 +679,7 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     .single();
     
   if (existingReply) {
-    const replyTime = new Date(existingReply.posted_at).toLocaleString();
+    const replyTime = existingReply.posted_at ? new Date(String(existingReply.posted_at)).toLocaleString() : 'unknown time';
     console.log(`[POSTING_QUEUE] 🚫 DUPLICATE PREVENTED: Already replied to tweet ${decision.target_tweet_id} at ${replyTime}`);
     console.log(`[POSTING_QUEUE]    Previous reply ID: ${existingReply.tweet_id}`);
     
