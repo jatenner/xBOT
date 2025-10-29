@@ -9,7 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getConfig } from '../config/config';
 import { checkLLMAllowed } from '../budget/guard';
 import { getSupabaseClient } from '../db/index';
-import { UnifiedContentEngine } from '../unified/UnifiedContentEngine';
+import { humanContentOrchestrator } from '../orchestrator/humanContentOrchestrator';
 
 // Metrics
 let planMetrics = {
@@ -250,33 +250,30 @@ async function generateRealContent(): Promise<void> {
   const decisions = [];
   const numToGenerate = 1; // 1 post per cycle (runs every 30min = 2 posts/hour)
   
-  const engine = UnifiedContentEngine.getInstance();
-  
   for (let i = 0; i < numToGenerate; i++) {
     try {
       planMetrics.calls_total++;
       
       // ═══════════════════════════════════════════════════════════
-      // GENERATE WITH ALL SYSTEMS ACTIVE (with diversity enforcement)
+      // GENERATE WITH HUMAN-LIKE CONTENT (truly varied and natural)
       // ═══════════════════════════════════════════════════════════
-      console.log(`[UNIFIED_PLAN] 🎲 Recent generators: ${recentGenerators.slice(0, 5).join(', ')}`);
-      console.log(`[UNIFIED_PLAN] 📚 Passing ${recentKeywords.length} keyword sets to AI for diversity`);
-      console.log(`[UNIFIED_PLAN] 🎯 Adaptive topic: ${adaptiveTopicHint || 'none (using AI selection)'}`);
+      console.log(`[UNIFIED_PLAN] 🎭 Generating human-like content...`);
+      console.log(`[UNIFIED_PLAN] 🎯 Topic hint: ${adaptiveTopicHint || 'none (AI will choose)'}`);
       console.log(`[UNIFIED_PLAN] 🏷️ Topic cluster: ${adaptiveTopicCluster}`);
       
-      const generated = await engine.generateContent({
-        format: Math.random() < 0.3 ? 'thread' : 'single', // 30% threads, 70% singles
-        topic: adaptiveTopicHint, // ✅ USER FIX: PASS THE AI-GENERATED TOPIC!
-        recentGenerators: recentGenerators.slice(0, 3), // Avoid last 3 generators
-        recentContent: recentKeywords.slice(0, 20), // 🔑 Pass KEYWORDS (not full content) for topic avoidance
-        preferredHookType: preferredHook, // 🎣 Enforce hook variety
-        seriesContext: todaySeries // 📅 Provide series context
+      // Use human content orchestrator instead of rigid templates
+      const generated = await humanContentOrchestrator.generateHumanContent({
+        topic: adaptiveTopicHint,
+        forceFormat: Math.random() < 0.3 ? 'thread' : 'single' // 30% threads, 70% singles
       });
       
       // ═══════════════════════════════════════════════════════════
       // DUPLICATE CHECK: Ensure content is unique
       // ═══════════════════════════════════════════════════════════
-      const contentToCheck = generated.content.toLowerCase();
+      const contentToCheck = Array.isArray(generated.content) 
+        ? generated.content.join(' ').toLowerCase()
+        : generated.content.toLowerCase();
+        
       const isDuplicate = recentTexts.some(recentText => {
         // Check for high similarity (more than 70% of words match)
         const recentWords = new Set(recentText.split(/\s+/));
@@ -303,9 +300,9 @@ async function generateRealContent(): Promise<void> {
       // Update metrics - use calls_successful (not calls_total which includes failures)
       planMetrics.calls_successful++;
       planMetrics.avg_quality_score = 
-        (planMetrics.avg_quality_score * (planMetrics.calls_successful - 1) + generated.metadata.quality_score) / planMetrics.calls_successful;
+        (planMetrics.avg_quality_score * (planMetrics.calls_successful - 1) + (generated.metadata?.variety_score || 75)) / planMetrics.calls_successful;
       planMetrics.avg_viral_probability = 
-        (planMetrics.avg_viral_probability * (planMetrics.calls_successful - 1) + generated.metadata.viral_probability) / planMetrics.calls_successful;
+        (planMetrics.avg_viral_probability * (planMetrics.calls_successful - 1) + 70) / planMetrics.calls_successful;
       
       // ═══════════════════════════════════════════════════════════
       // BUILD DECISION
@@ -315,46 +312,52 @@ async function generateRealContent(): Promise<void> {
       // First post: +10 min, Second post: +20 min
       const scheduledTime = new Date(Date.now() + (i * 10 + 10) * 60 * 1000);
       
-      const decisionType: 'single' | 'thread' = (generated.threadParts && generated.threadParts.length > 1) ? 'thread' : 'single';
+      const decisionType: 'single' | 'thread' = generated.format;
       
       // Extract actual hook type from generated content
-      const actualHookType = extractHookType(generated.content);
+      const contentForHookCheck = Array.isArray(generated.content) 
+        ? generated.content.join(' ')
+        : generated.content;
+      const actualHookType = extractHookType(contentForHookCheck);
       
       const decision = {
         decision_id,
         decision_type: decisionType,
         content: generated.content,
-        thread_parts: generated.threadParts,
+        thread_parts: Array.isArray(generated.content) ? generated.content : null,
         
         // Learning metadata
-        bandit_arm: `unified_${generated.metadata.experiment_arm}`,
+        bandit_arm: 'human_content',
         timing_arm: 'unified_timing',
         scheduled_at: scheduledTime.toISOString(),
         
         // Quality and predictions
-        quality_score: generated.metadata.quality_score,
-        predicted_er: generated.metadata.viral_probability * 0.05, // Rough conversion
-        predicted_likes: generated.metadata.predicted_likes,
-        predicted_followers: generated.metadata.predicted_followers,
+        quality_score: generated.metadata?.variety_score || 75,
+        predicted_er: 0.05, // Default engagement rate
+        predicted_likes: 15, // Default prediction
+        predicted_followers: 2, // Default prediction
         
         // Metadata
-        topic_cluster: adaptiveTopicHint || adaptiveTopicCluster || 'health', // 🏷️ Store ACTUAL AI-generated topic (not broad cluster!)
-        generation_source: 'real', // Fixed: Database expects 'real' or 'synthetic', not 'unified_engine'
-        hook_type: actualHookType, // 🎣 Track hook type for variety enforcement
+        topic_cluster: adaptiveTopicHint || adaptiveTopicCluster || 'health',
+        generation_source: 'real',
+        hook_type: actualHookType,
         
         // 📝 VERIFICATION LOG
         metadata: {
-          ai_generated_topic: adaptiveTopicHint,  // Store in metadata for verification
-          topic_cluster_broad: adaptiveTopicCluster
+          ai_generated_topic: adaptiveTopicHint,
+          topic_cluster_broad: adaptiveTopicCluster,
+          human_like: generated.metadata?.human_like || true,
+          approach: generated.metadata?.approach || 'dynamic',
+          chaos_injected: generated.metadata?.chaos_injected || false
         },
         
         // Learning tracking
-        experiment_arm: generated.metadata.experiment_arm,
-        generator_name: (generated.metadata as any).generator_name || null, // For autonomous learning
-        generator_confidence: (generated.metadata as any).generator_confidence || null,
-        systems_used: generated.metadata.systems_active.join(','),
-        viral_patterns_applied: generated.metadata.viral_patterns_applied.join(', '),
-        learning_insights_used: generated.metadata.learning_insights_used.join(', ')
+        experiment_arm: 'human_content',
+        generator_name: 'human_content_orchestrator',
+        generator_confidence: generated.confidence || 0.85,
+        systems_used: 'human_content_orchestrator',
+        viral_patterns_applied: generated.style,
+        learning_insights_used: 'human_like_generation'
       };
       
       decisions.push(decision);
