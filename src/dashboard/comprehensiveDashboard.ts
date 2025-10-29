@@ -658,10 +658,10 @@ function generateRepliesHTML(data: any): string {
         </div>
 
         <div class="section">
-            <h2>🏆 Top 10 Performing Replies (by likes)</h2>
-            <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin-bottom: 20px; border-radius: 8px;">
-                <strong>⚠️ Note:</strong> Reply metrics tracking has a known issue - some metrics may show parent tweet data instead of reply data. 
-                Use "Tier" and "Account" breakdowns below for accurate conversion tracking.
+            <h2>🏆 Top Performing Replies (by likes)</h2>
+            <div style="background: #d1ecf1; border-left: 4px solid #0c5460; padding: 15px; margin-bottom: 20px; border-radius: 8px;">
+                <strong>ℹ️ Note:</strong> Reply metrics are scraped after posting. New replies appear here once metrics are collected (10-60 min delay). 
+                Old replies with incorrect IDs have been cleaned - only valid data shown.
             </div>
             <table>
                 <thead>
