@@ -25,7 +25,7 @@ export async function generateMythBusterContent(params: {
 }): Promise<MythBusterContent> {
   
   const { topic, format, research, intelligence } = params;
-  const intelligenceContext = buildIntelligenceContext(intelligence);
+  const intelligenceContext = await buildIntelligenceContext(intelligence);
   
   const patterns = getGeneratorPatterns('myth_buster');
   
@@ -41,7 +41,7 @@ This is your #1 priority. Brevity beats everything else.
 MYTH BUSTER RULES:
 • NO first-person (I/me/my/we/us/our)
 • Max 2 emojis (prefer 0-1)
-• MUST use "Myth:" and "Truth:" format
+🎨 CREATE SOMETHING NEW: Invent fresh approaches every time. Surprise people. Experiment wildly.
 • Include specific numbers and evidence
 • NO fake studies - use real mechanisms
 

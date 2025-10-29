@@ -108,14 +108,38 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
   }
   
   // Attempt posting with retry
+  let tweetId: string | null = null;
+  let postingError: any = null;
+  
   try {
-    const tweetId = await postToXWithRetry(decision);
+    tweetId = await postToXWithRetry(decision);
+    console.log(`[POSTING_ORCHESTRATOR] ✅ Tweet posted to Twitter: ${tweetId}`);
+  } catch (error: any) {
+    postingError = error;
+    console.error(`[POSTING_ORCHESTRATOR] ❌ Failed to post to Twitter:`, error.message);
+  }
+  
+  // 🚨 CRITICAL: If we got a tweet ID, the post succeeded on Twitter!
+  // Never mark as "failed" if we have a tweet ID - that would be a phantom failure
+  if (tweetId) {
+    console.log(`[POSTING_ORCHESTRATOR] 🎯 Tweet ID captured: ${tweetId} - post is LIVE on Twitter`);
     
-    // Store successful posting
-    await storePostedDecision(decision, tweetId);
+    // Try to save to database - but if this fails, DON'T mark post as failed!
+    try {
+      await storePostedDecision(decision, tweetId);
+      console.log(`[POSTING_ORCHESTRATOR] 💾 Stored in posted_decisions archive`);
+    } catch (dbError: any) {
+      console.error(`[POSTING_ORCHESTRATOR] ⚠️ DB archive failed (non-critical):`, dbError.message);
+    }
     
-    // Update content_metadata
-    await markAsPosted(decision.decision_id, tweetId);
+    try {
+      await markAsPosted(decision.decision_id, tweetId);
+      console.log(`[POSTING_ORCHESTRATOR] 💾 Updated content_metadata status`);
+    } catch (dbError: any) {
+      console.error(`[POSTING_ORCHESTRATOR] 🚨 CRITICAL: Failed to update status for LIVE tweet ${tweetId}!`);
+      console.error(`[POSTING_ORCHESTRATOR] ⚠️ Phantom failure detected - recovery system will fix this`);
+      // Don't throw - tweet is live, phantom recovery will catch it
+    }
     
     // Track baseline followers (non-blocking)
     trackBaselineFollowers(decision.decision_id, tweetId).catch(error => {
@@ -125,13 +149,15 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
     console.log(`[POSTING_ORCHESTRATOR] ✅ Posted successfully tweet_id=${tweetId} decision_id=${decision.decision_id}`);
     postingMetrics.posts_posted++;
     
-  } catch (error: any) {
-    console.error(`[POSTING_ORCHESTRATOR] ❌ Failed to post decision_id=${decision.decision_id}:`, error.message);
+  } else {
+    // No tweet ID = actual failure on Twitter
+    console.error(`[POSTING_ORCHESTRATOR] ❌ Failed to post to Twitter - decision_id=${decision.decision_id}`);
+    console.error(`[POSTING_ORCHESTRATOR] ❌ Error: ${postingError?.message || 'Unknown error'}`);
     const skipReason = 'posting_failed';
     updateSkipMetrics(skipReason);
     
-    // Mark as failed
-    await markAsFailed(decision.decision_id, error.message);
+    // Only mark as failed if we KNOW it didn't post
+    await markAsFailed(decision.decision_id, postingError?.message || 'Unknown posting error');
   }
 }
 

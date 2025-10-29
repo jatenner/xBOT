@@ -25,7 +25,7 @@ export async function generateThoughtLeaderContent(params: {
 }): Promise<ThoughtLeaderContent> {
   
   const { topic, format, research, intelligence } = params;
-  const intelligenceContext = buildIntelligenceContext(intelligence);
+  const intelligenceContext = await buildIntelligenceContext(intelligence);
   
   const patterns = getGeneratorPatterns('thought_leader');
   
@@ -54,21 +54,7 @@ ${patterns.examples.map(ex => `• ${ex}`).join('\n')}
 
 🎨 DIVERSITY MANDATE - EVERY POST MUST FEEL UNIQUE:
 
-📍 VARY YOUR OPENING (pick one, rotate every time):
-• Trend observation: "Healthcare is shifting from..."
-• Time-based: "In 5 years, people will..."
-• Technology: "CGMs went from diabetics-only to..."
-• Paradigm shift: "Health isn't about symptoms anymore..."
-• Prediction: "Next wave: real-time neurotransmitter tracking..."
-• Contrast: "Everyone optimizes morning routine. Nobody asks why..."
-• Evolution: "Sleep tracking normalized orthosomnia..."
-
-🔄 VARY YOUR STRUCTURE:
-• Sometimes cite specific examples (CGMs, APOE4, wearables)
-• Sometimes give timelines (25 vs 75, 5 years, 30-year timelines)
-• Sometimes contrast old vs new paradigms
-• Sometimes predict what's coming next
-• Sometimes question current approaches
+🎨 CREATE SOMETHING NEW: Invent fresh approaches every time. Surprise people. Experiment wildly.
 
 💡 MAKE IT FORWARD-THINKING:
 • What's changing? (shifts, trends, evolutions)

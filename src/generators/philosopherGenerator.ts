@@ -25,7 +25,7 @@ export async function generatePhilosopherContent(params: {
 }): Promise<PhilosopherContent> {
   
   const { topic, format, research, intelligence } = params;
-  const intelligenceContext = buildIntelligenceContext(intelligence);
+  const intelligenceContext = await buildIntelligenceContext(intelligence);
   
   const patterns = getGeneratorPatterns('philosopher');
   

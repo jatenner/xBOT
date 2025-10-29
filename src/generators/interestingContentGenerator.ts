@@ -30,7 +30,7 @@ export async function generateInterestingContent(params: {
 }): Promise<InterestingContent> {
   
   const { topic, format, research, intelligence } = params;
-  const intelligenceContext = buildIntelligenceContext(intelligence);
+  const intelligenceContext = await buildIntelligenceContext(intelligence);
   
   const patterns = getGeneratorPatterns('provocateur'); // Use provocateur patterns for interesting content
   
@@ -55,7 +55,10 @@ INTERESTING CONTENT RULES:
 Examples of interesting content:
 ${patterns.examples.map(ex => `• ${ex}`).join('\n')}
 
-⚠️ REMINDER: 260 CHARACTER ABSOLUTE LIMIT ⚠️
+
+🎨 CREATE SOMETHING NEW: Invent fresh approaches every time. Surprise people. Experiment wildly.
+
+ REMINDER: 260 CHARACTER ABSOLUTE LIMIT ⚠️
 
 Find the surprising, counterintuitive, "wait REALLY?" aspects of any topic. Reveal unexpected connections, challenge what people think they know, show the hidden mechanism.
 

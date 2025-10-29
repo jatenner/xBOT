@@ -12,6 +12,7 @@ import { simulateOutcomes } from './shadowOutcomesJob';
 import { collectRealOutcomes } from './realOutcomesJob';
 import { collectRealOutcomes as collectAnalytics } from './analyticsCollectorJob';
 import { runLearningCycle } from './learnJob';
+import { runPhantomRecoveryJob } from './phantomRecoveryJob';
 
 export interface JobStats {
   planRuns: number;
@@ -20,12 +21,14 @@ export interface JobStats {
   outcomeRuns: number;
   learnRuns: number;
   accountDiscoveryRuns?: number;
+  phantomRecoveryRuns?: number;
   lastPlanTime?: Date;
   lastReplyTime?: Date;
   lastPostingTime?: Date;
   lastOutcomeTime?: Date;
   lastLearnTime?: Date;
   lastAccountDiscoveryTime?: Date;
+  lastPhantomRecoveryTime?: Date;
   errors: number;
 }
 
@@ -283,6 +286,22 @@ export class JobManager {
       },
       30 * MINUTE, // Every 30 minutes (was 6 hours - MUCH faster now!)
       5 * MINUTE // Start after 5 minutes (was 25 min - start sooner!)
+    );
+
+    // 🔧 PHANTOM POST RECOVERY - every 60 min, offset 15 min
+    // Automatically detects and fixes posts marked as "failed" that actually succeeded on Twitter
+    // Critical for ensuring dashboard accuracy and preventing data loss
+    this.scheduleStaggeredJob(
+      'phantom_recovery',
+      async () => {
+        await this.safeExecute('phantom_recovery', async () => {
+          await runPhantomRecoveryJob();
+          this.stats.phantomRecoveryRuns = (this.stats.phantomRecoveryRuns || 0) + 1;
+          this.stats.lastPhantomRecoveryTime = new Date();
+        });
+      },
+      60 * MINUTE, // Every hour
+      15 * MINUTE // Start after 15 minutes
     );
 
     // 🎯 TWEET-BASED HARVESTER - every 30 min, offset 10 min

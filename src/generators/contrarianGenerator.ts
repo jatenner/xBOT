@@ -26,7 +26,7 @@ export async function generateContrarianContent(params: {
 }): Promise<ContrarianContent> {
   
   const { topic, format, research, intelligence } = params;
-  const intelligenceContext = buildIntelligenceContext(intelligence);
+  const intelligenceContext = await buildIntelligenceContext(intelligence);
   
   const patterns = getGeneratorPatterns('provocateur'); // Use provocateur patterns for contrarian
   
@@ -48,7 +48,10 @@ CONTRARIAN RULES:
 
 🔥 YOUR SUPERPOWER: Challenge what everyone believes.
 
-Examples of good contrarian content:
+
+🎨 CREATE SOMETHING NEW: Invent fresh approaches every time. Surprise people. Experiment wildly.
+
+ contrarian content:
 ${patterns.examples.map(ex => `• ${ex}`).join('\n')}
 
 ⚠️ REMINDER: 260 CHARACTER ABSOLUTE LIMIT ⚠️

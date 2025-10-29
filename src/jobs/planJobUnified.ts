@@ -459,6 +459,22 @@ async function storeContentDecisions(decisions: any[]): Promise<void> {
       
       if (insertedData && insertedData.length > 0) {
         console.log(`[UNIFIED_PLAN] ✅ Successfully stored decision ${decision.decision_id} (DB id: ${insertedData[0].id})`);
+        
+        // Extract and store patterns for creativity analysis
+        try {
+          const { extractPatterns } = await import('../ai/patternExtractor');
+          const { patternStorage } = await import('../ai/patternStorage');
+          
+          const content = decision.content || decision.thread_parts?.[0] || '';
+          if (content) {
+            const patterns = extractPatterns(content);
+            await patternStorage.storePatterns(decision.decision_id, content, patterns);
+            console.log(`[UNIFIED_PLAN] 📊 Patterns extracted and stored for ${decision.decision_id}`);
+          }
+        } catch (patternError: any) {
+          // Non-critical - pattern storage is optional
+          console.warn(`[UNIFIED_PLAN] ⚠️ Pattern extraction failed: ${patternError.message}`);
+        }
       } else {
         console.warn(`[UNIFIED_PLAN] ⚠️ Insert succeeded but no data returned for ${decision.decision_id}`);
       }

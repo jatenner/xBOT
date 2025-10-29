@@ -26,7 +26,7 @@ export async function generateDataNerdContent(params: {
 }): Promise<DataNerdContent> {
   
   const { topic, format, research, intelligence } = params;
-  const intelligenceContext = buildIntelligenceContext(intelligence);
+  const intelligenceContext = await buildIntelligenceContext(intelligence);
   
   const patterns = getGeneratorPatterns('data_nerd');
   
@@ -48,7 +48,10 @@ DATA NERD RULES:
 
 📊 YOUR SUPERPOWER: Make data irresistible.
 
-Examples of good data nerd content:
+
+🎨 CREATE SOMETHING NEW: Invent fresh approaches every time. Surprise people. Experiment wildly.
+
+ data nerd content:
 ${patterns.examples.map(ex => `• ${ex}`).join('\n')}
 
 Present research findings, statistics, study results, measurements, comparisons. Focus on HOW things work biologically.

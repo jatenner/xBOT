@@ -183,11 +183,14 @@ MYTH CORRECTION:
 INSIDER KNOWLEDGE:
 "Researchers at [Institution] discovered [surprising detail] about this. The [specific mechanism] explains why [insight]."
 
-AUTHORITY ELEMENTS TO INCLUDE:
-✅ Institution names: Harvard, Stanford, Mayo Clinic, Johns Hopkins
-✅ Specific percentages: "47% improvement", "2.3x more effective"  
-✅ Research terms: "studies show", "data reveals", "research indicates"
-✅ Mechanism details: "via dopamine pathways", "through cortisol reduction"
+VARY YOUR REPLY STYLE (pick one, rotate every time):
+✅ Research: "Harvard study shows X" (authority)
+✅ Personal: "I've seen this work for clients" (experience)
+✅ Casual: "This is so true! I noticed..." (conversational)
+✅ Question: "Have you tried X? It might help" (engaging)
+✅ Story: "My friend tried this and..." (relatable)
+✅ Simple: "This works because..." (explanation)
+✅ Supportive: "Great point! Also consider..." (additive)
 
 CURIOSITY TRIGGERS:
 ✅ "The real reason..."

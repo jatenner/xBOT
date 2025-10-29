@@ -25,7 +25,7 @@ export async function generateStorytellerContent(params: {
 }): Promise<StorytellerContent> {
   
   const { topic, format, research, intelligence } = params;
-  const intelligenceContext = buildIntelligenceContext(intelligence);
+  const intelligenceContext = await buildIntelligenceContext(intelligence);
   
   const patterns = getGeneratorPatterns('storyteller');
   
@@ -47,7 +47,10 @@ STORYTELLER RULES:
 
 📖 YOUR SUPERPOWER: Transform information into narrative.
 
-Examples of good storyteller content:
+
+🎨 CREATE SOMETHING NEW: Invent fresh approaches every time. Surprise people. Experiment wildly.
+
+ storyteller content:
 ${patterns.examples.map(ex => `• ${ex}`).join('\n')}
 
 You can tell stories about real people, populations, historical figures, research subjects, or universal human experiences. Make it specific, surprising, and memorable.
