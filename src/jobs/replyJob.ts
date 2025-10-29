@@ -64,11 +64,12 @@ async function checkReplyHourlyQuota(): Promise<{
   const hourStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), 0, 0, 0);
   
   try {
-    // Count replies POSTED in the current hour (use posted_decisions, not content_metadata)
+    // 🚨 CRITICAL FIX: Count replies in content_metadata (the actual table we use!)
     const { count, error } = await supabase
-      .from('posted_decisions')
+      .from('content_metadata')
       .select('*', { count: 'exact', head: true })
       .eq('decision_type', 'reply')
+      .eq('status', 'posted')
       .gte('posted_at', hourStart.toISOString())
       .lt('posted_at', new Date(hourStart.getTime() + 60 * 60 * 1000).toISOString());
     
@@ -107,11 +108,12 @@ async function checkReplyDailyQuota(): Promise<{
   today.setHours(0, 0, 0, 0); // Start of today
   
   try {
-    // Count replies posted today
+    // 🚨 CRITICAL FIX: Count replies in content_metadata (the actual table!)
     const { count, error } = await supabase
-      .from('posted_decisions')
+      .from('content_metadata')
       .select('*', { count: 'exact', head: true })
       .eq('decision_type', 'reply')
+      .eq('status', 'posted')
       .gte('posted_at', today.toISOString());
     
     if (error) {
@@ -147,10 +149,12 @@ async function checkTimeBetweenReplies(): Promise<{
   
   try {
     // Get most recent reply
+    // 🚨 CRITICAL FIX: Check content_metadata for last reply
     const { data, error } = await supabase
-      .from('posted_decisions')
+      .from('content_metadata')
       .select('posted_at')
       .eq('decision_type', 'reply')
+      .eq('status', 'posted')
       .order('posted_at', { ascending: false })
       .limit(1)
       .single();
@@ -357,18 +361,37 @@ async function generateRealReplies(): Promise<void> {
     return (Number(b.engagement_rate) || 0) - (Number(a.engagement_rate) || 0);
   });
   
-  // Get recently replied accounts (last 24 hours) to avoid duplicates
-  const { data: recentReplies } = await supabaseClient
-    .from('reply_opportunities')
-    .select('target_username')
-    .eq('replied_to', true)
-    .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+  // 🚨 CRITICAL FIX: Check for TWEET IDs we've already replied to (not just usernames!)
+  // This prevents multiple replies to the same tweet
+  const { data: alreadyRepliedTweets } = await supabaseClient
+    .from('content_metadata')
+    .select('target_tweet_id')
+    .eq('decision_type', 'reply')
+    .in('status', ['posted', 'queued', 'ready']); // Check all stages
   
-  const recentlyRepliedAccounts = new Set((recentReplies || []).map(r => r.target_username));
+  const repliedTweetIds = new Set(
+    (alreadyRepliedTweets || [])
+      .map(r => r.target_tweet_id)
+      .filter(id => id) // Filter out nulls
+  );
   
-  // Filter out recently replied accounts and select top opportunities
+  console.log(`[REPLY_JOB] 🔒 Already replied to ${repliedTweetIds.size} unique tweets`);
+  
+  // Filter out tweets we've already replied to
   const dbOpportunities = sortedOpportunities
-    .filter(opp => !recentlyRepliedAccounts.has(opp.target_username))
+    .filter(opp => {
+      // Must have valid tweet ID
+      if (!opp.target_tweet_id) {
+        console.log(`[REPLY_JOB] ⚠️ Skipping opportunity with NULL tweet_id from @${opp.target_username}`);
+        return false;
+      }
+      // Must not have replied already
+      if (repliedTweetIds.has(opp.target_tweet_id)) {
+        console.log(`[REPLY_JOB] ⏭️ Already replied to tweet ${opp.target_tweet_id} from @${opp.target_username}`);
+        return false;
+      }
+      return true;
+    })
     .slice(0, 10); // Top 10 opportunities
   
   if (dbOpportunities.length === 0) {
