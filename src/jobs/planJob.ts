@@ -309,6 +309,15 @@ Create engaging health content that:
    - Include specific data, dosages, or mechanisms (builds credibility)
    - Keep sentences clear and direct (no unnecessary complexity)
 
+HUMAN-LIKE CONTENT RULES:
+- Vary your openings - don't always start with "Research shows" or "Studies find"
+- Use numbers and citations only when they strengthen your point
+- Mix formal and casual language based on the topic
+- For practical tips: be conversational and direct
+- For research topics: cite studies naturally, not robotically
+- For controversial topics: be provocative without being preachy
+- Sound like a knowledgeable friend who happens to be an expert
+
 Be specific, interesting, and match the tone precisely. Sound like an expert who communicates clearly to an intelligent audience. Let the formatting strategy guide your visual structure.`;
 
     const user = `Create content about "${topic}" from this angle: "${angle}" using this tone: "${tone}".
