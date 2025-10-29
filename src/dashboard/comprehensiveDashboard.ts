@@ -290,14 +290,20 @@ async function getLast24HourStats(supabase: any) {
 async function getTopPerformingReplies(supabase: any) {
   const { data } = await supabase
     .from('content_metadata')
-    .select('content, actual_likes, actual_impressions, actual_engagement_rate, generator_name, target_username, posted_at')
+    .select('content, actual_likes, actual_impressions, actual_engagement_rate, generator_name, target_username, posted_at, tweet_id')
     .eq('status', 'posted')
     .eq('decision_type', 'reply')
-    .not('actual_likes', 'is', null)
-    .order('actual_likes', { ascending: false })
-    .limit(20);
+    .not('tweet_id', 'is', null) // ✅ Must have real tweet ID
+    .order('posted_at', { ascending: false }) // ✅ Show most recent first, not by likes
+    .limit(50); // Show last 50 replies
 
-  return data || [];
+  // Filter out self-replies (fake data)
+  const validReplies = (data || []).filter(reply => {
+    const username = reply.target_username?.toLowerCase();
+    return username !== 'signalandsynapse' && username !== 'signal_synapse';
+  });
+
+  return validReplies;
 }
 
 async function getReplyTierBreakdown(supabase: any) {
@@ -690,10 +696,9 @@ function generateRepliesHTML(data: any): string {
         </div>
 
         <div class="section">
-            <h2>🏆 Top Performing Replies (by likes)</h2>
+            <h2>💬 Recent Replies (Last 50)</h2>
             <div style="background: #d1ecf1; border-left: 4px solid #0c5460; padding: 15px; margin-bottom: 20px; border-radius: 8px;">
-                <strong>ℹ️ Note:</strong> Reply metrics are scraped after posting. New replies appear here once metrics are collected (10-60 min delay). 
-                Old replies with incorrect IDs have been cleaned - only valid data shown.
+                <strong>ℹ️ Note:</strong> Showing YOUR actual replies in chronological order. Metrics are scraped 10-60 min after posting.
             </div>
             <table>
                 <thead>
@@ -708,7 +713,7 @@ function generateRepliesHTML(data: any): string {
                     </tr>
                 </thead>
                 <tbody>
-                    ${data.topReplies.slice(0, 10).map((reply: any) => `
+                    ${data.topReplies.slice(0, 50).map((reply: any) => `
                         <tr>
                             <td style="max-width: 300px;">${reply.content?.substring(0, 80) || 'No content'}...</td>
                             <td><strong>@${reply.target_username || 'unknown'}</strong></td>
@@ -719,7 +724,7 @@ function generateRepliesHTML(data: any): string {
                             <td><strong>${((reply.actual_engagement_rate || 0) * 100).toFixed(2)}%</strong></td>
                         </tr>
                     `).join('')}
-                    ${data.topReplies.length === 0 ? '<tr><td colspan="7" style="text-align: center; color: #999;">No reply metrics yet</td></tr>' : ''}
+                    ${data.topReplies.length === 0 ? '<tr><td colspan="7" style="text-align: center; color: #999;">No replies yet</td></tr>' : ''}
                 </tbody>
             </table>
         </div>
