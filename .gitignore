@@ -69,3 +69,4 @@ ops/supabase-ca.crt
 *.pem
 dist/
 .browser-profile/
+playwright-session/
