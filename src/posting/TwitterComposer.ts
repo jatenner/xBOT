@@ -612,7 +612,7 @@ export class TwitterComposer {
       // Navigate to login if not already there
       const currentUrl = this.page.url();
       if (!currentUrl.includes('login') && !currentUrl.includes('oauth')) {
-        await this.page.goto('https://x.com/login', { waitUntil: 'networkidle' });
+        await this.page.goto('https://x.com/login', { waitUntil: 'domcontentloaded', timeout: 30000 });
       }
 
       // Wait for session restoration or manual login

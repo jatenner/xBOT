@@ -244,7 +244,7 @@ export class BulletproofBrowserManager {
       
       // Preserve session storage before reload
       await this.page.reload({ 
-        waitUntil: 'networkidle', 
+        waitUntil: 'domcontentloaded', 
         timeout: this.PLAYWRIGHT_NAV_TIMEOUT_MS 
       });
       

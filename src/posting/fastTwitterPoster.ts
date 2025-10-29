@@ -187,7 +187,7 @@ export class FastTwitterPoster {
         // Method 2: Try direct URL navigation to compose
         try {
           console.log('🔄 ALT_METHOD_2: Direct compose URL...');
-          await page.goto('https://x.com/compose/tweet', { waitUntil: 'networkidle' });
+          await page.goto('https://x.com/compose/tweet', { waitUntil: 'domcontentloaded', timeout: 30000 });
           await page.waitForTimeout(2000);
           
           // Try selectors again on compose page
