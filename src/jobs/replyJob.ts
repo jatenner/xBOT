@@ -405,7 +405,7 @@ async function generateRealReplies(): Promise<void> {
   
   console.log(`[REPLY_JOB] 🎯 Selected ${dbOpportunities.length} best opportunities:`);
   console.log(`[REPLY_JOB]   🏆 ${selectedGolden} golden, ✅ ${selectedGood} good, 📊 ${selectedAcceptable} acceptable`);
-  console.log(`[REPLY_JOB]   Filtered out ${recentlyRepliedAccounts.size} recently replied accounts`);
+  console.log(`[REPLY_JOB]   Filtered out ${repliedTweetIds.size} already-replied tweets`);
   
   // Convert to the format expected by strategic reply system
   const opportunities = dbOpportunities.map((opp: any) => ({
