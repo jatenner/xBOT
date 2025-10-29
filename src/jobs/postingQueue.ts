@@ -415,7 +415,30 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
     }
     
     // Mark as posted and store tweet ID and URL
-    await markDecisionPosted(decision.id, tweetId, tweetUrl);
+    // 🚨 CRITICAL: Retry database save if it fails (tweet is already on Twitter!)
+    let dbSaveSuccess = false;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await markDecisionPosted(decision.id, tweetId, tweetUrl);
+        dbSaveSuccess = true;
+        break;
+      } catch (dbError: any) {
+        console.error(`[POSTING_QUEUE] 🚨 Database save attempt ${attempt}/3 failed:`, dbError.message);
+        if (attempt < 3) {
+          console.log(`[POSTING_QUEUE] 🔄 Retrying in 2 seconds...`);
+          await new Promise(r => setTimeout(r, 2000));
+        }
+      }
+    }
+    
+    if (!dbSaveSuccess) {
+      console.error(`[POSTING_QUEUE] 💥 CRITICAL FAILURE: Tweet ${tweetId} posted to Twitter but failed to save to database after 3 attempts!`);
+      console.error(`[POSTING_QUEUE] 🔗 Tweet URL: ${tweetUrl}`);
+      console.error(`[POSTING_QUEUE] 📝 Content: ${decision.content.substring(0, 100)}`);
+      console.error(`[POSTING_QUEUE] ⚠️ This tweet will NOT appear in dashboard but IS live on Twitter!`);
+      // Still throw error so we know about it
+      throw new Error(`Database save failed for posted tweet ${tweetId}`);
+    }
     
     // Update metrics
     await updatePostingMetrics('posted');
@@ -783,8 +806,11 @@ async function markDecisionPosted(decisionId: string, tweetId: string, tweetUrl?
       .eq('decision_id', decisionId);  // 🔥 FIX: decisionId is UUID, query by decision_id not id!
     
     if (updateError) {
-      console.warn(`[POSTING_QUEUE] ⚠️ Failed to update content_metadata for ${decisionId}:`, updateError.message);
+      console.error(`[POSTING_QUEUE] 🚨 CRITICAL: Failed to save tweet_id ${tweetId} to database:`, updateError.message);
+      throw new Error(`Database save failed for tweet ${tweetId}: ${updateError.message}`);
     }
+    
+    console.log(`[POSTING_QUEUE] ✅ Database updated: tweet_id ${tweetId} saved for decision ${decisionId}`);
     
     // 2. Get the full decision details for posted_decisions archive
     const { data: decisionData, error: fetchError } = await supabase
@@ -794,8 +820,8 @@ async function markDecisionPosted(decisionId: string, tweetId: string, tweetUrl?
       .single();
     
     if (fetchError || !decisionData) {
-      console.warn(`[POSTING_QUEUE] ⚠️ Failed to fetch decision data for ${decisionId}`);
-      return;
+      console.error(`[POSTING_QUEUE] 🚨 CRITICAL: Failed to fetch decision data for ${decisionId}:`, fetchError?.message);
+      throw new Error(`Cannot archive decision: ${fetchError?.message || 'No data found'}`);
     }
     
     // 3. Store in posted_decisions archive with safer numeric handling
