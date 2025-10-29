@@ -128,49 +128,44 @@ export class PhantomPostRecovery {
     const browserManager = BrowserManager.getInstance();
     
     try {
-      const tweets = await browserManager.withContext('posting', async (context) => {
-        const page = await context.newPage();
+      const page = await browserManager.getPage();
+      const username = process.env.TWITTER_USERNAME || 'Signal_Synapse';
+      
+      console.log(`[PHANTOM_RECOVERY] 📱 Scanning @${username} profile...`);
+      
+      await page.goto(`https://x.com/${username}`, { 
+        waitUntil: 'domcontentloaded', 
+        timeout: 60000 
+      });
+      
+      // Wait for tweets to load
+      await page.waitForTimeout(5000);
+      
+      // Scroll to load more tweets
+      await page.evaluate(() => window.scrollBy(0, 1000));
+      await page.waitForTimeout(2000);
+      
+      // Extract tweet data
+      const tweets = await page.evaluate(() => {
+        const articles = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
         
-        const username = process.env.TWITTER_USERNAME || 'Signal_Synapse';
-        console.log(`[PHANTOM_RECOVERY] 📱 Scanning @${username} profile...`);
-        
-        await page.goto(`https://x.com/${username}`, { 
-          waitUntil: 'domcontentloaded', 
-          timeout: 60000 
-        });
-        
-        // Wait for tweets to load
-        await page.waitForTimeout(5000);
-        
-        // Scroll to load more tweets
-        await page.evaluate(() => window.scrollBy(0, 1000));
-        await page.waitForTimeout(2000);
-        
-        // Extract tweet data
-        const tweets = await page.evaluate(() => {
-          const articles = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
+        return articles.map(article => {
+          const textElement = article.querySelector('[data-testid="tweetText"]');
+          const linkElement = article.querySelector('a[href*="/status/"]');
+          const timeElement = article.querySelector('time');
           
-          return articles.map(article => {
-            const textElement = article.querySelector('[data-testid="tweetText"]');
-            const linkElement = article.querySelector('a[href*="/status/"]');
-            const timeElement = article.querySelector('time');
-            
-            if (!textElement || !linkElement) return null;
-            
-            const url = linkElement.getAttribute('href') || '';
-            const tweetId = url.split('/status/')[1]?.split('?')[0] || '';
-            
-            return {
-              content: textElement.textContent || '',
-              tweetId,
-              url: `https://x.com${url}`,
-              timestamp: timeElement?.getAttribute('datetime') || ''
-            };
-          }).filter(t => t !== null && t.tweetId.length > 0);
-        });
-        
-        await page.close();
-        return tweets;
+          if (!textElement || !linkElement) return null;
+          
+          const url = linkElement.getAttribute('href') || '';
+          const tweetId = url.split('/status/')[1]?.split('?')[0] || '';
+          
+          return {
+            content: textElement.textContent || '',
+            tweetId,
+            url: `https://x.com${url}`,
+            timestamp: timeElement?.getAttribute('datetime') || ''
+          };
+        }).filter(t => t !== null && t.tweetId.length > 0);
       });
       
       return tweets;
