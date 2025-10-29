@@ -148,9 +148,14 @@ async function callDedicatedGenerator(generatorName: string, context: any) {
     // Call generator with correct parameters
     // Note: intelligence parameter is optional - generators work without it
     // We pass topic directly, generators will use their specialized prompts
+    
+    // 🧵 THREAD PROBABILITY: 7% threads, 93% singles (balanced for engagement)
+    const selectedFormat = Math.random() < 0.07 ? 'thread' : 'single';
+    console.log(`[SYSTEM_B] 📊 Format selected: ${selectedFormat} (7% thread probability)`);
+    
     const result = await generateFn({
       topic,
-      format: 'single', // Start with singles, let generators decide threads
+      format: selectedFormat, // ✅ FIXED: Dynamic format selection enables threads
       intelligence: undefined // Generators work without full intelligence package
     });
     
