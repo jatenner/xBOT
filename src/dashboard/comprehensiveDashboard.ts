@@ -86,7 +86,7 @@ async function getTopPerformingPosts(supabase: any) {
     .eq('status', 'posted')
     .eq('decision_type', 'single')
     .not('actual_likes', 'is', null)
-    .order('actual_likes', { ascending: false })
+    .order('actual_impressions', { ascending: false })
     .limit(20);
 
   return data || [];
@@ -402,8 +402,8 @@ function generatePostsHTML(data: any): string {
         <div class="section">
             <h2>🏆 Top Performing Posts</h2>
             <div style="margin-bottom: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
-                <button class="sort-btn active" onclick="sortTable('likes')">Sort by ❤️ Likes</button>
-                <button class="sort-btn" onclick="sortTable('views')">Sort by 👁️ Views</button>
+                <button class="sort-btn" onclick="sortTable('likes')">Sort by ❤️ Likes</button>
+                <button class="sort-btn active" onclick="sortTable('views')">Sort by 👁️ Views</button>
                 <button class="sort-btn" onclick="sortTable('viral')">Sort by 🔥 Viral Score</button>
                 <button class="sort-btn" onclick="sortTable('er')">Sort by 📊 ER</button>
             </div>
