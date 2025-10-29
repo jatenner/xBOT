@@ -883,6 +883,73 @@ function getSharedStyles(): string {
         border-color: #667eea;
         color: white;
     }
+    .post-card {
+        background: white;
+        border: 2px solid #e0e0e0;
+        border-radius: 12px;
+        margin-bottom: 15px;
+        padding: 20px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    .post-card:hover {
+        border-color: #667eea;
+        box-shadow: 0 5px 20px rgba(102, 126, 234, 0.2);
+        transform: translateY(-2px);
+    }
+    .post-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 20px;
+    }
+    .post-preview {
+        color: #333;
+        font-size: 15px;
+        line-height: 1.6;
+        margin-top: 8px;
+    }
+    .post-stats {
+        display: flex;
+        gap: 25px;
+        min-width: 150px;
+    }
+    .post-details {
+        display: none;
+        margin-top: 20px;
+        padding-top: 20px;
+        border-top: 2px solid #f0f0f0;
+        animation: slideDown 0.3s ease;
+    }
+    .post-card.expanded .post-details {
+        display: block;
+    }
+    .post-card.expanded {
+        border-color: #667eea;
+        background: #f8f9ff;
+    }
+    .metadata-box {
+        background: white;
+        padding: 12px;
+        border-radius: 8px;
+        border: 1px solid #e0e0e0;
+    }
+    .metadata-box strong {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .metadata-box div {
+        color: #333;
+        font-size: 14px;
+        line-height: 1.5;
+    }
+    @keyframes slideDown {
+        from { opacity: 0; transform: translateY(-10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
     .footer { text-align: center; color: white; margin-top: 40px; opacity: 0.9; }
   `;
 }
@@ -1078,42 +1145,76 @@ function generateRecentHTML(data: any): string {
 
         <div class="section">
             <h2>📝 Recent Posts (Last 100, by date)</h2>
-            <p style="color: #666; margin-bottom: 15px; font-size: 14px;">Complete post history with all metadata - sorted by creation time</p>
-            <table>
-                <thead>
-                    <tr>
-                        <th style="width: 30%;">Content</th>
-                        <th>Generator</th>
-                        <th>Topic</th>
-                        <th>Tone</th>
-                        <th>Angle</th>
-                        <th>📅 Created</th>
-                        <th>Status</th>
-                        <th class="number-col">👁️ Views</th>
-                        <th class="number-col">❤️ Likes</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${data.recentPosts.map((post: any) => {
-                        const views = post.actual_impressions || 0;
-                        const likes = post.actual_likes || 0;
-                        const statusColor = post.status === 'posted' ? 'status-posted' : 'status-queued';
+            <p style="color: #666; margin-bottom: 15px; font-size: 14px;">Complete post history with all metadata - sorted by creation time • <strong>Click any row to expand</strong></p>
+            
+            ${data.recentPosts.map((post: any, idx: number) => {
+                const views = post.actual_impressions || 0;
+                const likes = post.actual_likes || 0;
+                const statusStyle = post.status === 'posted' 
+                    ? 'background: #28a745; color: white;' 
+                    : post.status === 'failed'
+                    ? 'background: #dc3545; color: white;'
+                    : 'background: #ffc107; color: #333;';
+                const structure = post.format_strategy || 'N/A';
+                const topic = post.raw_topic || post.topic_cluster || 'N/A';
+                
+                return `
+                <div class="post-card" onclick="document.getElementById('post-${idx}').classList.toggle('expanded')" id="post-${idx}">
+                    <div class="post-header">
+                        <div style="flex: 1;">
+                            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                                <span class="badge badge-gen">${post.generator_name || 'unknown'}</span>
+                                <span style="padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; ${statusStyle}">${post.status.toUpperCase()}</span>
+                                <span style="color: #999; font-size: 13px;">${post.created_at ? new Date(post.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'N/A'}</span>
+                            </div>
+                            <div class="post-preview">${post.content?.substring(0, 120) || 'No content'}${post.content?.length > 120 ? '...' : ''}</div>
+                        </div>
+                        <div class="post-stats">
+                            <div style="text-align: center;">
+                                <div style="font-size: 20px; font-weight: bold; color: #667eea;">${views > 0 ? views.toLocaleString() : '–'}</div>
+                                <div style="font-size: 11px; color: #999;">👁️ Views</div>
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="font-size: 20px; font-weight: bold; color: #e91e63;">${likes > 0 ? likes : '–'}</div>
+                                <div style="font-size: 11px; color: #999;">❤️ Likes</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="post-details">
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                            <strong style="color: #667eea; display: block; margin-bottom: 8px;">📄 FULL CONTENT:</strong>
+                            <div style="line-height: 1.6; white-space: pre-wrap;">${post.content || 'No content available'}</div>
+                        </div>
                         
-                        return `
-                        <tr>
-                            <td class="content-cell">${post.content?.substring(0, 100) || 'No content'}...</td>
-                            <td><span class="badge badge-gen">${post.generator_name || 'unknown'}</span></td>
-                            <td><span class="topic-tag" title="${post.raw_topic || post.topic_cluster || 'N/A'}">${(post.raw_topic || post.topic_cluster || 'N/A').substring(0, 30)}...</span></td>
-                            <td>${post.tone ? `<span class="metadata-tag">${post.tone}</span>` : '-'}</td>
-                            <td>${post.angle ? `<span class="metadata-tag">${post.angle}</span>` : '-'}</td>
-                            <td class="date-cell">${post.created_at ? new Date(post.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'N/A'}</td>
-                            <td><span class="${statusColor}">${post.status}</span></td>
-                            <td class="number-col">${views > 0 ? views.toLocaleString() : '-'}</td>
-                            <td class="number-col">${likes > 0 ? `<strong style="color: #e91e63;">${likes}</strong>` : '-'}</td>
-                        </tr>
-                    `}).join('')}
-                </tbody>
-            </table>
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;">
+                            <div class="metadata-box">
+                                <strong style="color: #667eea;">🎯 Topic:</strong>
+                                <div>${topic}</div>
+                            </div>
+                            <div class="metadata-box">
+                                <strong style="color: #e91e63;">🎨 Structure:</strong>
+                                <div>${structure}</div>
+                            </div>
+                            <div class="metadata-box">
+                                <strong style="color: #28a745;">🎭 Tone:</strong>
+                                <div>${post.tone || 'N/A'}</div>
+                            </div>
+                            <div class="metadata-box">
+                                <strong style="color: #ffc107;">📐 Angle:</strong>
+                                <div>${post.angle || 'N/A'}</div>
+                            </div>
+                        </div>
+                        
+                        ${post.posted_at ? `
+                        <div style="margin-top: 15px; padding: 10px; background: #e8f5e9; border-radius: 6px; font-size: 13px;">
+                            ✅ <strong>Posted:</strong> ${new Date(post.posted_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                        </div>
+                        ` : ''}
+                    </div>
+                </div>
+                `;
+            }).join('')}
         </div>
 
         <div class="footer">
