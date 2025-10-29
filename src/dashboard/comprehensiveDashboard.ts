@@ -382,8 +382,8 @@ function generatePostsHTML(data: any): string {
         </div>
 
         <div class="nav-tabs">
-            <a href="/dashboard/posts?token=${getToken()}" class="nav-tab active">📝 Posts</a>
-            <a href="/dashboard/replies?token=${getToken()}" class="nav-tab">💬 Replies</a>
+            <a href="/dashboard/posts?token=xbot-admin-2025" class="nav-tab active">📝 Posts</a>
+            <a href="/dashboard/replies?token=xbot-admin-2025" class="nav-tab">💬 Replies</a>
         </div>
 
         <div class="stats-grid">
@@ -407,6 +407,7 @@ function generatePostsHTML(data: any): string {
                         <th>Content</th>
                         <th>Generator</th>
                         <th>Topic</th>
+                        <th>📅 Posted</th>
                         <th>👁️ Views</th>
                         <th>❤️ Likes</th>
                         <th>📊 ER</th>
@@ -418,6 +419,7 @@ function generatePostsHTML(data: any): string {
                             <td style="max-width: 300px;">${post.content?.substring(0, 80) || 'No content'}...</td>
                             <td><span class="badge">${post.generator_name || 'unknown'}</span></td>
                             <td>${post.topic_cluster || 'health'}</td>
+                            <td>${post.posted_at ? new Date(post.posted_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'N/A'}</td>
                             <td><strong>${(post.actual_impressions || 0).toLocaleString()}</strong></td>
                             <td><strong>${post.actual_likes || 0}</strong></td>
                             <td><strong>${((post.actual_engagement_rate || 0) * 100).toFixed(2)}%</strong></td>
@@ -580,8 +582,8 @@ function generateRepliesHTML(data: any): string {
         </div>
 
         <div class="nav-tabs">
-            <a href="/dashboard/posts?token=${getToken()}" class="nav-tab">📝 Posts</a>
-            <a href="/dashboard/replies?token=${getToken()}" class="nav-tab active">💬 Replies</a>
+            <a href="/dashboard/posts?token=xbot-admin-2025" class="nav-tab">📝 Posts</a>
+            <a href="/dashboard/replies?token=xbot-admin-2025" class="nav-tab active">💬 Replies</a>
         </div>
 
         <div class="stats-grid">
@@ -615,6 +617,7 @@ function generateRepliesHTML(data: any): string {
                         <th>Content</th>
                         <th>To @</th>
                         <th>Generator</th>
+                        <th>📅 Posted</th>
                         <th>👁️ Views</th>
                         <th>❤️ Likes</th>
                         <th>📊 ER</th>
@@ -626,12 +629,13 @@ function generateRepliesHTML(data: any): string {
                             <td style="max-width: 300px;">${reply.content?.substring(0, 80) || 'No content'}...</td>
                             <td><strong>@${reply.target_username || 'unknown'}</strong></td>
                             <td><span class="badge">${reply.generator_name || 'unknown'}</span></td>
+                            <td>${reply.posted_at ? new Date(reply.posted_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'N/A'}</td>
                             <td><strong>${(reply.actual_impressions || 0).toLocaleString()}</strong></td>
                             <td><strong>${reply.actual_likes || 0}</strong></td>
                             <td><strong>${((reply.actual_engagement_rate || 0) * 100).toFixed(2)}%</strong></td>
                         </tr>
                     `).join('')}
-                    ${data.topReplies.length === 0 ? '<tr><td colspan="6" style="text-align: center; color: #999;">No reply metrics yet</td></tr>' : ''}
+                    ${data.topReplies.length === 0 ? '<tr><td colspan="7" style="text-align: center; color: #999;">No reply metrics yet</td></tr>' : ''}
                 </tbody>
             </table>
         </div>
