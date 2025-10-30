@@ -15,6 +15,7 @@ export interface StorytellerContent {
   content: string | string[];
   format: 'single' | 'thread';
   confidence: number;
+  visualFormat?: string;
 }
 
 export async function generateStorytellerContent(params: {
@@ -79,21 +80,21 @@ Mechanism: ${research.mechanism}
 
 ${intelligenceContext}
 
+📱 TWITTER FORMATTING:
+Format this content for maximum Twitter engagement.
+Consider how it looks in a feed and what stops people scrolling.
+Format it however you think works best for this content.
+
 ${format === 'thread' ? `
-OUTPUT: Return valid JSON array of 3-5 tweets (150-230 chars each):
-Tweet 1: The hook - real example or surprising fact
-Tweet 2: The specifics - what actually happened  
-Tweet 3: The mechanism - why it worked
-Tweet 4: The insight - what this reveals
-
-REAL examples only. Make it fascinating.
-Format your response as JSON.
+Return JSON: {
+  "tweets": ["...", "...", ...],
+  "visualFormat": "describe your formatting choice"
+}
 ` : `
-OUTPUT: Return single tweet in JSON format (180-260 chars MAX - MUST fit in 280 chars):
-Real example with mechanism - make it stop-scrolling interesting
-
-🚨 CRITICAL: Tweet MUST be under 260 characters. Count carefully.
-Format your response as JSON.
+Return JSON: {
+  "tweet": "...",
+  "visualFormat": "describe your formatting choice"
+}
 `}`;
 
   const userPrompt = `Create narrative content about ${topic}. Use stories, examples, or case studies in whatever format is most engaging.
@@ -117,7 +118,8 @@ ${format === 'thread' ? 'Make it a compelling thread with real examples.' : 'Mak
     return {
       content: validateAndExtractContent(parsed, format, 'GENERATOR'),
       format,
-      confidence: 0.8
+      confidence: 0.8,
+      visualFormat: parsed.visualFormat || 'standard'
     };
     
   } catch (error: any) {

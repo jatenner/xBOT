@@ -235,6 +235,7 @@ async function callDedicatedGenerator(generatorName: string, context: any) {
       topic,
       angle,
       tone,
+      visual_format: result.visualFormat,
       // Pass through meta-awareness attributes
       angle_type: context.angle_type,
       tone_is_singular: context.tone_is_singular,
@@ -517,6 +518,7 @@ async function queueContent(content: any): Promise<void> {
     tone: content.tone,
     generator_name: content.generator_used,
     format_strategy: content.format_strategy,
+    visual_format: content.visual_format || null,
     
     // Legacy fields for compatibility
     bandit_arm: content.style || 'varied',

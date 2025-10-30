@@ -15,6 +15,7 @@ export interface ProvocateurContent {
   content: string | string[];
   format: 'single' | 'thread';
   confidence: number;
+  visualFormat?: string;
 }
 
 export async function generateProvocateurContent(params: {
@@ -78,10 +79,21 @@ Research available: ${research.finding} - ${research.source}
 
 ${intelligenceContext}
 
+📱 TWITTER FORMATTING:
+Format this content for maximum Twitter engagement.
+Consider how it looks in a feed and what stops people scrolling.
+Format it however you think works best for this content.
+
 ${format === 'thread' ? `
-Return JSON: {"tweets": ["...", "...", ...]}
+Return JSON: {
+  "tweets": ["...", "...", ...],
+  "visualFormat": "describe your formatting choice"
+}
 ` : `
-Return JSON: {"tweet": "..."}
+Return JSON: {
+  "tweet": "...",
+  "visualFormat": "describe your formatting choice"
+}
 `}`;
 
   const userPrompt = `Create provocative content about ${topic}. You can ask questions, make bold claims, challenge assumptions, or present contrarian views - whatever is most effective.`;
@@ -103,7 +115,8 @@ Return JSON: {"tweet": "..."}
     return {
       content: validateAndExtractContent(parsed, format, 'PROVOCATEUR'),
       format,
-      confidence: 0.85
+      confidence: 0.85,
+      visualFormat: parsed.visualFormat || 'standard'
     };
     
   } catch (error: any) {

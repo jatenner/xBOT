@@ -15,6 +15,7 @@ export interface ThoughtLeaderContent {
   content: string | string[];
   format: 'single' | 'thread';
   confidence: number;
+  visualFormat?: string;
 }
 
 export async function generateThoughtLeaderContent(params: {
@@ -92,14 +93,18 @@ Tweet 2: Current example/proof point
 Tweet 3: Where it's going (prediction)
 Tweet 4: What this means (implication)
 
-Return JSON: {"tweets": ["...", "...", ...]}
+Return JSON: {
+  "tweets": ["...", "...", ...],
+  "visualFormat": "describe your formatting choice"}
 ` : `
 📱 SINGLE TWEET (180-280 chars):
 
 One forward-thinking insight with current example and future direction.
 Show where things are going, not just what is.
 
-Return JSON: {"tweet": "..."}
+Return JSON: {
+  "tweet": "...",
+  "visualFormat": "describe your formatting choice"}
 `}
 
 🔥 SHOW TRENDS: Where is this moving? What's the trajectory?

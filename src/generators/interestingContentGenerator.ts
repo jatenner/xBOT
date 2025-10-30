@@ -16,6 +16,7 @@ export interface InterestingContent {
   content: string | string[];
   format: 'single' | 'thread';
   confidence: number;
+  visualFormat?: string;
   metadata: {
     angle: string;
     intrigue_factor: number;
@@ -87,9 +88,13 @@ Research available: ${research.finding} - ${research.source}
 ${intelligenceContext}
 
 ${format === 'thread' ? `
-Return JSON: {"tweets": ["...", "...", ...]}
+Return JSON: {
+  "tweets": ["...", "...", ...],
+  "visualFormat": "describe your formatting choice"}
 ` : `
-Return JSON: {"tweet": "..."}
+Return JSON: {
+  "tweet": "...",
+  "visualFormat": "describe your formatting choice"}
 `}`;
 
   const userPrompt = `Create fascinating content about ${topic}. Find the counterintuitive angle in whatever format works - facts, questions, comparisons, or mechanisms.`;
@@ -116,6 +121,7 @@ Return JSON: {"tweet": "..."}
       content,
       format,
       confidence: 0.9,
+      visualFormat: parsed.visualFormat || 'standard',
       metadata: {
         angle: parsed.angle || 'counterintuitive',
         intrigue_factor: parsed.intrigue_factor || 8
