@@ -556,6 +556,9 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
 async function postContent(decision: QueuedDecision): Promise<{ tweetId: string; tweetUrl: string }> {
   console.log(`[POSTING_QUEUE] 📝 Posting content: "${decision.content.substring(0, 50)}..."`);
   
+  // 📊 FOLLOWER TRACKING: Capture baseline before posting
+  const followersBefore = await captureFollowerBaseline(decision.id);
+  
   // Check feature flag for posting method
   const { getEnvConfig } = await import('../config/env');
   const config = getEnvConfig();
@@ -763,6 +766,48 @@ async function postReply(decision: QueuedDecision): Promise<string> {
   } catch (error: any) {
     console.error(`[POSTING_QUEUE] ❌ Reply system error: ${error.message}`);
     throw new Error(`Reply posting failed: ${error.message}`);
+  }
+}
+
+/**
+ * 📊 Capture follower baseline before posting
+ */
+async function captureFollowerBaseline(decisionId: string): Promise<number | null> {
+  try {
+    const { getSupabaseClient } = await import('../db/index');
+    const supabase = getSupabaseClient();
+    
+    // Get most recent follower snapshot
+    const { data: snapshot } = await supabase
+      .from('follower_snapshots')
+      .select('follower_count')
+      .order('timestamp', { ascending: false })
+      .limit(1)
+      .single();
+    
+    const followerCount = snapshot?.follower_count ? Number(snapshot.follower_count) : null;
+    
+    if (followerCount) {
+      console.log(`[FOLLOWER_TRACKING] 📊 Baseline: ${followerCount} followers before post`);
+      
+      // Store baseline in post_follower_tracking
+      await supabase
+        .from('post_follower_tracking')
+        .insert({
+          post_id: decisionId,
+          tweet_id: null, // Will be updated after posting
+          check_time: new Date().toISOString(),
+          follower_count: followerCount,
+          hours_after_post: 0, // Baseline
+          collection_phase: 'baseline'
+        });
+    }
+    
+    return followerCount;
+    
+  } catch (error: any) {
+    console.warn('[FOLLOWER_TRACKING] ⚠️ Failed to capture baseline:', error.message);
+    return null;
   }
 }
 

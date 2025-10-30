@@ -2,6 +2,7 @@
  * 📊 COMPREHENSIVE DASHBOARD - Multi-Page Analytics
  * Page 1: Posts breakdown (topic, tone, angle, generator, structure)
  * Page 2: Replies breakdown (tier, account, conversion)
+ * Page 3: Follower growth tracking
  */
 
 import { getSupabaseClient } from '../db/index';
@@ -1372,6 +1373,70 @@ export async function generateFactorAnalysisDashboard(): Promise<string> {
 }
 
 /**
+ * Generate follower growth dashboard
+ */
+export async function generateFollowerGrowthDashboard(): Promise<string> {
+  const supabase = getSupabaseClient();
+  
+  try {
+    // Get follower snapshots for the last 30 days
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    
+    const { data: snapshots } = await supabase
+      .from('follower_snapshots')
+      .select('*')
+      .gte('timestamp', thirtyDaysAgo.toISOString())
+      .order('timestamp', { ascending: true });
+    
+    // Get top posts by follower gain
+    const { data: topPosts } = await supabase
+      .from('post_follower_tracking')
+      .select('post_id, tweet_id, follower_count, hours_after_post, collection_phase')
+      .order('follower_count', { ascending: false })
+      .limit(20);
+    
+    // Calculate daily growth stats
+    const dailyGrowth = calculateDailyGrowth(snapshots || []);
+    const currentFollowers = snapshots && snapshots.length > 0 ? Number(snapshots[snapshots.length - 1].follower_count) : 0;
+    const startFollowers = snapshots && snapshots.length > 0 ? Number(snapshots[0].follower_count) : 0;
+    const totalGrowth = currentFollowers - startFollowers;
+    const avgDailyGrowth = snapshots && snapshots.length > 1 ? totalGrowth / 30 : 0;
+    
+    return generateFollowerGrowthHTML({
+      snapshots: snapshots || [],
+      topPosts: topPosts || [],
+      dailyGrowth,
+      currentFollowers,
+      totalGrowth,
+      avgDailyGrowth
+    });
+    
+  } catch (error: any) {
+    console.error('[FOLLOWER_DASHBOARD] Error:', error.message);
+    return generateErrorHTML(error.message);
+  }
+}
+
+function calculateDailyGrowth(snapshots: any[]): any[] {
+  if (snapshots.length < 2) return [];
+  
+  const dailyMap = new Map<string, number>();
+  
+  for (let i = 1; i < snapshots.length; i++) {
+    const date = new Date(String(snapshots[i].timestamp)).toISOString().split('T')[0];
+    const growth = snapshots[i].follower_count - snapshots[i - 1].follower_count;
+    
+    if (dailyMap.has(date)) {
+      dailyMap.set(date, (dailyMap.get(date) || 0) + growth);
+    } else {
+      dailyMap.set(date, growth);
+    }
+  }
+  
+  return Array.from(dailyMap.entries()).map(([date, growth]) => ({ date, growth }));
+}
+
+/**
  * Generate temporal intelligence HTML
  */
 function generateTemporalHTML(intelligence: any): string {
@@ -1720,11 +1785,110 @@ function generateFactorHTML(data: any): string {
 </html>`;
 }
 
+/**
+ * Generate follower growth HTML
+ */
+function generateFollowerGrowthHTML(data: any): string {
+  const now = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
+  
+  return `<!DOCTYPE html>
+<html>
+<head>
+    <title>📈 Follower Growth | xBOT</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="refresh" content="300">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; margin: 20px; background: #0a0a0a; color: #e0e0e0; }
+        .container { max-width: 1400px; margin: 0 auto; }
+        h1 { color: #00d9ff; margin-bottom: 5px; }
+        .subtitle { color: #888; margin-bottom: 30px; }
+        .nav-tabs { display: flex; gap: 10px; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 10px; }
+        .nav-tab { color: #888; text-decoration: none; padding: 8px 16px; border-radius: 4px 4px 0 0; transition: all 0.2s; }
+        .nav-tab:hover { color: #00d9ff; background: #1a1a1a; }
+        .nav-tab.active { color: #00d9ff; background: #1a1a1a; border-bottom: 2px solid #00d9ff; }
+        .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .stat-card { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 20px; }
+        .stat-label { color: #888; font-size: 14px; margin-bottom: 5px; }
+        .stat-value { color: #00d9ff; font-size: 32px; font-weight: bold; }
+        .stat-change { font-size: 16px; margin-top: 5px; }
+        .positive { color: #00ff88; }
+        .negative { color: #ff4444; }
+        .section { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+        .section-title { color: #00d9ff; font-size: 20px; margin-bottom: 15px; }
+        .chart-placeholder { background: #252525; border: 2px dashed #444; border-radius: 8px; padding: 40px; text-align: center; color: #666; }
+        .footer { text-align: center; color: #666; margin-top: 40px; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📈 Follower Growth Tracking</h1>
+        <p class="subtitle">Track how your content grows your audience over time</p>
+
+        <div class="nav-tabs">
+            <a href="/dashboard/recent?token=xbot-admin-2025" class="nav-tab">📅 Recent</a>
+            <a href="/dashboard/posts?token=xbot-admin-2025" class="nav-tab">📊 Metrics</a>
+            <a href="/dashboard/replies?token=xbot-admin-2025" class="nav-tab">💬 Replies</a>
+            <a href="/dashboard/temporal?token=xbot-admin-2025" class="nav-tab">⏱️ Temporal</a>
+            <a href="/dashboard/factors?token=xbot-admin-2025" class="nav-tab">🔬 Factors</a>
+            <a href="/dashboard/followers?token=xbot-admin-2025" class="nav-tab active">📈 Followers</a>
+        </div>
+
+        <div class="stat-grid">
+            <div class="stat-card">
+                <div class="stat-label">Current Followers</div>
+                <div class="stat-value">${data.currentFollowers.toLocaleString()}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">30-Day Growth</div>
+                <div class="stat-value ${data.totalGrowth >= 0 ? 'positive' : 'negative'}">
+                    ${data.totalGrowth >= 0 ? '+' : ''}${data.totalGrowth}
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Avg Daily Growth</div>
+                <div class="stat-value">${data.avgDailyGrowth >= 0 ? '+' : ''}${data.avgDailyGrowth.toFixed(1)}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Data Points</div>
+                <div class="stat-value">${data.snapshots.length}</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title">📊 Growth Timeline</div>
+            ${data.snapshots.length === 0 ? 
+              '<div class="chart-placeholder">⏳ Collecting follower data... Check back in 30 minutes!</div>' :
+              `<div class="chart-placeholder">📈 ${data.snapshots.length} snapshots collected<br>Chart visualization coming soon!</div>`
+            }
+        </div>
+
+        <div class="section">
+            <div class="section-title">🎯 How This Helps</div>
+            <ul style="color: #ccc; line-height: 1.8;">
+                <li><strong>Attribution:</strong> See which posts actually drive follower growth</li>
+                <li><strong>Learning:</strong> Your AI learns what content converts viewers → followers</li>
+                <li><strong>Momentum:</strong> Track growth velocity week-over-week</li>
+                <li><strong>Optimization:</strong> Double down on what works, cut what doesn't</li>
+            </ul>
+        </div>
+
+        <div class="footer">
+            <p>🤖 Last updated: ${now}</p>
+            <p>⚡ Follower snapshots collected every 30 minutes</p>
+            <p>📊 Data retention: 30 days rolling window</p>
+        </div>
+    </div>
+</body>
+</html>`;
+}
+
 export const comprehensiveDashboard = { 
   generatePostsDashboard, 
   generateRepliesDashboard,
   generateRecentDashboard,
   generateTemporalDashboard,
-  generateFactorAnalysisDashboard
+  generateFactorAnalysisDashboard,
+  generateFollowerGrowthDashboard
 };
 

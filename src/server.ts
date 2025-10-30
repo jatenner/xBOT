@@ -742,6 +742,34 @@ app.get('/dashboard/temporal', async (req, res) => {
   }
 });
 
+// Follower growth dashboard page
+app.get('/dashboard/followers', async (req, res) => {
+  try {
+    const token = req.query.token || req.headers.authorization?.replace('Bearer ', '');
+    const adminToken = process.env.ADMIN_TOKEN || 'xbot-admin-2025';
+    
+    if (token !== adminToken) {
+      return res.status(401).send(`
+        <html>
+          <body style="font-family: Arial; text-align: center; padding: 50px;">
+            <h1>🔒 Authentication Required</h1>
+            <p>Add <code>?token=YOUR_TOKEN</code> to the URL</p>
+          </body>
+        </html>
+      `);
+    }
+
+    console.log('📈 FOLLOWER_DASHBOARD: Serving follower growth...');
+    
+    const { generateFollowerGrowthDashboard } = await import('./dashboard/comprehensiveDashboard');
+    const html = await generateFollowerGrowthDashboard();
+    res.header('Content-Type', 'text/html').send(html);
+  } catch (error: any) {
+    console.error('[SERVER] Follower dashboard error:', error.message);
+    res.status(500).send(`<html><body><h1>Error</h1><pre>${error.message}</pre></body></html>`);
+  }
+});
+
 // Factor analysis dashboard page
 app.get('/dashboard/factors', async (req, res) => {
   try {

@@ -11,6 +11,9 @@ export async function runVelocityTracking(): Promise<void> {
   console.log('[VELOCITY] ⚡ Starting velocity tracking cycle...');
   
   try {
+    // 🔥 STEP 1: Track current follower count (periodic snapshot)
+    await trackFollowerSnapshot();
+    
     const supabase = getSupabaseClient();
     const kv = getKVStore();
     
@@ -196,6 +199,83 @@ async function logFollowerAttribution(postId: string): Promise<void> {
     
   } catch (error: any) {
     console.warn(`[VELOCITY] ⚠️ Failed to log attribution:`, error.message);
+  }
+}
+
+/**
+ * 📊 Track follower count snapshot (runs every 30 min)
+ * This builds a timeline of follower growth independent of specific posts
+ */
+async function trackFollowerSnapshot(): Promise<void> {
+  try {
+    console.log('[FOLLOWER_TRACKER] 📊 Taking follower snapshot...');
+    
+    const supabase = getSupabaseClient();
+    const scraper = getBulletproofScraper();
+    
+    // Use UnifiedBrowserPool
+    const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
+    const pool = UnifiedBrowserPool.getInstance();
+    
+    const page = await pool.acquirePage('follower_snapshot');
+    
+    try {
+      // Navigate to our profile
+      await page.goto('https://x.com/Signal_Synapse', { 
+        waitUntil: 'domcontentloaded',
+        timeout: 30000 
+      });
+      
+      // Scrape profile metrics
+      const profileMetrics = await scraper.scrapeProfileMetrics(page);
+      
+      if (!profileMetrics.followerCount || profileMetrics.followerCount === 0) {
+        console.warn('[FOLLOWER_TRACKER] ⚠️ Could not scrape follower count');
+        return;
+      }
+      
+      // Store snapshot in database
+      const { error } = await supabase
+        .from('follower_snapshots')
+        .insert({
+          timestamp: new Date().toISOString(),
+          follower_count: profileMetrics.followerCount,
+          following_count: profileMetrics.followingCount || 0,
+          tweet_count: 0, // TODO: scrape this
+          source: 'scraped'
+        });
+      
+      if (error) {
+        console.error('[FOLLOWER_TRACKER] ❌ Failed to store snapshot:', error.message);
+      } else {
+        console.log(`[FOLLOWER_TRACKER] ✅ Snapshot saved: ${profileMetrics.followerCount} followers`);
+        
+        // Calculate growth from last snapshot
+        const { data: lastSnapshot } = await supabase
+          .from('follower_snapshots')
+          .select('follower_count, timestamp')
+          .order('timestamp', { ascending: false })
+          .limit(2);
+        
+        if (lastSnapshot && lastSnapshot.length >= 2) {
+          const growth = profileMetrics.followerCount - (Number(lastSnapshot[1].follower_count) || 0);
+          const hoursSince = (Date.now() - new Date(String(lastSnapshot[1].timestamp)).getTime()) / (1000 * 60 * 60);
+          
+          if (growth > 0) {
+            console.log(`[FOLLOWER_TRACKER] 📈 Growth: +${growth} followers in ${hoursSince.toFixed(1)}h`);
+          } else if (growth < 0) {
+            console.log(`[FOLLOWER_TRACKER] 📉 Change: ${growth} followers in ${hoursSince.toFixed(1)}h`);
+          }
+        }
+      }
+      
+    } finally {
+      await pool.releasePage(page);
+    }
+    
+  } catch (error: any) {
+    console.error('[FOLLOWER_TRACKER] ❌ Failed to track follower snapshot:', error.message);
+    // Don't throw - let velocity tracking continue
   }
 }
 
