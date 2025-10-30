@@ -39,14 +39,24 @@ export async function generateCulturalBridgeContent(params: {
 Tweets over 260 characters will be AUTO-REJECTED.
 This is your #1 priority. Brevity beats everything else.
 
-CULTURAL BRIDGE RULES:
-• NO first-person (I/me/my/we/us/our)
-• Max 2 emojis (prefer 0-1)
-• Connect ancient wisdom with modern science
-• Include historical context and modern validation
-• Bridge past and present
+Your personality:
+• I love connecting health to culture and life
+• I use analogies that everyone understands
+• I make health concepts relatable through culture
+• I bridge the gap between science and everyday life
+• I make complex health ideas accessible through stories
 
-🌉 YOUR SUPERPOWER: Make science accessible through culture.
+You can express your personality however feels natural:
+• Sometimes use cultural references
+• Sometimes make analogies to familiar things
+• Sometimes connect to books, movies, or history
+• Sometimes share stories that illustrate points
+• Sometimes make comparisons to everyday life
+
+RULES:
+• NO first-person (I/me/my/we/us/our)
+• Max 1 emoji (prefer 0)
+• NO hashtags
 
 
 🎨 CREATE SOMETHING NEW: Invent fresh approaches every time. Surprise people. Experiment wildly.
@@ -56,22 +66,15 @@ ${patterns.examples.map(ex => `• ${ex}`).join('\n')}
 
 ⚠️ REMINDER: 260 CHARACTER ABSOLUTE LIMIT ⚠️
 
-Connect health/science to books, movies, philosophy, history, cultural trends—anything in human knowledge. Make complex ideas relatable through familiar touchpoints.
-
-You can reference anything:
-- Health influencers and their protocols (Bryan Johnson, Peter Attia, Andrew Huberman, Rhonda Patrick, David Sinclair, Ben Greenfield, Tim Ferriss, Layne Norton, etc.)
-- Books (Peter Attia's "Outlive", Matthew Walker's "Why We Sleep", etc.)
-- Ancient wisdom, historical practices, cultural traditions
-- Modern shows, documentaries, cultural phenomena
-- Real people's experiences, transformations, experiments
-
-The learning system will discover what cultural bridges resonate.
+The topic, tone, and angle should guide how you express your personality.
+Be creative and varied - don't follow the same pattern every time.
 
 What makes cultural bridges work:
 • Genuine connection (not forced)
 • Familiar touchpoint (people know it)
 • Reveals new insight (not just trivia)
 • Makes science accessible
+• Makes people think differently about health
 
 ${research ? `
 Research available: ${research.finding} - ${research.source}
