@@ -1327,9 +1327,399 @@ function generateRecentHTML(data: any): string {
 </html>`;
 }
 
+/**
+ * 🧠 TEMPORAL INTELLIGENCE DASHBOARD
+ */
+export async function generateTemporalDashboard(): Promise<string> {
+  const { buildSystemIntelligence } = await import('../analytics/intelligenceBuilder');
+  
+  try {
+    const intelligence = await buildSystemIntelligence();
+    
+    return generateTemporalHTML(intelligence);
+  } catch (error: any) {
+    console.error('[TEMPORAL_DASHBOARD] Error:', error.message);
+    return generateErrorHTML(error.message);
+  }
+}
+
+/**
+ * 🔬 FACTOR ANALYSIS DASHBOARD
+ */
+export async function generateFactorAnalysisDashboard(): Promise<string> {
+  const { getVarianceAnalyzer } = await import('../analytics/varianceAnalyzer');
+  
+  try {
+    const variance = getVarianceAnalyzer();
+    
+    const [factorImportance, visualAggregates, toneAggregates, synergies] = await Promise.all([
+      variance.calculateFactorImportance(),
+      variance.analyzeFactorAggregates('visual_format'),
+      variance.analyzeFactorAggregates('tone'),
+      variance.findSynergies(5)
+    ]);
+    
+    return generateFactorHTML({ factorImportance, visualAggregates, toneAggregates, synergies });
+  } catch (error: any) {
+    console.error('[FACTOR_DASHBOARD] Error:', error.message);
+    return generateErrorHTML(error.message);
+  }
+}
+
+/**
+ * Generate temporal intelligence HTML
+ */
+function generateTemporalHTML(intelligence: any): string {
+  const now = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
+  
+  const { accountHealth, momentum, recommendations, readiness } = intelligence;
+  
+  const statusEmoji = accountHealth.trend === 'GROWING' ? '🚀' : accountHealth.trend === 'DECLINING' ? '📉' : '➖';
+  
+  return `<!DOCTYPE html>
+<html>
+<head>
+    <title>🧠 Temporal Intelligence | xBOT</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; margin: 20px; background: #0a0a0a; color: #e0e0e0; }
+        .container { max-width: 1400px; margin: 0 auto; }
+        h1 { color: #00d9ff; margin-bottom: 5px; }
+        .subtitle { color: #888; margin-bottom: 30px; }
+        .section { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+        .section-title { color: #00d9ff; font-size: 20px; margin-bottom: 15px; border-bottom: 2px solid #333; padding-bottom: 10px; }
+        .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .stat-card { background: #252525; border: 1px solid #444; border-radius: 6px; padding: 15px; }
+        .stat-label { color: #888; font-size: 12px; text-transform: uppercase; margin-bottom: 5px; }
+        .stat-value { color: #00d9ff; font-size: 24px; font-weight: bold; }
+        .stat-change { font-size: 14px; margin-top: 5px; }
+        .positive { color: #00ff88; }
+        .negative { color: #ff4444; }
+        .neutral { color: #888; }
+        .momentum-item { background: #252525; border-left: 4px solid; padding: 12px; margin-bottom: 10px; border-radius: 4px; }
+        .rising { border-left-color: #00ff88; }
+        .declining { border-left-color: #ff4444; }
+        .stable { border-left-color: #888; }
+        .momentum-header { font-weight: bold; margin-bottom: 5px; }
+        .momentum-stats { font-size: 14px; color: #aaa; }
+        .recommendation { background: #1e3a5f; border-left: 4px solid #00d9ff; padding: 12px; margin-bottom: 10px; border-radius: 4px; }
+        .readiness { padding: 15px; background: #1a3a1a; border: 2px solid #00ff88; border-radius: 8px; margin-bottom: 20px; }
+        .readiness.warning { background: #3a2a1a; border-color: #ffaa00; }
+        .readiness.danger { background: #3a1a1a; border-color: #ff4444; }
+        .nav { margin-bottom: 20px; }
+        .nav a { color: #00d9ff; text-decoration: none; margin-right: 20px; }
+        .nav a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>${statusEmoji} Temporal Intelligence Dashboard</h1>
+        <div class="subtitle">Tracking trends and momentum over time</div>
+        
+        <div class="nav">
+            <a href="/dashboard/posts">📊 Posts</a>
+            <a href="/dashboard/replies">💬 Replies</a>
+            <a href="/dashboard/recent">🕐 Recent</a>
+            <a href="/dashboard/temporal">📈 Temporal (current)</a>
+            <a href="/dashboard/factors">🔬 Factors</a>
+        </div>
+
+        <div class="readiness ${readiness.status === 'READY_FOR_OPTIMIZATION' ? '' : readiness.status === 'PATTERNS_EMERGING' ? 'warning' : 'danger'}">
+            <strong>📊 Sample Size: ${readiness.totalPosts} posts</strong><br>
+            Status: ${readiness.status.replace(/_/g, ' ')}<br>
+            Confidence: ${readiness.confidence}<br>
+            ${readiness.recommendation}
+        </div>
+
+        <div class="section">
+            <div class="section-title">📈 Overall Account Growth</div>
+            <div class="stat-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Total Posts</div>
+                    <div class="stat-value">${accountHealth.totalPosts}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Current Avg Views</div>
+                    <div class="stat-value">${accountHealth.currentAvgViews.toFixed(0)}</div>
+                    <div class="stat-change ${accountHealth.weekOverWeekGrowth > 0 ? 'positive' : accountHealth.weekOverWeekGrowth < 0 ? 'negative' : 'neutral'}">
+                        ${accountHealth.weekOverWeekGrowth > 0 ? '+' : ''}${accountHealth.weekOverWeekGrowth.toFixed(1)}% vs last week
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Trend</div>
+                    <div class="stat-value">${accountHealth.trend}</div>
+                    <div class="stat-change">${accountHealth.status.replace(/_/g, ' ')}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title">🚀 Rising Patterns (Gaining Traction)</div>
+            ${momentum.visualFormats.rising.length === 0 && momentum.tones.rising.length === 0 && momentum.generators.rising.length === 0 
+              ? '<p style="color: #888;">No clear rising patterns yet - need more data</p>'
+              : ''}
+            
+            ${momentum.visualFormats.rising.map((m: any) => `
+                <div class="momentum-item rising">
+                    <div class="momentum-header">📱 ${m.value} (Visual Format)</div>
+                    <div class="momentum-stats">
+                        Growth: <span class="positive">+${m.growth.toFixed(0)}%</span> | 
+                        Status: ${m.status} | 
+                        Uses: ${m.uses} posts |
+                        Trend: ${m.weeklyAvg.map((v: number) => v.toFixed(0)).join(' → ')}
+                    </div>
+                </div>
+            `).join('')}
+            
+            ${momentum.tones.rising.map((m: any) => `
+                <div class="momentum-item rising">
+                    <div class="momentum-header">🎤 ${m.value} (Tone)</div>
+                    <div class="momentum-stats">
+                        Growth: <span class="positive">+${m.growth.toFixed(0)}%</span> | 
+                        Status: ${m.status} | 
+                        Uses: ${m.uses} posts |
+                        Trend: ${m.weeklyAvg.map((v: number) => v.toFixed(0)).join(' → ')}
+                    </div>
+                </div>
+            `).join('')}
+            
+            ${momentum.generators.rising.map((m: any) => `
+                <div class="momentum-item rising">
+                    <div class="momentum-header">🎭 ${m.value} (Generator)</div>
+                    <div class="momentum-stats">
+                        Growth: <span class="positive">+${m.growth.toFixed(0)}%</span> | 
+                        Status: ${m.status} | 
+                        Uses: ${m.uses} posts |
+                        Trend: ${m.weeklyAvg.map((v: number) => v.toFixed(0)).join(' → ')}
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+
+        <div class="section">
+            <div class="section-title">📉 Declining Patterns (Losing Effectiveness)</div>
+            ${momentum.visualFormats.declining.length === 0 && momentum.tones.declining.length === 0 && momentum.generators.declining.length === 0
+              ? '<p style="color: #888;">No clear declining patterns detected</p>'
+              : ''}
+            
+            ${momentum.visualFormats.declining.map((m: any) => `
+                <div class="momentum-item declining">
+                    <div class="momentum-header">📱 ${m.value} (Visual Format)</div>
+                    <div class="momentum-stats">
+                        Decline: <span class="negative">${m.growth.toFixed(0)}%</span> | 
+                        Status: ${m.status} | 
+                        Uses: ${m.uses} posts |
+                        Trend: ${m.weeklyAvg.map((v: number) => v.toFixed(0)).join(' → ')}
+                    </div>
+                </div>
+            `).join('')}
+            
+            ${momentum.tones.declining.map((m: any) => `
+                <div class="momentum-item declining">
+                    <div class="momentum-header">🎤 ${m.value} (Tone)</div>
+                    <div class="momentum-stats">
+                        Decline: <span class="negative">${m.growth.toFixed(0)}%</span> | 
+                        Status: ${m.status} | 
+                        Uses: ${m.uses} posts |
+                        Trend: ${m.weeklyAvg.map((v: number) => v.toFixed(0)).join(' → ')}
+                    </div>
+                </div>
+            `).join('')}
+            
+            ${momentum.generators.declining.map((m: any) => `
+                <div class="momentum-item declining">
+                    <div class="momentum-header">🎭 ${m.value} (Generator)</div>
+                    <div class="momentum-stats">
+                        Decline: <span class="negative">${m.growth.toFixed(0)}%</span> | 
+                        Status: ${m.status} | 
+                        Uses: ${m.uses} posts |
+                        Trend: ${m.weeklyAvg.map((v: number) => v.toFixed(0)).join(' → ')}
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+
+        <div class="section">
+            <div class="section-title">💡 Strategic Recommendations</div>
+            ${recommendations.map((rec: string) => `
+                <div class="recommendation">${rec}</div>
+            `).join('')}
+        </div>
+
+        <div class="footer">
+            <p>🤖 Generated: ${now}</p>
+            <p>⚡ Intelligence built from ${accountHealth.totalPosts} posts</p>
+        </div>
+    </div>
+    <script>setTimeout(() => location.reload(), 300000);</script>
+</body>
+</html>`;
+}
+
+/**
+ * Generate factor analysis HTML
+ */
+function generateFactorHTML(data: any): string {
+  const now = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
+  
+  return `<!DOCTYPE html>
+<html>
+<head>
+    <title>🔬 Factor Analysis | xBOT</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; margin: 20px; background: #0a0a0a; color: #e0e0e0; }
+        .container { max-width: 1400px; margin: 0 auto; }
+        h1 { color: #00d9ff; margin-bottom: 5px; }
+        .subtitle { color: #888; margin-bottom: 30px; }
+        .section { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+        .section-title { color: #00d9ff; font-size: 20px; margin-bottom: 15px; border-bottom: 2px solid #333; padding-bottom: 10px; }
+        .factor-item { background: #252525; padding: 15px; margin-bottom: 12px; border-radius: 6px; border-left: 4px solid #00d9ff; }
+        .factor-header { font-size: 18px; font-weight: bold; margin-bottom: 8px; }
+        .factor-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; font-size: 14px; color: #aaa; margin-top: 10px; }
+        .stat-item { background: #1a1a1a; padding: 8px; border-radius: 4px; }
+        .nav { margin-bottom: 20px; }
+        .nav a { color: #00d9ff; text-decoration: none; margin-right: 20px; }
+        .nav a:hover { text-decoration: underline; }
+        .importance-bar { height: 30px; background: linear-gradient(90deg, #00ff88, #00d9ff, #0088ff, #888); border-radius: 4px; margin: 10px 0; position: relative; }
+        .importance-label { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #000; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔬 Factor Analysis Dashboard</h1>
+        <div class="subtitle">What actually matters for performance</div>
+        
+        <div class="nav">
+            <a href="/dashboard/posts">📊 Posts</a>
+            <a href="/dashboard/replies">💬 Replies</a>
+            <a href="/dashboard/recent">🕐 Recent</a>
+            <a href="/dashboard/temporal">📈 Temporal</a>
+            <a href="/dashboard/factors">🔬 Factors (current)</a>
+        </div>
+
+        <div class="section">
+            <div class="section-title">🎯 Factor Importance (What Matters Most)</div>
+            ${data.factorImportance.map((f: any, i: number) => {
+                const width = f.percentExplained;
+                const stars = '⭐'.repeat(f.impact === 'HIGH' ? 5 : f.impact === 'MEDIUM' ? 3 : 1);
+                return `
+                    <div style="margin-bottom: 15px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                            <span><strong>${i + 1}. ${f.factor}</strong> ${stars}</span>
+                            <span>${f.percentExplained.toFixed(0)}% variance explained</span>
+                        </div>
+                        <div style="height: 25px; background: #252525; border-radius: 4px; overflow: hidden;">
+                            <div style="height: 100%; width: ${width}%; background: linear-gradient(90deg, #00ff88, #00d9ff); display: flex; align-items: center; padding-left: 10px; color: #000; font-weight: bold; font-size: 12px;">
+                                ${f.impact} IMPACT
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('')}
+            
+            <p style="color: #888; margin-top: 20px; font-size: 14px;">
+                💡 The top factor explains the most performance variance. Focus optimization efforts here.
+            </p>
+        </div>
+
+        <div class="section">
+            <div class="section-title">📱 Visual Format Aggregates (Performance Across All Combinations)</div>
+            ${data.visualAggregates.slice(0, 10).map((agg: any) => `
+                <div class="factor-item">
+                    <div class="factor-header">${agg.value}</div>
+                    <div class="factor-stats">
+                        <div class="stat-item">
+                            <strong>${agg.avgViews.toFixed(0)}</strong> avg views
+                        </div>
+                        <div class="stat-item">
+                            <strong>${agg.avgLikes.toFixed(1)}</strong> avg likes
+                        </div>
+                        <div class="stat-item">
+                            <strong>${agg.uses}</strong> uses
+                        </div>
+                        <div class="stat-item">
+                            Tested with <strong>${agg.topicsDiversity}</strong> topics
+                        </div>
+                        <div class="stat-item">
+                            Tested with <strong>${agg.tonesDiversity}</strong> tones
+                        </div>
+                        <div class="stat-item">
+                            Reliability: <strong>${agg.reliability}</strong>
+                        </div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+
+        <div class="section">
+            <div class="section-title">🎤 Tone Aggregates</div>
+            ${data.toneAggregates.slice(0, 10).map((agg: any) => `
+                <div class="factor-item">
+                    <div class="factor-header">${agg.value}</div>
+                    <div class="factor-stats">
+                        <div class="stat-item">
+                            <strong>${agg.avgViews.toFixed(0)}</strong> avg views
+                        </div>
+                        <div class="stat-item">
+                            <strong>${agg.avgLikes.toFixed(1)}</strong> avg likes
+                        </div>
+                        <div class="stat-item">
+                            <strong>${agg.uses}</strong> uses
+                        </div>
+                        <div class="stat-item">
+                            Tested with <strong>${agg.topicsDiversity}</strong> topics
+                        </div>
+                        <div class="stat-item">
+                            Tested with <strong>${agg.formatsDiversity}</strong> formats
+                        </div>
+                        <div class="stat-item">
+                            Reliability: <strong>${agg.reliability}</strong>
+                        </div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+
+        <div class="section">
+            <div class="section-title">🔗 Top Synergies (What Works Together)</div>
+            ${data.synergies.slice(0, 10).map((syn: any) => `
+                <div class="factor-item">
+                    <div class="factor-header">${syn.combo}</div>
+                    <div class="factor-stats">
+                        <div class="stat-item">
+                            <strong>${syn.multiplier.toFixed(2)}x</strong> multiplier
+                        </div>
+                        <div class="stat-item">
+                            <strong>${syn.avgViews.toFixed(0)}</strong> avg views
+                        </div>
+                        <div class="stat-item">
+                            <strong>${syn.uses}</strong> uses
+                        </div>
+                        <div class="stat-item">
+                            Confidence: <strong>${syn.confidence}</strong>
+                        </div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+
+        <div class="footer">
+            <p>🤖 Generated: ${now}</p>
+        </div>
+    </div>
+    <script>setTimeout(() => location.reload(), 300000);</script>
+</body>
+</html>`;
+}
+
 export const comprehensiveDashboard = { 
   generatePostsDashboard, 
   generateRepliesDashboard,
-  generateRecentDashboard
+  generateRecentDashboard,
+  generateTemporalDashboard,
+  generateFactorAnalysisDashboard
 };
 
