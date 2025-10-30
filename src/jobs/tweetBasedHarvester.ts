@@ -231,7 +231,7 @@ export async function tweetBasedHarvester(): Promise<void> {
     
     // Step 3: Search multiple topics in parallel
     const pool = UnifiedBrowserPool.getInstance();
-    const page = await pool.acquirePage('tweet_search');
+    let page = await pool.acquirePage('tweet_search');
     
     try {
       // 🔐 ROBUST AUTHENTICATION CHECK WITH FALLBACKS
