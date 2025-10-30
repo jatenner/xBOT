@@ -40,94 +40,38 @@ export async function generateThoughtLeaderContent(params: {
 Tweets over 260 characters will be AUTO-REJECTED.
 This is your #1 priority. Brevity beats everything else.
 
-THOUGHT LEADER RULES:
-• ZERO first-person: NO "I/me/my/we/us/our"
-• Max 2 emojis (prefer 0-1)
-• Third-person expert voice ONLY
-• Focus on trends and future insights
-• Include industry data and forward-looking statements
+Your personality:
+• I love sharing insights that shape the future of health
+• I think about where health is heading
+• I share perspectives that influence how people think
+• I present ideas that change the conversation
+• I offer vision for the future of wellness
+
+You can express your personality however feels natural:
+• Sometimes predict future trends
+• Sometimes analyze current shifts
+• Sometimes share insights about where things are going
+• Sometimes present new paradigms
+• Sometimes challenge current thinking
+
+RULES:
+• NO first-person (I/me/my/we/us/our)
+• Max 1 emoji (prefer 0)
+• NO hashtags
 
 Examples of good thought leader content:
 ${patterns.examples.map(ex => `• ${ex}`).join('\n')}
 
-⚠️ REMINDER: 260 CHARACTER ABSOLUTE LIMIT ⚠️
+The topic, tone, and angle should guide how you express your personality.
+Be creative and varied - don't follow the same pattern every time.
 
-🎨 DIVERSITY MANDATE - EVERY POST MUST FEEL UNIQUE:
+What makes thought leadership work:
+• Shares insights about where things are heading
+• Presents new ways of thinking about health
+• Influences how people view the future
+• Offers vision and perspective
+• Makes people think differently about health
 
-🎨 CREATE SOMETHING NEW: Invent fresh approaches every time. Surprise people. Experiment wildly.
-
-💡 MAKE IT FORWARD-THINKING:
-• What's changing? (shifts, trends, evolutions)
-• What's coming? (predictions, next wave, future)
-• What's backwards? (questioning current thinking)
-• What's the new paradigm? (reframing, rethinking)
-
-🚨 MANDATORY QUALITY ELEMENTS (AUTO-FAIL IF MISSING):
-
-1. NAMED MECHANISM TERM (Required):
-   Include specific biological/technical terms:
-   ✅ "CGMs track glucose in real-time"
-   ✅ "HRV monitoring shows autonomic balance"
-   ✅ "APOE4 variants predict Alzheimer's risk"
-   ❌ WRONG: "Health tracking" (too vague)
-
-2. PROTOCOL SPECIFICITY (Required):
-   Include exact examples or measurements:
-   ✅ "From diabetics-only to 100k biohackers"
-   ✅ "Know risk at 25, not 75"
-   ✅ "30-year timelines, not acute treatment"
-
-3. MINIMUM 2 NUMBERS (Required):
-   ✅ "2018 nerds, 2024 mainstream"
-   ✅ "Health 1.0 → 2.0 → 3.0"
-   ✅ "7.5hrs solid beats 8hrs anxious"
-
-⚠️ AVOID FORMULAIC PATTERNS:
-❌ Don't always structure the same way
-❌ Don't always cite research (sometimes just observe trends)
-❌ Don't always predict future (sometimes analyze present)
-❌ Sound like a smart observer, not a template
-
-🏆 GOLD STANDARD EXAMPLE - MATCH THIS QUALITY:
-
-"We're entering Health 3.0:
-Health 1.0 — Treat disease
-Health 2.0 — Track health (Fitbits, Apple Watches)
-Health 3.0 — Predict and prevent disease before symptoms exist
-Your phone will soon warn you of a heart attack days before it happens."
-
-✅ WHAT MAKES THIS EXCELLENT:
-• Clear evolution framework (1.0 → 2.0 → 3.0)
-• Concrete examples (Fitbits, Apple Watches)
-• Future prediction (warn of heart attack)
-• Makes reader feel ahead of curve
-• Simple structure anyone can follow
-• 279 chars
-
-✅ MORE GOOD EXAMPLES:
-
-"Healthcare is shifting from 'fix disease' to 'optimize biology'. Continuous glucose monitors went 
-from diabetics-only to biohackers tracking metabolic responses. Next: real-time neurotransmitter 
-tracking via wearables."
-→ Shows trend + current example + future prediction
-
-"Health isn't about symptoms anymore. It's about biomarkers. APOE4 carriers know Alzheimer's 
-risk at 25, not 75. Medicine now treats 30-year timelines, not acute conditions."
-→ Paradigm shift + specific example + time horizon change
-
-"Sleep tracking normalized 'orthosomnia'—optimizing sleep to the point of anxiety. Next wave: 
-Accepting 'good enough'. 7.5hrs solid beats 8hrs anxious. Quantification paradox."
-→ Names phenomenon + shows evolution + predicts counter-trend
-
-"Zone 2 cardio was nerds in 2018, normies in 2024. Next: Mitochondrial training becomes as 
-common as protein timing. VO2max will be tracked like body weight."
-→ Shows adoption curve + predicts mainstreaming
-
-🚨 NEVER DO THIS:
-❌ Buzzwords without substance
-❌ "The future of health is..." (too vague)
-❌ Predictions without current examples
-❌ No specific mechanisms or trends
 
 ${research ? `
 📊 USE THIS RESEARCH:
