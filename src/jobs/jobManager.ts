@@ -145,8 +145,16 @@ export class JobManager {
       );
     }
 
-    // Plan job - every 30 min, offset 2 min
+    // Plan job - every 2 hours, with restart protection
     if (flags.plannerEnabled) {
+      // 🔥 RESTART PROTECTION: Check if we need to run immediately
+      const shouldRunImmediately = await this.shouldRunPlanJobImmediately();
+      const startDelay = shouldRunImmediately ? 0 : (2 * MINUTE); // Immediate or 2min delay
+      
+      if (shouldRunImmediately) {
+        console.log('🚀 JOB_MANAGER: Last plan run >2h ago, running immediately on startup');
+      }
+      
       this.scheduleStaggeredJob(
         'plan',
         async () => {
@@ -157,7 +165,7 @@ export class JobManager {
           });
         },
         config.JOBS_PLAN_INTERVAL_MIN * MINUTE,
-        2 * MINUTE // Start after 2 minutes
+        startDelay // Immediate if needed, otherwise 2min delay
       );
     }
 
@@ -993,6 +1001,48 @@ export class JobManager {
           console.log(`✅ Predictor ${coefficients.version} trained and persisted`);
         });
         break;
+    }
+  }
+
+  /**
+   * 🔥 RESTART PROTECTION: Check if plan job should run immediately
+   * Prevents long gaps after server restarts
+   */
+  private async shouldRunPlanJobImmediately(): Promise<boolean> {
+    try {
+      const { getSupabaseClient } = await import('../db/index');
+      const supabase = getSupabaseClient();
+      
+      // Check when we last generated content
+      const { data: lastGenerated, error } = await supabase
+        .from('content_metadata')
+        .select('created_at')
+        .in('decision_type', ['single', 'thread'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+      
+      if (error || !lastGenerated) {
+        console.log('[RESTART_PROTECTION] No previous content found, running immediately');
+        return true; // No previous content, run now
+      }
+      
+      const lastGeneratedTime = new Date(String(lastGenerated.created_at));
+      const hoursSinceLastGeneration = (Date.now() - lastGeneratedTime.getTime()) / (1000 * 60 * 60);
+      
+      console.log(`[RESTART_PROTECTION] Last content generated: ${hoursSinceLastGeneration.toFixed(1)}h ago`);
+      
+      // If last generation was >2 hours ago, run immediately
+      if (hoursSinceLastGeneration > 2) {
+        console.log('[RESTART_PROTECTION] ⚠️ Gap detected: Running plan job immediately');
+        return true;
+      }
+      
+      return false; // Recent content exists, use normal schedule
+      
+    } catch (error: any) {
+      console.error('[RESTART_PROTECTION] Error checking last run:', error.message);
+      return false; // On error, use normal schedule
     }
   }
 }
