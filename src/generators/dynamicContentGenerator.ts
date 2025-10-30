@@ -27,36 +27,36 @@ export async function generateDynamicContent(params: {
   
   const { topic, format = 'single', mood, length, angle } = params;
   
-  // 🎲 RANDOM CONTENT APPROACHES (no templates!)
+  // 🎲 DIVERSE CONTENT APPROACHES (professional, varied)
   const approaches = [
-    'casual_observation',    // "Noticed something weird about..."
-    'quick_fact',           // "TIL that..."
-    'personal_insight',     // "Been thinking about..."
-    'research_find',        // "Just read that..."
-    'practical_tip',        // "Here's what works..."
-    'question_pondering',   // "Why do we..."
-    'comparison_thought',   // "X vs Y is interesting because..."
-    'mechanism_explanation', // "The way this works is..."
-    'myth_busting',         // "Everyone thinks X but..."
-    'future_prediction',    // "In 5 years we'll..."
-    'historical_context',   // "Back in the day..."
-    'contrarian_take',      // "Hot take: X is wrong because..."
-    'story_snippet',        // "Heard about this person who..."
-    'data_revelation',      // "The numbers on this are crazy..."
-    'simple_reminder',      // "Don't forget that..."
-    'curiosity_spark'       // "What if we..."
+    'myth_busting',         // "Myth: X. Truth: Y with data"
+    'data_revelation',      // "Study shows X% of people..."
+    'mechanism_explanation', // "Here's how X actually works..."
+    'comparison_analysis',  // "X vs Y: which actually works?"
+    'future_prediction',    // "In 5 years, we'll..."
+    'practical_protocol',   // "Protocol: do X for Y results"
+    'surprising_fact',      // "Most people don't know that..."
+    'question_challenge',   // "Why do we still believe X when Y?"
+    'research_breakthrough', // "New study reveals..."
+    'industry_insight',     // "The health industry is shifting..."
+    'optimization_tip',     // "For peak performance, try..."
+    'controversial_take',   // "Unpopular opinion: X is overrated because..."
+    'historical_perspective', // "Back in 2020, we thought..."
+    'comparative_data',     // "Harvard vs Stanford study shows..."
+    'mechanism_deep_dive',  // "The science behind X is fascinating..."
+    'trend_analysis'        // "What's changing in health optimization..."
   ];
   
   const selectedApproach = approaches[Math.floor(Math.random() * approaches.length)];
   
-  // 🎨 MOOD-BASED VOICE VARIATIONS
+  // 🎨 MOOD-BASED VOICE VARIATIONS (professional)
   const moodVoices = {
-    curious: "I'm genuinely curious about this...",
-    confident: "Here's what I know for sure...",
-    playful: "This is actually pretty cool...",
-    serious: "This is important to understand...",
-    surprised: "Wait, this is wild...",
-    thoughtful: "I've been thinking about this..."
+    curious: "The research on this is fascinating...",
+    confident: "The data clearly shows...",
+    analytical: "Breaking down the science...",
+    serious: "This is critical to understand...",
+    surprised: "The findings are surprising...",
+    thoughtful: "The implications are significant..."
   };
   
   const selectedMood = mood || Object.keys(moodVoices)[Math.floor(Math.random() * Object.keys(moodVoices).length)];
@@ -70,13 +70,14 @@ export async function generateDynamicContent(params: {
   
   const selectedLength = length || Object.keys(lengthStyles)[Math.floor(Math.random() * Object.keys(lengthStyles).length)];
   
-  // 🎯 ANGLE VARIATIONS
+  // 🎯 ANGLE VARIATIONS (professional)
   const angleStyles = {
-    personal: "Share from personal experience or observation",
     research: "Focus on studies, data, and evidence",
-    practical: "Give actionable advice and steps",
-    philosophical: "Explore deeper meanings and implications",
-    controversial: "Challenge conventional wisdom"
+    practical: "Give actionable advice and protocols",
+    analytical: "Break down mechanisms and processes",
+    comparative: "Compare different approaches or studies",
+    predictive: "Discuss future trends and implications",
+    contrarian: "Challenge conventional wisdom with data"
   };
   
   const selectedAngle = angle || Object.keys(angleStyles)[Math.floor(Math.random() * Object.keys(angleStyles).length)];
@@ -92,7 +93,7 @@ export async function generateDynamicContent(params: {
   const selectedTopic = topic || randomTopics[Math.floor(Math.random() * randomTopics.length)];
   
   // 🧠 DYNAMIC PROMPT (much simpler, more human)
-  const systemPrompt = `You're a health enthusiast sharing interesting insights on Twitter. 
+  const systemPrompt = `You are @SignalAndSynapse, a health account known for evidence-based insights that challenge conventional wisdom.
 
 APPROACH: ${selectedApproach}
 MOOD: ${selectedMood}
@@ -100,24 +101,35 @@ LENGTH: ${lengthStyles[selectedLength]}
 ANGLE: ${angleStyles[selectedAngle]}
 TOPIC: ${selectedTopic}
 
-WRITE LIKE A HUMAN:
-- Use natural, conversational language
-- Vary your sentence structure
-- Sometimes use questions, sometimes statements
-- Be specific when you can, general when appropriate
-- Sound like you're talking to a friend
-- Don't follow rigid templates or formulas
+CONTENT RULES:
+- NO first-person (I/me/my/we/us/our)
+- Third-person expert voice ONLY
+- Evidence-based claims with specific data
+- Challenge conventional wisdom when appropriate
+- Use surprising, counterintuitive insights
+- Include specific numbers, studies, or mechanisms
+- Max 2 emojis (prefer 0-1)
+
+FORMAT VARIETY - Use different structures:
+- Myth-busting: "Myth: X. Truth: Y with data"
+- Data revelation: "Study shows X% of people..."
+- Mechanism explanation: "Here's how X actually works..."
+- Comparison: "X vs Y: which actually works?"
+- Future prediction: "In 5 years, we'll..."
+- Practical protocol: "Protocol: do X for Y results"
+- Surprising fact: "Most people don't know that..."
+- Question format: "Why do we still believe X when Y?"
 
 FORMAT: ${format === 'thread' ? 'Create 3-4 connected tweets' : 'Single tweet'}
 
 AVOID:
-- Overly formal or academic tone
-- Rigid structures or templates
+- Same structure every time
 - Generic health advice
-- Too many technical terms
-- Hashtags or excessive emojis
+- Overly academic language
+- Hashtags
+- First-person language
 
-Just share something genuinely interesting about ${selectedTopic} in a natural, engaging way.`;
+Create diverse, engaging content about ${selectedTopic} that makes people think differently.`;
 
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -172,14 +184,14 @@ Just share something genuinely interesting about ${selectedTopic} in a natural, 
  */
 export function injectContentChaos(content: string): string {
   const chaosInjections = [
-    () => content.replace(/\./g, '...'), // Add trailing dots
-    () => content.replace(/^/, 'Actually, '), // Add "Actually" prefix
-    () => content.replace(/^/, 'Hot take: '), // Add "Hot take" prefix
-    () => content.replace(/\?$/, ' Right?'), // Add "Right?" to questions
-    () => content.replace(/\.$/, ' (seriously)'), // Add "(seriously)" to statements
-    () => content.replace(/^/, 'Random thought: '), // Add "Random thought" prefix
-    () => content.replace(/^/, 'This is wild: '), // Add "This is wild" prefix
-    () => content.replace(/^/, 'Okay but '), // Add "Okay but" prefix
+    () => content.replace(/^/, 'New research: '), // Add "New research" prefix
+    () => content.replace(/^/, 'Data point: '), // Add "Data point" prefix
+    () => content.replace(/^/, 'Study alert: '), // Add "Study alert" prefix
+    () => content.replace(/\?$/, ' The data is clear.'), // Add conclusion to questions
+    () => content.replace(/\.$/, ' (evidence-based)'), // Add "(evidence-based)" to statements
+    () => content.replace(/^/, 'Breaking: '), // Add "Breaking" prefix
+    () => content.replace(/^/, 'Research reveals: '), // Add "Research reveals" prefix
+    () => content.replace(/^/, 'The science: '), // Add "The science" prefix
   ];
   
   // 20% chance to inject chaos
@@ -201,10 +213,10 @@ export class StyleRotator {
   
   static getNextStyle(): string {
     const allStyles = [
-      'casual_observation', 'quick_fact', 'personal_insight', 'research_find',
-      'practical_tip', 'question_pondering', 'comparison_thought', 'mechanism_explanation',
-      'myth_busting', 'future_prediction', 'historical_context', 'contrarian_take',
-      'story_snippet', 'data_revelation', 'simple_reminder', 'curiosity_spark'
+      'myth_busting', 'data_revelation', 'mechanism_explanation', 'comparison_analysis',
+      'future_prediction', 'practical_protocol', 'surprising_fact', 'question_challenge',
+      'research_breakthrough', 'industry_insight', 'optimization_tip', 'controversial_take',
+      'historical_perspective', 'comparative_data', 'mechanism_deep_dive', 'trend_analysis'
     ];
     
     // Remove recently used styles
