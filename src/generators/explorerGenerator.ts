@@ -16,6 +16,7 @@ export interface ExplorerContent {
   content: string | string[];
   format: 'single' | 'thread';
   confidence: number;
+  visualFormat?: string;
 }
 
 export async function generateExplorerContent(params: {
@@ -83,9 +84,13 @@ Research available: ${research.finding} - ${research.source}
 ${intelligenceContext}
 
 ${format === 'thread' ? `
-Return JSON: {"tweets": ["...", "...", ...]}
+Return JSON: {
+  "tweets": ["...", "...", ...],
+  "visualFormat": "describe your formatting choice"}
 ` : `
-Return JSON: {"tweet": "..."}
+Return JSON: {
+  "tweet": "...",
+  "visualFormat": "describe your formatting choice"}
 `}`;
 
   const userPrompt = `Create exploratory content about ${topic}. Reveal unexpected connections, patterns, or insights in whatever format works best.`;

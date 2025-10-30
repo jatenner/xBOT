@@ -15,6 +15,7 @@ export interface MythBusterContent {
   content: string | string[];
   format: 'single' | 'thread';
   confidence: number;
+  visualFormat?: string;
 }
 
 export async function generateMythBusterContent(params: {
@@ -76,10 +77,21 @@ Research available: ${research.finding} - ${research.source}
 
 ${intelligenceContext}
 
+📱 TWITTER FORMATTING:
+Format this content for maximum Twitter engagement.
+Consider how it looks in a feed and what stops people scrolling.
+Format it however you think works best for this content.
+
 ${format === 'thread' ? `
-Return JSON: {"tweets": ["...", "...", ...]}
+Return JSON: {
+  "tweets": ["...", "...", ...],
+  "visualFormat": "describe your formatting choice"
+}
 ` : `
-Return JSON: {"tweet": "..."}
+Return JSON: {
+  "tweet": "...",
+  "visualFormat": "describe your formatting choice"
+}
 `}`;
 
   const userPrompt = `Create myth-busting content about ${topic}. Challenge misconceptions however works best - questions, statements, comparisons, or data.`;
@@ -101,7 +113,8 @@ Return JSON: {"tweet": "..."}
     return {
       content: validateAndExtractContent(parsed, format, 'MYTH_BUSTER'),
       format,
-      confidence: 0.85
+      confidence: 0.85,
+      visualFormat: parsed.visualFormat || 'standard'
     };
     
   } catch (error: any) {

@@ -15,6 +15,7 @@ export interface CulturalBridgeContent {
   content: string | string[];
   format: 'single' | 'thread';
   confidence: number;
+  visualFormat?: string;
 }
 
 
@@ -83,9 +84,13 @@ Research available: ${research.finding} - ${research.source}
 ${intelligenceContext}
 
 ${format === 'thread' ? `
-Return JSON: {"tweets": ["...", "...", ...]}
+Return JSON: {
+  "tweets": ["...", "...", ...],
+  "visualFormat": "describe your formatting choice"}
 ` : `
-Return JSON: {"tweet": "..."}
+Return JSON: {
+  "tweet": "...",
+  "visualFormat": "describe your formatting choice"}
 `}`;
 
   const userPrompt = `Create content connecting ${topic} to culture, books, philosophy, or history. Make connections in whatever format is most engaging.`;

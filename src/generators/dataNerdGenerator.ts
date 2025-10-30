@@ -16,6 +16,7 @@ export interface DataNerdContent {
   content: string | string[];
   format: 'single' | 'thread';
   confidence: number;
+  visualFormat?: string;
 }
 
 export async function generateDataNerdContent(params: {
@@ -79,10 +80,21 @@ Research available: ${research.finding} - ${research.source}
 
 ${intelligenceContext}
 
+📱 TWITTER FORMATTING:
+Format this content for maximum Twitter engagement.
+Consider how it looks in a feed and what stops people scrolling.
+Format it however you think works best for this content.
+
 ${format === 'thread' ? `
-Return JSON: {"tweets": ["...", "...", ...]}
+Return JSON: {
+  "tweets": ["...", "...", ...],
+  "visualFormat": "describe your formatting choice"
+}
 ` : `
-Return JSON: {"tweet": "..."}
+Return JSON: {
+  "tweet": "...",
+  "visualFormat": "describe your formatting choice"
+}
 `}`;
 
   const userPrompt = `Create data-driven content about ${topic}. Use research, statistics, or studies however works best - no required format.`;
@@ -104,7 +116,8 @@ Return JSON: {"tweet": "..."}
     return {
       content: validateAndExtractContent(parsed, format, 'DATA_NERD'),
       format,
-      confidence: 0.9
+      confidence: 0.9,
+      visualFormat: parsed.visualFormat || 'standard'
     };
     
   } catch (error: any) {

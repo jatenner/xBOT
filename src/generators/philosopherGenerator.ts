@@ -15,6 +15,7 @@ export interface PhilosopherContent {
   content: string | string[];
   format: 'single' | 'thread';
   confidence: number;
+  visualFormat?: string;
 }
 
 export async function generatePhilosopherContent(params: {
@@ -91,14 +92,18 @@ Tweet 4: How to think about it (practical wisdom)
 
 NO questions. Just insights and truths.
 
-Return JSON: {"tweets": ["...", "...", ...]}
+Return JSON: {
+  "tweets": ["...", "...", ...],
+  "visualFormat": "describe your formatting choice"}
 ` : `
 📱 SINGLE TWEET (180-280 chars):
 
 One profound truth about how things work.
 Simple, deep, practical - no hollow questions.
 
-Return JSON: {"tweet": "..."}
+Return JSON: {
+  "tweet": "...",
+  "visualFormat": "describe your formatting choice"}
 `}
 
 🔥 BE PROFOUND: Deep truth simply stated
