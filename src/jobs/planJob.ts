@@ -69,42 +69,110 @@ async function generateRealContent(): Promise<void> {
     return;
   }
   
-  console.log('[PLAN_JOB] 🧠 Generating real content using LLM...');
+  // ═══════════════════════════════════════════════════════════
+  // 🎯 BATCH GENERATION: Generate 4 posts per cycle
+  // ═══════════════════════════════════════════════════════════
+  const numToGenerate = 4; // 4 posts per 2-hour cycle = 2 posts/hour
+  
+  console.log(`[PLAN_JOB] 🧠 Generating ${numToGenerate} posts with smart scheduling...`);
+  console.log(`[PLAN_JOB] 📅 Target: 2 posts per hour, evenly distributed\n`);
+  
+  const generatedPosts: any[] = [];
+  const batchMetrics = {
+    topics: new Set<string>(),
+    tones: new Set<string>(),
+    angles: new Set<string>(),
+    generators: new Set<string>()
+  };
     
-    for (let i = 0; i < 3; i++) {
-      try {
+  for (let i = 0; i < numToGenerate; i++) {
+    try {
+      console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+      console.log(`📝 GENERATING POST ${i + 1}/${numToGenerate}`);
+      console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+      
       const content = await generateContentWithLLM();
       
-      // Handle quota reached (returns null)
+      // Handle generation failure
       if (!content) {
-        console.log('[PLAN_JOB] ⏸️ Quota reached, stopping generation');
-        break;
+        console.log(`[PLAN_JOB] ⚠️ Post ${i + 1} generation failed, skipping`);
+        continue;
       }
       
       const gateResult = await runGateChain(content.text, content.decision_id);
         
-        if (!gateResult.passed) {
-        console.log(`[GATE_CHAIN] ⛔ Blocked (${gateResult.gate}) decision_id=${content.decision_id}, reason=${gateResult.reason}`);
-          continue;
-        }
-        
-      // Queue for posting
-      await queueContent(content);
-      console.log(`[PLAN_JOB] ✅ Real LLM content queued decision_id=${content.decision_id} scheduled_at=${content.scheduled_at}`);
+      if (!gateResult.passed) {
+        console.log(`[GATE_CHAIN] ⛔ Post ${i + 1} blocked (${gateResult.gate}): ${gateResult.reason}`);
+        continue;
+      }
+      
+      // Track diversity
+      batchMetrics.topics.add(content.raw_topic);
+      batchMetrics.tones.add(content.tone);
+      batchMetrics.angles.add(content.angle);
+      batchMetrics.generators.add(content.generator_used);
+      
+      generatedPosts.push(content);
+      console.log(`[PLAN_JOB] ✅ Post ${i + 1} generated successfully`);
       
     } catch (error: any) {
       llmMetrics.calls_failed++;
       const errorType = categorizeError(error);
       llmMetrics.failure_reasons[errorType] = (llmMetrics.failure_reasons[errorType] || 0) + 1;
       
-      console.error(`[PLAN_JOB] ❌ LLM generation failed: ${error.message}`);
+      console.error(`[PLAN_JOB] ❌ Post ${i + 1} generation failed: ${error.message}`);
       
-      // In live mode: do NOT queue synthetic
       if (errorType === 'insufficient_quota') {
-        console.log('[PLAN_JOB] OpenAI insufficient_quota → not queueing');
+        console.log('[PLAN_JOB] OpenAI insufficient_quota → stopping generation');
+        break;
       }
     }
   }
+  
+  // ═══════════════════════════════════════════════════════════
+  // 📅 SMART SCHEDULING: Space posts evenly for 2/hour
+  // ═══════════════════════════════════════════════════════════
+  console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+  console.log(`📊 BATCH SUMMARY`);
+  console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+  console.log(`✅ Generated: ${generatedPosts.length}/${numToGenerate} posts`);
+  console.log(`\n🎨 DIVERSITY:`);
+  console.log(`   ${batchMetrics.topics.size}/${generatedPosts.length} unique topics`);
+  console.log(`   ${batchMetrics.tones.size}/${generatedPosts.length} unique tones`);
+  console.log(`   ${batchMetrics.angles.size}/${generatedPosts.length} unique angles`);
+  console.log(`   ${batchMetrics.generators.size}/${generatedPosts.length} unique generators`);
+  
+  if (generatedPosts.length === 0) {
+    console.log(`\n⚠️ No posts generated this cycle`);
+    return;
+  }
+  
+  console.log(`\n📅 SMART SCHEDULING (Target: 2 posts/hour):`);
+  
+  const now = Date.now();
+  for (let i = 0; i < generatedPosts.length; i++) {
+    const post = generatedPosts[i];
+    
+    // Space posts ~30 minutes apart
+    const baseDelay = i * 30; // 0, 30, 60, 90 minutes
+    const randomVariation = Math.floor(Math.random() * 10); // 0-9 minutes for natural feel
+    const totalDelay = baseDelay + randomVariation;
+    
+    const scheduledAt = new Date(now + totalDelay * 60000);
+    post.scheduled_at = scheduledAt.toISOString();
+    
+    const minutesUntil = Math.floor((scheduledAt.getTime() - now) / 60000);
+    const hourLabel = Math.floor(minutesUntil / 60) + 1;
+    const postInHour = Math.floor((minutesUntil % 60) / 30) + 1;
+    
+    console.log(`   Post ${i + 1}: ${scheduledAt.toLocaleTimeString()} (+${minutesUntil}m) [Hour ${hourLabel}, Post ${postInHour}/2]`);
+    
+    // Queue for posting
+    await queueContent(post);
+  }
+  
+  console.log(`\n💡 Expected pattern: 2 posts in Hour 1, 2 posts in Hour 2`);
+  console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
 }
 
 /**
@@ -182,28 +250,6 @@ async function callDedicatedGenerator(generatorName: string, context: any) {
 async function generateContentWithLLM() {
   const flags = getConfig();
   const decision_id = uuidv4();
-  
-  // ═══════════════════════════════════════════════════════════
-  // 🚦 HOURLY QUOTA CHECK: Enforce 2 posts/hour limit
-  // ═══════════════════════════════════════════════════════════
-  const supabase = getSupabaseClient();
-  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-  
-  const { count: postsThisHour } = await supabase
-    .from('content_metadata')
-    .select('*', { count: 'exact', head: true })
-    .eq('decision_type', 'single')
-    .gte('created_at', oneHourAgo.toISOString());
-  
-  console.log(`[PLAN_JOB] 📊 Hourly quota: ${postsThisHour || 0}/2 posts generated in last 60 minutes`);
-  
-  if ((postsThisHour || 0) >= 2) {
-    console.log('[PLAN_JOB] ⏸️ Hourly quota reached (2/2) - skipping content generation');
-    console.log('[PLAN_JOB] ⏰ Will resume at next hour when quota resets');
-    return null; // Exit early - don't generate more content
-  }
-  
-  console.log(`[PLAN_JOB] ✅ Quota available - proceeding with content generation`);
   
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('🎯 DIVERSITY SYSTEM: Multi-Dimensional Content Generation');
