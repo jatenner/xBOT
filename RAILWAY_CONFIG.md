@@ -1,6 +1,6 @@
-# 🚀 RAILWAY CONFIGURATION - REPLY SYSTEM
+# 🚀 RAILWAY CONFIGURATION - REPLY SYSTEM (UPDATED)
 
-**Target:** 3-4 replies/hour, ~100 replies/day
+**Target:** 4 replies/hour guaranteed, ~96 replies/day
 
 ---
 
@@ -9,17 +9,18 @@
 **Railway → xBOT Project → Variables → Add these:**
 
 ```bash
-# Core rate limits (for 3-4 replies/hour, 100/day)
-REPLY_MINUTES_BETWEEN=15      # Min gap between replies (15min = 4/hour max)
-REPLIES_PER_HOUR=4            # Hourly cap (backup limit)
-REPLY_MAX_PER_DAY=100         # Daily cap (your target!)
+# Core rate limits (for guaranteed 4 replies/hour)
+REPLY_MINUTES_BETWEEN=15      # Min gap between replies (safety ceiling)
+REPLIES_PER_HOUR=4            # Hourly cap (safety ceiling)
+REPLY_MAX_PER_DAY=100         # Daily cap (allows 96/day + buffer)
 
-# Batch control (prevents bursts)
-REPLY_BATCH_SIZE=1            # Generate 1 at a time (natural pattern)
+# Smart batch control (UPDATED - generates 2 per cycle)
+REPLY_BATCH_SIZE=2            # Generate 2 per 30-min cycle = 4/hour
+JOBS_REPLY_INTERVAL_MIN=30    # Job runs every 30 minutes
 
-# Stagger delays (prevents rapid-fire)
+# Smart scheduling (UPDATED - 5 min and 20 min spacing)
 REPLY_STAGGER_BASE_MIN=5      # First reply: 5min delay
-REPLY_STAGGER_INCREMENT_MIN=10 # Each additional reply: +10min
+REPLY_STAGGER_INCREMENT_MIN=15 # Second reply: 20min delay (5 + 15)
 
 # Enable the system
 ENABLE_REPLIES=true           # Should already be set
@@ -27,59 +28,73 @@ ENABLE_REPLIES=true           # Should already be set
 
 ---
 
-## 📊 WHAT THIS GIVES YOU
+## 📊 WHAT THIS GIVES YOU (UPDATED)
 
-### Hourly Pattern:
+### Hourly Pattern (GUARANTEED):
 ```
-Hour 1: 4 replies (steady, 15min apart)
-Hour 2: 4 replies
-Hour 3: 4 replies
-...
-Hour 24: 4 replies
+00:00 - Reply job runs → Generates 2 replies
+        Reply 1: Scheduled at 00:05
+        Reply 2: Scheduled at 00:20
 
-Total: ~96 replies/day if perfect
-Cap: 100/day (allows some flexibility)
+00:30 - Reply job runs → Generates 2 replies
+        Reply 3: Scheduled at 00:35
+        Reply 4: Scheduled at 00:50
+
+Result: Exactly 4 replies/hour, evenly spaced ~15 min apart
 ```
 
 ### Daily Breakdown:
-- **Minimum:** 70-80 replies/day (realistic with some hours lower)
-- **Target:** 90-100 replies/day (optimal operation)
-- **Maximum:** 100 replies/day (hard cap)
+- **Guaranteed:** 96 replies/day (4/hour × 24 hours)
+- **Maximum:** 100 replies/day (hard cap for safety)
+- **Spacing:** ~15 minutes between each reply (natural pattern)
 
 ---
 
-## ⚙️ HOW IT WORKS
+## ⚙️ HOW IT WORKS (UPDATED - SMART SCHEDULING)
 
-### Every 15 Minutes:
-1. ✅ Check: "Last reply was 15+ minutes ago?" 
-2. ✅ Check: "Posted < 4 this hour?"
-3. ✅ Check: "Posted < 100 today?"
-4. ✅ If all pass → Generate 1 reply
-5. ✅ Schedule with stagger delay
-6. ✅ Post via queue
+### Every 30 Minutes:
+1. ✅ **Preflight Check:** Ensure opportunity pool has 10+ targets
+   - If low: Run harvesters to populate pool
+   - If critical: Surface alert
+2. ✅ **Generate:** Create exactly 2 replies per cycle
+   - Select best opportunities from pool
+   - Use AI to generate strategic replies
+   - Quality validation
+3. ✅ **Smart Schedule:** Space replies evenly
+   - Reply 1: NOW + 5 minutes
+   - Reply 2: NOW + 20 minutes
+4. ✅ **Queue:** Store in database with scheduled_at timestamp
+5. ✅ **Post:** Posting queue processes every 5 minutes
 
 ### Result:
-- Natural 15-20 minute gaps
-- No burst posting
-- Consistent growth
-- Railway-controlled (no secrets in git!)
+- ✅ Guaranteed 4 replies/hour (no gaps, no bursts)
+- ✅ Even spacing (~15 min between each)
+- ✅ Preflight ensures pool never runs dry
+- ✅ SLA tracking alerts on misses
+- ✅ Railway-controlled (no secrets in git!)
 
 ---
 
-## 🎯 CURRENT vs YOUR TARGET
+## 🎯 NEW SYSTEM vs OLD SYSTEM
 
-### What You Want:
-- 3-4 replies/hour ✅ (we give 4/hour)
-- 100 replies/day ✅ (set daily cap to 100)
-
-### What We Configured:
+### Old System (Had Issues):
 ```
-15 min between = 4/hour possible
-4/hour × 24 hours = 96/day theoretical
-Daily cap = 100 (allows slight overrun)
+❌ Generated 1-4 replies (depended on opportunity count)
+❌ Random scheduling (could bunch up)
+❌ Often only 2-3 replies/hour (inconsistent)
+❌ No preflight checks (pool could run dry)
 ```
 
-**Perfect match!** ✅
+### New System (Fixed):
+```
+✅ Generates exactly 2 replies per cycle (guaranteed)
+✅ Smart scheduling (5 min, 20 min spacing)
+✅ Exactly 4 replies/hour (consistent)
+✅ Preflight checks (ensures pool has 10+ opportunities)
+✅ SLA tracking (alerts on misses)
+```
+
+**Same fix as posting system!** ✅
 
 ---
 
