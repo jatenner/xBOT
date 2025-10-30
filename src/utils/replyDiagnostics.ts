@@ -120,5 +120,29 @@ export class ReplyDiagnosticLogger {
     console.log('[REPLY_DIAGNOSTIC] 📸 SYSTEM SNAPSHOT:');
     console.log(JSON.stringify(diagnostics, null, 2));
   }
+  
+  /**
+   * Log SLA miss (expected vs actual)
+   */
+  static logSlaMiss(data: { expected: number; actual: number; deficit: number; reason: string }): void {
+    console.log('[REPLY_SLA] ⚠️ SLA MISS:');
+    console.log(`  • Expected: ${data.expected} replies`);
+    console.log(`  • Actual: ${data.actual} replies`);
+    console.log(`  • Deficit: ${data.deficit} replies`);
+    console.log(`  • Reason: ${data.reason}`);
+  }
+  
+  /**
+   * Log reply scheduled (for SLA tracking)
+   */
+  static logReplyScheduled(data: {
+    decision_id: string;
+    scheduled_at: Date;
+    delay_minutes: number;
+    target: string;
+    generator: string;
+  }): void {
+    console.log(`[REPLY_SLA] 📅 Scheduled: ${data.decision_id} → @${data.target} at ${data.scheduled_at.toLocaleTimeString()} (${data.delay_minutes}min, ${data.generator})`);
+  }
 }
 

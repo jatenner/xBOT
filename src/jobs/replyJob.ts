@@ -290,6 +290,7 @@ async function generateRealReplies(): Promise<void> {
   }
   
   console.log('[REPLY_JOB] 🎯 Starting reply generation (AI-driven targeting)...');
+  console.log('[REPLY_JOB] 📋 Target: 2 replies per cycle (4 replies/hour)');
   
   // Log account pool status
   const { getAccountPoolHealth } = await import('./accountDiscoveryJob');
@@ -306,9 +307,45 @@ async function generateRealReplies(): Promise<void> {
     return;
   }
   
+  const supabaseClient = getSupabaseClient();
+  
+  // ============================================================
+  // PREFLIGHT: ENSURE POOL HAS 10+ OPPORTUNITIES
+  // ============================================================
+  console.log('[REPLY_JOB] 🔍 Preflight check: Verifying opportunity pool...');
+  
+  let { data: poolCheck, error: poolCheckError } = await supabaseClient
+    .from('reply_opportunities')
+    .select('id', { count: 'exact', head: true })
+    .eq('replied_to', false)
+    .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString());
+  
+  const poolCount = (poolCheck as any)?.length || 0;
+  console.log(`[REPLY_JOB] 📊 Opportunity pool: ${poolCount} available`);
+  
+  if (poolCount < 10) {
+    console.warn(`[REPLY_JOB] ⚠️ Pool low (${poolCount} < 10) - triggering harvester preflight`);
+    
+    try {
+      // Try tweet-based harvester first (best source)
+      const { tweetBasedHarvester } = await import('./tweetBasedHarvester');
+      console.log('[REPLY_JOB] 🌐 Running tweet-based harvester...');
+      await tweetBasedHarvester();
+      
+      // Also run account-based harvester as backup
+      const { replyOpportunityHarvester } = await import('./replyOpportunityHarvester');
+      console.log('[REPLY_JOB] 👥 Running account-based harvester...');
+      await replyOpportunityHarvester();
+      
+      console.log('[REPLY_JOB] ✅ Harvester preflight complete');
+    } catch (error: any) {
+      console.error('[REPLY_JOB] ❌ Harvester preflight failed:', error.message);
+      console.log('[REPLY_JOB] ⚠️ Proceeding with available opportunities...');
+    }
+  }
+  
   // 🚀 SMART OPPORTUNITY SELECTION (tier-based, not replied to, not expired)
   console.log('[REPLY_JOB] 🔍 Selecting best reply opportunities (tier-based prioritization)...');
-  const supabaseClient = getSupabaseClient();
   
   // Query ALL active opportunities (not replied to, not expired)
   const { data: allOpportunities, error: oppError } = await supabaseClient
@@ -434,24 +471,32 @@ async function generateRealReplies(): Promise<void> {
   
   console.log(`[REPLY_JOB] ✅ Found ${opportunities.length} reply opportunities from database pool`);
   
-  // 🚀 AGGRESSIVE BATCH SIZE: Generate more replies when opportunities are available
-  // If we have many opportunities, generate more replies to catch up
-  const baseBatchSize = REPLY_CONFIG.BATCH_SIZE;
+  // ============================================================
+  // SMART BATCH GENERATION: ALWAYS 2 REPLIES PER CYCLE
+  // ============================================================
+  // Job runs every 30 min (2 runs/hour)
+  // Generate 2 per run = 4 replies/hour guaranteed
+  const TARGET_REPLIES_PER_CYCLE = 2;
   const availableOpportunities = opportunities.length;
   
-  // Scale up batch size based on available opportunities
-  let replyCount = baseBatchSize;
-  if (availableOpportunities >= 20) {
-    replyCount = Math.min(4, availableOpportunities); // Up to 4 replies per cycle
-    console.log(`[REPLY_JOB] 🚀 High opportunity count (${availableOpportunities}) - increasing batch size to ${replyCount}`);
-  } else if (availableOpportunities >= 10) {
-    replyCount = Math.min(3, availableOpportunities); // Up to 3 replies per cycle
-    console.log(`[REPLY_JOB] 📈 Good opportunity count (${availableOpportunities}) - increasing batch size to ${replyCount}`);
-  } else {
-    replyCount = Math.min(baseBatchSize, availableOpportunities);
-  }
+  // How many can we actually generate?
+  const replyCount = Math.min(TARGET_REPLIES_PER_CYCLE, availableOpportunities);
   
-  console.log(`[REPLY_JOB] 🎯 Generating ${replyCount} replies (base batch: ${baseBatchSize}, available: ${availableOpportunities})`);
+  console.log(`[REPLY_JOB] 🎯 Batch Generation:`);
+  console.log(`  • Target: ${TARGET_REPLIES_PER_CYCLE} replies per cycle`);
+  console.log(`  • Available opportunities: ${availableOpportunities}`);
+  console.log(`  • Will generate: ${replyCount} replies`);
+  
+  if (replyCount < TARGET_REPLIES_PER_CYCLE) {
+    console.warn(`[REPLY_JOB] ⚠️ DEFICIT: Only ${replyCount}/${TARGET_REPLIES_PER_CYCLE} replies possible`);
+    console.warn(`[REPLY_JOB] 💡 SLA MISS: Need ${TARGET_REPLIES_PER_CYCLE - replyCount} more opportunities`);
+    ReplyDiagnosticLogger.logSlaMiss({
+      expected: TARGET_REPLIES_PER_CYCLE,
+      actual: replyCount,
+      deficit: TARGET_REPLIES_PER_CYCLE - replyCount,
+      reason: 'insufficient_opportunities'
+    });
+  }
   
   if (replyCount === 0) {
     console.log('[REPLY_JOB] ⚠️ No opportunities available to generate replies for');
@@ -500,6 +545,16 @@ async function generateRealReplies(): Promise<void> {
       const tweetUrlStr = String(target.tweet_url || '');
       const tweetIdFromUrl = tweetUrlStr.split('/').pop() || 'unknown';
       
+      // ============================================================
+      // SMART SCHEDULING: 5 min and 20 min spacing
+      // ============================================================
+      // Reply 0: NOW + 5 min
+      // Reply 1: NOW + 20 min
+      // Next cycle (30 min later) will schedule at +35 min and +50 min
+      // Result: 4 replies/hour at 0:05, 0:20, 0:35, 0:50
+      const smartDelays = [5, 20]; // Minutes from NOW
+      const staggerDelay = smartDelays[i] || (5 + i * 15); // Fallback for >2 replies
+      
       const reply = {
         decision_id,
         content: strategicReply.content,
@@ -508,23 +563,29 @@ async function generateRealReplies(): Promise<void> {
         target_tweet_content: target.tweet_content,
         generator_used: replyGenerator,
         estimated_reach: target.estimated_reach,
-        scheduled_at: new Date(Date.now() + 5 * 60 * 1000).toISOString() // 5 min from now
+        scheduled_at: new Date(Date.now() + staggerDelay * 60 * 1000).toISOString()
       };
       
-      // Calculate stagger delay (5 min base + 10 min per reply)
-      // Reply 0: 5min, Reply 1: 15min, Reply 2: 25min, etc.
-      const staggerDelay = REPLY_CONFIG.STAGGER_BASE_MIN + (i * REPLY_CONFIG.STAGGER_INCREMENT_MIN);
-      
-      // Queue for posting with stagger
+      // Queue for posting with smart spacing
       await queueReply(reply, staggerDelay);
       
+      const scheduledTime = new Date(Date.now() + staggerDelay * 60 * 1000);
       console.log(`[REPLY_JOB] ✅ Reply queued (#${i+1}/${replyCount}):`);
       console.log(`  • Target: @${target.account.username}`);
       console.log(`  • Followers: ${target.account.followers.toLocaleString()}`);
       console.log(`  • Estimated reach: ${target.estimated_reach.toLocaleString()}`);
       console.log(`  • Generator: ${replyGenerator}`);
-      console.log(`  • Scheduled in: ${staggerDelay} minutes`);
+      console.log(`  • Scheduled: ${scheduledTime.toLocaleTimeString()} (in ${staggerDelay} min)`);
       console.log(`  • Content preview: "${strategicReply.content.substring(0, 60)}..."`);
+      
+      // Log to SLA tracker
+      ReplyDiagnosticLogger.logReplyScheduled({
+        decision_id,
+        scheduled_at: scheduledTime,
+        delay_minutes: staggerDelay,
+        target: target.account.username,
+        generator: replyGenerator
+      });
       
       // Mark opportunity as replied in database
       await supabaseClient
@@ -550,7 +611,9 @@ async function generateRealReplies(): Promise<void> {
     }
   }
   
-  // Final summary
+  // ============================================================
+  // FINAL SUMMARY & SLA TRACKING
+  // ============================================================
   const supabase = getSupabaseClient();
   const { count } = await supabase
     .from('content_metadata')
@@ -558,9 +621,13 @@ async function generateRealReplies(): Promise<void> {
     .eq('decision_type', 'reply')
     .is('posted_at', null);
   
-  console.log(`[REPLY_JOB] 📋 Reply Queue Status:`);
-  console.log(`  • Queued for posting: ${count || 0} replies`);
-  console.log(`  • Next posting cycle: ~15 minutes`);
+  console.log(`\n[REPLY_JOB] 📊 CYCLE COMPLETE - SLA SUMMARY:`);
+  console.log(`  • Expected: ${TARGET_REPLIES_PER_CYCLE} replies per cycle`);
+  console.log(`  • Generated: ${replyCount} replies`);
+  console.log(`  • SLA Status: ${replyCount >= TARGET_REPLIES_PER_CYCLE ? '✅ MET' : '⚠️ MISSED'}`);
+  console.log(`  • Queue depth: ${count || 0} replies waiting`);
+  console.log(`  • Next cycle: 30 minutes (will generate ${TARGET_REPLIES_PER_CYCLE} more)`);
+  console.log(`  • Target rate: 4 replies/hour (2 per 30-min cycle)\n`);
 }
 
 /**
