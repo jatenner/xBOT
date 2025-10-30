@@ -1040,7 +1040,7 @@ function generateErrorHTML(error: string): string {
 async function getRecentPostsChronological(supabase: any) {
   const { data, error } = await supabase
     .from('content_metadata')
-    .select('content, actual_likes, actual_retweets, actual_impressions, actual_engagement_rate, generator_name, raw_topic, topic_cluster, angle, tone, format_strategy, posted_at, created_at, status, tweet_id')
+    .select('content, actual_likes, actual_retweets, actual_impressions, actual_engagement_rate, generator_name, raw_topic, topic_cluster, angle, tone, format_strategy, visual_format, posted_at, created_at, status, tweet_id')
     .eq('decision_type', 'single')
     .eq('status', 'posted')
     .not('tweet_id', 'is', null) // ✅ CRITICAL: Only show posts with REAL tweet IDs
@@ -1259,7 +1259,7 @@ function generateRecentHTML(data: any): string {
     <div class="container">
         <div class="header">
             <h1>📅 Recent Posts</h1>
-            <p>Your Twitter posts with topic, tone, angle, structure & generator</p>
+            <p>Your Twitter posts with topic, tone, angle, structure, visual format & generator</p>
         </div>
 
         <div class="nav-tabs">
@@ -1279,6 +1279,7 @@ function generateRecentHTML(data: any): string {
         <div style="background: transparent; padding: 0;">
             ${data.recentPosts.map((post: any) => {
                 const structure = post.format_strategy || 'N/A';
+                const visualFormat = post.visual_format || 'N/A';
                 const topic = post.raw_topic || post.topic_cluster || 'N/A';
                 const posted = post.posted_at ? new Date(post.posted_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'N/A';
                 
@@ -1302,6 +1303,10 @@ function generateRecentHTML(data: any): string {
                         <div class="meta-item">
                             <div class="meta-label">🎭 Tone</div>
                             <div class="meta-value">${post.tone || 'N/A'}</div>
+                        </div>
+                        <div class="meta-item">
+                            <div class="meta-label">📱 Visual Format</div>
+                            <div class="meta-value">${visualFormat}</div>
                         </div>
                         <div class="meta-item">
                             <div class="meta-label">🤖 Generator</div>
