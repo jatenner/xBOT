@@ -522,8 +522,26 @@ async function generateRealReplies(): Promise<void> {
       const replyGenerator = selectReplyGenerator(target.account.category, target.account.username);
       console.log(`[REPLY_JOB] 🎭 Using ${replyGenerator} for reply to @${target.account.username} (${target.account.category})`);
       
-      // Generate strategic reply
-      const strategicReply = await strategicReplySystem.generateStrategicReply(target);
+      // 🔥 NEW: Generate reply using ACTUAL selected generator (with fallback)
+      let strategicReply;
+      
+      try {
+        // Try to use the selected generator
+        const { generateReplyWithGenerator } = await import('../generators/replyGeneratorAdapter');
+        strategicReply = await generateReplyWithGenerator(replyGenerator, {
+          tweet_content: target.tweet_content,
+          username: target.account.username,
+          category: target.account.category,
+          reply_angle: target.reply_angle
+        });
+        console.log(`[REPLY_JOB] ✅ ${replyGenerator} generator succeeded`);
+        
+      } catch (generatorError: any) {
+        // Fallback to strategicReplySystem if generator fails
+        console.warn(`[REPLY_JOB] ⚠️ ${replyGenerator} generator failed, using fallback:`, generatorError.message);
+        strategicReply = await strategicReplySystem.generateStrategicReply(target);
+        console.log(`[REPLY_JOB] ✅ Fallback strategicReplySystem succeeded`);
+      }
       
       // Validate quality
       if (!strategicReply.provides_value || !strategicReply.not_spam) {
