@@ -5,7 +5,7 @@
 
 import { flags } from '../config/featureFlags';
 import { getConfig, getModeFlags } from '../config/config';
-import { planContent } from './planJob'; // 🎯 DIVERSITY SYSTEM ACTIVE
+import { planContent } from './planJobUnified'; // 🎭 HUMAN CONTENT SYSTEM ACTIVE
 import { generateReplies } from './replyJob';
 import { processPostingQueue } from './postingQueue';
 import { simulateOutcomes } from './shadowOutcomesJob';
