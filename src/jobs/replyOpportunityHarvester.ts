@@ -68,10 +68,10 @@ export async function replyOpportunityHarvester(): Promise<void> {
   let accountsProcessed = 0;
   
   const TIME_BUDGET = 30 * 60 * 1000; // 30 minutes max (increased to compensate for reduced parallelism)
-  const BATCH_SIZE = 3; // Process 3 accounts simultaneously (reduced for stability - was 10)
+  const BATCH_SIZE = 2; // Process 2 accounts simultaneously (reduced from 3 for maximum stability)
   const startTime = Date.now();
   
-  console.log(`[HARVESTER] 🌐 Starting optimized parallel harvesting (time budget: 30min, batch size: 3)...`);
+  console.log(`[HARVESTER] 🌐 Starting optimized parallel harvesting (time budget: 30min, batch size: 2)...`);
   
   // Process accounts in parallel batches until time runs out
   for (let i = 0; i < accounts.length; i += BATCH_SIZE) {

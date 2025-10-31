@@ -87,12 +87,37 @@ export class UnifiedBrowserPool {
   /**
    * Acquire a page directly from the pool
    * Useful for operations that need explicit control over page lifecycle
+   * Includes timeout to prevent infinite hangs when browser pool is corrupted
    */
   public async acquirePage(operationName: string): Promise<Page> {
-    return this.withContext(operationName, async (context) => {
+    const PAGE_ACQUIRE_TIMEOUT = 30000; // 30 seconds max to acquire page
+    
+    const acquirePromise = this.withContext(operationName, async (context) => {
       const page = await context.newPage();
       return page;
     });
+    
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        console.error(`[BROWSER_POOL] ⏱️ TIMEOUT: acquirePage('${operationName}') exceeded ${PAGE_ACQUIRE_TIMEOUT/1000}s`);
+        console.error(`[BROWSER_POOL] 🚨 Browser pool may be corrupted, triggering recovery...`);
+        reject(new Error(`Browser pool timeout after ${PAGE_ACQUIRE_TIMEOUT/1000}s - pool may be corrupted`));
+      }, PAGE_ACQUIRE_TIMEOUT);
+    });
+    
+    try {
+      return await Promise.race([
+        acquirePromise,
+        timeoutPromise
+      ]) as Page;
+    } catch (error: any) {
+      // If timeout, browser pool is likely corrupted - log for monitoring
+      if (error.message.includes('timeout')) {
+        console.error(`[BROWSER_POOL] ❌ CRITICAL: Browser pool timeout - system may need restart`);
+        this.metrics.failedOperations++;
+      }
+      throw error;
+    }
   }
 
   /**
@@ -670,6 +695,33 @@ export class UnifiedBrowserPool {
 
   private sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+  
+  /**
+   * 🔥 EMERGENCY: Reset corrupted browser pool
+   * Use when browser operations are hanging (EAGAIN errors, timeouts)
+   */
+  public async resetPool(): Promise<void> {
+    console.warn('[BROWSER_POOL] 🚨 EMERGENCY RESET: Resetting corrupted browser pool...');
+    
+    try {
+      // Force close everything
+      await this.shutdown();
+      
+      // Reset state
+      this.sessionLoaded = false;
+      this.metrics.failedOperations = 0;
+      this.circuitBreaker.failures = 0;
+      this.circuitBreaker.isOpen = false;
+      
+      // Restart cleanup timer
+      this.startCleanupTimer();
+      
+      console.log('[BROWSER_POOL] ✅ Browser pool reset complete - ready for new operations');
+    } catch (error: any) {
+      console.error('[BROWSER_POOL] ❌ Reset failed:', error.message);
+      throw error;
+    }
   }
 }
 

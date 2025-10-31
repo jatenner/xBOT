@@ -111,6 +111,7 @@ export class BrowserSemaphore {
 
 /**
  * Helper to wrap browser operations with semaphore
+ * Includes timeout to prevent deadlocks from hung browser operations
  */
 export async function withBrowserLock<T>(
   jobName: string,
@@ -122,8 +123,23 @@ export async function withBrowserLock<T>(
   await semaphore.acquire(jobName, priority);
   
   try {
-    return await operation();
+    // 🔥 CRITICAL: Add timeout to prevent infinite hangs
+    // If browser pool is corrupted (EAGAIN errors), operation may hang forever
+    const BROWSER_OP_TIMEOUT = 120000; // 2 minutes max (threads need more time)
+    
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        console.error(`[BROWSER_SEM] ⏱️ TIMEOUT: ${jobName} exceeded ${BROWSER_OP_TIMEOUT/1000}s - force releasing lock`);
+        reject(new Error(`Browser operation timeout after ${BROWSER_OP_TIMEOUT/1000}s`));
+      }, BROWSER_OP_TIMEOUT);
+    });
+    
+    return await Promise.race([
+      operation(),
+      timeoutPromise
+    ]);
   } finally {
+    // ALWAYS release, even on timeout
     semaphore.release(jobName);
   }
 }
