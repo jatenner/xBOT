@@ -272,8 +272,8 @@ export class JobManager {
       240 * MINUTE  // Offset 4 hours
     );
 
-    // Account Discovery - every 60 min, offset 15 min (OPTIMIZED: reduced from 30min)
-    // Pool of 874 accounts is healthy, don't need aggressive discovery
+    // Account Discovery - every 90 min, offset 25 min (OPTIMIZED: reduced from 60min)
+    // Pool of 874 accounts is healthy, reduce frequency to lower browser congestion
     this.scheduleStaggeredJob(
       'account_discovery',
       async () => {
@@ -284,8 +284,8 @@ export class JobManager {
           this.stats.lastAccountDiscoveryTime = new Date();
         });
       },
-      60 * MINUTE, // Every 60 minutes (was 30min - pool is healthy)
-      15 * MINUTE  // Start after 15 minutes
+      90 * MINUTE, // Every 90 minutes (reduced from 60min - pool is healthy, reduces browser load)
+      25 * MINUTE  // Start after 25 minutes (better stagger from tweet_harvester)
     );
 
     // 🔧 PHANTOM POST RECOVERY - DISABLED (OPTIMIZATION)
@@ -328,8 +328,9 @@ export class JobManager {
         1 * MINUTE // Start after 1 minute (immediate but allow harvester to populate)
       );
       
-      // 📊 REPLY CONVERSION TRACKING JOB - every 60 min, offset 60 min
+      // 📊 REPLY CONVERSION TRACKING JOB - every 90 min, offset 95 min (OPTIMIZED)
       // 🎯 Tracks which replies drive followers and updates account priorities
+      // Not time-sensitive, reduced frequency to lower browser congestion
       this.scheduleStaggeredJob(
         'reply_conversion_tracking',
         async () => {
@@ -340,8 +341,8 @@ export class JobManager {
             await tracker.updateAccountPriorities();
           });
         },
-        60 * MINUTE, // Every 60 minutes
-        60 * MINUTE // Start after 60 minutes (give time for replies to get engagement)
+        90 * MINUTE, // Every 90 minutes (reduced from 60min - not time-sensitive)
+        95 * MINUTE // Start after 95 minutes (better stagger, give time for replies to get engagement)
       );
     } else {
       console.log('⚠️  JOB_MANAGER: Reply jobs DISABLED (ENABLE_REPLIES not set or flags.replyEnabled false)');
