@@ -41,11 +41,11 @@ export class UnifiedBrowserPool {
   private sessionLoaded = false;
   
   // Configuration
-  private readonly MAX_CONTEXTS = 4; // Increased from 3 → 4 for better throughput (still conservative)
+  private readonly MAX_CONTEXTS = 8; // Optimized for FULL system: handles 9 concurrent jobs at peak + buffer
   private readonly MAX_OPERATIONS_PER_CONTEXT = 50; // Refresh context after 50 operations
   private readonly CONTEXT_IDLE_TIMEOUT = 5 * 60 * 1000; // Close idle contexts after 5 min
   private readonly CLEANUP_INTERVAL = 60 * 1000; // Check every minute
-  private readonly QUEUE_WAIT_TIMEOUT = 45000; // 45 second max wait in queue before rejection
+  private readonly QUEUE_WAIT_TIMEOUT = 60000; // 60 second max wait in queue before fail-fast rejection
   
   private cleanupTimer: NodeJS.Timeout | null = null;
   private metrics = {
