@@ -190,19 +190,34 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
     
     console.log(`[POSTING_QUEUE] 📊 Content posts: ${contentPosts?.length || 0}, Replies: ${replyPosts?.length || 0}`);
     
-    // 🧵 THREAD PRIORITY: Sort threads to front of queue (permanent fix for 0% thread success rate)
+    // 🧵 PRIORITY SYSTEM: Threads first, then replies, then singles
+    // Ensures rare/complex content (threads) post reliably
+    // Ensures engagement content (replies) post promptly
     data.sort((a, b) => {
-      // Threads always first (they're rare: 7% vs 93% singles)
-      if (a.decision_type === 'thread' && b.decision_type !== 'thread') return -1;
-      if (a.decision_type !== 'thread' && b.decision_type === 'thread') return 1;
+      // Priority levels: thread (1) > reply (2) > single (3)
+      const getPriority = (type: string) => {
+        if (type === 'thread') return 1;
+        if (type === 'reply') return 2;
+        return 3;
+      };
+      
+      const aPriority = getPriority(String(a.decision_type));
+      const bPriority = getPriority(String(b.decision_type));
+      
+      if (aPriority !== bPriority) {
+        return aPriority - bPriority; // Lower number = higher priority
+      }
       
       // Within same type, maintain scheduled order (FIFO)
       return new Date(String(a.scheduled_at)).getTime() - new Date(String(b.scheduled_at)).getTime();
     });
     
     const prioritizedThreads = data.filter(d => d.decision_type === 'thread').length;
-    if (prioritizedThreads > 0) {
-      console.log(`[POSTING_QUEUE] 🧵 Prioritized ${prioritizedThreads} threads to front of queue`);
+    const prioritizedReplies = data.filter(d => d.decision_type === 'reply').length;
+    const singles = data.filter(d => d.decision_type === 'single').length;
+    
+    if (prioritizedThreads > 0 || prioritizedReplies > 0) {
+      console.log(`[POSTING_QUEUE] 🎯 Queue order: ${prioritizedThreads} threads → ${prioritizedReplies} replies → ${singles} singles`);
     }
     
     // ✅ AUTO-CLEANUP: Cancel stale items to prevent queue blocking
