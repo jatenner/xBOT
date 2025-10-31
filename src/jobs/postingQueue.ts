@@ -190,21 +190,66 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
     
     console.log(`[POSTING_QUEUE] 📊 Content posts: ${contentPosts?.length || 0}, Replies: ${replyPosts?.length || 0}`);
     
-    // ✅ AUTO-CLEANUP: Cancel stale items (>2 hours old) to prevent queue blocking
+    // 🧵 THREAD PRIORITY: Sort threads to front of queue (permanent fix for 0% thread success rate)
+    data.sort((a, b) => {
+      // Threads always first (they're rare: 7% vs 93% singles)
+      if (a.decision_type === 'thread' && b.decision_type !== 'thread') return -1;
+      if (a.decision_type !== 'thread' && b.decision_type === 'thread') return 1;
+      
+      // Within same type, maintain scheduled order (FIFO)
+      return new Date(String(a.scheduled_at)).getTime() - new Date(String(b.scheduled_at)).getTime();
+    });
+    
+    const prioritizedThreads = data.filter(d => d.decision_type === 'thread').length;
+    if (prioritizedThreads > 0) {
+      console.log(`[POSTING_QUEUE] 🧵 Prioritized ${prioritizedThreads} threads to front of queue`);
+    }
+    
+    // ✅ AUTO-CLEANUP: Cancel stale items to prevent queue blocking
+    // Threads get 6 hours (complex, rare), Singles get 2 hours (simple, common)
     const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
-    const { data: staleItems } = await supabase
+    const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000);
+    
+    // Clean up stale singles (>2 hours old)
+    const { data: staleSingles } = await supabase
       .from('content_metadata')
-      .select('decision_id, decision_type')
+      .select('decision_id')
       .eq('status', 'queued')
+      .eq('decision_type', 'single')
       .lt('scheduled_at', twoHoursAgo.toISOString());
     
-    if (staleItems && staleItems.length > 0) {
-      console.log(`[POSTING_QUEUE] 🧹 Auto-cleaning ${staleItems.length} stale items (>2h old)`);
-      await supabase
-        .from('content_metadata')
-        .update({ status: 'cancelled' })
-        .eq('status', 'queued')
-        .lt('scheduled_at', twoHoursAgo.toISOString());
+    // Clean up stale threads (>6 hours old - threads get more time due to complexity)
+    const { data: staleThreads } = await supabase
+      .from('content_metadata')
+      .select('decision_id')
+      .eq('status', 'queued')
+      .eq('decision_type', 'thread')
+      .lt('scheduled_at', sixHoursAgo.toISOString());
+    
+    const totalStale = (staleSingles?.length || 0) + (staleThreads?.length || 0);
+    
+    if (totalStale > 0) {
+      console.log(`[POSTING_QUEUE] 🧹 Auto-cleaning ${totalStale} stale items (${staleSingles?.length || 0} singles >2h, ${staleThreads?.length || 0} threads >6h)`);
+      
+      // Cancel stale singles
+      if (staleSingles && staleSingles.length > 0) {
+        await supabase
+          .from('content_metadata')
+          .update({ status: 'cancelled' })
+          .eq('status', 'queued')
+          .eq('decision_type', 'single')
+          .lt('scheduled_at', twoHoursAgo.toISOString());
+      }
+      
+      // Cancel stale threads
+      if (staleThreads && staleThreads.length > 0) {
+        await supabase
+          .from('content_metadata')
+          .update({ status: 'cancelled' })
+          .eq('status', 'queued')
+          .eq('decision_type', 'thread')
+          .lt('scheduled_at', sixHoursAgo.toISOString());
+      }
     }
     
     if (error) {
@@ -252,17 +297,24 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
     
     console.log(`[POSTING_QUEUE] 📋 Filtered: ${rows.length} → ${filteredRows.length} (removed ${rows.length - filteredRows.length} duplicates)`);
     
-    // SEPARATE RATE LIMITS: Content (2/hr) vs Replies (4/hr)
+    // SEPARATE RATE LIMITS: Threads (1/hr) vs Singles (2/hr) vs Replies (4/hr)
     const config = getConfig();
-    const maxContentPerHour = parseInt(String(config.MAX_POSTS_PER_HOUR || 2));
-    const maxRepliesPerHour = parseInt(String(config.REPLIES_PER_HOUR || 4)); // Replies have separate limit (4/hr)
+    const maxThreadsPerHour = parseInt(String(config.MAX_THREADS_PER_HOUR || 1));
+    const maxSinglesPerHour = parseInt(String(config.MAX_SINGLES_PER_HOUR || 2));
+    const maxRepliesPerHour = parseInt(String(config.REPLIES_PER_HOUR || 4));
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     
-    // Count content posts and replies separately
-    const { count: contentCount } = await supabase
+    // Count threads, singles, and replies separately (each has independent budget)
+    const { count: threadCount } = await supabase
       .from('posted_decisions')
       .select('*', { count: 'exact', head: true })
-      .in('decision_type', ['single', 'thread'])  // Count content posts (single + thread)
+      .eq('decision_type', 'thread')
+      .gte('posted_at', oneHourAgo);
+    
+    const { count: singleCount } = await supabase
+      .from('posted_decisions')
+      .select('*', { count: 'exact', head: true })
+      .eq('decision_type', 'single')
       .gte('posted_at', oneHourAgo);
     
     const { count: replyCount } = await supabase
@@ -271,25 +323,29 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
       .eq('decision_type', 'reply')
       .gte('posted_at', oneHourAgo);
     
-    const contentPosted = contentCount || 0;
+    const threadsPosted = threadCount || 0;
+    const singlesPosted = singleCount || 0;
     const repliesPosted = replyCount || 0;
-    const contentAllowed = Math.max(0, maxContentPerHour - contentPosted);
+    
+    const threadsAllowed = Math.max(0, maxThreadsPerHour - threadsPosted);
+    const singlesAllowed = Math.max(0, maxSinglesPerHour - singlesPosted);
     const repliesAllowed = Math.max(0, maxRepliesPerHour - repliesPosted);
     
-    console.log(`[POSTING_QUEUE] 🚦 Rate limits: Content ${contentPosted}/${maxContentPerHour}, Replies ${repliesPosted}/${maxRepliesPerHour}`);
+    console.log(`[POSTING_QUEUE] 🚦 Rate limits: Threads ${threadsPosted}/${maxThreadsPerHour}, Singles ${singlesPosted}/${maxSinglesPerHour}, Replies ${repliesPosted}/${maxRepliesPerHour}`);
     
-    // Apply rate limits per type
+    // Apply rate limits per type (each type has independent budget)
     const decisionsWithLimits = filteredRows.filter(row => {
       const type = String(row.decision_type ?? 'single');
-      if (type === 'reply') {
+      if (type === 'thread') {
+        return threadsPosted < maxThreadsPerHour;
+      } else if (type === 'reply') {
         return repliesPosted < maxRepliesPerHour;
       } else {
-        // 'single' and 'thread' are both content posts
-        return contentPosted < maxContentPerHour;
+        return singlesPosted < maxSinglesPerHour;
       }
     });
     
-    console.log(`[POSTING_QUEUE] ✅ After rate limits: ${decisionsWithLimits.length} decisions can post (${contentAllowed} content, ${repliesAllowed} replies available)`);
+    console.log(`[POSTING_QUEUE] ✅ After rate limits: ${decisionsWithLimits.length} decisions can post (${threadsAllowed} threads, ${singlesAllowed} singles, ${repliesAllowed} replies available)`);
     
     const decisions: QueuedDecision[] = decisionsWithLimits.map(row => ({
       id: String(row.decision_id ?? ''),  // 🔥 FIX: Map to decision_id (UUID), not id (integer)!
@@ -318,7 +374,31 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
 }
 
 async function processDecision(decision: QueuedDecision): Promise<void> {
-  console.log(`[POSTING_QUEUE] 📮 Processing ${decision.decision_type}: ${decision.id}`);
+  const isThread = decision.decision_type === 'thread';
+  const logPrefix = isThread ? '[POSTING_QUEUE] 🧵' : '[POSTING_QUEUE] 📝';
+  
+  console.log(`${logPrefix} Processing ${decision.decision_type}: ${decision.id}`);
+  
+  // 🧵 THREAD DIAGNOSTICS: Enhanced logging for threads
+  if (isThread) {
+    const { getSupabaseClient } = await import('../db/index');
+    const supabase = getSupabaseClient();
+    
+    const { data: threadData } = await supabase
+      .from('content_metadata')
+      .select('thread_parts, created_at, scheduled_at')
+      .eq('decision_id', decision.id)
+      .single();
+    
+    if (threadData) {
+      const parts = threadData.thread_parts as string[] || [];
+      const age = (Date.now() - new Date(String(threadData.created_at)).getTime()) / (1000 * 60);
+      console.log(`${logPrefix} Thread details: ${parts.length} tweets, created ${age.toFixed(0)}min ago`);
+      parts.forEach((tweet: string, i: number) => {
+        console.log(`${logPrefix}   Tweet ${i + 1}/${parts.length}: "${tweet.substring(0, 60)}..." (${tweet.length} chars)`);
+      });
+    }
+  }
   
   // SMART BATCH FIX: Hard stop - double-check rate limit before EVERY post
   if (decision.decision_type === 'single' || decision.decision_type === 'thread') {
@@ -546,7 +626,53 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
       // Don't fail the post, just log and continue
     }
     
-  } catch (error) {
+  } catch (error: any) {
+    // 🧵 THREAD RETRY LOGIC: Threads get 3 retries, singles fail immediately
+    if (decision.decision_type === 'thread') {
+      const { getSupabaseClient } = await import('../db/index');
+      const supabase = getSupabaseClient();
+      
+      // Get current retry count
+      const { data: metadata } = await supabase
+        .from('content_metadata')
+        .select('features')
+        .eq('decision_id', decision.id)
+        .single();
+      
+      const retryCount = (metadata?.features as any)?.retry_count || 0;
+      const maxRetries = 3;
+      
+      if (retryCount < maxRetries) {
+        console.log(`[POSTING_QUEUE] 🔄 Thread failed (attempt ${retryCount + 1}/${maxRetries}), retrying in 5 minutes...`);
+        console.log(`[POSTING_QUEUE] ⚠️ Error was: ${error.message}`);
+        
+        // Reschedule for 5 minutes from now with incremented retry count
+        const retryDelay = 5 * 60 * 1000; // 5 minutes
+        const newScheduledAt = new Date(Date.now() + retryDelay);
+        
+        await supabase
+          .from('content_metadata')
+          .update({
+            scheduled_at: newScheduledAt.toISOString(),
+            features: {
+              ...(typeof metadata?.features === 'object' && metadata?.features !== null ? metadata.features : {}),
+              retry_count: retryCount + 1,
+              last_error: error.message,
+              last_attempt: new Date().toISOString()
+            }
+          })
+          .eq('decision_id', decision.id);
+        
+        console.log(`[POSTING_QUEUE] ✅ Thread rescheduled for ${newScheduledAt.toISOString()}`);
+        await updatePostingMetrics('error');
+        return; // Don't mark as failed yet, will retry
+      } else {
+        console.log(`[POSTING_QUEUE] ❌ Thread failed after ${maxRetries} attempts, giving up`);
+        console.log(`[POSTING_QUEUE] 💀 Final error: ${error.message}`);
+      }
+    }
+    
+    // Mark as failed (singles immediately, threads after 3 retries)
     await updateDecisionStatus(decision.id, 'failed');
     await updatePostingMetrics('error');
     throw error;
