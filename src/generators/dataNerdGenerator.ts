@@ -113,6 +113,13 @@ Return JSON: {
 
     const parsed = parseAIJson(response.choices[0].message.content || '{}');
     
+    // 🐛 DEBUG: Log what AI actually returned
+    console.log('[DATA_NERD_GEN] 🔍 AI Response:', JSON.stringify({
+      hasVisualFormat: !!parsed.visualFormat,
+      visualFormat: parsed.visualFormat,
+      keys: Object.keys(parsed)
+    }));
+    
     return {
       content: validateAndExtractContent(parsed, format, 'DATA_NERD'),
       format,
