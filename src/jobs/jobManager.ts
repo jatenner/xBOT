@@ -215,7 +215,7 @@ export class JobManager {
     // Was running every 30min, now consolidated into 6-hour analytics cycle
     // This eliminates redundant browser operations
 
-    // Metrics scraper - every 6 hours, offset 200 min (OPTIMIZED: reduced from 10min)
+    // Metrics scraper - every 20 minutes (balanced: frequent enough for fresh data, not too aggressive)
     this.scheduleStaggeredJob(
       'metrics_scraper',
       async () => {
@@ -224,8 +224,8 @@ export class JobManager {
           await metricsScraperJob();
         });
       },
-      360 * MINUTE, // Every 6 hours (was 10min - HUGE reduction!)
-      200 * MINUTE  // Offset ~3.3 hours
+      20 * MINUTE, // Every 20 minutes (balanced: was 6hr - too slow, was 10min - too aggressive)
+      5 * MINUTE   // Start after 5 minutes
     );
 
     // Data collection - every 6 hours, offset 220 min (OPTIMIZED: reduced from 60min)
