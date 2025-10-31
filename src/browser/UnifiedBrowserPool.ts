@@ -41,10 +41,11 @@ export class UnifiedBrowserPool {
   private sessionLoaded = false;
   
   // Configuration
-  private readonly MAX_CONTEXTS = 3; // Limit to 3 concurrent contexts
+  private readonly MAX_CONTEXTS = 4; // Increased from 3 → 4 for better throughput (still conservative)
   private readonly MAX_OPERATIONS_PER_CONTEXT = 50; // Refresh context after 50 operations
   private readonly CONTEXT_IDLE_TIMEOUT = 5 * 60 * 1000; // Close idle contexts after 5 min
   private readonly CLEANUP_INTERVAL = 60 * 1000; // Check every minute
+  private readonly QUEUE_WAIT_TIMEOUT = 45000; // 45 second max wait in queue before rejection
   
   private cleanupTimer: NodeJS.Timeout | null = null;
   private metrics = {
@@ -156,10 +157,34 @@ export class UnifiedBrowserPool {
     }
 
     return new Promise<T>((resolve, reject) => {
+      const queuedAt = Date.now();
+      
+      // 🔥 QUEUE TIMEOUT: Reject if waiting too long (prevents infinite waits)
+      const queueTimeoutTimer = setTimeout(() => {
+        const waitTime = Date.now() - queuedAt;
+        console.error(`[BROWSER_POOL] ⏱️ QUEUE TIMEOUT: ${operationName} waited ${Math.round(waitTime/1000)}s`);
+        console.error(`[BROWSER_POOL] 📊 Current: ${this.queue.length} queued, ${this.getActiveCount()} active`);
+        
+        // Remove from queue
+        const index = this.queue.findIndex(op => op.id === operationId);
+        if (index !== -1) {
+          this.queue.splice(index, 1);
+          this.metrics.queuedOperations--;
+        }
+        
+        reject(new Error(`Queue timeout after ${Math.round(waitTime/1000)}s - pool overloaded`));
+      }, this.QUEUE_WAIT_TIMEOUT);
+      
+      // Wrap operation to clear timeout when it starts
+      const wrappedOperation = async (ctx: BrowserContext) => {
+        clearTimeout(queueTimeoutTimer); // Cancel timeout - we're starting!
+        return operation(ctx);
+      };
+      
       this.queue.push({
         id: operationId,
         priority,
-        operation: operation as any,
+        operation: wrappedOperation as any,
         resolve: resolve as any,
         reject
       });
