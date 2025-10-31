@@ -559,9 +559,13 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
   // 📊 FOLLOWER TRACKING: Capture baseline before posting
   const followersBefore = await captureFollowerBaseline(decision.id);
   
-  // Check feature flag for posting method
-  const { getEnvConfig } = await import('../config/env');
-  const config = getEnvConfig();
+  // 🔒 BROWSER SEMAPHORE: Acquire exclusive browser access (highest priority)
+  const { withBrowserLock, BrowserPriority } = await import('../browser/BrowserSemaphore');
+  
+  return await withBrowserLock('posting', BrowserPriority.POSTING, async () => {
+    // Check feature flag for posting method
+    const { getEnvConfig } = await import('../config/env');
+    const config = getEnvConfig();
   
   if (config.FEATURE_X_API_POSTING) {
     console.log('[POSTING_QUEUE] 🔌 Using official X API posting...');
@@ -682,12 +686,17 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
       throw new Error(`Playwright posting failed: ${error.message}`);
     }
   }
+  }); // End withBrowserLock
 }
 
 async function postReply(decision: QueuedDecision): Promise<string> {
   console.log(`[POSTING_QUEUE] 💬 Posting reply to @${decision.target_username}: "${decision.content.substring(0, 50)}..."`);
   
-  if (!decision.target_tweet_id) {
+  // 🔒 BROWSER SEMAPHORE: Acquire exclusive browser access (high priority)
+  const { withBrowserLock, BrowserPriority } = await import('../browser/BrowserSemaphore');
+  
+  return await withBrowserLock('reply_posting', BrowserPriority.REPLIES, async () => {
+    if (!decision.target_tweet_id) {
     throw new Error('Reply decision missing target_tweet_id');
   }
   
@@ -767,6 +776,7 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     console.error(`[POSTING_QUEUE] ❌ Reply system error: ${error.message}`);
     throw new Error(`Reply posting failed: ${error.message}`);
   }
+  }); // End withBrowserLock
 }
 
 /**
