@@ -50,11 +50,9 @@ const ConfigSchema = z.object({
   JOBS_VIRAL_THREAD_INTERVAL_MIN: z.number().default(1440), // Viral thread DAILY (24 hours) - AGGRESSIVE
   
   // Rate Limits - SUSTAINABLE QUALITY GROWTH 🔥
-  MAX_POSTS_PER_HOUR: z.number().default(2), // 2 posts per hour MAX (legacy - now split by type)
-  MAX_THREADS_PER_HOUR: z.number().default(1), // 1 thread per hour (threads are complex, need separate budget)
-  MAX_SINGLES_PER_HOUR: z.number().default(2), // 2 singles per hour (total: 3 posts/hour = 1 thread + 2 singles)
+  MAX_POSTS_PER_HOUR: z.number().default(2), // 2 CONTENT posts per hour (singles + threads combined)
   MAX_DAILY_POSTS: z.number().default(48), // 2 per hour * 24 hours
-  REPLIES_PER_HOUR: z.number().default(6), // 4-6 replies per hour (user requirement)
+  REPLIES_PER_HOUR: z.number().default(4), // 4 replies per hour (separate from content)
   
   // Security
   ADMIN_TOKEN: z.string().default('dev-admin-token')

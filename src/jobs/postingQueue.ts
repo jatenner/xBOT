@@ -312,24 +312,17 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
     
     console.log(`[POSTING_QUEUE] 📋 Filtered: ${rows.length} → ${filteredRows.length} (removed ${rows.length - filteredRows.length} duplicates)`);
     
-    // SEPARATE RATE LIMITS: Threads (1/hr) vs Singles (2/hr) vs Replies (4/hr)
+    // SEPARATE RATE LIMITS: Content (2/hr for singles+threads combined) vs Replies (4/hr separate)
     const config = getConfig();
-    const maxThreadsPerHour = parseInt(String(config.MAX_THREADS_PER_HOUR || 1));
-    const maxSinglesPerHour = parseInt(String(config.MAX_SINGLES_PER_HOUR || 2));
-    const maxRepliesPerHour = parseInt(String(config.REPLIES_PER_HOUR || 4));
+    const maxContentPerHour = parseInt(String(config.MAX_POSTS_PER_HOUR || 2)); // Singles + threads share this
+    const maxRepliesPerHour = parseInt(String(config.REPLIES_PER_HOUR || 4)); // Replies independent
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     
-    // Count threads, singles, and replies separately (each has independent budget)
-    const { count: threadCount } = await supabase
+    // Count content (singles + threads combined) vs replies separately
+    const { count: contentCount } = await supabase
       .from('posted_decisions')
       .select('*', { count: 'exact', head: true })
-      .eq('decision_type', 'thread')
-      .gte('posted_at', oneHourAgo);
-    
-    const { count: singleCount } = await supabase
-      .from('posted_decisions')
-      .select('*', { count: 'exact', head: true })
-      .eq('decision_type', 'single')
+      .in('decision_type', ['single', 'thread']) // Singles and threads share 2/hr budget
       .gte('posted_at', oneHourAgo);
     
     const { count: replyCount } = await supabase
@@ -338,29 +331,26 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
       .eq('decision_type', 'reply')
       .gte('posted_at', oneHourAgo);
     
-    const threadsPosted = threadCount || 0;
-    const singlesPosted = singleCount || 0;
+    const contentPosted = contentCount || 0;
     const repliesPosted = replyCount || 0;
     
-    const threadsAllowed = Math.max(0, maxThreadsPerHour - threadsPosted);
-    const singlesAllowed = Math.max(0, maxSinglesPerHour - singlesPosted);
+    const contentAllowed = Math.max(0, maxContentPerHour - contentPosted);
     const repliesAllowed = Math.max(0, maxRepliesPerHour - repliesPosted);
     
-    console.log(`[POSTING_QUEUE] 🚦 Rate limits: Threads ${threadsPosted}/${maxThreadsPerHour}, Singles ${singlesPosted}/${maxSinglesPerHour}, Replies ${repliesPosted}/${maxRepliesPerHour}`);
+    console.log(`[POSTING_QUEUE] 🚦 Rate limits: Content ${contentPosted}/${maxContentPerHour} (singles+threads), Replies ${repliesPosted}/${maxRepliesPerHour}`);
     
-    // Apply rate limits per type (each type has independent budget)
+    // Apply rate limits per type
     const decisionsWithLimits = filteredRows.filter(row => {
       const type = String(row.decision_type ?? 'single');
-      if (type === 'thread') {
-        return threadsPosted < maxThreadsPerHour;
-      } else if (type === 'reply') {
+      if (type === 'reply') {
         return repliesPosted < maxRepliesPerHour;
       } else {
-        return singlesPosted < maxSinglesPerHour;
+        // 'single' and 'thread' both count as content (share 2/hr budget)
+        return contentPosted < maxContentPerHour;
       }
     });
     
-    console.log(`[POSTING_QUEUE] ✅ After rate limits: ${decisionsWithLimits.length} decisions can post (${threadsAllowed} threads, ${singlesAllowed} singles, ${repliesAllowed} replies available)`);
+    console.log(`[POSTING_QUEUE] ✅ After rate limits: ${decisionsWithLimits.length} decisions can post (${contentAllowed} content, ${repliesAllowed} replies available)`);
     
     const decisions: QueuedDecision[] = decisionsWithLimits.map(row => ({
       id: String(row.decision_id ?? ''),  // 🔥 FIX: Map to decision_id (UUID), not id (integer)!
