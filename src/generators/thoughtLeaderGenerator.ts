@@ -130,7 +130,8 @@ Return JSON: {
     return {
       content: validateAndExtractContent(parsed, format, 'THOUGHT_LEADER'),
       format,
-      confidence: 0.8
+      confidence: 0.8,
+      visualFormat: parsed.visualFormat || 'paragraph'
     };
     
   } catch (error: any) {

@@ -112,7 +112,8 @@ Return JSON: {
     return {
       content: validateAndExtractContent(parsed, format, 'EXPLORER'),
       format,
-      confidence: 0.85
+      confidence: 0.85,
+      visualFormat: parsed.visualFormat || 'paragraph'
     };
     
   } catch (error: any) {
