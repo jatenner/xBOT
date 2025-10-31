@@ -89,154 +89,159 @@ export async function metricsScraperJob(): Promise<void> {
         
         console.log(`[METRICS_JOB] 🔍 Scraping ${post.tweet_id}...`);
         
-        // Use UnifiedBrowserPool (same as working discovery system)
-        const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
-        const pool = UnifiedBrowserPool.getInstance();
-        const page = await pool.acquirePage(`metrics_${post.tweet_id}`);
+        // 🔒 BROWSER SEMAPHORE: Acquire browser lock for metrics scraping (priority 5 - low priority)
+        const { withBrowserLock, BrowserPriority } = await import('../browser/BrowserSemaphore');
         
-        try {
-          // PHASE 4: Use orchestrator (includes validation, quality tracking, caching)
-          const postedAt = new Date(String(post.created_at));
-          const hoursSincePost = (Date.now() - postedAt.getTime()) / (1000 * 60 * 60);
+        await withBrowserLock(`metrics_${post.tweet_id}`, BrowserPriority.METRICS, async () => {
+          // Use UnifiedBrowserPool (same as working discovery system)
+          const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
+          const pool = UnifiedBrowserPool.getInstance();
+          const page = await pool.acquirePage(`metrics_${post.tweet_id}`);
           
-          const result = await orchestrator.scrapeAndStore(page, String(post.tweet_id), {
-            collectionPhase: 'scheduled_job',
-            postedAt: postedAt
-          });
-          
-          if (!result.success) {
-            console.warn(`[METRICS_JOB] ⚠️ Scraping failed for ${post.tweet_id}: ${result.error}`);
-            failed++;
-            continue;
-          }
-          
-          const metrics = result.metrics || {} as any;
-          const isFirstHour = hoursSincePost <= 1;
-          
-          const totalEngagement = (metrics.likes ?? 0) + (metrics.retweets ?? 0) + 
-                                  (metrics.quote_tweets ?? 0) + (metrics.replies ?? 0) + 
-                                  (metrics.bookmarks ?? 0);
-          
-          // 🐛 DEBUG: Log what the scraper actually extracted
-          console.log(`[METRICS_JOB] 🔍 Extracted metrics for ${post.tweet_id}:`, JSON.stringify({
-            views: metrics.views,
-            impressions: metrics.views,
-            profile_clicks: metrics.profile_clicks,
-            likes: metrics.likes,
-            retweets: metrics.retweets,
-            replies: metrics.replies,
-            _verified: metrics._verified,
-            _status: metrics._status,
-            _dataSource: metrics._dataSource
-          }, null, 2));
-          
-          // Log validation quality
-          if (result.validationResult) {
-            console.log(`[METRICS_JOB] 📊 Quality: confidence=${result.validationResult.confidence.toFixed(2)}, valid=${result.validationResult.isValid}`);
-          }
-          
-          // Update outcomes table (for backward compatibility with existing systems)
-          const { data: outcomeData, error: outcomeError } = await supabase.from('outcomes').upsert({
-            decision_id: post.decision_id,  // 🔥 FIX: Use decision_id (UUID), not integer id
-            tweet_id: post.tweet_id,
-            likes: metrics.likes ?? null,
-            retweets: metrics.retweets ?? null,
-            quote_tweets: metrics.quote_tweets ?? null,
-            replies: metrics.replies ?? null,
-            views: metrics.views ?? null,
-            bookmarks: metrics.bookmarks ?? null,
-            impressions: metrics.views ?? null, // Map views to impressions
-            profile_clicks: metrics.profile_clicks ?? null, // 📊 Save Profile visits from analytics page
-            first_hour_engagement: isFirstHour ? totalEngagement : null,
-            collected_at: new Date().toISOString(),
-            data_source: 'orchestrator_v2',
-            simulated: false
-          }, { onConflict: 'decision_id' });
-          
-          if (outcomeError) {
-            console.error(`[METRICS_JOB] ❌ Failed to write outcomes for ${post.tweet_id}:`, outcomeError.message);
-            console.error(`[METRICS_JOB] 🔍 Error details:`, JSON.stringify(outcomeError, null, 2));
-            failed++;
-            continue;
-          }
-          
-          // CRITICAL: Also update learning_posts table (used by 30+ learning systems!)
-          const { error: learningError } = await supabase.from('learning_posts').upsert({
-            tweet_id: post.tweet_id,
-            likes_count: metrics.likes ?? 0,
-            retweets_count: metrics.retweets ?? 0,
-            replies_count: metrics.replies ?? 0,
-            bookmarks_count: metrics.bookmarks ?? 0,
-            impressions_count: metrics.views ?? 0,
-            updated_at: new Date().toISOString()
-          }, { onConflict: 'tweet_id' });
-          
-          if (learningError) {
-            console.warn(`[METRICS_JOB] ⚠️ Failed to update learning_posts for ${post.tweet_id}:`, learningError.message);
-            // Don't fail - outcomes table is the primary store
-          }
-          
-          // CRITICAL: Also update tweet_metrics table (used by timing & quantity optimizers!)
-          const { error: metricsError } = await supabase.from('tweet_metrics').upsert({
-            tweet_id: post.tweet_id,
-            likes_count: metrics.likes ?? 0,
-            retweets_count: metrics.retweets ?? 0,
-            replies_count: metrics.replies ?? 0,
-            impressions_count: metrics.views ?? 0,
-            updated_at: new Date().toISOString(),
-            created_at: post.created_at
-          }, { onConflict: 'tweet_id' });
-          
-          if (metricsError) {
-            console.warn(`[METRICS_JOB] ⚠️ Failed to update tweet_metrics for ${post.tweet_id}:`, metricsError.message);
-            // Don't fail - outcomes table is the primary store
-          }
-          
-          // 🔥 CRITICAL FIX: Also update content_generation_metadata_comprehensive 
-          // This table has actual_impressions, actual_likes, actual_retweets, actual_replies
-          // These are used for content diversity analysis and topic cluster learning!
-          const { error: contentMetadataError } = await supabase
-            .from('content_generation_metadata_comprehensive')
-            .update({
-              actual_impressions: metrics.views ?? null,  // Keep NULL if no views (not 0!)
-              actual_likes: metrics.likes ?? 0,
-              actual_retweets: metrics.retweets ?? 0,
-              actual_replies: metrics.replies ?? 0,
-              updated_at: new Date().toISOString()
-            })
-            .eq('tweet_id', post.tweet_id);
-          
-          if (contentMetadataError) {
-            console.warn(`[METRICS_JOB] ⚠️ Failed to update content_metadata for ${post.tweet_id}:`, contentMetadataError.message);
-            // Don't fail - this is supplementary data
-          } else {
-            console.log(`[METRICS_JOB] 📊 Updated content_metadata: ${metrics.views ?? 0} views stored in actual_impressions`);
-          }
-          
-          console.log(`[METRICS_JOB] ✅ Updated ${post.tweet_id}: ${metrics.likes ?? 0} likes, ${metrics.views ?? 0} views`);
-          updated++;
-          
-          // Update generator stats for autonomous learning
           try {
-            const { data: metadata } = await supabase
-              .from('content_metadata')
-              .select('generator_name')
-              .eq('decision_id', post.decision_id)  // 🔥 FIX: Use decision_id (UUID)
-              .single();
+            // PHASE 4: Use orchestrator (includes validation, quality tracking, caching)
+            const postedAt = new Date(String(post.created_at));
+            const hoursSincePost = (Date.now() - postedAt.getTime()) / (1000 * 60 * 60);
             
-            if (metadata && metadata.generator_name && typeof metadata.generator_name === 'string') {
-              const { getGeneratorPerformanceTracker } = await import('../learning/generatorPerformanceTracker');
-              const tracker = getGeneratorPerformanceTracker();
-              await tracker.updateGeneratorStats(metadata.generator_name);
-              console.log(`[METRICS_JOB] 📊 Updated generator stats for ${metadata.generator_name}`);
+            const result = await orchestrator.scrapeAndStore(page, String(post.tweet_id), {
+              collectionPhase: 'scheduled_job',
+              postedAt: postedAt
+            });
+            
+            if (!result.success) {
+              console.warn(`[METRICS_JOB] ⚠️ Scraping failed for ${post.tweet_id}: ${result.error}`);
+              failed++;
+              continue;
             }
-          } catch (statsError: any) {
-            console.warn(`[METRICS_JOB] ⚠️ Failed to update generator stats:`, statsError.message);
+            
+            const metrics = result.metrics || {} as any;
+            const isFirstHour = hoursSincePost <= 1;
+            
+            const totalEngagement = (metrics.likes ?? 0) + (metrics.retweets ?? 0) + 
+                                    (metrics.quote_tweets ?? 0) + (metrics.replies ?? 0) + 
+                                    (metrics.bookmarks ?? 0);
+            
+            // 🐛 DEBUG: Log what the scraper actually extracted
+            console.log(`[METRICS_JOB] 🔍 Extracted metrics for ${post.tweet_id}:`, JSON.stringify({
+              views: metrics.views,
+              impressions: metrics.views,
+              profile_clicks: metrics.profile_clicks,
+              likes: metrics.likes,
+              retweets: metrics.retweets,
+              replies: metrics.replies,
+              _verified: metrics._verified,
+              _status: metrics._status,
+              _dataSource: metrics._dataSource
+            }, null, 2));
+            
+            // Log validation quality
+            if (result.validationResult) {
+              console.log(`[METRICS_JOB] 📊 Quality: confidence=${result.validationResult.confidence.toFixed(2)}, valid=${result.validationResult.isValid}`);
+            }
+            
+            // Update outcomes table (for backward compatibility with existing systems)
+            const { data: outcomeData, error: outcomeError } = await supabase.from('outcomes').upsert({
+              decision_id: post.decision_id,  // 🔥 FIX: Use decision_id (UUID), not integer id
+              tweet_id: post.tweet_id,
+              likes: metrics.likes ?? null,
+              retweets: metrics.retweets ?? null,
+              quote_tweets: metrics.quote_tweets ?? null,
+              replies: metrics.replies ?? null,
+              views: metrics.views ?? null,
+              bookmarks: metrics.bookmarks ?? null,
+              impressions: metrics.views ?? null, // Map views to impressions
+              profile_clicks: metrics.profile_clicks ?? null, // 📊 Save Profile visits from analytics page
+              first_hour_engagement: isFirstHour ? totalEngagement : null,
+              collected_at: new Date().toISOString(),
+              data_source: 'orchestrator_v2',
+              simulated: false
+            }, { onConflict: 'decision_id' });
+            
+            if (outcomeError) {
+              console.error(`[METRICS_JOB] ❌ Failed to write outcomes for ${post.tweet_id}:`, outcomeError.message);
+              console.error(`[METRICS_JOB] 🔍 Error details:`, JSON.stringify(outcomeError, null, 2));
+              failed++;
+              continue;
+            }
+            
+            // CRITICAL: Also update learning_posts table (used by 30+ learning systems!)
+            const { error: learningError } = await supabase.from('learning_posts').upsert({
+              tweet_id: post.tweet_id,
+              likes_count: metrics.likes ?? 0,
+              retweets_count: metrics.retweets ?? 0,
+              replies_count: metrics.replies ?? 0,
+              bookmarks_count: metrics.bookmarks ?? 0,
+              impressions_count: metrics.views ?? 0,
+              updated_at: new Date().toISOString()
+            }, { onConflict: 'tweet_id' });
+            
+            if (learningError) {
+              console.warn(`[METRICS_JOB] ⚠️ Failed to update learning_posts for ${post.tweet_id}:`, learningError.message);
+              // Don't fail - outcomes table is the primary store
+            }
+            
+            // CRITICAL: Also update tweet_metrics table (used by timing & quantity optimizers!)
+            const { error: metricsTableError } = await supabase.from('tweet_metrics').upsert({
+              tweet_id: post.tweet_id,
+              likes_count: metrics.likes ?? 0,
+              retweets_count: metrics.retweets ?? 0,
+              replies_count: metrics.replies ?? 0,
+              impressions_count: metrics.views ?? 0,
+              updated_at: new Date().toISOString(),
+              created_at: post.created_at
+            }, { onConflict: 'tweet_id' });
+            
+            if (metricsTableError) {
+              console.warn(`[METRICS_JOB] ⚠️ Failed to update tweet_metrics for ${post.tweet_id}:`, metricsTableError.message);
+              // Don't fail - outcomes table is the primary store
+            }
+            
+            // 🔥 CRITICAL FIX: Also update content_generation_metadata_comprehensive 
+            // This table has actual_impressions, actual_likes, actual_retweets, actual_replies
+            // These are used for content diversity analysis and topic cluster learning!
+            const { error: contentMetadataError } = await supabase
+              .from('content_generation_metadata_comprehensive')
+              .update({
+                actual_impressions: metrics.views ?? null,  // Keep NULL if no views (not 0!)
+                actual_likes: metrics.likes ?? 0,
+                actual_retweets: metrics.retweets ?? 0,
+                actual_replies: metrics.replies ?? 0,
+                updated_at: new Date().toISOString()
+              })
+              .eq('tweet_id', post.tweet_id);
+            
+            if (contentMetadataError) {
+              console.warn(`[METRICS_JOB] ⚠️ Failed to update content_metadata for ${post.tweet_id}:`, contentMetadataError.message);
+              // Don't fail - this is supplementary data
+            } else {
+              console.log(`[METRICS_JOB] 📊 Updated content_metadata: ${metrics.views ?? 0} views stored in actual_impressions`);
+            }
+            
+            console.log(`[METRICS_JOB] ✅ Updated ${post.tweet_id}: ${metrics.likes ?? 0} likes, ${metrics.views ?? 0} views`);
+            updated++;
+            
+            // Update generator stats for autonomous learning
+            try {
+              const { data: metadata } = await supabase
+                .from('content_metadata')
+                .select('generator_name')
+                .eq('decision_id', post.decision_id)  // 🔥 FIX: Use decision_id (UUID)
+                .single();
+              
+              if (metadata && metadata.generator_name && typeof metadata.generator_name === 'string') {
+                const { getGeneratorPerformanceTracker } = await import('../learning/generatorPerformanceTracker');
+                const tracker = getGeneratorPerformanceTracker();
+                await tracker.updateGeneratorStats(metadata.generator_name);
+                console.log(`[METRICS_JOB] 📊 Updated generator stats for ${metadata.generator_name}`);
+              }
+            } catch (statsError: any) {
+              console.warn(`[METRICS_JOB] ⚠️ Failed to update generator stats:`, statsError.message);
+            }
+            
+          } finally {
+            await pool.releasePage(page);
           }
-          
-        } finally {
-          await pool.releasePage(page);
-        }
+        }); // End withBrowserLock
         
         // Rate limit: wait 5 seconds between scrapes
         await new Promise(resolve => setTimeout(resolve, 5000));

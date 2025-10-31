@@ -7,7 +7,7 @@
  * - Keep 200-300 opportunities in pool at all times
  * - Only harvest tweets <24 hours old
  * - Scrape 10-20 accounts per cycle
- * - Run every 30 minutes
+ * - Run every 20 minutes (optimized frequency)
  */
 
 import { getSupabaseClient } from '../db';
@@ -59,18 +59,19 @@ export async function replyOpportunityHarvester(): Promise<void> {
   
   console.log(`[HARVESTER] 📋 Found ${accounts.length} high-quality accounts in pool`);
   
-  // Step 4: TIME-BOXED PARALLEL HARVESTING (NO hardcoded account limits!)
+  // Step 4: TIME-BOXED PARALLEL HARVESTING (OPTIMIZED FOR STABILITY)
   const { realTwitterDiscovery } = await import('../ai/realTwitterDiscovery');
   const { getReplyQualityScorer } = await import('../intelligence/replyQualityScorer');
+  const { withBrowserLock, BrowserPriority } = await import('../browser/BrowserSemaphore');
   
   let totalHarvested = 0;
   let accountsProcessed = 0;
   
-  const TIME_BUDGET = 25 * 60 * 1000; // 25 minutes max
-  const BATCH_SIZE = 10; // Process 10 accounts simultaneously (increased for speed)
+  const TIME_BUDGET = 30 * 60 * 1000; // 30 minutes max (increased to compensate for reduced parallelism)
+  const BATCH_SIZE = 3; // Process 3 accounts simultaneously (reduced for stability - was 10)
   const startTime = Date.now();
   
-  console.log(`[HARVESTER] 🌐 Starting UNLIMITED parallel harvesting (time budget: 25min, batch size: 10)...`);
+  console.log(`[HARVESTER] 🌐 Starting optimized parallel harvesting (time budget: 30min, batch size: 3)...`);
   
   // Process accounts in parallel batches until time runs out
   for (let i = 0; i < accounts.length; i += BATCH_SIZE) {
@@ -86,16 +87,23 @@ export async function replyOpportunityHarvester(): Promise<void> {
     
     console.log(`[HARVESTER]   Batch ${Math.floor(i/BATCH_SIZE) + 1}: Processing ${batch.length} accounts in parallel...`);
     
-    // Scrape all 3 accounts IN PARALLEL
+    // Scrape accounts IN PARALLEL (with semaphore protection)
     const batchResults = await Promise.allSettled(
       batch.map(async (account) => {
         try {
           console.log(`[HARVESTER]     → @${account.username} (${account.follower_count?.toLocaleString()} followers, priority: ${account.scrape_priority || 50})...`);
           
-          const opportunities = await realTwitterDiscovery.findReplyOpportunitiesFromAccount(
-            String(account.username),
-            Number(account.follower_count) || 0,  // NEW: Pass follower count for engagement rate
-            account.engagement_rate ? Number(account.engagement_rate) : undefined  // NEW: Pass account engagement rate
+          // 🔒 BROWSER SEMAPHORE: Acquire browser lock for harvesting (priority 3)
+          const opportunities = await withBrowserLock(
+            `harvest_${account.username}`,
+            BrowserPriority.HARVESTING,
+            async () => {
+              return await realTwitterDiscovery.findReplyOpportunitiesFromAccount(
+                String(account.username),
+                Number(account.follower_count) || 0,  // Pass follower count for engagement rate
+                account.engagement_rate ? Number(account.engagement_rate) : undefined  // Pass account engagement rate
+              );
+            }
           );
           
           // Update last_scraped_at

@@ -308,7 +308,7 @@ export class JobManager {
             await tweetBasedHarvester();
           });
         },
-        30 * MINUTE, // Every 30 minutes - continuously find viral tweets
+        20 * MINUTE, // Every 20 minutes - optimized frequency (was 30min)
         10 * MINUTE // Start after 10 minutes
       );
 

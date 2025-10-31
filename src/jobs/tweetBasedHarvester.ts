@@ -229,11 +229,15 @@ export async function tweetBasedHarvester(): Promise<void> {
     
     console.log(`[TWEET_HARVESTER] 🎯 Need ~${TARGET_POOL_SIZE - poolSize} more opportunities`);
     
-    // Step 3: Search multiple topics in parallel
+    // Step 3: Search multiple topics in parallel (with semaphore protection)
+    const { withBrowserLock, BrowserPriority } = await import('../browser/BrowserSemaphore');
     const pool = UnifiedBrowserPool.getInstance();
-    let page = await pool.acquirePage('tweet_search');
     
-    try {
+    // 🔒 BROWSER SEMAPHORE: Acquire browser lock for harvesting (priority 3)
+    return await withBrowserLock('tweet_harvester', BrowserPriority.HARVESTING, async () => {
+      let page = await pool.acquirePage('tweet_search');
+      
+      try {
       // 🔐 ROBUST AUTHENTICATION CHECK WITH FALLBACKS
       console.log('[TWEET_HARVESTER] 🔐 Checking authentication status...');
       
@@ -521,13 +525,16 @@ export async function tweetBasedHarvester(): Promise<void> {
         .select('*', { count: 'exact', head: true })
         .gte('tweet_posted_at', twentyFourHoursAgo.toISOString());
       
-      console.log(`[TWEET_HARVESTER] ✅ Pool size: ${poolSize} → ${finalPoolSize || 0}`);
-      console.log(`[TWEET_HARVESTER] 🌾 Harvested: ${qualifiedTweets.length} from ${BROAD_SEARCH_PATTERNS.length + 1} multi-angle searches`);
-      
-    } catch (error: any) {
-      await pool.releasePage(page);
-      throw error;
-    }
+        console.log(`[TWEET_HARVESTER] ✅ Pool size: ${poolSize} → ${finalPoolSize || 0}`);
+        console.log(`[TWEET_HARVESTER] 🌾 Harvested: ${qualifiedTweets.length} from ${BROAD_SEARCH_PATTERNS.length + 1} multi-angle searches`);
+        
+      } catch (error: any) {
+        await pool.releasePage(page);
+        throw error;
+      } finally {
+        await pool.releasePage(page);
+      }
+    }); // End withBrowserLock
     
   } catch (error: any) {
     console.error('[TWEET_HARVESTER] ❌ Harvest failed:', error.message);
