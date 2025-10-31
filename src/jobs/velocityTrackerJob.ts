@@ -210,14 +210,18 @@ async function trackFollowerSnapshot(): Promise<void> {
   try {
     console.log('[FOLLOWER_TRACKER] 📊 Taking follower snapshot...');
     
-    const supabase = getSupabaseClient();
-    const scraper = getBulletproofScraper();
+    // 🔒 BROWSER SEMAPHORE: Use browser lock to prevent conflicts
+    const { withBrowserLock, BrowserPriority } = await import('../browser/BrowserSemaphore');
     
-    // Use UnifiedBrowserPool
-    const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
-    const pool = UnifiedBrowserPool.getInstance();
-    
-    const page = await pool.acquirePage('follower_snapshot');
+    await withBrowserLock('follower_snapshot', BrowserPriority.FOLLOWER_TRACK, async () => {
+      const supabase = getSupabaseClient();
+      const scraper = getBulletproofScraper();
+      
+      // Use UnifiedBrowserPool
+      const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
+      const pool = UnifiedBrowserPool.getInstance();
+      
+      const page = await pool.acquirePage('follower_snapshot');
     
     try {
       // Navigate to our profile
@@ -272,6 +276,7 @@ async function trackFollowerSnapshot(): Promise<void> {
     } finally {
       await pool.releasePage(page);
     }
+    }); // End withBrowserLock
     
   } catch (error: any) {
     console.error('[FOLLOWER_TRACKER] ❌ Failed to track follower snapshot:', error.message);

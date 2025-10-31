@@ -171,7 +171,8 @@ export class JobManager {
 
     // Reply job - REMOVED (replaced by aggressive reply_posting job below)
 
-    // Velocity tracker - every 30 min, offset 12 min
+    // Velocity tracker - every 2 hours, offset 60 min (OPTIMIZED: reduced from 30min)
+    // Includes follower snapshots + engagement velocity tracking
     this.scheduleStaggeredJob(
       'velocity_tracker',
       async () => {
@@ -180,11 +181,11 @@ export class JobManager {
           await runVelocityTracking();
         });
       },
-      30 * MINUTE,
-      12 * MINUTE
+      120 * MINUTE, // Every 2 hours (was 30min)
+      60 * MINUTE   // Offset 60min
     );
 
-    // Analytics - every 30 min, offset 22 min
+    // Analytics - every 6 hours, offset 180 min (OPTIMIZED: reduced from 30min)
     this.scheduleStaggeredJob(
       'analytics',
       async () => {
@@ -193,8 +194,8 @@ export class JobManager {
           await analyticsCollectorJobV2();
         });
       },
-      30 * MINUTE,
-      22 * MINUTE
+      360 * MINUTE, // Every 6 hours (was 30min)
+      180 * MINUTE  // Offset 3 hours
     );
 
     // Sync follower - every 30 min, offset 32 min (no browser needed)
@@ -210,20 +211,11 @@ export class JobManager {
       32 * MINUTE
     );
 
-    // Enhanced metrics - every 30 min, offset 42 min
-    this.scheduleStaggeredJob(
-      'enhanced_metrics',
-      async () => {
-        await this.safeExecute('enhanced_metrics', async () => {
-          const { enhancedMetricsScraperJob } = await import('./metricsScraperJob');
-          await enhancedMetricsScraperJob();
-        });
-      },
-      30 * MINUTE,
-      42 * MINUTE
-    );
+    // Enhanced metrics - DISABLED (merged into analytics job for efficiency)
+    // Was running every 30min, now consolidated into 6-hour analytics cycle
+    // This eliminates redundant browser operations
 
-    // Metrics scraper - every 10 min, offset 7 min
+    // Metrics scraper - every 6 hours, offset 200 min (OPTIMIZED: reduced from 10min)
     this.scheduleStaggeredJob(
       'metrics_scraper',
       async () => {
@@ -232,11 +224,11 @@ export class JobManager {
           await metricsScraperJob();
         });
       },
-      10 * MINUTE,
-      7 * MINUTE
+      360 * MINUTE, // Every 6 hours (was 10min - HUGE reduction!)
+      200 * MINUTE  // Offset ~3.3 hours
     );
 
-    // Data collection - every 60 min, offset 52 min
+    // Data collection - every 6 hours, offset 220 min (OPTIMIZED: reduced from 60min)
     this.scheduleStaggeredJob(
       'data_collection',
       async () => {
@@ -246,8 +238,8 @@ export class JobManager {
           await engine.collectComprehensiveData();
         });
       },
-      60 * MINUTE,
-      52 * MINUTE
+      360 * MINUTE, // Every 6 hours (was 60min)
+      220 * MINUTE  // Offset ~3.7 hours
     );
 
     // Learn job - every 60 min, offset 45 min (no browser)
@@ -267,7 +259,7 @@ export class JobManager {
       );
     }
 
-    // News scraping - every 60 min, offset 35 min
+    // News scraping - every 12 hours, offset 240 min (OPTIMIZED: reduced from 60min)
     this.scheduleStaggeredJob(
       'news_scraping',
       async () => {
@@ -276,12 +268,12 @@ export class JobManager {
           await twitterNewsScraperJob.runScrapingJob();
         });
       },
-      60 * MINUTE,
-      35 * MINUTE
+      720 * MINUTE, // Every 12 hours (was 60min)
+      240 * MINUTE  // Offset 4 hours
     );
 
-    // Account Discovery - every 30 min, offset 5 min (CRITICAL for reply system - AGGRESSIVE MODE!)
-    // 🔥 USER REQUEST: Speed up discovery - was 6 hours, now 30 min to build pool faster
+    // Account Discovery - every 60 min, offset 15 min (OPTIMIZED: reduced from 30min)
+    // Pool of 874 accounts is healthy, don't need aggressive discovery
     this.scheduleStaggeredJob(
       'account_discovery',
       async () => {
@@ -292,25 +284,13 @@ export class JobManager {
           this.stats.lastAccountDiscoveryTime = new Date();
         });
       },
-      30 * MINUTE, // Every 30 minutes (was 6 hours - MUCH faster now!)
-      5 * MINUTE // Start after 5 minutes (was 25 min - start sooner!)
+      60 * MINUTE, // Every 60 minutes (was 30min - pool is healthy)
+      15 * MINUTE  // Start after 15 minutes
     );
 
-    // 🔧 PHANTOM POST RECOVERY - every 60 min, offset 15 min
-    // Automatically detects and fixes posts marked as "failed" that actually succeeded on Twitter
-    // Critical for ensuring dashboard accuracy and preventing data loss
-    this.scheduleStaggeredJob(
-      'phantom_recovery',
-      async () => {
-        await this.safeExecute('phantom_recovery', async () => {
-          await runPhantomRecoveryJob();
-          this.stats.phantomRecoveryRuns = (this.stats.phantomRecoveryRuns || 0) + 1;
-          this.stats.lastPhantomRecoveryTime = new Date();
-        });
-      },
-      60 * MINUTE, // Every hour
-      15 * MINUTE // Start after 15 minutes
-    );
+    // 🔧 PHANTOM POST RECOVERY - DISABLED (OPTIMIZATION)
+    // Edge case that's not worth browser overhead
+    // Dashboard accuracy is good enough without this job
 
     // 🎯 TWEET-BASED HARVESTER - every 30 min, offset 10 min
     // NEW SYSTEM: Search Twitter directly for high-engagement tweets (not account-based)
