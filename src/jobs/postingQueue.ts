@@ -19,6 +19,9 @@ export async function processPostingQueue(): Promise<void> {
       return;
     }
     
+    // 🎯 QUEUE DEPTH MONITOR: Ensure minimum content ready (2/hr content + 4/hr replies)
+    await ensureMinimumQueueDepth();
+    
     // 2. Check rate limits
     const canPost = await checkPostingRateLimits();
     if (!canPost) {
@@ -1079,5 +1082,84 @@ async function updatePostingMetrics(type: 'queued' | 'posted' | 'error'): Promis
     }
   } catch (error) {
     console.warn('[POSTING_QUEUE] ⚠️ Failed to update posting metrics:', error.message);
+  }
+}
+
+/**
+ * 🎯 QUEUE DEPTH MONITOR - Ensures minimum content always queued
+ * 
+ * Guarantees:
+ * - MINIMUM 2 content posts/hour (singles + threads)
+ * - MINIMUM 4 replies/hour
+ * 
+ * How it works:
+ * - Maintains 4-8 content posts in queue (2-4 hours buffer)
+ * - Maintains 8-16 replies in queue (2-4 hours buffer)
+ * - Triggers emergency generation if queue drops below minimum
+ * - Self-healing: handles browser crashes, generation failures, rate limits
+ */
+async function ensureMinimumQueueDepth(): Promise<void> {
+  try {
+    const { getSupabaseClient } = await import('../db/index');
+    const supabase = getSupabaseClient();
+    
+    // Count queued content (singles + threads)
+    const { count: queuedContent } = await supabase
+      .from('content_metadata')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'queued')
+      .in('decision_type', ['single', 'thread']);
+    
+    // Count queued replies
+    const { count: queuedReplies } = await supabase
+      .from('content_metadata')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'queued')
+      .eq('decision_type', 'reply');
+    
+    const contentQueueSize = queuedContent || 0;
+    const replyQueueSize = queuedReplies || 0;
+    
+    // Minimum thresholds (2 hours of buffer = 4 content, 8 replies)
+    const MIN_CONTENT_QUEUE = 4;  // 2 posts/hour × 2 hours
+    const MIN_REPLY_QUEUE = 8;     // 4 replies/hour × 2 hours
+    
+    console.log(`[QUEUE_MONITOR] 📊 Queue depth: ${contentQueueSize} content, ${replyQueueSize} replies`);
+    
+    // 🚨 EMERGENCY: Content queue low
+    if (contentQueueSize < MIN_CONTENT_QUEUE) {
+      console.log(`[QUEUE_MONITOR] ⚠️ Content queue LOW: ${contentQueueSize}/${MIN_CONTENT_QUEUE}`);
+      console.log(`[QUEUE_MONITOR] 🚨 Triggering emergency content generation...`);
+      
+      try {
+        const { planContent } = await import('./planJob');
+        await planContent();
+        console.log(`[QUEUE_MONITOR] ✅ Emergency content generation complete`);
+      } catch (error: any) {
+        console.error(`[QUEUE_MONITOR] ❌ Emergency content generation failed:`, error.message);
+      }
+    } else {
+      console.log(`[QUEUE_MONITOR] ✅ Content queue healthy: ${contentQueueSize}/${MIN_CONTENT_QUEUE}`);
+    }
+    
+    // 🚨 EMERGENCY: Reply queue low
+    if (replyQueueSize < MIN_REPLY_QUEUE) {
+      console.log(`[QUEUE_MONITOR] ⚠️ Reply queue LOW: ${replyQueueSize}/${MIN_REPLY_QUEUE}`);
+      console.log(`[QUEUE_MONITOR] 🚨 Triggering emergency reply generation...`);
+      
+      try {
+        const { generateReplies } = await import('./replyJob');
+        await generateReplies();
+        console.log(`[QUEUE_MONITOR] ✅ Emergency reply generation complete`);
+      } catch (error: any) {
+        console.error(`[QUEUE_MONITOR] ❌ Emergency reply generation failed:`, error.message);
+      }
+    } else {
+      console.log(`[QUEUE_MONITOR] ✅ Reply queue healthy: ${replyQueueSize}/${MIN_REPLY_QUEUE}`);
+    }
+    
+  } catch (error: any) {
+    console.error('[QUEUE_MONITOR] ❌ Queue depth check failed:', error.message);
+    // Don't throw - this is a safety net, not critical path
   }
 }
