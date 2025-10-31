@@ -289,14 +289,16 @@ async function getLast24HourStats(supabase: any) {
 // ============================================================
 
 async function getTopPerformingReplies(supabase: any) {
+  // 🔥 FIX: Fetch MORE replies (500) to ensure top performers aren't excluded
+  // User can sort by time/views/likes in the dashboard, but we need ALL data
   const { data } = await supabase
     .from('content_metadata')
     .select('content, actual_likes, actual_impressions, actual_engagement_rate, generator_name, target_username, posted_at, tweet_id')
     .eq('status', 'posted')
     .eq('decision_type', 'reply')
     .not('tweet_id', 'is', null) // ✅ Must have real tweet ID
-    .order('posted_at', { ascending: false }) // ✅ Show most recent first, not by likes
-    .limit(50); // Show last 50 replies
+    .order('posted_at', { ascending: false }) // Fetch chronologically (most recent first)
+    .limit(500); // 🔥 INCREASED: 500 replies (was 50) to catch top performers
 
   // Filter out self-replies (fake data)
   const validReplies = (data || []).filter(reply => {
@@ -699,9 +701,9 @@ function generateRepliesHTML(data: any): string {
         </div>
 
         <div class="section">
-            <h2>💬 Recent Replies (Last 50)</h2>
+            <h2>💬 Recent Replies</h2>
             <div style="background: #d1ecf1; border-left: 4px solid #0c5460; padding: 15px; margin-bottom: 20px; border-radius: 8px;">
-                <strong>ℹ️ Note:</strong> Showing YOUR actual replies. Metrics update every 10 min. Page auto-refreshes every 2 min.
+                <strong>ℹ️ Note:</strong> Showing YOUR actual replies (up to 500). Metrics update every 10 min. Page auto-refreshes every 2 min. Use sorting buttons to find top performers!
             </div>
             <div style="margin-bottom: 15px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
                 <button class="sort-btn" onclick="sortRepliesTable('time')">Sort by ⏰ Time</button>
