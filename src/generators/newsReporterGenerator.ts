@@ -134,7 +134,8 @@ Return JSON: {
     return {
       content: validateAndExtractContent(parsed, format, 'GENERATOR'),
       format,
-      confidence: realNews ? 0.95 : 0.8 // Higher confidence with real news
+      confidence: realNews ? 0.95 : 0.8, // Higher confidence with real news
+      visualFormat: parsed.visualFormat || 'paragraph'
     };
     
   } catch (error: any) {

@@ -112,7 +112,8 @@ Return JSON: {
     return {
       content: validateAndExtractContent(parsed, format, 'CONTRARIAN'),
       format,
-      confidence: 0.9
+      confidence: 0.9,
+      visualFormat: parsed.visualFormat || 'paragraph'
     };
     
   } catch (error: any) {

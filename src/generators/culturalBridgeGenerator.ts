@@ -112,7 +112,8 @@ Return JSON: {
     return {
       content: validateAndExtractContent(parsed, format, 'CULTURAL_BRIDGE'),
       format,
-      confidence: 0.8
+      confidence: 0.8,
+      visualFormat: parsed.visualFormat || 'paragraph'
     };
     
   } catch (error: any) {
