@@ -475,6 +475,7 @@ WHEN to choose SINGLE:
     tone: tone, // Store AI-generated tone
     generator_used: matchedGenerator, // Track which generator created this
     format_strategy: formatStrategy, // ✅ AI-generated format strategy
+    visual_format: contentData.visual_format || null, // ✅ AI-generated visual formatting
     topic_cluster: dynamicTopic.dimension || 'health',
     style: tone, // Map tone to style for compatibility
     format: format,
