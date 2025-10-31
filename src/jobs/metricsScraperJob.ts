@@ -92,7 +92,7 @@ export async function metricsScraperJob(): Promise<void> {
         // 🔒 BROWSER SEMAPHORE: Acquire browser lock for metrics scraping (priority 5 - low priority)
         const { withBrowserLock, BrowserPriority } = await import('../browser/BrowserSemaphore');
         
-        await withBrowserLock(`metrics_${post.tweet_id}`, BrowserPriority.METRICS, async () => {
+        const scrapingResult = await withBrowserLock(`metrics_${post.tweet_id}`, BrowserPriority.METRICS, async () => {
           // Use UnifiedBrowserPool (same as working discovery system)
           const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
           const pool = UnifiedBrowserPool.getInstance();
@@ -110,8 +110,7 @@ export async function metricsScraperJob(): Promise<void> {
             
             if (!result.success) {
               console.warn(`[METRICS_JOB] ⚠️ Scraping failed for ${post.tweet_id}: ${result.error}`);
-              failed++;
-              continue;
+              return { success: false, reason: 'scraping_failed' };
             }
             
             const metrics = result.metrics || {} as any;
@@ -160,8 +159,7 @@ export async function metricsScraperJob(): Promise<void> {
             if (outcomeError) {
               console.error(`[METRICS_JOB] ❌ Failed to write outcomes for ${post.tweet_id}:`, outcomeError.message);
               console.error(`[METRICS_JOB] 🔍 Error details:`, JSON.stringify(outcomeError, null, 2));
-              failed++;
-              continue;
+              return { success: false, reason: 'outcome_write_failed' };
             }
             
             // CRITICAL: Also update learning_posts table (used by 30+ learning systems!)
@@ -218,7 +216,6 @@ export async function metricsScraperJob(): Promise<void> {
             }
             
             console.log(`[METRICS_JOB] ✅ Updated ${post.tweet_id}: ${metrics.likes ?? 0} likes, ${metrics.views ?? 0} views`);
-            updated++;
             
             // Update generator stats for autonomous learning
             try {
@@ -238,10 +235,20 @@ export async function metricsScraperJob(): Promise<void> {
               console.warn(`[METRICS_JOB] ⚠️ Failed to update generator stats:`, statsError.message);
             }
             
+            return { success: true };
+            
           } finally {
             await pool.releasePage(page);
           }
         }); // End withBrowserLock
+        
+        // Handle result from withBrowserLock
+        if (!scrapingResult || !scrapingResult.success) {
+          failed++;
+          continue;
+        }
+        
+        updated++;
         
         // Rate limit: wait 5 seconds between scrapes
         await new Promise(resolve => setTimeout(resolve, 5000));
