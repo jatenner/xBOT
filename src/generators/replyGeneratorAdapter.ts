@@ -51,7 +51,9 @@ export async function generateReplyWithGenerator(
     let generated: any;
     
     switch (generatorName) {
+      // ✅ SUPPORT BOTH NAMING CONVENTIONS (for backwards compatibility)
       case 'data_nerd':
+      case 'dataNerd':
         generated = await generateDataNerdContent({
           topic: replyTopic,
           format: 'single'
@@ -66,6 +68,7 @@ export async function generateReplyWithGenerator(
         break;
         
       case 'myth_buster':
+      case 'mythBuster':
         generated = await generateMythBusterContent({
           topic: replyTopic,
           format: 'single'
@@ -94,6 +97,7 @@ export async function generateReplyWithGenerator(
         break;
         
       case 'thought_leader':
+      case 'thoughtLeader':
         generated = await generateThoughtLeaderContent({
           topic: replyTopic,
           format: 'single'
@@ -115,6 +119,7 @@ export async function generateReplyWithGenerator(
         break;
         
       case 'news_reporter':
+      case 'newsReporter':
         generated = await generateNewsReporterContent({
           topic: replyTopic,
           format: 'single'
@@ -122,6 +127,7 @@ export async function generateReplyWithGenerator(
         break;
         
       case 'cultural_bridge':
+      case 'culturalBridge':
         generated = await generateCulturalBridgeContent({
           topic: replyTopic,
           format: 'single'
