@@ -13,11 +13,7 @@ export const GENERATOR_PATTERNS = {
       /\d+%/, 
       /\d+:\d+/, // ratios like 16:8
     ],
-    examples: [
-      "Take 500mg magnesium glycinate 30 minutes before bed",
-      "16:8 fasting (eat 12pm-8pm) + morning sunlight",
-      "Cold shower: 2-3 minutes at 60°F for maximum benefit"
-    ]
+    examples: [] // Removed templates - AI has freedom to format however works best
   },
 
   // PROVOCATEUR: Questions that challenge assumptions
@@ -25,11 +21,7 @@ export const GENERATOR_PATTERNS = {
     required: ['question', 'challenge'],
     banned: ['fake_studies', 'generic_questions'],
     specificity: [], // Questions don't need numbers
-    examples: [
-      "Why do we optimize sleep with blue light blockers but stare at phones all day?",
-      "If 90% of serotonin comes from the gut, why do we treat depression as a brain problem?",
-      "Why do we take supplements to fix problems we created with lifestyle?"
-    ]
+    examples: [] // Removed templates - AI has freedom to challenge however works best
   },
 
   // STORYTELLER: Real narratives, case studies
@@ -41,10 +33,7 @@ export const GENERATOR_PATTERNS = {
       /\d+\s*(year|month|week|day)s?/i,
       /\d+%/
     ],
-    examples: [
-      "A 2019 study followed 96 people for 12 weeks. Those who ate within 10-hour windows lost 3.3% body weight without calorie counting.",
-      "In 2020, researchers tracked 200 shift workers. Those using bright light therapy at work had 40% better sleep quality than controls."
-    ]
+    examples: [] // Removed templates - AI has freedom to tell stories however works best
   },
 
   // DATA_NERD: Research-focused, mechanism-heavy
@@ -57,10 +46,7 @@ export const GENERATOR_PATTERNS = {
       /(increases|decreases|triggers|blocks|modulates)/i,
       /(pathway|receptor|neurotransmitter|hormone)/i
     ],
-    examples: [
-      "Blue light (480nm) hits ipRGC cells → SCN master clock → cortisol release. Indoor lighting (300 lux) is 33x too dim for proper signaling.",
-      "NMN (500mg) → NAD+ synthesis → sirtuin activation → DNA repair. Peak absorption at 2-3 hours post-dose."
-    ]
+    examples: [] // Removed templates - AI has freedom to present data however works best
   },
 
   // MYTH_BUSTER: Debunks myths with evidence
@@ -72,10 +58,7 @@ export const GENERATOR_PATTERNS = {
       /\d+\s*(people|participants|studies)/i,
       /\d+\s*(year|month|week)s?/i
     ],
-    examples: [
-      "Myth: Fasting slows metabolism. Truth: 48-hour fasts increase growth hormone 1,300% (study of 11 men, 2011).",
-      "Myth: Carbs at night cause weight gain. Truth: Meal timing doesn't affect weight loss when calories are equal (2017 study, 420 people)."
-    ]
+    examples: [] // Removed templates - AI has freedom to debunk myths however works best
   },
 
   // PHILOSOPHER: Deep insights, thought-provoking
@@ -83,10 +66,7 @@ export const GENERATOR_PATTERNS = {
     required: ['insight', 'perspective'],
     banned: ['fake_studies', 'generic_advice'],
     specificity: [], // Insights don't need numbers
-    examples: [
-      "The gut microbiome doesn't just digest food—it shapes personality, mood, and decision-making through the vagus nerve.",
-      "Modern life optimizes for convenience, not health. Every shortcut has a metabolic cost we're only beginning to understand."
-    ]
+    examples: [] // Removed templates - AI has freedom to philosophize however works best
   },
 
   // NEWS_REPORTER: Current research, breaking findings
@@ -99,10 +79,7 @@ export const GENERATOR_PATTERNS = {
       /\b(202[0-4])\b/, // Recent years
       /\d+\s*(people|participants|patients)/i
     ],
-    examples: [
-      "New 2024 study: Myo-inositol (2,000mg) improves insulin sensitivity 50% in PCOS patients (90 women, 6 months).",
-      "Breaking: Stanford researchers found 10-minute meditation increases focus 43% (study of 140 people, published this month)."
-    ]
+    examples: [] // Removed templates - AI has freedom to report news however works best
   },
 
   // THOUGHT_LEADER: Industry insights, future trends
@@ -114,10 +91,7 @@ export const GENERATOR_PATTERNS = {
       /\d+\s*(year|month)s?/i,
       /\d+\s*(billion|million)/i
     ],
-    examples: [
-      "The longevity industry will hit $44 billion by 2030. Key driver: personalized biomarkers replacing one-size-fits-all protocols.",
-      "Gut-brain research is exploding. 90% of serotonin is made in the gut—pharmaceutical companies are taking notice."
-    ]
+    examples: [] // Removed templates - AI has freedom to share insights however works best
   },
 
   // CULTURAL_BRIDGE: Connects ancient wisdom with modern science
@@ -129,10 +103,7 @@ export const GENERATOR_PATTERNS = {
       /\d+%/, 
       /\d+\s*(mg|mcg|g)/i
     ],
-    examples: [
-      "Ancient Greeks used cold exposure for strength. Modern science: 11 minutes weekly increases brown fat 37% (2022 study).",
-      "Ayurveda's 5,000-year-old practice of oil pulling reduces harmful bacteria 20% (2016 study, 60 people)."
-    ]
+    examples: [] // Removed templates - AI has freedom to bridge cultures however works best
   }
 };
 
@@ -190,9 +161,13 @@ export function validateGeneratorContent(content: string, generatorName: string)
     suggestions.push('Ask a thought-provoking question');
   }
   
-  if (patterns.required.includes('myth_truth') && !content.toLowerCase().includes('myth')) {
-    missing.push('myth_truth');
-    suggestions.push('Start with "Myth:" and "Truth:"');
+  if (patterns.required.includes('myth_truth')) {
+    // Check for contrast (belief vs reality), not specific "Myth:" word
+    const hasContrast = /\b(myth|truth|believe|think|actually|reality|wrong|fact|popular)\b/i.test(content);
+    if (!hasContrast) {
+      missing.push('myth_truth');
+      suggestions.push('Show contrast between common belief and reality - any format works');
+    }
   }
   
   return {

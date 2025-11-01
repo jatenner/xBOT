@@ -320,18 +320,22 @@ function checkGeneratorRequirements(
       break;
       
     case 'mythBuster':
-      if (!/\b(myth|actually|truth|reality|wrong|fact)\b/i.test(text)) {
-        issues.push('Myth Buster must state myth vs truth');
-        fixes.push('Clear structure: "Myth: X. Truth: Y"');
-        deductions += 25;
+      // Check for myth-busting INTENT (contrast + evidence), not rigid format
+      const hasContrast = /\b(myth|actually|truth|reality|wrong|fact|believe|think|popular|everyone|conventional)\b/i.test(text);
+      const hasEvidence = /\d+%|\d+\s*(people|participants|study|studies|research)/i.test(text);
+      
+      if (!hasContrast) {
+        issues.push('Myth busting needs contrast between belief and reality');
+        fixes.push('Show what people believe vs what evidence shows - any format works');
+        deductions += 15; // Reduced severity
       }
-      if (numberCount < 1) {
-        issues.push('Myth Buster needs 1+ data point');
-        fixes.push('Add evidence: percentage, study size, or timeframe');
-        deductions += 20;
+      if (!hasEvidence) {
+        issues.push('Myth busting needs evidence (data, studies, or specific numbers)');
+        fixes.push('Add data point: percentage, study size, or research finding');
+        deductions += 15; // Reduced severity
       }
-      if (!hasCitation && !hasMechanism) {
-        issues.push('Need citation OR mechanism to support claim');
+      if (!hasCitation && !hasMechanism && !hasEvidence) {
+        issues.push('Need evidence to support the debunking');
         fixes.push('Add study reference or explain biological mechanism');
         deductions += 15;
       }
