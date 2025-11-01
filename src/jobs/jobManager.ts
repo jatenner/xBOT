@@ -225,7 +225,7 @@ export class JobManager {
         });
       },
       20 * MINUTE, // Every 20 minutes (balanced: was 6hr - too slow, was 10min - too aggressive)
-      5 * MINUTE   // Start after 5 minutes
+      0 * MINUTE   // 🔥 START IMMEDIATELY on deploy (was 5min - too slow!)
     );
 
     // Data collection - every 6 hours, offset 220 min (OPTIMIZED: reduced from 60min)
