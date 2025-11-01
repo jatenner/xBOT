@@ -22,11 +22,14 @@ export async function generateProvocateurContent(params: {
   topic: string;
   format: 'single' | 'thread';
   research?: { finding: string; source: string; mechanism: string; };
-  intelligence?: IntelligencePackage;
+  intelligence?: any; // Accept growth intelligence (GrowthIntelligencePackage)
 }): Promise<ProvocateurContent> {
   
   const { topic, format, research, intelligence } = params;
-  const intelligenceContext = await buildIntelligenceContext(intelligence);
+  
+  // 🧠 NEW: Use growth intelligence if available
+  const { buildGrowthIntelligenceContext } = await import('./_intelligenceHelpers');
+  const intelligenceContext = await buildGrowthIntelligenceContext(intelligence);
   
   const patterns = getGeneratorPatterns('provocateur');
   
