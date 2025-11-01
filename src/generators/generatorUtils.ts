@@ -11,38 +11,29 @@ export interface GeneratorResponse {
 }
 
 /**
- * Smart content trimming that preserves word boundaries
- * Tries to trim at: 1) sentence boundary, 2) word boundary, 3) hard cut
+ * Validate content length - NO TRIMMING, only validation
+ * If content is too long, we should REGENERATE, not trim
  */
-function smartTrim(text: string, maxLength: number = 280): string {
-  if (text.length <= maxLength) return text;
+function validateLength(text: string, context: string): string {
+  const TWITTER_LIMIT = 280;
+  const RECOMMENDED_MAX = 270;
   
-  console.log(`[SMART_TRIM] Input: ${text.length} chars, max: ${maxLength}`);
-  
-  // Strategy 1: Find last complete sentence within limit
-  const lastPeriod = text.lastIndexOf('.', maxLength - 3);
-  const lastExclamation = text.lastIndexOf('!', maxLength - 3);
-  const lastQuestion = text.lastIndexOf('?', maxLength - 3);
-  const lastSentenceEnd = Math.max(lastPeriod, lastExclamation, lastQuestion);
-  
-  if (lastSentenceEnd > maxLength * 0.7) { // At least 70% of content preserved
-    const result = text.substring(0, lastSentenceEnd + 1);
-    console.log(`[SMART_TRIM] ✅ Trimmed at sentence boundary: ${result.length} chars`);
-    return result;
+  if (text.length > TWITTER_LIMIT) {
+    console.error(`[VALIDATION] ❌ ${context}: ${text.length} chars exceeds Twitter's 280 limit`);
+    throw new Error(`Content too long (${text.length} chars). Must regenerate under 280.`);
   }
   
-  // Strategy 2: Find last complete word within limit
-  const lastSpace = text.lastIndexOf(' ', maxLength - 3);
-  if (lastSpace > 0) {
-    const result = text.substring(0, lastSpace) + '...';
-    console.log(`[SMART_TRIM] ✅ Trimmed at word boundary: ${result.length} chars`);
-    return result;
+  if (text.length > RECOMMENDED_MAX) {
+    console.warn(`[VALIDATION] ⚠️ ${context}: ${text.length} chars (recommended max: 270)`);
+    // Still valid, just log the warning
   }
   
-  // Strategy 3: Hard trim (should rarely happen)
-  const result = text.substring(0, maxLength - 3) + '...';
-  console.log(`[SMART_TRIM] ⚠️ Hard trim fallback: ${result.length} chars`);
-  return result;
+  if (text.length < 50) {
+    console.error(`[VALIDATION] ❌ ${context}: Only ${text.length} chars (too short, likely low quality)`);
+    throw new Error(`Content too short (${text.length} chars). Must be at least 50.`);
+  }
+  
+  return text; // Return unchanged - we validate, never trim!
 }
 
 export function validateAndExtractContent(
@@ -76,19 +67,12 @@ export function validateAndExtractContent(
       throw new Error(`${generatorName} generator returned empty thread array`);
     }
     
-    // SMART TRIM: Preserve word boundaries for thread tweets
-    const MAX_THREAD_TWEET_LENGTH = 260; // Increased buffer - matches generator instructions
-    content = content.map((tweet: string, i: number) => {
-      if (tweet.length > MAX_THREAD_TWEET_LENGTH) {
-        console.warn(`[${generatorName}] ⚠️ Thread tweet ${i+1} too long (${tweet.length} chars), using smart trim...`);
-        const trimmed = smartTrim(tweet, MAX_THREAD_TWEET_LENGTH);
-        console.log(`[${generatorName}] ✅ Smart-trimmed tweet ${i+1} to ${trimmed.length} chars`);
-        return trimmed;
-      }
-      return tweet;
+    // VALIDATE: Check each tweet in thread (no trimming!)
+    content.forEach((tweet: string, i: number) => {
+      validateLength(tweet, `${generatorName} thread tweet ${i+1}`);
     });
     
-    console.log(`[${generatorName}] ✅ Thread validated: ${content.length} tweets, all under ${MAX_THREAD_TWEET_LENGTH} chars`);
+    console.log(`[${generatorName}] ✅ Thread validated: ${content.length} tweets, all valid`);
   }
   
   // Validate single format
@@ -102,14 +86,8 @@ export function validateAndExtractContent(
       throw new Error(`${generatorName} generator returned invalid single tweet`);
     }
     
-    // SMART TRIM: Preserve word boundaries if content exceeds limit
-    const MAX_SINGLE_TWEET_LENGTH = 280; // Twitter absolute limit
-    if (content.length > MAX_SINGLE_TWEET_LENGTH) {
-      console.warn(`[${generatorName}] ⚠️ Tweet too long (${content.length} chars), using smart trim...`);
-      content = smartTrim(content, MAX_SINGLE_TWEET_LENGTH);
-      console.log(`[${generatorName}] ✅ Smart-trimmed to ${content.length} chars`);
-    }
-    
+    // VALIDATE: Check length (no trimming!)
+    content = validateLength(content, `${generatorName} single tweet`);
     console.log(`[${generatorName}] ✅ Single tweet validated: ${content.length} chars`);
   }
   

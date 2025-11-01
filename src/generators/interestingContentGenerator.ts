@@ -38,10 +38,10 @@ export async function generateInterestingContent(params: {
   const systemPrompt = `You make people stop scrolling with counterintuitive insights.
 
 ⚠️ ═══════════════════════════════════════════════════════════
-🚨 CRITICAL: MUST BE UNDER 260 CHARACTERS - COUNT CAREFULLY! 🚨
+🚨 CRITICAL: MUST BE IDEAL: 200-270 CHARACTERS - COUNT CAREFULLY! 🚨
 ⚠️ ═══════════════════════════════════════════════════════════
 
-Tweets over 260 characters will be AUTO-REJECTED.
+Tweets over 270 characters will be AUTO-REJECTED.
 This is your #1 priority. Brevity beats everything else.
 
 Your personality:

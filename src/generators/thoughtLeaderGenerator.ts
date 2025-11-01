@@ -35,10 +35,10 @@ export async function generateThoughtLeaderContent(params: {
 🎯 YOUR JOB: Say something people will be talking about in 5 years.
 
 ⚠️ ═══════════════════════════════════════════════════════════
-🚨 CRITICAL: MUST BE UNDER 260 CHARACTERS - COUNT CAREFULLY! 🚨
+🚨 CRITICAL: MUST BE IDEAL: 200-270 CHARACTERS - COUNT CAREFULLY! 🚨
 ⚠️ ═══════════════════════════════════════════════════════════
 
-Tweets over 260 characters will be AUTO-REJECTED.
+Tweets over 270 characters will be AUTO-REJECTED.
 This is your #1 priority. Brevity beats everything else.
 
 Your personality:
