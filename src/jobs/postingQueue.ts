@@ -40,19 +40,71 @@ export async function processPostingQueue(): Promise<void> {
     
     console.log(`[POSTING_QUEUE] 📝 Found ${readyDecisions.length} decisions ready for posting (grace_window=${GRACE_MINUTES}m)`);
     
-    // 4. Process each decision
+    // 4. Process each decision WITH RATE LIMIT CHECK BETWEEN EACH POST
     let successCount = 0;
+    let contentPostedThisCycle = 0;
+    let repliesPostedThisCycle = 0;
+    
+    const config = getConfig();
+    const maxContentPerHour = parseInt(String(config.MAX_POSTS_PER_HOUR || 2));
+    const maxRepliesPerHour = parseInt(String(config.REPLIES_PER_HOUR || 4));
+    
     for (const decision of readyDecisions) {
       try {
+        // 🔥 CRITICAL: Check rate limit BEFORE each post (not just once at start!)
+        const isReply = decision.decision_type === 'reply';
+        const isContent = decision.decision_type === 'single' || decision.decision_type === 'thread';
+        
+        // Check current hour's posting count from database
+        const { getSupabaseClient } = await import('../db/index');
+        const supabase = getSupabaseClient();
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+        
+        if (isContent) {
+          const { count: contentCount } = await supabase
+            .from('posted_decisions')
+            .select('*', { count: 'exact', head: true })
+            .in('decision_type', ['single', 'thread'])
+            .gte('posted_at', oneHourAgo);
+          
+          const totalContentThisHour = (contentCount || 0) + contentPostedThisCycle;
+          
+          if (totalContentThisHour >= maxContentPerHour) {
+            console.log(`[POSTING_QUEUE] ⛔ SKIP: Content limit reached ${totalContentThisHour}/${maxContentPerHour}`);
+            continue; // Skip this decision, move to next
+          }
+        }
+        
+        if (isReply) {
+          const { count: replyCount } = await supabase
+            .from('posted_decisions')
+            .select('*', { count: 'exact', head: true })
+            .eq('decision_type', 'reply')
+            .gte('posted_at', oneHourAgo);
+          
+          const totalRepliesThisHour = (replyCount || 0) + repliesPostedThisCycle;
+          
+          if (totalRepliesThisHour >= maxRepliesPerHour) {
+            console.log(`[POSTING_QUEUE] ⛔ SKIP: Reply limit reached ${totalRepliesThisHour}/${maxRepliesPerHour}`);
+            continue; // Skip this decision, move to next
+          }
+        }
+        
+        // Proceed with posting
         await processDecision(decision);
         successCount++;
+        
+        // Track what we posted this cycle
+        if (isContent) contentPostedThisCycle++;
+        if (isReply) repliesPostedThisCycle++;
+        
       } catch (error) {
         console.error(`[POSTING_QUEUE] ❌ Failed to post decision ${decision.id}:`, error.message);
         await markDecisionFailed(decision.id, error.message);
       }
     }
     
-    console.log(`[POSTING_QUEUE] ✅ Posted ${successCount}/${readyDecisions.length} decisions`);
+    console.log(`[POSTING_QUEUE] ✅ Posted ${successCount}/${readyDecisions.length} decisions (${contentPostedThisCycle} content, ${repliesPostedThisCycle} replies)`);
     
   } catch (error) {
     console.error('[POSTING_QUEUE] ❌ Queue processing failed:', error.message);
