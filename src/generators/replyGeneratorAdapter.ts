@@ -30,6 +30,7 @@ export interface ReplyResult {
   not_spam: boolean;
   confidence: number;
   generator_used: string;
+  visualFormat?: string;
 }
 
 /**
@@ -153,7 +154,8 @@ export async function generateReplyWithGenerator(
       provides_value: quality.value,
       not_spam: quality.not_spam,
       confidence: generated.confidence || 0.85,
-      generator_used: generatorName
+      generator_used: generatorName,
+      visualFormat: generated.visualFormat || null
     };
     
   } catch (error: any) {

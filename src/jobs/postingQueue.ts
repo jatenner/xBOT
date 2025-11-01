@@ -127,6 +127,7 @@ interface QueuedDecision {
   created_at: string;
   thread_parts?: string[]; // For threads
   features?: any; // For thread metadata
+  visual_format?: string; // Visual formatting instructions
   // PHASE 5 additions for learning system
   predicted_followers?: number;
   hook_type?: string;
@@ -823,9 +824,14 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         console.log(`[POSTING_QUEUE] 📝 Posting as SINGLE tweet`);
         const { UltimateTwitterPoster } = await import('../posting/UltimateTwitterPoster');
         const { BulletproofTweetExtractor } = await import('../utils/bulletproofTweetExtractor');
+        const { applyVisualFormat } = await import('../posting/visualFormatter');
+        
+        // 🎨 APPLY VISUAL FORMAT (Transform content based on visual_format metadata)
+        const formatResult = applyVisualFormat(decision.content, (decision as any).visual_format || null);
+        console.log(`[POSTING_QUEUE] 🎨 Visual format applied: ${formatResult.transformations.join(', ')}`);
         
         const poster = new UltimateTwitterPoster();
-        const result = await poster.postTweet(decision.content);
+        const result = await poster.postTweet(formatResult.formatted);
         
         if (!result.success) {
           await poster.dispose();
@@ -913,6 +919,11 @@ async function postReply(decision: QueuedDecision): Promise<string> {
   
   console.log(`[POSTING_QUEUE] ✅ Duplicate check passed - no existing reply to ${decision.target_tweet_id}`);
   
+  // 🎨 APPLY VISUAL FORMAT to replies too
+  const { applyVisualFormat } = await import('../posting/visualFormatter');
+  const formatResult = applyVisualFormat(decision.content, decision.visual_format || null);
+  console.log(`[POSTING_QUEUE] 🎨 Reply visual format: ${formatResult.transformations.join(', ')}`);
+  
   // 🛡️ Use PROPER reply system (posts as actual reply, not @mention)
   console.log(`[POSTING_QUEUE] 💬 Using UltimateTwitterPoster.postReply() for REAL replies...`);
   
@@ -927,11 +938,11 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     const poster = new UltimateTwitterPoster();
     
     console.log(`[POSTING_QUEUE] 💬 Posting REAL reply to tweet ${decision.target_tweet_id}...`);
-    console.log(`[POSTING_QUEUE] 📝 Reply content: "${decision.content.substring(0, 60)}..."`);
+    console.log(`[POSTING_QUEUE] 📝 Reply content: "${formatResult.formatted.substring(0, 60)}..."`);
     
-    // Post as ACTUAL reply (not @mention tweet!)
+    // Post as ACTUAL reply (not @mention tweet!) with formatted content
     const result = await poster.postReply(
-      decision.content, // Don't add @username - Twitter does that automatically
+      formatResult.formatted, // Use formatted version!
       decision.target_tweet_id
     );
     
