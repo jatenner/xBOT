@@ -709,6 +709,39 @@ app.get('/dashboard/replies', async (req, res) => {
   }
 });
 
+// System health dashboard page
+app.get('/dashboard/health', async (req, res) => {
+  try {
+    const token = req.query.token || req.headers.authorization?.replace('Bearer ', '');
+    const adminToken = process.env.ADMIN_TOKEN || 'xbot-admin-2025';
+    
+    if (token !== adminToken) {
+      return res.status(401).send(`
+        <html>
+          <body style="font-family: Arial; text-align: center; padding: 50px;">
+            <h1>🔒 Authentication Required</h1>
+            <p>Add <code>?token=YOUR_TOKEN</code> to the URL</p>
+          </body>
+        </html>
+      `);
+    }
+    
+    console.log('🔧 HEALTH_DASHBOARD: Serving system health...');
+    
+    const { generateSystemHealthDashboard } = await import('./dashboard/systemHealthDashboard');
+    const dashboardHTML = await generateSystemHealthDashboard();
+    
+    res.setHeader('Content-Type', 'text/html');
+    res.send(dashboardHTML);
+    
+    console.log('✅ HEALTH_DASHBOARD: Delivered');
+  } catch (error: any) {
+    console.error('❌ HEALTH_DASHBOARD_ERROR:', error.message);
+    res.status(500).send(`<html><body style="padding: 50px; text-align: center;">
+      <h1>🚨 Error</h1><p>${error.message}</p></body></html>`);
+  }
+});
+
 // Temporal intelligence dashboard page
 app.get('/dashboard/temporal', async (req, res) => {
   try {
