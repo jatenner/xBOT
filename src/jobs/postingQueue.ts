@@ -245,25 +245,39 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
     
     console.log(`[POSTING_QUEUE] 📊 Content posts: ${contentPosts?.length || 0}, Replies: ${replyPosts?.length || 0}`);
     
-    // 🧵 PRIORITY SYSTEM: Threads first, then replies, then singles
-    // Ensures rare/complex content (threads) post reliably
-    // Ensures engagement content (replies) post promptly
+    // 🧵 DYNAMIC PRIORITY SYSTEM: Fresh threads first, failed threads drop priority
+    // This prevents failed threads from blocking the queue forever
     data.sort((a, b) => {
-      // Priority levels: thread (1) > reply (2) > single (3)
-      const getPriority = (type: string) => {
+      // Get retry counts from features
+      const aRetries = ((a.features as any)?.retry_count || 0);
+      const bRetries = ((b.features as any)?.retry_count || 0);
+      
+      // Base priority levels: thread (1) > reply (2) > single (3)
+      const getBasePriority = (type: string) => {
         if (type === 'thread') return 1;
         if (type === 'reply') return 2;
         return 3;
       };
       
-      const aPriority = getPriority(String(a.decision_type));
-      const bPriority = getPriority(String(b.decision_type));
+      let aPriority = getBasePriority(String(a.decision_type));
+      let bPriority = getBasePriority(String(b.decision_type));
+      
+      // 🚀 DYNAMIC ADJUSTMENT: Failed threads lose priority
+      // - Fresh thread: priority 1 (goes first)
+      // - Thread retry 1: priority 2 (same as replies)
+      // - Thread retry 2+: priority 3 (same as singles)
+      if (a.decision_type === 'thread') {
+        aPriority += Math.min(aRetries, 2); // Max penalty: +2
+      }
+      if (b.decision_type === 'thread') {
+        bPriority += Math.min(bRetries, 2); // Max penalty: +2
+      }
       
       if (aPriority !== bPriority) {
         return aPriority - bPriority; // Lower number = higher priority
       }
       
-      // Within same type, maintain scheduled order (FIFO)
+      // Within same priority level, maintain scheduled order (FIFO)
       return new Date(String(a.scheduled_at)).getTime() - new Date(String(b.scheduled_at)).getTime();
     });
     
@@ -687,7 +701,7 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
     }
     
   } catch (error: any) {
-    // 🧵 THREAD RETRY LOGIC: Threads get 3 retries, singles fail immediately
+    // 🧵 SMART THREAD RETRY LOGIC: Intelligent backoff based on error type
     if (decision.decision_type === 'thread') {
       const { getSupabaseClient } = await import('../db/index');
       const supabase = getSupabaseClient();
@@ -703,11 +717,14 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
       const maxRetries = 3;
       
       if (retryCount < maxRetries) {
-        console.log(`[POSTING_QUEUE] 🔄 Thread failed (attempt ${retryCount + 1}/${maxRetries}), retrying in 5 minutes...`);
-        console.log(`[POSTING_QUEUE] ⚠️ Error was: ${error.message}`);
+        // 🚀 NEW: Use smart retry delay calculation
+        const { ThreadValidator } = await import('./threadValidator');
+        const retryDelay = ThreadValidator.getRetryDelay(retryCount, error.message);
         
-        // Reschedule for 5 minutes from now with incremented retry count
-        const retryDelay = 5 * 60 * 1000; // 5 minutes
+        console.log(`[POSTING_QUEUE] 🔄 Thread failed (attempt ${retryCount + 1}/${maxRetries})`);
+        console.log(`[POSTING_QUEUE] ⚠️ Error: ${error.message}`);
+        console.log(`[POSTING_QUEUE] ⏰ Retrying in ${retryDelay / 60000} minutes...`);
+        
         const newScheduledAt = new Date(Date.now() + retryDelay);
         
         await supabase
@@ -792,31 +809,16 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
           console.log(`[POSTING_QUEUE]   📝 Tweet ${i + 1}/${thread_parts.length}: "${tweet.substring(0, 60)}..."`);
         });
         
-        const { BulletproofThreadComposer } = await import('../posting/BulletproofThreadComposer');
-        const result = await BulletproofThreadComposer.post(thread_parts);
+        // 🚀 NEW: Use bulletproof thread handler with fallback
+        const { ThreadFallbackHandler } = await import('./threadFallback');
+        const result = await ThreadFallbackHandler.postThreadWithFallback(thread_parts, decision.id);
         
-        if (result.success) {
-          let tweetId = result.tweetIds?.[0] || result.rootTweetUrl;
-          
-          // 🔥 FIX: Extract ID from URL if needed (thread composer returns full URL)
-          if (tweetId && tweetId.includes('/status/')) {
-            const match = tweetId.match(/\/status\/(\d+)/);
-            if (match) {
-              tweetId = match[1];
-              console.log(`[POSTING_QUEUE] 📎 Extracted tweet ID from URL: ${tweetId}`);
-            }
-          }
-          
-          if (!tweetId) {
-            throw new Error('Thread posting succeeded but no tweet ID was extracted - cannot track metrics');
-          }
-          console.log(`[POSTING_QUEUE] ✅ Thread posted via Playwright with ID: ${tweetId}`);
-          const tweetUrl = `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${tweetId}`;
-          return { tweetId, tweetUrl };
-        } else {
-          console.error(`[POSTING_QUEUE] ❌ Thread posting failed: ${result.error}`);
-          throw new Error(result.error || 'Thread posting failed');
+        if (result.mode === 'degraded_thread') {
+          console.log(`[POSTING_QUEUE] ⚠️ Thread degraded to single: ${result.note}`);
         }
+        
+        console.log(`[POSTING_QUEUE] ✅ Posted (mode: ${result.mode}) with ID: ${result.tweetId}`);
+        return { tweetId: result.tweetId, tweetUrl: result.tweetUrl };
       } else {
         console.log(`[POSTING_QUEUE] 📝 Posting as SINGLE tweet`);
         const { UltimateTwitterPoster } = await import('../posting/UltimateTwitterPoster');
