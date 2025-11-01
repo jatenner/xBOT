@@ -581,7 +581,8 @@ async function generateRealReplies(): Promise<void> {
         target_tweet_content: target.tweet_content,
         generator_used: replyGenerator,
         estimated_reach: target.estimated_reach,
-        scheduled_at: new Date(Date.now() + staggerDelay * 60 * 1000).toISOString()
+        scheduled_at: new Date(Date.now() + staggerDelay * 60 * 1000).toISOString(),
+        visual_format: strategicReply.visualFormat || null
       };
       
       // Queue for posting with smart spacing

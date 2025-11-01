@@ -102,9 +102,29 @@ export class ThreadFallbackHandler {
     try {
       const { UltimateTwitterPoster } = await import('../posting/UltimateTwitterPoster');
       const { BulletproofTweetExtractor } = await import('../utils/bulletproofTweetExtractor');
+      const { applyVisualFormat } = await import('../posting/visualFormatter');
+      
+      // Get visual format for this decision (if available)
+      let visualFormat: string | null = null;
+      try {
+        const { getSupabaseClient } = await import('../db/index');
+        const supabase = getSupabaseClient();
+        const { data } = await supabase
+          .from('content_metadata')
+          .select('visual_format')
+          .eq('decision_id', decisionId)
+          .single();
+        visualFormat = String(data?.visual_format || '') || null;
+      } catch (e) {
+        // Continue without visual format
+      }
+      
+      // Apply visual format to first tweet
+      const formatResult = applyVisualFormat(firstTweet, visualFormat);
+      console.log(`[THREAD_FALLBACK] 🎨 Applied: ${formatResult.transformations.join(', ')}`);
       
       const poster = new UltimateTwitterPoster();
-      const result = await poster.postTweet(firstTweet);
+      const result = await poster.postTweet(formatResult.formatted);
       
       if (!result.success) {
         await poster.dispose();
