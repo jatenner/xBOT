@@ -7,9 +7,9 @@
 export const UNIVERSAL_NON_NEGOTIABLES = `
 🚨 NON-NEGOTIABLES (SYSTEM AUTO-REJECTS IF VIOLATED):
 
-1. CHARACTER LIMIT: 260 characters MAXIMUM
+1. CHARACTER LIMIT: Target 200-270 characters (Twitter max: 280)
+   ⚠️ Ideal range leaves room for engagement and quote tweets
    ⚠️ Count every character including spaces, punctuation, emojis
-   ⚠️ System rejects at 280, so stay under 260 for safety buffer
    ⚠️ If close to limit, remove the last sentence - better short than rejected
 
 2. ZERO FIRST-PERSON LANGUAGE:
@@ -40,7 +40,7 @@ If your output violates ANY of these rules, it will be:
 3. AUTO-REJECTED (never posted)
 4. System will retry with different generator
 
-💡 STRATEGY: Generate content 20-40 chars UNDER the 260 limit.
+💡 STRATEGY: Aim for 220-270 chars - complete thoughts that fit Twitter perfectly.
 This gives buffer for variations and ensures passing validation.
 `;
 

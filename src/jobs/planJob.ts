@@ -352,7 +352,7 @@ Create engaging health content that:
 1. Explores the TOPIC from this specific ANGLE
 2. Uses this exact TONE/voice
 3. Applies the FORMATTING STRATEGY for visual engagement
-4. Stays within 260 characters (singles) or 200-260 per tweet (threads)
+4. Target 200-270 characters (Twitter's limit is 280, but leaving room is professional)
 5. No first-person (I/me/my)
 6. Avoid emojis (use 0-1 maximum, strategically placed per format strategy)
 7. Balance expert knowledge with clear communication:
@@ -377,28 +377,28 @@ Be specific, interesting, and match the tone precisely. Sound like an expert who
 ⚠️ CRITICAL: Return your response as valid JSON format (required for API).
 
 RANDOMLY select format with genuine randomness:
-- 93% probability: Single tweet (260 chars max)
+- 93% probability: Single tweet (ideal: 200-270 chars, max: 280)
 - 7% probability: Thread (3-5 connected tweets)
 
 For SINGLE tweet (93% chance) - return JSON:
 {
-  "text": "Your tweet content here (260 chars max)",
+  "text": "Your tweet content here (ideal: 200-270 chars)",
   "format": "single"
 }
 
 For THREAD (7% chance - use when topic needs depth) - return JSON:
 {
   "text": [
-    "Tweet 1: Hook or opening insight (200-260 chars)",
-    "Tweet 2: Main mechanism or data (200-260 chars)",
-    "Tweet 3: Additional depth or example (200-260 chars)",
-    "Tweet 4: Actionable takeaway or conclusion (200-260 chars)"
+    "Tweet 1: Hook or opening insight (200-270 chars)",
+    "Tweet 2: Main mechanism or data (200-270 chars)",
+    "Tweet 3: Additional depth or example (200-270 chars)",
+    "Tweet 4: Actionable takeaway or conclusion (200-270 chars)"
   ],
   "format": "thread"
 }
 
 THREAD QUALITY REQUIREMENTS (if you select thread):
-1. Each tweet: 200-260 characters (shorter than singles for safety)
+1. Each tweet: 200-270 characters (leave room for engagement)
 2. Natural conversation flow (each tweet stands alone but connects to next)
 3. NO numbering (1., 2., 3.) - threads are conversations, not lists
 4. NO "thread below 🧵" or thread indicators
@@ -418,9 +418,9 @@ WHEN to choose SINGLE:
 - Quick insights (one key fact)
 - Questions (provocative, don't need answers)
 - Bold claims (controversial takes)
-- Simple mechanisms (can explain in 260 chars)`;
-
-    return { system, user };
+- Simple mechanisms (can explain in 270 chars)`;
+  
+  return { system, user };
   }
 
   // Validate and clean the response - handle both single tweets and threads
