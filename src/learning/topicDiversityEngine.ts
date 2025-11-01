@@ -152,17 +152,29 @@ export class TopicDiversityEngine {
       .filter(([_, count]) => count >= 2)
       .map(([topic]) => topic);
     
-    // Step 2: ADAPTIVE EXPLORATION - adjust based on performance
+    // Step 2: ADAPTIVE EXPLORATION - 🚀 NOW USES GROWTH-BASED RATE!
     let explorationRate = 0.3; // Default 30%
     
-    if (recentEngagement < 0.01) {
-      explorationRate = 0.6; // Low engagement = explore more (60%)
-      console.log('[ULTIMATE_TOPIC] 📉 Low engagement detected - INCREASING exploration to 60%');
-    } else if (recentEngagement > 0.05) {
-      explorationRate = 0.2; // High engagement = exploit more (20%)
-      console.log('[ULTIMATE_TOPIC] 📈 High engagement detected - DECREASING exploration to 20%');
-    } else {
-      console.log('[ULTIMATE_TOPIC] ⚖️ Normal engagement - balanced exploration (30%)');
+    try {
+      const { calculateExplorationRate } = await import('../learning/explorationEnforcer');
+      const explorationDecision = await calculateExplorationRate();
+      
+      explorationRate = explorationDecision.rate; // 0.3-0.7 based on growth analytics
+      console.log(`[ULTIMATE_TOPIC] 🎲 Exploration: ${(explorationRate * 100).toFixed(0)}%`);
+      console.log(`[ULTIMATE_TOPIC] 💡 Reasoning: ${explorationDecision.reasoning}`);
+    } catch (error: any) {
+      console.warn('[ULTIMATE_TOPIC] ⚠️ Growth-based exploration unavailable, using fallback');
+      
+      // FALLBACK: Use old logic
+      if (recentEngagement < 0.01) {
+        explorationRate = 0.6;
+        console.log('[ULTIMATE_TOPIC] 📉 Low engagement detected - INCREASING exploration to 60%');
+      } else if (recentEngagement > 0.05) {
+        explorationRate = 0.2;
+        console.log('[ULTIMATE_TOPIC] 📈 High engagement detected - DECREASING exploration to 20%');
+      } else {
+        console.log('[ULTIMATE_TOPIC] ⚖️ Normal engagement - balanced exploration (30%)');
+      }
     }
     
     // Step 3: PICK STRATEGY randomly based on adaptive rates

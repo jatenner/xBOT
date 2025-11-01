@@ -179,7 +179,7 @@ async function generateRealContent(): Promise<void> {
  * 🎭 SYSTEM B: Call dedicated generator with specialized prompt
  */
 async function callDedicatedGenerator(generatorName: string, context: any) {
-  const { topic, angle, tone, formatStrategy, dynamicTopic } = context;
+  const { topic, angle, tone, formatStrategy, dynamicTopic, growthIntelligence } = context;
   
   // Map generator names (from generatorMatcher) to their module files and function names
   const generatorMap: Record<string, { module: string, fn: string }> = {
@@ -224,7 +224,7 @@ async function callDedicatedGenerator(generatorName: string, context: any) {
     const result = await generateFn({
       topic,
       format: selectedFormat, // ✅ FIXED: Dynamic format selection enables threads
-      intelligence: undefined // Generators work without full intelligence package
+      intelligence: growthIntelligence // ✅ NEW: Pass growth intelligence to generators!
     });
     
     // Transform generator response to expected format
@@ -313,6 +313,27 @@ async function generateContentWithLLM() {
   // LEGACY: Keep old diversity tracking for compatibility
   contentDiversityEngine.trackTopic(topic);
   
+  // ═══════════════════════════════════════════════════════════
+  // 🧠 STEP 5.5: BUILD GROWTH INTELLIGENCE (NEW!)
+  // ═══════════════════════════════════════════════════════════
+  
+  let growthIntelligence;
+  try {
+    // NOTE: Currently built but NOT activated yet!
+    // Will activate after 200+ varied posts (Week 3)
+    
+    // UNCOMMENT WHEN READY TO ACTIVATE:
+    // const { buildGrowthIntelligencePackage } = await import('../learning/growthIntelligence');
+    // growthIntelligence = await buildGrowthIntelligencePackage();
+    // console.log('[GROWTH_INTEL] 📊 Growth intelligence generated');
+    
+    // For now, keep undefined (generators work without it)
+    growthIntelligence = undefined;
+  } catch (error: any) {
+    console.warn('[GROWTH_INTEL] ⚠️ Intelligence unavailable:', error.message);
+    growthIntelligence = undefined;
+  }
+  
   // STEP 6: Call dedicated generator (SYSTEM B - Specialized prompts!)
   console.log(`[CONTENT_GEN] 🎭 Calling dedicated ${matchedGenerator} generator...`);
   
@@ -323,7 +344,8 @@ async function generateContentWithLLM() {
     angle,
     tone,
     formatStrategy,
-    dynamicTopic
+    dynamicTopic,
+    growthIntelligence // ✅ Now passed to generator!
   });
   
   if (!generatedContent) {

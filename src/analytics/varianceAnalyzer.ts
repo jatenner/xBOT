@@ -237,6 +237,203 @@ export class VarianceAnalyzer {
     return synergies;
   }
 
+  /**
+   * 🎯 GROWTH-BASED: Find dimensions with HIGH POTENTIAL
+   * High variance = high ceiling (some posts do VERY well)
+   */
+  async findHighPotentialDimensions(): Promise<{
+    dimension: string;
+    avgViews: number;
+    maxViews: number;
+    minViews: number;
+    variance: number;
+    potential: 'massive' | 'high' | 'moderate' | 'low';
+    recommendation: string;
+  }[]> {
+    console.log('[VARIANCE] 🎯 Finding high-potential dimensions...');
+
+    const dimensions = ['raw_topic', 'generator_name', 'format_strategy', 'visual_format'];
+    const results = [];
+
+    for (const dim of dimensions) {
+      const analysis = await this.analyzeDimensionVariance(dim);
+      if (analysis) results.push(analysis);
+    }
+
+    return results.sort((a, b) => b.variance - a.variance);
+  }
+
+  /**
+   * 🔥 GROWTH-BASED: Analyze BREAKTHROUGH posts (outliers)
+   * Study what made them special
+   */
+  async analyzeBreakthroughs(multiplier: number = 5): Promise<{
+    post: any;
+    whatMadeItSpecial: string[];
+    recommendation: string;
+  }[]> {
+    console.log(`[VARIANCE] 🔥 Finding breakthrough posts (${multiplier}x average)...`);
+
+    // Get all posts
+    const { data: allPosts } = await this.supabase
+      .from('content_with_outcomes')
+      .select('actual_impressions')
+      .not('actual_impressions', 'is', null);
+
+    if (!allPosts || allPosts.length === 0) {
+      return [{
+        post: null,
+        whatMadeItSpecial: ['No data available yet'],
+        recommendation: 'Need more posts to analyze breakthroughs'
+      }];
+    }
+
+    const avgViews = this.avg(allPosts.map(p => Number(p.actual_impressions) || 0));
+    const threshold = avgViews * multiplier;
+
+    console.log(`[VARIANCE] Average: ${avgViews.toFixed(0)}, Threshold: ${threshold.toFixed(0)}`);
+
+    // Find breakthroughs
+    const { data: breakthroughs } = await this.supabase
+      .from('content_with_outcomes')
+      .select('*')
+      .gte('actual_impressions', threshold);
+
+    if (!breakthroughs || breakthroughs.length === 0) {
+      console.log(`[VARIANCE] No breakthroughs found at ${multiplier}x threshold`);
+      return [{
+        post: null,
+        whatMadeItSpecial: [`No posts exceed ${multiplier}x average (${threshold.toFixed(0)} views)`],
+        recommendation: `Lower threshold or wait for more viral posts. Current best: ${Math.max(...allPosts.map(p => Number(p.actual_impressions) || 0))} views`
+      }];
+    }
+
+    console.log(`[VARIANCE] ✅ Found ${breakthroughs.length} breakthrough posts!`);
+
+    // Analyze what makes them special
+    return breakthroughs.map(post => {
+      const special: string[] = [];
+
+      // Analyze generator
+      if (post.generator_name) {
+        special.push(`Used ${post.generator_name} generator`);
+      }
+
+      // Analyze visual format
+      if (post.visual_format && post.visual_format !== 'plain') {
+        special.push(`Visual format: ${post.visual_format}`);
+      }
+
+      // Analyze format strategy
+      if (post.format_strategy) {
+        special.push(`Format: ${post.format_strategy}`);
+      }
+
+      // Analyze tone
+      if (post.tone) {
+        special.push(`Tone: ${post.tone}`);
+      }
+
+      // Analyze angle
+      if (post.angle) {
+        special.push(`Angle: ${post.angle}`);
+      }
+
+      return {
+        post,
+        whatMadeItSpecial: special.length > 0 ? special : ['Analyze manually - no obvious pattern'],
+        recommendation: special.length > 0 
+          ? `Test ${special.slice(0, 2).join(' + ')} combination on NEW topics!`
+          : 'Study this post to identify success factors'
+      };
+    });
+  }
+
+  /**
+   * PRIVATE: Analyze variance for a specific dimension
+   */
+  private async analyzeDimensionVariance(dimension: string): Promise<{
+    dimension: string;
+    avgViews: number;
+    maxViews: number;
+    minViews: number;
+    variance: number;
+    potential: 'massive' | 'high' | 'moderate' | 'low';
+    recommendation: string;
+  } | null> {
+    const { data } = await this.supabase
+      .from('content_with_outcomes')
+      .select(`${dimension}, actual_impressions`)
+      .not(dimension, 'is', null)
+      .not('actual_impressions', 'is', null);
+
+    if (!data || data.length < 10) return null;
+
+    // Group by dimension value
+    const groups = new Map<string, number[]>();
+
+    data.forEach((post: any) => {
+      const value = String(post[dimension]);
+      if (!groups.has(value)) {
+        groups.set(value, []);
+      }
+      groups.get(value)!.push(Number(post.actual_impressions) || 0);
+    });
+
+    // Calculate variance for each value
+    const variances: number[] = [];
+    const maxValues: number[] = [];
+    const avgValues: number[] = [];
+
+    groups.forEach(views => {
+      if (views.length < 2) return;
+      const avg = this.avg(views);
+      const max = Math.max(...views);
+      const stdDeviation = this.stdDev(views);
+      const coefficientOfVariation = avg > 0 ? stdDeviation / avg : 0;
+
+      variances.push(coefficientOfVariation);
+      maxValues.push(max);
+      avgValues.push(avg);
+    });
+
+    if (variances.length === 0) return null;
+
+    const avgVariance = this.avg(variances);
+    const maxPossible = Math.max(...maxValues);
+    const typicalAvg = this.avg(avgValues);
+    const allViews = Array.from(groups.values()).flat();
+    const minViews = Math.min(...allViews);
+
+    // Determine potential based on variance AND max ceiling
+    let potential: 'massive' | 'high' | 'moderate' | 'low';
+    let recommendation: string;
+
+    if (avgVariance > 1.5 && maxPossible > typicalAvg * 10) {
+      potential = 'massive';
+      recommendation = `🎯 ${dimension} has 10x+ potential! Study the outliers - what made them work?`;
+    } else if (avgVariance > 1.0 && maxPossible > typicalAvg * 5) {
+      potential = 'high';
+      recommendation = `🔍 ${dimension} can 5x performance! Analyze top performers for patterns.`;
+    } else if (avgVariance > 0.5) {
+      potential = 'moderate';
+      recommendation = `📊 ${dimension} has some variance. Test more variations.`;
+    } else {
+      potential = 'low';
+      recommendation = `⚖️ ${dimension} is consistent but limited. May not be key lever.`;
+    }
+
+    return {
+      dimension,
+      avgViews: typicalAvg,
+      maxViews: maxPossible,
+      minViews,
+      variance: avgVariance,
+      potential,
+      recommendation
+    };
+  }
+
   // ═══════════════════════════════════════════════════════════
   // HELPER METHODS
   // ═══════════════════════════════════════════════════════════

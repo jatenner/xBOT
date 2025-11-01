@@ -15,51 +15,91 @@ export interface AdaptiveDecision {
 
 /**
  * Analyze recent performance and decide optimal next approach
+ * 🚀 NOW USES GROWTH-BASED DECISION MAKING!
  */
 export async function selectOptimalContent(): Promise<AdaptiveDecision> {
-  console.log('[ADAPTIVE] 🧠 Analyzing recent performance...');
+  console.log('[ADAPTIVE] 🧠 Analyzing system health with growth analytics...');
   
   const supabase = getSupabaseClient();
   
-  // 🔧 ROOT CAUSE FIX: Query content_with_outcomes (has data) not post_attribution (empty!)
-  const { data: recentPosts } = await supabase
-    .from('content_with_outcomes')  // ✅ FIXED: Use the table that has actual data!
-    .select('*')
-    .order('posted_at', { ascending: false })
-    .limit(10);
-  
-  if (!recentPosts || recentPosts.length === 0) {
-    console.log('[ADAPTIVE] ℹ️ No performance data, using AI exploration (NOT defaults)');
-    return getDefaultDecision();  // Uses AI generation, not competitors
+  // 🚀 NEW: Use growth analytics for decision making
+  try {
+    const { getSystemHealth } = await import('../analytics/growthAnalytics');
+    const health = await getSystemHealth();
+    
+    console.log(`[ADAPTIVE] 🎯 System health: ${health.overallTrend}`);
+    console.log(`[ADAPTIVE] 🎲 Recommended exploration: ${(health.explorationRecommendation * 100).toFixed(0)}%`);
+    console.log(`[ADAPTIVE] 💡 ${health.pivotRecommendation}`);
+    
+    // Use growth-based decision making
+    if (health.overallTrend === 'declining') {
+      // PIVOT - try completely new approaches
+      console.log('[ADAPTIVE] 🚨 PIVOT MODE: Declining performance, exploring aggressively');
+      return await selectExploratoryContent();
+    }
+    
+    if (health.overallTrend === 'accelerating') {
+      // ACCELERATING - balance exploration and exploitation
+      console.log('[ADAPTIVE] 🚀 ACCELERATING: Balancing proven + new');
+      
+      if (Math.random() < 0.4) {
+        return await selectExploratoryContent();
+      } else {
+        // Get recent posts for best performer selection
+        const { data: recentPosts } = await supabase
+          .from('content_with_outcomes')
+          .select('*')
+          .order('posted_at', { ascending: false })
+          .limit(20);
+        
+        return await selectBestPerformer(recentPosts || []);
+      }
+    }
+    
+    if (health.overallTrend === 'flat') {
+      // FLAT - need more exploration
+      console.log('[ADAPTIVE] ⚠️ FLAT: Need new approaches');
+      return Math.random() < 0.6 ? await selectExploratoryContent() : await thompsonSamplingSelection();
+    }
+    
+    // Default: Growing - balanced approach
+    console.log('[ADAPTIVE] 📈 GROWING: Balanced exploration');
+    return Math.random() < 0.5 ? await selectExploratoryContent() : await thompsonSamplingSelection();
+    
+  } catch (error: any) {
+    console.warn('[ADAPTIVE] ⚠️ Growth analytics unavailable, using fallback');
+    
+    // FALLBACK: Use old logic if growth analytics fail
+    const { data: recentPosts } = await supabase
+      .from('content_with_outcomes')
+      .select('*')
+      .order('posted_at', { ascending: false })
+      .limit(10);
+    
+    if (!recentPosts || recentPosts.length === 0) {
+      console.log('[ADAPTIVE] ℹ️ No performance data, using AI exploration');
+      return getDefaultDecision();
+    }
+    
+    // Calculate average engagement
+    const avgEngagement = recentPosts.reduce((sum: number, p: any) => 
+      sum + (Number(p.engagement_rate) || 0), 0) / recentPosts.length;
+    
+    const avgFollowers = recentPosts.reduce((sum: number, p: any) => 
+      sum + (Number(p.followers_gained) || 0), 0) / recentPosts.length;
+    
+    console.log(`[ADAPTIVE] 📊 Recent performance: ${(avgEngagement * 100).toFixed(2)}% engagement, ${avgFollowers.toFixed(1)} followers/post`);
+    
+    if (avgEngagement < 0.01 || avgFollowers < 1) {
+      return await selectExploratoryContent();
+    }
+    
+    if (avgEngagement > 0.05 && avgFollowers > 5) {
+      return await selectBestPerformer(recentPosts);
+    }
+    
+    return await thompsonSamplingSelection();
   }
-  
-  // Calculate average engagement
-  const avgEngagement = recentPosts.reduce((sum: number, p: any) => 
-    sum + (Number(p.engagement_rate) || 0), 0) / recentPosts.length;
-  
-  const avgFollowers = recentPosts.reduce((sum: number, p: any) => 
-    sum + (Number(p.followers_gained) || 0), 0) / recentPosts.length;
-  
-  console.log(`[ADAPTIVE] 📊 Recent performance: ${(avgEngagement * 100).toFixed(2)}% engagement, ${avgFollowers.toFixed(1)} followers/post`);
-  
-  // STRATEGY 1: If performance is truly poor (below learning threshold), pivot
-  // USER REQUIREMENT: Need volume to be meaningful (100+ views average at minimum)
-  if (avgEngagement < 0.01 || avgFollowers < 1) {
-    console.log('[ADAPTIVE] 🔄 Performance very poor (below noise floor), exploring new approaches...');
-    return await selectExploratoryContent();
-  }
-  
-  // STRATEGY 2: If performance is TRULY strong (viral territory), double down
-  // USER REQUIREMENT: Strong = 1000+ views, 100+ likes consistently
-  // For averages, use: 5% ER (50 likes / 1000 views) + 5+ followers/post
-  if (avgEngagement > 0.05 && avgFollowers > 5) {
-    console.log('[ADAPTIVE] 📈 Performance TRULY strong (viral territory), doubling down...');
-    return await selectBestPerformer(recentPosts);
-  }
-  
-  // STRATEGY 3: Normal - use Thompson Sampling
-  console.log('[ADAPTIVE] ⚖️ Balanced approach - exploit + explore');
-  return await thompsonSamplingSelection();
 }
 
 /**
