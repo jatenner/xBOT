@@ -834,11 +834,31 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         console.log(`[POSTING_QUEUE] 📝 Posting as SINGLE tweet`);
         const { UltimateTwitterPoster } = await import('../posting/UltimateTwitterPoster');
         const { BulletproofTweetExtractor } = await import('../utils/bulletproofTweetExtractor');
-        const { applyVisualFormat } = await import('../posting/visualFormatter');
         
-        // 🎨 APPLY VISUAL FORMAT (Transform content based on visual_format metadata)
-        const formatResult = applyVisualFormat(decision.content, (decision as any).visual_format || null);
-        console.log(`[POSTING_QUEUE] 🎨 Visual format applied: ${formatResult.transformations.join(', ')}`);
+        // 🎨 AI-POWERED VISUAL FORMATTING
+        const { formatContentForTwitter } = await import('../posting/aiVisualFormatter');
+        
+        // Get metadata from decision for context
+        const { getSupabaseClient } = await import('../db/index');
+        const supabase = getSupabaseClient();
+        const { data: metadata } = await supabase
+          .from('content_generation_metadata_comprehensive')
+          .select('raw_topic, angle, tone, format_strategy, generator_name')
+          .eq('decision_id', decision.id)
+          .single();
+        
+        const formatResult = await formatContentForTwitter({
+          content: decision.content,
+          generator: metadata?.generator_name || 'unknown',
+          topic: metadata?.raw_topic || '',
+          angle: metadata?.angle || '',
+          tone: metadata?.tone || '',
+          format_strategy: metadata?.format_strategy || ''
+        });
+        
+        console.log(`[POSTING_QUEUE] 🎨 AI Visual Formatter applied: ${formatResult.format_used}`);
+        console.log(`[POSTING_QUEUE] 📊 Transformations: ${formatResult.transformations.join(', ')}`);
+        console.log(`[POSTING_QUEUE] 💡 Reasoning: ${formatResult.reasoning}`);
         
         const poster = new UltimateTwitterPoster();
         const result = await poster.postTweet(formatResult.formatted);
@@ -848,6 +868,12 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
           console.error(`[POSTING_QUEUE] ❌ Playwright posting failed: ${result.error}`);
           throw new Error(result.error || 'Playwright posting failed');
         }
+        
+        // 📊 UPDATE: Store visual approach used for this post
+        await supabase
+          .from('content_generation_metadata_comprehensive')
+          .update({ visual_format: formatResult.format_used })
+          .eq('decision_id', decision.id);
         
         // ✅ POST SUCCEEDED - Now extract tweet ID using ONLY bulletproof method
         console.log(`[POSTING_QUEUE] ✅ Tweet posted! Waiting for Twitter to process...`);
@@ -929,10 +955,28 @@ async function postReply(decision: QueuedDecision): Promise<string> {
   
   console.log(`[POSTING_QUEUE] ✅ Duplicate check passed - no existing reply to ${decision.target_tweet_id}`);
   
-  // 🎨 APPLY VISUAL FORMAT to replies too
-  const { applyVisualFormat } = await import('../posting/visualFormatter');
-  const formatResult = applyVisualFormat(decision.content, decision.visual_format || null);
-  console.log(`[POSTING_QUEUE] 🎨 Reply visual format: ${formatResult.transformations.join(', ')}`);
+  // 🎨 AI-POWERED VISUAL FORMATTING for replies
+  const { formatContentForTwitter } = await import('../posting/aiVisualFormatter');
+  
+  // Get metadata for context
+  const { data: replyMetadata } = await supabase
+    .from('content_generation_metadata_comprehensive')
+    .select('raw_topic, angle, tone, format_strategy, generator_name')
+    .eq('decision_id', decision.id)
+    .single();
+  
+  const formatResult = await formatContentForTwitter({
+    content: decision.content,
+    generator: replyMetadata?.generator_name || 'unknown',
+    topic: replyMetadata?.raw_topic || `reply to @${decision.target_username}`,
+    angle: replyMetadata?.angle || 'reply',
+    tone: replyMetadata?.tone || 'helpful',
+    formatStrategy: replyMetadata?.format_strategy || 'reply'
+  });
+  
+  console.log(`[POSTING_QUEUE] 🎨 AI Visual Formatter for reply: ${formatResult.format_used}`);
+  console.log(`[POSTING_QUEUE] 📊 Transformations: ${formatResult.transformations.join(', ')}`);
+  console.log(`[POSTING_QUEUE] 💡 Reasoning: ${formatResult.reasoning}`);
   
   // 🛡️ Use PROPER reply system (posts as actual reply, not @mention)
   console.log(`[POSTING_QUEUE] 💬 Using UltimateTwitterPoster.postReply() for REAL replies...`);
@@ -959,6 +1003,12 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     if (!result.success || !result.tweetId) {
       throw new Error(result.error || 'Reply posting failed');
     }
+    
+    // 📊 UPDATE: Store visual approach used for this reply
+    await supabase
+      .from('content_generation_metadata_comprehensive')
+      .update({ visual_format: formatResult.visualApproach })
+      .eq('decision_id', decision.id);
     
     // ═══════════════════════════════════════════════════════════
     // ✅ CRITICAL VALIDATION: Reply ID MUST be different from parent!
