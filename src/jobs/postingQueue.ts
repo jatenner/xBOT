@@ -61,13 +61,18 @@ export async function processPostingQueue(): Promise<void> {
         const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
         
         if (isContent) {
+          // 🚨 FIX: Query content_generation_metadata_comprehensive TABLE directly
+          // (not posted_decisions VIEW which may have refresh lag!)
           const { count: contentCount } = await supabase
-            .from('posted_decisions')
+            .from('content_generation_metadata_comprehensive')
             .select('*', { count: 'exact', head: true })
             .in('decision_type', ['single', 'thread'])
+            .eq('status', 'posted')
             .gte('posted_at', oneHourAgo);
           
           const totalContentThisHour = (contentCount || 0) + contentPostedThisCycle;
+          
+          console.log(`[POSTING_QUEUE] 📊 Content this hour: ${totalContentThisHour}/${maxContentPerHour} (DB: ${contentCount}, This cycle: ${contentPostedThisCycle})`);
           
           if (totalContentThisHour >= maxContentPerHour) {
             console.log(`[POSTING_QUEUE] ⛔ SKIP: Content limit reached ${totalContentThisHour}/${maxContentPerHour}`);
@@ -76,13 +81,17 @@ export async function processPostingQueue(): Promise<void> {
         }
         
         if (isReply) {
+          // 🚨 FIX: Query content_generation_metadata_comprehensive TABLE directly
           const { count: replyCount } = await supabase
-            .from('posted_decisions')
+            .from('content_generation_metadata_comprehensive')
             .select('*', { count: 'exact', head: true })
             .eq('decision_type', 'reply')
+            .eq('status', 'posted')
             .gte('posted_at', oneHourAgo);
           
           const totalRepliesThisHour = (replyCount || 0) + repliesPostedThisCycle;
+          
+          console.log(`[POSTING_QUEUE] 📊 Replies this hour: ${totalRepliesThisHour}/${maxRepliesPerHour} (DB: ${replyCount}, This cycle: ${repliesPostedThisCycle})`);
           
           if (totalRepliesThisHour >= maxRepliesPerHour) {
             console.log(`[POSTING_QUEUE] ⛔ SKIP: Reply limit reached ${totalRepliesThisHour}/${maxRepliesPerHour}`);
@@ -160,9 +169,10 @@ async function checkPostingRateLimits(): Promise<boolean> {
     // SMART BATCH FIX: Use exact time window from database timestamps
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     
-    // 🚨 CRITICAL FIX: Query content_metadata (the actual table we use now!)
+    // 🚨 CRITICAL FIX: Query content_generation_metadata_comprehensive TABLE directly!
+    // (content_metadata is a VIEW which may have refresh lag)
     const { data: recentPosts, error } = await supabase
-      .from('content_metadata')
+      .from('content_generation_metadata_comprehensive')
       .select('decision_id, decision_type, posted_at')
       .in('decision_type', ['single', 'thread'])
       .eq('status', 'posted')
