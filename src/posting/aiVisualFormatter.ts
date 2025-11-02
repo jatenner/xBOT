@@ -44,18 +44,35 @@ export async function formatContentForTwitter(context: VisualFormatContext): Pro
   
   const { content, generator, topic, angle, tone, formatStrategy } = context;
   
-  // Get recent formats to ensure variety
-  const supabase = getSupabaseClient();
-  const { data: recentFormats } = await supabase
-    .from('content_generation_metadata_comprehensive')
-    .select('visual_format')
-    .not('visual_format', 'is', null)
-    .order('created_at', { ascending: false })
-    .limit(10);
+  // 🧠 BUILD COMPLETE VISUAL FORMAT INTELLIGENCE
+  const { buildVisualFormatIntelligence } = await import('../analytics/visualFormatAnalytics');
   
-  const recentApproaches = (recentFormats || [])
-    .map(f => String(f.visual_format))
-    .filter(f => f && f.trim().length > 0);
+  let intelligence;
+  try {
+    // Get comprehensive intelligence (contextual + growth + overall)
+    intelligence = await buildVisualFormatIntelligence(generator, tone);
+    console.log('[VISUAL_FORMATTER] ✅ Intelligence loaded:');
+    console.log(`  • Context history: ${intelligence.contextualHistory.recentFormats.length} formats`);
+    console.log(`  • Momentum signals: ${intelligence.momentumSignals.length} trending`);
+    console.log(`  • Overall recent: ${intelligence.overallRecent.length} formats`);
+  } catch (error: any) {
+    console.warn('[VISUAL_FORMATTER] ⚠️ Intelligence unavailable, using basic variety');
+    // Fallback to simple recent formats query
+    const supabase = getSupabaseClient();
+    const { data: recentFormats } = await supabase
+      .from('content_generation_metadata_comprehensive')
+      .select('visual_format')
+      .not('visual_format', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(10);
+    
+    intelligence = {
+      contextualHistory: { recentFormats: [], totalUses: 0, variety: 0 },
+      momentumSignals: [],
+      contextualInsights: [],
+      overallRecent: (recentFormats || []).map(f => String(f.visual_format))
+    };
+  }
   
   const systemPrompt = `You are the FINAL editor before a tweet goes live - the "Twitter Polish Expert".
 
@@ -108,10 +125,42 @@ Match formatting to PERSONALITY:
 • Philosopher (${generator === 'philosopher' ? 'THIS ONE!' : 'example'}) → Might keep plain or add thoughtful spacing
 • Others → Match to their personality!
 
-${recentApproaches.length > 0 ? `🚫 AVOID REPETITION - Recent formats used:
-${recentApproaches.slice(0, 5).map((f, i) => `${i + 1}. ${f.substring(0, 60)}...`).join('\n')}
+🎯 FOR THIS CONTEXT (${generator} + ${tone}):
+${intelligence.contextualHistory.recentFormats.length > 0 ? `
+Recently used: ${intelligence.contextualHistory.recentFormats.join(', ')}
+Variety: ${intelligence.contextualHistory.variety} unique approaches in ${intelligence.contextualHistory.totalUses} uses
 
-Pick something DIFFERENT from recent posts!` : ''}
+Try something DIFFERENT for this specific ${generator} + ${tone} combination!
+` : 'No history yet - experiment freely!'}
+
+${intelligence.contextualInsights.length > 0 ? `
+📈 WHAT'S WORKING FOR ${generator}:
+${intelligence.contextualInsights.slice(0, 3).map(i => 
+  `• "${i.approach}": ${i.avgViews.toFixed(0)} avg views (${i.uses} uses) - ${i.trend}
+    ${i.trend === 'improving' ? 'GAINING TRACTION! Try variations.' : i.trend === 'declining' ? 'Declining - try something else.' : 'Stable performance.'}`
+).join('\n')}
+` : ''}
+
+${intelligence.momentumSignals.length > 0 ? `
+🔥 VISUAL FORMAT MOMENTUM (All Generators):
+${intelligence.momentumSignals.slice(0, 3).map(m => 
+  `• ${m.value}: ${m.trajectory}
+    ${m.recommendation}`
+).join('\n')}
+` : ''}
+
+${intelligence.overallRecent.length > 0 ? `
+🌍 OVERALL RECENT FORMATS (All Content):
+${intelligence.overallRecent.slice(0, 5).map((f, i) => `${i + 1}. ${f.substring(0, 50)}...`).join('\n')}
+` : ''}
+
+💡 USE THIS INTELLIGENCE:
+- Avoid formats in "for this context" list (most important!)
+- Avoid formats in "overall recent" list (secondary)
+- If a format is "improving" → try VARIATIONS of it
+- If a format has "momentum" → consider using it
+- If a format is "declining" → avoid it
+- Always experiment - don't just copy what worked!
 
 🚨 CRITICAL RULES:
 • NEVER change facts, meaning, or information
