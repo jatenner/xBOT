@@ -64,6 +64,9 @@ export async function metricsScraperJob(): Promise<void> {
     // PHASE 4: Use ScrapingOrchestrator instead of direct scraper
     const orchestrator = ScrapingOrchestrator.getInstance();
     
+    // 🚀 OPTIMIZATION: Filter posts that need scraping BEFORE acquiring browser
+    const postsToScrape = [];
+    
     for (const post of posts) {
       try {
         // Check if we collected metrics recently (skip if collected in last hour)
@@ -87,18 +90,38 @@ export async function metricsScraperJob(): Promise<void> {
           continue;
         }
         
-        console.log(`[METRICS_JOB] 🔍 Scraping ${post.tweet_id}...`);
+        postsToScrape.push(post);
+      } catch (error: any) {
+        console.warn(`[METRICS_JOB] ⚠️ Pre-filter failed for ${post.decision_id}: ${error.message}`);
+        failed++;
+      }
+    }
+    
+    if (postsToScrape.length === 0) {
+      console.log(`[METRICS_JOB] ℹ️ No posts need scraping (${skipped} skipped, ${failed} failed pre-filter)`);
+      return;
+    }
+    
+    console.log(`[METRICS_JOB] 🔍 Batching ${postsToScrape.length} tweets into single browser session...`);
+    
+    // 🔒 BROWSER SEMAPHORE: Acquire ONE browser lock for ALL tweets (BATCHED)
+    const { withBrowserLock, BrowserPriority } = await import('../browser/BrowserSemaphore');
+    
+    await withBrowserLock('metrics_batch', BrowserPriority.METRICS, async () => {
+      // Use UnifiedBrowserPool (same as working discovery system)
+      const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
+      const pool = UnifiedBrowserPool.getInstance();
+      const page = await pool.acquirePage('metrics_batch');
+      
+      try {
+        console.log(`[METRICS_JOB] 🚀 Starting batched scraping of ${postsToScrape.length} tweets...`);
         
-        // 🔒 BROWSER SEMAPHORE: Acquire browser lock for metrics scraping (priority 5 - low priority)
-        const { withBrowserLock, BrowserPriority } = await import('../browser/BrowserSemaphore');
-        
-        const scrapingResult = await withBrowserLock(`metrics_${post.tweet_id}`, BrowserPriority.METRICS, async () => {
-          // Use UnifiedBrowserPool (same as working discovery system)
-          const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
-          const pool = UnifiedBrowserPool.getInstance();
-          const page = await pool.acquirePage(`metrics_${post.tweet_id}`);
-          
+        // Process all tweets in sequence using the same browser session
+        for (const post of postsToScrape) {
           try {
+            console.log(`[METRICS_JOB] 🔍 Scraping ${post.tweet_id} (${updated + failed + 1}/${postsToScrape.length})...`);
+            
+            // Use the shared page from the batch session
             // PHASE 4: Use orchestrator (includes validation, quality tracking, caching)
             const postedAt = new Date(String(post.created_at));
             const hoursSincePost = (Date.now() - postedAt.getTime()) / (1000 * 60 * 60);
@@ -110,7 +133,8 @@ export async function metricsScraperJob(): Promise<void> {
             
             if (!result.success) {
               console.warn(`[METRICS_JOB] ⚠️ Scraping failed for ${post.tweet_id}: ${result.error}`);
-              return { success: false, reason: 'scraping_failed' };
+              failed++;
+              continue;
             }
             
             const metrics = result.metrics || {} as any;
@@ -158,8 +182,8 @@ export async function metricsScraperJob(): Promise<void> {
             
             if (outcomeError) {
               console.error(`[METRICS_JOB] ❌ Failed to write outcomes for ${post.tweet_id}:`, outcomeError.message);
-              console.error(`[METRICS_JOB] 🔍 Error details:`, JSON.stringify(outcomeError, null, 2));
-              return { success: false, reason: 'outcome_write_failed' };
+              failed++;
+              continue;
             }
             
             // CRITICAL: Also update learning_posts table (used by 30+ learning systems!)
@@ -216,6 +240,7 @@ export async function metricsScraperJob(): Promise<void> {
             }
             
             console.log(`[METRICS_JOB] ✅ Updated ${post.tweet_id}: ${metrics.likes ?? 0} likes, ${metrics.views ?? 0} views`);
+            updated++;
             
             // Update generator stats for autonomous learning
             try {
@@ -235,32 +260,19 @@ export async function metricsScraperJob(): Promise<void> {
               console.warn(`[METRICS_JOB] ⚠️ Failed to update generator stats:`, statsError.message);
             }
             
-            return { success: true };
+            // Rate limit: wait 2 seconds between scrapes in batch
+            await new Promise(resolve => setTimeout(resolve, 2000));
             
-          } finally {
-            await pool.releasePage(page);
+          } catch (err: any) {
+            console.error(`[METRICS_JOB] ⚠️ Failed ${post.tweet_id}: ${err.message}`);
+            failed++;
           }
-        }); // End withBrowserLock
-        
-        // Handle result from withBrowserLock
-        if (!scrapingResult || !scrapingResult.success) {
-          failed++;
-          continue;
         }
         
-        updated++;
-        
-        // Rate limit: wait 5 seconds between scrapes
-        await new Promise(resolve => setTimeout(resolve, 5000));
-        
-      } catch (err: any) {
-        console.error(`[METRICS_JOB] ⚠️ Failed ${post.tweet_id}: ${err.message}`);
-        failed++;
-        
-        // Continue with next post, don't fail entire job
-        continue;
+      } finally {
+        await pool.releasePage(page);
       }
-    }
+    });
     
     console.log(`[METRICS_JOB] ✅ Metrics collection complete: ${updated} updated, ${skipped} skipped, ${failed} failed`);
     
