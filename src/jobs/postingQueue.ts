@@ -169,10 +169,9 @@ async function checkPostingRateLimits(): Promise<boolean> {
     // SMART BATCH FIX: Use exact time window from database timestamps
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     
-    // 🚨 CRITICAL FIX: Query content_generation_metadata_comprehensive TABLE directly!
-    // (content_metadata is a VIEW which may have refresh lag)
+    // 🚨 CRITICAL FIX: Query content_metadata TABLE (where posts are actually stored!)
     const { data: recentPosts, error } = await supabase
-      .from('content_generation_metadata_comprehensive')
+      .from('content_metadata')
       .select('decision_id, decision_type, posted_at')
       .in('decision_type', ['single', 'thread'])
       .eq('status', 'posted')
