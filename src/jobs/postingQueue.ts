@@ -852,17 +852,28 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         // 🚀 POST THREAD (already formatted)
         console.log(`[POSTING_QUEUE] 🚀 Posting thread to Twitter...`);
         const { ThreadFallbackHandler } = await import('./threadFallback');
-        const result = await ThreadFallbackHandler.postThreadWithFallback(
-          thread_parts,  // ← Already formatted in planJob
-          decision.id
-        );
         
-        if (result.mode === 'degraded_thread') {
-          console.log(`[POSTING_QUEUE] ⚠️ Thread degraded to single: ${result.note}`);
+        try {
+          const result = await ThreadFallbackHandler.postThreadWithFallback(
+            thread_parts,  // ← Already formatted in planJob
+            decision.id
+          );
+          
+          console.log(`[POSTING_QUEUE] ✅ Posted complete thread with ID: ${result.tweetId}`);
+          return { tweetId: result.tweetId, tweetUrl: result.tweetUrl };
+          
+        } catch (threadError: any) {
+          // Thread failed or was rescheduled - don't post anything incomplete
+          console.log(`[POSTING_QUEUE] ❌ Thread posting failed: ${threadError.message}`);
+          
+          if (threadError.message.includes('will retry')) {
+            console.log(`[POSTING_QUEUE] 🔄 Thread has been rescheduled for later`);
+          } else {
+            console.log(`[POSTING_QUEUE] ❌ Thread permanently failed`);
+          }
+          
+          throw threadError; // Re-throw so outer handler marks as failed
         }
-        
-        console.log(`[POSTING_QUEUE] ✅ Posted formatted thread (mode: ${result.mode}) with ID: ${result.tweetId}`);
-        return { tweetId: result.tweetId, tweetUrl: result.tweetUrl };
       } else {
         console.log(`[POSTING_QUEUE] 📝 Posting as SINGLE tweet`);
         const { UltimateTwitterPoster } = await import('../posting/UltimateTwitterPoster');

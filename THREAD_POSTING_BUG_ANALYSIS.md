@@ -1,3 +1,45 @@
+# 🧵 THREAD POSTING BUG - ROOT CAUSE ANALYSIS (UPDATED)
+
+## 🚨 CRITICAL UPDATE: THE REAL BUG
+
+**ALL THREADS ARE BEING BLOCKED BY THE VALIDATOR!**
+
+### The Smoking Gun:
+Every "posted" thread in the database shows:
+```json
+features: {
+  "degraded_thread": true,
+  "degradation_reason": "Browser pool overloaded (3 operations queued)"
+}
+```
+
+**NO THREADS HAVE EVER ACTUALLY POSTED AS THREADS!**
+
+### What's Happening:
+1. Thread is ready to post (5 tweets prepared)
+2. ThreadValidator checks browser pool
+3. Sees 3-6 operations queued (metrics scraping, replies, etc.)
+4. Validator: ❌ "Unhealthy! Degrade to single!"
+5. Only first tweet posts
+6. Marked as "degraded_thread"
+7. **ZERO ACTUAL THREADS EVER ATTEMPTED**
+
+### The Overly Strict Validator:
+
+**`src/jobs/threadValidator.ts` Line 175:**
+```typescript
+const healthy = status.queued < 3; // Healthy if less than 3 operations queued
+```
+
+**TOO STRICT!** The browser pool ALWAYS has 3+ operations queued:
+- Metrics scraper (batch of 15-20 tweets)
+- Reply generator (checking multiple conversations)
+- Content posting (singles and threads)
+
+**Result:** Threads are NEVER given a chance to even try!
+
+---
+
 # 🧵 THREAD POSTING BUG - ROOT CAUSE ANALYSIS
 
 ## 📊 EVIDENCE FROM LOGS

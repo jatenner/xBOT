@@ -87,13 +87,13 @@ export class ThreadValidator {
       // Continue anyway - browser will catch this
     }
     
-    // ✅ CHECK 4: Browser pool healthy?
+    // ✅ CHECK 4: Browser pool CRITICALLY overloaded? (only block if extreme)
     try {
       const poolHealth = await this.checkBrowserPoolHealth();
-      if (!poolHealth.healthy) {
+      if (poolHealth.criticallyOverloaded) {
         return {
           valid: false,
-          reason: `Browser pool overloaded (${poolHealth.queuedOperations} operations queued)`,
+          reason: `Browser pool critically overloaded (${poolHealth.queuedOperations} operations queued) - will retry when clear`,
           canRetry: true,
           retryDelay: 10 * 60 * 1000 // 10 minutes (wait for queue to clear)
         };
@@ -103,7 +103,23 @@ export class ThreadValidator {
       // Continue anyway
     }
     
-    // ✅ CHECK 5: Recent thread success rate
+    // ✅ CHECK 5: Avoid parallel thread posting (only one thread at a time)
+    try {
+      const activeThreads = await this.getActiveThreadOperations();
+      if (activeThreads > 0) {
+        return {
+          valid: false,
+          reason: `Another thread is currently posting (${activeThreads} active) - will retry shortly`,
+          canRetry: true,
+          retryDelay: 5 * 60 * 1000 // 5 minutes
+        };
+      }
+    } catch (error: any) {
+      console.warn('[THREAD_VALIDATOR] ⚠️ Active thread check failed:', error.message);
+      // Continue anyway
+    }
+    
+    // ✅ CHECK 6: Recent thread success rate
     try {
       const recentThreads = await this.getRecentThreadAttempts(10);
       if (recentThreads.length >= 5) {
@@ -164,24 +180,51 @@ export class ThreadValidator {
   }
   
   /**
-   * Check browser pool health
+   * Check browser pool health - only block if CRITICALLY overloaded
    */
-  private static async checkBrowserPoolHealth(): Promise<{healthy: boolean; queuedOperations: number}> {
+  private static async checkBrowserPoolHealth(): Promise<{criticallyOverloaded: boolean; queuedOperations: number}> {
     try {
       const { BrowserSemaphore } = await import('../browser/BrowserSemaphore');
       const semaphore = BrowserSemaphore.getInstance();
       const status = semaphore.getStatus();
       
-      const healthy = status.queued < 3; // Healthy if less than 3 operations queued
+      // ✅ SMART THRESHOLD: Only block if CRITICALLY overloaded (10+ queued)
+      // Normal busy (3-9 queued) is fine - threads can handle it
+      // This prevents unnecessary degradation while protecting against extreme overload
+      const criticallyOverloaded = status.queued >= 10;
       
-      console.log(`[THREAD_VALIDATOR] Browser pool: ${status.active.length} active, ${status.queued} queued`);
+      console.log(`[THREAD_VALIDATOR] Browser pool: ${status.active.length} active, ${status.queued} queued ${criticallyOverloaded ? '🚨 CRITICAL' : '✅'}`);
       
       return {
-        healthy,
+        criticallyOverloaded,
         queuedOperations: status.queued
       };
     } catch (error) {
-      return {healthy: true, queuedOperations: 0}; // Assume healthy if can't check
+      return {criticallyOverloaded: false, queuedOperations: 0}; // Assume healthy if can't check
+    }
+  }
+  
+  /**
+   * Check if any threads are currently being posted (avoid parallel threads)
+   */
+  private static async getActiveThreadOperations(): Promise<number> {
+    try {
+      const { BrowserSemaphore } = await import('../browser/BrowserSemaphore');
+      const semaphore = BrowserSemaphore.getInstance();
+      const status = semaphore.getStatus();
+      
+      // Count operations with 'thread' in their tag
+      const threadOps = status.active.filter((tag: string) => 
+        tag && (tag.includes('thread') || tag.includes('THREAD'))
+      );
+      
+      if (threadOps.length > 0) {
+        console.log(`[THREAD_VALIDATOR] ⚠️ ${threadOps.length} thread(s) currently active`);
+      }
+      
+      return threadOps.length;
+    } catch (error) {
+      return 0; // Assume no active threads if can't check
     }
   }
   

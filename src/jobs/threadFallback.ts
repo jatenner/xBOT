@@ -46,14 +46,16 @@ export class ThreadFallbackHandler {
       console.log(`[THREAD_FALLBACK] ⚠️ Pre-flight failed: ${validation.reason}`);
       
       if (!validation.canRetry) {
-        // Content is invalid, don't retry - just post first tweet
-        console.log(`[THREAD_FALLBACK] 🔄 Content invalid, falling back to single tweet`);
-        return await this.postFirstTweetAsSingle(thread_parts[0], decisionId, validation.reason);
+        // Content is invalid - mark as permanently failed
+        console.log(`[THREAD_FALLBACK] ❌ Content invalid, marking as failed`);
+        await this.markThreadFailed(decisionId, validation.reason);
+        throw new Error(`Thread validation failed (permanent): ${validation.reason}`);
       }
       
-      // Can retry later, but for now post as single
-      console.log(`[THREAD_FALLBACK] 🔄 Temporary issue, falling back to single for now`);
-      return await this.postFirstTweetAsSingle(thread_parts[0], decisionId, validation.reason);
+      // Temporary issue - reschedule for later (DON'T degrade to single)
+      console.log(`[THREAD_FALLBACK] 🔄 Temporary issue, rescheduling thread for later`);
+      await this.rescheduleThread(decisionId, validation.retryDelay || 10 * 60 * 1000);
+      throw new Error(`Thread validation failed (will retry): ${validation.reason}`);
     }
     
     // Step 2: Try posting as thread with extended timeout
@@ -82,14 +84,12 @@ export class ThreadFallbackHandler {
       
     } catch (error: any) {
       console.log(`[THREAD_FALLBACK] 💥 Thread error: ${error.message}`);
-      console.log(`[THREAD_FALLBACK] 🔄 Falling back to single tweet`);
+      console.log(`[THREAD_FALLBACK] ❌ Thread failed - will NOT degrade to single`);
       
-      // Fallback to single
-      return await this.postFirstTweetAsSingle(
-        thread_parts[0], 
-        decisionId,
-        `Thread failed: ${error.message}`
-      );
+      // Mark as failed - don't post incomplete content
+      await this.markThreadFailed(decisionId, `Thread posting failed: ${error.message}`);
+      
+      throw new Error(`Thread posting failed: ${error.message}`);
     }
   }
   
@@ -106,97 +106,39 @@ export class ThreadFallbackHandler {
   }
   
   /**
-   * Post just the first tweet as a single (fallback mode)
+   * Reschedule thread for later (when conditions improve)
    */
-  private static async postFirstTweetAsSingle(
-    firstTweet: string,
-    decisionId: string,
-    reason: string
-  ): Promise<FallbackResult> {
-    
-    console.log(`[THREAD_FALLBACK] 📝 Posting first tweet as single...`);
-    console.log(`[THREAD_FALLBACK] Content: "${firstTweet.substring(0, 60)}..."`);
-    
+  private static async rescheduleThread(decisionId: string, delayMs: number): Promise<void> {
     try {
-      const { UltimateTwitterPoster } = await import('../posting/UltimateTwitterPoster');
-      const { BulletproofTweetExtractor } = await import('../utils/bulletproofTweetExtractor');
-      const { applyVisualFormat } = await import('../posting/visualFormatter');
+      const { getSupabaseClient } = await import('../db/index');
+      const supabase = getSupabaseClient();
       
-      // Get visual format for this decision (if available)
-      let visualFormat: string | null = null;
-      try {
-        const { getSupabaseClient } = await import('../db/index');
-        const supabase = getSupabaseClient();
-        const { data } = await supabase
-          .from('content_metadata')
-          .select('visual_format')
-          .eq('decision_id', decisionId)
-          .single();
-        visualFormat = String(data?.visual_format || '') || null;
-      } catch (e) {
-        // Continue without visual format
-      }
+      const newScheduledTime = new Date(Date.now() + delayMs);
       
-      // Apply visual format to first tweet
-      const formatResult = applyVisualFormat(firstTweet, visualFormat);
-      console.log(`[THREAD_FALLBACK] 🎨 Applied: ${formatResult.transformations.join(', ')}`);
+      await supabase
+        .from('content_metadata')
+        .update({
+          status: 'queued',
+          scheduled_at: newScheduledTime.toISOString(),
+          features: {
+            rescheduled: true,
+            rescheduled_at: new Date().toISOString(),
+            retry_delay_ms: delayMs
+          }
+        })
+        .eq('decision_id', decisionId);
       
-      const poster = new UltimateTwitterPoster();
-      const result = await poster.postTweet(formatResult.formatted);
-      
-      if (!result.success) {
-        await poster.dispose();
-        throw new Error(result.error || 'Single tweet posting failed');
-      }
-      
-      // Extract tweet ID
-      console.log(`[THREAD_FALLBACK] ✅ Single posted! Extracting ID...`);
-      const page = (poster as any).page;
-      
-      if (!page) {
-        await poster.dispose();
-        throw new Error('No browser page available');
-      }
-      
-      await page.waitForTimeout(5000);
-      
-      const extraction = await BulletproofTweetExtractor.extractTweetId(page, {
-        expectedContent: firstTweet,
-        expectedUsername: process.env.TWITTER_USERNAME || 'SignalAndSynapse',
-        maxAgeSeconds: 600,
-        navigateToVerify: true
-      });
-      
-      await poster.dispose();
-      
-      if (!extraction.success || !extraction.tweetId) {
-        throw new Error(`Tweet posted but ID extraction failed: ${extraction.error}`);
-      }
-      
-      console.log(`[THREAD_FALLBACK] ✅ Single tweet posted successfully!`);
-      console.log(`[THREAD_FALLBACK] 📊 Tweet ID: ${extraction.tweetId}`);
-      
-      // Mark in database as degraded thread
-      await this.markAsDegradedThread(decisionId, reason);
-      
-      return {
-        success: true,
-        tweetId: extraction.tweetId,
-        tweetUrl: extraction.url || `https://x.com/${process.env.TWITTER_USERNAME}/status/${extraction.tweetId}`,
-        mode: 'degraded_thread',
-        note: `Originally a thread, posted as single: ${reason}`
-      };
+      console.log(`[THREAD_FALLBACK] 🔄 Thread rescheduled for ${new Date(newScheduledTime).toLocaleTimeString()}`);
       
     } catch (error: any) {
-      console.error(`[THREAD_FALLBACK] ❌ Single tweet fallback failed: ${error.message}`);
-      throw error;
+      console.warn(`[THREAD_FALLBACK] ⚠️ Failed to reschedule thread: ${error.message}`);
     }
   }
   
   /**
-   * Mark decision as degraded thread in database (for analytics)
+   * Mark thread as permanently failed (bad content)
    */
-  private static async markAsDegradedThread(decisionId: string, reason: string): Promise<void> {
+  private static async markThreadFailed(decisionId: string, reason: string): Promise<void> {
     try {
       const { getSupabaseClient } = await import('../db/index');
       const supabase = getSupabaseClient();
@@ -204,18 +146,20 @@ export class ThreadFallbackHandler {
       await supabase
         .from('content_metadata')
         .update({
+          status: 'failed',
+          error_message: reason,
           features: {
-            degraded_thread: true,
-            degradation_reason: reason,
-            degraded_at: new Date().toISOString()
+            failed_permanently: true,
+            failed_at: new Date().toISOString(),
+            failure_reason: reason
           }
         })
         .eq('decision_id', decisionId);
       
-      console.log(`[THREAD_FALLBACK] 📊 Marked as degraded thread for analytics`);
+      console.log(`[THREAD_FALLBACK] ❌ Thread marked as permanently failed: ${reason}`);
       
     } catch (error: any) {
-      console.warn(`[THREAD_FALLBACK] ⚠️ Failed to mark as degraded: ${error.message}`);
+      console.warn(`[THREAD_FALLBACK] ⚠️ Failed to mark thread as failed: ${error.message}`);
     }
   }
 }
