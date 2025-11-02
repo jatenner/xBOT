@@ -22,6 +22,22 @@ export class ThreadFallbackHandler {
     
     console.log(`[THREAD_FALLBACK] 🧵 Attempting to post ${thread_parts.length}-tweet thread...`);
     
+    // Step 0: Basic content validation
+    console.log('[THREAD_FALLBACK] 📏 Validating content length...');
+    for (let i = 0; i < thread_parts.length; i++) {
+      const tweet = thread_parts[i];
+      if (tweet.length > 280) {
+        console.error(`[THREAD_FALLBACK] ❌ Tweet ${i + 1} too long: ${tweet.length} chars (max 280)`);
+        console.error(`[THREAD_FALLBACK] 📝 Content: "${tweet.substring(0, 100)}..."`);
+        return await this.postFirstTweetAsSingle(
+          thread_parts[0],
+          decisionId,
+          `Tweet ${i + 1} exceeds 280 characters (${tweet.length})`
+        );
+      }
+      console.log(`[THREAD_FALLBACK]    ✅ Tweet ${i + 1}: ${tweet.length} chars`);
+    }
+    
     // Step 1: Pre-flight validation
     const { ThreadValidator } = await import('./threadValidator');
     const validation = await ThreadValidator.validateThreadBeforePosting(thread_parts);
@@ -40,13 +56,15 @@ export class ThreadFallbackHandler {
       return await this.postFirstTweetAsSingle(thread_parts[0], decisionId, validation.reason);
     }
     
-    // Step 2: Try posting as thread with aggressive timeout
+    // Step 2: Try posting as thread with extended timeout
     try {
-      const THREAD_TIMEOUT = 60000; // 60 seconds max
+      const THREAD_TIMEOUT = 180000; // 180 seconds (3 minutes) - threads need more time
+      
+      console.log(`[THREAD_FALLBACK] ⏱️ Starting thread post (timeout: ${THREAD_TIMEOUT/1000}s)`);
       
       const threadPromise = this.attemptThreadPost(thread_parts);
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('Thread timeout after 60s')), THREAD_TIMEOUT);
+        setTimeout(() => reject(new Error('Thread timeout after 180s')), THREAD_TIMEOUT);
       });
       
       const result = await Promise.race([threadPromise, timeoutPromise]);

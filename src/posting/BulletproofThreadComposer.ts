@@ -216,40 +216,52 @@ export class BulletproofThreadComposer {
    * 🎨 POST via Twitter's native composer (preferred)
    */
   private static async postViaComposer(page: Page, segments: string[]): Promise<void> {
-    console.log('🎨 THREAD_COMPOSER: Attempting native composer mode...');
+    console.log(`🎨 THREAD_COMPOSER: Attempting native composer mode for ${segments.length} tweets...`);
     
     // Focus composer with multiple strategies
+    console.log('🎨 THREAD_COMPOSER: Step 1/5 - Focusing composer...');
     const focusResult = await ensureComposerFocused(page, { mode: 'compose' });
     if (!focusResult.success) {
       throw new Error(`COMPOSER_FOCUS_FAILED: ${focusResult.error}`);
     }
+    console.log('✅ THREAD_COMPOSER: Composer focused');
     
     // Type first segment
+    console.log(`🎨 THREAD_COMPOSER: Step 2/5 - Typing tweet 1/${segments.length} (${segments[0].length} chars)...`);
     const tb0 = page.locator('[data-testid^="tweetTextarea_"]').first();
     await tb0.fill('');
     await tb0.type(segments[0], { delay: 10 });
     await this.verifyTextBoxHas(page, 0, segments[0]);
+    console.log(`✅ THREAD_COMPOSER: Tweet 1 typed successfully`);
     
     // Add additional cards for multi-segment
-    for (let i = 1; i < segments.length; i++) {
-      await this.addAnotherPost(page);
-      
-      const tb = page.locator('[data-testid^="tweetTextarea_"]').nth(i);
-      await tb.click();
-      await tb.type(segments[i], { delay: 10 });
-      await this.verifyTextBoxHas(page, i, segments[i]);
+    if (segments.length > 1) {
+      console.log(`🎨 THREAD_COMPOSER: Step 3/5 - Adding ${segments.length - 1} more tweets...`);
+      for (let i = 1; i < segments.length; i++) {
+        console.log(`   ➕ Adding tweet ${i + 1}/${segments.length}...`);
+        await this.addAnotherPost(page);
+        
+        const tb = page.locator('[data-testid^="tweetTextarea_"]').nth(i);
+        await tb.click();
+        await tb.type(segments[i], { delay: 10 });
+        await this.verifyTextBoxHas(page, i, segments[i]);
+        console.log(`   ✅ Tweet ${i + 1}/${segments.length} added (${segments[i].length} chars)`);
+      }
     }
     
     // Sanity check: verify card count matches segments
+    console.log('🎨 THREAD_COMPOSER: Step 4/5 - Verifying thread structure...');
     const cardCount = await page.locator('[data-testid^="tweetTextarea_"]').count();
     if (cardCount !== segments.length) {
       throw new Error(`CARD_COUNT_MISMATCH have=${cardCount} want=${segments.length}`);
     }
+    console.log(`✅ THREAD_COMPOSER: Structure verified (${cardCount} tweets)`);
     
     // Post all
+    console.log('🎨 THREAD_COMPOSER: Step 5/5 - Posting thread...');
     await this.postAll(page);
     
-    console.log('✅ THREAD_COMPOSER: Native composer success');
+    console.log('✅ THREAD_COMPOSER: Native composer SUCCESS - Thread posted!');
   }
 
   /**
@@ -393,18 +405,54 @@ export class BulletproofThreadComposer {
    * 🚀 Post all cards in thread
    */
   private static async postAll(page: Page): Promise<void> {
-    const postAllButton = page.getByRole('button', { name: /post all/i })
-      .or(page.locator('[data-testid="tweetButton"]').last());
+    console.log('🚀 THREAD_COMPOSER: Looking for "Post all" button...');
     
-    await postAllButton.click({ timeout: 6000 });
+    // Try multiple selectors for the post button (Twitter UI changes frequently)
+    const buttonSelectors = [
+      'button[data-testid="tweetButton"]',  // Standard tweet button
+      'button:has-text("Post all")',         // Text-based
+      'button:has-text("Post")',             // Simple post
+      '[data-testid="tweetButtonInline"]',  // Inline variant
+      'div[role="button"]:has-text("Post")', // Div button
+      'button[aria-label*="Post"]',          // ARIA label
+    ];
     
-    // 🔥 FIXED: Use bounded wait
+    let buttonFound = false;
+    let lastError = '';
+    
+    for (const selector of buttonSelectors) {
+      try {
+        console.log(`🔍 Trying selector: ${selector}`);
+        const button = page.locator(selector).last(); // Use .last() for threads (multiple buttons)
+        await button.waitFor({ state: 'visible', timeout: 5000 });
+        await button.click({ timeout: 3000 });
+        buttonFound = true;
+        console.log(`✅ THREAD_COMPOSER: Clicked "Post all" using: ${selector}`);
+        break;
+      } catch (error: any) {
+        lastError = error.message;
+        console.log(`❌ Selector failed: ${selector}`);
+      }
+    }
+    
+    if (!buttonFound) {
+      // Take screenshot for debugging
+      try {
+        await page.screenshot({ path: 'thread_post_button_not_found.png' });
+        console.log('📸 Screenshot saved: thread_post_button_not_found.png');
+      } catch {}
+      
+      throw new Error(`POST_BUTTON_NOT_FOUND: Tried ${buttonSelectors.length} selectors. Last error: ${lastError}`);
+    }
+    
+    // Wait for posting to complete
+    console.log('⏳ THREAD_COMPOSER: Waiting for post to complete...');
     await Promise.race([
       page.waitForLoadState('networkidle'),
-      page.waitForTimeout(10000)
+      page.waitForTimeout(15000) // Increased to 15s for threads
     ]);
     
-    console.log('🚀 THREAD_COMPOSER: Posted all cards');
+    console.log('🚀 THREAD_COMPOSER: Thread posted successfully!');
   }
 
   /**
