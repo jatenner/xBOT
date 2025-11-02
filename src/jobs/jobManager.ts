@@ -428,6 +428,20 @@ export class JobManager {
       270 * MINUTE
     );
 
+    // 🔍 Find missing tweet IDs - every 10 minutes, offset 4 min
+    // Self-healing job to find real tweet IDs for placeholder posts
+    this.scheduleStaggeredJob(
+      'find_missing_ids',
+      async () => {
+        await this.safeExecute('find_missing_ids', async () => {
+          const { findMissingTweetIds } = await import('./findMissingTweetIds');
+          await findMissingTweetIds();
+        });
+      },
+      10 * MINUTE,
+      4 * MINUTE  // Run 4 minutes after startup
+    );
+
     // Viral thread - every 24 hours if enabled
     if (flags.live) {
       const viralThreadIntervalMin = config.JOBS_VIRAL_THREAD_INTERVAL_MIN || 1440;

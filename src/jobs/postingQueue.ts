@@ -901,7 +901,21 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         await poster.dispose();
         
         if (!extraction.success || !extraction.tweetId) {
-          throw new Error(`Tweet posted but ID extraction failed: ${extraction.error || 'Unknown error'}`);
+          // ⚠️ ID extraction failed, but post WAS made
+          // Use placeholder ID - background job will find real ID later
+          console.warn(`[POSTING_QUEUE] ⚠️ Tweet posted but ID not extracted immediately`);
+          console.warn(`[POSTING_QUEUE] 📝 Content: "${decision.content.substring(0, 60)}..."`);
+          console.warn(`[POSTING_QUEUE] 💡 Error: ${extraction.error || 'Unknown error'}`);
+          
+          // Use timestamp-based placeholder ID
+          const placeholderId = `posted_${Date.now()}_${decision.id.substring(0, 8)}`;
+          console.warn(`[POSTING_QUEUE] 🔄 Using placeholder: ${placeholderId}`);
+          console.warn(`[POSTING_QUEUE] 📅 Background job will find real ID via content matching`);
+          
+          return { 
+            tweetId: placeholderId, 
+            tweetUrl: `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}`
+          };
         }
         
         console.log(`[POSTING_QUEUE] ✅ Tweet ID extracted: ${extraction.tweetId}`);
@@ -1027,6 +1041,13 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     console.log(`[POSTING_QUEUE] 🔗 Reply URL: https://x.com/${username}/status/${result.tweetId}`);
     
     await poster.dispose();
+    
+    // ✅ FALLBACK: If reply posted but ID is placeholder, log warning
+    if (result.tweetId.startsWith('reply_posted_')) {
+      console.warn(`[POSTING_QUEUE] ⚠️ Reply posted but using placeholder ID: ${result.tweetId}`);
+      console.warn(`[POSTING_QUEUE] 🔄 Background job will find real ID via content matching`);
+      console.warn(`[POSTING_QUEUE] 📝 Reply to: ${decision.target_tweet_id}`);
+    }
     
     return result.tweetId;
   } catch (error: any) {
