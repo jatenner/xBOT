@@ -138,6 +138,15 @@ export class BulletproofThreadComposer {
     return await browserManager.withContext(async (context: any) => {
       const page = await context.newPage();
       
+      // ✅ FIX: Navigate to Twitter compose page BEFORE trying to post
+      console.log('[THREAD_COMPOSER] 🌐 Navigating to compose page...');
+      await page.goto('https://x.com/compose/tweet', {
+        waitUntil: 'domcontentloaded',
+        timeout: 30000
+      });
+      await page.waitForTimeout(2000); // Let page stabilize
+      console.log('[THREAD_COMPOSER] ✅ Compose page loaded');
+      
       try {
         const maxRetries = 2;
         
