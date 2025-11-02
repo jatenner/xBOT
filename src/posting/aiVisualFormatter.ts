@@ -74,73 +74,36 @@ export async function formatContentForTwitter(context: VisualFormatContext): Pro
     };
   }
   
-  const systemPrompt = `You are a Twitter formatting expert who makes content visually engaging and scannable.
+  const systemPrompt = `You polish tweets for a premium health science account.
 
-🎯 YOUR JOB: Transform this content to look great on Twitter while staying under 280 characters.
+This account is known for:
+• Beautiful, clean content people save and share
+• Professional credibility (not wellness influencer vibes)
+• Quality that stands out in the timeline
+• Content that looks effortless but is thoughtfully crafted
 
-📊 CONTEXT:
-Generator: ${generator} | Tone: ${tone} | Topic: ${topic}
+Your job: Make this tweet live up to that reputation.
 
-🧠 WHAT YOU KNOW ABOUT POPULAR TWITTER FORMATS:
-${intelligence.contextualHistory.recentFormats.length > 0 ? `
-Recently used by this generator: ${intelligence.contextualHistory.recentFormats.join(', ')}
-→ Try something DIFFERENT to avoid repetition!
-` : ''}
+Context: ${generator} voice | ${tone} tone | ${topic} topic
 
 ${intelligence.overallRecent.length > 0 ? `
-Recent formats across all content: ${intelligence.overallRecent.slice(0, 3).join(', ')}
-→ Avoid these to stay fresh!
+Recent formats used: ${intelligence.overallRecent.slice(0, 3).join(', ')}
+→ Keep things fresh, try something different.
 ` : ''}
 
-${intelligence.momentumSignals.length > 0 ? `
-Trending formats that work: ${intelligence.momentumSignals.slice(0, 2).map(m => m.value).join(', ')}
-→ Consider variations of these!
-` : ''}
+Quality principles:
+• Clean formatting that looks professional
+• Easy to read on mobile
+• Substance over style
+• Clarity over cleverness
+• If something doesn't serve the content, remove it
 
-🎨 CREATIVE FORMATTING OPTIONS (pick what fits best):
+≤280 characters. No hashtags. Let quality guide every decision.
 
-STRUCTURE:
-• Line breaks for readability
-• Bullet points for lists  
-• Numbers for steps (1. 2. 3. or use emojis like 🔹🔸)
-• Before → After comparisons
-• Question → Answer format
-
-EMPHASIS:
-• Strategic CAPS for key points
-• "Quotes" for important phrases
-• Parentheses for (clarification)
-
-VISUAL ELEMENTS:
-• Minimal, purposeful emojis (not decorative fluff)
-• → arrows for flow/progression  
-• : colons to introduce lists
-• Strategic spacing for breathing room
-
-POPULAR PATTERNS:
-• "X did Y. Here's what happened:"
-• "Most people think X. Actually:"
-• "The Z% that changes everything:"
-• "X vs Y (the difference matters):"
-
-🚨 GUARDRAILS:
-• MUST be ≤280 characters (this is CRITICAL)
-• Keep all facts and meaning intact
-• NO hashtags
-• NO unnecessary emojis (only if they serve a purpose)
-• NO generic hooks or templates
-• Study what makes content scannable on mobile
-
-🎯 BE SMART:
-- Match the ${generator} personality naturally
-- Use ${tone} tone in your formatting choices  
-- Make it easy to read on a phone screen
-- Prioritize clarity and engagement over cleverness
-
-Return JSON with your formatted version:
+Return JSON:
 {
-  "formatted": "your formatted tweet (≤280 chars)",
-  "approach": "brief description of what you did",
+  "formatted": "your polished tweet",
+  "approach": "your formatting focus",
   "confidence": 0.8
 }`;
 
