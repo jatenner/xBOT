@@ -844,51 +844,16 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
           .eq('decision_id', decision.id)
           .single();
         
-        console.log(`[POSTING_QUEUE] 🎨 Applying AI visual formatting to ${thread_parts.length} thread tweets...`);
+        // ✅ Content is ALREADY formatted (done in planJob before queueing)
+        // No need to format again - just use thread_parts directly
+        console.log(`[POSTING_QUEUE] 📝 Using pre-formatted thread (${thread_parts.length} tweets)`);
+        console.log(`[POSTING_QUEUE] 💡 Visual formatting was applied before queueing`);
         
-        // 🎨 FORMAT EACH TWEET IN THE THREAD
-        const { formatContentForTwitter } = await import('../posting/aiVisualFormatter');
-        const formattedParts: string[] = [];
-        let firstVisualApproach: string | null = null;
-        
-        for (let i = 0; i < thread_parts.length; i++) {
-          console.log(`[POSTING_QUEUE]   📝 Formatting tweet ${i + 1}/${thread_parts.length}...`);
-          
-          const formatResult = await formatContentForTwitter({
-            content: thread_parts[i],
-            generator: String(metadata?.generator_name || 'unknown'),
-            topic: String(metadata?.raw_topic || 'thread'),
-            angle: String(metadata?.angle || 'sequential'),
-            tone: String(metadata?.tone || 'informative'),
-            formatStrategy: String(metadata?.format_strategy || 'thread')
-          });
-          
-          formattedParts.push(formatResult.formatted);
-          
-          // Store visual approach from first tweet (representative of thread style)
-          if (i === 0) {
-            firstVisualApproach = formatResult.visualApproach;
-            console.log(`[POSTING_QUEUE]   🎨 Thread visual style: ${formatResult.visualApproach}`);
-          }
-          
-          console.log(`[POSTING_QUEUE]   ✅ Tweet ${i + 1} formatted: "${formatResult.formatted.substring(0, 50)}..."`);
-        }
-        
-        // 📊 STORE VISUAL FORMAT FOR LEARNING
-        if (firstVisualApproach) {
-          await supabase
-            .from('content_generation_metadata_comprehensive')
-            .update({ visual_format: firstVisualApproach })
-            .eq('decision_id', decision.id);
-          
-          console.log(`[POSTING_QUEUE] 📊 Stored visual format for thread: ${firstVisualApproach}`);
-        }
-        
-        // 🚀 POST FORMATTED THREAD
-        console.log(`[POSTING_QUEUE] 🚀 Posting formatted thread to Twitter...`);
+        // 🚀 POST THREAD (already formatted)
+        console.log(`[POSTING_QUEUE] 🚀 Posting thread to Twitter...`);
         const { ThreadFallbackHandler } = await import('./threadFallback');
         const result = await ThreadFallbackHandler.postThreadWithFallback(
-          formattedParts,  // ← FORMATTED VERSIONS (not original)
+          thread_parts,  // ← Already formatted in planJob
           decision.id
         );
         
@@ -903,44 +868,17 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         const { UltimateTwitterPoster } = await import('../posting/UltimateTwitterPoster');
         const { BulletproofTweetExtractor } = await import('../utils/bulletproofTweetExtractor');
         
-        // 🎨 AI-POWERED VISUAL FORMATTING
-        const { formatContentForTwitter } = await import('../posting/aiVisualFormatter');
-        
-        // Get metadata from decision for context
-        const { getSupabaseClient } = await import('../db/index');
-        const supabase = getSupabaseClient();
-        const { data: metadata } = await supabase
-          .from('content_generation_metadata_comprehensive')
-          .select('raw_topic, angle, tone, format_strategy, generator_name')
-          .eq('decision_id', decision.id)
-          .single();
-        
-        const formatResult = await formatContentForTwitter({
-          content: decision.content,
-          generator: String(metadata?.generator_name || 'unknown'),
-          topic: String(metadata?.raw_topic || ''),
-          angle: String(metadata?.angle || ''),
-          tone: String(metadata?.tone || ''),
-          formatStrategy: String(metadata?.format_strategy || '')
-        });
-        
-        console.log(`[POSTING_QUEUE] 🎨 AI Visual Formatter applied: ${formatResult.visualApproach}`);
-        console.log(`[POSTING_QUEUE] 📊 Transformations: ${formatResult.transformations.join(', ')}`);
+        // ✅ Content is ALREADY formatted (done in planJob before queueing)
+        console.log(`[POSTING_QUEUE] 💡 Using pre-formatted content (visual formatting applied before queueing)`);
         
         const poster = new UltimateTwitterPoster();
-        const result = await poster.postTweet(formatResult.formatted);
+        const result = await poster.postTweet(decision.content);
         
         if (!result.success) {
           await poster.dispose();
           console.error(`[POSTING_QUEUE] ❌ Playwright posting failed: ${result.error}`);
           throw new Error(result.error || 'Playwright posting failed');
         }
-        
-        // 📊 UPDATE: Store visual approach used for this post
-        await supabase
-          .from('content_generation_metadata_comprehensive')
-          .update({ visual_format: formatResult.visualApproach })
-          .eq('decision_id', decision.id);
         
         // ✅ POST SUCCEEDED - Now extract tweet ID using ONLY bulletproof method
         console.log(`[POSTING_QUEUE] ✅ Tweet posted! Waiting for Twitter to process...`);
@@ -956,9 +894,8 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         console.log(`[POSTING_QUEUE] 🔍 Now extracting tweet ID from profile...`);
         
         // Use bulletproof extractor (this is the ONLY extraction method now)
-        // 🔥 CRITICAL: Use FORMATTED content, not original (what was actually posted!)
         const extraction = await BulletproofTweetExtractor.extractTweetId(page, {
-          expectedContent: formatResult.formatted,  // ✅ FIX: Use formatted content that was actually posted!
+          expectedContent: decision.content,  // ✅ Already formatted content
           expectedUsername: process.env.TWITTER_USERNAME || 'SignalAndSynapse',
           maxAgeSeconds: 600, // ✅ FIXED: 10 minutes to handle Twitter profile caching
           navigateToVerify: true
@@ -1037,27 +974,8 @@ async function postReply(decision: QueuedDecision): Promise<string> {
   
   console.log(`[POSTING_QUEUE] ✅ Duplicate check passed - no existing reply to ${decision.target_tweet_id}`);
   
-  // 🎨 AI-POWERED VISUAL FORMATTING for replies
-  const { formatContentForTwitter } = await import('../posting/aiVisualFormatter');
-  
-  // Get metadata for context
-  const { data: replyMetadata } = await supabase
-    .from('content_generation_metadata_comprehensive')
-    .select('raw_topic, angle, tone, format_strategy, generator_name')
-    .eq('decision_id', decision.id)
-    .single();
-  
-  const formatResult = await formatContentForTwitter({
-    content: decision.content,
-    generator: String(replyMetadata?.generator_name || 'unknown'),
-    topic: String(replyMetadata?.raw_topic || `reply to @${decision.target_username}`),
-    angle: String(replyMetadata?.angle || 'reply'),
-    tone: String(replyMetadata?.tone || 'helpful'),
-    formatStrategy: String(replyMetadata?.format_strategy || 'reply')
-  });
-  
-  console.log(`[POSTING_QUEUE] 🎨 AI Visual Formatter for reply: ${formatResult.visualApproach}`);
-  console.log(`[POSTING_QUEUE] 📊 Transformations: ${formatResult.transformations.join(', ')}`);
+  // ✅ Content is ALREADY formatted (done in replyJob before queueing)
+  console.log(`[POSTING_QUEUE] 💡 Using pre-formatted reply content`);
   
   // 🛡️ Use PROPER reply system (posts as actual reply, not @mention)
   console.log(`[POSTING_QUEUE] 💬 Using UltimateTwitterPoster.postReply() for REAL replies...`);
@@ -1073,23 +991,17 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     const poster = new UltimateTwitterPoster();
     
     console.log(`[POSTING_QUEUE] 💬 Posting REAL reply to tweet ${decision.target_tweet_id}...`);
-    console.log(`[POSTING_QUEUE] 📝 Reply content: "${formatResult.formatted.substring(0, 60)}..."`);
+    console.log(`[POSTING_QUEUE] 📝 Reply content: "${decision.content.substring(0, 60)}..."`);
     
-    // Post as ACTUAL reply (not @mention tweet!) with formatted content
+    // Post as ACTUAL reply (not @mention tweet!) - content already formatted
     const result = await poster.postReply(
-      formatResult.formatted, // Use formatted version!
+      decision.content, // Already formatted in replyJob
       decision.target_tweet_id
     );
     
     if (!result.success || !result.tweetId) {
       throw new Error(result.error || 'Reply posting failed');
     }
-    
-    // 📊 UPDATE: Store visual approach used for this reply
-    await supabase
-      .from('content_generation_metadata_comprehensive')
-      .update({ visual_format: formatResult.visualApproach })
-      .eq('decision_id', decision.id);
     
     // ═══════════════════════════════════════════════════════════
     // ✅ CRITICAL VALIDATION: Reply ID MUST be different from parent!
