@@ -209,8 +209,8 @@ async function learnFromPostPerformance(
   // 🆕 UPDATE ANGLE PERFORMANCE
   if (fullPost?.angle) {
     await updateDimensionPerformance(supabase, 'angle_performance', {
-      dimension_value: fullPost.angle,
-      type_field: fullPost.angle_type,
+      dimension_value: fullPost.angle as string,
+      type_field: fullPost.angle_type as string | undefined,
       metrics: {
         likes: metrics.likes || 0,
         retweets: metrics.retweets || 0,
@@ -225,9 +225,9 @@ async function learnFromPostPerformance(
   // 🆕 UPDATE TONE PERFORMANCE
   if (fullPost?.tone) {
     await updateDimensionPerformance(supabase, 'tone_performance', {
-      dimension_value: fullPost.tone,
-      type_field: fullPost.tone_cluster,
-      is_singular: fullPost.tone_is_singular,
+      dimension_value: fullPost.tone as string,
+      type_field: fullPost.tone_cluster as string | undefined,
+      is_singular: fullPost.tone_is_singular as boolean | undefined,
       metrics: {
         likes: metrics.likes || 0,
         retweets: metrics.retweets || 0,
@@ -242,7 +242,7 @@ async function learnFromPostPerformance(
   // 🆕 UPDATE FORMAT STRATEGY PERFORMANCE
   if (fullPost?.format_strategy) {
     await updateDimensionPerformance(supabase, 'format_strategy_performance', {
-      dimension_value: fullPost.format_strategy,
+      dimension_value: fullPost.format_strategy as string,
       metrics: {
         followers_gained: metrics.followers_gained || 0,
         engagement_rate: metrics.engagement_rate || 0,
