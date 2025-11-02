@@ -44,16 +44,23 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+temp_backup/
+temp_backup_learning/
+old_emergency_fixes/
+tmp/
 
 # Test files
 test_*.js
 debug_*.js
 demo_*.js
 check_*.js
-*.test.js .env.backup
-browsers/
+*.test.js
+.env.backup
 
-# Session files (contain authentication cookies)
+# Browser and session files
+browsers/
+.browser-profile/
+playwright-session/
 data/twitter_session.json
 .session/
 *_session*.json
@@ -63,10 +70,16 @@ twitter_session*.json
 cookies_raw.txt
 cookies_export.json
 
-# SSL certificates (mount these via Railway or local file system)
+# Large files and artifacts
+railway_logs*.txt
+fast_posting_test.txt
+*.zip
+*.tar.gz
+
+# SSL certificates
 ops/supabase-ca.crt
 *.crt
 *.pem
-dist/
-.browser-profile/
-playwright-session/
+
+# Data directories
+data/
