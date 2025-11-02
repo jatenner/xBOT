@@ -600,9 +600,28 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
       console.error(`[POSTING_QUEUE] 💥 CRITICAL FAILURE: Tweet ${tweetId} posted to Twitter but failed to save to database after 3 attempts!`);
       console.error(`[POSTING_QUEUE] 🔗 Tweet URL: ${tweetUrl}`);
       console.error(`[POSTING_QUEUE] 📝 Content: ${decision.content.substring(0, 100)}`);
-      console.error(`[POSTING_QUEUE] ⚠️ This tweet will NOT appear in dashboard but IS live on Twitter!`);
-      // Still throw error so we know about it
-      throw new Error(`Database save failed for posted tweet ${tweetId}`);
+      console.error(`[POSTING_QUEUE] ⚠️ Marking as posted anyway to prevent duplicate posting!`);
+      console.error(`[POSTING_QUEUE] ⚠️ Background job will find real tweet_id later`);
+      
+      // 🔥 CRITICAL: Mark as 'posted' even if database save failed, to prevent retry/duplicate!
+      // Use simple status update (might work even if full save failed)
+      try {
+        await supabase
+          .from('content_metadata')
+          .update({ 
+            status: 'posted',
+            tweet_id: tweetId,
+            posted_at: new Date().toISOString()
+          })
+          .eq('decision_id', decision.id);
+        console.log(`[POSTING_QUEUE] ✅ Status marked as 'posted' to prevent duplicate`);
+      } catch (simpleSaveError: any) {
+        console.error(`[POSTING_QUEUE] 💥 Even simple status update failed: ${simpleSaveError.message}`);
+        // If this fails too, we'll rely on the background job to find the tweet
+      }
+      
+      // DON'T throw error - post succeeded, just database tracking failed
+      // We don't want to retry and create a duplicate!
     }
     
     // Update metrics
@@ -888,8 +907,9 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         console.log(`[POSTING_QUEUE] 🔍 Now extracting tweet ID from profile...`);
         
         // Use bulletproof extractor (this is the ONLY extraction method now)
+        // 🔥 CRITICAL: Use FORMATTED content, not original (what was actually posted!)
         const extraction = await BulletproofTweetExtractor.extractTweetId(page, {
-          expectedContent: decision.content,
+          expectedContent: formatResult.formatted,  // ✅ FIX: Use formatted content that was actually posted!
           expectedUsername: process.env.TWITTER_USERNAME || 'SignalAndSynapse',
           maxAgeSeconds: 600, // ✅ FIXED: 10 minutes to handle Twitter profile caching
           navigateToVerify: true
