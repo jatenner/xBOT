@@ -171,27 +171,27 @@ export class JobManager {
 
     // Reply job - REMOVED (replaced by aggressive reply_posting job below)
 
-    // Velocity tracker - every 2 hours, offset 60 min (OPTIMIZED: reduced from 30min)
-    // Includes follower snapshots + engagement velocity tracking
-    this.scheduleStaggeredJob(
-      'velocity_tracker',
-      async () => {
-        await this.safeExecute('velocity_tracker', async () => {
-          const { runVelocityTracking } = await import('./velocityTrackerJob');
-          await runVelocityTracking();
-        });
-      },
-      120 * MINUTE, // Every 2 hours (was 30min)
-      60 * MINUTE   // Offset 60min
-    );
+    // Velocity tracker - DISABLED (OPTIMIZATION: merged into analytics job)
+    // Follower snapshots now handled by analytics job every 6 hours
+    // This eliminates duplicate browser operations for follower tracking
 
     // Analytics - every 6 hours, offset 180 min (OPTIMIZED: reduced from 30min)
+    // NOW INCLUDES: Follower snapshots (merged from velocity tracker)
     this.scheduleStaggeredJob(
       'analytics',
       async () => {
         await this.safeExecute('analytics', async () => {
           const { analyticsCollectorJobV2 } = await import('./analyticsCollectorJobV2');
           await analyticsCollectorJobV2();
+          
+          // OPTIMIZATION: Also run follower tracking here (was in velocity_tracker)
+          try {
+            const { runVelocityTracking } = await import('./velocityTrackerJob');
+            await runVelocityTracking();
+            console.log('[JOB_MANAGER] ✅ Follower tracking completed as part of analytics');
+          } catch (velocityError: any) {
+            console.warn('[JOB_MANAGER] ⚠️ Follower tracking failed:', velocityError.message);
+          }
         });
       },
       360 * MINUTE, // Every 6 hours (was 30min)
@@ -308,7 +308,7 @@ export class JobManager {
             await tweetBasedHarvester();
           });
         },
-        20 * MINUTE, // Every 20 minutes - optimized frequency (was 30min)
+        180 * MINUTE, // Every 3 hours - reduced from 20min to prevent browser congestion
         10 * MINUTE // Start after 10 minutes
       );
 
