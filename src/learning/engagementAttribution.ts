@@ -462,11 +462,11 @@ export async function runAttributionUpdate(): Promise<void> {
       }
       
       const metrics = {
-        likes: metricsData.likes || 0,
-        retweets: metricsData.retweets || 0,
-        replies: metricsData.replies || 0,
-        profile_clicks: metricsData.profile_clicks || 0,
-        impressions: metricsData.impressions || 0
+        likes: (metricsData.likes as number | null) || 0,
+        retweets: (metricsData.retweets as number | null) || 0,
+        replies: (metricsData.replies as number | null) || 0,
+        profile_clicks: (metricsData.profile_clicks as number | null) || 0,
+        impressions: (metricsData.impressions as number | null) || 0
       };
       
       console.log(`[ATTRIBUTION] 📊 Real metrics for ${post.post_id}: ${metrics.likes}L, ${metrics.retweets}RT, ${metrics.impressions}IMP`);
