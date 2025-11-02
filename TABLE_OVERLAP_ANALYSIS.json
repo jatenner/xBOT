@@ -1,0 +1,87 @@
+{
+  "overlaps": [
+    {
+      "group": "Content Queue Tables",
+      "tables": [
+        {
+          "name": "content_metadata",
+          "usage": 126
+        },
+        {
+          "name": "content_generation_metadata_comprehensive",
+          "usage": 19
+        }
+      ],
+      "issue": "Two tables storing queued content - which is source of truth?",
+      "recommendation": "Consolidate into single \"content_queue\" table"
+    },
+    {
+      "group": "Posted Content Tables",
+      "tables": [
+        {
+          "name": "posted_decisions",
+          "usage": 34
+        },
+        {
+          "name": "tweets",
+          "usage": 38
+        },
+        {
+          "name": "posts",
+          "usage": 27
+        }
+      ],
+      "issue": "Three tables tracking posted content - data fragmentation",
+      "recommendation": "Consolidate into single \"posted_content\" table"
+    },
+    {
+      "group": "Engagement Metrics Tables",
+      "tables": [
+        {
+          "name": "outcomes",
+          "usage": 49
+        },
+        {
+          "name": "real_tweet_metrics",
+          "usage": 10
+        },
+        {
+          "name": "tweet_analytics",
+          "usage": 10
+        },
+        {
+          "name": "tweet_metrics",
+          "usage": 10
+        }
+      ],
+      "issue": "Multiple tables storing engagement data - duplication risk",
+      "recommendation": "Consolidate into single \"engagement_metrics\" table"
+    }
+  ],
+  "specializedTables": [
+    {
+      "name": "bot_config",
+      "usage": 19,
+      "keep": true,
+      "reason": "System configuration - unique purpose"
+    },
+    {
+      "name": "learning_posts",
+      "usage": 30,
+      "keep": true,
+      "reason": "Learning data - unique purpose"
+    },
+    {
+      "name": "reply_opportunities",
+      "usage": 20,
+      "keep": true,
+      "reason": "Reply targeting - unique purpose"
+    },
+    {
+      "name": "discovered_accounts",
+      "usage": 21,
+      "keep": true,
+      "reason": "Account discovery - unique purpose"
+    }
+  ]
+}

@@ -1,0 +1,90 @@
+{
+  "proposedTables": {
+    "content_queue": {
+      "purpose": "All queued content (singles, threads, replies)",
+      "hasReplyFields": [
+        "target_tweet_id",
+        "target_username"
+      ],
+      "canHandle": [
+        "singles",
+        "threads",
+        "replies"
+      ]
+    },
+    "posted_content": {
+      "purpose": "All posted content (singles, threads, replies)",
+      "hasReplyFields": [
+        "target_tweet_id",
+        "target_username"
+      ],
+      "canHandle": [
+        "singles",
+        "threads",
+        "replies"
+      ]
+    },
+    "engagement_metrics": {
+      "purpose": "All engagement data (likes, retweets, etc)",
+      "timeSeries": true,
+      "canHandle": [
+        "tweets",
+        "threads",
+        "replies"
+      ]
+    }
+  },
+  "missingTables": [
+    {
+      "name": "reply_opportunities",
+      "purpose": "Discovery: Tweets to reply to",
+      "usage": "20 queries",
+      "isSpecialized": true,
+      "shouldKeep": true
+    },
+    {
+      "name": "reply_conversions",
+      "purpose": "Tracking: Follower gains from replies",
+      "usage": "5+ queries",
+      "isSpecialized": true,
+      "shouldKeep": true
+    },
+    {
+      "name": "reply_diagnostics",
+      "purpose": "Debugging: Reply posting attempts",
+      "usage": "2 queries",
+      "isSpecialized": true,
+      "shouldKeep": true
+    },
+    {
+      "name": "reply_strategy_metrics",
+      "purpose": "Learning: Which reply strategies work",
+      "usage": "1 query",
+      "isSpecialized": true,
+      "shouldKeep": true
+    },
+    {
+      "name": "reply_learning_insights",
+      "purpose": "Learning: Reply patterns that work",
+      "usage": "3 queries",
+      "isSpecialized": true,
+      "shouldKeep": true
+    },
+    {
+      "name": "reply_performance",
+      "purpose": "Analytics: Reply engagement tracking",
+      "usage": "1 query",
+      "isSpecialized": false,
+      "shouldKeep": false,
+      "consolidateInto": "engagement_metrics"
+    },
+    {
+      "name": "titan_reply_performance",
+      "purpose": "Analytics: Titan targeting performance",
+      "usage": "1 query",
+      "isSpecialized": false,
+      "shouldKeep": false,
+      "consolidateInto": "engagement_metrics or reply_performance"
+    }
+  ]
+}

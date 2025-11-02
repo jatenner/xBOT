@@ -42,10 +42,11 @@ export async function initializePostAttribution(
 ): Promise<void> {
   const supabase = getSupabaseClient();
   
-  // Get current follower count (TODO: integrate with Twitter API)
+  // Get current follower count
   const currentFollowers = await getCurrentFollowerCount();
   
-  await supabase.from('post_attribution').insert({
+  // ✅ INSERT WITH ERROR CHECKING!
+  const { data, error } = await supabase.from('post_attribution').insert({
     post_id: postId,
     posted_at: new Date(),
     followers_before: currentFollowers,
@@ -67,7 +68,12 @@ export async function initializePostAttribution(
     last_updated: new Date()
   });
   
-  console.log(`[ATTRIBUTION] 📊 Initialized tracking for post ${postId}`);
+  if (error) {
+    console.error(`[ATTRIBUTION] ❌ Failed to initialize tracking for ${postId}:`, error.message);
+    throw new Error(`Attribution init failed: ${error.message}`);
+  }
+  
+  console.log(`[ATTRIBUTION] ✅ Initialized tracking for post ${postId} (followers: ${currentFollowers})`);
 }
 
 /**
@@ -432,16 +438,38 @@ export async function runAttributionUpdate(): Promise<void> {
   const posts = await getPostsNeedingAttribution();
   console.log(`[ATTRIBUTION] 📊 Found ${posts.length} posts to update`);
   
+  if (posts.length === 0) {
+    console.log('[ATTRIBUTION] ✅ No posts need attribution updates');
+    return;
+  }
+  
+  const supabase = getSupabaseClient();
+  
   for (const post of posts) {
     try {
-      // TODO: Fetch real metrics from Twitter API
+      // ✅ FETCH REAL METRICS FROM real_tweet_metrics TABLE!
+      const { data: metricsData, error: metricsError } = await supabase
+        .from('real_tweet_metrics')
+        .select('likes, retweets, replies, impressions, profile_clicks')
+        .eq('tweet_id', post.post_id)
+        .order('collected_at', { ascending: false })
+        .limit(1)
+        .single();
+      
+      if (metricsError || !metricsData) {
+        console.log(`[ATTRIBUTION] ⚠️ No metrics found for ${post.post_id} yet - will check next cycle`);
+        continue;
+      }
+      
       const metrics = {
-        likes: Math.floor(Math.random() * 100), // Placeholder
-        retweets: Math.floor(Math.random() * 20),
-        replies: Math.floor(Math.random() * 10),
-        profile_clicks: Math.floor(Math.random() * 50),
-        impressions: Math.floor(Math.random() * 1000)
+        likes: metricsData.likes || 0,
+        retweets: metricsData.retweets || 0,
+        replies: metricsData.replies || 0,
+        profile_clicks: metricsData.profile_clicks || 0,
+        impressions: metricsData.impressions || 0
       };
+      
+      console.log(`[ATTRIBUTION] 📊 Real metrics for ${post.post_id}: ${metrics.likes}L, ${metrics.retweets}RT, ${metrics.impressions}IMP`);
       
       await updatePostAttribution(post.post_id, metrics);
     } catch (error: any) {

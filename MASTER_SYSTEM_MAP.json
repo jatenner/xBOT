@@ -1,0 +1,34 @@
+{
+  "POSTING_SYSTEM": {
+    "description": "Content generation, queuing, and posting to Twitter",
+    "tables": []
+  },
+  "REPLY_SYSTEM": {
+    "description": "Reply discovery, generation, posting, and tracking",
+    "tables": []
+  },
+  "SCRAPING_SYSTEM": {
+    "description": "Collecting metrics, engagement, followers from Twitter",
+    "tables": []
+  },
+  "LEARNING_SYSTEM": {
+    "description": "AI learning from past performance",
+    "tables": []
+  },
+  "GROWTH_TRACKING": {
+    "description": "Follower growth attribution and tracking",
+    "tables": []
+  },
+  "CONFIG_SYSTEM": {
+    "description": "Bot configuration and settings",
+    "tables": []
+  },
+  "DIAGNOSTICS": {
+    "description": "Logging, debugging, health monitoring",
+    "tables": []
+  },
+  "OTHER": {
+    "description": "Misc tables",
+    "tables": []
+  }
+}

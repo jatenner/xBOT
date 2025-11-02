@@ -1,0 +1,669 @@
+{
+  "summary": {
+    "totalInteractions": 962,
+    "totalTables": 130,
+    "totalFiles": 207,
+    "reads": 24,
+    "writes": 28,
+    "updates": 16,
+    "deletes": 6
+  },
+  "topTables": [
+    {
+      "table": "content_metadata",
+      "count": 126
+    },
+    {
+      "table": "outcomes",
+      "count": 49
+    },
+    {
+      "table": "tweets",
+      "count": 38
+    },
+    {
+      "table": "posted_decisions",
+      "count": 34
+    },
+    {
+      "table": "learning_posts",
+      "count": 30
+    },
+    {
+      "table": "posts",
+      "count": 27
+    },
+    {
+      "table": "discovered_accounts",
+      "count": 21
+    },
+    {
+      "table": "reply_opportunities",
+      "count": 20
+    },
+    {
+      "table": "bot_config",
+      "count": 19
+    },
+    {
+      "table": "content_generation_metadata_comprehensive",
+      "count": 19
+    },
+    {
+      "table": "content_with_outcomes",
+      "count": 17
+    },
+    {
+      "table": "api_usage",
+      "count": 13
+    },
+    {
+      "table": "content_candidates",
+      "count": 12
+    },
+    {
+      "table": "follower_snapshots",
+      "count": 12
+    },
+    {
+      "table": "content_patterns",
+      "count": 11
+    },
+    {
+      "table": "schema_migrations",
+      "count": 11
+    },
+    {
+      "table": "tweet_analytics",
+      "count": 10
+    },
+    {
+      "table": "real_tweet_metrics",
+      "count": 10
+    },
+    {
+      "table": "tweet_metrics",
+      "count": 10
+    },
+    {
+      "table": "patterns",
+      "count": 8
+    },
+    {
+      "table": "unified_posts",
+      "count": 8
+    },
+    {
+      "table": "post_attribution",
+      "count": 7
+    },
+    {
+      "table": "generator_weights",
+      "count": 7
+    },
+    {
+      "table": "peer_posts",
+      "count": 6
+    },
+    {
+      "table": "post_follower_tracking",
+      "count": 6
+    },
+    {
+      "table": "recommendations",
+      "count": 5
+    },
+    {
+      "table": "competitive_insights",
+      "count": 5
+    },
+    {
+      "table": "reply_conversions",
+      "count": 5
+    },
+    {
+      "table": "optimization_events",
+      "count": 5
+    },
+    {
+      "table": "health_news_curated",
+      "count": 5
+    }
+  ],
+  "topFiles": [
+    {
+      "file": "src/jobs/postingQueue.ts",
+      "count": 37
+    },
+    {
+      "file": "src/lib/dualStoreManager.ts",
+      "count": 17
+    },
+    {
+      "file": "src/dashboard/comprehensiveDashboard.ts",
+      "count": 16
+    },
+    {
+      "file": "src/lib/migrationManager.ts",
+      "count": 12
+    },
+    {
+      "file": "src/learning/replyConversionTracker.ts",
+      "count": 11
+    },
+    {
+      "file": "src/learning/generatorMonitoring.ts",
+      "count": 11
+    },
+    {
+      "file": "src/dashboard/improvedDashboard.ts",
+      "count": 11
+    },
+    {
+      "file": "src/jobs/metricsScraperJob.ts",
+      "count": 11
+    },
+    {
+      "file": "src/learn/learn.ts",
+      "count": 10
+    },
+    {
+      "file": "src/dashboard/systemHealthDashboard.ts",
+      "count": 10
+    },
+    {
+      "file": "src/jobs/healthCheckJob.ts",
+      "count": 10
+    },
+    {
+      "file": "src/jobs/replyJob.ts",
+      "count": 10
+    },
+    {
+      "file": "src/core/learningSystemOrchestrator.ts",
+      "count": 9
+    },
+    {
+      "file": "src/quality/vet.ts",
+      "count": 9
+    },
+    {
+      "file": "src/jobs/replyOpportunityHarvester.ts",
+      "count": 9
+    },
+    {
+      "file": "src/metrics/continuousEngagementMonitor.ts",
+      "count": 8
+    },
+    {
+      "file": "src/intelligence/followerAttributionService.ts",
+      "count": 8
+    },
+    {
+      "file": "src/ai/dataDrivenLearner.ts",
+      "count": 8
+    },
+    {
+      "file": "src/api/growthMetrics.ts",
+      "count": 8
+    },
+    {
+      "file": "src/data/realDataEnforcementSystem.ts",
+      "count": 8
+    }
+  ],
+  "interactions": {
+    "reads": [
+      {
+        "file": "src/core/learningSystemOrchestrator.ts",
+        "lineNum": 343,
+        "table": "posts",
+        "code": "this.supabase.from('posts').select('count').gte('posted_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),"
+      },
+      {
+        "file": "src/core/learningSystemOrchestrator.ts",
+        "lineNum": 344,
+        "table": "content_candidates",
+        "code": "this.supabase.from('content_candidates').select('count').eq('status', 'approved'),"
+      },
+      {
+        "file": "src/core/learningSystemOrchestrator.ts",
+        "lineNum": 345,
+        "table": "patterns",
+        "code": "this.supabase.from('patterns').select('count').eq('status', 'active'),"
+      },
+      {
+        "file": "src/core/learningSystemOrchestrator.ts",
+        "lineNum": 346,
+        "table": "peer_posts",
+        "code": "this.supabase.from('peer_posts').select('count').gte('scraped_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())"
+      },
+      {
+        "file": "src/core/systemFixes.ts",
+        "lineNum": 116,
+        "table": "bot_config",
+        "code": "async (supabase) => await supabase.from('bot_config').select('key').limit(1),"
+      },
+      {
+        "file": "src/utils/kv.ts",
+        "lineNum": 131,
+        "table": "kv_store",
+        "code": "await this.supabase.from('kv_store').select('key').limit(1);"
+      },
+      {
+        "file": "src/utils/systemHealthCheck.ts",
+        "lineNum": 55,
+        "table": "learning_posts",
+        "code": "const { data, error } = await admin.from('learning_posts').select('count').limit(1);"
+      },
+      {
+        "file": "src/dashboard/performanceAnalyticsDashboard.ts",
+        "lineNum": 118,
+        "table": "content_metadata",
+        "code": "supabase.from('content_metadata').select('content, actual_likes, actual_retweets, actual_engagement_rate').eq('status', 'posted').eq('decision_type', 'single'),"
+      },
+      {
+        "file": "src/dashboard/performanceAnalyticsDashboard.ts",
+        "lineNum": 119,
+        "table": "outcomes",
+        "code": "supabase.from('outcomes').select('*').order('collected_at', { ascending: false }).limit(100)"
+      },
+      {
+        "file": "src/dashboard/improvedDashboard.ts",
+        "lineNum": 46,
+        "table": "content_metadata",
+        "code": "supabase.from('content_metadata').select('id', { count: 'exact', head: true }).eq('decision_type', 'single'),"
+      },
+      {
+        "file": "src/dashboard/improvedDashboard.ts",
+        "lineNum": 47,
+        "table": "content_metadata",
+        "code": "supabase.from('content_metadata').select('id', { count: 'exact', head: true }).eq('decision_type', 'single').gte('posted_at', last24h),"
+      },
+      {
+        "file": "src/dashboard/improvedDashboard.ts",
+        "lineNum": 48,
+        "table": "content_metadata",
+        "code": "supabase.from('content_metadata').select('id', { count: 'exact', head: true }).eq('decision_type', 'single').gte('posted_at', last7d),"
+      },
+      {
+        "file": "src/dashboard/improvedDashboard.ts",
+        "lineNum": 49,
+        "table": "content_metadata",
+        "code": "supabase.from('content_metadata').select('actual_likes, actual_retweets, actual_engagement_rate').eq('decision_type', 'single').not('actual_likes', 'is', null)"
+      },
+      {
+        "file": "src/dashboard/improvedDashboard.ts",
+        "lineNum": 73,
+        "table": "content_metadata",
+        "code": "supabase.from('content_metadata').select('id', { count: 'exact', head: true }).eq('decision_type', 'reply'),"
+      },
+      {
+        "file": "src/dashboard/improvedDashboard.ts",
+        "lineNum": 74,
+        "table": "content_metadata",
+        "code": "supabase.from('content_metadata').select('id', { count: 'exact', head: true }).eq('decision_type', 'reply').gte('posted_at', last24h),"
+      },
+      {
+        "file": "src/dashboard/improvedDashboard.ts",
+        "lineNum": 75,
+        "table": "reply_opportunities",
+        "code": "supabase.from('reply_opportunities').select('id, tier', { count: 'exact' }).eq('status', 'pending'),"
+      },
+      {
+        "file": "src/dashboard/improvedDashboard.ts",
+        "lineNum": 76,
+        "table": "reply_conversions",
+        "code": "supabase.from('reply_conversions').select('followers_gained')"
+      },
+      {
+        "file": "src/lib/supabaseClients.ts",
+        "lineNum": 69,
+        "table": "tweet_metrics",
+        "code": "const { error } = await admin.from('tweet_metrics').select('tweet_id').limit(1);"
+      },
+      {
+        "file": "src/lib/unifiedDatabaseManager.ts",
+        "lineNum": 319,
+        "table": "bot_config",
+        "code": "const { error } = await this.supabase.from('bot_config').select('key').limit(1);"
+      },
+      {
+        "file": "src/lib/databaseMonitoringSystem.ts",
+        "lineNum": 769,
+        "table": "tweets",
+        "code": "await this.supabase.from('tweets').select('count').limit(1);"
+      },
+      {
+        "file": "src/lib/databaseMonitoringSystem.ts",
+        "lineNum": 916,
+        "table": "tweets",
+        "code": "this.supabase.from('tweets').select('count').limit(1),"
+      },
+      {
+        "file": "src/lib/advancedDatabaseManager.ts",
+        "lineNum": 631,
+        "table": "tweets",
+        "code": "const { error } = await connection.from('tweets').select('count').limit(1);"
+      },
+      {
+        "file": "src/db/index.ts",
+        "lineNum": 192,
+        "table": "learning_posts",
+        "code": "const { error } = await client.from('learning_posts').select('id').limit(1);"
+      },
+      {
+        "file": "src/analytics/openaiCostTracker.ts",
+        "lineNum": 414,
+        "table": "openai_usage_log",
+        "code": "const ins = await this.db.getClient().from('openai_usage_log').insert([payload]).select('id').single();"
+      }
+    ],
+    "writes": [
+      {
+        "file": "src/intelligence/realTimeLearningLoop.ts",
+        "lineNum": 275,
+        "table": "formula_performance",
+        "code": "await supabase.from('formula_performance').insert([{"
+      },
+      {
+        "file": "src/intelligence/realTimeLearningLoop.ts",
+        "lineNum": 329,
+        "table": "learning_updates",
+        "code": "await supabase.from('learning_updates').insert([{"
+      },
+      {
+        "file": "src/intelligence/followerTracker.ts",
+        "lineNum": 258,
+        "table": "follower_snapshots",
+        "code": "await supabase.from('follower_snapshots').insert([{"
+      },
+      {
+        "file": "src/intelligence/followerTracker.ts",
+        "lineNum": 275,
+        "table": "follower_attributions",
+        "code": "await supabase.from('follower_attributions').insert([{"
+      },
+      {
+        "file": "src/intelligence/competitorIntelligenceMonitor.ts",
+        "lineNum": 335,
+        "table": "competitor_intelligence",
+        "code": "await supabase.from('competitor_intelligence').insert({"
+      },
+      {
+        "file": "src/learning/replyConversionTracker.ts",
+        "lineNum": 108,
+        "table": "reply_conversions",
+        "code": "await this.supabase.from('reply_conversions').insert({"
+      },
+      {
+        "file": "src/learning/engagementAttribution.ts",
+        "lineNum": 48,
+        "table": "post_attribution",
+        "code": "await supabase.from('post_attribution').insert({"
+      },
+      {
+        "file": "src/engagement/strategicEngagementEngine.ts",
+        "lineNum": 463,
+        "table": "engagement_tracking",
+        "code": "await supabase.from('engagement_tracking').insert(trackingData);"
+      },
+      {
+        "file": "src/audit/systemFailureAuditor.ts",
+        "lineNum": 75,
+        "table": "system_failures",
+        "code": "const { error } = await client.from('system_failures').insert({"
+      },
+      {
+        "file": "src/ai/humanVoiceEngine.ts",
+        "lineNum": 443,
+        "table": "human_voice_performance",
+        "code": "await supabase.from('human_voice_performance').insert({"
+      },
+      {
+        "file": "src/ai/promptEvolutionEngine.ts",
+        "lineNum": 270,
+        "table": "prompt_performance",
+        "code": "const { data, error } = await client.from('prompt_performance').insert({"
+      },
+      {
+        "file": "src/lib/unifiedDataManager.ts",
+        "lineNum": 209,
+        "table": "ai_posting_decisions",
+        "code": "const { data, error } = await supabase.from('ai_posting_decisions').insert({"
+      },
+      {
+        "file": "src/lib/unifiedDataManager.ts",
+        "lineNum": 237,
+        "table": "outcomes",
+        "code": "const { data: fallbackData, error: fallbackError } = await supabase.from('outcomes').insert({"
+      },
+      {
+        "file": "src/tracking/followerCountTracker.ts",
+        "lineNum": 146,
+        "table": "follower_snapshots",
+        "code": "await supabase.from('follower_snapshots').insert({"
+      },
+      {
+        "file": "src/generators/contentAutoImprover.ts",
+        "lineNum": 188,
+        "table": "successful_patterns",
+        "code": "// await supabase.from('successful_patterns').insert({"
+      },
+      {
+        "file": "src/jobs/healthCheckJob.ts",
+        "lineNum": 327,
+        "table": "health_snapshots",
+        "code": "await supabase.from('health_snapshots').insert([{"
+      },
+      {
+        "file": "src/jobs/planJob.ts",
+        "lineNum": 49,
+        "table": "content_metadata",
+        "code": "await supabase.from('content_metadata').insert([{"
+      },
+      {
+        "file": "src/jobs/planJob.ts",
+        "lineNum": 557,
+        "table": "content_metadata",
+        "code": "const { data, error} = await supabase.from('content_metadata').insert([insertPayload]);"
+      },
+      {
+        "file": "src/jobs/metricsScraperJob.ts",
+        "lineNum": 346,
+        "table": "post_velocity_tracking",
+        "code": "await supabase.from('post_velocity_tracking').insert({"
+      },
+      {
+        "file": "src/jobs/replyJob.ts",
+        "lineNum": 267,
+        "table": "content_metadata",
+        "code": "await supabase.from('content_metadata').insert([{"
+      },
+      {
+        "file": "src/jobs/replyJob.ts",
+        "lineNum": 765,
+        "table": "content_metadata",
+        "code": "const { data, error } = await supabase.from('content_metadata').insert([{"
+      },
+      {
+        "file": "src/monitoring/scrapingHealthMonitor.ts",
+        "lineNum": 176,
+        "table": "scraping_attempts",
+        "code": "await supabase.from('scraping_attempts').insert([{"
+      },
+      {
+        "file": "src/posting/bulletproofTwitterComposer.ts",
+        "lineNum": 660,
+        "table": "reply_diagnostics",
+        "code": "await supabase.from('reply_diagnostics').insert([{"
+      },
+      {
+        "file": "src/posting/resilientReplyPoster.ts",
+        "lineNum": 703,
+        "table": "reply_strategy_metrics",
+        "code": "await supabase.from('reply_strategy_metrics').insert([{"
+      },
+      {
+        "file": "src/posting/resilientReplyPoster.ts",
+        "lineNum": 755,
+        "table": "reply_diagnostics",
+        "code": "await supabase.from('reply_diagnostics').insert([{"
+      },
+      {
+        "file": "src/posting/aiVisualFormatter.ts",
+        "lineNum": 308,
+        "table": "visual_format_usage",
+        "code": "await supabase.from('visual_format_usage').insert([{"
+      },
+      {
+        "file": "src/services/openaiBudgetedClient.ts",
+        "lineNum": 468,
+        "table": "api_usage",
+        "code": "await supabase.from('api_usage').insert({"
+      },
+      {
+        "file": "src/guards/qualityGate.ts",
+        "lineNum": 350,
+        "table": "rejected_posts",
+        "code": "await this.supabase.from('rejected_posts').insert({"
+      }
+    ],
+    "updates": [
+      {
+        "file": "src/core/systemFixes.ts",
+        "lineNum": 81,
+        "table": "bot_config",
+        "code": "async (supabase) => await supabase.from('bot_config').upsert([{"
+      },
+      {
+        "file": "src/intelligence/tweetPerformanceTracker.ts",
+        "lineNum": 270,
+        "table": "tweet_metrics",
+        "code": "const { error } = await client.from('tweet_metrics').upsert({"
+      },
+      {
+        "file": "src/intelligence/followerTracker.ts",
+        "lineNum": 374,
+        "table": "viral_formula_performance",
+        "code": "await supabase.from('viral_formula_performance').upsert({"
+      },
+      {
+        "file": "src/intelligence/engagementAnalyzer.ts",
+        "lineNum": 193,
+        "table": "tweet_analytics",
+        "code": "return await client.from('tweet_analytics').upsert({"
+      },
+      {
+        "file": "src/learning/metaLearningEngine.ts",
+        "lineNum": 65,
+        "table": "meta_insights",
+        "code": "await supabase.from('meta_insights').upsert({"
+      },
+      {
+        "file": "src/learning/engagementAttribution.ts",
+        "lineNum": 162,
+        "table": "hook_performance",
+        "code": "await supabase.from('hook_performance').upsert({"
+      },
+      {
+        "file": "src/learning/engagementAttribution.ts",
+        "lineNum": 175,
+        "table": "topic_performance",
+        "code": "await supabase.from('topic_performance').upsert({"
+      },
+      {
+        "file": "src/learning/engagementAttribution.ts",
+        "lineNum": 188,
+        "table": "generator_performance",
+        "code": "await supabase.from('generator_performance').upsert({"
+      },
+      {
+        "file": "src/lib/unifiedDataManager.ts",
+        "lineNum": 125,
+        "table": "unified_posts",
+        "code": "let { error } = await supabase.from('unified_posts').upsert({"
+      },
+      {
+        "file": "src/lib/unifiedDataManager.ts",
+        "lineNum": 159,
+        "table": "tweets",
+        "code": "const { error: legacyError } = await supabase.from('tweets').upsert({"
+      },
+      {
+        "file": "src/lib/unifiedDataManager.ts",
+        "lineNum": 275,
+        "table": "unified_metrics",
+        "code": "const { error } = await supabase.from('unified_metrics').upsert({"
+      },
+      {
+        "file": "src/lib/unifiedDataManager_broken.ts",
+        "lineNum": 178,
+        "table": "unified_posts",
+        "code": "const { error } = await supabase.from('unified_posts').upsert({"
+      },
+      {
+        "file": "src/jobs/metricsScraperJob.ts",
+        "lineNum": 142,
+        "table": "outcomes",
+        "code": "const { data: outcomeData, error: outcomeError } = await supabase.from('outcomes').upsert({"
+      },
+      {
+        "file": "src/jobs/metricsScraperJob.ts",
+        "lineNum": 166,
+        "table": "learning_posts",
+        "code": "const { error: learningError } = await supabase.from('learning_posts').upsert({"
+      },
+      {
+        "file": "src/jobs/metricsScraperJob.ts",
+        "lineNum": 182,
+        "table": "tweet_metrics",
+        "code": "const { error: metricsTableError } = await supabase.from('tweet_metrics').upsert({"
+      },
+      {
+        "file": "src/jobs/postingQueue.ts",
+        "lineNum": 713,
+        "table": "outcomes",
+        "code": "await supabase.from('outcomes').upsert({"
+      }
+    ],
+    "deletes": [
+      {
+        "file": "src/core/systemFixes.ts",
+        "lineNum": 70,
+        "table": "bot_config",
+        "code": "async (supabase) => await supabase.from('bot_config').delete().eq('key', conflict),"
+      },
+      {
+        "file": "src/utils/kv.ts",
+        "lineNum": 187,
+        "table": "kv_store",
+        "code": "await this.supabase.from('kv_store').delete().eq('key', key);"
+      },
+      {
+        "file": "src/lib/supabaseService.ts",
+        "lineNum": 89,
+        "table": "api_usage",
+        "code": "await supaService.from('api_usage').delete().eq('intent', 'test');"
+      },
+      {
+        "file": "src/data/realDataEnforcementSystem.ts",
+        "lineNum": 213,
+        "table": "tweets",
+        "code": "await supabase.from('tweets').delete().eq('id', tweet.id);"
+      },
+      {
+        "file": "src/data/realDataEnforcementSystem.ts",
+        "lineNum": 241,
+        "table": "real_tweet_metrics",
+        "code": "await supabase.from('real_tweet_metrics').delete().eq('tweet_id', metric.tweet_id);"
+      },
+      {
+        "file": "src/data/realDataEnforcementSystem.ts",
+        "lineNum": 266,
+        "table": "learning_posts",
+        "code": "await supabase.from('learning_posts').delete().eq('tweet_id', post.tweet_id);"
+      }
+    ]
+  }
+}
