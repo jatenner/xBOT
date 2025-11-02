@@ -1,44 +1,51 @@
 /**
- * 🎨 AI-POWERED VISUAL FORMATTER
+ * 🎨 AI VISUAL FORMATTER - THE FINAL BRIDGE
  * 
- * A specialized AI that transforms raw content into Twitter-optimized formats
+ * This is the LAST step before posting - the "Twitter Polish Expert"
+ * 
+ * Role: Takes content + ALL context (generator, tone, angle, topic, strategy)
+ *       and REWRITES it to look perfect on Twitter
  * 
  * Philosophy:
- * - NO hardcoded rules or patterns
- * - AI decides best visual presentation based on content + context
- * - Learns from what formats it uses (tracked in database)
- * - Understands tone, generator, angle to make contextual formatting decisions
+ * - Acts like a Twitter growth expert reviewing the content
+ * - Transforms structure, spacing, emphasis to maximize engagement
+ * - Uses ALL the intelligence gathered (generator personality, tone, angle)
+ * - Learns from what formats it uses
+ * - NO hardcoded rules - AI decides EVERYTHING
+ * 
+ * Think of it as: "The tweet is 90% done, now make it LOOK amazing on Twitter"
  */
 
-import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { getSupabaseClient } from '../db';
+import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 
-export interface FormatContext {
+export interface VisualFormatContext {
   content: string;
   generator: string;
-  tone: string;
-  angle: string;
   topic: string;
-  formatStrategy?: string;
+  angle: string;
+  tone: string;
+  formatStrategy: string;
 }
 
-export interface FormattedResult {
+export interface VisualFormatResult {
   formatted: string;
-  visualApproach: string; // What the AI chose to use (for tracking)
-  transformations: string[]; // List of changes made
-  reasoning: string;
+  visualApproach: string; // What formatting approach the AI chose
+  transformations: string[]; // What it changed
+  confidence: number;
 }
 
 /**
- * Transform content using AI Twitter formatting expert
+ * 🎨 THE FINAL BRIDGE - Transform content into Twitter-perfect format
  */
-export async function formatForTwitter(context: FormatContext): Promise<FormattedResult> {
-  console.log('[AI_FORMATTER] 🎨 Transforming content for Twitter...');
-  console.log(`[AI_FORMATTER] 📋 Context: ${context.generator} | ${context.tone} | ${context.angle}`);
+export async function formatContentForTwitter(context: VisualFormatContext): Promise<VisualFormatResult> {
+  console.log('[VISUAL_FORMATTER] 🎨 Final Twitter formatting pass...');
+  console.log(`[VISUAL_FORMATTER] 📋 Context: ${context.generator} | ${context.tone} | ${context.angle}`);
   
+  const { content, generator, topic, angle, tone, formatStrategy } = context;
+  
+  // Get recent formats to ensure variety
   const supabase = getSupabaseClient();
-  
-  // Get recent formatting choices to avoid repetition
   const { data: recentFormats } = await supabase
     .from('content_generation_metadata_comprehensive')
     .select('visual_format')
@@ -46,181 +53,221 @@ export async function formatForTwitter(context: FormatContext): Promise<Formatte
     .order('created_at', { ascending: false })
     .limit(10);
   
-  const recentChoices = (recentFormats || [])
+  const recentApproaches = (recentFormats || [])
     .map(f => String(f.visual_format))
-    .filter(f => f && f.length > 0);
+    .filter(f => f && f.trim().length > 0);
   
-  const systemPrompt = `You are a Twitter formatting expert. Transform raw text into visually engaging Twitter content.
+  const systemPrompt = `You are the FINAL editor before a tweet goes live - the "Twitter Polish Expert".
 
-⚠️ CRITICAL RULES:
-• NEVER change the meaning or facts
-• NEVER add or remove information  
-• NEVER exceed 280 characters total
-• ONLY transform HOW it looks visually
+🎯 YOUR ROLE:
+The content is already written. Your job: Transform it to LOOK PERFECT on Twitter.
+Rewrite the structure, spacing, and emphasis to maximize engagement and readability.
 
-🎨 YOUR TOOLKIT - Twitter Visual Formats:
+📊 FULL CONTENT CONTEXT:
 
-1. BULLETS (• or numbered lists)
-2. LINE BREAKS (spacing between ideas for readability)
-3. EMOJIS (1-2 max, contextually relevant)
-4. CAPS (emphasize 1-2 KEY TERMS only)
-5. QUESTIONS (reformulate as question if it fits)
-6. SPLIT FORMAT (Myth: X → Truth: Y for contrasts)
-7. PLAIN PARAGRAPH (sometimes simple is best!)
+Generator Personality: ${generator}
+├─ This tells you the voice (coach, provocateur, data nerd, etc.)
+└─ Match formatting to personality!
 
-🧠 CONTEXT AWARENESS:
+Tone: ${tone}
+├─ How the content should feel
+└─ Bold tone → bold formatting. Subtle tone → minimal formatting.
 
-Generator Personality: ${context.generator}
-Tone: ${context.tone}
-Angle: ${context.angle}
-Topic: ${context.topic}
-${context.formatStrategy ? `Strategy: ${context.formatStrategy}` : ''}
+Angle: ${angle}
+├─ The perspective being taken
+└─ Controversial angle → might need emphasis. Educational → might need structure.
 
-Use this context to make smart formatting decisions:
-• Data-heavy (data_nerd) → might use numbers, spacing, minimal emoji
-• Provocative (provocateur) → might use questions, emphasis, dramatic spacing
-• Story (storyteller) → might use paragraph flow with strategic breaks
-• Myth-busting (mythBuster) → might use split format (Myth/Truth)
-• Coach-style → might use bullets or numbered steps
-• Cultural → might use quotes or cultural references with spacing
+Topic: ${topic}
+├─ The subject matter
+└─ Complex topic → might need spacing. Simple → might stay compact.
 
-🚫 AVOID REPETITION:
-Recent formats used:
-${recentChoices.slice(0, 5).map((f, i) => `${i + 1}. ${f.substring(0, 60)}...`).join('\n')}
+Format Strategy: ${formatStrategy}
+├─ The content structure approach
+└─ Story → flow. Data → spacing. Question → question format.
 
-Pick something DIFFERENT from recent choices!
+🎨 TRANSFORM THE TWEET:
 
-🎯 YOUR GOAL:
-Make the content STOP people scrolling on Twitter.
-Format it to maximize engagement.
-Be creative. Experiment. Vary your approach each time.
+You can REWRITE how it's presented:
+• Add bullets if it lists multiple points
+• Add line breaks to separate ideas
+• Reformulate as a question if it fits
+• Add 1 relevant emoji (or none if better without)
+• Use CAPS for 1-2 key terms (sparingly!)
+• Split into "Myth: X / Truth: Y" if it's contrasting
+• Keep plain if the content already flows perfectly
+• Number steps if it's sequential
+• Add spacing to highlight key insights
+
+Match formatting to the PERSONALITY:
+• Coach (${generator === 'coach' ? 'THIS ONE!' : 'example'}) → Might use numbered steps or bullets
+• Provocateur (${generator === 'provocateur' ? 'THIS ONE!' : 'example'}) → Might use questions or bold statements
+• Data Nerd (${generator === 'dataNerd' || generator === 'data_nerd' ? 'THIS ONE!' : 'example'}) → Might use spacing around numbers
+• MythBuster (${generator === 'mythBuster' || generator === 'myth_buster' ? 'THIS ONE!' : 'example'}) → Might use Myth/Truth split
+• Storyteller (${generator === 'storyteller' ? 'THIS ONE!' : 'example'}) → Might keep paragraph flow with strategic breaks
+• Philosopher (${generator === 'philosopher' ? 'THIS ONE!' : 'example'}) → Might keep plain or add thoughtful spacing
+• Others → Match to their personality!
+
+${recentApproaches.length > 0 ? `🚫 AVOID REPETITION - Recent formats used:
+${recentApproaches.slice(0, 5).map((f, i) => `${i + 1}. ${f.substring(0, 60)}...`).join('\n')}
+
+Pick something DIFFERENT from recent posts!` : ''}
+
+🚨 CRITICAL RULES:
+• NEVER change facts, meaning, or information
+• Final tweet MUST be ≤280 characters
+• NO hashtags
+• NO "..." truncation
+• Be CREATIVE - vary your approach every time
 
 Return JSON:
 {
-  "formatted": "the visually transformed content (max 280 chars)",
-  "format_used": "concise description of what you used (e.g., 'Bullet points', 'Question with line breaks', 'Plain paragraph with emoji')",
-  "reasoning": "one sentence why this format works for this content"
+  "formatted": "the rewritten/reformatted tweet (≤280 chars)",
+  "approach": "what you did (e.g., 'Bullet points', 'Question with CAPS emphasis', 'Plain with line breaks', 'Numbered steps')",
+  "confidence": 0.8
 }`;
 
-  const userPrompt = `Transform this content for maximum Twitter engagement:
+  const userPrompt = `Polish this tweet for maximum Twitter engagement:
 
-"${context.content}"
+"${content}"
 
-Based on the ${context.generator} personality and ${context.tone} tone, how should this be visually formatted?`;
+Given the ${generator} personality, ${tone} tone, and ${angle} angle - how should this be formatted visually to perform BEST on Twitter?
+
+Transform it!`;
 
   try {
     const response = await createBudgetedChatCompletion({
-      model: 'gpt-4o-mini', // Fast and cheap for formatting
+      model: 'gpt-4o-mini', // Fast and cheap
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
       ],
-      temperature: 0.8, // Creative but consistent
-      max_tokens: 300,
+      temperature: 0.85, // Creative but focused
+      max_tokens: 350,
       response_format: { type: 'json_object' }
-    }, { purpose: 'visual_formatting' });
+    }, { purpose: 'ai_visual_formatting' });
 
-    const parsed = JSON.parse(response.choices[0].message.content || '{}');
+    const aiResponse = response.choices[0]?.message?.content;
+    if (!aiResponse) {
+      throw new Error('No response from AI formatter');
+    }
+
+    const parsed = JSON.parse(aiResponse);
     
-    // Validate formatted content doesn't exceed 280 chars
-    const formatted = String(parsed.formatted || context.content);
-    
-    if (formatted.length > 280) {
-      console.warn(`[AI_FORMATTER] ⚠️ Formatted too long (${formatted.length} chars), using original`);
-      return {
-        formatted: context.content,
-        visualApproach: 'plain (exceeded limit)',
-        transformations: ['none'],
-        reasoning: 'Formatting would exceed 280 chars'
-      };
+    if (!parsed.formatted || typeof parsed.formatted !== 'string') {
+      throw new Error('Invalid formatted content from AI');
     }
     
-    // Detect what actually changed
-    const transformations = detectTransformations(context.content, formatted);
+    const formatted = parsed.formatted.trim();
     
-    console.log(`[AI_FORMATTER] ✅ Format used: ${parsed.format_used}`);
-    console.log(`[AI_FORMATTER] 📊 Transformations: ${transformations.join(', ')}`);
-    console.log(`[AI_FORMATTER] 💡 Reasoning: ${parsed.reasoning}`);
+    // Validate length
+    if (formatted.length > 280) {
+      console.warn(`[VISUAL_FORMATTER] ⚠️ AI formatted too long (${formatted.length} chars), using original`);
+      return fallbackToOriginal(content, 'exceeded 280 char limit');
+    }
+    
+    if (formatted.length < 50) {
+      console.warn(`[VISUAL_FORMATTER] ⚠️ AI formatted too short (${formatted.length} chars), using original`);
+      return fallbackToOriginal(content, 'too short after formatting');
+    }
+    
+    // Detect what changed
+    const transformations = detectTransformations(content, formatted);
+    
+    console.log(`[VISUAL_FORMATTER] ✅ Applied: ${parsed.approach || 'formatting'}`);
+    console.log(`[VISUAL_FORMATTER] 📊 Changes: ${transformations.join(', ')}`);
+    console.log(`[VISUAL_FORMATTER] 💡 ${formatted.substring(0, 80)}...`);
+    
+    // Track for learning
+    await trackFormatUsage(parsed.approach || 'unknown', context, transformations);
     
     return {
       formatted,
-      visualApproach: String(parsed.format_used || 'unknown'),
+      visualApproach: parsed.approach || 'unknown',
       transformations,
-      reasoning: String(parsed.reasoning || 'no reasoning provided')
+      confidence: parsed.confidence || 0.8
     };
     
   } catch (error: any) {
-    console.error('[AI_FORMATTER] ❌ Formatting failed:', error.message);
-    
-    // Fallback: return original content
-    return {
-      formatted: context.content,
-      visualApproach: 'plain (error)',
-      transformations: ['none'],
-      reasoning: `Formatting failed: ${error.message}`
-    };
+    console.error('[VISUAL_FORMATTER] ❌ Formatting failed:', error.message);
+    return fallbackToOriginal(content, error.message);
   }
 }
 
 /**
- * Detect what transformations were applied by comparing original vs formatted
+ * Fallback when AI formatting fails
+ */
+function fallbackToOriginal(content: string, reason: string): VisualFormatResult {
+  console.log(`[VISUAL_FORMATTER] 🔄 Using original content: ${reason}`);
+  return {
+    formatted: content,
+    visualApproach: `plain (${reason})`,
+    transformations: ['none'],
+    confidence: 0
+  };
+}
+
+/**
+ * Detect what transformations were applied
  */
 function detectTransformations(original: string, formatted: string): string[] {
+  if (formatted === original) return ['none'];
+  
   const changes: string[] = [];
   
-  if (original === formatted) {
-    return ['none'];
-  }
+  // Structural changes
+  if (formatted.includes('•') && !original.includes('•')) changes.push('bullets');
+  if (formatted.match(/^\d+\./) && !original.match(/^\d+\./)) changes.push('numbered_list');
+  if (formatted.includes('\n') && !original.includes('\n')) changes.push('line_breaks');
   
-  // Check for bullets
-  if (formatted.includes('•') && !original.includes('•')) {
-    changes.push('bullets');
-  }
+  // Emphasis
+  const origCaps = (original.match(/[A-Z]{3,}/g) || []).length;
+  const formCaps = (formatted.match(/[A-Z]{3,}/g) || []).length;
+  if (formCaps > origCaps) changes.push('CAPS_emphasis');
   
-  // Check for numbered lists
-  if (/\d+\)/.test(formatted) && !/\d+\)/.test(original)) {
-    changes.push('numbered_list');
-  }
+  // Content type changes
+  if (formatted.includes('?') && !original.includes('?')) changes.push('question_reformulation');
+  if (formatted.includes('Myth:') || formatted.includes('Truth:')) changes.push('myth_truth_split');
   
-  // Check for line breaks
-  if (formatted.includes('\n\n') && !original.includes('\n\n')) {
-    changes.push('line_breaks');
-  }
+  // Visual elements
+  const hasEmoji = (text: string) => /[\uD83C-\uDBFF\uDC00-\uDFFF]+/.test(text);
+  if (hasEmoji(formatted) && !hasEmoji(original)) changes.push('emoji');
   
-  // Check for emojis
-  const emojiRegex = /[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/u;
-  if (emojiRegex.test(formatted) && !emojiRegex.test(original)) {
-    changes.push('emoji');
-  }
+  // Word count change (rewrite detection)
+  const origWords = original.split(/\s+/).length;
+  const formWords = formatted.split(/\s+/).length;
+  const wordDiff = Math.abs(formWords - origWords) / origWords;
+  if (wordDiff > 0.15) changes.push('structural_rewrite');
   
-  // Check for CAPS emphasis
-  const originalCaps = (original.match(/[A-Z]{3,}/g) || []).length;
-  const formattedCaps = (formatted.match(/[A-Z]{3,}/g) || []).length;
-  if (formattedCaps > originalCaps) {
-    changes.push('emphasis_caps');
-  }
-  
-  // Check for questions
-  if (formatted.includes('?') && !original.includes('?')) {
-    changes.push('question_reformulation');
-  }
-  
-  // Check for myth/truth
-  if ((formatted.includes('Myth:') || formatted.includes('Truth:')) && 
-      (!original.includes('Myth:') && !original.includes('Truth:'))) {
-    changes.push('myth_truth_split');
-  }
-  
-  // Check for structural changes
-  const originalWords = original.split(/\s+/).length;
-  const formattedWords = formatted.split(/\s+/).length;
-  if (Math.abs(originalWords - formattedWords) > originalWords * 0.1) {
-    changes.push('structural_rewrite');
-  }
-  
-  if (changes.length === 0) {
-    changes.push('minor_adjustments');
-  }
+  if (changes.length === 0) changes.push('minor_polish');
   
   return changes;
+}
+
+/**
+ * Track what format was used (for learning loops)
+ */
+async function trackFormatUsage(
+  approach: string, 
+  context: VisualFormatContext,
+  transformations: string[]
+): Promise<void> {
+  try {
+    const supabase = getSupabaseClient();
+    
+    // Track in visual_format_usage table
+    await supabase.from('visual_format_usage').insert([{
+      approach,
+      generator: context.generator,
+      topic_snippet: context.topic.substring(0, 100),
+      tone: context.tone,
+      angle_snippet: context.angle.substring(0, 100),
+      format_strategy: context.formatStrategy
+    }]);
+    
+    console.log(`[VISUAL_FORMATTER] 📊 Tracked: "${approach}" for ${context.generator}`);
+    
+  } catch (error: any) {
+    // Silently fail tracking - don't block posting
+    console.warn('[VISUAL_FORMATTER] ⚠️ Tracking skipped:', error.message);
+  }
 }
