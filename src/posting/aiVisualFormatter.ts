@@ -87,18 +87,19 @@ Format Strategy: ${formatStrategy}
 
 🎨 TRANSFORM THE TWEET:
 
-You can REWRITE how it's presented:
-• Add bullets if it lists multiple points
-• Add line breaks to separate ideas
-• Reformulate as a question if it fits
-• Add 1 relevant emoji (or none if better without)
-• Use CAPS for 1-2 key terms (sparingly!)
-• Split into "Myth: X / Truth: Y" if it's contrasting
-• Keep plain if the content already flows perfectly
-• Number steps if it's sequential
-• Add spacing to highlight key insights
+You have COMPLETE FREEDOM to rewrite how it's presented for Twitter.
 
-Match formatting to the PERSONALITY:
+Some possibilities (but NOT limited to these!):
+• Bullets, numbered lists, line breaks, spacing
+• Questions, statements, comparisons, contrasts
+• Before → After, Myth → Truth, X vs Y
+• Strategic CAPS, minimal emojis, plain paragraphs
+• Short punchy sentences, dramatic spacing
+• Whatever YOU think will perform best on Twitter!
+
+These are just EXAMPLES - you're the expert. Invent new approaches!
+
+Match formatting to PERSONALITY:
 • Coach (${generator === 'coach' ? 'THIS ONE!' : 'example'}) → Might use numbered steps or bullets
 • Provocateur (${generator === 'provocateur' ? 'THIS ONE!' : 'example'}) → Might use questions or bold statements
 • Data Nerd (${generator === 'dataNerd' || generator === 'data_nerd' ? 'THIS ONE!' : 'example'}) → Might use spacing around numbers
