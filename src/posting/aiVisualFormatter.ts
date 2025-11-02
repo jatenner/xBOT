@@ -74,105 +74,73 @@ export async function formatContentForTwitter(context: VisualFormatContext): Pro
     };
   }
   
-  const systemPrompt = `You are the FINAL editor before a tweet goes live - the "Twitter Polish Expert".
+  const systemPrompt = `You are a Twitter formatting expert who makes content visually engaging and scannable.
 
-🎯 YOUR ROLE:
-The content is already written. Your job: Transform it to LOOK PERFECT on Twitter.
-Rewrite the structure, spacing, and emphasis to maximize engagement and readability.
+🎯 YOUR JOB: Transform this content to look great on Twitter while staying under 280 characters.
 
-📊 FULL CONTENT CONTEXT:
+📊 CONTEXT:
+Generator: ${generator} | Tone: ${tone} | Topic: ${topic}
 
-Generator Personality: ${generator}
-├─ This tells you the voice (coach, provocateur, data nerd, etc.)
-└─ Match formatting to personality!
-
-Tone: ${tone}
-├─ How the content should feel
-└─ Bold tone → bold formatting. Subtle tone → minimal formatting.
-
-Angle: ${angle}
-├─ The perspective being taken
-└─ Controversial angle → might need emphasis. Educational → might need structure.
-
-Topic: ${topic}
-├─ The subject matter
-└─ Complex topic → might need spacing. Simple → might stay compact.
-
-Format Strategy: ${formatStrategy}
-├─ The content structure approach
-└─ Story → flow. Data → spacing. Question → question format.
-
-🎨 TRANSFORM THE TWEET:
-
-You have COMPLETE FREEDOM to rewrite how it's presented for Twitter.
-
-Some possibilities (but NOT limited to these!):
-• Bullets, numbered lists, line breaks, spacing
-• Questions, statements, comparisons, contrasts
-• Before → After, Myth → Truth, X vs Y
-• Strategic CAPS, minimal emojis, plain paragraphs
-• Short punchy sentences, dramatic spacing
-• Whatever YOU think will perform best on Twitter!
-
-These are just EXAMPLES - you're the expert. Invent new approaches!
-
-Match formatting to PERSONALITY:
-• Coach (${generator === 'coach' ? 'THIS ONE!' : 'example'}) → Might use numbered steps or bullets
-• Provocateur (${generator === 'provocateur' ? 'THIS ONE!' : 'example'}) → Might use questions or bold statements
-• Data Nerd (${generator === 'dataNerd' || generator === 'data_nerd' ? 'THIS ONE!' : 'example'}) → Might use spacing around numbers
-• MythBuster (${generator === 'mythBuster' || generator === 'myth_buster' ? 'THIS ONE!' : 'example'}) → Might use Myth/Truth split
-• Storyteller (${generator === 'storyteller' ? 'THIS ONE!' : 'example'}) → Might keep paragraph flow with strategic breaks
-• Philosopher (${generator === 'philosopher' ? 'THIS ONE!' : 'example'}) → Might keep plain or add thoughtful spacing
-• Others → Match to their personality!
-
-🎯 FOR THIS CONTEXT (${generator} + ${tone}):
+🧠 WHAT YOU KNOW ABOUT POPULAR TWITTER FORMATS:
 ${intelligence.contextualHistory.recentFormats.length > 0 ? `
-Recently used: ${intelligence.contextualHistory.recentFormats.join(', ')}
-Variety: ${intelligence.contextualHistory.variety} unique approaches in ${intelligence.contextualHistory.totalUses} uses
-
-Try something DIFFERENT for this specific ${generator} + ${tone} combination!
-` : 'No history yet - experiment freely!'}
-
-${intelligence.contextualInsights.length > 0 ? `
-📈 WHAT'S WORKING FOR ${generator}:
-${intelligence.contextualInsights.slice(0, 3).map(i => 
-  `• "${i.approach}": ${i.avgViews.toFixed(0)} avg views (${i.uses} uses) - ${i.trend}
-    ${i.trend === 'improving' ? 'GAINING TRACTION! Try variations.' : i.trend === 'declining' ? 'Declining - try something else.' : 'Stable performance.'}`
-).join('\n')}
-` : ''}
-
-${intelligence.momentumSignals.length > 0 ? `
-🔥 VISUAL FORMAT MOMENTUM (All Generators):
-${intelligence.momentumSignals.slice(0, 3).map(m => 
-  `• ${m.value}: ${m.trajectory}
-    ${m.recommendation}`
-).join('\n')}
+Recently used by this generator: ${intelligence.contextualHistory.recentFormats.join(', ')}
+→ Try something DIFFERENT to avoid repetition!
 ` : ''}
 
 ${intelligence.overallRecent.length > 0 ? `
-🌍 OVERALL RECENT FORMATS (All Content):
-${intelligence.overallRecent.slice(0, 5).map((f, i) => `${i + 1}. ${f.substring(0, 50)}...`).join('\n')}
+Recent formats across all content: ${intelligence.overallRecent.slice(0, 3).join(', ')}
+→ Avoid these to stay fresh!
 ` : ''}
 
-💡 USE THIS INTELLIGENCE:
-- Avoid formats in "for this context" list (most important!)
-- Avoid formats in "overall recent" list (secondary)
-- If a format is "improving" → try VARIATIONS of it
-- If a format has "momentum" → consider using it
-- If a format is "declining" → avoid it
-- Always experiment - don't just copy what worked!
+${intelligence.momentumSignals.length > 0 ? `
+Trending formats that work: ${intelligence.momentumSignals.slice(0, 2).map(m => m.value).join(', ')}
+→ Consider variations of these!
+` : ''}
 
-🚨 CRITICAL RULES:
-• NEVER change facts, meaning, or information
-• Final tweet MUST be ≤280 characters
+🎨 CREATIVE FORMATTING OPTIONS (pick what fits best):
+
+STRUCTURE:
+• Line breaks for readability
+• Bullet points for lists  
+• Numbers for steps (1. 2. 3. or use emojis like 🔹🔸)
+• Before → After comparisons
+• Question → Answer format
+
+EMPHASIS:
+• Strategic CAPS for key points
+• "Quotes" for important phrases
+• Parentheses for (clarification)
+
+VISUAL ELEMENTS:
+• Minimal, purposeful emojis (not decorative fluff)
+• → arrows for flow/progression  
+• : colons to introduce lists
+• Strategic spacing for breathing room
+
+POPULAR PATTERNS:
+• "X did Y. Here's what happened:"
+• "Most people think X. Actually:"
+• "The Z% that changes everything:"
+• "X vs Y (the difference matters):"
+
+🚨 GUARDRAILS:
+• MUST be ≤280 characters (this is CRITICAL)
+• Keep all facts and meaning intact
 • NO hashtags
-• NO "..." truncation
-• Be CREATIVE - vary your approach every time
+• NO unnecessary emojis (only if they serve a purpose)
+• NO generic hooks or templates
+• Study what makes content scannable on mobile
 
-Return JSON:
+🎯 BE SMART:
+- Match the ${generator} personality naturally
+- Use ${tone} tone in your formatting choices  
+- Make it easy to read on a phone screen
+- Prioritize clarity and engagement over cleverness
+
+Return JSON with your formatted version:
 {
-  "formatted": "the rewritten/reformatted tweet (≤280 chars)",
-  "approach": "what you did (e.g., 'Bullet points', 'Question with CAPS emphasis', 'Plain with line breaks', 'Numbered steps')",
+  "formatted": "your formatted tweet (≤280 chars)",
+  "approach": "brief description of what you did",
   "confidence": 0.8
 }`;
 
@@ -191,7 +159,7 @@ Transform it!`;
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
       ],
-      temperature: 0.85, // Creative but focused
+      temperature: 0.75, // Creative but more focused on constraints
       max_tokens: 350,
       response_format: { type: 'json_object' }
     }, { purpose: 'ai_visual_formatting' });
@@ -207,12 +175,47 @@ Transform it!`;
       throw new Error('Invalid formatted content from AI');
     }
     
-    const formatted = parsed.formatted.trim();
+    let formatted = parsed.formatted.trim();
     
-    // Validate length
+    // Validate length - CRITICAL: Must be under 280
     if (formatted.length > 280) {
-      console.warn(`[VISUAL_FORMATTER] ⚠️ AI formatted too long (${formatted.length} chars), using original`);
-      return fallbackToOriginal(content, 'exceeded 280 char limit');
+      console.warn(`[VISUAL_FORMATTER] ⚠️ AI formatted too long (${formatted.length} chars), trying to trim...`);
+      
+      // Try to intelligently trim while preserving structure
+      let trimmed = formatted;
+      
+      // Remove extra spaces first
+      trimmed = trimmed.replace(/\s+/g, ' ').trim();
+      
+      // If still too long, truncate at sentence boundaries
+      if (trimmed.length > 280) {
+        const sentences = trimmed.split(/[.!?]\s+/);
+        let result = '';
+        for (const sentence of sentences) {
+          const testResult = result + (result ? '. ' : '') + sentence;
+          if (testResult.length <= 275) { // Leave room for final punctuation
+            result = testResult;
+          } else {
+            break;
+          }
+        }
+        
+        // Add final punctuation if needed
+        if (result && !/[.!?]$/.test(result)) {
+          result += '.';
+        }
+        
+        trimmed = result || formatted.substring(0, 277) + '...';
+      }
+      
+      // Final check - if still too long, use original
+      if (trimmed.length > 280) {
+        console.warn(`[VISUAL_FORMATTER] ⚠️ Could not trim to 280 chars, using original`);
+        return fallbackToOriginal(content, 'could not trim to fit');
+      }
+      
+      console.log(`[VISUAL_FORMATTER] ✅ Trimmed from ${formatted.length} to ${trimmed.length} chars`);
+      formatted = trimmed;
     }
     
     if (formatted.length < 50) {
