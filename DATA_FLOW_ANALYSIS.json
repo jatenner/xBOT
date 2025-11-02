@@ -1,0 +1,100 @@
+{
+  "contentGeneration": {
+    "name": "Content Generation → Posting",
+    "steps": [
+      {
+        "file": "src/jobs/planJob.ts",
+        "action": "Generates content",
+        "table": "content_metadata",
+        "operation": "INSERT"
+      },
+      {
+        "file": "src/jobs/postingQueue.ts",
+        "action": "Picks from queue",
+        "table": "content_metadata",
+        "operation": "SELECT"
+      },
+      {
+        "file": "src/jobs/postingQueue.ts",
+        "action": "Posts to Twitter",
+        "table": "posted_decisions",
+        "operation": "INSERT"
+      },
+      {
+        "file": "src/jobs/postingQueue.ts",
+        "action": "Updates status",
+        "table": "content_metadata",
+        "operation": "UPDATE"
+      }
+    ]
+  },
+  "engagementTracking": {
+    "name": "Engagement Tracking",
+    "steps": [
+      {
+        "file": "src/jobs/metricsScraperJob.ts",
+        "action": "Scrapes Twitter",
+        "table": "outcomes",
+        "operation": "INSERT/UPDATE"
+      },
+      {
+        "file": "src/jobs/analyticsCollectorJob.ts",
+        "action": "Collects metrics",
+        "table": "outcomes",
+        "operation": "SELECT"
+      },
+      {
+        "file": "src/learning/learningSystem.ts",
+        "action": "Learns from data",
+        "table": "outcomes",
+        "operation": "SELECT"
+      }
+    ]
+  },
+  "learningLoop": {
+    "name": "Learning System",
+    "steps": [
+      {
+        "file": "src/learning/learningSystem.ts",
+        "action": "Analyzes performance",
+        "table": "outcomes",
+        "operation": "SELECT"
+      },
+      {
+        "file": "src/learning/learningSystem.ts",
+        "action": "Gets content metadata",
+        "table": "content_metadata",
+        "operation": "SELECT"
+      },
+      {
+        "file": "src/learning/learningSystem.ts",
+        "action": "Stores learnings",
+        "table": "learning_posts",
+        "operation": "INSERT"
+      }
+    ]
+  },
+  "replyGeneration": {
+    "name": "Reply Generation",
+    "steps": [
+      {
+        "file": "src/jobs/replyJob.ts",
+        "action": "Finds opportunities",
+        "table": "reply_opportunities",
+        "operation": "SELECT"
+      },
+      {
+        "file": "src/jobs/replyJob.ts",
+        "action": "Generates reply",
+        "table": "content_metadata",
+        "operation": "INSERT"
+      },
+      {
+        "file": "src/jobs/postingQueue.ts",
+        "action": "Posts reply",
+        "table": "posted_decisions",
+        "operation": "INSERT"
+      }
+    ]
+  }
+}

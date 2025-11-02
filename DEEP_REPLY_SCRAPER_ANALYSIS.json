@@ -1,0 +1,388 @@
+{
+  "totalTables": 130,
+  "categories": {
+    "reply": [
+      "reply_conversions",
+      "reply_diagnostics",
+      "reply_learning_insights",
+      "reply_opportunities",
+      "reply_performance",
+      "reply_strategy_metrics",
+      "titan_reply_performance"
+    ],
+    "scraper": [],
+    "metrics": [
+      "comprehensive_metrics",
+      "content_with_outcomes",
+      "conversion_funnel_metrics",
+      "generator_quality_metrics",
+      "growth_metrics",
+      "health_news_scraped",
+      "metrics_by_phase",
+      "multi_dimensional_metrics",
+      "outcomes",
+      "post_metrics",
+      "real_tweet_metrics",
+      "scraped_metrics",
+      "system_health_metrics",
+      "system_performance_metrics",
+      "tweet_metrics",
+      "twitter_metrics",
+      "unified_metrics",
+      "unified_outcomes"
+    ],
+    "engagement": [
+      "engagement_evaluations",
+      "engagement_records",
+      "engagement_roi",
+      "engagement_snapshots",
+      "engagement_tracking",
+      "engagement_tracking_schedule",
+      "engagement_velocity"
+    ],
+    "content": [
+      "ai_content_generation",
+      "ai_posting_decisions",
+      "bandit_posteriors",
+      "bulletproof_posts",
+      "content_candidates",
+      "content_fingerprints",
+      "content_generation_metadata_comprehensive",
+      "content_length_performance",
+      "content_metadata",
+      "content_patterns",
+      "content_performance_tracking",
+      "content_type_performance",
+      "content_violations",
+      "follower_growth_content",
+      "learning_posts",
+      "peer_posts",
+      "post_attribution",
+      "post_follower_tracking",
+      "post_performance_by_hour",
+      "post_velocity_tracking",
+      "posted_decisions",
+      "posted_threads",
+      "posted_tweets",
+      "posts",
+      "real_time_post_analytics",
+      "rejected_posts",
+      "tweet_analytics",
+      "tweet_performance",
+      "tweets",
+      "unified_posts"
+    ],
+    "learning": [
+      "learning_insights",
+      "learning_updates"
+    ],
+    "growth": [
+      "follower_attribution_simple",
+      "follower_attributions",
+      "follower_growth_tracking",
+      "follower_predictions",
+      "follower_snapshots",
+      "growth_experiments",
+      "titan_accounts"
+    ],
+    "config": [
+      "bot_config"
+    ],
+    "other": [
+      "ab_tests",
+      "ai_discovered_targets",
+      "ai_strategy_insights",
+      "ai_twitter_analytics",
+      "analytics_insights",
+      "api_usage",
+      "audience_activity_data",
+      "audit_log",
+      "browser_cookies",
+      "budget_roi_tracking",
+      "competitive_insights",
+      "competitive_intelligence",
+      "competitor_intelligence",
+      "daily_summaries",
+      "diagnostics_log",
+      "discovered_accounts",
+      "duplicate_prevention_stats",
+      "dynamic_topics_generated",
+      "expanded_training_data",
+      "formula_performance",
+      "generated_topics",
+      "generator_performance",
+      "generator_performance_history",
+      "generator_weights",
+      "health_news_curated",
+      "health_snapshots",
+      "hook_dna",
+      "hook_performance",
+      "human_voice_performance",
+      "information_schema.columns",
+      "information_schema.tables",
+      "kv_store",
+      "meta_insights",
+      "openai_api_calls",
+      "openai_usage_log",
+      "optimization_events",
+      "patterns",
+      "plan_executions",
+      "planning_sessions",
+      "profile_analytics",
+      "prompt_performance",
+      "recommendations",
+      "schema_migrations",
+      "schema_versions",
+      "scraping_attempts",
+      "strategic_replies",
+      "successful_patterns",
+      "system_failures",
+      "system_health",
+      "topic_clusters",
+      "topic_performance",
+      "trending_topics",
+      "trending_topics_analysis",
+      "viral_formula_performance",
+      "viral_patterns",
+      "viral_thread_attempts",
+      "visual_format_usage",
+      "voice_patterns"
+    ]
+  },
+  "replyFlow": {
+    "discovery": {
+      "tables": [
+        "reply_opportunities",
+        "discovered_accounts"
+      ],
+      "files": [
+        "replyOpportunityHarvester.ts",
+        "tweetBasedHarvester.ts",
+        "realTwitterDiscovery.ts"
+      ]
+    },
+    "generation": {
+      "tables": [
+        "content_metadata",
+        "content_generation_metadata_comprehensive"
+      ],
+      "files": [
+        "replyJob.ts",
+        "replyGeneratorAdapter.ts"
+      ]
+    },
+    "posting": {
+      "tables": [
+        "posted_decisions",
+        "tweets",
+        "posts"
+      ],
+      "files": [
+        "postingQueue.ts",
+        "resilientReplyPoster.ts"
+      ]
+    },
+    "tracking": {
+      "tables": [
+        "reply_conversions",
+        "reply_performance",
+        "titan_reply_performance",
+        "reply_learning_insights"
+      ],
+      "files": [
+        "replyConversionTracker.ts",
+        "replyLearningSystem.ts"
+      ]
+    },
+    "diagnostics": {
+      "tables": [
+        "reply_diagnostics",
+        "reply_strategy_metrics"
+      ],
+      "files": [
+        "resilientReplyPoster.ts",
+        "bulletproofTwitterComposer.ts"
+      ]
+    }
+  },
+  "scraperFlow": {
+    "metricsScrapers": {
+      "description": "Scrapes engagement metrics from Twitter",
+      "files": [
+        "metricsScraperJob.ts",
+        "realMetricsScraper.ts",
+        "twitterAnalyticsScraper.ts",
+        "bulletproofTwitterScraper.ts"
+      ],
+      "targetTables": [
+        "outcomes",
+        "real_tweet_metrics",
+        "tweet_analytics",
+        "tweet_metrics"
+      ]
+    },
+    "followerScrapers": {
+      "description": "Tracks follower growth",
+      "files": [
+        "followerScraper.ts",
+        "velocityTrackerJob.ts"
+      ],
+      "targetTables": [
+        "follower_snapshots",
+        "follower_growth_attribution"
+      ]
+    },
+    "peerScrapers": {
+      "description": "Discovers competitor content",
+      "files": [
+        "peer_scraper.ts"
+      ],
+      "targetTables": [
+        "discovered_accounts",
+        "peer_content"
+      ]
+    },
+    "newsScrapers": {
+      "description": "Scrapes health news",
+      "files": [
+        "newsScraperJob.ts"
+      ],
+      "targetTables": [
+        "news_articles",
+        "news_sources"
+      ]
+    }
+  },
+  "allTables": [
+    "ab_tests",
+    "ai_content_generation",
+    "ai_discovered_targets",
+    "ai_posting_decisions",
+    "ai_strategy_insights",
+    "ai_twitter_analytics",
+    "analytics_insights",
+    "api_usage",
+    "audience_activity_data",
+    "audit_log",
+    "bandit_posteriors",
+    "bot_config",
+    "browser_cookies",
+    "budget_roi_tracking",
+    "bulletproof_posts",
+    "competitive_insights",
+    "competitive_intelligence",
+    "competitor_intelligence",
+    "comprehensive_metrics",
+    "content_candidates",
+    "content_fingerprints",
+    "content_generation_metadata_comprehensive",
+    "content_length_performance",
+    "content_metadata",
+    "content_patterns",
+    "content_performance_tracking",
+    "content_type_performance",
+    "content_violations",
+    "content_with_outcomes",
+    "conversion_funnel_metrics",
+    "daily_summaries",
+    "diagnostics_log",
+    "discovered_accounts",
+    "duplicate_prevention_stats",
+    "dynamic_topics_generated",
+    "engagement_evaluations",
+    "engagement_records",
+    "engagement_roi",
+    "engagement_snapshots",
+    "engagement_tracking",
+    "engagement_tracking_schedule",
+    "engagement_velocity",
+    "expanded_training_data",
+    "follower_attribution_simple",
+    "follower_attributions",
+    "follower_growth_content",
+    "follower_growth_tracking",
+    "follower_predictions",
+    "follower_snapshots",
+    "formula_performance",
+    "generated_topics",
+    "generator_performance",
+    "generator_performance_history",
+    "generator_quality_metrics",
+    "generator_weights",
+    "growth_experiments",
+    "growth_metrics",
+    "health_news_curated",
+    "health_news_scraped",
+    "health_snapshots",
+    "hook_dna",
+    "hook_performance",
+    "human_voice_performance",
+    "information_schema.columns",
+    "information_schema.tables",
+    "kv_store",
+    "learning_insights",
+    "learning_posts",
+    "learning_updates",
+    "meta_insights",
+    "metrics_by_phase",
+    "multi_dimensional_metrics",
+    "openai_api_calls",
+    "openai_usage_log",
+    "optimization_events",
+    "outcomes",
+    "patterns",
+    "peer_posts",
+    "plan_executions",
+    "planning_sessions",
+    "post_attribution",
+    "post_follower_tracking",
+    "post_metrics",
+    "post_performance_by_hour",
+    "post_velocity_tracking",
+    "posted_decisions",
+    "posted_threads",
+    "posted_tweets",
+    "posts",
+    "profile_analytics",
+    "prompt_performance",
+    "real_time_post_analytics",
+    "real_tweet_metrics",
+    "recommendations",
+    "rejected_posts",
+    "reply_conversions",
+    "reply_diagnostics",
+    "reply_learning_insights",
+    "reply_opportunities",
+    "reply_performance",
+    "reply_strategy_metrics",
+    "schema_migrations",
+    "schema_versions",
+    "scraped_metrics",
+    "scraping_attempts",
+    "strategic_replies",
+    "successful_patterns",
+    "system_failures",
+    "system_health",
+    "system_health_metrics",
+    "system_performance_metrics",
+    "titan_accounts",
+    "titan_reply_performance",
+    "topic_clusters",
+    "topic_performance",
+    "trending_topics",
+    "trending_topics_analysis",
+    "tweet_analytics",
+    "tweet_metrics",
+    "tweet_performance",
+    "tweets",
+    "twitter_metrics",
+    "unified_metrics",
+    "unified_outcomes",
+    "unified_posts",
+    "viral_formula_performance",
+    "viral_patterns",
+    "viral_thread_attempts",
+    "visual_format_usage",
+    "voice_patterns"
+  ]
+}
