@@ -29,11 +29,14 @@ export class ThreadFallbackHandler {
       if (tweet.length > 280) {
         console.error(`[THREAD_FALLBACK] ❌ Tweet ${i + 1} too long: ${tweet.length} chars (max 280)`);
         console.error(`[THREAD_FALLBACK] 📝 Content: "${tweet.substring(0, 100)}..."`);
-        return await this.postFirstTweetAsSingle(
-          thread_parts[0],
+        
+        // Mark as permanently failed (bad content)
+        await this.markThreadFailed(
           decisionId,
           `Tweet ${i + 1} exceeds 280 characters (${tweet.length})`
         );
+        
+        throw new Error(`Thread validation failed: Tweet ${i + 1} exceeds 280 characters`);
       }
       console.log(`[THREAD_FALLBACK]    ✅ Tweet ${i + 1}: ${tweet.length} chars`);
     }
