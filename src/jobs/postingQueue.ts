@@ -853,12 +853,11 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
           topic: metadata?.raw_topic || '',
           angle: metadata?.angle || '',
           tone: metadata?.tone || '',
-          format_strategy: metadata?.format_strategy || ''
+          formatStrategy: metadata?.format_strategy || ''
         });
         
-        console.log(`[POSTING_QUEUE] 🎨 AI Visual Formatter applied: ${formatResult.format_used}`);
+        console.log(`[POSTING_QUEUE] 🎨 AI Visual Formatter applied: ${formatResult.visualApproach}`);
         console.log(`[POSTING_QUEUE] 📊 Transformations: ${formatResult.transformations.join(', ')}`);
-        console.log(`[POSTING_QUEUE] 💡 Reasoning: ${formatResult.reasoning}`);
         
         const poster = new UltimateTwitterPoster();
         const result = await poster.postTweet(formatResult.formatted);
@@ -872,7 +871,7 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         // 📊 UPDATE: Store visual approach used for this post
         await supabase
           .from('content_generation_metadata_comprehensive')
-          .update({ visual_format: formatResult.format_used })
+          .update({ visual_format: formatResult.visualApproach })
           .eq('decision_id', decision.id);
         
         // ✅ POST SUCCEEDED - Now extract tweet ID using ONLY bulletproof method
@@ -974,9 +973,8 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     formatStrategy: replyMetadata?.format_strategy || 'reply'
   });
   
-  console.log(`[POSTING_QUEUE] 🎨 AI Visual Formatter for reply: ${formatResult.format_used}`);
+  console.log(`[POSTING_QUEUE] 🎨 AI Visual Formatter for reply: ${formatResult.visualApproach}`);
   console.log(`[POSTING_QUEUE] 📊 Transformations: ${formatResult.transformations.join(', ')}`);
-  console.log(`[POSTING_QUEUE] 💡 Reasoning: ${formatResult.reasoning}`);
   
   // 🛡️ Use PROPER reply system (posts as actual reply, not @mention)
   console.log(`[POSTING_QUEUE] 💬 Using UltimateTwitterPoster.postReply() for REAL replies...`);
