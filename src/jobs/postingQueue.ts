@@ -849,11 +849,11 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         
         const formatResult = await formatContentForTwitter({
           content: decision.content,
-          generator: metadata?.generator_name || 'unknown',
-          topic: metadata?.raw_topic || '',
-          angle: metadata?.angle || '',
-          tone: metadata?.tone || '',
-          formatStrategy: metadata?.format_strategy || ''
+          generator: String(metadata?.generator_name || 'unknown'),
+          topic: String(metadata?.raw_topic || ''),
+          angle: String(metadata?.angle || ''),
+          tone: String(metadata?.tone || ''),
+          formatStrategy: String(metadata?.format_strategy || '')
         });
         
         console.log(`[POSTING_QUEUE] 🎨 AI Visual Formatter applied: ${formatResult.visualApproach}`);
@@ -980,11 +980,11 @@ async function postReply(decision: QueuedDecision): Promise<string> {
   
   const formatResult = await formatContentForTwitter({
     content: decision.content,
-    generator: replyMetadata?.generator_name || 'unknown',
-    topic: replyMetadata?.raw_topic || `reply to @${decision.target_username}`,
-    angle: replyMetadata?.angle || 'reply',
-    tone: replyMetadata?.tone || 'helpful',
-    formatStrategy: replyMetadata?.format_strategy || 'reply'
+    generator: String(replyMetadata?.generator_name || 'unknown'),
+    topic: String(replyMetadata?.raw_topic || `reply to @${decision.target_username}`),
+    angle: String(replyMetadata?.angle || 'reply'),
+    tone: String(replyMetadata?.tone || 'helpful'),
+    formatStrategy: String(replyMetadata?.format_strategy || 'reply')
   });
   
   console.log(`[POSTING_QUEUE] 🎨 AI Visual Formatter for reply: ${formatResult.visualApproach}`);

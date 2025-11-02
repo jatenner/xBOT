@@ -48,7 +48,8 @@ export async function findMissingTweetIds(): Promise<void> {
     for (const post of placeholders) {
       try {
         const isReply = post.decision_type === 'reply';
-        const contentPreview = post.content.substring(0, 40);
+        const content = String(post.content || '');
+        const contentPreview = content.substring(0, 40);
         
         console.log(`[FIND_MISSING_IDS] 🔍 Finding ID for ${isReply ? 'reply' : 'post'}: "${contentPreview}..."`);
         console.log(`[FIND_MISSING_IDS] 📝 Current placeholder: ${post.tweet_id}`);
@@ -66,7 +67,7 @@ export async function findMissingTweetIds(): Promise<void> {
         
         // Use BulletproofTweetExtractor to find the tweet by content
         const extraction = await BulletproofTweetExtractor.extractTweetId(page, {
-          expectedContent: post.content,
+          expectedContent: content,
           expectedUsername: process.env.TWITTER_USERNAME || 'SignalAndSynapse',
           maxAgeSeconds: 86400, // 24 hours
           navigateToVerify: true
