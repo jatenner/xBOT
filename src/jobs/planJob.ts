@@ -70,12 +70,15 @@ async function generateRealContent(): Promise<void> {
   }
   
   // ═══════════════════════════════════════════════════════════
-  // 🎯 BATCH GENERATION: Generate 4 posts per cycle
+  // 🎯 BATCH GENERATION: Always generate EXACTLY 2 posts
   // ═══════════════════════════════════════════════════════════
-  const numToGenerate = 4; // 4 posts per 2-hour cycle = 2 posts/hour
+  // CRITICAL: Regardless of interval, generate 2 posts to ensure rate limit
+  // If job runs every 2 hours → 2 posts / 2 hours = 1 post/hour
+  // If job runs every hour → 2 posts / hour = 2 posts/hour ✅
+  const numToGenerate = 2; // FIXED: Always 2 posts per run
   
-  console.log(`[PLAN_JOB] 🧠 Generating ${numToGenerate} posts with smart scheduling...`);
-  console.log(`[PLAN_JOB] 📅 Target: 2 posts per hour, evenly distributed\n`);
+  console.log(`[PLAN_JOB] 🧠 Generating ${numToGenerate} posts per cycle...`);
+  console.log(`[PLAN_JOB] 📅 Target: EXACTLY 2 posts/hour\n`);
   
   const generatedPosts: any[] = [];
   const batchMetrics = {
@@ -147,31 +150,29 @@ async function generateRealContent(): Promise<void> {
     return;
   }
   
-  console.log(`\n📅 SMART SCHEDULING (Target: 2 posts/hour):`);
+  console.log(`\n📅 SMART SCHEDULING (EXACTLY 2 posts/hour):`);
   
   const now = Date.now();
   for (let i = 0; i < generatedPosts.length; i++) {
     const post = generatedPosts[i];
     
-    // Space posts ~30 minutes apart
-    const baseDelay = i * 30; // 0, 30, 60, 90 minutes
-    const randomVariation = Math.floor(Math.random() * 10); // 0-9 minutes for natural feel
+    // FIXED: Space 2 posts exactly 30 minutes apart for 2 posts/hour
+    const baseDelay = i * 30; // 0, 30 minutes (for 2 posts)
+    const randomVariation = Math.floor(Math.random() * 5); // 0-4 minutes for natural feel
     const totalDelay = baseDelay + randomVariation;
     
     const scheduledAt = new Date(now + totalDelay * 60000);
     post.scheduled_at = scheduledAt.toISOString();
     
     const minutesUntil = Math.floor((scheduledAt.getTime() - now) / 60000);
-    const hourLabel = Math.floor(minutesUntil / 60) + 1;
-    const postInHour = Math.floor((minutesUntil % 60) / 30) + 1;
     
-    console.log(`   Post ${i + 1}: ${scheduledAt.toLocaleTimeString()} (+${minutesUntil}m) [Hour ${hourLabel}, Post ${postInHour}/2]`);
+    console.log(`   Post ${i + 1}: ${scheduledAt.toLocaleTimeString()} (+${minutesUntil}m)`);
     
-    // Queue for posting
-    await queueContent(post);
+    // 🎨 CRITICAL FIX: Apply visual formatting BEFORE queueing
+    await formatAndQueueContent(post);
   }
   
-  console.log(`\n💡 Expected pattern: 2 posts in Hour 1, 2 posts in Hour 2`);
+  console.log(`\n💡 Generated ${generatedPosts.length} posts spaced 30min apart = ${generatedPosts.length} posts/hour`);
   console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
 }
 
@@ -515,10 +516,75 @@ WHEN to choose SINGLE:
   };
 }
 
+/**
+ * 🎨 NEW FUNCTION: Format content with visual formatter BEFORE queueing
+ * This ensures database stores FINAL product, not intermediate content
+ */
+async function formatAndQueueContent(content: any): Promise<void> {
+  console.log(`[PLAN_JOB] 🎨 Applying visual formatting to content...`);
+  
+  const { formatContentForTwitter } = await import('../posting/aiVisualFormatter');
+  
+  // Handle single tweet vs thread
+  const isThread = Array.isArray(content.text);
+  
+  if (isThread) {
+    // Format each tweet in thread
+    const formattedTweets: string[] = [];
+    let visualApproach: string | null = null;
+    
+    for (let i = 0; i < content.text.length; i++) {
+      console.log(`[PLAN_JOB]   📝 Formatting thread tweet ${i + 1}/${content.text.length}...`);
+      
+      const formatResult = await formatContentForTwitter({
+        content: content.text[i],
+        generator: String(content.generator_used || 'unknown'),
+        topic: String(content.raw_topic || 'health'),
+        angle: String(content.angle || 'informative'),
+        tone: String(content.tone || 'educational'),
+        formatStrategy: String(content.format_strategy || 'thread')
+      });
+      
+      formattedTweets.push(formatResult.formatted);
+      
+      if (i === 0) {
+        visualApproach = formatResult.visualApproach;
+      }
+    }
+    
+    // Update content with formatted tweets
+    content.text = formattedTweets;
+    content.visual_format = visualApproach || 'thread_formatted';
+    
+    console.log(`[PLAN_JOB] ✅ Thread formatted (${formattedTweets.length} tweets)`);
+    
+  } else {
+    // Format single tweet
+    const formatResult = await formatContentForTwitter({
+      content: content.text,
+      generator: String(content.generator_used || 'unknown'),
+      topic: String(content.raw_topic || 'health'),
+      angle: String(content.angle || 'informative'),
+      tone: String(content.tone || 'educational'),
+      formatStrategy: String(content.format_strategy || 'single')
+    });
+    
+    // Update content with formatted version
+    content.text = formatResult.formatted;
+    content.visual_format = formatResult.visualApproach;
+    
+    console.log(`[PLAN_JOB] ✅ Single tweet formatted: ${formatResult.visualApproach}`);
+  }
+  
+  // Now queue the FORMATTED content
+  await queueContent(content);
+}
+
 async function queueContent(content: any): Promise<void> {
   const supabase = getSupabaseClient();
   
   // Handle content storage for both single tweets and threads
+  // NOTE: content.text is now ALREADY FORMATTED by formatAndQueueContent()
   const contentText = Array.isArray(content.text) 
     ? content.text.join('\n\n--- THREAD BREAK ---\n\n') // Store threads with separators
     : content.text;

@@ -150,6 +150,7 @@ export async function updatePostAttribution(
 
 /**
  * Learn from post performance
+ * 🆕 Now tracks angle, tone, and format_strategy performance!
  */
 async function learnFromPostPerformance(
   postId: string,
@@ -158,12 +159,21 @@ async function learnFromPostPerformance(
 ): Promise<void> {
   const supabase = getSupabaseClient();
   
+  // Get full post metadata (includes angle, tone, format_strategy)
+  const { data: fullPost } = await supabase
+    .from('content_generation_metadata_comprehensive')
+    .select('angle, angle_type, tone, tone_cluster, tone_is_singular, format_strategy, visual_format')
+    .eq('decision_id', postId)
+    .single();
+  
+  const totalEngagement = (metrics.likes || 0) + (metrics.retweets || 0) + (metrics.replies || 0);
+  
   // Update hook performance
   await supabase.from('hook_performance').upsert({
     hook_pattern: post.hook_pattern,
     times_used: 1, // Will be incremented
     total_followers_gained: metrics.followers_gained,
-    total_engagement: metrics.likes + metrics.retweets + metrics.replies,
+    total_engagement: totalEngagement,
     avg_engagement_rate: metrics.engagement_rate,
     last_updated: new Date()
   }, {
@@ -196,7 +206,189 @@ async function learnFromPostPerformance(
     ignoreDuplicates: false
   });
   
-  console.log(`[ATTRIBUTION] 🧠 Learned from post ${postId}`);
+  // 🆕 UPDATE ANGLE PERFORMANCE
+  if (fullPost?.angle) {
+    await updateDimensionPerformance(supabase, 'angle_performance', {
+      dimension_value: fullPost.angle,
+      type_field: fullPost.angle_type,
+      metrics: {
+        likes: metrics.likes || 0,
+        retweets: metrics.retweets || 0,
+        replies: metrics.replies || 0,
+        impressions: metrics.impressions || 0,
+        followers_gained: metrics.followers_gained || 0,
+        engagement_rate: metrics.engagement_rate || 0
+      }
+    });
+  }
+  
+  // 🆕 UPDATE TONE PERFORMANCE
+  if (fullPost?.tone) {
+    await updateDimensionPerformance(supabase, 'tone_performance', {
+      dimension_value: fullPost.tone,
+      type_field: fullPost.tone_cluster,
+      is_singular: fullPost.tone_is_singular,
+      metrics: {
+        likes: metrics.likes || 0,
+        retweets: metrics.retweets || 0,
+        replies: metrics.replies || 0,
+        impressions: metrics.impressions || 0,
+        followers_gained: metrics.followers_gained || 0,
+        engagement_rate: metrics.engagement_rate || 0
+      }
+    });
+  }
+  
+  // 🆕 UPDATE FORMAT STRATEGY PERFORMANCE
+  if (fullPost?.format_strategy) {
+    await updateDimensionPerformance(supabase, 'format_strategy_performance', {
+      dimension_value: fullPost.format_strategy,
+      metrics: {
+        followers_gained: metrics.followers_gained || 0,
+        engagement_rate: metrics.engagement_rate || 0,
+        total_engagement: totalEngagement
+      }
+    });
+  }
+  
+  console.log(`[ATTRIBUTION] 🧠 Learned from post ${postId} (angle, tone, format_strategy tracked)`);
+}
+
+/**
+ * 🆕 HELPER: Update dimension performance with incremental averaging
+ * Handles the math for updating running averages
+ */
+async function updateDimensionPerformance(
+  supabase: any,
+  tableName: string,
+  data: {
+    dimension_value: string;
+    type_field?: string;
+    is_singular?: boolean;
+    metrics: {
+      likes?: number;
+      retweets?: number;
+      replies?: number;
+      impressions?: number;
+      followers_gained?: number;
+      engagement_rate?: number;
+      total_engagement?: number;
+    };
+  }
+): Promise<void> {
+  const { dimension_value, type_field, is_singular, metrics } = data;
+  
+  // Get existing record
+  const { data: existing } = await supabase
+    .from(tableName)
+    .select('*')
+    .eq(tableName === 'angle_performance' ? 'angle' : 
+        tableName === 'tone_performance' ? 'tone' : 'format_strategy', 
+        dimension_value)
+    .single();
+  
+  if (existing) {
+    // Update existing record with incremental averaging
+    const newTimesUsed = (existing.times_used || 0) + 1;
+    const oldWeight = existing.times_used || 0;
+    const newWeight = 1;
+    const totalWeight = newTimesUsed;
+    
+    // Calculate new averages
+    const newAvgEngagementRate = ((existing.avg_engagement_rate || 0) * oldWeight + (metrics.engagement_rate || 0) * newWeight) / totalWeight;
+    const newAvgLikes = metrics.likes !== undefined ? 
+      ((existing.avg_likes || 0) * oldWeight + metrics.likes * newWeight) / totalWeight : 
+      existing.avg_likes;
+    const newAvgRetweets = metrics.retweets !== undefined ?
+      ((existing.avg_retweets || 0) * oldWeight + metrics.retweets * newWeight) / totalWeight :
+      existing.avg_retweets;
+    const newAvgFollowersGained = ((existing.avg_followers_gained || 0) * oldWeight + (metrics.followers_gained || 0) * newWeight) / totalWeight;
+    
+    // Calculate confidence score (0.0-1.0 based on sample size)
+    const confidenceScore = Math.min(1.0, newTimesUsed / 30);
+    
+    const updates: any = {
+      times_used: newTimesUsed,
+      last_used: new Date(),
+      total_engagement: (existing.total_engagement || 0) + (metrics.total_engagement || 0),
+      total_followers_gained: (existing.total_followers_gained || 0) + (metrics.followers_gained || 0),
+      avg_engagement_rate: newAvgEngagementRate,
+      avg_followers_gained: newAvgFollowersGained,
+      confidence_score: confidenceScore,
+      last_updated: new Date()
+    };
+    
+    if (metrics.likes !== undefined) {
+      updates.total_likes = (existing.total_likes || 0) + metrics.likes;
+      updates.avg_likes = newAvgLikes;
+    }
+    if (metrics.retweets !== undefined) {
+      updates.total_retweets = (existing.total_retweets || 0) + metrics.retweets;
+      updates.avg_retweets = newAvgRetweets;
+    }
+    if (metrics.replies !== undefined) {
+      updates.total_replies = (existing.total_replies || 0) + metrics.replies;
+    }
+    if (metrics.impressions !== undefined) {
+      updates.total_impressions = (existing.total_impressions || 0) + metrics.impressions;
+    }
+    
+    await supabase
+      .from(tableName)
+      .update(updates)
+      .eq(tableName === 'angle_performance' ? 'angle' : 
+          tableName === 'tone_performance' ? 'tone' : 'format_strategy',
+          dimension_value);
+    
+    console.log(`[ATTRIBUTION] 📊 Updated ${tableName}: "${dimension_value}" (n=${newTimesUsed}, conf=${confidenceScore.toFixed(2)})`);
+    
+  } else {
+    // Insert new record
+    const insertData: any = {
+      times_used: 1,
+      first_used: new Date(),
+      last_used: new Date(),
+      total_engagement: metrics.total_engagement || 0,
+      total_followers_gained: metrics.followers_gained || 0,
+      avg_engagement_rate: metrics.engagement_rate || 0,
+      avg_followers_gained: metrics.followers_gained || 0,
+      confidence_score: Math.min(1.0, 1 / 30), // Very low for first use
+      created_at: new Date(),
+      last_updated: new Date()
+    };
+    
+    if (tableName === 'angle_performance') {
+      insertData.angle = dimension_value;
+      insertData.angle_type = type_field;
+    } else if (tableName === 'tone_performance') {
+      insertData.tone = dimension_value;
+      insertData.tone_cluster = type_field;
+      insertData.is_singular = is_singular !== false;
+    } else {
+      insertData.format_strategy = dimension_value;
+    }
+    
+    if (metrics.likes !== undefined) {
+      insertData.total_likes = metrics.likes;
+      insertData.avg_likes = metrics.likes;
+    }
+    if (metrics.retweets !== undefined) {
+      insertData.total_retweets = metrics.retweets;
+      insertData.avg_retweets = metrics.retweets;
+    }
+    if (metrics.replies !== undefined) {
+      insertData.total_replies = metrics.replies;
+    }
+    if (metrics.impressions !== undefined) {
+      insertData.total_impressions = metrics.impressions;
+    }
+    
+    await supabase
+      .from(tableName)
+      .insert([insertData]);
+    
+    console.log(`[ATTRIBUTION] 🆕 New ${tableName}: "${dimension_value}"`);
+  }
 }
 
 /**

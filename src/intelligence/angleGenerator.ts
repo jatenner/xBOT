@@ -19,6 +19,7 @@
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { getDiversityEnforcer } from './diversityEnforcer';
+import { getSupabaseClient } from '../db';
 
 export class AngleGenerator {
   private static instance: AngleGenerator;
@@ -45,8 +46,11 @@ export class AngleGenerator {
     const diversityEnforcer = getDiversityEnforcer();
     const bannedAngles = await diversityEnforcer.getLast10Angles();
     
-    // Build prompt (NO hardcoded angle examples!)
-    const prompt = this.buildAnglePrompt(topic, bannedAngles);
+    // 🆕 GET PERFORMANCE DATA - What angles actually work!
+    const topPerformingAngles = await this.getTopPerformingAngles();
+    
+    // Build prompt with performance intelligence
+    const prompt = this.buildAnglePrompt(topic, bannedAngles, topPerformingAngles);
     
     // Retry up to 3 times if AI generates banned angle
     const maxRetries = 3;
@@ -106,14 +110,43 @@ export class AngleGenerator {
   }
   
   /**
+   * 🆕 Get top performing angles from performance data
+   * Only returns angles with enough confidence (sample size >= 5)
+   */
+  private async getTopPerformingAngles(): Promise<any[]> {
+    try {
+      const supabase = getSupabaseClient();
+      
+      const { data, error } = await supabase
+        .from('angle_performance')
+        .select('angle, angle_type, avg_engagement_rate, avg_followers_gained, times_used, confidence_score')
+        .gte('confidence_score', 0.15) // Only use angles with some data (5+ uses)
+        .order('avg_followers_gained', { ascending: false })
+        .limit(5);
+      
+      if (error) {
+        console.warn(`[ANGLE_GEN] ⚠️ Could not fetch performance data:`, error.message);
+        return [];
+      }
+      
+      console.log(`[ANGLE_GEN] 📊 Found ${data?.length || 0} high-performing angles`);
+      return data || [];
+      
+    } catch (error: any) {
+      console.warn(`[ANGLE_GEN] ⚠️ Performance data unavailable:`, error.message);
+      return [];
+    }
+  }
+  
+  /**
    * Build the angle generation prompt
    * 
-   * CRITICAL: NO hardcoded angle examples!
-   * Let AI explore freely based on the topic
+   * 🆕 NOW INCLUDES: Performance data from real outcomes!
    */
   private buildAnglePrompt(
     topic: string,
-    bannedAngles: string[]
+    bannedAngles: string[],
+    topPerformingAngles: any[]
   ): { system: string; user: string } {
     
     const bannedText = bannedAngles.length > 0
@@ -197,6 +230,18 @@ CONSTRAINTS (for quality):
 1. Maximum 12 words (be concise)
 2. Be specific to the topic (not generic)
 3. Make it interesting (not boring overview)
+
+${topPerformingAngles.length > 0 ? `
+📊 TOP PERFORMING ANGLES (learn from what works):
+${topPerformingAngles.map(a => `
+• "${a.angle}" (${a.angle_type || 'unknown'})
+  → ${(a.avg_followers_gained || 0).toFixed(1)} avg followers gained
+  → ${((a.avg_engagement_rate || 0) * 100).toFixed(2)}% engagement rate
+  → Used ${a.times_used} times (confidence: ${(a.confidence_score * 100).toFixed(0)}%)
+`).join('\n')}
+
+💡 INSIGHTS: These angles drove real follower growth. Learn from their patterns - what makes them engaging? But create something NEW, not a copy.
+` : ''}
 
 🚫 RECENTLY USED (don't repeat):
 ${bannedText}

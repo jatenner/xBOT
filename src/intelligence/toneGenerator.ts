@@ -20,6 +20,7 @@
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { getDiversityEnforcer } from './diversityEnforcer';
+import { getSupabaseClient } from '../db';
 
 export class ToneGenerator {
   private static instance: ToneGenerator;
@@ -45,8 +46,11 @@ export class ToneGenerator {
     const diversityEnforcer = getDiversityEnforcer();
     const bannedTones = await diversityEnforcer.getLast10Tones();
     
-    // Build prompt (NO hardcoded tone examples!)
-    const prompt = this.buildTonePrompt(bannedTones);
+    // 🆕 GET PERFORMANCE DATA - What tones actually work!
+    const topPerformingTones = await this.getTopPerformingTones();
+    
+    // Build prompt with performance intelligence
+    const prompt = this.buildTonePrompt(bannedTones, topPerformingTones);
     
     // Retry up to 3 times if AI generates banned tone
     const maxRetries = 3;
@@ -107,12 +111,40 @@ export class ToneGenerator {
   }
   
   /**
+   * 🆕 Get top performing tones from performance data
+   * Only returns tones with enough confidence (sample size >= 5)
+   */
+  private async getTopPerformingTones(): Promise<any[]> {
+    try {
+      const supabase = getSupabaseClient();
+      
+      const { data, error } = await supabase
+        .from('tone_performance')
+        .select('tone, tone_cluster, avg_engagement_rate, avg_followers_gained, times_used, confidence_score')
+        .gte('confidence_score', 0.15) // Only use tones with some data (5+ uses)
+        .order('avg_followers_gained', { ascending: false})
+        .limit(5);
+      
+      if (error) {
+        console.warn(`[TONE_GEN] ⚠️ Could not fetch performance data:`, error.message);
+        return [];
+      }
+      
+      console.log(`[TONE_GEN] 📊 Found ${data?.length || 0} high-performing tones`);
+      return data || [];
+      
+    } catch (error: any) {
+      console.warn(`[TONE_GEN] ⚠️ Performance data unavailable:`, error.message);
+      return [];
+    }
+  }
+  
+  /**
    * Build the tone generation prompt
    * 
-   * CRITICAL: NO hardcoded tone examples!
-   * Let AI explore the full spectrum of tones/voices
+   * 🆕 NOW INCLUDES: Performance data from real outcomes!
    */
-  private buildTonePrompt(bannedTones: string[]): { system: string; user: string } {
+  private buildTonePrompt(bannedTones: string[], topPerformingTones: any[]): { system: string; user: string } {
     
     const bannedText = bannedTones.length > 0
       ? bannedTones.join('\n')
@@ -179,6 +211,18 @@ CONSTRAINTS (for quality):
 1. Maximum 8 words (be concise)
 2. Be descriptive (paint a clear voice)
 3. Be specific (not just "casual" or "formal")
+
+${topPerformingTones.length > 0 ? `
+📊 TOP PERFORMING TONES (learn from what works):
+${topPerformingTones.map(t => `
+• "${t.tone}" (${t.tone_cluster || 'unknown'})
+  → ${(t.avg_followers_gained || 0).toFixed(1)} avg followers gained
+  → ${((t.avg_engagement_rate || 0) * 100).toFixed(2)}% engagement rate
+  → Used ${t.times_used} times (confidence: ${(t.confidence_score * 100).toFixed(0)}%)
+`).join('\n')}
+
+💡 INSIGHTS: These tones drove real follower growth. Learn from their characteristics - what makes them connect with readers? But create something NEW, not a copy.
+` : ''}
 
 🚫 RECENTLY USED (don't repeat):
 ${bannedText}
