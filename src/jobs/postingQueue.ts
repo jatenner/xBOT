@@ -835,19 +835,69 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
       
       if (isThread) {
         console.log(`[POSTING_QUEUE] 🧵 THREAD MODE: Posting ${thread_parts.length} connected tweets`);
-        thread_parts.forEach((tweet: string, i: number) => {
-          console.log(`[POSTING_QUEUE]   📝 Tweet ${i + 1}/${thread_parts.length}: "${tweet.substring(0, 60)}..."`);
-        });
         
-        // 🚀 NEW: Use bulletproof thread handler with fallback
+        // 🎨 GET METADATA FOR VISUAL FORMATTING CONTEXT
+        const { getSupabaseClient } = await import('../db/index');
+        const supabase = getSupabaseClient();
+        const { data: metadata } = await supabase
+          .from('content_generation_metadata_comprehensive')
+          .select('raw_topic, angle, tone, format_strategy, generator_name')
+          .eq('decision_id', decision.id)
+          .single();
+        
+        console.log(`[POSTING_QUEUE] 🎨 Applying AI visual formatting to ${thread_parts.length} thread tweets...`);
+        
+        // 🎨 FORMAT EACH TWEET IN THE THREAD
+        const { formatContentForTwitter } = await import('../posting/aiVisualFormatter');
+        const formattedParts: string[] = [];
+        let firstVisualApproach: string | null = null;
+        
+        for (let i = 0; i < thread_parts.length; i++) {
+          console.log(`[POSTING_QUEUE]   📝 Formatting tweet ${i + 1}/${thread_parts.length}...`);
+          
+          const formatResult = await formatContentForTwitter({
+            content: thread_parts[i],
+            generator: String(metadata?.generator_name || 'unknown'),
+            topic: String(metadata?.raw_topic || 'thread'),
+            angle: String(metadata?.angle || 'sequential'),
+            tone: String(metadata?.tone || 'informative'),
+            formatStrategy: String(metadata?.format_strategy || 'thread')
+          });
+          
+          formattedParts.push(formatResult.formatted);
+          
+          // Store visual approach from first tweet (representative of thread style)
+          if (i === 0) {
+            firstVisualApproach = formatResult.visualApproach;
+            console.log(`[POSTING_QUEUE]   🎨 Thread visual style: ${formatResult.visualApproach}`);
+          }
+          
+          console.log(`[POSTING_QUEUE]   ✅ Tweet ${i + 1} formatted: "${formatResult.formatted.substring(0, 50)}..."`);
+        }
+        
+        // 📊 STORE VISUAL FORMAT FOR LEARNING
+        if (firstVisualApproach) {
+          await supabase
+            .from('content_generation_metadata_comprehensive')
+            .update({ visual_format: firstVisualApproach })
+            .eq('decision_id', decision.id);
+          
+          console.log(`[POSTING_QUEUE] 📊 Stored visual format for thread: ${firstVisualApproach}`);
+        }
+        
+        // 🚀 POST FORMATTED THREAD
+        console.log(`[POSTING_QUEUE] 🚀 Posting formatted thread to Twitter...`);
         const { ThreadFallbackHandler } = await import('./threadFallback');
-        const result = await ThreadFallbackHandler.postThreadWithFallback(thread_parts, decision.id);
+        const result = await ThreadFallbackHandler.postThreadWithFallback(
+          formattedParts,  // ← FORMATTED VERSIONS (not original)
+          decision.id
+        );
         
         if (result.mode === 'degraded_thread') {
           console.log(`[POSTING_QUEUE] ⚠️ Thread degraded to single: ${result.note}`);
         }
         
-        console.log(`[POSTING_QUEUE] ✅ Posted (mode: ${result.mode}) with ID: ${result.tweetId}`);
+        console.log(`[POSTING_QUEUE] ✅ Posted formatted thread (mode: ${result.mode}) with ID: ${result.tweetId}`);
         return { tweetId: result.tweetId, tweetUrl: result.tweetUrl };
       } else {
         console.log(`[POSTING_QUEUE] 📝 Posting as SINGLE tweet`);
