@@ -337,7 +337,7 @@ export class UltimateTwitterPoster {
         console.log(`ULTIMATE_POSTER: Testing composer selector: ${selector}`);
         const element = await this.page!.waitForSelector(selector, { 
           state: 'visible', 
-          timeout: 5000 
+          timeout: 15000  // Increased from 5s → 15s for slow Twitter loads
         });
         
         if (element) {
@@ -487,7 +487,7 @@ export class UltimateTwitterPoster {
     try {
       // Strategy 1: Normal click
       console.log('ULTIMATE_POSTER: Trying normal click...');
-      await postButton.click({ timeout: 5000 });
+      await postButton.click({ timeout: 15000 }); // Increased from 5s → 15s
       this.clickFailures = 0; // Reset on success
       clickSuccess = true;
       console.log('ULTIMATE_POSTER: ✅ Normal click succeeded');
@@ -1078,9 +1078,9 @@ export class UltimateTwitterPoster {
 
         console.log(`ULTIMATE_POSTER: Finding reply button...`);
 
-        // Find and click reply button
+        // Find and click reply button with extended timeout
         const replyButton = this.page.locator('[data-testid="reply"]').first();
-        await replyButton.waitFor({ state: 'visible', timeout: 5000 });
+        await replyButton.waitFor({ state: 'visible', timeout: 15000 }); // Increased from 5s → 15s
         await replyButton.click();
 
         // Wait for reply modal to appear
