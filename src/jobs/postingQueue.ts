@@ -20,7 +20,8 @@ export async function processPostingQueue(): Promise<void> {
     }
     
     // 🎯 QUEUE DEPTH MONITOR: Ensure minimum content ready (2/hr content + 4/hr replies)
-    await ensureMinimumQueueDepth();
+    // NOTE: Disabled temporarily to prevent over-generation
+    // await ensureMinimumQueueDepth();
     
     // 2. Check rate limits
     const canPost = await checkPostingRateLimits();
@@ -477,10 +478,15 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
     if (threadData) {
       const parts = threadData.thread_parts as string[] || [];
       const age = (Date.now() - new Date(String(threadData.created_at)).getTime()) / (1000 * 60);
+      console.log(`${logPrefix} ⚡ THREAD DETECTED FOR POSTING ⚡`);
+      console.log(`${logPrefix} Thread ID: ${decision.id}`);
       console.log(`${logPrefix} Thread details: ${parts.length} tweets, created ${age.toFixed(0)}min ago`);
+      console.log(`${logPrefix} Full thread content:`);
       parts.forEach((tweet: string, i: number) => {
-        console.log(`${logPrefix}   Tweet ${i + 1}/${parts.length}: "${tweet.substring(0, 60)}..." (${tweet.length} chars)`);
+        console.log(`${logPrefix}   Tweet ${i + 1}/${parts.length}: "${tweet.substring(0, 80)}..." (${tweet.length} chars)`);
       });
+    } else {
+      console.warn(`${logPrefix} ⚠️ Thread data not found for decision ${decision.id}`);
     }
   }
   
