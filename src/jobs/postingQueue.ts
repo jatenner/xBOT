@@ -161,51 +161,49 @@ interface QueuedDecisionRow {
 
 async function checkPostingRateLimits(): Promise<boolean> {
   const config = getConfig();
-  const maxPostsPerHour = parseInt(String(config.MAX_POSTS_PER_HOUR || 2)); // Changed from 1 to 2 posts per hour
+  const maxPostsPerHour = parseInt(String(config.MAX_POSTS_PER_HOUR || 2));
   
   try {
     const { getSupabaseClient } = await import('../db/index');
     const supabase = getSupabaseClient();
     
-    // SMART BATCH FIX: Use exact time window from database timestamps
+    // 🔥 CRITICAL FIX: Count by created_at (when post was attempted)
+    // This prevents flooding when posts succeed on Twitter but fail ID extraction
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     
-    // 🚨 CRITICAL FIX: Query content_metadata TABLE (where posts are actually stored!)
-    const { data: recentPosts, error } = await supabase
+    const { count, error } = await supabase
       .from('content_metadata')
-      .select('decision_id, decision_type, posted_at')
+      .select('*', { count: 'exact', head: true })
       .in('decision_type', ['single', 'thread'])
-      .eq('status', 'posted')
-      .gte('posted_at', oneHourAgo)
-      .order('posted_at', { ascending: false });
+      .gte('created_at', oneHourAgo);
+      // ↑ Use created_at, not posted_at!
+      // ↑ No status filter - counts ALL attempts (posted, failed, queued)
     
     if (error) {
-      console.warn('[POSTING_QUEUE] ⚠️ Failed to check posting rate limit, allowing posts');
-      return true;
+      console.error('[POSTING_QUEUE] ❌ Rate limit check failed:', error.message);
+      console.warn('[POSTING_QUEUE] 🛡️ BLOCKING posts as safety measure');
+      return false;  // ← Block when check fails (safer than allowing)
     }
     
-    const count = recentPosts?.length || 0;
+    const postsThisHour = count || 0;
     
-    if (count >= maxPostsPerHour) {
-      console.log(`[POSTING_QUEUE] ⚠️ Hourly CONTENT post limit reached: ${count}/${maxPostsPerHour}`);
-      console.log(`[POSTING_QUEUE] ℹ️ Note: Replies have separate 4/hr limit and can still post`);
-      
-      // Log most recent post time for debugging
-      if (recentPosts && recentPosts.length > 0) {
-        const mostRecent = recentPosts[0].posted_at;
-        const nextAvailable = new Date(new Date(String(mostRecent)).getTime() + 60 * 60 * 1000);
-        console.log(`[POSTING_QUEUE] 📅 Next post available after: ${nextAvailable.toISOString()}`);
-      }
-      
+    console.log(`[POSTING_QUEUE] 📊 Content posts attempted this hour: ${postsThisHour}/${maxPostsPerHour}`);
+    console.log(`[POSTING_QUEUE] 📋 Counting ALL posts (posted + failed + queued) by created_at`);
+    
+    if (postsThisHour >= maxPostsPerHour) {
+      console.log(`[POSTING_QUEUE] ⛔ RATE LIMIT REACHED: ${postsThisHour}/${maxPostsPerHour}`);
+      console.log(`[POSTING_QUEUE] ⏰ Next content post slot available in ~${60 - Math.floor((Date.now() - new Date(oneHourAgo).getTime()) / 60000)} minutes`);
+      console.log(`[POSTING_QUEUE] ℹ️ This prevents flooding even when ID extraction fails`);
       return false;
     }
     
-    console.log(`[POSTING_QUEUE] ✅ Post budget available: ${count}/${maxPostsPerHour} content posts`);
+    console.log(`[POSTING_QUEUE] ✅ Rate limit OK: ${postsThisHour}/${maxPostsPerHour} posts`);
     return true;
     
   } catch (error) {
-    console.warn('[POSTING_QUEUE] ⚠️ Failed to check rate limits, allowing posts:', error.message);
-    return true;
+    console.error('[POSTING_QUEUE] ❌ Rate limit check exception:', error.message);
+    console.warn('[POSTING_QUEUE] 🛡️ BLOCKING posts as safety measure');
+    return false;  // ← Block on error (safer)
   }
 }
 
@@ -954,18 +952,19 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         await poster.dispose();
         
         if (!extraction.success || !extraction.tweetId) {
-          // ❌ ID extraction failed - this is a CRITICAL ERROR
-          // Tweet was posted but we can't get its ID
-          // This will prevent threads from building with fake IDs
-          console.error(`[POSTING_QUEUE] ❌ CRITICAL: Tweet posted but ID extraction failed!`);
-          console.error(`[POSTING_QUEUE] 📝 Content: "${decision.content.substring(0, 60)}..."`);
-          console.error(`[POSTING_QUEUE] 💡 Error: ${extraction.error || 'Unknown error'}`);
-          console.error(`[POSTING_QUEUE] ⚠️ Tweet is LIVE on Twitter but system can't track it`);
-          console.error(`[POSTING_QUEUE] ⚠️ Throwing error to prevent broken threading`);
+          // ⚠️ ID extraction failed BUT tweet is LIVE on Twitter!
+          console.warn(`[POSTING_QUEUE] ⚠️ Tweet posted successfully but ID extraction failed`);
+          console.warn(`[POSTING_QUEUE] 📝 Content: "${decision.content.substring(0, 60)}..."`);
+          console.warn(`[POSTING_QUEUE] 💡 Error: ${extraction.error || 'Unknown error'}`);
+          console.warn(`[POSTING_QUEUE] ✅ Tweet is LIVE - returning success with null ID`);
+          console.warn(`[POSTING_QUEUE] 🔄 Background job will find real ID later`);
           
-          // Throw error - this marks post as failed in DB but tweet is live
-          // Better to mark as failed than use fake ID that breaks threads
-          throw new Error(`ID extraction failed after posting: ${extraction.error || 'Unknown'}`);
+          // Return success with null ID (DON'T throw error!)
+          // Tweet is live - this is NOT a failure!
+          return { 
+            tweetId: null,  // ← null is OK! Background job will find it
+            tweetUrl: `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}`
+          };
         }
         
         console.log(`[POSTING_QUEUE] ✅ Tweet ID extracted: ${extraction.tweetId}`);
@@ -1067,15 +1066,20 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     
     await poster.dispose();
     
-    // ✅ VALIDATION: Reply ID must be real, not placeholder
-    if (!result.tweetId || result.tweetId.startsWith('reply_posted_') || result.tweetId.startsWith('posted_')) {
-      console.error(`[POSTING_QUEUE] ❌ Reply posted but got invalid ID: ${result.tweetId}`);
+    // ✅ VALIDATION: Reject placeholder IDs but allow null
+    if (result.tweetId && (result.tweetId.startsWith('reply_posted_') || result.tweetId.startsWith('posted_'))) {
+      console.error(`[POSTING_QUEUE] ❌ Reply posted but got PLACEHOLDER ID: ${result.tweetId}`);
       console.error(`[POSTING_QUEUE] 📝 Reply to: ${decision.target_tweet_id}`);
-      console.error(`[POSTING_QUEUE] ⚠️ Throwing error to prevent tracking fake IDs`);
-      throw new Error(`Reply ID extraction failed: got ${result.tweetId}`);
+      console.warn(`[POSTING_QUEUE] ⚠️ Using null instead - background job will find real ID`);
+      return null;  // ← Return null instead of throwing
     }
     
-    return result.tweetId;
+    if (!result.tweetId) {
+      console.warn(`[POSTING_QUEUE] ⚠️ Reply posted but ID is null (extraction failed)`);
+      console.warn(`[POSTING_QUEUE] ✅ Reply is LIVE - will track with null ID`);
+    }
+    
+    return result.tweetId || null;  // ← Can be null!
   } catch (error: any) {
     console.error(`[POSTING_QUEUE] ❌ Reply system error: ${error.message}`);
     throw new Error(`Reply posting failed: ${error.message}`);
