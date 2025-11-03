@@ -505,9 +505,13 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
     // Update metrics
     await updatePostingMetrics('queued');
   
+  // Declare variables at function scope so they're accessible in catch block
+  let tweetId: string = '';
+  let tweetUrl: string | undefined;
+  let tweetIds: string[] | undefined;
+  let postingSucceeded = false;
+  
   try {
-    let tweetId: string;
-    
     // 🚨 CRITICAL: Check if already posted (double-check before posting)
     const { getSupabaseClient } = await import('../db/index');
     const supabase = getSupabaseClient();
@@ -548,9 +552,6 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
     // ═══════════════════════════════════════════════════════════
     // 🎯 PHASE 1: POST TO TWITTER (CRITICAL - Must succeed or fail here)
     // ═══════════════════════════════════════════════════════════
-    let tweetUrl: string | undefined;
-    let tweetIds: string[] | undefined; // 🆕 For thread tracking
-    let postingSucceeded = false; // Track if tweet was posted
     
     try {
       if (decision.decision_type === 'single' || decision.decision_type === 'thread') {
