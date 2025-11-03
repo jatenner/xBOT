@@ -751,8 +751,9 @@ export class UltimateTwitterPoster {
           console.log(`ULTIMATE_POSTER: 🔍 Profile extraction attempt ${retry}/${maxRetries}...`);
           
           // Wait progressively longer for Twitter to index the tweet
-          const waitTime = 3000 + (retry * 4000); // 7s, 11s, 15s
-          console.log(`ULTIMATE_POSTER: ⏳ Waiting ${waitTime/1000}s for Twitter to index tweet...`);
+          // CRITICAL: Must wait long enough for Twitter to fully index!
+          const waitTime = 5000 + (retry * 8000); // 13s, 21s, 29s (increased!)
+          console.log(`ULTIMATE_POSTER: ⏳ Waiting ${waitTime/1000}s for Twitter to index tweet (retry ${retry}/${maxRetries})...`);
           await this.page.waitForTimeout(waitTime);
           
           // Force fresh page load

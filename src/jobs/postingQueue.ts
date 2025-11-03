@@ -971,19 +971,19 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         await poster.dispose();
         
         if (!extraction.success || !extraction.tweetId) {
-          // ⚠️ ID extraction failed BUT tweet is LIVE on Twitter!
-          console.warn(`[POSTING_QUEUE] ⚠️ Tweet posted successfully but ID extraction failed`);
-          console.warn(`[POSTING_QUEUE] 📝 Content: "${decision.content.substring(0, 60)}..."`);
-          console.warn(`[POSTING_QUEUE] 💡 Error: ${extraction.error || 'Unknown error'}`);
-          console.warn(`[POSTING_QUEUE] ✅ Tweet is LIVE - returning success with null ID`);
-          console.warn(`[POSTING_QUEUE] 🔄 Background job will find real ID later`);
+          // 🚨 CRITICAL: ID extraction failed!
+          // Without tweet_id, metrics scraper can't collect data
+          // Bad data → Bad learning → Entire system breaks!
+          console.error(`[POSTING_QUEUE] 🚨 CRITICAL: ID extraction failed after posting!`);
+          console.error(`[POSTING_QUEUE] 📝 Content: "${decision.content.substring(0, 60)}..."`);
+          console.error(`[POSTING_QUEUE] 💡 Error: ${extraction.error || 'Unknown error'}`);
+          console.error(`[POSTING_QUEUE] ⚠️ Tweet IS live but we can't track it!`);
+          console.error(`[POSTING_QUEUE] 📊 Without tweet_id, metrics scraper will fail!`);
+          console.error(`[POSTING_QUEUE] 🧠 This corrupts the learning system with missing/fake data!`);
           
-          // Return success with null ID (DON'T throw error!)
-          // Tweet is live - this is NOT a failure!
-          return { 
-            tweetId: null,  // ← null is OK! Background job will find it
-            tweetUrl: `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}`
-          };
+          // Mark as FAILED even though tweet is live
+          // Better to have accurate data for learning than track untrackable tweets
+          throw new Error(`ID extraction failed - cannot track metrics without tweet_id`);
         }
         
         console.log(`[POSTING_QUEUE] ✅ Tweet ID extracted: ${extraction.tweetId}`);
@@ -1085,20 +1085,17 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     
     await poster.dispose();
     
-    // ✅ VALIDATION: Reject placeholder IDs but allow null
-    if (result.tweetId && (result.tweetId.startsWith('reply_posted_') || result.tweetId.startsWith('posted_'))) {
-      console.error(`[POSTING_QUEUE] ❌ Reply posted but got PLACEHOLDER ID: ${result.tweetId}`);
+    // 🚨 CRITICAL: Reply ID MUST be real for metrics scraping!
+    if (!result.tweetId || result.tweetId.startsWith('reply_posted_') || result.tweetId.startsWith('posted_')) {
+      console.error(`[POSTING_QUEUE] 🚨 CRITICAL: Reply posted but got invalid ID: ${result.tweetId}`);
       console.error(`[POSTING_QUEUE] 📝 Reply to: ${decision.target_tweet_id}`);
-      console.warn(`[POSTING_QUEUE] ⚠️ Using null instead - background job will find real ID`);
-      return null;  // ← Return null instead of throwing
+      console.error(`[POSTING_QUEUE] 📊 Without real ID, metrics scraper cannot collect data!`);
+      console.error(`[POSTING_QUEUE] 🧠 This corrupts learning system with missing data!`);
+      throw new Error(`Reply ID extraction failed: got ${result.tweetId || 'null'}`);
     }
     
-    if (!result.tweetId) {
-      console.warn(`[POSTING_QUEUE] ⚠️ Reply posted but ID is null (extraction failed)`);
-      console.warn(`[POSTING_QUEUE] ✅ Reply is LIVE - will track with null ID`);
-    }
-    
-    return result.tweetId || null;  // ← Can be null!
+    console.log(`[POSTING_QUEUE] ✅ Reply ID validated: ${result.tweetId}`);
+    return result.tweetId;
   } catch (error: any) {
     console.error(`[POSTING_QUEUE] ❌ Reply system error: ${error.message}`);
     throw new Error(`Reply posting failed: ${error.message}`);
