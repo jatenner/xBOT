@@ -156,17 +156,16 @@ async function generateRealContent(): Promise<void> {
   for (let i = 0; i < generatedPosts.length; i++) {
     const post = generatedPosts[i];
     
-    // FIXED: Space 2 posts exactly 30 minutes apart for 2 posts/hour
-    const baseDelay = i * 30; // 0, 30 minutes (for 2 posts)
-    const randomVariation = Math.floor(Math.random() * 5); // 0-4 minutes for natural feel
-    const totalDelay = baseDelay + randomVariation;
+    // ⚡ STRICT SCHEDULE: EXACTLY 30 minutes apart, no variation
+    // Post 1: +0min, Post 2: +30min, Post 3: +60min, Post 4: +90min
+    const baseDelay = i * 30; // Exactly 30-minute intervals
     
-    const scheduledAt = new Date(now + totalDelay * 60000);
+    const scheduledAt = new Date(now + baseDelay * 60000);
     post.scheduled_at = scheduledAt.toISOString();
     
-    const minutesUntil = Math.floor((scheduledAt.getTime() - now) / 60000);
+    const minutesUntil = baseDelay;
     
-    console.log(`   Post ${i + 1}: ${scheduledAt.toLocaleTimeString()} (+${minutesUntil}m)`);
+    console.log(`   Post ${i + 1}: ${scheduledAt.toLocaleTimeString()} (EXACTLY +${minutesUntil}min)`);
     
     // 🎨 CRITICAL FIX: Apply visual formatting BEFORE queueing
     await formatAndQueueContent(post);
@@ -403,16 +402,16 @@ Be specific, interesting, and match the tone precisely. Sound like an expert who
 ⚠️ CRITICAL: Return your response as valid JSON format (required for API).
 
 RANDOMLY select format with genuine randomness:
-- 93% probability: Single tweet (ideal: 200-270 chars, max: 280)
-- 7% probability: Thread (3-5 connected tweets)
+- 85% probability: Single tweet (ideal: 200-270 chars, max: 280)
+- 15% probability: Thread (3-5 connected tweets)
 
-For SINGLE tweet (93% chance) - return JSON:
+For SINGLE tweet (85% chance) - return JSON:
 {
   "text": "Your tweet content here (ideal: 200-270 chars)",
   "format": "single"
 }
 
-For THREAD (7% chance - use when topic needs depth) - return JSON:
+For THREAD (15% chance - use when topic needs depth) - return JSON:
 {
   "text": [
     "Tweet 1: Hook or opening insight (200-270 chars)",
@@ -477,7 +476,11 @@ WHEN to choose SINGLE:
       return tweet;
     });
     
-    console.log(`[PLAN_JOB] 🧵 Generated ${contentData.text.length}-tweet thread`);
+    console.log(`[PLAN_JOB] 🧵 ✨ THREAD GENERATED: ${contentData.text.length} tweets`);
+    console.log(`[PLAN_JOB] 🧵 Thread preview:`);
+    contentData.text.forEach((tweet: string, i: number) => {
+      console.log(`[PLAN_JOB] 🧵   Tweet ${i+1}/${contentData.text.length}: "${tweet.substring(0, 80)}..." (${tweet.length} chars)`);
+    });
   } else {
     // Handle single tweet
     if (tweetText.length > 280) {
@@ -617,6 +620,13 @@ async function queueContent(content: any): Promise<void> {
     timing_arm: `slot_${content.timing_slot}`,
     thread_parts: Array.isArray(content.text) ? content.text : null
   };
+  
+  // 🧵 THREAD TRACKING: Log when threads are queued
+  if (insertPayload.decision_type === 'thread') {
+    console.log(`[QUEUE_CONTENT] 🧵 THREAD QUEUED: ${insertPayload.id}`);
+    console.log(`[QUEUE_CONTENT] 🧵   Scheduled: ${insertPayload.scheduled_at}`);
+    console.log(`[QUEUE_CONTENT] 🧵   Parts: ${insertPayload.thread_parts?.length} tweets`);
+  }
   
   // ⚠️ TEMPORARY: Meta-awareness fields DISABLED until Supabase schema cache refreshes
   // These columns exist in DB but Supabase API cache is stale
