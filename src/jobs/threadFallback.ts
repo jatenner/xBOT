@@ -7,6 +7,7 @@ export interface FallbackResult {
   success: boolean;
   tweetId: string;
   tweetUrl: string;
+  tweetIds?: string[]; // 🆕 All tweet IDs in thread
   mode: 'thread' | 'degraded_thread';
   note?: string;
 }
@@ -76,8 +77,20 @@ export class ThreadFallbackHandler {
       
       if (result.success) {
         console.log(`[THREAD_FALLBACK] ✅ Thread posted successfully!`);
+        
+        // Extract root tweet ID from URL
+        const rootTweetId = result.rootTweetUrl?.match(/status\/(\d+)/)?.[1] || '';
+        
+        // Log captured IDs
+        if (result.tweetIds && result.tweetIds.length > 0) {
+          console.log(`[THREAD_FALLBACK] 🔗 Captured ${result.tweetIds.length} tweet IDs: ${result.tweetIds.join(', ')}`);
+        }
+        
         return {
-          ...result,
+          success: true,
+          tweetId: rootTweetId,
+          tweetUrl: result.rootTweetUrl || '',
+          tweetIds: result.tweetIds, // 🆕 Pass through all IDs
           mode: 'thread'
         };
       } else {
