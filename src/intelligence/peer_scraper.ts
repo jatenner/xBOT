@@ -7,6 +7,7 @@ import { chromium, Browser, Page } from 'playwright';
 import { createClient } from '@supabase/supabase-js';
 import Redis from 'ioredis';
 import OpenAI from 'openai';
+import { getFormatAnalyzer } from '../analysis/viralFormatAnalyzer';
 
 interface PeerAccount {
   handle: string;
@@ -71,6 +72,8 @@ export class PeerScrapingSystem {
       args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
 
+    const allTweets: PeerTweet[] = [];
+
     try {
       for (const account of this.peerAccounts) {
         try {
@@ -79,6 +82,7 @@ export class PeerScrapingSystem {
           
           if (tweets.length > 0) {
             await this.storePeerTweets(tweets);
+            allTweets.push(...tweets); // Collect for format analysis
             console.log(`✅ Stored ${tweets.length} tweets from @${account.handle}`);
           }
 
@@ -89,11 +93,85 @@ export class PeerScrapingSystem {
         }
       }
 
+      // NEW: Analyze formats with AI
+      if (allTweets.length > 0) {
+        console.log('\n🔍 Analyzing tweet formats with AI...');
+        await this.analyzeAndStoreFormats(allTweets);
+      }
+
       // Analyze patterns from collected data
       await this.analyzePeerPatterns();
       
     } finally {
       await browser.close();
+    }
+  }
+
+  /**
+   * 🎨 NEW: Analyze tweet formats with AI and store insights
+   */
+  private async analyzeAndStoreFormats(tweets: PeerTweet[]): Promise<void> {
+    console.log(`🔍 Analyzing formats for ${tweets.length} tweets...`);
+    
+    const formatAnalyzer = getFormatAnalyzer();
+    
+    // Only analyze high-performing tweets (50K+ views or 2%+ engagement)
+    const viralTweets = tweets.filter(t => t.views >= 50000 || t.engagement_rate >= 0.02);
+    console.log(`  → Filtering to ${viralTweets.length} high-performing tweets...`);
+    
+    if (viralTweets.length === 0) {
+      console.log('  ⚠️ No viral tweets to analyze');
+      return;
+    }
+    
+    try {
+      // Batch analyze with AI
+      const analyses = await formatAnalyzer.batchAnalyze(viralTweets);
+      
+      // Store in viral_tweet_library with AI insights
+      for (const [tweetId, analysis] of analyses) {
+        const tweet = viralTweets.find(t => t.tweet_id === tweetId);
+        if (!tweet) continue;
+        
+        await this.supabase.from('viral_tweet_library').upsert({
+          tweet_id: tweetId,
+          text: tweet.text,
+          author_handle: tweet.account_handle,
+          
+          // Metrics
+          likes: tweet.likes,
+          retweets: tweet.reposts,
+          replies: tweet.replies,
+          views: tweet.views,
+          engagement_rate: tweet.engagement_rate,
+          viral_coefficient: tweet.reposts / (tweet.views || 1),
+          
+          // AI-analyzed patterns
+          hook_type: analysis.hookType,
+          formatting_patterns: analysis.visualStructure,
+          emoji_count: analysis.emojiStrategy === 'none' ? 0 : 
+                       analysis.emojiStrategy === 'strategic_one' ? 1 : 2,
+          character_count: tweet.text.length,
+          has_numbers: /\d/.test(tweet.text),
+          
+          // AI insights - THE KEY DATA!
+          why_it_works: analysis.whyItWorks,
+          pattern_strength: analysis.patternStrength,
+          
+          // Category
+          topic_category: 'health',
+          content_type: 'educational',
+          structure: 'single',
+          is_active: true,
+          scraped_at: new Date().toISOString(),
+          last_updated: new Date().toISOString()
+        }, { onConflict: 'tweet_id' });
+      }
+      
+      console.log(`✅ Analyzed and stored ${analyses.size} formats with AI insights`);
+      
+    } catch (error) {
+      console.error('❌ Format analysis failed:', error);
     }
   }
 
