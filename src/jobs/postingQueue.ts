@@ -545,26 +545,89 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
       console.warn(`[POSTING_QUEUE] ⚠️ Follower capture failed: ${attrError.message}`);
     }
     
-    // Handle all content types: 'single', 'thread', and 'reply'
+    // ═══════════════════════════════════════════════════════════
+    // 🎯 PHASE 1: POST TO TWITTER (CRITICAL - Must succeed or fail here)
+    // ═══════════════════════════════════════════════════════════
     let tweetUrl: string | undefined;
     let tweetIds: string[] | undefined; // 🆕 For thread tracking
+    let postingSucceeded = false; // Track if tweet was posted
     
-    if (decision.decision_type === 'single' || decision.decision_type === 'thread') {
-      const result = await postContent(decision);
-      tweetId = result.tweetId;
-      tweetUrl = result.tweetUrl;
-      tweetIds = result.tweetIds; // 🆕 Capture thread IDs if available
-    } else if (decision.decision_type === 'reply') {
-      tweetId = await postReply(decision);
-      // For replies, construct URL (reply system doesn't return URL yet)
-      tweetUrl = `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${tweetId}`;
-    } else {
-      throw new Error(`Unknown decision type: ${decision.decision_type}`);
+    try {
+      if (decision.decision_type === 'single' || decision.decision_type === 'thread') {
+        const result = await postContent(decision);
+        tweetId = result.tweetId;
+        tweetUrl = result.tweetUrl;
+        tweetIds = result.tweetIds; // 🆕 Capture thread IDs if available
+      } else if (decision.decision_type === 'reply') {
+        tweetId = await postReply(decision);
+        // For replies, construct URL (reply system doesn't return URL yet)
+        tweetUrl = `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${tweetId}`;
+      } else {
+        throw new Error(`Unknown decision type: ${decision.decision_type}`);
+      }
+      
+      // 🎉 TWEET IS LIVE! From this point on, we ALWAYS mark as posted
+      postingSucceeded = true;
+      console.log(`[POSTING_QUEUE] 🎉 TWEET POSTED SUCCESSFULLY: ${tweetId}`);
+      console.log(`[POSTING_QUEUE] 🔗 Tweet URL: ${tweetUrl}`);
+      console.log(`[POSTING_QUEUE] ⚠️ From this point on, all operations are best-effort only`);
+      
+    } catch (postError: any) {
+      // Posting failed - tweet never made it to Twitter
+      console.error(`[POSTING_QUEUE] ❌ POSTING FAILED: ${postError.message}`);
+      console.error(`[POSTING_QUEUE] 📝 Content: "${decision.content.substring(0, 100)}..."`);
+      
+      // Only mark as failed if posting actually failed
+      if (decision.decision_type === 'thread') {
+        // Threads get retry logic
+        const { getSupabaseClient } = await import('../db/index');
+        const supabase = getSupabaseClient();
+        
+        const { data: metadata } = await supabase
+          .from('content_metadata')
+          .select('features')
+          .eq('decision_id', decision.id)
+          .single();
+        
+        const retryCount = (metadata?.features as any)?.retry_count || 0;
+        const maxRetries = 3;
+        
+        if (retryCount < maxRetries) {
+          const { ThreadValidator } = await import('./threadValidator');
+          const retryDelay = ThreadValidator.getRetryDelay(retryCount, postError.message);
+          
+          console.log(`[POSTING_QUEUE] 🔄 Thread will retry (attempt ${retryCount + 1}/${maxRetries}) in ${retryDelay / 60000}min`);
+          
+          await supabase
+            .from('content_metadata')
+            .update({
+              scheduled_at: new Date(Date.now() + retryDelay).toISOString(),
+              features: {
+                ...(typeof metadata?.features === 'object' && metadata?.features !== null ? metadata.features : {}),
+                retry_count: retryCount + 1,
+                last_error: postError.message,
+                last_attempt: new Date().toISOString()
+              }
+            })
+            .eq('decision_id', decision.id);
+          
+          await updatePostingMetrics('error');
+          return; // Don't mark as failed, will retry
+        }
+      }
+      
+      // Mark as failed (posting never succeeded)
+      await updateDecisionStatus(decision.id, 'failed');
+      await updatePostingMetrics('error');
+      throw postError;
     }
     
-    console.log(`[POSTING_QUEUE] 🔗 Tweet URL: ${tweetUrl}`);
+    // ═══════════════════════════════════════════════════════════
+    // 🎯 PHASE 2: POST-POSTING OPERATIONS (BEST EFFORT ONLY)
+    // ═══════════════════════════════════════════════════════════
+    // Tweet is live - nothing below can fail the post!
     
-    // 🎣 INTELLIGENCE LAYER: Extract and classify hook
+    // Best-effort: Extract and classify hook
     try {
       const { hookAnalysisService } = await import('../intelligence/hookAnalysisService');
       const hook = hookAnalysisService.extractHook(decision.content);
@@ -583,7 +646,7 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
       
       console.log(`[POSTING_QUEUE] 🎣 Hook captured: "${hook}" (${hookType})`);
     } catch (hookError: any) {
-      console.warn(`[POSTING_QUEUE] ⚠️ Hook capture failed: ${hookError.message}`);
+      console.warn(`[POSTING_QUEUE] ⚠️ Hook capture failed (non-critical): ${hookError.message}`);
     }
     
     // Mark as posted and store tweet ID and URL
@@ -605,14 +668,13 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
     }
     
     if (!dbSaveSuccess) {
-      console.error(`[POSTING_QUEUE] 💥 CRITICAL FAILURE: Tweet ${tweetId} posted to Twitter but failed to save to database after 3 attempts!`);
+      console.error(`[POSTING_QUEUE] 💥 Tweet ${tweetId} posted but database save failed after 3 attempts!`);
       console.error(`[POSTING_QUEUE] 🔗 Tweet URL: ${tweetUrl}`);
       console.error(`[POSTING_QUEUE] 📝 Content: ${decision.content.substring(0, 100)}`);
-      console.error(`[POSTING_QUEUE] ⚠️ Marking as posted anyway to prevent duplicate posting!`);
-      console.error(`[POSTING_QUEUE] ⚠️ Background job will find real tweet_id later`);
+      console.error(`[POSTING_QUEUE] ⚠️ Marking as posted anyway - background job will sync later`);
       
-      // 🔥 CRITICAL: Mark as 'posted' even if database save failed, to prevent retry/duplicate!
-      // Use simple status update (might work even if full save failed)
+      // 🔥 CRITICAL: Mark as 'posted' even if database save failed
+      // This prevents retry and duplicate posting!
       try {
         await supabase
           .from('content_metadata')
@@ -622,20 +684,23 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
             posted_at: new Date().toISOString()
           })
           .eq('decision_id', decision.id);
-        console.log(`[POSTING_QUEUE] ✅ Status marked as 'posted' to prevent duplicate`);
+        console.log(`[POSTING_QUEUE] ✅ Status marked as 'posted' (basic update succeeded)`);
       } catch (simpleSaveError: any) {
         console.error(`[POSTING_QUEUE] 💥 Even simple status update failed: ${simpleSaveError.message}`);
-        // If this fails too, we'll rely on the background job to find the tweet
+        console.error(`[POSTING_QUEUE] ⚠️ Background job will find and sync this tweet`);
       }
       
-      // DON'T throw error - post succeeded, just database tracking failed
-      // We don't want to retry and create a duplicate!
+      // DON'T throw - post succeeded! Database just needs to catch up.
     }
     
-    // Update metrics
-    await updatePostingMetrics('posted');
+    // Best-effort: Update metrics
+    try {
+      await updatePostingMetrics('posted');
+    } catch (metricsError: any) {
+      console.warn(`[POSTING_QUEUE] ⚠️ Metrics update failed (non-critical): ${metricsError.message}`);
+    }
     
-    // PHASE 2: Initialize attribution tracking
+    // Best-effort: Initialize attribution tracking
     try {
       const { initializePostAttribution } = await import('../learning/engagementAttribution');
       await initializePostAttribution(tweetId, {
@@ -645,12 +710,12 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
         format: (decision as any).metadata?.format || 'single',
         viral_score: (decision as any).metadata?.viral_score || 50
       });
-      console.log(`[POSTING_QUEUE] 📊 Attribution tracking initialized for ${tweetId}`);
+      console.log(`[POSTING_QUEUE] 📊 Attribution tracking initialized`);
     } catch (attrError: any) {
-      console.warn(`[POSTING_QUEUE] ⚠️ Attribution init failed: ${attrError.message}`);
+      console.warn(`[POSTING_QUEUE] ⚠️ Attribution init failed (non-critical): ${attrError.message}`);
     }
     
-    console.log(`[POSTING_QUEUE] ✅ ${decision.decision_type} posted: ${tweetId}`);
+    console.log(`[POSTING_QUEUE] ✅ ${decision.decision_type} POSTED SUCCESSFULLY: ${tweetId}`);
     
     // ═══════════════════════════════════════════════════════════
     // 🚀 POST-POSTING FEEDBACK LOOP - Track with Advanced Algorithms
@@ -734,63 +799,19 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
       
       console.log(`[METRICS] ✅ Placeholder created for ${tweetId}, scheduled scraper will collect metrics`);
     } catch (metricsError: any) {
-      console.warn(`[METRICS] ⚠️ Failed to collect initial metrics: ${metricsError.message}`);
+      console.warn(`[METRICS] ⚠️ Failed to collect initial metrics (non-critical): ${metricsError.message}`);
       // Don't fail the post, just log and continue
     }
     
+    console.log(`[POSTING_QUEUE] 🎉 POST COMPLETE: Tweet is live on Twitter, all tracking initiated!`);
   } catch (error: any) {
-    // 🧵 SMART THREAD RETRY LOGIC: Intelligent backoff based on error type
-    if (decision.decision_type === 'thread') {
-      const { getSupabaseClient } = await import('../db/index');
-      const supabase = getSupabaseClient();
-      
-      // Get current retry count
-      const { data: metadata } = await supabase
-        .from('content_metadata')
-        .select('features')
-        .eq('decision_id', decision.id)
-        .single();
-      
-      const retryCount = (metadata?.features as any)?.retry_count || 0;
-      const maxRetries = 3;
-      
-      if (retryCount < maxRetries) {
-        // 🚀 NEW: Use smart retry delay calculation
-        const { ThreadValidator } = await import('./threadValidator');
-        const retryDelay = ThreadValidator.getRetryDelay(retryCount, error.message);
-        
-        console.log(`[POSTING_QUEUE] 🔄 Thread failed (attempt ${retryCount + 1}/${maxRetries})`);
-        console.log(`[POSTING_QUEUE] ⚠️ Error: ${error.message}`);
-        console.log(`[POSTING_QUEUE] ⏰ Retrying in ${retryDelay / 60000} minutes...`);
-        
-        const newScheduledAt = new Date(Date.now() + retryDelay);
-        
-        await supabase
-          .from('content_metadata')
-          .update({
-            scheduled_at: newScheduledAt.toISOString(),
-            features: {
-              ...(typeof metadata?.features === 'object' && metadata?.features !== null ? metadata.features : {}),
-              retry_count: retryCount + 1,
-              last_error: error.message,
-              last_attempt: new Date().toISOString()
-            }
-          })
-          .eq('decision_id', decision.id);
-        
-        console.log(`[POSTING_QUEUE] ✅ Thread rescheduled for ${newScheduledAt.toISOString()}`);
-        await updatePostingMetrics('error');
-        return; // Don't mark as failed yet, will retry
-      } else {
-        console.log(`[POSTING_QUEUE] ❌ Thread failed after ${maxRetries} attempts, giving up`);
-        console.log(`[POSTING_QUEUE] 💀 Final error: ${error.message}`);
-      }
+    // This catch block only catches post-posting errors (tweet is already live)
+    // Actual posting errors are caught in the posting phase above
+    console.error(`[POSTING_QUEUE] ⚠️ Post-posting operation failed: ${error.message}`);
+    if (postingSucceeded && tweetId) {
+      console.error(`[POSTING_QUEUE] ✅ But tweet ${tweetId} is LIVE - this is not a failure!`);
     }
-    
-    // Mark as failed (singles immediately, threads after 3 retries)
-    await updateDecisionStatus(decision.id, 'failed');
-    await updatePostingMetrics('error');
-    throw error;
+    // DON'T re-throw - tweet might be live!
   }
 }
 
@@ -858,40 +879,35 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         console.log(`[POSTING_QUEUE] 📝 Using pre-formatted thread (${thread_parts.length} tweets)`);
         console.log(`[POSTING_QUEUE] 💡 Visual formatting was applied before queueing`);
         
-        // 🚀 POST THREAD (already formatted)
+        // 🚀 POST THREAD (using simplified poster)
         console.log(`[POSTING_QUEUE] 🚀 Posting thread to Twitter...`);
-        const { ThreadFallbackHandler } = await import('./threadFallback');
+        const { SimpleThreadPoster } = await import('./simpleThreadPoster');
         
-        try {
-          const result = await ThreadFallbackHandler.postThreadWithFallback(
-            thread_parts,  // ← Already formatted in planJob
-            decision.id
-          );
-          
-          console.log(`[POSTING_QUEUE] ✅ Posted complete thread with ID: ${result.tweetId}`);
-          
-          // 🆕 Log and return all captured thread IDs
-          if (result.tweetIds && result.tweetIds.length > 0) {
-            console.log(`[POSTING_QUEUE] 🔗 Thread contains ${result.tweetIds.length} tweets: ${result.tweetIds.join(', ')}`);
-          }
-          
-          return { 
-            tweetId: result.tweetId, 
-            tweetUrl: result.tweetUrl,
-            tweetIds: result.tweetIds // 🆕 Pass through all IDs
-          };
-          
-        } catch (threadError: any) {
-          // Thread failed or was rescheduled - don't post anything incomplete
-          console.log(`[POSTING_QUEUE] ❌ Thread posting failed: ${threadError.message}`);
-          
-          if (threadError.message.includes('will retry')) {
-            console.log(`[POSTING_QUEUE] 🔄 Thread has been rescheduled for later`);
-          } else {
-            console.log(`[POSTING_QUEUE] ❌ Thread permanently failed`);
-          }
-          
-          throw threadError; // Re-throw so outer handler marks as failed
+        const result = await SimpleThreadPoster.postThread(thread_parts);
+        
+        if (!result.success) {
+          // Thread completely failed
+          console.error(`[POSTING_QUEUE] ❌ Thread failed: ${result.error}`);
+          throw new Error(`Thread posting failed: ${result.error}`);
+        }
+        
+        // Success (full or partial)
+        console.log(`[POSTING_QUEUE] ✅ Thread posted: ${result.mode}`);
+        console.log(`[POSTING_QUEUE] 🔗 Root tweet: ${result.tweetId}`);
+        console.log(`[POSTING_QUEUE] 📊 Tweet count: ${result.tweetIds.length}/${thread_parts.length}`);
+        
+        if (result.mode === 'partial_thread') {
+          console.warn(`[POSTING_QUEUE] ⚠️ Partial thread: ${result.note}`);
+        }
+        
+        if (result.tweetIds && result.tweetIds.length > 0) {
+          console.log(`[POSTING_QUEUE] 🔗 Tweet IDs: ${result.tweetIds.join(', ')}`);
+        }
+        
+        return {
+          tweetId: result.tweetId,
+          tweetUrl: result.tweetUrl,
+          tweetIds: result.tweetIds
         }
       } else {
         console.log(`[POSTING_QUEUE] 📝 Posting as SINGLE tweet`);
