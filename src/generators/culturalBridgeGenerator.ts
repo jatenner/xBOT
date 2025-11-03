@@ -21,12 +21,15 @@ export interface CulturalBridgeContent {
 
 export async function generateCulturalBridgeContent(params: {
   topic: string;
+  angle?: string;
+  tone?: string;
+  formatStrategy?: string;
   format: 'single' | 'thread';
   research?: { finding: string; source: string; mechanism: string; };
   intelligence?: IntelligencePackage;
 }): Promise<CulturalBridgeContent> {
   
-  const { topic, format, research, intelligence } = params;
+  const { topic, angle = 'cross-cultural', tone = 'respectful', formatStrategy = 'bridge-building', format, research, intelligence } = params;
   const intelligenceContext = await buildIntelligenceContext(intelligence);
   
   const patterns = getGeneratorPatterns('cultural_bridge');

@@ -20,12 +20,15 @@ export interface ProvocateurContent {
 
 export async function generateProvocateurContent(params: {
   topic: string;
+  angle?: string;
+  tone?: string;
+  formatStrategy?: string;
   format: 'single' | 'thread';
   research?: { finding: string; source: string; mechanism: string; };
   intelligence?: any; // Accept growth intelligence (GrowthIntelligencePackage)
 }): Promise<ProvocateurContent> {
   
-  const { topic, format, research, intelligence } = params;
+  const { topic, angle = 'challenging', tone = 'provocative', formatStrategy = 'bold', format, research, intelligence } = params;
   
   // 🧠 NEW: Use growth intelligence if available
   const { buildGrowthIntelligenceContext } = await import('./_intelligenceHelpers');

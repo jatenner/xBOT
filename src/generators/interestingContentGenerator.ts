@@ -25,12 +25,15 @@ export interface InterestingContent {
 
 export async function generateInterestingContent(params: {
   topic?: string;
+  angle?: string;
+  tone?: string;
+  formatStrategy?: string;
   format: 'single' | 'thread';
   research?: any;
   intelligence?: IntelligencePackage;
 }): Promise<InterestingContent> {
   
-  const { topic, format, research, intelligence } = params;
+  const { topic, angle = 'counterintuitive', tone = 'intriguing', formatStrategy = 'surprising', format, research, intelligence } = params;
   const intelligenceContext = await buildIntelligenceContext(intelligence);
   
   const patterns = getGeneratorPatterns('provocateur'); // Use provocateur patterns for interesting content

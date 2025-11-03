@@ -21,12 +21,15 @@ export interface CoachContent {
 
 export async function generateCoachContent(params: {
   topic: string;
+  angle?: string;
+  tone?: string;
+  formatStrategy?: string;
   format: 'single' | 'thread';
   research?: { finding: string; source: string; mechanism: string; };
   intelligence?: IntelligencePackage;
 }): Promise<CoachContent> {
   
-  const { topic, format, research, intelligence } = params;
+  const { topic, angle = 'actionable', tone = 'practical', formatStrategy = 'protocol-focused', format, research, intelligence } = params;
   const intelligenceContext = await buildIntelligenceContext(intelligence);
   
   const patterns = getGeneratorPatterns('coach');

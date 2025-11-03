@@ -20,12 +20,15 @@ export interface StorytellerContent {
 
 export async function generateStorytellerContent(params: {
   topic: string;
+  angle?: string;
+  tone?: string;
+  formatStrategy?: string;
   format: 'single' | 'thread';
   research?: { finding: string; source: string; mechanism: string; };
   intelligence?: IntelligencePackage;
 }): Promise<StorytellerContent> {
   
-  const { topic, format, research, intelligence } = params;
+  const { topic, angle = 'narrative', tone = 'engaging', formatStrategy = 'story-driven', format, research, intelligence } = params;
   const intelligenceContext = await buildIntelligenceContext(intelligence);
   
   const patterns = getGeneratorPatterns('storyteller');

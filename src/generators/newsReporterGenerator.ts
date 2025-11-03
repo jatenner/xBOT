@@ -20,12 +20,15 @@ export interface NewsReporterContent {
 
 export async function generateNewsReporterContent(params: {
   topic: string;
+  angle?: string;
+  tone?: string;
+  formatStrategy?: string;
   format: 'single' | 'thread';
   research?: { finding: string; source: string; mechanism: string; };
   intelligence?: IntelligencePackage;
 }): Promise<NewsReporterContent> {
   
-  const { topic, format, research, intelligence } = params;
+  const { topic, angle = 'journalistic', tone = 'balanced', formatStrategy = 'news-focused', format, research, intelligence } = params;
   const intelligenceContext = await buildIntelligenceContext(intelligence);
   
   // 🗞️ GET REAL SCRAPED NEWS
