@@ -742,87 +742,102 @@ export class UltimateTwitterPoster {
         console.log('ULTIMATE_POSTER: Toast strategy failed');
       }
       
-      // STRATEGY 3: Navigate to profile and get latest tweet
-      try {
-        console.log('ULTIMATE_POSTER: Trying profile page...');
-        const currentUrl = this.page.url();
-        
-        // Extract username from current URL or use default
-        let username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
-        const usernameMatch = currentUrl.match(/x\.com\/([^\/]+)/);
-        if (usernameMatch) {
-          username = usernameMatch[1];
-        }
-        
-        // CRITICAL FIX: Wait 5 seconds for Twitter to process the post
-        console.log('ULTIMATE_POSTER: Waiting 5s for Twitter to process...');
-        await this.page.waitForTimeout(5000);
-        
-        // CRITICAL FIX: Force reload to get fresh tweets
-        await this.page.goto(`https://x.com/${username}`, { waitUntil: 'domcontentloaded', timeout: 30000 });
-        console.log('ULTIMATE_POSTER: Page reloaded, extracting latest tweet...');
-        
-        await this.page.waitForTimeout(2000);
-        
-        // 🔥 CRITICAL FIX: Verify tweet is from YOUR account (not recommended tweets!)
-        console.log(`ULTIMATE_POSTER: Searching for YOUR tweet (from @${username})...`);
-        
-        // Get all articles and find the one from YOUR account that was posted recently
-        const articles = await this.page.locator('article').all();
-        console.log(`ULTIMATE_POSTER: Found ${articles.length} articles on profile page`);
-        
-        for (let i = 0; i < articles.length; i++) {
-          try {
-            const article = articles[i];
-            
-            // STEP 1: Verify this tweet is from YOUR account (not recommended/promoted)
-            const profileLinks = await article.locator(`a[href="/${username}"]`).count();
-            if (profileLinks === 0) {
-              console.log(`ULTIMATE_POSTER: Article ${i} - NOT from your account, skipping...`);
+      // STRATEGY 3: Navigate to profile and get latest tweet WITH RETRY LOGIC
+      const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
+      const maxRetries = 3;
+      
+      for (let retry = 1; retry <= maxRetries; retry++) {
+        try {
+          console.log(`ULTIMATE_POSTER: 🔍 Profile extraction attempt ${retry}/${maxRetries}...`);
+          
+          // Wait progressively longer for Twitter to index the tweet
+          const waitTime = 3000 + (retry * 4000); // 7s, 11s, 15s
+          console.log(`ULTIMATE_POSTER: ⏳ Waiting ${waitTime/1000}s for Twitter to index tweet...`);
+          await this.page.waitForTimeout(waitTime);
+          
+          // Force fresh page load
+          console.log(`ULTIMATE_POSTER: 🔄 Loading profile (fresh): https://x.com/${username}`);
+          await this.page.goto(`https://x.com/${username}`, { 
+            waitUntil: 'networkidle',
+            timeout: 30000 
+          });
+          
+          // Wait for content to load
+          await this.page.waitForTimeout(3000);
+          
+          console.log(`ULTIMATE_POSTER: 🔎 Searching for YOUR recent tweet...`);
+          
+          // Get all tweets on profile
+          const articles = await this.page.locator('article').all();
+          console.log(`ULTIMATE_POSTER: Found ${articles.length} articles`);
+          
+          if (articles.length === 0) {
+            console.warn(`ULTIMATE_POSTER: ⚠️ No articles found on profile (attempt ${retry})`);
+            continue; // Retry
+          }
+          
+          // Check first few tweets (most recent)
+          for (let i = 0; i < Math.min(5, articles.length); i++) {
+            try {
+              const article = articles[i];
+              
+              // Verify it's from YOUR account
+              const profileLinks = await article.locator(`a[href="/${username}"]`).count();
+              if (profileLinks === 0) {
+                console.log(`ULTIMATE_POSTER: Tweet ${i} - Not from @${username}, skipping`);
+                continue;
+              }
+              
+              // Check timestamp
+              const timeEl = await article.locator('time').first();
+              const datetime = await timeEl.getAttribute('datetime');
+              
+              if (datetime) {
+                const tweetTime = new Date(datetime);
+                const ageSeconds = (Date.now() - tweetTime.getTime()) / 1000;
+                
+                console.log(`ULTIMATE_POSTER: Tweet ${i} - Age: ${Math.round(ageSeconds)}s`);
+                
+                // Only consider very recent tweets (last 5 minutes)
+                if (ageSeconds < 300) {
+                  // Extract tweet ID
+                  const statusLinks = await article.locator('a[href*="/status/"]').all();
+                  
+                  for (const link of statusLinks) {
+                    const href = await link.getAttribute('href');
+                    if (href && href.includes(`/${username}/status/`)) {
+                      const match = href.match(/\/status\/(\d{15,20})/);
+                      if (match && match[1]) {
+                        console.log(`ULTIMATE_POSTER: ✅ FOUND REAL ID: ${match[1]}`);
+                        console.log(`ULTIMATE_POSTER: ✅ From @${username}, ${Math.round(ageSeconds)}s ago`);
+                        return match[1]; // SUCCESS!
+                      }
+                    }
+                  }
+                } else {
+                  console.log(`ULTIMATE_POSTER: Tweet ${i} - Too old (${Math.round(ageSeconds)}s)`);
+                }
+              }
+            } catch (e: any) {
+              console.log(`ULTIMATE_POSTER: Tweet ${i} - Error: ${e.message}`);
               continue;
             }
-            
-            // STEP 2: Check if posted recently (last 3 minutes)
-            const timeEl = await article.locator('time').first();
-            const datetime = await timeEl.getAttribute('datetime');
-            
-            if (datetime) {
-              const tweetTime = new Date(datetime);
-              const ageSeconds = (Date.now() - tweetTime.getTime()) / 1000;
-              
-              console.log(`ULTIMATE_POSTER: Article ${i} - Posted ${Math.round(ageSeconds)}s ago`);
-              
-              if (ageSeconds < 180) { // Within last 3 minutes
-                // STEP 3: Extract tweet ID
-                const statusLink = await article.locator('a[href*="/status/"]').first();
-                const href = await statusLink.getAttribute('href');
-                
-                if (href) {
-                  const match = href.match(/\/status\/(\d+)/);
-                  if (match && match[1]) {
-                    console.log(`ULTIMATE_POSTER: ✅ Found YOUR recent tweet: ${match[1]}`);
-                    console.log(`ULTIMATE_POSTER: ✅ Verified: From @${username}, posted ${Math.round(ageSeconds)}s ago`);
-                    return match[1];
-                  }
-                }
-              } else {
-                console.log(`ULTIMATE_POSTER: Article ${i} - Too old (${Math.round(ageSeconds)}s), skipping...`);
-              }
-            }
-          } catch (e: any) {
-            console.log(`ULTIMATE_POSTER: Article ${i} - Error checking: ${e.message}`);
-            continue;
           }
+          
+          console.warn(`ULTIMATE_POSTER: ⚠️ No matching tweet found (attempt ${retry}/${maxRetries})`);
+          
+        } catch (e: any) {
+          console.error(`ULTIMATE_POSTER: ❌ Attempt ${retry} failed: ${e.message}`);
         }
         
-        console.error(`ULTIMATE_POSTER: ❌ No recent tweets from @${username} found on profile`);
-        return null;
-      } catch (e) {
-        console.log('ULTIMATE_POSTER: Profile strategy failed');
+        // If not last retry, wait before trying again
+        if (retry < maxRetries) {
+          console.log(`ULTIMATE_POSTER: 🔄 Retrying in 3s...`);
+          await this.page.waitForTimeout(3000);
+        }
       }
       
-      // NO FALLBACKS - All strategies failed
-      console.error('ULTIMATE_POSTER: ❌ All extraction strategies failed - returning null');
+      console.error(`ULTIMATE_POSTER: ❌ Failed to extract ID after ${maxRetries} attempts`);
       return null;
       
     } catch (error: any) {
