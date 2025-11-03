@@ -596,46 +596,50 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
       console.error(`[POSTING_QUEUE] ❌ POSTING FAILED: ${postError.message}`);
       console.error(`[POSTING_QUEUE] 📝 Content: "${decision.content.substring(0, 100)}..."`);
       
-      // Only mark as failed if posting actually failed
-      if (decision.decision_type === 'thread') {
-        // Threads get retry logic
-        const { getSupabaseClient } = await import('../db/index');
-        const supabase = getSupabaseClient();
+      // RETRY LOGIC: Both singles and threads get 3 retry attempts
+      // Temporary failures (network glitch, slow load) shouldn't be permanent
+      const { getSupabaseClient } = await import('../db/index');
+      const supabase = getSupabaseClient();
+      
+      const { data: metadata } = await supabase
+        .from('content_metadata')
+        .select('features')
+        .eq('decision_id', decision.id)
+        .single();
+      
+      const retryCount = (metadata?.features as any)?.retry_count || 0;
+      const maxRetries = 3;
+      
+      if (retryCount < maxRetries) {
+        // Calculate retry delay (progressive backoff)
+        const retryDelayMinutes = decision.decision_type === 'thread' 
+          ? [5, 15, 30][retryCount]  // Threads: 5min, 15min, 30min
+          : [3, 10, 20][retryCount]; // Singles: 3min, 10min, 20min (faster retries)
         
-        const { data: metadata } = await supabase
+        const retryDelay = retryDelayMinutes * 60 * 1000;
+        
+        console.log(`[POSTING_QUEUE] 🔄 ${decision.decision_type} will retry (attempt ${retryCount + 1}/${maxRetries}) in ${retryDelayMinutes}min`);
+        console.log(`[POSTING_QUEUE] 📝 Error: ${postError.message}`);
+        
+        await supabase
           .from('content_metadata')
-          .select('features')
-          .eq('decision_id', decision.id)
-          .single();
+          .update({
+            scheduled_at: new Date(Date.now() + retryDelay).toISOString(),
+            features: {
+              ...(typeof metadata?.features === 'object' && metadata?.features !== null ? metadata.features : {}),
+              retry_count: retryCount + 1,
+              last_error: postError.message,
+              last_attempt: new Date().toISOString()
+            }
+          })
+          .eq('decision_id', decision.id);
         
-        const retryCount = (metadata?.features as any)?.retry_count || 0;
-        const maxRetries = 3;
-        
-        if (retryCount < maxRetries) {
-          const { ThreadValidator } = await import('./threadValidator');
-          const retryDelay = ThreadValidator.getRetryDelay(retryCount, postError.message);
-          
-          console.log(`[POSTING_QUEUE] 🔄 Thread will retry (attempt ${retryCount + 1}/${maxRetries}) in ${retryDelay / 60000}min`);
-          
-          await supabase
-            .from('content_metadata')
-            .update({
-              scheduled_at: new Date(Date.now() + retryDelay).toISOString(),
-              features: {
-                ...(typeof metadata?.features === 'object' && metadata?.features !== null ? metadata.features : {}),
-                retry_count: retryCount + 1,
-                last_error: postError.message,
-                last_attempt: new Date().toISOString()
-              }
-            })
-            .eq('decision_id', decision.id);
-          
-          await updatePostingMetrics('error');
-          return; // Don't mark as failed, will retry
-        }
+        await updatePostingMetrics('error');
+        return; // Don't mark as failed, will retry
       }
       
-      // Mark as failed (posting never succeeded)
+      // All retries exhausted - mark as failed
+      console.error(`[POSTING_QUEUE] ❌ All ${maxRetries} retries exhausted for ${decision.decision_type}`);
       await updateDecisionStatus(decision.id, 'failed');
       await updatePostingMetrics('error');
       throw postError;
