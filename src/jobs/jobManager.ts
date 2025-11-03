@@ -459,18 +459,19 @@ export class JobManager {
       270 * MINUTE
     );
 
-    // 🔍 Find missing tweet IDs - every 10 minutes, offset 4 min
-    // Self-healing job to find real tweet IDs for placeholder posts
+    // 🔍 ID Recovery - every 10 minutes, offset 4 min
+    // Self-healing job to find real tweet IDs for posts with NULL tweet_id
+    // Allows posting to succeed even if immediate ID extraction fails
     this.scheduleStaggeredJob(
-      'find_missing_ids',
+      'id_recovery',
       async () => {
-        await this.safeExecute('find_missing_ids', async () => {
-          const { findMissingTweetIds } = await import('./findMissingTweetIds');
-          await findMissingTweetIds();
+        await this.safeExecute('id_recovery', async () => {
+          const { idRecoveryJob } = await import('./idRecoveryJob');
+          await idRecoveryJob();
         });
       },
       10 * MINUTE,
-      4 * MINUTE  // Run 4 minutes after startup
+      4 * MINUTE  // Run 4 minutes after startup (recovers IDs quickly)
     );
 
     // Viral thread - every 24 hours if enabled
