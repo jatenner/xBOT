@@ -47,8 +47,8 @@ export interface TweetExtractionResult {
 }
 
 export class BulletproofTweetExtractor {
-  private static readonly MAX_RETRIES = 3;
-  private static readonly RETRY_DELAY = 2000;
+  private static readonly MAX_RETRIES = 7;  // Increased from 3 to 7 (ultra-reliable)
+  private static readonly RETRY_DELAY = 3000;  // Increased from 2s to 3s
 
   /**
    * 🎯 MAIN METHOD: Extract tweet ID with full verification
@@ -93,31 +93,37 @@ export class BulletproofTweetExtractor {
       if (!tweetId) {
         verificationSteps.push('Navigating to profile for fresh content...');
         
-        // Navigate to profile with cache-busting timestamp
-        const cacheBust = Date.now();
-        const profileUrl = `https://x.com/${expectedUsername}?t=${cacheBust}`;
-        await page.goto(profileUrl, {
-          waitUntil: 'domcontentloaded',
-          timeout: 15000
-        });
-        verificationSteps.push(`Navigated to profile: ${profileUrl}`);
-        
-        // Wait for tweets to load
-        await page.waitForSelector('article[data-testid="tweet"]', {
-          state: 'visible',
-          timeout: 10000
-        }).catch(() => {
-          verificationSteps.push(`⚠️ Tweets not visible after navigation`);
-        });
-        
-        // Give Twitter a moment to render
-        await page.waitForTimeout(2000);
-        
-        // FORCE RELOAD to get fresh content (bypass cache)
-        verificationSteps.push(`Reloading page to get fresh content...`);
-        await page.reload({ waitUntil: 'domcontentloaded' });
-        
-        // Wait again for tweets after reload
+        // ULTRA-AGGRESSIVE: Multiple reload attempts with increasing waits
+        for (let reloadAttempt = 1; reloadAttempt <= 3; reloadAttempt++) {
+          try {
+            // Navigate to profile with cache-busting timestamp
+            const cacheBust = Date.now();
+            const profileUrl = `https://x.com/${expectedUsername}?t=${cacheBust}&_=${reloadAttempt}`;
+            
+            await page.goto(profileUrl, {
+              waitUntil: 'domcontentloaded',
+              timeout: 20000  // Increased timeout
+            });
+            verificationSteps.push(`Profile navigation ${reloadAttempt}/3: ${profileUrl}`);
+            
+            // Progressive wait for Twitter to index (longer each attempt)
+            const waitTime = 3000 + (reloadAttempt * 5000);  // 8s, 13s, 18s
+            verificationSteps.push(`Waiting ${waitTime/1000}s for Twitter to index tweet...`);
+            await page.waitForTimeout(waitTime);
+            
+            // Wait for tweets to load
+            await page.waitForSelector('article[data-testid="tweet"]', {
+              state: 'visible',
+              timeout: 15000
+            }).catch(() => {
+              verificationSteps.push(`⚠️ Tweets not visible on attempt ${reloadAttempt}`);
+            });
+            
+            // FORCE RELOAD to bypass any caching
+            verificationSteps.push(`Force reload ${reloadAttempt}/3 to bypass cache...`);
+            await page.reload({ waitUntil: 'domcontentloaded', timeout: 20000 });
+            
+            // Wait again for tweets after reload
         await page.waitForSelector('article[data-testid="tweet"]', {
           state: 'visible',
           timeout: 10000

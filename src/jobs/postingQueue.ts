@@ -167,8 +167,8 @@ async function checkPostingRateLimits(): Promise<boolean> {
     const { getSupabaseClient } = await import('../db/index');
     const supabase = getSupabaseClient();
     
-    // 🔄 CHECK: Posts with NULL tweet_id (ID extraction pending)
-    // Log for visibility but DON'T block (background job will recover)
+    // 🚨 CRITICAL: Check for posts with NULL tweet_id (MUST NOT EXIST!)
+    // Posts with NULL tweet_id break rate limiting and metrics scraping
     const { data: pendingIdPosts, error: pendingError } = await supabase
       .from('content_metadata')
       .select('decision_id, content, posted_at')
@@ -176,16 +176,19 @@ async function checkPostingRateLimits(): Promise<boolean> {
       .eq('status', 'posted')
       .is('tweet_id', null)
       .gte('posted_at', new Date(Date.now() - 60 * 60 * 1000).toISOString())  // Last hour
-      .limit(5);
+      .limit(1);
     
     if (pendingIdPosts && pendingIdPosts.length > 0) {
-      console.warn(`[POSTING_QUEUE] ⚠️ ${pendingIdPosts.length} post(s) awaiting ID recovery`);
-      pendingIdPosts.forEach((post: any) => {
-        const minutesAgo = Math.round((Date.now() - new Date(String(post.posted_at)).getTime()) / 60000);
-        console.warn(`[POSTING_QUEUE]   - ${minutesAgo}min ago: "${String(post.content).substring(0, 40)}..."`);
-      });
-      console.warn(`[POSTING_QUEUE] 🔄 Background recovery job will find IDs`);
-      // DON'T block - continue posting (IDs will be recovered asynchronously)
+      const pendingPost = pendingIdPosts[0];
+      const minutesAgo = Math.round((Date.now() - new Date(String(pendingPost.posted_at)).getTime()) / 60000);
+      
+      console.error(`[POSTING_QUEUE] 🚨 CRITICAL: Found post with NULL tweet_id!`);
+      console.error(`[POSTING_QUEUE] 📝 Content: "${String(pendingPost.content).substring(0, 60)}..."`);
+      console.error(`[POSTING_QUEUE] ⏱️ Posted ${minutesAgo} minutes ago, ID still NULL`);
+      console.error(`[POSTING_QUEUE] 🚫 This breaks rate limiting (can't count it)`);
+      console.error(`[POSTING_QUEUE] 🚫 This breaks metrics scraping (can't collect data)`);
+      console.error(`[POSTING_QUEUE] 🔄 Background job should recover ID, blocking posting until fixed`);
+      return false;  // BLOCK posting until ID is recovered!
     }
     
     // Count posts attempted in last hour
@@ -955,10 +958,11 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         
         // Give Twitter time to process the post and update profile
         await page.waitForTimeout(5000); // Increased to 5 seconds
-        console.log(`[POSTING_QUEUE] 🔍 Now extracting tweet ID from profile...`);
+        console.log(`[POSTING_QUEUE] 🔍 Now extracting tweet ID with ultra-reliable extraction (7 retries)...`);
         
-        // Use bulletproof extractor (this is the ONLY extraction method now)
-        const extraction = await BulletproofTweetExtractor.extractTweetId(page, {
+        // Use bulletproof extractor WITH RETRIES (7 attempts total!)
+        // This is CRITICAL - we MUST get the ID for rate limiting and metrics
+        const extraction = await BulletproofTweetExtractor.extractWithRetries(page, {
           expectedContent: decision.content,  // ✅ Already formatted content
           expectedUsername: process.env.TWITTER_USERNAME || 'SignalAndSynapse',
           maxAgeSeconds: 600, // ✅ FIXED: 10 minutes to handle Twitter profile caching
@@ -971,18 +975,20 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         await poster.dispose();
         
         if (!extraction.success || !extraction.tweetId) {
-          // 🔄 ID extraction failed BUT tweet is live!
-          // Save as 'posted' with NULL tweet_id
-          // Background recovery job will find the ID later
-          console.warn(`[POSTING_QUEUE] ⚠️ ID extraction failed - will recover in background`);
-          console.warn(`[POSTING_QUEUE] 📝 Content: "${decision.content.substring(0, 60)}..."`);
-          console.warn(`[POSTING_QUEUE] 💡 Error: ${extraction.error || 'Unknown error'}`);
-          console.warn(`[POSTING_QUEUE] ✅ Tweet IS live - saving as posted with NULL tweet_id`);
-          console.warn(`[POSTING_QUEUE] 🔄 Background job will recover ID within 10 minutes`);
+          // 🚨 CRITICAL: ID extraction failed!
+          // CANNOT proceed without tweet_id - needed for:
+          // 1. Rate limiting (accurate 2/hr tracking)
+          // 2. Metrics scraper (collect performance data)
+          // 3. Learning system (complete data for improvement)
+          console.error(`[POSTING_QUEUE] 🚨 CRITICAL: ID extraction failed after posting!`);
+          console.error(`[POSTING_QUEUE] 📝 Content: "${decision.content.substring(0, 60)}..."`);
+          console.error(`[POSTING_QUEUE] 💡 Error: ${extraction.error || 'Unknown error'}`);
+          console.error(`[POSTING_QUEUE] ⚠️ Tweet IS live but we MUST have tweet_id!`);
+          console.error(`[POSTING_QUEUE] 🚫 Cannot track metrics or rate limit without ID`);
           
-          // Return NULL - will be saved as posted with NULL tweet_id
-          // Background recovery job will fill it in
-          return { tweetId: null, tweetUrl: null };
+          // Throw error - this will mark as failed and trigger retry
+          // Better to retry than have incomplete data
+          throw new Error(`ID extraction failed - required for rate limiting and metrics: ${extraction.error}`);
         }
         
         console.log(`[POSTING_QUEUE] ✅ Tweet ID extracted: ${extraction.tweetId}`);
