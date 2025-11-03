@@ -272,6 +272,36 @@ export class JobManager {
       240 * MINUTE  // Offset 4 hours
     );
 
+    // 🔥 Viral tweet scraper - every 6 hours, offset 180 min (NEW: format learning)
+    // Scrapes trending viral tweets to learn universal formatting patterns
+    // Populates viral_tweet_library for AI Visual Formatter
+    this.scheduleStaggeredJob(
+      'viral_scraper',
+      async () => {
+        await this.safeExecute('viral_scraper', async () => {
+          const { viralScraperJob } = await import('./viralScraperJob');
+          await viralScraperJob();
+        });
+      },
+      360 * MINUTE, // Every 6 hours (balanced: frequent enough to stay current, not too aggressive)
+      180 * MINUTE  // Offset 3 hours (spread out from other scrapers)
+    );
+
+    // 👥 Peer scraper - every 8 hours, offset 260 min (format learning from health accounts)
+    // Scrapes hardcoded health Twitter accounts for niche-specific format patterns
+    // Complements viral scraper (general patterns) with health-specific insights
+    this.scheduleStaggeredJob(
+      'peer_scraper',
+      async () => {
+        await this.safeExecute('peer_scraper', async () => {
+          const { peerScraperJob } = await import('./peerScraperJob');
+          await peerScraperJob();
+        });
+      },
+      480 * MINUTE, // Every 8 hours (less frequent than viral scraper - more stable patterns)
+      260 * MINUTE  // Offset ~4.3 hours (spread out from viral scraper)
+    );
+
     // Account Discovery - every 90 min, offset 25 min (OPTIMIZED: reduced from 60min)
     // Pool of 874 accounts is healthy, reduce frequency to lower browser congestion
     this.scheduleStaggeredJob(
