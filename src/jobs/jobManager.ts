@@ -272,9 +272,10 @@ export class JobManager {
       240 * MINUTE  // Offset 4 hours
     );
 
-    // 🔥 Viral tweet scraper - every 6 hours, offset 180 min (NEW: format learning)
+    // 🔥 Viral tweet scraper - every 4 hours, offset 180 min (NEW: format learning)
     // Scrapes trending viral tweets to learn universal formatting patterns
     // Populates viral_tweet_library for AI Visual Formatter
+    // OPTIMIZED: 4 hours = 180 tweets/day (faster learning, reasonable costs)
     this.scheduleStaggeredJob(
       'viral_scraper',
       async () => {
@@ -283,7 +284,7 @@ export class JobManager {
           await viralScraperJob();
         });
       },
-      360 * MINUTE, // Every 6 hours (balanced: frequent enough to stay current, not too aggressive)
+      240 * MINUTE, // Every 4 hours (optimized: hits 500 tweets in 3 days, stays current)
       180 * MINUTE  // Offset 3 hours (spread out from other scrapers)
     );
 
