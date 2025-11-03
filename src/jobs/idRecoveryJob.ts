@@ -100,7 +100,7 @@ export async function idRecoveryJob(): Promise<void> {
       console.log(`[ID_RECOVERY] 📊 Recovery complete: ${recovered} recovered, ${failed} failed`);
       
     } finally {
-      await pool.releasePage('id_recovery');
+      await pool.releasePage(page);
     }
     
   } catch (error: any) {

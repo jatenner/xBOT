@@ -197,6 +197,13 @@ export class BulletproofTweetExtractor {
             verificationSteps.push(`Article ${i}: Error - ${e.message}`);
           }
         }
+          } catch (reloadError: any) {
+            verificationSteps.push(`⚠️ Profile reload ${reloadAttempt} failed: ${reloadError.message}`);
+            if (reloadAttempt === 3) {
+              verificationSteps.push(`❌ All profile reload attempts failed`);
+            }
+          }
+        }
       }
 
       if (!tweetId) {
