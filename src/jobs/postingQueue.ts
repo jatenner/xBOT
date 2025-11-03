@@ -954,21 +954,18 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         await poster.dispose();
         
         if (!extraction.success || !extraction.tweetId) {
-          // ⚠️ ID extraction failed, but post WAS made
-          // Use placeholder ID - background job will find real ID later
-          console.warn(`[POSTING_QUEUE] ⚠️ Tweet posted but ID not extracted immediately`);
-          console.warn(`[POSTING_QUEUE] 📝 Content: "${decision.content.substring(0, 60)}..."`);
-          console.warn(`[POSTING_QUEUE] 💡 Error: ${extraction.error || 'Unknown error'}`);
+          // ❌ ID extraction failed - this is a CRITICAL ERROR
+          // Tweet was posted but we can't get its ID
+          // This will prevent threads from building with fake IDs
+          console.error(`[POSTING_QUEUE] ❌ CRITICAL: Tweet posted but ID extraction failed!`);
+          console.error(`[POSTING_QUEUE] 📝 Content: "${decision.content.substring(0, 60)}..."`);
+          console.error(`[POSTING_QUEUE] 💡 Error: ${extraction.error || 'Unknown error'}`);
+          console.error(`[POSTING_QUEUE] ⚠️ Tweet is LIVE on Twitter but system can't track it`);
+          console.error(`[POSTING_QUEUE] ⚠️ Throwing error to prevent broken threading`);
           
-          // Use timestamp-based placeholder ID
-          const placeholderId = `posted_${Date.now()}_${decision.id.substring(0, 8)}`;
-          console.warn(`[POSTING_QUEUE] 🔄 Using placeholder: ${placeholderId}`);
-          console.warn(`[POSTING_QUEUE] 📅 Background job will find real ID via content matching`);
-          
-          return { 
-            tweetId: placeholderId, 
-            tweetUrl: `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}`
-          };
+          // Throw error - this marks post as failed in DB but tweet is live
+          // Better to mark as failed than use fake ID that breaks threads
+          throw new Error(`ID extraction failed after posting: ${extraction.error || 'Unknown'}`);
         }
         
         console.log(`[POSTING_QUEUE] ✅ Tweet ID extracted: ${extraction.tweetId}`);
@@ -1070,11 +1067,12 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     
     await poster.dispose();
     
-    // ✅ FALLBACK: If reply posted but ID is placeholder, log warning
-    if (result.tweetId.startsWith('reply_posted_')) {
-      console.warn(`[POSTING_QUEUE] ⚠️ Reply posted but using placeholder ID: ${result.tweetId}`);
-      console.warn(`[POSTING_QUEUE] 🔄 Background job will find real ID via content matching`);
-      console.warn(`[POSTING_QUEUE] 📝 Reply to: ${decision.target_tweet_id}`);
+    // ✅ VALIDATION: Reply ID must be real, not placeholder
+    if (!result.tweetId || result.tweetId.startsWith('reply_posted_') || result.tweetId.startsWith('posted_')) {
+      console.error(`[POSTING_QUEUE] ❌ Reply posted but got invalid ID: ${result.tweetId}`);
+      console.error(`[POSTING_QUEUE] 📝 Reply to: ${decision.target_tweet_id}`);
+      console.error(`[POSTING_QUEUE] ⚠️ Throwing error to prevent tracking fake IDs`);
+      throw new Error(`Reply ID extraction failed: got ${result.tweetId}`);
     }
     
     return result.tweetId;
