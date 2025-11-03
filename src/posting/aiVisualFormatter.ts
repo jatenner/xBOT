@@ -126,6 +126,20 @@ Transform it!`;
     formatted = formatted.replace(/#\w+/g, ''); // Remove all #hashtags
     formatted = formatted.replace(/\s+/g, ' ').trim(); // Clean up extra spaces
     
+    // CRITICAL: Limit emojis to 0-2 max
+    const emojiRegex = /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu;
+    const emojis = formatted.match(emojiRegex) || [];
+    if (emojis.length > 2) {
+      console.warn(`[VISUAL_FORMATTER] ⚠️ Too many emojis (${emojis.length}), limiting to 2...`);
+      // Keep only first 2 emojis, remove the rest
+      let emojiCount = 0;
+      formatted = formatted.replace(emojiRegex, (match) => {
+        emojiCount++;
+        return emojiCount <= 2 ? match : '';
+      });
+      formatted = formatted.replace(/\s+/g, ' ').trim(); // Clean up spaces after emoji removal
+    }
+    
     // Validate length - CRITICAL: Must be under 280
     if (formatted.length > 280) {
       console.warn(`[VISUAL_FORMATTER] ⚠️ AI formatted too long (${formatted.length} chars), trying to trim...`);

@@ -45,7 +45,7 @@ export class UnifiedBrowserPool {
   private readonly MAX_OPERATIONS_PER_CONTEXT = 50; // Refresh context after 50 operations
   private readonly CONTEXT_IDLE_TIMEOUT = 5 * 60 * 1000; // Close idle contexts after 5 min
   private readonly CLEANUP_INTERVAL = 60 * 1000; // Check every minute
-  private readonly QUEUE_WAIT_TIMEOUT = 60000; // 60 second max wait in queue before fail-fast rejection
+  private readonly QUEUE_WAIT_TIMEOUT = 120000; // 120 second max wait in queue (harvester operations can be slow)
   
   private cleanupTimer: NodeJS.Timeout | null = null;
   private metrics = {
