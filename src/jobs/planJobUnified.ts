@@ -159,6 +159,9 @@ async function generateRealContent(): Promise<void> {
   // Extract FULL content for duplicate checking (word-level comparison)
   const recentTexts = recentContent?.map(c => String(c.content || '').toLowerCase()) || [];
   
+  // 🆕 IN-MEMORY CACHE: Track content generated in THIS cycle to prevent duplicates
+  const currentCycleContent: string[] = [];
+  
   // Extract KEYWORDS ONLY for topic avoidance (what AI needs to avoid)
   const recentKeywords = recentContent?.map(c => {
     const content = String(c.content || '').toLowerCase();
@@ -273,20 +276,37 @@ async function generateRealContent(): Promise<void> {
       const contentToCheck = Array.isArray(generated.content) 
         ? generated.content.join(' ').toLowerCase()
         : generated.content.toLowerCase();
-        
-      const isDuplicate = recentTexts.some(recentText => {
-        // Check for high similarity (more than 70% of words match)
+      
+      // 🔍 Check 1: Against database (last 20 posts)
+      const isDuplicateInDB = recentTexts.some(recentText => {
         const recentWords = new Set(recentText.split(/\s+/));
         const newWords = contentToCheck.split(/\s+/);
         const matchingWords = newWords.filter(w => recentWords.has(w)).length;
         const similarity = matchingWords / newWords.length;
         
         if (similarity > 0.7) {
-          console.log(`[UNIFIED_PLAN] ⚠️ Duplicate detected! Similarity: ${(similarity * 100).toFixed(1)}%`);
+          console.log(`[UNIFIED_PLAN] ⚠️ Duplicate detected (DB)! Similarity: ${(similarity * 100).toFixed(1)}%`);
           return true;
         }
         return false;
       });
+      
+      // 🔍 Check 2: Against current cycle (in-memory cache)
+      const isDuplicateInCycle = currentCycleContent.some(cycleText => {
+        const cycleWords = new Set(cycleText.split(/\s+/));
+        const newWords = contentToCheck.split(/\s+/);
+        const matchingWords = newWords.filter(w => cycleWords.has(w)).length;
+        const similarity = matchingWords / newWords.length;
+        
+        if (similarity > 0.7) {
+          console.log(`[UNIFIED_PLAN] ⚠️ Duplicate detected (CURRENT CYCLE)! Similarity: ${(similarity * 100).toFixed(1)}%`);
+          console.log(`[UNIFIED_PLAN] 🔍 Already generated ${currentCycleContent.length} posts this cycle`);
+          return true;
+        }
+        return false;
+      });
+      
+      const isDuplicate = isDuplicateInDB || isDuplicateInCycle;
       
       if (isDuplicate) {
         console.log(`[UNIFIED_PLAN] 🚫 Skipping duplicate content, will retry next cycle`);
@@ -295,7 +315,9 @@ async function generateRealContent(): Promise<void> {
         continue; // Skip this iteration
       }
       
-      console.log(`[UNIFIED_PLAN] ✅ Content is unique (not a duplicate)`);
+      // 🆕 Add to current cycle cache (prevent duplicates within same cycle)
+      currentCycleContent.push(contentToCheck);
+      console.log(`[UNIFIED_PLAN] ✅ Content is unique (checked against ${recentTexts.length} DB posts + ${currentCycleContent.length - 1} cycle posts)`);
       
       // Update metrics - use calls_successful (not calls_total which includes failures)
       planMetrics.calls_successful++;
