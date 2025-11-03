@@ -167,8 +167,30 @@ async function checkPostingRateLimits(): Promise<boolean> {
     const { getSupabaseClient } = await import('../db/index');
     const supabase = getSupabaseClient();
     
-    // 🔥 CRITICAL FIX: Count by created_at (when post was attempted)
-    // This prevents flooding when posts succeed on Twitter but fail ID extraction
+    // 🚨 CRITICAL: Check for posts with NULL tweet_id (ID extraction pending)
+    // BLOCK all posting until previous post's ID is extracted!
+    const { data: pendingIdPosts, error: pendingError } = await supabase
+      .from('content_metadata')
+      .select('decision_id, content, posted_at')
+      .in('decision_type', ['single', 'thread'])
+      .eq('status', 'posted')
+      .is('tweet_id', null)
+      .gte('posted_at', new Date(Date.now() - 30 * 60 * 1000).toISOString())  // Last 30 min
+      .limit(1);
+    
+    if (pendingIdPosts && pendingIdPosts.length > 0) {
+      const pendingPost = pendingIdPosts[0];
+      const minutesAgo = Math.round((Date.now() - new Date(String(pendingPost.posted_at)).getTime()) / 60000);
+      
+      console.log(`[POSTING_QUEUE] 🛑 BLOCKING: Previous post missing tweet_id!`);
+      console.log(`[POSTING_QUEUE] 📝 Pending post: "${String(pendingPost.content).substring(0, 60)}..."`);
+      console.log(`[POSTING_QUEUE] ⏱️ Posted ${minutesAgo} minutes ago, ID still not extracted`);
+      console.log(`[POSTING_QUEUE] ⚠️ MUST extract ID before posting next tweet!`);
+      console.log(`[POSTING_QUEUE] 🔄 Background job should find ID, then posting can resume`);
+      return false;  // BLOCK posting!
+    }
+    
+    // Count posts attempted in last hour
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     
     const { count, error } = await supabase
@@ -176,24 +198,21 @@ async function checkPostingRateLimits(): Promise<boolean> {
       .select('*', { count: 'exact', head: true })
       .in('decision_type', ['single', 'thread'])
       .gte('created_at', oneHourAgo);
-      // ↑ Use created_at, not posted_at!
-      // ↑ No status filter - counts ALL attempts (posted, failed, queued)
+      // ↑ Use created_at - counts ALL attempts!
     
     if (error) {
       console.error('[POSTING_QUEUE] ❌ Rate limit check failed:', error.message);
       console.warn('[POSTING_QUEUE] 🛡️ BLOCKING posts as safety measure');
-      return false;  // ← Block when check fails (safer than allowing)
+      return false;
     }
     
     const postsThisHour = count || 0;
     
     console.log(`[POSTING_QUEUE] 📊 Content posts attempted this hour: ${postsThisHour}/${maxPostsPerHour}`);
-    console.log(`[POSTING_QUEUE] 📋 Counting ALL posts (posted + failed + queued) by created_at`);
     
     if (postsThisHour >= maxPostsPerHour) {
-      console.log(`[POSTING_QUEUE] ⛔ RATE LIMIT REACHED: ${postsThisHour}/${maxPostsPerHour}`);
-      console.log(`[POSTING_QUEUE] ⏰ Next content post slot available in ~${60 - Math.floor((Date.now() - new Date(oneHourAgo).getTime()) / 60000)} minutes`);
-      console.log(`[POSTING_QUEUE] ℹ️ This prevents flooding even when ID extraction fails`);
+      console.log(`[POSTING_QUEUE] ⛔ HOURLY LIMIT REACHED: ${postsThisHour}/${maxPostsPerHour}`);
+      console.log(`[POSTING_QUEUE] ⏰ Next slot in ~${60 - Math.floor((Date.now() - new Date(oneHourAgo).getTime()) / 60000)} minutes`);
       return false;
     }
     
@@ -201,9 +220,9 @@ async function checkPostingRateLimits(): Promise<boolean> {
     return true;
     
   } catch (error) {
-    console.error('[POSTING_QUEUE] ❌ Rate limit check exception:', error.message);
+    console.error('[POSTING_QUEUE] ❌ Rate limit exception:', error.message);
     console.warn('[POSTING_QUEUE] 🛡️ BLOCKING posts as safety measure');
-    return false;  // ← Block on error (safer)
+    return false;
   }
 }
 
