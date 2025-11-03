@@ -19,11 +19,11 @@ const REPLY_CONFIG = {
   // Minutes between replies (prevents spam)
   MIN_MINUTES_BETWEEN: parseInt(process.env.REPLY_MINUTES_BETWEEN || '15', 10),
   
-  // Max replies per hour
-  MAX_REPLIES_PER_HOUR: parseInt(process.env.REPLIES_PER_HOUR || '4', 10),
+  // Max replies per hour (attempts, not posted)
+  MAX_REPLIES_PER_HOUR: parseInt(process.env.REPLIES_PER_HOUR || '10', 10),
   
-  // Max replies per day
-  MAX_REPLIES_PER_DAY: parseInt(process.env.REPLY_MAX_PER_DAY || '50', 10),
+  // Max replies per day (attempts, not posted)
+  MAX_REPLIES_PER_DAY: parseInt(process.env.REPLY_MAX_PER_DAY || '250', 10),
   
   // How many to generate per cycle (batch size)
   BATCH_SIZE: parseInt(process.env.REPLY_BATCH_SIZE || '1', 10),
@@ -290,7 +290,7 @@ async function generateRealReplies(): Promise<void> {
   }
   
   console.log('[REPLY_JOB] 🎯 Starting reply generation (AI-driven targeting)...');
-  console.log('[REPLY_JOB] 📋 Target: 2 replies per cycle (4 replies/hour)');
+  console.log('[REPLY_JOB] 📋 Target: 5 replies per cycle (10 attempts/hour → ~4 posted/hour)');
   
   // Log account pool status
   const { getAccountPoolHealth } = await import('./accountDiscoveryJob');
@@ -472,11 +472,12 @@ async function generateRealReplies(): Promise<void> {
   console.log(`[REPLY_JOB] ✅ Found ${opportunities.length} reply opportunities from database pool`);
   
   // ============================================================
-  // SMART BATCH GENERATION: ALWAYS 2 REPLIES PER CYCLE
+  // SMART BATCH GENERATION: 5 REPLIES PER CYCLE
   // ============================================================
   // Job runs every 30 min (2 runs/hour)
-  // Generate 2 per run = 4 replies/hour guaranteed
-  const TARGET_REPLIES_PER_CYCLE = 2;
+  // Generate 5 per run = 10 attempts/hour
+  // With ~42% success rate = ~4 posted replies/hour = ~100/day
+  const TARGET_REPLIES_PER_CYCLE = 5;
   const availableOpportunities = opportunities.length;
   
   // How many can we actually generate?
@@ -646,7 +647,7 @@ async function generateRealReplies(): Promise<void> {
   console.log(`  • SLA Status: ${replyCount >= TARGET_REPLIES_PER_CYCLE ? '✅ MET' : '⚠️ MISSED'}`);
   console.log(`  • Queue depth: ${count || 0} replies waiting`);
   console.log(`  • Next cycle: 30 minutes (will generate ${TARGET_REPLIES_PER_CYCLE} more)`);
-  console.log(`  • Target rate: 4 replies/hour (2 per 30-min cycle)\n`);
+  console.log(`  • Target rate: 10 attempts/hour → ~4 posted/hour (${TARGET_REPLIES_PER_CYCLE} per 30-min cycle)\n`);
 }
 
 /**
