@@ -5,13 +5,13 @@
  * Runs every 8 hours to learn from successful health content creators
  */
 
-import { PeerScraper } from '../intelligence/peer_scraper';
+import PeerScrapingSystem from '../intelligence/peer_scraper';
 
 export async function peerScraperJob(): Promise<void> {
   console.log('[PEER_SCRAPER_JOB] 👥 Starting peer scraping cycle...');
   
   try {
-    const scraper = PeerScraper.getInstance();
+    const scraper = new PeerScrapingSystem();
     await scraper.runPeerScrapingCycle();
     
     console.log('[PEER_SCRAPER_JOB] ✅ Peer scraping cycle complete');

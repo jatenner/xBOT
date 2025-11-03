@@ -27,26 +27,83 @@ export async function viralScraperJob(): Promise<void> {
     console.log(`[VIRAL_SCRAPER_JOB] 🎯 Targeting ${targetCount} new viral tweets this cycle`);
     
     // Run the scraper
-    const scraper = new TrendingViralScraper(supabase);
-    const result = await scraper.scrapeTrendingTweets({
+    const scraper = TrendingViralScraper.getInstance();
+    const viralTweets = await scraper.scrapeViralTweets({
       maxTweets: targetCount,
       minViews: 50000,    // Only viral tweets (50K+ views)
-      minEngagement: 0.02  // 2%+ engagement rate
+      minEngagementRate: 0.02  // 2%+ engagement rate
     });
     
-    console.log(`[VIRAL_SCRAPER_JOB] ✅ Scraped ${result.totalScraped} viral tweets`);
-    console.log(`[VIRAL_SCRAPER_JOB] 📊 Analyzed ${result.analyzed} with AI insights`);
+    console.log(`[VIRAL_SCRAPER_JOB] ✅ Scraped ${viralTweets.length} viral tweets`);
     
-    if (result.errors.length > 0) {
-      console.warn(`[VIRAL_SCRAPER_JOB] ⚠️ ${result.errors.length} errors during scraping`);
-      // Log first error for debugging
-      if (result.errors[0]) {
-        console.warn(`[VIRAL_SCRAPER_JOB] First error: ${result.errors[0]}`);
+    // Now analyze them with AI and store in viral_tweet_library
+    if (viralTweets.length > 0) {
+      const { getFormatAnalyzer } = await import('../analysis/viralFormatAnalyzer');
+      const formatAnalyzer = getFormatAnalyzer();
+      
+      console.log(`[VIRAL_SCRAPER_JOB] 🧠 Analyzing formats with AI...`);
+      const analyses = await formatAnalyzer.batchAnalyze(viralTweets.map(t => ({
+        tweet_id: t.tweet_id,
+        text: t.text,
+        account_handle: t.author_handle,
+        likes: t.likes,
+        reposts: t.retweets,
+        replies: t.replies,
+        views: t.views,
+        engagement_rate: t.engagement_rate
+      })));
+      
+      console.log(`[VIRAL_SCRAPER_JOB] 📊 Analyzed ${analyses.size} formats`);
+      
+      // Store in viral_tweet_library
+      let stored = 0;
+      for (const [tweetId, analysis] of analyses) {
+        const tweet = viralTweets.find(t => t.tweet_id === tweetId);
+        if (!tweet) continue;
+        
+        try {
+          await supabase.from('viral_tweet_library').upsert({
+            tweet_id: tweetId,
+            text: tweet.text,
+            author_handle: tweet.author_handle,
+            
+            // Metrics
+            likes: tweet.likes,
+            retweets: tweet.retweets,
+            replies: tweet.replies,
+            views: tweet.views,
+            engagement_rate: tweet.engagement_rate,
+            viral_coefficient: tweet.retweets / (tweet.views || 1),
+            
+            // AI-analyzed patterns
+            hook_type: analysis.hookType,
+            formatting_patterns: analysis.visualStructure,
+            emoji_count: analysis.emojiStrategy === 'none' ? 0 : 
+                         analysis.emojiStrategy === 'strategic_one' ? 1 : 2,
+            character_count: tweet.text.length,
+            has_numbers: /\d/.test(tweet.text),
+            
+            // AI insights - THE KEY DATA!
+            why_it_works: analysis.whyItWorks,
+            pattern_strength: analysis.patternStrength,
+            
+            // Category
+            topic_category: 'universal',
+            content_type: 'viral',
+            structure: 'single',
+            is_active: true,
+            scraped_at: new Date().toISOString(),
+            last_updated: new Date().toISOString()
+          }, { onConflict: 'tweet_id' });
+          stored++;
+        } catch (err: any) {
+          console.warn(`[VIRAL_SCRAPER_JOB] ⚠️ Failed to store ${tweetId}: ${err.message}`);
+        }
       }
-    }
-    
-    // Log sample of what we learned
-    if (result.analyzed > 0) {
+      
+      console.log(`[VIRAL_SCRAPER_JOB] 💾 Stored ${stored} analyzed tweets in viral_tweet_library`);
+      
+      // Log sample of what we learned
       const { data: recentAnalyses } = await supabase
         .from('viral_tweet_library')
         .select('hook_type, why_it_works, pattern_strength')
