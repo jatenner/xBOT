@@ -61,8 +61,25 @@ export class SimpleThreadPoster {
       }
       
       const rootTweetId = rootResult.tweetId || 'unknown';
+      
+      // 🚨 CRITICAL: Ensure we have a REAL tweet ID, not a placeholder!
+      if (rootTweetId.startsWith('posted_') || rootTweetId === 'unknown') {
+        console.error(`[SIMPLE_THREAD] ❌ Root tweet ID is placeholder: ${rootTweetId}`);
+        console.error(`[SIMPLE_THREAD] ⚠️ Cannot build thread with placeholder IDs - tweets won't link!`);
+        await poster.dispose();
+        return {
+          success: true, // Tweet was posted
+          tweetId: rootTweetId,
+          tweetUrl: `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${rootTweetId}`,
+          tweetIds: [rootTweetId],
+          mode: 'thread',
+          note: 'Single tweet only - could not extract real ID for threading',
+          error: 'Tweet ID extraction failed - cannot build thread'
+        };
+      }
+      
       tweetIds.push(rootTweetId);
-      console.log(`[SIMPLE_THREAD] ✅ Root tweet posted: ${rootTweetId}`);
+      console.log(`[SIMPLE_THREAD] ✅ Root tweet posted with REAL ID: ${rootTweetId}`);
       
       // If only one tweet, we're done
       if (tweets.length === 1) {
@@ -111,10 +128,29 @@ export class SimpleThreadPoster {
           }
           
           const replyTweetId = replyResult.tweetId || 'unknown';
+          
+          // Check if we got a real ID for the reply
+          if (replyTweetId.startsWith('posted_') || replyTweetId === 'unknown') {
+            console.warn(`[SIMPLE_THREAD] ⚠️ Reply ${i + 1} has placeholder ID: ${replyTweetId}`);
+            console.warn(`[SIMPLE_THREAD] ⚠️ Stopping thread - next tweet won't link properly`);
+            tweetIds.push(replyTweetId);
+            
+            await poster.dispose();
+            return {
+              success: true,
+              tweetId: rootTweetId,
+              tweetUrl: `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${rootTweetId}`,
+              tweetIds: tweetIds,
+              mode: 'partial_thread',
+              note: `Partial thread: ${tweetIds.length}/${tweets.length} tweets posted (ID extraction failed)`,
+              error: `Reply ${i + 1} ID extraction failed - cannot continue thread`
+            };
+          }
+          
           tweetIds.push(replyTweetId);
           lastTweetId = replyTweetId;
           
-          console.log(`[SIMPLE_THREAD] ✅ Reply ${i + 1} posted: ${replyTweetId}`);
+          console.log(`[SIMPLE_THREAD] ✅ Reply ${i + 1} posted with REAL ID: ${replyTweetId}`);
           
         } catch (replyError: any) {
           console.error(`[SIMPLE_THREAD] ❌ Reply ${i + 1} error: ${replyError.message}`);
