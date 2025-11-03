@@ -91,7 +91,7 @@ export class UnifiedBrowserPool {
    * Includes timeout to prevent infinite hangs when browser pool is corrupted
    */
   public async acquirePage(operationName: string): Promise<Page> {
-    const PAGE_ACQUIRE_TIMEOUT = 30000; // 30 seconds max to acquire page
+    const PAGE_ACQUIRE_TIMEOUT = 90000; // 90 seconds max (harvester needs time for slow timelines)
     
     const acquirePromise = this.withContext(operationName, async (context) => {
       const page = await context.newPage();
