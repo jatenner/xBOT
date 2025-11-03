@@ -20,12 +20,15 @@ export interface PhilosopherContent {
 
 export async function generatePhilosopherContent(params: {
   topic: string;
+  angle?: string;
+  tone?: string;
+  formatStrategy?: string;
   format: 'single' | 'thread';
   research?: { finding: string; source: string; mechanism: string; };
   intelligence?: IntelligencePackage;
 }): Promise<PhilosopherContent> {
   
-  const { topic, format, research, intelligence } = params;
+  const { topic, angle = 'thoughtful', tone = 'educational', formatStrategy = 'clear', format, research, intelligence } = params;
   const intelligenceContext = await buildIntelligenceContext(intelligence);
   
   const patterns = getGeneratorPatterns('philosopher');

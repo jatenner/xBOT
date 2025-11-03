@@ -21,12 +21,15 @@ export interface DataNerdContent {
 
 export async function generateDataNerdContent(params: {
   topic: string;
+  angle?: string;
+  tone?: string;
+  formatStrategy?: string;
   format: 'single' | 'thread';
   research?: { finding: string; source: string; mechanism: string; };
   intelligence?: IntelligencePackage;
 }): Promise<DataNerdContent> {
   
-  const { topic, format, research, intelligence } = params;
+  const { topic, angle = 'analytical', tone = 'precise', formatStrategy = 'data-driven', format, research, intelligence } = params;
   const intelligenceContext = await buildIntelligenceContext(intelligence);
   
   const patterns = getGeneratorPatterns('data_nerd');

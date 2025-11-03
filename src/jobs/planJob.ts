@@ -224,6 +224,9 @@ async function callDedicatedGenerator(generatorName: string, context: any) {
     
     const result = await generateFn({
       topic,
+      angle, // ✅ Pass AI-generated angle
+      tone, // ✅ Pass AI-generated tone
+      formatStrategy, // ✅ Pass AI-generated format strategy
       format: selectedFormat, // ✅ FIXED: Dynamic format selection enables threads
       intelligence: growthIntelligence // ✅ NEW: Pass growth intelligence to generators!
     });
