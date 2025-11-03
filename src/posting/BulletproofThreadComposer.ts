@@ -158,22 +158,28 @@ export class BulletproofThreadComposer {
             console.log('THREAD_PUBLISH_OK mode=composer');
             
             const rootUrl = await this.captureRootUrl(page);
+            
+            // 🆕 Try to capture all tweet IDs from composer mode
+            const tweetIds = await this.captureThreadIds(page, segments.length);
+            
             return {
               success: true,
               mode: 'composer',
-              rootTweetUrl: rootUrl
+              rootTweetUrl: rootUrl,
+              tweetIds: tweetIds.length > 0 ? tweetIds : undefined
             };
             
           } catch (composerError: any) {
             console.log(`🧵 THREAD_COMPOSER_FAILED (attempt ${attempt + 1}): ${String(composerError).slice(0, 200)}`);
             
             try {
-              const rootUrl = await this.postViaReplies(page, segments);
+              const replyResult = await this.postViaReplies(page, segments);
               console.log('THREAD_PUBLISH_OK mode=reply_chain');
               return {
                 success: true,
                 mode: 'reply_chain',
-                rootTweetUrl: rootUrl
+                rootTweetUrl: replyResult.rootUrl,
+                tweetIds: replyResult.tweetIds
               };
             } catch (replyError: any) {
               console.warn(`🔄 THREAD_RETRY_FALLBACK: Reply chain failed on attempt ${attempt + 1}`);
@@ -276,8 +282,10 @@ export class BulletproofThreadComposer {
   /**
    * 🔗 POST via reply chain (fallback)
    */
-  private static async postViaReplies(page: Page, segments: string[]): Promise<string> {
+  private static async postViaReplies(page: Page, segments: string[]): Promise<{ rootUrl: string; tweetIds: string[] }> {
     console.log('🔗 THREAD_REPLY_CHAIN: Starting reply chain fallback...');
+    
+    const tweetIds: string[] = [];
     
     // Post root tweet
     const rootFocusResult = await ensureComposerFocused(page, { mode: 'compose' });
@@ -301,7 +309,7 @@ export class BulletproofThreadComposer {
       page.waitForTimeout(10000)
     ]);
     
-    // Capture root URL
+    // Capture root URL and ID
     await page.waitForSelector('a[href*="/status/"]', { timeout: 10000 });
     const rootHref = await page.locator('a[href*="/status/"]').first().getAttribute('href');
     if (!rootHref) {
@@ -309,7 +317,13 @@ export class BulletproofThreadComposer {
     }
     
     const rootUrl = rootHref.startsWith('http') ? rootHref : `https://x.com${rootHref}`;
-    console.log(`🔗 THREAD_ROOT: ${rootUrl}`);
+    const rootId = rootUrl.match(/status\/(\d+)/)?.[1];
+    if (rootId) {
+      tweetIds.push(rootId);
+      console.log(`🔗 THREAD_ROOT: ${rootUrl} (ID: ${rootId})`);
+    } else {
+      console.log(`🔗 THREAD_ROOT: ${rootUrl}`);
+    }
     
     // Post replies
     for (let i = 1; i < segments.length; i++) {
@@ -354,14 +368,29 @@ export class BulletproofThreadComposer {
         page.waitForTimeout(10000)
       ]);
       
+      // 🆕 CAPTURE REPLY TWEET ID
+      try {
+        await page.waitForTimeout(2000); // Wait for tweet to be posted
+        const currentUrl = page.url();
+        const replyId = currentUrl.match(/status\/(\d+)/)?.[1];
+        if (replyId && replyId !== rootId) {
+          tweetIds.push(replyId);
+          console.log(`✅ THREAD_REPLY_SUCCESS: ${i}/${segments.length - 1} (ID: ${replyId})`);
+        } else {
+          console.log(`✅ THREAD_REPLY_SUCCESS: ${i}/${segments.length - 1} (ID not captured)`);
+        }
+      } catch (idError) {
+        console.warn(`⚠️ Could not capture reply ${i} ID:`, idError);
+        console.log(`✅ THREAD_REPLY_SUCCESS: ${i}/${segments.length - 1}`);
+      }
+      
       // Delay between replies
       const delayMs = (Number(process.env.THREAD_REPLY_DELAY_SEC) || 2) * 1000;
       await page.waitForTimeout(delayMs);
-      
-      console.log(`✅ THREAD_REPLY_SUCCESS: ${i}/${segments.length - 1}`);
     }
     
-    return rootUrl;
+    console.log(`🔗 THREAD_COMPLETE: Captured ${tweetIds.length}/${segments.length} tweet IDs`);
+    return { rootUrl, tweetIds };
   }
 
   /**
@@ -482,6 +511,52 @@ export class BulletproofThreadComposer {
     }
     
     return `https://x.com/status/${Date.now()}`;
+  }
+
+  /**
+   * 🆕 Capture all tweet IDs from a thread
+   */
+  private static async captureThreadIds(page: Page, expectedCount: number): Promise<string[]> {
+    try {
+      console.log(`🔍 THREAD_IDS: Attempting to capture ${expectedCount} tweet IDs...`);
+      
+      // Wait for page to settle after posting
+      await page.waitForTimeout(3000);
+      
+      // Try to find all status links on the page
+      const statusLinks = await page.locator('a[href*="/status/"]').all();
+      const tweetIds: string[] = [];
+      
+      for (const link of statusLinks) {
+        try {
+          const href = await link.getAttribute('href');
+          if (href) {
+            const match = href.match(/status\/(\d+)/);
+            if (match && match[1]) {
+              const id = match[1];
+              // Avoid duplicates
+              if (!tweetIds.includes(id)) {
+                tweetIds.push(id);
+              }
+            }
+          }
+        } catch (e) {
+          // Skip this link
+        }
+      }
+      
+      console.log(`📊 THREAD_IDS: Captured ${tweetIds.length}/${expectedCount} tweet IDs`);
+      
+      if (tweetIds.length > 0) {
+        console.log(`🔗 Thread IDs: ${tweetIds.join(', ')}`);
+      }
+      
+      return tweetIds.slice(0, expectedCount); // Return up to expected count
+      
+    } catch (error: any) {
+      console.warn(`⚠️ THREAD_IDS: Could not capture all IDs: ${error.message}`);
+      return [];
+    }
   }
 
   /**

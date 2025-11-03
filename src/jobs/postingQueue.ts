@@ -547,11 +547,13 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
     
     // Handle all content types: 'single', 'thread', and 'reply'
     let tweetUrl: string | undefined;
+    let tweetIds: string[] | undefined; // 🆕 For thread tracking
     
     if (decision.decision_type === 'single' || decision.decision_type === 'thread') {
       const result = await postContent(decision);
       tweetId = result.tweetId;
       tweetUrl = result.tweetUrl;
+      tweetIds = result.tweetIds; // 🆕 Capture thread IDs if available
     } else if (decision.decision_type === 'reply') {
       tweetId = await postReply(decision);
       // For replies, construct URL (reply system doesn't return URL yet)
@@ -589,7 +591,8 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
     let dbSaveSuccess = false;
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        await markDecisionPosted(decision.id, tweetId, tweetUrl);
+        // 🆕 Pass thread IDs if available
+        await markDecisionPosted(decision.id, tweetId, tweetUrl, tweetIds);
         dbSaveSuccess = true;
         break;
       } catch (dbError: any) {
@@ -791,7 +794,7 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
   }
 }
 
-async function postContent(decision: QueuedDecision): Promise<{ tweetId: string; tweetUrl: string }> {
+async function postContent(decision: QueuedDecision): Promise<{ tweetId: string; tweetUrl: string; tweetIds?: string[] }> {
   console.log(`[POSTING_QUEUE] 📝 Posting content: "${decision.content.substring(0, 50)}..."`);
   
   // 📊 FOLLOWER TRACKING: Capture baseline before posting
@@ -866,7 +869,17 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
           );
           
           console.log(`[POSTING_QUEUE] ✅ Posted complete thread with ID: ${result.tweetId}`);
-          return { tweetId: result.tweetId, tweetUrl: result.tweetUrl };
+          
+          // 🆕 Log and return all captured thread IDs
+          if (result.tweetIds && result.tweetIds.length > 0) {
+            console.log(`[POSTING_QUEUE] 🔗 Thread contains ${result.tweetIds.length} tweets: ${result.tweetIds.join(', ')}`);
+          }
+          
+          return { 
+            tweetId: result.tweetId, 
+            tweetUrl: result.tweetUrl,
+            tweetIds: result.tweetIds // 🆕 Pass through all IDs
+          };
           
         } catch (threadError: any) {
           // Thread failed or was rescheduled - don't post anything incomplete
@@ -1118,10 +1131,15 @@ async function updateDecisionStatus(decisionId: string, status: string): Promise
   }
 }
 
-async function markDecisionPosted(decisionId: string, tweetId: string, tweetUrl?: string): Promise<void> {
+async function markDecisionPosted(decisionId: string, tweetId: string, tweetUrl?: string, tweetIds?: string[]): Promise<void> {
   try {
     const { getSupabaseClient } = await import('../db/index');
     const supabase = getSupabaseClient();
+    
+    // 🆕 Log thread IDs if this is a thread
+    if (tweetIds && tweetIds.length > 1) {
+      console.log(`[POSTING_QUEUE] 💾 Storing thread with ${tweetIds.length} tweet IDs: ${tweetIds.join(', ')}`);
+    }
     
     // 1. Update content_metadata status and tweet_id (CRITICAL!)
     // NOTE: tweet_url column commented out until added to database schema
@@ -1130,6 +1148,7 @@ async function markDecisionPosted(decisionId: string, tweetId: string, tweetUrl?
       .update({
         status: 'posted',
         tweet_id: tweetId, // 🔥 CRITICAL: Save tweet ID for metrics scraping!
+        thread_tweet_ids: tweetIds ? JSON.stringify(tweetIds) : null, // 🆕 Store all thread IDs as JSON
         posted_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
         // tweet_url: tweetUrl // 🔗 TODO: Add this column to database first!
