@@ -122,6 +122,10 @@ Transform it!`;
     formatted = formatted.replace(/\*([^*]+)\*/g, '$1'); // Remove *italic*
     formatted = formatted.replace(/__([^_]+)__/g, '$1'); // Remove __underline__
     
+    // CRITICAL: Remove hashtags (NEVER allowed!)
+    formatted = formatted.replace(/#\w+/g, ''); // Remove all #hashtags
+    formatted = formatted.replace(/\s+/g, ' ').trim(); // Clean up extra spaces
+    
     // Validate length - CRITICAL: Must be under 280
     if (formatted.length > 280) {
       console.warn(`[VISUAL_FORMATTER] ⚠️ AI formatted too long (${formatted.length} chars), trying to trim...`);
