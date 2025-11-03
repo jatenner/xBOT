@@ -175,9 +175,14 @@ export class UltimateTwitterPoster {
     await composer.click({ delay: 60 });
     await this.page!.waitForTimeout(500);
     
-    // Clear any existing content
-    await composer.fill(''); // Clear first
-    await this.page!.waitForTimeout(200);
+    // 🆕 IMPROVED: Clear any existing content with better handling
+    try {
+      await composer.fill(''); // Clear first
+      await this.page!.waitForTimeout(300); // Increased wait time
+    } catch (clearError: any) {
+      console.warn(`ULTIMATE_POSTER: Clear failed (non-critical): ${clearError.message}`);
+      // Continue anyway - content might be empty
+    }
     
     // For long content (>300 chars), use fill() to avoid timeout
     // For shorter content, use typing for more natural behavior
@@ -315,11 +320,16 @@ export class UltimateTwitterPoster {
   }
 
   private async getComposer(): Promise<any> {
+    // 🆕 UPDATED: Robust selectors matching modern Twitter UI
     const composerSelectors = [
-      'div[role="textbox"][contenteditable="true"]',
-      'div[aria-label*="Post text"]',
-      'div[aria-label*="What is happening"]',
-      '[data-testid="tweetTextarea_0"]'
+      'div[contenteditable="true"][role="textbox"]',                      // Primary - modern Twitter
+      'div[role="textbox"][contenteditable="true"]',                      // Alternative order
+      '[data-testid="tweetTextarea_0"]',                                  // Fallback 1
+      'div[aria-label*="Post text"]',                                     // Fallback 2
+      'div[aria-label*="What is happening"]',                             // Fallback 3
+      'div[aria-label*="What\'s happening"]',                             // Fallback 4
+      'div[contenteditable="true"]',                                      // Fallback 5 - any contenteditable
+      '.public-DraftEditor-content[contenteditable="true"]'               // Fallback 6 - Draft.js
     ];
 
     for (const selector of composerSelectors) {
@@ -331,16 +341,26 @@ export class UltimateTwitterPoster {
         });
         
         if (element) {
-          console.log(`ULTIMATE_POSTER: Found composer with: ${selector}`);
-          return element;
+          // 🆕 VERIFY: Ensure element is actually editable
+          const isEditable = await element.evaluate((el: any) => 
+            el.contentEditable === 'true' || el.tagName === 'TEXTAREA'
+          ).catch(() => false);
+          
+          if (isEditable) {
+            console.log(`ULTIMATE_POSTER: ✅ Found editable composer with: ${selector}`);
+            return element;
+          } else {
+            console.log(`ULTIMATE_POSTER: ⚠️ Element found but not editable: ${selector}`);
+            continue;
+          }
         }
-      } catch (e) {
-        console.log(`ULTIMATE_POSTER: Selector failed: ${selector}`);
+      } catch (e: any) {
+        console.log(`ULTIMATE_POSTER: Selector failed: ${selector} - ${e.message}`);
         continue;
       }
     }
 
-    throw new Error('No composer found with any selector');
+    throw new Error('No editable composer found with any selector - Twitter UI may have changed');
   }
 
   private async postWithNetworkVerification(): Promise<PostResult> {

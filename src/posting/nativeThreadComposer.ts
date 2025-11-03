@@ -55,16 +55,47 @@ export class NativeThreadComposer {
         await page.waitForLoadState('domcontentloaded');
         await page.waitForTimeout(3000); // Extra stability wait
         
-        // Use CSP-safe locator waits instead of waitForFunction
-        const composer = page.locator('[data-testid="tweetTextarea_0"]').first();
-        await composer.waitFor({ state: 'visible', timeout: 10000 });
-        console.log('✅ NATIVE_THREAD: Found composer element');
+        // 🆕 ROBUST: Try multiple selectors for composer
+        const composerSelectors = [
+          'div[contenteditable="true"][role="textbox"]',
+          '[data-testid="tweetTextarea_0"]',
+          'div[aria-label*="Post text"]',
+          'div[aria-label*="What is happening"]',
+          'div[contenteditable="true"]'
+        ];
+        
+        let composer: any = null;
+        for (const selector of composerSelectors) {
+          try {
+            composer = page.locator(selector).first();
+            await composer.waitFor({ state: 'visible', timeout: 5000 });
+            // Verify it's editable
+            const isEditable = await composer.evaluate((el: any) => 
+              el.contentEditable === 'true' || el.tagName === 'TEXTAREA'
+            ).catch(() => false);
+            if (isEditable) {
+              console.log(`✅ NATIVE_THREAD: Found composer with ${selector}`);
+              break;
+            }
+          } catch (e) {
+            continue;
+          }
+        }
+        
+        if (!composer) {
+          throw new Error('Could not find editable composer');
+        }
 
         // Clear and focus
         await composer.click();
         await page.waitForTimeout(300);
-        await composer.selectText();
-        await page.keyboard.press('Delete');
+        try {
+          await composer.selectText();
+          await page.keyboard.press('Delete');
+        } catch (e) {
+          // selectText might not be available, try fill('')
+          await composer.fill('');
+        }
         await page.waitForTimeout(300);
 
         // Type the first tweet
@@ -76,15 +107,60 @@ export class NativeThreadComposer {
         for (let i = 1; i < tweets.length; i++) {
           console.log(`➕ NATIVE_THREAD: Adding tweet ${i + 1}/${tweets.length}`);
           
-          // Wait for and click the add button using CSP-safe locator waits
-          const addButton = page.locator('[data-testid="addTweetButton"]');
-          await addButton.waitFor({ state: 'visible', timeout: 10000 });
+          // 🆕 ROBUST: Try multiple selectors for add button
+          const addButtonSelectors = [
+            '[data-testid="addTweetButton"]',
+            '[data-testid="addButton"]',
+            'button[aria-label*="Add another post"]',
+            'button:has-text("Add another post")',
+            'div[role="button"]:has-text("+")'
+          ];
+          
+          let addButton: any = null;
+          for (const selector of addButtonSelectors) {
+            try {
+              addButton = page.locator(selector).first();
+              await addButton.waitFor({ state: 'visible', timeout: 5000 });
+              console.log(`✅ NATIVE_THREAD: Found add button with ${selector}`);
+              break;
+            } catch (e) {
+              continue;
+            }
+          }
+          
+          if (!addButton) {
+            throw new Error('Could not find add button');
+          }
+          
           await addButton.click();
           await page.waitForTimeout(1000); // Wait for new textarea to appear
           
-          // Wait for the new textarea to appear
-          const newTextarea = page.locator(`[data-testid="tweetTextarea_${i}"]`);
-          await newTextarea.waitFor({ state: 'visible', timeout: 10000 });
+          // 🆕 ROBUST: Find the new textarea with multiple approaches
+          let newTextarea: any = null;
+          const textareaSelectors = [
+            `[data-testid="tweetTextarea_${i}"]`,
+            'div[contenteditable="true"][role="textbox"]',
+            'div[aria-label*="Post text"]',
+            'div[contenteditable="true"]'
+          ];
+          
+          for (const selector of textareaSelectors) {
+            try {
+              const all = await page.locator(selector).all();
+              if (all.length > i) {
+                newTextarea = all[i];
+                await newTextarea.waitFor({ state: 'visible', timeout: 5000 });
+                console.log(`✅ NATIVE_THREAD: Found textarea #${i} with ${selector}`);
+                break;
+              }
+            } catch (e) {
+              continue;
+            }
+          }
+          
+          if (!newTextarea) {
+            throw new Error(`Could not find textarea ${i}`);
+          }
           
           // Type the content
           await newTextarea.click();
@@ -97,8 +173,32 @@ export class NativeThreadComposer {
 
         // Post the entire thread
         console.log('🚀 NATIVE_THREAD: Posting complete thread...');
-        const postButton = page.locator('[data-testid="tweetButton"]');
-        await postButton.waitFor({ state: 'visible', timeout: 5000 });
+        
+        // 🆕 ROBUST: Try multiple selectors for post button
+        const postButtonSelectors = [
+          '[data-testid="tweetButton"]',
+          '[data-testid="tweetButtonInline"]',
+          'button[aria-label*="Post all"]',
+          'button:has-text("Post all")',
+          'div[role="button"][data-testid="tweetButton"]'
+        ];
+        
+        let postButton: any = null;
+        for (const selector of postButtonSelectors) {
+          try {
+            postButton = page.locator(selector).last(); // Use .last() for threads
+            await postButton.waitFor({ state: 'visible', timeout: 3000 });
+            console.log(`✅ NATIVE_THREAD: Found post button with ${selector}`);
+            break;
+          } catch (e) {
+            continue;
+          }
+        }
+        
+        if (!postButton) {
+          throw new Error('Could not find post button');
+        }
+        
         await postButton.click();
 
         // Wait for posting to complete - look for navigation or success indicators
