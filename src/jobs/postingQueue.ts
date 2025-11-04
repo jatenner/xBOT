@@ -64,22 +64,44 @@ export async function processPostingQueue(): Promise<void> {
         const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
         
         if (isContent) {
-          // 🚨 FIX: Query content_generation_metadata_comprehensive TABLE directly
-          // (not posted_decisions VIEW which may have refresh lag!)
-          const { count: contentCount } = await supabase
+          // 🚨 CRITICAL FIX: Count ACTUAL TWEETS, not just decisions
+          // A thread with 5 parts = 5 tweets on Twitter, not 1!
+          
+          // Query recent posts
+          const { data: recentContent } = await supabase
             .from('content_generation_metadata_comprehensive')
-            .select('*', { count: 'exact', head: true })
+            .select('decision_type, thread_parts')
             .in('decision_type', ['single', 'thread'])
             .eq('status', 'posted')
             .gte('posted_at', oneHourAgo);
           
-          const totalContentThisHour = (contentCount || 0) + contentPostedThisCycle;
+          // Count ACTUAL tweets (not decisions)
+          let actualTweetsThisHour = 0;
+          for (const post of recentContent || []) {
+            if (post.decision_type === 'thread') {
+              const parts = post.thread_parts?.length || 5;
+              actualTweetsThisHour += parts; // Thread = multiple tweets!
+            } else {
+              actualTweetsThisHour += 1; // Single = 1 tweet
+            }
+          }
           
-          console.log(`[POSTING_QUEUE] 📊 Content this hour: ${totalContentThisHour}/${maxContentPerHour} (DB: ${contentCount}, This cycle: ${contentPostedThisCycle})`);
+          // Add tweets from this cycle
+          actualTweetsThisHour += contentPostedThisCycle;
           
-          if (totalContentThisHour >= maxContentPerHour) {
-            console.log(`[POSTING_QUEUE] ⛔ SKIP: Content limit reached ${totalContentThisHour}/${maxContentPerHour}`);
-            continue; // Skip this decision, move to next
+          // Check if THIS decision would exceed limit
+          const thisTweetCount = decision.decision_type === 'thread' 
+            ? (decision.thread_parts?.length || 5)
+            : 1;
+          
+          const wouldExceed = actualTweetsThisHour + thisTweetCount > maxContentPerHour * 3; // 2 decisions * ~3 tweets avg = 6 tweets
+          
+          log({ op: 'rate_limit_check', actual_tweets: actualTweetsThisHour, this_tweet_count: thisTweetCount, limit: maxContentPerHour * 3 });
+          console.log(`[POSTING_QUEUE] 📊 ACTUAL tweets this hour: ${actualTweetsThisHour}/${maxContentPerHour * 3} (this decision would add ${thisTweetCount})`);
+          
+          if (wouldExceed) {
+            console.log(`[POSTING_QUEUE] ⛔ SKIP: Would exceed ACTUAL tweet limit (${actualTweetsThisHour + thisTweetCount} > ${maxContentPerHour * 3})`);
+            continue; // Skip this decision
           }
         }
         
