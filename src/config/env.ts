@@ -68,9 +68,10 @@ export const X_API_ACCESS_TOKEN_SECRET = ENV.X_API_ACCESS_TOKEN_SECRET;
 export const ENABLE_METRICS_TRACKING = ENV.ENABLE_METRICS_TRACKING === "true";
 export const FEATURE_X_API_POSTING = ENV.FEATURE_X_API_POSTING === "true";
 export const FORCE_POST = ENV.FORCE_POST === "true";
-export const MIN_POST_INTERVAL_MINUTES = ENV.MIN_POST_INTERVAL_MINUTES;
+export const MIN_POST_INTERVAL_MINUTES = parseInt(ENV.MIN_POST_INTERVAL_MINUTES || "30");
+export const GRACE_MINUTES = parseInt(ENV.GRACE_MINUTES || "5");
 export const HOST = ENV.HOST;
-export const PORT = ENV.PORT;
+export const PORT = parseInt(ENV.PORT);
 
 // Legacy function for backward compatibility
 export function getEnvConfig() {
