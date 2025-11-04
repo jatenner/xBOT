@@ -17,12 +17,22 @@ const envSchema = z.object({
   // Twitter/X Session
   TWITTER_SESSION_B64: z.string().optional(),
   TWITTER_BEARER_TOKEN: z.string().optional(),
+  TWITTER_USERNAME: z.string().optional(),
+  
+  // X API Credentials
+  X_API_BEARER_TOKEN: z.string().optional(),
+  X_API_CLIENT_ID: z.string().optional(),
+  X_API_CLIENT_SECRET: z.string().optional(),
+  X_API_ACCESS_TOKEN: z.string().optional(),
+  X_API_ACCESS_TOKEN_SECRET: z.string().optional(),
   
   // Feature Flags
   FEAT_AUTOPAUSE: z.string().optional(),
   ENABLE_METRICS_TRACKING: z.string().optional(),
+  FEATURE_X_API_POSTING: z.string().optional(),
   FORCE_POST: z.string().optional(),
   GRACE_MINUTES: z.string().optional(),
+  MIN_POST_INTERVAL_MINUTES: z.string().optional(),
   
   // System
   NODE_ENV: z.string().default("production"),
@@ -49,8 +59,16 @@ export const OPENAI_MODEL = ENV.OPENAI_MODEL;
 export const REDIS_URL = ENV.REDIS_URL;
 export const TWITTER_SESSION_B64 = ENV.TWITTER_SESSION_B64;
 export const TWITTER_BEARER_TOKEN = ENV.TWITTER_BEARER_TOKEN;
+export const TWITTER_USERNAME = ENV.TWITTER_USERNAME;
+export const X_API_BEARER_TOKEN = ENV.X_API_BEARER_TOKEN;
+export const X_API_CLIENT_ID = ENV.X_API_CLIENT_ID;
+export const X_API_CLIENT_SECRET = ENV.X_API_CLIENT_SECRET;
+export const X_API_ACCESS_TOKEN = ENV.X_API_ACCESS_TOKEN;
+export const X_API_ACCESS_TOKEN_SECRET = ENV.X_API_ACCESS_TOKEN_SECRET;
 export const ENABLE_METRICS_TRACKING = ENV.ENABLE_METRICS_TRACKING === "true";
+export const FEATURE_X_API_POSTING = ENV.FEATURE_X_API_POSTING === "true";
 export const FORCE_POST = ENV.FORCE_POST === "true";
+export const MIN_POST_INTERVAL_MINUTES = ENV.MIN_POST_INTERVAL_MINUTES;
 export const HOST = ENV.HOST;
 export const PORT = ENV.PORT;
 
