@@ -19,8 +19,8 @@ const REPLY_CONFIG = {
   // Minutes between replies (prevents spam)
   MIN_MINUTES_BETWEEN: parseInt(process.env.REPLY_MINUTES_BETWEEN || '15', 10),
   
-  // Max replies per hour (attempts, not posted)
-  MAX_REPLIES_PER_HOUR: parseInt(process.env.REPLIES_PER_HOUR || '10', 10),
+  // Max replies per hour (attempts, not posted) - EXACTLY 4/hour target
+  MAX_REPLIES_PER_HOUR: parseInt(process.env.REPLIES_PER_HOUR || '4', 10),
   
   // Max replies per day (attempts, not posted)
   MAX_REPLIES_PER_DAY: parseInt(process.env.REPLY_MAX_PER_DAY || '250', 10),
