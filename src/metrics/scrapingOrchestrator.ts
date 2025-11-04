@@ -10,6 +10,8 @@
  * - Screenshot capture on suspicious data
  */
 
+import { ENV } from '../config/env';
+import { log } from '../lib/logger';
 import { Page } from 'playwright';
 import { BulletproofTwitterScraper, ScrapedMetrics } from '../scrapers/bulletproofTwitterScraper';
 import { EngagementValidator, ValidationResult } from './engagementValidator';
@@ -67,7 +69,7 @@ export class ScrapingOrchestrator {
    * Initialize Redis (optional)
    */
   private async initRedis(): Promise<void> {
-    if (!Redis || !process.env.REDIS_URL) {
+    if (!Redis || !ENV.REDIS_URL) {
       console.log('📊 ORCHESTRATOR: Redis not available, running without cache');
       this.redisInitialized = true;
       return;

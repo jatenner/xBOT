@@ -9,6 +9,7 @@
  * - NEVER generates fake data
  */
 
+import { log } from '../lib/logger';
 import type { Page, ElementHandle } from 'playwright';
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -121,14 +122,15 @@ export class BulletproofTwitterScraper {
     tweetId: string,
     maxAttempts: number = 3
   ): Promise<ScrapingResult> {
-    console.log(`🔍 SCRAPER: Starting bulletproof scraping for tweet ${tweetId}`);
+    const startTime = Date.now();
+    log({ op: 'scraper_start', tweet_id: tweetId, max_attempts: maxAttempts });
 
     let lastError: Error | null = null;
     let attempt = 1;
 
     while (attempt <= maxAttempts) {
       try {
-        console.log(`  📊 SCRAPER: Attempt ${attempt}/${maxAttempts}`);
+        log({ op: 'scraper_attempt', tweet_id: tweetId, attempt, max: maxAttempts });
 
         // Step 1: Validate page state
         const isValid = await this.validatePageState(page);
@@ -172,8 +174,8 @@ export class BulletproofTwitterScraper {
 
         // Step 3: Validate extracted metrics
         if (this.areMetricsValid(metrics)) {
-          console.log(`  ✅ SCRAPER: Success on attempt ${attempt}`);
-          console.log(`     Likes: ${metrics.likes}, Retweets: ${metrics.retweets}, Quote Tweets: ${metrics.quote_tweets}, Replies: ${metrics.replies}`);
+          const ms = Date.now() - startTime;
+          log({ op: 'scraper_complete', outcome: 'success', tweet_id: tweetId, attempt, likes: metrics.likes, retweets: metrics.retweets, views: metrics.views, ms });
 
           // 🔍 VALIDATION: Check if metrics are realistic for bot's follower count
           try {
@@ -230,7 +232,8 @@ export class BulletproofTwitterScraper {
     }
 
     // All attempts failed - capture evidence and return UNDETERMINED
-    console.error(`  ❌ SCRAPER: All ${maxAttempts} attempts failed for tweet ${tweetId}`);
+    const ms = Date.now() - startTime;
+    log({ op: 'scraper_complete', outcome: 'failed', tweet_id: tweetId, attempts: maxAttempts, error: lastError?.message, ms });
 
     const screenshot = await this.captureFailureEvidence(page, tweetId);
 
