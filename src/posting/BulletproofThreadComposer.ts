@@ -280,8 +280,13 @@ export class BulletproofThreadComposer {
     console.log(`🎨 THREAD_COMPOSER: Step 2/5 - Typing tweet 1/${segments.length} (${segments[0].length} chars)...`);
     const tb0 = await this.getComposeBox(page, 0);
     await tb0.click(); // Ensure focus
-    await tb0.fill('');
     await page.waitForTimeout(300); // Allow UI to update
+    
+    // 🔥 FIX: Clear contenteditable properly (select all + delete)
+    await page.keyboard.press('Meta+A'); // Select all (Command+A on Mac, Ctrl+A on Windows)
+    await page.keyboard.press('Backspace');
+    await page.waitForTimeout(200);
+    
     await tb0.type(segments[0], { delay: 10 });
     await this.verifyTextBoxHas(page, 0, segments[0]);
     console.log(`✅ THREAD_COMPOSER: Tweet 1 typed successfully`);
@@ -348,8 +353,13 @@ export class BulletproofThreadComposer {
     }
     const rootBox = await this.getComposeBox(page, 0);
     await rootBox.click(); // Ensure focus
-    await rootBox.fill('');
     await page.waitForTimeout(300); // Allow UI to update
+    
+    // 🔥 FIX: Clear contenteditable properly (select all + delete)
+    await page.keyboard.press('Meta+A'); // Select all
+    await page.keyboard.press('Backspace');
+    await page.waitForTimeout(200);
+    
     await rootBox.type(segments[0], { delay: 10 });
     await this.verifyTextBoxHas(page, 0, segments[0]);
     
@@ -400,7 +410,16 @@ export class BulletproofThreadComposer {
       }
 
       // Use the focused element from the helper
-      await replyFocusResult.element!.fill(segments[i]);
+      // 🔥 FIX: Use type() instead of fill() for contenteditable
+      await replyFocusResult.element!.click();
+      await page.waitForTimeout(200);
+      
+      // Clear any existing content
+      await page.keyboard.press('Meta+A');
+      await page.keyboard.press('Backspace');
+      await page.waitForTimeout(200);
+      
+      await replyFocusResult.element!.type(segments[i], { delay: 10 });
       await this.verifyTextBoxHas(page, 0, segments[i]);
       
       // Try post via common tweet buttons OR kb shortcut
