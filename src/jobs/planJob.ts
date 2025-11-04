@@ -218,9 +218,9 @@ async function callDedicatedGenerator(generatorName: string, context: any) {
     // Note: intelligence parameter is optional - generators work without it
     // We pass topic directly, generators will use their specialized prompts
     
-    // 🧵 THREAD PROBABILITY: 7% threads, 93% singles (balanced for engagement)
-    const selectedFormat = Math.random() < 0.07 ? 'thread' : 'single';
-    console.log(`[SYSTEM_B] 📊 Format selected: ${selectedFormat} (7% thread probability)`);
+    // 🚫 THREADS DISABLED: Single posts only until thread flow is properly designed
+    const selectedFormat = 'single';
+    console.log(`[SYSTEM_B] 📊 Format selected: ${selectedFormat} (threads disabled)`);
     
     const result = await generateFn({
       topic,
