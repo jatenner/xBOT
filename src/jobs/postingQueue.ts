@@ -110,9 +110,12 @@ export async function processPostingQueue(): Promise<void> {
         if (isContent) contentPostedThisCycle++;
         if (isReply) repliesPostedThisCycle++;
         
-      } catch (error) {
-        console.error(`[POSTING_QUEUE] ❌ Failed to post decision ${decision.id}:`, error.message);
-        await markDecisionFailed(decision.id, error.message);
+      } catch (error: any) {
+        const errorMsg = error?.message || error?.toString() || 'Unknown error';
+        const errorStack = error?.stack || 'No stack trace';
+        console.error(`[POSTING_QUEUE] ❌ Failed to post decision ${decision.id}:`, errorMsg);
+        console.error(`[POSTING_QUEUE] 💥 Error stack:`, errorStack);
+        await markDecisionFailed(decision.id, errorMsg);
       }
     }
     
@@ -483,6 +486,7 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
   const logPrefix = isThread ? '[POSTING_QUEUE] 🧵' : '[POSTING_QUEUE] 📝';
   
   console.log(`${logPrefix} Processing ${decision.decision_type}: ${decision.id}`);
+  console.log(`${logPrefix} 🔍 DEBUG: Starting processDecision`);
   
   // 🧵 THREAD DIAGNOSTICS: Enhanced logging for threads
   if (isThread) {
@@ -523,7 +527,9 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
     // No intermediate 'posting' status to avoid DB constraint violations
     
     // Update metrics
+    console.log(`${logPrefix} 🔍 DEBUG: About to update posting metrics`);
     await updatePostingMetrics('queued');
+    console.log(`${logPrefix} 🔍 DEBUG: Posting metrics updated`);
   
   // Declare variables at function scope so they're accessible in catch block
   let tweetId: string = '';
@@ -532,9 +538,11 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
   let postingSucceeded = false;
   
   try {
+    console.log(`${logPrefix} 🔍 DEBUG: Entering main try block`);
     // 🚨 CRITICAL: Check if already posted (double-check before posting)
     const { getSupabaseClient } = await import('../db/index');
     const supabase = getSupabaseClient();
+    console.log(`${logPrefix} 🔍 DEBUG: Supabase client acquired`);
     const { data: alreadyExists } = await supabase
       .from('posted_decisions')
       .select('tweet_id')
@@ -563,8 +571,10 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
     
     // 📊 INTELLIGENCE LAYER: Capture follower count BEFORE posting
     try {
+      console.log(`${logPrefix} 🔍 DEBUG: Capturing follower baseline`);
       const { followerAttributionService } = await import('../intelligence/followerAttributionService');
       await followerAttributionService.captureFollowerCountBefore(decision.id);
+      console.log(`${logPrefix} 🔍 DEBUG: Follower baseline captured`);
     } catch (attrError: any) {
       console.warn(`[POSTING_QUEUE] ⚠️ Follower capture failed: ${attrError.message}`);
     }
@@ -573,9 +583,12 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
     // 🎯 PHASE 1: POST TO TWITTER (CRITICAL - Must succeed or fail here)
     // ═══════════════════════════════════════════════════════════
     
+    console.log(`${logPrefix} 🔍 DEBUG: About to call postContent`);
     try {
       if (decision.decision_type === 'single' || decision.decision_type === 'thread') {
+        console.log(`${logPrefix} 🔍 DEBUG: Calling postContent for ${decision.decision_type}`);
         const result = await postContent(decision);
+        console.log(`${logPrefix} 🔍 DEBUG: postContent returned successfully`);
         tweetId = result.tweetId;
         tweetUrl = result.tweetUrl;
         tweetIds = result.tweetIds; // 🆕 Capture thread IDs if available
