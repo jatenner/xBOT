@@ -3,6 +3,8 @@
  * Processes ready decisions and posts them to Twitter
  */
 
+import { ENV } from '../config/env';
+import { log } from '../lib/logger';
 import { getConfig, getModeFlags } from '../config/config';
 import { learningSystem } from '../learning/learningSystem';
 
@@ -10,12 +12,12 @@ export async function processPostingQueue(): Promise<void> {
   const config = getConfig();
   const flags = getModeFlags(config);
   
-  console.log('[POSTING_QUEUE] 📮 Processing posting queue...');
+  log({ op: 'posting_queue_start' });
   
   try {
     // 1. Check if posting is enabled
     if (flags.postingDisabled) {
-      console.log('[POSTING_QUEUE] ⚠️ Posting disabled, skipping queue processing');
+      log({ op: 'posting_queue', status: 'disabled' });
       return;
     }
     
@@ -26,20 +28,20 @@ export async function processPostingQueue(): Promise<void> {
     // 2. Check rate limits
     const canPost = await checkPostingRateLimits();
     if (!canPost) {
-      console.log('[POSTING_QUEUE] ⚠️ Rate limit reached, skipping posting');
+      log({ op: 'posting_queue', status: 'rate_limited' });
       return;
     }
     
     // 3. Get ready decisions from queue
     const readyDecisions = await getReadyDecisions();
-    const GRACE_MINUTES = parseInt(process.env.GRACE_MINUTES || '5', 10);
+    const GRACE_MINUTES = parseInt(ENV.GRACE_MINUTES || '5', 10);
     
     if (readyDecisions.length === 0) {
-      console.log(`[POSTING_QUEUE] ℹ️ No decisions ready for posting (grace_window=${GRACE_MINUTES}m)`);
+      log({ op: 'posting_queue', ready_count: 0, grace_minutes: GRACE_MINUTES });
       return;
     }
     
-    console.log(`[POSTING_QUEUE] 📝 Found ${readyDecisions.length} decisions ready for posting (grace_window=${GRACE_MINUTES}m)`);
+    log({ op: 'posting_queue', ready_count: readyDecisions.length, grace_minutes: GRACE_MINUTES });
     
     // 4. Process each decision WITH RATE LIMIT CHECK BETWEEN EACH POST
     let successCount = 0;

@@ -308,25 +308,7 @@ app.get('/health', async (req, res) => {
   }
 });
 
-/**
- * Environment and configuration info (safe subset)
- */
-app.get('/env', (req, res) => {
-  try {
-    const safeEnv = getSafeEnvironment();
-    res.json({
-      environment: safeEnv,
-      timestamp: new Date().toISOString(),
-      nodeVersion: process.version,
-      platform: process.platform,
-      uptime: process.uptime()
-    });
-  } catch (error) {
-    res.status(500).json({
-      error: error instanceof Error ? error.message : 'Failed to get environment info'
-    });
-  }
-});
+// Duplicate /env endpoint removed - see line 41
 
 /**
  * Playwright browser status

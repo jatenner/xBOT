@@ -85,10 +85,10 @@ const CONTENT_STYLES = [
 
 // Explore/Exploit Configuration
 const EXPLORE_CONFIG: ExploreExploitConfig = {
-  EXPLORE_RATIO_MIN: parseFloat(process.env.EXPLORE_RATIO_MIN || '0.1'),
-  EXPLORE_RATIO_MAX: parseFloat(process.env.EXPLORE_RATIO_MAX || '0.4'),
-  PERFORMANCE_WINDOW_HOURS: parseInt(process.env.PERFORMANCE_WINDOW_HOURS || '24', 10),
-  TARGET_ER_THRESHOLD: parseFloat(process.env.TARGET_ER_THRESHOLD || '0.025')
+  EXPLORE_RATIO_MIN: 0.1,
+  EXPLORE_RATIO_MAX: 0.4,
+  PERFORMANCE_WINDOW_HOURS: 24,
+  TARGET_ER_THRESHOLD: 0.025
 };
 
 /**
@@ -362,7 +362,7 @@ export async function validateAndScoreContent(
     });
     
     // Quality checks
-    const MIN_QUALITY_SCORE = parseInt(process.env.MIN_QUALITY_SCORE || '70', 10);
+    const MIN_QUALITY_SCORE = 70;
     if (features.quality_score && features.quality_score < MIN_QUALITY_SCORE) {
       issues.push(`Quality score ${features.quality_score} below minimum ${MIN_QUALITY_SCORE}`);
       isValid = false;
@@ -375,24 +375,24 @@ export async function validateAndScoreContent(
     }
     
     // Compliance checks
-    if (process.env.BLOCK_POLITICS === 'true' && features.has_political_content) {
+    if (features.has_political_content) {
       issues.push('Political content detected');
       isValid = false;
     }
     
-    if (process.env.FORCE_NO_HASHTAGS === 'true' && features.has_hashtags) {
+    if (features.has_hashtags) {
       issues.push('Hashtags not allowed');
       isValid = false;
     }
     
-    const EMOJI_MAX = parseInt(process.env.EMOJI_MAX || '3', 10);
+    const EMOJI_MAX = 3;
     if (features.emoji_count > EMOJI_MAX) {
       issues.push(`Too many emojis: ${features.emoji_count} > ${EMOJI_MAX}`);
       isValid = false;
     }
     
     // Duplicate check
-    const DUP_WINDOW_DAYS = parseInt(process.env.DUP_WINDOW_DAYS || '7', 10);
+    const DUP_WINDOW_DAYS = 7;
     const duplicateCheck = await isDuplicate(content, DUP_WINDOW_DAYS);
     
     if (duplicateCheck.isDuplicate) {

@@ -3,10 +3,12 @@
  * No anti-bot detection attempts, focuses on stability and compliance
  */
 
+import { log } from '../lib/logger';
 import { Page, BrowserContext } from 'playwright';
 import { getBrowser, createContext } from '../browser/browserFactory';
 import { existsSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import { ImprovedReplyIdExtractor } from './ImprovedReplyIdExtractor';
 
 export interface PostResult {
   success: boolean;
@@ -30,53 +32,58 @@ export class UltimateTwitterPoster {
   async postTweet(content: string): Promise<PostResult> {
     let retryCount = 0;
     const maxRetries = 2; // Increased retries
+    const startTime = Date.now();
 
     while (retryCount <= maxRetries) {
       try {
-        console.log(`ULTIMATE_POSTER: Starting attempt ${retryCount + 1}/${maxRetries + 1}`);
+        log({ op: 'ultimate_poster_attempt', attempt: retryCount + 1, max: maxRetries + 1, content_length: content.length });
         
         await this.ensureContext();
         const result = await this.attemptPost(content);
         
         if (result.success) {
-          console.log(`ULTIMATE_POSTER: ✅ Success on attempt ${retryCount + 1}`);
+          const ms = Date.now() - startTime;
+          log({ op: 'ultimate_poster_complete', outcome: 'success', attempt: retryCount + 1, tweet_id: result.tweetId, ms });
           return result;
         }
         
         // If we got a specific error that suggests retry won't help, don't retry
         if (result.error?.includes('session expired') || result.error?.includes('not logged in')) {
-          console.log('ULTIMATE_POSTER: Auth error detected, refreshing session...');
+          log({ op: 'ultimate_poster_auth_error', action: 'refreshing_session' });
           await this.refreshSession();
         }
         
         throw new Error(result.error || 'Post attempt failed');
         
       } catch (error) {
-        console.error(`ULTIMATE_POSTER: Attempt ${retryCount + 1} failed:`, error.message);
+        log({ op: 'ultimate_poster_attempt', outcome: 'error', attempt: retryCount + 1, error: error.message });
         
         // Check if this is a recoverable error
         const isRecoverable = this.isRecoverableError(error.message);
         
         if (retryCount < maxRetries && isRecoverable) {
-          console.log('ULTIMATE_POSTER: Retrying with fresh context...');
+          log({ op: 'ultimate_poster_retry', retry_count: retryCount, recoverable: true });
           await this.cleanup();
           retryCount++;
           
           // Add progressive delay between retries
           const delay = (retryCount) * 2000; // 2s, 4s delays
-          console.log(`ULTIMATE_POSTER: Waiting ${delay}ms before retry...`);
+          log({ op: 'ultimate_poster_delay', delay_ms: delay });
           await new Promise(resolve => setTimeout(resolve, delay));
           
           continue;
         }
         
         // Final failure - capture artifacts
-        console.log('ULTIMATE_POSTER: All attempts failed, capturing failure artifacts...');
+        const ms = Date.now() - startTime;
+        log({ op: 'ultimate_poster_complete', outcome: 'failure', attempts: retryCount + 1, error: error.message, ms });
         await this.captureFailureArtifacts(error.message);
         return { success: false, error: error.message };
       }
     }
 
+    const ms = Date.now() - startTime;
+    log({ op: 'ultimate_poster_complete', outcome: 'max_retries', attempts: retryCount, ms });
     return { success: false, error: 'Max retries exceeded' };
   }
 
@@ -1132,6 +1139,10 @@ export class UltimateTwitterPoster {
           throw new Error('Reply composer not found');
         }
 
+        // 🎧 SETUP NETWORK LISTENER BEFORE POSTING
+        // This must happen BEFORE clicking the post button
+        ImprovedReplyIdExtractor.setupNetworkListener(this.page);
+        
         // Type reply content
         console.log(`ULTIMATE_POSTER: Typing reply content...`);
         await composer.click();
@@ -1168,12 +1179,16 @@ export class UltimateTwitterPoster {
         // Wait for post to complete
         await this.page.waitForTimeout(3000);
 
-        // Extract tweet ID from URL or DOM (MUST be different from parent!)
-        const tweetId = await this.extractReplyTweetId(replyToTweetId);
+        // 🔍 IMPROVED EXTRACTION with 3 fallback strategies
+        const extractionResult = await ImprovedReplyIdExtractor.extractReplyId(
+          this.page,
+          replyToTweetId,
+          10000 // 10 second timeout
+        );
 
-        if (!tweetId) {
-          console.warn(`⚠️ ULTIMATE_POSTER: Reply ID extraction failed for parent ${replyToTweetId}`);
-          console.warn(`⚠️ Reply was posted successfully, but ID not found immediately`);
+        if (!extractionResult.success || !extractionResult.tweetId) {
+          console.warn(`⚠️ ULTIMATE_POSTER: All ID extraction strategies failed`);
+          console.warn(`⚠️ Reply was posted successfully, but ID not found`);
           console.warn(`🔄 Using placeholder ID - background job will find real ID later`);
           
           // Use placeholder - reply WAS posted, we just don't have the ID yet
@@ -1184,6 +1199,9 @@ export class UltimateTwitterPoster {
             tweetId: placeholderId
           };
         }
+
+        const tweetId = extractionResult.tweetId;
+        console.log(`ULTIMATE_POSTER: ✅ ID extracted via '${extractionResult.strategy}' strategy`);
 
         console.log(`ULTIMATE_POSTER: ✅ Reply posted successfully: ${tweetId}`);
 

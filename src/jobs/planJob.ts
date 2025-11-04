@@ -4,6 +4,8 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
+import { ENV } from '../config/env';
+import { log } from '../lib/logger';
 import { getConfig } from '../config/config';
 import { getEnvConfig, isLLMAllowed } from '../config/envFlags';
 import { getSupabaseClient } from '../db/index';
@@ -26,7 +28,7 @@ export function getLLMMetrics() {
 
 export async function planContent(): Promise<void> {
   const config = getConfig();
-  console.log('[PLAN_JOB] 📝 Starting content planning cycle...');
+  log({ op: 'plan_job_start', mode: config.MODE });
   
   try {
     if (config.MODE === 'shadow') {
@@ -34,15 +36,15 @@ export async function planContent(): Promise<void> {
     } else {
       await generateRealContent();
     }
-    console.log('[PLAN_JOB] ✅ Content planning completed');
+    log({ op: 'plan_job_complete', outcome: 'success' });
   } catch (error: any) {
-    console.error('[PLAN_JOB] ❌ Planning failed:', error.message);
+    log({ op: 'plan_job_complete', outcome: 'error', error: error.message });
     throw error;
   }
 }
 
 async function generateSyntheticContent(): Promise<void> {
-  console.log('[PLAN_JOB] 🎭 Generating synthetic content for shadow mode...');
+  log({ op: 'generate_synthetic', mode: 'shadow' });
   const decision_id = uuidv4();
   
   const supabase = getSupabaseClient();
@@ -59,13 +61,13 @@ async function generateSyntheticContent(): Promise<void> {
     bandit_arm: 'educational'
   }]);
   
-  console.log(`[PLAN_JOB] 🎭 Synthetic content queued decision_id=${decision_id}`);
+  log({ op: 'generate_synthetic', outcome: 'success', decision_id });
 }
 
 async function generateRealContent(): Promise<void> {
   const llmCheck = isLLMAllowed();
   if (!llmCheck.allowed) {
-    console.log(`[PLAN_JOB] ⏭️ LLM blocked: ${llmCheck.reason}`);
+    log({ op: 'generate_real', blocked: true, reason: llmCheck.reason });
     return;
   }
   
@@ -77,8 +79,7 @@ async function generateRealContent(): Promise<void> {
   // If job runs every hour → 2 posts / hour = 2 posts/hour ✅
   const numToGenerate = 2; // FIXED: Always 2 posts per run
   
-  console.log(`[PLAN_JOB] 🧠 Generating ${numToGenerate} posts per cycle...`);
-  console.log(`[PLAN_JOB] 📅 Target: EXACTLY 2 posts/hour\n`);
+  log({ op: 'generate_real', num_to_generate: numToGenerate, target_rate: '2/hour' });
   
   const generatedPosts: any[] = [];
   const batchMetrics = {

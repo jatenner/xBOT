@@ -5,6 +5,7 @@
  */
 
 import { Page } from 'playwright';
+import { log } from '../lib/logger';
 import { ensureComposerFocused } from './composerFocus';
 
 interface ThreadPostResult {
@@ -76,7 +77,7 @@ export class BulletproofThreadComposer {
    * 🎯 MAIN METHOD: Post segments as connected thread
    */
   static async post(segments: string[]): Promise<ThreadPostResult> {
-    console.log(`THREAD_DECISION mode=composer segments=${segments.length}`);
+    log({ op: 'thread_post_start', mode: 'composer', segments: segments.length });
     
     const isThread = segments.length > 1;
     
