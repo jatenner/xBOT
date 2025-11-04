@@ -82,15 +82,10 @@ export async function generateDynamicContent(params: {
   
   const selectedAngle = angle || Object.keys(angleStyles)[Math.floor(Math.random() * Object.keys(angleStyles).length)];
   
-  // 🎲 RANDOM TOPIC IF NONE PROVIDED
-  const randomTopics = [
-    'sleep patterns', 'gut health', 'exercise timing', 'stress response', 
-    'nutrition timing', 'circadian rhythms', 'metabolic flexibility',
-    'inflammation', 'hormone balance', 'recovery', 'focus', 'energy',
-    'longevity', 'brain health', 'immune function', 'digestive health'
-  ];
+  // 🚫 NO HARDCODED TOPICS - Topics come from dynamicTopicGenerator (AI-driven)
+  // This ensures INFINITE variety and prevents repetition
   
-  const selectedTopic = topic || randomTopics[Math.floor(Math.random() * randomTopics.length)];
+  const selectedTopic = topic || 'health optimization'; // Fallback only if topic not provided
   
   // 🧠 DYNAMIC PROMPT (much simpler, more human)
   const systemPrompt = `You are @SignalAndSynapse, a health account known for evidence-based insights that challenge conventional wisdom.
