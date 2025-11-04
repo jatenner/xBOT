@@ -266,11 +266,9 @@ async function generateRealContent(): Promise<void> {
       console.log(`[UNIFIED_PLAN] 🏷️ Topic cluster: ${adaptiveTopicCluster}`);
       
       // Use human content orchestrator instead of rigid templates
-      // ✅ GRADUAL THREAD ROLLOUT: Starting at 5% (will increase to 15% over time)
-      const threadChance = parseFloat(process.env.THREAD_PERCENTAGE || '5') / 100;
       const generated = await humanContentOrchestrator.generateHumanContent({
         topic: adaptiveTopicHint,
-        forceFormat: Math.random() < threadChance ? 'thread' : 'single'
+        forceFormat: Math.random() < 0.3 ? 'thread' : 'single' // 30% threads, 70% singles
       });
       
       // ✅ Track generator performance

@@ -19,6 +19,7 @@
 import { getSupabaseClient } from '../db';
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import type { VisualFormatIntelligence } from '../analytics/visualFormatAnalytics';
+import { generateFallbackViralInsights } from './viralFallbackInsights';
 
 export interface VisualFormatContext {
   content: string;
@@ -347,16 +348,19 @@ async function buildSmartFormattingPrompt(
       .eq('is_active', true);
     
     if (patternStats && patternStats.length > 0) {
-      // SMART APPROACH: Extract principles from patterns
+      // SMART APPROACH: Extract principles from patterns  
+      console.log(`[VISUAL_FORMATTER] 🧠 Analyzing ${patternStats.length} viral patterns with AI...`);
       viralInsights = await buildIntelligentViralInsights(
         patternStats,
         generator,
         tone,
         content
       );
+      console.log('[VISUAL_FORMATTER] ✅ AI viral analysis complete');
     } else {
-      // Database has some data but not analyzed yet
-      console.log('[VISUAL_FORMATTER] ⚠️ Viral patterns exist but no AI analysis yet');
+      // No viral patterns in database yet - use fallback
+      console.log('[VISUAL_FORMATTER] ℹ️ No viral patterns in database yet, using generic guidance');
+      viralInsights = await generateFallbackViralInsights(generator, tone);
     }
   } catch (error: any) {
     console.warn('[VISUAL_FORMATTER] ⚠️ Could not load viral patterns:', error.message);

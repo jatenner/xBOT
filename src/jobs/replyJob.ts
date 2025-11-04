@@ -44,6 +44,35 @@ export function getReplyLLMMetrics() {
 }
 
 /**
+ * Log rate limit check failures for monitoring
+ * 🚨 Alerts when rate limit checks fail repeatedly
+ */
+async function logRateLimitFailure(failureType: string, errorMessage: string): Promise<void> {
+  try {
+    const supabase = getSupabaseClient();
+    
+    // Try to log to system_events table
+    await supabase
+      .from('system_events')
+      .insert({
+        event_type: 'rate_limit_check_failure',
+        event_data: {
+          failure_type: failureType,
+          error_message: errorMessage,
+          timestamp: new Date().toISOString()
+        },
+        severity: 'critical',
+        created_at: new Date().toISOString()
+      });
+    
+    console.log(`[RATE_LIMIT] 📝 Logged failure to system_events: ${failureType}`);
+  } catch (error: any) {
+    // If system_events doesn't exist, just log to console
+    console.error('[RATE_LIMIT] ⚠️ Could not log to database:', error.message);
+  }
+}
+
+/**
  * Check hourly reply quota WITH RETRY LOGIC
  * 🔒 FAIL-CLOSED: Blocks posting if check fails (safety first)
  */
@@ -120,44 +149,73 @@ async function checkReplyHourlyQuota(): Promise<{
 }
 
 /**
- * Check daily reply quota
+ * Check daily reply quota WITH RETRY LOGIC
+ * 🔒 FAIL-CLOSED: Blocks posting if check fails (safety first)
  */
 async function checkReplyDailyQuota(): Promise<{
   canReply: boolean;
   repliesToday: number;
   resetTime?: Date;
 }> {
-  const supabase = getSupabaseClient();
-  const today = new Date();
-  today.setHours(0, 0, 0, 0); // Start of today
+  const MAX_RETRIES = 3;
   
-  try {
-    // 🚨 CRITICAL FIX: Count replies in content_metadata (the actual table!)
-    const { count, error } = await supabase
-      .from('content_metadata')
-      .select('*', { count: 'exact', head: true })
-      .eq('decision_type', 'reply')
-      .eq('status', 'posted')
-      .gte('posted_at', today.toISOString());
-    
-    if (error) {
-      console.error('[DAILY_QUOTA] ❌ Database error:', error);
-      return { canReply: true, repliesToday: 0 }; // Allow on error
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const supabase = getSupabaseClient();
+      const today = new Date();
+      today.setHours(0, 0, 0, 0); // Start of today
+      
+      // Count replies in content_metadata
+      const { count, error } = await supabase
+        .from('content_metadata')
+        .select('*', { count: 'exact', head: true })
+        .eq('decision_type', 'reply')
+        .eq('status', 'posted')
+        .gte('posted_at', today.toISOString());
+      
+      if (error) {
+        console.error(`[DAILY_QUOTA] ❌ Database error (attempt ${attempt}/${MAX_RETRIES}):`, error.message);
+        
+        if (attempt < MAX_RETRIES) {
+          const delayMs = 1000 * attempt;
+          console.log(`[DAILY_QUOTA] 🔄 Retrying in ${delayMs}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+          continue;
+        }
+        
+        // All retries failed - FAIL CLOSED for safety
+        console.error('[DAILY_QUOTA] 🔒 FAIL-CLOSED: Blocking posting as safety measure');
+        await logRateLimitFailure('daily_quota_check_failed', error.message);
+        return { canReply: false, repliesToday: 999 };
+      }
+      
+      const repliesToday = count || 0;
+      const canReply = repliesToday < REPLY_CONFIG.MAX_REPLIES_PER_DAY;
+      
+      // Calculate reset time (midnight tonight)
+      const resetTime = new Date(today);
+      resetTime.setDate(resetTime.getDate() + 1);
+      
+      return { canReply, repliesToday, resetTime };
+      
+    } catch (error: any) {
+      console.error(`[DAILY_QUOTA] ❌ Check failed (attempt ${attempt}/${MAX_RETRIES}):`, error.message);
+      
+      if (attempt < MAX_RETRIES) {
+        const delayMs = 1000 * attempt;
+        console.log(`[DAILY_QUOTA] 🔄 Retrying in ${delayMs}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        continue;
+      }
+      
+      // All retries failed - FAIL CLOSED for safety
+      console.error('[DAILY_QUOTA] 🔒 FAIL-CLOSED: Blocking posting as safety measure');
+      await logRateLimitFailure('daily_quota_exception', error.message);
+      return { canReply: false, repliesToday: 999 };
     }
-    
-    const repliesToday = count || 0;
-    const canReply = repliesToday < REPLY_CONFIG.MAX_REPLIES_PER_DAY;
-    
-    // Calculate reset time (midnight tonight)
-    const resetTime = new Date(today);
-    resetTime.setDate(resetTime.getDate() + 1);
-    
-    return { canReply, repliesToday, resetTime };
-    
-  } catch (error) {
-    console.error('[DAILY_QUOTA] ❌ Check failed:', error);
-    return { canReply: true, repliesToday: 0 };
   }
+  
+  return { canReply: false, repliesToday: 999 };
 }
 
 /**

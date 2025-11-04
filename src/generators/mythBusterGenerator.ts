@@ -61,8 +61,10 @@ What common belief does this contradict? What's the mechanism people are missing
 
 Interpret through YOUR lens: What misconception needs replacing? What explanation makes the truth clear and sticky?
 
-CONSTRAINTS THAT ENABLE:
-- 200-270 characters (corrections must be concise to penetrate)
+CRITICAL CONSTRAINTS:
+- MAXIMUM 270 characters (STRICT - verify count before returning)
+- Count every character including spaces and punctuation  
+- If approaching 270, remove entire sentences, not partial words
 - No first-person (evidence speaks, not you)
 - No hashtags (dilute focus)
 - Mobile-first (scrolling fast - make corrections thumb-stopping)
@@ -93,8 +95,8 @@ Return JSON: {
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
       ],
-      temperature: 0.8,
-      max_tokens: format === 'thread' ? 600 : 150, // ✅ Reduced to stay under 280 chars
+      temperature: 0.7, // Reduced for more controlled length
+      max_tokens: format === 'thread' ? 500 : 120, // ✅ Further reduced to ensure <270 chars
       response_format: { type: 'json_object' }
     }, { purpose: 'myth_buster_content_generation' });
 

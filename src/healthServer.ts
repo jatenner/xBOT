@@ -64,6 +64,25 @@ export function startHealthServer(): Promise<void> {
       });
     });
 
+    // 🏥 SYSTEM HEALTH ENDPOINT - Detailed content system health
+    app.get('/health/system', async (_req, res) => {
+      try {
+        const { getSystemHealth } = await import('./api/health-system');
+        const health = await getSystemHealth();
+        
+        const httpStatus = health.status === 'healthy' ? 200 :
+                          health.status === 'degraded' ? 503 : 500;
+        
+        res.status(httpStatus).json(health);
+      } catch (error: any) {
+        res.status(500).json({
+          status: 'error',
+          error: error.message,
+          timestamp: new Date().toISOString()
+        });
+      }
+    });
+
     // 💓 Simple health check for load balancers
     app.get('/ping', (_req, res) => {
       res.status(200).send('ok');

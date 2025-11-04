@@ -102,12 +102,32 @@ export class ReplyDiagnosticLogger {
   /**
    * Log cycle end
    */
-  static logCycleEnd(success: boolean, errors: string[] = []): void {
+  static async logCycleEnd(success: boolean, errors: string[] = []): Promise<void> {
     console.log('─'.repeat(60));
     console.log(`[REPLY_DIAGNOSTIC] ${success ? '✅' : '❌'} CYCLE #${this.cycleNumber} ${success ? 'SUCCESS' : 'FAILED'}`);
     if (errors.length > 0) {
       console.log('[REPLY_DIAGNOSTIC] 🚨 ERRORS:');
       errors.forEach(err => console.log(`  • ${err}`));
+      
+      // ✅ IMPROVEMENT: Store failures to database for tracking
+      try {
+        const { getSupabaseClient } = await import('../db/index');
+        const supabase = getSupabaseClient();
+        
+        await supabase.from('system_errors').insert({
+          error_category: 'reply_cycle_failure',
+          error_message: errors.join(' | '),
+          cycle_number: this.cycleNumber,
+          error_count: errors.length,
+          severity: 'high',
+          created_at: new Date().toISOString()
+        });
+        
+        console.log('[REPLY_DIAGNOSTIC] 💾 Failure logged to database for analysis');
+      } catch (dbError: any) {
+        // Non-critical - logging failure shouldn't break the system
+        console.warn('[REPLY_DIAGNOSTIC] ⚠️ Could not log to database:', dbError.message);
+      }
     }
     console.log('═'.repeat(60));
     console.log('');

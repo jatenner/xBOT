@@ -604,10 +604,21 @@ async function queueContent(content: any): Promise<void> {
     console.log(`[QUEUE_CONTENT] 🧵   Parts: ${insertPayload.thread_parts?.length} tweets`);
   }
   
-  // ⚠️ TEMPORARY: Meta-awareness fields DISABLED until Supabase schema cache refreshes
-  // These columns exist in DB but Supabase API cache is stale
-  // Will re-enable after cache refresh (24-48 hours)
-  console.log('[QUEUE_CONTENT] ⚠️ Meta-awareness tracking temporarily disabled (schema cache issue)');
+  // ✅ FIX: Store meta-awareness data in metadata JSONB field (works around schema cache)
+  const metaAwareness = {
+    topic_cluster_sampled: insertPayload.topic_cluster_sampled,
+    angle_type: insertPayload.angle_type,
+    tone_is_singular: insertPayload.tone_is_singular,
+    tone_cluster: insertPayload.tone_cluster
+  };
+  
+  // Add to metadata field (existing JSONB column - no schema cache issues)
+  insertPayload.metadata = {
+    ...insertPayload.metadata,
+    meta_awareness: metaAwareness
+  };
+  
+  console.log('[QUEUE_CONTENT] ✅ Meta-awareness data stored in metadata field');
   
   const { data, error} = await supabase.from('content_metadata').insert([insertPayload]);
   
