@@ -1,47 +1,32 @@
 #!/usr/bin/env tsx
 /**
- * Apply database migration directly
+ * Apply database migration using Supabase client
  */
 
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { Pool } from 'pg';
+import { createClient } from '@supabase/supabase-js';
 import * as dotenv from 'dotenv';
 
 // Load env
 dotenv.config();
 
-// Import SSL config from the project
-function getPgSSL(connectionString: string) {
-  if (!connectionString || !connectionString.includes('sslmode')) {
-    return undefined;
-  }
-
-  // For Supabase, always use SSL with rejectUnauthorized: false
-  if (connectionString.includes('supabase') || connectionString.includes('sslmode=require')) {
-    return {
-      rejectUnauthorized: false
-    };
-  }
-
-  return undefined;
-}
-
 async function applyMigration() {
-  console.log('🔄 Applying database migration...\n');
+  console.log('🔄 Applying database migration via Supabase...\n');
 
-  const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) {
-    throw new Error('DATABASE_URL not found in environment');
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY required');
   }
 
-  // Create connection pool using same SSL config as project
-  const pool = new Pool({
-    connectionString: databaseUrl,
-    ssl: getPgSSL(databaseUrl),
-    max: 5,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000
+  // Create Supabase client
+  const supabase = createClient(supabaseUrl, supabaseKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
   });
 
   try {
@@ -52,11 +37,37 @@ async function applyMigration() {
     console.log('📄 Migration file loaded');
     console.log(`📏 SQL size: ${migrationSQL.length} characters\n`);
 
-    // Execute migration
+    // Split SQL into individual statements (split on semicolons outside of quotes)
+    // For now, let's use rpc if available, or execute directly
     console.log('⏳ Executing migration...\n');
+
+    // Use Supabase RPC to execute raw SQL
+    // Note: Supabase doesn't have direct SQL execution, so we'll use the REST API
+    // Actually, let's use the pg pool from the project's existing code
+    
+    // Use Supabase client's RPC to execute SQL
+    // Since direct SQL execution via Supabase client is limited, 
+    // we'll create a temporary connection with proper SSL
+    
+    const { Pool } = await import('pg');
+    const databaseUrl = process.env.DATABASE_URL;
+    
+    if (!databaseUrl) {
+      throw new Error('DATABASE_URL not found');
+    }
+    
+    // Force SSL with rejectUnauthorized: false for Supabase
+    // Note: If you get SSL errors, you may need to set NODE_TLS_REJECT_UNAUTHORIZED=0
+    const pool = new Pool({
+      connectionString: databaseUrl,
+      ssl: {
+        require: true,
+        rejectUnauthorized: false
+      }
+    });
     
     const client = await pool.connect();
-    
+
     try {
       await client.query('BEGIN');
       
@@ -111,6 +122,7 @@ async function applyMigration() {
       throw error;
     } finally {
       client.release();
+      await pool.end();
     }
 
   } catch (error: any) {
@@ -122,8 +134,6 @@ async function applyMigration() {
     }
     
     throw error;
-  } finally {
-    await pool.end();
   }
 }
 
@@ -137,3 +147,4 @@ applyMigration()
     console.error('❌ Migration failed:', error.message);
     process.exit(1);
   });
+
