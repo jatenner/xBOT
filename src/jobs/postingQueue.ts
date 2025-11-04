@@ -103,6 +103,25 @@ export async function processPostingQueue(): Promise<void> {
             console.log(`[POSTING_QUEUE] ⛔ SKIP: Would exceed ACTUAL tweet limit (${actualTweetsThisHour + thisTweetCount} > ${maxContentPerHour * 3})`);
             continue; // Skip this decision
           }
+          
+          // 🚨 THREAD SPACING: Minimum 30 minutes between threads to prevent spam appearance
+          if (decision.decision_type === 'thread') {
+            const thirtyMinsAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+            const { data: recentThreads } = await supabase
+              .from('content_generation_metadata_comprehensive')
+              .select('posted_at')
+              .eq('decision_type', 'thread')
+              .eq('status', 'posted')
+              .gte('posted_at', thirtyMinsAgo)
+              .limit(1);
+            
+            if (recentThreads && recentThreads.length > 0) {
+              const lastThreadMins = Math.round((Date.now() - new Date(recentThreads[0].posted_at).getTime()) / 60000);
+              console.log(`[POSTING_QUEUE] ⛔ SKIP THREAD: Last thread posted ${lastThreadMins}m ago (need 30m spacing)`);
+              log({ op: 'thread_spacing_block', last_thread_mins: lastThreadMins, min_spacing: 30 });
+              continue; // Skip this thread
+            }
+          }
         }
         
         if (isReply) {
