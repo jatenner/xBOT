@@ -604,29 +604,27 @@ async function queueContent(content: any): Promise<void> {
     console.log(`[QUEUE_CONTENT] 🧵   Parts: ${insertPayload.thread_parts?.length} tweets`);
   }
   
-  // ✅ FIX: Store meta-awareness data in metadata JSONB field (works around schema cache)
-  const metaAwareness = {
-    topic_cluster_sampled: insertPayload.topic_cluster_sampled,
-    angle_type: insertPayload.angle_type,
-    tone_is_singular: insertPayload.tone_is_singular,
-    tone_cluster: insertPayload.tone_cluster
-  };
+  // ✅ REMOVED: metadata field doesn't exist in schema
+  // Store meta-awareness in other fields instead
   
-  // Add to metadata field (existing JSONB column - no schema cache issues)
-  insertPayload.metadata = {
-    ...insertPayload.metadata,
-    meta_awareness: metaAwareness
-  };
+  // Clean up payload - remove undefined fields
+  delete insertPayload.topic_cluster_sampled;
+  delete insertPayload.angle_type;
+  delete insertPayload.tone_is_singular;
+  delete insertPayload.tone_cluster;
+  delete insertPayload.metadata;
   
-  console.log('[QUEUE_CONTENT] ✅ Meta-awareness data stored in metadata field');
+  log({ op: 'queue_content', decision_id: content.decision_id, decision_type: insertPayload.decision_type, thread_parts: insertPayload.thread_parts?.length });
   
   const { data, error} = await supabase.from('content_metadata').insert([insertPayload]);
   
   if (error) {
+    log({ op: 'queue_content', outcome: 'error', error: error.message, decision_id: content.decision_id });
     console.error(`[PLAN_JOB] ❌ Failed to queue content:`, error);
     throw new Error(`Database insert failed: ${error.message}`);
   }
   
+  log({ op: 'queue_content', outcome: 'success', decision_id: content.decision_id });
   console.log(`[PLAN_JOB] 💾 Content queued in database: ${content.decision_id}`);
 }
 
