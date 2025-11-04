@@ -1,20 +1,11 @@
-# Nixpacks configuration for Railway
-# https://nixpacks.com/docs/configuration/file
-
 [phases.setup]
-nixPkgs = ["nodejs-20_x"]
+nixPkgs = ["nodejs-20_x", "chromium"]
 
 [phases.install]
-cmds = [
-  "npm ci --omit=dev --no-audit",
-  "npx playwright install chromium"
-]
+cmds = ["npm ci --legacy-peer-deps"]
 
 [phases.build]
 cmds = ["npm run build"]
 
 [start]
-cmd = "node dist/src/main-bulletproof.js"
-
-[variables]
-NODE_ENV = "production"
+cmd = "npm start"
