@@ -1,63 +1,52 @@
 import { createServer } from "http";
 import { spawn } from "child_process";
+import { ENV, isProduction } from './config/env';
+import { log } from './lib/logger';
 import { getConfig, printConfigSummary, printDeprecationWarnings, getModeFlags } from './config/config';
 import { JobManager } from './jobs/jobManager';
 
 // CRITICAL: Process-level error handlers to prevent crashes
 process.on('uncaughtException', (error: Error) => {
-  console.error('🚨 UNCAUGHT EXCEPTION:', error.message);
-  console.error('Stack:', error.stack);
+  log({ op: 'uncaught_exception', error: error.message, stack: error.stack });
   
   // Handle specific known errors gracefully
   if (error.message?.includes('Target page, context or browser has been closed')) {
-    console.log('⚠️  Browser closed unexpectedly - will recover on next cycle');
+    log({ op: 'browser_closed', recoverable: true });
     // Don't crash - let the system continue
   } else if (error.message?.includes('Timeout')) {
-    console.log('⚠️  Operation timed out - will retry on next cycle');
+    log({ op: 'timeout_error', recoverable: true });
     // Don't crash - let the system continue  
   } else if (error.message?.includes('Network verification')) {
-    console.log('⚠️  Network verification error - non-fatal');
+    log({ op: 'network_error', recoverable: true });
     // Don't crash - continue operation
   } else {
     // For truly fatal errors, log and restart
-    console.error('💥 FATAL ERROR - System may need restart');
-    console.error('Error type:', error.name);
-    console.error('This will be logged but system continues...');
+    log({ op: 'fatal_error', error_type: error.name, fatal: true });
     // In production, you might want to: process.exit(1);
     // For now, we let it continue to prevent unnecessary crashes
   }
 });
 
 process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
-  console.error('🚨 UNHANDLED REJECTION at:', promise);
-  console.error('Reason:', reason);
+  log({ op: 'unhandled_rejection', reason: reason?.message || String(reason) });
   // Log but don't crash - most rejections can be recovered from
   if (reason?.message?.includes('closed') || reason?.message?.includes('Timeout')) {
-    console.log('⚠️  Recoverable rejection - continuing operation');
+    log({ op: 'recoverable_rejection', continue: true });
   }
 });
 
 // Startup configuration summary
 function getStartupSummary() {
   const config = {
-    posting_disabled: process.env.POSTING_DISABLED === 'true',
-    dry_run: process.env.DRY_RUN === 'true', 
-    startup_acceptance: process.env.STARTUP_ACCEPTANCE_ENABLED === 'true',
-    startup_dryrun_plan: process.env.STARTUP_RUN_DRYRUN_PLAN === 'true',
-    startup_dryrun_reply: process.env.STARTUP_RUN_DRYRUN_REPLY === 'true',
-    log_level: process.env.LOG_LEVEL || 'info',
-    db_ssl_mode: process.env.DATABASE_URL?.includes('sslmode=require') ? 'verified' : 'disabled',
-    node_env: process.env.NODE_ENV || 'development',
-    port: process.env.PORT || '8080'
+    node_env: ENV.NODE_ENV,
+    mode: ENV.MODE,
+    has_database: !!ENV.DATABASE_URL,
+    has_redis: !!ENV.REDIS_URL,
+    has_twitter_session: !!ENV.TWITTER_SESSION_B64,
+    port: ENV.PORT
   };
 
-  console.log('🚀 XBOT_STARTUP_SUMMARY:');
-  console.log(`   • Posting: ${config.posting_disabled ? 'DISABLED' : 'ENABLED'}`);
-  console.log(`   • Dry Run: ${config.dry_run ? 'ENABLED' : 'DISABLED'}`);
-  console.log(`   • Acceptance: ${config.startup_acceptance ? 'ENABLED' : 'DISABLED'}`);
-  console.log(`   • DB SSL: ${config.db_ssl_mode}`);
-  console.log(`   • Node ENV: ${config.node_env}`);
-  console.log(`   • Port: ${config.port}`);
+  log({ op: 'startup_summary', config });
   
   return config;
 }
@@ -81,23 +70,23 @@ async function runScript(scriptPath: string, args: string[] = []): Promise<boole
 }
 
 async function runStartupGates(config: any) {
-  console.log('🧪 STARTUP_GATES: Running optional startup checks...');
+  log({ op: 'startup_gates', status: 'running' });
   
   // Startup acceptance
   if (config.startup_acceptance) {
-    console.log('🧪 Running startup acceptance...');
+    log({ op: 'startup_acceptance', status: 'running' });
     const acceptanceOk = await runScript('dist/scripts/startup-acceptance.js');
-    console.log(`🧪 Startup acceptance: ${acceptanceOk ? 'PASS' : 'FAIL'}`);
-      } else {
-    console.log('🧪 Acceptance smoke: skipped (STARTUP_ACCEPTANCE_ENABLED=false)');
+    log({ op: 'startup_acceptance', outcome: acceptanceOk ? 'pass' : 'fail' });
+  } else {
+    log({ op: 'startup_acceptance', status: 'skipped' });
   }
   
   // Dry-run plan
   if (config.startup_dryrun_plan) {
-    console.log('📝 Running dry-run plan...');
+    log({ op: 'dryrun_plan', status: 'running' });
     const planOk = await runScript('dist/scripts/dryrun-plan.js', ['3']);
-    console.log(`📝 Dry-run plan: ${planOk ? 'COMPLETED' : 'FAILED'}`);
-      } else {
+    log({ op: 'dryrun_plan', outcome: planOk ? 'completed' : 'failed' });
+  } else {
     console.log('📝 Dry-run plan: skipped (STARTUP_RUN_DRYRUN_PLAN=false)');
   }
   

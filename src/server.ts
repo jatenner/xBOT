@@ -1,5 +1,6 @@
 import express from 'express';
-import { HOST, PORT, getSafeEnvironment } from './config/env';
+import { ENV } from './config/env';
+import { log } from './lib/logger';
 import { getBrowserStatus } from './playwright/browserFactory';
 import { checkDatabaseHealth } from './db/index';
 import { CadenceGuard } from './posting/cadenceGuard';
@@ -30,7 +31,7 @@ app.use(express.json());
 
 // Add request logging
 app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} ${req.method} ${req.path}`);
+  log({ op: 'http_request', method: req.method, path: req.path });
   next();
 });
 
@@ -39,21 +40,16 @@ app.use((req, res, next) => {
  */
 app.get('/env', (req, res) => {
   const safeEnv = {
-    NODE_ENV: process.env.NODE_ENV,
-    PORT: process.env.PORT,
-    POSTING_DISABLED: process.env.POSTING_DISABLED,
-    DRY_RUN: process.env.DRY_RUN,
-    LOG_LEVEL: process.env.LOG_LEVEL,
-    STARTUP_ACCEPTANCE_ENABLED: process.env.STARTUP_ACCEPTANCE_ENABLED,
-    ENABLE_BANDIT_LEARNING: process.env.ENABLE_BANDIT_LEARNING,
-    REPLY_MAX_PER_DAY: process.env.REPLY_MAX_PER_DAY,
+    NODE_ENV: ENV.NODE_ENV,
+    PORT: ENV.PORT,
+    HOST: ENV.HOST,
+    MODE: ENV.MODE,
     // Redact sensitive values
-    DATABASE_URL: process.env.DATABASE_URL ? '[REDACTED]' : undefined,
-    REDIS_URL: process.env.REDIS_URL ? '[REDACTED]' : undefined,
-    OPENAI_API_KEY: process.env.OPENAI_API_KEY ? '[REDACTED]' : undefined,
-    SUPABASE_URL: process.env.SUPABASE_URL ? '[REDACTED]' : undefined,
-    SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY ? '[REDACTED]' : undefined,
-    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY ? '[REDACTED]' : undefined,
+    DATABASE_URL: ENV.DATABASE_URL ? '[REDACTED]' : undefined,
+    REDIS_URL: ENV.REDIS_URL ? '[REDACTED]' : undefined,
+    OPENAI_API_KEY: '[REDACTED]',
+    SUPABASE_URL: '[REDACTED]',
+    SUPABASE_SERVICE_ROLE_KEY: '[REDACTED]',
   };
   
   res.json({
@@ -858,46 +854,41 @@ export function start(port?: number): Promise<void> {
 export function startHealthServer(): Promise<void> {
   return new Promise((resolve, reject) => {
     try {
-      const server = app.listen(PORT, HOST, () => {
-        console.log(`🏥 Health server listening on ${HOST}:${PORT}`);
-        console.log(`📊 Status endpoint: http://${HOST}:${PORT}/status`);
-        console.log(`🔧 Environment: http://${HOST}:${PORT}/env`);
-        console.log(`🌐 Browser status: http://${HOST}:${PORT}/playwright`);
-        console.log(`📝 Session info: http://${HOST}:${PORT}/session`);
-        console.log(`🧠 Learning status: http://${HOST}:${PORT}/learning/status`);
-        console.log(`📈 Learning metrics: http://${HOST}:${PORT}/learning/metrics`);
-        console.log(`✅ SERVER_READY: Health endpoints active, Railway can now route traffic`);
+      const port = parseInt(ENV.PORT);
+      const host = ENV.HOST;
+      const server = app.listen(port, host, () => {
+        log({ op: 'server_start', host, port, status: 'listening' });
+        log({ op: 'server_endpoints', endpoints: ['status', 'env', 'playwright', 'session', 'learning'] });
         
         // Initialize learning system in background (non-blocking)
         setImmediate(() => {
           learningSystem.initialize()
             .then(() => {
-              console.log('🧠 Learning system initialized successfully');
-              console.log('[HOOK_CLEANER] 🧹 Hook evolution engine will auto-clean on first generation');
+              log({ op: 'learning_system_init', outcome: 'success' });
             })
             .catch((error: any) => {
-              console.error('⚠️ Learning system initialization failed:', error.message);
+              log({ op: 'learning_system_init', outcome: 'error', error: error.message });
             });
         });
         
         // 🚨 CRITICAL FIX: Start JobManager to enable posting and replies
         setImmediate(async () => {
           try {
-            console.log('🕒 JOB_MANAGER: Initializing job timers...');
+            log({ op: 'job_manager_init', status: 'starting' });
             const jobManager = JobManager.getInstance();
             await jobManager.startJobs();
-            console.log('✅ JOB_MANAGER: All timers started successfully');
+            log({ op: 'job_manager_init', outcome: 'success' });
             
             // Run plan job immediately to populate queue
-            console.log('🚀 STARTUP: Running immediate plan job to populate queue...');
             try {
+              log({ op: 'startup_plan_job', status: 'running' });
               await jobManager.runJobNow('plan');
-              console.log('✅ STARTUP: Initial plan job completed');
+              log({ op: 'startup_plan_job', outcome: 'success' });
             } catch (error: any) {
-              console.error('❌ STARTUP: Plan job failed:', error.message);
+              log({ op: 'startup_plan_job', outcome: 'error', error: error.message });
             }
           } catch (error: any) {
-            console.error('❌ JOB_MANAGER: Failed to start:', error.message);
+            log({ op: 'job_manager_init', outcome: 'error', error: error.message });
           }
         });
         
@@ -905,15 +896,15 @@ export function startHealthServer(): Promise<void> {
       });
 
       server.on('error', (error) => {
-        console.error('Health server error:', error);
+        log({ op: 'server_error', error: error.message });
         reject(error);
       });
 
       // Graceful shutdown
       process.on('SIGTERM', () => {
-        console.log('🛑 Shutting down health server...');
+        log({ op: 'server_shutdown', status: 'initiated' });
         server.close(() => {
-          console.log('✅ Health server shut down complete');
+          log({ op: 'server_shutdown', status: 'complete' });
         });
       });
 

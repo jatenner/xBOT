@@ -471,3 +471,4 @@ COMMIT;
 -- Week 3: Verify data parity
 -- Week 4: Start switching reads to new tables
 -- Week 5: Full switch with instant rollback capability
+
