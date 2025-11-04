@@ -79,7 +79,9 @@ export async function processPostingQueue(): Promise<void> {
           let actualTweetsThisHour = 0;
           for (const post of recentContent || []) {
             if (post.decision_type === 'thread') {
-              const parts = Array.isArray(post.thread_parts) ? post.thread_parts.length : 5;
+              // Type-safe check for thread_parts
+              const threadParts = post.thread_parts as any[] | undefined;
+              const parts = Array.isArray(threadParts) ? threadParts.length : 5;
               actualTweetsThisHour += parts; // Thread = multiple tweets!
             } else {
               actualTweetsThisHour += 1; // Single = 1 tweet
@@ -116,7 +118,8 @@ export async function processPostingQueue(): Promise<void> {
               .limit(1);
             
             if (recentThreads && recentThreads.length > 0) {
-              const postedAt = String(recentThreads[0].posted_at);
+              const firstThread = recentThreads[0] as { posted_at: string };
+              const postedAt = String(firstThread.posted_at);
               const lastThreadMins = Math.round((Date.now() - new Date(postedAt).getTime()) / 60000);
               console.log(`[POSTING_QUEUE] ⛔ SKIP THREAD: Last thread posted ${lastThreadMins}m ago (need 30m spacing)`);
               log({ op: 'thread_spacing_block', last_thread_mins: lastThreadMins, min_spacing: 30 });
@@ -980,11 +983,11 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         console.log(`[POSTING_QUEUE] 📝 Using pre-formatted thread (${thread_parts.length} tweets)`);
         console.log(`[POSTING_QUEUE] 💡 Visual formatting was applied before queueing`);
         
-        // 🚀 POST THREAD (using simplified poster)
-        console.log(`[POSTING_QUEUE] 🚀 Posting thread to Twitter...`);
-        const { SimpleThreadPoster } = await import('./simpleThreadPoster');
+        // 🚀 POST THREAD (using BulletproofThreadComposer - creates CONNECTED threads, not reply chains)
+        console.log(`[POSTING_QUEUE] 🚀 Posting thread to Twitter via native composer...`);
+        const { BulletproofThreadComposer } = await import('../posting/BulletproofThreadComposer');
         
-        const result = await SimpleThreadPoster.postThread(thread_parts);
+        const result = await BulletproofThreadComposer.post(thread_parts);
         
         if (!result.success) {
           // Thread completely failed
@@ -992,22 +995,21 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
           throw new Error(`Thread posting failed: ${result.error}`);
         }
         
-        // Success (full or partial)
+        // Success - extract tweet IDs from result
         console.log(`[POSTING_QUEUE] ✅ Thread posted: ${result.mode}`);
-        console.log(`[POSTING_QUEUE] 🔗 Root tweet: ${result.tweetId}`);
-        console.log(`[POSTING_QUEUE] 📊 Tweet count: ${result.tweetIds.length}/${thread_parts.length}`);
+        const rootTweetId = result.tweetIds?.[0] || result.rootTweetUrl?.split('/').pop() || '';
+        const rootTweetUrl = result.rootTweetUrl || `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${rootTweetId}`;
         
-        if (result.mode === 'partial_thread') {
-          console.warn(`[POSTING_QUEUE] ⚠️ Partial thread: ${result.note}`);
-        }
+        console.log(`[POSTING_QUEUE] 🔗 Root tweet: ${rootTweetId}`);
+        console.log(`[POSTING_QUEUE] 📊 Tweet count: ${result.tweetIds?.length || 1}/${thread_parts.length}`);
         
         if (result.tweetIds && result.tweetIds.length > 0) {
           console.log(`[POSTING_QUEUE] 🔗 Tweet IDs: ${result.tweetIds.join(', ')}`);
         }
         
         return {
-          tweetId: result.tweetId,
-          tweetUrl: result.tweetUrl,
+          tweetId: rootTweetId,
+          tweetUrl: rootTweetUrl,
           tweetIds: result.tweetIds
         }
       } else {
