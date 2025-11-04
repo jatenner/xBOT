@@ -41,8 +41,10 @@ export class HumanContentOrchestrator {
     console.log('[HUMAN_ORCHESTRATOR] 🎭 Generating human-like content...');
     
     // 🎲 RANDOM DECISIONS (like a real human)
+    // ✅ GRADUAL THREAD ROLLOUT: Starting at 5% (was disabled, targeting 15%)
+    const threadChance = parseFloat(process.env.THREAD_PERCENTAGE || '5') / 100;
     const shouldCreateThread = params?.forceFormat === 'thread' || 
-      (params?.forceFormat !== 'single' && Math.random() < 0.3);
+      (params?.forceFormat !== 'single' && Math.random() < threadChance);
     
     const moods = ['curious', 'confident', 'playful', 'serious', 'surprised', 'thoughtful'];
     const selectedMood = params?.mood || moods[Math.floor(Math.random() * moods.length)];

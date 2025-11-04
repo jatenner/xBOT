@@ -64,11 +64,14 @@ You're creating for mobile timelines where people scroll fast. Your content need
 
 The format strategy gives you structural guidance. You decide how to implement it visually - through spacing, emphasis, progression, or other approaches that fit your philosophical style and the content.
 
-CONSTRAINTS:
-200-270 characters maximum. Every word must earn its place.
-NO first-person (I/me/my/we/us/our)
-Max 1 emoji (prefer 0)
-NO hashtags
+CRITICAL CONSTRAINTS:
+- MAXIMUM 270 characters (STRICT - Twitter limit is 280, we use 270 for safety)
+- Count every character including spaces and punctuation
+- If you're approaching 270, cut entire sentences, not words
+- NO first-person (I/me/my/we/us/our)
+- Max 1 emoji (prefer 0)
+- NO hashtags
+- VERIFY your output is under 270 chars before returning
 
 ${research ? `
 📊 USE THIS RESEARCH:
@@ -95,10 +98,12 @@ Return JSON: {
   "tweets": ["...", "...", ...],
   "visualFormat": "describe your formatting choice"}
 ` : `
-📱 SINGLE TWEET (180-280 chars):
+📱 SINGLE TWEET (STRICT 270 CHAR LIMIT):
 
 One profound truth about how things work.
 Simple, deep, practical - no hollow questions.
+
+CRITICAL: Your tweet MUST be 270 characters or less. Count carefully.
 
 Return JSON: {
   "tweet": "...",
@@ -118,8 +123,8 @@ Return JSON: {
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
       ],
-      temperature: 0.8,
-      max_tokens: format === 'thread' ? 600 : 150, // ✅ Reduced to stay under 280 chars
+      temperature: 0.7, // Reduced from 0.8 for more controlled output
+      max_tokens: format === 'thread' ? 500 : 120, // ✅ Further reduced to ensure <270 chars
       response_format: { type: 'json_object' }
     }, { purpose: 'philosopher_content_generation' });
 

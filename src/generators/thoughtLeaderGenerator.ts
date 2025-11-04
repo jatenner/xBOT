@@ -99,7 +99,7 @@ Return JSON: {
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.85,
-      max_tokens: format === 'thread' ? 600 : 150, // ✅ Reduced to stay under 280 chars
+      max_tokens: format === "thread" ? 500 : 120, // ✅ Reduced to stay under 280 chars
       response_format: { type: 'json_object' }
     }, { purpose: 'thought_leader_content_generation' });
 
