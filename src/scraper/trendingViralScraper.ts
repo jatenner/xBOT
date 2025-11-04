@@ -13,6 +13,7 @@
  * We learn STRUCTURE from all of Twitter, apply to health content
  */
 
+import { log } from '../lib/logger';
 import { chromium, Browser, Page } from 'playwright';
 import { getFormatAnalyzer } from '../analysis/viralFormatAnalyzer';
 import { getSupabaseClient } from '../db';
@@ -52,15 +53,10 @@ export class TrendingViralScraper {
       minEngagementRate = 0.02 // 2%
     } = options;
     
-    console.log('🔥 TRENDING VIRAL SCRAPER');
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log(`Target: ${maxTweets} tweets`);
-    console.log(`Min views: ${minViews.toLocaleString()}`);
-    console.log(`Min engagement: ${(minEngagementRate * 100).toFixed(1)}%`);
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+    log({ op: 'viral_scraper_start', target_tweets: maxTweets, min_views: minViews, min_er: minEngagementRate });
     
     const browser = await chromium.launch({
-      headless: process.env.HEADLESS !== 'false',
+      headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
     

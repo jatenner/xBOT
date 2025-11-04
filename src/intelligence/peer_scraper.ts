@@ -3,6 +3,8 @@
  * Scrapes high-performing health Twitter accounts for competitive intelligence
  */
 
+import { ENV } from '../config/env';
+import { log } from '../lib/logger';
 import { chromium, Browser, Page } from 'playwright';
 import { createClient } from '@supabase/supabase-js';
 import Redis from 'ioredis';
@@ -40,12 +42,12 @@ export class PeerScrapingSystem {
 
   constructor() {
     this.supabase = createClient(
-      process.env.SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
+      ENV.SUPABASE_URL,
+      ENV.SUPABASE_SERVICE_ROLE_KEY
     );
-    this.redis = new Redis(process.env.REDIS_URL!);
+    this.redis = new Redis(ENV.REDIS_URL || 'redis://localhost:6379');
     this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY!
+      apiKey: ENV.OPENAI_API_KEY
     });
     
     // Define peer accounts to monitor
@@ -65,7 +67,7 @@ export class PeerScrapingSystem {
    * Main scraping cycle for all peer accounts
    */
   async runPeerScrapingCycle(): Promise<void> {
-    console.log('🕵️ Starting peer scraping cycle...');
+    log({ op: 'peer_scraper_start', accounts: this.peerAccounts.length });
 
     const browser = await chromium.launch({ 
       headless: process.env.HEADLESS !== 'false',

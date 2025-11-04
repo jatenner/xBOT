@@ -1,3 +1,4 @@
+import { log } from '../lib/logger';
 import { Page } from 'playwright';
 import { UnifiedBrowserPool } from '../browser/UnifiedBrowserPool';
 import { admin as supabase } from '../lib/supabaseClients';
@@ -47,12 +48,12 @@ export class TwitterAnalyticsScraper {
     totalEngagement: number;
   }> {
     if (this.isRunning) {
-      console.log('📊 ANALYTICS_SCRAPER: Already running, skipping...');
+      log({ op: 'analytics_scraper', status: 'already_running' });
       return { tweets: [], profile: { followers: 0, following: 0, totalTweets: 0, scrapedAt: new Date() }, totalEngagement: 0 };
     }
 
     this.isRunning = true;
-    console.log('📊 ANALYTICS_SCRAPER: Starting comprehensive Twitter data extraction...');
+    log({ op: 'analytics_scraper_start' });
 
     try {
       return await this.pool.withContext('scrape_analytics', async (context) => {

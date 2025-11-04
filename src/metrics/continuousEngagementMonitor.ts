@@ -8,6 +8,8 @@
  * - Provides real-time learning data for posting optimization
  */
 
+import { ENV } from '../config/env';
+import { log } from '../lib/logger';
 import { createClient } from '@supabase/supabase-js';
 
 interface EngagementSnapshot {
@@ -49,23 +51,20 @@ export class ContinuousEngagementMonitor {
   }
 
   private async initializeSupabase() {
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const supabaseKey = process.env.SUPABASE_ANON_KEY;
-    
-    if (!supabaseUrl || !supabaseKey) {
-      console.error('❌ CONTINUOUS_MONITOR: Missing Supabase credentials');
+    if (!ENV.SUPABASE_URL || !ENV.SUPABASE_ANON_KEY) {
+      log({ op: 'continuous_monitor_init', status: 'error', reason: 'missing_credentials' });
       return;
     }
 
-    this.supabase = createClient(supabaseUrl, supabaseKey);
-    console.log('✅ CONTINUOUS_MONITOR: Supabase initialized');
+    this.supabase = createClient(ENV.SUPABASE_URL, ENV.SUPABASE_ANON_KEY);
+    log({ op: 'continuous_monitor_init', status: 'success' });
   }
 
   /**
    * 🎯 Start monitoring a new post with defined check intervals
    */
   public async startTrackingPost(tweetId: string, postTime: Date = new Date()): Promise<void> {
-    console.log(`📊 CONTINUOUS_MONITOR: Starting tracking for ${tweetId}`);
+    log({ op: 'continuous_monitor_track', tweet_id: tweetId });
 
     // Define check intervals: 1hr, 4hr, 12hr, 24hr, 48hr after posting
     const checkIntervals = [1, 4, 12, 24, 48];

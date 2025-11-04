@@ -1,7 +1,8 @@
+import { log } from '../lib/logger';
 import { Page } from 'playwright';
 import { createContext, resetBrowser, getBrowserStatus } from '../playwright/browserFactory';
 import { storeTweetMetrics } from '../db/index';
-import { ENABLE_METRICS_TRACKING } from '../config/env';
+import { ENV, ENABLE_METRICS_TRACKING } from '../config/env';
 
 export interface TweetMetrics {
   tweetId: string;
@@ -35,21 +36,21 @@ export class TweetMetricsTracker {
     error?: string;
   }> {
     if (!ENABLE_METRICS_TRACKING) {
-      console.log('📊 Metrics tracking disabled');
+      log({ op: 'track_tweet', status: 'disabled' });
       return { success: true };
     }
 
-    console.log(`📊 Tracking metrics for tweet: ${tweetId}`);
+    log({ op: 'track_tweet_start', tweet_id: tweetId });
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         const metrics = await this.scrapeMetrics(tweetId);
         if (metrics.success) {
           await this.storeMetrics(tweetId, metrics.data!);
-          console.log(`✅ Metrics tracked successfully for ${tweetId} (attempt ${attempt})`);
+          log({ op: 'track_tweet_complete', outcome: 'success', tweet_id: tweetId, attempt });
           return { success: true, metrics: metrics.data };
         } else {
-          console.warn(`⚠️ Attempt ${attempt}/${maxRetries} failed: ${metrics.error}`);
+          log({ op: 'track_tweet_attempt', outcome: 'failed', tweet_id: tweetId, attempt, error: metrics.error });
           if (attempt < maxRetries) {
             await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
           }

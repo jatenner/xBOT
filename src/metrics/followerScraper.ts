@@ -3,6 +3,7 @@
  * Resilient scraping when API/primary methods fail
  */
 
+import { log } from '../lib/logger';
 import { UnifiedBrowserPool } from '../browser/UnifiedBrowserPool';
 
 /**
@@ -40,7 +41,7 @@ export async function getFollowersFallback(handle: string): Promise<number> {
     const cleanHandle = handle.replace('@', '');
     const url = `https://x.com/${cleanHandle}`;
     
-    console.log(`🔍 Scraping follower count for @${cleanHandle}...`);
+    log({ op: 'follower_scrape_start', handle: cleanHandle });
     
     await page.goto(url, { 
       waitUntil: 'domcontentloaded', 
