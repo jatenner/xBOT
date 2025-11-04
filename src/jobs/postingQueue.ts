@@ -488,6 +488,9 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
   console.log(`${logPrefix} Processing ${decision.decision_type}: ${decision.id}`);
   console.log(`${logPrefix} 🔍 DEBUG: Starting processDecision`);
   
+  // 🔒 WRAP ENTIRE FUNCTION IN TRY-CATCH (critical fix for silent failures)
+  try {
+  
   // 🧵 THREAD DIAGNOSTICS: Enhanced logging for threads
   if (isThread) {
     const { getSupabaseClient } = await import('../db/index');
@@ -850,6 +853,24 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
       console.error(`[POSTING_QUEUE] ✅ But tweet ${tweetId} is LIVE - this is not a failure!`);
     }
     // DON'T re-throw - tweet might be live!
+  }
+  
+  } catch (topLevelError: any) {
+    // 🚨 CRITICAL: Catch any errors that happened BEFORE the main try block
+    const errorMsg = topLevelError?.message || topLevelError?.toString() || 'Unknown error';
+    const errorStack = topLevelError?.stack || 'No stack trace';
+    console.error(`${logPrefix} 🚨 FUNCTION-LEVEL ERROR:`, errorMsg);
+    console.error(`${logPrefix} 🚨 Stack trace:`, errorStack);
+    
+    // Mark decision as failed
+    try {
+      await markDecisionFailed(decision.id, errorMsg);
+    } catch (markError: any) {
+      console.error(`${logPrefix} 🚨 Failed to mark decision as failed:`, markError.message);
+    }
+    
+    // Re-throw so the calling function knows it failed
+    throw topLevelError;
   }
 }
 
