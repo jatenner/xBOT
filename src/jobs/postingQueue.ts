@@ -79,7 +79,7 @@ export async function processPostingQueue(): Promise<void> {
           let actualTweetsThisHour = 0;
           for (const post of recentContent || []) {
             if (post.decision_type === 'thread') {
-              const parts = post.thread_parts?.length || 5;
+              const parts = Array.isArray(post.thread_parts) ? post.thread_parts.length : 5;
               actualTweetsThisHour += parts; // Thread = multiple tweets!
             } else {
               actualTweetsThisHour += 1; // Single = 1 tweet
@@ -116,7 +116,8 @@ export async function processPostingQueue(): Promise<void> {
               .limit(1);
             
             if (recentThreads && recentThreads.length > 0) {
-              const lastThreadMins = Math.round((Date.now() - new Date(recentThreads[0].posted_at).getTime()) / 60000);
+              const postedAt = String(recentThreads[0].posted_at);
+              const lastThreadMins = Math.round((Date.now() - new Date(postedAt).getTime()) / 60000);
               console.log(`[POSTING_QUEUE] ⛔ SKIP THREAD: Last thread posted ${lastThreadMins}m ago (need 30m spacing)`);
               log({ op: 'thread_spacing_block', last_thread_mins: lastThreadMins, min_spacing: 30 });
               continue; // Skip this thread
