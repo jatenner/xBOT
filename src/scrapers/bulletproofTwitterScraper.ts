@@ -154,13 +154,12 @@ export class BulletproofTwitterScraper {
           console.log(`    🔍 VALIDATION: Not analytics page, running tweet ID validation...`);
           const correctTweet = await this.validateScrapingCorrectTweet(page, tweetId);
           if (!correctTweet) {
-            console.error(`  ❌ SCRAPER: Tweet ID mismatch - FAILING FAST (don't waste retries)`);
-            console.error(`     Likely a reply/thread where parent tweet is shown`);
-            return {
-              success: false,
-              metrics: null,
-              error: 'Tweet ID mismatch - wrong tweet loaded (possibly parent in thread)'
-            };
+            console.warn(`  ⚠️ SCRAPER: Tweet ID mismatch - but continuing anyway`);
+            console.warn(`     Likely a reply/thread where parent tweet is shown`);
+            console.warn(`     Extraction will target correct tweet by ID...`);
+            // FIX: Don't fail here - let extraction handle finding the right tweet
+            // The extractMetricsWithFallbacks function already targets by tweet ID
+            // Failing here prevents ANY data collection for replies/threads
           }
         } else {
           console.log(`    ✅ ANALYTICS: Skipping tweet ID validation (analytics page is modal)`);
