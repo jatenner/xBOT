@@ -3,6 +3,7 @@
  * Manages all recurring jobs: plan, reply, posting, learn with fail-fast in live mode
  */
 
+import { log } from '../lib/logger';
 import { flags } from '../config/featureFlags';
 import { getConfig, getModeFlags } from '../config/config';
 import { planContent } from './planJob'; // 🎯 SOPHISTICATED SYSTEM ACTIVE
@@ -63,7 +64,7 @@ export class JobManager {
     intervalMs: number,
     initialDelayMs: number
   ): void {
-    console.log(`🕒 JOB_MANAGER: Scheduling ${name} - first run in ${Math.round(initialDelayMs / 1000)}s, then every ${Math.round(intervalMs / 60000)}min`);
+    log({ op: 'job_schedule', job: name, initial_delay_s: Math.round(initialDelayMs / 1000), interval_min: Math.round(intervalMs / 60000) });
     
     // Schedule first run after initial delay
     const initialTimer = setTimeout(async () => {
@@ -95,7 +96,7 @@ export class JobManager {
   private async startStaggeredJobs(config: any, modeFlags: any): Promise<void> {
     this.isRunning = true;
     
-    console.log('🎯 JOB_MANAGER: Starting STAGGERED scheduling (prevents resource collisions)');
+    log({ op: 'job_manager_start', mode: 'staggered' });
     
     // 🚨 CRITICAL: Check if discovered_accounts table is empty on startup
     // If empty, trigger account discovery IMMEDIATELY so reply system can work

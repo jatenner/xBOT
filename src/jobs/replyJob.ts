@@ -4,6 +4,8 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
+import { ENV } from '../config/env';
+import { log } from '../lib/logger';
 import { getConfig } from '../config/config';
 import { getEnvConfig, isLLMAllowed } from '../config/envFlags';
 import { getSupabaseClient } from '../db/index';
@@ -15,30 +17,20 @@ import { ReplyDiagnosticLogger } from '../utils/replyDiagnostics';
 // ============================================================
 // RATE LIMIT CONFIGURATION (from .env)
 // ============================================================
-const REPLY_CONFIG = {
-  // Minutes between replies (prevents spam)
-  MIN_MINUTES_BETWEEN: parseInt(process.env.REPLY_MINUTES_BETWEEN || '15', 10),
-  
-  // Max replies per hour (attempts, not posted) - EXACTLY 4/hour target
-  MAX_REPLIES_PER_HOUR: parseInt(process.env.REPLIES_PER_HOUR || '4', 10),
-  
-  // Max replies per day (attempts, not posted)
-  MAX_REPLIES_PER_DAY: parseInt(process.env.REPLY_MAX_PER_DAY || '250', 10),
-  
-  // How many to generate per cycle (batch size)
-  BATCH_SIZE: parseInt(process.env.REPLY_BATCH_SIZE || '1', 10),
-  
-  // Stagger delays (prevents bursts)
-  STAGGER_BASE_MIN: parseInt(process.env.REPLY_STAGGER_BASE_MIN || '5', 10),
-  STAGGER_INCREMENT_MIN: parseInt(process.env.REPLY_STAGGER_INCREMENT_MIN || '10', 10),
+const getReplyConfig = () => {
+  const config = {
+    MIN_MINUTES_BETWEEN: 15,
+    MAX_REPLIES_PER_HOUR: 4,
+    MAX_REPLIES_PER_DAY: 250,
+    BATCH_SIZE: 1,
+    STAGGER_BASE_MIN: 5,
+    STAGGER_INCREMENT_MIN: 10,
+  };
+  log({ op: 'reply_config_loaded', config });
+  return config;
 };
 
-console.log('[REPLY_CONFIG] 📋 Rate limits loaded:');
-console.log(`  • Min between: ${REPLY_CONFIG.MIN_MINUTES_BETWEEN} minutes`);
-console.log(`  • Max per hour: ${REPLY_CONFIG.MAX_REPLIES_PER_HOUR}`);
-console.log(`  • Max per day: ${REPLY_CONFIG.MAX_REPLIES_PER_DAY}`);
-console.log(`  • Batch size: ${REPLY_CONFIG.BATCH_SIZE}`);
-console.log(`  • Stagger: ${REPLY_CONFIG.STAGGER_BASE_MIN}min base + ${REPLY_CONFIG.STAGGER_INCREMENT_MIN}min/reply`);
+const REPLY_CONFIG = getReplyConfig();
 
 // Global metrics
 let replyLLMMetrics = {
@@ -52,47 +44,79 @@ export function getReplyLLMMetrics() {
 }
 
 /**
- * Check hourly reply quota
+ * Check hourly reply quota WITH RETRY LOGIC
+ * 🔒 FAIL-CLOSED: Blocks posting if check fails (safety first)
  */
 async function checkReplyHourlyQuota(): Promise<{
   canReply: boolean;
   repliesThisHour: number;
   minutesUntilNext?: number;
 }> {
-  const supabase = getSupabaseClient();
-  const now = new Date();
-  const hourStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), 0, 0, 0);
+  const MAX_RETRIES = 3;
   
-  try {
-    // 🚨 CRITICAL FIX: Count replies in content_metadata (the actual table we use!)
-    const { count, error } = await supabase
-      .from('content_metadata')
-      .select('*', { count: 'exact', head: true })
-      .eq('decision_type', 'reply')
-      .eq('status', 'posted')
-      .gte('posted_at', hourStart.toISOString())
-      .lt('posted_at', new Date(hourStart.getTime() + 60 * 60 * 1000).toISOString());
-    
-    if (error) {
-      console.error('[REPLY_QUOTA] ❌ Database error:', error);
-      return { canReply: true, repliesThisHour: 0 }; // Allow on error
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const supabase = getSupabaseClient();
+      const now = new Date();
+      const hourStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), 0, 0, 0);
+      
+      // Count replies in content_metadata
+      const { count, error } = await supabase
+        .from('content_metadata')
+        .select('*', { count: 'exact', head: true })
+        .eq('decision_type', 'reply')
+        .eq('status', 'posted')
+        .gte('posted_at', hourStart.toISOString())
+        .lt('posted_at', new Date(hourStart.getTime() + 60 * 60 * 1000).toISOString());
+      
+      if (error) {
+        console.error(`[REPLY_QUOTA] ❌ Database error (attempt ${attempt}/${MAX_RETRIES}):`, error.message);
+        
+        if (attempt < MAX_RETRIES) {
+          // Retry with exponential backoff
+          const delayMs = 1000 * attempt; // 1s, 2s, 3s
+          console.log(`[REPLY_QUOTA] 🔄 Retrying in ${delayMs}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+          continue;
+        }
+        
+        // All retries failed - FAIL CLOSED for safety
+        console.error('[REPLY_QUOTA] 🔒 FAIL-CLOSED: Blocking posting as safety measure');
+        await logRateLimitFailure('hourly_quota_check_failed', error.message);
+        return { canReply: false, repliesThisHour: 999 }; // Block posting
+      }
+      
+      const repliesThisHour = count || 0;
+      const canReply = repliesThisHour < REPLY_CONFIG.MAX_REPLIES_PER_HOUR;
+      
+      let minutesUntilNext;
+      if (!canReply) {
+        const nextHour = new Date(hourStart.getTime() + 60 * 60 * 1000);
+        minutesUntilNext = (nextHour.getTime() - now.getTime()) / (1000 * 60);
+      }
+      
+      // Success - return result
+      return { canReply, repliesThisHour, minutesUntilNext };
+      
+    } catch (error: any) {
+      console.error(`[REPLY_QUOTA] ❌ Quota check failed (attempt ${attempt}/${MAX_RETRIES}):`, error.message);
+      
+      if (attempt < MAX_RETRIES) {
+        const delayMs = 1000 * attempt;
+        console.log(`[REPLY_QUOTA] 🔄 Retrying in ${delayMs}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        continue;
+      }
+      
+      // All retries failed - FAIL CLOSED for safety
+      console.error('[REPLY_QUOTA] 🔒 FAIL-CLOSED: Blocking posting as safety measure');
+      await logRateLimitFailure('hourly_quota_exception', error.message);
+      return { canReply: false, repliesThisHour: 999 };
     }
-    
-    const repliesThisHour = count || 0;
-    const canReply = repliesThisHour < REPLY_CONFIG.MAX_REPLIES_PER_HOUR;
-    
-    let minutesUntilNext;
-    if (!canReply) {
-      const nextHour = new Date(hourStart.getTime() + 60 * 60 * 1000);
-      minutesUntilNext = (nextHour.getTime() - now.getTime()) / (1000 * 60);
-    }
-    
-    return { canReply, repliesThisHour, minutesUntilNext };
-    
-  } catch (error) {
-    console.error('[REPLY_QUOTA] ❌ Quota check failed:', error);
-    return { canReply: true, repliesThisHour: 0 }; // Allow on error
   }
+  
+  // Should never reach here, but fail closed just in case
+  return { canReply: false, repliesThisHour: 999 };
 }
 
 /**

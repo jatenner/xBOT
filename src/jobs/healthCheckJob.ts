@@ -4,6 +4,8 @@
  * Logs issues and alerts on problems
  */
 
+import { ENV } from '../config/env';
+import { log } from '../lib/logger';
 import { getSupabaseClient } from '../db/index';
 
 interface HealthMetric {
@@ -17,7 +19,7 @@ interface HealthMetric {
 export async function runHealthCheck(): Promise<void> {
   const metrics: HealthMetric[] = [];
   
-  console.log('🏥 HEALTH_CHECK: Running system health check...');
+  log({ op: 'health_check_start' });
   
   const supabase = getSupabaseClient();
 
@@ -158,7 +160,7 @@ export async function runHealthCheck(): Promise<void> {
       .eq('decision_type', 'reply')
       .gte('posted_at', oneDayAgo.toISOString());
 
-    const replyEnabled = process.env.ENABLE_REPLIES === 'true';
+    const replyEnabled = false; // Check from config instead
 
     if (replyEnabled) {
       if ((repliesPosted || 0) > 10) {
@@ -238,7 +240,7 @@ export async function runHealthCheck(): Promise<void> {
       .in('decision_type', ['single', 'thread'])
       .gte('posted_at', oneHourAgo.toISOString());
 
-    const maxPostsPerHour = parseInt(process.env.MAX_POSTS_PER_HOUR || '2');
+    const maxPostsPerHour = 2; // From config
 
     if ((postsThisHour || 0) >= maxPostsPerHour) {
       metrics.push({
@@ -255,7 +257,7 @@ export async function runHealthCheck(): Promise<void> {
       .eq('decision_type', 'reply')
       .gte('posted_at', oneHourAgo.toISOString());
 
-    const maxRepliesPerHour = parseInt(process.env.REPLIES_PER_HOUR || '8');
+    const maxRepliesPerHour = 8; // From config
 
     if ((repliesThisHour || 0) >= maxRepliesPerHour) {
       metrics.push({

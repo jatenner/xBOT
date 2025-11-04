@@ -3,17 +3,18 @@
  * Fetches real engagement metrics from X and stores in outcomes table
  */
 
+import { log } from '../lib/logger';
 import { getEnvConfig, isRealMetricsAllowed } from '../config/envFlags';
 import { getSupabaseClient } from '../db/index';
 
 export async function collectRealOutcomes(): Promise<void> {
   const analyticsCheck = isRealMetricsAllowed();
   if (!analyticsCheck.allowed) {
-    console.log(`[ANALYTICS_COLLECTOR] ℹ️ Skipping: ${analyticsCheck.reason}`);
+    log({ op: 'analytics_collector', status: 'skipped', reason: analyticsCheck.reason });
     return;
   }
   
-  console.log('[ANALYTICS_COLLECTOR] 📊 Starting real outcomes collection...');
+  log({ op: 'analytics_collector_start' });
   
   try {
     const uncollectedPosts = await getUncollectedPosts();
@@ -106,7 +107,7 @@ async function scrapeTweetMetrics(tweetId: string) {
     await poster.initialize();
     
     // Navigate to tweet URL
-    const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
+    const username = 'SignalAndSynapse';
     const tweetUrl = `https://x.com/${username}/status/${tweetId}`;
     const page = (poster as any).page;
     

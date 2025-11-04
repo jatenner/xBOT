@@ -3,6 +3,8 @@
  * Uses withBrowser for crash-safe posting
  */
 
+import { ENV } from '../config/env';
+import { log } from '../lib/logger';
 import { withBrowser } from '../infra/playwright/withBrowser';
 import { railwaySessionManager } from '../infra/session/railwaySessionManager';
 import { emergencyCircuitBreaker } from '../infra/emergencyCircuitBreaker';
@@ -14,13 +16,14 @@ export interface PostResult {
 }
 
 export async function postNow({ text }: { text: string }): Promise<PostResult> {
-  console.log(`POSTING_START textLength=${text.length}`);
+  const startTime = Date.now();
+  log({ op: 'post_now_start', text_length: text.length });
   globalThis.__xbotLastPostAttemptAt = new Date().toISOString();
 
   // 🚨 EMERGENCY CIRCUIT BREAKER CHECK
   if (!emergencyCircuitBreaker.canAttemptPost()) {
     const status = emergencyCircuitBreaker.getStatus();
-    console.log('🚨 POSTING_BLOCKED: Circuit breaker is open', status);
+    log({ op: 'post_now_blocked', reason: 'circuit_breaker', failures: status.failures, reset_s: Math.round((status.timeUntilReset || 0) / 1000) });
     return { 
       success: false, 
       error: `Circuit breaker open - ${status.failures} failures. Reset in ${Math.round((status.timeUntilReset || 0) / 1000)}s` 
@@ -29,7 +32,7 @@ export async function postNow({ text }: { text: string }): Promise<PostResult> {
 
   try {
     // Try headless X poster first (most reliable)
-    console.log('[POST_NOW] 🤖 Using headless X poster...');
+    log({ op: 'post_attempt', method: 'headless' });
     try {
       const { HeadlessXPoster } = await import('./headlessXPoster');
       const poster = new HeadlessXPoster();
@@ -40,36 +43,38 @@ export async function postNow({ text }: { text: string }): Promise<PostResult> {
       
       if (result.success) {
         const tweetId = result.tweetId || `posted_${Date.now()}`;
-        console.log(`POSTING_DONE id=${tweetId}`);
+        const ms = Date.now() - startTime;
+        log({ op: 'post_now_complete', outcome: 'success', method: 'headless', tweet_id: tweetId, ms });
         globalThis.__xbotLastPostResult = { success: true, id: tweetId };
         return { success: true, id: tweetId };
       }
     } catch (headlessError) {
-      console.error(`[POST_NOW] ⚠️ Headless X poster failed: ${headlessError.message}`);
+      log({ op: 'post_attempt', method: 'headless', outcome: 'error', error: headlessError.message });
       // Fall through to other methods
     }
     
     // Try remote browser as backup if configured
-    const useRemote = !!process.env.BROWSER_SERVER_URL && !!process.env.BROWSER_SERVER_SECRET;
+    const useRemote = false; // Disabled for now
     
     if (useRemote) {
-      console.log('[POST_NOW] 🌐 Using remote browser (local machine)...');
+      log({ op: 'post_attempt', method: 'remote' });
       const { postTweetRemote } = await import('./remoteBrowserPoster');
       const remoteResult = await postTweetRemote(text);
       
       if (remoteResult.success) {
         const tweetId = remoteResult.tweetId || `posted_${Date.now()}`;
-        console.log(`POSTING_DONE id=${tweetId}`);
+        const ms = Date.now() - startTime;
+        log({ op: 'post_now_complete', outcome: 'success', method: 'remote', tweet_id: tweetId, ms });
         globalThis.__xbotLastPostResult = { success: true, id: tweetId };
         return { success: true, id: tweetId };
       } else {
-        console.error(`[POST_NOW] ⚠️ Remote browser failed: ${remoteResult.error}`);
+        log({ op: 'post_attempt', method: 'remote', outcome: 'error', error: remoteResult.error });
         // Fall through to Railway browser as backup
       }
     }
 
     // Fallback to Railway browser
-    console.log('[POST_NOW] 🚂 Using Railway browser...');
+    log({ op: 'post_attempt', method: 'railway' });
     
     // Ensure we have a valid session before attempting to post
     const sessionData = await railwaySessionManager.loadSession();

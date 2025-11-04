@@ -11,12 +11,14 @@
  * - Prevents data loss and learning system corruption
  */
 
+import { ENV } from '../config/env';
+import { log } from '../lib/logger';
 import { getSupabaseClient } from '../db';
 import { UnifiedBrowserPool } from '../browser/UnifiedBrowserPool';
 import { BulletproofTweetExtractor } from '../utils/bulletproofTweetExtractor';
 
 export async function idRecoveryJob(): Promise<void> {
-  console.log('[ID_RECOVERY] 🔄 Starting ID recovery job...');
+  log({ op: 'id_recovery_start' });
   
   try {
     const supabase = getSupabaseClient();
@@ -60,7 +62,7 @@ export async function idRecoveryJob(): Promise<void> {
           // Use bulletproof extractor with wide time window
           const extraction = await BulletproofTweetExtractor.extractTweetId(page, {
             expectedContent: String(post.content),
-            expectedUsername: process.env.TWITTER_USERNAME || 'SignalAndSynapse',
+            expectedUsername: 'SignalAndSynapse',
             maxAgeSeconds: 86400, // 24 hours
             navigateToVerify: true
           });
@@ -71,7 +73,7 @@ export async function idRecoveryJob(): Promise<void> {
               .from('content_metadata')
               .update({
                 tweet_id: extraction.tweetId,
-                tweet_url: extraction.url || `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${extraction.tweetId}`,
+                tweet_url: extraction.url || `https://x.com/SignalAndSynapse/status/${extraction.tweetId}`,
                 needs_id_recovery: false
               })
               .eq('decision_id', post.decision_id);

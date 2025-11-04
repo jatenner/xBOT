@@ -3,6 +3,8 @@
  * Combines all working strategies with updated selectors
  */
 
+import { ENV } from '../config/env';
+import { log } from '../lib/logger';
 import { Page } from 'playwright';
 import { ULTIMATE_SELECTORS, isLoggedOut } from './ultimateTwitterSelectors';
 
@@ -10,14 +12,15 @@ export class UltimateTwitterPoster {
   constructor(private page: Page) {}
 
   async postTweet(content: string): Promise<{ success: boolean; tweetId?: string; error?: string }> {
+    const startTime = Date.now();
     try {
-      console.log('🎯 ULTIMATE_POSTER: Starting with updated selectors...');
+      log({ op: 'ultimate_posting_fix_start', content_length: content.length });
       
       // 🍪 CRITICAL: Load Twitter session first!
-      console.log('🍪 ULTIMATE_SESSION: Loading Twitter session...');
+      log({ op: 'session_load', status: 'loading' });
       
       // Load session from environment
-      const sessionB64 = process.env.TWITTER_SESSION_B64;
+      const sessionB64 = ENV.TWITTER_SESSION_B64;
       if (!sessionB64) {
         throw new Error('TWITTER_SESSION_B64 not found in environment');
       }
@@ -27,9 +30,7 @@ export class UltimateTwitterPoster {
       // 🍪 CRITICAL FIX: Parse session data properly
       let cookies = sessionData;
       
-      // Debug: Log session data structure
-      console.log('🔍 ULTIMATE_DEBUG: Session data type:', typeof sessionData);
-      console.log('🔍 ULTIMATE_DEBUG: Is array:', Array.isArray(sessionData));
+      log({ op: 'session_parse', data_type: typeof sessionData, is_array: Array.isArray(sessionData) });
       
       if (!Array.isArray(sessionData)) {
         // If sessionData is an object, it might be a cookie object or contain cookies
@@ -61,19 +62,19 @@ export class UltimateTwitterPoster {
         throw new Error('No valid cookies found in session data');
       }
       
-      console.log(`🍪 ULTIMATE_SESSION: Adding ${validCookies.length} valid cookies to browser`);
+      log({ op: 'cookies_add', count: validCookies.length });
       await this.page.context().addCookies(validCookies);
-      console.log(`✅ ULTIMATE_SESSION: ${validCookies.length} session cookies loaded successfully`);
+      log({ op: 'session_load', status: 'success', cookie_count: validCookies.length });
       
       // Navigate to Twitter
       await this.page.goto('https://x.com', { waitUntil: 'domcontentloaded', timeout: 30000 });
-      console.log('🌐 ULTIMATE_NAVIGATION: Navigated to Twitter');
+      log({ op: 'navigation', url: 'https://x.com', status: 'complete' });
       
       // Check if logged out
       if (await isLoggedOut(this.page)) {
         throw new Error('Not logged in to Twitter - session may have expired');
       }
-      console.log('✅ ULTIMATE_AUTH: Successfully logged in to Twitter');
+      log({ op: 'auth_check', status: 'logged_in' });
       
       // Find composer with ultimate selectors
       let composer = null;

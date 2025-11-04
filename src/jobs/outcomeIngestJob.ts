@@ -7,6 +7,8 @@
  * Runs after posts are published to collect engagement data.
  */
 
+import { ENV } from '../config/env';
+import { log } from '../lib/logger';
 import { getSupabaseClient } from '../db';
 
 interface TweetMetrics {
@@ -19,13 +21,12 @@ interface TweetMetrics {
 }
 
 export async function collectRealOutcomes(): Promise<void> {
-  console.log('[OUTCOME_INGEST] 📊 Starting real outcome collection...');
+  log({ op: 'outcome_ingest_start' });
   
-  const bearerToken = process.env.TWITTER_BEARER_TOKEN;
+  const bearerToken = ENV.TWITTER_BEARER_TOKEN || null;
   
   if (!bearerToken) {
-    console.log('[OUTCOME_INGEST] ⏭️ Skipping: TWITTER_BEARER_TOKEN not configured');
-    console.log('[OUTCOME_INGEST] ℹ️ To enable: Set TWITTER_BEARER_TOKEN in Railway variables');
+    log({ op: 'outcome_ingest', status: 'skipped', reason: 'no_bearer_token' });
     return;
   }
   

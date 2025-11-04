@@ -5,12 +5,13 @@
  * Runs every 10 minutes to ensure we have fresh data for learning
  */
 
+import { log } from '../lib/logger';
 import { getSupabaseClient } from '../db';
 import { BulletproofTwitterScraper } from '../scrapers/bulletproofTwitterScraper';
 import { ScrapingOrchestrator } from '../metrics/scrapingOrchestrator';
 
 export async function metricsScraperJob(): Promise<void> {
-  console.log('[METRICS_JOB] 🔍 Starting scheduled metrics collection...');
+  log({ op: 'metrics_scraper_start' });
   
   try {
     const supabase = getSupabaseClient();
