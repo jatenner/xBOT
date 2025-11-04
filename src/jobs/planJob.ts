@@ -401,49 +401,24 @@ Be specific, interesting, and match the tone precisely. Sound like an expert who
 
 ⚠️ CRITICAL: Return your response as valid JSON format (required for API).
 
-RANDOMLY select format with genuine randomness:
-- 85% probability: Single tweet (ideal: 200-270 chars, max: 280)
-- 15% probability: Thread (3-5 connected tweets)
+🚫 THREADS TEMPORARILY DISABLED - ALWAYS CREATE SINGLE TWEETS
+Generate ONLY single tweets while we perfect the system.
+Threads will be re-enabled later once singles are perfected.
 
-For SINGLE tweet (85% chance) - return JSON:
+REQUIRED FORMAT - return JSON:
 {
   "text": "Your tweet content here (ideal: 200-270 chars)",
   "format": "single"
 }
 
-For THREAD (15% chance - use when topic needs depth) - return JSON:
-{
-  "text": [
-    "Tweet 1: Hook or opening insight (200-270 chars)",
-    "Tweet 2: Main mechanism or data (200-270 chars)",
-    "Tweet 3: Additional depth or example (200-270 chars)",
-    "Tweet 4: Actionable takeaway or conclusion (200-270 chars)"
-  ],
-  "format": "thread"
-}
-
-THREAD QUALITY REQUIREMENTS (if you select thread):
-1. Each tweet: 200-270 characters (leave room for engagement)
-2. Natural conversation flow (each tweet stands alone but connects to next)
-3. NO numbering (1., 2., 3.) - threads are conversations, not lists
-4. NO "thread below 🧵" or thread indicators
-5. Build depth: Hook → Mechanism → Data → Action/Insight
-6. Each tweet should add NEW information (no repetition)
-7. Match the TONE consistently across all tweets
-8. Apply the ANGLE throughout the thread
-9. Avoid emojis (0-1 max total across ALL tweets)
-
-WHEN to choose THREAD over SINGLE:
-- Topic needs depth (mechanisms, protocols, comparisons)
-- Storytelling format (case studies, narratives, timelines)
-- Multi-step explanations (how-to, protocols)
-- Data-heavy content (multiple studies, comparisons)
-
-WHEN to choose SINGLE:
-- Quick insights (one key fact)
-- Questions (provocative, don't need answers)
-- Bold claims (controversial takes)
-- Simple mechanisms (can explain in 270 chars)`;
+SINGLE TWEET REQUIREMENTS:
+- Length: 200-270 characters ideal (max 280, but leave room)
+- No first-person (I/me/my)
+- 0-2 emojis maximum (preferably 0-1)
+- NO hashtags ever
+- Sound like an expert, not a textbook
+- Be specific and interesting
+- Match the TONE and ANGLE precisely`;
   
   return { system, user };
   }
