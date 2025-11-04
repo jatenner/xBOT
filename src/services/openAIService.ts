@@ -9,6 +9,8 @@
  * - Error handling and retries
  */
 
+import { ENV } from '../config/env';
+import { log } from '../lib/logger';
 import OpenAI from 'openai';
 import { createBudgetedChatCompletion, createBudgetedChatCompletionStream, BudgetExceededError } from './openaiBudgetedClient';
 import { getBudgetStatus } from '../budget/budgetGate';
@@ -70,7 +72,7 @@ export class OpenAIService {
 
   private constructor() {
     this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
+      apiKey: ENV.OPENAI_API_KEY,
       timeout: 30000, // 30 second timeout
       maxRetries: 3
     });
@@ -125,9 +127,9 @@ export class OpenAIService {
       }
     }
 
-    console.log(`🤖 OPENAI_SERVICE: ${requestType} request (${model}, priority: ${priority})`);
+    log({ op: 'openai_request_start', request_type: requestType, model, priority });
 
-    try {
+    try{
       // Budget check temporarily disabled for build compatibility
       // TODO: Fix budget status interface
       // Budget optimization removed - using budget guard instead
@@ -185,16 +187,23 @@ export class OpenAIService {
 
       await this.recordUsage(usageRecord);
 
-      // NEW: Track in comprehensive cost tracker (single call, correct signature)
-      // Cost tracking is now handled by newCostTracker.wrapOpenAI above
-      console.log(`💰 ACTUAL_COST: $${actualCost.toFixed(4)} (${usage?.total_tokens} tokens)`);
-
-      console.log(`✅ OPENAI_SUCCESS: $${actualCost.toFixed(4)} (${duration}ms, ${usage?.total_tokens} tokens)`);
+      // Log with full details
+      log({ 
+        op: 'openai_request_complete', 
+        outcome: 'success', 
+        request_type: requestType,
+        model,
+        prompt_tokens: usage?.prompt_tokens || 0,
+        completion_tokens: usage?.completion_tokens || 0,
+        total_tokens: usage?.total_tokens || 0,
+        cost_usd: actualCost,
+        ms: duration
+      });
       
       return actualResponse;
 
     } catch (error: any) {
-      console.error(`❌ OPENAI_ERROR: ${error.message}`);
+      log({ op: 'openai_request_complete', outcome: 'error', request_type: requestType, model, error: error.message });
       
       // Record failed usage
       const usageRecord: UsageRecord = {
