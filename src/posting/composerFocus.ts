@@ -3,13 +3,14 @@
  * Multiple strategies with retries to eliminate COMPOSER_NOT_FOCUSED errors
  */
 
+import { log } from '../lib/logger';
 import { Page } from 'playwright';
 
-// Environment configuration with defaults
-const PLAYWRIGHT_FOCUS_RETRIES = parseInt(process.env.PLAYWRIGHT_FOCUS_RETRIES || '4', 10);
-const PLAYWRIGHT_FOCUS_TIMEOUT_MS = parseInt(process.env.PLAYWRIGHT_FOCUS_TIMEOUT_MS || '12000', 10);
-const PLAYWRIGHT_REPLY_TIMEOUT_MS = parseInt(process.env.PLAYWRIGHT_REPLY_TIMEOUT_MS || '12000', 10);
-const PLAYWRIGHT_COMPOSER_STRICT = (process.env.PLAYWRIGHT_COMPOSER_STRICT ?? 'true') === 'true';
+// Configuration with defaults
+const PLAYWRIGHT_FOCUS_RETRIES = 4;
+const PLAYWRIGHT_FOCUS_TIMEOUT_MS = 12000;
+const PLAYWRIGHT_REPLY_TIMEOUT_MS = 12000;
+const PLAYWRIGHT_COMPOSER_STRICT = true;
 
 // Comprehensive selector sets - UPDATED FOR CURRENT X INTERFACE
 const COMPOSER_SELECTORS = [

@@ -1,3 +1,4 @@
+import { log } from '../lib/logger';
 import { Page } from 'playwright';
 import { browserManager } from './BrowserManager';
 
@@ -38,14 +39,14 @@ export class NativeThreadComposer {
       return await this.postSingleTweet(tweets[0]);
     }
 
-    console.log(`🧵 NATIVE_THREAD: Creating ${tweets.length}-tweet thread on "${topic}"`);
+    log({ op: 'native_thread_start', tweet_count: tweets.length, topic });
 
     try {
       return await browserManager.withContext('posting', async (context) => {
         const page = await context.newPage();
         
         // Navigate to compose page
-        console.log('🌐 NATIVE_THREAD: Navigating to compose...');
+        log({ op: 'native_thread_navigate', url: '/compose/tweet' });
         await page.goto('https://x.com/compose/tweet', { 
           waitUntil: 'domcontentloaded',
           timeout: 15000 
