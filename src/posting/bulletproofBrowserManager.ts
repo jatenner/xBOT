@@ -3,6 +3,8 @@
  * Handles Playwright focus issues and "subtree intercepts pointer events" failures
  */
 
+import { ENV } from '../config/env';
+import { log } from '../lib/logger';
 import { Page, Locator } from 'playwright';
 import fs from 'fs/promises';
 import path from 'path';
@@ -17,10 +19,10 @@ export interface FocusResult {
 export class BulletproofBrowserManager {
   private page: Page;
   
-  // Configuration from environment
-  private readonly PLAYWRIGHT_NAV_TIMEOUT_MS = parseInt(process.env.PLAYWRIGHT_NAV_TIMEOUT_MS || '15000', 10);
-  private readonly PLAYWRIGHT_MAX_CONTEXT_RETRIES = parseInt(process.env.PLAYWRIGHT_MAX_CONTEXT_RETRIES || '3', 10);
-  private readonly PLAYWRIGHT_CONTEXT_RETRY_BACKOFF_MS = parseInt(process.env.PLAYWRIGHT_CONTEXT_RETRY_BACKOFF_MS || '2000', 10);
+  // Configuration
+  private readonly PLAYWRIGHT_NAV_TIMEOUT_MS = 15000;
+  private readonly PLAYWRIGHT_MAX_CONTEXT_RETRIES = 3;
+  private readonly PLAYWRIGHT_CONTEXT_RETRY_BACKOFF_MS = 2000;
 
   constructor(page: Page) {
     this.page = page;
@@ -30,7 +32,7 @@ export class BulletproofBrowserManager {
    * Focus composer with bulletproof typing capabilities
    */
   async focusComposer(): Promise<FocusResult> {
-    console.log('🎯 BULLETPROOF_FOCUS: Attempting to focus composer with robust typing...');
+    log({ op: 'bulletproof_focus_start' });
     
     try {
       // Step 1: Close overlays first
@@ -54,7 +56,7 @@ export class BulletproofBrowserManager {
         return focusResult;
       }
 
-      console.log('✅ BULLETPROOF_FOCUS: Composer focused and ready for typing');
+      log({ op: 'bulletproof_focus_complete', outcome: 'success' });
       return {
         success: true,
         method: 'bulletproof_focus',

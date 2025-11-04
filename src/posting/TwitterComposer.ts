@@ -1,3 +1,4 @@
+import { log } from '../lib/logger';
 import { Page, Locator } from 'playwright';
 
 export const SELECTORS = {
@@ -53,10 +54,10 @@ async function openReplyComposer(page: Page, rootUrl: string): Promise<void> {
   // Dismiss overlay if present
   const overlay = await page.$('div[aria-live="polite"]:has-text("New posts available"), button[aria-label^="New posts are available"]');
   if (overlay) {
-    console.log('🚨 COMPOSER_GUARD: "New posts available" overlay detected, dismissing...');
+    log({ op: 'composer_overlay_dismiss', status: 'detected' });
     await page.keyboard.press('.');
     await page.waitForTimeout(1000);
-    console.log('✅ COMPOSER_GUARD: overlay_dismissed=true');
+    log({ op: 'composer_overlay_dismiss', status: 'success' });
   }
 
   // Ensure the tweet article is present

@@ -3,6 +3,8 @@
  * Single browser instance to prevent conflicts
  */
 
+import { ENV } from '../config/env';
+import { log } from '../lib/logger';
 import { Browser, BrowserContext, Page, chromium } from 'playwright';
 
 class SimplifiedBulletproofPoster {
@@ -25,12 +27,12 @@ class SimplifiedBulletproofPoster {
         await this.page.evaluate(() => document.title);
         return; // Browser is healthy
       } catch {
-        console.log('🔄 BROWSER_RECOVERY: Browser needs restart');
+        log({ op: 'browser_recovery', action: 'restart' });
         await this.cleanup();
       }
     }
 
-    console.log('🚀 SIMPLIFIED_BROWSER: Starting single browser instance...');
+    log({ op: 'simplified_browser_start' });
     
     this.browser = await chromium.launch({
       headless: true,
@@ -49,14 +51,14 @@ class SimplifiedBulletproofPoster {
     });
 
     // CRITICAL: Load Twitter session if available
-    if (process.env.TWITTER_SESSION_B64) {
+    if (ENV.TWITTER_SESSION_B64) {
       try {
-        const sessionData = Buffer.from(process.env.TWITTER_SESSION_B64, 'base64').toString('utf-8');
+        const sessionData = Buffer.from(ENV.TWITTER_SESSION_B64, 'base64').toString('utf-8');
         const sessionJson = JSON.parse(sessionData);
         
         if (sessionJson.cookies && Array.isArray(sessionJson.cookies)) {
           await this.context.addCookies(sessionJson.cookies);
-          console.log(`🍪 SESSION_LOADED: ${sessionJson.cookies.length} cookies from TWITTER_SESSION_B64`);
+          log({ op: 'session_load', cookie_count: sessionJson.cookies.length, source: 'TWITTER_SESSION_B64' });
         } else if (Array.isArray(sessionJson)) {
           await this.context.addCookies(sessionJson);
           console.log(`🍪 SESSION_LOADED: ${sessionJson.length} cookies from TWITTER_SESSION_B64`);

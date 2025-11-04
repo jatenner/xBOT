@@ -5,6 +5,7 @@
  * No Twitter API attempts, no HTTP posting, just pure browser posting
  */
 
+import { log } from '../lib/logger';
 import { getConfig } from '../config/config';
 
 interface PlaywrightPostResult {
@@ -31,8 +32,7 @@ export class PlaywrightOnlyPoster {
      */
     async postWithPlaywright(content: string): Promise<PlaywrightPostResult> {
         const startTime = Date.now();
-        console.log('🎭 PLAYWRIGHT_ONLY: Starting browser-only posting...');
-        console.log(`🎭 PLAYWRIGHT_ONLY: Content: "${content.substring(0, 50)}..."`);
+        log({ op: 'playwright_only_start', content_length: content.length });
         
         const { chromium } = await import('playwright');
         let browser: any = null;

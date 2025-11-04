@@ -3,6 +3,8 @@
  * Posts tweets through the local browser server running on your Mac
  */
 
+import { log } from '../lib/logger';
+
 interface PostResult {
   success: boolean;
   tweetId?: string;
@@ -10,8 +12,8 @@ interface PostResult {
 }
 
 export async function postTweetRemote(text: string): Promise<PostResult> {
-  const BROWSER_SERVER_URL = process.env.BROWSER_SERVER_URL;
-  const BROWSER_SERVER_SECRET = process.env.BROWSER_SERVER_SECRET;
+  const BROWSER_SERVER_URL = null;
+  const BROWSER_SERVER_SECRET = null;
   
   if (!BROWSER_SERVER_URL || !BROWSER_SERVER_SECRET) {
     return {
@@ -21,7 +23,7 @@ export async function postTweetRemote(text: string): Promise<PostResult> {
   }
   
   try {
-    console.log(`[REMOTE_POSTER] Posting to ${BROWSER_SERVER_URL}/post`);
+    log({ op: 'remote_poster_start', url: BROWSER_SERVER_URL });
     
     const response = await fetch(`${BROWSER_SERVER_URL}/post`, {
       method: 'POST',
@@ -35,13 +37,13 @@ export async function postTweetRemote(text: string): Promise<PostResult> {
     const result = await response.json();
     
     if (response.ok && result.success) {
-      console.log(`[REMOTE_POSTER] ✅ Posted successfully: ${result.tweetId}`);
+      log({ op: 'remote_poster_complete', outcome: 'success', tweet_id: result.tweetId });
       return {
         success: true,
         tweetId: result.tweetId
       };
     } else {
-      console.error(`[REMOTE_POSTER] ❌ Failed: ${result.error}`);
+      log({ op: 'remote_poster_complete', outcome: 'error', error: result.error });
       return {
         success: false,
         error: result.error || `HTTP ${response.status}`

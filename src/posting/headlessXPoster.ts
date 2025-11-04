@@ -3,6 +3,7 @@
  * Integrates with your existing xBOT system architecture
  */
 
+import { log } from '../lib/logger';
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import fs from 'fs';
 import path from 'path';
@@ -27,12 +28,12 @@ export class HeadlessXPoster {
   private sessionPath: string;
 
   constructor() {
-    // Use environment variable for session path or fallback to local
-    this.sessionPath = process.env.XBOT_SESSION_PATH || path.join(process.cwd(), 'data', 'twitter_session.json');
+    // Use default session path
+    this.sessionPath = path.join(process.cwd(), 'data', 'twitter_session.json');
   }
 
   async initialize(): Promise<void> {
-    console.log('🤖 Initializing Headless X Poster...');
+    log({ op: 'headless_poster_init' });
     
     // Load session using bulletproof manager
     const sessionData = await railwaySessionManager.loadSession();
@@ -41,7 +42,7 @@ export class HeadlessXPoster {
       throw new Error('No valid Twitter session available');
     }
     
-    console.log(`✅ Session loaded: ${sessionData.cookies.length} cookies from ${sessionData.source}`);
+    log({ op: 'session_load', cookie_count: sessionData.cookies.length, source: sessionData.source });
 
     // Launch headless browser with enhanced stealth
     this.browser = await chromium.launch({

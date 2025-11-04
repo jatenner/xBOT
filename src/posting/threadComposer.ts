@@ -2,6 +2,8 @@
  * 🧵 THREAD COMPOSER - Robust thread posting with composer + fallback modes
  */
 
+import { ENV } from '../config/env';
+import { log } from '../lib/logger';
 import { Page } from 'playwright';
 import ThreadBuilder from '../utils/threadBuilder';
 
@@ -26,12 +28,12 @@ export class ThreadComposer {
   private page: Page;
   private options: Required<ThreadComposerOptions>;
   
-  // Environment configuration
-  private readonly THREAD_MAX_TWEETS = parseInt(process.env.THREAD_MAX_TWEETS || '9');
-  private readonly THREAD_REPLY_DELAY_SEC = parseInt(process.env.THREAD_REPLY_DELAY_SEC || '2');
-  private readonly THREAD_RETRY_ATTEMPTS = parseInt(process.env.THREAD_RETRY_ATTEMPTS || '3');
-  private readonly PLAYWRIGHT_NAV_TIMEOUT_MS = parseInt(process.env.PLAYWRIGHT_NAV_TIMEOUT_MS || '30000');
-  private readonly PLAYWRIGHT_SAFE_SELECTORS = process.env.PLAYWRIGHT_SAFE_SELECTORS === 'true';
+  // Configuration
+  private readonly THREAD_MAX_TWEETS = 9;
+  private readonly THREAD_REPLY_DELAY_SEC = 2;
+  private readonly THREAD_RETRY_ATTEMPTS = 3;
+  private readonly PLAYWRIGHT_NAV_TIMEOUT_MS = 30000;
+  private readonly PLAYWRIGHT_SAFE_SELECTORS = false;
 
   constructor(page: Page, options: ThreadComposerOptions = {}) {
     this.page = page;
@@ -39,7 +41,7 @@ export class ThreadComposer {
       retryAttempts: options.retryAttempts || this.THREAD_RETRY_ATTEMPTS,
       replyDelay: options.replyDelay || this.THREAD_REPLY_DELAY_SEC * 1000,
       verificationTimeout: options.verificationTimeout || 10000,
-      dryRun: options.dryRun || process.env.DRY_RUN === 'true'
+      dryRun: options.dryRun || false
     };
 
     // Set page timeouts
@@ -51,11 +53,12 @@ export class ThreadComposer {
    * 🎯 MAIN FUNCTION: Post content as thread or single tweet
    */
   async postContent(content: string): Promise<ThreadPostResult> {
-    console.log('🧵 THREAD_COMPOSER: Starting content posting...');
+    log({ op: 'thread_composer_start', content_length: content.length });
     
     // Check for emergency single post mode
-    if (process.env.FORCE_SINGLE_POST === 'true') {
-      console.log('🚨 FORCE_SINGLE_POST: Threading disabled, posting as single tweet');
+    const forceSingle = false;
+    if (forceSingle) {
+      log({ op: 'thread_composer', mode: 'force_single' });
       return await this.postSingleTweet(content);
     }
 

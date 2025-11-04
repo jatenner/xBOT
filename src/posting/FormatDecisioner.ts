@@ -4,6 +4,8 @@
  * diversity constraints, and cooldown periods
  */
 
+import { log } from '../lib/logger';
+
 interface FormatPerformance {
   format: 'single' | 'thread' | 'reply';
   attempts: number;
@@ -33,10 +35,10 @@ export class FormatDecisioner {
   private maxHistorySize = 50;
 
   private policy: FormatPolicy = {
-    minInterval: parseInt(process.env.FORMAT_MIN_INTERVAL_MINUTES || '120', 10), // 2 hours
-    maxConsecutive: parseInt(process.env.FORMAT_MAX_CONSECUTIVE || '2', 10),
-    diversityWeight: parseFloat(process.env.FORMAT_DIVERSITY_WEIGHT || '0.4'),
-    performanceWeight: parseFloat(process.env.FORMAT_PERFORMANCE_WEIGHT || '0.6')
+    minInterval: 120, // 2 hours
+    maxConsecutive: 2,
+    diversityWeight: 0.4,
+    performanceWeight: 0.6
   };
 
   constructor() {

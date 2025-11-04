@@ -3,6 +3,7 @@
  * Handles single tweets and threaded posts with robust error handling
  */
 
+import { log } from '../lib/logger';
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import Redis from 'ioredis';
 import fs from 'fs/promises';
@@ -55,7 +56,7 @@ export async function postOriginal(page: Page, text: string) {
   const btn = await findFirst(page, sendSelectors, 6000);
   if (btn) await btn.click({ delay: 40 });
   else {
-    const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
+    const mod = 'Control'; // Use Control for consistency
     await page.keyboard.press(`${mod}+Enter`);
   }
 }

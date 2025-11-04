@@ -1,3 +1,4 @@
+import { log } from '../lib/logger';
 import { Page, Locator } from 'playwright';
 
 /**
@@ -5,7 +6,7 @@ import { Page, Locator } from 'playwright';
  * Handles all Twitter interface changes with dynamic detection
  */
 
-export interface BulletproofPostResult {
+export interface BulletproofPostResult{
   success: boolean;
   tweetId?: string;
   error?: string;
@@ -19,7 +20,7 @@ export class BulletproofTwitterComposer {
    * 🎯 Post with multiple fallback strategies
    */
   async postTweet(content: string): Promise<BulletproofPostResult> {
-    console.log(`🛡️ BULLETPROOF_COMPOSER: Posting "${content.substring(0, 50)}..."`);
+    log({ op: 'bulletproof_composer_start', content_length: content.length });
     
     const strategies = [
       () => this.strategyDirectCompose(content),
@@ -30,15 +31,15 @@ export class BulletproofTwitterComposer {
 
     for (let i = 0; i < strategies.length; i++) {
       const strategyName = ['DirectCompose', 'HomePage', 'Keyboard', 'Mobile'][i];
-      console.log(`🔄 STRATEGY_${i + 1}: Trying ${strategyName}...`);
+      log({ op: 'composer_strategy_attempt', strategy: strategyName, attempt: i + 1 });
       
       try {
         const result = await strategies[i]();
         if (result.success) {
-          console.log(`✅ STRATEGY_${i + 1}: ${strategyName} succeeded!`);
+          log({ op: 'composer_strategy_complete', strategy: strategyName, outcome: 'success' });
           return { ...result, strategy: strategyName };
         }
-        console.log(`❌ STRATEGY_${i + 1}: ${strategyName} failed: ${result.error}`);
+        log({ op: 'composer_strategy_complete', strategy: strategyName, outcome: 'failed', error: result.error });
       } catch (error: any) {
         console.log(`💥 STRATEGY_${i + 1}: ${strategyName} crashed: ${error.message}`);
       }
