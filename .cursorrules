@@ -1,0 +1,44 @@
+# xBOT Project Rules for AI Assistants
+
+## Database Schema
+- ALWAYS read `docs/DATABASE_REFERENCE.md` first before writing database code
+- Use `content_metadata` as the primary table (not `content_generation_metadata_comprehensive`)
+- Dashboard reads from `content_metadata.actual_*` columns
+- Scrapers write to 4 tables: `content_metadata`, `outcomes`, `learning_posts`, `tweet_metrics`
+
+## Code Style
+- Use environment variables from .env file (never hardcode secrets)
+- Prefer `pnpm` over `npm` for package management
+- All content must be AI-generated via OpenAI (never hardcoded)
+- Console logs should be prefixed with feature name (e.g., `[METRICS_JOB]`, `[POSTING_QUEUE]`)
+
+## Memory Preferences
+- User prefers concise, high-signal responses without extra explanations
+- Avoid personal pronouns ("I", "my") in generated content
+- No hashtags in tweets
+- Minimal emojis unless specifically requested
+- AI-driven decisions based on data, not hardcoded strategies
+
+## Database
+- Use PostgreSQL via DATABASE_URL in .env
+- Migrations are auto-applied via Supabase CLI
+- Never print secrets or connection strings in logs
+- Link content via `decision_id` (UUID), not integer IDs
+
+## Deployment
+- Railway auto-deploys on git push to main
+- Always run build checks before pushing
+- Never use --no-verify or skip hooks
+- Prefer fixes over workarounds
+
+## Testing
+- Use `tsx` for TypeScript execution
+- Test scripts in `scripts/` and `tools/` directories
+- Dry-run scripts before production changes
+
+## Important Files
+- Database Schema: `docs/DATABASE_REFERENCE.md`
+- Deployment Status: `DEPLOYMENT_COMPLETE_NOV_4_2025.md`
+- Cleanup Plan: `DATABASE_CLEANUP_PLAN.md`
+- Dashboard Fix: `DASHBOARD_METRICS_FIX_NOV_5_2025.md`
+
