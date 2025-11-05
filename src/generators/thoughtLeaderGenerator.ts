@@ -30,68 +30,40 @@ export async function generateThoughtLeaderContent(params: {
   
   const patterns = getGeneratorPatterns('thought_leader');
   
-  const systemPrompt = `You create content for a premium health science account known for forward-thinking insights.
+  const systemPrompt = `You offer big-picture insights and frameworks.
 
-Your voice: Share where health research and practices are heading, grounded in current evidence.
-Think: Analyzing emerging trends, not hyping "the future is here."
+Core rule: Must be substantive thinking, not buzzwords.
 
-This account's reputation:
-• Substantive trend analysis (not vague predictions)
-• Evidence-based foresight (not "revolutionary" hype)
-• Credible observations about shifts happening now
-• Content that makes people think ahead
-
-⚠️ CRITICAL: 200-270 characters. Brevity is essential.
-
-RULES:
-• NO first-person (I/me/my/we/us/our)
-• Max 1 emoji (prefer 0)
-• NO hashtags
-
-Your content explores emerging research, shifting paradigms, and where health science is headed.
-Be creative in how you present trends and insights
-
+You've been given:
+- Topic: ${topic}
+- Tone: ${tone}
+- Angle: ${angle}
+- Format strategy: ${formatStrategy}
 
 ${research ? `
-📊 USE THIS RESEARCH:
+Research available:
 ${research.finding}
 Source: ${research.source}
 Mechanism: ${research.mechanism}
-
-Where is this trend going? What's the forward-thinking angle?
 ` : ''}
 
 ${intelligenceContext}
 
+Interpret these through your thought leadership. See the bigger picture.
+How you frame it is up to you.
+
 ${format === 'thread' ? `
-📱 THREAD FORMAT (3-5 tweets, 150-250 chars each):
-
-🔥 CRITICAL: Threads must FLOW and CONNECT - each tweet builds on the previous one!
-
-Tweet 1: The shift happening now
-Tweet 2: Current example/proof point - MUST connect to Tweet 1 using phrases like "Here's proof", "We're seeing this in", "Evidence shows"
-Tweet 3: Where it's going (prediction) - MUST build on Tweet 2 using phrases like "This is leading to", "The trajectory suggests", "What's next"
-Tweet 4: What this means (implication) - MUST flow from Tweet 3 using phrases like "So", "This means", "The implication is"
-
-Each tweet should feel like a natural continuation of the previous one. Use connecting words/phrases to create narrative flow. Avoid standalone statements - threads are ONE continuous idea broken into parts.
-
-Return JSON: {
-  "tweets": ["...", "...", ...],
-  "visualFormat": "describe your formatting choice"}
+THREAD FORMAT (3-5 tweets, 150-250 chars each):
+Return JSON: { "tweets": ["...", "...", ...], "visualFormat": "describe approach" }
 ` : `
-📱 SINGLE TWEET (180-280 chars):
-
-One forward-thinking insight with current example and future direction.
-Show where things are going, not just what is.
-
-Return JSON: {
-  "tweet": "...",
-  "visualFormat": "describe your formatting choice"}
+Return JSON: { "tweet": "...", "visualFormat": "describe approach" }
 `}
 
-🔥 SHOW TRENDS: Where is this moving? What's the trajectory?
-🧠 GIVE EXAMPLES: Current proof points of the shift
-⚡ PREDICT: Where will this be in 2-5 years?`;
+Constraints:
+- 200-270 characters max per tweet
+- No first-person (I/me/my)
+- No hashtags
+- Max 1 emoji (prefer 0)`;
 
   const userPrompt = `Create forward-thinking content about ${topic}. Explore trends, predictions, or paradigm shifts in whatever format is most compelling.`;
 
