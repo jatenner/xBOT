@@ -183,8 +183,31 @@ export class BulletproofTwitterScraper {
             console.log(`  ✅ VALIDATION: Metrics passed realism check`);
           } catch (validationError: any) {
             console.error(`  ❌ VALIDATION: ${validationError.message}`);
+            
+            // Track validation failure
+            await this.recordScrapingAttempt(
+              tweetId,
+              false,
+              currentUrl.includes('/analytics') ? 'analytics' : 'intelligent',
+              metrics,
+              `Validation failed: ${validationError.message}`,
+              attempt,
+              ms
+            );
+            
             throw validationError; // Fail fast on unrealistic metrics
           }
+
+          // ✅ Track successful scraping
+          await this.recordScrapingAttempt(
+            tweetId,
+            true,
+            currentUrl.includes('/analytics') ? 'analytics' : 'intelligent',
+            metrics,
+            undefined,
+            attempt,
+            ms
+          );
 
           return {
             success: true,
@@ -234,6 +257,17 @@ export class BulletproofTwitterScraper {
     // All attempts failed - capture evidence and return UNDETERMINED
     const ms = Date.now() - startTime;
     log({ op: 'scraper_complete', outcome: 'failed', tweet_id: tweetId, attempts: maxAttempts, error: lastError?.message, ms });
+
+    // Track failed scraping attempt
+    await this.recordScrapingAttempt(
+      tweetId,
+      false,
+      'all_strategies_failed',
+      undefined,
+      lastError?.message || 'All attempts exhausted',
+      maxAttempts,
+      ms
+    );
 
     const screenshot = await this.captureFailureEvidence(page, tweetId);
 
@@ -577,28 +611,39 @@ export class BulletproofTwitterScraper {
       if (likesMatch) {
         metrics.likes = parseInt(likesMatch[1].replace(/,/g, ''));
         console.log(`    ✅ LIKES: ${metrics.likes}`);
-      } else {
-        // Twitter might show "0 Likes" or no likes text for tweets with 0 likes
+      } else if (analyticsText.toLowerCase().includes('like')) {
+        // Text mentions "Like" but no number - probably 0 likes
         metrics.likes = 0;
-        console.log(`    ⚠️ LIKES: No match found, defaulting to 0`);
+        console.log(`    ✅ LIKES: 0 (mentioned but no count)`);
+      } else {
+        // Not found at all - leave undefined to trigger fallback
+        console.log(`    ⚠️ LIKES: Not found in analytics text (will try fallback strategies)`);
       }
       
       const retweetsMatch = analyticsText.match(/(\d+(?:,\d+)*)\s*(?:Retweet|retweet|Repost|repost)/);
       if (retweetsMatch) {
         metrics.retweets = parseInt(retweetsMatch[1].replace(/,/g, ''));
         console.log(`    ✅ RETWEETS: ${metrics.retweets}`);
-      } else {
+      } else if (analyticsText.toLowerCase().match(/retweet|repost/)) {
+        // Text mentions retweet/repost but no number - probably 0
         metrics.retweets = 0;
-        console.log(`    ⚠️ RETWEETS: No match found, defaulting to 0`);
+        console.log(`    ✅ RETWEETS: 0 (mentioned but no count)`);
+      } else {
+        // Not found at all - leave undefined to trigger fallback
+        console.log(`    ⚠️ RETWEETS: Not found in analytics text (will try fallback strategies)`);
       }
       
       const repliesMatch = analyticsText.match(/(\d+(?:,\d+)*)\s*(?:Reply|reply|replies)/);
       if (repliesMatch) {
         metrics.replies = parseInt(repliesMatch[1].replace(/,/g, ''));
         console.log(`    ✅ REPLIES: ${metrics.replies}`);
-      } else {
+      } else if (analyticsText.toLowerCase().includes('repl')) {
+        // Text mentions replies but no number - probably 0
         metrics.replies = 0;
-        console.log(`    ⚠️ REPLIES: No match found, defaulting to 0`);
+        console.log(`    ✅ REPLIES: 0 (mentioned but no count)`);
+      } else {
+        // Not found at all - leave undefined to trigger fallback
+        console.log(`    ⚠️ REPLIES: Not found in analytics text (will try fallback strategies)`);
       }
       
     } catch (error: any) {
@@ -1310,16 +1355,102 @@ export class BulletproofTwitterScraper {
   }
 
   /**
+   * Record scraping attempt for health monitoring
+   */
+  private async recordScrapingAttempt(
+    tweetId: string,
+    success: boolean,
+    strategyUsed: string,
+    metrics?: Partial<ScrapedMetrics>,
+    error?: string,
+    attemptNumber: number = 1,
+    durationMs?: number
+  ): Promise<void> {
+    try {
+      const { getSupabaseClient } = await import('../db/index');
+      const supabase = getSupabaseClient();
+      
+      await supabase.from('scraper_health').insert({
+        tweet_id: tweetId,
+        strategy_used: strategyUsed,
+        success,
+        error_message: error || null,
+        attempt_number: attemptNumber,
+        extracted_likes: metrics?.likes ?? null,
+        extracted_retweets: metrics?.retweets ?? null,
+        extracted_replies: metrics?.replies ?? null,
+        extracted_views: metrics?.views ?? null,
+        extraction_duration_ms: durationMs || null,
+        scraped_at: new Date().toISOString()
+      });
+      
+      log({ 
+        op: 'scraper_health_recorded', 
+        tweet_id: tweetId, 
+        success, 
+        strategy: strategyUsed 
+      });
+    } catch (error: any) {
+      // Don't fail scraping if health tracking fails
+      console.warn(`    ⚠️ HEALTH: Failed to record attempt: ${error.message}`);
+    }
+  }
+
+  /**
    * Get scraping success rate from recent attempts
    */
-  async getSuccessRate(): Promise<{ total: number; successful: number; rate: number }> {
-    // TODO: Track attempts in database for monitoring
-    // For now, return placeholder
-    return {
-      total: 0,
-      successful: 0,
-      rate: 0
-    };
+  async getSuccessRate(hoursBack: number = 24): Promise<{ 
+    total: number; 
+    successful: number; 
+    failed: number;
+    rate: number;
+    byStrategy: Record<string, { total: number; successful: number; rate: number }>;
+  }> {
+    try {
+      const { getSupabaseClient } = await import('../db/index');
+      const supabase = getSupabaseClient();
+      
+      const cutoff = new Date(Date.now() - hoursBack * 60 * 60 * 1000).toISOString();
+      
+      const { data, error } = await supabase
+        .from('scraper_health')
+        .select('success, strategy_used')
+        .gte('scraped_at', cutoff);
+      
+      if (error || !data) {
+        console.warn(`    ⚠️ HEALTH: Failed to get success rate: ${error?.message}`);
+        return { total: 0, successful: 0, failed: 0, rate: 0, byStrategy: {} };
+      }
+      
+      const total = data.length;
+      const successful = data.filter(r => r.success).length;
+      const failed = total - successful;
+      const rate = total > 0 ? successful / total : 0;
+      
+      // Calculate success rate by strategy
+      const byStrategy: Record<string, { total: number; successful: number; rate: number }> = {};
+      for (const record of data) {
+        const strategy: string = (record.strategy_used as string) || 'unknown';
+        if (!byStrategy[strategy]) {
+          byStrategy[strategy] = { total: 0, successful: 0, rate: 0 };
+        }
+        byStrategy[strategy]!.total++;
+        if (record.success) {
+          byStrategy[strategy]!.successful++;
+        }
+      }
+      
+      // Calculate rate for each strategy
+      for (const strategy in byStrategy) {
+        const stats = byStrategy[strategy]!;
+        stats.rate = stats.total > 0 ? stats.successful / stats.total : 0;
+      }
+      
+      return { total, successful, failed, rate, byStrategy };
+    } catch (error: any) {
+      console.warn(`    ⚠️ HEALTH: Error calculating success rate: ${error.message}`);
+      return { total: 0, successful: 0, failed: 0, rate: 0, byStrategy: {} };
+    }
   }
 
   /**
