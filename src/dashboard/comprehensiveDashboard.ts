@@ -1888,12 +1888,313 @@ function generateFollowerGrowthHTML(data: any): string {
 </html>`;
 }
 
+/**
+ * Generate Visual Intelligence dashboard
+ */
+export async function generateVisualIntelligenceDashboard(): Promise<string> {
+  const supabase = getSupabaseClient();
+  
+  try {
+    // Get VI system data
+    const [
+      viStats,
+      recentTweets,
+      topPatterns,
+      tierBreakdown
+    ] = await Promise.all([
+      getVISystemStats(supabase),
+      getRecentCollectedTweets(supabase),
+      getTopFormattingPatterns(supabase),
+      getVITierBreakdown(supabase)
+    ]);
+
+    return generateVisualIntelligenceHTML({
+      viStats,
+      recentTweets,
+      topPatterns,
+      tierBreakdown
+    });
+
+  } catch (error: any) {
+    console.error('[VI_DASHBOARD] Error:', error.message);
+    return generateErrorHTML(error.message);
+  }
+}
+
+async function getVISystemStats(supabase: any) {
+  const [targets, tweets, classified, analyzed, patterns, viralUnknowns] = await Promise.all([
+    supabase.from('vi_scrape_targets').select('*', { count: 'exact', head: true }),
+    supabase.from('vi_collected_tweets').select('*', { count: 'exact', head: true }),
+    supabase.from('vi_content_classification').select('*', { count: 'exact', head: true }),
+    supabase.from('vi_visual_formatting').select('*', { count: 'exact', head: true }),
+    supabase.from('vi_format_intelligence').select('*', { count: 'exact', head: true }),
+    supabase.from('vi_viral_unknowns').select('*', { count: 'exact', head: true })
+  ]);
+
+  return {
+    targets: targets.count || 0,
+    tweets: tweets.count || 0,
+    classified: classified.count || 0,
+    analyzed: analyzed.count || 0,
+    patterns: patterns.count || 0,
+    viralUnknowns: viralUnknowns.count || 0
+  };
+}
+
+async function getRecentCollectedTweets(supabase: any) {
+  const { data } = await supabase
+    .from('vi_collected_tweets')
+    .select('tweet_id, author_username, content, tier, engagement_rate, views, is_viral, scraped_at')
+    .order('scraped_at', { ascending: false })
+    .limit(20);
+
+  return data || [];
+}
+
+async function getTopFormattingPatterns(supabase: any) {
+  const { data } = await supabase
+    .from('vi_format_intelligence')
+    .select('topic, angle, tone, structure, confidence_level, based_on_count, weighted_avg_engagement, primary_tier')
+    .order('based_on_count', { ascending: false })
+    .limit(10);
+
+  return data || [];
+}
+
+async function getVITierBreakdown(supabase: any) {
+  const { data } = await supabase
+    .from('vi_collected_tweets')
+    .select('tier');
+
+  if (!data || data.length === 0) return [];
+
+  const byTier = data.reduce((acc: any, tweet: any) => {
+    const tier = tweet.tier || 'unknown';
+    acc[tier] = (acc[tier] || 0) + 1;
+    return acc;
+  }, {});
+
+  return Object.entries(byTier).map(([tier, count]) => ({ tier, count }));
+}
+
+function generateVisualIntelligenceHTML(data: any): string {
+  const now = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
+  
+  const progressPercent = data.viStats.tweets > 0 
+    ? Math.round((data.viStats.classified / data.viStats.tweets) * 100)
+    : 0;
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+    <title>🎨 Visual Formatting Intelligence | xBOT</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="refresh" content="60">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; margin: 20px; background: #0a0a0a; color: #e0e0e0; }
+        .container { max-width: 1400px; margin: 0 auto; }
+        h1 { color: #00d9ff; margin-bottom: 5px; }
+        .subtitle { color: #888; margin-bottom: 30px; }
+        .nav-tabs { display: flex; gap: 10px; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 10px; flex-wrap: wrap; }
+        .nav-tab { color: #888; text-decoration: none; padding: 8px 16px; border-radius: 4px 4px 0 0; transition: all 0.2s; }
+        .nav-tab:hover { color: #00d9ff; background: #1a1a1a; }
+        .nav-tab.active { color: #00d9ff; background: #1a1a1a; border-bottom: 2px solid #00d9ff; }
+        .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .stat-card { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 20px; }
+        .stat-label { color: #888; font-size: 14px; margin-bottom: 5px; }
+        .stat-value { color: #00d9ff; font-size: 32px; font-weight: bold; }
+        .stat-sublabel { color: #666; font-size: 12px; margin-top: 5px; }
+        .section { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+        .section-title { color: #00d9ff; font-size: 20px; margin-bottom: 15px; }
+        .progress-bar { background: #252525; border-radius: 8px; height: 30px; overflow: hidden; margin: 10px 0; }
+        .progress-fill { background: linear-gradient(90deg, #00d9ff, #00ff88); height: 100%; transition: width 0.3s; display: flex; align-items: center; justify-content: center; color: #000; font-weight: bold; }
+        .tweet-card { background: #252525; border: 1px solid #444; border-radius: 8px; padding: 15px; margin-bottom: 10px; }
+        .tweet-meta { color: #888; font-size: 12px; margin-bottom: 8px; }
+        .tweet-content { color: #e0e0e0; line-height: 1.5; margin-bottom: 8px; }
+        .tweet-stats { display: flex; gap: 15px; font-size: 12px; color: #666; }
+        .pattern-card { background: #252525; border-left: 4px solid #00d9ff; padding: 15px; margin-bottom: 10px; }
+        .pattern-title { color: #00d9ff; font-weight: bold; margin-bottom: 5px; }
+        .pattern-meta { color: #888; font-size: 12px; }
+        .tier-badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; }
+        .tier-viral { background: #ff00ff; color: #fff; }
+        .tier-micro { background: #00ff88; color: #000; }
+        .tier-growth { background: #00d9ff; color: #000; }
+        .tier-established { background: #666; color: #fff; }
+        .confidence-high { color: #00ff88; }
+        .confidence-medium { color: #ffaa00; }
+        .confidence-low { color: #ff4444; }
+        .footer { text-align: center; color: #666; margin-top: 40px; font-size: 12px; }
+        .empty-state { background: #252525; border: 2px dashed #444; border-radius: 8px; padding: 40px; text-align: center; color: #666; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎨 Visual Formatting Intelligence</h1>
+        <p class="subtitle">Learning what works from ${data.viStats.targets} health accounts</p>
+
+        <div class="nav-tabs">
+            <a href="/dashboard/recent?token=xbot-admin-2025" class="nav-tab">📅 Recent</a>
+            <a href="/dashboard/posts?token=xbot-admin-2025" class="nav-tab">📊 Metrics</a>
+            <a href="/dashboard/replies?token=xbot-admin-2025" class="nav-tab">💬 Replies</a>
+            <a href="/dashboard/temporal?token=xbot-admin-2025" class="nav-tab">⏱️ Temporal</a>
+            <a href="/dashboard/factors?token=xbot-admin-2025" class="nav-tab">🔬 Factors</a>
+            <a href="/dashboard/followers?token=xbot-admin-2025" class="nav-tab">📈 Followers</a>
+            <a href="/dashboard/formatting?token=xbot-admin-2025" class="nav-tab active">🎨 Formatting</a>
+        </div>
+
+        <div class="stat-grid">
+            <div class="stat-card">
+                <div class="stat-label">Monitored Accounts</div>
+                <div class="stat-value">${data.viStats.targets}</div>
+                <div class="stat-sublabel">100 seed + auto-discovered</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Tweets Collected</div>
+                <div class="stat-value">${data.viStats.tweets.toLocaleString()}</div>
+                <div class="stat-sublabel">Raw formatting data</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Classified & Analyzed</div>
+                <div class="stat-value">${data.viStats.classified.toLocaleString()}</div>
+                <div class="stat-sublabel">${progressPercent}% processed</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Patterns Learned</div>
+                <div class="stat-value">${data.viStats.patterns}</div>
+                <div class="stat-sublabel">Ready for use</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Viral Unknowns</div>
+                <div class="stat-value">${data.viStats.viralUnknowns}</div>
+                <div class="stat-sublabel">Small accounts gone viral</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title">📊 Processing Progress</div>
+            <div class="progress-bar">
+                <div class="progress-fill" style="width: ${progressPercent}%">${progressPercent}%</div>
+            </div>
+            <p style="color: #888; font-size: 14px; margin-top: 10px;">
+                ${data.viStats.tweets - data.viStats.classified} tweets waiting to be analyzed
+            </p>
+        </div>
+
+        <div class="section">
+            <div class="section-title">🏆 Top Formatting Patterns (${data.topPatterns.length})</div>
+            ${data.topPatterns.length === 0 ? 
+              '<div class="empty-state">⏳ Building patterns... Need 50+ classified tweets to generate first pattern.</div>' :
+              data.topPatterns.map((p: any) => `
+                <div class="pattern-card">
+                    <div class="pattern-title">
+                        ${p.topic} ${p.angle ? `• ${p.angle}` : ''} ${p.tone ? `• ${p.tone}` : ''} ${p.structure ? `• ${p.structure}` : ''}
+                    </div>
+                    <div class="pattern-meta">
+                        <span class="tier-badge tier-${p.primary_tier || 'growth'}">${p.primary_tier || 'unknown'}</span>
+                        Based on <strong>${p.based_on_count}</strong> tweets
+                        • Avg ER: <strong>${((p.weighted_avg_engagement || 0) * 100).toFixed(2)}%</strong>
+                        • Confidence: <span class="confidence-${p.confidence_level}">${p.confidence_level}</span>
+                    </div>
+                </div>
+              `).join('')
+            }
+        </div>
+
+        <div class="section">
+            <div class="section-title">📱 Recently Collected Tweets (${data.recentTweets.length})</div>
+            ${data.recentTweets.length === 0 ?
+              '<div class="empty-state">⏳ First scraping will happen in ~4 hours after deployment.<br>Check back soon!</div>' :
+              data.recentTweets.slice(0, 10).map((t: any) => `
+                <div class="tweet-card">
+                    <div class="tweet-meta">
+                        <strong>@${t.author_username}</strong>
+                        <span class="tier-badge tier-${t.tier}">${t.tier}</span>
+                        • ${new Date(t.scraped_at).toLocaleString()}
+                        ${t.is_viral ? '• 🔥 VIRAL' : ''}
+                    </div>
+                    <div class="tweet-content">${t.content.substring(0, 200)}${t.content.length > 200 ? '...' : ''}</div>
+                    <div class="tweet-stats">
+                        <span>👁️ ${(t.views || 0).toLocaleString()} views</span>
+                        <span>📈 ${((t.engagement_rate || 0) * 100).toFixed(2)}% ER</span>
+                    </div>
+                </div>
+              `).join('')
+            }
+        </div>
+
+        <div class="section">
+            <div class="section-title">🎯 Tier Breakdown</div>
+            ${data.tierBreakdown.length === 0 ?
+              '<div class="empty-state">⏳ No tweets collected yet</div>' :
+              `<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                ${data.tierBreakdown.map((t: any) => `
+                  <div class="stat-card">
+                    <div class="stat-label">
+                      <span class="tier-badge tier-${t.tier}">${t.tier}</span>
+                    </div>
+                    <div class="stat-value">${t.count.toLocaleString()}</div>
+                    <div class="stat-sublabel">tweets</div>
+                  </div>
+                `).join('')}
+              </div>`
+            }
+        </div>
+
+        <div class="section">
+            <div class="section-title">💡 How This Works</div>
+            <ul style="color: #ccc; line-height: 2;">
+                <li><strong>Scraping:</strong> Monitors 100+ health accounts every 8 hours</li>
+                <li><strong>Classification:</strong> AI tags topic, angle, tone, structure (every 6h)</li>
+                <li><strong>Analysis:</strong> Extracts visual patterns (emojis, hooks, line breaks, etc.)</li>
+                <li><strong>Intelligence:</strong> Builds tier-weighted recommendations</li>
+                <li><strong>Application:</strong> Applies learned patterns to YOUR content (when enabled)</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <div class="section-title">📈 Data Collection Status</div>
+            <table style="width: 100%; color: #ccc; border-collapse: collapse;">
+                <tr style="border-bottom: 1px solid #333;">
+                    <td style="padding: 10px;"><strong>Monitored Accounts</strong></td>
+                    <td style="padding: 10px; text-align: right;">${data.viStats.targets} accounts</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #333;">
+                    <td style="padding: 10px;"><strong>Raw Tweets</strong></td>
+                    <td style="padding: 10px; text-align: right;">${data.viStats.tweets.toLocaleString()} collected</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #333;">
+                    <td style="padding: 10px;"><strong>AI Classification</strong></td>
+                    <td style="padding: 10px; text-align: right;">${data.viStats.classified.toLocaleString()} tagged</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #333;">
+                    <td style="padding: 10px;"><strong>Visual Analysis</strong></td>
+                    <td style="padding: 10px; text-align: right;">${data.viStats.analyzed.toLocaleString()} analyzed</td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px;"><strong>Format Intelligence</strong></td>
+                    <td style="padding: 10px; text-align: right;">${data.viStats.patterns} patterns ready</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="footer">
+            <p>🤖 Last updated: ${now}</p>
+            <p>🔄 Auto-refresh every 60 seconds</p>
+            <p>📊 Data collection: Every 6-8 hours</p>
+        </div>
+    </div>
+</body>
+</html>`;
+}
+
 export const comprehensiveDashboard = { 
   generatePostsDashboard, 
   generateRepliesDashboard,
   generateRecentDashboard,
   generateTemporalDashboard,
   generateFactorAnalysisDashboard,
-  generateFollowerGrowthDashboard
+  generateFollowerGrowthDashboard,
+  generateVisualIntelligenceDashboard
 };
 
