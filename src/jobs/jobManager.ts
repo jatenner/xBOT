@@ -230,6 +230,7 @@ export class JobManager {
     );
 
     // Data collection - every 6 hours, offset 220 min (OPTIMIZED: reduced from 60min)
+    // EXTENDED: Also processes Visual Intelligence tweets (classification + analysis + intelligence building)
     this.scheduleStaggeredJob(
       'data_collection',
       async () => {
@@ -237,6 +238,15 @@ export class JobManager {
           const { DataCollectionEngine } = await import('../intelligence/dataCollectionEngine');
           const engine = DataCollectionEngine.getInstance();
           await engine.collectComprehensiveData();
+          
+          // NEW: Visual Intelligence processing (feature flagged)
+          const { runVIProcessing } = await import('./vi-job-extensions');
+          
+          // AUTO-SEED on first run (if no accounts exist)
+          const { autoSeedIfNeeded } = await import('./vi-job-extensions');
+          await autoSeedIfNeeded();
+          
+          await runVIProcessing();
         });
       },
       360 * MINUTE, // Every 6 hours (was 60min)

@@ -3,16 +3,19 @@
  * 
  * Discovers and maintains a pool of high-quality health accounts for reply targeting
  * 
- * Runs: Every 6 hours
+ * Runs: Every 6 hours (or 90 minutes in staggered mode)
  * Purpose: Keep discovered_accounts table populated with 100-200 optimal targets
  * Strategy: 
  *   - Search health hashtags on Twitter
  *   - Find 10k-500k follower accounts
  *   - Score for reply potential
  *   - Store in database for reply system
+ * 
+ * EXTENDED: Also discovers micro-influencer accounts for Visual Intelligence (weekly)
  */
 
 import { getSupabaseClient } from '../db/index';
+import { runVIAccountDiscovery } from './vi-job-extensions';
 
 // Metrics tracking
 let discoveryMetrics = {
@@ -79,6 +82,9 @@ export async function runAccountDiscovery(): Promise<void> {
     } else if (newCount >= 50) {
       console.log('[ACCOUNT_DISCOVERY] ✅ Account pool healthy - reply system ready');
     }
+    
+    // NEW: Visual Intelligence micro-influencer discovery (weekly, feature flagged)
+    await runVIAccountDiscovery();
     
   } catch (error: any) {
     discoveryMetrics.errors++;

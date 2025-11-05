@@ -203,6 +203,58 @@ app.post('/post', async (req, res) => {
 });
 
 /**
+ * 🧠 Visual Intelligence Dashboard
+ */
+app.get('/visual-intelligence', (req, res) => {
+  const path = require('path');
+  res.sendFile(path.join(__dirname, '../public/visual-intelligence.html'));
+});
+
+// VI Dashboard API - Simple Supabase proxy
+app.get('/api/supabase/count', async (req, res) => {
+  try {
+    const { getSupabaseClient } = await import('./db/index');
+    const supabase = getSupabaseClient();
+    const table = req.query.table as string;
+    const filter = req.query.filter as string;
+    
+    let query = supabase.from(table).select('*', { count: 'exact', head: true });
+    
+    if (filter) {
+      const [col, op, val] = filter.split('.');
+      if (op === 'eq') query = query.eq(col, val);
+    }
+    
+    const { count } = await query;
+    res.json({ count: count || 0 });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/supabase/query', async (req, res) => {
+  try {
+    const { getSupabaseClient } = await import('./db/index');
+    const supabase = getSupabaseClient();
+    const table = req.query.table as string;
+    const limit = parseInt(req.query.limit as string) || 50;
+    const order = req.query.order as string;
+    
+    let query = supabase.from(table).select('*').limit(limit);
+    
+    if (order) {
+      const [col, dir] = order.split('.');
+      query = query.order(col, { ascending: dir !== 'desc' });
+    }
+    
+    const { data } = await query;
+    res.json({ data: data || [] });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * Health and readiness check (use dedicated status route)
  */
 app.use('/status', async (req, res, next) => {

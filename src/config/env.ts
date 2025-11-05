@@ -33,6 +33,7 @@ const envSchema = z.object({
   FORCE_POST: z.string().optional(),
   GRACE_MINUTES: z.string().optional(),
   MIN_POST_INTERVAL_MINUTES: z.string().optional(),
+  VISUAL_INTELLIGENCE_ENABLED: z.string().optional().default("false"),
   
   // System
   NODE_ENV: z.string().default("production"),
@@ -48,6 +49,7 @@ export const isProduction = ENV.NODE_ENV === "production";
 export const isDevelopment = ENV.NODE_ENV === "development";
 export const isAutopauseEnabled = ENV.FEAT_AUTOPAUSE === "true";
 export const isMetricsEnabled = ENV.ENABLE_METRICS_TRACKING === "true";
+export const isVisualIntelligenceEnabled = ENV.VISUAL_INTELLIGENCE_ENABLED === "true";
 
 // Backward compatibility exports (for files not yet refactored)
 export const DATABASE_URL = ENV.DATABASE_URL;

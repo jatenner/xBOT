@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Visual Intelligence Dashboard</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+      background: #0f0f0f;
+      color: #e0e0e0;
+      padding: 20px;
+      line-height: 1.6;
+    }
+    
+    .container { max-width: 1600px; margin: 0 auto; }
+    
+    h1 {
+      font-size: 28px;
+      margin-bottom: 8px;
+      color: #fff;
+      font-weight: 600;
+    }
+    
+    .subtitle {
+      font-size: 14px;
+      color: #888;
+      margin-bottom: 30px;
+    }
+    
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+    
+    .stat-card {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      padding: 20px;
+      transition: border-color 0.2s;
+    }
+    
+    .stat-card:hover {
+      border-color: #3a3a3a;
+    }
+    
+    .stat-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #888;
+      margin-bottom: 8px;
+      font-weight: 500;
+    }
+    
+    .stat-value {
+      font-size: 32px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 4px;
+    }
+    
+    .stat-subtext {
+      font-size: 12px;
+      color: #666;
+    }
+    
+    .section {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+    
+    .section-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .tier-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    .tier-viral { background: #ff453a; color: #fff; }
+    .tier-micro { background: #0a84ff; color: #fff; }
+    .tier-growth { background: #30d158; color: #fff; }
+    .tier-established { background: #666; color: #fff; }
+    
+    .status-healthy { color: #30d158; }
+    .status-stale { color: #ff9f0a; }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    
+    th {
+      text-align: left;
+      padding: 12px;
+      background: #0f0f0f;
+      border-bottom: 1px solid #2a2a2a;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #888;
+      font-weight: 600;
+    }
+    
+    td {
+      padding: 12px;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    
+    tr:hover td {
+      background: #1f1f1f;
+    }
+    
+    .tweet-content {
+      max-width: 500px;
+      white-space: pre-wrap;
+      font-size: 13px;
+      line-height: 1.5;
+      color: #ccc;
+    }
+    
+    .progress-bar {
+      width: 100%;
+      height: 6px;
+      background: #2a2a2a;
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+    
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #0a84ff, #30d158);
+      transition: width 0.4s ease;
+    }
+    
+    .btn {
+      background: #0a84ff;
+      color: #fff;
+      border: none;
+      padding: 10px 18px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      transition: background 0.2s;
+    }
+    
+    .btn:hover {
+      background: #0077ed;
+    }
+    
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: #666;
+    }
+    
+    .empty-state-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+    
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #888;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px;">
+      <div>
+        <h1>🧠 Visual Intelligence Dashboard</h1>
+        <div class="subtitle">Learning visual formatting patterns from 100 health/longevity accounts</div>
+      </div>
+      <button class="btn" onclick="loadAll()">↻ Refresh</button>
+    </div>
+    
+    <!-- Stats Overview -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Total Tweets</div>
+        <div class="stat-value" id="stat-total">-</div>
+        <div class="stat-subtext">Collected from all sources</div>
+      </div>
+      
+      <div class="stat-card">
+        <div class="stat-label">Classified</div>
+        <div class="stat-value" id="stat-classified">-</div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="progress-classified" style="width: 0%"></div>
+        </div>
+      </div>
+      
+      <div class="stat-card">
+        <div class="stat-label">Analyzed</div>
+        <div class="stat-value" id="stat-analyzed">-</div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="progress-analyzed" style="width: 0%"></div>
+        </div>
+      </div>
+      
+      <div class="stat-card">
+        <div class="stat-label">Patterns Learned</div>
+        <div class="stat-value" id="stat-patterns">-</div>
+        <div class="stat-subtext">Topic/angle/tone combos</div>
+      </div>
+      
+      <div class="stat-card">
+        <div class="stat-label">Micro Accounts</div>
+        <div class="stat-value" id="stat-micro">-</div>
+        <div class="stat-subtext">1k-20k followers (2.0x weight)</div>
+      </div>
+      
+      <div class="stat-card">
+        <div class="stat-label">Viral Unknowns</div>
+        <div class="stat-value" id="stat-viral">-</div>
+        <div class="stat-subtext">&lt;10k followers, 25k+ views</div>
+      </div>
+    </div>
+    
+    <!-- Recent Activity -->
+    <div class="section">
+      <div class="section-title">📊 Recent Collected Tweets</div>
+      <div id="recent-tweets">
+        <div class="loading">Loading...</div>
+      </div>
+    </div>
+    
+    <!-- Monitored Accounts -->
+    <div class="section">
+      <div class="section-title">🎯 Monitored Accounts (100 Seed + Auto-Discovered)</div>
+      <div id="accounts-list">
+        <div class="loading">Loading...</div>
+      </div>
+    </div>
+    
+    <!-- Learned Patterns -->
+    <div class="section">
+      <div class="section-title">🧬 Learned Formatting Patterns</div>
+      <div id="patterns-list">
+        <div class="loading">Loading...</div>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    // Auto-refresh every 30 seconds
+    let autoRefresh = null;
+    
+    async function loadAll() {
+      await Promise.all([
+        loadStats(),
+        loadRecentTweets(),
+        loadAccounts(),
+        loadPatterns()
+      ]);
+      
+      // Start auto-refresh if not already running
+      if (!autoRefresh) {
+        autoRefresh = setInterval(loadStats, 30000);
+      }
+    }
+    
+    async function loadStats() {
+      try {
+        // Get stats from database via API
+        const [tweets, classified, analyzed, patterns, micro] = await Promise.all([
+          fetch('/api/supabase/count?table=vi_collected_tweets').then(r => r.json()),
+          fetch('/api/supabase/count?table=vi_content_classification').then(r => r.json()),
+          fetch('/api/supabase/count?table=vi_visual_formatting').then(r => r.json()),
+          fetch('/api/supabase/count?table=vi_format_intelligence').then(r => r.json()),
+          fetch('/api/supabase/count?table=vi_scrape_targets&filter=tier.eq.micro').then(r => r.json())
+        ]);
+        
+        document.getElementById('stat-total').textContent = (tweets.count || 0).toLocaleString();
+        document.getElementById('stat-classified').textContent = (classified.count || 0).toLocaleString();
+        document.getElementById('stat-analyzed').textContent = (analyzed.count || 0).toLocaleString();
+        document.getElementById('stat-patterns').textContent = (patterns.count || 0).toLocaleString();
+        document.getElementById('stat-micro').textContent = (micro.count || 0).toLocaleString();
+        document.getElementById('stat-viral').textContent = '0'; // Will be populated as system finds them
+        
+        // Update progress bars
+        const classifiedPct = tweets.count > 0 ? Math.round((classified.count / tweets.count) * 100) : 0;
+        const analyzedPct = tweets.count > 0 ? Math.round((analyzed.count / tweets.count) * 100) : 0;
+        
+        document.getElementById('progress-classified').style.width = classifiedPct + '%';
+        document.getElementById('progress-analyzed').style.width = analyzedPct + '%';
+        
+      } catch (error) {
+        console.error('Failed to load stats:', error);
+      }
+    }
+    
+    async function loadRecentTweets() {
+      try {
+        const response = await fetch('/api/supabase/query?table=vi_collected_tweets&limit=20&order=scraped_at.desc');
+        const data = await response.json();
+        
+        if (!data.data || data.data.length === 0) {
+          document.getElementById('recent-tweets').innerHTML = `
+            <div class="empty-state">
+              <div class="empty-state-icon">📭</div>
+              <div>No tweets collected yet. System will start scraping after deployment.</div>
+            </div>
+          `;
+          return;
+        }
+        
+        const html = `
+          <table>
+            <tr>
+              <th>Account</th>
+              <th>Tier</th>
+              <th>Content</th>
+              <th>Engagement</th>
+              <th>Status</th>
+            </tr>
+            ${data.data.map(t => `
+              <tr>
+                <td>@${t.author_username}</td>
+                <td><span class="tier-badge tier-${t.tier || 'unknown'}">${t.tier || 'pending'}</span></td>
+                <td class="tweet-content">${(t.content || '').substring(0, 120)}...</td>
+                <td>${t.likes || 0}❤️ ${t.retweets || 0}🔄</td>
+                <td>
+                  ${t.classified ? '✅' : '⏳'} Classified<br>
+                  ${t.analyzed ? '✅' : '⏳'} Analyzed
+                </td>
+              </tr>
+            `).join('')}
+          </table>
+        `;
+        
+        document.getElementById('recent-tweets').innerHTML = html;
+        
+      } catch (error) {
+        console.error('Failed to load tweets:', error);
+        document.getElementById('recent-tweets').innerHTML = '<div class="empty-state">Error loading tweets</div>';
+      }
+    }
+    
+    async function loadAccounts() {
+      try {
+        const response = await fetch('/api/supabase/query?table=vi_scrape_targets&limit=100&order=tier_weight.desc');
+        const data = await response.json();
+        
+        if (!data.data || data.data.length === 0) {
+          document.getElementById('accounts-list').innerHTML = `
+            <div class="empty-state">
+              <div class="empty-state-icon">👥</div>
+              <div>No accounts seeded yet. Run: npx tsx scripts/seed-visual-intelligence-accounts.ts</div>
+            </div>
+          `;
+          return;
+        }
+        
+        const html = `
+          <table>
+            <tr>
+              <th>Username</th>
+              <th>Tier</th>
+              <th>Followers</th>
+              <th>Weight</th>
+              <th>Last Scraped</th>
+              <th>Success</th>
+            </tr>
+            ${data.data.map(a => `
+              <tr>
+                <td>@${a.username}</td>
+                <td><span class="tier-badge tier-${a.tier || 'unknown'}">${a.tier || 'pending'}</span></td>
+                <td>${a.followers_count ? a.followers_count.toLocaleString() : '-'}</td>
+                <td>${a.tier_weight || '-'}x</td>
+                <td>${a.last_scraped_at ? new Date(a.last_scraped_at).toLocaleString() : 'Never'}</td>
+                <td>${a.scrape_success_count || 0} / ${(a.scrape_success_count || 0) + (a.scrape_failure_count || 0)}</td>
+              </tr>
+            `).join('')}
+          </table>
+        `;
+        
+        document.getElementById('accounts-list').innerHTML = html;
+        
+      } catch (error) {
+        console.error('Failed to load accounts:', error);
+        document.getElementById('accounts-list').innerHTML = '<div class="empty-state">Error loading accounts</div>';
+      }
+    }
+    
+    async function loadPatterns() {
+      try {
+        const response = await fetch('/api/supabase/query?table=vi_format_intelligence&limit=50&order=based_on_count.desc');
+        const data = await response.json();
+        
+        if (!data.data || data.data.length === 0) {
+          document.getElementById('patterns-list').innerHTML = `
+            <div class="empty-state">
+              <div class="empty-state-icon">🧬</div>
+              <div>No patterns learned yet. System needs ~500 classified tweets to build intelligence.</div>
+              <div class="stat-subtext" style="margin-top: 8px;">This typically takes 7-14 days of data collection.</div>
+            </div>
+          `;
+          return;
+        }
+        
+        const html = `
+          <table>
+            <tr>
+              <th>Topic</th>
+              <th>Angle</th>
+              <th>Tone</th>
+              <th>Primary Tier</th>
+              <th>Based On</th>
+              <th>Confidence</th>
+              <th>Recommendations</th>
+            </tr>
+            ${data.data.map(p => {
+              const format = p.recommended_format || {};
+              const recommendations = [
+                `${format.char_count?.median || 180}chars`,
+                `${format.line_breaks?.median || 2} breaks`,
+                `${format.emoji_count?.median || 1} emoji`,
+                format.hook_pattern || 'question'
+              ].join(', ');
+              
+              return `
+                <tr>
+                  <td>${p.topic || '-'}</td>
+                  <td>${p.angle || '-'}</td>
+                  <td>${p.tone || '-'}</td>
+                  <td><span class="tier-badge tier-${p.primary_tier}">${p.primary_tier}</span></td>
+                  <td>${p.based_on_count || 0} tweets</td>
+                  <td>${p.confidence_level || 'low'}</td>
+                  <td style="font-size: 11px; color: #888;">${recommendations}</td>
+                </tr>
+              `;
+            }).join('')}
+          </table>
+        `;
+        
+        document.getElementById('patterns-list').innerHTML = html;
+        
+      } catch (error) {
+        console.error('Failed to load patterns:', error);
+        document.getElementById('patterns-list').innerHTML = '<div class="empty-state">Error loading patterns</div>';
+      }
+    }
+    
+    // Initial load
+    loadAll();
+  </script>
+</body>
+</html>
+
