@@ -215,8 +215,25 @@ export async function metricsScraperJob(): Promise<void> {
             }, { onConflict: 'tweet_id' });
             
             if (metricsTableError) {
-              console.warn(`[METRICS_JOB] ⚠️ Failed to update tweet_metrics for ${post.tweet_id}:`, metricsTableError.message);
-              // Don't fail - outcomes table is the primary store
+              // 🔥 FIX: Log SPECIFIC error details for debugging
+              console.error(`[METRICS_JOB] ❌ Failed to update tweet_metrics for ${post.tweet_id}:`, {
+                error: metricsTableError.message,
+                code: metricsTableError.code,
+                details: metricsTableError.details,
+                hint: metricsTableError.hint,
+                tweet_id: post.tweet_id,
+                decision_id: post.decision_id
+              });
+              
+              // 🔥 FIX: If it's a constraint violation, log which constraint failed
+              if (metricsTableError.code === '23505') { // Unique violation
+                console.error(`[METRICS_JOB] 🔍 CONSTRAINT VIOLATION: Duplicate tweet_id detected`);
+                console.error(`[METRICS_JOB] 💡 This might be due to tweet_metrics UNIQUE constraint on (tweet_id, collected_at)`);
+                console.error(`[METRICS_JOB] 💡 Consider using INSERT ... ON CONFLICT DO UPDATE with collected_at`);
+              }
+              
+              // Don't fail the job - outcomes table is the primary store
+              // But log comprehensively so we can debug the root cause
             }
             
             // 🔥 CRITICAL FIX: Also update content_generation_metadata_comprehensive 

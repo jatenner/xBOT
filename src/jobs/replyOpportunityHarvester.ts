@@ -42,13 +42,15 @@ export async function replyOpportunityHarvester(): Promise<void> {
     const needToHarvest = TARGET_POOL_SIZE - poolSize;
     console.log(`[HARVESTER] 🎯 Need to harvest ~${needToHarvest} opportunities`);
     
-  // Step 3: Get discovered accounts (NO FOLLOWER FILTERS - engagement matters, not size)
+  // Step 3: Get discovered accounts (HIGH-QUALITY FILTERS - size + engagement)
+  // 🔥 FIX: Target 200k+ accounts with 2%+ engagement for better reply visibility
   const { data: accounts } = await supabase
     .from('discovered_accounts')
     .select('username, follower_count, quality_score, engagement_rate, scrape_priority')
-    // ✅ REMOVED FOLLOWER FILTERS - scrape ALL accounts (big and small)
-    // If a tweet has 1000+ likes, we reply - regardless of account size
+    .gte('follower_count', 200000)  // 🔥 MINIMUM 200k followers (target health influencers)
+    .gte('engagement_rate', 0.02)   // 🔥 MINIMUM 2% engagement rate (active audiences)
     .order('follower_count', { ascending: false })  // BIG accounts first (they get 10K+ comments!)
+    .order('engagement_rate', { ascending: false })  // High engagement first
     .order('last_scraped_at', { ascending: true, nullsFirst: true })  // Least recently scraped
     .limit(300); // Increased to 300 for faster coverage of high-engagement accounts
   
