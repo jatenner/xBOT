@@ -223,9 +223,9 @@ export async function replyOpportunityHarvester(): Promise<void> {
   console.log(`[HARVESTER] 📊 Pool size: ${poolSize} → ${finalPoolSize}`);
   console.log(`[HARVESTER] 🌾 Harvested: ${totalHarvested} new opportunities from ${accountsProcessed} accounts`);
   console.log(`[HARVESTER] 🏆 Quality breakdown:`);
-  console.log(`[HARVESTER]   GOLDEN: ${goldenCount || 0} (500+ likes, <30 replies)`);
-  console.log(`[HARVESTER]   GOOD: ${goodCount || 0} (200+ likes, <50 replies)`);
-  console.log(`[HARVESTER]   ACCEPTABLE: ${acceptableCount || 0} (100+ likes, <80 replies)`);
+  console.log(`[HARVESTER]   PLATINUM (10K+): ${goldenCount || 0} tweets`);
+  console.log(`[HARVESTER]   DIAMOND (5K+): ${goodCount || 0} tweets`);
+  console.log(`[HARVESTER]   GOLDEN (2K+): ${acceptableCount || 0} tweets`);
   
   if (finalPoolSize < MIN_POOL_SIZE) {
     console.warn(`[HARVESTER] ⚠️ Pool still low (${finalPoolSize}/${MIN_POOL_SIZE})`);
