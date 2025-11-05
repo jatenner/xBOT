@@ -354,6 +354,22 @@ export class JobManager {
         10 * MINUTE // Start after 10 minutes
       );
 
+      // 📊 ENGAGEMENT RATE CALCULATOR - every 24 hours, offset 60 min
+      // 🔥 NEW: Calculate real engagement rates for discovered accounts
+      // Replaces 0.02 placeholders with actual data
+      // Enables accurate account quality filtering (2%+ engagement filter)
+      this.scheduleStaggeredJob(
+        'engagement_calculator',
+        async () => {
+          await this.safeExecute('engagement_calculator', async () => {
+            const { calculateEngagementRatesBatch } = await import('./engagementRateCalculator');
+            await calculateEngagementRatesBatch(50); // Calculate 50 accounts per run
+          });
+        },
+        1440 * MINUTE, // Every 24 hours (daily calculation)
+        60 * MINUTE // Start after 60 minutes (give system time to start)
+      );
+
       // 💬 REPLY POSTING JOB - every 30 min (configurable via JOBS_REPLY_INTERVAL_MIN)
       // 🎯 CRITICAL: Generate and queue replies
       // ⏰ TIMING: Starts immediately, has own internal rate limiting
