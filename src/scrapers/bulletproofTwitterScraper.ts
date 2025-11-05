@@ -571,29 +571,77 @@ export class BulletproofTwitterScraper {
         console.log(`    ❌ PROFILE VISITS: No match found in text`);
       }
       
-      // Also extract basic metrics (likes, retweets, replies) from the tweet shown on analytics page
-      const likesMatch = analyticsText.match(/(\d+(?:,\d+)*)\s*(?:Like|like)/);
-      if (likesMatch) {
-        metrics.likes = parseInt(likesMatch[1].replace(/,/g, ''));
-        console.log(`    ✅ LIKES: ${metrics.likes}`);
-      } else {
-        console.log(`    ❌ LIKES: No match found in text`);
-      }
-      
-      const retweetsMatch = analyticsText.match(/(\d+(?:,\d+)*)\s*(?:Retweet|retweet)/);
-      if (retweetsMatch) {
-        metrics.retweets = parseInt(retweetsMatch[1].replace(/,/g, ''));
-        console.log(`    ✅ RETWEETS: ${metrics.retweets}`);
-      } else {
-        console.log(`    ❌ RETWEETS: No match found in text`);
-      }
-      
-      const repliesMatch = analyticsText.match(/(\d+(?:,\d+)*)\s*(?:Reply|reply|replies)/);
-      if (repliesMatch) {
-        metrics.replies = parseInt(repliesMatch[1].replace(/,/g, ''));
-        console.log(`    ✅ REPLIES: ${metrics.replies}`);
-      } else {
-        console.log(`    ❌ REPLIES: No match found in text`);
+      // 🔥 IMPROVED: Extract likes/RTs/replies using DOM selectors (more reliable than regex)
+      try {
+        // Try to find the tweet article on analytics page
+        const tweetArticle = await page.$('article[data-testid="tweet"]');
+        
+        if (tweetArticle) {
+          console.log(`    ✅ ANALYTICS: Found tweet article, extracting engagement via selectors...`);
+          
+          // Extract using proven aria-label method
+          const likeBtn = await tweetArticle.$('[data-testid="like"]');
+          if (likeBtn) {
+            const likeLabel = await likeBtn.getAttribute('aria-label');
+            const likeMatch = likeLabel?.match(/(\d[\d,]*)/);
+            if (likeMatch) {
+              metrics.likes = parseInt(likeMatch[1].replace(/,/g, ''));
+              console.log(`    ✅ LIKES from aria-label: ${metrics.likes}`);
+            } else if (likeLabel?.toLowerCase().includes('like')) {
+              metrics.likes = 0; // "Like" with no number = 0 likes
+              console.log(`    ✅ LIKES from aria-label: 0 (no number in label)`);
+            }
+          }
+          
+          const rtBtn = await tweetArticle.$('[data-testid="retweet"]');
+          if (rtBtn) {
+            const rtLabel = await rtBtn.getAttribute('aria-label');
+            const rtMatch = rtLabel?.match(/(\d[\d,]*)/);
+            if (rtMatch) {
+              metrics.retweets = parseInt(rtMatch[1].replace(/,/g, ''));
+              console.log(`    ✅ RETWEETS from aria-label: ${metrics.retweets}`);
+            } else if (rtLabel?.toLowerCase().match(/repost|retweet/)) {
+              metrics.retweets = 0;
+              console.log(`    ✅ RETWEETS from aria-label: 0`);
+            }
+          }
+          
+          const replyBtn = await tweetArticle.$('[data-testid="reply"]');
+          if (replyBtn) {
+            const replyLabel = await replyBtn.getAttribute('aria-label');
+            const replyMatch = replyLabel?.match(/(\d[\d,]*)/);
+            if (replyMatch) {
+              metrics.replies = parseInt(replyMatch[1].replace(/,/g, ''));
+              console.log(`    ✅ REPLIES from aria-label: ${metrics.replies}`);
+            } else if (replyLabel?.toLowerCase().includes('repl')) {
+              metrics.replies = 0;
+              console.log(`    ✅ REPLIES from aria-label: 0`);
+            }
+          }
+        } else {
+          console.log(`    ⚠️ ANALYTICS: No tweet article found, falling back to text parsing...`);
+          
+          // Fallback to regex (old method)
+          const likesMatch = analyticsText.match(/(\d+(?:,\d+)*)\s*(?:Like|like)/);
+          if (likesMatch) {
+            metrics.likes = parseInt(likesMatch[1].replace(/,/g, ''));
+            console.log(`    ✅ LIKES from text: ${metrics.likes}`);
+          }
+          
+          const retweetsMatch = analyticsText.match(/(\d+(?:,\d+)*)\s*(?:Retweet|retweet|Repost|repost)/);
+          if (retweetsMatch) {
+            metrics.retweets = parseInt(retweetsMatch[1].replace(/,/g, ''));
+            console.log(`    ✅ RETWEETS from text: ${metrics.retweets}`);
+          }
+          
+          const repliesMatch = analyticsText.match(/(\d+(?:,\d+)*)\s*(?:Reply|reply|replies)/);
+          if (repliesMatch) {
+            metrics.replies = parseInt(repliesMatch[1].replace(/,/g, ''));
+            console.log(`    ✅ REPLIES from text: ${metrics.replies}`);
+          }
+        }
+      } catch (selectorError: any) {
+        console.warn(`    ⚠️ ANALYTICS: Selector extraction failed: ${selectorError.message}`);
       }
       
     } catch (error: any) {
@@ -1227,14 +1275,13 @@ export class BulletproofTwitterScraper {
    */
   private async reloadTweetPage(page: Page, tweetId: string): Promise<void> {
     try {
-      // Use proper x.com URL with YOUR account username
-      const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
-      
       // 📊 Navigate to ANALYTICS page for detailed metrics (impressions, engagements, profile visits)
+      // 🔥 FIX: Use generic Twitter URL (works for singles AND replies!)
+      // Using username-specific URL fails for replies since they appear in conversation context
       const useAnalytics = process.env.USE_ANALYTICS_PAGE !== 'false'; // Default to true
       const tweetUrl = useAnalytics 
-        ? `https://x.com/${username}/status/${tweetId}/analytics`
-        : `https://x.com/${username}/status/${tweetId}`;
+        ? `https://twitter.com/i/web/status/${tweetId}/analytics` // Generic URL works for ALL tweet types
+        : `https://twitter.com/i/web/status/${tweetId}`; // Generic URL for regular view too
       
       // 🔥 CRITICAL: Warm up session BEFORE accessing analytics
       if (useAnalytics) {
