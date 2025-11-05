@@ -298,11 +298,13 @@ export class VIAccountScraper {
           content: tweet.text,
           is_thread: false, // Will be detected later if needed
           thread_length: 1,
+          views: estimatedViews, // Estimated (real views require login)
           likes: likes,
           retweets: retweets,
           replies: replies,
           engagement_rate: engagementRate,
           is_viral: isViral,
+          viral_multiplier: target.followers_count > 0 ? estimatedViews / target.followers_count : 0,
           posted_at: new Date().toISOString(), // Approximate, can't get exact from timeline
           scraped_at: new Date().toISOString(),
           classified: false,

@@ -1947,9 +1947,9 @@ async function getVISystemStats(supabase: any) {
 async function getRecentCollectedTweets(supabase: any) {
   const { data } = await supabase
     .from('vi_collected_tweets')
-    .select('tweet_id, author_username, content, tier, engagement_rate, views, is_viral, scraped_at')
+    .select('tweet_id, author_username, content, tier, tier_weight, author_followers, engagement_rate, views, likes, retweets, replies, bookmarks, quotes, is_viral, viral_multiplier, scraped_at, posted_at, is_thread, thread_length')
     .order('scraped_at', { ascending: false })
-    .limit(20);
+    .limit(50);
 
   return data || [];
 }
@@ -2103,20 +2103,24 @@ function generateVisualIntelligenceHTML(data: any): string {
         </div>
 
         <div class="section">
-            <div class="section-title">📱 Recently Collected Tweets (${data.recentTweets.length})</div>
+            <div class="section-title">📱 Recently Collected Tweets (${data.recentTweets.length}) - All Engagement Data</div>
             ${data.recentTweets.length === 0 ?
               '<div class="empty-state">⏳ First scraping will happen in ~4 hours after deployment.<br>Check back soon!</div>' :
-              data.recentTweets.slice(0, 10).map((t: any) => `
+              data.recentTweets.map((t: any) => `
                 <div class="tweet-card">
                     <div class="tweet-meta">
                         <strong>@${t.author_username}</strong>
                         <span class="tier-badge tier-${t.tier}">${t.tier}</span>
                         • ${new Date(t.scraped_at).toLocaleString()}
                         ${t.is_viral ? '• 🔥 VIRAL' : ''}
+                        ${t.is_thread ? `• 🧵 Thread (${t.thread_length || 1})` : ''}
                     </div>
-                    <div class="tweet-content">${t.content.substring(0, 200)}${t.content.length > 200 ? '...' : ''}</div>
+                    <div class="tweet-content">${t.content.substring(0, 280)}${t.content.length > 280 ? '...' : ''}</div>
                     <div class="tweet-stats">
-                        <span>👁️ ${(t.views || 0).toLocaleString()} views</span>
+                        <span>👁️ ${(t.views || 0).toLocaleString()} views ${t.views === 0 ? '(est.)' : ''}</span>
+                        <span>❤️ ${(t.likes || 0).toLocaleString()} likes</span>
+                        <span>🔁 ${(t.retweets || 0).toLocaleString()} RTs</span>
+                        <span>💬 ${(t.replies || 0).toLocaleString()} replies</span>
                         <span>📈 ${((t.engagement_rate || 0) * 100).toFixed(2)}% ER</span>
                     </div>
                 </div>
