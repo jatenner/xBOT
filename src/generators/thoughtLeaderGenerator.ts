@@ -20,12 +20,15 @@ export interface ThoughtLeaderContent {
 
 export async function generateThoughtLeaderContent(params: {
   topic: string;
+  angle?: string;
+  tone?: string;
+  formatStrategy?: string;
   format: 'single' | 'thread';
   research?: { finding: string; source: string; mechanism: string; };
   intelligence?: IntelligencePackage;
 }): Promise<ThoughtLeaderContent> {
   
-  const { topic, format, research, intelligence } = params;
+  const { topic, angle = 'forward-thinking', tone = 'insightful', formatStrategy = 'trend-focused', format, research, intelligence } = params;
   const intelligenceContext = await buildIntelligenceContext(intelligence);
   
   const patterns = getGeneratorPatterns('thought_leader');

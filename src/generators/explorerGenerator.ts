@@ -21,12 +21,15 @@ export interface ExplorerContent {
 
 export async function generateExplorerContent(params: {
   topic: string;
+  angle?: string;
+  tone?: string;
+  formatStrategy?: string;
   format: 'single' | 'thread';
   research?: { finding: string; source: string; mechanism: string; };
   intelligence?: IntelligencePackage;
 }): Promise<ExplorerContent> {
   
-  const { topic, format, research, intelligence } = params;
+  const { topic, angle = 'exploratory', tone = 'curious', formatStrategy = 'investigative', format, research, intelligence } = params;
   const intelligenceContext = await buildIntelligenceContext(intelligence);
   
   const patterns = getGeneratorPatterns('philosopher'); // Use philosopher patterns for explorer
