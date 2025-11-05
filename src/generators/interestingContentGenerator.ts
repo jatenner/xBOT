@@ -86,6 +86,17 @@ What's surprising here? What's counterintuitive? What will make people think "re
 ${intelligenceContext}
 
 ${format === 'thread' ? `
+📱 THREAD FORMAT (3-5 tweets, 150-250 chars each):
+
+🔥 CRITICAL: Threads must FLOW and CONNECT - each tweet builds on the previous one!
+
+Tweet 1: The surprising fact/insight
+Tweet 2: Why it matters - MUST connect to Tweet 1 using phrases like "Here's why this matters", "What's interesting is", "The key insight"
+Tweet 3: The mechanism/explanation - MUST build on Tweet 2 using phrases like "Here's how", "The reason is", "What's happening"
+Tweet 4: The implication (what you should know) - MUST flow from Tweet 3 using phrases like "So", "This means", "The takeaway"
+
+Each tweet should feel like a natural continuation of the previous one. Use connecting words/phrases to create narrative flow. Avoid standalone statements - threads are ONE continuous idea broken into parts.
+
 Return JSON: {
   "tweets": ["...", "...", ...],
   "visualFormat": "describe your formatting choice"}

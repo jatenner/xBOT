@@ -13,7 +13,7 @@
  * - Tone: "Skeptical investigative"
  * - Best match: "contrarian" (challenges systems, questions industry)
  * 
- * Available Generators (11 total):
+ * Available Generators (13 total):
  * - contrarian: Challenges mainstream, questions systems
  * - culturalBridge: Books, influencers, cultural connections, people stories
  * - dataNerd: Research-heavy, data-driven
@@ -25,6 +25,8 @@
  * - newsReporter: Breaking news, trending research
  * - philosopher: Deep thinking, meaning, context
  * - provocateur: Bold, controversial, edgy
+ * - interestingContent: High-interest, engaging content
+ * - dynamicContent: Adaptive, versatile content
  */
 
 export type GeneratorType = 
@@ -38,7 +40,9 @@ export type GeneratorType =
   | 'mythBuster'
   | 'newsReporter'
   | 'philosopher'
-  | 'provocateur';
+  | 'provocateur'
+  | 'interestingContent'
+  | 'dynamicContent';
 
 export class GeneratorMatcher {
   private static instance: GeneratorMatcher;
@@ -56,7 +60,7 @@ export class GeneratorMatcher {
    * Select generator for content creation
    * 
    * 🎲 CURRENT MODE: PURE RANDOM (Data Collection Phase)
-   * - All generators have equal 10% chance
+   * - All generators have equal ~7.7% chance (1/13)
    * - No bias, no assumptions
    * - Collects unbiased performance data
    * 
@@ -129,7 +133,9 @@ export class GeneratorMatcher {
       'mythBuster',
       'newsReporter',
       'philosopher',
-      'provocateur'
+      'provocateur',
+      'interestingContent',
+      'dynamicContent'
     ];
   }
 }

@@ -76,6 +76,17 @@ ${intelligenceContext}
 Your learning data shows which provocations make people reconsider. Use those principles. Vary the approach. Experiment wildly - every assumption has different weak points.
 
 ${format === 'thread' ? `
+📱 THREAD FORMAT (3-5 tweets, 150-250 chars each):
+
+🔥 CRITICAL: Threads must FLOW and CONNECT - each tweet builds on the previous one!
+
+Tweet 1: The provocative claim/question
+Tweet 2: The challenge/evidence - MUST connect to Tweet 1 using phrases like "Here's why", "The problem is", "What's wrong"
+Tweet 3: The deeper issue - MUST build on Tweet 2 using phrases like "The real issue", "What's actually happening", "The truth is"
+Tweet 4: The implication (what this means) - MUST flow from Tweet 3 using phrases like "So", "This means", "The takeaway"
+
+Each tweet should feel like a natural continuation of the previous one. Use connecting words/phrases to create narrative flow. Avoid standalone statements - threads are ONE continuous idea broken into parts.
+
 Return JSON: {
   "tweets": ["...", "...", ...],
   "visualFormat": "describe your formatting choice"

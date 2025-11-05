@@ -74,6 +74,17 @@ ${intelligenceContext}
 Your learning data shows what precision resonates. Use those principles. Vary the presentation. Experiment wildly - every finding has its own story.
 
 ${format === 'thread' ? `
+📱 THREAD FORMAT (3-5 tweets, 150-250 chars each):
+
+🔥 CRITICAL: Threads must FLOW and CONNECT - each tweet builds on the previous one!
+
+Tweet 1: The finding/data point (the key number)
+Tweet 2: The methodology/context - MUST connect to Tweet 1 using phrases like "Here's how they found this", "The study showed", "Researchers discovered"
+Tweet 3: The mechanism/why it works - MUST build on Tweet 2 using phrases like "Here's why", "The mechanism is", "What's happening"
+Tweet 4: The implication (what it means) - MUST flow from Tweet 3 using phrases like "This means", "So", "The takeaway"
+
+Each tweet should feel like a natural continuation of the previous one. Use connecting words/phrases to create narrative flow. Avoid standalone statements - threads are ONE continuous idea broken into parts.
+
 Return JSON: {
   "tweets": ["...", "...", ...],
   "visualFormat": "describe your formatting choice"

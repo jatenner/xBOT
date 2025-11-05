@@ -74,6 +74,17 @@ ${intelligenceContext}
 Your learning data shows which contrarian approaches make people reconsider. Use those principles. Vary the execution. Experiment wildly - every consensus has different weak points.
 
 ${format === 'thread' ? `
+📱 THREAD FORMAT (3-5 tweets, 150-250 chars each):
+
+🔥 CRITICAL: Threads must FLOW and CONNECT - each tweet builds on the previous one!
+
+Tweet 1: The conventional wisdom (what everyone believes)
+Tweet 2: Why it's wrong (the counter-argument) - MUST connect to Tweet 1 using phrases like "Here's why this is wrong", "The reality is", "What's actually true"
+Tweet 3: The evidence (proof/example) - MUST build on Tweet 2 using phrases like "Here's proof", "The data shows", "Evidence suggests"
+Tweet 4: The alternative (what's actually true) - MUST flow from Tweet 3 using phrases like "So", "The real truth is", "What's correct"
+
+Each tweet should feel like a natural continuation of the previous one. Use connecting words/phrases to create narrative flow. Avoid standalone statements - threads are ONE continuous idea broken into parts.
+
 Return JSON: {
   "tweets": ["...", "...", ...],
   "visualFormat": "describe your formatting choice"}

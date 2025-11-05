@@ -73,6 +73,17 @@ ${intelligenceContext}
 Your learning data shows which stories stick. Use those principles. Vary the telling. Experiment wildly - every science concept has its defining story.
 
 ${format === 'thread' ? `
+📱 THREAD FORMAT (3-5 tweets, 150-250 chars each):
+
+🔥 CRITICAL: Threads must FLOW and CONNECT - each tweet builds on the previous one like a story!
+
+Tweet 1: The setup/introduction (what's happening)
+Tweet 2: The development (what happens next) - MUST connect to Tweet 1 using phrases like "Then", "What happened", "The story continues"
+Tweet 3: The key moment (the turning point) - MUST build on Tweet 2 using phrases like "Here's where it gets interesting", "The crucial part", "Then something changed"
+Tweet 4: The lesson/insight (what we learn) - MUST flow from Tweet 3 using phrases like "The lesson", "What this teaches us", "So the takeaway"
+
+Each tweet should feel like a natural continuation of the previous one. Use connecting words/phrases to create narrative flow. Avoid standalone statements - threads are ONE continuous story broken into parts.
+
 Return JSON: {
   "tweets": ["...", "...", ...],
   "visualFormat": "describe your formatting choice"

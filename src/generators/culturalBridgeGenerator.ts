@@ -82,6 +82,17 @@ What traditional practice does this validate? How do you bridge cultural knowled
 ${intelligenceContext}
 
 ${format === 'thread' ? `
+📱 THREAD FORMAT (3-5 tweets, 150-250 chars each):
+
+🔥 CRITICAL: Threads must FLOW and CONNECT - each tweet builds on the previous one!
+
+Tweet 1: The traditional/cultural perspective
+Tweet 2: The scientific explanation - MUST connect to Tweet 1 using phrases like "Science explains this", "Here's what research shows", "The mechanism is"
+Tweet 3: The connection (how they align) - MUST build on Tweet 2 using phrases like "This validates", "The science confirms", "What's remarkable is"
+Tweet 4: The insight (what this teaches us) - MUST flow from Tweet 3 using phrases like "So", "The lesson", "What this reveals"
+
+Each tweet should feel like a natural continuation of the previous one. Use connecting words/phrases to create narrative flow. Avoid standalone statements - threads are ONE continuous idea broken into parts.
+
 Return JSON: {
   "tweets": ["...", "...", ...],
   "visualFormat": "describe your formatting choice"}

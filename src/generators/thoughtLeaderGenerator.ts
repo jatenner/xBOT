@@ -66,10 +66,14 @@ ${intelligenceContext}
 ${format === 'thread' ? `
 📱 THREAD FORMAT (3-5 tweets, 150-250 chars each):
 
+🔥 CRITICAL: Threads must FLOW and CONNECT - each tweet builds on the previous one!
+
 Tweet 1: The shift happening now
-Tweet 2: Current example/proof point
-Tweet 3: Where it's going (prediction)
-Tweet 4: What this means (implication)
+Tweet 2: Current example/proof point - MUST connect to Tweet 1 using phrases like "Here's proof", "We're seeing this in", "Evidence shows"
+Tweet 3: Where it's going (prediction) - MUST build on Tweet 2 using phrases like "This is leading to", "The trajectory suggests", "What's next"
+Tweet 4: What this means (implication) - MUST flow from Tweet 3 using phrases like "So", "This means", "The implication is"
+
+Each tweet should feel like a natural continuation of the previous one. Use connecting words/phrases to create narrative flow. Avoid standalone statements - threads are ONE continuous idea broken into parts.
 
 Return JSON: {
   "tweets": ["...", "...", ...],
