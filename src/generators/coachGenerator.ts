@@ -79,6 +79,17 @@ CRITICAL RULES:
 ${intelligenceContext}
 
 ${format === 'thread' ? `
+📱 THREAD FORMAT (3-5 tweets, 150-250 chars each):
+
+🔥 CRITICAL: Threads must FLOW and CONNECT - each tweet builds on the previous one!
+
+Tweet 1: The problem or opportunity
+Tweet 2: The solution/approach - MUST connect to Tweet 1 using phrases like "Here's how", "The key is", "What works"
+Tweet 3: The specific steps - MUST build on Tweet 2 using phrases like "Here's the protocol", "The process is", "Step by step"
+Tweet 4: The outcome/benefit - MUST flow from Tweet 3 using phrases like "This leads to", "The result", "What you'll see"
+
+Each tweet should feel like a natural continuation of the previous one. Use connecting words/phrases to create narrative flow. Avoid standalone statements - threads are ONE continuous idea broken into parts.
+
 Return JSON: {
   "tweets": ["...", "...", ...],
   "visualFormat": "describe your formatting choice"}

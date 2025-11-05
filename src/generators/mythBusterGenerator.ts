@@ -75,6 +75,17 @@ ${intelligenceContext}
 Your learning data shows what corrections stick best. Use those principles. Vary the execution. Experiment wildly - every misconception is different.
 
 ${format === 'thread' ? `
+📱 THREAD FORMAT (3-5 tweets, 150-250 chars each):
+
+🔥 CRITICAL: Threads must FLOW and CONNECT - each tweet builds on the previous one!
+
+Tweet 1: The myth being busted (what people believe)
+Tweet 2: Why it's wrong (the mechanism/data) - MUST connect to Tweet 1 using phrases like "Here's why this is wrong", "The reality is", "What's actually happening"
+Tweet 3: The truth (what's really happening) - MUST build on Tweet 2 using phrases like "So what's true?", "The real mechanism is", "Here's what's happening instead"
+Tweet 4: What this means (practical implication) - MUST flow from Tweet 3 using phrases like "This means", "So the takeaway is", "What you should know"
+
+Each tweet should feel like a natural continuation of the previous one. Use connecting words/phrases to create narrative flow. Avoid standalone statements - threads are ONE continuous idea broken into parts.
+
 Return JSON: {
   "tweets": ["...", "...", ...],
   "visualFormat": "describe your formatting choice"

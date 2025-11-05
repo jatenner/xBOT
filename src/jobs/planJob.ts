@@ -195,6 +195,8 @@ async function callDedicatedGenerator(generatorName: string, context: any) {
     'newsReporter': { module: 'newsReporterGenerator', fn: 'generateNewsReporterContent' },
     'explorer': { module: 'explorerGenerator', fn: 'generateExplorerContent' },
     'thoughtLeader': { module: 'thoughtLeaderGenerator', fn: 'generateThoughtLeaderContent' },
+    'interestingContent': { module: 'interestingContentGenerator', fn: 'generateInterestingContent' },
+    'dynamicContent': { module: 'dynamicContentGenerator', fn: 'generateDynamicContent' },
   };
   
   const config = generatorMap[generatorName];

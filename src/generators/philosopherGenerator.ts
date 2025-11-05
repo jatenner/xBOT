@@ -87,12 +87,16 @@ ${intelligenceContext}
 ${format === 'thread' ? `
 📱 THREAD FORMAT (3-5 tweets, 150-250 chars each):
 
-Tweet 1: The core insight (simple but profound)
-Tweet 2: Why this matters (mechanism or consequence)
-Tweet 3: What this reveals (deeper implication)
-Tweet 4: How to think about it (practical wisdom)
+🔥 CRITICAL: Threads must FLOW and CONNECT - each tweet builds on the previous one!
 
-NO questions. Just insights and truths.
+Tweet 1: The core insight (simple but profound)
+Tweet 2: Why this matters (mechanism or consequence) - MUST connect to Tweet 1 using phrases like "Here's why", "The deeper issue is", "This matters because"
+Tweet 3: What this reveals (deeper implication) - MUST build on Tweet 2 using phrases like "This reveals that", "The real insight is", "What this means"
+Tweet 4: How to think about it (practical wisdom) - MUST flow from Tweet 3 using phrases like "So", "The takeaway", "This tells us"
+
+Each tweet should feel like a natural continuation of the previous one. Use connecting words/phrases to create narrative flow. Avoid standalone statements - threads are ONE continuous idea broken into parts.
+
+NO questions. Just insights and truths that flow together.
 
 Return JSON: {
   "tweets": ["...", "...", ...],
