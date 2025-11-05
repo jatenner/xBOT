@@ -35,6 +35,11 @@ const envSchema = z.object({
   MIN_POST_INTERVAL_MINUTES: z.string().optional(),
   VISUAL_INTELLIGENCE_ENABLED: z.string().optional().default("false"),
   
+  // Observability
+  SENTRY_DSN: z.string().optional(),
+  SENTRY_ENVIRONMENT: z.string().optional().default("production"),
+  SENTRY_TRACES_SAMPLE_RATE: z.string().optional().default("0.1"),
+  
   // System
   NODE_ENV: z.string().default("production"),
   PORT: z.string().default("8080"),

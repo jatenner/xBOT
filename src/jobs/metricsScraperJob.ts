@@ -9,9 +9,18 @@ import { log } from '../lib/logger';
 import { getSupabaseClient } from '../db';
 import { BulletproofTwitterScraper } from '../scrapers/bulletproofTwitterScraper';
 import { ScrapingOrchestrator } from '../metrics/scrapingOrchestrator';
+import { Sentry } from '../observability/instrument';
 
 export async function metricsScraperJob(): Promise<void> {
   log({ op: 'metrics_scraper_start' });
+  
+  // Start Sentry span for performance tracking
+  return await Sentry.startSpan(
+    {
+      op: 'job',
+      name: 'metrics_scraper_job'
+    },
+    async (span) => {
   
   try {
     const supabase = getSupabaseClient();
@@ -342,10 +351,26 @@ export async function metricsScraperJob(): Promise<void> {
     
     console.log(`[METRICS_JOB] ✅ Metrics collection complete: ${updated} updated, ${skipped} skipped, ${failed} failed`);
     
+    // Record success metrics in Sentry
+    span.setAttributes({
+      'metrics.updated': updated,
+      'metrics.skipped': skipped,
+      'metrics.failed': failed,
+      'metrics.success_rate': updated / (updated + failed || 1)
+    });
+    
   } catch (error: any) {
     console.error('[METRICS_JOB] ❌ Metrics collection failed:', error.message);
+    
+    // Capture error in Sentry
+    Sentry.captureException(error, {
+      tags: { job: 'metrics_scraper' },
+      extra: { error_message: error.message }
+    });
+    
     throw error;
   }
+  });
 }
 
 /**

@@ -1,3 +1,7 @@
+// 🔍 SENTRY: Must be imported FIRST to capture all errors
+import './observability/instrument';
+import { Sentry } from './observability/instrument';
+
 import { createServer } from "http";
 import { spawn } from "child_process";
 import { ENV, isProduction } from './config/env';
@@ -8,6 +12,12 @@ import { JobManager } from './jobs/jobManager';
 // CRITICAL: Process-level error handlers to prevent crashes
 process.on('uncaughtException', (error: Error) => {
   log({ op: 'uncaught_exception', error: error.message, stack: error.stack });
+  
+  // Send to Sentry for tracking
+  Sentry.captureException(error, {
+    level: 'error',
+    tags: { error_type: 'uncaught_exception' }
+  });
   
   // Handle specific known errors gracefully
   if (error.message?.includes('Target page, context or browser has been closed')) {
@@ -29,6 +39,13 @@ process.on('uncaughtException', (error: Error) => {
 
 process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
   log({ op: 'unhandled_rejection', reason: reason?.message || String(reason) });
+  
+  // Send to Sentry for tracking
+  Sentry.captureException(reason, {
+    level: 'warning',
+    tags: { error_type: 'unhandled_rejection' }
+  });
+  
   // Log but don't crash - most rejections can be recovered from
   if (reason?.message?.includes('closed') || reason?.message?.includes('Timeout')) {
     log({ op: 'recoverable_rejection', continue: true });
