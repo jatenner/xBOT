@@ -53,7 +53,10 @@ export async function calculateEngagementRates(): Promise<void> {
         `engagement_calc_${account.username}`,
         BrowserPriority.HARVESTING,
         async () => {
-          return await calculateAccountEngagementRate(account.username, account.follower_count || 0);
+          return await calculateAccountEngagementRate(
+            String(account.username), 
+            Number(account.follower_count) || 0
+          );
         }
       );
       
@@ -213,8 +216,8 @@ export async function calculateEngagementRatesBatch(batchSize: number = 20): Pro
   for (const account of accounts) {
     try {
       const engagementRate = await calculateAccountEngagementRate(
-        account.username,
-        account.follower_count || 0
+        String(account.username),
+        Number(account.follower_count) || 0
       );
       
       if (engagementRate !== null) {
