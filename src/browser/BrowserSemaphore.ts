@@ -125,7 +125,7 @@ export async function withBrowserLock<T>(
   try {
     // 🔥 CRITICAL: Add timeout to prevent infinite hangs
     // If browser pool is corrupted (EAGAIN errors), operation may hang forever
-    const BROWSER_OP_TIMEOUT = 240000; // 4 minutes max (threads with ID extraction need 2-3 min)
+    const BROWSER_OP_TIMEOUT = 480000; // 8 minutes max (metrics batch of 10 tweets needs ~6-7 min)
     
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => {

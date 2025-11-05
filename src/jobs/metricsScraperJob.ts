@@ -25,7 +25,7 @@ export async function metricsScraperJob(): Promise<void> {
       .not('tweet_id', 'is', null)
       .gte('created_at', threeDaysAgo.toISOString())
       .order('created_at', { ascending: false })
-      .limit(15); // Scrape 15 most recent (last 3 days)
+      .limit(8); // 🔥 REDUCED: 8 recent tweets (was 15) to prevent timeout
     
     // PRIORITY 2: Historical tweets (3-30 days old) - scrape less frequently
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
@@ -37,7 +37,7 @@ export async function metricsScraperJob(): Promise<void> {
       .lt('created_at', threeDaysAgo.toISOString())
       .gte('created_at', thirtyDaysAgo.toISOString())
       .order('created_at', { ascending: false })
-      .limit(5); // Only scrape 5 historical posts per cycle
+      .limit(2); // 🔥 REDUCED: 2 historical tweets (was 5) to prevent timeout
     
     // Combine: prioritize recent, then add some historical
     const posts = [...(recentPosts || []), ...(historicalPosts || [])];
