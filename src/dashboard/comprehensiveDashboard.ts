@@ -1995,40 +1995,40 @@ function generateVisualIntelligenceHTML(data: any): string {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta http-equiv="refresh" content="60">
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; margin: 20px; background: #0a0a0a; color: #e0e0e0; }
-        .container { max-width: 1400px; margin: 0 auto; }
-        h1 { color: #00d9ff; margin-bottom: 5px; }
-        .subtitle { color: #888; margin-bottom: 30px; }
-        .nav-tabs { display: flex; gap: 10px; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 10px; flex-wrap: wrap; }
-        .nav-tab { color: #888; text-decoration: none; padding: 8px 16px; border-radius: 4px 4px 0 0; transition: all 0.2s; }
-        .nav-tab:hover { color: #00d9ff; background: #1a1a1a; }
-        .nav-tab.active { color: #00d9ff; background: #1a1a1a; border-bottom: 2px solid #00d9ff; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; margin: 20px; background: #f5f5f5; color: #333; }
+        .container { max-width: 1400px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        h1 { color: #333; margin-bottom: 5px; font-size: 32px; }
+        .subtitle { color: #666; margin-bottom: 30px; font-size: 14px; }
+        .nav-tabs { display: flex; gap: 10px; margin-bottom: 30px; border-bottom: 1px solid #e0e0e0; padding-bottom: 10px; flex-wrap: wrap; }
+        .nav-tab { color: #666; text-decoration: none; padding: 10px 20px; border-radius: 6px; transition: all 0.2s; font-weight: 500; }
+        .nav-tab:hover { color: #333; background: #f0f0f0; }
+        .nav-tab.active { color: white; background: #4A90E2; }
         .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
-        .stat-card { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 20px; }
-        .stat-label { color: #888; font-size: 14px; margin-bottom: 5px; }
-        .stat-value { color: #00d9ff; font-size: 32px; font-weight: bold; }
-        .stat-sublabel { color: #666; font-size: 12px; margin-top: 5px; }
-        .section { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
-        .section-title { color: #00d9ff; font-size: 20px; margin-bottom: 15px; }
-        .progress-bar { background: #252525; border-radius: 8px; height: 30px; overflow: hidden; margin: 10px 0; }
-        .progress-fill { background: linear-gradient(90deg, #00d9ff, #00ff88); height: 100%; transition: width 0.3s; display: flex; align-items: center; justify-content: center; color: #000; font-weight: bold; }
-        .tweet-card { background: #252525; border: 1px solid #444; border-radius: 8px; padding: 15px; margin-bottom: 10px; }
-        .tweet-meta { color: #888; font-size: 12px; margin-bottom: 8px; }
-        .tweet-content { color: #e0e0e0; line-height: 1.5; margin-bottom: 8px; }
-        .tweet-stats { display: flex; gap: 15px; font-size: 12px; color: #666; }
-        .pattern-card { background: #252525; border-left: 4px solid #00d9ff; padding: 15px; margin-bottom: 10px; }
-        .pattern-title { color: #00d9ff; font-weight: bold; margin-bottom: 5px; }
-        .pattern-meta { color: #888; font-size: 12px; }
+        .stat-card { background: white; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .stat-label { color: #666; font-size: 13px; margin-bottom: 8px; font-weight: 500; }
+        .stat-value { color: #4A90E2; font-size: 32px; font-weight: bold; }
+        .stat-sublabel { color: #999; font-size: 12px; margin-top: 5px; }
+        .section { background: white; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .section-title { color: #333; font-size: 18px; margin-bottom: 15px; font-weight: 600; }
+        .progress-bar { background: #e0e0e0; border-radius: 8px; height: 30px; overflow: hidden; margin: 10px 0; }
+        .progress-fill { background: linear-gradient(90deg, #4A90E2, #50C878); height: 100%; transition: width 0.3s; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; }
+        .tweet-card { background: #fafafa; border: 1px solid #e0e0e0; border-radius: 8px; padding: 15px; margin-bottom: 10px; }
+        .tweet-meta { color: #666; font-size: 12px; margin-bottom: 8px; }
+        .tweet-content { color: #333; line-height: 1.5; margin-bottom: 8px; }
+        .tweet-stats { display: flex; gap: 15px; font-size: 12px; color: #999; }
+        .pattern-card { background: #f8f9fa; border-left: 4px solid #4A90E2; padding: 15px; margin-bottom: 10px; border-radius: 4px; }
+        .pattern-title { color: #333; font-weight: bold; margin-bottom: 5px; }
+        .pattern-meta { color: #666; font-size: 12px; }
         .tier-badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; }
-        .tier-viral { background: #ff00ff; color: #fff; }
-        .tier-micro { background: #00ff88; color: #000; }
-        .tier-growth { background: #00d9ff; color: #000; }
-        .tier-established { background: #666; color: #fff; }
-        .confidence-high { color: #00ff88; }
-        .confidence-medium { color: #ffaa00; }
-        .confidence-low { color: #ff4444; }
-        .footer { text-align: center; color: #666; margin-top: 40px; font-size: 12px; }
-        .empty-state { background: #252525; border: 2px dashed #444; border-radius: 8px; padding: 40px; text-align: center; color: #666; }
+        .tier-viral { background: #E91E63; color: #fff; }
+        .tier-micro { background: #50C878; color: #fff; }
+        .tier-growth { background: #4A90E2; color: #fff; }
+        .tier-established { background: #9E9E9E; color: #fff; }
+        .confidence-high { color: #50C878; font-weight: 600; }
+        .confidence-medium { color: #FF9800; font-weight: 600; }
+        .confidence-low { color: #F44336; font-weight: 600; }
+        .footer { text-align: center; color: #999; margin-top: 40px; font-size: 12px; }
+        .empty-state { background: #fafafa; border: 2px dashed #ddd; border-radius: 8px; padding: 40px; text-align: center; color: #999; }
     </style>
 </head>
 <body>
@@ -2038,12 +2038,10 @@ function generateVisualIntelligenceHTML(data: any): string {
 
         <div class="nav-tabs">
             <a href="/dashboard/recent?token=xbot-admin-2025" class="nav-tab">📅 Recent</a>
-            <a href="/dashboard/posts?token=xbot-admin-2025" class="nav-tab">📊 Metrics</a>
+            <a href="/dashboard/posts?token=xbot-admin-2025" class="nav-tab">📊 Posts</a>
             <a href="/dashboard/replies?token=xbot-admin-2025" class="nav-tab">💬 Replies</a>
-            <a href="/dashboard/temporal?token=xbot-admin-2025" class="nav-tab">⏱️ Temporal</a>
-            <a href="/dashboard/factors?token=xbot-admin-2025" class="nav-tab">🔬 Factors</a>
-            <a href="/dashboard/followers?token=xbot-admin-2025" class="nav-tab">📈 Followers</a>
             <a href="/dashboard/formatting?token=xbot-admin-2025" class="nav-tab active">🎨 Formatting</a>
+            <a href="/dashboard/health?token=xbot-admin-2025" class="nav-tab">🔧 System Health</a>
         </div>
 
         <div class="stat-grid">
