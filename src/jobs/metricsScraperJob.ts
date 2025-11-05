@@ -257,8 +257,50 @@ export async function metricsScraperJob(): Promise<void> {
             if (contentMetadataError) {
               console.error(`[METRICS_JOB] ❌ CRITICAL: Failed to update content_metadata for ${post.tweet_id}:`, contentMetadataError.message);
               // This is critical - dashboard won't show metrics without this!
+              failed++;
+              continue;
             } else {
               console.log(`[METRICS_JOB] ✅ Dashboard data updated: ${metrics.views ?? 0} views, ${metrics.likes ?? 0} likes`);
+            }
+            
+            // 🔍 VERIFICATION LOOP: Ensure data actually reached dashboard
+            try {
+              const { data: verification, error: verifyError } = await supabase
+                .from('content_metadata')
+                .select('actual_impressions, actual_likes, actual_retweets')
+                .eq('decision_id', post.decision_id)
+                .single();
+              
+              if (verifyError || !verification) {
+                console.error(`[METRICS_JOB] ❌ VERIFICATION: Failed to read back from content_metadata for ${post.tweet_id}`);
+                console.error(`[METRICS_JOB] 💡 Sync write succeeded but read failed - possible database issue`);
+              } else if (verification.actual_impressions === null && metrics.views !== null && metrics.views > 0) {
+                console.error(`[METRICS_JOB] ❌ VERIFICATION: Data NOT in dashboard for ${post.tweet_id}`);
+                console.error(`[METRICS_JOB] 💡 Expected ${metrics.views} views, got NULL - retrying sync...`);
+                
+                // AUTO-FIX: Retry sync one more time
+                const { error: retryError } = await supabase
+                  .from('content_metadata')
+                  .update({
+                    actual_impressions: metrics.views,
+                    actual_likes: metrics.likes ?? 0,
+                    actual_retweets: metrics.retweets ?? 0,
+                    actual_replies: metrics.replies ?? 0,
+                    actual_engagement_rate: engagementRate
+                  })
+                  .eq('decision_id', post.decision_id);
+                
+                if (retryError) {
+                  console.error(`[METRICS_JOB] ❌ AUTO-FIX FAILED: ${retryError.message}`);
+                } else {
+                  console.log(`[METRICS_JOB] ✅ AUTO-FIX: Retry sync succeeded for ${post.tweet_id}`);
+                }
+              } else {
+                console.log(`[METRICS_JOB] ✅ VERIFICATION: Dashboard confirmed with ${verification.actual_impressions ?? 0} views`);
+              }
+            } catch (verificationError: any) {
+              console.warn(`[METRICS_JOB] ⚠️ Verification check failed: ${verificationError.message}`);
+              // Don't fail the job - metrics are stored, just verification failed
             }
             
             console.log(`[METRICS_JOB] ✅ Updated ${post.tweet_id}: ${metrics.likes ?? 0} likes, ${metrics.views ?? 0} views`);
