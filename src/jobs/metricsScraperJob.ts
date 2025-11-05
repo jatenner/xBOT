@@ -17,26 +17,28 @@ export async function metricsScraperJob(): Promise<void> {
     const supabase = getSupabaseClient();
     
     // PRIORITY 1: Recent tweets (last 3 days) - scrape aggressively
+    // 🔥 CRITICAL FIX: Use posted_at (when posted to Twitter), NOT created_at (when generated)!
+    // Replies can be generated hours before posting, so created_at is misleading
     const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
     const { data: recentPosts, error: recentError } = await supabase
       .from('content_metadata')
-      .select('decision_id, tweet_id, created_at')  // 🔥 FIX: Use decision_id (UUID), not id (integer)!
+      .select('decision_id, tweet_id, posted_at')
       .eq('status', 'posted')
       .not('tweet_id', 'is', null)
-      .gte('created_at', threeDaysAgo.toISOString())
-      .order('created_at', { ascending: false })
+      .gte('posted_at', threeDaysAgo.toISOString())  // ✅ FIXED: Use posted_at for recency
+      .order('posted_at', { ascending: false })      // ✅ FIXED: Sort by when posted
       .limit(8); // 🔥 REDUCED: 8 recent tweets (was 15) to prevent timeout
     
     // PRIORITY 2: Historical tweets (3-30 days old) - scrape less frequently
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const { data: historicalPosts, error: historicalError } = await supabase
       .from('content_metadata')
-      .select('decision_id, tweet_id, created_at')  // 🔥 FIX: Use decision_id (UUID), not id (integer)!
+      .select('decision_id, tweet_id, posted_at')
       .eq('status', 'posted')
       .not('tweet_id', 'is', null)
-      .lt('created_at', threeDaysAgo.toISOString())
-      .gte('created_at', thirtyDaysAgo.toISOString())
-      .order('created_at', { ascending: false })
+      .lt('posted_at', threeDaysAgo.toISOString())   // ✅ FIXED: Use posted_at
+      .gte('posted_at', thirtyDaysAgo.toISOString()) // ✅ FIXED: Use posted_at
+      .order('posted_at', { ascending: false })      // ✅ FIXED: Sort by when posted
       .limit(2); // 🔥 REDUCED: 2 historical tweets (was 5) to prevent timeout
     
     // Combine: prioritize recent, then add some historical
@@ -124,7 +126,7 @@ export async function metricsScraperJob(): Promise<void> {
             
             // Use the shared page from the batch session
             // PHASE 4: Use orchestrator (includes validation, quality tracking, caching)
-            const postedAt = new Date(String(post.created_at));
+            const postedAt = new Date(String(post.posted_at));  // ✅ FIXED: Use posted_at, not created_at
             const hoursSincePost = (Date.now() - postedAt.getTime()) / (1000 * 60 * 60);
             
             const result = await orchestrator.scrapeAndStore(page, String(post.tweet_id), {
@@ -211,7 +213,7 @@ export async function metricsScraperJob(): Promise<void> {
               replies_count: metrics.replies ?? 0,
               impressions_count: metrics.views ?? 0,
               updated_at: new Date().toISOString(),
-              created_at: post.created_at
+              created_at: post.posted_at  // ✅ Use posted_at (when actually posted to Twitter)
             }, { onConflict: 'tweet_id' });
             
             if (metricsTableError) {
