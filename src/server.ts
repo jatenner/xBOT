@@ -866,6 +866,39 @@ app.get('/dashboard/factors', async (req, res) => {
   }
 });
 
+// Visual Intelligence dashboard page
+app.get('/dashboard/formatting', async (req, res) => {
+  try {
+    const token = req.query.token || req.headers.authorization?.replace('Bearer ', '');
+    const adminToken = process.env.ADMIN_TOKEN || 'xbot-admin-2025';
+    
+    if (token !== adminToken) {
+      return res.status(401).send(`
+        <html>
+          <body style="font-family: Arial; text-align: center; padding: 50px;">
+            <h1>🔒 Authentication Required</h1>
+            <p>Add <code>?token=YOUR_TOKEN</code> to the URL</p>
+          </body>
+        </html>
+      `);
+    }
+    
+    console.log('🎨 VI_DASHBOARD: Serving visual intelligence...');
+    
+    const { comprehensiveDashboard } = await import('./dashboard/comprehensiveDashboard');
+    const dashboardHTML = await comprehensiveDashboard.generateVisualIntelligenceDashboard();
+    
+    res.setHeader('Content-Type', 'text/html');
+    res.send(dashboardHTML);
+    
+    console.log('✅ VI_DASHBOARD: Delivered');
+  } catch (error: any) {
+    console.error('❌ VI_DASHBOARD_ERROR:', error.message);
+    res.status(500).send(`<html><body style="padding: 50px; text-align: center;">
+      <h1>🚨 Error</h1><p>${error.message}</p></body></html>`);
+  }
+});
+
 /**
  * 404 handler
  */
