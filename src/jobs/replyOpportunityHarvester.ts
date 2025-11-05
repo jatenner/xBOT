@@ -42,17 +42,18 @@ export async function replyOpportunityHarvester(): Promise<void> {
     const needToHarvest = TARGET_POOL_SIZE - poolSize;
     console.log(`[HARVESTER] 🎯 Need to harvest ~${needToHarvest} opportunities`);
     
-  // Step 3: Get discovered accounts (HIGH-QUALITY FILTERS - size + engagement)
-  // 🔥 FIX: Target 200k+ accounts with 2%+ engagement for better reply visibility
+  // Step 3: Get discovered accounts (BALANCED FILTERS - sweet spot for replies)
+  // 🎯 TARGET: 50k-500k accounts with good engagement (not mega-influencers)
   const { data: accounts } = await supabase
     .from('discovered_accounts')
     .select('username, follower_count, quality_score, engagement_rate, scrape_priority')
-    .gte('follower_count', 200000)  // 🔥 MINIMUM 200k followers (target health influencers)
-    .gte('engagement_rate', 0.02)   // 🔥 MINIMUM 2% engagement rate (active audiences)
-    .order('follower_count', { ascending: false })  // BIG accounts first (they get 10K+ comments!)
-    .order('engagement_rate', { ascending: false })  // High engagement first
+    .gte('follower_count', 50000)   // 🎯 50k+ followers (sweet spot - not flooded with replies yet)
+    .lte('follower_count', 500000)  // 🎯 Max 500k (mega accounts get too many replies)
+    .gte('engagement_rate', 0.01)   // 🎯 1%+ engagement rate (active audiences)
+    .order('engagement_rate', { ascending: false })  // High engagement first (most visibility)
+    .order('follower_count', { ascending: false })   // Larger accounts second
     .order('last_scraped_at', { ascending: true, nullsFirst: true })  // Least recently scraped
-    .limit(300); // Increased to 300 for faster coverage of high-engagement accounts
+    .limit(300); // Process 300 accounts for good coverage
   
   if (!accounts || accounts.length === 0) {
     console.log('[HARVESTER] ⚠️ No accounts in pool, waiting for discovery job');
@@ -222,9 +223,9 @@ export async function replyOpportunityHarvester(): Promise<void> {
   console.log(`[HARVESTER] 📊 Pool size: ${poolSize} → ${finalPoolSize}`);
   console.log(`[HARVESTER] 🌾 Harvested: ${totalHarvested} new opportunities from ${accountsProcessed} accounts`);
   console.log(`[HARVESTER] 🏆 Quality breakdown:`);
-  console.log(`[HARVESTER]   GOLDEN: ${goldenCount || 0} (0.3%+ eng, <90min, <8 replies)`);
-  console.log(`[HARVESTER]   GOOD: ${goodCount || 0} (0.15%+ eng, <240min, <15 replies)`);
-  console.log(`[HARVESTER]   ACCEPTABLE: ${acceptableCount || 0} (0.08%+ eng, <720min, <25 replies)`);
+  console.log(`[HARVESTER]   GOLDEN: ${goldenCount || 0} (500+ likes, <30 replies)`);
+  console.log(`[HARVESTER]   GOOD: ${goodCount || 0} (200+ likes, <50 replies)`);
+  console.log(`[HARVESTER]   ACCEPTABLE: ${acceptableCount || 0} (100+ likes, <80 replies)`);
   
   if (finalPoolSize < MIN_POOL_SIZE) {
     console.warn(`[HARVESTER] ⚠️ Pool still low (${finalPoolSize}/${MIN_POOL_SIZE})`);

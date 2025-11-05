@@ -81,47 +81,49 @@ export class ReplyQualityScorer {
   }
   
   /**
-   * Calculate tier based on ABSOLUTE ENGAGEMENT (likes OR comments)
-   * Account size is IRRELEVANT - only engagement matters for visibility
+   * Calculate tier based on ABSOLUTE ENGAGEMENT (likes AND reply competition)
+   * Balanced approach: High visibility + Low competition = Best opportunities
    * 
-   * 3-TIER SYSTEM: Focus on high-engagement tweets only
-   * Tier 1 (Platinum): 10K+ likes - ~25/day → Replied to FIRST
-   * Tier 2 (Diamond): 5K+ likes - ~50/day → Replied to SECOND  
-   * Tier 3 (Golden): 2K+ likes - ~150/day → Replied to THIRD
-   * Total: ~225/day (2.3x buffer for 96 replies/day needed)
+   * 3-TIER SYSTEM (Tiered by quality):
+   * GOLDEN: 500+ likes, <30 replies - ~80/day → High visibility, low competition
+   * GOOD: 200+ likes, <50 replies - ~200/day → Medium visibility, medium competition
+   * ACCEPTABLE: 100+ likes, <80 replies - ~400/day → Lower visibility, manageable competition
+   * Total: ~680/day (7x buffer for 96 replies/day needed)
    */
   calculateTier(metrics: TweetMetrics): 'golden' | 'good' | 'acceptable' | null {
     const absoluteLikes = metrics.like_count;
-    const absoluteComments = metrics.reply_count;
+    const absoluteReplies = metrics.reply_count;
     const tweetAge = metrics.posted_minutes_ago;
     
     // Only consider tweets from last 24 hours
     if (tweetAge > 1440) return null;
     
     // ═══════════════════════════════════════════════════════════
-    // 3-TIER SYSTEM (All stored as "golden" but prioritized by likes)
+    // 3-TIER SYSTEM (Prioritize golden > good > acceptable)
     // ═══════════════════════════════════════════════════════════
     
-    // TIER 1 - PLATINUM: 10,000+ likes OR 1,000+ comments
-    // Expected: ~20-30 per day | Visibility: 100K+ people
-    if (absoluteLikes >= 10000 || absoluteComments >= 1000) {
+    // TIER 1 - GOLDEN: 500+ likes, <30 replies
+    // High engagement but not flooded with replies yet
+    // Your reply will be in top 30 (highly visible)
+    if (absoluteLikes >= 500 && absoluteReplies < 30) {
       return 'golden';
     }
     
-    // TIER 2 - DIAMOND: 5,000+ likes OR 500+ comments
-    // Expected: ~40-60 per day | Visibility: 50K+ people
-    if (absoluteLikes >= 5000 || absoluteComments >= 500) {
-      return 'golden';
+    // TIER 2 - GOOD: 200+ likes, <50 replies
+    // Medium engagement with manageable competition
+    // Your reply will be in top 50 (visible)
+    if (absoluteLikes >= 200 && absoluteReplies < 50) {
+      return 'good';
     }
     
-    // TIER 3 - GOLDEN: 2,000+ likes OR 200+ comments
-    // Expected: ~100-200 per day | Visibility: 20K+ people
-    if (absoluteLikes >= 2000 || absoluteComments >= 200) {
-      return 'golden';
+    // TIER 3 - ACCEPTABLE: 100+ likes, <80 replies
+    // Lower engagement but still worth replying to
+    // Your reply will be in top 80 (moderately visible)
+    if (absoluteLikes >= 100 && absoluteReplies < 80) {
+      return 'acceptable';
     }
     
-    // Below 2K likes = REJECTED (not enough visibility)
-    // We have 225+ opportunities/day above 2K, don't need anything below
+    // Below 100 likes OR too many replies = REJECTED
     return null;
   }
   
