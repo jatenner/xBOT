@@ -236,25 +236,29 @@ export async function metricsScraperJob(): Promise<void> {
               // But log comprehensively so we can debug the root cause
             }
             
-            // 🔥 CRITICAL FIX: Also update content_generation_metadata_comprehensive 
-            // This table has actual_impressions, actual_likes, actual_retweets, actual_replies
-            // These are used for content diversity analysis and topic cluster learning!
+            // 🔥 CRITICAL FIX: Update content_metadata table (used by dashboard!)
+            // Dashboard reads actual_impressions, actual_likes, actual_retweets from content_metadata
+            const engagementRate = metrics.views && metrics.views > 0 
+              ? ((metrics.likes + metrics.retweets + metrics.replies) / metrics.views) 
+              : 0;
+            
             const { error: contentMetadataError } = await supabase
-              .from('content_generation_metadata_comprehensive')
+              .from('content_metadata')
               .update({
-                actual_impressions: metrics.views ?? null,  // Keep NULL if no views (not 0!)
-                actual_likes: metrics.likes ?? 0,
-                actual_retweets: metrics.retweets ?? 0,
-                actual_replies: metrics.replies ?? 0,
+                actual_impressions: metrics.views ?? null,  // Dashboard shows this as "VIEWS"
+                actual_likes: metrics.likes ?? 0,           // Dashboard shows this as "LIKES"
+                actual_retweets: metrics.retweets ?? 0,     // Used for viral score
+                actual_replies: metrics.replies ?? 0,       // Used for engagement rate
+                actual_engagement_rate: engagementRate,     // Dashboard shows this as "ER"
                 updated_at: new Date().toISOString()
               })
-              .eq('tweet_id', post.tweet_id);
+              .eq('decision_id', post.decision_id);  // Match by decision_id (UUID)
             
             if (contentMetadataError) {
-              console.warn(`[METRICS_JOB] ⚠️ Failed to update content_metadata for ${post.tweet_id}:`, contentMetadataError.message);
-              // Don't fail - this is supplementary data
+              console.error(`[METRICS_JOB] ❌ CRITICAL: Failed to update content_metadata for ${post.tweet_id}:`, contentMetadataError.message);
+              // This is critical - dashboard won't show metrics without this!
             } else {
-              console.log(`[METRICS_JOB] 📊 Updated content_metadata: ${metrics.views ?? 0} views stored in actual_impressions`);
+              console.log(`[METRICS_JOB] ✅ Dashboard data updated: ${metrics.views ?? 0} views, ${metrics.likes ?? 0} likes`);
             }
             
             console.log(`[METRICS_JOB] ✅ Updated ${post.tweet_id}: ${metrics.likes ?? 0} likes, ${metrics.views ?? 0} views`);
