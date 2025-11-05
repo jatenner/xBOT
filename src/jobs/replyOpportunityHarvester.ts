@@ -1,19 +1,26 @@
 /**
- * 🌾 REPLY OPPORTUNITY HARVESTER
+ * 🌾 REPLY OPPORTUNITY HARVESTER - TWEET-FIRST STRATEGY
  * 
- * Continuously harvests fresh reply opportunities from discovered accounts
+ * Searches Twitter directly for viral health tweets (5k-50k+ likes)
+ * Instead of scraping accounts, we search for tweets that meet our criteria
+ * 
+ * Strategy:
+ * - Search Twitter for health content with min_faves (5k/10k/20k/50k)
+ * - Find ALL viral tweets regardless of account
+ * - Guaranteed high engagement (search filters it)
+ * - No wasted scraping on accounts with no viral tweets
  * 
  * Goals:
  * - Keep 200-300 opportunities in pool at all times
  * - Only harvest tweets <24 hours old
- * - Scrape 10-20 accounts per cycle
+ * - Run 8-10 searches per cycle (different topics + engagement levels)
  * - Run every 20 minutes (optimized frequency)
  */
 
 import { getSupabaseClient } from '../db';
 
 export async function replyOpportunityHarvester(): Promise<void> {
-  console.log('[HARVESTER] 🌾 Starting reply opportunity harvesting...');
+  console.log('[HARVESTER] 🔍 Starting TWEET-FIRST viral search harvesting...');
   
   try {
     const supabase = getSupabaseClient();
@@ -42,152 +49,94 @@ export async function replyOpportunityHarvester(): Promise<void> {
     const needToHarvest = TARGET_POOL_SIZE - poolSize;
     console.log(`[HARVESTER] 🎯 Need to harvest ~${needToHarvest} opportunities`);
     
-  // Step 3: Get discovered accounts (MEGA-IMPACT STRATEGY - tiered by viral potential)
-  // 🚀 TIER 1: MEGA-ACCOUNTS (1M+ followers) - produce 50k+ like tweets
-  // 🎯 TIER 2: SUPER-ACCOUNTS (500k-1M followers) - produce 20k+ like tweets  
-  // ✅ TIER 3: HIGH-ACCOUNTS (100k-500k followers) - produce 10k+ like tweets
-  // 📊 TIER 4: REGULAR-ACCOUNTS (50k-100k followers) - produce 5k+ like tweets
+  // Step 3: Define Twitter search queries (TWEET-FIRST STRATEGY)
+  // Search directly for viral health tweets by engagement level
+  // Format: {query, minLikes, maxReplies, label}
   
-  // Get MEGA accounts first (highest viral potential)
-  const { data: megaAccounts } = await supabase
-    .from('discovered_accounts')
-    .select('username, follower_count, quality_score, engagement_rate, scrape_priority')
-    .gte('follower_count', 1000000)  // 🚀 1M+ followers (mega-accounts)
-    .gte('engagement_rate', 0.005)     // 0.5%+ engagement (viral potential)
-    .order('follower_count', { ascending: false })  // Biggest first
-    .order('last_scraped_at', { ascending: true, nullsFirst: true })
-    .limit(50); // Scrape top 50 mega accounts
-  
-  // Get SUPER accounts (high viral potential)
-  const { data: superAccounts } = await supabase
-    .from('discovered_accounts')
-    .select('username, follower_count, quality_score, engagement_rate, scrape_priority')
-    .gte('follower_count', 500000)
-    .lt('follower_count', 1000000)   // 500k-1M followers
-    .gte('engagement_rate', 0.008)     // 0.8%+ engagement
-    .order('follower_count', { ascending: false })
-    .order('last_scraped_at', { ascending: true, nullsFirst: true })
-    .limit(100);
-  
-  // Get HIGH accounts (good viral potential)
-  const { data: highAccounts } = await supabase
-    .from('discovered_accounts')
-    .select('username, follower_count, quality_score, engagement_rate, scrape_priority')
-    .gte('follower_count', 100000)
-    .lt('follower_count', 500000)    // 100k-500k followers
-    .gte('engagement_rate', 0.01)     // 1%+ engagement
-    .order('follower_count', { ascending: false })
-    .order('last_scraped_at', { ascending: true, nullsFirst: true })
-    .limit(150);
-  
-  // Combine with prioritization: MEGA first, then SUPER, then HIGH
-  const accounts = [
-    ...(megaAccounts || []),
-    ...(superAccounts || []),
-    ...(highAccounts || [])
+  const searchQueries = [
+    // MEGA-VIRAL (50k+ likes) - Ultra high-impact
+    { query: 'health OR longevity OR biohacking', minLikes: 50000, maxReplies: 1000, label: 'MEGA-VIRAL (Health)' },
+    { query: 'fitness OR nutrition OR wellness', minLikes: 50000, maxReplies: 1000, label: 'MEGA-VIRAL (Fitness)' },
+    
+    // SUPER-VIRAL (20k+ likes) - Super high-impact
+    { query: 'health OR longevity OR sleep', minLikes: 20000, maxReplies: 600, label: 'SUPER-VIRAL (Health)' },
+    { query: 'nutrition OR diet OR supplements', minLikes: 20000, maxReplies: 600, label: 'SUPER-VIRAL (Nutrition)' },
+    
+    // VIRAL (10k+ likes) - High-impact
+    { query: 'health OR wellness OR mental', minLikes: 10000, maxReplies: 400, label: 'VIRAL (Health)' },
+    { query: 'fitness OR exercise OR workout', minLikes: 10000, maxReplies: 400, label: 'VIRAL (Fitness)' },
+    
+    // TRENDING (5k+ likes) - Good impact
+    { query: 'health OR medical OR doctor', minLikes: 5000, maxReplies: 300, label: 'TRENDING (Health)' },
+    { query: 'nutrition OR food OR eating', minLikes: 5000, maxReplies: 300, label: 'TRENDING (Nutrition)' },
+    { query: 'sleep OR energy OR recovery', minLikes: 5000, maxReplies: 300, label: 'TRENDING (Recovery)' },
+    { query: 'longevity OR aging OR biohacking', minLikes: 5000, maxReplies: 300, label: 'TRENDING (Longevity)' }
   ];
   
-  if (!accounts || accounts.length === 0) {
-    console.log('[HARVESTER] ⚠️ No accounts in pool, waiting for discovery job');
-    return;
-  }
+  console.log(`[HARVESTER] 🔍 Configured ${searchQueries.length} search queries for viral health content`);
   
-  console.log(`[HARVESTER] 📋 Found ${accounts.length} high-quality accounts in pool`);
-  
-  // Step 4: TIME-BOXED PARALLEL HARVESTING (OPTIMIZED FOR STABILITY)
+  // Step 4: TIME-BOXED SEARCH-BASED HARVESTING
   const { realTwitterDiscovery } = await import('../ai/realTwitterDiscovery');
-  const { getReplyQualityScorer } = await import('../intelligence/replyQualityScorer');
   const { withBrowserLock, BrowserPriority } = await import('../browser/BrowserSemaphore');
   
   let totalHarvested = 0;
-  let accountsProcessed = 0;
+  let searchesProcessed = 0;
   
-  const TIME_BUDGET = 45 * 60 * 1000; // 45 minutes max (increased for mega-account scraping)
-  const BATCH_SIZE = 3; // Process 3 accounts simultaneously (increased for speed)
+  const TIME_BUDGET = 30 * 60 * 1000; // 30 minutes max
   const startTime = Date.now();
   
-  console.log(`[HARVESTER] 🚀 Starting MEGA-IMPACT harvesting (time budget: 45min, batch size: 3)...`);
-  console.log(`[HARVESTER] 📊 Account tiers: ${megaAccounts?.length || 0} MEGA (1M+), ${superAccounts?.length || 0} SUPER (500k-1M), ${highAccounts?.length || 0} HIGH (100k-500k)`);
+  console.log(`[HARVESTER] 🚀 Starting TWEET-FIRST search harvesting (time budget: 30min)...`);
   
-  // Process accounts in parallel batches until time runs out
-  for (let i = 0; i < accounts.length; i += BATCH_SIZE) {
+  // Process search queries sequentially (can't parallelize searches easily)
+  for (const searchQuery of searchQueries) {
     // Check time budget
     const elapsed = Date.now() - startTime;
     if (elapsed >= TIME_BUDGET) {
-      console.log(`[HARVESTER] ⏰ Time budget exhausted (${(elapsed/1000).toFixed(1)}s) - processed ${accountsProcessed} accounts`);
+      console.log(`[HARVESTER] ⏰ Time budget exhausted (${(elapsed/1000).toFixed(1)}s) - processed ${searchesProcessed} searches`);
       break;
     }
     
-    // Get next batch (10 accounts)
-    const batch = accounts.slice(i, i + BATCH_SIZE);
-    
-    console.log(`[HARVESTER]   Batch ${Math.floor(i/BATCH_SIZE) + 1}: Processing ${batch.length} accounts in parallel...`);
-    
-    // Scrape accounts IN PARALLEL (with semaphore protection)
-    const batchResults = await Promise.allSettled(
-      batch.map(async (account) => {
-        try {
-          console.log(`[HARVESTER]     → @${account.username} (${account.follower_count?.toLocaleString()} followers, priority: ${account.scrape_priority || 50})...`);
-          
-          // 🔒 BROWSER SEMAPHORE: Acquire browser lock for harvesting (priority 3)
-          const opportunities = await withBrowserLock(
-            `harvest_${account.username}`,
-            BrowserPriority.HARVESTING,
-            async () => {
-              return await realTwitterDiscovery.findReplyOpportunitiesFromAccount(
-                String(account.username),
-                Number(account.follower_count) || 0,  // Pass follower count for engagement rate
-                account.engagement_rate ? Number(account.engagement_rate) : undefined  // Pass account engagement rate
-              );
-            }
+    try {
+      console.log(`[HARVESTER]   🔍 Searching: ${searchQuery.label} (${searchQuery.minLikes}+ likes)...`);
+      
+      // 🔒 BROWSER SEMAPHORE: Acquire browser lock for search (priority 3)
+      const opportunities = await withBrowserLock(
+        `search_${searchQuery.label}`,
+        BrowserPriority.HARVESTING,
+        async () => {
+          return await realTwitterDiscovery.findViralTweetsViaSearch(
+            searchQuery.query,
+            searchQuery.minLikes,
+            searchQuery.maxReplies
           );
-          
-          // Update last_scraped_at
-          await supabase
-            .from('discovered_accounts')
-            .update({ last_scraped_at: new Date().toISOString() })
-            .eq('username', account.username);
-          
-          return { account, opportunities };
-        } catch (error: any) {
-          console.error(`[HARVESTER]       ✗ Failed @${account.username}:`, error.message);
-          return { account, opportunities: [] };
         }
-      })
-    );
-    
-    // Collect results and store opportunities in database
-    const allOpportunitiesInBatch: any[] = [];
-    
-    batchResults.forEach((result, idx) => {
-      if (result.status === 'fulfilled' && result.value.opportunities.length > 0) {
-        const { account, opportunities } = result.value;
+      );
+      
+      searchesProcessed++;
+      
+      if (opportunities.length > 0) {
         totalHarvested += opportunities.length;
-        accountsProcessed++;
         
-        // Collect for batch storage
-        allOpportunitiesInBatch.push(...opportunities);
-        
-        // Log tier breakdown
-        const golden = opportunities.filter((o: any) => o.tier === 'golden').length;
-        const good = opportunities.filter((o: any) => o.tier === 'good').length;
-        const acceptable = opportunities.filter((o: any) => o.tier === 'acceptable').length;
-        
-        console.log(`[HARVESTER]       ✓ ${account.username}: ${opportunities.length} opps (${golden} golden, ${good} good, ${acceptable} acceptable)`);
-      } else if (result.status === 'fulfilled') {
-        accountsProcessed++;
-        console.log(`[HARVESTER]       ✗ ${batch[idx].username}: No opportunities`);
+        // 💾 CRITICAL: Store opportunities in database
+        try {
+          await realTwitterDiscovery.storeOpportunities(opportunities);
+          
+          // Log tier breakdown
+          const megaViral = opportunities.filter((o: any) => o.like_count >= 50000).length;
+          const superViral = opportunities.filter((o: any) => o.like_count >= 20000 && o.like_count < 50000).length;
+          const viral = opportunities.filter((o: any) => o.like_count >= 10000 && o.like_count < 20000).length;
+          const trending = opportunities.filter((o: any) => o.like_count >= 5000 && o.like_count < 10000).length;
+          
+          console.log(`[HARVESTER]     ✓ Found ${opportunities.length} opps: ${megaViral} mega, ${superViral} super, ${viral} viral, ${trending} trending`);
+        } catch (error: any) {
+          console.error(`[HARVESTER]     ❌ Failed to store opportunities:`, error.message);
+        }
+      } else {
+        console.log(`[HARVESTER]     ✗ No opportunities found for ${searchQuery.label}`);
       }
-    });
-    
-    // 💾 CRITICAL: Store opportunities in database
-    if (allOpportunitiesInBatch.length > 0) {
-      try {
-        await realTwitterDiscovery.storeOpportunities(allOpportunitiesInBatch);
-        console.log(`[HARVESTER]     💾 Stored ${allOpportunitiesInBatch.length} opportunities in database`);
-      } catch (error: any) {
-        console.error(`[HARVESTER]     ❌ Failed to store opportunities:`, error.message);
-      }
+      
+    } catch (error: any) {
+      console.error(`[HARVESTER]     ✗ Search failed for ${searchQuery.label}:`, error.message);
     }
     
     // Check if we have enough high-impact opportunities (5K+ likes) to stop early
@@ -204,7 +153,7 @@ export async function replyOpportunityHarvester(): Promise<void> {
       break;
     }
     
-    // Small delay between batches
+    // Small delay between searches (2 seconds)
     await new Promise(resolve => setTimeout(resolve, 2000));
   }
     
@@ -268,8 +217,9 @@ export async function replyOpportunityHarvester(): Promise<void> {
   
   console.log(`[HARVESTER] ✅ Harvest complete in ${elapsed}s!`);
   console.log(`[HARVESTER] 📊 Pool size: ${poolSize} → ${finalPoolSize}`);
-  console.log(`[HARVESTER] 🌾 Harvested: ${totalHarvested} new opportunities from ${accountsProcessed} accounts`);
-  console.log(`[HARVESTER] 🏆 MEGA-IMPACT breakdown:`);
+  console.log(`[HARVESTER] 🔍 Searches processed: ${searchesProcessed}/${searchQueries.length}`);
+  console.log(`[HARVESTER] 🌾 Harvested: ${totalHarvested} new viral tweet opportunities`);
+  console.log(`[HARVESTER] 🏆 MEGA-IMPACT breakdown (total in pool):`);
   console.log(`[HARVESTER]   🚀 MEGA-VIRAL (50K+ likes): ${megaViralCount || 0} tweets`);
   console.log(`[HARVESTER]   💎 SUPER-VIRAL (20K+ likes): ${superViralCount || 0} tweets`);
   console.log(`[HARVESTER]   ⭐ VIRAL (10K+ likes): ${viralCount || 0} tweets`);

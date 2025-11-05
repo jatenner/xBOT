@@ -471,6 +471,169 @@ export class RealTwitterDiscovery {
   }
 
   /**
+   * Find viral tweets via Twitter Search (TWEET-FIRST STRATEGY)
+   * 
+   * Searches for health content with minimum likes threshold
+   * Returns tweets matching criteria regardless of account
+   * 
+   * @param searchQuery - Search query (e.g., "health OR longevity")
+   * @param minLikes - Minimum likes threshold (5k/10k/20k/50k)
+   * @param maxReplies - Maximum reply count to avoid buried replies
+   */
+  async findViralTweetsViaSearch(
+    searchQuery: string,
+    minLikes: number,
+    maxReplies: number
+  ): Promise<ReplyOpportunity[]> {
+    console.log(`[REAL_DISCOVERY] 🔍 Searching for: "${searchQuery}" (${minLikes}+ likes)...`);
+    
+    const pool = UnifiedBrowserPool.getInstance();
+    const page = await pool.acquirePage('search_scrape');
+    
+    try {
+      // 🔐 VERIFY AUTHENTICATION FIRST
+      const isAuth = await this.verifyAuth(page);
+      if (!isAuth) {
+        console.error(`[REAL_DISCOVERY] ⚠️ Skipping search - not authenticated`);
+        return [];
+      }
+
+      // Build Twitter search URL with filters
+      // min_faves:{minLikes} filters for tweets with minimum likes
+      // -filter:replies excludes reply tweets (get original content)
+      // lang:en filters for English
+      const encodedQuery = encodeURIComponent(`${searchQuery} min_faves:${minLikes} -filter:replies lang:en`);
+      const searchUrl = `https://x.com/search?q=${encodedQuery}&src=typed_query&f=live`;
+      
+      console.log(`[REAL_DISCOVERY] 🌐 Navigating to search: ${searchUrl}`);
+      await page.goto(searchUrl, { 
+        waitUntil: 'domcontentloaded', 
+        timeout: 30000 
+      });
+      
+      // 🕐 GIVE TWITTER TIME TO LOAD
+      await page.waitForTimeout(5000); // Longer for search results
+      
+      // Extract viral tweets from search results
+      const opportunities = await page.evaluate((maxReplies) => {
+        const results: any[] = [];
+        const tweetElements = document.querySelectorAll('article[data-testid="tweet"]');
+        const NOW = Date.now();
+        const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+        
+        // Extract up to 50 tweets from search results
+        for (let i = 0; i < Math.min(tweetElements.length, 50); i++) {
+          const tweet = tweetElements[i];
+          
+          // Get timestamp
+          const timeEl = tweet.querySelector('time');
+          const datetime = timeEl?.getAttribute('datetime') || '';
+          if (!datetime) continue; // Skip if no timestamp
+          
+          const tweetTime = new Date(datetime).getTime();
+          const ageMs = NOW - tweetTime;
+          if (ageMs > MAX_AGE_MS) continue; // Skip if older than 24h
+          
+          // Get tweet content
+          const contentEl = tweet.querySelector('[data-testid="tweetText"]');
+          const content = contentEl?.textContent || '';
+          
+          // Get tweet link and ID
+          const linkEl = tweet.querySelector('a[href*="/status/"]');
+          const href = linkEl?.getAttribute('href') || '';
+          const match = href.match(/\/status\/(\d+)/);
+          const tweetId = match ? match[1] : '';
+          
+          // Get engagement metrics
+          const likeEl = tweet.querySelector('[data-testid="like"]') || 
+                         tweet.querySelector('[data-testid="unlike"]');
+          const replyEl = tweet.querySelector('[data-testid="reply"]');
+          
+          const likeText = likeEl?.textContent || '0';
+          const replyText = replyEl?.textContent || '0';
+          
+          // Parse engagement (handles "1.2K", "5M", etc)
+          const parseEngagement = (text: string): number => {
+            if (!text || text === '0') return 0;
+            const clean = text.trim().toUpperCase();
+            if (clean.includes('K')) return Math.floor(parseFloat(clean) * 1000);
+            if (clean.includes('M')) return Math.floor(parseFloat(clean) * 1000000);
+            return parseInt(clean.replace(/[^\d]/g, '')) || 0;
+          };
+          
+          const likeCount = parseEngagement(likeText);
+          const replyCount = parseEngagement(replyText);
+          const postedMinutesAgo = Math.floor(ageMs / 60000);
+          
+          // Get author
+          const authorEl = tweet.querySelector('[data-testid="User-Name"]');
+          const authorMatch = (authorEl?.textContent || '').match(/@(\w+)/);
+          const author = authorMatch ? authorMatch[1] : '';
+          
+          // Basic filters
+          const hasContent = content.length > 20;
+          const noLinks = !content.includes('bit.ly') && !content.includes('amzn');
+          const notTooManyReplies = replyCount < maxReplies;
+          
+          if (hasContent && noLinks && notTooManyReplies && tweetId && author) {
+            results.push({
+              tweet_id: tweetId,
+              tweet_url: `https://x.com/${author}/status/${tweetId}`,
+              tweet_content: content,
+              tweet_author: author,
+              reply_count: replyCount,
+              like_count: likeCount,
+              posted_minutes_ago: postedMinutesAgo
+            });
+          }
+        }
+        
+        return results;
+      }, maxReplies);
+      
+      console.log(`[REAL_DISCOVERY] ✅ Found ${opportunities.length} viral tweets from search`);
+      
+      // Calculate tiers for each opportunity
+      const { getReplyQualityScorer } = await import('../intelligence/replyQualityScorer');
+      const scorer = getReplyQualityScorer();
+      
+      const tieredOpportunities = opportunities
+        .map((opp: any) => {
+          const tier = scorer.calculateTier({
+            like_count: opp.like_count,
+            reply_count: opp.reply_count,
+            posted_minutes_ago: opp.posted_minutes_ago,
+            account_followers: 0 // Unknown for search results
+          });
+          
+          if (!tier) return null; // Filter out if doesn't meet tier criteria
+          
+          const momentum = scorer.calculateMomentum(opp.like_count, opp.posted_minutes_ago);
+          
+          return {
+            ...opp,
+            account_username: 'viral_search', // Mark as from search
+            tier: tier,
+            momentum_score: momentum,
+            opportunity_score: this.calculateOpportunityScore(opp.like_count, opp.reply_count),
+            expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString() // 6 hours
+          };
+        })
+        .filter((opp: any) => opp !== null);
+      
+      console.log(`[REAL_DISCOVERY] 🎯 Qualified ${tieredOpportunities.length} opportunities after tier filtering`);
+      
+      return tieredOpportunities;
+      
+    } catch (error: any) {
+      console.error(`[REAL_DISCOVERY] ❌ Search failed for "${searchQuery}":`, error.message);
+      return [];
+    } finally {
+      await pool.releasePage(page);
+    }
+  }
+
+  /**
    * Get full account details (REAL SCRAPING)
    */
   private async getAccountDetails(page: Page, username: string): Promise<DiscoveredAccount | null> {
