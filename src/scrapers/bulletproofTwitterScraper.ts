@@ -571,77 +571,34 @@ export class BulletproofTwitterScraper {
         console.log(`    ❌ PROFILE VISITS: No match found in text`);
       }
       
-      // 🔥 IMPROVED: Extract likes/RTs/replies using DOM selectors (more reliable than regex)
-      try {
-        // Try to find the tweet article on analytics page
-        const tweetArticle = await page.$('article[data-testid="tweet"]');
-        
-        if (tweetArticle) {
-          console.log(`    ✅ ANALYTICS: Found tweet article, extracting engagement via selectors...`);
-          
-          // Extract using proven aria-label method
-          const likeBtn = await tweetArticle.$('[data-testid="like"]');
-          if (likeBtn) {
-            const likeLabel = await likeBtn.getAttribute('aria-label');
-            const likeMatch = likeLabel?.match(/(\d[\d,]*)/);
-            if (likeMatch) {
-              metrics.likes = parseInt(likeMatch[1].replace(/,/g, ''));
-              console.log(`    ✅ LIKES from aria-label: ${metrics.likes}`);
-            } else if (likeLabel?.toLowerCase().includes('like')) {
-              metrics.likes = 0; // "Like" with no number = 0 likes
-              console.log(`    ✅ LIKES from aria-label: 0 (no number in label)`);
-            }
-          }
-          
-          const rtBtn = await tweetArticle.$('[data-testid="retweet"]');
-          if (rtBtn) {
-            const rtLabel = await rtBtn.getAttribute('aria-label');
-            const rtMatch = rtLabel?.match(/(\d[\d,]*)/);
-            if (rtMatch) {
-              metrics.retweets = parseInt(rtMatch[1].replace(/,/g, ''));
-              console.log(`    ✅ RETWEETS from aria-label: ${metrics.retweets}`);
-            } else if (rtLabel?.toLowerCase().match(/repost|retweet/)) {
-              metrics.retweets = 0;
-              console.log(`    ✅ RETWEETS from aria-label: 0`);
-            }
-          }
-          
-          const replyBtn = await tweetArticle.$('[data-testid="reply"]');
-          if (replyBtn) {
-            const replyLabel = await replyBtn.getAttribute('aria-label');
-            const replyMatch = replyLabel?.match(/(\d[\d,]*)/);
-            if (replyMatch) {
-              metrics.replies = parseInt(replyMatch[1].replace(/,/g, ''));
-              console.log(`    ✅ REPLIES from aria-label: ${metrics.replies}`);
-            } else if (replyLabel?.toLowerCase().includes('repl')) {
-              metrics.replies = 0;
-              console.log(`    ✅ REPLIES from aria-label: 0`);
-            }
-          }
-        } else {
-          console.log(`    ⚠️ ANALYTICS: No tweet article found, falling back to text parsing...`);
-          
-          // Fallback to regex (old method)
-          const likesMatch = analyticsText.match(/(\d+(?:,\d+)*)\s*(?:Like|like)/);
-          if (likesMatch) {
-            metrics.likes = parseInt(likesMatch[1].replace(/,/g, ''));
-            console.log(`    ✅ LIKES from text: ${metrics.likes}`);
-          }
-          
-          const retweetsMatch = analyticsText.match(/(\d+(?:,\d+)*)\s*(?:Retweet|retweet|Repost|repost)/);
-          if (retweetsMatch) {
-            metrics.retweets = parseInt(retweetsMatch[1].replace(/,/g, ''));
-            console.log(`    ✅ RETWEETS from text: ${metrics.retweets}`);
-          }
-          
-          const repliesMatch = analyticsText.match(/(\d+(?:,\d+)*)\s*(?:Reply|reply|replies)/);
-          if (repliesMatch) {
-            metrics.replies = parseInt(repliesMatch[1].replace(/,/g, ''));
-            console.log(`    ✅ REPLIES from text: ${metrics.replies}`);
-          }
-        }
-      } catch (selectorError: any) {
-        console.warn(`    ⚠️ ANALYTICS: Selector extraction failed: ${selectorError.message}`);
+      // Extract likes/RTs/replies from analytics page text
+      // Analytics page doesn't have tweet articles - it's just a modal with text/numbers
+      const likesMatch = analyticsText.match(/(\d+(?:,\d+)*)\s*(?:Like|like)/);
+      if (likesMatch) {
+        metrics.likes = parseInt(likesMatch[1].replace(/,/g, ''));
+        console.log(`    ✅ LIKES: ${metrics.likes}`);
+      } else {
+        // Twitter might show "0 Likes" or no likes text for tweets with 0 likes
+        metrics.likes = 0;
+        console.log(`    ⚠️ LIKES: No match found, defaulting to 0`);
+      }
+      
+      const retweetsMatch = analyticsText.match(/(\d+(?:,\d+)*)\s*(?:Retweet|retweet|Repost|repost)/);
+      if (retweetsMatch) {
+        metrics.retweets = parseInt(retweetsMatch[1].replace(/,/g, ''));
+        console.log(`    ✅ RETWEETS: ${metrics.retweets}`);
+      } else {
+        metrics.retweets = 0;
+        console.log(`    ⚠️ RETWEETS: No match found, defaulting to 0`);
+      }
+      
+      const repliesMatch = analyticsText.match(/(\d+(?:,\d+)*)\s*(?:Reply|reply|replies)/);
+      if (repliesMatch) {
+        metrics.replies = parseInt(repliesMatch[1].replace(/,/g, ''));
+        console.log(`    ✅ REPLIES: ${metrics.replies}`);
+      } else {
+        metrics.replies = 0;
+        console.log(`    ⚠️ REPLIES: No match found, defaulting to 0`);
       }
       
     } catch (error: any) {
