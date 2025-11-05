@@ -42,18 +42,50 @@ export async function replyOpportunityHarvester(): Promise<void> {
     const needToHarvest = TARGET_POOL_SIZE - poolSize;
     console.log(`[HARVESTER] 🎯 Need to harvest ~${needToHarvest} opportunities`);
     
-  // Step 3: Get discovered accounts (BALANCED FILTERS - sweet spot for replies)
-  // 🎯 TARGET: 50k-500k accounts with good engagement (not mega-influencers)
-  const { data: accounts } = await supabase
+  // Step 3: Get discovered accounts (MEGA-IMPACT STRATEGY - tiered by viral potential)
+  // 🚀 TIER 1: MEGA-ACCOUNTS (1M+ followers) - produce 50k+ like tweets
+  // 🎯 TIER 2: SUPER-ACCOUNTS (500k-1M followers) - produce 20k+ like tweets  
+  // ✅ TIER 3: HIGH-ACCOUNTS (100k-500k followers) - produce 10k+ like tweets
+  // 📊 TIER 4: REGULAR-ACCOUNTS (50k-100k followers) - produce 5k+ like tweets
+  
+  // Get MEGA accounts first (highest viral potential)
+  const { data: megaAccounts } = await supabase
     .from('discovered_accounts')
     .select('username, follower_count, quality_score, engagement_rate, scrape_priority')
-    .gte('follower_count', 50000)   // 🎯 50k+ followers (sweet spot - not flooded with replies yet)
-    .lte('follower_count', 500000)  // 🎯 Max 500k (mega accounts get too many replies)
-    .gte('engagement_rate', 0.01)   // 🎯 1%+ engagement rate (active audiences)
-    .order('engagement_rate', { ascending: false })  // High engagement first (most visibility)
-    .order('follower_count', { ascending: false })   // Larger accounts second
-    .order('last_scraped_at', { ascending: true, nullsFirst: true })  // Least recently scraped
-    .limit(300); // Process 300 accounts for good coverage
+    .gte('follower_count', 1000000)  // 🚀 1M+ followers (mega-accounts)
+    .gte('engagement_rate', 0.005)     // 0.5%+ engagement (viral potential)
+    .order('follower_count', { ascending: false })  // Biggest first
+    .order('last_scraped_at', { ascending: true, nullsFirst: true })
+    .limit(50); // Scrape top 50 mega accounts
+  
+  // Get SUPER accounts (high viral potential)
+  const { data: superAccounts } = await supabase
+    .from('discovered_accounts')
+    .select('username, follower_count, quality_score, engagement_rate, scrape_priority')
+    .gte('follower_count', 500000)
+    .lt('follower_count', 1000000)   // 500k-1M followers
+    .gte('engagement_rate', 0.008)     // 0.8%+ engagement
+    .order('follower_count', { ascending: false })
+    .order('last_scraped_at', { ascending: true, nullsFirst: true })
+    .limit(100);
+  
+  // Get HIGH accounts (good viral potential)
+  const { data: highAccounts } = await supabase
+    .from('discovered_accounts')
+    .select('username, follower_count, quality_score, engagement_rate, scrape_priority')
+    .gte('follower_count', 100000)
+    .lt('follower_count', 500000)    // 100k-500k followers
+    .gte('engagement_rate', 0.01)     // 1%+ engagement
+    .order('follower_count', { ascending: false })
+    .order('last_scraped_at', { ascending: true, nullsFirst: true })
+    .limit(150);
+  
+  // Combine with prioritization: MEGA first, then SUPER, then HIGH
+  const accounts = [
+    ...(megaAccounts || []),
+    ...(superAccounts || []),
+    ...(highAccounts || [])
+  ];
   
   if (!accounts || accounts.length === 0) {
     console.log('[HARVESTER] ⚠️ No accounts in pool, waiting for discovery job');
@@ -70,11 +102,12 @@ export async function replyOpportunityHarvester(): Promise<void> {
   let totalHarvested = 0;
   let accountsProcessed = 0;
   
-  const TIME_BUDGET = 30 * 60 * 1000; // 30 minutes max (increased to compensate for reduced parallelism)
-  const BATCH_SIZE = 2; // Process 2 accounts simultaneously (reduced from 3 for maximum stability)
+  const TIME_BUDGET = 45 * 60 * 1000; // 45 minutes max (increased for mega-account scraping)
+  const BATCH_SIZE = 3; // Process 3 accounts simultaneously (increased for speed)
   const startTime = Date.now();
   
-  console.log(`[HARVESTER] 🌐 Starting optimized parallel harvesting (time budget: 30min, batch size: 2)...`);
+  console.log(`[HARVESTER] 🚀 Starting MEGA-IMPACT harvesting (time budget: 45min, batch size: 3)...`);
+  console.log(`[HARVESTER] 📊 Account tiers: ${megaAccounts?.length || 0} MEGA (1M+), ${superAccounts?.length || 0} SUPER (500k-1M), ${highAccounts?.length || 0} HIGH (100k-500k)`);
   
   // Process accounts in parallel batches until time runs out
   for (let i = 0; i < accounts.length; i += BATCH_SIZE) {
@@ -222,10 +255,11 @@ export async function replyOpportunityHarvester(): Promise<void> {
   console.log(`[HARVESTER] ✅ Harvest complete in ${elapsed}s!`);
   console.log(`[HARVESTER] 📊 Pool size: ${poolSize} → ${finalPoolSize}`);
   console.log(`[HARVESTER] 🌾 Harvested: ${totalHarvested} new opportunities from ${accountsProcessed} accounts`);
-  console.log(`[HARVESTER] 🏆 Quality breakdown:`);
-  console.log(`[HARVESTER]   PLATINUM (10K+): ${goldenCount || 0} tweets`);
-  console.log(`[HARVESTER]   DIAMOND (5K+): ${goodCount || 0} tweets`);
-  console.log(`[HARVESTER]   GOLDEN (2K+): ${acceptableCount || 0} tweets`);
+  console.log(`[HARVESTER] 🏆 MEGA-IMPACT breakdown:`);
+  console.log(`[HARVESTER]   🚀 MEGA-VIRAL (50K+): ${goldenCount || 0} tweets`);
+  console.log(`[HARVESTER]   💎 SUPER-VIRAL (20K+): ${goodCount || 0} tweets`);
+  console.log(`[HARVESTER]   ⭐ VIRAL (10K+): ${acceptableCount || 0} tweets`);
+  console.log(`[HARVESTER]   📈 TRENDING (5K+): ${(finalPoolSize || 0) - (goldenCount || 0) - (goodCount || 0) - (acceptableCount || 0)} tweets`);
   
   if (finalPoolSize < MIN_POOL_SIZE) {
     console.warn(`[HARVESTER] ⚠️ Pool still low (${finalPoolSize}/${MIN_POOL_SIZE})`);

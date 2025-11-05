@@ -431,6 +431,7 @@ function generatePostsHTML(data: any): string {
             <a href="/dashboard/recent?token=xbot-admin-2025" class="nav-tab">📅 Recent</a>
             <a href="/dashboard/posts?token=xbot-admin-2025" class="nav-tab active">📊 Metrics</a>
             <a href="/dashboard/replies?token=xbot-admin-2025" class="nav-tab">💬 Replies</a>
+            <a href="/dashboard/formatting?token=xbot-admin-2025" class="nav-tab">🎨 Formatting</a>
             <a href="/dashboard/health?token=xbot-admin-2025" class="nav-tab">🔧 System Health</a>
         </div>
 
@@ -676,6 +677,7 @@ function generateRepliesHTML(data: any): string {
             <a href="/dashboard/recent?token=xbot-admin-2025" class="nav-tab">📅 Recent</a>
             <a href="/dashboard/posts?token=xbot-admin-2025" class="nav-tab">📊 Metrics</a>
             <a href="/dashboard/replies?token=xbot-admin-2025" class="nav-tab active">💬 Replies</a>
+            <a href="/dashboard/formatting?token=xbot-admin-2025" class="nav-tab">🎨 Formatting</a>
             <a href="/dashboard/health?token=xbot-admin-2025" class="nav-tab">🔧 System Health</a>
         </div>
 
@@ -1271,6 +1273,7 @@ function generateRecentHTML(data: any): string {
             <a href="/dashboard/recent?token=xbot-admin-2025" class="nav-tab active">📅 Recent</a>
             <a href="/dashboard/posts?token=xbot-admin-2025" class="nav-tab">📊 Metrics</a>
             <a href="/dashboard/replies?token=xbot-admin-2025" class="nav-tab">💬 Replies</a>
+            <a href="/dashboard/formatting?token=xbot-admin-2025" class="nav-tab">🎨 Formatting</a>
             <a href="/dashboard/health?token=xbot-admin-2025" class="nav-tab">🔧 System Health</a>
         </div>
 

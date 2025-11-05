@@ -275,8 +275,9 @@ export class RealTwitterDiscovery {
             let oldTweetsSkipped = 0;
             let noTimestampSkipped = 0;
             
-            // 🔥 SCALE: Extract up to 20 tweets per account (was 10)
-            for (let i = 0; i < Math.min(tweetElements.length, 20); i++) {
+            // 🔥 MEGA-IMPACT: Extract up to 40 tweets per account (more = catch viral tweets)
+            // For mega-accounts (1M+), viral tweets might be further down timeline
+            for (let i = 0; i < Math.min(tweetElements.length, 40); i++) {
               const tweet = tweetElements[i];
               
               // ⏰ PRE-FILTER: Check age FIRST (before extracting everything)
