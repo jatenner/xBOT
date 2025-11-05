@@ -190,17 +190,17 @@ export async function replyOpportunityHarvester(): Promise<void> {
       }
     }
     
-    // Check if we have enough GOLDEN opportunities to stop early
-    const { count: goldenCount } = await supabase
+    // Check if we have enough high-impact opportunities (5K+ likes) to stop early
+    const { count: highImpactCount } = await supabase
       .from('reply_opportunities')
       .select('*', { count: 'exact', head: true })
-      .eq('tier', 'golden')
+      .gte('like_count', 5000)
       .eq('replied_to', false)
       .gt('expires_at', new Date().toISOString());
     
-    // Need ~100 golden for 4 replies/hour (96/day) - stop at 120 to be safe
-    if ((goldenCount || 0) >= 120) {
-      console.log(`[HARVESTER] 🎯 Found ${goldenCount} golden opportunities - stopping early!`);
+    // Need ~100 high-impact for 4 replies/hour (96/day) - stop at 150 to be safe
+    if ((highImpactCount || 0) >= 150) {
+      console.log(`[HARVESTER] 🎯 Found ${highImpactCount} high-impact opportunities (5K+ likes) - stopping early!`);
       break;
     }
     
@@ -228,25 +228,39 @@ export async function replyOpportunityHarvester(): Promise<void> {
   
   const finalPoolSize = finalCount || 0;
   
-  // Get tier breakdown
-  const { count: goldenCount } = await supabase
+  // Get tier breakdown by like_count (MEGA-IMPACT tiers)
+  const { count: megaViralCount } = await supabase
     .from('reply_opportunities')
     .select('*', { count: 'exact', head: true })
-    .eq('tier', 'golden')
+    .gte('like_count', 50000)
+    .lt('reply_count', 1000)
     .eq('replied_to', false)
     .gt('expires_at', new Date().toISOString());
   
-  const { count: goodCount } = await supabase
+  const { count: superViralCount } = await supabase
     .from('reply_opportunities')
     .select('*', { count: 'exact', head: true })
-    .eq('tier', 'good')
+    .gte('like_count', 20000)
+    .lt('like_count', 50000)
+    .lt('reply_count', 600)
     .eq('replied_to', false)
     .gt('expires_at', new Date().toISOString());
   
-  const { count: acceptableCount } = await supabase
+  const { count: viralCount } = await supabase
     .from('reply_opportunities')
     .select('*', { count: 'exact', head: true })
-    .eq('tier', 'acceptable')
+    .gte('like_count', 10000)
+    .lt('like_count', 20000)
+    .lt('reply_count', 400)
+    .eq('replied_to', false)
+    .gt('expires_at', new Date().toISOString());
+  
+  const { count: trendingCount } = await supabase
+    .from('reply_opportunities')
+    .select('*', { count: 'exact', head: true })
+    .gte('like_count', 5000)
+    .lt('like_count', 10000)
+    .lt('reply_count', 300)
     .eq('replied_to', false)
     .gt('expires_at', new Date().toISOString());
   
@@ -256,10 +270,10 @@ export async function replyOpportunityHarvester(): Promise<void> {
   console.log(`[HARVESTER] 📊 Pool size: ${poolSize} → ${finalPoolSize}`);
   console.log(`[HARVESTER] 🌾 Harvested: ${totalHarvested} new opportunities from ${accountsProcessed} accounts`);
   console.log(`[HARVESTER] 🏆 MEGA-IMPACT breakdown:`);
-  console.log(`[HARVESTER]   🚀 MEGA-VIRAL (50K+): ${goldenCount || 0} tweets`);
-  console.log(`[HARVESTER]   💎 SUPER-VIRAL (20K+): ${goodCount || 0} tweets`);
-  console.log(`[HARVESTER]   ⭐ VIRAL (10K+): ${acceptableCount || 0} tweets`);
-  console.log(`[HARVESTER]   📈 TRENDING (5K+): ${(finalPoolSize || 0) - (goldenCount || 0) - (goodCount || 0) - (acceptableCount || 0)} tweets`);
+  console.log(`[HARVESTER]   🚀 MEGA-VIRAL (50K+ likes): ${megaViralCount || 0} tweets`);
+  console.log(`[HARVESTER]   💎 SUPER-VIRAL (20K+ likes): ${superViralCount || 0} tweets`);
+  console.log(`[HARVESTER]   ⭐ VIRAL (10K+ likes): ${viralCount || 0} tweets`);
+  console.log(`[HARVESTER]   📈 TRENDING (5K+ likes): ${trendingCount || 0} tweets`);
   
   if (finalPoolSize < MIN_POOL_SIZE) {
     console.warn(`[HARVESTER] ⚠️ Pool still low (${finalPoolSize}/${MIN_POOL_SIZE})`);
