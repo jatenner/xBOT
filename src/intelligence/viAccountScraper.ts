@@ -133,6 +133,10 @@ export class VIAccountScraper {
             const retweetElement = tweetEl.querySelector('[data-testid="retweet"]');
             const replyElement = tweetEl.querySelector('[data-testid="reply"]');
             
+            // Get view count - it's shown as "X Views" or "XK Views" in analytics link
+            const viewElement = tweetEl.querySelector('a[href*="/analytics"] span, [aria-label*="views"]');
+            const viewsText = viewElement?.textContent?.trim() || viewElement?.getAttribute('aria-label') || '0';
+            
             const likesText = likeElement?.getAttribute('aria-label') || '0';
             const retweetsText = retweetElement?.getAttribute('aria-label') || '0';
             const repliesText = replyElement?.getAttribute('aria-label') || '0';
@@ -141,6 +145,7 @@ export class VIAccountScraper {
               results.push({
                 tweetId,
                 text,
+                viewsText,
                 likesText,
                 retweetsText,
                 repliesText
@@ -272,19 +277,20 @@ export class VIAccountScraper {
    */
   private async storeTweet(target: any, tweet: any): Promise<boolean> {
     try {
-      // Parse engagement counts
+      // Parse engagement counts (including REAL views from Twitter!)
+      const views = this.parseEngagement(tweet.viewsText);
       const likes = this.parseEngagement(tweet.likesText);
       const retweets = this.parseEngagement(tweet.retweetsText);
       const replies = this.parseEngagement(tweet.repliesText);
       
-      // Calculate basic engagement rate (will be more accurate after we get views)
+      // Calculate engagement rate using REAL views (if available)
       const totalEngagement = likes + retweets + replies;
-      const estimatedViews = Math.max(totalEngagement * 50, 100); // Rough estimate
-      const engagementRate = estimatedViews > 0 ? totalEngagement / estimatedViews : 0;
+      const effectiveViews = views > 0 ? views : Math.max(totalEngagement * 50, 100); // Fallback to estimate if views=0
+      const engagementRate = effectiveViews > 0 ? totalEngagement / effectiveViews : 0;
       
       // Determine if viral (relative to account size)
       const isViral = target.followers_count > 0 
-        ? (estimatedViews / target.followers_count) > 0.5 // 50% of followers saw it
+        ? (effectiveViews / target.followers_count) > 0.5 // 50% of followers saw it
         : false;
       
       const { error } = await this.supabase
@@ -298,13 +304,13 @@ export class VIAccountScraper {
           content: tweet.text,
           is_thread: false, // Will be detected later if needed
           thread_length: 1,
-          views: estimatedViews, // Estimated (real views require login)
+          views: effectiveViews, // REAL views from Twitter (or estimated if unavailable)
           likes: likes,
           retweets: retweets,
           replies: replies,
           engagement_rate: engagementRate,
           is_viral: isViral,
-          viral_multiplier: target.followers_count > 0 ? estimatedViews / target.followers_count : 0,
+          viral_multiplier: target.followers_count > 0 ? effectiveViews / target.followers_count : 0,
           posted_at: new Date().toISOString(), // Approximate, can't get exact from timeline
           scraped_at: new Date().toISOString(),
           classified: false,

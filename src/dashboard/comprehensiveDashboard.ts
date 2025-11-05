@@ -2117,11 +2117,12 @@ function generateVisualIntelligenceHTML(data: any): string {
                     </div>
                     <div class="tweet-content">${t.content.substring(0, 280)}${t.content.length > 280 ? '...' : ''}</div>
                     <div class="tweet-stats">
-                        <span>👁️ ${(t.views || 0).toLocaleString()} views ${t.views === 0 ? '(est.)' : ''}</span>
+                        <span>👁️ ${(t.views || 0).toLocaleString()} views</span>
                         <span>❤️ ${(t.likes || 0).toLocaleString()} likes</span>
                         <span>🔁 ${(t.retweets || 0).toLocaleString()} RTs</span>
                         <span>💬 ${(t.replies || 0).toLocaleString()} replies</span>
                         <span>📈 ${((t.engagement_rate || 0) * 100).toFixed(2)}% ER</span>
+                        ${t.viral_multiplier && t.viral_multiplier > 0.1 ? `<span style="color: #E91E63; font-weight: 600;">⚡ ${(t.viral_multiplier * 100).toFixed(0)}% reach</span>` : ''}
                     </div>
                 </div>
               `).join('')
