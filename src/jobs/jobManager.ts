@@ -342,9 +342,10 @@ export class JobManager {
     if (flags.replyEnabled && process.env.ENABLE_REPLIES === 'true') {
       console.log('💬 JOB_MANAGER: Reply jobs ENABLED - scheduling TWEET-BASED harvester and posting');
       
-      // 🔥 MEGA-VIRAL REPLY HARVESTER - every 3 hours (UPGRADED: 10K-250K tiers)
+      // 🔥 MEGA-VIRAL REPLY HARVESTER - every 2 hours (UPGRADED: AI filtering + 10K-250K tiers)
       // Searches Twitter for truly massive viral health tweets only
-      // Strategy: Broad discovery + mega-viral thresholds + health filtering
+      // Strategy: Broad discovery + AI health filtering + mega-viral thresholds
+      // Frequency: Every 2 hours = 12 harvests/day = 720 opportunities/day (7.5x buffer for 96 replies/day)
       this.scheduleStaggeredJob(
         'mega_viral_harvester',
         async () => {
@@ -353,7 +354,7 @@ export class JobManager {
             await replyOpportunityHarvester();
           });
         },
-        180 * MINUTE, // Every 3 hours - discover what's ACTUALLY viral
+        120 * MINUTE, // Every 2 hours - ensures 720+ opportunities/day (safe buffer)
         10 * MINUTE // Start after 10 minutes
       );
 
