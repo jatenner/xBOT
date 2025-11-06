@@ -103,6 +103,18 @@ async function generateRealContent(): Promise<void> {
         continue;
       }
       
+      // ✅ SUBSTANCE VALIDATION: Reject hollow/buzzword content
+      const { validateContentSubstance } = await import('../validators/substanceValidator');
+      const substanceCheck = validateContentSubstance(content.text);
+
+      if (!substanceCheck.isValid) {
+        console.log(`[SUBSTANCE] ⛔ Post ${i + 1} REJECTED: ${substanceCheck.reason}`);
+        console.log(`[SUBSTANCE]    Score: ${substanceCheck.score}/100 (need 70+)`);
+        console.log(`[SUBSTANCE]    Will retry with different generator/topic in next cycle`);
+        continue;
+      }
+      console.log(`[SUBSTANCE] ✅ Post ${i + 1} passed substance check (score: ${substanceCheck.score}/100)`);
+      
       const gateResult = await runGateChain(content.text, content.decision_id);
         
       if (!gateResult.passed) {
@@ -197,6 +209,16 @@ async function callDedicatedGenerator(generatorName: string, context: any) {
     'thoughtLeader': { module: 'thoughtLeaderGenerator', fn: 'generateThoughtLeaderContent' },
     'interestingContent': { module: 'interestingContentGenerator', fn: 'generateInterestingContent' },
     'dynamicContent': { module: 'dynamicContentGenerator', fn: 'generateDynamicContent' },
+    // NEW GENERATORS (Nov 6, 2025 upgrade)
+    'popCultureAnalyst': { module: 'popCultureAnalystGenerator', fn: 'generatePopCultureContent' },
+    'teacher': { module: 'teacherGenerator', fn: 'generateTeacherContent' },
+    'investigator': { module: 'investigatorGenerator', fn: 'generateInvestigatorContent' },
+    'connector': { module: 'connectorGenerator', fn: 'generateConnectorContent' },
+    'pragmatist': { module: 'pragmatistGenerator', fn: 'generatePragmatistContent' },
+    'historian': { module: 'historianGenerator', fn: 'generateHistorianContent' },
+    'translator': { module: 'translatorGenerator', fn: 'generateTranslatorContent' },
+    'patternFinder': { module: 'patternFinderGenerator', fn: 'generatePatternFinderContent' },
+    'experimenter': { module: 'experimenterGenerator', fn: 'generateExperimenterContent' },
   };
   
   const config = generatorMap[generatorName];
@@ -320,21 +342,16 @@ async function generateContentWithLLM() {
   contentDiversityEngine.trackTopic(topic);
   
   // ═══════════════════════════════════════════════════════════
-  // 🧠 STEP 5.5: BUILD GROWTH INTELLIGENCE (NEW!)
+  // 🧠 STEP 5.5: BUILD GROWTH INTELLIGENCE - ACTIVATED!
   // ═══════════════════════════════════════════════════════════
   
   let growthIntelligence;
   try {
-    // NOTE: Currently built but NOT activated yet!
-    // Will activate after 200+ varied posts (Week 3)
+    console.log('[GROWTH_INTEL] 🚀 Activating learning loops...');
     
-    // UNCOMMENT WHEN READY TO ACTIVATE:
-    // const { buildGrowthIntelligencePackage } = await import('../learning/growthIntelligence');
-    // growthIntelligence = await buildGrowthIntelligencePackage();
-    // console.log('[GROWTH_INTEL] 📊 Growth intelligence generated');
-    
-    // For now, keep undefined (generators work without it)
-    growthIntelligence = undefined;
+    const { buildGrowthIntelligencePackage } = await import('../learning/growthIntelligence');
+    growthIntelligence = await buildGrowthIntelligencePackage(matchedGenerator);
+    console.log('[GROWTH_INTEL] ✅ Growth intelligence generated for ' + matchedGenerator);
   } catch (error: any) {
     console.warn('[GROWTH_INTEL] ⚠️ Intelligence unavailable:', error.message);
     growthIntelligence = undefined;

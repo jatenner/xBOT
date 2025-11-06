@@ -126,8 +126,10 @@ export async function generateGrowthIntelligence(): Promise<string> {
  * Build intelligence package for generators
  * This is the KEY function that feeds growth signals to AI!
  */
-export async function buildGrowthIntelligencePackage(): Promise<IntelligencePackage> {
-  console.log('[GROWTH_INTEL] 📦 Building intelligence package for generators...');
+export async function buildGrowthIntelligencePackage(
+  generatorName?: string
+): Promise<IntelligencePackage> {
+  console.log(`[GROWTH_INTEL] 📦 Building intelligence package${generatorName ? ` for ${generatorName}` : ''}...`);
   
   try {
     // Gather all analytics (parallel for speed)
@@ -185,6 +187,32 @@ export async function buildGrowthIntelligencePackage(): Promise<IntelligencePack
         reasoning: exploration.reasoning
       }
     };
+    
+    // 🧠 GENERATOR-SPECIFIC LEARNING: Load recent posts from THIS generator
+    if (generatorName) {
+      const { getSupabaseClient } = await import('../db');
+      const supabase = getSupabaseClient();
+      
+      const { data: recentContent, error: recentError } = await supabase
+        .from('content_metadata')
+        .select('content, raw_topic, angle')
+        .eq('generator_name', generatorName)
+        .eq('status', 'posted')
+        .order('created_at', { ascending: false })
+        .limit(10);
+      
+      if (!recentError && recentContent) {
+        intelligence.recentPosts = recentContent.map(p => {
+          // Include topic + angle + content for full context
+          return `[Topic: ${p.raw_topic || 'unknown'}] [Angle: ${p.angle || 'none'}]\n${p.content || ''}`;
+        });
+        
+        console.log(`[GROWTH_INTEL] 📚 Loaded ${intelligence.recentPosts.length} recent posts from ${generatorName}`);
+      } else {
+        intelligence.recentPosts = [];
+        console.log(`[GROWTH_INTEL] ℹ️ No recent posts found for ${generatorName} (might be first use)`);
+      }
+    }
     
     console.log('[GROWTH_INTEL] ✅ Package built successfully');
     

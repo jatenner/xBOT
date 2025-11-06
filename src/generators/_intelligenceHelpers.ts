@@ -56,6 +56,9 @@ export interface GrowthIntelligencePackage {
     rate: number; // 0.3-0.7
     reasoning: string;
   };
+  
+  // 🆕 Recent posts from this specific generator (avoid self-repetition)
+  recentPosts?: string[];
 }
 
 // Type alias for generators that accept growth intelligence
@@ -63,7 +66,7 @@ export type { GrowthIntelligencePackage as IntelligencePackage };
 
 const patternAnalyzer = new PatternAnalyzer();
 
-export async function buildIntelligenceContext(intelligence?: IntelligencePackage): Promise<string> {
+export async function buildIntelligenceContext(intelligence?: GrowthIntelligencePackage): Promise<string> {
   if (!intelligence) return '';
   
   // Get pattern feedback from entire database (last 30 days, or all if less data)
@@ -92,30 +95,53 @@ ${feedback.creativity_instructions}
     console.warn('Pattern analysis failed:', error);
   }
   
-  return `
-🧠 DEEP INTELLIGENCE GATHERED:
+  // Build context based on what fields are available
+  let contextString = '\n🧠 INTELLIGENCE CONTEXT:\n\n';
+  
+  // Growth trend intelligence (new format)
+  if (intelligence.growthTrend) {
+    contextString += `📊 GROWTH ANALYSIS:
+• Trend: ${intelligence.growthTrend.trend} (${(intelligence.growthTrend.weeklyGrowthRate * 100).toFixed(1)}% per week)
+• Momentum: ${intelligence.growthTrend.momentum}
+• ${intelligence.growthTrend.recommendation}
 
-📚 RESEARCH INSIGHTS:
-• Common Belief: ${intelligence.research.common_belief}
-• Scientific Reality: ${intelligence.research.scientific_reality}
-• Surprise Factor: ${intelligence.research.surprise_factor}
-• Expert Insight: ${intelligence.research.expert_insight}
-${intelligence.research.controversy ? `• Controversy: ${intelligence.research.controversy}` : ''}
+`;
+  }
+  
+  // Ceiling awareness (new format)
+  if (intelligence.ceilingStatus) {
+    contextString += `🚨 PERFORMANCE CEILING:
+• Current best: ${intelligence.ceilingStatus.currentCeiling} views
+• Potential: ${intelligence.ceilingStatus.potentialCeiling}+ views
+${intelligence.ceilingStatus.isSettling ? `• ⚠️ SETTLING DETECTED - Try bold new approaches!` : '• ✅ Healthy variance - keep experimenting'}
+• ${intelligence.ceilingStatus.recommendation}
 
-💡 PERSPECTIVES (${intelligence.perspectives.length} unique angles):
-${intelligence.perspectives.slice(0, 3).map(p => `• ${p.angle} (uniqueness: ${p.uniqueness_score}/10, controversy: ${p.controversy_level}/10)
-  → Implication: ${p.implication}
-  → Action Hook: ${p.action_hook}`).join('\n')}
+`;
+  }
+  
+  // Discovered patterns (new format)
+  if (intelligence.discoveredPatterns && intelligence.discoveredPatterns.length > 0) {
+    contextString += `📈 PATTERNS DISCOVERED:
+${intelligence.discoveredPatterns.slice(0, 3).map(p => `• ${p.pattern}: ${Math.round(p.avgViews)} views avg (${p.sampleSize} posts)
+  → ${p.recommendation}`).join('\n')}
 
-📰 CONTEXT:
-• Current Narrative: ${intelligence.context.current_narrative}
-• Gaps: ${intelligence.context.gaps.join(', ')}
-• Controversies: ${intelligence.context.controversies.join(', ')}
-${intelligence.context.trending_angle ? `• Trending Angle: ${intelligence.context.trending_angle}` : ''}
-${intelligence.recentPosts && intelligence.recentPosts.length > 0 ? `
+`;
+  }
+  
+  // Exploration guidance (new format)
+  if (intelligence.explorationGuidance) {
+    contextString += `🎲 EXPLORATION STRATEGY:
+• Rate: ${(intelligence.explorationGuidance.rate * 100).toFixed(0)}% - ${intelligence.explorationGuidance.reasoning}
 
-🚫 AVOID REPETITION - Recently posted (last 10 posts):
-${intelligence.recentPosts.slice(0, 5).map((post, i) => `${i + 1}. "${post.substring(0, 70)}..."`).join('\n')}
+`;
+  }
+  
+  // Recent posts (avoid repetition)
+  if (intelligence.recentPosts && intelligence.recentPosts.length > 0) {
+    contextString += `
+
+🚫 AVOID REPETITION - Your recent posts:
+${intelligence.recentPosts.slice(0, 5).map((post, i) => `${i + 1}. "${post.substring(0, 100)}..."`).join('\n')}
 
 ⚠️ YOUR POST MUST BE UNIQUE:
 - Cover a DIFFERENT topic/subject than these recent posts
@@ -124,29 +150,25 @@ ${intelligence.recentPosts.slice(0, 5).map((post, i) => `${i + 1}. "${post.subst
 - Make it feel FRESH and NOVEL compared to what was just posted
 - If same general topic area, find completely new angle/mechanism/application
 
-🎨 CREATIVITY MANDATE:
-- Invent NEW approaches every time - never repeat patterns
-- Surprise people with unexpected presentation methods
-- Experiment wildly within your generator's core purpose
-- Use ANY structure that makes your point powerfully
-- Create content that makes people think differently
-- Vary your sentence rhythm and flow dramatically
-- Make this post feel completely unique from recent ones
-${patternFeedback}` : `
-
-🎨 CREATIVITY MANDATE:
-- Invent NEW approaches every time - never repeat patterns
-- Surprise people with unexpected presentation methods
-- Experiment wildly within your generator's core purpose
-- Use ANY structure that makes your point powerfully
-- Create content that makes people think differently
-- Vary your sentence rhythm and flow dramatically
-${patternFeedback}`}
-
-⚠️ REMINDER: Use this intelligence BUT maintain third-person expert voice.
-NO "we/us/our/I/me/my" - write as objective expert analysis.
-NO emojis (max 2 if absolutely needed).
 `;
+  }
+  
+  // Creativity mandate
+  contextString += `🎨 CREATIVITY MANDATE:
+- Invent NEW approaches every time - never repeat patterns
+- Surprise people with unexpected presentation methods
+- Experiment wildly within your generator's core purpose
+- Use ANY structure that makes your point powerfully
+- Create content that makes people think differently
+- Vary your sentence rhythm and flow dramatically
+${patternFeedback}
+
+⚠️ REMINDER: Maintain third-person expert voice.
+NO "we/us/our/I/me/my" - write as objective expert.
+NO emojis (max 1 if absolutely needed).
+`;
+  
+  return contextString;
 }
 
 /**
