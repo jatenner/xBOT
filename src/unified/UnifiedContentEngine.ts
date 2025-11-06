@@ -31,6 +31,16 @@ import { generateContrarianContent } from '../generators/contrarianGenerator';
 import { generateExplorerContent } from '../generators/explorerGenerator';
 import { generatePhilosopherContent } from '../generators/philosopherGenerator';
 import { generateCulturalBridgeContent } from '../generators/culturalBridgeGenerator';
+// NEW GENERATORS (Nov 6, 2025 upgrade)
+import { generatePopCultureContent } from '../generators/popCultureAnalystGenerator';
+import { generateTeacherContent } from '../generators/teacherGenerator';
+import { generateInvestigatorContent } from '../generators/investigatorGenerator';
+import { generateConnectorContent } from '../generators/connectorGenerator';
+import { generatePragmatistContent } from '../generators/pragmatistGenerator';
+import { generateHistorianContent } from '../generators/historianGenerator';
+import { generateTranslatorContent } from '../generators/translatorGenerator';
+import { generatePatternFinderContent } from '../generators/patternFinderGenerator';
+import { generateExperimenterContent } from '../generators/experimenterGenerator';
 import { multiOptionGenerator, ContentOption } from '../ai/multiOptionGenerator';
 import { aiContentJudge } from '../ai/aiContentJudge';
 import { aiContentRefiner } from '../ai/aiContentRefiner';
@@ -694,20 +704,30 @@ export class UnifiedContentEngine {
         console.log(`🔬 EXPLORATION_MODE: followers < 200 or engagement < 10`);
         console.log(`🎲 Using EQUAL WEIGHTS for all generators (exploring)`);
         
-        // EQUAL WEIGHTS for all 12 generators
+        // EQUAL WEIGHTS for all 21 generators (Nov 6, 2025 upgrade)
         const equalWeights = {
-          humanVoice: 1/12,
-          newsReporter: 1/12,
-          storyteller: 1/12,
-          interesting: 1/12,
-          provocateur: 1/12,
-          dataNerd: 1/12,
-          mythBuster: 1/12,
-          coach: 1/12,
-          thoughtLeader: 1/12,
-          contrarian: 1/12,
-          explorer: 1/12,
-          philosopher: 1/12
+          humanVoice: 1/21,
+          newsReporter: 1/21,
+          storyteller: 1/21,
+          interesting: 1/21,
+          provocateur: 1/21,
+          dataNerd: 1/21,
+          mythBuster: 1/21,
+          coach: 1/21,
+          thoughtLeader: 1/21,
+          contrarian: 1/21,
+          explorer: 1/21,
+          philosopher: 1/21,
+          // NEW GENERATORS
+          popCultureAnalyst: 1/21,
+          teacher: 1/21,
+          investigator: 1/21,
+          connector: 1/21,
+          pragmatist: 1/21,
+          historian: 1/21,
+          translator: 1/21,
+          patternFinder: 1/21,
+          experimenter: 1/21
         };
         
         // ROTATION LOGIC: Reduce weight for recently used to force variety
@@ -782,14 +802,14 @@ export class UnifiedContentEngine {
    */
   private getDefaultWeights(experimentArm: string): Record<string, number> {
     // 🎯 BALANCED DISTRIBUTION: Let system LEARN what works, don't pre-bias
-    // All generators get EQUAL starting weight (1/12 = ~8.33%)
+    // All generators get EQUAL starting weight (1/21 = ~4.76%)
     // System will naturally favor what performs well through learning
     
-    const equalWeight = 1.0 / 12; // ~8.33% each
+    const equalWeight = 1.0 / 21; // ~4.76% each (21 generators total)
     
     return experimentArm === 'control'
       ? {
-          // FULLY BALANCED: Give all generators equal opportunity
+          // FULLY BALANCED: Give all 21 generators equal opportunity
           // Let LEARNING decide which work best, not pre-programmed bias
           humanVoice: equalWeight,
           provocateur: equalWeight,
@@ -802,23 +822,41 @@ export class UnifiedContentEngine {
           newsReporter: equalWeight,
           coach: equalWeight,
           explorer: equalWeight,
-          philosopher: equalWeight
+          philosopher: equalWeight,
+          popCultureAnalyst: equalWeight,
+          teacher: equalWeight,
+          investigator: equalWeight,
+          connector: equalWeight,
+          pragmatist: equalWeight,
+          historian: equalWeight,
+          translator: equalWeight,
+          patternFinder: equalWeight,
+          experimenter: equalWeight
         }
       : experimentArm === 'variant_a'
       ? {
           // Variant A: Still balanced but slightly favor engagement-focused
-          humanVoice: 0.10,
-          provocateur: 0.09,
-          contrarian: 0.09,
-          storyteller: 0.09,
-          interesting: 0.09,
-          dataNerd: 0.08,
-          mythBuster: 0.08,
-          coach: 0.08,
-          thoughtLeader: 0.08,
-          newsReporter: 0.08,
-          explorer: 0.07,
-          philosopher: 0.07
+          humanVoice: 0.055,
+          provocateur: 0.052,
+          contrarian: 0.052,
+          storyteller: 0.052,
+          interesting: 0.050,
+          dataNerd: 0.048,
+          mythBuster: 0.048,
+          coach: 0.048,
+          thoughtLeader: 0.048,
+          newsReporter: 0.048,
+          explorer: 0.046,
+          philosopher: 0.046,
+          popCultureAnalyst: 0.055, // Engagement-focused
+          teacher: 0.045,
+          investigator: 0.045,
+          connector: 0.045,
+          pragmatist: 0.045,
+          historian: 0.043,
+          translator: 0.045,
+          patternFinder: 0.045,
+          experimenter: 0.045
         }
       : {
           // Variant B: Completely flat for pure exploration
@@ -833,7 +871,16 @@ export class UnifiedContentEngine {
           thoughtLeader: equalWeight,
           contrarian: equalWeight,
           explorer: equalWeight,
-          philosopher: equalWeight
+          philosopher: equalWeight,
+          popCultureAnalyst: equalWeight,
+          teacher: equalWeight,
+          investigator: equalWeight,
+          connector: equalWeight,
+          pragmatist: equalWeight,
+          historian: equalWeight,
+          translator: equalWeight,
+          patternFinder: equalWeight,
+          experimenter: equalWeight
         };
   }
   
@@ -1148,6 +1195,145 @@ export class UnifiedContentEngine {
         
         return {
           generatorName: 'Cultural Bridge',
+          content: result.content,
+          confidence: result.confidence
+        };
+      }
+      
+      // ═══════════════════════════════════════════════════════════
+      // NEW GENERATORS (Nov 6, 2025 upgrade - 9 additional)
+      // ═══════════════════════════════════════════════════════════
+      
+      // GENERATOR 13: POP CULTURE ANALYST
+      if (selectedGenerator === 'popCultureAnalyst') {
+        const result = await generatePopCultureContent({
+          topic: params.topic,
+          format: params.format,
+          intelligence: params.intelligence
+        });
+        
+        return {
+          generatorName: 'PopCultureAnalyst',
+          content: result.content,
+          confidence: result.confidence
+        };
+      }
+      
+      // GENERATOR 14: TEACHER
+      if (selectedGenerator === 'teacher') {
+        const result = await generateTeacherContent({
+          topic: params.topic,
+          format: params.format,
+          intelligence: params.intelligence
+        });
+        
+        return {
+          generatorName: 'Teacher',
+          content: result.content,
+          confidence: result.confidence
+        };
+      }
+      
+      // GENERATOR 15: INVESTIGATOR
+      if (selectedGenerator === 'investigator') {
+        const result = await generateInvestigatorContent({
+          topic: params.topic,
+          format: params.format,
+          intelligence: params.intelligence
+        });
+        
+        return {
+          generatorName: 'Investigator',
+          content: result.content,
+          confidence: result.confidence
+        };
+      }
+      
+      // GENERATOR 16: CONNECTOR
+      if (selectedGenerator === 'connector') {
+        const result = await generateConnectorContent({
+          topic: params.topic,
+          format: params.format,
+          intelligence: params.intelligence
+        });
+        
+        return {
+          generatorName: 'Connector',
+          content: result.content,
+          confidence: result.confidence
+        };
+      }
+      
+      // GENERATOR 17: PRAGMATIST
+      if (selectedGenerator === 'pragmatist') {
+        const result = await generatePragmatistContent({
+          topic: params.topic,
+          format: params.format,
+          intelligence: params.intelligence
+        });
+        
+        return {
+          generatorName: 'Pragmatist',
+          content: result.content,
+          confidence: result.confidence
+        };
+      }
+      
+      // GENERATOR 18: HISTORIAN
+      if (selectedGenerator === 'historian') {
+        const result = await generateHistorianContent({
+          topic: params.topic,
+          format: params.format,
+          intelligence: params.intelligence
+        });
+        
+        return {
+          generatorName: 'Historian',
+          content: result.content,
+          confidence: result.confidence
+        };
+      }
+      
+      // GENERATOR 19: TRANSLATOR
+      if (selectedGenerator === 'translator') {
+        const result = await generateTranslatorContent({
+          topic: params.topic,
+          format: params.format,
+          intelligence: params.intelligence
+        });
+        
+        return {
+          generatorName: 'Translator',
+          content: result.content,
+          confidence: result.confidence
+        };
+      }
+      
+      // GENERATOR 20: PATTERN FINDER
+      if (selectedGenerator === 'patternFinder') {
+        const result = await generatePatternFinderContent({
+          topic: params.topic,
+          format: params.format,
+          intelligence: params.intelligence
+        });
+        
+        return {
+          generatorName: 'PatternFinder',
+          content: result.content,
+          confidence: result.confidence
+        };
+      }
+      
+      // GENERATOR 21: EXPERIMENTER
+      if (selectedGenerator === 'experimenter') {
+        const result = await generateExperimenterContent({
+          topic: params.topic,
+          format: params.format,
+          intelligence: params.intelligence
+        });
+        
+        return {
+          generatorName: 'Experimenter',
           content: result.content,
           confidence: result.confidence
         };

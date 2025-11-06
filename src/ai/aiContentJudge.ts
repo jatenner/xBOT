@@ -1,13 +1,15 @@
 /**
  * 🏆 AI CONTENT JUDGE
  * 
- * Uses OpenAI to select the BEST content from multiple options
- * Provides detailed reasoning for selection
- * Scores based on viral potential, not just quality
+ * Enhanced with interrogation protocol:
+ * 1. Structural validation
+ * 2. Claim interrogation (defend your claims)
+ * 3. Final scoring
  */
 
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { ContentOption } from './multiOptionGenerator';
+import { judgeInterrogation, InterrogationResult } from './judgeInterrogation';
 
 export interface JudgmentResult {
   winner: ContentOption;
@@ -21,6 +23,8 @@ export interface JudgmentResult {
     generator: string;
     reason: string;
   };
+  interrogation?: InterrogationResult; // NEW: Interrogation results
+  defensibility?: number; // NEW: Defensibility score
 }
 
 /**
@@ -88,6 +92,44 @@ export class AIContentJudge {
       
       console.log(`✅ AI_JUDGE: Winner = ${analysis.winner.generator_name} (${analysis.score}/10)`);
       console.log(`   Reasoning: ${analysis.reasoning}`);
+      
+      // NEW: Run interrogation on winner
+      console.log(`[AI_JUDGE] 🔍 Running claim interrogation on winner...`);
+      
+      try {
+        const interrogationResult = await judgeInterrogation.interrogateContent({
+          text: analysis.winner.raw_content,
+          topic: 'health', // Could pass actual topic if available
+          generator: analysis.winner.generator_name
+        });
+        
+        console.log(judgeInterrogation.getSummary(interrogationResult));
+        
+        // Adjust score based on defensibility
+        const originalScore = analysis.score;
+        const defensibilityScore = interrogationResult.defensibilityScore;
+        
+        // Combine scores: 60% original quality, 40% defensibility
+        const combinedScore = (originalScore * 0.6) + (defensibilityScore / 10 * 0.4);
+        
+        analysis.score = Math.round(combinedScore * 10) / 10; // Round to 1 decimal
+        analysis.interrogation = interrogationResult;
+        analysis.defensibility = defensibilityScore;
+        
+        // Add interrogation feedback to improvements
+        if (!interrogationResult.passed) {
+          analysis.improvements = [
+            ...analysis.improvements,
+            ...interrogationResult.feedback.slice(0, 2) // Add top 2 feedback items
+          ];
+        }
+        
+        console.log(`[AI_JUDGE] 📊 Adjusted score: ${originalScore} → ${analysis.score} (defensibility: ${defensibilityScore})`);
+        
+      } catch (interrogationError: any) {
+        console.warn(`[AI_JUDGE] ⚠️ Interrogation failed: ${interrogationError.message}`);
+        // Continue without interrogation if it fails
+      }
       
       return analysis;
       

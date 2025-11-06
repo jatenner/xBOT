@@ -41,18 +41,18 @@ const ConfigSchema = z.object({
   DUP_COSINE_THRESHOLD: z.number().min(0).max(1).default(0.9),
   SIMILARITY_THRESHOLD: z.number().min(0).max(1).default(0.9),
   
-  // Job Scheduling - AGGRESSIVE GROWTH MODE 🚀
+  // Job Scheduling - QUALITY-FIRST STRATEGY 🎯
   JOBS_AUTOSTART: z.boolean().default(true), // Auto-start jobs
-  JOBS_PLAN_INTERVAL_MIN: z.number().default(120), // Plan content every 2 hours (4 posts per run, spaced 30min = EXACTLY 2 posts/hour)
+  JOBS_PLAN_INTERVAL_MIN: z.number().default(240), // Plan content every 4 hours (3-4 posts per run = ~14 posts/day)
   JOBS_REPLY_INTERVAL_MIN: z.number().default(30), // Replies every 30min (2 runs × 2 batch = 4 replies/hour)
   JOBS_LEARN_INTERVAL_MIN: z.number().default(60), // Learn every hour
   JOBS_POSTING_INTERVAL_MIN: z.number().default(5), // Check posting queue every 5 minutes
-  JOBS_VIRAL_THREAD_INTERVAL_MIN: z.number().default(1440), // Viral thread DAILY (24 hours) - AGGRESSIVE
+  JOBS_VIRAL_THREAD_INTERVAL_MIN: z.number().default(1440), // Viral thread DAILY (24 hours)
   
-  // Rate Limits - SUSTAINABLE QUALITY GROWTH 🔥
-  MAX_POSTS_PER_HOUR: z.number().default(2), // 2 CONTENT posts per hour (singles + threads combined)
-  MAX_DAILY_POSTS: z.number().default(48), // 2 per hour * 24 hours
-  REPLIES_PER_HOUR: z.number().default(4), // 4 replies per hour (separate from content)
+  // Rate Limits - QUALITY OVER QUANTITY 🔥
+  MAX_POSTS_PER_HOUR: z.number().default(0.6), // ~1 post every 90min (14 posts over 24 hours)
+  MAX_DAILY_POSTS: z.number().default(14), // 14 high-quality posts per day
+  REPLIES_PER_HOUR: z.number().default(4), // 4 replies per hour (96/day - UNCHANGED)
   
   // Security
   ADMIN_TOKEN: z.string().default('dev-admin-token')
