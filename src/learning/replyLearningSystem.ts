@@ -99,9 +99,68 @@ export class ReplyLearningSystem {
    * Collect reply performance data
    */
   private async collectReplyPerformance(): Promise<ReplyPerformance[]> {
-    // PLACEHOLDER: Return empty for now until outcomes table relationship is fixed
-    // This will be populated as replies are posted and outcomes are collected
-    return [];
+    const supabase = getSupabaseClient();
+    
+    // 🔥 METADATA GOATNESS: Collect ALL reply performance data
+    // Query: Reply performance + parent tweet context + timing
+    const { data, error } = await supabase
+      .from('reply_performance')
+      .select(`
+        *,
+        content_metadata!inner(
+          decision_id,
+          content,
+          posted_at,
+          features
+        )
+      `)
+      .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()) // Last 30 days
+      .order('created_at', { ascending: false });
+    
+    if (error) {
+      console.error('[REPLY_LEARNING] ❌ Failed to collect performance data:', error.message);
+      return [];
+    }
+    
+    if (!data || data.length === 0) {
+      console.log('[REPLY_LEARNING] ℹ️ No reply performance data yet');
+      return [];
+    }
+    
+    // Transform to ReplyPerformance format
+    const replyPerformance: ReplyPerformance[] = data.map((row: any) => {
+      const metadata = row.content_metadata || {};
+      const features = (metadata.features || {}) as any;
+      
+      // Calculate engagement rate
+      const totalEngagement = (row.likes || 0) + (row.replies || 0);
+      const engagementRate = row.impressions > 0 ? totalEngagement / row.impressions : 0;
+      
+      return {
+        reply_id: row.reply_tweet_id,
+        target_account: row.parent_username,
+        generator_used: features.generator || 'unknown',
+        follows_gained: row.followers_gained || 0,
+        engagement_rate: engagementRate,
+        profile_clicks: features.profile_clicks || 0,
+        likes: row.likes || 0,
+        posted_at: metadata.posted_at || row.created_at,
+        
+        // 🔥 EXTRA METADATA for deep learning:
+        parent_tweet_id: row.parent_tweet_id,
+        parent_likes: features.parent_likes || 0,
+        parent_replies: features.parent_replies || 0,
+        reply_position: features.reply_position || 0, // Position in thread
+        time_of_day: new Date(metadata.posted_at || row.created_at).getHours(),
+        day_of_week: new Date(metadata.posted_at || row.created_at).getDay(),
+        reply_content: metadata.content || '',
+        impressions: row.impressions || 0,
+        conversation_continued: row.conversation_continuation || false
+      } as any;
+    });
+    
+    console.log(`[REPLY_LEARNING] 📊 Collected ${replyPerformance.length} reply performance records`);
+    return replyPerformance;
   }
 
   /**

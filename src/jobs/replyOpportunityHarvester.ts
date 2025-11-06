@@ -62,24 +62,29 @@ export async function replyOpportunityHarvester(): Promise<void> {
   // 
   // Result: 10-50x MORE health opportunities discovered!
   const searchQueries = [
-    // TITAN TIER (250K+ likes) - Absolute mega-viral content
-    { minLikes: 250000, maxReplies: 2000, label: 'TITAN (250K+)' },
+    // 🔥 FRESH TIER (500-2K likes, <12h) - Maximum freshness, active conversations
+    { minLikes: 500, maxReplies: 50, label: 'FRESH (500+)', maxAgeHours: 12 },
+    { minLikes: 1000, maxReplies: 80, label: 'FRESH+ (1K+)', maxAgeHours: 12 },
     
-    // ULTRA TIER (100K+ likes) - Massive viral content
-    { minLikes: 100000, maxReplies: 1500, label: 'ULTRA (100K+)' },
+    // ⚡ TRENDING TIER (2K-10K likes, <24h) - Rising tweets, good visibility
+    { minLikes: 2000, maxReplies: 150, label: 'TRENDING (2K+)', maxAgeHours: 24 },
+    { minLikes: 5000, maxReplies: 300, label: 'TRENDING+ (5K+)', maxAgeHours: 24 },
     
-    // MEGA TIER (50K+ likes) - Super viral content
-    { minLikes: 50000, maxReplies: 1000, label: 'MEGA (50K+)' },
+    // 🚀 VIRAL TIER (10K-50K likes, <48h) - Established viral, still active
+    { minLikes: 10000, maxReplies: 500, label: 'VIRAL (10K+)', maxAgeHours: 48 },
+    { minLikes: 25000, maxReplies: 800, label: 'VIRAL+ (25K+)', maxAgeHours: 48 },
     
-    // SUPER TIER (25K+ likes) - Very viral content
-    { minLikes: 25000, maxReplies: 800, label: 'SUPER (25K+)' },
-    
-    // HIGH TIER (10K+ likes) - Minimum viral threshold
-    { minLikes: 10000, maxReplies: 500, label: 'HIGH (10K+)' }
+    // 💎 MEGA TIER (50K+ likes) - Rare opportunities, worth trying even if older
+    { minLikes: 50000, maxReplies: 1000, label: 'MEGA (50K+)', maxAgeHours: 72 },
+    { minLikes: 100000, maxReplies: 1500, label: 'MEGA+ (100K+)', maxAgeHours: 72 }
   ];
   
-  console.log(`[HARVESTER] 🔥 Configured ${searchQueries.length} MEGA-VIRAL discovery tiers`);
-  console.log(`[HARVESTER] 🎯 Strategy: BROAD viral search → AI health filter`);
+  console.log(`[HARVESTER] 🔥 Configured ${searchQueries.length} FRESHNESS-OPTIMIZED discovery tiers`);
+  console.log(`[HARVESTER] 🎯 Strategy: 3-TIER MIX (Fresh → Trending → Viral)`);
+  console.log(`[HARVESTER]   🔥 FRESH tier: 500-2K likes, <12h old (active conversations)`);
+  console.log(`[HARVESTER]   ⚡ TRENDING tier: 2K-10K likes, <24h old (rising visibility)`);
+  console.log(`[HARVESTER]   🚀 VIRAL tier: 10K-50K likes, <48h old (established reach)`);
+  console.log(`[HARVESTER]   💎 MEGA tier: 50K+ likes, <72h old (rare opportunities)`);
   console.log(`[HARVESTER] 🤖 AI-powered: GPT-4o-mini judges health relevance (score 0-10)`);
   console.log(`[HARVESTER] 🚫 No topic restrictions - AI filters AFTER scraping`);
   
@@ -115,7 +120,8 @@ export async function replyOpportunityHarvester(): Promise<void> {
           return await realTwitterDiscovery.findViralTweetsViaSearch(
             searchQuery.minLikes,
             searchQuery.maxReplies,
-            searchQuery.label
+            searchQuery.label,
+            searchQuery.maxAgeHours || 24 // Pass age limit, default to 24h
           );
         }
       );

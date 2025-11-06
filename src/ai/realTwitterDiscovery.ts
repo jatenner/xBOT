@@ -491,9 +491,10 @@ export class RealTwitterDiscovery {
   async findViralTweetsViaSearch(
     minLikes: number,
     maxReplies: number,
-    searchLabel: string = 'VIRAL'
+    searchLabel: string = 'VIRAL',
+    maxAgeHours: number = 24
   ): Promise<ReplyOpportunity[]> {
-    console.log(`[REAL_DISCOVERY] 🔍 ${searchLabel} search: ${minLikes}+ likes (broad - all topics)...`);
+    console.log(`[REAL_DISCOVERY] 🔍 ${searchLabel} search: ${minLikes}+ likes, <${maxAgeHours}h old (broad - all topics)...`);
     
     const pool = UnifiedBrowserPool.getInstance();
     const page = await pool.acquirePage('search_scrape');
@@ -526,11 +527,11 @@ export class RealTwitterDiscovery {
       await page.waitForTimeout(5000); // Longer for search results
       
       // Extract viral tweets from search results
-      const opportunities = await page.evaluate((maxReplies) => {
+      const opportunities = await page.evaluate(({ maxReplies, maxAgeHours }: { maxReplies: number, maxAgeHours: number }) => {
         const results: any[] = [];
         const tweetElements = document.querySelectorAll('article[data-testid="tweet"]');
         const NOW = Date.now();
-        const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+        const MAX_AGE_MS = maxAgeHours * 60 * 60 * 1000; // Dynamic age limit
         
         // 🏥 HEALTH KEYWORD PATTERNS (for both bio and content relevance checking)
         const healthKeywords = {
@@ -569,7 +570,9 @@ export class RealTwitterDiscovery {
           
           const tweetTime = new Date(datetime).getTime();
           const ageMs = NOW - tweetTime;
-          if (ageMs > MAX_AGE_MS) continue; // Skip if older than 24h
+          if (ageMs > MAX_AGE_MS) continue; // Skip if older than age limit
+          
+          const tweetPostedAt = datetime; // Save for later use
           
           // Get tweet content
           const contentEl = tweet.querySelector('[data-testid="tweetText"]');
@@ -619,7 +622,7 @@ export class RealTwitterDiscovery {
           const hasContent = content.length > 20;
           const noLinks = !content.includes('bit.ly') && !content.includes('amzn');
           const notTooManyReplies = replyCount < maxReplies;
-          const meetsMinimumEngagement = likeCount >= 10000;
+          const meetsMinimumEngagement = likeCount >= minLikes; // ✅ FIXED: Use parameter, not hardcoded!
           
           if (hasContent && noLinks && notTooManyReplies && meetsMinimumEngagement && tweetId && author) {
             results.push({
@@ -630,13 +633,14 @@ export class RealTwitterDiscovery {
               author_name: authorName, // For AI judging
               reply_count: replyCount,
               like_count: likeCount,
-              posted_minutes_ago: postedMinutesAgo
+              posted_minutes_ago: postedMinutesAgo,
+              tweet_posted_at: tweetPostedAt // ✅ FIXED: Add timestamp
             });
           }
         }
         
         return results;
-      }, maxReplies);
+      }, { maxReplies, maxAgeHours }) as any[];
       
       console.log(`[REAL_DISCOVERY] ✅ Scraped ${opportunities.length} viral tweets (all topics)`);
       
@@ -681,22 +685,22 @@ export class RealTwitterDiscovery {
       });
       console.log(`[REAL_DISCOVERY] 📊 Categories: ${Object.entries(categories).map(([cat, count]) => `${cat}:${count}`).join(', ')}`);
       
-      // Calculate tiers for each opportunity
-      const { getReplyQualityScorer } = await import('../intelligence/replyQualityScorer');
-      const scorer = getReplyQualityScorer();
+      // ✅ FIXED: Calculate NEW tier names based on like_count
+      const calculateTierFromLikes = (likes: number): string => {
+        if (likes >= 100000) return 'MEGA+';
+        if (likes >= 50000) return 'MEGA';
+        if (likes >= 25000) return 'VIRAL+';
+        if (likes >= 10000) return 'VIRAL';
+        if (likes >= 5000) return 'TRENDING+';
+        if (likes >= 2000) return 'TRENDING';
+        if (likes >= 1000) return 'FRESH+';
+        return 'FRESH'; // 500-999 likes
+      };
       
       const tieredOpportunities = healthOpportunities
         .map((opp: any) => {
-          const tier = scorer.calculateTier({
-            like_count: opp.like_count,
-            reply_count: opp.reply_count,
-            posted_minutes_ago: opp.posted_minutes_ago,
-            account_followers: 0 // Unknown for search results
-          });
-          
-          if (!tier) return null; // Filter out if doesn't meet tier criteria
-          
-          const momentum = scorer.calculateMomentum(opp.like_count, opp.posted_minutes_ago);
+          const tier = calculateTierFromLikes(opp.like_count);
+          const momentum = opp.like_count / Math.max(opp.posted_minutes_ago, 1);
           
           return {
             ...opp,
@@ -704,19 +708,19 @@ export class RealTwitterDiscovery {
             tier: tier,
             momentum_score: momentum,
             opportunity_score: this.calculateOpportunityScore(opp.like_count, opp.reply_count),
-            expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(), // 6 hours
+            expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // ✅ FIXED: 24 hours
             health_relevance_score: opp.health_relevance_score
           };
-        })
-        .filter((opp: any) => opp !== null);
+        });
       
-      console.log(`[REAL_DISCOVERY] 🎯 Qualified ${tieredOpportunities.length} opportunities after tier filtering`);
+      console.log(`[REAL_DISCOVERY] 🎯 Qualified ${tieredOpportunities.length} opportunities after tier assignment`);
       
-      // Log tier breakdown
-      const golden = tieredOpportunities.filter((o: any) => o.tier === 'golden').length;
-      const good = tieredOpportunities.filter((o: any) => o.tier === 'good').length;
-      const acceptable = tieredOpportunities.filter((o: any) => o.tier === 'acceptable').length;
-      console.log(`[REAL_DISCOVERY]   🏆 ${golden} golden, ✅ ${good} good, 📊 ${acceptable} acceptable`);
+      // ✅ FIXED: Log NEW tier breakdown
+      const mega = tieredOpportunities.filter((o: any) => o.tier?.startsWith('MEGA')).length;
+      const viral = tieredOpportunities.filter((o: any) => o.tier?.startsWith('VIRAL')).length;
+      const trending = tieredOpportunities.filter((o: any) => o.tier?.startsWith('TRENDING')).length;
+      const fresh = tieredOpportunities.filter((o: any) => o.tier?.startsWith('FRESH')).length;
+      console.log(`[REAL_DISCOVERY]   💎 ${mega} MEGA, 🚀 ${viral} VIRAL, ⚡ ${trending} TRENDING, 🔥 ${fresh} FRESH`);
       
       return tieredOpportunities;
       
