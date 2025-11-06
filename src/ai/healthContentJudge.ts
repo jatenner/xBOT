@@ -115,6 +115,9 @@ Return ONLY valid JSON (no markdown):
       ],
       temperature: 0.3, // Lower = more consistent
       max_tokens: 2000
+    }, {
+      purpose: 'health_content_filtering',
+      priority: 'high'
     });
 
     const content = response.choices[0].message.content || '{}';
