@@ -126,7 +126,7 @@ You will be asked to defend your reporting. Be prepared to:
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.7,
-      max_tokens: format === "thread" ? 500 : 120, // ✅ Reduced to stay under 280 chars
+      max_tokens: format === "thread" ? 400 : 90, // ✅ Reduced to stay under 280 chars
       response_format: { type: 'json_object' }
     }, { purpose: 'news_reporter_content_generation' });
 

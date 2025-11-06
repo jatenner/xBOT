@@ -116,7 +116,7 @@ ${format === 'thread' ? 'Make it a compelling thread with real examples.' : 'Mak
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.85, // High creativity for narrative
-      max_tokens: format === "thread" ? 500 : 120, // ✅ Reduced to stay under 280 chars
+      max_tokens: format === "thread" ? 400 : 90, // ✅ Reduced to stay under 280 chars
       response_format: { type: 'json_object' }
     }, { purpose: 'storyteller_content_generation' });
 

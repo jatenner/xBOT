@@ -173,7 +173,7 @@ Be fair but honest. Educate through entertainment.`;
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.85,
-      max_tokens: format === "thread" ? 500 : 120,
+      max_tokens: format === "thread" ? 400 : 90,
       response_format: { type: 'json_object' }
     }, { purpose: 'pop_culture_analyst_generation' });
 

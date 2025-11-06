@@ -128,7 +128,7 @@ Reveal meta-insights. Help people see the bigger picture.`;
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.85,
-      max_tokens: format === "thread" ? 500 : 120,
+      max_tokens: format === "thread" ? 400 : 90,
       response_format: { type: 'json_object' }
     }, { purpose: 'pattern_finder_content_generation' });
 

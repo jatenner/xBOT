@@ -125,7 +125,7 @@ Make it understandable without oversimplifying. Focus on genuine education.`;
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.75,
-      max_tokens: format === "thread" ? 500 : 120,
+      max_tokens: format === "thread" ? 400 : 90,
       response_format: { type: 'json_object' }
     }, { purpose: 'teacher_content_generation' });
 

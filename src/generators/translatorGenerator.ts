@@ -128,7 +128,7 @@ Make it accessible without losing accuracy. Help people understand their health.
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.75,
-      max_tokens: format === "thread" ? 500 : 120,
+      max_tokens: format === "thread" ? 400 : 90,
       response_format: { type: 'json_object' }
     }, { purpose: 'translator_content_generation' });
 

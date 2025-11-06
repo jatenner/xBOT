@@ -130,7 +130,7 @@ What can people actually do and stick to? Focus on good enough, not perfect.`;
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.75,
-      max_tokens: format === "thread" ? 500 : 120,
+      max_tokens: format === "thread" ? 400 : 90,
       response_format: { type: 'json_object' }
     }, { purpose: 'pragmatist_content_generation' });
 
