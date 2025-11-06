@@ -404,24 +404,56 @@ Be specific, interesting, and match the tone precisely. Sound like an expert who
 
 ⚠️ CRITICAL: Return your response as valid JSON format (required for API).
 
-🚫 THREADS TEMPORARILY DISABLED - ALWAYS CREATE SINGLE TWEETS
-Generate ONLY single tweets while we perfect the system.
-Threads will be re-enabled later once singles are perfected.
+🧵 THREAD vs SINGLE DECISION:
+- ~93% of posts should be SINGLE tweets (quick, punchy, easy to consume)
+- ~7% of posts should be THREADS (complex topics that benefit from depth)
+
+Choose THREAD format when:
+- Topic requires step-by-step explanation
+- Multiple related points build on each other
+- Story or case study format works best
+- Data/research needs context and interpretation
+
+Choose SINGLE format when:
+- One clear, punchy point
+- Quick tip or insight
+- Data point stands alone
+- Question to audience
 
 REQUIRED FORMAT - return JSON:
+
+FOR SINGLE TWEETS:
 {
   "text": "Your tweet content here (ideal: 200-270 chars)",
   "format": "single"
 }
 
-SINGLE TWEET REQUIREMENTS:
-- Length: 200-270 characters ideal (max 280, but leave room)
+FOR THREADS (4-5 tweets ideal):
+{
+  "text": [
+    "Tweet 1: Strong hook that makes them want to read more (200-270 chars)",
+    "Tweet 2: Build on tweet 1, add key insight (200-270 chars)",
+    "Tweet 3: Continue the story/explanation (200-270 chars)",
+    "Tweet 4: Conclusion or key takeaway (200-270 chars)"
+  ],
+  "format": "thread"
+}
+
+CONTENT REQUIREMENTS (all formats):
+- Length: 200-270 characters per tweet (max 280, leave room)
 - No first-person (I/me/my)
-- 0-2 emojis maximum (preferably 0-1)
+- 0-2 emojis maximum per tweet (preferably 0-1)
 - NO hashtags ever
 - Sound like an expert, not a textbook
 - Be specific and interesting
-- Match the TONE and ANGLE precisely`;
+- Match the TONE and ANGLE precisely
+
+THREAD-SPECIFIC RULES:
+- Each tweet should make sense on its own but connect to the next
+- Natural flow between tweets (no "1/4", "2/4" numbering)
+- First tweet is the HOOK - make it compelling
+- Last tweet is the PAYOFF - strong conclusion or actionable takeaway
+- 4-5 tweets is ideal (minimum 2, maximum 6)`;
   
   return { system, user };
   }

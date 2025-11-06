@@ -448,33 +448,53 @@ async function generateRealReplies(): Promise<void> {
     return;
   }
   
-  // Log tier breakdown
+  // Log tier breakdown (support both new and legacy tier names)
+  const titans = allOpportunities.filter(o => o.tier === 'TITAN').length;
+  const ultras = allOpportunities.filter(o => o.tier === 'ULTRA').length;
+  const megas = allOpportunities.filter(o => o.tier === 'MEGA').length;
+  const supers = allOpportunities.filter(o => o.tier === 'SUPER').length;
+  const highs = allOpportunities.filter(o => o.tier === 'HIGH').length;
   const golden = allOpportunities.filter(o => o.tier === 'golden').length;
   const good = allOpportunities.filter(o => o.tier === 'good').length;
   const acceptable = allOpportunities.filter(o => o.tier === 'acceptable').length;
   
   console.log(`[REPLY_JOB] 📊 Opportunity pool: ${allOpportunities.length} total`);
-  console.log(`[REPLY_JOB]   🏆 GOLDEN: ${golden} (0.3%+ eng, <90min, <8 replies)`);
-  console.log(`[REPLY_JOB]   ✅ GOOD: ${good} (0.15%+ eng, <240min, <15 replies)`);
-  console.log(`[REPLY_JOB]   📊 ACCEPTABLE: ${acceptable} (0.08%+ eng, <720min, <25 replies)`);
+  if (titans + ultras + megas + supers + highs > 0) {
+    console.log(`[REPLY_JOB]   🏆 TITAN (250K+): ${titans} | ULTRA (100K+): ${ultras} | MEGA (50K+): ${megas}`);
+    console.log(`[REPLY_JOB]   ✅ SUPER (25K+): ${supers} | HIGH (10K+): ${highs}`);
+  }
+  if (golden + good + acceptable > 0) {
+    console.log(`[REPLY_JOB]   Legacy: ${golden} golden, ${good} good, ${acceptable} acceptable`);
+  }
   
-  // SMART SELECTION: Prioritize by tier → ABSOLUTE likes → comments → engagement rate
+  // 🔥 WATERFALL PRIORITY: Sort by tier → ABSOLUTE likes
+  // Strategy: Prioritize HIGHEST engagement first (TITAN > ULTRA > MEGA > SUPER > HIGH)
+  // Goal: Reply to biggest tweets possible to maximize exposure
   const sortedOpportunities = [...allOpportunities].sort((a, b) => {
-    // Tier priority: golden > good > acceptable > null
-    const tierOrder: Record<string, number> = { golden: 3, good: 2, acceptable: 1 };
+    // Tier priority (higher number = higher priority)
+    const tierOrder: Record<string, number> = {
+      'TITAN': 10,    // 250K+ likes (highest priority!)
+      'ULTRA': 9,     // 100K+ likes
+      'MEGA': 8,      // 50K+ likes
+      'SUPER': 7,     // 25K+ likes
+      'HIGH': 6,      // 10K+ likes
+      'golden': 5,    // Legacy high tier
+      'good': 4,      // Legacy medium tier
+      'acceptable': 3 // Legacy low tier
+    };
     const aTier = tierOrder[String(a.tier || '')] || 0;
     const bTier = tierOrder[String(b.tier || '')] || 0;
     if (aTier !== bTier) return bTier - aTier; // Higher tier first
     
-    // Within same tier, prioritize by ABSOLUTE engagement (10K likes beats 300 likes!)
+    // Within same tier, prioritize by ABSOLUTE engagement (250K likes beats 100K likes!)
     const aLikes = Number(a.like_count) || 0;
     const bLikes = Number(b.like_count) || 0;
     if (aLikes !== bLikes) return bLikes - aLikes; // More likes first
     
-    // Then by comments
+    // Then by fewer comments (less competition)
     const aComments = Number(a.reply_count) || 0;
     const bComments = Number(b.reply_count) || 0;
-    if (aComments !== bComments) return bComments - aComments;
+    if (aComments !== bComments) return aComments - bComments; // Fewer comments first
     
     // Finally, by engagement rate (for ties)
     return (Number(b.engagement_rate) || 0) - (Number(a.engagement_rate) || 0);
@@ -518,13 +538,28 @@ async function generateRealReplies(): Promise<void> {
     return;
   }
   
+  // Count selected by tier
+  const selectedTitans = dbOpportunities.filter(o => o.tier === 'TITAN').length;
+  const selectedUltras = dbOpportunities.filter(o => o.tier === 'ULTRA').length;
+  const selectedMegas = dbOpportunities.filter(o => o.tier === 'MEGA').length;
+  const selectedSupers = dbOpportunities.filter(o => o.tier === 'SUPER').length;
+  const selectedHighs = dbOpportunities.filter(o => o.tier === 'HIGH').length;
   const selectedGolden = dbOpportunities.filter(o => o.tier === 'golden').length;
   const selectedGood = dbOpportunities.filter(o => o.tier === 'good').length;
   const selectedAcceptable = dbOpportunities.filter(o => o.tier === 'acceptable').length;
   
-  console.log(`[REPLY_JOB] 🎯 Selected ${dbOpportunities.length} best opportunities:`);
-  console.log(`[REPLY_JOB]   🏆 ${selectedGolden} golden, ✅ ${selectedGood} good, 📊 ${selectedAcceptable} acceptable`);
+  console.log(`[REPLY_JOB] 🎯 Selected ${dbOpportunities.length} best opportunities (waterfall priority):`);
+  if (selectedTitans + selectedUltras + selectedMegas + selectedSupers + selectedHighs > 0) {
+    console.log(`[REPLY_JOB]   🏆 ${selectedTitans} TITAN, ${selectedUltras} ULTRA, ${selectedMegas} MEGA, ${selectedSupers} SUPER, ${selectedHighs} HIGH`);
+  }
+  if (selectedGolden + selectedGood + selectedAcceptable > 0) {
+    console.log(`[REPLY_JOB]   Legacy: ${selectedGolden} golden, ${selectedGood} good, ${selectedAcceptable} acceptable`);
+  }
   console.log(`[REPLY_JOB]   Filtered out ${repliedTweetIds.size} already-replied tweets`);
+  
+  // Log average engagement
+  const avgLikes = dbOpportunities.reduce((sum, opp) => sum + (Number(opp.like_count) || 0), 0) / Math.max(dbOpportunities.length, 1);
+  console.log(`[REPLY_JOB]   📊 Average engagement: ${Math.round(avgLikes).toLocaleString()} likes per opportunity`);
   
   // Convert to the format expected by strategic reply system
   const opportunities = dbOpportunities.map((opp: any) => ({
