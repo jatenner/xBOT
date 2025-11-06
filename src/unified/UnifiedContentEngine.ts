@@ -361,7 +361,7 @@ export class UnifiedContentEngine {
         console.log('🎭 STEP 4: Selecting content generator persona (legacy mode)...');
         const result = await this.selectAndGenerateWithPersona({
           topic: topicHint,
-          format: request.format || 'single',
+          format: 'single', // THREADS DISABLED - always force single until thread system fixed
           insights,
           viralAnalysis,
           experimentArm,
@@ -383,6 +383,7 @@ export class UnifiedContentEngine {
       // STEP 5: EXTRACT CONTENT
       // ═══════════════════════════════════════════════════════════
       const aiResponse: any = {};
+      // THREADS DISABLED - This block won't execute since we force 'single'
       if (request.format === 'thread' && Array.isArray(generatedContent)) {
         aiResponse.thread = generatedContent;
         aiResponse.content = generatedContent.join('\n\n');
