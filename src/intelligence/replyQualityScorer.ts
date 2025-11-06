@@ -82,14 +82,16 @@ export class ReplyQualityScorer {
   
   /**
    * Calculate tier based on ABSOLUTE ENGAGEMENT (likes) + REPLY COMPETITION
-   * MEGA-IMPACT STRATEGY: High impressions + Manageable competition = Maximum visibility
+   * 🔥 MEGA-VIRAL ONLY STRATEGY: Target truly massive health tweets for maximum exposure
    * 
-   * 4-TIER SYSTEM: Ultra-high-impact tweets only
-   * Tier 1 (MEGA-VIRAL): 50K+ likes, <1000 replies - ~5-15/day → Maximum impressions
-   * Tier 2 (SUPER-VIRAL): 20K+ likes, <600 replies - ~20-40/day → Super high impressions
-   * Tier 3 (VIRAL): 10K+ likes, <400 replies - ~50-80/day → High impressions
-   * Tier 4 (TRENDING): 5K+ likes, <300 replies - ~100-150/day → Good impressions
-   * Total: ~175-285/day (1.8-3x buffer for 96 replies/day needed)
+   * 5-TIER SYSTEM: Ultra-high-impact tweets only (MINIMUM 10K likes)
+   * TITAN (golden): 250K+ likes, <2000 replies → 2.5M+ impressions (absolute mega-viral)
+   * ULTRA (golden): 100K+ likes, <1500 replies → 1M+ impressions (massive viral)
+   * MEGA (golden): 50K+ likes, <1000 replies → 500K+ impressions (super viral)
+   * SUPER (good): 25K+ likes, <800 replies → 250K+ impressions (very viral)
+   * HIGH (acceptable): 10K+ likes, <500 replies → 100K+ impressions (viral minimum)
+   * 
+   * HARD FLOOR: Nothing under 10K likes accepted (ensures massive reach)
    */
   calculateTier(metrics: TweetMetrics): 'golden' | 'good' | 'acceptable' | null {
     const absoluteLikes = metrics.like_count;
@@ -99,37 +101,45 @@ export class ReplyQualityScorer {
     // Only consider tweets from last 24 hours
     if (tweetAge > 1440) return null;
     
+    // 🚫 HARD FLOOR: Reject anything under 10K likes
+    if (absoluteLikes < 10000) return null;
+    
     // ═══════════════════════════════════════════════════════════
-    // 4-TIER MEGA-IMPACT SYSTEM
-    // High likes (lots of viewers) + Low replies (you're visible)
+    // 5-TIER MEGA-VIRAL SYSTEM
+    // MINIMUM 10K | GOAL 50K-250K+ for massive exposure
     // ═══════════════════════════════════════════════════════════
     
-    // TIER 1 - MEGA-VIRAL: 50,000+ likes, <1000 replies
-    // Visibility: 500K+ impressions | Your reply in top 1000 (visible on mega-viral)
+    // TIER 1 - TITAN: 250,000+ likes, <2000 replies
+    // Visibility: 2.5M+ impressions | Your reply seen by millions
+    if (absoluteLikes >= 250000 && absoluteReplies < 2000) {
+      return 'golden';
+    }
+    
+    // TIER 2 - ULTRA: 100,000+ likes, <1500 replies
+    // Visibility: 1M+ impressions | Massive viral reach
+    if (absoluteLikes >= 100000 && absoluteReplies < 1500) {
+      return 'golden';
+    }
+    
+    // TIER 3 - MEGA: 50,000+ likes, <1000 replies
+    // Visibility: 500K+ impressions | Super viral content
     if (absoluteLikes >= 50000 && absoluteReplies < 1000) {
       return 'golden';
     }
     
-    // TIER 2 - SUPER-VIRAL: 20,000+ likes, <600 replies
-    // Visibility: 200K+ impressions | Your reply in top 600 (highly visible)
-    if (absoluteLikes >= 20000 && absoluteReplies < 600) {
-      return 'golden';
-    }
-    
-    // TIER 3 - VIRAL: 10,000+ likes, <400 replies
-    // Visibility: 100K+ impressions | Your reply in top 400 (visible)
-    if (absoluteLikes >= 10000 && absoluteReplies < 400) {
-      return 'golden';
-    }
-    
-    // TIER 4 - TRENDING: 5,000+ likes, <300 replies
-    // Visibility: 50K+ impressions | Your reply in top 300 (good visibility)
-    if (absoluteLikes >= 5000 && absoluteReplies < 300) {
+    // TIER 4 - SUPER: 25,000+ likes, <800 replies
+    // Visibility: 250K+ impressions | Very high viral reach
+    if (absoluteLikes >= 25000 && absoluteReplies < 800) {
       return 'good';
     }
     
-    // Below 5K likes OR too many replies = REJECTED
-    // Not enough impressions OR you'll be buried
+    // TIER 5 - HIGH: 10,000+ likes, <500 replies
+    // Visibility: 100K+ impressions | Minimum viral threshold
+    if (absoluteLikes >= 10000 && absoluteReplies < 500) {
+      return 'acceptable';
+    }
+    
+    // Too many replies = buried, even with high likes
     return null;
   }
   

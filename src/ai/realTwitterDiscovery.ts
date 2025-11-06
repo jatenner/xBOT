@@ -502,6 +502,8 @@ export class RealTwitterDiscovery {
       // min_faves:{minLikes} filters for tweets with minimum likes
       // -filter:replies excludes reply tweets (get original content)
       // lang:en filters for English
+      // 🔥 MEGA-VIRAL STRATEGY: Keep high thresholds, strict health filtering
+      // MINIMUM 10K likes enforced - we want MASSIVE reach only
       const encodedQuery = encodeURIComponent(`${searchQuery} min_faves:${minLikes} -filter:replies lang:en`);
       const searchUrl = `https://x.com/search?q=${encodedQuery}&src=typed_query&f=live`;
       
@@ -520,6 +522,32 @@ export class RealTwitterDiscovery {
         const tweetElements = document.querySelectorAll('article[data-testid="tweet"]');
         const NOW = Date.now();
         const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+        
+        // 🏥 HEALTH KEYWORD PATTERNS (for both bio and content relevance checking)
+        const healthKeywords = {
+          primary: ['health', 'wellness', 'fitness', 'nutrition', 'longevity', 'biohacking', 'medical', 'doctor', 'dr.'],
+          secondary: ['supplement', 'diet', 'exercise', 'sleep', 'workout', 'protein', 'vitamin', 'gut', 'brain', 'hormone'],
+          scientific: ['study', 'research', 'science', 'clinical', 'trial', 'evidence', 'mechanism', 'pathway']
+        };
+        
+        // Helper: Check if text contains health keywords
+        const getHealthScore = (text: string): number => {
+          const lower = text.toLowerCase();
+          let score = 0;
+          
+          // Count keyword occurrences
+          healthKeywords.primary.forEach(kw => {
+            if (lower.includes(kw)) score += 3;
+          });
+          healthKeywords.secondary.forEach(kw => {
+            if (lower.includes(kw)) score += 2;
+          });
+          healthKeywords.scientific.forEach(kw => {
+            if (lower.includes(kw)) score += 1;
+          });
+          
+          return score;
+        };
         
         // Extract up to 50 tweets from search results
         for (let i = 0; i < Math.min(tweetElements.length, 50); i++) {
@@ -565,17 +593,38 @@ export class RealTwitterDiscovery {
           const replyCount = parseEngagement(replyText);
           const postedMinutesAgo = Math.floor(ageMs / 60000);
           
-          // Get author
+          // Get author and bio
           const authorEl = tweet.querySelector('[data-testid="User-Name"]');
           const authorMatch = (authorEl?.textContent || '').match(/@(\w+)/);
           const author = authorMatch ? authorMatch[1] : '';
+          
+          // Try to get account bio from the tweet's author section
+          // Bio isn't always visible in timeline, but we can check author name/handle for health indicators
+          const authorName = authorEl?.textContent?.split('@')[0]?.trim() || '';
+          const displayText = `${authorName} ${author}`.toLowerCase();
+          
+          // 🔍 ENHANCED FILTERING: Check both account AND content relevance
+          const accountHealthScore = getHealthScore(displayText);
+          const contentHealthScore = getHealthScore(content);
           
           // Basic filters
           const hasContent = content.length > 20;
           const noLinks = !content.includes('bit.ly') && !content.includes('amzn');
           const notTooManyReplies = replyCount < maxReplies;
           
-          if (hasContent && noLinks && notTooManyReplies && tweetId && author) {
+          // 🔥 MEGA-VIRAL FILTER: Minimum 10K likes enforced
+          const meetsMinimumEngagement = likeCount >= 10000;
+          
+          // 🚨 HEALTH RELEVANCE: Only include if:
+          // - Account shows health focus (name/handle includes health terms) OR
+          // - Content is STRONGLY health-related (multiple health keywords)
+          const isHealthRelevant = accountHealthScore >= 3 || contentHealthScore >= 8;
+          
+          // 🚨 OFF-TOPIC FILTER: Skip politics, sports, entertainment
+          const offTopicKeywords = ['democrat', 'republican', 'maga', 'biden', 'trump', 'barcelona', 'bayern', 'soccer', 'football', 'nfl', 'nba', 'music', 'artist', 'rapper', 'singer'];
+          const isOffTopic = offTopicKeywords.some(kw => displayText.includes(kw));
+          
+          if (hasContent && noLinks && notTooManyReplies && meetsMinimumEngagement && tweetId && author && isHealthRelevant && !isOffTopic) {
             results.push({
               tweet_id: tweetId,
               tweet_url: `https://x.com/${author}/status/${tweetId}`,
@@ -583,7 +632,8 @@ export class RealTwitterDiscovery {
               tweet_author: author,
               reply_count: replyCount,
               like_count: likeCount,
-              posted_minutes_ago: postedMinutesAgo
+              posted_minutes_ago: postedMinutesAgo,
+              health_relevance_score: accountHealthScore + contentHealthScore
             });
           }
         }
@@ -591,7 +641,11 @@ export class RealTwitterDiscovery {
         return results;
       }, maxReplies);
       
-      console.log(`[REAL_DISCOVERY] ✅ Found ${opportunities.length} viral tweets from search`);
+      console.log(`[REAL_DISCOVERY] ✅ Found ${opportunities.length} health-relevant viral tweets from search`);
+      
+      // Log health relevance stats
+      const avgHealthScore = opportunities.reduce((sum: number, opp: any) => sum + (opp.health_relevance_score || 0), 0) / Math.max(opportunities.length, 1);
+      console.log(`[REAL_DISCOVERY] 🏥 Average health relevance score: ${avgHealthScore.toFixed(1)} (filtered out off-topic tweets)`);
       
       // Calculate tiers for each opportunity
       const { getReplyQualityScorer } = await import('../intelligence/replyQualityScorer');
@@ -616,12 +670,19 @@ export class RealTwitterDiscovery {
             tier: tier,
             momentum_score: momentum,
             opportunity_score: this.calculateOpportunityScore(opp.like_count, opp.reply_count),
-            expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString() // 6 hours
+            expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(), // 6 hours
+            health_relevance_score: opp.health_relevance_score
           };
         })
         .filter((opp: any) => opp !== null);
       
       console.log(`[REAL_DISCOVERY] 🎯 Qualified ${tieredOpportunities.length} opportunities after tier filtering`);
+      
+      // Log tier breakdown
+      const golden = tieredOpportunities.filter((o: any) => o.tier === 'golden').length;
+      const good = tieredOpportunities.filter((o: any) => o.tier === 'good').length;
+      const acceptable = tieredOpportunities.filter((o: any) => o.tier === 'acceptable').length;
+      console.log(`[REAL_DISCOVERY]   🏆 ${golden} golden, ✅ ${good} good, 📊 ${acceptable} acceptable`);
       
       return tieredOpportunities;
       
