@@ -53,27 +53,43 @@ export async function replyOpportunityHarvester(): Promise<void> {
   // Search directly for viral health tweets by engagement level
   // Format: {query, minLikes, maxReplies, label}
   
+  // 🔥 MEGA-VIRAL DISCOVERY STRATEGY - Find ACTUAL viral tweets, don't dictate topics
+  // Let Twitter show us what's REALLY going viral, then filter for health
+  // BROAD searches + high engagement thresholds = discover what people actually care about
   const searchQueries = [
-    // MEGA-VIRAL (50k+ likes) - Ultra high-impact
-    { query: 'health OR longevity OR biohacking', minLikes: 50000, maxReplies: 1000, label: 'MEGA-VIRAL (Health)' },
-    { query: 'fitness OR nutrition OR wellness', minLikes: 50000, maxReplies: 1000, label: 'MEGA-VIRAL (Fitness)' },
+    // TITAN TIER (250K+ likes) - Discover absolute mega-viral health content
+    { query: 'health', minLikes: 250000, maxReplies: 2000, label: 'TITAN (250K+)' },
+    { query: 'fitness', minLikes: 250000, maxReplies: 2000, label: 'TITAN (250K+)' },
     
-    // SUPER-VIRAL (20k+ likes) - Super high-impact
-    { query: 'health OR longevity OR sleep', minLikes: 20000, maxReplies: 600, label: 'SUPER-VIRAL (Health)' },
-    { query: 'nutrition OR diet OR supplements', minLikes: 20000, maxReplies: 600, label: 'SUPER-VIRAL (Nutrition)' },
+    // ULTRA TIER (100K+ likes) - Discover massive viral health content
+    { query: 'health', minLikes: 100000, maxReplies: 1500, label: 'ULTRA (100K+)' },
+    { query: 'wellness', minLikes: 100000, maxReplies: 1500, label: 'ULTRA (100K+)' },
+    { query: 'mental health', minLikes: 100000, maxReplies: 1500, label: 'ULTRA (100K+)' },
     
-    // VIRAL (10k+ likes) - High-impact
-    { query: 'health OR wellness OR mental', minLikes: 10000, maxReplies: 400, label: 'VIRAL (Health)' },
-    { query: 'fitness OR exercise OR workout', minLikes: 10000, maxReplies: 400, label: 'VIRAL (Fitness)' },
+    // MEGA TIER (50K+ likes) - Discover super viral health content
+    { query: 'nutrition', minLikes: 50000, maxReplies: 1000, label: 'MEGA (50K+)' },
+    { query: 'fitness', minLikes: 50000, maxReplies: 1000, label: 'MEGA (50K+)' },
+    { query: 'sleep', minLikes: 50000, maxReplies: 1000, label: 'MEGA (50K+)' },
+    { query: 'workout', minLikes: 50000, maxReplies: 1000, label: 'MEGA (50K+)' },
     
-    // TRENDING (5k+ likes) - Good impact
-    { query: 'health OR medical OR doctor', minLikes: 5000, maxReplies: 300, label: 'TRENDING (Health)' },
-    { query: 'nutrition OR food OR eating', minLikes: 5000, maxReplies: 300, label: 'TRENDING (Nutrition)' },
-    { query: 'sleep OR energy OR recovery', minLikes: 5000, maxReplies: 300, label: 'TRENDING (Recovery)' },
-    { query: 'longevity OR aging OR biohacking', minLikes: 5000, maxReplies: 300, label: 'TRENDING (Longevity)' }
+    // SUPER TIER (25K+ likes) - Discover very viral health content
+    { query: 'diet', minLikes: 25000, maxReplies: 800, label: 'SUPER (25K+)' },
+    { query: 'exercise', minLikes: 25000, maxReplies: 800, label: 'SUPER (25K+)' },
+    { query: 'wellness', minLikes: 25000, maxReplies: 800, label: 'SUPER (25K+)' },
+    { query: 'longevity', minLikes: 25000, maxReplies: 800, label: 'SUPER (25K+)' },
+    
+    // HIGH TIER (10K+ likes) - Minimum viral threshold (broad discovery)
+    { query: 'health', minLikes: 10000, maxReplies: 500, label: 'HIGH (10K+)' },
+    { query: 'nutrition', minLikes: 10000, maxReplies: 500, label: 'HIGH (10K+)' },
+    { query: 'fitness', minLikes: 10000, maxReplies: 500, label: 'HIGH (10K+)' },
+    { query: 'wellness', minLikes: 10000, maxReplies: 500, label: 'HIGH (10K+)' },
+    { query: 'mental health', minLikes: 10000, maxReplies: 500, label: 'HIGH (10K+)' }
   ];
   
-  console.log(`[HARVESTER] 🔍 Configured ${searchQueries.length} search queries for viral health content`);
+  console.log(`[HARVESTER] 🔥 Configured ${searchQueries.length} MEGA-VIRAL discovery queries`);
+  console.log(`[HARVESTER] 🎯 Strategy: DISCOVER viral tweets (TITAN 250K+ | ULTRA 100K+ | MEGA 50K+ | SUPER 25K+ | HIGH 10K+)`);
+  console.log(`[HARVESTER] 🔍 BROAD searches - let Twitter show us what's ACTUALLY viral, then filter for health`);
+  console.log(`[HARVESTER] 🚫 HARD FLOOR: 10K min | Health relevance scoring | Off-topic auto-excluded`);
   
   // Step 4: TIME-BOXED SEARCH-BASED HARVESTING
   const { realTwitterDiscovery } = await import('../ai/realTwitterDiscovery');
