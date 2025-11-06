@@ -165,16 +165,17 @@ export class BulletproofThreadComposer {
   }
 
   /**
-   * 🔥 NEW: Post with proper context management
+   * 🔥 FIXED: Use UnifiedBrowserPool (same as single posts - AUTHENTICATED!)
    */
   private static async postWithContext(segments: string[]): Promise<ThreadPostResult> {
-    const { default: browserManager } = await import('../core/BrowserManager');
+    const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
+    const pool = UnifiedBrowserPool.getInstance();
     
-    // ✅ CORRECT: Use withContext properly - context cleaned up automatically
-    return await browserManager.withContext(async (context: any) => {
-      const page = await context.newPage();
-      
-      // ✅ FIX: Navigate to Twitter compose page BEFORE trying to post
+    // ✅ FIX: Use the same authenticated browser pool as single posts!
+    const page = await pool.acquirePage('thread_posting');
+    
+    try {
+      // ✅ Navigate to Twitter compose page
       console.log('[THREAD_COMPOSER] 🌐 Navigating to compose page...');
       await page.goto('https://x.com/compose/tweet', {
         waitUntil: 'domcontentloaded',
@@ -200,6 +201,9 @@ export class BulletproofThreadComposer {
             // Capture all tweet IDs from composer mode
             const tweetIds = await this.captureThreadIds(page, segments.length);
             
+            // ✅ IMPORTANT: Release page back to pool
+            await pool.releasePage(page);
+            
             return {
               success: true,
               mode: 'composer',
@@ -215,6 +219,9 @@ export class BulletproofThreadComposer {
               console.log('⚠️ Native composer failed, trying reply chain as fallback...');
               const replyResult = await this.postViaReplies(page, segments);
               console.log('THREAD_PUBLISH_OK mode=reply_chain');
+              
+              // ✅ IMPORTANT: Release page back to pool
+              await pool.releasePage(page);
               
               return {
                 success: true,
@@ -232,6 +239,10 @@ export class BulletproofThreadComposer {
                 await page.reload({ waitUntil: 'load', timeout: 10000 });
               } else {
                 console.error(`THREAD_POST_FAIL: All ${maxRetries} attempts exhausted`);
+                
+                // ✅ IMPORTANT: Release page back to pool before returning error
+                await pool.releasePage(page);
+                
                 return {
                   success: false,
                   mode: 'composer',
@@ -248,14 +259,23 @@ export class BulletproofThreadComposer {
           error: 'All retry attempts completed without success'
         };
         
+      } catch (error: any) {
+        log({ op: 'thread_post_error', error: error.message });
+        // ✅ IMPORTANT: Always release page on error
+        await pool.releasePage(page);
+        throw error;
       } finally {
+        // ✅ SAFETY: Ensure page is always released (extra safety)
         try {
-          await page.close();
+          await pool.releasePage(page);
         } catch {
-          // Ignore close errors
+          // Already released, ignore
         }
       }
-    });
+    } catch (outerError: any) {
+      log({ op: 'thread_post_outer_error', error: outerError.message });
+      throw outerError;
+    }
   }
 
   /**
@@ -671,3 +691,4 @@ export class BulletproofThreadComposer {
 }
 
 export default BulletproofThreadComposer;
+
