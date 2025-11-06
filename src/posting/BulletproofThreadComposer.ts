@@ -350,6 +350,7 @@ export class BulletproofThreadComposer {
     console.log('🔗 THREAD_REPLY_CHAIN: Starting reply chain fallback...');
     
     const tweetIds: string[] = [];
+    let currentTweetUrl: string; // Track the last posted tweet URL
     
     // Post root tweet
     const rootFocusResult = await ensureComposerFocused(page, { mode: 'compose' });
@@ -396,12 +397,15 @@ export class BulletproofThreadComposer {
       console.log(`🔗 THREAD_ROOT: ${rootUrl}`);
     }
     
+    // 🔥 FIX: Start with root URL, then update to each new reply
+    currentTweetUrl = rootUrl;
+    
     // Post replies
     for (let i = 1; i < segments.length; i++) {
-      console.log(`🔗 THREAD_REPLY ${i}/${segments.length - 1}: Posting reply...`);
+      console.log(`🔗 THREAD_REPLY ${i}/${segments.length - 1}: Posting reply to previous tweet...`);
       
-      // Navigate to root tweet
-      await page.goto(rootUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      // 🔥 FIX: Navigate to LAST posted tweet (not root!)
+      await page.goto(currentTweetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
       
       // Resilient reply flow with multiple selectors + kb fallback
       await page.bringToFront();
@@ -448,20 +452,25 @@ export class BulletproofThreadComposer {
         page.waitForTimeout(10000)
       ]);
       
-      // 🆕 CAPTURE REPLY TWEET ID
+      // 🆕 CAPTURE REPLY TWEET ID AND URL
       try {
         await page.waitForTimeout(2000); // Wait for tweet to be posted
-        const currentUrl = page.url();
-        const replyId = currentUrl.match(/status\/(\d+)/)?.[1];
+        const newUrl = page.url();
+        const replyId = newUrl.match(/status\/(\d+)/)?.[1];
         if (replyId && replyId !== rootId) {
           tweetIds.push(replyId);
+          // 🔥 FIX: Update currentTweetUrl to this reply for next iteration
+          currentTweetUrl = `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${replyId}`;
           console.log(`✅ THREAD_REPLY_SUCCESS: ${i}/${segments.length - 1} (ID: ${replyId})`);
+          console.log(`🔗 NEXT_PARENT: Reply ${i + 1} will reply to ${replyId}`);
         } else {
           console.log(`✅ THREAD_REPLY_SUCCESS: ${i}/${segments.length - 1} (ID not captured)`);
+          console.warn(`⚠️ Could not update parent URL, next reply may break chain`);
         }
       } catch (idError) {
         console.warn(`⚠️ Could not capture reply ${i} ID:`, idError);
         console.log(`✅ THREAD_REPLY_SUCCESS: ${i}/${segments.length - 1}`);
+        console.warn(`⚠️ Chain may break at next reply due to missing URL`);
       }
       
       // Delay between replies
