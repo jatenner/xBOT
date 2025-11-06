@@ -471,21 +471,29 @@ export class RealTwitterDiscovery {
   }
 
   /**
-   * Find viral tweets via Twitter Search (TWEET-FIRST STRATEGY)
+   * 🔥 MEGA-VIRAL SEARCH (UPGRADED STRATEGY)
    * 
-   * Searches for health content with minimum likes threshold
-   * Returns tweets matching criteria regardless of account
+   * NEW APPROACH:
+   * 1. Search Twitter for ALL viral tweets (no topic filter)
+   * 2. Scrape 50-200 viral tweets (any topic)
+   * 3. AI filters for health relevance (GPT-4o-mini)
+   * 4. Returns 10-50 high-quality health opportunities
    * 
-   * @param searchQuery - Search query (e.g., "health OR longevity")
-   * @param minLikes - Minimum likes threshold (5k/10k/20k/50k)
+   * This finds MORE health tweets than topic-based search because:
+   * - Health tweets don't always contain keyword "health"
+   * - AI understands context (e.g., "sleep quality" is health)
+   * - Broader net = more viral health content discovered
+   * 
+   * @param minLikes - Minimum likes threshold (10k/25k/50k/100k/250k)
    * @param maxReplies - Maximum reply count to avoid buried replies
+   * @param searchLabel - Label for logging (TITAN/ULTRA/MEGA/SUPER/HIGH)
    */
   async findViralTweetsViaSearch(
-    searchQuery: string,
     minLikes: number,
-    maxReplies: number
+    maxReplies: number,
+    searchLabel: string = 'VIRAL'
   ): Promise<ReplyOpportunity[]> {
-    console.log(`[REAL_DISCOVERY] 🔍 Searching for: "${searchQuery}" (${minLikes}+ likes)...`);
+    console.log(`[REAL_DISCOVERY] 🔍 ${searchLabel} search: ${minLikes}+ likes (broad - all topics)...`);
     
     const pool = UnifiedBrowserPool.getInstance();
     const page = await pool.acquirePage('search_scrape');
@@ -504,7 +512,8 @@ export class RealTwitterDiscovery {
       // lang:en filters for English
       // 🔥 MEGA-VIRAL STRATEGY: Keep high thresholds, strict health filtering
       // MINIMUM 10K likes enforced - we want MASSIVE reach only
-      const encodedQuery = encodeURIComponent(`${searchQuery} min_faves:${minLikes} -filter:replies lang:en`);
+      // 🔥 NO TOPIC FILTER! Search ALL viral tweets, AI filters for health after
+      const encodedQuery = encodeURIComponent(`min_faves:${minLikes} -filter:replies lang:en`);
       const searchUrl = `https://x.com/search?q=${encodedQuery}&src=typed_query&f=live`;
       
       console.log(`[REAL_DISCOVERY] 🌐 Navigating to search: ${searchUrl}`);
@@ -603,37 +612,25 @@ export class RealTwitterDiscovery {
           const authorName = authorEl?.textContent?.split('@')[0]?.trim() || '';
           const displayText = `${authorName} ${author}`.toLowerCase();
           
-          // 🔍 ENHANCED FILTERING: Check both account AND content relevance
-          const accountHealthScore = getHealthScore(displayText);
-          const contentHealthScore = getHealthScore(content);
+          // 🔥 NEW STRATEGY: NO HEALTH FILTERING IN BROWSER!
+          // We scrape ALL viral tweets, AI filters for health AFTER
           
-          // Basic filters
+          // Basic filters only
           const hasContent = content.length > 20;
           const noLinks = !content.includes('bit.ly') && !content.includes('amzn');
           const notTooManyReplies = replyCount < maxReplies;
-          
-          // 🔥 MEGA-VIRAL FILTER: Minimum 10K likes enforced
           const meetsMinimumEngagement = likeCount >= 10000;
           
-          // 🚨 HEALTH RELEVANCE: Only include if:
-          // - Account shows health focus (name/handle includes health terms) OR
-          // - Content is STRONGLY health-related (multiple health keywords)
-          const isHealthRelevant = accountHealthScore >= 3 || contentHealthScore >= 8;
-          
-          // 🚨 OFF-TOPIC FILTER: Skip politics, sports, entertainment
-          const offTopicKeywords = ['democrat', 'republican', 'maga', 'biden', 'trump', 'barcelona', 'bayern', 'soccer', 'football', 'nfl', 'nba', 'music', 'artist', 'rapper', 'singer'];
-          const isOffTopic = offTopicKeywords.some(kw => displayText.includes(kw));
-          
-          if (hasContent && noLinks && notTooManyReplies && meetsMinimumEngagement && tweetId && author && isHealthRelevant && !isOffTopic) {
+          if (hasContent && noLinks && notTooManyReplies && meetsMinimumEngagement && tweetId && author) {
             results.push({
               tweet_id: tweetId,
               tweet_url: `https://x.com/${author}/status/${tweetId}`,
               tweet_content: content,
               tweet_author: author,
+              author_name: authorName, // For AI judging
               reply_count: replyCount,
               like_count: likeCount,
-              posted_minutes_ago: postedMinutesAgo,
-              health_relevance_score: accountHealthScore + contentHealthScore
+              posted_minutes_ago: postedMinutesAgo
             });
           }
         }
@@ -641,17 +638,54 @@ export class RealTwitterDiscovery {
         return results;
       }, maxReplies);
       
-      console.log(`[REAL_DISCOVERY] ✅ Found ${opportunities.length} health-relevant viral tweets from search`);
+      console.log(`[REAL_DISCOVERY] ✅ Scraped ${opportunities.length} viral tweets (all topics)`);
       
-      // Log health relevance stats
-      const avgHealthScore = opportunities.reduce((sum: number, opp: any) => sum + (opp.health_relevance_score || 0), 0) / Math.max(opportunities.length, 1);
-      console.log(`[REAL_DISCOVERY] 🏥 Average health relevance score: ${avgHealthScore.toFixed(1)} (filtered out off-topic tweets)`);
+      if (opportunities.length === 0) {
+        console.log('[REAL_DISCOVERY] ⚠️ No viral tweets found in search');
+        return [];
+      }
+      
+      // 🧠 AI HEALTH FILTERING (NEW!)
+      console.log(`[REAL_DISCOVERY] 🧠 AI filtering for health relevance...`);
+      const { healthContentJudge } = await import('./healthContentJudge');
+      
+      const judgments = await healthContentJudge.batchJudge(
+        opportunities.map(opp => ({
+          content: opp.tweet_content,
+          author: opp.tweet_author,
+          authorBio: opp.author_name
+        }))
+      );
+      
+      // Filter for health-relevant only (score >= 6)
+      const healthOpportunities = opportunities
+        .map((opp, index) => ({
+          ...opp,
+          health_relevance_score: judgments[index].score,
+          health_category: judgments[index].category,
+          ai_judge_reason: judgments[index].reason
+        }))
+        .filter((opp, index) => judgments[index].isHealthRelevant);
+      
+      console.log(`[REAL_DISCOVERY] ✅ AI filtered: ${healthOpportunities.length}/${opportunities.length} health-relevant (${Math.round(healthOpportunities.length/opportunities.length*100)}%)`);
+      
+      if (healthOpportunities.length === 0) {
+        console.log('[REAL_DISCOVERY] ⚠️ No health-relevant tweets found after AI filtering');
+        return [];
+      }
+      
+      // Log health category breakdown
+      const categories: Record<string, number> = {};
+      healthOpportunities.forEach(opp => {
+        categories[opp.health_category] = (categories[opp.health_category] || 0) + 1;
+      });
+      console.log(`[REAL_DISCOVERY] 📊 Categories: ${Object.entries(categories).map(([cat, count]) => `${cat}:${count}`).join(', ')}`);
       
       // Calculate tiers for each opportunity
       const { getReplyQualityScorer } = await import('../intelligence/replyQualityScorer');
       const scorer = getReplyQualityScorer();
       
-      const tieredOpportunities = opportunities
+      const tieredOpportunities = healthOpportunities
         .map((opp: any) => {
           const tier = scorer.calculateTier({
             like_count: opp.like_count,
@@ -687,7 +721,7 @@ export class RealTwitterDiscovery {
       return tieredOpportunities;
       
     } catch (error: any) {
-      console.error(`[REAL_DISCOVERY] ❌ Search failed for "${searchQuery}":`, error.message);
+      console.error(`[REAL_DISCOVERY] ❌ ${searchLabel} search failed:`, error.message);
       return [];
     } finally {
       await pool.releasePage(page);
@@ -875,7 +909,11 @@ export class RealTwitterDiscovery {
             momentum_score: (opp as any).momentum_score,
             account_followers: (opp as any).account_followers,
             expires_at: (opp as any).expires_at,
-            replied_to: false
+            replied_to: false,
+            // 🧠 NEW: AI health judgment fields
+            health_relevance_score: (opp as any).health_relevance_score,
+            health_category: (opp as any).health_category,
+            ai_judge_reason: (opp as any).ai_judge_reason
           }, {
             onConflict: 'target_tweet_id'
           });

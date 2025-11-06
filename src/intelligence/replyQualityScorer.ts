@@ -93,7 +93,7 @@ export class ReplyQualityScorer {
    * 
    * HARD FLOOR: Nothing under 10K likes accepted (ensures massive reach)
    */
-  calculateTier(metrics: TweetMetrics): 'golden' | 'good' | 'acceptable' | null {
+  calculateTier(metrics: TweetMetrics): 'TITAN' | 'ULTRA' | 'MEGA' | 'SUPER' | 'HIGH' | 'golden' | 'good' | 'acceptable' | null {
     const absoluteLikes = metrics.like_count;
     const absoluteReplies = metrics.reply_count;
     const tweetAge = metrics.posted_minutes_ago;
@@ -112,31 +112,31 @@ export class ReplyQualityScorer {
     // TIER 1 - TITAN: 250,000+ likes, <2000 replies
     // Visibility: 2.5M+ impressions | Your reply seen by millions
     if (absoluteLikes >= 250000 && absoluteReplies < 2000) {
-      return 'golden';
+      return 'TITAN';
     }
     
     // TIER 2 - ULTRA: 100,000+ likes, <1500 replies
     // Visibility: 1M+ impressions | Massive viral reach
     if (absoluteLikes >= 100000 && absoluteReplies < 1500) {
-      return 'golden';
+      return 'ULTRA';
     }
     
     // TIER 3 - MEGA: 50,000+ likes, <1000 replies
     // Visibility: 500K+ impressions | Super viral content
     if (absoluteLikes >= 50000 && absoluteReplies < 1000) {
-      return 'golden';
+      return 'MEGA';
     }
     
     // TIER 4 - SUPER: 25,000+ likes, <800 replies
     // Visibility: 250K+ impressions | Very high viral reach
     if (absoluteLikes >= 25000 && absoluteReplies < 800) {
-      return 'good';
+      return 'SUPER';
     }
     
     // TIER 5 - HIGH: 10,000+ likes, <500 replies
     // Visibility: 100K+ impressions | Minimum viral threshold
     if (absoluteLikes >= 10000 && absoluteReplies < 500) {
-      return 'acceptable';
+      return 'HIGH';
     }
     
     // Too many replies = buried, even with high likes

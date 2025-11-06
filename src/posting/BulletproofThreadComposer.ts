@@ -190,35 +190,39 @@ export class BulletproofThreadComposer {
           try {
             console.log(`🧵 THREAD_ATTEMPT: ${attempt + 1}/${maxRetries}`);
             
-            await this.postViaComposer(page, segments);
-            console.log('THREAD_PUBLISH_OK mode=composer');
-            
-            const rootUrl = await this.captureRootUrl(page);
-            
-            // 🆕 Try to capture all tweet IDs from composer mode
-            const tweetIds = await this.captureThreadIds(page, segments.length);
-            
+            // 🔗 PREFER REPLY CHAIN MODE - Captures all tweet IDs reliably
+            console.log('🔗 Using REPLY CHAIN mode (captures all tweet IDs)');
+            const replyResult = await this.postViaReplies(page, segments);
+            console.log('THREAD_PUBLISH_OK mode=reply_chain');
             return {
               success: true,
-              mode: 'composer',
-              rootTweetUrl: rootUrl,
-              tweetIds: tweetIds.length > 0 ? tweetIds : undefined
+              mode: 'reply_chain',
+              rootTweetUrl: replyResult.rootUrl,
+              tweetIds: replyResult.tweetIds
             };
             
-          } catch (composerError: any) {
-            console.log(`🧵 THREAD_COMPOSER_FAILED (attempt ${attempt + 1}): ${String(composerError).slice(0, 200)}`);
+          } catch (replyError: any) {
+            console.log(`🧵 THREAD_REPLY_CHAIN_FAILED (attempt ${attempt + 1}): ${String(replyError).slice(0, 200)}`);
             
+            // FALLBACK: Try composer mode if reply chain fails
             try {
-              const replyResult = await this.postViaReplies(page, segments);
-              console.log('THREAD_PUBLISH_OK mode=reply_chain');
+              console.log('⚠️ Reply chain failed, trying composer mode as fallback...');
+              await this.postViaComposer(page, segments);
+              console.log('THREAD_PUBLISH_OK mode=composer');
+              
+              const rootUrl = await this.captureRootUrl(page);
+              
+              // 🆕 Try to capture all tweet IDs from composer mode
+              const tweetIds = await this.captureThreadIds(page, segments.length);
+              
               return {
                 success: true,
-                mode: 'reply_chain',
-                rootTweetUrl: replyResult.rootUrl,
-                tweetIds: replyResult.tweetIds
+                mode: 'composer',
+                rootTweetUrl: rootUrl,
+                tweetIds: tweetIds.length > 0 ? tweetIds : undefined
               };
-            } catch (replyError: any) {
-              console.warn(`🔄 THREAD_RETRY_FALLBACK: Reply chain failed on attempt ${attempt + 1}`);
+            } catch (composerError: any) {
+              console.warn(`🔄 THREAD_RETRY_FALLBACK: Composer also failed on attempt ${attempt + 1}`);
               
               if (attempt < maxRetries - 1) {
                 const backoffMs = 2000 * Math.pow(2, attempt);
@@ -229,8 +233,8 @@ export class BulletproofThreadComposer {
                 console.error(`THREAD_POST_FAIL: All ${maxRetries} attempts exhausted`);
                 return {
                   success: false,
-                  mode: 'composer',
-                  error: `Composer: ${composerError.message.slice(0, 150)} | Reply: ${replyError.message.slice(0, 150)}`
+                  mode: 'reply_chain',
+                  error: `Reply chain: ${replyError.message.slice(0, 150)} | Composer: ${composerError.message.slice(0, 150)}`
                 };
               }
             }
