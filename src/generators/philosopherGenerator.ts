@@ -51,7 +51,11 @@ Explore philosophical questions:
 2. Examine different perspectives or tradeoffs
 3. Challenge common assumptions
 4. Explore deeper implications
-5. Arrive at nuanced wisdom, not definitive answers
+5. Provide thoughtful answers with nuanced wisdom
+
+CRITICAL: If you pose a question, you MUST answer it in the same content.
+Questions without answers frustrate readers and provide zero value.
+Always deliver concrete insight, perspective, or resolution.
 
 STANDARDS:
 - Genuine insight: Not pseudo-profound nonsense
