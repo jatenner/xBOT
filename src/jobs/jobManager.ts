@@ -229,6 +229,20 @@ export class JobManager {
       0 * MINUTE   // 🔥 START IMMEDIATELY on deploy (was 5min - too slow!)
     );
 
+    // 🧠 Reply metrics scraper - every 30 minutes (METADATA GOATNESS: track reply performance)
+    // Scrapes views/likes/followers for each reply to power learning system
+    this.scheduleStaggeredJob(
+      'reply_metrics_scraper',
+      async () => {
+        await this.safeExecute('reply_metrics_scraper', async () => {
+          const { replyMetricsScraperJob } = await import('./replyMetricsScraperJob');
+          await replyMetricsScraperJob();
+        });
+      },
+      30 * MINUTE, // Every 30 minutes (replies need time to accumulate engagement)
+      10 * MINUTE  // Offset 10 minutes (stagger from main metrics scraper)
+    );
+
     // Data collection - every 6 hours, offset 220 min (OPTIMIZED: reduced from 60min)
     // EXTENDED: Also processes Visual Intelligence tweets (classification + analysis + intelligence building)
     this.scheduleStaggeredJob(
@@ -267,6 +281,20 @@ export class JobManager {
         },
         config.JOBS_LEARN_INTERVAL_MIN * MINUTE,
         45 * MINUTE
+      );
+      
+      // 🧠 Reply Learning Loop - every 2 hours (METADATA GOATNESS: analyze what works)
+      // Learns from reply performance to improve future targeting
+      this.scheduleStaggeredJob(
+        'reply_learning',
+        async () => {
+          await this.safeExecute('reply_learning', async () => {
+            const { ReplyLearningSystem } = await import('../learning/replyLearningSystem');
+            await ReplyLearningSystem.getInstance().runLearningLoop();
+          });
+        },
+        120 * MINUTE, // Every 2 hours (needs time to accumulate data)
+        90 * MINUTE   // Offset 1.5 hours (after main learning)
       );
     }
 
