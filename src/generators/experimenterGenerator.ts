@@ -142,7 +142,7 @@ What would you track? How would you measure it? Focus on methodology and learnin
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.8,
-      max_tokens: format === "thread" ? 500 : 120,
+      max_tokens: format === "thread" ? 400 : 90,
       response_format: { type: 'json_object' }
     }, { purpose: 'experimenter_content_generation' });
 

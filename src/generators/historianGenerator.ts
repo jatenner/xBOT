@@ -131,7 +131,7 @@ Show science as a process. Make medical history engaging.`;
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.8,
-      max_tokens: format === "thread" ? 500 : 120,
+      max_tokens: format === "thread" ? 400 : 90,
       response_format: { type: 'json_object' }
     }, { purpose: 'historian_content_generation' });
 

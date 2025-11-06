@@ -127,7 +127,7 @@ Reveal the web of relationships. Help people see the bigger picture.`;
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.8,
-      max_tokens: format === "thread" ? 500 : 120,
+      max_tokens: format === "thread" ? 400 : 90,
       response_format: { type: 'json_object' }
     }, { purpose: 'connector_content_generation' });
 

@@ -130,7 +130,7 @@ Synthesize across multiple studies. Weigh the evidence honestly.`;
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.7,
-      max_tokens: format === "thread" ? 500 : 120,
+      max_tokens: format === "thread" ? 400 : 90,
       response_format: { type: 'json_object' }
     }, { purpose: 'investigator_content_generation' });
 
