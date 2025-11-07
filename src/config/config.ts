@@ -54,8 +54,8 @@ const ConfigSchema = z.object({
     process.env.MAX_POSTS_PER_HOUR ? parseFloat(process.env.MAX_POSTS_PER_HOUR) : 2
   ), // 2 posts per hour (override via env var)
   MAX_DAILY_POSTS: z.number().default(
-    process.env.MAX_DAILY_POSTS ? parseInt(process.env.MAX_DAILY_POSTS) : 20
-  ), // 20 posts per day (override via env var)
+    process.env.MAX_DAILY_POSTS ? parseInt(process.env.MAX_DAILY_POSTS) : 48
+  ), // 48 posts per day = 2/hour × 24 hours (override via env var)
   REPLIES_PER_HOUR: z.number().default(
     process.env.REPLIES_PER_HOUR ? parseInt(process.env.REPLIES_PER_HOUR) : 4
   ), // 4 replies per hour (override via env var)
