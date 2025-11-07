@@ -160,6 +160,27 @@ Format it for Twitter!`;
       return fallbackToOriginal(content, `forbidden opener ${forbiddenOpener}`);
     }
 
+    // 🚫 VALIDATE: Check if approach repeats recent patterns
+    const approachLower = (parsed.approach || '').toLowerCase();
+    const recentApproaches = intelligence.overallRecent.slice(0, 10).join(' ').toLowerCase();
+    
+    const repeatedPatterns: string[] = [];
+    if (approachLower.includes('provocative question') && recentApproaches.includes('provocative question')) {
+      repeatedPatterns.push('provocative question');
+    }
+    if (approachLower.includes('bold hook') && recentApproaches.includes('bold hook')) {
+      repeatedPatterns.push('bold hook');
+    }
+    if (approachLower.includes('started with') && recentApproaches.includes('started with')) {
+      repeatedPatterns.push('started with');
+    }
+    
+    if (repeatedPatterns.length > 0) {
+      console.warn(`[VISUAL_FORMATTER] ⚠️ AI repeated blacklisted approach: ${repeatedPatterns.join(', ')}`);
+      console.warn(`[VISUAL_FORMATTER] 🔄 Using original content (formatter didn't vary enough)`);
+      return fallbackToOriginal(content, `repeated pattern: ${repeatedPatterns[0]}`);
+    }
+
     // Validate length - CRITICAL: Must be under 280
     if (formatted.length > 280) {
       console.warn(`[VISUAL_FORMATTER] ⚠️ AI formatted too long (${formatted.length} chars), trying to trim...`);
@@ -346,21 +367,56 @@ async function buildSmartFormattingPrompt(
   
   const guidance = generatorGuidance[generator] || 'Clear, engaging formatting that serves the content.';
   
-  // Performance insights from intelligence
+  // Performance insights from intelligence  
   let performanceInsights = '';
   if (intelligence.contextualInsights && intelligence.contextualInsights.length > 0) {
     const topInsight = intelligence.contextualInsights[0];
-    performanceInsights = `\nWhat's working for ${generator}:
-• "${topInsight.approach}" format: ${Math.round(topInsight.avgViews).toLocaleString()} avg views (${topInsight.trend})
-• Used ${topInsight.uses} times with consistent performance`;
+    // Only show if it's different from recent patterns
+    const recentApproaches = intelligence.overallRecent.slice(0, 5).join(' ').toLowerCase();
+    const insightSnippet = topInsight.approach.toLowerCase().substring(0, 30);
+    
+    if (!recentApproaches.includes(insightSnippet)) {
+      performanceInsights = `\nWhat's working for ${generator}:
+• "${topInsight.approach.substring(0, 60)}..." format: ${Math.round(topInsight.avgViews).toLocaleString()} avg views (${topInsight.trend})
+• Not used recently - good opportunity to revisit`;
+    }
   }
   
-  // Recent variety check
+  // 🚫 BLACKLIST RECENT APPROACHES (Strong Enforcement)
   let varietyNote = '';
   if (intelligence.overallRecent.length > 0) {
-    const recentFormats = intelligence.overallRecent.slice(0, 3);
-    varietyNote = `\nRecent formats used: ${recentFormats.join(', ')}
-→ Try something different to keep feed diverse.`;
+    const recentFormats = intelligence.overallRecent.slice(0, 10); // Last 10 posts
+    
+    // Extract key patterns from recent approaches to blacklist
+    const recentPatterns = new Set<string>();
+    recentFormats.forEach(approach => {
+      const lower = approach.toLowerCase();
+      if (lower.includes('provocative question')) recentPatterns.add('provocative question');
+      if (lower.includes('bold hook')) recentPatterns.add('bold hook');
+      if (lower.includes('started with')) recentPatterns.add('starting phrases');
+      if (lower.includes('emoji')) recentPatterns.add('emoji-first approach');
+      if (lower.includes('numbered list') || lower.includes('bullet points')) recentPatterns.add('list format');
+      if (lower.includes('closing question')) recentPatterns.add('ending with question');
+    });
+    
+    if (recentPatterns.size > 0) {
+      varietyNote = `\n
+⚠️ CRITICAL: BLACKLISTED APPROACHES (just used ${recentFormats.length} times):
+${Array.from(recentPatterns).map(p => `❌ NO ${p.toUpperCase()}`).join('\n')}
+
+YOU MUST use a COMPLETELY DIFFERENT approach from recent posts.
+If you use any blacklisted pattern, output will be REJECTED.
+
+Fresh alternatives to explore:
+✅ Lead with specific number/stat (no question)
+✅ Direct bold statement (no "I started with...")
+✅ Comparison structure (X vs Y)
+✅ Minimal formatting (let content speak)
+✅ Reverse chronology (result first, then how)
+✅ Single-sentence punch (no bullets)`;
+    } else {
+      varietyNote = `\nRecent formats: Diverse. Maintain variety.`;
+    }
   }
   
   // NEW: Build intelligent viral insights (context-aware)
