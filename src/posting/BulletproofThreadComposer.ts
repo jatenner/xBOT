@@ -45,31 +45,50 @@ export class BulletproofThreadComposer {
    * 🆕 HELPER: Get compose box with robust fallback selectors
    */
   private static async getComposeBox(page: Page, index: number = 0): Promise<any> {
-    // Try each selector until one works
+    const targetedSelectors = [
+      `[data-testid="tweetTextarea_${index}"]`,
+      `[data-testid="threadedConversationTextBox${index}"]`,
+      `[aria-labelledby*="tweetTextarea_${index}"]`,
+      `textarea[name="tweetTextarea_${index}"]`
+    ];
+
+    for (const selector of targetedSelectors) {
+      const locator = page.locator(selector);
+      const count = await locator.count().catch(() => 0);
+      if (count > 0) {
+        const firstMatch = locator.first();
+        const isEditable = await firstMatch.evaluate((el: any) => el?.contentEditable === 'true' || el?.tagName === 'TEXTAREA').catch(() => false);
+        if (isEditable) {
+          console.log(`✅ Found targeted compose box #${index} with selector: ${selector}`);
+          return firstMatch;
+        }
+      }
+    }
+
     for (const selector of this.composerSelectors) {
       try {
-        const locator = index === 0 
-          ? page.locator(selector).first()
-          : page.locator(selector).nth(index);
-        
-        // Check if it exists and is editable
+        const locator = page.locator(selector);
         const count = await locator.count();
-        if (count > index) {
-          const isEditable = await locator.evaluate((el: any) => 
-            el.contentEditable === 'true' || el.tagName === 'TEXTAREA'
-          ).catch(() => false);
-          
-          if (isEditable) {
-            console.log(`✅ Found compose box #${index} with selector: ${selector}`);
-            return locator;
-          }
+        if (count === 0) {
+          continue;
         }
-      } catch (e) {
-        // Try next selector
+
+        const targetIndex = Math.min(index, count - 1);
+        const candidate = locator.nth(targetIndex);
+
+        const isEditable = await candidate.evaluate((el: any) => (
+          el?.contentEditable === 'true' || el?.tagName === 'TEXTAREA'
+        )).catch(() => false);
+
+        if (isEditable) {
+          console.log(`✅ Found compose box #${index} using fallback selector: ${selector} (resolved index ${targetIndex})`);
+          return candidate;
+        }
+      } catch {
         continue;
       }
     }
-    
+
     throw new Error(`Could not find editable compose box #${index} with any selector`);
   }
 
@@ -522,9 +541,9 @@ export class BulletproofThreadComposer {
    * 📝 Verify textbox contains expected content
    */
   private static async verifyTextBoxHas(page: Page, idx: number, expected: string): Promise<void> {
-    const tb = page.locator('[data-testid^="tweetTextarea_"]').nth(idx);
+    const tb = await this.getComposeBox(page, idx);
     await tb.waitFor({ state: 'visible', timeout: 8000 });
-    
+
     const got = (await tb.innerText()).replace(/\s+/g, ' ').trim();
     const want = expected.replace(/\s+/g, ' ').trim();
     
@@ -541,10 +560,13 @@ export class BulletproofThreadComposer {
   private static async addAnotherPost(page: Page): Promise<void> {
     const addButton = page.getByRole('button', { name: /add another post/i })
       .or(page.locator('[data-testid="addButton"]'))
-      .or(page.locator('button:has-text("Add another post")'));
-    
-    await addButton.first().click({ timeout: 5000 });
-    await page.waitForTimeout(500); // Allow card to appear
+      .or(page.locator('[data-testid="threadAddButton"]'))
+      .or(page.locator('[aria-label*="Add another"]'))
+      .or(page.locator('button:has-text("Add another")'))
+      .or(page.locator('button[aria-label*="Add post"]'));
+
+    await addButton.first().click({ timeout: 7000 });
+    await page.waitForTimeout(700); // Allow card to appear
     
     console.log('➕ THREAD_COMPOSER: Added another post card');
   }
