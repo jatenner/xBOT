@@ -21,7 +21,7 @@ export interface CriticalEnvVars {
  * Validate all critical environment variables on startup
  * Crashes the process if any are missing or invalid
  */
-export function validateCriticalEnvVars(): void {
+export function validateEnvironmentVariables(): void {
   console.log('🔍 ENV_VALIDATION: Checking critical environment variables...');
   
   const missing: string[] = [];
