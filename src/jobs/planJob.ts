@@ -13,6 +13,9 @@ import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { dynamicPromptGenerator } from '../ai/content/dynamicPromptGenerator';
 import { contentDiversityEngine } from '../ai/content/contentDiversityEngine';
 
+const MAX_GENERATION_RETRIES = Math.max(1, parseInt(process.env.PLAN_JOB_GENERATION_RETRIES || '3', 10) || 3);
+const GENERATION_RETRY_BACKOFF_MS = Math.max(250, parseInt(process.env.PLAN_JOB_RETRY_BACKOFF_MS || '1500', 10) || 1500);
+
 // Global metrics
 let llmMetrics = {
   calls_total: 0,
@@ -89,59 +92,92 @@ async function generateRealContent(): Promise<void> {
     generators: new Set<string>()
   };
     
-  for (let i = 0; i < numToGenerate; i++) {
-    try {
-      console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-      console.log(`📝 GENERATING POST ${i + 1}/${numToGenerate}`);
-      console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-      
-      const content = await generateContentWithLLM();
-      
-      // Handle generation failure
-      if (!content) {
-        console.log(`[PLAN_JOB] ⚠️ Post ${i + 1} generation failed, skipping`);
-        continue;
-      }
-      
-      // ✅ SUBSTANCE VALIDATION: Reject hollow/buzzword content
-      const { validateContentSubstance } = await import('../validators/substanceValidator');
-      const substanceCheck = validateContentSubstance(content.text);
+  for (let slot = 0; slot < numToGenerate; slot++) {
+    let attempt = 0;
+    let success = false;
 
-      if (!substanceCheck.isValid) {
-        console.log(`[SUBSTANCE] ⛔ Post ${i + 1} REJECTED: ${substanceCheck.reason}`);
-        console.log(`[SUBSTANCE]    Score: ${substanceCheck.score}/100 (need 70+)`);
-        console.log(`[SUBSTANCE]    Will retry with different generator/topic in next cycle`);
-        continue;
-      }
-      console.log(`[SUBSTANCE] ✅ Post ${i + 1} passed substance check (score: ${substanceCheck.score}/100)`);
-      
-      const gateResult = await runGateChain(content.text, content.decision_id);
-        
-      if (!gateResult.passed) {
-        console.log(`[GATE_CHAIN] ⛔ Post ${i + 1} blocked (${gateResult.gate}): ${gateResult.reason}`);
-        continue;
-      }
-      
-      // Track diversity
-      batchMetrics.topics.add(content.raw_topic);
-      batchMetrics.tones.add(content.tone);
-      batchMetrics.angles.add(content.angle);
-      batchMetrics.generators.add(content.generator_used);
-      
-      generatedPosts.push(content);
-      console.log(`[PLAN_JOB] ✅ Post ${i + 1} generated successfully`);
-      
-    } catch (error: any) {
-      llmMetrics.calls_failed++;
-      const errorType = categorizeError(error);
-      llmMetrics.failure_reasons[errorType] = (llmMetrics.failure_reasons[errorType] || 0) + 1;
-      
-      console.error(`[PLAN_JOB] ❌ Post ${i + 1} generation failed: ${error.message}`);
-      
-      if (errorType === 'insufficient_quota') {
-        console.log('[PLAN_JOB] OpenAI insufficient_quota → stopping generation');
+    while (attempt < MAX_GENERATION_RETRIES && !success) {
+      attempt++;
+
+      console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+      console.log(`📝 GENERATING POST ${slot + 1}/${numToGenerate} (attempt ${attempt}/${MAX_GENERATION_RETRIES})`);
+      console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+
+      try {
+        const content = await generateContentWithLLM();
+
+        if (!content) {
+          console.log(`[PLAN_JOB] ⚠️ Attempt ${attempt} produced empty content for post ${slot + 1}`);
+          if (attempt < MAX_GENERATION_RETRIES) {
+            console.log(`[PLAN_JOB] 🔁 Retrying post ${slot + 1} after empty content result`);
+            await sleep(GENERATION_RETRY_BACKOFF_MS * attempt);
+            continue;
+          }
+          break;
+        }
+
+        const { validateContentSubstance } = await import('../validators/substanceValidator');
+        const substanceCheck = validateContentSubstance(content.text);
+
+        if (!substanceCheck.isValid) {
+          console.log(`[SUBSTANCE] ⛔ Post ${slot + 1} REJECTED (attempt ${attempt}): ${substanceCheck.reason}`);
+          console.log(`[SUBSTANCE]    Score: ${substanceCheck.score}/100 (need 70+)`);
+          if (attempt < MAX_GENERATION_RETRIES) {
+            console.log(`[SUBSTANCE] 🔁 Retrying post ${slot + 1} with new generation`);
+            await sleep(GENERATION_RETRY_BACKOFF_MS * attempt);
+            continue;
+          }
+          console.log(`[SUBSTANCE] ⛔ Exhausted retries for post ${slot + 1} due to substance failure`);
+          break;
+        }
+        console.log(`[SUBSTANCE] ✅ Post ${slot + 1} passed substance check (score: ${substanceCheck.score}/100)`);
+
+        const gateResult = await runGateChain(content.text, content.decision_id);
+        if (!gateResult.passed) {
+          console.log(`[GATE_CHAIN] ⛔ Post ${slot + 1} blocked (${gateResult.gate}): ${gateResult.reason}`);
+          if (attempt < MAX_GENERATION_RETRIES) {
+            console.log(`[GATE_CHAIN] 🔁 Retrying post ${slot + 1} after gate failure`);
+            await sleep(GENERATION_RETRY_BACKOFF_MS * attempt);
+            continue;
+          }
+          console.log(`[GATE_CHAIN] ⛔ Exhausted retries for post ${slot + 1} due to gate failure`);
+          break;
+        }
+
+        batchMetrics.topics.add(content.raw_topic);
+        batchMetrics.tones.add(content.tone);
+        batchMetrics.angles.add(content.angle);
+        batchMetrics.generators.add(content.generator_used);
+
+        generatedPosts.push(content);
+        success = true;
+        console.log(`[PLAN_JOB] ✅ Post ${slot + 1} generated successfully on attempt ${attempt}`);
+      } catch (error: any) {
+        llmMetrics.calls_failed++;
+        const errorType = categorizeError(error);
+        llmMetrics.failure_reasons[errorType] = (llmMetrics.failure_reasons[errorType] || 0) + 1;
+
+        console.error(`[PLAN_JOB] ❌ Post ${slot + 1} generation failed (attempt ${attempt}): ${error.message}`);
+
+        if (errorType === 'insufficient_quota') {
+          console.log('[PLAN_JOB] OpenAI insufficient_quota → stopping generation');
+          return;
+        }
+
+        const retryable = isRetryableGenerationError(errorType);
+        if (retryable && attempt < MAX_GENERATION_RETRIES) {
+          console.log(`[PLAN_JOB] 🔁 Retrying post ${slot + 1} after ${errorType} (attempt ${attempt}/${MAX_GENERATION_RETRIES})`);
+          await sleep(GENERATION_RETRY_BACKOFF_MS * attempt);
+          continue;
+        }
+
+        console.log(`[PLAN_JOB] ⛔ Abandoning post ${slot + 1} after ${attempt} attempt(s) due to ${errorType}`);
         break;
       }
+    }
+
+    if (!success) {
+      console.log(`[PLAN_JOB] ⚠️ Post ${slot + 1} could not be generated after ${attempt} attempt(s)`);
     }
   }
   
@@ -495,13 +531,18 @@ THREAD-SPECIFIC RULES:
     }
     
     // Validate each tweet length
-    contentData.text = contentData.text.map((tweet: string, i: number) => {
+    const threadTweets: string[] = [];
+    (contentData.text as string[]).forEach((tweet: string, i: number) => {
       if (tweet.length > 280) {
-        console.warn(`[PLAN_JOB] ⚠️ Thread tweet ${i+1} too long (${tweet.length} chars), truncating...`);
-        return tweet.substring(0, 277) + '...';
+        console.warn(`[PLAN_JOB] ❌ LENGTH_VIOLATION: Thread tweet ${i + 1} has ${tweet.length} chars (limit 280)`);
+        const error: any = new Error(`LENGTH_VIOLATION: thread tweet ${i + 1} has ${tweet.length} chars (limit 280)`);
+        error.code = 'LENGTH_VIOLATION';
+        error.meta = { format: 'thread', tweetIndex: i, length: tweet.length };
+        throw error;
       }
-      return tweet;
+      threadTweets.push(tweet);
     });
+    contentData.text = threadTweets;
     
     console.log(`[PLAN_JOB] 🧵 ✨ THREAD GENERATED: ${contentData.text.length} tweets`);
     console.log(`[PLAN_JOB] 🧵 Thread preview:`);
@@ -511,11 +552,13 @@ THREAD-SPECIFIC RULES:
   } else {
     // Handle single tweet
     if (tweetText.length > 280) {
-      console.warn(`[PLAN_JOB] ⚠️ Tweet too long (${tweetText.length} chars), truncating...`);
-      contentData.text = tweetText.substring(0, 277) + '...';
-    } else {
-      contentData.text = tweetText;
+      console.warn(`[PLAN_JOB] ❌ LENGTH_VIOLATION: Single tweet has ${tweetText.length} chars (limit 280)`);
+      const error: any = new Error(`LENGTH_VIOLATION: single tweet has ${tweetText.length} chars (limit 280)`);
+      error.code = 'LENGTH_VIOLATION';
+      error.meta = { format: 'single', length: tweetText.length };
+      throw error;
     }
+    contentData.text = tweetText;
     console.log(`[PLAN_JOB] 📝 Generated single tweet (${contentData.text.length} chars)`);
   }
 
@@ -1094,10 +1137,19 @@ function calculateQuality(text: string): number {
   return Math.min(1.0, Math.max(0, score));
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 function categorizeError(error: any): string {
   const msg = error.message?.toLowerCase() || '';
+  if (error?.code === 'LENGTH_VIOLATION' || msg.includes('length_violation')) return 'length_violation';
   if (error.status === 429 || msg.includes('rate_limit')) return 'rate_limit';
   if (msg.includes('quota')) return 'insufficient_quota';
   if (msg.includes('budget')) return 'budget_exceeded';
   return 'unknown';
+}
+
+function isRetryableGenerationError(type: string): boolean {
+  return type === 'length_violation' || type === 'rate_limit' || type === 'unknown';
 }

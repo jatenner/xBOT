@@ -247,14 +247,39 @@ export class PostingFacade {
    * 📏 SPLIT BY CHARACTER WIDTH
    */
   private static splitByWidth(s: string, max = 240): string[] {
-    if (s.length <= max) return [s];
-    const out: string[] = [];
-    let i = 0;
-    while (i < s.length) { 
-      out.push(s.slice(i, i + max)); 
-      i += max; 
+    if (s.length <= max) return [s.trim()];
+
+    const segments: string[] = [];
+    let cursor = 0;
+
+    while (cursor < s.length) {
+      let end = Math.min(cursor + max, s.length);
+
+      if (end < s.length) {
+        const lastSpace = s.lastIndexOf(' ', end);
+        if (lastSpace <= cursor + Math.floor(max * 0.4)) {
+          throw new Error(`SEGMENTATION_FAILED: Unable to split content without breaking words (chunk starting at ${cursor})`);
+        }
+        end = lastSpace;
+      }
+
+      const segment = s.slice(cursor, end).trim();
+      if (!segment) {
+        throw new Error('SEGMENTATION_FAILED: Empty segment generated while splitting by width');
+      }
+      if (segment.length > max) {
+        throw new Error(`SEGMENTATION_FAILED: Segment exceeds ${max} chars (${segment.length})`);
+      }
+
+      segments.push(segment);
+      cursor = end;
+
+      while (cursor < s.length && s[cursor] === ' ') {
+        cursor++;
+      }
     }
-    return out;
+
+    return segments;
   }
 
   /**

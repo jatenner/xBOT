@@ -46,22 +46,9 @@ export function lintAndSplitThread(rawTweets: string[], finalFormat: FinalFormat
       maxLength = i === 0 ? 240 : 270;
     }
     
-    // Only trim if above the limit (don't reduce below TWEET_MAX_CHARS_HARD for singles)
+    // Reject outright if content exceeds limit — no silent trimming
     if (content.length > maxLength) {
-      if (finalFormat === 'single' && content.length <= TWEET_MAX_CHARS_HARD) {
-        // Don't trim singles that are within hard limit
-      } else {
-        try {
-          const truncated = truncateAtWordBoundary(content, maxLength);
-          if (truncated !== content) {
-            reasons.push(`trim`);
-            content = truncated;
-          }
-        } catch (error: any) {
-          // If truncation fails, throw a linter error
-          throw new Error(`THREAD_ABORT_LINT_FAIL: Tweet ${i + 1} cannot be trimmed to ${maxLength} chars (${content.length} chars, no word boundaries)`);
-        }
-      }
+      throw new Error(`THREAD_ABORT_LINT_FAIL: Tweet ${i + 1} exceeds ${maxLength} chars (${content.length})`);
     }
     
     // Count emojis and limit to EMOJI_MAX
@@ -125,32 +112,6 @@ export function lintAndSplitThread(rawTweets: string[], finalFormat: FinalFormat
   console.log(`LINTER: format=${finalFormat}, tweets=${tweets.length}, t1_chars=${t1Length}, actions=[${actionsStr}]`);
 
   return { tweets, reasons };
-}
-
-function truncateAtWordBoundary(text: string, maxLength: number): string {
-  if (text.length <= maxLength) return text;
-  
-  // If text is way too long (more than 1.5x the limit), it may be hard to trim
-  if (text.length > maxLength * 1.5) {
-    // Check if we can find any spaces at all
-    const hasSpaces = text.includes(' ');
-    if (!hasSpaces) {
-      // No spaces in a very long text - can't trim properly
-      throw new Error('Cannot trim text with no word boundaries');
-    }
-  }
-  
-  let truncated = text.substring(0, maxLength);
-  const lastSpace = truncated.lastIndexOf(' ');
-  
-  if (lastSpace > maxLength * 0.8) {
-    truncated = truncated.substring(0, lastSpace);
-  } else {
-    // If no good word boundary, ensure we don't break mid-word
-    truncated = truncated.substring(0, maxLength - 3) + '...';
-  }
-  
-  return truncated.trim();
 }
 
 function limitEmojis(text: string, maxCount: number = getEmojiMax()): string {
