@@ -8,6 +8,7 @@ import { ENV, isProduction } from './config/env';
 import { log } from './lib/logger';
 import { getConfig, printConfigSummary, printDeprecationWarnings, getModeFlags } from './config/config';
 import { JobManager } from './jobs/jobManager';
+import { validateCriticalEnvVars } from './config/envValidation';
 
 // CRITICAL: Process-level error handlers to prevent crashes
 process.on('uncaughtException', (error: Error) => {
@@ -88,6 +89,11 @@ async function runScript(scriptPath: string, args: string[] = []): Promise<boole
 
 async function runStartupGates(config: any) {
   log({ op: 'startup_gates', status: 'running' });
+  
+  // 🔒 CRITICAL: Validate environment variables FIRST (fail-fast if broken)
+  log({ op: 'env_validation', status: 'running' });
+  validateCriticalEnvVars(); // This will crash if critical vars missing
+  log({ op: 'env_validation', status: 'passed' });
   
   // Startup acceptance
   if (config.startup_acceptance) {
