@@ -116,7 +116,7 @@ You will be asked to defend your bridge-building. Be prepared to:
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.85,
-      max_tokens: 300,
+      max_tokens: format === "thread" ? 400 : 90, // ✅ FIX: Match other generators (was 300)
       response_format: { type: 'json_object' }
     }, { purpose: 'cultural_bridge_content_generation' });
 
