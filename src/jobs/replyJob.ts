@@ -18,13 +18,19 @@ import { ReplyDiagnosticLogger } from '../utils/replyDiagnostics';
 // RATE LIMIT CONFIGURATION (from .env)
 // ============================================================
 const getReplyConfig = () => {
+  const toNumber = (value: string | undefined, fallback: number) => {
+    if (!value) return fallback;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  };
+
   const config = {
-    MIN_MINUTES_BETWEEN: 15,
-    MAX_REPLIES_PER_HOUR: 4,
-    MAX_REPLIES_PER_DAY: 250,
-    BATCH_SIZE: 1,
-    STAGGER_BASE_MIN: 5,
-    STAGGER_INCREMENT_MIN: 10,
+    MIN_MINUTES_BETWEEN: toNumber(process.env.REPLY_MINUTES_BETWEEN, 15),
+    MAX_REPLIES_PER_HOUR: toNumber(process.env.REPLIES_PER_HOUR, 4),
+    MAX_REPLIES_PER_DAY: toNumber(process.env.REPLY_MAX_PER_DAY, 250),
+    BATCH_SIZE: toNumber(process.env.REPLY_BATCH_SIZE, 1),
+    STAGGER_BASE_MIN: toNumber(process.env.REPLY_STAGGER_BASE_MIN, 5),
+    STAGGER_INCREMENT_MIN: toNumber(process.env.REPLY_STAGGER_INCREMENT_MIN, 10),
   };
   log({ op: 'reply_config_loaded', config });
   return config;
@@ -248,10 +254,13 @@ async function checkTimeBetweenReplies(): Promise<{
     
     const lastReplyTime = new Date(String(data.posted_at));
     const now = new Date();
-    const minutesSinceLast = (now.getTime() - lastReplyTime.getTime()) / (1000 * 60);
-    
-    const canReply = minutesSinceLast >= REPLY_CONFIG.MIN_MINUTES_BETWEEN;
-    const minutesUntilNext = canReply ? 0 : REPLY_CONFIG.MIN_MINUTES_BETWEEN - minutesSinceLast;
+    const elapsedMs = now.getTime() - lastReplyTime.getTime();
+    const minIntervalMs = REPLY_CONFIG.MIN_MINUTES_BETWEEN * 60 * 1000;
+    const graceMs = 5 * 1000; // 5 second tolerance to avoid equality blocking
+    const canReply = elapsedMs + graceMs >= minIntervalMs;
+    const remainingMs = Math.max(0, minIntervalMs - elapsedMs);
+    const minutesSinceLast = elapsedMs / (1000 * 60);
+    const minutesUntilNext = canReply ? 0 : remainingMs / (1000 * 60);
     
     return {
       canReply,

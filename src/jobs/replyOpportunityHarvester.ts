@@ -79,6 +79,9 @@ export async function replyOpportunityHarvester(): Promise<void> {
     { minLikes: 100000, maxReplies: 1500, label: 'MEGA+ (100K+)', maxAgeHours: 72 }
   ];
   
+  const testLimitRaw = process.env.HARVESTER_TEST_LIMIT;
+  const testLimit = testLimitRaw ? Math.max(1, Math.min(searchQueries.length, parseInt(testLimitRaw, 10) || 1)) : searchQueries.length;
+
   console.log(`[HARVESTER] 🔥 Configured ${searchQueries.length} FRESHNESS-OPTIMIZED discovery tiers`);
   console.log(`[HARVESTER] 🎯 Strategy: 3-TIER MIX (Fresh → Trending → Viral)`);
   console.log(`[HARVESTER]   🔥 FRESH tier: 500-2K likes, <12h old (active conversations)`);
@@ -101,7 +104,7 @@ export async function replyOpportunityHarvester(): Promise<void> {
   console.log(`[HARVESTER] 🚀 Starting TWEET-FIRST search harvesting (time budget: 30min)...`);
   
   // Process search queries sequentially (can't parallelize searches easily)
-  for (const searchQuery of searchQueries) {
+  for (const searchQuery of searchQueries.slice(0, testLimit)) {
     // Check time budget
     const elapsed = Date.now() - startTime;
     if (elapsed >= TIME_BUDGET) {

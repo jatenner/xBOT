@@ -98,8 +98,9 @@ export class UnifiedBrowserPool {
       return page;
     });
     
+    let timeoutId: NodeJS.Timeout | null = null;
     const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => {
+      timeoutId = setTimeout(() => {
         console.error(`[BROWSER_POOL] ⏱️ TIMEOUT: acquirePage('${operationName}') exceeded ${PAGE_ACQUIRE_TIMEOUT/1000}s`);
         console.error(`[BROWSER_POOL] 🚨 Browser pool may be corrupted, triggering recovery...`);
         reject(new Error(`Browser pool timeout after ${PAGE_ACQUIRE_TIMEOUT/1000}s - pool may be corrupted`));
@@ -107,10 +108,15 @@ export class UnifiedBrowserPool {
     });
     
     try {
-      return await Promise.race([
+      const result = await Promise.race([
         acquirePromise,
         timeoutPromise
       ]) as Page;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      return result;
     } catch (error: any) {
       // If timeout, browser pool is likely corrupted - log for monitoring
       if (error.message.includes('timeout')) {
@@ -118,6 +124,10 @@ export class UnifiedBrowserPool {
         this.metrics.failedOperations++;
       }
       throw error;
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
     }
   }
 
