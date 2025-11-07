@@ -16,8 +16,21 @@ export async function generateFallbackViralInsights(
 
 Based on analyzing thousands of viral health tweets, what formatting principles should be used?
 
+CRITICAL - FORBIDDEN HOOKS (NEVER USE THESE):
+❌ "Did you know" - Overused, performs 30% worse than average
+❌ "Here's the thing" - Generic, low engagement
+❌ "The truth is" - Cliché, gets ignored
+❌ "Who knew" - Played out, weak hook
+❌ "Turns out" - Lazy opener
+
+PROVEN HIGH-PERFORMING HOOKS:
+✅ Questions: "What if...", "Ever wonder...", "Why does..."
+✅ Stat leads: "43% of...", "New research shows..."
+✅ Bold claims: "X changes everything", "This could be..."
+✅ Controversy: "Everyone's wrong about...", "Doctors don't want you to know..."
+
 Consider:
-- Hook structures that stop scrollers
+- Hook structures that stop scrollers (use proven hooks above, AVOID forbidden ones)
 - Visual layouts that increase engagement
 - Emphasis techniques that draw attention
 - Length and pacing for readability
@@ -61,4 +74,3 @@ Return 3-5 specific, actionable formatting principles as JSON:
     return '';
   }
 }
-
