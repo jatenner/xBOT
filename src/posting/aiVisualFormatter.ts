@@ -160,31 +160,34 @@ Format it for Twitter!`;
       return fallbackToOriginal(content, `forbidden opener ${forbiddenOpener}`);
     }
 
-    // 🚫 VALIDATE: Check if approach repeats recent patterns (context-aware)
-    const approachLower = (parsed.approach || '').toLowerCase();
+    // 🚫 VALIDATE: Check if ACTUAL visual patterns repeat recent posts (context-aware)
+    const currentPatterns = detectVisualPatterns(formatted);
     
     // Check both contextual (this generator+tone) AND overall feed
     const contextualFormats = intelligence.contextualHistory.recentFormats || [];
     const overallFormats = intelligence.overallRecent || [];
     const combinedRecent = [...contextualFormats.slice(0, 5), ...overallFormats.slice(0, 5)];
-    const recentApproaches = combinedRecent.join(' ').toLowerCase();
     
-    const repeatedPatterns: string[] = [];
-    if (approachLower.includes('provocative question') && recentApproaches.includes('provocative question')) {
-      repeatedPatterns.push('provocative question');
-    }
-    if (approachLower.includes('bold hook') && recentApproaches.includes('bold hook')) {
-      repeatedPatterns.push('bold hook');
-    }
-    if (approachLower.includes('started with') && recentApproaches.includes('started with')) {
-      repeatedPatterns.push('started with');
-    }
+    // Count how many recent posts used similar visual patterns
+    const patternCounts: Record<string, number> = {};
+    combinedRecent.forEach(approach => {
+      const patterns = approach.split(',').map(p => p.trim().split('_')[0]);
+      patterns.forEach(pattern => {
+        patternCounts[pattern] = (patternCounts[pattern] || 0) + 1;
+      });
+    });
     
-    if (repeatedPatterns.length > 0) {
-      console.warn(`[VISUAL_FORMATTER] ⚠️ AI repeated blacklisted approach: ${repeatedPatterns.join(', ')}`);
+    // Check if current patterns are overused
+    const overusedInCurrent = currentPatterns.filter(pattern => {
+      const basePattern = pattern.split('_')[0];
+      return patternCounts[basePattern] >= 3; // Used 3+ times recently
+    });
+    
+    if (overusedInCurrent.length > 0) {
+      console.warn(`[VISUAL_FORMATTER] ⚠️ AI used overused visual patterns: ${overusedInCurrent.join(', ')}`);
       console.warn(`[VISUAL_FORMATTER] 📊 Context: ${contextualFormats.length} recent for ${context.generator}+${context.tone}`);
-      console.warn(`[VISUAL_FORMATTER] 🔄 Using original content (formatter didn't vary enough)`);
-      return fallbackToOriginal(content, `repeated pattern: ${repeatedPatterns[0]}`);
+      console.warn(`[VISUAL_FORMATTER] 🔄 Using original content (formatter didn't vary styling)`);
+      return fallbackToOriginal(content, `overused visual pattern: ${overusedInCurrent[0]}`);
     }
 
     // Validate length - CRITICAL: Must be under 280
@@ -240,8 +243,8 @@ Format it for Twitter!`;
     console.log(`[VISUAL_FORMATTER] 📊 Changes: ${transformations.join(', ')}`);
     console.log(`[VISUAL_FORMATTER] 💡 ${formatted.substring(0, 80)}...`);
     
-    // Track for learning
-    await trackFormatUsage(parsed.approach || 'unknown', context, transformations);
+    // Track for learning with ACTUAL formatted content
+    await trackFormatUsage(parsed.approach || 'unknown', context, transformations, formatted);
     
     return {
       formatted,
@@ -317,19 +320,66 @@ function detectForbiddenOpener(text: string): string | null {
 }
 
 /**
+ * Detect ACTUAL visual patterns in the formatted content
+ */
+function detectVisualPatterns(content: string): string[] {
+  const patterns: string[] = [];
+  
+  // Check for bullets
+  if (content.match(/[•\-]\s/)) patterns.push('bullets');
+  
+  // Check for numbered lists
+  if (content.match(/\d\.\s/)) patterns.push('numbered_list');
+  
+  // Check for emojis
+  const emojiRegex = /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu;
+  const emojiCount = (content.match(emojiRegex) || []).length;
+  if (emojiCount > 0) patterns.push(`emojis_${emojiCount}`);
+  
+  // Check for line breaks
+  const lineBreaks = (content.match(/\n/g) || []).length;
+  if (lineBreaks > 0) patterns.push(`line_breaks_${lineBreaks}`);
+  
+  // Check for CAPS usage
+  const capsWords = content.match(/\b[A-Z]{2,}\b/g) || [];
+  if (capsWords.length > 0) patterns.push(`caps_${capsWords.length}`);
+  
+  // Check for questions
+  if (content.includes('?')) patterns.push('question');
+  
+  // Check length pattern
+  if (content.length < 100) patterns.push('short');
+  else if (content.length < 200) patterns.push('medium');
+  else patterns.push('long');
+  
+  // Check structure
+  const lines = content.split('\n').filter(l => l.trim());
+  if (lines.length === 1) patterns.push('single_line');
+  else if (lines.length <= 3) patterns.push('multi_line');
+  else patterns.push('multi_paragraph');
+  
+  return patterns;
+}
+
+/**
  * Track what format was used (for learning loops)
  */
 async function trackFormatUsage(
   approach: string, 
   context: VisualFormatContext,
-  transformations: string[]
+  transformations: string[],
+  formattedContent: string
 ): Promise<void> {
   try {
     const supabase = getSupabaseClient();
     
-    // Track in visual_format_usage table
+    // Detect ACTUAL visual patterns in the formatted content
+    const visualPatterns = detectVisualPatterns(formattedContent);
+    const patternsString = visualPatterns.join(', ');
+    
+    // Track in visual_format_usage table with ACTUAL patterns
     await supabase.from('visual_format_usage').insert([{
-      approach,
+      approach: patternsString, // Store ACTUAL patterns, not AI's explanation
       generator: context.generator,
       topic_snippet: context.topic.substring(0, 100),
       tone: context.tone,
@@ -337,7 +387,8 @@ async function trackFormatUsage(
       format_strategy: context.formatStrategy
     }]);
     
-    console.log(`[VISUAL_FORMATTER] 📊 Tracked: "${approach}" for ${context.generator}`);
+    console.log(`[VISUAL_FORMATTER] 📊 Tracked ACTUAL patterns: ${patternsString}`);
+    console.log(`[VISUAL_FORMATTER] 🎨 For ${context.generator} + ${context.tone}`);
     
   } catch (error: any) {
     // Silently fail tracking - don't block posting
@@ -388,7 +439,7 @@ async function buildSmartFormattingPrompt(
     }
   }
   
-  // 🚫 BLACKLIST RECENT APPROACHES (Context-Aware + Strong Enforcement)
+  // 🚫 BLACKLIST RECENT VISUAL PATTERNS (Context-Aware + Strong Enforcement)
   let varietyNote = '';
   
   // Use CONTEXTUAL history (this generator+tone) for smart blacklisting
@@ -399,36 +450,37 @@ async function buildSmartFormattingPrompt(
   const combinedRecent = [...contextualFormats.slice(0, 5), ...overallFormats.slice(0, 5)];
   
   if (combinedRecent.length > 0) {
-    // Extract key patterns from recent approaches to blacklist
-    const recentPatterns = new Set<string>();
+    // Extract ACTUAL visual patterns from recent posts
+    const patternCounts: Record<string, number> = {};
+    
     combinedRecent.forEach(approach => {
-      const lower = approach.toLowerCase();
-      if (lower.includes('provocative question')) recentPatterns.add('provocative question');
-      if (lower.includes('bold hook')) recentPatterns.add('bold hook');
-      if (lower.includes('started with')) recentPatterns.add('starting phrases');
-      if (lower.includes('emoji')) recentPatterns.add('emoji-first approach');
-      if (lower.includes('numbered list') || lower.includes('bullet points')) recentPatterns.add('list format');
-      if (lower.includes('closing question')) recentPatterns.add('ending with question');
+      // Parse actual patterns (e.g., "bullets, emojis_2, line_breaks_3")
+      const patterns = approach.split(',').map(p => p.trim());
+      patterns.forEach(pattern => {
+        // Normalize patterns (e.g., "emojis_2" → "emojis", "line_breaks_3" → "line_breaks")
+        const basePattern = pattern.split('_')[0];
+        patternCounts[basePattern] = (patternCounts[basePattern] || 0) + 1;
+      });
     });
     
-    if (recentPatterns.size > 0) {
+    // Blacklist patterns used 3+ times in recent posts
+    const overusedPatterns = Object.entries(patternCounts)
+      .filter(([_, count]) => count >= 3)
+      .map(([pattern, _]) => pattern);
+    
+    if (overusedPatterns.length > 0) {
       varietyNote = `\n
-⚠️ CRITICAL: BLACKLISTED APPROACHES for ${generator} + ${tone}:
-Recent uses: ${contextualFormats.length} contextual, ${overallFormats.slice(0, 5).length} overall
-${Array.from(recentPatterns).map(p => `❌ NO ${p.toUpperCase()}`).join('\n')}
+⚠️ VISUAL PATTERNS OVERUSED (avoid these):
+${overusedPatterns.map(p => `❌ NO ${p.toUpperCase()} (used ${patternCounts[p]}x recently)`).join('\n')}
 
-YOU MUST use a COMPLETELY DIFFERENT approach from recent posts.
-If you use any blacklisted pattern, output will be REJECTED.
-
-Fresh alternatives to explore:
-✅ Lead with specific number/stat (no question)
-✅ Direct bold statement (no "I started with...")
-✅ Comparison structure (X vs Y)
-✅ Minimal formatting (let content speak)
-✅ Reverse chronology (result first, then how)
-✅ Single-sentence punch (no bullets)`;
+Try DIFFERENT visual styling:
+${overusedPatterns.includes('bullets') || overusedPatterns.includes('numbered') ? '✅ No lists - use prose' : '✅ Try bullets or numbers'}
+${overusedPatterns.includes('emojis') ? '✅ No emojis - clean text' : '✅ Add 1 relevant emoji'}
+${overusedPatterns.includes('line') ? '✅ Single paragraph - compact' : '✅ Use line breaks for pacing'}
+${overusedPatterns.includes('caps') ? '✅ No CAPS - natural emphasis' : '✅ Use CAPS for 1-2 key words'}
+${overusedPatterns.includes('question') ? '✅ Statement format - no question' : '✅ End with engaging question'}`;
     } else {
-      varietyNote = `\nRecent formats: Diverse. Maintain variety.`;
+      varietyNote = `\nRecent visual formats: Diverse. Keep varying!`;
     }
   }
   
