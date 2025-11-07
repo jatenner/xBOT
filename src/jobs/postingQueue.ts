@@ -49,8 +49,10 @@ export async function processPostingQueue(): Promise<void> {
     let repliesPostedThisCycle = 0;
     
     const config = getConfig();
-    const maxContentPerHour = parseInt(String(config.MAX_POSTS_PER_HOUR || 2));
-    const maxRepliesPerHour = parseInt(String(config.REPLIES_PER_HOUR || 4));
+    const maxContentPerHourRaw = Number(config.MAX_POSTS_PER_HOUR ?? 2);
+    const maxContentPerHour = Number.isFinite(maxContentPerHourRaw) ? maxContentPerHourRaw : 2;
+    const maxRepliesPerHourRaw = Number(config.REPLIES_PER_HOUR ?? 4);
+    const maxRepliesPerHour = Number.isFinite(maxRepliesPerHourRaw) ? maxRepliesPerHourRaw : 4;
     
     for (const decision of readyDecisions) {
       try {
@@ -211,7 +213,8 @@ interface QueuedDecisionRow {
 
 async function checkPostingRateLimits(): Promise<boolean> {
   const config = getConfig();
-  const maxPostsPerHour = parseInt(String(config.MAX_POSTS_PER_HOUR || 2));
+  const maxPostsPerHourRaw = Number(config.MAX_POSTS_PER_HOUR ?? 2);
+  const maxPostsPerHour = Number.isFinite(maxPostsPerHourRaw) ? maxPostsPerHourRaw : 2;
   
   try {
     const { getSupabaseClient } = await import('../db/index');
@@ -462,8 +465,10 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
     
     // SEPARATE RATE LIMITS: Content (2/hr for singles+threads combined) vs Replies (4/hr separate)
     const config = getConfig();
-    const maxContentPerHour = parseInt(String(config.MAX_POSTS_PER_HOUR || 2)); // Singles + threads share this
-    const maxRepliesPerHour = parseInt(String(config.REPLIES_PER_HOUR || 4)); // Replies independent
+    const maxContentPerHourRaw = Number(config.MAX_POSTS_PER_HOUR ?? 2); // Singles + threads share this
+    const maxContentPerHour = Number.isFinite(maxContentPerHourRaw) ? maxContentPerHourRaw : 2;
+    const maxRepliesPerHourRaw = Number(config.REPLIES_PER_HOUR ?? 4); // Replies independent
+    const maxRepliesPerHour = Number.isFinite(maxRepliesPerHourRaw) ? maxRepliesPerHourRaw : 4;
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     
     // Count content (singles + threads combined) vs replies separately

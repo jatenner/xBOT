@@ -121,7 +121,7 @@ export function loadConfig(): Config {
     JOBS_LEARN_INTERVAL_MIN: process.env.JOBS_LEARN_INTERVAL_MIN ? parseInt(process.env.JOBS_LEARN_INTERVAL_MIN) : undefined,
     JOBS_POSTING_INTERVAL_MIN: process.env.JOBS_POSTING_INTERVAL_MIN ? parseInt(process.env.JOBS_POSTING_INTERVAL_MIN) : undefined,
     
-    MAX_POSTS_PER_HOUR: process.env.MAX_POSTS_PER_HOUR ? parseInt(process.env.MAX_POSTS_PER_HOUR) : undefined,
+    MAX_POSTS_PER_HOUR: process.env.MAX_POSTS_PER_HOUR ? parseFloat(process.env.MAX_POSTS_PER_HOUR) : undefined,
     REPLIES_PER_HOUR: process.env.REPLIES_PER_HOUR ? parseInt(process.env.REPLIES_PER_HOUR) : undefined,
     REPLY_MAX_PER_DAY: process.env.REPLY_MAX_PER_DAY ? parseInt(process.env.REPLY_MAX_PER_DAY) : undefined,
     
