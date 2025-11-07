@@ -8,7 +8,7 @@ import { ENV, isProduction } from './config/env';
 import { log } from './lib/logger';
 import { getConfig, printConfigSummary, printDeprecationWarnings, getModeFlags } from './config/config';
 import { JobManager } from './jobs/jobManager';
-import { validateCriticalEnvVars } from './config/envValidation';
+import { validateEnvironmentVariables } from './config/envValidation';
 
 // CRITICAL: Process-level error handlers to prevent crashes
 process.on('uncaughtException', (error: Error) => {
@@ -92,7 +92,7 @@ async function runStartupGates(config: any) {
   
   // 🔒 CRITICAL: Validate environment variables FIRST (fail-fast if broken)
   log({ op: 'env_validation', status: 'running' });
-  validateCriticalEnvVars(); // This will crash if critical vars missing
+  validateEnvironmentVariables(); // This will crash if critical vars missing
   log({ op: 'env_validation', status: 'passed' });
   
   // Startup acceptance
