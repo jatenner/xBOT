@@ -160,9 +160,14 @@ Format it for Twitter!`;
       return fallbackToOriginal(content, `forbidden opener ${forbiddenOpener}`);
     }
 
-    // 🚫 VALIDATE: Check if approach repeats recent patterns
+    // 🚫 VALIDATE: Check if approach repeats recent patterns (context-aware)
     const approachLower = (parsed.approach || '').toLowerCase();
-    const recentApproaches = intelligence.overallRecent.slice(0, 10).join(' ').toLowerCase();
+    
+    // Check both contextual (this generator+tone) AND overall feed
+    const contextualFormats = intelligence.contextualHistory.recentFormats || [];
+    const overallFormats = intelligence.overallRecent || [];
+    const combinedRecent = [...contextualFormats.slice(0, 5), ...overallFormats.slice(0, 5)];
+    const recentApproaches = combinedRecent.join(' ').toLowerCase();
     
     const repeatedPatterns: string[] = [];
     if (approachLower.includes('provocative question') && recentApproaches.includes('provocative question')) {
@@ -177,6 +182,7 @@ Format it for Twitter!`;
     
     if (repeatedPatterns.length > 0) {
       console.warn(`[VISUAL_FORMATTER] ⚠️ AI repeated blacklisted approach: ${repeatedPatterns.join(', ')}`);
+      console.warn(`[VISUAL_FORMATTER] 📊 Context: ${contextualFormats.length} recent for ${context.generator}+${context.tone}`);
       console.warn(`[VISUAL_FORMATTER] 🔄 Using original content (formatter didn't vary enough)`);
       return fallbackToOriginal(content, `repeated pattern: ${repeatedPatterns[0]}`);
     }
@@ -382,14 +388,20 @@ async function buildSmartFormattingPrompt(
     }
   }
   
-  // 🚫 BLACKLIST RECENT APPROACHES (Strong Enforcement)
+  // 🚫 BLACKLIST RECENT APPROACHES (Context-Aware + Strong Enforcement)
   let varietyNote = '';
-  if (intelligence.overallRecent.length > 0) {
-    const recentFormats = intelligence.overallRecent.slice(0, 10); // Last 10 posts
-    
+  
+  // Use CONTEXTUAL history (this generator+tone) for smart blacklisting
+  const contextualFormats = intelligence.contextualHistory.recentFormats || [];
+  const overallFormats = intelligence.overallRecent || [];
+  
+  // Combine: Prioritize contextual (last 5 for THIS combo) + overall (last 5 feed-wide)
+  const combinedRecent = [...contextualFormats.slice(0, 5), ...overallFormats.slice(0, 5)];
+  
+  if (combinedRecent.length > 0) {
     // Extract key patterns from recent approaches to blacklist
     const recentPatterns = new Set<string>();
-    recentFormats.forEach(approach => {
+    combinedRecent.forEach(approach => {
       const lower = approach.toLowerCase();
       if (lower.includes('provocative question')) recentPatterns.add('provocative question');
       if (lower.includes('bold hook')) recentPatterns.add('bold hook');
@@ -401,7 +413,8 @@ async function buildSmartFormattingPrompt(
     
     if (recentPatterns.size > 0) {
       varietyNote = `\n
-⚠️ CRITICAL: BLACKLISTED APPROACHES (just used ${recentFormats.length} times):
+⚠️ CRITICAL: BLACKLISTED APPROACHES for ${generator} + ${tone}:
+Recent uses: ${contextualFormats.length} contextual, ${overallFormats.slice(0, 5).length} overall
 ${Array.from(recentPatterns).map(p => `❌ NO ${p.toUpperCase()}`).join('\n')}
 
 YOU MUST use a COMPLETELY DIFFERENT approach from recent posts.
