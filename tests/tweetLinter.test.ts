@@ -21,31 +21,28 @@ describe('Tweet Linter', () => {
   describe('lintAndSplitThread', () => {
     
     describe('single format', () => {
-      it('does not trim singles under 279 chars', () => {
+      it('accepts singles under 279 chars without modifications', () => {
         const shortTweet = 'This is a short health tip about exercise that is under 279 characters.';
         const { tweets, reasons } = lintAndSplitThread([shortTweet], 'single');
         
         expect(tweets).toHaveLength(1);
         expect(tweets[0]).toBe(shortTweet);
-        expect(reasons).not.toContain('trim');
+        expect(reasons).toHaveLength(0);
       });
 
-      it('trims singles over 279 chars at word boundary', () => {
-        const longTweet = 'This is a very long health tip about exercise and nutrition that exceeds 279 characters and should be trimmed at a word boundary to ensure it fits within the Twitter character limit for single tweets without breaking words in the middle of sentences which would look unprofessional.';
-        const { tweets, reasons } = lintAndSplitThread([longTweet], 'single');
-        
-        expect(tweets).toHaveLength(1);
-        expect(tweets[0].length).toBeLessThanOrEqual(279);
-        expect(reasons).toContain('trim');
-        expect(tweets[0]).not.toMatch(/\w-$/); // Should not end mid-word
+      it('throws when singles exceed 279 chars', () => {
+        const longTweet = 'A'.repeat(300);
+
+        expect(() => lintAndSplitThread([longTweet], 'single'))
+          .toThrow('THREAD_ABORT_LINT_FAIL');
       });
 
       it('respects TWEET_MAX_CHARS_HARD environment variable', () => {
         process.env.TWEET_MAX_CHARS_HARD = '250';
         const tweet = 'A'.repeat(260);
-        const { tweets } = lintAndSplitThread([tweet], 'single');
         
-        expect(tweets[0].length).toBeLessThanOrEqual(250);
+        expect(() => lintAndSplitThread([tweet], 'single'))
+          .toThrow('THREAD_ABORT_LINT_FAIL');
       });
 
       it('reduces emojis only if above EMOJI_MAX', () => {
@@ -97,31 +94,17 @@ describe('Tweet Linter', () => {
       it('applies 240 char limit to T1 (before-the-fold)', () => {
         const longT1 = 'A'.repeat(250) + ' This should be trimmed as it exceeds 240 chars for T1';
         const shortT2 = 'Second tweet is fine';
-        const { tweets } = lintAndSplitThread([longT1, shortT2], 'thread');
-        
-        expect(tweets[0].length).toBeLessThanOrEqual(240);
-        expect(tweets[1]).toBe(shortT2);
+
+        expect(() => lintAndSplitThread([longT1, shortT2], 'thread'))
+          .toThrow('THREAD_ABORT_LINT_FAIL');
       });
 
       it('applies 270 char limit to T2+ tweets', () => {
         const t1 = 'First tweet under 240 chars';
         const longT2 = 'A'.repeat(275) + ' This T2 should be trimmed to 270 chars max';
-        const { tweets } = lintAndSplitThread([t1, longT2], 'thread');
-        
-        expect(tweets[0]).toBe(t1);
-        expect(tweets[1].length).toBeLessThanOrEqual(270);
-      });
 
-      it('trims thread tweets at word boundary only', () => {
-        const longTweets = [
-          'First tweet that is exactly long enough to trigger word boundary trimming at two hundred and forty characters exactly which should trim properly',
-          'Second tweet that is also long enough to trigger the two hundred and seventy character limit for T2+ tweets and should also trim at word boundary'
-        ];
-        const { tweets } = lintAndSplitThread(longTweets, 'thread');
-        
-        // Should not end with partial words
-        expect(tweets[0]).not.toMatch(/\w-$/);
-        expect(tweets[1]).not.toMatch(/\w-$/);
+        expect(() => lintAndSplitThread([t1, longT2], 'thread'))
+          .toThrow('THREAD_ABORT_LINT_FAIL');
       });
 
       it('preserves emojis in bullet points and parentheticals', () => {
@@ -154,9 +137,9 @@ describe('Tweet Linter', () => {
       it('treats longform as single for character limits', () => {
         process.env.TWEET_MAX_CHARS_HARD = '279';
         const longformTweet = 'A'.repeat(285) + ' longform content';
-        const { tweets } = lintAndSplitThread([longformTweet], 'longform_single');
-        
-        expect(tweets[0].length).toBeLessThanOrEqual(279);
+
+        expect(() => lintAndSplitThread([longformTweet], 'longform_single'))
+          .toThrow('THREAD_ABORT_LINT_FAIL');
       });
     });
 
@@ -211,10 +194,14 @@ describe('Tweet Linter', () => {
     describe('environment variable defaults', () => {
       it('uses default TWEET_MAX_CHARS_HARD of 279', () => {
         delete process.env.TWEET_MAX_CHARS_HARD;
-        const tweet = 'A'.repeat(280);
-        const { tweets } = lintAndSplitThread([tweet], 'single');
-        
-        expect(tweets[0].length).toBeLessThanOrEqual(279);
+        const validTweet = 'A'.repeat(279);
+        const tooLongTweet = 'A'.repeat(280);
+
+        const { tweets } = lintAndSplitThread([validTweet], 'single');
+        expect(tweets[0].length).toBe(279);
+
+        expect(() => lintAndSplitThread([tooLongTweet], 'single'))
+          .toThrow('THREAD_ABORT_LINT_FAIL');
       });
 
       it('uses default EMOJI_MAX of 2', () => {
@@ -238,16 +225,16 @@ describe('Tweet Linter', () => {
     });
 
     describe('logging output', () => {
-      it('logs actions correctly', () => {
+      it('logs actions correctly without trimming', () => {
         const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
         process.env.EMOJI_MAX = '1';
         process.env.FORCE_NO_HASHTAGS = 'true';
         
-        const complexTweet = 'This is a very long health tip with emojis 😊🌟💪 and #health #nutrition hashtags that will trigger all three actions because it is long enough to be trimmed and exceeds the character limit for tweets which means the linter will need to apply trimming functionality to keep it under the maximum allowed character count for a single tweet';
+        const complexTweet = 'Balanced meals 😊🌟 keep your metabolism steady. #health #nutrition';
         lintAndSplitThread([complexTweet], 'single');
         
         expect(consoleSpy).toHaveBeenCalledWith(
-          expect.stringMatching(/LINTER: format=single, tweets=1, t1_chars=\d+, actions=\[trim\|emoji_reduce\|hashtags_removed\]/)
+          expect.stringMatching(/LINTER: format=single, tweets=1, t1_chars=\d+, actions=\[emoji_reduce\|hashtags_removed\]/)
         );
         
         consoleSpy.mockRestore();

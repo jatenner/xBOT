@@ -218,7 +218,12 @@ Format it for Twitter!`;
           result += '.';
         }
         
-        trimmed = result || formatted.substring(0, 277) + '...';
+        if (result) {
+          trimmed = result;
+        } else {
+          console.warn(`[VISUAL_FORMATTER] ❌ Unable to fit formatted content within 280 chars, reverting to original`);
+          return fallbackToOriginal(content, 'formatting exceeded length limit');
+        }
       }
       
       // Final check - if still too long, use original
