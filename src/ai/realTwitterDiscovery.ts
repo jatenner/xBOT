@@ -539,7 +539,10 @@ export class RealTwitterDiscovery {
       await page.waitForTimeout(5000); // Longer for search results
       
       // Extract viral tweets from search results
-      const opportunities = await page.evaluate(({ maxReplies, maxAgeHours }: { maxReplies: number, maxAgeHours: number }) => {
+      const opportunities = await page.evaluate(
+        (
+          { maxReplies, maxAgeHours, minLikes }: { maxReplies: number; maxAgeHours: number; minLikes: number }
+        ) => {
         const __name = (target: Function, value: string) => {
           try {
             Object.defineProperty(target, 'name', { value, configurable: true });
@@ -658,7 +661,9 @@ export class RealTwitterDiscovery {
         }
         
         return results;
-      }, { maxReplies, maxAgeHours }) as any[];
+      },
+      { maxReplies, maxAgeHours, minLikes }
+      ) as any[];
       
       console.log(`[REAL_DISCOVERY] ✅ Scraped ${opportunities.length} viral tweets (all topics)`);
       
