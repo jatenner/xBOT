@@ -21,6 +21,14 @@ import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import type { VisualFormatIntelligence } from '../analytics/visualFormatAnalytics';
 import { generateFallbackViralInsights } from './viralFallbackInsights';
 
+const FORBIDDEN_OPENERS: RegExp[] = [
+  /^did you know\b/i,
+  /^who knew\b/i,
+  /^turns out\b/i,
+  /^here's the thing\b/i,
+  /^the truth is\b/i
+];
+
 export interface VisualFormatContext {
   content: string;
   generator: string;
@@ -85,13 +93,18 @@ export async function formatContentForTwitter(context: VisualFormatContext): Pro
     content
   );
 
-  const userPrompt = `Polish this tweet for maximum Twitter engagement:
+  const userPrompt = `Format this tweet for Twitter (visual formatting ONLY - do NOT rewrite):
 
 "${content}"
 
-Given the ${generator} personality, ${tone} tone, and ${angle} angle - how should this be formatted visually to perform BEST on Twitter?
+Given: ${generator} personality, ${tone} tone, ${angle} angle
 
-Transform it!`;
+Your job: Make it look GREAT on Twitter feed while preserving the exact hook and message.
+
+ONLY adjust: line breaks, 0-1 emoji, CAPS for 1-2 words, spacing.
+DO NOT change: the hook, opening, message, or substance.
+
+Format it for Twitter!`;
 
   try {
     const response = await createBudgetedChatCompletion({
@@ -100,7 +113,7 @@ Transform it!`;
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
       ],
-      temperature: 0.75, // Creative but more focused on constraints
+      temperature: 0.4, // Lower temp = follows formatting rules strictly, less creative rewriting
       max_tokens: 350,
       response_format: { type: 'json_object' }
     }, { purpose: 'ai_visual_formatting' });
@@ -141,6 +154,12 @@ Transform it!`;
       formatted = formatted.replace(/\s+/g, ' ').trim(); // Clean up spaces after emoji removal
     }
     
+    const forbiddenOpener = detectForbiddenOpener(formatted);
+    if (forbiddenOpener) {
+      console.warn(`[VISUAL_FORMATTER] ⚠️ Forbidden opener detected (${forbiddenOpener}), using original content`);
+      return fallbackToOriginal(content, `forbidden opener ${forbiddenOpener}`);
+    }
+
     // Validate length - CRITICAL: Must be under 280
     if (formatted.length > 280) {
       console.warn(`[VISUAL_FORMATTER] ⚠️ AI formatted too long (${formatted.length} chars), trying to trim...`);
@@ -258,6 +277,16 @@ function detectTransformations(original: string, formatted: string): string[] {
   if (changes.length === 0) changes.push('minor_polish');
   
   return changes;
+}
+
+function detectForbiddenOpener(text: string): string | null {
+  const normalized = text.trim();
+  for (const pattern of FORBIDDEN_OPENERS) {
+    if (pattern.test(normalized)) {
+      return pattern.source.replace('^', '').replace('\\b', '').replace('\\', '');
+    }
+  }
+  return null;
 }
 
 /**
@@ -382,11 +411,7 @@ ${viralInsights}
 PROVEN TWITTER PRINCIPLES (evidence-based):
 ${viralInsights ? '(Extracted from your viral tweet database)' : '(Based on 100K+ analyzed tweets)'}
 
-HOOKS (First 10 characters decide if people read):
-• Questions: "What if..." → Creates curiosity gap (+40% engagement)
-• Data leads: "43% of..." → Authority & intrigue (+35% engagement)
-• Bold claims: "X changes everything" → Stops scrollers (+30% engagement)
-• Controversy: "Everyone's wrong about..." → Sparks interest (+25% engagement)
+NOTE: The generator already created the hook. These are for your understanding of Twitter best practices, NOT for you to add:
 
 STRUCTURE (How information flows):
 • Line breaks: Separate key ideas → Mobile-friendly (+25% read completion)
@@ -419,13 +444,30 @@ YOUR DECISION FRAMEWORK:
    → Provocateur shouldn't use cute bullets
    → Storyteller shouldn't use numbered lists
 
+⚠️ CRITICAL: YOUR JOB IS FORMATTING ONLY
+You are NOT rewriting content. The generator already created the hook, message, and flow.
+
+❌ DO NOT:
+• Change the opening hook or first sentence
+• Rewrite or rephrase the core message
+• Add new hooks like "Did you know", "Here's the thing", etc.
+• Change the substance or facts
+• Alter the tone or personality
+
+✅ DO (Twitter Formatting Only):
+• Add line breaks for mobile readability
+• Add 0-1 relevant emoji (if it fits the tone)
+• Use CAPS for 1-2 KEY WORDS for emphasis
+• Adjust spacing/pacing for Twitter feed
+• Remove markdown Twitter doesn't support
+
 CRITICAL RULES:
 • ≤280 characters (count carefully!)
 • No hashtags ever
 • NO markdown (**bold**, *italic*, __underline__) - Twitter doesn't support it!
 • NO asterisks for emphasis - use CAPS sparingly instead
 • If formatting doesn't improve it, don't format
-• Preserve the substance and voice
+• Preserve the hook and message EXACTLY
 • Mobile-first thinking
 
 Return JSON:
