@@ -98,32 +98,55 @@ export class JobManager {
     
     log({ op: 'job_manager_start', mode: 'staggered' });
     
-    // 🚨 CRITICAL: Check if discovered_accounts table is empty on startup
-    // If empty, trigger account discovery IMMEDIATELY so reply system can work
-    try {
-      const { getAccountPoolHealth } = await import('./accountDiscoveryJob');
-      const poolHealth = await getAccountPoolHealth();
+    // 🚨 CRITICAL: Check reply system environment variable
+    // If ENABLE_REPLIES is not true, reply system will NOT start
+    if (process.env.ENABLE_REPLIES !== 'true') {
+      console.warn('═══════════════════════════════════════════════════════');
+      console.warn('⚠️  JOB_MANAGER: Reply system is DISABLED');
+      console.warn('   Reason: ENABLE_REPLIES environment variable not set to "true"');
+      console.warn('');
+      console.warn('   To enable replies:');
+      console.warn('   1. Add ENABLE_REPLIES=true to your .env file (local)');
+      console.warn('   2. Add ENABLE_REPLIES=true to Railway environment (production)');
+      console.warn('');
+      console.warn('   Impact: 6 reply-related jobs will NOT run:');
+      console.warn('   • mega_viral_harvester (finds viral tweets)');
+      console.warn('   • reply_posting (generates and posts replies)');
+      console.warn('   • reply_metrics_scraper (tracks reply performance)');
+      console.warn('   • reply_learning (learns from reply success)');
+      console.warn('   • engagement_calculator (calculates account engagement)');
+      console.warn('   • reply_conversion_tracking (tracks follower attribution)');
+      console.warn('═══════════════════════════════════════════════════════');
+    } else {
+      console.log('✅ JOB_MANAGER: Reply system ENABLED (ENABLE_REPLIES=true)');
       
-      if (poolHealth.status === 'critical' && poolHealth.total_accounts === 0) {
-        console.log('[JOB_MANAGER] 🚨 discovered_accounts table is EMPTY - triggering immediate discovery...');
-        const { runAccountDiscovery } = await import('./accountDiscoveryJob');
+      // Check if discovered_accounts table is empty on startup
+      // If empty, trigger account discovery IMMEDIATELY so reply system can work
+      try {
+        const { getAccountPoolHealth } = await import('./accountDiscoveryJob');
+        const poolHealth = await getAccountPoolHealth();
         
-        // Run in background, don't block startup
-        runAccountDiscovery()
-          .then(() => {
-            console.log('[JOB_MANAGER] ✅ Initial account discovery completed');
-            this.stats.accountDiscoveryRuns = (this.stats.accountDiscoveryRuns || 0) + 1;
-            this.stats.lastAccountDiscoveryTime = new Date();
-          })
-          .catch((err) => {
-            console.error('[JOB_MANAGER] ❌ Initial account discovery failed:', err.message);
-            console.log('[JOB_MANAGER] 💡 Will retry in 25 minutes on scheduled run');
-          });
-      } else {
-        console.log(`[JOB_MANAGER] ℹ️ Account pool status: ${poolHealth.status} (${poolHealth.total_accounts} accounts) - reply system ready`);
+        if (poolHealth.status === 'critical' && poolHealth.total_accounts === 0) {
+          console.log('[JOB_MANAGER] 🚨 discovered_accounts table is EMPTY - triggering immediate discovery...');
+          const { runAccountDiscovery } = await import('./accountDiscoveryJob');
+          
+          // Run in background, don't block startup
+          runAccountDiscovery()
+            .then(() => {
+              console.log('[JOB_MANAGER] ✅ Initial account discovery completed');
+              this.stats.accountDiscoveryRuns = (this.stats.accountDiscoveryRuns || 0) + 1;
+              this.stats.lastAccountDiscoveryTime = new Date();
+            })
+            .catch((err) => {
+              console.error('[JOB_MANAGER] ❌ Initial account discovery failed:', err.message);
+              console.log('[JOB_MANAGER] 💡 Will retry in 25 minutes on scheduled run');
+            });
+        } else {
+          console.log(`[JOB_MANAGER] ℹ️ Account pool status: ${poolHealth.status} (${poolHealth.total_accounts} accounts) - reply system ready`);
+        }
+      } catch (error: any) {
+        console.error('[JOB_MANAGER] ⚠️ Failed to check account pool health:', error.message);
       }
-    } catch (error: any) {
-      console.error('[JOB_MANAGER] ⚠️ Failed to check account pool health:', error.message);
     }
     
     // Define stagger offsets (in seconds) to spread jobs across time
@@ -368,7 +391,9 @@ export class JobManager {
     // No dependency on discovered_accounts - catches ALL viral health content
     // ⚠️ IMPORTANT: Only schedule if replies are enabled
     if (flags.replyEnabled && process.env.ENABLE_REPLIES === 'true') {
-      console.log('💬 JOB_MANAGER: Reply jobs ENABLED - scheduling TWEET-BASED harvester and posting');
+      console.log('═══════════════════════════════════════════════════════');
+      console.log('💬 JOB_MANAGER: Reply jobs ENABLED - scheduling 6 jobs');
+      console.log('═══════════════════════════════════════════════════════');
       
       // 🔥 MEGA-VIRAL REPLY HARVESTER - every 2 hours (UPGRADED: AI filtering + 10K-250K tiers)
       // Searches Twitter for truly massive viral health tweets only
@@ -435,9 +460,14 @@ export class JobManager {
         95 * MINUTE // Start after 95 minutes (better stagger, give time for replies to get engagement)
       );
     } else {
-      console.log('⚠️  JOB_MANAGER: Reply jobs DISABLED (ENABLE_REPLIES not set or flags.replyEnabled false)');
-      console.log(`   • ENABLE_REPLIES: ${process.env.ENABLE_REPLIES}`);
-      console.log(`   • flags.replyEnabled: ${flags.replyEnabled}`);
+      console.warn('═══════════════════════════════════════════════════════');
+      console.warn('⚠️  JOB_MANAGER: Reply jobs DISABLED');
+      console.warn(`   • ENABLE_REPLIES: ${process.env.ENABLE_REPLIES || 'NOT SET'}`);
+      console.warn(`   • flags.replyEnabled: ${flags.replyEnabled}`);
+      console.warn('');
+      console.warn('   Reply system will NOT function without ENABLE_REPLIES=true');
+      console.warn('   See startup warnings above for how to enable.');
+      console.warn('═══════════════════════════════════════════════════════');
     }
 
     // Attribution - every 2 hours, offset 70 min

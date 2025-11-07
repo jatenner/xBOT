@@ -49,10 +49,16 @@ const ConfigSchema = z.object({
   JOBS_POSTING_INTERVAL_MIN: z.number().default(5), // Check posting queue every 5 minutes
   JOBS_VIRAL_THREAD_INTERVAL_MIN: z.number().default(1440), // Viral thread DAILY (24 hours)
   
-  // Rate Limits - QUALITY OVER QUANTITY 🔥
-  MAX_POSTS_PER_HOUR: z.number().default(0.6), // ~1 post every 90min (14 posts over 24 hours)
-  MAX_DAILY_POSTS: z.number().default(14), // 14 high-quality posts per day
-  REPLIES_PER_HOUR: z.number().default(4), // 4 replies per hour (96/day - UNCHANGED)
+  // Rate Limits - Environment-driven with smart defaults 🔥
+  MAX_POSTS_PER_HOUR: z.number().default(
+    process.env.MAX_POSTS_PER_HOUR ? parseFloat(process.env.MAX_POSTS_PER_HOUR) : 2
+  ), // 2 posts per hour (override via env var)
+  MAX_DAILY_POSTS: z.number().default(
+    process.env.MAX_DAILY_POSTS ? parseInt(process.env.MAX_DAILY_POSTS) : 20
+  ), // 20 posts per day (override via env var)
+  REPLIES_PER_HOUR: z.number().default(
+    process.env.REPLIES_PER_HOUR ? parseInt(process.env.REPLIES_PER_HOUR) : 4
+  ), // 4 replies per hour (override via env var)
   
   // Security
   ADMIN_TOKEN: z.string().default('dev-admin-token')
