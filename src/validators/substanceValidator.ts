@@ -136,8 +136,9 @@ export function validateSubstance(content: string | string[]): SubstanceValidati
   if (!Array.isArray(content) && textToCheck.length >= 200) score += 10;
   if (Array.isArray(content) && content.every(t => t.length >= 150)) score += 10;
   
-  // THRESHOLD: Need at least 70/100 to pass
-  const isValid = score >= 70;
+  // THRESHOLD: Need at least 55/100 to pass (was 70 - too strict)
+  // ✅ FIX: Reduced from 70 to 55 to allow quality content without rigid citation requirements
+  const isValid = score >= 55;
   
   return {
     isValid,

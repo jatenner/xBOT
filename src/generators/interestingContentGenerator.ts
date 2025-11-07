@@ -118,7 +118,7 @@ You will be asked to defend the fascination. Be prepared to:
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.95, // MAX creativity
-      max_tokens: format === 'thread' ? 800 : 300,
+      max_tokens: format === 'thread' ? 400 : 90, // ✅ FIX: Standardized token limits (was 800/300)
       response_format: { type: 'json_object' }
     }, { purpose: 'interesting_content_generation' });
 
