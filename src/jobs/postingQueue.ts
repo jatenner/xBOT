@@ -252,7 +252,7 @@ async function checkPostingRateLimits(): Promise<boolean> {
       .select('*', { count: 'exact', head: true })
       .in('decision_type', ['single', 'thread'])
       .in('status', ['posted', 'failed'])  // ← Only count ATTEMPTED posts (not queued!)
-      .gte('created_at', oneHourAgo);
+      .gte('posted_at', oneHourAgo);
     
     if (error) {
       console.error('[POSTING_QUEUE] ❌ Rate limit check failed:', error.message);
