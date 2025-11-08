@@ -772,6 +772,39 @@ app.get('/dashboard/health', async (req, res) => {
   }
 });
 
+// System map dashboard page (visual overview)
+app.get('/dashboard/map', async (req, res) => {
+  try {
+    const token = req.query.token || req.headers.authorization?.replace('Bearer ', '');
+    const adminToken = process.env.ADMIN_TOKEN || 'xbot-admin-2025';
+    
+    if (token !== adminToken) {
+      return res.status(401).send(`
+        <html>
+          <body style="font-family: Arial; text-align: center; padding: 50px;">
+            <h1>🔒 Authentication Required</h1>
+            <p>Add <code>?token=YOUR_TOKEN</code> to the URL</p>
+          </body>
+        </html>
+      `);
+    }
+    
+    console.log('🗺️ REPLY_MAP: Serving reply system map...');
+    
+    const { generateReplySystemMap } = await import('./dashboard/replySystemMap');
+    const dashboardHTML = await generateReplySystemMap();
+    
+    res.setHeader('Content-Type', 'text/html');
+    res.send(dashboardHTML);
+    
+    console.log('✅ REPLY_MAP: Delivered');
+  } catch (error: any) {
+    console.error('❌ REPLY_MAP_ERROR:', error.message);
+    res.status(500).send(`<html><body style="padding: 50px; text-align: center;">
+      <h1>🚨 Error</h1><p>${error.message}</p></body></html>`);
+  }
+});
+
 // Temporal intelligence dashboard page
 app.get('/dashboard/temporal', async (req, res) => {
   try {
