@@ -527,12 +527,18 @@ export class RealTwitterDiscovery {
       await page.waitForTimeout(5000); // Longer for search results
       
       // Extract viral tweets from search results
+      console.log(`[REAL_DISCOVERY] 📊 Page loaded, extracting tweets...`);
+      
       const opportunities = await page.evaluate(
         (
           { maxReplies, maxAgeHours, minLikes }: { maxReplies: number; maxAgeHours: number; minLikes: number }
         ) => {
         const results: any[] = [];
         const tweetElements = document.querySelectorAll('article[data-testid="tweet"]');
+        
+        // 🔍 DIAGNOSTIC: Log what we found
+        console.log(`[EXTRACTION] Found ${tweetElements.length} tweet elements on page`);
+        
         const NOW = Date.now();
         const MAX_AGE_MS = maxAgeHours * 60 * 60 * 1000; // Dynamic age limit
         
@@ -563,17 +569,27 @@ export class RealTwitterDiscovery {
         };
         
         // Extract up to 50 tweets from search results
+        let skippedNoTimestamp = 0;
+        let skippedTooOld = 0;
+        let skippedLowEngagement = 0;
+        
         for (let i = 0; i < Math.min(tweetElements.length, 50); i++) {
           const tweet = tweetElements[i];
           
           // Get timestamp
           const timeEl = tweet.querySelector('time');
           const datetime = timeEl?.getAttribute('datetime') || '';
-          if (!datetime) continue; // Skip if no timestamp
+          if (!datetime) {
+            skippedNoTimestamp++;
+            continue; // Skip if no timestamp
+          }
           
           const tweetTime = new Date(datetime).getTime();
           const ageMs = NOW - tweetTime;
-          if (ageMs > MAX_AGE_MS) continue; // Skip if older than age limit
+          if (ageMs > MAX_AGE_MS) {
+            skippedTooOld++;
+            continue; // Skip if older than age limit
+          }
           
           const tweetPostedAt = datetime; // Save for later use
           
@@ -642,10 +658,16 @@ export class RealTwitterDiscovery {
           }
         }
         
+        // 🔍 DIAGNOSTIC: Log extraction summary
+        console.log(`[EXTRACTION] Extracted ${results.length} tweets that passed all filters`);
+        console.log(`[EXTRACTION] Skipped: ${skippedNoTimestamp} (no timestamp), ${skippedTooOld} (too old), ${skippedLowEngagement} (low engagement)`);
+        
         return results;
       },
       { maxReplies, maxAgeHours, minLikes }
       ) as any[];
+    
+    console.log(`[REAL_DISCOVERY] 📊 Page extraction complete: Found ${opportunities.length} tweets`);
       
       console.log(`[REAL_DISCOVERY] ✅ Scraped ${opportunities.length} viral tweets (all topics)`);
       
