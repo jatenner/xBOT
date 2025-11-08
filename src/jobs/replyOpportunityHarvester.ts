@@ -18,6 +18,7 @@
  */
 
 import { getSupabaseClient } from '../db';
+import { realTwitterDiscovery } from '../ai/realTwitterDiscovery';
 
 export async function replyOpportunityHarvester(): Promise<void> {
   console.log('[HARVESTER] 🔍 Starting TWEET-FIRST viral search harvesting...');
@@ -26,7 +27,8 @@ export async function replyOpportunityHarvester(): Promise<void> {
     const supabase = getSupabaseClient();
     
     // Step 1: Check current pool size
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const thirtySixHoursAgo = new Date(Date.now() - 36 * 60 * 60 * 1000);
     
     const { count: currentOpportunities } = await supabase
       .from('reply_opportunities')
@@ -65,8 +67,8 @@ export async function replyOpportunityHarvester(): Promise<void> {
     // 🧪 TEST TIERS (Lower bar to see if Twitter returns ANY results)
     { minLikes: 50, maxReplies: 30, label: 'TEST (50+)', maxAgeHours: 24 },
     { minLikes: 100, maxReplies: 40, label: 'TEST+ (100+)', maxAgeHours: 24 },
-    { minLikes: 100, maxReplies: 60, label: 'HEALTH FOCUS (100+)', maxAgeHours: 24, query: '(health OR fitness OR wellness OR nutrition OR supplement) min_faves:100 lang:en -filter:replies' },
-    { minLikes: 300, maxReplies: 80, label: 'HEALTH FOCUS (300+)', maxAgeHours: 24, query: '(sleep OR workout OR diet OR fasting OR hormone) min_faves:300 lang:en -filter:replies' },
+    { minLikes: 100, maxReplies: 60, label: 'HEALTH FOCUS (100+)', maxAgeHours: 24, query: '(health OR fitness OR wellness OR nutrition OR supplement OR \"mental health\" OR longevity) min_faves:100 lang:en -filter:replies -airdrop -giveaway -bitcoin -solana' },
+    { minLikes: 300, maxReplies: 80, label: 'HEALTH FOCUS (300+)', maxAgeHours: 24, query: '(sleep OR \"circadian\" OR hormone OR fasting OR glucose OR protein OR hypertrophy) min_faves:300 lang:en -filter:replies -airdrop -giveaway -bitcoin -nfl -nba' },
     
     // 🔥 FRESH TIER (500-2K likes, <12h) - Maximum freshness, active conversations
     { minLikes: 500, maxReplies: 50, label: 'FRESH (500+)', maxAgeHours: 12 },
@@ -180,12 +182,29 @@ export async function replyOpportunityHarvester(): Promise<void> {
     // Small delay between searches (2 seconds)
     await new Promise(resolve => setTimeout(resolve, 2000));
   }
+
+  // Step 5: Scrape curated health accounts to guarantee high-signal inventory
+  if (Array.isArray((realTwitterDiscovery as any).curatedAccounts)) {
+    const curatedAccounts: string[] = (realTwitterDiscovery as any).curatedAccounts;
+    const accountBatch = curatedAccounts.slice(0, 8);
+    for (const username of accountBatch) {
+      try {
+        console.log(`[HARVESTER]   👤 Scraping curated account @${username}...`);
+        const accountOpps = await realTwitterDiscovery.findReplyOpportunitiesFromAccount(username);
+        totalHarvested += accountOpps.length;
+        console.log(`[HARVESTER]     ✓ Account @${username} yielded ${accountOpps.length} opportunities`);
+      } catch (error: any) {
+        console.warn(`[HARVESTER]     ⚠️ Failed to scrape @${username}: ${error.message}`);
+      }
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+  }
     
-    // Step 5: Clean up old opportunities (>24 hours)
+    // Step 5: Clean up old opportunities (only ones older than 36h or already replied/expired)
     const { error: cleanupError } = await supabase
       .from('reply_opportunities')
       .delete()
-      .lt('tweet_posted_at', twentyFourHoursAgo.toISOString());
+      .or(`tweet_posted_at.lt.${thirtySixHoursAgo.toISOString()},status.eq.expired,replied_to.eq.true`);
     
     if (cleanupError) {
       console.warn(`[HARVESTER] ⚠️ Failed to clean up old opportunities:`, cleanupError.message);

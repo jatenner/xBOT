@@ -35,10 +35,11 @@ export interface ReplyOpportunity {
 export class RealTwitterDiscovery {
   private static instance: RealTwitterDiscovery;
   
-  private readonly HEALTH_ACCOUNTS = [
+  private readonly CURATED_HEALTH_ACCOUNTS = [
     'hubermanlab', 'peterattia', 'RhondaPatrick', 'drmarkhyman',
-    'bengreenfieldhq', 'davidasinclair', 'foundmyfitness', 'LairdHamilton',
-    'drdavinaguilera', 'drsten', 'DrLaPuma', 'WhitMD', 'KellyanneHulme'
+    'bengreenfieldhq', 'foundmyfitness', 'DrJockers', 'KellyStarrett',
+    'SleepDiplomat', 'drchatterjeeuk', 'DrAmyShah', 'theproof', 'DrDianeBrain',
+    'PeterDiamandis', 'DrStevenLin', 'drwillcole', 'markhymanmd'
   ];
   
   private readonly HEALTH_HASHTAGS = [
@@ -52,6 +53,7 @@ export class RealTwitterDiscovery {
     secondary: ['supplement', 'vitamin', 'protein', 'sleep', 'workout', 'exercise', 'fasting', 'glucose', 'insulin', 'hormone', 'gut', 'microbiome'],
     tertiary: ['recovery', 'hydrate', 'immune', 'metabolic', 'sauna', 'cold plunge', 'meditation', 'stress', 'mental health', 'therapy']
   };
+  public readonly curatedAccounts = this.CURATED_HEALTH_ACCOUNTS;
 
   private constructor() {}
 
@@ -1000,7 +1002,7 @@ export class RealTwitterDiscovery {
           ? new Date(Date.now() - opp.posted_minutes_ago * 60 * 1000).toISOString()
           : new Date().toISOString();
         
-        await supabase
+          await supabase
           .from('reply_opportunities')
           .upsert({
             // Core fields
