@@ -763,15 +763,15 @@ app.get('/dashboard/health', async (req, res) => {
       `);
     }
     
-    console.log('🎯 UNIFIED_DASHBOARD: Serving unified system dashboard...');
+    console.log('📊 MONITORING_DASHBOARD: Serving real-time monitoring dashboard...');
     
-    const { generateUnifiedDashboard } = await import('./dashboard/unifiedSystemDashboard');
-    const dashboardHTML = await generateUnifiedDashboard();
+    const { generateMonitoringDashboard } = await import('./dashboard/monitoringDashboard');
+    const dashboardHTML = await generateMonitoringDashboard();
     
     res.setHeader('Content-Type', 'text/html');
     res.send(dashboardHTML);
     
-    console.log('✅ UNIFIED_DASHBOARD: Delivered');
+    console.log('✅ MONITORING_DASHBOARD: Delivered');
   } catch (error: any) {
     console.error('❌ ENHANCED_DASHBOARD_ERROR:', error.message);
     res.status(500).send(`<html><body style="padding: 50px; text-align: center;">
