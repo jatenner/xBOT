@@ -81,8 +81,14 @@ async function executeJob(jobName: string, params: Record<string, any>): Promise
       const result = await backfillEmbeddings(count);
       return { message: `Backfilled embeddings for ${result.processed} items`, ...result };
       
+    case 'harvester':
+    case 'mega_viral_harvester':
+      const { replyOpportunityHarvester } = await import('../jobs/replyOpportunityHarvester');
+      await replyOpportunityHarvester();
+      return { message: 'Viral tweet harvesting completed' };
+      
     default:
-      throw new Error(`Unknown job: ${jobName}. Available jobs: analyticsCollector, learn, plan, reply, posting, backfillEmbeddings`);
+      throw new Error(`Unknown job: ${jobName}. Available jobs: analyticsCollector, learn, plan, reply, posting, backfillEmbeddings, harvester`);
   }
 }
 
