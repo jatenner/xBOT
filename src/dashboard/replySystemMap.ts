@@ -181,7 +181,7 @@ async function checkReplySystemComponents(): Promise<ComponentHealth[]> {
     } else {
       status = 'healthy';
       const nextScheduled = nextReply?.[0]?.scheduled_at 
-        ? new Date(nextReply[0].scheduled_at)
+        ? new Date(String(nextReply[0].scheduled_at))
         : null;
       const minutesUntilNext = nextScheduled
         ? Math.floor((nextScheduled.getTime() - Date.now()) / 60000)
