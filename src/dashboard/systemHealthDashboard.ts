@@ -318,6 +318,14 @@ function generateHealthHTML(data: any): string {
             <p style="color: #666; font-size: 14px;">Last updated: ${timestamp}</p>
         </div>
 
+        <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
+            <a href="/dashboard/map?token=xbot-admin-2025" style="padding: 12px 20px; background: white; border-radius: 8px; text-decoration: none; color: #333; font-weight: 600; font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">🗺️ Reply System Map</a>
+            <a href="/dashboard/health?token=xbot-admin-2025" style="padding: 12px 20px; background: #667eea; color: white; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">💚 System Health</a>
+            <a href="/dashboard/recent?token=xbot-admin-2025" style="padding: 12px 20px; background: white; border-radius: 8px; text-decoration: none; color: #333; font-weight: 600; font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">🕐 Recent</a>
+            <a href="/dashboard/posts?token=xbot-admin-2025" style="padding: 12px 20px; background: white; border-radius: 8px; text-decoration: none; color: #333; font-weight: 600; font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">📊 Posts</a>
+            <a href="/dashboard/replies?token=xbot-admin-2025" style="padding: 12px 20px; background: white; border-radius: 8px; text-decoration: none; color: #333; font-weight: 600; font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">💬 Replies</a>
+        </div>
+
         <div class="nav-tabs">
             <a href="/dashboard/recent?token=xbot-admin-2025" class="nav-tab">📅 Recent</a>
             <a href="/dashboard/posts?token=xbot-admin-2025" class="nav-tab">📊 Posts</a>
