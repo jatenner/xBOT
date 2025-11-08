@@ -125,12 +125,6 @@ export class RealTwitterDiscovery {
           
           // SMART BATCH FIX: Enhanced account extraction with multiple strategies
           const accounts = await page.evaluate(() => {
-            const __name = (target: Function, value: string) => {
-              try {
-                Object.defineProperty(target, 'name', { value, configurable: true });
-              } catch {}
-              return target;
-            };
             const results: any[] = [];
             
             // Strategy 1: Try data-testid="tweet" articles
@@ -274,12 +268,6 @@ export class RealTwitterDiscovery {
           
           // Extract recent tweets (FILTER OLD TWEETS IMMEDIATELY - permanent fix)
           const opportunities = await page.evaluate(() => {
-            const __name = (target: Function, value: string) => {
-              try {
-                Object.defineProperty(target, 'name', { value, configurable: true });
-              } catch {}
-              return target;
-            };
             const results: any[] = [];
             const tweetElements = document.querySelectorAll('article[data-testid="tweet"]');
             const NOW = Date.now();
@@ -543,12 +531,6 @@ export class RealTwitterDiscovery {
         (
           { maxReplies, maxAgeHours, minLikes }: { maxReplies: number; maxAgeHours: number; minLikes: number }
         ) => {
-        const __name = (target: Function, value: string) => {
-          try {
-            Object.defineProperty(target, 'name', { value, configurable: true });
-          } catch {}
-          return target;
-        };
         const results: any[] = [];
         const tweetElements = document.querySelectorAll('article[data-testid="tweet"]');
         const NOW = Date.now();
@@ -767,12 +749,6 @@ export class RealTwitterDiscovery {
       await page.waitForTimeout(2000);
       
       const details = await page.evaluate(() => {
-        const __name = (target: Function, value: string) => {
-          try {
-            Object.defineProperty(target, 'name', { value, configurable: true });
-          } catch {}
-          return target;
-        };
         // Extract follower count
         const followerLinkEl = document.querySelector('a[href$="/verified_followers"]');
         const followerText = followerLinkEl?.textContent || '0';
