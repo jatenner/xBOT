@@ -149,13 +149,16 @@ export class BulletproofThreadComposer {
           continue;
         }
         
-        console.error(`[THREAD_COMPOSER] ❌ Attempt ${attempt} error: ${error.message}`);
+        const errorMsg = error.message || error.toString() || 'Unknown thread posting error';
+        console.error(`[THREAD_COMPOSER] ❌ Attempt ${attempt} error: ${errorMsg}`);
+        console.error(`[THREAD_COMPOSER] ❌ Error type: ${error.name || typeof error}`);
+        console.error(`[THREAD_COMPOSER] ❌ Stack trace: ${error.stack?.substring(0, 200) || 'No stack'}`);
         
         if (attempt === maxRetries) {
           return {
             success: false,
             mode: 'composer',
-            error: error.message
+            error: `Thread posting failed after ${maxRetries} attempts: ${errorMsg}`
           };
         }
         
@@ -231,7 +234,8 @@ export class BulletproofThreadComposer {
             };
             
           } catch (composerError: any) {
-            console.log(`🧵 THREAD_COMPOSER_FAILED (attempt ${attempt + 1}): ${String(composerError).slice(0, 200)}`);
+            const errorMsg = composerError.message || composerError.toString() || 'Unknown composer error';
+            console.log(`🧵 THREAD_COMPOSER_FAILED (attempt ${attempt + 1}): ${errorMsg.slice(0, 200)}`);
             
             // FALLBACK: Try reply chain if native composer fails
             try {
