@@ -75,12 +75,18 @@ async function generateRealContent(): Promise<void> {
   }
   
   // ═══════════════════════════════════════════════════════════
-  // 🎯 BATCH GENERATION: Always generate EXACTLY 2 posts
+  // 🎯 BATCH GENERATION: Generate 2-3 posts per run (buffer for failures)
   // ═══════════════════════════════════════════════════════════
-  // CRITICAL: Regardless of interval, generate 2 posts to ensure rate limit
-  // If job runs every 2 hours → 2 posts / 2 hours = 1 post/hour
-  // If job runs every hour → 2 posts / hour = 2 posts/hour ✅
-  const numToGenerate = 2; // FIXED: Always 2 posts per run
+  // CRITICAL: Generate 2-3 posts to account for duplicates/failures
+  // - Base: 2 posts per run (meets 2/hour target)
+  // - Buffer: 30% chance of 3rd post (compensates for 10% failure rate)
+  // - Posting queue respects 2/hour limit regardless of what's generated
+  const hasBuffer = Math.random() < 0.3; // 30% chance of buffer post
+  const numToGenerate = hasBuffer ? 3 : 2;
+  
+  if (hasBuffer) {
+    console.log('🎲 Generation buffer activated: Creating 3 posts this run');
+  }
   
   log({ op: 'generate_real', num_to_generate: numToGenerate, target_rate: '2/hour' });
   
