@@ -98,7 +98,9 @@ You will be asked to defend your data. Be prepared to:
 - Acknowledge study limitations
 `;
 
-  const userPrompt = `Create data-driven content about ${topic}. Use research, statistics, or studies however works best - no required format.`;
+  const userPrompt = format === 'thread'
+    ? `Create a data-driven THREAD about ${topic}. Present research, statistics, and studies across multiple connected tweets. You MUST return a thread as specified in the system prompt.`
+    : `Create a data-driven SINGLE TWEET about ${topic}. Present research, statistics, or a study finding. You MUST return a single tweet as specified in the system prompt.`;
 
   try {
     const response = await createBudgetedChatCompletion({

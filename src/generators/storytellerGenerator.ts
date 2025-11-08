@@ -104,9 +104,9 @@ You will be asked to defend your story. Be prepared to:
 - Justify lessons drawn from it
 `;
 
-  const userPrompt = `Create narrative content about ${topic}. Use stories, examples, or case studies in whatever format is most engaging.
-
-${format === 'thread' ? 'Make it a compelling thread with real examples.' : 'Make it memorable and specific.'}`;
+  const userPrompt = format === 'thread' 
+    ? `Create a compelling narrative THREAD about ${topic}. Use stories, examples, or case studies. You MUST return a thread with multiple tweets as specified in the system prompt.`
+    : `Create a narrative SINGLE TWEET about ${topic}. Use a story, example, or case study. You MUST return a single tweet as specified in the system prompt.`;
 
   try {
     const response = await createBudgetedChatCompletion({

@@ -109,7 +109,9 @@ You will be asked to defend your philosophy. Be prepared to:
 - Acknowledge other valid perspectives
 `;
 
-  const userPrompt = `Create philosophical content about ${topic}. Share deep insights in whatever format resonates - truths, observations, or reframes.`;
+  const userPrompt = format === 'thread'
+    ? `Create a philosophical THREAD about ${topic}. Share deep insights building on each other. You MUST return a thread as specified in the system prompt.`
+    : `Create a philosophical SINGLE TWEET about ${topic}. Share one deep insight. You MUST return a single tweet as specified in the system prompt.`;
 
   try {
     const response = await createBudgetedChatCompletion({

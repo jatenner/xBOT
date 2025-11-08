@@ -97,7 +97,9 @@ You will be asked to defend your predictions. Be prepared to:
 - Acknowledge what could prove you wrong
 `;
 
-  const userPrompt = `Create forward-thinking content about ${topic}. Explore trends, predictions, or paradigm shifts in whatever format is most compelling.`;
+  const userPrompt = format === 'thread'
+    ? `Create a forward-thinking THREAD about ${topic}. Explore trends, predictions, or paradigm shifts. You MUST return a thread as specified in the system prompt.`
+    : `Create a forward-thinking SINGLE TWEET about ${topic}. Explore trends, predictions, or paradigm shifts. You MUST return a single tweet as specified in the system prompt.`;
 
   try {
     const response = await createBudgetedChatCompletion({

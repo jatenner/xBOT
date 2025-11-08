@@ -93,7 +93,9 @@ You will be asked to defend your corrections. Be prepared to:
 - Acknowledge any remaining uncertainty
 `;
 
-  const userPrompt = `Create myth-busting content about ${topic}. Challenge misconceptions however works best - questions, statements, comparisons, or data.`;
+  const userPrompt = format === 'thread'
+    ? `Create a myth-busting THREAD about ${topic}. Challenge misconceptions across multiple tweets. You MUST return a thread as specified in the system prompt.`
+    : `Create a myth-busting SINGLE TWEET about ${topic}. Challenge a misconception. You MUST return a single tweet as specified in the system prompt.`;
 
   try {
     const response = await createBudgetedChatCompletion({
