@@ -19,6 +19,12 @@ export interface HealthJudgment {
 
 export class HealthContentJudge {
   private static instance: HealthContentJudge;
+  private readonly HEALTH_THRESHOLD = Number(process.env.HEALTH_RELEVANCE_THRESHOLD ?? 4);
+  private readonly keywordGroups = {
+    primary: ['health', 'wellness', 'fitness', 'nutrition', 'biohack', 'longevity', 'medical', 'doctor', 'dr ', 'patient'],
+    secondary: ['supplement', 'vitamin', 'protein', 'sleep', 'workout', 'exercise', 'fasting', 'glucose', 'insulin', 'hormone', 'gut', 'microbiome'],
+    tertiary: ['recovery', 'hydrate', 'immune', 'metabolic', 'sauna', 'cold plunge', 'meditation', 'stress', 'mental health', 'therapy']
+  };
 
   private constructor() {}
 
@@ -46,10 +52,12 @@ export class HealthContentJudge {
       // Process in batches of 50 (optimal for GPT-4o-mini)
       const BATCH_SIZE = 50;
       const allJudgments: HealthJudgment[] = [];
+      let fallbackAccepted = 0;
 
       for (let i = 0; i < tweets.length; i += BATCH_SIZE) {
         const batch = tweets.slice(i, i + BATCH_SIZE);
         const batchJudgments = await this.judgeBatch(batch);
+        fallbackAccepted += batchJudgments.filter(j => j.reason === 'keyword_fallback').length;
         allJudgments.push(...batchJudgments);
       }
 
@@ -58,6 +66,9 @@ export class HealthContentJudge {
 
       console.log(`[HEALTH_JUDGE] ✅ Judged ${tweets.length} tweets: ${healthCount} health-relevant (${Math.round(healthCount/tweets.length*100)}%)`);
       console.log(`[HEALTH_JUDGE] 📊 Average health score: ${avgScore.toFixed(1)}/10`);
+      if (fallbackAccepted > 0) {
+        console.log(`[HEALTH_JUDGE] 🔄 Keyword fallback accepted ${fallbackAccepted} tweets`);
+      }
 
       return allJudgments;
     } catch (error: any) {
@@ -150,14 +161,41 @@ Return ONLY valid JSON (no markdown):
       }
 
       const score = Number(judgment.score) || 0;
-      
+      const keywordScore = this.keywordScore(`${tweet.content} ${tweet.authorBio || ''}`);
+      const threshold = this.HEALTH_THRESHOLD;
+      let isHealthRelevant = score >= threshold;
+      let reason = judgment.reason || 'No reason provided';
+
+      if (!isHealthRelevant && keywordScore >= 2) {
+        isHealthRelevant = true;
+        reason = 'keyword_fallback';
+        console.log(`[HEALTH_JUDGE] ✅ Keyword fallback accepted tweet ${index} (score=${score}, keywordScore=${keywordScore})`);
+      }
+
       return {
-        isHealthRelevant: score >= 6, // Threshold: 6/10 or higher
-        score,
+        isHealthRelevant,
+        score: isHealthRelevant ? Math.max(score, threshold) : score,
         category: judgment.category || 'not_health',
-        reason: judgment.reason || 'No reason provided'
+        reason
       };
     });
+  }
+
+  private keywordScore(text: string): number {
+    const lower = text.toLowerCase();
+    let score = 0;
+
+    this.keywordGroups.primary.forEach(k => {
+      if (lower.includes(k)) score += 3;
+    });
+    this.keywordGroups.secondary.forEach(k => {
+      if (lower.includes(k)) score += 2;
+    });
+    this.keywordGroups.tertiary.forEach(k => {
+      if (lower.includes(k)) score += 1;
+    });
+
+    return score;
   }
 
   /**

@@ -46,6 +46,12 @@ export class RealTwitterDiscovery {
     'wellness', 'health', 'neuroscience', 'exercise', 'fasting',
     'supplements', 'antiaging', 'healthspan', 'metabolichealth'
   ];
+  
+  private readonly keywordFallback = {
+    primary: ['health', 'wellness', 'fitness', 'nutrition', 'biohack', 'longevity', 'medical', 'doctor', 'dr ', 'patient'],
+    secondary: ['supplement', 'vitamin', 'protein', 'sleep', 'workout', 'exercise', 'fasting', 'glucose', 'insulin', 'hormone', 'gut', 'microbiome'],
+    tertiary: ['recovery', 'hydrate', 'immune', 'metabolic', 'sauna', 'cold plunge', 'meditation', 'stress', 'mental health', 'therapy']
+  };
 
   private constructor() {}
 
@@ -54,6 +60,21 @@ export class RealTwitterDiscovery {
       RealTwitterDiscovery.instance = new RealTwitterDiscovery();
     }
     return RealTwitterDiscovery.instance;
+  }
+
+  private getKeywordScore(text: string): number {
+    const lower = text.toLowerCase();
+    let score = 0;
+    this.keywordFallback.primary.forEach(k => {
+      if (lower.includes(k)) score += 3;
+    });
+    this.keywordFallback.secondary.forEach(k => {
+      if (lower.includes(k)) score += 2;
+    });
+    this.keywordFallback.tertiary.forEach(k => {
+      if (lower.includes(k)) score += 1;
+    });
+    return score;
   }
 
   /**
@@ -512,7 +533,8 @@ export class RealTwitterDiscovery {
     minLikes: number,
     maxReplies: number,
     searchLabel: string = 'VIRAL',
-    maxAgeHours: number = 24
+    maxAgeHours: number = 24,
+    customQuery?: string
   ): Promise<ReplyOpportunity[]> {
     console.log(`[REAL_DISCOVERY] 🔍 ${searchLabel} search: ${minLikes}+ likes, <${maxAgeHours}h old (broad - all topics)...`);
     
@@ -534,7 +556,10 @@ export class RealTwitterDiscovery {
       // 🔥 MEGA-VIRAL STRATEGY: Keep high thresholds, strict health filtering
       // MINIMUM 10K likes enforced - we want MASSIVE reach only
       // 🔥 NO TOPIC FILTER! Search ALL viral tweets, AI filters for health after
-      const encodedQuery = encodeURIComponent(`min_faves:${minLikes} -filter:replies lang:en`);
+      const queryText = customQuery
+        ? customQuery
+        : `min_faves:${minLikes} -filter:replies lang:en`;
+      const encodedQuery = encodeURIComponent(queryText);
       const searchUrl = `https://x.com/search?q=${encodedQuery}&src=typed_query&f=live`;
       
       console.log(`[REAL_DISCOVERY] 🌐 Navigating to search: ${searchUrl}`);
@@ -732,6 +757,32 @@ export class RealTwitterDiscovery {
       
       if (healthOpportunities.length === 0) {
         console.log('[REAL_DISCOVERY] ⚠️ No health-relevant tweets found after AI filtering');
+        opportunities.slice(0, 5).forEach((opp, idx) => {
+          console.log(`[REAL_DISCOVERY] ⚠️ Rejected tweet #${idx + 1}:`, {
+            text: opp.tweet_content?.slice(0, 180),
+            author: opp.tweet_author,
+            likes: opp.like_count
+          });
+        });
+        const keywordFallback = opportunities
+          .map(opp => ({
+            ...opp,
+            keywordScore: this.getKeywordScore(`${opp.tweet_content} ${opp.tweet_author}`)
+          }))
+          .filter(opp => opp.keywordScore >= 2)
+          .sort((a, b) => b.keywordScore - a.keywordScore)
+          .slice(0, 5);
+
+        if (keywordFallback.length > 0) {
+          console.log(`[REAL_DISCOVERY] 🔄 Keyword fallback rescuing ${keywordFallback.length} opportunities`);
+          return keywordFallback.map(opp => ({
+            ...opp,
+            health_relevance_score: Math.max(opp.keywordScore * 2, 4),
+            health_category: 'wellness',
+            ai_judge_reason: 'keyword_fallback'
+          }));
+        }
+
         return [];
       }
       

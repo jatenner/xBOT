@@ -65,6 +65,8 @@ export async function replyOpportunityHarvester(): Promise<void> {
     // 🧪 TEST TIERS (Lower bar to see if Twitter returns ANY results)
     { minLikes: 50, maxReplies: 30, label: 'TEST (50+)', maxAgeHours: 24 },
     { minLikes: 100, maxReplies: 40, label: 'TEST+ (100+)', maxAgeHours: 24 },
+    { minLikes: 100, maxReplies: 60, label: 'HEALTH FOCUS (100+)', maxAgeHours: 24, query: '(health OR fitness OR wellness OR nutrition OR supplement) min_faves:100 lang:en -filter:replies' },
+    { minLikes: 300, maxReplies: 80, label: 'HEALTH FOCUS (300+)', maxAgeHours: 24, query: '(sleep OR workout OR diet OR fasting OR hormone) min_faves:300 lang:en -filter:replies' },
     
     // 🔥 FRESH TIER (500-2K likes, <12h) - Maximum freshness, active conversations
     { minLikes: 500, maxReplies: 50, label: 'FRESH (500+)', maxAgeHours: 12 },
@@ -128,7 +130,8 @@ export async function replyOpportunityHarvester(): Promise<void> {
             searchQuery.minLikes,
             searchQuery.maxReplies,
             searchQuery.label,
-            searchQuery.maxAgeHours || 24 // Pass age limit, default to 24h
+            searchQuery.maxAgeHours || 24, // Pass age limit, default to 24h
+            searchQuery.query
           );
         }
       );
