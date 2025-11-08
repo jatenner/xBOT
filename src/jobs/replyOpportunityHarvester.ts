@@ -62,6 +62,10 @@ export async function replyOpportunityHarvester(): Promise<void> {
   // 
   // Result: 10-50x MORE health opportunities discovered!
   const searchQueries = [
+    // 🧪 TEST TIERS (Lower bar to see if Twitter returns ANY results)
+    { minLikes: 50, maxReplies: 30, label: 'TEST (50+)', maxAgeHours: 24 },
+    { minLikes: 100, maxReplies: 40, label: 'TEST+ (100+)', maxAgeHours: 24 },
+    
     // 🔥 FRESH TIER (500-2K likes, <12h) - Maximum freshness, active conversations
     { minLikes: 500, maxReplies: 50, label: 'FRESH (500+)', maxAgeHours: 12 },
     { minLikes: 1000, maxReplies: 80, label: 'FRESH+ (1K+)', maxAgeHours: 12 },
