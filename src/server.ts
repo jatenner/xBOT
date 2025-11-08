@@ -23,6 +23,7 @@ import emergencySystemRouter from './api/emergencySystem';
 import playwrightPostingRouter from './api/playwrightPosting';
 import ratesRouter from './api/rates';
 import resourceMetricsRouter from './api/resourceMetrics';
+import adminDashboardActionsRouter from './api/adminDashboardActions';
 
 const app = express();
 
@@ -130,6 +131,12 @@ app.get('/admin/jobs/schedule', requireAdminAuth, jobScheduleHandler);
  * Admin smoke test routes (protected)
  */
 app.use('/admin', adminRouter);
+
+/**
+ * 🎮 ADMIN DASHBOARD ACTION ENDPOINTS (protected)
+ * Real-time dashboard control actions
+ */
+app.use('/api/admin', adminDashboardActionsRouter);
 
 /**
  * 🚀 LIGHTWEIGHT POSTING ROUTES - Railway Optimized
@@ -739,7 +746,7 @@ app.get('/dashboard/replies', async (req, res) => {
   }
 });
 
-// System health dashboard page
+// System health dashboard page - Enhanced real-time version
 app.get('/dashboard/health', async (req, res) => {
   try {
     const token = req.query.token || req.headers.authorization?.replace('Bearer ', '');
@@ -756,17 +763,17 @@ app.get('/dashboard/health', async (req, res) => {
       `);
     }
     
-    console.log('🔧 HEALTH_DASHBOARD: Serving system health...');
+    console.log('🚀 ENHANCED_DASHBOARD: Serving real-time system health...');
     
-    const { generateSystemHealthDashboard } = await import('./dashboard/systemHealthDashboard');
-    const dashboardHTML = await generateSystemHealthDashboard();
+    const { generateEnhancedDashboard } = await import('./dashboard/enhancedRealTimeDashboard');
+    const dashboardHTML = await generateEnhancedDashboard();
     
     res.setHeader('Content-Type', 'text/html');
     res.send(dashboardHTML);
     
-    console.log('✅ HEALTH_DASHBOARD: Delivered');
+    console.log('✅ ENHANCED_DASHBOARD: Delivered');
   } catch (error: any) {
-    console.error('❌ HEALTH_DASHBOARD_ERROR:', error.message);
+    console.error('❌ ENHANCED_DASHBOARD_ERROR:', error.message);
     res.status(500).send(`<html><body style="padding: 50px; text-align: center;">
       <h1>🚨 Error</h1><p>${error.message}</p></body></html>`);
   }
