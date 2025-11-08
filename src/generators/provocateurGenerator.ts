@@ -106,7 +106,9 @@ You will be asked to defend your provocation. Be prepared to:
 - Show why this question matters
 `;
 
-  const userPrompt = `Create provocative content about ${topic}. You can ask questions, make bold claims, challenge assumptions, or present contrarian views - whatever is most effective.`;
+  const userPrompt = format === 'thread'
+    ? `Create provocative THREAD content about ${topic}. Challenge assumptions across multiple tweets. You MUST return a thread as specified in the system prompt.`
+    : `Create a provocative SINGLE TWEET about ${topic}. Ask a bold question or challenge an assumption. You MUST return a single tweet as specified in the system prompt.`;
 
   try {
     const response = await createBudgetedChatCompletion({

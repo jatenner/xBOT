@@ -108,7 +108,9 @@ You will be asked to defend your exploration. Be prepared to:
 - Justify why this frontier matters
 `;
 
-  const userPrompt = `Create exploratory content about ${topic}. Reveal unexpected connections, patterns, or insights in whatever format works best.`;
+  const userPrompt = format === 'thread'
+    ? `Create an exploratory THREAD about ${topic}. Reveal unexpected connections, patterns, or insights across multiple tweets. You MUST return a thread as specified in the system prompt.`
+    : `Create an exploratory SINGLE TWEET about ${topic}. Reveal an unexpected connection, pattern, or insight. You MUST return a single tweet as specified in the system prompt.`;
 
   try {
     const response = await createBudgetedChatCompletion({

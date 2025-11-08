@@ -108,7 +108,9 @@ You will be asked to defend the fascination. Be prepared to:
 - Justify why it matters
 - Show it's not just trivia`;
 
-  const userPrompt = `Create fascinating content about ${topic}. Find the counterintuitive angle in whatever format works - facts, questions, comparisons, or mechanisms.`;
+  const userPrompt = format === 'thread'
+    ? `Create a fascinating THREAD about ${topic}. Find the counterintuitive angle. You MUST return a thread as specified in the system prompt.`
+    : `Create a fascinating SINGLE TWEET about ${topic}. Find the counterintuitive angle. You MUST return a single tweet as specified in the system prompt.`;
 
   try {
     const response = await createBudgetedChatCompletion({

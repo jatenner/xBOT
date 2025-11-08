@@ -106,7 +106,9 @@ You will be asked to defend your bridge-building. Be prepared to:
 - Acknowledge what's still unknown
 - Respect cultural context`;
 
-  const userPrompt = `Create content connecting ${topic} to culture, books, philosophy, or history. Make connections in whatever format is most engaging.`;
+  const userPrompt = format === 'thread'
+    ? `Create a THREAD connecting ${topic} to culture, books, philosophy, or history. You MUST return a thread as specified in the system prompt.`
+    : `Create a SINGLE TWEET connecting ${topic} to culture, books, philosophy, or history. You MUST return a single tweet as specified in the system prompt.`;
 
   try {
     const response = await createBudgetedChatCompletion({

@@ -105,7 +105,9 @@ You will be asked to defend your coaching. Be prepared to:
 - Justify practicality for most people
 `;
 
-  const userPrompt = `Create actionable coaching content about ${topic}. Share protocols, insights, or guidance in whatever format works best.`;
+  const userPrompt = format === 'thread'
+    ? `Create an actionable coaching THREAD about ${topic}. Share protocols, insights, or step-by-step guidance. You MUST return a thread as specified in the system prompt.`
+    : `Create an actionable coaching SINGLE TWEET about ${topic}. Share a protocol, insight, or specific guidance. You MUST return a single tweet as specified in the system prompt.`;
 
   try {
     const response = await createBudgetedChatCompletion({

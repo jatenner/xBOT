@@ -98,7 +98,9 @@ You will be asked to defend your contrarian position. Be prepared to:
 - Acknowledge when conventional view is right
 `;
 
-  const userPrompt = `Create contrarian content about ${topic}. Challenge conventional wisdom in whatever format is most effective - questions, statements, or data.`;
+  const userPrompt = format === 'thread'
+    ? `Create a contrarian THREAD about ${topic}. Challenge conventional wisdom across multiple tweets. You MUST return a thread as specified in the system prompt.`
+    : `Create a contrarian SINGLE TWEET about ${topic}. Challenge conventional wisdom. You MUST return a single tweet as specified in the system prompt.`;
 
   try {
     const response = await createBudgetedChatCompletion({
