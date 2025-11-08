@@ -621,18 +621,37 @@ async function formatAndQueueContent(content: any): Promise<void> {
         formatStrategy: String(content.format_strategy || 'thread')
       });
       
-      formattedTweets.push(formatResult.formatted);
+      let formatted = formatResult.formatted;
       
+      // 🧵 ADD THREAD EMOJI TO FIRST TWEET ONLY
       if (i === 0) {
         visualApproach = formatResult.visualApproach;
+        
+        const hasThreadIndicator = formatted.includes('🧵') || 
+                                   formatted.toLowerCase().includes('thread') ||
+                                   formatted.includes('👇');
+        
+        if (!hasThreadIndicator) {
+          // Add emoji at end
+          if (formatted.match(/[.!?]$/)) {
+            formatted = formatted + ' 🧵';
+          } else {
+            formatted = formatted + '. 🧵';
+          }
+          console.log(`[PLAN_JOB] ✅ Added thread emoji (🧵) to first tweet`);
+        } else {
+          console.log(`[PLAN_JOB] ℹ️ Thread indicator already present in first tweet`);
+        }
       }
+      
+      formattedTweets.push(formatted);
     }
     
     // Update content with formatted tweets
     content.text = formattedTweets;
     content.visual_format = visualApproach || 'thread_formatted';
     
-    console.log(`[PLAN_JOB] ✅ Thread formatted (${formattedTweets.length} tweets)`);
+    console.log(`[PLAN_JOB] ✅ Thread formatted (${formattedTweets.length} tweets) with emoji indicator`);
     
   } else {
     // Format single tweet
