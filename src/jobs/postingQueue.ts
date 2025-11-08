@@ -548,16 +548,26 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
     
     const { data: threadData } = await supabase
       .from('content_metadata')
-      .select('thread_parts, created_at, scheduled_at')
+      .select('thread_parts, created_at, scheduled_at, features')
       .eq('decision_id', decision.id)
       .single();
     
     if (threadData) {
       const parts = threadData.thread_parts as string[] || [];
       const age = (Date.now() - new Date(String(threadData.created_at)).getTime()) / (1000 * 60);
+      const retryCount = (threadData.features as any)?.retry_count || 0;
+      
+      // 🔥 MAX RETRY LIMIT: Prevent infinite thread retries
+      const MAX_THREAD_RETRIES = 3;
+      if (retryCount >= MAX_THREAD_RETRIES) {
+        console.error(`${logPrefix} ❌ Thread ${decision.id} exceeded max retries (${retryCount}/${MAX_THREAD_RETRIES})`);
+        throw new Error(`Thread exceeded maximum retry limit (${MAX_THREAD_RETRIES} attempts)`);
+      }
+      
       console.log(`${logPrefix} ⚡ THREAD DETECTED FOR POSTING ⚡`);
       console.log(`${logPrefix} Thread ID: ${decision.id}`);
       console.log(`${logPrefix} Thread details: ${parts.length} tweets, created ${age.toFixed(0)}min ago`);
+      console.log(`${logPrefix} Retry count: ${retryCount}/${MAX_THREAD_RETRIES}`);
       console.log(`${logPrefix} Full thread content:`);
       parts.forEach((tweet: string, i: number) => {
         console.log(`${logPrefix}   Tweet ${i + 1}/${parts.length}: "${tweet.substring(0, 80)}..." (${tweet.length} chars)`);
@@ -995,9 +1005,13 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         const result = await BulletproofThreadComposer.post(thread_parts);
         
         if (!result.success) {
-          // Thread completely failed
-          console.error(`[POSTING_QUEUE] ❌ Thread failed: ${result.error}`);
-          throw new Error(`Thread posting failed: ${result.error}`);
+          // Thread completely failed - ensure we have a detailed error message
+          const errorDetails = result.error || 'Unknown thread posting error (no error message returned)';
+          console.error(`[POSTING_QUEUE] ❌ Thread failed: ${errorDetails}`);
+          console.error(`[POSTING_QUEUE] ❌ Thread mode was: ${result.mode || 'unknown'}`);
+          console.error(`[POSTING_QUEUE] ❌ Thread ID: ${decision.id}`);
+          console.error(`[POSTING_QUEUE] ❌ Thread parts: ${thread_parts.length} tweets`);
+          throw new Error(`Thread posting failed: ${errorDetails}`);
         }
         
         // Success - extract tweet IDs from result
