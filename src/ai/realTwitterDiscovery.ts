@@ -125,6 +125,16 @@ export class RealTwitterDiscovery {
           
           // SMART BATCH FIX: Enhanced account extraction with multiple strategies
           const accounts = await page.evaluate(() => {
+            const globalAny: any = globalThis as any;
+            if (typeof globalAny.__name !== 'function') {
+              globalAny.__name = function(target: Function, value: string) {
+                try {
+                  Object.defineProperty(target, 'name', { value, configurable: true });
+                } catch {}
+                return target;
+              };
+            }
+            const __name = globalAny.__name as (target: Function, value: string) => Function;
             const results: any[] = [];
             
             // Strategy 1: Try data-testid="tweet" articles
@@ -268,6 +278,16 @@ export class RealTwitterDiscovery {
           
           // Extract recent tweets (FILTER OLD TWEETS IMMEDIATELY - permanent fix)
           const opportunities = await page.evaluate(() => {
+            const globalAny: any = globalThis as any;
+            if (typeof globalAny.__name !== 'function') {
+              globalAny.__name = function(target: Function, value: string) {
+                try {
+                  Object.defineProperty(target, 'name', { value, configurable: true });
+                } catch {}
+                return target;
+              };
+            }
+            const __name = globalAny.__name as (target: Function, value: string) => Function;
             const results: any[] = [];
             const tweetElements = document.querySelectorAll('article[data-testid="tweet"]');
             const NOW = Date.now();
@@ -533,6 +553,16 @@ export class RealTwitterDiscovery {
         (
           { maxReplies, maxAgeHours, minLikes }: { maxReplies: number; maxAgeHours: number; minLikes: number }
         ) => {
+        const globalAny: any = globalThis as any;
+        if (typeof globalAny.__name !== 'function') {
+          globalAny.__name = function(target: Function, value: string) {
+            try {
+              Object.defineProperty(target, 'name', { value, configurable: true });
+            } catch {}
+            return target;
+          };
+        }
+        const __name = globalAny.__name as (target: Function, value: string) => Function;
         const results: any[] = [];
         const tweetElements = document.querySelectorAll('article[data-testid="tweet"]');
         
