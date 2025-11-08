@@ -429,42 +429,49 @@ function generateEnhancedHTML(data: DashboardData): string {
             </div>
         </div>
 
-        <!-- NAVIGATION -->
-        <div class="nav-tabs">
-            <a href="/dashboard/health?token=xbot-admin-2025" class="nav-tab active">🚀 Real-Time Control</a>
-            <a href="/dashboard/recent?token=xbot-admin-2025" class="nav-tab">📅 Recent</a>
-            <a href="/dashboard/posts?token=xbot-admin-2025" class="nav-tab">📊 Posts</a>
-            <a href="/dashboard/replies?token=xbot-admin-2025" class="nav-tab">💬 Replies</a>
+        <!-- NAVIGATION - Other Dashboards -->
+        <div style="margin-bottom: 20px; padding: 15px; background: #f7fafc; border-radius: 10px; border-left: 4px solid #667eea;">
+            <div style="font-size: 14px; color: #4a5568; margin-bottom: 8px; font-weight: 600;">📊 Other Views:</div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <a href="/dashboard/recent?token=xbot-admin-2025" style="padding: 8px 16px; background: white; border-radius: 6px; text-decoration: none; color: #4a5568; font-size: 13px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: all 0.2s;" onmouseover="this.style.background='#edf2f7'" onmouseout="this.style.background='white'">📅 Recent Activity</a>
+                <a href="/dashboard/posts?token=xbot-admin-2025" style="padding: 8px 16px; background: white; border-radius: 6px; text-decoration: none; color: #4a5568; font-size: 13px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: all 0.2s;" onmouseover="this.style.background='#edf2f7'" onmouseout="this.style.background='white'">📊 Posts Analytics</a>
+                <a href="/dashboard/replies?token=xbot-admin-2025" style="padding: 8px 16px; background: white; border-radius: 6px; text-decoration: none; color: #4a5568; font-size: 13px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: all 0.2s;" onmouseover="this.style.background='#edf2f7'" onmouseout="this.style.background='white'">💬 Replies Tracking</a>
+            </div>
+            <div style="font-size: 12px; color: #718096; margin-top: 8px;">💡 This is your main control panel. Use links above for detailed analytics.</div>
         </div>
 
         <!-- QUICK ACTIONS BAR -->
         <div class="quick-actions">
-            <h2>⚡ Quick Actions</h2>
+            <h2>⚡ System Controls</h2>
+            <div style="font-size: 13px; color: #718096; margin-bottom: 15px;">Click any button below to control your bot instantly (no page refresh required)</div>
             <div class="action-buttons">
-                <button onclick="forcePost()" class="action-btn primary">
+                <button onclick="forcePost()" class="action-btn primary" title="Trigger immediate posting from queue">
                     <span class="btn-icon">📤</span>
                     <span>Force Post Now</span>
                 </button>
-                <button onclick="runScraper()" class="action-btn">
+                <button onclick="runScraper()" class="action-btn" title="Scrape engagement metrics from Twitter">
                     <span class="btn-icon">📊</span>
                     <span>Run Metrics Scraper</span>
                 </button>
-                <button onclick="runHarvester()" class="action-btn">
+                <button onclick="runHarvester()" class="action-btn" title="Find new reply opportunities">
                     <span class="btn-icon">🌾</span>
                     <span>Run Harvester</span>
                 </button>
-                <button onclick="restartBrowser()" class="action-btn warning">
+                <button onclick="restartBrowser()" class="action-btn warning" title="Restart browser if stuck">
                     <span class="btn-icon">🔄</span>
                     <span>Restart Browser</span>
                 </button>
-                <button onclick="runContentJob()" class="action-btn">
+                <button onclick="runContentJob()" class="action-btn" title="Generate new content for queue">
                     <span class="btn-icon">✍️</span>
                     <span>Generate Content</span>
                 </button>
-                <button onclick="clearQueue()" class="action-btn danger">
+                <button onclick="clearQueue()" class="action-btn danger" title="Remove all failed items">
                     <span class="btn-icon">🗑️</span>
-                    <span>Clear Failed Queue</span>
+                    <span>Clear Failed Items</span>
                 </button>
+            </div>
+            <div style="margin-top: 15px; padding: 12px; background: #fffbeb; border-left: 4px solid #f59e0b; border-radius: 6px; font-size: 13px; color: #92400e;">
+                <strong>💡 How it works:</strong> Click a button → Action runs in background → Toast notification shows result → Data refreshes automatically in 5 seconds
             </div>
         </div>
 
@@ -715,7 +722,10 @@ function generateEnhancedHTML(data: DashboardData): string {
 
         <div class="footer">
             <p>🔄 Auto-refreshes every 5 seconds | Live system monitoring</p>
-            <p style="font-size: 12px; color: #999;">For manual actions, ensure you have proper authentication</p>
+            <p style="font-size: 12px; color: #999; margin-top: 10px;">
+                <strong>This is your main control panel.</strong> Everything updates on this page - no navigation needed. 
+                Use the "Other Views" links at the top only for detailed analytics reports.
+            </p>
         </div>
     </div>
     
