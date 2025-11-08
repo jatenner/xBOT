@@ -160,7 +160,7 @@ export async function runHealthCheck(): Promise<void> {
       .eq('decision_type', 'reply')
       .gte('posted_at', oneDayAgo.toISOString());
 
-    const replyEnabled = false; // Check from config instead
+    const replyEnabled = process.env.ENABLE_REPLIES === 'true'; // Check from environment
 
     if (replyEnabled) {
       if ((repliesPosted || 0) > 10) {
